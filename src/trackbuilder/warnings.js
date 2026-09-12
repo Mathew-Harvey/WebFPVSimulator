@@ -40,7 +40,7 @@ import {
   GROUND_GATE_CENTRE_MAX, STACK2_CENTRE_MIN, STACK3_CENTRE_MIN,
   POLE_FROM_GATE_MIN, POLE_FROM_POLE_MIN, ROOM_HEIGHT, envelopeFor, inches,
 } from './racegow.js';
-import { elementById, kindOf, startPadsOf } from './model.js';
+import { elementById, elementNormal, kindOf, startPadsOf } from './model.js';
 import { sequenceLabel, unsequencedElements } from './sequence.js';
 import { dist, insideYawedBox, lerp, wrapAngle, yawVector } from './geometry.js';
 
@@ -514,11 +514,37 @@ function collectRaceGowWarnings(doc, out) {
       if (d < 1e-6) {
         continue;
       }
+      /*
+       * ONLY PARALLEL PAIRS. Rule 3 says which pairs it means: "both side by
+       * side and vertically stacked gates", and those share a frame side, so
+       * their openings face the same way. Two gates meeting at right angles
+       * share a corner post instead, and RaceGOW5's own Track 8 is built
+       * that way: the table under the tower is a Cube Gate whose top is one
+       * opening away from the tower's bottom opening, 19 in centre to centre
+       * by construction, and the table's far side is a gate at right angles
+       * to the tower's, also 19 in. Neither pair is adjacent in the rule's
+       * sense, and this check used to fail the official track on both.
+       */
+      const na = elementNormal(a);
+      const nb = elementNormal(b);
+      if (Math.abs(na.x * nb.x + na.y * nb.y + na.z * nb.z) < 0.98) {
+        continue;
+      }
+      /*
+       * A pair is only NEARLY a pair when it is nearly side by side or
+       * nearly stacked, which is an offset along one axis. Two gates on the
+       * diagonal of a 27 in lattice are 38 in apart, inside the note's
+       * window, and are not a pair anybody meant: they touch at a corner.
+       */
+      const off = [
+        a.position.x - b.position.x, a.position.y - b.position.y, centreOf(a) - centreOf(b),
+      ].map(Math.abs);
+      const aligned = Math.max(...off) > 0.94 * d;
       if (d < GATE_SPACING_MIN - 1e-6) {
         out.push(warn('rg-spacing',
           `${label(a)} and ${label(b)} are ${inches(d)} apart. Two gates that close are adjacent, and adjacent gates are 27 to 33 in centre to centre.`,
           { elementId: a.id }));
-      } else if (d > GATE_SPACING_MAX + 1e-6 && d < GATE_SPACING_MAX * 1.25) {
+      } else if (aligned && d > GATE_SPACING_MAX + 1e-6 && d < GATE_SPACING_MAX * 1.25) {
         out.push(note('rg-spacing-near',
           `${label(a)} and ${label(b)} are ${inches(d)} apart. If they are meant to be a side by side pair, adjacent gates are 27 to 33 in centre to centre, nominally 30.`,
           { elementId: a.id }));

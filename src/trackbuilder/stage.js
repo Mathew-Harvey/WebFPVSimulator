@@ -47,7 +47,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, trackClassOf } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, trackClassOf, virtualApertureDims } from './elements.js';
 import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import { aperturesOf, elementById, apertureCenter } from './model.js';
 import { apertureFrame, apertureCorners, clamp } from './geometry.js';
@@ -409,7 +409,54 @@ function paneKnotIndex(path, segIndex) {
   return -1;
 }
 
-export function buildStage(THREE, doc, path, { size = 512 } = {}) {
+/*
+ * The four corners of the opening a knot passes through, or null when the
+ * knot has nothing to light.
+ *
+ * An aperture knot lights its own level. A MARKER knot lights the virtual
+ * square on its pass side, the one trackdoc.js scores and the race field
+ * draws: the clearance corridor plus its pad wide, as tall as the pole,
+ * inner edge on the pole. The first export left markers dark, so a lap
+ * round a pole showed the line swerving past nothing, and on a RaceGOW
+ * track that is a fifth of the passes. A waypoint has no square and gets no
+ * pane: it pins the line, it is not a hole.
+ */
+function paneCorners(doc, knot) {
+  const el = elementById(doc, knot.seq.elementId);
+  const def = el ? ELEMENTS[el.type] : null;
+  if (!def) {
+    return null;
+  }
+  if (knot.role === 'marker') {
+    const clearance = knot.seq.clearance ?? 0;
+    if (def.kind !== KIND.MARKER || !knot.markerPos || clearance < 0.05) {
+      return null;
+    }
+    const dims = virtualApertureDims(el, knot.seq, trackClassOf(doc));
+    const ox = knot.pos.x - knot.markerPos.x;
+    const oy = knot.pos.y - knot.markerPos.y;
+    const on = Math.hypot(ox, oy) || 1;
+    const centre = {
+      x: knot.markerPos.x + (ox / on) * (dims.clearW / 2),
+      y: knot.markerPos.y + (oy / on) * (dims.clearW / 2),
+      z: knot.markerPos.z + dims.centerH,
+    };
+    const t = knot.tangent;
+    return apertureCorners(centre, Math.atan2(t.y, t.x), 0, dims.clearW, dims.clearH);
+  }
+  if (def.kind !== KIND.APERTURE) {
+    return null;
+  }
+  const levels = aperturesOf(el);
+  const idx = Math.min(Math.max(0, knot.seq.apertureIndex ?? 0), levels.length - 1);
+  const ap = levels[idx];
+  if (!ap) {
+    return null;
+  }
+  return apertureCorners(apertureCenter(el, idx), el.yaw, el.pitch, ap.clearW, ap.clearH);
+}
+
+export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null } = {}) {
   const trash = [];
   const keep = (x) => {
     trash.push(x);
@@ -619,7 +666,11 @@ export function buildStage(THREE, doc, path, { size = 512 } = {}) {
     if (def.kind === KIND.APERTURE) {
       buildAperture(el);
     } else if (def.kind === KIND.MARKER) {
-      buildMarker(el);
+      /* A waypoint is a ghost. Nothing stands there on the race field, so
+       * nothing stands there here either. */
+      if (el.type !== 'waypoint') {
+        buildMarker(el);
+      }
     } else if (def.kind === KIND.OBSTACLE) {
       buildObstacle(el);
     } else if (def.kind === KIND.START) {
@@ -797,6 +848,22 @@ export function buildStage(THREE, doc, path, { size = 512 } = {}) {
   ));
   camera.position.copy(aim).addScaledVector(eye, dist);
   camera.lookAt(aim);
+  /*
+   * A CAMERA THE CALLER SUPPLIES, in document coordinates, overrides the
+   * framing above. It exists so an export can be shot from exactly the
+   * viewpoint of a reference picture and laid over it, which is how the
+   * RaceGOW reconstructions were checked against the official animations.
+   * The conversion is the root group's: document (x, y, z) is Three
+   * (x, z, minus y).
+   */
+  if (fixed && fixed.eye && fixed.aim) {
+    camera.position.set(fixed.eye.x, fixed.eye.z, -fixed.eye.y);
+    camera.lookAt(new THREE.Vector3(fixed.aim.x, fixed.aim.z, -fixed.aim.y));
+    if (Number.isFinite(fixed.fovDeg) && fixed.fovDeg > 1) {
+      camera.fov = fixed.fovDeg;
+    }
+    camera.updateProjectionMatrix();
+  }
 
   /*
    * THE LIGHT. One key, thrown 40 degrees round from the camera so the pipes
@@ -982,25 +1049,11 @@ export function buildStage(THREE, doc, path, { size = 512 } = {}) {
     }
     paneAt = knotIndex;
     const knot = knotIndex >= 0 ? path.knots[knotIndex] : null;
-    if (!knot || knot.role === 'marker' || !knot.seq) {
+    const corners = knot && knot.seq ? paneCorners(doc, knot) : null;
+    if (!corners) {
       pane.visible = false;
       return;
     }
-    const el = elementById(doc, knot.seq.elementId);
-    if (!el || ELEMENTS[el.type]?.kind !== KIND.APERTURE) {
-      pane.visible = false;
-      return;
-    }
-    const levels = aperturesOf(el);
-    const idx = Math.min(Math.max(0, knot.seq.apertureIndex ?? 0), levels.length - 1);
-    const ap = levels[idx];
-    if (!ap) {
-      pane.visible = false;
-      return;
-    }
-    const corners = apertureCorners(
-      apertureCenter(el, idx), el.yaw, el.pitch, ap.clearW, ap.clearH,
-    );
     /* Nudged back along the way the quad is going, so the pane sits on the
      * approach side of the opening and cannot fight the bars for depth. */
     const t = knot.tangent;

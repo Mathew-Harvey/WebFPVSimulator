@@ -67,9 +67,13 @@ function flipRows(src, dst, size) {
  *
  * onProgress(done, total) is called after every rendered frame of both
  * passes, so a caller showing a status line gets a number that only goes up.
+ *
+ * camera, when given, is a fixed viewpoint in document coordinates, an
+ * { eye, aim, fovDeg } that stage.js uses instead of framing the track
+ * itself. It is how an export is laid over a reference picture.
  */
 export async function exportTrackGif(doc, {
-  size = 512, frames = 300, delayCs = 4, onProgress = null,
+  size = 512, frames = 300, delayCs = 4, onProgress = null, camera = null,
 } = {}) {
   const THREE = await import('three');
 
@@ -115,7 +119,7 @@ export async function exportTrackGif(doc, {
     });
     target.texture.colorSpace = THREE.SRGBColorSpace;
 
-    stage = buildStage(THREE, doc, path, { size });
+    stage = buildStage(THREE, doc, path, { size, camera });
 
     const raw = new Uint8Array(size * size * 4);
     const rgba = new Uint8Array(size * size * 4);

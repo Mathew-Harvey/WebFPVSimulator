@@ -32693,3 +32693,120 @@ at one percentile.
 
 **Checks.** No source file changed, so nothing was run beyond the analysis
 itself. `npm run verify` was not run and says nothing here.
+
+## Round 32: the two supplied tracks, built on the 27 inch lattice
+
+The owner replaced the guesswork with rules: every gate is a 27 inch square,
+every gate stands square to one of two axes or lies flat as a dive gate, and
+the gap between gates is 27 inches or a multiple of it. Under those rules the
+animation stops being an inverse problem and becomes a count, and both tracks
+were built from it, every frame read.
+
+**The read.** Each animation was decoded whole and turned into three
+composites: the median plate, the greenest pixel over time and the reddest.
+The fittings in the plate were assigned lattice coordinates by hand and a
+pinhole camera was fitted to them: Track 8 lands at 3.6 px rms over 19
+points and Track 5 at 5.5 px, which is the lattice hypothesis passing with a
+camera that converges, where round 31's free fit ran away. With the camera
+known, every lit pane was matched to a lattice rectangle by projecting
+candidates and scoring them against the pane's union mask, and every pass
+got its direction from the arrowhead at the last frame of its run and from
+crops of the frames either side. Track 8 is 29 passes over 12 squares and
+two poles; Track 5 is 20 passes over 10 squares and three poles.
+
+**What the animation's grammar turned out to be**, since round 31 also got
+this wrong: the arrow is a trail of fixed duration behind the quad, its
+chevron is where the quad is, and the green panel is the opening being flown
+towards, lit until the quad is through it. A pole pass is drawn as a panel
+the full height of the pole on its pass side, which is exactly the builder's
+marker with its scoring square. Two panels in each animation are wider than
+one square because the rule is "under this rail anywhere"; the square the
+line actually crosses is the one built, and a crossing 6 inches outside it
+was taken as the illustrator's hand.
+
+**What was built.** `scripts/racegow-lattice.js` holds each track as a
+small spec, squares and poles and rails and waypoints in lattice units with
+a lap string, and writes `src/trackbuilder/presets.js` from it. presets.js
+is now generated output with a note saying so, and the six reconstructions
+are gone. A square is a `gate` whose clear opening is 27 inches less one
+pipe so the frame tube lands on the lattice line and adjacent squares share
+a pipe; an elevated square is a gate with its sill at a whole number of
+units, so a column of squares is a tower on shared uprights. The table top
+on Track 8 is a `diveGate` whose sill is set back by half an opening,
+because the model puts every opening's centre at sill plus half height
+whatever its pitch. A pole is a `pole` marker on the gate's own stile line
+at RaceGOW's 14 inches from the gate centre, half an inch outboard of the
+stile, which is the rulebook's number and not a way round it. Both tracks
+sit at the same origin in the room, 156 by 236 inches, so the two can be
+compared.
+
+**Waypoints shape the line where a cubic cannot.** Six on Track 8 and eight
+on Track 5, at the places the animation's line does something two openings
+do not imply on their own: the apex of a loop beyond a pole, the climb over
+the tower, the run down the back of the far side, the swing outside the
+start gate's leg. They score nothing and are drawn nowhere. Every one was
+placed after reading the crossings the line made of the lattice planes,
+and two rounds of them were needed: the first placement put both legs of a
+hairpin on one line, which a cubic turns into a needle with a radius of
+millimetres, and separating the legs by half a unit fixed it.
+
+**Code that had to change, and why.**
+
+- `warnings.js`: rule 3 now applies to parallel pairs only. It says "side by
+  side and vertically stacked gates", which share a frame side and face the
+  same way. Two gates meeting at right angles share a corner post instead,
+  and RaceGOW's own Track 8 has that: the table top is 19 inches from the
+  tower's bottom opening and the table's far side is 19 inches from the
+  tower, by construction. The near pair note now fires only when the offset
+  is nearly along one axis, because two squares on a lattice diagonal are 38
+  inches apart and are not a pair anybody meant. Thresholds are untouched.
+- `path.js`: a marker knot takes the height the lap is at, between its
+  neighbours and inside its own scoring square, instead of the floor; the
+  first export dived to the ground at every pole. A yaw overridden marker's
+  direction of travel comes from where the quad is after the previous knot,
+  which is what next minus previous gets wrong on a hairpin, and Track 8 is
+  hairpins round one pole. The step is the marker's clearance, deliberately
+  short: a body length overshoots a pole one unit along and answers the
+  other way, which is how the first version of this rule failed on Track 5.
+  A waypoint turned by hand points the line the way its arrow points, and
+  `faces.js` reports the same direction.
+- `trackdoc.js`: a virtual station's base is the pole's foot, not the knot,
+  now that the knot has a height.
+- `stage.js`: a marker pass lights its scoring square, the same one the
+  race field draws, so a lap round a pole no longer swerves past nothing; a
+  waypoint is a ghost and is not built; and `buildStage` takes an optional
+  fixed camera in document coordinates, plumbed through `animate.js` and
+  `scripts/trackgif.js --camera`, so an export can be shot from a reference
+  picture's own viewpoint and laid over it.
+- `selftest.js` and `schema.md`: the worked example's lap is 139.79 m, not
+  140.05, because its flag knot rose off the floor. The number is quoted
+  from the code, so the quote moved; the tolerance did not.
+
+**Decided rather than measured.** The lattice pitch is the owner's 27
+inches, not racegow.js's 30 inch nominal; the picture cannot tell them
+apart and the owner's number is the instruction. Track 5's top pane is lit
+two squares wide and the line crosses it at the boundary; the square over
+the frame's bar, with the tall pole as its post, was chosen. The rail
+segments no square accounts for are `horizontalPole` obstacles so the
+picture has every pipe the animation has.
+
+**What went wrong.** Two exports started in the background died without a
+line of output; the same command in the foreground renders 24 frames in
+five seconds, so the full exports were rerun there. The first Track 5 spec
+put the last pass over the rail the wrong way, read off a film strip too
+small to show the chevron; the full size crop and the arrowhead direction
+both said the other way. The pane fitter's top candidate was a perspective
+alias for three panes and the overlay on the plate settled each one.
+
+**Checks, run this turn.** `micro:check` passes with both tracks, each
+raising only the envelope note. `check:clip` 495 of 495, `check:path` 12 of
+12, `gif:selftest` 38 of 38, `lint:presets` clean. The lattice-plane
+crossing list for each track shows every scored pass at its square in its
+direction and no crossing of a foreign square. `npm run verify` was not
+run: no physics, plant, ABI or build changed.
+
+**Not finished.** The frame by frame comparison of the exports against the
+two animations, shot from the fitted cameras, was interrupted by the owner
+asking for the push so they could fly the tracks; the camera override and
+the comparison script are in place and the exports were rendering when the
+turn ended.

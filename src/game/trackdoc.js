@@ -353,7 +353,9 @@ export function courseFromDocument(raw) {
          * of the corridor the structure is on. */
         poleX: structure.x,
         poleZ: structure.z,
-        baseY: knot.pos.z,
+        /* The pole's foot, not the knot: the knot now carries the height
+         * the lap passes the pole at, and the square stands on the floor. */
+        baseY: knot.markerPos ? knot.markerPos.z : knot.pos.z,
         centreY: dims.centerH,
         clearW: dims.clearW,
         clearH: dims.clearH,

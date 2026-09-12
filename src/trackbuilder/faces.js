@@ -322,6 +322,12 @@ export function travelDirection(doc, seqId) {
         return { x: n.x * seq.entry, y: n.y * seq.entry, z: n.z * seq.entry };
       }
       if (el && kindOf(el) === KIND.MARKER) {
+        /* The same rule path.js applies: a waypoint turned by hand is
+         * headed the way its arrow points. */
+        if (el.type === 'waypoint' && el.yawOverridden) {
+          const d = yawVector(el.yaw);
+          return { x: d.x, y: d.y, z: 0 };
+        }
         const nearby = nearbyApertureTravel(doc, el);
         if (nearby) {
           return nearby;

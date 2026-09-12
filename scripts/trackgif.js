@@ -54,13 +54,30 @@ function usage() {
   console.log('  --size <px>        square edge, default 512');
   console.log('  --frames <n>       frames in the loop, default 300');
   console.log('  --delay <cs>       centiseconds per frame, default 4, which is 25 fps');
+  console.log('  --camera <ex,ey,ez,ax,ay,az,fov>');
+  console.log('                     shoot from a fixed eye at a fixed aim, document metres,');
+  console.log('                     vertical field of view in degrees, instead of framing');
+  console.log('                     the track. For laying an export over a reference picture.');
   console.log('');
   console.log('  --frames 24 is the smoke setting. Chromium here runs on a software');
   console.log('  rasteriser, so a full 300 frame render takes minutes, not seconds.');
 }
 
+/* Seven numbers: the eye, the aim, the vertical field of view. */
+function parseCamera(text) {
+  const n = String(text || '').split(',').map(Number);
+  if (n.length !== 7 || n.some((v) => !Number.isFinite(v))) {
+    throw new Error('--camera wants ex,ey,ez,ax,ay,az,fov');
+  }
+  return {
+    eye: { x: n[0], y: n[1], z: n[2] },
+    aim: { x: n[3], y: n[4], z: n[5] },
+    fovDeg: n[6],
+  };
+}
+
 function parseArgs(argv) {
-  const opts = { size: 512, frames: 300, delay: 4, out: null, input: null };
+  const opts = { size: 512, frames: 300, delay: 4, out: null, input: null, camera: null };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') {
@@ -70,6 +87,7 @@ function parseArgs(argv) {
     if (a === '--size') { opts.size = Number(argv[i + 1]); i += 1; continue; }
     if (a === '--frames') { opts.frames = Number(argv[i + 1]); i += 1; continue; }
     if (a === '--delay') { opts.delay = Number(argv[i + 1]); i += 1; continue; }
+    if (a === '--camera') { opts.camera = parseCamera(argv[i + 1]); i += 1; continue; }
     if (a.startsWith('--')) {
       throw new Error(`unknown option ${a}`);
     }
@@ -143,7 +161,7 @@ async function main() {
      */
     const call = page.evaluate(
       `window.__exportTrackGif(${JSON.stringify(doc)}, ${JSON.stringify({
-        size: opts.size, frames: opts.frames, delayCs: opts.delay,
+        size: opts.size, frames: opts.frames, delayCs: opts.delay, camera: opts.camera,
       })})`,
     );
 

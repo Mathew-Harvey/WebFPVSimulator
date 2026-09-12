@@ -2085,7 +2085,7 @@ function suiteSchemaDoc() {
    * and 2.68, and before the cone's default clearance became the flag's
    * 1.5 m, 138.9 and 2.73. A marker's knot sits at that radius, so moving
    * it moves the lap these two numbers measure; the tolerances are untouched. */
-  check('schema.md quotes the right lap length', Math.abs(path.length - 140.05) < 0.05, `${path.length.toFixed(2)} m`);
+  check('schema.md quotes the right lap length', Math.abs(path.length - 139.79) < 0.05, `${path.length.toFixed(2)} m`);
   check('schema.md quotes the right tightest radius',
     Math.abs(path.tightest.radius - 2.593) < 0.005, `${path.tightest.radius.toFixed(3)} m`);
   check('and the worked example really does raise no warnings',

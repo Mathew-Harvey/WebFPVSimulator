@@ -562,7 +562,7 @@ awkward the schema has to express:
   rotate a structure that is flown twice and the author chose the heading that
   splits the difference between the two passes.
 
-Create Path on this document reports a lap of **140.05 m**, a tightest radius of
+Create Path on this document reports a lap of **139.79 m**, a tightest radius of
 **2.59 m**, and no warnings.
 
 Both figures moved when the cone's default clearance went from 1.0 m to the

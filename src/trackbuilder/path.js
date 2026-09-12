@@ -43,14 +43,14 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { KIND, trackClassOf, tuningFor } from './elements.js';
+import { KIND, trackClassOf, tuningFor, virtualApertureDims } from './elements.js';
 import {
   apertureCenter, aperturesOf, elementById, kindOf, entryAnchor, elementNormal, startPadsOf,
 } from './model.js';
 import { nearbyApertureTravel, markerPassDir } from './faces.js';
 import { wrapBetween } from './figures.js';
 import {
-  add, apertureFrame, cross, dist, dot, length, normalize, scale, sub,
+  add, apertureFrame, clamp, cross, dist, dot, leftOf, length, normalize, scale, sub, yawVector,
 } from './geometry.js';
 
 /*
@@ -82,8 +82,48 @@ const DODGE_PROBE = 24;
  * the last gate and the animation cannot loop: on the shipped Living room 1,
  * dropping the pads loses the whole return leg, 5.134 m of a 7.154 m lap.
  */
+/*
+ * WHICH WAY PAST A MARKER THE AUTHOR HAS TURNED BY HAND.
+ *
+ * A marker whose yaw is overridden has a fixed pass direction, so the line
+ * runs square to it and all that is left to decide is the sign: one way
+ * along the pass line or the other. The chain direction, next knot minus
+ * previous knot, gets that wrong on a hairpin, and RaceGOW5 Track 8 is made
+ * of hairpins round one tall pole: the lap leaves the tower going one way,
+ * turns round beyond the pole, comes back past it the other way, and the
+ * next opening is on the side it left from. Next minus previous is then
+ * straight up the pole and says nothing, or points the way the lap is not
+ * going.
+ *
+ * What decides it is where the quad IS when it sets off for the marker: the
+ * previous knot plus a step along that knot's own tangent. From there the
+ * marker is either ahead along the pass line or behind it. The step is the
+ * marker's own clearance, and it is that short on purpose: it only has to
+ * break the tie when the marker stands dead abeam of the previous knot, and
+ * a longer one, a body length say, overshoots a pole one lattice unit
+ * along and answers the other way. A marker still square across the line
+ * after the step keeps the chain's answer, as does the first knot of a
+ * track with no pads.
+ */
+function travelPastFixedMarker(el, prev, step) {
+  if (!prev) {
+    return null;
+  }
+  const pass = yawVector(el.yaw);
+  const along = leftOf({ x: pass.x, y: pass.y, z: 0 });
+  const t = normalize({ x: prev.tangent.x, y: prev.tangent.y, z: 0 }, { x: 1, y: 0, z: 0 });
+  const from = add(prev.pos, scale(t, step));
+  const to = sub(el.position, from);
+  const s = along.x * to.x + along.y * to.y;
+  if (Math.abs(s) < 1e-6) {
+    return null;
+  }
+  return scale(along, s >= 0 ? 1 : -1);
+}
+
 export function buildKnots(doc, { closeLoop = false } = {}) {
   const start = startPadsOf(doc);
+  const cls = trackClassOf(doc);
 
   /* Raw anchors first, because a marker's offset needs a direction and the
    * direction has to come from geometry that does not itself depend on the
@@ -142,11 +182,36 @@ export function buildKnots(doc, { closeLoop = false } = {}) {
      * Hermite between two ground markers underground.
      * A pole on a gate stile takes that gate's travel, or the square
      * stands along the PVC and a pass through the opening never hits it. */
-    const travel = nearbyApertureTravel(doc, el) || chainDir;
+    const prev = knots.length ? knots[knots.length - 1] : (start ? {
+      pos: { ...start.position }, tangent: yawVector(start.yaw),
+    } : null);
+    /* A waypoint turned by hand points the line the way its arrow points:
+     * it has no pass side for the yaw to mean, and the apex of a loop over a
+     * tower or round a pole has to face the way the lap is going there. */
+    const travel = nearbyApertureTravel(doc, el)
+      || (el.type === 'waypoint' && el.yawOverridden ? yawVector(el.yaw) : null)
+      || (el.yawOverridden ? travelPastFixedMarker(el, prev, Math.max(0.05, k.seq.clearance ?? 0)) : null)
+      || chainDir;
     const off = scale(markerPassDir(el, k.seq, travel), k.seq.clearance ?? 0);
     const flat = normalize({ x: travel.x, y: travel.y, z: 0 }, { x: 1, y: 0, z: 0 });
+    /*
+     * HEIGHT. A marker has no face and no sill and its anchor is the foot of
+     * the pole, so the knot used to sit on the floor, and every pass round a
+     * pole dived the line to the ground and lifted it again. The knot now
+     * takes the height the lap is already at, halfway between the knot
+     * before and the anchor after, held inside the marker's own scoring
+     * square so a cone is not passed over its head. A waypoint keeps its
+     * own height, because pinning a point at a height is what it is for.
+     */
+    let z = k.pos.z;
+    if ((k.seq.clearance ?? 0) > 0) {
+      const prevZ = prev ? prev.pos.z : k.pos.z;
+      const nextZ = i + 1 < n ? raw[i + 1].pos.z : (raw.length ? raw[0].pos.z : k.pos.z);
+      const square = virtualApertureDims(el, k.seq, cls);
+      z = clamp((prevZ + nextZ) / 2, k.pos.z, k.pos.z + square.clearH * 0.9);
+    }
     knots.push({
-      pos: add(k.pos, off),
+      pos: { ...add(k.pos, off), z },
       tangent: flat,
       role: 'marker',
       seq: k.seq,

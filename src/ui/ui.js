@@ -109,7 +109,6 @@ import { BOARD_WINDOW, WIKI_WINDOW, openNamedWindow } from '../share/windows.js'
 import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import { courseChip, hasFlyableTrack, inspectCourse, isEmptyCanvas } from '../share/listing.js';
-import { presetsForClass, presetById } from '../trackbuilder/presets.js';
 import { drawIso, drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
 import { activeCourseSummary } from '../share/summary.js';
 import {
@@ -117,8 +116,12 @@ import {
   readPostedBest,
   writeBuilderIntent,
   writePendingTime,
+  /* Only clearShareImport. The shell used to WRITE a share seat too, for a
+   * track that ships with the simulator; the Track room no longer seats one
+   * of those, so what is left is clearing a stale seat out of the way of
+   * the pilot's own track. See seatLocal. A board track's seat is written
+   * by main.js, which owns the fetch. */
   clearShareImport,
-  writeShareImport,
 } from '../share/session.js';
 import {
   clipKeyForMap,
@@ -159,9 +162,16 @@ import {
   downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip,
 } from './fc.js';
 import { FC_DUMP_KEY, FC_DUMP_AIRFRAME_KEY } from '../fc/dump.js';
-/* Only writeAutosave, and only to re-home a document whose seat is about to
- * stop being the active one. See seatCraftForCourse. */
-import { writeAutosave } from '../trackbuilder/storage.js';
+/*
+ * The pilot's own tracks live in this browser, and the Track room lists
+ * them now, so the shell reads the same library the builder's Load dialog
+ * reads rather than only the one document in the autosave seat.
+ * writeAutosave is still also used to re-home a document whose seat is
+ * about to stop being the active one. See seatCraftForCourse and seatLocal.
+ */
+import {
+  listTracks, loadTrack, readAutosave, saveTrack, trackExists, writeAutosave,
+} from '../trackbuilder/storage.js';
 
 /* Whether a Flight controller save exists, which is what puts Your edits
  * on the Tune row. Read fresh each time: the pilot can save one two rows
@@ -1870,7 +1880,7 @@ function courseCardKey(card) {
   if (!card || !card.course) {
     return null;
   }
-  if (card.course.kind === 'board' || card.course.kind === 'stock') {
+  if (card.course.kind === 'board' || card.course.kind === 'local') {
     return `${card.course.kind}:${card.course.track.id}`;
   }
   return 'current';
@@ -1897,7 +1907,6 @@ function courseCardKey(card) {
  */
 function courseCardRows(subject) {
   const board = subject.course.kind === 'board';
-  const stock = subject.course.kind === 'stock';
   const name = subject.label;
   const rows = [
     /* The list says whose it is. The chosen card is marked as well, but a
@@ -1914,7 +1923,7 @@ function courseCardRows(subject) {
     {
       label: 'Open in the track builder',
       action: 'card-builder',
-      note: board || stock
+      note: board
         ? `Open ${name} in the builder without flying it. Somebody else's track opens as a copy under your own name.`
         : `Open ${name} in the builder. Nothing is flown.`,
     },
@@ -2434,6 +2443,10 @@ export class Ui {
     /* Set while a guided first flight is in the air. main.js reads it. */
     this.guided = false;
     this.boardCourses = [];
+    /* The pilot's own tracks, read off this browser's library on entry to
+     * the Track room. The board's half above it and this one are the two
+     * things that room lists. See loadLocalCourses. */
+    this.localCourses = [];
     /* The standings screen's subject and its times. null means "not asked
      * yet", which paintStandings draws as Reading the board; an empty array
      * means the board answered and there are none. */
@@ -2958,7 +2971,11 @@ export class Ui {
     this.courseStrip = el('div', 'card-strip');
     /* Most flown first, and all of them, which is what the strip holds now
      * that it is not capped at five. */
-    this.courseStrip.append(el('div', 'strip-label', 'Every track, most flown first'));
+    /* Two groups, so the caption names both rather than describing one
+       ordering that only ever applied to the board's half. Yours first
+       because the track you were last working on is the one you came here
+       to fly; the board's underneath, most flown first. */
+    this.courseStrip.append(el('div', 'strip-label', 'Yours first, then the board, most flown first'));
     this.courseCardHost = el('div', 'map-cards course-cards');
     this.boardNote = el('div', 'board-note', '');
     this.courseStrip.append(this.courseCardHost, this.boardNote);
@@ -4657,7 +4674,7 @@ export class Ui {
           action: 'courses',
           note: seat
             ? `${seat.name}, and every other track. Gated, against the clock, and every time flown here goes to the leaderboard.`
-            : 'No track is seated yet. Every track the board is offering, and the builder, are in here.',
+            : 'No track is seated yet. Your own tracks, every track the board is offering, and the builder, are in here.',
         };
       /*
        * THREE ROOMS AND A VERB, in place of twelve typographic equals.
@@ -4831,50 +4848,49 @@ export class Ui {
         });
       }
       /*
-       * THE TRACKS THAT SHIP WITH THE SIMULATOR, for this aircraft.
+       * THE PILOT'S OWN TRACKS, out of this browser's library.
        *
-       * They lived only in the builder's Load dialog, which is a room a
-       * pilot who just wants to fly never enters, so the RaceGOW5 set was
-       * "not available in the track selection at all" in the owner's
-       * words. Between the seated course and the board, because they are
-       * neither: not yours, and not on the board until somebody publishes
-       * a copy. Choosing one seats it the way a board track is seated, in
-       * the share seat rather than over the pilot's own autosave, so the
-       * track they were building is still there afterwards.
+       * TWO SOURCES ON THIS SCREEN AND NO THIRD: what is on the board, and
+       * what is in this browser. That is the rule now, and it replaced a
+       * third source that broke it.
+       *
+       * The tracks that ship with the simulator used to be listed here, on
+       * the argument that the RaceGOW5 set was otherwise reachable only
+       * from the builder's Load dialog, which a pilot who just wants to fly
+       * never opens. What that argument missed is that a shipped track is a
+       * COPY of something that is also on the board, under a different id,
+       * and the copy answers to nobody. Taking RaceGOW5 Track 5 off the
+       * board did not take it off this screen, and Track 1, which is still
+       * on the board, was listed twice: once as itself and once as its
+       * shipped twin. A pilot cannot be expected to know which of two
+       * identical cards is the one with times on it.
+       *
+       * So the shipped set reaches pilots the way every other track does,
+       * by being on the board (scripts/boardpresets.js publishes it), and
+       * this screen lists the board and the library. Take a track off the
+       * board and it leaves this screen. That is the whole point.
+       *
+       * The library is still listed in the builder's Load dialog with the
+       * shipped set beside it, which is where a shipped track belongs: it
+       * is something to open and make yours, not something to race against
+       * a board that has never heard of it.
+       *
+       * Built once on entry to the screen rather than here, because items()
+       * runs on every cursor move and this reads and normalises a document
+       * per track. See loadLocalCourses.
        */
-      const seatedStock = this.share && this.share.stock ? this.share.id : null;
-      for (const d of presetsForClass(airframeById(this.settings.airframe).trackClass)) {
-        if (d.id === seatedStock) {
+      const seatedId = seat && seat.doc ? seat.doc.id : null;
+      for (const t of this.localCourses || []) {
+        /* The card on the canvas is already the top card. Showing it twice
+         * is the same confusion the shipped twins caused. */
+        if (t.id === seatedId) {
           continue;
         }
-        const by = d.credit && d.credit.designer ? d.credit.designer : '';
         cards.push({
-          label: d.name,
-          note: `${by ? `By ${by}. ` : ''}Ships with the simulator. Choosing it loads the track and flies it here.`,
-          course: {
-            kind: 'stock',
-            track: {
-              id: d.id,
-              name: d.name,
-              author: by,
-              /*
-               * THE STEPS THAT ARE HOLES, not every step. A waypoint is a
-               * step in the flying order that pins the racing line and
-               * scores nothing, and the RaceGOW5 tracks carry several
-               * each, so counting the whole sequence advertised a 12 gate
-               * track as a 35 gate one.
-               */
-              gates: Array.isArray(d.sequence)
-                ? d.sequence.filter((s) => {
-                  const el = (d.elements || []).find((e) => e.id === s.elementId);
-                  return Boolean(el) && el.type !== 'waypoint';
-                }).length
-                : 0,
-              plan: planFromDocument(d),
-              board: '',
-            },
-          },
-          action: `stock:${d.id}`,
+          label: t.name,
+          note: `Yours, saved in this browser. ${t.gates} gate${t.gates === 1 ? '' : 's'}. Choosing it loads the track and flies it here.`,
+          course: { kind: 'local', track: t },
+          action: `local:${t.id}`,
         });
       }
       for (const t of this.boardCourses || []) {
@@ -7334,7 +7350,10 @@ export class Ui {
         const i = k + offset;
         const card = el('div', 'map-card course-card');
         const shot = el('div', 'map-reel');
-        const listed = it.course.kind === 'board' || it.course.kind === 'stock';
+        /* A card that carries its own track, as against the seated one,
+           whose plan comes from the seat. Both of this screen's sources
+           carry theirs: the board's listing and the library's document. */
+        const listed = it.course.kind === 'board' || it.course.kind === 'local';
         const plan = listed
           ? it.course.track.plan
           : currentPlan();
@@ -7442,6 +7461,120 @@ export class Ui {
       cancelAnimationFrame(this.coursePlanFrame);
       this.coursePlanFrame = null;
     }
+  }
+
+  /*
+   * THE PILOT'S OWN TRACKS, read once per visit to the Track room.
+   *
+   * Once, rather than inside items(), because items() runs on every cursor
+   * move and this reads and normalises one document per saved track to get
+   * a plan drawing out of it. The library only changes in the builder,
+   * which is another page, so a read on entry is as fresh as it can be.
+   *
+   * FILTERED BY CLASS, which listTracks itself does not do to the pilot's
+   * half: the builder's Load dialog shows a pilot everything they have
+   * saved, and this room is one aircraft's room. A whoop pilot has no use
+   * for a sixty metre field here, and pressing Fly on one would change
+   * their aircraft under them, which is the same reason the board half is
+   * filtered.
+   *
+   * The shipped presets that listTracks appends are dropped. They are not
+   * the pilot's, they are not on the board, and this screen is those two
+   * things. See the note beside the cards in buildItems.
+   */
+  loadLocalCourses() {
+    const want = airframeById(this.settings.airframe).trackClass;
+    const out = [];
+    try {
+      for (const t of listTracks(want)) {
+        if (t.preset) {
+          continue;
+        }
+        const found = loadTrack(t.id);
+        const doc = found && found.doc ? found.doc : null;
+        if (!doc || trackClassOf(doc) !== want) {
+          continue;
+        }
+        out.push({
+          id: doc.id,
+          name: doc.name || 'Untitled track',
+          author: '',
+          /*
+           * THE STEPS THAT ARE HOLES, not every step. A waypoint is a step
+           * in the flying order that pins the racing line and scores
+           * nothing, so counting the whole sequence advertises gates a
+           * pilot will never fly through. summaryOf in src/share/listing.js
+           * counts the seated track the same way.
+           */
+          gates: Array.isArray(doc.sequence)
+            ? doc.sequence.filter((step) => {
+              const el = (doc.elements || []).find((e) => e.id === step.elementId);
+              return Boolean(el) && el.type !== 'waypoint';
+            }).length
+            : 0,
+          plan: planFromDocument(doc),
+          board: '',
+          modifiedUtc: doc.modifiedUtc || '',
+        });
+      }
+    } catch (e) {
+      /* A library this browser will not hand over, which is private mode or
+       * a quota. The board half of the screen is untouched by it, the same
+       * way a board that is down leaves this half alone. */
+    }
+    /* Newest change first, which is the order the builder's Load dialog
+     * uses and the order a pilot thinks in: the one they were just working
+     * on is the one they want to fly. */
+    out.sort((a, b) => String(b.modifiedUtc).localeCompare(String(a.modifiedUtc)));
+    this.localCourses = out;
+  }
+
+  /*
+   * Seat one of the pilot's own tracks and fly it.
+   *
+   * THE AUTOSAVE, NOT THE SHARE SEAT, and that is the whole difference
+   * between this and how a board track is seated. The share seat is for a
+   * track that is not yours: it exists so that opening somebody else's
+   * course does not write over the one you were building. Your own track
+   * IS the thing the autosave holds, so putting it anywhere else would
+   * give the builder two answers about what you are working on.
+   *
+   * NOTHING IS LOST BY IT. The document about to be displaced is saved
+   * into the library first if it is not already there, so a pilot who had
+   * an unsaved track in the builder and pressed one of these cards finds
+   * it in the library rather than finding it gone. The builder's own Load
+   * dialog opens straight over the working copy; this room is further from
+   * the builder than that dialog is, so it takes the extra care.
+   */
+  seatLocal(id) {
+    const found = loadTrack(id);
+    const doc = found && found.doc ? found.doc : null;
+    if (!doc) {
+      this.boardNote.textContent = 'That track is no longer saved in this browser.';
+      this.loadLocalCourses();
+      return false;
+    }
+    const cls = trackClassOf(doc);
+    try {
+      const working = readAutosave(cls);
+      const held = working && working.doc ? working.doc : null;
+      if (held && held.id !== doc.id && !trackExists(held.id)) {
+        saveTrack(held);
+      }
+    } catch (e) {
+      /* Nothing to displace, or a browser that will not say. Carry on: the
+       * load below is what the pilot asked for. */
+    }
+    /* inspectCourse reads the share seat BEFORE the autosave, so a share
+     * left over from the last board track would shadow the track that was
+     * just chosen and the pilot would fly the wrong one. */
+    clearShareImport(cls);
+    if (!writeAutosave(doc)) {
+      this.boardNote.textContent = 'This browser would not store that track.';
+      return false;
+    }
+    this.setShare(null);
+    return true;
   }
 
   /*
@@ -8188,6 +8321,10 @@ export class Ui {
      * going. Settings opens on its first real row rather than on a heading. */
     this.cursor = this.restoreCursor();
     if (screen === 'courses') {
+      /* Both halves on every entry. The library is read here rather than
+       * cached for the session because the builder is another page: a
+       * pilot who saves a track and comes back should see it. */
+      this.loadLocalCourses();
       this.loadBoardCourses();
     }
     if (screen === 'howto') {
@@ -8302,11 +8439,13 @@ export class Ui {
       }
       window.location.href = 'src/trackbuilder/index.html';
     };
-    if (card.course.kind === 'stock') {
-      /* Seat it, so liveListing reads a stock seat with canRemix set and
-       * go() writes the remix intent the builder forks a copy from. */
-      this.seatStock(card.course.track.id);
-      go();
+    if (card.course.kind === 'local') {
+      /* Seat it first, so liveListing reads the track the pilot pointed at
+       * rather than whatever the autosave held, and go() writes the intent
+       * that matches it. */
+      if (this.seatLocal(card.course.track.id)) {
+        go();
+      }
       return;
     }
     if (card.course.kind !== 'board') {
@@ -8338,33 +8477,17 @@ export class Ui {
   }
 
   /*
-   * Seat a track that ships with the simulator, the way a board track is
-   * seated once fetched: in the share seat for the document's class, with
-   * the designer as author and no board. The preset's own id is the seat
-   * id, so the local record key is share:<preset id> and stable, and the
-   * document is a fresh copy from presets.js so nothing downstream can
-   * write into the module's constant.
+   * seatStock was here. It seated a track that ships with the simulator in
+   * the share seat, and nothing lists one on this screen any more, so it
+   * went with the cards rather than sitting here unreachable.
+   *
+   * A SEAT IT WROTE CAN STILL BE IN A BROWSER, so nothing that READS one
+   * was removed with it: inspectCourse in src/share/listing.js still has
+   * its stock branch, and a pilot who seated RaceGOW5 Track 5 last week
+   * still finds it as the top card, still flies it, and still opens it in
+   * the builder as a copy. Only the way to seat a new one is gone, and
+   * that is the builder's Load dialog, which never stopped offering them.
    */
-  seatStock(id) {
-    const doc = presetById(id);
-    if (!doc) {
-      return false;
-    }
-    const share = {
-      id: doc.id,
-      name: doc.name,
-      author: doc.credit && doc.credit.designer ? doc.credit.designer : '',
-      board: '',
-      document: doc,
-      stock: true,
-    };
-    if (!writeShareImport(share)) {
-      this.boardNote.textContent = 'This browser would not store that track.';
-      return false;
-    }
-    this.setShare(share);
-    return true;
-  }
 
   openBoardCourse(id, then = null) {
     const track = (this.boardCourses || []).find((t) => t.id === id)
@@ -10525,9 +10648,11 @@ export class Ui {
       this.openBoardCourse(action.slice('board:'.length));
       return;
     }
-    /* A shipped course. No fetch, so no loading state: seat it and fly. */
-    if (action.startsWith('stock:')) {
-      if (this.seatStock(action.slice('stock:'.length))) {
+    /* One of the pilot's own. No fetch, so no loading state: seat it and
+     * fly. Where 'stock:' used to be, and for the same reason it was: a
+     * document already in this browser needs no round trip. */
+    if (action.startsWith('local:')) {
+      if (this.seatLocal(action.slice('local:'.length))) {
         this.act('map:custom');
       }
       return;

@@ -34540,3 +34540,114 @@ from that browser has a name laid in its floor.
 `npm run verify` was NOT run. This round is a merge, two deploys and four
 HTTP calls, and none of it reaches `src/native`, the patches, the WASM
 build or the input path.
+
+## Round 57: the Track room lists the board and this browser, and nothing else
+
+The owner asked that only tracks on the board and the pilot's own tracks in
+local storage show in the Track room, and that the room follow the board
+when an admin takes something off it. The second half is why the first half
+matters, and the defect was visible on the live board before a line was
+changed.
+
+**Three sources, and the third answered to nobody.** The room listed the
+seated track, the tracks that ship with the simulator, and the board's.
+Round 55 published the shipped set to the board with
+`scripts/boardpresets.js`, so from that moment each shipped track had a
+twin: `racegow5-track1` in `presets.js` and `trk-d1111a66` on the board,
+the same layout under two ids. The board's copy is a listing with times on
+it. The shipped copy is a constant in a module, and nothing anybody does to
+the board changes it.
+
+**What that looked like when the owner used the new admin panel.** The live
+board went from four rooms to two: `RaceGOW5 Track 5` and `Track 8` were
+removed. A whoop pilot's Track room then listed five cards: three shipped,
+two from the board. Track 1 twice, once as itself and once as its twin, and
+Tracks 5 and 8 still there after being taken off the board. A pilot cannot
+be told which of two identical cards is the one with times on it, and an
+admin who removes a track has every reason to expect it to be gone.
+
+**The room now has two sources and the rule is the screen's rule.** What is
+on the board, and what is in this browser's library. The shipped set reaches
+pilots the way every other track does, by being published, and it is still
+in the builder's Load dialog, which is where a shipped track belongs: it is
+something to open and make yours, not something to race against a board that
+has never heard of it. `seatStock` went with the cards, because nothing
+could reach it any more. Nothing that READS a stock seat went with it:
+`inspectCourse` keeps its stock branch, so a pilot who seated Track 5 last
+week still finds it as the top card and still flies it.
+
+**The library was never on this screen at all, and that was the other half
+of the ask.** `listTracks` had exactly one caller, the builder's Load
+dialog. A pilot with ten saved tracks saw one in the Track room, whichever
+was in the autosave. `loadLocalCourses` reads the library on entry to the
+room, filtered to the seated aircraft's class, which `listTracks` does not
+do to the pilot's own half because the builder's dialog wants everything.
+Newest change first, which is the builder's order and the order a pilot
+thinks in.
+
+**Choosing one seats it in the AUTOSAVE, not the share seat, and that is the
+one decision here worth arguing.** The share seat exists so that opening
+somebody else's course does not write over the track you were building. Your
+own track is the thing the autosave holds, so putting it in the share seat
+would give the builder two answers about what you are working on. So
+`seatLocal` clears the share seat and writes the autosave, and `shell-check`
+pins both halves: a share seat left behind is read BEFORE the autosave by
+`inspectCourse`, and a pilot would fly whatever they last opened from the
+board instead of the card they just pressed.
+
+**Nothing is lost by it.** The document about to be displaced is saved into
+the library first if it is not already there. The builder's own Load dialog
+opens straight over the working copy; this room is further from the builder
+than that dialog is, so it takes the extra care.
+
+**The check that pinned the old behaviour was rewritten, not relaxed.**
+`shell-check` asserted that the Track room lists exactly as many shipped
+tracks as `presets.js` carries, that choosing one seats it with `stock:
+true`, and that the others stay listed beneath it. All four of those failed,
+correctly, on the first run. They now assert the rule the room was changed
+to keep: no shipped track at any count, the pilot's own library instead, the
+autosave seated and the share seat clear. It seeds the library through the
+same `localStorage` key the builder writes, with copies of real shipped
+documents rather than fabricated ones, because a made up shape would pass
+and say nothing about the documents the room actually meets.
+`micro-check`'s assertion is untouched and still names the shipped set; only
+its comment changed, because the sentence "the Track room reads
+presetsForClass, so an extra entry in this file is an extra track in the
+picker" had stopped being true.
+
+**Proved against a board, not against a mock.** A scratch board on 3179,
+the three shipped tracks published to it, and a headless simulator pointed
+at it: five cards, two of the pilot's and three of the board's, no shipped
+card. Then the admin login from the board's own panel, `Track 5` removed
+over the API, back into the room, and four cards with `Track 5` gone and
+everything else where it was. Fourteen checks, all passing. That is the
+owner's sentence executed rather than reasoned about.
+
+**What went wrong, twice, and both were the check rather than the product.**
+The scratch check seeded `webfpv.board.origin` with `JSON.stringify`, and
+`boardOrigin()` reads that key raw, so the origin came back quoted and the
+board half of the room was empty: it read as the feature failing when it was
+the harness lying. Then the second run reported two board tracks and a
+failed removal, because the first run's removal had already happened and the
+scratch board's file persisted. A check that mutates the thing it checks has
+to start from a known board, and this one now does.
+
+**The board's own `/api/tracks` was confirmed uncacheable before any of
+this**, because "it updates when an admin removes one" is worth nothing if
+an edge holds the list: `cache-control: no-store` and `cf-cache-status:
+DYNAMIC` on the live service. There is no cached copy of the list anywhere
+in the simulator either, no snapshot in the repo, and the room re-reads both
+halves on every entry.
+
+**One case where a removed track still shows, deliberately.** A pilot who
+had already opened a board track holds its whole document in the share seat,
+and it stays the top card after an admin removes the listing. Nothing was
+done about that: the seat is a copy in this browser, which is the other
+thing this screen is for, and clearing it would destroy a document that may
+not exist anywhere else, including one the pilot published themselves.
+
+`npm run verify` was NOT run. This round is the shell's Track room, one
+check and a comment. It does not reach `src/native`, the patches,
+`vendor/betaflight`, the WASM build or the input path. Cheap checks run in
+this round: `lint:shell` PASS, `lint:presets` 6 of 6, `micro:check` clean,
+`lint:nouns` PASS, `lint:boot` 9 of 9, `lint:quality` 56 of 56.

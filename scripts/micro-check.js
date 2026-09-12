@@ -428,10 +428,16 @@ function presetSet() {
    *
    * The owner supplied two RaceGOW5 animations and asked for those two to
    * be the only whoop tracks in the product. Six reconstructions were here
-   * before them and the Track room reads presetsForClass, so an extra
-   * entry in this file is an extra track in the picker. The set is named
-   * here rather than counted, because "two of something" would pass with
-   * the wrong two.
+   * before them. The set is named here rather than counted, because "two
+   * of something" would pass with the wrong two.
+   *
+   * WHERE AN ENTRY HERE SHOWS UP, which is no longer the Track room. That
+   * room lists the board and this browser's library, and nothing else; a
+   * shipped track reaches a pilot by being published to the board with
+   * scripts/boardpresets.js, and by being in the builder's Load dialog.
+   * So an extra entry in this file is an extra track to open in the
+   * builder and an extra track to publish, not an extra card in the
+   * picker. shell-check pins that.
    */
   const want = ['racegow5-track8', 'racegow5-track5', 'racegow5-track1'];
   const micro = presetsForClass('micro').map((d) => d.id);

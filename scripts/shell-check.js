@@ -72,6 +72,29 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const BASELINE = join(root, 'tests', 'shell-baseline.json');
 
 /*
+ * THE PILOT'S LIBRARY, as the Track room will find it.
+ *
+ * Real documents rather than hand written ones: copies of two shipped
+ * tracks under fresh trk- ids, which is exactly what the library holds
+ * after somebody opens a shipped track in the builder and saves it. A
+ * fabricated shape would pass this check and tell us nothing about the
+ * documents the room actually meets.
+ *
+ * Two, so that seating one can be told from listing them: one moves to the
+ * top card and the other stays in the list.
+ */
+const LIBRARY_KEY = 'webfpv.trackbuilder.library.v1';
+const LIBRARY_SEED = presetsForClass('micro').slice(0, 2).map((d, i) => ({
+  ...d,
+  id: `trk-5e1f00${i}0`,
+  name: `${d.name} (mine)`,
+  /* Newest first is the room's order, so these are dated apart to make it
+   * an order rather than whatever the object happened to enumerate in. */
+  modifiedUtc: `2026-0${i + 1}-01T00:00:00.000Z`,
+}));
+const LIBRARY = Object.fromEntries(LIBRARY_SEED.map((d) => [d.id, d]));
+
+/*
  * The screens this walks. `flight` is excluded because it has no menu at
  * all, and calibrate and padpick are excluded because their items() returns
  * nothing and their state machine is driven by a stick rather than a cursor.
@@ -1158,44 +1181,62 @@ const BEHAVIOUR = `(() => {
       cards: ui.items().filter((it) => it.card).length,
     };
     /*
-     * The Track room lists the tracks that ship with the simulator for
-     * this aircraft, and choosing one seats it. The RaceGOW5 set lived
-     * only in the builder's Load dialog once, a room a pilot who just
-     * wants to fly never enters, and was reported as not available in
-     * the track selection at all. No comment here may contain a backtick:
-     * this body is a template literal.
+     * THE TRACK ROOM LISTS TWO THINGS AND NO THIRD: what is on the board,
+     * and what is in this browser's library.
+     *
+     * It used to list the tracks that ship with the simulator as well, and
+     * this check pinned that. A shipped track is a copy of something that
+     * is also on the board under another id, so taking one off the board
+     * did not take it off the screen, and one that was still on the board
+     * was listed twice. The rule changed; this changed with it, and it
+     * now pins the rule rather than the old behaviour.
+     *
+     * The library was seeded before the page loaded, with copies of the
+     * shipped documents, which is what a pilot's library holds after they
+     * open one and save it. No comment here may contain a backtick: this
+     * body is a template literal.
      */
     ui.show('courses');
     const stockCards = ui.items().filter((it) => it.course && it.course.kind === 'stock');
-    const stockNames = stockCards.map((it) => it.label);
-    /*
-     * THE FIRST SHIPPED TRACK, WHICHEVER IT IS, rather than one named
-     * here. This used to seat racegow5-track1 by name and assert six
-     * cards and a designer, and replacing the shipped set with two
-     * tracks read off the official animations left it seating a track
-     * that no longer exists, asserting a count that was no longer true.
-     * The Node half below compares against presets.js itself, so the
-     * set can change again without touching this check.
-     */
-    const picked = stockCards[0] ? stockCards[0].course.track : null;
-    ui.act(picked ? 'stock:' + picked.id : 'stock:nothing-is-shipped');
+    const localCards = ui.items().filter((it) => it.course && it.course.kind === 'local');
+    const localNames = localCards.map((it) => it.label);
+    const picked = localCards[0] ? localCards[0].course.track : null;
+    ui.act(picked ? 'local:' + picked.id : 'local:nothing-is-saved');
     const seatedMap = ui.settings.map;
     /*
      * Seating leaves the Track room for the map, so come back to it
      * before counting: the seated track moves to the top card and the
-     * five others stay listed beneath it.
+     * others stay listed beneath it.
      */
     ui.show('courses');
+    const readKey = (k) => {
+      try {
+        return JSON.parse(localStorage.getItem(k) || 'null');
+      } catch (e) {
+        return null;
+      }
+    };
+    /* writeAutosave stores the DOCUMENT, not a wrapper round it, so the id
+       is on the object itself. It files by the document's own class, which
+       is why this is the micro chair. */
+    const autosaved = readKey('webfpv.trackbuilder.autosave.micro.v1');
     const stockSeat = {
-      count: stockCards.length,
-      names: stockNames,
+      stockCount: stockCards.length,
+      count: localCards.length,
+      names: localNames,
       pickedId: picked ? picked.id : null,
-      pickedAuthor: picked ? picked.author : null,
+      pickedName: picked ? picked.name : null,
       map: seatedMap,
+      /*
+       * THE AUTOSAVE, AND AN EMPTY SHARE SEAT. Your own track is what the
+       * autosave holds; the share seat is for a track that is not yours,
+       * and a leftover one would shadow this and fly the wrong course.
+       */
       shareId: ui.share ? ui.share.id : null,
-      shareStock: Boolean(ui.share && ui.share.stock),
-      shareAuthor: ui.share ? ui.share.author : null,
-      listedAfter: ui.items().filter((it) => it.course && it.course.kind === 'stock').length,
+      shareImport: readKey('webfpv.share.import.micro.v1'),
+      autosaveId: autosaved ? autosaved.id : null,
+      topCard: (ui.items().filter((it) => it.course)[0] || {}).label || null,
+      listedAfter: ui.items().filter((it) => it.course && it.course.kind === 'local').length,
     };
     ui.setShare(null);
     ui.show('title');
@@ -1331,7 +1372,15 @@ async function main() {
       s.graphics = 'low';
       s.graphicsAuto = false;
       localStorage.setItem(k, JSON.stringify(s));
-    } catch (e) { /* Storage refused. The run still boots. */ }`],
+    } catch (e) { /* Storage refused. The run still boots. */ }`,
+    /* A pilot who has saved two tracks, because the Track room lists the
+     * library now and an empty one would let the whole half of the screen
+     * be missing without a word. Seeded through the same key the builder
+     * writes rather than through a hook, so what is checked is what a
+     * pilot's browser actually holds. */
+    `try {
+      localStorage.setItem(${JSON.stringify(LIBRARY_KEY)}, ${JSON.stringify(JSON.stringify(LIBRARY))});
+    } catch (e) { /* Storage refused. The room then lists none, and says so. */ }`],
   });
 
   let failures = [];
@@ -1500,24 +1549,43 @@ async function main() {
 
     const st = b.stockSeat;
     if (!st) {
-      failures.push('the Track room: the stock seat probe returned nothing');
+      failures.push('the Track room: the library seat probe returned nothing');
     } else {
-      /* Against presets.js itself, so the shipped set is free to change. */
+      /*
+       * NOT ONE SHIPPED TRACK, however many presets.js carries. This is the
+       * rule the room was changed to keep: it lists the board and this
+       * browser, and a shipped track is neither. presetsForClass is read
+       * here only to say how many were on offer and are now correctly not.
+       */
       const shipped = presetsForClass('micro');
-      if (st.count !== shipped.length) {
-        failures.push(`the Track room lists ${st.count} shipped track(s) on the whoop, not ${shipped.length}: ${(st.names || []).join(', ') || 'none'}`);
+      if (st.stockCount !== 0) {
+        failures.push(`the Track room lists ${st.stockCount} shipped track(s) on the whoop, and should list none of the ${shipped.length} in presets.js`);
       }
-      if (!st.pickedId || !shipped.some((d) => d.id === st.pickedId)) {
-        failures.push(`the Track room offered ${st.pickedId || 'no'} shipped track, which presets.js does not carry`);
+      if (st.count !== LIBRARY_SEED.length) {
+        failures.push(`the Track room lists ${st.count} of the pilot's own ${LIBRARY_SEED.length} saved track(s): ${(st.names || []).join(', ') || 'none'}`);
       }
-      if (st.map !== 'custom' || st.shareId !== st.pickedId || !st.shareStock) {
-        failures.push(`choosing a shipped track seated map ${st.map}, share ${st.shareId}, stock ${st.shareStock}`);
+      if (!st.pickedId || !LIBRARY_SEED.some((d) => d.id === st.pickedId)) {
+        failures.push(`the Track room offered ${st.pickedId || 'no'} saved track, which the seeded library does not carry`);
       }
-      if (st.shareAuthor !== st.pickedAuthor) {
-        failures.push(`the shipped seat names ${st.shareAuthor} rather than its designer ${st.pickedAuthor}`);
+      /*
+       * SEATED IN THE AUTOSAVE AND NOWHERE ELSE. A share seat left behind
+       * here is read BEFORE the autosave by inspectCourse, so the pilot
+       * would fly whatever they last opened from the board instead of the
+       * card they just pressed.
+       */
+      if (st.map !== 'custom' || st.autosaveId !== st.pickedId) {
+        failures.push(`choosing a saved track seated map ${st.map} and autosave ${st.autosaveId}, not ${st.pickedId}`);
       }
-      if (st.listedAfter !== shipped.length - 1) {
-        failures.push(`with one shipped track seated the room lists ${st.listedAfter} others, not ${shipped.length - 1}`);
+      if (st.shareId !== null || st.shareImport !== null) {
+        failures.push(`choosing a saved track left a share seat behind: ${JSON.stringify(st.shareImport)}`);
+      }
+      /* It becomes the seated card at the top, so it is listed once, not
+       * twice: as itself above and as a library row below. */
+      if (st.topCard !== st.pickedName) {
+        failures.push(`the seated track is ${st.topCard}, not the ${st.pickedName} that was chosen`);
+      }
+      if (st.listedAfter !== LIBRARY_SEED.length - 1) {
+        failures.push(`with one saved track seated the room lists ${st.listedAfter} others, not ${LIBRARY_SEED.length - 1}`);
       }
     }
     if (!b.modeGate || b.modeGate.error) {

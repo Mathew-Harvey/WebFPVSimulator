@@ -4685,7 +4685,19 @@ export class Ui {
               id: d.id,
               name: d.name,
               author: by,
-              gates: Array.isArray(d.sequence) ? d.sequence.length : 0,
+              /*
+               * THE STEPS THAT ARE HOLES, not every step. A waypoint is a
+               * step in the flying order that pins the racing line and
+               * scores nothing, and the RaceGOW5 tracks carry several
+               * each, so counting the whole sequence advertised a 12 gate
+               * track as a 35 gate one.
+               */
+              gates: Array.isArray(d.sequence)
+                ? d.sequence.filter((s) => {
+                  const el = (d.elements || []).find((e) => e.id === s.elementId);
+                  return Boolean(el) && el.type !== 'waypoint';
+                }).length
+                : 0,
               plan: planFromDocument(d),
               board: '',
             },

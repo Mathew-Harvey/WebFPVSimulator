@@ -32810,3 +32810,40 @@ two animations, shot from the fitted cameras, was interrupted by the owner
 asking for the push so they could fly the tracks; the camera override and
 the comparison script are in place and the exports were rendering when the
 turn ended.
+
+## Round 33: the shipped set is two, and two things still counted six
+
+The owner opened the Track room, saw the six old RaceGOW5 cards and asked
+where the two new tracks were. They are on `main`: `presets.js` there carries
+exactly `racegow5-track8` and `racegow5-track5`, the room builds its shipped
+cards from `presetsForClass` at `src/ui/ui.js:4674` and nothing else in the
+tree defines a track, there is no build step for the JavaScript, `dist` holds
+only `sim.wasm`, and there is no service worker. So the page was serving an
+older checkout, and the fix there is a pull and a hard refresh rather than a
+change. The card text is the tell: the old Track 8 reads 5 gates and the new
+one reads 29.
+
+Looking for a second source found two places that still assumed the old set,
+both mine, and both would have been found the hard way.
+
+**`scripts/shell-check.js` seated a track that no longer exists.** It acted
+on `stock:racegow5-track1` by name and then asserted six shipped cards, five
+left after seating, and the designer Skittles. Removing the six presets broke
+all four assertions, and `npm run lint:shell` would have failed on the next
+run. It now seats whichever track the room lists first and the Node half
+compares the count, the id, the author and the remainder against
+`presetsForClass('micro')` itself, so the shipped set can change again
+without editing a check.
+
+**The Track room counted waypoints as gates.** The card's figure was
+`d.sequence.length`, which was right while every step was a hole. These two
+tracks carry waypoints, which are steps that pin the racing line and score
+nothing, so Track 8 would have advertised 35 gates for 29 passes and Track 5
+28 for 20. The count now skips them. It is the number of scored passes in a
+lap rather than the number of structures, which is the right number for a
+RaceGOW track: Track 8 really is 29 gate passes over 12 squares and two
+poles.
+
+**Checks, run this turn.** `micro:check` passes, `lint:presets` 6 of 6,
+`check:path` 12 of 12, and `lint:shell` was run because this round changed
+it. `npm run verify` was not run: no physics, plant, ABI or build changed.

@@ -58,6 +58,9 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
+/* The shipped track set, so the Track room's assertions below are about
+ * whatever ships rather than about a track named in this file. */
+import { presetsForClass } from '../src/trackbuilder/presets.js';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1165,7 +1168,17 @@ const BEHAVIOUR = `(() => {
     ui.show('courses');
     const stockCards = ui.items().filter((it) => it.course && it.course.kind === 'stock');
     const stockNames = stockCards.map((it) => it.label);
-    ui.act('stock:racegow5-track1');
+    /*
+     * THE FIRST SHIPPED TRACK, WHICHEVER IT IS, rather than one named
+     * here. This used to seat racegow5-track1 by name and assert six
+     * cards and a designer, and replacing the shipped set with two
+     * tracks read off the official animations left it seating a track
+     * that no longer exists, asserting a count that was no longer true.
+     * The Node half below compares against presets.js itself, so the
+     * set can change again without touching this check.
+     */
+    const picked = stockCards[0] ? stockCards[0].course.track : null;
+    ui.act(picked ? 'stock:' + picked.id : 'stock:nothing-is-shipped');
     const seatedMap = ui.settings.map;
     /*
      * Seating leaves the Track room for the map, so come back to it
@@ -1176,6 +1189,8 @@ const BEHAVIOUR = `(() => {
     const stockSeat = {
       count: stockCards.length,
       names: stockNames,
+      pickedId: picked ? picked.id : null,
+      pickedAuthor: picked ? picked.author : null,
       map: seatedMap,
       shareId: ui.share ? ui.share.id : null,
       shareStock: Boolean(ui.share && ui.share.stock),
@@ -1487,17 +1502,22 @@ async function main() {
     if (!st) {
       failures.push('the Track room: the stock seat probe returned nothing');
     } else {
-      if (st.count !== 6) {
-        failures.push(`the Track room lists ${st.count} shipped track(s) on the whoop, not 6: ${(st.names || []).join(', ') || 'none'}`);
+      /* Against presets.js itself, so the shipped set is free to change. */
+      const shipped = presetsForClass('micro');
+      if (st.count !== shipped.length) {
+        failures.push(`the Track room lists ${st.count} shipped track(s) on the whoop, not ${shipped.length}: ${(st.names || []).join(', ') || 'none'}`);
       }
-      if (st.map !== 'custom' || st.shareId !== 'racegow5-track1' || !st.shareStock) {
+      if (!st.pickedId || !shipped.some((d) => d.id === st.pickedId)) {
+        failures.push(`the Track room offered ${st.pickedId || 'no'} shipped track, which presets.js does not carry`);
+      }
+      if (st.map !== 'custom' || st.shareId !== st.pickedId || !st.shareStock) {
         failures.push(`choosing a shipped track seated map ${st.map}, share ${st.shareId}, stock ${st.shareStock}`);
       }
-      if (st.shareAuthor !== 'Skittles') {
-        failures.push(`the shipped seat names ${st.shareAuthor} rather than its designer`);
+      if (st.shareAuthor !== st.pickedAuthor) {
+        failures.push(`the shipped seat names ${st.shareAuthor} rather than its designer ${st.pickedAuthor}`);
       }
-      if (st.listedAfter !== 5) {
-        failures.push(`with one shipped track seated the room lists ${st.listedAfter} others, not 5`);
+      if (st.listedAfter !== shipped.length - 1) {
+        failures.push(`with one shipped track seated the room lists ${st.listedAfter} others, not ${shipped.length - 1}`);
       }
     }
     if (!b.modeGate || b.modeGate.error) {

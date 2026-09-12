@@ -85,7 +85,7 @@ export const UNIT = 27 * IN;
  * climb over the tower, the run down the back of the far side, the swing
  * outside the start gate's leg before the lap closes through it.
  */
-const TRACKS = [
+export const TRACKS = [
   {
     id: 'racegow5-track8',
     name: 'RaceGOW5 Track 8',
@@ -99,32 +99,46 @@ const TRACKS = [
     origin: [156, 236],
     /*
      * Read off the RaceGOW5 Track 8 animation, 288 frames, every frame.
-     * The structure is a 3 by 2 unit lattice: a start gate with a square
-     * over it at x 0, a rail down y 0 with a square over and under it at
+     * The structure is a 3 by 2 unit lattice: a start gate with an opening
+     * over it at x 0, a rail down y 0 with an opening over and under it at
      * x 1 to 2, a table at x 2 to 3 whose top is a dive gate, two columns
-     * of two squares along its far side, and a three high tower at x 3
+     * of two openings along its far side, and a three high tower at x 3
      * carrying the tall pole. The lap is 29 passes.
+     *
+     * SIX OF THOSE OPENINGS ARE GAPS AND NOT GATES, marked `unbuilt`:
+     * F over the start gate, C at the top of the tower, I and H along the
+     * far side, and K and J under and over the rail. Every one of them was
+     * built as a four sided square, and every one of those squares put
+     * pipe in the air that the reference does not have: a top bar over
+     * nothing, an upright boxing in a pole, two legs under a rail that is
+     * carried by the structures at its ends. Each one was checked by
+     * projecting the pipe this file builds on to the reference plate, and
+     * what is left now lands on white PVC. See TRACK-FROM-GIF.md step 8b.
      */
     squares: {
       A: { name: 'Start gate', axis: 'x', at: [0, -0.5], sill: 0 },
-      F: { name: 'Over the start gate', axis: 'x', at: [0, -0.5], sill: 1 },
+      F: { name: 'Over the start gate', axis: 'x', at: [0, -0.5], sill: 1, unbuilt: true },
       N: { name: 'Tower, bottom', axis: 'x', at: [3, 0.5], sill: 0 },
       E: { name: 'Tower, middle', axis: 'x', at: [3, 0.5], sill: 1 },
-      C: { name: 'Tower, top', axis: 'x', at: [3, 0.5], sill: 2 },
+      C: { name: 'Tower, top', axis: 'x', at: [3, 0.5], sill: 2, unbuilt: true },
       L: { name: 'Far side, left, low', axis: 'y', at: [1.5, 1], sill: 0 },
-      I: { name: 'Far side, left, up', axis: 'y', at: [1.5, 1], sill: 1 },
+      I: { name: 'Far side, left, up', axis: 'y', at: [1.5, 1], sill: 1, unbuilt: true },
       M: { name: 'Far side, right, low', axis: 'y', at: [2.5, 1], sill: 0 },
-      H: { name: 'Far side, right, up', axis: 'y', at: [2.5, 1], sill: 1 },
-      K: { name: 'Under the rail', axis: 'y', at: [1.5, 0], sill: 0 },
-      J: { name: 'Over the rail', axis: 'y', at: [1.5, 0], sill: 1 },
+      H: { name: 'Far side, right, up', axis: 'y', at: [2.5, 1], sill: 1, unbuilt: true },
+      K: { name: 'Under the rail', axis: 'y', at: [1.5, 0], sill: 0, unbuilt: true },
+      J: { name: 'Over the rail', axis: 'y', at: [1.5, 0], sill: 1, unbuilt: true },
       P: { name: 'Table top', axis: 'z', at: [2.5, 0.5], sill: 1 },
     },
     poles: {
       T: { name: 'Tall pole', at: [3, 0], height: 3, side: [0, -1], beside: 'N' },
       W: { name: 'Left pole', at: [0, 0], height: 2, side: [0, 1], beside: 'A' },
     },
+    posts: [
+      { name: 'Far side post', at: [2, 1], height: 2 },
+    ],
     rails: [
-      { name: 'Rail', from: [0, 0, 1], to: [1, 0, 1] },
+      { name: 'Rail, x 0 to 1', from: [0, 0, 1], to: [1, 0, 1] },
+      { name: 'Rail, x 1 to 2', from: [1, 0, 1], to: [2, 0, 1] },
     ],
     waypoints: {
       O: { name: 'Over the tower', at: [3.4, 0.5], z: 3.4, heading: [-1, 0] },
@@ -150,32 +164,41 @@ const TRACKS = [
     origin: [156, 236],
     /*
      * Read off the RaceGOW5 Track 5 animation, 192 frames, every frame.
-     * A 3 by 2 unit lattice again: a long rail down y 0 with a square under
-     * and over its first unit, a frame at x 2 with a square in it, one
-     * under it and one over it, the tall pole on the frame's far post, a
-     * bar on to x 3 with a square under it, and at each end of the rail a
-     * bar across to a second pole with a square under it and one over it.
-     * The lap is 20 passes.
+     * A 3 by 2 unit lattice again: a long rail down y 0 with an opening
+     * under and over its first unit, a frame at x 2 with an opening in it,
+     * one under it and one over it, the tall pole on the frame's far post,
+     * a bar on to x 3 with an opening under it, and at each end of the
+     * rail a bar across to a second pole with an opening under it and one
+     * over it. The lap is 20 passes.
+     *
+     * FIVE OF THOSE OPENINGS ARE GAPS AND NOT GATES, marked `unbuilt`:
+     * C over the start gate, E at the top of the frame, L over the near
+     * gate, and J and K under and over the rail's first unit. Same reason
+     * as Track 8's, and checked the same way.
      */
     squares: {
       A: { name: 'Start gate', axis: 'x', at: [3, -0.5], sill: 0 },
-      C: { name: 'Over the start gate', axis: 'x', at: [3, -0.5], sill: 1 },
+      C: { name: 'Over the start gate', axis: 'x', at: [3, -0.5], sill: 1, unbuilt: true },
       H: { name: 'Frame, bottom', axis: 'x', at: [2, 0.5], sill: 0 },
       F: { name: 'Frame, middle', axis: 'x', at: [2, 0.5], sill: 1 },
-      E: { name: 'Frame, top', axis: 'x', at: [2, 0.5], sill: 2 },
+      E: { name: 'Frame, top', axis: 'x', at: [2, 0.5], sill: 2, unbuilt: true },
       I: { name: 'Under the bar', axis: 'y', at: [2.5, 0], sill: 0 },
-      J: { name: 'Under the rail', axis: 'y', at: [0.5, 0], sill: 0 },
-      K: { name: 'Over the rail', axis: 'y', at: [0.5, 0], sill: 1 },
+      J: { name: 'Under the rail', axis: 'y', at: [0.5, 0], sill: 0, unbuilt: true },
+      K: { name: 'Over the rail', axis: 'y', at: [0.5, 0], sill: 1, unbuilt: true },
       N: { name: 'Near gate', axis: 'x', at: [0, -0.5], sill: 0 },
-      L: { name: 'Over the near gate', axis: 'x', at: [0, -0.5], sill: 1 },
+      L: { name: 'Over the near gate', axis: 'x', at: [0, -0.5], sill: 1, unbuilt: true },
     },
     poles: {
       B: { name: 'Right pole', at: [3, -1], height: 2, side: [0, -1], beside: 'A' },
       D: { name: 'Tall pole', at: [2, 1], height: 3, side: [0, 1], beside: 'F' },
       M: { name: 'Near pole', at: [0, -1], height: 2, side: [0, -1], beside: 'N' },
     },
+    posts: [
+      { name: 'Near post', at: [0, 0], height: 2 },
+    ],
     rails: [
-      { name: 'Rail', from: [1, 0, 1], to: [2, 0, 1] },
+      { name: 'Rail, x 0 to 1', from: [0, 0, 1], to: [1, 0, 1] },
+      { name: 'Rail, x 1 to 2', from: [1, 0, 1], to: [2, 0, 1] },
     ],
     waypoints: {
       Q: { name: 'Back past the frame', at: [1.3, 2.0], z: 0.8, heading: [1, 0] },
@@ -208,21 +231,28 @@ const TRACKS = [
      *
      * EVERY FRAME HERE IS A GOALPOST. Two uprights and a top bar, with no
      * bar along the ground: the plate shows bare floor between the feet of
-     * all three. The builder's gate always carries its bottom bar, so each
-     * of these ships with one pipe the real track does not have, lying on
-     * the floor under an opening whose clear height is unchanged. The
-     * alternative was to model a scored opening as an obstacle, which
-     * cannot be part of a lap.
+     * all three. The game draws one that way already, because it puts no
+     * member under an opening whose sill is the floor; the GIF exporter
+     * draws the bar RaceGOW's rule 2 asks for, so an export carries one
+     * pipe the reference does not, lying on the floor under an opening
+     * whose clear height is unchanged.
      *
      * The ground bars that ARE there join the structures to each other
      * rather than closing any gate, so they are rails.
+     *
+     * D IS A GAP, NOT A GATE. The opening over the left bar has that bar
+     * below it and the pole beside it and nothing else: no top bar, no
+     * second upright. It was built as a square, which put two lengths of
+     * PVC in mid air and boxed in the pole, so it is marked `unbuilt` and
+     * the structures around it draw the pipe that is really there. See
+     * isUnbuilt in src/trackbuilder/elements.js.
      */
     squares: {
       A: { name: 'Start gate', axis: 'x', at: [-1, 1.5], sill: 0 },
       B: { name: 'Right frame, under the bar', axis: 'x', at: [1, 0.5], sill: 0 },
       C: { name: 'Right frame, over the bar', axis: 'x', at: [1, 0.5], sill: 1 },
       F: { name: 'Left gate', axis: 'y', at: [-0.5, 0], sill: 0 },
-      D: { name: 'Over the left gate', axis: 'y', at: [-0.5, 0], sill: 1 },
+      D: { name: 'Over the left gate', axis: 'y', at: [-0.5, 0], sill: 1, unbuilt: true },
     },
     poles: {
       P: { name: 'Pole', at: [0, 0], height: 2, side: [1, 0], beside: 'F' },
@@ -285,6 +315,14 @@ function buildTrack(spec) {
      * lands on the lattice line, where the pipe is.
      */
     el.dims.sillH = sq.axis === 'z' ? sq.sill * UNIT - clear / 2 : sq.sill * UNIT;
+    /*
+     * A GAP IN THE LATTICE, NOT A GATE. The opening over a bar has the bar
+     * below it and a pole beside it and nothing else: see the comment on
+     * the squares above, and isUnbuilt in src/trackbuilder/elements.js.
+     */
+    if (sq.unbuilt) {
+      el.unbuilt = true;
+    }
     doc.elements.push(el);
     ids[key] = el.id;
   }
@@ -305,6 +343,25 @@ function buildTrack(spec) {
     el.dims.height = pole.height * UNIT;
     doc.elements.push(el);
     ids[key] = el.id;
+  }
+
+  /*
+   * A BARE UPRIGHT THAT THE LAP DOES NOT SCORE.
+   *
+   * Where a structure's leg is carried up past its bar, the pipe above the
+   * bar is a pole standing on the lattice line. Some of them are flown
+   * around and are in `poles`, with RaceGOW's 14 inch offset from the gate
+   * they belong to; these are the ones the lap only flies past, so they
+   * stand exactly on their node and take no sequence entry. The builder
+   * says so when the preset is opened, which is true: the line does ignore
+   * them. They are still what holds up the openings marked `unbuilt`.
+   */
+  for (const post of spec.posts || []) {
+    const el = createElement(doc, 'pole', place(spec, ...post.at), 0);
+    el.name = post.name;
+    el.yawOverridden = true;
+    el.dims.height = post.height * UNIT;
+    doc.elements.push(el);
   }
 
   for (const [key, wp] of Object.entries(spec.waypoints || {})) {

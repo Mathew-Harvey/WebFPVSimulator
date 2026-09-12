@@ -135,7 +135,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-4",
@@ -195,7 +196,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-7",
@@ -235,7 +237,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-9",
@@ -275,7 +278,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-11",
@@ -295,7 +299,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-12",
@@ -315,7 +320,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-13",
@@ -375,6 +381,24 @@ export const PRESETS = [
       },
       {
         "id": "el-16",
+        "type": "pole",
+        "name": "Far side post",
+        "position": {
+          "x": 5.334,
+          "y": 6.6802,
+          "z": 0
+        },
+        "yaw": 0,
+        "pitch": 0,
+        "yawOverridden": true,
+        "dims": {
+          "height": 1.3716,
+          "poleRadius": 0.013335,
+          "clearance": 0.3556
+        }
+      },
+      {
+        "id": "el-17",
         "type": "waypoint",
         "name": "Over the tower",
         "position": {
@@ -392,7 +416,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-17",
+        "id": "el-18",
         "type": "waypoint",
         "name": "Round the pole, low",
         "position": {
@@ -410,7 +434,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-18",
+        "id": "el-19",
         "type": "waypoint",
         "name": "Home straight",
         "position": {
@@ -428,7 +452,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-19",
+        "id": "el-20",
         "type": "waypoint",
         "name": "Round the pole, mid",
         "position": {
@@ -446,7 +470,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-20",
+        "id": "el-21",
         "type": "waypoint",
         "name": "Behind the far side",
         "position": {
@@ -464,7 +488,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-21",
+        "id": "el-22",
         "type": "waypoint",
         "name": "Outside the start gate",
         "position": {
@@ -482,11 +506,29 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-22",
+        "id": "el-23",
         "type": "horizontalPole",
-        "name": "Rail",
+        "name": "Rail, x 0 to 1",
         "position": {
           "x": 4.3053,
+          "y": 5.9944,
+          "z": 0.672465
+        },
+        "yaw": 0,
+        "pitch": 0,
+        "yawOverridden": true,
+        "dims": {
+          "width": 0.6858,
+          "depth": 0.02667,
+          "height": 0.02667
+        }
+      },
+      {
+        "id": "el-24",
+        "type": "horizontalPole",
+        "name": "Rail, x 1 to 2",
+        "position": {
+          "x": 4.9911,
           "y": 5.9944,
           "z": 0.672465
         },
@@ -629,7 +671,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-15",
-        "elementId": "el-19",
+        "elementId": "el-20",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -638,7 +680,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-16",
-        "elementId": "el-20",
+        "elementId": "el-21",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -683,7 +725,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-21",
-        "elementId": "el-16",
+        "elementId": "el-17",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -701,7 +743,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-23",
-        "elementId": "el-17",
+        "elementId": "el-18",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -710,7 +752,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-24",
-        "elementId": "el-18",
+        "elementId": "el-19",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -809,7 +851,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-35",
-        "elementId": "el-21",
+        "elementId": "el-22",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -903,7 +945,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-4",
@@ -963,7 +1006,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-7",
@@ -1003,7 +1047,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-9",
@@ -1023,7 +1068,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-10",
@@ -1063,7 +1109,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-12",
@@ -1121,6 +1168,24 @@ export const PRESETS = [
       },
       {
         "id": "el-15",
+        "type": "pole",
+        "name": "Near post",
+        "position": {
+          "x": 3.9624,
+          "y": 5.9944,
+          "z": 0
+        },
+        "yaw": 0,
+        "pitch": 0,
+        "yawOverridden": true,
+        "dims": {
+          "height": 1.3716,
+          "poleRadius": 0.013335,
+          "clearance": 0.3556
+        }
+      },
+      {
+        "id": "el-16",
         "type": "waypoint",
         "name": "Back past the frame",
         "position": {
@@ -1138,7 +1203,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-16",
+        "id": "el-17",
         "type": "waypoint",
         "name": "Round the tall pole",
         "position": {
@@ -1156,7 +1221,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-17",
+        "id": "el-18",
         "type": "waypoint",
         "name": "Round the tall pole again",
         "position": {
@@ -1174,7 +1239,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-18",
+        "id": "el-19",
         "type": "waypoint",
         "name": "Back over the rail",
         "position": {
@@ -1192,7 +1257,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-19",
+        "id": "el-20",
         "type": "waypoint",
         "name": "Round the right pole",
         "position": {
@@ -1210,7 +1275,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-20",
+        "id": "el-21",
         "type": "waypoint",
         "name": "Round the near gate",
         "position": {
@@ -1228,7 +1293,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-21",
+        "id": "el-22",
         "type": "waypoint",
         "name": "Round the right pole, low",
         "position": {
@@ -1246,7 +1311,7 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-22",
+        "id": "el-23",
         "type": "waypoint",
         "name": "Round the left pole",
         "position": {
@@ -1264,9 +1329,27 @@ export const PRESETS = [
         }
       },
       {
-        "id": "el-23",
+        "id": "el-24",
         "type": "horizontalPole",
-        "name": "Rail",
+        "name": "Rail, x 0 to 1",
+        "position": {
+          "x": 4.3053,
+          "y": 5.9944,
+          "z": 0.672465
+        },
+        "yaw": 0,
+        "pitch": 0,
+        "yawOverridden": true,
+        "dims": {
+          "width": 0.6858,
+          "depth": 0.02667,
+          "height": 0.02667
+        }
+      },
+      {
+        "id": "el-25",
+        "type": "horizontalPole",
+        "name": "Rail, x 1 to 2",
         "position": {
           "x": 4.9911,
           "y": 5.9944,
@@ -1303,7 +1386,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-3",
-        "elementId": "el-21",
+        "elementId": "el-22",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -1366,7 +1449,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-10",
-        "elementId": "el-15",
+        "elementId": "el-16",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -1375,7 +1458,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-11",
-        "elementId": "el-16",
+        "elementId": "el-17",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -1393,7 +1476,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-13",
-        "elementId": "el-17",
+        "elementId": "el-18",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -1438,7 +1521,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-18",
-        "elementId": "el-18",
+        "elementId": "el-19",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -1456,7 +1539,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-20",
-        "elementId": "el-22",
+        "elementId": "el-23",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -1474,7 +1557,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-22",
-        "elementId": "el-19",
+        "elementId": "el-20",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -1519,7 +1602,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-27",
-        "elementId": "el-20",
+        "elementId": "el-21",
         "apertureIndex": null,
         "entry": null,
         "passSide": "left",
@@ -1682,7 +1765,8 @@ export const PRESETS = [
           "clearW": 0.65913,
           "clearH": 0.65913,
           "levelPitch": 0.6858
-        }
+        },
+        "unbuilt": true
       },
       {
         "id": "el-7",

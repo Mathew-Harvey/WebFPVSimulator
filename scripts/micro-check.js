@@ -385,6 +385,26 @@ function presetSet() {
         || (e.type === 'diveGate' && Math.abs(e.pitch - Math.PI / 2) < 1e-6),
     );
     check(`${raw.name} stands its gates up or lays them flat`, flatOnly, tilts.join('; '));
+    /*
+     * THE GAPS SURVIVE A WRITE, and something holds each one up.
+     *
+     * An opening marked `unbuilt` is drawn by nobody: if the flag were
+     * dropped on the way through the document writer the track would grow
+     * its boxes back silently, and if the structures around it were ever
+     * moved the opening would hang in the air with no pipe near it. So
+     * both are asserted: the count comes back, and every gap has a pipe
+     * within one opening of where its own frame would have stood.
+     */
+    const gaps = doc.elements.filter((e) => e.unbuilt === true);
+    const written = normalize(toPlain(doc)).doc.elements.filter((e) => e.unbuilt === true);
+    check(`${raw.name} keeps its gaps through a write`, written.length === gaps.length,
+      `${gaps.length} in, ${written.length} out`);
+    const lonely = gaps.filter((g) => {
+      const reach = (g.dims.clearW + g.dims.clearH) * 0.75;
+      return !doc.elements.some((e) => e !== g && e.type !== 'waypoint'
+        && Math.hypot(e.position.x - g.position.x, e.position.y - g.position.y) <= reach);
+    }).map((g) => g.name || g.id);
+    check(`${raw.name} has something holding every gap up`, lonely.length === 0, lonely.join('; '));
     let course = null;
     try {
       course = courseFromDocument(doc);

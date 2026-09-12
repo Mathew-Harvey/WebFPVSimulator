@@ -46,7 +46,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, trackClassOf, virtualApertureDims } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
 import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter, logosOf, logoForDecal, dressOrder,
@@ -887,6 +887,9 @@ export class View3D {
      */
     const micro = trackClassOf(this.host.doc) === 'micro';
     const tube = micro ? RACEGOW_PIPE_OD : FRAME_TUBE_OD;
+    /* A gap in the lattice: the opening is real and the frame is not.
+     * See isUnbuilt in elements.js. */
+    const unbuilt = isUnbuilt(el);
     const f = apertureFrame(el.yaw, el.pitch);
     const basis = new THREE.Matrix4().makeBasis(
       new THREE.Vector3(f.widthAxis.x, f.widthAxis.y, f.widthAxis.z),
@@ -907,11 +910,25 @@ export class View3D {
         [tube, ap.clearH, -(ap.clearW + tube) / 2, 0],
         [tube, ap.clearH, (ap.clearW + tube) / 2, 0],
       ];
-      for (const [w, h, x, y] of bars) {
+      for (const [w, h, x, y] of (unbuilt ? [] : bars)) {
         const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, tube), mat);
         bar.position.set(x, y, 0);
         this.register(bar, el);
         frame.add(bar);
+      }
+      /*
+       * A gap in the lattice has no pipe to click on, and an author still
+       * has to be able to pick it up. So it gets an invisible pane across
+       * the opening, registered for the raycast and drawn by nothing: the
+       * line loop below is what the eye sees.
+       */
+      if (unbuilt) {
+        const pick = new THREE.Mesh(
+          new THREE.PlaneGeometry(ap.clearW, ap.clearH),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }),
+        );
+        this.register(pick, el);
+        frame.add(pick);
       }
       /*
        * A line loop around the TRUE clear opening, on top of the tubes.
@@ -957,7 +974,7 @@ export class View3D {
      * The scale is the other half of it: the sleeve is 0.42 m wide, which on
      * a 0.711 m opening would cover three fifths of the hole.
      */
-    if (Math.abs(el.pitch) < Math.PI / 6 && !micro) {
+    if (Math.abs(el.pitch) < Math.PI / 6 && !micro && !unbuilt) {
       const kit = this.dressFor(el);
       const top = levels[levels.length - 1];
       const bottom = levels[0];

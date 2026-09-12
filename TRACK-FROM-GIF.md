@@ -165,12 +165,18 @@ throughout, `origin` in inches from the room's near left corner:
 
 - `squares`, keyed by a letter: `axis` is which axis the opening faces, `x`
   and `y` stand up and `z` lies flat, `at` is the centre in plan, `sill` is
-  the height of the bottom pipe.
+  the height of the bottom pipe, and `unbuilt` says the opening is a gap in
+  the lattice rather than a gate with a frame of its own. See "A scored
+  opening is not always a gate" below.
 - `poles`: `at` is the lattice line it stands on, `side` is the way its pass
   panel faces, `beside` names the square whose centre the 14 inch pole rule
   is measured from, `height` in units.
 - `rails`: a bare pipe between two lattice points that no square accounts
-  for. The picture has it, so the track has it.
+  for. The picture has it, so the track has it. A rail carries no legs: it
+  is held up by whatever is at its ends.
+- `posts`: a bare upright the lap does not score, standing on its lattice
+  node. This is the leg that holds up an opening marked `unbuilt` where no
+  pole and no neighbouring structure does.
 - `waypoints`: see step 9.
 - `lap`: one token per pass, in order. A square's letter carries the sign of
   travel along its axis, `A+` or `C-`. A pole or a waypoint is its letter
@@ -190,6 +196,26 @@ square's centre, going the way the lap says. Anything else crossing a
 lattice plane where a gate stands is the line going through the PVC. This
 catches what a plan view cannot: a pass at the right place and the wrong
 height reads as correct from above.
+
+## Step 8b, project your own pipe on to the plate
+
+Step 8 checks the LINE. This checks the STRUCTURE, and it is the one that
+caught the worst mistake in all three reconstructions.
+
+Take every pipe your spec builds, in lattice coordinates: for each opening
+a rectangle at its plane and a leg from each lower corner to the floor, for
+each pole a vertical, for each rail its span. Project them with the camera
+from step 4 and sample the plate along each one, taking the brightest pixel
+within about nine pixels of the line, because the camera fit is a few
+pixels out. PVC is near white on a dark floor, so a pipe that is really
+there comes back bright along its whole length and one you invented comes
+back dark.
+
+Everything that scores below about half is a pipe the track does not have.
+Look at those with the segment drawn on the plate before you believe it: a
+line that happens to run ALONG another pipe in projection reads bright and
+is a false pass, which is how a top bar over the rail on Track 8 survived
+the numbers and not the picture.
 
 ## Step 9, waypoints, and the hairpin trap
 
@@ -218,17 +244,44 @@ field of view is `2 * atan(512 / f)` in degrees.
 Render at `--frames 24` first. A full 300 frame render is minutes on a
 software rasteriser and a smoke render catches a broken scene in seconds.
 
-## What the builder cannot draw
+## A scored opening is not always a gate
 
-A scored opening is a four sided frame in this tool, and some of these
-tracks are not built that way. Track 1's three frames are goalposts, two
-uprights and a top bar with bare floor between the feet, and the pass over
-a bar is open to the sky. Shipping those as gates adds a bottom bar to each
-and a whole frame above the bar that the real track does not have. The
-alternative is to make the pass a waypoint, which scores nothing, and a lap
-that does not score the openings the animation counts is the worse lie. So
-gates it is, and the deviation goes in the spec's comment and in
-PROGRESS.md rather than being quietly absorbed.
+RaceGOW rule 2 says "all gates must be fully enclosed", and the builder's
+aperture draws four sides because of it. The official tracks are not built
+that way throughout. A bar on two legs with one leg carried up past the bar
+makes two scored openings, one under the bar and one over it, and the one
+over it has the bar below and the pole beside and nothing else.
+
+Building that as a square puts two lengths of PVC in mid air, one of them
+through the flight path, and boxes in a pole that is meant to be flown
+around. All three tracks shipped that way once. So an aperture can be
+marked `unbuilt` in the spec: the opening still scores, still lights and
+still pins the line, and the pipe around it belongs to the structures
+beside it, which draw it themselves. Twelve of the openings across the
+three tracks are gaps of this kind.
+
+Two consequences to keep in mind:
+
+- **Something else has to hold the gap up.** The bar below it is usually
+  the head of the opening underneath; the upright beside it is usually a
+  pole, or the leg of the next structure along. Where neither is true, put
+  the pipe in the spec as a `post` (a bare upright the lap does not score)
+  or a `rail`, and check step 8b again.
+- **A leg that is carried up is not a pole in the rules' sense.** It stands
+  half an opening from the gate's centre, which is 13.5 inches on a 27 inch
+  lattice, so RaceGOW's 14 inch pole rule and its 36 inch pole to pole rule
+  both fire on it. `warnings.js` skips any pole standing on a gate's own
+  frame line for exactly that reason.
+
+## What the builder still cannot draw
+
+The bar along the ground. The game draws no member under an opening whose
+sill is the floor, so what a pilot flies is the goalpost the reference
+shows; the GIF exporter draws the bar rule 2 asks for, so an export carries
+one pipe per ground gate that the reference plate does not. It lies on the
+floor under the opening and changes no clear height. That is the only
+structural difference left between these three tracks and their
+animations, and it is written here rather than absorbed.
 
 ## What this does not answer
 

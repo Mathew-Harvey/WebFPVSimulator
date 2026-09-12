@@ -56,7 +56,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
+import { ELEMENTS, KIND, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, isUnbuilt, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
 import {
   normalize, elementById, aperturesOf, startPadsOf, logosOf, logoForDecal, dressOrder,
 } from '../trackbuilder/model.js';
@@ -256,6 +256,11 @@ export function courseFromDocument(raw) {
       pitch: kind === KIND.APERTURE ? el.pitch : 0,
       dims: kind === KIND.APERTURE ? builtDims(el.dims, gateScale) : { ...el.dims },
     };
+    /* The openings that are a gap in the lattice and not a gate: no pipe
+     * is built for them anywhere. See isUnbuilt in elements.js. */
+    if (kind === KIND.APERTURE && isUnbuilt(el)) {
+      s.unbuilt = true;
+    }
     if (def.flagSide) {
       s.flagSigns = flagSideSigns(flagSideOf(el));
       /*

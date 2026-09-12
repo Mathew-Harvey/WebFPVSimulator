@@ -126,7 +126,18 @@ function pick(parts, key, fallback) {
 function summaryOf(doc, extra) {
   return {
     name: extra.name || (doc && doc.name) || 'Untitled track',
-    gates: doc && Array.isArray(doc.sequence) ? doc.sequence.length : 0,
+    /* GATES, NOT STEPS. A waypoint is a step in the flying order that
+     * pins the line through a point and scores nothing, so counting the
+     * order advertises gates a pilot will never fly through: the RaceGOW
+     * Track 1 reconstruction has six scored passes and eight waypoints,
+     * and this said fourteen. The card in src/ui/ui.js counts a stock
+     * track the same way. */
+    gates: doc && Array.isArray(doc.sequence)
+      ? doc.sequence.filter((s) => {
+        const el = (doc.elements || []).find((e) => e.id === s.elementId);
+        return Boolean(el) && el.type !== 'waypoint';
+      }).length
+      : 0,
     elements: doc && Array.isArray(doc.elements) ? doc.elements.length : 0,
     author: extra.author || '',
     shareId: extra.shareId || null,

@@ -190,6 +190,60 @@ const TRACKS = [
     start: { at: [2, -0.5], yaw: 0 },
     lap: 'A+ B T C- D E+ F- D H- Q R D O I- J+ K- J+ V L- W D S B L- M N- U K-',
   },
+  {
+    id: 'racegow5-track1',
+    name: 'RaceGOW5 Track 1',
+    credit: {
+      designer: 'Skittles',
+      series: 'RaceGOW5',
+      sponsor: 'EMAX',
+      source: 'racegow.com/tracks, the official Track 1 animation',
+      broughtOverBy: 'andAgainFPV',
+    },
+    origin: [197, 209],
+    /*
+     * Read off the RaceGOW5 Track 1 animation, 96 frames, every frame. The
+     * shortest of the three built so far: a 2 by 2 unit lattice carrying
+     * three frames and one pole, and a six pass lap.
+     *
+     * EVERY FRAME HERE IS A GOALPOST. Two uprights and a top bar, with no
+     * bar along the ground: the plate shows bare floor between the feet of
+     * all three. The builder's gate always carries its bottom bar, so each
+     * of these ships with one pipe the real track does not have, lying on
+     * the floor under an opening whose clear height is unchanged. The
+     * alternative was to model a scored opening as an obstacle, which
+     * cannot be part of a lap.
+     *
+     * The ground bars that ARE there join the structures to each other
+     * rather than closing any gate, so they are rails.
+     */
+    squares: {
+      A: { name: 'Start gate', axis: 'x', at: [-1, 1.5], sill: 0 },
+      B: { name: 'Right frame, under the bar', axis: 'x', at: [1, 0.5], sill: 0 },
+      C: { name: 'Right frame, over the bar', axis: 'x', at: [1, 0.5], sill: 1 },
+      F: { name: 'Left gate', axis: 'y', at: [-0.5, 0], sill: 0 },
+      D: { name: 'Over the left gate', axis: 'y', at: [-0.5, 0], sill: 1 },
+    },
+    poles: {
+      P: { name: 'Pole', at: [0, 0], height: 2, side: [1, 0], beside: 'F' },
+    },
+    rails: [
+      { name: 'Ground bar, pole to right frame', from: [0, 0, 0], to: [1, 0, 0] },
+      { name: 'Ground bar, left gate to start gate', from: [-1, 0, 0], to: [-1, 1, 0] },
+    ],
+    waypoints: {
+      R: { name: 'Out past the right frame', at: [1.9, 0.5], z: 0.7, heading: [1, 0] },
+      S: { name: 'Back to the top opening', at: [1.9, 0.5], z: 1.4, heading: [-1, 0] },
+      T: { name: 'Behind the frames', at: [0.4, -1.1], z: 1.7, heading: [-1, 0] },
+      Z: { name: 'Down to the gap', at: [0.8, 1.4], z: 0.8, heading: [0, -1] },
+      V: { name: 'Behind the pole', at: [0.0, -0.9], z: 0.55, heading: [-1, 0] },
+      W: { name: 'Out past the start gate', at: [-1.9, 0.4], z: 0.55, heading: [-1, 0] },
+      Y: { name: 'Round the far end', at: [-2.7, 1.0], z: 0.5, heading: [0, 1] },
+      X: { name: 'Back on to the start gate', at: [-2.2, 1.6], z: 0.5, heading: [1, 0] },
+    },
+    start: { at: [-1.6, 1.5], yaw: 0 },
+    lap: 'A+ B+ R S C- T D+ Z P V F+ W Y X',
+  },
 ];
 
 /* A lattice point in the room, in metres. */
@@ -273,7 +327,10 @@ function buildTrack(spec) {
     el.dims.width = Math.hypot(b.x - a.x, b.y - a.y);
     /* The pipe's centreline on the lattice line: the bar is drawn from
      * position.z up by its own thickness. */
-    el.position.z = rail.from[2] * UNIT - PIPE_OD / 2;
+    /* The pipe's centreline on the lattice line, and never below the floor:
+     * a ground bar's line IS the floor, so it rests on it instead of being
+     * half buried in it. */
+    el.position.z = Math.max(0, rail.from[2] * UNIT - PIPE_OD / 2);
     doc.elements.push(el);
   }
 

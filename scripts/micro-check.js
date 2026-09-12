@@ -319,7 +319,7 @@ function presetSet() {
    * here rather than counted, because "two of something" would pass with
    * the wrong two.
    */
-  const want = ['racegow5-track8', 'racegow5-track5'];
+  const want = ['racegow5-track8', 'racegow5-track5', 'racegow5-track1'];
   const micro = presetsForClass('micro').map((d) => d.id);
   check('the whoop ships exactly the two supplied tracks',
     micro.length === want.length && want.every((id) => micro.includes(id)),

@@ -62,7 +62,7 @@ function usage() {
   console.log('                     sees more of the sides and the same amount of sky.');
   console.log('  --frames <n>       frames in the loop. The default is the LAP: the quad');
   console.log('                     flies at one steady pace whatever the track, so a long');
-  console.log('                     course is a longer loop rather than a faster one. See');
+  console.log('                     lap is a longer loop rather than a faster one. See');
   console.log('                     LAP_SPEED in src/trackbuilder/stage.js.');
   console.log('  --delay <cs>       centiseconds per frame, default 4, which is 25 fps');
   console.log('  --camera <ex,ey,ez,ax,ay,az,fov>');

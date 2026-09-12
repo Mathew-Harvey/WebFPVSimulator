@@ -923,7 +923,7 @@ export class App {
      * quad flies a steady pace and a longer lap simply takes longer to go
      * round. See LAP_SPEED in stage.js. */
     help.textContent = 'One lap of the racing line, 512 by 512, looping, flown at the '
-      + 'same pace whatever the track, so a longer course is a longer clip. '
+      + 'same pace whatever the track, so a longer lap is a longer clip. '
       + 'It comes out around 1 to 2 MB, which posts anywhere. Rendering takes a minute '
       + 'or so and this tab has to stay open while it does.';
     const status = document.createElement('p');

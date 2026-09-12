@@ -33944,3 +33944,84 @@ Round 44 declined the first for being unable to cause the fault it was
 looking at, and the same holds here: turtle needs truly inverted, slow and
 still, so neither can make a whoop hit the ground early or park in the air.
 They are the next thing in this area to measure, not to guess at.
+
+## Round 49: the turtle halo is the aircraft's, and the whoop is measured
+
+**The ask.** "Fix the turtle clearance too, also confirm the whoop's
+collisions match the graphics and the size of the 65 mm whoop."
+
+### The halo and the hop
+
+`TURTLE_CLEARANCE` was 0.15 m and `TURTLE_LIFT` 0.18 m, flat, for every
+aircraft. The halo is how far an inverted craft's CENTRE may be above the
+surface and still count as resting on it; the lift is the hop at mid flip
+that keeps the arms and the lens out of the ground while it rolls over. On a
+five inch the first is 0.86 of the swept radius and the second is one whole
+radius, which is exactly the reach it has to clear. On a 65 mm whoop the
+same flat numbers are five times the machine and most of a RaceGOW opening:
+a whoop inverted 14 cm up read as seated, and righting itself threw it 18 cm
+into the air.
+
+Both are spans over `FIVE_INCH_WORLD_R` now, the same arrangement `DIRT_SPAN`
+got in Round 44, so the five inch's arithmetic reduces to the constants it
+replaced to the last bit and the whoop gets 0.044 m of halo and a 0.053 m
+hop. `check:clip` gained seven cases: the five inch pinned at exactly 0.15
+and 0.18, the whoop's own pair, a whoop inverted on the floor still latching,
+one 10 cm up no longer latching, and the hop held between the machine's own
+height and a quarter of a gate.
+
+### The whoop against its own picture
+
+There was no check for this. `verify` check 15 has asserted "the collisions
+hug the graphics" since it was written, and it does it for the FIVE INCH: it
+finds the body by its five inch box and the sweep by cylinders over 50 mm,
+neither of which exists on a whoop. So the second aircraft in the project had
+never had the one check that catches a scale error on it.
+
+`scripts/craft-check.js`, `npm run check:craft`, boots the shell once per
+aircraft and measures every VERTEX the model draws in the craft's own frame,
+minus the outline hulls, which are paint, and minus the antenna, which is
+wire: a bounding box lies about a torus by 41 percent and the vertices are
+the silhouette itself. Three numbers come out, across, up and down, and they
+go against the collider, the airframe table the plant is snapshotted into,
+and the machine's published size.
+
+It found two things.
+
+**The bumper hoop was drawn 1.9 mm proud of the duct.** `hoopR` was the duct's
+outer radius plus 1.3 mm, and with its own 0.6 mm section that made the drawn
+machine 86.0 mm across against BetaFPV's published 82.6, with 2.1 mm of drawn
+aeroplane outside the radius `collide.js` sweeps. A pilot skimming a RaceGOW
+pipe saw the hoop touch it and felt nothing, which is the same complaint in
+the same place as the duct that was 5.2 mm narrow before `hullR` existed. The
+hoop's OUTER EDGE is the duct's outer face now, which is what a moulded
+bumper on a lip is, and the drawn machine measures 82.2 mm.
+
+**The antenna is the tallest thing on both models and no hull covers it.** The
+whoop's whip reaches 34.4 mm above the CG against a hull of 18, the five
+inch's mast 59.2 against 38. That is correct and it should stay: a quad that
+bounced off its own aerial would be a bug. Both are named `antenna` now, so a
+measurement can tell wire from aircraft rather than guessing by height.
+
+**What the whoop measures, after.** Drawn span 82.2 mm against 82.6
+published. Drawn sweep 50.8 mm against a collider of 50.6. Hull up 18.0
+against a drawn 18.5, the camera cage. Hull down 10.0 against a drawn 9.6,
+the ducts' underside. Wheelbase 65.0 mm. Every axis agrees inside 0.5 mm, so
+the answer to the question asked is yes, now, and it is measured rather than
+asserted.
+
+**And one finding on the five inch, recorded rather than fixed.** Its contact
+hull reaches 45 mm below the CG and the lowest thing its model draws is 30 mm
+below it, so a parked five inch floats 15 mm. That is plant.c's
+`hull_hz_down`, compiled into dist/sim.wasm; changing it needs an Emscripten
+toolchain this container does not have, and it would move the machine every
+threshold in tests/ is fitted against. So `check:craft` PINS it at the 15.0 mm
+it measured today rather than widening a band: the day somebody rebuilds the
+module, or the model grows the battery that reaches down there, the check
+says so.
+
+**Checks, run this turn.** `npm run verify` 15 of 15 with the determinism
+hashes unchanged at `de0401cd4266`, `check:craft` 20 of 20, `check:clip` 522
+of 522, `whoop:gates` 21 of 21, `micro:check`, `lint:quality` 56 of 56. The
+whoop was photographed in the Quad room after the hoop moved: four ducts with
+their bumper rings still reading as rings, flush with the duct wall.

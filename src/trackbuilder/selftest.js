@@ -62,8 +62,8 @@ import {
   PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
   LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
   LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE, TURTLE_SPEED, TURTLE_RATE,
-  TURTLE_EXIT_UPZ, TURTLE_STICK_MIN, TURTLE_WAIT_RATE, TURTLE_FLIP_MS, TURTLE_LIFT,
-  TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, turtleFlipEase, turtleFlipLift, turtleSlerpQuat,
+  TURTLE_EXIT_UPZ, TURTLE_STICK_MIN, TURTLE_WAIT_RATE, TURTLE_FLIP_MS, turtleLift,
+  TURTLE_INVERT_UPZ, turtleClearance, turtleFlipEase, turtleFlipLift, turtleSlerpQuat,
   makeClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_CONFIRM_MS, CLIP_DEEP,
   STUCK_UNRESOLVED_MS, STUCK_TRAVEL_MAX, BURIED_DEPTH, BURIED_CONFIRM_MS,
   CLIP_CRASH_HOLD_MS, BOUNCE_SEPARATION, CLIP_SPAWN_GRACE_MS,
@@ -1380,7 +1380,7 @@ function suiteCrashRule() {
   check('turtle latches from the seated halo: an inverted rest reports no contact',
     shouldEnterTurtle(-0.8, 0.2, 0.2, false, 0.10, false) === true);
   check('turtle does not latch at the halo edge without contact',
-    shouldEnterTurtle(-0.8, 0.2, 0.2, false, TURTLE_CLEARANCE, false) === false);
+    shouldEnterTurtle(-0.8, 0.2, 0.2, false, turtleClearance(), false) === false);
   check('turtle does not latch on its side: that is still a tumble',
     shouldEnterTurtle(0.2, 0, 0, true, 0.05, false) === false);
   check('turtle does not latch at a 60 degree bank',
@@ -1418,7 +1418,7 @@ function suiteCrashRule() {
   check('turtle lift is zero at the ends so the hull sits on the grass',
     turtleFlipLift(0) === 0 && turtleFlipLift(1) === 0);
   check('turtle lift peaks at mid-flip above the arm radius',
-    turtleFlipLift(0.5) === TURTLE_LIFT && TURTLE_LIFT > 0.15);
+    turtleFlipLift(0.5) === turtleLift() && turtleLift() > 0.15);
   const qS0 = turtleSlerpQuat(0, 1, 0, 0, 1, 0, 0, 0, 0);
   check('turtle slerp starts at the inverted pose',
     Math.abs(qS0[0]) < 1e-12 && Math.abs(qS0[1] - 1) < 1e-12);
@@ -1588,9 +1588,35 @@ function suiteCrashRule() {
     shouldScorePass({ x: 0, y: 0.09, z: 0.6 }, { x: 0, y: 0.09, z: -0.6 }, {
       upz: 0.1, clearance: 0.09, hits: 0, heightAt: flat,
     }) === true);
+  /*
+   * THE TURTLE HALO AND THE FLIP HOP, on the same aircraft and for the same
+   * reason. Both were flat five inch lengths: a 0.15 m halo called a whoop
+   * seated while it was 14 cm up, which is a RaceGOW gate's height in the
+   * air, and a 0.18 m hop threw it most of an opening upward to right
+   * itself. Neither could MISS a gate, which is why Round 44 left them
+   * alone and said so; they are here now because the owner asked.
+   */
+  const whoopHalo = turtleClearance();
+  check('a whoop gets its own turtle halo, a quarter of the five inch\'s',
+    whoopHalo > 0.035 && whoopHalo < 0.055, whoopHalo);
+  check('a whoop halo is inside a RaceGOW gate\'s bottom tenth',
+    whoopHalo / 0.7112 < 0.10, whoopHalo / 0.7112);
+  check('a whoop inverted on the floor still latches turtle',
+    shouldEnterTurtle(-0.9, 0.2, 0.2, false, 0.02, false) === true);
+  check('a whoop inverted 10 cm up is still flying, not seated',
+    shouldEnterTurtle(-0.9, 0.2, 0.2, false, 0.10, false) === false);
+  const whoopHop = turtleLift();
+  check('a whoop flip hop clears its own arms without launching it',
+    whoopHop > 0.04 && whoopHop < 0.07, whoopHop);
+  check('a whoop hop is bigger than the aircraft and smaller than a gate',
+    whoopHop > 2 * airframeById('whoop65').dims.vHalfUp && whoopHop < 0.7112 / 4);
+
   setCraftAirframe(fiveDims);
   check('the five inch is seated again for everything below',
     Math.abs(dirtClearance() - 0.22) < 1e-12, dirtClearance());
+  check('and its turtle halo and hop are the flat numbers they always were',
+    Math.abs(turtleClearance() - 0.15) < 1e-12 && Math.abs(turtleLift() - 0.18) < 1e-12,
+    `${turtleClearance()} ${turtleLift()}`);
 
   const timing = new Race([{
     position: { x: 0, y: 0, z: 0 },

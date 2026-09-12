@@ -52,6 +52,7 @@
     "lint:attract": "node scripts/attract-check.js",
     "park:fly": "node scripts/park-fly.js",
     "trick:sweep": "node scripts/trick-sweep.js",
-    "trick:proven": "node scripts/trick-sweep.js --all --write"
+    "trick:proven": "node scripts/trick-sweep.js --all --write",
+    "check:craft": "node scripts/craft-check.js"
   }
 }

@@ -2423,21 +2423,54 @@ export function canPerch(tiltDeg, speed, rateMag) {
  * 110 deg), seated on grass or a roof, and still. On-side is a tumble
  * you fly out of. An invert in the air is still flight. TURTLE_STICK_MIN
  * is a poke gate, not the mixer deadband: any throw past it starts the
- * flip, and the flip always finishes. TURTLE_LIFT is the extra centre
+ * flip, and the flip always finishes. turtleLift() is the extra centre
  * height at mid-flip so the arms and the lens stay above the surface.
  */
 export const TURTLE_SPEED = 1.0;
 export const TURTLE_RATE = 8.0;
-export const TURTLE_CLEARANCE = 0.15;
 export const TURTLE_EXIT_UPZ = 0.5;
 export const TURTLE_INVERT_UPZ = -0.35;
 export const TURTLE_STICK_MIN = 0.08;
 export const TURTLE_WAIT_RATE = 1.0;
 export const TURTLE_FLIP_MS = 380;
-export const TURTLE_LIFT = 0.18;
+
+/*
+ * THE HALO AND THE HOP ARE LENGTHS ABOUT THE AIRCRAFT, the same argument
+ * DIRT_SPAN makes a hundred lines up, and for the same reason: both were
+ * flat five inch numbers applied to a machine a third of the size.
+ *
+ * 0.15 m of halo is how far an inverted craft's CENTRE may be above the
+ * surface and still count as resting on it rather than flying. On a five
+ * inch that is 0.86 of the swept radius, generous over the 0.038 m its
+ * canopy actually holds it at, and the slack is for slopes, for a roof the
+ * height query cannot see and for the contact model's own 2 mm. On a 65 mm
+ * whoop the same flat number is five times the whole machine: a whoop
+ * inverted 14 cm up, which is a gate's height in the air, read as seated.
+ *
+ * 0.18 m of lift is the hop at mid flip that keeps the arms and the lens
+ * out of the surface while the craft rolls over. On a five inch that is one
+ * swept radius, which is exactly the reach it has to clear. On a whoop it
+ * threw the machine most of a RaceGOW opening into the air to right itself.
+ *
+ * So both are spans over FIVE_INCH_WORLD_R, frozen at module load: on the
+ * field the arithmetic reduces to the constants they replaced, to the last
+ * bit, and the whoop gets 0.044 m of halo and a 0.053 m hop.
+ */
+const TURTLE_CLEARANCE_SPAN = 0.15 / FIVE_INCH_WORLD_R;
+const TURTLE_LIFT_SPAN = 0.18 / FIVE_INCH_WORLD_R;
+
+/* The halo for the airframe currently seated, in WORLD metres, because the
+ * clearance every caller measures is a world height above a world surface. */
+export function turtleClearance() {
+  return CRAFT_WORLD_R * TURTLE_CLEARANCE_SPAN;
+}
+/* And the hop, same frame, same rule. */
+export function turtleLift() {
+  return CRAFT_WORLD_R * TURTLE_LIFT_SPAN;
+}
 export const SNAP_SPEED = TURTLE_SPEED;
 export const SNAP_RATE = TURTLE_RATE;
-export const SNAP_CLEARANCE = TURTLE_CLEARANCE;
+export const snapClearance = turtleClearance;
 
 export function shouldEnterTurtle(upz, speed, rateMag, inContact, clearance, skip) {
   if (skip) {
@@ -2456,9 +2489,9 @@ export function shouldEnterTurtle(upz, speed, rateMag, inContact, clearance, ski
    * velocity without a hit), so sim_ground_contacts() reads 0 for the
    * whole rest and a real crash never prompted. An invert in the air is
    * still flight: the speed gate has already refused anything that has
-   * fallen more than a few centimetres, and TURTLE_CLEARANCE is
-   * centimetres, not metres. */
-  return inContact || clearance < TURTLE_CLEARANCE;
+   * fallen more than a few centimetres, and the halo is centimetres, not
+   * metres, on either aircraft. */
+  return inContact || clearance < turtleClearance();
 }
 
 export function shouldSnapUpright(upz, speed, rateMag, inContact, clearance, skip) {
@@ -2499,7 +2532,7 @@ export function turtleFlipLift(u) {
   if (u <= 0 || u >= 1) {
     return 0;
   }
-  return 4 * u * (1 - u) * TURTLE_LIFT;
+  return 4 * u * (1 - u) * turtleLift();
 }
 
 /*

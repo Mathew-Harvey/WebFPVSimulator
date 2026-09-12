@@ -361,7 +361,24 @@ export function buildWhoopCraft(opts = {}) {
   {
     const parts = [];
     const ro = DUCT_BORE + DUCT_WALL;
-    const hoopR = ro + 0.0013;
+    /*
+     * THE HOOP IS THE OUTSIDE OF THE AIRCRAFT, SO IT IS WHERE THE OUTSIDE
+     * OF THE AIRCRAFT IS.
+     *
+     * It used to be drawn 1.3 mm PROUD of the duct wall, and with its own
+     * 0.6 mm section that put the drawn machine 3.8 mm across wider than
+     * the ducts: 86.0 mm measured against BetaFPV's published 82.6, and
+     * 2.1 mm of drawn aeroplane outside the radius collide.js sweeps. A
+     * pilot skimming a RaceGOW pipe saw the hoop touch it and felt nothing,
+     * which is the same complaint, in the same place, as the duct that was
+     * 5.2 mm narrow before hullR existed.
+     *
+     * The hoop's OUTER EDGE is the duct's outer face now: it is a moulded
+     * bumper on the lip, which is what the real part is, and the published
+     * 82.6 mm is across it. scripts/craft-check.js measures the drawn
+     * vertices and fails if the two ever part company again.
+     */
+    const hoopR = ro - 0.00060;
     const hoopY = DUCT_TOP + 0.0021;
     const ring = new THREE.TorusGeometry(hoopR, 0.00060, lite ? 5 : 8, seg);
     const post = new THREE.BoxGeometry(0.0016, 0.0028, 0.0022);
@@ -553,6 +570,12 @@ export function buildWhoopCraft(opts = {}) {
       new THREE.CylinderGeometry(0.00040, 0.00040, 0.0260, 6),
       antenna,
     );
+    /* NAMED, because it is wire and not aircraft. It is the tallest thing
+     * on the model by 16 mm and no contact hull should cover it: a quad
+     * that bounced off its own antenna would be a bug. scripts/craft-check
+     * skips anything named this when it holds the drawn machine against
+     * the hull that sweeps it. */
+    whip.name = 'antenna';
     whip.rotation.set(-0.42, 0, 0.16);
     whip.position.set(-0.0018, STACK_Y + 0.0158, 0.0090);
     group.add(whip);

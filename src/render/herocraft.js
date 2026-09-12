@@ -285,13 +285,19 @@ export function buildHeroCraft(opts = {}) {
   bezel.position.set(0, 0, -0.0236);
   cameraMount.add(bezel);
 
+  /* NAMED, both of them, because they are wire and not aircraft: the mast
+   * is the tallest thing on the model and no contact hull covers it, nor
+   * should one. See the same name in src/render/whoopcraft.js and the
+   * measurement in scripts/craft-check.js. */
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.0013, 0.0013, 0.042, lite ? 5 : 8), antenna);
   mast.position.set(-0.012, 0.038, 0.036);
   mast.rotation.z = 0.18;
   mast.rotation.x = -0.22;
+  mast.name = 'antenna';
   group.add(mast);
   const tip = new THREE.Mesh(new THREE.SphereGeometry(0.0022, lite ? 5 : 8, lite ? 5 : 8), antennaTip);
   tip.position.set(-0.0156, 0.057, 0.031);
+  tip.name = 'antenna';
   group.add(tip);
 
   const bladeGeo = bladeShape(lite ? 5 : 8);

@@ -424,11 +424,13 @@ export function pitchMatchesRoll(r) {
  * has to be one the pilot could have chosen themselves. A 23 g whoop on a 1S
  * pack has four and a half to one of thrust to weight and holds a hover at
  * under a third of the stick, so full travel is two thirds of a stick nobody
- * uses and a handful of one they do. 65 was the first answer to that and 75
- * is the owner's, flown; 65 stays on the list because a pilot who liked it
- * has to be able to get back to it. Betaflight takes any integer here; the
- * list is this menu's granularity, and two extra stops are cheaper than a
- * seeded value the menu cannot show.
+ * uses and a handful of one they do. 65 was the first answer to that, the
+ * owner flew it to 75, and then flew it back to 65 with the Champion tune
+ * when the whoop was reported hard to fly: hover at 49 percent of stick, the
+ * middle, with 9.5 m/s of climb still at the top. Both stay on the list
+ * because a pilot who liked either has to be able to get back to it.
+ * Betaflight takes any integer here; the list is this menu's granularity,
+ * and two extra stops are cheaper than a seeded value the menu cannot show.
  */
 export const THROTTLE_CAP_CHOICES = [100, 90, 80, 75, 70, 65, 60, 50, 40];
 

@@ -389,14 +389,25 @@ async function main() {
      * pitches to 55 degrees, so nearly all of its airspeed goes THROUGH the
      * disc rather than across it: the tap read 2.5 m/s of edgewise flow at
      * 13.6 m/s of airspeed and the duct barely faded at all. That is correct
-     * physics and a useless measurement. Angle mode at 42 degrees with the
-     * throttle a little over hover holds a near level 8 m/s pass instead,
-     * where the flow the duct actually cares about is the flow it gets.
+     * physics and a useless measurement. Angle mode at a fixed pitch with
+     * the throttle a little over hover holds a shallow climbing pass
+     * instead, where the flow the duct actually cares about is the flow it
+     * gets.
+     *
+     * THE STICK IS AIMED AT THE WINDOW, NOT THE OTHER WAY ROUND. The window
+     * below is the physics: it brackets the rotor's own hover induced
+     * velocity, which is where duct_fade puts the half point, and it does
+     * not move. The stick that reaches it is a property of the airframe's
+     * drag, and when k_rotor_drag came down from 1.00 to 0.70 the old
+     * 42 degrees at 0.47 flew 8.05 m/s of edgewise air instead of 5.73 and
+     * left the window. 0.58 of stick, about 24 degrees, at 0.44 reads 5.63
+     * m/s at the rotor, the half point itself, in a 7 m/s pass climbing
+     * under 3 m/s.
      */
     sim.setAngleMode(1);
     let speed = 0;
     let climb = 0;
-    fly(sim, [{ ms: 14000, pitch: -0.70, thr: 0.47 }], (t, s) => {
+    fly(sim, [{ ms: 14000, pitch: -0.58, thr: 0.44 }], (t, s) => {
       speed = Math.sqrt(s[ST.VX] * s[ST.VX] + s[ST.VY] * s[ST.VY]);
       climb = s[ST.VZ];
     });

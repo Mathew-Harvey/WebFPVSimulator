@@ -33160,3 +33160,199 @@ changed. `dist/sim.wasm` is untouched. There is no Emscripten in this
 container, so no candidate plant change could have been built or verified
 here even if one had been chosen; the four numbers above are named for the
 owner to choose among, not moved.
+
+## Round 38: rotor drag to 0.70, the Champion stock as the default, the cap to 65
+
+The owner, after round 37's review: "drop k_rotor_drag to 0.7 and switch
+the default to champion stock but add a throttle cap making the champion
+whoop easier to fly. Also research what the current betaflight whoop tune
+is, what is the difference?" Three changes to the whoop's defaults, one
+plant constant, one gate re-aimed, one latent bug in the settings migration
+fixed on the way, and the research written down.
+
+### The research: what BetaFPV and Betaflight ship for a whoop today
+
+**BetaFPV's Air65 II article** (support.betafpv.com, article 54654422544409,
+last edited 2026-05-26, read through the Zendesk JSON API because the HTML
+refuses a fetch) carries two generations of CLI files and both were
+downloaded and diffed. `20260421` is for the ICM42688, ICM42622 and
+LSM6DSV16X boards; `20260515` (Champion, Freestyle) and `20260520` (Racing)
+are "optimized for BMI270". The vendored tunes are the BMI270 generation,
+which is the newer one, so the repository is current. Between the two
+generations the CHAMPION moved, and not only in filtering:
+
+| | 20260421 | 20260515 (vendored) |
+|---|---|---|
+| roll P / I / D floor / D ceiling / F | 36 / 61 / 25 / 27 / 30 | 33 / 57 / 21 / 23 / 40 |
+| pitch P / I / D floor / D ceiling / F | 37 / 64 / 27 / 29 / 31 | 35 / 59 / 23 / 25 / 42 |
+| master / pi / d / dmax / ff sliders | 85 / 95 / default / 20 / 30 | 75 / default / 95 / 35 / 45 |
+| anti_gravity_gain | default 80 | 60 |
+| gyro notch 1 | 200 Hz, cutoff 185 | off |
+| dyn_notch_q | 450 | 400 |
+| pid_process_denom | 2 | default |
+
+So BetaFPV's own most recent move on the Champion was DOWN: master 85 to
+75, P33 from P36, with more feedforward. Rates in both are ACTUAL at 70
+deg/s of centre, 580 / 580 / 500, expo 0, thr_mid 28, thr_expo 35,
+thr_hover 22, which is what `configs/airframes.js` has said all along. The
+generation before either, the launch dumps on Betaflight 4.5.3 (Nov 2025,
+mirrored at whooptool.com), ran the Champion at P36 / I61 / D27 on
+BETAFLIGHT rates, rc_rate 1.10 / 1.00 / 1.10, super 0.65 / 0.70 / 0.60,
+expo 0.03. The Freestyle's PIDs did not move between 4.5.3 and 2026.6.0.
+
+**Betaflight itself** has no whoop default. Its factory PIDs are the same
+45 / 80 / 30 / 120 roll in the current master as in the 4.5.1 this build
+compiles, with one difference at the edge: master's D max boost defaults
+off, `d_max_gain` 0, where 4.5.1 ships D 40 over a 30 floor with a gain of
+37. The presets
+repository (betaflight/firmware-presets) is where whoop tunes live, and
+the current ones are:
+
+| preset | firmware | roll P / I / D / F | notes |
+|---|---|---|---|
+| Whoop race tune by AyyyKayyy | 4.5 | 76 / 153 / 72 / 162 | 22 to 25 kV Meteor65, anti gravity 0, dshot idle 6.0, iterm relax GYRO 20 |
+| UAV Tech Whoop (1S and 2S) | 4.3 | sliders: master 160, D 140, FF 100 | vbat sag 100, dyn notch 4 at 100 to 1000 Hz |
+| Whoop race tune by Justice | 4.3 | 68 / 60 / 62 / 239 | master 105, D 200, FF 190 |
+| Betaflight 4.5.1 default | 4.5 | 45 / 80 / 30 / 120 | what a freshly flashed board flies |
+| BetaFPV Champion, vendored | 2026.6.0 | 33 / 57 / 21 / 40 | master 75, the plant's own tune |
+| BetaFPV Freestyle at 150, the old default | 2026.6.0 | 74 / 118 / 54 / 54 | computed from defaults times sliders |
+
+**The difference, in one paragraph.** A RACE whoop community tune is hot:
+P in the seventies, D in the sixties and seventies, feedforward at 160 to
+240, on 22 to 25 kV motors with no ducts of note. A FACTORY whoop tune is
+soft: BetaFPV ship the Champion at P33 with the master at 75 and the
+Freestyle at P49, and both take the D term off early on the throttle
+because 1S sags. The Freestyle at a 150 master, which this shell shipped as
+its default until today, sat in between at P74 / D54, which is the
+AyyyKayyy race tune's P on a factory tune's feedforward and filtering.
+There is no "current Betaflight whoop tune" beyond that spread; there are
+factory tunes, race tunes, and the firmware default, and this build now
+ships the factory one on the aircraft it models. (Oscar Liang's whoop
+settings page, updated February 2026, recommends a 90 percent SCALE
+throttle limit, thr_mid 0.32 with 0.65 of expo, thrust linearisation 20
+and sag compensation 100, and names no PIDs.)
+
+### The three changes
+
+**`k_rotor_drag` 1.00 to 0.70** on the whoop, `src/native/plant.c`. The
+comment says why: a ducted fan's shroud is a chord deep and captures a
+whole stream tube, a whoop's duct is a moulded ring a few millimetres tall,
+open above and below, and the full momentum coefficient was the top of the
+range. 0.70 sits between the open rotor's 0.44 and the shroud's 1.00. The
+five inch does not read this field's whoop row.
+
+**The default tune is the Champion stock**, `configs/airframes.js`. The
+Freestyle at 150 seed is gone with it: `defaultPids` is removed from the
+whoop and `seedAirframePids` keeps its mechanism for an airframe that wants
+one.
+
+**The cap is 65**, `configs/airframes.js` and the comment in
+`configs/rates.js`. Hover at 49.0 percent of stick, the middle, with 9.5
+m/s of climb left at the top; 75 stays on the list.
+
+### Measured, before and after, with the shell's own configuration
+
+Before is the Freestyle at 150 with the cap at 75 on the 1.00 rotor drag;
+after is the Champion stock with the cap at 65 on 0.70. Charged 4.35 V
+cell, perfect link, ACTUAL 58 / 58 / 50.
+
+| | before | after |
+|---|---|---|
+| hover, percent of stick | 41.9 | 47.6 |
+| hover motor jitter, DShot units std | 18.4 | 5.9 |
+| hover body rate RMS | 0.22 deg/s | 0.09 |
+| roll step, quarter stick: rise 90, overshoot, reversal | 27 ms, 5 pct, 3 deg/s | 19 ms, 9 pct, 5 |
+| yaw step, full stick: overshoot, reversal | 14 pct, 60 deg/s | 6 pct, 26 |
+| plus 5 percent throttle, after 1 s | 1.36 m/s | 1.20 |
+| half pitch stick: attitude, speed, stick to hold height | 17 deg, 3.3 m/s, 42.4 (hover 41.9) | 17 deg, 4.3 m/s, 48.6 (hover 47.6) |
+| three quarter pitch stick: speed, stick to hold height | 8.3 m/s, 49.6 | 10.2 m/s, 61.1 |
+| full pitch stick, level: speed | 15.4 m/s | 16.2 |
+| levelled from half stick speed, throttle held: half speed in | 0.9 s, 2.3 m | 1.2 s, 4.0 m |
+| the same, altitude gained | 0.69 m | 1.33 m |
+
+The drag change is the speed and the coasting; the tune change is the
+jitter, the overshoot and the reversal; the cap is the hover point and the
+throttle gain. The balloon on levelling grows with the coast because the
+craft carries its speed, and its translational lift, for longer.
+
+`whoop:gates` on the new module: W10 top speed 16.39 to 18.19 m/s (band 8
+to 20), W11 duct fade 0.641 to 0.618 at 5.63 m/s, W12 pitch up 6.42 to 4.82
+percent, W13 lap scale 2.51 to 2.48 s. Hover, thrust, rpm, sag, current,
+motor time constant, roll authority and terminal velocity did not move,
+because the H force is zero in a hover and in a vertical fall.
+`scripts/flightcheck.js --airframe=whoop65` reads the same hover column as
+before at every cap, 65 at 49.0 percent, so HOVER_STICK_PERCENT stands.
+
+### What went wrong on the way
+
+**W11 left its window.** The duct fade gate reads the plant at a fixed
+stick, 42 degrees at 0.47 of throttle, chosen to put the rotor's edgewise
+air at about the hover induced velocity. With the drag down the same stick
+flew 8.05 m/s of edgewise air instead of 5.73 and the operating point
+check failed, 18 of 19. The window, 4.5 to 7.0 m/s, is the physics and did
+not move; the stick was re-aimed by a scan of twenty stick and throttle
+pairs to 0.58 at 0.44, which reads 5.63 m/s at the rotor, the half point
+itself, in a 7 m/s pass. Recorded in the gate's comment so the next drag
+change knows which of the two numbers is the measurement.
+
+**The whoop migration ran on every load.** `loadSettings` moved a stored
+superseded default to the new one with no record of having done so, and
+its own comment said the old value "stays after they choose it". It did
+not: a pilot who put 65 or the Champion back from the menu had it taken
+away at the next boot. Found while writing the second generation of the
+same migration, which would have inherited it. There is a `whoopDefaults`
+generation marker in the settings now; the table applies once to a profile
+below its generation and never again, so a gen 2 pilot who chooses the
+Freestyle and 75 keeps them. The Freestyle's seeded 150 is taken back out
+only from a profile that received it and still holds exactly it, whatever
+aircraft is seated. Proven by booting the real shell in headless Chromium
+on five seeded profiles (`scratchpad/migrate-test.mjs`, not committed): a
+gen 1 whoop profile lands on the Champion, 65, 95 with the seed gone; a gen
+0 profile keeps its Champion and 65 and only its 115 lens moves; a pilot's
+Racing, 80 and a master of 110 are untouched; a gen 2 pilot's Freestyle and
+75 are untouched; a five inch profile loses only the whoop seed it was
+carrying.
+
+**The module is 97 KB where the checked in one was 108 KB**, built here
+under emsdk 3.1.61 installed fresh in the container. The size is the
+toolchain; the arithmetic is not: verify's hash and every five inch figure
+are identical to the digit, and W14 agrees.
+
+### RUN LOG
+
+`npm run build:wasm` exit 0, the one pre-existing pointer type warning at
+`plant.c:1142`, `git diff --stat vendor/betaflight` empty. `npm run
+verify` on the final module, 16 of 16:
+
+| # | check | result |
+|---|---|---|
+| 1 | build-clean | build exit 0, vendor diff empty, abi 1, init OK |
+| 2 | determinism-repeat | a=de0401cd4266 b=de0401cd4266 |
+| 3 | determinism-cross-host | node=de0401cd4266 chrome=de0401cd4266 |
+| 4 | frame-independence | 1 distinct hash across 4 rates |
+| 5 | hover-throttle | 0.2793 |
+| 6 | punch-out | 80.0 m |
+| 7 | terminal-velocity | 31.0 m/s |
+| 8 | motor-step-response | 26 ms |
+| 9 | rate-tracking | 671.7 deg/s vs 670 (0.25 percent off) |
+| 10 | yaw-coupling | -0.10 deg |
+| 11 | battery-sag | 11.14 percent lower (26157 vs 23242 RPM) |
+| 12 | diff-passthrough | ratio 1.2472 vs 1.2537 (0.52 percent off) |
+| 13 | console-clean | errors=0 warnings=0 |
+| 14 | audio-bed | ctx running, media advancing |
+| 15 | world-scale | craft sweep 0.1735 m, gate opening 1.7526 m |
+| 16 | map-isolation | field cost unchanged after a city round trip |
+
+The hash did not change and that is the result: the baseline flies the
+five inch, whose plant row did not move. `whoop:gates` 19 of 19 after the
+W11 re-aim: W1 0.3100, W2 0.338, W3 5.13, W4 78102, W5 3.316 V, W6 16.08 A,
+W7 0.0340 s, W8 2050, W9 7.98 m/s, W10 18.19 m/s, W11 0.618 at 5.63 m/s,
+W12 4.82 percent, W13 2.48 s, W14 identical. `lint:presets` 6 of 6,
+`lint:fc` 30 of 30, `lint:catalog`, `lint:boot` 9 of 9, `lint:shell` PASS,
+`micro:check`, `lint:nouns`, `lint:quality` 56 of 56, `lint:devices`, and
+the migration boot above.
+
+Not flown. The Champion is calmer on every bench row, the whoop flies a
+third further on the same pitch, and whether 0.70 and 65 are the numbers
+is the owner's to say. What to fly: a half stick forward pass across the
+hall, a level off, and a gate stack at low throttle.

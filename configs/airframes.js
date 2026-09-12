@@ -131,57 +131,39 @@ export const AIRFRAMES = [
     packVoltages: [4.35, 4.0, 3.6],
     packLabels: { 4.35: 'Charged', 4.0: 'Half', 3.6: 'Nearly empty' },
     /*
-     * THE FREESTYLE TUNE, and it is the owner's choice flown rather than a
-     * derivation. BetaFPV ship three for the Air65 II and this is the one
-     * with the highest gains of the three: 49 / 79 / 35 on roll against the
-     * Champion's 33 / 57 / 21, and the only one they ship on Betaflight
-     * rates rather than Actual.
+     * THE CHAMPION'S OWN TUNE, AS BETAFPV SHIP IT, and the choice is the
+     * owner's, made twice. The whoop shipped on this tune first, moved to
+     * the Freestyle preset with the master slider at 150 percent on a feel
+     * report, and came back when the owner reported the machine hard to fly
+     * and a review of the model found the loop tight and well damped on
+     * every shipped configuration but calmest by a distance on this one: a
+     * third of the hover motor jitter of the Freestyle at 150, 6 percent of
+     * yaw overshoot against 14, and a 23 deg/s reversal on a full yaw snap
+     * against 60. PROGRESS.md carries the tables.
      *
-     * IT IS NOT THE TUNE THE PLANT IS MODELLED ON, and that is worth saying
-     * once. plant.c models the Champion's 0702 at 36,000 kV on a GF1207;
-     * BetaFPV wrote this tune for the 25,000 kV variant on the bigger
-     * GF1219S. A tune is a Betaflight configuration, PIDs and filters and
-     * feedforward, and the plant is a separate thing, so there is nothing
-     * inconsistent about flying one on the other: it is what a pilot who
-     * flashes the Freestyle preset onto a Champion gets. It does mean the
-     * gains are aimed at a motor with less authority than this one has,
-     * which is part of why the master below is where it is.
+     * It is also the tune the plant is modelled on: plant.c's 0702 is the
+     * Champion's 36,000 kV motor on a GF1207, and scripts/whoop-gates.js
+     * measures the Champion. A tune is a Betaflight configuration and the
+     * plant is a separate thing, so the other two presets fly on the same
+     * plant, exactly as a pilot who flashes them onto a Champion gets, and
+     * the Racing and Freestyle stay on the Tune row as their authors
+     * shipped them.
      *
-     * scripts/whoop-gates.js still measures the Champion. That is right:
-     * the gates are about the PLANT, and the plant is the Champion's.
+     * NO STARTING PID ADJUSTMENT SHIPS WITH IT. The 150 percent master that
+     * came with the Freestyle default was a seed keyed to that tune, and
+     * src/ui/ui.js takes it back out of a profile that only ever received
+     * it, so a pilot who picks the Freestyle later gets it as BetaFPV wrote
+     * it. seedAirframePids and defaultPids still exist for an airframe that
+     * wants a seed; this one no longer carries one.
      */
-    defaultTune: 'whoop-freestyle',
-    /*
-     * AND THE PID ADJUSTMENT THAT COMES WITH IT, 150 percent on the master
-     * slider, which is the owner's number flown.
-     *
-     * It is Betaflight's own simplified tuning, not a second PID model:
-     * configs/pids.js emits `set simplified_master_multiplier = 150` and
-     * `simplified_tuning apply` after the tune, exactly as Configurator
-     * does, and the firmware re-derives P, I, D and feedforward from the
-     * tune's own slider set. Measured on this build, against the freestyle
-     * tune as shipped: p_roll 49 to 74, i_roll 79 to 118, d_min_roll 35 to
-     * 54, f_roll 35 to 54, and the same 1.5 on pitch and yaw, because
-     * Betaflight 4.5's simplified_pids_mode defaults to RPY and none of the
-     * whoop tunes change it.
-     *
-     * KEYED TO THE DEFAULT TUNE, not to the aircraft. The Champion ships
-     * its own master at 75 and the Racing at 85, both of which are figures
-     * BetaFPV chose for those tunes; 150 on top of one of those would be a
-     * number nobody picked. A pilot who moves to another whoop tune gets
-     * that tune as its author shipped it, and their own adjustment if they
-     * have made one.
-     *
-     * It is a SEED, so it only ever lands on a profile that has not
-     * adjusted this tune. See seedAirframePids in src/ui/ui.js.
-     */
-    defaultPids: { master: 150 },
+    defaultTune: 'whoop-champion',
     /*
      * BetaFPV's own rate profile for the Air65 II Champion and Racing:
      * ACTUAL, srate 58 / 58 / 50, expo 0, which is 580 deg/s on roll and
      * pitch and 500 on yaw.
      *
-     * KEPT WHEN THE DEFAULT TUNE MOVED TO FREESTYLE, deliberately. Rates
+     * KEPT THROUGH THE FREESTYLE INTERLUDE, deliberately, and the
+     * Champion's own again now that the default tune is back on it. Rates
      * are the pilot's in this project and a tune never sets them: the Rates
      * row says so in capitals and configs/rates.js strips every rate key
      * out of a tune on the way in. BetaFPV's Freestyle preset does carry
@@ -204,35 +186,39 @@ export const AIRFRAMES = [
       pitch: { rcRate: 7, srate: 58, expo: 0 },
       yaw: { rcRate: 7, srate: 50, expo: 0 },
       /*
-       * SEVENTY FIVE PERCENT, AND IT IS A SCALE RATHER THAN A CLIP.
+       * SIXTY FIVE PERCENT, AND IT IS A SCALE RATHER THAN A CLIP.
        *
        * A 23 g aircraft with 4.7 to one of thrust to weight holds a hover
-       * at 33.6 percent of stick uncapped and climbs at 12.9 m/s at full
-       * throttle, which is a room's ceiling in a fifth of a second. Left uncapped the top two thirds of the stick are unusable
-       * and the bottom third is where all the flying happens, which is the
-       * definition of twitchy.
+       * at 33.6 percent of stick uncapped and climbs at 13 m/s at full
+       * throttle, which is a hall's ceiling in a third of a second. Left
+       * uncapped the top two thirds of the stick are unusable and the bottom
+       * third is where all the flying happens, which is the definition of
+       * twitchy.
        *
        * Betaflight's SCALE limit redistributes the WHOLE travel under the
        * cap rather than clipping the top off it, so nothing is lost: full
-       * stick commands 75 percent, hover moves up to 43.1 percent of stick
+       * stick commands 65 percent, hover moves up to 49.0 percent of stick
        * (measured, see HOVER_STICK_PERCENT in configs/rates.js), and every
-       * millimetre of stick is worth three quarters as much throttle. That
-       * is the whole reason it is SCALE and not OFF, and the Rates screen
-       * says so in the same words.
+       * millimetre of stick is worth two thirds as much throttle. That is
+       * the whole reason it is SCALE and not OFF, and the Rates screen says
+       * so in the same words.
        *
-       * IT WAS 65 AND THE OWNER FLEW IT TO 75. That is a feel judgement and
-       * the pilot's to make, so it is recorded rather than argued with. What
-       * it trades: hover comes down the stick from 49.0 percent to 43.1, so
-       * there is more travel below hover and less above it, and full stick
-       * buys 10.9 m/s of climb instead of 9.4. Finer at the top, coarser at
-       * the bottom, and 65 is still on the list in configs/rates.js for
-       * anybody who wants it back.
+       * IT WAS 65, THEN 75, AND IT IS 65 AGAIN, and every step was the
+       * owner's. 75 put the hover at 43.1 percent and bought 10.9 m/s of
+       * climb at full stick; the owner then reported the whoop hard to fly
+       * and asked for a cap that makes the Champion easy. 65 puts the hover
+       * at 49.0 percent, the middle of the stick with as much travel below
+       * it as above, and full stick still buys 9.5 m/s of climb, a 4 m
+       * hall's ceiling in well under a second. Finer everywhere, coarser
+       * nowhere a room can use. 75 stays on the list in configs/rates.js
+       * for anybody who wants it back, and src/ui/ui.js moves a stored 75
+       * to 65 once, the way it moved 65 to 75 before.
        *
        * The five inch keeps 100 because it does not have the problem: 8.2 to
        * 1 on a 710 g airframe over a sixty metre field is a throttle a pilot
        * uses all of.
        */
-      throttleCap: 75,
+      throttleCap: 65,
     },
     /*
      * The Air II canopy takes a C03 on a 15 to 45 degree adjustable mount, so

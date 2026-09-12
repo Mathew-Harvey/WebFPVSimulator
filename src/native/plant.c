@@ -378,13 +378,23 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
  * the 2.2e-3 m^2 plan silhouette at Cd 1.15, which is what stops a flat fall
  * at about 10 m/s instead of 40.
  *
- * k_rotor_drag is 1.00 against the five inch's 0.43842, and that is the
+ * k_rotor_drag is 0.70 against the five inch's 0.43842, and the gap is the
  * duct. The five inch's figure came from a published TOTAL linear drag fit
  * for an open rotor. A shroud captures the whole stream tube instead of a
  * contracted one, so the momentum drag rho A v_i V_perp is paid in full, and
  * the ducted fan literature puts ram drag at 80 to 95 percent of total drag
- * below ten knots. 1.00 is the momentum coefficient with nothing added.
- * This term, not the body drag, is why whoops are slow.
+ * below ten knots. 1.00 is the momentum coefficient with nothing added, and
+ * it is what this airframe flew for its first week. It is not what the
+ * Air65's duct is. A ducted fan's shroud is a chord deep and captures a
+ * whole stream tube; a whoop's duct is a moulded ring a few millimetres
+ * tall round a 31 mm prop, open above and below, and the air it turns is
+ * closer to an open rotor's than to a fan's. At 1.00 the plant asked 17
+ * degrees of pitch for 3.3 m/s and 35 for 8.3, ninety two percent of the
+ * drag budget was this one term, and the owner reported the machine hard
+ * to fly and wading. 0.70 is the owner's number, flown, sitting between the
+ * open rotor's fit and the full shroud, which is where a short ring belongs
+ * and where the plant's own review put it. Still, not the body drag, the
+ * reason whoops are slow; just less of the reason.
  *
  * SOURCES. betafpv.com Air65 II and 0702 (2026) product pages for mass,
  * geometry, ESC and pack; Gemfan for the 1207 3 blade; Pereira 2008
@@ -472,7 +482,7 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
    */
   .k_propwash = 0.05,
   .prop_r = 0.0155,  /* 31 mm Gemfan 1207 three blade */
-  .k_rotor_drag = 1.00,
+  .k_rotor_drag = 0.70,  /* was 1.00, see the DRAG block above */
   /*
    * 1.10, AND IT IS WHY THE WHOOP STOPPED FALLING LIKE A BRICK.
    *

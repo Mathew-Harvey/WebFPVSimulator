@@ -462,6 +462,17 @@ const DEFAULTS = {
    */
   pidsSeeded: {},
   /*
+   * Which generation of the whoop's SHIPPED DEFAULTS this profile has been
+   * moved to. See SUPERSEDED_WHOOP: when a whoop default changes, a stored
+   * copy of the old default has to move with it, and this marker is what
+   * makes that move happen ONCE. Without it the move ran on every load, so
+   * a pilot who put the superseded value back from the menu had it taken
+   * away again at the next boot, which is the opposite of the "one row
+   * away" the comment promised. 0 is a profile from before the marker; the
+   * migration itself says what each generation moved.
+   */
+  whoopDefaults: 0,
+  /*
    * Whether the flight feel question has been offered. It offers itself
    * exactly once, after the first finished race, and never again: the
    * moment the dialog opens this flips and is saved, whatever the pilot
@@ -620,8 +631,7 @@ function detectFirstRun() {
   }
 }
 
-/* The whoop's id, and the throttle cap it used to ship with. See the
- * migration in loadSettings. */
+/* The whoop's id. See the migration in loadSettings. */
 const WHOOP_ID = 'whoop65';
 /*
  * THE WHOOP'S SHIPPED DEFAULTS THAT HAVE BEEN SUPERSEDED, and the value
@@ -635,17 +645,35 @@ const WHOOP_ID = 'whoop65';
  * value with no sign that a new one exists.
  *
  * Each entry moves ONCE, only from the exact figure that shipped, and only
- * on the whoop. A pilot who genuinely wants the old value still has it on
- * the menu one row away, and it stays after they choose it, because the
- * next build's table will not name it here.
+ * on the whoop. Once is enforced by the whoopDefaults marker in DEFAULTS:
+ * GENERATION is the number a profile carries after this table has been
+ * applied to it, and the table is applied only to a profile carrying a
+ * smaller one. A pilot who genuinely wants the old value has it on the menu
+ * one row away, and it stays after they choose it.
+ *
+ * The history, because the same value has now shipped twice: the whoop
+ * shipped on the Champion tune, a 65 percent cap and a 115 degree lens.
+ * Generation 1 moved those to the Freestyle at a 150 master, 75 and 95.
+ * Generation 2 moves the tune and the cap back, the lens stays at 95, and
+ * the Freestyle's seeded master goes with the default it was seeded for.
+ * A profile still on the generation 0 values is on today's tune and cap
+ * already and only its lens moves.
  */
 const SUPERSEDED_WHOOP = {
-  /* 65 percent, before the owner flew it to 75. */
-  throttleCap: 65,
-  /* The Champion preset, before the owner flew the Freestyle one. */
-  tune: 'whoop-champion',
+  GENERATION: 2,
+  /* 75 percent, the generation 1 cap. Back to 65 with the Champion. */
+  throttleCap: 75,
+  /* The Freestyle preset, the generation 1 tune. Back to the Champion. */
+  tune: 'whoop-freestyle',
   /* 115 degrees, chosen for a 5 by 6 m room. The room is 10 by 12 now. */
   cameraFov: 115,
+  /*
+   * The PID seed generation 1 laid on the Freestyle: master 150. Taken back
+   * out only from a profile that RECEIVED it (pidsSeeded says so) and still
+   * holds exactly it, so a pilot who moved that slider, or set the tune by
+   * hand, keeps their own numbers.
+   */
+  pidsSeed: { tune: 'whoop-freestyle', sliders: { master: 150 } },
 };
 
 export function loadSettings() {
@@ -743,22 +771,13 @@ export function loadSettings() {
     s.rates = normaliseRates(legacy || s.rates);
   }
   /*
-   * THE WHOOP'S SHIPPED THROTTLE CAP MOVED FROM 65 TO 75, and a stored 65
-   * has to move with it.
-   *
-   * reseatIfForeign below will not do this and should not: its rule is "is
-   * this still the OTHER aircraft's stock value", which is what protects a
-   * number the pilot actually chose. 65 is neither aircraft's value now, so
-   * that rule reads it as the pilot's and keeps it, and every pilot who flew
-   * the whoop before today would be stuck on the old default with no sign
-   * that a new one exists.
-   *
-   * So it is named explicitly: this ONE superseded default, on the ONE
-   * aircraft that shipped it, moves once. A pilot who genuinely wants 65
-   * still has it on the menu, one row away, and it will stay after they
-   * choose it because the next build's list will not name it here.
+   * THE WHOOP'S SHIPPED DEFAULTS MOVED, and a stored copy of the old ones
+   * has to move with them. See SUPERSEDED_WHOOP for what and why, and the
+   * whoopDefaults marker in DEFAULTS for why this runs once per profile
+   * rather than on every load.
    */
-  if (s.airframe === WHOOP_ID) {
+  const migrate = !(s.whoopDefaults >= SUPERSEDED_WHOOP.GENERATION);
+  if (migrate && s.airframe === WHOOP_ID) {
     const af = airframeById(WHOOP_ID);
     if (s.rates && s.rates.throttleCap === SUPERSEDED_WHOOP.throttleCap) {
       s.rates = { ...s.rates, throttleCap: af.rates.throttleCap };
@@ -774,6 +793,26 @@ export function loadSettings() {
    * take. An unknown tune id, an out-of-range slider or a half-complete
    * expert table cannot survive a localStorage edit into the emitter. */
   s.pids = normalisePids(s.pids);
+  /*
+   * The seeded slider goes with the default it was seeded for, whatever
+   * aircraft is seated, because it is keyed by tune and not by seat: a
+   * five inch pilot who once flew the whoop carries it too. Only an entry
+   * this shell laid down itself and that has not been touched since.
+   */
+  if (migrate) {
+    const seed = SUPERSEDED_WHOOP.pidsSeed;
+    const e = s.pids[seed.tune];
+    const seeded = s.pidsSeeded && typeof s.pidsSeeded === 'object' && s.pidsSeeded[seed.tune];
+    const untouched = e && e.mode === 'sliders' && !e.pids
+      && Object.keys(e.sliders).length === Object.keys(seed.sliders).length
+      && Object.keys(seed.sliders).every((k) => e.sliders[k] === seed.sliders[k]);
+    if (seeded && untouched) {
+      const rest = { ...s.pids };
+      delete rest[seed.tune];
+      s.pids = rest;
+    }
+  }
+  s.whoopDefaults = SUPERSEDED_WHOOP.GENERATION;
   /*
    * The seated aircraft's starting PID adjustment, after normalisePids so it
    * is not stripped as an unknown entry, and after the tune is final so it
@@ -965,16 +1004,18 @@ export function seatAirframe(s, id) {
 /*
  * Lay down an airframe's starting PID adjustment for its default tune, once.
  *
- * The whoop ships one: BetaFPV's Freestyle preset with the master slider at
- * 150 percent, which is the owner's setting flown. It is a SEED and not a
- * setting, so it lands on a profile that has never had an adjustment for
- * that tune and never lands twice; see pidsSeeded above for why once
+ * No airframe ships one today. The whoop did, for a while: BetaFPV's
+ * Freestyle preset with the master slider at 150 percent, the owner's
+ * setting flown, until the owner flew the machine hard and asked for the
+ * Champion stock instead; SUPERSEDED_WHOOP takes that seed back out. The
+ * mechanism stays for the next airframe that wants one. It is a SEED and
+ * not a setting, so it lands on a profile that has never had an adjustment
+ * for that tune and never lands twice; see pidsSeeded above for why once
  * matters.
  *
  * Keyed to the airframe's DEFAULT TUNE rather than to the airframe, because
- * that is what the number was chosen against. The other two whoop tunes
- * ship their own master, 75 and 85, and 150 on top of either of those is a
- * figure nobody picked.
+ * that is what such a number is chosen against. A master chosen for one
+ * preset on top of another preset's own master is a figure nobody picked.
  */
 function seedAirframePids(s, id) {
   const af = airframeById(id);

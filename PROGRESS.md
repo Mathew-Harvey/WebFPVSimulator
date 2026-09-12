@@ -32989,3 +32989,174 @@ through the real renderer at the same camera as the defect: the slabs are
 gone, the legs stand on stubs, and the pole's own red foot is visible beside
 them where the slab used to hide it. `npm run verify` was not run: no
 physics, plant, ABI or build changed.
+
+## Round 37: the whoop's flight physics reviewed against a pilot's report
+
+The owner: "flying the whoop is really hard. Review the flight physics, is
+something broken, is it accurate?" A review and a set of measurements, not a
+change. Nothing in `src/native/`, `configs/` or the shell moved this turn.
+
+**What was read.** The whole of `plant.c` again with the whoop entry beside
+the five inch's, `bf_glue.c` at the seam, the three BetaFPV tunes as
+translated, `configs/airframes.js`, `configs/rates.js`, `configs/pids.js`,
+the reseating logic in `src/ui/ui.js`, and the two Betaflight 4.5.1 sources
+the shell's whoop configuration depends on: `mixer.c` applies the SCALE
+throttle limit before it hands the throttle to TPA and anti gravity (lines
+645 to 652), and `simplified_tuning.c` computes every PID from Betaflight's
+DEFAULTS times the sliders, so the Freestyle tune's explicit `p_roll = 49`
+lines are not what flies once the master is moved: 45 times 1.5 times 1.1
+is the 74 the earlier probe read back. Both are Betaflight doing what
+Configurator does, and both are written down here because a reader of the
+diff would assume otherwise.
+
+**What was measured.** `npm run whoop:gates` on the checked in module, 19
+of 19, the same figures the last physics turn recorded: W2 hover 0.338 of
+stick, W3 5.13 to one at the peak of a punch, W4 78103 rpm, W7 34 ms, W8
+2050 rad/s squared, W9 7.98 m/s, W10 16.39 m/s, W11 0.641, W12 6.42
+percent, W13 2.51 s, W14 identical. Then a scratch probe flew the module
+through the SHELL's own configuration rather than the gates', because the
+gates fly the Champion stock and uncapped and the pilot does not: the
+Freestyle tune with the master at 150, ACTUAL 58 / 58 / 50 at 70 deg/s of
+centre, throttle SCALE 75, a charged 4.35 V cell, perfect link at 250 Hz.
+The Champion stock, the Racing stock, the Freestyle at 100 and the five
+inch on its default were flown through the same script for comparison.
+
+Hover, three seconds after a two second settle:
+
+| configuration | body roll rate RMS | motor 0 std, DShot units | peak |
+|---|---|---|---|
+| shell, Freestyle at 150 | 0.22 deg/s | 18.4 | 61 Hz |
+| Freestyle at 100 | 0.15 | 11.2 | 135 Hz |
+| Champion at 75 | 0.09 | 5.9 | 135 Hz |
+| five inch, default | 0.02 | 3.4 | 92 Hz |
+
+Attitude steady to a hundredth of a degree on all four. No limit cycle
+anywhere; the 61 Hz peak on the hot tune is the D term working the gyro
+hump, at 2.3 DShot units of amplitude.
+
+Rate steps, 400 ms of stick then centre, throttle at the hover:
+
+| axis, stick | shell: setpoint, peak, rise 90, reversal | Champion stock | five inch |
+|---|---|---|---|
+| roll 0.25 | 49, 52 (5 pct over), 27 ms, 3 deg/s | 49, 54 (9), 19 ms, 5 | 55, 65 (19), 32 ms, 11 |
+| roll 1.00 | 580, 584 (1), 36 ms, 2 | 580, 588 (1), 28 ms, 0 | 670, 700 (4), 54 ms, 27 |
+| pitch 0.25 | 49, 52 (5), 28 ms, 3 | 49, 54 (10), 21 ms, 6 | 55, 65 (19), 33 ms, 11 |
+| yaw 0.25 | 44, 51 (15), 8 ms, 7 | 44, 46 (3), 14 ms, 1 | 55, 59 (7), 47 ms, 4 |
+| yaw 1.00 | 500, 569 (14), 18 ms, 60 | 500, 529 (6), 20 ms, 23 | 670, 716 (7), 167 ms, 52 |
+
+Roll sine at plus or minus a quarter stick: the body lags the setpoint by 2,
+5 and 8 ms at 1, 2 and 4 Hz on the shell configuration, 0, 3 and 6 on the
+Champion, 2, 6 and 11 on the five inch, at 103 to 115 percent of amplitude.
+The loop is tight, quick and well damped on every configuration. Whatever is
+hard about the whoop, it is not the controller ringing.
+
+Throttle, from the hover, one second later:
+
+| stick | shell whoop, cap 75 | Champion, no cap | five inch |
+|---|---|---|---|
+| plus 5 percent | 1.36 m/s, 0.73 m | 1.78 m/s | 2.44 m/s |
+| plus 10 | 2.60, 1.47 m | 3.37 | 4.89 |
+| plus 20 | 4.81, 2.87 m | 6.11 | 9.61 |
+| minus 5 | minus 1.40 | minus 1.86 | minus 2.32 |
+| minus 20 | minus 5.29 | minus 6.25 | minus 8.46 |
+
+Per percent of stick the whoop's throttle is the GENTLER of the two. What
+is not gentler is the room: five percent of stick is 0.7 m in a second
+under a 4 m ceiling with gates at half a metre, where the five inch's 1.3 m
+is nothing over a sixty metre field.
+
+Forward flight in angle mode, throttle trimmed for level:
+
+| pitch stick | attitude | speed | stick to hold height | duct left | nose up couple |
+|---|---|---|---|---|---|
+| 0.25 | 5 deg | 0.9 m/s | 41.8 pct (hover 41.9) | 1.097 | 0.12 mN m |
+| 0.50 | 17 deg | 3.3 m/s | 42.4 | 1.076 | 0.41 |
+| 0.75 | 35 deg | 8.3 m/s | 49.6 | 1.050 | 0.85 |
+| 1.00 | 60 deg | 15.4 m/s | 100.0 | 1.067 | 1.30 |
+
+The five inch at the same half stick does 6.5 m/s at 17 degrees. At 3.3
+m/s the whoop's drag budget is 0.069 N and 92 percent of it is the rotor
+momentum drag, `k_rotor_drag` 1.00; the body's own is 0.005 N. Levelled from
+3.3 m/s with the throttle left where it was, half the speed is gone in 0.9 s
+and 2.3 m, and the craft balloons 0.69 m because the throttle that held 17
+degrees level is 4.5 percent more than a hover needs. Pitching back half a
+stick for 400 ms stops it in 2.3 m and balloons 0.37 m.
+
+The pack: hover moves from 41.9 percent of stick on a charged 4.35 V cell to
+45.1 at the Half 4.00 V and 49.8 at 3.60 V, full stick climb from 11.2 m/s
+to 10.1 and 8.7, and five percent of stick from 1.36 m/s to 1.22 and 1.11.
+The mat: the cushion takes the hover stick from 42.5 percent at half a
+metre to 40.0 with the CG 2 cm up, 41.0 at 5 cm.
+
+One duct on a gate pipe at 3.3 m/s, gate material, one arm: peak body rate
+4329 deg/s, 28 degrees of tilt, level again inside a second with the sticks
+centred. At 7 m/s, 8789 deg/s, 57 degrees, and 40 of roll left after a
+second. The five inch at 6 m/s reads 2136 deg/s and 27 degrees. A 23 g
+machine spins fast on an impulse; it also stops fast. Recorded, not judged.
+
+**The verdict on "is something broken".** No. Every gate passes on the
+module as checked in, the five inch's fingerprint is unmoved, the sign
+chains (yaw mixer, pitch inversion at the seam, lip moment, rotor drag
+moment, ground effect facing) each read right, the shell's throttle limit
+reaches TPA in the order the firmware intends, and the loop is well damped
+at every stick position on every shipped configuration. The model is the
+one the last three physics turns recorded, with their trades still standing
+and still written down in `plant.c`: no winding inductance, no ESC current
+ceiling, no no load current, a linear axial inflow that ignores the drop in
+induced velocity in a climb, and the ring state keyed on axial flow alone.
+
+**The verdict on "is it accurate", which is a different question.** The
+plant is a derived and cited model, not a fit to a real whoop's flight, and
+the four numbers that own most of its feel are estimates at the edge of the
+range their own comments give them. In the order they matter to a pilot:
+
+1. `k_rotor_drag` 1.00, the full momentum drag of a shrouded fan. The
+   Air65's duct is a short ring round a 31 mm prop, not the deep shroud the
+   ducted fan literature measures, and an open rotor's fitted figure on the
+   five inch is 0.44. The truth for a whoop ring is somewhere between, and
+   this one number decides how much pitch a speed costs, how fast the craft
+   stops when levelled, and most of the wading feel the comment celebrates.
+   It is the first thing to move if the owner says the whoop feels stuck to
+   the air.
+2. The Freestyle tune at 150 is the default, and it is the hottest thing
+   BetaFPV ship raised by half again, on a plant modelled on the Champion.
+   P74 I118 D54 F54 on roll. Bench clean, but the Champion stock is calmer
+   on every row above: a third of the hover jitter, 6 percent of yaw
+   overshoot against 14, a 23 deg/s reversal on a full yaw snap against 60.
+   One row on the Tune screen puts it back.
+3. The motor time constant, 34 ms on the step and about 32 small signal.
+   `plant.c` argues this is where a 0702 sits and the arithmetic holds with
+   the constants chosen, but the same arithmetic with a 0702 at the top of
+   its plausible inertia and resistance gives 60 ms and at the bottom 20.
+   It is the least certain number in the electrical set and it sets how
+   fast thrust follows the stick.
+4. The climb thrust loss. `axial = 1 - va / pitch_speed` at the whoop's
+   10 m/s of pitch speed in a hover means a 4 m/s climb or a 30 degree nose
+   down at 8 m/s costs 40 percent of thrust before translational lift gives
+   a third of it back; momentum theory, with the induced velocity falling
+   as the climb builds, says nearer 25. The same simplification is in the
+   five inch's calibrated set, so it is a shared trade rather than a whoop
+   bug, but a whoop lives at a far higher fraction of its pitch speed than
+   a five inch ever does, which is why the forward flight rows above want
+   50 percent of stick at 35 degrees.
+
+**What might actually be making it hard, none of which is a defect.** The
+pilot's rates carry across aircraft unless they still hold the other
+machine's stock profile, which is the rule `reseatIfForeign` states and
+`configs/rates.js` argues for; a five inch pilot with their own rates flies
+them on the whoop, and 800 deg/s inside a 1.4 by 2.1 m track is a hard day
+whatever the plant does. The hover sits at 42 to 45 percent of stick under
+the 75 cap and moves 8 points down the stick between a charged cell and an
+empty one. And a RaceGOW track is hard in life: the median RaceGOW5 lap is
+5.9 s against the winner's 2.3, on the real aircraft.
+
+**What was run.** `npm run whoop:gates` 19 of 19. The scratch probes
+(`whoop-probe.mjs`, `pack-probe.mjs`, `contact-probe.mjs`) are in the
+session scratchpad and not in the repository, because they compose the
+shell's configuration and read the module back, which `scripts/flightcheck.js`
+and `scripts/whoop-gates.js` already do for the shipped one. `npm run
+verify` was NOT run: nothing in the plant, the module, the ABI or the build
+changed. `dist/sim.wasm` is untouched. There is no Emscripten in this
+container, so no candidate plant change could have been built or verified
+here even if one had been chosen; the four numbers above are named for the
+owner to choose among, not moved.

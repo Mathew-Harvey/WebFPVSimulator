@@ -41,6 +41,45 @@ import { trackClassOf } from './elements.js';
 import { buildStage, lapFrames } from './stage.js';
 import { buildPalette, GifEncoder } from './gif.js';
 
+/*
+ * THE CARD ANIMATION, written once because four callers have to agree on
+ * it: the builder renders one the moment a room is published, the simulator
+ * does the same through src/share/cardgif.js, scripts/boardgif.js renders
+ * one for a room published before any of this existed, and
+ * scripts/boardpresets.js renders one for each shipped track it places. The
+ * board's own card grid is what all of them are for.
+ *
+ * 384 BY 240 is the card tile's 16 by 10. A square animation in that box
+ * either letterboxes or loses the top of the track to a crop, and the tile
+ * is 16 by 10 because the cards were that shape long before this existed.
+ *
+ * SIX CENTISECONDS A FRAME is about sixteen a second, which is as coarse as
+ * a moving thumbnail can be without stepping. HOW MANY frames is not a
+ * number here any more, and that is the one thing that changed: it was a
+ * flat 60, three and a half seconds a lap whatever the lap, so a 41 m course
+ * went round three times as fast as a 13 m one and a grid of cards had no
+ * common pace to read. exportTrackGif asks the lap instead, at the one speed
+ * LAP_SPEED holds, so a long course is a longer clip rather than a faster
+ * one. The cap is what keeps that affordable: see LAP_FRAMES_MAX.
+ *
+ * A card stays small because of the delay and the frame size, which are the
+ * two numbers still here. Measured on the tracks this board carries, at one
+ * pace: 33 kB for a three gate room and 1.02 MB for the 24 element RaceGOW5
+ * Track 8, against a board that refuses anything over 1.8 MB. What costs is
+ * how much of the frame moves, so a busy track costs more than a bare one,
+ * and dropping the nameplate let the track fill the frame.
+ *
+ * NO NAMEPLATE. The stage lays the track's name in the floor, because a GIF
+ * pasted into a chat travels alone and has to say what it is of. A card does
+ * not travel alone: the board prints the name as a heading directly under
+ * the tile and puts the field size chip in the tile's bottom right corner,
+ * where a long name came out reading "RaceGOW5 Tra". So the card gets the
+ * track and the board gets to write the caption.
+ */
+export const CARD_GIF = {
+  width: 384, height: 240, delayCs: 6, nameplate: false,
+};
+
 /* One frame in sixteen is enough to see every colour the animation uses,
  * because the only things that move are the ribbon and the pane and both
  * keep their colours wherever they are. */
@@ -55,10 +94,10 @@ const nextTick = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 /* WebGL hands back rows from the bottom up and every image format in the
  * world is top down, so somebody has to turn it over. */
-function flipRows(src, dst, size) {
-  const stride = size * 4;
-  for (let y = 0; y < size; y += 1) {
-    const from = (size - 1 - y) * stride;
+function flipRows(src, dst, width, height) {
+  const stride = width * 4;
+  for (let y = 0; y < height; y += 1) {
+    const from = (height - 1 - y) * stride;
     dst.set(src.subarray(from, from + stride), y * stride);
   }
 }
@@ -72,9 +111,18 @@ function flipRows(src, dst, size) {
  * camera, when given, is a fixed viewpoint in document coordinates, an
  * { eye, aim, fovDeg } that stage.js uses instead of framing the track
  * itself. It is how an export is laid over a reference picture.
+ *
+ * size is the square edge and stays the default, because a file somebody
+ * pastes into a group chat should be square. width and height override it
+ * for the one caller that has a shape to fit: the public board's card grid
+ * is 16 by 10, and a square animation in it either letterboxes or loses the
+ * top of the track to a crop. Everything downstream of the two numbers is
+ * the same code, so a 16 by 10 export and a square one differ only in how
+ * much of the floor is in shot.
  */
 export async function exportTrackGif(doc, {
-  size = 512, frames = null, delayCs = 4, onProgress = null, camera = null,
+  size = 512, width = size, height = size,
+  frames = null, delayCs = 4, onProgress = null, camera = null, nameplate = true,
 } = {}) {
   const THREE = await import('three');
 
@@ -103,8 +151,8 @@ export async function exportTrackGif(doc, {
     : frames;
 
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = width;
+  canvas.height = height;
 
   let renderer = null;
   let target = null;
@@ -112,7 +160,7 @@ export async function exportTrackGif(doc, {
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
     renderer.setPixelRatio(1);
-    renderer.setSize(size, size, false);
+    renderer.setSize(width, height, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -125,17 +173,19 @@ export async function exportTrackGif(doc, {
      * 256 entries to spend, so aliasing would be the first thing anybody
      * noticed.
      */
-    target = new THREE.WebGLRenderTarget(size, size, {
+    target = new THREE.WebGLRenderTarget(width, height, {
       samples: 4,
       depthBuffer: true,
       stencilBuffer: false,
     });
     target.texture.colorSpace = THREE.SRGBColorSpace;
 
-    stage = buildStage(THREE, doc, path, { size, camera });
+    stage = buildStage(THREE, doc, path, {
+      width, height, camera, nameplate,
+    });
 
-    const raw = new Uint8Array(size * size * 4);
-    const rgba = new Uint8Array(size * size * 4);
+    const raw = new Uint8Array(width * height * 4);
+    const rgba = new Uint8Array(width * height * 4);
     const total = shots + Math.ceil(shots / PALETTE_STRIDE);
     let done = 0;
 
@@ -143,9 +193,9 @@ export async function exportTrackGif(doc, {
       stage.setFrame(i, shots);
       renderer.setRenderTarget(target);
       renderer.render(stage.scene, stage.camera);
-      renderer.readRenderTargetPixels(target, 0, 0, size, size, raw);
+      renderer.readRenderTargetPixels(target, 0, 0, width, height, raw);
       renderer.setRenderTarget(null);
-      flipRows(raw, rgba, size);
+      flipRows(raw, rgba, width, height);
     };
 
     /* Pass one: a sample of the animation, kept, to choose the palette. */
@@ -165,7 +215,7 @@ export async function exportTrackGif(doc, {
     sample.length = 0;
 
     /* Pass two: every frame, straight into the encoder. */
-    const gif = new GifEncoder({ width: size, height: size, palette, loop: 0 });
+    const gif = new GifEncoder({ width, height, palette, loop: 0 });
     for (let i = 0; i < shots; i += 1) {
       shoot(i);
       gif.addFrame(rgba, delayCs);

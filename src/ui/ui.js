@@ -591,7 +591,6 @@ const DEFAULTS = {
    * falls back to rotation. */
   musicTrack: 'rotation',
   focusTone: false,
-  readout: false,
   /*
    * The radio between the sticks and the flight controller. 'perfect' is
    * the behaviour this shell has always had, an exact packet grid with no
@@ -1568,8 +1567,7 @@ function choice(label, note, choices, current, format, set) {
  *
  * This used to be choice() over [true, false], which meant a two item popup
  * opened for every on and off in the product: Sound, Launch control, Flight
- * log, Performance readout, Binaural tone, and every feature row on the
- * bench. Twelve of them. A popup is the control for "which of these many",
+ * log, Binaural tone, and every feature row on the bench. Twelve of them. A popup is the control for "which of these many",
  * and a popup listing On and Off asks a pilot to travel to a menu to answer
  * a question the row itself could have answered in place.
  *
@@ -2686,8 +2684,6 @@ export class Ui {
     this.announcer.setAttribute('aria-live', 'polite');
     this.announcer.setAttribute('aria-atomic', 'true');
     this.announcer.setAttribute('role', 'status');
-    /* Optional performance readout, off unless the player asks for it. */
-    this.readout = el('div', 'readout', '');
 
     /*
      * THE FRAME. One status bar and one command bar, outside every screen,
@@ -3361,6 +3357,22 @@ export class Ui {
     this.nameDialog.setAttribute('aria-modal', 'true');
     this.nameDialog.setAttribute('role', 'dialog');
 
+    /*
+     * REPORT BUG, AND WHERE IT IS NOT.
+     *
+     * This chip was removed whole and that went too far. The ask was about
+     * one screen: the picture that came with it was the title with the
+     * three cards on it, and a floating button over the first thing a
+     * visitor sees is what was wrong with it. Everywhere else it is the
+     * only thing on screen that says how to tell somebody a thing is
+     * broken, and taking it off every screen left F8, which a phone does
+     * not have.
+     *
+     * So it is back, and it is hidden on the title. The title is the one
+     * screen whose whole job is a first impression, it is the screen the
+     * report was about, and it is one press from any screen that has the
+     * chip on it.
+     */
     this.bugChip = btn('bug-chip', 'Report bug, give feedback');
     this.bugChip.title = 'F8 also opens this.';
     this.bugChip.addEventListener('click', () => this.openBugReport());
@@ -3400,12 +3412,39 @@ export class Ui {
     this.musicNext = btn('music-skip', '›');
     this.musicNext.setAttribute('aria-label', 'Next track');
     this.musicNext.tabIndex = -1;
-    this.musicTitle = el('div', 'music-title', this.musicNow.name);
+    /*
+     * THE NAME IS THE MUTE, because the dock is already the shape of the
+     * control: a chevron, a thing, a chevron. Every media widget anybody
+     * has used puts skip on the arrows and the state of the sound in the
+     * middle, and this one had the arrows wired and a label in the middle
+     * that did nothing. Asked for as "if i click on the music selector, in
+     * the middle it mutes".
+     *
+     * A button rather than a div with a listener, so it has the cursor,
+     * the hit box and the role without any of the three being written by
+     * hand. tabIndex -1 like the two skips beside it: these are pointer
+     * affordances over the world, and a menu whose arrow keys wander into
+     * the corner of the screen is worse than a dock nobody can tab to. The
+     * keyboard's route to the same setting is the Music row under Pilot.
+     *
+     * aria-live stays on it and the text stays the track's name, so the
+     * name is still what is announced when the bed moves on. What the
+     * click does is in the title attribute, which the name needed anyway
+     * because it ellipsises at 11em.
+     */
+    this.musicTitle = btn('music-title', this.musicNow.name);
     this.musicTitle.setAttribute('aria-live', 'polite');
+    this.musicTitle.tabIndex = -1;
     this.musicDock.append(this.musicPrev, this.musicTitle, this.musicNext);
     const keepFocusOff = (e) => e.preventDefault();
     this.musicPrev.addEventListener('mousedown', keepFocusOff);
     this.musicNext.addEventListener('mousedown', keepFocusOff);
+    this.musicTitle.addEventListener('mousedown', keepFocusOff);
+    this.musicTitle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggleMusicMute();
+    });
     this.musicPrev.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -3421,8 +3460,8 @@ export class Ui {
       s.style.display = 'none';
       r.append(s);
     }
-    r.append(this.announcer, this.banner, this.readout, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
-    this.syncBugChip();
+    r.append(this.announcer, this.banner, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
+    this.syncChips();
   }
 
   setShare(share) {
@@ -3819,21 +3858,42 @@ export class Ui {
     if (done) {
       done(value);
     }
-    this.syncBugChip();
+    this.syncChips();
     this.renderMenu();
   }
 
-  syncBugChip() {
-    if (!this.bugChip) {
-      return;
+  /*
+   * The chips that float over the world rather than living on a screen,
+   * and the dock that stacks under them.
+   *
+   * `bug-chip` is the class all three wear and it is a bad name for a base
+   * that Pause also uses. It stays anyway: see the stylesheet, where the
+   * rule is, for what renaming it cost.
+   *
+   * Report bug is on every screen but the title. See the comment where it
+   * is built: the corner over the three cards is a first impression and
+   * the corner over everything else is the only visible way to say that
+   * something is broken.
+   */
+  syncChips() {
+    const dialog = this.nameDialog && !this.nameDialog.hidden;
+    const bug = this.bugChip && !dialog && this.screen !== 'title';
+    if (this.bugChip) {
+      this.bugChip.hidden = !bug;
+      this.bugChip.classList.toggle('on-flight', this.screen === 'flight');
     }
-    const hide = this.nameDialog && !this.nameDialog.hidden;
-    this.bugChip.hidden = hide;
-    this.bugChip.classList.toggle('on-flight', this.screen === 'flight');
     /* Flight only. Paused already has Resume as its first row, and every
      * other screen has somewhere to go on it. */
     if (this.pauseChip) {
-      this.pauseChip.hidden = hide || this.screen !== 'flight';
+      this.pauseChip.hidden = dialog || this.screen !== 'flight';
+      this.pauseChip.classList.toggle('on-flight', this.screen === 'flight');
+    }
+    /* The dock takes the second slot when there is a chip in the first and
+     * the corner when there is not, which is the title. Written as a class
+     * rather than as a top in pixels here, so the status bar's own offset
+     * stays in the stylesheet with the rest of the stacking. */
+    if (this.musicDock) {
+      this.musicDock.classList.toggle('under-chip', Boolean(bug));
     }
     this.syncMusicDock();
   }
@@ -3857,6 +3917,42 @@ export class Ui {
     }
   }
 
+  /*
+   * Mute, and back to where it was.
+   *
+   * Zero IS the off state already: the Music stepper under Pilot prints
+   * Off at zero, applyMix stops the bed at zero, and the dock has dimmed
+   * itself on `musicLevel <= 0` since it was built. So this writes the one
+   * number rather than inventing a second flag that could disagree with it.
+   *
+   * The level it restores is the one it muted, held for this visit only. A
+   * pilot who mutes, closes the tab and comes back gets the default rather
+   * than their own number, because the alternative is a settings key whose
+   * whole job is to remember a number the pilot can see and set in one
+   * press on the row it came from.
+   *
+   * onSettings is what actually stops the sound: applyMix in main.js reads
+   * the level and the enable off the settings object. Without it the dock
+   * would dim and the bed would play on.
+   */
+  toggleMusicMute() {
+    const s = this.settings;
+    if (s.musicLevel > 0) {
+      this.musicLevelWas = s.musicLevel;
+      s.musicLevel = 0;
+    } else {
+      s.musicLevel = this.musicLevelWas || DEFAULTS.musicLevel;
+    }
+    saveSettings(s);
+    if (this.onSettings) {
+      this.onSettings(s);
+    }
+    this.syncMusicDock();
+    /* The Music row prints Off or a number, and it is one screen away. */
+    this.renderMenu();
+    this.announce(s.musicLevel > 0 ? 'Music on' : 'Music muted');
+  }
+
   setMusicNow(st) {
     if (!st) {
       return;
@@ -3876,10 +3972,12 @@ export class Ui {
       || !this.settings.sound;
     this.musicDock.hidden = hide;
     this.musicDock.classList.toggle('on-flight', this.flying());
-    this.musicDock.classList.toggle('is-muted', this.settings.musicLevel <= 0);
+    const muted = this.settings.musicLevel <= 0;
+    this.musicDock.classList.toggle('is-muted', muted);
     const name = (this.musicNow && this.musicNow.name) || MENU_TRACKS[0].name;
     this.musicTitle.textContent = name;
-    this.musicTitle.title = name;
+    /* The name, because it ellipsises, and then what the click does. */
+    this.musicTitle.title = muted ? `${name}. Click to unmute.` : `${name}. Click to mute.`;
   }
 
   bugSnapshot() {
@@ -4026,7 +4124,7 @@ export class Ui {
     this.nameDialog.textContent = '';
     this.nameDialog.append(box);
     this.nameDialog.hidden = false;
-    this.syncBugChip();
+    this.syncChips();
 
     /* Same in-flight guard the feel dialog carries: a ticket that is still
      * POSTing must not lose its dialog to Escape, the backdrop or Cancel,
@@ -4300,7 +4398,7 @@ export class Ui {
     this.nameDialog.textContent = '';
     this.nameDialog.append(box);
     this.nameDialog.hidden = false;
-    this.syncBugChip();
+    this.syncChips();
 
     /*
      * While the POST is in flight, nothing may close the dialog. Escape or
@@ -4655,20 +4753,38 @@ export class Ui {
           note: 'The closed loop, the plant, and every Betaflight 4.5.1 key. Opens the wiki on webfpv.org.',
         },
         {
-          label: 'Leaderboard',
+          label: 'Tracks and Times',
           action: 'leaderboard',
-          note: 'The public board, with every track and its times. Opens in a new tab.',
+          note: 'The public page, with every published track and its times. Opens in a new tab.',
         },
         {
           label: 'Credits',
           action: 'credits',
           note: 'Who made this, who flew it, and whose work it stands on.',
         },
-        {
-          label: 'Report bug, give feedback',
-          action: 'reportbug',
-          note: 'A bug ticket or flight feel feedback, both land on the board. The map, graphics and browser go with it. F8 does the same, including from flight.',
-        },
+        /*
+         * THE WAY BACK TO THE GATE, AND IT IS A ROW NOW.
+         *
+         * It was the Escape key and a line of legend text at the foot of
+         * the screen. The text was a hit area, which nobody could tell by
+         * looking at it: it sits in the row that reads "Move  Choose  Esc",
+         * which is a key legend everywhere else in the shell, so a pilot
+         * who had answered the gate had one visible route back and it was a
+         * key. Reported as exactly that.
+         *
+         * It goes last, under Credits, because it is the only row that
+         * leaves this screen upwards rather than opening something on it.
+         * There was no room for an eleventh row here and there still is
+         * not: this one is affordable because Report bug, give feedback
+         * left the list at the same time. That form is the floating chip
+         * again, on every screen except this one, and on F8.
+         *
+         * Named for where it lands rather than called Back, for the reason
+         * legendFor gives: Back on the front page reads like it leaves the
+         * game, and a pilot looking for the other mode or the other machine
+         * is looking for the screen that offers both.
+         */
+        { label: this.gateLabel(), action: 'mode-gate', note: 'The three cards: five inch racing, whoop racing or freestyle. Changing your mind about any of it starts here.' },
       ];
     }
     if (this.screen === 'howto') {
@@ -4810,7 +4926,7 @@ export class Ui {
           disabled: !listing || !listing.shareId,
         },
         {
-          label: 'The board on the web',
+          label: 'Tracks and Times on the web',
           action: 'leaderboard',
           note: 'The public page, for sending somebody a link. Everything on it is in here too. Opens in a new tab.',
         },
@@ -5121,12 +5237,6 @@ export class Ui {
           (n) => (n === 0 ? 'Uncapped' : `${n} fps`),
           (n) => { s.fpsCap = n; },
         ),
-        toggle(
-          'Performance readout',
-          'Frame rate and draw counts, for tuning your machine.',
-          s.readout,
-          (v) => { s.readout = v; },
-        ),
         { label: 'Sound', section: true },
         toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
         stepper('Volume', 'Overall level. Zero to ten.', `${s.volume}`, (d) => {
@@ -5392,7 +5502,7 @@ export class Ui {
               disabled: true,
               note: this.runPosted.improved === false
                 ? `The board already holds a better run of yours, ${formatScore(this.runPosted.score)}. Only your best is kept.`
-                : `That run is on the freestyle board.${this.runPosted.rank != null ? ` Rank ${this.runPosted.rank}.` : ''}`,
+                : `The board kept that run.${this.runPosted.rank != null ? ` Rank ${this.runPosted.rank}.` : ''}`,
             }
             : {
               label: 'Post this run',
@@ -5415,9 +5525,9 @@ export class Ui {
                     : `${formatScore(run.total)} from ${run.tricks} tricks. One entry per pilot on the board, and only your best.`)),
             },
           {
-            label: 'Open the board',
+            label: 'Open Tracks and Times',
             action: 'leaderboard',
-            note: 'The public freestyle table, and every published track beside it.',
+            note: 'Every published track, and the times flown on it.',
           },
           feelItem(),
           { label: 'Back to title', action: 'title' },
@@ -5440,12 +5550,12 @@ export class Ui {
         remixAction(listing),
         editOwnAction(listing),
         {
-          label: 'Open the board',
+          label: 'Open Tracks and Times',
           action: 'leaderboard',
           disabled: !(listing && (listing.published || listing.shareId || this.coursePublished)),
           note: listing && listing.name
             ? `The public page for ${listing.name}.`
-            : 'The public board. A track has to be published before it has a page.',
+            : 'The public page. A track has to be published before it has one.',
         },
         feelItem(),
         { label: 'Back to title', action: 'title' },
@@ -8121,7 +8231,7 @@ export class Ui {
      * is a readout that never changes. */
     this.syncScoreVisible();
     this.renderMenu();
-    this.syncBugChip();
+    this.syncChips();
     /* Last, and unconditionally. Last because a listener is entitled to
      * read a settled screen; unconditionally because show() is also how
      * a screen is re-entered, and the shell side of this is idempotent by
@@ -9512,18 +9622,6 @@ export class Ui {
     }
   }
 
-  setReadout(lines) {
-    /*
-     * 'block', not ''. The stylesheet's own rule for .readout is
-     * `display: none`, so clearing the inline style hands the element back
-     * to that rule and it stays hidden. The setting has therefore never
-     * shown anything since the rule was written: the text was being
-     * computed and written every frame into an element nobody could see.
-     */
-    this.readout.style.display = this.settings.readout ? 'block' : 'none';
-    this.readout.textContent = this.settings.readout ? lines : '';
-  }
-
   /* Cursor movement and selection, shared by keyboard and sticks. Each
    * lands a small click through onUiSound, and the sound is made HERE, in
    * the one place each gesture funnels through, so the keyboard, the
@@ -9751,9 +9849,9 @@ export class Ui {
       out.push({ keys: [], text: this.cardScreen() ? 'Tap a card' : 'Tap a row' });
       if (this.screen !== 'title') {
         out.push({ keys: [], text: 'Back', action: 'back' });
-      } else if (!this.onGate()) {
-        out.push({ keys: [], text: this.gateLabel(), action: 'mode-gate' });
       }
+      /* The title's own way out is the last row of its menu now, where a
+       * thumb can find it without reading the legend. See titleItems. */
       return out;
     }
     const out = [];
@@ -9775,37 +9873,29 @@ export class Ui {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back' });
     } else if (!this.onGate()) {
       /* NOT ON THE GATE. The gate is the root and Escape does nothing
-       * there, so offering the key is the joke the block below says it is
-       * avoiding. onGate() is the one definition of "is the gate up", and
-       * this asks it rather than reading the two flags itself: `this.mode`
-       * alone was the proxy once and it stopped being one the moment a
-       * link could answer the mode without answering the aircraft. */
+       * there, so offering the key is a joke. onGate() is the one
+       * definition of "is the gate up", and this asks it rather than
+       * reading the two flags itself: `this.mode` alone was the proxy once
+       * and it stopped being one the moment a link could answer the mode
+       * without answering the aircraft. */
       /*
-       * The title answers Escape now: it reopens the gate, which is the
-       * only way to change mode or aircraft without reloading. It is named
+       * The title answers Escape: it reopens the gate, which is the only
+       * way to change mode or aircraft without reloading. It is named
        * rather than called Back, because Back on the front page reads like
        * it leaves the game, and because a pilot looking for the other mode
        * or the other machine is looking for the screen that offers both.
        *
-       * Not on the gate itself, which has nothing behind it: a legend
-       * offering a key that does nothing is worse than no legend.
+       * THIS IS THE KEY HINT AND NOTHING ELSE NOW. It was a hit area as
+       * well, because for a while it was the only route: the menu had no
+       * room for an eleventh row and a pilot who answered Freestyle could
+       * reach the town and could not reach a race track again. A clickable
+       * word in the row that reads "Move  Choose  Esc" is a key legend
+       * everywhere else in the shell, so nobody could tell it was a
+       * button, which is how it was reported a second time. The route is
+       * the last row of the menu now and this is back to being what it
+       * looks like.
        */
-      /*
-       * AND IT IS CLICKABLE, because until now it was the key and nothing
-       * else. The row above the legend is Track in Race and Map in
-       * Freestyle and only ever lists the worlds of the mode you are in, so
-       * a pilot who answered Freestyle could reach the town and could
-       * not reach a single race track again: the one route was this
-       * key, written here and pressable nowhere. Reported as being in a
-       * freestyle map with no way back to a race one.
-       *
-       * It goes here rather than in the menu because the menu has no room:
-       * an eleventh row put the title 25 px into overflow at 1600 by 900
-       * and `npm run lint:shell` is right to refuse it. The words are
-       * already on the screen, in the place that answers "how do I get
-       * out"; all they were missing was a hit area.
-       */
-      out.push({ keys: [pad ? 'B' : 'Esc'], text: this.gateLabel(), action: 'mode-gate' });
+      out.push({ keys: [pad ? 'B' : 'Esc'], text: this.gateLabel() });
     }
     return out;
   }
@@ -10878,12 +10968,6 @@ export class Ui {
       || code === 'KeyW' || code === 'KeyS' || code === 'KeyA' || code === 'KeyD';
     if (repeat && !nav) {
       return this.screen !== 'flight';
-    }
-    if (code === 'F3') {
-      this.settings.readout = !this.settings.readout;
-      saveSettings(this.settings);
-      this.setReadout('');
-      return true;
     }
     if (code === 'F8') {
       this.openBugReport();

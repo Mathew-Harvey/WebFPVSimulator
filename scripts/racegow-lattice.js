@@ -1,34 +1,35 @@
 /*
  * racegow-lattice.js: the shipped RaceGOW tracks, each as a lattice of
- * 27 inch squares, and the script that turns them into
+ * 28 inch gates, and the script that turns them into
  * src/trackbuilder/presets.js.
  *
- * WHY A LATTICE. A RaceGOW track is built from one length of 3/4 inch PVC,
- * 27 inches, and right angle fittings. So every gate is a 27 inch square,
- * every gate stands square to one of two axes or lies flat, and the distance
- * between any two things is a whole number of 27 inch units. The official
- * animation of a track is therefore a picture of a lattice, and reading it
- * is counting: which unit squares are lit, in which order, flown which way.
- * That reading is written here as data, one small object per track, and
- * this script does the arithmetic. Run it and presets.js is rewritten:
+ * WHY A LATTICE. A RaceGOW track is built from cut lengths of 3/4 inch PVC
+ * and right angle fittings. So every gate is a square, every gate stands
+ * square to one of two axes or lies flat, and the distance between any two
+ * things is a whole number of gate units. The official animation of a track
+ * is therefore a picture of a lattice, and reading it is counting: which
+ * unit squares are lit, in which order, flown which way. That reading is
+ * written here as data, one small object per track, and this script does
+ * the arithmetic. Run it and presets.js is rewritten:
  *
  *   node scripts/racegow-lattice.js
  *
- * WHAT ONE SQUARE IS. Two parallel pipes 27 inches apart, centre to centre,
- * leave 27 inches less one pipe of daylight between them, so the clear
- * opening is that and the frame tube is drawn on the lattice line. Adjacent
- * squares then share a pipe, which is how the real thing is built. An
- * elevated square is a gate with its sill at a whole number of units, on
- * legs to the floor that are the same pipe as the square below it, so a
- * column of squares is a tower and a row of them is a rail with openings
- * under and over it.
+ * WHAT ONE SQUARE IS. Two parallel pipes leaving 28 inches of daylight
+ * between them, which is RaceGOW's maximum opening and what everything else
+ * in this project is built around. The pipes are therefore 28 inches plus
+ * one pipe apart, centre to centre, which is what UNIT is below, and the
+ * frame tube is drawn on the lattice line. Adjacent squares share a pipe,
+ * which is how the real thing is built. An elevated square is a gate with
+ * its sill at a whole number of units, on legs to the floor that are the
+ * same pipe as the square below it, so a column of squares is a tower and a
+ * row of them is a rail with openings under and over it.
  *
  * WHAT A POLE IS. The animation lights a full height panel beside a pole,
  * which is what RaceGOW's pole rule means: fly past it on this side, at any
  * height. That is the builder's marker, whose scoring square stands on the
  * pass side as tall as the pole. The pole itself is the gate's own upright
  * carried on, and it stands at RaceGOW's published 14 inches from the gate
- * centre, which on a 27 inch lattice is half an inch outboard of the stile.
+ * centre, which on this lattice is half an inch inboard of the stile.
  *
  * THE LAP is a string: one token per pass, a square's letter with the sign
  * of travel along its axis, or a pole's key on its own.
@@ -55,13 +56,39 @@ import { fileURLToPath } from 'node:url';
 import {
   createTrack, createElement, createSequenceEntry, normalize, toPlain,
 } from '../src/trackbuilder/model.js';
-import { PIPE_OD, POLE_FROM_GATE_MIN } from '../src/trackbuilder/racegow.js';
+import { GATE_OPENING_MAX, PIPE_OD, POLE_FROM_GATE_MIN } from '../src/trackbuilder/racegow.js';
 import { IN } from '../src/units.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
-/* One length of pipe, and one unit of everything. */
-export const UNIT = 27 * IN;
+/*
+ * ONE UNIT OF EVERYTHING, AND IT IS SET BY THE GATE RATHER THAN BY THE PIPE.
+ *
+ * It was 27 inches, one length of shop pipe, because that is what RaceGOW's
+ * pipe rule tells you to cut: "20 sections at 26.5 to 27.25 inches". Two
+ * pipes 27 inches apart centre to centre leave 27 less one pipe of daylight,
+ * so the clear opening came out at 25.95 inches and every track was built to
+ * that.
+ *
+ * That is a quarter inch under RaceGOW's own maximum and it made this the
+ * one place in the project where a RaceGOW gate was not 28 inches. The
+ * builder's default opening is 28, its preset is 28, scene.js builds a room
+ * around 28 and src/game/track.js scales the aircraft against 28. A pilot
+ * who flew a shipped track and then built one got two different gates.
+ *
+ * So the unit is now derived from the gate: one clear opening plus one pipe,
+ * which is exactly the centre to centre distance a 28 inch opening implies.
+ * The whole lattice scales with it, which is what the season doc requires,
+ * "you must scale the entire track up equally based on your gate size", and
+ * every distance in the specs below is in units so nothing else moves.
+ *
+ * What it costs: 29.05 inches between adjacent gate centres rather than 27.
+ * Rule 3 wants 27 to 33, so the old spacing sat exactly on the minimum and
+ * the new one sits in the middle of the range. What it buys, besides the
+ * gate: a two high stack's second centre lands at 43.05 inches, where rule 5
+ * asks for 42 or more, and at 27 inch units it landed at 39.98 and did not.
+ */
+export const UNIT = GATE_OPENING_MAX + PIPE_OD;
 
 /*
  * THE TRACKS.
@@ -276,11 +303,18 @@ export const TRACKS = [
   },
 ];
 
-/* A lattice point in the room, in metres. */
+/*
+ * A lattice point in the room, in metres.
+ *
+ * The unit is UNIT and not a second copy of 27: this held the literal while
+ * the frames were sized from UNIT, so the two would have come apart the
+ * moment either moved, which is exactly what changing the gate size does.
+ * The origin is still inches from the room's near left corner.
+ */
 function place(track, x, y) {
   return {
-    x: (track.origin[0] + x * 27) * IN,
-    y: (track.origin[1] + y * 27) * IN,
+    x: track.origin[0] * IN + x * UNIT,
+    y: track.origin[1] * IN + y * UNIT,
   };
 }
 
@@ -448,21 +482,28 @@ const HEADER = `/*
  * one lap, gate by gate, and those animations are what these tracks are
  * built from, every frame of them.
  *
- * They can be built exactly because the kit is a lattice. Every pipe is 27
- * inches, every fitting is a right angle, so every gate is a 27 inch square
- * standing square to one of two axes or lying flat, and every distance is a
- * whole number of 27 inch units. Reading a track is counting which unit
- * squares the animation lights, in what order, flown which way. The count
- * for each track is in scripts/racegow-lattice.js, and this file is what
- * that script writes. A track that is not in that script is not here, which
- * is why the set is the size it is: the earlier six were reconstructions
- * from a single render, close in shape and wrong in detail, and the owner
- * replaced them.
+ * They can be built exactly because the kit is a lattice. Every fitting is
+ * a right angle, so every gate is a square standing square to one of two
+ * axes or lying flat, and every distance is a whole number of gate units.
+ * Reading a track is counting which unit squares the animation lights, in
+ * what order, flown which way. The count for each track is in
+ * scripts/racegow-lattice.js, and this file is what that script writes. A
+ * track that is not in that script is not here, which is why the set is the
+ * size it is: the earlier six were reconstructions from a single render,
+ * close in shape and wrong in detail, and the owner replaced them.
+ *
+ * EVERY GATE IS 28 INCHES, which is RaceGOW's maximum and the size the rest
+ * of this project is built around: the builder's only micro preset, the room
+ * scene.js builds, and the scale src/game/track.js measures the aircraft
+ * against. The unit is therefore 28 inches plus one pipe, 29.05, which is
+ * what two gates sharing a pipe are apart centre to centre. These tracks
+ * were generated on a 27 inch unit once, which left a 25.95 inch opening and
+ * a two high stack an inch under rule 5's minimum.
  *
  * A pole is a marker whose pass panel is the animation's own: full height,
- * one side. It stands on the gate's stile line at RaceGOW's 14 inches from
- * the gate centre. The start gate is the first pass of the lap and the lap
- * closes on it.
+ * one side. It stands at RaceGOW's 14 inches from the gate centre, half an
+ * inch inboard of the stile. The start gate is the first pass of the lap and
+ * the lap closes on it.
  *
  * CREDIT GOES TO THE DESIGNER, one per track, as the site names them.
  */

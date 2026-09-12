@@ -700,13 +700,6 @@
         max-width: min(92vw, 22em);
       }
 
-      .readout {
-        position: absolute; right: 16px; top: 14px; display: none;
-        font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: var(--slate); white-space: pre; text-align: right;
-        text-shadow: 0 1px 3px rgba(0,0,0,0.9);
-      }
-
       /* Screens. */
       .screen {
         position: absolute; inset: 0; pointer-events: none;
@@ -3657,6 +3650,26 @@
         background: var(--mint); border-color: var(--mint);
         color: var(--deep); font-weight: 600;
       }
+      /*
+         THE FLOATING CHIPS. Report bug in the first slot on every screen
+         but the title, Pause in the second and only in flight.
+
+         THE NAME IS WRONG AND IT STAYS. Three buttons wear this class and
+         only one of them is the bug chip, so it was renamed to
+         .corner-chip, and that rename broke the shell twice for a live
+         pilot. Behind Cloudflare, webfpv.org serves this file with
+         max-age=0 and src/ui/ui.js with max-age=14400: the stylesheet
+         updates on the next request and the script is four hours behind
+         it. A class name is the contract between the two halves, so a
+         renamed one leaves every chip in the old script with no rule at
+         all, which drops three absolutely positioned buttons into document
+         flow at the top left of a race.
+
+         The whole JS graph is cached together, so it stays consistent with
+         itself; HTML and CSS against JS is the one seam that can split. Do
+         not rename a class the shell writes from script unless the browser
+         cache TTL on that host has been fixed first.
+      */
       .bug-chip {
         position: absolute; top: 16px; right: 16px; z-index: 7;
         pointer-events: auto;
@@ -3667,7 +3680,7 @@
         box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
       }
       /* Live flight: same corner, a shade quieter so the FPV frame still
-         reads, still a real button. Click pauses, then opens the form. */
+         reads, still a real button. */
       .bug-chip.on-flight {
         background: rgba(16, 22, 17, 0.55);
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
@@ -3675,13 +3688,17 @@
       .bug-chip:hover { border-color: var(--sakura); color: var(--sakura); }
       .bug-chip[hidden] { display: none; }
 
-      /* Music skip. Tiny, out of the FPV instruments. Menus park it under
-         the bug chip at the top right, over the open world rather than
-         over the list. Flight puts it top left, away from the timer, the
-         pack, and the bug chip. Buttons never take focus, so a click
-         cannot steal Space from throttle. */
+      /* Music skip. Tiny, out of the FPV instruments. Menus park it at the
+         top right, over the open world rather than over the list; it had
+         the second slot there while the bug chip had the first, and it has
+         the corner now. Flight puts it top left, away from the timer, the
+         pack, and Pause. Buttons never take focus, so a click cannot steal
+         Space from throttle. */
+      /* The corner when nothing is above it, the second slot when the bug
+         chip is. syncChips sets the class, because which screen carries the
+         chip is a fact about the shell and not about the stylesheet. */
       .music-dock {
-        position: absolute; right: 16px; top: 52px; z-index: 6;
+        position: absolute; right: 16px; top: 16px; z-index: 6;
         display: flex; align-items: center; gap: 4px;
         pointer-events: auto;
         padding: 3px 6px 3px 3px; border-radius: 4px;
@@ -3717,7 +3734,9 @@
        * version of this lived two thousand lines earlier and did nothing.
        */
       .bar-shown .bug-chip { top: calc(var(--bar-top) + 8px); }
-      .bar-shown .music-dock { top: calc(var(--bar-top) + 44px); }
+      .bar-shown .music-dock { top: calc(var(--bar-top) + 8px); }
+      .music-dock.under-chip { top: 52px; }
+      .bar-shown .music-dock.under-chip { top: calc(var(--bar-top) + 44px); }
 
       /*
        * PAUSE, under the bug chip, at the same right edge and in the same
@@ -3745,10 +3764,22 @@
         font: 700 16px/1 var(--ui-font); cursor: pointer;
       }
       .music-skip:hover { background: rgba(232, 168, 184, 0.32); color: var(--sakura); }
+      /* The name is the mute, so it is a button and has to stop looking
+         like one: no border, no fill, the dock's own ground. The padding
+         is what makes it a hit box rather than a line of text, and it is
+         the only thing here that is not what a div would have given. */
       .music-title {
+        appearance: none; border: 0; background: none; border-radius: 3px;
         max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        font-size: 11px; letter-spacing: 0.04em; color: var(--cream);
+        padding: 4px 6px; cursor: pointer;
+        font: 11px/1.2 var(--ui-font); letter-spacing: 0.04em; color: var(--cream);
       }
+      .music-title:hover { background: rgba(232, 168, 184, 0.14); color: var(--sakura); }
+      /* Muted. The dock is already at half opacity, so the line through the
+         name is what says this is a state and not a dim screen: a reader
+         who cannot see the difference between 0.5 and 1.0 can see a rule
+         through a word. */
+      .music-dock.is-muted .music-title { text-decoration: line-through; }
       @media (max-width: 520px) {
         .music-title { max-width: 6.5em; font-size: 10px; }
       }

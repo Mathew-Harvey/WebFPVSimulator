@@ -34026,7 +34026,521 @@ of 522, `whoop:gates` 21 of 21, `micro:check`, `lint:quality` 56 of 56. The
 whoop was photographed in the Quad room after the hoop moved: four ducts with
 their bumper rings still reading as rings, flush with the duct wall.
 
-## Round 50: the line flies at one pace, whatever the track
+## Round 50: a room's card is a lap of it, and a RaceGOW gate is 28 inches
+
+Four things, in two repositories. The board's half is in its own
+PROGRESS-less repo and its commit message carries the argument; this is
+the simulator's half, plus the one change that is wholly here.
+
+**THE CARD ANIMATION.** The board's card grid drew a plan for every track.
+For a sixty metre field that is right and costs nothing: plan.js draws the
+flown line through twenty gates straight from the listing. For a RaceGOW
+room it is an almost empty rectangle with a dot in the middle, and the one
+thing a plan cannot show, height, is the thing a room track is built out
+of. So a room's card is now an animation of its lap.
+
+The board renders nothing and is not going to: it is one Node service and
+one Postgres, with no WebGL and no Three. So the browser that publishes a
+room makes the picture, seconds after the publish, when the document, the
+edit key and a live GL context are all in one place for the only time. That
+is `src/share/cardgif.js`, called from the builder's Publish dialog and from
+the simulator's own Publish, and it cannot throw: a refused context leaves
+the author with a published track and a plan on its card, never with an
+error about a picture.
+
+`exportTrackGif` grew `width` and `height` beside `size`, and `buildStage`
+grew the aspect that follows from them, because the card tile is 16 by 10
+and a square animation in it either letterboxes or loses the top of the
+track to a crop. `CARD_GIF` is the four numbers, written once: 384 by 240,
+sixty frames at six centiseconds. The chat share is unchanged at 512 square
+and three hundred frames. Measured output on the rooms is 20 to 280 kB
+against the share's 3.4 MB, which is what makes a grid of them reasonable.
+
+`scripts/boardgif.js` is the same render reached through headless Chromium,
+for the rooms published before any of this existed, whose authors' edit keys
+are in browsers nobody still has. It needs `BOARD_ADMIN_TOKEN`, which is the
+only reason that variable exists.
+
+**28 INCH GATES, AND THE LATTICE THAT FOLLOWS.** The owner: "all racegow and
+whoop tracks should have 28 inch gates". They did not. `scripts/racegow-lattice.js`
+had `UNIT = 27 * IN`, one length of shop pipe, because that is what RaceGOW's
+pipe rule says to cut. Two pipes 27 inches apart leave 27 less one pipe of
+daylight, so every shipped RaceGOW track had a 25.95 inch opening while the
+builder's default was 28, `scene.js` built the room around 28 and
+`src/game/track.js` scaled the aircraft against 28. A pilot who flew a
+shipped track and then built one got two different gates.
+
+`UNIT` is now `GATE_OPENING_MAX + PIPE_OD`, 29.05 inches, so the clear
+opening is exactly 28 and the whole lattice scales with it, which is what
+the season doc requires: "you must scale the entire track up equally based
+on your gate size". `place()` was holding a second copy of the 27 as a
+literal while the frames were sized from UNIT, so it would have come apart
+the moment either moved; it reads UNIT now.
+
+What it fixed beyond the gate: a two high stack's second opening now centres
+at 43.05 inches where rule 5 asks for 42 or more. At 27 inch units it
+centred at 39.98 and broke it, and nothing caught that, because the rule is
+quoted in racegow.js and checked by warnings.js on an author's track and
+never on the shipped ones. Each track moved at most 8 cm in the 10 by 12 m
+room, because the origins are in inches and only the lattice scaled.
+
+**THE 24 INCH PRESET IS GONE.** `MICRO_GATE_PRESETS` offered RaceGOW 28 and
+RaceGOW 24, the second because the published 4 by 6 foot envelope is quoted
+at the minimum. One size everywhere is the point of a series where everybody
+builds the same track in their own living room, so the tool now offers one.
+`GATE_OPENING_MIN` stays where it is: the inspector still takes any number
+an author types and warnings.js still checks the 24 to 28 range against it,
+so a pilot whose own pipe is shorter is told their track is legal rather
+than stopped.
+
+**THE PAGE IS CALLED TRACKS AND TIMES.** The board renamed itself, so the
+rows and buttons here that name it as a destination follow: the map screen's
+"Tracks and Times on the web", the pause menu's row, the results screens'
+"Open Tracks and Times", the builder's own button after a publish. Prose
+that uses "the board" as a common noun is untouched, because a track is
+still on the board and the board still answers a request.
+
+One line was not a rename but a correction. A posted freestyle run was told
+"That run is on the freestyle board", and the board's page no longer shows
+one. It says "The board kept that run" with the rank, which is what is
+still true: `/api/runs` is untouched and still stores and ranks them.
+NOTHING READS THEM BACK. `fetchFreestyleRuns` in `src/share/board.js` has no
+caller and had only ever had one, the page that was removed. That is a
+decision for the owner, not for this round: either the table comes back
+somewhere or the posting goes, and until then a pilot is told the truth.
+
+**Checks, run this turn.** `check:clip` 515 of 515 on the branch and 522 of
+522 after the merge with Round 49's new ones, `micro:check` 94 of 94,
+`gif:selftest` 38 of 38, `whoop:gates` 21 of 21, `check:path` 12 of 12,
+`check:orbit` 17 of 17, `lint:frame` 34 of 34, `lint:board` PASS,
+`lint:nouns` PASS, `lint:presets` 6 of 6. A card was rendered through
+`scripts/trackgif.js` at both the old and the new gate size and looked at,
+and `scripts/boardgif.js` was run end to end against a board on a scratch
+database, which is where the 20 kB and 280 kB above come from.
+
+`npm run verify` was NOT run. Nothing here touches `src/native`, the
+patches, the WASM build or the input path: the changes are a GIF encoder's
+frame size, a track document's dimensions and some labels. The determinism
+trace cannot see any of it, and a green run of it would be evidence about
+something else. Say so rather than imply otherwise.
+
+## Round 51: the way back is a row, and the corner is clear
+
+**The ask, in the owner's words.** "this page for all 3 game types should
+have a back button, currently the only can be done with esc key" and "also
+remove the bug report, the osd of the stick hz etc". The picture was the
+title with a way answered: the three cards gone, the menu up, and the top
+right corner holding a bug chip and a performance readout.
+
+### The way back
+
+Answering the gate puts the menu up and leaves the gate behind it. The only
+route back was the Escape key, written into the legend at the foot of the
+screen as "Esc  What to fly".
+
+That line WAS a hit area. Round 39 made it clickable for exactly this
+complaint and recorded why it went there rather than in the menu: "the menu
+has no room, an eleventh row put the title 25 px into overflow at 1600 by
+900 and `npm run lint:shell` is right to refuse it". The fix was right about
+the route and wrong about the affordance. That line sits in the row that
+reads "Move  Choose  Esc", which is a key legend on every other screen in
+the shell, so nothing about it says button, and it was reported a second
+time as a screen with no way back.
+
+So it is the last row of the menu now, under Credits, on all three ways in:
+nine rows on either racing card, ten on Freestyle where the Trick list row
+is. It is still named "What to fly" rather than "Back", for Round 39's own
+reason: Back on the front page reads like it leaves the game, and a pilot
+looking for the other mode or the other machine is looking for the screen
+that offers both. The legend keeps the key and loses the hit area, so it is
+what it looks like again.
+
+The eleventh row problem did not go away. It was paid for, below.
+
+### The corner
+
+**The bug chip.** A floating button in the top right of every screen,
+including the first thing a visitor sees. Gone, with its row on the title.
+The FORM is not gone: F8 still opens it, and it has a row on the pause menu
+now, beside Flight feel, which is the form it is a sibling of and the screen
+a pilot is already looking at when something has just gone wrong. A row and
+not only a key, because a phone has no F8. That row is what paid for the
+Back row on the title.
+
+`.bug-chip` was the class for the chip base and was worn by three buttons,
+only one of which was the bug chip. It is `.corner-chip` now. Pause and the
+thumb sticks' Pause both move up into the 16 px slot the bug chip had, and
+so does the music dock on menus, which had the second slot because the chip
+had the first.
+
+**The performance readout.** Frame rate, draw calls, triangles, the render
+scale and "stick 0 Hz pad, 16 Hz sampled, 250 Hz link", top right, behind a
+Settings switch and an undocumented F3. All of it removed: the element, the
+stylesheet rule, the switch, the key and the per frame string building in
+main.js.
+
+Every number is still measured. `fps` and `renderStats` are live in the
+frame body, `input.stats()` answers the stick rate, `window.__renderStats`
+and the debug snapshot still carry them, and `scripts/quality-check.js` and
+`scripts/device-check.js` read the same figures out of a real browser. That
+is where a performance number belongs: in a check that can fail, not in a
+corner a pilot reads while flying. A note in main.js says so where the
+block used to be.
+
+**Checks, run this turn.** `lint:shell` PASS, which is the one that matters
+here: it walks every screen, counts the stops and measures the overflow, and
+the title is 9 stops at 0 px on the race way. It also reported Quad improved
+from 55 px to 10 and Pilot from 658 to 613, because the Performance readout
+switch left the Graphics list, so `tests/shell-baseline.json` was re-recorded
+with `--record`. That is tightening a baseline the check had gone under, not
+moving a threshold to pass.
+
+Then `lint:boot` 9 of 9, `lint:quality` 56 of 56, `lint:responsive` PASS,
+`lint:attract` PASS, `lint:board` PASS. `node scripts/shots.js` drove the
+real shell through all three cards and photographed each title: Five inch
+racing and Whoop racing both end "Credits | What to fly", Freestyle ends
+"Credits | What to fly" with Trick list above, and the corner is empty but
+for the music dock. The pause menu was read back out of the live `ui` and
+carries "Report bug, give feedback" between Flight feel and Elsewhere.
+
+`npm run verify` was NOT run. This is menu rows, a stylesheet class and a
+deleted overlay: it does not touch `src/native`, the patches, the WASM build
+or the input path, so the determinism trace cannot see it.
+
+## Round 52: the name in the music dock is the mute
+
+**The ask.** "if i click on the music selector, in the middle it mutes, if
+i click on the cevron / arrow it goes to the next track."
+
+The dock was already the shape of that control: a chevron, a thing, a
+chevron. Both chevrons were wired and the thing in the middle was a `div`
+with the track's name in it and no behaviour at all, which is the one
+arrangement nobody expects, because every media widget anybody has used
+puts skip on the arrows and the state of the sound in the middle.
+
+**What it writes.** `settings.musicLevel = 0`, and back. Zero IS the off
+state already and has been since the dock was built: the Music stepper
+under Pilot prints Off at zero, `applyMix` stops the bed at zero, and
+`syncMusicDock` has dimmed the dock on `musicLevel <= 0` all along. So
+nothing new is stored and there is no second flag to disagree with the
+first. `onSettings` is what actually stops the sound, because applyMix in
+main.js reads the level off the settings object; without that call the dock
+would dim and the bed would play on.
+
+The level it restores is the one it muted, held for the visit. A pilot who
+mutes, closes the tab and comes back gets the default rather than their own
+number. The alternative was a settings key whose whole job is to remember a
+number the pilot can see and set in one press on the row it came from, and
+that is not worth a key.
+
+**A button, and it has to stop looking like one.** `btn` rather than a div
+with a listener, so the cursor, the hit box and the role are not three
+things written by hand. `tabIndex` is minus one, matching the two skips
+beside it: these are pointer affordances floating over the world, and a
+menu whose arrow keys wander into the corner of the screen is worse than a
+dock nobody can tab to. The keyboard's route to the same setting is the
+Music row under Pilot, which is where it has always been.
+
+`aria-live` stays on it and the text stays the track's name, so the name is
+still what is announced when the bed moves on, and the click's meaning goes
+in the `title` attribute, which the name needed anyway because it
+ellipsises at 11 em. The toggle itself announces "Music muted" or "Music on".
+
+**The muted look is a line through the name.** The dock was already going
+to half opacity, and half opacity is not a state, it is a dim screen. A
+rule through the word is legible to somebody who cannot tell 0.5 from 1.0,
+and it is the mark every mute in the world uses on a speaker.
+
+**Checks, run this turn.** The real shell, through `scripts/shots.js`: the
+middle is a BUTTON, its title reads "Click to mute" and then "Click to
+unmute", `is-muted` goes on and off with it, and `webfpv.settings.v3` in
+localStorage reads 5, then 0, then 5 again. The chevrons still skip, Neon
+Gate to Neon Gate Take 2 and back, and the level stays at 5 while they do.
+Both states were photographed at 3x to read the line through the name.
+Then `lint:shell` PASS, `lint:boot` 9 of 9, `lint:responsive` PASS,
+`lint:quality` 56 of 56.
+
+`npm run verify` was NOT run. A click handler on an overlay button and one
+settings number cannot reach `src/native`, the patches, the WASM build or
+the input path.
+
+## Round 53: the bug chip is back, on every screen but the title
+
+**The report.** "the report bug button is not accessable now", with a
+picture of two unstyled buttons stacked at the top left of a flight.
+
+**The picture was a stale cache, and the complaint was right anyway.**
+Those two buttons are the shell's own chips with no stylesheet rule behind
+them: Round 51 renamed `.bug-chip` to `.corner-chip` and the browser in
+that screenshot was holding the new `index.html`, which carries the styles,
+next to a cached `src/ui/ui.js` from before the rename, which still asked
+for `.bug-chip`. A rule that does not exist leaves `position: absolute`
+off, so both chips fell into document flow at the top left. A hard reload
+is the whole fix on a page that was open across the deploy; `render.yaml`
+already serves the tree `no-cache` for exactly this class of failure, and
+the comment there says so.
+
+That is why the picture showed a button this tree does not contain. The
+complaint under it is about this tree: Round 51 removed the chip from every
+screen, and what was left was F8, which a phone does not have, and a row on
+the pause menu, which needs a flight to reach.
+
+**Too far, and by one screen.** The ask that started it came with a picture
+of the title with the three cards on it, and what was wrong was a floating
+button over the first thing a visitor sees. Everywhere else the chip is the
+only thing on screen that says how to tell somebody a thing is broken.
+
+So it is back, and `syncChips` hides it on the title. One condition, one
+screen, and the screen it hides on is one press from every screen it shows
+on. The pause menu's row goes with it, because a row under a chip that says
+the same thing on the same screen is the same choice drawn twice.
+
+**The stack, restored.** Report bug in the first slot, Pause in the second
+and only in flight, the thumb sticks' Pause in the second on glass, and the
+music dock under whichever of those is there. The dock is the new part:
+`syncChips` puts `under-chip` on it when the bug chip is up, so it takes
+the second slot on every screen and the corner on the title, where there is
+nothing above it. Written as a class rather than a top in pixels, so the
+status bar's own offset stays in the stylesheet with the rest of the
+stacking.
+
+The title keeps its "What to fly" row. Round 51 paid for it by removing the
+Report bug row from that menu, and that payment stands: the form is a chip
+again, not a row, and the eleventh row the title cannot afford is still
+unspent.
+
+**Checks, run this turn.** The real shell through `scripts/shots.js`, read
+back out of the DOM: on the gate and on the title the chip is hidden and
+the dock sits at 16; on Tracks the chip is at the bar's own offset with the
+dock 36 px under it; forced to flight, the chip is at 16 on the right, Pause
+at 52 under it and the dock is top left at 16, which is where all three were
+before Round 51. `lint:shell` PASS with the title at 9 stops and 0 px and
+the pause menu back to 11 stops, `lint:boot` 9 of 9, `lint:quality` 56 of
+56.
+
+`npm run verify` was NOT run: a hidden attribute, a class toggle and four
+stylesheet rules cannot reach `src/native`, the patches, the WASM build or
+the input path.
+
+## Round 54: the rename is reverted, and the reason is measured
+
+**The report.** "when i'm racing the buttons are also not good, same as the
+previous screen. Also the clicking on the music button doesn't mute it."
+
+Both are the same fault and it is not in this tree. Round 53 called it a
+stale cache and left it there. That was right and not enough, because the
+same pilot hit it again on the next screen, so this round went and measured
+where the staleness comes from and then removed the thing that turns it into
+a broken screen.
+
+**What is actually served.** The deploy is current: `webfpv.org/sim/` hands
+out the new `index.html` and the new `src/ui/ui.js`, with `toggleMusicMute`
+and the `mode-gate` row both in it. What differs is how long a browser is
+told to keep each one.
+
+```
+origin  index.html    public, max-age=0,     s-maxage=300
+origin  src/ui/ui.js  public, max-age=0,     s-maxage=300
+domain  index.html    public, max-age=0,     s-maxage=300
+domain  src/ui/ui.js  public, max-age=14400, s-maxage=300
+```
+
+The Render origin revalidates both. Through the domain the script is given
+four hours and the page is not, so a returning pilot gets this deploy's
+stylesheet against the last deploy's script. `render.yaml` asks for
+`no-cache` on everything and has a comment explaining why; that header does
+not reach the browser, and the comment now says so. Cloudflare's Browser
+Cache TTL is the setting, and DEPLOY.md carries the measurement under "The
+browser cache TTL in front".
+
+That also explains the mute. `toggleMusicMute` is four hours in the future
+for that browser, so the middle of the dock is still an inert `div` there.
+The wiring in this tree is sound and was checked again: `toggleMusicMute`
+writes `musicLevel`, calls `onSettings`, which is `applySettings` in
+main.js, which calls `applyMix`, which sets `mixArg.music` and
+`audio.setMusicEnabled(level > 0)`.
+
+**The class name goes back.** Round 51 renamed `.bug-chip` to
+`.corner-chip` because three buttons wear the class and only one of them is
+the bug chip. That is a better name and it is not worth what it costs here.
+A class name is the contract across the one seam a four hour script cache
+can split: the sheet arrives with `.corner-chip` and the cached script asks
+for `.bug-chip`, the rule does not exist, `position: absolute` never
+applies, and three chips fall into document flow at the top left of a live
+race. It is `.bug-chip` again in all five files, with the reason written
+where the rule is so the next person to be annoyed by the name reads the
+price first.
+
+This does not fix that pilot's browser, which needs a hard reload or four
+hours. It stops the next rename from doing it to anybody.
+
+**Checks, run this turn.** `lint:shell` PASS, title 9 stops 0 px, paused 11
+stops 0 px. `lint:boot` 9 of 9, `lint:quality` 56 of 56. Through
+`scripts/shots.js`, read out of the live DOM: the chip computes to
+`position: absolute; top: 16px; right: 16px`, the title hides it with the
+dock at 16, and a forced flight puts the bug chip at 16 on the right, Pause
+at 52 under it and the dock at 16 on the left.
+
+`npm run verify` was NOT run. A class name, a stylesheet comment and two
+documentation files cannot reach `src/native`, the patches, the WASM build
+or the input path.
+
+## Round 55: the shipped rooms go on the board, and a card is not captioned twice
+
+The ask was three things about the board's whoop side: rename the plate,
+put the tracks the simulator ships on the board and take down the copy
+that was hand published, and make a card the animation rather than the
+plan.
+
+**The plate.** `RaceGOW room` to `Whoop Micro Tracks`, one string in the
+board's `public/index.html`. It was the only user visible use of the
+series' name on either side: everything else that says RaceGOW is a
+comment about the series, which is a real thing and stays named. The name
+was true while every track on that side was a RaceGOW room, and it stops
+being true the first time somebody builds a room of their own. The kicker
+still says 65 mm whoop, the cards still say which series, and the plate
+now says only what the side holds.
+
+**The animation was already written and had never run.** `src/share/
+cardgif.js`, `src/trackbuilder/animate.js` and the board's `inspectGif`
+all landed in Round 50, at 09:52 today. The two rooms on the live board
+were published at 10:42 on 6 September and 09:12 this morning, both before
+that merge, so both carry `hasGif: false` and both draw a plan. Nothing
+was broken. `scripts/boardgif.js --dry --all` against the live board drew
+both of them, 135 kB and 20 kB, which is the proof that the machinery
+works and that what the board is missing is a backfill and not a fix.
+
+**Nothing shipped ever reached the board, and the reason is `loadTrack`.**
+A preset opens as a COPY under a fresh random `trk-` id, which is right
+for a pilot and wrong for a seed: publishing the same preset twice would
+put two of it on the board. So `scripts/boardpresets.js` derives the id
+instead, sha256 of `webfpv/preset/<preset id>` cut to eight hex, and the
+same preset lands on the same id on every machine and every run. The
+author is `credit.broughtOverBy`, not `credit.designer`: the board's
+author field is the seat that published, and the RaceGOW5 set is other
+people's designs read off the official animations. Tags are `race` and
+`micro`, two rather than five, because a third would be a guess about
+somebody else's track.
+
+**A re-run needs a token and a first run does not.** The board mints the
+edit key and hands it back, and the script uses that key to upload the
+card seconds later and then forgets it: an edit key written to a file in a
+public repository is a published secret. So a track already on the board
+is left alone, and `--replace` takes it off first. Which needed a way to
+take a track off the board, and there was none.
+
+**`POST /api/tracks/:id/remove`, admin only, and the edit key is
+deliberately not a way in.** An edit key is enough to change a layout,
+which clears times flown on a layout that no longer exists. It is not
+enough to delete other pilots' records outright, because a record somebody
+flew for is not the publisher's to throw away when they tire of their own
+track. `BOARD_ADMIN_TOKEN` is the same token that already writes an
+animation onto a track this browser did not publish. Unset, nothing can be
+removed at all, which is what every deploy has had until now. The token is
+checked before the id is, so an unauthorised caller cannot learn which ids
+exist. Thirteen new checks in the board's `src/selftest.js`.
+
+**What went wrong: the card said its name twice and the second one was
+clipped.** The first three cards came out reading `RaceGOW5 Tra`, because
+`buildStage` lays the track's name in the floor and the board's tile puts
+the field size chip in the bottom right corner, and on a long name the two
+met. The plate is right for a GIF pasted into a chat, which travels alone
+and has to say what it is of. A card does not travel alone: the board
+prints the name as a heading directly under the tile, at twice the size,
+in real type. So `buildStage` took a `nameplate` option, `CARD_GIF` sets
+it false, and the card gets the track. Dropping the plate also drops its
+four corners from the fit points, so the track fills the frame: 385 kB for
+Track 8 against 274 kB with the plate, which is a quarter more for a
+bigger picture and two orders of magnitude inside the board's 1.8 MB
+refusal. The comment in `animate.js` said cards come in at 20 to 70 kB.
+That was measured on the three gate room and is wrong for a 24 element
+one, so it now names both ends and says what drives it.
+
+**Checks, run this turn.** The board's `npm test` all passed, including
+the thirteen new ones; `lint:nouns` and `lint:licence` PASS. On the
+simulator, `lint:presets` 6 of 6, `check:clip` 522 passed, `gif:selftest`
+38 passed, `lint:nouns` PASS over 208 files, `lint:board` PASS. The whole
+flow was run end to end against a local board on a scratch store: three
+presets published, three cards drawn and served as `image/gif`, a re-run
+correctly declining to duplicate, `--replace` refused without the token
+and working with it, and the page screenshotted at both ends showing the
+plate renamed and the cards animated. The default render path was proved
+unchanged by rendering the same track before and after the `nameplate`
+change: 45666 bytes both times, byte identical.
+
+`npm run verify` was NOT run. Nothing here reaches `src/native`, the
+patches, the WASM build or the input path: it is one string on a web page,
+a stage option that defaults to what it did before, and two scripts that
+talk to an HTTP API.
+
+**Not done, and it needs the owner.** The live board still carries `trk-
+3ed40007`, `RaceGOW5 Track 1` published by Mat at 09:12, and `Whoop Triple
+Stack` still has no animation. Both need `BOARD_ADMIN_TOKEN`, which is set
+on the Render service and is not in this container, and the removal also
+needs the board deployed with the route above. Publishing the three
+presets needs neither, but doing it before the removal would put two
+`RaceGOW5 Track 1` cards on a public board with no way to take either
+down, so it waits for the same deploy.
+
+## Round 56: both branches land on main, and the whoop side is four rooms
+
+Round 55 ended with the code done and the live board untouched, because
+removing a track needs `BOARD_ADMIN_TOKEN` and the route to spend it on
+was still only on a branch. The owner set the token, gave the word, and
+this round is the landing.
+
+**The merge collided on PROGRESS.md and nowhere else.** Main had moved one
+commit ahead while Round 55 was being written, and both sides had called
+their entry Round 54. Main's reached main first, so main's keeps the
+number and this branch's became Round 55. Nothing else overlapped: main's
+round is `index.html`, `ui.js`, `touchsticks.js`, `render.yaml` and
+`DEPLOY.md`, and this branch's is the trackbuilder's stage and animate
+plus `scripts/boardpresets.js`. The board's branch fast forwarded with no
+conflict at all. The cheap checks were run again AFTER the merge, because
+a merge that compiles is not a merge that works: `lint:presets` 6 of 6,
+`check:clip` 522 passed, `gif:selftest` 38 passed, `lint:nouns` PASS.
+
+**The board went first, the way DEPLOY.md says.** Render picked up main on
+its own. The route was confirmed live by the thing it is supposed to do
+when it is not given the token: `403`, "Removing a track from this board
+needs the board's own token." That is a better liveness check than a 200,
+because a 404 would have meant the old build and a 200 would have meant
+the gate was not there.
+
+**What the live board looks like now.** 32 tracks, 28 of them field and 4
+of them rooms. Every room carries an animation and no field track does,
+which is the rule in `inspectGif` holding on real data rather than in a
+test. `trk-3ed40007`, the hand published RaceGOW5 Track 1, is gone and
+reported 0 times as it went. The three shipped tracks are up as
+`trk-d1111a66`, `trk-c4d6dae3` and `trk-ac684a39`, all credited to
+andAgainFPV and tagged race and small field. Whoop Triple Stack kept its
+4 times and gained the 28 kB animation it predated.
+
+**The count that proves nothing was lost.** The board totalled 132 posted
+times in the picture that started this work, and it totals 132 now. Mat's
+copy had none on it, so the removal cost nobody a lap.
+
+**The live bytes were checked, not assumed.** Each card was pulled back
+down from the board and a frame rendered locally: Track 8 and Track 1 both
+come back uncaptioned and filling the frame, which is the `nameplate:
+false` path arriving on the real service rather than in a local store.
+
+**What went wrong, and it was a false alarm.** The simulator looked
+half deployed for several minutes: `stage.js` served the new build and
+`animate.js` served the old one. Both were in the same commit, so that
+could not be true. It was Cloudflare: `cf-cache-status: HIT` with `age:
+244` against `s-maxage=300`, so the edge was holding a copy four minutes
+old. The same URL with a query string came back new. Worth knowing next
+time a deploy looks partial, and worth knowing that the browser side of
+that header is `max-age=14400`, so a pilot who opened the builder this
+morning can run this morning's modules for four hours. It costs nothing
+here: the only thing the stale module changes is whether a card published
+from that browser has a name laid in its floor.
+
+`npm run verify` was NOT run. This round is a merge, two deploys and four
+HTTP calls, and none of it reaches `src/native`, the patches, the WASM
+build or the input path.
+## Round 57: the line flies at one pace, whatever the track
 
 **The report.** "The pace of the pathing line needs to be consistent. At the
 moment if there are many gates the pathing moves very fast, if a few gates

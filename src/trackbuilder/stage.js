@@ -510,7 +510,22 @@ function paneCorners(doc, knot) {
   return apertureCorners(apertureCenter(el, idx), el.yaw, el.pitch, ap.clearW, ap.clearH);
 }
 
-export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null } = {}) {
+export function buildStage(THREE, doc, path, {
+  size = 512, width = size, height = size, camera: fixed = null,
+  /*
+   * WHETHER TO LAY THE TRACK'S NAME IN THE FLOOR, and it is on by default
+   * because the picture usually travels alone. A GIF pasted into a chat is
+   * the whole message and has to say what it is of.
+   *
+   * A card in the board's grid is the case that is not alone: the board
+   * prints the name as a heading directly under the tile, in real type at
+   * twice the size, and the tile's own bottom right corner already carries
+   * the field size chip. Two names and a chip in one corner is how a long
+   * one came out reading "RaceGOW5 Tra". So the card asks for no plate and
+   * gets the track instead of the caption. See CARD_GIF in animate.js.
+   */
+  nameplate = true,
+} = {}) {
   const trash = [];
   const keep = (x) => {
     trash.push(x);
@@ -539,7 +554,11 @@ export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null 
    * opening so a gate stays readable at distance.
    */
   const spanR = estimateRadius(doc, path);
-  const worldPerPx = (2.2 * spanR) / Math.max(64, size);
+  /* The SHORT edge, because that is the one the frame is fitted to and so
+   * the one a pipe's readable minimum has to be measured against. On a
+   * square export the two are the same number, which is what this was. */
+  const shortEdge = Math.max(64, Math.min(width, height));
+  const worldPerPx = (2.2 * spanR) / shortEdge;
   const minDrawR = (MIN_PIPE_PX * worldPerPx) / 2;
   const tubeR = Math.max(tubeOD / 2, minDrawR);
   const jointR = tubeR * JOINT_SCALE;
@@ -825,31 +844,49 @@ export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null 
    * reads from wherever the camera ended up. Its own up direction points at
    * the camera, which for a plane authored in the document's XY is a turn of
    * the azimuth less a quarter.
+   *
+   * Its four corners are kept so the camera frames them with the track.
+   * Empty when there is no plate, and the frame then belongs to the track
+   * alone, which is what a 384 by 240 card wants.
    */
-  const nameTex = keep(nameTexture(THREE, doc.name));
-  const nameW = radius * 1.1;
-  const nameH = nameW * 0.25;
-  const nameGeo = keep(new THREE.PlaneGeometry(nameW, nameH));
-  const nameMat = keep(new THREE.MeshBasicMaterial({
-    map: nameTex, transparent: true, depthWrite: false,
-  }));
-  const nameMesh = new THREE.Mesh(nameGeo, nameMat);
-  const nameOut = radius * 0.92;
-  nameMesh.position.set(
-    centre.x + Math.cos(azimuth) * nameOut,
-    -centre.z + Math.sin(azimuth) * nameOut,
-    box.min.y + 0.004,
-  );
-  /*
-   * Turned so the tops of the letters point AWAY from the camera, which is
-   * what upright means for type lying on the ground: a reader standing at
-   * the camera has the far edge of the word at the top of their view. The
-   * first attempt pointed them at the camera and the name came out upside
-   * down.
-   */
-  nameMesh.rotation.z = azimuth + Math.PI / 2;
-  nameMesh.renderOrder = 2;
-  root.add(nameMesh);
+  const nameCorners = [];
+  if (nameplate) {
+    const nameTex = keep(nameTexture(THREE, doc.name));
+    const nameW = radius * 1.1;
+    const nameH = nameW * 0.25;
+    const nameGeo = keep(new THREE.PlaneGeometry(nameW, nameH));
+    const nameMat = keep(new THREE.MeshBasicMaterial({
+      map: nameTex, transparent: true, depthWrite: false,
+    }));
+    const nameMesh = new THREE.Mesh(nameGeo, nameMat);
+    const nameOut = radius * 0.92;
+    nameMesh.position.set(
+      centre.x + Math.cos(azimuth) * nameOut,
+      -centre.z + Math.sin(azimuth) * nameOut,
+      box.min.y + 0.004,
+    );
+    /*
+     * Turned so the tops of the letters point AWAY from the camera, which is
+     * what upright means for type lying on the ground: a reader standing at
+     * the camera has the far edge of the word at the top of their view. The
+     * first attempt pointed them at the camera and the name came out upside
+     * down.
+     */
+    nameMesh.rotation.z = azimuth + Math.PI / 2;
+    nameMesh.renderOrder = 2;
+    root.add(nameMesh);
+    for (const sx of [-0.5, 0.5]) {
+      for (const sy of [-0.5, 0.5]) {
+        const lx = sx * nameW;
+        const ly = sy * nameH;
+        const cz = Math.cos(nameMesh.rotation.z);
+        const sz = Math.sin(nameMesh.rotation.z);
+        const dx = nameMesh.position.x + lx * cz - ly * sz;
+        const dy = nameMesh.position.y + lx * sz + ly * cz;
+        nameCorners.push([dx, nameMesh.position.z, dy]);
+      }
+    }
+  }
 
   /*
    * Everything that has to be in shot, as points rather than as a box, and
@@ -874,23 +911,19 @@ export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null 
   };
   addGeoPoints(pipeGeo);
   addGeoPoints(padGeo);
-  for (const sx of [-0.5, 0.5]) {
-    for (const sy of [-0.5, 0.5]) {
-      const lx = sx * nameW;
-      const ly = sy * nameH;
-      const cz = Math.cos(nameMesh.rotation.z);
-      const sz = Math.sin(nameMesh.rotation.z);
-      const dx = nameMesh.position.x + lx * cz - ly * sz;
-      const dy = nameMesh.position.y + lx * sz + ly * cz;
-      fitPts.push(new THREE.Vector3(dx, nameMesh.position.z, -dy));
-    }
+  for (const [dx, dz, dy] of nameCorners) {
+    fitPts.push(new THREE.Vector3(dx, dz, -dy));
   }
 
   const framedBox = new THREE.Box3().setFromPoints(fitPts);
   const fitR = Math.max(0.6, framedBox.getBoundingSphere(new THREE.Sphere()).radius);
   const fitCentre = framedBox.getCenter(new THREE.Vector3());
 
-  const camera = new THREE.PerspectiveCamera(FOV_DEG, 1, 0.05, Math.max(200, fitR * 40));
+  /* FOV_DEG is the VERTICAL field of view, so a wider frame sees more of
+   * the sides and exactly as much of the top and bottom. That is the right
+   * way round for a track, which is wide. */
+  const aspect = width / height;
+  const camera = new THREE.PerspectiveCamera(FOV_DEG, aspect, 0.05, Math.max(200, fitR * 40));
   const aim = new THREE.Vector3(
     fitCentre.x,
     framedBox.min.y + AIM_HEIGHT * (framedBox.max.y - framedBox.min.y),
@@ -904,7 +937,7 @@ export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null 
     -Math.sin(azimuth) * Math.cos(ELEVATION),
   );
   const dist = Math.max(fitR * 0.5, FIT_MARGIN * fitDistance(
-    THREE, fitPts, aim, eye, FOV_DEG, 1,
+    THREE, fitPts, aim, eye, FOV_DEG, aspect,
   ));
   camera.position.copy(aim).addScaledVector(eye, dist);
   camera.lookAt(aim);

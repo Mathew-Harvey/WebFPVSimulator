@@ -72,6 +72,7 @@ import {
   fetchTrackTimes, postFreestyleRun, postTime,
 } from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
+import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import {
   clearPendingTime,
@@ -3541,7 +3542,6 @@ export async function boot({ loading, bootStart, mapId }) {
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
-    ui.setReadout('');
     syncAngleMode();
   }
 
@@ -3864,6 +3864,27 @@ export async function boot({ loading, bootStart, mapId }) {
         board: listing.board,
       });
       ui.markCoursePublished(result.posted);
+      /*
+       * A ROOM'S CARD ON THE BOARD IS A LAP OF IT, AND ONLY A BROWSER CAN
+       * DRAW ONE. The board has no WebGL and never will, so if this is not
+       * done here it is not done. The builder's Publish does exactly the
+       * same thing through the same file; this is the other way a room can
+       * reach the board.
+       *
+       * A field track returns skipped and costs nothing, not even the
+       * import: sendCardAnimation asks the class before it loads anything.
+       * Nothing here throws, so a refused GL context leaves the pilot with
+       * a published track and a plan on its card.
+       */
+      const card = await sendCardAnimation(result.doc, { origin: listing.board });
+      if (!card.skipped) {
+        notice = {
+          text: card.error
+            ? `Published "${result.posted.name}". Its card animation could not be sent.`
+            : `Published "${result.posted.name}", and its card on the board is a lap of it.`,
+          untilMs: performance.now() + 4000,
+        };
+      }
       /* Only when the lap on the results screen was flown on the course that
        * was just published. Publishing course B with course A's results still
        * up used to attach A's lap to B, because resultsFastest is a bare
@@ -6803,30 +6824,23 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.paintRates({ roll: ch.roll, pitch: ch.pitch, yaw: ch.yaw });
     }
 
-    if (ui.settings.readout) {
-      /* Performance only. The setting promises frame rate and draw
-       * counts, so anything else here is developer output that the
-       * player did not ask for. */
-      /* Performance, plus the stick rate, because the stick rate is a
-       * performance number the pilot can feel and the frame rate is not the
-       * same thing any more. padHz is how often the browser refreshes the
-       * pad; if it tracks the frame rate this browser is rAF-locked on
-       * gamepad input whatever we ask of it. */
-      const stick = input.stats();
-      const paceLine = (view && view.post && view.post.size)
-        ? `\n${view.post.size.x}x${view.post.size.y} scale ${(view.post.scale || 0).toFixed(2)}`
-        : '';
-      ui.setReadout(
-        `${fps.toFixed(0)} frames per second\n` +
-        `${renderStats.calls} draw calls\n` +
-        `${(renderStats.triangles / 1000).toFixed(0)}k triangles` +
-        `${paceLine}\n` +
-        `stick ${stick.padHz} Hz pad, ${stick.sampleHz} Hz sampled, ${RC_HZ} Hz link`,
-      );
-    } else {
-      ui.setReadout('');
-    }
-
+    /*
+     * THE PERFORMANCE READOUT IS GONE, and this note is here because the
+     * numbers are not.
+     *
+     * Frame rate, draw calls, triangles, the render scale and the stick
+     * rate used to print in the top right corner behind a Settings switch
+     * and an F3 key. They were developer output on a page whose first
+     * screen is three pictures and a question, and the owner asked for
+     * that corner back.
+     *
+     * Every one of those numbers is still measured and still reachable.
+     * `fps` and `renderStats` are live in this scope, `input.stats()`
+     * answers the stick rate, and scripts/quality-check.js and
+     * scripts/device-check.js read the same figures out of a real browser,
+     * which is where a performance number belongs: in a check that can
+     * fail, not in a corner nobody reads while flying.
+     */
     window.__shellReady = true;
     window.__mode = mode;
     window.__screen = ui.screen;

@@ -31,21 +31,28 @@
  * one lap, gate by gate, and those animations are what these tracks are
  * built from, every frame of them.
  *
- * They can be built exactly because the kit is a lattice. Every pipe is 27
- * inches, every fitting is a right angle, so every gate is a 27 inch square
- * standing square to one of two axes or lying flat, and every distance is a
- * whole number of 27 inch units. Reading a track is counting which unit
- * squares the animation lights, in what order, flown which way. The count
- * for each track is in scripts/racegow-lattice.js, and this file is what
- * that script writes. A track that is not in that script is not here, which
- * is why the set is the size it is: the earlier six were reconstructions
- * from a single render, close in shape and wrong in detail, and the owner
- * replaced them.
+ * They can be built exactly because the kit is a lattice. Every fitting is
+ * a right angle, so every gate is a square standing square to one of two
+ * axes or lying flat, and every distance is a whole number of gate units.
+ * Reading a track is counting which unit squares the animation lights, in
+ * what order, flown which way. The count for each track is in
+ * scripts/racegow-lattice.js, and this file is what that script writes. A
+ * track that is not in that script is not here, which is why the set is the
+ * size it is: the earlier six were reconstructions from a single render,
+ * close in shape and wrong in detail, and the owner replaced them.
+ *
+ * EVERY GATE IS 28 INCHES, which is RaceGOW's maximum and the size the rest
+ * of this project is built around: the builder's only micro preset, the room
+ * scene.js builds, and the scale src/game/track.js measures the aircraft
+ * against. The unit is therefore 28 inches plus one pipe, 29.05, which is
+ * what two gates sharing a pipe are apart centre to centre. These tracks
+ * were generated on a 27 inch unit once, which left a 25.95 inch opening and
+ * a two high stack an inch under rule 5's minimum.
  *
  * A pole is a marker whose pass panel is the animation's own: full height,
- * one side. It stands on the gate's stile line at RaceGOW's 14 inches from
- * the gate centre. The start gate is the first pass of the lap and the lap
- * closes on it.
+ * one side. It stands at RaceGOW's 14 inches from the gate centre, half an
+ * inch inboard of the stile. The start gate is the first pass of the lap and
+ * the lap closes on it.
  *
  * CREDIT GOES TO THE DESIGNER, one per track, as the site names them.
  */
@@ -84,8 +91,8 @@ export const PRESETS = [
         "type": "startPads",
         "name": "",
         "position": {
-          "x": 3.41376,
-          "y": 5.6515,
+          "x": 3.372104,
+          "y": 5.625465,
           "z": 0
         },
         "yaw": 0,
@@ -103,7 +110,7 @@ export const PRESETS = [
         "name": "Start gate",
         "position": {
           "x": 3.9624,
-          "y": 5.6515,
+          "y": 5.625465,
           "z": 0
         },
         "yaw": 0,
@@ -112,9 +119,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -123,7 +130,7 @@ export const PRESETS = [
         "name": "Over the start gate",
         "position": {
           "x": 3.9624,
-          "y": 5.6515,
+          "y": 5.625465,
           "z": 0
         },
         "yaw": 0,
@@ -131,10 +138,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -143,8 +150,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Tower, bottom",
         "position": {
-          "x": 6.0198,
-          "y": 6.3373,
+          "x": 6.17601,
+          "y": 6.363335,
           "z": 0
         },
         "yaw": 0,
@@ -153,9 +160,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -163,8 +170,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Tower, middle",
         "position": {
-          "x": 6.0198,
-          "y": 6.3373,
+          "x": 6.17601,
+          "y": 6.363335,
           "z": 0
         },
         "yaw": 0,
@@ -172,10 +179,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -183,8 +190,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Tower, top",
         "position": {
-          "x": 6.0198,
-          "y": 6.3373,
+          "x": 6.17601,
+          "y": 6.363335,
           "z": 0
         },
         "yaw": 0,
@@ -192,10 +199,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 1.3716,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 1.47574,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -204,8 +211,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Far side, left, low",
         "position": {
-          "x": 4.9911,
-          "y": 6.6802,
+          "x": 5.069205,
+          "y": 6.73227,
           "z": 0
         },
         "yaw": 1.570796,
@@ -214,9 +221,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -224,8 +231,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Far side, left, up",
         "position": {
-          "x": 4.9911,
-          "y": 6.6802,
+          "x": 5.069205,
+          "y": 6.73227,
           "z": 0
         },
         "yaw": 1.570796,
@@ -233,10 +240,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -245,8 +252,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Far side, right, low",
         "position": {
-          "x": 5.6769,
-          "y": 6.6802,
+          "x": 5.807075,
+          "y": 6.73227,
           "z": 0
         },
         "yaw": 1.570796,
@@ -255,9 +262,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -265,8 +272,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Far side, right, up",
         "position": {
-          "x": 5.6769,
-          "y": 6.6802,
+          "x": 5.807075,
+          "y": 6.73227,
           "z": 0
         },
         "yaw": 1.570796,
@@ -274,10 +281,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -286,7 +293,7 @@ export const PRESETS = [
         "type": "gate",
         "name": "Under the rail",
         "position": {
-          "x": 4.9911,
+          "x": 5.069205,
           "y": 5.9944,
           "z": 0
         },
@@ -296,9 +303,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -307,7 +314,7 @@ export const PRESETS = [
         "type": "gate",
         "name": "Over the rail",
         "position": {
-          "x": 4.9911,
+          "x": 5.069205,
           "y": 5.9944,
           "z": 0
         },
@@ -316,10 +323,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -328,8 +335,8 @@ export const PRESETS = [
         "type": "diveGate",
         "name": "Table top",
         "position": {
-          "x": 5.6769,
-          "y": 6.3373,
+          "x": 5.807075,
+          "y": 6.363335,
           "z": 0
         },
         "yaw": 0,
@@ -337,10 +344,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.356235,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.38227,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -348,15 +355,15 @@ export const PRESETS = [
         "type": "pole",
         "name": "Tall pole",
         "position": {
-          "x": 6.0198,
-          "y": 5.9817,
+          "x": 6.17601,
+          "y": 6.007735,
           "z": 0
         },
         "yaw": -1.570796,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 2.0574,
+          "height": 2.21361,
           "poleRadius": 0.013335,
           "clearance": 0.3556
         }
@@ -367,14 +374,14 @@ export const PRESETS = [
         "name": "Left pole",
         "position": {
           "x": 3.9624,
-          "y": 6.0071,
+          "y": 5.981065,
           "z": 0
         },
         "yaw": 1.570796,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 1.3716,
+          "height": 1.47574,
           "poleRadius": 0.013335,
           "clearance": 0.3556
         }
@@ -384,15 +391,15 @@ export const PRESETS = [
         "type": "pole",
         "name": "Far side post",
         "position": {
-          "x": 5.334,
-          "y": 6.6802,
+          "x": 5.43814,
+          "y": 6.73227,
           "z": 0
         },
         "yaw": 0,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 1.3716,
+          "height": 1.47574,
           "poleRadius": 0.013335,
           "clearance": 0.3556
         }
@@ -402,9 +409,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Over the tower",
         "position": {
-          "x": 6.29412,
-          "y": 6.3373,
-          "z": 2.33172
+          "x": 6.471158,
+          "y": 6.363335,
+          "z": 2.508758
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -420,9 +427,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the pole, low",
         "position": {
-          "x": 6.43128,
+          "x": 6.618732,
           "y": 5.9944,
-          "z": 0.48006
+          "z": 0.516509
         },
         "yaw": -1.570796,
         "pitch": 0,
@@ -438,9 +445,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Home straight",
         "position": {
-          "x": 4.9911,
-          "y": 5.6515,
-          "z": 1.0287
+          "x": 5.069205,
+          "y": 5.625465,
+          "z": 1.106805
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -456,9 +463,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the pole, mid",
         "position": {
-          "x": 6.43128,
-          "y": 6.3373,
-          "z": 0.89154
+          "x": 6.618732,
+          "y": 6.363335,
+          "z": 0.959231
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -474,9 +481,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Behind the far side",
         "position": {
-          "x": 5.6769,
-          "y": 7.0231,
-          "z": 1.16586
+          "x": 5.807075,
+          "y": 7.101205,
+          "z": 1.254379
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -492,9 +499,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Outside the start gate",
         "position": {
-          "x": 3.6195,
-          "y": 5.10286,
-          "z": 0.3429
+          "x": 3.593465,
+          "y": 5.035169,
+          "z": 0.368935
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -510,15 +517,15 @@ export const PRESETS = [
         "type": "horizontalPole",
         "name": "Rail, x 0 to 1",
         "position": {
-          "x": 4.3053,
+          "x": 4.331335,
           "y": 5.9944,
-          "z": 0.672465
+          "z": 0.724535
         },
         "yaw": 0,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 0.6858,
+          "width": 0.73787,
           "depth": 0.02667,
           "height": 0.02667
         }
@@ -528,15 +535,15 @@ export const PRESETS = [
         "type": "horizontalPole",
         "name": "Rail, x 1 to 2",
         "position": {
-          "x": 4.9911,
+          "x": 5.069205,
           "y": 5.9944,
-          "z": 0.672465
+          "z": 0.724535
         },
         "yaw": 0,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 0.6858,
+          "width": 0.73787,
           "depth": 0.02667,
           "height": 0.02667
         }
@@ -894,8 +901,8 @@ export const PRESETS = [
         "type": "startPads",
         "name": "",
         "position": {
-          "x": 5.334,
-          "y": 5.6515,
+          "x": 5.43814,
+          "y": 5.625465,
           "z": 0
         },
         "yaw": 0,
@@ -912,8 +919,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Start gate",
         "position": {
-          "x": 6.0198,
-          "y": 5.6515,
+          "x": 6.17601,
+          "y": 5.625465,
           "z": 0
         },
         "yaw": 0,
@@ -922,9 +929,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -932,8 +939,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Over the start gate",
         "position": {
-          "x": 6.0198,
-          "y": 5.6515,
+          "x": 6.17601,
+          "y": 5.625465,
           "z": 0
         },
         "yaw": 0,
@@ -941,10 +948,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -953,8 +960,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Frame, bottom",
         "position": {
-          "x": 5.334,
-          "y": 6.3373,
+          "x": 5.43814,
+          "y": 6.363335,
           "z": 0
         },
         "yaw": 0,
@@ -963,9 +970,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -973,8 +980,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Frame, middle",
         "position": {
-          "x": 5.334,
-          "y": 6.3373,
+          "x": 5.43814,
+          "y": 6.363335,
           "z": 0
         },
         "yaw": 0,
@@ -982,10 +989,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -993,8 +1000,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Frame, top",
         "position": {
-          "x": 5.334,
-          "y": 6.3373,
+          "x": 5.43814,
+          "y": 6.363335,
           "z": 0
         },
         "yaw": 0,
@@ -1002,10 +1009,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 1.3716,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 1.47574,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -1014,7 +1021,7 @@ export const PRESETS = [
         "type": "gate",
         "name": "Under the bar",
         "position": {
-          "x": 5.6769,
+          "x": 5.807075,
           "y": 5.9944,
           "z": 0
         },
@@ -1024,9 +1031,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -1034,7 +1041,7 @@ export const PRESETS = [
         "type": "gate",
         "name": "Under the rail",
         "position": {
-          "x": 4.3053,
+          "x": 4.331335,
           "y": 5.9944,
           "z": 0
         },
@@ -1044,9 +1051,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -1055,7 +1062,7 @@ export const PRESETS = [
         "type": "gate",
         "name": "Over the rail",
         "position": {
-          "x": 4.3053,
+          "x": 4.331335,
           "y": 5.9944,
           "z": 0
         },
@@ -1064,10 +1071,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -1077,7 +1084,7 @@ export const PRESETS = [
         "name": "Near gate",
         "position": {
           "x": 3.9624,
-          "y": 5.6515,
+          "y": 5.625465,
           "z": 0
         },
         "yaw": 0,
@@ -1086,9 +1093,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -1097,7 +1104,7 @@ export const PRESETS = [
         "name": "Over the near gate",
         "position": {
           "x": 3.9624,
-          "y": 5.6515,
+          "y": 5.625465,
           "z": 0
         },
         "yaw": 0,
@@ -1105,10 +1112,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -1117,15 +1124,15 @@ export const PRESETS = [
         "type": "pole",
         "name": "Right pole",
         "position": {
-          "x": 6.0198,
-          "y": 5.2959,
+          "x": 6.17601,
+          "y": 5.269865,
           "z": 0
         },
         "yaw": -1.570796,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 1.3716,
+          "height": 1.47574,
           "poleRadius": 0.013335,
           "clearance": 0.3556
         }
@@ -1135,15 +1142,15 @@ export const PRESETS = [
         "type": "pole",
         "name": "Tall pole",
         "position": {
-          "x": 5.334,
-          "y": 6.6929,
+          "x": 5.43814,
+          "y": 6.718935,
           "z": 0
         },
         "yaw": 1.570796,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 2.0574,
+          "height": 2.21361,
           "poleRadius": 0.013335,
           "clearance": 0.3556
         }
@@ -1154,14 +1161,14 @@ export const PRESETS = [
         "name": "Near pole",
         "position": {
           "x": 3.9624,
-          "y": 5.2959,
+          "y": 5.269865,
           "z": 0
         },
         "yaw": -1.570796,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 1.3716,
+          "height": 1.47574,
           "poleRadius": 0.013335,
           "clearance": 0.3556
         }
@@ -1179,7 +1186,7 @@ export const PRESETS = [
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 1.3716,
+          "height": 1.47574,
           "poleRadius": 0.013335,
           "clearance": 0.3556
         }
@@ -1189,9 +1196,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Back past the frame",
         "position": {
-          "x": 4.85394,
-          "y": 7.366,
-          "z": 0.54864
+          "x": 4.921631,
+          "y": 7.47014,
+          "z": 0.590296
         },
         "yaw": 0,
         "pitch": 0,
@@ -1207,9 +1214,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the tall pole",
         "position": {
-          "x": 5.81406,
-          "y": 7.09168,
-          "z": 0.82296
+          "x": 5.954649,
+          "y": 7.174992,
+          "z": 0.885444
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -1225,9 +1232,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the tall pole again",
         "position": {
-          "x": 5.05968,
-          "y": 7.50316,
-          "z": 0.61722
+          "x": 5.142992,
+          "y": 7.617714,
+          "z": 0.664083
         },
         "yaw": 0,
         "pitch": 0,
@@ -1243,9 +1250,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Back over the rail",
         "position": {
-          "x": 4.85394,
-          "y": 6.20014,
-          "z": 1.09728
+          "x": 4.921631,
+          "y": 6.215761,
+          "z": 1.180592
         },
         "yaw": -1.570796,
         "pitch": 0,
@@ -1261,9 +1268,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the right pole",
         "position": {
-          "x": 6.43128,
-          "y": 4.89712,
-          "z": 1.64592
+          "x": 6.618732,
+          "y": 4.813808,
+          "z": 1.770888
         },
         "yaw": -1.570796,
         "pitch": 0,
@@ -1279,9 +1286,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the near gate",
         "position": {
-          "x": 3.6195,
-          "y": 6.3373,
-          "z": 0.82296
+          "x": 3.593465,
+          "y": 6.363335,
+          "z": 0.885444
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -1297,9 +1304,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the right pole, low",
         "position": {
-          "x": 6.22554,
-          "y": 4.55422,
-          "z": 0.75438
+          "x": 6.397371,
+          "y": 4.444873,
+          "z": 0.811657
         },
         "yaw": 0,
         "pitch": 0,
@@ -1315,9 +1322,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the left pole",
         "position": {
-          "x": 3.55092,
-          "y": 6.13156,
-          "z": 1.09728
+          "x": 3.519678,
+          "y": 6.141974,
+          "z": 1.180592
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -1333,15 +1340,15 @@ export const PRESETS = [
         "type": "horizontalPole",
         "name": "Rail, x 0 to 1",
         "position": {
-          "x": 4.3053,
+          "x": 4.331335,
           "y": 5.9944,
-          "z": 0.672465
+          "z": 0.724535
         },
         "yaw": 0,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 0.6858,
+          "width": 0.73787,
           "depth": 0.02667,
           "height": 0.02667
         }
@@ -1351,15 +1358,15 @@ export const PRESETS = [
         "type": "horizontalPole",
         "name": "Rail, x 1 to 2",
         "position": {
-          "x": 4.9911,
+          "x": 5.069205,
           "y": 5.9944,
-          "z": 0.672465
+          "z": 0.724535
         },
         "yaw": 0,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 0.6858,
+          "width": 0.73787,
           "depth": 0.02667,
           "height": 0.02667
         }
@@ -1654,8 +1661,8 @@ export const PRESETS = [
         "type": "startPads",
         "name": "",
         "position": {
-          "x": 3.90652,
-          "y": 6.3373,
+          "x": 3.823208,
+          "y": 6.415405,
           "z": 0
         },
         "yaw": 0,
@@ -1672,8 +1679,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Start gate",
         "position": {
-          "x": 4.318,
-          "y": 6.3373,
+          "x": 4.26593,
+          "y": 6.415405,
           "z": 0
         },
         "yaw": 0,
@@ -1682,9 +1689,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -1692,8 +1699,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Right frame, under the bar",
         "position": {
-          "x": 5.6896,
-          "y": 5.6515,
+          "x": 5.74167,
+          "y": 5.677535,
           "z": 0
         },
         "yaw": 0,
@@ -1702,9 +1709,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -1712,8 +1719,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "Right frame, over the bar",
         "position": {
-          "x": 5.6896,
-          "y": 5.6515,
+          "x": 5.74167,
+          "y": 5.677535,
           "z": 0
         },
         "yaw": 0,
@@ -1721,10 +1728,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -1732,7 +1739,7 @@ export const PRESETS = [
         "type": "gate",
         "name": "Left gate",
         "position": {
-          "x": 4.6609,
+          "x": 4.634865,
           "y": 5.3086,
           "z": 0
         },
@@ -1742,9 +1749,9 @@ export const PRESETS = [
         "dims": {
           "levels": 1,
           "sillH": 0,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         }
       },
       {
@@ -1752,7 +1759,7 @@ export const PRESETS = [
         "type": "gate",
         "name": "Over the left gate",
         "position": {
-          "x": 4.6609,
+          "x": 4.634865,
           "y": 5.3086,
           "z": 0
         },
@@ -1761,10 +1768,10 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0.6858,
-          "clearW": 0.65913,
-          "clearH": 0.65913,
-          "levelPitch": 0.6858
+          "sillH": 0.73787,
+          "clearW": 0.7112,
+          "clearH": 0.7112,
+          "levelPitch": 0.73787
         },
         "unbuilt": true
       },
@@ -1773,7 +1780,7 @@ export const PRESETS = [
         "type": "pole",
         "name": "Pole",
         "position": {
-          "x": 5.0165,
+          "x": 4.990465,
           "y": 5.3086,
           "z": 0
         },
@@ -1781,7 +1788,7 @@ export const PRESETS = [
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 1.3716,
+          "height": 1.47574,
           "poleRadius": 0.013335,
           "clearance": 0.3556
         }
@@ -1791,9 +1798,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Out past the right frame",
         "position": {
-          "x": 6.30682,
-          "y": 5.6515,
-          "z": 0.48006
+          "x": 6.405753,
+          "y": 5.677535,
+          "z": 0.516509
         },
         "yaw": 0,
         "pitch": 0,
@@ -1809,9 +1816,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Back to the top opening",
         "position": {
-          "x": 6.30682,
-          "y": 5.6515,
-          "z": 0.96012
+          "x": 6.405753,
+          "y": 5.677535,
+          "z": 1.033018
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -1827,9 +1834,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Behind the frames",
         "position": {
-          "x": 5.27812,
-          "y": 4.55422,
-          "z": 1.16586
+          "x": 5.298948,
+          "y": 4.496943,
+          "z": 1.254379
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -1845,9 +1852,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Down to the gap",
         "position": {
-          "x": 5.55244,
-          "y": 6.26872,
-          "z": 0.54864
+          "x": 5.594096,
+          "y": 6.341618,
+          "z": 0.590296
         },
         "yaw": -1.570796,
         "pitch": 0,
@@ -1864,8 +1871,8 @@ export const PRESETS = [
         "name": "Behind the pole",
         "position": {
           "x": 5.0038,
-          "y": 4.69138,
-          "z": 0.37719
+          "y": 4.644517,
+          "z": 0.405828
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -1881,9 +1888,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Out past the start gate",
         "position": {
-          "x": 3.70078,
-          "y": 5.58292,
-          "z": 0.37719
+          "x": 3.601847,
+          "y": 5.603748,
+          "z": 0.405828
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -1899,9 +1906,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the far end",
         "position": {
-          "x": 3.15214,
-          "y": 5.9944,
-          "z": 0.3429
+          "x": 3.011551,
+          "y": 6.04647,
+          "z": 0.368935
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -1917,9 +1924,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Back on to the start gate",
         "position": {
-          "x": 3.49504,
-          "y": 6.40588,
-          "z": 0.3429
+          "x": 3.380486,
+          "y": 6.489192,
+          "z": 0.368935
         },
         "yaw": 0,
         "pitch": 0,
@@ -1935,7 +1942,7 @@ export const PRESETS = [
         "type": "horizontalPole",
         "name": "Ground bar, pole to right frame",
         "position": {
-          "x": 5.3467,
+          "x": 5.372735,
           "y": 5.3086,
           "z": 0
         },
@@ -1943,7 +1950,7 @@ export const PRESETS = [
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 0.6858,
+          "width": 0.73787,
           "depth": 0.02667,
           "height": 0.02667
         }
@@ -1953,15 +1960,15 @@ export const PRESETS = [
         "type": "horizontalPole",
         "name": "Ground bar, left gate to start gate",
         "position": {
-          "x": 4.318,
-          "y": 5.6515,
+          "x": 4.26593,
+          "y": 5.677535,
           "z": 0
         },
         "yaw": 1.570796,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 0.6858,
+          "width": 0.73787,
           "depth": 0.02667,
           "height": 0.02667
         }

@@ -33539,3 +33539,45 @@ room. The room was then photographed on the whoop: three cards, no chip
 element in the document at all, and each card reading name, author and gate
 count under a lap that is still animating. `npm run verify` was not run: no
 physics, plant, ABI or build changed.
+
+## Round 43: the tail is under a tenth of the lap
+
+**The ask.** Make the tail in the animations about 70 percent shorter, and
+update the tracks that already have one.
+
+**The change is two constants, and they are two because there are two
+drawings of the same thing.** `TAIL_FRACTION` in `src/trackbuilder/stage.js`
+is the exported GIF's ribbon; `ISO_TAIL` in `src/share/plan.js` is the card's.
+Both were 0.30 and both are now 0.09, which is the 70 percent. They moved
+together on purpose: Round 41 put them at the same number so that a card and
+an exported GIF of one track move the same way, and that is worth more than
+either number.
+
+**Why three tenths was too long.** A RaceGOW lap doubles back through its own
+gates, so a third of it is a long ribbon draped across the gates the quad has
+not reached yet. The line stopped reading as a line and the pipe behind it
+stopped reading as pipe. At under a tenth the segment is an arrow: it says
+where the quad is and which way it is pointed, and leaves the structure
+visible, which is the other half of what the animation is for.
+
+**Nothing needed regenerating.** No GIF ships in this repository. The card
+draws its lap live from `ISO_TAIL` and the exporter builds its ribbon live
+from `TAIL_FRACTION`, so every existing track, the shipped three and anything
+a pilot has built, animates with the short tail the moment the page loads.
+That is what "update the existing animations" costs here, and the reason it
+costs nothing is Round 41's decision not to bake any.
+
+**The short window cannot empty out.** The card's lap carries 12 points per
+gate to gate span, so a window shorter than the gap between two points would
+need one span longer than the whole lap. The exporter interpolates its head
+and then walks samples back until it has covered the tail, so it always has
+two points, which is what a tube needs.
+
+**Checks, run this turn.** `gif:selftest` 38 of 38, `check:clip` 495 of 495,
+`check:path` 12 of 12, `micro:check`, `lint:presets` 6 of 6 and `lint:shell`.
+Then both drawings were looked at rather than assumed: Track 8 was exported
+at 24 frames and three frames of the GIF read as a short arrow with the
+lattice clear behind it, and the Tracks room was photographed twice three
+seconds apart, where the same short segment is in a different place on all
+three cards. `npm run verify` was not run: no physics, plant, ABI or build
+changed.

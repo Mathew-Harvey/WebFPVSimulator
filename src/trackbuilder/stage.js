@@ -85,14 +85,20 @@ const AIM_HEIGHT = 0.35;
 /*
  * THE RIBBON. A travelling segment, not a growing trail: the reference shows
  * a fixed length of line flying the course, which is what a lap looks like.
- * Three tenths of the lap is long enough to show where the quad has just
- * been and short enough that the shape of the line is still readable.
+ *
+ * It was three tenths of the lap and it is now under a tenth, because three
+ * tenths was long enough to cover the structure it was flying through. On a
+ * RaceGOW track the line doubles back through its own gates, so a long tail
+ * is draped over the gates the quad has not reached yet and the reader
+ * cannot tell the line from the track. A short one is an arrow: it says
+ * where the quad is and which way it is pointed, and leaves the pipe
+ * visible, which is the other half of what the animation is for.
  *
  * The radius scales with the track so a 10 m room and a 60 m field both
  * read, and is clamped at both ends because a ribbon thinner than a pipe
  * disappears and one thicker than a gate opening hides the gate.
  */
-const TAIL_FRACTION = 0.30;
+const TAIL_FRACTION = 0.09;
 const RIBBON_R_PER_METRE = 0.004;
 const RIBBON_R_MIN = 0.012;
 const RIBBON_R_MAX = 0.12;

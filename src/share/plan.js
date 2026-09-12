@@ -930,8 +930,11 @@ export function planFromDocument(doc) {
  */
 const ISO_AZIMUTH_OFF = -55 * (Math.PI / 180);
 /* How much of the lap the travelling segment covers, the exporter's own
- * TAIL_FRACTION, so a card and a GIF of one track move the same way. */
-const ISO_TAIL = 0.30;
+ * TAIL_FRACTION, so a card and a GIF of one track move the same way. Both
+ * were 0.30 and both came down together: see the comment on TAIL_FRACTION
+ * in src/trackbuilder/stage.js for why a long tail hides the track it is
+ * flying through, which a 150 px card suffers from worse than a GIF. */
+const ISO_TAIL = 0.09;
 const ISO_ELEVATION = 40 * (Math.PI / 180);
 /* How far outside the track the ground plate reaches, in metres, per class. */
 const ISO_GROUND_PAD = { micro: 0.5, full: 6 };

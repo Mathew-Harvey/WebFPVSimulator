@@ -33581,3 +33581,80 @@ lattice clear behind it, and the Tracks room was photographed twice three
 seconds apart, where the same short segment is in a different place on all
 three cards. `npm run verify` was not run: no physics, plant, ABI or build
 changed.
+
+## Round 44: a whoop gate's bottom third was not a gate
+
+**The report.** "The whoop gates sometimes don't register that I've passed
+through them."
+
+**What it was, exactly.** Not the scoring volume, which is correct. The shell
+does not hand every flown segment to the race: it asks
+`shouldScorePass` in `src/game/collide.js` first, and that predicate refuses a
+pass flown too close to the floor, because a belly slide through a hole used
+to walk the timing gate and throw the results screen. The band it refused
+inside was `DIRT_CLEARANCE`, a flat 0.22 m, and 0.22 m is a five inch's
+number: that machine's swept radius is 0.1735 m, so a centre inside 0.22 m of
+the dirt is a quad with carbon in the ground in some attitude.
+
+A RaceGOW gate's bottom bar is ON THE FLOOR, rule 2, and its opening is
+0.711 m. So the same flat band declared the bottom 31 percent of every hole on
+a whoop track to be dirt. Flying the low line through a gate, which is the
+line a whoop is for, was refused. Measured rather than reasoned: at a centre
+height of 0.05, 0.10, 0.15, 0.20 and 0.219 m in a 0.711 m opening, the real
+`Race` scored nothing; from 0.25 m up it scored every time.
+
+Refused SILENTLY, which is why it reads as flakiness rather than a rule. There
+is no flash, no gate tone and no OSD mark on a refusal, because a refused pass
+is indistinguishable from a gate that was never flown. And the start gate is a
+ground gate too, so a low launch could decline to start the lap at all.
+
+**The fix.** The band is a length about the aircraft, so it is measured in the
+aircraft. `DIRT_SPAN` is 0.22 m over the five inch's own swept radius, frozen
+at module load as `FIVE_INCH_WORLD_R` on the line after that radius is first
+computed, and `dirtClearance()` returns `CRAFT_WORLD_R * DIRT_SPAN` for
+whatever `setCraftAirframe` has seated. The five inch's band is therefore
+exactly 0.22 m still, asserted to 1e-12, and no lap time on the field moves.
+The 65 mm whoop gets 0.0642 m.
+
+**Why 0.0642 m is the right number and not zero.** The band has to cover the
+worse of two attitudes, because `shouldScorePass` is deliberately not given
+the attitude: the comment above `upsetOnDirt` argues that case and it is
+still right, since a bounce drops the plant hit flag for a frame and an
+upright slide is the same accident as an inverted one. Level at 0.0642 m a
+whoop's ducts are 4.6 cm off the floor, which is a pass anybody would call a
+pass. On its side at the same height the ducts are 1.4 cm INTO the floor,
+which is the accident. So the band is the swept radius with clear air over it,
+1.27 of it, which is what 0.22 m always was for the five inch. A whoop at rest
+(centre 0.018 m) and a whoop belly sliding at 0.04 m are both still refused.
+
+**Why no check caught it, which is the part worth keeping.** `micro:check`
+flies the demo room through the real `Race`, gate by gate, and has done since
+the micro class landed. It passed a hardcoded `true` for `allow` and it flew
+each gate dead through its centre. Both halves stepped over this: the shell's
+predicate was never called, and 0.356 m is above a 0.22 m band anyway. A check
+that flies the happy centre with the gatekeeper switched off is evidence about
+the geometry and nothing else.
+
+So `micro:check` now seats the whoop, calls the real `shouldScorePass` with
+the same options object `src/main.js` builds, and flies a quarter of the way
+up each opening, offset along the gate's own in plane up axis so a dive gate
+is offset ACROSS its hole rather than under it. `check:clip` gained seven
+cases: the five inch band pinned at exactly 0.22, the whoop's own band, the
+low line scoring, and a whoop at rest and belly sliding still refused. Both
+were run against the old flat band to prove they bite: `check:clip` failed 4,
+and `micro:check` failed every gate of all sixty hops and closed no lap.
+
+**Checks, run this turn.** `check:clip` 503 of 503, `micro:check` clean,
+`whoop:gates` 19 of 19, `lint:shell` PASS, `lint:quality` 56 of 56,
+`lint:presets` 6 of 6. `npm run verify` was NOT run: nothing here touches
+physics, the plant, the module ABI or the build, this is game logic
+downstream of the simulation. Nothing was flown, either, and the checks above
+say the predicate now admits the low line, not that the gates feel right to a
+pilot. That is the pass to ask for.
+
+**Declined, and written down because it is adjacent.** `TURTLE_CLEARANCE` is
+0.15 m and is the same kind of flat full sized length applied to a whoop,
+which would call a whoop 12 cm off the floor "seated". It cannot cause a
+missed gate (entering turtle needs truly inverted, seated AND still) so it is
+out of scope for this report, and it is left alone rather than changed on a
+guess.

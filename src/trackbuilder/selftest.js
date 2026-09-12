@@ -67,7 +67,9 @@ import {
   makeClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_CONFIRM_MS, CLIP_DEEP,
   STUCK_UNRESOLVED_MS, STUCK_TRAVEL_MAX, BURIED_DEPTH, BURIED_CONFIRM_MS,
   CLIP_CRASH_HOLD_MS, BOUNCE_SEPARATION, CLIP_SPAWN_GRACE_MS,
+  setCraftAirframe, dirtClearance,
 } from '../game/collide.js';
+import { airframeById } from '../../configs/airframes.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
 
@@ -1516,6 +1518,50 @@ function suiteCrashRule() {
     shouldScorePass({ x: 0, y: 1.0, z: 1.2 }, { x: 0, y: 1.0, z: -1.2 }, {
       upz: 1, clearance: 1.0, hits: 0, heightAt: () => 0,
     }) === true);
+
+  /*
+   * THE DIRT BAND ON A WHOOP, which is the aircraft the band was never
+   * measured for.
+   *
+   * Every check above runs with the five inch seated, and the first one here
+   * pins that the five inch did not move when the band stopped being a flat
+   * 0.22 m. The rest are the RaceGOW class: a 0.711 m opening with its bottom
+   * bar on the floor, where a five inch's band declared the bottom 31 percent
+   * of the hole to be dirt and silently refused every pass flown through it.
+   *
+   * The airframe is seated and put back, because setCraftAirframe is module
+   * state and every check after this one expects the five inch.
+   */
+  check('the five inch band is still exactly the 0.22 m it always was',
+    Math.abs(dirtClearance() - 0.22) < 1e-12, dirtClearance());
+  const fiveDims = airframeById('5inch').dims;
+  setCraftAirframe(airframeById('whoop65').dims);
+  const whoopBand = dirtClearance();
+  check('a whoop gets its own band, a quarter of the five inch\'s',
+    whoopBand > 0.055 && whoopBand < 0.075, whoopBand);
+  check('a whoop band leaves most of a 0.711 m RaceGOW opening scoring',
+    whoopBand / 0.7112 < 0.10, whoopBand / 0.7112);
+  /* The low line through a ground gate, which is the line a whoop is for. */
+  check('a whoop flying the low line through a ground gate scores',
+    shouldScorePass({ x: 0, y: 0.10, z: 0.6 }, { x: 0, y: 0.10, z: -0.6 }, {
+      upz: 1, clearance: 0.10, hits: 0, heightAt: flat,
+    }) === true);
+  check('a whoop at the height a five inch band called dirt scores',
+    shouldScorePass({ x: 0, y: 0.15, z: 0.6 }, { x: 0, y: 0.15, z: -0.6 }, {
+      upz: 1, clearance: 0.15, hits: 0, heightAt: flat,
+    }) === true);
+  /* And the accidents the band exists to refuse are still refused. */
+  check('a whoop sitting on the floor still does not score',
+    shouldScorePass({ x: 0, y: 0.018, z: 0.6 }, { x: 0, y: 0.018, z: -0.6 }, {
+      upz: 1, clearance: 0.018, hits: 0, heightAt: flat,
+    }) === false);
+  check('a whoop belly sliding through the hole still does not score',
+    shouldScorePass({ x: 0, y: 0.05, z: 0.6 }, { x: 0, y: 0.04, z: -0.6 }, {
+      upz: -1, clearance: 0.04, hits: 1, heightAt: flat,
+    }) === false);
+  setCraftAirframe(fiveDims);
+  check('the five inch is seated again for everything below',
+    Math.abs(dirtClearance() - 0.22) < 1e-12, dirtClearance());
 
   const timing = new Race([{
     position: { x: 0, y: 0, z: 0 },

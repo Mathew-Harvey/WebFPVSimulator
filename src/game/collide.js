@@ -139,6 +139,20 @@ export let CRAFT_R = CRAFT_ARM + CRAFT_HULL_R;
  * one. Only the query is scaled.
  */
 export let CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
+/*
+ * The five inch's swept radius, frozen HERE, on the line after it is first
+ * computed and before setCraftAirframe can ever run.
+ *
+ * One thing downstream needs it: the dirt band, which is a length about the
+ * aircraft expressed as a multiple of this radius so that the five inch keeps
+ * the exact band it was tuned with. Reading CRAFT_WORLD_R at that point
+ * instead would work today and silently stop working the moment somebody
+ * seats an airframe earlier, so it is taken while the answer is not in doubt.
+ * If the defaults above ever stop being the five inch, this moves with them
+ * and the band it anchors moves too, which is the whole reason it is spelled
+ * out next to them rather than two thousand lines away.
+ */
+const FIVE_INCH_WORLD_R = CRAFT_WORLD_R;
 export let CRAFT_WORLD_ARM_AXIS = simLenToWorld(CRAFT_ARM * Math.SQRT1_2);
 export let CRAFT_WORLD_HULL = simLenToWorld(CRAFT_HULL_R);
 
@@ -2180,8 +2194,45 @@ export function hitOutcome(kindName, closing, _upDot = 0) {
  * view.height. margin is how far below that surface counts as buried.
  */
 export const DIRT_UPZ = 0.50;
-export const DIRT_CLEARANCE = 0.22;
+/*
+ * THE DIRT BAND IS A LENGTH ABOUT THE AIRCRAFT, NOT A LENGTH ABOUT THE WORLD.
+ *
+ * 0.22 m is the five inch's band and it stays exactly the five inch's band:
+ * DIRT_SPAN is that number over FIVE_INCH_WORLD_R, so on the field the
+ * arithmetic reduces to the constant it replaced and no lap time moves.
+ *
+ * It was a flat 0.22 m for every aircraft, and on the RaceGOW class it was
+ * three and a half times too big. A whoop gate's bottom bar is ON THE FLOOR
+ * and its opening is 0.711 m, so a flat band called the bottom 31 percent of
+ * every hole on the track dirt, and a whoop threading the low line through a
+ * gate, which is the line a whoop is FOR, was refused the pass. Refused
+ * silently: no flash, no gate tone, no mark on the OSD, because a refusal
+ * here is indistinguishable from never having flown the gate. The pilot's
+ * report was that whoop gates sometimes do not register, and this is the
+ * whole of it. The start gate is a ground gate too, so on a low launch the
+ * same band could decline to start the lap at all.
+ *
+ * What the band means is that the craft cannot be flying clean this close to
+ * the surface, and that is a claim about the MACHINE, which is why it now
+ * scales with one. A quad banked hard presents its swept radius below its own
+ * centre, so a centre inside that radius is a hull in the ground whatever the
+ * attitude, and the band is that radius with clear air over it: 1.27 of it,
+ * which is what 0.22 m was for the five inch and what this says in general.
+ *
+ * On the 65 mm whoop it comes out at 0.064 m. Level, that is a duct 4.6 cm off
+ * the floor, which is a pass; on its side at the same height the duct is
+ * 1.4 cm in the floor, which is the accident the band is for, and the band has
+ * to cover the worse of the two because shouldScorePass is not given the
+ * attitude. 91 percent of a RaceGOW opening now scores where 69 did.
+ */
+const DIRT_SPAN = 0.22 / FIVE_INCH_WORLD_R;
 export const BURIED_MARGIN = 0.10;
+
+/* The band for the airframe currently seated, in WORLD metres, because the
+ * clearance every caller measures is a world height above a world surface. */
+export function dirtClearance() {
+  return CRAFT_WORLD_R * DIRT_SPAN;
+}
 
 export function upsetOnDirt(upz, clearance, inContact) {
   /* A path this close to the dirt is a crash, not a flown opening.
@@ -2191,7 +2242,7 @@ export function upsetOnDirt(upz, clearance, inContact) {
    * still name a tumble; the clearance band is the decision. */
   void upz;
   void inContact;
-  return clearance < DIRT_CLEARANCE;
+  return clearance < dirtClearance();
 }
 
 export function shouldScorePass(prev, curr, opts) {

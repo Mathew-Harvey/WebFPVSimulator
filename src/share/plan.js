@@ -813,11 +813,32 @@ export function planFromDocument(doc) {
     const pads = Number(item.dims && item.dims.pads);
     const spacing = Number(item.dims && item.dims.spacing);
     const padSize = Number(item.dims && item.dims.padSize);
+    /*
+     * THE THIRD DIMENSION, carried so the isometric card can be drawn.
+     *
+     * A top down plan needs none of this: a gate is a line across its own
+     * width whatever its height. The card below draws the track the way a
+     * pilot sees it, so it needs the sill each opening starts at, how tall
+     * the opening is, how far apart a stack's levels are, whether the plane
+     * lies flat, and how tall a pole is. Every one is optional, because a
+     * plan that arrived from the board was written before this existed and
+     * still has to draw: the drawer falls back to the class's own sizes.
+     */
+    const sillH = Number(item.dims && item.dims.sillH);
+    const clearH = Number(item.dims && item.dims.clearH);
+    const levelPitch = Number(item.dims && item.dims.levelPitch);
+    const height = Number(item.dims && item.dims.height);
     marks.push({
       type,
       x: Number(item.position.x) || 0,
       y: Number(item.position.y) || 0,
+      z: Number(item.position.z) || 0,
       yaw: Number(item.yaw) || 0,
+      pitch: Number(item.pitch) || 0,
+      sillH: Number.isFinite(sillH) && sillH > 0 ? sillH : undefined,
+      clearH: Number.isFinite(clearH) && clearH > 0 ? clearH : undefined,
+      levelPitch: Number.isFinite(levelPitch) && levelPitch > 0 ? levelPitch : undefined,
+      height: Number.isFinite(height) && height > 0 ? height : undefined,
       seq: sequenced.has(item.id),
       levels: Number.isFinite(levels) && levels > 0 ? levels : undefined,
       w: Number.isFinite(barrierW) && barrierW > 0 ? barrierW : undefined,
@@ -842,9 +863,19 @@ export function planFromDocument(doc) {
     }
     const x = Number(item.position.x) || 0;
     const y = Number(item.position.y) || 0;
+    /* The height the lap passes this step at, so the isometric card can
+     * draw a line that climbs. An opening is passed through its centre; a
+     * pole is passed at half its height, which is the honest average of a
+     * rule that says any height at all. */
+    const kind = String(item.type || '');
+    const base = Number(item.position.z) || 0;
+    const z = PLAN_APERTURE.has(kind)
+      ? base + (Number(item.dims && item.dims.sillH) || 0)
+        + (Number(item.dims && item.dims.clearH) || 0) / 2
+      : base + (Number(item.dims && item.dims.height) || 0) / 2;
     const last = path[path.length - 1];
     if (!last || last.x !== x || last.y !== y) {
-      path.push({ x, y });
+      path.push({ x, y, z });
     }
     const type = String(item.type || '');
     if (PLAN_APERTURE.has(type) && item.id) {
@@ -866,6 +897,328 @@ export function planFromDocument(doc) {
     path,
     numbers,
   };
+}
+
+/*
+ * THE ISOMETRIC CARD.
+ *
+ * A top down plan answers "what is the footprint", and a pilot choosing a
+ * track is asking "what does it look like". Those are different questions
+ * and the plan was only ever answering the first: a two high stack and a
+ * single gate draw the same line from above, and the RaceGOW tracks are
+ * mostly stacks, so three different courses came out as three similar
+ * scribbles.
+ *
+ * So this draws the same plan data in the same three quarter view the
+ * animation exporter uses, and for the same reason: it is the view that
+ * shows a course is built of frames standing up. The angles are
+ * src/trackbuilder/stage.js's own, 55 degrees off the track's long axis and
+ * 40 degrees down, so a card and an exported GIF of one track are
+ * recognisably the same object.
+ *
+ * ORTHOGRAPHIC, not perspective, and no WebGL. A card is 150 px wide in a
+ * menu that is rebuilt on every cursor move; a context per card is not
+ * affordable and the convergence would not be visible at that size anyway.
+ * It is the same 2D canvas the plan used.
+ */
+const ISO_AZIMUTH_OFF = -55 * (Math.PI / 180);
+const ISO_ELEVATION = 40 * (Math.PI / 180);
+/* How far outside the track the ground plate reaches, in metres, per class. */
+const ISO_GROUND_PAD = { micro: 0.5, full: 6 };
+
+/* The track's own long axis, the same principal axis stage.js frames on, so
+ * the shot is across the course rather than down the length of it. */
+function isoAxis(marks) {
+  const pts = marks.filter((m) => Number.isFinite(m.x) && Number.isFinite(m.y));
+  if (pts.length < 2) {
+    return 0;
+  }
+  let mx = 0;
+  let my = 0;
+  for (const p of pts) {
+    mx += p.x;
+    my += p.y;
+  }
+  mx /= pts.length;
+  my /= pts.length;
+  let vxx = 0;
+  let vyy = 0;
+  let vxy = 0;
+  for (const p of pts) {
+    const dx = p.x - mx;
+    const dy = p.y - my;
+    vxx += dx * dx;
+    vyy += dy * dy;
+    vxy += dx * dy;
+  }
+  return 0.5 * Math.atan2(2 * vxy, vxx - vyy);
+}
+
+function isoProjector(marks) {
+  const e = isoAxis(marks) + ISO_AZIMUTH_OFF;
+  const se = Math.sin(e);
+  const ce = Math.cos(e);
+  const sp = Math.sin(ISO_ELEVATION);
+  const cp = Math.cos(ISO_ELEVATION);
+  return {
+    /* Canvas coordinates, y down, before the fit below scales them. */
+    at: (x, y, z) => [-x * se + y * ce, (x * ce + y * se) * sp - (z || 0) * cp],
+    /* How near the camera a point is, for the painter's order. */
+    depth: (x, y) => x * ce + y * se,
+  };
+}
+
+/* The world geometry of one element, as a list of polylines. Everything the
+ * card draws is a line: a frame is its opening's rectangle and its legs, a
+ * pole is a stick, a bar is a span on two legs. */
+function isoShapes(mark, small) {
+  const cw = mark.clearW || (small ? 0.711 : 1.524);
+  const ch = mark.clearH || cw;
+  const lp = mark.levelPitch || (ch + 0.034);
+  const levels = Math.max(1, Math.round(mark.levels || 1));
+  const s0 = mark.sillH || 0;
+  const base = mark.z || 0;
+  const yaw = mark.yaw || 0;
+  const hx = Math.cos(yaw);
+  const hy = Math.sin(yaw);
+  const wx = -hy;
+  const wy = hx;
+  const type = String(mark.type || '');
+  const out = [];
+  if (PLAN_APERTURE.has(type)) {
+    /* A dive gate's plane lies flat, so its opening is a square on the
+     * ground plane rather than a rectangle standing on it. */
+    const flat = Math.abs(mark.pitch || 0) > 0.7;
+    let top = base;
+    for (let i = 0; i < levels; i += 1) {
+      const sill = base + s0 + i * lp;
+      if (flat) {
+        const z = sill + ch / 2;
+        const a = [mark.x + (wx * cw + hx * ch) / 2, mark.y + (wy * cw + hy * ch) / 2, z];
+        const b = [mark.x + (wx * cw - hx * ch) / 2, mark.y + (wy * cw - hy * ch) / 2, z];
+        const c = [mark.x - (wx * cw + hx * ch) / 2, mark.y - (wy * cw + hy * ch) / 2, z];
+        const d = [mark.x - (wx * cw - hx * ch) / 2, mark.y - (wy * cw - hy * ch) / 2, z];
+        out.push({ pts: [a, b, c, d, a], colour: C.dive });
+        top = Math.max(top, z);
+        continue;
+      }
+      const lx = mark.x - (wx * cw) / 2;
+      const ly = mark.y - (wy * cw) / 2;
+      const rx = mark.x + (wx * cw) / 2;
+      const ry = mark.y + (wy * cw) / 2;
+      out.push({
+        pts: [[lx, ly, sill], [rx, ry, sill], [rx, ry, sill + ch], [lx, ly, sill + ch], [lx, ly, sill]],
+        colour: C.gate,
+      });
+      top = Math.max(top, sill + ch);
+    }
+    /* The legs, from the ground to the lowest opening, so an elevated gate
+     * stands on something instead of floating. */
+    if (s0 > 0.02 || base > 0.02) {
+      for (const s of [-1, 1]) {
+        const px = mark.x + (s * wx * cw) / 2;
+        const py = mark.y + (s * wy * cw) / 2;
+        out.push({ pts: [[px, py, 0], [px, py, base + s0]], colour: C.gate });
+      }
+    }
+    return out;
+  }
+  if (type === 'barrier') {
+    const w = (mark.w || 1) / 2;
+    const d = (mark.d || 1) / 2;
+    const h = mark.height || 1;
+    const corner = (sw, sd) => [mark.x + wx * sw * w + hx * sd * d, mark.y + wy * sw * w + hy * sd * d];
+    const q = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+    out.push({ pts: [...q, q[0]].map((c) => [c[0], c[1], base]), colour: C.barrierEdge });
+    out.push({ pts: [...q, q[0]].map((c) => [c[0], c[1], base + h]), colour: C.barrierEdge });
+    for (const c of q) {
+      out.push({ pts: [[c[0], c[1], base], [c[0], c[1], base + h]], colour: C.barrierEdge });
+    }
+    return out;
+  }
+  if (type === 'horizontalPole') {
+    const w = (mark.w || 1) / 2;
+    const h = mark.height || 0.03;
+    const z = base + h / 2;
+    const ax = mark.x - hx * w;
+    const ay = mark.y - hy * w;
+    const bx = mark.x + hx * w;
+    const by = mark.y + hy * w;
+    out.push({ pts: [[ax, ay, z], [bx, by, z]], colour: C.gate });
+    out.push({ pts: [[ax, ay, 0], [ax, ay, z]], colour: C.gate });
+    out.push({ pts: [[bx, by, 0], [bx, by, z]], colour: C.gate });
+    return out;
+  }
+  if (type === 'startPads') {
+    const n = Math.max(1, Math.round(mark.pads || 1));
+    const gap = mark.spacing || 0.3;
+    const size = (mark.padSize || 0.5) / 2;
+    for (let i = 0; i < n; i += 1) {
+      const off = (i - (n - 1) / 2) * gap;
+      const cx = mark.x + wx * off;
+      const cy = mark.y + wy * off;
+      const q = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([sw, sd]) => [
+        cx + wx * sw * size + hx * sd * size,
+        cy + wy * sw * size + hy * sd * size,
+        base,
+      ]);
+      out.push({ pts: q, colour: C.start });
+    }
+    return out;
+  }
+  /* A pole, a flag or a cone: a stick of its own height. */
+  const h = mark.height || (small ? 0.5 : 2.5);
+  out.push({
+    pts: [[mark.x, mark.y, base], [mark.x, mark.y, base + h]],
+    colour: type === 'cone' ? C.cone : C.marker,
+  });
+  return out;
+}
+
+/*
+ * The same contract as drawPlan: a canvas, a plan, and it paints. Returns
+ * false when the canvas has no size yet, so a caller can paint again after
+ * layout.
+ */
+export function drawIso(canvas, plan, options = {}) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.round(rect.width || canvas.clientWidth || 0);
+  const h = Math.round(rect.height || canvas.clientHeight || 0);
+  if (w < 8 || h < 8) {
+    return false;
+  }
+  const pw = Math.round(w * dpr);
+  const ph = Math.round(h * dpr);
+  if (canvas.width !== pw || canvas.height !== ph) {
+    canvas.width = pw;
+    canvas.height = ph;
+  }
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return false;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = C.ground;
+  ctx.fillRect(0, 0, w, h);
+  if (!plan) {
+    return true;
+  }
+  const small = isMicro(plan);
+  const marks = (plan.marks || []).filter((m) => {
+    const type = String(m && m.type ? m.type : '');
+    return type && type !== 'waypoint' && type !== 'label' && type !== 'groundLogo';
+  });
+  if (!marks.length) {
+    return true;
+  }
+  const p = isoProjector(marks);
+
+  /* The ground, as the track's own footprint with a margin, rather than the
+   * whole room: a 10 by 12 m field drawn round a 2 m course leaves the
+   * course as a speck in the middle of a card. */
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (const m of marks) {
+    x0 = Math.min(x0, m.x);
+    x1 = Math.max(x1, m.x);
+    y0 = Math.min(y0, m.y);
+    y1 = Math.max(y1, m.y);
+  }
+  const pad = small ? ISO_GROUND_PAD.micro : ISO_GROUND_PAD.full;
+  const ground = [
+    [x0 - pad, y0 - pad, 0], [x1 + pad, y0 - pad, 0],
+    [x1 + pad, y1 + pad, 0], [x0 - pad, y1 + pad, 0],
+  ];
+
+  const shapes = [];
+  for (const m of marks) {
+    for (const shape of isoShapes(m, small)) {
+      shapes.push({ ...shape, depth: p.depth(m.x, m.y) });
+    }
+  }
+  const line = (plan.path || []).filter((q) => Number.isFinite(q.x) && Number.isFinite(q.y));
+
+  /* One fit over everything that will be drawn, so nothing falls off. */
+  let ax = Infinity;
+  let ay = Infinity;
+  let bx = -Infinity;
+  let by = -Infinity;
+  const see = ([sx, sy]) => {
+    ax = Math.min(ax, sx);
+    ay = Math.min(ay, sy);
+    bx = Math.max(bx, sx);
+    by = Math.max(by, sy);
+  };
+  for (const g of ground) {
+    see(p.at(g[0], g[1], g[2]));
+  }
+  for (const shape of shapes) {
+    for (const q of shape.pts) {
+      see(p.at(q[0], q[1], q[2]));
+    }
+  }
+  const inset = options.pad == null ? Math.max(4, w * 0.04) : options.pad;
+  const scale = Math.min((w - inset * 2) / Math.max(1e-6, bx - ax), (h - inset * 2) / Math.max(1e-6, by - ay));
+  const ox = (w - (bx - ax) * scale) / 2 - ax * scale;
+  const oy = (h - (by - ay) * scale) / 2 - ay * scale;
+  const to = (x, y, z) => {
+    const s = p.at(x, y, z);
+    return [s[0] * scale + ox, s[1] * scale + oy];
+  };
+
+  const poly = (pts, colour, width, close) => {
+    ctx.beginPath();
+    pts.forEach((q, i) => {
+      const s = to(q[0], q[1], q[2]);
+      if (i === 0) {
+        ctx.moveTo(s[0], s[1]);
+      } else {
+        ctx.lineTo(s[0], s[1]);
+      }
+    });
+    if (close) {
+      ctx.closePath();
+      ctx.fillStyle = colour;
+      ctx.fill();
+      return;
+    }
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = width;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  };
+
+  poly(ground, C.plateBottom, 1, true);
+  ctx.strokeStyle = C.gridMajor;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ground.forEach((g, i) => {
+    const s = to(g[0], g[1], g[2]);
+    if (i === 0) {
+      ctx.moveTo(s[0], s[1]);
+    } else {
+      ctx.lineTo(s[0], s[1]);
+    }
+  });
+  ctx.closePath();
+  ctx.stroke();
+
+  if (line.length > 1) {
+    poly(line.map((q) => [q.x, q.y, q.z || 0]), C.pathCore, Math.max(1, w / 110), false);
+  }
+
+  /* Far first, so a frame in front of another covers it. */
+  shapes.sort((a, b) => a.depth - b.depth);
+  const stroke = Math.max(1, w / 90);
+  for (const shape of shapes) {
+    poly(shape.pts, shape.colour, stroke, false);
+  }
+  return true;
 }
 
 /*

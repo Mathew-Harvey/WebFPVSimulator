@@ -110,7 +110,7 @@ import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import { courseChip, hasFlyableTrack, inspectCourse, isEmptyCanvas } from '../share/listing.js';
 import { presetsForClass, presetById } from '../trackbuilder/presets.js';
-import { drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
+import { drawIso, drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
 import { activeCourseSummary } from '../share/summary.js';
 import {
   readPendingTime,
@@ -7229,9 +7229,16 @@ export class Ui {
     if (!this.courseCards || !this.courseCards.length) {
       return;
     }
+    /*
+     * THE CARD IS THE THREE QUARTER VIEW, not the plan. A pilot picking a
+     * course is asking what it looks like, and from above a two high stack
+     * and a single gate are the same line. See drawIso in
+     * src/share/plan.js: same data, same angles as the animation exporter,
+     * so a card and an exported GIF of one track are the same object.
+     */
     requestAnimationFrame(() => {
       for (const c of this.courseCards || []) {
-        drawPlan(c.canvas, c.canvas.planData, {});
+        drawIso(c.canvas, c.canvas.planData, {});
       }
     });
   }

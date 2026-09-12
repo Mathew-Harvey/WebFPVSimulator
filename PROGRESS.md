@@ -33047,3 +33047,50 @@ that count changed. The built track was exported and its plate compared with
 the reference: three structures in the right places at the right sizes, with
 the extra frame named above. `npm run verify` was not run: no physics,
 plant, ABI or build changed.
+
+## Round 38: the track card is a three quarter view, not a plan
+
+The owner looked at the Track room and asked for the card pictures to be the
+isometric view the animation exporter draws rather than the top down plan.
+
+**Why the plan was the wrong drawing.** It answers "what is the footprint",
+and a pilot picking a course is asking "what does it look like". From above
+a two high stack and a single gate are the same line, and the RaceGOW set is
+mostly stacks, so three different courses came out as three similar
+scribbles. Nothing about the plan was broken; it was answering a question
+nobody in that room had asked.
+
+**What it draws now.** `drawIso` in `src/share/plan.js`, from the same plan
+data, at `stage.js`'s own angles: 55 degrees off the track's long axis and
+40 degrees down, with the long axis found by the same principal axis pass
+the exporter uses. So a card and an exported GIF of one track are
+recognisably the same object. Orthographic and on the same 2D canvas, with
+no WebGL: a card is 150 px wide in a menu rebuilt on every cursor move, a
+context per card is not affordable, and the convergence would not show at
+that size.
+
+**The plan had to grow a third dimension to allow it.** Marks now carry the
+sill, the clear height, the level pitch, the pitch and the marker height,
+and each path point carries the height the lap passes it at. Every one is
+optional, because a plan fetched from the board was written before this
+existed and still has to draw: the drawer falls back to the class's own
+sizes. That is also why the ground plate is the track's own footprint plus a
+margin rather than the room: a 10 by 12 m field drawn around a 2 m course
+leaves the course a speck in the middle of a card.
+
+**Painter's order rather than a depth buffer.** Each element is sorted by
+how near the camera its own position is and drawn far first, which is right
+for a course of separated frames and would not be for one object passing
+through another. The racing line goes under the structures for the same
+reason it reads: the structure is the subject.
+
+**What did not change.** The results panel still draws the top down plan
+with its scale bar, because a pilot reading a result is asking about the
+footprint after all. `drawPlan` is untouched, and so is every other caller.
+
+**Checks, run this turn.** `micro:check`, `check:clip` 495 of 495,
+`check:path` 12 of 12, `lint:presets` 6 of 6 and `lint:shell`, which drives
+the Track room itself. Both classes were photographed through the real shell
+at 1500 px: the three whoop cards show their frames standing up, and the
+2022 AU Nationals card shows a 128 m course with its line. `npm run verify`
+was not run: no physics, plant, ABI or build changed.

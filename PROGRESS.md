@@ -34903,3 +34903,72 @@ new Track 3 assertions, `lint:presets` 6 of 6, `lint:nouns` PASS,
 `check:clip` 522 of 522, `lint:board` PASS. Beyond those, the step 8
 crossing walk, the new clearance walk, the step 8b projection and the step
 10 export over the reference, all in this round.
+
+## Round 61: RaceGOW5 Track 4, and the first dive gate read off an animation
+
+The owner supplied the Track 4 animation, by the Lego Dans, and said while
+the read was running that this one has a gate parallel to the floor. It
+does, and finding it was the interesting part.
+
+**The structure.** A tower two bays wide and two deep at x -1 to 0 and y 0
+to 1. At one unit up, four bars close a ring between (0,0), (1,0), (1,1)
+and (0,1), and that ring IS the dive gate: a square lying flat that the lap
+drops through once and climbs back up through once. At two units there are
+two more bars over two of the ring's sides. The leg at (0,0) carries on to
+three units; the leg at (-1,0) stops at two and is flown around. From the
+ring a rail runs on along x to (2,0), turns across y and drops to a gate
+standing almost exactly edge on to the camera. Twelve passes over nine
+openings.
+
+**The camera settled at 2.4 px rms over fifteen fittings**, the best of the
+five, and step 4c came back right handed on the first fit so nothing had to
+be mirrored. Step 4b: five feet within 0.06 of a whole unit, four heights
+within 0.005, and the tall leg's tip at 2.909 for the usual end cap reason.
+
+**The dive gate fell out of the lattice rather than being spotted.** Two of
+the lit panels came back as `z=1, x 0 to 1, y 0 to 1` from the rectangle
+search at 0.835 and 0.846 IoU, well clear of anything vertical, and the
+line crosses z=1 inside that square twice, once going up and once going
+down. The owner's note confirmed what the numbers already said.
+
+**What the run splitter got wrong, and it would have added a pass.** The far
+gate stands edge on, so its lit panel is a 1900 pixel sliver, and the quad's
+own trail crossing it drops the frame to frame overlap below the 0.80
+threshold for one frame at a time. That reads as two runs and therefore two
+passes. The area settles it: it never moves off 1920 pixels from frame 151
+to frame 2, so it is one run and one pass, and the lap has twelve passes
+rather than thirteen. The splitter now gets a second look whenever a run
+boundary lands next to another run of the same size.
+
+**A SECOND KNOWN DIFFERENCE between what the game builds and what the
+reference draws, and it is in the code already.** `stage.js` says it
+plainly: "a dive gate lies flat and all four of its corners are the lowest
+edge, so it stands on four legs and a vertical gate on two". The reference's
+flat gate is held up by the rest of the structure and has legs on two
+corners only, so an export carries two uprights the plate does not. That is
+the same kind of difference as the ground bar under a sill zero opening,
+which TRACK-FROM-GIF.md already writes up, and it is written down here
+rather than absorbed.
+
+**The clearance check missed it at first, which is worth naming.** The check
+added last round builds the pipes a spec implies, and its pipe builder knew
+about vertical gates only: it treated the dive gate as a vertical one and
+reported a clearance of exactly zero, which read as a collision and was
+really the check measuring the wrong shape. Fixed in both the check and the
+tuner, along with the four legs, and Track 4 then came back at 15.6 cm,
+the best of the five. Track 8, the other track with a flat gate, is 6.9 cm
+by the same measure.
+
+Waypoint tuning, same three objectives as last round: the fit went from
+0.157 to 0.113 units against the reconstructed line, the clearance from a
+collision to 15.6 cm, and the tightest radius from 0.017 to 0.040 m. Track 5
+ships at 0.015. No threshold moved.
+
+`npm run verify` was NOT run. This round is a track spec, generated data and
+one check's named set. It does not reach `src/native`, the patches,
+`vendor/betaflight`, the WASM build or the input path. Cheap checks run in
+this round: `micro:check` clean including the thirteen new Track 4
+assertions, `lint:presets` 6 of 6, `lint:nouns` PASS, `check:clip` 522 of
+522, `lint:board` PASS. Beyond those, the step 8 crossing walk over five x
+planes, three y planes and two z planes, the clearance walk, and the step 10
+export laid over the reference, all in this round.

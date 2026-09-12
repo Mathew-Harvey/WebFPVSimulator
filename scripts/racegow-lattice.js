@@ -502,6 +502,106 @@ export const TRACKS = [
     start: { at: [-1.5, 0.8], yaw: -Math.PI / 2 },
     lap: 'A- B- Wa C+ Wb D- Wc L+ Wd E+ We Wf P Wg Wh G+ Wi H- Wj P Wk Wt Wl E+ Wm I+ Wn J+ Wo D- Wp K+ Wq Wr Ws',
   },
+  {
+    id: 'racegow5-track4',
+    name: 'RaceGOW5 Track 4',
+    credit: {
+      designer: 'the Lego Dans',
+      series: 'RaceGOW5',
+      source: 'racegow.com/tracks, the official Track 4 animation',
+      broughtOverBy: 'andAgainFPV',
+    },
+    origin: [182, 222],
+    /*
+     * Read off the RaceGOW5 Track 4 animation, 168 frames, every frame.
+     * Twelve passes over nine openings, and one of them lies flat.
+     *
+     * THIS IS THE FIRST SHIPPED TRACK WITH A DIVE GATE, which the owner
+     * said to look for. At one unit up, the four bars between (0,0), (1,0),
+     * (1,1) and (0,1) close a square that is parallel to the floor, and the
+     * lap drops through it and later climbs back up through it. In the
+     * builder that is `axis: 'z'`, a diveGate, the same element Track 8's
+     * table top uses.
+     *
+     * The structure. A tower of two bays at x -1 to 0 and y 0 to 1, with a
+     * ring of bars closing the dive gate at one unit and a second set of
+     * bars at two units over two of its sides. The leg at (0,0) is carried
+     * up to three units and is the tallest thing here; the leg at (-1,0) is
+     * two units and is flown around. From the ring, a rail runs on along x
+     * to (2,0) where it turns across y and drops to a gate standing almost
+     * exactly edge on to the camera.
+     *
+     * THE CAMERA, 2.4 px rms over fifteen fittings, the best of the five.
+     * Step 4c came back right handed on the first fit, so nothing was
+     * mirrored. Step 4b: five feet within 0.06 of a whole unit, four heights
+     * within 0.005, and the tall pole's tip at 2.909 because a pipe's end
+     * cap is not its end.
+     *
+     * TWO OF THE NINE OPENINGS ARE GAPS, marked `unbuilt`: H and I, the two
+     * over the bars at two units, each with the tall leg beside it and
+     * nothing else. D is not a gap but the leg at (-1,0) drawn as the pole
+     * rule says: a panel one unit wide and the full two units of its height,
+     * on the side the quad passes.
+     *
+     * WHAT THE RUN SPLITTER GOT WRONG, and it is worth naming because it
+     * would have put a thirteenth pass in the lap. The far gate stands edge
+     * on, so its lit panel is a 1900 pixel sliver, and the quad's own trail
+     * moving across it drops the frame to frame overlap below the threshold
+     * for a frame at a time. That reads as two runs and therefore two
+     * passes. The area tells the truth: it never moves off 1920 pixels from
+     * frame 151 to frame 2, so it is one run and one pass.
+     */
+    squares: {
+      A: { name: 'Far gate', axis: 'x', at: [2, -0.5], sill: 0 },
+      C: { name: 'Left frame, under the bar', axis: 'y', at: [-0.5, 0], sill: 0 },
+      B: { name: 'Left frame, over the bar', axis: 'y', at: [-0.5, 0], sill: 1 },
+      I: { name: 'Over the left bar', axis: 'y', at: [-0.5, 0], sill: 2, unbuilt: true },
+      F: { name: 'Near bay', axis: 'x', at: [0, 0.5], sill: 0 },
+      H: { name: 'Over the near bar', axis: 'x', at: [0, 0.5], sill: 2, unbuilt: true },
+      J: { name: 'Far bay', axis: 'y', at: [0.5, 1], sill: 1 },
+      G: { name: 'Dive gate', axis: 'z', at: [0.5, 0.5], sill: 1 },
+    },
+    poles: {
+      D: { name: 'Left pole', at: [-1, 0], height: 2, side: [-1, 0], beside: 'C' },
+    },
+    posts: [
+      { name: 'Tall pole', at: [0, 0], height: 3 },
+    ],
+    rails: [
+      { name: 'Rail on to the far gate', from: [1, 0, 1], to: [2, 0, 1] },
+      { name: 'Bar over the near bay', from: [0, 0, 2], to: [0, 1, 2] },
+    ],
+    /*
+     * Twelve passes and nine openings leave the alphabet short, so a
+     * waypoint takes a two character key, the same way Track 3 does it.
+     */
+    waypoints: {
+      Wa: { name: 'Down the long side', at: [0.17, -0.47], z: 0.42, heading: [-1, 0] },
+      Wb: { name: 'Up to the frame', at: [-0.5, -0.32], z: 1.2, heading: [0, 1] },
+      Wc: { name: 'Round the far side', at: [-0.86, 1.35], z: 0.9, heading: [1, 0] },
+      Wd: { name: 'Round to the pole', at: [-1.63, -0.64], z: 0.28, heading: [-1, 0] },
+      We: { name: 'Back off the pole', at: [-0.48, 0.33], z: 0.91, heading: [1, 0] },
+      Wf: { name: 'Out in front', at: [0.11, -0.72], z: 0.29, heading: [1, 0] },
+      Wg: { name: 'Round the near end', at: [0.53, 0.59], z: 0.2, heading: [0, 1] },
+      Wh: { name: 'Up off the floor', at: [-0.39, 0.66], z: 1.2, heading: [1, 0] },
+      Wi: { name: 'Out over the rail', at: [1.13, -0.26], z: 1.97, heading: [0, 1] },
+      Wj: { name: 'Back down inside', at: [1.11, 0.64], z: 0.63, heading: [-1, 0] },
+      Wk: { name: 'Under the dive gate', at: [0.49, 0.86], z: 0.64, heading: [-1, 0] },
+      Wl: { name: 'Round the top, out', at: [0.31, -0.89], z: 1.97, heading: [1, 0] },
+      Wm: { name: 'Round the top, back', at: [0.8, -0.8], z: 2.4, heading: [0, 1] },
+      Wn: { name: 'Over the back', at: [0.69, -1.11], z: 2.36, heading: [1, 0] },
+      Wo: { name: 'Down the far side', at: [0.74, -0.92], z: 2.07, heading: [0, 1] },
+      Wp: { name: 'Round the far end', at: [1.03, 1.97], z: 1.26, heading: [1, 0] },
+      Wq: { name: 'Back along the far side', at: [1.55, 1.64], z: 1.21, heading: [0, -1] },
+      Wr: { name: 'On to the dive gate again', at: [1.07, 0.35], z: 1.24, heading: [-1, 0] },
+      Ws: { name: 'Down the rail', at: [1.5, 0.53], z: 0.81, heading: [1, 0] },
+      Wv: { name: 'Along the rail, out', at: [1.65, 0.93], z: 0.34, heading: [1, 0] },
+      Wt: { name: 'Round the near end', at: [2.85, 0.59], z: 0.34, heading: [0, -1] },
+      Wu: { name: 'Line up on the far gate', at: [2.71, -0.29], z: 0.3, heading: [-1, 0] },
+    },
+    start: { at: [2.8, -0.55], yaw: Math.PI },
+    lap: 'A- Wa Wb B+ Wc C- Wd D We C- Wf Wg F- Wh Wi Wj Wk G+ B- Wl Wm H- I- Wn Wo J+ Wp Wq Wr G- Ws Wv Wt Wu',
+  },
 ];
 
 /*

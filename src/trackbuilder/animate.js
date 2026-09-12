@@ -40,6 +40,25 @@ import { buildPath } from './path.js';
 import { buildStage } from './stage.js';
 import { buildPalette, GifEncoder } from './gif.js';
 
+/*
+ * THE CARD ANIMATION, in four numbers, written once because three callers
+ * have to agree on them: the builder renders one the moment a room is
+ * published, scripts/boardgif.js renders one for a room published before
+ * any of this existed, and the board's own card grid is what both are for.
+ *
+ * 384 BY 240 is the card tile's 16 by 10. A square animation in that box
+ * either letterboxes or loses the top of the track to a crop, and the tile
+ * is 16 by 10 because the cards were that shape long before this existed.
+ *
+ * SIXTY FRAMES AT SIX CENTISECONDS is one lap in three and a half seconds
+ * at about sixteen a second. The chat share is three hundred frames at four,
+ * which is twelve seconds and smooth; a card is a thumbnail in a grid of
+ * thumbnails, and three seconds is how long anybody looks at one. The pair
+ * of numbers is what keeps a card under a hundred kilobytes: the measured
+ * output on the RaceGOW rooms is twenty to seventy.
+ */
+export const CARD_GIF = { width: 384, height: 240, frames: 60, delayCs: 6 };
+
 /* One frame in sixteen is enough to see every colour the animation uses,
  * because the only things that move are the ribbon and the pane and both
  * keep their colours wherever they are. */
@@ -54,10 +73,10 @@ const nextTick = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 /* WebGL hands back rows from the bottom up and every image format in the
  * world is top down, so somebody has to turn it over. */
-function flipRows(src, dst, size) {
-  const stride = size * 4;
-  for (let y = 0; y < size; y += 1) {
-    const from = (size - 1 - y) * stride;
+function flipRows(src, dst, width, height) {
+  const stride = width * 4;
+  for (let y = 0; y < height; y += 1) {
+    const from = (height - 1 - y) * stride;
     dst.set(src.subarray(from, from + stride), y * stride);
   }
 }
@@ -71,9 +90,18 @@ function flipRows(src, dst, size) {
  * camera, when given, is a fixed viewpoint in document coordinates, an
  * { eye, aim, fovDeg } that stage.js uses instead of framing the track
  * itself. It is how an export is laid over a reference picture.
+ *
+ * size is the square edge and stays the default, because a file somebody
+ * pastes into a group chat should be square. width and height override it
+ * for the one caller that has a shape to fit: the public board's card grid
+ * is 16 by 10, and a square animation in it either letterboxes or loses the
+ * top of the track to a crop. Everything downstream of the two numbers is
+ * the same code, so a 16 by 10 export and a square one differ only in how
+ * much of the floor is in shot.
  */
 export async function exportTrackGif(doc, {
-  size = 512, frames = 300, delayCs = 4, onProgress = null, camera = null,
+  size = 512, width = size, height = size,
+  frames = 300, delayCs = 4, onProgress = null, camera = null,
 } = {}) {
   const THREE = await import('three');
 
@@ -90,8 +118,8 @@ export async function exportTrackGif(doc, {
   }
 
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = width;
+  canvas.height = height;
 
   let renderer = null;
   let target = null;
@@ -99,7 +127,7 @@ export async function exportTrackGif(doc, {
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
     renderer.setPixelRatio(1);
-    renderer.setSize(size, size, false);
+    renderer.setSize(width, height, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -112,17 +140,17 @@ export async function exportTrackGif(doc, {
      * 256 entries to spend, so aliasing would be the first thing anybody
      * noticed.
      */
-    target = new THREE.WebGLRenderTarget(size, size, {
+    target = new THREE.WebGLRenderTarget(width, height, {
       samples: 4,
       depthBuffer: true,
       stencilBuffer: false,
     });
     target.texture.colorSpace = THREE.SRGBColorSpace;
 
-    stage = buildStage(THREE, doc, path, { size, camera });
+    stage = buildStage(THREE, doc, path, { width, height, camera });
 
-    const raw = new Uint8Array(size * size * 4);
-    const rgba = new Uint8Array(size * size * 4);
+    const raw = new Uint8Array(width * height * 4);
+    const rgba = new Uint8Array(width * height * 4);
     const total = frames + Math.ceil(frames / PALETTE_STRIDE);
     let done = 0;
 
@@ -130,9 +158,9 @@ export async function exportTrackGif(doc, {
       stage.setFrame(i, frames);
       renderer.setRenderTarget(target);
       renderer.render(stage.scene, stage.camera);
-      renderer.readRenderTargetPixels(target, 0, 0, size, size, raw);
+      renderer.readRenderTargetPixels(target, 0, 0, width, height, raw);
       renderer.setRenderTarget(null);
-      flipRows(raw, rgba, size);
+      flipRows(raw, rgba, width, height);
     };
 
     /* Pass one: a sample of the animation, kept, to choose the palette. */
@@ -152,7 +180,7 @@ export async function exportTrackGif(doc, {
     sample.length = 0;
 
     /* Pass two: every frame, straight into the encoder. */
-    const gif = new GifEncoder({ width: size, height: size, palette, loop: 0 });
+    const gif = new GifEncoder({ width, height, palette, loop: 0 });
     for (let i = 0; i < frames; i += 1) {
       shoot(i);
       gif.addFrame(rgba, delayCs);

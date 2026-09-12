@@ -52,6 +52,11 @@ function usage() {
   console.log('usage: node scripts/trackgif.js <track.json> [options]');
   console.log('  --out <file.gif>   where to write, default <slug>.gif beside the input');
   console.log('  --size <px>        square edge, default 512');
+  console.log('  --shape <w>x<h>    a rectangle instead of a square, in pixels, for a');
+  console.log('                     frame that has to fit something. The board\'s card');
+  console.log('                     grid is 16 by 10, and that is what --shape 384x240 is');
+  console.log('                     for. The field of view is vertical, so a wider frame');
+  console.log('                     sees more of the sides and the same amount of sky.');
   console.log('  --frames <n>       frames in the loop, default 300');
   console.log('  --delay <cs>       centiseconds per frame, default 4, which is 25 fps');
   console.log('  --camera <ex,ey,ez,ax,ay,az,fov>');
@@ -77,7 +82,9 @@ function parseCamera(text) {
 }
 
 function parseArgs(argv) {
-  const opts = { size: 512, frames: 300, delay: 4, out: null, input: null, camera: null };
+  const opts = {
+    size: 512, width: 0, height: 0, frames: 300, delay: 4, out: null, input: null, camera: null,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') {
@@ -85,6 +92,16 @@ function parseArgs(argv) {
     }
     if (a === '--out') { opts.out = argv[i + 1]; i += 1; continue; }
     if (a === '--size') { opts.size = Number(argv[i + 1]); i += 1; continue; }
+    if (a === '--shape') {
+      const m = /^(\d+)x(\d+)$/.exec(String(argv[i + 1] || ''));
+      if (!m) {
+        throw new Error('--shape wants <width>x<height>, as in 384x240');
+      }
+      opts.width = Number(m[1]);
+      opts.height = Number(m[2]);
+      i += 1;
+      continue;
+    }
     if (a === '--frames') { opts.frames = Number(argv[i + 1]); i += 1; continue; }
     if (a === '--delay') { opts.delay = Number(argv[i + 1]); i += 1; continue; }
     if (a === '--camera') { opts.camera = parseCamera(argv[i + 1]); i += 1; continue; }
@@ -98,6 +115,15 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(opts.size) || opts.size < 16 || opts.size > 2048) {
     throw new Error('--size must be between 16 and 2048');
+  }
+  if (!opts.width) {
+    opts.width = opts.size;
+    opts.height = opts.size;
+  }
+  for (const n of [opts.width, opts.height]) {
+    if (!Number.isFinite(n) || n < 16 || n > 2048) {
+      throw new Error('--shape wants each edge between 16 and 2048');
+    }
   }
   if (!Number.isFinite(opts.frames) || opts.frames < 2 || opts.frames > 2000) {
     throw new Error('--frames must be between 2 and 2000');
@@ -139,13 +165,13 @@ async function main() {
   const out = opts.out || join(dirname(opts.input), `${slugOf(doc.name)}.gif`);
 
   console.log(`trackgif: "${doc.name}" from ${basename(opts.input)}`);
-  console.log(`  ${opts.size} by ${opts.size}, ${opts.frames} frames at ${opts.delay} cs`);
+  console.log(`  ${opts.width} by ${opts.height}, ${opts.frames} frames at ${opts.delay} cs`);
 
   const started = Date.now();
   const page = await openPage({
     root,
-    width: Math.max(640, opts.size + 64),
-    height: Math.max(480, opts.size + 64),
+    width: Math.max(640, opts.width + 64),
+    height: Math.max(480, opts.height + 64),
     url: '/src/trackbuilder/animate.html',
   });
 
@@ -161,7 +187,11 @@ async function main() {
      */
     const call = page.evaluate(
       `window.__exportTrackGif(${JSON.stringify(doc)}, ${JSON.stringify({
-        size: opts.size, frames: opts.frames, delayCs: opts.delay, camera: opts.camera,
+        width: opts.width,
+        height: opts.height,
+        frames: opts.frames,
+        delayCs: opts.delay,
+        camera: opts.camera,
       })})`,
     );
 

@@ -4652,9 +4652,9 @@ export class Ui {
           note: 'The closed loop, the plant, and every Betaflight 4.5.1 key. Opens the wiki on webfpv.org.',
         },
         {
-          label: 'Leaderboard',
+          label: 'Tracks and Times',
           action: 'leaderboard',
-          note: 'The public board, with every track and its times. Opens in a new tab.',
+          note: 'The public page, with every published track and its times. Opens in a new tab.',
         },
         {
           label: 'Credits',
@@ -4807,7 +4807,7 @@ export class Ui {
           disabled: !listing || !listing.shareId,
         },
         {
-          label: 'The board on the web',
+          label: 'Tracks and Times on the web',
           action: 'leaderboard',
           note: 'The public page, for sending somebody a link. Everything on it is in here too. Opens in a new tab.',
         },
@@ -5389,7 +5389,7 @@ export class Ui {
               disabled: true,
               note: this.runPosted.improved === false
                 ? `The board already holds a better run of yours, ${formatScore(this.runPosted.score)}. Only your best is kept.`
-                : `That run is on the freestyle board.${this.runPosted.rank != null ? ` Rank ${this.runPosted.rank}.` : ''}`,
+                : `The board kept that run.${this.runPosted.rank != null ? ` Rank ${this.runPosted.rank}.` : ''}`,
             }
             : {
               label: 'Post this run',
@@ -5412,9 +5412,9 @@ export class Ui {
                     : `${formatScore(run.total)} from ${run.tricks} tricks. One entry per pilot on the board, and only your best.`)),
             },
           {
-            label: 'Open the board',
+            label: 'Open Tracks and Times',
             action: 'leaderboard',
-            note: 'The public freestyle table, and every published track beside it.',
+            note: 'Every published track, and the times flown on it.',
           },
           feelItem(),
           { label: 'Back to title', action: 'title' },
@@ -5437,12 +5437,12 @@ export class Ui {
         remixAction(listing),
         editOwnAction(listing),
         {
-          label: 'Open the board',
+          label: 'Open Tracks and Times',
           action: 'leaderboard',
           disabled: !(listing && (listing.published || listing.shareId || this.coursePublished)),
           note: listing && listing.name
             ? `The public page for ${listing.name}.`
-            : 'The public board. A track has to be published before it has a page.',
+            : 'The public page. A track has to be published before it has one.',
         },
         feelItem(),
         { label: 'Back to title', action: 'title' },

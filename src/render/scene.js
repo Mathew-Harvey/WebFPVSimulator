@@ -4604,7 +4604,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * A MultiGP gate carries a numbered plate because a 60 m field holds
      * fifteen gates a pilot has to tell apart at fifty metres, and the badge
      * is how a stacked frame says which of its holes is gate 5. A RaceGOW
-     * frame is a 27 inch square at arm's length in a living room: the pilot
+     * frame is a 28 inch square at arm's length in a living room: the pilot
      * can see the whole course at once, the real thing has no numbers on it,
      * and a disc hung beside a 0.711 m opening is furniture in the hole.
      * The owner asked for them off on the whoop. The header plate was

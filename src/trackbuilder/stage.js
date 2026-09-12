@@ -462,7 +462,9 @@ function paneCorners(doc, knot) {
   return apertureCorners(apertureCenter(el, idx), el.yaw, el.pitch, ap.clearW, ap.clearH);
 }
 
-export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null } = {}) {
+export function buildStage(THREE, doc, path, {
+  size = 512, width = size, height = size, camera: fixed = null,
+} = {}) {
   const trash = [];
   const keep = (x) => {
     trash.push(x);
@@ -491,7 +493,11 @@ export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null 
    * opening so a gate stays readable at distance.
    */
   const spanR = estimateRadius(doc, path);
-  const worldPerPx = (2.2 * spanR) / Math.max(64, size);
+  /* The SHORT edge, because that is the one the frame is fitted to and so
+   * the one a pipe's readable minimum has to be measured against. On a
+   * square export the two are the same number, which is what this was. */
+  const shortEdge = Math.max(64, Math.min(width, height));
+  const worldPerPx = (2.2 * spanR) / shortEdge;
   const minDrawR = (MIN_PIPE_PX * worldPerPx) / 2;
   const tubeR = Math.max(tubeOD / 2, minDrawR);
   const jointR = tubeR * JOINT_SCALE;
@@ -842,7 +848,11 @@ export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null 
   const fitR = Math.max(0.6, framedBox.getBoundingSphere(new THREE.Sphere()).radius);
   const fitCentre = framedBox.getCenter(new THREE.Vector3());
 
-  const camera = new THREE.PerspectiveCamera(FOV_DEG, 1, 0.05, Math.max(200, fitR * 40));
+  /* FOV_DEG is the VERTICAL field of view, so a wider frame sees more of
+   * the sides and exactly as much of the top and bottom. That is the right
+   * way round for a track, which is wide. */
+  const aspect = width / height;
+  const camera = new THREE.PerspectiveCamera(FOV_DEG, aspect, 0.05, Math.max(200, fitR * 40));
   const aim = new THREE.Vector3(
     fitCentre.x,
     framedBox.min.y + AIM_HEIGHT * (framedBox.max.y - framedBox.min.y),
@@ -856,7 +866,7 @@ export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null 
     -Math.sin(azimuth) * Math.cos(ELEVATION),
   );
   const dist = Math.max(fitR * 0.5, FIT_MARGIN * fitDistance(
-    THREE, fitPts, aim, eye, FOV_DEG, 1,
+    THREE, fitPts, aim, eye, FOV_DEG, aspect,
   ));
   camera.position.copy(aim).addScaledVector(eye, dist);
   camera.lookAt(aim);

@@ -41,10 +41,12 @@ import { buildStage } from './stage.js';
 import { buildPalette, GifEncoder } from './gif.js';
 
 /*
- * THE CARD ANIMATION, in four numbers, written once because three callers
- * have to agree on them: the builder renders one the moment a room is
- * published, scripts/boardgif.js renders one for a room published before
- * any of this existed, and the board's own card grid is what both are for.
+ * THE CARD ANIMATION, written once because four callers have to agree on
+ * it: the builder renders one the moment a room is published, the simulator
+ * does the same through src/share/cardgif.js, scripts/boardgif.js renders
+ * one for a room published before any of this existed, and
+ * scripts/boardpresets.js renders one for each shipped track it places. The
+ * board's own card grid is what all of them are for.
  *
  * 384 BY 240 is the card tile's 16 by 10. A square animation in that box
  * either letterboxes or loses the top of the track to a crop, and the tile
@@ -54,10 +56,24 @@ import { buildPalette, GifEncoder } from './gif.js';
  * at about sixteen a second. The chat share is three hundred frames at four,
  * which is twelve seconds and smooth; a card is a thumbnail in a grid of
  * thumbnails, and three seconds is how long anybody looks at one. The pair
- * of numbers is what keeps a card under a hundred kilobytes: the measured
- * output on the RaceGOW rooms is twenty to seventy.
+ * of numbers is what keeps a card small: measured on the tracks this board
+ * carries, 20 kB for a three gate room and 385 kB for the 24 element
+ * RaceGOW5 Track 8, against a board that refuses anything over 1.8 MB. What
+ * costs is how much of the frame moves, so a busy track costs more than a
+ * bare one and dropping the nameplate below cost another quarter again by
+ * letting the track fill the frame. Neither is a number to tune: the cap is
+ * two orders of magnitude away and the picture is the point.
+ *
+ * NO NAMEPLATE. The stage lays the track's name in the floor, because a GIF
+ * pasted into a chat travels alone and has to say what it is of. A card does
+ * not travel alone: the board prints the name as a heading directly under
+ * the tile and puts the field size chip in the tile's bottom right corner,
+ * where a long name came out reading "RaceGOW5 Tra". So the card gets the
+ * track and the board gets to write the caption.
  */
-export const CARD_GIF = { width: 384, height: 240, frames: 60, delayCs: 6 };
+export const CARD_GIF = {
+  width: 384, height: 240, frames: 60, delayCs: 6, nameplate: false,
+};
 
 /* One frame in sixteen is enough to see every colour the animation uses,
  * because the only things that move are the ribbon and the pane and both
@@ -101,7 +117,7 @@ function flipRows(src, dst, width, height) {
  */
 export async function exportTrackGif(doc, {
   size = 512, width = size, height = size,
-  frames = 300, delayCs = 4, onProgress = null, camera = null,
+  frames = 300, delayCs = 4, onProgress = null, camera = null, nameplate = true,
 } = {}) {
   const THREE = await import('three');
 
@@ -147,7 +163,9 @@ export async function exportTrackGif(doc, {
     });
     target.texture.colorSpace = THREE.SRGBColorSpace;
 
-    stage = buildStage(THREE, doc, path, { width, height, camera });
+    stage = buildStage(THREE, doc, path, {
+      width, height, camera, nameplate,
+    });
 
     const raw = new Uint8Array(width * height * 4);
     const rgba = new Uint8Array(width * height * 4);

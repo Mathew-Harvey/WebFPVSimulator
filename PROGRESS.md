@@ -34321,3 +34321,100 @@ the pause menu back to 11 stops, `lint:boot` 9 of 9, `lint:quality` 56 of
 `npm run verify` was NOT run: a hidden attribute, a class toggle and four
 stylesheet rules cannot reach `src/native`, the patches, the WASM build or
 the input path.
+
+## Round 54: the shipped rooms go on the board, and a card is not captioned twice
+
+The ask was three things about the board's whoop side: rename the plate,
+put the tracks the simulator ships on the board and take down the copy
+that was hand published, and make a card the animation rather than the
+plan.
+
+**The plate.** `RaceGOW room` to `Whoop Micro Tracks`, one string in the
+board's `public/index.html`. It was the only user visible use of the
+series' name on either side: everything else that says RaceGOW is a
+comment about the series, which is a real thing and stays named. The name
+was true while every track on that side was a RaceGOW room, and it stops
+being true the first time somebody builds a room of their own. The kicker
+still says 65 mm whoop, the cards still say which series, and the plate
+now says only what the side holds.
+
+**The animation was already written and had never run.** `src/share/
+cardgif.js`, `src/trackbuilder/animate.js` and the board's `inspectGif`
+all landed in Round 50, at 09:52 today. The two rooms on the live board
+were published at 10:42 on 6 September and 09:12 this morning, both before
+that merge, so both carry `hasGif: false` and both draw a plan. Nothing
+was broken. `scripts/boardgif.js --dry --all` against the live board drew
+both of them, 135 kB and 20 kB, which is the proof that the machinery
+works and that what the board is missing is a backfill and not a fix.
+
+**Nothing shipped ever reached the board, and the reason is `loadTrack`.**
+A preset opens as a COPY under a fresh random `trk-` id, which is right
+for a pilot and wrong for a seed: publishing the same preset twice would
+put two of it on the board. So `scripts/boardpresets.js` derives the id
+instead, sha256 of `webfpv/preset/<preset id>` cut to eight hex, and the
+same preset lands on the same id on every machine and every run. The
+author is `credit.broughtOverBy`, not `credit.designer`: the board's
+author field is the seat that published, and the RaceGOW5 set is other
+people's designs read off the official animations. Tags are `race` and
+`micro`, two rather than five, because a third would be a guess about
+somebody else's track.
+
+**A re-run needs a token and a first run does not.** The board mints the
+edit key and hands it back, and the script uses that key to upload the
+card seconds later and then forgets it: an edit key written to a file in a
+public repository is a published secret. So a track already on the board
+is left alone, and `--replace` takes it off first. Which needed a way to
+take a track off the board, and there was none.
+
+**`POST /api/tracks/:id/remove`, admin only, and the edit key is
+deliberately not a way in.** An edit key is enough to change a layout,
+which clears times flown on a layout that no longer exists. It is not
+enough to delete other pilots' records outright, because a record somebody
+flew for is not the publisher's to throw away when they tire of their own
+track. `BOARD_ADMIN_TOKEN` is the same token that already writes an
+animation onto a track this browser did not publish. Unset, nothing can be
+removed at all, which is what every deploy has had until now. The token is
+checked before the id is, so an unauthorised caller cannot learn which ids
+exist. Thirteen new checks in the board's `src/selftest.js`.
+
+**What went wrong: the card said its name twice and the second one was
+clipped.** The first three cards came out reading `RaceGOW5 Tra`, because
+`buildStage` lays the track's name in the floor and the board's tile puts
+the field size chip in the bottom right corner, and on a long name the two
+met. The plate is right for a GIF pasted into a chat, which travels alone
+and has to say what it is of. A card does not travel alone: the board
+prints the name as a heading directly under the tile, at twice the size,
+in real type. So `buildStage` took a `nameplate` option, `CARD_GIF` sets
+it false, and the card gets the track. Dropping the plate also drops its
+four corners from the fit points, so the track fills the frame: 385 kB for
+Track 8 against 274 kB with the plate, which is a quarter more for a
+bigger picture and two orders of magnitude inside the board's 1.8 MB
+refusal. The comment in `animate.js` said cards come in at 20 to 70 kB.
+That was measured on the three gate room and is wrong for a 24 element
+one, so it now names both ends and says what drives it.
+
+**Checks, run this turn.** The board's `npm test` all passed, including
+the thirteen new ones; `lint:nouns` and `lint:licence` PASS. On the
+simulator, `lint:presets` 6 of 6, `check:clip` 522 passed, `gif:selftest`
+38 passed, `lint:nouns` PASS over 208 files, `lint:board` PASS. The whole
+flow was run end to end against a local board on a scratch store: three
+presets published, three cards drawn and served as `image/gif`, a re-run
+correctly declining to duplicate, `--replace` refused without the token
+and working with it, and the page screenshotted at both ends showing the
+plate renamed and the cards animated. The default render path was proved
+unchanged by rendering the same track before and after the `nameplate`
+change: 45666 bytes both times, byte identical.
+
+`npm run verify` was NOT run. Nothing here reaches `src/native`, the
+patches, the WASM build or the input path: it is one string on a web page,
+a stage option that defaults to what it did before, and two scripts that
+talk to an HTTP API.
+
+**Not done, and it needs the owner.** The live board still carries `trk-
+3ed40007`, `RaceGOW5 Track 1` published by Mat at 09:12, and `Whoop Triple
+Stack` still has no animation. Both need `BOARD_ADMIN_TOKEN`, which is set
+on the Render service and is not in this container, and the removal also
+needs the board deployed with the route above. Publishing the three
+presets needs neither, but doing it before the removal would put two
+`RaceGOW5 Track 1` cards on a public board with no way to take either
+down, so it waits for the same deploy.

@@ -464,6 +464,19 @@ function paneCorners(doc, knot) {
 
 export function buildStage(THREE, doc, path, {
   size = 512, width = size, height = size, camera: fixed = null,
+  /*
+   * WHETHER TO LAY THE TRACK'S NAME IN THE FLOOR, and it is on by default
+   * because the picture usually travels alone. A GIF pasted into a chat is
+   * the whole message and has to say what it is of.
+   *
+   * A card in the board's grid is the case that is not alone: the board
+   * prints the name as a heading directly under the tile, in real type at
+   * twice the size, and the tile's own bottom right corner already carries
+   * the field size chip. Two names and a chip in one corner is how a long
+   * one came out reading "RaceGOW5 Tra". So the card asks for no plate and
+   * gets the track instead of the caption. See CARD_GIF in animate.js.
+   */
+  nameplate = true,
 } = {}) {
   const trash = [];
   const keep = (x) => {
@@ -783,31 +796,49 @@ export function buildStage(THREE, doc, path, {
    * reads from wherever the camera ended up. Its own up direction points at
    * the camera, which for a plane authored in the document's XY is a turn of
    * the azimuth less a quarter.
+   *
+   * Its four corners are kept so the camera frames them with the track.
+   * Empty when there is no plate, and the frame then belongs to the track
+   * alone, which is what a 384 by 240 card wants.
    */
-  const nameTex = keep(nameTexture(THREE, doc.name));
-  const nameW = radius * 1.1;
-  const nameH = nameW * 0.25;
-  const nameGeo = keep(new THREE.PlaneGeometry(nameW, nameH));
-  const nameMat = keep(new THREE.MeshBasicMaterial({
-    map: nameTex, transparent: true, depthWrite: false,
-  }));
-  const nameMesh = new THREE.Mesh(nameGeo, nameMat);
-  const nameOut = radius * 0.92;
-  nameMesh.position.set(
-    centre.x + Math.cos(azimuth) * nameOut,
-    -centre.z + Math.sin(azimuth) * nameOut,
-    box.min.y + 0.004,
-  );
-  /*
-   * Turned so the tops of the letters point AWAY from the camera, which is
-   * what upright means for type lying on the ground: a reader standing at
-   * the camera has the far edge of the word at the top of their view. The
-   * first attempt pointed them at the camera and the name came out upside
-   * down.
-   */
-  nameMesh.rotation.z = azimuth + Math.PI / 2;
-  nameMesh.renderOrder = 2;
-  root.add(nameMesh);
+  const nameCorners = [];
+  if (nameplate) {
+    const nameTex = keep(nameTexture(THREE, doc.name));
+    const nameW = radius * 1.1;
+    const nameH = nameW * 0.25;
+    const nameGeo = keep(new THREE.PlaneGeometry(nameW, nameH));
+    const nameMat = keep(new THREE.MeshBasicMaterial({
+      map: nameTex, transparent: true, depthWrite: false,
+    }));
+    const nameMesh = new THREE.Mesh(nameGeo, nameMat);
+    const nameOut = radius * 0.92;
+    nameMesh.position.set(
+      centre.x + Math.cos(azimuth) * nameOut,
+      -centre.z + Math.sin(azimuth) * nameOut,
+      box.min.y + 0.004,
+    );
+    /*
+     * Turned so the tops of the letters point AWAY from the camera, which is
+     * what upright means for type lying on the ground: a reader standing at
+     * the camera has the far edge of the word at the top of their view. The
+     * first attempt pointed them at the camera and the name came out upside
+     * down.
+     */
+    nameMesh.rotation.z = azimuth + Math.PI / 2;
+    nameMesh.renderOrder = 2;
+    root.add(nameMesh);
+    for (const sx of [-0.5, 0.5]) {
+      for (const sy of [-0.5, 0.5]) {
+        const lx = sx * nameW;
+        const ly = sy * nameH;
+        const cz = Math.cos(nameMesh.rotation.z);
+        const sz = Math.sin(nameMesh.rotation.z);
+        const dx = nameMesh.position.x + lx * cz - ly * sz;
+        const dy = nameMesh.position.y + lx * sz + ly * cz;
+        nameCorners.push([dx, nameMesh.position.z, dy]);
+      }
+    }
+  }
 
   /*
    * Everything that has to be in shot, as points rather than as a box, and
@@ -832,16 +863,8 @@ export function buildStage(THREE, doc, path, {
   };
   addGeoPoints(pipeGeo);
   addGeoPoints(padGeo);
-  for (const sx of [-0.5, 0.5]) {
-    for (const sy of [-0.5, 0.5]) {
-      const lx = sx * nameW;
-      const ly = sy * nameH;
-      const cz = Math.cos(nameMesh.rotation.z);
-      const sz = Math.sin(nameMesh.rotation.z);
-      const dx = nameMesh.position.x + lx * cz - ly * sz;
-      const dy = nameMesh.position.y + lx * sz + ly * cz;
-      fitPts.push(new THREE.Vector3(dx, nameMesh.position.z, -dy));
-    }
+  for (const [dx, dz, dy] of nameCorners) {
+    fitPts.push(new THREE.Vector3(dx, dz, -dy));
   }
 
   const framedBox = new THREE.Box3().setFromPoints(fitPts);

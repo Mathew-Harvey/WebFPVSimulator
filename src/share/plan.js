@@ -58,6 +58,13 @@ const C = {
   number: '#101a26',
   numberBg: '#f7e8cd',
   scale: 'rgba(157, 179, 200, 0.55)',
+  /* The animation's own three, so a card and an exported GIF of one track
+   * are painted in the same colours as well as from the same angle. See
+   * COL_RIBBON_CORE, COL_RIBBON_SHELL and COL_PANE in
+   * src/trackbuilder/stage.js. */
+  ribbonCore: '#ff9b8f',
+  ribbonShell: 'rgba(255, 59, 42, 0.34)',
+  pane: 'rgba(125, 255, 180, 0.5)',
 };
 
 /* Metres. A thumbnail fattens a 5 ft opening so it still reads on a
@@ -922,6 +929,9 @@ export function planFromDocument(doc) {
  * It is the same 2D canvas the plan used.
  */
 const ISO_AZIMUTH_OFF = -55 * (Math.PI / 180);
+/* How much of the lap the travelling segment covers, the exporter's own
+ * TAIL_FRACTION, so a card and a GIF of one track move the same way. */
+const ISO_TAIL = 0.30;
 const ISO_ELEVATION = 40 * (Math.PI / 180);
 /* How far outside the track the ground plate reaches, in metres, per class. */
 const ISO_GROUND_PAD = { micro: 0.5, full: 6 };
@@ -968,6 +978,57 @@ function isoProjector(marks) {
   };
 }
 
+/*
+ * The four corners of each opening of one aperture element, in world space,
+ * lowest first. Its own function because two things want it: the frame the
+ * card draws, and the lit pane the travelling ribbon puts on the opening it
+ * is flying at.
+ */
+function isoApertures(mark, small) {
+  const cw = mark.clearW || (small ? 0.711 : 1.524);
+  const ch = mark.clearH || cw;
+  const lp = mark.levelPitch || (ch + 0.034);
+  const levels = Math.max(1, Math.round(mark.levels || 1));
+  const s0 = mark.sillH || 0;
+  const base = mark.z || 0;
+  const yaw = mark.yaw || 0;
+  const hx = Math.cos(yaw);
+  const hy = Math.sin(yaw);
+  const wx = -hy;
+  const wy = hx;
+  /* A dive gate's plane lies flat, so its opening is a square on the ground
+   * plane rather than a rectangle standing on it. */
+  const flat = Math.abs(mark.pitch || 0) > 0.7;
+  const out = [];
+  for (let i = 0; i < levels; i += 1) {
+    const sill = base + s0 + i * lp;
+    if (flat) {
+      const z = sill + ch / 2;
+      out.push({
+        flat,
+        centre: z,
+        pts: [
+          [mark.x + (wx * cw + hx * ch) / 2, mark.y + (wy * cw + hy * ch) / 2, z],
+          [mark.x + (wx * cw - hx * ch) / 2, mark.y + (wy * cw - hy * ch) / 2, z],
+          [mark.x - (wx * cw + hx * ch) / 2, mark.y - (wy * cw + hy * ch) / 2, z],
+          [mark.x - (wx * cw - hx * ch) / 2, mark.y - (wy * cw - hy * ch) / 2, z],
+        ],
+      });
+      continue;
+    }
+    const lx = mark.x - (wx * cw) / 2;
+    const ly = mark.y - (wy * cw) / 2;
+    const rx = mark.x + (wx * cw) / 2;
+    const ry = mark.y + (wy * cw) / 2;
+    out.push({
+      flat,
+      centre: sill + ch / 2,
+      pts: [[lx, ly, sill], [rx, ry, sill], [rx, ry, sill + ch], [lx, ly, sill + ch]],
+    });
+  }
+  return out;
+}
+
 /* The world geometry of one element, as a list of polylines. Everything the
  * card draws is a line: a frame is its opening's rectangle and its legs, a
  * pole is a stick, a bar is a span on two legs. */
@@ -986,31 +1047,8 @@ function isoShapes(mark, small) {
   const type = String(mark.type || '');
   const out = [];
   if (PLAN_APERTURE.has(type)) {
-    /* A dive gate's plane lies flat, so its opening is a square on the
-     * ground plane rather than a rectangle standing on it. */
-    const flat = Math.abs(mark.pitch || 0) > 0.7;
-    let top = base;
-    for (let i = 0; i < levels; i += 1) {
-      const sill = base + s0 + i * lp;
-      if (flat) {
-        const z = sill + ch / 2;
-        const a = [mark.x + (wx * cw + hx * ch) / 2, mark.y + (wy * cw + hy * ch) / 2, z];
-        const b = [mark.x + (wx * cw - hx * ch) / 2, mark.y + (wy * cw - hy * ch) / 2, z];
-        const c = [mark.x - (wx * cw + hx * ch) / 2, mark.y - (wy * cw + hy * ch) / 2, z];
-        const d = [mark.x - (wx * cw - hx * ch) / 2, mark.y - (wy * cw - hy * ch) / 2, z];
-        out.push({ pts: [a, b, c, d, a], colour: C.dive });
-        top = Math.max(top, z);
-        continue;
-      }
-      const lx = mark.x - (wx * cw) / 2;
-      const ly = mark.y - (wy * cw) / 2;
-      const rx = mark.x + (wx * cw) / 2;
-      const ry = mark.y + (wy * cw) / 2;
-      out.push({
-        pts: [[lx, ly, sill], [rx, ry, sill], [rx, ry, sill + ch], [lx, ly, sill + ch], [lx, ly, sill]],
-        colour: C.gate,
-      });
-      top = Math.max(top, sill + ch);
+    for (const level of isoApertures(mark, small)) {
+      out.push({ pts: [...level.pts, level.pts[0]], colour: level.flat ? C.dive : C.gate });
     }
     /* The legs, from the ground to the lowest opening, so an elevated gate
      * stands on something instead of floating. */
@@ -1072,6 +1110,100 @@ function isoShapes(mark, small) {
     pts: [[mark.x, mark.y, base], [mark.x, mark.y, base + h]],
     colour: type === 'cone' ? C.cone : C.marker,
   });
+  return out;
+}
+
+/*
+ * THE LAP AS A SMOOTH CLOSED CURVE, cached on the plan.
+ *
+ * A plan's path is the element positions in flying order, which is a
+ * polygon rather than a racing line: a ribbon travelling it would turn a
+ * corner at every gate. The real line is a Hermite through the gate normals
+ * and lives in src/trackbuilder/path.js, which needs a document. A card has
+ * only the plan, and for a board track only the plan will ever exist, so
+ * this rounds the corners with a Catmull-Rom instead. It is not the flown
+ * line and does not pretend to be: it is the shape of the lap.
+ *
+ * Cached on the plan object because the card repaints many times a second
+ * and the plan does not change between those paints.
+ */
+const ISO_LAP_SEGMENTS = 12;
+
+function isoLap(plan) {
+  if (plan.isoLap !== undefined) {
+    return plan.isoLap;
+  }
+  const raw = (plan.path || []).filter((q) => Number.isFinite(q.x) && Number.isFinite(q.y));
+  if (raw.length < 3) {
+    Object.defineProperty(plan, 'isoLap', { value: null, configurable: true });
+    return null;
+  }
+  const n = raw.length;
+  const at = (i) => {
+    const q = raw[((i % n) + n) % n];
+    return [q.x, q.y, q.z || 0];
+  };
+  const pts = [];
+  for (let i = 0; i < n; i += 1) {
+    const p0 = at(i - 1);
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    const p3 = at(i + 2);
+    for (let k = 0; k < ISO_LAP_SEGMENTS; k += 1) {
+      const t = k / ISO_LAP_SEGMENTS;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const q = [];
+      for (let a = 0; a < 3; a += 1) {
+        q.push(0.5 * ((2 * p1[a])
+          + (-p0[a] + p2[a]) * t
+          + (2 * p0[a] - 5 * p1[a] + 4 * p2[a] - p3[a]) * t2
+          + (-p0[a] + 3 * p1[a] - 3 * p2[a] + p3[a]) * t3));
+      }
+      /* Which sequence step this sample belongs to, so the pane can be lit
+       * on the opening the ribbon is flying at. */
+      q.push(i);
+      pts.push(q);
+    }
+  }
+  pts.push([...pts[0]]);
+  const s = [0];
+  let total = 0;
+  for (let i = 1; i < pts.length; i += 1) {
+    total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
+    s.push(total);
+  }
+  /* Non enumerable, so a cached curve can never ride along in a
+   * JSON.stringify of a plan. Nothing serialises one today: publishing
+   * sends the document and the board draws its own. This is the belt. */
+  Object.defineProperty(plan, 'isoLap', {
+    value: total > 1e-6 ? { pts, s, total } : null,
+    configurable: true,
+  });
+  return plan.isoLap;
+}
+
+/* The stretch of the lap between two arc lengths, wrapped, as points. */
+function isoSlice(lap, from, to) {
+  const out = [];
+  const span = lap.total;
+  const a = ((from % span) + span) % span;
+  const b = ((to % span) + span) % span;
+  const want = (x) => (a <= b ? x >= a && x <= b : x >= a || x <= b);
+  let prev = null;
+  for (let i = 0; i < lap.pts.length; i += 1) {
+    if (!want(lap.s[i])) {
+      prev = null;
+      continue;
+    }
+    if (prev === null && out.length) {
+      /* The slice wrapped past the finish, which is one curve and not two:
+       * the lap is closed, so the two runs join at the same point. */
+      out.push(null);
+    }
+    out.push(lap.pts[i]);
+    prev = i;
+  }
   return out;
 }
 
@@ -1140,7 +1272,6 @@ export function drawIso(canvas, plan, options = {}) {
       shapes.push({ ...shape, depth: p.depth(m.x, m.y) });
     }
   }
-  const line = (plan.path || []).filter((q) => Number.isFinite(q.x) && Number.isFinite(q.y));
 
   /* One fit over everything that will be drawn, so nothing falls off. */
   let ax = Infinity;
@@ -1208,8 +1339,80 @@ export function drawIso(canvas, plan, options = {}) {
   ctx.closePath();
   ctx.stroke();
 
-  if (line.length > 1) {
-    poly(line.map((q) => [q.x, q.y, q.z || 0]), C.pathCore, Math.max(1, w / 110), false);
+  /*
+   * THE LAP, FLOWN RATHER THAN DRAWN.
+   *
+   * A static line over the whole course was the one thing on these cards a
+   * pilot could not read: it crosses itself four times on a RaceGOW track
+   * and says nothing about direction. So the card shows what the exported
+   * animation shows, a travelling segment with the quad at its head and the
+   * opening it is flying at lit, and it shows it for the same reason: a lap
+   * is a thing that happens in an order.
+   *
+   * options.phase is where in the lap to draw, 0 to 1. Without it the card
+   * is the structure alone, which is what a still of it should be.
+   */
+  const lap = isoLap(plan);
+  if (lap && Number.isFinite(options.phase)) {
+    const head = ((options.phase % 1) + 1) % 1 * lap.total;
+    const tail = head - lap.total * ISO_TAIL;
+    const run = isoSlice(lap, tail, head);
+    const strokes = [
+      { colour: C.ribbonShell, width: Math.max(2.4, w / 34) },
+      { colour: C.ribbonCore, width: Math.max(1, w / 90) },
+    ];
+    for (const k of strokes) {
+      ctx.strokeStyle = k.colour;
+      ctx.lineWidth = k.width;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      let down = false;
+      for (const q of run) {
+        if (!q) {
+          down = false;
+          continue;
+        }
+        const sp = to(q[0], q[1], q[2]);
+        if (!down) {
+          ctx.moveTo(sp[0], sp[1]);
+          down = true;
+        } else {
+          ctx.lineTo(sp[0], sp[1]);
+        }
+      }
+      ctx.stroke();
+    }
+    /* The quad itself, at the head. */
+    const at = run.filter(Boolean);
+    if (at.length) {
+      const h = at[at.length - 1];
+      const sp = to(h[0], h[1], h[2]);
+      ctx.fillStyle = C.ribbonCore;
+      ctx.beginPath();
+      ctx.arc(sp[0], sp[1], Math.max(1.5, w / 60), 0, Math.PI * 2);
+      ctx.fill();
+      /* And the opening it is flying at, lit the way the race field and the
+       * exporter both light the next gate. */
+      const step = Math.round(h[3]);
+      const target = (plan.path || [])[(step + 1) % (plan.path || []).length];
+      if (target) {
+        const mark = marks.find((m) => PLAN_APERTURE.has(String(m.type || ''))
+          && Math.abs(m.x - target.x) < 1e-6 && Math.abs(m.y - target.y) < 1e-6);
+        if (mark) {
+          const levels = isoApertures(mark, small);
+          let best = levels[0];
+          for (const level of levels) {
+            if (Math.abs(level.centre - (target.z || 0)) < Math.abs(best.centre - (target.z || 0))) {
+              best = level;
+            }
+          }
+          if (best) {
+            poly([...best.pts, best.pts[0]], C.pane, 1, true);
+          }
+        }
+      }
+    }
   }
 
   /* Far first, so a frame in front of another covers it. */

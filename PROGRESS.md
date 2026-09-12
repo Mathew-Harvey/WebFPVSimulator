@@ -33460,3 +33460,51 @@ the Track room itself. Both classes were photographed through the real shell
 at 1500 px: the three whoop cards show their frames standing up, and the
 2022 AU Nationals card shows a 128 m course with its line. `npm run verify`
 was not run: no physics, plant, ABI or build changed.
+
+## Round 41: the card flies its own lap
+
+The owner asked for the seated track's card to get the three quarter view
+the shipped ones had just been given, and for the yellow line across each
+card to be replaced by the animation the exporter can now make.
+
+**The seated card needed nothing.** It is the same card, in the same list,
+painted by the same pass, so Round 40 had already changed it. Confirmed
+rather than assumed: a whoop course was seated and the room photographed,
+and the card on the left is the same drawing as the three beside it.
+
+**Why the line had to go.** A static line over the whole course was the one
+thing on a card a pilot could not read. It crosses itself four times on a
+RaceGOW track and says nothing about which way round the lap goes, which is
+the only question the picture was there to answer.
+
+**What replaced it.** The exporter's own animation, drawn on the card's
+canvas: a travelling segment covering 30 percent of the lap with the quad at
+its head and the opening it is flying at lit in mint. Same fraction, same
+colours and the same twelve second lap as `src/trackbuilder/stage.js`, so a
+card and an exported GIF of one track are now the same object moving at the
+same speed. No GIF is generated and no asset ships: the card draws it, so a
+track a pilot builds this afternoon animates like the shipped three.
+
+**The lap had to be smoothed.** A plan's path is the element positions in
+flying order, so a ribbon travelling it turns a corner at every gate. The
+flown line is a Hermite through the gate normals and needs a document, which
+a card does not have and a board track never will, so the card rounds the
+corners with a Catmull-Rom instead. It is the shape of the lap and not the
+racing line, and the comment says so. The curve is cached on the plan and
+the property is non enumerable, so it cannot ride along in a JSON.stringify
+of a plan; nothing serialises one today, since publishing sends the document
+and the board draws its own, and that is the belt to this braces.
+
+**Twenty frames a second, not sixty**, and none at all for a hidden tab or a
+screen nobody is on. Each card is a few dozen strokes on a 150 px canvas,
+but there are four of them over a world that is also rendering, and nothing
+about a travelling ribbon needs 60 Hz. A pilot who has asked for less motion
+gets the structure and no lap, which is a still of the same drawing rather
+than a different one.
+
+**Checks, run this turn.** `micro:check`, `check:clip` 495 of 495,
+`check:path` 12 of 12, `lint:presets` 6 of 6 and `lint:shell`, which drives
+the Track room where this lives. The motion was verified rather than
+eyeballed: the card's own canvas was read back twice a second apart through
+the real shell and the pixels differ. `npm run verify` was not run: no
+physics, plant, ABI or build changed.

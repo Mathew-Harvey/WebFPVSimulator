@@ -195,6 +195,21 @@ const SCREEN_ACTIONS = new Set([
  */
 const REEL_QUIET_MS = 900;
 
+/*
+ * THE COURSE CARDS FLY THEIR OWN LAP.
+ *
+ * One lap in twelve seconds, which is the animation exporter's own figure:
+ * 300 frames at 25 fps. A card and an exported GIF of one track then move
+ * at the same speed as well as being drawn from the same angle.
+ *
+ * Repainted twenty times a second rather than every frame. Each card is a
+ * few dozen strokes on a 150 px canvas, but there are several of them and
+ * they are painted over a world that is also being rendered, and nothing
+ * about a travelling ribbon needs 60 Hz.
+ */
+const COURSE_LAP_MS = 12000;
+const COURSE_PLAN_MS = 50;
+
 const ROOM_PARENTS = new Set(['courses', 'freestyle', 'launch', 'quad', 'pilot']);
 
 const SCREEN_TITLES = {
@@ -7271,17 +7286,52 @@ export class Ui {
       return;
     }
     /*
-     * THE CARD IS THE THREE QUARTER VIEW, not the plan. A pilot picking a
-     * course is asking what it looks like, and from above a two high stack
-     * and a single gate are the same line. See drawIso in
-     * src/share/plan.js: same data, same angles as the animation exporter,
-     * so a card and an exported GIF of one track are the same object.
+     * THE CARD IS THE THREE QUARTER VIEW, not the plan, and it flies. A
+     * pilot picking a course is asking what it looks like, and from above a
+     * two high stack and a single gate are the same line. See drawIso in
+     * src/share/plan.js: same data, same angles, same colours and the same
+     * travelling ribbon as the animation exporter, so a card and an
+     * exported GIF of one track are the same object.
      */
-    requestAnimationFrame(() => {
+    this.stopCoursePlans();
+    const paint = (options) => {
       for (const c of this.courseCards || []) {
-        drawIso(c.canvas, c.canvas.planData, {});
+        drawIso(c.canvas, c.canvas.planData, options);
       }
-    });
+    };
+    /* A pilot who has asked for less motion gets the structure and no lap,
+     * which is the still of the same drawing rather than a different one. */
+    const reduced = typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false;
+    if (reduced) {
+      requestAnimationFrame(() => paint({}));
+      return;
+    }
+    const began = performance.now();
+    let last = -COURSE_PLAN_MS;
+    const tick = (now) => {
+      if (!this.courseCards || !this.courseCards.length || this.screen !== 'courses') {
+        this.coursePlanFrame = null;
+        return;
+      }
+      this.coursePlanFrame = requestAnimationFrame(tick);
+      /* Nothing is repainted for a tab nobody is looking at. */
+      if (document.hidden || now - last < COURSE_PLAN_MS) {
+        return;
+      }
+      last = now;
+      paint({ phase: ((now - began) / COURSE_LAP_MS) % 1 });
+    };
+    this.coursePlanFrame = requestAnimationFrame(tick);
+  }
+
+  /* The card animation belongs to one visit to the room. */
+  stopCoursePlans() {
+    if (this.coursePlanFrame != null) {
+      cancelAnimationFrame(this.coursePlanFrame);
+      this.coursePlanFrame = null;
+    }
   }
 
   /*
@@ -7954,6 +8004,7 @@ export class Ui {
     if (this.screen === 'courses' && screen !== 'courses') {
       /* Nothing draws a thumbnail for a screen nobody is looking at. */
       this.stopReels();
+      this.stopCoursePlans();
       this.mapCards = null;
       this.courseCards = null;
       this.courseCardKey = null;

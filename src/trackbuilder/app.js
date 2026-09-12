@@ -59,6 +59,7 @@ import {
   boardOrigin, boardPageUrl, publishTrack, setBoardOrigin, adoptShareFromLocation,
   TRACK_TAGS, TRACK_TAGS_MAX, tagLabel, usableTags,
 } from '../share/board.js';
+import { sendCardAnimation } from '../share/cardgif.js';
 import { BOARD_WINDOW, SIM_WINDOW, claimWindowName } from '../share/windows.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import {
@@ -954,6 +955,35 @@ export class App {
   }
 
   /*
+   * The card animation, rendered and sent after a room is published. The
+   * rendering and the sending are in src/share/cardgif.js, because the
+   * simulator's own Publish does the same thing and the two must not
+   * differ. What is here is what to say while it happens.
+   *
+   * It is sixty frames rather than the export button's three hundred, so it
+   * is three or four seconds on real hardware rather than a minute. The
+   * author is looking at a dialog that has just said Published, so the wait
+   * is paid for by a sentence rather than by a spinner.
+   */
+  async renderCardForBoard(origin, status) {
+    const was = status.textContent;
+    const done = await sendCardAnimation(this.doc, {
+      origin,
+      onProgress: (n, total) => {
+        status.textContent = `${was} Drawing its card, frame ${n} of ${total}.`;
+      },
+    });
+    if (done.skipped) {
+      return;
+    }
+    /* Said plainly, and said as what it is: the track went up, the picture
+     * did not. */
+    status.textContent = done.error
+      ? `${was} The track is up, but its card animation could not be sent: ${done.error}`
+      : `${was} Its card on the board is a lap of it.`;
+  }
+
+  /*
    * Put this course on the public board. The document goes as it is, logo
    * included, so every gate and every flag on the board copy wears the
    * same print the author sees here.
@@ -1164,6 +1194,21 @@ export class App {
           status.textContent = `Published as "${posted.name}".${cleared}`;
         }
         this.toast(`Published "${posted.name}" to the board.`);
+        /*
+         * A ROOM'S CARD ON THE BOARD IS ITS ANIMATION, SO IT IS RENDERED
+         * HERE, NOW.
+         *
+         * The board renders nothing and never will, so if this browser does
+         * not make the picture nothing does. The moment after a publish is
+         * the only moment when the document, the edit key and a live WebGL
+         * context are all in one place, which is why it is here and not
+         * behind a button the author would have to know to press.
+         *
+         * Only a room. A field track's plan is drawn by the board from the
+         * listing for nothing, and the board refuses an animation for one
+         * anyway. See inspectGif in the board's src/validate.js.
+         */
+        await this.renderCardForBoard(origin, status);
         this.updateTopBar();
         const open = document.createElement('a');
         open.className = 'tb-btn tb-primary';
@@ -1173,7 +1218,7 @@ export class App {
         /* The board's own tab, reused if it is already open. No rel here:
          * noopener would send this to a fresh tab every time. */
         open.target = BOARD_WINDOW;
-        open.textContent = 'Open the board';
+        open.textContent = 'Open Tracks and Times';
         send.replaceWith(open);
       } catch (e) {
         send.disabled = false;

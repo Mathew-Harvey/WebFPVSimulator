@@ -512,6 +512,35 @@ export async function publishTrack({
 }
 
 /*
+ * THE CARD ANIMATION FOR A ROOM.
+ *
+ * The board's card grid draws a plan for a track on a field and plays this
+ * for a track in a room, because a five metre room's plan is an almost
+ * empty rectangle and the thing it cannot show, height, is the thing a room
+ * track is built out of. The board renders nothing, so the animation is
+ * made here, by animate.js, in the browser that publishes the track.
+ *
+ * The edit key is the same one a republish uses: the browser that put the
+ * track up is the browser that may change its picture. The board refuses
+ * this for a field track, and that refusal is the rule rather than a guard,
+ * so nothing on this side needs to ask twice.
+ *
+ * It is deliberately NOT fatal. The track is already published when this
+ * runs, and a board that refuses the animation, or a browser whose WebGL
+ * context is gone, must leave the author with a published track and a plan
+ * on its card rather than an error about a picture.
+ */
+export async function postTrackGif({ id, gif, editKey, origin }) {
+  const board = trimOrigin(origin || boardOrigin());
+  const res = await fetch(`${board}/api/tracks/${encodeURIComponent(id)}/gif`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ gif, editKey: editKey || undefined }),
+  });
+  return readJson(res);
+}
+
+/*
  * Put a finished freestyle run on the board.
  *
  * The board keeps ONE row per pilot per map and only their best, so posting

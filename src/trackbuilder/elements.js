@@ -38,7 +38,7 @@
  * a leaf module rather than being typed out twice. */
 import { FT, IN, FRAME_TUBE_OD } from '../units.js';
 import {
-  GATE_OPENING_DEFAULT, GATE_OPENING_MIN, GATE_OPENING_MAX, GATE_SPACING_NOMINAL,
+  GATE_OPENING_DEFAULT, GATE_OPENING_MAX, GATE_SPACING_NOMINAL,
   ELEVATED_SILL_MIN, PIPE_OD, POLE_FROM_GATE_MIN, ROOM_WIDTH, ROOM_DEPTH, GRID as MICRO_GRID,
 } from './racegow.js';
 
@@ -836,16 +836,26 @@ export const GATE_PRESETS = [
 ];
 
 /*
- * The MICRO presets: RaceGOW's own two legal sizes and nothing else.
+ * THE MICRO PRESET: 28 INCHES, AND ONLY 28 INCHES.
  *
- * There is no "custom" middle ground offered here on purpose. RaceGOW's
- * rules give a range, 24 to 28 inches, but they also say "all your gates
- * must be the same size" and "you must scale the entire track up equally
- * based on your gate size", so the meaningful choice an author makes is
- * which SIZE THEIR OWN PIPE IS, and there are two answers people actually
- * build: the 28 inch a shop tube gives, and the 24 inch minimum the 4 by 6
- * foot envelope is quoted at. Both are published; the inspector still lets
- * anybody type any number, and warnings.js checks the range.
+ * RaceGOW's rules give a range, 24 to 28, and a 24 inch option was offered
+ * here alongside the 28 because the published 4 by 6 foot envelope is
+ * quoted at the minimum. It is gone, and what went with it is the only way
+ * a track built in this tool could come out at a size nothing else in the
+ * project uses.
+ *
+ * Everything here is built around 28. The pipe rule says to cut 20 sections
+ * at 26.5 to 27.25 inches for "the maximum allowable open area", the tube
+ * weBLEEDfpv sells for these tracks is 28 inches, the RaceGOW5 tracks in
+ * presets.js are generated on a lattice derived from 28, src/game/track.js
+ * scales the aircraft against 28 and src/render/scene.js builds the room
+ * around it. One size, everywhere, is the whole point of a series where
+ * everybody builds the same track in their own living room.
+ *
+ * This is what the tool OFFERS. The inspector still lets an author type any
+ * number, and warnings.js still checks the 24 to 28 range against what they
+ * typed, so a pilot whose own pipe is shorter is told their track is legal
+ * rather than stopped.
  */
 export const MICRO_GATE_PRESETS = [
   {
@@ -853,18 +863,9 @@ export const MICRO_GATE_PRESETS = [
     label: 'RaceGOW 28 in',
     size: '28 x 28 in',
     published: true,
-    hint: 'The maximum RaceGOW allows, and what a 3/4 inch pipe cut at 26.5 to 27.25 in assembles to. What most people build.',
+    hint: 'The maximum RaceGOW allows, and what a 3/4 inch pipe cut at 26.5 to 27.25 in assembles to. What everybody builds.',
     clearW: GATE_OPENING_MAX,
     clearH: GATE_OPENING_MAX,
-  },
-  {
-    id: 'racegow24',
-    label: 'RaceGOW 24 in',
-    size: '24 x 24 in',
-    published: true,
-    hint: 'The minimum, and the size the published 4 by 6 foot track envelope is quoted at.',
-    clearW: GATE_OPENING_MIN,
-    clearH: GATE_OPENING_MIN,
   },
 ];
 
@@ -912,12 +913,14 @@ export function applyGatePreset(dims, preset) {
    * openings share one cross member and the spacing is whatever the frame
    * makes it. RaceGOW fixes it independently: rule 3 puts adjacent gates 27
    * to 33 inches centre to centre whether they are stacked or side by side,
-   * and rule 5 wants the second opening's centre at 42 inches or more. At a
-   * 28 inch opening the frame's own pitch would be 29.05 inches, which is
-   * legal by rule 3 but puts the second centre at 43 inches with half an
-   * inch of margin; at 24 inches it would be 25.05, which BREAKS rule 3.
-   * So a micro preset keeps the nominal 30 and the stack is right at either
-   * size.
+   * and rule 5 wants the second opening's centre at 42 inches or more. At
+   * the 28 inch opening the frame's own pitch would be 29.05 inches, which
+   * is legal by rule 3 and puts the second centre at 43.05 with an inch of
+   * margin. The nominal 30 is used instead, because it is the number the
+   * rules name and it is comfortably inside both, and because an author who
+   * types a smaller opening then has a stack that is still legal where the
+   * frame's own pitch would not be: at 24 inches that pitch is 25.05, which
+   * BREAKS rule 3.
    */
   dims.levelPitch = MICRO_GATE_PRESETS.includes(preset)
     ? GATE_SPACING_NOMINAL

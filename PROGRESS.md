@@ -33944,3 +33944,100 @@ Round 44 declined the first for being unable to cause the fault it was
 looking at, and the same holds here: turtle needs truly inverted, slow and
 still, so neither can make a whoop hit the ground early or park in the air.
 They are the next thing in this area to measure, not to guess at.
+
+## Round 49: a room's card is a lap of it, and a RaceGOW gate is 28 inches
+
+Four things, in two repositories. The board's half is in its own
+PROGRESS-less repo and its commit message carries the argument; this is
+the simulator's half, plus the one change that is wholly here.
+
+**THE CARD ANIMATION.** The board's card grid drew a plan for every track.
+For a sixty metre field that is right and costs nothing: plan.js draws the
+flown line through twenty gates straight from the listing. For a RaceGOW
+room it is an almost empty rectangle with a dot in the middle, and the one
+thing a plan cannot show, height, is the thing a room track is built out
+of. So a room's card is now an animation of its lap.
+
+The board renders nothing and is not going to: it is one Node service and
+one Postgres, with no WebGL and no Three. So the browser that publishes a
+room makes the picture, seconds after the publish, when the document, the
+edit key and a live GL context are all in one place for the only time. That
+is `src/share/cardgif.js`, called from the builder's Publish dialog and from
+the simulator's own Publish, and it cannot throw: a refused context leaves
+the author with a published track and a plan on its card, never with an
+error about a picture.
+
+`exportTrackGif` grew `width` and `height` beside `size`, and `buildStage`
+grew the aspect that follows from them, because the card tile is 16 by 10
+and a square animation in it either letterboxes or loses the top of the
+track to a crop. `CARD_GIF` is the four numbers, written once: 384 by 240,
+sixty frames at six centiseconds. The chat share is unchanged at 512 square
+and three hundred frames. Measured output on the rooms is 20 to 280 kB
+against the share's 3.4 MB, which is what makes a grid of them reasonable.
+
+`scripts/boardgif.js` is the same render reached through headless Chromium,
+for the rooms published before any of this existed, whose authors' edit keys
+are in browsers nobody still has. It needs `BOARD_ADMIN_TOKEN`, which is the
+only reason that variable exists.
+
+**28 INCH GATES, AND THE LATTICE THAT FOLLOWS.** The owner: "all racegow and
+whoop tracks should have 28 inch gates". They did not. `scripts/racegow-lattice.js`
+had `UNIT = 27 * IN`, one length of shop pipe, because that is what RaceGOW's
+pipe rule says to cut. Two pipes 27 inches apart leave 27 less one pipe of
+daylight, so every shipped RaceGOW track had a 25.95 inch opening while the
+builder's default was 28, `scene.js` built the room around 28 and
+`src/game/track.js` scaled the aircraft against 28. A pilot who flew a
+shipped track and then built one got two different gates.
+
+`UNIT` is now `GATE_OPENING_MAX + PIPE_OD`, 29.05 inches, so the clear
+opening is exactly 28 and the whole lattice scales with it, which is what
+the season doc requires: "you must scale the entire track up equally based
+on your gate size". `place()` was holding a second copy of the 27 as a
+literal while the frames were sized from UNIT, so it would have come apart
+the moment either moved; it reads UNIT now.
+
+What it fixed beyond the gate: a two high stack's second opening now centres
+at 43.05 inches where rule 5 asks for 42 or more. At 27 inch units it
+centred at 39.98 and broke it, and nothing caught that, because the rule is
+quoted in racegow.js and checked by warnings.js on an author's track and
+never on the shipped ones. Each track moved at most 8 cm in the 10 by 12 m
+room, because the origins are in inches and only the lattice scaled.
+
+**THE 24 INCH PRESET IS GONE.** `MICRO_GATE_PRESETS` offered RaceGOW 28 and
+RaceGOW 24, the second because the published 4 by 6 foot envelope is quoted
+at the minimum. One size everywhere is the point of a series where everybody
+builds the same track in their own living room, so the tool now offers one.
+`GATE_OPENING_MIN` stays where it is: the inspector still takes any number
+an author types and warnings.js still checks the 24 to 28 range against it,
+so a pilot whose own pipe is shorter is told their track is legal rather
+than stopped.
+
+**THE PAGE IS CALLED TRACKS AND TIMES.** The board renamed itself, so the
+rows and buttons here that name it as a destination follow: the map screen's
+"Tracks and Times on the web", the pause menu's row, the results screens'
+"Open Tracks and Times", the builder's own button after a publish. Prose
+that uses "the board" as a common noun is untouched, because a track is
+still on the board and the board still answers a request.
+
+One line was not a rename but a correction. A posted freestyle run was told
+"That run is on the freestyle board", and the board's page no longer shows
+one. It says "The board kept that run" with the rank, which is what is
+still true: `/api/runs` is untouched and still stores and ranks them.
+NOTHING READS THEM BACK. `fetchFreestyleRuns` in `src/share/board.js` has no
+caller and had only ever had one, the page that was removed. That is a
+decision for the owner, not for this round: either the table comes back
+somewhere or the posting goes, and until then a pilot is told the truth.
+
+**Checks, run this turn.** `check:clip` 515 of 515, `micro:check` 94 of 94,
+`gif:selftest` 38 of 38, `whoop:gates` 21 of 21, `check:path` 12 of 12,
+`check:orbit` 17 of 17, `lint:frame` 34 of 34, `lint:board` PASS,
+`lint:nouns` PASS, `lint:presets` 6 of 6. A card was rendered through
+`scripts/trackgif.js` at both the old and the new gate size and looked at,
+and `scripts/boardgif.js` was run end to end against a board on a scratch
+database, which is where the 20 kB and 280 kB above come from.
+
+`npm run verify` was NOT run. Nothing here touches `src/native`, the
+patches, the WASM build or the input path: the changes are a GIF encoder's
+frame size, a track document's dimensions and some labels. The determinism
+trace cannot see any of it, and a green run of it would be evidence about
+something else. Say so rather than imply otherwise.

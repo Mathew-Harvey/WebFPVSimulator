@@ -72,6 +72,7 @@ import {
   fetchTrackTimes, postFreestyleRun, postTime,
 } from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
+import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import {
   clearPendingTime,
@@ -3864,6 +3865,27 @@ export async function boot({ loading, bootStart, mapId }) {
         board: listing.board,
       });
       ui.markCoursePublished(result.posted);
+      /*
+       * A ROOM'S CARD ON THE BOARD IS A LAP OF IT, AND ONLY A BROWSER CAN
+       * DRAW ONE. The board has no WebGL and never will, so if this is not
+       * done here it is not done. The builder's Publish does exactly the
+       * same thing through the same file; this is the other way a room can
+       * reach the board.
+       *
+       * A field track returns skipped and costs nothing, not even the
+       * import: sendCardAnimation asks the class before it loads anything.
+       * Nothing here throws, so a refused GL context leaves the pilot with
+       * a published track and a plan on its card.
+       */
+      const card = await sendCardAnimation(result.doc, { origin: listing.board });
+      if (!card.skipped) {
+        notice = {
+          text: card.error
+            ? `Published "${result.posted.name}". Its card animation could not be sent.`
+            : `Published "${result.posted.name}", and its card on the board is a lap of it.`,
+          untilMs: performance.now() + 4000,
+        };
+      }
       /* Only when the lap on the results screen was flown on the course that
        * was just published. Publishing course B with course A's results still
        * up used to attach A's lap to B, because resultsFastest is a bare

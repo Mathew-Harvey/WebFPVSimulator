@@ -854,6 +854,10 @@ export function planFromDocument(doc) {
       pads: Number.isFinite(pads) && pads > 0 ? pads : undefined,
       spacing: Number.isFinite(spacing) && spacing >= 0 ? spacing : undefined,
       padSize: Number.isFinite(padSize) && padSize > 0 ? padSize : undefined,
+      /* An opening with no frame of its own, so the card draws the hole
+       * and not a box around it. Undefined on every ordinary gate, which
+       * keeps a plan the same shape it was before this existed. */
+      unbuilt: item.unbuilt === true ? true : undefined,
     });
   }
   const path = [];
@@ -1050,6 +1054,15 @@ function isoShapes(mark, small) {
   const type = String(mark.type || '');
   const out = [];
   if (PLAN_APERTURE.has(type)) {
+    /*
+     * A gap in the lattice has no structure to draw: the bar under it and
+     * the pole beside it belong to its neighbours, and they draw
+     * themselves. The opening still lights when the lap reaches it, which
+     * is the drawer's other pass over these marks.
+     */
+    if (mark.unbuilt) {
+      return out;
+    }
     for (const level of isoApertures(mark, small)) {
       out.push({ pts: [...level.pts, level.pts[0]], colour: level.flat ? C.dive : C.gate });
     }

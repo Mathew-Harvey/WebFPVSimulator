@@ -2857,6 +2857,10 @@ function coursePlacements(course) {
           sillH: structure.dims.sillH ?? 0,
           stack: structure.dims.stack ?? 1,
           levelPitch: structure.dims.levelPitch,
+          /* An opening that is a gap in the lattice: it scores and it
+           * lights, and no pipe is built for it. See isUnbuilt in
+           * src/trackbuilder/elements.js. */
+          unbuilt: structure.unbuilt === true,
         },
         x: st.x,
         z: st.z,
@@ -3204,13 +3208,26 @@ function obstacle(spec, index, isStart, opts = {}) {
   }
   const topSurface = sills[stack - 1] + clearH;
 
+  /*
+   * NOTHING IS BUILT FOR A GAP IN THE LATTICE.
+   *
+   * The opening still scores, still lights and still carries its number.
+   * What it does not have is a frame: the pipe that bounds it belongs to
+   * the structures around it, which build it themselves. See isUnbuilt in
+   * src/trackbuilder/elements.js for why the RaceGOW tracks need this.
+   * Everything below that puts geometry in the world is skipped, so the
+   * colliders go with it and a pilot flies through air rather than into a
+   * length of PVC that is not on the real track.
+   */
+  const unbuilt = spec.unbuilt === true;
+
   /* Uprights. Their INNER surfaces are the opening's width, so their
    * centres sit half a tube outboard of the clear span. They run from the
    * ground to just above the topmost cross member, which is what makes a
    * tower or a dive gate a tower rather than a floating hoop. */
   const upX = clearW * 0.5 + tubeR;
   const upTop = topSurface + 2 * tubeR;
-  for (const sx of [-1, 1]) {
+  for (const sx of (unbuilt ? [] : [-1, 1])) {
     const post = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, upTop, 8),
       mats.frame,
@@ -3260,7 +3277,7 @@ function obstacle(spec, index, isStart, opts = {}) {
   if (spec.sillH > 0) {
     members.push(spec.sillH - tubeR);
   }
-  for (const my of members) {
+  for (const my of (unbuilt ? [] : members)) {
     const bar = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, memberLen, 8),
       mats.frame,
@@ -3274,7 +3291,9 @@ function obstacle(spec, index, isStart, opts = {}) {
   }
 
   /* The moulded corner at every junction of upright and cross member. */
-  cornerFittings(g, sills, clearW, clearH, tubeR);
+  if (!unbuilt) {
+    cornerFittings(g, sills, clearW, clearH, tubeR);
+  }
 
   /*
    * The printed sleeves, outboard of each upright. They are what a pilot
@@ -3300,7 +3319,7 @@ function obstacle(spec, index, isStart, opts = {}) {
   const substrate = isStart ? mats.panelStart : mats.panelRace;
   const panelBottom = sills[0];
   const panelH = topSurface - panelBottom;
-  for (const sx of (micro ? [] : [-1, 1])) {
+  for (const sx of (micro || unbuilt ? [] : [-1, 1])) {
     const cx = sx * (upX + tubeR + panelW * 0.5);
     /* Mirrored on the far leg, so the chequer column runs down the OUTSIDE
      * of the gate on both sides rather than down the outside of one and the
@@ -3330,7 +3349,7 @@ function obstacle(spec, index, isStart, opts = {}) {
   let plateY = upTop + tubeR;
   let plateHalfW = outerW * 0.5;
   let plateR = tubeR;
-  if (!micro) {
+  if (!micro && !unbuilt) {
     const plateGroup = gateBanner(index, outerW, kit.header, substrate);
     plateY = upTop + GATE_BANNER_H * 0.5 + 0.03;
     plateHalfW = plateGroup.userData.halfW;

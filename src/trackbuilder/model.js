@@ -728,6 +728,13 @@ export function normalize(raw) {
     if (def.flagSide) {
       el.flagSide = normalizeFlagSide(rawEl.flagSide, def.flagSide);
     }
+    /* An opening with no frame of its own: see isUnbuilt in elements.js.
+     * Carried only on apertures, because nothing else has a frame to
+     * leave off, and only when true, so an ordinary gate's JSON is the
+     * same shape it was before this existed. */
+    if (def.kind === KIND.APERTURE && rawEl.unbuilt === true) {
+      el.unbuilt = true;
+    }
     doc.elements.push(el);
   }
 
@@ -910,6 +917,9 @@ export function toPlain(doc) {
       }
       if (def.flagSide) {
         out.flagSide = normalizeFlagSide(el.flagSide, def.flagSide);
+      }
+      if (el.unbuilt === true && def.kind === KIND.APERTURE) {
+        out.unbuilt = true;
       }
       return out;
     }),

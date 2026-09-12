@@ -33581,3 +33581,81 @@ lattice clear behind it, and the Tracks room was photographed twice three
 seconds apart, where the same short segment is in a different place on all
 three cards. `npm run verify` was not run: no physics, plant, ABI or build
 changed.
+
+## Round 44: an opening can be a gap in the lattice instead of a gate
+
+**The report.** "You've boxed in the pole on top of gate (flag on top of
+gate) on track 1 (and maybe other tracks), don't do this, fix the tracks to
+match the reference gif." Correct on both counts, and worse than one track.
+
+**What was wrong.** RaceGOW builds a great deal of its track by carrying one
+leg of a structure up past the bar. The pipe above the bar is a pole, flown
+around; the pipe below it is the gate's upright; it is one length of PVC on
+one fitting. That makes two scored openings, one under the bar and one over
+it, and the one over it has the bar below and the pole beside and NOTHING
+ELSE: no top bar, no second upright. All three reconstructions built that
+opening as a four sided square, because a square is the only scored opening
+this builder had. Each one put two lengths of pipe in mid air, one of them
+across the flight path, and one of them right beside the pole, which is what
+reads as a box around it.
+
+**The audit that found the rest.** The passes were checked when these tracks
+were built; the PIPE never was. So: take every pipe the spec builds, in
+lattice coordinates, project it with the camera fitted from the animation,
+and sample the reference plate along it, brightest pixel within nine pixels
+of the line. PVC is near white on a dark floor. Anything that comes back
+dark is a pipe the track does not have. Track 8 had six such openings, Track
+5 five, Track 1 one, plus two fake uprights under a rail that is carried by
+the structures at its ends. Twelve in all. The method is now step 8b of
+TRACK-FROM-GIF.md, with the false pass it can give: a segment that runs
+ALONG another pipe in projection reads bright, which is how a top bar over
+Track 8's rail survived the numbers and had to be caught by eye.
+
+**The fix, in the model rather than in the tracks.** An aperture can now
+carry `unbuilt: true`: the opening scores, lights, carries its number and
+pins the racing line, and no pipe is built for it in the game, the GIF
+export, the builder's preview or the course card. The pipe that bounds it
+belongs to the structures around it. One reader, `isUnbuilt` in
+elements.js, so the four drawers cannot disagree. It is written to the
+document only when true, so every ordinary gate's JSON is the shape it was.
+
+**Two poles hold up what nothing else does.** Marking an opening `unbuilt`
+is only honest when the pipe that really bounds it is drawn by somebody
+else. On two of the tracks it was not: Track 8's far side and Track 5's near
+end each needed the bare upright that carries the gap above. They are in the
+specs as `posts`, poles that stand on their lattice node and take no
+sequence entry.
+
+**A leg is not a pole, and warnings.js now knows it.** A leg carried up
+stands half an opening from its gate's centre, 13.5 in on a 27 in lattice,
+so RaceGOW's 14 in pole to gate rule fired on every one of them, and the 36
+in pole to pole rule fired on two legs of one structure 27 in apart. Both
+rules now skip a pole standing within half a pipe of a gate's own frame
+line, and so does the unsequenced warning, which was calling a structural
+upright a forgotten element.
+
+**Waypoints are not gates.** The seated course card said Track 1 has 14
+gates. It has six and eight waypoints. `summaryOf` in src/share/listing.js
+counted sequence steps; it now counts steps that score, the same rule the
+stock cards were given in Round 39.
+
+**What is still not the reference.** The bar along the ground. The game
+draws no member under an opening whose sill is the floor, so what a pilot
+flies is the goalpost the animations show, but the GIF exporter draws the
+bar RaceGOW's rule 2 asks for, so an export carries one pipe per ground gate
+that the plate does not. It lies on the floor and changes no clear height.
+Track 8's table also stands on one leg the reference does not have. Both are
+in TRACK-FROM-GIF.md under "What the builder still cannot draw" rather than
+absorbed.
+
+**Checks, run this turn.** `micro:check`, which grew two: every gap survives
+a write, and every gap has a pipe within one opening of where its own frame
+would have stood, so a gap can never end up hanging in the air. Then
+`check:clip` 495 of 495, `check:path` 12 of 12, `lint:presets` 6 of 6,
+`gif:selftest` 38 of 38, `lint:shell`, `lint:board`, `check:orbit` 17 of 17
+and `lint:quality` 56 of 56. Then the pictures: all three tracks exported
+again and re-audited against their plates, where every remaining pipe lands
+on white PVC except the floor bars named above; the Tracks room
+photographed, where the cards draw the open lattice; and the room itself,
+where the goalpost stands with the pole free beside it. `npm run verify` was
+not run: no physics, plant, ABI or build changed.

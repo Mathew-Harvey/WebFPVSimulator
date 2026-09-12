@@ -47,7 +47,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, trackClassOf, virtualApertureDims } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
 import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import { aperturesOf, elementById, apertureCenter } from './model.js';
 import { apertureFrame, apertureCorners, clamp } from './geometry.js';
@@ -544,6 +544,12 @@ export function buildStage(THREE, doc, path, { size = 512, camera: fixed = null 
   const buildAperture = (el) => {
     const levels = aperturesOf(el);
     if (!levels.length) {
+      return;
+    }
+    /* A gap in the lattice is drawn by the structures around it. The pane
+     * still lights when the lap reaches it; there is just no pipe of its
+     * own. See isUnbuilt in elements.js. */
+    if (isUnbuilt(el)) {
       return;
     }
     const base = el.position.z;

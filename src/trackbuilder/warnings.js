@@ -38,7 +38,7 @@ import { ELEMENTS, KIND, TUNING, trackClassOf, tuningFor } from './elements.js';
 import {
   GATE_OPENING_MIN, GATE_OPENING_MAX, GATE_SPACING_MIN, GATE_SPACING_MAX,
   GROUND_GATE_CENTRE_MAX, STACK2_CENTRE_MIN, STACK3_CENTRE_MIN,
-  POLE_FROM_GATE_MIN, POLE_FROM_POLE_MIN, ROOM_HEIGHT, envelopeFor, inches,
+  POLE_FROM_GATE_MIN, POLE_FROM_POLE_MIN, PIPE_OD, ROOM_HEIGHT, envelopeFor, inches,
 } from './racegow.js';
 import { elementById, elementNormal, kindOf, startPadsOf } from './model.js';
 import { sequenceLabel, unsequencedElements } from './sequence.js';
@@ -53,13 +53,53 @@ function note(code, message, extra = {}) {
 }
 
 /*
+ * THE POLES THAT ARE SOMEBODY'S LEG.
+ *
+ * RaceGOW builds much of its track by carrying one leg of a gate up past
+ * the bar: the pipe above the bar is a pole and the pipe below it is the
+ * gate's upright, one length of PVC on one fitting. The official Track 1,
+ * Track 5 and Track 8 all do it, and two of them do it with a leg the lap
+ * never flies around, which is simply the pipe that holds the opening over
+ * the bar up.
+ *
+ * Such a pole is not a pole in the rules' sense and it is not a forgotten
+ * element either, so the clearance rules and the unsequenced warning both
+ * skip it. Anything standing further than half a pipe from a gate's own
+ * frame line is a pole somebody put there, and every rule still holds it.
+ *
+ * Returns the element ids of the poles that are legs.
+ */
+function frameLegs(doc) {
+  const legs = new Set();
+  const gates = doc.elements.filter((e) => ELEMENTS[e.type]?.kind === KIND.APERTURE
+    && Math.abs(e.pitch || 0) <= 1e-3);
+  const poles = doc.elements.filter((e) => ELEMENTS[e.type]?.kind === KIND.MARKER
+    && e.type !== 'waypoint');
+  for (const p of poles) {
+    for (const g of gates) {
+      const w = ((g.dims?.clearW ?? 0) + PIPE_OD) / 2;
+      const across = yawVector((g.yaw || 0) + Math.PI / 2);
+      for (const side of [-1, 1]) {
+        const sx = g.position.x + across.x * side * w;
+        const sy = g.position.y + across.y * side * w;
+        if (Math.hypot(p.position.x - sx, p.position.y - sy) <= PIPE_OD) {
+          legs.add(p.id);
+        }
+      }
+    }
+  }
+  return legs;
+}
+
+/*
  * Inspect a track and the line derived from it. `path` is what buildPath
  * returned; pass null to get only the checks that do not need a line.
  */
 export function collectWarnings(doc, path) {
   const out = [];
+  const legs = frameLegs(doc);
   if (trackClassOf(doc) === 'micro') {
-    collectRaceGowWarnings(doc, out);
+    collectRaceGowWarnings(doc, out, legs);
   }
 
   /* -------- the course itself, no line needed -------- */
@@ -73,6 +113,9 @@ export function collectWarnings(doc, path) {
   }
 
   for (const el of unsequencedElements(doc)) {
+    if (legs.has(el.id)) {
+      continue;
+    }
     const def = ELEMENTS[el.type];
     out.push(warn('unsequenced', `${el.name || def.label} is on the field but not in the flying order, so the line ignores it.`, {
       elementId: el.id,
@@ -347,7 +390,7 @@ function firstBarrierHit(path, bar, pad) {
  * intentionally fly through any gates in the opposite direction to shorten
  * your line". That is a property of a run, not of a track.
  */
-function collectRaceGowWarnings(doc, out) {
+function collectRaceGowWarnings(doc, out, legs) {
   const gates = [];
   const poles = [];
   for (const el of doc.elements) {
@@ -554,6 +597,9 @@ function collectRaceGowWarnings(doc, out) {
 
   /* The pole clearances the Track6 diagram dimensions three times. */
   for (const p of poles) {
+    if (legs.has(p.id)) {
+      continue;
+    }
     for (const g of gates) {
       const d = Math.hypot(p.position.x - g.position.x, p.position.y - g.position.y);
       if (d < POLE_FROM_GATE_MIN - 1e-6) {
@@ -565,6 +611,9 @@ function collectRaceGowWarnings(doc, out) {
   }
   for (let i = 0; i < poles.length; i += 1) {
     for (let j = i + 1; j < poles.length; j += 1) {
+      if (legs.has(poles[i].id) || legs.has(poles[j].id)) {
+        continue;
+      }
       const d = Math.hypot(poles[i].position.x - poles[j].position.x,
         poles[i].position.y - poles[j].position.y);
       if (d < POLE_FROM_POLE_MIN - 1e-6) {

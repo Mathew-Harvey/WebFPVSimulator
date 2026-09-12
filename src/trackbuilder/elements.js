@@ -237,6 +237,35 @@ export function flagSideOf(el) {
 }
 
 /*
+ * AN OPENING THAT IS A GAP IN THE LATTICE RATHER THAN A GATE OF ITS OWN.
+ *
+ * Every aperture here builds its own four sided frame, which is what a
+ * MultiGP gate is and what RaceGOW's rule 2 asks for: "All gates must be
+ * fully enclosed." The official RaceGOW5 tracks are not built that way
+ * throughout. A bar on two legs with one leg carried up as a pole makes two
+ * scored openings, one under the bar and one over it, and the one over it
+ * has a bar below and a pole beside and NOTHING ELSE. Drawing a frame there
+ * puts two lengths of PVC in mid air that the real track does not have, one
+ * of them straight through the flight path, and it boxes in a pole that is
+ * meant to be flown around.
+ *
+ * So an aperture can say that nothing is built for it: the pipe that bounds
+ * the opening belongs to the structures around it, and this element is the
+ * hole. It still scores, still lights, still carries its number and still
+ * pins the racing line. It just has no pipe of its own.
+ *
+ * Every renderer reads this ONE function, so the game, the exporter, the
+ * builder's preview and the course card cannot disagree about which
+ * openings have a frame.
+ */
+export function isUnbuilt(el) {
+  if (!el || el.unbuilt !== true) {
+    return false;
+  }
+  return ELEMENTS[el.type]?.kind === KIND.APERTURE;
+}
+
+/*
  * How much wider than the clearance corridor a marker's scoring square is,
  * metres, and the narrowest one that may ever be built.
  *

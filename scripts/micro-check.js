@@ -463,7 +463,7 @@ function presetSet() {
    * picker. shell-check pins that.
    */
   const want = ['racegow5-track8', 'racegow5-track5', 'racegow5-track1', 'racegow5-track2',
-    'racegow5-track3', 'racegow5-track4', 'racegow5-track6'];
+    'racegow5-track3', 'racegow5-track4', 'racegow5-track6', 'racegow5-track7'];
   const micro = presetsForClass('micro').map((d) => d.id);
   check('the whoop ships exactly the supplied tracks',
     micro.length === want.length && want.every((id) => micro.includes(id)),

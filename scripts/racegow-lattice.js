@@ -693,6 +693,85 @@ export const TRACKS = [
     start: { at: [-0.85, -0.3], yaw: -Math.PI / 2 },
     lap: 'A+ B+ Wa C Wb D+ E- Wc F Wd I- We E+ Wf H- Wg I+ C Wh E- Wi J Wj H- Wk Wl F Wm C Wn D- B+ Wo Wp K Wq L+ Wr Ws Wt',
   },
+  /*
+   * TRACK 7, FPVBean's, and the first with a table in it since Track 8.
+   *
+   * Seven feet on a four by three lattice, x 0 to 3 and y 0 to -2. Reading
+   * it: a two unit bar at one unit on three legs at x 0, the middle and far
+   * ones carried up to two units and both flown round; and a table at x 2 to
+   * 3, y -1 to -2, four legs, a square of bar at one unit, its top flown as
+   * a dive gate, and the two legs along y -1 carried up to two units. One
+   * bar spurs off the table's near left corner a unit in +y and stops in mid
+   * air, and a ground bar runs from the far gate's foot to the table's near
+   * one. The lap is 16 passes.
+   *
+   * THE SPUR'S END SCORES. The animation lights a square hanging off the end
+   * of that bar, centred on the bar's own height rather than sitting on the
+   * floor: the best fit over a quarter unit grid is a unit square at x 2 to
+   * 3 in the plane y 0, from half a unit up to one and a half. It is the
+   * only opening in seven tracks whose sill is not a whole number, and it is
+   * what the reference draws. J in the squares below, unbuilt, because the
+   * only pipe near it is the spur that makes it.
+   *
+   * AND THE MIRROR AGAIN. Fitted as read, with every point required to be in
+   * front of the camera, the solver could only reach 34 px with a focal
+   * length of four million and an eye fourteen thousand units out. With y
+   * negated it came back at 6.9 px from an eye 3.8 units up. Step 4c, third
+   * time.
+   */
+  {
+    id: 'racegow5-track7',
+    name: 'RaceGOW5 Track 7',
+    credit: {
+      designer: 'FPVBean',
+      series: 'RaceGOW5',
+      source: 'racegow.com/tracks, the official Track 7 animation',
+      broughtOverBy: 'andAgainFPV',
+    },
+    origin: [154, 265],
+    squares: {
+      E: { name: 'Near gate', axis: 'x', at: [0, -0.5], sill: 0 },
+      A: { name: 'Far gate', axis: 'x', at: [0, -1.5], sill: 0 },
+      C: { name: 'Over the far gate', axis: 'x', at: [0, -1.5], sill: 1, unbuilt: true },
+      F: { name: 'Under the spur', axis: 'x', at: [2, -0.5], sill: 0, unbuilt: true },
+      K: { name: 'Table, left', axis: 'x', at: [2, -1.5], sill: 0, unbuilt: true },
+      L: { name: 'Table, right', axis: 'x', at: [3, -1.5], sill: 0, unbuilt: true },
+      G: { name: 'Table, far', axis: 'y', at: [2.5, -2], sill: 0, unbuilt: true },
+      I: { name: 'Over the table', axis: 'y', at: [2.5, -1], sill: 1, unbuilt: true },
+      J: { name: 'The end of the spur', axis: 'y', at: [2.5, 0], sill: 0.5, unbuilt: true },
+      H: { name: 'Table top', axis: 'z', at: [2.5, -1.5], sill: 1 },
+    },
+    poles: {
+      D: { name: 'Near pole', at: [0, -1], height: 2, side: [0, 1], beside: 'A' },
+      B: { name: 'Far pole', at: [0, -2], height: 2, side: [0, -1], beside: 'A' },
+    },
+    posts: [
+      { name: 'Table post, near left', at: [2, -1], height: 2 },
+      { name: 'Table post, near right', at: [3, -1], height: 2 },
+    ],
+    rails: [
+      { name: 'Ground bar, far gate to the table', from: [0, -2, 0], to: [2, -2, 0] },
+      { name: 'The spur', from: [2, -1, 1], to: [2, 0, 1] },
+    ],
+    waypoints: {
+      Wa: { name: 'Round the far pole', at: [0.67, -1.94], z: 0.33, heading: [0.14, -0.99] },
+      Wb: { name: 'Up behind the gates', at: [-0.51, -1.85], z: 1.18, heading: [0.01, 1] },
+      Wc: { name: 'Over the top', at: [0.46, 0.19], z: 2.07, heading: [-0.77, -0.63] },
+      Wd: { name: 'Round the near pole', at: [-0.77, -0.48], z: 1.19, heading: [0.7, 0.71] },
+      We: { name: 'Out over the table', at: [2.02, -3.57], z: 1.69, heading: [0.55, -0.84] },
+      Wf: { name: 'Round the far corner', at: [2.52, -2.79], z: 1.08, heading: [0.58, -0.82] },
+      Wg: { name: 'Round on to the spur', at: [2.14, -0.28], z: 1.5, heading: [-0.99, 0.13] },
+      Wh: { name: 'Back over the table', at: [2.65, -1.27], z: 1.26, heading: [-0.45, -0.89] },
+      Wi: { name: 'Round the right side', at: [3.52, -1.97], z: 1.3, heading: [0.59, 0.81] },
+      Wj: { name: 'Away from the spur', at: [1.41, -0.89], z: 0.6, heading: [0.15, 0.99] },
+      Wk: { name: 'Round the far corner again', at: [3.49, -2.41], z: 0.46, heading: [0.85, 0.52] },
+      Wl: { name: 'Along the front', at: [2.31, -2], z: 0.74, heading: [-0.92, 0.39] },
+      Wm: { name: 'Out to the near side', at: [2.12, -2.55], z: 0.32, heading: [-1, 0.05] },
+      Wn: { name: 'On to the far gate', at: [-0.6, -1.99], z: 0.51, heading: [-0.08, 1] },
+    },
+    start: { at: [-0.6, -2.2], yaw: Math.PI / 2 },
+    lap: 'A+ Wa B Wb C+ Wc D Wd E+ F+ We Wf G+ H+ I+ Wg J- Wh Wi H- K- Wj F+ G- Wk L- G- Wl Wm Wn',
+  },
 ];
 
 /*

@@ -35305,3 +35305,113 @@ documents, and reaches nothing in `src/native`, the patches,
 the pipe projection, the pane match, and the step 10 export laid beside the
 reference. `lint:presets` is the flight controller tunes and says nothing
 about a track; earlier rounds quoted it here as though it did.
+
+## Round 65: RaceGOW5 Track 7, FPVBean's, and a steering rule that had to go
+
+Track 7 is in, and reading it turned up something in the builder that was
+quietly wrecking the line on every compact track.
+
+**The reading.** Seven feet on a four by three lattice, x 0 to 3 and y 0 to
+-2. A two unit bar at one unit on three legs at x 0, its middle and far legs
+carried up to two units and both flown round; and a table at x 2 to 3, y -1
+to -2: four legs, a square of bar at one unit, its top flown as a dive gate,
+and its two legs along y -1 carried up. One bar spurs a unit off the table's
+near left corner and stops in mid air, and a ground bar joins the far gate's
+foot to the table's near one. Sixteen passes over twelve elements.
+
+Seven feet within 0.076 of an integer, eleven heights within 0.15, three
+vanishing points agreeing on 885 px, and the camera at 6.87 px over nineteen
+points. Step 4c caught the mirror again, the third time in three tracks: as
+read, with every point required to be in front of the camera, the best fit
+was 34 px with a focal length of four million and an eye fourteen thousand
+units away; with y negated, 6.9 px from an eye 3.8 units up.
+
+**The spur's end scores, and its sill is not a whole number.** The animation
+lights a square hanging off the end of that overhanging bar, centred on the
+bar's own height rather than standing on the floor. Over a quarter unit grid
+the best fit is a unit square at x 2 to 3 in the plane y 0, from half a unit
+up to one and a half: `sill: 0.5`, the first fractional sill in eight tracks.
+Every whole number alternative scores under 0.45 against the pane where this
+one scores 0.70, so it is not a rounding error, it is what was drawn.
+
+**A LEG AT (3,0) THAT IS NOT THERE.** The pipe projection said a one unit
+upright at that node lands on white PVC over its whole length, which would
+have added a leg the reference does not have. It is the false pass step 8b
+warns about: the line runs within six pixels of the pole on the table's near
+left corner for its whole length, so it reads bright the entire way. Drawing
+it on the plate settled it in a second. A score of 1.00 is not proof; a
+picture is.
+
+**AND THE STEERING RULE.** `avoidForeignApertures` in
+`src/trackbuilder/path.js` put a steering knot wherever the racing line
+crossed an opening it was not scoring, to push it out, on the stated grounds
+that flying through a gate you were not sent through is "not a thing a pilot
+would ever do: you go round". That is true of a field with gates spread over
+it. It is false of a RaceGOW room, and the animations say so: Track 6's own
+line crosses the opening under its left bar five times where the lap scores
+two, Track 7's goes through the table top five times where the lap scores
+two, and both fly within 4 cm of the PVC while they do it, which is closer
+than the clearance the rule enforces.
+
+The damage was not small. On Track 7 it inserted twelve steering knots inside
+a third of a unit of each other and the tightest radius came out at **2 mm**.
+The tuner could not fix it, because every waypoint move just moved where the
+rule fired.
+
+It is off for the micro class now, and the cost of taking it away, measured
+on all eight tracks: **not one tightest radius moved**. Tracks 8 and 5 lose
+one steering knot each and Track 6 loses twelve, so those three lines are a
+little shorter, and every track still flies every pass its lap names, in
+order and the right way round. Full sized tracks keep the rule.
+
+Two intermediate versions were tried and dropped, and they are worth writing
+down because the second looked reasonable: leaving the rule on but skipping a
+crossing that clears every edge by the barrier clearance (Track 7 went from
+twelve knots to seven and 2 mm to 2 mm), then by half of it, the whoop's own
+half width (seven to two, 2 mm to 21 mm). Both still fought the reference,
+and neither was defensible once the flown lines had been measured against the
+pipe.
+
+**The descent can turn a waypoint now.** A waypoint's knot takes its tangent
+from its arrow, flattened, and the descent could only ever move the point.
+Track 7's tightest corners were all at nine tenths of the way along a
+segment, which is the signature of an arrow a few degrees out: the cubic
+hooks just before the knot and no sideways move reaches it. Turning the arrow
+by up to 18 degrees is a move now. On Track 7 it took the clearance from 11.7
+to 14.3 cm and the fit from 0.154 to 0.139.
+
+**A floor can preserve a bad number.** The tuner refuses a move that makes
+the tightest radius worse than the value it started at, which is right, but
+Track 7's first run started from the 2 mm line the steering rule had made, so
+the floor was 2 mm and the descent was free to build needles of its own
+underneath it. Re-seeding from the flown line and tuning again from there is
+what fixed it. Iterating the descent, so each round's answer is the next
+round's floor, found nothing further: it is a real local optimum.
+
+| | Track 7 | its own flown line |
+| --- | --- | --- |
+| lap | 27.75 m | 28.0 m reconstructed |
+| tightest radius | 0.036 m | 0.099 m |
+| clearance to pipe | 14.7 cm | 4.1 cm |
+| fit to the flown line | 0.146 u, 10.8 cm | |
+
+19 of 20 pipes land on white PVC over 90% of their length, the twentieth at
+0.82, and every one of the ten openings matched its own lit pane at 0.96 to
+1.00 coverage except the spur's end at 0.70. The tightest radius is still the
+weak number on the compact tracks, 0.023 to 0.036 across Tracks 3, 6 and 7,
+and it is the same cause every time: a short hop between an opening whose
+tangent is fixed square to it and the waypoint that lines the quad up for the
+next one.
+
+`npm run verify` was NOT run. The change to `path.js` is the track builder's
+racing line, not the flight model: it reaches nothing in `src/native`, the
+patches, `vendor/betaflight`, the WASM build or the input path, and the line
+is drawn and flown by the game, not integrated by it. Run in this round:
+`micro:check` clean at 160 assertions, `lint:board`, `lint:nouns`, the
+crossing walk on all eight tracks against both the lap and the flown line,
+the pipe projection, the pane match, and the step 10 export beside the
+reference.
+
+**The board cards for Tracks 8, 5 and 6 are now a little stale**, because a
+card draws the racing line and those three lines changed when the steering
+rule went. Replacing them needs BOARD_ADMIN_TOKEN.

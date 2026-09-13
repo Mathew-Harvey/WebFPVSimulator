@@ -5,10 +5,10 @@ This is how that animation becomes a playable track in this simulator, end
 to end, with the traps named. It was written after Tracks 8 and 5 were built
 this way, refined on Track 1, and given step 4c by Track 2. Tracks 3 and 4
 followed, and then a pass back over all six rewrote step 4c, because the
-test it had was one a fitted camera can answer either way. Track 6 came in
-under the rewritten step 4c, which caught its mirror before a line of its
-spec was written, and taught the rest of what is new below. Seven tracks are
-in `src/trackbuilder/presets.js` now.
+test it had was one a fitted camera can answer either way. Tracks 6 and 7 came
+in under the rewritten step 4c, which caught the mirror on both before a line
+of either spec was written, and taught the rest of what is new below. Eight
+tracks are in `src/trackbuilder/presets.js` now.
 
 It replaces two earlier documents. `TRACK-FROM-ANIMATION.md` concluded the
 job could not be done from a render, which was true of the method it tried
@@ -239,6 +239,15 @@ throughout, `origin` in inches from the room's near left corner:
   other side of it. `pass` names that direction when it differs. Left out it
   is `side`, which is what the first five tracks use.
 
+**An opening's sill is usually a whole number, and once it was not.** Track
+7 has a bar that spurs a unit off its table's corner and stops in mid air,
+and the animation lights a square hanging on the end of it, centred on the
+bar's own height rather than standing on the floor. Fitted over a quarter
+unit grid it is a unit square from half a unit up to one and a half, so its
+`sill` is 0.5. Do not round that to a whole number to make it look like the
+others: the check that catches a wrong sill is the pane match, and this one
+is 0.70 where every whole number alternative is under 0.45.
+
 **A vertical square at sill 0 has no bottom bar, so a gate without one is
 built and not a gap.** The generator draws two stiles and a head for a
 vertical square and adds a sill only above the floor, which is exactly how
@@ -286,6 +295,15 @@ animation makes too. `opt.mjs` prices an extra crossing against the flown
 line's count for the same reason: measured against the lap, the descent is
 paid to fly a line the reference does not fly.
 
+The builder used to disagree. `avoidForeignApertures` in
+`src/trackbuilder/path.js` steered the line out of any opening it was not
+scoring, on the stated grounds that "a pilot goes round". On a field that is
+right and on a RaceGOW course it is not, and the cost was severe: on Track 7
+it put twelve steering knots inside a third of a unit of each other and the
+tightest radius came out at 2 mm. It is off for the micro class now. No
+shipped track's tightest radius changed when it went; Tracks 8 and 5 lost one
+steering knot each and Track 6 lost twelve.
+
 ## Step 8b, project your own pipe on to the plate
 
 Step 8 checks the LINE. This checks the STRUCTURE, and it is the one that
@@ -314,6 +332,14 @@ something the openings do not imply, pin it with a `waypoint`: a step in the
 flying order that pins the line through a point, at a height, headed the way
 its arrow points, and scores nothing and is drawn nowhere. Track 8 needed
 six, Track 5 eight.
+
+**A waypoint's ARROW is a knob too, not just its position.** The knot takes
+its tangent from the arrow, flattened, so an arrow a few degrees off the
+flown line's own direction hooks the cubic just before the knot, and no
+amount of moving the point sideways reaches it. Track 7's tightest corners
+were all at nine tenths of the way along a segment for exactly that reason.
+Seeding the arrow from four frames of the reconstruction is blunt on a
+corner, so let the descent turn it as well as move it.
 
 **Do not put both legs of a hairpin on the same line.** The first placement
 on both tracks ran out and back along one axis at the same offset, and a

@@ -350,8 +350,6 @@ function firstCrossing(a, b, rects, kScale, clear) {
       if (Math.abs(u) > r.hw || Math.abs(v) > r.hh) {
         continue;
       }
-      /* Inside the opening. Escape across whichever edge is nearer, which
-       * is the smaller correction of the two available. */
       const outU = r.hw - Math.abs(u);
       const outV = r.hh - Math.abs(v);
       const axis = outU <= outV ? r.f.widthAxis : r.f.heightAxis;
@@ -370,6 +368,34 @@ function firstCrossing(a, b, rects, kScale, clear) {
 }
 
 function avoidForeignApertures(doc, knots) {
+  /*
+   * NOT IN A RACEGOW ROOM, THOUGH.
+   *
+   * The paragraph above says flying through an opening you are not scoring
+   * is "not a thing a pilot would ever do". That is true of a field with
+   * gates spread over it and false of a room with sixteen passes in three
+   * units by two. RaceGOW's own animations do it constantly: Track 6's line
+   * crosses the opening under its left bar five times where the lap scores
+   * two, Track 7's goes through the table top five times where the lap
+   * scores two, and both fly within 4 cm of the PVC while they are at it,
+   * which is closer than the clearance this pass would enforce.
+   *
+   * Dodging them cost far more than it saved. On Track 7 twelve steering
+   * knots landed within a third of a unit of each other and the tightest
+   * radius came out at 2 mm, which is not a line anybody can fly. The line in
+   * these rooms is read off the animation and pinned by waypoints, so it does
+   * not need steering by a rule the reference itself breaks.
+   *
+   * What it costs to take it away, measured on all eight: not one tightest
+   * radius moved. Tracks 8 and 5 lose one steering knot each and Track 6
+   * loses twelve, so those three lines are a little shorter and no rougher.
+   * Every track still flies every pass its lap names, in order and the right
+   * way round. A full sized track keeps the pass: its gates are spread over a
+   * field and a line through one of them uninvited really is a mistake.
+   */
+  if (trackClassOf(doc) === 'micro') {
+    return knots;
+  }
   const rects = apertureRects(doc);
   if (rects.length < 2 || knots.length < 2) {
     return knots;

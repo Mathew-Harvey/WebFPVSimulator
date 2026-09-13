@@ -168,12 +168,12 @@ export const TRACKS = [
       { name: 'Rail, x 1 to 2', from: [1, 0, 1], to: [2, 0, 1] },
     ],
     waypoints: {
-      O: { name: 'Over the tower', at: [3.4, 0.5], z: 3.4, heading: [-1, 0] },
-      Q: { name: 'Round the pole, low', at: [3.6, 0], z: 0.7, heading: [0, -1] },
-      R: { name: 'Home straight', at: [1.5, -0.5], z: 1.5, heading: [-1, 0] },
-      S: { name: 'Round the pole, mid', at: [3.6, 0.5], z: 1.3, heading: [0, 1] },
-      V: { name: 'Behind the far side', at: [2.5, 1.5], z: 1.7, heading: [-1, 0] },
-      X: { name: 'Outside the start gate', at: [-0.5, -1.3], z: 0.5, heading: [0, 1] },
+      O: { name: 'Over the tower', at: [3.02, 0.83], z: 3.4, heading: [-1, 0] },
+      Q: { name: 'Round the pole, low', at: [3.99, 0.27], z: 0.27, heading: [0, -1] },
+      R: { name: 'Home straight', at: [1.01, -0.88], z: 1.5, heading: [-1, 0] },
+      S: { name: 'Round the pole, mid', at: [3.93, -0.05], z: 1.95, heading: [0, 1] },
+      V: { name: 'Behind the far side', at: [2.23, 1.61], z: 1.27, heading: [-1, 0] },
+      X: { name: 'Outside the start gate', at: [-0.34, -0.82], z: 0.28, heading: [0, 1] },
     },
     start: { at: [-0.8, -0.5], yaw: 0 },
     lap: 'A+ T C- T E- F- W H+ I- J- K+ L+ M- T S V I- E+ T C+ O N+ Q R W F+ J+ K- T E- C+ T P- K- X',
@@ -228,14 +228,14 @@ export const TRACKS = [
       { name: 'Rail, x 1 to 2', from: [1, 0, 1], to: [2, 0, 1] },
     ],
     waypoints: {
-      Q: { name: 'Back past the frame', at: [1.3, 2.0], z: 0.8, heading: [1, 0] },
-      R: { name: 'Round the tall pole', at: [2.7, 1.6], z: 1.2, heading: [-1, 0] },
-      O: { name: 'Round the tall pole again', at: [1.6, 2.2], z: 0.9, heading: [1, 0] },
-      V: { name: 'Back over the rail', at: [1.3, 0.3], z: 1.6, heading: [0, -1] },
-      S: { name: 'Round the right pole', at: [3.6, -1.6], z: 2.4, heading: [0, -1] },
-      U: { name: 'Round the near gate', at: [-0.5, 0.5], z: 1.2, heading: [0, 1] },
-      T: { name: 'Round the right pole, low', at: [3.3, -2.1], z: 1.1, heading: [1, 0] },
-      W: { name: 'Round the left pole', at: [-0.6, 0.2], z: 1.6, heading: [0, 1] },
+      Q: { name: 'Back past the frame', at: [2.1, 2.22], z: 0.67, heading: [1, 0] },
+      R: { name: 'Round the tall pole', at: [2.49, 1.38], z: 0.99, heading: [-1, 0] },
+      O: { name: 'Round the tall pole again', at: [1.79, 2.2], z: 1.23, heading: [1, 0] },
+      V: { name: 'Back over the rail', at: [1.24, 1.01], z: 1.44, heading: [0, -1] },
+      S: { name: 'Round the right pole', at: [3.82, -1.27], z: 1.53, heading: [0, -1] },
+      U: { name: 'Round the near gate', at: [-0.93, -0.31], z: 0.77, heading: [0, 1] },
+      T: { name: 'Round the right pole, low', at: [3.07, -1.88], z: 1.53, heading: [1, 0] },
+      W: { name: 'Round the left pole', at: [-0.66, -0.4], z: 1.6, heading: [0, 1] },
     },
     start: { at: [2, -0.5], yaw: 0 },
     lap: 'A+ B T C- D E+ F- D H- Q R D O I- J+ K- J+ V L- W D S B L- M N- U K-',
@@ -250,7 +250,7 @@ export const TRACKS = [
       source: 'racegow.com/tracks, the official Track 1 animation',
       broughtOverBy: 'andAgainFPV',
     },
-    origin: [197, 209],
+    origin: [197, 267],
     /*
      * Read off the RaceGOW5 Track 1 animation, 96 frames, every frame. The
      * shortest of the three built so far: a 2 by 2 unit lattice carrying
@@ -267,6 +267,17 @@ export const TRACKS = [
      * The ground bars that ARE there join the structures to each other
      * rather than closing any gate, so they are rails.
      *
+     * IT WAS READ MIRRORED THE FIRST TIME AND THIS IS THE REPAIR. The
+     * camera fitted to the first reading could only photograph this lattice
+     * from behind itself, which is what a mirrored track looks like from
+     * inside the arithmetic: the residual is small, the integrality is
+     * exact, every pane matches, and the track is its own reflection. Every
+     * y is negated here now, in the squares, the rails, the waypoints and
+     * their headings, the start, and the sign of travel through the two
+     * openings whose axis is y. The origin moves with it so the track
+     * stands where it stood in the room. See step 4c in TRACK-FROM-GIF.md,
+     * which had the wrong test in it until this was found.
+     *
      * D IS A GAP, NOT A GATE. The opening over the left bar has that bar
      * below it and the pole beside it and nothing else: no top bar, no
      * second upright. It was built as a square, which put two lengths of
@@ -275,9 +286,9 @@ export const TRACKS = [
      * isUnbuilt in src/trackbuilder/elements.js.
      */
     squares: {
-      A: { name: 'Start gate', axis: 'x', at: [-1, 1.5], sill: 0 },
-      B: { name: 'Right frame, under the bar', axis: 'x', at: [1, 0.5], sill: 0 },
-      C: { name: 'Right frame, over the bar', axis: 'x', at: [1, 0.5], sill: 1 },
+      A: { name: 'Start gate', axis: 'x', at: [-1, -1.5], sill: 0 },
+      B: { name: 'Right frame, under the bar', axis: 'x', at: [1, -0.5], sill: 0 },
+      C: { name: 'Right frame, over the bar', axis: 'x', at: [1, -0.5], sill: 1 },
       F: { name: 'Left gate', axis: 'y', at: [-0.5, 0], sill: 0 },
       D: { name: 'Over the left gate', axis: 'y', at: [-0.5, 0], sill: 1, unbuilt: true },
     },
@@ -286,20 +297,20 @@ export const TRACKS = [
     },
     rails: [
       { name: 'Ground bar, pole to right frame', from: [0, 0, 0], to: [1, 0, 0] },
-      { name: 'Ground bar, left gate to start gate', from: [-1, 0, 0], to: [-1, 1, 0] },
+      { name: 'Ground bar, left gate to start gate', from: [-1, 0, 0], to: [-1, -1, 0] },
     ],
     waypoints: {
-      R: { name: 'Out past the right frame', at: [1.9, 0.5], z: 0.7, heading: [1, 0] },
-      S: { name: 'Back to the top opening', at: [1.9, 0.5], z: 1.4, heading: [-1, 0] },
-      T: { name: 'Behind the frames', at: [0.4, -1.1], z: 1.7, heading: [-1, 0] },
-      Z: { name: 'Down to the gap', at: [0.8, 1.4], z: 0.8, heading: [0, -1] },
-      V: { name: 'Behind the pole', at: [0.0, -0.9], z: 0.55, heading: [-1, 0] },
-      W: { name: 'Out past the start gate', at: [-1.9, 0.4], z: 0.55, heading: [-1, 0] },
-      Y: { name: 'Round the far end', at: [-2.7, 1.0], z: 0.5, heading: [0, 1] },
-      X: { name: 'Back on to the start gate', at: [-2.2, 1.6], z: 0.5, heading: [1, 0] },
+      R: { name: 'Out past the right frame', at: [1.52, -1.1], z: 0.42, heading: [1, 0] },
+      S: { name: 'Back to the top opening', at: [1.48, -1.59], z: 1.4, heading: [-1, 0] },
+      T: { name: 'Behind the frames', at: [-0.25, 0.34], z: 1.38, heading: [-1, 0] },
+      Z: { name: 'Down to the gap', at: [0.8, -1.29], z: 0.36, heading: [0, 1] },
+      V: { name: 'Behind the pole', at: [-0.27, 0.25], z: 1.53, heading: [-1, 0] },
+      W: { name: 'Out past the start gate', at: [-2.01, -0.02], z: 0.71, heading: [-1, 0] },
+      Y: { name: 'Round the far end', at: [-2.21, -0.78], z: 0.39, heading: [0, -1] },
+      X: { name: 'Back on to the start gate', at: [-1.66, -1.32], z: 0.34, heading: [1, 0] },
     },
-    start: { at: [-1.6, 1.5], yaw: 0 },
-    lap: 'A+ B+ R S C- T D+ Z P V F+ W Y X',
+    start: { at: [-1.6, -1.5], yaw: 0 },
+    lap: 'A+ B+ R S C- T D- Z P V F- W Y X',
   },
   {
     id: 'racegow5-track2',

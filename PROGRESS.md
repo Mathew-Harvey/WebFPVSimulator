@@ -34972,3 +34972,142 @@ assertions, `lint:presets` 6 of 6, `lint:nouns` PASS, `check:clip` 522 of
 522, `lint:board` PASS. Beyond those, the step 8 crossing walk over five x
 planes, three y planes and two z planes, the clearance walk, and the step 10
 export laid over the reference, all in this round.
+
+## Round 62: the mirror test was wrong, and Track 1 was mirrored
+
+The owner asked for two things: retune the waypoints on Tracks 5, 8 and 1,
+and check that the gates are in the right places on all of them. Then they
+sent the two animations this session did not have, Track 1's and Track 8's,
+which turned the second job from an argument into a measurement and the
+first from "clearance and radius only" into a proper three way tune. Both
+zips were misnamed again, `track1.zip` holding `8.gif` and `track8.zip`
+holding `1.gif`. The caption rendered into every frame settles it, as
+always.
+
+**THE FINDING: RaceGOW5 Track 1 SHIPPED MIRRORED, and the test that was
+supposed to catch that could not.** Step 4c was added in round 59 after
+Track 2 turned out to be its own reflection. What it did was fit a camera
+and then look at its axes: `cross(right, up)` against the direction of the
+scene. That is not a test of anything. `(f, R)` and `(-f, diag(-1,-1,1) R)`
+are the same photograph, pixel for pixel, so a fitter hands back whichever
+of the two it happens to land on and the axes point whichever way that
+gauge fell. Run on the six tracks now in the file it called the true Track 3
+left handed and the mirrored Track 1 fine.
+
+**What the gauge cannot touch is the sign of the depth.** Mirror a lattice,
+negate the focal length, and the whole scene moves behind the camera: both
+sign flips cancel in u and in v and the residual is unchanged, which is why
+comparing residuals proves nothing either. But a photograph has every
+visible point IN FRONT of the camera. Fit both lattices, the spec and its
+mirror in y, with `Pc[:,2] > 0` required at every point, and one of them
+cannot be fitted at all:
+
+| track | as written | y negated | verdict |
+| --- | --- | --- | --- |
+| 1 | 189.15 px | 8.90 px | MIRRORED, repaired this round |
+| 2 | 6.36 px | 181.94 px | correct, the round 59 repair holds |
+| 3 | 4.72 px | 172.23 px | correct |
+| 4 | 2.39 px | 167.70 px | correct |
+| 5 | 10.39 px | 200.29 px | correct |
+| 8 | 6.57 px | none at all | correct |
+
+The loser is the whole structure in the wrong place, not a close second.
+Seeds are eyes on a sphere around the lattice, all above the floor and all
+looking at it, so nothing in the search prefers one hypothesis over the
+other. TRACK-FROM-GIF.md's step 4c is rewritten around this and says why the
+old test was empty.
+
+**The repair.** Every y in Track 1 is negated: the squares, the rail to the
+start gate, the waypoints and their headings, the start, and the sign of
+travel through D and F, the two openings whose axis is y. The origin moves
+from 209 to 267 inches, which is the track's own two units, so it stands
+where it stood in the room. The lap reads `A+ B+ R S C- T D- Z P V F- W Y X`
+now. With that done the six lit panes of the animation match the six
+openings in lap order, A B C D P F, at coverages of 0.94 to 1.00, and all
+sixteen pipes the spec builds land on white PVC.
+
+**The gate audit, all six tracks.** Each spec's pipe is projected on to its
+own reference plate and each scored opening is matched against the panes the
+animation lights.
+
+| track | pipes on white PVC | pane order against the lap |
+| --- | --- | --- |
+| 1 | 16 of 16 | A B C D P F, exactly |
+| 2 | 17 of 17 | A B C D E F G H, exactly |
+| 3 | 24 of 24 | matches, two lap flashes ambiguous |
+| 4 | 27 of 29 | matches, one pane goes out in stages |
+| 5 | 21 of 22 | 20 passes, exactly |
+| 8 | 27 of 29 | 29 passes, exactly |
+
+The four pipes that miss are the legs under a flat gate, which is the known
+difference round 61 wrote up: `stage.js` stands a flat gate on four legs
+and the reference carries it on the structure around it. Nothing else in
+any of the six is out of place, and no gate is on the wrong lattice line.
+
+**A check of mine was cutting away the evidence.** The pipe mask blanks a
+box over the caption so that a pipe cannot read bright by lying on the
+lettering. On Track 4 that box swallowed the bottom unit of the tall pole,
+which stands right beside the words, and the pole then read as 0.72 of its
+length on PVC when the truth is all of it. A pipe that reads absent because
+the mask was cut away is a false alarm exactly where the reading is
+hardest. The caption is kept in the mask now and reported separately: every
+pipe says how much of its projection crosses the lettering, so a pipe that
+reads bright BECAUSE of the caption is still visible as such.
+
+**The lines, reconstructed.** Trail head per frame, a ray each, an anchor
+per pass on its own plane, a constant speed prior and minimum acceleration
+smoothing, then the pass frames iterated against the reconstruction. Two
+things were added. A plane seen almost edge on is no anchor at all, because
+the ray runs along it and a pixel of error is metres of error in the
+crossing, so those passes are pinned softly at the middle of their own
+opening instead: Track 8's start gate and the gap over it are both on the
+x = 0 plane and the camera sits almost in it. And a pass that never lands
+inside its own opening had the wrong frame, so it stops being a plane and
+becomes a pin too. Track 1 came out at 12.6 m with every plane pass inside
+its opening, Track 5 at 38.3 m with four pins, Track 8 at 58.5 m with four.
+
+**The tune, and a fault in last round's objective.** Fidelity was measured
+one way round, from each measured point to the nearest point on the built
+line. Nothing then measured a built sample that no measured point is near,
+so the descent was free to add excursions the animation never flew, and on
+Track 1 it did: the lap grew from 14.4 m to 17.8 m while the number
+improved. Measured both ways round it stays at 13.8 m.
+
+| track | tightest radius | fit to the flown line | clearance | lap |
+| --- | --- | --- | --- | --- |
+| 1 | 0.088 to 0.120 m | 0.391 to 0.196 u | 17.3 to 15.2 cm | 13.75 m |
+| 5 | 0.015 to 0.079 m | 0.335 to 0.273 u | 18.9 cm held | 36.63 m |
+| 8 | 0.085 to 0.130 m | 0.324 to 0.287 u | 6.9 to 6.5 cm | 44.93 m |
+
+Track 5's tightest turn was a centimetre and a half of radius and is now
+eight, which is the single biggest change in the round. Track 8 sold 0.4 cm
+of clearance for 4.5 cm of radius; a floor was added to the clearance term
+to see whether it would refuse that trade and it made no difference, so the
+trade stands on its merits and the floor stays in the tuner as a statement
+of intent. No threshold moved. Every square on all three tracks is still
+flown exactly as its lap says, in the right direction and the right number
+of times, with every crossing within a centimetre and a half of the
+opening's centre.
+
+Tracks 3 and 4 were tuned last round against the one way fidelity and sit
+at 0.035 and 0.040 m of tightest radius. They were not touched this round,
+because they were not asked for and their gates check out, but they are the
+two that would gain most from the two way measure.
+
+`npm run verify` was NOT run. This round is one track spec's coordinates,
+generated data, waypoint numbers and two documents. It does not reach
+`src/native`, the patches, `vendor/betaflight`, the WASM build or the input
+path. Cheap checks run in this round: `micro:check` clean, 136 assertions
+including every Track 1 row, and `presets.js is what the lattice script
+writes` with it. Beyond those, in this round: the two hypothesis camera fit
+on all six tracks, the pipe projection on all six, the pane match on all
+six, the plane crossing walk on the three retuned tracks, and the clearance
+walk on all six.
+
+**Still owed.** Track 1's card on the board is the mirrored track. The board
+keeps no times on it, so replacing it costs nothing, but replacing needs
+`BOARD_ADMIN_TOKEN`, which this container does not have:
+`BOARD_ADMIN_TOKEN=... node scripts/boardpresets.js --board
+https://webfpv.org/board --preset racegow5-track1 --replace`. Tracks 5 and 8
+have never been on the board at all; putting them there needs no token,
+only the owner's say so.

@@ -3,7 +3,9 @@
 RaceGOW publishes each of its tracks as one looping animation of one lap.
 This is how that animation becomes a playable track in this simulator, end
 to end, with the traps named. It was written after Tracks 8 and 5 were built
-this way, refined on Track 1, and given step 4c by Track 2. All four are in
+this way, refined on Track 1, and given step 4c by Track 2. Tracks 3 and 4
+followed, and then a pass back over all six rewrote step 4c, because the
+test it had was one a fitted camera can answer either way. Six tracks are in
 `src/trackbuilder/presets.js` now.
 
 It replaces two earlier documents. `TRACK-FROM-ANIMATION.md` concluded the
@@ -122,35 +124,54 @@ Do this before hunting for couplings. A bar that reads as two units will
 show up as a foot at 2.0 rather than 1.0, and you will have measured it
 instead of squinting at a texture band.
 
-## Step 4c, the handedness, which is the one that ruins everything silently
+## Step 4c, the mirror, which is the one that ruins everything silently
 
-A camera fitted to correspondences is free to choose either handedness, and
-least squares will happily pick the one where your lattice's y axis runs
-opposite to the document's. Everything stays self consistent: the residual
-is fine, the integrality check passes, the crossings come out clean, the
-panes fit. The track is simply its own MIRROR IMAGE, every turn reversed,
-and nothing inside the reading can tell.
+A mirrored reading stays self consistent all the way down. The residual is
+fine, the integrality check passes, the crossings come out clean, the panes
+fit. The track is simply its own MIRROR IMAGE, every turn reversed, and
+nothing else inside the reading can tell.
 
 It was found on Track 2 at step 10, by the exported caption reading
-backwards, after the whole spec had been written.
+backwards, after the whole spec had been written. The test written here then
+was wrong, and Track 1 shipped mirrored under it for weeks.
 
-The check is one line and it costs nothing, so do it here, before anything
-is written down. The camera's image right crossed with its image up must
-point BACK at the eye:
+**Why the residual decides nothing.** The camera is `u = 512 + f*Xc/Zc`,
+`v = 512 + f*Yc/Zc`, with `Pc = R (X - C)` and R a proper rotation. Mirror
+the lattice, negate f, and the whole scene moves BEHIND the camera: every
+sign flips twice and the pixels come out identical. So the mirrored lattice
+fits to exactly the residual the true one does, by a camera that is a
+perfectly good rotation, and comparing residuals proves nothing on its own.
+
+**Why reading the camera's axes decides nothing either.** `(f, R)` and
+`(-f, diag(-1,-1,1) R)` are the same photograph, so a fitter hands back
+whichever it lands on. Any test that looks at `R[0]`, `R[1]` or `R[2]`
+against the eye, the old one here included, answers whichever way the gauge
+fell. It reported the true Track 3 as left handed and the mirrored Track 1
+as fine.
+
+**What the gauge cannot touch is the sign of the depth.** A photograph has
+every visible point in FRONT of the camera. So fit both lattices, the spec
+and its mirror in y, and require `Zc > 0` at every point:
 
 ```python
-right = R[0]              # camera x axis in world coordinates
-up = -R[1]                # image y is down, so up is minus it
-forward = -R[2]           # visible points have Pc.z of one sign, this is the other
-assert np.dot(np.cross(right, up), forward) < 0
+Pc = (X - C) @ R.T
+if not np.all(Pc[:, 2] > 0):
+    continue            # not a photograph, whatever its residual
 ```
 
-If it comes out positive the fit is a left handed frame. The same thing
-shows up as a NEGATIVE focal length out of the fitter. The repair is to
-negate one axis of the lattice everywhere: the spec's coordinates, the
-signs of travel through every square on that axis, every waypoint's
-position and heading, the pole sides, and the origin. Negate y rather than
-x, so the chain still runs along positive x and the prose still reads.
+One of the two comes back with a residual of a few pixels and the other
+cannot be fitted at all: on the six tracks here the loser sat at 170 to 200
+px, which is the whole structure in the wrong place. That is the answer.
+Seed the search with eyes on a sphere around the lattice, all above the
+floor and all looking at it, so nothing in the search prefers one hypothesis
+over the other, and run both hypotheses through the same code.
+
+The repair is to negate one axis of the lattice everywhere: the spec's
+coordinates, the signs of travel through every square whose axis is that
+one, every waypoint's position and heading, the pole sides, the start, and
+the origin, which moves by the track's own width so the track stands where
+it stood in the room. Negate y rather than x, so the chain still runs along
+positive x and the prose still reads.
 
 ## Step 5, every pane to a square
 

@@ -35502,3 +35502,90 @@ their designer, the page's card says "designed by X for RaceGOW5, published
 by andAgainFPV", and the sheet says "Designed by X for RaceGOW5. Brought over
 by andAgainFPV." Checked by fetching `/api/tracks` and `app.js` from
 webfpv.org after the deploy landed.
+
+## Round 68: a bug hunt, and a test that has been red for ten days
+
+Asked for: a bug hunt, and tests to harden the existing code where needed.
+Both repositories. Nothing here changes a track, a line or a number a pilot
+sees; it changes what the checks can see.
+
+**The one red test in the tree is not this session's, and it is dated now.**
+`node scripts/score-selftest.js` fails one check, "the same lap without the
+flip is a Maverick Loop". Run at each commit in a worktree, it passes at
+fcc72b2, the last commit that touched the test, and fails at f9b7db4 and at
+every one of the five detector commits after it, at 205d833, at 6c7be82 where
+this session's work began, and at HEAD. The detector names nothing at all on
+that flight. The constructed Maverick lap goes round the bar with the frame
+never rotating, and f9b7db4 replaced the winding count with a measure of how
+the frame turns, whose own message says the half loop family "does not yet
+measure as the prompt assumed, and that is recorded rather than papered
+over". A full lap flown with no rotation is in the same boat. Not fixed here:
+which of the detector and the constructed flight is wrong is a question about
+the trick grammar, and settling it by editing the test until it passes is the
+thing this file forbids. Every other selftest in the tree is green, and the
+list is at the end.
+
+**A lattice spec is validated before it is built.** The specs in
+`scripts/racegow-lattice.js` are typed by hand, and every mistake below used
+to build a track and say nothing: an axis of 'q' was a gate facing x, a pole
+beside a square that did not exist was a TypeError three lines from anything
+that named it, a rail from one height to another was flattened to the first,
+a waypoint keyed the same as a pole took the pole's place in the lap, a
+heading of [0, 0] was a marker pointing east, and a sign on a pole's token
+was dropped. `validateSpec` refuses each with the track's id and what right
+looks like, and the rules it holds are the kit's: a square stands square to x
+or y or lies flat, a pole stands beside a square, a rail is level, a square is
+signed and nothing else is, the lap starts at a square, and every square,
+pole and waypoint is in the lap, because a pipe the lap only flies past is a
+post or a rail. All eight shipped specs pass it and `presets.js` is byte for
+byte what it was. `buildTrack` is exported and `micro-check` builds a fixture
+with one of everything, checks the built document is what the generator's
+comments say it is, then breaks the fixture one field at a time: 38 new
+checks, 201 in all.
+
+**The steering pass has a test, in both classes.** Round 65 switched
+`avoidForeignApertures` off for a RaceGOW room and nothing in
+`src/trackbuilder/selftest.js` had ever exercised the pass in either class.
+Three gates in a row along their own travel axis, the outer two sequenced:
+on the field the line gets a steering knot that is nobody's station, standing
+outside the middle gate's frame, and crosses that gate's plane outside its
+opening; in a room the same layout gets no knot and the line flies through
+the opening, as the animations do. Six checks, 528 in all.
+
+**The board's credit reader takes strings and nothing else.** `creditOf` in
+the board's `validate.js` used `String()` on whatever it found, and `String()`
+of an object is "[object Object]" and of an array is its elements joined with
+commas, either of which would go on a card as if somebody had typed it. It
+reads strings now, drops control characters, closes up runs of whitespace,
+and caps at eighty. Tests for each, and for a Postgres row whose credit block
+is junk still summarising with no designer.
+
+**And the board's search finds a designer.** `matches` in `public/app.js`
+searched the name, the author and the pilots on the times, so "MrE" found
+nothing. It searches the designer and the series too. Page code, so `npm
+test` cannot see it; `node --check` parses it, and it is a one line change.
+
+**Two things read out of this session's own diff.** `summaryOf` in
+`src/share/listing.js` derived the designer from the document BEFORE the
+`...extra` spread, so a caller passing an empty designer, the way every
+caller passes an empty author for a local track, would have blanked the
+document's; it is after the spread now. The Track room's picker note said
+"published by ." on a board track with a designer and no author; the clause
+is conditional now.
+
+**Considered and left alone.** A `createElement` that is called twice before
+either result is pushed hands both the same id, because the id is the next
+one not in the document. Found by writing the steering test wrong. It is not
+a bug: `normalize` renames a duplicate on the way in and every caller in the
+tree pushes as it goes, so a guard would be a fix for a mistake only a test
+author makes.
+
+**What was run, on the edited tree**: `node scripts/micro-check.js` 201
+pass, 0 fail; `node src/trackbuilder/selftest.js` 528 passed, 0 failed;
+`scripts/path-check.js` 12 of 12; `scripts/gif-selftest.js` 38 of 38;
+`ghost`, `contact`, `replay`, `link` and `music` selftests all passed;
+`lint:shell`, `lint:board`, `lint:nouns` and `lint:boot` PASS;
+`score-selftest` 1 FAILED, the case above, unchanged by this round; the
+board's `npm test` all passed. `npm run verify` was not run: nothing here
+touches physics, the plant, the module ABI or the build. The generator was
+run and `git diff` on `presets.js` is empty.

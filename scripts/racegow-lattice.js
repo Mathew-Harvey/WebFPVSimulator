@@ -789,7 +789,121 @@ function place(track, x, y) {
   };
 }
 
-function buildTrack(spec) {
+/*
+ * WHAT A SPEC HAS TO SAY BEFORE IT IS BUILT.
+ *
+ * These specs are typed by hand off an animation, and the failure mode of a
+ * typo in one is not an exception. It is a track that builds cleanly and is
+ * wrong. Before this ran, an axis of 'q' was a gate facing x, a pole beside
+ * a square that does not exist was a TypeError three lines from anything
+ * that named it, a rail from one height to another was flattened to the
+ * first, a waypoint keyed the same as a pole took the pole's place in the
+ * lap without a word, a heading of [0, 0] was a marker pointing east, and a
+ * sign on a pole's token was dropped. Every one of those now stops the
+ * build with the spec's id, the thing that is wrong and what right looks
+ * like, before a document exists. scripts/micro-check.js tries each one.
+ *
+ * The rules are the kit's. A square stands square to x or y or lies flat,
+ * which is z. A pole stands beside a square. A rail is level, because the
+ * kit has no sloped pipe. Every square, pole and waypoint is in the lap,
+ * because a pipe the lap only flies past is a post or a rail. The lap
+ * starts at a square, because the start gate is the first pass. A square is
+ * signed and nothing else is, because only an opening has a way through.
+ */
+function validateSpec(spec) {
+  if (!spec || typeof spec !== 'object') {
+    throw new Error('a track spec is an object');
+  }
+  const fail = (what) => {
+    throw new Error(`${spec.id || 'a track with no id'}: ${what}`);
+  };
+  const text = (v) => typeof v === 'string' && v.trim().length > 0;
+  const vec = (v, n) => Array.isArray(v) && v.length >= n && v.slice(0, n).every(Number.isFinite);
+  const dir = (v) => vec(v, 2) && Math.hypot(v[0], v[1]) > 1e-9;
+  if (!text(spec.id)) {
+    throw new Error('a track spec needs an id');
+  }
+  if (!text(spec.name)) fail('has no name');
+  if (!spec.credit || !text(spec.credit.designer)) fail('names no designer');
+  if (!vec(spec.origin, 2)) fail('has no origin, in inches from the near left corner');
+  if (!spec.start || !vec(spec.start.at, 2) || !Number.isFinite(spec.start.yaw)) {
+    fail('has no start, or a start with no position or yaw');
+  }
+  const squares = spec.squares || {};
+  const poles = spec.poles || {};
+  const waypoints = spec.waypoints || {};
+  if (!Object.keys(squares).length) fail('has no squares');
+
+  /* One namespace for the lap: a key that is two things is a token the
+   * lap cannot tell apart, and the builder used to take whichever came
+   * last. */
+  const kinds = new Map();
+  const claim = (key, kind) => {
+    if (kinds.has(key)) fail(`'${key}' is a ${kinds.get(key)} and a ${kind}, and the lap cannot tell them apart`);
+    kinds.set(key, kind);
+  };
+  for (const [key, sq] of Object.entries(squares)) {
+    claim(key, 'square');
+    if (!['x', 'y', 'z'].includes(sq.axis)) {
+      fail(`square ${key} has axis '${sq.axis}', and a square stands square to x or y or lies flat, z`);
+    }
+    if (!vec(sq.at, 2)) fail(`square ${key} has no position`);
+    if (!Number.isFinite(sq.sill) || sq.sill < 0) {
+      fail(`square ${key} has no sill: a height above the floor, in units`);
+    }
+  }
+  for (const [key, pole] of Object.entries(poles)) {
+    claim(key, 'pole');
+    if (!squares[pole.beside]) fail(`pole ${key} stands beside '${pole.beside}', which is not a square`);
+    if (!dir(pole.side)) fail(`pole ${key} has no side to stand on`);
+    if (pole.pass !== undefined && !dir(pole.pass)) fail(`pole ${key} has a pass direction with no length`);
+    if (!Number.isFinite(pole.height) || pole.height <= 0) fail(`pole ${key} has no height`);
+  }
+  for (const [key, wp] of Object.entries(waypoints)) {
+    claim(key, 'waypoint');
+    if (!vec(wp.at, 2)) fail(`waypoint ${key} has no position`);
+    if (!Number.isFinite(wp.z) || wp.z < 0) fail(`waypoint ${key} has no height`);
+    if (!dir(wp.heading)) fail(`waypoint ${key} has a heading with no length`);
+  }
+  (spec.posts || []).forEach((post, i) => {
+    if (!vec(post.at, 2)) fail(`post ${i + 1} has no position`);
+    if (!Number.isFinite(post.height) || post.height <= 0) fail(`post ${i + 1} has no height`);
+  });
+  (spec.rails || []).forEach((rail, i) => {
+    const label = rail.name ? `rail '${rail.name}'` : `rail ${i + 1}`;
+    if (!vec(rail.from, 3) || !vec(rail.to, 3)) fail(`${label} needs from and to, each x, y and z`);
+    if (rail.from[2] !== rail.to[2]) {
+      fail(`${label} slopes from z ${rail.from[2]} to z ${rail.to[2]}, and the kit has no sloped pipe`);
+    }
+    if (rail.from[2] < 0) fail(`${label} is below the floor`);
+    if (Math.hypot(rail.to[0] - rail.from[0], rail.to[1] - rail.from[1]) < 1e-9) fail(`${label} has no length`);
+  });
+
+  if (!text(spec.lap)) fail('has no lap');
+  const tokens = spec.lap.trim().split(/\s+/);
+  const used = new Set();
+  for (const token of tokens) {
+    const key = token.replace(/[+-]$/, '');
+    const signed = key !== token;
+    if (!kinds.has(key)) fail(`lap names ${key}, which is not a square, a pole or a waypoint`);
+    const kind = kinds.get(key);
+    if (kind === 'square' && !signed) fail(`lap does not say which way through square ${key}: ${key}+ or ${key}-`);
+    if (kind !== 'square' && signed) fail(`lap signs ${token}, and a ${kind} has no way through`);
+    used.add(key);
+  }
+  if (kinds.get(tokens[0].replace(/[+-]$/, '')) !== 'square') {
+    fail(`lap starts at ${tokens[0]}, and the start gate is a square`);
+  }
+  const idle = [...kinds.keys()].filter((k) => !used.has(k)).map((k) => `${kinds.get(k)} ${k}`);
+  if (idle.length) {
+    fail(`${idle.join(', ')} never in the lap: a pipe the lap only flies past is a post or a rail`);
+  }
+}
+
+/* Exported for scripts/micro-check.js, which builds a small spec of its own
+ * and then breaks it one field at a time. */
+export function buildTrack(spec) {
+  validateSpec(spec);
   const doc = createTrack(spec.name, 'micro');
   doc.id = spec.id;
   doc.createdUtc = '2026-09-11T00:00:00Z';
@@ -892,7 +1006,7 @@ function buildTrack(spec) {
     ids[key] = el.id;
   }
 
-  for (const rail of spec.rails) {
+  for (const rail of spec.rails || []) {
     const a = place(spec, rail.from[0], rail.from[1]);
     const b = place(spec, rail.to[0], rail.to[1]);
     const el = createElement(doc, 'horizontalPole',
@@ -913,7 +1027,10 @@ function buildTrack(spec) {
     const key = token.replace(/[+-]$/, '');
     const sign = token.endsWith('-') ? -1 : 1;
     if (!ids[key]) {
-      throw new Error(`${spec.id}: lap names ${key}, which is not a square or a pole`);
+      /* validateSpec has already said no to this. Kept, because a build
+       * that indexed a missing id would go on to write a sequence entry
+       * pointing at nothing. */
+      throw new Error(`${spec.id}: lap names ${key}, which is not a square, a pole or a waypoint`);
     }
     const entry = createSequenceEntry(doc, ids[key], 0);
     if (spec.squares[key]) {

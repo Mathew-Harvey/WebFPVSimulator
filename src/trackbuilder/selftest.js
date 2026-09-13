@@ -31,7 +31,7 @@
  */
 
 import {
-  createTrack, createElement, deserialize, elementById, normalize,
+  createTrack, createElement, createSequenceEntry, deserialize, elementById, normalize,
   roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf,
   logoForDecal, dressOrder, LOGO_SLOTS, SCHEMA_VERSION,
 } from './model.js';
@@ -614,6 +614,82 @@ function suitePath() {
   const wanted = 2 * (2 * Math.PI * R) / 5;
   check('and its arc length is two fifths of the circumference',
     Math.abs(arc - wanted) / wanted < 0.02, `${arc.toFixed(2)} m, wanted ${wanted.toFixed(2)} m`);
+}
+
+/*
+ * THE STEERING PASS, IN BOTH CLASSES.
+ *
+ * avoidForeignApertures in path.js puts a knot outside any opening the
+ * Hermite would otherwise fly through uninvited. On the field it has done
+ * that since the tracks that ship were found flying clean through gates
+ * they were not scoring. In a RaceGOW room it does nothing, because the
+ * animations those tracks are read off cross their own openings all the
+ * time, and the twelve steering knots it put on Track 7 folded the line
+ * to a 2 mm radius. Neither half had a check. This is the layout that
+ * trips it: three gates in a row along their own travel axis, the outer
+ * two sequenced and the middle one not, so the straight line between the
+ * two passes dead through the third.
+ */
+function suiteSteering() {
+  console.log('\nsteering round a gate the lap does not score');
+  const layout = (cls, pitch) => {
+    const doc = createTrack('Steer', cls);
+    const a = place(doc, 'gate', -pitch, 0);
+    const c = place(doc, 'gate', 0, 0);
+    const b = place(doc, 'gate', pitch, 0);
+    doc.sequence.push(createSequenceEntry(doc, a.id, 0));
+    doc.sequence.push(createSequenceEntry(doc, b.id, 0));
+    return { doc, c };
+  };
+  /* Where the line crosses the middle gate's plane, x = 0: how far from
+   * the opening's centre it is there, across and up. */
+  const crossings = (path, c) => {
+    const cz = (c.position.z || 0) + c.dims.sillH + c.dims.clearH / 2;
+    const out = [];
+    for (let i = 1; i < path.samples.length; i += 1) {
+      const p = path.samples[i - 1].pos;
+      const q = path.samples[i].pos;
+      if ((p.x < 0) === (q.x < 0)) {
+        continue;
+      }
+      const t = p.x / (p.x - q.x);
+      out.push({
+        across: Math.abs(p.y + (q.y - p.y) * t),
+        up: Math.abs(p.z + (q.z - p.z) * t - cz),
+      });
+    }
+    return out;
+  };
+  const inside = (x, c) => x.across < c.dims.clearW / 2 && x.up < c.dims.clearH / 2;
+
+  {
+    const { doc, c } = layout('full', 10);
+    const path = buildPath(doc);
+    const wraps = path.knots.filter((k) => k.role === 'wrap');
+    check('on the field, a line through an unscored gate gets a steering knot',
+      wraps.length >= 1, `${path.knots.length} knots, ${wraps.length} steering`);
+    check('the steering knot is nobody\'s station',
+      wraps.every((k) => k.seq === null && k.elementId === null));
+    check('and it stands outside the opening it was steered out of',
+      wraps.every((k) => Math.abs(k.pos.y) > c.dims.clearW / 2),
+      wraps.map((k) => k.pos.y.toFixed(3)).join(','));
+    const xs = crossings(path, c);
+    check('so the line crosses that gate\'s plane outside its frame',
+      xs.length > 0 && xs.every((x) => !inside(x, c)),
+      xs.map((x) => `${x.across.toFixed(2)} across, ${x.up.toFixed(2)} up`).join('; ') || 'no crossing');
+  }
+  {
+    const { doc, c } = layout('micro', 2);
+    const path = buildPath(doc);
+    const wraps = path.knots.filter((k) => k.role === 'wrap');
+    check('in a RaceGOW room the same layout gets no steering knot',
+      wraps.length === 0 && path.knots.length === 2,
+      `${path.knots.length} knots, ${wraps.length} steering`);
+    const xs = crossings(path, c);
+    check('and the line flies through the unscored opening, as the animations do',
+      xs.length === 1 && inside(xs[0], c),
+      xs.map((x) => `${x.across.toFixed(3)} across, ${x.up.toFixed(3)} up`).join('; ') || 'no crossing');
+  }
 }
 
 function suiteGuide() {
@@ -2970,6 +3046,7 @@ function main() {
   suiteClipCatch();
   suiteFaces();
   suitePath();
+  suiteSteering();
   suiteGuide();
   suiteWarnings();
   suiteHistory();

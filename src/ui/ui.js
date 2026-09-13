@@ -4917,7 +4917,7 @@ export class Ui {
         cards.push({
           label: t.name,
           note: t.designer
-            ? `Designed by ${t.designer}${t.series ? ` for ${t.series}` : ''}, published by ${t.author}. Choosing it loads the track and flies it here.`
+            ? `Designed by ${t.designer}${t.series ? ` for ${t.series}` : ''}${t.author ? `, published by ${t.author}` : ''}. Choosing it loads the track and flies it here.`
             : (t.author
               ? `Published by ${t.author}. Choosing it loads the track and flies it here.`
               : 'A published track. Choosing it loads the track and flies it here.'),

@@ -57,9 +57,11 @@ import { Race } from '../src/game/race.js';
 import { setCraftAirframe, shouldScorePass, dirtClearance } from '../src/game/collide.js';
 import { airframeById } from '../configs/airframes.js';
 import { GATE_SCALE } from '../src/game/track.js';
-import { GATE_OPENING_MAX } from '../src/trackbuilder/racegow.js';
+import { GATE_OPENING_MAX, PIPE_OD, POLE_FROM_GATE_MIN } from '../src/trackbuilder/racegow.js';
 import { PRESETS, presetsForClass } from '../src/trackbuilder/presets.js';
-import { buildAll, renderPresets, PRESETS_PATH } from './racegow-lattice.js';
+import {
+  buildAll, buildTrack, renderPresets, PRESETS_PATH, UNIT,
+} from './racegow-lattice.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -510,17 +512,170 @@ function presetSet() {
    * generated file by hand, which would be lost on the next run, and
    * catches a track added to one of the two and not the other.
    */
-  const rebuilt = renderPresets(buildAll());
+  let rebuilt = null;
+  try {
+    rebuilt = renderPresets(buildAll());
+  } catch (e) {
+    /* A spec that fails its own validation is a FAIL line with the reason,
+     * not a stack trace with no verdict. */
+    check('every shipped spec builds', false, e.message);
+  }
   const onDisk = readFileSync(PRESETS_PATH, 'utf8');
   check('presets.js is what the lattice script writes',
     rebuilt === onDisk,
     rebuilt === onDisk ? '' : 'run node scripts/racegow-lattice.js');
 }
 
+/*
+ * WHAT A LATTICE SPEC HAS TO SAY, tried one mistake at a time.
+ *
+ * The specs in scripts/racegow-lattice.js are typed by hand off an
+ * animation, and every mistake below used to build a track: a wrong axis
+ * built a gate facing x, a sloped rail was flattened, a key used twice
+ * took the later meaning, a zero heading pointed east, a sign on a pole
+ * was dropped. validateSpec there names each one now, and this is the
+ * proof that it does. The fixture is the smallest track that has one of
+ * everything, and the positive checks first say the builder does with a
+ * good spec what the comments in the generator say it does.
+ */
+function specGuard() {
+  console.log('\n--- what a lattice spec has to say ---');
+  const fixture = () => ({
+    id: 'check-room',
+    name: 'Check room',
+    credit: { designer: 'nobody', series: 'micro-check' },
+    origin: [100, 100],
+    squares: {
+      A: { name: 'Start', axis: 'x', at: [0, 0], sill: 0 },
+      B: { name: 'Table', axis: 'z', at: [2, 0], sill: 1 },
+    },
+    poles: { P: { name: 'Pole', beside: 'A', side: [0, 1], height: 1 } },
+    posts: [{ name: 'Post', at: [1, 1], height: 2 }],
+    rails: [{ name: 'Bar', from: [0, 1, 1], to: [2, 1, 1] }],
+    waypoints: { W: { name: 'Turn', at: [1, -1], z: 0.5, heading: [1, 0] } },
+    start: { at: [-0.5, 0], yaw: 0 },
+    lap: 'A+ W B- P',
+  });
+
+  let built = null;
+  try {
+    built = buildTrack(fixture());
+  } catch (e) {
+    check('the fixture builds', false, e.message);
+  }
+  if (built) {
+    const clear = UNIT - PIPE_OD;
+    const byName = (name) => built.elements.find((e) => e.name === name);
+    check('the fixture builds one of everything',
+      built.elements.length === 7 && built.sequence.length === 4,
+      `${built.elements.length} elements, ${built.sequence.length} passes`);
+    const table = byName('Table');
+    check('a z square is a dive gate whose plane is on the lattice line',
+      table && table.type === 'diveGate' && Math.abs(table.dims.sillH - (UNIT - clear / 2)) < 1e-9,
+      table && `${table.type} sill ${table.dims.sillH}`);
+    const start = byName('Start');
+    const pole = byName('Pole');
+    /* Ten microns and ten microradians. The document writer rounds every
+     * number to six places, so a yaw compared exactly against PI / 2
+     * misses by three hundred nanoradians and nothing is wrong. */
+    const near = (a, b) => Math.abs(a - b) < 1e-5;
+    check('a pole stands 14 inches from its gate on the side named, facing that way',
+      pole && start
+        && near(pole.position.x, start.position.x)
+        && near(pole.position.y, start.position.y + POLE_FROM_GATE_MIN)
+        && near(pole.yaw, Math.PI / 2),
+      pole && `${pole.position.x.toFixed(4)},${pole.position.y.toFixed(4)} yaw ${pole.yaw.toFixed(4)}`);
+    const bar = byName('Bar');
+    check('a rail rests its centreline on the lattice line and spans its ends',
+      bar && Math.abs(bar.position.z - (UNIT - PIPE_OD / 2)) < 1e-9
+        && Math.abs(bar.dims.width - 2 * UNIT) < 1e-9,
+      bar && `z ${bar.position.z} width ${bar.dims.width}`);
+    const turn = byName('Turn');
+    check('a waypoint is at its height, pointing its heading',
+      turn && Math.abs(turn.position.z - 0.5 * UNIT) < 1e-9 && Math.abs(turn.yaw) < 1e-9,
+      turn && `z ${turn.position.z} yaw ${turn.yaw}`);
+    const signs = built.sequence.map((e) => (built.elements.find((el) => el.id === e.elementId) || {}).name
+      + (e.overridden ? '' : ' (not overridden)') + ':' + e.entry);
+    check('the lap is written in order, signed on the squares, every entry hand set',
+      signs[0] === 'Start:1' && signs[1].startsWith('Turn:') && signs[2] === 'Table:-1'
+        && signs[3].startsWith('Pole:') && built.sequence.every((e) => e.overridden),
+      signs.join(' '));
+    const passed = fixture();
+    passed.poles.P.pass = [0, -1];
+    const withPass = buildTrack(passed).elements.find((e) => e.name === 'Pole');
+    check('a pass direction turns the pole without moving it',
+      withPass && near(withPass.yaw, -Math.PI / 2)
+        && near(withPass.position.y, pole.position.y),
+      withPass && `yaw ${withPass.yaw.toFixed(3)} y ${withPass.position.y.toFixed(3)} against ${pole.position.y.toFixed(3)}`);
+    const bare = fixture();
+    delete bare.posts;
+    delete bare.rails;
+    let bareBuilt = null;
+    try {
+      bareBuilt = buildTrack(bare);
+    } catch (e) {
+      bareBuilt = null;
+    }
+    check('posts and rails are optional', bareBuilt && bareBuilt.elements.length === 5,
+      bareBuilt ? `${bareBuilt.elements.length} elements` : 'threw');
+  }
+
+  const rejects = (why, mutate, phrase) => {
+    const spec = fixture();
+    mutate(spec);
+    let said = '';
+    try {
+      buildTrack(spec);
+    } catch (e) {
+      said = e.message;
+    }
+    check(`refuses ${why}`, said.includes(phrase), said ? `said: ${said}` : 'built without a word');
+  };
+  rejects('an axis that is not x, y or z', (s) => { s.squares.A.axis = 'q'; }, "axis 'q'");
+  rejects('a pole beside a square that does not exist', (s) => { s.poles.P.beside = 'Q'; }, "beside 'Q'");
+  rejects('a rail that slopes', (s) => { s.rails[0].to[2] = 2; }, 'slopes from z 1 to z 2');
+  rejects('a rail with no length', (s) => { s.rails[0].to = [0, 1, 1]; }, 'has no length');
+  rejects('a rail under the floor', (s) => { s.rails[0].from[2] = -1; s.rails[0].to[2] = -1; }, 'below the floor');
+  rejects('a key that is a square and a pole', (s) => {
+    s.poles.A = s.poles.P;
+    delete s.poles.P;
+    s.lap = 'A+ W B- A';
+  }, "'A' is a square and a pole");
+  rejects('a key that is a pole and a waypoint', (s) => {
+    s.waypoints.P = s.waypoints.W;
+    delete s.waypoints.W;
+    s.lap = 'A+ P B- P';
+  }, "'P' is a pole and a waypoint");
+  rejects('a heading with no length', (s) => { s.waypoints.W.heading = [0, 0]; }, 'heading with no length');
+  rejects('a pole with no side to stand on', (s) => { s.poles.P.side = [0, 0]; }, 'no side to stand on');
+  rejects('a pass direction with no length', (s) => { s.poles.P.pass = [0, 0]; }, 'pass direction with no length');
+  rejects('a sign on a pole', (s) => { s.lap = 'A+ W B- P+'; }, 'signs P+');
+  rejects('a sign on a waypoint', (s) => { s.lap = 'A+ W- B- P'; }, 'signs W-');
+  rejects('a square with no sign', (s) => { s.lap = 'A+ W B P'; }, 'which way through square B');
+  rejects('a lap that names something not on the track', (s) => { s.lap = 'A+ W B- P Z'; }, 'names Z');
+  rejects('a lap that starts at a waypoint', (s) => { s.lap = 'W A+ B- P'; }, 'starts at W');
+  rejects('a waypoint the lap never reaches', (s) => { s.lap = 'A+ B- P'; }, 'waypoint W never in the lap');
+  rejects('a pole the lap never reaches', (s) => { s.lap = 'A+ W B-'; }, 'pole P never in the lap');
+  rejects('a square with no sill', (s) => { delete s.squares.B.sill; }, 'square B has no sill');
+  rejects('a square below the floor', (s) => { s.squares.B.sill = -1; }, 'square B has no sill');
+  rejects('a square with no position', (s) => { s.squares.B.at = [2]; }, 'square B has no position');
+  rejects('a pole with no height', (s) => { delete s.poles.P.height; }, 'pole P has no height');
+  rejects('a post with no height', (s) => { s.posts[0].height = 0; }, 'post 1 has no height');
+  rejects('a waypoint with no height', (s) => { delete s.waypoints.W.z; }, 'waypoint W has no height');
+  rejects('a track with no designer', (s) => { s.credit = { series: 'x' }; }, 'names no designer');
+  rejects('a track with no start', (s) => { delete s.start; }, 'has no start');
+  rejects('a start with no yaw', (s) => { delete s.start.yaw; }, 'has no start');
+  rejects('a track with no origin', (s) => { delete s.origin; }, 'has no origin');
+  rejects('a track with no squares', (s) => { s.squares = {}; s.poles = {}; s.lap = 'W'; }, 'has no squares');
+  rejects('a track with no lap', (s) => { s.lap = '   '; }, 'has no lap');
+  rejects('a track with no id', (s) => { delete s.id; }, 'needs an id');
+}
+
 pipeline('micro');
 pipeline('full');
 raceDemo();
 presetSet();
+specGuard();
 
 console.log(`\n${fails ? `${fails} FAILED` : 'the micro class builds, reads, warns, draws and races'}`);
 process.exit(fails ? 1 : 0);

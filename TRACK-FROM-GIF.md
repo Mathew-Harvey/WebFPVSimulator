@@ -239,6 +239,18 @@ throughout, `origin` in inches from the room's near left corner:
   other side of it. `pass` names that direction when it differs. Left out it
   is `side`, which is what the first five tracks use.
 
+**The generator refuses a spec it cannot build right, and says which line.**
+`validateSpec` in `scripts/racegow-lattice.js` runs before a document exists.
+An axis that is not x, y or z, a pole beside a square that is not there, a
+rail that slopes or has no length, a key used for two things, a heading or a
+side with no length, a sign on a pole or a waypoint, a square without one,
+anything the lap names that is not on the track, a lap that does not start at
+a square, and a square, pole or waypoint the lap never reaches: each stops
+the build with the track's id and what right looks like. Before it, every one
+of those built a track, and a wrong track that builds cleanly is the failure
+mode this whole method exists to avoid. `scripts/micro-check.js` tries each
+one, so the list above is also a list of what is tested.
+
 **An opening's sill is usually a whole number, and once it was not.** Track
 7 has a bar that spurs a unit off its table's corner and stops in mid air,
 and the animation lights a square hanging on the end of it, centred on the

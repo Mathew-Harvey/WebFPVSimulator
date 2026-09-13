@@ -35461,3 +35461,44 @@ assertions including the new credit round trip, and a DOM shim in Node that
 builds the credits roll and checks all six names and all eight track numbers
 appear in it. The board's page itself was not served here, because this
 container has no Postgres to serve it against.
+
+## Round 67: the deploy, and the half of the credit change that did not ship
+
+Round 66 said the designers were credited. The board redeployed and went on
+saying "by andAgainFPV", because half the change had never been in the path
+that ships.
+
+**A track summary is built twice.** `summaryOf` in the board's `store.js`
+builds it from the file store's object and `rowToSummary` builds it from a
+Postgres row, and the comment on the second has said for a while that
+anything added to one has to be added to the other, naming `best` as the last
+field that was forgotten. Round 66 added the designer to `summaryOf` and not
+to `rowToSummary`. Production runs Postgres. So the file store named the
+builder, the live board named the publisher, `npm test` passed, and nothing
+anybody could see had changed.
+
+It is in both now, both are exported, and the selftest holds them to one
+contract: the same keys apart from `times` and `best`, which the Postgres
+path adds around `rowToSummary` from its own queries. That fails on the next
+field added to one and not the other.
+
+**And this round the check was run against the thing that ships.** Round 66
+said the board's page could not be served here because the container had no
+Postgres. It has Postgres 16; it was installed and not running. Starting it,
+publishing all eight tracks into a scratch database and reading them back
+through `/api/tracks` is what found the bug, and it is a minute's work:
+
+```
+service postgresql start
+DATABASE_URL=postgres://postgres:x@127.0.0.1:5432/boardtest PORT=3198 node src/server.js
+node scripts/boardpresets.js --board http://127.0.0.1:3198
+```
+
+The file store alone would have passed, and did.
+
+**Live now**, with no republishing: the credit was already in every stored
+document, so the deploy alone was enough. All eight tracks on the board name
+their designer, the page's card says "designed by X for RaceGOW5, published
+by andAgainFPV", and the sheet says "Designed by X for RaceGOW5. Brought over
+by andAgainFPV." Checked by fetching `/api/tracks` and `app.js` from
+webfpv.org after the deploy landed.

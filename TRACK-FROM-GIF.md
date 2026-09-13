@@ -5,8 +5,10 @@ This is how that animation becomes a playable track in this simulator, end
 to end, with the traps named. It was written after Tracks 8 and 5 were built
 this way, refined on Track 1, and given step 4c by Track 2. Tracks 3 and 4
 followed, and then a pass back over all six rewrote step 4c, because the
-test it had was one a fitted camera can answer either way. Six tracks are in
-`src/trackbuilder/presets.js` now.
+test it had was one a fitted camera can answer either way. Track 6 came in
+under the rewritten step 4c, which caught its mirror before a line of its
+spec was written, and taught the rest of what is new below. Seven tracks are
+in `src/trackbuilder/presets.js` now.
 
 It replaces two earlier documents. `TRACK-FROM-ANIMATION.md` concluded the
 job could not be done from a render, which was true of the method it tried
@@ -209,6 +211,15 @@ it got two of six backwards. Two better cues, in order:
 Where the arrow is short or nearly edge on, crop the frames either side at
 full size and look. Roughly one pass in six needed the look.
 
+Track 6's back gate was one of them, and the occlusion cue settled it in one
+picture. The chevron at the pass points along the gate's plane rather than
+through it, and the reconstruction had the crossing the wrong way round
+because the pass never landed in the opening at all. Four frames later the
+trail loops round behind the gate and the gate's own upright is drawn OVER
+the red: the quad is on the far side, so it went through away from the
+camera. Feeding that frame back to the reconstruction put the pass inside the
+opening and left every other pass where it was.
+
 ## Step 7, write the spec
 
 The result goes in `scripts/racegow-lattice.js` as one object. Lattice units
@@ -221,7 +232,21 @@ throughout, `origin` in inches from the room's near left corner:
   opening is not always a gate" below.
 - `poles`: `at` is the lattice line it stands on, `side` is the way its pass
   panel faces, `beside` names the square whose centre the 14 inch pole rule
-  is measured from, `height` in units.
+  is measured from, `height` in units. `side` does two jobs, because it both
+  places the pole and points the racing line past it, and on Track 6's back
+  pole the two disagree: the pole is the gate's own leg carried up, so it is
+  at `+x` from the gate's centre, and the animation lights the panel on the
+  other side of it. `pass` names that direction when it differs. Left out it
+  is `side`, which is what the first five tracks use.
+
+**A vertical square at sill 0 has no bottom bar, so a gate without one is
+built and not a gap.** The generator draws two stiles and a head for a
+vertical square and adds a sill only above the floor, which is exactly how
+RaceGOW builds a gate: two legs on feet and a bar across. Track 6 has no
+bottom bar anywhere on it, and six of its seven openings are still `built`.
+Check it rather than assuming either way: project the five sills a built
+square would add on to the plate, and look at what they run over. On Track 6
+every one of them runs over bare floor.
 - `rails`: a bare pipe between two lattice points that no square accounts
   for. The picture has it, so the track has it. A rail carries no legs: it
   is held up by whatever is at its ends.
@@ -247,6 +272,19 @@ square's centre, going the way the lap says. Anything else crossing a
 lattice plane where a gate stands is the line going through the PVC. This
 catches what a plan view cannot: a pass at the right place and the wrong
 height reads as correct from above.
+
+**The lap is not the only truth, and a crossing the lap does not name is not
+automatically wrong.** A RaceGOW course doubles back through its own gates,
+and on a small busy one the quad flies through an opening it is not scoring
+several times a lap. Track 6's lap scores the opening under its left bar
+twice and the animation's own line crosses it five times; Track 3's line
+crosses the tower's far bay four times where the lap scores two. So walk the
+crossings of the FLOWN line as well and print the two side by side. What the
+check should report is that every pass the lap names is there, in order and
+the right way round, and that the built line's extra crossings are ones the
+animation makes too. `opt.mjs` prices an extra crossing against the flown
+line's count for the same reason: measured against the lap, the descent is
+paid to fly a line the reference does not fly.
 
 ## Step 8b, project your own pipe on to the plate
 

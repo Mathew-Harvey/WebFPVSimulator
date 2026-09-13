@@ -613,6 +613,86 @@ export const TRACKS = [
     start: { at: [2.8, -0.55], yaw: Math.PI },
     lap: 'A- Wa Wb B+ Wc C- Wd D We C- Wf Wg F- Wh Wi Wj Wk G+ B- Wl Wm H- I- Wn Wo J+ Wp Wq Wr G- Ws Wv Wt Wu',
   },
+  /*
+   * TRACK 6, MrE's, and the first with no sill anywhere on it.
+   *
+   * Eight feet on a four by three lattice, x 0 to 3 and y 0 to -2, and
+   * every bar at one unit or two. Reading it: a gate at the near left, a
+   * back gate whose right leg carries on up, a two high frame on x 2 with
+   * an opening under its cross bar and one over it, a bar each way from
+   * the frame's far corner with an opening under each, and a pole at the
+   * end of the right one. Four of the eight uprights are legs carried up
+   * to two units, and the animation lights a full height panel beside each
+   * of them, so all four are poles. The lap is 20 passes.
+   *
+   * WHAT IS DIFFERENT ABOUT IT. Not one of its openings has a bottom bar:
+   * the five that a built square would add were projected on to the plate
+   * and every one of them runs over bare floor. That costs nothing here,
+   * because a vertical square at sill 0 draws two stiles and a head and no
+   * sill anyway, so six of the seven are built and E, the opening over the
+   * right bar, is the only gap: a top bar over it would be pipe in the air.
+   *
+   * AND THE MIRROR. The first reading of it was mirrored, and step 4c
+   * caught it before a line of the spec was written: fitted as read, with
+   * every point required to be in front of the camera, the best the
+   * solver could do was 30 px with a focal length of three million and an
+   * eye thirteen thousand units away, which is not a photograph. With y
+   * negated it came back at 7.9 px from an eye 4.2 units up.
+   */
+  {
+    id: 'racegow5-track6',
+    name: 'RaceGOW5 Track 6',
+    credit: {
+      designer: 'MrE',
+      series: 'RaceGOW5',
+      source: 'racegow.com/tracks, the official Track 6 animation',
+      broughtOverBy: 'andAgainFPV',
+    },
+    origin: [154, 265],
+    squares: {
+      A: { name: 'Front gate', axis: 'x', at: [0, -1.5], sill: 0 },
+      L: { name: 'Back gate', axis: 'y', at: [1.5, 0], sill: 0 },
+      B: { name: 'Frame, low', axis: 'x', at: [2, -1.5], sill: 0 },
+      D: { name: 'Frame, high', axis: 'x', at: [2, -1.5], sill: 1 },
+      I: { name: 'Under the left bar', axis: 'y', at: [1.5, -2], sill: 0 },
+      H: { name: 'Under the right bar', axis: 'y', at: [2.5, -2], sill: 0 },
+      E: { name: 'Over the right bar', axis: 'y', at: [2.5, -2], sill: 1, unbuilt: true },
+    },
+    poles: {
+      K: { name: 'Back pole', at: [2, 0], height: 2, side: [1, 0], pass: [-1, 0], beside: 'L' },
+      C: { name: 'Frame pole', at: [2, -1], height: 2, side: [0, 1], beside: 'B' },
+      F: { name: 'Corner pole', at: [2, -2], height: 2, side: [-1, 0], beside: 'H' },
+      J: { name: 'Right pole', at: [3, -2], height: 2, side: [1, 0], beside: 'H' },
+    },
+    rails: [
+      { name: 'Ground bar, back pole to the frame', from: [2, 0, 0], to: [2, -1, 0] },
+      { name: 'Ground bar, front gate to the left bar', from: [0, -2, 0], to: [1, -2, 0] },
+    ],
+    waypoints: {
+      Wa: { name: 'Round the frame pole', at: [2.52, -0.85], z: 0.63, heading: [-0.17, 0.98] },
+      Wb: { name: 'Back across the middle', at: [1.34, -1.84], z: 1.68, heading: [0.93, -0.37] },
+      Wc: { name: 'Round the right pole', at: [2.35, -2.62], z: 0.6, heading: [-0.99, -0.17] },
+      Wd: { name: 'Low through the middle', at: [1.95, -1.16], z: 0.25, heading: [0.84, -0.54] },
+      We: { name: 'Out in front', at: [2.13, -2.71], z: 1.16, heading: [0.98, 0.21] },
+      Wf: { name: 'Round the corner pole', at: [2.75, -1.38], z: 0.79, heading: [-0.86, -0.51] },
+      Wg: { name: 'Wide in front', at: [1.55, -2.85], z: 0.95, heading: [-0.9, 0.44] },
+      Wh: { name: 'Round the back of the frame', at: [2.69, -0.57], z: 0.85, heading: [0.38, -0.93] },
+      Wi: { name: 'High out in front', at: [2.44, -2.5], z: 1.68, heading: [0.98, 0.21] },
+      Wj: { name: 'Back inside the frame', at: [2.64, -2.03], z: 0.85, heading: [-0.94, -0.34] },
+      Wk: { name: 'Low round the right pole', at: [2.65, -2.45], z: 0.24, heading: [-0.75, -0.67] },
+      Wl: { name: 'Back along the front', at: [1.61, -2.41], z: 0.96, heading: [-0.98, 0.2] },
+      Wm: { name: 'Up the back', at: [1.78, -0.18], z: 0.84, heading: [0.51, 0.86] },
+      Wn: { name: 'High round the frame', at: [1.94, -1.2], z: 1.24, heading: [0.05, -1] },
+      Wo: { name: 'Up and over', at: [1.86, -1.42], z: 1.59, heading: [0.04, 1] },
+      Wp: { name: 'Round behind the back gate', at: [1.75, 1.16], z: 0.67, heading: [-0.66, 0.75] },
+      Wq: { name: 'Back on to the back gate', at: [0.86, -0.6], z: 1.05, heading: [0.7, -0.71] },
+      Wr: { name: 'Out to the left', at: [0.7, -0.14], z: 1.12, heading: [-0.95, 0.31] },
+      Ws: { name: 'Round the far end', at: [-0.69, 0.46], z: 0.12, heading: [-0.65, -0.76] },
+      Wt: { name: 'Home along the near side', at: [-0.73, -0.74], z: 0.12, heading: [0.3, -0.95] },
+    },
+    start: { at: [-0.85, -0.3], yaw: -Math.PI / 2 },
+    lap: 'A+ B+ Wa C Wb D+ E- Wc F Wd I- We E+ Wf H- Wg I+ C Wh E- Wi J Wj H- Wk Wl F Wm C Wn D- B+ Wo Wp K Wq L+ Wr Ws Wt',
+  },
 ];
 
 /*
@@ -678,12 +758,25 @@ function buildTrack(spec) {
     const centre = place(spec, ...beside.at);
     const len = Math.hypot(pole.side[0], pole.side[1]) || 1;
     const dir = { x: pole.side[0] / len, y: pole.side[1] / len };
+    /*
+     * WHICH SIDE THE QUAD GOES BY is not always the side the pole stands.
+     * `side` puts the pole 14 inches from its gate's centre and is the pass
+     * side on five of the six tracks, because the line goes round the
+     * outside of a pole that stands beside its gate. Track 6's back pole is
+     * the gate's own leg carried up and the animation lights the panel on
+     * the far side of it, so `pass` names that direction and the marker's
+     * yaw, which is what the racing line and the scoring square follow,
+     * takes it instead. Left out, it is `side`, and nothing else moves.
+     */
+    const passSide = pole.pass || pole.side;
+    const plen = Math.hypot(passSide[0], passSide[1]) || 1;
+    const pass = { x: passSide[0] / plen, y: passSide[1] / plen };
     /* On the gate's own stile line, RaceGOW's 14 inches from its centre. */
     const at = {
       x: centre.x + dir.x * POLE_FROM_GATE_MIN,
       y: centre.y + dir.y * POLE_FROM_GATE_MIN,
     };
-    const el = createElement(doc, 'pole', at, Math.atan2(dir.y, dir.x));
+    const el = createElement(doc, 'pole', at, Math.atan2(pass.y, pass.x));
     el.name = pole.name;
     el.yawOverridden = true;
     el.dims.height = pole.height * UNIT;

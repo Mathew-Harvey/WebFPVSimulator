@@ -35211,3 +35211,97 @@ and two documents, and reaches nothing in `src/native`, the patches,
 this round: `micro:check` clean at 136 assertions, `lint:presets` 6 of 6.
 Beyond those: the crossing walk on all six tracks, the clearance walk on all
 six, and the step 10 export laid beside the reference for all six.
+
+## Round 64: RaceGOW5 Track 6, MrE's, and the first track with no sill on it
+
+The owner sent Track 6's animation. It is in, and the method document carries
+what it taught.
+
+**The reading.** Eight feet on a four by three lattice, x 0 to 3 and y 0 to
+-2, every bar at one unit or two, and every one of the sixteen pipes accounted
+for: a gate at the near left, a back gate whose right leg carries on up, a two
+high frame on x 2 with an opening under its cross bar and one over it, a bar
+each way from the frame's far corner with an opening under each, and a pole at
+the end of the right one. Four of the eight uprights are legs carried up, and
+the animation lights a full height panel beside each, so all four are poles.
+Twenty passes over eleven elements.
+
+The three vanishing points came out orthogonal to a quarter of a degree and
+agreed on a focal length of 897 px three ways over. The eight feet landed
+within 0.083 of an integer and the twelve heights within 0.15, so the lattice
+was settled before the camera was fitted at all.
+
+**Step 4c earned its rewrite.** Fitted as read, with every point required to
+be in front of the camera, the best the solver could do was 30 px with a focal
+length of three and a half million and an eye thirteen thousand units away,
+which is not a photograph. With y negated it came back at 7.9 px from an eye
+4.2 units up. So the first reading was mirrored, and this time that was known
+before a line of the spec was written rather than after the whole thing
+shipped.
+
+**No sill anywhere on it.** The five bottom bars a built square would add were
+projected on to the plate and every one of them runs over bare floor. That
+turned out to cost nothing: the generator gives a vertical square two stiles
+and a head and adds a sill only above the floor, which is how RaceGOW builds a
+gate. So six of the seven openings are built and E, over the right bar, is the
+only gap, because a top bar over it would be pipe in the air.
+
+**25 of 25 pipes land on white PVC**, which is the cleanest step 8b of the
+seven. Every opening matched its own lit pane at 0.95 to 1.00 coverage.
+
+**A pole's pass side is not always the side it stands.** `side` both places a
+pole, 14 inches from its gate's centre, and points the racing line past it,
+and on five tracks those agree because the line goes round the outside of a
+pole that stands beside its gate. Track 6's back pole is the gate's own leg
+carried up and the animation lights the panel on the far side of it. The spec
+takes an optional `pass` for that, and the yaw, which is what the line and the
+scoring square follow, uses it. Left out it is `side`, so the first five
+tracks are byte for byte what they were.
+
+**THE LAP IS NOT THE ONLY TRUTH.** The crossing walk called five of Track 6's
+seven openings bad, and it was wrong to. A small busy course doubles back
+through its own gates: the lap scores the opening under the left bar twice and
+the ANIMATION's own line crosses it five times, in exactly the order the built
+line does. So the walk now takes the flown line as well and prints the two
+side by side, and what it reports is that every pass the lap names is there,
+in order and the right way round. On that measure all seven tracks pass.
+
+It also corrects last round's finding. Track 3's line was reported as flying
+through the goalpost twice where the lap says once; its animation's line
+crosses that goalpost twice as well, and crosses the tower's far bay four
+times where the lap scores two and our line crosses three. Track 3's line
+goes through those openings LESS than the reference does, not more. The tuner
+now prices an extra crossing against the flown line's count rather than the
+lap's, for the same reason: measured against the lap it is paid to fly a line
+the reference does not fly.
+
+**The back gate's direction took the occlusion cue.** The chevron at the pass
+points along the gate's plane rather than through it, and the reconstruction
+had the crossing the wrong way round because the pass never landed in the
+opening. Four frames later the trail loops behind the gate and the gate's own
+upright is drawn over the red, so the quad is on the far side and went through
+away from the camera. Feeding that frame back put the pass inside its opening
+and moved nothing else.
+
+| | Track 6 | its own flown line |
+| --- | --- | --- |
+| lap | 35.43 m | 44.8 m reconstructed |
+| tightest radius | 0.027 m | 0.059 m |
+| clearance to pipe | 4.9 cm | 3.2 cm |
+| fit to the flown line | 0.141 u, 10.4 cm | |
+
+The tightest radius is the weak number and it is honest about where it comes
+from: three short hops between a gate and the waypoint that lines the quad up
+for the next one, on a course that fits twenty passes into three units by two.
+Twenty waypoints beat fifteen on every axis that matters here, fit 0.141
+against 0.157 and three crossings adrift of the animation against six, at the
+cost of clearance going from 6.5 cm to 4.9, which is still more air than the
+reference leaves itself.
+
+`npm run verify` was NOT run: a new track is a spec, generated data and two
+documents, and reaches nothing in `src/native`, the patches,
+`vendor/betaflight`, the WASM build or the input path. Run in this round:
+`micro:check` clean at 148 assertions, the crossing walk on all seven tracks,
+the pipe projection, the pane match, and the step 10 export laid beside the
+reference. `lint:presets` is the flight controller tunes and says nothing
+about a track; earlier rounds quoted it here as though it did.

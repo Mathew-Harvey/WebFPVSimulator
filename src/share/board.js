@@ -290,6 +290,14 @@ export async function fetchTrackList(origin = boardOrigin()) {
     id: String(t.id || ''),
     name: String(t.name || 'Untitled track'),
     author: String(t.author || ''),
+    /*
+     * WHO BUILT IT, WHERE THAT IS NOT WHO PUBLISHED IT. The board derives
+     * these from the track's own credit block. Eight of the tracks there
+     * were designed by six other people and brought over by one, and a
+     * listing that only carries the publisher credits the wrong person.
+     */
+    designer: String(t.designer || ''),
+    series: String(t.series || ''),
     gates: Number(t.gates) || 0,
     /* `best` is the board's own shape: the fastest lap and who flew it. */
     recordMs: t.best && Number.isFinite(Number(t.best.lapMs)) ? Number(t.best.lapMs) : null,
@@ -396,6 +404,8 @@ export async function adoptMostFlownTrack(cls) {
       id: String(t.id || ''),
       name: String(t.name || 'Untitled track'),
       author: String(t.author || ''),
+      designer: String(t.designer || ''),
+      series: String(t.series || ''),
       gates: Number(t.gates) || 0,
       times: Number(t.times) || 0,
       publishedUtc: t.publishedUtc ? String(t.publishedUtc) : '',

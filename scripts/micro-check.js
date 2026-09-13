@@ -50,6 +50,7 @@ import {
 import { collectWarnings } from '../src/trackbuilder/warnings.js';
 import { courseFromDocument } from '../src/game/trackdoc.js';
 import { planFromDocument, isoLapMs, isoLapLength } from '../src/share/plan.js';
+import { RACEGOW_CREDITS } from '../src/ui/credits.js';
 import { lapFrames, LAP_SPEED } from '../src/trackbuilder/stage.js';
 import { buildPath } from '../src/trackbuilder/path.js';
 import { Race } from '../src/game/race.js';
@@ -468,6 +469,38 @@ function presetSet() {
   check('the whoop ships exactly the supplied tracks',
     micro.length === want.length && want.every((id) => micro.includes(id)),
     micro.join(', ') || 'none');
+
+  /*
+   * AND THE CREDITS ROLL NAMES EVERY ONE OF THEIR BUILDERS.
+   *
+   * These rooms were designed by six other people and brought over by one,
+   * and for eight tracks the only place that said so was a field in the
+   * document. The roll in src/ui/credits.js names them now, and a list
+   * written by hand beside a generated one drifts the first time somebody
+   * adds a ninth track, so the two are compared here: every designer the
+   * presets name appears in the roll, every name in the roll ships a track,
+   * and each is against the right tracks.
+   */
+  const shipped = new Map();
+  for (const doc of presetsForClass('micro')) {
+    const who = (doc.credit && doc.credit.designer) || '';
+    const short = String(doc.name || '').replace(/^RaceGOW5\s+/, '');
+    if (!shipped.has(who)) shipped.set(who, []);
+    shipped.get(who).push(short);
+  }
+  const rolled = new Map(RACEGOW_CREDITS.map((r) => [r.designer, [...r.tracks]]));
+  const sorted = (a) => [...a].sort().join(', ');
+  const missing = [...shipped.keys()].filter((w) => !rolled.has(w));
+  const extra = [...rolled.keys()].filter((w) => !shipped.has(w));
+  check('the credits roll names every designer who ships a track',
+    missing.length === 0, missing.join(', ') || 'none missing');
+  check('and nobody the presets do not name',
+    extra.length === 0, extra.join(', ') || 'none extra');
+  const wrong = [...shipped.entries()]
+    .filter(([who, list]) => rolled.has(who) && sorted(list) !== sorted(rolled.get(who)))
+    .map(([who, list]) => `${who}: presets ${sorted(list)}, roll ${sorted(rolled.get(who) || [])}`);
+  check('and the tracks against each name are theirs',
+    wrong.length === 0, wrong.join(' | ') || 'all match');
 
   /*
    * AND THE FILE IS THE GENERATOR'S OUTPUT, byte for byte.

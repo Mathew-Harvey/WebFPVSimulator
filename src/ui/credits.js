@@ -51,6 +51,27 @@
  * because the roll is a record of who flew it and not a list of who
  * posts about it.
  */
+/*
+ * THE RACEGOW5 ROOMS AND WHO BUILT THEM.
+ *
+ * Eight tracks in `scripts/racegow-lattice.js`, read off the official
+ * animations and brought over by one person. Six other people designed
+ * them, and a pilot flying one should be able to find out who. The names
+ * here are the `credit.designer` fields of the shipped presets and
+ * `scripts/micro-check.js` fails if this list and those presets disagree,
+ * so it cannot go stale when a ninth arrives.
+ */
+const RACEGOW = [
+  { designer: 'AyyyKayyy', tracks: ['Track 8'] },
+  { designer: 'Cumber and Hotspur', tracks: ['Track 5'] },
+  { designer: 'Skittles', tracks: ['Track 1', 'Track 2'] },
+  { designer: 'the Lego Dans', tracks: ['Track 3', 'Track 4'] },
+  { designer: 'MrE', tracks: ['Track 6'] },
+  { designer: 'FPVBean', tracks: ['Track 7'] },
+];
+
+export const RACEGOW_CREDITS = RACEGOW;
+
 const PILOTS = [
   {
     slot: '01',
@@ -361,6 +382,27 @@ export function fillCredits(host, { assetBase = 'assets/credits' } = {}) {
     body: tdBody,
   }));
   host.append(tracks);
+
+  /*
+   * The rooms themselves, by name, under the person who built each one.
+   * A track is somebody's afternoon with a pipe cutter; the reconstruction
+   * is not the design.
+   */
+  const rooms = section('The RaceGOW5 rooms', 'Eight tracks, six builders, read off the official animations.');
+  const roomList = el('div', 'credit-rooms');
+  for (const r of RACEGOW) {
+    const line = el('p', 'credit-room');
+    line.append(el('b', null, r.designer));
+    line.append(document.createTextNode(` \u00b7 ${r.tracks.join(', ')}`));
+    roomList.append(line);
+  }
+  const roomNote = el('p', 'credit-room-note');
+  roomNote.append(document.createTextNode('Series and animations by '));
+  roomNote.append(link('https://racegow.com/tracks', 'RaceGOW'));
+  roomNote.append(document.createTextNode('. Brought into this simulator by andAgainFPV.'));
+  roomList.append(roomNote);
+  rooms.append(roomList);
+  host.append(rooms);
 
   const horde = section('The horde', 'Written with Grok. Built with Claude.');
   const ai = el('div', 'credit-row pair');

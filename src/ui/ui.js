@@ -401,6 +401,23 @@ function scoringNote(mode) {
   return mode === 'off' ? SCORING_HOW : `${SCORING_WARNING} ${SCORING_HOW}`;
 }
 
+/*
+ * WHO TO NAME ON A TRACK, IN ONE PLACE.
+ *
+ * A board track's `author` is the account that published it. On a track
+ * somebody built themselves those are the same person. On the eight RaceGOW5
+ * rooms they are not: six other people designed them and one brought them
+ * over, and the designer is in the track's own credit block, which the board
+ * passes through now. So the line names the builder where the board knows
+ * one, and the publisher otherwise. The detail pane still says both.
+ */
+function byLine(t) {
+  if (t && t.designer) {
+    return `by ${t.designer}`;
+  }
+  return t && t.author ? `by ${t.author}` : '';
+}
+
 const DEFAULTS = {
   /* Which world. 'custom' is a track from the board or the builder, and
    * 'city' is the freestyle town. It is a string so loadSettings' typeof
@@ -1805,7 +1822,7 @@ function publishAction(listing, published) {
 
 function remixAction(listing) {
   if (listing && listing.canRemix) {
-    const by = listing.author ? ` by ${listing.author}` : '';
+    const by = byLine(listing) ? ` ${byLine(listing)}` : '';
     return {
       label: 'Edit a copy',
       action: 'remix',
@@ -4899,9 +4916,11 @@ export class Ui {
       for (const t of this.boardCourses || []) {
         cards.push({
           label: t.name,
-          note: t.author
-            ? `Published by ${t.author}. Choosing it loads the track and flies it here.`
-            : 'A published track. Choosing it loads the track and flies it here.',
+          note: t.designer
+            ? `Designed by ${t.designer}${t.series ? ` for ${t.series}` : ''}, published by ${t.author}. Choosing it loads the track and flies it here.`
+            : (t.author
+              ? `Published by ${t.author}. Choosing it loads the track and flies it here.`
+              : 'A published track. Choosing it loads the track and flies it here.'),
           course: { kind: 'board', track: t },
           action: `board:${t.id}`,
         });
@@ -5859,7 +5878,7 @@ export class Ui {
       const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
       const name = seat && seat.name ? seat.name : m.name;
       const gates = seat && seat.gates ? `${seat.gates} gates` : '';
-      const by = seat && seat.author ? `by ${seat.author}` : '';
+      const by = byLine(seat);
       this.launchLede.textContent = [name, gates, by].filter(Boolean).join(' \u00b7 ');
     }
     this.closeDrop();
@@ -7367,7 +7386,10 @@ export class Ui {
         const meta = el('div', 'map-card-meta', '');
         if (listed) {
           const t = it.course.track;
-          const bits = [t.author ? `by ${t.author}` : '', `${t.gates} gate${t.gates === 1 ? '' : 's'}`];
+          /* The designer where the board knows one, because the author is
+           * whoever published it and on a track brought over from a series
+           * those are two different people. */
+          const bits = [byLine(t), `${t.gates} gate${t.gates === 1 ? '' : 's'}`];
           if (t.recordMs != null) {
             bits.push(`record ${formatTime(t.recordMs)}`);
           }
@@ -7506,6 +7528,11 @@ export class Ui {
           id: doc.id,
           name: doc.name || 'Untitled track',
           author: '',
+          /* A track in this browser's library keeps the credit block it was
+           * saved with, so a RaceGOW room opened from here names its
+           * designer exactly as the board does. */
+          designer: doc.credit ? String(doc.credit.designer || '') : '',
+          series: doc.credit ? String(doc.credit.series || '') : '',
           /*
            * THE STEPS THAT ARE HOLES, not every step. A waypoint is a step
            * in the flying order that pins the racing line and scores
@@ -7747,7 +7774,7 @@ export class Ui {
     table.textContent = '';
     if (this.standingsLede) {
       this.standingsLede.textContent = t
-        ? [t.name, t.gates ? `${t.gates} gates` : '', t.author ? `by ${t.author}` : '']
+        ? [t.name, t.gates ? `${t.gates} gates` : '', byLine(t)]
           .filter(Boolean).join(' \u00b7 ')
         : '';
     }
@@ -10579,6 +10606,8 @@ export class Ui {
         id: listing.shareId,
         name: (seat && seat.name) || listing.name || 'This track',
         author: listing.author || '',
+        designer: (seat && seat.designer) || listing.designer || '',
+        series: (seat && seat.series) || listing.series || '',
         gates: (seat && seat.gates) || 0,
         board: listing.board || '',
       });

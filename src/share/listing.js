@@ -140,6 +140,12 @@ function summaryOf(doc, extra) {
       : 0,
     elements: doc && Array.isArray(doc.elements) ? doc.elements.length : 0,
     author: extra.author || '',
+    /* Who BUILT it, where that is somebody other than who published it. The
+     * document's own credit block is the source, so a track seated from the
+     * board, from this browser's library or from a preset all name the same
+     * person. See byLine in src/ui/ui.js. */
+    designer: extra.designer || (doc && doc.credit ? String(doc.credit.designer || '') : ''),
+    series: extra.series || (doc && doc.credit ? String(doc.credit.series || '') : ''),
     shareId: extra.shareId || null,
     board: extra.board || '',
     ...extra,

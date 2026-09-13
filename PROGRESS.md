@@ -35415,3 +35415,49 @@ reference.
 **The board cards for Tracks 8, 5 and 6 are now a little stale**, because a
 card draws the racing line and those three lines changed when the steering
 rule went. Replacing them needs BOARD_ADMIN_TOKEN.
+
+## Round 66: crediting the people who built the tracks
+
+The pilot asked for the track designers to be credited clearly. They were
+already in the data and nowhere a pilot could see them.
+
+**Six people built the eight rooms.** AyyyKayyy built Track 8, Cumber and
+Hotspur Track 5, Skittles Tracks 1 and 2, the Lego Dans Tracks 3 and 4, MrE
+Track 6 and FPVBean Track 7. Every one is in its preset's `credit.designer`
+and has been since the track was written. One surface printed it: the track
+builder's Load dialog, which says "by X" beside a track's name. Everywhere
+else a pilot could meet these tracks named andAgainFPV, who brought them over
+and did not build any of them.
+
+Four places fixed, and one of them was actively wrong:
+
+- **The board's card and sheet.** The sheet said "Built by andAgainFPV",
+  which is false. The document's credit block was in the database the whole
+  time and nothing read it. `creditOf` in the board's `validate.js` derives
+  the designer and the series on every read, the way the class and the plan
+  already are, so there is no migration and a track with no credit block
+  reads exactly as it did.
+- **The game's track room, launch line, picker note and standings line.** All
+  four printed the board's `author`. They go through one `byLine` helper now,
+  which names the designer where the board knows one and the publisher
+  otherwise. The seat carries it too, so a room opened from this browser's
+  library names the same person as the board does.
+- **The credits roll**, which is where credit belongs and did not mention
+  them at all. A new section lists the six builders with their tracks, with
+  RaceGOW credited for the series and the animations and andAgainFPV for the
+  reconstruction, separately, because those are three different
+  contributions.
+- **The board's own copy of the roll**, which is a near duplicate of the
+  simulator's and now carries the same section.
+
+**A hand written list beside a generated one drifts**, so `micro:check`
+compares them: every designer the presets name appears in the roll, nobody in
+the roll fails to ship a track, and the tracks against each name are theirs.
+That fails the first time somebody adds a ninth track and forgets.
+
+Run in this round: `micro:check` clean at 163 assertions, `lint:shell`,
+`lint:board`, `lint:nouns`, `lint:boot` 9 of 9, the board's `npm test` at 231
+assertions including the new credit round trip, and a DOM shim in Node that
+builds the credits roll and checks all six names and all eight track numbers
+appear in it. The board's page itself was not served here, because this
+container has no Postgres to serve it against.

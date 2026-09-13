@@ -357,3 +357,11 @@ repository in a scratch directory. It is deliberately not vendored: this
 repository is dependency free JavaScript, and a Python toolchain carried
 along for a job done twice a season would cost more than it saves. The
 method above is the part worth keeping, and it is all here.
+
+**The caption is not a mirror test when the camera is overridden.** Track 2's
+mirror was caught in round 59 by an export whose caption read backwards, and
+that worked because the export was framed by the card's own camera, which
+always stands the name up for the reader. `--camera` moves the eye and leaves
+the nameplate where the framing camera would have put it, so the name can
+read backwards on a track that is perfectly correct. Track 3's does. Use step
+4c for the mirror and this step for everything else.

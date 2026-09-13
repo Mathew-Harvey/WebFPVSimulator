@@ -3113,7 +3113,7 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Out over the rail",
         "position": {
-          "x": 4.804728,
+          "x": 4.841621,
           "y": 4.81424,
           "z": 0.745249
         },
@@ -3131,9 +3131,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Back across the rail",
         "position": {
-          "x": 4.376763,
-          "y": 5.426672,
-          "z": 0.878065
+          "x": 4.413656,
+          "y": 5.389778,
+          "z": 0.914959
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -3149,9 +3149,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the rail end",
         "position": {
-          "x": 3.764331,
+          "x": 4.007828,
           "y": 4.895406,
-          "z": 0.309905
+          "z": 0.383692
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -3185,8 +3185,8 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Out past the tower",
         "position": {
-          "x": 6.60513,
-          "y": 5.802986,
+          "x": 6.678917,
+          "y": 5.921045,
           "z": 0.590296
         },
         "yaw": 1.570796,
@@ -3203,8 +3203,8 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Up the outside",
         "position": {
-          "x": 6.43542,
-          "y": 7.013092,
+          "x": 6.391148,
+          "y": 6.931927,
           "z": 1.217485
         },
         "yaw": 2.356194,
@@ -3221,8 +3221,8 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round behind the tower",
         "position": {
-          "x": 5.727065,
-          "y": 6.909791,
+          "x": 5.690172,
+          "y": 6.828625,
           "z": 1.829918
         },
         "yaw": -1.570796,
@@ -3239,7 +3239,7 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Across the back",
         "position": {
-          "x": 5.690172,
+          "x": 5.645899,
           "y": 5.854637,
           "z": 1.859432
         },
@@ -3275,9 +3275,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the pole again",
         "position": {
-          "x": 5.690172,
-          "y": 7.020471,
-          "z": 1.158456
+          "x": 5.609006,
+          "y": 6.895033,
+          "z": 1.195349
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -3293,9 +3293,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Down the tower face",
         "position": {
-          "x": 6.199302,
-          "y": 6.208814,
-          "z": 1.121562
+          "x": 6.125515,
+          "y": 6.127648,
+          "z": 1.165835
         },
         "yaw": -1.570796,
         "pitch": 0,
@@ -3312,7 +3312,7 @@ export const PRESETS = [
         "name": "Down the near face",
         "position": {
           "x": 6.43542,
-          "y": 6.326873,
+          "y": 5.714441,
           "z": 0.472237
         },
         "yaw": -1.570796,
@@ -3330,7 +3330,7 @@ export const PRESETS = [
         "name": "Down to the low bay",
         "position": {
           "x": 6.022213,
-          "y": 5.352885,
+          "y": 5.522595,
           "z": 1.025639
         },
         "yaw": -1.570796,
@@ -3365,9 +3365,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the right end",
         "position": {
-          "x": 6.26571,
-          "y": 4.710938,
-          "z": 0.346799
+          "x": 6.228817,
+          "y": 4.666666,
+          "z": 0.302527
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -3402,7 +3402,7 @@ export const PRESETS = [
         "name": "Round the left end",
         "position": {
           "x": 4.730941,
-          "y": 4.651908,
+          "y": 4.688802,
           "z": 0.833793
         },
         "yaw": 0,
@@ -3420,8 +3420,8 @@ export const PRESETS = [
         "name": "Home along the top",
         "position": {
           "x": 5.387645,
-          "y": 5.242204,
-          "z": 1.165835
+          "y": 5.32337,
+          "z": 1.128941
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -3438,8 +3438,8 @@ export const PRESETS = [
         "name": "Past the goalpost",
         "position": {
           "x": 5.549976,
-          "y": 6.681051,
-          "z": 1.010882
+          "y": 6.437554,
+          "z": 1.092048
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -4055,9 +4055,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Down the long side",
         "position": {
-          "x": 4.748238,
-          "y": 5.292001,
-          "z": 0.309905
+          "x": 4.910569,
+          "y": 5.255108,
+          "z": 0.391071
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -4073,9 +4073,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Up to the frame",
         "position": {
-          "x": 4.253865,
-          "y": 5.402682,
-          "z": 0.885444
+          "x": 4.172699,
+          "y": 5.446954,
+          "z": 1.084669
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -4091,9 +4091,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the far side",
         "position": {
-          "x": 3.988232,
-          "y": 6.634925,
-          "z": 0.664083
+          "x": 4.231729,
+          "y": 6.516865,
+          "z": 0.826414
         },
         "yaw": 0,
         "pitch": 0,
@@ -4109,9 +4109,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round to the pole",
         "position": {
-          "x": 3.420072,
-          "y": 5.166563,
-          "z": 0.206604
+          "x": 3.870173,
+          "y": 5.041125,
+          "z": 0.413207
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -4127,8 +4127,8 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Back off the pole",
         "position": {
-          "x": 4.268622,
-          "y": 5.882297,
+          "x": 4.017747,
+          "y": 5.80851,
           "z": 0.671462
         },
         "yaw": 0,
@@ -4145,7 +4145,7 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Out in front",
         "position": {
-          "x": 4.703966,
+          "x": 4.630179,
           "y": 5.107534,
           "z": 0.213982
         },
@@ -4163,8 +4163,8 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the near end",
         "position": {
-          "x": 5.013871,
-          "y": 6.074143,
+          "x": 5.02125,
+          "y": 5.860161,
           "z": 0.147574
         },
         "yaw": 1.570796,
@@ -4181,9 +4181,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Up off the floor",
         "position": {
-          "x": 4.335031,
-          "y": 6.125794,
-          "z": 0.885444
+          "x": 4.489983,
+          "y": 5.845404,
+          "z": 0.96661
         },
         "yaw": 0,
         "pitch": 0,
@@ -4199,9 +4199,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Out over the rail",
         "position": {
-          "x": 5.456593,
-          "y": 5.446954,
-          "z": 1.453604
+          "x": 5.065522,
+          "y": 5.727344,
+          "z": 1.726616
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -4217,9 +4217,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Back down inside",
         "position": {
-          "x": 5.441836,
-          "y": 6.111037,
-          "z": 0.464858
+          "x": 5.537759,
+          "y": 6.26599,
+          "z": 0.391071
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -4235,9 +4235,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Under the dive gate",
         "position": {
-          "x": 4.984356,
-          "y": 6.273368,
-          "z": 0.472237
+          "x": 5.235232,
+          "y": 6.074143,
+          "z": 0.553402
         },
         "yaw": 3.141593,
         "pitch": 0,
@@ -4253,9 +4253,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the top, out",
         "position": {
-          "x": 4.85154,
-          "y": 4.982096,
-          "z": 1.453604
+          "x": 4.556392,
+          "y": 5.100155,
+          "z": 1.291272
         },
         "yaw": 0,
         "pitch": 0,
@@ -4271,9 +4271,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the top, back",
         "position": {
-          "x": 5.213096,
-          "y": 5.048504,
-          "z": 1.770888
+          "x": 5.095037,
+          "y": 5.343652,
+          "z": 1.652829
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -4289,9 +4289,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Over the back",
         "position": {
-          "x": 5.13193,
-          "y": 4.819764,
-          "z": 1.741373
+          "x": 4.947463,
+          "y": 4.90093,
+          "z": 1.697101
         },
         "yaw": 0,
         "pitch": 0,
@@ -4307,9 +4307,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Down the far side",
         "position": {
-          "x": 5.168824,
-          "y": 4.95996,
-          "z": 1.527391
+          "x": 5.124552,
+          "y": 5.196078,
+          "z": 1.453604
         },
         "yaw": 1.570796,
         "pitch": 0,
@@ -4325,9 +4325,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the far end",
         "position": {
-          "x": 5.382806,
-          "y": 7.092404,
-          "z": 0.929716
+          "x": 5.463972,
+          "y": 7.048132,
+          "z": 0.96661
         },
         "yaw": 0,
         "pitch": 0,
@@ -4344,7 +4344,7 @@ export const PRESETS = [
         "name": "Back along the far side",
         "position": {
           "x": 5.766499,
-          "y": 6.848907,
+          "y": 6.767741,
           "z": 0.892823
         },
         "yaw": -1.570796,
@@ -4361,7 +4361,7 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "On to the dive gate again",
         "position": {
-          "x": 5.412321,
+          "x": 5.331155,
           "y": 5.897055,
           "z": 0.914959
         },
@@ -4379,7 +4379,7 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Down the rail",
         "position": {
-          "x": 5.729605,
+          "x": 5.692712,
           "y": 6.029871,
           "z": 0.597675
         },
@@ -4397,9 +4397,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Along the rail, out",
         "position": {
-          "x": 5.840286,
+          "x": 6.091161,
           "y": 6.325019,
-          "z": 0.250876
+          "z": 0.213982
         },
         "yaw": 0,
         "pitch": 0,
@@ -4415,9 +4415,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Round the near end",
         "position": {
-          "x": 6.725729,
-          "y": 6.074143,
-          "z": 0.250876
+          "x": 6.770002,
+          "y": 5.793753,
+          "z": 0.213982
         },
         "yaw": -1.570796,
         "pitch": 0,
@@ -4433,9 +4433,9 @@ export const PRESETS = [
         "type": "waypoint",
         "name": "Line up on the far gate",
         "position": {
-          "x": 6.622428,
-          "y": 5.424818,
-          "z": 0.221361
+          "x": 6.533883,
+          "y": 5.387924,
+          "z": 0.258254
         },
         "yaw": 3.141593,
         "pitch": 0,

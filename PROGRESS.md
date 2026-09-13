@@ -35111,3 +35111,103 @@ keeps no times on it, so replacing it costs nothing, but replacing needs
 https://webfpv.org/board --preset racegow5-track1 --replace`. Tracks 5 and 8
 have never been on the board at all; putting them there needs no token,
 only the owner's say so.
+
+## Round 63: Tracks 3 and 4 retuned, and a line that flies through a gate it is not scoring
+
+The owner asked for the same treatment on Tracks 3 and 4, then for main and
+for the whole set on the board. Both tracks were tuned in rounds 60 and 61
+against a fidelity measured one way round, and both were the outliers on the
+tightest radius, at 0.035 and 0.040 m.
+
+**The flown lines set the target.** Reconstructing each animation's own line
+and measuring its curvature says what a radius on this kind of track should
+be: the quad in the reference turns at 0.070 to 0.104 m at its tightest, and
+its first percentile is 0.077 to 0.128 m. So 0.13 m, where Track 8 sits, is
+not slack, and 0.035 m is not a hairpin the designer drew, it is the cubic
+hooking at a knot.
+
+| track | flown line, tightest | first percentile |
+| --- | --- | --- |
+| 1 | 0.070 m | 0.077 m |
+| 3 | 0.096 m | 0.115 m |
+| 4 | 0.104 m | 0.128 m |
+| 5 | 0.100 m | 0.110 m |
+| 8 | 0.086 m | 0.106 m |
+
+**Track 4 came up to 0.097 m**, which is its own flown line's 0.104 almost
+exactly, with the fit improving from 0.159 to 0.116 units and the clearance
+holding at 15.1 cm. Two things got it there: the two way fidelity, and a
+larger first step in the descent, 0.45 units, which let it out of the local
+optimum the 0.22 step was sitting in. It converged at pass 12.
+
+**Track 3 did not move off 0.035 m and here is why.** Its tightest corner is
+the second pass through E, the tower's far bay, and the corner belongs to
+the gate rather than to any waypoint. The builder gives an aperture knot a
+tangent square to the opening, because that is what flying a gate means, and
+the animation's quad went through this one at about 74 degrees to it: the
+trail head moves 0.08 units along x and 0.28 across y in the two frames
+either side. So the built line must leave the gate square and then turn hard,
+and no waypoint move can buy that back. The other five corners DID come up,
+from 0.036 and 0.039 to 0.045, so the plateau is one corner now rather than
+six. Fixing it means changing how an aperture knot's tangent is chosen, which
+is a change to every track in the builder, and it is not made here.
+
+Two objectives were tried and dropped, both written down rather than
+absorbed:
+
+- **The fifth percentile of the radius, scored.** It gives the descent a
+  gradient where the true minimum is a plateau, and it made both tracks
+  worse: Track 4 ended at 0.074 m and 0.158 of fit where scoring the minimum
+  alone reached 0.097 and 0.116. A smoother line everywhere is not worth a
+  worse worst corner. It is still computed and reported, because it says
+  whether a track is generally kinky or has one bad corner.
+- **Selling the tightest corner.** With the percentile scored, Track 3's
+  descent took the tightest radius from 0.035 down to 0.025 to buy a
+  percentile three times better and 5 cm of clearance. The tuner now carries
+  a floor: the tightest radius a track starts with is the worst it may end
+  with, whatever else a move scores.
+
+**A NEW CHECK, AND IT FOUND SOMETHING SHIPPED.** The crossing walk now asks a
+sharper question than "does the line go through every opening": it asks
+whether the line goes through each opening exactly as often as the lap says
+and in the right direction. Track 3 fails it, and failed it before this
+round. Its line goes through the goalpost twice where the lap says once, and
+through the tower's far bay three times where the lap says twice. The lap is
+right and the openings are where they should be; it is the racing line
+wandering back through a gate on its way somewhere else.
+
+It does not mis-score. `tryPass` in `src/game/race.js` tests the travel
+against `this.gates[this.next]` and nothing else, so a crossing of a gate
+that is not the next one is not seen. What it costs is the look of the thing:
+the ghost flies through a gate it is not scoring. The descent now prices an
+extra crossing at 0.15 and could not remove either of Track 3's, which says
+they are where its route goes rather than something a waypoint put there.
+The other five tracks are exact, in count and in direction.
+
+| track | tightest radius | fit to the flown line | clearance | lap | extra passes |
+| --- | --- | --- | --- | --- | --- |
+| 8 | 0.130 m | 0.287 u | 6.5 cm | 44.93 m | 0 |
+| 5 | 0.079 m | 0.273 u | 18.9 cm | 36.63 m | 0 |
+| 1 | 0.120 m | 0.196 u | 15.2 cm | 13.75 m | 0 |
+| 2 | 0.082 m | not retuned | 15.4 cm | 18.34 m | 0 |
+| 3 | 0.035 m | 0.122 to 0.108 u | 9.9 cm | 30.48 m | 2 |
+| 4 | 0.040 to 0.097 m | 0.159 to 0.116 u | 15.1 cm | 27.26 m | 0 |
+
+Track 5 was re-run over more passes on the settled objective and found
+converged, three moves and no change worth writing. No threshold moved.
+
+**The export's caption is not a mirror test when the camera is overridden**,
+and TRACK-FROM-GIF.md says so now. Round 59 caught Track 2's mirror by an
+export whose name read backwards, which worked because that export was framed
+by the card's own camera and `stage.js` stands the name up for whoever is
+looking. Passing `--camera` moves the eye and leaves the nameplate where the
+framing camera would have put it, so Track 3's correct export reads backwards
+from the animation's viewpoint. Step 4c is the mirror test; step 10 is for
+everything else.
+
+`npm run verify` was NOT run. This round is waypoint numbers, generated data
+and two documents, and reaches nothing in `src/native`, the patches,
+`vendor/betaflight`, the WASM build or the input path. Cheap checks run in
+this round: `micro:check` clean at 136 assertions, `lint:presets` 6 of 6.
+Beyond those: the crossing walk on all six tracks, the clearance walk on all
+six, and the step 10 export laid beside the reference for all six.

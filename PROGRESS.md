@@ -35745,3 +35745,46 @@ flown from here.
 The landing page builds its own 10 by 12 by 4 m shed and bakes its demo track
 through this repository's `courseFromDocument`, which now returns scaled
 metres. That is the next thing to fix and it is in the following commit.
+
+### Round 69 addendum: the Tune row, which the entry above described before it was done
+
+The Round 69 entry said the three Air65 II presets "stay on disk and come off
+the Tune row". Only the first half was true when it was written: `defaultTune`
+had moved to `betaflight-default`, but `tunesFor` still matched on the airframe
+ID, so the whoop's row offered three tunes written for a plant it no longer
+flies and did not offer the one it had just been given.
+
+`tunesFor` keys on the PLANT now, `simId`, which is the thing a tune is
+actually written against, and the three whoop presets carry `airframe: null`,
+which is offered to nobody. Both airframes see the same three five inch tunes.
+The .diff files stay, `lint:presets` still checks all six against the compiled
+module, and if the whoop ever gets its own plant back they are two characters
+from returning.
+
+A stored `whoop-champion` or a stored 4.35 V pack needed nothing: `tuneChoices`
+and `packVoltages` were already membership-checked in three places each, with a
+fall back to the first row rather than a throw. That is the stale-setting rule
+in configs/airframes.js earning its keep.
+
+Re-run after it: `lint:presets` 6 of 6, `lint:fc` 30 of 30, `lint:shell`,
+`check:clip` 528 of 528.
+
+`lint:catalog` CANNOT RUN IN THIS CONTAINER and was not run. `vendor/betaflight`
+is an empty directory here, so it dies on `parameter_names.h` before reading
+anything this round touched. It fails the same way on a clean tree. Nothing in
+this round is near the catalog, but that is an argument, not evidence.
+
+### And the front door
+
+`landingpage-WebFPVSimulator-` bakes its demo track through this repository's
+own `courseFromDocument`, so it was getting scaled metres into a shed it builds
+by hand at 10 by 12 by 4. `scripts/bake-room.js` divides the factor back out on
+the way in: nothing flies there, so the scale buys that page nothing and would
+cost it both its shed and the measurements its copy quotes.
+
+Regenerating also picked up a mirror this repository fixed in Round 62 and that
+page never took. The gate geometry round trips exactly, x and sill to four
+decimals, and only z moves. The racing line changed as well, from rounds 62 to
+65 of solver work, so LAP_LENGTH is 13.8 m against 14.4 and SPAN is 2.97 by
+1.42 against 3.54 by 2.00, and the two places the copy quotes them follow.
+`lint:wiki` clean. The page was NOT looked at in a browser.

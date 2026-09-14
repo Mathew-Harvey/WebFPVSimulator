@@ -33,6 +33,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { AIRFRAMES } from './airframes.js';
+
 export const TUNES = [
   {
     id: 'betaflight-default',
@@ -54,33 +56,58 @@ export const TUNES = [
   },
   {
     id: 'whoop-champion',
-    airframe: 'whoop65',
+    airframe: null,
     name: 'Air65 II Champion',
     note: 'BetaFPV’s own factory tune for the 36000 kV racer. Low gains, a narrow D boost band, and the gains coming off a fifth of the way up the stick because 1S sags.',
   },
   {
     id: 'whoop-racing',
-    airframe: 'whoop65',
+    airframe: null,
     name: 'Air65 II Racing',
     note: 'The 30000 kV variant’s factory tune. More damping and less integral than the Champion, which is the shape of a tune for a motor with less authority.',
   },
   {
     id: 'whoop-freestyle',
-    airframe: 'whoop65',
+    airframe: null,
     name: 'Air65 II Freestyle',
     note: 'The 25000 kV variant on the bigger GF1219S prop. The highest gains of the three, and the only one BetaFPV ship on Betaflight rates rather than Actual.',
   },
 ];
 
 /*
+ * THE THREE AIR65 II PRESETS ARE RETIRED, and `airframe: null` above is how.
+ *
+ * They were the whoop's, and they were right for as long as the whoop was a
+ * 23 g 1S machine on its own plant. It flies the five inch's plant now, and a
+ * whoop preset on it is not a different feel, it is the wrong tune: P and D
+ * sized against 6e-6 kg m^2 of inertia, filter cutoffs against a 23 g frame's
+ * resonances, and gains that come off a fifth of the way up the stick because
+ * a cell sags. That is an underdamped, sluggish machine, which is the exact
+ * complaint the plant change exists to answer.
+ *
+ * They stay in the table and their .diff files stay on disk. They are real
+ * BetaFPV configurations, scripts/preset-lint.js still checks all six against
+ * the compiled module, and if the whoop ever gets its own plant back they are
+ * two characters from being offered again. What they must not be is reachable
+ * for a plant they were never written for.
+ */
+
+/*
  * The tunes an airframe may load. A 6S 5 inch race tune on a 1S whoop is not
- * a thing a pilot should be able to reach by accident, and it is not merely
- * a bad idea: the whoop's PIDs are a third of the five inch's because its
- * angular acceleration is three times higher, so the wrong tune is not a
- * different feel, it is an oscillation.
+ * a thing a pilot should be able to reach by accident, and the rule survives
+ * the whoop changing plants: an airframe is offered the tunes written for the
+ * plant it selects. A tune with a null airframe is offered to nobody, which
+ * is the retirement above.
  */
 export function tunesFor(airframeId) {
-  return TUNES.filter((t) => t.airframe === airframeId);
+  const want = AIRFRAMES.find((a) => a.id === airframeId);
+  if (!want) {
+    return [];
+  }
+  return TUNES.filter((t) => {
+    const owner = t.airframe && AIRFRAMES.find((a) => a.id === t.airframe);
+    return Boolean(owner) && owner.simId === want.simId;
+  });
 }
 
 /*

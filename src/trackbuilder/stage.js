@@ -128,6 +128,22 @@ const TAIL_FRACTION = 0.09;
  */
 export const LAP_SPEED = { micro: 3.73, full: 12.7 };
 /*
+ * THE MICRO PACE IS NOW ALSO THE FULL PACE DIVIDED BY MICRO_SCALE, and it
+ * was not arranged to be.
+ *
+ * 3.73 m/s was measured off real RaceGOW footage, back when a whoop was a
+ * whoop and flew a room one to one. A micro course is now built MICRO_SCALE
+ * times life size and flown by the five inch's plant, so the honest pace
+ * against a DOCUMENT length is the field's 12.7 divided by 3.4289, which is
+ * 3.704. The measured figure and the derived one agree to 0.7 percent.
+ *
+ * That agreement is worth writing down rather than acting on. It is evidence
+ * that the scale is the right size: a real whoop's lap pace in a real room
+ * already sits where geometric scaling of a five inch puts it, which is the
+ * observation the whole change rests on. The measured number stays, because
+ * it is measured, and nothing here needs a derived one to be correct.
+ */
+/*
  * And the loop's own bounds, in frames. A two gate room is four metres of
  * lap and would be a one second GIF that reads as a flicker; a 400 m
  * MultiGP course is half a minute, which is not a thing anybody shares. So

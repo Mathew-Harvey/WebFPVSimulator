@@ -51,8 +51,40 @@ import { SESSION_TEXTURES } from './session-textures.js';
  * published figures and converts from feet exactly once. No dimension in
  * this file is typed twice. */
 import { builtObstacle, BUILT_FRAME_TUBE_OD, GATE_SCALE } from '../game/track.js';
-import { PIPE_OD as RACEGOW_PIPE_OD, GATE_OPENING_MAX as RACEGOW_GATE_OPENING_MAX,
-  ROOM_WIDTH, ROOM_DEPTH, ROOM_HEIGHT } from '../trackbuilder/racegow.js';
+import { PIPE_OD as RACEGOW_PIPE_OD_TRUE,
+  GATE_OPENING_MAX as RACEGOW_GATE_OPENING_MAX_TRUE,
+  ROOM_WIDTH as ROOM_WIDTH_TRUE, ROOM_DEPTH as ROOM_DEPTH_TRUE,
+  ROOM_HEIGHT as ROOM_HEIGHT_TRUE } from '../trackbuilder/racegow.js';
+import { MICRO_SCALE } from '../game/track.js';
+
+/*
+ * A RACEGOW ROOM, IN THE SCENE'S METRES RATHER THAN RACEGOW'S OWN.
+ *
+ * src/trackbuilder/racegow.js is quoted from the organiser's published rules
+ * and every number in it is real: a 10 by 12 by 4 m hall, 3/4 inch pipe, a
+ * 28 inch opening. The builder, its warnings and its envelope all work in
+ * those, and they have to, because a track published here is a track
+ * somebody builds out of PVC at home.
+ *
+ * A FLOWN room is not in those metres. The whoop flies the five inch's
+ * plant, so src/game/trackdoc.js builds every micro course MICRO_SCALE times
+ * life size and src/render/whoopcraft.js draws the aircraft through the same
+ * factor. The shed has to come through it too or the track would stand in a
+ * room a third of its size. Scaled here, at the one place this file reads
+ * them, rather than in racegow.js where it would quietly make the rulebook
+ * wrong.
+ *
+ * Nothing on screen changes. Scale a world and the craft in it by one number
+ * and every frame is the frame it was: this is 34.3 by 41.2 m with a 13.7 m
+ * ceiling and it looks exactly like the hall it looked like before.
+ */
+const ROOM_WIDTH = ROOM_WIDTH_TRUE * MICRO_SCALE;
+const ROOM_DEPTH = ROOM_DEPTH_TRUE * MICRO_SCALE;
+const ROOM_HEIGHT = ROOM_HEIGHT_TRUE * MICRO_SCALE;
+/* The pipe a RaceGOW gate is built from, and the opening it makes, as BUILT.
+ * Same factor, same reason: these draw geometry into the scaled world. */
+const RACEGOW_PIPE_OD = RACEGOW_PIPE_OD_TRUE * MICRO_SCALE;
+const RACEGOW_GATE_OPENING_MAX = RACEGOW_GATE_OPENING_MAX_TRUE * MICRO_SCALE;
 import { qualityFor } from './quality.js';
 /* The shape of the built in circuit, shared with the map screen's thumbnail
  * so the picture of the course and the course cannot drift apart. */
@@ -3896,7 +3928,9 @@ function attractOrbit(course, gates, tops, heightFn) {
    * low, between a ground gate's centre and rule 5's stack gate at 1.067,
    * so both are in frame.
    */
-  const ROOM_ORBIT_MAX = ROOM_WIDTH * 0.5 - 0.8;
+  /* 0.8 m of clearance off the wall, in the room's own metres, so it comes
+   * through the same factor the room did. */
+  const ROOM_ORBIT_MAX = ROOM_WIDTH * 0.5 - 0.8 * MICRO_SCALE;
   const ROOM_EYE_MAX = ROOM_HEIGHT * 0.66;
   const room = course && course.trackClass === 'micro';
   if (!course.structures.length && !gates.length) {
@@ -3908,9 +3942,9 @@ function attractOrbit(course, gates, tops, heightFn) {
        * AIRCRAFT and lets the room be the backdrop. Far enough back that the
        * walls and the floor read, close enough that a 65 mm machine is not a
        * speck. */
-      radius: room ? 2.4 : 9,
-      eye: room ? 1.5 : 2.4,
-      aim: room ? 0.7 : 0.85,
+      radius: room ? 2.4 * MICRO_SCALE : 9,
+      eye: room ? 1.5 * MICRO_SCALE : 2.4,
+      aim: room ? 0.7 * MICRO_SCALE : 0.85,
       path: null,
     };
   }
@@ -3924,35 +3958,46 @@ function attractOrbit(course, gates, tops, heightFn) {
     minZ = Math.min(minZ, z - r);
     maxZ = Math.max(maxZ, z + r);
   };
+  /*
+   * EVERY BARE METRE BELOW IS A ROOM'S METRE ON A MICRO COURSE.
+   *
+   * The structures, the gates and the spawn arrive here already built
+   * MICRO_SCALE times life size, because src/game/trackdoc.js built them that
+   * way so a five inch has room to fly. The pads, floors and clearances this
+   * function frames them with were all chosen against a track in its own
+   * metres, so they come through the same factor or the orbit closes in on a
+   * course three and a half times bigger than the numbers expect.
+   */
+  const K = room ? MICRO_SCALE : 1;
   for (const s of course.structures) {
     const d = s.dims || {};
-    const r = Math.max(2.2, (d.clearW ?? d.width ?? 0) * 0.5, (d.depth ?? 0) * 0.5);
+    const r = Math.max(2.2 * K, (d.clearW ?? d.width ?? 0) * 0.5, (d.depth ?? 0) * 0.5);
     include(s.x, s.z, r);
   }
   for (const g of gates) {
-    include(g.position.x, g.position.z, 2.2);
+    include(g.position.x, g.position.z, 2.2 * K);
   }
-  include(spawn.x, spawn.z, 2.2);
+  include(spawn.x, spawn.z, 2.2 * K);
   const cx = (minX + maxX) * 0.5;
   const cz = (minZ + maxZ) * 0.5;
   const ground = heightFn(cx, cz);
-  let top = ground + 2.4;
+  let top = ground + 2.4 * K;
   for (const t of tops) {
     top = Math.max(top, t.top);
   }
   const span = Math.hypot((maxX - minX) * 0.5, (maxZ - minZ) * 0.5);
-  const rise = Math.max(room ? 0.5 : 1.6, top - ground);
+  const rise = Math.max(room ? 0.5 * K : 1.6, top - ground);
   /* Radius floors at 16 m so a single stack is not a tight fidget around
    * its own frame, and caps at 80 m so a pitch-filling layout still reads
    * as a course rather than as a smudge on the horizon. */
   const radius = room
-    ? Math.min(ROOM_ORBIT_MAX, Math.max(1.8, span * 1.35 + 0.8))
+    ? Math.min(ROOM_ORBIT_MAX, Math.max(1.8 * K, span * 1.35 + 0.8 * K))
     : Math.min(80, Math.max(16, span * 1.4 + 4, rise * 1.1 + 8));
   const eye = room
-    ? Math.min(ROOM_EYE_MAX, Math.max(1.1, rise * 0.6 + 0.7))
+    ? Math.min(ROOM_EYE_MAX, Math.max(1.1 * K, rise * 0.6 + 0.7 * K))
     : Math.max(3.4, rise * 0.38 + span * 0.12 + 2.0);
   const aim = room
-    ? Math.min(eye - 0.3, Math.max(0.35, rise * 0.4))
+    ? Math.min(eye - 0.3 * K, Math.max(0.35 * K, rise * 0.4))
     : Math.max(0.7, Math.min(rise * 0.35, eye - 1.4));
   return {
     x: cx,
@@ -5840,7 +5885,8 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
   const microCourse = Boolean(course && course.trackClass === 'micro');
   const gateOpening = microCourse ? RACEGOW_GATE_OPENING_MAX : 1.524 * GATE_SCALE;
   const gateReal = microCourse
-    ? `${RACEGOW_GATE_OPENING_MAX.toFixed(4)}, RaceGOW 28 inch opening, built one to one`
+    ? `${RACEGOW_GATE_OPENING_MAX.toFixed(4)}, RaceGOW 28 inch opening `
+      + `(${RACEGOW_GATE_OPENING_MAX_TRUE.toFixed(4)}) at micro scale ${MICRO_SCALE.toFixed(4)}`
     : `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}`;
 
   return {

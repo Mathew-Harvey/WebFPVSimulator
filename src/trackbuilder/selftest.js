@@ -53,7 +53,7 @@ import { clubhouseSolids } from '../art/clubhouse.js';
 import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
-import { GATE_SCALE } from '../game/track.js';
+import { GATE_SCALE, MICRO_SCALE } from '../game/track.js';
 import { Race } from '../game/race.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
@@ -1630,10 +1630,26 @@ function suiteCrashRule() {
   const fiveDims = airframeById('5inch').dims;
   setCraftAirframe(airframeById('whoop65').dims);
   const whoopBand = dirtClearance();
-  check('a whoop gets its own band, a quarter of the five inch\'s',
-    whoopBand > 0.055 && whoopBand < 0.075, whoopBand);
-  check('a whoop band leaves most of a 0.711 m RaceGOW opening scoring',
-    whoopBand / 0.7112 < 0.10, whoopBand / 0.7112);
+  /*
+   * IT IS THE FIVE INCH'S BAND NOW, AND THE GUARANTEE STILL HOLDS.
+   *
+   * This asked for a band a quarter of the five inch's, because the whoop was
+   * a quarter of the aircraft. It is not any more: it flies the five inch's
+   * plant, its dims ARE the five inch's, and so is its band.
+   *
+   * What the check was FOR survives, and that is what is asserted instead. The
+   * defect was never the number, it was the number against the hole: 0.22 m
+   * declared the bottom 31 percent of a 0.711 m opening to be dirt. A micro
+   * course is built MICRO_SCALE times life size now, so the same 0.22 is 9
+   * percent of a 2.4387 m opening, which is what a five inch has always had
+   * on the field. Same promise, reached by making the room the right size for
+   * the aircraft instead of the band the right size for the room.
+   */
+  const RACEGOW_OPENING_BUILT = 0.7112 * MICRO_SCALE;
+  check('a whoop flies the five inch band, because it is a five inch',
+    Math.abs(whoopBand - 0.22) < 1e-12, whoopBand);
+  check('a whoop band leaves most of a RaceGOW opening as built scoring',
+    whoopBand / RACEGOW_OPENING_BUILT < 0.10, whoopBand / RACEGOW_OPENING_BUILT);
   /* The low line through a ground gate, which is the line a whoop is for. */
   check('a whoop flying the low line through a ground gate scores',
     shouldScorePass({ x: 0, y: 0.10, z: 0.6 }, { x: 0, y: 0.10, z: -0.6 }, {
@@ -1660,9 +1676,11 @@ function suiteCrashRule() {
     shouldScorePass({ x: 0, y: 0.05, z: 0.6 }, { x: 0, y: 0.04, z: -0.6 }, {
       upz: -1, clearance: 0.04, hits: 1, heightAt: flat,
     }) === false);
+  /* Just clear of the band, which is 0.22 m of a 2.44 m opening: 9 percent up
+   * the hole, the same place in it 0.09 was when the opening was 0.711. */
   check('a whoop on its side just clear of its own band still scores',
-    shouldScorePass({ x: 0, y: 0.09, z: 0.6 }, { x: 0, y: 0.09, z: -0.6 }, {
-      upz: 0.1, clearance: 0.09, hits: 0, heightAt: flat,
+    shouldScorePass({ x: 0, y: 0.25, z: 0.6 }, { x: 0, y: 0.25, z: -0.6 }, {
+      upz: 0.1, clearance: 0.25, hits: 0, heightAt: flat,
     }) === true);
   /*
    * THE TURTLE HALO AND THE FLIP HOP, on the same aircraft and for the same
@@ -1673,19 +1691,23 @@ function suiteCrashRule() {
    * alone and said so; they are here now because the owner asked.
    */
   const whoopHalo = turtleClearance();
-  check('a whoop gets its own turtle halo, a quarter of the five inch\'s',
-    whoopHalo > 0.035 && whoopHalo < 0.055, whoopHalo);
-  check('a whoop halo is inside a RaceGOW gate\'s bottom tenth',
-    whoopHalo / 0.7112 < 0.10, whoopHalo / 0.7112);
+  check('a whoop flies the five inch halo, because it is a five inch',
+    Math.abs(whoopHalo - 0.15) < 1e-12, whoopHalo);
+  check('a whoop halo is inside a RaceGOW opening as built\'s bottom tenth',
+    whoopHalo / RACEGOW_OPENING_BUILT < 0.10, whoopHalo / RACEGOW_OPENING_BUILT);
   check('a whoop inverted on the floor still latches turtle',
     shouldEnterTurtle(-0.9, 0.2, 0.2, false, 0.02, false) === true);
-  check('a whoop inverted 10 cm up is still flying, not seated',
-    shouldEnterTurtle(-0.9, 0.2, 0.2, false, 0.10, false) === false);
+  /* 0.35 m up is 10 cm of the picture, which is what this always asked: a
+   * machine a RaceGOW gate's height in the air is flying, not seated. */
+  check('a whoop inverted a gate\'s height up is still flying, not seated',
+    shouldEnterTurtle(-0.9, 0.2, 0.2, false, 0.10 * MICRO_SCALE, false) === false);
   const whoopHop = turtleLift();
-  check('a whoop flip hop clears its own arms without launching it',
-    whoopHop > 0.04 && whoopHop < 0.07, whoopHop);
+  check('a whoop flies the five inch hop, because it is a five inch',
+    Math.abs(whoopHop - 0.18) < 1e-12, whoopHop);
   check('a whoop hop is bigger than the aircraft and smaller than a gate',
-    whoopHop > 2 * airframeById('whoop65').dims.vHalfUp && whoopHop < 0.7112 / 4);
+    whoopHop > 2 * airframeById('whoop65').dims.vHalfUp
+      && whoopHop < RACEGOW_OPENING_BUILT / 4,
+    `${whoopHop} between ${2 * airframeById('whoop65').dims.vHalfUp} and ${RACEGOW_OPENING_BUILT / 4}`);
 
   setCraftAirframe(fiveDims);
   check('the five inch is seated again for everything below',
@@ -1884,16 +1906,28 @@ function suiteClipCatch() {
       Math.abs(invDown - u) < 1e-3 && Math.abs(invUp - d) < 1e-3,
       `${invDown} below, ${invUp} above`);
   }
-  /* The whoop's is the one the report was about, named rather than left to
+  /*
+   * The whoop's is the one the report was about, named rather than left to
    * the loop, because the defect was specifically that its floor reach was
-   * its CANOPY height. */
+   * its CANOPY height.
+   *
+   * IT IS THE FIVE INCH'S REACH NOW, and the asymmetry the original defect
+   * was about is still the thing being asserted. The whoop flies the five
+   * inch's plant, so its down extent is that plant's 45 mm, the height it
+   * actually rests at; its UP extent is the drawn canopy through the room's
+   * factor, 61.7 mm, because nothing rests a craft on its canopy and what
+   * reads that number is a collider deciding whether the top of the aircraft
+   * met a bar. So the two are still different, still in the right order, and
+   * still each owned by the thing that has a claim on them.
+   */
   setCraftAirframe(airframeById('whoop65').dims);
   const whoopRig = reachRig();
   const whoopDown = firstTouch(whoopRig, 0.30, 0.0, false);
-  check('a whoop no longer carries its canopy height under its ducts',
-    whoopDown < 0.014, whoopDown);
-  check('and its ducts are 10 mm down, which is what the plant rests it on',
-    Math.abs(whoopDown - 0.010) < 1e-3, whoopDown);
+  const whoopUp = 1 - firstTouch(whoopRig, 0.70, 1.0, false);
+  check('a whoop rests on the plant\'s 45 mm, which is what it settles at',
+    Math.abs(whoopDown - 0.045) < 1e-3, whoopDown);
+  check('and it still does not carry its canopy height under it',
+    whoopUp > whoopDown, `${whoopUp} above, ${whoopDown} below`);
   setCraftAirframe(fiveBefore);
 
   const post = new Colliders();

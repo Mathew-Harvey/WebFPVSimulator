@@ -512,6 +512,27 @@ async function main() {
   }
 
   /*
+   * A NOTE ON EVERYTHING ABOVE, AS OF THE MICRO SCALE CHANGE.
+   *
+   * W1 to W13 measure SIM_AIRFRAME_WHOOP65, and NOTHING IN THE SHELL SELECTS
+   * IT ANY MORE: configs/airframes.js gives the whoop simId 0, the five
+   * inch's plant, and the room it flies is built MICRO_SCALE times life size
+   * to suit. The plant is still compiled in and every gate above still
+   * passes, so this suite is now a check that a MODEL is what it claims
+   * rather than a check on what a pilot flies.
+   *
+   * It is kept, and kept honest by saying so here, for two reasons. The whoop
+   * plant is the record of what a 23 g 1S machine actually does and the
+   * argument for the change rests on that record being right. And if the
+   * decision is ever revisited, the gates that qualified it are the thing
+   * that lets it be revisited cheaply.
+   *
+   * W15 is the exception and is live: it rests whatever plant the airframe
+   * table selects, so it covers the five inch twice now and will follow the
+   * whoop straight back if it ever changes plants again.
+   */
+
+  /*
    * ---- W15 the parked height, both airframes ----
    *
    * configs/airframes.js carries `vHalfDown` per aircraft, a snapshot of
@@ -533,7 +554,18 @@ async function main() {
     const SLOP = 0.002;
     const { AIRFRAMES } = await import('../configs/airframes.js');
     for (const af of AIRFRAMES) {
-      const id = af.sim === 'whoop65' || af.id === 'whoop65' ? AF_WHOOP : AF_5IN;
+      /*
+       * THE PLANT THE AIRFRAME ACTUALLY SELECTS, off its own simId, not off
+       * its name. This read `af.id === 'whoop65' ? AF_WHOOP : AF_5IN`, which
+       * was the same thing until the whoop started flying the five inch's
+       * plant and stopped being the same thing at all: the gate then rested
+       * SIM_AIRFRAME_WHOOP65 against a table holding the five inch's 45 mm
+       * and reported the craft 37 mm low, which is a true measurement of a
+       * pairing that never happens. What has to hold is that whatever plant
+       * an airframe selects parks where the shell draws it, so the gate asks
+       * the airframe both questions.
+       */
+      const id = af.simId;
       const cfg = id === AF_WHOOP ? whoopCfg : fiveCfg;
       const sim = await fresh(wasm, cfg, id, id === AF_WHOOP ? 4.2 : 4.0);
       const rest = af.dims.vHalfDown;

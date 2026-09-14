@@ -62,7 +62,7 @@ import {
 } from '../trackbuilder/model.js';
 import { buildPath } from '../trackbuilder/path.js';
 import { wrapBetween, figureCueOf, upgradeStackedFigures } from '../trackbuilder/figures.js';
-import { gateScaleFor } from './track.js';
+import { gateScaleFor, MICRO_SCALE } from './track.js';
 import { startBlockLaneOffset, startBlockDims } from '../art/startblock.js';
 import { guideFromKnots } from './guide.js';
 
@@ -120,8 +120,55 @@ function sceneYawFor(el, kind) {
 }
 
 /* Document point to scene point, horizontally. Height is the scene's job. */
+/*
+ * HOW MANY SCENE METRES ONE DOCUMENT METRE IS, for the course being built.
+ *
+ * One on the sixty metre field, where a document metre IS a scene metre.
+ * MICRO_SCALE in a RaceGOW room, because the whoop flies the five inch's
+ * plant and a five inch needs the space: see configs/airframes.js for the
+ * derivation and src/game/track.js for the argument.
+ *
+ * IT IS MODULE STATE AND THAT IS DELIBERATE, because the alternative is
+ * threading a factor through ten call sites and the one that gets missed is
+ * a scale bug, which is a defect this project has shipped before. toScene is
+ * the ONLY place a document position becomes a scene position, so a single
+ * multiply here reaches every structure, station, knot, pad, sample, decal
+ * and figure without any of them knowing. Set and restored by
+ * courseFromDocument around one synchronous call; nothing here is async and
+ * nothing else in the module may assign it.
+ *
+ * What it does NOT reach is elevation, which never passes through toScene
+ * because a document's up axis is its z and the scene's is y. Every one of
+ * those is multiplied by hand and they are the five `elev` calls below.
+ */
+let SCALE = 1;
+
 function toScene(field, p) {
-  return { x: p.x - field.width / 2, z: -(p.y - field.depth / 2) };
+  return {
+    x: (p.x - field.width / 2) * SCALE,
+    z: -(p.y - field.depth / 2) * SCALE,
+  };
+}
+
+/* A document elevation in scene metres. The vertical half of toScene. */
+function elev(z) {
+  return (z || 0) * SCALE;
+}
+
+/*
+ * Every key in an element's dims that is a LENGTH, which is all of them bar
+ * these two. A denylist rather than a list of lengths on purpose: an element
+ * added later with a new length gets scaled by default, and the failure mode
+ * of the other order is an obstacle that is the wrong size in a room.
+ */
+const DIMS_NOT_LENGTHS = new Set(['levels', 'pads']);
+
+function scaledDims(dims, scale) {
+  const out = {};
+  for (const [k, v] of Object.entries(dims)) {
+    out[k] = (typeof v === 'number' && !DIMS_NOT_LENGTHS.has(k)) ? v * scale : v;
+  }
+  return out;
 }
 
 /*
@@ -202,6 +249,17 @@ function plantImportedHeights(doc) {
  * which the shell already treats as a map with nothing to score.
  */
 export function courseFromDocument(raw) {
+  /* SCALE is module state for the reason given where it is declared. It is
+   * set inside buildCourse, once the class is known, and put back here so a
+   * course that threw halfway cannot leave a room's factor on a field. */
+  try {
+    return buildCourse(raw);
+  } finally {
+    SCALE = 1;
+  }
+}
+
+function buildCourse(raw) {
   const { doc, repairs } = normalize(raw);
   upgradeStackedFigures(doc);
   plantImportedHeights(doc);
@@ -213,6 +271,9 @@ export function courseFromDocument(raw) {
    * course object that did not carry it would make every one of those guess.
    */
   const cls = trackClassOf(doc);
+  /* Every position and every length from here down is scene metres. See the
+   * declaration of SCALE for why a room's are not its document's. */
+  SCALE = cls === 'micro' ? MICRO_SCALE : 1;
   /* How much larger than the author's figures this track is built. One on a
    * RaceGOW room, 15 percent on the field. See gateScaleFor. */
   const gateScale = gateScaleFor(cls);
@@ -249,12 +310,12 @@ export function courseFromDocument(raw) {
       name: el.name || def.label,
       x: p.x,
       z: p.z,
-      baseY: el.position.z,
+      baseY: elev(el.position.z),
       yaw: sceneYawFor(el, kind),
       /* Tilt of the aperture plane, radians, straight from the document.
        * Zero for everything that is not an aperture. */
       pitch: kind === KIND.APERTURE ? el.pitch : 0,
-      dims: kind === KIND.APERTURE ? builtDims(el.dims, gateScale) : { ...el.dims },
+      dims: kind === KIND.APERTURE ? builtDims(el.dims, gateScale) : scaledDims(el.dims, SCALE),
     };
     /* The openings that are a gap in the lattice and not a gate: no pipe
      * is built for them anywhere. See isUnbuilt in elements.js. */
@@ -360,7 +421,7 @@ export function courseFromDocument(raw) {
         poleZ: structure.z,
         /* The pole's foot, not the knot: the knot now carries the height
          * the lap passes the pole at, and the square stands on the floor. */
-        baseY: knot.markerPos ? knot.markerPos.z : knot.pos.z,
+        baseY: elev(knot.markerPos ? knot.markerPos.z : knot.pos.z),
         centreY: dims.centerH,
         clearW: dims.clearW,
         clearH: dims.clearH,
@@ -412,7 +473,7 @@ export function courseFromDocument(raw) {
       flyOrder: stations.length,
       x: pos.x,
       z: pos.z,
-      baseY: el.position.z,
+      baseY: elev(el.position.z),
       /* Height of THIS opening's centre above the structure's base, built. */
       centreY: ap.centerH * gateScale,
       clearW: ap.clearW * gateScale,
@@ -452,7 +513,7 @@ export function courseFromDocument(raw) {
      * mesh uses, so the craft sits on a block rather than in the grass
      * between two. Pitch matches the ramp so the front arms rest on the
      * foam. */
-    const off = startBlockLaneOffset(pads.dims);
+    const off = startBlockLaneOffset(pads.dims) * SCALE;
     spawn = {
       x: p.x + Math.cos(yaw) * off,
       z: p.z - Math.sin(yaw) * off,
@@ -461,7 +522,7 @@ export function courseFromDocument(raw) {
     };
   } else if (stations.length) {
     const first = stations[0];
-    const back = cls === 'micro' ? SPAWN_BACK_MICRO : SPAWN_BACK;
+    const back = (cls === 'micro' ? SPAWN_BACK_MICRO : SPAWN_BACK) * SCALE;
     spawn = {
       x: first.x + Math.sin(first.yaw) * back,
       z: first.z + Math.cos(first.yaw) * back,
@@ -476,7 +537,7 @@ export function courseFromDocument(raw) {
    * it. */
   const line = path.samples.map((s) => {
     const p = toScene(field, s.pos);
-    return { x: p.x, y: s.pos.z, z: p.z };
+    return { x: p.x, y: elev(s.pos.z), z: p.z };
   });
 
   /*
@@ -514,7 +575,7 @@ export function courseFromDocument(raw) {
     logos: logosOf(doc).map((l) => l.image),
     /* The marks painted on the grass, in scene metres. See groundDecals. */
     decals: groundDecals(doc, field),
-    field: { width: field.width, depth: field.depth },
+    field: { width: field.width * SCALE, depth: field.depth * SCALE },
     /*
      * 'full' is a sixty metre field flown on a 5 inch; 'micro' is a RaceGOW
      * room flown on a 65 mm whoop. Everything the renderer, the race timer
@@ -630,7 +691,7 @@ function stampFigures(doc, field, stations) {
 function sceneKnots(knots, field) {
   return knots.map((k) => {
     const p = toScene(field, k.pos);
-    const out = { role: k.role, x: p.x, z: p.z, y: k.pos.z, radius: 0 };
+    const out = { role: k.role, x: p.x, z: p.z, y: elev(k.pos.z), radius: 0 };
     if (k.role === 'marker' && k.markerPos) {
       const pole = toScene(field, k.markerPos);
       out.poleX = pole.x;

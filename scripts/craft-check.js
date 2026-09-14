@@ -55,7 +55,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY, seatAirframe } from '../src/ui/ui.js';
-import { AIRFRAMES, airframeById } from '../configs/airframes.js';
+import { AIRFRAMES, airframeById, MICRO_SCALE, WHOOP_TRUE_DIMS } from '../configs/airframes.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -227,16 +227,38 @@ async function main() {
     near(`${af.id}: drawn span`, drawnAcross, real.spanMm, real.tolMm);
     near(`${af.id}: drawn sweep`, drawnReach, real.sweepMm / 2, real.tolMm);
 
-    /* 2. The collider against the drawn machine. This is the one that
+    /*
+     * 2. The collider against the drawn machine. This is the one that
      * matters in flight: the hull that meets a gate has to be the machine
-     * the pilot can see, on every axis. */
-    near(`${af.id}: swept radius vs drawn`, r.craftRadiusTrue * 1000, drawnReach, real.tolMm);
-    near(`${af.id}: hull up vs drawn`, r.craftUpTrue * 1000, drawnUp, real.tolMm);
+     * the pilot can see, on every axis.
+     *
+     * THROUGH THE WORLD'S FACTOR, on an aircraft that has one. A micro track
+     * is built MICRO_SCALE times life size because the whoop flies the five
+     * inch's plant, and src/render/whoopcraft.js scales the drawn machine by
+     * the same number. So the invariant is not that the drawn millimetres
+     * equal the swept ones, it is that they equal them ONCE THE ROOM'S
+     * FACTOR IS PAID, which is what actually has to hold when a duct meets a
+     * 2.4 m gate. This is the only place the two halves of that
+     * multiplication are ever seen together.
+     */
+    const k = af.trackClass === 'micro' ? MICRO_SCALE : 1;
+    near(`${af.id}: swept radius vs drawn`, r.craftRadiusTrue * 1000, drawnReach * k, real.tolMm * k);
+    near(`${af.id}: hull up vs drawn`, r.craftUpTrue * 1000, drawnUp * k, real.tolMm * k);
     if (af.id === '5inch') {
       pinned(`${af.id}: hull down vs drawn`, r.craftDownTrue * 1000, drawnDown, 15.0,
         'the plant parks it 15 mm under the model, see the note above');
     } else {
-      near(`${af.id}: hull down vs drawn`, r.craftDownTrue * 1000, drawnDown, real.tolMm);
+      /*
+       * The whoop's ducts hang 9.6 mm under a real CG, which through the
+       * room's factor is 32.9 mm, and the five inch plant it now flies parks
+       * it at 45.0. The 12 mm between them is the five inch's own ground
+       * clearance showing through a whoop's body, and it is 3.5 mm once
+       * divided back down to what the picture is of. Pinned rather than
+       * chased, because closing it means either a plant that is not the five
+       * inch's or a model that is not a whoop.
+       */
+      pinned(`${af.id}: hull down vs drawn`, r.craftDownTrue * 1000, drawnDown * k, 12.2,
+        'the five inch plant parks a whoop body 12 mm low, 3.5 mm to the eye');
     }
 
     /* 3. And the collider against the plant, through the table both read.
@@ -247,8 +269,17 @@ async function main() {
     near(`${af.id}: table up`, r.craftUpTrue * 1000, dims.vHalfUp * 1000, 0.001);
     near(`${af.id}: table down`, r.craftDownTrue * 1000, dims.vHalfDown * 1000, 0.001);
 
-    /* And the wheelbase a manufacturer prints, which is the arm doubled. */
-    near(`${af.id}: wheelbase`, dims.arm * 2000,
+    /*
+     * And the wheelbase a manufacturer prints, which is the arm doubled.
+     *
+     * OFF THE DRAWN MACHINE ON THE WHOOP, not off the airframe table, because
+     * that table is the five inch's now and 65 mm is a fact about a product
+     * rather than about the thing this simulator flies. WHOOP_TRUE_DIMS is
+     * where that fact lives and whoopcraft.js builds from it, so this asserts
+     * the two agree and that the aircraft on screen is still an Air65 II.
+     */
+    near(`${af.id}: wheelbase`,
+      (af.id === 'whoop65' ? WHOOP_TRUE_DIMS.arm : dims.arm) * 2000,
       af.id === 'whoop65' ? 65 : 220, 0.5);
   }
 

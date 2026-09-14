@@ -59,7 +59,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { celMaterial, outlineHull } from './celmat.js';
 import { WORLD_SCALE } from './frame.js';
 import { PROP_SPIN } from './herocraft.js';
-import { airframeById } from '../../configs/airframes.js';
+import { WHOOP_TRUE_DIMS, MICRO_SCALE } from '../../configs/airframes.js';
 
 /*
  * Every dimension in metres, from the aircraft. Named rather than inlined
@@ -68,13 +68,23 @@ import { airframeById } from '../../configs/airframes.js';
  * the same two numbers and the three must not drift.
  */
 /*
- * DERIVED, NOT TYPED. The paragraph above says these three must not drift
- * from configs/airframes.js and src/game/collide.js, and typing them twice
- * is how they would. airframes.js owns them; collide.js derives the sweep
- * from the same hullR this derives the duct's outer wall from, so the
- * drawn duct and the swept hull are the same surface by construction.
+ * DERIVED, NOT TYPED, AND FROM THE REAL 65 MM MACHINE.
+ *
+ * This reads WHOOP_TRUE_DIMS and not the whoop airframe's `dims`, and the
+ * difference is the whole of this file's relationship to the rest of the
+ * change. The airframe flies the five inch's plant, so its `dims` ARE the
+ * five inch's: 0.110 of arm and a 0.0635 hull. Building the ducts from those
+ * put a 16.5 mm bore inside a 47 mm wall, which is not a duct, and hung a
+ * 63.5 mm prop inside a 33 mm hole.
+ *
+ * So the model is built in the real whoop's own millimetres, every
+ * proportion intact, and the whole group is scaled by MICRO_SCALE at the
+ * bottom of this file, because the world it stands in is built through the
+ * same factor. The two multiplications cancel and the aircraft lands back on
+ * the airframe's `dims` to within two percent, which is what
+ * scripts/craft-check.js measures and why its tolerance is what it is.
  */
-const WHOOP_DIMS = airframeById('whoop65').dims;
+const WHOOP_DIMS = WHOOP_TRUE_DIMS;
 const ARM = WHOOP_DIMS.arm;  /* motor centre from airframe centre */
 const MOTOR_ARM = ARM / Math.SQRT2; /* per axis, the motors sit on the diagonals */
 const PROP_R = WHOOP_DIMS.propR; /* 31 mm Gemfan 1207 three blade */
@@ -197,9 +207,17 @@ export function buildWhoopCraft(opts = {}) {
   const cel = (o) => celMaterial({ fog, cloudShadow: 0, ...o });
   const group = new THREE.Group();
   group.name = opts.name ?? 'whoop-craft';
-  if (opts.worldScale) {
-    group.scale.setScalar(1 / WORLD_SCALE);
-  }
+  /*
+   * MICRO_SCALE ALWAYS, WORLD_SCALE ONLY IN THE WORLD.
+   *
+   * The geometry above is a real 65 mm whoop. Every room this aircraft is
+   * ever drawn in is built MICRO_SCALE times life size, so the model has to
+   * be too or it is a speck under a 2.4 m gate. It is unconditional because
+   * the aircraft is the same size on a share card and in an orbit as it is
+   * in the world, and the one place a wrong answer here would not show is
+   * the one place nobody would catch it.
+   */
+  group.scale.setScalar(MICRO_SCALE / (opts.worldScale ? WORLD_SCALE : 1));
   const hull = (mesh, t, c) => {
     if (inkOn) {
       outlineHull(mesh, t, c);

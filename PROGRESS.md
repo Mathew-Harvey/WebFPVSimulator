@@ -35589,3 +35589,159 @@ pass, 0 fail; `node src/trackbuilder/selftest.js` 528 passed, 0 failed;
 board's `npm test` all passed. `npm run verify` was not run: nothing here
 touches physics, the plant, the module ABI or the build. The generator was
 run and `git diff` on `presets.js` is empty.
+
+## Round 69: the whoop flies the five inch, and the room grows to fit
+
+The owner's report, and it is the same one the whoop has had since it landed:
+"the whoop flight feel sucks". And the owner's plan, which is the reason this
+round is a change of units rather than another pass at the plant:
+
+> the 5 inch flight feel is good. in RL the whoop flys mostly like a 5 inch
+> with slightly less momentum. So... lets just make it fly like the 5 inch and
+> scale the room / gates up so the user feels like it exactly the same, as the
+> 5 inch, but looks like flying a tiny whoop through 28 inch gates
+
+That is what this does.
+
+### Why it works, which is the part worth being precise about
+
+Scale a world and the craft in it by one factor and EVERY RENDERED FRAME IS
+IDENTICAL. The camera sits at the craft's origin, so what reaches the screen
+is the world measured in craft widths, and a uniform scale does not change
+that ratio. The pilot cannot see this constant. What they can feel is
+everything it is divided against: inertia, thrust to weight, rate damping,
+drag, and the clock, none of which scale with it.
+
+So the whoop can be given the five inch's plant outright and the room built
+big enough for a five inch, and the result is a whoop threading 28 inch
+RaceGOW gates with a five inch underneath it. The fiction costs exactly one
+thing, which is that the shed is secretly 34.3 by 41.2 m with a 13.7 m
+ceiling, and gravity is the only thing in the simulation that does not come
+through the factor.
+
+### The factor is derived, not chosen
+
+MICRO_SCALE is in configs/airframes.js and is the ratio of the two aircraft's
+sweep radii, arm plus hull, which is the measure src/game/collide.js derives
+CRAFT_R with for both: 0.1735 against 0.0506 is 3.4289.
+
+That is exactly the factor that leaves every clearance the number of craft
+widths it already was. A 0.7112 m opening against a 0.1012 m whoop is 7.03
+gate widths; built through this it is 2.4387 m against a 0.347 m five inch,
+which is 7.03. The run off, the ceiling, rule 3's spacing and the 14 inch pole
+gap all carry across the same way, so the seven shipped RaceGOW tracks still
+read the way their authors drew them. It is derived rather than typed so the
+identity cannot rot.
+
+CORROBORATION, AND IT WAS NOT ARRANGED. src/trackbuilder/stage.js has held
+LAP_SPEED.micro = 3.73 m/s since the class landed, measured off real RaceGOW
+footage. The field's 12.7 divided by 3.4289 is 3.704. A real whoop's lap pace
+in a real room already sits within 0.7 percent of where geometric scaling of a
+five inch puts it, which is the owner's observation arriving from the other
+direction. The measured number stays, because it is measured.
+
+### Where the factor is applied, and where it must never be
+
+src/trackbuilder is RaceGOW's own inches and stays that way. The warnings, the
+envelope, rule 3's spacing and the published documents are all computed on
+them, and a track published here has to mean the same thing to somebody
+building it out of PVC at home. racegow.js was not touched.
+
+The scale is applied where a DOCUMENT becomes a FLOWN COURSE:
+
+- `src/game/trackdoc.js` holds it in one module-scoped `SCALE`, applied inside
+  `toScene`, which is the only place a document position becomes a scene
+  position: one multiply reaches every structure, station, knot, pad, sample,
+  decal and figure. Elevation never passes through it, because a document's up
+  axis is z and the scene's is y, so those are five `elev` calls by hand.
+  Non-aperture dims scale through a DENYLIST of the two keys that are counts,
+  not a list of lengths, so an element added later is scaled by default.
+- `gateScaleFor('micro')` returns it instead of 1, which carries aperture dims.
+- `src/render/scene.js` scales the shed, the RaceGOW pipe, the opening and the
+  orbit camera's room constants at the point of use.
+- `src/render/whoopcraft.js` builds from WHOOP_TRUE_DIMS, the real 65 mm
+  machine, and scales the whole group. The two multiplications cancel.
+
+### What the airframe became
+
+simId 0, a 6S pack, `betaflight-default`, the five inch's rates and a 100
+percent throttle. Every one of those is forced: the plant's thrust is keyed to
+pack volts, so a 1S pack on a 6S plant will not leave the floor; the whoop
+presets size P and D against 6e-6 kg m^2 and their cutoffs against a 23 g
+frame; the 65 percent cap existed only because a 23 g machine hovers at a
+third of the stick. The three whoop tunes stay on disk and come off the Tune
+row.
+
+THE LAUNCH CARD NOW SAYS 6S ON A WHOOP. That is a visible seam and it is the
+honest place to put one: the alternative is a card that lies about the machine
+it is handing over.
+
+### Three findings, written down because two of them were real
+
+**The drawn machine was derived from the airframe table, and the table moved.**
+whoopcraft.js read `airframeById('whoop65').dims` for arm, prop and hull, so
+pointing the airframe at the five inch put a 16.5 mm duct bore inside a 47 mm
+wall and hung a 63.5 mm prop in a 33 mm hole. Caught by `check:craft`, which
+is exactly what it is for. Fixed by splitting WHOOP_TRUE_DIMS out: one block is
+a BetaFPV Air65 II, which is a fact about a product, and the other is the
+machine this simulator flies.
+
+**The canopy stood 7 apparent mm above the hull that sweeps it.** A whoop is
+proportionally much taller than a five inch, 18 mm of canopy over a 41 mm half
+span against 38 over 173, so taking the five inch's vHalfUp left a quarter of
+the aircraft's height passing through a pipe before anything touched. Fixed by
+splitting the vertical extents by owner: DOWN is the plant's 45 mm, because
+src/main.js seats REST_HEIGHT from it and the plant settles there; UP is the
+drawn canopy through the factor, because nothing rests a craft on its canopy
+and what reads it is a collider deciding whether the top met a bar. A load
+time assertion fails the module if the two ever drift.
+
+**The five inch's ground clearance shows through a whoop body, 12 mm, 3.5 mm
+to the eye.** Pinned in `check:craft` rather than chased, because closing it
+means either a plant that is not the five inch's or a model that is not a
+whoop. Declined, with the reason.
+
+### Checks
+
+Run this turn: `check:craft` 20 of 20, `check:clip` 528 of 528, `micro:check`
+clean, `whoop:gates` 21 of 21, `check:path` 12, `check:orbit` 17,
+`check:wall` 45, `lint:frame` 34, `lint:presets` 6 of 6, `lint:quality` 56,
+`lint:shell`, `lint:board`, `lint:nouns`, `gif:selftest` 38.
+
+`score:selftest` has one failure, "the same lap without the flip is a Maverick
+Loop". It fails identically on a clean tree: it is the red test Round 68 dated
+and it is not this change.
+
+NOT RUN: `npm run verify`, and no shots. Nothing here was flown. The whole
+claim of this round is about how the aircraft feels, and no headless check can
+see that, so the evidence that matters is a pilot in the seat.
+
+### What the tests had to be told, and why none of it was a threshold move
+
+Ten assertions in selftest.js and three in micro-check.js asserted the whoop
+got its OWN smaller band, halo, hop and hull, a quarter of the five inch's.
+None of that is true now and none of it can be made true. Each was rewritten
+to assert the thing it was actually for, against the opening AS BUILT: the
+0.22 m floor band covered the bottom 31 percent of a 0.711 m hole, which was
+the defect, and covers 9 percent of a 2.4387 m one, which is what a five inch
+has always had on the field. Same promise, reached by making the room the
+right size for the aircraft instead of the band the right size for the room.
+No threshold was moved to make anything pass.
+
+W15 in whoop-gates.js selected its plant off the airframe's NAME and so rested
+the whoop plant against the five inch's table, reporting a craft 37 mm low: a
+true measurement of a pairing that never happens. It reads `af.simId` now.
+W1 to W13 still measure SIM_AIRFRAME_WHOOP65, which nothing selects; the suite
+is kept and a note at the head of W15 says plainly that it is now a check on a
+model rather than on what a pilot flies.
+
+### Still open
+
+The board holds whoop times flown on the old plant. The owner's call this turn
+was to leave it alone and deal with it separately. Laps will land 20 to 30
+percent off what they were, so those times are not comparable to anything
+flown from here.
+
+The landing page builds its own 10 by 12 by 4 m shed and bakes its demo track
+through this repository's `courseFromDocument`, which now returns scaled
+metres. That is the next thing to fix and it is in the following commit.

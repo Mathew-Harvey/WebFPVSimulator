@@ -47,6 +47,7 @@
  * builder may not import the game, so the constants they both need live in
  * a leaf module rather than being typed out twice. */
 import { FT, IN, FRAME_TUBE_OD } from '../units.js';
+import { MICRO_SCALE } from '../../configs/airframes.js';
 
 /* Re-exported because this module's callers already read it from here. The
  * provenance of the 1.315 in figure is written down in src/units.js. */
@@ -123,8 +124,61 @@ export const GATE_SCALE = 1.15;
  * 15 percent of gate costs nothing there; a 5 by 6 m room has four, and a
  * gate grown 15 percent inside a room that did not grow is a smaller room.
  */
+/*
+ * THE MICRO WORLD IS BUILT LIFE SIZE TIMES THIS, AND THE AIRCRAFT FLYING IT
+ * IS A FIVE INCH.
+ *
+ * The argument, because it reads like a cheat and is not one.
+ *
+ * A whoop is not a small five inch. It has three times the angular
+ * acceleration and a fifth of the speed, and the plant modelled that
+ * honestly for months. The owner flew it and the answer was the same every
+ * time: it does not feel like flying. A real whoop, in a real room, flies
+ * MOSTLY LIKE A FIVE INCH WITH SLIGHTLY LESS MOMENTUM, because a pilot flies
+ * to what the picture does, and the picture is the same picture. The
+ * difference the plant was reproducing is real and is not the thing the
+ * pilot feels.
+ *
+ * So the whoop flies the five inch's plant, and the room it flies in is
+ * built big enough for a five inch. That is this number.
+ *
+ * IT IS A CHANGE OF UNITS AND NOTHING ELSE, which is the part worth being
+ * precise about. Scale a world and the craft in it by the same factor and
+ * every rendered frame is IDENTICAL: the camera sits at the craft's origin,
+ * so what reaches the screen is the world measured in craft widths, and that
+ * ratio is what this preserves. A pilot cannot see this constant. What they
+ * can feel is everything it is divided against: the five inch's inertia, its
+ * thrust to weight, its rate damping, its drag.
+ *
+ * THE VALUE IS DERIVED, NOT CHOSEN. It is the ratio of the two aircraft's
+ * sweep radii, arm plus hull, which is the same measure src/game/collide.js
+ * uses for both and the same one the GATE_SCALE argument above is written
+ * in. 0.1735 m against 0.0506 m is 3.4289.
+ *
+ * That is exactly the factor that leaves every clearance on the track the
+ * number of craft widths it is today. A 0.7112 m RaceGOW gate against a
+ * 0.1012 m whoop is 7.03 gate widths; built at this scale it is a 2.4387 m
+ * opening against a 0.347 m five inch, which is 7.03. The room, the run off,
+ * the ceiling and the pole gaps all carry over the same way, so the tracks
+ * that were designed against the old machine still read correctly.
+ *
+ * WHAT IT COSTS is that the room is secretly a hangar: 34.3 by 41.1 m with a
+ * 13.7 m ceiling. Nothing on screen says so, because the shed, the gates and
+ * the aircraft are all built through this, and gravity is the only thing in
+ * the simulation that does not scale. That is the whole of the fiction, and
+ * it is spent buying the five inch's flight model for a machine that looks
+ * like a whoop.
+ *
+ * WHAT IT MUST NOT TOUCH is the document. src/trackbuilder is RaceGOW's own
+ * inches, the warnings, the envelope and rule 3's spacing are computed on
+ * them, and a published track has to mean the same thing to a pilot building
+ * it out of PVC at home. The scale is applied where a document becomes a
+ * FLOWN COURSE, in src/game/trackdoc.js, and nowhere upstream of that.
+ */
+export { MICRO_SCALE };
+
 export function gateScaleFor(cls) {
-  return cls === 'micro' ? 1 : GATE_SCALE;
+  return cls === 'micro' ? MICRO_SCALE : GATE_SCALE;
 }
 
 /* The frame tube as BUILT, which is the one the scene draws and the one a

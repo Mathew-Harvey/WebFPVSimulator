@@ -56,7 +56,7 @@ import { buildPath } from '../src/trackbuilder/path.js';
 import { Race } from '../src/game/race.js';
 import { setCraftAirframe, shouldScorePass, dirtClearance } from '../src/game/collide.js';
 import { airframeById } from '../configs/airframes.js';
-import { GATE_SCALE } from '../src/game/track.js';
+import { GATE_SCALE, MICRO_SCALE } from '../src/game/track.js';
 import { GATE_OPENING_MAX, PIPE_OD, POLE_FROM_GATE_MIN } from '../src/trackbuilder/racegow.js';
 import { PRESETS, presetsForClass } from '../src/trackbuilder/presets.js';
 import {
@@ -133,9 +133,16 @@ function pipeline(cls) {
   check('every station is a number', !badStation, badStation && JSON.stringify(badStation).slice(0, 120));
 
   const gate = (course.stations || []).find((st) => st.type === 'gate');
-  const want = cls === 'micro' ? GATE_OPENING_MAX : 1.524 * GATE_SCALE;
+  /*
+   * A RaceGOW opening is 28 inches in the document and MICRO_SCALE times that
+   * as built, because the whoop flies the five inch's plant and the room it
+   * flies in is built for a five inch. It was one to one until then, and the
+   * two numbers being one multiply apart is the whole of what changed: this
+   * asserts the multiply happened exactly once.
+   */
+  const want = cls === 'micro' ? GATE_OPENING_MAX * MICRO_SCALE : 1.524 * GATE_SCALE;
   check(cls === 'micro'
-    ? 'a RaceGOW gate is built one to one'
+    ? 'a RaceGOW gate is built at the micro scale'
     : 'a MultiGP gate keeps the 15 percent',
   gate && Math.abs(gate.clearW - want) < 1e-9, gate ? `${gate.clearW} wanted ${want}` : 'no gate');
 
@@ -218,8 +225,21 @@ function raceDemo() {
   const fiveDims = airframeById('5inch').dims;
   setCraftAirframe(airframeById('whoop65').dims);
   const band = dirtClearance();
-  check('the whoop band is under a tenth of a RaceGOW opening',
-    band / GATE_OPENING_MAX < 0.10, `${band.toFixed(4)} m`);
+  /*
+   * THE FLOOR BAND, AGAINST THE OPENING AS BUILT.
+   *
+   * dirtClearance is the height below which a pass is refused as flown
+   * through the dirt, and it is 0.22 m, a five inch's number, which the whoop
+   * now inherits along with the rest of that aircraft. The defect this check
+   * was written for was that 0.22 covered the bottom 31 percent of a 0.711 m
+   * RaceGOW opening, so a whoop flown low was refused with nothing on screen
+   * to say why. Against an opening built at MICRO_SCALE it covers 9 percent,
+   * which is the same fraction a five inch sees on the field, and the defect
+   * is gone by construction rather than by a special case.
+   */
+  check('the floor band is under a tenth of a RaceGOW opening as built',
+    band / (GATE_OPENING_MAX * MICRO_SCALE) < 0.10,
+    `${band.toFixed(4)} m of ${(GATE_OPENING_MAX * MICRO_SCALE).toFixed(4)}`);
   let lowest = Infinity;
   for (let hop = 0; hop < 60 && race.lap < 3; hop += 1) {
     const target = race.gates[race.next];
@@ -267,8 +287,30 @@ function raceDemo() {
     }
   }
   setCraftAirframe(fiveDims);
-  check('the low line really is inside the band a five inch would have refused',
-    lowest < 0.22, `${lowest.toFixed(3)} m at its lowest`);
+  /*
+   * THE LINE IS LOW IN THE HOLE, WHICH IS WHAT IT WAS ALWAYS FOR.
+   *
+   * This asked whether the line dipped under 0.22 m, the five inch's floor
+   * band, because the point was that a whoop legitimately flies where a five
+   * inch would have been refused. There is no such place any more: the whoop
+   * IS the five inch and the room is built to match, so a quarter of the way
+   * up a 2.44 m opening is 0.375 m and comfortably above the band. Keeping
+   * the old assertion would mean either lowering the line until it fails for
+   * a reason that is not about the line, or moving a threshold to suit a
+   * result, which this project does not do.
+   *
+   * What the loop is actually evidence for survives intact: a line flown a
+   * quarter of the way up every opening, low in the hole and nowhere near its
+   * centre, scores every gate. So the check is that it IS low in the hole,
+   * measured against the opening it is in rather than against a band it no
+   * longer reaches.
+   */
+  const lowGate = (race.gates[0] && race.gates[0].apertures[0]) || null;
+  check('the low line really is in the bottom third of the opening',
+    lowGate ? lowest < lowGate.clearH * 0.34 : false,
+    lowGate
+      ? `${lowest.toFixed(3)} m at its lowest, in a ${lowGate.clearH.toFixed(3)} m opening`
+      : 'no gate');
   check('every gate in the flying order scores', missed.length === 0, missed.join(', '));
 
   /*

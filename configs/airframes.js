@@ -35,6 +35,41 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+/*
+ * THE 65 MM WHOOP AS A REAL OBJECT, which is a different thing from the
+ * airframe above that wears its name.
+ *
+ * These are the numbers the whoop entry's `dims` held until the machine
+ * started flying the five inch's plant, and they are quoted from the BetaFPV
+ * Air65 II: a 65 mm wheelbase, so arm is 0.065 / (2 sqrt 2) and is plant.c's
+ * arm_x times sqrt 2; a 31 mm Gemfan 1207 three blade; a duct whose outer
+ * radius is the 33 mm bore that gives that prop a 1 mm tip gap plus a 1.6 mm
+ * moulded wall. Axis aligned that is 2 * (0.0325 / sqrt 2 + 0.0181) =
+ * 82.2 mm against BetaFPV's published 82.6 by 82.6 mm for the frame, which
+ * is the figure to check these against and not the 65 mm wheelbase, which is
+ * a motor spacing and not a size.
+ *
+ * The duct is the outside of this aircraft and the prop is not, in every
+ * horizontal direction, which is the entire point of the design. 10 mm of
+ * duct sits below the CG and 18 mm of canopy and camera above it.
+ *
+ * TWO THINGS READ THIS. src/render/whoopcraft.js models the ducts, the
+ * canopy and the body from it, so the drawn machine keeps a whoop's
+ * proportions however large it is drawn. And MICRO_SCALE below is derived
+ * from it. Nothing else should: the collider, the plant and the shell all
+ * want the airframe's own `dims`, which is the five inch.
+ */
+export const WHOOP_TRUE_DIMS = {
+  arm: 0.0325,
+  propR: 0.0155,
+  hullR: 0.0181,
+  vHalfDown: 0.010,
+  vHalfUp: 0.018,
+  bodyLength: 0.0826,
+  bodyWidth: 0.0826,
+  bodyHeight: 0.028,
+};
+
 export const AIRFRAMES = [
   {
     id: '5inch',
@@ -142,13 +177,44 @@ export const AIRFRAMES = [
   },
   {
     id: 'whoop65',
-    simId: 1,
+    /*
+     * ZERO, WHICH IS THE FIVE INCH'S PLANT, AND THE WHOLE POINT OF THIS
+     * AIRFRAME NOW.
+     *
+     * It was 1, a 23 g 1S ducted whoop modelled honestly off the BetaFPV
+     * Air65 II: three times the five inch's angular acceleration, a fifth of
+     * its speed, its own inertia, its own drag, its own 1S sag. It is still
+     * in src/native/plant.c as SIM_AIRFRAME_WHOOP65 and nothing selects it.
+     *
+     * The owner flew every version of it and the verdict never moved: it
+     * does not feel like flying. The five inch does. A real whoop in a real
+     * room flies mostly like a five inch with slightly less momentum,
+     * because a pilot flies to what the picture does and the picture is the
+     * same picture; the dynamic differences the plant was reproducing are
+     * real and are not what the hands feel.
+     *
+     * So this machine flies the five inch's plant, and the room it flies in
+     * is built MICRO_SCALE times life size to give a five inch the space it
+     * needs. Scaling a world and the craft in it by one factor is a change
+     * of units and nothing else, so every frame is the frame it was: the
+     * picture is a whoop threading 28 inch RaceGOW gates and the feel
+     * underneath it is the five inch's. See MICRO_SCALE at the foot of this
+     * file for the derivation and for what the fiction costs.
+     */
+    simId: 0,
     name: '65 mm whoop',
     short: 'Whoop',
-    blurb: 'A 23 gram 1S ducted whoop, modelled on the BetaFPV Air65 II. Three times the angular acceleration of the 5 inch and a fifth of its speed, which is what fits a track in a living room.',
-    facts: ['1S', '65 mm', 'Indoors'],
+    blurb: 'A 65 mm ducted whoop indoors, flying the five inch\'s flight model. The hall and its gates are built to match it, so what you see is a whoop through 28 inch gates and what you feel is the 5 inch.',
+    facts: ['Indoors', '65 mm', '5 inch feel'],
     trackClass: 'micro',
-    cells: 1,
+    /*
+     * SIX, BECAUSE THE PLANT IS THE FIVE INCH'S AND ITS THRUST IS KEYED TO
+     * PACK VOLTS. A 1S pack on a 6S plant is a quad that will not leave the
+     * floor. The launch card says 6S on a whoop, which is a visible seam in
+     * the fiction and is the honest place to put one: the alternative is a
+     * card that lies about the machine it is about to hand over.
+     */
+    cells: 6,
     /*
      * A 1S LiHV charges to 4.35 and a whoop is flown until it is at about
      * 3.40 under load, which is why the empty figure here is higher than the
@@ -156,97 +222,54 @@ export const AIRFRAMES = [
      * 1S whoop pack at 3.60 open circuit is already sagging under a punch to
      * the 3.00 its own battery profile warns at.
      */
-    packVoltages: [4.35, 4.0, 3.6],
-    packLabels: { 4.35: 'Charged', 4.0: 'Half', 3.6: 'Nearly empty' },
+    packVoltages: [4.2, 3.8, 3.5],
+    packLabels: { 4.2: 'Charged', 3.8: 'Half', 3.5: 'Nearly empty' },
     /*
-     * THE CHAMPION'S OWN TUNE, AS BETAFPV SHIP IT, and the choice is the
-     * owner's, made twice. The whoop shipped on this tune first, moved to
-     * the Freestyle preset with the master slider at 150 percent on a feel
-     * report, and came back when the owner reported the machine hard to fly
-     * and a review of the model found the loop tight and well damped on
-     * every shipped configuration but calmest by a distance on this one: a
-     * third of the hover motor jitter of the Freestyle at 150, 6 percent of
-     * yaw overshoot against 14, and a 23 deg/s reversal on a full yaw snap
-     * against 60. PROGRESS.md carries the tables.
+     * THE FIVE INCH'S TUNE, BECAUSE THE PLANT IS THE FIVE INCH'S.
      *
-     * It is also the tune the plant is modelled on: plant.c's 0702 is the
-     * Champion's 36,000 kV motor on a GF1207, and scripts/whoop-gates.js
-     * measures the Champion. A tune is a Betaflight configuration and the
-     * plant is a separate thing, so the other two presets fly on the same
-     * plant, exactly as a pilot who flashes them onto a Champion gets, and
-     * the Racing and Freestyle stay on the Tune row as their authors
-     * shipped them.
+     * This was 'whoop-champion', BetaFPV's own shipped configuration for the
+     * Air65 II, and it was the right answer for as long as SIM_AIRFRAME_WHOOP65
+     * was what flew. It is the wrong answer now and not by a little: a whoop
+     * preset is a 1S configuration, its P and D are sized against 6e-6 kg m^2
+     * of inertia, its filter cutoffs against a 23 g frame's resonances and its
+     * motor idle and voltage compensation against a cell that sags to 3.0 V
+     * under a punch. Loaded onto a 710 g 6S machine it is an underdamped
+     * sluggish tune, which is exactly the complaint this whole change exists
+     * to answer.
      *
-     * NO STARTING PID ADJUSTMENT SHIPS WITH IT. The 150 percent master that
-     * came with the Freestyle default was a seed keyed to that tune, and
-     * src/ui/ui.js takes it back out of a profile that only ever received
-     * it, so a pilot who picks the Freestyle later gets it as BetaFPV wrote
-     * it. seedAirframePids and defaultPids still exist for an airframe that
-     * wants a seed; this one no longer carries one.
+     * The three whoop presets stay on disk in configs/ and are retired from
+     * the Tune row by configs/registry.js. They are real BetaFPV configs and
+     * cost nothing to keep; what they must not do is be offerable for a plant
+     * they were never written for.
      */
-    defaultTune: 'whoop-champion',
+    defaultTune: 'betaflight-default',
     /*
-     * BetaFPV's own rate profile for the Air65 II Champion and Racing:
-     * ACTUAL, srate 58 / 58 / 50, expo 0, which is 580 deg/s on roll and
-     * pitch and 500 on yaw.
+     * THE FIVE INCH'S RATES, FOR THE SAME REASON AS THE TUNE.
      *
-     * KEPT THROUGH THE FREESTYLE INTERLUDE, deliberately, and the
-     * Champion's own again now that the default tune is back on it. Rates
-     * are the pilot's in this project and a tune never sets them: the Rates
-     * row says so in capitals and configs/rates.js strips every rate key
-     * out of a tune on the way in. BetaFPV's Freestyle preset does carry
-     * its own, on Betaflight rates rather than Actual, and adopting them
-     * would be this file quietly changing a pilot's stick authority because
-     * a PID preset changed. If they are wanted they are three rows on the
-     * Rates screen.
+     * These were BetaFPV's own profile for the Air65 II: ACTUAL, srate
+     * 58 / 58 / 50, which is 580 deg/s on roll and pitch and 500 on yaw, with
+     * a 65 percent SCALE throttle cap. Every one of those numbers was chosen
+     * against a machine with three times this plant's angular acceleration
+     * and 4.7 to one of thrust on 23 grams, and the cap in particular existed
+     * only because that machine put its hover at a third of the stick.
      *
-     * A RACING whoop flies SLOWER rates than a 5 inch freestyle quad, and
-     * that surprises people. The reason is the track: a RaceGOW course fits
-     * in 1.22 by 1.83 m and its gates are 610 mm square, so the whole thing
-     * is flown inside a few metres and the stick has to be able to place the
-     * aircraft rather than throw it. Expo is zero because ACTUAL already
-     * gives an independent centre stick, 70 deg/s here, which is the shape a
-     * racer wants and the structural difference from a 5 inch setup.
+     * A five inch does not have that problem. It holds a hover near half
+     * stick on the whole travel, which is what the five inch's own entry says
+     * and why it keeps 100. Carrying the 65 percent cap over would leave this
+     * aircraft with two thirds of the thrust of the plant it is flying, in a
+     * hall built for all of it.
+     *
+     * Rates are still the pilot's. Three rows on the Rates screen change
+     * them, configs/rates.js strips every rate key out of a tune on the way
+     * in, and src/ui/ui.js keeps a pilot's own rates across an airframe
+     * change unless they are still the stock ones.
      */
     rates: {
       type: 'ACTUAL',
-      roll: { rcRate: 7, srate: 58, expo: 0 },
-      pitch: { rcRate: 7, srate: 58, expo: 0 },
-      yaw: { rcRate: 7, srate: 50, expo: 0 },
-      /*
-       * SIXTY FIVE PERCENT, AND IT IS A SCALE RATHER THAN A CLIP.
-       *
-       * A 23 g aircraft with 4.7 to one of thrust to weight holds a hover
-       * at 33.6 percent of stick uncapped and climbs at 13 m/s at full
-       * throttle, which is a hall's ceiling in a third of a second. Left
-       * uncapped the top two thirds of the stick are unusable and the bottom
-       * third is where all the flying happens, which is the definition of
-       * twitchy.
-       *
-       * Betaflight's SCALE limit redistributes the WHOLE travel under the
-       * cap rather than clipping the top off it, so nothing is lost: full
-       * stick commands 65 percent, hover moves up to 49.0 percent of stick
-       * (measured, see HOVER_STICK_PERCENT in configs/rates.js), and every
-       * millimetre of stick is worth two thirds as much throttle. That is
-       * the whole reason it is SCALE and not OFF, and the Rates screen says
-       * so in the same words.
-       *
-       * IT WAS 65, THEN 75, AND IT IS 65 AGAIN, and every step was the
-       * owner's. 75 put the hover at 43.1 percent and bought 10.9 m/s of
-       * climb at full stick; the owner then reported the whoop hard to fly
-       * and asked for a cap that makes the Champion easy. 65 puts the hover
-       * at 49.0 percent, the middle of the stick with as much travel below
-       * it as above, and full stick still buys 9.5 m/s of climb, a 4 m
-       * hall's ceiling in well under a second. Finer everywhere, coarser
-       * nowhere a room can use. 75 stays on the list in configs/rates.js
-       * for anybody who wants it back, and src/ui/ui.js moves a stored 75
-       * to 65 once, the way it moved 65 to 75 before.
-       *
-       * The five inch keeps 100 because it does not have the problem: 8.2 to
-       * 1 on a 710 g airframe over a sixty metre field is a throttle a pilot
-       * uses all of.
-       */
-      throttleCap: 65,
+      roll: { rcRate: 7, srate: 67, expo: 0 },
+      pitch: { rcRate: 7, srate: 67, expo: 0 },
+      yaw: { rcRate: 7, srate: 67, expo: 0 },
+      throttleCap: 100,
     },
     /*
      * The Air II canopy takes a C03 on a 15 to 45 degree adjustable mount, so
@@ -274,76 +297,112 @@ export const AIRFRAMES = [
     cameraFov: 95,
     cameraAngle: 25,
     /*
-     * 0.0325 is half of the 65 mm wheelbase, which for a whoop is measured
-     * motor to motor across the diagonal exactly as it is on a five inch, so
-     * this is plant.c's arm_x times sqrt 2 again. 0.0155 is a 31 mm Gemfan
-     * 1207 three blade.
+     * THE FIVE INCH'S, EXACTLY, BECAUSE THIS AIRCRAFT IS ONE.
      *
-     * vHalf is 0.018, the canopy top, because a whoop is thicker upward than
-     * downward: the ducts sit 10 mm under the CG and the Air II canopy with
-     * its camera sits 18 mm over it. A symmetric semi extent has to cover the
-     * larger, and 18 mm is under half the five inch's 40 which is what a
-     * machine a third of the size should measure.
+     * `dims` is documented above as the airframe AS THE RENDERER DRAWS IT AND
+     * THE COLLIDER SWEEPS IT, and both of those are the five inch now. The
+     * plant is SIM_AIRFRAME_5IN, so its hull extents are the five inch's and
+     * the shell's REST_HEIGHT has to agree with them or the craft spawns
+     * buried or floating. The collider sweeps a five inch because a five inch
+     * is what the physics is resolving contacts for. And the renderer draws
+     * the whoop at five inch size, because the world it is drawn in is built
+     * MICRO_SCALE times life size: a 65 mm model in a hall scaled by 3.43
+     * would be a speck, and scaled up by the same 3.43 it lands on these
+     * numbers to within two percent.
      *
-     * bodyWidth is the DUCT SPAN rather than the frame's waist, and that is
-     * deliberate: a whoop presents its ducts to everything it hits, always,
-     * because they are the outermost thing on it in every direction. That is
-     * the entire point of the design.
+     * THE REAL MACHINE'S GEOMETRY IS NOT LOST. It is WHOOP_TRUE_DIMS below,
+     * which is what src/render/whoopcraft.js models the ducts and the canopy
+     * from and what MICRO_SCALE is derived against. That separation is the
+     * point: one block is a 65 mm whoop, which is a fact about a real
+     * product, and the other is the machine this simulator flies.
      */
     dims: {
-      arm: 0.0325,
-      propR: 0.0155,
+      arm: 0.110,
+      propR: 0.0635,
+      hullR: 0.0635,
       /*
-       * THE DUCT, WHICH IS THE OUTSIDE OF THIS AIRCRAFT, AND THE PROP IS NOT.
+       * DOWN IS THE PLANT'S, UP IS THE MODEL'S, and the split is not a fudge.
        *
-       * 0.0181 is src/render/whoopcraft.js's DUCT_BORE plus DUCT_WALL, the
-       * 33 mm bore that gives a 31 mm prop its 1 mm tip gap plus the 1.6 mm
-       * moulded wall. whoopcraft derives its wall from THIS number now, so
-       * the drawn duct and the swept hull cannot disagree.
+       * vHalfDown is where the floor is as far as the shell is concerned:
+       * src/main.js seats SPAWN_ALT and REST_HEIGHT from it and the plant
+       * settles the craft at its own hull_hz_down, so this HAS to be the five
+       * inch's 45 mm or the aircraft spawns buried or hovering. It costs a
+       * whoop body 12 mm of ground clearance it would not have, 3.5 mm once
+       * divided back down to the size the picture is of, and scripts/craft-check.js
+       * pins it at that.
        *
-       * The comment two paragraphs down has said since the whoop landed
-       * that it presents its ducts to everything it hits, always, because
-       * they are the outermost thing on it in every direction, and that
-       * this is the entire point of the design. The collider did not
-       * implement it: collide.js derived the whole sweep from propR, so the
-       * hull it swept was the bare blade at 0.0155 and the machine was
-       * 5.2 mm narrower to the world than it was on screen. Measured
-       * against a RaceGOW pole, contact happened at 50 to 52.5 mm where the
-       * drawn ducts were already 2.6 mm inside it on each side.
+       * vHalfUp has no such owner. Nothing in the plant rests a craft on its
+       * canopy; what reads this is src/game/collide.js, deciding whether the
+       * top of the aircraft met a gate's bar or a horizontal pole. So it is
+       * the DRAWN machine's, because the drawn machine is what the pilot is
+       * threading under: a whoop is proportionally much taller than a five
+       * inch, 18 mm of canopy and camera over a 41 mm half span against the
+       * five inch's 38 over 173, and taking the five inch's number here left
+       * 7 apparent millimetres of canopy standing above the hull that sweeps
+       * it. On a machine 28 mm tall that is a quarter of it passing through
+       * a pipe before anything touched.
        *
-       * Axis aligned this gives 2 * (0.0325 / sqrt(2) + 0.0181) = 82.2 mm,
-       * against BetaFPV's published 82.6 by 82.6 mm for the Air65 frame.
-       * That is the number to check this against, not the 65 mm wheelbase,
-       * which is a motor spacing and not a size.
+       * 0.0617 is WHOOP_TRUE_DIMS.vHalfUp times MICRO_SCALE, and the
+       * assertion under MICRO_SCALE fails the build if the two ever drift.
        */
-      hullR: 0.0181,
-      /*
-       * plant.c's hull_hz_down and hull_hz_up for this airframe, and the
-       * reason the pair exists: 10 mm of duct below the CG, 18 mm of canopy
-       * and camera above it. The single `vHalf` this replaces was 0.018, the
-       * canopy, because a symmetric extent has to cover the larger, and that
-       * put 18 mm of collider under an aircraft whose lowest part is 10 mm
-       * down. Measured off dist/sim.wasm, a whoop dropped on a floor first
-       * contacts at a CG height of 10.9 mm and settles at 8.8 mm.
-       */
-      vHalfDown: 0.010,
-      vHalfUp: 0.018,
-      /*
-       * The FRAME, 82.6 mm square, from BetaFPV's own figure. These were
-       * 0.072, which was smaller than the props the aircraft carries: two
-       * ducts at 0.0181 about motors 0.0230 off each axis span 0.0822, so
-       * the old body dimension described something 10 mm narrower than the
-       * thing it was naming. Nothing draws from it, because whoopcraft.js
-       * models the ducts directly, but whoopcraft builds a hidden
-       * measurement box from these for tests/verify.js check 15, which
-       * reads that box and nothing else.
-       */
-      bodyLength: 0.0826,
-      bodyWidth: 0.0826,
-      bodyHeight: 0.028,
+      vHalfDown: 0.045,
+      vHalfUp: 0.0617,
+      bodyLength: 0.155,
+      bodyWidth: 0.088,
+      bodyHeight: 0.034,
     },
   },
 ];
+
+
+/*
+ * HOW MUCH LARGER THAN LIFE SIZE A MICRO WORLD IS BUILT, as a pure number.
+ *
+ * The whoop flies the five inch's plant. A five inch cannot fly a 10 by 12 m
+ * room, so the room is built bigger, and this is the factor. src/game/track.js
+ * re-exports it and carries the argument for why the class works this way at
+ * all; what belongs here is the derivation, because it is a fact about these
+ * two aircraft and nothing else.
+ *
+ * IT IS THE RATIO OF THE TWO SWEEP RADII, arm plus hull, which is the measure
+ * src/game/collide.js derives CRAFT_R with for both machines and the one the
+ * GATE_SCALE argument in src/game/track.js is written in. 0.1735 m of five
+ * inch against 0.0506 m of real whoop is 3.4289.
+ *
+ * That factor is exactly the one that leaves every clearance on a micro track
+ * the number of craft widths it already was. A 0.7112 m RaceGOW gate against
+ * a 0.1012 m whoop is 7.03 gate widths; built through this it is a 2.4387 m
+ * opening against a 0.347 m five inch, which is 7.03. The run off, the
+ * ceiling, rule 3's gate spacing and the 14 inch pole gap all carry across
+ * the same way, so the seven shipped RaceGOW tracks still read the way their
+ * authors drew them.
+ *
+ * DERIVED AND NOT TYPED, so that it cannot drift from the two blocks it is
+ * about. If either aircraft's sweep changes this follows it, which is the
+ * only way the clearance identity above stays true.
+ */
+export const MICRO_SCALE = (() => {
+  const five = AIRFRAMES.find((a) => a.id === '5inch').dims;
+  const sweep = (d) => d.arm + (d.hullR ?? d.propR);
+  return sweep(five) / sweep(WHOOP_TRUE_DIMS);
+})();
+
+/*
+ * The whoop's collider top is the drawn canopy through the room's factor, and
+ * it is typed in the table above because the table is read before this line
+ * runs. Typed once and checked once: a change to either end that does not
+ * change the other stops the module loading rather than moving a hull 25 mm
+ * without a word.
+ */
+{
+  const want = WHOOP_TRUE_DIMS.vHalfUp * MICRO_SCALE;
+  const got = AIRFRAMES.find((a) => a.id === 'whoop65').dims.vHalfUp;
+  if (Math.abs(got - want) > 0.0001) {
+    throw new Error(
+      `airframes: whoop65 vHalfUp is ${got.toFixed(4)} and should be `
+      + `${want.toFixed(4)}, the drawn canopy times MICRO_SCALE`);
+  }
+}
 
 export const AIRFRAME_IDS = AIRFRAMES.map((a) => a.id);
 

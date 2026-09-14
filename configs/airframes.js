@@ -10,9 +10,11 @@
  * shell's own knowledge of the machine.
  *
  * A TUNE is a Betaflight CLI diff, lives in configs/registry.js, and belongs
- * to exactly one airframe. Loading a 6S 5 inch race tune onto a 1S whoop is
- * not a thing a pilot should be able to do by accident, so the Tune row
- * offers only the tunes of the seated airframe.
+ * to a PLANT: the Tune row offers the tunes written for the plant the seated
+ * airframe selects. Loading a tune onto a plant it was never written for is
+ * not a thing a pilot should be able to do by accident, and that rule is why
+ * the whoop, on the five inch's plant, gets the five inch's tunes and not
+ * the three Air65 II presets it used to carry.
  *
  * `id` is what goes in localStorage and into the record key, so changing one
  * orphans a stored choice and every local best flown on it. src/ui/ui.js

@@ -60,7 +60,7 @@ const CAL_LABELS = {
 };
 import { MENU_TRACKS, trackById, musicIds } from '../render/tracks.js';
 import { CUSTOM_TUNE, TUNES, tuneById, tunesFor } from '../../configs/registry.js';
-import { AIRFRAMES, AIRFRAME_IDS, airframeById } from '../../configs/airframes.js';
+import { AIRFRAMES, AIRFRAME_IDS, airframeById, WHOOP_TRUE_DIMS } from '../../configs/airframes.js';
 /* One function, for the one question this file asks the builder: which class
  * is the track a pilot is about to fly. */
 import { trackClassOf } from '../trackbuilder/elements.js';
@@ -2207,10 +2207,23 @@ function linkedMode() {
 function craftSvg(a) {
   const VB = 300;           /* viewBox side, millimetres */
   const c = VB / 2;
-  const arm = a.dims.arm * 1000;
-  const prop = a.dims.propR * 1000;
+  /*
+   * THE REAL PRODUCT, WHICH ON THE WHOOP IS NOT THE AIRFRAME'S `dims`.
+   *
+   * The whoop flies the five inch's plant, so its `dims` are the five
+   * inch's: that is what the collider sweeps and what the world draws,
+   * because the world is built MICRO_SCALE times life size to suit. Drawn
+   * from those, the whoop's plan would fill this viewBox edge to edge like
+   * the five inch's, and the one thing this card exists to say, that the
+   * two machines sit on a bench at a fifth of each other's width, would be
+   * gone. WHOOP_TRUE_DIMS is the 65 mm machine as BetaFPV publish it, and
+   * it is what a pilot holding one would measure.
+   */
+  const dims = a.id === 'whoop65' ? WHOOP_TRUE_DIMS : a.dims;
+  const arm = dims.arm * 1000;
+  const prop = dims.propR * 1000;
   /* The outside of a duct is the hull, not the blade plus a guess at a wall. */
-  const hull = (a.dims.hullR ?? a.dims.propR) * 1000;
+  const hull = (dims.hullR ?? dims.propR) * 1000;
   const off = arm / Math.SQRT2;
   const motors = [[off, off], [off, -off], [-off, off], [-off, -off]];
   const ducted = a.trackClass === 'micro';
@@ -2313,8 +2326,13 @@ const WAYS = [
     mode: 'race',
     label: 'Whoop racing',
     art: 'assets/gate/whoop.jpg',
-    blurb: 'The same clock, indoors. A 23 gram 1S ducted whoop through a track that fits in a living room, on gates a fifth the size and three times the angular acceleration.',
-    facts: ['1S', '65 mm', 'Indoors'],
+    /* Says what configs/airframes.js says, in the same words: the machine
+     * flies the five inch's model and the room is built to match, so the
+     * picture is a whoop's and the hands get the five inch. The old line
+     * promised three times the angular acceleration, which was true of a
+     * plant nothing selects now. */
+    blurb: 'The same clock, indoors. A 65 mm ducted whoop through a track that fits in a living room, on 28 inch gates, flying the five inch\'s flight model.',
+    facts: ['Indoors', '65 mm', '5 inch feel'],
   },
   {
     id: 'freestyle-5inch',

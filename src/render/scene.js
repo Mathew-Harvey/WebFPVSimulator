@@ -75,7 +75,7 @@ import { MICRO_SCALE } from '../game/track.js';
  * wrong.
  *
  * Nothing on screen changes. Scale a world and the craft in it by one number
- * and every frame is the frame it was: this is 34.3 by 41.2 m with a 13.7 m
+ * and every frame is the frame it was: this is 34.3 by 41.1 m with a 13.7 m
  * ceiling and it looks exactly like the hall it looked like before.
  */
 const ROOM_WIDTH = ROOM_WIDTH_TRUE * MICRO_SCALE;
@@ -1743,7 +1743,10 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
      * legibility answer computed at the distance this track is actually
      * flown at, and it costs 8 percent of the opening rather than 70.
      */
-    const bar = micro ? 0.030 : 0.16;
+    /* Through MICRO_SCALE on a room, because the opening it sits inside came
+     * through it: the argument above is in pixels of a 0.711 m hole at 3 m,
+     * and the same hole is 2.44 m at 10 m now. Same pixels, same fraction. */
+    const bar = micro ? 0.030 * MICRO_SCALE : 0.16;
     const halfW = clearW * 0.5;
     const halfH = clearH * 0.5;
     /* Four thin bars just inside the frame, so the lit line the pilot aims
@@ -1760,7 +1763,7 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
       outlineGeos.push(geo);
       /* The halo's 5 cm is additive, so on a 0.711 m opening it was a 7
        * percent fringe becoming a 10 percent one. Scaled with the bar. */
-      const grow = micro ? 0.009 : 0.05;
+      const grow = micro ? 0.009 * MICRO_SCALE : 0.05;
       const hg = new THREE.BoxGeometry(sw * 1.06 + grow, sh * 1.06 + grow, bar * 0.7);
       hg.translate(px, py, 0);
       haloGeos.push(hg);
@@ -4186,8 +4189,16 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * it is doing the job the sky dome does outdoors.
    */
   scene.background = new THREE.Color(indoor ? ROOM.air : HORIZON);
+  /*
+   * IN THE ROOM'S OWN METRES, WHICH ARE MICRO_SCALE TIMES RACEGOW'S. The
+   * room is built through that factor so a five inch has space to fly, and
+   * a fog that stayed at 3.5 to 14 m would have swallowed the far wall of a
+   * 41 m hall and most of the track with it: at 14 m the picture would have
+   * ended a third of the way across the floor. Scaled with the walls, the
+   * far wall recedes exactly as far as it did in the 12 m room.
+   */
   scene.fog = indoor
-    ? new THREE.Fog(ROOM.air, 3.5, 14)
+    ? new THREE.Fog(ROOM.air, 3.5 * MICRO_SCALE, 14 * MICRO_SCALE)
     : new THREE.Fog(HORIZON, FOG_NEAR, FOG_FAR);
   if (!indoor) {
     const sky = skyDome();
@@ -4225,9 +4236,18 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * shed actually looks like. The hemisphere comes up with them, because
      * it is the only thing lighting the corners at all.
      */
+    /*
+     * AND THROUGH MICRO_SCALE, BY THE SAME LAW. The paragraph above is the
+     * derivation: the floor under a lamp sees intensity over distance to the
+     * 1.7, so a lamp lifted by the room's factor needs that factor to the
+     * 1.7 more to light the floor the same, which is 8.1 times. Without it
+     * the room read as a cellar with two dim bulbs a long way up. The cutoff
+     * already scales, because it is a multiple of the room's depth, and the
+     * hemisphere needs nothing because it has no distance in it.
+     */
     for (const lz of [-ROOM.depth * 0.25, ROOM.depth * 0.25]) {
-      const bulb = new THREE.PointLight(0xffd9a0, 42, ROOM.depth * 2.5, 1.7);
-      bulb.position.set(0, ROOM.height - 0.25, lz);
+      const bulb = new THREE.PointLight(0xffd9a0, 42 * MICRO_SCALE ** 1.7, ROOM.depth * 2.5, 1.7);
+      bulb.position.set(0, ROOM.height - 0.25 * MICRO_SCALE, lz);
       bulb.castShadow = false;
       scene.add(bulb);
     }
@@ -4346,10 +4366,22 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * pilot's footage has in it is a wall.
    */
   if (indoor) {
+    /*
+     * EVERY BARE METRE IN THIS BLOCK IS A ROOM'S METRE. The room is built
+     * MICRO_SCALE times life size, and its walls, ceiling and floor come
+     * through that because they are multiples of ROOM's numbers. The
+     * DRESSING did not: a 100 mm wall, an 80 mm skirting, a 900 mm panel
+     * line, a 140 mm purlin every 900 mm, a 400 mm concrete margin round
+     * the mat. Each one stayed at its size in a room 3.4 times bigger, so
+     * the hall read as tin walled and unfinished, with purlins like laths.
+     * K is the factor, and every dressing length below pays it, so the
+     * picture is the shed it was.
+     */
+    const K = MICRO_SCALE;
     const halfW = ROOM.width * 0.5;
     const halfD = ROOM.depth * 0.5;
     const H = ROOM.height;
-    const T = 0.10; /* wall thickness, so a corner reads as a corner */
+    const T = 0.10 * K; /* wall thickness, so a corner reads as a corner */
     const y0 = height(0, 0);
 
     const wallMat = celMaterial({ color: ROOM.wall, rim: 0.16, spec: 0.06 });
@@ -4371,10 +4403,10 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * two planes cannot z fight each other or the ground.
      */
     const concrete = new THREE.Mesh(
-      new THREE.PlaneGeometry(ROOM.width + 24, ROOM.depth + 24), edgeMat,
+      new THREE.PlaneGeometry(ROOM.width + 24 * K, ROOM.depth + 24 * K), edgeMat,
     );
     concrete.rotation.x = -Math.PI * 0.5;
-    concrete.position.set(0, y0 + 0.004, 0);
+    concrete.position.set(0, y0 + 0.004 * K, 0);
     concrete.receiveShadow = false;
     scene.add(concrete);
     /*
@@ -4384,10 +4416,10 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * mat, and it is what makes a bare PVC gate read at all.
      */
     const mat = new THREE.Mesh(
-      new THREE.PlaneGeometry(ROOM.width - 0.4, ROOM.depth - 0.4), matMat,
+      new THREE.PlaneGeometry(ROOM.width - 0.4 * K, ROOM.depth - 0.4 * K), matMat,
     );
     mat.rotation.x = -Math.PI * 0.5;
-    mat.position.set(0, y0 + 0.008, 0);
+    mat.position.set(0, y0 + 0.008 * K, 0);
     scene.add(mat);
 
     /* Four walls. Each is a box from the floor to the ceiling, drawn from
@@ -4400,15 +4432,19 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
       { x: -halfW - T * 0.5, z: 0, w: T, d: ROOM.depth + T * 2 },
       { x: halfW + T * 0.5, z: 0, w: T, d: ROOM.depth + T * 2 },
     ];
+    /* The panel line, the dado and the skirting, in the room's metres. */
+    const dado = 0.9 * K;
+    const band = 0.82 * K;
+    const skirtH = 0.08 * K;
     for (const w of wallSpecs) {
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(w.w, H - 0.9, w.d), wallMat);
-      upper.position.set(w.x, y0 + 0.9 + (H - 0.9) * 0.5, w.z);
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(w.w, H - dado, w.d), wallMat);
+      upper.position.set(w.x, y0 + dado + (H - dado) * 0.5, w.z);
       scene.add(upper);
-      const lower = new THREE.Mesh(new THREE.BoxGeometry(w.w, 0.82, w.d), wallLowMat);
-      lower.position.set(w.x, y0 + 0.41, w.z);
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(w.w, band, w.d), wallLowMat);
+      lower.position.set(w.x, y0 + band * 0.5, w.z);
       scene.add(lower);
-      const skirt = new THREE.Mesh(new THREE.BoxGeometry(w.w, 0.08, w.d + 0.02), skirtMat);
-      skirt.position.set(w.x, y0 + 0.04, w.z);
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(w.w, skirtH, w.d + 0.02 * K), skirtMat);
+      skirt.position.set(w.x, y0 + skirtH * 0.5, w.z);
       scene.add(skirt);
       /*
        * ONE box per wall, spanning the whole height, and the visible split
@@ -4437,12 +4473,14 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * deeper now because they span 10 m instead of 5: a 75 mm joist over a
      * 10 m clear span is a thing that would be on the floor.
      */
-    const purlinPitch = 0.9;
+    const purlinPitch = 0.9 * K;
     const purlins = Math.max(3, Math.round(ROOM.depth / purlinPitch));
-    const purlinD = ROOM.width > 7 ? 0.14 : 0.075;
+    /* Judged on the room RaceGOW would recognise, not the built one, or every
+     * room is over 7 m and the branch is dead. */
+    const purlinD = (ROOM_WIDTH_TRUE > 7 ? 0.14 : 0.075) * K;
     for (let i = 0; i < purlins; i += 1) {
       const jz = -halfD + (i + 0.5) * (ROOM.depth / purlins);
-      const joist = new THREE.Mesh(new THREE.BoxGeometry(ROOM.width, purlinD, 0.055), joistMat);
+      const joist = new THREE.Mesh(new THREE.BoxGeometry(ROOM.width, purlinD, 0.055 * K), joistMat);
       joist.position.set(0, y0 + H - purlinD * 0.5, jz);
       scene.add(joist);
     }
@@ -5924,7 +5962,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
        *
        * A RaceGOW gate is a different citation and a different scale: 28
        * inches of clear opening, the maximum the rules allow, built one to
-       * one because gateScaleFor gives a micro track no departure at all.
+       * one because gateScaleFor gives a micro track MICRO_SCALE, a change of units rather than a bigger hole.
        * The reference follows, or a check reading it in a room would be
        * banding the hole a whoop flies against a hole from another sport.
        * The centre is half the opening on both, for different reasons: a

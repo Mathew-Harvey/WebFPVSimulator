@@ -624,8 +624,10 @@ function groundDecals(doc, field) {
     if (index < 0) {
       continue;
     }
-    const w = Math.max(0.1, el.dims.width);
-    const d = Math.max(0.1, el.dims.depth);
+    /* Floored in the document's metres, then into the scene's: a decal is
+     * paint on the floor and it has to grow with the floor it is on. */
+    const w = Math.max(0.1, el.dims.width) * SCALE;
+    const d = Math.max(0.1, el.dims.depth) * SCALE;
     const p = toScene(field, el.position);
     out.push({
       x: p.x, z: p.z, yaw: el.yaw, w, d, logo: index,

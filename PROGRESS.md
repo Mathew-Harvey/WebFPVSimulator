@@ -35788,3 +35788,136 @@ decimals, and only z moves. The racing line changed as well, from rounds 62 to
 65 of solver work, so LAP_LENGTH is 13.8 m against 14.4 and SPAN is 2.97 by
 1.42 against 3.54 by 2.00, and the two places the copy quotes them follow.
 `lint:wiki` clean. The page was NOT looked at in a browser.
+
+## Round 70: the review of Round 69, and the room comes through the factor too
+
+The owner asked for a review of Round 69 against its goal, restated: the whoop
+racing experience should be the same as before, and the whoop should now fly
+like a five inch with slightly less momentum, because a whoop is not as heavy
+as a five inch. Make any changes needed and prepare to push to main.
+
+Reviewed as a diff read cold, then every consumer of a micro length grepped
+for one that did not come through MICRO_SCALE. Eight found. All fixed.
+
+### What Round 69 got wrong, and it is one mistake eight times
+
+Round 69's whole argument is that scaling the world and the aircraft by one
+factor changes nothing on screen. That was true of the gates, the poles, the
+track and the aircraft, which all came through `courseFromDocument`, and it
+was FALSE of the room around them, because src/render/scene.js builds the
+room's walls from ROOM's numbers and everything ELSE in the room from bare
+metres. The same mistake, once per bare metre:
+
+- **The fog.** `Fog(ROOM.air, 3.5, 14)`. At 14 m the picture ended a third
+  of the way across a 41 m floor and the far wall did not exist.
+- **The lamps.** `PointLight(42, ..., decay 1.7)` at `ROOM.height - 0.25`.
+  The comment above that line derives, correctly, that floor light goes as
+  distance to the 1.7. Lifting the bulbs by 3.43 without paying that made
+  the hall 8.1 times darker: a cellar with two dim bulbs a long way up.
+- **The dressing.** A 100 mm wall, an 80 mm skirting, a 900 mm dado line, a
+  140 mm purlin every 900 mm, a 400 mm concrete margin, a 55 mm joist. Each
+  stayed its size in a room 3.4 times bigger, so the hall read as tin walled
+  and unfinished with laths for rafters. And `ROOM.width > 7` compared a
+  built width to a real one, so that branch was dead.
+- **The gate ring.** The lit bar just inside a micro opening, 0.030 m, and
+  its halo's 0.009 m. Sized in pixels of a 0.711 m hole at 3 m; the hole is
+  2.44 m at 10 m now and the bar had stayed thin.
+- **Ground decals.** `groundDecals` read `el.dims.width` and `depth` off the
+  document, not through `scaledDims`, so a decal was painted a third its
+  size. RaceGOW's palette carries none, which is why nothing showed it, and
+  it is fixed because the next palette might.
+
+Every one of these is now a multiply by the same constant, at the point where
+a real-metre number met the built world, which is precisely the shape of the
+fix Round 69 applied to the gates. The claim in Round 69 is true now.
+
+### What Round 69 left saying the wrong thing
+
+- **The airframe card in src/ui/ui.js** has its own blurb and facts, not the
+  ones in configs/airframes.js, and still promised "a 23 gram 1S ducted whoop
+  ... three times the angular acceleration" under a `1S` chip. It says what
+  airframes.js says now, in the same words.
+- **`craftSvg`**, the plan drawing on that card, reads the airframe's `dims`
+  and draws the two machines to one scale so the whoop sits at a fifth of
+  the five inch's width, "because it is a fifth of the width of it on a
+  bench". The whoop's `dims` are the five inch's now, so it would have drawn
+  two machines the same size and the one thing the card exists to say would
+  have been gone. It reads WHOOP_TRUE_DIMS for the whoop.
+- **Prose.** src/game/track.js still said GATE_SCALE was the ONLY departure
+  from real dimensions anywhere in the world. The airframes.js header still
+  said a tune belongs to exactly one airframe. A 41.2 that is 41.1 (12 times
+  3.4289 is 41.146), in scene.js and in the landing page's room.js.
+
+### What was checked and found right
+
+The collider, the plant's rest height, the orbit camera, the Settings studio
+(which scales its stage by the sweep, so the whoop at five inch size lands
+where the five inch does), the FPV near plane (0.2 m, the five inch's, and
+the whoop is that size now), `tunesFor` and its null airframe (nothing reads
+`airframe: null` as "both"; only CUSTOM_TUNE has that rule and it is not in
+TUNES), the stored tune and pack fallbacks, the builder's card stage (built
+from the DOCUMENT, so untouched and in RaceGOW metres, as it should be), the
+board's orbit clip (framed through scene.js, so scaled), and the landing
+page's bake (reads `structures` and `line`, both covered by its unscale, and
+the gate table round trips to four decimals).
+
+### On "slightly less momentum", which is not delivered and why
+
+What ships is EXACTLY the five inch's plant, not a lighter one. The owner's
+restated goal asks for slightly less momentum than a five inch, and the review
+looked for a way to give it without touching the plant. There is none:
+src/native/sim_abi.h has no runtime mass, inertia or scale setter, the JS
+shell owns collision and rendering and nothing else, and the pack voltage is
+the only runtime input to thrust, which is not a mass. Betaflight's tune can
+sharpen the rotational response, and `precision` is on the whoop's Tune row
+now for a pilot who wants that, but the owner's parenthesis is about mass and
+that is the plant's.
+
+So it is a third row in plant.c: `SIM_AIRFRAME_5IN` copied whole with
+`mass_kg`, `Ixx`, `Iyy`, `Izz` scaled by one factor and the motors, props,
+pack and drag left as they are, so the thrust to weight rises with the mass
+coming off, which is also what a lighter machine does. Something between 0.85
+and 0.90 is the range a pilot would call "slightly", and which end is the
+pilot's call. It is an Emscripten rebuild and a new trace, and THIS CONTAINER
+CANNOT DO IT: no emcc on PATH, no EMSDK, and vendor/betaflight is an empty
+directory, so `npm run verify` check 1 SKIPs here by design. A plant.c edit
+that cannot be built here is not going to main from here.
+
+Written up under OPEN QUESTIONS below so it is one turn on a machine with the
+toolchain.
+
+### Checks, this turn
+
+`npm run verify`: 15 of 15 PASS, check 1 SKIP (no toolchain, see above).
+Measured: hover 0.2793, punch 80.0 m, terminal 31.0 m/s, motor step 26 ms,
+rate tracking 671.7 against 670, yaw coupling -0.10 deg, sag 11.14 percent,
+diff passthrough 0.52 percent off, console 0 and 0, world scale 1.0000 with
+sweep 0.1735 against 0.1735 and gate 1.7526. Determinism hashes
+`de0401cd4266` on repeat, cross host and at four frame rates, and that is the
+same hash PROGRESS.md records at rounds 39 and 49: the five inch's trace is
+unmoved, which is the correct result for a change that touched no physics the
+five inch flies and selected a plant the harness does not seat.
+
+`check:craft` 20 of 20, `check:clip` 528 of 528, `micro:check` clean,
+`whoop:gates` 21 of 21, `check:orbit` 17, `lint:frame` 34, `lint:presets` 6
+of 6, `lint:quality` 56 of 56, `lint:shell` PASS. Landing page `lint:wiki` ok.
+
+NOT RUN: `lint:catalog`, which cannot run here (empty vendor tree). No shots.
+Nothing was flown, and the whole point of the round is how the aircraft
+feels. `score:selftest` still carries the one red test Round 68 dated.
+
+### Git
+
+Branch is two commits ahead of main and zero behind, merge base is main's
+tip, so it fast forwards. Nothing is pushed to main from here: that is the
+owner's push.
+
+### OPEN QUESTIONS
+
+**A lighter five inch for the whoop.** A third plant.c row as described
+above, mass and the three inertias at 0.85 to 0.90 of the five inch's,
+everything else the five inch's, selected by `simId` in configs/airframes.js.
+Needs the toolchain: build, `git diff --stat vendor/betaflight` empty, verify
+green, and a trace for the new row. Then `MICRO_SCALE` does not move, because
+it is a ratio of sweep radii and the sweep does not change. The pilot picks
+the number, in the air.

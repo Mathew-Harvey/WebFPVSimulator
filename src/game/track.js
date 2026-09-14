@@ -79,7 +79,11 @@ export { FRAME_TUBE_OD };
  * with the rulebook still on the page, and it is recorded as one because a
  * future round is going to ask why a gate here is not 5 ft.
  *
- * This is now the ONLY departure from real dimensions anywhere in the world.
+ * This is the only departure from real dimensions ON THE FIELD. A RaceGOW
+ * room has MICRO_SCALE below, which is a different kind of thing: it scales
+ * the aircraft with the world, so it is a change of units and not a bigger
+ * hole, and the paragraph under it says why. The gate-widths-to-the-quad
+ * ratio this constant is judged on is exactly what MICRO_SCALE preserves.
  * WORLD_SCALE in src/render/frame.js used to stack a second one on top, and
  * the pair of them put a 1.7526 m opening against a 0.2776 m craft, 6.31
  * gate widths to the quad where MultiGP against a real 5 inch is 4.39. That

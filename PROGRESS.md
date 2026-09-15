@@ -36051,3 +36051,133 @@ unrelated: it is a full class trick naming test.
 
 NOT RUN: `lint:catalog`, which cannot run here. No shots. The fix is in the
 scoring geometry and the evidence that matters is a lap flown by a person.
+
+## Round 72: a seat outlives the id it was written with, and three board copies are stale
+
+Reported from the seat, with a screenshot: a new track record of 21.14 on
+RaceGOW5 Track 1, the results screen saying "RaceGOW5 Track 1 by Skittles is
+on the public board. Upload a time under your name to appear on it.", and the
+upload answering "Could not upload that time. That track is not on the board."
+The screen contradicted itself and the lap had nowhere to go.
+
+### What it is
+
+A BOARD ID IS MINTED BY THE BOARD AND A SEAT REMEMBERS IT. Take a track off
+the board and put it back and the id changes, so every browser holding a seat
+for it is pointing at an id that no longer exists. `scripts/boardpresets.js
+--replace` does exactly that, and so does an admin removal.
+
+The shell then has no way out. inspectCourse reads the seat, sees a document
+and an id, and reports `published: true` with `canPostTime: true`, because a
+seat is only ever written after a real publish. The results screen prints "is
+on the public board" off the same seat. The upload posts the dead id and the
+board answers 404. Nothing re-checks, so the pilot can repeat it forever.
+
+Proven rather than reasoned. The board's own routes tell the two cases apart:
+an id that is not `trk-` shaped fails `trackIdFrom` and comes back 400, "That
+address is not usable", while a well formed id the store does not have comes
+back 404, "That track is not on the board". The owner's screenshot is the
+404, so the seat held a `trk-` id that is not on the board. Reproduced against
+a local board on a scratch store:
+
+    POST a time to a live shipped room id   201, rank 1
+    POST a time to a dead trk- id           404 "That track is not on the board."
+
+And `inspectCourse` was run against its own injectable parts until the
+screenshot's exact state came back: `kind: owned`, `shareId` set,
+`canPostTime: true`, `canRemix: false` and `canPublishNew: false`, which is
+what greys "Edit a copy" and "Publish this track" while leaving Upload live.
+
+### What it is not, and this cost the most time
+
+A local id is INDISTINGUISHABLE FROM A BOARD ID. `newTrackId` in
+src/trackbuilder/model.js mints `trk-` plus eight hex characters, which is
+exactly the board's `TRACK_ID_RE`. So a guard on the id's shape cannot tell a
+live board id from a dead one or from a copy that was never published, and
+the first fix considered was no fix at all.
+
+### The fix
+
+`findBoardTwin` in src/share/listing.js finds the same track under whatever id
+the board holds it at now, and main.js calls it on a 404 from an upload, once,
+re-seats, and retries.
+
+THE MATCH IS THE LAYOUT, NOT THE NAME. `layoutFingerprint` reads the field,
+the elements and the flying order and ignores the id, the name and the credit,
+which is precisely what survives a republish. Two tracks with the same name
+are not the same track and a time on the wrong one is worse than no time at
+all. The name only decides what to look at first and the class narrows it
+before that, so the usual case costs one document fetch.
+
+Verified against two real boards:
+
+    local board, Track 1 (published from the current preset)   heals to trk-d1111a66
+    local board, Track 6                                       heals to trk-d259e2f2
+    production, Track 6                                        heals to trk-d259e2f2
+    production, Track 1                                        NO layout match, name match reported
+
+Only on a 404 and only once: every other answer from the board is something
+the pilot needs to read, and a retry loop on an upload is how a board ends up
+with the same lap twice.
+
+### The other half, which is not code
+
+THREE OF THE EIGHT SHIPPED ROOMS ON THE BOARD ARE STALE. Every shipped preset
+has a deterministic board id, `trk-` plus the first eight characters of
+sha256("webfpv/preset/<preset id>"), and all eight derive to exactly the ids
+the production board holds. Fingerprinting each shipped preset against the
+document the board serves for it:
+
+    racegow5-track1  trk-d1111a66  STALE
+    racegow5-track2  trk-86ea5e5b  matches
+    racegow5-track3  trk-83741f2a  STALE
+    racegow5-track4  trk-fd2d40ff  STALE
+    racegow5-track5  trk-c4d6dae3  matches
+    racegow5-track6  trk-d259e2f2  matches
+    racegow5-track7  trk-2d3eb123  matches
+    racegow5-track8  trk-ac684a39  matches
+
+One, three and four are exactly the three this repository changed after they
+were published on 2026-09-12: Round 62 mirrored Track 1, Round 63 retuned
+Tracks 3 and 4. On Track 1 every element's y is mirrored about 6.0452 and its
+x is untouched, which is that round's fix seen from the other side, and the
+same 0.0904 offset the landing page's room data carried in Round 69.
+
+So a pilot flying the shipped Track 1 cannot put a time on the board's Track 1
+and SHOULD NOT BE ABLE TO: it is a different layout. findBoardTwin says so in
+those words rather than pretending. Refreshing them is `boardpresets.js
+--replace` against production with BOARD_ADMIN_TOKEN, which removes each id
+and its times before republishing. All three hold zero times, so nothing is
+lost. NOT DONE: it is a destructive action on a live service and it is the
+owner's to authorise.
+
+### A finding, declined for now
+
+The `kind: 'stock'` branch of inspectCourse is DEAD CODE. It reads
+`share.stock`, `writeShareImport` stores `stock: Boolean(payload.stock)`, and
+no caller anywhere passes it; src/trackbuilder/storage.js marks shipped
+presets with `preset`, not `stock`. It is unreachable rather than wrong,
+because nothing seats a preset directly any more: `loadTrack` hands back a
+copy with a fresh id. Left alone in this round because the round is about an
+upload that fails, and removing a guard is not the change to make in the same
+breath as adding one. Written down so the next reader does not trust it.
+
+The comment in `loadLocalCourses` that drops the shipped presets says they
+"are not on the board". That has been untrue since Round 55 published them.
+The behaviour is still right, because the board half of the same screen lists
+them, but the reason given for it is not.
+
+### Checks
+
+`npm run verify`: 15 of 15 PASS, check 1 SKIP, no toolchain here. Determinism
+`de0401cd4266` unmoved from rounds 39, 49, 70 and 71, which is correct:
+nothing here is in the physics path. `check:clip` 528 of 528, `micro:check`
+clean, `lint:shell` PASS, `lint:board` PASS.
+
+The board work was done against a LOCAL board on a scratch store, started with
+BOARD_FILE pointed at a scratch path, and against production READ ONLY. No
+time and no track was posted to the live board.
+
+NOT RUN: `lint:catalog`, which cannot run here. No shots. The Track room was
+not opened in a browser, so that the board half lists these rooms to a whoop
+pilot is read off the code and the board's own listing, not seen on screen.

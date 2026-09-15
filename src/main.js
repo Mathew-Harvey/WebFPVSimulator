@@ -71,7 +71,7 @@ import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
   fetchTrackTimes, postFreestyleRun, postTime,
 } from './share/board.js';
-import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
+import { findBoardTwin, hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
 import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import {
@@ -3673,23 +3673,83 @@ export async function boot({ loading, bootStart, mapId }) {
      * time from an earlier visit has no recording, and posts bare, exactly
      * as before ghosts existed. */
     const ghost = ghostForUpload(fastest);
+    /*
+     * THE LAP GOES UP UNDER WHATEVER ID THE BOARD HOLDS THIS TRACK AT NOW.
+     *
+     * A seat remembers the id it was written with, and a track taken off the
+     * board and put back gets a new one: scripts/boardpresets.js --replace
+     * does exactly that, and so does an admin removal. Every browser holding
+     * the old seat is then pointing at an id the board has never heard of,
+     * and the pilot gets "That track is not on the board." on a lap they
+     * just flew, with the screen above still telling them the track IS on
+     * the board. That is the dead end this reaches around, and it was
+     * reported from the seat on a shipped RaceGOW room.
+     *
+     * Only on a 404, and only once. Every other failure is the board saying
+     * something the pilot needs to read rather than something to work
+     * around, and a retry loop on an upload is how a board ends up with the
+     * same lap twice.
+     */
+    let trackIdNow = trackId;
+    let boardNow = listing.board;
+    let healed = '';
+    const send = () => postTime({
+      trackId: trackIdNow,
+      name,
+      lapMs: Math.round(fastest),
+      threeMs: threeFrom,
+      ghost,
+      origin: boardNow,
+    });
     try {
-      const posted = await postTime({
-        trackId,
-        name,
-        lapMs: Math.round(fastest),
-        threeMs: threeFrom,
-        ghost,
-        origin: listing.board,
-      });
-      writePostedBest(trackId, fastest);
+      let posted;
+      try {
+        posted = await send();
+      } catch (e) {
+        if (e && e.status === 404 && listing.doc) {
+          const twin = await findBoardTwin({
+            doc: listing.doc,
+            name: listing.name,
+            trackClass: view.trackClass,
+            origin: listing.board,
+          });
+          if (!twin.found) {
+            throw new Error(twin.sameName
+              ? `The board's copy of ${twin.sameName.name} is a different layout, so this lap does not belong on it.`
+              : 'That track is no longer on the board, and nothing on it matches this layout.');
+          }
+          /* Re-seat before the retry, so the next lap and every screen that
+           * reads the seat are on the live listing too rather than healing
+           * the same dead id again. */
+          writeShareImport(twin.found);
+          ui.setShare({
+            id: twin.found.id,
+            name: twin.found.name,
+            author: twin.found.author,
+            board: twin.found.board,
+          });
+          trackIdNow = twin.found.id;
+          boardNow = twin.found.board;
+          healed = ' The board had republished this track, so the seat was updated.';
+          posted = await send();
+        } else {
+          throw e;
+        }
+      }
+      writePostedBest(trackIdNow, fastest);
+      /* Under the id it was stored against, which is the one the pilot flew
+       * it on, and under the live one too when the seat moved: a pending lap
+       * left behind a heal would be offered for upload again forever. */
       clearPendingTime(trackId);
+      if (trackIdNow !== trackId) {
+        clearPendingTime(trackIdNow);
+      }
       const rank = posted.rank != null ? ` Rank ${posted.rank}.` : '';
       const withGhost = ghost ? ' Ghost attached, ready to be chased.' : '';
       /* formatTime, the same one the menu row that triggered this upload is
        * labelled with. A confirmation that spells the time differently from
        * the button reads as a different number. */
-      notice = { text: `Uploaded ${name}, ${formatTime(fastest)}.${rank}${withGhost}`, untilMs: performance.now() + 3600 };
+      notice = { text: `Uploaded ${name}, ${formatTime(fastest)}.${rank}${withGhost}${healed}`, untilMs: performance.now() + 3600 };
       ui.markTimePosted(posted);
     } catch (e) {
       notice = { text: `Could not upload that time.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };

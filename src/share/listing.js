@@ -31,7 +31,7 @@
 
 import { duplicateTrack, toPlain } from '../trackbuilder/model.js';
 import { readAutosave, writeAutosave } from '../trackbuilder/storage.js';
-import { boardOrigin, fetchTrackDocument, publishTrack } from './board.js';
+import { boardOrigin, fetchTrackDocument, fetchTrackList, publishTrack } from './board.js';
 import { readPilotName } from './pilot.js';
 import {
   clearShareImport,
@@ -89,6 +89,84 @@ export function layoutFingerprint(doc) {
     elements: (plain.elements ?? []).filter((e) => !LAYOUT_SKIP.has(e?.type)),
     sequence: plain.sequence ?? [],
   });
+}
+
+
+/*
+ * THE SAME TRACK, UNDER WHATEVER ID THE BOARD HOLDS IT AT NOW.
+ *
+ * A board id is minted by the board and a seat remembers it, so a seat is
+ * only as good as the listing it came from. Take a track off the board and
+ * put it back, which is what scripts/boardpresets.js --replace does and what
+ * an admin removal does, and every browser holding a seat for it is left
+ * pointing at an id that no longer exists. The pilot is told their track is
+ * on the public board, offered Upload, and gets "That track is not on the
+ * board." with nowhere to go and a lap they cannot post. That is what this
+ * is for, and it was reported from the seat on a shipped RaceGOW room.
+ *
+ * THE MATCH IS THE LAYOUT, NOT THE NAME. Two tracks with the same name are
+ * not the same track and a time on the wrong one is worse than no time at
+ * all, so a candidate only counts when layoutFingerprint agrees exactly.
+ * That fingerprint reads the field, the elements and the flying order and
+ * ignores the id, the name and the credit, which is precisely what survives
+ * a republish. The name is used only to decide what to LOOK at first, and
+ * the class narrows it before that: a whoop's lap can only belong to a room.
+ *
+ * The cap is what keeps this from being a crawl of the whole board. In
+ * practice the first candidate is the right one, because it is the one whose
+ * name matches; the cap is there for the case where it is not.
+ *
+ * Returns `{ found, sameName }`. `found` is a seat ready to be written.
+ * `sameName` is a listing that wears the name but has a different layout,
+ * which is a different message: the board's copy is not what was flown, so
+ * the time does not belong on it and the pilot needs to know that rather
+ * than be told the track is gone.
+ */
+const TWIN_LOOKUPS = 6;
+
+export async function findBoardTwin({ doc, name, trackClass, origin } = {}) {
+  const want = layoutFingerprint(doc);
+  if (!want) {
+    return { found: null, sameName: null };
+  }
+  const board = origin || boardOrigin();
+  const list = await fetchTrackList(board);
+  const cls = trackClass === 'micro' ? 'micro' : 'full';
+  const wanted = String(name || '').trim().toLowerCase();
+  const pool = list
+    .filter((t) => t.id && t.trackClass === cls)
+    /* Same name first, so the usual case costs one document fetch. */
+    .sort((a, b) => Number(String(b.name || '').trim().toLowerCase() === wanted)
+      - Number(String(a.name || '').trim().toLowerCase() === wanted));
+  let sameName = null;
+  for (const t of pool.slice(0, TWIN_LOOKUPS)) {
+    let payload = null;
+    try {
+      /* eslint-disable-next-line no-await-in-loop */
+      payload = await fetchTrackDocument(t.id, t.board || board);
+    } catch (e) {
+      /* A candidate the board will not hand over is not a match. Carry on:
+       * one bad document must not cost the pilot the others. */
+      payload = null;
+    }
+    const held = payload && (payload.document || payload);
+    if (held && layoutFingerprint(held) === want) {
+      return {
+        found: {
+          id: (payload && payload.id) || t.id,
+          name: (payload && payload.name) || t.name,
+          author: (payload && payload.author) || t.author || '',
+          board: t.board || board,
+          document: held,
+        },
+        sameName: null,
+      };
+    }
+    if (!sameName && String(t.name || '').trim().toLowerCase() === wanted) {
+      sameName = t;
+    }
+  }
+  return { found: null, sameName };
 }
 
 export function isEmptyCanvas(doc) {

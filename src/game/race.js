@@ -56,7 +56,7 @@
  * gate offered 1.40 m, and a clean line near the stile did not count.
  * Collision already owns a clip of the tube.
  */
-import { fastestLap, fastestThreeConsecutive } from './track.js';
+import { fastestLap, fastestThreeConsecutive, MICRO_SCALE } from './track.js';
 
 /*
  * How far the scoring volume sticks out either side of the opening, metres.
@@ -158,8 +158,32 @@ export class Race {
      * gates.
      */
     this.micro = trackClass === 'micro';
-    this.passDepth = this.micro ? PASS_DEPTH_MICRO : PASS_DEPTH;
-    this.passMargin = this.micro ? PASS_MARGIN_MICRO : PASS_MARGIN;
+    /*
+     * THROUGH THE ROOM'S FACTOR, BECAUSE BOTH MICRO FIGURES ARE DERIVED FROM
+     * RACEGOW'S REAL PIPE AND THE PIPE IS NOT BUILT AT THAT SIZE.
+     *
+     * Read the two derivations above: the depth is "the frame's own thickness
+     * plus a little" against 26.7 mm pipe, and the margin is "a fingernail of
+     * the PIPE" at the same proportion. A micro course is built MICRO_SCALE
+     * times life size now, so that pipe is 91.5 mm as built and a 45 mm box
+     * is THINNER THAN THE FRAME IT IS MEANT TO ENCLOSE. The clip in
+     * openingHits is a proper swept segment test, so nothing can tunnel it
+     * whatever the depth, but a steeply angled line through the visible hole
+     * can cross outside a box that thin, which is the exact failure the
+     * constant exists to prevent.
+     *
+     * The reason not to overlap survives the scaling untouched, because the
+     * thing it is measured against scales too: rule 3 puts adjacent gates
+     * 0.762 m apart, which is 2.613 m as built, and two boxes 0.154 m deep
+     * either side leave 2.304 m of clear air between them. That is the same
+     * ratio the unscaled pair had, which is what a change of units means.
+     *
+     * The constants stay in RaceGOW's own metres where their derivations can
+     * be checked against the rulebook, and the factor is paid here, once.
+     */
+    const k = this.micro ? MICRO_SCALE : 1;
+    this.passDepth = (this.micro ? PASS_DEPTH_MICRO : PASS_DEPTH) * k;
+    this.passMargin = (this.micro ? PASS_MARGIN_MICRO : PASS_MARGIN) * k;
     /*
      * A map with no gates is a freestyle map, and it is not an error.
      *

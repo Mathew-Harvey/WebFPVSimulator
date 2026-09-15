@@ -580,6 +580,118 @@ function presetSet() {
  * everything, and the positive checks first say the builder does with a
  * good spec what the comments in the generator say it does.
  */
+/*
+ * EVERY SHIPPED ROOM, FLOWN ON THE LINE THE SOLVER ITSELF DERIVED.
+ *
+ * raceDemo above flies a synthetic line built from each station's OWN
+ * geometry: it goes to where the square is, whatever that is, and asks
+ * whether a pass there scores. That is a real check and it is not this one.
+ * It cannot see a station whose scoring volume is in the wrong PLACE,
+ * because it moves the aircraft to the wrong place too and scores happily.
+ *
+ * This flies `course.line`, which is the racing line the builder derives and
+ * paints, and asserts the lap completes. It is the end to end question a
+ * pilot asks: if I fly the line you drew me, do I finish? Nothing else in
+ * this repository asked it.
+ *
+ * WRITTEN FOR A DEFECT THAT REACHED THE SEAT. When the micro class started
+ * building its world MICRO_SCALE times life size, virtualApertureDims kept
+ * answering in the document's metres, so a pole's scoring square came out at
+ * under a third of its size with its inner edge floating 0.86 m off the pole
+ * instead of resting on it and its top at 1.48 m under a line that passes
+ * above 2. Every one of the eight shipped tracks became impossible: three
+ * laps became zero, and Track 1 stalled at station 4, which is its pole.
+ * raceDemo stayed green throughout. The owner found it by flying it.
+ *
+ * So the assertion is the lap, on all eight, and the count of virtual
+ * stations is printed because they are the ones that carry the risk: a real
+ * opening is built from the structure it is cut into and a virtual one is
+ * computed beside a pole.
+ */
+function raceTheDerivedLine() {
+  console.log('\n  the line the builder draws is a line that scores');
+  for (const doc of presetsForClass('micro')) {
+    const course = courseFromDocument(doc);
+    /* The same shape src/render/scene.js hands Race, as raceDemo builds it. */
+    const gates = course.stations.map((st, i) => ({
+      flyOrder: st.flyOrder ?? i,
+      position: { x: st.x, y: st.baseY ?? 0, z: st.z },
+      heading: st.yaw,
+      pitch: st.pitch ?? 0,
+      entry: st.entry ?? 1,
+      apertures: [{
+        shape: 'square',
+        index: 0,
+        sillH: 0,
+        centreY: st.centreY,
+        clearW: st.clearW,
+        clearH: st.clearH,
+      }],
+      kindName: st.type,
+      elementId: st.elementId,
+      apertureIndex: 0,
+      virtual: Boolean(st.virtual),
+    }));
+    if (!gates.length) {
+      check(`${doc.name}: has stations to fly`, false, 'none');
+      continue;
+    }
+    const race = new Race(gates, course.trackClass);
+    race.setRecordKey('micro-check.not.a.record');
+    race.reset();
+    const line = course.line;
+    let ms = 0;
+    let prev = { x: line[0].x, y: line[0].y, z: line[0].z };
+    /*
+     * Three laps because that is RaceGOW's own metric, and a fourth pass of
+     * the polyline as slack so the lap that starts mid line can finish. The
+     * predicate is `true` rather than shouldScorePass: what is under test is
+     * the GEOMETRY of the stations against the line, and raceDemo already
+     * covers the floor band with the shell's own predicate.
+     */
+    for (let pass = 0; pass < 4 && race.lap < 3; pass += 1) {
+      for (let i = 1; i <= line.length; i += 1) {
+        const q = line[i % line.length];
+        ms += 4;
+        race.update(prev, q, ms, ms, true);
+        prev = q;
+      }
+    }
+    /*
+     * AND THE TWO CONTRACTS elements.js STATES FOR A VIRTUAL SQUARE, which
+     * are worth asserting separately because they are UNIT SENSITIVE BY
+     * CONSTRUCTION: each compares the square against the structure it is
+     * computed beside, so neither can hold unless the two are in the same
+     * metres. The lap check above catches the symptom; these two name the
+     * cause, and between them they are the cheapest guard this repository
+     * has against a document length reaching a flown course.
+     *
+     *   "the INNER EDGE stays on the pole"      (virtualApertureDims)
+     *   "at least as tall as the marker, so a
+     *    2.5 m flag is not scored by a waist
+     *    high slot"                              (the same paragraph)
+     */
+    for (const st of course.stations.filter((x) => x.virtual)) {
+      const centre = Math.hypot(st.x - st.poleX, st.z - st.poleZ);
+      const innerEdge = centre - st.clearW * 0.5;
+      check(`${doc.name}: ${st.name} square has its inner edge on the pole`,
+        Math.abs(innerEdge) < 1e-6, `${innerEdge.toFixed(4)} m off it`);
+      const pole = course.structures.find((x) => x.id === st.elementId);
+      const poleH = pole ? (pole.dims.height ?? 0) : 0;
+      check(`${doc.name}: ${st.name} square is at least as tall as the pole`,
+        st.clearH >= poleH - 1e-6,
+        `${st.clearH.toFixed(3)} m of square against ${poleH.toFixed(3)} m of pole`);
+    }
+
+    const virtual = gates.filter((g) => g.virtual).length;
+    check(`${doc.name}: three laps on its own line`,
+      race.lap >= 3,
+      `${race.lap} lap(s), stalled at station ${race.next} of ${gates.length}`);
+    console.log(`        ${gates.length} stations, ${virtual} of them virtual,`
+      + ` ${line.length} line points`);
+  }
+}
+
 function specGuard() {
   console.log('\n--- what a lattice spec has to say ---');
   const fixture = () => ({
@@ -716,6 +828,7 @@ function specGuard() {
 pipeline('micro');
 pipeline('full');
 raceDemo();
+raceTheDerivedLine();
 presetSet();
 specGuard();
 

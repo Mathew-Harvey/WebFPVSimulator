@@ -379,7 +379,33 @@ function buildCourse(raw) {
       if (clearance < 0.05) {
         continue;
       }
-      const dims = virtualApertureDims(el, knot.seq, cls);
+      /*
+       * THROUGH THE ROOM'S FACTOR, LIKE EVERY OTHER LENGTH ON A STATION.
+       *
+       * virtualApertureDims answers in the DOCUMENT's metres, which is right
+       * for its other five callers: the two builder views, the card stage,
+       * the path solver and the selftest all work on a document. This is the
+       * only caller that builds a FLOWN course, and it dropped the factor.
+       *
+       * What that cost on a RaceGOW track, measured on Track 1: the square
+       * came out 1.067 by 1.476 m where it should be 3.658 by 5.060, its
+       * centre sat 0.43 m too close to the pole so the inner edge floated
+       * 0.864 m OFF the pole instead of resting on it, and its vertical
+       * centre was 1.79 m too low. The pole beside it was scaled, because a
+       * marker's dims go through scaledDims with every other structure, so a
+       * 5 m pipe stood next to a scoring window a third of its height. The
+       * line the solver derives comes off a stacked gate at 3.75 m and
+       * passes the pole above 2 m, over the top of a square that ended at
+       * 1.476, so the pass could not register and the lap could not be
+       * completed. Reported from the seat.
+       *
+       * Every key it returns is a length, which is why scaledDims is the
+       * whole fix: clearW, clearH, sillH, centerH and outward. The check
+       * that this is right is elements.js's own stated contract, that the
+       * INNER EDGE STAYS ON THE POLE, and it only holds when the width and
+       * the clearance it is measured against are in the same units.
+       */
+      const dims = scaledDims(virtualApertureDims(el, knot.seq, cls), SCALE);
       const t = knot.tangent;
       const travel = { x: t.x, y: t.z, z: -t.y };
       const heading = headingForTravel(travel.x, travel.z);
@@ -698,7 +724,13 @@ function sceneKnots(knots, field) {
       const pole = toScene(field, k.markerPos);
       out.poleX = pole.x;
       out.poleZ = pole.z;
-      out.radius = k.seq && k.seq.clearance != null ? k.seq.clearance : 1.5;
+      /* A document clearance, so through the same factor as the position it
+       * is a radius about. Only the guide paint reads it and a room gets no
+       * paint, so this is unreachable on a micro course today: it is scaled
+       * because the next thing to turn the paint on indoors should not have
+       * to find out that one field in this object was left in the author's
+       * metres. */
+      out.radius = (k.seq && k.seq.clearance != null ? k.seq.clearance : 1.5) * SCALE;
     }
     return out;
   });

@@ -35921,3 +35921,133 @@ Needs the toolchain: build, `git diff --stat vendor/betaflight` empty, verify
 green, and a trace for the new row. Then `MICRO_SCALE` does not move, because
 it is a ratio of sweep radii and the sweep does not change. The pilot picks
 the number, in the air.
+
+## Round 71: a pole's scoring square was in the author's metres, and no track could be finished
+
+Reported from the seat, which is where it had to come from: "flys much better
+now, however passing through a whoop 'flag' vertical pole doesn't register
+correctly, i can't complete track 1 as a result".
+
+The flight model half of Round 69 is confirmed good by the pilot. This is the
+other half, and it is a scale error of exactly the kind Round 70 went looking
+for and did not find, because Round 70 audited the RENDERER and this one is in
+the course builder.
+
+### The defect
+
+`virtualApertureDims` in src/trackbuilder/elements.js computes the scoring
+square a pole or a flag assigns on its pass side, and it answers in the
+DOCUMENT's metres. That is right for five of its six callers: the two builder
+views, the card stage, the path solver and the selftest all work on a
+document. src/game/trackdoc.js is the only one that builds a FLOWN course, and
+it dropped the factor.
+
+The pole beside the square did not, because a marker's dims go through
+`scaledDims` with every other structure. So a RaceGOW course had a 5 m pipe
+standing next to a scoring window built for a 1.5 m one.
+
+Measured on Track 1, before and after:
+
+| | was | should be |
+|---|---|---|
+| square clearW | 1.067 m | 3.658 m |
+| square clearH | 1.476 m | 5.060 m |
+| centre from pole | 1.397 m | 1.829 m |
+| INNER EDGE from pole | 0.864 m | 0.000 m |
+| square height vs pole | 1.476 against 5.060 | 5.060 against 5.060 |
+
+Two contracts elements.js states in its own words were both broken. "The
+INNER EDGE stays on the pole": it floated 0.864 m off it, so the window was a
+slot hanging in mid air between 0.86 and 1.93 m out, and a pilot flying the
+natural line close to the pole passed inside it. "At least as tall as the
+marker, so a 2.5 m flag is not scored by a waist high slot": the square topped
+out at 1.476 m while Track 1's line comes off a stacked gate at 3.749 m and
+passes the pole above 2. The aircraft went clean over it.
+
+Fixed by scaling the returned object, which is the whole fix, because every
+key it returns is a length: clearW, clearH, sillH, centerH, outward.
+
+### Why nothing caught it
+
+`raceDemo` in scripts/micro-check.js flies a synthetic line built from each
+station's OWN geometry: it goes to where the square is, whatever that is, and
+asks whether a pass there scores. It cannot see a square in the wrong PLACE
+because it moves the aircraft to the wrong place too, and it stayed green
+through all of this. Nothing in the repository asked the question a pilot
+asks, which is whether the line the builder DRAWS is a line that scores.
+
+So that is the new check, `raceTheDerivedLine`, and it flies `course.line`
+through the real `Race` on all eight shipped rooms. Proven against the bug by
+reverting the fix and re-running:
+
+    before   all eight stuck, 0 laps    Track 1 stalled at station 4, its pole
+    after    all eight complete 3 laps
+
+Station 4 is exactly where the owner said the lap stopped.
+
+Two more checks go with it, asserting the two contracts above directly. They
+are worth having separately because they are UNIT SENSITIVE BY CONSTRUCTION:
+each compares the square against the structure it is computed beside, so
+neither can hold unless the two are in the same metres. The lap check catches
+the symptom, these name the cause. 66 failures with the fix reverted, 0 with
+it in.
+
+### Two more of the same, found by sweeping for it
+
+**`groundDecals` read `el.dims.width` and `depth` off the document**, so paint
+on the floor would have been built at under a third of its size. RaceGOW's
+palette carries no decals, which is why nothing showed it. Fixed with
+`scaledDims`.
+
+**`sceneKnots` put a document clearance in `out.radius`.** Only the guide
+paint reads it and a room gets no paint, so it is unreachable today. Scaled
+anyway: the next person to turn the paint on indoors should not have to
+discover that one field was left in the author's metres.
+
+**`race.js`'s two micro scoring tolerances**, and this one is not latent.
+`PASS_DEPTH_MICRO` is 0.045 m and its comment derives it as "the frame's own
+thickness plus a little" against RaceGOW's 26.7 mm pipe. That pipe is 91.5 mm
+as built, so the scoring box was THINNER THAN THE FRAME IT ENCLOSES.
+`openingHits` is a proper swept segment clip, so nothing can tunnel it at any
+speed and a square pass through a gate was never at risk, which is why the
+owner reported only the pole. What a box that thin does lose is a steeply
+angled line that crosses the midplane outside the rectangle, which is the
+exact failure the constant exists to prevent. `PASS_MARGIN_MICRO`, 8 mm and
+derived as "a fingernail of the PIPE", is the same error in the permissive
+direction.
+
+Both now come through the factor at the point of use, and the constants stay
+in RaceGOW's metres where their derivations can be checked against the
+rulebook. The reason they must not overlap survives untouched, because the
+thing it is measured against scales too: rule 3's 0.762 m spacing is 2.613 m
+as built, and two boxes 0.154 m deep either side leave 2.304 m of clear air.
+Same ratio as before, which is what a change of units means.
+
+### Swept and found right
+
+src/share/plan.js's eleven MICRO_ constants, which look exactly like this bug
+and are not: the plan is built from the DOCUMENT, so 0.711 and a 10 by 12 m
+field are correct there and scaling them would be the error. The pitch under
+an indoor course, whose margin is unscaled and which is a paddock the room
+stands on that nothing ever sees. scene.js's remaining micro branches, which
+are all multiples of a scaled length or dimensionless. `stampFigures`, which
+reads `baseY` and `centreY` and both are scaled. `SPAWN_BACK_MICRO`, already
+scaled in Round 69.
+
+### Checks
+
+`npm run verify`: 15 of 15 PASS, check 1 SKIP, no toolchain here. Determinism
+`de0401cd4266` on repeat, cross host and at four frame rates, unmoved from
+rounds 39, 49 and 70, which is correct: nothing here is in the physics path.
+Measured: hover 0.2793, punch 80.0 m, terminal 31.0 m/s, motor step 26 ms,
+rate tracking 671.7 against 670, yaw coupling -0.10 deg, sag 11.14 percent,
+diff passthrough 0.52 percent off, console 0 and 0, world scale 1.0000.
+
+`micro:check` clean, now 207 passing checks including 24 new ones across the
+eight rooms. `check:clip` 528 of 528. `check:path` 12. `lint:frame` 34.
+
+`score:selftest` still carries the one red test Round 68 dated, unchanged and
+unrelated: it is a full class trick naming test.
+
+NOT RUN: `lint:catalog`, which cannot run here. No shots. The fix is in the
+scoring geometry and the evidence that matters is a lap flown by a person.

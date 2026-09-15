@@ -36222,3 +36222,67 @@ NO LOG HERE. It was pasted into a chat to authorise this, so it has been seen
 in more places than a board credential should be, and rotating it is the
 cheap and correct answer. Nothing in this repository needs to change when it
 is rotated: the board holds its own copy and the script reads the environment.
+
+## 2026-09-15 The whoop is a whoop, and nothing names its maker
+
+The owner asked for every reference to the specific aircraft taken out: no
+model name, no brand, just a whoop. Done across twelve files.
+
+WHAT IT WAS. The 65 mm machine was named in prose as a particular
+manufacturer's particular model, in `plant.c`'s plant block, in
+`whoopcraft.js`'s subject line, in `airframes.js`, `rates.js`, `ui.js`, the
+three `configs/whoop-*.diff` headers, and three scripts. Three of those
+names were PLAYER VISIBLE: the tune catalog in `configs/registry.js` carried
+the model in all three whoop tune names, and two of its notes named the
+manufacturer. They now read **Whoop stock**, **Whoop racing** and **Whoop
+freestyle**, which say the same thing about what the tune is for without
+advertising anybody.
+
+THE NUMBERS AND THEIR PROVENANCE SURVIVE, which was the only real risk in
+this change. Every measured figure is still there and still attributed:
+"the maker's published 82.6", "the maker quotes 16.6 g for the stock whoop",
+and the three tune files still name the CLI dump they were taken from by
+date, support article and attachment id. What went is the brand and the model
+in front of those figures. A reader who wants the primary source can still
+find it from the ids; a reader who just wants the tune is not reading an
+advert.
+
+The variant names went the same way. "The Champion" became "the stock
+variant" or "the stock tune" depending on whether the sentence was about the
+aircraft or about the configuration, which is a distinction the old prose was
+blurring anyway.
+
+WHAT WAS LEFT ALONE, deliberately, and it is worth writing down:
+
+- **This file.** Thirty lines of history mention the old name. PROGRESS is a
+  record of what happened, and what happened is that the machine was modelled
+  off a named aircraft. Rewriting that would be falsifying the log rather
+  than renaming a thing. Say so if it should go.
+- **Ids and filenames.** `whoop-champion` is still a tune id and
+  `configs/whoop-champion.diff` is still a filename. Neither is player
+  visible, and renaming an id orphans every stored tune preference in
+  somebody's browser for no gain a visitor can see.
+- **Component specs.** The 0702 motor, the GF1207 and GF1219S props, the
+  BT2.0 pigtail and the 1S LiHV chemistry stay. They describe hardware
+  classes rather than the aircraft's identity, and the plant's derivation
+  cites them. The battery brand went, because it was one: "a 1S 280 mAh
+  pack".
+
+A HAZARD THIS CHANGE CREATED AND CLOSED. The first mechanical pass wrote
+`the maker's` with an ASCII apostrophe INSIDE a single quoted string in
+`configs/registry.js`, which closed the string and made the file a syntax
+error. `node --check` caught it. The catalog's prose uses a typographic
+apostrophe for exactly this reason; the fixed line needs neither. Every
+touched JavaScript file was parsed afterwards.
+
+CHECKED. `npm run lint:presets`, 6 of 6 clean, which is the one that matters
+here because it applies all six diffs against the compiled module and would
+notice if a comment edit had eaten a `set` line. `npm run lint:fc`, 30 of 30
+traces clean. `node --check` on all eight touched JavaScript files.
+`npm run lint:catalog` COULD NOT RUN in this container: `vendor/betaflight`
+is an empty directory here, so it throws on a missing
+`src/main/fc/parameter_names.h`. That is the checkout, not the change, and
+nothing in this diff touches the catalog's data. `npm run verify` was not
+run: the change is comments and three display strings, no constant and no
+coefficient moved, and the owner was asked at the end of the turn whether to
+spend it.

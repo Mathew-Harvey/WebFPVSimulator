@@ -10,7 +10,7 @@
  * meant a builder with two of everything and a boolean, and the file would
  * have belonged to neither machine.
  *
- * The subject is a BetaFPV Air65 II Champion, which is the aircraft
+ * The subject is a 65 mm whoop, which is the aircraft
  * src/native/plant.c flies as SIM_AIRFRAME_WHOOP65 and the one a RaceGOW
  * field mostly turns up on. Real dimensions throughout:
  *
@@ -18,13 +18,13 @@
  *   duct bore       33 mm, a 31 mm Gemfan 1207 three blade with a 1 mm gap
  *   duct           a short shroud with a raised bumper hoop over the lip
  *   stack          a Matrix 1S 5IN1 II with a C03 in a cage at the front
- *   pack            a LAVA II 1S 280 mAh on a BT2.0 pigtail, under the belly
+ *   pack            a 1S 280 mAh pack on a BT2.0 pigtail, under the belly
  *   all up          23.4 g
  *
  * IT IS SOLD BARE AND IT IS DRAWN BARE. An earlier pass put a sakura dome
- * over the electronics, which is the Meteor's shape and not this one, and on
+ * over the electronics, which is a capped machine's shape and not this one, and on
  * a 65 mm aircraft it was a third of the machine in one flat colour: at any
- * distance the whoop read as a pink blob. An Air65 II has no canopy at all.
+ * distance the whoop read as a pink blob. A whoop has no canopy at all.
  * The board is the top of the aircraft, you look straight down at the green,
  * the chips and the motor leads, and the only tall thing on it is the camera.
  *
@@ -110,7 +110,7 @@ const PACK_TOP = -0.0036;
  *
  * Those two are the 5 inch's, 80 mm forward and 18 mm up, which on a machine
  * 72 mm long end to end would put the lens a body length in front of the
- * aircraft. The Air65 II carries the C03 at the front of its stack, so
+ * aircraft. The whoop carries the C03 at the front of its stack, so
  * this is 24 mm forward and 12 mm up, which is the same pair
  * src/native/plant.c gives the whoop as camera_x and camera_z. The two are
  * the same point and they agree on purpose: the collision code projects that
@@ -172,7 +172,7 @@ function ductLathe(segments) {
   const pts = [
     /*
      * The wall is OPEN at the bottom, and that is the change that made the
-     * model stop looking like four cans. A real Air65 duct is a short
+     * model stop looking like four cans. A real whoop duct is a short
      * shroud around the top two thirds of the disc with the exit standing
      * clear, so from any angle below the horizon you see straight through
      * the aircraft and out the other side. The earlier profile ran the wall
@@ -230,7 +230,7 @@ export function buildWhoopCraft(opts = {}) {
    * THE PALETTE, AND WHY THE FRAME IS NOT THE FIVE INCH'S CARBON.
    *
    * A five inch's frame is carbon plate and reads as near black correctly.
-   * An Air65 II's is injection moulded polypropylene in a light cool grey,
+   * A whoop's is injection moulded polypropylene in a light cool grey,
    * and on this aircraft the ducts ARE the aircraft: they are most of what
    * you see from every angle. Drawn dark, the whole machine was a silhouette
    * with a pink dome floating in the middle of it, which is not the product.
@@ -350,7 +350,7 @@ export function buildWhoopCraft(opts = {}) {
      * the way down: the aircraft was a tub and the skirt was its floor. Now
      * that the exit stands open the skirt had nothing to attach to and hung
      * eight millimetres below the aircraft in clear air, which is exactly
-     * what it looked like. What a real Air65 has under there is two moulded
+     * what it looked like. What a real whoop has under there is two moulded
      * straps across the belly holding the cell, so that is what is here.
      */
     const strapGeo = new THREE.BoxGeometry(0.0040, 0.0016, 0.0210);
@@ -364,7 +364,7 @@ export function buildWhoopCraft(opts = {}) {
 
   /*
    * THE RIM HOOPS, and they are the single feature that makes this read as an
-   * Air65 II rather than as a tub with holes in it.
+   * whoop rather than as a tub with holes in it.
    *
    * The moulding carries a thin bumper ring standing PROUD of each duct lip
    * on short posts, so from above the aircraft is four thin circles with air
@@ -385,7 +385,7 @@ export function buildWhoopCraft(opts = {}) {
      *
      * It used to be drawn 1.3 mm PROUD of the duct wall, and with its own
      * 0.6 mm section that put the drawn machine 3.8 mm across wider than
-     * the ducts: 86.0 mm measured against BetaFPV's published 82.6, and
+     * the ducts: 86.0 mm measured against the maker's published 82.6, and
      * 2.1 mm of drawn aeroplane outside the radius collide.js sweeps. A
      * pilot skimming a RaceGOW pipe saw the hoop touch it and felt nothing,
      * which is the same complaint, in the same place, as the duct that was
@@ -426,7 +426,7 @@ export function buildWhoopCraft(opts = {}) {
    * THE STACK, AND THERE IS NO CANOPY ON IT.
    *
    * The model used to wear a sakura dome over the electronics, and that is
-   * the Meteor's shape rather than this one. An Air65 II is sold BARE: the
+   * a capped machine's shape rather than this one. A whoop is sold BARE: the
    * AIO board is the top of the aircraft, you look straight down at the
    * green, the chips, the solder joints and the motor leads, and the only
    * tall thing on it is the camera. The dome was also a third of the machine
@@ -556,7 +556,7 @@ export function buildWhoopCraft(opts = {}) {
   }
 
   /*
-   * THE PACK, under the tub on a BT2.0 pigtail. A LAVA II 1S 280 mAh is
+   * THE PACK, under the tub on a BT2.0 pigtail. A 1S 280 mAh pack is
    * 6.8 g of the aircraft's 23.4, which is nearly a third, and it hangs
    * below the ducts where you can see it. That mass distribution is why
    * this airframe's pitch inertia is a quarter more than its roll inertia
@@ -579,7 +579,7 @@ export function buildWhoopCraft(opts = {}) {
 
   /*
    * The antenna. A whip out of the back of the stack, which is what the
-   * Champion carries; the Racing and Freestyle ship a copper pipe instead.
+   * stock variant carries; the other two ship a copper pipe instead.
    * It leans back and to one side, because a bare stack has nowhere to
    * anchor it straight and every photograph of one shows it leaning.
    */
@@ -732,7 +732,7 @@ export function buildWhoopCraft(opts = {}) {
     discs.push(disc);
 
     /*
-     * One lamp a corner, on the duct skirt. A real Air65 II carries them on
+     * One lamp a corner, on the duct skirt. A real whoop carries them on
      * the FC rather than on the frame, and they shine through the moulding.
      */
     const ledMat = new THREE.MeshBasicMaterial({

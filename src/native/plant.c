@@ -296,14 +296,14 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
 },
 
 /* ---------------------------------------------------------------------
- * SIM_AIRFRAME_WHOOP65: a 65 mm 1S brushless whoop, modelled on the BetaFPV
- * Air65 II Champion, which is what a RaceGOW field mostly flies.
+ * SIM_AIRFRAME_WHOOP65: a 65 mm 1S brushless whoop, modelled on the published
+ * specification for a 65 mm whoop, which is what a RaceGOW field mostly flies.
  *
  * EVERY NUMBER HERE IS DERIVED OR CITED, and the two that the marketing copy
  * gets wrong are corrected rather than copied.
  *
- * MASS. BetaFPV quotes 16.6 g for the Champion. That is DRY: the spec table
- * lists no battery and the recommended pack, a LAVA II 1S 280 mAh, is 6.8 g.
+ * MASS. The maker quotes 16.6 g for the stock whoop. That is DRY: the spec table
+ * lists no battery and the recommended pack, a 1S 280 mAh pack, is 6.8 g.
  * All up is therefore 23.4 g, and the published "6.3:1 thrust to weight" is
  * the dry figure. Against a flying quad it is 4.7:1 fresh and about 3.8:1 on
  * a tired pack, which is what the thrust budget below actually delivers.
@@ -357,7 +357,7 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
  * a 23 percent collapse, where the five inch's 6S race pack loses 8. That
  * single number is most of why a whoop feels like a whoop: every hard input
  * costs you the top of the throttle, and the tune has to be built around it
- * (see the TPA breakpoint in configs/whoop-*.diff, which BetaFPV drops from
+ * (see the TPA breakpoint in configs/whoop-*.diff, which the maker drops from
  * 1350 to 1180 for exactly this reason).
  *
  * ke is 2.8515e-4, which is a 33,489 kV motor against a 36,000 kV plate.
@@ -385,7 +385,7 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
  * the ducted fan literature puts ram drag at 80 to 95 percent of total drag
  * below ten knots. 1.00 is the momentum coefficient with nothing added, and
  * it is what this airframe flew for its first week. It is not what the
- * Air65's duct is. A ducted fan's shroud is a chord deep and captures a
+ * whoop's duct is. A ducted fan's shroud is a chord deep and captures a
  * whole stream tube; a whoop's duct is a moulded ring a few millimetres
  * tall round a 31 mm prop, open above and below, and the air it turns is
  * closer to an open rotor's than to a fan's. At 1.00 the plant asked 17
@@ -396,7 +396,7 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
  * and where the plant's own review put it. Still, not the body drag, the
  * reason whoops are slow; just less of the reason.
  *
- * SOURCES. betafpv.com Air65 II and 0702 (2026) product pages for mass,
+ * SOURCES. The maker's published pages for the airframe and its 0702 motor (2026) for mass,
  * geometry, ESC and pack; Gemfan for the 1207 3 blade; Pereira 2008
  * (Maryland) for shrouded rotor momentum theory and duct augmentation;
  * Harris NASA/CR-20205001147 and Bohorquez 2007 for low Reynolds figure of
@@ -415,7 +415,7 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
    * kt was derived for 4.7 : 1 at 7828 rad/s as a bare rotor constant, and
    * then k_duct below multiplied every rotor's thrust by 1.10 on top of it,
    * so the plant made 5.14 : 1 on the bench and 5.31 at the peak of a punch.
-   * BetaFPV's 6.3 : 1 dry, 4.7 all up, is a bench figure of the WHOLE ducted
+   * The maker's 6.3 : 1 dry, 4.7 all up, is a bench figure of the WHOLE ducted
    * unit, so the duct is inside it already. kt is now the bare rotor's share
    * of that figure, 4.400e-9 / 1.10, and kt times k_duct is the 4.400e-9 the
    * derivation above arrives at: full throttle is still 7828 rad/s and 4.70

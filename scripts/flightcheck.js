@@ -61,7 +61,7 @@ const ST = { T: 0, Z: 3, VX: 4, VZ: 6, P: 11, RPM0: 14, V: 18, I: 19 };
 
 const wasm = await readFile(join(root, 'dist/sim.wasm'));
 /* The five inch's baseline is the fixture the whole verify suite is built
- * on; the whoop's is BetaFPV's own Champion tune, which is what the shell
+ * on; the whoop's is the stock whoop tune, which is what the shell
  * seats with that airframe. Measuring a whoop through a 6S freestyle tune
  * would be measuring nothing anyone flies. */
 const config = await readFile(

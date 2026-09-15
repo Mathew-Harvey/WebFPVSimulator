@@ -57,25 +57,25 @@ export const TUNES = [
   {
     id: 'whoop-champion',
     airframe: null,
-    name: 'Air65 II Champion',
-    note: 'BetaFPV’s own factory tune for the 36000 kV racer. Low gains, a narrow D boost band, and the gains coming off a fifth of the way up the stick because 1S sags.',
+    name: 'Whoop stock',
+    note: 'The factory tune for the 36000 kV racer. Low gains, a narrow D boost band, and the gains coming off a fifth of the way up the stick because 1S sags.',
   },
   {
     id: 'whoop-racing',
     airframe: null,
-    name: 'Air65 II Racing',
-    note: 'The 30000 kV variant’s factory tune. More damping and less integral than the Champion, which is the shape of a tune for a motor with less authority.',
+    name: 'Whoop racing',
+    note: 'The 30000 kV variant’s factory tune. More damping and less integral than the stock tune, which is the shape of a tune for a motor with less authority.',
   },
   {
     id: 'whoop-freestyle',
     airframe: null,
-    name: 'Air65 II Freestyle',
-    note: 'The 25000 kV variant on the bigger GF1219S prop. The highest gains of the three, and the only one BetaFPV ship on Betaflight rates rather than Actual.',
+    name: 'Whoop freestyle',
+    note: 'The 25000 kV variant on the bigger GF1219S prop. The highest gains of the three, and the only one the maker ships on Betaflight rates rather than Actual.',
   },
 ];
 
 /*
- * THE THREE AIR65 II PRESETS ARE RETIRED, and `airframe: null` above is how.
+ * THE THREE WHOOP PRESETS ARE RETIRED, and `airframe: null` above is how.
  *
  * They were the whoop's, and they were right for as long as the whoop was a
  * 23 g 1S machine on its own plant. It flies the five inch's plant now, and a
@@ -86,7 +86,7 @@ export const TUNES = [
  * complaint the plant change exists to answer.
  *
  * They stay in the table and their .diff files stay on disk. They are real
- * BetaFPV configurations, scripts/preset-lint.js still checks all six against
+ * published configurations, scripts/preset-lint.js still checks all six against
  * the compiled module, and if the whoop ever gets its own plant back they are
  * two characters from being offered again. What they must not be is reachable
  * for a plant they were never written for.

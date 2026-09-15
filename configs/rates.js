@@ -425,7 +425,7 @@ export function pitchMatchesRoll(r) {
  * pack has four and a half to one of thrust to weight and holds a hover at
  * under a third of the stick, so full travel is two thirds of a stick nobody
  * uses and a handful of one they do. 65 was the first answer to that, the
- * owner flew it to 75, and then flew it back to 65 with the Champion tune
+ * owner flew it to 75, and then flew it back to 65 with the stock tune
  * when the whoop was reported hard to fly: hover at 49 percent of stick, the
  * middle, with 9.5 m/s of climb still at the top. Both stay on the list
  * because a pilot who liked either has to be able to get back to it.
@@ -569,7 +569,7 @@ const HOVER_STICK_PERCENT = {
     [100, 26.5], [90, 28.9], [80, 31.8], [75, 33.6], [70, 35.6],
     [65, 38.0], [60, 40.8], [50, 47.9], [40, 58.6],
   ]),
-  /* Re-read after the whoop's thrust was brought down to BetaFPV's 4.7 to
+  /* Re-read after the whoop's thrust was brought down to the maker's 4.7 to
    * one with the duct counted: less thrust is a hover higher on the stick,
    * about a point and a half at every cap. */
   whoop65: new Map([

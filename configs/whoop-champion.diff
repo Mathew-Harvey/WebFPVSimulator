@@ -1,15 +1,14 @@
 # diff
 # Betaflight / SITL (SITL) 4.5.1
 #
-# AIR65 II CHAMPION. BetaFPV's own factory tune for the Air65 II Champion,
+# THE WHOOP, STOCK. The factory tune for the 36000 kV variant,
 # the 36000 kV racing whoop a RaceGOW field mostly flies.
 #
 # PROVENANCE, and it is a real dump rather than a reconstruction. Taken from
-# "A65 II C_0702_Champion_GF 1207_2026_6_0 20260515.txt", the CLI BetaFPV
-# publishes for this aircraft at
-# support.betafpv.com/hc/en-us/articles/54654422544409 (attachment
-# 58300183112217). That file is Betaflight 2026.6.0-alpha on a
-# BETAFPVG473_V2 board; every PID, filter, TPA and idle value below is
+# the maker's own published CLI dump for the 36000 kV variant, dated
+# 20260515, in their support library at article 54654422544409,
+# attachment 58300183112217. That file is Betaflight 2026.6.0-alpha on a
+# G473 board; every PID, filter, TPA and idle value below is
 # copied from it verbatim. What was NOT copied is listed at the bottom,
 # with the reason for each.
 #
@@ -30,11 +29,11 @@
 #     3.2 V under a punch, a 23 percent collapse where a 6S race pack loses
 #     8, so the gains have to start coming off at a fifth of the stick
 #     instead of two thirds.
-#   * throttle_boost is 0. Every BetaFPV whoop dump sets it there; the 4.5.1
+#   * throttle_boost is 0. Every published whoop dump sets it there; the 4.5.1
 #     default is 5.
 #   * dyn_idle_min_rpm 30, which is 3000 rpm, against a hover of 34,480.
 #
-# NO RATES, following configs/registry.js. BetaFPV ships this aircraft on
+# NO RATES, following configs/registry.js. The maker ships this aircraft on
 # ACTUAL rates with srate 58 / 58 / 50, which is 580 deg/s on roll and pitch
 # and 500 on yaw: a RACING whoop flies SLOWER rates than a 5 inch freestyle
 # quad, because the track is three metres wide. Those are the numbers the
@@ -68,7 +67,7 @@ board_name SITL
 # filter tracks.
 set motor_kv = 36000
 set motor_poles = 12
-# 1S LiHV: 4.40 V charged, 3.45 V warning, 3.00 V empty. The Champion's own
+# 1S LiHV: 4.40 V charged, 3.45 V warning, 3.00 V empty. The stock variant's own
 # battery profile.
 set vbat_max_cell_voltage = 440
 set vbat_warning_cell_voltage = 345
@@ -101,7 +100,7 @@ set yaw_spin_recovery = AUTO
 # yaw_motors_reversed stays OFF, and the factory dump has it ON.
 #
 # That is not a tuning choice, it is a wiring one, and copying it here would
-# be a bug. The Air65 II is built props out, so its ESC outputs run the
+# be a bug. The whoop is built props out, so its ESC outputs run the
 # opposite way round from a props in machine and the firmware is told to
 # flip the yaw mixer column to match. This simulator's plant has ONE spin
 # table, PLANT_SPIN in src/native/plant.c, and it is props in. Carrying the
@@ -113,7 +112,7 @@ set yaw_motors_reversed = OFF
 
 # ---- THE 4.6 D TERM KEYS ARE INVERTED AGAINST 4.5, AND THAT IS A TRAP ----
 #
-# BetaFPV's dump is Betaflight 2026.6.0. Somewhere between 4.5 and 4.6 the
+# The maker's dump is Betaflight 2026.6.0. Somewhere between 4.5 and 4.6 the
 # D term pair changed which end of the range each key names:
 #
 #   4.5.1   d_roll     is the D CEILING, d_min_roll is the FLOOR
@@ -172,16 +171,16 @@ set simplified_pitch_d_gain = 95
 # iterm_relax RP / SETPOINT / cutoff 15, pidsum limits 500 and 400,
 # anti_gravity_cutoff_hz 5, thrust_linear 0, vbat_sag_compensation 0, and
 # the whole D term filter block. A Betaflight diff prints only what differs
-# from default, so every one of those is BetaFPV agreeing with Betaflight,
+# from default, so every one of those is the maker agreeing with Betaflight,
 # and this file agrees with both by staying quiet.
 #
 # vbat_sag_compensation is the one worth naming. It is 0 here because the
 # factory dump leaves it at 0, and on 1S that is a real choice rather than
 # an oversight: with 100 the D term is scaled up as the pack sags, which on
-# a whoop is most of the throttle range and most of the flight. BetaFPV's
-# Meteor65 Pro DOES ship 100. Both aircraft are theirs, so this is a genuine
-# split in their own line, and the Champion's answer is the one this file
-# carries because this file is the Champion's tune.
+# a whoop is most of the throttle range and most of the flight. The maker's
+# another 65 mm machine from the same maker DOES ship 100. Both are theirs, so this is a genuine
+# split in their own line, and the stock variant's answer is the one this file
+# carries because this file is the stock tune.
 
 # ---- what is left out on purpose ----
 #

@@ -11,8 +11,8 @@
  * in scripts/, where the rest of this project's measuring lives.
  *
  * THE BANDS ARE NOT FITTED TO THE MODEL. Each one names its source, and the
- * sources are outside this repository: BetaFPV's published specification for
- * the Air65 II, thrust stand and review figures for the 0702 on 1S, the
+ * sources are outside this repository: the maker's published specification for
+ * the whoop, thrust stand and review figures for the 0702 on 1S, the
  * ducted micro rotor literature for the figure of merit and the duct terms,
  * and RaceGOW's own leaderboards for what a lap actually takes. A gate that
  * fails is the plant being wrong, not the band.
@@ -70,12 +70,12 @@ const BANDS = {
   'W2 hover-throttle': {
     min: 0.27, max: 0.36, unit: 'of stick',
     why: 'Published hover throttle for a modern 1S brushless 65 mm whoop. '
-       + 'BetaFPV ship thr_hover 22 to 34 in the Air65 II rate profiles.',
+       + 'The maker ships thr_hover 22 to 34 in the whoop rate profiles.',
   },
   'W3 thrust-to-weight': {
     min: 4.0, max: 5.4, unit: ': 1',
-    why: 'BetaFPV quote 6.3:1 for the Champion, which is the DRY 16.6 g. With '
-       + 'the recommended LAVA II 1S 280 mAh at 6.8 g the all up figure is 4.7.',
+    why: 'The maker quotes 6.3:1 for the stock whoop, which is the DRY 16.6 g. With '
+       + 'the recommended 1S 280 mAh pack at 6.8 g the all up figure is 4.7.',
   },
   'W4 full-throttle-rpm': {
     min: 68000, max: 80000, unit: 'rpm',

@@ -14,7 +14,7 @@
  * airframe selects. Loading a tune onto a plant it was never written for is
  * not a thing a pilot should be able to do by accident, and that rule is why
  * the whoop, on the five inch's plant, gets the five inch's tunes and not
- * the three Air65 II presets it used to carry.
+ * the three whoop presets it used to carry.
  *
  * `id` is what goes in localStorage and into the record key, so changing one
  * orphans a stored choice and every local best flown on it. src/ui/ui.js
@@ -42,12 +42,12 @@
  * airframe above that wears its name.
  *
  * These are the numbers the whoop entry's `dims` held until the machine
- * started flying the five inch's plant, and they are quoted from the BetaFPV
- * Air65 II: a 65 mm wheelbase, so arm is 0.065 / (2 sqrt 2) and is plant.c's
+ * started flying the five inch's plant, and they are quoted from the published
+ * specification for a 65 mm whoop: a 65 mm wheelbase, so arm is 0.065 / (2 sqrt 2) and is plant.c's
  * arm_x times sqrt 2; a 31 mm Gemfan 1207 three blade; a duct whose outer
  * radius is the 33 mm bore that gives that prop a 1 mm tip gap plus a 1.6 mm
  * moulded wall. Axis aligned that is 2 * (0.0325 / sqrt 2 + 0.0181) =
- * 82.2 mm against BetaFPV's published 82.6 by 82.6 mm for the frame, which
+ * 82.2 mm against the maker's published 82.6 by 82.6 mm for the frame, which
  * is the figure to check these against and not the 65 mm wheelbase, which is
  * a motor spacing and not a size.
  *
@@ -166,7 +166,7 @@ export const AIRFRAMES = [
        * the ground plane goes that far under the plant's origin, the craft
        * spawns and parks there, and "is this height the ground" is asked
        * against it. Those were the five inch's 45 mm on every aircraft, so
-       * a whoop rested 35 mm in the air. `npm run whoop:gates` W15 drops
+       * A whoop rested 35 mm in the air. `npm run whoop:gates` W15 drops
        * the real module on a plane raised by this number and fails if it
        * ever stops being where the craft settles.
        */
@@ -183,8 +183,8 @@ export const AIRFRAMES = [
      * ZERO, WHICH IS THE FIVE INCH'S PLANT, AND THE WHOLE POINT OF THIS
      * AIRFRAME NOW.
      *
-     * It was 1, a 23 g 1S ducted whoop modelled honestly off the BetaFPV
-     * Air65 II: three times the five inch's angular acceleration, a fifth of
+     * It was 1, a 23 g 1S ducted whoop modelled honestly off the published
+     * specification: three times the five inch's angular acceleration, a fifth of
      * its speed, its own inertia, its own drag, its own 1S sag. It is still
      * in src/native/plant.c as SIM_AIRFRAME_WHOOP65 and nothing selects it.
      *
@@ -229,8 +229,8 @@ export const AIRFRAMES = [
     /*
      * THE FIVE INCH'S TUNE, BECAUSE THE PLANT IS THE FIVE INCH'S.
      *
-     * This was 'whoop-champion', BetaFPV's own shipped configuration for the
-     * Air65 II, and it was the right answer for as long as SIM_AIRFRAME_WHOOP65
+     * This was 'whoop-champion', the maker's own shipped configuration for the
+     * whoop, and it was the right answer for as long as SIM_AIRFRAME_WHOOP65
      * was what flew. It is the wrong answer now and not by a little: a whoop
      * preset is a 1S configuration, its P and D are sized against 6e-6 kg m^2
      * of inertia, its filter cutoffs against a 23 g frame's resonances and its
@@ -240,7 +240,7 @@ export const AIRFRAMES = [
      * to answer.
      *
      * The three whoop presets stay on disk in configs/ and are retired from
-     * the Tune row by configs/registry.js. They are real BetaFPV configs and
+     * the Tune row by configs/registry.js. They are real published configurations and
      * cost nothing to keep; what they must not do is be offerable for a plant
      * they were never written for.
      */
@@ -248,7 +248,7 @@ export const AIRFRAMES = [
     /*
      * THE FIVE INCH'S RATES, FOR THE SAME REASON AS THE TUNE.
      *
-     * These were BetaFPV's own profile for the Air65 II: ACTUAL, srate
+     * These were the maker's own profile for the whoop: ACTUAL, srate
      * 58 / 58 / 50, which is 580 deg/s on roll and pitch and 500 on yaw, with
      * a 65 percent SCALE throttle cap. Every one of those numbers was chosen
      * against a machine with three times this plant's angular acceleration

@@ -696,7 +696,7 @@ const WHOOP_ID = 'whoop65';
  * one row away, and it stays after they choose it.
  *
  * The history, because the same value has now shipped twice: the whoop
- * shipped on the Champion tune, a 65 percent cap and a 115 degree lens.
+ * shipped on the stock whoop tune, a 65 percent cap and a 115 degree lens.
  * Generation 1 moved those to the Freestyle at a 150 master, 75 and 95.
  * Generation 2 moves the tune and the cap back, the lens stays at 95, and
  * the Freestyle's seeded master goes with the default it was seeded for.
@@ -705,9 +705,9 @@ const WHOOP_ID = 'whoop65';
  */
 const SUPERSEDED_WHOOP = {
   GENERATION: 2,
-  /* 75 percent, the generation 1 cap. Back to 65 with the Champion. */
+  /* 75 percent, the generation 1 cap. Back to 65 with the stock tune. */
   throttleCap: 75,
-  /* The Freestyle preset, the generation 1 tune. Back to the Champion. */
+  /* The Freestyle preset, the generation 1 tune. Back to the stock tune. */
   tune: 'whoop-freestyle',
   /* 115 degrees, chosen for a 5 by 6 m room. The room is 10 by 12 now. */
   cameraFov: 115,
@@ -953,7 +953,7 @@ function saveSettings(s) {
  *
  *   tune         a Betaflight diff for a 1S 23 gram quad on a 710 gram 6S
  *                one is not a different feel, it is an oscillation.
- *   rates        BetaFPV ship 580 deg/s on a racing whoop against
+ *   rates        the maker ships 580 deg/s on a racing whoop against
  *                Betaflight's 670 for a 5 inch, and a track three metres
  *                wide is why.
  *   packVoltage  6S LiPo is 4.20 to 3.50 and 1S LiHV is 4.35 to 3.60. A
@@ -1048,10 +1048,10 @@ export function seatAirframe(s, id) {
 /*
  * Lay down an airframe's starting PID adjustment for its default tune, once.
  *
- * No airframe ships one today. The whoop did, for a while: BetaFPV's
+ * No airframe ships one today. The whoop did, for a while: the maker's
  * Freestyle preset with the master slider at 150 percent, the owner's
  * setting flown, until the owner flew the machine hard and asked for the
- * Champion stock instead; SUPERSEDED_WHOOP takes that seed back out. The
+ * the stock tune instead; SUPERSEDED_WHOOP takes that seed back out. The
  * mechanism stays for the next airframe that wants one. It is a SEED and
  * not a setting, so it lands on a profile that has never had an adjustment
  * for that tune and never lands twice; see pidsSeeded above for why once
@@ -2216,7 +2216,7 @@ function craftSvg(a) {
    * from those, the whoop's plan would fill this viewBox edge to edge like
    * the five inch's, and the one thing this card exists to say, that the
    * two machines sit on a bench at a fifth of each other's width, would be
-   * gone. WHOOP_TRUE_DIMS is the 65 mm machine as BetaFPV publish it, and
+   * gone. WHOOP_TRUE_DIMS is the 65 mm machine as the maker publishes it, and
    * it is what a pilot holding one would measure.
    */
   const dims = a.id === 'whoop65' ? WHOOP_TRUE_DIMS : a.dims;
@@ -2261,7 +2261,7 @@ function craftSvg(a) {
   if (ducted) {
     /*
      * The stack and the camera, which are the only things that say which way
-     * it is pointing. There is no canopy: an Air65 II is sold bare, the board
+     * it is pointing. There is no canopy: a whoop is sold bare, the board
      * IS the top of the aircraft, and the camera standing at the front of it
      * is the tallest thing on the machine. See src/render/whoopcraft.js,
      * which draws the same two parts in the same order. -z is the nose in
@@ -5209,7 +5209,7 @@ export class Ui {
          * landed above: "stay put when you switch tunes" was the whole of
          * the claim and is now only half of it. Rates are still the pilot's,
          * but changing the AIRCRAFT reseeds them if they are still the
-         * outgoing machine's stock profile, because BetaFPV ship 580 deg/s
+         * outgoing machine's stock profile, because the maker ships 580 deg/s
          * on a racing whoop against Betaflight's 670 for a five inch. The
          * note says both.
          *

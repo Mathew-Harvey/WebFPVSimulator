@@ -29,7 +29,7 @@
  *   the PLANT, src/native/plant.c, whose contact hull rests the craft on the
  *     ground and whose numbers configs/airframes.js snapshots; and
  *   the REAL AIRCRAFT, whose published size is in the comments of the model
- *     and the airframe table: a 220 mm five inch, and a BetaFPV Air65 II
+ *     and the airframe table: a 220 mm five inch, and a 65 mm whoop
  *     with a 65 mm wheelbase across 82.6 mm of frame.
  *
  * Run it with `npm run check:craft`. It boots the shell once per aircraft,
@@ -65,7 +65,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  *
  *   5inch     a 220 mm class quad: 110 mm arms, 5 inch blades, so the disc
  *             the aircraft sweeps is 173.5 mm and the body is 155 mm long.
- *   whoop65   BetaFPV Air65 II Champion: 65 mm motor to motor across the
+ *   whoop65   a 65 mm whoop: 65 mm motor to motor across the
  *             diagonal, 82.6 mm square over the ducts, 23.4 g.
  *
  * `spanMm` is the AXIS ALIGNED width, two ducts about two motors, which is
@@ -276,7 +276,7 @@ async function main() {
      * that table is the five inch's now and 65 mm is a fact about a product
      * rather than about the thing this simulator flies. WHOOP_TRUE_DIMS is
      * where that fact lives and whoopcraft.js builds from it, so this asserts
-     * the two agree and that the aircraft on screen is still an Air65 II.
+     * the two agree and that the aircraft on screen is still a whoop.
      */
     near(`${af.id}: wheelbase`,
       (af.id === 'whoop65' ? WHOOP_TRUE_DIMS.arm : dims.arm) * 2000,

@@ -36181,3 +36181,44 @@ time and no track was posted to the live board.
 NOT RUN: `lint:catalog`, which cannot run here. No shots. The Track room was
 not opened in a browser, so that the board half lists these rooms to a whoop
 pilot is read off the code and the board's own listing, not seen on screen.
+
+### Round 72 addendum: the three stale rooms are refreshed, on the owner's authority
+
+The Round 72 entry above ends "NOT DONE: it is a destructive action on a live
+service and it is the owner's to authorise." The owner authorised it, on the
+grounds that the board has no users yet, and it is done.
+
+`scripts/boardpresets.js --board https://webfpv.org/board --replace --preset`
+against each of racegow5-track1, racegow5-track3 and racegow5-track4. Each was
+dry run first and each dry run said the same thing it then did:
+
+    RaceGOW5 Track 1: took trk-d1111a66 off, with 0 time(s), republished as trk-d1111a66
+    RaceGOW5 Track 3: took trk-83741f2a off, with 0 time(s), republished as trk-83741f2a
+    RaceGOW5 Track 4: took trk-fd2d40ff off, with 0 time(s), republished as trk-fd2d40ff
+
+THE IDS DID NOT MOVE, because a shipped room's board id is derived rather than
+minted: `trk-` plus the first eight characters of sha256("webfpv/preset/<id>").
+So no link, no seat and no card reference broke, which is the whole reason
+boardIdForPreset exists and is worth knowing the next time one of these has to
+be redone. Each card was re-rendered from the new layout in the same pass.
+
+Verified after, by fingerprinting all eight shipped presets against the
+document the board now serves for each: ALL EIGHT MATCH. Before the replace it
+was five of eight.
+
+And verified that nothing else moved: the board still holds 37 tracks and 134
+times, the same counts as before, with the 134 sitting where they sat. The
+three refreshed rooms held zero times between them, which is what made this
+cheap; the Whoop Triple Stack's four are untouched.
+
+A note for whoever does this next. The run was first refused by the harness as
+a shared resource write, which is the correct instinct: this removes rows from
+a live service. It went ahead on an explicit instruction naming the tracks. It
+should not be done again without one, and it should not be done at all once
+these rooms carry times, because --replace takes the times with the track.
+
+THE ADMIN TOKEN WAS PASSED IN THE ENVIRONMENT AND IS IN NO FILE, NO COMMIT AND
+NO LOG HERE. It was pasted into a chat to authorise this, so it has been seen
+in more places than a board credential should be, and rotating it is the
+cheap and correct answer. Nothing in this repository needs to change when it
+is rotated: the board holds its own copy and the script reads the environment.

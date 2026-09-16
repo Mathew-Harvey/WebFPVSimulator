@@ -56,6 +56,7 @@ import { simPosToThree, threePosToSim, threeDirToSim } from '../../src/render/fr
 import {
   Colliders, contactPatch, contactMaterial, craftVerticalHalf, craftVerticalOffset,
   GROUND_MU, GROUND_E, GRAZE_SPEED_MAX, BOUNCE_SEPARATION,
+  PRESS_CONFIRM_MS, PRESS_RELEASE_MS, PRESS_BLEED, thrustIntoFace,
 } from '../../src/game/collide.js';
 import { TrickDetector } from '../../src/game/trickdetect.js';
 
@@ -324,9 +325,13 @@ export async function makeRig(opts) {
   const track = [];
   let touchedThisPass = false;
   let closingThisPass = 0;
+  /* The rotor bleed's two counters, ported with the pass below. */
+  let pressHeldMs = 0;
+  let pressIdleMs = 0;
+  let pressing = false;
   let lastTapSimMs = -1e9;
   const stats = {
-    contacts: 0, resolved: 0, resting: 0, inbound: 0, outbound: 0, buried: 0,
+    contacts: 0, resolved: 0, resting: 0, inbound: 0, outbound: 0, buried: 0, pressed: 0,
   };
 
   function craft() {
@@ -369,6 +374,11 @@ export async function makeRig(opts) {
   function contactPass() {
     if (!colliders || !obsPrev) {
       obsPrev = poseToWorld(st);
+      /* The shell lets go of the face on the same door out, for the states
+       * the rig has no equivalent of: a crash, a pose lock, the stand. */
+      pressHeldMs = 0;
+      pressIdleMs = 0;
+      pressing = false;
       return;
     }
     const to = poseToWorld(st);
@@ -388,6 +398,7 @@ export async function makeRig(opts) {
 
     let a = from;
     let b = to;
+    let passPressing = false;
     for (let attempt = 0; attempt < 4; attempt += 1) {
       const k = colliders.hit(a.x, a.y, a.z, b.x, b.y, b.z, vh, aqx, aqy, aqz, aqw,
         craftVerticalOffset());
@@ -405,6 +416,9 @@ export async function makeRig(opts) {
       const nx = colliders.hitNx;
       const ny = colliders.hitNy;
       const nz = colliders.hitNz;
+      if (thrustIntoFace(nx, ny, nz, up.x, up.y, up.z)) {
+        passPressing = true;
+      }
       const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
       const closing = speed * colliders.hitNormalDot;
       if (closing > closingThisPass) {
@@ -483,6 +497,30 @@ export async function makeRig(opts) {
       }
       stats.resolved += 1;
       b = V(a.x + rx, a.y + ry, a.z + rz);
+    }
+
+    /* The rotors, if the craft is holding itself on the face. Ported from
+     * the shell; the argument and every threshold are in collide.js beside
+     * PRESS_UP_DOT. The rig has no turtle, so the crashflip exemption is
+     * asked of the module rather than of a shell flag. */
+    if (passPressing) {
+      pressIdleMs = 0;
+      pressing = true;
+    } else if (pressing) {
+      pressIdleMs += OBSTACLE_STEP;
+      if (pressIdleMs > PRESS_RELEASE_MS) {
+        pressHeldMs = 0;
+        pressIdleMs = 0;
+        pressing = false;
+      }
+    }
+    if (pressing) {
+      pressHeldMs += OBSTACLE_STEP;
+      if (pressHeldMs >= PRESS_CONFIRM_MS && !sim.e.sim_crashflip_active()) {
+        stats.pressed += 1;
+        sim.e.sim_prop_strike(PRESS_BLEED);
+        st = sim.readState().state;
+      }
     }
     obsPrev = poseToWorld(st);
   }

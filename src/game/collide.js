@@ -2207,6 +2207,116 @@ export const BOUNCE_COOLDOWN_MS = 180;
 export const BOUNCE_SEPARATION = 0.008;
 
 /*
+ * A ROTOR PRESSED INTO A SURFACE CANNOT PULL AIR THROUGH IT.
+ *
+ * The report: "if you hit a wall i think its programmed to kick you off
+ * like a pinball but it creates a situation where you constantly just get
+ * stuck between 2 spots and bounce forever, constantly have to restart."
+ *
+ * Both halves of that sentence are one fault, and it is not restitution.
+ * The contact impulse lands at the support point of the hull in the
+ * direction of the face, and for a craft with any tilt at all that point
+ * sits off the centre of mass on the side it is already tilted toward, so
+ * the torque tilts it FURTHER. Measured on the training wall through
+ * scripts/wall-check.js, with the normal impulse taken as one unit:
+ *
+ *     pitch      2 deg      -0.003      nose down
+ *     pitch     30 deg      -0.053      nose down
+ *     pitch     60 deg      -0.104      nose down
+ *     pitch     80 deg      -0.132      nose down
+ *     pitch     90 deg       0.000      the fixed point
+ *
+ * Monotonic, one signed, and zero only where the thrust axis has come
+ * round square to the face. It is a ratchet with one stop in it, and the
+ * stop is the attitude the pilot cannot fly out of.
+ *
+ * What happens at the stop is what the report describes. A level 6 m/s
+ * arrival winds to 90 degrees nose down in about six tenths of a second,
+ * and the craft is then holding its own thrust axis INTO the wall at
+ * whatever throttle the pilot has in. At centred sticks the discs make
+ * close to three times hover thrust pressed against the face, the wall's
+ * own mu of 0.42 then holds 8.2 N against a 6.9 N aircraft, and the craft
+ * hangs there taking a contact every twenty milliseconds, buzzing in and
+ * out of the 8 mm separation: the two spots.
+ * Flown in the rig, every stick a pilot has (full pitch either way, full
+ * roll, hard yaw, full throttle) leaves it inside a centimetre of the face
+ * after two whole seconds. It is not hard to leave, it cannot be left.
+ *
+ * None of the four clip-watch detectors sees it either. The centre is not
+ * inside a solid, the bounce loop resolves every pass, the terrain is
+ * nowhere near, and the thrash gate wants a spin or real throttle and gets
+ * a craft sitting quietly at hover. So the pilot restarts, which is the
+ * complaint.
+ *
+ * THE MISSING PHYSICS IS THE ROTORS, and the module already has the entry
+ * point for it. A propeller makes thrust by accelerating air through the
+ * disc. Press that disc flat onto masonry and there is no air to take: the
+ * inflow is blocked, the blades are striking, and thrust collapses. The
+ * simulation had the discs pressed against the wall at 12,600 rpm making
+ * full thrust, which is the only reason the craft could hold itself there.
+ * sim_prop_strike takes rotor speed out for exactly this reason, and the
+ * shell already calls it on the bang of an arrival; what was missing is
+ * that a rotor held against a surface keeps losing, for as long as it is
+ * held.
+ *
+ * So: while a resolved contact's outward normal opposes the craft's own
+ * thrust axis, the rotors bleed. Everything else is untouched, and the
+ * test is the sign of one dot product:
+ *
+ *   thrust into the face      n . up <= -PRESS_UP_DOT     bleeds
+ *   belly or side on a wall   n . up  >  0                a wall ride, free
+ *   sitting on a roof         n . up ~ +1                 a perch, free
+ *   pressed up on a ceiling   n . up ~ -1                 bleeds, correctly
+ *
+ * PRESS_UP_DOT is a 60 degree cone, the same number PROP_PLANE_MAX_UP_DOT
+ * already uses to mean "the disc plane is against this", so a craft banked
+ * through a gate is nowhere near it.
+ *
+ * PRESS_CONFIRM_MS is a tenth of a second and a half of being held. A tap,
+ * a graze and a clipped gate are all over long before it, so nothing a
+ * pilot does on purpose pays for this; only being held against a face
+ * does. It is counted in sim milliseconds of the HELD STATE, not in
+ * contacts: a pinned craft buzzes in and out of the 8 mm separation and
+ * only actually touches on about one pass in six, so counting passes with
+ * a contact in them would never reach any threshold worth setting.
+ * PRESS_RELEASE_MS is what ends the hold, and it is three times the
+ * measured buzz gap, so leaving the face ends it and buzzing against it
+ * does not.
+ *
+ * PRESS_BLEED is per contact pass, so it compounds against the motor's own
+ * spin up. The rotors recover about a fifth of the gap to the commanded
+ * speed in each 4 ms pass (t63 is 18 ms), which puts the steady state at
+ * 0.2k / (1 - 0.8k) of commanded for k = 1 - PRESS_BLEED: 0.53 of the
+ * speed at 0.15, and thrust goes as the square, so 0.28 of the thrust. A
+ * craft pinned at full throttle presses with about nine times its weight
+ * and needs to fall under about a quarter of that before mu stops holding
+ * it, which is what 0.15 buys and 0.10 does not.
+ *
+ * CRASHFLIP IS EXEMPT, and it has to be. Turtle mode's whole method is to
+ * drive two rotors against whatever the craft is lying on, and a craft
+ * upside down on a rooftop reads exactly like a craft pinned on a wall:
+ * the roof's normal is up, the thrust axis is down, the dot product is
+ * minus one. Bleeding there would take away the one control that gets the
+ * pilot out of it. The shell gates on sim_crashflip_active(), which is
+ * true for both the scripted turtle and the held key.
+ */
+export const PRESS_UP_DOT = 0.5;
+export const PRESS_CONFIRM_MS = 150;
+export const PRESS_RELEASE_MS = 60;
+export const PRESS_BLEED = 0.15;
+
+/*
+ * Does this contact have the craft's own thrust pushing it into the face?
+ *
+ * n is the face's outward normal and up is the craft's thrust axis, both
+ * world, both expected unit. Pure, allocation free: it is called from the
+ * contact pass, which runs on the sim clock.
+ */
+export function thrustIntoFace(nx, ny, nz, ux, uy, uz) {
+  return nx * ux + ny * uy + nz * uz <= -PRESS_UP_DOT;
+}
+
+/*
  * The fastest a SOLID SURFACE may be moving, in m/s, before the shell stops
  * calling it a speed.
  *

@@ -201,11 +201,24 @@ async function tap(yaw, speed) {
     (c) => Math.abs(c.fwd.y) < 0.10 && c.up.y > 0.9,
   );
   const exitFrom = rig.craft().p;
+  /*
+   * THE ARRIVAL'S OWN TALLY, taken before the craft is flown away.
+   *
+   * Check 1 below asserts no contact was outbound, and it has to ask that
+   * of the ARRIVAL. Leaving a face produces outbound contacts by
+   * definition: the hull brushes the masonry while the centre of mass is
+   * already going the other way, and the plant still solves those, because
+   * it decides on the contact point's velocity and not the centre's. Those
+   * only started appearing when the craft could leave at all. Split here
+   * so the clause keeps meaning what it was written to mean.
+   */
+  const arrive = { ...rig.stats };
   rig.fly(linePath(exitFrom, V(FACE_X - 9, 3.2, 0), 1.8), { heading: Math.atan2(-1, 0) });
   const out = rig.craft();
 
   return {
     exitGap: FACE_X - out.p.x,
+    arrive,
     stats: { ...rig.stats },
     approach: entry.v.x,
     deepest: peakAt.x,
@@ -241,13 +254,25 @@ for (const [yawName, yaw] of YAWS) {
  * the PLANT's frame, which is the only frame that can answer the question.
  * With the spawn rotation missing, a map at yaw pi reported every contact
  * outbound and the plant declined every one of them.
+ *
+ * ASKED OF THE ARRIVAL, which is where that bug lived and where the answer
+ * means something. It used to be asked of the whole flight and passed for a
+ * reason that was not the one intended: at 3 and 6 m/s the craft never left
+ * the wall, so there was no departure to produce an outbound contact. Now
+ * that it does leave, two or three contacts a run are outbound, all of them
+ * in the fly out, all of them a hull brushing the face on the way past.
+ * Measured at every yaw and speed: zero outbound over the approach and the
+ * settle, every time. The split is the stricter reading of the two, because
+ * it pins the phase the old clause could only cover by accident.
  */
 for (const r of results) {
   check(
     `yaw ${r.yawName} deg at ${r.speed} m/s: the hull reaches the wall and the plant takes the contact`,
-    r.stats.contacts > 0 && r.stats.resolved > 0 && r.stats.outbound === 0,
-    `contacts ${r.stats.contacts}, resolved ${r.stats.resolved}, resting ${r.stats.resting}, `
-    + `inbound ${r.stats.inbound}, outbound ${r.stats.outbound}`,
+    r.arrive.contacts > 0 && r.arrive.resolved > 0 && r.arrive.outbound === 0,
+    `on arrival: contacts ${r.arrive.contacts}, resolved ${r.arrive.resolved}, `
+    + `resting ${r.arrive.resting}, inbound ${r.arrive.inbound}, `
+    + `outbound ${r.arrive.outbound}; over the whole flight, `
+    + `${r.stats.contacts} contacts and ${r.stats.outbound} outbound`,
   );
 }
 
@@ -421,12 +446,99 @@ for (const speed of SPEEDS) {
   );
 }
 
+/*
+ * 6. AND IT DOES NOT STAY ON THE WALL.
+ *
+ * The report: "if you hit a wall i think its programmed to kick you off like
+ * a pinball but it creates a situation where you constantly just get stuck
+ * between 2 spots and bounce forever, constantly have to restart."
+ *
+ * Measured before the rotor bleed went in, on this same wall, a 6 m/s level
+ * arrival with the sticks CENTRED: the contact ratchets the craft nose down
+ * until its thrust axis is square into the face, and it then hangs there at
+ * 4.95 m, 7 cm off the masonry, taking a contact every twenty milliseconds
+ * for as long as anyone watches. Not one stick a pilot has moves it: full
+ * pitch either way, full roll, hard yaw and full throttle all leave it
+ * inside a centimetre of the face after two whole seconds. That is the
+ * report, and neither the four clip-watch detectors nor this file could see
+ * it, because every check here ended before the craft had finished
+ * winding up.
+ *
+ * So this one flies the arrival and then does NOTHING for three seconds.
+ * The craft has to leave the face on its own. Falling down it counts:
+ * gravity is a way out and a pilot on the floor has a turtle, a recovery
+ * and a restart of their own choosing. Hanging at height does not.
+ *
+ * The gate is a drop of two metres from wherever the wind-up carried it.
+ * Measured after the fix, across all four yaws at 3 and 6 m/s, the craft
+ * climbs the face to about 5.2 m and is on the ground at 0.10 to 0.13 m
+ * inside three seconds, so the margin is five metres wide. At 9 m/s the
+ * contact throws it clear of the face entirely and the drop never happens,
+ * which check 2 already asserts, so the clearance is the other way out.
+ */
+async function pin(yaw, speed) {
+  const start = V(FACE_X - 13, 3.2, 0);
+  const release = V(FACE_X - 1.4, 3.2, 0);
+  const rig = await makeRig({
+    wasmBytes,
+    diffText,
+    colliders: world.colliders,
+    field: world.field,
+    spawn: V(FACE_X - 15, 0, 0),
+    spawnYaw: yaw,
+    groundY: 0,
+  });
+  rig.hold(200, 0, 0, 0, 0.5);
+  rig.settle(start, Math.atan2(1, 0), 2.6);
+  const runway = len(sub(release, start));
+  rig.fly(rampPath(start, release, (runway / speed) * 1.25, speed), {
+    heading: Math.atan2(1, 0),
+  });
+  let peakY = -Infinity;
+  let peakGap = 0;
+  rig.stickUntil([0, 0, 0, 0.345], 3000, (c) => {
+    if (c.p.y > peakY) {
+      peakY = c.p.y;
+    }
+    const gap = FACE_X - c.p.x;
+    if (gap > peakGap) {
+      peakGap = gap;
+    }
+    return false;
+  });
+  const end = rig.craft();
+  return {
+    peakY,
+    peakGap,
+    endY: end.p.y,
+    endGap: FACE_X - end.p.x,
+    contacts: rig.stats.contacts,
+  };
+}
+
+const HANG_DROP = 2.0;
+for (const [yawName, yaw] of YAWS) {
+  for (const speed of SPEEDS) {
+    /* eslint-disable-next-line no-await-in-loop */
+    const r = await pin(yaw, speed);
+    const dropped = r.peakY - r.endY;
+    check(
+      `yaw ${yawName} deg at ${speed} m/s: three seconds of nothing and the craft is off the face`,
+      dropped > HANG_DROP || r.endGap > SQUARE_REACH * 4,
+      `climbed to ${r.peakY.toFixed(2)} m, ended at ${r.endY.toFixed(2)} m `
+      + `(a drop of ${dropped.toFixed(2)} m against ${HANG_DROP.toFixed(2)} needed), `
+      + `gap ${r.endGap.toFixed(3)} m, ${r.contacts} contacts`,
+    );
+  }
+}
+
 /* The numbers, for the record. A threshold argued in PROGRESS.md needs the
  * measurement beside it. */
 console.log('\n  approach and rebound, per spawn yaw. The exit column is ASSERTED');
-console.log('  only at 9 m/s; below that the craft ends up pinned by its own thrust');
-console.log('  after a nose first arrival, which is recorded above and is a pilot');
-console.log('  outcome rather than a contact one:');
+console.log('  only at 9 m/s, where the contact throws the craft clear and the exit is');
+console.log('  a flight. Below that the craft still winds nose down onto the face; what');
+console.log('  check 6 asserts there is that it comes OFF the face on its own, which it');
+console.log('  does by falling down it:');
 for (const r of results) {
   console.log(
     `    ${r.speed >= 9 ? 'exit asserted ' : 'exit recorded '}`

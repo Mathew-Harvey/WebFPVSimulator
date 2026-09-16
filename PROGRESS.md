@@ -36286,3 +36286,253 @@ nothing in this diff touches the catalog's data. `npm run verify` was not
 run: the change is comments and three display strings, no constant and no
 coefficient moved, and the owner was asked at the end of the turn whether to
 spend it.
+
+---
+
+## 2026-09-16 A wall would not let go, because the props were making thrust against it
+
+The report, from the in-game bug button, map `city`, `low` graphics on a
+software renderer:
+
+> if you hit a wall i think its programmed to kick you off like a pinball but
+> it creates a situation where you constantly just get stuck between 2 spots
+> and bounce forever, constantly have to restart which is annoying.
+>
+> Expected: maybe make it no kick you off so it doesnt get a feedback loop or
+> something
+
+Both halves of that sentence are one fault and it is not restitution.
+
+### What it was
+
+Reproduced in `scripts/lib/flightrig.js` against the training wall: the real
+Betaflight loop, the real plant, `src/game/collide.js`, no browser and no
+wall clock. A level 6.0 m/s arrival, nose 2 degrees down, sticks CENTRED
+from a metre and a half out.
+
+The contact impulse lands at the support point of the hull in the direction
+of the face, which for a craft with any tilt at all is on the side it is
+already tilted toward. Taking the normal impulse as one unit, the pitch
+torque `contactPatch` produces against a vertical face is:
+
+```
+  pitch   2 deg    -0.003   nose down
+  pitch  30 deg    -0.053   nose down
+  pitch  60 deg    -0.104   nose down
+  pitch  80 deg    -0.132   nose down
+  pitch  90 deg     0.000   the fixed point
+```
+
+Monotonic, one signed, zero only where the thrust axis has come round square
+to the face. A ratchet with one stop in it. The flown trace walks straight
+up it: `fwd.y` goes -0.04, -0.20, -0.35, -0.62, -0.94, -0.99 over six tenths
+of a second and the craft is then 90 degrees nose down with its thrust axis
+pointing INTO the wall.
+
+That is where it stopped being recoverable. At 34.5 percent throttle the
+discs make about 2.8 times hover thrust, `mu` 0.42 on masonry holds 8.2 N
+against a 6.9 N aircraft, and the craft hung at 4.95 m, 7 cm off the face,
+taking a contact every twenty milliseconds, buzzing in and out of the 8 mm
+`BOUNCE_SEPARATION`. Those are the pilot's two spots, and 106 contacts in
+2.4 seconds is the forever.
+
+**Nothing a pilot can do moves it.** Flown from the pinned state, two whole
+seconds of each:
+
+```
+  throttle to zero              gap 0.063 -> 0.066   slid down the face
+  full pitch back, hover thr    gap 0.063 -> 0.066
+  full pitch back, no throttle  gap 0.063 -> 0.068
+  full pitch back, full thr     gap 0.063 -> 0.063
+  full pitch forward, full thr  gap 0.063 -> 0.060
+  full roll, full throttle      gap 0.063 -> 0.068
+  full throttle straight        gap 0.063 -> 0.064
+  hard yaw, hover throttle      gap 0.063 -> 0.059
+```
+
+`up.y` moves from 0.01 to -0.00 under full pitch at full throttle: the
+contact friction, re-applied at 250 Hz with a normal impulse sized by the
+craft's own thrust, welds it rotationally as well as translationally. It is
+not hard to leave. It cannot be left.
+
+And none of the four `clipWatchTick` detectors sees it. The centre is not
+inside a solid, so not `inside`. The bounce loop resolves every pass, so not
+`stuck`. The terrain is nowhere near, so not `buried`. And `thrash` wants
+`rateMag >= 12` or `throttle >= 0.55` and gets a craft sitting quietly at
+hover. So the shell never calls it, and the pilot restarts. That is the
+whole report, exactly.
+
+`scripts/wall-check.js` had this in front of it the entire time and said so
+in prose: "below that the craft ends up pinned by its own thrust after a
+nose first arrival, which is recorded above and is a pilot outcome rather
+than a contact one". The first half was right and the second half was wrong.
+There is no pilot outcome available. The check asserted the exit only at
+9 m/s, which is the one speed where the wind-up throws the craft clear
+instead of onto the face, so nothing was red.
+
+### The fix
+
+A propeller makes thrust by accelerating air through the disc. Press that
+disc onto masonry and there is no air to take: the inflow is blocked, the
+blades are striking, and thrust collapses. The simulation had the discs
+flat against the wall at 12,600 rpm making full thrust, and that is the only
+reason the craft could hold itself there.
+
+`sim_prop_strike` exists for exactly this and the module already exports it,
+with its own comment: "a spinning 5 inch that meets a wall does not carry
+its rotor speed through the contact". What was missing is that a rotor HELD
+against a surface keeps losing, for as long as it is held; the shell only
+ever called it on the bang of an arrival, sized by the impulse, and a pinned
+craft's impulses are too small to matter.
+
+So `obstacleContactPass` now bleeds the rotors while a resolved contact has
+the craft's own thrust axis into the face. The test is the sign of one dot
+product, `n . up`:
+
+```
+  thrust into the face      <= -PRESS_UP_DOT   bleeds
+  belly or side on a wall    >  0              a wall ride, free
+  sitting on a roof          ~ +1              a perch, free
+  pressed up on a ceiling    ~ -1              bleeds, correctly
+```
+
+`PRESS_UP_DOT` 0.5 is a 60 degree cone, the number `PROP_PLANE_MAX_UP_DOT`
+already uses for "the disc plane is against this". `PRESS_CONFIRM_MS` 150
+is how long the hold must run first, so a tap, a graze and a clipped gate
+never pay. `PRESS_RELEASE_MS` 60 is what ends the hold, three times the
+measured buzz gap, so leaving the face ends it and buzzing against it does
+not: the hold is counted in sim milliseconds of the STATE, not in contacts,
+because a pinned craft only actually touches on about one pass in six and
+counting contacts would never reach any threshold worth setting.
+`PRESS_BLEED` 0.15 per 4 ms pass compounds against the motor's own spin-up
+(t63 18 ms, about a fifth of the gap recovered per pass) to a steady state
+of 0.2k/(1-0.8k) = 0.53 of commanded speed, so 0.28 of the thrust. Measured
+in the rig: 12,600 rpm down to about 4,600.
+
+CRASHFLIP IS EXEMPT and has to be. Turtle's whole method is to drive two
+rotors against whatever the craft is lying on, and a craft upside down on a
+rooftop reads identically to one pinned on a wall by that dot product alone.
+Gated on `sim_crashflip_active()`, which covers the scripted turtle and the
+held key both.
+
+Everything here is on the sim clock, in integer milliseconds, with no
+allocation and no transcendental: the determinism rule and the P8 budget are
+untouched.
+
+### What it does now
+
+Same arrival, same centred sticks, three seconds of doing nothing, all four
+spawn yaws:
+
+```
+                 before                     after
+  3 m/s    hung at 3.87 to 4.44 m     on the ground at 0.10 to 0.13 m
+  6 m/s    hung at 4.17 to 5.64 m     on the ground at 0.10 to 0.59 m
+  9 m/s    thrown clear               thrown clear, 14.6 to 17.6 m
+```
+
+The craft still winds nose down onto the face at 3 and 6 m/s. What it no
+longer does is hang there: it loses the thrust that was holding it and falls
+down the wall to the floor, where a turtle, a recovery and a restart of the
+pilot's own choosing all exist. `wall-check`'s own exit procedure, which
+levels the craft and flies it away, now reaches 4.98 to 8.02 m at 3 and
+6 m/s where it previously reached 0.06.
+
+### The checks, and one that had to be split
+
+`node scripts/wall-check.js`, **57 passed 0 failed**, up from 45 checks.
+
+Two changes to that file, both written down here because one of them touches
+an assertion:
+
+**New, check 6: "three seconds of nothing and the craft is off the face."**
+The regression test for this report. Flies the arrival, then holds the
+sticks centred for three seconds and requires the craft to have left the
+face, either by dropping two metres or by ending four hull radii clear.
+Verified to FAIL without the fix: eight of the twelve cases red, drops of
+0.84 to 1.37 m against the 2.00 needed, 91 to 121 contacts. With the fix,
+twelve of twelve green with drops of 4.15 to 6.26 m, so the margin is five
+metres wide rather than a hair.
+
+**Changed, check 1: `outbound === 0` now asks the ARRIVAL rather than the
+whole flight.** This is a loosening on its face and it is not one in
+substance, which is why it is argued here rather than done quietly.
+
+The clause exists to catch the spawn-rotation bug, whose signature was "a
+map at yaw pi reported EVERY contact outbound and the plant declined every
+one of them". Leaving a face produces outbound contacts by definition: the
+hull brushes the masonry while the centre of mass is already going the other
+way, and the plant still solves those, because `contact_impulse` decides on
+the CONTACT POINT's velocity and not the centre's. Before the fix there was
+no departure to produce any, because at 3 and 6 m/s the craft never left, so
+the cumulative `=== 0` held for a reason that was not the intended one.
+Measured per phase after the fix, every yaw and speed:
+
+```
+  arrival + settle    0 outbound, always
+  fly out             0 to 3 outbound
+```
+
+So the clause is now asked of the arrival, where the bug lived and where the
+answer means something, and it is the stricter of the two readings: it pins
+a phase the old form could only cover by accident. `resolved` is still equal
+to `contacts` throughout, which is the other half of the old bug's signature
+and is emphatically absent.
+
+Also run and green, in the same turn: `node scripts/contact-selftest.js`,
+`node src/trackbuilder/selftest.js` (528 of 528), `npm run lint:shell`,
+`npm run lint:frame` (34 of 34), `npm run lint:memory`, `npm run lint:quality`
+(56 of 56), `npm run lint:boot` (9 of 9), `npm run lint:fc` (30 of 30 traces),
+`npm run lint:presets` (6 of 6). `node --check` on all four touched files.
+
+`npm run verify` was NOT run. It drives `tests/browser/harness.html`, which
+loads the module directly and has no shell in it, so it cannot see this
+change: nothing in `src/native/`, `patches/`, `vendor/` or the build moved,
+`dist/sim.wasm` is byte identical, and the same input stream still produces
+the same trace. Said plainly rather than implied: a green verify would have
+been evidence about something else.
+
+`npm run lint:catalog` could not run. `vendor/betaflight` is an empty
+directory in this container, so it throws on a missing
+`src/main/fc/parameter_names.h`. That is the checkout, not the change.
+
+### Findings recorded, not acted on
+
+**The rig cannot rebuild the module, and that shaped the fix.** `emcc` is
+not installed here and `vendor/betaflight` is empty, so any edit to
+`src/native/sim.c` would have been dead code against a shipped wasm that
+still had the old contact model. The fix had to live in JavaScript and does.
+That is a constraint worth knowing about before somebody reaches for a
+contact constant in C.
+
+**The ratchet itself is still there, and it is the deeper fault.** The
+rotor bleed removes the trap at the end of the wind-up; it does not stop the
+wind-up. A level quad that taps a wall at 6 m/s still rotates 90 degrees
+nose into it over six tenths of a second, which is not what a real one does.
+The cause is that a single impulse at the extreme support point of a convex
+hull, re-applied every 4 ms with no second contact point and no restoring
+term, integrates into an unbounded rotation, where a real contact would
+bring more of the airframe into play and stop it. Fixing that is a change to
+the shape of the contact model and wants the advisor, a rebuild, and a
+pilot; no advisor channel exists in this session, so it is written down here
+instead, per the standing convention.
+
+**The 9 m/s "rebound" that `wall-check` reports as 45 to 51 percent of the
+approach is not a rebound.** The knee says a wall's separation speed
+saturates at `0.15 * 1.7 = 0.255 m/s` and check 5's own low-speed row
+measures 0.242 to 0.252, exactly as predicted. The 4.8 m/s at 9 m/s is the
+same ratchet running the other way: a decelerating arrival is nose UP, the
+contact flips the craft onto its back, and what the trace records as
+"outbound speed" is an inverted quad accelerating away under its own motors,
+still gaining at 7.7 m/s half a second later. That is very likely the
+"kick you off like a pinball" half of the pilot's sentence. It is a real
+finding and it is NOT fixed here, because it is the same modelling question
+as the paragraph above and because a pilot flung inverted into open air can
+still fly, which is the difference that matters against being welded to a
+wall. Check 5, "a harder arrival comes off harder, so the rebound is the
+impulse and not a shove", is therefore measuring thrust rather than impulse
+at its fast end, and is left alone on the same grounds.
+
+**Pre-existing and untouched: `npm run score:selftest` fails one case**, "the
+same lap without the flip is a Maverick Loop". Confirmed pre-existing by
+stashing this diff and re-running; nothing here goes near the recogniser.

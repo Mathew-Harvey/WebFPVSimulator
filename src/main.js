@@ -65,7 +65,7 @@ import { FreestyleScore, formatScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, PRESS_CONFIRM_MS, PRESS_RELEASE_MS, PRESS_BLEED, thrustIntoFace, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
@@ -1808,6 +1808,18 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let obsTouched = false;
   let obsClosing = 0;
+  /*
+   * THE CRAFT IS HOLDING ITSELF ON A FACE WITH ITS OWN THRUST.
+   *
+   * Two counters on the sim clock, both advanced by the contact pass and
+   * both in milliseconds. pressHeldMs is how long the hold has run,
+   * pressIdleMs is how long since the last contact that had the thrust
+   * axis into the face. See PRESS_UP_DOT in collide.js for why a rotor
+   * pressed onto masonry has to lose speed, and for the measurements.
+   */
+  let pressHeldMs = 0;
+  let pressIdleMs = 0;
+  let pressing = false;
   /* Harness: skip the draw so a probe can fly at frame rate rather than at
    * the town's draw rate. See window.__drawOff. */
   let harnessNoDraw = false;
@@ -2653,6 +2665,7 @@ export async function boot({ loading, bootStart, mapId }) {
     input.drain();
     input.resetKeyboardSticks();
     raceHasPrev = false;
+    releasePress();
     bounceCount = 0;
     bounceAtWall = 0;
     groundBounceAtWall = 0;
@@ -4806,6 +4819,13 @@ export async function boot({ loading, bootStart, mapId }) {
     return true;
   }
 
+  /* Let go of the face: the hold, and the memory of it. */
+  function releasePress() {
+    pressHeldMs = 0;
+    pressIdleMs = 0;
+    pressing = false;
+  }
+
   /*
    * THE SOLID WORLD, ON THE SIM CLOCK.
    *
@@ -4847,6 +4867,7 @@ export async function boot({ loading, bootStart, mapId }) {
     obsResolved = false;
     if (!view.colliders || mode !== 'flight' || crashed || poseLock || launchStaging) {
       obsHasPrev = false;
+      releasePress();
       return st;
     }
     poseFromState(st, obsTo);
@@ -4876,6 +4897,7 @@ export async function boot({ loading, bootStart, mapId }) {
     let punchTravel = false;
     let clean = true;
     let attempts = 0;
+    let passPressing = false;
 
     for (; attempts < 4; attempts += 1) {
       const k = view.colliders.hit(
@@ -4901,6 +4923,14 @@ export async function boot({ loading, bootStart, mapId }) {
       const nz = col.hitNz;
       if (ny > 0.5) {
         obsRoof = true;
+      }
+      /* The thrust axis pointing INTO this face is the state the rotor
+       * bleed below exists for. Noticed on the sweep rather than on the
+       * impulse, because a craft already resting on the face has no
+       * normal velocity left for the solver to take and the pass reports
+       * it as resting: the rotors are against the wall either way. */
+      if (thrustIntoFace(nx, ny, nz, upAxis.x, upAxis.y, upAxis.z)) {
+        passPressing = true;
       }
       lastHitKind = col.kindName(k);
       lastClosing = speedNow * col.hitNormalDot;
@@ -5085,6 +5115,40 @@ export async function boot({ loading, bootStart, mapId }) {
         if (!(obsInterior >= CLIP_DEEP)) {
           obsInterior = CLIP_DEEP;
         }
+      }
+    }
+
+    /*
+     * AND THE ROTORS, IF THE CRAFT IS HOLDING ITSELF ON THE FACE.
+     *
+     * The state, the measurements and every threshold here are argued in
+     * collide.js beside PRESS_UP_DOT. The short of it: a disc pressed onto
+     * masonry has no air to pull through it, so the thrust that was
+     * pinning the craft to the wall should not exist, and without this it
+     * did. The craft leaves the face on its own now instead of buzzing
+     * against it until the pilot restarts.
+     *
+     * Crashflip is exempt. Turtle's whole method is to drive two rotors
+     * against whatever the craft is lying on, and a craft upside down on a
+     * roof is indistinguishable from one pinned on a wall by the dot
+     * product alone.
+     */
+    if (passPressing) {
+      pressIdleMs = 0;
+      pressing = true;
+    } else if (pressing) {
+      pressIdleMs += OBSTACLE_STEP;
+      if (pressIdleMs > PRESS_RELEASE_MS) {
+        releasePress();
+      }
+    }
+    if (pressing) {
+      pressHeldMs += OBSTACLE_STEP;
+      if (pressHeldMs >= PRESS_CONFIRM_MS
+        && !sim.e.sim_crashflip_active()
+        && typeof sim.e.sim_prop_strike === 'function') {
+        sim.e.sim_prop_strike(PRESS_BLEED);
+        stateCurr = readState();
       }
     }
     return stateCurr;

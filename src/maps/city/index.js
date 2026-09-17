@@ -1770,6 +1770,21 @@ export async function buildMap(shell, onProgress, options) {
   const scan = globalThis.__CITY_SCAN
     ? (await import('./scan.js')).scanCity(world, colliders)
     : null;
+  /*
+   * And the third direction, which neither of the other two can see: air the
+   * town draws and the town will not let a craft into. ./cavity.js voxelises
+   * the drawing against the collider set AND the contact floor, so an
+   * undercroft sealed by a `ctx.cut` rather than by a box is a finding rather
+   * than an anecdote. Same window, same reason, its own flag because it costs
+   * its own seconds. scripts/cavity-scan.js sets it.
+   */
+  const cavity = globalThis.__CITY_CAVITY
+    ? (await import('./cavity.js')).scanCavities(
+      world,
+      colliders,
+      typeof globalThis.__CITY_CAVITY === 'object' ? globalThis.__CITY_CAVITY : {},
+    )
+    : null;
 
   /*
    * Reference measurements BEFORE the merge. The merge applies each
@@ -2057,6 +2072,9 @@ export async function buildMap(shell, onProgress, options) {
       /* null unless globalThis.__CITY_SCAN was set before the map was
        * built. See ./scan.js. */
       colliderScan: scan,
+      /* null unless globalThis.__CITY_CAVITY was set before the map was
+       * built. See ./cavity.js. */
+      colliderCavity: cavity,
       trainCarColliders: trainCars.length,
       cullCells: cull.cells.length,
       cullAlways: cull.always.length,

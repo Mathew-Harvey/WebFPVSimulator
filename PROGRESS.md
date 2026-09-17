@@ -36536,3 +36536,32 @@ at its fast end, and is left alone on the same grounds.
 **Pre-existing and untouched: `npm run score:selftest` fails one case**, "the
 same lap without the flip is a Maverick Loop". Confirmed pre-existing by
 stashing this diff and re-running; nothing here goes near the recogniser.
+
+---
+
+## 2026-09-17 | map | The canal was a floor, not a bridge, and nothing could see it
+
+Asked: the freestyle city map has gaps that cannot be flown, the canal
+bridges among them, so go through the whole map, list them and fix them,
+verify each fix, and do not open a way to get stuck in the mesh or fall
+inside a wall or the ground.
+
+### Why there was no list to start from
+
+Two scans already measure the solid world against the drawn one and
+neither could see the thing being reported.
+
+`src/maps/city/scan.js` measures PHANTOM, which is solid volume above the
+drawn roof. A bridge deck's collider is honest by that metric: the drawing
+reaches the top of the box everywhere under it. The complaint is about the
+air UNDER the deck.
+
+`scripts/gap-scan.js` probes the inside of a compact collider, capped at
+18 m2 in plan and 5.2 m tall. A 12 m bridge deck is not compact, and the
+canal's undercroft is not inside any collider at all. Its driver also never
+ran: it matched the evaluated value on a line starting `eval `, and
+shots.js echoes a multi line expression, so the value lands on a later
+line and the match returned nothing. PROGRESS records it as "did not run"
+twice, on 2026-08-27, for a different reason (node was not on PATH).
+
+So this turn starts by building the measurement.

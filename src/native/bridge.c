@@ -108,8 +108,8 @@ int bridge_parse_config(const unsigned char *diff_utf8, int len) {
        * command rather than a setting, and a diff also carries batch,
        * board_name, feature, profile and rateprofile lines. Both words
        * are tokenised and handed to the glue, which decides. Ignoring
-       * this line class is what made the Karate presets silently flat:
-       * every slider was stored and nothing ever applied them.
+       * this line class is what made the slider written presets silently
+       * flat: every slider was stored and nothing ever applied them.
        */
       char w0[64];
       char w1[64];

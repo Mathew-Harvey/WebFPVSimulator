@@ -17,6 +17,17 @@
  * first row rather than throwing, because a stale setting must never stop
  * the page booting.
  *
+ * ONE SHIPPED TUNE, AND IT IS STOCK. Karate race 6S and Precision used to
+ * sit below the default and they are gone, files and rows both. A shipped
+ * tune is an opinion about how a quad should feel, and this simulator's
+ * whole claim is that it feels like the real thing, so the honest starting
+ * point is the one a freshly flashed board actually gives you and every
+ * other feel is the pilot's own. The Flight controller screen and the PIDs
+ * screen are where they make it: both write real Betaflight keys, a Save
+ * becomes CUSTOM_TUNE below, and that dump sits on the Tune row beside this
+ * one. So the set did not shrink from three answers to one, it shrank from
+ * three answers to one plus yours.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -41,18 +52,6 @@ export const TUNES = [
     airframe: '5inch',
     name: 'Betaflight default',
     note: 'Factory 4.5.1, untouched. What a freshly flashed quad flies.',
-  },
-  {
-    id: 'karate-race',
-    airframe: '5inch',
-    name: 'Karate race 6S',
-    note: 'sugarK’s 6S 5 inch race tune. Lower D, sharper feedforward, faster stops.',
-  },
-  {
-    id: 'precision',
-    airframe: '5inch',
-    name: 'Precision',
-    note: 'The stiff tune’s PIDs, near double stock, with the factory’s feedforward. Corrections moved at thumb speed land on your aim rather than a quarter past it.',
   },
   {
     id: 'whoop-champion',
@@ -86,11 +85,30 @@ export const TUNES = [
  * complaint the plant change exists to answer.
  *
  * They stay in the table and their .diff files stay on disk. They are real
- * published configurations, scripts/preset-lint.js still checks all six against
- * the compiled module, and if the whoop ever gets its own plant back they are
- * two characters from being offered again. What they must not be is reachable
- * for a plant they were never written for.
+ * published configurations, scripts/preset-lint.js still checks every .diff in
+ * this directory against the compiled module, and if the whoop ever gets its
+ * own plant back they are two characters from being offered again. What they
+ * must not be is reachable for a plant they were never written for.
+ *
+ * That is NOT what happened to Karate race 6S and Precision. Those two were
+ * right for the plant they were offered on and were removed anyway, as a
+ * decision about what this simulator should ship rather than about what flies
+ * on what, so their rows and their files both went. A retirement keeps the
+ * file because the tune may be wanted again; a removal does not.
  */
+
+/*
+ * Every tune that is offered to ANYBODY, which is the retirement above read
+ * without an airframe in hand. The Presets tab on the flight controller
+ * screen is the second room that lists tunes and it has no airframe to
+ * filter by, so it listed the whole table and handed a five inch pilot the
+ * three retired whoop presets. `airframe: null` means offered to nobody, and
+ * that has to mean it in both rooms or it does not mean it anywhere.
+ *
+ * Not a replacement for tunesFor: this one only drops the retired rows, and
+ * the Tune row still picks by plant.
+ */
+export const OFFERED_TUNES = TUNES.filter((t) => t.airframe != null);
 
 /*
  * The tunes an airframe may load. A 6S 5 inch race tune on a 1S whoop is not

@@ -37173,6 +37173,120 @@ the output, left alone in this turn because changing it changes the report
 the rest of these numbers were read from. It is a line of output, not a
 behaviour.
 
+## 2026-09-17 | tunes | Two shipped opinions about feel, removed, and a row that went dead when they left
+
+Owner's request, in full: "remove tuning presets, precision and karate tune,
+just leave it at betaflight default, then users can make their own."
+
+So `configs/karate-race.diff` and `configs/precision.diff` are gone, files
+and registry rows both, and the Tune row offers the Betaflight default and
+nothing else until the pilot saves a dump of their own.
+
+### Why a removal and not a retirement
+
+The three whoop presets are still in `TUNES` with `airframe: null`, and that
+mechanism was sitting right there. It was the wrong one. A retirement keeps
+the file because the tune may be wanted again on a plant it fits; these two
+fit the plant they were offered on perfectly and were removed anyway, because
+what ships is a product decision and not a claim about what flies. Keeping
+the files would have left `preset-lint` checking two configurations nothing
+can reach, which is upkeep bought with no coverage. `registry.js` now says
+which of the two things happened to whom, because the next reader will
+otherwise assume the whoops' comment covers all five.
+
+### The second room that lists tunes
+
+`src/ui/fc.js` drew the bench's Presets tab from the whole of `TUNES`, not
+from `tunesFor()`, so it has been handing five inch pilots the three retired
+whoop presets the entire time the retirement comment has claimed they are
+"offered to nobody". Removing two rows made it three quarters of that list
+rather than half, which is how it got noticed. New export `OFFERED_TUNES`
+drops the `airframe: null` rows without needing an airframe in hand, and the
+bench uses it. This is wider than the request and is called out here for
+that reason: the alternative was to leave the bench advertising whoop tunes
+on a page whose whole point this turn is that one tune ships.
+
+### The row went dead, and the fix is not the one that makes the check pass
+
+With one option left, `fitsAsSegments()` said yes (one label, 18 characters,
+against a budget of 24), so the Tune row drew as a one segment strip and
+`select()` fell through to `adjust(1)`, which cycles a list of one back onto
+itself. `lint:shell` caught it exactly:
+
+    FAIL, 1 problem(s):
+      Enter on a list: Enter did not open the picker either, so the row is dead
+
+The tempting fix is to point that assertion at some other row, and it would
+have been wrong. What the failure actually exposed is that the guarantee this
+row has carried since it bit somebody, that Enter never silently swaps a tune
+and costs the lap, was never a decision. It was arithmetic: three tune labels
+came to forty characters, forty is more than twenty four, so the row opened a
+list. Delete two tunes and the guarantee evaporates, on a change that had
+nothing to do with it. So the row carries `pickOnly: true` now, the same opt
+out the Freestyle room's Scoring row uses, and it holds whatever the labels
+happen to add up to. The threshold was not touched.
+
+The note gained a clause too, shown only while the pilot has no dump: a row
+offering exactly one answer with nothing said about it reads as broken rather
+than as stock, and the owner's sentence was "then users can make their own",
+so the row names the door.
+
+### The checks that were pinned to a deleted filename
+
+`scripts/fc-trace.js` read `configs/karate-race.diff` three times: F7 (a
+preset must not steal stick authority), F8 (no shipped tune carries a
+rateprofile) and F10 (a slider apply moves a PID). Two of those are claims
+about every file in `configs/`, and pinning them to one filename meant
+deleting the file deleted the check. F7 and F8 now loop the registry, so the
+next tune added is checked the day it lands; F10 uses the stock tune, which
+carries the same `simplified_*` block at 100 and is what the PIDs screen
+adjusts for every pilot anyway. Traces went 30 to 33 because the loops record
+per tune.
+
+### Prose that named files which no longer exist
+
+`README.md` told visitors three tunes ship. `configs/pids.js` had a live
+slider note reading "The Crapshack tune ships at 185", naming a tune deleted
+back when `precision.diff` replaced it, so that one was already wrong before
+this turn. Also fixed: the tune list comment in `betaflight-default.diff`
+(which pointed a reader at `karate-race.diff`), `rates.js`, `dump.js`,
+`main.js`, `ui.js` and the four `src/native` comments that cited the Karate
+presets as the reason slider tuning is compiled in. The real reason is now
+the PIDs screen, which writes the same keys for every pilot. Deliberately
+left alone: the historical bug reports in `ui.js` `select()` and
+`shell-check.js` that name Karate race 6S as the tune one stray Enter
+swapped to, because that is what happened; `bf_glue.c`'s citation of the
+Crapshack PROGRESS entry as provenance for a gyro noise number; the archived
+loop briefs in `prompts/`; and `CLAUDE.md`'s account of the destroyed
+history, which names `crapshack.diff` and `precision.diff` because those
+were the files involved.
+
+### Measurements
+
+    lint:presets   6 of 6 clean before, 4 of 4 clean after
+    lint:fc        30 of 30 clean before, 33 of 33 clean after
+    lint:shell     PASS before, FAIL (row dead) on the bare removal,
+                   PASS after pickOnly
+    shell baseline quad overflow 10 -> 7 px, re-recorded with --record.
+                   The check asks for this when a screen improves; it is a
+                   tightening, and the Tune row is shorter because it draws
+                   one label instead of three. No other screen moved.
+    vendor         git diff --stat vendor/betaflight empty
+
+`npm run verify` was NOT run, and `dist/sim.wasm` was NOT rebuilt. Nothing
+here touches the plant, the module ABI, the build or the input path: the only
+`src/native` edits are comment text, which the compiler does not emit, so the
+shipped module is byte for byte the one these lints ran against. All three
+lints above were run in this turn, twice where a number is given as a pair.
+
+### What no lint here can see
+
+Whether a Tune row with one name on it reads as finished or as broken, and
+whether the one item picker that `pickOnly` opens is worth the press or just
+a stop on the way to the bench. That is a thing to look at, not to assert.
+
+---
+
 ## 2026-09-17 | map | There was no pavilion: a ceiling fell between two cell centres and a scan lost a building
 
 Asked: fix the pavilion columns, which is the item the previous entry named

@@ -792,9 +792,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * in configs/ carries a rateprofile any more, and the rate lines are
    * appended last so that even a diff the pilot drops on the page flies on
    * the rates in the menu. See configs/rates.js for why rates were
-   * separated: shipping rates inside the Karate preset meant choosing that
-   * tune also halved the stick authority, so the tune could never be
-   * judged on its own. The PID adjustment sits between the two, keyed by
+   * separated: shipping rates inside a tune meant choosing that tune also
+   * halved the stick authority, so the tune could never be judged on its
+   * own. The PID adjustment sits between the two, keyed by
    * the LOADED tune's id, so each tune keeps its own; see configs/pids.js.
    */
   /* The Flight controller screen's saved dump, the body of the pilot's
@@ -3568,7 +3568,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const entry = tuneById(id);
     /* Bump first so switching back to the already loaded tune cancels an
      * in-flight fetch of a different one. The old early return before the
-     * bump is how "off Karate and back" loaded the other tune anyway. */
+     * bump is how "off a tune and back" loaded the other tune anyway. */
     const gen = bumpConfigGen();
     if (entry.id === configId) {
       return;
@@ -3601,8 +3601,8 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     /* The NEW tune's own PID adjustment, not the old one's: the adjustment
-     * is keyed by tune id, and carrying the old block across would fly
-     * Karate with the default tune's sliders. */
+     * is keyed by tune id, and carrying the old block across would fly one
+     * tune with another tune's sliders. */
     const nextPids = pidsDiffFor(ui.settings.pids, entry.id);
     const nextText = composeConfig(text, ui.settings.rates, RATES_KEEP, nextPids);
     const code = sim.init(nextText);

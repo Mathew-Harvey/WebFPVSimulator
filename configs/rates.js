@@ -10,6 +10,11 @@
  * and reported the obvious: the default felt better and Karate did not, which
  * is what happens when you change two things and only mean to change one.
  *
+ * That preset is no longer shipped at all, and the rule outlived it. It is
+ * still why no file in configs/ may carry a rateprofile, and scripts/fc-trace.js
+ * F7 and F8 now read every file in that directory rather than the one that
+ * misbehaved, so the claim cannot be deleted by deleting a file.
+ *
  * A tune is P, I, D, feedforward and filtering. Rates are how far the sticks
  * go. They are separate settings on a real radio, they belong to the pilot
  * rather than to the tune, and they are separate here: no file in configs/

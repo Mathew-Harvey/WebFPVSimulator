@@ -5122,15 +5122,29 @@ export class Ui {
           action: 'tricks',
           note: 'Every trick the scorer is known to name, what each one pays, and a picture of it being flown. Worth a minute before your first run.',
         },
-        /* A DOOR, not a copy. This is one of the screens the same Tune
-         * row was built onto, and Quad is one press away. It still
-         * NAMES the tune, because what you are about to fly is worth
-         * knowing before you pick a world. */
+        /*
+         * A DOOR, not a copy, and it is spelled the way the other two rooms
+         * that carry it spell it.
+         *
+         * It was labelled Tune and opened Quad, which was fine while Tune on
+         * Quad was a picker. It stopped being fine when the picker moved:
+         * Tune on Quad and on the pause menu opens the PIDs room, so a pilot
+         * who had learned that pressed Tune here and landed on a different
+         * screen with another Tune row to press. One label, two destinations.
+         *
+         * Pointing it at the PIDs room instead was the wrong repair and the
+         * shell check said so in two lines: this was Freestyle's ONLY way
+         * into Quad, so the camera, the flight mode, the aircraft and the
+         * bench all went out of reach from here. The title and Before you
+         * fly both solve this already with a row called Quad valued at the
+         * tune's name, and what this row is IS that row. So it is that row.
+         * What you are about to fly is still on it, as the value.
+         */
         {
-          label: 'Tune',
+          label: 'Quad',
           value: tuneById(s.tune).name,
           action: 'quad',
-          note: `${tuneById(s.tune).note} Change it under ${SCREEN_TITLES.quad}, which is where the machine lives: its Tune row opens ${SCREEN_TITLES.pids}, and the tune is chosen there.`,
+          note: `The machine. Its Tune row opens ${SCREEN_TITLES.pids}, where the tune is chosen and Betaflight's own sliders adjust it, and the camera, the flight mode and the firmware bench are there too.`,
         },
         /*
          * SETTABLE HERE, because there is nowhere else a freestyle pilot
@@ -5200,7 +5214,7 @@ export class Ui {
         {
           label: 'Firmware bench',
           action: 'fc',
-          note: 'Every Betaflight 4.5.1 key the module compiles, tab by tab, in Configurator’s own colours. Opens as a tool, in its own frame. Save becomes Your edits on the Tune row above. There is no CLI paste.',
+          note: `Every Betaflight 4.5.1 key the module compiles, tab by tab, in Configurator’s own colours. Opens as a tool, in its own frame. Save becomes Your edits and the Tune row above starts naming it; the picker that puts you back on stock is in ${SCREEN_TITLES.pids}. There is no CLI paste.`,
         },
         { label: 'Camera', section: true },
         stepper(
@@ -8375,7 +8389,19 @@ export class Ui {
     if (this.screen === 'rates' && screen !== 'rates') {
       this.ratesFrom = null;
     }
-    if (this.screen === 'pids' && screen !== 'pids') {
+    /*
+     * pidsFrom SURVIVES A TRIP TO THE BENCH, because the bench comes back
+     * here: leaveFc names pids as one of its three destinations, the same
+     * way fcFrom names pids as one of its three origins.
+     *
+     * Clearing it on the way out is why Quad, Tune, Every setting, back,
+     * back landed on the TITLE. The PIDs room had forgotten it was opened
+     * from Quad while the pilot was one room deeper, so Escape fell through
+     * to returnTo and threw them out of the machine entirely. Every other
+     * exit still drops it, and every other arrival sets it: act('pids') is
+     * the only show('pids') in the file.
+     */
+    if (this.screen === 'pids' && screen !== 'pids' && screen !== 'fc') {
       this.pidsFrom = null;
     }
     if (this.screen === 'fc' && screen !== 'fc') {

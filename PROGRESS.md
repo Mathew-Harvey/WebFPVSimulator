@@ -37507,3 +37507,120 @@ sliders, or whether a pilot looking for PIDs will now fail to find them
 because nothing is called that any more. The breadcrumb says QUAD / PIDS once
 you are in, and the row's note names the room, but a label nobody thinks to
 press is not something a lint can report.
+
+## 2026-09-17 | tunes | A UX logic pass on tuning the quad: one path, walked end to end, and it did not come home
+
+Owner asked for a UI and UX logic pass on tuning the quad, on the premise
+that there should be only one path to it. Walked it rather than read it: a
+probe drove the real shell and dumped every row on all thirteen screens,
+with and without a saved dump, then a second probe entered every tuning room
+from every entrance and pressed Back.
+
+### The map, after the pass
+
+    Choose the tune        the PIDs room picker              ONE place
+    Adjust PIDs            the PIDs room, sliders or by hand  ONE place
+    Every firmware key     the Firmware bench                 one room, two doors
+    Rates                  the Rates room, under Pilot        one place, and not the quad's
+
+    Doors into the PIDs room    Quad -> Tune, Pause -> Tune
+    Doors into the bench        Quad -> Firmware bench, PIDs -> Every setting
+    Signposts naming the tune   title, launch, freestyle, all labelled Quad
+
+### What was actually broken
+
+**The one path did not come home.** Quad, Tune, Every setting, back, back
+landed on the TITLE. `show()` dropped `pidsFrom` on the way from the PIDs
+room to the bench, so the room forgot it had been opened from Quad while the
+pilot was one door deeper, and Escape fell through to `returnTo` and threw
+them out of the machine entirely. Pre-existing, and it went unseen because
+every check here walked one room at a time while the bug only exists two
+rooms in. `pidsFrom` now survives a trip to the bench, which is the same
+round trip `fcFrom` already describes from the other end: `leaveFc` names
+pids as one of its three destinations. Every other exit still drops it, and
+`act('pids')` is the only `show('pids')` in the file, so no arrival can
+inherit a stale one.
+
+**One label meant two destinations.** Tune on Quad and on the pause menu
+opens the PIDs room. Tune on Freestyle opened Quad, so a pilot who had
+learned the first one pressed it here and got a different screen with another
+Tune row on it to press again. That was fine right up until the picker moved
+rooms last turn, and then it was not.
+
+Pointing Freestyle's row at the PIDs room was the wrong repair, and the shell
+check said so in two lines within a minute: that row was Freestyle's ONLY way
+into Quad, so the camera, the flight mode, the aircraft and the bench all
+went out of reach from that room. Worth writing down, because the fix looked
+obviously right and was obviously wrong. The title and Before you fly both
+solve this already with a row labelled Quad valued at the tune's name, and
+what Freestyle's row IS is that row. So it is that row now, and Tune as a
+label means exactly one thing everywhere.
+
+**A note stopped being true.** Quad's Firmware bench row said Save "becomes
+Your edits on the Tune row above". The Tune row above is a door now: the save
+does make that row start NAMING Your edits, but the picker that puts a pilot
+back on stock is in the PIDs room. The note says both halves.
+
+### What was found and deliberately left
+
+**The bench has two doors**, Quad -> Firmware bench and PIDs -> Every
+setting, and it can change a PID from either. That is not the duplication it
+looks like. The two doors mean different things: one is "the whole firmware",
+the other is "the sliders are not enough". Closing the outer one would bury
+the receiver, the motors and the modes three levels down behind a row called
+Tune, where nobody would look for them. Closing the inner one would take away
+the escape hatch at the moment a pilot discovers they want it. The bench can
+touch PIDs because its job is every firmware key, and Configurator has the
+same overlap between its PID tuning tab and the rest of itself, which is the
+parity this project is for. Left alone on purpose.
+
+**seatAirframe already handles the case that worried me**: a pilot on Your
+edits who changes aircraft. `tuneChoices(to.id).includes(s.tune)` is false
+for a dump stamped to the other airframe, and the seat falls back to that
+aircraft's default tune rather than leaving a tune selected that the picker
+does not offer. No change needed, checked by reading the function after the
+probe raised the question.
+
+### The checks that would have caught it
+
+Two new probes in `shell-check`, because the nav bug was two rooms deep and
+nothing here walked that far.
+
+**tuningPath** walks Quad, Tune, Every setting, back, back and asserts where
+the pilot LANDS at each of the four steps, not what the pointers hold, because
+a pointer is the mechanism and the landing is the promise.
+
+**tuneRows** collects every row labelled Tune across all thirteen screens and
+sorts them into the picker and doors. It fails if the picker is on anything
+other than exactly one screen, or if any Tune row goes somewhere that is not
+the PIDs room. It prints what it found, so the shape is in the log rather
+than only in a pass: `tune rows: picker on pids, doors on quad, paused`.
+
+### Measurements
+
+    lint:shell     FAIL 2 (freestyle stranded) on the first repair, PASS on
+                   the one that shipped. The two new probes are in that PASS.
+    lint:presets   4 of 4 clean
+    lint:fc        33 of 33 clean
+    nav probe      every entrance, before and after:
+                   quad/Tune -> pids -> quad            ok before and after
+                   paused/Tune -> pids -> paused        ok before and after
+                   freestyle/Quad -> quad -> freestyle  ok before and after
+                   quad/Firmware bench -> fc -> quad    ok before and after
+                   pilot/Rates -> rates -> pilot        ok before and after
+                   quad -> Tune -> Every setting -> back -> back
+                                                        TITLE before, quad after
+    shots          freestyle photographed: the row reads Quad, Betaflight
+                   default, matching the title and Before you fly.
+    baseline       not touched. No screen's overflow moved.
+
+`npm run verify` was NOT run and the WASM was NOT rebuilt. Menu furniture and
+one navigation pointer: no plant, no module ABI, no build, no input path, no
+config file.
+
+### What no check here can see
+
+Whether a pilot looking for PIDs finds them behind a row called Tune. Nothing
+in the menus is labelled PIDs any more except the room's own title and its
+breadcrumb, and a label nobody thinks to press is not something a lint can
+report.

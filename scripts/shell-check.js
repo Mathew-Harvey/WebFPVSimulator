@@ -404,6 +404,68 @@ const BEHAVIOUR = `(() => {
   }
 
   /*
+   * THE ONE PATH THAT TUNES THE QUAD, walked end to end and back out again.
+   *
+   * Quad, Tune, Every setting, back, back. The last step used to land on the
+   * TITLE: show() dropped pidsFrom on the way from the PIDs room to the
+   * bench, so the room forgot it had been opened from Quad while the pilot
+   * was one door deeper, and Escape threw them out of the machine. Nothing
+   * saw it, because every check here walked one room at a time and the bug
+   * only exists two rooms in.
+   *
+   * Asserted on where the pilot LANDS at each step, not on the pointers,
+   * because a pointer is the mechanism and the landing is the promise.
+   */
+  try {
+    ui.returnTo = 'title';
+    ui.show('quad');
+    const step = (label) => {
+      const items = ui.items();
+      const i = items.findIndex((it) => it && it.label === label);
+      if (i < 0) { return 'no such row: ' + label; }
+      ui.setCursor(i);
+      ui.select();
+      return ui.screen;
+    };
+    const toPids = step('Tune');
+    const toBench = step('Every setting');
+    ui.back();
+    const backToPids = ui.screen;
+    ui.back();
+    const backToQuad = ui.screen;
+    out.tuningPath = { toPids, toBench, backToPids, backToQuad };
+  } catch (e) {
+    out.tuningPath = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * ONE LABEL, ONE DESTINATION.
+   *
+   * Tune appears on four screens. It may be the picker itself, which lives
+   * in exactly one room, or a door into that room. What it must never be is
+   * a door somewhere ELSE: that is what it was on Freestyle, which opened
+   * Quad, so a pilot who had learned Tune on Quad pressed Tune here and got
+   * a screen with another Tune row on it to press again. One label teaching
+   * two things is the whole failure this records.
+   */
+  try {
+    const dests = {};
+    for (const name of ${JSON.stringify(SCREENS)}) {
+      ui.returnTo = 'title';
+      ui.show(name);
+      for (const it of ui.items()) {
+        if (!it || it.label !== 'Tune') { continue; }
+        const d = it.options ? 'picker' : (it.action || 'dead');
+        if (!dests[d]) { dests[d] = []; }
+        dests[d].push(name);
+      }
+    }
+    out.tuneRows = dests;
+  } catch (e) {
+    out.tuneRows = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
    * A SWITCH IS A SWITCH: Enter flips it, and Enter again puts it back.
    * Left sets it off and Right sets it on, rather than both cycling, which
    * is what a two item popup's adjust used to do.
@@ -1534,6 +1596,44 @@ async function main() {
       if (!e2.opened) {
         failures.push('Enter on a list: Enter did not open the picker either, so the row is dead');
       }
+    }
+
+    if (!b.tuningPath || b.tuningPath.error) {
+      failures.push(`tuning path: ${b.tuningPath ? b.tuningPath.error : 'no result'}`);
+    } else {
+      const tp = b.tuningPath;
+      const want = { toPids: 'pids', toBench: 'fc', backToPids: 'pids', backToQuad: 'quad' };
+      const said = {
+        toPids: 'Quad\'s Tune row did not open the PIDs room',
+        toBench: 'Every setting did not open the bench',
+        backToPids: 'leaving the bench did not come back to the PIDs room',
+        backToQuad: 'leaving the PIDs room did not come back to Quad',
+      };
+      for (const k of Object.keys(want)) {
+        if (tp[k] !== want[k]) {
+          failures.push(`tuning path: ${said[k]} (landed on "${tp[k]}", wanted "${want[k]}")`);
+        }
+      }
+    }
+
+    if (!b.tuneRows || b.tuneRows.error) {
+      failures.push(`tune rows: ${b.tuneRows ? b.tuneRows.error : 'no result'}`);
+    } else {
+      const tr = b.tuneRows;
+      const kinds = Object.keys(tr).sort();
+      if (!tr.picker || tr.picker.length !== 1) {
+        failures.push(
+          `tune rows: the picker is on ${tr.picker ? tr.picker.length : 0} screens (${(tr.picker || []).join(', ')}), wanted exactly one`,
+        );
+      }
+      const stray = kinds.filter((k) => k !== 'picker' && k !== 'pids');
+      if (stray.length) {
+        failures.push(
+          `tune rows: a row labelled Tune goes somewhere other than the PIDs room: ${
+            stray.map((k) => `${k} on ${tr[k].join(', ')}`).join('; ')}`,
+        );
+      }
+      notes.push(`tune rows: picker on ${(tr.picker || []).join(', ')}, doors on ${(tr.pids || []).join(', ')}`);
     }
 
     if (!b.switchRow || b.switchRow.error) {

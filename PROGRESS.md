@@ -36889,3 +36889,152 @@ this town arguing with a naive test:
 
 With all four, the town reads **0 floating things**. The cafe's tables were
 the only ones.
+
+## 2026-09-17 | map | A strip takes the maximum over its own width, and a hip roof has no width to take it over
+
+Asked: fix the hipped roof fit too. That is the item the previous turn left
+on the table and named as most of the invisible wall it could not clear:
+the fit cuts a rectangle into STRIPS along one axis and cuts each run along
+the other, and a strip always takes the MAXIMUM over its own width.
+
+### Why two passes of strips cannot hug a hip
+
+A gable is a staircase in one direction and a flat block in the other, so
+cutting across the ridge steps every strip and the fit hugs it. A hip roof
+falls away in four directions at once: the first cut sees the ridge from
+every x and the second sees the hip end from every z, so neither pass finds
+a step to break a run on, and what comes back is one box at the ridge height
+over a roof that is nowhere near it. A flat roof with a parapet round its
+edge is the same shape of failure, because the parapet is in every strip
+both ways.
+
+Measured by `src/maps/city/cavity.js` before this turn, that shape was most
+of the 1120 m3 of invisible wall left in the town.
+
+### The grid cut
+
+`cutGrid` in `src/maps/city/index.js` rasterises the rectangle into a grid
+rather than into strips, each cell holding what the drawing does over that
+cell alone: the highest and lowest drawn surface, the drawn extent clipped
+to the cell, and the same `ROOF_LIFT_SLICES` bitmask the strip cut uses to
+tell a roof sitting on a rectangle from a canopy standing over it.
+
+The decomposition grows each box along z and then along x for whole columns,
+accepting a cell while the RUN's own spread in `hi` and in `lo` both stay
+inside `SLAB_STEP_TOL`. Against the run and not against the neighbour, which
+is the same argument `cutAxis` makes in one dimension: a slope is not a
+step, and a neighbour test never breaks on one.
+
+Four decisions worth writing down:
+
+- **The extents are clipped to the CELL, not to the rectangle.** This is
+  what keeps the emitted pieces disjoint, so a cut removes volume rather
+  than adding it. `cutAxis` does the same thing at the same place.
+- **It only runs on a rectangle bulky in both axes**, `GRID_MIN_FOOT` 1.0 m,
+  the same number the roof lift uses. A 78 m lineside barrier is a strip by
+  nature and a grid over it is a thousand cells to say what one cut says.
+- **The strips still win ties.** Both answers are measured and the grid has
+  to beat the strips by `GRID_GAIN` 0.5 m3 of solid, because it emits more
+  boxes and a rectangle should not swap a six box answer for a forty box one
+  to save a cupful of air.
+- **The ground is read off a coarse lattice, at most 13 by 13 corners, and a
+  cell takes the LOWEST of the four corners around it.** Per cell would be
+  3.5 million `floorAt` lookups over the town to answer a question with a
+  hundred different answers. Taking the lowest corner rather than the
+  nearest matters on a slope: a ground reading taken too high drops a cell
+  that has a low wall on it, which is a hole, while one taken too low keeps
+  a cell whose only drawing is buried, and a box under the ground stops
+  nobody. Measured, the change was 15 fewer boxes and 7 fewer holes for the
+  same 934.1 m3.
+
+### What it moved
+
+Blocked volume by the nearest drawn thing, before and after, in m3:
+
+    hall            11.3 ->   0.0      shop_kokuya     3.5 ->  0.0
+    terrace          7.7 ->   0.0      nagaya          3.0 ->  0.0
+    schoolStore     16.5 ->   3.0      shop_ramen      2.3 ->  0.0
+    teachingBlock   46.0 ->  14.3      onsen_yunoka    7.1 ->  2.3
+    atticHouse      38.8 ->  24.9      onsen_yunoya    7.3 ->  2.8
+    lakeCafe       165.7 -> 120.9      road           33.3 -> 27.1
+    onsen_hourai   117.1 -> 113.7      wires          86.1 -> 79.8
+
+### Verified in the town, not in the abstract
+
+For each place the grid opened, the cavity scan's own column dump, which
+evaluates SOLID the way the frame loop does, `fromY` and all. `D` is drawn
+within 0.2 m, `S` is a craft would be stopped, `A` is free air:
+
+    hall          13.5, 63.3    DS at 4.25, free from 4.75    was blocked 4.5 to 5.0
+    schoolStore   51, -80       DS to 4.75, free from 5.25    was blocked 4.5 to 5.5
+    terrace       39.5, -39.8   DS to 6.75, free from 7.25    was blocked 7.0 to 7.5
+    atticHouse    39.3, 49.3    DS 6.75 to 7.25, free 8.25    was blocked 7.0 to 8.5
+    teachingBlock 29.3, -57     DS at 11.75, free from 12.25  46.0 m3 -> 14.3
+
+Every one of them now stops at the last cell that has something drawn in it
+and is free air above. The one leftover is half a cell of solid over the
+attic house's ridge at 7.75, which is the 0.5 m grid and the 0.2 m tolerance
+meeting, not a wall.
+
+### What did not move, and why, with the evidence
+
+**ひばり湖's cafe, 120.9 m3, and the onsen's 房, 113.7.** These are not hip
+roofs. They are pavilions, and the fit is not what is wrong with them.
+
+    fit sees at 179, -145        cavity column at 179, -145
+      y 12.46 .. 12.62  lakeCafe      7.25  DS
+      y 10.98 .. 11.46  lakeCafe      7.75  D.
+      y  7.91 .. 11.01  lakeCafe      8.25  DS
+      y  7.91 ..  8.13  lakeCafe      8.75  .S   <- nothing drawn
+      y  7.79 ..  7.91  cafePlinth   10.75  .S   <- nothing drawn
+                                     11.25  DS
+
+The drawing there is a deck at 8 and a roof at 11 with air between them.
+`drawn.js` gives the fit ONE box per cell, from the lowest surface in that
+cell to the highest, so what the fit is shown is a solid block 9.2 by 6.4 by
+3.1 m and it hugs that block perfectly. The fit cannot open a gap it is not
+shown. Fixing this means a drawn picture that can hold two runs in one
+column, in `drawn.js` and in the grid alike, and it is the next thing.
+
+**Wires, 79.8 m3.** Declined again, same reason as last turn: the air inside
+is between two 12 mm catenary wires and nothing there is a gap a craft was
+going to fly through.
+
+### Final measurements for the turn
+
+    cavity-scan     1120 m3 of invisible wall in 173 pockets -> 934.1 in 158
+    cavity-scan     FLOATING 0 -> 0
+    cavity-scan     INSIDE 34788 -> 34915 m3, the same 40 components, none
+                    new and none gone. A tighter hull exposes a little more
+                    of the seams the scan already cannot read: the lake
+                    shoreline at 13019 m3 and the two tunnel bores at 1483
+                    and 1229 are 45 percent of that number and are known
+                    blind spots, a half metre cell cannot hold a waterline.
+    collider-audit  PHANTOM 2419 -> 2188 m3, solid 72098 -> 71554
+    collider-audit  HOLES 17588 -> 18020 of 67568 probed, mean cover
+                    0.710 -> 0.704. WORSE, and honestly so: a hull that hugs
+                    leaves small members at its boundary less than half
+                    enclosed, and a cell whose only drawing is under 0.1 m
+                    proud of the ground is now dropped rather than carried by
+                    the tall strip it happened to share. None of the 40 worst
+                    holes by volume changed except tunnelCapE2, 0.16 -> 0.13.
+    colliders       18049 -> 19515 boxes, +8.1 percent
+    fit build       2278 -> 2785 ms, once, at map load
+    attract-check   city through 0/320
+    lints           quality 56 of 56, shell PASS, check:wall 57 passed 0
+                    failed. catalog still fails on an empty vendor/betaflight,
+                    which is this container and not this change.
+
+`npm run verify` was NOT run. This turn changes one function in the city's
+collider fit and nothing else: no plant, no module ABI, no build, no input
+path. What was run instead is above. The audit and the cavity scan were each
+run twice, once on HEAD and once on the change, in this turn, so every pair
+of numbers here is a measurement and not a memory.
+
+### A stale number in the audit's own report
+
+`fitStats.roofLifts` is declared and never incremented, so the audit line has
+printed `0 roof lifts` since the roof lift was written. Noticed while reading
+the output, left alone in this turn because changing it changes the report
+the rest of these numbers were read from. It is a line of output, not a
+behaviour.

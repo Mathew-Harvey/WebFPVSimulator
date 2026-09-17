@@ -842,6 +842,50 @@ const ROOF_LIFT_SLICES = 32;
 /* Before a run's floor is lifted off the ground, the space underneath has to
  * be worth flying through. */
 const RAISE_MIN_CLEAR = 0.16;
+/*
+ * THE GRID CUT, which is for the one shape two passes of strips cannot hug.
+ *
+ * A slab is a STRIP across the whole rectangle and it takes the MAXIMUM over
+ * its own width. That is exactly right for a gable, whose height varies along
+ * one axis only: cut across the ridge and every strip steps. It is wrong for
+ * anything that varies along BOTH. A hip roof's first cut sees the ridge from
+ * every x and its second sees the hip end from every z, so neither finds a
+ * step to break a run on and what comes back is one box at the ridge over a
+ * roof that falls away from it in four directions. A flat roof with a parapet
+ * round it is the same: the parapet is in every strip both ways.
+ *
+ * Measured by src/maps/city/cavity.js before this existed, that shape is most
+ * of the invisible wall left in the town: ひばり湖's cafe 166 m3, the onsen's
+ * 房 116, the school's teaching block 46 and its second block 28, and most of
+ * a long tail of houses.
+ *
+ * So the rectangle is also rasterised into a GRID, each cell holding what the
+ * drawing does over that cell alone, and the grid is decomposed into boxes by
+ * growing each one along z and then along x while the run stays inside
+ * SLAB_STEP_TOL -- the same tolerance and the same "against the run, not
+ * against the neighbour" rule the strip cut uses, in two dimensions. The
+ * cheaper of the two answers wins, so nothing the strips already did well
+ * changes.
+ *
+ * ONLY FOR A RECTANGLE BULKY IN BOTH AXES. A 78 m lineside barrier is a
+ * strip by nature and a grid over it is a thousand cells to say what one cut
+ * says. GRID_MIN_FOOT is the same number ROOF_LIFT_MIN_FOOT uses for the same
+ * reason: below it, this is not a building.
+ */
+const GRID_MIN_FOOT = 1.0;
+const GRID_MAX_SIDE = 64;
+const GRID_MAX_CELLS = 4096;
+/*
+ * The floor is sampled on its own coarse lattice, not per cell. It is the
+ * bare ground, it varies over metres, and `floorAt`'s memo is a Map keyed by
+ * a built string: four thousand cells per rectangle over nine hundred
+ * rectangles is three and a half million lookups to answer a question that
+ * has a hundred different answers.
+ */
+const GRID_FLOOR_LATTICE = 12;
+/* And the grid has to WIN by this much, so a rectangle does not swap a
+ * six box answer for a forty box one to save a cupful of air. */
+const GRID_GAIN = 0.5;
 
 function clampStep(v, lo, hi) {
   if (v < lo) {
@@ -1217,6 +1261,280 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
 }
 
 /*
+ * One rectangle cut on a GRID, for the shapes strips cannot hug. See
+ * GRID_MIN_FOOT above for why this exists and when it runs.
+ *
+ * Returns an array of boxes inside the rectangle, or null when the grid has
+ * nothing to say: too thin to be a building, nothing drawn in it, or more
+ * pieces than the budget allows even after coarsening.
+ */
+function cutGrid(rect, boxes, list, count, floorAt, scratch) {
+  const spanX = rect.x1 - rect.x0;
+  const spanZ = rect.z1 - rect.z0;
+  if (!(spanX > 0) || !(spanZ > 0)) {
+    return null;
+  }
+  if (Math.min(spanX, spanZ) < GRID_MIN_FOOT) {
+    return null;
+  }
+  let nx = Math.max(1, Math.ceil(spanX / clampStep(spanX / GRID_MAX_SIDE, SLAB_MIN_STEP, SLAB_MAX_STEP)));
+  let nz = Math.max(1, Math.ceil(spanZ / clampStep(spanZ / GRID_MAX_SIDE, SLAB_MIN_STEP, SLAB_MAX_STEP)));
+  if (nx > GRID_MAX_SIDE) { nx = GRID_MAX_SIDE; }
+  if (nz > GRID_MAX_SIDE) { nz = GRID_MAX_SIDE; }
+  const {
+    gHi, gLo, gX0, gX1, gZ0, gZ1, gFloor, gLat, gLift, gOcc, gUsed,
+  } = scratch;
+  const yTop = rect.yTop === undefined ? Infinity : rect.yTop;
+  const liftBand = Number.isFinite(yTop) ? rect.y1 - yTop : 0;
+  const sliceH = liftBand > 0 ? liftBand / ROOF_LIFT_SLICES : 0;
+
+  /* Coarsened and re-run rather than merged down, if the first answer is
+   * over budget. Merging boxes in two dimensions wants an adjacency graph
+   * and three halvings is bounded, cheap and predictable. */
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    while (nx * nz > GRID_MAX_CELLS) {
+      if (nx >= nz) { nx = Math.max(1, nx >> 1); } else { nz = Math.max(1, nz >> 1); }
+    }
+    const dx = spanX / nx;
+    const dz = spanZ / nz;
+    const n = nx * nz;
+    for (let k = 0; k < n; k += 1) {
+      gHi[k] = -Infinity;
+      gLo[k] = Infinity;
+      gX0[k] = Infinity;
+      gX1[k] = -Infinity;
+      gZ0[k] = Infinity;
+      gZ1[k] = -Infinity;
+      gLift[k] = 0;
+      gUsed[k] = 0;
+    }
+    let any = false;
+    for (let idx = 0; idx < count; idx += 1) {
+      const g = boxes[list[idx]];
+      if (g.y1 < rect.y0 || g.y0 > rect.y1) {
+        continue;
+      }
+      const bx0 = Math.max(g.x0, rect.x0);
+      const bx1 = Math.min(g.x1, rect.x1);
+      const bz0 = Math.max(g.z0, rect.z0);
+      const bz1 = Math.min(g.z1, rect.z1);
+      if (bx1 <= bx0 || bz1 <= bz0) {
+        continue;
+      }
+      let a0 = Math.floor((bx0 - rect.x0) / dx);
+      let a1 = Math.ceil((bx1 - rect.x0) / dx) - 1;
+      let b0 = Math.floor((bz0 - rect.z0) / dz);
+      let b1 = Math.ceil((bz1 - rect.z0) / dz) - 1;
+      if (a0 < 0) { a0 = 0; }
+      if (b0 < 0) { b0 = 0; }
+      if (a1 > nx - 1) { a1 = nx - 1; }
+      if (b1 > nz - 1) { b1 = nz - 1; }
+      if (a1 < a0) { a1 = a0; }
+      if (b1 < b0) { b1 = b0; }
+      const gy1 = Math.min(g.y1, rect.y1);
+      const gy0 = Math.max(g.y0, rect.y0);
+      let q0 = 0;
+      let q1 = -1;
+      if (sliceH > 0 && gy1 > yTop) {
+        q0 = Math.floor((Math.max(gy0, yTop) - yTop) / sliceH);
+        q1 = Math.ceil((gy1 - yTop) / sliceH) - 1;
+        if (q0 < 0) { q0 = 0; }
+        if (q1 > ROOF_LIFT_SLICES - 1) { q1 = ROOF_LIFT_SLICES - 1; }
+      }
+      for (let a = a0; a <= a1; a += 1) {
+        const sx0 = rect.x0 + a * dx;
+        const sx1 = sx0 + dx;
+        /* Clipped to the CELL, not to the rectangle, for the reason the
+         * strip cut gives at the same place: it is what makes the pieces
+         * disjoint, so a cut removes volume rather than adding it. */
+        const ex0 = bx0 > sx0 ? bx0 : sx0;
+        const ex1 = bx1 < sx1 ? bx1 : sx1;
+        for (let b = b0; b <= b1; b += 1) {
+          const sz0 = rect.z0 + b * dz;
+          const sz1 = sz0 + dz;
+          const ez0 = bz0 > sz0 ? bz0 : sz0;
+          const ez1 = bz1 < sz1 ? bz1 : sz1;
+          const k = a * nz + b;
+          if (gy1 > gHi[k]) { gHi[k] = gy1; }
+          if (gy0 < gLo[k]) { gLo[k] = gy0; }
+          if (ex0 < gX0[k]) { gX0[k] = ex0; }
+          if (ex1 > gX1[k]) { gX1[k] = ex1; }
+          if (ez0 < gZ0[k]) { gZ0[k] = ez0; }
+          if (ez1 > gZ1[k]) { gZ1[k] = ez1; }
+          for (let q = q0; q <= q1; q += 1) {
+            gLift[k] |= (1 << q);
+          }
+        }
+      }
+      any = true;
+    }
+    if (!any) {
+      return null;
+    }
+    /* The roof lift, taken back per cell wherever what is up there is not on
+     * the roof. Same rule as the strip cut's, cell by cell. */
+    if (sliceH > 0) {
+      for (let k = 0; k < n; k += 1) {
+        if (!(gHi[k] > yTop)) {
+          continue;
+        }
+        let run = 0;
+        while (run < ROOF_LIFT_SLICES && (gLift[k] & (1 << run)) !== 0) {
+          run += 1;
+        }
+        const cap = yTop + run * sliceH;
+        if (gHi[k] > cap) { gHi[k] = cap; }
+        if (gLo[k] > gHi[k]) { gLo[k] = gHi[k]; }
+      }
+    }
+    /* Occupancy, against the ground and not the rectangle's own bottom. The
+     * ground itself is read off a coarse lattice: see GRID_FLOOR_LATTICE. */
+    const fx = Math.min(nx, GRID_FLOOR_LATTICE);
+    const fz = Math.min(nz, GRID_FLOOR_LATTICE);
+    const fw = fz + 1;
+    for (let i = 0; i <= fx; i += 1) {
+      const cx = rect.x0 + (i * spanX) / fx;
+      for (let j = 0; j <= fz; j += 1) {
+        gLat[i * fw + j] = floorAt(cx, rect.z0 + (j * spanZ) / fz);
+      }
+    }
+    let occupied = 0;
+    for (let a = 0; a < nx; a += 1) {
+      const la = Math.min(fx - 1, Math.floor((a * fx) / nx));
+      for (let b = 0; b < nz; b += 1) {
+        const lb = Math.min(fz - 1, Math.floor((b * fz) / nz));
+        /*
+         * The LOWEST of the four lattice corners around the cell, not the
+         * nearest of them. On a slope the lattice is up to a few metres
+         * across and a ground reading taken too high drops a cell that has
+         * a low wall on it, which is a hole. Taken too low it keeps a cell
+         * whose only drawing is buried, and a box under the ground stops
+         * nobody.
+         */
+        let ground = gLat[la * fw + lb];
+        const c1 = gLat[(la + 1) * fw + lb];
+        const c2 = gLat[la * fw + lb + 1];
+        const c3 = gLat[(la + 1) * fw + lb + 1];
+        if (c1 < ground) { ground = c1; }
+        if (c2 < ground) { ground = c2; }
+        if (c3 < ground) { ground = c3; }
+        const k = a * nz + b;
+        const base = Math.max(rect.y0, ground);
+        gFloor[k] = base;
+        gOcc[k] = gHi[k] !== -Infinity && gHi[k] > base + SLAB_MIN_SOLID ? 1 : 0;
+        occupied += gOcc[k];
+      }
+    }
+    if (occupied === 0) {
+      return null;
+    }
+    /*
+     * The decomposition: grow each box along z, then along x for whole
+     * columns, while the run's own spread in `hi` and in `lo` both stay
+     * inside SLAB_STEP_TOL. Against the RUN and not against the neighbour,
+     * which is the same argument the strip cut makes: a slope is not a step,
+     * and comparing neighbours never breaks on one.
+     */
+    const out = [];
+    let over = false;
+    for (let a = 0; a < nx && !over; a += 1) {
+      for (let b = 0; b < nz; b += 1) {
+        const k0 = a * nz + b;
+        if (!gOcc[k0] || gUsed[k0]) {
+          continue;
+        }
+        let hiMin = gHi[k0];
+        let hiMax = gHi[k0];
+        let loMin = gLo[k0];
+        let loMax = gLo[k0];
+        let h = 1;
+        while (b + h < nz) {
+          const k = a * nz + b + h;
+          if (!gOcc[k] || gUsed[k]) {
+            break;
+          }
+          const h1 = Math.min(hiMin, gHi[k]);
+          const h2 = Math.max(hiMax, gHi[k]);
+          const l1 = Math.min(loMin, gLo[k]);
+          const l2 = Math.max(loMax, gLo[k]);
+          if (h2 - h1 > SLAB_STEP_TOL || l2 - l1 > SLAB_STEP_TOL) {
+            break;
+          }
+          hiMin = h1; hiMax = h2; loMin = l1; loMax = l2;
+          h += 1;
+        }
+        let w = 1;
+        for (;;) {
+          const a2 = a + w;
+          if (a2 >= nx) {
+            break;
+          }
+          let h1 = hiMin;
+          let h2 = hiMax;
+          let l1 = loMin;
+          let l2 = loMax;
+          let ok = true;
+          for (let t = 0; t < h; t += 1) {
+            const k = a2 * nz + b + t;
+            if (!gOcc[k] || gUsed[k]) { ok = false; break; }
+            if (gHi[k] < h1) { h1 = gHi[k]; }
+            if (gHi[k] > h2) { h2 = gHi[k]; }
+            if (gLo[k] < l1) { l1 = gLo[k]; }
+            if (gLo[k] > l2) { l2 = gLo[k]; }
+            if (h2 - h1 > SLAB_STEP_TOL || l2 - l1 > SLAB_STEP_TOL) { ok = false; break; }
+          }
+          if (!ok) {
+            break;
+          }
+          hiMin = h1; hiMax = h2; loMin = l1; loMax = l2;
+          w += 1;
+        }
+        let ux0 = Infinity;
+        let ux1 = -Infinity;
+        let uz0 = Infinity;
+        let uz1 = -Infinity;
+        let uFloor = Infinity;
+        for (let i2 = 0; i2 < w; i2 += 1) {
+          for (let t = 0; t < h; t += 1) {
+            const k = (a + i2) * nz + b + t;
+            gUsed[k] = 1;
+            if (gX0[k] < ux0) { ux0 = gX0[k]; }
+            if (gX1[k] > ux1) { ux1 = gX1[k]; }
+            if (gZ0[k] < uz0) { uz0 = gZ0[k]; }
+            if (gZ1[k] > uz1) { uz1 = gZ1[k]; }
+            if (gFloor[k] < uFloor) { uFloor = gFloor[k]; }
+          }
+        }
+        const lifted = loMin - uFloor >= RAISE_MIN_CLEAR;
+        const py0 = lifted ? loMin : rect.y0;
+        const py1 = Math.max(py0 + 0.001, Math.min(hiMax, rect.y1));
+        out.push({
+          x0: Math.max(ux0, rect.x0),
+          y0: py0,
+          z0: Math.max(uz0, rect.z0),
+          x1: Math.min(ux1, rect.x1),
+          y1: py1,
+          z1: Math.min(uz1, rect.z1),
+        });
+        if (out.length > MAX_PIECES) {
+          over = true;
+          break;
+        }
+      }
+    }
+    if (!over) {
+      return out;
+    }
+    if (nx <= 1 && nz <= 1) {
+      return null;
+    }
+    nx = Math.max(1, nx >> 1);
+    nz = Math.max(1, nz >> 1);
+  }
+  return null;
+}
+
+/*
  * One rectangle, cut along its long axis and then each piece cut again along
  * the other one.
  *
@@ -1297,6 +1615,17 @@ function fitRect(c, y0, y1, boxes, grid, floorAt, scratch, { roof = true } = {})
       out.push(q);
     }
   }
+  /*
+   * And the grid, when strips of strips still leave a lot of air. Two passes
+   * of strips are a good fit for anything whose height is a function of one
+   * axis, and the grid only wins where it is a function of both, so the strip
+   * answer is kept unless the grid beats it by GRID_GAIN. A tie goes to the
+   * strips because they emit fewer boxes.
+   */
+  const gridded = cutGrid(rect, boxes, scratch.list, count, floorAt, scratch);
+  if (gridded !== null && gridded.length > 0 && solid(gridded) < solid(out) - GRID_GAIN) {
+    return gridded;
+  }
   return out;
 }
 
@@ -1346,6 +1675,17 @@ function buildColliders(world) {
     floor: new Float64Array(SLAB_MAX),
     lift: new Int32Array(SLAB_MAX),
     occ: new Uint8Array(SLAB_MAX),
+    gHi: new Float64Array(GRID_MAX_CELLS),
+    gLo: new Float64Array(GRID_MAX_CELLS),
+    gX0: new Float64Array(GRID_MAX_CELLS),
+    gX1: new Float64Array(GRID_MAX_CELLS),
+    gZ0: new Float64Array(GRID_MAX_CELLS),
+    gZ1: new Float64Array(GRID_MAX_CELLS),
+    gFloor: new Float64Array(GRID_MAX_CELLS),
+    gLat: new Float64Array((GRID_FLOOR_LATTICE + 1) * (GRID_FLOOR_LATTICE + 1)),
+    gLift: new Int32Array(GRID_MAX_CELLS),
+    gOcc: new Uint8Array(GRID_MAX_CELLS),
+    gUsed: new Uint8Array(GRID_MAX_CELLS),
     seen: new Int32Array(boxes.length),
     mark: 0,
     list: new Int32Array(boxes.length),

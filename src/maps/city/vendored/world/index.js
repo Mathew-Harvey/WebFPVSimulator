@@ -129,7 +129,17 @@ export function buildWorld(scene, { bake = true } = {}) {
     groundAt: (x, z) => {
       let h = streetHeight(x, z) + reliefAt(x, z) + hillAt(x, z);
       for (const c of cuts) if (x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1) h = Math.min(h, c.top);
-      for (const p of platforms) if (x > p.x0 && x < p.x1 && z > p.z0 && z < p.z1) h = Math.max(h, p.top);
+      /* A platform may name a surface rather than a height, and this has to
+       * read it the way `heightAt` does or the two stop being "the same
+       * answer".  When `at` arrived for the tunnel caps only `heightAt` learned
+       * it, so this returned the flat `top`, the CREST, over the whole notch:
+       * `dressFaces` in tunnel.js then seated shrubs at the notch's edge
+       * thirteen metres over the toe of the hill.  Measured at (120.5, -13.5),
+       * y 13.62 over drawn ground at 0.41. */
+      for (const p of platforms) {
+        if (x <= p.x0 || x >= p.x1 || z <= p.z0 || z >= p.z1) continue;
+        h = Math.max(h, p.at === undefined ? p.top : p.at(x, z));
+      }
       return h;
     },
     interact: (i) => interactables.push(i),

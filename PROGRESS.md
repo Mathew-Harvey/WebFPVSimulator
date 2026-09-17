@@ -38004,3 +38004,136 @@ corner over. Whether the throttle hint reads as help or as the form arguing
 back. And the number this whole round exists to collect, which is what padHz
 actually says on a real machine with a real radio, and which cannot come from
 this container: it has no GPU, no display and no radio.
+
+## 2026-09-17 | review | Eighteen commits read for bugs, one found in the mountain, and what was left alone
+
+Asked: review every commit pushed to main today for bugs, report and fix.
+Eighteen non merge commits between c7261ee and 1ba92c8, about five thousand
+lines, in three groups: the city's collider fit and the three scans (dcd618f
+through 15f8c74), the tune removal and the menu furniture behind it (eb9aeda,
+a2a8d0d, 437301f), and the rate presets and the feel report instrumentation
+(b35895b, 1ba92c8). The leaderboard had no commits today. Read as net diffs
+per file where a file was rewritten several times in the day, then the
+runtime paths were walked by hand: what each new row's action does, what each
+helper the new code calls actually takes, what `sim_init` wipes against what
+`reseatAfterConfigSwap` puts back.
+
+### The one that was a bug: shrubs thirteen metres over the toe of a hill
+
+0543d43 gave `ctx.platform` an optional `at(x, z)` so the tunnel caps could be
+a surface rather than a height, and taught `world.heightAt` to read it. It did
+not teach `ctx.groundAt`, the helper builders seat props with, whose own
+comment claims it gives "the same answer world.heightAt gives without a
+fromY". So over the whole notch rectangle `groundAt` answered with the flat
+`top`, which is the CREST, 17 m over the west bore and 13.2 over the east,
+wherever the true ground was lower, which is everywhere in a notch.
+
+`dressFaces` in tunnel.js runs after the cap platform exists and samples
+`ctx.groundAt` across an envelope that overlaps the notch. Its own comment
+relied on the old answer: "ctx.groundAt answers with the flat grade inside a
+notch", so nothing inside reached the 0.9 m floor and the loop never planted
+there. With the crest coming back instead, a sample just inside the notch's
+edge read 13 m with a neighbour 1.5 m away on the hillside reading under one,
+which is the steepest face in the town by that test, and a shrub went in at
+the crest height over ground at the toe.
+
+Measured on the live page in headless Chromium, by raycasting straight down
+from every shrub instance standing over either notch:
+
+    before   49 shrubs near the notches, 4 floating more than 1.5 m:
+             E  x 120.5  z -13.5   y 13.62 over drawn ground at 0.41   lift 13.21
+             E  x 120.3  z -13.0   y 13.70 over 0.68                   lift 13.02
+             E  x 121.5  z -13.9   y 13.57 over 0.75                   lift 12.82
+             E  x 121.2  z -14.1   y 13.62 over 0.84                   lift 12.78
+    after    42 shrubs near the notches, none of those. The one reading
+             over 1.5 m that remains is at x -134.9, outside the notch, and
+             reads the same 1.67 before and after, so it is not today's.
+
+The west bore had none, which is the random scatter and not a difference in
+the mechanism: the same code runs on both, and the east's south edge sits
+over the ridge toe where the drop from crest to ground is largest.
+
+Two fixes, because each is right on its own. `ctx.groundAt` reads `at` the way
+`heightAt` does, so the two are the same answer again as the comment says. And
+`dressFaces` skips the notch by rectangle rather than by relying on what
+`groundAt` happens to answer inside it, because the cap has its own planting
+pass from `capAt` and the first loop was never meant to reach it. The second
+fix on its own would have hidden the first; the first on its own would have
+planted the cap twice.
+
+The day's own cavity scan could not see this. Its FLOATING measurement works
+at `ctx.add` granularity and drops anything wider than 12 m2 in plan, and
+every shrub in the town is one instanced mesh per tone, so the object it
+would have measured is the size of the district. A per instance probe is
+what found it, and it is a scratch script, not a shipped check.
+
+### Two small ones fixed in passing
+
+`configs/ratepresets.js` promised that a hand edited storage entry goes
+through the same normalising as any other and cannot misbehave. An entry that
+had lost its `id` field hydrated with a fresh random id on every read, so it
+listed but could never be loaded or deleted, because every lookup goes back
+through the library by id. The library key is the id of record now. Exercised
+in Node with an in memory localStorage: twelve checks, save, replace by name
+in any case, match by numbers, an id less entry listing, loading and deleting
+under its key, a missing id, and a blank name. All twelve pass.
+
+The comment over the phone layout block in index.html said 900 px where the
+media query it describes says 1280. The query is right, the entry above says
+why, and the comment now agrees with it.
+
+### Read closely and left alone, with the reason
+
+- **`reseatAfterConfigSwap`** reads the state block before `sim_init` zeroes
+  it, and `sim.readState` returns a copy rather than a view into the heap, so
+  the pose it restores is the one from before the init. The indices match
+  `sim_abi.h`, `sim_set_pose` takes w x y z in that order and normalises, and
+  `syncAngleMode` still runs at the tail of `applySettings` after the rates
+  branch. The velocity limit is stated in its own comment and is real.
+- **The airframe branch** only runs between runs and never relied on the
+  rates branch's old `reset()`, so rates no longer resetting changes nothing
+  there.
+- **`pidsFrom` surviving a trip to the bench.** Every `show('pids')` other
+  than `leaveFc` goes through `act('pids')`, which sets or clears it, so no
+  arrival can inherit a stale one. Walked every entrance and exit by reading
+  `act`, `back` and `leaveFc` together.
+- **The Preset row with nothing loaded** steps to the SECOND preset on a
+  first Right press, because `cycle` treats an off list value as index 0.
+  Pre-existing behaviour of every choice row, and Enter opens the picker
+  either way. Not touched.
+- **The save dialog's Replace label** only knows the name it was opened with;
+  type a different existing name and the button says Save while the store
+  replaces. The store's comment claims the dialog always knows. Minor, and
+  not widened today; written down.
+- **`cutGrid` and the sliced roof lift** were checked for index arithmetic:
+  cell keys, lattice bounds, the `1 << 31` bit read as a signed test, and the
+  second strip pass carrying no `yTop` and needing none because the first
+  pass already capped it. Nothing found.
+- **The canal.** The sluice pier and gate colliders match the drawn boxes to
+  the centimetre; the bridge bands sit at `groundY` like every street while
+  the deck colliders top out `TERRAIN_DROP` lower, which is the relationship
+  every road in the town has with its terrain.
+- **The walk-up parapet** members match the drawn rim, condensers and vent
+  exactly.
+- **The music crate**: sixteen ids, every one with both files, no orphans.
+- **`fitStats.roofLifts`** still never increments; the earlier entry chose to
+  leave it and so does this one.
+
+### What was run
+
+    node --check      every JS file changed today, and the three changed here
+    lint:presets      4 of 4 clean
+    lint:fc           33 of 33 clean
+    lint:shell        PASS on the tree as merged, PASS again after the fix
+    shrub probe       scratch, on the real page: the table above, before and
+                      after
+    ratepresets test  scratch, in Node: 12 of 12
+    cavity-scan       386 m3 of invisible wall in 90 pockets, FLOATING 0,
+                      against 388.8 in 87 at the last map entry. The drawn
+                      picture moved by four shrubs, from the air to the
+                      hillside, and nothing else.
+
+`npm run verify` was NOT run. Nothing here touches the plant, the module
+ABI, the build or the input path: two map builders, a storage helper and a
+comment. Nobody has flown the tunnels since the fix; the probe raycasts, it
+does not fly.

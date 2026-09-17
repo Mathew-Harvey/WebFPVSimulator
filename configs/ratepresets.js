@@ -94,8 +94,13 @@ function newPresetId() {
 }
 
 /* A stored blob in the shape the rest of this module trusts, or null. The
- * rates go through normaliseRates, so a hand edited entry cannot fly. */
-function hydrate(raw) {
+ * rates go through normaliseRates, so a hand edited entry cannot fly.
+ *
+ * `key` is the id the library stores the blob under, and it is the id of
+ * record when the blob has lost its own: an entry hydrated with a fresh
+ * random id could be listed but never loaded or deleted, because every
+ * lookup goes back through the library by id. */
+function hydrate(raw, key = '') {
   if (!raw || typeof raw !== 'object') {
     return null;
   }
@@ -104,7 +109,7 @@ function hydrate(raw) {
     return null;
   }
   return {
-    id: typeof raw.id === 'string' && raw.id ? raw.id : newPresetId(),
+    id: typeof raw.id === 'string' && raw.id ? raw.id : (key || newPresetId()),
     name: name.slice(0, PRESET_NAME_MAX),
     savedUtc: typeof raw.savedUtc === 'string' ? raw.savedUtc : '',
     rates: normaliseRates(raw.rates),
@@ -119,8 +124,8 @@ function hydrate(raw) {
  * decide whether it is showing a loaded preset or an edited one.
  */
 export function listRatePresets() {
-  return Object.values(readLibrary())
-    .map(hydrate)
+  return Object.entries(readLibrary())
+    .map(([key, raw]) => hydrate(raw, key))
     .filter(Boolean)
     .map((p) => ({ ...p, summary: ratesSummary(p.rates) }))
     .sort((a, b) => String(b.savedUtc).localeCompare(String(a.savedUtc)));
@@ -130,7 +135,7 @@ export function ratePresetById(id) {
   if (!id) {
     return null;
   }
-  const p = hydrate(readLibrary()[id]);
+  const p = hydrate(readLibrary()[id], id);
   return p ? { ...p, summary: ratesSummary(p.rates) } : null;
 }
 

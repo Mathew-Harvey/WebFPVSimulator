@@ -1981,6 +1981,12 @@ function dressFaces(ctx, b, cribBoxes = []) {
     const z = rng.range(-19, 22);
     if (Math.abs(z) < 6.4) continue;                 // the running line
     if (Math.abs(z + 24) < 6.4) continue;            // the drainage channel
+    /* Not the notch: the cap's own pass below plants it, from `capAt`.  This
+     * used to fall out of the height test, because `ctx.groundAt` answered
+     * with the flat grade inside a notch and nothing there reached 0.9 m.  The
+     * cap is a platform now and `groundAt` answers with its surface, so the
+     * skip has to be said rather than relied on. */
+    if (x > T.x0 && x < T.x1 && z > T.zS && z < T.zN) continue;
     const y = ctx.groundAt(x, z);
     if (y < 0.9) continue;
     // only the steep faces: the gentle ground is already planted and toned

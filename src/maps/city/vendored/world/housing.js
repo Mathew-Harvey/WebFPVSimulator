@@ -325,7 +325,32 @@ function collideWalkup(ctx, o) {
     ctx.collide(px - hx, pz - hz, px + hx, pz + hz,
       y + top, bot == null ? undefined : y + bot, skip);
   };
-  put(0, -GAL / 2, w / 2 + 0.08, (d - GAL) / 2 + 0.08, H + 0.5, undefined, true);
+  /* **The mass stops at the roof slab, and the parapet round it is its own
+   * four rails.**
+   *
+   * It stopped at `H + 0.5` so that the 0.42 m parapet rim would be inside
+   * it, and that put 0.3 m of solid over the whole 45 m2 of roof deck: 13.6 m3
+   * per block, 22 blocks, 165 m3 and the largest group left in the town when
+   * src/maps/city/cavity.js was first run. A roof deck with a parapet round
+   * it is a place a pilot lands, and the rim is exactly the thing they aim
+   * to clear. Members instead, the same way the gallery, the stair and the
+   * balconies are already done here. */
+  put(0, -GAL / 2, w / 2 + 0.08, (d - GAL) / 2 + 0.08, H + 0.2, undefined, true);
+  {
+    const rz = -GAL / 2 + 0.08;
+    const rd = (d + 0.5 - GAL) / 2;
+    for (const s of [-1, 1]) {
+      put(0, rz + s * rd, (w + 0.5) / 2, 0.11, H + 0.62, H + 0.2, true);
+      put(s * ((w + 0.5) / 2), rz, 0.11, rd, H + 0.62, H + 0.2, true);
+    }
+    // the two condensers and the vent, which is what stands on the deck. The
+    // 56 mm aerial is left a ghost, on the same rule the town already applies
+    // to a chain and a wire.
+    for (const dx of [-1.6, -0.3]) {
+      put(dx, -1.4, 0.47, 0.23, H + 0.89, H + 0.2, true);
+    }
+    put(w / 2 - 1.1, -1.9, 0.14, 0.14, H + 1.0, H + 0.2, true);
+  }
   const gz = d / 2;
   for (let k = 0; k < FLOORS; k++) {
     const fy = k * FH;

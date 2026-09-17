@@ -36804,3 +36804,49 @@ are limits of the scan rather than of the town:
 
 The rest is a few hundred cubic metres per stand of trees, which is the same
 limit in miniature.
+
+### The walk-up blocks, half diagnosed
+
+`collideWalkup`'s mass stopped at `H + 0.5` so that the roof's 0.42 m
+parapet rim would be inside it, which put 0.3 m of solid over the whole
+45 m2 of roof deck. A roof deck with a parapet round it is a place a pilot
+lands and the rim is what they aim to clear, so the mass stops at the roof
+slab now and the rim, the two condensers and the vent are members, the same
+way the gallery, the stair and the balconies already are. The 56 mm aerial
+is left a ghost on the same rule the town applies to a chain and a wire.
+
+It is worth less than it looked: 1139 m3 to 1120 over all 22 blocks, not the
+13.6 m3 each the arithmetic predicted, because most of that lid was already
+inside the scan's 0.2 m tolerance of the slab and the rim. And it costs
+something in the other direction: `collider-audit` HOLES goes 17409 to
+17588 of 67568 probed, mean cover 0.711 to 0.710, which is eight objects per
+roof going from more than half covered to less. They are the roof furniture
+that used to be swallowed by the fat box; the parapet, the condensers and
+the vent are collided, so what is left is small.
+
+The 14 m3 pockets at the TOP of each block, which is what the scan actually
+reports, are still not diagnosed. They sit on the gallery side, two metres
+tall, at the height of the top gallery's open run. Left for the next round
+with the numbers written down rather than guessed at.
+
+### Final measurements for the turn
+
+    cavity-scan   2790 m3 of invisible wall in 218 pockets  ->  1120 in 173
+    collider-audit HOLES  36.0 percent of probed drawn things uncovered,
+                          mean cover 0.605  ->  25.8 percent, 0.710
+    collider-audit PHANTOM  2162 -> 2419 m3, and that number is NOT
+                          comparable across this turn: scan.js reads the same
+                          drawn.js the fit does, so a tighter picture of the
+                          drawing makes more of the same solid count as
+                          phantom. The cavity scan has its own rasteriser.
+    attract-check  city through 0/320
+    lints          fc, presets, nouns, shell, memory, boot, frame, quality,
+                   arcade, responsive all pass. catalog fails on an empty
+                   vendor/betaflight, which is this container.
+
+`npm run verify` was NOT run. Nothing here touches the plant, the module
+ABI, the input path or the build: it is map geometry, the city's collider
+fit and one new optional field on `ctx.platform`. What was run instead is
+above, plus in-game probes at every place that changed -- the canal
+centreline end to end, the four crossings in cross section, the bore, both
+knolls under a descent, the lake at four points and the road over こばと橋.

@@ -37802,3 +37802,113 @@ Whether a rate change that keeps the craft in the air but drops its speed
 reads as a fix or as a stumble, which is a thing to fly rather than assert.
 And whether "Preset" reads as a rate profile to somebody who has not just
 built it.
+
+## Two radios could not be calibrated, and the wizard had no way to say so
+
+Two reports on the same day, both filed from `screen: calibrate`, both
+describing the same thing from different ends of the wizard.
+
+SUPER6003, on an ELRS handset: "I could not calibrate the controller becouse
+when I reach YAW configuration it freezez, I can mouve the sticks but YAW
+doesent configure."
+
+Jerome, on a BetaFPV handset: "i plug my betafpv remove and it is detected but
+oh boy are the control wrong. I got throttle on a 3 postion switch and other
+wreird things. I expect a way to map but you system waits for me to move stick
+in postion that use the 3pos switch to do."
+
+This turn is diagnosis only. Nothing in `src/input/input.js` changed.
+
+### The evidence, because neither report carried any
+
+`ui.bugSnapshot` records the GPU, the viewport, the pack voltage, the rate
+profile and the link preset. It records nothing whatsoever about the radio:
+not the pad id, not how many axes it reports, not where those axes sit, not
+which calibration step was up. Both of these are radio reports and neither one
+can be answered from its own contents. That is the same gap the rates rewrite
+closed for rates, and the comment in `bugSnapshot` saying so is three lines
+above the place where the radio should be.
+
+So `scripts/cal-selftest.js` was written instead. It imports the real
+`InputManager`, stubs the four browser globals the constructor reaches for,
+describes a radio by its axes, and plays a pilot who does exactly what each
+prompt says. Eight shapes, none exotic. It currently reports:
+
+    pass    four axes, AETR, throttle resting low
+    pass    eight axes, switches left where they rest
+    WEDGED  eight axes, a three position switch left on its middle detent
+    WEDGED  eight axes, an arm switch flicked and left up
+    WEDGED  yaw trimmed to 40 percent of raw travel
+    WEDGED  yaw mirrored onto a second axis
+    WEDGED  a left gate that is not square, so yaw right drags an aux
+    pass    throttle on a three position switch, returned to its bottom detent
+
+Five of eight. The check exits non zero on purpose and is deliberately NOT in
+`npm run verify`: it is the acceptance test the fix has to turn green, and a
+check that passes today would be recording the bug rather than the contract.
+
+### Three causes, all of them in the same two comparisons
+
+**One. The sweep waits for every axis, including the ones the pilot cannot
+put back.** `calSweep` will not advance until
+`maxAbsDelta(axes, c.rest) < CAL.NEAR_REST`, which is every axis the radio
+reports, within 0.2 of where it sat during the centre step. The sweep's own
+prompt is "Move both sticks through every corner, and the throttle up and down,
+then put them back", and a pilot reading that on a handset whose switches
+arrive as axes moves the switches too. A three position switch left on its
+middle detent sits 1.00 from its rest and an arm switch flicked up sits 2.00.
+Neither ever comes back inside 0.2, so the step never ends. The hint says
+"Back to rest to continue" while the sticks ARE back at rest, which is why it
+reads as a freeze rather than as a thing to undo. This is Jerome's report: his
+throttle is on a three position switch, and the one gesture the wizard demands
+of him is the one his radio cannot make.
+
+**Two. A channel that does not travel 0.45 of raw axis can never be
+identified.** `calIdentify` needs `pick.bestAbs >= CAL.IDENT_DELTA`. Endpoint
+trim, a rate curve applied before the joystick output, or an axis reported
+over a narrower raw range all put a real gimbal under that line. Nothing tells
+the pilot the number exists or that they are short of it. They hold the stick
+harder and the step does not move.
+
+**Three. Two axes that move together can never be told apart.** `unique` is
+`pick.bestAbs - pick.secondAbs >= CAL.IDENT_GAP`, 0.18 apart. A channel
+mirrored onto a second axis gives a gap of exactly 0.00, forever. A left gate
+that is not square, so that yaw right drags an aux to 0.9 while yaw reaches
+1.0, gives 0.10. Both wedge.
+
+Two and three both land on yaw far more often than on anything else, and the
+reason is mechanical rather than about yaw: yaw is the LAST gimbal asked for,
+so by then throttle, roll and pitch have taken their axes out of the pool and
+whatever is left has to win on its own. Throttle, roll and pitch each had
+three or more candidates to beat and a comfortable margin. Yaw is where a
+narrow channel or a ganged pair has nothing left to hide behind. That is
+SUPER6003's report: three channels configured, the fourth one stuck, sticks
+visibly moving on screen the whole time.
+
+### The fourth thing, which is not a cause but is why both reports say freeze
+
+There is no way out of a wedged step. The calibrate screen draws a kicker, a
+prompt, a hint, a step list and two gimbals. It has Save, disabled until
+`confirm`, and Escape, which cancels the whole wizard and starts the same one
+that will wedge in the same place. There is no skip, no back, no retry, no
+manual pick, no timeout, and above all no live per axis readout: the pilot
+cannot see that axis 5 is the thing holding the sweep open, because the
+product never shows them an axis. The state machine knows exactly why it is
+not advancing on every single frame, and says none of it.
+
+### Measurements
+
+    cal:selftest   5 of 8 wedged, which is the bug, reproduced
+    lint:quality   56 of 56 clean
+    lint:nouns     PASS
+
+`npm run verify` was NOT run and shots.js was NOT run. Nothing in the physics
+path, the plant, the module ABI or the build was touched, and nothing on
+screen changed: this turn adds one node script and this entry.
+
+### What no check here can see
+
+Which of the three causes fired for SUPER6003. All three are reproducible and
+all three land on yaw, and the report carries no axis data to choose between
+them. That is the argument for fixing the snapshot first, and for the fix
+being all three plus the readout rather than whichever one is guessed.

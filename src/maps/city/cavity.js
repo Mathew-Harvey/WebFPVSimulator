@@ -131,6 +131,12 @@ const GROUND_NAME = /^tunnelCap/;
  * every pocket in the town into one 130,000 m3 finding.
  */
 const SOFT_EXTRA = /wire|Wire|catenary/;
+/* Furniture sized, and how far clear of the floor before it is floating
+ * rather than standing on a kerb. A chair seat is 0.44 m up and a table top
+ * 0.72, so the test is on the object's UNDERSIDE and the number is what a
+ * plinth or a step could honestly be. */
+const FLOAT_MAX_FOOT = 12;
+const FLOAT_MIN_LIFT = 0.4;
 /*
  * How far the contact floor may stand over the drawn ground and still be
  * counted as the ground, WHERE THE GROUND IS DRAWN AT ALL.
@@ -1149,6 +1155,153 @@ export function scanCavities(world, colliders, opts = {}) {
     }
   }
 
+  /* ---------------------------------------------------------------- *
+   * AND A THIRD THING, WHICH IS NOT ABOUT FLYING AT ALL: FURNITURE WITH
+   * NOTHING UNDER IT.
+   *
+   * Asked for on 2026-09-17 in the same breath as the gaps, and the report
+   * was exact: the chairs and tables outside the lake cafe are in the air.
+   * They are, by 1.6 m, because they are seated at the terrace deck's height
+   * and 1.6 m past its far edge.
+   *
+   * A thing that floats is a thing whose underside is clear of the contact
+   * floor with nothing drawn in between and nothing drawn beside it. The
+   * last clause is what keeps a meter box, a nameplate and an air
+   * conditioner off the list: they are bolted to a wall, and the wall is in
+   * the next column.
+   * ---------------------------------------------------------------- */
+  const floaters = [];
+  {
+    /*
+     * At the granularity `ctx.add` uses, which is one prop, one house, one
+     * pole per call. That is the only granularity the question makes sense
+     * at: a cafe table's stem is held up by nothing, but so is a chair's
+     * seat, and asking per mesh reports four legs and a top where a pilot
+     * sees one table. It also means the four chairs round a table do not
+     * hold each other up, which is what a per mesh test concluded.
+     */
+    const eb = new THREE.Box3();
+    const ei = new THREE.Matrix4();
+    const ew = new THREE.Matrix4();
+    for (const child of world.root.children) {
+      let x0 = Infinity; let y0 = Infinity; let z0 = Infinity;
+      let x1 = -Infinity; let y1 = -Infinity; let z1 = -Infinity;
+      child.traverse((o) => {
+        if (!o.isMesh || !o.geometry || o.visible === false) {
+          return;
+        }
+        if (!o.geometry.boundingBox) {
+          o.geometry.computeBoundingBox();
+        }
+        if (!o.geometry.boundingBox) {
+          return;
+        }
+        const take = (m) => {
+          eb.copy(o.geometry.boundingBox).applyMatrix4(m);
+          if (eb.min.x < x0) { x0 = eb.min.x; }
+          if (eb.min.y < y0) { y0 = eb.min.y; }
+          if (eb.min.z < z0) { z0 = eb.min.z; }
+          if (eb.max.x > x1) { x1 = eb.max.x; }
+          if (eb.max.y > y1) { y1 = eb.max.y; }
+          if (eb.max.z > z1) { z1 = eb.max.z; }
+        };
+        if (o.isInstancedMesh) {
+          for (let i = 0; i < o.count; i += 1) {
+            o.getMatrixAt(i, ei);
+            ew.multiplyMatrices(o.matrixWorld, ei);
+            take(ew);
+          }
+          return;
+        }
+        take(o.matrixWorld);
+      });
+      if (!(x1 > x0)) {
+        continue;
+      }
+      const fw = x1 - x0;
+      const fd = z1 - z0;
+      const fh = y1 - y0;
+      if (fw * fd > FLOAT_MAX_FOOT || fh > 3.5 || fh < 0.1) {
+        continue;
+      }
+      const cx = (x0 + x1) * 0.5;
+      const cz = (z0 + z1) * 0.5;
+      const gy = world.heightAt(cx, cz, y0);
+      const lift = y0 - gy;
+      if (!(lift > FLOAT_MIN_LIFT)) {
+        continue;
+      }
+      const ix = Math.floor((cx - g.x0) / CELL);
+      const iz = Math.floor((cz - g.z0) / CELL);
+      if (ix < 1 || iz < 1 || ix >= g.nx - 1 || iz >= g.nz - 1) {
+        continue;
+      }
+      /*
+       * Anything drawn between the floor and its underside is what it stands
+       * on: a post, a plinth, a deck, the thing below it on a stack. Looked
+       * for under the WHOLE footprint and not only under the centre, because
+       * a cantilever is held at one end: the pool's springboard is 4.1 m of
+       * plank on two posts at its back, and a centre test calls it floating
+       * over the deep end, which is the whole point of it.
+       */
+      let held = false;
+      const lo = clampIy(iyOf(gy + 0.12));
+      /* At least one cell. A bollard's red cap is its own `ctx.add`, 0.64 m
+       * up on a post that is another one, and the band between the ground and
+       * its underside is 0.22 m: shorter than a cell, so the loop ran zero
+       * times and twenty bollard caps were reported as floating. */
+      const hi = Math.max(lo + 1, clampIy(iyOf(y0 - TOL - 0.1)));
+      const fx0 = Math.max(0, Math.floor((x0 - g.x0) / CELL));
+      const fx1 = Math.min(g.nx - 1, Math.floor((x1 - g.x0) / CELL));
+      const fz0 = Math.max(0, Math.floor((z0 - g.z0) / CELL));
+      const fz1 = Math.min(g.nz - 1, Math.floor((z1 - g.z0) / CELL));
+      for (let a = fx0; a <= fx1 && !held; a += 1) {
+        for (let b2 = fz0; b2 <= fz1 && !held; b2 += 1) {
+          const c2 = colBase(a, b2);
+          for (let iy = lo; iy < hi; iy += 1) {
+            if (getBit(drawn, c2, iy)) { held = true; break; }
+          }
+        }
+      }
+      if (held) {
+        continue;
+      }
+      /*
+       * Or immediately beside it, which is a wall it is bolted to.
+       *
+       * Tested on the ring one cell OUTSIDE the object's own footprint, not
+       * around its centre, and that is the difference between finding the
+       * lake cafe's tables and not. A table with four chairs round it is 2.5 m
+       * across, so a centre test finds its own chairs in the next column and
+       * concludes the table is leaning on something.
+       */
+      const mid = clampIy(iyOf((y0 + y1) * 0.5));
+      const ax0 = Math.max(1, Math.floor((x0 - g.x0) / CELL) - 1);
+      const ax1 = Math.min(g.nx - 2, Math.floor((x1 - g.x0) / CELL) + 1);
+      const az0 = Math.max(1, Math.floor((z0 - g.z0) / CELL) - 1);
+      const az1 = Math.min(g.nz - 2, Math.floor((z1 - g.z0) / CELL) + 1);
+      let beside = false;
+      for (let a = ax0; a <= ax1 && !beside; a += 1) {
+        beside = getBit(drawn, colBase(a, az0), mid) === 1
+          || getBit(drawn, colBase(a, az1), mid) === 1;
+      }
+      for (let b2 = az0; b2 <= az1 && !beside; b2 += 1) {
+        beside = getBit(drawn, colBase(ax0, b2), mid) === 1
+          || getBit(drawn, colBase(ax1, b2), mid) === 1;
+      }
+      if (beside) {
+        continue;
+      }
+      floaters.push({
+        name: child.name || '(unnamed)',
+        at: [+cx.toFixed(2), +y0.toFixed(2), +cz.toFixed(2)],
+        lift: +lift.toFixed(2),
+        size: [+fw.toFixed(2), +fh.toFixed(2), +fd.toFixed(2)],
+      });
+    }
+    floaters.sort((p, r) => r.lift - p.lift);
+  }
+
   /*
    * WHAT IS STANDING THERE, BY NAME.
    *
@@ -1226,7 +1379,10 @@ export function scanCavities(world, colliders, opts = {}) {
    */
   const fitSeen = [];
   for (const pt of (opts.fit || [])) {
-    const list = drawnBoxes(world.root, { maxFootprint: 1400, skip: opts.fitSkip || null });
+    /* No skip here, unlike the fit's: a cafe table is inside a group named
+     * `openFrame` so that the fit cannot wall its legs in, and that is the
+     * exact object this measurement is for. */
+    const list = drawnBoxes(world.root, { maxFootprint: 1400 });
     const rows = [];
     for (const b of list) {
       const r = pt[2] ?? 0;
@@ -1274,6 +1430,8 @@ export function scanCavities(world, colliders, opts = {}) {
   }
 
   return {
+    floaters: floaters.slice(0, 60),
+    floaterCount: floaters.length,
     fitSeen,
     probes,
     cell: CELL,

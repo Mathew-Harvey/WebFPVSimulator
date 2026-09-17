@@ -116,6 +116,12 @@ for (const f of scan.list.slice(0, top)) {
     + `${String(b[3]).padStart(7)} ${String(b[4]).padStart(6)} ${String(b[5]).padStart(7)}   ${why}   ${near}`,
   );
 }
+lines.push('');
+lines.push(`FLOATING        ${scan.floaterCount} drawn things with nothing under them and nothing beside them`);
+for (const f of (scan.floaters || []).slice(0, 40)) {
+  lines.push(`  ${String(f.lift).padStart(6)} m clear   ${f.at.join(', ').padEnd(26)}  ${f.size.join(' x ').padEnd(20)}  ${f.name}`);
+}
+lines.push('');
 for (const f of scan.fitSeen || []) {
   lines.push('');
   lines.push(`fit sees at ${f.at.join(', ')}: ${f.n} drawn boxes, tallest first`);

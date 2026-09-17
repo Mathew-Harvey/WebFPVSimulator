@@ -1284,7 +1284,19 @@ function buildCafe(ctx, rng, out) {
   groundRail(ctx, [
     [V.x - 4.6, V.z + D / 2 + 3.8], [V.x + 3.8, V.z + D / 2 + 3.8],
   ], { h: 0.92, spacing: 1.5, mat: m.timber, yAt: () => TY + 0.06, name: 'cafeTerraceRail' });
-  for (const [tx, tz] of [[V.x - 3.2, V.z + 8.6], [V.x - 0.4, V.z + 8.6], [V.x + 2.4, V.z + 8.6]]) {
+  /* **On the deck, and they were not.**
+   *
+   * The three tables were at `V.z + 8.6`, seated at the deck's own height --
+   * and the deck runs `V.z + 3.4` to `V.z + 7.0`, with the railing on that
+   * far edge.  So they stood 1.6 m PAST the rail, over a hillside that falls
+   * away toward the water, floating 1.67 to 2.08 m in the air.  Reported by
+   * the owner on 2026-09-17 as "the floating chairs and tables in the
+   * alfresco restaurant"; measured at (175.8, -136.6) ground 5.70 against a
+   * deck at 7.78, and at the other two.  `V.z + D / 2 + 2.0` is the deck's
+   * own centre line, written the same way the deck is, so the two cannot
+   * drift apart again. */
+  const TZ = V.z + D / 2 + 2.0;
+  for (const [tx, tz] of [[V.x - 3.2, TZ], [V.x - 0.4, TZ], [V.x + 2.4, TZ]]) {
     const tg = new THREE.Group();
     tg.name = 'openFrame';
     tg.add(cyl(0.42, 0.42, 0.06, 10, m.timberPale, 0, 0.72, 0));

@@ -36850,3 +36850,42 @@ fit and one new optional field on `ctx.platform`. What was run instead is
 above, plus in-game probes at every place that changed -- the canal
 centreline end to end, the four crossings in cross section, the bore, both
 knolls under a descent, the lake at four points and the road over こばと橋.
+
+### The floating chairs and tables, and a third measurement for them
+
+Reported by the owner in the same breath as the gaps. They are ひばり湖's cafe
+terrace, and the report was exact.
+
+`buildCafe` lays a timber deck 8.4 by 3.6 on the water side, centred at
+`V.z + D / 2 + 2.0`, so it runs `V.z + 3.4` to `V.z + 7.0` with the railing
+on that far edge. The three tables were at `V.z + 8.6`, seated at the deck's
+own height: 1.6 m PAST the rail, over a hillside that falls away toward the
+water. Measured at x = 178.6, the deck's surface is 7.78 and the ground under
+the tables is 5.70, 6.11 and 6.02, so they were floating 1.67 to 2.08 m. They
+take the deck's own centre line now, written the same way the deck is, so the
+two cannot drift apart again.
+
+**And the scan has a third measurement, because "confirm they are all fixed"
+is not a thing anybody should answer by eye.** A thing floats when its
+underside is clear of the contact floor with nothing drawn under its
+footprint and nothing drawn immediately beside it. Four things had to be got
+right before the number meant anything, and each one was a real object in
+this town arguing with a naive test:
+
+- **At object granularity, not per mesh.** A table's stem is held up by
+  nothing and so is a chair's seat; per mesh the answer is four legs and a
+  top where a pilot sees one table. `ctx.add`'s granularity is the right one.
+- **The "beside" ring goes round the object's own footprint, not its
+  centre.** A table with four chairs round it is 2.5 m across, so a centre
+  test finds its own chairs and concludes the table is leaning on something.
+  That is why the first version of this reported nothing.
+- **Support is looked for under the WHOLE footprint.** The pool's springboard
+  is 4.1 m of plank on two posts at its back, cantilevered over the deep end
+  on purpose, and a centre test calls it floating.
+- **The support band is at least one cell.** A bollard's red cap is its own
+  `ctx.add`, 0.64 m up on a post that is another one, and the 0.22 m between
+  the ground and its underside is shorter than a 0.5 m cell, so the loop ran
+  zero times and twenty bollard caps came out as floating.
+
+With all four, the town reads **0 floating things**. The cafe's tables were
+the only ones.

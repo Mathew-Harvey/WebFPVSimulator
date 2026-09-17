@@ -375,10 +375,18 @@ const BEHAVIOUR = `(() => {
    * the tune must be the tune it was.
    */
   try {
-    /* The Tune row lives in the Quad room now: it is the machine's, and
-     * the title carries a Quad row that names it rather than a copy of it. */
-    ui.show('quad');
-    const i = ui.items().findIndex((it) => it && it.id === 'quad:tune');
+    /*
+     * THE CHECK FOLLOWS THE CONTROL, it does not follow the room.
+     *
+     * The tune picker was on Quad, then Quad's Tune row became the door to
+     * the PIDs room and the picker went in with it. What is asserted here is
+     * a property of the picker, that Enter opens it rather than stepping it,
+     * so this points at wherever the picker is. Repointing it at some other
+     * long list because this one moved would have been a different check
+     * wearing this one's name.
+     */
+    ui.show('pids');
+    const i = ui.items().findIndex((it) => it && it.id === 'pids:tune');
     ui.setCursor(i);
     const before = ui.items()[i].value;
     ui.select();
@@ -847,10 +855,17 @@ const BEHAVIOUR = `(() => {
    *
    * Tune is allowed two: its room, and the pause menu, where "does this
    * feel wrong" is the question being asked and the row is the answer.
+   *
+   * A ROOM IS REACHED BY THE ACTION THAT OPENS IT, not by a row that shares
+   * its name. Quad's Tune and PIDs rows are one row now, labelled Tune and
+   * opening the PIDs room, so no row anywhere is labelled PIDs and a check
+   * that counted that label would have read the room as unreachable while a
+   * pilot was walking into it. The opens map counts the actions instead.
    */
   try {
     const homes = { tune: [], pids: [], rates: [] };
     const doors = { tune: [], pids: [], rates: [] };
+    const opens = { pids: [], rates: [] };
     const which = (it) => {
       if (!it || !it.label) { return null; }
       if (it.label === 'Tune') { return 'tune'; }
@@ -861,6 +876,8 @@ const BEHAVIOUR = `(() => {
     for (const name of ${JSON.stringify(SCREENS)}) {
       ui.show(name);
       for (const it of ui.items()) {
+        if (it && it.action === 'pids') { opens.pids.push(name); }
+        if (it && it.action === 'rates') { opens.rates.push(name); }
         const k = which(it);
         if (!k) { continue; }
         /* Editable means it changes the value where it stands. */
@@ -878,6 +895,8 @@ const BEHAVIOUR = `(() => {
       tuneDoors: doors.tune,
       pidsDoors: doors.pids,
       ratesDoors: doors.rates,
+      pidsOpens: opens.pids,
+      ratesOpens: opens.rates,
     };
   } catch (e) {
     out.oneHome = { error: String(e && e.message ? e.message : e) };
@@ -1787,10 +1806,10 @@ async function main() {
       if (!oh.tune.length) {
         failures.push('one room per thing: Tune cannot be changed anywhere');
       }
-      if (!oh.pids.length && !oh.pidsDoors.length) {
+      if (!oh.pids.length && !oh.pidsOpens.length) {
         failures.push('one room per thing: PIDs is not reachable from anywhere');
       }
-      if (!oh.ratesDoors.length) {
+      if (!oh.ratesOpens.length) {
         failures.push('one room per thing: Rates is not reachable from anywhere');
       }
     }

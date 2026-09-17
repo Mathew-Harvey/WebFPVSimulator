@@ -1997,17 +1997,44 @@ function courseCardRows(subject) {
 const MID_RUN_WARNING = ' Changing it during a run puts the quad back on the start line.';
 
 function tuneItem(s, midRun) {
+  const name = tuneById(s.tune).name;
+  const adjusted = pidsAdjusted(s.pids, s.tune);
+  return {
+    label: 'Tune',
+    /*
+     * THE ADJUSTMENT STAYS ON THE ROW. That was the PIDs row's whole
+     * contribution, and dropping it would have been the one thing lost in
+     * folding two rows into one: a quad flying something other than its
+     * tune's own numbers has to say so without being opened. Stock reads as
+     * the tune's name alone, because "Betaflight default, stock" is a row
+     * saying the same thing twice.
+     */
+    value: adjusted ? `${name}, ${pidsSummary(s.pids, s.tune).toLowerCase()}` : name,
+    action: 'pids',
+    note: `${tuneById(s.tune).note} Opens ${SCREEN_TITLES.pids}, where the tune is chosen and Betaflight's own sliders adjust it. Your rates are kept.${midRun ? MID_RUN_WARNING : ''}`,
+  };
+}
+
+/*
+ * WHICH TUNE THE PIDS ROOM IS ADJUSTING, and the only place it is chosen.
+ *
+ * It used to be chosen on Quad, one row above a PIDs row that opened this
+ * screen. That pair read as two decisions and was never two: with one tune
+ * shipped, the upper row had a single answer on it and the lower one was
+ * what a pilot had come to open. They are one row on Quad now, and it opens
+ * here, so the picker had to come with it. The alternative was a Tune row on
+ * Quad opening a screen whose own Tune row pointed back at Quad.
+ *
+ * ONE SHIPPED TUNE MEANS THE ROW HAS TO SAY WHERE THE SECOND ONE COMES FROM.
+ * Karate race 6S and Precision used to sit under the default, so the row was
+ * self evidently a list and needed no explaining. It is one name until the
+ * pilot saves a dump, and a row offering exactly one answer with nothing
+ * said about it reads as broken rather than as stock. So the note carries
+ * the door to the bench, and that clause goes away the moment a save gives
+ * the row two answers.
+ */
+function tunePickItem(s, midRun) {
   const ids = tuneChoices(s.airframe);
-  /*
-   * ONE SHIPPED TUNE MEANS THE ROW HAS TO SAY WHERE THE SECOND ONE COMES
-   * FROM. Karate race 6S and Precision used to sit under the default, so
-   * the row was self evidently a list and needed no explaining. It is one
-   * name now until the pilot saves a dump, and a row offering exactly one
-   * answer with nothing said about it reads as a thing that is broken
-   * rather than a thing that is stock. So the note carries the door: the
-   * bench is where a pilot makes their own, and the moment they save one
-   * this clause goes away because the row has two answers again.
-   */
   const ownTune = ids.includes(CUSTOM_TUNE.id);
   const door = ownTune
     ? ''
@@ -2015,15 +2042,15 @@ function tuneItem(s, midRun) {
   return {
     ...choice(
       'Tune',
-      `${tuneById(s.tune).note} PIDs, filters and feedforward. Your rates are kept.${door}${midRun ? MID_RUN_WARNING : ''}`,
+      `Everything below belongs to this one, and each tune keeps its own adjustment.${door}${midRun ? MID_RUN_WARNING : ''}`,
       ids,
       s.tune,
       (id) => tuneById(id).name,
       (id) => { s.tune = id; },
     ),
     /*
-     * ENTER OPENS THIS ROW, IT NEVER STEPS IT, and that is now a decision
-     * rather than an accident of arithmetic.
+     * ENTER OPENS THIS ROW, IT NEVER STEPS IT, and that is a decision rather
+     * than an accident of arithmetic.
      *
      * This is the row that bit somebody: one Enter a row below where it was
      * meant swapped the flight tune with nothing announcing it, and a tune
@@ -2031,10 +2058,10 @@ function tuneItem(s, midRun) {
      * afterwards was fitsAsSegments saying no, which it said because the
      * labels of three tunes came to forty characters against a budget of
      * twenty four. With two tunes deleted the list is short enough to be
-     * segmented, so the guarantee evaporated on a change that had nothing
-     * to do with it, and the shell check caught the row going dead in the
-     * same breath. A row whose cost is a lap does not get to depend on how
-     * long its labels happen to be. See select().
+     * segmented, so the guarantee evaporated on a change that had nothing to
+     * do with it, and the shell check caught the row going dead in the same
+     * breath. A row whose cost is a lap does not get to depend on how long
+     * its labels happen to be. See select().
      */
     pickOnly: true,
   };
@@ -2109,17 +2136,6 @@ function feelItem() {
     label: 'Flight feel',
     action: 'feel',
     note: 'Tell the tune work how the quad flies. One word is enough; your tune, PID adjustment and rates go with it.',
-  };
-}
-
-/* The way in to the PIDs screen, with the adjustment on the row so a stock
- * tune reads as stock without opening it. */
-function pidsItem(s, midRun) {
-  return {
-    label: 'PIDs',
-    value: pidsSummary(s.pids, s.tune),
-    action: 'pids',
-    note: `How hard the controller holds what the sticks ask. Betaflight's own tuning sliders on the tune above, or every PID by hand. Each tune keeps its own adjustment.${midRun ? MID_RUN_WARNING : ''}`,
   };
 }
 
@@ -5114,7 +5130,7 @@ export class Ui {
           label: 'Tune',
           value: tuneById(s.tune).name,
           action: 'quad',
-          note: `${tuneById(s.tune).note} Change it under ${SCREEN_TITLES.quad}, which is where the machine lives.`,
+          note: `${tuneById(s.tune).note} Change it under ${SCREEN_TITLES.quad}, which is where the machine lives: its Tune row opens ${SCREEN_TITLES.pids}, and the tune is chosen there.`,
         },
         /*
          * SETTABLE HERE, because there is nowhere else a freestyle pilot
@@ -5181,7 +5197,6 @@ export class Ui {
         { label: 'The machine', section: true },
         craftItem(s, midRun),
         tuneItem(s, midRun),
-        pidsItem(s, midRun),
         {
           label: 'Firmware bench',
           action: 'fc',
@@ -5853,21 +5868,19 @@ export class Ui {
        */
       const rows = [
         /*
-         * A DOOR, and it was the fourth copy the audit named: title,
-         * Settings, Pause and the top of this screen. Everything below
-         * belongs to whichever tune is loaded, so the row has to SAY which
-         * one, but it is not a fourth place to change it.
+         * THE PICKER, not a door back to Quad.
          *
-         * The loading branch below is still reachable and still needed: a
-         * swap made in Quad and then followed in here arrives with `live`
-         * null exactly as a swap made from this row used to.
+         * It was a door, and it had to be: the tune was chosen one row above
+         * the PIDs row on Quad, and this screen only needed to SAY which
+         * tune it was adjusting. Folding those two Quad rows into one moved
+         * the choosing in here, because a Tune row on Quad that opens this
+         * screen cannot be answered by a Tune row here that opens Quad.
+         *
+         * The loading branch below is reachable from both directions now: a
+         * swap made here, and a swap followed in from Quad, arrive with
+         * `live` null the same way.
          */
-        {
-          label: 'Tune',
-          value: tuneName,
-          action: 'quad',
-          note: `These are ${tuneName}'s PIDs. Each tune keeps its own adjustment. Load a different one under ${SCREEN_TITLES.quad}.`,
-        },
+        tunePickItem(s, this.returnTo === 'paused'),
       ];
       if (!live) {
         rows.push({

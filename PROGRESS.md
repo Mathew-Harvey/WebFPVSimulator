@@ -37284,3 +37284,114 @@ lints above were run in this turn, twice where a number is given as a pair.
 Whether a Tune row with one name on it reads as finished or as broken, and
 whether the one item picker that `pickOnly` opens is worth the press or just
 a stop on the way to the bench. That is a thing to look at, not to assert.
+
+## 2026-09-17 | tunes | Quad had two rows for one decision, and the picker moved into the room the survivor opens
+
+Owner's request, straight after the preset removal: "make the tune row open
+what the pid row currently opens and remove the pids option from the menu."
+
+Quad's machine section carried Tune and PIDs one above the other: which tune,
+and what had been done to it. With one tune shipped the upper row had a single
+answer on it, so the pair was a label followed by the thing the pilot had
+actually come to open. They are one row now. It is labelled Tune, it names
+what is flying, and it opens the PIDs room.
+
+### The picker had to move, and that was not a choice
+
+The PIDs screen already had a Tune row of its own, a door back to Quad,
+written up in its own comment as deliberately "not a fourth place to change
+it". Point Quad's Tune row at the PIDs screen and that row answers with a door
+back to Quad: a loop, Tune to Tune, with the tune unchangeable from either
+end. So the picker came in here, and this screen's Tune row became the one
+place the tune is chosen rather than a sign pointing at one.
+
+That also closes a hole the bare request would have opened. `onFcSave` in
+`src/main.js` sets `settings.tune = 'custom'` on every save, so the bench
+switches a pilot onto their own dump by itself. The only thing the picker is
+needed for is getting BACK to stock. Delete the picker along with the row it
+sat on and a pilot who saved a dump could never return to the Betaflight
+default. Nothing in the request asked for that, and nobody would have noticed
+until somebody wanted stock back.
+
+### What moved where
+
+    Quad     Aircraft / Tune -> PIDs / Firmware bench      (was 10 stops, now 9)
+    PIDs     Tune picker / Set PIDs directly / sliders ...  (13 stops, unchanged)
+    Pause    Tune -> PIDs, under "Does it feel wrong?"
+
+The adjustment stayed ON the Quad row, which was the PIDs row's whole
+contribution and the one thing folding two rows into one could have lost: a
+quad flying something other than its tune's own numbers has to say so without
+being opened. Stock reads as the tune's name alone, because "Betaflight
+default, stock" is a row saying the same thing twice. Adjusted reads
+"Betaflight default, master 185%".
+
+`pidsItem()` is deleted. The freestyle room's Tune signpost still points at
+Quad and its note now says Quad's Tune row is what opens the picker, because
+"change it under Quad" stopped being true in one press.
+
+### Two checks followed the furniture
+
+`shell-check` asserted two things that were about the old layout rather than
+about the properties they were guarding.
+
+**enterOnList** looked up `quad:tune` and pressed Enter on it. The picker is
+`pids:tune` now, and `stampIds` names an action row `a-pids`, so the old id
+matches nothing. The check follows the CONTROL: what it asserts is that the
+tune picker opens rather than steps, so it points at wherever the picker is.
+Repointing it at some other long list because this one moved would have been
+a different check wearing this one's name.
+
+**oneHome** decided whether the PIDs room was reachable by looking for a row
+labelled "PIDs". No row anywhere is labelled that now, so the check would have
+called the room unreachable while a pilot was walking into it through a row
+labelled Tune. A room is reached by the ACTION that opens it, so there is an
+`opens` map counting `action === 'pids'` and `action === 'rates'`, and the two
+reachability assertions read it. Strictly better: it tests the door, not the
+sign on it. Tune's home is `['pids']`, one screen, still inside the "at most
+one editable copy" rule.
+
+### The threshold I moved, and the argument for it
+
+    quad  overflow 7 -> 0 px    one row fewer
+    pids  overflow 243 -> 244 px    ONE PIXEL WORSE
+
+The pids number is a regression by the check's own definition and it failed on
+it. I did not go looking for a pixel to save somewhere else, and I did not
+leave it red. The cause is exact and was read off `makeSegments`: the row that
+was a plain `row-value` span with a chevron is a `sw-seg` chip now, and a chip
+has a border and padding a span does not. The screen gained a CONTROL where it
+had a LABEL, which is the whole of what was asked for, and it cost one pixel
+on a screen that already overflows by 243 and scrolls for a living.
+
+Recording that deliberately is what `--record` is for and what the check's own
+header asks for when a screen moves. Writing it down here rather than letting
+the number change quietly is the part that matters: if the PIDs screen ever
+grows again, 244 is the line it has to stay under, and this paragraph is why
+it is 244 and not 243. Nothing else in the baseline moved, checked by diff.
+
+### Measurements
+
+    lint:shell     FAIL twice on the way (a SyntaxError from backticks I put
+                   in a comment inside the browser-side template literal, then
+                   the pids pixel), PASS on the tree that shipped
+    lint:presets   4 of 4 clean
+    lint:fc        33 of 33 clean
+    shots          scripts/shots.js drove the real page to both screens and
+                   photographed them. Quad shows Aircraft, Tune -> Betaflight
+                   default, Firmware bench and no PIDs row. PIDs shows the
+                   picker at the top above Set PIDs directly and the six
+                   sliders, breadcrumb QUAD / PIDS. One console error, the
+                   board fetch refused, which is this container having no
+                   leaderboard and not this change.
+
+`npm run verify` was NOT run and the WASM was NOT rebuilt. This turn is menu
+furniture: no plant, no module ABI, no build, no input path, no config file.
+
+### What no check here can see
+
+Whether "Tune" is the right label for a row that opens a room full of PID
+sliders, or whether a pilot looking for PIDs will now fail to find them
+because nothing is called that any more. The breadcrumb says QUAD / PIDS once
+you are in, and the row's note names the room, but a label nobody thinks to
+press is not something a lint can report.

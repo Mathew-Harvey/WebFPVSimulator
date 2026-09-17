@@ -37802,3 +37802,205 @@ Whether a rate change that keeps the craft in the air but drops its speed
 reads as a fix or as a stumble, which is a thing to fly rather than assert.
 And whether "Preset" reads as a rate profile to somebody who has not just
 built it.
+
+## Round: five feel reports that were not about the quad
+
+The owner, with five open feel reports on the board: "they are all over the
+show, could this be due to the users hardware? can you find a reasons for
+this, can we do anything to improve the consistency of experience?"
+
+### What the five reports actually were
+
+Twitchy with a touchy throttle, stiff, twitchy, floppy, soft. Read as five
+opinions about one aircraft they are noise. They are not five opinions about
+one aircraft. Reconstructed from the two fields that happened to leak the
+answer, the rate profile and the user agent:
+
+    Jerome    Windows, Opera        670/670   a RadioMaster Boxer over USB
+    weap      Mac, Chrome           670/670   the keyboard, he says so
+    Anon      Windows, Firefox      670/670   unknown
+    Anon      Adreno 618, dpr 2.75  450/400   thumb sticks
+    Anon      Adreno 830, dpr 4     450/400   thumb sticks
+
+450 and 400 are not a coincidence and not a choice: they are exactly
+TOUCH_RATE_DEFAULTS, so both of those are phones on the seeded thumb profile.
+And weap's "stiff" is analogMag, which holds a held key at 0.34 of stick from
+240 ms to 750 ms: on a 670 deg/s profile a keyboard pilot lives at about a
+third of the rates the menu is showing him and cannot make a step at all.
+"Stiff" is an accurate description of that curve. It is not a description of
+the quad.
+
+So three of the five words describe the transducer. The form captures the
+tune to the individual D term and does not capture which of three stick paths
+was in the pilot's hands.
+
+### What was ruled out, and it matters that it was ruled out first
+
+Not the frame rate. Round 19 rebuilt the consumer onto a timestamped queue
+and measured 0.0 deg/s of setpoint deviation from a perfect stick path at 30,
+60, 144 and 240 fps, against 83 deg/s at 30 fps before it. Not the module:
+sim_input is a real 8192 deep timestamped ring, so a 50 ms frame on a phone
+does not collapse its RC frames into one. Not the simulated radio: all five
+reports are link "perfect", zero delay and zero jitter, identical for
+everybody. Not the physics clock.
+
+The consumer side is genuinely solved. What is not solved, and what this
+round instruments, is the PRODUCER side: what the browser hands the page.
+
+### padHz, and why nobody has ever read it
+
+Betaflight is told the link is 250 Hz because the grid is an exact 250 Hz, so
+it auto-tunes its rc smoothing cutoffs for 250 Hz. If the browser only
+refreshes the Gamepad object at the frame rate, a 60 Hz staircase then walks
+through a filter built for 250 Hz, and feedforward, which is the DERIVATIVE
+of the setpoint between rc frames, sees zero, zero, zero, spike. An impulse
+train at frame rate. Same code, same tune, different browser, different feel.
+
+That is measurable and has been measured since round 19. PROGRESS.md said so
+a month ago: "the number that would settle it has to come off the machine
+that has the problem". It never did, because the only way to read it was
+`window.__stickPath()` in a DevTools console, and the performance readout
+that used to show it was deliberately removed. The measurement existed and
+the path from it to us did not.
+
+### What changed
+
+**The report carries the stick path.** ui.setStickProbe, registered by
+main.js beside the existing console readback, called by bugSnapshot at the
+moment the pilot hits send. A function rather than a value, deliberately: a
+boot-time snapshot would record "the keyboard, 0 Hz" for everybody, which is
+worse than nothing because it looks like an answer. Carries source, padHz,
+sampleHz, rcHz and fps. fps is there because padHz alone means nothing: 60 Hz
+is fine on a 240 fps display and is the whole problem on a 60 fps one.
+
+**The report carries the throttle curve.** throttleSummary in configs/rates.js.
+ratesSummary omits the cap when it is 100 and never mentions thrMid or
+thrExpo, which is right for a one line menu row and meant that "throttle is
+touchy" arrived with no way to tell whether the pilot had a limit on. The one
+setting that answers the complaint was the one thing the report could not say.
+
+**The stick resolution is measured.** The smallest non-zero step seen on any
+mapped axis, as stickLevels across full travel. A radio in USB joystick mode
+reports whatever bit depth its firmware chose, and "I am using boxer and not
+my betafpv remote" is exactly a change of that. Read in ONE direction only:
+noise and float normalisation can only push the minimum down, so a coarse
+reading is evidence and a fine one is not. Driven with fake pads at 8, 10, 11
+and 16 bits it reads back 256, 1024, 2048 and 65536 exactly, and a parked
+stick reports 0 for unknown rather than a flattering large number.
+
+**The guided first flight speaks the controls the pilot has.** The only
+instruction this simulator gives named the up arrow, R and Escape to
+everybody, including a thumb pilot in landscape who has none of them. Same
+root cause as the reports: three transducers reach this shell and the shell
+assumed one.
+
+**The Rates screen says how the sticks are getting in.** Different sentence
+per transducer, because what can honestly be said differs: the keyboard's
+0.34 ceiling and the thumb stick's spring are facts about this shell and are
+stated flatly, while a radio's refresh rate can only be measured. The warning
+fires only when padHz tracks the FRAME RATE, not when it is merely below 250:
+a radio genuinely reporting at 100 Hz is a radio, and only the other case is
+a fault, and only WebHID fixes it.
+
+**The throttle cap offers itself at the moment of the complaint.** Tick
+"Throttle is touchy" in the feel form and, if and only if there is no limit
+on, the form says where the row is and what it would do. The report still
+sends. A pilot who has already capped is complaining about something else and
+is not told to do the thing they did.
+
+### Declined, with the reason
+
+**Moving the shipped throttle cap off 100.** The owner was asked and chose
+not to. The 5 inch hovers at 26.5 percent of stick uncapped and a cap of 75
+would move that to 33.6, which is a real improvement in throttle resolution
+and is what a lot of racers fly. It is not being seeded, because 91c77eb
+already took the whoop's 65 percent cap off deliberately when the whoop was
+brought onto the five inch's rates, uncapped is what every time on the board
+was flown with, and it is what a real quad hands you. Offered rather than
+imposed, in two places, which is this round's answer to "more accessible".
+
+**A first run question asking how the pilot flies.** Offered and declined:
+it puts a dialog in front of a first screen that is deliberately three
+pictures and a question.
+
+### A stale comment corrected on the way past
+
+configs/airframes.js said of the five inch's cap "the whole stick, see the
+whoop's, which does not get one". The whoop does get one: 91c77eb took its
+65 percent off when it moved onto these rates. The comment had been describing
+a value that was gone.
+
+### Thresholds
+
+    rates  overflow 396 -> 440 px   WORSE, by one row
+
+The Stick path row is 44 px and that is the whole of it. Moved by hand rather
+than by --record, so the diff is one number and reviewable, and every other
+screen was checked against the run first and had not drifted. The argument:
+this screen already overflows by 396 px and already scrolls, the new row sits
+at the TOP so it costs nothing in reachability and is the only row visible
+without scrolling, and the alternative was to put the one explanation a
+confused pilot needs somewhere they would not look. Stretching the list to
+flatter the number is the fudge the rule exists to stop and was not done.
+Same shape of argument as the round that moved this number 319 to 396.
+
+### Measurements
+
+    lint:shell     PASS
+    lint:presets   4 of 4 clean
+    lint:fc        33 of 33 clean
+    lint:frame     34 passed, 0 failed
+    lint:boot      9 of 9 clean
+    lint:memory    PASS
+    scratch probe  12 of 12, on the real page in headless Chromium: the probe
+                   is registered, the row renders first on Rates, the report
+                   carries throttle and stick, the hint appears only when the
+                   chip is ticked, no console errors
+    branch probe   11 of 11: touch, a healthy 250 Hz radio, a 60 Hz radio on a
+                   60 fps display (warns), a 100 Hz radio on a 144 fps display
+                   (does not warn), and a radio that has not moved yet
+    axis probe     8 of 8: 256, 1024, 2048 and 65536 step axes read back
+                   exactly, a parked stick reads unknown, a new radio forgets
+                   the old one's step, an empty or NaN axes array survives
+
+`npm run verify` was NOT run and the WASM was NOT rebuilt. Nothing in
+src/native, patches or vendor was touched, the physics path is unchanged and
+no trace can have moved: this round adds instrumentation, one menu row and
+one dialog hint. The three probes above are scratch scripts, not shipped
+checks, and were written because no check in tests/ can see any of this.
+
+### What went wrong
+
+lint:shell caught the Rates overflow immediately, which is the ratchet doing
+its job and is why it exists. The first scratch probe reported a false
+failure: it sliced the hint text to 120 characters and then asserted on a
+phrase that starts at 128. The assertion was wrong, not the hint. And the
+first draft of the comment on noteAxisResolution had the bound backwards,
+calling the estimate an upper bound on the quantisation when noise pushes the
+step DOWN, so it is a lower bound on the step and an upper bound on how fine
+the stick looks. Corrected before the commit; it is the kind of wrong that
+would have been read as gospel a month from now.
+
+### Owed
+
+**WebHID.** STAGE1.md names it as the primary input path, it has never been
+built, and round 19 already said it is the only remaining fix if padHz tracks
+the frame rate. It is still the right thing to do SECOND: the point of this
+round is that the question can now be answered from a report instead of
+guessed at, and building a large input path on a guess is what this project
+does not do.
+
+**Firefox and WebKit are never exercised.** tests/lib/browser.js launches
+Chromium and only Chromium, so the determinism requirement in CLAUDE.md, the
+same trace in Node and in the browser on any machine, is verified Node
+against Chromium. One of the five reports is Firefox 156. This is not a claim
+that Firefox is wrong, it is the observation that nothing here would know.
+
+### What no check here can see
+
+Whether the Stick path row reads as useful or as a developer number that
+escaped, which is the judgement the readout was removed from the flying
+corner over. Whether the throttle hint reads as help or as the form arguing
+back. And the number this whole round exists to collect, which is what padHz
+actually says on a real machine with a real radio, and which cannot come from
+this container: it has no GPU, no display and no radio.

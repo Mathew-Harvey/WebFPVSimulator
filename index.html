@@ -3767,6 +3767,18 @@
         color: var(--deep); font-weight: 600;
       }
       /*
+         The answer to "throttle is touchy", shown when that chip is ticked
+         and the pilot has no throttle limit on. Amber because it is an
+         instrument reading rather than a record: it is telling the pilot a
+         number about their own quad, which is what amber is for everywhere
+         else on this page.
+      */
+      .feel-hint {
+        border-left: 2px solid var(--amber);
+        padding: 2px 0 2px 10px; margin: 8px 0 2px;
+      }
+      .feel-hint[hidden] { display: none; }
+      /*
          THE FLOATING CHIPS. Report bug in the first slot on every screen
          but the title, Pause in the second and only in flight.
 

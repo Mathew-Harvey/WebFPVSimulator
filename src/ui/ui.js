@@ -83,6 +83,7 @@ import {
   ratesAreDefault,
   ratesFromLegacy,
   ratesSummary,
+  throttleSummary,
 } from '../../configs/rates.js';
 import {
   PRESET_NAME_MAX,
@@ -2721,6 +2722,8 @@ export class Ui {
     this.rowOffset = 0;
     this.reelFreezeWorld = false;
     this.gpuInfo = null;
+    /* Set by main.js; see setStickProbe. */
+    this.stickProbe = null;
     this.ptrX = null;
     this.ptrY = null;
     this.build();
@@ -4172,6 +4175,35 @@ export class Ui {
        * rewrite was about rates and did not carry them: an agent reading
        * "cannot set my rates" had no way to see what the pilot was on. */
       rates: ratesSummary(s.rates || {}),
+      /*
+       * The throttle curve, spelled out. "Flight feel: throttle is touchy"
+       * arrived with a rates line that says nothing about the throttle
+       * unless a cap is already on, so the one setting that answers the
+       * complaint was the one thing the report could not carry.
+       */
+      throttle: throttleSummary(s.rates || {}, s.airframe),
+      /*
+       * HOW THE STICKS GOT HERE, which is the field five feel reports were
+       * missing and the reason they read as five opinions about one quad.
+       *
+       * They were not. Reconstructed from the rate profile and the user
+       * agent afterwards, they were a radio, a keyboard and two sets of
+       * thumbs, and three of the five words described the transducer rather
+       * than the aircraft: "stiff" is what analogMag's 0.34 ceiling does to
+       * a keyboard, "floppy" is a sprung thumb on glass. Every one of those
+       * numbers was already measured and none of them was written down.
+       *
+       * padHz is the one to read first. The RC grid handed to Betaflight is
+       * a fixed 250 Hz and the consumer side is frame rate independent
+       * (measured, PROGRESS.md round 19), so the grid is not the variable.
+       * What varies is how fresh the value on each slot is, and that is a
+       * property of the browser, the driver and the radio's own USB report
+       * rate. A padHz sitting at the frame rate means the browser is
+       * rAF-locked on gamepad input and feedforward, which is the
+       * derivative of the setpoint, is seeing an impulse train at frame
+       * rate. That is twitchy, from code that did not change.
+       */
+      stick: this.stickProbe ? this.stickProbe() : null,
       graphics: s.graphics || '',
       cameraAngle: s.cameraAngle,
       cameraFov: s.cameraFov,
@@ -4521,6 +4553,35 @@ export class Ui {
         chip.classList.toggle('on', cid === feel);
       }
     });
+    /*
+     * THE ONE COMPLAINT THIS SHELL CAN ANSWER ON THE SPOT.
+     *
+     * "Throttle is touchy" has been a chip on this form all along, and the
+     * setting that answers it has been compiled in, wired up and two screens
+     * away all along too, defaulting OFF. A pilot reported it, we read the
+     * report a day later and replied with the name of a menu row. That round
+     * trip is the bug.
+     *
+     * So the row is offered here, at the moment the chip is ticked, and only
+     * when it would actually do something: a pilot who has already capped
+     * their throttle is complaining about something else and must not be
+     * told to do the thing they did. The report still sends either way. This
+     * is not a substitute for it, it is what the pilot gets to try tonight
+     * instead of waiting for us.
+     */
+    const capHint = el('p', 'lede feel-hint', '');
+    capHint.hidden = true;
+    const refreshCapHint = () => {
+      const r = this.settings.rates || {};
+      const cap = normaliseRates(r).throttleCap;
+      const show = issues.has('throttle') && cap >= 100;
+      capHint.hidden = !show;
+      if (show) {
+        const eased = hoverStickPercent(75, this.settings.airframe);
+        const now = hoverStickPercent(100, this.settings.airframe);
+        capHint.textContent = `This quad hovers at ${now.toFixed(1)} percent of stick with no throttle limit, so nearly all the travel is above hover. Rates, Throttle limit, 75 percent moves hover to ${eased.toFixed(1)} percent and gives the fine control back without losing any climb you can use indoors. Worth trying before you wait on us.`;
+      }
+    };
     const issueRow = chipRow(ISSUES, (id, chips) => {
       if (issues.has(id)) {
         issues.delete(id);
@@ -4528,6 +4589,7 @@ export class Ui {
         issues.add(id);
       }
       chips.get(id).classList.toggle('on', issues.has(id));
+      refreshCapHint();
     });
 
     const wordsLabel = el('p', 'name-dialog-label', 'In your own words (optional)');
@@ -4556,6 +4618,7 @@ export class Ui {
       feelRow.wrap,
       el('p', 'name-dialog-label', 'Anything specific (pick any)'),
       issueRow.wrap,
+      capHint,
       wordsLabel, words,
       nameLabel, reporter,
       err, row,
@@ -5858,6 +5921,7 @@ export class Ui {
           pickOnly: true,
         };
       return [
+        ...this.stickPathRow(),
         presetRow,
         choice(
           'Rates type',
@@ -10029,6 +10093,98 @@ export class Ui {
     if (this.screen === 'pilot') {
       this.renderMenu();
     }
+  }
+
+  /*
+   * How the sticks actually reach the flight controller, as a function
+   * rather than as a value, and that is the whole point of it.
+   *
+   * setGpuInfo above hands over a fact settled at boot. The stick path is
+   * not one: padHz is re-counted every 500 ms, the source changes the moment
+   * a radio is plugged in or a thumb lands on glass, and the stick
+   * resolution is unknown until a stick has moved. A snapshot taken at boot
+   * would record "the keyboard, 0 Hz" for every pilot, which is worse than
+   * recording nothing because it looks like an answer. main.js registers a
+   * probe and bugSnapshot calls it at the moment the report is written.
+   */
+  setStickProbe(fn) {
+    this.stickProbe = typeof fn === 'function' ? fn : null;
+  }
+
+  /*
+   * ONE ROW ON THE RATES SCREEN SAYING HOW YOUR STICKS REACH THE QUAD.
+   *
+   * src/main.js explains at length why the performance readout was taken out
+   * of the flying corner, and that reasoning stands: those were developer
+   * numbers in front of somebody trying to fly. This is not that corner.
+   * The Rates screen is where a pilot goes when the feel is wrong, on
+   * purpose, having stopped flying, and two of the five feel reports that
+   * prompted this row were filed from a pilot who had gone there to fix
+   * exactly this and had nothing to read.
+   *
+   * What it can honestly say differs by transducer, so it says a different
+   * thing for each rather than one number for all three. The keyboard's
+   * ceiling and the thumb stick's spring are facts about this shell and can
+   * be stated flatly. A radio's refresh rate is a fact about the browser and
+   * the driver and can only be measured, which is what padHz is.
+   *
+   * Returns [] rather than a placeholder when there is no probe: a row
+   * saying nothing is worse than no row, and the harness mounts this screen
+   * without main.js having registered one.
+   */
+  stickPathRow() {
+    const st = this.stickProbe ? this.stickProbe() : null;
+    if (!st) {
+      return [];
+    }
+    if (String(st.source).includes('touch')) {
+      return [{
+        label: 'Stick path',
+        value: 'Thumb sticks',
+        info: true,
+        note: 'A thumb on glass has about a quarter of a gimbal\'s travel and nothing centring it, so the numbers below are seeded gentler than the radio defaults. Roll, pitch and yaw spring back when you lift off; throttle stays where you left it, the way a radio\'s does.',
+      }];
+    }
+    if (String(st.source).includes('keyboard')) {
+      return [{
+        label: 'Stick path',
+        value: 'Keyboard',
+        info: true,
+        note: 'A key is not a stick. Holding one ramps the stick to 34 percent and stays there until about three quarters of a second, then stretches to full at one and a quarter. So the rates below are the rates a RADIO would fly: a tap reaches roughly a third of them, which is why keyboard flight feels firmer and slower to bite than the numbers say. A gamepad or a radio in USB joystick mode gets the whole curve.',
+      }];
+    }
+    /*
+     * A radio. padHz is how often the browser refreshed the Gamepad object,
+     * and it is read against the frame rate rather than against 250: a radio
+     * that genuinely reports at 100 Hz is a radio, while a padHz sitting on
+     * top of the frame rate is the browser handing over one stick value per
+     * rendered frame whatever the radio does. Only the second is a fault,
+     * and only WebHID fixes it, so only the second gets a warning.
+     */
+    const padHz = Number(st.padHz) || 0;
+    const fps = Number(st.fps) || 0;
+    const tracksFrames = padHz > 0 && fps > 0
+      && Math.abs(padHz - fps) <= Math.max(6, fps * 0.15);
+    const levels = Number(st.stickLevels) || 0;
+    const bits = [];
+    if (padHz <= 0) {
+      bits.push('Waiting for the radio to report. Move a stick.');
+    } else {
+      bits.push(`Your radio is refreshing ${padHz} times a second. Betaflight is flown on a fixed 250 Hz frame grid either way, so this is how fresh the value on each of those frames is.`);
+    }
+    if (tracksFrames) {
+      bits.push(`That is your frame rate, ${fps} per second, which means this browser is only reading the radio once per drawn frame. Feedforward works on the CHANGE between frames, so a stick that steps once a frame is felt as a series of nudges rather than a push. Nothing in the rates below fixes that.`);
+    }
+    if (levels > 0 && levels < 512) {
+      bits.push(`This radio reports about ${levels} steps across a stick's full travel, which is coarse enough to feel at high rates. A radio with a finer USB report, or lower rates, both soften it.`);
+    }
+    return [{
+      label: 'Stick path',
+      value: padHz > 0 ? `Radio, ${padHz} Hz` : 'Radio',
+      info: true,
+      rowClass: tracksFrames ? 'row-warn' : undefined,
+      note: bits.join(' '),
+    }];
   }
 
   /* Cursor movement and selection, shared by keyboard and sticks. Each

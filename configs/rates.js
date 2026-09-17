@@ -535,6 +535,28 @@ export function ratesSummary(r) {
 }
 
 /*
+ * The throttle curve in full, for a bug report rather than for the menu.
+ *
+ * ratesSummary above says nothing about the throttle when the cap is 100 and
+ * nothing about thrMid or thrExpo ever, which is right for a one line menu
+ * row and was wrong everywhere else: a feel report saying "throttle is
+ * touchy" arrived carrying a rates string that could not say whether the
+ * pilot had a cap on, and the cap is the whole answer to that complaint. The
+ * report now states all three, including the defaults, because "cap 100" is
+ * the fact worth having and an omitted field is not a fact at all.
+ *
+ * Hover comes along because the number a pilot feels is where hover sits on
+ * their stick, not what percentage is in the config, and it is measured per
+ * airframe. See HOVER_STICK_PERCENT.
+ */
+export function throttleSummary(r, airframe = '5inch') {
+  const p = normaliseRates(r);
+  const hover = hoverStickPercent(p.throttleCap, airframe);
+  const curve = p.thrExpo > 0 ? `, mid ${p.thrMid} expo ${p.thrExpo}` : ', no expo';
+  return `cap ${p.throttleCap}${curve}, hover near ${hover.toFixed(1)} percent of stick`;
+}
+
+/*
  * Where hover lands on the stick at each cap, as a percentage of travel.
  *
  * MEASURED, NOT DERIVED, and the difference is the reason this is a table

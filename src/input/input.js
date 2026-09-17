@@ -540,6 +540,31 @@ export class InputManager {
     this.padHz = 0;
     this.sampleHz = 0;
 
+    /*
+     * STICK RESOLUTION, AND WHY THE MEASUREMENT IS ONE SIDED.
+     *
+     * padHz says how OFTEN the browser refreshes a stick. It says nothing
+     * about how FINELY. A radio in USB joystick mode reports each axis with
+     * whatever bit depth its firmware chose, the browser normalises that to
+     * a float, and two radios on the same desk can hand this page travel
+     * quantised to 256 steps or to 65,536. The coarse one steps its way
+     * through a rate curve, and feedforward is the DERIVATIVE of the
+     * setpoint, so a step is a spike. That is one of the two ways a report
+     * can say "twitchy" about code that did not change.
+     *
+     * What is recorded is the smallest non-zero change seen on any mapped
+     * axis since the pad was picked. For a genuine quantiser that IS the
+     * step, because every change is a whole number of them.
+     *
+     * READ IT IN ONE DIRECTION ONLY. Noise, a browser's own normalisation
+     * arithmetic and a float axis all push the minimum DOWN, never up. So a
+     * coarse reading is evidence and a fine one is not: 0.0078 means eight
+     * bits and can be believed, while 1e-7 means only "nothing coarse was
+     * seen yet", which is the answer before the stick has properly moved.
+     */
+    this.axisPrev = new Map();
+    this.axisStepMin = 0;
+
     window.addEventListener('keydown', (e) => {
       /*
        * A text field owns its own keys. This listener is on the window and
@@ -715,6 +740,8 @@ export class InputManager {
      * a fact about the machine that is plugged in, and this is the line
      * where that machine changes. */
     this.mapSeenParked = false;
+    /* And so is the stick resolution. Same line, same reason. */
+    this.forgetAxisResolution();
   }
 
   seedPadRoster() {
@@ -1241,6 +1268,8 @@ export class InputManager {
      * buttons never assigned one and carries null, which is the same as
      * before this existed. */
     this.map = cloneMap({ ...c.draft, stored: true });
+    /* New axes to watch, so the old axes' step is not this map's. */
+    this.forgetAxisResolution();
     this.saveMap();
     this.calibration = null;
     this.calResult = 'saved';
@@ -1589,6 +1618,9 @@ export class InputManager {
     if (gp && gp.timestamp !== this.padStamp) {
       this.padStamp = gp.timestamp;
       this.padUpdates += 1;
+      /* Only on a refresh: re-reading an unchanged axis says nothing, and
+       * doing this every 2 ms would be three quarters wasted work. */
+      this.noteAxisResolution(gp);
     }
     this.rateWindowMs += dtMs;
     if (this.rateWindowMs >= 500) {
@@ -1695,12 +1727,61 @@ export class InputManager {
     return this.firstGamepad() === null;
   }
 
+  /*
+   * The smallest step this radio has been seen to take, over the mapped
+   * axes only: an unmapped axis is a switch or a pot and its travel is not
+   * a stick's. See the note on axisStepMin: noise can only push this BELOW
+   * the true step, so it is a lower bound on the step and therefore an
+   * upper bound on how fine the stick really is.
+   */
+  noteAxisResolution(gp) {
+    const m = this.map;
+    if (!m) {
+      return;
+    }
+    for (const ch of ['roll', 'pitch', 'yaw', 'throttle']) {
+      const spec = m[ch];
+      if (!spec || !Number.isInteger(spec.axis) || spec.axis >= gp.axes.length) {
+        continue;
+      }
+      const v = gp.axes[spec.axis];
+      if (!Number.isFinite(v)) {
+        continue;
+      }
+      const prev = this.axisPrev.get(spec.axis);
+      this.axisPrev.set(spec.axis, v);
+      if (prev === undefined || v === prev) {
+        continue;
+      }
+      const d = Math.abs(v - prev);
+      if (this.axisStepMin === 0 || d < this.axisStepMin) {
+        this.axisStepMin = d;
+      }
+    }
+  }
+
+  /* A new radio, or a new map for the same one, is a new transducer: the
+   * step measured through the old one says nothing about this one. */
+  forgetAxisResolution() {
+    this.axisPrev.clear();
+    this.axisStepMin = 0;
+  }
+
   stats() {
+    /*
+     * stickLevels is axisStepMin expressed as the number of steps across an
+     * axis's full -1..1 travel, because "256" is a sentence a pilot and a
+     * bug report can both read and "0.0078" is not. Zero means the stick has
+     * not moved enough to say, which is a different answer from "fine" and
+     * has to stay distinguishable from it.
+     */
     return {
       padHz: this.padHz,
       sampleHz: this.sampleHz,
       queued: this.queue.length,
       source: this.source,
+      axisStepMin: this.axisStepMin,
+      stickLevels: this.axisStepMin > 0 ? Math.round(2 / this.axisStepMin) : 0,
     };
   }
 

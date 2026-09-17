@@ -4137,18 +4137,51 @@ export async function boot({ loading, bootStart, mapId }) {
    * Retiring here rather than on a timer means a slow first lap is never cut
    * off mid prompt and a fast one is never nagged.
    */
+  /*
+   * THE FIRST FLIGHT TOLD EVERY PILOT TO PRESS A KEY THEY MIGHT NOT HAVE.
+   *
+   * These three lines are the only instruction this simulator ever gives,
+   * and they named the up arrow, R and Escape to a pilot who could be
+   * holding a radio or a phone. A thumb pilot in landscape has no arrow key
+   * and no Escape, so the one screen meant to teach the controls was
+   * describing somebody else's.
+   *
+   * It is the same root as the feel reports that prompted this round: three
+   * transducers reach this shell and the shell kept assuming one of them.
+   * Read once per prompt rather than cached, because a radio can be plugged
+   * in between the line that says "arrow" and the line that says "stick".
+   */
+  const guidedWords = () => {
+    if (input.isTouchPrimary()) {
+      return {
+        nose: 'Push the right plate up, then throttle on the left',
+        again: 'Pause, then Restart puts you back on the line',
+      };
+    }
+    if (input.firstGamepad()) {
+      return {
+        nose: 'Ease the right stick forward, then throttle',
+        again: 'R puts you back on the line. Escape pauses',
+      };
+    }
+    return {
+      nose: 'Tip forward with the up arrow, then throttle',
+      again: 'R puts you back on the line. Escape pauses',
+    };
+  };
   const guidedPrompt = (race) => {
     if (race.freestyle || race.lastLapMs != null || race.next >= 3) {
       ui.guided = false;
       return '';
     }
+    const words = guidedWords();
     if (race.next === 0) {
-      return 'Tip forward with the up arrow, then throttle\nThe green gate starts your lap';
+      return `${words.nose}\nThe green gate starts your lap`;
     }
     if (race.next === 1) {
       return 'Through. The next gate turns green\nRed is the same gate, wrong side';
     }
-    return 'Gate by gate. R puts you back on the line\nEscape pauses';
+    return `Gate by gate. ${words.again}`;
   };
   /*
    * A published course chosen from the Courses grid. This is exactly what a
@@ -7987,6 +8020,26 @@ export async function boot({ loading, bootStart, mapId }) {
    * Betaflight. If padHz sits at the frame rate the browser is rAF-locked on
    * gamepad input and only WebHID will move it. Harness only.
    */
+  /*
+   * The same numbers, on the path a pilot can actually send us.
+   *
+   * __stickPath below is a console readback and has been since round 19,
+   * which means the one measurement that settles "is this browser rAF-locked
+   * on gamepad input" has only ever been reachable by somebody who already
+   * knew to open DevTools and type it. Nobody did. Five feel reports later
+   * the question was still open, so the probe goes where the reports are
+   * written: ui.bugSnapshot calls this at the moment the pilot hits send.
+   *
+   * fps rides along because it is the number padHz has to be read against.
+   * padHz of 60 means nothing on its own; padHz of 60 on a 60 fps display
+   * means the browser is handing us one stick value per frame and no amount
+   * of polling will move it.
+   */
+  ui.setStickProbe(() => ({
+    ...input.stats(),
+    rcHz: RC_HZ,
+    fps: Math.round(fps),
+  }));
   window.__stickPath = () => ({
     ...input.stats(),
     rcHz: RC_HZ,

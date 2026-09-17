@@ -103,7 +103,19 @@ export const AIRFRAMES = [
       roll: { rcRate: 7, srate: 67, expo: 0 },
       pitch: { rcRate: 7, srate: 67, expo: 0 },
       yaw: { rcRate: 7, srate: 67, expo: 0 },
-      /* The whole stick. See the whoop's, which does not get one. */
+      /*
+       * The whole stick, and the whoop gets the whole stick too since it
+       * was brought onto the five inch's rates. This comment used to say
+       * "see the whoop's, which does not get one", which was true of the
+       * 65 percent cap that sat there until that change took it off.
+       *
+       * Hover is at 26.5 percent of stick here, so most of the travel is
+       * above it, and a feel report has since said so in the words
+       * "throttle is touchy". The cap is NOT being put back by default:
+       * uncapped is what the board's times were flown on and what a real
+       * quad hands you. It is offered instead, on the Rates screen and
+       * again in the feel form the moment a pilot ticks that chip.
+       */
       throttleCap: 100,
     },
     /*

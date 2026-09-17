@@ -36565,3 +36565,89 @@ line and the match returned nothing. PROGRESS records it as "did not run"
 twice, on 2026-08-27, for a different reason (node was not on PATH).
 
 So this turn starts by building the measurement.
+
+### What the scan found, and the two root causes under most of it
+
+First run, before any fix: **2790 m3 of invisible wall in 218 pockets**.
+Grouped by the nearest drawn thing, the list is short, because most of it
+is two mistakes repeated.
+
+1. **The canal, 753 m3.** `ctx.cut` in `canal.js` lowers the height query
+   to the BANK across the whole excavation, so the contact floor stood
+   1.15 m over the water, higher than the soffit of three of the four
+   crossings. Nothing was in the way; the floor was over it.
+2. **Roof wedges, about 900 m3** over the gymnasium (two 153 m3 slabs),
+   the lake cafe, the onsen, the teaching block, and two dozen houses.
+3. Then the tunnel portals (217 m3), the wire spans (206 m3), the station
+   undercroft (111 m3) and a long tail.
+
+### The canal
+
+`ctx.cut` into the channel itself, down to the water rather than the bed:
+the invert would put a craft inside a single-sided surface looking up
+through the sky, and the 0.33 m it buys costs the one place in the town a
+quad can sit on water. Bounded to the reach between the headwalls and to
+the inner faces of the revetment, so the concrete is never a floor.
+
+Opening it made three things solid that had never needed to be, because
+until now nobody could get down there: the revetment (340 mm of drawn
+concrete a craft would otherwise pass through into the bank slab), the
+channel bed, and the sluice's two guide piers and its shut gate leaf.
+
+こばと橋 carries the road, and the channel cut does not stop for the road
+because the channel does not. So the carriageway is registered as
+platforms, five bands wide because `streetHeight` has five, and a platform
+is only offered to a query within 0.55 m of it: a craft ON the bridge
+stands on the road, one 1.2 m below in the channel does not and flies
+through. Same mechanism that makes the overbridge walk-through underneath.
+
+Both new channel colliders skip the fit, and that is load bearing. The
+fit's ROOF_LIFT raises a bulky rectangle to the drawing above it, and the
+drawing above the bed is `canalChannel`: two walls and an invert baked into
+one 207 m mesh whose bounding box IS the channel. Left to the fit the bed
+grew from the invert to the coping and filled the reach, which is the same
+failure wearing a different hat, and the scan caught it on the next run.
+
+### The gymnasium, which was a triangle painted as a rectangle
+
+`drawn.js` rasterises a mesh into a height field and writes each triangle's
+own PLANE over the cells it covers. A triangle standing on edge has no
+plane in y, so it wrote its whole height into every cell of its bounding
+box. For a window mullion that is a centimetre of slack. For the gym's
+gable infill it is the building: one vertical triangle 20 m across at each
+END of the hall, painted at full height over the whole 20 m box, so every
+x slab of the gym's rectangle saw the apex, the cut found no step to break
+a run on, and the fit returned two 9 m boxes topped at the ridge over a
+roof that slopes away from it.
+
+A vertical triangle projects to a SEGMENT in plan, so its three edges carry
+its whole shape. Walking them at half a cell and writing each step into the
+cells of both its ends is exact for the outline and a hull for the inside.
+
+Also: the subdivision's "earn its keep" test was a ratio, and a ratio
+cannot see a big solid block with a small tall thing baked onto it. It now
+also passes on an absolute gain of a cubic metre.
+
+### Measured, both directions
+
+`node scripts/cavity-scan.js`: 2790 m3 in 218 pockets before, **1282 m3 in
+186** after. The canal is gone from the list entirely and so is the
+gymnasium.
+
+`node scripts/collider-audit.js`, the other direction, run on this tree and
+on the same tree with the two map files stashed:
+
+  HOLES   15659 of 43467 probed, mean cover 0.605   before
+          17731 of 67514 probed, mean cover 0.707   after
+
+The count rises because 24,000 more drawn things exist to probe once
+vertical triangles subdivide; the RATE falls, 36.0 percent uncovered to
+26.3, and mean cover rises. Nothing was opened up.
+
+PHANTOM rises 2162 to 2772 m3 and that number is not comparable across
+this turn: `scan.js` reads the same `drawn.js` the fit does, so a tighter
+picture of the drawing makes more of the same solid count as phantom. The
+cavity scan has its own rasteriser and is the number to watch.
+
+`node scripts/attract-check.js`: city through 0/320. The title camera does
+not clip the new channel or the bridge.

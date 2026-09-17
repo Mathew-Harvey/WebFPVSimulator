@@ -59,6 +59,7 @@
  */
 
 import * as THREE from 'three';
+import { drawnBoxes } from './drawn.js';
 
 /* Scratch for the instanced pass, module level so the traversal allocates
  * nothing per instance. */
@@ -950,6 +951,33 @@ export function scanCavities(world, colliders, opts = {}) {
   }
 
   /*
+   * WHAT THE FIT IS SHOWN AT ONE POINT.
+   *
+   * The fit can only ever be as tight as its picture of the drawing, and that
+   * picture is ./drawn.js's boxes, which exist for a hundred milliseconds
+   * inside buildMap and are then merged away. When a collider tops out well
+   * over the roof under it, the question is always the same: which drawn box
+   * is holding it up. This answers it. scripts/cavity-scan.js passes --fit=x,z.
+   */
+  const fitSeen = [];
+  for (const pt of (opts.fit || [])) {
+    const list = drawnBoxes(world.root, { maxFootprint: 1400 });
+    const rows = [];
+    for (const b of list) {
+      if (pt[0] < b.x0 || pt[0] > b.x1 || pt[1] < b.z0 || pt[1] > b.z1) {
+        continue;
+      }
+      rows.push({
+        name: b.name,
+        y: [+b.y0.toFixed(2), +b.y1.toFixed(2)],
+        foot: [+(b.x1 - b.x0).toFixed(2), +(b.z1 - b.z0).toFixed(2)],
+      });
+    }
+    rows.sort((a, b) => b.y[1] - a.y[1]);
+    fitSeen.push({ at: pt, n: rows.length, rows: rows.slice(0, 14) });
+  }
+
+  /*
    * A named column, dumped cell by cell. Not part of the measurement: it is
    * how a round argues about one place without reading a million numbers.
    * scripts/cavity-scan.js passes --probe=x,z.
@@ -980,6 +1008,7 @@ export function scanCavities(world, colliders, opts = {}) {
   }
 
   return {
+    fitSeen,
     probes,
     cell: CELL,
     tol: TOL,

@@ -91,6 +91,26 @@ const SUBDIV_MAX_CELL_SIZE = 2.5;
  * much of the bounding box's own volume, the box is kept and the cells are
  * thrown away. A cube gains nothing from being cut into cubes. */
 const SUBDIV_GAIN = 0.7;
+/*
+ * OR IT EARNS ITS KEEP IN ABSOLUTE TERMS, WHICH A RATIO ALONE CANNOT SEE.
+ *
+ * A ratio asks "how much of this mesh's box is air", and a mesh that is one
+ * big solid block with a small tall thing baked onto it answers "not much"
+ * however large that thing is. The school gymnasium is the case: `parts.wall`
+ * is a 20 by 14 by 6.8 m box plus two 0.22 m gable infills that reach 2.8 m
+ * over it, so the staircase is 73 percent of the bounding box and the test
+ * refused it, and one box 20 by 14 by 9.6 m went to the fit as the picture of
+ * that building. The fit is a hull over what it is shown, so every slab of
+ * the gym's rectangle then topped out at the RIDGE, and what a pilot met over
+ * the eaves was 153 m3 of invisible wall on each slope, twice, the largest
+ * single finding in the town after the canal.
+ *
+ * The ratio was right about the cost it was guarding: four hundred boxes
+ * where one would do. It was wrong that a percentage measures that cost. A
+ * cubic metre of solid air is worth four hundred boxes, and a mesh that is
+ * honestly a box gains exactly zero by this test and is still refused.
+ */
+const SUBDIV_MIN_GAIN = 1.0;
 
 const tmpBox = new THREE.Box3();
 const tmpInst = new THREE.Matrix4();
@@ -183,6 +203,66 @@ function subdivide(geometry, matrix, box, name, out) {
     const nY = e1z * e2x - e1x * e2z;
     const nZ = e1x * e2y - e1y * e2x;
     const planar = Math.abs(nY) > 1e-6 * (Math.abs(nX) + Math.abs(nZ) + 1e-9);
+    /*
+     * A TRIANGLE STANDING ON EDGE IS A LINE IN PLAN, AND IT USED TO BE PAINTED
+     * AS A RECTANGLE.
+     *
+     * The non planar branch below writes the triangle's whole height into
+     * every cell of its bounding box, which is a hull and is what the comment
+     * above says. For a window mullion that is a centimetre of slack. For the
+     * school gymnasium's gable infill it is the building: one vertical
+     * triangle 20 m across and 2.8 m tall at each END of the hall, painted at
+     * full height over the whole 20 by 0.22 m box, so every x slab of the gym's
+     * rectangle saw the apex, the cut found no step anywhere to break a run on,
+     * and the fit returned two 9 m boxes topped at the ridge over a roof that
+     * slopes away from it. 153 m3 of invisible wall on each slope, and the
+     * largest finding in the town after the canal.
+     *
+     * A vertical triangle projects to a SEGMENT in plan, so its three edges
+     * carry its whole shape: at any point of that segment the triangle spans
+     * from its lower boundary to its upper, and both boundaries are on edges.
+     * Walking the edges at half a cell and writing each step into the cells of
+     * both its ends is therefore exact for the outline and a hull for the
+     * inside, and it is what turns that gable back into a triangle.
+     */
+    if (!planar) {
+      const wedge = (px0, py0, pz0, px1, py1, pz1) => {
+        const ea = Math.floor((px0 - box.min.x) / dx);
+        const eb = Math.floor((pz0 - box.min.z) / dz);
+        const fa = Math.floor((px1 - box.min.x) / dx);
+        const fb = Math.floor((pz1 - box.min.z) / dz);
+        const yLo = py0 < py1 ? py0 : py1;
+        const yHi = py0 < py1 ? py1 : py0;
+        for (let q = 0; q < 2; q += 1) {
+          let a = q === 0 ? ea : fa;
+          let b = q === 0 ? eb : fb;
+          if (a < 0) { a = 0; }
+          if (b < 0) { b = 0; }
+          if (a > nx - 1) { a = nx - 1; }
+          if (b > nz - 1) { b = nz - 1; }
+          const k = a * nz + b;
+          if (yLo < lo[k]) { lo[k] = yLo; }
+          if (yHi > hi[k]) { hi[k] = yHi; }
+        }
+      };
+      const edge = (p, q) => {
+        const len = Math.max(Math.abs(q.x - p.x) / dx, Math.abs(q.z - p.z) / dz);
+        const steps = Math.max(1, Math.ceil(len * 2));
+        let ax2 = p.x; let ay2 = p.y; let az2 = p.z;
+        for (let i = 1; i <= steps; i += 1) {
+          const t = i / steps;
+          const bx2 = p.x + (q.x - p.x) * t;
+          const by2 = p.y + (q.y - p.y) * t;
+          const bz2 = p.z + (q.z - p.z) * t;
+          wedge(ax2, ay2, az2, bx2, by2, bz2);
+          ax2 = bx2; ay2 = by2; az2 = bz2;
+        }
+      };
+      edge(va, vb);
+      edge(vb, vc);
+      edge(vc, va);
+      continue;
+    }
     for (let a = a0; a <= a1; a += 1) {
       const cx0 = box.min.x + a * dx;
       const cx1 = cx0 + dx;
@@ -227,7 +307,8 @@ function subdivide(geometry, matrix, box, name, out) {
     occupied += 1;
     vol += (hi[k] - lo[k]) * dx * dz;
   }
-  if (occupied === 0 || vol > sx * sy * sz * SUBDIV_GAIN) {
+  const bbox = sx * sy * sz;
+  if (occupied === 0 || (vol > bbox * SUBDIV_GAIN && bbox - vol < SUBDIV_MIN_GAIN)) {
     return false;
   }
   for (let a = 0; a < nx; a += 1) {

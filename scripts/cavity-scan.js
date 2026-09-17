@@ -39,6 +39,8 @@ const jsonPath = jsonArg ? jsonArg.slice(7) : join(root, 'dist/cavity-scan/cavit
 const top = topArg ? Number(topArg.slice(6)) : 60;
 /* --probe=x,z may be repeated: dump those columns cell by cell. */
 const probe = args.filter((a) => a.startsWith('--probe=')).map((a) => a.slice(8).split(',').map(Number));
+/* --fit=x,z may be repeated: list the drawn boxes the fit sees over that point. */
+const fit = args.filter((a) => a.startsWith('--fit=')).map((a) => a.slice(6).split(',').map(Number));
 
 const steps = [
   `--out=${join(root, 'dist/cavity-scan')}`,
@@ -47,7 +49,7 @@ const steps = [
   '--graphics=low',
   'until:!!window.__boot && window.__boot().frames > 2',
   /* Before the city is chosen, so buildMap sees it. */
-  `eval:JSON.stringify({ tag: "arm", on: !!(globalThis.__CITY_CAVITY = ${JSON.stringify({ probe })}) })`,
+  `eval:JSON.stringify({ tag: "arm", on: !!(globalThis.__CITY_CAVITY = ${JSON.stringify({ probe, fit })}) })`,
   'eval:JSON.stringify({ tag: "swap", started: (window.__setMap("city"), true) })',
   'until:window.__map().id === "city" && window.__map().ready',
   'eval:JSON.stringify({ tag: "cavity", scan: window.__map().colliderCavity })',
@@ -108,6 +110,13 @@ for (const f of scan.list.slice(0, top)) {
     + `${String(b[0]).padStart(7)} ${String(b[1]).padStart(6)} ${String(b[2]).padStart(7)}  `
     + `${String(b[3]).padStart(7)} ${String(b[4]).padStart(6)} ${String(b[5]).padStart(7)}   ${why}   ${near}`,
   );
+}
+for (const f of scan.fitSeen || []) {
+  lines.push('');
+  lines.push(`fit sees at ${f.at.join(', ')}: ${f.n} drawn boxes, tallest first`);
+  for (const r of f.rows) {
+    lines.push(`    y ${String(r.y[0]).padStart(7)} .. ${String(r.y[1]).padStart(7)}   ${String(r.foot[0]).padStart(6)} x ${String(r.foot[1]).padStart(6)}   ${r.name}`);
+  }
 }
 for (const p of scan.probes || []) {
   lines.push('');

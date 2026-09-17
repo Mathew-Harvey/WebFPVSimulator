@@ -288,6 +288,37 @@ export function buildCanal(ctx, train) {
     ctx.cut({ x0, x1, z0: Z_C - SLAB_OUT - 0.1, z1: Z_C + SLAB_OUT + 0.1, top: Y0 });
   }
 
+  /* **AND THE CHANNEL ITSELF, WHICH IS THE ONE THAT WAS MISSING.**
+   *
+   * The cut above lowers the height query to the BANK.  Right across the water
+   * it therefore answered `Y0`, 1.15 m over the surface and higher than the
+   * soffit of three of the four crossings -- so the contact floor ran straight
+   * over the channel and the undercroft of every bridge was sealed by
+   * something that is not drawn and is not a collider.  That is the report of
+   * 2026-09-17, "the bridges over the waterway canal seem like you can fly
+   * under them but you can't", and it was invisible to both existing scans
+   * because neither reads the floor.  See src/maps/city/cavity.js.
+   *
+   * It was a walking decision and it was the right one then: lake.js's own
+   * note lists the three honest ways to keep a WALKER out of water and says
+   * "a railing everywhere, which is what the 用水路 does".  The railings are
+   * still there and still do that job.  A quad is not a walker, and this
+   * module already knew: `buildWater` turns the surface blossom off because
+   * "a freestyle line under the bridges does not want a carpet of pink cards
+   * on the water".  This is the rest of that sentence.
+   *
+   * The floor is the WATER, not the bed.  A craft that reached the invert
+   * would be inside a single-sided surface looking up through the sky, and
+   * the 0.33 m it would buy costs the one place in the town where a quad can
+   * sit on water.  Bounded to the reach between the headwalls, because that
+   * is where the water is drawn, and to the inner faces of the revetment, so
+   * the concrete is never a floor. */
+  ctx.cut({
+    x0: X_MIN + HW_T, x1: X_MAX - HW_T,
+    z0: Z_C - WALL_IN, z1: Z_C + WALL_IN,
+    top: WATER_Y,
+  });
+
   /* ------------------------------- the revetment ------------------------------- *
    * Walls and bed run the whole ring: the bridge sits on top of them rather
    * than replacing them. */
@@ -374,6 +405,46 @@ export function buildCanal(ctx, train) {
      * than in it.  The pipe `railing()` on the dressed bank is the barrier now.
      * A 0.95 m wall under those rails filled every bay a knife-edge line is
      * aimed at. */
+
+    /* **The revetment is solid, and it has to be now that the channel is a
+     * slot a quad flies down.**
+     *
+     * There was nothing here at all, which was safe only because the height
+     * query stood over the water: nobody could get low enough to meet the
+     * concrete.  With the channel cut, a craft in the channel that drifts
+     * sideways would pass through 340 mm of drawn revetment and end up inside
+     * the bank slab, which is the "stuck in the mesh" failure and is worse
+     * than the wall it replaces.
+     *
+     * It is the drawn wall exactly: from the inner face out to the outer, and
+     * from the bed up to the top of the coping, which stands 0.16 m over the
+     * bank.  That 0.16 m is a kerb a pilot can see, not a barrier: it is
+     * inside a step, so the walker's `_resolve` still ignores it, and it is
+     * what the coping draws.
+     *
+     * **Both of these skip the fit, and that is the load bearing part.**  The
+     * fit's ROOF_LIFT raises a bulky rectangle to the drawing above it, and
+     * the drawing above the bed is `canalChannel`: two walls and an invert
+     * baked into one 207 m mesh whose bounding box IS the channel.  Left to
+     * the fit the bed grew from the invert to the coping and filled the reach
+     * with a collider instead of a floor, which is the same failure this turn
+     * is removing, wearing a different hat.  These two rectangles are the
+     * drawn concrete already, to the millimetre, so there is nothing for a
+     * fit to improve. */
+    for (const s of [-1, 1]) {
+      ctx.collide(
+        X_MIN - END_TAIL, Z_C + s * WALL_IN, X_MAX + END_TAIL, Z_C + s * HALF,
+        Y0 + 0.16, Y0 - DEPTH - 0.02, true,
+      );
+    }
+    /* And the bed, so the invert is a surface rather than a way through into
+     * the ground.  The contact floor stops a craft at the water half a metre
+     * above it, so this is belt and braces for anything that arrives with
+     * enough speed to pass the floor in one step. */
+    ctx.collide(
+      X_MIN - END_TAIL, Z_C - WALL_IN, X_MAX + END_TAIL, Z_C + WALL_IN,
+      BED_Y, BED_Y - 0.4, true,
+    );
   }
 
   /* ------------------------------- the water ------------------------------- */
@@ -993,6 +1064,54 @@ function buildRoadBridge(ctx) {
       const zb = -26.5 + ((-21.5 + 26.5) * (i + 1)) / 3;
       const zMid = (za + zb) / 2;
       ctx.collide(RD0, za, RD1, zb, GRADE(zMid), GRADE(zMid) - 0.42);
+    }
+
+    /* **And the carriageway as a PLATFORM, which the channel cut makes
+     * necessary.**
+     *
+     * The module header says "nothing here is registered as a platform: the
+     * deck top is deliberately at the terrain grade, so the existing height
+     * query already answers correctly over the whole bridge".  That was true
+     * while the only cut was the bank's, which stops for the road; the channel
+     * cut does not stop for the road, because the channel does not, and
+     * without this it would take the carriageway down to the water with it.
+     *
+     * A platform is only offered to a query within 0.55 m of it, which is
+     * exactly the behaviour wanted here and the reason the fix is a platform
+     * rather than a smaller cut: a craft ON the bridge is inside that reach
+     * and stands on the road, and a craft in the channel 1.2 m below is not,
+     * so it stands on the water and flies through.  Same mechanism that makes
+     * the overbridge walk-through underneath.
+     *
+     * Five bands because `streetHeight` has five: verge, footway, carriageway,
+     * footway, verge, and a single rect at one of those heights would leave
+     * the craft either buried in the kerb or hovering a kerb over the road.
+     * The centreline drifts 0.2 m across the channel, so the bands are cut in
+     * z and each takes `centerX` at its own middle. */
+    {
+      const N = 6;
+      const Z0 = Z_C - WALL_IN;
+      const Z1 = Z_C + WALL_IN;
+      for (let i = 0; i < N; i++) {
+        const za = Z0 + ((Z1 - Z0) * i) / N;
+        const zb = Z0 + ((Z1 - Z0) * (i + 1)) / N;
+        const zm = (za + zb) / 2;
+        const cx = centerX(zm);
+        const gy = groundY(zm);
+        /* `isSidewalk`'s own band, to 20 mm: it starts just inside the
+         * carriageway edge and runs WALK_W out. */
+        const kerbIn = ROAD_HALF - 0.02;
+        const kerbOut = ROAD_HALF + WALK_W;
+        const band = (x0, x1, top) => {
+          if (x1 - x0 < 0.02) return;
+          ctx.platform({ x0, x1, z0: za, z1: zb, top });
+        };
+        band(RD0, cx - kerbOut, gy);
+        band(cx - kerbOut, cx - kerbIn, gy + WALK_H);
+        band(cx - kerbIn, cx + kerbIn, gy);
+        band(cx + kerbIn, cx + kerbOut, gy + WALK_H);
+        band(cx + kerbOut, RD1, gy);
+      }
     }
   }
 
@@ -1643,6 +1762,10 @@ function buildSluice(ctx) {
     const p = box(1.1, PIER_H, pd, m.concreteMid, X, Y0 + 0.28 - PIER_H / 2, pz);
     p.castShadow = p.receiveShadow = true;
     g.add(p);
+    /* The pier is solid, which it was not: a guide pier stands IN the channel
+     * and nothing in the channel had a collider, because until the channel was
+     * cut nobody could get down beside it. */
+    ctx.collide(X - 0.55, pz - pd / 2, X + 0.55, pz + pd / 2, Y0 + 0.28, Y0 + 0.28 - PIER_H);
     // the guide slot, as a recessed dark strip on the channel side
     g.add(box(0.16, DEPTH - 0.2, pd - 0.1, m.concreteDark, X - 0.48, Y0 - DEPTH / 2, pz));
   }
@@ -1710,6 +1833,16 @@ function buildSluice(ctx) {
     const leaf = box(0.1, DEPTH - 0.35, OPEN + 0.16, m.rust, X - 0.4, Y0 - DEPTH / 2 - 0.05, Z_C);
     leaf.castShadow = leaf.receiveShadow = true;
     g.add(leaf);
+    /* Shut, so it is solid: the gate is what divides the reach into two lines
+     * rather than one, and a craft that flew through it would be inside a
+     * steel plate.  Its top stands 0.43 m over the water and the headstock's
+     * soffit is 0.30 m over that, which is the slot the drawing shows and is
+     * deliberately not a way through. */
+    ctx.collide(
+      X - 0.45, Z_C - (OPEN + 0.16) / 2, X - 0.35, Z_C + (OPEN + 0.16) / 2,
+      Y0 - DEPTH / 2 - 0.05 + (DEPTH - 0.35) / 2,
+      Y0 - DEPTH / 2 - 0.05 - (DEPTH - 0.35) / 2,
+    );
     // stiffeners across the leaf, which is what makes it read as plate steel
     for (let i = 0; i < 3; i++) {
       g.add(box(0.06, 0.08, OPEN + 0.1, m.metalDark, X - 0.47, Y0 - 0.45 - i * 0.45, Z_C));

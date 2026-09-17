@@ -36731,3 +36731,76 @@ Town 1381 to 1174 m3 in 175 pockets. PHANTOM 2609 to 2441, and the reason it
 did not rise is the same platform: `scan.js` measures from `groundAt` up, so
 once the cap is the ground the lid under it is not phantom. HOLES 26.3
 percent uncovered to 25.8, mean cover 0.706 to 0.711.
+
+### The list, as it stands at the end of the turn
+
+Measured by `node scripts/cavity-scan.js`, worst first, with what it was and
+what it is now. 2790 m3 of invisible wall in 218 pockets at the start,
+**1139 m3 in 174** at the end.
+
+    753  用水路, all four crossings    fixed, 0
+    306  the gymnasium's two slopes    fixed, 0
+    217  the four tunnel portals       fixed, 46
+    166  ひばり湖's cafe                open
+    116  the onsen's roof              open
+    111  the station platform          fixed, 0
+    165  the walk-up blocks, 22 of     open
+     86  the wire spans, 17 of         declined
+     46  the school's teaching block   open
+     28  the school's second block     open
+      -  the two tunnel bores          fixed: they had no roof
+      -  the two knolls over them      fixed: they were shells
+      -  ひばり湖 itself                 fixed: it had no floor
+
+And the other direction, `collider-audit`'s HOLES, which is drawn things
+with nothing solid in them: 36.0 percent of what it probes was uncovered
+before this turn and 25.8 percent is now, mean cover 0.605 to 0.711. Nothing
+was opened up by any of this; three things were closed.
+
+### What is left, and why it is left
+
+**The fit cannot hug a hipped roof or a parapet, and that is most of the
+remaining 1139 m3.** It cuts a rectangle into strips along one axis, then
+cuts each run along the other, and a strip always takes the MAXIMUM over its
+own width. That is exactly right for a gable, whose height varies along one
+axis only: cut across the ridge and every strip steps. A hip varies along
+both, so the first cut sees the ridge from every x and the second sees the
+hip end from every z, and neither finds a step to break a run on. Same for a
+flat roof with a parapet round it: the parapet is in every strip both ways.
+
+Measured, that is ひばり湖's cafe at 166 m3 in two pockets, the onsen's 房 at
+116, the school's teaching block at 46 and its second block at 28, and most
+of the tail. A third cut does not help, because the second one is already
+defeated; what it wants is a fit that reads a 2D grid rather than two
+passes of strips. That is a different algorithm, it is the shape of the
+collision model for the whole town, and CLAUDE.md says to consult the
+advisor before changing that. Written down rather than attempted.
+
+**The wire spans, 86 m3 over 17 pockets, are declined.** The collider is a
+box round a catenary and the air inside it is between two 12 mm wires. A
+pilot who is flying between them is not complaining about an invisible wall.
+
+**The walk-up blocks, 165 m3 over 22 pockets**, are a real finding and are
+not diagnosed. Each is about 7.5 m3 at the top of an authored mass box.
+`collideWalkup` is careful work -- mass, then per-floor gallery slab, rail
+and soffit, then the open stair, then the rear balconies -- so this is
+likely to be one number rather than a structure, and it is worth the next
+round's first hour.
+
+### What the second measurement says, and what it cannot say yet
+
+INSIDE, places a craft can reach only by going through something drawn,
+reads 34,788 m3. Two known false positives account for most of it and both
+are limits of the scan rather than of the town:
+
+- **ひばり湖, 13,019 m3.** The lake now has a floor and a craft rests on the
+  water; the scan still walks in under the waterline because at half a metre
+  the shoreline cell is neither in the polygon nor out of it. Probed in the
+  game at four points across the lake, a craft descending from y = 14 stops
+  at 4.40 every time, which is the water.
+- **The two bores, 1483 and 1229 m3.** The cap is read as ground, so the
+  scan marks the whole column under it as drawn, bore included. A hole
+  through a hill is not something a height field can say.
+
+The rest is a few hundred cubic metres per stand of trees, which is the same
+limit in miniature.

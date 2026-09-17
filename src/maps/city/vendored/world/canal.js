@@ -1102,9 +1102,15 @@ function buildRoadBridge(ctx) {
          * carriageway edge and runs WALK_W out. */
         const kerbIn = ROAD_HALF - 0.02;
         const kerbOut = ROAD_HALF + WALK_W;
+        /* Overlapped by 20 mm on every edge, because `heightAt` tests a
+         * platform with strict inequalities and a craft at exactly a band's
+         * bound is inside neither: measured at z = -24.000, the query
+         * answered with the water 1.3 m under the carriageway. The bands
+         * differ by a kerb at most, and `heightAt` takes the max, so an
+         * overlap costs a 40 mm strip reading a kerb high. */
         const band = (x0, x1, top) => {
           if (x1 - x0 < 0.02) return;
-          ctx.platform({ x0, x1, z0: za, z1: zb, top });
+          ctx.platform({ x0: x0 - 0.02, x1: x1 + 0.02, z0: za - 0.02, z1: zb + 0.02, top });
         };
         band(RD0, cx - kerbOut, gy);
         band(cx - kerbOut, cx - kerbIn, gy + WALK_H);

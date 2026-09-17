@@ -1618,6 +1618,60 @@ export async function boot({ loading, bootStart, mapId }) {
     pinRcGrid();
   }
 
+  /*
+   * PUT THE CRAFT BACK WHERE IT WAS AFTER A CONFIG SWAP, instead of putting
+   * the run back on the start line.
+   *
+   * WHY THIS EXISTS. Rates are part of the config text, so changing one has
+   * to go through sim_init, and sim_init is a full reset: "dynamic state
+   * zeroed as in sim_reset", per src/native/sim_abi.h. Every rate change
+   * therefore used to end in reset(), which zeroes the LAP clock and drops
+   * the quad on the start line. That is right for a tune, which changes the
+   * machine, and wrong for rates, which change the pilot: the owner asked
+   * for a rate change mid run to leave the run alone, and a pilot tuning
+   * stick feel against a corner cannot do it if every nudge costs the lap.
+   *
+   * WHAT IT CAN AND CANNOT CARRY. Position and attitude go back through
+   * sim_set_pose, which is the only writer the ABI exposes. VELOCITY,
+   * ANGULAR RATE AND MOTOR RPM CANNOT FOLLOW: sim_init zeroes them, no
+   * export writes them, and this container has no Emscripten to add one. So
+   * the quad resumes stationary where it was rather than carrying its
+   * momentum through. That is the honest limit of this change and it is
+   * nearly invisible in the path the request describes, where the pilot is
+   * on the pause menu and the craft is holding still anyway.
+   *
+   * WHAT HAS TO BE PUT BACK BY HAND is what sim_init wiped and the shell
+   * still believes: the pack, and crashflip. The airframe and the flight
+   * style are MODES and survive init by ABI contract; the ground plane is
+   * written every frame by the contact loop; angle mode is re-applied by
+   * syncAngleMode at the tail of applySettings, which runs after this.
+   *
+   * The RC grid is re-pinned and the queue dropped for the same reason
+   * resetCraft does it: the module's step index went back to zero, and a
+   * stick sample stamped on the old clock would land in the integrator's
+   * future.
+   */
+  function reseatAfterConfigSwap(before) {
+    sim.setCellVoltage(runVoltage);
+    sim.e.sim_set_crashflip(crashflipOn ? 1 : 0);
+    const code = sim.e.sim_set_pose(
+      before[1], before[2], before[3],
+      before[7], before[8], before[9], before[10],
+    );
+    if (code !== SIM_OK) {
+      /* The pose refused, so there is nowhere honest to put the craft back.
+       * Fall back to the old behaviour rather than flying from wherever
+       * init happened to leave it. */
+      reset();
+      return;
+    }
+    acc = 0;
+    rcPending.length = 0;
+    adoptSimClock();
+    stateCurr = readState();
+    statePrev = stateCurr;
+  }
+
   function bumpConfigGen() {
     configGen += 1;
     return configGen;
@@ -3473,11 +3527,27 @@ export async function boot({ loading, bootStart, mapId }) {
       });
     }
     /*
-     * Rates are part of the config text, so changing one re-inits the module
-     * and resets the craft, exactly as changing the tune does. Compared as
-     * the CLI text the profile emits rather than field by field, so a change
-     * to any of the eleven fields, the rates type included, is one string
-     * comparison and none of them can be forgotten here.
+     * Rates are part of the config text, so changing one re-inits the module.
+     * Compared as the CLI text the profile emits rather than field by field,
+     * so a change to any of the eleven fields, the rates type included, is
+     * one string comparison and none of them can be forgotten here.
+     *
+     * IT DOES NOT RESET THE RUN, and that is the difference between this
+     * branch and the tune and PID branches around it. A tune changes the
+     * MACHINE and a lap flown half on each is not a lap. Rates change the
+     * PILOT: how far their sticks go. The owner asked for the change to be
+     * flyable mid run, and the request is right, because tuning stick feel
+     * means tuning it against a corner and you cannot do that if every nudge
+     * costs the lap. So the module is re-inited and the craft is put back
+     * where it stood by reseatAfterConfigSwap, which also says what it
+     * cannot carry across.
+     *
+     * The record key still changes, because recordKey hashes the whole
+     * composed config and the rates are in it. A lap flown across a rate
+     * change is therefore compared against its own key and not against the
+     * old one's best, which is the protection reset() used to provide by
+     * throwing the lap away. Keeping the lap and keying it honestly is the
+     * better half of that trade.
      */
     const nextRates = ratesDiff(s.rates);
     if (nextRates !== ratesText) {
@@ -3492,21 +3562,20 @@ export async function boot({ loading, bootStart, mapId }) {
        * of those recoveries would have restored the bad config too.
        */
       const nextText = composeConfig(tuneText, s.rates, RATES_KEEP, pidsText);
+      /* Read BEFORE the init that zeroes it. */
+      const before = readState();
       if (sim.init(nextText) === SIM_OK) {
         ratesText = nextRates;
         configText = nextText;
-        adoptSimClock();
-        sim.setCellVoltage(runVoltage);
         race.setRecordKey(recordKey());
         ui.setBest(race.bestMs, view.mode);
-        reset();
+        reseatAfterConfigSwap(before);
       } else if (sim.init(configText) === SIM_OK) {
-        /* Back to the config that worked, and re-seat the clock and the
-         * craft, because the failed attempt moved the module underneath
-         * them. */
-        adoptSimClock();
-        sim.setCellVoltage(runVoltage);
-        reset();
+        /* Back to the config that worked, and put the craft back on it. The
+         * failed attempt moved the module underneath the craft, and a
+         * refused rate change should cost a pilot nothing at all, so this
+         * re-seats rather than resetting too. */
+        reseatAfterConfigSwap(before);
       }
       publishPids();
     }

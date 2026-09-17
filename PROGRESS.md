@@ -37624,3 +37624,181 @@ Whether a pilot looking for PIDs finds them behind a row called Tune. Nothing
 in the menus is labelled PIDs any more except the room's own title and its
 breadcrumb, and a label nobody thinks to press is not something a lint can
 report.
+
+## 2026-09-17 | rates | Named profiles in the browser, a Rates door on the pause menu, and a rate change that no longer costs the lap
+
+Owner asked for three things after reviewing the design: rates reachable from
+the pause menu with unlimited named presets in local storage, the Rates screen
+fixed on phone, tablet and computer, and a rate change that does not reset the
+run. They also settled the open question from the design: the throttle cap is
+the pilot's, like the rates, and changes per track. So it is in the preset.
+
+### The run no longer restarts, and what that cost to find out
+
+Rates live in the config text, so changing one has to go through `sim_init`,
+and `sim_init` is a full reset: "dynamic state zeroed as in sim_reset", per
+`src/native/sim_abi.h`. That is why the old code ended every rate change in
+`reset()`. The module exports were read before anything was written, because
+this container has no Emscripten and the ABI is therefore fixed:
+
+    sim_set_pose   position and quaternion, and the ABI says in as many words
+                   that "velocity and rates are untouched"
+    sim_state      reads all twenty doubles, including velocity
+    (no setter)    nothing writes velocity, angular rate or motor RPM
+
+So the craft can be put back where it stood and cannot be given its momentum
+back. `reseatAfterConfigSwap` does the first, and the comment on it states the
+second rather than leaving it to be discovered. In the path the request
+describes, changing rates from the pause menu, the craft is holding still
+anyway, so the limit is close to invisible. It is still a limit and it is
+written down.
+
+What else `sim_init` wipes was checked rather than assumed: the airframe and
+the flight style are MODES and survive it by ABI contract, the ground plane is
+written every frame by the contact loop, angle mode is re-applied by
+`syncAngleMode` at the tail of `applySettings`, and the pack and crashflip are
+put back by hand in the new helper.
+
+Measured on the real page, flying, through `scripts/shots.js` because
+synthetic KeyboardEvents do not reach the input layer and quietly measured
+nothing twice before that was noticed:
+
+    before the rate change   y 8.94 m, landed false, flownThisRun true
+    after the rate change    y 9.71 m, landed false, flownThisRun true
+    moved                    0.77 m, which is the climb continuing under a
+                             held throttle across the 250 ms between reads
+
+The old behaviour put it back at y 1.01 with `landed` true and the run gone.
+
+The record key still moves, because `recordKey` hashes the whole composed
+config and the rates are in it, so a lap flown across a change is compared
+against its own key and not against the old one's best. That was the
+protection `reset()` was providing by throwing the lap away; keeping the lap
+and keying it honestly is the better half of the trade.
+
+Three mid-run warnings had to go with it, because they promised a restart that
+no longer happens: the Pilot room's Rates row, the Quad room's Rates signpost,
+and the pause menu's Pilot door. `shell-check` asserted the opposite, that
+every Tune, PIDs and Rates row warns, so it now asserts the new truth in both
+directions: Tune and PIDs warn, and a Rates row that grows the sentence back
+fails. Quad must still HAVE a warning row; Pilot need not, because its only
+tuning row is Rates.
+
+### The presets
+
+`configs/ratepresets.js`, one versioned key, the shape the track library
+already uses:
+
+    webfpv.rates.library.v1   { "<id>": { id, name, savedUtc, rates } }
+
+Reads and writes go through `readJson` and `writeJson` in
+`src/share/session.js`, which already answer false for a private window and a
+full quota instead of throwing. Every read is normalised, so a hand edited
+entry cannot put a rate on the craft the menu cannot draw. Ids are random and
+not the name, so a rename keeps the profile. Saving under a name that exists
+replaces it, and the dialog says "Replace" rather than "Save" when it will.
+
+Unlimited, in the only sense that matters: nothing counts them, and the 5 MB
+origin quota is thousands of eleven-number profiles.
+
+THE WARNING HAS ONE COPY, `RATES_STORAGE_WARNING`, shown in three places
+because a pilot who meets it in three wordings would reasonably conclude they
+are three facts. It says what local storage IS rather than naming it: "saved
+in this browser on this device only", then the list of what clears it, which
+is the part that actually bites.
+
+### The save-with-no-name prompt
+
+There is no inline name field anywhere, so "save with no name" cannot reach
+the store: `Save as preset` opens the overlay, and confirming it empty leaves
+the dialog open with "A preset needs a name." under the field, because
+`askForm`'s `readValues` refuses a blank required field and returns null.
+Driven on the real page:
+
+    empty library, Preset row              None saved
+    warning present in the row note        true
+    Delete disabled with nothing loaded    true
+    empty name refused, dialog still open  true
+    the error it shows                     A preset needs a name.
+    after saving as Bando                  Bando
+    after nudging a number                 Not saved
+    after loading Bando back               srate 80 and throttle cap 70, both
+    after saving a second                  Cinematic, Bando
+    delete, click inside the deaf period   ignored, as designed
+    delete, after it                       Bando
+
+That deaf period is `askConfirm`'s existing 300 ms guard against a queued
+click answering a question that just appeared. The probe tripped it, which is
+the guard working; the probe was wrong, not the dialog.
+
+The Preset row works out its own value rather than remembering one: it asks
+the library whether anything in it flies exactly what is flying, compared as
+the CLI text the profile emits. So it cannot claim to be on Bando while
+flying something else.
+
+### The phone, and the one CSS line that caused most of it
+
+`.screen-rates { justify-content: center; }` overrode the `safe center` that
+`.screen-page` sets, and `.screen`'s own comment spells out why that matters:
+a centred column taller than the window overflows in BOTH directions and the
+half that goes off the top cannot be scrolled back to. Measured:
+
+    390 x 844    h2 at y = -53, the word "Rates" off the top of the window
+    834 x 1112   h2 at y = -26, same
+    the lede     spanned x 23..366 under a bug chip at x 151..374, y 56..86
+    the list     224 px tall with 441 px hidden inside it: four of sixteen
+                 rows visible, behind a scroll gesture fighting the page's
+
+The flex cap block that squeezed the list was itself a workaround for that
+same centring bug, written when the page could not scroll. With `safe center`
+back, the page scrolls, so below 1280 everything takes its natural height and
+the page carries it: no nested scrollers, nothing hidden. Below 900 the
+heading also clears the fixed chips, and the bottom legend gets an opaque
+patch so rows passing under it do not read through the words.
+
+    after, all four sizes    every row present, nothing clipped inside a box
+    1600 x 900               h2 y 106, three columns, list 502 px
+    1280 x 800               h2 y  64, one column, all 20 rows, page scrolls
+    834 x 1112               h2 y 146, same
+    390 x 844                h2 y 141, same
+
+1280 by 800 is the one worth calling out: it was squeezing the list to 224 px
+and four rows BEFORE this change, so a common laptop was nearly as broken as
+the phone and nobody had said so.
+
+### The thresholds, and the argument for them
+
+    rates  overflow 319 -> 396 px    WORSE
+    pids   overflow 244 -> 154 px    better, and it undid last turn's pixel
+
+The rates screen gained four rows: the Preset row, a Presets section, Save as
+preset and Delete preset. That is +167 px of list. 93 px of it was paid for
+honestly rather than recorded: the desktop cap was measured when this screen
+held sixteen rows and had 93 px of window sitting unused below the stage, so
+the list now takes the room that is actually there and shows two more rows
+without scrolling. The remaining 77 px is the feature, and twenty rows, a
+curve and a lede were never going to fit a 900 px window. Stretching the list
+further to flatter the measurement is the fudge the rule exists to stop, so it
+was not done; the number moved and this paragraph is why. The PIDs screen
+wears the same layout and got the reclaimed space for free.
+
+### Measurements
+
+    lint:shell     PASS, with the mid-run assertion inverted for Rates
+    lint:presets   4 of 4 clean
+    lint:fc        33 of 33 clean
+    preset probe   the table above, driven on the real page
+    flight probe   the before and after y above, flying, via shots.js
+    layout probe   the four sizes above, measured off the live DOM
+
+`npm run verify` was NOT run and the WASM was NOT rebuilt. There is no
+Emscripten in this container, which is also why the velocity limit above is a
+limit: nothing in `src/native` was touched and the module is the one every
+lint here ran against.
+
+### What no check here can see
+
+Whether a rate change that keeps the craft in the air but drops its speed
+reads as a fix or as a stumble, which is a thing to fly rather than assert.
+And whether "Preset" reads as a rate profile to somebody who has not just
+built it.

@@ -85,6 +85,16 @@ import {
   ratesSummary,
 } from '../../configs/rates.js';
 import {
+  PRESET_NAME_MAX,
+  RATES_STORAGE_WARNING,
+  deleteRatePreset,
+  listRatePresets,
+  presetMatching,
+  presetNamed,
+  ratePresetById,
+  saveRatePreset,
+} from '../../configs/ratepresets.js';
+import {
   PID_AXES,
   PID_FIELDS,
   PID_FIELD_SPECS,
@@ -2123,7 +2133,17 @@ function ratesItem(s, midRun) {
     label: 'Rates',
     value: ratesSummary(s.rates),
     action: 'rates',
-    note: `How far the sticks go, and how sharply. Yours, not the tune's. A radio in Acro flies this curve; keyboard flight is Angle.${midRun ? MID_RUN_WARNING : ''}`,
+    /*
+     * NO MID RUN WARNING ANY MORE, and its absence is the point.
+     *
+     * It said the quad goes back on the start line, and until this round it
+     * did: rates live in the config text, so changing one re-inits the
+     * module, and the module's init is a full reset. applySettings in
+     * src/main.js now puts the craft back where it stood instead, so the
+     * sentence would be a warning about something that does not happen.
+     * The tune and the PIDs still carry it, because they still do it.
+     */
+    note: `How far the sticks go, and how sharply. Yours, not the tune's. A radio in Acro flies this curve; keyboard flight is Angle. Changing them mid run leaves the quad where it is and the clock running.`,
   };
 }
 
@@ -2647,6 +2667,10 @@ export class Ui {
     this.fcFrom = null;
     /* The module readback the PIDs screen draws from; see setPidsLive. */
     this.pidsLive = null;
+    /* A refused preset write, shown as one amber row in the Rates room and
+     * cleared the moment the room is entered or a write succeeds. Not a
+     * setting: it describes this browser's last answer, not the pilot's. */
+    this.ratesNotice = null;
     /*
      * The flight-controller editor. The session holds the draft dump and
      * builds the rows; the shell owns what Save means through onFcSave.
@@ -3737,6 +3761,40 @@ export class Ui {
       inputs[0].field.focus();
       inputs[0].field.select();
     });
+  }
+
+  /*
+   * NAME THIS PROFILE. The same overlay askName uses, for the same reason:
+   * a name is typed, and the stick menu cannot type one.
+   *
+   * THIS IS THE PROMPT the owner asked for. There is no inline name field
+   * anywhere, so "save with no name" cannot reach the store: confirming an
+   * empty field leaves the dialog open with the `empty` line under it,
+   * because askForm's readValues refuses a required field that is blank and
+   * returns null rather than inventing a name.
+   *
+   * `suggested` is the loaded preset's name when the numbers already match
+   * one, so the common case of nudging a saved profile and saving it again
+   * lands on that profile instead of quietly growing a second copy of it.
+   * The detail carries the storage warning, because this is the moment a
+   * pilot decides the profile is worth keeping and therefore the moment it
+   * matters that it is kept in one browser and nowhere else.
+   */
+  askRatePresetName(suggested = '') {
+    const taken = presetNamed(suggested);
+    return this.askForm({
+      title: 'Name this preset',
+      detail: RATES_STORAGE_WARNING,
+      confirmLabel: taken ? 'Replace' : 'Save',
+      fields: [{
+        key: 'name',
+        label: '',
+        value: suggested,
+        maxLength: PRESET_NAME_MAX,
+        placeholder: 'Preset name',
+        empty: 'A preset needs a name.',
+      }],
+    }).then((values) => (values ? values.name : null));
   }
 
   /*
@@ -5289,7 +5347,7 @@ export class Ui {
           label: 'Rates',
           value: ratesSummary(s.rates),
           action: 'rates',
-          note: `Not the machine's. Rates are yours, so they live under ${SCREEN_TITLES.pilot} and stay put when you switch tunes. Changing the aircraft reseeds them only if you are still on stock rates. This row goes there.${midRun ? MID_RUN_WARNING : ''}`,
+          note: `Not the machine's. Rates are yours, so they live under ${SCREEN_TITLES.pilot} and stay put when you switch tunes. Changing the aircraft reseeds them only if you are still on stock rates. This row goes there, and changing them mid run leaves the quad where it is.`,
         },
         { label: 'Back', action: 'back' },
       ];
@@ -5569,6 +5627,27 @@ export class Ui {
         ...this.ghostItems(),
         { label: 'Does it feel wrong?', section: true },
         tuneItem(s, true),
+        /*
+         * RATES, ONE PRESS FROM THE PAUSE MENU, because that is when a pilot
+         * knows they want them.
+         *
+         * They were two rooms away: Pilot, then Rates. The question this
+         * section asks is "does it feel wrong", and how far the sticks go is
+         * half of every answer to it, so the row belongs beside the tune.
+         * A DOOR, not a copy: the numbers and the curve live in one room and
+         * shell-check asserts that they are editable on exactly one screen.
+         *
+         * No mid-run warning, unlike the Tune row above it. Rates no longer
+         * put the quad back on the start line: see applySettings in
+         * src/main.js, which re-seats the craft where it was instead of
+         * resetting the run.
+         */
+        {
+          label: 'Rates',
+          value: ratesSummary(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Yours, not the tune\'s. Changing them here leaves the quad where it is and the clock running.',
+        },
         feelItem(),
         { label: 'Elsewhere', section: true },
         {
@@ -5581,7 +5660,10 @@ export class Ui {
           label: 'Pilot',
           value: ratesSummary(s.rates),
           action: 'pilot',
-          note: `Rates, your radio, graphics and sound.${MID_RUN_WARNING}`,
+          /* Rates are the first thing in this room and they no longer cost
+           * the run, so the blanket warning would be wrong more often than
+           * right. The rows that still restart a run carry it themselves. */
+          note: 'Rates, your radio, graphics and sound.',
         },
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
@@ -5731,7 +5813,52 @@ export class Ui {
         },
       );
       const axisRows = (axis) => RATE_FIELDS.map((key) => rateRow(axis, key));
+      /*
+       * WHICH NAMED PROFILE IS FLYING, and it is worked out rather than
+       * remembered.
+       *
+       * The row could have stored "the preset I last loaded" and gone stale
+       * the moment a number moved under it. Instead it asks the library
+       * whether anything in it flies exactly what is flying now, compared as
+       * the CLI text the profile emits, which is the same comparison
+       * src/main.js makes to decide whether a change reached the module. So
+       * the row cannot claim to be on Bando while flying something else: the
+       * instant a stick number moves it stops matching and says so.
+       *
+       * `pickOnly`, for the reason the Tune row carries it: this is a list
+       * whose entries change how the quad flies, and Enter a row below where
+       * it was meant must open it rather than step it.
+       */
+      const presets = listRatePresets();
+      const loaded = presetMatching(r);
+      const presetValue = loaded
+        ? loaded.name
+        : (ratesAreDefault(r) ? 'Stock' : 'Not saved');
+      const presetRow = presets.length === 0
+        ? {
+          label: 'Preset',
+          value: 'None saved',
+          info: true,
+          note: `Save the numbers below under a name and they come back in one press, which is what a second track wants. ${RATES_STORAGE_WARNING}`,
+        }
+        : {
+          ...choice(
+            'Preset',
+            `${presets.length === 1 ? 'One saved profile' : `${presets.length} saved profiles`}. Loading one sets every number below, the throttle limit included, and does not put you back on the start line. ${RATES_STORAGE_WARNING}`,
+            presets.map((p) => p.id),
+            loaded ? loaded.id : '',
+            (id) => (ratePresetById(id) || { name: presetValue }).name,
+            (id) => {
+              const pick = ratePresetById(id);
+              if (pick) {
+                s.rates = normaliseRates(pick.rates);
+              }
+            },
+          ),
+          pickOnly: true,
+        };
       return [
+        presetRow,
         choice(
           'Rates type',
           `Which rate system the numbers below are in. All five are Betaflight's own and all five fly: the curve is chosen in fc/rc.c by this one field. Actual is the Betaflight 4.5 default and the one whose Max rate column means exactly what it says at the stop. Changing this loads that system's own defaults, because a Betaflight RC rate of 1.00 and an Actual centre sensitivity of 70 are the same stored number and not the same setting.`,
@@ -5790,6 +5917,37 @@ export class Ui {
           r.thrExpo,
           (v) => { r.thrExpo = v; },
         ),
+        { label: 'Presets', section: true },
+        /*
+         * ONLY HERE WHEN SOMETHING WENT WRONG. A refused write is state the
+         * pilot has to know about and cannot see anywhere else, so it wears
+         * row-warn and stays until the next save or delete clears it, which
+         * is the same rule the Freestyle room's Scoring row follows. A
+         * successful save says so by changing the Preset row's value.
+         */
+        ...(this.ratesNotice ? [{
+          label: 'Not saved',
+          value: '',
+          info: true,
+          rowClass: 'row-warn',
+          note: this.ratesNotice,
+        }] : []),
+        {
+          label: 'Save as preset',
+          action: 'rates-save',
+          note: loaded
+            ? `Save these numbers again under a name. They already match ${loaded.name}, so saving under that name replaces it and any other name makes a second profile. ${RATES_STORAGE_WARNING}`
+            : `Name these numbers and they come back in one press. ${RATES_STORAGE_WARNING}`,
+        },
+        {
+          label: 'Delete preset',
+          action: 'rates-delete',
+          disabled: !loaded,
+          rowClass: loaded ? undefined : 'row-grey',
+          note: loaded
+            ? `Forget ${loaded.name}. This browser is the only copy, so it cannot be undone. The numbers stay on the quad; only the saved profile goes.`
+            : 'Load a preset first. This deletes the profile the rows below are flying, and they are not flying a saved one.',
+        },
         {
           label: 'Revert to defaults',
           action: 'rates-default',
@@ -8388,6 +8546,11 @@ export class Ui {
     }
     if (this.screen === 'rates' && screen !== 'rates') {
       this.ratesFrom = null;
+    }
+    /* A storage complaint belongs to the visit that caused it. Walking back
+     * in should not meet a warning about a save attempted ten minutes ago. */
+    if (screen === 'rates' && this.screen !== 'rates') {
+      this.ratesNotice = null;
     }
     /*
      * pidsFrom SURVIVES A TRIP TO THE BENCH, because the bench comes back
@@ -11155,6 +11318,68 @@ export class Ui {
       if (this.onSettings) {
         this.onSettings(this.settings);
       }
+      return;
+    }
+    /*
+     * SAVE THE NUMBERS UNDER A NAME.
+     *
+     * The dialog IS the prompt for a name. There is no inline name field on
+     * the row and there should not be: the stick menu cannot type, so a name
+     * is always this overlay, and a Save that opened it is the same gesture
+     * as a Save that demanded it. Leaving the field empty and confirming
+     * keeps the dialog open with a line saying so, because askForm refuses
+     * an empty required field rather than inventing "Preset 4".
+     *
+     * Pre-filled with the loaded preset's name when the numbers already
+     * match one, so the common "I nudged it, save it again" lands on
+     * Replace rather than quietly growing a second copy.
+     */
+    if (action === 'rates-save') {
+      const loaded = presetMatching(this.settings.rates);
+      this.askRatePresetName(loaded ? loaded.name : '').then((name) => {
+        if (!name) {
+          return;
+        }
+        const res = saveRatePreset(name, this.settings.rates);
+        /*
+         * SUCCESS NEEDS NO ANNOUNCEMENT, because the Preset row above IS
+         * the announcement: it worked out its value by asking the library
+         * what matches what is flying, so a save that landed makes the row
+         * say the new name on the next render. A toast would be a second
+         * copy of a fact already on screen.
+         *
+         * FAILURE DOES, and it is the whole reason this branch exists. A
+         * private window and a full quota both refuse the write, and a
+         * pilot who was not told would go back to the other track and find
+         * the profile gone. Same words the board uses for the same cause.
+         */
+        this.ratesNotice = res.ok
+          ? null
+          : 'This browser would not store that preset. Your rates are still flying, but they are not saved.';
+        this.renderMenu();
+      });
+      return;
+    }
+    if (action === 'rates-delete') {
+      const loaded = presetMatching(this.settings.rates);
+      if (!loaded) {
+        return;
+      }
+      this.askConfirm({
+        title: `Delete ${loaded.name}?`,
+        detail: 'This browser is the only copy, so this cannot be undone. The numbers stay on the quad and keep flying; only the saved profile goes.',
+        yes: 'Delete',
+        no: 'Keep it',
+      }).then((ok) => {
+        if (!ok) {
+          return;
+        }
+        const res = deleteRatePreset(loaded.id);
+        this.ratesNotice = res.ok
+          ? null
+          : 'This browser would not change stored presets, so that one is still saved.';
+        this.renderMenu();
+      });
       return;
     }
     /*

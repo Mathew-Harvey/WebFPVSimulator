@@ -979,10 +979,22 @@ const BEHAVIOUR = `(() => {
     const scan = (screen, returnTo) => {
       ui.returnTo = returnTo;
       ui.show(screen);
-      const rows = ui.items().filter((it) => it && (it.label === 'Tune' || it.label === 'PIDs' || it.label === 'Rates'));
+      /*
+       * RATES ARE NOT IN THIS SET ANY MORE, and that is the assertion rather
+       * than an omission. A rate change no longer re-seats the run: main.js
+       * puts the craft back where it stood instead of resetting, so a Rates
+       * row carrying this warning would be promising something that does not
+       * happen. Counted separately below so the claim is tested both ways,
+       * and a Rates row that grows the sentence back fails.
+       */
+      const all = ui.items();
+      const rows = all.filter((it) => it && (it.label === 'Tune' || it.label === 'PIDs'));
+      const rates = all.filter((it) => it && it.label === 'Rates');
       return {
         rows: rows.length,
         warned: rows.filter((it) => String(it.note || '').includes(warn)).length,
+        ratesRows: rates.length,
+        ratesWarned: rates.filter((it) => String(it.note || '').includes(warn)).length,
       };
     };
     const quadPaused = scan('quad', 'paused');
@@ -1918,12 +1930,31 @@ async function main() {
       failures.push(`mid-run warning: ${b.midRun ? b.midRun.error : 'no result'}`);
     } else {
       const mr = b.midRun;
+      /*
+       * Quad must HAVE such a row, because its Tune row restarts the run and
+       * a room that lost it would be a room that lost the warning with it.
+       * Pilot need not: its only tuning row is Rates, and rates stopped
+       * restarting the run, so an empty set there is the correct answer
+       * rather than a missing check. Whatever rows either room does have,
+       * all of them warn.
+       */
+      if (!mr.quadPaused.rows) {
+        failures.push('mid-run warning: Quad entered from a paused run has no tuning row to warn about');
+      }
       for (const [name, r] of [['Quad', mr.quadPaused], ['Pilot', mr.pilotPaused]]) {
-        if (!r.rows) {
-          failures.push(`mid-run warning: ${name} entered from a paused run has no tuning row to warn about`);
-        } else if (r.warned < r.rows) {
+        if (r.warned < r.rows) {
           failures.push(
             `mid-run warning: ${name} entered from a paused run warns on ${r.warned} of ${r.rows} tuning rows`,
+          );
+        }
+      }
+      /* And a Rates row never carries it, from anywhere, because rates do
+       * not do the thing it warns about. */
+      for (const [name, r] of [['Quad', mr.quadPaused], ['Pilot', mr.pilotPaused],
+        ['Quad', mr.quadTitle], ['Pilot', mr.pilotTitle]]) {
+        if (r.ratesWarned) {
+          failures.push(
+            `mid-run warning: ${name} warns that changing rates restarts the run, which it no longer does`,
           );
         }
       }

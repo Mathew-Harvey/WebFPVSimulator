@@ -1813,7 +1813,19 @@
        * honest about where its several hundred editable firmware keys came
        * from. There are five knobs now, they are ours, and they look it.
        */
-      .screen-rates { justify-content: center; }
+      /*
+       * SAFE centre, like every other page, and this line was the phone bug.
+       *
+       * `.screen-page` sets `safe center` precisely so a column taller than
+       * the window falls back to flex-start instead of overflowing in both
+       * directions, and the comment on `.screen` spells out why: the half
+       * that goes off the TOP cannot be scrolled back to. This rule said
+       * plain `center` and so opted the one screen with the most content
+       * back into the bug. Measured at 390 by 844 the heading sat at
+       * y = -53 and at 834 by 1112 at y = -26: the word "Rates" was off the
+       * top of the window on a phone and a tablet, with no way to reach it.
+       */
+      .screen-rates { justify-content: safe center; }
       .rates-lede {
         max-width: 48em; margin: 0 auto;
         color: rgba(235, 230, 215, 0.78);
@@ -1906,7 +1918,28 @@
       .rates-num { color: var(--cream); }
       .rates-num-sep, .rates-num-unit { color: rgba(235, 230, 215, 0.6); font-weight: 500; }
       .rates-num[hidden], .rates-num-sep[hidden] { display: none; }
-      .screen-rates .menu-scroll { max-height: min(calc(52vh - var(--bars)), 30em); }
+      /*
+       * THE LIST TAKES THE ROOM THAT IS ACTUALLY THERE.
+       *
+       * 52vh and 30em were measured when this screen held sixteen rows. It
+       * holds twenty now, because the Preset row and the three that save,
+       * delete and revert a profile arrived with the preset library, and the
+       * cap had 93 px of window sitting unused below it: measured at 1600 by
+       * 900 the stage ended at y 745 and the bottom padding does not begin
+       * until 838. Spending that on the list is two more rows visible
+       * without scrolling.
+       *
+       * It does NOT make the screen fit. Twenty rows, a curve and a lede do
+       * not fit a 900 px window and were never going to, so the scroller is
+       * still the answer and the recorded overflow still grew. See
+       * PROGRESS.md: the number moved because the screen gained a feature,
+       * and stretching the list further to flatter the measurement would be
+       * the fudge this note exists to not be.
+       *
+       * The shorter-window rules below still win, because they come later
+       * and are the same property.
+       */
+      .screen-rates .menu-scroll { max-height: min(calc(62vh - var(--bars)), 36em); }
       /*
        * The PIDs screen wears .screen-rates as well as .screen-pids, ON
        * PURPOSE: it is the Rates screen's layout with bars where the curve
@@ -2189,6 +2222,75 @@
            fixed to the top right corner and sit over any screen. At 48em the
            last words of this sentence went under them. */
         .rates-lede { max-width: 34em; }
+      }
+      /*
+       * A PHONE SCROLLS THE PAGE, NOT A BOX INSIDE THE PAGE.
+       *
+       * The blocks above cap the list and let it scroll inside the stage,
+       * which is right on a laptop where the window is wide and short. On a
+       * phone it is the nested-scroller trap: at 390 by 844 the list was
+       * 224 px tall with 441 px hidden inside it, so four of the sixteen
+       * rows were visible and the other twelve were behind a scroll gesture
+       * that competes with the page's own. `.screen-page` already scrolls,
+       * so the honest answer on a narrow window is to let everything take
+       * its natural height and let the page carry it.
+       *
+       * 900 px, because that is where the stage is already one column and
+       * the three-column reasoning above has stopped applying.
+       */
+      @media (max-width: 1280px) {
+        .screen-rates .menu-stage,
+        .screen-quad .menu-stage {
+          max-height: none;
+        }
+        .screen-rates .menu-stage > .menu,
+        .screen-quad .menu-stage > .menu {
+          flex: 0 0 auto; min-height: 0; max-height: none; overflow-y: visible;
+        }
+        .screen-rates .menu-scroll,
+        .screen-quad .menu-scroll {
+          max-height: none; overflow-y: visible;
+        }
+        .screen-rates .menu-help,
+        .screen-quad .menu-help {
+          max-height: none; overflow-y: visible;
+        }
+        /*
+         * The legend sits on its own patch once the PAGE is what scrolls.
+         *
+         * .frame-bot's scrim is a gradient that reaches zero at the top of
+         * its own 44 px, which is fine on a window where the list scrolls
+         * inside the padded box and nothing ever passes behind the bar. Here
+         * the rows go under it, and a row reading through "Enter Choose" is
+         * two sentences in the same pixels. Opaque where the words are, still
+         * feathered at the top so it does not read as a second panel.
+         */
+        .frame-bot {
+          background: linear-gradient(
+            0deg,
+            rgba(8, 12, 9, 0.97) 0%,
+            rgba(8, 12, 9, 0.93) 62%,
+            rgba(8, 12, 9, 0) 100%);
+        }
+      }
+      /*
+       * CLEAR THE FIXED CHIPS, which is a phone problem and only a phone
+       * problem. The bug chip and the music dock are pinned to the top right
+       * over every screen. On a wide window the centred copy is narrow enough
+       * to pass beside them; on a phone nothing is, and measured at 390 by
+       * 844 the lede spanned x 23..366 while the chip sat at x 151..374,
+       * y 56..86, with the two drawn over each other. So the copy starts
+       * below them instead of beside them.
+       */
+      @media (max-width: 900px) {
+        .screen-rates .rates-lede,
+        .screen-quad .rates-lede {
+          max-width: none;
+        }
+        .screen-rates > h2,
+        .screen-quad > h2 {
+          margin-top: 76px;
+        }
       }
       /* A short window spends its height on the curve and the rows: the
          lede is the one thing here that repeats what the row notes say, and

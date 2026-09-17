@@ -622,11 +622,43 @@ export function scanCavities(world, colliders, opts = {}) {
     }
   };
 
+  /*
+   * A cell is drawn when its CENTRE is within TOL of the thing, OR when the
+   * thing passes through it at all.
+   *
+   * The second half was missing and it cost a whole building. Cell centres
+   * are CELL apart and the centre test only reaches TOL either side, so a
+   * window 2 x 0.2 m wide has to catch a centre that can be 0.5 m from the
+   * next one: a surface can land squarely between two centres and mark
+   * NOTHING. ひばり湖's cafe is drawn as a solid box 9.2 by 6.4 by 3.1 m with
+   * its ceiling at 11.01, and cell centres there are at 10.75 and 11.25, so
+   * the ceiling was invisible, the roof void and the rooms under it became
+   * one body of air, the flood found its way in under an eave and the scan
+   * reported 121 m3 of invisible wall inside a building whose walls are
+   * drawn, solid and exactly where the collider says they are. The onsen's
+   * 房 read the same way for the same reason, and between them they were a
+   * quarter of the town's remaining finding.
+   *
+   * A cell a surface passes through is drawn. Anything else is a measurement
+   * that cannot see a wall, which is the one thing this file is for.
+   */
   const markDrawn = (mx0, my0, mz0, mx1, my1, mz1) => {
-    let ix0 = Math.floor((mx0 - TOL - g.x0) / CELL + 0.5);
-    let ix1 = Math.floor((mx1 + TOL - g.x0) / CELL - 0.5);
-    let iz0 = Math.floor((mz0 - TOL - g.z0) / CELL + 0.5);
-    let iz1 = Math.floor((mz1 + TOL - g.z0) / CELL - 0.5);
+    let ix0 = Math.min(
+      Math.floor((mx0 - TOL - g.x0) / CELL + 0.5),
+      Math.floor((mx0 - g.x0) / CELL),
+    );
+    let ix1 = Math.max(
+      Math.floor((mx1 + TOL - g.x0) / CELL - 0.5),
+      Math.floor((mx1 - g.x0) / CELL),
+    );
+    let iz0 = Math.min(
+      Math.floor((mz0 - TOL - g.z0) / CELL + 0.5),
+      Math.floor((mz0 - g.z0) / CELL),
+    );
+    let iz1 = Math.max(
+      Math.floor((mz1 + TOL - g.z0) / CELL - 0.5),
+      Math.floor((mz1 - g.z0) / CELL),
+    );
     if (ix0 < 0) { ix0 = 0; }
     if (iz0 < 0) { iz0 = 0; }
     if (ix1 > g.nx - 1) { ix1 = g.nx - 1; }
@@ -634,8 +666,14 @@ export function scanCavities(world, colliders, opts = {}) {
     if (ix1 < ix0 || iz1 < iz0) {
       return;
     }
-    const a0 = clampIy(Math.floor((my0 - TOL - g.y0) / CELL + 0.5));
-    const a1 = clampIy(Math.floor((my1 + TOL - g.y0) / CELL - 0.5) + 1);
+    const a0 = clampIy(Math.min(
+      Math.floor((my0 - TOL - g.y0) / CELL + 0.5),
+      Math.floor((my0 - g.y0) / CELL),
+    ));
+    const a1 = clampIy(Math.max(
+      Math.floor((my1 + TOL - g.y0) / CELL - 0.5) + 1,
+      Math.floor((my1 - g.y0) / CELL) + 1,
+    ));
     if (a1 <= a0) {
       return;
     }

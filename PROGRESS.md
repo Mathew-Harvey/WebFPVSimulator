@@ -37285,6 +37285,118 @@ Whether a Tune row with one name on it reads as finished or as broken, and
 whether the one item picker that `pickOnly` opens is worth the press or just
 a stop on the way to the bench. That is a thing to look at, not to assert.
 
+---
+
+## 2026-09-17 | map | There was no pavilion: a ceiling fell between two cell centres and a scan lost a building
+
+Asked: fix the pavilion columns, which is the item the previous entry named
+as next and described like this:
+
+> **ひばり湖's cafe, 120.9 m3, and the onsen's 房, 113.7.** These are not hip
+> roofs. They are pavilions, and the fit is not what is wrong with them.
+> The drawing there is a deck at 8 and a roof at 11 with air between them.
+
+That is wrong, and this entry is the correction. The cafe is not a pavilion.
+It is a solid building. `buildCafe` in `kohan.js` draws it as
+`box(W, H, D, m.wallCream)`, 9.2 by 3.1 by 6.4 m of wall with three windows,
+a door, a fascia, an awning and a hipped roof with a dormer over it, and one
+`ctx.collide` over its footprint topped at the wall plate. The collider is
+right. The walls are drawn. A pilot flying at that building hits it exactly
+where it is.
+
+### What the scan was actually reporting
+
+`markDrawn` marked a cell when the cell's CENTRE was within TOL, 0.2 m, of
+the thing. Cell centres are CELL apart, 0.5 m. A window 0.4 m wide has to
+catch a centre that can be half a metre from the next one, so a surface can
+land squarely between two centres and mark nothing at all.
+
+The cafe's ceiling is at y 11.01. The scan's grid starts at y -4, so the
+centres either side of it are at 10.75 and 11.25, 0.26 and 0.24 away. The
+ceiling marked NOTHING. With the ceiling gone the rooms and the roof void
+above them were one body of undrawn air, the free air flood found its way in
+under an eave, and the scan reported 121 m3 of invisible wall inside a
+building a craft cannot enter. The onsen read the same way, and so did every
+delivery van in the town: a box mesh has no triangles inside it, so its
+inside is not drawn, and the only thing that had been keeping those insides
+out of the list was a ceiling that the grid happened to see.
+
+It is worth being plain about what this means. It is not that the scan was
+too sensitive. It is that whether a wall existed depended on where the world
+happened to sit relative to a voxel grid, which is not a property of the
+world.
+
+### The fix
+
+A cell a drawn surface passes through is drawn, whatever TOL says. The
+centre test is kept and the containing cells are added to it, which is three
+`Math.min` and three `Math.max` in `markDrawn`. It can only ever add drawn
+cells, so it can only ever remove findings, and it removes exactly the ones
+that were never there.
+
+    blocked      934.1 m3 in 158 pockets  ->  388.8 in 87
+    INSIDE       34915 -> 44580 m3, which is the same air changing sides:
+                 a sealed room is inside, it was never an invisible wall
+    FLOATING     0 -> 0
+    colliders    19515 -> 19515, nothing in the fit changed
+
+By the thing nearest the pocket, worst first, m3:
+
+    lakeCafe     120.9 -> 0.0        gymnasium        3.3 -> 0.0
+    onsen_hourai 113.7 -> 5.4        schoolStore      3.0 -> 0.0
+    walkup       145.5 -> 56.1       shop_sento       6.8 -> 0.0
+    wires         79.8 -> 42.2       poolApron       14.5 -> 0.0
+    tunnelCapW0  107.7 -> 94.4       vehicle_boxtruck 7.1 -> 0.0
+    tunnelCapE0   49.6 -> 40.8       vehicle_keivan   4.3 -> 0.0
+    secondBlock   32.8 -> 16.4       vehicle_hatch    3.9 -> 0.0
+    atticHouse    24.9 ->  8.2       vehicle_van      2.8 -> 0.0
+
+What is left is 388.8 m3 in 87 pockets and it is a different list: the two
+tunnel knolls at 135 m3 between them, the 22 walk-up blocks at 56, the
+catenary wires at 42 which were declined twice already and are declined
+again, then openFrame 16.4, secondBlock 16.4, haiden 11.0 and a tail.
+
+### The pavilion work that was written and NOT taken
+
+Two changes were written, measured and thrown away. Both are recorded
+because the numbers cost an hour and the next round should not pay for them
+twice.
+
+**Runs per cell in `drawn.js`.** A cell carried one box, lowest surface to
+highest, so a deck under a roof read as a solid block. Rewritten to carry up
+to four merged runs with `addSpan`, gap 0.22 m, and to measure its own
+occupancy from them. It works: blocked went 934.1 -> 897.8 on the old scan,
+secondBlock 32.8 -> 10.6, openFrame 23.3 -> 10.3. It costs 747 more
+colliders, and it moves the audit's PHANTOM from 2188 to 16611 m3 because
+`scan.js` reads the same picture and a hollow interior is then solid with
+nothing drawn under it. Not taken: with the scan fixed, the findings it
+addressed are worth about 20 m3 of the remaining 389, and it would cost the
+one number in the audit that still gates a trim.
+
+**A band and an openness flood in `cutGrid`.** Each cell got the air under
+the top of its column as a band, the bands were flooded from the
+rectangle's edge, and only the cells the flood reached were allowed to open.
+It hollowed out the town. A school's wall is drawn as courses with its
+window rows left open, 2.0 to 3.7, 5.5 to 7.2, 9.0 to 10.7, so the flood
+walks in through a window and every classroom becomes a room a quad can fly
+into, and those rooms have no insides. Feeding the flood the see-through
+meshes the fit is not allowed to stand on, which was the first suspect, made
+no difference: the windows are not glazed in the drawing, they are holes.
+Measured at its best it read blocked 1057.8 m3, INSIDE 40634 and 29634
+colliders against 934.1, 34915 and 19515. Not taken, and the reason is not
+only the numbers: the thing it was written to fix did not exist.
+
+### Verified
+
+The arithmetic above is the verification and it is exact: cell centres at
+10.75 and 11.25, a ceiling at 11.01, a window of plus or minus 0.2. Both
+scans were run in this turn, on this container, one before the change and
+one after, and the JSON of each is what the tables are read from. The
+collider audit was NOT re-run after the change and does not need to be:
+`cavity.js` is not loaded by it and the fit is untouched, 19515 boxes before
+and after. `node --check` on the changed file, and the scan itself is a
+run of that file end to end.
+
 ## 2026-09-17 | tunes | Quad had two rows for one decision, and the picker moved into the room the survivor opens
 
 Owner's request, straight after the preset removal: "make the tune row open

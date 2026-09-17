@@ -22,14 +22,15 @@
  * scripts/music.js from the id below, which is why the id is the slug of
  * the title. That is one fact instead of two that could disagree, and it
  * takes the percent encoding out of the URL: the crate used to carry
- * names like 'Copper Gypsy Run take 2.mp3' and 'Pace Shift Skyline
- * (1).mp3', and a space and a bracket in a media URL is a thing that
- * works everywhere until it does not.
+ * names like 'Neon Gate take 2.mp3' and 'Pace Shift Skyline (1).mp3',
+ * and a space and a bracket in a media URL is a thing that works
+ * everywhere until it does not.
  *
- * Two formats because they are not the same price. Opus in a WebM is
- * about 1.9 MB a track, the mp3 fallback about 2.9 MB, the masters these
- * came from were 5.7 MB. src/render/music.js picks with canPlayType and
- * falls back on a load error. See scripts/music.js for the encode.
+ * Two formats because they are not the same price. Opus in a WebM
+ * averages 2.6 MB a track across this crate, the mp3 fallback 3.1 MB, the
+ * masters they came from 4.2 to 5.9 MB. src/render/music.js picks with
+ * canPlayType and falls back on a load error. See scripts/music.js for
+ * the encode.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -56,6 +57,13 @@
  * thing that can tell a browser the audio did is this number. RE-ENCODE
  * THE CRATE, BUMP THIS. A visitor who does not is holding last year's
  * mix and there is no way for them to find out.
+ *
+ * Adding a record or dropping one is NOT that, and does not want a bump.
+ * A new id is a URL nobody has cached and a dropped id is a URL nothing
+ * asks for any more, so neither can go stale. Bumping over either would
+ * re-fetch every track that did not change, which on this crate is forty
+ * megabytes charged to a returning visitor for nothing. The bump is for
+ * bytes moving under a filename that stayed put.
  */
 export const MUSIC_REV = 1;
 
@@ -73,16 +81,17 @@ export const TRACKS = [
   rec('barnstorm-break', 'Barnstorm Break'),
   rec('bluegrass-circuit', 'Bluegrass Circuit'),
   rec('celtic-riser', 'Celtic Riser'),
-  rec('gypsy-breaks', 'Gypsy Breaks'),
-  rec('copper-gypsy-run', 'Copper Gypsy Run'),
-  rec('copper-gypsy-run-take-2', 'Copper Gypsy Run Take 2'),
+  rec('driving-tension', 'Driving Tension'),
+  rec('gritty-breakbeats', 'Gritty Breakbeats'),
+  rec('hypnotic-acid-loop', 'Hypnotic Acid Loop'),
+  rec('prop-wash', 'Prop Wash'),
+  rec('ground-effect', 'Ground Effect'),
 ];
 
 /*
- * The menu bed. Two takes of the same piece, which is why they are named
- * the way Copper Gypsy Run and its take 2 are named: they came out of one
- * sitting and they are meant to sit behind a list of rows without asking
- * for anything.
+ * The menu bed. Two takes of the same piece, which is why one is named
+ * Take 2 of the other: they came out of one sitting and they are meant to
+ * sit behind a list of rows without asking for anything.
  *
  * These are NOT quiet files. They measure -14.2 and -13.6 LUFS
  * integrated, which lands them mid crate against the flight records'

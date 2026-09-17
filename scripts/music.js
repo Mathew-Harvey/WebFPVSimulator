@@ -36,16 +36,19 @@
  * Usage:
  *   node scripts/music.js [--src=DIR] [--only=id] [--dry]
  *
- * DIR defaults to assets/music-src, which is not in the repository. The
- * flight masters are the mp3s as they stood at commit f9e0804 and come
- * back with
+ * DIR defaults to assets/music-src, which is not in the repository. Nine
+ * of the fourteen flight masters are the mp3s as they stood at commit
+ * f9e0804 and come back with
  *   git show f9e0804:"assets/music/Tarmac Pulse.mp3" > out.mp3
- * The two menu masters do NOT come back that way: they never existed in
- * this repository as anything but the encoded output below. They arrived
- * as 'Neon Gate.mp3' and 'Neon Gate take 2.mp3', 5.5 and 7.1 MB, 48 kHz
- * stereo mp3 at about 195 kbps with cover art attached, and if they are
- * needed again they have to be supplied again. That is worth knowing
- * before anyone bumps MUSIC_REV expecting a re-encode to be free.
+ * The other five do NOT come back that way and neither do the two menu
+ * masters: none of the seven ever existed in this repository as anything
+ * but the encoded output below. The menu pair arrived as 'Neon Gate.mp3'
+ * and 'Neon Gate take 2.mp3', 5.5 and 7.1 MB. Driving Tension, Gritty
+ * Breakbeats, Hypnotic Acid Loop, Prop Wash and Ground Effect arrived on
+ * 2026-09-17, 4.2 to 5.9 MB. All seven are 48 kHz stereo mp3 at 177 to
+ * 195 kbps with cover art attached, and if one is needed again it has to
+ * be supplied again. That is worth knowing before anyone bumps MUSIC_REV
+ * expecting a re-encode to be free.
  * Needs ffmpeg with libopus and libmp3lame on PATH, the same way
  * scripts/build-wasm.sh needs emcc. It is not an npm dependency and the
  * page does not need it: the output is committed.
@@ -174,8 +177,8 @@ function measure(file) {
 /*
  * Find the master for a track. The masters have the pretty filenames the
  * crate used to carry, so match on a slug of the filename rather than on
- * an exact string: 'Copper Gypsy Run take 2.mp3' has to reach
- * 'copper-gypsy-run-take-2' without a lookup table to keep in step.
+ * an exact string: 'Neon Gate take 2.mp3' has to reach 'neon-gate-take-2'
+ * without a lookup table to keep in step.
  */
 function slug(name) {
   return name

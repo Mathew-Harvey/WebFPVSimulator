@@ -36536,3 +36536,101 @@ at its fast end, and is left alone on the same grounds.
 **Pre-existing and untouched: `npm run score:selftest` fails one case**, "the
 same lap without the flip is a Maverick Loop". Confirmed pre-existing by
 stashing this diff and re-running; nothing here goes near the recogniser.
+
+## 2026-09-17 The crate loses three records and gains five
+
+The pilot asked for the gypsy music out and five attached tracks in.
+
+### What went
+
+`gypsy-breaks`, `copper-gypsy-run` and `copper-gypsy-run-take-2` are out of
+`TRACKS` and their six files are deleted from `assets/music`. Nothing else
+named them. A stored `musicTrack` holding an id the crate no longer has
+falls back to `DEFAULTS.musicTrack`, which is `rotation`, through the
+allowed list loop in `src/ui/ui.js`, so a pilot parked on Copper Gypsy Run
+comes back to rotation rather than to a 404.
+
+### What arrived
+
+Five mp3s, 48 kHz stereo at 177 to 195 kbps with cover art attached, which
+is the shape the first crate arrived in, so `scripts/music.js` took them
+without a change:
+
+```
+  driving-tension      Driving Tension       214 s   -14.3 LUFS
+  gritty-breakbeats    Gritty Breakbeats     199 s   -13.5 LUFS
+  hypnotic-acid-loop   Hypnotic Acid Loop    272 s   -13.4 LUFS
+  prop-wash            Prop Wash             265 s   -13.8 LUFS
+  ground-effect        Ground Effect         245 s   -13.7 LUFS
+```
+
+They sit mid crate against the flight records' -12.9 to -17.1, so nothing in
+the mix moves and `MUSIC_BUS` is left alone. Encoded one at a time with
+`--only`, because the nine surviving flight masters and the two menu masters
+are not in this container and a bare run would have failed on eleven missing
+masters before reaching the five that are here. The LUFS and duration gates
+passed on all ten outputs and no true peak note printed. The flight crate is
+fourteen records now, up from twelve.
+
+`assets/music-src` is gitignored, so the five masters are not committed and
+do not come back from this commit. `scripts/music.js` says so in its header
+now, alongside the note that already said it about the menu pair.
+
+### Two of them arrived untitled, and the name was not ours to invent
+
+Three carried a title in ID3. Two carried `Untitled`, and an id here is half
+a URL and a user-facing label, so a guess would have been expensive to take
+back. They were measured instead, and the pilot picked from the measurement:
+
+```
+  41df83c0   4:25   144 bpm, midrange forward, crest 14.7 dB   -> Prop Wash
+  4beac8a5   4:05   117 bpm, bass forward,     crest 12.9 dB   -> Ground Effect
+```
+
+Envelope autocorrelation for the tempo and band RMS for the balance, in a
+scratch script that is not committed because it answered one question once.
+
+### MUSIC_REV is NOT bumped, on purpose
+
+`src/render/tracks.js` shouts RE-ENCODE THE CRATE, BUMP THIS, and the
+question came up, so the answer is written into the comment rather than left
+for the next person to re-derive. Adding a record and dropping a record are
+not a re-encode. A new id is a URL nobody has cached and a dropped id is a
+URL nothing asks for any more, so neither can go stale behind the year of
+`immutable` that `render.yaml` serves. The eleven files that stayed were not
+re-encoded and are byte identical. Bumping would have charged every
+returning visitor a re-fetch of forty megabytes of audio that did not
+change. The bump is for bytes moving under a filename that stayed put, and
+the comment now says that in as many words.
+
+### Two stale numbers fixed while in there
+
+The header of `src/render/tracks.js` said Opus was "about 1.9 MB a track,
+the mp3 fallback about 2.9 MB". Measured across the crate as it stood before
+this change that was already 2.6 and 3.1, so the figure was wrong before
+today and is not made wrong by today. It now reads 2.6 and 3.1 against
+masters of 4.2 to 5.9 MB.
+
+Two comments cited records that no longer exist, `'Copper Gypsy Run take
+2.mp3'` as the worked example for the slug matcher in `scripts/music.js` and
+the same title in the crate's percent encoding note and in the menu bed's
+naming note. All three now cite `Neon Gate take 2`, which is still in the
+crate and is still a filename with a space in it, so the examples still make
+their point.
+
+### What was run
+
+`npm run music:selftest` (all passed), `npm run lint:shell` (PASS, and it is
+the check that walks the Music track list the crate feeds), `npm run
+lint:quality` (56 of 56), `npm run lint:nouns` (PASS). A crate integrity
+check written for this turn: every id in `TRACKS` and `MENU_TRACKS` has both
+a `.webm` and a `.mp3`, and `assets/music` holds no file no id asks for.
+Sixteen ids, zero missing, zero orphans.
+
+`npm run verify` was NOT run and would have said nothing. Nothing in
+`src/native/`, `patches/`, `vendor/` or the build moved, `dist/sim.wasm` is
+untouched, and the crate is not in the module graph: nothing imports a track
+and no track imports anything. `npm run lint:catalog` was not run for the
+same reason as the last turn, `vendor/betaflight` is empty in this
+container. Nobody has heard these five tracks in the shell yet, over the
+motors and the wind, which is the thing no check here can see.

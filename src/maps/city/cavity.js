@@ -961,10 +961,11 @@ export function scanCavities(world, colliders, opts = {}) {
    */
   const fitSeen = [];
   for (const pt of (opts.fit || [])) {
-    const list = drawnBoxes(world.root, { maxFootprint: 1400 });
+    const list = drawnBoxes(world.root, { maxFootprint: 1400, skip: opts.fitSkip || null });
     const rows = [];
     for (const b of list) {
-      if (pt[0] < b.x0 || pt[0] > b.x1 || pt[1] < b.z0 || pt[1] > b.z1) {
+      const r = pt[2] ?? 0;
+      if (pt[0] < b.x0 - r || pt[0] > b.x1 + r || pt[1] < b.z0 - r || pt[1] > b.z1 + r) {
         continue;
       }
       rows.push({
@@ -974,7 +975,7 @@ export function scanCavities(world, colliders, opts = {}) {
       });
     }
     rows.sort((a, b) => b.y[1] - a.y[1]);
-    fitSeen.push({ at: pt, n: rows.length, rows: rows.slice(0, 14) });
+    fitSeen.push({ at: pt, n: rows.length, rows: rows.slice(0, 18) });
   }
 
   /*

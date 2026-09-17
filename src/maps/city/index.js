@@ -616,6 +616,24 @@ const COVER_MIN_FILL = 0.4;
  * than a list because those two places author it, and a solid mesh there is
  * forbidden from taking the name. See ./places/kit.js. */
 const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink|overbridgeCage|schoolBell|openFrame|temizuya|haiden|chainLink|walkup|garageHouse|Trim/;
+/*
+ * AND GEOMETRY THAT IS NOT WHERE IT IS DRAWN, WHICH IS A DIFFERENT THING.
+ *
+ * The fit hugs a rectangle onto the drawing standing in it, and that is only
+ * meaningful for drawing that stays there. The train does not: it is built
+ * parked in the station and then circles the planet, with its own moving
+ * colliders that follow it. The fit read its parked geometry anyway, and the
+ * station platform's rectangle -- authored to the 0.98 m deck, bulky, and so
+ * allowed to reach for a roof -- found a train roof at 3.74 m and became a
+ * solid block 22 by 3.9 m from the deck to above head height. 94 m3 of it,
+ * standing under the canopy and along the whole platform, in the one place on
+ * the map a pilot has an obvious line: through the station.
+ *
+ * Separate from COVER_SOFT because the reason is separate. A torii is skipped
+ * for being see-through where it stands; the train is skipped for not
+ * standing anywhere.
+ */
+const FIT_MOVING = /^train$/;
 
 /*
  * One object's world extent, skipping foliage, or null if it draws nothing.
@@ -798,6 +816,29 @@ const FIT_TIGHT = 0.55;
  */
 const ROOF_LIFT_MIN_FOOT = 1.0;
 const ROOF_LIFT_MAX = 2.8;
+/*
+ * And the lift only reaches what is CONTINUOUS with the rectangle's own top,
+ * not the first thing it finds above it.
+ *
+ * A gable's roof slab starts at the wall plate the rectangle was authored to,
+ * which is why raising the rectangle finds it. A station canopy starts 2.5 m
+ * over the platform on four posts, and the platform's rectangle, raised by
+ * 2.8 m, found that too: the run's top became the canopy roof and 94 m3 of the
+ * air a pilot flies under it became solid, along the whole platform, in the
+ * one place on the map with an obvious line through it. Same shape of mistake
+ * for a verandah over a forecourt or a bus shelter over a pad.
+ *
+ * A gap test is not enough, and the station is why: a 0.08 m handrail runs the
+ * whole back edge of the platform from the deck to 2.18 m, so SOMETHING does
+ * start at the authored top, and the lift would follow that and then jump to
+ * the canopy anyway. So the lift band is sliced and a slab keeps only the
+ * CONTIGUOUS run of occupied slices starting at its own top: the handrail
+ * lifts the slab to 2.18, the canopy does not lift it at all, and the second
+ * cut then puts the handrail back where it is in z.
+ *
+ * 32 slices over ROOF_LIFT_MAX is 87 mm, so a gap under that is not a gap.
+ */
+const ROOF_LIFT_SLICES = 32;
 /* Before a run's floor is lifted off the ground, the space underneath has to
  * be worth flying through. */
 const RAISE_MIN_CLEAR = 0.16;
@@ -877,8 +918,11 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
   }
   const step = span / n;
   const {
-    hi, lo, s0, s1, l0, l1,
+    hi, lo, s0, s1, l0, l1, lift,
   } = scratch;
+  const yTop = rect.yTop === undefined ? Infinity : rect.yTop;
+  const liftBand = Number.isFinite(yTop) ? rect.y1 - yTop : 0;
+  const sliceH = liftBand > 0 ? liftBand / ROOF_LIFT_SLICES : 0;
   for (let k = 0; k < n; k += 1) {
     hi[k] = -Infinity;
     lo[k] = Infinity;
@@ -886,6 +930,7 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
     s1[k] = -Infinity;
     l0[k] = Infinity;
     l1[k] = -Infinity;
+    lift[k] = 0;
   }
   let any = false;
   for (let idx = 0; idx < count; idx += 1) {
@@ -922,6 +967,18 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
       if (gy1 > hi[k]) {
         hi[k] = gy1;
       }
+      /* Which slices of the lift band this box occupies, so the lift can
+       * follow what is continuous with the rectangle's top and stop at a
+       * gap. See ROOF_LIFT_SLICES. */
+      if (sliceH > 0 && gy1 > yTop) {
+        let q0 = Math.floor((Math.max(gy0, yTop) - yTop) / sliceH);
+        let q1 = Math.ceil((gy1 - yTop) / sliceH) - 1;
+        if (q0 < 0) { q0 = 0; }
+        if (q1 > ROOF_LIFT_SLICES - 1) { q1 = ROOF_LIFT_SLICES - 1; }
+        for (let q = q0; q <= q1; q += 1) {
+          lift[k] |= (1 << q);
+        }
+      }
       if (gy0 < lo[k]) {
         lo[k] = gy0;
       }
@@ -955,6 +1012,34 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
   }
   if (!any) {
     return null;
+  }
+
+  /*
+   * The roof lift, taken back wherever what is up there is not on the roof.
+   *
+   * See ROOF_LIFT_SLICES: the rectangle was allowed to reach ROOF_LIFT_MAX over
+   * its authored top so a gable sitting on the wall plate would be found. A
+   * slab whose only geometry up there STARTS clear of the authored top has a
+   * canopy over it, not a roof on it, and keeping that height is the bus
+   * shelter complaint at building scale.
+   */
+  if (sliceH > 0) {
+    for (let k = 0; k < n; k += 1) {
+      if (!(hi[k] > yTop)) {
+        continue;
+      }
+      let run = 0;
+      while (run < ROOF_LIFT_SLICES && (lift[k] & (1 << run)) !== 0) {
+        run += 1;
+      }
+      const cap = yTop + run * sliceH;
+      if (hi[k] > cap) {
+        hi[k] = cap;
+      }
+      if (lo[k] > hi[k]) {
+        lo[k] = hi[k];
+      }
+    }
   }
 
   /* Occupancy, measured against the ground rather than against the box's own
@@ -1165,6 +1250,9 @@ function fitRect(c, y0, y1, boxes, grid, floorAt, scratch, { roof = true } = {})
   const bulky = roof && Math.min(c.x1 - c.x0, c.z1 - c.z0) > ROOF_LIFT_MIN_FOOT;
   const rect = {
     x0: c.x0, y0, z0: c.z0, x1: c.x1, y1: bulky ? y1 + ROOF_LIFT_MAX : y1, z1: c.z1,
+    /* The authored top, so the cut can tell a roof sitting on the rectangle
+     * from a canopy standing over it. See ROOF_LIFT_SLICES. */
+    yTop: bulky ? y1 : Infinity,
   };
   /*
    * WHICH WAY TO CUT, MEASURED RATHER THAN GUESSED. The first version cut the
@@ -1221,7 +1309,7 @@ function buildColliders(world) {
   const fitStart = (typeof performance !== 'undefined' ? performance.now() : 0);
   const boxes = drawnBoxes(world.root, {
     maxFootprint: FIT_MAX_FOOTPRINT,
-    skip: (o) => COVER_SOFT.test(o.name || ''),
+    skip: (o) => COVER_SOFT.test(o.name || '') || FIT_MOVING.test(o.name || ''),
   });
   const grid = new Map();
   for (let i = 0; i < boxes.length; i += 1) {
@@ -1256,6 +1344,7 @@ function buildColliders(world) {
     l0: new Float64Array(SLAB_MAX),
     l1: new Float64Array(SLAB_MAX),
     floor: new Float64Array(SLAB_MAX),
+    lift: new Int32Array(SLAB_MAX),
     occ: new Uint8Array(SLAB_MAX),
     seen: new Int32Array(boxes.length),
     mark: 0,
@@ -1782,7 +1871,12 @@ export async function buildMap(shell, onProgress, options) {
     ? (await import('./cavity.js')).scanCavities(
       world,
       colliders,
-      typeof globalThis.__CITY_CAVITY === 'object' ? globalThis.__CITY_CAVITY : {},
+      {
+        ...(typeof globalThis.__CITY_CAVITY === 'object' ? globalThis.__CITY_CAVITY : {}),
+        /* So `--fit` shows what the FIT sees, not what is drawn: a named
+         * frame is invisible to it and that is usually the answer. */
+        fitSkip: (o) => COVER_SOFT.test(o.name || '') || FIT_MOVING.test(o.name || ''),
+      },
     )
     : null;
 

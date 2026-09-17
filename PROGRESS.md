@@ -36651,3 +36651,31 @@ cavity scan has its own rasteriser and is the number to watch.
 
 `node scripts/attract-check.js`: city through 0/320. The title camera does
 not clip the new channel or the bridge.
+
+### The station, which was a train and a handrail
+
+111 m3, the whole platform from the deck to above head height, in the one
+place on the map with an obvious line through it.
+
+Two causes, stacked. The fit read the TRAIN: it is built parked in the
+station and then circles the planet on its own moving colliders, and the
+platform's rectangle -- authored to the 0.98 m deck, bulky, and so allowed
+to reach ROOF_LIFT_MAX for a roof -- found a train roof at 3.74 m. The fit
+hugs a rectangle onto the drawing standing in it, which is only meaningful
+for drawing that stays there, so `train` is skipped by name. Separate test
+from COVER_SOFT because the reason is separate: a torii is skipped for
+being see-through where it stands, the train for not standing anywhere.
+
+With the train gone the canopy took over, 2.5 m up on four posts. The roof
+lift had no idea whether what it found was ON the rectangle or OVER it. A
+gap test is not enough and the station is why: a 0.08 m handrail runs the
+whole back edge from the deck to 2.18 m, so something does start at the
+authored top and the lift would follow that and jump to the canopy anyway.
+The lift band is sliced now, 32 slices over 2.8 m, and a slab keeps only the
+CONTIGUOUS run of occupied slices from its own top. The handrail lifts the
+slab to 2.18, the canopy does not lift it at all, and the second cut puts
+the handrail back where it is in z.
+
+Station 111 m3 to 33.8. Whole town 1282 m3 to 1166 in 178 pockets.
+collider-audit holes 26.3 percent uncovered, mean cover 0.706, against
+26.3 and 0.707 before: nothing opened up. PHANTOM 2772 to 2609.

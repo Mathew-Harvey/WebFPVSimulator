@@ -883,9 +883,48 @@ function buildOutfall(ctx) {
  * Builder.
  * ------------------------------------------------------------------ */
 
+/**
+ * **The water as a surface the height query answers with.**
+ *
+ * `buildBarrier` above says the honest thing about this district: inside the
+ * lake `hillAt` is the BED, so without something in the way you walk out into
+ * the middle with the water plane at your knees and, because the surface is
+ * `flat()` and single sided, invisible from below.  A barrier fixes that for
+ * somebody who has to WALK in.  A quad flies over it, and 13,432 m3 of this
+ * map -- measured by src/maps/city/cavity.js, by far its largest finding of
+ * the kind -- was space a craft could only reach by going through the drawn
+ * water and could then only see the sky through.
+ *
+ * A platform whose `at(x, z)` is the water level inside the polygon and
+ * nothing outside it.  `heightAt` takes the max, so where the bed stands above
+ * the level the bed still wins and the shallows are still walkable; where it
+ * does not, a craft rests ON the water, which is what the 用水路 now does at the
+ * other end of the map and for the same reason.  `solid: false` because a slab
+ * under a lake is not a thing: the surface is the surface.
+ */
+function buildWaterFloor(ctx) {
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  for (const p of SHORE) {
+    if (p.x < x0) x0 = p.x;
+    if (p.x > x1) x1 = p.x;
+    if (p.z < z0) z0 = p.z;
+    if (p.z > z1) z1 = p.z;
+  }
+  ctx.platform({
+    x0: x0 - 1, x1: x1 + 1, z0: z0 - 1, z1: z1 + 1,
+    top: WY,
+    solid: false,
+    at: (x, z) => (inLakePoly(x, z) ? WY : -Infinity),
+  });
+}
+
 export function buildLake(ctx) {
   const rng = rngKit(70211);
   buildSurface(ctx);
+  buildWaterFloor(ctx);
   buildEchoes(ctx, rng);
   const update = buildMotion(ctx, rng);
   const reeds = buildReeds(ctx, rng);

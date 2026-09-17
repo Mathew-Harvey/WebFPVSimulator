@@ -121,6 +121,17 @@ const TERRAIN_TRI_AREA = 0.5;
  */
 const GROUND_NAME = /^tunnelCap/;
 /*
+ * What a craft may fly THROUGH without the second measurement calling it a
+ * defect. The city's own COVER_SOFT arrives as `opts.softName` from
+ * src/maps/city/index.js, which is the list that module already maintains for
+ * foliage, cloth and see-through frames; these are the two it does not carry
+ * because the fit has no reason to. Overhead wire is drawn as a solid tube and
+ * is 12 mm of steel; a craft that meets one is in trouble, but it is not
+ * INSIDE anything, and a catenary that circles the planet otherwise connects
+ * every pocket in the town into one 130,000 m3 finding.
+ */
+const SOFT_EXTRA = /wire|Wire|catenary/;
+/*
  * How far the contact floor may stand over the drawn ground and still be
  * counted as the ground, WHERE THE GROUND IS DRAWN AT ALL.
  *
@@ -220,7 +231,7 @@ function setBit(bits, base, iy) {
  *   and it is what makes a baked 207 m mesh describe its own two walls
  *   instead of the space between them.
  */
-function rasterDrawn(root, g, mark, field, log) {
+function rasterDrawn(root, g, mark, field, log, soft = null, want = 'all') {
   let tris = 0;
   let inst = 0;
   const ax = [0, 0, 0];
@@ -229,6 +240,15 @@ function rasterDrawn(root, g, mark, field, log) {
   root.traverse((o) => {
     if (!o.isMesh || !o.geometry || o.visible === false) {
       return;
+    }
+    if (soft !== null && want !== 'all') {
+      let isSoft = false;
+      for (let q = o; q && q !== root.parent; q = q.parent) {
+        if (soft(q)) { isSoft = true; break; }
+      }
+      if (isSoft !== (want === 'soft')) {
+        return;
+      }
     }
     const geo = o.geometry;
     if (!geo.boundingBox) {
@@ -475,6 +495,7 @@ export function scanCavities(world, colliders, opts = {}) {
   const drawn = new Uint32Array(g.nx * g.nz * wy);
   const solid = new Uint32Array(g.nx * g.nz * wy);
   const air = new Uint32Array(g.nx * g.nz * wy);
+  const reach = new Uint32Array(g.nx * g.nz * wy);
   const seen = new Uint32Array(g.nx * g.nz * wy);
 
   const colBase = (ix, iz) => (ix * g.nz + iz) * wy;
@@ -482,8 +503,119 @@ export function scanCavities(world, colliders, opts = {}) {
   const clampIy = (v) => (v < 0 ? 0 : (v > g.ny ? g.ny : v));
 
   /* ---------------------------------------------------------------- *
-   * DRAWN, and the ground under it.
+   * THE CONTACT FLOOR, once, because everything below needs it.
+   *
+   * `heightAt(x, z, -1000)` is the bare ground: fromY that far below puts
+   * every platform out of reach, so what comes back is the graded surface
+   * with the cuts applied and nothing else. That is the number the canal's
+   * `ctx.cut` writes, and the number a craft under the road bridge is
+   * measured against.
    * ---------------------------------------------------------------- */
+  const bareField = new Float32Array(g.nx * g.nz);
+  for (let ix = 0; ix < g.nx; ix += 1) {
+    const x = g.x0 + (ix + 0.5) * CELL;
+    for (let iz = 0; iz < g.nz; iz += 1) {
+      const z = g.z0 + (iz + 0.5) * CELL;
+      const v = world.heightAt(x, z, -1000);
+      bareField[ix * g.nz + iz] = Number.isFinite(v) ? v : -Infinity;
+    }
+  }
+
+  /* ---------------------------------------------------------------- *
+   * DRAWN, and the ground under it, PAINTED TWICE.
+   *
+   * The two measurements want two pictures. The first, air the town draws
+   * and will not let you fly through, wants everything a pilot can see,
+   * blossom and wire included. The second, where a craft can go that the
+   * drawing says is inside something, must not count either, or a catenary
+   * circling the planet joins every pocket in the town into one finding of
+   * 130,000 m3. So this is a function, run once with the hard half and once
+   * with all of it, and the grid is reused rather than doubled: at half a
+   * metre over the whole town a field is 66 MB.
+   * ---------------------------------------------------------------- */
+  /*
+   * The band a platform makes solid, walked once and used by both fields.
+   *
+   * `heightAt` only offers a platform to a query within PLATFORM_REACH of it,
+   * so a deck is a floor from 0.15 m under its own top and nothing at all
+   * below that: that is what makes the overbridge walk-through underneath. In
+   * a half metre grid 0.15 m usually falls between two cell centres and marks
+   * NOTHING, and then the reach flood walks straight down through the deck
+   * and calls the room under it reachable. So the band is at least one cell,
+   * and the same cells are marked DRAWN as well as solid: a platform is
+   * authored to be a surface somebody stands on, and there is a deck, a road
+   * or a pad drawn at every one of them.
+   */
+  const plats = world.platforms || [];
+  const platGrid = new Map();
+  for (let i = 0; i < plats.length; i += 1) {
+    const p = plats[i];
+    const a0 = Math.floor(p.x0 / 8);
+    const a1 = Math.floor(p.x1 / 8);
+    const b0 = Math.floor(p.z0 / 8);
+    const b1 = Math.floor(p.z1 / 8);
+    for (let a = a0; a <= a1; a += 1) {
+      for (let b = b0; b <= b1; b += 1) {
+        const k = `${a},${b}`;
+        const bucket = platGrid.get(k);
+        if (bucket === undefined) {
+          platGrid.set(k, [i]);
+        } else {
+          bucket.push(i);
+        }
+      }
+    }
+  }
+  const eachPlatformBand = (cb) => {
+    for (let ix = 0; ix < g.nx; ix += 1) {
+      const x = g.x0 + (ix + 0.5) * CELL;
+      for (let iz = 0; iz < g.nz; iz += 1) {
+        const bucket = platGrid.get(`${Math.floor(x / 8)},${Math.floor((g.z0 + (iz + 0.5) * CELL) / 8)}`);
+        if (bucket === undefined) {
+          continue;
+        }
+        const z = g.z0 + (iz + 0.5) * CELL;
+        const base = colBase(ix, iz);
+        const bare = bareField[ix * g.nz + iz];
+        for (let k = 0; k < bucket.length; k += 1) {
+          const p = plats[bucket[k]];
+          if (x <= p.x0 || x >= p.x1 || z <= p.z0 || z >= p.z1) {
+            continue;
+          }
+          /* A platform may name a surface rather than a height. See
+           * world/index.js heightAt. */
+          const ptop = p.at === undefined ? p.top : p.at(x, z);
+          if (!(ptop > bare)) {
+            continue;
+          }
+          /*
+           * The band reaches down to the LOWEST of this column and its four
+           * neighbours, and that is what makes a sloped surface watertight in
+           * a voxel grid. A knoll over a tunnel bore rises 1.74 m per metre,
+           * so between two columns half a metre apart its top steps most of
+           * two cells; a band one cell thick then has a hole beside every
+           * tread and the reach flood pours through it into a mountain that
+           * a craft cannot actually enter. The height query has no steps.
+           */
+          let low = ptop;
+          if (p.at !== undefined) {
+            const n0 = p.at(x - CELL, z);
+            const n1 = p.at(x + CELL, z);
+            const n2 = p.at(x, z - CELL);
+            const n3 = p.at(x, z + CELL);
+            if (n0 > bare && n0 < low) { low = n0; }
+            if (n1 > bare && n1 < low) { low = n1; }
+            if (n2 > bare && n2 < low) { low = n2; }
+            if (n3 > bare && n3 < low) { low = n3; }
+          }
+          const a0 = clampIy(Math.floor((low - (PLATFORM_REACH - SURFACE_BIAS) - g.y0) / CELL + 0.5));
+          const a1 = clampIy(Math.max(a0 + 1, Math.floor((ptop - g.y0) / CELL - 0.5) + 1));
+          cb(base, a0, a1);
+        }
+      }
+    }
+  };
+
   const markDrawn = (mx0, my0, mz0, mx1, my1, mz1) => {
     let ix0 = Math.floor((mx0 - TOL - g.x0) / CELL + 0.5);
     let ix1 = Math.floor((mx1 + TOL - g.x0) / CELL - 0.5);
@@ -508,46 +640,43 @@ export function scanCavities(world, colliders, opts = {}) {
     }
   };
   const terrainLog = [];
-  const ground = rasterDrawn(
-    world.root,
-    g,
-    markDrawn,
-    new Float32Array(g.nx * g.nz).fill(-Infinity),
-    terrainLog,
-  );
-
-  /* ---------------------------------------------------------------- *
-   * THE CONTACT FLOOR, once, because both halves need it.
-   *
-   * `heightAt(x, z, -1000)` is the bare ground: fromY that far below puts
-   * every platform out of reach, so what comes back is the graded surface
-   * with the cuts applied and nothing else. That is the number the canal's
-   * `ctx.cut` writes, and the number a craft under the road bridge is
-   * measured against.
-   * ---------------------------------------------------------------- */
-  const bareField = new Float32Array(g.nx * g.nz);
-  for (let ix = 0; ix < g.nx; ix += 1) {
-    const x = g.x0 + (ix + 0.5) * CELL;
-    for (let iz = 0; iz < g.nz; iz += 1) {
-      const z = g.z0 + (iz + 0.5) * CELL;
-      const v = world.heightAt(x, z, -1000);
-      bareField[ix * g.nz + iz] = Number.isFinite(v) ? v : -Infinity;
-    }
-  }
-
-  /* ---------------------------------------------------------------- *
-   * WHICH BLANK COLUMNS ARE THE WORLD'S EDGE AND WHICH ARE AN EXCAVATION.
-   *
-   * Both draw no ground, and they want opposite answers. Out past the last
-   * terrain tile the floor is the ground and the rock under it is nobody's
-   * complaint; inside the canal the floor is a metre over the drawn bed and
-   * that is the complaint. A column of blank ground reachable from the edge
-   * of the scan without crossing drawn ground is the world's edge. A blank
-   * region ringed by ground is a hole somebody cut, and it is exactly where
-   * a pilot looks for a line.
-   * ---------------------------------------------------------------- */
+  const softTest = (o) => {
+    const nm = o.name || '';
+    return SOFT_EXTRA.test(nm) || (opts.softName ? opts.softName(o) : false);
+  };
   const outside = new Uint8Array(g.nx * g.nz);
-  {
+  let ground = null;
+  const stats = {
+    groundCols: 0, noTerrainCols: 0, liftedCols: 0, maxLift: 0,
+  };
+  const paintDrawn = (want) => {
+    drawn.fill(0);
+    outside.fill(0);
+    stats.groundCols = 0;
+    stats.noTerrainCols = 0;
+    stats.liftedCols = 0;
+    stats.maxLift = 0;
+    ground = rasterDrawn(
+      world.root,
+      g,
+      markDrawn,
+      new Float32Array(g.nx * g.nz).fill(-Infinity),
+      want === 'all' ? terrainLog : null,
+      softTest,
+      want,
+    );
+
+    /*
+     * WHICH BLANK COLUMNS ARE THE WORLD'S EDGE AND WHICH ARE AN EXCAVATION.
+     *
+     * Both draw no ground, and they want opposite answers. Out past the last
+     * terrain tile the floor is the ground and the rock under it is nobody's
+     * complaint; inside the canal the floor is a metre over the drawn bed and
+     * that is the complaint. A column of blank ground reachable from the edge
+     * of the scan without crossing drawn ground is the world's edge. A blank
+     * region ringed by ground is a hole somebody cut, and it is exactly where
+     * a pilot looks for a line.
+     */
     const stack = [];
     const seed = (ix, iz) => {
       const k = ix * g.nz + iz;
@@ -574,57 +703,55 @@ export function scanCavities(world, colliders, opts = {}) {
       if (iz > 0) { seed(ix, iz - 1); }
       if (iz < g.nz - 1) { seed(ix, iz + 1); }
     }
-  }
 
-  /* ---------------------------------------------------------------- *
-   * The ground, and everything under it.
-   *
-   * Where the terrain draws a surface, that surface is the answer, lifted to
-   * the contact floor wherever the floor is higher. See FLOOR_SLACK above
-   * for why that lift is unconditional.
-   *
-   * Where the terrain draws nothing the answer depends on which kind of
-   * blank it is. At the world's edge the floor answers and the rock under it
-   * is not reported. Inside an excavation the answer is the underside of the
-   * lowest thing that IS drawn in the column: in the channel that is the
-   * bed, half a metre under the water, so the metre and a half of air over
-   * it stays a question this scan is allowed to ask.
-   * ---------------------------------------------------------------- */
-  let groundCols = 0;
-  let noTerrainCols = 0;
-  let liftedCols = 0;
-  let maxLift = 0;
-  for (let ix = 0; ix < g.nx; ix += 1) {
-    for (let iz = 0; iz < g.nz; iz += 1) {
-      const base = colBase(ix, iz);
-      const h = ground[ix * g.nz + iz];
-      const bare = bareField[ix * g.nz + iz];
-      if (Number.isFinite(h)) {
-        groundCols += 1;
-        let top = h;
-        if (Number.isFinite(bare) && bare > h) {
-          top = bare;
-          if (bare - h > maxLift) {
-            maxLift = bare - h;
+    /*
+     * The ground, and everything under it.
+     *
+     * Where the terrain draws a surface, that surface is the answer, lifted
+     * to the contact floor wherever the floor is higher. See FLOOR_SLACK
+     * above for why that lift is unconditional.
+     *
+     * Where the terrain draws nothing the answer depends on which kind of
+     * blank it is. At the world's edge the floor answers and the rock under
+     * it is not reported. Inside an excavation the answer is the underside of
+     * the lowest thing that IS drawn in the column: in the channel that is
+     * the bed, half a metre under the water, so the metre and a half of air
+     * over it stays a question this scan is allowed to ask.
+     */
+    for (let ix = 0; ix < g.nx; ix += 1) {
+      for (let iz = 0; iz < g.nz; iz += 1) {
+        const base = colBase(ix, iz);
+        const h = ground[ix * g.nz + iz];
+        const bare = bareField[ix * g.nz + iz];
+        if (Number.isFinite(h)) {
+          stats.groundCols += 1;
+          let top = h;
+          if (Number.isFinite(bare) && bare > h) {
+            top = bare;
+            if (bare - h > stats.maxLift) {
+              stats.maxLift = bare - h;
+            }
+            stats.liftedCols += 1;
           }
-          liftedCols += 1;
+          setRun(drawn, base, 0, clampIy(iyOf(top + TOL) + 1));
+          continue;
         }
-        setRun(drawn, base, 0, clampIy(iyOf(top + TOL) + 1));
-        continue;
-      }
-      noTerrainCols += 1;
-      let top = Number.isFinite(bare) ? clampIy(iyOf(bare) + 1) : 0;
-      if (!outside[ix * g.nz + iz]) {
-        for (let iy = 0; iy < top; iy += 1) {
-          if (getBit(drawn, base, iy)) {
-            top = iy;
-            break;
+        stats.noTerrainCols += 1;
+        let top = Number.isFinite(bare) ? clampIy(iyOf(bare) + 1) : 0;
+        if (!outside[ix * g.nz + iz]) {
+          for (let iy = 0; iy < top; iy += 1) {
+            if (getBit(drawn, base, iy)) {
+              top = iy;
+              break;
+            }
           }
         }
+        setRun(drawn, base, 0, top);
       }
-      setRun(drawn, base, 0, top);
     }
-  }
+    eachPlatformBand((base, a0, a1) => setRun(drawn, base, a0, a1));
+  };
+  paintDrawn('hard');
 
   /* ---------------------------------------------------------------- *
    * SOLID, part one: every collider box.
@@ -666,31 +793,9 @@ export function scanCavities(world, colliders, opts = {}) {
    * own top, because `heightAt` only offers a platform within PLATFORM_REACH
    * of the query height, and that band is 0.15 m rather than 0.55.
    * ---------------------------------------------------------------- */
-  const platGrid = new Map();
-  const plats = world.platforms || [];
-  for (let i = 0; i < plats.length; i += 1) {
-    const p = plats[i];
-    const a0 = Math.floor(p.x0 / 8);
-    const a1 = Math.floor(p.x1 / 8);
-    const b0 = Math.floor(p.z0 / 8);
-    const b1 = Math.floor(p.z1 / 8);
-    for (let a = a0; a <= a1; a += 1) {
-      for (let b = b0; b <= b1; b += 1) {
-        const k = `${a},${b}`;
-        const bucket = platGrid.get(k);
-        if (bucket === undefined) {
-          platGrid.set(k, [i]);
-        } else {
-          bucket.push(i);
-        }
-      }
-    }
-  }
   let floorCells = 0;
   for (let ix = 0; ix < g.nx; ix += 1) {
-    const x = g.x0 + (ix + 0.5) * CELL;
     for (let iz = 0; iz < g.nz; iz += 1) {
-      const z = g.z0 + (iz + 0.5) * CELL;
       const base = colBase(ix, iz);
       const bare = bareField[ix * g.nz + iz];
       if (Number.isFinite(bare)) {
@@ -698,27 +803,9 @@ export function scanCavities(world, colliders, opts = {}) {
         setRun(solid, base, 0, top);
         floorCells += top;
       }
-      const bucket = platGrid.get(`${Math.floor(x / 8)},${Math.floor(z / 8)}`);
-      if (bucket === undefined) {
-        continue;
-      }
-      for (let k = 0; k < bucket.length; k += 1) {
-        const p = plats[bucket[k]];
-        if (x <= p.x0 || x >= p.x1 || z <= p.z0 || z >= p.z1) {
-          continue;
-        }
-        /* A platform may name a surface rather than a height. See
-         * world/index.js heightAt. */
-        const ptop = p.at === undefined ? p.top : p.at(x, z);
-        if (!(ptop > bare)) {
-          continue;
-        }
-        const a0 = clampIy(Math.floor((ptop - (PLATFORM_REACH - SURFACE_BIAS) - g.y0) / CELL + 0.5));
-        const a1 = clampIy(Math.floor((ptop - g.y0) / CELL - 0.5) + 1);
-        setRun(solid, base, a0, a1);
-      }
     }
   }
+  eachPlatformBand((base, a0, a1) => setRun(solid, base, a0, a1));
 
   /* ---------------------------------------------------------------- *
    * The free air, flooded from the sky and from the edges of the grid.
@@ -740,44 +827,100 @@ export function scanCavities(world, colliders, opts = {}) {
     setBit(air, base, iy);
     q.push(pack(ix, iy, iz));
   };
+  /* Run twice: once against the hard drawing, for the measurement below,
+   * and again after the soft meshes are added, for the one after that. */
+  const floodAir = () => {
+    for (let ix = 0; ix < g.nx; ix += 1) {
+      for (let iz = 0; iz < g.nz; iz += 1) {
+        pushAir(ix, g.ny - 1, iz);
+      }
+    }
+    for (let iy = 0; iy < g.ny; iy += 1) {
+      for (let ix = 0; ix < g.nx; ix += 1) {
+        pushAir(ix, iy, 0);
+        pushAir(ix, iy, g.nz - 1);
+      }
+      for (let iz = 0; iz < g.nz; iz += 1) {
+        pushAir(0, iy, iz);
+        pushAir(g.nx - 1, iy, iz);
+      }
+    }
+    let n2 = 0;
+    while (q.size > 0) {
+      const v = q.pop();
+      n2 += 1;
+      const iy = v % g.ny;
+      const rest = (v - iy) / g.ny;
+      const iz = rest % g.nz;
+      const ix = (rest - iz) / g.nz;
+      if (ix > 0) { pushAir(ix - 1, iy, iz); }
+      if (ix < g.nx - 1) { pushAir(ix + 1, iy, iz); }
+      if (iz > 0) { pushAir(ix, iy, iz - 1); }
+      if (iz < g.nz - 1) { pushAir(ix, iy, iz + 1); }
+      if (iy > 0) { pushAir(ix, iy - 1, iz); }
+      if (iy < g.ny - 1) { pushAir(ix, iy + 1, iz); }
+    }
+    return n2;
+  };
+  floodAir();
+  let airCells = 0;
+
+  /* ---------------------------------------------------------------- *
+   * AND THE OTHER DIRECTION: WHERE THE GAME LETS A CRAFT GO AND THE
+   * DRAWING SAYS IT IS INSIDE SOMETHING.
+   *
+   * The flood above is stopped by the DRAWING, which is what a pilot can
+   * see. The game is stopped only by what is SOLID. Flood a second time
+   * through everything that is not solid, ignoring the drawing, and the
+   * difference between the two answers is exactly the set of places a craft
+   * can reach only by passing through something drawn.
+   *
+   * That is the failure the other way round from an invisible wall, and it
+   * is the worse one: a craft inside a mountain, a wall or the ground is
+   * stuck, and the pilot has no way to read the world that would have
+   * predicted it. Sakura City's two tunnels were both hollow when this was
+   * written -- 36 by 39 m of mountain with a 17 m void under a drawn cap and
+   * no collider anywhere in it.
+   * ---------------------------------------------------------------- */
+  const pushReach = (ix, iy, iz) => {
+    const base = colBase(ix, iz);
+    if (getBit(reach, base, iy)) {
+      return;
+    }
+    if (getBit(solid, base, iy)) {
+      return;
+    }
+    setBit(reach, base, iy);
+    q.push(pack(ix, iy, iz));
+  };
   for (let ix = 0; ix < g.nx; ix += 1) {
     for (let iz = 0; iz < g.nz; iz += 1) {
-      pushAir(ix, g.ny - 1, iz);
+      pushReach(ix, g.ny - 1, iz);
     }
   }
   for (let iy = 0; iy < g.ny; iy += 1) {
     for (let ix = 0; ix < g.nx; ix += 1) {
-      pushAir(ix, iy, 0);
-      pushAir(ix, iy, g.nz - 1);
+      pushReach(ix, iy, 0);
+      pushReach(ix, iy, g.nz - 1);
     }
     for (let iz = 0; iz < g.nz; iz += 1) {
-      pushAir(0, iy, iz);
-      pushAir(g.nx - 1, iy, iz);
+      pushReach(0, iy, iz);
+      pushReach(g.nx - 1, iy, iz);
     }
   }
-  let airCells = 0;
   while (q.size > 0) {
     const v = q.pop();
-    airCells += 1;
     const iy = v % g.ny;
     const rest = (v - iy) / g.ny;
     const iz = rest % g.nz;
     const ix = (rest - iz) / g.nz;
-    if (ix > 0) { pushAir(ix - 1, iy, iz); }
-    if (ix < g.nx - 1) { pushAir(ix + 1, iy, iz); }
-    if (iz > 0) { pushAir(ix, iy, iz - 1); }
-    if (iz < g.nz - 1) { pushAir(ix, iy, iz + 1); }
-    if (iy > 0) { pushAir(ix, iy - 1, iz); }
-    if (iy < g.ny - 1) { pushAir(ix, iy + 1, iz); }
+    if (ix > 0) { pushReach(ix - 1, iy, iz); }
+    if (ix < g.nx - 1) { pushReach(ix + 1, iy, iz); }
+    if (iz > 0) { pushReach(ix, iy, iz - 1); }
+    if (iz < g.nz - 1) { pushReach(ix, iy, iz + 1); }
+    if (iy > 0) { pushReach(ix, iy - 1, iz); }
+    if (iy < g.ny - 1) { pushReach(ix, iy + 1, iz); }
   }
-
-  /* ---------------------------------------------------------------- *
-   * The findings: blocked cells that touch that air, grouped.
-   * ---------------------------------------------------------------- */
-  const blocked = (ix, iy, iz) => {
-    const base = colBase(ix, iz);
-    return getBit(drawn, base, iy) === 0 && getBit(solid, base, iy) === 1;
-  };
   const touchesAir = (ix, iy, iz) => {
     if (ix > 0 && getBit(air, colBase(ix - 1, iz), iy)) { return true; }
     if (ix < g.nx - 1 && getBit(air, colBase(ix + 1, iz), iy)) { return true; }
@@ -786,6 +929,102 @@ export function scanCavities(world, colliders, opts = {}) {
     if (iy > 0 && getBit(air, colBase(ix, iz), iy - 1)) { return true; }
     if (iy < g.ny - 1 && getBit(air, colBase(ix, iz), iy + 1)) { return true; }
     return false;
+  };
+  const insideOf = [];
+  let insideCells = 0;
+  {
+    /*
+     * AND IT HAS TO BE MORE THAN A SKIN.
+     *
+     * Every drawn thing carries a TOL halo of drawn cells, and the ground
+     * carries one too because its drawn top is rounded up by half a cell
+     * where its solid top is rounded down. The reach flood walks into all of
+     * it, because none of it is solid, and without this the whole surface of
+     * the town joins into one finding of 117,000 m3 that means nothing.
+     *
+     * A cell touching free air is the outside of something, not the inside.
+     * A shell's interior is not: the hollow knoll over a tunnel bore is 36 by
+     * 39 m of cells whose every neighbour is another one of them.
+     */
+    const isInside = (ix, iy, iz) => {
+      const base = colBase(ix, iz);
+      if (getBit(reach, base, iy) === 0 || getBit(air, base, iy) === 1) {
+        return false;
+      }
+      return !touchesAir(ix, iy, iz);
+    };
+    for (let ix = 0; ix < g.nx; ix += 1) {
+      for (let iz = 0; iz < g.nz; iz += 1) {
+        const base = colBase(ix, iz);
+        for (let iy = 0; iy < g.ny; iy += 1) {
+          if (getBit(seen, base, iy) || !isInside(ix, iy, iz)) {
+            continue;
+          }
+          let cx0 = ix; let cx1 = ix; let cy0 = iy; let cy1 = iy; let cz0 = iz; let cz1 = iz;
+          let count = 0;
+          setBit(seen, base, iy);
+          q.push(pack(ix, iy, iz));
+          while (q.size > 0) {
+            const v = q.pop();
+            const jy = v % g.ny;
+            const rest = (v - jy) / g.ny;
+            const jz = rest % g.nz;
+            const jx = (rest - jz) / g.nz;
+            count += 1;
+            if (jx < cx0) { cx0 = jx; } if (jx > cx1) { cx1 = jx; }
+            if (jy < cy0) { cy0 = jy; } if (jy > cy1) { cy1 = jy; }
+            if (jz < cz0) { cz0 = jz; } if (jz > cz1) { cz1 = jz; }
+            const step = (kx, ky, kz) => {
+              if (kx < 0 || ky < 0 || kz < 0 || kx >= g.nx || ky >= g.ny || kz >= g.nz) {
+                return;
+              }
+              const b2 = colBase(kx, kz);
+              if (getBit(seen, b2, ky) || !isInside(kx, ky, kz)) {
+                return;
+              }
+              setBit(seen, b2, ky);
+              q.push(pack(kx, ky, kz));
+            };
+            step(jx - 1, jy, jz); step(jx + 1, jy, jz);
+            step(jx, jy, jz - 1); step(jx, jy, jz + 1);
+            step(jx, jy - 1, jz); step(jx, jy + 1, jz);
+          }
+          insideCells += count;
+          if (count < MIN_CELLS) {
+            continue;
+          }
+          insideOf.push({
+            cells: count,
+            vol: +(count * CELL * CELL * CELL).toFixed(1),
+            box: [
+              +(g.x0 + cx0 * CELL).toFixed(1), +(g.y0 + cy0 * CELL).toFixed(1), +(g.z0 + cz0 * CELL).toFixed(1),
+              +(g.x0 + (cx1 + 1) * CELL).toFixed(1), +(g.y0 + (cy1 + 1) * CELL).toFixed(1), +(g.z0 + (cz1 + 1) * CELL).toFixed(1),
+            ],
+            seed: [
+              +(g.x0 + (ix + 0.5) * CELL).toFixed(2),
+              +(g.y0 + (iy + 0.5) * CELL).toFixed(2),
+              +(g.z0 + (iz + 0.5) * CELL).toFixed(2),
+            ],
+          });
+        }
+      }
+    }
+    insideOf.sort((a, b) => b.cells - a.cells);
+    seen.fill(0);
+    air.fill(0);
+  }
+
+  /* And now the whole drawing, for the first measurement, which wants
+   * everything a pilot can see and not only what would stop them. */
+  paintDrawn('all');
+  airCells = floodAir();
+
+  /* ---------------------------------------------------------------- *
+   * The findings: blocked cells that touch that air, grouped.
+   * ---------------------------------------------------------------- */
+  const blocked = (ix, iy, iz) => {
+    const base = colBase(ix, iz);
+    return getBit(drawn, base, iy) === 0 && getBit(solid, base, iy) === 1;
   };
   const findings = [];
   let blockedCells = 0;
@@ -1047,14 +1286,17 @@ export function scanCavities(world, colliders, opts = {}) {
     drawnInstances: terrainLog.inst,
     groundMeshes: terrainLog.filter((r) => r.ground > 0)
       .sort((p, r) => r.ground - p.ground).slice(0, 12),
-    noTerrainCols,
-    groundCols,
-    liftedCols,
-    maxLift: +maxLift.toFixed(2),
+    noTerrainCols: stats.noTerrainCols,
+    groundCols: stats.groundCols,
+    liftedCols: stats.liftedCols,
+    maxLift: +stats.maxLift.toFixed(2),
     outsideCols: outside.reduce((t, v) => t + v, 0),
     gridCols: g.nx * g.nz,
     colliders: n,
     airCells,
+    insideCells,
+    insideVolume: +(insideCells * CELL * CELL * CELL).toFixed(1),
+    inside: insideOf.slice(0, 40),
     blockedCells,
     floorCells,
     found: findings.length,

@@ -1876,6 +1876,10 @@ export async function buildMap(shell, onProgress, options) {
         /* So `--fit` shows what the FIT sees, not what is drawn: a named
          * frame is invisible to it and that is usually the answer. */
         fitSkip: (o) => COVER_SOFT.test(o.name || '') || FIT_MOVING.test(o.name || ''),
+        /* What a craft may fly through without it being a defect: this
+         * module's own see-through list, plus the train, which is not where
+         * it is drawn. See ./cavity.js. */
+        softName: (o) => COVER_SOFT.test(o.name || '') || FIT_MOVING.test(o.name || ''),
       },
     )
     : null;

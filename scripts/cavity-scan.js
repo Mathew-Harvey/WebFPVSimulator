@@ -93,7 +93,12 @@ lines.push(`colliders       ${scan.colliders}`);
 lines.push(`free air cells  ${scan.airCells}`);
 lines.push(`blocked cells   ${scan.blockedCells}   (${scan.blockedVolume} m3 of invisible wall)`);
 lines.push(`components      ${scan.found}`);
+lines.push(`INSIDE          ${scan.insideVolume} m3 a craft can reach only through something drawn, in ${scan.inside.length >= 40 ? '40+' : scan.inside.length} pockets`);
 lines.push(`scan            ${scan.ms} ms`);
+lines.push('');
+for (const f of (scan.inside || []).slice(0, 12)) {
+  lines.push(`  inside ${String(f.vol).padStart(8)} m3  ${f.box.join(' ')}   from ${f.seed.join(' ')}`);
+}
 lines.push('');
 lines.push('       m3  box (x0 y0 z0  x1 y1 z1)                                   why');
 for (const f of scan.list.slice(0, top)) {

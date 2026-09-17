@@ -36634,3 +36634,39 @@ and no track imports anything. `npm run lint:catalog` was not run for the
 same reason as the last turn, `vendor/betaflight` is empty in this
 container. Nobody has heard these five tracks in the shell yet, over the
 motors and the wind, which is the thing no check here can see.
+
+### The deploy, and a file that a deletion does not delete
+
+Merged to `main` as a fast forward, `c7261ee..9feebbe`, and Render published
+at 05:58:45 UTC. The new crate is live on both
+`webfpvsimulator.onrender.com` and `webfpv.org/sim`: all ten new files
+answer with the right type, the eleven kept files still answer, and the
+`TRACKS` array the domain serves is the fourteen records with no gypsy in
+it. The four hour stale module risk noted above did not bite, the edge
+fetched the new `tracks.js` straight away.
+
+WHAT IS WORTH KNOWING FOR NEXT TIME. The six deleted files are still served.
+`assets/music/gypsy-breaks.webm` answers 206 from the origin on a query
+string Cloudflare has never seen, so it is the origin and not a cache, and
+its `last-modified` is `Wed, 16 Sep 2026 02:02:16`, yesterday's publish,
+where every other file in the crate now reads `Thu, 17 Sep 2026 05:58:45`.
+A path that never existed 404s, so this is not a catch all. Render's static
+publish is additive: it overlays what the commit has and leaves behind what
+the commit removed.
+
+So a `git rm` in this repository does not remove anything from the deploy.
+It removes it from `TRACKS`, which is what stops a pilot hearing it, and
+that part worked. What is left is sixteen megabytes of three records nothing
+references, reachable by anyone who kept an old URL. It is litter rather
+than a fault, and only a clean rebuild from the Render dashboard clears it.
+Not done here, because that is a dashboard action and not a commit.
+
+Noted while there, pre-existing and not touched: every music URL comes back
+`public, max-age=0, s-maxage=300` from the origin and `max-age=14400`
+through the domain, not the `max-age=31536000, immutable` that
+`render.yaml` asks for. `DEPLOY.md` already records that the origin answers
+`max-age=0` for every file, so this is the known condition and not new. It
+does mean the cache that `MUSIC_REV` guards is not the one clients are
+actually holding. The decision not to bump it stands either way, and more
+comfortably: nothing in the crate can be stale for a year if nothing is
+served immutable for a year.

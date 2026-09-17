@@ -114,13 +114,67 @@ const IDENT_CHANNELS = ['throttle', 'roll', 'pitch', 'yaw'];
 const CAL = {
   REST_MS: 900,
   REST_NOISE: 0.08,
-  SWEEP_TRAVEL: 0.55,
+  /*
+   * How far an axis has to move during the sweep to count as having been
+   * swept. Lowered from 0.55, and the argument is in PROGRESS.md: 0.55
+   * excluded any gimbal running under about 27 percent endpoint trim each
+   * side, and four axes have to clear it or the step never ends, so a
+   * single trimmed channel wedged the wizard before it named a channel.
+   * 0.3 is still nearly four times REST_NOISE and cannot be reached by a
+   * stationary stick, which is the only thing this gate is for: the RANGE
+   * it measures is used as measured, and identNeed is relative to it.
+   */
+  SWEEP_TRAVEL: 0.3,
   NEAR_REST: 0.2,
-  SWEEP_REST_MS: 450,
   IDENT_DELTA: 0.45,
   IDENT_GAP: 0.18,
   IDENT_HOLD_MS: 400,
   RELEASE_MS: 280,
+  /*
+   * A SWITCH IS AN AXIS THAT STOPS SOMEWHERE ELSE.
+   *
+   * Every gate below used to be "within NEAR_REST of where this axis sat
+   * during the centre step", which is true of a gimbal and false of a
+   * switch. A three position switch left on its middle detent sits 1.00
+   * from its centre step rest and an arm switch flicked up sits 2.00, and
+   * the pilot cannot put either back without knowing that is what the
+   * wizard is waiting for, because the wizard never said. Two reports came
+   * in describing that as a freeze.
+   *
+   * So an axis that has held still for PARK_MS counts as parked WHERE IT
+   * IS. The wizard then takes that as its new rest, because it is: the
+   * switch lives there now and every later comparison has to be against
+   * where the pilot's radio actually sits. Only ever adopted while the
+   * wizard is waiting for things to come back, never mid hold, or a pilot
+   * holding yaw for a second would have their deflection redefined as
+   * centre.
+   */
+  PARK_MS: 600,
+  /*
+   * How far a channel has to travel to be identified, as a fraction of the
+   * travel the sweep SAW ON THAT AXIS rather than a flat 0.45 of raw
+   * joystick. Endpoint trim, a rate curve applied before the joystick
+   * output and a narrower raw range all put a real gimbal under a flat
+   * bar, and a pilot whose yaw reaches 0.40 cannot hold it any harder.
+   * Capped at IDENT_DELTA so a full size gimbal is asked for exactly what
+   * it was asked for before, and floored at IDENT_FLOOR so an axis that
+   * never moved during the sweep still cannot be picked out of noise.
+   */
+  IDENT_TRAVEL: 0.45,
+  IDENT_FLOOR: 0.25,
+  /*
+   * Two axes moving together used to stall forever: a channel mirrored
+   * onto a second axis gives a gap of exactly 0.00 and a left gate that is
+   * not square gives 0.10, both under IDENT_GAP. The gap exists to reject
+   * DIAGONALS, and a diagonal is two axes both short of their stops. So
+   * after AMBIGUOUS_MS of the same axis leading, with that axis at AT_STOP
+   * of its own reach, take it and say so. A sloppy diagonal is not at a
+   * stop and still waits.
+   */
+  AMBIGUOUS_MS: 2200,
+  AT_STOP: 0.85,
+  /* How long a step has to sit still before the screen explains itself. */
+  STALL_MS: 2600,
 };
 
 const PAD_PICK = {
@@ -142,8 +196,14 @@ function cloneMap(map) {
   };
 }
 
+/* Sixteen rather than eight: a handset that reports its switches as axes
+ * can push a gimbal past index 7, and an axis this never sees is a channel
+ * that can never be calibrated. Every stored map indexes below 8, so
+ * reading further cannot change one that already exists. */
+const MAX_AXES = 16;
+
 function snapshotAxes(gp) {
-  const n = Math.min(gp.axes.length, 8);
+  const n = Math.min(gp.axes.length, MAX_AXES);
   const out = new Array(n);
   for (let i = 0; i < n; i += 1) {
     out[i] = gp.axes[i];
@@ -216,17 +276,13 @@ function savePadChoice(choice) {
   }
 }
 
+/* The `except` parameter this used to carry had one caller, the identify
+ * step's release check, and that now asks axisParked per axis instead so a
+ * switch parked somewhere new can answer for itself. */
 function maxAbsDelta(axes, rest) {
-  return maxAbsDeltaExcept(axes, rest, -1);
-}
-
-function maxAbsDeltaExcept(axes, rest, except) {
   let worst = 0;
   const n = Math.min(axes.length, rest.length);
   for (let i = 0; i < n; i += 1) {
-    if (i === except) {
-      continue;
-    }
     const d = Math.abs(axes[i] - rest[i]);
     if (d > worst) {
       worst = d;
@@ -273,6 +329,10 @@ function usedAxes(draft) {
 function pickUnusedAxis(axes, rest, used) {
   let best = -1;
   let bestAbs = 0;
+  /* The runner up is carried by index as well as size, because the screen
+   * now names it: "axis 3 and axis 4 are moving together" is the sentence
+   * that turns a frozen step into a thing the pilot can act on. */
+  let secondAxis = -1;
   let secondAbs = 0;
   const n = Math.min(axes.length, rest.length);
   for (let i = 0; i < n; i += 1) {
@@ -282,13 +342,88 @@ function pickUnusedAxis(axes, rest, used) {
     const a = Math.abs(axes[i] - rest[i]);
     if (a > bestAbs) {
       secondAbs = bestAbs;
+      secondAxis = best;
       bestAbs = a;
       best = i;
     } else if (a > secondAbs) {
       secondAbs = a;
+      secondAxis = i;
     }
   }
-  return { best, bestAbs, secondAbs };
+  return { best, bestAbs, secondAxis, secondAbs };
+}
+
+/*
+ * How far this axis can go from rest on the side it is currently on, as
+ * the sweep measured it. The two sides are asked separately because a
+ * throttle rests at one end: its reach upward is the whole range and its
+ * reach downward is nothing.
+ */
+function axisReach(c, i, sample) {
+  if (sample >= c.rest[i]) {
+    return Math.max(0, c.max[i] - c.rest[i]);
+  }
+  return Math.max(0, c.rest[i] - c.min[i]);
+}
+
+/* The bar this axis has to clear to be identified. See CAL.IDENT_TRAVEL. */
+function identNeed(c, i, sample) {
+  const want = axisReach(c, i, sample) * CAL.IDENT_TRAVEL;
+  return Math.max(CAL.IDENT_FLOOR, Math.min(CAL.IDENT_DELTA, want));
+}
+
+/*
+ * How long each axis has held its current value. An axis that moves more
+ * than REST_NOISE restarts its clock where it now is, so a switch clicked
+ * to a new detent reads as still 600 ms later and a gimbal being waved
+ * around never does.
+ */
+function trackStill(c, axes, dtMs) {
+  if (!c.stillAt || c.stillAt.length !== axes.length) {
+    c.stillAt = axes.slice();
+    c.stillMs = new Array(axes.length).fill(0);
+    return;
+  }
+  for (let i = 0; i < axes.length; i += 1) {
+    if (Math.abs(axes[i] - c.stillAt[i]) > CAL.REST_NOISE) {
+      c.stillAt[i] = axes[i];
+      c.stillMs[i] = 0;
+    } else {
+      c.stillMs[i] += dtMs;
+    }
+  }
+}
+
+/* The first axis that has not held still for ms, or -1 if all have. */
+function stillShortOf(c, axes, ms) {
+  for (let i = 0; i < Math.min(axes.length, c.rest.length); i += 1) {
+    if ((c.stillMs[i] || 0) < ms) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/* Back where it started, or stopped somewhere and stayed. See CAL.PARK_MS. */
+function axisParked(c, axes, i) {
+  if (Math.abs(axes[i] - c.rest[i]) <= CAL.NEAR_REST) {
+    return true;
+  }
+  return (c.stillMs[i] || 0) >= CAL.PARK_MS;
+}
+
+/*
+ * Take the current reading as rest for every axis that has stopped
+ * somewhere new. Called only where the wizard is already waiting for the
+ * pilot's hands to be off, so a held stick is never adopted as a centre.
+ */
+function adoptRest(c, axes) {
+  for (let i = 0; i < c.rest.length && i < axes.length; i += 1) {
+    if ((c.stillMs[i] || 0) >= CAL.PARK_MS
+      && Math.abs(axes[i] - c.rest[i]) > CAL.NEAR_REST) {
+      c.rest[i] = axes[i];
+    }
+  }
 }
 
 function channelSpec(axis, rest, sample, min, max) {
@@ -999,6 +1134,68 @@ export class InputManager {
     p.armed = false;
   }
 
+  /*
+   * WHAT A RADIO BUG HAS TO CARRY.
+   *
+   * Two reports arrived from screen "calibrate" describing a wizard that
+   * stops, and neither could be answered, because ui.bugSnapshot recorded
+   * the GPU, the viewport and the pack voltage and nothing at all about
+   * the radio. Three separate causes turned out to reproduce, all of them
+   * landing on the same step, and the reports carried nothing to choose
+   * between them. That is a whole round trip with a pilot, spent on a
+   * question the browser could have answered at the time.
+   *
+   * Axis values are rounded to two places because this is read by a human
+   * in a bug queue, not diffed, and a full double per axis is noise. The
+   * pad id is the shortened display name for the same reason. Nothing
+   * here identifies a person: it is a device and its sticks.
+   */
+  radioSnapshot() {
+    const gp = this.firstGamepad();
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const at = (spec) => (spec && Number.isInteger(spec.axis) ? spec.axis : null);
+    const out = {
+      pads: listGamepads().length,
+      using: gp ? shortPadName(gp.id) : '',
+      axes: gp ? gp.axes.length : 0,
+      buttons: gp && gp.buttons ? gp.buttons.length : 0,
+      calibrated: Boolean(this.map && this.map.stored),
+      /* The mapping in force, by axis, whether it is this pilot's or the
+       * AETR guess. "throttle on a 3 postion switch" is a sentence about
+       * exactly these four numbers. */
+      map: {
+        roll: at(this.map && this.map.roll),
+        pitch: at(this.map && this.map.pitch),
+        yaw: at(this.map && this.map.yaw),
+        throttle: at(this.map && this.map.throttle),
+        select: at(this.map && this.map.select),
+      },
+      now: gp ? snapshotAxes(gp).map(r2) : [],
+    };
+    const c = this.calibration;
+    if (c) {
+      out.cal = {
+        step: c.step,
+        phase: c.phase,
+        /* How long this step has been up. A wedge and a pilot thinking
+         * look identical in a screenshot and not at all in this number. */
+        stuckMs: Math.round(c.stepMs || 0),
+        /* The wizard's own reason for not advancing, the same sentence the
+         * screen shows once a step has gone quiet. */
+        why: c.why || '',
+        rest: c.rest ? c.rest.map(r2) : [],
+        got: {
+          roll: at(c.draft.roll),
+          pitch: at(c.draft.pitch),
+          yaw: at(c.draft.yaw),
+          throttle: at(c.draft.throttle),
+          select: at(c.draft.select),
+        },
+      };
+    }
+    return out;
+  }
+
   padSummary() {
     const pads = listGamepads();
     const selected = this.firstGamepad();
@@ -1217,6 +1414,20 @@ export class InputManager {
       min: null,
       max: null,
       waiting: false,
+      /* Per axis steadiness: where each axis last jumped to, and how long
+       * it has sat there. See CAL.PARK_MS. */
+      stillAt: null,
+      stillMs: null,
+      /* The axis currently leading an ambiguous pick, and for how long.
+       * See CAL.AMBIGUOUS_MS. */
+      ambigAxis: -1,
+      ambigMs: 0,
+      /* Time in the current step and phase, and the reason this frame did
+       * not advance. The wizard has always known both and has never said
+       * either, which is the whole of why a wedged step reads as a freeze. */
+      wasAt: '',
+      stepMs: 0,
+      why: '',
       steps,
       draft: {
         roll: null, pitch: null, yaw: null, throttle: null, select: null,
@@ -1265,11 +1476,43 @@ export class InputManager {
         channels = this.readGamepad(gp, c.draft);
       }
     }
+    /*
+     * THE AXES, WHICH THE PILOT HAS NEVER BEEN SHOWN.
+     *
+     * Both reports said "freezes", and the wizard's answer to both was to
+     * keep drawing a prompt. It knew on every frame which axis was holding
+     * it open and never had anywhere to say it. This is that place: one
+     * row per axis the radio reports, what it reads, how far that is from
+     * rest, and which channel already owns it. A pilot who can see axis 5
+     * sitting at 1.00 can go and move axis 5.
+     */
+    const live = gp ? snapshotAxes(gp) : [];
+    const owner = new Map();
+    for (const ch of IDENT_CHANNELS.concat([SELECT_STEP])) {
+      const spec = c.draft[ch];
+      if (spec && Number.isInteger(spec.axis)) {
+        owner.set(spec.axis, ch);
+      }
+    }
+    const known = (i) => Boolean(c.rest && i < c.rest.length && c.stillMs);
+    const axes = live.map((v, i) => ({
+      axis: i,
+      value: v,
+      rest: known(i) ? c.rest[i] : 0,
+      delta: known(i) ? Math.abs(v - c.rest[i]) : 0,
+      owner: owner.get(i) || '',
+      parked: known(i) && axisParked(c, live, i),
+    }));
     return {
       step: c.step,
       phase: c.phase,
       stepIndex,
       stepCount: steps.length,
+      axes,
+      /* Only once it has actually been a while. A step that is simply
+       * being done does not need narrating, and a line that appears on
+       * every frame is furniture rather than a warning. */
+      stall: c.stepMs >= CAL.STALL_MS ? (c.why || '') : '',
       /* The list itself, so the wizard's own ladder is drawn from what this
        * radio was actually asked, not from the constant. */
       steps: steps.slice(),
@@ -1292,6 +1535,14 @@ export class InputManager {
     }
     c.waiting = false;
     const axes = snapshotAxes(gp);
+    const at = `${c.step}/${c.phase}`;
+    if (at !== c.wasAt) {
+      c.wasAt = at;
+      c.stepMs = 0;
+      c.why = '';
+    }
+    c.stepMs += dtMs;
+    trackStill(c, axes, dtMs);
     if (c.rest) {
       expandRange(c.min, c.max, axes);
     }
@@ -1334,18 +1585,41 @@ export class InputManager {
     c.holdMs = 0;
   }
 
+  /*
+   * SETTLED MEANS STILL, NOT BACK WHERE IT STARTED.
+   *
+   * This used to wait for every axis the radio reports to come within
+   * NEAR_REST of its centre step reading. The prompt above it says to move
+   * everything and put it back, so a pilot on a handset whose switches
+   * arrive as axes moves the switches, and a three position switch has no
+   * "back" to be put to. The step then never ended, while the hint said
+   * "Back to rest to continue" at a pilot whose sticks WERE at rest. That
+   * is Jerome's report, and it is the one that never even reached a
+   * channel.
+   *
+   * Stillness is the honest test: the sweep's job is to see the travel and
+   * then let go. Where everything comes to a stop IS this radio's rest,
+   * and adopting it here is what makes every later comparison true of the
+   * pilot's actual radio rather than of the one they had a minute ago.
+   */
   calSweep(c, axes, dtMs) {
     const need = Math.min(4, c.min.length);
     const travelled = travelCount(c.min, c.max, CAL.SWEEP_TRAVEL);
-    const settled = maxAbsDelta(axes, c.rest) < CAL.NEAR_REST;
-    if (travelled < need || !settled) {
-      c.holdMs = 0;
+    if (travelled < need) {
+      c.why = `Full travel seen on ${travelled} of ${need} axes.`;
       return;
     }
-    c.holdMs += dtMs;
-    if (c.holdMs < CAL.SWEEP_REST_MS) {
+    const busy = stillShortOf(c, axes, CAL.PARK_MS);
+    if (busy >= 0) {
+      c.why = `Axis ${busy} is still moving.`;
       return;
     }
+    /* Selectively, not `c.rest = axes.slice()`. Wholesale would take a
+     * gimbal that happens to be sitting 0.05 off centre as centred there,
+     * and a mis-centred gimbal is a quad that drifts in a straight line.
+     * An axis still near its old rest keeps it; only one that has gone
+     * somewhere else and stayed gets a new one. */
+    adoptRest(c, axes);
     c.step = 'throttle';
     c.phase = 'hold';
     c.holdMs = 0;
@@ -1354,47 +1628,121 @@ export class InputManager {
   calIdentify(c, axes, dtMs) {
     const channel = c.step;
     if (c.phase === 'hold') {
-      const pick = pickUnusedAxis(axes, c.rest, usedAxes(c.draft));
-      const unique = pick.bestAbs - pick.secondAbs >= CAL.IDENT_GAP;
-      if (pick.best < 0 || pick.bestAbs < CAL.IDENT_DELTA || !unique) {
+      this.calHold(c, axes, dtMs, channel);
+      return;
+    }
+    this.calRelease(c, axes, dtMs, channel);
+  }
+
+  calHold(c, axes, dtMs, channel) {
+    const used = usedAxes(c.draft);
+    const pick = pickUnusedAxis(axes, c.rest, used);
+    if (pick.best < 0) {
+      /* Two very different situations wear the same -1: a radio with no
+       * axis left to give, and a radio sitting perfectly still. Saying the
+       * first at a pilot in the second is worse than saying nothing, which
+       * is what a screenshot of this line proved. */
+      c.why = used.size >= Math.min(axes.length, c.rest.length)
+        ? 'Every axis this radio reports is already assigned to a channel.'
+        : 'Nothing has moved yet.';
+      c.holdMs = 0;
+      return;
+    }
+    const sample = axes[pick.best];
+    const want = identNeed(c, pick.best, sample);
+    if (pick.bestAbs < want) {
+      c.why = `Nothing has moved far enough yet. Axis ${pick.best} is the `
+        + `furthest, at ${pick.bestAbs.toFixed(2)} of the ${want.toFixed(2)} needed.`;
+      c.holdMs = 0;
+      c.ambigMs = 0;
+      c.ambigAxis = -1;
+      return;
+    }
+    /*
+     * Two axes moving together. Strict first, because that is how a
+     * diagonal gets rejected, and then a way out, because a mirrored
+     * channel is not a diagonal and no amount of holding will ever
+     * separate it. See CAL.AMBIGUOUS_MS.
+     */
+    if (pick.bestAbs - pick.secondAbs < CAL.IDENT_GAP) {
+      if (c.ambigAxis !== pick.best) {
+        c.ambigAxis = pick.best;
+        c.ambigMs = 0;
+      }
+      c.ambigMs += dtMs;
+      const stop = CAL.AT_STOP * axisReach(c, pick.best, sample);
+      const atStop = pick.bestAbs >= stop && stop > 0;
+      if (!(c.ambigMs >= CAL.AMBIGUOUS_MS && atStop)) {
+        const other = pick.secondAxis >= 0 ? `axis ${pick.secondAxis}` : 'another axis';
+        c.why = `Axis ${pick.best} and ${other} are moving `
+          + `together. ${atStop
+            ? 'Keep holding and the one that moves most will be taken.'
+            : 'Push it all the way to the stop, one direction only.'}`;
         c.holdMs = 0;
         return;
       }
-      c.holdMs += dtMs;
-      if (c.holdMs < CAL.IDENT_HOLD_MS) {
+      c.why = `Taking axis ${pick.best}, which moves most.`;
+    } else {
+      c.ambigMs = 0;
+      c.ambigAxis = -1;
+    }
+    c.holdMs += dtMs;
+    if (c.holdMs < CAL.IDENT_HOLD_MS) {
+      return;
+    }
+    const rest = c.rest[pick.best];
+    if (channel === 'throttle') {
+      c.draft.throttle = throttleSpec(pick.best, rest, sample, c.min, c.max);
+    } else {
+      c.draft[channel] = channelSpec(pick.best, rest, sample, c.min, c.max);
+    }
+    c.phase = 'release';
+    c.holdMs = 0;
+    c.ambigMs = 0;
+    c.ambigAxis = -1;
+  }
+
+  calRelease(c, axes, dtMs, channel) {
+    const spec = c.draft[channel];
+    const mine = spec ? spec.axis : -1;
+    /* Every OTHER axis back at rest, where a switch that stopped somewhere
+     * new counts as being at rest there. This is the same fix as the
+     * sweep's: a knocked switch used to hold the wizard open here too, and
+     * for the same invisible reason. */
+    let busy = -1;
+    const n = Math.min(axes.length, c.rest.length);
+    for (let i = 0; i < n && busy < 0; i += 1) {
+      if (i !== mine && !axisParked(c, axes, i)) {
+        busy = i;
+      }
+    }
+    if (busy >= 0) {
+      c.why = `Axis ${busy} is still away from rest.`;
+      c.holdMs = 0;
+      return;
+    }
+    if (spec) {
+      const v = axes[mine];
+      const home = channel === 'throttle'
+        ? (Math.abs(v - spec.low) <= CAL.NEAR_REST
+          || Math.abs(v - c.rest[mine]) <= CAL.NEAR_REST)
+        : Math.abs(v - c.rest[mine]) <= CAL.NEAR_REST;
+      if (!home) {
+        c.why = channel === 'throttle'
+          ? 'The throttle is not back down yet.'
+          : `Axis ${mine} has not come back to centre yet.`;
+        c.holdMs = 0;
         return;
       }
-      const sample = axes[pick.best];
-      const rest = c.rest[pick.best];
-      if (channel === 'throttle') {
-        c.draft.throttle = throttleSpec(pick.best, rest, sample, c.min, c.max);
-      } else {
-        c.draft[channel] = channelSpec(pick.best, rest, sample, c.min, c.max);
-      }
-      c.phase = 'release';
-      c.holdMs = 0;
-      return;
-    }
-    const spec = c.draft[channel];
-    const others = maxAbsDeltaExcept(axes, c.rest, spec ? spec.axis : -1);
-    let parked = others <= CAL.NEAR_REST;
-    if (parked && spec) {
-      const v = axes[spec.axis];
-      if (channel === 'throttle') {
-        parked = Math.abs(v - spec.low) <= CAL.NEAR_REST
-          || Math.abs(v - c.rest[spec.axis]) <= CAL.NEAR_REST;
-      } else {
-        parked = Math.abs(v - c.rest[spec.axis]) <= CAL.NEAR_REST;
-      }
-    }
-    if (!parked) {
-      c.holdMs = 0;
-      return;
     }
     c.holdMs += dtMs;
     if (c.holdMs < CAL.RELEASE_MS) {
       return;
     }
+    /* Hands are off, so anything sitting still somewhere new is a switch
+     * that lives there now. Take it as rest before the next channel is
+     * asked for, or it would read as a deflection. */
+    adoptRest(c, axes);
     const steps = c.steps || CAL_STEPS;
     const next = steps[steps.indexOf(c.step) + 1] || 'confirm';
     c.step = next;

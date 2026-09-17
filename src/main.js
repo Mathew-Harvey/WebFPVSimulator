@@ -4239,6 +4239,11 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostQueryId = time.id;
   };
 
+  /* The radio, for a bug report. Pulled rather than pushed: padSummary
+   * runs every frame and this does not need to, so it is a hook the form
+   * calls once when it opens. See InputManager.radioSnapshot. */
+  ui.radioSnapshot = () => input.radioSnapshot();
+
   ui.onAction = (action, s) => {
     if (s) {
       applySettings(s);

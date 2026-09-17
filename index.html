@@ -2383,6 +2383,43 @@
         width: 120px; height: 120px;
         background: rgba(12, 18, 14, 0.55);
       }
+      /* The stall line. Amber because it is an instrument reading and not
+         an error: the wizard is telling the pilot what it is waiting for,
+         which is the thing it used to keep to itself. */
+      .cal-stall {
+        margin: 10px 0 0; max-width: 34em; text-align: center;
+        font-size: 14px; line-height: 1.45; color: var(--amber);
+      }
+      .cal-axes {
+        display: grid; grid-template-columns: auto 1fr auto;
+        align-items: center; gap: 3px 10px;
+        width: min(420px, 82vw); margin: 4px 0 14px;
+        font-size: 11px; letter-spacing: 0.08em;
+      }
+      .cal-axis { display: contents; }
+      .cal-axis-n { color: rgba(235, 230, 215, 0.55); font-variant-numeric: tabular-nums; }
+      .cal-axis-track {
+        height: 6px; border-radius: 3px;
+        background: rgba(12, 18, 14, 0.55);
+        overflow: hidden;
+      }
+      .cal-axis-fill {
+        display: block; height: 100%; width: 0%;
+        background: rgba(235, 230, 215, 0.35);
+        transition: width 60ms linear;
+      }
+      .cal-axis-tag {
+        text-transform: uppercase; color: var(--mint);
+        min-width: 5.2em; text-align: right;
+      }
+      /* Amber: moving, and nothing owns it yet, so it is what the wizard is
+         about to take. Mint: a channel already has it. Slate: stopped
+         somewhere that is not centre, which is what a switch does and what
+         the sweep used to wait forever for. */
+      .cal-axis.is-live .cal-axis-fill { background: var(--amber); }
+      .cal-axis.is-owned .cal-axis-fill { background: rgba(126, 200, 160, 0.55); }
+      .cal-axis.is-owned .cal-axis-n { color: var(--mint); }
+      .cal-axis.is-parked .cal-axis-fill { background: rgba(235, 230, 215, 0.22); }
       .cal-steps {
         list-style: none; display: flex; flex-wrap: wrap;
         justify-content: center; gap: 8px 14px;

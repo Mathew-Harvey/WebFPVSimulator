@@ -37912,3 +37912,175 @@ Which of the three causes fired for SUPER6003. All three are reproducible and
 all three land on yaw, and the report carries no axis data to choose between
 them. That is the argument for fixing the snapshot first, and for the fix
 being all three plus the readout rather than whichever one is guessed.
+
+## The calibration wizard now says what it is waiting for, and stops waiting for the impossible
+
+The diagnosis in the previous entry found three wedges and a fourth problem,
+which is that a wedged wizard looked identical to a crashed one. All four are
+fixed here. The owner asked for all four, snapshot and readout first.
+
+### One. The sweep settles on stillness, not on going back
+
+`calSweep` waited for every axis the radio reports to come within `NEAR_REST`
+of its centre step reading. Its own prompt says to move everything and put it
+back, and a three position switch has no back to be put to. Settling is now
+per axis stillness: every axis held within `REST_NOISE` of wherever it is for
+`PARK_MS`. On completion the wizard takes that reading as the new rest for the
+axes that moved, because the switch lives there now and every later comparison
+has to be against the radio the pilot has rather than the one they had a
+minute ago.
+
+For the axes that MOVED, not wholesale. The first version wrote
+`c.rest = axes.slice()`, which also takes a gimbal sitting 0.05 off centre as
+centred there, and a mis-centred gimbal is a quad that slides sideways with
+the sticks untouched. `adoptRest` only replaces a rest an axis has left by
+more than `NEAR_REST` and stayed away from. The sweep gate moved from
+`SWEEP_REST_MS` 450 to `PARK_MS` 600 so that one definition of "it has
+stopped" serves both, and `SWEEP_REST_MS` is gone.
+
+`calIdentify`'s release phase had the same all axes test and got the same
+treatment, plus `adoptRest` once hands are off, so a switch knocked mid wizard
+does not re-wedge the next channel.
+
+### Two. The travel bar is a fraction of what the sweep saw
+
+`IDENT_DELTA` was a flat 0.45 of raw joystick. Endpoint trim, a rate curve
+applied before the joystick output and a narrower raw range all put a real
+gimbal under it, and a pilot cannot hold a stick harder than its stop. The bar
+is now `axisReach * IDENT_TRAVEL`, capped at the old 0.45 so a full size
+gimbal is asked for exactly what it was asked for before, and floored at
+`IDENT_FLOOR` 0.25 so an axis that never moved during the sweep still cannot
+be picked out of noise. Reach is asked per side, because a throttle rests at
+one end.
+
+### Three. Ambiguity resolves instead of stalling
+
+`unique` needed the top two axes 0.18 apart. A mirrored channel gives exactly
+0.00 forever. The gap exists to reject DIAGONALS, and a diagonal is two axes
+both short of their stops, so that is now the test: after `AMBIGUOUS_MS` of
+the same axis leading, with that axis at `AT_STOP` of its own reach, take it
+and say so on screen. A loose diagonal still resolves on the gap alone and a
+sloppy one still waits.
+
+The full corner, both gimbals at their stops, is the interesting case. The
+wizard takes the lower axis index on a genuine tie, which at the roll step is
+roll, and at the pitch step roll is already assigned so pitch wins outright.
+Both diagonals are in the check and both land on the right axis.
+
+### The fifth wedge, found by the check and not by reading
+
+The check's last case is a yaw with so little travel that no rule can
+distinguish it from a noisy axis sitting still. That one is allowed to stop.
+Writing it turned up a fifth wedge of the same class as the other three, one
+step earlier: `calSweep` needs four axes to each travel `SWEEP_TRAVEL` of raw
+joystick, and a trimmed gimbal cannot, so the wizard stalled before it named a
+single channel.
+
+**A threshold moved, and here is the argument.** `SWEEP_TRAVEL` was 0.55,
+which excludes any gimbal running under about 27 percent endpoint trim each
+side. Four axes have to clear it or the step never ends, so ONE trimmed
+channel wedged the whole wizard. It is now 0.3. What this gate is for is
+proving the pilot moved the stick at all, and 0.3 is still nearly four times
+`REST_NOISE` and unreachable by a stationary gimbal. It is not used as a
+measurement: the RANGE the sweep records is used as recorded, and `identNeed`
+is relative to it, so a lower gate lets a small range through as a small range
+rather than pretending it is a large one. This was not moved to make a check
+pass. The check it makes pass was written after the threshold was found to be
+wrong, and the case that found it still stops, on purpose.
+
+With the gate at 0.3, a 0.2 travel yaw now reaches its own step and is told
+"Nothing has moved far enough yet. Axis 3 is the furthest, at 0.20 of the 0.25
+needed." Which is the difference this whole turn is about.
+
+### Four. The screen shows the axes and explains itself
+
+One row per axis: how far it is from rest, and which channel owns it. Amber is
+moving and unclaimed, mint is owned, dim is settled. Under the hint, a stall
+line appears after `STALL_MS` carrying the wizard's own reason, which it has
+always computed every frame and never had anywhere to put. "Axis 5 is still
+away from rest" is a thing a pilot can act on. "Freezes" is not.
+
+`ui.bugSnapshot` gained a `radio` block from `InputManager.radioSnapshot`:
+pad name, axis count, button count, the live axis values, the map in force,
+and while the wizard is up its step, how long it has been stuck, and the same
+`why`. Pulled through a hook the form calls once, not pushed every frame like
+padSummary. The snapshot taken during the sweep in the probe below reads
+`why: "Full travel seen on 2 of 4 axes."`, which is the whole of what the two
+reports could not say.
+
+`snapshotAxes` now reads 16 axes rather than 8. A handset whose switches
+arrive as axes can push a gimbal past index 7, and an axis this never sees is
+a channel that can never be calibrated. Every stored map indexes below 8, so
+reading further cannot change one that already exists.
+
+### What went wrong on the way
+
+**The first test pilot was on a stopwatch and it hid a wedge.** Each
+deflection was held for a fixed 900 ms. That is not what a person does:
+somebody told "hold it there" by a screen that is not responding keeps
+holding. With a fixed hold the ambiguity escape never fired, so two fixed
+cases still read as failures, and worse, the FULL CORNER case did not exist
+because a stopwatch pilot never reached it. The pilot is now closed loop: it
+watches the step and reacts, and the only number left is how long it is
+willing to wait. Rewriting it turned up the sixth wedge.
+
+**The stall line's first sentence was a lie.** `pickUnusedAxis` returns -1
+both when every axis is assigned and when nothing has moved at all, and the
+throttle step reported "Every axis this radio reports is already assigned" at
+a pilot who had touched nothing. Caught by reading the screenshot rather than
+the code. The two cases are now told apart by the size of the used set.
+
+**Reaching the Check step was not a strong enough contract.** A wizard that
+gave up and assigned whatever moved would pass that and hand the pilot a quad
+that rolls when they yaw. The check now asserts which axis each channel landed
+on, and a channel may list more than one acceptable axis only where the radio
+genuinely reports it twice. It also asserts each channel's CENTRE, which is
+what guards the hazard that came in with adopting a new rest.
+
+**The fake radio had been driving its throttle to -2.** A deflection was
+modelled as rest plus a constant, so a throttle resting at -1 with a travel of
+1 reached 0: half the throttle range was never swept, and the recorded low
+came out at -2, a value no Gamepad can report. Every case had been passing
+with a throttle that was wrong, and nothing noticed until the centre assertion
+went in and all twelve failed at once. A deflection now reaches toward the
+axis stop, and endpoint trim is a fraction of the distance to it.
+
+### Measurements
+
+    cal:selftest   13 of 13 pass. The same file against HEAD's input.js:
+                   7 of 13 fail, so the check has teeth.
+    lint:shell     PASS
+    lint:quality   56 of 56 clean
+    lint:devices   PASS
+    lint:memory    PASS
+    lint:boot      9 of 9 clean
+    lint:responsive PASS
+    lint:nouns     PASS
+    lint:fc        33 of 33 clean
+    shots probe    the real page, 1280x800 and 390x844, with a fake eight
+                   axis radio and a switch knocked to its middle detent:
+                   the sweep advances, all four channels identify, the draft
+                   comes out roll 0, pitch 1, yaw 3, throttle 2 with every
+                   centre at the true rest, rest adopts axis 5 at 0 and
+                   leaves the four gimbals alone, Save mapping lands on the
+                   pilot screen and the snapshot then reads calibrated=true.
+                   The axis rows and stall line render at both sizes with no
+                   horizontal overflow, and a yaw held at 0.20 draws
+                   "Nothing has moved far enough yet. Axis 3 is the
+                   furthest, at 0.20 of the 0.25 needed." on the page.
+
+`npm run verify` was NOT run and the WASM was NOT rebuilt. The
+verify-flight-model skill's procedure is the build, the trace and the
+determinism hashes, and this diff does not reach any of them: the wizard's
+output is a stick mapping, and `poll()` forces channels to zero for the whole
+time the wizard is up, so nothing here can reach the integrator. Nothing under
+`src/native` was touched and there is no Emscripten in this container.
+
+### What no check here can see
+
+Whether the stall line reads as help or as an error at the moment a real pilot
+hits it, and whether eight grey bars under the gimbals are informative or just
+more to look at. Both are things to look at rather than assert. And the
+ambiguity escape's 2.2 seconds is a guess about patience: too short and a
+careful pilot gets a wrong guess, too long and it still reads as frozen. Only
+a person holding a stick can say.

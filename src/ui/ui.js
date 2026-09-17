@@ -3391,6 +3391,13 @@ export class Ui {
     this.calStickRight = makeGimbal('Roll, pitch');
     calSticks.append(this.calStickLeft.box, this.calStickRight.box);
     this.calList = el('ol', 'cal-steps');
+    /* One row per axis the radio reports, and a line that appears only
+     * when a step has gone quiet. Between them they are the difference
+     * between "it freezes" and "axis 5 is still away from rest". */
+    this.calAxes = el('div', 'cal-axes');
+    this.calAxisRows = [];
+    this.calStall = el('p', 'cal-stall', '');
+    this.calStall.hidden = true;
     const calBtns = el('div', 'cal-actions');
     this.calCancelBtn = btn('name-dialog-btn', 'Cancel');
     this.calSaveBtn = btn('name-dialog-btn on', 'Save mapping');
@@ -3402,7 +3409,9 @@ export class Ui {
       this.calKicker,
       this.calPrompt,
       this.calHint,
+      this.calStall,
       calSticks,
+      this.calAxes,
       this.calList,
       calBtns,
       hintWithKeys(['Esc'], 'Cancels. Nothing is saved until Save mapping.'),
@@ -4177,6 +4186,13 @@ export class Ui {
       cameraFov: s.cameraFov,
       packVoltage: s.packVoltage,
       link: s.link || '',
+      /*
+       * The radio, because two reports about one arrived carrying none of
+       * it and neither could be answered. Supplied by main.js from the
+       * InputManager, the same way padInfo is: the UI has no business
+       * reaching into the sticks itself. See InputManager.radioSnapshot.
+       */
+      radio: this.radioSnapshot ? this.radioSnapshot() : null,
       gpu: gpu.display || gpu.name || '',
       userAgent,
       viewport: {
@@ -9938,6 +9954,11 @@ export class Ui {
     }
     const ch = view.channels || { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
     placeSticks(this.calStickLeft, this.calStickRight, ch);
+    this.paintCalAxes(view);
+    if (this.calStall) {
+      this.calStall.textContent = view.stall || '';
+      this.calStall.hidden = !view.stall;
+    }
     /* The ORDER is input.js's CAL_STEPS, imported rather than re-typed:
      * this list used to restate it, so a step added to the calibration
      * would have run without ever appearing in the list beside it. Only the
@@ -9955,6 +9976,53 @@ export class Ui {
         li.className = 'done';
       }
       this.calList.append(li);
+    });
+  }
+
+  /*
+   * THE AXIS ROWS.
+   *
+   * Rebuilt only when the axis COUNT changes, because this runs every
+   * frame and a radio does not grow an axis mid wizard. The bar is drawn
+   * from rest rather than from zero: a throttle rests at one end and a
+   * bar that grew from the middle would say it is half open when it is
+   * shut. Amber is the axis the wizard is looking at now, mint is one a
+   * channel already owns, slate is one sitting still wherever it is.
+   */
+  paintCalAxes(view) {
+    if (!this.calAxes) {
+      return;
+    }
+    const axes = (view && view.axes) || [];
+    if (this.calAxisRows.length !== axes.length) {
+      this.calAxes.textContent = '';
+      this.calAxisRows = axes.map((_, i) => {
+        const row = el('div', 'cal-axis');
+        const name = el('span', 'cal-axis-n', `ax${i}`);
+        const track = el('span', 'cal-axis-track');
+        const fill = el('span', 'cal-axis-fill');
+        track.append(fill);
+        const tag = el('span', 'cal-axis-tag', '');
+        row.append(name, track, tag);
+        this.calAxes.append(row);
+        return { row, fill, tag };
+      });
+    }
+    this.calAxes.hidden = axes.length === 0;
+    axes.forEach((a, i) => {
+      const node = this.calAxisRows[i];
+      if (!node) {
+        return;
+      }
+      /* Raw axis runs -1 to 1, so a deflection of 2 is the whole travel.
+       * Half of that is a full bar, which keeps a normal gimbal reading
+       * near the top without a trimmed one looking broken. */
+      const pct = Math.max(0, Math.min(100, (a.delta / 1) * 100));
+      node.fill.style.width = `${pct.toFixed(0)}%`;
+      node.tag.textContent = a.owner ? CAL_LABELS[a.owner] || a.owner : '';
+      node.row.classList.toggle('is-owned', Boolean(a.owner));
+      node.row.classList.toggle('is-live', !a.owner && a.delta > 0.2);
+      node.row.classList.toggle('is-parked', !a.owner && a.parked);
     });
   }
 

@@ -430,25 +430,151 @@ function buildCap(ctx, b) {
 function buildShell(ctx, b, recesses) {
   const { T } = b;
   const s = T.walk;
-  const TOP = groundY(0) + T.crestMid + 2;
+
+  /* **The frame's height is sampled off the drawn cap, not typed.**
+   *
+   * It was `groundY(0) + T.crestMid + 2`, one number for the whole frame:
+   * two metres over the CROWN of the knoll.  Over the crown that is two
+   * metres of invisible wall; over the notch's own edges, where the Coons
+   * patch lands the cap exactly on the hillside, it is two metres plus the
+   * eight the knoll stands above that hillside.  Measured by
+   * src/maps/city/cavity.js at 159 m3 across the four portals, in long thin
+   * slabs following the notch edges -- which is what a pilot skimming the
+   * ridge toward a tunnel mouth flies into.
+   *
+   * `capMeshY` is the surface the cap is DRAWN at, so sampling it is the
+   * same hull the fit would build if it could see the hillside, which it
+   * cannot: a terrain tile is over the fit's footprint cap and is dropped.
+   * Clamped into the notch because the patch only interpolates inside it,
+   * and the frame straddles the bound by 0.4 m.
+   *
+   * These skip the fit for two reasons.  They are already the drawn surface,
+   * so there is nothing to trim to; and a 1.5 m segment with nothing drawn in
+   * it is small enough for the fit's "dressing we stripped" rule to park it
+   * underground, which would take a wall out of the side of a mountain.
+   */
+  const capTop = (xa, xb, za, zb) => {
+    let t = -Infinity;
+    for (let i = 0; i <= 4; i += 1) {
+      const x = Math.min(T.x1, Math.max(T.x0, xa + ((xb - xa) * i) / 4));
+      for (let j = 0; j <= 4; j += 1) {
+        const z = Math.min(T.zN, Math.max(T.zS, za + ((zb - za) * j) / 4));
+        const v = capMeshY(b, x, z);
+        if (v > t) { t = v; }
+      }
+    }
+    return t + 0.05;
+  };
+  /* Twelve segments over a 39 m edge is 3.3 m, which resolves the knoll: it
+   * rises 11 m over the fifteen metres from the bore to the notch edge, so a
+   * segment this size is within a metre of the surface it stands under. */
+  const SEGS = 12;
+  /*
+   * A rectangle tiled and each tile topped at the cap over itself. The knoll
+   * is a bell 30 m across in z and 11 m tall, so a tile that spans the bore's
+   * whole 6.6 m width takes its height from the crest line and stands four
+   * metres over the cap at its own far edge. The tile counts below follow the
+   * shape each piece has: a frame edge is 0.8 m thin and wants one tile
+   * across, the lid over the bore is 6.6 m wide and wants six.
+   */
+  const fill = (x0, x1, z0, z1, bottom, nx, nz) => {
+    for (let i = 0; i < nx; i += 1) {
+      const xa = x0 + ((x1 - x0) * i) / nx;
+      const xb = x0 + ((x1 - x0) * (i + 1)) / nx;
+      for (let j = 0; j < nz; j += 1) {
+        const za = z0 + ((z1 - z0) * j) / nz;
+        const zb = z0 + ((z1 - z0) * (j + 1)) / nz;
+        const top = capTop(xa, xb, za, zb);
+        if (bottom !== undefined && !(top > bottom)) {
+          continue;
+        }
+        ctx.collide(xa, za, xb, zb, top, bottom, true);
+      }
+    }
+  };
+  const alongX = (x0, x1, za, zb, bottom) => fill(x0, x1, za, zb, bottom, SEGS, 1);
+  const alongZ = (xa, xb, z0, z1) => fill(xa, xb, z0, z1, undefined, 1, SEGS);
   // the notch's south and north edges
-  ctx.collide(T.x0 - 0.4, T.zS - 0.4, T.x1 + 0.4, T.zS + 0.4, TOP);
-  ctx.collide(T.x0 - 0.4, T.zN - 0.4, T.x1 + 0.4, T.zN + 0.4, TOP);
+  alongX(T.x0 - 0.4, T.x1 + 0.4, T.zS - 0.4, T.zS + 0.4);
+  alongX(T.x0 - 0.4, T.x1 + 0.4, T.zN - 0.4, T.zN + 0.4);
   // the two portal planes, each split across the arch opening
   for (const px of [T.x0, T.x1]) {
-    ctx.collide(px - 0.4, T.zS, px + 0.4, -T.half, TOP);
-    ctx.collide(px - 0.4, T.half, px + 0.4, T.zN, TOP);
+    alongZ(px - 0.4, px + 0.4, T.zS, -T.half);
+    alongZ(px - 0.4, px + 0.4, T.half, T.zN);
+  }
+  /* **The bore's ROOF, which was never there, and the mountain was hollow.**
+   *
+   * The flanks stop a craft at |z| = half at every height and the frame seals
+   * the notch's four edges, but nothing at all stood over the arch. So the
+   * bore was a tube open at the top: fly the tunnel, climb through the crown,
+   * and you are inside 36 by 39 m of mountain with a 17 m ceiling, drawn
+   * solid and flyable end to end. The cap is registered as a platform so the
+   * height query keeps a craft off it from ABOVE, and `fromY` correctly does
+   * not offer that platform to a craft already under it, which is what made
+   * the inside reachable and invisible at the same time.
+   *
+   * A lid from the drawn crown to the drawn cap closes it. Its underside is
+   * `b.CROWN` exactly, so the bore keeps every millimetre of the clearance
+   * `boreClearance()` measures, and it stops at the portal planes rather than
+   * running past them: outside the face the drawing stops at the coping,
+   * `CROWN + 2.6`, and there is open sky over it that a pilot can see and
+   * should be able to fly. The spandrel between the arch ring and that coping
+   * is closed by the face piece below.
+   */
+  fill(T.x0, T.x1, -T.half, T.half, b.CROWN, SEGS, 6);
+  /* The portal's own spandrel: the drawn wall between the arch ring and the
+   * coping, which a craft used to fly straight through into the mountain.
+   * `copeY` is the face's own top, from `buildPortal`, so this is the wall
+   * and not a metre of air over it. */
+  for (const px of [T.x0, T.x1]) {
+    const cope = Math.min(groundY(0) + capAt(b, px, T.zCrest) - 0.55, b.CROWN + 2.6);
+    if (cope > b.CROWN) {
+      ctx.collide(px - 0.4, -T.half, px + 0.4, T.half, cope, b.CROWN, true);
+    }
+  }
+  /* **And the mountain's own surface, as a platform with a function top.**
+   *
+   * The lid closes the bore's roof and the frame closes the notch's edges,
+   * which between them stop a craft that flies the tunnel. They do nothing
+   * about one that comes down from ABOVE: the cap is a drawn surface with no
+   * collider and `hillAt` is suppressed inside a notch, so the whole 36 by
+   * 39 m knoll was a shell with a 17 m void under it, and a craft dropping
+   * onto the hillside went through it and kept going to the flat grade at the
+   * bottom. Probed at x = -114 the flanks were free from y = 2 to 20 at every
+   * z outside the bore, on both mountains.
+   *
+   * It is the height query rather than colliders because a knoll rises eleven
+   * metres in fifteen and no tiling of flat boxes describes that: at 3 m
+   * tiles a tread stands five metres over the hillside, which is the invisible
+   * wall this turn is removing, and at 1 m tiles it is still two. `capAt` is
+   * the surface the cap is DRAWN from, so a platform that asks it is exact,
+   * and `heightAt`'s reach test is what keeps it off a craft in the bore
+   * beneath it. `solid: false` because the lid above the bore and the frame
+   * round the edges are the solid part; a slab under a curved surface would
+   * be another staircase.
+   */
+  ctx.platform({
+    x0: T.x0, x1: T.x1, z0: T.zS, z1: T.zN, solid: false,
+    top: groundY(0) + T.crestMid,
+    at: (x, z) => capMeshY(b, x, z),
+  });
+
+  /* And over each 待避所, for the same reason: the walkway flank steps back to
+   * the recess's own rear wall, so without this the pocket is open to the
+   * mountain above its soffit. */
+  for (const r of recesses) {
+    alongX(r.x0, r.x1, s * T.half, s * (T.half + REC_D), REC_H);
   }
   // the bore's non-walkway flank: one unbroken wall
-  ctx.collide(T.x0, -s * T.half, T.x1, -s * (T.half + 0.6), TOP);
+  alongX(T.x0, T.x1, -s * T.half, -s * (T.half + 0.6));
   // and the walkway flank, stepped back at each 待避所
   let cursor = T.x0;
   for (const r of recesses) {
-    if (r.x0 - cursor > 0.05) ctx.collide(cursor, s * T.half, r.x0, s * (T.half + 0.6), TOP);
-    ctx.collide(r.x0, s * (T.half + REC_D), r.x1, s * (T.half + REC_D + 0.6), TOP);
+    if (r.x0 - cursor > 0.05) alongX(cursor, r.x0, s * T.half, s * (T.half + 0.6));
+    alongX(r.x0, r.x1, s * (T.half + REC_D), s * (T.half + REC_D + 0.6));
     cursor = r.x1;
   }
-  if (T.x1 - cursor > 0.05) ctx.collide(cursor, s * T.half, T.x1, s * (T.half + 0.6), TOP);
+  if (T.x1 - cursor > 0.05) alongX(cursor, T.x1, s * T.half, s * (T.half + 0.6));
 }
 
 /* ------------------------------------------------------------------ *

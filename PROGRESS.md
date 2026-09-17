@@ -36679,3 +36679,55 @@ the handrail back where it is in z.
 Station 111 m3 to 33.8. Whole town 1282 m3 to 1166 in 178 pockets.
 collider-audit holes 26.3 percent uncovered, mean cover 0.706, against
 26.3 and 0.707 before: nothing opened up. PHANTOM 2772 to 2609.
+
+### The tunnels, which were shells
+
+`buildShell` calls itself "what stops the player walking into the mountain,
+with the bore left open" and its comment says "every piece of this is the
+inside of a mountain and blocks at every height". Neither was true for a
+craft that can go up.
+
+**The frame stood two metres over the CROWN of the knoll**, one number for
+the whole thing, so over the notch's own edges -- where the Coons patch
+lands the cap exactly on the hillside -- it stood two metres plus the eight
+the knoll rises above that hillside. 159 m3 in long slabs following the
+notch edges, which is what a pilot skimming a ridge toward a tunnel mouth
+meets. Each piece is tiled now and each tile topped at `capMeshY` over
+itself, which is the surface the cap is DRAWN at. Tiled in z as well as x
+for the lid, because the knoll is a bell 30 m across and a tile spanning the
+bore's 6.6 m takes its height from the crest line and stands four metres
+over the cap at its own far edge.
+
+**The bore had no roof at all.** The flanks stop a craft at |z| = half at
+every height and the frame seals the four edges, but nothing stood over the
+arch: fly the tunnel, climb through the crown, and you are inside 36 by 39 m
+of mountain with a 17 m ceiling. Measured on the centreline, free from
+y = 0.5 to 7 at every x with the crown at 6.5. A lid from `b.CROWN` to the
+cap closes it, and it stops AT the portal planes rather than running past
+them, because outside the face the drawing stops at the coping and there is
+open sky over it. The spandrel between the arch ring and that coping is its
+own piece, at the face's own `copeY`: 6.6 by 2.6 m of drawn wall over each
+arch that a craft used to fly straight through.
+
+**And the knoll itself was a shell.** The cap is a drawn surface with no
+collider, and `hillAt` is suppressed inside a notch, so a craft coming down
+onto the hillside went through it and kept going to the flat grade. Probed
+at x = -114, free from y = 2 to 20 at every z outside the bore, on both
+mountains.
+
+Colliders cannot fix that one. A knoll rises eleven metres in fifteen, so a
+tiling of flat boxes stands five metres proud at 3 m tiles and two at 1 m,
+which is the invisible wall this turn is removing. So `ctx.platform` takes
+an optional `at(x, z)` instead of a flat `top`, and the cap registers one
+platform that asks `capMeshY`. `heightAt` tests the rectangle first and the
+height second, which is the same answer and one fewer call, and its reach
+test is what keeps the cap off a craft in the bore underneath it.
+
+Descending from y = 26 at x = -114 now lands at 1.2, 6.5, 14.1, 17.0, 16.6,
+11.3, 5.2, 0.3 for z = -12 to 16, which is the bell. The bore is free from
+0.5 to 6.4 against a crown of 6.5, so `boreClearance()` loses nothing.
+
+Town 1381 to 1174 m3 in 175 pockets. PHANTOM 2609 to 2441, and the reason it
+did not rise is the same platform: `scan.js` measures from `groundAt` up, so
+once the cap is the ground the lid under it is not phantom. HOLES 26.3
+percent uncovered to 25.8, mean cover 0.706 to 0.711.

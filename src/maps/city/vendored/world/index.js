@@ -780,8 +780,22 @@ export function buildWorld(scene, { bake = true } = {}) {
       }
       const reach = fromY === undefined ? Infinity : fromY + 0.55;
       for (const p of platforms) {
-        if (p.top > reach) continue;
-        if (x > p.x0 && x < p.x1 && z > p.z0 && z < p.z1) h = Math.max(h, p.top);
+        if (x <= p.x0 || x >= p.x1 || z <= p.z0 || z >= p.z1) continue;
+        /* **A platform may name a SURFACE rather than a height**, and the one
+         * that needs to is the mountain over a tunnel.  A flat top cannot
+         * describe a knoll that rises eleven metres in fifteen, and neither
+         * can a staircase of them: at three metres a tread stands five metres
+         * over the hillside it is meant to be.  So `at(x, z)` is asked for the
+         * height under this point and everything else is unchanged --
+         * including the reach test, which is what keeps the cap off a craft
+         * inside the bore underneath it.
+         *
+         * The rectangle is tested BEFORE the height now, which is the same
+         * answer and one fewer call: a function platform is only evaluated
+         * where it actually covers the query. */
+        const top = p.at === undefined ? p.top : p.at(x, z);
+        if (top > reach) continue;
+        h = Math.max(h, top);
       }
       return h;
     },

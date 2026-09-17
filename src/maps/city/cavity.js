@@ -103,6 +103,24 @@ const TERRAIN_FOOTPRINT = 3000;
  * triangles are 2 m2. */
 const TERRAIN_TRI_AREA = 0.5;
 /*
+ * AND ONE MESH THAT IS GROUND WITHOUT BEING BIG ENOUGH TO LOOK LIKE IT.
+ *
+ * `tunnelCap` is the hillside put back over a bore: the terrain grid has a
+ * hole cut in it for the notch and the cap is what fills the hole, drawn at
+ * the same field the hills are. It is 1404 m2, under the footprint test,
+ * which is arithmetic rather than meaning. Read as a thing instead of as
+ * ground it is a 17 m tall surface with nothing under it, so the solid rock
+ * of the mountain reads as 380 m3 of invisible wall and the one collider in
+ * the town that stops a craft flying INTO a mountain looks like the worst
+ * finding on the map.
+ *
+ * A name rather than a shape, because the shape is honestly ambiguous: the
+ * district's `road` mesh is 1499 m2 of thin surface and must NOT be ground,
+ * since it is the only thing drawn over the canal at こばと橋 and treating it
+ * as ground is what hid that undercroft on the first run of this scan.
+ */
+const GROUND_NAME = /^tunnelCap/;
+/*
  * How far the contact floor may stand over the drawn ground and still be
  * counted as the ground, WHERE THE GROUND IS DRAWN AT ALL.
  *
@@ -237,7 +255,11 @@ function rasterDrawn(root, g, mark, field, log) {
       Math.hypot(e[8], e[9], e[10]),
     );
     const foot = (bb.max.x - bb.min.x) * (bb.max.z - bb.min.z) * scale * scale;
-    const wide = foot > TERRAIN_FOOTPRINT;
+    let mname = o.name || '';
+    for (let q = o.parent; q && !mname; q = q.parent) {
+      mname = q.name || '';
+    }
+    const wide = foot > TERRAIN_FOOTPRINT || GROUND_NAME.test(mname);
     const attr = geo.attributes.position;
     if (!attr) {
       return;
@@ -352,7 +374,7 @@ function rasterDrawn(root, g, mark, field, log) {
       }
     }
     if (log) {
-      log.push({ name: o.name || '(unnamed)', foot: Math.round(foot), tris: triCount, ground });
+      log.push({ name: mname || '(unnamed)', foot: Math.round(foot), tris: triCount, ground });
     }
   });
   if (log) {
@@ -685,11 +707,14 @@ export function scanCavities(world, colliders, opts = {}) {
         if (x <= p.x0 || x >= p.x1 || z <= p.z0 || z >= p.z1) {
           continue;
         }
-        if (!(p.top > bare)) {
+        /* A platform may name a surface rather than a height. See
+         * world/index.js heightAt. */
+        const ptop = p.at === undefined ? p.top : p.at(x, z);
+        if (!(ptop > bare)) {
           continue;
         }
-        const a0 = clampIy(Math.floor((p.top - (PLATFORM_REACH - SURFACE_BIAS) - g.y0) / CELL + 0.5));
-        const a1 = clampIy(Math.floor((p.top - g.y0) / CELL - 0.5) + 1);
+        const a0 = clampIy(Math.floor((ptop - (PLATFORM_REACH - SURFACE_BIAS) - g.y0) / CELL + 0.5));
+        const a1 = clampIy(Math.floor((ptop - g.y0) / CELL - 0.5) + 1);
         setRun(solid, base, a0, a1);
       }
     }
@@ -860,8 +885,9 @@ export function scanCavities(world, colliders, opts = {}) {
       if (!(p.top > bare)) {
         continue;
       }
-      if (sy >= p.top - (PLATFORM_REACH - SURFACE_BIAS) && sy < p.top) {
-        f.plat = +p.top.toFixed(2);
+      const ptop = p.at === undefined ? p.top : p.at(sx, sz);
+      if (sy >= ptop - (PLATFORM_REACH - SURFACE_BIAS) && sy < ptop) {
+        f.plat = +ptop.toFixed(2);
         break;
       }
     }

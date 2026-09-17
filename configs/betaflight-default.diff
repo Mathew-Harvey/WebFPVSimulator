@@ -5,8 +5,9 @@
 #
 # Every PID, filter and rate value below is Betaflight 4.5.1's own factory
 # default, which is what a freshly flashed 5 inch quad flies before anyone
-# touches it. It is here as the reference point: fly this, then fly
-# karate-race.diff, and the difference between them is entirely the tune.
+# touches it. It is the reference point and, since Karate race and Precision
+# were removed, the only tune that ships: fly this, then change something on
+# the bench, and the difference is entirely the thing you changed.
 #
 # Provenance: the values are the ones in
 # betaflight/firmware-presets presets/4.5/tune/defaults.txt and
@@ -18,8 +19,8 @@
 # tune here. Rates belong to the pilot, not to a tune, and they are chosen in
 # Settings; the shell appends them to whichever tune is loaded. See
 # configs/rates.js. Shipping rates inside a tune is what made the Karate
-# preset impossible to judge, because choosing it changed the tune and the
-# stick authority in one keypress.
+# preset, which this build no longer ships, impossible to judge: choosing it
+# changed the tune and the stick authority in one keypress.
 #
 # Airframe: the reference 5 inch of STAGE1.md, 6S, 1900 kV, 0.65 kg.
 #
@@ -101,8 +102,9 @@ set pidsum_limit = 500
 #
 # NOT CHANGED HERE ON PURPOSE. This file's whole job is to be what a freshly
 # flashed quad flies, including the parts of that which are wrong. Round 23
-# in PROGRESS.md has the sweep. karate-race.diff sets 1000 and lands on the
-# good side of it.
+# in PROGRESS.md has the sweep. Raising it to 1000 on the bench lands on the
+# good side of it, which is what the preset that used to ship beside this one
+# did.
 set pidsum_limit_yaw = 400
 
 set throttle_boost = 5

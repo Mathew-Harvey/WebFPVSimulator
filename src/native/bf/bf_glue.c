@@ -456,9 +456,10 @@ int bf_config_apply_setting(const char *key, const char *value, double num,
 }
 
 int bf_config_apply_command(const char *word0, const char *word1) {
-  /* `simplified_tuning apply` is a CLI command, not a setting, and the
-   * published Karate presets end their PID section with it. Betaflight
-   * runs it where it appears, so lines below it still override. */
+  /* `simplified_tuning apply` is a CLI command, not a setting, and any
+   * slider written preset or saved dump ends its PID section with it.
+   * Betaflight runs it where it appears, so lines below it still
+   * override. */
   if (strcmp(word0, "simplified_tuning") == 0 && strcmp(word1, "apply") == 0) {
     bf_settings_apply_simplified();
     return SIM_OK;

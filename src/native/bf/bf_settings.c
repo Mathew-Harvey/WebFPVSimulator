@@ -302,9 +302,13 @@ void bf_settings_build(void) {
   U16(PARAM_NAME_HORIZON_DELAY_MS, p->horizon_delay_ms);
   LUT8("level_race_mode", p->level_race_mode, LUT_OFF_ON);
 
-  /* ---- Simplified (slider) tuning. The Karate presets are written in
-   * these and would be a no-op without them; `simplified_tuning apply`
-   * in the diff runs Betaflight's own config/simplified_tuning.c. ---- */
+  /* ---- Simplified (slider) tuning. This is Configurator's slider set,
+   * and it is how the PIDs screen adjusts any tune: configs/pids.js writes
+   * these keys and `simplified_tuning apply` runs Betaflight's own
+   * config/simplified_tuning.c over them. The published Karate and
+   * Precision presets were written in sliders too and would have been a
+   * no-op without this; those two are no longer shipped, but the screen
+   * that replaced them writes the same keys. ---- */
   LUT8(PARAM_NAME_SIMPLIFIED_PIDS_MODE, p->simplified_pids_mode, LUT_SIMPLIFIED_PIDS_MODE);
   U8(PARAM_NAME_SIMPLIFIED_MASTER_MULTIPLIER, p->simplified_master_multiplier);
   U8(PARAM_NAME_SIMPLIFIED_I_GAIN, p->simplified_i_gain);
@@ -594,8 +598,9 @@ int bf_settings_count(int which) {
 /*
  * `simplified_tuning apply` in a diff. Betaflight's CLI runs this the
  * moment the command appears, so the sliders set above it take effect and
- * anything set below it overrides the result, which is exactly how the
- * published Karate presets are written.
+ * anything set below it overrides the result, which is exactly how a
+ * published slider preset is written and how src/fc/dump.js orders a dump
+ * the pilot saves off the PIDs screen.
  */
 void bf_settings_apply_simplified(void) {
   applySimplifiedTuning(pidProfilesMutable(0), gyroConfigMutable());

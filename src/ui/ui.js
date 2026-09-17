@@ -1490,14 +1490,19 @@ function padTroubleItem(info) {
  * opens the list.
  *
  * The count is not enough on its own, and the shell check said so: the Tune
- * row has three presets, so it drew as a strip, and its labels are things
- * like "Betaflight default" and "Karate race 6S", which wrapped to two lines
- * and took the title screen 18 px further past the fold. So the rule is
+ * row carried three presets then, so it drew as a strip, and its labels were
+ * things like "Betaflight default" and "Karate race 6S", which wrapped to two
+ * lines and took the title screen 18 px further past the fold. So the rule is
  * count AND fit, and both are measured rather than guessed. Twenty four
  * characters of labels all told is what a row's control holds at 1280 px
  * beside a label of its own: Off/On is five, Acro/Angle is nine,
- * Low/High/Ultra is twelve, Arcade/Expert is twelve, and the three tunes
- * are forty.
+ * Low/High/Ultra is twelve, Arcade/Expert is twelve, and those three tunes
+ * were forty.
+ *
+ * The Tune row ships one preset now and no longer needs the fit rule to
+ * behave, which is exactly why it stopped relying on it: it carries
+ * `pickOnly` instead. The budget is unchanged and stays measured, because it
+ * was never about that one row.
  *
  * The line also decides what Enter does, and that is the more important
  * half. See select().
@@ -1967,10 +1972,11 @@ function courseCardRows(subject) {
 /*
  * The tune, as named choices.
  *
- * A tune is P, I, D, feedforward and filtering: what a freshly flashed
- * quad flies, a 6S race tune, and the stiff Crapshack cut for this plant.
- * None carries rates, which is why switching between them changes how the
- * quad settles and not how far the sticks go. See configs/registry.js.
+ * A tune is P, I, D, feedforward and filtering. One ships, and it is what a
+ * freshly flashed quad flies; the other name on this row, when it is there,
+ * is the pilot's own saved dump. Neither carries rates, which is why moving
+ * between them changes how the quad settles and not how far the sticks go.
+ * See configs/registry.js.
  */
 /*
  * Changing what the quad flies re-inits the module, and re-initing puts the
@@ -1991,14 +1997,47 @@ function courseCardRows(subject) {
 const MID_RUN_WARNING = ' Changing it during a run puts the quad back on the start line.';
 
 function tuneItem(s, midRun) {
-  return choice(
-    'Tune',
-    `${tuneById(s.tune).note} PIDs, filters and feedforward. Your rates are kept.${midRun ? MID_RUN_WARNING : ''}`,
-    tuneChoices(s.airframe),
-    s.tune,
-    (id) => tuneById(id).name,
-    (id) => { s.tune = id; },
-  );
+  const ids = tuneChoices(s.airframe);
+  /*
+   * ONE SHIPPED TUNE MEANS THE ROW HAS TO SAY WHERE THE SECOND ONE COMES
+   * FROM. Karate race 6S and Precision used to sit under the default, so
+   * the row was self evidently a list and needed no explaining. It is one
+   * name now until the pilot saves a dump, and a row offering exactly one
+   * answer with nothing said about it reads as a thing that is broken
+   * rather than a thing that is stock. So the note carries the door: the
+   * bench is where a pilot makes their own, and the moment they save one
+   * this clause goes away because the row has two answers again.
+   */
+  const ownTune = ids.includes(CUSTOM_TUNE.id);
+  const door = ownTune
+    ? ''
+    : ` Stock is the only tune shipped. Edit one on ${SCREEN_TITLES.fc} and save it, and it joins this row as ${CUSTOM_TUNE.name}.`;
+  return {
+    ...choice(
+      'Tune',
+      `${tuneById(s.tune).note} PIDs, filters and feedforward. Your rates are kept.${door}${midRun ? MID_RUN_WARNING : ''}`,
+      ids,
+      s.tune,
+      (id) => tuneById(id).name,
+      (id) => { s.tune = id; },
+    ),
+    /*
+     * ENTER OPENS THIS ROW, IT NEVER STEPS IT, and that is now a decision
+     * rather than an accident of arithmetic.
+     *
+     * This is the row that bit somebody: one Enter a row below where it was
+     * meant swapped the flight tune with nothing announcing it, and a tune
+     * swap re-inits the module and costs the lap. What kept it safe
+     * afterwards was fitsAsSegments saying no, which it said because the
+     * labels of three tunes came to forty characters against a budget of
+     * twenty four. With two tunes deleted the list is short enough to be
+     * segmented, so the guarantee evaporated on a change that had nothing
+     * to do with it, and the shell check caught the row going dead in the
+     * same breath. A row whose cost is a lap does not get to depend on how
+     * long its labels happen to be. See select().
+     */
+    pickOnly: true,
+  };
 }
 
 /*
@@ -5743,7 +5782,7 @@ export class Ui {
        * nothing else, and 100 always means "this tune's own scale". The
        * expert table writes the PIDs themselves with the sliders off,
        * which is Configurator's expert mode. Everything is keyed by the
-       * tune on the row above: adjust Karate and the default stays stock.
+       * tune on the row above: adjust your own dump and stock stays stock.
        *
        * A slider the pilot has not moved shows the TUNE's value and is not
        * stored, and a slider walked back onto the tune's value forgets it
@@ -5805,7 +5844,7 @@ export class Ui {
        * NO ROW EDITS A TUNE THAT IS NOT LOADED YET. Between the Tune row
        * moving and swapTune's fetch publishing the readback, `live` is
        * null and every fallback here would be a lie: a slider would show
-       * 100 where Crapshack ships 185, an arrow press would store an
+       * 100 where a saved dump ships 185, an arrow press would store an
        * override computed from that wrong base with no tune value to
        * forget it against, and the expert toggle would seed the table from
        * stock instead of from what is about to fly. So the window shows
@@ -10273,8 +10312,10 @@ export class Ui {
      * A SEGMENTED ROW CYCLES ON ENTER, and that is safe for the reason the
      * long list is not: every choice is on screen, so a press moves between
      * things the pilot can already see, and one more press comes back
-     * round. The tune row, thirty presets deep, is the one that bit
-     * somebody, and it is above the line and opens a list.
+     * round. The tune row is the one that bit somebody, and it opts out by
+     * hand with `pickOnly` rather than by being long: it is two labels at
+     * most now and would otherwise segment, and stepping it re-inits the
+     * module and costs the lap.
      *
      * It also has to work: a radio's axes are deliberately held out of the
      * menus on the title, Settings, Rates, PIDs and the bench, so on those

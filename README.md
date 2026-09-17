@@ -54,13 +54,16 @@ where they can say what they do. **How to fly** on the title and pause
 menus is the list this paragraph is a summary of, and it is the copy that
 is generated from the bindings rather than typed twice.
 
-Three tunes on the Tune row of the title and pause menus: the Betaflight
-default, a 6S karate race tune, and Crapshack, the stiff one cut for this
-simulator's clean gyro. The PIDs screen adjusts whichever tune is loaded
-with Betaflight's own tuning sliders, or lets you set every PID by hand,
-and each tune keeps its own adjustment. Rates are yours and stay put
-across all of them: the Rates screen draws the stick to rate curve with
-your sticks on it.
+One tune ships on the Tune row of the title and pause menus: the Betaflight
+default, which is what a freshly flashed quad flies. Every other feel is
+yours to make, because a shipped opinion about how a quad should feel is the
+one thing a simulator chasing real flight feel should not hand you. The PIDs
+screen adjusts whichever tune is loaded with Betaflight's own tuning
+sliders, or lets you set every PID by hand, and the Firmware bench edits any
+field the firmware has. Save a dump on the bench and it joins the Tune row
+as your own, with its own adjustment. Rates are yours and stay put across
+all of them: the Rates screen draws the stick to rate curve with your sticks
+on it.
 
 Tracks you build stay in this browser. Clearing it, or another device,
 starts you from nothing. Publish a course from the track builder to put

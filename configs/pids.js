@@ -7,8 +7,10 @@
  * tunes floppy and said they used to push the PIDs to 200-300 percent.
  * This module is the answer: Betaflight Configurator's own tuning sliders,
  * and an expert table for setting PIDs directly, with no CLI paste
- * anywhere. The crapshack tune is the same report answered with a preset;
- * this is it answered with a control.
+ * anywhere. That report was once answered with a preset as well, a stiff
+ * cut shipped beside the default. The presets are gone and the control is
+ * the whole answer now, which is the right way round: a pilot who wants a
+ * stiffer quad should move the knob and know what they moved.
  *
  * NOTHING HERE COMPUTES A PID. A slider adjustment is emitted as the
  * firmware's own `set simplified_*` keys followed by the real CLI command
@@ -29,8 +31,8 @@
  *
  * SPARSE ON PURPOSE. A slider the pilot has not moved is not stored and
  * not emitted, so the tune's own value keeps governing it; move the master
- * on Karate and Karate's I, D and feedforward sliders keep doing their
- * work underneath it, which is what Configurator does with a preset
+ * on a tune and that tune's own I, D and feedforward sliders keep doing
+ * their work underneath it, which is what Configurator does with a preset
  * loaded. Putting a slider back on the tune's own value deletes the
  * override rather than storing a copy, so "back where it was" and "stock"
  * are the same state and the same config text, and the best-lap record key
@@ -89,7 +91,7 @@ export const SLIDER_KEYS = ['master', 'pi', 'i', 'd', 'dmax', 'ff', 'pitchPi', '
 
 export const SLIDERS = {
   master: slider('simplified_master_multiplier', 'Master multiplier', 30,
-    'Everything at once: P, I, D and feedforward all scale together, ratios kept. This is the "make it stiffer" knob, and the one the flight feel feedback asked for. The Crapshack tune ships at 185.'),
+    'Everything at once: P, I, D and feedforward all scale together, ratios kept. This is the "make it stiffer" knob, and the one the flight feel feedback asked for. Stock sits at 100; the stiff preset that used to ship here sat at 185, which is about the size of step that feedback was asking for.'),
   pi: slider('simplified_pi_gain', 'Tracking, P and I', 30,
     'How hard the quad chases the rate the stick asks for. Low is lazy and smooth, high snaps onto the setpoint and holds it.'),
   i: slider('simplified_i_gain', 'Drift and wobble, I', 30,
@@ -313,9 +315,11 @@ export function pidsAdjusted(p, tuneId) {
  * best lap keeps its key.
  *
  * The sliders block does not set simplified_pids_mode. The tune's own
- * mode governs, which is why the master reaches yaw on the default and
- * Crapshack (RPY) and leaves Karate's yaw alone (RP), exactly as
- * Configurator behaves with those presets loaded.
+ * mode governs, which is why the master reaches yaw on the shipped default
+ * (RPY) and leaves yaw alone on a dump that carries RP, exactly as
+ * Configurator behaves with those loaded. No shipped tune is RP any more,
+ * the two that were are gone, but a pilot's own dump still can be and the
+ * yaw note on the PIDs screen still reads the live baseline to say so.
  */
 export function pidsDiffFor(p, tuneId) {
   const e = normalisePids(p)[tuneId];

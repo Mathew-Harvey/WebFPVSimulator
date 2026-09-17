@@ -31,6 +31,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { RATE_DEFAULTS, RATE_TYPES, normaliseRates, ratesDiff, ratesSummary } from '../configs/rates.js';
+import { TUNES } from '../configs/registry.js';
 import { composeConfig, dumpCarriesRates, expandRpmWeights, exportCli, featureEnabled, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, ratesFromDump, setCliValue, setFeatureLine } from '../src/fc/dump.js';
 import { angleRateDeg } from '../src/fc/ratescurve.js';
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
@@ -45,7 +46,6 @@ function withLine(text, line) {
 
 const wasm = await readFile(join(root, 'dist/sim.wasm'));
 const defaultDiff = await readFile(join(root, 'configs/betaflight-default.diff'), 'utf8');
-const karateDiff = await readFile(join(root, 'configs/karate-race.diff'), 'utf8');
 const base = composeConfig(defaultDiff, RATE_DEFAULTS, RATES_KEEP);
 
 async function newSim() {
@@ -197,15 +197,27 @@ record(
     `module roll_srate=${useSrate} (want 42 from dump)`,
   );
 
-  const karateKeep = composeConfig(karateDiff, RATE_DEFAULTS, RATES_KEEP);
-  const simKarate = await newSim();
-  must(simKarate.init(karateKeep), 'sim_init karate keep-mine');
-  const karateSrate = moduleGet(simKarate, 'roll_srate');
-  record(
-    'F7 karate keep-mine roll_srate',
-    karateSrate === '67',
-    `module roll_srate=${karateSrate} (want 67; Karate must not steal stick authority)`,
-  );
+  /*
+   * NO SHIPPED TUNE STEALS STICK AUTHORITY, and every one of them proves it
+   * rather than one named one. This used to load configs/karate-race.diff,
+   * because that preset was the one with the habit: it shipped sugarK's own
+   * 420 deg/s rates inside the tune, so choosing it halved the stick in the
+   * same keypress. That file is gone, and a claim pinned to a filename dies
+   * with the file. Pinned to the table instead, the next tune added to
+   * configs/ is checked the day it lands.
+   */
+  for (const t of TUNES) {
+    const shipped = await readFile(join(root, `configs/${t.id}.diff`), 'utf8');
+    const shippedKeep = composeConfig(shipped, RATE_DEFAULTS, RATES_KEEP);
+    const simShipped = await newSim();
+    must(simShipped.init(shippedKeep), `sim_init ${t.id} keep-mine`);
+    const shippedSrate = moduleGet(simShipped, 'roll_srate');
+    record(
+      `F7 ${t.id} keep-mine roll_srate`,
+      shippedSrate === '67',
+      `module roll_srate=${shippedSrate} (want 67; a shipped tune must not steal stick authority)`,
+    );
+  }
 
   const splitDump = [
     'set p_roll = 45',
@@ -489,30 +501,52 @@ record(
 }
 
 {
-  const karateKeep = composeConfig(karateDiff, RATE_DEFAULTS, RATES_KEEP);
-  const simKarate = await newSim();
-  must(simKarate.init(karateKeep), 'sim_init karate sliders');
-  const p0 = moduleGet(simKarate, 'p_roll');
-  const dumped = moduleDump(simKarate);
+  /*
+   * A SLIDER THAT ACTUALLY MOVES A PID, on the tune the shell boots.
+   *
+   * This used to run on configs/karate-race.diff, because that preset was
+   * written in sliders and would have been silently flat without the apply
+   * command. The stock tune carries the same simplified_* block sitting at
+   * 100, so moving one off 100 is the same proof on the file that ships, and
+   * it is now the file the PIDs screen adjusts for every pilot rather than
+   * one preset most of them never loaded.
+   */
+  const stockKeep = composeConfig(defaultDiff, RATE_DEFAULTS, RATES_KEEP);
+  const simStock = await newSim();
+  must(simStock.init(stockKeep), 'sim_init stock sliders');
+  const p0 = moduleGet(simStock, 'p_roll');
+  const dumped = moduleDump(simStock);
   const edited = setCliValue(dumped, 'simplified_pi_gain', '120');
   const use = composeConfig(edited, RATE_DEFAULTS, RATES_DUMP);
   const simSlid = await newSim();
   must(simSlid.init(use), 'sim_init slider apply');
   const p1 = moduleGet(simSlid, 'p_roll');
   record(
-    'F10 Karate slider apply moves p_roll',
+    'F10 slider apply moves p_roll',
     p0 != null && p1 != null && p0 !== p1 && /simplified_tuning apply/.test(edited),
     `p_roll ${p0} -> ${p1} after simplified_pi_gain 120`,
   );
 }
 
 {
+  /* configs/rates.js claims no file in configs/ carries a rateprofile. That
+   * is a claim about a directory, so it is read as one rather than spot
+   * checked on whichever preset happened to be named here. */
+  const carriers = [];
+  for (const t of TUNES) {
+    const shipped = await readFile(join(root, `configs/${t.id}.diff`), 'utf8');
+    if (dumpCarriesRates(shipped) !== false) {
+      carriers.push(t.id);
+    }
+  }
   record(
-    'F8 dumpCarriesRates is false on Karate (no rateprofile)',
-    dumpCarriesRates(karateDiff) === false,
-    dumpCarriesRates(karateDiff) ? 'carries rates' : 'no rate keys',
+    'F8 dumpCarriesRates is false on every shipped tune (no rateprofile)',
+    carriers.length === 0,
+    carriers.length
+      ? `carries rates: ${carriers.join(', ')}`
+      : `no rate keys across ${TUNES.length} shipped tunes`,
   );
-  const withRates = withLine(karateDiff, 'set roll_srate = 42');
+  const withRates = withLine(defaultDiff, 'set roll_srate = 42');
   record(
     'F8 dumpCarriesRates is true when a dump has roll_srate',
     dumpCarriesRates(withRates) === true,

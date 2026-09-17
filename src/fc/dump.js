@@ -56,9 +56,9 @@ export const FC_DUMP_AIRFRAME_KEY = 'webfpv.fc.airframe.v1';
 /*
  * Keys the pilot owns. Switching a registry tune must not overwrite them,
  * so composeConfig strips every one of these out of the tune body and
- * appends the pilot's own instead. That is the whole reason the two shipped
- * tunes can be compared: the Karate diff cannot quietly halve the stick
- * authority on its way in.
+ * appends the pilot's own instead. That is the whole reason a shipped tune
+ * and the pilot's own dump can be compared: neither can quietly halve the
+ * stick authority on its way in.
  *
  * The use-dump half of that story, where a dropped dump's rate lines were
  * appended last so they won over the menu, has no caller in the shell any

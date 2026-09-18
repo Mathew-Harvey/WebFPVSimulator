@@ -351,6 +351,36 @@ int sim_set_airframe(int id);
 /* Which airframe is in force. */
 int sim_airframe(void);
 
+/*
+ * Air: a scale on everything the air does to slow the craft down. 1.0 is the
+ * default and the machine every threshold in tests/ and every band in
+ * gates.config.json was measured against, and it is the path every harness
+ * replay takes. The accepted range is 0.5 to 2.0; anything outside it returns
+ * SIM_ERR_BAD_ARG rather than being clamped, because a host asking for air 5
+ * has a bug and a silent clamp hides it.
+ *
+ * This is the pilot's answer to "floaty", which is the word the board keeps
+ * sending back. It scales the per axis body drag areas, the rotor H force and
+ * the ducted descent brake, and nothing else: hover throttle, punch, climb,
+ * rate response and the whole electrical model are untouched, so what moves
+ * is how far the craft carries with the sticks centred and how fast it will
+ * go flat out. What each term is and why the others are left alone is in
+ * src/native/sim_internal.h at SIM_AIR.
+ *
+ * A MODE, not state: it survives sim_reset and sim_init exactly as the flight
+ * style and the airframe do, so a shell that set it before a tune swap still
+ * has it after. Additive ABI change, version unchanged: no existing entry
+ * point moved or changed meaning, and a replay that never calls this is bit
+ * identical to one from before it existed. That is MEASURED against the
+ * recorded trace hash rather than asserted, because a runtime multiply costs
+ * the compiler its constant folding, which is the same argument
+ * sim_set_airframe carries. See PROGRESS.md.
+ */
+int sim_set_air(double scale);
+
+/* The air scale in force. */
+double sim_air(void);
+
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);
 

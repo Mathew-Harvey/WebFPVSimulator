@@ -38004,3 +38004,223 @@ corner over. Whether the throttle hint reads as help or as the form arguing
 back. And the number this whole round exists to collect, which is what padHz
 actually says on a real machine with a real radio, and which cannot come from
 this container: it has no GPU, no display and no radio.
+
+## 2026-09-18 | plant, shell | Floaty is a drag number, and the pilot gets the knob
+
+Board report bug-f43a00b1, from dj, on the city map with a radio at 250 Hz,
+Betaflight default, Actual 670: "The quad felt about right this run. its much
+too floaty". The owner's instruction was to find the parameter behind that
+word, put it on the flight screen as a slider between the sticks, and explain
+it once with a callout that remembers it was read.
+
+### Which parameter, and how that was decided rather than guessed
+
+This word has arrived twice before and both times somebody moved a constant
+by hand. Round 17b added the rotor H force because the model "felt floating
+and blew out corners". The mass went 0.65 to 0.68 to 0.71 off a report asking
+for the race tune "with more gravity or a heavier quad". So there were two
+candidate axes with history, and they disagree: more mass makes the craft
+sink and hover higher up the stick, and it makes the craft carry FURTHER,
+which is the other half of what floaty means.
+
+So it was measured. A scratch probe drove the real module through four
+procedures on the five inch: hover throttle by bisection, props level descent
+terminal, flat out level speed, and a coast, which levels off, reaches speed,
+centres the sticks at hover throttle and times the run from 20 m/s down to
+10 m/s. Four builds, one parameter moved in each.
+
+    variant            hover   descent   flat out   20 to 10 m/s
+    shipped            0.264    22.0      136.1      3.64 s, 102.5 m
+    mass x1.20         0.294    24.2      142.1      4.17 s, 117.3 m
+    body drag x1.50    0.264    18.0      119.1      2.58 s,  75.6 m
+    rotor drag x1.50   0.264    22.0      125.5      2.93 s,  79.1 m
+    all drag x1.50     0.264    18.0      111.8      2.14 s,  59.5 m
+
+The drag set wins and mass loses, for a reason the table states plainly:
+mass makes the coast WORSE, 102 m to 117 m, while moving the one number a
+pilot has memorised. Hover does not move a digit under any drag scale. That
+is what settled it: hover throttle is quoted in the throttle limit menu out
+of configs/rates.js, it is what the "throttle is touchy" hint on the feel
+form does arithmetic with, and a feel knob that silently invalidates all of
+that is a knob that creates two bugs to fix one.
+
+So the parameter is the AERODYNAMIC DRAG SET, as one scale: cda_front,
+cda_side, cda_plan, k_rotor_drag and k_rotor_axial. Not rho, which also sets
+the induced velocity, the vortex ring thresholds and the propwash, so
+scaling it would move hover and the descent model. Not k_body_lift, which is
+a turning force rather than a brake. Not mass, thrust or anything electrical.
+
+### The ABI, and the advisor
+
+No advisor channel exists in this session, so per the standing convention the
+argument is here. `int sim_set_air(double scale)` and `double sim_air(void)`,
+additive, ABI version unchanged: no existing entry point moved or changed
+meaning. SIM_AIR is a MODE in exactly the sense SIM_ARCADE and the airframe
+are modes, surviving sim_reset and sim_init, and the host owns asserting it.
+Out of band is REFUSED with SIM_ERR_BAD_ARG rather than clamped, because a
+host asking for air 5 has a bug and a clamp hides it.
+
+The bit identity claim is MEASURED, not asserted, which matters because a
+runtime multiply costs the compiler its constant folding: the same argument
+sim_set_airframe carries. The canonical replay hash on the baseline rec is
+de0401cd4266 before the change and de0401cd4266 after it. x * 1.0 is x for
+every finite double and no expression was reassociated to get it.
+
+### The build was rebuilt here, on a different Emscripten
+
+This container had no emcc and vendor/betaflight had never been checked out.
+Both were fixed: emscripten 3.1.6 from the distribution, and the submodule
+cloned at its pinned 77d01ba. THAT IS NOT THE TOOLCHAIN THE COMMITTED BINARY
+WAS BUILT WITH: the rebuild is 98348 bytes against 97301, so the libc and the
+codegen differ. The first thing done with it, before a line of plant.c was
+touched, was to rebuild UNCHANGED and hash the trace, and it came back
+de0401cd4266, identical to the committed binary's. That is the determinism
+flags doing the job they are there for, and it is the only reason committing
+a binary from a different compiler is defensible. `git diff --stat
+vendor/betaflight` is empty after the build.
+
+### The slider
+
+`.osd-air`, between the two gimbals in `.osd-sticks`, which is where the
+report asked for it. The container used to be hidden as a unit when a radio
+was the stick source; the two gimbals carry their own is-off now, so a radio
+pilot, which is what the reporter is, gets the slider alone and centred.
+
+70 to 160 percent, step 5, 100 the default and the shipped machine. The band
+ends are where the craft is still a five inch: at 70 the descent terminal is
+26.3 m/s and flat out is 164 km/h, both just inside gates.config.json's P5
+bands, and lower leaves them. Step 5 because 1 is a placebo on this axis and
+10 skips the setting the reports point at.
+
+It commits on 'input', not on 'change' like every other slider in this shell.
+Those re-init the module and a re-init per drag pixel would stutter; this one
+is a single store into the plant, and feeling the air change under the craft
+mid drag is the entire reason it is on the flight screen.
+
+Amber, because on this overlay amber means an instrument. Two rules in the
+sheet are load bearing and both were learned from a picture: the selector
+carries two classes, because .row-range is declared later and a bare
+.osd-air-range ties on specificity and loses on source order, which shipped a
+mint thumb on the first build; and the track is darkened as well as tinted,
+because the menu's 0.22 cream vanished against grass.
+
+### The callout
+
+Shown on the first flight this browser has ever seen, once, then never.
+`webfpv.airhint.v1`, its OWN key and deliberately not a field in the settings
+blob: detectFirstRun reads a saved settings blob as proof somebody has been
+here before, so folding the flag in would promote a visitor who dismissed a
+hint to a returning pilot and take the first-run title screen away from them.
+It is not one of the prefixes detectFirstRun scans either, because a pilot
+who read a hint and left has still never flown here. Dismissed by the button
+or by touching the track at all, since touching it answers the question.
+
+### What a lap flown in different air is
+
+A different aircraft, so it is treated as one everywhere the arcade flag is.
+The air joins the record key with an EMPTY suffix at 100, which is the same
+trick the flight style and the airframe use and is what keeps every record
+ever set exactly where it is. The public board refuses it, race and freestyle
+alike. The record sentence under the Fly button names it, because finding
+this out at upload time is the complaint that sentence exists to answer, and
+the caption under the slider reads "Air 135%, off the board" rather than just
+the number.
+
+Unlike every other physics setting it applies at ONCE rather than between
+runs, because a knob on the flight screen that took effect next time would
+answer the question it was built for with a shrug. The cost is paid where it
+belongs: a lap the change lands inside was flown on two aircraft and is
+voided through race.voidLap, the same bookkeeping a gate frame strike gets.
+
+### And the feel form can now answer it
+
+"Floaty, carries too far" is a chip on the report form, because this report
+arrived as "About right" plus the real complaint typed underneath, which the
+chip rows could not carry. Ticking it offers the slider on the spot with the
+measured numbers in the sentence, on exactly the rule the throttle row set:
+only when it would still do something. A pilot already at 160 is telling us
+the DEFAULT is wrong, which is a report worth having undisturbed. Every
+report now carries the air setting, which is the field that tells "the
+shipped quad is too floaty" from "I am already at 160 and it still is".
+
+### What went wrong
+
+The first draft of the callout waited for the world banner to clear, because
+on an 844 by 390 landscape phone the card and the banner landed on each
+other and the hint was measured unreadable. On the field map with nothing
+built that note NEVER clears, so the hint would have silently never fired.
+A rule that can never fire is worse than the overlap it was fixing. The
+banner test came out; the card flips below the slider under 560 px of height,
+where it covers the stacked pack and flight blocks for as long as it takes to
+read one sentence, which is a trade worth making once, ever.
+
+The first build shipped the menu's mint thumb, described above. And the first
+coast probe reported the craft reaching only 14.6 m/s because angle mode caps
+the bank, so the deceleration figures it produced were from the wrong part of
+the curve; the numbers in the table are from the corrected probe.
+
+### Measurements
+
+    build:wasm       exit 0, vendor diff empty
+    trace hash       de0401cd4266, BEFORE the change and AFTER it, on the
+                     unchanged-source rebuild and on the shipped one
+    npm run verify   16 of 16, first all-green run this log records.
+                     hover 0.2793, punch 80.0 m, terminal 31.0, motor step
+                     26 ms, rate 671.7, yaw -0.10, sag 11.14, ratio 1.2472,
+                     console errors 0 warnings 0
+    npm run gates    P1 pass, 100 runs plus 4 rates, 1 distinct hash. P2
+                     pass. The rest fail as they failed before this round:
+                     no blackbox logs, the standing hover band dispute
+                     (27.9 against P4's 0.17 to 0.22 while thresholds.json
+                     passes it in 0.20 to 0.30), and a long list of things
+                     not built. Max level 127 km/h and descent 22.0 m/s are
+                     both in band and both unmoved.
+    lint:shell       PASS
+    lint:responsive  PASS
+    lint:quality     56 of 56
+    lint:boot        9 of 9
+    lint:memory      PASS
+    lint:fc          33 of 33
+    lint:frame       34 passed, 0 failed
+    lint:presets     4 of 4
+    lint:catalog     ok
+    lint:nouns       PASS
+    scratch probes   On the real page in headless Chromium, 1600x900 and an
+                     844x390 landscape phone with touch emulation: the block
+                     renders at the bottom centre between the gimbals, the
+                     hint is hidden on the ground and raised once airborne,
+                     it retires on the first touch and writes the key, the
+                     slider reaches the MODULE (sim_air reads 1.35, 0.70,
+                     1.60, 1.00 as it is dragged), the record key gains and
+                     loses .air135 and comes back to the bare key at 100,
+                     the setting persists to webfpv.settings.v3, and a
+                     change with a lap clock running pushes a voided lap
+                     into the race log with the reason on the banner.
+
+None of these is a shipped check. Nothing in tests/ can see an OSD control,
+and tests/ is read-only here.
+
+### Owed
+
+**The board has no column for air.** A freestyle run flown off 100 is refused
+rather than labelled, which is the honest half of the right answer and not the
+whole of it. The arcade style gets to be on the board because the board
+carries it on every row and a reader can filter it. Air deserves the same:
+a column on WebFPVSimulator-LeaderBoard, a value on the run payload, and then
+this refusal becomes a label. Until then a pilot who likes thicker air has no
+freestyle board, which is exactly the objection the arcade note raises against
+refusing.
+
+**The race board gate is read, not driven.** submitBoardTime and
+submitFreestyleRun both refuse off-stock air, and both were verified by
+reading the diff rather than by driving them: seating a race course headlessly
+needs a track import this container's board cannot supply. The mid-lap void
+WAS driven, through the real shell and race.voidLap.
+
+**Nobody has flown it.** Every number above is a machine measuring a machine.
+Whether 70 to 160 is the right band, whether 5 is the right step, and whether
+"Air" is the word a pilot reads on that strip, are all questions only a pilot
+answers. The report that started this round said "much too floaty" about the
+stock quad; if the answer comes back that 160 is still not enough, that is not
+a slider bug, it is the default being wrong, and the report now carries the
+field that tells the two apart.

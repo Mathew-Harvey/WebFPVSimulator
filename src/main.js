@@ -66,7 +66,7 @@ import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, PRESS_CONFIRM_MS, PRESS_RELEASE_MS, PRESS_BLEED, thrustIntoFace, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
-import { Ui, formatTime } from './ui/ui.js';
+import { Ui, formatTime, AIR_STOCK, clampAir } from './ui/ui.js';
 import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
   fetchTrackTimes, postFreestyleRun, postTime,
@@ -1537,7 +1537,16 @@ export async function boot({ loading, bootStart, mapId }) {
      * style uses one line up and for the same reason.
      */
     const craft = runAirframe === '5inch' ? '' : `.${runAirframe}`;
-    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}`;
+    /*
+     * AND THE AIR, on exactly the rule above it. Every drag term in the plant
+     * is scaled by this, so a lap in thicker air is a lap on a quad that
+     * corners and brakes differently, and filing it beside a stock lap would
+     * make the record meaningless. 100 is the EMPTY suffix, so every record
+     * set before this slider existed stays exactly where it is, which is the
+     * same trick the style and the airframe use.
+     */
+    const airPart = runAir === AIR_STOCK ? '' : `.air${runAir}`;
+    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${airPart}`;
   }
 
   let mode = 'title'; /* title, flight, paused, results */
@@ -1954,6 +1963,28 @@ export async function boot({ loading, bootStart, mapId }) {
    * runs, same rule as the pack voltage, so a mid run settings visit
    * cannot change the physics under a lap in progress. */
   let runStyle = ui.settings.flightStyle === 'arcade' ? 'arcade' : 'expert';
+  /*
+   * THE AIR THE RUN IS FLOWN IN, and it is the one setting here that does
+   * NOT wait for the next run.
+   *
+   * Pack charge, flight style and the airframe all wait, because a pilot
+   * changing them is in a menu and the run can start again around them. The
+   * air slider is on the flight screen, under the pilot's hands, for the
+   * express purpose of being felt while the craft is in the air: a knob that
+   * took effect next time would answer the question it was built for with a
+   * shrug. So it applies at once, and the cost is paid where it belongs, on
+   * the lap: applyAir voids a lap the change lands in the middle of, because
+   * a lap flown in two different airs is not a lap flown on either machine.
+   */
+  /*
+   * AIR_STOCK rather than the stored setting, and that is the same trick
+   * runAirframe below uses: applySettings runs once at boot, sees the two
+   * disagree, and pushes the stored value through the ONE path that talks to
+   * sim_set_air, instead of boot growing a second path of its own that would
+   * drift from it. AIR_STOCK is also what the module itself starts at, so the
+   * shell and the plant agree before anybody has touched anything.
+   */
+  let runAir = AIR_STOCK;
   /*
    * The aircraft the RUN is on, which starts as the one buildShell drew and
    * NOT as the stored setting. That is deliberate: applySettings below is
@@ -3510,6 +3541,42 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
     }
+    /*
+     * THE AIR, OUTSIDE THE BETWEEN-RUNS BLOCK ON PURPOSE.
+     *
+     * See the note at runAir: this is the one physics setting with a control
+     * on the flight screen, and it is there so the pilot can feel it arrive.
+     * Waiting for the next run would make the slider a promise instead of a
+     * knob.
+     *
+     * What it costs is paid on the lap rather than hidden: a lap the change
+     * lands inside was flown on two different aircraft and is voided, which
+     * is the same bookkeeping a gate frame strike gets and shows up the same
+     * way on the results screen. Between laps, on the start line, or in
+     * freestyle, nothing is interrupted.
+     *
+     * Guarded because an older dist/sim.wasm predates the export, same as
+     * the flight style and the airframe. On such a build the slider moves and
+     * the plant does not, so the guard also holds the shell's own idea of the
+     * run's air at stock: a record must not be filed under an air the module
+     * never flew.
+     */
+    {
+      const wantAir = clampAir(s.air);
+      if (wantAir !== runAir) {
+        if (typeof sim.e.sim_set_air === 'function'
+          && sim.e.sim_set_air(wantAir / 100) === SIM_OK) {
+          const midLap = mode === 'flight' && race.currentLapMs(simTimeMs) != null;
+          runAir = wantAir;
+          if (midLap) {
+            race.voidLap('Air changed\nLap voided', performance.now());
+          }
+        } else {
+          ui.settings.air = runAir;
+          ui.paintAir();
+        }
+      }
+    }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
     if (!worldMatchesSettings()) {
@@ -3709,6 +3776,16 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
+    /* And the air, for the same reason in a different number: the slider
+     * scales every drag term the plant has, so a lap flown off 100 is a lap
+     * flown on a quad nobody else on the board is flying. */
+    if (runAir !== AIR_STOCK) {
+      notice = {
+        text: `Laps flown at ${runAir} percent air stay off the public board.\nPut the Air slider back to 100 and fly it again.`,
+        untilMs: performance.now() + 3600,
+      };
+      return;
+    }
     const listing = inspectCourse();
     const trackId = listing && listing.shareId;
     if (!trackId || !listing.canPostTime) {
@@ -3903,6 +3980,26 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     if (summary.assisted) {
       notice = { text: 'That run used the harness hooks, so it is not a flown score.', untilMs: performance.now() + 3200 };
+      return;
+    }
+    /*
+     * AND THE AIR, WHICH IS REFUSED HERE RATHER THAN LABELLED, unlike the
+     * arcade style two functions up.
+     *
+     * The argument for letting an arcade run onto this board is that arcade
+     * is a NAMED model the board carries on every row, so a reader can see
+     * it and filter it and the pilot who prefers that machine still has a
+     * board. The air slider is not a model, it is a continuum, and the board
+     * has no column for it: a row posted from 160 percent air would sit
+     * beside a stock row looking identical and there would be nothing to
+     * read. Putting the column on the board is the better answer and is owed
+     * in PROGRESS.md; until it exists, refusing is the honest half.
+     */
+    if (runAir !== AIR_STOCK) {
+      notice = {
+        text: `Runs flown at ${runAir} percent air stay off the public board.\nPut the Air slider back to 100 and fly it again.`,
+        untilMs: performance.now() + 4200,
+      };
       return;
     }
     let name = readPilotName();
@@ -6885,9 +6982,16 @@ export async function boot({ loading, bootStart, mapId }) {
         yaw: ch.yaw,
         throttle: ch.throttle,
       });
+      /* The air slider rides the same test as the gimbals it sits between,
+       * but not the same SOURCE test: it belongs to every pilot, radio,
+       * keyboard and thumbs alike, so it is up whenever there is a quad in
+       * the air to try it on. This is also where its first-run hint is
+       * raised, which is why it is here and not in show(). */
+      ui.setAirSlider(true, !landed && !launchStaging && !crashed && !poseLock);
       updateTargetLock();
     } else if (mode !== 'paused') {
       ui.setStickOverlay({ show: false, roll: 0, pitch: 0, yaw: 0, throttle: 0 });
+      ui.setAirSlider(false);
       ui.setTargetLock(LOCK_OFF);
     }
     /*
@@ -7431,6 +7535,20 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Which control mode the plant is actually in. A rig that thinks it is
    * flying acro and is not measures nothing: angle cannot loop. */
   window.__flightMode = () => (angleModeOn ? 'angle' : 'acro');
+  /*
+   * The air, READ BACK OUT OF THE MODULE rather than out of the menu, which
+   * is the same discipline the PIDs panel keeps: a slider that stopped
+   * reaching the plant has to be visible as a slider that moves nothing.
+   * `run` is what the shell believes the current lap is being flown in and
+   * is what the record key is built from, so the two disagreeing is a bug
+   * with a name rather than a mystery. Harness only.
+   */
+  window.__air = () => ({
+    setting: ui.settings.air,
+    run: runAir,
+    module: typeof sim.e.sim_air === 'function' ? sim.e.sim_air() : null,
+    key: recordKey(),
+  });
   window.__contacts = () => ({
     ...passStats,
     interior: obsInterior,

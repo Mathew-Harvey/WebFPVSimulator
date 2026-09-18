@@ -369,6 +369,39 @@ export const FPS_CAPS = [0, 90, 60, 30];
 /* Expert is the full model and the default; arcade switches the
  * imperfection terms off in the module via sim_set_flight_style. */
 export const FLIGHT_STYLES = ['expert', 'arcade'];
+
+/*
+ * AIR: the pilot's answer to "floaty", as a percentage of the shipped
+ * airframe's own drag. 100 is the machine every threshold in tests/ and every
+ * band in gates.config.json was measured against, and it is what the module
+ * runs with if nothing calls sim_set_air at all.
+ *
+ * THE BAND WAS MEASURED, NOT CHOSEN TO LOOK TIDY. Coasting level from 20 m/s
+ * down to 10 m/s with the sticks centred, on the five inch: 161 m at 70,
+ * 102 m at 100, 76 m at 125, 55 m at 160. Hover throttle does not move at
+ * all across the whole band, which is the reason this is the knob and mass
+ * is not: hover is a number pilots memorise and configs/rates.js quotes in
+ * the throttle limit menu. The ends are where the machine is still a five
+ * inch: at 70 the props level descent is 26.3 m/s and flat out is 164 km/h,
+ * both just inside the bands in gates.config.json, and going lower leaves
+ * them. At 160 nothing is unsafe, it is simply a quad flying through thicker
+ * air than ours, which is the pilot's business and not a gate's.
+ *
+ * Step 5 because 1 is a placebo on this axis and 10 skips the setting most
+ * pilots will want, which the reports so far put a little above 100.
+ */
+export const AIR_MIN = 70;
+export const AIR_MAX = 160;
+export const AIR_STEP = 5;
+export const AIR_STOCK = 100;
+
+export function clampAir(v) {
+  const n = Math.round(Number(v) / AIR_STEP) * AIR_STEP;
+  if (!Number.isFinite(n)) {
+    return AIR_STOCK;
+  }
+  return Math.min(AIR_MAX, Math.max(AIR_MIN, n));
+}
 /*
  * WHAT A FREESTYLE FLIGHT IS. Three positions on one row, because they are
  * three answers to the same question and a pilot only ever wants one.
@@ -611,6 +644,14 @@ const DEFAULTS = {
   renderScale: 100,
   fpsCap: 0,
   packVoltage: 4.2,
+  /*
+   * How thick the air is, as a percentage of this airframe's own drag. See
+   * AIR_STOCK above. 100 is the shipped machine and the ONLY value that files
+   * a record on the public board, which is the same rule the arcade style
+   * follows and for the same reason: a lap flown in different air is a lap
+   * flown on a different aircraft.
+   */
+  air: AIR_STOCK,
   laps: 3,
   sound: true,
   volume: 6,
@@ -653,6 +694,38 @@ const DEFAULTS = {
    * for good, including picking the one detection would have chosen. */
   graphicsAuto: true,
 };
+
+/*
+ * Has this browser been told what the air slider is?
+ *
+ * ITS OWN KEY, not a field in the settings blob, and the reason is
+ * detectFirstRun below: that function reads the existence of a saved settings
+ * blob as proof that somebody has been here before, so folding this flag into
+ * settings would make dismissing a hint promote a brand new visitor to a
+ * returning pilot and take the first-run title screen away from them.
+ *
+ * Nor is it one of the prefixes detectFirstRun scans for, deliberately: a
+ * pilot who read a hint and left has still never flown here.
+ */
+const AIR_HINT_KEY = 'webfpv.airhint.v1';
+
+function airHintSeen() {
+  try {
+    return localStorage.getItem(AIR_HINT_KEY) === '1';
+  } catch (e) {
+    /* Private mode cannot remember, so the hint is shown once per session
+     * rather than never: a hint too often beats a control nobody can read. */
+    return false;
+  }
+}
+
+function markAirHintSeen() {
+  try {
+    localStorage.setItem(AIR_HINT_KEY, '1');
+  } catch (e) {
+    /* Private mode: dismissed for this session, which is all it can be. */
+  }
+}
 
 /*
  * Has this browser ever flown here?
@@ -799,6 +872,9 @@ export function loadSettings() {
   /* Angle is a range, not a list: a stored 40 from the old six-step menu
    * must survive, a stored 90 must not, and 45 has to be legal now. */
   s.cameraAngle = clampCameraAngle(s.cameraAngle);
+  /* Air is a range too, and the module REFUSES one outside its own band, so a
+   * hand edited blob has to be brought back before it reaches sim_set_air. */
+  s.air = clampAir(s.air);
   /*
    * The rate profile, from whichever shape this blob was written in.
    *
@@ -1182,6 +1258,52 @@ function makeGimbal(caption) {
   return { box, nub };
 }
 
+/*
+ * THE AIR SLIDER, drawn. Built here rather than inline in build() because it
+ * is four elements and a hint card, and build() is already the longest thing
+ * in this file.
+ *
+ * The control is a native input[type=range] wearing .row-range, exactly the
+ * one the Rates and PIDs screens use, so drag, touch, and arrow keys on a
+ * focused track are the browser's problem in all three places. What differs
+ * from those screens is WHEN it commits: there it is on release, because each
+ * one re-inits the module and a re-init per drag pixel would stutter. This
+ * one calls sim_set_air, which is a single store into the plant, so it
+ * commits live on 'input' and the pilot feels the air change under the
+ * craft mid drag. That is the entire point of putting it here.
+ */
+function makeAirSlider({ min, max, step, value, label }) {
+  const box = el('div', 'osd-air is-off');
+
+  const hint = el('div', 'osd-air-hint');
+  hint.hidden = true;
+  hint.append(el('p', 'osd-air-hint-title', 'Air'));
+  hint.append(el(
+    'p',
+    'osd-air-hint-body',
+    'Drag this if the quad feels floaty. Right thickens the air, so it washes'
+    + ' speed off harder and stops carrying through corners. Left thins it and'
+    + ' the quad floats further. Your hover point does not move either way.',
+  ));
+  const dismiss = btn('osd-air-hint-btn', 'Got it');
+  hint.append(dismiss);
+
+  const row = el('div', 'osd-air-row');
+  const range = document.createElement('input');
+  range.type = 'range';
+  range.className = 'row-range osd-air-range';
+  range.min = String(min);
+  range.max = String(max);
+  range.step = String(step);
+  range.value = String(value);
+  range.setAttribute('aria-label', label);
+  row.append(el('span', 'osd-air-end', 'Floaty'), range, el('span', 'osd-air-end', 'Planted'));
+
+  const cap = el('div', 'osd-air-cap', '');
+  box.append(hint, row, cap);
+  return { box, range, cap, hint, dismiss };
+}
+
 function makePadCard() {
   const card = el('div', 'pad-card');
   const title = el('div', 'pad-card-title', '');
@@ -1409,11 +1531,20 @@ function recordSentence(s, trackName) {
     `${s.laps} lap${s.laps === 1 ? '' : 's'}`,
     `the ${tuneById(s.tune).name} tune`,
   ];
+  if (s.air !== AIR_STOCK) {
+    /* Second in the list, right behind the physics model, because it IS the
+     * physics model: the air slider on the flight screen scales every drag
+     * term the plant has. A pilot who nudged it mid flight and forgot has
+     * exactly the problem this sentence exists to prevent. */
+    bits.splice(1, 0, `air at ${s.air} percent`);
+  }
   return `Your best on ${trackName} is filed under exactly this: ${bits.join(', ')}.`
     + ' Change any part of it and you are on a different board.'
     + (s.flightStyle === 'arcade'
       ? ' Arcade times stay off the public board, so this run will not count there.'
-      : ` This run is on ${link}.`);
+      : s.air !== AIR_STOCK
+        ? ' Times flown in air that is not 100 percent stay off the public board, so this run will not count there.'
+        : ` This run is on ${link}.`);
 }
 
 /*
@@ -2724,6 +2855,10 @@ export class Ui {
     this.gpuInfo = null;
     /* Set by main.js; see setStickProbe. */
     this.stickProbe = null;
+    /* The air hint is shown at most once per page load even before the
+     * localStorage flag is consulted, so a pilot who dismissed it and then
+     * paused and resumed does not get it again on the way back into flight. */
+    this.airHintDone = false;
     this.ptrX = null;
     this.ptrY = null;
     this.build();
@@ -2776,8 +2911,24 @@ export class Ui {
     const sticks = el('div', 'osd-sticks is-off');
     this.osdStickLeft = makeGimbal('Yaw, throttle');
     this.osdStickRight = makeGimbal('Roll, pitch');
-    sticks.append(this.osdStickLeft.box, this.osdStickRight.box);
+    /*
+     * BETWEEN THE GIMBALS, which is where the report that asked for it said
+     * to put it. The container used to be hidden as a unit whenever a radio
+     * was the stick source; now the two gimbals carry their own is-off and
+     * the container is up whenever either half has something to show, which
+     * for the air slider is every flight. A radio pilot therefore gets the
+     * slider alone, centred, which is the case the report was filed from.
+     */
+    this.osdAir = makeAirSlider({
+      min: AIR_MIN,
+      max: AIR_MAX,
+      step: AIR_STEP,
+      value: this.settings.air,
+      label: 'Air, how hard the air holds the quad back',
+    });
+    sticks.append(this.osdStickLeft.box, this.osdAir.box, this.osdStickRight.box);
     this.osdSticks = sticks;
+    this.bindAirSlider();
     this.osd.append(top, packBlock, flightBlock, sticks, this.osdLaunch, this.buildTargetLock());
     r.append(this.osd);
 
@@ -4183,6 +4334,14 @@ export class Ui {
        */
       throttle: throttleSummary(s.rates || {}, s.airframe),
       /*
+       * THE AIR SLIDER'S POSITION, and it belongs in the report for the same
+       * reason the throttle curve does: this is the one field that tells the
+       * difference between "the shipped quad is too floaty" and "I have
+       * already dragged this to 160 and it is STILL too floaty". The first
+       * is an opinion about a default, the second is a measurement of one.
+       */
+      air: Number.isFinite(s.air) ? s.air : AIR_STOCK,
+      /*
        * HOW THE STICKS GOT HERE, which is the field five feel reports were
        * missing and the reason they read as five opinions about one quad.
        *
@@ -4521,6 +4680,13 @@ export class Ui {
       { id: 'drift', label: 'Drifts off attitude' },
       { id: 'yaw', label: 'Yaw is lazy' },
       { id: 'throttle', label: 'Throttle is touchy' },
+      /*
+       * FLOATY GETS ITS OWN CHIP, because it kept arriving in the free text
+       * box instead. "About right" plus "its much too floaty" typed
+       * underneath is a report the chip rows could not carry, and the row
+       * below can now answer it on the spot the way the throttle row does.
+       */
+      { id: 'floaty', label: 'Floaty, carries too far' },
       { id: 'locked', label: 'Locked in, no complaints' },
     ];
 
@@ -4571,6 +4737,25 @@ export class Ui {
      */
     const capHint = el('p', 'lede feel-hint', '');
     capHint.hidden = true;
+    /*
+     * THE SECOND COMPLAINT THIS SHELL CAN ANSWER ON THE SPOT, on exactly the
+     * rule the throttle row above set: offered when the chip is ticked and
+     * only when it would still do something. A pilot already sitting at the
+     * top of the air range is telling us the DEFAULT is wrong, which is a
+     * report worth having undisturbed, so they are not told to do the thing
+     * they have done.
+     */
+    const airHint = el('p', 'lede feel-hint', '');
+    airHint.hidden = true;
+    const refreshAirHint = () => {
+      const air = clampAir(this.settings.air);
+      const show = issues.has('floaty') && air < AIR_MAX;
+      airHint.hidden = !show;
+      if (show) {
+        const next = Math.min(AIR_MAX, air + 30);
+        airHint.textContent = `The Air slider between the sticks on the flight screen is this exact complaint: it scales every drag term the quad has, so the craft washes speed off harder and stops carrying through corners. Yours is at ${air} percent. Levelled off and coasting from 20 m/s, the stock quad takes 102 metres to get down to 10; at ${next} percent it takes ${next >= 160 ? 55 : 76}. Your hover point does not move. Worth dragging before you wait on us, and a lap flown on it stays off the public board.`;
+      }
+    };
     const refreshCapHint = () => {
       const r = this.settings.rates || {};
       const cap = normaliseRates(r).throttleCap;
@@ -4590,6 +4775,7 @@ export class Ui {
       }
       chips.get(id).classList.toggle('on', issues.has(id));
       refreshCapHint();
+      refreshAirHint();
     });
 
     const wordsLabel = el('p', 'name-dialog-label', 'In your own words (optional)');
@@ -4619,6 +4805,7 @@ export class Ui {
       el('p', 'name-dialog-label', 'Anything specific (pick any)'),
       issueRow.wrap,
       capHint,
+      airHint,
       wordsLabel, words,
       nameLabel, reporter,
       err, row,
@@ -9969,16 +10156,154 @@ export class Ui {
    * at the bottom), right is roll (x) and pitch (y, stick forward is up,
    * matching the radio and the up arrow). Hidden when a radio is the
    * stick source.
+   *
+   * `show` now hides the two GIMBALS rather than the block they sit in,
+   * because the air slider sits between them and is not the keyboard's.
+   * Whether the block itself is up is setAirSlider's call, which the frame
+   * loop makes from the same place with the same flight test.
    */
   setStickOverlay({ show, roll, pitch, yaw, throttle }) {
     if (!this.osdSticks) {
       return;
     }
-    Ui.klass(this.osdSticks, show ? 'osd-sticks' : 'osd-sticks is-off');
+    const cls = show ? 'osd-gimbal' : 'osd-gimbal is-off';
+    Ui.klass(this.osdStickLeft.box, cls);
+    Ui.klass(this.osdStickRight.box, cls);
     if (!show) {
       return;
     }
     placeSticks(this.osdStickLeft, this.osdStickRight, { yaw, throttle, roll, pitch });
+  }
+
+  /*
+   * THE AIR SLIDER'S THREE JOBS: commit live, say what it is, and explain
+   * itself exactly once.
+   *
+   * Commit is on 'input', not 'change'. Every other slider in this shell
+   * waits for the release because each one re-inits the module; this one
+   * stores a single double into the plant, and the whole reason it is on the
+   * flight screen instead of in a menu is that the pilot should feel the
+   * change arrive while the craft is still in the air.
+   *
+   * The events are stopped at this element. The OSD sits under nothing while
+   * flying, but the shell's own key handling treats the flight screen as the
+   * stick, and a focused track that let its arrow keys through would steer
+   * the quad as well as the slider.
+   */
+  bindAirSlider() {
+    const air = this.osdAir;
+    if (!air) {
+      return;
+    }
+    const commit = () => {
+      const v = clampAir(air.range.value);
+      if (v === this.settings.air) {
+        /* Still repaint: a drag between two steps snaps back to the value in
+         * force, and a caption that did not follow would read as a stuck
+         * control. */
+        this.paintAir();
+        return;
+      }
+      this.settings.air = v;
+      this.paintAir();
+      saveSettings(this.settings);
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
+    };
+    air.range.addEventListener('input', commit);
+    /* Touching the track at all answers the question the hint was asking, so
+     * the hint retires whether or not the value ends up anywhere new. */
+    air.range.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.dismissAirHint();
+    });
+    air.range.addEventListener('click', (e) => e.stopPropagation());
+    air.range.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      this.dismissAirHint();
+    });
+    air.dismiss.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.dismissAirHint();
+    });
+    this.paintAir();
+  }
+
+  /*
+   * Whether the block is up, and whether the hint is with it. Driven from
+   * the frame loop beside setStickOverlay, so the two cannot disagree about
+   * what flying means.
+   *
+   * The hint is shown on the FIRST FLIGHT this browser has ever seen and
+   * never again. Not on the title, not in a menu: a tooltip on a control the
+   * reader cannot see is a riddle, and the sentence it carries only means
+   * anything while there is a quad in the air to try it on.
+   */
+  setAirSlider(show, ready = true) {
+    const air = this.osdAir;
+    if (!air) {
+      return;
+    }
+    Ui.klass(air.box, show ? 'osd-air' : 'osd-air is-off');
+    Ui.klass(this.osdSticks, show ? 'osd-sticks' : 'osd-sticks is-off');
+    if (!show) {
+      return;
+    }
+    /*
+     * WHEN THE HINT IS RAISED, and both halves of the test were learned
+     * from a picture rather than reasoned out.
+     *
+     * `ready` is the craft being in the air. A card explaining how the air
+     * feels, shown to somebody still sitting on the start block under a
+     * banner reading "throttle up to take off", is asking them to read about
+     * a thing they cannot try; and it is the takeoff prompt they need first.
+     *
+     * IT DOES NOT ALSO WAIT FOR THE BANNER, and that was the first draft.
+     * On a 390 px tall phone the card and the world note landed on each
+     * other, so the hint was told to hold until the banner cleared, and on
+     * the field map with nothing built the note NEVER clears: a rule that
+     * can silently never fire is worse than the overlap it was fixing. The
+     * collision is a layout problem and it is solved in the sheet, where the
+     * card flips below the slider on a short screen.
+     */
+    if (!this.airHintDone && air.hint.hidden && ready && !airHintSeen()) {
+      air.hint.hidden = false;
+    }
+  }
+
+  dismissAirHint() {
+    const air = this.osdAir;
+    if (!air || this.airHintDone) {
+      return;
+    }
+    this.airHintDone = true;
+    air.hint.hidden = true;
+    markAirHintSeen();
+  }
+
+  /* The track and the caption, from settings. Called on every write so the
+   * flight screen agrees with a value changed anywhere else. */
+  paintAir() {
+    const air = this.osdAir;
+    if (!air) {
+      return;
+    }
+    const v = this.settings.air;
+    if (Number(air.range.value) !== v) {
+      air.range.value = String(v);
+    }
+    /*
+     * SLATE AT STOCK, AMBER OFF IT. Slate is the colour this shell uses for
+     * type that should recede, and at 100 there is nothing to say: the pilot
+     * is on the machine every record and every board time was set on. Off
+     * stock it is an instrument reading and it says out loud that the board
+     * is not taking this, because finding that out at upload time is the
+     * complaint the record sentence was written to answer.
+     */
+    const stock = v === AIR_STOCK;
+    air.cap.textContent = stock ? 'Air 100%' : `Air ${v}%, off the board`;
+    Ui.klass(air.cap, stock ? 'osd-air-cap is-stock' : 'osd-air-cap');
   }
 
   setCalibration(view) {

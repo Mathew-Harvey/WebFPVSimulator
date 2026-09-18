@@ -218,6 +218,46 @@ int plant_airframe(void);
  */
 extern int SIM_ARCADE;
 
+/*
+ * AIR, set by sim_set_air: a scale on everything the air does to slow this
+ * airframe down. 1.0 is the machine every band in tests/ and gates.config.json
+ * was measured against; below 1 the quad carries further, above 1 it washes
+ * speed off harder.
+ *
+ * THE ONE WORD THIS ANSWERS IS "FLOATY". The board keeps returning it, and
+ * the two rounds that answered it moved exactly these numbers by hand: round
+ * 17b added the rotor H force because the model "felt floaty and blew out
+ * corners", and the mass went up twice off a report asking for more gravity.
+ * Of the two, the drag set is the one that moves the feel without moving
+ * anything a pilot has learned: hover stays where it is on the stick, the
+ * punch and the climb are untouched, and what changes is how far the craft
+ * carries with the sticks centred. Measured on the shipped five inch,
+ * levelled and coasting from 20 m/s down to 10 m/s: 3.64 s and 102 m at 1.0,
+ * 2.93 s and 79 m at 1.5 on the rotor term alone, 2.14 s and 60 m at 1.5 on
+ * the whole set.
+ *
+ * WHAT IT SCALES, and why each one belongs: the per axis quadratic body drag
+ * (cda_front, cda_side, cda_plan), which is the airframe's own bluff body
+ * drag; k_rotor_drag, the H force, which is the dominant translational
+ * damping at the speeds a race is flown at; and k_rotor_axial, the ducted
+ * machine's descent brake. All three are the air pushing back on the craft.
+ *
+ * WHAT IT DOES NOT SCALE, deliberately. Not rho, because rho also sets the
+ * induced velocity, the vortex ring thresholds and the propwash, so scaling
+ * it would move hover, the descent model and the shake, none of which is what
+ * "floaty" names. Not k_body_lift, which is a turning force rather than a
+ * brake. Not mass, thrust or anything electrical: hover throttle is a number
+ * pilots memorise and configs/rates.js quotes in a menu, so this knob leaves
+ * it exactly where it is.
+ *
+ * A MODE, not dynamic state, in the same sense SIM_ARCADE is one: it survives
+ * sim_reset and sim_init and the shell owns asserting it. At 1.0 the plant is
+ * bit identical to the one before this existed, because x * 1.0 is x for
+ * every finite double and no expression here was reassociated to get it. That
+ * is measured against the recorded trace hash, not assumed.
+ */
+extern double SIM_AIR;
+
 /* Motor spin direction, position and cant moved INTO PlantParams when the
  * second airframe landed: they are airframe data and a whoop's are its own.
  * The names below are the shorthand plant.c reads them through. */

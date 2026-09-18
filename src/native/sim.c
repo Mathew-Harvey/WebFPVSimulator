@@ -1165,6 +1165,25 @@ SIM_EXPORT int sim_set_flight_style(int arcade) {
   return SIM_OK;
 }
 
+/* Air scale, see sim_internal.h. A mode, same rule as the flight style. */
+double SIM_AIR = 1.0;
+
+SIM_EXPORT int sim_set_air(double scale) {
+  /*
+   * The band is refused rather than clamped, because a host that asks for
+   * air 5 has a bug and a silent clamp hides it. 0.5 to 2.0 is what the
+   * shell offers and what was measured; the plant is stable outside it, the
+   * machine just stops being a quadcopter.
+   */
+  if (!(scale >= 0.5) || !(scale <= 2.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  SIM_AIR = scale;
+  return SIM_OK;
+}
+
+SIM_EXPORT double sim_air(void) { return SIM_AIR; }
+
 /*
  * The airframe. A MODE, not dynamic state, in exactly the sense
  * sim_set_flight_style above is one: it survives sim_reset and sim_init, the

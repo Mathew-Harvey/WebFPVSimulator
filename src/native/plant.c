@@ -1549,8 +1549,19 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   }
   s->pack_current = pack_current;
 
-  /* 3. Body frame forces: thrust along +z, quadratic drag per axis. */
-  const double cda[3] = { PLANT.cda_front, PLANT.cda_side, PLANT.cda_plan };
+  /*
+   * 3. Body frame forces: thrust along +z, quadratic drag per axis.
+   *
+   * SIM_AIR scales every term the air uses to slow this craft down, and it
+   * is applied HERE rather than folded into the table because the table is
+   * the airframe and this is the pilot's knob. See sim_internal.h for what
+   * it does and does not touch. At 1.0 each product below is the same IEEE
+   * double the constant was, so the shipped machine is unmoved.
+   */
+  const double air = SIM_AIR;
+  const double cda[3] = {
+    PLANT.cda_front * air, PLANT.cda_side * air, PLANT.cda_plan * air,
+  };
   double f_body[3];
   for (int a = 0; a < 3; a += 1) {
     f_body[a] = -0.5 * PLANT.rho * cda[a] * v_body[a] * sim_fabs(v_body[a]);
@@ -1663,7 +1674,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     const double x4 = x2 * x2;
     const double y2 = 2.0 / (sim_sqrt(x4 + 4.0) + x2);
     const double vi = vh * sim_sqrt(y2);
-    const double h = PLANT.k_rotor_drag * PLANT.rho * disc_area * vi * vperp;
+    const double h = PLANT.k_rotor_drag * air * PLANT.rho * disc_area * vi * vperp;
     const double fx = -h * (vx / vperp);
     const double fy = -h * (vy / vperp);
     f_body[0] += fx;
@@ -1777,7 +1788,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
         brake = 1.0;
       }
     }
-    f_body[2] += brake * 0.5 * PLANT.rho * PLANT.k_rotor_axial * disc_all * sink * sink;
+    f_body[2] += brake * 0.5 * PLANT.rho * PLANT.k_rotor_axial * air * disc_all * sink * sink;
   }
 
   /* Nose up is a NEGATIVE pitch torque in this frame, so the tap is negated

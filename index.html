@@ -526,10 +526,11 @@
       .osd-sticks {
         position: absolute; left: 50%; bottom: 18px;
         transform: translateX(-50%);
-        display: flex; align-items: flex-end; gap: 22px;
+        display: flex; align-items: flex-end; gap: 14px;
         pointer-events: none;
       }
       .osd-sticks.is-off { display: none; }
+      .osd-gimbal.is-off { display: none; }
       .osd-gimbal-plate {
         position: relative;
         width: clamp(64px, 11vw, 88px);
@@ -557,6 +558,141 @@
         font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
         color: var(--slate); text-align: center;
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+      }
+
+      /*
+       * THE AIR SLIDER, between the sticks, because that is where the hands
+       * already are and because the thing it changes is only legible while
+       * flying.
+       *
+       * It rides inside .osd-sticks so the two gimbals sit either side of it
+       * and the whole block stays one centred row, which is why .osd-sticks
+       * is no longer hidden as a unit: the GIMBALS carry their own is-off
+       * now and the container is shown whenever either half has something to
+       * say. The gap drops to 14px because the slider is the wide part.
+       *
+       * Amber, which on this overlay means an instrument rather than a
+       * record: it reads a number about the pilot's own quad, the same job
+       * the throttle bar and the pack gauge do. The track is the only thing
+       * on this overlay that takes a pointer, so it turns events back on for
+       * itself against .osd-sticks' none.
+       */
+      .osd-air {
+        position: relative;
+        display: flex; flex-direction: column; align-items: center;
+        gap: 2px; padding-bottom: 2px;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+      }
+      .osd-air.is-off { display: none; }
+      .osd-air-row { display: flex; align-items: center; gap: 8px; }
+      .osd-air-end {
+        font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+        color: var(--slate); white-space: nowrap;
+      }
+      /*
+         Reuses .row-range for the track and thumb geometry, so the menu's
+         slider and this one are the same control; only the colour differs,
+         the same way .screen-fc recolours it. Two rules here are load bearing
+         and both were learned the hard way in this file:
+
+         THE SELECTOR CARRIES TWO CLASSES. .row-range is declared later in
+         this sheet, so a bare .osd-air-range ties on specificity and loses on
+         source order, and the first build of this control came out with the
+         menu's mint thumb over a cream track, which on an OSD means a record
+         rather than an instrument.
+
+         AND THE VENDOR PREFIXES ARE WRITTEN OUT SEPARATELY. A shared selector
+         list is dropped whole by any engine that does not know one of them.
+
+         The track is darkened as well as tinted: this one sits over a lit
+         world rather than over a panel, and the menu's 0.22 cream vanished
+         against grass.
+      */
+      .osd-air-range { width: clamp(90px, 13vw, 150px); }
+      .osd-air .osd-air-range::-webkit-slider-runnable-track {
+        background: rgba(12, 18, 14, 0.55);
+        box-shadow: inset 0 0 0 1px rgba(255, 212, 92, 0.35);
+      }
+      .osd-air .osd-air-range::-moz-range-track {
+        background: rgba(12, 18, 14, 0.55);
+        box-shadow: inset 0 0 0 1px rgba(255, 212, 92, 0.35);
+      }
+      .osd-air .osd-air-range::-webkit-slider-thumb { background: var(--amber); }
+      .osd-air .osd-air-range::-moz-range-thumb { background: var(--amber); }
+      .osd-air .osd-air-range:focus-visible { outline-color: var(--amber); }
+      .osd-air-cap {
+        font-size: 11px; letter-spacing: 0.08em;
+        color: var(--amber); white-space: nowrap;
+      }
+      .osd-air-cap.is-stock { color: var(--slate); }
+      /*
+       * THE ONE TIME IT EXPLAINS ITSELF.
+       *
+       * A slider with no label is furniture, and a label long enough to say
+       * what this one does would sit over the track for the rest of the
+       * pilot's life. So it says it once, on the first flight this browser
+       * has ever seen, and never again: the seen flag is its own localStorage
+       * key rather than a field in the settings blob, because saving settings
+       * is what detectFirstRun reads to decide somebody is a returning pilot,
+       * and dismissing a hint is not the same as having been here before.
+       *
+       * It is pinned ABOVE the slider and pointer-events are on for the
+       * button alone, so the hint can be read and dismissed without ever
+       * being able to swallow a stick input aimed past it.
+       */
+      .osd-air-hint {
+        position: absolute; bottom: calc(100% + 10px); left: 50%;
+        transform: translateX(-50%);
+        width: max-content; max-width: min(78vw, 320px);
+        padding: 10px 14px; border-radius: 6px;
+        background: rgba(16, 22, 17, 0.94);
+        box-shadow: inset 0 0 0 1px rgba(255, 212, 92, 0.42), 0 6px 20px rgba(0, 0, 0, 0.5);
+        text-align: left; pointer-events: none;
+      }
+      .osd-air-hint[hidden] { display: none; }
+      /* The pointer down at the track. A rotated square rather than a border
+         triangle, so the one pixel hairline above can run around it. */
+      .osd-air-hint::after {
+        content: ''; position: absolute; left: 50%; bottom: -5px;
+        width: 10px; height: 10px; margin-left: -5px;
+        transform: rotate(45deg);
+        background: rgba(16, 22, 17, 0.94);
+        box-shadow: inset -1px -1px 0 0 rgba(255, 212, 92, 0.42);
+      }
+      .osd-air-hint-title {
+        font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+        color: var(--amber); margin: 0 0 4px;
+      }
+      .osd-air-hint-body {
+        font-size: 13px; line-height: 1.45; color: var(--cream); margin: 0;
+      }
+      .osd-air-hint-btn {
+        appearance: none; border: 0; background: var(--amber); color: var(--deep);
+        font: inherit; font-size: 12px; font-weight: 600;
+        padding: 5px 12px; border-radius: 999px; margin-top: 9px;
+        cursor: pointer; pointer-events: auto;
+      }
+      .osd-air-hint-btn:focus-visible { outline: 1px solid var(--cream); outline-offset: 2px; }
+      /*
+       * SHORT SCREEN: THE CARD HANGS BELOW THE SLIDER INSTEAD.
+       *
+       * Measured on an 844 by 390 landscape phone with the thumb sticks up.
+       * The slider sits at y 155 there, the card is about 125 px, and the
+       * world banner sits at 22 percent of the height, which is y 60 to 112:
+       * above the slider the two land on each other and the hint is not
+       * readable. Below it the card covers the stacked pack and flight
+       * blocks for as long as it takes to read one sentence and tap Got it,
+       * which is a trade worth making once, on one flight, ever.
+       */
+      @media (max-height: 560px) {
+        .osd-air-hint {
+          bottom: auto; top: calc(100% + 10px);
+          font-size: 12px;
+        }
+        .osd-air-hint::after {
+          bottom: auto; top: -5px;
+          box-shadow: inset 1px 1px 0 0 rgba(255, 212, 92, 0.42);
+        }
       }
 
       /*
@@ -645,6 +781,17 @@
       .touch-fly-on .osd-right { right: auto; left: 50%; transform: translateX(-50%); }
       .touch-fly-on .osd-timer { font-size: 30px; }
       .touch-fly-on .osd-value { font-size: 16px; }
+      /*
+       * The air slider goes ABOVE the stacked corners rather than into them.
+       * Bottom 8px is the flight block and 116px is the pack block, and the
+       * pack block is about 70px of type and bar, so the centre column is
+       * spoken for up to roughly 186px. 196px clears it, and the doubled
+       * thumb plates own the two corners rather than the middle, so the
+       * width is there. Hidden on a portrait phone, where .touch-rotate is
+       * already saying the screen is the wrong way round and the plates
+       * shrink to reach across it.
+       */
+      .touch-fly-on .osd-sticks { bottom: 196px; }
       /* Portrait is the hinted-away state, but it still has to be tidy:
          the plates go back to the single size, because two doubled plates
          are wider than the screen, and the corners go back to a split pair
@@ -654,6 +801,7 @@
           width: clamp(112px, 30vmin, 168px);
           height: clamp(112px, 30vmin, 168px);
         }
+        .touch-fly-on .osd-sticks { display: none; }
         .touch-fly-on .osd-corner { bottom: 186px; }
         .touch-fly-on .osd-left { left: calc(50% - 164px); transform: none; text-align: left; }
         .touch-fly-on .osd-right { left: auto; right: calc(50% - 164px); transform: none; text-align: right; }

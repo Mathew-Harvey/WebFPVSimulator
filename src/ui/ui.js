@@ -1531,18 +1531,23 @@ function recordSentence(s, trackName) {
     `${s.laps} lap${s.laps === 1 ? '' : 's'}`,
     `the ${tuneById(s.tune).name} tune`,
   ];
-  if (s.air !== AIR_STOCK) {
+  /* clampAir rather than s.air raw, the same guard bugSnapshot uses: every
+   * settings object that reaches here has been through loadSettings, and a
+   * sentence that can print "air at undefined percent" if one ever does not
+   * is a sentence waiting to embarrass itself in front of a pilot. */
+  const air = clampAir(s.air);
+  if (air !== AIR_STOCK) {
     /* Second in the list, right behind the physics model, because it IS the
      * physics model: the air slider on the flight screen scales every drag
      * term the plant has. A pilot who nudged it mid flight and forgot has
      * exactly the problem this sentence exists to prevent. */
-    bits.splice(1, 0, `air at ${s.air} percent`);
+    bits.splice(1, 0, `air at ${air} percent`);
   }
   return `Your best on ${trackName} is filed under exactly this: ${bits.join(', ')}.`
     + ' Change any part of it and you are on a different board.'
     + (s.flightStyle === 'arcade'
       ? ' Arcade times stay off the public board, so this run will not count there.'
-      : s.air !== AIR_STOCK
+      : air !== AIR_STOCK
         ? ' Times flown in air that is not 100 percent stay off the public board, so this run will not count there.'
         : ` This run is on ${link}.`);
 }

@@ -66,7 +66,7 @@ import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, PRESS_CONFIRM_MS, PRESS_RELEASE_MS, PRESS_BLEED, thrustIntoFace, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
-import { Ui, formatTime, GRAV_STOCK, clampGravity } from './ui/ui.js';
+import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor } from './ui/ui.js';
 import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
   fetchTrackTimes, postFreestyleRun, postTime,
@@ -1538,20 +1538,22 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     const craft = runAirframe === '5inch' ? '' : `.${runAirframe}`;
     /*
-     * AND THE GRAVITY, on exactly the rule above it. The weight the craft
-     * carries is scaled by this, so a lap under heavier gravity is a lap on a
-     * quad that hovers, climbs and drops differently, and filing it beside a
-     * stock lap would make the record meaningless. 100 is the EMPTY suffix,
-     * so every record set before this slider existed stays exactly where it
-     * is, which is the same trick the style and the airframe use.
+     * AND THE WEIGHT, on exactly the rule above it, keyed on the multiple of
+     * g the plant is holding rather than on the slider, so the key names the
+     * machine and not the menu. A lap at a different weight is a lap on a
+     * quad that hovers, climbs and drops differently, and filing it beside
+     * another would make the record meaningless.
      *
-     * The suffix is `.grav`, and the `.air` it replaced was live for twenty
-     * minutes on a slider that scaled drag instead. Those keys are orphaned
-     * rather than migrated, deliberately: they hold laps flown on a machine
-     * this build cannot reproduce, so carrying them across would file a lap
-     * under a quad it was never flown on.
+     * THE EMPTY SUFFIX IS THE 1.0 MACHINE AND STAYS THAT WAY. Every record
+     * set before the slider existed was flown at exactly 1.0, and the shell's
+     * normal is now 1.62, so the normal carries `.g162` and those old records
+     * stay under the bare key, untouched and unreachable, because nothing on
+     * the new band lands on 1.000 exactly: the floaty end is 0.972. That is
+     * the append-only rule applied to a pilot's own bests. The `.grav` and
+     * `.air` suffixes that came before were each live for under two hours on
+     * a slider with a different meaning and are orphaned the same way.
      */
-    const gravPart = runGravity === GRAV_STOCK ? '' : `.grav${runGravity}`;
+    const gravPart = runGravityScale === 1 ? '' : `.g${Math.round(runGravityScale * 100)}`;
     return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${gravPart}`;
   }
 
@@ -1970,8 +1972,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * cannot change the physics under a lap in progress. */
   let runStyle = ui.settings.flightStyle === 'arcade' ? 'arcade' : 'expert';
   /*
-   * THE GRAVITY THE RUN IS FLOWN UNDER, and it is the one setting here that
-   * does NOT wait for the next run.
+   * THE WEIGHT THE RUN IS FLOWN AT, and it is the one setting here that does
+   * NOT wait for the next run.
    *
    * Pack charge, flight style and the airframe all wait, because a pilot
    * changing them is in a menu and the run can start again around them. This
@@ -1980,16 +1982,22 @@ export async function boot({ loading, bootStart, mapId }) {
    * effect next time would answer the question it was built for with a shrug.
    * So it applies at once, and the cost is paid where it belongs, on the lap:
    * a lap the change lands in the middle of is voided, because a lap flown
-   * under two gravities is not a lap flown under either.
+   * at two weights is not a lap flown at either.
    *
-   * GRAV_STOCK rather than the stored setting, and that is the same trick
-   * runAirframe below uses: applySettings runs once at boot, sees the two
-   * disagree, and pushes the stored value through the ONE path that talks to
-   * sim_set_gravity, instead of boot growing a second path of its own that
-   * would drift from it. GRAV_STOCK is also what the module itself starts at,
-   * so the shell and the plant agree before anybody has touched anything.
+   * TWO NUMBERS, because the module and the menu no longer agree at rest.
+   * runWeight is the slider value the run is flown at, 100 by default.
+   * runGravityScale is the multiple of 9.80665 the module is actually
+   * holding, which starts at 1.0 because that is the module's own default
+   * and the machine every harness replay flies; the shell's normal is
+   * configs/airframes.js gravityBase, 1.62. So at boot the two disagree by
+   * construction, applySettings sees it and pushes the base through the ONE
+   * path that talks to sim_set_gravity, and the record key is built from the
+   * scale the plant is holding rather than from the slider, so it survives
+   * the base moving again. Same trick runAirframe below uses for the same
+   * reason: boot must not grow a second path of its own.
    */
-  let runGravity = GRAV_STOCK;
+  let runWeight = WEIGHT_STOCK;
+  let runGravityScale = 1;
   /*
    * The aircraft the RUN is on, which starts as the one buildShell drew and
    * NOT as the stored setting. That is deliberate: applySettings below is
@@ -3549,7 +3557,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /*
      * THE AIR, OUTSIDE THE BETWEEN-RUNS BLOCK ON PURPOSE.
      *
-     * See the note at runGravity: this is the one physics setting with a
+     * See the note at runWeight: this is the one physics setting with a
      * control on the flight screen, and it is there so the pilot can feel it
      * arrive. Waiting for the next run would make the slider a promise
      * instead of a knob.
@@ -3567,10 +3575,19 @@ export async function boot({ loading, bootStart, mapId }) {
      * never flew.
      */
     {
-      const wantGravity = clampGravity(s.gravity);
-      if (wantGravity !== runGravity) {
+      const wantWeight = clampWeight(s.weight);
+      /*
+       * The scale follows the airframe as well as the slider, because the
+       * base lives on the airframe entry; and the test is on the SCALE, not
+       * the weight, so the boot time disagreement between the module's 1.0
+       * and the shell's normal is seen, and so an airframe swap that moved
+       * the base would be too. The airframe itself only changes between
+       * runs, above, so this cannot swap the plant under a lap.
+       */
+      const wantScale = gravityScaleFor(wantWeight, runAirframe);
+      if (wantScale !== runGravityScale) {
         if (typeof sim.e.sim_set_gravity === 'function'
-          && sim.e.sim_set_gravity(wantGravity / 100) === SIM_OK) {
+          && sim.e.sim_set_gravity(wantScale) === SIM_OK) {
           /*
            * NOT gated on mode, and the first version was. The slider sits
            * below the pause panel, dimmed but uncovered, so it can be dragged
@@ -3582,14 +3599,17 @@ export async function boot({ loading, bootStart, mapId }) {
            * boot time push of a stored value cannot void anything.
            */
           const midLap = race.currentLapMs(simTimeMs) != null;
-          runGravity = wantGravity;
+          runWeight = wantWeight;
+          runGravityScale = wantScale;
           if (midLap) {
-            race.voidLap('Gravity changed\nLap voided', performance.now());
+            race.voidLap('Weight changed\nLap voided', performance.now());
           }
         } else {
-          ui.settings.gravity = runGravity;
+          ui.settings.weight = runWeight;
           ui.paintAir();
         }
+      } else {
+        runWeight = wantWeight;
       }
     }
     race.setRecordKey(recordKey());
@@ -3791,12 +3811,12 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
-    /* And the gravity, for the same reason in a different number: the
+    /* And the weight, for the same reason in a different number: the
      * slider scales the weight the craft carries, so a lap flown off 100 is
      * a lap flown on a quad nobody else on the board is flying. */
-    if (runGravity !== GRAV_STOCK) {
+    if (runWeight !== WEIGHT_STOCK) {
       notice = {
-        text: `Laps flown at ${runGravity} percent gravity stay off the public board.\nPut the Gravity slider back to 100 and fly it again.`,
+        text: `Laps flown at ${runWeight} percent weight stay off the public board.\nPut the Weight slider back to 100 and fly it again.`,
         untilMs: performance.now() + 3600,
       };
       return;
@@ -3998,21 +4018,21 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     /*
-     * AND THE GRAVITY, WHICH IS REFUSED HERE RATHER THAN LABELLED, unlike
+     * AND THE WEIGHT, WHICH IS REFUSED HERE RATHER THAN LABELLED, unlike
      * the arcade style two functions up.
      *
      * The argument for letting an arcade run onto this board is that arcade
      * is a NAMED model the board carries on every row, so a reader can see
      * it and filter it and the pilot who prefers that machine still has a
      * board. This slider is not a model, it is a continuum, and the board
-     * has no column for it: a row posted from 180 percent gravity would sit
+     * has no column for it: a row posted from 140 percent weight would sit
      * beside a stock row looking identical and there would be nothing to
      * read. Putting the column on the board is the better answer and is owed
      * in PROGRESS.md; until it exists, refusing is the honest half.
      */
-    if (runGravity !== GRAV_STOCK) {
+    if (runWeight !== WEIGHT_STOCK) {
       notice = {
-        text: `Runs flown at ${runGravity} percent gravity stay off the public board.\nPut the Gravity slider back to 100 and fly it again.`,
+        text: `Runs flown at ${runWeight} percent weight stay off the public board.\nPut the Weight slider back to 100 and fly it again.`,
         untilMs: performance.now() + 4200,
       };
       return;
@@ -7559,8 +7579,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * with a name rather than a mystery. Harness only.
    */
   window.__air = () => ({
-    setting: ui.settings.gravity,
-    run: runGravity,
+    setting: ui.settings.weight,
+    run: runWeight,
+    scale: runGravityScale,
     module: typeof sim.e.sim_gravity === 'function' ? sim.e.sim_gravity() : null,
     key: recordKey(),
   });

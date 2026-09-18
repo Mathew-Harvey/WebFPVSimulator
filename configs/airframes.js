@@ -93,6 +93,26 @@ export const AIRFRAMES = [
     packLabels: { 4.2: 'Charged', 3.8: 'Half', 3.5: 'Nearly empty' },
     defaultTune: 'betaflight-default',
     /*
+     * THE WEIGHT THIS AIRFRAME IS FLOWN AT, as a multiple of 9.80665 handed
+     * to sim_set_gravity when the Weight slider reads 100. The module's own
+     * default is 1.0 and every band in tests/ and gates.config.json was
+     * measured there; this number is the pilot's, not the harness's.
+     *
+     * 1.62 is ninety percent of the top of the first slider's band. That
+     * slider ran 70 to 180 percent of 1.0 and the owner flew it to the stop
+     * and said full Sinky "feels about right", then asked for normal to sit
+     * at ninety percent of that with headroom either way. The slider is now
+     * Weight 60 to 140 around this base, so its floaty end, 0.97, is within
+     * half a percent of the machine every earlier record was set on, and its
+     * sinky end, 2.27, is heavier than anyone has yet asked for.
+     *
+     * Measured at this base on the five inch: hover 35.0 percent of stick,
+     * ten metres of fall from a hover with the throttle cut in 1.20 s, a
+     * 400 ms punch ballooning 1.62 m at idle afterwards, props level descent
+     * 28.3 m/s. At 1.0 those were 26.4, 1.53 s, 3.80 m and 22.0.
+     */
+    gravityBase: 1.62,
+    /*
      * Betaflight 4.5.1's own rate defaults, which is what RATE_DEFAULTS in
      * configs/rates.js already is. Named here as well so the two airframes
      * are read the same way rather than one of them being the special case
@@ -238,6 +258,10 @@ export const AIRFRAMES = [
      */
     packVoltages: [4.2, 3.8, 3.5],
     packLabels: { 4.2: 'Charged', 3.8: 'Half', 3.5: 'Nearly empty' },
+    /* The five inch's base, because simId above is the five inch's plant:
+     * the pilot who set 1.62 flew the only plant this entry flies. A whoop
+     * plant of its own would carry its own number here. */
+    gravityBase: 1.62,
     /*
      * THE FIVE INCH'S TUNE, BECAUSE THE PLANT IS THE FIVE INCH'S.
      *

@@ -54,6 +54,29 @@ const AIRFRAME = process.argv.slice(2)
   .find((a) => a.startsWith('--airframe='))?.slice('--airframe='.length) ?? '5inch';
 const WHOOP = AIRFRAME === 'whoop65';
 const SIM_AIRFRAME_WHOOP65 = 1;
+/*
+ * --gravity=SCALE, default 1.0, which is the module's own default and the
+ * machine every band below was written against. The shell asserts a
+ * heavier normal through sim_set_gravity (see WEIGHT in src/ui/ui.js), and
+ * the cap table configs/rates.js quotes in the throttle limit menu has to
+ * be read off the machine a pilot actually flies, not the harness's. So the
+ * table is regenerated with this flag at the shell's base, and every other
+ * figure this script prints stays at 1.0 unless asked.
+ */
+const GRAVITY = Number(process.argv.slice(2)
+  .find((a) => a.startsWith('--gravity='))?.slice('--gravity='.length) ?? '1');
+if (!(GRAVITY >= 0.5 && GRAVITY <= 2.5)) {
+  throw new Error(`--gravity=${GRAVITY} is outside the module's 0.5 to 2.5`);
+}
+function setGravity(sim) {
+  if (GRAVITY === 1) {
+    return;
+  }
+  const rc = sim.e.sim_set_gravity(GRAVITY);
+  if (rc !== SIM_OK) {
+    throw new Error(`sim_set_gravity returned ${rc}`);
+  }
+}
 const MASS = WHOOP ? 0.0234 : 0.71;
 
 /* State indices, sim_abi.h. */
@@ -82,6 +105,7 @@ async function fresh(cellV = CELL_V) {
       throw new Error(`sim_set_airframe returned ${rc}`);
     }
   }
+  setGravity(sim);
   if (sim.init(config) !== SIM_OK) {
     throw new Error('sim_init failed');
   }
@@ -220,7 +244,7 @@ hold(roll, 400, { throttle: 0.35, roll: 1 }, (i, st) => {
 });
 row('peak roll acceleration', `${(peakAccel * 180 / Math.PI).toFixed(0)} deg/s^2`, '', '');
 
-console.log('\nFLIGHT CHARACTERISTICS, measured off dist/sim.wasm\n');
+console.log(`\nFLIGHT CHARACTERISTICS, measured off dist/sim.wasm${GRAVITY === 1 ? '' : ` at gravity ${GRAVITY} times 9.80665`}\n`);
 console.log(`${'quantity'.padEnd(30)}${'measured'.padEnd(26)}${'STAGE1.md says'.padEnd(24)}note`);
 for (const r of rows) {
   console.log(`${r.what.padEnd(30)}${String(r.measured).padEnd(26)}${String(r.declared).padEnd(24)}${r.note}`);
@@ -262,6 +286,7 @@ for (const cap of THROTTLE_CAP_CHOICES) {
         throw new Error(`sim_set_airframe returned ${rc}`);
       }
     }
+    setGravity(sim);
     if (sim.init(config + lines) !== SIM_OK) {
       throw new Error('sim_init failed with the cap lines');
     }

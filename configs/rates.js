@@ -591,18 +591,35 @@ export function throttleSummary(r, airframe = '5inch') {
  * moved: that term is exactly zero at and above a hover, and a hover is the
  * only thing this table measures.
  */
+/*
+ * READ AT THE WEIGHT THE SHELL FLIES, NOT THE HARNESS'S. The module's own
+ * gravity is 1.0 and every check in tests/ runs there; the shell asserts
+ * configs/airframes.js gravityBase, 1.62, through sim_set_gravity before a
+ * pilot ever touches the stick, and a menu that quoted the 1.0 hover to a
+ * pilot flying at 1.62 would be eight and a half points low at every cap.
+ * So:
+ *
+ *     node scripts/flightcheck.js --gravity=1.62
+ *
+ * which is the same bisection with the same flag the shell uses. The 1.0
+ * table it replaced read 26.5, 28.9, 31.8, 33.6, 35.6, 38.0, 40.8, 47.9,
+ * 58.6, for anyone reading an old report against a new one.
+ *
+ * ONE TABLE FOR BOTH ENTRIES, because configs/airframes.js gives both a
+ * simId of 0: the shell's whoop flies the five inch plant, so its hover is
+ * the five inch's. The whoop column this replaced, 33.6 at cap 100, had been
+ * read off SIM_AIRFRAME_WHOOP65 with --airframe=whoop65, which selects a
+ * plant the shell does not, and had been quoting a machine nobody flew since
+ * that entry moved to simId 0. If a whoop plant is ever selected again it
+ * gets its own row read at its own gravityBase.
+ */
+const HOVER_5IN_AT_BASE = new Map([
+  [100, 35.0], [90, 38.3], [80, 42.5], [75, 44.9], [70, 47.8],
+  [65, 51.1], [60, 54.9], [50, 64.9], [40, 79.8],
+]);
 const HOVER_STICK_PERCENT = {
-  '5inch': new Map([
-    [100, 26.5], [90, 28.9], [80, 31.8], [75, 33.6], [70, 35.6],
-    [65, 38.0], [60, 40.8], [50, 47.9], [40, 58.6],
-  ]),
-  /* Re-read after the whoop's thrust was brought down to the maker's 4.7 to
-   * one with the duct counted: less thrust is a hover higher on the stick,
-   * about a point and a half at every cap. */
-  whoop65: new Map([
-    [100, 33.6], [90, 36.9], [80, 40.8], [75, 43.1], [70, 45.9],
-    [65, 49.0], [60, 52.7], [50, 62.2], [40, 76.5],
-  ]),
+  '5inch': HOVER_5IN_AT_BASE,
+  whoop65: HOVER_5IN_AT_BASE,
 };
 
 /*

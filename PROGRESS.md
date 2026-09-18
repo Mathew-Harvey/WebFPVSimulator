@@ -38473,3 +38473,136 @@ shipped: three defects, one undisclosed caveat, one wrong number in the
 log. All three defects are fixed and each fix is measured. The caveat is
 the pilot's to judge, and the sentence that decides it is whether the quad
 at 180 feels heavy or feels fast.
+
+## 2026-09-18 | shell, plant | Normal moves to ninety percent of full Sinky, and the ticket says where the slider was
+
+The owner flew the gravity slider to the stop: "at full end sinky it feels
+about right! can we adjust this so that normal is 90% of full sinky then add
+some head room to go floaty or sinky either way, then add logging when
+someone submits a flight feel ticket, what they had this set to?"
+
+Full Sinky was 1.80 times 9.80665. Ninety percent of that is 1.62, and it
+is now the weight the shell flies at.
+
+### Where the base lives, and why not in the plant
+
+The honest place for "the shipped quad hovers at 35 percent" is plant.c,
+as mass or thrust, and it is not there, deliberately, for this round. Every
+threshold in tests/ and every band in gates.config.json was measured at
+1.0, the trace hash is the harness's proof that the plant has not moved,
+and a plant that hovers at 35 percent fails check 5 by construction. So the
+module's own default stays 1.0, the harness never calls sim_set_gravity,
+and the shell asserts configs/airframes.js gravityBase through the one
+path that talks to the module, exactly as it asserts the airframe. The
+trace hash is de0401cd4266, unchanged. The cost is a pair of numbers that
+no longer agree at rest, runWeight and runGravityScale, and the note at
+runWeight in main.js says how boot reconciles them.
+
+THE DEEPER QUESTION IS OPEN AND BELONGS TO THE ADVISOR. A pilot saying the
+quad feels right at 1.62 g is a pilot saying the plant's thrust to weight,
+8.4, is too high by a factor near 1.6, or that hover sits too low on the
+stick, or both. The physically honest fix is in the plant, with every band
+in tests/ re-argued to match, and the lateral caveat from the review entry
+says why that is not the same change as this one: gravity scaling makes a
+heavier world, and the pilot called a heavier world right. Whether they
+would call a heavier QUAD right too is the next flight's question.
+
+### The slider is a weight now, not a gravity
+
+Weight 60 to 140, step 5, 100 the normal. The number a pilot reads is
+relative to the machine we ship, so "Weight 120" stays true when the base
+moves again; "Gravity 100" at 1.62 g would have been a lie. Floaty and
+Sinky stay on the ends. The floaty end, 0.972, is within half a percent of
+the machine every earlier record was set on, which is deliberate: a pilot
+who liked the old feel can have it back. Measured at the base:
+
+    weight   g       hover   fall 10 m   terminal   balloon   hang
+    60       0.972   26.0    1.57 s      21.7       4.03 m    921 ms
+    100      1.62    35.0    1.20 s      28.3       1.62 m    455 ms
+    140      2.27    42.7    1.01 s      33.5       0.67 m    250 ms
+
+Roll response 692 and 685 deg/s peak at 100 and 140. Lateral at a 57
+degree bank 8.8 and 12.0 m/s2, against 5.5 at 1.0. Whoop hover 40.6 and
+51.3 percent on the default tune.
+
+### The base is per airframe and both entries read 1.62
+
+gravityBase sits beside packVoltages and defaultTune. Both entries carry
+1.62 because both carry simId 0: the shell's whoop flies the five inch
+plant, so the pilot who set 1.62 flew the only plant that entry flies. A
+whoop plant of its own would carry its own number. The scale is looked up
+from the run's airframe, so an airframe swap re-pushes it.
+
+### Two tables that had to follow
+
+**HOVER_STICK_PERCENT in configs/rates.js**, quoted by the throttle limit
+menu and by the "throttle is touchy" hint, was measured at 1.0 and would
+have been eight and a half points low at every cap. scripts/flightcheck.js
+gained --gravity=SCALE, default 1.0 so nothing it prints for the harness
+moves, and the five inch column was re-read at 1.62: 35.0, 38.3, 42.5,
+44.9, 47.8, 51.1, 54.9, 64.9, 79.8. The whoop column this replaced had
+been read off SIM_AIRFRAME_WHOOP65 with --airframe=whoop65, a plant the
+shell does not select, and had quoted 33.6 for an entry that hovers at
+the five inch's number; both entries read one table now, and the comment
+says what to do if a whoop plant is ever selected again.
+
+**The record key** is keyed on the multiple of g the plant holds, `.g162`
+at normal, not on the slider, so it names the machine and survives the
+base moving. The empty suffix stays the 1.0 machine: every record set
+before the slider existed stays under the bare key, untouched and
+unreachable, because nothing on the new band lands on 1.000. `.grav` and
+`.air` before it are orphaned the same way; each was live under two hours.
+
+### The board now mixes two machines, said plainly
+
+The public board accepts the normal, as it always accepted the shipped
+machine, and the shipped machine just got sixty percent heavier. Times
+already on the board were flown at 1.0 g. This is the precedent the mass
+change set, "records are comparable only against laps from this build
+onward in spirit", at a much larger scale, and the fix is the column the
+board still does not have. Owed, again, and louder.
+
+### The ticket
+
+The feel form's sentence now carries a second line: "Weight slider at 125
+percent, which is 2.02 times g on this airframe." Both numbers, because
+"weight 100" in a ticket from before this round and one from after it are
+different machines, and a reader six months from now should not have to
+know which. The context blob carries `weight` and `gravityScale` too, and
+the throttle line in it quotes the regenerated hover.
+
+### Measurements
+
+    trace hash       de0401cd4266, unchanged; dist/sim.wasm untouched
+    flightcheck      --gravity=1.62 for both airframes, tables above
+    lint:shell       PASS
+    lint:fc          33 of 33
+    lint:boot        9 of 9
+    lint:presets     4 of 4
+    desktop probe    at boot, before any touch: module 1.62, caption
+                     "Weight 100%", band 60 to 140 step 5, key .g162;
+                     60 reads 0.972 and .g97, 140 reads 2.268 and .g227,
+                     100 reads 1.62 and .g162 again; the launch sentence
+                     is silent at 100 and says "weight at 120 percent"
+    ticket probe     fetch intercepted: the sentence carries the weight
+                     line, context.weight 125, context.gravityScale
+                     2.025, throttle "hover near 35.0 percent of stick"
+    whoop probe      airframe swapped through the shell: scale and module
+                     1.62, key .whoop65.g162, hover quoted 35.0
+
+`npm run verify` was NOT re-run: src/native, patches and vendor are
+untouched and the binary is byte for byte the one the 16 of 16 ran on. What
+changed is the shell's default, one script's flag, a table, and a ticket.
+
+### Owed
+
+**The plant.** See above: the advisor question of whether 1.62 g is
+really "mass 1.13 kg" or "thrust 62 percent" or hover sitting low, and
+whether a heavier quad would be called right the way a heavier world was.
+
+**The board column.** Third entry in a row to say so.
+
+**Whoop caps.** At 1.62 the whoop plant cannot hover under a 40 cap at all
+and hovers at 83 percent under 50. The shell does not fly that plant today,
+so nothing a pilot can reach is affected, but the cap menu should lose 40
+and 50 for it before it ever is.

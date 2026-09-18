@@ -371,55 +371,62 @@ export const FPS_CAPS = [0, 90, 60, 30];
 export const FLIGHT_STYLES = ['expert', 'arcade'];
 
 /*
- * GRAVITY: the pilot's answer to "floaty", as a percentage of 9.80665.
- * 100 is the machine every threshold in tests/ and every band in
- * gates.config.json was measured against.
+ * WEIGHT: the pilot's answer to "floaty", as a percentage of the weight the
+ * airframe is flown at. 100 is normal, and normal is configs/airframes.js
+ * gravityBase, 1.62 times 9.80665 on the five inch, which is what the shell
+ * hands sim_set_gravity before a pilot touches anything.
  *
- * THIS REPLACED A DRAG SLIDER, and why is the whole story. The first build of
- * this control scaled the airframe's drag set, which is a real and measured
- * axis: it halves how far the craft carries with the sticks centred. The
- * pilot flew it and said "the difference between floaty and planted is hardly
- * decernable", then named the axis they actually meant: "have it as floaty
- * and sinky".
+ * THIS IS THE THIRD SHAPE OF ONE SLIDER, and each step was a pilot's.
+ * First it scaled drag, and the pilot said the difference was hardly
+ * discernible. Then it scaled gravity from 70 to 180 percent of 1.0, and the
+ * same pilot flew it to the stop and said full Sinky feels about right, then
+ * asked for normal to sit at ninety percent of that with headroom either way.
+ * So 0.9 times 1.80 is the base, the slider is 60 to 140 around it, and the
+ * number a pilot reads is a weight rather than a gravity: "Weight 120" is
+ * twenty percent heavier than the machine we ship, whatever the base is.
  *
  * Sinky is not planted. Planted is HORIZONTAL, how far the craft carries.
  * Sinky is VERTICAL, how fast it comes down and how little it hangs, and the
- * two are different numbers. Measured over each slider's whole band, on the
- * vertical axis:
+ * drag slider moved the vertical axis by single figures while moving the
+ * fall time the wrong way. Gravity moves it fivefold; measured at the base:
  *
- *   drag 70 to 160     hover 26.4 to 26.4, balloon 3.92 to 3.58 m,
- *                      hang 899 to 852 ms, fall 10 m 1.52 to 1.56 s
- *   gravity 70 to 180  hover 21.7 to 37.2, balloon 6.28 to 1.26 m,
- *                      hang 1350 to 381 ms, fall 10 m 1.88 to 1.13 s
+ *   weight 60    0.97 g   hover 26.0, fall 10 m 1.57 s, balloon 4.03 m
+ *   weight 100   1.62 g   hover 35.0, fall 10 m 1.20 s, balloon 1.62 m
+ *   weight 140   2.27 g   hover 42.7, fall 10 m 1.01 s, balloon 0.67 m
  *
- * The drag slider moved the sink axis by five to nine percent, and the fall
- * went the WRONG WAY: more drag lowers the terminal, so the planted end hung
- * slightly longer than stock at the same time as it cornered better. That is
- * how a knob with a real effect comes out feeling like nothing.
+ * The floaty end is within half a percent of the 1.0 machine every earlier
+ * record was set on, which is deliberate: a pilot who liked the old feel can
+ * have it back. The sinky end is heavier than anyone has yet asked for.
  *
- * Gravity is the surgical version. It changes weight and nothing else:
- * inertia is untouched so the craft rotates identically, drag is untouched so
- * the horizontal coast barely moves, and the motors and pack are untouched.
- * Hover throttle DOES move, 21.7 to 37.2 percent across the band, and that is
- * not a side effect to apologise for, it is the loudest thing a pilot feels
- * when a quad stops floating.
- *
- * 70 to 180 rather than the drag slider's 70 to 160, because the report that
- * started this was "much too floaty" and the headroom belongs above stock.
- * At 180 thrust to weight is 4.7 against the stock 8.4, which is a heavy
- * build rather than a broken one. Step 5.
+ * What it costs, said plainly: scaling gravity is a heavier world rather
+ * than a heavier quad. At the base the craft carries 1.62 times the thrust
+ * at hover, so every tilt shoves it sideways that much harder, 5.5 to 8.8
+ * m/s2 at the same 57 degree bank, where a real heavy quad accelerates at
+ * g tan theta whatever it weighs. Rotation is untouched within 1.5 percent.
+ * The pilot flew that and called it right; if a later report says it turns
+ * too hard, the answer is mass, not this band.
  */
-export const GRAV_MIN = 70;
-export const GRAV_MAX = 180;
-export const GRAV_STEP = 5;
-export const GRAV_STOCK = 100;
+export const WEIGHT_MIN = 60;
+export const WEIGHT_MAX = 140;
+export const WEIGHT_STEP = 5;
+export const WEIGHT_STOCK = 100;
 
-export function clampGravity(v) {
-  const n = Math.round(Number(v) / GRAV_STEP) * GRAV_STEP;
+export function clampWeight(v) {
+  const n = Math.round(Number(v) / WEIGHT_STEP) * WEIGHT_STEP;
   if (!Number.isFinite(n)) {
-    return GRAV_STOCK;
+    return WEIGHT_STOCK;
   }
-  return Math.min(GRAV_MAX, Math.max(GRAV_MIN, n));
+  return Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, n));
+}
+
+/*
+ * The multiple of 9.80665 the module is asked for, from a slider value and
+ * the airframe it is flown on. Rounded to three places so the same setting
+ * always produces the same double, which is what the record key hashes.
+ */
+export function gravityScaleFor(weight, airframeId) {
+  const base = airframeById(airframeId).gravityBase;
+  return Math.round(base * (clampWeight(weight) / 100) * 1000) / 1000;
 }
 /*
  * WHAT A FREESTYLE FLIGHT IS. Three positions on one row, because they are
@@ -664,19 +671,19 @@ const DEFAULTS = {
   fpsCap: 0,
   packVoltage: 4.2,
   /*
-   * How hard the world pulls, as a percentage of 9.80665. See GRAV_STOCK
-   * above. 100 is the shipped machine and the ONLY value that files a record
-   * on the public board, which is the same rule the arcade style follows and
-   * for the same reason: a lap flown under different gravity is a lap flown
-   * on a different aircraft.
+   * How heavy the quad is, as a percentage of the weight the airframe is
+   * flown at. See WEIGHT_STOCK above. 100 is the shipped machine and the
+   * ONLY value that files a record on the public board, which is the same
+   * rule the arcade style follows and for the same reason: a lap flown at a
+   * different weight is a lap flown on a different aircraft.
    *
-   * The key is `gravity` and the one it replaced was `air`, which shipped for
-   * twenty minutes and scaled the drag set instead. A stored `air` is simply
-   * not read: loadSettings only takes keys it knows, and 130 percent air and
-   * 130 percent gravity are not the same machine, so carrying the number
-   * across would be worse than losing it.
+   * The key is `weight`. It replaced `gravity`, which was a percentage of
+   * 1.0 and is not read: a stored 180 there meant 1.8 times g, which is
+   * weight 111 here and not on the step, and carrying the number across
+   * would file a pilot on a machine they never chose. `air` before that
+   * scaled drag and is not read either.
    */
-  gravity: GRAV_STOCK,
+  weight: WEIGHT_STOCK,
   laps: 3,
   sound: true,
   volume: 6,
@@ -902,10 +909,10 @@ export function loadSettings() {
   /* Angle is a range, not a list: a stored 40 from the old six-step menu
    * must survive, a stored 90 must not, and 45 has to be legal now. */
   s.cameraAngle = clampCameraAngle(s.cameraAngle);
-  /* Gravity is a range too, and the module REFUSES one outside its own band,
-   * so a hand edited blob has to be brought back before it reaches
+  /* Weight is a range too, and the module REFUSES a gravity outside its own
+   * band, so a hand edited blob has to be brought back before it reaches
    * sim_set_gravity. */
-  s.gravity = clampGravity(s.gravity);
+  s.weight = clampWeight(s.weight);
   /*
    * The rate profile, from whichever shape this blob was written in.
    *
@@ -1314,19 +1321,19 @@ function makeGimbal(caption) {
  * commits live on 'input' and the pilot feels the weight arrive under the
  * craft mid drag. That is the entire point of putting it here.
  */
-function makeGravitySlider({ min, max, step, value, label }) {
+function makeWeightSlider({ min, max, step, value, label }) {
   const box = el('div', 'osd-air is-off');
 
   const hint = el('div', 'osd-air-hint');
   hint.hidden = true;
-  hint.append(el('p', 'osd-air-hint-title', 'Gravity'));
+  hint.append(el('p', 'osd-air-hint-title', 'Weight'));
   hint.append(el(
     'p',
     'osd-air-hint-body',
-    'Drag this if the quad feels floaty. Right makes it heavier, so it drops'
-    + ' when you chop the throttle and stops hanging at the top of a jump.'
-    + ' Left makes it lighter and it floats. Hover moves up and down the'
-    + ' stick with it, which is most of what you will feel.',
+    'Drag this if the quad feels floaty or too heavy. Right makes it heavier,'
+    + ' so it drops when you chop the throttle and stops hanging at the top'
+    + ' of a jump. Left makes it lighter and it floats. Hover moves up and'
+    + ' down the stick with it, which is most of what you will feel.',
   ));
   const dismiss = btn('osd-air-hint-btn', 'Got it');
   hint.append(dismiss);
@@ -1574,24 +1581,24 @@ function recordSentence(s, trackName) {
     `${s.laps} lap${s.laps === 1 ? '' : 's'}`,
     `the ${tuneById(s.tune).name} tune`,
   ];
-  /* clampGravity rather than s.gravity raw, the same guard bugSnapshot uses:
+  /* clampWeight rather than s.weight raw, the same guard bugSnapshot uses:
    * every settings object that reaches here has been through loadSettings,
-   * and a sentence that can print "gravity at undefined percent" if one ever
+   * and a sentence that can print "weight at undefined percent" if one ever
    * does not is a sentence waiting to embarrass itself in front of a pilot. */
-  const grav = clampGravity(s.gravity);
-  if (grav !== GRAV_STOCK) {
+  const weight = clampWeight(s.weight);
+  if (weight !== WEIGHT_STOCK) {
     /* Second in the list, right behind the physics model, because it IS the
      * physics model: the slider on the flight screen scales the weight the
      * craft carries. A pilot who nudged it mid flight and forgot has exactly
      * the problem this sentence exists to prevent. */
-    bits.splice(1, 0, `gravity at ${grav} percent`);
+    bits.splice(1, 0, `weight at ${weight} percent`);
   }
   return `Your best on ${trackName} is filed under exactly this: ${bits.join(', ')}.`
     + ' Change any part of it and you are on a different board.'
     + (s.flightStyle === 'arcade'
       ? ' Arcade times stay off the public board, so this run will not count there.'
-      : grav !== GRAV_STOCK
-        ? ' Times flown under gravity that is not 100 percent stay off the public board, so this run will not count there.'
+      : weight !== WEIGHT_STOCK
+        ? ' Times flown at a weight that is not 100 percent stay off the public board, so this run will not count there.'
         : ` This run is on ${link}.`);
 }
 
@@ -2967,12 +2974,12 @@ export class Ui {
      * for the gravity slider is every flight. A radio pilot therefore gets the
      * slider alone, centred, which is the case the report was filed from.
      */
-    this.osdAir = makeGravitySlider({
-      min: GRAV_MIN,
-      max: GRAV_MAX,
-      step: GRAV_STEP,
-      value: this.settings.gravity,
-      label: 'Gravity, how heavy the quad feels',
+    this.osdAir = makeWeightSlider({
+      min: WEIGHT_MIN,
+      max: WEIGHT_MAX,
+      step: WEIGHT_STEP,
+      value: this.settings.weight,
+      label: 'Weight, how heavy the quad feels',
     });
     sticks.append(this.osdStickLeft.box, this.osdAir.box, this.osdStickRight.box);
     this.osdSticks = sticks;
@@ -4388,7 +4395,12 @@ export class Ui {
        * already dragged this to 180 and it is STILL too floaty". The first
        * is an opinion about a default, the second is a measurement of one.
        */
-      gravity: Number.isFinite(s.gravity) ? s.gravity : GRAV_STOCK,
+      weight: clampWeight(s.weight),
+      /* And the absolute multiple of 9.80665 that weight became on this
+       * airframe, because the base has moved once already and "weight 100"
+       * in a ticket from before the move and one from after it are
+       * different machines. Both numbers, always. */
+      gravityScale: gravityScaleFor(s.weight, s.airframe),
       /*
        * HOW THE STICKS GOT HERE, which is the field five feel reports were
        * missing and the reason they read as five opinions about one quad.
@@ -4796,11 +4808,11 @@ export class Ui {
     const airHint = el('p', 'lede feel-hint', '');
     airHint.hidden = true;
     const refreshAirHint = () => {
-      const grav = clampGravity(this.settings.gravity);
-      const show = issues.has('floaty') && grav < GRAV_MAX;
+      const weight = clampWeight(this.settings.weight);
+      const show = issues.has('floaty') && weight < WEIGHT_MAX;
       airHint.hidden = !show;
       if (show) {
-        airHint.textContent = `The Gravity slider between the sticks on the flight screen is this exact complaint: it scales the weight the quad carries, so it drops when you chop the throttle instead of hanging. Yours is at ${grav} percent. From a hover with the throttle cut, the stock quad falls 10 metres in 1.53 s and balloons 3.8 m after a short punch; at 140 percent that is 1.30 s and 2.2 m, and at 180 it is 1.13 s and 1.3 m. Hover moves up the stick with it, 26.4 percent at stock to 32.1 at 140. Worth dragging before you wait on us, and a lap flown on it stays off the public board.`;
+        airHint.textContent = `The Weight slider between the sticks on the flight screen is this exact complaint: it scales the weight the quad carries, so it drops when you chop the throttle instead of hanging. Yours is at ${weight} percent. From a hover with the throttle cut, the stock quad falls 10 metres in 1.20 s and balloons 1.6 m after a short punch; at 140 percent that is 1.01 s and 0.7 m. Hover moves up the stick with it, 35.0 percent at stock to 42.7 at 140. Worth dragging before you wait on us, and a lap flown on it stays off the public board.`;
       }
     };
     const refreshCapHint = () => {
@@ -4923,6 +4935,15 @@ export class Ui {
       const feelLabel = FEELS.find((f) => f.id === feel).label.toLowerCase();
       const picked = ISSUES.filter((i) => issues.has(i.id)).map((i) => i.label.toLowerCase());
       const lines = [`The quad felt ${feelLabel} this run.`];
+      /*
+       * WHERE THE SLIDER WAS, in the sentence and not only in the context
+       * blob, because the owner asked for it there and because it is the one
+       * number that turns a feel word into a measurement: "floaty at weight
+       * 100" is a verdict on the default, and "floaty at 140" is a verdict
+       * on the whole band. The absolute multiple rides along so a ticket
+       * from before the base moved reads correctly beside one from after.
+       */
+      lines.push(`Weight slider at ${context.weight} percent, which is ${context.gravityScale.toFixed(2)} times g on this airframe.`);
       if (picked.length) {
         lines.push(`Noticed: ${picked.join('; ')}.`);
       }
@@ -10243,15 +10264,15 @@ export class Ui {
       return;
     }
     const commit = () => {
-      const v = clampGravity(air.range.value);
-      if (v === this.settings.gravity) {
+      const v = clampWeight(air.range.value);
+      if (v === this.settings.weight) {
         /* Still repaint: a drag between two steps snaps back to the value in
          * force, and a caption that did not follow would read as a stuck
          * control. */
         this.paintAir();
         return;
       }
-      this.settings.gravity = v;
+      this.settings.weight = v;
       this.paintAir();
       saveSettings(this.settings);
       if (this.onSettings) {
@@ -10360,7 +10381,7 @@ export class Ui {
     if (!air) {
       return;
     }
-    const v = this.settings.gravity;
+    const v = this.settings.weight;
     if (Number(air.range.value) !== v) {
       air.range.value = String(v);
     }
@@ -10380,8 +10401,8 @@ export class Ui {
      * instrument all flight is noise, and noise on an overlay is how a pilot
      * learns to stop reading it.
      */
-    const stock = v === GRAV_STOCK;
-    air.cap.textContent = `Gravity ${v}%`;
+    const stock = v === WEIGHT_STOCK;
+    air.cap.textContent = `Weight ${v}%`;
     Ui.klass(air.cap, stock ? 'osd-air-cap is-stock' : 'osd-air-cap');
   }
 

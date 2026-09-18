@@ -672,7 +672,7 @@ static void ground_settle(double upz, double vn_plant) {
       S.vel[2] = 0.0;
     }
   } else {
-    const double load = PLANT.gravity * (nz > 0.0 ? nz : 0.0);
+    const double load = PLANT.gravity * SIM_GRAVITY * (nz > 0.0 ? nz : 0.0);
     double dv = g_ground_mu * load * SIM_DT;
     const double vtm = sim_sqrt(vt2);
     if (dv > vtm) {
@@ -705,7 +705,7 @@ static void ground_settle(double upz, double vn_plant) {
       const double i_eff = ux * ux * PLANT.inertia[0]
           + uy * uy * PLANT.inertia[1]
           + uz * uz * PLANT.inertia[2];
-      const double load = PLANT.gravity * PLANT.mass_kg * (nz > 0.0 ? nz : 0.0);
+      const double load = PLANT.gravity * SIM_GRAVITY * PLANT.mass_kg * (nz > 0.0 ? nz : 0.0);
       const double tau = g_ground_mu * load * CONTACT_PATCH_R;
       double dw = (i_eff > 1e-12) ? (tau / i_eff) * SIM_DT : wm;
       if (dw > wm) {
@@ -1183,6 +1183,20 @@ SIM_EXPORT int sim_set_air(double scale) {
 }
 
 SIM_EXPORT double sim_air(void) { return SIM_AIR; }
+
+/* Gravity scale, see sim_internal.h. A mode, same rule as the air scale. */
+double SIM_GRAVITY = 1.0;
+
+SIM_EXPORT int sim_set_gravity(double scale) {
+  /* Refused rather than clamped, same argument as sim_set_air. */
+  if (!(scale >= 0.5) || !(scale <= 2.5)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  SIM_GRAVITY = scale;
+  return SIM_OK;
+}
+
+SIM_EXPORT double sim_gravity(void) { return SIM_GRAVITY; }
 
 /*
  * The airframe. A MODE, not dynamic state, in exactly the sense

@@ -1869,7 +1869,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   const double inv_m = 1.0 / PLANT.mass_kg;
   s->vel[0] += f_world[0] * inv_m * SIM_DT;
   s->vel[1] += f_world[1] * inv_m * SIM_DT;
-  s->vel[2] += (f_world[2] * inv_m - PLANT.gravity) * SIM_DT;
+  s->vel[2] += (f_world[2] * inv_m - PLANT.gravity * SIM_GRAVITY) * SIM_DT;
   s->pos[0] += s->vel[0] * SIM_DT;
   s->pos[1] += s->vel[1] * SIM_DT;
   s->pos[2] += s->vel[2] * SIM_DT;

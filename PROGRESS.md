@@ -38224,3 +38224,140 @@ answers. The report that started this round said "much too floaty" about the
 stock quad; if the answer comes back that 160 is still not enough, that is not
 a slider bug, it is the default being wrong, and the report now carries the
 field that tells the two apart.
+
+## 2026-09-18 | plant, shell | The slider was on the wrong axis, and the pilot named the right one
+
+The gravity slider replaces the air slider shipped four commits ago, on one
+flight's evidence. The owner flew it and said: "the difference between floaty
+and planted is hardly decernable. Also remote the text off the board this
+means nothing, have it as floaty and sinky."
+
+### Sinky is not planted, and that is the whole finding
+
+Planted is HORIZONTAL: how far the craft carries with the sticks centred.
+Sinky is VERTICAL: how fast it comes down and how little it hangs. The air
+slider moves the first one hard and the second one barely at all. Measured
+over each slider's whole band, on the vertical axis:
+
+    band                hover        balloon        hang       fall 10 m
+    air 70 to 160    26.4 to 26.4  3.92 to 3.58  899 to 852  1.52 to 1.56 s
+    grav 70 to 180   21.7 to 37.2  6.28 to 1.26  1350 to 381 1.88 to 1.13 s
+
+Air moved the balloon by nine percent, the hang by five, hover by nothing at
+all, and the time to fall ten metres THE WRONG WAY: more drag lowers the
+props level terminal, 22.0 m/s to 17.4 at 1.6, so the planted end hung
+slightly longer than stock while it cornered better. A knob that makes one
+thing better and another slightly worse on the axis the pilot is judging by
+is a knob that feels like nothing, and that is exactly the word that came
+back.
+
+### What went wrong, and it is worth writing down plainly
+
+The evidence was already in this log. The first round's own sweep table
+recorded "balloon barely changes" against every drag variant and the entry
+even said, out loud, that raising mass makes the craft carry further and that
+the two axes disagree. The round then chose the axis it could move most
+confidently and called it floatiness. That is optimising the measurable
+rather than the asked for, and the giveaway was there in the table at the
+time: hover throttle not moving was written up as the FEATURE that made drag
+the right knob, when hover throttle is the loudest thing a pilot feels when a
+quad stops floating.
+
+The correction cost one afternoon and one pilot's minute, which is the cheap
+version of this mistake. The expensive version is the one where nobody flies
+it.
+
+### Gravity, and why it is the surgical version
+
+`sim_set_gravity(double scale)`, additive, ABI version unchanged, refused
+outside 0.5 to 2.5 rather than clamped. It scales the weight term in
+plant_step and the two ground load terms in sim.c, because a heavier craft
+presses harder on the floor and its friction has to follow. Inertia, drag,
+the motors and the pack are untouched: the craft rotates identically, every
+rate figure holds, and the horizontal coast moves by under ten percent across
+the whole band.
+
+Hover throttle DOES move, 21.7 to 37.2 percent of stick. That is not a side
+effect to apologise for, it is the point.
+
+70 to 180 rather than the air slider's 70 to 160, because the report was
+"much too floaty" and the headroom belongs above stock. At 180 thrust to
+weight is 4.7 against the stock 8.4, a heavy build rather than a broken one.
+
+Trace hash de0401cd4266 before and after, again: x * 1.0 is x.
+
+### sim_set_air stays in the ABI and stops being exposed
+
+It is real physics, measured, and it halves how far the craft carries. The
+shell no longer calls it, so SIM_AIR is 1.0 for the life of the page and the
+plant is bit identical. It is there for the first pilot who asks for corner
+bite specifically, which is a different sentence from the one that was filed.
+
+### Three names that did not change, and one that did
+
+The CSS classes are still `.osd-air`, `.osd-air-range`, `.osd-air-hint`. That
+looks wrong in a file about gravity and it stays, because webfpv.org serves
+index.html at max-age=0 and src/ui/ui.js at max-age=14400, MEASURED on the
+live host this round rather than quoted from the comment: a returning browser
+pairs the new stylesheet with a script up to four hours old, and a renamed
+class leaves that script writing elements no rule matches, which drops an
+unstyled slider and an unpositioned hint card into the middle of a race. A
+class name is the contract across that seam. The label a pilot reads is not.
+
+The settings key DID change, `air` to `gravity`, and a stored `air` is not
+migrated: 130 percent air and 130 percent gravity are not the same machine.
+The record key suffix moved from `.air130` to `.grav130` for the same reason,
+orphaning twenty minutes of keys that hold laps this build cannot reproduce.
+The hint key went to `webfpv.airhint.v2`, so the few browsers that dismissed
+a card explaining a drag slider are told about the real one once.
+
+### The board line came off the instrument
+
+The caption read "Air 135%, off the board" and now reads "Gravity 135%". The
+owner's words were "this means nothing", and they are right about where it
+belongs: a pilot mid flight is feeling the quad, not filing a time. The rule
+is still said twice, in both places somebody is actually deciding about a
+record: the sentence under the Fly button, read immediately before a run, and
+the refusal on the upload itself. A third copy riding the instrument all
+flight is noise, and noise on an overlay is how a pilot learns to stop
+reading it.
+
+### Measurements
+
+    build:wasm       exit 0, vendor diff empty
+    trace hash       de0401cd4266, unchanged, in Node and in headless Chrome
+    npm run verify   16 of 16. hover 0.2793, punch 80.0 m, terminal 31.0,
+                     motor step 26 ms, rate 671.7, yaw -0.10, sag 11.14,
+                     ratio 1.2472, console errors 0 warnings 0
+    lint:shell       PASS
+    lint:boot        9 of 9
+    lint:fc          33 of 33
+    lint:frame       34 passed, 0 failed
+    lint:responsive  PASS
+    sink probe       The table above, from a scratch probe that hovers, chops
+                     to idle and times the fall, then punches for 400 ms and
+                     measures how much further the craft rises at zero
+                     throttle. Six gravity scales and both ends of the air
+                     band.
+    page probe       On the real page in headless Chromium: the ends read
+                     Floaty and Sinky, the band is 70 to 180 step 5, the card
+                     is titled Gravity, the caption reads "Gravity 180%" with
+                     no board text, sim_gravity reads back 1.8, 0.7 and 1.0 as
+                     the slider is dragged, and the record key gains and loses
+                     .grav180.
+
+### Owed, carried forward and added to
+
+**The board still has no column.** Unchanged from the last entry, and now it
+is gravity rather than air that a freestyle run is refused for.
+
+**The air slider's band was never flown.** It shipped, the owner flew SOME of
+it, and the verdict was on the axis rather than the range. If corner carry
+ever gets reported on its own, sim_set_air is built and measured and needs
+only a control.
+
+**Nobody has flown this one either.** The numbers above say the axis moved
+five times as far as the last one did. Whether 180 is enough for the pilot
+who called the stock quad much too floaty is still a question only that pilot
+answers, and if 180 is still not enough then the default gravity is wrong and
+the band is not the fix.

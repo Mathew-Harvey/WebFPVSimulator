@@ -381,6 +381,40 @@ int sim_set_air(double scale);
 /* The air scale in force. */
 double sim_air(void);
 
+/*
+ * Gravity: a scale on the weight the craft carries. 1.0 is 9.80665 and the
+ * machine every threshold in tests/ and every band in gates.config.json was
+ * measured against, and it is the path every harness replay takes. The
+ * accepted range is 0.5 to 2.5; outside it returns SIM_ERR_BAD_ARG rather
+ * than being clamped, same argument as sim_set_air.
+ *
+ * THIS IS THE AXIS A PILOT MEANS BY FLOATY, and sim_set_air above is the
+ * other one. Air is horizontal: how far the craft carries with the sticks
+ * centred. Gravity is vertical: how fast it comes down and how little it
+ * hangs. Asked to fly the air slider across its whole band, the pilot who
+ * reported the complaint said the difference was hardly discernible, and
+ * named what they wanted instead: floaty to sinky. Measured over each band,
+ * on the vertical axis, air moved hover throttle not at all, the balloon
+ * after a short punch by nine percent, and the time to fall ten metres the
+ * WRONG WAY, because more drag lowers the terminal. Gravity moves hover from
+ * 21.7 to 37.2 percent of stick, the balloon from 6.28 to 1.26 m and the fall
+ * from 1.88 to 1.13 s.
+ *
+ * It scales the weight term in plant_step and the two ground load terms in
+ * sim.c, because a heavier craft presses harder on the floor. Inertia,
+ * drag, the motors and the pack are untouched, so the craft rotates
+ * identically and every rate figure holds.
+ *
+ * A MODE, not state: it survives sim_reset and sim_init exactly as the air
+ * scale, the flight style and the airframe do. Additive ABI change, version
+ * unchanged, and a replay that never calls this is bit identical to one from
+ * before it existed. MEASURED against the recorded trace hash, not asserted.
+ */
+int sim_set_gravity(double scale);
+
+/* The gravity scale in force. */
+double sim_gravity(void);
+
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);
 

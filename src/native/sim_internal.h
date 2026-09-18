@@ -258,6 +258,38 @@ extern int SIM_ARCADE;
  */
 extern double SIM_AIR;
 
+/*
+ * GRAVITY, set by sim_set_gravity: a scale on the weight this craft carries.
+ * 1.0 is 9.80665 and the machine every band was measured against.
+ *
+ * THIS IS THE OTHER HALF OF "FLOATY", and the pilot named it: asked to try
+ * the drag slider, the answer came back "the difference is hardly
+ * discernable" and "have it as floaty and sinky". Sinky is not planted.
+ * Planted is the HORIZONTAL axis, how far the craft carries with the sticks
+ * centred, which is what SIM_AIR moves. Sinky is the VERTICAL one, how fast
+ * it comes down and how little it hangs, and no amount of drag buys it:
+ * raising drag LOWERS the props level terminal, 22.0 m/s to 18.0 at 1.5, so
+ * the drag slider was making the craft hang slightly MORE at the same time
+ * as it made it corner better, which is exactly how a knob comes out feeling
+ * like nothing.
+ *
+ * Gravity is the surgical version of that axis. It changes weight and
+ * nothing else: inertia is untouched, so the craft rotates identically and
+ * every rate figure holds; drag is untouched, so the horizontal coast is
+ * unchanged; the motors and the pack are untouched. What moves is hover
+ * throttle, sink rate, terminal velocity and how far a punch balloons, which
+ * is the whole of what a pilot means by floaty on the vertical axis.
+ *
+ * Applied to the weight term in plant_step and to the two ground load terms
+ * in sim.c, because a heavier craft presses harder on the floor and its
+ * friction has to follow or a sinky quad would slide like a light one.
+ *
+ * A MODE, same rule as SIM_AIR and SIM_ARCADE: it survives sim_reset and
+ * sim_init and the shell owns asserting it. Bit identical at 1.0, measured
+ * against the recorded trace hash.
+ */
+extern double SIM_GRAVITY;
+
 /* Motor spin direction, position and cant moved INTO PlantParams when the
  * second airframe landed: they are airframe data and a whoop's are its own.
  * The names below are the shorthand plant.c reads them through. */

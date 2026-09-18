@@ -371,36 +371,55 @@ export const FPS_CAPS = [0, 90, 60, 30];
 export const FLIGHT_STYLES = ['expert', 'arcade'];
 
 /*
- * AIR: the pilot's answer to "floaty", as a percentage of the shipped
- * airframe's own drag. 100 is the machine every threshold in tests/ and every
- * band in gates.config.json was measured against, and it is what the module
- * runs with if nothing calls sim_set_air at all.
+ * GRAVITY: the pilot's answer to "floaty", as a percentage of 9.80665.
+ * 100 is the machine every threshold in tests/ and every band in
+ * gates.config.json was measured against.
  *
- * THE BAND WAS MEASURED, NOT CHOSEN TO LOOK TIDY. Coasting level from 20 m/s
- * down to 10 m/s with the sticks centred, on the five inch: 161 m at 70,
- * 102 m at 100, 76 m at 125, 55 m at 160. Hover throttle does not move at
- * all across the whole band, which is the reason this is the knob and mass
- * is not: hover is a number pilots memorise and configs/rates.js quotes in
- * the throttle limit menu. The ends are where the machine is still a five
- * inch: at 70 the props level descent is 26.3 m/s and flat out is 164 km/h,
- * both just inside the bands in gates.config.json, and going lower leaves
- * them. At 160 nothing is unsafe, it is simply a quad flying through thicker
- * air than ours, which is the pilot's business and not a gate's.
+ * THIS REPLACED A DRAG SLIDER, and why is the whole story. The first build of
+ * this control scaled the airframe's drag set, which is a real and measured
+ * axis: it halves how far the craft carries with the sticks centred. The
+ * pilot flew it and said "the difference between floaty and planted is hardly
+ * decernable", then named the axis they actually meant: "have it as floaty
+ * and sinky".
  *
- * Step 5 because 1 is a placebo on this axis and 10 skips the setting most
- * pilots will want, which the reports so far put a little above 100.
+ * Sinky is not planted. Planted is HORIZONTAL, how far the craft carries.
+ * Sinky is VERTICAL, how fast it comes down and how little it hangs, and the
+ * two are different numbers. Measured over each slider's whole band, on the
+ * vertical axis:
+ *
+ *   drag 70 to 160     hover 26.4 to 26.4, balloon 3.92 to 3.58 m,
+ *                      hang 899 to 852 ms, fall 10 m 1.52 to 1.56 s
+ *   gravity 70 to 180  hover 21.7 to 37.2, balloon 6.28 to 1.26 m,
+ *                      hang 1350 to 381 ms, fall 10 m 1.88 to 1.13 s
+ *
+ * The drag slider moved the sink axis by five to nine percent, and the fall
+ * went the WRONG WAY: more drag lowers the terminal, so the planted end hung
+ * slightly longer than stock at the same time as it cornered better. That is
+ * how a knob with a real effect comes out feeling like nothing.
+ *
+ * Gravity is the surgical version. It changes weight and nothing else:
+ * inertia is untouched so the craft rotates identically, drag is untouched so
+ * the horizontal coast barely moves, and the motors and pack are untouched.
+ * Hover throttle DOES move, 21.7 to 37.2 percent across the band, and that is
+ * not a side effect to apologise for, it is the loudest thing a pilot feels
+ * when a quad stops floating.
+ *
+ * 70 to 180 rather than the drag slider's 70 to 160, because the report that
+ * started this was "much too floaty" and the headroom belongs above stock.
+ * At 180 thrust to weight is 4.7 against the stock 8.4, which is a heavy
+ * build rather than a broken one. Step 5.
  */
-export const AIR_MIN = 70;
-export const AIR_MAX = 160;
-export const AIR_STEP = 5;
-export const AIR_STOCK = 100;
+export const GRAV_MIN = 70;
+export const GRAV_MAX = 180;
+export const GRAV_STEP = 5;
+export const GRAV_STOCK = 100;
 
-export function clampAir(v) {
-  const n = Math.round(Number(v) / AIR_STEP) * AIR_STEP;
+export function clampGravity(v) {
+  const n = Math.round(Number(v) / GRAV_STEP) * GRAV_STEP;
   if (!Number.isFinite(n)) {
-    return AIR_STOCK;
+    return GRAV_STOCK;
   }
-  return Math.min(AIR_MAX, Math.max(AIR_MIN, n));
+  return Math.min(GRAV_MAX, Math.max(GRAV_MIN, n));
 }
 /*
  * WHAT A FREESTYLE FLIGHT IS. Three positions on one row, because they are
@@ -645,13 +664,19 @@ const DEFAULTS = {
   fpsCap: 0,
   packVoltage: 4.2,
   /*
-   * How thick the air is, as a percentage of this airframe's own drag. See
-   * AIR_STOCK above. 100 is the shipped machine and the ONLY value that files
-   * a record on the public board, which is the same rule the arcade style
-   * follows and for the same reason: a lap flown in different air is a lap
-   * flown on a different aircraft.
+   * How hard the world pulls, as a percentage of 9.80665. See GRAV_STOCK
+   * above. 100 is the shipped machine and the ONLY value that files a record
+   * on the public board, which is the same rule the arcade style follows and
+   * for the same reason: a lap flown under different gravity is a lap flown
+   * on a different aircraft.
+   *
+   * The key is `gravity` and the one it replaced was `air`, which shipped for
+   * twenty minutes and scaled the drag set instead. A stored `air` is simply
+   * not read: loadSettings only takes keys it knows, and 130 percent air and
+   * 130 percent gravity are not the same machine, so carrying the number
+   * across would be worse than losing it.
    */
-  air: AIR_STOCK,
+  gravity: GRAV_STOCK,
   laps: 3,
   sound: true,
   volume: 6,
@@ -696,7 +721,7 @@ const DEFAULTS = {
 };
 
 /*
- * Has this browser been told what the air slider is?
+ * Has this browser been told what the gravity slider is?
  *
  * ITS OWN KEY, not a field in the settings blob, and the reason is
  * detectFirstRun below: that function reads the existence of a saved settings
@@ -706,8 +731,13 @@ const DEFAULTS = {
  *
  * Nor is it one of the prefixes detectFirstRun scans for, deliberately: a
  * pilot who read a hint and left has still never flown here.
+ *
+ * v2 because v1's card explained a drag slider, which this control is no
+ * longer. The few browsers that dismissed that card were told about a knob
+ * that does not exist any more, so they get the new one once. That is what
+ * the version in the key is for, and it is cheaper than being wrong quietly.
  */
-const AIR_HINT_KEY = 'webfpv.airhint.v1';
+const AIR_HINT_KEY = 'webfpv.airhint.v2';
 
 function airHintSeen() {
   try {
@@ -872,9 +902,10 @@ export function loadSettings() {
   /* Angle is a range, not a list: a stored 40 from the old six-step menu
    * must survive, a stored 90 must not, and 45 has to be legal now. */
   s.cameraAngle = clampCameraAngle(s.cameraAngle);
-  /* Air is a range too, and the module REFUSES one outside its own band, so a
-   * hand edited blob has to be brought back before it reaches sim_set_air. */
-  s.air = clampAir(s.air);
+  /* Gravity is a range too, and the module REFUSES one outside its own band,
+   * so a hand edited blob has to be brought back before it reaches
+   * sim_set_gravity. */
+  s.gravity = clampGravity(s.gravity);
   /*
    * The rate profile, from whichever shape this blob was written in.
    *
@@ -1259,31 +1290,43 @@ function makeGimbal(caption) {
 }
 
 /*
- * THE AIR SLIDER, drawn. Built here rather than inline in build() because it
- * is four elements and a hint card, and build() is already the longest thing
- * in this file.
+ * THE GRAVITY SLIDER, drawn. Built here rather than inline in build() because
+ * it is four elements and a hint card, and build() is already the longest
+ * thing in this file.
+ *
+ * THE CLASS NAMES STILL SAY AIR AND THEY STAY THAT WAY. This control scaled
+ * the drag set for one afternoon before the pilot flew it and named the axis
+ * they actually meant, and renaming .osd-air to .osd-grav is exactly the move
+ * the .corner-chip note further down this file was written in blood about:
+ * webfpv.org serves index.html at max-age=0 and this script at max-age=14400,
+ * so for four hours a returning browser pairs the NEW stylesheet with the OLD
+ * script. Renamed classes leave that script writing elements no rule matches,
+ * which drops an unstyled slider and an unpositioned hint card into the
+ * middle of a race. A class name is the contract across that seam. The label
+ * a pilot reads is not, so that is what changed.
  *
  * The control is a native input[type=range] wearing .row-range, exactly the
  * one the Rates and PIDs screens use, so drag, touch, and arrow keys on a
  * focused track are the browser's problem in all three places. What differs
  * from those screens is WHEN it commits: there it is on release, because each
  * one re-inits the module and a re-init per drag pixel would stutter. This
- * one calls sim_set_air, which is a single store into the plant, so it
- * commits live on 'input' and the pilot feels the air change under the
+ * one calls sim_set_gravity, which is a single store into the plant, so it
+ * commits live on 'input' and the pilot feels the weight arrive under the
  * craft mid drag. That is the entire point of putting it here.
  */
-function makeAirSlider({ min, max, step, value, label }) {
+function makeGravitySlider({ min, max, step, value, label }) {
   const box = el('div', 'osd-air is-off');
 
   const hint = el('div', 'osd-air-hint');
   hint.hidden = true;
-  hint.append(el('p', 'osd-air-hint-title', 'Air'));
+  hint.append(el('p', 'osd-air-hint-title', 'Gravity'));
   hint.append(el(
     'p',
     'osd-air-hint-body',
-    'Drag this if the quad feels floaty. Right thickens the air, so it washes'
-    + ' speed off harder and stops carrying through corners. Left thins it and'
-    + ' the quad floats further. Your hover point does not move either way.',
+    'Drag this if the quad feels floaty. Right makes it heavier, so it drops'
+    + ' when you chop the throttle and stops hanging at the top of a jump.'
+    + ' Left makes it lighter and it floats. Hover moves up and down the'
+    + ' stick with it, which is most of what you will feel.',
   ));
   const dismiss = btn('osd-air-hint-btn', 'Got it');
   hint.append(dismiss);
@@ -1297,7 +1340,7 @@ function makeAirSlider({ min, max, step, value, label }) {
   range.step = String(step);
   range.value = String(value);
   range.setAttribute('aria-label', label);
-  row.append(el('span', 'osd-air-end', 'Floaty'), range, el('span', 'osd-air-end', 'Planted'));
+  row.append(el('span', 'osd-air-end', 'Floaty'), range, el('span', 'osd-air-end', 'Sinky'));
 
   const cap = el('div', 'osd-air-cap', '');
   box.append(hint, row, cap);
@@ -1531,24 +1574,24 @@ function recordSentence(s, trackName) {
     `${s.laps} lap${s.laps === 1 ? '' : 's'}`,
     `the ${tuneById(s.tune).name} tune`,
   ];
-  /* clampAir rather than s.air raw, the same guard bugSnapshot uses: every
-   * settings object that reaches here has been through loadSettings, and a
-   * sentence that can print "air at undefined percent" if one ever does not
-   * is a sentence waiting to embarrass itself in front of a pilot. */
-  const air = clampAir(s.air);
-  if (air !== AIR_STOCK) {
+  /* clampGravity rather than s.gravity raw, the same guard bugSnapshot uses:
+   * every settings object that reaches here has been through loadSettings,
+   * and a sentence that can print "gravity at undefined percent" if one ever
+   * does not is a sentence waiting to embarrass itself in front of a pilot. */
+  const grav = clampGravity(s.gravity);
+  if (grav !== GRAV_STOCK) {
     /* Second in the list, right behind the physics model, because it IS the
-     * physics model: the air slider on the flight screen scales every drag
-     * term the plant has. A pilot who nudged it mid flight and forgot has
-     * exactly the problem this sentence exists to prevent. */
-    bits.splice(1, 0, `air at ${air} percent`);
+     * physics model: the slider on the flight screen scales the weight the
+     * craft carries. A pilot who nudged it mid flight and forgot has exactly
+     * the problem this sentence exists to prevent. */
+    bits.splice(1, 0, `gravity at ${grav} percent`);
   }
   return `Your best on ${trackName} is filed under exactly this: ${bits.join(', ')}.`
     + ' Change any part of it and you are on a different board.'
     + (s.flightStyle === 'arcade'
       ? ' Arcade times stay off the public board, so this run will not count there.'
-      : air !== AIR_STOCK
-        ? ' Times flown in air that is not 100 percent stay off the public board, so this run will not count there.'
+      : grav !== GRAV_STOCK
+        ? ' Times flown under gravity that is not 100 percent stay off the public board, so this run will not count there.'
         : ` This run is on ${link}.`);
 }
 
@@ -2860,7 +2903,7 @@ export class Ui {
     this.gpuInfo = null;
     /* Set by main.js; see setStickProbe. */
     this.stickProbe = null;
-    /* The air hint is shown at most once per page load even before the
+    /* The gravity hint is shown at most once per page load even before the
      * localStorage flag is consulted, so a pilot who dismissed it and then
      * paused and resumed does not get it again on the way back into flight. */
     this.airHintDone = false;
@@ -2921,15 +2964,15 @@ export class Ui {
      * to put it. The container used to be hidden as a unit whenever a radio
      * was the stick source; now the two gimbals carry their own is-off and
      * the container is up whenever either half has something to show, which
-     * for the air slider is every flight. A radio pilot therefore gets the
+     * for the gravity slider is every flight. A radio pilot therefore gets the
      * slider alone, centred, which is the case the report was filed from.
      */
-    this.osdAir = makeAirSlider({
-      min: AIR_MIN,
-      max: AIR_MAX,
-      step: AIR_STEP,
-      value: this.settings.air,
-      label: 'Air, how hard the air holds the quad back',
+    this.osdAir = makeGravitySlider({
+      min: GRAV_MIN,
+      max: GRAV_MAX,
+      step: GRAV_STEP,
+      value: this.settings.gravity,
+      label: 'Gravity, how heavy the quad feels',
     });
     sticks.append(this.osdStickLeft.box, this.osdAir.box, this.osdStickRight.box);
     this.osdSticks = sticks;
@@ -4339,13 +4382,13 @@ export class Ui {
        */
       throttle: throttleSummary(s.rates || {}, s.airframe),
       /*
-       * THE AIR SLIDER'S POSITION, and it belongs in the report for the same
+       * THE SLIDER'S POSITION, and it belongs in the report for the same
        * reason the throttle curve does: this is the one field that tells the
        * difference between "the shipped quad is too floaty" and "I have
-       * already dragged this to 160 and it is STILL too floaty". The first
+       * already dragged this to 180 and it is STILL too floaty". The first
        * is an opinion about a default, the second is a measurement of one.
        */
-      air: Number.isFinite(s.air) ? s.air : AIR_STOCK,
+      gravity: Number.isFinite(s.gravity) ? s.gravity : GRAV_STOCK,
       /*
        * HOW THE STICKS GOT HERE, which is the field five feel reports were
        * missing and the reason they read as five opinions about one quad.
@@ -4746,19 +4789,18 @@ export class Ui {
      * THE SECOND COMPLAINT THIS SHELL CAN ANSWER ON THE SPOT, on exactly the
      * rule the throttle row above set: offered when the chip is ticked and
      * only when it would still do something. A pilot already sitting at the
-     * top of the air range is telling us the DEFAULT is wrong, which is a
+     * top of the gravity range is telling us the DEFAULT is wrong, which is a
      * report worth having undisturbed, so they are not told to do the thing
      * they have done.
      */
     const airHint = el('p', 'lede feel-hint', '');
     airHint.hidden = true;
     const refreshAirHint = () => {
-      const air = clampAir(this.settings.air);
-      const show = issues.has('floaty') && air < AIR_MAX;
+      const grav = clampGravity(this.settings.gravity);
+      const show = issues.has('floaty') && grav < GRAV_MAX;
       airHint.hidden = !show;
       if (show) {
-        const next = Math.min(AIR_MAX, air + 30);
-        airHint.textContent = `The Air slider between the sticks on the flight screen is this exact complaint: it scales every drag term the quad has, so the craft washes speed off harder and stops carrying through corners. Yours is at ${air} percent. Levelled off and coasting from 20 m/s, the stock quad takes 102 metres to get down to 10; at ${next} percent it takes ${next >= 160 ? 55 : 76}. Your hover point does not move. Worth dragging before you wait on us, and a lap flown on it stays off the public board.`;
+        airHint.textContent = `The Gravity slider between the sticks on the flight screen is this exact complaint: it scales the weight the quad carries, so it drops when you chop the throttle instead of hanging. Yours is at ${grav} percent. From a hover with the throttle cut, the stock quad falls 10 metres in 1.53 s and balloons 3.8 m after a short punch; at 140 percent that is 1.30 s and 2.2 m, and at 180 it is 1.13 s and 1.3 m. Hover moves up the stick with it, 26.4 percent at stock to 32.1 at 140. Worth dragging before you wait on us, and a lap flown on it stays off the public board.`;
       }
     };
     const refreshCapHint = () => {
@@ -10201,15 +10243,15 @@ export class Ui {
       return;
     }
     const commit = () => {
-      const v = clampAir(air.range.value);
-      if (v === this.settings.air) {
+      const v = clampGravity(air.range.value);
+      if (v === this.settings.gravity) {
         /* Still repaint: a drag between two steps snaps back to the value in
          * force, and a caption that did not follow would read as a stuck
          * control. */
         this.paintAir();
         return;
       }
-      this.settings.air = v;
+      this.settings.gravity = v;
       this.paintAir();
       saveSettings(this.settings);
       if (this.onSettings) {
@@ -10294,7 +10336,7 @@ export class Ui {
     if (!air) {
       return;
     }
-    const v = this.settings.air;
+    const v = this.settings.gravity;
     if (Number(air.range.value) !== v) {
       air.range.value = String(v);
     }
@@ -10302,12 +10344,20 @@ export class Ui {
      * SLATE AT STOCK, AMBER OFF IT. Slate is the colour this shell uses for
      * type that should recede, and at 100 there is nothing to say: the pilot
      * is on the machine every record and every board time was set on. Off
-     * stock it is an instrument reading and it says out loud that the board
-     * is not taking this, because finding that out at upload time is the
-     * complaint the record sentence was written to answer.
+     * stock the number is an instrument reading, which is what amber means
+     * everywhere else on this overlay.
+     *
+     * IT USED TO SAY ", off the board" AND THE PILOT HAD IT REMOVED: "this
+     * means nothing". They are right about where it belongs. A pilot mid
+     * flight is feeling the quad, not filing a time, and the board rule is
+     * already said twice in the places somebody is actually deciding about a
+     * record: the sentence under the Fly button, read immediately before a
+     * run, and the refusal on the upload itself. A third copy riding the
+     * instrument all flight is noise, and noise on an overlay is how a pilot
+     * learns to stop reading it.
      */
-    const stock = v === AIR_STOCK;
-    air.cap.textContent = stock ? 'Air 100%' : `Air ${v}%, off the board`;
+    const stock = v === GRAV_STOCK;
+    air.cap.textContent = `Gravity ${v}%`;
     Ui.klass(air.cap, stock ? 'osd-air-cap is-stock' : 'osd-air-cap');
   }
 

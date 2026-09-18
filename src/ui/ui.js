@@ -10266,10 +10266,34 @@ export class Ui {
       this.dismissAirHint();
     });
     air.range.addEventListener('click', (e) => e.stopPropagation());
-    air.range.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      this.dismissAirHint();
-    });
+    /*
+     * IT NEVER KEEPS FOCUS, and the reason was measured rather than
+     * reasoned: a click on the track focused it, and from then on the
+     * keyboard pilot's ArrowRight moved gravity 100 to 105 instead of
+     * rolling the quad, and Escape no longer paused. Both follow from one
+     * fact about src/input/input.js: its key listener is on the window and
+     * bails out for any INPUT target, because text fields own their keys.
+     * A range is an INPUT. So while this control held focus the sticks were
+     * dead, the arrows were retuning the plant, and the one key that would
+     * have got the pilot out was swallowed by a stopPropagation that used to
+     * sit here.
+     *
+     * The fix is that focus leaves on release, so the window between press
+     * and release is the only one in which a key can reach this element,
+     * and tabindex -1 so a stray Tab in flight cannot land here either. In
+     * flight this is a pointer control, like the chips, and a screen reader
+     * is not flying. The pointer drag itself does not need focus: the
+     * browser holds implicit capture on the pressed element until release.
+     */
+    air.range.tabIndex = -1;
+    const release = () => {
+      if (document.activeElement === air.range) {
+        air.range.blur();
+      }
+    };
+    air.range.addEventListener('pointerup', release);
+    air.range.addEventListener('pointercancel', release);
+    air.range.addEventListener('change', release);
     air.dismiss.addEventListener('click', (e) => {
       e.stopPropagation();
       this.dismissAirHint();

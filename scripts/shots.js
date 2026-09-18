@@ -67,6 +67,16 @@ import { SETTINGS_KEY, seatAirframe } from '../src/ui/ui.js';
 import { airframeById } from '../configs/airframes.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+/*
+ * The page, hoisted so the failure path below can close it. A step that
+ * threw used to exit with Chrome still running: page.close() sat on the
+ * happy path only, and every run that died on the touch bug above left a
+ * headless Chromium burning a core on SwiftShader. Three of them took the
+ * container to a load of sixteen and failed lint:responsive on a change
+ * that had nothing to do with it, which is the expensive way to find out.
+ */
+let page = null;
+
 async function main() {
   const args = process.argv.slice(2);
   const opts = { out: '.loop/shots', w: 1600, h: 900, url: '/index.html' };
@@ -158,7 +168,7 @@ async function main() {
     } catch (e) { /* Storage refused; the run boots on the default aircraft. */ }`);
   }
 
-  const page = await openPage({
+  page = await openPage({
     root,
     width: opts.w,
     height: opts.h,
@@ -175,6 +185,16 @@ async function main() {
   const harnessFaults = [];
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  /*
+   * The set of touch points currently down, for tstart, tmove and tend.
+   * The header documents these three steps and the loop below used them,
+   * and nothing had ever declared the map they write to, so every touch
+   * step died with "touches is not defined" the first time somebody
+   * reached for it. Each point carries its id so Chromium can match a
+   * later move or release to the finger that started it.
+   */
+  const touches = new Map();
+  const touchPoints = () => [...touches.entries()].map(([id, p]) => ({ x: p.x, y: p.y, id }));
   for (const step of steps) {
     const [op, ...rest] = step.split(':');
     const arg = rest.join(':');
@@ -360,7 +380,10 @@ async function main() {
   process.exit(errors.length || harnessFaults.length ? 1 : 0);
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error(`shots: ${e.message}`);
+  if (page) {
+    await page.close().catch(() => { /* already gone, which is the point */ });
+  }
   process.exit(2);
 });

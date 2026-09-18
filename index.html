@@ -528,6 +528,23 @@
         transform: translateX(-50%);
         display: flex; align-items: flex-end; gap: 14px;
         pointer-events: none;
+        /*
+         * ABOVE THE THUMB ZONES, and this was found by hit test, not by eye.
+         * The touch overlay is the last child of #ui so its catchment beats
+         * every screen, and its two zones are 44 percent of the width each
+         * from the bottom up. On an 844 by 390 phone that put
+         * elementFromPoint at the Got it button on .touch-zone-left and at
+         * the track's right end on .touch-zone-right: a thumb could neither
+         * dismiss the card nor reach Sinky, which is the end the report
+         * asked for. 1 is enough to beat an overlay at auto and stays under
+         * the chips at 6 and 7 and the dialogs at 8. Only the track and the
+         * button take pointer events, so a thumb landing anywhere else in
+         * this block still falls through to the zone beneath it. While
+         * paused .osd.dim has opacity under 1, which makes it a stacking
+         * context and keeps this value inside the OSD, under the menu,
+         * where it belongs.
+         */
+        z-index: 1;
       }
       .osd-sticks.is-off { display: none; }
       .osd-gimbal.is-off { display: none; }

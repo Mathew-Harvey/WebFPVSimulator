@@ -38361,3 +38361,115 @@ five times as far as the last one did. Whether 180 is enough for the pilot
 who called the stock quad much too floaty is still a question only that pilot
 answers, and if 180 is still not enough then the default gravity is wrong and
 the band is not the fix.
+
+## 2026-09-18 | review | The second answer was right about the axis and shipped three defects
+
+The owner asked for a review of the gravity slider: the first answer had
+been on the wrong axis, was the second one correct? Reviewed as an
+adversary rather than as the author, which meant probing what the author had
+only reasoned about.
+
+### The physics claim holds, with one caveat the author did not disclose
+
+Measured, at hover throttle, gravity 1.0 against 1.8:
+
+    roll step, acro, full stick 150 ms   peak 700 vs 690 deg/s
+                                         90 percent of 670 in 54 vs 51 ms
+    whoop hover                          29.7 vs 43.5 percent of stick
+    lateral, angle mode, full forward    5.5 vs 9.7 m/s2 at the same 57 deg
+
+"Rotates identically" holds within 1.5 percent; the TPA worry was
+negligible because tpa_mode is D and hover at 180 sits only 3 percent into
+the breakpoint. The whoop still hovers under half stick.
+
+The third line is the caveat. Scaling gravity is a heavier WORLD, not a
+heavier QUAD. At hover the craft carries 1.8 times the thrust, so every
+tilt shoves it sideways 1.8 times harder; a real heavy quad accelerates at
+g tan theta whatever it weighs. "Surgical" was true of the force and not
+of the feel: a pilot at 180 will find the quad drops like it should AND
+turns harder than any real quad does at that bank. If that comes back as
+"too snappy sideways", the answer is mass, which keeps bank to
+acceleration physical at the cost of corner carry, and not a wider band.
+The log's "horizontal coast moves under ten percent" was also wrong at the
+top of the band: 14 percent at 1.8, 9 at 0.7.
+
+### Three defects, each found by driving the page rather than reading it
+
+**The slider held the keyboard.** input.js listens on the window and bails
+for any INPUT target, because text fields own their keys, and a range is an
+INPUT. Measured with real key injection: after a click on the track,
+ArrowRight moved gravity 100 to 105 instead of rolling the quad, and Escape
+no longer paused, because a stopPropagation on the range swallowed it. The
+keyboard pilot the ghost sticks are drawn for could do what the hint
+invited and then not fly or leave. Fixed: focus leaves on release, tabindex
+-1, no stopPropagation. Re-measured with a real click: focus on BODY,
+ArrowRight rolls 0.34 with gravity untouched, Escape pauses.
+
+**The phone could not reach it.** The touch overlay is the last child of
+#ui and its zones are 44 percent of the width each from the bottom up.
+elementFromPoint on an 844 by 390 phone put the Got it button on
+.touch-zone-left and the track's right end on .touch-zone-right: a thumb
+could neither dismiss the card nor drag to Sinky, the end the report asked
+for. The author's own screenshot of that layout looked fine, because a
+screenshot cannot see z-order. Fixed with z-index 1 on .osd-sticks, which
+beats an overlay at auto and stays under the chips at 6 and 7 and the
+dialogs at 8. Re-measured with real touch injection: Got it dismisses the
+card, a tap at 75 percent of the track sets 155, and a thumb in the corner
+still holds the stick.
+
+**A paused change dodged the void.** The slider sits below the pause panel,
+dimmed but uncovered, so it can be dragged while paused, and the void guard
+read `mode === 'flight'`. Pause mid lap, drag, resume: a lap flown under
+two gravities, never voided, filed under the new key. A running lap is a
+running lap whichever screen is over it; the mode test is gone. Measured:
+a real click on the slider while paused with a lap running voids it and
+re-keys.
+
+### And the harness, which is how two of those got past the author
+
+scripts/shots.js documents tstart, tmove and tend in its usage header and
+none had ever worked: the map they write to was never declared, so the
+first touch step died with "touches is not defined". Declared. Then the
+crash itself: page.close() sat on the happy path only, so every run that
+threw exited with a headless Chromium still running. Three of them, each
+over a hundred percent of a core on SwiftShader, took the container to a
+load of sixteen and failed lint:responsive with 3 gaps over half a second,
+on a change that is display none in the room being measured. Killed, the
+same check reads 383 frames, worst gap 331 ms, 0 gaps, identical to the
+morning's first run. The failure path closes the page now, proven with a
+deliberately unknown step: exit 2 and zero browsers left.
+
+### Measurements
+
+    trace hash       de0401cd4266, unchanged; dist/sim.wasm is the binary
+                     the 16 of 16 verify earlier today ran on, untouched
+    lint:shell       PASS
+    lint:responsive  PASS, 383 frames, worst gap 331 ms, 0 gaps over 500 ms
+                     (after the leaked browsers were killed; FAIL with 3
+                     gaps before, on a load average of 16.6)
+    lint:boot        9 of 9
+    lint:fc          33 of 33
+    lint:frame       34 passed, 0 failed
+    key probe        real click on the track, then ArrowRight held 300 ms,
+                     then Escape: before the fix roll 0, gravity 1.05,
+                     mode flight; after, roll 0.34, gravity unchanged,
+                     mode paused
+    touch probe      real taps on 844 by 390 with the sticks up, after the
+                     fix: Got it hides the card with no plate held, the
+                     track at 75 percent reads 155, a corner thumb holds
+                     the left plate
+    pause probe      lap running, Escape, real click on the track: log
+                     gains "Gravity changed, Lap voided", key .grav140
+
+`npm run verify` was NOT re-run this round: nothing in src/native, patches
+or vendor changed and the binary on disk is byte for byte the one the
+earlier 16 of 16 ran on. The changes are two shell files, the stylesheet
+and the harness.
+
+### Verdict
+
+Right axis, real effect, bit identical at stock, and not correct as
+shipped: three defects, one undisclosed caveat, one wrong number in the
+log. All three defects are fixed and each fix is measured. The caveat is
+the pilot's to judge, and the sentence that decides it is whether the quad
+at 180 feels heavy or feels fast.

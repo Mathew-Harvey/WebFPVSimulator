@@ -3571,7 +3571,17 @@ export async function boot({ loading, bootStart, mapId }) {
       if (wantGravity !== runGravity) {
         if (typeof sim.e.sim_set_gravity === 'function'
           && sim.e.sim_set_gravity(wantGravity / 100) === SIM_OK) {
-          const midLap = mode === 'flight' && race.currentLapMs(simTimeMs) != null;
+          /*
+           * NOT gated on mode, and the first version was. The slider sits
+           * below the pause panel, dimmed but uncovered, so it can be dragged
+           * while paused; with `mode === 'flight'` in this test a pilot who
+           * paused mid lap, dragged it and resumed finished a lap flown under
+           * two gravities that was never voided and then filed under the new
+           * key. A running lap is a running lap whichever screen is over it.
+           * Title and results have no lap, because reset clears one, so the
+           * boot time push of a stored value cannot void anything.
+           */
+          const midLap = race.currentLapMs(simTimeMs) != null;
           runGravity = wantGravity;
           if (midLap) {
             race.voidLap('Gravity changed\nLap voided', performance.now());

@@ -240,7 +240,7 @@ const SCREEN_TITLES = {
   title: 'WebFPV',
   courses: 'Race',
   freestyle: 'Freestyle',
-  pilot: 'Pilot',
+  pilot: 'Settings',
   quad: 'Quad',
   launch: 'Before you fly',
   standings: 'Standings',
@@ -256,11 +256,11 @@ const SCREEN_TITLES = {
 const CRUMBS = {
   courses: ['Race'],
   freestyle: ['Freestyle'],
-  pilot: ['Pilot'],
+  pilot: ['Settings'],
   quad: ['Quad'],
   launch: ['Before you fly'],
   standings: ['Race', 'Standings'],
-  rates: ['Pilot', 'Rates'],
+  rates: ['Settings', 'Rates'],
   pids: ['Quad', 'PIDs'],
   fc: ['Quad', 'Firmware bench'],
   paused: ['Paused'],
@@ -3404,7 +3404,7 @@ export class Ui {
     this.screens.quad = quad;
 
     const pilot = el('div', 'screen screen-page screen-pilot');
-    pilot.append(el('h2', null, 'Pilot'));
+    pilot.append(el('h2', null, 'Settings'));
     pilot.append(el('p', 'rates-lede', 'You and your sticks. Rates are here because they are yours: they stay put when you switch tunes.'));
     const pilotBlock = wrapMenu();
     this.pilotMenu = pilotBlock.menu;
@@ -5097,7 +5097,7 @@ export class Ui {
       /*
        * THE GATE. THREE PICTURES, AND NOTHING ELSE ON THE PAGE TO ANSWER.
        *
-       * A pilot arriving does not open a menu wanting "Quad" or "Pilot".
+       * A pilot arriving does not open a menu wanting "Quad" or "Settings".
        * They want to race or they want to mess about, on one machine or the
        * other, and until that is answered every other row on this screen is
        * furniture. It used to be answered halfway down a list of eleven,
@@ -5275,7 +5275,7 @@ export class Ui {
            * board.
            *
            * A pilot hunting for their radio scans this column and reads
-           * Fly, Track, Quad, Pilot, How to fly, FPV wiki, Tracks and
+           * Fly, Track, Quad, Settings, How to fly, FPV wiki, Tracks and
            * Times, Credits. Nothing there is a radio. Quad is the closest
            * word and it is the wrong room. So they conclude the product has
            * no calibration, which is what the owner concluded, and what
@@ -5290,7 +5290,7 @@ export class Ui {
            * The row id is built from `action` rather than the label, so
            * this costs no id and nothing that names rows has to move.
            */
-          label: 'Pilot and radio',
+          label: 'Settings',
           value: readPilotName() || 'Not set',
           action: 'pilot',
           note: 'You and your radio. Your name, choosing a joystick, Calibrate sticks, rates, graphics, sound and the flight log.',
@@ -6015,7 +6015,7 @@ export class Ui {
          * RATES, ONE PRESS FROM THE PAUSE MENU, because that is when a pilot
          * knows they want them.
          *
-         * They were two rooms away: Pilot, then Rates. The question this
+         * They were two rooms away: Settings, then Rates. The question this
          * section asks is "does it feel wrong", and how far the sticks go is
          * half of every answer to it, so the row belongs beside the tune.
          * A DOOR, not a copy: the numbers and the curve live in one room and
@@ -6042,7 +6042,7 @@ export class Ui {
         },
         {
           /* Named for what is in it, as on the title. See there. */
-          label: 'Pilot and radio',
+          label: 'Settings',
           value: ratesSummary(s.rates),
           action: 'pilot',
           /* Rates are the first thing in this room and they no longer cost
@@ -9239,7 +9239,7 @@ export class Ui {
       ? [
         ['Left stick', 'Throttle up and down, yaw left and right. Mode 2, as on your radio.'],
         ['Right stick', 'Pitch forward and back, roll left and right.'],
-        ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Pilot.'],
+        ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Settings.'],
         ['In the menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
         ['Acro', 'Hands off holds the attitude you left it in. Every turn has to be flown back out again.'],
         ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Pitch or roll with the right stick to flip over. You do not have to time it. Centre the stick, then take off.'],
@@ -11902,7 +11902,7 @@ export class Ui {
        * it may be carrying a paused run two screens up, and this row must
        * not be the reason Escape quits it. */
       if (this.screen === 'pilot' || this.screen === 'quad') {
-        /* Both rooms carry a Rates row: Pilot has the real one, Quad has a
+        /* Both rooms carry a Rates row: Settings has the real one, Quad has a
          * signpost saying rates are not the machine's. Escape goes back to
          * whichever one was used, or the signpost is a one way door. */
         this.ratesFrom = this.screen;
@@ -12399,7 +12399,7 @@ export class Ui {
      * selects on the title so Fly is one flick away. The pad is tracked so
      * a held stick does not fire an edge the moment the screen closes.
      */
-    /* Quad, not Pilot: the airframe showcase moved with the machine, so
+    /* Quad, not Settings: the airframe showcase moved with the machine, so
      * the screen whose sticks pose a quad is the one that has a quad on it.
      * Pilot has no showcase and its sticks are free to drive the cursor,
      * which is the whole point of a room a radio pilot has to reach. */

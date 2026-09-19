@@ -39208,3 +39208,73 @@ it. The rooms probe written for this round is that check and it lives in a
 scratch file, which means it dies with this container. It belongs in
 shell-check, which already walks every screen and already knows every row
 label. Small, and the next rename will re-open this without it.
+
+## 2026-09-19 | shell | The room is called Settings, which is what nine strings thought all along
+
+The owner, after the entry above: call it Settings.
+
+The entry above found nine user-facing strings sending pilots to a screen
+called Settings and corrected all nine to name the rooms that exist, Pilot
+and Quad. That was the right fix for the state the shell was in and the
+wrong one for the state it should be in. Those strings were not stale by
+accident: Settings is the word a pilot looks for, which is why the prose
+kept reaching for it, and it is the word the owner reached for too.
+
+So the room keeps its contents and takes the name back.
+
+    the row on the title      Pilot -> Pilot and radio -> Settings
+    the row on pause          the same
+    the heading on the screen Pilot -> Settings
+    the breadcrumb            Pilot -> Settings
+    the Rates breadcrumb      Pilot / Rates -> Settings / Rates
+    SCREEN_TITLES.pilot       Pilot -> Settings
+    the howto's radio tab     back to "Calibrate sticks in Settings"
+    two notices               Choose joystick, and the flight log
+
+The "Pilot and radio" label from the entry above lived for one commit. It
+was the right instinct, that the door must say what is behind it, aimed at
+the wrong word.
+
+### What did NOT change
+
+**The internal name.** The screen key is still `pilot`, the action is still
+`pilot`, and `screens.pilot` is still `screens.pilot`. Row ids are built
+from the action rather than the label, so the title's door is still
+`title:a-pilot` and shell-check still counts 253 rows across 13 screens,
+all named, unique and stable. A pilot cannot see an identifier, so renaming
+one is churn with a regression surface and no reader.
+
+**The two places "Pilot" means a person.** The Standings table's column
+heading over the names, and the run readout's "Pilot: <name>" line. Those
+are the human, not the room, and a blanket rename would have taken them
+both. They were checked by hand and left.
+
+**The lede.** "You and your sticks. Rates are here because they are yours:
+they stay put when you switch tunes." It was written under a heading that
+said Pilot and it still reads as a subtitle under one that says Settings,
+so it stays until somebody has a better sentence.
+
+### Also true now
+
+The comment at ui.js:725, "Picking any value in Settings clears this",
+became correct again without being touched, which is a small piece of
+evidence for the rename being a return rather than a change.
+
+### Measurements
+
+    rename probe   the title row list reads
+                   Fly | Track | Quad | Settings | How to fly | FPV wiki |
+                   Tracks and Times | Credits | What to fly
+                   heading "Settings", breadcrumb "Settings", the Rates
+                   breadcrumb "Settings/Rates", the howto radio tab says
+                   "Calibrate sticks in Settings", and the room still holds
+                   Choose joystick, Calibrate sticks and Flight log while
+                   Quad still holds Flight mode and Launch control
+    grep           no user-facing string says "in Pilot" or
+                   "Pilot and radio" any more
+    lint:shell     PASS, 253 rows, ids unmoved, every screen's stops still
+                   reachable by arrow and Escape still lands where it did
+    lint:nouns     PASS
+
+`npm run verify` was NOT run: this is a name. No behaviour changed and
+nothing near src/native, patches, vendor or the build.

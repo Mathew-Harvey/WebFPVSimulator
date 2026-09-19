@@ -2106,6 +2106,69 @@
        */
       .screen-rates .menu-scroll { max-height: min(calc(62vh - var(--bars)), 36em); }
       /*
+       * AND THE NOTE BESIDE IT MUST NOT BE ABLE TO MOVE THAT LIST.
+       *
+       * The note is column three of the stage and its text is whichever row
+       * the cursor is on, so its HEIGHT CHANGES WITH THE CURSOR. A grid row
+       * is as tall as its tallest item, and .screen-rates is `justify-content:
+       * safe center`, so a taller note grew the stage and the centred column
+       * pushed the list UP to keep the whole thing centred. Hovering a row
+       * therefore moved that row, out from under the pointer, onto a
+       * different row, with a different note, a different height and another
+       * shift. That is a feedback loop and a pilot described it as one:
+       *
+       *   "when i move my mouse on on of the options in the settings the
+       *    buttons moves away from my mouse"
+       *
+       * Measured at their own 1358 by 602, walking the cursor down the
+       * seventeen stops: the note ran 0 to 432 px, the stage 221 to 440, and
+       * A ROW MOVED 86 PX, which is two rows, when the cursor arrived on it.
+       * The PIDs screen wears this class and had the same defect at 10 px.
+       * Nothing else did: pilot, quad, launch and paused all measured 0,
+       * because on those the menu is taller than any note it can hold.
+       *
+       * THE FIX IS NOT A CAP. Capping the note at the list's height is the
+       * obvious answer and it was tried first: it took the 86 px to 51 and
+       * stopped there, because the list's own cap is not one number. The
+       * rule above is what it gets in a tall window and the shorter window
+       * rules below replace it, so at 602 px the list was capped at 46vh and
+       * the note at 62vh, and a note capped higher than the list still sized
+       * the row. Any number typed here is a number that has to be kept in
+       * step with three others, which is the arrangement that produced this
+       * defect in the first place.
+       *
+       * So the note is taken OUT OF THE ROW'S SIZING instead. An absolutely
+       * positioned grid child is laid out in the grid area it names and
+       * contributes nothing to sizing it, so the row is whatever the curve
+       * and the list make it, and top and bottom of 0 give the note exactly
+       * that height, at every breakpoint, with nothing to keep in step. A
+       * note longer than the room scrolls, which is what the narrow window
+       * rule below has always done to it.
+       *
+       * left and right of 0 rather than auto: an absolutely positioned box
+       * with both auto shrinks to fit, and this one was stretched to the
+       * column and then held to max-width 26em. 0 and 0 is the same box.
+       * The 8 px margin becomes padding for the same reason, so the text
+       * starts where it always started; the border rule beside it is 8 px
+       * taller, which is the whole visible cost of this.
+       */
+      .screen-rates .menu-stage { position: relative; }
+      .screen-rates .menu-help {
+        position: absolute;
+        grid-column: 3;
+        grid-row: 1;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        margin-top: 0;
+        padding-top: 20px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(232, 168, 184, 0.45) rgba(16, 22, 17, 0.55);
+      }
+      /*
        * The PIDs screen wears .screen-rates as well as .screen-pids, ON
        * PURPOSE: it is the Rates screen's layout with bars where the curve
        * is, and duplicating every stage, scroll and narrow-window rule for
@@ -2374,6 +2437,9 @@
         }
         .screen-rates .menu-stage .menu { grid-column: 1; justify-self: center; }
         .screen-rates .menu-help {
+          /* Back in flow: this layout is one column with the note stacked
+             under the list, where growing downward moves nothing. */
+          position: static;
           grid-column: 1; max-width: none; border-left: 0;
           padding: 8px 14px 0; margin-top: 6px; text-align: center;
         }

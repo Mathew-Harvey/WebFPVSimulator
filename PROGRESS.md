@@ -38825,3 +38825,114 @@ not touched in the same round as an input change.
 **Mode 1.** bug-94da186c and bug-a8cd61db. `touchsticks.js` hardcodes Mode
 2, left plate yaw and throttle. Radio pilots are already fine because the
 wizard handles them; the gap is touch and keyboard.
+
+## 2026-09-19 | shell | The note was sizing the row, so the rows walked out from under the pointer
+
+    bug-4f335566, jobi, Rates screen, 1358 by 602:
+    "when i move my mouse on on of the options in the settings the buttons
+     moves away from my mouse"
+
+This one was left open last round with "the obvious cause is not it", and
+that was right. `hoverCursor` passes `pointer = true` and `setCursor` calls
+`syncCursor(!pointer)`, so a hover does not scroll the list. The reading
+was correct and the conclusion was still wrong, because the list was moving
+for a reason that has nothing to do with scrolling.
+
+### What actually moves
+
+The note beside the list is column three of `.menu-stage`, and its text is
+whichever row the cursor is on. A grid row is as tall as its tallest item,
+and `.screen-rates` is `justify-content: safe center`. So a longer note grew
+the stage, and the centred column pushed the list UP to keep the whole thing
+centred. Hovering a row therefore MOVED that row, out from under the
+pointer, onto a different row, with a different note, a different height,
+and another shift.
+
+Walking the cursor down all seventeen stops at the reporter's own viewport:
+
+    note height      0 to 432 px
+    stage height   221 to 440 px
+    list box top   146 to 232 px
+    worst row shift        86 px, which is two rows
+
+And the same measurement said where else it lives. Only the two screens that
+wear `.screen-rates` have it, and the reporter found the worse one:
+
+    rates   -86 px      pilot    0 px
+    pids    -10 px      quad     0 px
+                        launch   0 px
+                        paused   0 px
+
+The four that measure zero are not fixed, they are lucky: on those the list
+is taller than any note it can hold, so the note never decides the row.
+
+### The cap was the obvious fix and it was not enough
+
+Capping the note at the list's height took 86 px to 51 and stopped, because
+THE LIST'S CAP IS NOT ONE NUMBER. `.screen-rates .menu-scroll` gets
+`min(calc(62vh - var(--bars)), 36em)` in a tall window and a shorter window
+rule replaces it later in the file, so at 602 px the list was capped at 46vh
+and the note at 62vh, and a note capped higher than the list still sized the
+row. `max-height` also applies to the CONTENT box here, and the two elements
+have different font sizes, so `36em` is not even the same length in both.
+Any number typed into that rule is a number that has to be kept in step with
+three others, which is the arrangement that produced the defect.
+
+So the note is taken out of the row's sizing instead. An absolutely
+positioned grid child is laid out in the grid area it names and contributes
+nothing to sizing it, so the row is whatever the curve and the list make it,
+and `top: 0; bottom: 0` give the note exactly that height at every
+breakpoint with nothing to keep in step. `left: 0; right: 0` rather than
+auto, because an absolutely positioned box with both auto shrinks to fit and
+this one was stretched to the column and then held to `max-width: 26em`. The
+8 px margin becomes padding because a grid item contributes its margin box.
+The narrow window rule puts it back to `position: static`, where the layout
+is one column, the note is stacked under the list, and growing downward
+moves nothing.
+
+The cost is that a note longer than the room now scrolls rather than pushing
+the screen around. At 1600 by 900 the longest note on the screen, 429
+characters, still fits whole. At the reporter's 602 px it does not, and it
+did not before either: the screen was simply moving itself to make room, and
+moving itself was the bug.
+
+### Measurements
+
+    worst row shift, walking the cursor over every stop at 1358 by 602
+      rates   86 px -> 0        pids   10 px -> 0
+      note height 0..432 -> 221..221, constant, so the row no longer
+      depends on the cursor at all
+
+    the pilot's own test, a pointer held still at six points down the list,
+    hover the row under it, then ask what is under that point now
+      before   3 of 6 escaped. At y 304 "Rates type" became "Separate
+               pitch", and at y 335 "Separate pitch" became "Rates type":
+               the two rows swap places under a stationary pointer
+      after    0 of 6 escaped
+
+    hit test, 1600x900 and 1358x602: every option of an open dropdown is
+      reachable, so the note's new box does not swallow anything. The row
+      hit test is byte for byte the same list before and after, so the
+      partly scrolled rows it reports are not this change's doing
+
+    lint:shell      PASS. rates overflow 440 px and pids 154 px, both
+                    unchanged, so no recorded measurement moved
+    lint:devices    PASS, every row and every note reachable on five
+                    device sizes, which is the check that covers the
+                    static position in the narrow layout
+    lint:responsive PASS
+    shots           1600x900, 1358x602, 1024x800, 390x844, cursor parked
+                    on the longest note
+
+`npm run verify` was NOT run: this is one CSS rule and nothing else. No
+JavaScript changed, src/native, patches and vendor are untouched, and
+dist/sim.wasm is the binary the last 16 of 16 ran on.
+
+### Owed
+
+**The other four screens.** pilot, quad, launch and paused measure zero
+today and have the same shape. A note that grows past the list on any of
+them re-opens this exactly. The general fix is the same three lines applied
+to `.menu-stage .menu-help`, and the reason it is not in this round is that
+it would change the layout of four screens nobody has complained about, on
+a round that was meant to close one ticket. Worth doing deliberately.

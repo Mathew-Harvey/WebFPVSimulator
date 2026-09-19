@@ -55,6 +55,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { stickChannels, stickCaption, DEFAULT_STICK_MODE } from './stickmode.js';
+
 /* Released channels run back to centre at this rate, full scale per
  * second. 8 is about 125 ms from the stop, the pace of a real spring,
  * and slow enough that the D term sees a ramp rather than an edge. */
@@ -110,18 +112,24 @@ function makePlate(caption) {
   const nub = el('div', 'osd-nub touch-nub');
   plate.append(nub);
   const wrap = el('div', 'touch-gimbal');
-  wrap.append(plate, el('div', 'osd-gimbal-cap', caption));
+  const cap = el('div', 'osd-gimbal-cap', caption);
+  wrap.append(plate, cap);
   zone.append(wrap);
-  return { zone, plate, nub };
+  return {
+    zone, plate, nub, cap,
+  };
 }
 
 export function mountTouchSticks({ onPause } = {}) {
   const root = el('div', 'touch-fly');
   root.hidden = true;
 
-  const left = makePlate('yaw · throttle');
+  /* Which thumb carries what. Mode 2 until the shell says otherwise, which
+   * is what this overlay has always been. See stickmode.js. */
+  let layout = stickChannels(DEFAULT_STICK_MODE);
+  const left = makePlate(stickCaption(layout.mode, 'left', ' · '));
   left.zone.classList.add('touch-zone-left');
-  const right = makePlate('roll · pitch');
+  const right = makePlate(stickCaption(layout.mode, 'right', ' · '));
   right.zone.classList.add('touch-zone-right');
 
   const pause = el('button', 'bug-chip touch-pause', 'Pause');
@@ -185,14 +193,17 @@ export function mountTouchSticks({ onPause } = {}) {
       e.preventDefault();
       const dx = (e.clientX - g.x) / g.deflect;
       const dyPx = g.y - e.clientY;
-      if (side === 'left') {
-        ch.yaw = clamp(dx, -1, 1);
+      /* The plate writes whichever channels this mode put under this thumb.
+       * It used to branch on the side, which is the same thing only in
+       * Mode 2. */
+      const map = layout[side];
+      ch[map.horiz] = clamp(dx, -1, 1);
+      if (map.vert === 'throttle') {
         /* One plate height is one full throttle sweep, a radio's ratio,
          * on its own scale so tuning the deflection travel cannot push
          * full throttle off the glass. */
         ch.throttle = clamp(g.throttle + dyPx / g.sweep, 0, 1);
       } else {
-        ch.roll = clamp(dx, -1, 1);
         ch.pitch = clamp(-(dyPx / g.deflect), -1, 1);
       }
     });
@@ -230,14 +241,42 @@ export function mountTouchSticks({ onPause } = {}) {
     },
     sample(dtMs) {
       const step = SPRING_RATE * (Math.min(dtMs, 100) / 1000);
-      if (!grip.left) {
-        ch.yaw = springToward(ch.yaw, step);
-      }
-      if (!grip.right) {
-        ch.roll = springToward(ch.roll, step);
-        ch.pitch = springToward(ch.pitch, step);
+      for (const side of ['left', 'right']) {
+        if (grip[side]) {
+          continue;
+        }
+        const map = layout[side];
+        ch[map.horiz] = springToward(ch[map.horiz], step);
+        /* Throttle never springs, whichever thumb is holding it. */
+        if (map.vert !== 'throttle') {
+          ch[map.vert] = springToward(ch[map.vert], step);
+        }
       }
       return { ...ch };
+    },
+
+    /*
+     * The pilot's stick mode. The captions are redrawn with it, because a
+     * plate labelled for the wrong mode is worse than one with no label at
+     * all. Any grip is released on the same call, so a thumb that was
+     * flying throttle is not left holding pitch at whatever the throttle
+     * happened to be.
+     */
+    setStickMode(mode) {
+      const next = stickChannels(mode);
+      if (next.mode === layout.mode) {
+        return;
+      }
+      layout = next;
+      grip.left = null;
+      grip.right = null;
+      left.plate.classList.remove('is-held');
+      right.plate.classList.remove('is-held');
+      ch.roll = 0;
+      ch.pitch = 0;
+      ch.yaw = 0;
+      left.cap.textContent = stickCaption(layout.mode, 'left', ' · ');
+      right.cap.textContent = stickCaption(layout.mode, 'right', ' · ');
     },
 
     /* Shown in flight, hidden everywhere else; the shell owns the call.
@@ -271,10 +310,13 @@ export function mountTouchSticks({ onPause } = {}) {
       if (!visible) {
         return;
       }
-      left.nub.style.left = `${50 + ch.yaw * 50}%`;
-      left.nub.style.top = `${50 - (ch.throttle * 2 - 1) * 50}%`;
-      right.nub.style.left = `${50 + ch.roll * 50}%`;
-      right.nub.style.top = `${50 - (-ch.pitch) * 50}%`;
+      for (const side of ['left', 'right']) {
+        const map = layout[side];
+        const stick = side === 'left' ? left : right;
+        const vert = map.vert === 'throttle' ? ch.throttle * 2 - 1 : -ch.pitch;
+        stick.nub.style.left = `${50 + ch[map.horiz] * 50}%`;
+        stick.nub.style.top = `${50 - vert * 50}%`;
+      }
     },
 
     /* A fresh craft gets fresh sticks, throttle included: resetCraft

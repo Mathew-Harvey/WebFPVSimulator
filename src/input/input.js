@@ -53,6 +53,10 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import {
+  stickChannels, stickCaption, stickSideOf, DEFAULT_STICK_MODE, normaliseStickMode,
+} from './stickmode.js';
+
 const STORE_KEY = 'webfpv_stick_map_v1';
 const PAD_STORE_KEY = 'webfpv.pad.v1';
 
@@ -456,7 +460,18 @@ function calTitle(c) {
   }[c.step] || '';
 }
 
-function calPrompt(c) {
+/*
+ * EVERY PROMPT HERE THAT NAMES A STICK WAS NAMING A MODE 2 STICK.
+ *
+ * "Pull the right stick fully back" is true on a Mode 2 radio and false on a
+ * Mode 1 one, where pitch is the left gimbal. The wizard would still have
+ * mapped the axis correctly, because it maps whatever moved, but it would
+ * have been telling a Mode 1 pilot to move the wrong hand while it did. The
+ * side comes out of the pilot's stick mode now. `mode` is threaded in from
+ * calibrationView rather than read from a module global, because this file
+ * has no idea what the shell's settings are and should not.
+ */
+function calPrompt(c, mode) {
   if (c.step === 'center') {
     return 'Both sticks in the centre. Throttle all the way down. Hold still.';
   }
@@ -464,22 +479,24 @@ function calPrompt(c) {
     return 'Move both sticks through every corner, and the throttle up and down, then put them back.';
   }
   if (c.step === 'confirm') {
-    return 'Move the sticks. Left is yaw and throttle, right is roll and pitch.';
+    return `Move the sticks. Left is ${stickCaption(mode, 'left').toLowerCase()},`
+      + ` right is ${stickCaption(mode, 'right').toLowerCase()}.`;
   }
+  const side = (ch) => stickSideOf(mode, ch);
   if (c.phase === 'release') {
     return {
       throttle: 'Now put the throttle all the way back down.',
-      roll: 'Let the right stick come back to the centre.',
-      pitch: 'Let the right stick come back to the centre.',
-      yaw: 'Let the left stick come back to the centre.',
+      roll: `Let the ${side('roll')} stick come back to the centre.`,
+      pitch: `Let the ${side('pitch')} stick come back to the centre.`,
+      yaw: `Let the ${side('yaw')} stick come back to the centre.`,
       select: 'Put it back where it was.',
     }[c.step] || 'Return to rest.';
   }
   return {
     throttle: 'Push the throttle all the way up and hold it.',
-    roll: 'Hold the right stick fully to the right.',
-    pitch: 'Pull the right stick fully back, toward you.',
-    yaw: 'Hold the left stick fully to the right.',
+    roll: `Hold the ${side('roll')} stick fully to the right.`,
+    pitch: `Pull the ${side('pitch')} stick fully back, toward you.`,
+    yaw: `Hold the ${side('yaw')} stick fully to the right.`,
     /* Only ever asked of a radio reporting no buttons at all, so there is
      * no press to describe and the pilot is choosing which switch becomes
      * one. See SELECT_STEP. */
@@ -515,12 +532,51 @@ function calHint(c, travelled, need, gp) {
   return 'Hold it there. Diagonals are ignored.';
 }
 
-const KEY_AXES = [
-  /* channel, negative key, positive key */
-  ['roll', 'ArrowLeft', 'ArrowRight'],
-  ['pitch', 'ArrowUp', 'ArrowDown'], /* up arrow = stick forward = nose down = negative */
-  ['yaw', 'KeyA', 'KeyD'],
-];
+/*
+ * THE KEYS ARE TWO STICKS, AND THE MODE SAYS WHAT EACH STICK DOES.
+ *
+ * WASD is the left gimbal and the arrows are the right one. That was always
+ * the arrangement; what was hard-wired was the CHANNEL on each of them, so a
+ * Mode 1 pilot reaching for the right stick's throttle got pitch and could
+ * not fly. See stickmode.js.
+ *
+ * `up` is forward on both, which is why the vertical pair is read by
+ * direction rather than by sign: forward on a PITCH stick is nose down, so
+ * the forward key is the negative one, while forward on a THROTTLE is more
+ * throttle, so the forward key is the positive one. Getting that backwards
+ * is the whole of what Mode 1 would feel like if this were a straight swap.
+ */
+const KEY_STICKS = {
+  left: {
+    up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD',
+  },
+  right: {
+    up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight',
+  },
+};
+
+/* The spring centred channels only: [channel, negative key, positive key].
+ * Throttle is not here because it does not spring and is not integrated the
+ * same way; see throttleKeys and readKeyboard. */
+function keyAxes(mode) {
+  const c = stickChannels(mode);
+  const out = [];
+  for (const side of ['left', 'right']) {
+    const k = KEY_STICKS[side];
+    out.push([c[side].horiz, k.left, k.right]);
+    if (c[side].vert !== 'throttle') {
+      out.push([c[side].vert, k.up, k.down]);
+    }
+  }
+  return out;
+}
+
+/* Whichever gimbal is carrying the collective this mode. */
+function throttleKeys(mode) {
+  const c = stickChannels(mode);
+  const side = c.left.vert === 'throttle' ? 'left' : 'right';
+  return { up: KEY_STICKS[side].up, down: KEY_STICKS[side].down };
+}
 
 /*
  * HOLD TIME TO STICK, which is the only analog a key can offer.
@@ -628,6 +684,12 @@ export class InputManager {
     this.holdFired = false;
     this.holdAt = 0;
     this.onKey = null; /* main.js hooks non stick keys here; (code, repeat) */
+    /* Which stick carries which channel, for the keyboard and for every
+     * gimbal this shell draws. A radio's mode lives in the radio. See
+     * stickmode.js. */
+    this.stickMode = DEFAULT_STICK_MODE;
+    this.keyAxes = keyAxes(this.stickMode);
+    this.throttleKeys = throttleKeys(this.stickMode);
 
     /*
      * STICK RATE, AND WHY IT IS NOT THE FRAME RATE ANY MORE.
@@ -1689,7 +1751,7 @@ export class InputManager {
       channels,
       axes,
       title: calTitle(c),
-      prompt: calPrompt(c),
+      prompt: calPrompt(c, this.stickMode),
       hint: calHint(c, travelled, need, gp),
     };
   }
@@ -1865,7 +1927,7 @@ export class InputManager {
     const MAX_STEP = 0.18;
     const dtHold = Math.min(dtMs, 40);
     const step = (rate) => Math.min(rate * dt, MAX_STEP);
-    for (const [ch, negKey, posKey] of KEY_AXES) {
+    for (const [ch, negKey, posKey] of this.keyAxes) {
       const want = (this.keys.has(posKey) ? 1 : 0) - (this.keys.has(negKey) ? 1 : 0);
       if (want === 0) {
         this.kbHoldMs[ch] = 0;
@@ -1885,8 +1947,8 @@ export class InputManager {
         this.kb[ch] = want * analogMag(this.kbHoldMs[ch]);
       }
     }
-    const w = this.keys.has('KeyW');
-    const s = this.keys.has('KeyS');
+    const w = this.keys.has(this.throttleKeys.up);
+    const s = this.keys.has(this.throttleKeys.down);
     if (!springThr) {
       const thrWant = (w ? 1 : 0) - (s ? 1 : 0);
       this.kb.throttle = Math.max(0, Math.min(1, this.kb.throttle + thrWant * step(THR_RATE)));
@@ -1976,6 +2038,40 @@ export class InputManager {
   /* The thumb sticks, mounted by the shell on a touch device. */
   attachTouch(source) {
     this.touchSource = source;
+    if (source && typeof source.setStickMode === 'function') {
+      source.setStickMode(this.stickMode);
+    }
+  }
+
+  /*
+   * THE PILOT'S STICK MODE, which reaches the keyboard and the thumb sticks
+   * and nothing else. A radio has already applied its own before the browser
+   * sees an axis, and the wizard learns whatever comes out of it.
+   *
+   * The spring centred channels are ZEROED on a change, and they have to be.
+   * The keyboard integrates per channel: hold the arrow that was pitch,
+   * change mode so that key is now throttle, and pitch would have kept
+   * whatever deflection it was carrying with no key left able to return it.
+   * Throttle survives deliberately, because it is the same collective either
+   * way and a radio's throttle does not jump when you put the radio down.
+   */
+  setStickMode(mode) {
+    const m = normaliseStickMode(mode);
+    if (m === this.stickMode) {
+      return m;
+    }
+    this.stickMode = m;
+    this.keyAxes = keyAxes(m);
+    this.throttleKeys = throttleKeys(m);
+    for (const ch of ['roll', 'pitch', 'yaw']) {
+      this.kb[ch] = 0;
+      this.kbHoldMs[ch] = 0;
+      this.kbHoldDir[ch] = 0;
+    }
+    if (this.touchSource && typeof this.touchSource.setStickMode === 'function') {
+      this.touchSource.setStickMode(m);
+    }
+    return m;
   }
 
   /*
@@ -2048,7 +2144,7 @@ export class InputManager {
           next[ch] = kb[ch];
         }
       }
-      if (this.keys.has('KeyW') || this.keys.has('KeyS')) {
+      if (this.keys.has(this.throttleKeys.up) || this.keys.has(this.throttleKeys.down)) {
         next.throttle = kb.throttle;
       } else {
         this.kb.throttle = next.throttle;

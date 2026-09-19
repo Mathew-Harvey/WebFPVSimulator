@@ -39408,3 +39408,163 @@ release phase turned out to already know.
 What remains unverified: flight feel, as always, and the one thing no
 harness here can see, which is whether a real gamepad in a real browser
 reports its sticks the way the synthetic one does. Awaiting a pilot.
+
+## 2026-09-19 | shell, input | Stick mode, for the two inputs that never had one
+
+    bug-94da186c  "I need Mode 1 to fly on my smartphone."
+    bug-a8cd61db  "Is it possible to change to mode 1 stickmode?"
+
+A stick mode is not a difficulty setting or a remap in the usual sense. It
+is a fact about the pilot's hands, learned on a transmitter, and a pilot
+whose thumbs expect throttle on the right cannot fly a Mode 2 shell at all.
+
+A RADIO NEEDED NOTHING. The mode lives in the transmitter, which decides
+what its gimbals send before the browser sees an axis, and the wizard learns
+whatever comes out. It is the two inputs with no hardware behind them, the
+THUMB STICKS and the KEYBOARD, that were built Mode 2 with no way to be
+anything else.
+
+### One table, four modes, no code paths
+
+`src/input/stickmode.js` is new and is the whole of the decision. The four
+modes are two independent swaps, so it is a table of two booleans rather
+than four cases:
+
+    mode   left stick        right stick
+    1      yaw, pitch        roll, throttle
+    2      yaw, throttle     roll, pitch      what this shell has always been
+    3      roll, pitch       yaw, throttle
+    4      roll, throttle    yaw, pitch
+
+Every consumer reads channel NAMES out of that table and never asks which
+mode it is, which is why modes 3 and 4 cost nothing: a mode is a row, not a
+branch. Two tickets asked for Mode 1 and only Mode 1; 3 and 4 are there
+because refusing them would have meant writing a branch to exclude them.
+
+### The keyboard is two sticks, and that was the part to get wrong
+
+WASD has always been the left gimbal and the arrows the right one. What was
+hard-wired was the CHANNEL on each. The trap is the vertical pair, because
+the two channels that can land there have opposite senses of forward:
+
+    forward on a PITCH stick   is nose down, so the forward key is NEGATIVE
+    forward on a THROTTLE      is more throttle, so it is POSITIVE
+
+A straight swap of the key names would have given a Mode 1 pilot an inverted
+throttle. `keyAxes` and `throttleKeys` build from the table by DIRECTION,
+up and down, rather than by sign, so forward stays forward on both.
+
+`setStickMode` zeroes roll, pitch and yaw on a change and it has to: the
+keyboard integrates per channel, so holding the arrow that was pitch and
+then changing mode would have left pitch carrying a deflection with no key
+able to return it. THROTTLE SURVIVES DELIBERATELY. It is the same collective
+either way, and a radio's throttle does not jump when you put the radio down.
+
+### The thumb sticks, and everything that draws a stick
+
+`touchsticks.js` branched on `side === 'left'`, which is the same thing as
+the table only in Mode 2. The plate now writes whichever channels the mode
+put under that thumb, the sticky throttle follows the throttle rather than
+the left plate, the spring skips whichever channel is the collective, and
+the captions are redrawn on a change, because a plate labelled for the wrong
+mode is worse than one with no label.
+
+The setting also drives everything on screen that DRAWS or NAMES a pair of
+sticks, for everybody including a radio pilot: the flight overlay's gimbals,
+the How to fly screen's gimbals AND its prose, the calibrate screen's
+gimbals, and the calibration wizard's own prompts. That last one was a
+defect in its own right and would have stayed one:
+
+    "Pull the right stick fully back, toward you."
+
+is true on a Mode 2 radio and false on a Mode 1 one, where pitch is the left
+gimbal. The wizard would still have mapped the axis correctly, because it
+maps whatever moved, but it was telling a Mode 1 pilot to move the wrong
+hand while it did.
+
+### Measurements
+
+    the table, in node       all four modes match the intended rows, and
+                             'nonsense', 9 and null all fall back to Mode 2
+
+    keyboard, real shell     mode 2  thr keys W/S      W held -> thr 0.485
+                                                       Up held -> pitch -0.340
+                             mode 1  thr keys Up/Down  Up held -> thr 0.340
+                                                       W held -> pitch -0.340
+                             pitch is NEGATIVE for the forward key in both,
+                             which is the sign the trap above is about
+
+    thumb sticks, real       mode 2  right plate up -> pitch -0.46, thr 0
+    shell, real handlers,    mode 2  left plate up  -> thr +0.33, pitch 0
+    CDP touch events         mode 1  right plate up -> thr +0.33, pitch 0
+                             mode 1  left plate up  -> pitch -0.46, thr held
+                             captions "Yaw · throttle | Roll · pitch" ->
+                                      "Yaw · pitch | Roll · throttle"
+
+    the shell's surfaces     the Settings row reads Mode 2 then Mode 1; the
+                             overlay and calibrate captions follow; the How
+                             to fly keyboard row moves from
+                             "W and S: Throttle" to "W and S: Pitch"
+
+The touch probe pins the overlay visible and hides the menu layer, because
+on the title screen the gate cards sit over the stick zones. In flight,
+which is the only place the overlay is shown for real, nothing is over them.
+The handlers under test are the shipped ones and the events are real CDP
+touch events.
+
+### A RECORDED BASELINE MOVED, and this is the argument for it
+
+`lint:shell` failed: `pilot: overflow grew from 613 to 658 px`. The Settings
+screen gained a row, and a row is 45 px of scrollable content. There is no
+way to add a row to a screen without adding a row to it.
+
+CLAUDE.md forbids moving a threshold to make a check pass. This number is
+not that, and `scripts/shell-check.js` says so in its own header: "THE
+BUDGETS ARE A BASELINE, NOT A TARGET... the recorded numbers are today's
+overflow. The check fails when a screen gets WORSE than its baseline, and
+prints a note when one gets better so the baseline can be re-recorded
+deliberately." It ships a `--record` mode for exactly this, and there is
+precedent in this file: the Rates screen's number moved when it gained the
+Preset row, recorded as legitimate at the time.
+
+So it was re-recorded with `--record` rather than hand edited, and the diff
+is one line, 613 to 658, with the other twelve screens untouched. What did
+NOT change is the thing the number is a proxy for: `lint:devices` still
+passes on five device sizes with every row and every note reachable, and
+shell-check still reaches all 21 stops on that screen by arrow with Escape
+landing where it did. `tests/shell-baseline.json` is not read by
+`tests/verify.js`, so no physics measurement is touched by it.
+
+If the owner disagrees that this number was re-recordable, the change to
+undo is that one line, and the row goes with it.
+
+### RUN LOG
+
+`npm run verify` RAN. **15 of 15 checks passing. 1 check could not run**:
+check 1, build-clean, no `emcc` on PATH, `EMSDK` unset and
+`vendor/betaflight` not checked out in this container.
+
+    trace hash   de0401cd4266 in Node and in headless Chrome, and identical
+                 across 30, 60, 144 and 240 Hz
+    hover 0.2793, punch 80.0 m, terminal 31.0 m/s, motor step 26 ms,
+    rate 671.7 deg/s, yaw -0.10 deg, sag 11.14 percent, ratio 1.2472
+
+EVERY MEASURED VALUE IS IDENTICAL to the two runs recorded above it today,
+which is the required answer: the harness replays recorded CHANNEL values
+and never reads a key or a thumb, so a change to which key writes which
+channel must not move the hash, and it did not. Nothing under src/native,
+patches or vendor was touched.
+
+    lint:shell    PASS after the re-record, 254 rows across 13 screens
+    lint:devices  PASS on five device sizes
+    lint:fc       33 of 33
+    lint:presets  4 of 4
+
+Wrong: the first touch probe measured nothing at all and looked like a
+broken feature. It was the probe: the gate cards sit over the stick zones on
+the title screen, so every synthetic touch landed on a card. `elementFromPoint`
+said so in one line once it was asked.
+
+What remains unverified: flight feel, and whether a Mode 1 pilot agrees this
+is Mode 1. The probes prove which channel each control writes; they cannot
+prove it feels like the radio in somebody's hands.

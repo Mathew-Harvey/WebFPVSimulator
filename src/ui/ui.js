@@ -43,6 +43,9 @@
 
 import { MAPS } from '../maps/registry.js';
 import { CAL_STEPS } from '../input/input.js';
+import {
+  STICK_MODES, DEFAULT_STICK_MODE, normaliseStickMode, stickChannels, stickCaption,
+} from '../input/stickmode.js';
 import { LINK_PRESETS } from '../input/link.js';
 
 /* Wording for input.js's calibration steps. The order lives there. */
@@ -616,6 +619,14 @@ const DEFAULTS = {
    */
   flightMode: 'acro',
   /*
+   * WHICH STICK CARRIES WHICH CHANNEL. Mode 2 is what this shell has always
+   * been and what every record on the board was flown on. It reaches the
+   * thumb sticks and the keyboard, which had no mode before this and could
+   * not be flown by a Mode 1 pilot at all, and it names the sticks on every
+   * screen that draws them. See src/input/stickmode.js.
+   */
+  stickMode: DEFAULT_STICK_MODE,
+  /*
    * FREESTYLE IS THREE DIFFERENT ACTIVITIES AND THEY WANT DIFFERENT RULES.
    * See FREESTYLE_SCORING above for what each value does.
    *
@@ -858,6 +869,7 @@ export function loadSettings() {
   if (s.flightMode !== 'angle') {
     s.flightMode = 'acro';
   }
+  s.stickMode = normaliseStickMode(s.stickMode);
   /*
    * A setting the pilot picks off a LIST has to still be on that list.
    *
@@ -1292,8 +1304,11 @@ function makeGimbal(caption) {
   plate.append(el('div', 'osd-cross-x'), el('div', 'osd-cross-y'));
   const nub = el('div', 'osd-nub');
   plate.append(nub);
-  box.append(plate, el('div', 'osd-gimbal-cap', caption));
-  return { box, nub };
+  /* The caption is kept because it is not a constant any more: it names the
+   * channels this pilot's stick mode put on this plate. See setStickMode. */
+  const cap = el('div', 'osd-gimbal-cap', caption);
+  box.append(plate, cap);
+  return { box, nub, cap };
 }
 
 /*
@@ -1378,10 +1393,49 @@ function placeNub(nub, x, y) {
  * flight overlay and in the calibration screen, which is two places to get
  * the pitch sign wrong in.
  */
-function placeSticks(left, right, ch) {
+/*
+ * The two sentences the touch page carried on FIXED THUMBS: the collective
+ * stays where it is left, the springy one comes back. They follow the
+ * throttle now rather than the side, because in Mode 1 the throttle is the
+ * right thumb and the old text told that pilot the opposite.
+ */
+function thrNote(mode, side) {
+  const map = stickChannels(mode)[side];
+  return map.vert === 'throttle'
+    ? ' Throttle STAYS where you leave it, like a real radio: trim a hover, lift the thumb, it holds.'
+    : ' Forward is nose down, fly forward. Springs back to centre when you let go.';
+}
+
+/*
+ * What each key pair does, named for the channel this mode put on it. The
+ * four rows used to be constants, which is what a Mode 1 pilot on a keyboard
+ * was reading when the arrows turned out to be throttle.
+ */
+function keyHowtoRows(mode) {
+  const c = stickChannels(mode);
+  const say = {
+    throttle: 'Throttle. Tap for a nudge, hold to climb, long hold to punch. Let go and it holds height.',
+    pitch: 'Pitch. Forward is stick forward, nose down, fly forward.',
+    yaw: 'Yaw, left and right on the spot.',
+    roll: 'Roll.',
+  };
+  return [
+    ['W and S', say[c.left.vert]],
+    ['A and D', say[c.left.horiz]],
+    ['Up and down', say[c.right.vert]],
+    ['Left and right', say[c.right.horiz]],
+  ];
+}
+
+function placeSticks(left, right, ch, mode = DEFAULT_STICK_MODE) {
   const clamp = (v) => Math.max(-1, Math.min(1, v));
-  placeNub(left.nub, clamp(ch.yaw), clamp(ch.throttle * 2 - 1));
-  placeNub(right.nub, clamp(ch.roll), clamp(-ch.pitch));
+  const layout = stickChannels(mode);
+  for (const side of ['left', 'right']) {
+    const map = layout[side];
+    const stick = side === 'left' ? left : right;
+    const vert = map.vert === 'throttle' ? ch.throttle * 2 - 1 : -ch.pitch;
+    placeNub(stick.nub, clamp(ch[map.horiz]), clamp(vert));
+  }
 }
 
 function el(tag, cls, text) {
@@ -5763,6 +5817,31 @@ export class Ui {
           note: padChooseNote(this.padInfo),
         },
         { label: 'Calibrate sticks', action: 'calibrate', note: 'Centre, full range, then one named move per stick. Saved after you check it.' },
+        /*
+         * WHICH STICK CARRIES WHICH CHANNEL, and it sits here because the
+         * two rows above are the other two things a pilot does to their
+         * sticks before flying.
+         *
+         * Four options fit inline as segments, which is the whole reason
+         * modes 3 and 4 are offered: they are a row in a table rather than
+         * a code path, and the strip has room. The note says plainly that a
+         * radio does not need this, because a radio pilot who changes it
+         * expecting their transmitter to follow would be confused by a
+         * setting that only redraws the screen for them.
+         */
+        choice(
+          'Stick mode',
+          'Which stick is throttle and which is yaw, the way your radio is set up.'
+          + ' Mode 2 is throttle on the left, which is what this page has always been.'
+          + ' Mode 1 puts throttle on the right and pitch on the left.'
+          + ' This flies the THUMB STICKS and the KEYBOARD, which have no mode of their'
+          + ' own. A radio already applies its own mode before this page sees a stick,'
+          + ' so for a radio this only names the sticks drawn on screen.',
+          STICK_MODES,
+          s.stickMode,
+          (n) => `Mode ${n}`,
+          (n) => { s.stickMode = normaliseStickMode(n); },
+        ),
         ratesItem(s, midRun),
         choice(
           'Radio link',
@@ -9228,8 +9307,8 @@ export class Ui {
     this.howtoKeys.textContent = '';
     const rows = source === 'touch'
       ? [
-        ['Left thumb', 'Yaw and throttle. Throttle STAYS where you leave it, like a real radio: trim a hover, lift the thumb, it holds.'],
-        ['Right thumb', 'Roll and pitch. Forward is nose down, fly forward. Springs back to centre when you let go.'],
+        ['Left thumb', `${stickCaption(this.settings.stickMode, 'left')}.${thrNote(this.settings.stickMode, 'left')}`],
+        ['Right thumb', `${stickCaption(this.settings.stickMode, 'right')}.${thrNote(this.settings.stickMode, 'right')}`],
         ['The whole corner', 'The pad is bigger than the drawing: the stick is wherever your thumb lands in the lower corner, and deflection is the drag from there.'],
         ['Landscape', 'Turn the phone sideways. The pads sit under both thumbs, the way a radio sits in both hands.'],
         ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Pitch or roll on the right pad to flip over. You do not have to time it. Let go, then take off.'],
@@ -9237,8 +9316,8 @@ export class Ui {
       ]
       : source === 'radio'
       ? [
-        ['Left stick', 'Throttle up and down, yaw left and right. Mode 2, as on your radio.'],
-        ['Right stick', 'Pitch forward and back, roll left and right.'],
+        [`Left stick (Mode ${normaliseStickMode(this.settings.stickMode)})`, `${stickCaption(this.settings.stickMode, 'left')}. Set the mode on the radio; this page follows it in Settings.`],
+        ['Right stick', `${stickCaption(this.settings.stickMode, 'right')}.`],
         ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Settings.'],
         ['In the menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
         ['Acro', 'Hands off holds the attitude you left it in. Every turn has to be flown back out again.'],
@@ -9255,10 +9334,7 @@ export class Ui {
           ['Turtle', 'If you tip over on the blocks, TURTLE MODE takes over. Pitch or roll to flip. You do not have to time it. Centre the stick, then press L and launch again.'],
         ]
       : [
-        ['W and S', 'Throttle. Tap for a nudge, hold to climb, long hold to punch. Let go and it holds height.'],
-        ['A and D', 'Yaw, left and right on the spot.'],
-        ['Up and down', 'Pitch. Up is stick forward, nose down, fly forward.'],
-        ['Left and right', 'Roll.'],
+        ...keyHowtoRows(this.settings.stickMode),
         ['L', 'Launch control, if you turned it on in Quad. Pitch, centre, punch.'],
         ['R, then Escape', 'Back to the start line, and pause.'],
         ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Pitch or roll with the arrow keys to flip over. You do not have to time it. Let go, then take off.'],
@@ -9288,7 +9364,7 @@ export class Ui {
     if (!this.howtoStickLeft || this.screen !== 'howto') {
       return;
     }
-    placeSticks(this.howtoStickLeft, this.howtoStickRight, ch);
+    placeSticks(this.howtoStickLeft, this.howtoStickRight, ch, this.settings.stickMode);
   }
 
   setCraftCaption(text) {
@@ -10314,7 +10390,7 @@ export class Ui {
     if (!show) {
       return;
     }
-    placeSticks(this.osdStickLeft, this.osdStickRight, { yaw, throttle, roll, pitch });
+    placeSticks(this.osdStickLeft, this.osdStickRight, { yaw, throttle, roll, pitch }, this.settings.stickMode);
   }
 
   /*
@@ -10558,7 +10634,7 @@ export class Ui {
       this.calSkipBtn.hidden = !view.canSkip;
     }
     const ch = view.channels || { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
-    placeSticks(this.calStickLeft, this.calStickRight, ch);
+    placeSticks(this.calStickLeft, this.calStickRight, ch, this.settings.stickMode);
     this.setCalAxes(view.axes || []);
     /* The ORDER is input.js's CAL_STEPS, imported rather than re-typed:
      * this list used to restate it, so a step added to the calibration
@@ -10578,6 +10654,37 @@ export class Ui {
       }
       this.calList.append(li);
     });
+  }
+
+  /*
+   * The pilot's stick mode, applied to everything on screen that DRAWS or
+   * NAMES a pair of sticks. The channels themselves are the input layer's
+   * job; this is the captions, which are not constants any more.
+   *
+   * Called from main.js's applySettings, so it runs at boot and on every
+   * change, which is the same hook the camera and the render scale use.
+   */
+  setStickMode(mode) {
+    const m = normaliseStickMode(mode);
+    this.settings.stickMode = m;
+    const caps = [
+      [this.osdStickLeft, this.osdStickRight],
+      [this.howtoStickLeft, this.howtoStickRight],
+      [this.calStickLeft, this.calStickRight],
+    ];
+    for (const [l, r] of caps) {
+      if (l && l.cap) {
+        Ui.text(l.cap, stickCaption(m, 'left'));
+      }
+      if (r && r.cap) {
+        Ui.text(r.cap, stickCaption(m, 'right'));
+      }
+    }
+    /* The how-to screen's prose names the sticks too, and it is built from
+     * a table rather than from the DOM, so it has to be asked again. */
+    if (this.howtoKeys) {
+      this.renderHowto();
+    }
   }
 
   setPadInfo(info) {

@@ -3454,6 +3454,16 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function applySettings(s) {
+    /*
+     * The pilot's stick mode, first, because everything below it that draws
+     * a stick wants to know. input.setStickMode forwards to the thumb
+     * sticks; ui.setStickMode redraws the captions and the how-to prose.
+     * Both are no-ops when the mode has not moved.
+     */
+    input.setStickMode(s.stickMode);
+    if (ui.setStickMode) {
+      ui.setStickMode(s.stickMode);
+    }
     camTilt = clampCameraAngle(s.cameraAngle);
     s.cameraAngle = camTilt;
     qTilt.setFromAxisAngle(AXIS_X, cameraTiltRad(camTilt));

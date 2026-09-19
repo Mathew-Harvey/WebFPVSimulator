@@ -97,8 +97,30 @@ const SELECT_HOLD_MS = 700;
 /* The wizard's steps for a given radio. The menu switch is only asked for
  * when the radio cannot answer any other way, because asking every pilot to
  * assign one is friction for a problem they do not have. */
-export function calSteps(hasButtons) {
+export function calSteps(hasButtons, axisCount = 0) {
   if (hasButtons) {
+    return CAL_STEPS;
+  }
+  /*
+   * AND ONLY WHEN THE RADIO HAS AN AXIS TO SPARE, because otherwise the
+   * question has no answer and the wizard becomes a room with no door.
+   *
+   * The four gimbal channels claim four axes, and usedAxes deliberately
+   * keeps the menu switch off every one of them, so on a four axis radio
+   * pickUnusedAxis returns -1 on every frame of this step, for ever. Save
+   * is only ever enabled on confirm, which is the step after, so the pilot
+   * cannot finish and cannot keep what they just did: Escape and start
+   * again is the whole of what is left. Reported from the board as "when
+   * i'm at step 7 of calibration i can't continue, i don't have any button
+   * on my radio, so it's just not finishing the calibration and i can't
+   * play", which is exactly this and is a fair description of it.
+   *
+   * That radio is not left without a way to press Enter. The HOLD gesture
+   * is armed for any pad reporting zero buttons whether or not a switch was
+   * ever assigned, which is what makes skipping this safe, here and on the
+   * Skip that the step itself now offers.
+   */
+  if (axisCount <= IDENT_CHANNELS.length) {
     return CAL_STEPS;
   }
   const out = CAL_STEPS.slice();
@@ -127,6 +149,24 @@ const PAD_PICK = {
   WIGGLE: 0.34,
   WIGGLE_MS: 160,
   IGNORE_MS: 450,
+};
+
+/* When the AETR guess is describing somebody else's radio. See
+ * noteGuessOrder for what each of these is watching for. */
+const GUESS = {
+  /* Yaw counts as alive once it has swept this far. A deliberate yaw input
+   * is a whole stick: trim, noise and a knocked gimbal are nowhere near it. */
+  YAW_ALIVE: 0.30,
+  /* An axis the guess does not name has swept this far. The same number the
+   * wizard calls a full stick, CAL.SWEEP_TRAVEL. */
+  STRAY_SWEPT: 0.55,
+  /* And has been seen at this many distinct levels, which is what tells a
+   * gimbal from a switch. A two position switch offers two, a three
+   * position switch three, a swept stick dozens. */
+  STRAY_LEVELS: 6,
+  /* The quantiser those levels are counted in. Coarse enough that jitter on
+   * a float axis cannot manufacture them. */
+  LEVEL_STEP: 1 / 16,
 };
 
 function cloneMap(map) {
@@ -390,7 +430,9 @@ function calHint(c, travelled, need, gp) {
       : 'Enter or Save mapping keeps it. Escape cancels.';
   }
   if (c.step === 'select') {
-    return 'This radio reports no buttons, so one channel has to be the button.';
+    return 'This radio reports no buttons, so one channel can be the button.'
+      + ' No switch to spare? Skip. Holding any stick away from centre for'
+      + ' a second counts as a press either way.';
   }
   if (c.phase === 'release') {
     return 'One direction at a time. Diagonals are ignored.';
@@ -499,6 +541,12 @@ export class InputManager {
      * parked away from centre. See mapUsable. Reset with the pad, because it
      * is a fact about one radio and not about this browser. */
     this.mapSeenParked = false;
+    /* The travel seen on every axis while flying an uncalibrated map, and
+     * the two verdicts drawn from it. Reset with the pad, same reason. See
+     * noteGuessOrder. */
+    this.guessSpan = null;
+    this.guessYawAlive = false;
+    this.guessWrongOrder = false;
     /* The hold-to-select bootstrap for a radio reporting zero buttons.
      * See SELECT_STEP. */
     this.holdMs = 0;
@@ -628,6 +676,7 @@ export class InputManager {
     this.map.stored = true;
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(this.map));
+      return true;
     } catch (e) {
       /*
        * Private mode or no quota. `stored` STAYS TRUE, deliberately. It reads
@@ -638,7 +687,21 @@ export class InputManager {
        * who had just finished calibrating, and call their mapping uncalibrated
        * while it was flying the quad. The map is calibrated. It simply will
        * not survive a reload in this browser.
+       *
+       * BUT THE PILOT HAS TO BE TOLD, and for a long time they were not.
+       * This swallowed the throw whole and the shell went on to print
+       * "Stick mapping saved." over the top of it. The next visit had none
+       * of it, so the radio was uncalibrated again with no account of what
+       * had happened to the minute they spent: "Do not save the stcks
+       * movement after setupp of Radiomaster Pocket", filed five minutes
+       * after the same pilot's ticket about the step before this one.
+       *
+       * So the failure is returned rather than hidden. What it is NOT is a
+       * refusal: the mapping is live and the quad flies on it for as long
+       * as this tab is open, which is worth saying plainly and is better
+       * than throwing the calibration away over a storage quota.
        */
+      return false;
     }
   }
 
@@ -683,6 +746,98 @@ export class InputManager {
     }
     if (Math.abs(gp.axes[spec.axis]) > 0.35) {
       this.mapSeenParked = true;
+    }
+  }
+
+  /*
+   * AND IS THE GUESS'S YAW REALLY THIS RADIO'S YAW?
+   *
+   * noteThrottleParked asks the best single question there is about the
+   * guess, and a parked throttle is a real answer. But it is ONE AXIS OUT
+   * OF FOUR, and it is the only one anything was ever asking about. A radio
+   * can satisfy it and still be wrong everywhere else: AETR puts yaw on
+   * axis 3, and plenty of transmitters in joystick mode put a slider, a
+   * knob or a switch there and yaw further out. That pilot flies with roll,
+   * pitch and throttle correct and NO YAW AT ALL, and because the throttle
+   * parked, the shell has already decided the guess is behaving like a
+   * radio and says nothing at all.
+   *
+   * Three tickets off the board are this, and none of them knew it:
+   * "My yaw doesn't work", "Cant yaw", "No yaw, automatic eject". The third
+   * is the same fault read from the other end, a spring centred axis being
+   * flown as a throttle, which is a quad that takes off on its own.
+   *
+   * The observation needs no wizard and costs one pass over the axes. Watch
+   * how far each axis has ever travelled. If the axis the guess calls yaw
+   * has never left centre, while an axis the guess does not name has swept
+   * a full stick's worth AND has been seen at enough distinct levels to be
+   * a gimbal rather than a switch, then the pilot is flying a map that does
+   * not describe their radio, and the thing they cannot do is yaw.
+   *
+   * BOTH VERDICTS LATCH, for the reason on noteThrottleParked: a warning
+   * that blinks is worse than either answer. Yaw latching ALIVE is the more
+   * important of the two, because it is what stops this ever firing at a
+   * pilot whose guess is right. The moment they use yaw once, the question
+   * is settled in their favour for good.
+   *
+   * What is left as a false positive is a pilot whose yaw is mapped
+   * correctly, who has not once touched it, and who has swept some other
+   * proportional control a long way. They get a row offering calibration,
+   * and calibration is not a wrong thing to offer them.
+   */
+  noteGuessOrder(gp) {
+    if (this.map.stored || this.guessWrongOrder) {
+      return;
+    }
+    const n = Math.min(gp.axes.length, 8);
+    if (!this.guessSpan || this.guessSpan.length !== n) {
+      this.guessSpan = [];
+      for (let i = 0; i < n; i += 1) {
+        this.guessSpan.push({ lo: gp.axes[i], hi: gp.axes[i], levels: new Set() });
+      }
+    }
+    for (let i = 0; i < n; i += 1) {
+      const v = gp.axes[i];
+      const seen = this.guessSpan[i];
+      if (v < seen.lo) {
+        seen.lo = v;
+      }
+      if (v > seen.hi) {
+        seen.hi = v;
+      }
+      /* Bounded: once it is proportional enough, stop counting. */
+      if (seen.levels.size < GUESS.STRAY_LEVELS) {
+        seen.levels.add(Math.round(v / GUESS.LEVEL_STEP));
+      }
+    }
+    const yawAxis = this.map.yaw && Number.isInteger(this.map.yaw.axis)
+      ? this.map.yaw.axis
+      : -1;
+    if (yawAxis < 0 || yawAxis >= n) {
+      return;
+    }
+    if (this.guessSpan[yawAxis].hi - this.guessSpan[yawAxis].lo >= GUESS.YAW_ALIVE) {
+      this.guessYawAlive = true;
+    }
+    if (this.guessYawAlive) {
+      return;
+    }
+    const named = new Set();
+    for (const ch of IDENT_CHANNELS) {
+      const spec = this.map[ch];
+      if (spec && Number.isInteger(spec.axis)) {
+        named.add(spec.axis);
+      }
+    }
+    for (let i = 0; i < n; i += 1) {
+      if (named.has(i)) {
+        continue;
+      }
+      const seen = this.guessSpan[i];
+      if (seen.hi - seen.lo >= GUESS.STRAY_SWEPT && seen.levels.size >= GUESS.STRAY_LEVELS) {
+        this.guessWrongOrder = true;
+        return;
+      }
     }
   }
 
@@ -740,6 +895,10 @@ export class InputManager {
      * a fact about the machine that is plugged in, and this is the line
      * where that machine changes. */
     this.mapSeenParked = false;
+    /* And what its axes have been seen doing: see noteGuessOrder. */
+    this.guessSpan = null;
+    this.guessYawAlive = false;
+    this.guessWrongOrder = false;
     /* And so is the stick resolution. Same line, same reason. */
     this.forgetAxisResolution();
   }
@@ -1056,6 +1215,11 @@ export class InputManager {
       /* mapUsable  the mapping is this pilot's, or the AETR guess has been
        *            seen behaving like a radio. See mapUsable. */
       mapUsable: this.mapUsable(),
+      /* guessNoYaw the guess's yaw axis has never moved while another axis
+       *            the guess cannot see has been swept like a gimbal. The
+       *            pilot has no yaw and does not know why. See
+       *            noteGuessOrder. */
+      guessNoYaw: this.guessWrongOrder,
     };
   }
 
@@ -1234,7 +1398,10 @@ export class InputManager {
     /* The step list is decided once, at the start, from what this radio
      * reports. Recomputing it per frame would let a wizard grow a step
      * halfway through if a button happened to be read late. */
-    const steps = calSteps(Boolean(gp && gp.buttons && gp.buttons.length));
+    const steps = calSteps(
+      Boolean(gp && gp.buttons && gp.buttons.length),
+      gp ? snapshotAxes(gp).length : 0,
+    );
     this.calibration = {
       step: 'center',
       phase: 'hold',
@@ -1256,6 +1423,35 @@ export class InputManager {
     this.calResult = 'cancelled';
   }
 
+  /*
+   * PASS ON THE MENU SWITCH AND GO ON TO THE CHECK.
+   *
+   * calSteps no longer asks a four axis radio for one at all, which is the
+   * case that could not be answered. This is the other one: a radio with
+   * axes to spare whose pilot has no switch they are willing to give up, or
+   * whose switches are all latched somewhere this wizard cannot see. They
+   * were in the same room with the same single exit, and Escape threw away
+   * a calibration they had just spent a minute on.
+   *
+   * Nothing is lost by passing. `select` rides along in the draft and
+   * cloneMap keeps it null, which is what every radio with buttons already
+   * stores, and the hold gesture stays armed because it is armed on the
+   * button count rather than on this. The pilot gets the same shell they
+   * would have had, one press slower.
+   */
+  skipCalibrationSelect() {
+    const c = this.calibration;
+    if (!c || c.step !== SELECT_STEP) {
+      return false;
+    }
+    c.draft.select = null;
+    const steps = c.steps || CAL_STEPS;
+    c.step = steps[steps.indexOf(c.step) + 1] || 'confirm';
+    c.phase = 'hold';
+    c.holdMs = 0;
+    return true;
+  }
+
   acceptCalibration() {
     const c = this.calibration;
     if (!c || c.step !== 'confirm') {
@@ -1270,9 +1466,14 @@ export class InputManager {
     this.map = cloneMap({ ...c.draft, stored: true });
     /* New axes to watch, so the old axes' step is not this map's. */
     this.forgetAxisResolution();
-    this.saveMap();
+    /* A calibrated map answers the guess's questions by existing, and the
+     * evidence gathered against the guess is about a map that is gone. */
+    this.guessSpan = null;
+    this.guessYawAlive = false;
+    this.guessWrongOrder = false;
+    /* Two outcomes, and the shell says which. See saveMap. */
+    this.calResult = this.saveMap() ? 'saved' : 'saved-unstored';
     this.calibration = null;
-    this.calResult = 'saved';
     return true;
   }
 
@@ -1287,11 +1488,75 @@ export class InputManager {
     const need = c.min ? Math.min(4, c.min.length) : 4;
     const gp = this.firstGamepad();
     let channels = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
+    let axes = [];
     if (gp) {
+      const live = snapshotAxes(gp);
+      /*
+       * EVERY AXIS THIS RADIO HAS, ALWAYS, AND IT IS THE HONEST PART OF
+       * THIS SCREEN.
+       *
+       * The two gimbals above it can only ever show four channels, and
+       * until the wizard has finished it does not know which four axes
+       * those are. So a pilot whose yaw is on axis 5 moved their yaw stick
+       * on the full range step and watched a gimbal that cannot see axis 5
+       * sit still: "Step 2 do not show yaw in the set up. Using RADIOMASTER
+       * POCKET". Nothing was broken. The screen was looking somewhere else
+       * and had no way to say so.
+       *
+       * This strip has no opinion about what anything is. It is the raw
+       * axis vector with the resting value marked, so "the browser can see
+       * my stick" and "the browser has put my stick in the right box" stop
+       * being the same question. It is also the first thing worth asking
+       * for in a ticket, and now it is on the screen the ticket is about.
+       */
+      const rest = c.rest || live;
+      const claimed = usedAxes(c.draft);
+      for (let i = 0; i < live.length; i += 1) {
+        axes.push({
+          i,
+          v: live[i],
+          rest: rest[i] ?? 0,
+          span: c.min && c.max && i < c.min.length ? c.max[i] - c.min[i] : 0,
+          /* Already spoken for by a channel this wizard has identified, so
+           * the strip can show the map filling in as it is made. */
+          mapped: claimed.has(i),
+        });
+      }
       if (c.step === 'center' || c.step === 'sweep') {
         channels = this.readGamepad(gp, DEFAULT_MAP);
       } else {
         channels = this.readGamepad(gp, c.draft);
+        /*
+         * AND THE GIMBAL USED TO SIT DEAD ON THE STEP THAT ASKS FOR
+         * MOVEMENT.
+         *
+         * c.draft holds only the channels already identified, so on the
+         * roll step roll, pitch and yaw all read zero however hard the
+         * stick is pushed. The pilot is told "hold the right stick fully to
+         * the right" beside a stick that does not move, and concludes the
+         * wizard has stopped hearing them: "max axes and throttle work but
+         * stuck on roll, no input during that time". They were moving it.
+         *
+         * So the channel BEING ASKED FOR is driven by the axis that is
+         * actually moving, chosen by the same pickUnusedAxis call that is
+         * about to assign it. It is a preview of the assignment, which is
+         * the thing the pilot needs to see.
+         *
+         * The magnitude is real and the SIGN IS THE PROMPT'S. The prompt
+         * names a direction ("fully to the right", "back, toward you") and
+         * the polarity of the underlying axis is exactly what has not been
+         * worked out yet, so feeding the raw sign through would move the
+         * dot the wrong way on half the radios in the world and teach the
+         * pilot that the wizard is mirrored. What is claimed here is "this
+         * much of the deflection I asked for", and that much is measured.
+         */
+        if (c.phase === 'hold' && c.rest && IDENT_CHANNELS.includes(c.step) && !c.draft[c.step]) {
+          const pick = pickUnusedAxis(live, c.rest, usedAxes(c.draft));
+          if (pick.best >= 0) {
+            const mag = Math.min(1, Math.abs(live[pick.best] - c.rest[pick.best]));
+            channels = { ...channels, [c.step]: mag };
+          }
+        }
       }
     }
     return {
@@ -1306,7 +1571,12 @@ export class InputManager {
       travelled,
       need,
       canSave: c.step === 'confirm',
+      /* Only the menu switch is ever skippable, and only because the hold
+       * gesture covers the radio that is asked for one. See
+       * skipCalibrationSelect. */
+      canSkip: c.step === SELECT_STEP,
       channels,
+      axes,
       title: calTitle(c),
       prompt: calPrompt(c),
       hint: calHint(c, travelled, need, gp),
@@ -1652,6 +1922,7 @@ export class InputManager {
     } else if (gp) {
       next = this.readGamepad(gp);
       this.noteThrottleParked(gp);
+      this.noteGuessOrder(gp);
       this.source = this.mapUsable() ? 'a radio' : 'a radio whose stick order is a guess';
       /* Keyboard still works while a pad is plugged in: any held stick
        * key overrides that channel. */

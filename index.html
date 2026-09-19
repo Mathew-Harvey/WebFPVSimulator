@@ -2548,6 +2548,44 @@
         width: 120px; height: 120px;
         background: rgba(12, 18, 14, 0.55);
       }
+      /*
+       * ONE CELL PER AXIS THE RADIO REPORTS. See setCalAxes in src/ui/ui.js
+       * for why this strip exists at all: the gimbals above it can only
+       * show four channels and do not yet know which four axes those are.
+       *
+       * Slate for the track, which is the colour type that should recede,
+       * amber for the live dot, which is what an instrument reads in, mint
+       * for an axis a channel has already claimed, which is the colour a
+       * finished thing wears everywhere else in this shell.
+       */
+      .cal-axes {
+        display: flex; flex-wrap: wrap; justify-content: center;
+        gap: 6px 12px; margin: 0 0 18px; max-width: 34em;
+      }
+      .cal-axis { display: flex; align-items: center; gap: 6px; }
+      .cal-axis-n {
+        font-size: 10px; letter-spacing: 0.08em;
+        color: rgba(235, 230, 215, 0.45); min-width: 0.8em; text-align: right;
+      }
+      .cal-axis-track {
+        position: relative; display: block;
+        width: 54px; height: 4px; border-radius: 2px;
+        background: rgba(235, 230, 215, 0.14);
+      }
+      .cal-axis-span {
+        position: absolute; top: 0; height: 100%; border-radius: 2px;
+        background: rgba(232, 168, 184, 0.30);
+      }
+      .cal-axis-dot {
+        position: absolute; top: 50%; width: 6px; height: 6px;
+        margin: -3px 0 0 -3px; border-radius: 50%;
+        background: rgba(235, 230, 215, 0.55);
+      }
+      .cal-axis.is-live .cal-axis-n { color: var(--amber); }
+      .cal-axis.is-live .cal-axis-dot { background: var(--amber); }
+      .cal-axis.is-mapped .cal-axis-n { color: var(--mint); }
+      .cal-axis.is-mapped .cal-axis-dot { background: var(--mint); }
+      .cal-axis.is-mapped .cal-axis-span { background: rgba(125, 255, 180, 0.24); }
       .cal-steps {
         list-style: none; display: flex; flex-wrap: wrap;
         justify-content: center; gap: 8px 14px;

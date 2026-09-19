@@ -38606,3 +38606,222 @@ whether a heavier quad would be called right the way a heavier world was.
 and hovers at 83 percent under 50. The shell does not fly that plant today,
 so nothing a pilot can reach is affected, but the cap menu should lose 40
 and 50 for it before it ever is.
+
+## 2026-09-19 | shell, input | Four calibration defects, one radio, and the wizard that could not be finished
+
+Forty tickets were open on the board. Eleven of them are one subject: a
+radio that will not calibrate, or a quad that will not yaw, or both from
+the same pilot twenty minutes apart. Reading them together, they are four
+separate defects in `src/input/input.js` with one thing in common, which
+is that none of them can be seen from inside the wizard. The pilot's
+account is always "it stopped working", because from where they are
+sitting that is exactly what happened.
+
+### The wizard had a step with no exit
+
+`calSteps` inserts a MENU SWITCH step for a radio that reports zero
+buttons, and `calIdentify` completes it the way it completes every other
+step: pick an unused axis that has moved, hold it, record it. `usedAxes`
+deliberately keeps the menu switch off the four axes the gimbals already
+own. So on a FOUR AXIS radio, `pickUnusedAxis` returns -1 on every frame
+of that step, for ever. Save is only enabled on `confirm`, which is the
+step after. The pilot cannot finish and cannot keep the minute they just
+spent: Escape and start again is the whole of what is left.
+
+Alex filed it exactly: "when i'm at step 7 of calibration i can't continue,
+i don't have any button on my radio, so it's just not finishing the
+calibration and i can't play", and asked for "a bypass button, just use a
+key on my keyboard".
+
+Two changes, because there are two cases. `calSteps` now takes the axis
+count and DOES NOT ASK AT ALL when there are four axes or fewer, which is
+the case with no possible answer. And the step itself carries a Skip, for
+the radio with axes to spare whose pilot has no switch to give up:
+`skipCalibrationSelect`, a button beside Cancel, and Enter or Space, which
+is the key Alex asked for. Deliberately NOT on the pad: this step asks the
+pilot to hold a switch, and the hold gesture that would carry a pad binding
+is the same gesture, so a pad Skip would fire while they were trying to
+complete it.
+
+Nothing is lost by skipping. The hold gesture in `padMenuButtons` is armed
+on the BUTTON COUNT rather than on whether a switch was assigned, so the
+radio that is asked this question can already press Enter without
+answering it.
+
+### The wizard showed a dead stick on the steps that ask for movement
+
+`calibrationView` drew its two gimbals from `c.draft`, and the draft holds
+only the channels already identified. On the roll step, roll, pitch and yaw
+all read zero however hard the stick is pushed. The pilot is told "hold the
+right stick fully to the right" beside a stick that does not move.
+
+    bug-122503e9, FlySky FS-i6:
+    "max axes and throttle work but stuck on roll, no input during that time"
+
+They were moving it. Two fixes, and both were needed.
+
+The channel BEING ASKED FOR is now previewed from the axis that is actually
+moving, chosen by the same `pickUnusedAxis` call that is about to assign
+it. The magnitude is measured and the SIGN IS THE PROMPT'S: the prompt names
+a direction and the polarity of the axis is precisely what has not been
+worked out yet, so the raw sign would move the dot the wrong way on half
+the radios in the world. What is claimed is "this much of the deflection I
+asked for", and that much is true.
+
+And a RAW AXIS STRIP under the gimbals, on every step. Two gimbals are four
+channels and the wizard does not yet know which four axes those are, which
+is why the other half of this ticket exists:
+
+    bug-27386f07, RadioMaster Pocket:
+    "Step 2 do not show yaw in the set up"
+
+Step 2 is Full range, which draws its gimbals from the AETR guess, and the
+guess is wrong for exactly the radios that need the wizard. Their yaw is on
+axis 5 and the guess looks at axis 3. Nothing was broken; the screen was
+looking somewhere else and had no way to say so. The strip has no opinion:
+one cell per axis, live value as a dot, travel so far as a bar behind it,
+mint once a channel has claimed it. It is also the first thing worth asking
+for in a ticket, and now it is on the screen the ticket is about.
+
+### The guess answered one question about four axes
+
+`noteThrottleParked` asks the best single question there is, and a parked
+throttle is a real answer: a throttle has no centring spring, so an axis
+sitting at one end is a throttle. But it is ONE AXIS OUT OF FOUR, and it
+was the only one anything ever asked about. A radio can satisfy it and be
+wrong everywhere else. AETR puts yaw on axis 3, and plenty of transmitters
+in joystick mode put a slider or a switch there and yaw further out.
+
+That pilot flies with roll, pitch and throttle correct and NO YAW AT ALL,
+and because the throttle parked, the shell has already decided the guess is
+behaving like a radio and says nothing.
+
+    bug-3d72d9a4  "My yaw doesn't work"
+    bug-94f7e52b  "Cant yaw"
+    bug-13519874  "No yaw, automatic eject"
+
+The third is the same fault from the other end: a spring centred axis being
+flown as a throttle sits at half power with nobody touching it, which is a
+quad that takes off on its own.
+
+`noteGuessOrder` watches how far each axis has ever travelled. If the axis
+the guess calls yaw has never left centre, while an axis the guess does not
+name has swept a full stick AND been seen at six or more distinct levels,
+then the map does not describe this radio and the thing the pilot has lost
+is yaw. The level count is what tells a gimbal from a switch: a two
+position switch offers two levels, a three position switch three, a swept
+stick dozens.
+
+BOTH VERDICTS LATCH. Yaw latching ALIVE is the more important of the two,
+because it is what stops this ever firing at a pilot whose guess is right:
+the moment they yaw once, the question is settled in their favour for good.
+What is left as a false positive is a pilot whose yaw is mapped correctly,
+who has never touched it, and who has swept some other proportional control
+a long way. They get a row offering calibration, and calibration is not a
+wrong thing to offer them. Measured against the opposite error, which is
+three tickets already filed, that is the right way round.
+
+The row itself needed one more thing. `padTroubleItem` is part of the
+title's item list, and an item list only becomes DOM in `renderMenu`.
+Every trouble row until now was settled by the time the title first
+painted: a pad with no buttons reports none on the first poll, and a parked
+throttle is parked on the first poll too. THIS ONE IS DECIDED MID SESSION,
+the first time somebody reaches for a stick that is not where the guess
+says, so without a repaint it waits for the pilot to leave the screen and
+come back, which is a warning nobody sees. `setPadInfo` now compares the
+row's label and repaints the title when it changes. The probe found this,
+not the reading: the row was in `items()` and not on the screen.
+
+### "Saved" was printed over the top of a throw
+
+`saveMap` wrapped `localStorage.setItem` in a try and swallowed the
+exception whole, and the shell went on to print "Stick mapping saved."
+The next visit had none of it.
+
+    bug-ed4d2bce, TUCHO59:
+    "Do not save the stcks movement after setupp of Radiomaster Pocket"
+
+Filed five minutes after the same pilot's ticket about the step before this
+one, which is its own small indictment.
+
+`stored` still stays true on the failure, for the reason already written at
+that catch: it is read as a fact about the map and not about localStorage,
+and clearing it would take stick navigation away from somebody who had just
+calibrated. What changes is that the failure is RETURNED, `acceptCalibration`
+records `saved-unstored`, and the shell says "Mapping live, gone on reload."
+instead of lying. It is not a refusal: the mapping flies for as long as the
+tab is open, which is better than throwing a calibration away over a quota.
+
+The first draft of that notice was two sentences. The banner is a fixed
+overlay and a four line message painted straight over the Pilot heading;
+at two lines it still grew upward into it. One line is what fits, and the
+screenshots are why that is known rather than assumed.
+
+### Measurements
+
+Verified by driving the real shell in headless Chromium against a synthetic
+radio whose axis order is NOT AETR: six axes, zero buttons, yaw on axis 4,
+and axis 3 a slider that never moves. Every line below is an assertion the
+run makes, not a description of one.
+
+    run A, full wizard      10 of 10 expects pass
+      stepCount 8 with 6 axes and no buttons, select asked for
+      axes.length 6, the strip is there
+      travelled 4 after the sweep
+      throttle preview 0.2..0.4 at partial stick   was 0 before
+      roll preview     0.2..0.4 at partial stick   was 0 before
+      canSkip true, Skip advances to confirm
+      saved map: yaw.axis 4, throttle.axis 2, select null
+
+    run B, four axis radio  stepCount 7, steps has no 'select', axes 4
+                            the dead end cannot be reached at all
+
+    run C, no yaw           mapUsable true and guessNoYaw false at rest
+                            (the old check passes: the throttle IS parked)
+                            guessNoYaw true after sweeping axis 4
+                            title row appears, "This browser cannot see
+                            your yaw stick", screenshot confirms it paints
+
+    run E, storage refuses  saveMap() false, map.stored still true
+                            banner "Mapping live, gone on reload."
+                            banner "Stick mapping saved." when it does save
+
+    lint:shell   PASS, including the padBanner block that asserts the
+                 existing two trouble rows stay distinct and stay quiet
+                 for a working radio and for a keyboard
+    lint:fc      33 of 33
+    lint:presets 4 of 4
+    lint:catalog NOT RUN: it reads vendor/betaflight/src/main/fc/
+                 parameter_names.h and this container's vendor/betaflight
+                 is empty. Pre-existing, not this change.
+
+`npm run verify` was NOT run. src/native, patches and vendor are untouched,
+dist/sim.wasm is byte for byte the binary the last 16 of 16 ran on, and
+nothing here is in the physics path: this is the wizard, one warning row,
+and a notice string.
+
+### Owed
+
+**The Android Bluetooth throttle.** bug-87023680 and bug-a7787168 are a
+RadioMaster over Bluetooth on a Galaxy S21 whose throttle axis never
+responds. `snapshotAxes` caps at eight axes and `listGamepads` drops a pad
+reporting fewer than four, both plausible, neither provable from here. The
+axis strip is now on the calibrate screen, so the next such ticket can
+arrive with the answer in it. Ask the reporter for a photograph of it.
+
+**The rates screen hover.** bug-4f335566, "when i move my mouse on one of
+the options in the settings the buttons moves away from my mouse", at 1358
+by 602. The obvious cause is not it: `hoverCursor` passes `pointer = true`
+and `setCursor` calls `syncCursor(!pointer)`, so hover does not scroll.
+Something else on that screen reflows under the pointer. Needs a probe at
+that viewport before anything is changed.
+
+**The collision pile.** bug-8ada3d81 (in progress), bug-763411c2,
+bug-0b55259d, bug-8afab5da, bug-24d6e86c, and the prose half of
+bug-dd8573b9: "collisions are way too severe, when it touches the floor it
+shouldnt bounce so much but more just slide along the surface". Deliberately
+not touched in the same round as an input change.
+
+**Mode 1.** bug-94da186c and bug-a8cd61db. `touchsticks.js` hardcodes Mode
+2, left plate yaw and throttle. Radio pilots are already fine because the
+wizard handles them; the gap is touch and keyboard.

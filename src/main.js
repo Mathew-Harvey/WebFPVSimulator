@@ -4458,10 +4458,24 @@ export async function boot({ loading, bootStart, mapId }) {
     } else if (action === 'calibrate-cancel') {
       input.cancelCalibration();
       ui.show('pilot');
+    } else if (action === 'calibrate-skip') {
+      input.skipCalibrationSelect();
     } else if (action === 'calibrate-save') {
       if (input.acceptCalibration()) {
         ui.show('pilot');
-        notice = { text: 'Stick mapping saved.', untilMs: performance.now() + 2800 };
+        /*
+         * The notice is decided by what localStorage actually did, not by
+         * the fact that the wizard finished. See saveMap in input.js: a
+         * browser in private mode, or one out of quota, throws, and this
+         * used to print "saved" over the top of it.
+         */
+        notice = input.calResult === 'saved-unstored'
+          ? {
+            text: 'Mapping live, gone on reload.',
+            untilMs: performance.now() + 5200,
+          }
+          : { text: 'Stick mapping saved.', untilMs: performance.now() + 2800 };
+        input.calResult = null;
       }
     } else if (action === 'choosepad') {
       openPadPick('menu');
@@ -7107,6 +7121,11 @@ export async function boot({ loading, bootStart, mapId }) {
         ui.show('pilot');
         if (input.calResult === 'saved') {
           notice = { text: 'Stick mapping saved.', untilMs: nowWall + 2800 };
+        } else if (input.calResult === 'saved-unstored') {
+          notice = {
+            text: 'Mapping live, gone on reload.',
+            untilMs: nowWall + 5200,
+          };
         }
         input.calResult = null;
       }

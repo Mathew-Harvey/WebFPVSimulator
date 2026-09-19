@@ -1675,6 +1675,31 @@ function padTroubleItem(info) {
         + ' that springs back. Calibrating takes about a minute and fixes it for good.',
     };
   }
+  /*
+   * THE GUESS CAN PASS THE THROTTLE QUESTION AND STILL HAVE NO YAW.
+   *
+   * The row above is the only thing that was ever asked about the guess,
+   * and it asks about one axis. A radio whose throttle is where AETR says
+   * and whose yaw is not gets a silent shell and a quad that will not spin,
+   * which is three tickets on the board and none of them knew what to call
+   * it. input.js watches for it directly: see noteGuessOrder.
+   *
+   * It comes after the throttle row rather than before it because a quad
+   * taking off at half power on its own is the worse surprise of the two,
+   * and in practice only one of them can be true at a time anyway.
+   */
+  if (!info.calibrated && info.guessNoYaw) {
+    return {
+      label: 'This browser cannot see your yaw stick',
+      action: 'calibrate',
+      rowClass: 'row-warn',
+      note: 'The axis it guessed was yaw has not moved once, while a stick it does not'
+        + ' know about has been swept end to end. That is a radio reporting its channels'
+        + ' in some order other than the one being guessed, and the part of it you have'
+        + ' lost is yaw. Calibrating takes about a minute and tells this page which axis'
+        + ' is which.',
+    };
+  }
   return null;
 }
 
@@ -3599,25 +3624,45 @@ export class Ui {
     this.calStickLeft = makeGimbal('Yaw, throttle');
     this.calStickRight = makeGimbal('Roll, pitch');
     calSticks.append(this.calStickLeft.box, this.calStickRight.box);
+    /*
+     * THE RAW AXES, BECAUSE THE GIMBALS ABOVE CANNOT SHOW AN AXIS THEY HAVE
+     * NOT LEARNED ABOUT YET.
+     *
+     * Two gimbals are four channels, and which four axes those are is the
+     * question this whole screen exists to answer. A pilot whose yaw sits
+     * on axis 5 moved their yaw stick on the full range step and watched
+     * nothing move, and filed it. This strip has no opinion: one cell per
+     * axis, the live value as a dot, the travel seen so far as a bar behind
+     * it, mint once a channel has claimed it. See calibrationView.
+     */
+    this.calAxes = el('div', 'cal-axes');
+    this.calAxisCells = [];
     this.calList = el('ol', 'cal-steps');
     const calBtns = el('div', 'cal-actions');
     this.calCancelBtn = btn('name-dialog-btn', 'Cancel');
+    /* Only ever shown on the menu switch step, and only a radio reporting
+     * no buttons is asked that. See skipCalibrationSelect in input.js. */
+    this.calSkipBtn = btn('name-dialog-btn', 'No switch, skip');
+    this.calSkipBtn.hidden = true;
     this.calSaveBtn = btn('name-dialog-btn on', 'Save mapping');
     this.calSaveBtn.disabled = true;
     this.calCancelBtn.addEventListener('click', () => this.act('calibrate-cancel'));
+    this.calSkipBtn.addEventListener('click', () => this.act('calibrate-skip'));
     this.calSaveBtn.addEventListener('click', () => this.act('calibrate-save'));
-    calBtns.append(this.calCancelBtn, this.calSaveBtn);
+    calBtns.append(this.calCancelBtn, this.calSkipBtn, this.calSaveBtn);
     calibrate.append(
       this.calKicker,
       this.calPrompt,
       this.calHint,
       calSticks,
+      this.calAxes,
       this.calList,
       calBtns,
       hintWithKeys(['Esc'], 'Cancels. Nothing is saved until Save mapping.'),
     );
     this.screens.calibrate = calibrate;
     this.calCanSave = false;
+    this.calCanSkip = false;
 
     const padpick = el('div', 'screen screen-page screen-padpick');
     padpick.append(el('h2', null, 'Choose joystick'));
@@ -10406,14 +10451,66 @@ export class Ui {
     Ui.klass(air.cap, stock ? 'osd-air-cap is-stock' : 'osd-air-cap');
   }
 
+  /*
+   * One cell per axis the radio reports, built once per axis count and
+   * moved after that. Rebuilding the row every frame would throw away the
+   * dot's transition and churn the DOM at the frame rate for a screen whose
+   * whole job is to look steady.
+   *
+   * The dot is the live value on a fixed -1 to 1 track, so a coarse axis
+   * steps and a fine one glides, and a pilot can see which of their
+   * controls is which without knowing what any of it means yet.
+   */
+  setCalAxes(axes) {
+    if (!this.calAxes) {
+      return;
+    }
+    if (this.calAxisCells.length !== axes.length) {
+      this.calAxes.textContent = '';
+      this.calAxisCells = axes.map((a) => {
+        const cell = el('div', 'cal-axis');
+        cell.append(el('span', 'cal-axis-n', String(a.i)));
+        const track = el('span', 'cal-axis-track');
+        const span = el('i', 'cal-axis-span');
+        const dot = el('i', 'cal-axis-dot');
+        track.append(span, dot);
+        cell.append(track);
+        this.calAxes.append(cell);
+        return { cell, span, dot };
+      });
+    }
+    /* Nothing to say about a radio that has gone away, and an empty strip
+     * says it better than eight stale dots. */
+    this.calAxes.hidden = axes.length === 0;
+    axes.forEach((a, k) => {
+      const cells = this.calAxisCells[k];
+      if (!cells) {
+        return;
+      }
+      const pct = (v) => `${Math.max(0, Math.min(100, ((v + 1) / 2) * 100)).toFixed(1)}%`;
+      cells.dot.style.left = pct(a.v);
+      /* The travel bar is centred on rest and as wide as the sweep seen so
+       * far, which is what the full range step is asking the pilot to grow. */
+      const half = Math.max(0, a.span || 0) / 2;
+      cells.span.style.left = pct((a.rest || 0) - half);
+      cells.span.style.width = `${Math.max(0, Math.min(100, half * 100)).toFixed(1)}%`;
+      const live = Math.abs(a.v - (a.rest || 0)) > 0.15;
+      Ui.klass(cells.cell, `cal-axis${a.mapped ? ' is-mapped' : ''}${live ? ' is-live' : ''}`);
+    });
+  }
+
   setCalibration(view) {
     if (!this.calPrompt) {
       return;
     }
     if (!view) {
       this.calCanSave = false;
+      this.calCanSkip = false;
       if (this.calSaveBtn) {
         this.calSaveBtn.disabled = true;
+      }
+      if (this.calSkipBtn) {
+        this.calSkipBtn.hidden = true;
       }
       return;
     }
@@ -10425,8 +10522,13 @@ export class Ui {
     if (this.calSaveBtn) {
       this.calSaveBtn.disabled = !view.canSave;
     }
+    this.calCanSkip = Boolean(view.canSkip);
+    if (this.calSkipBtn) {
+      this.calSkipBtn.hidden = !view.canSkip;
+    }
     const ch = view.channels || { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
     placeSticks(this.calStickLeft, this.calStickRight, ch);
+    this.setCalAxes(view.axes || []);
     /* The ORDER is input.js's CAL_STEPS, imported rather than re-typed:
      * this list used to restate it, so a step added to the calibration
      * would have run without ever appearing in the list beside it. Only the
@@ -10448,7 +10550,33 @@ export class Ui {
   }
 
   setPadInfo(info) {
+    const was = padTroubleItem(this.padInfo);
     this.padInfo = info || { count: 0, using: 'Keyboard' };
+    /*
+     * A TROUBLE ROW THAT APPEARS MID SESSION HAS TO ASK FOR THE PAINT.
+     *
+     * The row is part of the title's item list, and an item list only
+     * becomes DOM in renderMenu. Nothing else on the title changes when a
+     * radio's story changes, so a row that turns up later than the last
+     * render waits for the pilot to leave the screen and come back, which
+     * is a warning nobody is going to see.
+     *
+     * This was survivable while every trouble row was settled by the time
+     * the title first painted: a pad with no buttons reports none on the
+     * first poll, and a parked throttle is parked on the first poll too.
+     * The no-yaw row is not like that. It is decided in the middle of a
+     * session, the first time somebody reaches for a stick that is not
+     * where the guess says it is. See noteGuessOrder in input.js.
+     *
+     * Compared on the label rather than on the info, because the info moves
+     * every frame (the pad roster, the name) and the row is what is being
+     * painted. Unchanged label, no work.
+     */
+    const now = padTroubleItem(this.padInfo);
+    const label = (r) => (r ? r.label : '');
+    if (this.screen === 'title' && label(was) !== label(now)) {
+      this.renderMenu();
+    }
   }
 
   setPadPick(view) {
@@ -12049,6 +12177,22 @@ export class Ui {
           this.onUiSound('select');
         }
         this.act('calibrate-save');
+        return true;
+      }
+      /*
+       * A KEY IS THE WAY PAST THE ONE STEP A RADIO MIGHT NOT BE ABLE TO
+       * ANSWER, and the pilot who reported it asked for exactly this: "A
+       * bypass button, just use a key on my keyboard". The button beside
+       * Cancel is the same door for a mouse. Deliberately NOT bound to the
+       * pad: this step is asking the pilot to hold a switch, and the hold
+       * gesture that would carry it is the same gesture, so a pad binding
+       * here would skip the step while they were trying to complete it.
+       */
+      if ((code === 'Enter' || code === 'Space') && this.calCanSkip) {
+        if (this.onUiSound) {
+          this.onUiSound('select');
+        }
+        this.act('calibrate-skip');
         return true;
       }
       return true;

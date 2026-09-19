@@ -5356,9 +5356,9 @@ export class Ui {
           note: 'The closed loop, the plant, and every Betaflight 4.5.1 key. Opens the wiki on webfpv.org.',
         },
         {
-          label: 'Tracks and Times',
+          label: 'Tracks and Statistics',
           action: 'leaderboard',
-          note: 'The public page, with every published track and its times. Opens in a new tab.',
+          note: 'The public page: every published track with its times, and how the site is doing. Opens in a new tab.',
         },
         {
           label: 'Credits',
@@ -5530,7 +5530,7 @@ export class Ui {
           disabled: !listing || !listing.shareId,
         },
         {
-          label: 'Tracks and Times on the web',
+          label: 'Tracks and Statistics on the web',
           action: 'leaderboard',
           note: 'The public page, for sending somebody a link. Everything on it is in here too. Opens in a new tab.',
         },
@@ -6192,7 +6192,7 @@ export class Ui {
                     : `${formatScore(run.total)} from ${run.tricks} tricks. One entry per pilot on the board, and only your best.`)),
             },
           {
-            label: 'Open Tracks and Times',
+            label: 'Open Tracks and Statistics',
             action: 'leaderboard',
             note: 'Every published track, and the times flown on it.',
           },
@@ -6217,7 +6217,7 @@ export class Ui {
         remixAction(listing),
         editOwnAction(listing),
         {
-          label: 'Open Tracks and Times',
+          label: 'Open Tracks and Statistics',
           action: 'leaderboard',
           disabled: !(listing && (listing.published || listing.shareId || this.coursePublished)),
           note: listing && listing.name

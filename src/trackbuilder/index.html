@@ -1283,6 +1283,18 @@
     <div id="tb-modal" hidden></div>
     <script type="module">
       import { App, docFromLocation } from './app.js';
+      import { pingVisit } from '../share/stats.js';
+
+      /*
+       * FIRST, BEFORE ANYTHING READS THE QUERY. It takes a sponsor's
+       * utm_source out of the address and puts it away, takes every utm_
+       * parameter out of the address bar so a shared ?track= link does not
+       * carry somebody else's poster, and counts one visit per browser per
+       * UTC day across all three pages. It sends nothing at all when the
+       * pilot has switched counting off on the board, or when their browser
+       * sends Global Privacy Control. Nothing waits for it.
+       */
+      pingVisit('builder');
 
       /* One canvas for the elevation chart, created once and re-appended by
          the results panel on every render. */

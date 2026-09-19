@@ -256,6 +256,7 @@ and the onrender.com addresses keep working exactly as before.
 | simulator | `src/share/board.js` | `PRODUCTION_BOARD_ORIGIN` is now `https://webfpv.org/board` |
 | board | `public/index.html`, `public/bugs.html` | icons, the inbox script, the back link |
 | board | `public/app.js`, `public/bugs.js` | every `/api/...` fetch, now resolved against the page's own directory |
+| simulator | `edge/router.js` | `x-webfpv-country`, the one header the Worker adds beyond the forwarded pair |
 | board | `public/app.js` | `orbitHref`, which was silently dropping the `/sim` |
 | landing | `src/config.js`, `index.html` | the simulator and board links now name `webfpv.org` |
 
@@ -377,6 +378,25 @@ on, so every new key needs its prefix. The same is true of the IndexedDB store
 behind the orbit thumbnails and the web lock that guards it: a pilot with the
 board in one tab and the simulator in another now contends on one lock instead
 of two.
+
+**The Worker is where a visitor's country comes from, and the board is the
+only thing that ever learns it.** `edge/router.js` sets `x-webfpv-country`
+from Cloudflare's own `request.cf.country` on every forwarded request. It is
+set unconditionally, overwriting anything the client sent, which is what
+makes it worth believing at the other end; the board believes it only when
+`BOARD_TRUST_PROXY` is `1`, the same rule the forwarded host follows. On the
+bare `onrender.com` address there is no Worker, so every row on the board's
+statistics tab reads Unknown, which is correct rather than broken. The board
+never looks an address up and never stores one.
+
+**The board's statistics read is cacheable, and that is deliberate.**
+`GET /board/api/stats` answers `cache-control: public, max-age=20`. It is
+the only response on the board besides a card animation that is not
+`no-store`. Twenty seconds is under the page's thirty second poll, so a
+reader still sees their own effect within one tick and a hundred readers
+cost the database what one does. The warning below about not adding a cache
+rule for `webfpv.org` still stands: this header travels from the origin and
+the Worker passes it through untouched.
 
 **Do not add a Content Security Policy or a framing header at the Worker.**
 There is none anywhere in the three repositories and that is deliberate: the

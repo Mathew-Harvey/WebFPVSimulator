@@ -72,6 +72,7 @@ import {
   fetchTrackTimes, postFreestyleRun, postTime,
 } from './share/board.js';
 import { findBoardTwin, hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
+import { createFlightStats, pingVisit } from './share/stats.js';
 import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import {
@@ -432,6 +433,23 @@ async function loadMap(shell, id, loading, options) {
 
 export async function boot({ loading, bootStart, mapId }) {
   const BOOT_START = bootStart ?? performance.now();
+  /*
+   * FIRST, BEFORE ANYTHING READS THE QUERY.
+   *
+   * Two things in one call. It takes a sponsor's `utm_source` out of the
+   * address and puts it away for thirty days, and it takes every `utm_`
+   * parameter OUT of the address bar, which matters here more than
+   * anywhere: a simulator URL is how a track travels, so a pilot who sends
+   * a friend the link they are looking at must not attribute their friend
+   * to a poster they never saw. Everything the shell reads, map, share,
+   * board and craft, is left exactly where it was.
+   *
+   * Then one visit, counted once per browser per UTC day across all three
+   * pages. It sends nothing at all if the pilot has switched counting off
+   * or their browser sends Global Privacy Control, and nothing waits for
+   * it either way.
+   */
+  pingVisit('sim');
   const canvas = document.getElementById('view');
   /* The flying view wants the shortest path to the glass it can get, and
    * has nothing to read its own frames back for. See shell.js for what the
@@ -478,6 +496,65 @@ export async function boot({ loading, bootStart, mapId }) {
     uiRoot.append(touch.root);
     input.attachTouch(touch);
   }
+  /*
+   * THE SITE'S COUNTERS.
+   *
+   * Built HERE, as soon as the input and the shell exist, rather than down
+   * beside the frame loop that drives it: the crash handler two thousand
+   * lines below calls noteCrash, and a `const` declared after its callers
+   * is a temporal dead zone waiting for the day somebody calls one of them
+   * a little earlier. Nothing here needs a world, so nothing here has to
+   * wait for one.
+   *
+   * The board's statistics page counts sessions, laps and flight time. This
+   * is the only thing in the simulator that reports any of it, and all it
+   * ever sends is a few small numbers: see src/share/stats.js for what is
+   * NOT in them, which is the part that matters.
+   *
+   * describe() is a callback rather than three fields, because the aircraft,
+   * the map and the input can all change between the first frame and the
+   * flush a minute later. It is read at send time so a flush says what the
+   * pilot was actually flying, and it is passed in so stats.js never has to
+   * import the shell.
+   *
+   * The input is folded to one of three words HERE, because this is where
+   * both halves of the answer live: a radio and a game controller both
+   * arrive through the Gamepad API and are the same answer to "did they use
+   * sticks", and the board has no business knowing which radio.
+   */
+  const flightStats = createFlightStats({
+    describe: () => ({
+      craft: ui.settings.airframe === 'whoop65' ? 'whoop65' : '5inch',
+      map: ui.settings.map,
+      input: (() => {
+        if (input.firstGamepad()) {
+          return 'gamepad';
+        }
+        if (input.touchSource && input.touchSource.active()) {
+          return 'touch';
+        }
+        return 'keyboard';
+      })(),
+    }),
+  });
+  /*
+   * The last flush, sent when the page goes away. pagehide rather than
+   * unload, because a browser that put this tab in its back/forward cache
+   * never fires unload and the minute is lost; visibilitychange covers the
+   * mobile case, where a tab being backgrounded is how a session usually
+   * ends and pagehide may never come at all.
+   *
+   * Both may fire for the same departure. That is harmless: the second one
+   * finds the counters already cleared and sends a flush of noughts, which
+   * costs the board one row it already had.
+   */
+  window.addEventListener('pagehide', () => flightStats.leaving());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      flightStats.leaving();
+    }
+  });
+
   const gpuInfo = readGpuInfo(shell.renderer);
   ui.setGpuInfo(gpuInfo);
   window.__gpu = gpuInfo;
@@ -2819,6 +2896,9 @@ export async function boot({ loading, bootStart, mapId }) {
     statePrev = stateCurr;
     acc = 0;
     race.recover('Crashed', nowWall);
+    /* The one place this shell declares a crash, so the one place that
+     * counts one. See src/share/stats.js. */
+    flightStats.noteCrash();
     view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
     /* The same departure window feelImpact reads. This cue is the loudest
      * thing in the mix, it plays at full level with no scale, and it sat
@@ -5686,6 +5766,21 @@ export async function boot({ loading, bootStart, mapId }) {
     prevWall = nowWall;
     fps = fps * 0.95 + (dt > 0 ? 1000 / dt : 0) * 0.05;
     let frameSteps = 0;
+
+    /*
+     * The site's counters, once a frame, reading state this loop already
+     * has rather than announcing anything of its own. `started` is the
+     * flag the banner uses for "has this run left the ground", which is
+     * exactly what a session is; `flying` is that and airborne and not
+     * mid crash; `laps` is the race's own list and the module takes the
+     * delta. It cannot reach the integrator: nothing below reads it, and
+     * everything it does with the numbers is arithmetic and a beacon.
+     */
+    flightStats.tick(nowWall, {
+      started: flownThisRun,
+      flying: flownThisRun && !landed && !crashed,
+      laps: race.laps.length,
+    });
 
     /* The seated world's note, released on the first frame of a flight and
      * not one frame earlier. See showCourseNotes. */

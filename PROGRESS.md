@@ -39568,3 +39568,101 @@ said so in one line once it was asked.
 What remains unverified: flight feel, and whether a Mode 1 pilot agrees this
 is Mode 1. The probes prove which channel each control writes; they cannot
 prove it feels like the radio in somebody's hands.
+
+## 2026-09-19 | shell, board | The board is Tracks and Statistics, and this shell reports counters to it
+
+The board grew a second tab, a public page of site statistics, and this
+repository has three jobs in that: the labels that name the board, the
+client that reports the three things worth counting, and the one header at
+the edge that says which country a visitor is in.
+
+THE NAME. Four labels in `src/ui/ui.js` and one in `src/trackbuilder/app.js`
+said Tracks and Times. They say Tracks and Statistics. `lint:board` prints
+the row and confirms it.
+
+WHAT IS REPORTED, AND WHAT IS NOT. `src/share/stats.js` is new and is the
+only thing here that talks to the statistics API. Three events: a visit,
+once per browser per UTC day across the simulator, the builder and the
+board; a session, once per page load, the first time the quad leaves the
+stand; and a flush, once a minute and again when the page goes away,
+carrying laps, flight seconds and crashes since the last one.
+
+There is no field in any of them for an address, a user agent, a screen
+size, a referrer, a pilot name, a track id, a tune, a lap time or a
+timestamp. The board stamps its own UTC day and never reads a clock from
+here, because a browser's clock is wrong often enough to put laps in
+tomorrow. New or returning is decided HERE, from a first seen date in this
+browser's own storage, and the answer travels as a boolean; the date never
+does. The one unique string is a per tab handle made fresh at page load,
+which answers "how many are flying now" and which no table at either end
+ever sees.
+
+NOTHING TOUCHES THE PHYSICS PATH. The counters are read off race state the
+render loop already computed, in one call a frame beside the existing frame
+rate line: `flownThisRun` is the flag the banner already uses for "has this
+run left the ground", `race.laps.length` is the race's own list and the
+module takes the delta, and the crash count comes from the single place this
+shell calls `race.recover('Crashed')`. Nothing below the call reads it, so
+it cannot gate the integrator, and every send is a beacon that cannot block
+a frame. A board that is down, asleep or blocked costs this file nothing,
+because it never reads a reply.
+
+THE SPONSOR PARAMETER IS STRIPPED FROM THE ADDRESS BAR, and that matters
+here more than on either other page. A simulator URL is how a track travels:
+`?map=custom&share=trk-1a2b3c4d` is the whole link between the board and
+this shell, and those links get copied and pasted constantly. A pilot who
+sends a friend the link they are looking at must not attribute their friend
+to a poster they never saw. `captureSource` runs as the first line of
+`boot()`, puts the slug away for thirty days, deletes every `utm_` parameter
+and leaves `map`, `share`, `board` and `craft` exactly where they were.
+
+THE COUNTRY COMES FROM THE EDGE. One line in `edge/router.js` sets
+`x-webfpv-country` from Cloudflare's own `request.cf.country`, so the board
+counts countries without ever holding an address or a table to look one up
+in. It overwrites anything the client sent, which is what makes it worth
+believing, and the board believes it only behind `BOARD_TRUST_PROXY`. On the
+bare Render address there is no Worker and every row reads Unknown, which is
+correct rather than broken.
+
+### RUN LOG
+
+`npm run verify` NOT RUN, and deliberately. Nothing under `src/native`,
+`patches`, `vendor/betaflight` or the build was touched, and nothing in this
+change reaches the integrator: the one call added to the frame loop reads
+state and sends beacons. The expensive suite would be evidence about a trace
+this change cannot move. What was run instead:
+
+    lint:nouns    PASS, 213 files
+    lint:shell    PASS, 254 rows across 13 screens
+    lint:boot     9 of 9 clean
+    lint:board    PASS, and it prints the renamed row
+    test:edge     all checks passed, including two new ones over the
+                  country header: that it is set, and that a client's own
+                  value does not survive
+
+Then the real shell in headless Chromium, against a real board on a scratch
+store:
+
+    a sponsored link boots the shell, stores the slug, strips every utm_
+    from the address bar and keeps board= and map=. No console errors.
+    The visit lands on the board under source Rotor Riot, surface sim.
+
+    the flight counter, driven in the page: session +1, laps +3, flight
+    seconds +18, crashes +1, and the aircraft and map rows move with them.
+    Flying now reads 1.
+
+    a browser opted out BEFORE it loads sends nothing at all: visits,
+    sessions, laps, flight seconds and crashes all move by nought.
+
+Wrong, twice. The first opt out check counted one visit and looked like a
+leak. It was the check: it opted out AFTER the page had booted, so the
+boot's own visit was counted, correctly. Seeding the switch before
+navigation is the real case and it passes. The second was in the board's
+repository: the flush helper carried a `force` argument and a conditional
+whose body was empty, left over from a draft where a heartbeat with nothing
+in it was going to be skipped. It was removed rather than filled in, because
+a flush with nothing in it is exactly what "flying now" counts.
+
+What remains unverified: nobody has flown this build with the counters
+running and watched the numbers move on the board in front of them. The
+headless pass drives the counter directly; it does not take off.

@@ -152,6 +152,29 @@ export default {
     headers.delete('host');
     headers.set('x-forwarded-host', url.host);
     headers.set('x-forwarded-proto', 'https');
+    /*
+     * WHERE A VISITOR IS, AND IT IS THE ONLY THING THE BOARD EVER LEARNS
+     * ABOUT THEIR ADDRESS.
+     *
+     * The board's statistics page counts countries. Doing that at the board
+     * would mean it holding an address long enough to look one up, and a
+     * table to look it up in. Cloudflare has already resolved this at the
+     * edge, for free, before the request is forwarded, so the country
+     * travels as two letters and the address does not travel at all.
+     *
+     * SET UNCONDITIONALLY, INCLUDING WHEN THE CLIENT SENT ONE. A header a
+     * visitor can set is a header a visitor can lie in, and overwriting it
+     * here is what makes it worth believing on the other side. The board
+     * believes it only when BOARD_TRUST_PROXY says something like this
+     * Worker is in front, which is the same rule the forwarded host above
+     * follows, so a directly exposed instance cannot be told anything.
+     *
+     * request.cf is absent when this file is driven outside the Workers
+     * runtime, as edge/selftest.js does, and 'XX' is what Cloudflare itself
+     * sends for an address it cannot place. The board reads both as
+     * unknown.
+     */
+    headers.set('x-webfpv-country', (request.cf && request.cf.country) || 'XX');
 
     const init = { method: request.method, headers, redirect: 'manual' };
     /*

@@ -1222,7 +1222,7 @@ export class App {
         /* The board's own tab, reused if it is already open. No rel here:
          * noopener would send this to a fresh tab every time. */
         open.target = BOARD_WINDOW;
-        open.textContent = 'Open Tracks and Times';
+        open.textContent = 'Open Tracks and Statistics';
         send.replaceWith(open);
       } catch (e) {
         send.disabled = false;

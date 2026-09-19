@@ -119,6 +119,23 @@ check('host is not forwarded', asked.headers.get('host'), null);
 check('the real host is forwarded aside', asked.headers.get('x-forwarded-host'), 'webfpv.org');
 check('the scheme is forwarded aside', asked.headers.get('x-forwarded-proto'), 'https');
 
+/*
+ * The country, which is the only thing about a visitor's address that ever
+ * reaches the board. request.cf is absent outside the Workers runtime, so
+ * this file sees the fallback, and 'XX' is what Cloudflare itself sends for
+ * an address it cannot place: the board reads both as unknown.
+ */
+check('the country is put on the request', asked.headers.get('x-webfpv-country'), 'XX');
+
+/*
+ * AND IT IS OVERWRITTEN RATHER THAN PASSED THROUGH. A header a visitor can
+ * set is a header a visitor can lie in, and this is the line that makes it
+ * worth believing at the other end.
+ */
+await hit('/board/api/stats/events', { headers: { 'x-webfpv-country': 'AQ' } });
+check("a client's own country header does not survive",
+  asked.headers.get('x-webfpv-country'), 'XX');
+
 /* A method and a body survive, because publishing a course is a POST. */
 await hit('/board/api/tracks', { method: 'POST', body: '{"author":"a"}' });
 check('a POST stays a POST', asked.method, 'POST');

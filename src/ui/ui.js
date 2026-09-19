@@ -6939,7 +6939,14 @@ export class Ui {
     const help = this.helpNode();
     if (help) {
       const note = items[this.cursor]?.note || '';
-      help.textContent = note;
+      /* A note that scrolls keeps its scroll position when its text is
+       * replaced, so the next long note opened part way down if the last
+       * one had been read to the end. Only on a change: this runs every
+       * cursor move and a scrollTop write is a layout flush. */
+      if (help.textContent !== note) {
+        help.textContent = note;
+        help.scrollTop = 0;
+      }
       /*
        * THE TITLE'S NOTE DRAWS OVER THE BRAND COPY, so the brand copy
        * gets out of its way.
@@ -10489,11 +10496,13 @@ export class Ui {
       }
       const pct = (v) => `${Math.max(0, Math.min(100, ((v + 1) / 2) * 100)).toFixed(1)}%`;
       cells.dot.style.left = pct(a.v);
-      /* The travel bar is centred on rest and as wide as the sweep seen so
-       * far, which is what the full range step is asking the pilot to grow. */
-      const half = Math.max(0, a.span || 0) / 2;
-      cells.span.style.left = pct((a.rest || 0) - half);
-      cells.span.style.width = `${Math.max(0, Math.min(100, half * 100)).toFixed(1)}%`;
+      /* The travel bar is the range seen so far, drawn between its two
+       * ends, which is what the full range step is asking the pilot to
+       * grow. One axis unit is half the track. */
+      const lo = Number.isFinite(a.lo) ? a.lo : a.v;
+      const hi = Number.isFinite(a.hi) ? a.hi : a.v;
+      cells.span.style.left = pct(lo);
+      cells.span.style.width = `${Math.max(0, Math.min(100, (hi - lo) * 50)).toFixed(1)}%`;
       const live = Math.abs(a.v - (a.rest || 0)) > 0.15;
       Ui.klass(cells.cell, `cal-axis${a.mapped ? ' is-mapped' : ''}${live ? ' is-live' : ''}`);
     });

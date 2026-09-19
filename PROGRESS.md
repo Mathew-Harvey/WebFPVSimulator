@@ -38936,3 +38936,108 @@ them re-opens this exactly. The general fix is the same three lines applied
 to `.menu-stage .menu-help`, and the reason it is not in this round is that
 it would change the layout of four screens nobody has complained about, on
 a round that was meant to close one ticket. Worth doing deliberately.
+
+## 2026-09-19 | review | Five findings on the two rounds above, four acted on, one stuck latch
+
+The owner asked for the two rounds above to be reviewed. One reader, the
+diff, and the probes, per CLAUDE.md: no fan out. Every claim the code's
+comments make about code they lean on was checked against that code, and
+every probe was run again on the result. Findings, whether acted on or not,
+as the rules require.
+
+### Acted on
+
+**The wrong verdict was a latch, and it stuck a false positive.**
+`noteGuessOrder` returned early on `guessWrongOrder`, so once the one false
+positive it can produce had fired, a pilot whose yaw was mapped correctly,
+who had not touched it yet, and who had swept some other proportional
+control, got a row saying "has not moved once" that STAYED UP after they
+went on to yaw and proved it wrong, until they calibrated or re-picked the
+pad. The comment beside it said yaw latching alive was the verdict that
+mattered most, and the code did not let it matter once wrong had spoken.
+Alive now wins: the spans keep being watched while the row is up, yaw
+moving clears it, and alive then holds for good. One transition, not a
+blink. Probed: row up after sweeping axis 4, row gone after axis 3 moves
+0.5, still gone after axis 4 is swept again.
+
+**The preview was in raw axis units.** A throttle parked at -1 travels two
+units to its stop, so its preview hit the top at HALF stick, and a radio
+with its endpoints wound in never reached the top at all. `throttleSpec`
+and `channelSpec` record the sweep's min and max as full, so the saved map
+was never wrong, but the preview is what the pilot reads and it was on a
+different ruler from the assignment it was previewing. It is now the
+fraction of the reach the sweep showed from rest, which is the same range
+the assignment uses. The live reading rides in the maximum because it can
+be one poll newer than the sweep's record.
+
+**The strip's travel bar was centred on rest.** Right for a spring centred
+gimbal, wrong for anything else: a slider resting at 0.5 and pushed to 1
+drew its bar from 0.25 to 0.75. It is drawn between the two ends of the
+seen range now, and the view carries `lo` and `hi` instead of a width.
+
+**An empty note was an invisible box the height of the stage.** Nothing
+sits under it, and the hit test of every row and every dropdown option
+said so before and after, but a pointer over blank space should meet blank
+space. `pointer-events: none` when empty.
+
+**A replaced note kept its scroll position.** The note is a scroll box in
+the wide layout now as well as the narrow one, and a long note opened part
+way down if the last one had been read to the end. Reset on change only,
+because that line runs on every cursor move and a scrollTop write is a
+layout flush.
+
+### Checked and stood
+
+- The comment on `calSteps` says the hold gesture is armed for any pad
+  reporting zero buttons whether or not a switch was assigned, which is
+  what makes skipping the menu switch safe. `padMenuButtons` agrees: the
+  zero button branch falls through to `holdSelect` when no select spec
+  exists. Nothing else gates it.
+- `throttleSpec` and `channelSpec` use the sweep's `min` and `max`, not the
+  sample, so the raw unit preview never changed a saved map.
+- The absolutely positioned note: every option of an open dropdown is hit
+  testable at 1600x900 and 1358x602, and the row hit test is the same list
+  before and after.
+- shell-check's padBanner cases build their info without `guessNoYaw`, so
+  it reads undefined and the four existing assertions are unchanged.
+
+### Declined, with the reason
+
+**The notice text is typed twice in main.js.** Once on the action, once on
+the frame loop's fallback. The old "Stick mapping saved." was already in
+both places, so this is the file's pattern rather than this round's, and
+hoisting it is a wider diff for no behaviour. Left.
+
+**The strip costs 46 px on the calibrate screen.** On an 844 by 390
+landscape phone the action buttons were already 79 px below the fold and
+are now 125 px below it. `.screen-calibrate` scrolls, the strip is worth
+its height, and the overflow is not this round's. Left, and recorded.
+
+**A mirrored axis pair is visible now and still not diagnosed.** If a
+radio reports one stick on two axes, the preview moves and `calIdentify`
+never assigns, because the two are never unique, and the only explanation
+the pilot gets is "Diagonals are ignored". That may well be the FS-i6
+ticket. Telling a mirror from a diagonal needs a heuristic, and a
+heuristic designed without one real axis dump is a guess. The strip is
+that dump, and the next FS-i6 ticket can arrive with it. Left until then.
+
+**The other four stage screens.** Already owed in the entry above.
+
+### Measurements
+
+    wizard run     11 of 11 expects, the new one being the strip's lo and
+                   hi: axis 4 reads -1 to 1 after the sweep and axis 3,
+                   the slider that never moves, reads 0 to 0
+    four axis run  clean, 7 steps and no select
+    latch run      guessNoYaw true, then false after yaw moves, then still
+                   false after the stray axis is swept again; the title
+                   row appears and disappears with it
+    rates hover    worst row shift 0 on rates and pids, 0 on the other four
+    dropdown       blocked [] at both sizes, row hit test unchanged
+    lint:shell     PASS, rates overflow 440 px and pids 154 px unchanged
+    lint:devices   PASS on five device sizes
+    lint:fc        33 of 33
+
+`npm run verify` was NOT run. Nothing in this review touches src/native,
+patches, vendor or the build, and dist/sim.wasm is the binary the last 16
+of 16 ran on. A shell review is not what it measures.

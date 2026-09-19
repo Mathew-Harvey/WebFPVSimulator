@@ -774,19 +774,30 @@ export class InputManager {
    * a gimbal rather than a switch, then the pilot is flying a map that does
    * not describe their radio, and the thing they cannot do is yaw.
    *
-   * BOTH VERDICTS LATCH, for the reason on noteThrottleParked: a warning
-   * that blinks is worse than either answer. Yaw latching ALIVE is the more
-   * important of the two, because it is what stops this ever firing at a
-   * pilot whose guess is right. The moment they use yaw once, the question
-   * is settled in their favour for good.
+   * ALIVE LATCHES AND ALIVE WINS. The moment yaw moves once the question is
+   * settled in the guess's favour for good, and nothing this function could
+   * see afterwards is allowed to reopen it, for the reason on
+   * noteThrottleParked: a warning that blinks is worse than either answer.
    *
-   * What is left as a false positive is a pilot whose yaw is mapped
-   * correctly, who has not once touched it, and who has swept some other
-   * proportional control a long way. They get a row offering calibration,
-   * and calibration is not a wrong thing to offer them.
+   * The wrong verdict is NOT a latch of the same kind. It holds until yaw
+   * moves, and then it clears, once, permanently. The first draft latched
+   * both and returned early on either, which meant the one false positive
+   * this can produce, a pilot whose yaw is mapped correctly, who has not
+   * touched it yet, and who has swept some other proportional control a
+   * long way, got a warning that STAYED UP after they went on to yaw and
+   * proved it wrong, until they calibrated or re-picked the pad. The row's
+   * own words are "has not moved once", and a row that keeps saying that
+   * after it has moved is the blinking warning's uglier cousin. So the
+   * spans keep being watched while the row is up, and yaw moving takes it
+   * down. That is one transition, not a blink, and it is the transition
+   * the sentence above says matters most.
+   *
+   * What is left is that same pilot seeing the row until the first time
+   * they yaw. They get a row offering calibration, and calibration is not a
+   * wrong thing to offer them.
    */
   noteGuessOrder(gp) {
-    if (this.map.stored || this.guessWrongOrder) {
+    if (this.map.stored || this.guessYawAlive) {
       return;
     }
     const n = Math.min(gp.axes.length, 8);
@@ -818,8 +829,11 @@ export class InputManager {
     }
     if (this.guessSpan[yawAxis].hi - this.guessSpan[yawAxis].lo >= GUESS.YAW_ALIVE) {
       this.guessYawAlive = true;
+      this.guessWrongOrder = false;
+      return;
     }
-    if (this.guessYawAlive) {
+    /* Decided, and still watching yaw above: nothing below can change. */
+    if (this.guessWrongOrder) {
       return;
     }
     const named = new Set();
@@ -1516,7 +1530,12 @@ export class InputManager {
           i,
           v: live[i],
           rest: rest[i] ?? 0,
-          span: c.min && c.max && i < c.min.length ? c.max[i] - c.min[i] : 0,
+          /* The range seen so far, as its two ends. It was a width once,
+           * drawn centred on rest, which is right for a spring centred
+           * gimbal and wrong for anything else: a slider resting at 0.5 and
+           * pushed to 1 drew its bar from 0.25 to 0.75. */
+          lo: c.min && i < c.min.length ? c.min[i] : live[i],
+          hi: c.max && i < c.max.length ? c.max[i] : live[i],
           /* Already spoken for by a channel this wizard has identified, so
            * the strip can show the map filling in as it is made. */
           mapped: claimed.has(i),
@@ -1549,12 +1568,29 @@ export class InputManager {
          * dot the wrong way on half the radios in the world and teach the
          * pilot that the wizard is mirrored. What is claimed here is "this
          * much of the deflection I asked for", and that much is measured.
+         *
+         * "This much" is a fraction of the REACH THE SWEEP SHOWED, not of a
+         * raw axis unit. A throttle parked at -1 travels two units to its
+         * stop, and a radio with its endpoints wound in never reaches 1.0
+         * at all, so in raw units the throttle dot hit the top at half
+         * stick and the wound in radio never got there. The sweep already
+         * measured how far each axis goes from rest, and throttleSpec and
+         * channelSpec record exactly that range as full, so the preview is
+         * held to the same ruler the assignment is about to use. The live
+         * reading rides in the maximum because it can be one poll newer
+         * than the sweep's record, and a ratio over one is a lie.
          */
         if (c.phase === 'hold' && c.rest && IDENT_CHANNELS.includes(c.step) && !c.draft[c.step]) {
           const pick = pickUnusedAxis(live, c.rest, usedAxes(c.draft));
           if (pick.best >= 0) {
-            const mag = Math.min(1, Math.abs(live[pick.best] - c.rest[pick.best]));
-            channels = { ...channels, [c.step]: mag };
+            const b = pick.best;
+            const delta = Math.abs(live[b] - c.rest[b]);
+            const reach = Math.max(
+              Math.abs(c.max[b] - c.rest[b]),
+              Math.abs(c.rest[b] - c.min[b]),
+              delta,
+            ) || 1;
+            channels = { ...channels, [c.step]: Math.min(1, delta / reach) };
           }
         }
       }

@@ -2168,6 +2168,11 @@
         scrollbar-width: thin;
         scrollbar-color: rgba(232, 168, 184, 0.45) rgba(16, 22, 17, 0.55);
       }
+      /* Empty, it is an invisible box the height of the stage over what
+         reads as blank space. Nothing sits under it today, and a hit test
+         of every row and every dropdown option said so, but a pointer over
+         blank space should meet blank space, not a transparent scroller. */
+      .screen-rates .menu-help:empty { pointer-events: none; }
       /*
        * The PIDs screen wears .screen-rates as well as .screen-pids, ON
        * PURPOSE: it is the Rates screen's layout with bars where the curve

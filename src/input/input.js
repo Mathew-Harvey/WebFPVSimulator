@@ -143,6 +143,18 @@ const CAL = {
   IDENT_GAP: 0.18,
   IDENT_HOLD_MS: 400,
   RELEASE_MS: 280,
+  /*
+   * HOW FAR THE THROTTLE'S REST HAS TO BE FROM THE BOTTOM OF ITS TRAVEL
+   * before the rest is believed to be a spring rather than a parked stick.
+   * See noteThrottleSpring.
+   *
+   * A radio told to put its throttle all the way down at the centre step
+   * measures 0 here, and a sloppily centred one measures a few hundredths.
+   * A gamepad measures a whole unit, because its rest IS the middle and its
+   * low end is the bottom of the same stick. 0.35 sits in the empty band
+   * between those two populations with room on both sides.
+   */
+  THROTTLE_SPRING: 0.35,
 };
 
 const PAD_PICK = {
@@ -348,6 +360,69 @@ function throttleSpec(axis, rest, sample, min, max) {
     low: towardHigh ? min[axis] : max[axis],
     high: towardHigh ? max[axis] : min[axis],
   };
+}
+
+/*
+ * A THROTTLE THAT SPRINGS BACK HAS NO BOTTOM END, AND THE QUAD TOOK OFF ON
+ * ITS OWN BECAUSE THIS CODE ASSUMED IT DID.
+ *
+ * throttleSpec above maps the far end of the sweep to zero throttle, which
+ * is exactly right for a radio: a transmitter's throttle gimbal has no
+ * centring spring, so it stays wherever it was put and its bottom stop IS
+ * zero. A GAMEPAD's left stick is sprung in both axes. Its bottom stop is
+ * one end of a stick that returns to the middle, so the middle, where the
+ * stick sits when nobody is touching it, was being read as HALF THROTTLE.
+ *
+ *   bug-93400859, Fredrik Wormke:
+ *   "I found no way to calibrate where 0 throttle is at the resting
+ *    position for a gamepad joystick... Drone will take off with no input."
+ *
+ * Reproduced exactly: a gamepad taken through the wizard the way it asks
+ * saves {axis: 2, low: -1, high: 1} and reads 0.500 with nothing touching
+ * it. There was no way to calibrate around it, because the wizard never
+ * asked the question.
+ *
+ * It does not have to ask. The release step already watches where the axis
+ * goes when the pilot lets go, and it already accepts either answer:
+ * `parked` is true at the low end OR back at rest. Which of the two
+ * happened is the entire discriminator and it was being thrown away.
+ *
+ *   a radio      told to put the throttle down, then told to put it back
+ *                down, settles AT ITS LOW END. rest and low are the same
+ *                place, so there is nothing to correct.
+ *   a gamepad    let go, settles AT REST, and rest is a whole unit away
+ *                from the low end. Zero throttle belongs at rest.
+ *
+ * Only `low` moves. `high` is still the end the pilot pushed toward, so
+ * full stick is still full throttle, and readGamepad clamps below zero, so
+ * pushing the sprung stick past centre the other way is simply idle. The
+ * cost is the half of that stick's travel below centre, which is the cost
+ * of the control being a centring stick, and it is what the reporter asked
+ * for in as many words.
+ *
+ * A RADIO WHOSE PILOT IGNORED THE CENTRE STEP and left the throttle at
+ * mid-stick, then returned it to mid-stick rather than to the bottom,
+ * reads as sprung here and gets zero at mid-stick. That is a fair reading
+ * of what they demonstrated twice, it is what the prompts asked them not
+ * to do, and the failure it produces, half the throttle range, is the
+ * recoverable one. The failure in the other direction is a quad that flies
+ * away from a pilot who is not touching anything.
+ */
+function noteThrottleSpring(c, spec, axes) {
+  const rest = c.rest[spec.axis];
+  const settled = axes[spec.axis];
+  /* It came back to the low end: a parked throttle, nothing to do. */
+  if (Math.abs(settled - rest) > CAL.NEAR_REST) {
+    return;
+  }
+  /* Rest IS the low end: a radio that centred where it was told to. */
+  if (Math.abs(rest - spec.low) <= CAL.THROTTLE_SPRING) {
+    return;
+  }
+  spec.low = rest;
+  /* Recorded rather than inferred, so a ticket carrying a saved map says
+   * which kind of throttle the wizard decided it had. */
+  spec.sprung = true;
 }
 
 /*
@@ -1729,6 +1804,11 @@ export class InputManager {
     c.holdMs += dtMs;
     if (c.holdMs < CAL.RELEASE_MS) {
       return;
+    }
+    /* Where the throttle CAME BACK TO is the whole of what tells a radio's
+     * throttle from a gamepad's, and this is the moment it is known. */
+    if (channel === 'throttle' && spec) {
+      noteThrottleSpring(c, spec, axes);
     }
     const steps = c.steps || CAL_STEPS;
     const next = steps[steps.indexOf(c.step) + 1] || 'confirm';

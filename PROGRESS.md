@@ -39278,3 +39278,133 @@ evidence for the rename being a return rather than a change.
 
 `npm run verify` was NOT run: this is a name. No behaviour changed and
 nothing near src/native, patches, vendor or the build.
+
+## 2026-09-19 | shell, input | A gamepad's throttle springs back, and the quad took off on its own
+
+    bug-93400859, Fredrik Wormke, filed this morning:
+    "I found no way to calibrate where 0 throttle is at the resting position
+     for a gamepad joystick."
+    Expected: "That there is 0 throttle at joystick middle for a gamepad"
+    Steps: "Choose gamepad, calibrate, fly. Drone will take off with no input."
+
+Reproduced before touching anything. A gamepad driven through the wizard
+exactly the way it asks saves
+
+    {"axis": 2, "low": -1, "high": 1}
+
+and `input.channels.throttle` reads 0.5 with nothing touching it.
+
+### Why, and why the wizard could not be worked around
+
+`throttleSpec` maps the far end of the sweep to zero throttle. That is right
+for a radio and only for a radio: a transmitter's throttle gimbal has no
+centring spring, so it stays where it is put and its bottom stop IS zero. A
+gamepad's left stick is sprung on both axes. Its bottom stop is one end of a
+stick that returns to the middle, so the middle, where the stick sits when
+nobody is touching it, was read as half throttle. The reporter is right that
+there was no way to calibrate around it: the wizard never asked the question,
+so no answer they could give would have changed the result.
+
+This is the same shape as the "automatic eject" half of bug-13519874, closed
+this morning, and it is worth being clear that THAT FIX DOES NOT COVER THIS
+ONE. That one is an uncalibrated radio whose guessed throttle axis is a
+sprung gimbal, caught by noteThrottleParked and warned about. This one
+survives a full, correct, deliberate calibration.
+
+### The wizard already had the answer and was throwing it away
+
+No new question, no new step. The release phase watches where the axis goes
+when the pilot lets go, and it already accepts either of two answers:
+`parked` is true at the low end OR back at rest. Which of the two happened
+is the entire discriminator.
+
+    a radio      told to put the throttle down, then told to put it back
+                 down, settles AT ITS LOW END. rest and low are the same
+                 place. Nothing to correct.
+    a gamepad    let go, settles AT REST, and rest is a whole unit from the
+                 low end. Zero throttle belongs at rest.
+
+`noteThrottleSpring` runs at the moment the release completes and moves
+`low` to `rest` in the second case. Only `low` moves: `high` is still the
+end the pilot pushed toward, so full stick is still full throttle, and
+readGamepad already clamps below zero, so pushing the sprung stick past
+centre the other way is simply idle.
+
+THE THRESHOLD IS A GAP, NOT A GUESS. A radio that centred where it was told
+measures 0 for `|rest - low|`, a sloppily centred one a few hundredths, a
+gamepad a whole unit. CAL.THROTTLE_SPRING sits at 0.35, in the empty band
+between those two populations with room on both sides.
+
+### The cost, said plainly
+
+Half of that stick's travel, the part below centre, does nothing. That is
+the cost of the control being a centring stick rather than a throttle, and
+it is what the reporter asked for in as many words. The alternative, centre
+as hover with the stick trimming either way, was put to the owner and they
+chose centre is zero.
+
+A RADIO WHOSE PILOT IGNORED THE CENTRE STEP, left the throttle at mid stick
+and then returned it to mid stick rather than to the bottom, reads as sprung
+and gets zero at mid stick. That is a fair reading of what they demonstrated
+twice, it is what the prompts asked them not to do, and the failure it
+produces, half a throttle range, is the recoverable one. The failure in the
+other direction is a quad that flies away from somebody who is not touching
+anything.
+
+### Measurements
+
+    gamepad, four sprung axes, calibrated through the real wizard
+      saved map    {"axis":2,"low":0,"high":1,"sprung":true}
+      at rest      0        was 0.5, which is the ticket
+      fully up     1
+      half up      0.5
+      fully DOWN   0        past centre is idle, not negative
+
+    radio, throttle parked at -1, the regression guard on the same probe
+      saved map    low -1, high 1, sprung absent
+      at rest      0        unchanged
+
+`sprung` is recorded on the spec rather than inferred, so a future ticket
+carrying a saved map says which kind of throttle the wizard decided it had.
+
+### RUN LOG
+
+`npm run verify` RAN, which is worth saying because several earlier turns in
+this file could not run it at all. **15 of 15 checks passing. 1 check could
+not run**: check 1, build-clean, because this container has no `emcc` on PATH,
+no `EMSDK`, and `vendor/betaflight` is an empty submodule. Step 1 of the
+verify-flight-model procedure therefore exits 1 and is reported as a SKIP by
+the runner rather than claimed. Step 2, `git diff --stat vendor/betaflight`,
+is empty, trivially so.
+
+    2  determinism-repeat      a=de0401cd4266 b=de0401cd4266        PASS
+    3  determinism-cross-host  node=de0401cd4266 chrome=same        PASS
+    4  frame-independence      1 distinct hash across 4 rates       PASS
+    5  hover-throttle          0.2793          band 0.20 to 0.30    PASS
+    6  punch-out               80.0 m          band 55 to 85        PASS
+    7  terminal-velocity       31.0 m/s        band 30 to 40        PASS
+    8  motor-step-response     26 ms           band 10 to 30        PASS
+    9  rate-tracking           671.7 deg/s, 0.25 percent off        PASS
+    10 yaw-coupling            -0.10 deg                            PASS
+    11 battery-sag             11.14 percent lower                  PASS
+    12 diff-passthrough        ratio 1.2472, 0.52 percent off       PASS
+    13 console-clean           errors=0 warnings=0                  PASS
+    14 audio-bed               ctx running, media advancing         PASS
+    15 world-scale             every reference inside its band      PASS
+    16 map-isolation           no city module with the field        PASS
+
+EVERY MEASURED VALUE IS IDENTICAL TO THE LAST RECORDED RUN in this file:
+hover 0.2793, punch 80.0, terminal 31.0, motor step 26 ms, rate 671.7, yaw
+-0.10, sag 11.14, ratio 1.2472, trace hash de0401cd4266. That is the right
+answer for a change in the shell's gamepad mapping: the hash MUST NOT move,
+because the harness replays recorded channel values and never runs the
+wizard, and it did not move. Nothing under src/native, patches or vendor was
+touched and dist/sim.wasm is the binary those numbers were measured on.
+
+Wrong: nothing attempted and undone. The first instinct, to ask the pilot
+whether their throttle springs, was dropped before it was written once the
+release phase turned out to already know.
+
+What remains unverified: flight feel, as always, and the one thing no
+harness here can see, which is whether a real gamepad in a real browser
+reports its sticks the way the synthetic one does. Awaiting a pilot.

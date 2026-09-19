@@ -39111,3 +39111,100 @@ what the pilot reads and how long a verdict holds, which is the layer a
 synthetic radio is worst at and a real one would have found in a minute.
 Which is the argument the working rules already make for asking, and it
 held up.
+
+## 2026-09-19 | shell | The product told pilots to calibrate in a room that does not exist
+
+The owner, on the gate, with a radio: "there is no menu item to calibrate my
+radio when i click fly now or fly i get no obvious option to calibrate the
+radio."
+
+They are right, and the reason is worse than a missing row. The room exists,
+it is called Pilot, and it holds Choose joystick and Calibrate sticks one
+press from the title. What was broken is every sign pointing at it.
+
+### Nine strings naming a screen that was renamed out from under them
+
+The How to fly screen, Radio or gamepad tab, under "Before you fly", said:
+
+    Put the radio in joystick mode before loading this page, then run
+    Calibrate sticks in Settings.
+
+There is no Settings. That is the product's own instruction for the single
+most reported subject on the board, and it sends the pilot looking for a
+screen that was renamed at some point and never chased down. Eight more said
+the same thing about other rooms:
+
+    Calibrate sticks      -> said Settings, lives in Pilot
+    Choose joystick       -> said Settings, lives in Pilot   (a notice)
+    Flight log            -> said Settings, lives in Pilot   (a notice)
+    Flight mode, twice    -> said Settings, lives in Quad
+    Launch control, x3    -> said Settings, lives in Quad    (2 howto, 1 notice)
+
+All nine now name the room that holds the thing, and a probe asserts each
+one: Calibrate sticks, Choose joystick and Flight log are rows on `pilot`,
+Flight mode and Launch control are rows on `quad`, the howto says Pilot, and
+no user-facing string says "in Settings" any more.
+
+### And the door does not say what is behind it
+
+A pilot hunting for their radio scans the title's left column and reads
+
+    Fly | Track | Quad | Pilot | How to fly | FPV wiki | Tracks and Times
+
+Nothing there is a radio. Quad is the closest word and it is the wrong room.
+So they conclude the product has no calibration, which is exactly what the
+owner concluded. The row's note has said "your radio, calibration" all
+along, and a note is only drawn for the row under the cursor, so it is read
+by somebody who has already guessed right.
+
+The label is now "Pilot and radio", on the title and on pause. The row id is
+built from `action` and not from the label, so nothing that names rows
+moved: shell-check still counts 253 rows, all named, unique and stable.
+
+### This was already on the board and I filed it as something else
+
+    bug-7b737840, 2026-09-18, a day before the owner said it:
+    "I cant map my sticks to the correct commands, or cant find the setting"
+
+I read that ticket in the triage two rounds ago, counted it among the "feel
+reports carrying prose", and moved on. The words "or cant find the setting"
+are this defect, reported by a pilot, and I had them in front of me while
+writing that eleven tickets were about a wizard that would not finish. Some
+of them were about a wizard nobody could reach.
+
+That changes what the calibration round two entries above actually fixed. A
+dead end at step 7 is only reached by a pilot who found step 1.
+
+### The gate keeps its three cards
+
+Deliberate, and worth writing down because it is the obvious place to put a
+Calibrate row. The gate is three pictures and one question, the trouble rows
+already append there when something about the radio is actually wrong, and a
+permanent fourth row for every pilot with a pad erodes the one screen in the
+shell that asks a single thing. Answering the gate is one press and the next
+screen carries the door, which now says radio on it.
+
+### Measurements
+
+    rooms probe   Calibrate sticks, Choose joystick and Flight log are
+                  rows on `pilot`; Flight mode and Launch control are rows
+                  on `quad`; the howto radio tab says "Calibrate sticks in
+                  Pilot"; no user-facing string matches /in Settings/
+    title probe   the row list carries a label matching /radio/, and the
+                  screenshot reads
+                  Fly | Track | Quad | Pilot and radio | How to fly | ...
+    lint:shell    PASS, 253 rows across 13 screens, all named, unique and
+                  stable, so the label change cost no id
+    lint:nouns    PASS
+
+`npm run verify` was NOT run: nine strings and one label. No JavaScript
+behaviour changed, nothing near src/native, patches, vendor or the build.
+
+### Owed
+
+**Nothing checks that a signpost names a room that exists.** These nine rotted
+because a screen was renamed and no check could see the prose that pointed at
+it. The rooms probe written for this round is that check and it lives in a
+scratch file, which means it dies with this container. It belongs in
+shell-check, which already walks every screen and already knows every row
+label. Small, and the next rename will re-open this without it.

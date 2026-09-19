@@ -5269,10 +5269,31 @@ export class Ui {
           note: 'The machine. Tune, PIDs, camera angle, field of view, flight mode and the firmware bench, which is every Betaflight key the module compiles.',
         },
         {
-          label: 'Pilot',
+          /*
+           * "PILOT" IS THE ONE ROOM WHOSE NAME DOES NOT SAY WHAT IS IN IT,
+           * and the thing in it is the single most reported subject on the
+           * board.
+           *
+           * A pilot hunting for their radio scans this column and reads
+           * Fly, Track, Quad, Pilot, How to fly, FPV wiki, Tracks and
+           * Times, Credits. Nothing there is a radio. Quad is the closest
+           * word and it is the wrong room. So they conclude the product has
+           * no calibration, which is what the owner concluded, and what
+           * "I cant map my sticks to the correct commands, or cant find the
+           * setting" was already saying a day before that.
+           *
+           * The note has said "your radio, calibration" all along, and a
+           * note is only shown for the row under the cursor, so it is read
+           * by somebody who has already guessed right. The label is what
+           * gets scanned.
+           *
+           * The row id is built from `action` rather than the label, so
+           * this costs no id and nothing that names rows has to move.
+           */
+          label: 'Pilot and radio',
           value: readPilotName() || 'Not set',
           action: 'pilot',
-          note: 'You. Your name, your radio, calibration, rates, graphics, sound and the flight log.',
+          note: 'You and your radio. Your name, choosing a joystick, Calibrate sticks, rates, graphics, sound and the flight log.',
         },
         { label: 'How to fly', action: 'howto', note: 'The sticks, live, and what the keys do.' },
         {
@@ -6020,7 +6041,8 @@ export class Ui {
           note: `PIDs, camera, flight mode and the firmware bench.${MID_RUN_WARNING}`,
         },
         {
-          label: 'Pilot',
+          /* Named for what is in it, as on the title. See there. */
+          label: 'Pilot and radio',
           value: ratesSummary(s.rates),
           action: 'pilot',
           /* Rates are the first thing in this room and they no longer cost
@@ -9217,7 +9239,7 @@ export class Ui {
       ? [
         ['Left stick', 'Throttle up and down, yaw left and right. Mode 2, as on your radio.'],
         ['Right stick', 'Pitch forward and back, roll left and right.'],
-        ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Settings.'],
+        ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Pilot.'],
         ['In the menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
         ['Acro', 'Hands off holds the attitude you left it in. Every turn has to be flown back out again.'],
         ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Pitch or roll with the right stick to flip over. You do not have to time it. Centre the stick, then take off.'],
@@ -9225,7 +9247,7 @@ export class Ui {
       : source === 'launch'
         ? [
           ['What it is', 'Betaflight race start. Pitch the quad, let go of the stick, and it holds that angle at idle until you punch throttle. No looping off the blocks.'],
-          ['Turn it on', 'Settings, Launch control, On. It stays off until you do. Then press L on the start line, before you raise throttle.'],
+          ['Turn it on', 'Quad, Launch control, On. It stays off until you do. Then press L on the start line, before you raise throttle.'],
           ['Set the angle', 'Throttle at idle. Pitch forward until the OSD reads around 30 to 40 degrees. Centre the stick. The motors hold it.'],
           ['Go', 'Punch throttle past about 20 percent. The hold dumps, the props bite, and you are flying. L again resets it after a launch.'],
           ['Keyboard', 'Up arrow is pitch forward. W is throttle. Launch control switches you to Acro for the hold, then Angle comes back after you go.'],
@@ -9237,7 +9259,7 @@ export class Ui {
         ['A and D', 'Yaw, left and right on the spot.'],
         ['Up and down', 'Pitch. Up is stick forward, nose down, fly forward.'],
         ['Left and right', 'Roll.'],
-        ['L', 'Launch control, if you turned it on in Settings. Pitch, centre, punch.'],
+        ['L', 'Launch control, if you turned it on in Quad. Pitch, centre, punch.'],
         ['R, then Escape', 'Back to the start line, and pause.'],
         ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Pitch or roll with the arrow keys to flip over. You do not have to time it. Let go, then take off.'],
         ['F8', 'Report a bug or give feedback. Pauses if you are in the air, then opens the form.'],
@@ -9253,11 +9275,11 @@ export class Ui {
           ? 'L arms it. Pitch, centre, punch. The gimbals still follow your hands.'
           : 'Press the keys. These follow your hands.';
     this.howtoMode.textContent = source === 'touch'
-      ? 'Thumb sticks are a real proportional stick, so they fly whichever Flight mode is set in Settings: Acro, like a radio, by default. Angle is gentler while you learn: let go of the right pad and the quad levels itself.'
+      ? 'Thumb sticks are a real proportional stick, so they fly whichever Flight mode is set in Quad: Acro, like a radio, by default. Angle is gentler while you learn: let go of the right pad and the quad levels itself.'
       : source === 'radio'
-        ? 'A radio flies Acro by default: the sticks ask for a rate of rotation, and letting go asks for none, which holds whatever attitude the quad is in. Change it under Flight mode in Settings.'
+        ? 'A radio flies Acro by default: the sticks ask for a rate of rotation, and letting go asks for none, which holds whatever attitude the quad is in. Change it under Flight mode in Quad.'
         : source === 'launch'
-          ? 'Off by default, because a punch from a hold is violent and not everyone wants it. Turn it on in Settings, then L on the pad. The green LAUNCH readout is the pitch angle. It blinks when throttle is close to firing.'
+          ? 'Off by default, because a punch from a hold is violent and not everyone wants it. Turn it on in Quad, then L on the pad. The green LAUNCH readout is the pitch angle. It blinks when throttle is close to firing.'
           : 'Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold sits at a flyable amount, a long hold goes to full. Keyboard flight is Angle, so letting go brings the quad back to level.';
   }
 

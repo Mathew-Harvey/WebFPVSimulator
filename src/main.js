@@ -4358,7 +4358,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (result === 'accepted') {
       notice = { text: `Flying with ${sum.using}.`, untilMs: performance.now() + 2800 };
     } else if (result === 'skipped') {
-      notice = { text: 'Keyboard sticks. Choose joystick in Settings to pick a radio.', untilMs: performance.now() + 3200 };
+      notice = { text: 'Keyboard sticks. Choose joystick in Pilot to pick a radio.', untilMs: performance.now() + 3200 };
     }
   }
 
@@ -4494,7 +4494,7 @@ export async function boot({ loading, bootStart, mapId }) {
     } else if (action === 'downloadflightlog') {
       if (flightLog.count < 2) {
         notice = {
-          text: 'Nothing recorded yet.\nTurn the flight log on in Settings, then fly.',
+          text: 'Nothing recorded yet.\nTurn the flight log on in Pilot, then fly.',
           untilMs: performance.now() + 3600,
         };
       } else {
@@ -4647,7 +4647,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (code === 'KeyL' && ui.screen === 'flight') {
       if (!ui.settings.launchControl) {
         notice = {
-          text: 'Launch control is off.\nTurn it on in Settings, then press L on the start line.',
+          text: 'Launch control is off.\nTurn it on in Quad, then press L on the start line.',
           untilMs: performance.now() + 3200,
         };
         return;

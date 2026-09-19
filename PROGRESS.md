@@ -39666,3 +39666,101 @@ a flush with nothing in it is exactly what "flying now" counts.
 What remains unverified: nobody has flown this build with the counters
 running and watched the numbers move on the board in front of them. The
 headless pass drives the counter directly; it does not take off.
+
+## 2026-09-19 | review, board | Review of the statistics build, from the side that wrote the spec
+
+The spec for the statistics tab was written by one model and built by
+another, and this is the review of the build, directed by the owner. Single
+reviewer, read the diff, ran the cheap checks, drove the page. Findings are
+recorded here whether or not they were acted on, as the rule says.
+
+ACTED ON, in the board's repository, and the reasons travel in that commit:
+
+- The ranked lists mixed metrics. A country's bar fell back to pilots when
+  it had no sessions, so a country of five hundred visitors could out-bar
+  one of three flights on a list headed sessions; the sponsors' bar was
+  pilots while the rows were ordered by sessions. One metric per list now,
+  and the sponsors are ordered by the number their bar shows.
+- The chart SVG was role="img", whose descendants are presentational to
+  assistive technology, while thirty focusable columns inside it said
+  "button". A group now, and each column a labelled image.
+- Every poll rebuilt both charts, which snapped an open "As a table" shut
+  every thirty seconds and dropped a focused column. Both survive now.
+- The two tabs scrolled differently: #tracks is the address of <main> and
+  jumped the masthead away, #stats matched nothing and stayed. A plain
+  click sets the address without the scroll; a change of tab whose row is
+  off screen, which is a reader at the foot of a long tab, brings the row
+  into view and only then.
+- "Updated N s ago" repainted only on a poll, so it said "just now" for
+  thirty seconds. Its own five second clock, while the tab is on screen.
+- The flood allowance of 200 in ten minutes would have silenced a club
+  night: thirty pilots behind one address flushing once a minute is 300.
+  600 now, which is fifty pilots on one address. The gate was never the
+  defence against inflation; the bounds and the fold are.
+- The board's sendEvent and pingVisit took their arguments in the opposite
+  order to the simulator copy they claim to mirror. Aligned to this
+  repository's, which is the copy of record for anything shared.
+- Sponsor names were stripped to ASCII, so a sponsor called Café FPV lost
+  its é. Control and format characters are stripped now and letters stay.
+- Smaller: a second index on stats_dims that duplicated the first column of
+  its primary key, a comment naming a constant that does not exist, a check
+  that asserted `true`, the bugs page's back link still saying Tracks and
+  Times, and three lines of copy.
+
+ACTED ON, here:
+
+- A minute spent upside down in crashflip was counted as flight time. The
+  two turtle flags were already in scope at the one call the frame loop
+  makes, so `flying` reads them now. No physics state is written.
+- Three places, this file's DEPLOY.md, the Worker's comment and the board's
+  README, said the bare Render address reads every visitor as Unknown. It
+  does for an honest visitor; it also believes a client that writes the
+  country header itself, because BOARD_TRUST_PROXY is set there with
+  nothing in front. That is the same trust the address already extends to
+  x-forwarded-for, on a public counter, and it is now written down rather
+  than glossed.
+
+DECLINED, with the reasons:
+
+- A closed tab keeps reading as "flying now" for up to three minutes, and
+  the second flush that pagehide sends after visibilitychange does not
+  lengthen that: the window is three minutes from any heartbeat and the
+  last real one already set it. Nothing to fix.
+- The harness, shots and the lints boot the shell and each boot beacons a
+  visit at whatever board is on port 3100, so a developer with a local
+  board running counts their own tooling. Seeding an opt out into the
+  harness would be a test only hook that can drift from the pilot's door,
+  and the local board is a scratch file. Left as it is, and written here.
+- The cached read carries a "flying now" up to twenty seconds old. By
+  design: the cache is under the poll interval, and a live number that is
+  twenty seconds stale on a page that says when it was read is honest.
+
+### RUN LOG
+
+`npm run verify` NOT RUN, for the reason given in the entry above: nothing
+under src/native, patches, vendor or the build moved, and the one line
+changed in the frame loop reads two flags that were already there. What
+was run:
+
+    lint:boot     9 of 9 clean
+    lint:shell    PASS
+    lint:board    PASS
+    lint:nouns    PASS
+    test:edge     all checks passed
+
+    board npm test    all passed, in under three seconds with the flood
+                      loop grown to 660 posts
+    board lints       licence and nouns both PASS
+
+Then the edited board page in headless Chromium against a scratch store:
+the SVG is a group and its columns are images; the sponsors read Direct,
+Rotor Riot, The FPV Shop, Other by pilots; the country bars are sessions;
+an open table and a focused column both survive the repaint a resize
+does; the fresh line moved from "just now" to "5 s ago" on its own; a
+click on a tab already on screen moved the page by nothing; a click from
+the foot of the long statistics tab brought the row to the top; a footer
+link to the tab already showing moved nothing; Back walked to the other
+tab. No console errors.
+
+What remains unverified is what it was: nobody has taken off with the
+counters running and watched the board move.

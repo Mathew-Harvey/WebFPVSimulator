@@ -5778,7 +5778,10 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     flightStats.tick(nowWall, {
       started: flownThisRun,
-      flying: flownThisRun && !landed && !crashed,
+      /* Airborne, and not on the grass upside down: a minute spent in
+       * crashflip waiting to be righted is not a minute of flying, and the
+       * two turtle flags are already here to say so. */
+      flying: flownThisRun && !landed && !crashed && !turtleWait && !turtleRecover,
       laps: race.laps.length,
     });
 

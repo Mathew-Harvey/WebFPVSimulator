@@ -385,8 +385,11 @@ from Cloudflare's own `request.cf.country` on every forwarded request. It is
 set unconditionally, overwriting anything the client sent, which is what
 makes it worth believing at the other end; the board believes it only when
 `BOARD_TRUST_PROXY` is `1`, the same rule the forwarded host follows. On the
-bare `onrender.com` address there is no Worker, so every row on the board's
-statistics tab reads Unknown, which is correct rather than broken. The board
+bare `onrender.com` address there is no Worker but the flag is still set, so
+an honest visitor reads Unknown and a client that writes the header itself
+is believed, which is the same trust that address already extends to
+`x-forwarded-for`, on a public counter. Correct rather than broken, and one
+more reason the domain and not the bare address is the front door. The board
 never looks an address up and never stores one.
 
 **The board's statistics read is cacheable, and that is deliberate.**

@@ -167,7 +167,10 @@ export default {
      * here is what makes it worth believing on the other side. The board
      * believes it only when BOARD_TRUST_PROXY says something like this
      * Worker is in front, which is the same rule the forwarded host above
-     * follows, so a directly exposed instance cannot be told anything.
+     * follows. A checkout leaves that unset and reads every visitor as
+     * Unknown; the bare Render address sets it with nothing in front, and
+     * extends this header exactly the trust it already extends the
+     * forwarded address there, which is why the domain is the front door.
      *
      * request.cf is absent when this file is driven outside the Workers
      * runtime, as edge/selftest.js does, and 'XX' is what Cloudflare itself

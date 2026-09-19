@@ -39041,3 +39041,73 @@ that dump, and the next FS-i6 ticket can arrive with it. Left until then.
 `npm run verify` was NOT run. Nothing in this review touches src/native,
 patches, vendor or the build, and dist/sim.wasm is the binary the last 16
 of 16 ran on. A shell review is not what it measures.
+
+## 2026-09-19 | note | What the review caught, from the side that wrote the defects
+
+The entry above is the reviewer's. This is the author's, because three of
+those four findings were mine and the interesting thing about them is not
+what they were but why nothing I ran could see them.
+
+### The comment was the design, and the code was never checked against it
+
+The worst of the three. `noteGuessOrder` opened with
+
+    if (this.map.stored || this.guessWrongOrder) return;
+
+and forty lines above it I had written that yaw latching alive "is what
+stops this ever firing at a pilot whose guess is right. The moment they use
+yaw once, the question is settled in their favour for good." That sentence
+describes behaviour the function could not perform: once wrong had fired,
+the early return meant yaw was never watched again, so the moment they used
+yaw nothing happened at all.
+
+Then I used the sentence to wave through the defect. The paragraph arguing
+the false positive was acceptable, "they get a row offering calibration, and
+calibration is not a wrong thing to offer them", is only true if the row
+goes away when the pilot disproves it. It did not. So the comment justified
+the risk and the code took the risk without the thing that made it
+acceptable, and both were written in the same sitting by the same reader.
+
+A comment that states an invariant is a claim about the code under it. I
+did not check mine, and it is the second time this round that a confident
+piece of prose turned out to be about a function's intent rather than its
+behaviour: the first was "the obvious cause is not it" on the rates ticket,
+which was right about `hoverCursor` and wrong about the screen.
+
+### The probes were built from the same assumptions as the code
+
+All three defects are invisible to the synthetic radio I wrote to test them,
+and that is not bad luck. The fixture and the implementation came out of one
+head in one sitting, so they share every assumption.
+
+    the latch    the probe asserted guessNoYaw goes false -> true and
+                 stopped. Nothing asked whether it could go back. A latch
+                 that cannot clear is invisible to a test that only tests
+                 the latch.
+    the ruler    the probe asserted channels.throttle between 0.2 and 0.4
+                 with the axis at -0.7. Rest is -1, so the raw delta is 0.3
+                 and it passed, for the arithmetic the code does rather
+                 than the meaning it claims. Written to the implementation,
+                 not to the requirement. A full stick assertion, that 1.0
+                 reads 1.0, would have failed on the first run.
+    the bar      every axis on my fake radio rests at 0 or -1 and sweeps
+                 symmetrically, so "centred on rest" and "between its ends"
+                 are the same picture. The fixture could not produce the
+                 case the code got wrong.
+
+The cheap fix for all three is the same and it is not more probes: it is one
+asymmetric control on the synthetic radio, a slider resting at 0.5, and an
+assertion at the stop rather than in a band. Both are in the wizard probe
+now, and the latch probe tests the transition back.
+
+### What this does not change
+
+The four root causes in the entry two above are still the right ones, and
+the reviewer confirmed the things they rest on: the hold gesture really is
+armed on the button count, `throttleSpec` really does record the sweep's
+range so no saved map was ever wrong, and the absolutely positioned note
+really does swallow nothing. The defects were all in the second layer, in
+what the pilot reads and how long a verdict holds, which is the layer a
+synthetic radio is worst at and a real one would have found in a minute.
+Which is the argument the working rules already make for asking, and it
+held up.

@@ -39764,3 +39764,57 @@ tab. No console errors.
 
 What remains unverified is what it was: nobody has taken off with the
 counters running and watched the board move.
+
+## 2026-09-19 | shell, board | The first day live: crashes on the shell's own line, and where the countries went
+
+The statistics page went to main and Render deployed it. The first read
+of the live board, an hour in: 21 visitors, 16 sessions, 58 minutes flown,
+and three numbers that needed looking at.
+
+CRASHES READ NOUGHT ALL DAY, and they were nought because the counter was
+listening in the wrong place. It heard only beginClipCrash, which is the
+clip-through catch: a glitch recovery, not the thing a pilot flies into.
+The shell has exactly one defended definition of a crash, the ceiling
+collide.js draws at BOUNCE_SPEED_MAX in the ground path, and the freestyle
+scorer already reads it there. The statistics count on that same line now,
+in every mode, plus the clip catch. Turtle entry is deliberately not
+counted as well: it is what a hard hit usually leads to, and counting it
+would count the same crash twice.
+
+EVERY COUNTRY READ UNKNOWN, and that is a deploy fact rather than a code
+one. The Worker in edge/router.js is deployed by hand, a push to main does
+not touch it, and the Worker in front of the site is still the one from
+before it learned to set x-webfpv-country. Two answers. The board now also
+reads cf-ipcountry, Cloudflare's own header, which the old Worker forwards
+with the rest whenever the zone's geolocation is on; that is in the
+board's commit. And the Worker still wants redeploying, which only
+somebody with the Cloudflare login can do: DEPLOY.md, section 5, paste
+edge/router.js over the Worker in the dashboard or `npx wrangler deploy
+--config edge/wrangler.toml`.
+
+LAPS READ NOUGHT TOO, WITH TEN SESSIONS ON A TRACK, and that one was
+measured rather than reasoned about. A real headless shell pointed at a
+scratch board, the run marked flown through the harness's turtle seat,
+two laps grown on the race's own array, the page hidden: the board read
+two laps. The pipeline is sound. A lap is a CLEAN lap, the same thing the
+results screen and the posted times count: every gate in order and the
+timing gate crossed again. Nobody had done that on the live site by the
+time of the read, which is a fact about the first hour and not about the
+code. If a clean lap is flown and the number has not moved within two
+minutes, which is a flush, the cache and a poll, that is a bug to chase.
+
+### RUN LOG
+
+`npm run verify` NOT RUN: the one line moved in the frame loop is a call
+that was already there, made on a condition that was already computed.
+What was run:
+
+    lint:boot     9 of 9 clean
+    lint:shell    PASS
+    lint:board    PASS
+    lint:nouns    PASS
+    board npm test  all passed, including two new checks that
+                    cf-ipcountry is read and that the Worker's header
+                    wins when both are present
+    the lap measurement above, in headless Chromium against a scratch
+    board: PASS, two laps arrived

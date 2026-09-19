@@ -2896,8 +2896,9 @@ export async function boot({ loading, bootStart, mapId }) {
     statePrev = stateCurr;
     acc = 0;
     race.recover('Crashed', nowWall);
-    /* The one place this shell declares a crash, so the one place that
-     * counts one. See src/share/stats.js. */
+    /* One of the two places this shell declares a crash. The other is the
+     * hard ground hit at the bounce ceiling in the ground path, which is
+     * the one a pilot actually flies into; this one is the glitch catch. */
     flightStats.noteCrash();
     view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
     /* The same departure window feelImpact reads. This cue is the loudest
@@ -6221,8 +6222,24 @@ export async function boot({ loading, bootStart, mapId }) {
            * bails the combo. No third threshold, because a third threshold
            * is a number nobody can defend six months later.
            */
+          const hard = closing >= BOUNCE_SPEED_MAX || hitSpeed >= BOUNCE_SPEED_MAX;
+          /*
+           * THE SITE'S CRASH COUNT IS THIS LINE, IN EVERY MODE. The shell has
+           * exactly one defended definition of a crash, the ceiling collide.js
+           * draws at BOUNCE_SPEED_MAX, and the scorer below reads it only in
+           * freestyle because a race map never touches the scorer. The
+           * statistics are not the scorer: a pilot who puts a five inch into
+           * the grass at ten metres a second on a race track has crashed,
+           * and the board's counter used to hear only the clip-through
+           * catch, which is a glitch recovery, so it read nought for a day
+           * of flying. Turtle entry is NOT counted as well, because it is
+           * what a hard hit usually leads to and would count the same crash
+           * twice. See src/share/stats.js.
+           */
+          if (hard) {
+            flightStats.noteCrash();
+          }
           if (view.mode === 'freestyle') {
-            const hard = closing >= BOUNCE_SPEED_MAX || hitSpeed >= BOUNCE_SPEED_MAX;
             if (hard) {
               trickDetector.reset();
               score.crash();

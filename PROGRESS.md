@@ -40300,3 +40300,83 @@ reversing the edit, not by git checkout, since the fix was uncommitted.
                               which is what a change confined to the wizard's
                               release check requires: the hash did not move
                               because nothing in the trace's path did.
+
+## 2026-09-21 | board | The board is empty, and the release fix turned out to cover a ticket it was not written for
+
+The owner asked for every fixed ticket closed and every ticket we are not
+going to act on closed with it. Eleven were still live. The board now reads
+131 tickets: 70 fixed, 60 wontfix, 1 duplicate, none open and none in
+progress.
+
+### The fix covers more than the commit claimed
+
+bug-122503e9, the FlySky FS-i6 "can't get past the Roll section of
+calibration, max axes and throttle work but stuck on roll", is the hole
+closed yesterday by `othersParked`, and neither the entry above nor the
+commit message knew it. Both of those describe the case as a SELF CENTRING
+throttle whose pilot held it down. That is one way in and it is not the
+common one.
+
+The real precondition is narrower than a spring and much easier to hit:
+THE THROTTLE IS NOT WHERE THE CENTRE STEP RECORDED IT. The Centre step asks
+for the throttle all the way down. A pilot who leaves it at mid stick there,
+which is what somebody who did not read the prompt does, has rest measured
+at the middle. The Throttle step then tells them to put it all the way back
+down, they do, and it now sits a whole unit from rest for the rest of the
+wizard. Roll never releases. No spring required, and an ordinary ratcheted
+transmitter throttle does it.
+
+Measured both ways on a synthetic FS-i6 whose throttle rests at mid stick:
+
+    before 15165d6   roll never releases, hint "One direction at a time.
+                     Diagonals are ignored." for ever
+    after  15165d6   roll releases to pitch
+
+That probe is a scratch file and dies with the container, which is the
+mistake this week has already written down twice. It is not added to
+scripts/input-selftest.js in this turn because this turn changed no code and
+the two checks were run green yesterday on the code as it stands. It should
+be, and it is the first thing to do next time src/input is opened.
+
+### The listing caps at 80 and that hid a ticket
+
+`GET /api/bugs` returns the 80 newest unless `limit` says otherwise. The
+board holds 131. bug-8ada3d81, "hitting a wall", filed on the 15th and left
+in_progress, was outside that window and was missed by an earlier sweep that
+believed it had seen everything. Ask for `?limit=500` when the question is
+"is anything still open", and count the answer.
+
+### Two leads written down rather than acted on
+
+Both were closed for want of information. Neither is closed because it is
+not real, and both have a candidate cause that this turn did not chase.
+
+**The dead roll pair, bug-a49f867c and bug-63e8cde6.** `noteGuessOrder`
+watches ONE channel, yaw, for the AETR guess describing somebody else's
+radio. The same fault on roll or pitch produces the same silent shell and
+nothing detects it. Widening the check to all four channels is the same
+mechanism that already ships and is small. Both reporters were told to run
+Calibrate sticks, which does fix it for them, because the wizard assigns
+whatever axis actually moves.
+
+**The Android Bluetooth throttles, bug-87023680 and bug-a7787168.**
+`snapshotAxes` caps at 8 axes, and so does `noteGuessOrder`. An axis at
+index 8 or higher is invisible to the wizard. Worse, the axis strip added
+for exactly this diagnosis reads through `snapshotAxes` too, so the
+screenshot both reporters were asked for CANNOT SHOW a throttle that is out
+past the cap. If that is what is happening, the diagnostic asked them to
+prove something the screen is incapable of displaying. Unverified, because
+no Android radio is available here, but it is cheap to look at and the cap
+has no argument behind it in the file.
+
+### RUN LOG
+
+    board writes     11 tickets, all HTTP 200, each re-read through
+                     GET /api/bugs/:id and confirmed to carry its new
+                     status and a written resolution
+    final sweep      GET /api/bugs?limit=500: 131 tickets, 0 open,
+                     0 in_progress
+    no code changed  so no lint, no shots and no verify this turn. The
+                     FS-i6 before and after measurement above ran against
+                     70f8316 and 15165d6 respectively, out of git, with
+                     the working tree untouched.

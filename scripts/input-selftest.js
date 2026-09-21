@@ -190,6 +190,10 @@ class Rig {
  *                           (a parked radio: the bottom; a gamepad: lets
  *                           go, so back to rest; a sprung radio obeying
  *                           the prompt: the bottom)
+ *   holdAfter               where the throttle is HELD from the end of its
+ *                           own step until the check step, when given.
+ *                           Unset, the hand comes off and it returns to
+ *                           rest, which every other axis always does.
  *   full                    how far the sticks reach, 1 unless wound in
  * Returns false at the first step that never arrived.
  */
@@ -233,8 +237,10 @@ function driveWizard(rig, lay) {
      * it down as told, this is the moment it springs back to the middle,
      * one step too late for the detector to see: bug-851a43b7 in one
      * line. Every other axis is already at rest, so this is a no-op for
-     * them. */
-    rig.ax(axis, rest[axis]);
+     * them. Unless the layout says the throttle stays held, which is the
+     * pilot who never lets go until the check step. */
+    const after = name === 'throttle' && lay.holdAfter !== undefined ? lay.holdAfter : rest[axis];
+    rig.ax(axis, after);
     rig.step();
   }
   return true;
@@ -409,6 +415,67 @@ section('a radio throttle that springs, and the pilot holds it down as told');
   check('full up reads exactly 1', rig.im.channels.throttle === 1);
   rig.ax(2, -1); rig.step();
   check('full down reads 0', rig.im.channels.throttle === 0);
+}
+
+section('a radio throttle that springs, and the pilot never lets go until the check step');
+{
+  /*
+   * The same pilot, one step further into doing as they were told. The
+   * release prompt says "all the way back down", they hold it there, and
+   * the roll step's release used to wait for that throttle to come back to
+   * rest, a place nobody had mentioned, with a hint about diagonals. The
+   * first draft of this file found it by being that pilot and never getting
+   * past roll. An identified throttle sitting at its bottom is parked.
+   */
+  const rig = new Rig(makePad([0, 0, 0, 0], 2, 'LiteRadio 3, held'));
+  const drove = driveWizard(rig, {
+    roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: 0, thrReturn: -1, holdAfter: -1,
+  });
+  check('the wizard completes with the throttle held down throughout', drove === true, String(drove));
+  check('the check step reads 0 while it is still held, and offers nothing',
+    rig.view().throttlePercent === 0 && rig.view().canZeroThrottle === false);
+  rig.ax(2, 0); rig.step();
+  check('the hand comes off: 50 percent, and the offer', rig.view().throttlePercent === 50 && rig.view().canZeroThrottle === true);
+  check('which is taken', rig.im.zeroThrottleHere() === true && rig.view().throttlePercent === 0);
+  rig.im.acceptCalibration();
+  const t = rig.im.map.throttle;
+  check('and saved with zero at rest', t.low === 0 && t.high === 1 && t.sprung === true, JSON.stringify(t));
+}
+{
+  /* A gamepad whose spring was detected, so `low` already moved to rest,
+   * and whose pilot then holds the stick at its physical bottom through
+   * the roll step. The bottom is the sweep's far end, which is what the
+   * release check looks at, not `low`. */
+  const rig = new Rig(makePad([0, 0, 0, 0], 4, 'Xbox, stick held down'));
+  const drove = driveWizard(rig, {
+    roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: 0, thrReturn: 0, holdAfter: -1,
+  });
+  check('a detected spring, then the stick held at the bottom: the wizard still completes', drove === true, String(drove));
+  rig.im.acceptCalibration();
+  const t = rig.im.map.throttle;
+  check('and the map is the gamepad\'s', t.low === 0 && t.high === 1 && t.sprung === true, JSON.stringify(t));
+}
+{
+  /* The discipline this loosens for the throttle is kept for every other
+   * axis: a spring centred stick held during another channel's release
+   * still blocks it, because it has one resting place and being anywhere
+   * else is a hold. */
+  const rig = new Rig(makePad([0, 0, -1, 0], 4, 'TX16S, roll held'));
+  rig.im.startCalibration();
+  rig.waitStep('sweep');
+  for (const i of [0, 1, 2, 3]) {
+    rig.ax(i, 1); rig.step(); rig.ax(i, -1); rig.step(); rig.ax(i, i === 2 ? -1 : 0); rig.step();
+  }
+  rig.waitStep('throttle');
+  rig.ax(2, 1); rig.waitPhase('release'); rig.ax(2, -1); rig.waitStep('roll');
+  rig.ax(0, 1); rig.waitPhase('release'); rig.ax(0, 0); rig.waitStep('pitch');
+  rig.ax(1, -1); rig.waitPhase('release');
+  /* Pitch comes back, but roll is held at 0.6 while it does. */
+  rig.ax(1, 0); rig.ax(0, 0.6);
+  check('roll held during the pitch release: yaw does not arrive', rig.waitStep('yaw', 1500) === false);
+  check('the throttle at its bottom was not the reason', rig.pad.axes[2] === -1 && rig.view().step === 'pitch');
+  rig.ax(0, 0);
+  check('roll let go: yaw arrives', rig.waitStep('yaw') === true);
 }
 
 /* ------------------------------------------------------------------------

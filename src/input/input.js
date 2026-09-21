@@ -299,6 +299,58 @@ function maxAbsDeltaExcept(axes, rest, except) {
   return worst;
 }
 
+/*
+ * IS EVERYTHING BUT `except` WHERE THE WIZARD LAST ACCEPTED IT?
+ *
+ * The release phase of every channel waits for the OTHER axes to be at
+ * rest, so that the next step starts clean and a diagonal is not read as
+ * two moves. Rest meant the centre step's reading, for every axis, and that
+ * was wrong for exactly one of them: a throttle that has already been
+ * identified.
+ *
+ * The throttle's own release accepts two places, its low end or its rest,
+ * because "Now put the throttle all the way back down" is what the prompt
+ * says and on a radio the bottom is where it stays. A pilot with a self
+ * centring throttle (the LiteRadio of bug-851a43b7) who let go at the
+ * centre step, so rest is the middle, and then obeyed that prompt and HELD
+ * the throttle down, passed the throttle step and could not pass the next
+ * one. Roll never released, because the throttle sat a whole unit from rest
+ * and counted as another stick being held, and the hint said "One direction
+ * at a time" to a pilot moving one stick. The only way on was to let go of
+ * the throttle, which nothing told them. Found by the first draft of
+ * scripts/input-selftest.js, which was that pilot and never got past roll.
+ *
+ * So an identified throttle is parked at either of the two places the
+ * wizard has talked about: the bottom of its travel as the sweep found it,
+ * or its rest. The bottom is read from the sweep rather than from `low`,
+ * because noteThrottleSpring moves `low` to rest on a gamepad, and a
+ * gamepad's stick can still be pushed to its physical bottom. Every other
+ * axis, identified or not, still has to be at the centre step's rest: a
+ * spring centred gimbal has one resting place and being anywhere else is a
+ * hold, which is the discipline that keeps a diagonal from assigning two
+ * channels.
+ */
+function othersParked(c, axes, except) {
+  const thr = c.draft.throttle;
+  const thrAxis = thr && Number.isInteger(thr.axis) && thr.axis !== except ? thr.axis : -1;
+  const n = Math.min(axes.length, c.rest.length);
+  for (let i = 0; i < n; i += 1) {
+    if (i === except || i === thrAxis) {
+      continue;
+    }
+    if (Math.abs(axes[i] - c.rest[i]) > CAL.NEAR_REST) {
+      return false;
+    }
+  }
+  if (thrAxis < 0) {
+    return true;
+  }
+  const rest = c.rest[thrAxis];
+  const bottom = thr.high >= rest ? c.min[thrAxis] : c.max[thrAxis];
+  const v = axes[thrAxis];
+  return Math.abs(v - bottom) <= CAL.NEAR_REST || Math.abs(v - rest) <= CAL.NEAR_REST;
+}
+
 function expandRange(min, max, axes) {
   const n = Math.min(axes.length, min.length);
   for (let i = 0; i < n; i += 1) {
@@ -445,6 +497,10 @@ function throttleSpec(axis, rest, sample, min, max) {
  * reads high enough to be flying the quad, the screen offers to put zero
  * where the stick is now. The pilot knows whether their hand is on it, and
  * nothing else in this file does.
+ *
+ * The same pilot, still holding the throttle down on the roll step, met a
+ * second wall one step later, and that one is fixed rather than asked
+ * about: see othersParked.
  */
 function noteThrottleSpring(c, spec, axes) {
   const rest = c.rest[spec.axis];
@@ -1929,8 +1985,7 @@ export class InputManager {
       return;
     }
     const spec = c.draft[channel];
-    const others = maxAbsDeltaExcept(axes, c.rest, spec ? spec.axis : -1);
-    let parked = others <= CAL.NEAR_REST;
+    let parked = othersParked(c, axes, spec ? spec.axis : -1);
     if (parked && spec) {
       const v = axes[spec.axis];
       if (channel === 'throttle') {

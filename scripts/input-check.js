@@ -162,8 +162,10 @@ const DRIVE = (lay) => `(async () => {
     const next = steps[steps.indexOf(name) + 1];
     if (!await waitStep(next)) { log.push(name + ' never released to ' + next); return log; }
     /* The hand comes off. A sprung throttle held down as told springs
-     * back to the middle here, one step too late for the detector. */
-    set(axis, rest[axis]);
+     * back to the middle here, one step too late for the detector. Unless
+     * the layout says the throttle stays held, which is the pilot who
+     * never lets go until the check step. */
+    set(axis, name === 'throttle' && lay.holdAfter !== undefined ? lay.holdAfter : rest[axis]);
     log.push(name + ' on axis ' + axis);
   }
   log.push('done');
@@ -457,19 +459,26 @@ async function mousePage(page) {
    *    and T moves zero. The detector in input.js cannot see this case,
    *    so the screen is the whole of the fix. Same radio, throttle rest
    *    moved to the middle before the centre step, since rest is measured
-   *    there.
+   *    there. The pilot holds the throttle down from the release prompt
+   *    until the check step, which used to stop the wizard at roll: see
+   *    othersParked in input.js.
    * ------------------------------------------------------------------ */
   section('calibrate: the check step offers to move throttle zero, and T takes it');
   await page.evaluate("window.__pad.axes[2] = 0; window.__pad.timestamp += 1;");
   await ev(`ui.show('pilot'); ui.act('calibrate');`);
   await page.until("window.__ui.screen === 'calibrate' && !!window.__input.calibration", 5000);
   const drove2 = await page.evaluate(DRIVE({
-    roll: 0, pitch: 1, yaw: 4, thr: 2, thrReturn: -1,
+    roll: 0, pitch: 1, yaw: 4, thr: 2, thrReturn: -1, holdAfter: -1,
   }));
-  check('the wizard ran through on the sprung throttle', drove2[drove2.length - 1] === 'done', drove2.join(' | '));
+  check('the wizard ran through with the sprung throttle held down the whole way', drove2[drove2.length - 1] === 'done', drove2.join(' | '));
   /* Seven steps this time, the radio has its buttons back, so the wizard
    * is already on the check step. */
   await page.until("(() => { const v = window.__input.calibrationView(); return v && v.step === 'confirm'; })()", 3000).catch(() => {});
+  await page.until('window.__ui.calCanSave === true', 3000).catch(() => {});
+  const held = await ev('const v = input.calibrationView(); return JSON.stringify({ pct: v.throttlePercent, zeroHidden: ui.calZeroBtn.hidden });').then(JSON.parse);
+  check('still held down, the check step reads 0 and offers nothing', held.pct === 0 && held.zeroHidden === true, JSON.stringify(held));
+  /* The hand comes off. */
+  await page.evaluate("window.__pad.axes[2] = 0; window.__pad.timestamp += 1;");
   await page.until('!window.__ui.calZeroBtn.hidden', 3000).catch(() => {});
   const offer = await ev(`
     const v = input.calibrationView();

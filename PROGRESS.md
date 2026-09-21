@@ -40220,3 +40220,83 @@ rows leave from under it.
     npm run verify            not run, same reason. Every mutation above was
                               restored with git checkout and `git status src/`
                               is clean.
+
+## 2026-09-21 | input | The pilot who never lets go of the throttle can now finish the wizard
+
+The previous entry noted a hole and did not fix it. The owner asked for it
+fixed. A pilot with a self centring throttle (bug-851a43b7's LiteRadio) who
+let go at the centre step, so rest was measured at the middle, and then
+obeyed the release prompt, "Now put the throttle all the way back down", and
+HELD it there, could not get past roll. Roll identified, the pilot let the
+right stick go, and the release never completed, because the release check
+wanted every other axis within 0.2 of its centre step rest and the throttle
+sat a whole unit away. The hint said "One direction at a time. Diagonals are
+ignored." to somebody moving one stick, and nothing on the screen said the
+way out was to let go of the throttle.
+
+### The fix
+
+`othersParked` in src/input/input.js replaces the one-line `others` check
+in the release phase of `calIdentify`. Every axis but the one being released
+still has to be at rest, EXCEPT an identified throttle, which is parked at
+either of the two places the wizard has talked about: the bottom of its
+travel as the sweep found it, or its rest. The bottom is read from
+`c.min`/`c.max` on the side away from `high` rather than from `spec.low`,
+because `noteThrottleSpring` moves `low` to rest on a gamepad, and a
+gamepad's stick can still be pushed to its physical bottom.
+
+Not an "ignore the throttle" rule, deliberately. A throttle left at mid
+stick after its own step is neither place, still blocks the next release,
+and should: carrying a mid stick throttle into the check step would show
+the zero offer for the wrong reason on a parked radio. Every spring centred
+axis keeps the old rule in full, because it has one resting place and
+anywhere else is a hold, which is what keeps a diagonal from assigning two
+channels. The throttle's own release is unchanged: `low` has not moved yet
+at that moment, so its two places are the same two.
+
+### Tests
+
+scripts/input-selftest.js gains a `holdAfter` layout field, where the
+throttle is held from the end of its own step until the check step, and
+three rigs:
+
+- the LiteRadio pilot who holds it down throughout: the wizard completes,
+  the check step reads 0 while it is held and offers nothing, the hand
+  comes off and it reads 50 percent with the offer, which is taken, and the
+  map saves with zero at rest and sprung true;
+- a gamepad whose spring was detected, so `low` already moved to rest,
+  whose pilot then holds the stick at its physical bottom through roll: the
+  wizard completes, and the map is the gamepad's;
+- the discipline kept: roll held at 0.6 during the pitch release, with the
+  throttle at its bottom, and yaw does not arrive for 1.5 s of sim time;
+  roll let go and it does.
+
+scripts/input-check.js's section 5 now drives the sprung throttle with the
+hand never coming off until the check step, asserts 0 percent and no offer
+while held, then lets go and carries on to T and Escape as before.
+
+Made to fail first: with `othersParked` mutated to treat the throttle like
+every other axis, the Node selftest fails 6 checks, the first of them "roll
+never released to pitch", which is the ticket in four words. Restored by
+reversing the edit, not by git checkout, since the fix was uncommitted.
+
+### RUN LOG
+
+    npm run input:selftest    all 85 passed (75 before, 10 new)
+    npm run lint:input        all 54 passed, 32 s
+    npm run build:wasm        could not run: emcc not found, as on every run
+                              in this container. vendor/betaflight is not
+                              checked out, so `git diff --stat vendor/betaflight`
+                              is empty because there is nothing to diff.
+    npm run verify            RAN: 15 of 15 passing, 1 could not run (check 1,
+                              build-clean, SKIP: no emcc, EMSDK unset,
+                              vendor/betaflight not checked out). Trace hash
+                              de0401cd4266 in Node and in Chrome, one hash
+                              across 30, 60, 144 and 240 Hz. hover 0.2793,
+                              punch 80.0 m, terminal 31.0 m/s, motor step 26 ms,
+                              rate 671.7 deg/s, yaw -0.10 deg, sag 11.14 percent,
+                              diff ratio 1.2472, console errors 0 warnings 0.
+                              Identical to every run recorded since the 18th,
+                              which is what a change confined to the wizard's
+                              release check requires: the hash did not move
+                              because nothing in the trace's path did.

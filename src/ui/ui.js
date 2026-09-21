@@ -4498,10 +4498,51 @@ export class Ui {
     } catch (e) {
       userAgent = '';
     }
+    /*
+     * THE FAULT THAT STOPPED THE FLIGHT, IF ONE DID.
+     *
+     * main.js wraps the frame body once and records the first thrown fault
+     * on window.__frameFault. The comment beside it says the fault is
+     * "recorded for the bug report, which is the one path that carries a
+     * fault off this machine". It was not. This function never read it, so
+     * the mechanism was built, the banner told the pilot to press F8, and
+     * the ticket that arrived looked like every other ticket.
+     *
+     *   bug-579a663f: "when I really hardly crash the drone the game just
+     *   freezes"
+     *
+     * That is the exact symptom the wrapper was written for, because a
+     * frame body that throws at the same line every frame draws nothing:
+     * the last picture stays on screen for ever. Whether it is what
+     * happened to that pilot is unknowable, because their report could not
+     * carry the one field that would have said so. The next one can.
+     *
+     * Only present when there is a fault, so an ordinary report does not
+     * grow an empty field, and clipped hard: the board caps a context at
+     * 8000 characters over 32 keys, and a stack is the only thing here
+     * with no natural length.
+     */
+    let fault = null;
+    try {
+      const f = window.__frameFault;
+      if (f && f.message) {
+        fault = {
+          message: String(f.message).slice(0, 300),
+          /* The top frames only. WHERE it threw is the whole question and
+           * everything below is the loop that called it. */
+          stack: String(f.stack || '').split('\n').slice(0, 4).join(' | ').slice(0, 400),
+          atMs: Number(f.atMs) || 0,
+        };
+      }
+    } catch (e) {
+      /* The shell itself is what broke. A report with no fault field is
+       * still worth more than no report at all. */
+    }
     return {
       href,
       screen: this.screen,
       map: s.map || '',
+      ...(fault ? { fault } : {}),
       courseId: (seat && (seat.shareId || (seat.doc && seat.doc.id))) || '',
       courseName: (seat && seat.name) || '',
       flightMode: s.flightMode || '',

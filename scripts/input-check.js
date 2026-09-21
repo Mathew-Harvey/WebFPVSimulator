@@ -651,6 +651,41 @@ async function mousePage(page) {
     JSON.stringify(edges));
 
   /* --------------------------------------------------------------------
+   * 5d. A frozen picture has to be able to say why. bug-579a663f, "when I
+   *     really hardly crash the drone the game just freezes". main.js
+   *     catches the first thrown frame fault, records it on
+   *     window.__frameFault and tells the pilot to press F8, and the
+   *     snapshot F8 sends never read it, so the ticket arrived looking
+   *     like every other ticket. The fault itself is not reproducible from
+   *     here; that the report carries one is.
+   * ------------------------------------------------------------------ */
+  section('a frozen frame reports itself');
+  const clean = await ev('return JSON.stringify(Object.keys(ui.bugSnapshot()));').then(JSON.parse);
+  check('an ordinary report carries no fault field', !clean.includes('fault'), clean.join(','));
+  const faulted = await ev(`
+    const NL = String.fromCharCode(10);
+    window.__frameFault = { message: 'sim_state: SIM_ERR_STATE',
+      stack: ['Error: sim_state', '  at readState (main.js:2747)', '  at frameBody (main.js:5940)',
+        '  at frame (main.js:5758)', '  at deeper (main.js:1)'].join(NL), atMs: 12345 };
+    const snap = ui.bugSnapshot();
+    const keys = Object.keys(snap);
+    delete window.__frameFault;
+    return JSON.stringify({ keys, fault: snap.fault, chars: JSON.stringify(snap).length });
+  `).then(JSON.parse);
+  check('once one is recorded, the report carries it', Boolean(faulted.fault), JSON.stringify(faulted.keys));
+  check('with the message that names the throwing call',
+    faulted.fault && faulted.fault.message === 'sim_state: SIM_ERR_STATE', JSON.stringify(faulted.fault));
+  check('and the top frames only, so a stack cannot blow the size cap',
+    faulted.fault && faulted.fault.stack.split(' | ').length === 4 && !/deeper/.test(faulted.fault.stack),
+    faulted.fault ? faulted.fault.stack : 'none');
+  check('and when it happened', faulted.fault && faulted.fault.atMs === 12345);
+  /* The board caps a context at 8000 characters over 32 keys, and the feel
+   * form spreads this snapshot and adds five of its own. Assert the
+   * headroom rather than discovering it when reports start bouncing. */
+  check(`a faulted report is ${faulted.keys.length} keys and ${faulted.chars} chars, inside the board's 32 and 8000`,
+    faulted.keys.length + 5 <= 32 && faulted.chars < 8000, `${faulted.keys.length} keys, ${faulted.chars} chars`);
+
+  /* --------------------------------------------------------------------
    * 6. The camera angle that changed the track. bug-4d5b2c51: on a whoop,
    *    in the town, nudging the camera angle threw the pilot onto the
    *    custom track, because syncMode ran on every settings write and

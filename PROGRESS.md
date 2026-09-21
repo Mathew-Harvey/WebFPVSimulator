@@ -40591,3 +40591,113 @@ will do before it is pressed, so nothing is surprising. Measuring the
 throttle's movement against where it sat when the screen opened would fix
 it and was not done: it adds state to a screen that has just been proved
 correct, for a case that recovers itself in one keypress.
+
+## 2026-09-21 | shell, board | The freeze cannot be diagnosed, so the next one will report itself
+
+The owner asked whether the freeze could be addressed, and to close the
+whoop in freestyle ticket without doing it.
+
+    bug-579a663f  "when I really hardly crash the drone the game just
+                   freezes". Intel HD 630, city, graphics low, elrs500.
+
+### Can it be done: not blind, and this is why
+
+Four things were ruled out by reading and by probing, in this order.
+
+**The accumulator is not the classic death spiral.** `dt` is capped at
+100 ms where it is read, so a frame can ask for at most 100 steps and a
+slow frame cannot compound into a slower one. The comment at the step loop
+already says this and the code matches it.
+
+**The deliberate freeze is 800 ms.** `CLIP_CRASH_HOLD_MS` holds the glitch
+pose so the banner can say Crashed. That is not what a pilot calls a
+freeze.
+
+**The unfreeze is not stranded.** It is gated on `mode === 'flight'`, so a
+pilot who crashes and then pauses keeps `crashed` set, and the moment they
+resume it clears. The gate is sound.
+
+**It could not be reproduced here.** Two probes: a terminal velocity drop
+from 140 m and 200 m into the city, and an attempt to bury the craft in
+solid geometry to trip the clip watch. Neither produced a crash flag, a
+fault or a stalled loop. The second probe misread `__colliderBoxes`, which
+returns arrays rather than objects, so it placed the craft at the spawn
+and proved nothing; it is recorded as a probe that did not work rather
+than as evidence.
+
+What is left is the one mechanism whose symptom matches the report word
+for word, and it is already documented in main.js above `frame()`: a frame
+body that throws at the same line every frame draws nothing, so the last
+picture stays on screen for ever. The wrapper added for that catches the
+throw, records it and puts a banner up telling the pilot to press R or F8.
+
+So the honest answer is that the fault is plausible and unproven, and
+guessing at a fix for a fault nobody can see is what this project's rules
+say not to do. What CAN be fixed with certainty is why it is unprovable.
+
+### The mechanism was built and left unconnected
+
+The comment in main.js says `window.__frameFault` is "recorded for the bug
+report, which is the one path that carries a fault off this machine".
+`bugSnapshot` in ui.js never read it. The banner tells a frozen pilot to
+press F8, they do, and the ticket arrives carrying map, GPU, rates, sticks
+and viewport and no trace of the fault that stopped the flight. That is
+bug-579a663f exactly: a freeze report whose diagnostics look completely
+ordinary.
+
+`bugSnapshot` now carries a `fault` field when there is one, with the
+message, the top four stack frames joined onto one line, and when it
+happened. Absent when there is no fault, so an ordinary report does not
+grow an empty field. Clipped hard, because the board caps a context at
+8000 characters over 32 keys and a stack is the only field here with no
+natural length: measured at 20 keys and 856 characters with a fault
+attached, and the feel form spreads this snapshot and adds five of its
+own, so the headroom is asserted in the check rather than discovered when
+reports start bouncing.
+
+### What was NOT done, and why
+
+The frame loop's own comment claims that after a fault "the loop keeps
+running because the camera, the menus and the report form all live in it".
+That is not true as written: the throw happens part way down a 1640 line
+body, so everything after the throwing line is skipped on every frame
+including the render. Making it true means restructuring `frameBody` into
+a flight half and a shell half. That is the riskiest file in the project,
+the change would be made blind against a fault that cannot be reproduced
+here, and the pilot's documented escape, R, does work. Written down rather
+than attempted. It is the right next step once a report arrives carrying
+an actual fault.
+
+### bug-fdb0891a, the whoop in freestyle
+
+Closed wontfix at the owner's direction. The reporter is right that Enter
+does nothing; that is the deliberate rule showing through badly rather
+than a broken key. Freestyle means the town, the town is built at five
+inch scale, and `freestyleOffered` returns false for the micro class, so
+`syncMode` forces race. The resolution says so plainly and says the
+silence is the fair part of the complaint.
+
+### RUN LOG
+
+    npm run lint:input        all 84 passed, 25 s (78 before, 6 new)
+    npm run lint:shell        PASS, 255 rows, no row added so no baseline move
+    npm run input:selftest    not run: nothing under src/input changed this
+                              turn. It was 122 of 122 an hour ago on the
+                              same file.
+    npm run verify            not run: this turn changed src/ui/ui.js and
+                              scripts/ only. The flight model, the plant,
+                              the module ABI and the build are untouched,
+                              which is the rule for when verify is owed.
+                              It ran earlier today on the input change,
+                              15 of 15 with hash de0401cd4266.
+
+    Made to fail first:
+      the report drops the fault again          3 checks
+      the stack is not clipped to four frames   1
+
+    Probes that did not work, kept here so they are not repeated:
+      terminal velocity drop into the city, 140 m and 200 m: no crash flag,
+        no fault, loop healthy
+      burying the craft in geometry: __colliderBoxes returns ARRAYS, not
+        objects with x/y/z, so the placement went to the spawn and the
+        run proved nothing

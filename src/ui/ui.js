@@ -2984,6 +2984,9 @@ export class Ui {
     this.resultsDocId = null;
     this.coursePublished = null;
     this.padPrev = { up: false, down: false, left: false, right: false, select: false, back: false };
+    /* Seed the edges on the next poll rather than acting on them. Set by
+     * every screen change; see show(). */
+    this.padRearm = true;
     this.dropEl = null;
     this.dropIndex = null;
     this.menuRows = [];
@@ -3706,13 +3709,30 @@ export class Ui {
      * in input.js for the radio this exists for. */
     this.calZeroBtn = btn('name-dialog-btn', 'Throttle zero is here');
     this.calZeroBtn.hidden = true;
+    /*
+     * REVERSE THE CHANNEL UNDER THEIR THUMB, and the label names it rather
+     * than saying Reverse, because the whole trick of this control is that
+     * the pilot never has to choose from a list: whatever they are moving
+     * is what the button is about. See movingChannel in input.js.
+     */
+    this.calRevBtn = btn('name-dialog-btn', 'Reverse');
+    this.calRevBtn.hidden = true;
+    /* Only on the check step, where the two drawn gimbals are captioned
+     * and a pilot can see that they are on the wrong hands. */
+    this.calModeBtn = btn('name-dialog-btn', 'Swap stick mode');
+    this.calModeBtn.hidden = true;
     this.calSaveBtn = btn('name-dialog-btn on', 'Save mapping');
     this.calSaveBtn.disabled = true;
     this.calCancelBtn.addEventListener('click', () => this.act('calibrate-cancel'));
     this.calSkipBtn.addEventListener('click', () => this.act('calibrate-skip'));
     this.calZeroBtn.addEventListener('click', () => this.act('calibrate-zero-throttle'));
+    this.calRevBtn.addEventListener('click', () => this.act('calibrate-reverse'));
+    this.calModeBtn.addEventListener('click', () => this.act('calibrate-stick-mode'));
     this.calSaveBtn.addEventListener('click', () => this.act('calibrate-save'));
-    calBtns.append(this.calCancelBtn, this.calSkipBtn, this.calZeroBtn, this.calSaveBtn);
+    calBtns.append(
+      this.calCancelBtn, this.calSkipBtn, this.calZeroBtn,
+      this.calRevBtn, this.calModeBtn, this.calSaveBtn,
+    );
     calibrate.append(
       this.calKicker,
       this.calPrompt,
@@ -5826,6 +5846,24 @@ export class Ui {
           note: padChooseNote(this.padInfo),
         },
         { label: 'Calibrate sticks', action: 'calibrate', note: 'Centre, full range, then one named move per stick. Saved after you check it.' },
+        /*
+         * THE WAY BACK TO THE ONLY SCREEN THAT SHOWS A MAPPING.
+         *
+         * The wizard's check step draws the live gimbals, every axis, and
+         * the reverse control, and it used to sit behind six steps. A pilot
+         * who found a backwards channel afterwards had to redo the whole
+         * calibration to reach it, with the same chance of the same wrong
+         * push: "some are inverted and there's no option to change it".
+         * This opens that step by itself, against the mapping already
+         * saved, so a one channel repair costs one row instead of a minute.
+         */
+        {
+          label: 'Check sticks',
+          action: 'calibrate-check',
+          note: 'Your saved mapping, live, without calibrating again. Move a stick and watch it:'
+            + ' if it goes the wrong way, one key reverses that channel, and if the wrong stick'
+            + ' moves on screen, one key puts them on the other hands. Nothing is kept until you save.',
+        },
         /*
          * WHICH STICK CARRIES WHICH CHANNEL, and it sits here because the
          * two rows above are the other two things a pilot does to their
@@ -9019,6 +9057,32 @@ export class Ui {
 
   show(screen) {
     this.closeDrop();
+    /*
+     * A STICK HELD THROUGH A SCREEN CHANGE IS NOT A GESTURE ON THE SCREEN
+     * IT LANDS ON.
+     *
+     * pollPad is edge triggered off padPrev, which works as long as pollPad
+     * saw the stick held on the screen being left. Three screens break that
+     * promise, and they break it in the direction that fires: flight resets
+     * padPrev to all false on every poll, and the calibrate and joystick
+     * picker screens are fed channels that input.js pins to zero while they
+     * are up, because the wizard owns the sticks. So the tracker believed
+     * every stick was centred, and the first poll on the new screen saw a
+     * held stick go from false to true and called it a fresh flick.
+     *
+     * Found on the check step, where it is not an edge case but the normal
+     * way through: the pilot holds a stick to aim the reverse control, and
+     * the reverse they just pressed turns their held roll from right into
+     * LEFT, which is Back. Save, and the shell threw them out of Settings
+     * onto the front page. The same fault pauses a run with roll held and
+     * moves the cursor on the pause menu.
+     *
+     * So the next poll after any screen change SEEDS padPrev instead of
+     * acting on it. The cost is that a deliberate flick made in the same
+     * two milliseconds as the change is swallowed, which is a cost the edge
+     * trigger is already paying everywhere else: let go and flick again.
+     */
+    this.padRearm = true;
     const pinned = locationHashScreen();
     if (pinned && screen === 'title') {
       screen = pinned;
@@ -10657,6 +10721,15 @@ export class Ui {
       if (this.calZeroBtn) {
         this.calZeroBtn.hidden = true;
       }
+      this.calCanReverse = false;
+      this.calMoving = null;
+      this.calOnConfirm = false;
+      if (this.calRevBtn) {
+        this.calRevBtn.hidden = true;
+      }
+      if (this.calModeBtn) {
+        this.calModeBtn.hidden = true;
+      }
       return;
     }
     const n = view.stepIndex + 1;
@@ -10674,6 +10747,22 @@ export class Ui {
     this.calCanZeroThrottle = Boolean(view.canZeroThrottle);
     if (this.calZeroBtn) {
       this.calZeroBtn.hidden = !view.canZeroThrottle;
+    }
+    this.calCanReverse = Boolean(view.canReverse);
+    this.calMoving = view.moving || null;
+    this.calOnConfirm = view.step === 'confirm';
+    if (this.calRevBtn) {
+      this.calRevBtn.hidden = !view.canReverse;
+      if (view.canReverse) {
+        /* Named, and it says which way it is going: a pilot who has already
+         * pressed it once needs to know this puts it back. */
+        const on = view.reverse && view.reverse[view.moving];
+        Ui.text(this.calRevBtn, `${on ? 'Un-reverse' : 'Reverse'} ${view.moving}`);
+      }
+    }
+    if (this.calModeBtn) {
+      this.calModeBtn.hidden = !this.calOnConfirm;
+      Ui.text(this.calModeBtn, `Stick mode ${normaliseStickMode(this.settings.stickMode)}`);
     }
     const ch = view.channels || { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
     placeSticks(this.calStickLeft, this.calStickRight, ch, this.settings.stickMode);
@@ -10733,6 +10822,20 @@ export class Ui {
     if (this.howtoKeys) {
       this.renderHowto();
     }
+  }
+
+  /*
+   * The next stick mode round, for the key and the button on the check
+   * step. writeSettings is the same door the Settings row uses, so the
+   * keyboard, the thumb sticks, every drawn gimbal and the stored setting
+   * all move together and none of it is duplicated here.
+   */
+  cycleStickMode() {
+    const at = STICK_MODES.indexOf(normaliseStickMode(this.settings.stickMode));
+    const next = STICK_MODES[(at + 1) % STICK_MODES.length];
+    this.settings.stickMode = next;
+    this.writeSettings();
+    return next;
   }
 
   setPadInfo(info) {
@@ -12383,6 +12486,27 @@ export class Ui {
         this.act('calibrate-zero-throttle');
         return true;
       }
+      /*
+       * R REVERSES WHAT THEY ARE MOVING, and M puts the drawn sticks on the
+       * other hands. Both are only live on the check step, both are named
+       * in the hint under the prompt as it changes, and neither is bound to
+       * the pad: the pilot is holding a stick to aim these, so a stick
+       * gesture would fight the aiming. See bug-b0d085f0 and bug-873a84ec.
+       */
+      if (code === 'KeyR' && this.calCanReverse) {
+        if (this.onUiSound) {
+          this.onUiSound('select');
+        }
+        this.act('calibrate-reverse');
+        return true;
+      }
+      if (code === 'KeyM' && this.calOnConfirm) {
+        if (this.onUiSound) {
+          this.onUiSound('adjust');
+        }
+        this.act('calibrate-stick-mode');
+        return true;
+      }
       if ((code === 'Enter' || code === 'Space') && this.calCanSkip) {
         if (this.onUiSound) {
           this.onUiSound('select');
@@ -12523,6 +12647,13 @@ export class Ui {
       select: Boolean(nav.select),
       back: Boolean(nav.back),
     };
+    /* One poll to learn where the sticks already are, acting on nothing.
+     * See show(). */
+    if (this.padRearm) {
+      this.padRearm = false;
+      this.padPrev = now;
+      return;
+    }
     /*
      * A dialog swallows the pad exactly as handleKey swallows the keys.
      * Without this, a radio pilot's select flick landed on the MENU UNDER

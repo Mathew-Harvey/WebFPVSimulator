@@ -4546,9 +4546,30 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
         notice = { text: 'No radio or gamepad found.\nPlug one in, set it to joystick mode, and reload.', untilMs: performance.now() + 3200 };
       }
+    } else if (action === 'calibrate-check') {
+      /* The check step on its own, against the mapping already saved. Same
+       * door as calibrate above, and the same answer when there is nothing
+       * plugged in, because a mapping with no radio behind it is nothing to
+       * look at. See startCalibrationCheck in input.js. */
+      if (input.startCalibrationCheck()) {
+        ui.show('calibrate');
+      } else {
+        notice = { text: 'No radio or gamepad found.\nPlug one in, set it to joystick mode, and reload.', untilMs: performance.now() + 3200 };
+      }
     } else if (action === 'calibrate-cancel') {
       input.cancelCalibration();
       ui.show('pilot');
+    } else if (action === 'calibrate-reverse') {
+      /* No notice, for the reason on calibrate-zero-throttle below: the
+       * calibrate branch of the frame loop blanks the banner every frame.
+       * The feedback is the gimbal they are watching turning round under
+       * the stick they are holding, which is the point of doing it here. */
+      input.reverseMovingChannel();
+    } else if (action === 'calibrate-stick-mode') {
+      /* Settings owns the mode and writeSettings pushes it through
+       * applySettings, so the keyboard, the thumb sticks and every drawn
+       * gimbal follow in one place. See cycleStickMode in ui.js. */
+      ui.cycleStickMode();
     } else if (action === 'calibrate-zero-throttle') {
       /* No notice. The calibrate branch of the frame loop blanks the banner
        * every frame, so one set here was never seen; the feedback is the

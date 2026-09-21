@@ -479,6 +479,159 @@ section('a radio throttle that springs, and the pilot never lets go until the ch
 }
 
 /* ------------------------------------------------------------------------
+ * 4b. A channel that came out backwards, and the way to turn it round.
+ *     bug-b0d085f0, "cant calibrate the sticks correctly. some are
+ *     inverted and there's no option to change it". The wizard takes its
+ *     direction from the direction the pilot pushes, so one wrong push at
+ *     one of six steps is a channel backwards for good, and until this
+ *     there was no way to see it or change it.
+ * ---------------------------------------------------------------------- */
+section('a backwards channel, and the reverse that fixes it');
+{
+  /* A pilot who pushed the pitch stick FORWARD on the step that said to
+   * pull it back. Everything else done correctly. */
+  const rig = new Rig(makePad([0, 0, -1, 0], 4, 'Pushed the wrong way'));
+  rig.im.startCalibration();
+  rig.waitStep('sweep');
+  for (const i of [0, 1, 2, 3]) {
+    rig.ax(i, 1); rig.step(); rig.ax(i, -1); rig.step(); rig.ax(i, i === 2 ? -1 : 0); rig.step();
+  }
+  rig.waitStep('throttle');
+  rig.ax(2, 1); rig.waitPhase('release'); rig.ax(2, -1); rig.waitStep('roll');
+  rig.ax(0, 1); rig.waitPhase('release'); rig.ax(0, 0); rig.waitStep('pitch');
+  /* The prompt says pull back, which is +1 on this radio. They push. */
+  rig.ax(1, 1); rig.waitPhase('release'); rig.ax(1, 0); rig.waitStep('yaw');
+  rig.ax(3, 1); rig.waitPhase('release'); rig.ax(3, 0); rig.waitStep('confirm');
+  rig.ax(1, 1); rig.step();
+  check('the wrong push is recorded faithfully, so pitch reads backwards',
+    rig.view().channels.pitch === 1, String(rig.view().channels.pitch));
+  check('and the check step names the channel being moved', rig.view().moving === 'pitch', String(rig.view().moving));
+  check('and offers to reverse it', rig.view().canReverse === true);
+  check('and says so in the hint', /press R to reverse pitch/.test(rig.view().hint), rig.view().hint);
+  check('reversing returns the channel it turned round', rig.im.reverseMovingChannel() === 'pitch');
+  check('the same stick now reads the other way', rig.view().channels.pitch === -1, String(rig.view().channels.pitch));
+  check('and the button offer becomes the way back', /Un-reverse|reversed/.test(rig.view().hint) || rig.view().reverse.pitch === true);
+  rig.im.acceptCalibration();
+  check('the saved map carries the reversal', rig.im.map.reverse.pitch === true
+    && rig.im.map.reverse.roll === false, JSON.stringify(rig.im.map.reverse));
+  rig.ax(1, 1); rig.step();
+  check('and flight reads it reversed', rig.im.channels.pitch === -1, String(rig.im.channels.pitch));
+  rig.ax(1, -1); rig.step();
+  check('both ways', rig.im.channels.pitch === 1, String(rig.im.channels.pitch));
+}
+{
+  /* Every channel, including the throttle, whose reversal is the dangerous
+   * one: a throttle mapped backwards is full power with the stick down. */
+  const rig = new Rig(makePad([0, 0, -1, 0], 4, 'All four'));
+  const drove = driveWizard(rig, {
+    roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: -1, thrReturn: -1,
+  });
+  check('the wizard completes', drove === true, String(drove));
+  rig.im.acceptCalibration();
+  check('nothing is reversed to begin with',
+    Object.values(rig.im.map.reverse).every((v) => v === false), JSON.stringify(rig.im.map.reverse));
+  rig.ax(0, 1); rig.ax(3, 1); rig.ax(1, -1); rig.ax(2, 1); rig.step();
+  const before = { ...rig.im.channels };
+  check('all four read full one way', before.roll === 1 && before.yaw === 1
+    && before.pitch === 1 && before.throttle === 1, JSON.stringify(before));
+  rig.im.map.reverse = {
+    roll: true, pitch: true, yaw: true, throttle: true,
+  };
+  rig.step();
+  const after = { ...rig.im.channels };
+  check('reversed, the three centred channels negate',
+    after.roll === -1 && after.yaw === -1 && after.pitch === -1, JSON.stringify(after));
+  check('and the throttle counts down from one rather than going negative',
+    after.throttle === 0, String(after.throttle));
+  rig.ax(2, -1); rig.step();
+  check('a reversed throttle reads FULL with the stick at the bottom, which is why it is offered at all',
+    rig.im.channels.throttle === 1, String(rig.im.channels.throttle));
+  /* And the -0 trap: poll compares samples with !==, and -0 !== 0 is
+   * false but Object.is says otherwise, so a bare negation here would be
+   * a value that looks unchanged to one test and changed to another. */
+  rig.ax(0, 0); rig.ax(1, 0); rig.ax(3, 0); rig.step();
+  check('a reversed channel at rest is +0, not -0',
+    Object.is(rig.im.channels.roll, 0) && Object.is(rig.im.channels.pitch, 0)
+    && Object.is(rig.im.channels.yaw, 0), JSON.stringify([rig.im.channels.roll, rig.im.channels.pitch]));
+  const q = rig.im.queue.length;
+  rig.run(200);
+  check('and does not emit a change on every poll for ever', rig.im.queue.length - q < 4,
+    `${rig.im.queue.length - q} samples in 200 ms`);
+}
+{
+  /* The pointer is the stick, so it must refuse a diagonal rather than
+   * guess which of two live channels the pilot meant. */
+  const rig = new Rig(makePad([0, 0, -1, 0], 4, 'Diagonal'));
+  driveWizard(rig, {
+    roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: -1, thrReturn: -1,
+  });
+  rig.ax(0, 1); rig.ax(1, -1); rig.step();
+  check('roll and pitch together name nothing', rig.view().moving === null, String(rig.view().moving));
+  check('so the offer is withheld', rig.view().canReverse === false);
+  check('and the key does nothing', rig.im.reverseMovingChannel() === null);
+  rig.ax(1, 0); rig.step();
+  check('one stick alone names it again', rig.view().moving === 'roll', String(rig.view().moving));
+  rig.ax(0, 0.2); rig.step();
+  check('a stick barely off centre is not a deliberate aim', rig.view().moving === null, String(rig.view().moving));
+}
+
+/* ------------------------------------------------------------------------
+ * 4c. Reaching that screen without doing the whole wizard again, which is
+ *     the other half of "no option to change it".
+ * ---------------------------------------------------------------------- */
+section('the check step, opened on its own against the saved map');
+{
+  const rig = new Rig(makePad([0, 0, -1, 0], 4, 'Already calibrated'));
+  driveWizard(rig, {
+    roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: -1, thrReturn: -1,
+  });
+  rig.im.acceptCalibration();
+  const saved = JSON.stringify(rig.im.map);
+  check('it opens', rig.im.startCalibrationCheck() === true);
+  const v = rig.view();
+  check('straight onto the check step, one step long', v.step === 'confirm' && v.stepCount === 1, JSON.stringify([v.step, v.stepCount]));
+  check('and says which of the two screens it is', v.checkOnly === true);
+  check('with the saved mapping already in it', rig.im.calibration.draft.yaw.axis === rig.im.map.yaw.axis);
+  check('the strip still shows every axis', v.axes.length === 4);
+  rig.ax(3, 1); rig.step();
+  check('a stick names its channel', rig.view().moving === 'yaw', String(rig.view().moving));
+  check('reversing it works here too', rig.im.reverseMovingChannel() === 'yaw');
+  check('the SAVED map is untouched until save', JSON.stringify(rig.im.map) === saved);
+  rig.im.cancelCalibration();
+  check('escape leaves it exactly as it was', JSON.stringify(rig.im.map) === saved
+    && rig.im.map.reverse.yaw === false, JSON.stringify(rig.im.map.reverse));
+  rig.im.startCalibrationCheck();
+  rig.ax(3, 1); rig.step();
+  rig.im.reverseMovingChannel();
+  check('and saving writes it back', rig.im.acceptCalibration() === true && rig.im.map.reverse.yaw === true);
+  check('without disturbing the axis assignments', rig.im.map.yaw.axis === 3 && rig.im.map.roll.axis === 0);
+}
+{
+  const rig = new Rig(null);
+  check('with no radio there is nothing to check, and it says so rather than opening',
+    rig.im.startCalibrationCheck() === false && rig.im.calibration === null);
+}
+{
+  /* A mapping stored before any of this existed has no reverse block at
+   * all, and must load with every channel the right way round rather than
+   * with undefined holes that read as neither true nor false. */
+  const store = memoryStorage();
+  store.setItem('webfpv_stick_map_v1', JSON.stringify({
+    roll: { axis: 0, center: 0, pos: 1, neg: -1 },
+    pitch: { axis: 1, center: 0, pos: -1, neg: 1 },
+    yaw: { axis: 3, center: 0, pos: 1, neg: -1 },
+    throttle: { axis: 2, low: -1, high: 1 },
+  }));
+  const rig = new Rig(makePad([0, 0, -1, 0], 4, 'Old map'), store);
+  check('an old stored map loads with all four channels forward',
+    JSON.stringify(rig.im.map.reverse) === JSON.stringify({
+      roll: false, pitch: false, yaw: false, throttle: false,
+    }), JSON.stringify(rig.im.map.reverse));
+  rig.ax(0, 1); rig.step();
+  check('and flies exactly as it did', rig.im.channels.roll === 1, String(rig.im.channels.roll));
+}
+
+/* ------------------------------------------------------------------------
  * 5. The guess check past the throttle, and the latch in both directions.
  *    bug-3d72d9a4, bug-94f7e52b, bug-13519874 (no yaw on a guessed map
  *    whose throttle happened to be right); review of the 19th (a wrong

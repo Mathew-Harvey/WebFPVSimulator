@@ -499,6 +499,158 @@ async function mousePage(page) {
   await page.evaluate("window.__pad.axes[2] = -1; window.__pad.timestamp += 1;");
 
   /* --------------------------------------------------------------------
+   * 5b. A backwards channel, and the repair that does not cost a whole
+   *     calibration. bug-b0d085f0, "cant calibrate the sticks correctly.
+   *     some are inverted and there's no option to change it", and
+   *     bug-873a84ec, "i pushed the left stick but the right stick moved
+   *     in the game", which is a Mode 1 pilot on a Mode 2 drawing.
+   *
+   *     Driven from the Settings row with the arrow keys and Enter, as a
+   *     pilot reaches it, because the whole complaint was that there was
+   *     no way in.
+   * ------------------------------------------------------------------ */
+  section('check sticks: reaching the repair from Settings, reversing a channel, swapping the hands');
+  const row = await ev(`
+    ${PAST_GATE}
+    ui.show('pilot');
+    const items = ui.items();
+    const i = items.findIndex((it) => it && it.action === 'calibrate-check');
+    if (i >= 0) { ui.setCursor(i); }
+    return JSON.stringify({ i, label: i >= 0 ? items[i].label : null, note: i >= 0 ? (items[i].note || '') : '',
+      stop: i >= 0 ? ui.isStop(items[i]) : false, calibrated: input.map.stored });
+  `).then(JSON.parse);
+  check('there is a row in Settings for it', row.i >= 0 && row.stop, JSON.stringify(row));
+  check('and its note says what it is for', /reverses that channel/.test(row.note), row.note.slice(0, 120));
+  check('the radio is calibrated going in, so there is a mapping to check', row.calibrated === true);
+  await page.tap('Enter');
+  let opened = true;
+  await page.until("window.__ui.screen === 'calibrate' && !!window.__input.calibration", 4000).catch(() => { opened = false; });
+  check('Enter on that row opens the check', opened);
+  /* The view answers the instant the screen opens; the kicker and the
+   * buttons are painted by the frame loop and still hold the last
+   * section's text until it runs. Wait for the paint, not the state. */
+  await page.until("/Check sticks/.test(window.__ui.calKicker.textContent)", 5000).catch(() => {});
+  const head = await ev(`
+    const v = input.calibrationView();
+    return JSON.stringify({ step: v.step, count: v.stepCount, checkOnly: v.checkOnly, kicker: ui.calKicker.textContent,
+      canSave: ui.calCanSave, revHidden: ui.calRevBtn.hidden, modeHidden: ui.calModeBtn.hidden,
+      yaw: input.calibration.draft.yaw.axis, axes: v.axes.length });
+  `).then(JSON.parse);
+  check('it opens straight on the check step, one step long', head.step === 'confirm' && head.count === 1 && head.checkOnly === true,
+    JSON.stringify(head));
+  check('named as the check rather than as the wizard', /Check sticks/.test(head.kicker), head.kicker);
+  check('carrying the saved mapping, yaw still on axis 4', head.yaw === 4 && head.axes === 6, JSON.stringify(head));
+  check('Save is offered and the stick mode button is up; Reverse waits for a stick',
+    head.canSave === true && head.modeHidden === false && head.revHidden === true, JSON.stringify(head));
+
+  /* Move roll, which this radio has on axis 0. */
+  await page.evaluate("window.__pad.axes[0] = 1; window.__pad.timestamp += 1;");
+  /*
+   * Wait on the SHELL's state, not on the view's. calibrationView is a
+   * pure read and answers the instant the axis moves; calCanReverse and
+   * the button's label are painted by the frame loop, and the R key is
+   * gated on calCanReverse. Waiting on the view raced the paint and the
+   * keypress was swallowed by a screen that did not yet know a channel
+   * was live. The button label is the last thing to settle, so it is what
+   * is waited on.
+   */
+  await page.until("window.__ui.calCanReverse === true && window.__ui.calRevBtn.textContent === 'Reverse roll'", 5000).catch(() => {});
+  const moving = await ev(`
+    const v = input.calibrationView();
+    return JSON.stringify({ moving: v.moving, canReverse: v.canReverse, hint: ui.calHint.textContent,
+      revHidden: ui.calRevBtn.hidden, revLabel: ui.calRevBtn.textContent, roll: v.channels.roll });
+  `).then(JSON.parse);
+  check('holding one stick names its channel', moving.moving === 'roll' && moving.canReverse === true, JSON.stringify(moving));
+  check('the button appears and names it', moving.revHidden === false && moving.revLabel === 'Reverse roll', moving.revLabel);
+  check('the hint offers both keys', /press R to reverse roll/.test(moving.hint) && /press M/.test(moving.hint), moving.hint);
+  check('and roll reads full one way', moving.roll === 1, String(moving.roll));
+  await page.tap('KeyR');
+  let flipped = true;
+  await page.until("window.__input.calibrationView().channels.roll === -1 && window.__ui.calRevBtn.textContent === 'Un-reverse roll'", 5000)
+    .catch(() => { flipped = false; });
+  check('R turns it round under the stick they are still holding', flipped);
+  const after = await ev(`
+    const v = input.calibrationView();
+    return JSON.stringify({ roll: v.channels.roll, rev: v.reverse, label: ui.calRevBtn.textContent,
+      savedRev: input.map.reverse.roll });
+  `).then(JSON.parse);
+  check('the draft records it', after.rev.roll === true && after.rev.pitch === false, JSON.stringify(after.rev));
+  check('the button becomes the way back', after.label === 'Un-reverse roll', after.label);
+  check('and the SAVED map is untouched until Save', after.savedRev === false);
+
+  /* And the other ticket: the drawn sticks on the wrong hands. */
+  const modeBefore = await ev('return JSON.stringify({ mode: ui.settings.stickMode, left: ui.calStickLeft.cap.textContent });').then(JSON.parse);
+  await page.tap('KeyM');
+  let swapped = true;
+  await page.until('window.__ui.settings.stickMode !== ' + modeBefore.mode, 4000).catch(() => { swapped = false; });
+  check('M moves the stick mode on', swapped, JSON.stringify(modeBefore));
+  const modeAfter = await ev(`
+    return JSON.stringify({ mode: ui.settings.stickMode, left: ui.calStickLeft.cap.textContent,
+      inputMode: input.stickMode, btn: ui.calModeBtn.textContent });
+  `).then(JSON.parse);
+  check('the drawn gimbal is re-captioned where they can see it', modeAfter.left !== modeBefore.left,
+    `${modeBefore.left} -> ${modeAfter.left}`);
+  check('and the input layer and the button agree with the setting',
+    modeAfter.inputMode === modeAfter.mode && modeAfter.btn === `Stick mode ${modeAfter.mode}`, JSON.stringify(modeAfter));
+
+  await page.tap('Enter');
+  let kept = true;
+  await page.until("window.__ui.screen === 'pilot' && window.__input.calibration === null", 4000).catch(() => { kept = false; });
+  check('Enter saves and returns to Settings', kept);
+  const keptMap = await ev('return JSON.stringify({ rev: input.map.reverse, yaw: input.map.yaw.axis, thr: input.map.throttle.low });').then(JSON.parse);
+  check('the reversal is kept and no axis assignment moved',
+    keptMap.rev.roll === true && keptMap.yaw === 4 && keptMap.thr === -1, JSON.stringify(keptMap));
+  await page.evaluate("window.__pad.axes[0] = 0; window.__pad.timestamp += 1;");
+  /* Put the mode back so the section after this one starts where it expects. */
+  await ev('ui.settings.stickMode = 2; ui.writeSettings();');
+
+  /* --------------------------------------------------------------------
+   * 5c. The pad edge tracker across a screen change. Found while building
+   *     the check above: the wizard pins the channels to zero while it is
+   *     up, so the menu's edge tracker believed every stick was centred,
+   *     and a stick still held when the screen closed read as a brand new
+   *     flick on the screen it landed on. Saving the check with roll held
+   *     went Back, off Settings and onto the front page. See show().
+   *
+   *     Both halves are asserted, because suppressing a held stick is only
+   *     half a fix if it also suppresses a real one: a radio pilot has to
+   *     still be able to drive the menus.
+   * ------------------------------------------------------------------ */
+  section('the pad edge tracker: a held stick is not a gesture, a fresh one still is');
+  const edges = await ev(`
+    ${PAST_GATE}
+    const out = {};
+    /* Held BACK across a screen change must not leave the screen. */
+    ui.show('pilot');
+    ui.pollPad({ left: true });
+    out.heldOnce = ui.screen;
+    ui.pollPad({ left: true });
+    out.heldTwice = ui.screen;
+    /* Let go, then a real flick, which must go back. */
+    ui.pollPad({});
+    ui.pollPad({ left: true });
+    out.afterFlick = ui.screen;
+    /* And the cursor, the same way round. */
+    ui.show('pilot');
+    const start = ui.cursor;
+    ui.pollPad({ down: true });
+    out.cursorHeld = ui.cursor - start;
+    ui.pollPad({ down: true });
+    out.cursorStillHeld = ui.cursor - start;
+    ui.pollPad({});
+    ui.pollPad({ down: true });
+    out.cursorFlicked = ui.cursor - start;
+    ui.pollPad({});
+    ui.show('title');
+    return JSON.stringify(out);
+  `).then(JSON.parse);
+  check('a stick already held when the screen opened does nothing', edges.heldOnce === 'pilot' && edges.heldTwice === 'pilot',
+    JSON.stringify(edges));
+  check('releasing and flicking again still navigates', edges.afterFlick !== 'pilot', edges.afterFlick);
+  check('and the cursor obeys the same rule', edges.cursorHeld === 0 && edges.cursorStillHeld === 0 && edges.cursorFlicked > 0,
+    JSON.stringify(edges));
+
+  /* --------------------------------------------------------------------
    * 6. The camera angle that changed the track. bug-4d5b2c51: on a whoop,
    *    in the town, nudging the camera angle threw the pilot onto the
    *    custom track, because syncMode ran on every settings write and

@@ -167,6 +167,20 @@ const CAL = {
    * throttle that is idle everywhere but the last few percent, and the
    * only way back is to recalibrate. See zeroThrottleHere. */
   THROTTLE_MIN_RANGE: 0.3,
+  /*
+   * How far a channel has to be deflected on the check step, and how far
+   * clear of every other channel, before the screen will name it as the
+   * one the pilot is moving and offer to reverse it. See movingChannel.
+   *
+   * These are CHANNEL units, nought to one after the mapping, not the raw
+   * axis units the identify step works in. They are deliberately the same
+   * numbers as IDENT_DELTA and IDENT_GAP: the question is the same one,
+   * which stick is being moved and is it unambiguous, and a pilot who has
+   * just been through six steps of holding one stick at a time should not
+   * have to learn a second feel for it.
+   */
+  REV_DELTA: 0.45,
+  REV_GAP: 0.18,
 };
 
 const PAD_PICK = {
@@ -193,6 +207,42 @@ const GUESS = {
   LEVEL_STEP: 1 / 16,
 };
 
+/*
+ * WHICH CHANNELS ARE BACKWARDS, AND WHY THIS HAD TO EXIST.
+ *
+ * The wizard works out a channel's direction from the direction the pilot
+ * pushed while it was asking, which is right and is what makes it work on a
+ * radio with reversed channels in its own setup: whichever way they push
+ * when told "fully to the right" becomes right. It has one failure mode,
+ * and a human will always be able to hit it. Push the wrong way once, at
+ * one of six steps, and that channel is backwards for good.
+ *
+ *   bug-b0d085f0, gazgano: "cant calibrate the sticks correctly. some are
+ *   inverted and there's no option to change it"
+ *
+ * The second half of that sentence is the bug. The mapping was write once:
+ * nothing in the shell could show a pilot what had been recorded, and
+ * nothing could change one channel of it. The only repair for a single
+ * wrong push was the whole wizard again, with the same chance of the same
+ * mistake, which is why the report reads as helpless as it does.
+ *
+ * So direction is a property of the MAPPING, stored beside it, and it can
+ * be flipped one channel at a time from the check step without touching
+ * anything the wizard learned. Every transmitter ever built has this
+ * control and it is on the first page of the menu.
+ */
+function cloneReverse(rev) {
+  const out = {
+    roll: false, pitch: false, yaw: false, throttle: false,
+  };
+  if (rev) {
+    for (const ch of IDENT_CHANNELS) {
+      out[ch] = Boolean(rev[ch]);
+    }
+  }
+  return out;
+}
+
 function cloneMap(map) {
   return {
     roll: { ...map.roll },
@@ -202,6 +252,10 @@ function cloneMap(map) {
     /* Optional, and null for every radio that has buttons. It is not a
      * flight channel: readGamepad never looks at it. */
     select: map.select ? { ...map.select } : null,
+    /* Always all four keys, present or not in what came in, so a map
+     * stored before this existed loads with every channel the right way
+     * round rather than with undefined holes. */
+    reverse: cloneReverse(map.reverse),
     stored: Boolean(map.stored),
   };
 }
@@ -407,6 +461,45 @@ function pickUnusedAxis(axes, rest, used) {
   return { best, bestAbs, secondAbs };
 }
 
+/*
+ * WHICH CHANNEL IS THE PILOT MOVING RIGHT NOW?
+ *
+ * The check step has no cursor. It is driven by sticks, by design, because
+ * the radio it is checking may be the only thing the pilot can press with,
+ * so there is no row to put a Reverse control on and no way to point at a
+ * channel with a key. There is a better pointer anyway, and the pilot is
+ * already holding it: the stick that is moving IS the selection.
+ *
+ * So the screen names the channel with a clear lead over the others, and
+ * one key reverses that one. The pilot pushes right, sees the drawn stick
+ * go left, presses the key while still holding it, and watches it come
+ * good. Nothing to read, nothing to choose from a list.
+ *
+ * A clear lead matters: on a diagonal, or with a thumb resting on the
+ * throttle, two channels are live and reversing either would be a guess.
+ * Then nothing is named and no key does anything, which is the same
+ * discipline the identify steps use for the same reason.
+ */
+function movingChannel(channels) {
+  let best = null;
+  let bestMag = 0;
+  let secondMag = 0;
+  for (const ch of IDENT_CHANNELS) {
+    const mag = Math.abs(channels[ch] || 0);
+    if (mag > bestMag) {
+      secondMag = bestMag;
+      bestMag = mag;
+      best = ch;
+    } else if (mag > secondMag) {
+      secondMag = mag;
+    }
+  }
+  if (!best || bestMag < CAL.REV_DELTA || bestMag - secondMag < CAL.REV_GAP) {
+    return null;
+  }
+  return best;
+}
+
 function channelSpec(axis, rest, sample, min, max) {
   const towardHigh = sample >= rest;
   return {
@@ -546,7 +639,7 @@ function calTitle(c) {
     pitch: 'Pitch',
     yaw: 'Yaw',
     select: 'Menu switch',
-    confirm: 'Check',
+    confirm: c.checkOnly ? 'Check sticks' : 'Check',
   }[c.step] || '';
 }
 
@@ -594,7 +687,7 @@ function calPrompt(c, mode) {
   }[c.step] || '';
 }
 
-function calHint(c, travelled, need, gp, idleThrottle = 0) {
+function calHint(c, travelled, need, gp, idleThrottle = 0, moving = null) {
   if (!gp) {
     return 'Radio disconnected. Plug it back in, joystick mode.';
   }
@@ -615,9 +708,25 @@ function calHint(c, travelled, need, gp, idleThrottle = 0) {
         + ' If that is where your throttle sits when you let go, press T or'
         + ' Throttle zero is here.';
     }
-    return c.draft && c.draft.select
-      ? 'Enter, Save mapping, or the switch you just assigned. Escape cancels.'
-      : 'Enter or Save mapping keeps it. Escape cancels.';
+    /*
+     * The channel under their thumb, named, with the one key that fixes it
+     * if it is backwards. This is the whole of the answer to "some are
+     * inverted and there's no option to change it": the option is on the
+     * screen that shows them the problem, at the moment they are looking
+     * at it. See movingChannel and reverseChannel.
+     */
+    if (moving) {
+      const rev = c.draft && c.draft.reverse && c.draft.reverse[moving];
+      return `Moving ${moving}${rev ? ', reversed' : ''}.`
+        + ' If the wrong stick moved on screen, press M.'
+        + ` If it moved the wrong way, press R to reverse ${moving}.`;
+    }
+    const keep = c.checkOnly
+      ? 'Enter or Save mapping keeps the change. Escape leaves it as it was.'
+      : (c.draft && c.draft.select
+        ? 'Enter, Save mapping, or the switch you just assigned. Escape cancels.'
+        : 'Enter or Save mapping keeps it. Escape cancels.');
+    return `Move one stick at a time and watch it. ${keep}`;
   }
   if (c.step === 'select') {
     return 'This radio reports no buttons, so one channel can be the button.'
@@ -1662,9 +1771,84 @@ export class InputManager {
       waiting: false,
       steps,
       draft: {
-        roll: null, pitch: null, yaw: null, throttle: null, select: null,
+        roll: null,
+        pitch: null,
+        yaw: null,
+        throttle: null,
+        select: null,
+        /* Nothing is backwards until a pilot says so. The wizard learns
+         * direction from the direction they push. See cloneReverse. */
+        reverse: cloneReverse(null),
       },
     };
+  }
+
+  /*
+   * THE CHECK STEP ON ITS OWN, AGAINST THE MAPPING ALREADY SAVED.
+   *
+   * The wizard's last step is the only place in this shell that shows a
+   * pilot what their mapping actually does: live gimbals, every axis, and
+   * now the reverse control. It was reachable only by completing the six
+   * steps in front of it, so a pilot who noticed a backwards channel a week
+   * later had to do the whole calibration again to reach the one screen
+   * that could tell them anything, and had the same chance of the same
+   * wrong push on the way.
+   *
+   * This opens that screen by itself with the saved map as the draft. Save
+   * writes it back, Escape leaves it alone, and neither touches an axis
+   * assignment. `rest` is taken here rather than measured, because there is
+   * no Centre step to measure it with and the strip only uses it to decide
+   * which cells to light.
+   */
+  startCalibrationCheck() {
+    this.calResult = null;
+    const gp = this.firstGamepad();
+    if (!gp) {
+      return false;
+    }
+    const axes = snapshotAxes(gp);
+    this.calibration = {
+      step: 'confirm',
+      phase: 'hold',
+      holdMs: 0,
+      rest: axes.slice(),
+      restGuess: null,
+      min: axes.slice(),
+      max: axes.slice(),
+      waiting: false,
+      steps: ['confirm'],
+      /* So the screen can say which of the two things it is. */
+      checkOnly: true,
+      draft: cloneMap(this.map),
+    };
+    return true;
+  }
+
+  /*
+   * Flip one channel, in the draft, on the check step. Nothing reaches the
+   * saved map until Save, so a pilot can try it, watch the gimbal, and back
+   * out with Escape if they were wrong about which way round it was.
+   */
+  reverseChannel(channel) {
+    const c = this.calibration;
+    if (!c || c.step !== 'confirm' || !IDENT_CHANNELS.includes(channel)) {
+      return false;
+    }
+    if (!c.draft.reverse) {
+      c.draft.reverse = cloneReverse(null);
+    }
+    c.draft.reverse[channel] = !c.draft.reverse[channel];
+    return true;
+  }
+
+  /* Reverse whichever channel the pilot is moving, and say which it was so
+   * the shell can name it. See movingChannel. */
+  reverseMovingChannel() {
+    const view = this.calibrationView();
+    if (!view || !view.moving) {
+      return null;
+    }
+    return this.reverseChannel(view.moving) ? view.moving : null;
   }
 
   cancelCalibration() {
@@ -1865,6 +2049,10 @@ export class InputManager {
         }
       }
     }
+    /* Only ever asked on the check step: everywhere else the gimbals are
+     * showing the wizard's own preview and "which one is moving" is a
+     * question the step itself is already answering. */
+    const moving = c.step === 'confirm' ? movingChannel(channels) : null;
     return {
       step: c.step,
       phase: c.phase,
@@ -1887,9 +2075,20 @@ export class InputManager {
       throttlePercent: Math.round(channels.throttle * 100),
       channels,
       axes,
+      /* The channel the pilot is moving, on the check step only, and the
+       * offer that goes with it. See movingChannel. */
+      moving,
+      canReverse: Boolean(moving),
+      /* Which channels this draft has turned round, so the screen can
+       * show the state rather than only the control. */
+      reverse: cloneReverse(c.draft && c.draft.reverse),
+      /* Whether this is the wizard's last step or the check opened on its
+       * own, which is the difference between Save and Cancel meaning keep
+       * and discard a NEW mapping or an edit to the saved one. */
+      checkOnly: Boolean(c.checkOnly),
       title: calTitle(c),
       prompt: calPrompt(c, this.stickMode),
-      hint: calHint(c, travelled, need, gp, c.step === 'confirm' ? channels.throttle : 0),
+      hint: calHint(c, travelled, need, gp, c.step === 'confirm' ? channels.throttle : 0, moving),
     };
   }
 
@@ -2031,11 +2230,24 @@ export class InputManager {
       const t = (ax(m.throttle.axis) - m.throttle.low) / ((m.throttle.high - m.throttle.low) || 1);
       throttle = Math.max(0, Math.min(1, t));
     }
+    /*
+     * The pilot's own reversals, applied last, over whatever the wizard
+     * recorded. See cloneReverse. A centred channel negates; the throttle
+     * is already nought to one, so it subtracts from one, which keeps it
+     * in range without a second clamp.
+     *
+     * `v !== 0` rather than a bare negation, because -0 is a real value in
+     * JavaScript and poll() compares samples with !==. A reversed channel
+     * sitting at rest would otherwise emit a sample every poll, for ever,
+     * and call it a change.
+     */
+    const rev = m.reverse || {};
+    const flip = (v, on) => (on && v !== 0 ? -v : v);
     return {
-      roll: norm(m.roll),
-      pitch: norm(m.pitch),
-      yaw: norm(m.yaw),
-      throttle,
+      roll: flip(norm(m.roll), rev.roll),
+      pitch: flip(norm(m.pitch), rev.pitch),
+      yaw: flip(norm(m.yaw), rev.yaw),
+      throttle: rev.throttle ? 1 - throttle : throttle,
     };
   }
 

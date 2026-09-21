@@ -4550,9 +4550,11 @@ export async function boot({ loading, bootStart, mapId }) {
       input.cancelCalibration();
       ui.show('pilot');
     } else if (action === 'calibrate-zero-throttle') {
-      if (input.zeroThrottleHere()) {
-        notice = { text: 'Throttle zero moved to here.', untilMs: performance.now() + 2600 };
-      }
+      /* No notice. The calibrate branch of the frame loop blanks the banner
+       * every frame, so one set here was never seen; the feedback is the
+       * gimbal dropping to zero and the hint changing under it, which is
+       * what the pilot is looking at anyway. */
+      input.zeroThrottleHere();
     } else if (action === 'calibrate-skip') {
       input.skipCalibrationSelect();
     } else if (action === 'calibrate-save') {

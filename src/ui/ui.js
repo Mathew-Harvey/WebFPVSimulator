@@ -10709,6 +10709,12 @@ export class Ui {
   setStickMode(mode) {
     const m = normaliseStickMode(mode);
     this.settings.stickMode = m;
+    /* applySettings calls this on EVERY settings write, and renderHowto
+     * below rebuilds a screen's rows. Same guard as input.setStickMode. */
+    if (m === this.stickModeDrawn) {
+      return;
+    }
+    this.stickModeDrawn = m;
     const caps = [
       [this.osdStickLeft, this.osdStickRight],
       [this.howtoStickLeft, this.howtoStickRight],

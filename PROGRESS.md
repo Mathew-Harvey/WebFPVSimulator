@@ -39954,3 +39954,95 @@ other way.
 What remains unverified: flight feel, and whether a LiteRadio 3 in a real
 hand behaves like the synthetic one. The probe proves the wizard now has a
 way out; it cannot prove the pilot finds it.
+
+## 2026-09-21 | review | Five commits since the last review: three findings acted on, six checked and stood
+
+The owner asked for the work since the review of the 19th to be checked.
+One reader, the diff of 3cdf7ab, 467c0c4, dbb364d, e403425 and 682d5c5,
+and every probe re-run on the result. The three statistics commits that
+arrived on main in between are somebody else's and were not reviewed here.
+
+The fixes are sound. The four root causes (the gamepad throttle, the two
+inputs with no stick mode, the LiteRadio hole, the camera angle re-seat)
+are real, the mechanisms are right, and the claims their comments make
+about neighbouring code held when that code was read. What follows is
+where they fell short, and it is all in the second layer.
+
+### Acted on
+
+**The "Throttle zero moved to here" notice could never be seen.** The
+action set it, and the calibrate branch of the frame loop calls
+`ui.setBanner('')` on every frame the screen is up, so it was blanked
+before it was painted, and Save's own notice replaced it on the way out.
+Removed rather than rescued: the feedback that actually reaches the pilot
+is the gimbal dropping to zero and the hint changing under it, which is
+what they are looking at when they press.
+
+**The zero press was guarded by exact equality with `high`.** The offer is
+shown whenever the throttle reads above idle, which includes a pilot
+deliberately holding full throttle to check it, and `v === spec.high` was
+the only thing stopping a press there. A press one step below full left a
+throttle with a hair of travel and a divisor near zero: idle everywhere but
+the last few percent, and the only way back was to recalibrate. It now
+refuses when the remaining travel would be under CAL.THROTTLE_MIN_RANGE,
+0.3 of an axis unit, and does nothing visible, which is what a mispress
+deserves. Probed: T with the stick at 0.9 leaves `low` at -1; T at rest
+still zeroes it.
+
+**`Ui.setStickMode` rebuilt the how-to rows on every settings write.**
+`applySettings` calls it unconditionally, which is right, and it called
+`renderHowto` unconditionally, which is a DOM rebuild for a graphics
+toggle. Same early return as `input.setStickMode` already had. Probed that
+the captions still follow 2 to 1 to 3 to 2 with the guard in place, since
+an early return that fired too eagerly would have frozen them.
+
+### Checked and stood
+
+- `applyKeyboardCollective` names its hold clocks `w` and `s`, and reads
+  the two booleans it is passed. Those come from `throttleKeys`, so in Mode
+  1 the arrows drive a clock called `w`. Nothing in the keyboard path holds
+  a literal `KeyW` or `KeyS` any more.
+- `KeyT` is already bound: the manual flip in flight, polled in main.js and
+  gated on `mode === 'flight' && ui.screen === 'flight'`. It cannot fire
+  from the calibrate screen, so the T key there does not collide.
+- The `syncMode` gate. The gate-answer path seats an aircraft through
+  `seatAirframe` and `saveSettings` without `writeSettings`, so
+  `modeSyncedFor` lags until the next write, which then runs `syncMode`
+  once on a state the card already made legal. Idempotent, harmless. The
+  class-swap path and the Aircraft row both go through `writeSettings`.
+- `zeroThrottleHere` on an inverted axis, where `low` is numerically above
+  `high`: `(v - low) / (high - low)` still reads 0 at rest and 1 at the
+  pushed end, and the clamp swallows the rest. The button does not care
+  which way the throttle was pushed.
+- Modes 3 and 4 in `keyAxes`: roll on A and D, yaw on the arrows, and the
+  vertical pair read by direction so forward is still nose down on pitch
+  and still more throttle on throttle. The table probe covers all four.
+- The recorded overflow 613 to 658 in tests/shell-baseline.json: one line,
+  argued in the stick mode entry, legitimate under shell-check's own
+  header, and not read by verify.
+
+### Declined
+
+**Two mechanisms for one throttle question.** The automatic detector and
+the button both exist. The entry that added the button argues the case and
+it holds: the detector asks nothing of the pilot it fits, the button
+cannot be fooled by anybody, and collapsing to one loses one of those two
+properties. Left.
+
+### Measurements
+
+    LiteRadio probe   guard: T at 0.9 stick refused, low stays -1
+                      T at rest: 0.500 -> 0.000 live, saved
+                      {low: 0, high: 1, sprung: true}, hands off 0.000,
+                      full up 1.000, full down 0.000
+    gamepad           auto-detect fires, {low: 0, sprung: true}
+    parked radio      14 of 14, {low: -1, high: 1}
+    captions          follow 2 -> 1 -> 3 -> 2 with the early return
+    lint:shell PASS, 254 rows.  lint:fc 33 of 33.  lint:presets 4 of 4.
+
+`npm run verify` RAN: 15 of 15 passing, 1 could not run (check 1, no
+emcc, vendor/betaflight not checked out). Trace hash de0401cd4266 in Node
+and Chrome, and hover 0.2793, punch 80.0, terminal 31.0, motor step 26 ms,
+rate 671.7, yaw -0.10, sag 11.14, ratio 1.2472: identical to every run
+recorded since the 18th, as a change to a guard in the wizard and a
+notice in the shell requires.

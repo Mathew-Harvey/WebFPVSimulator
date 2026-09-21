@@ -162,6 +162,11 @@ const CAL = {
   /* Above this, a throttle the pilot is not touching is flying the quad, and
    * the check step says so and offers to move zero. See zeroThrottleHere. */
   THROTTLE_IDLE: 0.12,
+  /* The least travel a throttle may be left with after zero is moved. A
+   * press with the stick most of the way up would otherwise leave a
+   * throttle that is idle everywhere but the last few percent, and the
+   * only way back is to recalibrate. See zeroThrottleHere. */
+  THROTTLE_MIN_RANGE: 0.3,
 };
 
 const PAD_PICK = {
@@ -1662,7 +1667,12 @@ export class InputManager {
       return false;
     }
     const v = snapshotAxes(gp)[spec.axis];
-    if (!Number.isFinite(v) || v === spec.high) {
+    /* Not with the stick most of the way up. The offer is shown whenever
+     * the throttle reads above idle, which includes a pilot deliberately
+     * holding full throttle to check it, and exact equality with `high`
+     * was the only guard: a press one step below it would have left a
+     * throttle with a hair of travel and a divisor near zero. */
+    if (!Number.isFinite(v) || Math.abs(spec.high - v) < CAL.THROTTLE_MIN_RANGE) {
       return false;
     }
     spec.low = v;

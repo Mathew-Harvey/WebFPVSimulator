@@ -40046,3 +40046,177 @@ and Chrome, and hover 0.2793, punch 80.0, terminal 31.0, motor step 26 ms,
 rate 671.7, yaw -0.10, sag 11.14, ratio 1.2472: identical to every run
 recorded since the 18th, as a change to a guard in the wizard and a
 notice in the shell requires.
+
+## 2026-09-21 | tests, input | The week's probes, kept: two checks that fail on every stick bug fixed since the 18th
+
+The owner asked for tests so that this class of bug does not come back.
+Every fix since the 18th was reproduced before and probed after, and every
+one of those probes was a file in a scratch directory that died with its
+container. That is how a fix gets un-fixed a month later by somebody
+tidying up, and it is how the review of the 19th found three defects the
+probes beside them could not see. So the probes are in the tree now, as two
+scripts, and they were made to fail before they were allowed to pass.
+
+    npm run input:selftest    scripts/input-selftest.js   Node, no browser, under a second
+    npm run lint:input        scripts/input-check.js      headless Chromium, about 35 s
+
+Neither is part of `npm run verify`, for the reason lint:shell is not: they
+say nothing about the flight model. They live in scripts/ rather than
+tests/ because tests/ is the determinism harness and its baseline, which
+the verify skill keeps closed. README lists both beside the other cheap
+checks.
+
+### What the Node half asserts, and against which ticket
+
+The rig is an InputManager on a synthetic radio with a hand-stepped clock,
+16 ms a poll, so every timing constant in the wizard is exercised at frame
+cadence and nothing depends on the machine. The radios are deliberately the
+awkward ones, because a radio the AETR guess gets right exercises none of
+this: yaw on axis 4 with a slider on axis 3, a throttle that springs to the
+middle, a stick with its endpoints wound in to half travel, a pilot who
+holds the throttle down when told to.
+
+- calSteps: a four axis radio with no buttons is not asked for a menu
+  switch, a six axis one is, one with buttons never. bug-89b2c85c.
+- The whole wizard on the six axis radio, yaw learned on axis 4, the strip
+  recording each axis as the two ends of its sweep (the slider that never
+  moved as 0 to 0), Skip on the menu switch step, and a saved map with
+  select null. bug-89b2c85c, bug-27386f07, the review of the 19th.
+- The preview on the step that asks for movement, on the sweep's ruler: 0.6
+  units of a 2 unit reach reads 0.30, and full stick on a wound in radio
+  reads exactly 1.0. The assertion is at the stop, not in a band.
+  bug-122503e9 and the review of the 19th.
+- Three throttles. The gamepad's is detected on its own and reads 0 at
+  rest, 1 at the top and 0 past centre the other way (bug-93400859). The
+  parked radio's is untouched, and its middle IS half. The sprung radio
+  whose pilot held it down: the check step reads 50 percent, says so,
+  offers zero, refuses the offer at 0.9 stick, takes it at rest, and the
+  saved map has zero at rest and sprung true (bug-851a43b7, the review of
+  the 21st).
+- The no-yaw verdict, in both directions: fires when axis 4 sweeps while
+  the guessed axis 3 sits still, clears the moment axis 3 moves, and stays
+  clear however much axis 4 is swept afterwards. A switch thrown six times
+  is not a swept stick. bug-3d72d9a4, bug-94f7e52b, bug-13519874, the
+  review of the 19th.
+- A storage that throws: accept succeeds, calResult is saved-unstored,
+  map.stored stays true. bug-ed4d2bce.
+- stickmode's table for all four modes, garbage normalises to 2, sides and
+  captions. The keyboard: W raises throttle in Mode 2 and the up arrow is
+  pitch, negative; in Mode 1 the arrows are throttle and W is pitch, still
+  negative; a mode change zeroes roll, pitch and yaw and keeps the
+  collective; Mode 3's arrows are yaw. bug-94da186c, bug-a8cd61db.
+- The wizard's prompt names the left stick for pitch in Mode 1 and the
+  right in Mode 2.
+
+### What the browser half asserts
+
+One six axis radio installed over navigator.getGamepads before the shell
+boots, and a second page with touch emulation.
+
+- Signposts, as agreement rather than strings: exactly one room holds the
+  Calibrate sticks row, the title's row that opens it has the same name as
+  the room's crumb, that row's note says calibration is inside, the Rates
+  trail starts in it, the radio how-to sends the pilot there by the same
+  name, and the name is Settings. The "no menu item to calibrate my radio"
+  report and the rename.
+- Hover, with real mouse events over the DevTools protocol, at the
+  reporter's 1358 by 602: worst row shift under the pointer 0 px on Rates
+  and on PIDs. See below for why the window matters.
+- The no-yaw row appears on the title while the pilot stands there, and
+  goes away again, with nothing calling show() or renderMenu(): the frame
+  loop's setPadInfo does it. The review of the 19th.
+- The wizard end to end through the real keys on a radio reporting no
+  buttons: six cells in the strip from step one, eight steps, Skip shown on
+  the menu switch step with Save withheld, Enter skips, Enter saves, back
+  in Settings with yaw on axis 4 and no trouble row.
+- The sprung throttle through the real screen: 50 percent at the check
+  step, the button shown, the hint naming the number and the key, T moving
+  zero, Escape cancelling without keeping it.
+- Camera angle on a seated whoop leaves freestyle and the town alone;
+  swapping to the whoop still seats race and custom. bug-4d5b2c51.
+- On the touch page: the Stick mode row is driven with the arrow key and
+  the thumb plates, the input manager's throttle keys, the how-to prose and
+  the calibrate and OSD gimbal captions all follow it, and one arrow back
+  restores it.
+
+### Made to fail first
+
+A test that has only ever passed proves that it runs. Each of these
+mutations was applied to the shipped source, the check run, and the source
+restored with git.
+
+    input.js                                              caught by
+    calSteps without the axis count guard                 1 check
+    calSteps ignoring buttons                             1
+    noteGuessOrder never clearing the wrong verdict       2  (clears, stays clear)
+    noteThrottleSpring never moving low                   3
+    the preview in raw units instead of the sweep's reach 2  (0.6 read, wound in 0.5 read)
+    zeroThrottleHere back on exact equality               1
+    saveMap swallowing the throw                          2
+    throttleKeys always the left stick                    2  (after the fix below)
+
+    index.html and ui.js
+    .screen-rates .menu-help without position: absolute   rates 86 px, pids 10 px
+    setPadInfo never repainting                           2  (row never appears, stale row stays)
+
+The hover numbers are the ticket's own numbers, 86 and 10, which is the
+best evidence there is that the check measures what the pilot saw.
+
+### What went wrong
+
+**The first LiteRadio scenario could not get past roll.** The rig held the
+throttle at the bottom through the roll step, and roll never released: the
+release check wants every OTHER axis within 0.2 of rest, and a sprung
+throttle held at its low end is a whole unit from rest. That is the wizard
+behaving as designed, one direction at a time, and it matches what the
+reporter did, because they finished the wizard, which means they let go.
+The rig now lets go one step after the release, which is exactly the
+moment the detector cannot see. Noted and not changed: a pilot with a
+self centring throttle who KEEPS holding it down through the roll release
+will sit on "Let the right stick come back to the centre" with the hint
+"One direction at a time" until they let go. It reads as a hole rather than
+a bug, and nobody has filed it.
+
+**The synthetic radio had buttons, so there was no step seven.** calSteps
+only asks a radio reporting no buttons, which is right and is what the
+reporter had. The test's premise was wrong, not the wizard. The pad loses
+its buttons for that one run and gets them back after.
+
+**An Enter with nothing to skip focused a text field.** With no select
+step, the Enter meant as Skip landed on Save, the second Enter landed on
+the first row of Settings, which is the name field, and the window key
+listener then handed every key to the field. T and Escape "failed" for
+that reason and nothing else; the probe that isolated it showed T working
+first press. The check now asserts that no text field has focus before it
+presses a key on the calibrate screen, so a failure there names itself.
+
+**The hover check could not fail at 1600 by 900.** With the CSS fix
+removed it read 0, because in a tall window the list is taller than any
+note and the row is sized by the list. The ticket's 86 px was measured at
+the reporter's 1358 by 602, where the list is capped at 46vh and a note
+stood 432 px beside it. The check resizes to that window for the hover
+walk and back afterwards, and with the fix removed it now reads 86 and 10.
+A green check that cannot see the thing that changed is not evidence, and
+this one was that for a whole run.
+
+**A vacuity guard was set above what the window holds.** The shift check
+passes trivially if the pointer never lands on a row, so it is guarded by
+a landing count. At 602 px the PIDs list shows three whole rows and the
+guard asked for four. The guard now asks for the rows that are visible,
+capped at three, and the shift assertion itself is unchanged at exactly 0.
+Written down because "a threshold moved so a check would pass" is the
+sentence CLAUDE.md forbids, and the difference is that this number is the
+test's own sanity check on a brand new test rather than a measurement of
+the product, and the mutation run shows the guard still bites: with the
+fix removed the pointer lands on two of seventeen rates rows because the
+rows leave from under it.
+
+### RUN LOG
+
+    npm run input:selftest    all 75 passed
+    npm run lint:input        all 53 passed, 31 s, two boots, no uncaught exception
+    lint:shell, lint:fc       not run: nothing under src/ or index.html changed.
+                              Only scripts/, package.json, README.md and this file.
+    npm run verify            not run, same reason. Every mutation above was
+                              restored with git checkout and `git status src/`
+                              is clean.

@@ -110,10 +110,14 @@ sources with no emsdk, is still a failure: that is a machine that was set
 up to build and did not.
 
 Cheaper checks that do not need a toolchain, and are the ones to reach for
-first: `npm run lint:shell`, `lint:nouns`, `lint:memory`, `lint:fc`,
-`lint:presets`, `lint:catalog`, `lint:responsive`, and
-`npm run score:selftest`, `ghost:selftest`, `contact:selftest`,
-`link:selftest`, `music:selftest`, `test:edge`.
+first: `npm run lint:shell`, `lint:input`, `lint:nouns`, `lint:memory`,
+`lint:fc`, `lint:presets`, `lint:catalog`, `lint:responsive`, and
+`npm run input:selftest`, `score:selftest`, `ghost:selftest`,
+`contact:selftest`, `link:selftest`, `music:selftest`, `test:edge`.
+`input:selftest` drives the calibration wizard and the stick modes in plain
+Node against synthetic radios, one check per shipped defect; `lint:input`
+is the same tickets' other half, the calibrate screen, the title's trouble
+rows, the Settings room and the thumb sticks, through headless Chromium.
 
 ## Licence
 

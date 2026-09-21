@@ -4549,6 +4549,10 @@ export async function boot({ loading, bootStart, mapId }) {
     } else if (action === 'calibrate-cancel') {
       input.cancelCalibration();
       ui.show('pilot');
+    } else if (action === 'calibrate-zero-throttle') {
+      if (input.zeroThrottleHere()) {
+        notice = { text: 'Throttle zero moved to here.', untilMs: performance.now() + 2600 };
+      }
     } else if (action === 'calibrate-skip') {
       input.skipCalibrationSelect();
     } else if (action === 'calibrate-save') {

@@ -2819,6 +2819,9 @@ export class Ui {
     if (this.syncMode()) {
       saveSettings(this.settings);
     }
+    /* Which aircraft the mode was last made legal for. See writeSettings:
+     * the answer only changes when the AIRCRAFT changes. */
+    this.modeSyncedFor = this.settings.airframe;
     /* Set while a guided first flight is in the air. main.js reads it. */
     this.guided = false;
     this.boardCourses = [];
@@ -3698,12 +3701,18 @@ export class Ui {
      * no buttons is asked that. See skipCalibrationSelect in input.js. */
     this.calSkipBtn = btn('name-dialog-btn', 'No switch, skip');
     this.calSkipBtn.hidden = true;
+    /* Only on the check step, and only when the throttle is reading high
+     * enough to fly the quad with nobody touching it. See zeroThrottleHere
+     * in input.js for the radio this exists for. */
+    this.calZeroBtn = btn('name-dialog-btn', 'Throttle zero is here');
+    this.calZeroBtn.hidden = true;
     this.calSaveBtn = btn('name-dialog-btn on', 'Save mapping');
     this.calSaveBtn.disabled = true;
     this.calCancelBtn.addEventListener('click', () => this.act('calibrate-cancel'));
     this.calSkipBtn.addEventListener('click', () => this.act('calibrate-skip'));
+    this.calZeroBtn.addEventListener('click', () => this.act('calibrate-zero-throttle'));
     this.calSaveBtn.addEventListener('click', () => this.act('calibrate-save'));
-    calBtns.append(this.calCancelBtn, this.calSkipBtn, this.calSaveBtn);
+    calBtns.append(this.calCancelBtn, this.calSkipBtn, this.calZeroBtn, this.calSaveBtn);
     calibrate.append(
       this.calKicker,
       this.calPrompt,
@@ -7709,9 +7718,34 @@ export class Ui {
   /* Store, redraw, tell the shell. The three things every row that changes
    * a setting does, in one place. */
   writeSettings() {
-    /* The Aircraft row comes through here, so this is where a pilot who
-     * swaps to the whoop from inside the town stops being in freestyle. */
-    this.syncMode();
+    /*
+     * ONLY WHEN THE AIRCRAFT MOVED, and the comment this replaces explains
+     * why it has to be conditional: "The Aircraft row comes through here,
+     * so this is where a pilot who swaps to the whoop from inside the town
+     * stops being in freestyle." That is the one row it was written for,
+     * and EVERY row that changes a setting comes through here.
+     *
+     * syncMode does not ask what changed. On a whoop, where freestyle is
+     * not offered because there is nowhere to fly it, it forces mode to
+     * race and the map to custom. So a pilot on the whoop, in the town,
+     * who nudged the camera angle was thrown onto the custom track:
+     *
+     *   bug-4d5b2c51: "when i tried to change the camera angle (on the
+     *   65mm) it brought me to a different page. I want to freestyle but
+     *   always go to the raceGOW track page as soon as i try to adjust cam
+     *   angle." And, in the same ticket, "changing the quad in freestyle
+     *   doesn't seem to make a difference", which is the other end of it.
+     *
+     * Measured before the change: camera angle 25 to 15 on a seated whoop
+     * moved mode freestyle to race and map city to custom, touching
+     * nothing else. Gating on the aircraft keeps the case it was written
+     * for, because swapping aircraft is exactly when the airframe moves,
+     * and boot still runs it once for a stale saved pair.
+     */
+    if (this.settings.airframe !== this.modeSyncedFor) {
+      this.modeSyncedFor = this.settings.airframe;
+      this.syncMode();
+    }
     saveSettings(this.settings);
     this.renderMenu();
     /* The title's freestyle line and the score overlay both read a setting
@@ -10619,6 +10653,10 @@ export class Ui {
       if (this.calSkipBtn) {
         this.calSkipBtn.hidden = true;
       }
+      this.calCanZeroThrottle = false;
+      if (this.calZeroBtn) {
+        this.calZeroBtn.hidden = true;
+      }
       return;
     }
     const n = view.stepIndex + 1;
@@ -10632,6 +10670,10 @@ export class Ui {
     this.calCanSkip = Boolean(view.canSkip);
     if (this.calSkipBtn) {
       this.calSkipBtn.hidden = !view.canSkip;
+    }
+    this.calCanZeroThrottle = Boolean(view.canZeroThrottle);
+    if (this.calZeroBtn) {
+      this.calZeroBtn.hidden = !view.canZeroThrottle;
     }
     const ch = view.channels || { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
     placeSticks(this.calStickLeft, this.calStickRight, ch, this.settings.stickMode);
@@ -12326,6 +12368,15 @@ export class Ui {
        * gesture that would carry it is the same gesture, so a pad binding
        * here would skip the step while they were trying to complete it.
        */
+      /* T for throttle, named in the hint beside it, because the pilot this
+       * is for may have a radio whose only button is a stick hold. */
+      if (code === 'KeyT' && this.calCanZeroThrottle) {
+        if (this.onUiSound) {
+          this.onUiSound('select');
+        }
+        this.act('calibrate-zero-throttle');
+        return true;
+      }
       if ((code === 'Enter' || code === 'Space') && this.calCanSkip) {
         if (this.onUiSound) {
           this.onUiSound('select');

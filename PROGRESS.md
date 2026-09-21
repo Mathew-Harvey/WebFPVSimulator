@@ -39818,3 +39818,139 @@ What was run:
                     wins when both are present
     the lap measurement above, in headless Chromium against a scratch
     board: PASS, two laps arrived
+
+## 2026-09-21 | shell, input | Two days of tickets: a throttle the wizard could not read, and a camera angle that moved the pilot
+
+Nineteen tickets arrived since the 19th. Two were real defects with a clear
+cause, and one of them is a hole in a fix from that day.
+
+### The throttle detector can be fooled by a pilot doing as they are told
+
+    bug-851a43b7, Gexgekko, BetaFPV LiteRadio 3:
+    "the throttle doesn't go down all the way to 0%. I tried calibrating and
+     the bottom on the sticks marks the center on the calibrating display."
+
+Filed at 15:48 on the 19th, five and a half hours after `noteThrottleSpring`
+went live, so the first question was whether I had caused it. I had not, and
+the probe says which: driven through the real wizard, a radio whose throttle
+SELF CENTRES saves `{low: -1, high: 1}`, the check step reads 0.500 with the
+stick where it rests, flight reads 0.500 with nobody touching anything, and
+`sprung` NEVER FIRES. It is not a regression. It is a case the detector
+misses, which is worse in one way: I wrote it two days ago and believed it
+covered this.
+
+The reason is exact. `noteThrottleSpring` reads ONE INSTANT, the moment the
+release timer completes, and asks where the axis ended up. For a gamepad,
+whose pilot simply lets go, that is a fair question. For a radio whose
+throttle self centres it is the wrong one, because the release step says
+"Now put the throttle all the way back down" and the pilot HOLDS IT THERE.
+The axis is then sitting on its low end, the detector reads a parked
+throttle, and the spring is missed. The pilot is punished for obeying.
+
+NO BETTER INSTANT EXISTS. A pilot may hold the throttle anywhere for any
+reason, and nothing in this file can tell holding from resting. So it stops
+guessing and asks. On the check step, when the live throttle reads above
+CAL.THROTTLE_IDLE, the hint says the number out loud, "Throttle is reading
+50 percent right now", and offers to put zero where the stick is: a button,
+or the T key, named in the hint because the radio this is for may have no
+button the browser can see. Only `low` moves, exactly as in the automatic
+case, so full stick is still full throttle and everything past zero is idle
+rather than negative. It edits the DRAFT, with the gimbals in front of the
+pilot, so they watch the throttle fall to zero before anything is saved.
+
+The automatic detector stays for the case it does get right, which is the
+plain gamepad. Two mechanisms for one question is a cost, and the reason to
+pay it is that the automatic one asks nothing of the pilot who needs nothing
+asked, while the manual one cannot be fooled by anybody.
+
+CONSIDERED AND DECLINED: watching the throttle axis across the roll, pitch
+and yaw steps, where the pilot's hand is demonstrably on the other stick,
+and calling a long dwell the rest position. It would catch this case
+automatically. It also invents a second threshold and a dwell clock to
+answer a question the pilot can answer in one press, and a wrong automatic
+answer here is a quad that flies itself. Not worth it while the button
+exists.
+
+### Every settings row was re-seating the pilot
+
+    bug-4d5b2c51, Boetiah:
+    "when i tried to change the camera angle (on the 65mm) it brought me to a
+     different page. I want to freestyle but always go to the raceGOW track
+     page as soon as i try to adjust cam angle."
+
+`writeSettings` calls `syncMode`, and the comment above that call says what
+it was for: "The Aircraft row comes through here, so this is where a pilot
+who swaps to the whoop from inside the town stops being in freestyle." That
+is one row. EVERY row that changes a setting comes through `writeSettings`.
+
+`syncMode` does not ask what changed. On a whoop, where freestyle is not
+offered because there is nowhere to fly it, it forces mode to race and the
+map to custom. So a pilot on the whoop, in the town, who nudged the camera
+angle was thrown onto the custom track, which is the RaceGOW page they kept
+landing on. Measured before the change: camera angle 25 to 15 moved mode
+freestyle to race and map city to custom, touching nothing else. Graphics
+and field of view did it too.
+
+It is now gated on the aircraft actually moving, which is the case it was
+written for, with boot still running it once for a stale saved pair.
+Measured after: camera angle, graphics and field of view all leave mode and
+map alone, and swapping five inch to whoop still seats race and custom.
+
+The second half of that ticket, "changing the quad in freestyle doesn't seem
+to make a difference", is the same rule seen from the other end and is
+working as designed: a whoop has nowhere to freestyle, so seating one ends
+freestyle. That half is answered on the ticket rather than changed.
+
+### Two reports of a dead right stick, not yet diagnosed
+
+    bug-a49f867c  "right stick not responsive"
+    bug-63e8cde6  "the right stick its working but the side to side has no
+                   imput and i cant steer"
+
+Both on a radio, both `stickLevels` 1024, neither reproducible from here.
+The second is the sharper one: the stick works, the SIDE TO SIDE does not,
+which is roll on an axis nothing is reading. That is the shape of the no-yaw
+fault from the 19th, one channel mapped to an axis the radio does not use,
+and `noteGuessOrder` watches only yaw. Widening it to all four channels is
+the obvious next move and is not in this round: it wants the axis strip from
+one of these two reporters first, so the fix is aimed at a real axis dump
+rather than at my guess about one. Both asked.
+
+### RUN LOG
+
+`npm run verify` RAN. **15 of 15 checks passing. 1 check could not run**:
+check 1, build-clean, no `emcc`, `EMSDK` unset, `vendor/betaflight` not
+checked out here.
+
+    trace hash de0401cd4266 in Node and headless Chrome, identical across
+    30, 60, 144 and 240 Hz. hover 0.2793, punch 80.0 m, terminal 31.0 m/s,
+    motor step 26 ms, rate 671.7 deg/s, yaw -0.10 deg, sag 11.14 percent,
+    ratio 1.2472.
+
+Every measured value identical to the runs recorded on the 19th, which is
+required: the harness replays recorded channel values and never opens the
+wizard or writes a setting.
+
+    the LiteRadio probe   before: saved {low: -1, high: 1}, check step
+                          0.500 at rest, flight 0.500 hands off
+                          after:  the offer appears with the number in the
+                          hint, T zeroes it live, saved {low: 0, high: 1,
+                          sprung: true}, hands off 0.000, full up 1.000,
+                          full down 0.000
+    parked radio          14 of 14, {low: -1, high: 1}, sprung absent
+    gamepad               auto-detect still fires, {low: 0, sprung: true}
+    whoop camera          before: freestyle/city -> race/custom on a camera
+                          angle change. after: camera angle, graphics and
+                          field of view all leave it alone, and an aircraft
+                          swap still seats race and custom
+    lint:shell PASS, 254 rows.  lint:devices PASS.  lint:fc 33 of 33.
+    lint:presets 4 of 4.
+
+Wrong: nothing attempted and undone. The first hour went on establishing
+that bug-851a43b7 was NOT mine before touching anything, which was the right
+order and would have been the right order even if the answer had gone the
+other way.
+
+What remains unverified: flight feel, and whether a LiteRadio 3 in a real
+hand behaves like the synthetic one. The probe proves the wizard now has a
+way out; it cannot prove the pilot finds it.

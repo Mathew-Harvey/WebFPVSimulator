@@ -159,6 +159,9 @@ const CAL = {
    * between those two populations with room on both sides.
    */
   THROTTLE_SPRING: 0.35,
+  /* Above this, a throttle the pilot is not touching is flying the quad, and
+   * the check step says so and offers to move zero. See zeroThrottleHere. */
+  THROTTLE_IDLE: 0.12,
 };
 
 const PAD_PICK = {
@@ -412,6 +415,32 @@ function throttleSpec(axis, rest, sample, min, max) {
  * recoverable one. The failure in the other direction is a quad that flies
  * away from a pilot who is not touching anything.
  */
+/*
+ * AND THE DETECTOR ABOVE CAN BE FOOLED BY A PILOT DOING AS THEY ARE TOLD.
+ *
+ * noteThrottleSpring reads ONE INSTANT, the moment the release timer
+ * completes, and asks where the axis ended up. That is a fair question for a
+ * gamepad, whose pilot simply lets go, and it is the wrong question for a
+ * radio whose throttle self centres, because the release step tells them
+ * "Now put the throttle all the way back down" and they HOLD IT THERE. The
+ * axis is then sitting on its low end, the detector reads a parked throttle,
+ * and the spring is missed:
+ *
+ *   bug-851a43b7, BetaFPV LiteRadio 3:
+ *   "the throttle doesn't go down all the way to 0%. I tried calibrating and
+ *    the bottom on the sticks marks the center on the calibrating display."
+ *
+ * Reproduced through the real wizard: the saved map is {low: -1, high: 1},
+ * the check step reads 0.500 with the stick where it rests, and flight reads
+ * 0.500 with nobody touching anything.
+ *
+ * No better instant exists. A pilot may hold the throttle anywhere for any
+ * reason and the wizard cannot tell holding from resting, so this stops
+ * guessing and ASKS. The check step already shows the live throttle; when it
+ * reads high enough to be flying the quad, the screen offers to put zero
+ * where the stick is now. The pilot knows whether their hand is on it, and
+ * nothing else in this file does.
+ */
 function noteThrottleSpring(c, spec, axes) {
   const rest = c.rest[spec.axis];
   const settled = axes[spec.axis];
@@ -504,7 +533,7 @@ function calPrompt(c, mode) {
   }[c.step] || '';
 }
 
-function calHint(c, travelled, need, gp) {
+function calHint(c, travelled, need, gp, idleThrottle = 0) {
   if (!gp) {
     return 'Radio disconnected. Plug it back in, joystick mode.';
   }
@@ -517,6 +546,14 @@ function calHint(c, travelled, need, gp) {
       : 'Back to rest to continue.';
   }
   if (c.step === 'confirm') {
+    /* A throttle reading this high with the sticks sitting where the pilot
+     * left them is a quad that will fly itself. Say the number, because the
+     * gimbal alone does not make it obvious, and name the way out. */
+    if (idleThrottle > CAL.THROTTLE_IDLE) {
+      return `Throttle is reading ${Math.round(idleThrottle * 100)} percent right now.`
+        + ' If that is where your throttle sits when you let go, press T or'
+        + ' Throttle zero is here.';
+    }
     return c.draft && c.draft.select
       ? 'Enter, Save mapping, or the switch you just assigned. Escape cancels.'
       : 'Enter or Save mapping keeps it. Escape cancels.';
@@ -1603,6 +1640,36 @@ export class InputManager {
     return true;
   }
 
+  /*
+   * THE PILOT SAYS WHERE ZERO IS, for the throttle this wizard could not
+   * read on its own. Only `low` moves, exactly as in noteThrottleSpring:
+   * `high` is still the end they pushed toward, so full stick is still full
+   * throttle, and readGamepad's clamp makes everything beyond zero idle
+   * rather than negative.
+   *
+   * Nothing is written to the saved map here. This edits the DRAFT, on the
+   * check step, with the live gimbals in front of the pilot, so they press
+   * it and watch the throttle fall to zero before anything is kept.
+   */
+  zeroThrottleHere() {
+    const c = this.calibration;
+    if (!c || c.step !== 'confirm') {
+      return false;
+    }
+    const spec = c.draft.throttle;
+    const gp = this.firstGamepad();
+    if (!spec || !gp || !Number.isInteger(spec.axis)) {
+      return false;
+    }
+    const v = snapshotAxes(gp)[spec.axis];
+    if (!Number.isFinite(v) || v === spec.high) {
+      return false;
+    }
+    spec.low = v;
+    spec.sprung = true;
+    return true;
+  }
+
   acceptCalibration() {
     const c = this.calibration;
     if (!c || c.step !== 'confirm') {
@@ -1748,11 +1815,15 @@ export class InputManager {
        * gesture covers the radio that is asked for one. See
        * skipCalibrationSelect. */
       canSkip: c.step === SELECT_STEP,
+      /* Only on the check step, and only when the throttle is reading high
+       * enough to fly the quad on its own. See zeroThrottleHere. */
+      canZeroThrottle: c.step === 'confirm' && channels.throttle > CAL.THROTTLE_IDLE,
+      throttlePercent: Math.round(channels.throttle * 100),
       channels,
       axes,
       title: calTitle(c),
       prompt: calPrompt(c, this.stickMode),
-      hint: calHint(c, travelled, need, gp),
+      hint: calHint(c, travelled, need, gp, c.step === 'confirm' ? channels.throttle : 0),
     };
   }
 

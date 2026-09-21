@@ -1662,14 +1662,52 @@
          ------------------------------------------------------------------ */
       .trick-stage {
         display: grid;
-        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-        gap: 18px;
+        /*
+         * The film's column is the FILM'S WIDTH, not a fraction of the
+         * page. It was 1.35fr, which was right while the film filled it,
+         * and once the film was given a height budget the column stayed
+         * the old width: the picture sat on the left, the words sat six
+         * hundred pixels away on the right, and the middle of the screen
+         * was empty. Naming the track with the same expression the film
+         * is sized by keeps the two together at every window size.
+         */
+        grid-template-columns: calc(min(27vh, 280px) * 1.6) minmax(0, 1fr);
+        gap: 22px;
         align-items: start;
-        margin: 4px 0 14px;
+        /* And the pair reads as one unit rather than as two things at
+           opposite edges of a 1900 pixel window. */
+        max-width: 1040px;
+        margin: 4px auto 14px;
       }
       .trick-film {
         display: block;
         width: 100%;
+        /*
+         * A HEIGHT BUDGET, AND IT IS WRITTEN AS A WIDTH CAP.
+         *
+         * This had none. The film is a 16:10 box at 100 percent of a
+         * column that is 1.35fr of the page, so on a 1920 wide window it
+         * drew itself 600 pixels tall, and the list of tricks underneath
+         * it started 867 pixels down a 919 pixel window. Measured at the
+         * reporter's size: NOT ONE trick row was fully on screen, and at
+         * 1080p only four of forty three were. The page does not scroll,
+         * so there was no way down to them at all.
+         *
+         *   bug-f105cf4a, Fernando: "solo sale un truco y no puedo bajar
+         *   con la ruedita del raton", only one trick appears and I cannot
+         *   go down with the mouse wheel. Both halves are this rule.
+         *
+         * It is a max-width rather than a max-height because the aspect
+         * ratio is fixed and the width is definite: capping the height of
+         * a box whose width is already 100 percent does not shrink it, it
+         * SQUASHES it, and the canvas inside would be drawn stretched.
+         * Capping the width lets the ratio carry the height down with it.
+         *
+         * The number is the same shape as the menu's cap below, so the two
+         * shrink together on a short window and the sum of film, list and
+         * hint stays inside the viewport at every size measured: 780, 900,
+         * 919 and 1080.
+         */
         aspect-ratio: 16 / 10;
         background: #1a241c;
         /* The two pixel edge is the board's furniture and the town's ink:
@@ -1696,9 +1734,18 @@
          phone the list underneath is what the thumb is reaching for. */
       @media (max-width: 900px) {
         .trick-stage { grid-template-columns: 1fr; gap: 12px; }
-        .trick-film { aspect-ratio: 2 / 1; }
+        /* One column, so the film is bounded by the same budget directly
+           rather than by its track, and stays centred over the words. */
+        .trick-film {
+          aspect-ratio: 2 / 1;
+          max-width: calc(min(27vh, 280px) * 2);
+          margin: 0 auto;
+        }
       }
-      .screen-tricks .menu-scroll { max-height: min(34vh, 300px); }
+      /* 27vh rather than 34, so the film above and the list below share the
+         window instead of competing for it, and the pair still fits at 720.
+         See .trick-film. */
+      .screen-tricks .menu-scroll { max-height: min(27vh, 300px); }
 
       .craft-showcase-frame {
         position: relative;

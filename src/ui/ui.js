@@ -7305,6 +7305,27 @@ export class Ui {
     if (this.cardScreen()) {
       this.markCards();
     }
+    /*
+     * THE TRICK FILM IS LIT BY THE CURSOR AND BY NOTHING ELSE, and it had
+     * the card bug above, one screen over, unfixed.
+     *
+     * renderTricks paints the name, the points, the how-to and the
+     * animation for whichever row the cursor is on, and it is called from
+     * renderMenu. A cursor move deliberately does NOT rebuild the menu,
+     * for the reason markCards exists, so walking the list with the arrows
+     * or the mouse moved the highlight and left the panel showing the
+     * first trick for ever:
+     *
+     *   bug-f105cf4a, Fernando: "cuando selecciono otro truco no sale solo
+     *   se ve el primer truco", when I select another trick it does not
+     *   appear, only the first trick is shown.
+     *
+     * They were trying to learn tricks they had never flown, which is the
+     * one thing this screen is for, and it showed them one of them.
+     */
+    if (this.screen === 'tricks') {
+      this.renderTricks();
+    }
     this.syncCursor(!pointer);
     if (this.onUiSound && !pointer) {
       this.onUiSound('move');

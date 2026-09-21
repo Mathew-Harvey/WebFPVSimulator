@@ -40701,3 +40701,128 @@ silence is the fair part of the complaint.
       burying the craft in geometry: __colliderBoxes returns ARRAYS, not
         objects with x/y/z, so the placement went to the spawn and the
         run proved nothing
+
+## 2026-09-21 | shell | The trick list: one trick visible, a wheel that did nothing, and a panel stuck on the first row
+
+bug-f105cf4a, Fernando, in Spanish and worth quoting because all three
+faults are in one sentence:
+
+    "El menu de trucos funciona mal, solo sale un truco y no puedo bajar
+     con la ruedita del raton, ademas, cuando selecciono otro truco no sale
+     solo se ve el primer truco"
+
+Only one trick appears, I cannot go down with the mouse wheel, and when I
+select another trick it does not appear, only the first one is shown. They
+added that they are new, have never touched an FPV simulator, and came to
+the screen to learn tricks they do not know. It showed them one.
+
+All three reproduced at their window, 1920 by 919.
+
+### Two faults, not three
+
+**The list was below the fold.** `.trick-film` is a 16:10 box at 100
+percent of a 1.35fr column, and nothing capped it. On a 1920 wide window it
+drew itself 600 pixels tall and the list underneath started 867 pixels down
+a 919 pixel window. Measured: NOT ONE trick row fully on screen, and at
+1080p four of forty three. That is "solo sale un truco" and it is also "no
+puedo bajar con la ruedita", because the wheel only scrolls the list when
+the pointer is over the list, and the list was off the screen.
+
+The film now carries a height budget written as a max-width, because the
+aspect ratio is fixed and the width is definite: capping the height of a
+box that is already 100 percent wide does not shrink it, it squashes it,
+and the canvas inside would draw stretched. The budget and the menu's cap
+are the same expression so the two shrink together. Measured after, at
+rest, at five window sizes:
+
+    1920x919   film 248   list 546..818   below 0   5 rows visible
+    1600x900   film 243   list 536..803   below 0   5
+    1440x780   film 211   list 476..711   below 0   5
+    1920x1080  film 280   list 620..936   below 0   6
+    1280x720   film 194   list 505..723   below 3   4
+
+720 is three pixels over, which is the scroller's bottom border, with four
+rows readable and the list scrolling. Before the change it was 221 pixels
+over with one row.
+
+Shrinking the film left the stage's columns where they were, so the picture
+sat on the left and its words six hundred pixels away on the right with an
+empty middle. Caught on a screenshot, not by a number. The film's track is
+now the same expression the film is sized by, and the pair is capped at
+1040 and centred.
+
+**The panel never followed the cursor.** `renderTricks` paints the name,
+the points, the how-to and the animation for the row the cursor is on, and
+it is called from `renderMenu`. A cursor move deliberately does not rebuild
+the menu. So walking the list moved the highlight and left the panel on the
+first trick for ever, which is the third clause of the sentence exactly.
+
+This is the card bug, one screen over, unfixed: `setCursor` already calls
+`markCards` for the same reason, and the comment there says so. It now
+calls `renderTricks` the same way.
+
+### Why nothing caught it
+
+`lint:shell` did not walk the tricks screen at all. It is in the shell, it
+has 43 rows, and it was not in the SCREENS list, so no check had ever
+opened it. It is now.
+
+That alone would not have caught this. `overflow` measures a scroller
+against ITSELF, how much taller its contents are than its own box, and by
+that measure the trick list was perfectly healthy: it scrolled, internally,
+somewhere nobody could see. So the walk now also records BELOW FOLD, how
+far the list hangs past the bottom of the window, and how many rows are
+actually visible.
+
+Recorded as a budget rather than asserted at zero. Measured across all
+fourteen screens first: at 1280 by 720 six of them already hang off the
+bottom, and moving the product to make a new check go green is the wrong
+way round. The check fails when a screen gets worse than it is today, which
+is the same contract `overflow` has always had.
+
+### What went wrong
+
+**The first version of the fold check was green for the wrong reason.** It
+measured at the bottom of the per-screen block, after the walk, and the
+walk ends with `jumpEdge(1)`, whose `syncCursor` scrolls the last row into
+view. By then every screen has been scrolled to fit and nothing hangs off
+anything. It reported below 0 for the BROKEN layout. Moved to the top of
+the block, on arrival, before anything walks, which is what a pilot meets.
+With that, the pre-fix layout reports "the list hangs 189 px off the bottom
+of the window, was 0 px (2 of 43 rows visible)".
+
+**A mutation test removed the wrong line.** `renderMenu` and `setCursor`
+now contain the identical three lines, and `replace(old, new, 1)` took the
+first, which is renderMenu's. The check passed, which I nearly read as the
+check being weak; it was the fix doing its job while the mutation broke
+something else. Anchored on the surrounding comment instead, and then it
+fails properly: the panel showed "Split Yaw", "Split Yaw", "Split Yaw"
+across three rows.
+
+**A comment with backticks inside a template literal.** The WALK is a JS
+template literal and the comment I added quoted `overflow` in backticks,
+which closed it. Caught by node --check.
+
+### RUN LOG
+
+    npm run lint:shell        PASS, 298 rows across 14 screens (was 255
+                              across 13: the trick screen's 43 are new)
+                              note: trick film follows the cursor across 43
+    npm run lint:input        all 84 passed, 25 s
+    npm run input:selftest    not run: src/input untouched this turn
+    npm run verify            not run: this turn changed index.html,
+                              src/ui/ui.js and scripts/ only. No physics,
+                              no plant, no ABI, no build.
+
+    Made to fail first, both against the committed pre-fix source:
+      the film's height budget removed   tricks: 189 px below the fold,
+                                         2 of 43 rows visible
+      the setCursor repaint removed      panel showed the same trick on
+                                         three consecutive rows
+
+    tests/shell-baseline.json  re-recorded with --record. Two changes, both
+                               additions rather than moved thresholds: a
+                               tricks entry, because the screen is walked
+                               now, and a belowFold number per screen,
+                               because the measurement is new. No existing
+                               overflow number moved.

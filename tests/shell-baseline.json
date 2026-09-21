@@ -6,43 +6,60 @@
   },
   "screens": {
     "title": {
-      "overflow": 0
+      "overflow": 0,
+      "belowFold": 0
     },
     "courses": {
-      "overflow": 0
+      "overflow": 0,
+      "belowFold": 0
     },
     "freestyle": {
-      "overflow": 0
+      "overflow": 0,
+      "belowFold": 0
     },
     "quad": {
-      "overflow": 0
+      "overflow": 0,
+      "belowFold": 0
     },
     "pilot": {
-      "overflow": 702
+      "overflow": 702,
+      "belowFold": 0
     },
     "launch": {
-      "overflow": 0
+      "overflow": 0,
+      "belowFold": 0
     },
     "rates": {
-      "overflow": 440
+      "overflow": 440,
+      "belowFold": 0
     },
     "pids": {
-      "overflow": 154
+      "overflow": 154,
+      "belowFold": 0
     },
     "fc": {
-      "overflow": 3613
+      "overflow": 3613,
+      "belowFold": 0
     },
     "paused": {
-      "overflow": 0
+      "overflow": 0,
+      "belowFold": 0
     },
     "results": {
-      "overflow": 0
+      "overflow": 0,
+      "belowFold": 0
     },
     "howto": {
-      "overflow": 0
+      "overflow": 0,
+      "belowFold": 70
+    },
+    "tricks": {
+      "overflow": 1649,
+      "belowFold": 0
     },
     "credits": {
-      "overflow": 0
+      "overflow": 0,
+      "belowFold": 1100
     }
   }
 }

@@ -102,7 +102,11 @@ const LIBRARY = Object.fromEntries(LIBRARY_SEED.map((d) => [d.id, d]));
  */
 const SCREENS = [
   'title', 'courses', 'freestyle', 'quad', 'pilot', 'launch', 'rates', 'pids', 'fc',
-  'paused', 'results', 'howto', 'credits',
+  /* tricks was missing from this list until bug-f105cf4a, and that is how a
+   * screen whose list sat entirely below the fold shipped: nothing walked
+   * it. Its items() returns a row per trick, so it belongs here with the
+   * rest. */
+  'paused', 'results', 'howto', 'tricks', 'credits',
 ];
 
 /*
@@ -139,6 +143,33 @@ const WALK = `(() => {
        * pilot asks. Turn that on here, because the property under test is
        * that every row CAN be reached, not that the default walks them. */
       if (name === 'fc' && ui.fc) { ui.fc.walkAll = true; }
+      /*
+       * ON ARRIVAL, BEFORE ANYTHING WALKS. This measurement has to be
+       * taken here and not with the others at the bottom, and the first
+       * version of it was taken at the bottom and was green for the wrong
+       * reason: the walk below ends with jumpEdge(1), whose syncCursor
+       * scrolls the last row into view, so by then every screen has been
+       * scrolled to fit and none of them hangs off anything. What a pilot
+       * meets is the screen as it opens.
+       */
+      const arrival = (() => {
+        const sc = ui.root.querySelector(
+          '.screen-' + name + ' .menu-scroll, .screen-' + name + ' .menu'
+        );
+        if (!sc) { return { belowFold: 0, rowsSeen: 0 }; }
+        const r = sc.getBoundingClientRect();
+        const seenRows = Array.from(
+          ui.root.querySelectorAll('.screen-' + name + ' .menu .row')
+        ).filter((n) => {
+          const b = n.getBoundingClientRect();
+          return b.top >= 0 && b.bottom <= window.innerHeight
+            && b.top >= r.top - 1 && b.bottom <= r.bottom + 1;
+        }).length;
+        return {
+          belowFold: Math.max(0, Math.round(r.bottom - window.innerHeight)),
+          rowsSeen: seenRows,
+        };
+      })();
       const items = ui.items();
       const stops = [];
       for (let i = 0; i < items.length; i += 1) {
@@ -205,7 +236,27 @@ const WALK = `(() => {
       const overflow = scroller
         ? Math.max(0, Math.round(scroller.scrollHeight - scroller.clientHeight))
         : 0;
-
+      /*
+       * HOW FAR THE LIST HANGS OFF THE BOTTOM OF THE WINDOW, which is a
+       * different question from overflow above and the one that was not
+       * being asked.
+       *
+       * overflow measures the scroller against ITSELF: how much taller its
+       * contents are than its own box. A scroller can be perfectly healthy
+       * by that measure and be somewhere the pilot cannot see or reach. The
+       * trick list was: forty three rows, an internal scroller that worked,
+       * and its box starting 867 pixels down a 919 pixel window, so not one
+       * row was on screen and the page does not scroll to reach it.
+       *
+       *   bug-f105cf4a, Fernando: "solo sale un truco y no puedo bajar con
+       *   la ruedita del raton"
+       *
+       * Recorded as a budget rather than asserted at zero, for the same
+       * reason the overflow is: measured across every screen, several
+       * already hang off the bottom at 1280 by 720, and moving the product
+       * to make a new check go green is the wrong way round. The check
+       * fails when a screen gets WORSE than it is today.
+       */
       out[name] = {
         stops: stops.length,
         arrow: arrowDefault,
@@ -215,6 +266,8 @@ const WALK = `(() => {
           .slice(0, 8),
         notesLost,
         overflow,
+        belowFold: arrival.belowFold,
+        rowsSeen: arrival.rowsSeen,
       };
     } catch (e) {
       out[name] = { error: String(e && e.message ? e.message : e) };
@@ -349,6 +402,34 @@ const BEHAVIOUR = `(() => {
     out.focusMemory = { want, got, ok: want === got };
   } catch (e) {
     out.focusMemory = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * THE TRICK FILM FOLLOWS THE CURSOR.
+   *
+   * renderTricks paints the name, the points, the how-to and the animation
+   * for the row the cursor is on, and it is only called from renderMenu. A
+   * cursor move deliberately does not rebuild the menu, so walking the list
+   * moved the highlight and left the panel showing the first trick for
+   * ever: bug-f105cf4a, "cuando selecciono otro truco no sale solo se ve el
+   * primer truco". Asserted on the NAME the panel shows, which is what the
+   * pilot reads, rather than on which function was called.
+   */
+  try {
+    ui.show('tricks');
+    ui.setCursor(ui.firstStop(ui.items()));
+    const first = ui.trickName.textContent;
+    ui.move(1);
+    const second = ui.trickName.textContent;
+    ui.move(1);
+    const third = ui.trickName.textContent;
+    out.trickFilm = {
+      first, second, third,
+      rows: ui.items().length,
+      ok: Boolean(first) && first !== second && second !== third,
+    };
+  } catch (e) {
+    out.trickFilm = { error: String(e && e.message ? e.message : e) };
   }
 
   /* A screen never visited still opens on its first stop rather than
@@ -1498,7 +1579,10 @@ async function main() {
     if (opts.record) {
       const record = {};
       for (const name of SCREENS) {
-        record[name] = { overflow: walk[name] ? walk[name].overflow ?? 0 : 0 };
+        record[name] = {
+          overflow: walk[name] ? walk[name].overflow ?? 0 : 0,
+          belowFold: walk[name] ? walk[name].belowFold ?? 0 : 0,
+        };
       }
       await writeFile(
         BASELINE,
@@ -1535,13 +1619,24 @@ async function main() {
         failures.push(`${name}: Escape landed on unknown screen "${e.to}"`);
       }
 
-      const base = baseline && baseline.window.w === opts.w && baseline.window.h === opts.h
-        ? (baseline.screens[name] || {}).overflow
-        : undefined;
+      const sameWindow = baseline && baseline.window.w === opts.w && baseline.window.h === opts.h;
+      const base = sameWindow ? (baseline.screens[name] || {}).overflow : undefined;
       if (base !== undefined && w.overflow > base) {
         failures.push(`${name}: overflow grew from ${base} to ${w.overflow} px`);
       } else if (base !== undefined && w.overflow < base) {
         notes.push(`${name}: overflow improved from ${base} to ${w.overflow} px, re-record the baseline`);
+      }
+      /* Undefined on a baseline recorded before this measurement existed,
+       * which is skipped rather than treated as zero: a missing record is
+       * not evidence that a screen used to fit. */
+      const foldBase = sameWindow ? (baseline.screens[name] || {}).belowFold : undefined;
+      if (foldBase !== undefined && w.belowFold > foldBase) {
+        failures.push(
+          `${name}: the list hangs ${w.belowFold} px off the bottom of the window, was ${foldBase} px`
+          + ` (${w.rowsSeen} of ${w.stops} rows visible)`,
+        );
+      } else if (foldBase !== undefined && w.belowFold < foldBase) {
+        notes.push(`${name}: below the fold improved from ${foldBase} to ${w.belowFold} px, re-record the baseline`);
       }
 
       rows.push(
@@ -1549,6 +1644,8 @@ async function main() {
         `  arrow ${String(w.arrow).padStart(4)}` +
         `  reached ${String(w.reached).padStart(4)}` +
         `  overflow ${String(w.overflow).padStart(4)} px` +
+        `  below ${String(w.belowFold).padStart(4)} px` +
+        `  seen ${String(w.rowsSeen).padStart(3)}` +
         `  escape -> ${e && e.to ? e.to : '?'}`,
       );
     }
@@ -1589,6 +1686,16 @@ async function main() {
       failures.push(
         `focus memory: left Settings on "${b.focusMemory.want}", came back on "${b.focusMemory.got}"`,
       );
+    }
+    if (!b.trickFilm || b.trickFilm.error) {
+      failures.push(`trick film: ${b.trickFilm ? b.trickFilm.error : 'no result'}`);
+    } else if (!b.trickFilm.ok) {
+      failures.push(
+        'trick film: the panel does not follow the cursor. Across three rows it showed '
+        + `"${b.trickFilm.first}", "${b.trickFilm.second}", "${b.trickFilm.third}"`,
+      );
+    } else {
+      notes.push(`trick film: follows the cursor across ${b.trickFilm.rows} tricks`);
     }
     if (!b.freshOpen || b.freshOpen.error || !b.freshOpen.ok) {
       failures.push(`fresh open: ${b.freshOpen && b.freshOpen.error ? b.freshOpen.error : 'did not land on a stop'}`);

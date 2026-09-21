@@ -105,7 +105,11 @@ const SCREENS = [
   /* tricks was missing from this list until bug-f105cf4a, and that is how a
    * screen whose list sat entirely below the fold shipped: nothing walked
    * it. Its items() returns a row per trick, so it belongs here with the
-   * rest. */
+   * rest. It stays here now that the menu rows opening it have been
+   * withdrawn until the scoring is settled: the screen is still built and
+   * still correct, and dropping the check the day the door closed is how
+   * the three faults in that ticket would quietly come back when it
+   * reopens. show() reaches it whether or not a row does. */
   'paused', 'results', 'howto', 'tricks', 'credits',
 ];
 

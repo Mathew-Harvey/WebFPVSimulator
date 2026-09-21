@@ -1570,6 +1570,9 @@ function trickStatus(t) {
   };
 }
 
+/* The number the Trick list rows carried as their value. Nothing calls it
+ * while those rows are withdrawn; it is two lines and it comes back with
+ * them, so it stays rather than being rewritten later from memory. */
 function countScoreableTricks() {
   return scoreableTricks().length;
 }
@@ -5369,23 +5372,24 @@ export class Ui {
         flyRow,
         modeRow,
         /*
-         * THE TRICK LIST BELONGS ON THE FIRST SCREEN A FREESTYLE PILOT SEES.
+         * THE TRICK LIST IS WITHDRAWN UNTIL THE SCORING IS SETTLED.
          *
-         * It was a row inside The town, which is one door further in than
-         * anybody looks, and the report from real play was simply "I can't
-         * see the catalogue of tricks, there is no UI element". There was
-         * one; it was behind a door labelled with the name of a place, and
-         * a pilot looking for a list of tricks has no reason to open a room
-         * called The town to find it. It stays in there as well, because
-         * that is where the run settings are and it belongs beside them,
-         * but the way IN to the game now offers it directly.
+         * Two rows opened it, this one and its twin in the Freestyle room,
+         * and both are gone. The screen, its catalogue, its films and the
+         * checks that cover it are all still here and still correct: what
+         * was removed is the way in, because a list of what the scorer pays
+         * for is a promise about a scorer that is not finished, and the
+         * scoring switch one room over still wears a warning colour for the
+         * same reason.
+         *
+         * When it comes back it belongs HERE, on the first screen a
+         * freestyle pilot sees, and that is worth keeping written down. It
+         * used to live only inside The town, one door further in than
+         * anybody looks, and the report from real play was "I can't see the
+         * catalogue of tricks, there is no UI element". There was one, behind
+         * a door labelled with the name of a place. Restoring it is this
+         * comment turned back into a row.
          */
-        ...(this.mode === 'freestyle' ? [{
-          label: 'Trick list',
-          value: `${countScoreableTricks()} tricks`,
-          action: 'tricks',
-          note: 'Every trick the scorer is known to name, what each one pays, and a picture of it being flown. Worth a minute before your first run.',
-        }] : []),
         {
           label: 'Quad',
           value: tuneById(s.tune).name,
@@ -5677,17 +5681,11 @@ export class Ui {
           pickOnly: true,
         },
         /*
-         * WHAT THERE IS TO FLY, before flying it. A pilot who does not know
-         * a Powerloop is a thing cannot fly one on purpose, and the town
-         * gives no clue: it is a town. This is the only place the catalogue
-         * is visible from, and it is a door rather than a copy of it.
+         * The Freestyle room's Trick list door, withdrawn with the one on
+         * the title until the scoring is settled. See the note there for
+         * why, and for where it goes back. It belonged beside the scoring
+         * row above it, which is the row it is really about.
          */
-        {
-          label: 'Trick list',
-          value: `${countScoreableTricks()} tricks`,
-          action: 'tricks',
-          note: 'Every trick the scorer is known to name, what each one pays, and a picture of it being flown. Worth a minute before your first run.',
-        },
         /*
          * A DOOR, not a copy, and it is spelled the way the other two rooms
          * that carry it spell it.

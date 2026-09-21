@@ -40826,3 +40826,68 @@ which closed it. Caught by node --check.
                                now, and a belowFold number per screen,
                                because the measurement is new. No existing
                                overflow number moved.
+
+## 2026-09-21 | shell | The Trick list doors are withdrawn until the scoring is settled
+
+The owner asked for the trick list menu item removed: it is for later, when
+the scoring system is nailed down.
+
+Two rows opened it, not one, which is worth recording because removing
+either alone would have left the screen reachable and looked done:
+
+    title      only in freestyle mode, under the mode row
+    freestyle  beside the Scoring row, which is the row it is really about
+
+Both are gone. Verified by walking every screen in BOTH modes and looking
+for any row whose action is `tricks` or whose label reads Trick list: none
+in race, none in freestyle. The Freestyle room now reads Scoring, Quad,
+Physics model, Back, and the title in freestyle mode no longer carries it.
+
+### What was kept, and why
+
+Everything else. The screen is still built, `scoreableTricks` still reads
+the proven catalogue, the film player still draws, and yesterday's three
+fixes to that screen are untouched. What was removed is the way in.
+
+The reason is the one the owner gave: a list of what the scorer pays for is
+a promise about a scorer that is not finished. The Scoring row one line
+above where the door used to be already wears the amber warning colour for
+exactly that reason, so the two belong together and they now agree.
+
+`countScoreableTricks` is left in place with a note saying so. It is two
+lines, it has no caller while the rows are away, and deleting it means
+whoever restores the row rewrites it from memory.
+
+The comment where the title's row used to be is now the restoration note:
+it says the row belongs there rather than only inside The town, and why,
+because that was itself a bug report from real play once ("I can't see the
+catalogue of tricks, there is no UI element") and losing that reasoning
+would invite the same mistake on the way back.
+
+### The check stays too, deliberately
+
+`tricks` stays in `lint:shell`'s SCREENS. The screen is unreachable from
+any menu now, so there is an argument for dropping it, and it is the wrong
+one: `show()` reaches the screen whether or not a row does, the screen is
+still correct today, and dropping the coverage the day the door closes is
+exactly how the three faults from bug-f105cf4a come back silently when it
+reopens. The check costs one screen of walk time and holds the line.
+
+### RUN LOG
+
+    npm run lint:shell        PASS. freestyle 5 stops to 4, ids 298 rows to
+                              297 across 14 screens, and the trick film
+                              still follows the cursor across 43 tricks.
+                              No baseline change: the freestyle room's
+                              overflow and below-fold were 0 and still are,
+                              and the title's row is behind a freestyle
+                              check the walk does not enter.
+    npm run lint:input        all 84 passed, 25 s
+    npm run input:selftest    not run: src/input untouched
+    npm run verify            not run: this turn removed two menu rows from
+                              src/ui/ui.js and edited one comment in
+                              scripts/. No physics, no plant, no ABI, no
+                              build.
+
+    Probed directly, because the lint walks in race mode and one of the two
+    rows was freestyle only: every screen, both modes, zero doors.

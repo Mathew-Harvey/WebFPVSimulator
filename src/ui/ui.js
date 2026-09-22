@@ -169,6 +169,7 @@ import { ScoreHud } from './scorehud.js';
 import { formatScore } from '../game/score.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
+import { patreonAnchor } from '../share/patreon.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted } from '../input/touchsticks.js';
@@ -3123,7 +3124,8 @@ export class Ui {
     this.frameTop = el('div', 'frame-top');
     this.crumb = el('div', 'crumb');
     this.frameContext = el('div', 'frame-context');
-    this.frameTop.append(this.crumb, el('div', 'frame-gap'), this.frameContext);
+    this.frameGap = el('div', 'frame-gap');
+    this.frameTop.append(this.crumb, this.frameGap, this.frameContext);
 
     this.frameBot = el('div', 'frame-bot');
     this.frameLegend = el('div', 'frame-legend');
@@ -3166,6 +3168,9 @@ export class Ui {
       el('span', null, 'Expect bugs and rough edges. It is still being built, and it will improve.'),
     );
     brand.append(beta);
+    /* One node, moved between the bars by placePatreon. Built here so the
+     * title, which hides the top bar, still has it on the command bar. */
+    this.patreonLink = patreonAnchor();
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
     this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.');
@@ -11198,6 +11203,38 @@ export class Ui {
   }
 
   /*
+   * Where the support link sits.
+   *
+   * The title hides the top bar, and the bench hides it too, so on those
+   * two the link rides the command bar, just left of the primary button.
+   * Everywhere else that is still a menu, it rides the top bar, after the
+   * breadcrumb. It is not a menu row: the lists are about the flight, and
+   * another row on the title is the height that list cannot spare.
+   * Flight hides both bars, and the link with them. A support control over
+   * the FPV picture is the wrong layer.
+   */
+  placePatreon() {
+    const a = this.patreonLink;
+    if (!a) {
+      return;
+    }
+    if (this.screen === 'flight') {
+      a.hidden = true;
+      return;
+    }
+    a.hidden = false;
+    if (this.screen === 'title' || this.screen === 'fc') {
+      if (a.parentNode !== this.frameBot || a.nextSibling !== this.framePrimary) {
+        this.frameBot.insertBefore(a, this.framePrimary);
+      }
+      return;
+    }
+    if (a.parentNode !== this.frameTop || a.nextSibling !== this.frameGap) {
+      this.frameTop.insertBefore(a, this.frameGap);
+    }
+  }
+
+  /*
    * The bars, repainted whenever the screen or the cursor changes.
    *
    * The legend prints what the CURRENT INPUT DEVICE can do, not both at once:
@@ -11228,6 +11265,7 @@ export class Ui {
      * condition. The condition is whether the bar is there.
      */
     this.root.classList.toggle('bar-shown', !this.frameTop.hidden);
+    this.placePatreon();
     if (onFlight) {
       this.root.style.setProperty('--bar-top', '0px');
       this.root.style.setProperty('--bar-bot', '0px');

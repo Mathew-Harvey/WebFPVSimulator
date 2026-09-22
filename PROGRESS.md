@@ -22846,6 +22846,62 @@ one `feelImpact` no longer takes on those frames.
 
 `npm run verify` not run: no plant, ABI, WASM or threshold change.
 
+---
+
+## 2026-09-22 Patreon support link
+
+The account is still being created, so the public address is an empty
+string in three places that have to stay the same:
+
+- `src/share/patreon.js`
+- landing `src/config.js`
+- board `public/app.js`
+
+A click does nothing until that string is the real page. It does not open
+Patreon's front door and call that support.
+
+The control is Patreon's symbol, the bar and the circle, in their coral
+`#FF424D`, with the word Patreon in the page's own type. The rest of each
+page stays in the product palette. Their notes allow the symbol to say a
+page has a Patreon presence, and they do not allow a redrawn wordmark, so
+the name is set in our type rather than traced from theirs.
+
+Where it sits:
+
+- Landing film and wiki: the top bar, before Fly now, and the footer.
+  On a narrow window it stays while Track builder, Leaderboard and Source
+  drop out. Fly now stays the mint button.
+- Board: the mast, under the Tracks, Times and Pilots counts, then the
+  sticky spine and the footer, which is where Credits already repeats.
+  The spine drops the word under 520 px and keeps the symbol, because that
+  bar is one line.
+- Simulator: the top bar of every menu, after the breadcrumb. The title
+  and the firmware bench hide that bar, so there it sits on the command
+  bar, just left of the primary button. It is not a menu row. The title
+  list is already taller than a short window, and another row would spend
+  the height the list cannot spare. It is off the flight view. The track
+  builder puts the same control on the keep strip under the toolbar. A
+  first pass put it in the toolbar and it cut off Sponsor logos.
+
+`npm run verify` not run: no plant, ABI, WASM or threshold change.
+
+---
+
+## 2026-09-22 Patreon page is live
+
+The empty address is now `https://www.patreon.com/c/webfpv`, in
+`src/share/patreon.js`, the landing `src/config.js`, and the board
+`public/app.js`. The static anchors on the landing page, the wiki and the
+board name that URL too, so the link works before their scripts run.
+
+The hover line is the three memberships, in Patreon's order: Keep the
+lights on, $5. Hosting + runway, $12. Build the sim, $25. USD, plus GST
+on join. The visible control is still the symbol and the word Patreon.
+The welcome post stays on the Patreon page. The button opens the public
+page, which is where someone joins.
+
+`npm run verify` not run: no plant, ABI, WASM or threshold change.
+
 
 
 

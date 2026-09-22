@@ -61,6 +61,7 @@ import {
 } from '../share/board.js';
 import { sendCardAnimation } from '../share/cardgif.js';
 import { BOARD_WINDOW, SIM_WINDOW, claimWindowName } from '../share/windows.js';
+import { patreonAnchor } from '../share/patreon.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import {
   clearShareImport, readBuilderIntent, readEditKey, readShareImport,
@@ -1750,6 +1751,12 @@ export class App {
     zoneOut.append(this.listingChip, this.publishBtn, this.flyBtn, back);
 
     bar.append(zoneFile, zoneEdit, zoneOut, file);
+    /* On the keep strip, not in the toolbar. The toolbar is already the
+     * width of its three zones, and a pill in it cuts the last edit button. */
+    const keep = document.getElementById('tb-keep');
+    if (keep) {
+      keep.append(patreonAnchor());
+    }
     this.updateTopBar();
   }
 

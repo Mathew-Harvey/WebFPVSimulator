@@ -22902,6 +22902,21 @@ page, which is where someone joins.
 
 `npm run verify` not run: no plant, ABI, WASM or threshold change.
 
+---
+
+## 2026-09-22 The title was hiding the support link
+
+webfpv.org/sim/ did have the control, in the bottom right of the command
+bar, beside the keyboard hint. That is not where a visitor looks. The
+title hides the top bar, so the same node now sits in the brand, under
+the wordmark and the beta line, on the wide window and on a 1280 by 720
+one. The three cards are clear of it. Other menus still carry it in the
+bar.
+
+`npm run verify` not run: no plant, ABI, WASM or threshold change. The
+script at /sim/src/ui/ui.js is cached for four hours, so a reload that
+does not bypass the cache can keep the old placement until that expires.
+
 
 
 

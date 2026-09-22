@@ -3168,9 +3168,16 @@ export class Ui {
       el('span', null, 'Expect bugs and rough edges. It is still being built, and it will improve.'),
     );
     brand.append(beta);
-    /* One node, moved between the bars by placePatreon. Built here so the
-     * title, which hides the top bar, still has it on the command bar. */
+    /*
+     * The support link lives HERE on the title, under the wordmark, because
+     * the title hides the top bar and the command bar's right corner is
+     * where a pilot does not look. The same node moves into the bars on
+     * every other screen.
+     */
+    this.patreonSlot = el('div', 'brand-patreon');
     this.patreonLink = patreonAnchor();
+    this.patreonSlot.append(this.patreonLink);
+    brand.append(this.patreonSlot);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
     this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.');
@@ -11205,11 +11212,11 @@ export class Ui {
   /*
    * Where the support link sits.
    *
-   * The title hides the top bar, and the bench hides it too, so on those
-   * two the link rides the command bar, just left of the primary button.
-   * Everywhere else that is still a menu, it rides the top bar, after the
-   * breadcrumb. It is not a menu row: the lists are about the flight, and
-   * another row on the title is the height that list cannot spare.
+   * The title hides the top bar, so the link sits in the brand, under the
+   * wordmark, which is the one place on that screen a visitor reads. The
+   * bench hides the top bar too, so there it rides the command bar. Every
+   * other menu puts it in the top bar, after the breadcrumb. It is not a
+   * menu row: the lists are about the flight.
    * Flight hides both bars, and the link with them. A support control over
    * the FPV picture is the wrong layer.
    */
@@ -11223,7 +11230,13 @@ export class Ui {
       return;
     }
     a.hidden = false;
-    if (this.screen === 'title' || this.screen === 'fc') {
+    if (this.screen === 'title') {
+      if (a.parentNode !== this.patreonSlot) {
+        this.patreonSlot.append(a);
+      }
+      return;
+    }
+    if (this.screen === 'fc') {
       if (a.parentNode !== this.frameBot || a.nextSibling !== this.framePrimary) {
         this.frameBot.insertBefore(a, this.framePrimary);
       }

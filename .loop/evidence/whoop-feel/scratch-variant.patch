@@ -1,0 +1,87 @@
+scratch-variant.patch: the measuring rig behind WHOOP-FEEL-PLAN.md.
+
+NOT FOR SHIPPING and not a patches/ entry. It applies to this repository's own
+src/native, not to vendor/betaflight. It adds airframe id 2 as a runtime copy
+of the five inch's row with nine knobs behind an exported scratch_variant(),
+in this argument order:
+
+  k_mass       mass times k, and the row's gravity divided by k
+  k_inertia    all three inertias times this
+  k_ground     ground effect strength, 0 for none
+  r_cell       pack resistance times this
+  k_duct_lip   duct lip suction moment coefficient
+  duct_fade    duct augmentation fade, 0 disables it
+  k_duct       static duct augmentation, 1 is an open rotor
+  rotor_drag   rotor H force coefficient times this
+  propwash     propwash amplitude, negative keeps the five inch's
+
+Built on 2026-09-23 with Emscripten 3.1.6 and Betaflight 77d01ba in a scratch
+copy of the tree: `git apply` this, then `bash scripts/build-wasm.sh`. With it
+applied the five inch's canonical trace is still de0401cd4266, and the
+identity call scratch_variant(1, 1, 0, 1, 0, 0, 1, 1, -1) reproduces the
+shipped whoop exactly. probe.mjs beside this file drives it.
+
+--- a/src/native/sim_internal.h
++++ b/src/native/sim_internal.h
+@@ -153,7 +153,8 @@
+  */
+ #define SIM_AIRFRAME_5IN 0
+ #define SIM_AIRFRAME_WHOOP65 1
+-#define SIM_AIRFRAME_COUNT 2
++#define SIM_AIRFRAME_SCRATCH 2
++#define SIM_AIRFRAME_COUNT 3
+ 
+ typedef struct {
+   /* rigid body, world frame */
+--- a/src/native/plant.c
++++ b/src/native/plant.c
+@@ -663,6 +663,7 @@
+  * the whole of the compatibility promise: the harness never calls
+  * sim_set_airframe, so it flies the five inch it always flew.
+  */
++static PlantParams g_scratch_row;
+ const PlantParams *PLANT_P = &PLANT_TABLE[SIM_AIRFRAME_5IN];
+ static int g_airframe = SIM_AIRFRAME_5IN;
+ 
+@@ -771,7 +772,7 @@
+ static void plant_build_axes(void) {
+   const double deg = 0.017453292519943295;
+   for (int a = 0; a < SIM_AIRFRAME_COUNT; a += 1) {
+-    const PlantParams *P = &PLANT_TABLE[a];
++    const PlantParams *P = (a == SIM_AIRFRAME_SCRATCH) ? &PLANT_TABLE[SIM_AIRFRAME_5IN] : &PLANT_TABLE[a];
+     for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+       const double x = P->pos_x[m];
+       const double y = P->pos_y[m];
+@@ -800,7 +801,31 @@
+     return;
+   }
+   g_airframe = id;
+-  PLANT_P = &PLANT_TABLE[id];
++  PLANT_P = (id == SIM_AIRFRAME_SCRATCH) ? &g_scratch_row : &PLANT_TABLE[id];
++}
++
++/* SCRATCH ONLY: the five inch row with the knobs a whoop feel study sweeps. */
++#include <emscripten.h>
++EMSCRIPTEN_KEEPALIVE
++int scratch_variant(double k_mass, double k_inertia, double k_ground,
++                    double r_cell_scale, double k_duct_lip, double duct_fade,
++                    double k_duct, double k_rotor_drag_scale, double k_propwash) {
++  g_scratch_row = PLANT_TABLE[SIM_AIRFRAME_5IN];
++  g_scratch_row.mass_kg *= k_mass;
++  g_scratch_row.gravity /= k_mass;
++  g_scratch_row.inertia[0] *= k_inertia;
++  g_scratch_row.inertia[1] *= k_inertia;
++  g_scratch_row.inertia[2] *= k_inertia;
++  g_scratch_row.k_ground = k_ground;
++  g_scratch_row.r_cell *= r_cell_scale;
++  g_scratch_row.k_duct_lip = k_duct_lip;
++  g_scratch_row.duct_fade = duct_fade;
++  g_scratch_row.k_duct = k_duct;
++  g_scratch_row.k_rotor_drag *= k_rotor_drag_scale;
++  if (k_propwash >= 0.0) {
++    g_scratch_row.k_propwash = k_propwash;
++  }
++  return 0;
+ }
+ 
+ int plant_airframe(void) { return g_airframe; }

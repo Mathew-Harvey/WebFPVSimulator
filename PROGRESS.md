@@ -40962,3 +40962,98 @@ reopens. The check costs one screen of walk time and holds the line.
 
     Probed directly, because the lint walks in race mode and one of the two
     rows was freestyle only: every screen, both modes, zero doors.
+
+## 2026-09-23 | plan, plant | The whoop is a real whoop in slow motion, and one number fixes the clock
+
+The owner's request: devise a way to tweak the current setup, for the whoop
+only, so it feels more like a whoop and less like a five inch, and come up
+with a plan. The plan is `WHOOP-FEEL-PLAN.md`. This turn changed no source
+file: no plant, no ABI, no shell, no `dist/sim.wasm`. What it added is the
+plan and the rig that measured it, in `.loop/evidence/whoop-feel/`.
+
+### What was measured
+
+The honest 65 mm plant, still compiled as `SIM_AIRFRAME_WHOOP65`, flown in a
+life size room, against the whoop the shell flies, the five inch's plant at
+gravity 1.62 in the `MICRO_SCALE` room, with every length divided by the
+room's factor so the numbers are what the picture does.
+
+Hover, thrust to weight and terminal already match: 0.337 against 0.351,
+5.13 against 5.21, 8.0 against 8.2 m/s. Everything translational does not.
+The fall, the carry, the brake and the punch all run 1.4 to 1.5 times slower
+than the real whoop's, which is the Froude clock of a world built 3.43 times
+larger under gravity that did not come through the factor: the picture falls
+at 0.47 g. Roll rises in 52 ms against 28, yaw in 165 against 26. It sounds
+like a five inch: 573 Hz of blade pass in a hover against 1.73 kHz.
+
+### What the plan proposes
+
+A third plant row, the five inch's with mass times k and its own gravity
+divided by k. The weight force is unchanged, so hover, thrust to weight,
+terminal, the motors, the pack, the Weight slider and the rate response are
+all untouched, and every translational acceleration is 1 / k stronger. On a
+scratch build: k 0.70 cuts every translational time by about 30 percent,
+k 0.62 carries exactly like a real whoop, 1.17 s to half speed against 1.19,
+and k 0.47 with the air at 0.75 matches the real whoop's fall, carry, carry
+distance and brake at once. Then, each flown on its own: the whoop's voice
+and duct hits that do not strike the blades, in the shell; inertia for the
+yaw, which Betaflight's default tune stays well damped on down to half; and
+the floor cushion, where `k_ground` 0.7 lands on the real whoop's within
+about a percent. Sag, the duct lip and the duct fade are recorded and not
+recommended.
+
+### The toolchain is not a blocker any more
+
+Round 70 left "a lighter five inch for the whoop" as an open question because
+no container had Emscripten. `apt-get install emscripten` gives 3.1.6, the
+version the air round used, and a one commit fetch of Betaflight `77d01ba`
+into a scratch copy of the tree built the unmodified source BYTE FOR BYTE
+identical to the committed module, sha256 `c59958ec1c9ecf85`, trace
+`de0401cd4266`, vendor tree clean. The repository's own `vendor/betaflight`
+was not touched and is still empty.
+
+### What went wrong
+
+The first `apt-get install` died on a stale package index; `apt-get update`
+fixed it.
+
+The first probe restarted the 250 Hz stick grid at every change of
+manoeuvre, so the sample that levelled the sticks landed 1 ms after the one
+before it. Betaflight's feedforward read a stick four times faster than it
+moved, the craft pitched 10 degrees PAST level and braked, and the carry came
+out non monotonic in k: 0.62 stopped faster than 0.55. Caught because it was
+non monotonic, traced by printing the attitude after release, fixed by
+threading one grid through every call. Every figure in the plan is from the
+corrected probe, and the rows that had only been measured on the broken one,
+inertia 0.50 and four times `r_cell`, were measured again. One of them had
+been wrong: the broken probe showed the extra pack resistance cutting the
+carry by a quarter, and it does not move it at all.
+
+`scripts/whoop-gates.js` restarts its grid at `startMs` in the same way. Its
+joins are throttle only, which feedforward does not read, though anti gravity
+and throttle boost do. Recorded, not changed: it is a gate file with its own
+history and this turn was a plan.
+
+### RUN LOG
+
+    probe, committed module      W and F rows, and the runtime knob rows
+                                 (air 1.5, gravity 1.785): see results
+    probe, scratch module        the pace ladder, inertia, ground effect,
+                                 duct lip and sag rows; the identity row
+                                 reproduces F exactly
+    unmodified rebuild           exit 0, 98610 bytes, sha256 identical to
+                                 dist/sim.wasm, trace de0401cd4266
+    scratch rebuild              exit 0, trace de0401cd4266 on airframe 0
+    npm run verify               not run: no source file changed. The two
+                                 rebuilds were in the session scratchpad and
+                                 neither reached dist/.
+    lints                        not run, same reason
+    flown                        nothing. Every number is a machine measuring
+                                 a machine; the plan's steps each end in a
+                                 pilot's flight.
+
+### OPEN QUESTIONS
+
+The owner's five decisions are at the end of the plan: the first rung of k,
+whether rotation joins, what happens to the board's whoop times, the card's
+words, and the voice's pitch.

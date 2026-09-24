@@ -43147,6 +43147,23 @@ words).
                              PROGRESS entries first, then this one
     git diff --stat vendor/betaflight   empty
 
+---
+
+## 2026-09-24 Board statistics tab: named pilots off the all time strip
+
+Follows the statistics tab copy entry above.
+
+Board commit `dcc8d5f`, on its `main`. The owner: twenty named pilots
+beside 265 pilots today distracts from the real number. Named pilots is
+gone, and so is Back another day, which counts only those same named
+pilots and without them reads as returning visitors, contradicting the
+Pilots today tile. Six facts remain in three columns. The mast's Pilots
+count, the leaderboard's own figure, is untouched and shows on every tab.
+
+    board npm test           1 failed, the same app.js noopener check
+                             that fails on board main without this.
+    served / look at it      not run. Offered to the owner.
+
 ## 2026-09-24 | physics, plant, shell | Tumble flat, always
 
 The owner, as the advisor, on the question the entry before last left open
@@ -43288,4 +43305,26 @@ argued two entries up.
     the owner's tail first crash   flat on its back, turtle latches, flips
     park:fly                       not run: the change acts only on a hull
                                    at the ground; no trick touches it
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | git | Tumble flat pushed to main, for the owner to fly
+
+The owner, on the entry above: "pull , merge and push to main". The
+approval to put the tumble flat change on main, and the verification scale
+chosen is flying it. main had moved by two commits since the last merge
+(another session's board statistics entry, 5a5dac1 and a4cebaf, PROGRESS
+only); they were merged into claude/zealous-cerf-gik7au with main's entries
+first, and the branch went onto main as a fast forward. Nothing was
+rewritten.
+
+What to look for is in the entry above: a tail or back first crash rolls
+flat and offers turtle; a side landing flops onto belly or back; takeoffs,
+landings, launches off the block and crashflip feel exactly as before.
+
+### RUN LOG
+
+    code                     unchanged since the entry above; only
+                             PROGRESS.md came in from main
+    checks                   not rerun: nothing they read changed
+    git merge-base           295617f, one history
     git diff --stat vendor/betaflight   empty

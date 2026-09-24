@@ -41,9 +41,12 @@
 import {
   ELEMENTS, KIND, TUNING, TRACK_CLASSES, TRACK_CLASS_DEFAULT, apertureLevels,
   defaultDims, defaultPitch, defaultZ, elementHeight, normalizeFlagSide,
-  trackClassOf, tuningFor,
+  trackClassOf, tuningFor, docModeOf,
 } from './elements.js';
 import { apertureFrame, wrapAngle } from './geometry.js';
+import {
+  styleOf as propStyleOf, clampDim, gapPointsOf, styleDims, GAP_POINTS,
+} from '../props/types.js';
 
 /*
  * The schema version. Bump it when a change to the document cannot be read
@@ -280,14 +283,19 @@ function creditOf(src) {
   return Object.values(out).some(Boolean) ? out : null;
 }
 
-export function createTrack(name, cls = TRACK_CLASS_DEFAULT) {
+export function createTrack(name, cls = TRACK_CLASS_DEFAULT, mode = 'race') {
+  const freestyle = mode === 'freestyle';
   /* Defaulted here rather than in the signature so a caller that only wants
    * to name the class can pass undefined for the name, which every one of
    * app.js's six call sites does. */
-  name = name ?? 'Untitled track';
+  name = name ?? (freestyle ? 'Untitled map' : 'Untitled track');
+  /* A freestyle map is always the full sized class. */
+  if (freestyle) {
+    cls = 'full';
+  }
   const stamp = nowUtc();
-  const T = tuningFor(cls);
-  return {
+  const T = tuningFor(cls, freestyle ? 'freestyle' : 'race');
+  const doc = {
     schemaVersion: SCHEMA_VERSION,
     id: newTrackId(),
     name,
@@ -323,6 +331,11 @@ export function createTrack(name, cls = TRACK_CLASS_DEFAULT) {
     elements: [],
     sequence: [],
   };
+  if (freestyle) {
+    /* Only written when it is freestyle: see DOC_MODES in elements.js. */
+    doc.mode = 'freestyle';
+  }
+  return doc;
 }
 
 /*
@@ -362,6 +375,17 @@ export function createElement(doc, type, position, yaw = 0) {
   }
   if (def.flagSide) {
     el.flagSide = def.flagSide;
+  }
+  if (def.kind === KIND.STRUCTURE || def.kind === KIND.ZONE) {
+    /* A freestyle asset: its look, and the size that look starts at. */
+    if (def.styles) {
+      el.style = def.styles[0];
+      Object.assign(el.dims, styleDims(type, el.style) ?? {});
+    }
+    if (def.kind === KIND.ZONE) {
+      el.points = GAP_POINTS[1];
+      el.name = 'GAP';
+    }
   }
   if (def.kind === KIND.DECAL) {
     /*
@@ -601,6 +625,12 @@ export function normalize(raw) {
     elements: [],
     sequence: [],
   };
+  /* A freestyle map, which is always full sized. Anything else is a race
+   * track, which is what every document written before maps existed is. */
+  if (src.mode === 'freestyle') {
+    doc.mode = 'freestyle';
+    doc.trackClass = 'full';
+  }
 
   /*
    * The logos. A version 2 document carries `branding.logos`; a version 1
@@ -690,11 +720,16 @@ export function normalize(raw) {
     seenIds.add(id);
 
     const dims = {};
+    const isProp = def.kind === KIND.STRUCTURE || def.kind === KIND.ZONE;
     for (const key of Object.keys(def.dims)) {
       const wanted = num(rawEl.dims?.[key], def.dims[key]);
       /* Levels is a count and everything else is a length. Both have to be
-       * positive or the structure has no geometry at all. */
-      dims[key] = key === 'levels' ? int(wanted, def.dims[key], 1, 24) : Math.max(0, wanted);
+       * positive or the structure has no geometry at all. A freestyle
+       * asset's dimensions are clamped into its own limits, which is what
+       * keeps a hand edited ninety storey warehouse out of the physics. */
+      dims[key] = isProp
+        ? num(clampDim(type, key, wanted))
+        : (key === 'levels' ? int(wanted, def.dims[key], 1, 24) : Math.max(0, wanted));
     }
 
     const el = {
@@ -717,6 +752,12 @@ export function normalize(raw) {
     };
     if (def.kind === KIND.ANNOTATION) {
       el.text = str(rawEl.text, 'Label');
+    }
+    if (isProp && def.styles) {
+      el.style = propStyleOf({ type, style: rawEl.style });
+    }
+    if (def.kind === KIND.ZONE) {
+      el.points = gapPointsOf(rawEl.points);
     }
     if (def.kind === KIND.DECAL) {
       /* Kept even when no logo carries this id, because the logos are read
@@ -858,6 +899,7 @@ export function toPlain(doc) {
      * RaceGOW course on a sixty metre paddock. A field that is not written
      * is a field that does not exist. */
     trackClass: trackClassOf(doc),
+    ...(docModeOf(doc) === 'freestyle' ? { mode: 'freestyle' } : {}),
     field: {
       width: num(doc.field.width),
       depth: num(doc.field.depth),
@@ -906,11 +948,20 @@ export function toPlain(doc) {
       };
       /* Dimension keys in the order elements.js declares them, so two
        * elements of the same type always print the same shape. */
+      const isProp = def.kind === KIND.STRUCTURE || def.kind === KIND.ZONE;
       for (const key of Object.keys(def.dims)) {
-        out.dims[key] = key === 'levels' ? int(el.dims[key], def.dims[key], 1, 24) : num(el.dims[key], def.dims[key]);
+        out.dims[key] = isProp
+          ? num(clampDim(el.type, key, el.dims[key]))
+          : (key === 'levels' ? int(el.dims[key], def.dims[key], 1, 24) : num(el.dims[key], def.dims[key]));
       }
       if (def.kind === KIND.ANNOTATION) {
         out.text = el.text ?? '';
+      }
+      if (isProp && def.styles) {
+        out.style = propStyleOf(el);
+      }
+      if (def.kind === KIND.ZONE) {
+        out.points = gapPointsOf(el.points);
       }
       if (def.kind === KIND.DECAL) {
         out.logoId = str(el.logoId, '');

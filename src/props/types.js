@@ -355,3 +355,34 @@ export function gapPointsOf(value) {
   }
   return best;
 }
+
+/*
+ * How tall an asset stands, roughly, for the builder: the 3D view's height
+ * drag and the inspector's readout. Not a physics number; the solids are
+ * the truth and src/props/catalog.js can measure them exactly.
+ */
+const FLOOR_H = { flats: 2.9, office: 3.6, warehouse: 5.0, shop: 3.0 };
+const CAR_H = { kei: 1.7, keivan: 1.88, hatch: 1.52, sedan: 1.44, wagon: 1.54, minivan: 1.8, van: 1.98, boxtruck: 2.46, minibus: 2.6 };
+
+export function approxHeight(type, dims, style) {
+  const d = dims || {};
+  switch (type) {
+    case 'building': return (d.floors ?? 1) * (FLOOR_H[style] ?? 3) + 1;
+    case 'bando': return (d.floors ?? 1) * 3.4 + 1.2;
+    case 'crane': return (d.height ?? 30) + 7.6;
+    case 'waterTower': return (d.height ?? 16) + 2 * (d.radius ?? 3) + (d.tank ?? 0) + 1.2;
+    case 'mast': return (d.height ?? 30) + 3;
+    case 'chimney': case 'pylon': case 'utilityPole': return d.height ?? 10;
+    case 'containers': return (d.stack ?? 1) * 2.591;
+    case 'scaffold': return (d.height ?? 10) + 1;
+    case 'bridge': return (d.height ?? 6) + (style === 'footbridge' ? 1.2 : 7.2);
+    case 'billboard': return (d.lift ?? 5) + (d.height ?? 3) + 0.6;
+    case 'lamp': return (d.height ?? 7) + 0.3;
+    case 'vending': return 1.95;
+    case 'car': return CAR_H[style] ?? 1.7;
+    case 'rail': case 'ledge': case 'quarterPipe': case 'gap': return d.height ?? 1;
+    case 'stairs': return (d.steps ?? 7) * 0.17 + 0.9;
+    case 'tree': return (style === 'pine' ? 9 : 5.2) * (d.size ?? 1);
+    default: return 1;
+  }
+}

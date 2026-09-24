@@ -33,7 +33,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { countElementsByType, formatElementCounts } from './elements.js';
+import { countElementsByType, formatElementCounts, docModeOf } from './elements.js';
 import { normalize, serialize, toPlain, touch } from './model.js';
 
 const LIBRARY_KEY = 'webfpv.trackbuilder.library.v1';
@@ -55,8 +55,18 @@ const LIBRARY_KEY = 'webfpv.trackbuilder.library.v1';
  */
 const AUTOSAVE_KEY = 'webfpv.trackbuilder.autosave.v1';
 const AUTOSAVE_KEY_MICRO = 'webfpv.trackbuilder.autosave.micro.v1';
+/*
+ * THE FREESTYLE MAP'S OWN SEAT. A map and a track are two canvases an author
+ * has at once, the same way a five inch track and a whoop room are, so a map
+ * in progress is never overwritten by a track and never flown as one. The
+ * simulator's built freestyle map (src/maps/built) reads this seat.
+ */
+export const AUTOSAVE_KEY_FREESTYLE = 'webfpv.trackbuilder.autosave.freestyle.v1';
 
-function autosaveKey(cls) {
+function autosaveKey(cls, mode = 'race') {
+  if (mode === 'freestyle') {
+    return AUTOSAVE_KEY_FREESTYLE;
+  }
   return (cls ?? activeTrackClass()) === 'micro' ? AUTOSAVE_KEY_MICRO : AUTOSAVE_KEY;
 }
 
@@ -78,7 +88,7 @@ function readLibrary() {
 
 /* Every saved track, newest change first, as summaries rather than whole
  * documents: the Load dialog only needs a name and a size. */
-export function listTracks(cls = activeTrackClass()) {
+export function listTracks(cls = activeTrackClass(), mode = 'race') {
   const lib = readLibrary();
   const summarise = (raw, preset) => {
     const { doc } = normalize(raw);
@@ -92,7 +102,11 @@ export function listTracks(cls = activeTrackClass()) {
       credit: doc.credit,
     };
   };
+  /* A map lists with maps and a track with tracks: the Load list of one
+   * canvas offering the other's documents would load a map into the race
+   * seat. */
   const mine = Object.values(lib)
+    .filter((raw) => docModeOf(raw) === mode)
     .map((raw) => summarise(raw, false))
     .sort((a, b) => String(b.modifiedUtc).localeCompare(String(a.modifiedUtc)));
   /*
@@ -107,7 +121,7 @@ export function listTracks(cls = activeTrackClass()) {
    * publishes like any other track and the shipped one stays pristine
    * beside it. That is the whole of the copy on write.
    */
-  const stock = presetsForClass(cls).map((d) => summarise(d, true));
+  const stock = mode === 'freestyle' ? [] : presetsForClass(cls).map((d) => summarise(d, true));
   return [...mine, ...stock];
 }
 
@@ -159,20 +173,20 @@ export function trackExists(id) {
  * autosave cannot land in the other class's chair. */
 export function writeAutosave(doc) {
   const cls = doc && doc.trackClass === 'micro' ? 'micro' : 'full';
-  return writeJson(autosaveKey(cls), toPlain(doc));
+  return writeJson(autosaveKey(cls, docModeOf(doc)), toPlain(doc));
 }
 
-export function readAutosave(cls) {
-  const raw = readJson(autosaveKey(cls), null);
+export function readAutosave(cls, mode = 'race') {
+  const raw = readJson(autosaveKey(cls, mode), null);
   if (!raw) {
     return null;
   }
   return normalize(raw);
 }
 
-export function clearAutosave(cls) {
+export function clearAutosave(cls, mode = 'race') {
   try {
-    localStorage.removeItem(autosaveKey(cls));
+    localStorage.removeItem(autosaveKey(cls, mode));
   } catch (e) {
     /* nothing to do about it */
   }

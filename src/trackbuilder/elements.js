@@ -41,6 +41,11 @@ import {
   GATE_OPENING_DEFAULT, GATE_OPENING_MAX, GATE_SPACING_NOMINAL,
   ELEVATED_SILL_MIN, PIPE_OD, POLE_FROM_GATE_MIN, ROOM_WIDTH, ROOM_DEPTH, GRID as MICRO_GRID,
 } from './racegow.js';
+/* The freestyle assets, as data. src/props/types.js imports nothing, so the
+ * builder can list them without their layouts or a renderer. */
+import {
+  PROP_TYPES, PROP_GROUPS, FURNITURE_PALETTE, approxHeight, styleOf as propStyleOf,
+} from '../props/types.js';
 
 /* Re-exported because this module's consumers already read it from here. */
 export { FRAME_TUBE_OD };
@@ -144,7 +149,32 @@ export const KIND = {
   START: 'start',
   ANNOTATION: 'annotation',
   DECAL: 'decal',
+  /*
+   * A freestyle asset: a building, a crane, a tree. Solid, never in the
+   * sequence, drawn and made solid by src/props from its own layout. Only a
+   * freestyle map's palette offers them.
+   */
+  STRUCTURE: 'structure',
+  /*
+   * A named gap: a scoring window in the air, like a skate game's. Not
+   * solid, not drawn in the world, never in the sequence.
+   */
+  ZONE: 'zone',
 };
+
+/*
+ * WHAT A DOCUMENT IS FOR. 'race' is every track this builder has made: a
+ * flying order, a lap, a clock. 'freestyle' is a map: a place made of
+ * assets with no course through it. Stored in the document, written only
+ * when it is freestyle so every race track's bytes stay what they were, and
+ * a freestyle map is always the full sized class: freestyle is not offered
+ * on the whoop (PROGRESS.md, "Freestyle is not offered on a whoop").
+ */
+export const DOC_MODES = ['race', 'freestyle'];
+
+export function docModeOf(doc) {
+  return doc?.mode === 'freestyle' ? 'freestyle' : 'race';
+}
 
 /*
  * Frame tube diameter. MultiGP does not publish it. Their gates are built
@@ -776,6 +806,28 @@ export const ELEMENTS = {
  * An author can still type any spacing they like. This is the number the
  * tool offers, not a number it enforces.
  */
+/*
+ * THE FREESTYLE ASSETS JOIN THE TABLE, generated from src/props/types.js so
+ * the two cannot disagree. `propGroup` is the palette heading; `turns` says
+ * whether the rotate handle snaps to quarter turns.
+ */
+for (const [id, t] of Object.entries(PROP_TYPES)) {
+  ELEMENTS[id] = {
+    id,
+    label: t.label,
+    key: t.key,
+    group: 'freestyle',
+    propGroup: t.group,
+    kind: t.zone ? KIND.ZONE : KIND.STRUCTURE,
+    turns: t.turns,
+    styles: t.styles ?? null,
+    note: t.note,
+    dims: { ...t.dims },
+    limits: t.limits,
+    labels: t.labels,
+  };
+}
+
 export function levelPitchFor(clearH) {
   return clearH + FRAME_TUBE_OD;
 }
@@ -951,8 +1003,28 @@ export const MICRO_PALETTE_ORDER = [
 ];
 
 /* The palette for a track class. */
-export function paletteFor(cls) {
+export function paletteFor(cls, mode = 'race') {
+  if (mode === 'freestyle') {
+    return FREESTYLE_PALETTE_ORDER;
+  }
   return cls === 'micro' ? MICRO_PALETTE_ORDER : PALETTE_ORDER;
+}
+
+/*
+ * The freestyle palette: every asset, grouped the way src/props/types.js
+ * groups them, then the builder's own gates and markers as furniture.
+ */
+export const FREESTYLE_PALETTE_ORDER = [
+  ...PROP_GROUPS.flatMap((g) => Object.keys(PROP_TYPES).filter((id) => PROP_TYPES[id].group === g.id)),
+  ...FURNITURE_PALETTE,
+];
+
+/* The heading an element sits under on the freestyle palette. */
+export function paletteGroupOf(def) {
+  if (def?.propGroup) {
+    return def.propGroup;
+  }
+  return def?.group === 'extra' ? 'extra' : 'course';
 }
 export const PALETTE_EXTRA = ['startPads', 'label', 'groundLogo'];
 
@@ -972,6 +1044,13 @@ export const TUNING = {
   fieldWidth: 60,
   fieldDepth: 40,
   gridSize: 1,
+  /* A freestyle map: a plot big enough for a block of buildings and a crane,
+   * and the author can grow it. */
+  freestyle: {
+    fieldWidth: 160,
+    fieldDepth: 160,
+    gridSize: 1,
+  },
   /*
    * THE MICRO SET. Every number below that is a length has a micro twin
    * here, because every one of them was chosen against a machine that
@@ -1089,7 +1168,10 @@ export const TUNING = {
  * TUNING: a tangent scale and a samples per segment are dimensionless and do
  * not care how big the track is.
  */
-export function tuningFor(cls) {
+export function tuningFor(cls, mode = 'race') {
+  if (mode === 'freestyle') {
+    return { ...TUNING, ...TUNING.freestyle };
+  }
   if (cls !== 'micro') {
     return TUNING;
   }
@@ -1097,9 +1179,9 @@ export function tuningFor(cls) {
 }
 
 /* Convenience: every element definition in palette order, extras last. */
-export function paletteItems(cls = TRACK_CLASS_DEFAULT) {
+export function paletteItems(cls = TRACK_CLASS_DEFAULT, mode = 'race') {
   return [
-    ...paletteFor(cls).map((id) => ELEMENTS[id]),
+    ...paletteFor(cls, mode).map((id) => ELEMENTS[id]),
     ...PALETTE_EXTRA.map((id) => ELEMENTS[id]),
   ];
 }
@@ -1131,7 +1213,11 @@ export function countElementsByType(elements) {
   /* Both palettes, so an inventory names every element on the track even if
    * the document mixes classes, which a hand edit can do. The order is the
    * full palette's, then whatever is only on the micro one. */
-  const order = [...PALETTE_ORDER, ...MICRO_PALETTE_ORDER.filter((id) => !PALETTE_ORDER.includes(id))];
+  const order = [
+    ...PALETTE_ORDER,
+    ...MICRO_PALETTE_ORDER.filter((id) => !PALETTE_ORDER.includes(id)),
+    ...FREESTYLE_PALETTE_ORDER.filter((id) => !PALETTE_ORDER.includes(id) && !MICRO_PALETTE_ORDER.includes(id)),
+  ];
   for (const id of order) {
     const count = tally.get(id) || 0;
     if (count > 0) {
@@ -1162,9 +1248,12 @@ export function formatElementCounts(rows) {
  * default size on a field the class never meant them for. A hotkey arms what
  * the palette shows.
  */
-export function elementByKey(letter, cls = TRACK_CLASS_DEFAULT) {
+export function elementByKey(letter, cls = TRACK_CLASS_DEFAULT, mode = 'race') {
   const up = String(letter || '').toUpperCase();
-  return paletteItems(cls).find((d) => d.key === up);
+  if (!up) {
+    return undefined;
+  }
+  return paletteItems(cls, mode).find((d) => d.key === up);
 }
 
 /*
@@ -1201,7 +1290,7 @@ export function apertureLevels(dims) {
 
 /* Overall height of an element, for the 3D view and for the height drag
  * limits. Aperture elements are as tall as their top opening plus a tube. */
-export function elementHeight(def, dims) {
+export function elementHeight(def, dims, style = null) {
   if (def.kind === KIND.APERTURE) {
     const levels = apertureLevels(dims);
     const top = levels[levels.length - 1];
@@ -1219,6 +1308,9 @@ export function elementHeight(def, dims) {
   if (def.kind === KIND.START) {
     /* Visual height of the launch stand in src/art/startblock.js. */
     return Math.max(0.08, dims.padSize * 0.40);
+  }
+  if (def.kind === KIND.STRUCTURE || def.kind === KIND.ZONE) {
+    return approxHeight(def.id, dims, style ?? propStyleOf({ type: def.id }));
   }
   return dims.textHeight;
 }

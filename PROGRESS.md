@@ -42420,6 +42420,45 @@ The other 26 feel reports are read, tabulated above, and untouched.
                                      computed. build:wasm cannot run
                                      here: no emcc. Offered
 
+---
+
+## 2026-09-24 Board statistics tab: copy rewritten, sponsor plate removed
+
+Board only. Nothing in this repository changed except this entry. The
+board commit is `f09235b` in `Mathew-Harvey/WebFPVSimulator-LeaderBoard`,
+fast forwarded onto its `main` at the owner's request.
+
+The owner read the statistics tab and called the copy AI slop. Every
+visible string on the tab was rewritten against the humanizer skill
+(`github.com/blader/humanizer`): staged contrasts, flourishes, palette
+jargon ("the mint tick") and notes about the plumbing ("named by the
+edge in front of the site") are gone, and each note says what a reader
+wants to know. "No cookie is set" stays word for word because the
+board's self test pins it as the promise.
+
+The "How they arrived / Direct and sponsors" plate is removed, at the
+owner's request, markup and painting code both. The row goes from three
+columns to two. Only the display went: `src/share/stats.js` here still
+sends the sponsor slug, the board still counts it and `GET /api/stats`
+still returns `sources`, and the privacy plate and the board README say
+so.
+
+What went wrong: "The four on the right" in the all time note named what
+is the bottom row of that grid. The note now names the four instead.
+
+### RUN LOG
+
+    board npm test           1 failed: "nothing app.js builds opens a
+                             bare new tab or asks for noopener". It
+                             fails identically on board main without
+                             this change (the Patreon link in
+                             public/app.js from f1dc902). Everything
+                             else passed; the hash check skipped as
+                             it always does without the password.
+    npm run verify           not run: no physics, plant, ABI or build
+                             change, and no file here changed.
+    served / look at it      not run. Offered to the owner.
+
 ## 2026-09-24 | collision, plan | The city crash review, and the owner's decisions on it
 
 The owner's report: in the freestyle city you bounce around, clip through
@@ -42845,4 +42884,26 @@ short). Neither the recogniser nor GRAZE_SPEED_MAX changed. Wall Tap CLEAN
     npm run lint:shell             1 failed, the same on main, above
     node scripts/shots.js          not run; the near plane was checked with
                                    three harness captures at 7, 15 and 40 cm
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | git | The solid world pushed to main, for the owner to fly
+
+The owner, on the build above: "push to main and i'll fly it". That is the
+verification scale chosen, fly it, and the approval to put the branch on
+main. main had moved by two PROGRESS entries (the board statistics tab,
+d48ca12 and 8b0bd8f); they were merged into claude/zealous-cerf-gik7au,
+main's entries placed before this branch's, and the branch then went onto
+main as a fast forward. Nothing was rewritten.
+
+What to look for is in the entry above: the upward pop off a hard wall hit
+is the open question, then a tap at walking pace, a roof dive, the lens
+against a wall, and a craft left on its side at the foot of a wall.
+
+### RUN LOG
+
+    code                     unchanged since the entry above; only
+                             main's two PROGRESS entries came in
+    checks                   not rerun: nothing they read changed. The
+                             run log above is from this tree's code
+    git merge-base           bc71ca1, one history
     git diff --stat vendor/betaflight   empty

@@ -413,6 +413,31 @@ async function mousePage(page) {
   check('and it stays down', await ev('return input.padSummary().guessNoYaw === false && input.padSummary().mapUsable === true;'));
 
   /* --------------------------------------------------------------------
+   * 3b. The throttle where the guess expects yaw. bug-c9423f3e, a
+   *     Radiomaster Pocket in Firefox: "the throttle is mapped on the yaw
+   *     axes and the throttle movement is not detected". Axis 3, which the
+   *     guess calls yaw, is given what a throttle does: parked at the
+   *     bottom and left there. The title says so by itself, after four
+   *     seconds and not before, because before that it could be a thumb.
+   * ------------------------------------------------------------------ */
+  section('title: a throttle resting on the guessed yaw axis earns its own row');
+  const AS_YAW = 'This browser has your throttle as yaw';
+  const asYawShown = `Array.from(window.__ui.screens.title.querySelectorAll('.row-warn .row-label')).some((n) => n.textContent === ${JSON.stringify(AS_YAW)})`;
+  await page.evaluate('window.__pad.axes[3] = -1; window.__pad.timestamp += 1; 0');
+  const parkedAt = Date.now();
+  let asYaw = true;
+  await page.until(asYawShown, 20000).catch(() => { asYaw = false; });
+  const tookMs = Date.now() - parkedAt;
+  check('parked and left, the row arrives by itself, and not before four seconds', asYaw && tookMs >= 4000, `${tookMs} ms`);
+  const asYawReport = await ev(`const r = input.mapReport(); const s = input.padSummary();
+    return JSON.stringify({ parked: s.guessYawParked, noYaw: s.guessNoYaw, map: r && r.map, yawAxis: r && r.axes.yaw, live3: r && r.live[3] });`)
+    .then(JSON.parse);
+  check('and input.js agrees, and a report would show the axis and what it reads',
+    asYawReport.parked === true && asYawReport.noYaw === false && asYawReport.map === 'guess'
+    && asYawReport.yawAxis === 3 && asYawReport.live3 === -1, JSON.stringify(asYawReport));
+  await page.evaluate('window.__pad.axes[3] = 0; window.__pad.timestamp += 1; 0');
+
+  /* --------------------------------------------------------------------
    * 4. The wizard, end to end, on the radio with no way to answer step
    *    seven. bug-89b2c85c: "at step 7 of calibration i can't continue, i
    *    don't have any button on my radio". The step is only asked of a
@@ -1031,33 +1056,33 @@ async function keyboardPage(page) {
   await ev("ui.settings.keyThrottle = 'hover'; ui.writeSettings(); return input.keyThrottle;");
 
   /* --------------------------------------------------------------------
-   * 10. The roof. Flying these checks by hand found it: held under the
-   *     room's ceiling at full throttle the whoop is a thrash, the catch
-   *     calls a crash, and the recovery tried clear air 0.6 m up first,
-   *     which from under a ceiling slab 0.343 m thick is on top of it.
-   *     Measured through this flow on the code before the fix: pinned at
-   *     13.65 m, put back at 14.32 m over a roof whose top is 14.06 m, and
-   *     sitting on it.
+   * 10. The roof, and then the floor. Flying these checks by hand found it:
+   *     held under the room's ceiling at full throttle the whoop is a
+   *     thrash, the catch calls a crash, and the recovery, which then looked
+   *     for clear air 0.6 m up first, found it on top of a ceiling slab
+   *     0.343 m thick. Measured through this flow: pinned at 13.65 m, put
+   *     back at 14.32 m over a roof whose top is 14.06 m, and sitting on it.
+   *     Since 24 September a recovery sets the craft down on a flat
+   *     surface, the owner's rule, and under this ceiling that is the floor.
    *
-   *     Driven here through X, the pilot's own unstick, which runs the same
-   *     recovery, pinned by a radio's throttle under the thrash throttle so
-   *     that only X can fire. Not through the catch: whether a thrash
-   *     confirms depends on how the contact flickers at the page's frame
-   *     rate, and it fired in seven runs of eight here. A check that
-   *     fires seven times in eight is not a check.
+   *     Driven through X, the pilot's own unstick, which runs the same
+   *     recovery, with the whoop pinned by a radio's throttle under the
+   *     thrash throttle so that only X can fire. Not through the catch:
+   *     whether a thrash confirms depends on how the contact flickers at the
+   *     page's frame rate, and it fired in seven runs of eight here. A check
+   *     that fires seven times in eight is not a check.
    * ------------------------------------------------------------------ */
-  section('keyboard: X under the ceiling puts the whoop back in the room, not on the roof');
+  section('keyboard: X under the ceiling sets the whoop down on the room\'s floor, not on the roof');
   /* The room stands on the ground at zero. The pinned height below is what
    * says so: pinned anywhere else, it fails. */
   const ceiling = ROOM_HEIGHT * MICRO_SCALE;
   const lean = Math.round((hand.hover + THRASH_THROTTLE) * 50) / 100;
   await page.evaluate(`window.__stick(0, 0, 0, ${lean}); 0`);
   /* Not still: held there, it bounces between 13.54 and 13.65 m at up to
-   * half a metre a second, measured frame by frame. So pinned is a height,
-   * and the recovery is told from the bounce by going lower than any of
-   * it: the drop is 0.6 m from the centre, the bounce under 0.2. The wait
-   * is long because it is wall clock and the climb is sim clock, which a
-   * busy machine slows: with four browsers here it took longer than 15 s. */
+   * half a metre a second, measured frame by frame, so pinned is a height.
+   * The wait is long because it is wall clock and the climb is sim clock,
+   * which a busy machine slows: with four browsers here it took longer
+   * than 15 s. */
   let pinned = null;
   await page.until(`window.__craftState().worldY > ${ceiling - 0.3}`, 60000)
     .then(async () => {
@@ -1068,104 +1093,90 @@ async function keyboardPage(page) {
   check(`a radio's ${lean} throttle holds it against the ceiling, and nothing calls a crash`,
     Boolean(pinned) && !pinned.crashed && pinned.y > ceiling - 0.3 && pinned.y < ceiling,
     `${JSON.stringify(pinned)} under a ${ceiling.toFixed(3)} m ceiling`);
-  /* Every frame, in the page, from the key on: the craft leaves its spot on
-   * the next physics step, so a poll from here could miss where it was put. */
-  await page.evaluate(`window.__roofTrace = (async () => {
-    const out = [];
-    const t0 = performance.now();
-    while (performance.now() - t0 < 3000) {
-      await new Promise((r) => requestAnimationFrame(r));
-      out.push(window.__craftState().worldY);
-    }
-    return out;
-  })(); 0`);
-  await page.tap('KeyX');
-  const ys = await page.evaluate('window.__roofTrace');
-  const put = pinned ? ys.find((y) => y < ceiling - 0.45) : undefined;
-  const highest = Math.max(...ys);
-  check('X puts it back in the room, off the ceiling, and never on the roof',
-    put !== undefined && put > 1 && highest < ceiling,
-    `${put === undefined ? 'never moved off the ceiling' : `put at ${put.toFixed(3)}`}, highest ${highest.toFixed(3)}, ceiling ${ceiling.toFixed(3)}`);
-  await page.evaluate('window.__stick(); 0');
-
-  /* --------------------------------------------------------------------
-   * 11. And then it holds its height, on the keys. Two faults, both
-   *     measured in this room. Every reset put the keys at idle, a
-   *     recovery's included, so a keyboard pilot's quad fell out of its own
-   *     recovery: put back at 13.08 m, down to the floor. And the first
-   *     frame after a reset flew on the stick from before it, the receiver
-   *     holding its last frame, so a whoop held against the ceiling at full
-   *     throttle came out of the recovery at 3 m/s upward. With the keys at
-   *     hover and nothing to stop it, that is a coast straight back up.
-   *
-   *     So X here is pressed in a full throttle climb, in the open, metres
-   *     under the ceiling where nothing is touched and no catch can fire,
-   *     with the stick at the top and handed to the keys: a throttle key's
-   *     pilot with W held. A stale frame at the top is what it must not fly.
-   * ------------------------------------------------------------------ */
-  section('keyboard: after X in the air, the keys pick the whoop up at hover and it holds its height');
-  await page.evaluate('window.__stick(0, 0, 0, 0.3); 0');
-  await page.until('window.__craftState().worldY < 6', 60000).catch(() => {});
-  await page.evaluate('window.__stick(0, 0, 0, 1); 0');
-  let climbing = false;
-  await page.until('(() => { const c = window.__craftState(); return c.worldY > 7 && c.vel && c.vel.y > 1; })()', 60000)
-    .then(() => { climbing = true; }).catch(() => {});
   /* Released, the override hands its throttle to the keys where it left
-   * it, and a key nobody has pressed does not spring it. */
+   * it, and a key nobody has pressed does not spring it: still pinned, and
+   * now it is the keys a recovery has to put back at idle. */
   await page.evaluate('window.__stick(); 0');
-  await page.until('window.__input.channels.throttle === 1', 3000).catch(() => {});
-  /* Read here, not from the trace: the key can land before its first frame. */
-  const before = await ev(`const c = window.__craftState(); return JSON.stringify({ y: c.worldY, vy: c.vel ? c.vel.y : 0,
-    thr: input.channels.throttle, kb: input.isKeyboardPrimary() });`).then(JSON.parse);
-  await page.evaluate(`window.__keepTrace = (async () => {
+  /* Every frame, in the page, from the key on. */
+  const TRACE = (ms) => `window.__roofTrace = (async () => {
     const out = [];
     const t0 = performance.now();
-    while (performance.now() - t0 < 3500) {
+    while (performance.now() - t0 < ${ms}) {
       await new Promise((r) => requestAnimationFrame(r));
       const c = window.__craftState();
       out.push({ y: c.worldY, landed: c.landed, crashed: c.crashed, thr: window.__input.channels.throttle });
     }
     return out;
-  })(); 0`);
-  /* X through the window's own key listener, and the receiver's held frame
-   * read in the same task, before any frame can fly it. That frame is what
-   * the first block after a recovery runs on until a new sample lands: all
-   * of it when the catch finishes a recovery inside the frame loop, which is
-   * where the 3 m/s came from, and only the slice before the key when X
-   * does it between frames, which is why the flight below cannot see it. */
+  })(); 0`;
+  await page.evaluate(TRACE(3000));
+  await page.tap('KeyX');
+  const roofTrace = await page.evaluate('window.__roofTrace');
+  const setAt = roofTrace.findIndex((f) => f.y < 1);
+  const afterSet = setAt < 0 ? [] : roofTrace.slice(setAt);
+  const highest = Math.max(...roofTrace.map((f) => f.y));
+  check('X sets it down on the floor, landed, and it stays there, never having been on the roof',
+    afterSet.length > 0 && afterSet.every((f) => f.landed && !f.crashed && f.y < 0.3 && f.thr === 0) && highest < ceiling,
+    afterSet.length ? `set down at ${afterSet[0].y.toFixed(3)}, ${afterSet.length} frames, landed throughout `
+      + `${afterSet.every((f) => f.landed)}, highest ${highest.toFixed(3)}` : `never came down, highest ${highest.toFixed(3)}`);
+
+  /* --------------------------------------------------------------------
+   * 11. Set down anywhere, and fly on. X in a full throttle climb, in the
+   *     open, metres under the ceiling where nothing is touched and no
+   *     catch can fire, with the stick at the top and handed to the keys:
+   *     a throttle key's pilot with W held. The recovery parks the whoop on
+   *     the floor under it with the keys at idle, as R leaves them, and W
+   *     takes it off again.
+   *
+   *     And the receiver's held frame, read in the same task as the key,
+   *     before any frame can fly it. It was never reset, so the first block
+   *     after a reset flew on the stick from before it: a whoop held against
+   *     the ceiling at full throttle came out of a mid air recovery at
+   *     3 m/s upward. A parked craft does not fly until it takes off, but
+   *     the frame it takes off on should be the sticks it has, not the ones
+   *     it crashed with.
+   * ------------------------------------------------------------------ */
+  section('keyboard: after X in the air, the whoop is parked on the floor under it, keys at idle, and W flies it again');
+  await page.evaluate('window.__stick(0, 0, 0, 1); 0');
+  let climbing = false;
+  await page.until('(() => { const c = window.__craftState(); return c.worldY > 7 && c.vel && c.vel.y > 1; })()', 60000)
+    .then(() => { climbing = true; }).catch(() => {});
+  await page.evaluate('window.__stick(); 0');
+  await page.until('window.__input.channels.throttle === 1', 3000).catch(() => {});
+  /* Read here, not from the trace: the key can land before its first frame. */
+  const before = await ev(`const c = window.__craftState(); return JSON.stringify({ y: c.worldY, vy: c.vel ? c.vel.y : 0,
+    thr: input.channels.throttle, kb: input.isKeyboardPrimary() });`).then(JSON.parse);
+  await page.evaluate(TRACE(2500));
+  /* X through the window's own key listener, and the held frame read in the
+   * same task. */
   const heldAtX = await page.evaluate(`(() => {
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyX', key: 'x' }));
     const h = window.__stickPath().held;
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyX', key: 'x' }));
     return JSON.stringify(h);
   })()`).then(JSON.parse);
-  const kept = await page.evaluate('window.__keepTrace');
+  const parkTrace = await page.evaluate('window.__roofTrace');
   check('climbing at full throttle on the keys, in the open, when X goes',
     climbing && before.kb && before.thr === 1 && before.vy > 1 && before.y < ceiling - 0.5, JSON.stringify(before));
-  const hoverAtX = await ev('return input.kbHover;');
-  check('the receiver\'s held frame after the recovery is the keys at hover, not the full stick from before it',
-    heldAtX.throttle === hoverAtX && heldAtX.roll === 0 && heldAtX.pitch === 0 && heldAtX.yaw === 0,
-    `${JSON.stringify(heldAtX)}, hover ${hoverAtX}`);
-  /* The recovery is the frame the keys leave the top. */
-  const at = kept.findIndex((f) => f.thr < 0.9);
-  const after = at < 0 ? [] : kept.slice(at);
-  const spot = after.length ? after[0].y : NaN;
-  const hi = Math.max(...after.map((f) => f.y));
-  const lo = Math.min(...after.map((f) => f.y));
-  const last = after[after.length - 1] || {};
-  /* Not a perfect hold, and the band says what it is instead. sim_reset
-   * stops the motors, so for the first few tens of milliseconds hover is
-   * asked of rotors spinning up from rest and the craft starts down at
-   * 0.59 m/s. At hover nothing but drag takes that out: measured alone,
-   * twice, identically, it sinks 0.55 m over four seconds and holds there.
-   * Falling, the old way, is metres in the same three seconds. */
-  check('put back at rest, it settles instead of falling: it never climbs, and sinks less than a metre',
-    after.length > 0 && hi - spot < 0.1 && spot - lo < 1.0 && after.every((f) => !f.landed && !f.crashed),
-    after.length ? `put at ${spot.toFixed(3)}, then ${lo.toFixed(3)} to ${hi.toFixed(3)}, ${after.length} frames` : 'X did nothing');
-  check('and the keys rest on the measured hover', last.thr === hoverAtX, `${last.thr}, hover ${hoverAtX}`);
+  check('the receiver\'s held frame after the recovery is idle, not the full stick from before it',
+    heldAtX.throttle === 0 && heldAtX.roll === 0 && heldAtX.pitch === 0 && heldAtX.yaw === 0, JSON.stringify(heldAtX));
+  const parkedAt = parkTrace.findIndex((f) => f.landed);
+  const parked = parkedAt < 0 ? [] : parkTrace.slice(parkedAt);
+  check('set down on the floor under it, landed, and it stays down with the keys at idle',
+    parked.length > 0 && parked.every((f) => f.landed && f.y < 0.3 && f.thr === 0),
+    parked.length ? `parked at ${parked[0].y.toFixed(3)} for ${parked.length} frames, `
+      + `throttle ${[...new Set(parked.map((f) => f.thr))].join(' ')}` : `never landed: ${JSON.stringify(parkTrace.slice(-2))}`);
+  /* W held until it is off the floor, not for a set time: the key's clock
+   * is the wall's and the climb is the sim's. */
+  const wKey = keyInfo('KeyW');
+  await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...wKey }, page.sessionId);
+  let flewAgain = false;
+  await page.until('(() => { const c = window.__craftState(); return !c.landed && c.worldY > 1; })()', 20000)
+    .then(() => { flewAgain = true; }).catch(() => {});
+  await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...wKey }, page.sessionId);
+  check('and W takes it off again from where it was set down', flewAgain,
+    await ev('const c = window.__craftState(); return JSON.stringify({ y: c.worldY, landed: c.landed, thr: input.channels.throttle });'));
 
-  /* R is still the start line with the stick at idle: only a recovery in
-   * the air picks the keys up. */
+  /* R is still the start line with the stick at idle. */
   await page.tap('KeyR');
   await page.until('window.__craftState().landed', 10000).catch(() => {});
   await page.sleep(1500);

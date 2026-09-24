@@ -42908,6 +42908,196 @@ against a wall, and a craft left on its side at the foot of a wall.
     git merge-base           bc71ca1, one history
     git diff --stat vendor/betaflight   empty
 
+## 2026-09-24 | shell, loading | The owner's first flight: stuck on a wall, stuck on the ground, and a 47 second load
+
+The owner flew the solid world on main and reported three things, with
+screenshots: the load sat at "still loading the map, 1 of 1 modules, step 4
+of 6, 47s"; "crashing head first into a building i get stuck on the wall, it
+should reset on this or fall to the ground"; and "crashing back first into
+the ground i get stuck again". Nothing in the plant, the ABI or the build
+changed in this entry.
+
+### Stuck: what it was, measured in the shell
+
+A scratch probe flew the real shell into the city shopfront (x = 5.6) at 6,
+10 and 15 m/s, then held the throttle at 0, 0.34, 0.45, 0.5 and 0.6 with the
+sticks centred, and logged every frame.
+
+- **Head first.** Every run ended the same way: the craft pitches nose down
+  with its top plate to the face, slides down the wall in free fall (the
+  rotor bleed has the thrust off, so there is no normal load and no
+  friction), and comes to rest standing on its nose at the foot of the wall,
+  up.y 0, speed 0, rate 0, for as long as anyone waited. It is not upside
+  down, so turtle is not offered; it is not upright, so throttle is not a
+  takeoff; full throttle presses it harder into the wall. Since the Crashed
+  catch went, only X got the pilot out, and nothing on screen says X.
+  At this shopfront it is worse: a 1.5 m block stands 10 cm in front of the
+  face (x 5.1 to 5.5, z 25.8 to 33.4), and the craft slides into that slot,
+  which is just wide enough for it on its nose. That is the owner's picture:
+  the wall filling the view.
+- **Back first.** A 10 m/s tail first arrival latched turtle on the frame it
+  touched, and turtle freezes the plant, so the craft was left pointing at
+  the sky at 64 degrees from flat, the owner's third screenshot. Turtle does
+  flip it on pitch or roll; throttle does nothing.
+
+### Stuck: what changed
+
+**stuckTick (src/main.js).** A craft AT REST (under 0.3 m/s and 1.5 rad/s)
+and NOT UPRIGHT (up.z under 0.5, TURTLE_EXIT_UPZ) for 1.5 s of sim time is
+set down nearby, exactly as X does it, with a notice that says so and names
+X. Still is the whole test: a craft more than 60 degrees from level cannot
+hold still in the air, so if it is still something is holding it. In turtle
+or crashflip the wait is 5 s, so a pilot who wants to flip it has the
+chance. This is the shell's recovery: the plant is not touched until the
+moment X would touch it. It is the owner's "it should reset on this".
+
+**The set down's reference point (src/main.js).** X refuses a spot it cannot
+reach in a straight line from the last open air, which keeps a crash on the
+pilot's side of a wall. "Open air" was the craft's CENTRE outside every
+solid, and the slot above is outside every solid, so every spot on the
+pavement was across the block from it and the set down fell through to the
+start line. It is now the last place the WHOLE CRAFT fitted, clear of every
+solid by its own radius, which for this crash is just before the hit, above
+the block.
+
+**Closer search rings (src/game/collide.js).** RECOVER_OUT was 1, 2 and 3.5
+m; it now starts at 0.25 m. The same pavement a quarter metre out from a wall
+was never asked. check:clip's 548 rest spot and contact tests still pass.
+
+**check:crash** gains a guard on every scenario, never left stuck: still and
+not upright for no longer than 1.5 s plus half a second of frame
+granularity (5.5 s in turtle), and two scenarios that crash head on and are
+left alone for 4.5 s, which must end the right way up. One existing guard
+was touched and it is argued here, not quietly: "no frame moves further than
+its speed allows" read a set down as a teleport. A set down restarts the sim
+clock, so a frame where the clock steps backwards, and the frame after it
+(the render interpolates a frame behind), are now counted as set downs and
+printed instead. The new guard is what bounds when one may happen. No
+threshold moved.
+
+### Load: what it was
+
+- Locally, clean: boot 4.3 s, 101 JS files. With an emulated 300 ms round
+  trip: 12 s, and the files arrived in about 19 waves, because an ES module's
+  imports are only discovered once it has arrived. The city adds 72 files
+  and took 5 s of waiting at 300 ms.
+- Live, from this container: every module is 0.5 to 0.9 s to first byte.
+  Cloudflare answers `s-maxage=300` and reports REVALIDATED or EXPIRED, so
+  the edge goes back to Render at least every five minutes, and a load right
+  after a deploy is cold everywhere. The site speaks HTTP/2 (h3 advertised)
+  and compresses (ui.js 550 KB on disk, 176 KB on the wire).
+- So the owner's 47 s is mostly waiting, not work: about twenty dependent
+  round trips at the best part of a second each before the map, and the same
+  again inside the stage the screenshot shows.
+
+### Load: what changed
+
+**scripts/gen-preload.js** writes the static module graph as `<link
+rel="modulepreload">`: the boot graph (102 files) into index.html after the
+import map, and each lazy map's extra modules (the city's 72) into
+src/maps/preload.js, which loadMap in main.js turns into preload links the
+moment the map is chosen. Every file is then requested in the first wave.
+The generator was checked against a real boot in headless Chromium: the same
+101 files at boot and 72 for the city, none extra, none missing (102 now,
+with preload.js itself). Three.js's add-ons import each other on the CDN,
+which it cannot read offline, so their edges for the pinned 0.160.0 are
+written out and it refuses to run if the import map moves. `npm run
+lint:preload` fails on a stale list; `npm run gen:preload` rewrites it.
+No bundler, no dependency: the files, their URLs and their bytes are
+unchanged, only when they are asked for.
+
+Measured locally, before and after, the same machine, nothing else running:
+
+    emulated RTT    boot wall        last JS arrives    city module stage
+    300 ms          10.7 -> 8.7 s    7.9 -> 5.3 s       4.7 -> 4.4 s
+    600 ms          17.8 -> 14.3 s   15.1 -> 10.4 s     8.7 -> 7.9 s
+
+The gain is smaller locally than it will be live, and the reason is the
+test server, not the change: it speaks HTTP/1.1, so Chrome opens six
+connections to it and 102 requests still queue in about seventeen batches.
+The live site is HTTP/2, one connection with no such queue, where the whole
+graph should cost one or two round trips. That is an argument, not a
+measurement: headless Chromium here rejects the container proxy's
+certificate authority (ERR_CERT_AUTHORITY_INVALID), and certificate checks
+were not switched off to get round it. The owner's next load is the
+measurement.
+
+**More jokes.** The screen already told one every 4.8 s; twenty ran out in
+96 s. There are thirty five now.
+
+### Open, for the owner
+
+- **The tail first freeze.** stuckTick sets it down after 5 s, but the pose
+  it waits in is wrong: turtle latches on the first frame the hull touches,
+  before the crash has played out, and the plant's inverted rest is a single
+  bump through the CG, so a 64 degree arrival never falls flat. Making it
+  fall flat is a change to the ground model or to when turtle latches, and
+  it is asked, not done.
+- The upward pop off a hard wall hit, from the entry above, is unchanged.
+
+### What went wrong
+
+- The scratch probes exited without closing their browsers. By the time it
+  was noticed, seven orphaned headless Chromiums were rendering the city at
+  full load, and a crash check run reported three scenarios "never reached
+  the wall" off four recorded frames. They were killed and every timing in
+  this entry was taken again on a quiet machine; the probes now close their
+  pages.
+- The first stuckTick run sent the craft back to the start line from the
+  middle of the shopfront. That is how the slot and the reference point
+  above were found.
+
+### RUN LOG
+
+    npm run check:crash --targets  0 guards failed (68 guard passes), 7
+                                   targets not met: the same list as the
+                                   entry above, the 3 m/s tap's spin at
+                                   5.11 against 5 this run. Set down after
+                                   1.50 to 1.55 s in all three stuck runs.
+                                   .loop/evidence/crash-check-stuck-2026-09-24.json
+    npm run check:clip             548 passed
+    npm run lint:frame             34 passed
+    npm run lint:input             all 131 passed
+    npm run lint:boot              9 of 9 clean
+    npm run lint:quality           56 of 56 clean
+    npm run lint:memory            PASS, every world is lazy
+    npm run lint:preload           up to date, boot 102, city 72
+    npm run verify                 not run: no physics, plant, ABI or build
+                                   change. Check 16 (map isolation) is the
+                                   part the preload touches. Read, not run:
+                                   it wants no city module before the city
+                                   is chosen (the preload fires in loadMap)
+                                   and the fetched count equal to
+                                   MAP_MODULE_COUNT, 72, which the before
+                                   and after timing runs both fetched.
+                                   lint:memory covers the lazy load too.
+    npm run check:plant, check:world, check:wall   not run: the plant is
+                                   unchanged
+    park:fly                       not run: no pilot or recogniser change
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | git | The stuck fix and the preload pushed to main, for the owner to fly
+
+The owner, on the entry above: "push to main and i'll fly it". The
+verification scale chosen is fly it, and it is the approval to put the
+branch on main. main had not moved since e88b7e7, so the branch went on as
+a fast forward. Nothing was rewritten.
+
+Not yet answered, and asked again with the flight: whether the tail first
+crash should fall flat rather than wait in turtle at the angle it landed,
+which is a ground model or turtle latch change. What to look for is in the
+entry above: left alone after a head on hit, the craft is upright on the
+pavement within about 1.5 s; a tail first crash turtles or is set down
+within 5 s; and a cold load is the live measurement of the preload.
+
+### RUN LOG
+
+    code                     unchanged since the entry above
+    checks                   not rerun: nothing they read changed
+    npm run lint:preload     up to date, boot 102, city 72
+    git merge-base           e88b7e7, main is an ancestor of the branch
+    git diff --stat vendor/betaflight   empty
+
 ## 2026-09-24 | wiki | A Year 10 voice sample for the FPV wiki, pushed to main
 
 The owner asked for the whole FPV wiki to be rewritten with the humanizer skill
@@ -42951,5 +43141,8 @@ words).
     code                     unchanged; a new document and this entry
     checks                   none run: nothing they read changed
     dashes and curly quotes  none in WIKI-REWRITE.md (grep)
-    git merge-base           e88b7e7, one history; the branch was main
+    git merge-base           e88b7e7, one history. main moved by three
+                             commits during the turn (429cb9b, ff945c0,
+                             638560d); they were merged in with main's
+                             PROGRESS entries first, then this one
     git diff --stat vendor/betaflight   empty

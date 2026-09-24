@@ -221,6 +221,23 @@ export const LOADING_JOKES = [
   'My quad was on a roll. Then a pitch. Then a yaw.',
   'My quad asked for a raise, so I upped its rates.',
   'The start gates are in mint condition. Never been hit. Yet.',
+  /* 2026-09-24, the owner asked for more after a long first load. At 4.8 s a
+   * joke, twenty ran out in 96 s; thirty five last nearly three minutes. */
+  'My antenna got married. The reception was fantastic.',
+  'Never trust a gyro. It\'s always spinning a story.',
+  'My flight controller never loses its temper. Endless PIDience.',
+  'The ESC and the motor had an argument. Things got heated.',
+  'My motors won an award. Outstanding in their field.',
+  'I asked a pilot why they fly so low. They said it keeps them grounded.',
+  'My quad started a band. Mostly drone music.',
+  'My goggles and I broke up. I just couldn\'t see us together.',
+  'My quad is stuck in a tree again. It says it\'s branching out.',
+  'I clipped a hedge on the last lap. Officially, a bush landing.',
+  'My quad is terrible at poker. One crash and it folds.',
+  'I asked my quad to do my taxes. It filed a return to home.',
+  'My pack was feeling flat, so I gave it a pep talk. Now it\'s fully charged.',
+  'The prop shop had a huge sale. Business was really picking up.',
+  'My quad failed its exams. Too many crashes in the finals.',
 ];
 
 export function quotedJoke(index, offset) {

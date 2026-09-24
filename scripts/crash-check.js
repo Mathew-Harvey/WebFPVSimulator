@@ -23,7 +23,11 @@
  *   stays finite, its centre never goes inside a solid, it never moves
  *   further in a frame than its own speed allows (a teleport), and every
  *   scenario actually reaches the wall it is named for. A red guard is a
- *   regression, full stop.
+ *   regression, full stop. Since the owner's first flight of the new solver
+ *   there is one more: a craft is never left stuck, still and not upright,
+ *   for longer than stuckTick allows before it is set down. That set down
+ *   is the one sanctioned jump, and it is counted rather than read as a
+ *   teleport, because it restarts the sim clock.
  *
  *   TARGETS are the crash the owner asked for, in numbers: a gentle tap
  *   leaves the wall, a fast hit tumbles rather than pinballs, a roof is
@@ -117,6 +121,17 @@ const SCENARIOS = [
     name: 'wall hit, then full throttle', kind: 'punch', from: [-2, 2.5, 29.3], to: [7.5, 2.5, 29.3],
     secs: 1.8, vEnd: 10, heading: EAST, pushMs: 300, after: 1, afterMs: 2000,
   },
+  /* The owner's report from the first flight of the solid world: head
+   * first into a building and stuck on the wall. Left alone long enough for
+   * stuckTick to act, once with the throttle cut and once at hover. */
+  {
+    name: 'head-on 10 m/s, throttle cut, left alone', kind: 'stuck', from: [-2, 2.5, 29.3], to: [7.5, 2.5, 29.3],
+    secs: 1.8, vEnd: 10, heading: EAST, pushMs: 100, after: 0, afterMs: 4500,
+  },
+  {
+    name: 'head-on 15 m/s, hover throttle, left alone', kind: 'stuck', from: [-8, 2.5, 29.3], to: [7.5, 2.5, 29.3],
+    secs: 1.9, vEnd: 15, heading: EAST, pushMs: 100, after: 0.3, afterMs: 4500,
+  },
 ];
 
 /* The owner's crash, as numbers. Proposed in the review; the owner tunes
@@ -178,6 +193,7 @@ function flyScenario(S) {
         upY: c.up ? c.up.y : 1,
         rate: c.rates ? Math.hypot(c.rates.p, c.rates.q, c.rates.r) : 0,
         crashed: c.crashed, kind: c.clipCrashKind, landed: c.landed,
+        turtle: Boolean(c.turtleWait || c.turtleParked || c.turtleFlip),
         inside: inside(...p),
         gap: window.__nearSolid(...p, 2) ?? 9,
         fault: Boolean(window.__frameFault),
@@ -219,7 +235,7 @@ function atTarget(S, r) {
 function measure(S, rows) {
   const m = {
     frames: rows.length, crashes: 0, crashKinds: [], maxInside: 0,
-    worstJump: 0, finite: true, fault: false,
+    worstJump: 0, finite: true, fault: false, setDowns: 0,
   };
   let wasCrashed = false;
   for (let i = 0; i < rows.length; i += 1) {
@@ -236,7 +252,15 @@ function measure(S, rows) {
       m.crashKinds.push(r.kind);
     }
     wasCrashed = r.crashed;
-    if (i > 0) {
+    /* A step backwards in the sim clock is a set down, which restarts it:
+     * announced, and bounded by the stuck guard, so it is counted rather
+     * than read as a teleport. See stuckTick in main.js. The picture moves
+     * on the frame AFTER the clock does, because the render interpolates
+     * between the last two physics states, so that frame is skipped too. */
+    const restart = (j) => j > 0 && rows[j].ms < rows[j - 1].ms;
+    if (restart(i)) {
+      m.setDowns += 1;
+    } else if (i > 0 && !restart(i - 1)) {
       const q = rows[i - 1];
       const dt = Math.max(0, r.ms - q.ms) / 1000;
       const d = Math.hypot(r.p[0] - q.p[0], r.p[1] - q.p[1], r.p[2] - q.p[2]);
@@ -247,6 +271,26 @@ function measure(S, rows) {
       m.worstJump = Math.max(m.worstJump, excess);
     }
   }
+  /*
+   * HOW LONG THE CRAFT WAS LEFT STUCK: the longest stretch it sat still
+   * (under 0.3 m/s) and not upright (up.y under 0.5), neither landed nor in
+   * turtle, and separately the longest turtle wait. The sim clock restarts
+   * at a set down, so a step backwards in `ms` ends a stretch.
+   */
+  m.stuckMs = 0;
+  m.turtleMs = 0;
+  let runStuck = 0;
+  let runTurtle = 0;
+  for (let i = 1; i < rows.length; i += 1) {
+    const r = rows[i];
+    const d = r.ms - rows[i - 1].ms;
+    const still = r.spd < 0.3 && r.upY < 0.5 && !r.landed;
+    runStuck = still && !r.turtle && d >= 0 ? runStuck + d : 0;
+    runTurtle = still && r.turtle && d >= 0 ? runTurtle + d : 0;
+    m.stuckMs = Math.max(m.stuckMs, runStuck);
+    m.turtleMs = Math.max(m.turtleMs, runTurtle);
+  }
+  m.endUpY = r3(rows.length ? rows[rows.length - 1].upY : 1);
   const touch = rows.findIndex((r) => atTarget(S, r));
   m.touched = touch >= 0;
   if (!m.touched) {
@@ -349,6 +393,13 @@ async function main() {
       guard(m.maxInside <= 0.01, 'the centre never goes inside a solid', `deepest ${r3(m.maxInside)} m`);
       guard(m.worstJump <= 0.10, 'no frame moves further than its speed allows',
         `worst excess ${r3(m.worstJump)} m`);
+      /* stuckTick sets a craft down after 1.5 s still and not upright, 5 s
+       * in turtle; half a second on each is frame granularity. */
+      guard(m.stuckMs <= 2000 && m.turtleMs <= 5500, 'never left stuck: set down after 1.5 s still and not upright',
+        `longest ${m.stuckMs} ms stuck, ${m.turtleMs} ms in turtle, ${m.setDowns} set down${m.setDowns === 1 ? '' : 's'}`);
+      if (S.kind === 'stuck') {
+        guard(m.endUpY > 0.5, 'left alone after the hit, it ends the right way up', `up.y ${m.endUpY}`);
+      }
       const list = [...(TARGETS[S.name] || []), ...TARGETS['*']];
       if (m.touched) {
         for (const [what, fn] of list) {

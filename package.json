@@ -25,6 +25,8 @@
     "lint:memory": "node scripts/memory-check.js",
     "lint:fc": "node scripts/fc-trace.js",
     "lint:frame": "node scripts/frame-check.js",
+    "lint:preload": "node scripts/gen-preload.js --check",
+    "gen:preload": "node scripts/gen-preload.js",
     "check:wall": "node scripts/wall-check.js",
     "check:plant": "node scripts/plant-golden.js",
     "check:plant:selftest": "node scripts/plant-golden.js --selftest",

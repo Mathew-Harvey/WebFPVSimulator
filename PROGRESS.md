@@ -43329,6 +43329,85 @@ landings, launches off the block and crashflip feel exactly as before.
     git merge-base           295617f, one history
     git diff --stat vendor/betaflight   empty
 
+## 2026-09-24 | wiki | The whole FPV wiki rewritten as a Year 10 textbook, on the landing site
+
+The owner: "attach the landing page repo with push access pull, merge the push
+as needed". That attached `landingpage-WebFPVSimulator-` to the session, and
+the rewrite the voice sample above proposed was done there and pushed to its
+main as d12c8e6 and 4d125d8. Nothing in this repository's code changed; this
+entry and the status of `WIKI-REWRITE.md` are the only edits here.
+
+What changed, on the landing site: all 36 articles, every settings page and
+family template (706 pages), the text of all 35 figures, the glossary, the
+status chips and the page shell, in plain English for a Year 10 reader with
+the analogies gone. Sections are The idea, How it works and In this simulator;
+chips say Works here, Off at 1 kHz, Stored, not used, Not simulated and
+Configurator only. Its `docs/wiki-voice.md` is the new contract and
+`docs/wiki-textbook-2026-09.md` records the pass, every fact corrected and
+every check. The wiki had fallen behind this repository, and it now follows
+the code: two airframes, a 0.71 kg five inch, figure of merit 0.520, the
+Weight slider's 1.62 g, torque that follows the air flow, contact in world.c,
+ground effect on the whoop, turtle on T, tumble flat, Arcade, check 10's band,
+and no dropped diffs. Its `src/wiki/model.js` and catalog snapshot were
+brought up to date from plant.c and src/fc/catalog.js.
+
+What went wrong: I told the owner, and wrote into the sample, that dropping a
+diff onto the page still loads it, from reading the name of the drop listener
+in main.js and not its body, which says the page no longer flies a dropped
+file. I also built the fact sheet from plant.c's header block, which still
+quotes the old kq and 650 g, and missed the 0.71 kg mass note and the Weight
+slider's gravity until a helper agent caught both. Five helper agents wrote
+the middle of the settings module and the figure text from one brief; two of
+them finished before the corrections reached them, and their numbers were
+fixed by hand. `vendor/betaflight` is not checked out in this clone, so three
+of the helpers read Betaflight's files at the pinned commit 77d01ba from
+GitHub, outside the repositories this session was scoped to; several settings
+page corrections rest on that reading, and the landing record says so.
+
+Found here and not changed, for the owner:
+
+- Four keys src/fc/catalog.js marks LIVE have no effect: pid_at_min_throttle
+  and airmode_start_throttle_percent (read only in fc/core.c, which is not
+  compiled; isAirmodeActivated is stubbed true in bf_stubs.c),
+  ez_landing_speed (GPS speed) and dyn_idle_start_increase (never applies
+  while airmode is always active). Their wiki pages say so under a Works here
+  chip. APPLIED_INERT would make the chip agree.
+- plant.c's block comment still quotes the old full throttle figures (2723
+  rad/s, thrust to weight 9.21); the mass note says 8.43; the current
+  constants give 2669 rad/s and 8.10 at 1 g.
+- plant.c uses "windmill brake state" for two different regimes.
+- The bf_glue.c comment on isFlipOverAfterCrashActive says the shell raises
+  crashflip when the craft is inverted and in contact; main.js raises it only
+  while T is held.
+- src/ui/fc.js line 717 says launch control is "the same Launch control in
+  Settings"; the switch is on the Quad screen.
+- The catalog's INERT reasons for vbat_, ibat_ and bat_ keys say "use Pack
+  charge in Settings"; Pack charge is on Before you fly. motor_kv's reason
+  still says "The airframe is still the Stage 1 5 inch".
+- The PIDs screen intro says "100 is that tune's stock"; the whoop tunes
+  store a master of 75 or 85.
+- The title menu's wiki note still says "The closed loop, the plant, and
+  every Betaflight 4.5.1 key".
+
+### RUN LOG
+
+    this repository          WIKI-REWRITE.md status and this entry only
+    checks here              none run: nothing they read changed
+    landing npm run lint:wiki   ok, 36 articles, 35 figures, 706 pages,
+                             180 authored keys, 161 / 5 / 14
+    landing npm run lint:page   25 of 25 clean
+    landing npm run lint:nouns  PASS
+    landing settings module  page by page against the previous one on the
+                             same catalog: 180 keys, 706 pages, 0 differences
+    landing string scan      6,192 strings: no dash, no curly quote, no
+                             stale number, no analogy from the old copy
+    landing in Chromium      10 pages at 1440, 900 and 430 px, no console
+                             errors, no sideways overflow; four figures
+                             looked at by eye, one overlap fixed
+    git merge-base           295617f, one history; main had moved to
+                             d6157c8 (tumble flat) and was fast forwarded
+    git diff --stat vendor/betaflight   empty
+
 ## 2026-09-24 | shell | A crash is a reset, at once
 
 The owner, after flying tumble flat: "when i crash head first or tail first

@@ -4,7 +4,13 @@ This file shows four wiki pages rewritten in the voice of a Year 10 physics text
 
 ## Status
 
-Written 24 September 2026. Nothing here has been applied to the live wiki. The owner asked for the whole wiki to be rewritten with the humanizer skill (github.com/blader/humanizer, version 3.0.0) so that it makes sense and reads like a textbook for Year 10 students, in plain English and without analogies. Two things are still open: access to the landing page repository, and the owner's answer on the voice and on the structure changes listed below. The section "What is left" at the end says how the full rewrite should be done.
+Superseded. Later on 24 September 2026 the owner attached `landingpage-WebFPVSimulator-` with push access, and the whole live wiki was rewritten in this voice there (commits `d12c8e6` and `4d125d8` on its main). Its `docs/wiki-voice.md` is now the style contract and `docs/wiki-textbook-2026-09.md` records the pass. This file stays as the record of the first proposal, and it is out of date in these ways:
+
+- The first article section became The idea, not What the pilot notices, because one label has to fit all 36 pages.
+- The sample's closed loop page says dropping a Betaflight diff file onto the page loads it. That is no longer true: the drop handler in `src/main.js` only says the page does not fly a dropped file any more.
+- The list of stale facts under "What is left" missed two: the five inch weighs 0.71 kg, not the 650 g the August text says, and the Weight slider scales gravity (1.62 times Earth gravity on the five inch at its normal setting). The live wiki uses those numbers.
+
+The original status, for the record: nothing had been applied to the live wiki, because the landing page repository could not be attached, and the owner had not yet answered on the voice or the structure changes below.
 
 ## Rules applied
 

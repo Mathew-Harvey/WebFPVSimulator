@@ -43097,3 +43097,146 @@ within 5 s; and a cold load is the live measurement of the preload.
     npm run lint:preload     up to date, boot 102, city 72
     git merge-base           e88b7e7, main is an ancestor of the branch
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | physics, plant, shell | Tumble flat, always
+
+The owner, as the advisor, on the question the entry before last left open
+(whether a tail first crash should fall flat rather than wait in turtle at
+the angle it landed): "yes make it tumble flat always". That approval
+covers a change to the ground model and to when turtle latches, and this
+entry is that change, with every number it moved. The module ABI and the
+build are unchanged: no new export, and world.c is as it was.
+
+### What it was, measured
+
+A Node probe (scratch, not committed) dropped the plant from 1.2 m onto
+grass at 11 pitch and 11 roll attitudes, 60 to 180 degrees either way, on
+both airframes, with the throttle cut and at 0.3, and read how it came to
+rest after five seconds: **70 of 88 drops came to rest off flat**, most of
+them at exactly the attitude they were dropped at. A 100 degree drop sat at
+100 degrees. Three things held them:
+
+1. Past 90 degrees, the plant supported the craft on one point, the top
+   plate's centre (the "bump"), and kept every corner out of the grass with
+   a projection that moves the hull and never turns it. The real support was
+   a corner with no arm.
+2. The settle's props down stop zeroed velocity and rate anywhere past 60
+   degrees from flat, so a craft that did start to fall stopped mid fall.
+3. Betaflight's airmode holds whatever attitude the crash left: a 60 degree
+   drop sat there with its motors split 2,000 to 5,600 rpm, and the whoop,
+   whose ducts keep its props out of the grass, held 35 degrees on a duct
+   edge indefinitely.
+
+### What changed
+
+In src/native/sim.c, under TUMBLE FLAT and A CRASHED CRAFT DOES NOT BALANCE
+ITSELF:
+
+- **The bump carries only a craft within about 25 degrees of flat on its
+  back**; anything steeper stands on its real lowest corner. Except under
+  crashflip, which keeps the bump at every inverted angle, because the
+  motors turning the hull over need it: measured, on a corner the golden's
+  turtle stayed at -0.97 with the flip commanded.
+- **The props down stop only within about 25 degrees of flat** on the back.
+- **The ground stall.** On the ground, slower than 1 m/s, more than 14
+  degrees from flat on belly or back, and either more than 60 degrees over
+  or with the throttle stick under 0.12: every rotor loses half its speed a
+  millisecond. A real crashed quad has its props in the dirt and a pilot who
+  disarms; the sim has no disarm, so the plant stands in for it. At 8
+  percent a millisecond, the soft props' rub, a rotor the controller keeps
+  asking for settled at a third of its speed and airmode still balanced a
+  five inch on its side.
+- **And it goes over.** Stalled, it is tipped toward whichever of belly or
+  back it is nearer, at 200 rad/s2, about the corner it is going over. This
+  is a stand-in, not rigid body physics, and it is written down as one: a
+  real quad lying on its side lies on thin, springy props and arms and rolls
+  off them, and the hull here is a box, which is content to stand on its
+  narrow side face. Tipped about the CG it crept at 0.3 rad/s, because the
+  inelastic corner contact took the tip back out every millisecond; about
+  the corner it goes over in about a quarter of a second. 40 and 60 were
+  measured and left ten of the 88 on their side.
+- **Spin friction stands aside while a crash is being tipped**, and is
+  otherwise exactly as it was. Limiting it to flat everywhere freed the tip
+  but moved the launch stand punch: the block is 28 degrees and the nose is
+  in the grass at release.
+
+In src/game/collide.js, **TURTLE_INVERT_UPZ is -0.95**, flat on the back,
+where it was -0.35, about 110 degrees: a gate at 110 latched the first slow
+millisecond of the new tumble and froze it mid fall.
+
+Tried and taken out: a per disc rub for props dug into the ground plane.
+Once the stall existed it added nothing to the tumble, and it bit every race
+start: the launch block is a drawn ramp over a flat plane, so at release the
+front discs are in that plane for a few milliseconds of full throttle.
+
+### What it is now
+
+- The drop probe: **all 88 end flat**, 17 on the belly and 71 on the back,
+  every one within 14 degrees and at rest. The back is where hard edge
+  landings throw the craft, and a held throttle cartwheels it; the tip only
+  takes over once it is slow.
+- In the shell, the owner's own crash, tail first into the city street:
+  it rolls onto its back within about 50 ms of touching, settles at
+  up.y -0.95 looking at the ground, turtle latches, and pitch flips it.
+- stuckTick still sets down a craft leaning on a wall, which the wall keeps
+  from tipping, 1.5 s after it stops.
+
+### The golden, and the checks that moved
+
+The owner's approval covers rewriting the plant golden for the runs this
+reaches. **17 of 21 are bit identical** to the golden written before any of
+this work: all free air, takeoff and landing on both airframes, the hard
+drops, the slope, the launch stand, the deck edge and every contact entry
+point. **Four moved**, and they are the crashes: grass belly crash at speed
+(from 2.35 s), grass side arrival at speed (from 1.9 s), whoop side arrival
+(from 2.5 s), and whoop inverted landing then turtle (from 3.95 s, the
+moment crashflip lets go). **Two were added**, a five inch tail first drop
+and a whoop side drop, each required to end flat and still, so this
+decision is pinned. The five inch side arrival's `exercises` said it ended
+on its side (endUpZ < 0.5); that was the old behaviour and it now ends flat,
+so the test says so, with the reason beside it. The self test still sees a
+1e-7 friction nudge in exactly the 14 grounded runs.
+
+check:clip: the turtle latch tests used -0.9 and -0.8 as their example of
+upside down. Those are 25 and 37 degrees off flat, still falling now, so
+the examples are -0.98; the gate test that pinned 110 degrees now pins flat,
+and a new one asserts 30 degrees off flat is not turtle. 549 pass.
+
+contact:selftest: "a side arrival rolls instead of locking attitude" failed
+while the tip turned about the CG (0.24 rad/s at 350 ms) and passes about
+the corner (5.3 rad/s). The old module passed it only at that instant: it
+rolled at 13.9 rad/s and then welded at up -0.58 for good, which was the
+bug.
+
+**check:wall, one new failure, argued and not re-thresholded**: "yaw 180 deg
+at 9 m/s: three seconds of nothing and the craft is off the face". It is not
+on the face. The test wall is 8 m tall; the craft ends at x 30.32 (the wall
+spans 30 to 31.5), 8.06 m up, flat on its back, at rest: it crashed onto
+the top of the wall, which has been ground since the solid world moved into
+the plant, and now lies there instead of flailing off the edge. The check
+reads "dropped two metres or cleared the face" and cannot tell a craft lying
+on a roof from one hanging on a face. The other seven failures are the ones
+argued two entries up.
+
+### RUN LOG
+
+    drop probe (scratch)           88 of 88 flat, 17 belly, 71 back
+    npm run check:plant            all 23 passed; 17 unchanged against the
+                                   pre-work golden, 4 re-recorded, 2 new
+    npm run check:plant:selftest   passed
+    npm run contact:selftest       all passed
+    node scripts/world-check.js    all passed
+    npm run check:wall             49 passed, 8 failed: the 7 argued before,
+                                   plus the wall top case above
+    npm run check:crash --targets  0 guards failed; the same 7 targets not
+                                   met. .loop/evidence/crash-check-tumble-2026-09-24.json
+    npm run check:clip             549 passed
+    npm run lint:frame             34 passed
+    npm run lint:input             all 131 passed
+    npm run verify                 16 of 16, build-clean runs; trace
+                                   de0401cd4266 in Node and Chrome,
+                                   unchanged: free air is untouched
+    the owner's tail first crash   flat on its back, turtle latches, flips
+    park:fly                       not run: the change acts only on a hull
+                                   at the ground; no trick touches it
+    git diff --stat vendor/betaflight   empty

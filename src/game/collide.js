@@ -2584,8 +2584,8 @@ export function canPerch(tiltDeg, speed, rateMag) {
  * plays a fixed flip to heading-preserving upright. The plant does not
  * step during the wait or the flip.
  *
- * Enter only when truly inverted (body +z pointing down past about
- * 110 deg), seated on grass or a roof, and still. On-side is a tumble
+ * Enter only when flat on its back (body +z within about 18 deg of
+ * straight down), seated on grass or a roof, and still. On-side is a tumble
  * you fly out of. An invert in the air is still flight. TURTLE_STICK_MIN
  * is a poke gate, not the mixer deadband: any throw past it starts the
  * flip, and the flip always finishes. turtleLift() is the extra centre
@@ -2594,7 +2594,15 @@ export function canPerch(tiltDeg, speed, rateMag) {
 export const TURTLE_SPEED = 1.0;
 export const TURTLE_RATE = 8.0;
 export const TURTLE_EXIT_UPZ = 0.5;
-export const TURTLE_INVERT_UPZ = -0.35;
+/*
+ * FLAT ON ITS BACK, since 2026-09-24. It was -0.35, about 110 degrees, when
+ * the plant left a crashed craft wherever it landed and turtle was the only
+ * way out. The owner then asked for a crash to tumble flat, always, and the
+ * plant now does (TUMBLE FLAT, src/native/sim.c): it stops at 14 degrees
+ * from flat. A gate at 110 degrees latched the first slow millisecond of that
+ * tumble and froze it mid fall, so the gate is where the tumble ends.
+ */
+export const TURTLE_INVERT_UPZ = -0.95;
 export const TURTLE_STICK_MIN = 0.08;
 export const TURTLE_WAIT_RATE = 1.0;
 export const TURTLE_FLIP_MS = 380;

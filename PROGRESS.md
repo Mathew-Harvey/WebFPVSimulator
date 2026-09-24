@@ -42125,3 +42125,106 @@ they are about the code, and it still does. No physics touched.
                              first, unchanged)
     npm run lint:shell       FAIL, 1 problem: the title's 23 px, from
                              9ed8b9c, unchanged; quad overflow 0, as before
+
+## 2026-09-24 | shell | The whoop's normal weight is the five inch's 125
+
+A pilot flew the same track back to back in Vdrone and here and had to take
+the whoop's Weight slider to 120 to 130 before it felt right. The owner:
+"make the default for the whoop 125% gravity, do not change the 5 inch
+though".
+
+### What changed
+
+**configs/airframes.js.** The whoop's gravityBase goes from 1.62 to 2.025,
+which is 1.62 times 1.25. Weight 100 on the whoop now flies exactly what
+Weight 125 flew before, and it is still Weight 100, so it is still the
+machine we ship and still the only weight the public board takes. The five
+inch keeps 1.62 and every number it flies is unchanged: 0.972, 1.62 and
+2.268 at 60, 100 and 140, checked in node against gravityScaleFor.
+
+**The whoop's slider stops at 120.** The module refuses a gravity above 2.5
+(sim_set_gravity in src/native/sim.c), and 125 of 2.025 is 2.53. Left at
+140, the top quarter of the whoop's slider would have been refused by the
+module and snapped back in the pilot's hand. So each airframe carries a
+weightMax, 140 and 120, and src/ui/ui.js weightMaxFor reads it. clampWeight
+takes the airframe, gravityScaleFor clamps with it so no stored value can
+ask the module for more than 2.43, loadSettings, reseatIfForeign and
+seatAirframe bring a stored 125 to 140 down to 120 when the whoop is the
+aircraft, and paintAir sets the range's max before its value. main.js
+clamps the run weight against the run's airframe and repaints the slider
+after every settings write, because an airframe swap can move the top.
+Raising the module's ceiling instead is a rebuild of dist/sim.wasm, which
+this container cannot do (no emcc) and which is an ABI question for the
+advisor anyway.
+
+**configs/rates.js.** The keyboard's hover table was one table for both
+airframes because both flew the same plant at the same gravity. They no
+longer share a gravity, so the whoop has HOVER_WHOOP, read off the five inch
+plant with scripts/flightcheck.js at --gravity 1.215, 2.025 and 2.43 and
+--cell 4.2, 3.8 and 3.5, nine runs. The columns are per airframe now: 60,
+100, 140 on the five inch, 60, 100, 120 on the whoop. Hover on a fresh
+pack, uncapped, is 39.9 percent at the whoop's new normal against 35.0
+before. Interpolation checked against two extra measurements: weight 80 on
+the whoop (1.62) reads 34.8 against 35.0 measured, weight 110 reads 42.25
+against 42.3 uncapped and 96.1 against 98.1 at a cap of 40, where the 120
+column has hit the stop.
+
+**The feel form's floaty hint** quoted the five inch's fall and balloon at
+stock and at 140 on every airframe. It reads a per airframe row now. The
+five inch row reproduces the old sentence character for character. The
+whoop's, from the same probe: fall 10 m 1.07 s at 100 and 0.98 s at 120,
+balloon 0.9 m and 0.5 m, hover 39.9 and 44.6.
+
+### How the balloon was measured, since nobody had written it down
+
+The 18 September entry's balloon and hang figures came with no method.
+A scratch probe (not committed) found it: settle at hover for 3 s, punch
+to 60 percent stick for 400 ms, cut to idle, and take the height gained
+after the cut. At 0.972, 1.62 and 2.268 that gives 4.01, 1.63 and 0.66 m
+and a hang of 917, 456 and 248 ms, against the logged 4.03, 1.62, 0.67 and
+921, 455, 250. A full stick punch gives 8.25 m at 1.62 and is not it.
+Fall 10 m reproduced at 1.56, 1.20 and 1.01 s.
+
+### Records and the board
+
+The record key is built from the scale the module holds, and 2.025 gives
+`.g203` both ways: a whoop best set at Weight 125 before this is the whoop
+best at Weight 100 after it. A whoop best set at the old 100 stays under
+`.g162`, unreachable at the new normal, which is the append only rule
+applied to a pilot's own bests as it was when the base first moved.
+
+The public board takes Weight 100 only, so whoop times posted before this
+were flown at 1.62 and times from now on at 2.025. That is the same mixing
+the 18 September entry wrote down when the five inch moved from 1.0, and
+the fix is still the board column it named. Owed, a fourth time.
+
+A pilot whose slider was stored at 125 is now at 120 on the whoop, which is
+2.43, 150 percent of the old whoop. They need to put it back to 100.
+
+### Tests changed
+
+scripts/input-selftest.js asserted the whoop's hover at cap 65 was 51.1,
+the five inch's figure, because the two shared a table. That assertion was
+checking the table lookup, and the table it was looking up has changed
+underneath it. It now asserts 58.7, the new whoop table's figure at that
+cap. One new check: the whoop reads 39.9 at 100 and 44.6 at 120, and a
+weight of 140 reads its top, 44.6.
+
+### RUN LOG
+
+    input:selftest   all 171 passed (was 170)
+    lint:input       all 119 passed, 90 s. Its keyboard section runs on the
+                     whoop and sets weight 140 by hand: the shell clamped it
+                     to 120, the module took 2.43, and the keys rested on
+                     the whoop's new hover, 0.399
+    lint:boot        9 of 9
+    lint:shell       FAIL, "title: overflow grew from 0 to 23 px", and the
+                     same failure on the tree with this change stashed, so
+                     it predates this entry. Not investigated here.
+    node --check     the five changed files
+    flightcheck      the nine runs above, plus 2.228 for the interpolation check
+    npm run verify   not run: no physics, plant, ABI or build change.
+                     src/native, patches and dist/sim.wasm are untouched,
+                     and the harness never calls sim_set_gravity.
+    shots            not run. The slider's new top on the whoop has not been
+                     seen in a picture.

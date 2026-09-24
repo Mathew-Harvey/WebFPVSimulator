@@ -11004,7 +11004,20 @@ export class Ui {
       ? `${view.pads.length} joysticks plugged in`
       : (view.pads.length === 1 ? 'One joystick plugged in' : 'No joystick');
     this.padPrompt.textContent = view.prompt;
-    this.padHint.textContent = view.hint;
+    /*
+     * WHAT THE DRAWN STICKS ARE, said beside them. They are the page's
+     * reading of the device, through the pilot's calibration or through
+     * the built in guess, and a guess that is wrong for this radio looks
+     * wrong here: bug-9983ae9a filed that picture as a fault. Said here
+     * rather than in src/input because it names a room, and the room's
+     * name belongs to this file.
+     */
+    const read = !view.pads.length
+      ? ''
+      : (view.mapKnown
+        ? ' The sticks drawn follow your saved calibration.'
+        : ` The sticks drawn are how this page reads it now, which is a guess until you calibrate. If they do not follow your hands, choose it anyway and run Calibrate sticks in ${SCREEN_TITLES.pilot}.`);
+    this.padHint.textContent = `${view.hint}${read}`;
     if (this.padYesBtn) {
       this.padYesBtn.disabled = !view.canAccept;
     }
@@ -11040,10 +11053,15 @@ export class Ui {
         : (pad.live ? 'Moving' : 'Resting');
       node.card.classList.toggle('is-live', pad.live && !pad.chosen);
       node.card.classList.toggle('is-on', pad.chosen);
-      const ax = pad.axes || [0, 0, 0, 0];
-      const clamp = (v) => Math.max(-1, Math.min(1, v));
-      placeNub(node.left.nub, clamp(ax[0]), clamp(-ax[1]));
-      placeNub(node.right.nub, clamp(ax[2]), clamp(-ax[3]));
+      /* The same plates, captions and placement as the flight overlay and
+       * the calibrate screen, so a stick reads the same everywhere it is
+       * drawn. See the sticks field in padPickView. */
+      const mode = this.settings.stickMode;
+      Ui.text(node.left.cap, stickCaption(mode, 'left'));
+      Ui.text(node.right.cap, stickCaption(mode, 'right'));
+      placeSticks(node.left, node.right, pad.sticks || {
+        roll: 0, pitch: 0, yaw: 0, throttle: 0,
+      }, mode);
     }
   }
 

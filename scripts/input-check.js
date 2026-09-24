@@ -748,6 +748,62 @@ async function mousePage(page) {
     sync.afterCamera.mode === 'freestyle' && sync.afterCamera.map === 'city', JSON.stringify(sync.afterCamera));
   check('swapping to the whoop still seats race on the custom track',
     sync.afterSwap.mode === 'race' && sync.afterSwap.map === 'custom', JSON.stringify(sync.afterSwap));
+
+  /* --------------------------------------------------------------------
+   * 6b. The joystick picker's picture. bug-9983ae9a, a Flysky SM001: "On
+   *     the test image you can see on one side the bullet is moving for
+   *     both sticks but not as they should." The cards drew raw axes 0 and
+   *     1 as the left plate and 2 and 3 as the right, a gamepad's layout,
+   *     uncaptioned. This radio's roll is axis 0, so pushing roll moved the
+   *     LEFT plate. Drawn through the mapping the page flies now, captioned
+   *     like every other drawn stick, and it says which mapping it is.
+   * ------------------------------------------------------------------ */
+  section('the joystick picker draws what the page will fly, and says which mapping that is');
+  /* The section above swapped the aircraft and the map, and the frame loop
+   * that opens the picker does nothing until the world it rebuilt is up. */
+  await page.until('window.__map().ready', 90000).catch(() => {});
+  await ev("ui.show('pilot'); input.requestPadPick('menu'); return 1;");
+  let picking = true;
+  await page.until("window.__ui.screen === 'padpick' && !!document.querySelector('.pad-card')", 10000).catch(() => { picking = false; });
+  check('the picker opens from Settings', picking);
+  const plates = `const c = document.querySelector('.pad-card'); const g = c.querySelectorAll('.osd-gimbal');
+    const at = (n) => { const s = n.querySelector('.osd-nub').style; return [parseFloat(s.left) || 0, parseFloat(s.top) || 0]; };
+    const cap = (n) => n.querySelector('.osd-gimbal-cap');`;
+  const pick0 = await ev(`${plates}
+    return JSON.stringify({ left: at(g[0]), right: at(g[1]), caps: [cap(g[0]).textContent, cap(g[1]).textContent],
+      shown: cap(g[0]).offsetHeight > 0 && cap(g[1]).offsetHeight > 0, hint: ui.padHint.textContent });`).then(JSON.parse);
+  check('the plates are captioned the way every other drawn stick is, and the captions show',
+    pick0.caps[0] === 'Yaw, throttle' && pick0.caps[1] === 'Roll, pitch' && pick0.shown, JSON.stringify(pick0));
+  check('calibrated earlier in this run, it says the sticks follow the saved calibration',
+    /saved calibration/.test(pick0.hint), pick0.hint);
+  await page.evaluate('window.__pad.axes[0] = 1; window.__pad.timestamp += 1;');
+  await page.sleep(300);
+  const pick1 = await ev(`${plates} return JSON.stringify({ left: at(g[0]), right: at(g[1]) });`).then(JSON.parse);
+  await page.evaluate('window.__pad.axes[0] = 0; window.__pad.timestamp += 1;');
+  /* Sideways, not rightwards: section 5b reversed this page's roll and
+   * saved it, and a picture drawn through the mapping shows that too. */
+  check('roll moves the Roll, pitch plate sideways and leaves the other alone',
+    Math.abs(pick1.right[0] - pick0.right[0]) > 20 && Math.abs(pick1.left[0] - pick0.left[0]) < 2 && Math.abs(pick1.left[1] - pick0.left[1]) < 2,
+    `${JSON.stringify(pick0.left)} ${JSON.stringify(pick0.right)} -> ${JSON.stringify(pick1.left)} ${JSON.stringify(pick1.right)}`);
+  /* The same screen with no calibration: the saved mapping put aside, then
+   * put back, so nothing after this section inherits the difference. */
+  const guessHint = await ev(`
+    const key = 'webfpv_stick_map_v1';
+    const kept = localStorage.getItem(key);
+    localStorage.removeItem(key);
+    input.map = input.loadMap();
+    return new Promise((done) => setTimeout(() => {
+      const hint = ui.padHint.textContent;
+      if (kept !== null) { localStorage.setItem(key, kept); }
+      input.map = input.loadMap();
+      done(JSON.stringify({ hint, restored: input.map.stored }));
+    }, 300));
+  `).then(JSON.parse);
+  check('uncalibrated, it says the picture is a guess and sends the pilot to Calibrate sticks in the room that holds it',
+    /a guess until you calibrate/.test(guessHint.hint) && guessHint.hint.includes(`Calibrate sticks in ${signs.roomName}`),
+    guessHint.hint);
+  check('and the saved mapping is back afterwards', guessHint.restored === true);
+  await ev("ui.act('padpick-cancel'); return ui.screen;");
 }
 
 async function touchPage(page) {

@@ -949,6 +949,64 @@ section('the keyboard throttle: switching back to the spring');
   check('on the ground, it goes to idle', im.channels.throttle === 0, String(im.channels.throttle));
 }
 
+/* ------------------------------------------------------------------------
+ * 10. The joystick picker's picture. bug-9983ae9a, a Flysky SM001: "On the
+ *     test image you can see on one side the bullet is moving for both
+ *     sticks but not as they should." The cards drew raw axes 0 and 1 as
+ *     the left stick and 2 and 3 as the right, a gamepad's layout. A radio
+ *     that reports throttle first, the order Spektrum and JR use, moved
+ *     the left plate for its throttle AND its roll. The picture is drawn
+ *     through the mapping the page will fly now.
+ * ---------------------------------------------------------------------- */
+section('the joystick picker draws what the page will fly, not raw axes');
+{
+  /* Throttle first: [throttle, roll, pitch, yaw, switch, switch]. */
+  const rig = new Rig(makePad([-1, 0, 0, 0, -1, -1], 4, 'Throttle first radio'));
+  const im = rig.im;
+  im.startPadPick('menu');
+  rig.run(48);
+  const card = () => im.padPickView().pads[0];
+  check('a card carries the sticks as flight reads them, and no raw axes',
+    card() && card().sticks && !('axes' in card()), JSON.stringify(card()));
+  check('and says it is the built in guess while nothing is calibrated', im.padPickView().mapKnown === false);
+  /* At rest, the guess reads this radio's parked throttle, on axis 0, as a
+   * roll stick held hard over. That is what the quad would do, and the old
+   * picture could not show it: it drew axis 0 as a gamepad's left stick. */
+  const idle = card().sticks;
+  check('uncalibrated, the picture shows the parked throttle read as full roll, as the quad would fly it',
+    idle.roll === -1, JSON.stringify(idle));
+  /* The pilot pushes their roll stick, which this radio reports on axis 1. */
+  rig.ax(1, 1);
+  rig.run(32);
+  const guess = card().sticks;
+  check('and a push on the roll stick moves the guess\'s pitch, and only its pitch',
+    guess.pitch !== idle.pitch && guess.roll === idle.roll && guess.yaw === idle.yaw && guess.throttle === idle.throttle,
+    `${JSON.stringify(idle)} -> ${JSON.stringify(guess)}`);
+  rig.ax(1, 0);
+  rig.run(32);
+  /* What the wizard saves for this radio: each channel where it really is. */
+  im.map = {
+    roll: { axis: 1, center: 0, full: 1 },
+    pitch: { axis: 2, center: 0, full: -1 },
+    yaw: { axis: 3, center: 0, full: 1 },
+    throttle: { axis: 0, low: -1, high: 1 },
+    reverse: {},
+    stored: true,
+  };
+  check('calibrated, it says so', im.padPickView().mapKnown === true);
+  rig.ax(1, 1);
+  rig.run(32);
+  const known = card().sticks;
+  check('and the same push is roll, full right, and nothing else',
+    known.roll === 1 && known.pitch === 0 && known.yaw === 0, JSON.stringify(known));
+  rig.ax(1, 0);
+  rig.ax(0, 1);
+  rig.run(32);
+  check('the throttle stick is the throttle, at the top',
+    card().sticks.throttle === 1 && card().sticks.roll === 0, JSON.stringify(card().sticks));
+  im.cancelPadPick();
+}
+
 console.log(failed ? `\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);
 for (const f of fails) {
   console.log(`  FAIL ${f}`);

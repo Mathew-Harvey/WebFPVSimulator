@@ -41310,3 +41310,131 @@ lint:shell's rates and bench numbers did not move.
 The fix flies as intended in every case the rig can reach. The feel, above
 all Stays put's rate and the coast after a climb, is still the pilot's to
 judge on real hardware at a real frame rate.
+
+## 2026-09-24 | input, shell | bug-9983ae9a: the joystick picker drew a gamepad, whatever was plugged in
+
+The next ticket on the board after the two keyboard ones, and the last one
+open that is not flight feel feedback:
+
+    bug-9983ae9a  titled with the reporter's email address, wrong behaviour
+                  "Im using thia SM001 remote usb controller but it is doing
+                   something. On the test image you can see on one side the
+                   bullet is moving for both sticks but not as they should."
+                  steps: "I need to send a movie for this"
+                  filed from the joystick picker, 8 bit axes (255 levels),
+                  refreshing at 44 Hz
+
+The SM001 is the Flysky FS-SM001, an eight channel USB simulator transmitter
+with a Mode 1 and Mode 2 throttle switch and its own stick calibration. Its
+manual does not say what order its channels reach a PC in, and there is no
+such radio here, so its exact layout is not known. The defect does not
+depend on it.
+
+### What the picker drew
+
+Each card drew raw axes 0 and 1 as the left stick and 2 and 3 as the right,
+with no captions. That is a gamepad's layout and nothing else's. A radio
+reports its channels in channel order, so for a radio the picture was
+neither the pilot's sticks nor what the quad would do.
+
+Reproduced with a synthetic radio that reports throttle first, the order
+Spektrum and JR use, sticks moved one at a time:
+
+    left stick up, throttle   drawn left plate moved sideways
+    right stick right, roll   drawn left plate moved up and down
+
+"On one side the bullet is moving for both sticks but not as they should",
+word for word. The lint:input radio, yaw on axis 4 and a switch on axis 3,
+drew the throttle as a sideways movement and yaw as nothing at all.
+
+### The fix
+
+The cards draw what the page would FLY: `padPickView` hands the UI the
+sticks read through the live mapping, `readGamepad(gp)`, which is what flight
+reads, instead of four raw axes. `setPadPick` draws them with the same
+`placeSticks` and the same captions as the flight overlay and the calibrate
+screen, and index.html shows the captions it used to hide, wrapped to the
+72 px plate. The view also says which mapping it is, and the hint says so:
+
+    calibrated    "The sticks drawn follow your saved calibration."
+    the guess     "...how this page reads it now, which is a guess until you
+                   calibrate. If they do not follow your hands, choose it
+                   anyway and run Calibrate sticks in Settings."
+
+The room name comes from SCREEN_TITLES, so it follows the room if it moves.
+
+Measured through the real picker, sticks moved one at a time:
+
+    throttle first, uncalibrated   each stick moves exactly one drawn
+                                   channel: the guess's, which is wrong for
+                                   this radio, and the hint says so
+    throttle first, calibrated     throttle, yaw, roll and pitch each move
+                                   their own plate on their own axis
+    the lint:input radio           roll, pitch and throttle drawn right;
+                                   yaw drawn where the guess reads it, a
+                                   switch, which is what flight would do
+
+WHAT THE GUESS DOES IS NOW VISIBLE BEFORE TAKEOFF. On the throttle first
+radio the guess reads the parked throttle on axis 0 as a roll stick held
+hard over: the quad would roll at idle, and the new picture shows it pinned
+there. The old one showed a stick at rest. The same honesty cuts the other
+way for a gamepad: its old picture looked right, because the gamepad layout
+is what it drew, while the uncalibrated quad flew roll and pitch off the left
+stick and half throttle off the right. It now shows that, beside the words
+that fix it. A picture that is right about the flying beats one that is
+right about the plastic.
+
+The lit card and "Moving" still come from the raw axes, because they answer
+"which device is this" and no mapping should get in the way of that.
+
+### Not done, written down
+
+- **The guess check still watches yaw alone.** noteGuessOrder raises the
+  title's trouble row only when the guessed yaw never moves. The lead written
+  on the 21st stands: widening it to roll and pitch is the same mechanism
+  and small, and it would catch the throttle first radio above on the title
+  as well as here. Not this ticket's, and not started.
+- **The reporter has not been answered**, and the board has no way for them
+  to send the video. The picker now tells them what their video would have
+  shown and what to do about it. A reply is the owner's to send.
+- The crash recovery that put the whoop on the roof, found while flying,
+  is still open. See the flight entry above.
+
+### What went wrong
+
+**A check assumed a direction.** Roll on the mouse page moved the Roll,
+pitch plate to the LEFT, and the first version of the check wanted right.
+Section 5b of the same run reverses roll and saves it, and the picture was
+showing exactly that reversal. The check now asks which plate moves, not
+which way.
+
+**The picker did not open on the mouse page at first.** The frame loop that
+opens it returns early while a world is rebuilding, and section 6 swaps the
+aircraft and the map. The check waits for the world now.
+
+**A selftest assertion was wrong, and what it caught is the point.** It
+expected the uncalibrated guess to read roll 0 at rest, and it read -1: the
+parked throttle, read as roll. That is now asserted as the finding.
+
+### RUN LOG
+
+    npm run input:selftest   all 158 passed (was 151). Section 10, seven
+                             new. Mutation, the view back to raw axes:
+                             3 fail
+    npm run lint:input       all 110 passed, 57 s (was 104). Section 6b,
+                             six new, including the signpost: the picker
+                             names the room that holds Calibrate sticks.
+                             Mutation, the cards drawn from raw axes again:
+                             fails with roll moving the left plate, which
+                             is the ticket
+    npm run lint:shell       FAIL, 1 problem, the title's 23 px from
+                             9ed8b9c, as in the two entries above. The
+                             picker is not walked by this check
+    npm run lint:responsive  PASS
+    npm run lint:devices     PASS
+    npm run verify           not run: the picker, its view and its CSS. No
+                             physics, plant, ABI or build change
+
+Only a real SM001 can say whether its sticks now read right once calibrated.
+The wizard assigns whatever axis moves, so it should; the reporter is the
+one person who can confirm it.

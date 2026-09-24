@@ -1526,10 +1526,6 @@ export class InputManager {
       const key = padKey(gp);
       const rest = p.rest.get(key) || snapshotAxes(gp);
       const motion = maxAbsDelta(snapshotAxes(gp), rest);
-      const axes = [0, 0, 0, 0];
-      for (let a = 0; a < 4; a += 1) {
-        axes[a] = gp.axes[a] || 0;
-      }
       cards.push({
         key,
         title: `Joystick ${i + 1}`,
@@ -1537,7 +1533,29 @@ export class InputManager {
         motion,
         live: motion >= PAD_PICK.WIGGLE,
         chosen: p.candidateKey === key,
-        axes,
+        /*
+         * THE STICKS AS THIS PAGE WOULD FLY THEM, not the device's raw axes.
+         *
+         * The card drew axes 0 and 1 as the left stick and 2 and 3 as the
+         * right, which is a gamepad's layout and nothing else's. A radio
+         * reports its channels in channel order, so the picture answered
+         * neither question a pilot brings to it: it was not their sticks
+         * and it was not what the quad would do. bug-9983ae9a, a Flysky
+         * SM001: "On the test image you can see on one side the bullet is
+         * moving for both sticks but not as they should". A radio that
+         * reports throttle first draws exactly that: its left plate moves
+         * for the throttle and for the roll.
+         *
+         * readGamepad through the live mapping is what flight reads, so
+         * the picture is now a preview that is true either way. Calibrated,
+         * it follows the pilot's hands. Uncalibrated, it is the AETR guess,
+         * and a guess that is wrong for this radio shows up wrong HERE,
+         * before the quad does it, beside the words that say how to fix it.
+         * Which of the two it is rides out as mapKnown below. Motion and the
+         * lit card still come from the raw axes above, because they answer
+         * "which device is this" and no mapping should get in the way.
+         */
+        sticks: this.readGamepad(gp),
       });
     }
     const chosen = cards.find((c) => c.chosen) || null;
@@ -1559,6 +1577,9 @@ export class InputManager {
       canAccept: p.phase === 'confirm' && Boolean(chosen),
       skipLabel,
       cooling: now < p.ignoreUntil,
+      /* Whether the sticks drawn on the cards come through the pilot's own
+       * calibration or through the built in AETR guess. */
+      mapKnown: Boolean(this.map.stored),
       pads: cards,
     };
   }

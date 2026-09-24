@@ -6431,6 +6431,9 @@ export async function boot({ loading, bootStart, mapId }) {
       shell.camera.position.set(camOverride[0], camOverride[1], camOverride[2]);
       shell.camera.up.set(0, 1, 0);
       shell.camera.lookAt(camLookAt.set(camOverride[3], camOverride[4], camOverride[5]));
+      /* The harness camera obeys the lens's rule too, so a capture put
+       * against a wall photographs the wall rather than what is behind it. */
+      setCameraNear(fpvNear(shell.camera.position));
     }
 
     /* Attract clock and scenery only while this context is actually

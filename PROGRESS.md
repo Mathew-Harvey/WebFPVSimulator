@@ -42425,8 +42425,8 @@ The other 26 feel reports are read, tabulated above, and untouched.
 ## 2026-09-24 Board statistics tab: copy rewritten, sponsor plate removed
 
 Board only. Nothing in this repository changed except this entry. The
-board commit is `f09235b` on `claude/great-sagan-bp382s` in
-`Mathew-Harvey/WebFPVSimulator-LeaderBoard`, not merged to its `main`.
+board commit is `f09235b` in `Mathew-Harvey/WebFPVSimulator-LeaderBoard`,
+fast forwarded onto its `main` at the owner's request.
 
 The owner read the statistics tab and called the copy AI slop. Every
 visible string on the tab was rewritten against the humanizer skill

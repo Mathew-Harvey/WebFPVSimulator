@@ -41738,3 +41738,79 @@ the pickup, three (held throttle 0, fell to the floor, keys 0).
                                 a second later
     X in a climb, fix, twice    put at 8.525 and 10.757 m, settled 0.551 m
                                 lower by 4.3 s
+
+## 2026-09-24 | collision, plan | The city crash review, and the owner's decisions on it
+
+The owner's report: in the freestyle city you bounce around, clip through
+buildings and sometimes vanish. Asked for the whole crash situation to be
+understood before anything was changed, and for the plan to be agreed first.
+Nothing in the physics or the shell changed in this entry. This entry is the
+review, measured, and what the owner decided.
+
+### How it was measured
+
+A scratch probe (not committed; it becomes the crash check below) loaded the
+city in headless Chromium, flew the real shell with park-fly's guidance law
+into a shopfront at x = 5.6 beside the spawn street, and logged every frame.
+Two screenshots put the camera 7, 15 and 40 cm from the same wall through
+window.__setCam. The city has 19,515 colliders and every one of them is an
+axis aligned box.
+
+    head-on, 10 m/s    9.3 to 2.0 m/s in one 17 ms frame, 51 rad/s of body
+                       rate, upside down 17 ms later
+    head-on, 20 m/s    132 rad/s, and a vertical wall handed the craft
+                       +2.9 m/s UPWARD
+    dive onto a roof,  skated along it at 6.7 m/s with about 15 separate
+    8 m/s              contacts in 0.6 s, slowing at 3.7 m/s2 (the street's
+                       ground model stops a slide at 13.7), never landed,
+                       slid off the edge and fell to the street
+    wall hit, then     pinned on its side against the face for the whole
+    throttle 0.7       2.5 s: no crash called, no turtle offered
+    camera 7 and 15 cm the facade is not drawn; the shop's interior is. At
+    from the wall      40 cm the wall draws
+    all impacts        the craft's centre never went inside a solid
+
+### What is wrong, and why
+
+1. **The camera sees through every wall it touches.** The near plane is
+   0.2 m (src/render/shell.js). The lens is 8 cm ahead of the CG and the hull
+   reaches 14 cm, so a quad touching a wall has its lens about 6 cm from it.
+   This is most of what reads as clipping, since the physics kept the centre
+   out in every run.
+2. **Two contact solvers that do not know about each other.** The ground is
+   solved in the plant at 1 kHz: eight hull points, friction, settle, perch,
+   turtle. Every wall, every ordinary roof and the train are solved in JS
+   every 4 ms, after the fact: sweep, place the craft at the touch point,
+   one impulse at one point. heightAt answers only for platforms, so under an
+   ordinary building the plant's floor is the street and a roof is a wall you
+   can stand on: no perch, wall friction, micro bounces.
+3. **One impulse at one point on the hull edge** is the spin, and it is the
+   "wall ratchet" written up as not fixed on 2026-09-16.
+4. **A centre that does get inside a box leaves by the nearest face of that
+   one box**, which can be the roof (a pop onto it) or the far side (through
+   it), and ignores the neighbouring box it may land in. Edge and roof lip
+   normals are the raw overhang vector, not the flat hull's.
+5. **The Crashed catch** (inside, stuck, buried, thrash) freezes the craft
+   for 800 ms and moves it up to about 4.5 m, or to the start line. It exists
+   to cover 2 to 4, and it is the likeliest "vanish".
+6. **Rules.** The JS contact pass is in the physics path and reads the spawn
+   rotation (built with Math.sin and Math.cos) and once per frame train
+   positions, which CLAUDE.md forbids; and scripts/lib/flightrig.js carries a
+   second, hand ported copy of it.
+
+### Decided by the owner, 2026-09-24
+
+- **The owner is the advisor.** CLAUDE.md now says so.
+- **Obstacle contact moves into the plant.** One solver at 1 kHz for ground,
+  roofs, walls and the train. The physics model may change shape.
+- **Condition: coverage first.** Before the model changes, the tests that pin
+  the core's current behaviour are in place and green. Written into CLAUDE.md.
+- **Do it properly once.** The quick JS stage is folded in rather than done
+  first. The camera near plane is still part of the work, because the solver
+  cannot fix it: a craft resting on a wall has its lens 6 cm from the face
+  whichever solver put it there.
+- **No automatic teleport after a crash.** The craft stays where the physics
+  leaves it; R resets.
+- **Open:** how prop discs should behave in a contact (asked, not yet
+  answered), and whether "vanish" is the view or the teleport (moot once the
+  teleport is gone and the near plane is fixed, but worth knowing).

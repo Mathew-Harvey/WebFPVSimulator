@@ -52,7 +52,8 @@ A browser FPV racing simulator whose only current goal is flight feel indistingu
 - Prefer the cheap targeted check to the full suite: `npm run lint:fc`, `npm run lint:presets`, `npm run lint:catalog`, `node scripts/shots.js` for anything visual, and a direct fetch for anything about a served file.
 - Never change a threshold to make a check pass. Argue in PROGRESS.md instead.
 - Every turn that changes code appends to PROGRESS.md, including what went wrong.
-- Consult the advisor before any change that alters the physics model's shape, the module ABI, or the build. Not for filling in the next line.
+- **The advisor is the owner.** Not an advisor model, not a tool, and not a review workflow: the owner of this repository, in the conversation. Before any change that alters the physics model's shape, the module ABI or the build, put it to the owner: what changes, why, and what it could break, then wait for the answer. Not for filling in the next line. Record the answer in PROGRESS.md with the date and what it covered, because an approval nobody wrote down is one the next session cannot see.
+- **Coverage lands before the physics model changes.** The owner's condition, set on 2026-09-24 when approving the move of obstacle contact into the plant: before the model's shape changes, the tests that pin the core's current behaviour are in place and green, so a regression arrives as a failing check and not as a pilot's report. "The core" is free flight, the control loop, ground contact and determinism. A physics change that has no check able to see it is not ready to start.
 
 ## Git
 

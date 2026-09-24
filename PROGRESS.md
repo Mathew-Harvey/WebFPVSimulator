@@ -42458,3 +42458,16 @@ is the bottom row of that grid. The note now names the four instead.
     npm run verify           not run: no physics, plant, ABI or build
                              change, and no file here changed.
     served / look at it      not run. Offered to the owner.
+
+### Follow up: named pilots off the all time strip
+
+Board commit `dcc8d5f`, on its `main`. The owner: twenty named pilots
+beside 265 pilots today distracts from the real number. Named pilots is
+gone, and so is Back another day, which counts only those same named
+pilots and without them reads as returning visitors, contradicting the
+Pilots today tile. Six facts remain in three columns. The mast's Pilots
+count, the leaderboard's own figure, is untouched and shows on every tab.
+
+    board npm test           1 failed, the same app.js noopener check
+                             that fails on board main without this.
+    served / look at it      not run. Offered to the owner.

@@ -500,13 +500,6 @@ static int contact_unit3(double nx, double ny, double nz, double n[3]) {
   return 1;
 }
 
-/* The same impulse, handed to world.c so every solid in the world is
- * resolved by the one solver the ground already uses. */
-static int world_apply(const double n[3], const double r[3], const double vs[3],
-                       double e, double mu, double pen) {
-  return contact_impulse(n, r, vs, e, mu, pen);
-}
-
 /* One hull point against the ground plane. Returns 1 if that point is in
  * the contact band (impulse may or may not have been applied). */
 static int ground_hit_at(const double r[3], const double vs[3]) {
@@ -1331,7 +1324,7 @@ SIM_EXPORT int sim_step(int n) {
     plant_step(&S, duty);
     ground_apply();
     if (!g_stand_on) {
-      world_step(&S, g_ground_on, g_ground_n, g_ground_d, world_apply);
+      world_step(&S, g_ground_on, g_ground_n, g_ground_d);
     }
     stand_apply();
     S.step_index += 1;

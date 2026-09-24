@@ -106,6 +106,10 @@
  * of closing speed, capped, and a disc left in contact rubs this much off
  * every millisecond. */
 #define PROP_MU 0.12
+/* The most force a blade carries into the frame before it bends out of the
+ * way, newtons. It makes the props a crumple zone: they soak the first few
+ * centimetres of a hit and the frame, which is rigid, takes the rest. */
+#define PROP_F_MAX 60.0
 #define PROP_STRIKE_K 0.06
 #define PROP_STRIKE_MAX 0.70
 #define PROP_RUB 0.02
@@ -1354,6 +1358,218 @@ static double sphere_in_box(const double c[3], double r, const double *prev,
  * The step.
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * The solve: sequential impulses with ACCUMULATED impulses, Catto's form.
+ *
+ * sim.c's contact_impulse is one shot: each call applies what that call
+ * sees and returns early once the point is no longer approaching. That is
+ * right for the ground, whose goldens pin it, and wrong for an edge hitting
+ * a wall. The first pass stops the edge and spins the craft about it; the
+ * spin then slides the edge along the face at metres a second, and a one
+ * shot solver never sees that slide because the edge is no longer
+ * approaching. Measured in world-check before this: a 5 m/s nose first hit
+ * left at 33 rad/s. A real edge grips the wall it hits. So each contact
+ * keeps the impulse it has already given, the normal total stays above
+ * zero, the friction total stays inside mu times it, and every pass can
+ * take back what an earlier one overdid. The restitution target is fixed
+ * from the approach before the first pass, so passes cannot pump energy.
+ *
+ * The restitution curve is the ground's own (sim.c, CONTACT_E_KNEE and
+ * CONTACT_E_FLOOR), written again here rather than shared so that nothing
+ * in this file can move a ground golden.
+ * ------------------------------------------------------------------ */
+#define WORLD_ITERS 8
+#define WORLD_E_KNEE 1.7
+#define WORLD_REST_VN 0.25
+#define WORLD_E_FLOOR 0.35
+#define WORLD_BAUMGARTE 0.0
+#define WORLD_BIAS_MAX 1.2
+
+typedef struct {
+  double n[3];
+  double t1[3];
+  double t2[3];
+  double r[3];
+  double vs[3];
+  double kn;
+  double kt1;
+  double kt2;
+  double target;
+  double pn;
+  double pt1;
+  double pt2;
+  double mu;
+  double cap;
+} Solve;
+
+static Solve g_sv[WORLD_MAX_CONTACTS];
+
+static void cross3(const double a[3], const double b[3], double out[3]) {
+  out[0] = a[1] * b[2] - a[2] * b[1];
+  out[1] = a[2] * b[0] - a[0] * b[2];
+  out[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+/* Body to plant axes and back, for the inertia. */
+static void q_rot(const double q[4], const double v[3], double out[3]) {
+  const double w = q[0], x = q[1], y = q[2], z = q[3];
+  const double ux = 2.0 * (y * v[2] - z * v[1]);
+  const double uy = 2.0 * (z * v[0] - x * v[2]);
+  const double uz = 2.0 * (x * v[1] - y * v[0]);
+  out[0] = v[0] + w * ux + (y * uz - z * uy);
+  out[1] = v[1] + w * uy + (z * ux - x * uz);
+  out[2] = v[2] + w * uz + (x * uy - y * ux);
+}
+
+static void q_rot_inv(const double q[4], const double v[3], double out[3]) {
+  const double qc[4] = { q[0], -q[1], -q[2], -q[3] };
+  q_rot(qc, v, out);
+}
+
+/* The inverse inertia applied to a plant axes vector. */
+static void iinv(const double q[4], const double v[3], double out[3]) {
+  double b[3];
+  q_rot_inv(q, v, b);
+  b[0] /= PLANT.inertia[0];
+  b[1] /= PLANT.inertia[1];
+  b[2] /= PLANT.inertia[2];
+  q_rot(q, b, out);
+}
+
+static double eff_mass_inv(const double q[4], const double r[3], const double d[3]) {
+  double rd[3];
+  double ird[3];
+  cross3(r, d, rd);
+  iinv(q, rd, ird);
+  return 1.0 / PLANT.mass_kg + dot3(rd, ird);
+}
+
+static void tangents(const double n[3], double t1[3], double t2[3]) {
+  /* Any unit vector not along n, then two cross products. */
+  double a[3] = { 1.0, 0.0, 0.0 };
+  if (absd(n[0]) > 0.7) {
+    a[0] = 0.0;
+    a[1] = 1.0;
+  }
+  cross3(n, a, t1);
+  const double l = sim_sqrt(dot3(t1, t1));
+  t1[0] /= l;
+  t1[1] /= l;
+  t1[2] /= l;
+  cross3(n, t1, t2);
+}
+
+static double rel_vel(const double v[3], const double w[3], const Solve *c, const double d[3]) {
+  double wr[3];
+  cross3(w, c->r, wr);
+  return (v[0] + wr[0] - c->vs[0]) * d[0] + (v[1] + wr[1] - c->vs[1]) * d[1]
+      + (v[2] + wr[2] - c->vs[2]) * d[2];
+}
+
+static void apply_j(double v[3], double w[3], const double q[4], const double r[3],
+                    const double J[3]) {
+  const double im = 1.0 / PLANT.mass_kg;
+  v[0] += J[0] * im;
+  v[1] += J[1] * im;
+  v[2] += J[2] * im;
+  double tau[3];
+  double dw[3];
+  cross3(r, J, tau);
+  iinv(q, tau, dw);
+  w[0] += dw[0];
+  w[1] += dw[1];
+  w[2] += dw[2];
+}
+
+static void world_solve(SimState *s, int nc, double np_[][3], double rp_[][3],
+                        double vsp_[][3]) {
+  double v[3] = { s->vel[0], s->vel[1], s->vel[2] };
+  double w[3];
+  q_rot(s->quat, s->omega, w);
+  for (int c = 0; c < nc; c += 1) {
+    const Contact *ct = &g_con[c];
+    Solve *sv = &g_sv[c];
+    for (int a = 0; a < 3; a += 1) {
+      sv->n[a] = np_[c][a];
+      sv->r[a] = rp_[c][a];
+      sv->vs[a] = vsp_[c][a];
+    }
+    tangents(sv->n, sv->t1, sv->t2);
+    sv->kn = eff_mass_inv(s->quat, sv->r, sv->n);
+    sv->kt1 = eff_mass_inv(s->quat, sv->r, sv->t1);
+    sv->kt2 = eff_mass_inv(s->quat, sv->r, sv->t2);
+    sv->mu = ct->mu;
+    sv->pn = 0.0;
+    sv->pt1 = 0.0;
+    sv->pt2 = 0.0;
+    double pen = ct->depth;
+    sv->cap = 1.0e300;
+    if (ct->kind == 2) {
+      /* A blade bends before it pushes, and carries at most PROP_F_MAX. */
+      pen = ct->depth - 0.5 * PLANT.prop_r;
+      pen = pen < 0.0 ? 0.0 : pen;
+      sv->cap = PROP_F_MAX * SIM_DT;
+    }
+    const double vn = rel_vel(v, w, sv, sv->n);
+    const double vin = vn < 0.0 ? -vn : 0.0;
+    double e = ct->e;
+    if (vin > WORLD_E_KNEE) {
+      e = e * WORLD_E_KNEE / vin;
+    }
+    if (vn > -WORLD_REST_VN) {
+      const double soft = vin / WORLD_REST_VN;
+      e *= WORLD_E_FLOOR + (1.0 - WORLD_E_FLOOR) * (soft > 0.0 ? soft : 0.0);
+    }
+    double bias = 0.0;
+    if (pen > WORLD_SLOP) {
+      bias = WORLD_BAUMGARTE * (pen - WORLD_SLOP) / SIM_DT;
+      bias = bias > WORLD_BIAS_MAX ? WORLD_BIAS_MAX : bias;
+    }
+    sv->target = (vn < 0.0 ? -e * vn : 0.0) + bias;
+  }
+  for (int it = 0; it < WORLD_ITERS; it += 1) {
+    for (int c = 0; c < nc; c += 1) {
+      Solve *sv = &g_sv[c];
+      /* Normal. */
+      const double vn = rel_vel(v, w, sv, sv->n);
+      double dp = (sv->target - vn) / sv->kn;
+      double pn = sv->pn + dp;
+      pn = pn < 0.0 ? 0.0 : pn;
+      pn = pn > sv->cap ? sv->cap : pn;
+      dp = pn - sv->pn;
+      sv->pn = pn;
+      if (dp != 0.0) {
+        const double J[3] = { sv->n[0] * dp, sv->n[1] * dp, sv->n[2] * dp };
+        apply_j(v, w, s->quat, sv->r, J);
+      }
+      /* Friction, both tangents, inside a box of mu times the normal. */
+      const double lim = sv->mu * sv->pn;
+      const double v1 = rel_vel(v, w, sv, sv->t1);
+      double p1 = sv->pt1 - v1 / sv->kt1;
+      p1 = p1 < -lim ? -lim : (p1 > lim ? lim : p1);
+      const double d1 = p1 - sv->pt1;
+      sv->pt1 = p1;
+      const double v2 = rel_vel(v, w, sv, sv->t2);
+      double p2 = sv->pt2 - v2 / sv->kt2;
+      p2 = p2 < -lim ? -lim : (p2 > lim ? lim : p2);
+      const double d2 = p2 - sv->pt2;
+      sv->pt2 = p2;
+      if (d1 != 0.0 || d2 != 0.0) {
+        const double J[3] = {
+          sv->t1[0] * d1 + sv->t2[0] * d2,
+          sv->t1[1] * d1 + sv->t2[1] * d2,
+          sv->t1[2] * d1 + sv->t2[2] * d2,
+        };
+        apply_j(v, w, s->quat, sv->r, J);
+      }
+    }
+  }
+  s->vel[0] = v[0];
+  s->vel[1] = v[1];
+  s->vel[2] = v[2];
+  q_rot_inv(s->quat, w, s->omega);
+}
+
 static int props_exposed(void) {
   /* A duct IS the hull: when the hull box already reaches past every disc,
    * the props cannot touch anything the hull does not touch first. */
@@ -1368,12 +1584,9 @@ static int props_exposed(void) {
 }
 
 /*
- * Contacts against the world, for one 1 ms step. apply is sim.c's impulse
- * (contact_impulse), which the ground solver uses too.
+ * Contacts against the world, for one 1 ms step.
  */
-void world_step(SimState *s, int ground_on, const double gn[3], double gd,
-                int (*apply)(const double n[3], const double r[3], const double vs[3],
-                             double e, double mu, double pen)) {
+void world_step(SimState *s, int ground_on, const double gn[3], double gd) {
   if (!world_active()) {
     return;
   }
@@ -1612,26 +1825,7 @@ void world_step(SimState *s, int ground_on, const double gn[3], double gd,
     }
   }
 
-  /* Sequential impulses, the ground solver's own iteration count. */
-  for (int it = 0; it < 4; it += 1) {
-    int any = 0;
-    for (int c = 0; c < nc; c += 1) {
-      const Contact *ct = &g_con[c];
-      double pen = ct->depth;
-      if (ct->kind == 2) {
-        /* A blade is not a wall: it bends before it pushes. Only what is
-         * past half the disc's radius is owed a correction. */
-        pen = ct->depth - 0.5 * PLANT.prop_r;
-        pen = pen < 0.0 ? 0.0 : pen;
-      }
-      if (apply(np_[c], rp_[c], vsp_[c], ct->e, ct->mu, pen)) {
-        any = 1;
-      }
-    }
-    if (!any) {
-      break;
-    }
-  }
+  world_solve(s, nc, np_, rp_, vsp_);
 
   /* Out of the solid, translation only, one shape at a time along its own
    * deepest normal: the ground projector's rule, capped per step. */

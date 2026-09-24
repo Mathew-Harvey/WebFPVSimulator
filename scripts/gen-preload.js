@@ -72,7 +72,7 @@ const MAP_LIST = join(ROOT, 'src/maps/preload.js');
  * three, then main.js, and main.js loads the boot map, the Track. */
 const BOOT_ROOTS = ['src/boot.js', 'three', 'src/main.js', 'src/maps/custom.js'];
 /* Each lazily loaded map, by the id registry.js gives it. */
-const MAP_ROOTS = { city: 'src/maps/city/index.js' };
+const MAP_ROOTS = { city: 'src/maps/city/index.js', built: 'src/maps/built/index.js' };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off
  * the CDN files for exactly this version. */

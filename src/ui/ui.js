@@ -409,28 +409,59 @@ export const FLIGHT_STYLES = ['expert', 'arcade'];
  * g tan theta whatever it weighs. Rotation is untouched within 1.5 percent.
  * The pilot flew that and called it right; if a later report says it turns
  * too hard, the answer is mass, not this band.
+ *
+ * THE WHOOP HAS ITS OWN BASE NOW, 2.025, which is the five inch's 125. A
+ * pilot flying the same track back to back in Vdrone and here had to take
+ * the whoop to 120 to 130, and the owner made 125 its normal. So "Weight
+ * 100" is still the machine we ship, it is just a heavier machine on the
+ * whoop, and the slider's top is per airframe: the module refuses a gravity
+ * above 2.5, so the whoop stops at 120, 2.43. WEIGHT_MAX is the widest any
+ * airframe offers and configs/airframes.js weightMax is each one's own.
  */
 export const WEIGHT_MIN = 60;
 export const WEIGHT_MAX = 140;
 export const WEIGHT_STEP = 5;
 export const WEIGHT_STOCK = 100;
 
-export function clampWeight(v) {
+/* The top of the slider on this airframe. No airframe, the shell's widest. */
+export function weightMaxFor(airframeId) {
+  if (airframeId == null) {
+    return WEIGHT_MAX;
+  }
+  return Math.min(WEIGHT_MAX, airframeById(airframeId).weightMax ?? WEIGHT_MAX);
+}
+
+export function clampWeight(v, airframeId) {
   const n = Math.round(Number(v) / WEIGHT_STEP) * WEIGHT_STEP;
   if (!Number.isFinite(n)) {
     return WEIGHT_STOCK;
   }
-  return Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, n));
+  return Math.min(weightMaxFor(airframeId), Math.max(WEIGHT_MIN, n));
 }
+
+/*
+ * What the feel form's hint quotes about the stock quad and the heavy end of
+ * the slider, per airframe, because the whoop's two ends are not the five
+ * inch's. Measured off dist/sim.wasm on the five inch plant from a hover at
+ * 4.2 V: ten metres of fall with the throttle cut, the balloon after a
+ * 400 ms punch at 60 percent stick, and hover off the same bisection as
+ * configs/rates.js. The five inch row is the sentence as it always read.
+ */
+const WEIGHT_FEEL = {
+  '5inch': { fall: ['1.20', '1.01'], balloon: ['1.6', '0.7'], hover: ['35.0', '42.7'] },
+  whoop65: { fall: ['1.07', '0.98'], balloon: ['0.9', '0.5'], hover: ['39.9', '44.6'] },
+};
 
 /*
  * The multiple of 9.80665 the module is asked for, from a slider value and
  * the airframe it is flown on. Rounded to three places so the same setting
  * always produces the same double, which is what the record key hashes.
+ * Clamped to the airframe's own top, so a weight stored on a five inch at
+ * 140 can never ask the module for a whoop gravity it refuses.
  */
 export function gravityScaleFor(weight, airframeId) {
   const base = airframeById(airframeId).gravityBase;
-  return Math.round(base * (clampWeight(weight) / 100) * 1000) / 1000;
+  return Math.round(base * (clampWeight(weight, airframeId) / 100) * 1000) / 1000;
 }
 /*
  * WHAT A FREESTYLE FLIGHT IS. Three positions on one row, because they are
@@ -948,8 +979,9 @@ export function loadSettings() {
   s.cameraAngle = clampCameraAngle(s.cameraAngle);
   /* Weight is a range too, and the module REFUSES a gravity outside its own
    * band, so a hand edited blob has to be brought back before it reaches
-   * sim_set_gravity. */
-  s.weight = clampWeight(s.weight);
+   * sim_set_gravity. Against the airframe's own top, which is lower on the
+   * whoop than the five inch. */
+  s.weight = clampWeight(s.weight, s.airframe);
   /*
    * The rate profile, from whichever shape this blob was written in.
    *
@@ -1149,6 +1181,7 @@ function reseatIfForeign(s) {
   if (!a.packVoltages.includes(s.packVoltage)) {
     s.packVoltage = a.packVoltages[0];
   }
+  s.weight = clampWeight(s.weight, a.id);
   if (!other) {
     return s;
   }
@@ -1182,6 +1215,9 @@ export function seatAirframe(s, id) {
   if (!to.packVoltages.includes(s.packVoltage)) {
     s.packVoltage = to.packVoltages[0];
   }
+  /* A five inch at 140 is not a weight the whoop offers, so it comes down to
+   * the whoop's top. Anything inside both ranges stays the pilot's. */
+  s.weight = clampWeight(s.weight, to.id);
   if (ratesMatch(s.rates, from.rates)) {
     s.rates = normaliseRates({ ...s.rates, ...structuredCloneRates(to.rates) });
   }
@@ -1673,7 +1709,7 @@ function recordSentence(s, trackName) {
    * every settings object that reaches here has been through loadSettings,
    * and a sentence that can print "weight at undefined percent" if one ever
    * does not is a sentence waiting to embarrass itself in front of a pilot. */
-  const weight = clampWeight(s.weight);
+  const weight = clampWeight(s.weight, s.airframe);
   if (weight !== WEIGHT_STOCK) {
     /* Second in the list, right behind the physics model, because it IS the
      * physics model: the slider on the flight screen scales the weight the
@@ -2729,8 +2765,8 @@ const WAYS = [
      * picture is a whoop's and the hands get the five inch. The old line
      * promised three times the angular acceleration, which was true of a
      * plant nothing selects now. */
-    blurb: 'The same clock, indoors. A 65 mm ducted whoop through a track that fits in a living room, on 28 inch gates, flying the five inch\'s flight model.',
-    facts: ['Indoors', '65 mm', '5 inch feel'],
+    blurb: 'The same clock, indoors. A 65 mm ducted whoop through a track that fits in a living room, on 28 inch gates.',
+    facts: ['1S', '65 mm', 'Indoors'],
   },
   {
     id: 'freestyle-5inch',
@@ -3118,7 +3154,7 @@ export class Ui {
      */
     this.osdAir = makeWeightSlider({
       min: WEIGHT_MIN,
-      max: WEIGHT_MAX,
+      max: weightMaxFor(this.settings.airframe),
       step: WEIGHT_STEP,
       value: this.settings.weight,
       label: 'Weight, how heavy the quad feels',
@@ -4632,7 +4668,7 @@ export class Ui {
        * already dragged this to 180 and it is STILL too floaty". The first
        * is an opinion about a default, the second is a measurement of one.
        */
-      weight: clampWeight(s.weight),
+      weight: clampWeight(s.weight, s.airframe),
       /* And the absolute multiple of 9.80665 that weight became on this
        * airframe, because the base has moved once already and "weight 100"
        * in a ticket from before the move and one from after it are
@@ -5045,11 +5081,14 @@ export class Ui {
     const airHint = el('p', 'lede feel-hint', '');
     airHint.hidden = true;
     const refreshAirHint = () => {
-      const weight = clampWeight(this.settings.weight);
-      const show = issues.has('floaty') && weight < WEIGHT_MAX;
+      const af = this.settings.airframe;
+      const weight = clampWeight(this.settings.weight, af);
+      const top = weightMaxFor(af);
+      const show = issues.has('floaty') && weight < top;
       airHint.hidden = !show;
       if (show) {
-        airHint.textContent = `The Weight slider between the sticks on the flight screen is this exact complaint: it scales the weight the quad carries, so it drops when you chop the throttle instead of hanging. Yours is at ${weight} percent. From a hover with the throttle cut, the stock quad falls 10 metres in 1.20 s and balloons 1.6 m after a short punch; at 140 percent that is 1.01 s and 0.7 m. Hover moves up the stick with it, 35.0 percent at stock to 42.7 at 140. Worth dragging before you wait on us, and a lap flown on it stays off the public board.`;
+        const f = WEIGHT_FEEL[af] ?? WEIGHT_FEEL['5inch'];
+        airHint.textContent = `The Weight slider between the sticks on the flight screen is this exact complaint: it scales the weight the quad carries, so it drops when you chop the throttle instead of hanging. Yours is at ${weight} percent. From a hover with the throttle cut, the stock quad falls 10 metres in ${f.fall[0]} s and balloons ${f.balloon[0]} m after a short punch; at ${top} percent that is ${f.fall[1]} s and ${f.balloon[1]} m. Hover moves up the stick with it, ${f.hover[0]} percent at stock to ${f.hover[1]} at ${top}. Worth dragging before you wait on us, and a lap flown on it stays off the public board.`;
       }
     };
     const refreshCapHint = () => {
@@ -5968,6 +6007,29 @@ export class Ui {
             + ' if it goes the wrong way, one key reverses that channel, and if the wrong stick'
             + ' moves on screen, one key puts them on the other hands. Nothing is kept until you save.',
         },
+        /*
+         * RESTART FROM THE RADIO, bug-a25bc2dd: "As people start to grind
+         * tracks they will need ready access to a restart race hot key...
+         * can be assigned to an AUX on the radio too." R was the only way
+         * that did not go through the pause menu, and it is on the keyboard.
+         * Only offered with a radio, because on the keyboard it is R. See
+         * noteRestartSwitch in input.js.
+         */
+        ...(this.padInfo && this.padInfo.count > 0 && this.padInfo.using !== 'Keyboard' ? [{
+          label: 'Restart switch',
+          value: this.padInfo.restartCapturing ? 'Flip it now' : (this.padInfo.restart || 'Not set'),
+          action: 'restart-switch',
+          note: this.padInfo.restartCapturing
+            ? 'Flip the switch or press the button you want to restart with. Choose this row again to stop.'
+            : (this.padInfo.restart
+              ? 'In flight, flipping it takes you back to the start line, like R on the keyboard. Choose this row to pick another.'
+              : 'A switch or button on your radio that takes you back to the start line in flight, like R on the keyboard. Choose this row, then flip it.'),
+        }] : []),
+        ...(this.padInfo && this.padInfo.restart && !this.padInfo.restartCapturing ? [{
+          label: 'Forget restart switch',
+          action: 'restart-switch-clear',
+          note: 'R on the keyboard still restarts.',
+        }] : []),
         /*
          * WHICH STICK CARRIES WHICH CHANNEL, and it sits here because the
          * two rows above are the other two things a pilot does to their
@@ -9561,6 +9623,7 @@ export class Ui {
         ['Right stick', `${stickCaption(this.settings.stickMode, 'right')}.`],
         ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Settings.'],
         ['In the menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
+        ['Restart', 'R on the keyboard, or a switch on the radio: Settings, Restart switch, then flip it.'],
         ['Acro', 'Hands off holds the attitude you left it in. Every turn has to be flown back out again.'],
         ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Pitch or roll with the right stick to flip over. You do not have to time it. Centre the stick, then take off.'],
       ]
@@ -10656,7 +10719,7 @@ export class Ui {
       return;
     }
     const commit = () => {
-      const v = clampWeight(air.range.value);
+      const v = clampWeight(air.range.value, this.settings.airframe);
       if (v === this.settings.weight) {
         /* Still repaint: a drag between two steps snaps back to the value in
          * force, and a caption that did not follow would read as a stuck
@@ -10772,6 +10835,12 @@ export class Ui {
     const air = this.osdAir;
     if (!air) {
       return;
+    }
+    /* The top first, because a range clamps its value to its max and the
+     * whoop's is lower than the five inch's. */
+    const top = String(weightMaxFor(this.settings.airframe));
+    if (air.range.max !== top) {
+      air.range.max = top;
     }
     const v = this.settings.weight;
     if (Number(air.range.value) !== v) {
@@ -10984,6 +11053,8 @@ export class Ui {
 
   setPadInfo(info) {
     const was = padTroubleItem(this.padInfo);
+    const wasRestart = (this.padInfo && this.padInfo.restart) || null;
+    const wasCapturing = Boolean(this.padInfo && this.padInfo.restartCapturing);
     this.padInfo = info || { count: 0, using: 'Keyboard' };
     /*
      * A TROUBLE ROW THAT APPEARS MID SESSION HAS TO ASK FOR THE PAINT.
@@ -11008,6 +11079,12 @@ export class Ui {
     const now = padTroubleItem(this.padInfo);
     const label = (r) => (r ? r.label : '');
     if (this.screen === 'title' && label(was) !== label(now)) {
+      this.renderMenu();
+    }
+    /* The same for the restart switch row in Settings, which changes when
+     * a flip lands rather than when anything is pressed on the page. */
+    if (this.screen === 'pilot' && (wasRestart !== (this.padInfo.restart || null)
+      || wasCapturing !== Boolean(this.padInfo.restartCapturing))) {
       this.renderMenu();
     }
   }

@@ -41970,6 +41970,456 @@ four seconds and not before, and the report shows axis 3 at -1.
                              row and a report field. No physics, plant, ABI
                              or build change. Offered
 
+## 2026-09-24 | input, shell | bug-a25bc2dd: a restart switch on the radio
+
+Le Star, flying a radio on their own RaceGOW track: "I suck at the start of
+the RaceGOW tracks and hit the first gate on launch far too much", and
+"As people start to grind tracks they will need ready access to a restart
+race hot key. The default in VDrone is A but can be assigned to an AUX on
+the radio too."
+
+### What there was
+
+R restarts, and has for a long time: reset(), the start line, parked, the
+race cleared. The how-to lists it on the keyboard page. A is yaw here, so
+VDrone's key cannot be copied. What a radio pilot did NOT have was a way to
+it without taking a hand off the radio: a radio's buttons are only read in
+menus, and the pause menu's Restart run is three presses away.
+
+### The fix
+
+A **Restart switch** row in Settings, under Sticks, shown only with a radio:
+choose it, flip the switch or press the button you want, and it is kept. In
+flight, flipping it does what R does.
+
+- **Any button, or a switch that arrives as an axis**, the usual AUX. A
+  button counts when it goes down; an axis when it moves half its travel
+  from where it was when the row was chosen, and the side it moved to is
+  "on". The four stick axes the map uses are never taken.
+- **One flip, one restart.** Only the moment off becomes on counts, so a
+  two position switch left on does nothing more, the flip that assigned it
+  is not a restart, and a switch already on when the page loads is not
+  either. A three position switch taken to the middle and back is a flip.
+- **Kept per radio, under its own key** (webfpv.restart.v1, against the
+  pad's id), not in the stick map: saving the map would make an
+  uncalibrated guess look calibrated, and button 5 on one radio is an
+  arming switch on another.
+- **main.js takes the edge every frame and acts in flight only**, where R
+  acts, right after the frame's input poll so the frame flies from the
+  start line. A flip in a menu is spent there. A capture left running when
+  the pilot leaves Settings is dropped, or the next press in flight would
+  become the switch.
+- A notice names the switch when it is set; a Forget restart switch row
+  appears once one is set; the radio how-to has a Restart line.
+
+### Tests
+
+input:selftest, section 5c, 19 new, 189: nothing assigned; a press before
+the row is chosen is not captured; the four sticks swept end to end are not
+taken; a button, kept, and its press is not a restart; release, press, one
+restart; held, not two; a new page has it; forgotten, nothing. An AUX
+axis: the side it went to; one restart per off and on; two seconds on is
+still one; a three position middle is off. A switch kept for another radio
+does nothing; a switch on at load is not a flip.
+
+lint:input, section 6c on the mouse page's radio, 5 new, 124: the row is
+there and not set; Enter listens and the row says so; axis 5 flipped is
+"Switch on axis 5", kept, with Forget offered; the craft placed 30 m up and
+6 m off the start line, the switch off and on again, and it is parked on
+the start line; forgotten.
+
+lint:shell: its pilot and how-to screens have no radio, so the new rows do
+not show there and nothing it measures moved (pilot 746 px, how-to 123
+px). The one failure is the title's 23 px from 9ed8b9c, as in every entry
+since.
+
+### Not done, written down
+
+- Restart from the pause screen by the switch. It acts in flight only, on
+  purpose: a flip while paused is spent, not saved for later.
+- The ticket's first half, hitting the first gate on launch, is a skill
+  note rather than a fault, and launch control (L) is the sim's answer to a
+  clean start.
+
+### RUN LOG
+
+    npm run input:selftest   all 189 passed (was 170)
+    npm run lint:input       all 124 passed, 85 s, alone (was 119)
+    npm run lint:shell       FAIL, 1 problem: the title's 23 px, from
+                             9ed8b9c, unchanged
+    npm run verify           not run: a menu row, a stored switch and a
+                             call to reset(). No physics, plant, ABI or
+                             build change. Offered
+
+## 2026-09-24 | shell, data | bug-eb0552d6: the whoop says 1S and 4.2 volts
+
+Le Star: "The battery voltage displays 25v at the start of the race", on a
+whoop, and "Does voltage actually matter in the sim or is it just
+cosmetic?" The owner's answer: "make the whoop say 1s and 4.2v, don't change
+the physics at all".
+
+### Why it said 25
+
+The whoop flies the five inch's plant, which is 6S (PLANT.cells in
+src/native/plant.c), and its thrust is keyed to pack volts. The OSD printed
+the plant's pack, 6 x 4.2 = 25.2 V charged. configs/airframes.js kept the
+whoop at `cells: 6` on purpose, calling a 1S card over a 6S plant a seam in
+the fiction. The pilot asked for the fiction, so it goes.
+
+Voltage does matter: the Pack charge row moves the plant's cell voltage, a
+half pack hovers at 38.8 percent of stick against 35.0 charged, and the
+pack sags under load. That is unchanged.
+
+### The change, display only
+
+- configs/airframes.js: whoop65 `cells: 1`, and its facts lead with 1S.
+  Nothing that flies reads `cells`: the only reader is the OSD line below,
+  checked by grep across src, configs, scripts and tests.
+- src/main.js: the OSD's volts are the plant's scaled by the airframe's
+  cells over PLANT_CELLS (6, the plant's, now named once instead of written
+  as a bare 6 in the charge bar's two ends). A whoop reads 4.2 V charged and
+  sags in proportion; the five inch reads 25.2 as before. The charge bar and
+  everything physical read the plant's own volts.
+- src/ui/ui.js: the front page's whoop card leads with 1S, as the five
+  inch's leads with 6S. "Indoors" went; the blurb already says it, and
+  "5 inch feel" is the one fact a whoop pilot would not guess.
+- __craftState carries packVolts, the plant's own, so a check can see the
+  display change and the physics not.
+
+### Tests
+
+lint:input, 3 new, 127: the front page whoop card leads with 1S and the five
+inch card with 6S; on the start line, charged, the OSD reads "4.2 volts";
+and the plant under it still reads its 6S pack, about 25.2 volts.
+input:selftest 189, check:clip 548 and lint:presets 4 of 4 clean, all
+unchanged.
+
+### RUN LOG
+
+    npm run lint:input       all 127 passed, 82 s, alone (was 124)
+    npm run input:selftest   all 189 passed
+    npm run check:clip       548 passed
+    npm run lint:presets     4 of 4 presets clean
+    npm run verify           not run: a display scale, a data field and a
+                             card. No physics, plant, ABI or build change,
+                             which was the instruction. Offered
+
+## 2026-09-24 | copy | The whoop's copy stops calling it a five inch
+
+The owner: "remove the 5 inch feel from the whoop, copy". Every pilot facing
+line that told a whoop pilot they were flying a five inch is gone:
+
+- the front page whoop card: the blurb loses ", flying the five inch's
+  flight model", and the facts are 1S, 65 mm, Indoors ("5 inch feel" out,
+  "Indoors" back, so the card keeps three facts like the other two);
+- configs/airframes.js, whose blurb is the Aircraft row's note in Quad:
+  "flying the five inch's flight model" and "what you feel is the 5 inch"
+  out, facts as above.
+
+Comments and test names that say the whoop flies the five inch's plant stay:
+they are about the code, and it still does. No physics touched.
+
+### RUN LOG
+
+    npm run lint:input       all 127 passed, 82 s (the card check reads 1S
+                             first, unchanged)
+    npm run lint:shell       FAIL, 1 problem: the title's 23 px, from
+                             9ed8b9c, unchanged; quad overflow 0, as before
+
+## 2026-09-24 | shell | The whoop's normal weight is the five inch's 125
+
+A pilot flew the same track back to back in Vdrone and here and had to take
+the whoop's Weight slider to 120 to 130 before it felt right. The owner:
+"make the default for the whoop 125% gravity, do not change the 5 inch
+though".
+
+### What changed
+
+**configs/airframes.js.** The whoop's gravityBase goes from 1.62 to 2.025,
+which is 1.62 times 1.25. Weight 100 on the whoop now flies exactly what
+Weight 125 flew before, and it is still Weight 100, so it is still the
+machine we ship and still the only weight the public board takes. The five
+inch keeps 1.62 and every number it flies is unchanged: 0.972, 1.62 and
+2.268 at 60, 100 and 140, checked in node against gravityScaleFor.
+
+**The whoop's slider stops at 120.** The module refuses a gravity above 2.5
+(sim_set_gravity in src/native/sim.c), and 125 of 2.025 is 2.53. Left at
+140, the top quarter of the whoop's slider would have been refused by the
+module and snapped back in the pilot's hand. So each airframe carries a
+weightMax, 140 and 120, and src/ui/ui.js weightMaxFor reads it. clampWeight
+takes the airframe, gravityScaleFor clamps with it so no stored value can
+ask the module for more than 2.43, loadSettings, reseatIfForeign and
+seatAirframe bring a stored 125 to 140 down to 120 when the whoop is the
+aircraft, and paintAir sets the range's max before its value. main.js
+clamps the run weight against the run's airframe and repaints the slider
+after every settings write, because an airframe swap can move the top.
+Raising the module's ceiling instead is a rebuild of dist/sim.wasm, which
+this container cannot do (no emcc) and which is an ABI question for the
+advisor anyway.
+
+**configs/rates.js.** The keyboard's hover table was one table for both
+airframes because both flew the same plant at the same gravity. They no
+longer share a gravity, so the whoop has HOVER_WHOOP, read off the five inch
+plant with scripts/flightcheck.js at --gravity 1.215, 2.025 and 2.43 and
+--cell 4.2, 3.8 and 3.5, nine runs. The columns are per airframe now: 60,
+100, 140 on the five inch, 60, 100, 120 on the whoop. Hover on a fresh
+pack, uncapped, is 39.9 percent at the whoop's new normal against 35.0
+before. Interpolation checked against two extra measurements: weight 80 on
+the whoop (1.62) reads 34.8 against 35.0 measured, weight 110 reads 42.25
+against 42.3 uncapped and 96.1 against 98.1 at a cap of 40, where the 120
+column has hit the stop.
+
+**The feel form's floaty hint** quoted the five inch's fall and balloon at
+stock and at 140 on every airframe. It reads a per airframe row now. The
+five inch row reproduces the old sentence character for character. The
+whoop's, from the same probe: fall 10 m 1.07 s at 100 and 0.98 s at 120,
+balloon 0.9 m and 0.5 m, hover 39.9 and 44.6.
+
+### How the balloon was measured, since nobody had written it down
+
+The 18 September entry's balloon and hang figures came with no method.
+A scratch probe (not committed) found it: settle at hover for 3 s, punch
+to 60 percent stick for 400 ms, cut to idle, and take the height gained
+after the cut. At 0.972, 1.62 and 2.268 that gives 4.01, 1.63 and 0.66 m
+and a hang of 917, 456 and 248 ms, against the logged 4.03, 1.62, 0.67 and
+921, 455, 250. A full stick punch gives 8.25 m at 1.62 and is not it.
+Fall 10 m reproduced at 1.56, 1.20 and 1.01 s.
+
+### Records and the board
+
+The record key is built from the scale the module holds, and 2.025 gives
+`.g203` both ways: a whoop best set at Weight 125 before this is the whoop
+best at Weight 100 after it. A whoop best set at the old 100 stays under
+`.g162`, unreachable at the new normal, which is the append only rule
+applied to a pilot's own bests as it was when the base first moved.
+
+The public board takes Weight 100 only, so whoop times posted before this
+were flown at 1.62 and times from now on at 2.025. That is the same mixing
+the 18 September entry wrote down when the five inch moved from 1.0, and
+the fix is still the board column it named. Owed, a fourth time.
+
+A pilot whose slider was stored at 125 is now at 120 on the whoop, which is
+2.43, 150 percent of the old whoop. They need to put it back to 100.
+
+### Tests changed
+
+scripts/input-selftest.js asserted the whoop's hover at cap 65 was 51.1,
+the five inch's figure, because the two shared a table. That assertion was
+checking the table lookup, and the table it was looking up has changed
+underneath it. It now asserts 58.7, the new whoop table's figure at that
+cap. One new check: the whoop reads 39.9 at 100 and 44.6 at 120, and a
+weight of 140 reads its top, 44.6.
+
+### RUN LOG
+
+    input:selftest   all 171 passed (was 170)
+    lint:input       all 119 passed, 90 s. Its keyboard section runs on the
+                     whoop and sets weight 140 by hand: the shell clamped it
+                     to 120, the module took 2.43, and the keys rested on
+                     the whoop's new hover, 0.399
+    lint:boot        9 of 9
+    lint:shell       FAIL, "title: overflow grew from 0 to 23 px", and the
+                     same failure on the tree with this change stashed, so
+                     it predates this entry. Not investigated here.
+    node --check     the five changed files
+    flightcheck      the nine runs above, plus 2.228 for the interpolation check
+    npm run verify   not run: no physics, plant, ABI or build change.
+                     src/native, patches and dist/sim.wasm are untouched,
+                     and the harness never calls sim_set_gravity.
+    shots            not run. The slider's new top on the whoop has not been
+                     seen in a picture.
+
+## 2026-09-24 | git | Main merged into claude/bug-fixes-eq62eq, then pushed to main
+
+The owner: "push to main remote, merge as needed". A fetch showed main had
+moved from 7d3f181 to 555c98c ("The whoop's normal weight is the five
+inch's 125", another session) while this branch carried 752a25d, 46a1eb4
+and 666d8f9. merge-base came back 7d3f181, so the histories are one line
+and a merge is the right answer, not a stop.
+
+Only PROGRESS.md conflicted: both sides had appended entries at the end.
+Both are kept, this branch's three first, then main's. configs/airframes.js,
+src/main.js, src/ui/ui.js and scripts/input-selftest.js merged on their
+own and were read after: the whoop entry carries this branch's blurb,
+facts ['1S', '65 mm', 'Indoors'] and cells: 1 beside main's gravityBase
+2.025 and weightMax 120, and main.js has both the OSD's cells over
+PLANT_CELLS and main's clampWeight(s.weight, runAirframe) and paintAir.
+The two changes do not touch each other: the pack's display scale reads
+cells and never gravity, and the weight path never reads cells.
+
+### What went wrong
+
+Nothing in the merge. score:selftest fails one check, "the same lap
+without the flip is a Maverick Loop", and it fails the same way on main
+(555c98c), on this branch before the merge (666d8f9) and on the merge base
+(7d3f181), each run in its own worktree, so it predates all of this and is
+not fixed here.
+
+### RUN LOG (on the merged tree)
+
+    npm run input:selftest   all 190 passed
+    npm run check:clip       548 passed, 0 failed
+    npm run contact:selftest all contact checks passed
+    npm run lint:presets     4 of 4 presets clean
+    npm run score:selftest   1 FAILED, the Maverick Loop check, pre-existing
+                             on main, the branch and the merge base
+    npm run lint:input       all 127 passed, 85 s
+    npm run lint:shell       FAIL, 1 problem: the title's 23 px, from
+                             9ed8b9c, unchanged
+    npm run verify           not run: a merge of two shell changes, no
+                             physics, plant, ABI or build change on this
+                             branch; main's gravity base is its own session's
+
+### The board, once it was live
+
+webfpv.org served fbe2f67 about a minute after the push: takeRestart in
+src/input/input.js, cells: 1 beside gravityBase: 2.025 in
+configs/airframes.js, the whoop card's 1S facts and the Restart switch row
+in src/ui/ui.js, and PLANT_CELLS in src/main.js, each read off the live
+site with and without a cache busting query. Then:
+
+    bug-a25bc2dd  Restart hot keys  fixed: R as before, and a radio switch
+                  set under Settings, Restart switch, restarts as R does
+    bug-eb0552d6  6S Whoops         fixed: the whoop reads 1S, 4.2 volts
+                                    charged; display only
+    bug-c9423f3e  Radiomaster pocket: throttle on yaw, stays in_progress:
+                  what shipped is the notice and the report's stick block,
+                  and only the reporter's next report says whether their
+                  Pocket is the case it catches
+
+The reporter of bug-eb0552d6 also asked whether voltage matters or is
+cosmetic. It matters to the plant, which sags and hovers higher up the
+stick on a tired pack, and the OSD number is now that same pack scaled to
+one cell. The resolution does not say so; it is here for whoever answers
+them next.
+
+## 2026-09-24 | input, shell | bug-08577148: a feel report carries what the flight measured, not what the pause screen does
+
+The owner: "start the next ticket". The board, read with `?limit=500`,
+holds 169 tickets and 28 open: bug-c9423f3e in progress waiting on its
+reporter, and 27 flight feel reports from the 21st to the 23rd. So the
+next ticket is a feel report, and the oldest is bug-08577148, garefpv from
+Paraguay: "floppy, bounces back after a stop", ticked "wobbles in
+propwash", weight 75, and in Spanish, "quiere caer muy rapido el drone
+mientras recupero el ya aterriza y no le da la fuerza de empuje en mi tbs
+mambo": it drops very fast, by the time I recover it has already landed,
+and it will not give me the thrust, on my TBS Mambo. Firefox on a Mac, a
+radio, 43 fps, Betaflight's default tune, 670 deg/s rates, cap 100.
+
+### What the report could and could not say
+
+It says padHz 12, which would be a browser refreshing the radio twelve
+times a second, a staircase that Betaflight's feedforward turns into
+spikes and that would feel exactly like floppy and bouncing back. But it
+was read on the results screen. padHz counts changes of the Gamepad
+object's own timestamp, and the browsers on the board move that only when
+something changes, so a report sent from a menu with the pilot's hand on
+the mouse reads the sticks at rest. Across the 27 open feel reports:
+
+    22 from a radio   11 read 0 Hz: 10 sent from the pause screen, 1 from
+                      results. The other 11 read 10 to 216, 9 of them
+                      from results, where a hand may still be on a stick
+     5 from the keys  0 Hz, correctly, there is no pad
+
+So half the radio reports carry a number that looks like an answer and is
+not one, which is the failure the round that put padHz in the report
+(Round: five feel reports that were not about the quad) warned about for a
+boot time snapshot. It moved from boot to the pause screen and stayed.
+
+And the pilot's own sentence, it will not give me the thrust to recover,
+is a question about the top of their throttle, and nothing in the report
+says how far the throttle went. A Mambo whose throttle axis only reaches
+half of its travel in this browser would fly exactly like that; so would
+several other things. The report cannot tell them apart.
+
+### What changed
+
+src/input/input.js keeps a record that only the flight writes. main.js
+sets `input.flying` every frame (flight screen and flight mode), and the
+2 ms timer's polls between frames read the same flag.
+
+- **padHzMax and sampleHzMax**: the highest 500 ms rate window in which
+  every poll was in flight. A window that straddles the pause lends
+  neither side its number. The highest, because a timestamp cannot change
+  faster than the browser refreshes it, so the highest window is the
+  ceiling, and the ceiling is the question.
+- **travel**: the lowest and highest each channel reached as the
+  controller was fed it, throttle 0 to 1 and the rest -1 to 1, to the
+  hundredth. On keys it shows the keyboard's own reach too, which is what
+  "stiff" on keys has been about before.
+- **seconds**: how much flight the record covers.
+- **source**: the kind of source. A change of kind starts a new record,
+  and 'a radio whose stick order is a guess' counts as 'a radio', because
+  the guess turns usable in mid flight once its throttle is seen parked.
+- Forgotten beside the stick resolution: a pad chosen and a map saved.
+
+The report carries it as `stick.flight`, inside the stick block because
+the board caps a report at 32 top level keys. Nothing it reads is written
+back: the channels, the queue, the heartbeat and every timestamp are what
+they were.
+
+### Declined, with the reason
+
+A notice to the pilot when the throttle never reaches the top in flight.
+It would answer this pilot directly if the travel is the cause, and it
+would also fire on every pilot who flies gently, which is most of them on
+a whoop. The record first; a notice when a report shows the case.
+
+### What went wrong
+
+The first draft of the comment, the selftest's header and the browser
+check's header said "fifteen of the twenty seven open feel reports said
+0 Hz". Counted from memory of a table. Recounted before committing: 16 of
+27 read 0, 5 of those are keyboard reports that are right to, and the
+number that makes the point is 11 of 22 radio reports. Corrected in all
+three places.
+
+### Tests, and that they can fail
+
+scripts/input-selftest.js, section 12, 8 checks. The menus move the sticks
+at 62.5 Hz and take the throttle to the top; the flight moves them at
+31.25 Hz and never takes the throttle past 0.52; each phase boundary falls
+in the middle of a 512 ms window. The record must say 31 and 0.52 while
+the at-send reading says 0. Five mutants of input.js, each caught by the
+check meant for it:
+
+    every window counts            padHzMax 63, fails the ceiling check
+    travel noted in the menus too  throttle top 1, record made with no
+                                   flight: fails three checks
+    window judged by its last poll padHzMax 47, the straddling window
+    window flag never re-armed     padHzMax 0
+    source change keeps the record harness travel lent to the radio's
+
+scripts/input-check.js, section 6d, 4 checks in the shell: fly the six
+axis radio at the page's own pace, throttle never past half and roll both
+ways, pause, wait out two windows, read ui.bugSnapshot().stick. The at-send
+padHz is 0, and the flight says a radio, padHzMax at least 10, at least
+1.5 s, throttle 0 to 0.5, roll -1 to 1. With the `input.flying` line taken
+out of main.js, three of the four fail with the record null, so the check
+sees the wiring and not only the class.
+
+### What this does not do
+
+It does not answer bug-08577148. That report is what it is: the next
+report from this pilot, or from anyone, will carry the throttle's top and
+the flight's refresh ceiling. The ticket goes to in progress on the board.
+The other 26 feel reports are read, tabulated above, and untouched.
+
+### RUN LOG
+
+    node scripts/input-selftest.js   all 198 passed (190 before, 8 new)
+    npm run lint:input               all 131 passed, 92 s (127 before,
+                                     4 new); the main.js mutant: 3 FAIL
+    npm run lint:shell               FAIL, 1 problem: the title's 23 px,
+                                     from 9ed8b9c, unchanged
+    npm run verify                   not run. The verify-flight-model
+                                     skill asks for it on any change under
+                                     src/input; CLAUDE.md makes it the
+                                     owner's call, and this change only
+                                     reads what the stick path already
+                                     computed. build:wasm cannot run
+                                     here: no emcc. Offered
+
 ## 2026-09-24 | collision, plan | The city crash review, and the owner's decisions on it
 
 The owner's report: in the freestyle city you bounce around, clip through

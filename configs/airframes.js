@@ -113,6 +113,14 @@ export const AIRFRAMES = [
      */
     gravityBase: 1.62,
     /*
+     * The top of the Weight slider on this airframe, a slider value and not a
+     * gravity. The module refuses a scale above 2.5 (sim_set_gravity in
+     * src/native/sim.c), and 140 of 1.62 is 2.268, so the five inch gets the
+     * whole of the shell's WEIGHT_MAX. The whoop's base is heavier and its
+     * top is lower; see there.
+     */
+    weightMax: 140,
+    /*
      * Betaflight 4.5.1's own rate defaults, which is what RATE_DEFAULTS in
      * configs/rates.js already is. Named here as well so the two airframes
      * are read the same way rather than one of them being the special case
@@ -238,17 +246,23 @@ export const AIRFRAMES = [
     simId: 0,
     name: '65 mm whoop',
     short: 'Whoop',
-    blurb: 'A 65 mm ducted whoop indoors, flying the five inch\'s flight model. The hall and its gates are built to match it, so what you see is a whoop through 28 inch gates and what you feel is the 5 inch.',
-    facts: ['Indoors', '65 mm', '5 inch feel'],
+    blurb: 'A 65 mm ducted whoop indoors. The hall and its gates are built to match it, so what you see is a whoop through 28 inch gates.',
+    facts: ['1S', '65 mm', 'Indoors'],
     trackClass: 'micro',
     /*
-     * SIX, BECAUSE THE PLANT IS THE FIVE INCH'S AND ITS THRUST IS KEYED TO
-     * PACK VOLTS. A 1S pack on a 6S plant is a quad that will not leave the
-     * floor. The launch card says 6S on a whoop, which is a visible seam in
-     * the fiction and is the honest place to put one: the alternative is a
-     * card that lies about the machine it is about to hand over.
+     * WHAT THE PACK SAYS, NOT WHAT FLIES IT. A whoop is 1S, and the owner's
+     * word on bug-eb0552d6 ("6S Whoops", an OSD reading 25 volts) was to
+     * make it say 1S and 4.2 V and not to change the physics at all.
+     *
+     * The plant under it is still the five inch's, 6S, and its thrust is
+     * still keyed to 6S pack volts: PLANT.cells in src/native/plant.c,
+     * restated as PLANT_CELLS in src/main.js. Nothing that flies reads this
+     * field. The OSD scales the plant's pack by cells / PLANT_CELLS, so a
+     * whoop reads 4.2 V charged and sags as a 1S pack would, in proportion.
+     * This used to be 6, on the argument that a card saying 1S over a 6S
+     * plant was a seam in the fiction; the pilot asked for the fiction.
      */
-    cells: 6,
+    cells: 1,
     /*
      * A 1S LiHV charges to 4.35 and a whoop is flown until it is at about
      * 3.40 under load, which is why the empty figure here is higher than the
@@ -258,10 +272,35 @@ export const AIRFRAMES = [
      */
     packVoltages: [4.2, 3.8, 3.5],
     packLabels: { 4.2: 'Charged', 3.8: 'Half', 3.5: 'Nearly empty' },
-    /* The five inch's base, because simId above is the five inch's plant:
-     * the pilot who set 1.62 flew the only plant this entry flies. A whoop
-     * plant of its own would carry its own number here. */
-    gravityBase: 1.62,
+    /*
+     * 2.025, WHICH IS 125 PERCENT OF THE FIVE INCH'S 1.62, AND THE OWNER'S.
+     *
+     * This was 1.62, on the argument that the pilot who set that number flew
+     * the only plant this entry flies. Then a pilot flew the same track back
+     * to back in Vdrone and here and had to take the whoop's Weight slider to
+     * 120 to 130 before it felt right, and the owner made 125 the whoop's
+     * normal. The plant is still the five inch's and the five inch keeps
+     * 1.62, which the owner asked for in the same breath: the report was
+     * about the whoop, and nobody has said the five inch is floaty.
+     *
+     * So Weight 100 on a whoop flies what Weight 125 flew before, 2.025
+     * times 9.80665, and the record key agrees: both round to `.g203`, so a
+     * whoop best set at 125 before this change is still the best at 100
+     * after it. Measured at this base, same bisection and same probe as the
+     * five inch's figures above (the punch is 400 ms at 60 percent stick):
+     * hover 39.9 percent, ten metres of fall in 1.07 s, balloon 0.945 m,
+     * props level descent 31.6 m/s.
+     */
+    gravityBase: 2.025,
+    /*
+     * 120, NOT THE FIVE INCH'S 140, because the module refuses a gravity
+     * above 2.5 and 125 of 2.025 is 2.53. 120 is 2.43, the heaviest step
+     * the module will take, and it is already 150 percent of the whoop this
+     * entry used to be. Raising the module's ceiling is a rebuild of
+     * dist/sim.wasm and was not done for this. The floaty end is 60, 1.215,
+     * which is where the old slider's 75 was.
+     */
+    weightMax: 120,
     /*
      * THE FIVE INCH'S TUNE, BECAUSE THE PLANT IS THE FIVE INCH'S.
      *

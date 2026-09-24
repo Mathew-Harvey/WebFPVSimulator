@@ -846,6 +846,94 @@ async function mousePage(page) {
     guessHint.hint);
   check('and the saved mapping is back afterwards', guessHint.restored === true);
   await ev("ui.act('padpick-cancel'); return ui.screen;");
+
+  /* --------------------------------------------------------------------
+   * 6c. The radio's restart switch. bug-a25bc2dd: "As people start to
+   *     grind tracks they will need ready access to a restart race hot
+   *     key... can be assigned to an AUX on the radio too." Assigned from
+   *     its row in Settings by flipping it, the way a pilot would, then
+   *     flipped in flight. This radio's axis 5 sits at -1 like an AUX.
+   * ------------------------------------------------------------------ */
+  section('the restart switch: assigned by flipping it, and a flip in flight is the start line');
+  const restartRow = await ev(`ui.show('pilot'); const items = ui.items(); const i = items.findIndex((it) => it && it.label === 'Restart switch');
+    ui.setCursor(i); return JSON.stringify({ i, value: i >= 0 ? items[i].value : null });`).then(JSON.parse);
+  check('with a radio, Settings has a Restart switch row, not set', restartRow.i >= 0 && restartRow.value === 'Not set', JSON.stringify(restartRow));
+  await page.tap('Enter');
+  await page.until('window.__input.padSummary().restartCapturing === true', 3000).catch(() => {});
+  await page.until("window.__ui.items().some((it) => it && it.label === 'Restart switch' && it.value === 'Flip it now')", 3000).catch(() => {});
+  const listening = await ev("const it = ui.items().find((x) => x && x.label === 'Restart switch'); return JSON.stringify({ value: it && it.value });")
+    .then(JSON.parse);
+  check('choosing it listens, and the row says to flip it', listening.value === 'Flip it now', JSON.stringify(listening));
+  await page.evaluate('window.__pad.axes[5] = 1; window.__pad.timestamp += 1; 0');
+  await page.until("window.__ui.items().some((it) => it && it.label === 'Restart switch' && it.value === 'Switch on axis 5')", 3000).catch(() => {});
+  const assigned = await ev(`const it = ui.items().find((x) => x && x.label === 'Restart switch');
+    return JSON.stringify({ value: it && it.value, forget: ui.items().some((x) => x && x.label === 'Forget restart switch'),
+      kept: JSON.parse(localStorage.getItem('webfpv.restart.v1') || 'null') });`).then(JSON.parse);
+  check('the AUX flipped is the switch: the row names it, offers to forget it, and it is kept',
+    assigned.value === 'Switch on axis 5' && assigned.forget && assigned.kept && assigned.kept.index === 5, JSON.stringify(assigned));
+  /* In the air, well above the ground, so it is still flying when the
+   * switch goes. The pad's throttle is parked, so it is falling. */
+  await ev('const sp = window.__map().spawn; window.__placeCraft(sp.x + 6, sp.y + 30, sp.z); return 1;');
+  await page.until("window.__ui.screen === 'flight' && !window.__craftState().landed", 5000).catch(() => {});
+  await page.sleep(300);
+  const away = await ev('const c = window.__craftState(); return JSON.stringify({ y: c.worldY, landed: c.landed, screen: ui.screen });').then(JSON.parse);
+  await page.evaluate('window.__pad.axes[5] = -1; window.__pad.timestamp += 1; 0');
+  await page.sleep(200);
+  await page.evaluate('window.__pad.axes[5] = 1; window.__pad.timestamp += 1; 0');
+  let restarted = true;
+  await page.until(`(() => { const c = window.__craftState(); const sp = window.__map().spawn;
+    return c.landed && Math.abs(c.worldX - sp.x) < 1 && Math.abs(c.worldZ - sp.z) < 1; })()`, 5000).catch(() => { restarted = false; });
+  check('in flight, off and on again: back on the start line, parked', !away.landed && away.screen === 'flight' && restarted, JSON.stringify(away));
+  await ev("ui.act('restart-switch-clear'); return 1;");
+  await page.evaluate('window.__pad.axes[5] = -1; window.__pad.timestamp += 1; 0');
+  check('and it can be forgotten', await ev("return input.padSummary().restart === null && localStorage.getItem('webfpv.restart.v1') === null;"));
+
+  /* --------------------------------------------------------------------
+   * 6d. bug-08577148. A feel report is sent from the pause or results
+   *     screen with the sticks at rest, so the stick rate it read there
+   *     said 0 Hz for eleven of the twenty two radio feel reports open on
+   *     the 24th of September. The flight keeps its own record now. Flown
+   *     here on the radio at the page's own pace, the throttle never past
+   *     half and roll both ways, then paused, and the report read from the
+   *     pause screen the way a pilot sends one.
+   * ------------------------------------------------------------------ */
+  section('a feel report sent from the pause screen carries what the flight measured');
+  await ev('const sp = window.__map().spawn; window.__placeCraft(sp.x + 6, sp.y + 30, sp.z); return 1;');
+  await page.until("window.__ui.screen === 'flight' && !window.__craftState().landed", 5000).catch(() => {});
+  const flown = await page.evaluate(`(async () => {
+    const pad = window.__pad;
+    const im = window.__input;
+    const m = im.map;
+    const half = m.throttle.low + 0.5 * (m.throttle.high - m.throttle.low);
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const t0 = performance.now();
+    let k = 0;
+    while (performance.now() - t0 < 1600) {
+      pad.axes[m.throttle.axis] = k % 2 ? half : m.throttle.low;
+      pad.axes[m.roll.axis] = [1, 0, -1, 0][k % 4];
+      pad.timestamp += 1;
+      k += 1;
+      await sleep(20);
+    }
+    pad.axes[m.throttle.axis] = m.throttle.low;
+    pad.axes[m.roll.axis] = 0;
+    pad.timestamp += 1;
+    return JSON.stringify({ k, screen: window.__ui.screen, thr: m.throttle });
+  })()`).then(JSON.parse);
+  await ev("ui.act('pause'); return 1;");
+  await page.until("window.__ui.screen === 'paused'", 3000).catch(() => {});
+  /* Two whole rate windows with the sticks at rest, as a pilot's are
+   * while they fill in the form. */
+  await page.sleep(1300);
+  const sent = await ev('return JSON.stringify(ui.bugSnapshot().stick);').then(JSON.parse);
+  const fr = sent && sent.flight;
+  check('the moment of sending, from the pause screen with the sticks at rest, reads 0 Hz, as the old reports did',
+    flown.screen === 'flight' && sent.padHz === 0, JSON.stringify({ flown, padHz: sent && sent.padHz }));
+  check('the report carries the flight: a radio, its own refresh ceiling, and how long it covers',
+    !!fr && fr.source === 'a radio' && fr.padHzMax >= 10 && fr.seconds >= 1.5, JSON.stringify(fr));
+  check('the top of the throttle is the half it was flown at, and the bottom is idle',
+    !!fr && fr.travel.throttle[0] === 0 && fr.travel.throttle[1] === 0.5, JSON.stringify(fr && fr.travel));
+  check('and roll went both ways, to the stop', !!fr && fr.travel.roll.join() === '-1,1', JSON.stringify(fr && fr.travel));
 }
 
 async function touchPage(page) {
@@ -930,6 +1018,18 @@ async function keyboardPage(page) {
    *    Both halves: the spring now lands on the measured hover, and the
    *    pilot can choose a throttle that does not spring at all.
    * ------------------------------------------------------------------ */
+  /* The front page's whoop card says its pack the way the five inch's
+   * says 6S. See 8b below for the OSD. */
+  const whoopCard = await ev(`ui.firstRun = false; ui.craftGate = true; ui.show('title');
+    const it = ui.items().find((x) => x && x.card === 'race-whoop65');
+    const five = ui.items().find((x) => x && x.card === 'race-5inch');
+    const out = JSON.stringify({ whoop: it && it.facts, five: five && five.facts });
+    ui.craftGate = false;
+    return out;`).then(JSON.parse);
+  check('the front page whoop card leads with 1S, as the five inch card leads with 6S',
+    Array.isArray(whoopCard.whoop) && whoopCard.whoop[0] === '1S' && Array.isArray(whoopCard.five) && whoopCard.five[0] === '6S',
+    JSON.stringify(whoopCard));
+
   section('keyboard: the throttle keys spring to the measured hover, or stay put');
   const hand = await ev(`
     ${PAST_GATE}
@@ -1003,6 +1103,21 @@ async function keyboardPage(page) {
   await page.tap('Enter');
   await page.until("window.__ui.screen === 'flight' && window.__craftState().mode === 'flight'", 60000);
   await page.sleep(1000);
+
+  /* --------------------------------------------------------------------
+   * 8b. The whoop says 1S. bug-eb0552d6, "6S Whoops": "The battery voltage
+   *     displays 25v at the start of the race." The owner: make the whoop
+   *     say 1S and 4.2 V, and do not change the physics at all. Read on the
+   *     start line, charged and at rest, beside the plant's own number.
+   * ------------------------------------------------------------------ */
+  section('keyboard: the whoop says a 1S pack, 4.2 volts charged, over the same 6S plant');
+  const pack = await ev(`const c = window.__craftState();
+    return JSON.stringify({ osd: ui.osdPack.textContent, plant: c.packVolts, landed: c.landed, perCell: ui.settings.packVoltage });`)
+    .then(JSON.parse);
+  check('charged, on the start line, the OSD reads 4.2 volts', pack.osd === '4.2 volts' && pack.perCell === 4.2 && pack.landed,
+    JSON.stringify(pack));
+  check('and the plant under it still holds its 6S pack, about 25.2 volts: only the display changed',
+    Math.abs(pack.plant - 25.2) < 0.1, JSON.stringify(pack));
 
   /* --------------------------------------------------------------------
    * 9. Angle or Acro from the keyboard. bug-92007f3e, "Using m+k

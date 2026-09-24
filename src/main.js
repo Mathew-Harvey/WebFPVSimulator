@@ -331,8 +331,9 @@ const WALL_NEAR_M = 2.0;
  * does not report it. These are the HUD gauge's ends only: the physics reads
  * its own constant and never these. Change the plant's cell count and this
  * has to follow, or the bar lies while the flight is right. */
-const PACK_EMPTY_V = 6 * 3.3;
-const PACK_FULL_V = 6 * 4.2;
+const PLANT_CELLS = 6;
+const PACK_EMPTY_V = PLANT_CELLS * 3.3;
+const PACK_FULL_V = PLANT_CELLS * 4.2;
 /* Full throttle rotor speed on a charged pack, measured off the compiled
  * module at 25,570 RPM. Only the lens shake reads it, to turn motor speed
  * into a 0 to 1 imbalance scale, so a few percent either way is invisible. */
@@ -2124,7 +2125,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * runGravityScale is the multiple of 9.80665 the module is actually
    * holding, which starts at 1.0 because that is the module's own default
    * and the machine every harness replay flies; the shell's normal is
-   * configs/airframes.js gravityBase, 1.62. So at boot the two disagree by
+   * configs/airframes.js gravityBase, 1.62 on the five inch and 2.025 on
+   * the whoop. So at boot the two disagree by
    * construction, applySettings sees it and pushes the base through the ONE
    * path that talks to sim_set_gravity, and the record key is built from the
    * scale the plant is holding rather than from the slider, so it survives
@@ -3721,7 +3723,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * never flew.
      */
     {
-      const wantWeight = clampWeight(s.weight);
+      /* Against the run's airframe, whose top is the one the module has to
+       * take: the whoop's is 120, because 125 of its base is over 2.5. */
+      const wantWeight = clampWeight(s.weight, runAirframe);
       /*
        * The scale follows the airframe as well as the slider, because the
        * base lives on the airframe entry; and the test is on the SCALE, not
@@ -3757,6 +3761,9 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
         runWeight = wantWeight;
       }
+      /* And the slider follows, because an airframe swap can move its top
+       * and pull a stored weight down to it. */
+      ui.paintAir();
     }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
@@ -4653,6 +4660,19 @@ export async function boot({ loading, bootStart, mapId }) {
           : { text: 'Stick mapping saved.', untilMs: performance.now() + 2800 };
         input.calResult = null;
       }
+    } else if (action === 'restart-switch') {
+      /* The row toggles: choose it to listen for a flip, choose it again to
+       * stop. See beginRestartCapture in input.js. */
+      if (!input.firstGamepad()) {
+        notice = { text: 'No radio or gamepad found.\nPlug one in, set it to joystick mode, and reload.', untilMs: performance.now() + 3200 };
+      } else if (input.restartCapture) {
+        input.cancelRestartCapture();
+      } else {
+        input.beginRestartCapture();
+      }
+    } else if (action === 'restart-switch-clear') {
+      input.clearRestartSwitch();
+      notice = { text: 'Restart switch forgotten.\nR on the keyboard still restarts.', untilMs: performance.now() + 2800 };
     } else if (action === 'choosepad') {
       openPadPick('menu');
     } else if (action === 'padpick-yes') {
@@ -5401,7 +5421,26 @@ export async function boot({ loading, bootStart, mapId }) {
       heldNotes = null;
     }
 
+    /* Which polls are flight, for the report's record of what the flight
+     * measured rather than what the pause screen does: see flightRec in
+     * input.js. The 2 ms timer's polls between frames read the same flag. */
+    input.flying = ui.screen === 'flight' && mode === 'flight';
     input.poll(nowWall);
+    /*
+     * The radio's restart switch, bug-a25bc2dd: see noteRestartSwitch in
+     * input.js. Taken on every frame, so a flip made in a menu is spent
+     * there, and acted on only where R acts, in flight. Here, before
+     * anything else in the frame reads the craft, so the frame that follows
+     * flies from the start line exactly as it does after R. A capture left
+     * running when the pilot leaves Settings is dropped, or the next button
+     * they pressed in flight would become the switch.
+     */
+    if (input.takeRestart() && ui.screen === 'flight' && mode === 'flight') {
+      reset();
+    }
+    if (input.restartCapture && ui.screen !== 'pilot') {
+      input.cancelRestartCapture();
+    }
     pollManualFlip();
     const launchNow = syncLaunchControl(nowWall);
     input.forcePadRest = launchStaging;
@@ -6672,7 +6711,11 @@ export async function boot({ loading, bootStart, mapId }) {
         gate: race.next + 1,
         gateCount: race.gates.length,
         gateCue: nextGt && nextGt.cue ? nextGt.cue : '',
-        volts: st[18],
+        /* The pack the airframe SAYS it has: the plant's 6S volts scaled to
+         * the airframe's cells, so a whoop reads 1S, 4.2 V charged. Display
+         * only; the physics and the charge bar below read the plant's own.
+         * See `cells` in configs/airframes.js. */
+        volts: st[18] * (airframeById(runAirframe).cells / PLANT_CELLS),
         lastLapMs: race.lastLapMs,
         packFrac: (st[18] - PACK_EMPTY_V) / (PACK_FULL_V - PACK_EMPTY_V),
         /* The same biased fromY every contact query in this file uses, and
@@ -6778,7 +6821,14 @@ export async function boot({ loading, bootStart, mapId }) {
       && !turtleRecover
       && lastUpz >= 0
     ) ? guidedPrompt(race) : '';
-    ui.setPadInfo(input.padSummary());
+    const padSum = input.padSummary();
+    ui.setPadInfo(padSum);
+    const restartSet = input.takeRestartResult();
+    if (restartSet && padSum.restart) {
+      notice = restartSet === 'saved'
+        ? { text: `Restart switch: ${padSum.restart}.\nFlip it in flight to go back to the start line.`, untilMs: nowWall + 3600 }
+        : { text: `Restart switch: ${padSum.restart}, until you reload.\nThis browser would not keep it.`, untilMs: nowWall + 4800 };
+    }
     const queuedPick = input.takePadPickQueue();
     if (queuedPick) {
       openPadPick(queuedPick);
@@ -7520,6 +7570,9 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__craftState = () => ({
     mode,
     flownThisRun,
+    /* The plant's own pack volts, which the OSD scales to the airframe's
+     * cells: a check can see the display change and the physics not. */
+    packVolts: stateCurr ? stateCurr[18] : null,
     landed,
     /* No automatic crash exists since 2026-09-24 (see the note above
      * clipGraceUntil). Kept, always false, because probes read them. */
@@ -7893,6 +7946,11 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Which axes are being flown and what they read: see mapReport.
      * bug-c9423f3e could not be checked without it. */
     map: input.mapReport(),
+    /* padHz, sampleHz and fps above are read at the moment of sending,
+     * from a menu with the sticks at rest. This is the flight: its stick
+     * refresh ceiling and how far each channel went. See flightRec in
+     * input.js. bug-08577148. */
+    flight: input.flightReport(),
   }));
   window.__stickPath = () => ({
     ...input.stats(),

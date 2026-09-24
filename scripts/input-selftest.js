@@ -725,6 +725,102 @@ section('the throttle-as-yaw verdict on an uncalibrated radio');
 }
 
 /* ------------------------------------------------------------------------
+ * 5c. The radio's restart switch. bug-a25bc2dd: "As people start to grind
+ *     tracks they will need ready access to a restart race hot key... can
+ *     be assigned to an AUX on the radio too." One flip, one restart; the
+ *     flip that assigns it is not one; a latched switch never repeats.
+ * ---------------------------------------------------------------------- */
+section('the restart switch');
+{
+  const store = memoryStorage();
+  const pad = makePad([0, 0, -1, 0, 0, -1], 8, 'Restart radio');
+  const rig = new Rig(pad, store);
+  const im = rig.im;
+  const press = (i, on) => { pad.buttons[i].pressed = on; pad.buttons[i].value = on ? 1 : 0; pad.timestamp += 1; };
+  rig.run(64);
+  check('nothing assigned: the row says so and no flip restarts anything',
+    im.padSummary().restart === null && im.takeRestart() === false);
+  press(5, true);
+  rig.run(64);
+  press(5, false);
+  rig.run(64);
+  check('a button pressed before the row was chosen is not captured', im.padSummary().restart === null);
+  im.beginRestartCapture();
+  rig.run(32);
+  check('choosing the row listens', im.padSummary().restartCapturing === true);
+  rig.ax(0, 1); rig.ax(1, -1); rig.ax(2, 1); rig.ax(3, 1);
+  rig.run(64);
+  rig.ax(0, 0); rig.ax(1, 0); rig.ax(2, -1); rig.ax(3, 0);
+  rig.run(64);
+  check('the four sticks swept end to end are not taken for the switch',
+    im.padSummary().restart === null && im.padSummary().restartCapturing === true);
+  press(5, true);
+  rig.run(32);
+  check('a button pressed while it listens is the switch, and it is kept',
+    im.padSummary().restart === 'Button 5' && im.padSummary().restartCapturing === false
+    && JSON.parse(store.getItem('webfpv.restart.v1')).index === 5 && im.takeRestartResult() === 'saved');
+  check('and the press that assigned it is not a restart', im.takeRestart() === false);
+  press(5, false);
+  rig.run(32);
+  check('let go: nothing', im.takeRestart() === false);
+  press(5, true);
+  rig.run(32);
+  check('pressed again: one restart', im.takeRestart() === true);
+  rig.run(500);
+  check('held: no second one', im.takeRestart() === false);
+  const fresh = new InputManager();
+  check('a new page on the same browser has it', fresh.padSummary().restart === 'Button 5');
+  im.clearRestartSwitch();
+  press(5, false); rig.run(32); press(5, true); rig.run(32);
+  check('forgotten, the button restarts nothing', im.padSummary().restart === null && im.takeRestart() === false
+    && store.getItem('webfpv.restart.v1') === null);
+}
+{
+  /* A two position switch that arrives as an axis, the usual AUX. */
+  const pad = makePad([0, 0, -1, 0, 0, -1], 0, 'Aux radio');
+  const rig = new Rig(pad);
+  const im = rig.im;
+  rig.run(64);
+  im.beginRestartCapture();
+  rig.run(32);
+  rig.ax(5, 1);
+  rig.run(32);
+  check('an AUX switch flipped while it listens is the switch, on the side it went to',
+    im.padSummary().restart === 'Switch on axis 5');
+  check('and that flip is not a restart', im.takeRestart() === false);
+  rig.ax(5, -1); rig.run(32);
+  check('off: nothing', im.takeRestart() === false);
+  rig.ax(5, 1); rig.run(32);
+  check('on: one restart', im.takeRestart() === true);
+  rig.run(2000);
+  check('left on for two seconds: still one', im.takeRestart() === false);
+  rig.ax(5, 0); rig.run(32); rig.ax(5, 1); rig.run(32);
+  check('a three position switch taken to the middle and back is a flip: the middle is off',
+    im.takeRestart() === true);
+}
+{
+  /* Stored for one radio, flown with another. */
+  const store = memoryStorage();
+  store.setItem('webfpv.restart.v1', JSON.stringify({ id: 'Some other radio', kind: 'button', index: 2, dir: 1 }));
+  const pad = makePad([0, 0, -1, 0, 0, -1], 4, 'This radio');
+  const rig = new Rig(pad, store);
+  rig.run(32);
+  pad.buttons[2].pressed = true; pad.timestamp += 1;
+  rig.run(32);
+  check('a switch kept for another radio does nothing on this one',
+    rig.im.padSummary().restart === null && rig.im.takeRestart() === false);
+}
+{
+  /* On when the page loads is not a flip. */
+  const store = memoryStorage();
+  store.setItem('webfpv.restart.v1', JSON.stringify({ id: 'Latched radio', kind: 'axis', index: 5, dir: 1 }));
+  const pad = makePad([0, 0, -1, 0, 0, 1], 0, 'Latched radio');
+  const rig = new Rig(pad, store);
+  rig.run(200);
+  check('a switch already on when the page loads is not a restart', rig.im.takeRestart() === false);
+}
+
+/* ------------------------------------------------------------------------
  * 6. The save that used to say "saved" over a throw. bug-ed4d2bce.
  * ---------------------------------------------------------------------- */
 section('saving when storage refuses');
@@ -845,12 +941,17 @@ section('the keyboard throttle: hover is the measured one');
     hoverStickPercent(100) === 35 && hoverStickPercent(100, '5inch', 100, 4.2) === 35);
   check('and it follows the weight, the pack and the cap',
     hoverStickPercent(100, '5inch', 60, 4.2) === 26 && hoverStickPercent(100, '5inch', 140, 4.2) === 42.8
-    && hoverStickPercent(100, '5inch', 100, 3.8) === 38.8 && hoverStickPercent(65, 'whoop65', 100, 4.2) === 51.1,
+    && hoverStickPercent(100, '5inch', 100, 3.8) === 38.8 && hoverStickPercent(65, 'whoop65', 100, 4.2) === 58.7,
     [hoverStickPercent(100, '5inch', 60, 4.2), hoverStickPercent(100, '5inch', 140, 4.2),
       hoverStickPercent(100, '5inch', 100, 3.8), hoverStickPercent(65, 'whoop65', 100, 4.2)].join(' '));
   const w80 = hoverStickPercent(100, '5inch', 80, 4.2);
   check('between columns it interpolates, inside half a point of the 30.7 measured at weight 80',
     Math.abs(w80 - 30.7) <= 0.5, String(w80));
+  check('the whoop reads its own table at its own base: 39.9 at 100, 44.6 at its top of 120, and 140 is its top',
+    hoverStickPercent(100, 'whoop65', 100, 4.2) === 39.9 && hoverStickPercent(100, 'whoop65', 120, 4.2) === 44.6
+    && hoverStickPercent(100, 'whoop65', 140, 4.2) === 44.6,
+    [hoverStickPercent(100, 'whoop65', 100, 4.2), hoverStickPercent(100, 'whoop65', 120, 4.2),
+      hoverStickPercent(100, 'whoop65', 140, 4.2)].join(' '));
 
   const rig = new Rig(null);
   const im = rig.im;
@@ -1075,6 +1176,101 @@ section('the joystick picker draws what the page will fly, not raw axes');
   check('the throttle stick is the throttle, at the top',
     card().sticks.throttle === 1 && card().sticks.roll === 0, JSON.stringify(card().sticks));
   im.cancelPadPick();
+}
+
+/*
+ * 12. What the flight measured, for a feel report. bug-08577148: "floppy,
+ *     bounces back after a stop", and in Spanish, it falls too fast and
+ *     will not give the thrust to recover, on a TBS Mambo. Its report said
+ *     padHz 12, read on the results screen with the sticks at rest, and
+ *     said nothing at all about how far the throttle went.
+ *
+ *     The menus here move the sticks at 62.5 Hz and take the throttle to
+ *     the top. The flight moves them at 31.25 Hz and never takes the
+ *     throttle past 52 percent. Each phase boundary falls in the middle of
+ *     a 512 ms rate window, so a window that straddled one would read 47 Hz
+ *     and a record that let the menus in would read 63 or say 1.0. The
+ *     record has to say 31 and 0.52, while the at-send reading, idle, says
+ *     0, which is what eleven of the twenty two radio feel reports open on
+ *     the 24th of September said.
+ */
+section('what the flight measured: a feel report\'s stick path is the flight\'s, not the menu\'s');
+{
+  const pad = makePad([0, 0, -1, 0], 4, 'Feel radio');
+  const rig = new Rig(pad);
+  const im = rig.im;
+  im.map = {
+    roll: { axis: 0, center: 0, full: 1 },
+    pitch: { axis: 1, center: 0, full: 1 },
+    yaw: { axis: 3, center: 0, full: 1 },
+    throttle: { axis: 2, low: -1, high: 1 },
+    reverse: {},
+    stored: true,
+  };
+  /* One refresh of the radio: every axis at once and one timestamp, the
+   * way a browser hands over a HID report. */
+  const report = (roll, pitch, thr, yaw) => {
+    pad.axes[0] = roll;
+    pad.axes[1] = pitch;
+    pad.axes[2] = thr;
+    pad.axes[3] = yaw;
+    pad.timestamp += 1;
+  };
+  const menu = (steps) => {
+    for (let i = 0; i < steps; i += 1) {
+      report(i % 2 ? 1 : -1, 0, 1, 0);
+      rig.step(16);
+    }
+  };
+  /* Throttle axis -1, -0.5, 0.04: the channel reads 0, 0.25 and 0.52. */
+  const FLOWN = [[0, 0, -1, 0], [1, 0.25, -0.5, 0.25], [0, 0.5, 0.04, 0], [-1, 0.25, -0.5, -0.25]];
+  const fly = (steps) => {
+    for (let i = 0; i < steps; i += 1) {
+      if (i % 2 === 0) {
+        report(...FLOWN[(i / 2) % FLOWN.length]);
+      }
+      rig.step(16);
+    }
+  };
+  menu(48);
+  check('menus alone, full throttle and all: no flight, no record', im.flightReport() === null,
+    JSON.stringify(im.flightReport()));
+  im.flying = true;
+  fly(128);
+  im.flying = false;
+  menu(64);
+  for (let i = 0; i < 64; i += 1) {
+    rig.step(16);
+  }
+  const at = im.stats();
+  const rec = im.flightReport();
+  check('the reading at the moment of sending, sticks at rest, is 0 Hz: the old report\'s answer',
+    at.padHz === 0, JSON.stringify(at));
+  check('the flight\'s ceiling is its own 31 Hz: no menu window, and no window across a boundary',
+    rec && rec.padHzMax === 31 && rec.source === 'a radio', JSON.stringify(rec));
+  check('the throttle went from 0 to 0.52 in flight, and the menus\' full throttle is not in it',
+    rec && rec.travel.throttle[0] === 0 && rec.travel.throttle[1] === 0.52, JSON.stringify(rec && rec.travel));
+  check('roll, pitch and yaw are the flight\'s travel to the hundredth',
+    rec && rec.travel.roll.join() === '-1,1' && rec.travel.pitch.join() === '0,0.5'
+    && rec.travel.yaw.join() === '-0.25,0.25', JSON.stringify(rec && rec.travel));
+  check('and it says how much flight it covers: 128 polls of 16 ms, 2.0 s', rec && rec.seconds === 2,
+    JSON.stringify(rec));
+  im.flying = true;
+  im.harnessChannels = { roll: 0, pitch: 0, yaw: 0, throttle: 0.9 };
+  rig.step(16);
+  im.harnessChannels = null;
+  im.flying = false;
+  const other = im.flightReport();
+  check('another kind of source starts a record of its own rather than lending this one its travel',
+    other && other.source === 'the harness override' && other.travel.throttle.join() === '0.9,0.9',
+    JSON.stringify(other));
+  im.flying = true;
+  fly(32);
+  im.flying = false;
+  const kept = im.flightReport();
+  im.setPadChoice({ kind: 'pad', id: pad.id, index: 0 });
+  check('and a pad chosen again forgets it, beside the stick resolution',
+    kept !== null && kept.source === 'a radio' && im.flightReport() === null, JSON.stringify(kept));
 }
 
 console.log(failed ? `\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);

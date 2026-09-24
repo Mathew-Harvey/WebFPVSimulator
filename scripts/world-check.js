@@ -17,8 +17,8 @@
  * pinballs, a roof is ground, nothing passes through anything, and no hull
  * ever ends up inside a solid.
  *
- * Usage: node scripts/world-check.js [--only=name] [--verbose]
- * Exit code is the failure count.
+ * Usage: node scripts/world-check.js [--only=name] [--verbose] [--targets]
+ * Exit code is the failed guards, plus failed targets with --targets.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -64,12 +64,28 @@ const CONFIGS = {
   1: await readFile(join(root, 'configs/whoop-freestyle.diff'), 'utf8'),
 };
 
+/*
+ * GUARDS and TARGETS, the same split scripts/crash-check.js makes. A guard is
+ * something the solver must never do (tunnel, disagree with itself, depend on
+ * the map's heading, leave a craft inside a solid, hang it on a wall) and
+ * counts toward the exit code always. A target is the owner's crash in
+ * numbers (how hard a hit spins the craft, how much a wall throws it up):
+ * measured and printed every run, counted only with --targets, because they
+ * are the owner's to tune and some of them are argued in PROGRESS.md.
+ */
+const enforceTargets = args.includes('--targets');
 let failures = 0;
 function check(name, ok, detail) {
   if (!ok) {
     failures += 1;
   }
   console.log(`  ${ok ? 'pass' : 'FAIL'}  ${name}${detail ? `: ${detail}` : ''}`);
+}
+function target(name, ok, detail) {
+  if (!ok && enforceTargets) {
+    failures += 1;
+  }
+  console.log(`  ${ok ? 'met ' : (enforceTargets ? 'FAIL' : 'not ')}  target  ${name}${detail ? `: ${detail}` : ''}`);
 }
 
 function call(sim, name, ...a) {
@@ -321,16 +337,16 @@ function wallChecks(label, w, t) {
   check(`${label}: the CG never goes inside the wall`, s.inside === 0, `${r3(s.inside)} m`);
   check(`${label}: no contact deeper than 5 cm`, s.deepest <= 0.05, `${r3(s.deepest)} m`);
   if (t.rate != null) {
-    check(`${label}: spins at ${t.rate} rad/s or less`, s.peakRate <= t.rate, `${r3(s.peakRate)} rad/s`);
+    target(`${label}: spins at ${t.rate} rad/s or less`, s.peakRate <= t.rate, `${r3(s.peakRate)} rad/s`);
   }
   if (t.rebound != null) {
-    check(`${label}: rebounds at ${t.rebound} m/s or less`, s.rebound <= t.rebound, `${r3(s.rebound)} m/s`);
+    target(`${label}: rebounds at ${t.rebound} m/s or less`, s.rebound <= t.rebound, `${r3(s.rebound)} m/s`);
   }
   if (t.leaves != null) {
-    check(`${label}: leaves the wall`, s.rebound >= t.leaves, `${r3(s.rebound)} m/s away from it`);
+    target(`${label}: leaves the wall`, s.rebound >= t.leaves, `${r3(s.rebound)} m/s away from it`);
   }
   if (t.upKick != null) {
-    check(`${label}: a vertical wall adds ${t.upKick} m/s upward or less`, s.upKick <= t.upKick, `${r3(s.upKick)} m/s`);
+    target(`${label}: a vertical wall adds ${t.upKick} m/s upward or less`, s.upKick <= t.upKick, `${r3(s.upKick)} m/s`);
   }
   return s;
 }
@@ -513,12 +529,15 @@ function pinned(sticks) {
 
 scenario('pinned against a wall', async () => {
   const off = (res) => res.rows.findIndex((r) => r.p[0] < 0.2 - 0.5 || r.p[2] < 1.0);
-  /* Measured and kept as a fact rather than a failure: pitching or rolling
-   * at full throttle does NOT free it, because the craft can only rotate
-   * off a face it is flat on by pivoting on the edge, which lifts the CG
-   * against its own thrust. Letting go is the way off, as it is in life. */
+  /* Friction alone would hold it: flat on the face, the craft can only
+   * rotate off by pivoting on an edge, which lifts the CG against its own
+   * thrust. What lets it go is the rotor bleed the owner accepted for the
+   * "stuck and bounce forever" report, ported from the shell into world.c:
+   * thrust held into a face for 150 ms bleeds the rotors. */
   const full = await fly(pinned(() => [0, 0, 0, 1]));
-  check('pinned: full throttle into the face holds it there (friction beats weight)', off(full) < 0);
+  const k = off(full);
+  check('pinned: even at full throttle, the rotor bleed lets it go', k >= 0,
+    k < 0 ? 'still on the wall after 2 s' : `off it at ${full.rows[k].ms} ms`);
   const cut = await fly(pinned((ms) => (ms < 300 ? [0, 0, 0, 1] : [0, 0, 0, 0])));
   const j = off(cut);
   check('pinned: letting go of the throttle lets it drop', j >= 0 && cut.rows[j].ms - 300 <= 700,

@@ -104,7 +104,12 @@
 /* Soft props. A carbon or polycarbonate blade on masonry grips little and
  * gives nothing back. The strike takes this fraction of rotor speed per m/s
  * of closing speed, capped, and a disc left in contact rubs this much off
- * every millisecond. */
+ * every millisecond. A blade dragging on a wall at 25,000 rpm stops almost
+ * at once, because the drag torque swamps the motor's: at 0.02 the motor won
+ * and a craft tapped nose first hovered against the face with its tips
+ * rubbing, sinking 0.6 m in three seconds (scripts/wall-check.js check 6,
+ * the owner's "stuck and bounce forever"). At 0.08 it drops 2.0 to 2.7 m;
+ * 0.15 was worse at 6 m/s, not better, so this is not a more-is-safer knob. */
 #define PROP_MU 0.12
 /* The most force a blade carries into the frame before it bends out of the
  * way, newtons. It makes the props a crumple zone: they soak the first few
@@ -112,12 +117,29 @@
 #define PROP_F_MAX 60.0
 #define PROP_STRIKE_K 0.06
 #define PROP_STRIKE_MAX 0.70
-#define PROP_RUB 0.02
+#define PROP_RUB 0.08
 #define PROP_RIM 12
 
 /* The lens bumper, as a fraction of the hull's half width: 19 mm on the five
  * inch, 8 mm on the whoop. */
 #define LENS_R_FRAC 0.2
+
+/*
+ * A CRAFT HOLDING ITSELF ON A FACE WITH ITS OWN THRUST, moved here from the
+ * shell's contact pass with the rest of the solid world (src/game/collide.js
+ * PRESS_UP_DOT has the argument and the measurements). The owner's report
+ * was a craft stuck on a wall "bouncing forever"; the physics of it is that a
+ * disc whose intake is pressed against masonry has no air to take, and the
+ * shell's answer was to bleed the rotors once the thrust axis had been held
+ * into a face for 150 ms, releasing after 60 ms free of it. Same numbers
+ * here. The bleed was 0.15 per 4 ms pass; per millisecond that is
+ * 1 - 0.85^(1/4). Crashflip is exempt, as it was: turtle drives rotors into
+ * whatever the craft is lying on by design.
+ */
+#define PRESS_UP_DOT 0.5
+#define PRESS_CONFIRM_MS 150
+#define PRESS_RELEASE_MS 60
+#define PRESS_BLEED_MS 0.0398
 
 typedef struct {
   double lo[3];
@@ -181,6 +203,9 @@ static double g_prev_lens[3];
 static int g_prev_ok = 0;
 
 static int g_support = -1;
+static int g_press_held = 0;
+static int g_press_idle = 0;
+static int g_pressing = 0;
 
 /* What the shell reads once a frame, and clears. */
 static double g_rep_steps = 0.0;
@@ -618,6 +643,9 @@ int world_active(void) {
 void world_forget(void) {
   g_prev_ok = 0;
   g_support = -1;
+  g_press_held = 0;
+  g_press_idle = 0;
+  g_pressing = 0;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1760,6 +1788,35 @@ void world_step(SimState *s, int ground_on, const double gn[3], double gd) {
     }
   }
   g_prev_ok = 1;
+
+  /* Is the thrust axis held into a face this step? */
+  int press_now = 0;
+  const double thrust[3] = { o.R[0][2], o.R[1][2], o.R[2][2] };
+  for (int c = 0; c < nc; c += 1) {
+    if (dot3(g_con[c].n, thrust) <= -PRESS_UP_DOT) {
+      press_now = 1;
+      break;
+    }
+  }
+  if (press_now) {
+    g_press_idle = 0;
+    g_pressing = 1;
+  } else if (g_pressing) {
+    g_press_idle += 1;
+    if (g_press_idle > PRESS_RELEASE_MS) {
+      g_pressing = 0;
+      g_press_held = 0;
+      g_press_idle = 0;
+    }
+  }
+  if (g_pressing) {
+    g_press_held += 1;
+    if (g_press_held >= PRESS_CONFIRM_MS && !bridge_crashflip_active()) {
+      for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+        s->motor_omega[m] *= 1.0 - PRESS_BLEED_MS;
+      }
+    }
+  }
 
   if (nc == 0) {
     return;

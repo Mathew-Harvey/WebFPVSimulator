@@ -2462,6 +2462,9 @@ export async function buildMap(shell, onProgress, options) {
      * lands on the deck and a quad under it sees the road.
      */
     height: (x, z, fromY) => world.heightAt(x, z, fromY),
+    /* The parts of the town that move and are solid, for the plant to read
+     * every step. See solids in ./animation.js. */
+    solids: anim.solids,
     setNextGate() {},
     /* No gates, so nothing is ever the next one. Present so the shell has
      * one call shape for both maps and the target mark stays off here. */

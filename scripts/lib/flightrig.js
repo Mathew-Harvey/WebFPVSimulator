@@ -30,9 +30,11 @@
  * WHAT IT IS NOT. It is not the shell. The shell has a camera, a menu, a
  * ghost, audio and a race in it, and none of that is here. What is here is
  * every part of the shell that stands between the plant and the recogniser:
- * the ground plane, the obstacle contact pass on the sim clock, the frame
- * conversions with the spawn rotation in them, and the detector feed. Where
- * one of those is ported rather than shared, the comment says so, because a
+ * the ground plane, the frame conversions with the spawn rotation in them,
+ * and the detector feed. The solid world is no longer one of them to port:
+ * since 2026-09-24 it is the plant's own (src/native/world.c), and this rig
+ * uploads it through src/game/plantworld.js exactly as the shell does. Where
+ * anything else is ported rather than shared, the comment says so, because a
  * port that drifts is worse than no rig at all.
  *
  * This file is part of WebFPVSimulator.
@@ -54,10 +56,9 @@
 import { loadSim, SIM_OK } from '../../tests/lib/simmod.js';
 import { simPosToThree, threePosToSim, threeDirToSim } from '../../src/render/frame.js';
 import {
-  Colliders, contactPatch, contactMaterial, craftVerticalHalf, craftVerticalOffset,
-  GROUND_MU, GROUND_E, GRAZE_SPEED_MAX, BOUNCE_SEPARATION,
-  PRESS_CONFIRM_MS, PRESS_RELEASE_MS, PRESS_BLEED, thrustIntoFace,
+  Colliders, GROUND_MU, GROUND_E, GRAZE_SPEED_MAX,
 } from '../../src/game/collide.js';
+import { uploadWorld, setWorldFrame } from '../../src/game/plantworld.js';
 import { TrickDetector } from '../../src/game/trickdetect.js';
 
 /* The shell's own numbers, and they have to stay the shell's. */
@@ -321,18 +322,16 @@ export async function makeRig(opts) {
   let sticks = [0, 0, 0, 0];
   let st = sim.readState().state;
   let obsPhase = 0;
-  let obsPrev = null;
   const track = [];
-  let touchedThisPass = false;
-  let closingThisPass = 0;
-  /* The rotor bleed's two counters, ported with the pass below. */
-  let pressHeldMs = 0;
-  let pressIdleMs = 0;
-  let pressing = false;
   let lastTapSimMs = -1e9;
   const stats = {
-    contacts: 0, resolved: 0, resting: 0, inbound: 0, outbound: 0, buried: 0, pressed: 0,
+    contacts: 0, frame: 0, props: 0, closingMax: 0, deepest: 0,
   };
+  /* The world, handed to the plant exactly as the shell hands it: the same
+   * upload and the same frame, so what this rig flies is what a pilot does. */
+  uploadWorld(sim, colliders);
+  setWorldFrame(sim, spawn.x, spawn.y, spawn.z, spawnYaw, SPAWN_ALT);
+  const reportPtr = sim.e.malloc(11 * 8);
 
   function craft() {
     const p = poseToWorld(st);
@@ -359,170 +358,6 @@ export async function makeRig(opts) {
     const p = worldPosToSim(V(w.x, groundY, w.z));
     const n = worldDirToSim(V(0, 1, 0));
     sim.e.sim_set_ground(1, n.x, n.y, n.z, p.x, p.y, p.z, GROUND_MU, GROUND_E);
-  }
-
-  /*
-   * THE SOLID WORLD, on the sim clock, every OBSTACLE_STEP milliseconds.
-   *
-   * A port of obstacleContactPass in src/main.js, cut down to what a rig
-   * needs: the sweep, the placement on the free side, the impulse at the
-   * four-disc patch, and the slide. It keeps the two things the shell's
-   * version turns on, because they are the two the wall tap needed: the
-   * normal and the arm go through worldDirToSim, and a contact the plant
-   * declines carries its slide instead of ending the pass.
-   */
-  function contactPass() {
-    if (!colliders || !obsPrev) {
-      obsPrev = poseToWorld(st);
-      /* The shell lets go of the face on the same door out, for the states
-       * the rig has no equivalent of: a crash, a pose lock, the stand. */
-      pressHeldMs = 0;
-      pressIdleMs = 0;
-      pressing = false;
-      return;
-    }
-    const to = poseToWorld(st);
-    const from = obsPrev;
-    obsPrev = to;
-    const q = attitudeWorld(st);
-    const up = qRot(q, V(0, 1, 0));
-    const vh = craftVerticalHalf(Math.sqrt(Math.max(0, 1 - up.y * up.y)));
-    /* collide.js and contactPatch both want the WORLD attitude as three.js
-     * orders it, (x, y, z, w), which is the shell's qObs: the plant
-     * quaternion through simQuatToThree and then premultiplied by qSpawn. */
-    const qw = qMul(qSpawn, [st[7], -st[9], st[10], -st[8]]);
-    const aqx = qw[1];
-    const aqy = qw[2];
-    const aqz = qw[3];
-    const aqw = qw[0];
-
-    let a = from;
-    let b = to;
-    let passPressing = false;
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const k = colliders.hit(a.x, a.y, a.z, b.x, b.y, b.z, vh, aqx, aqy, aqz, aqw,
-        craftVerticalOffset());
-      if (k < 0) {
-        if (attempt > 0 && (b.x !== a.x || b.y !== a.y || b.z !== a.z)) {
-          const ps = worldPosToSim(b);
-          if (sim.e.sim_set_pose(ps.x, ps.y, ps.z, st[7], st[8], st[9], st[10]) === SIM_OK) {
-            st = sim.readState().state;
-          }
-        }
-        break;
-      }
-      stats.contacts += 1;
-      touchedThisPass = true;
-      const nx = colliders.hitNx;
-      const ny = colliders.hitNy;
-      const nz = colliders.hitNz;
-      if (thrustIntoFace(nx, ny, nz, up.x, up.y, up.z)) {
-        passPressing = true;
-      }
-      const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
-      const closing = speed * colliders.hitNormalDot;
-      if (closing > closingThisPass) {
-        closingThisPass = closing;
-      }
-      const ht = cl(colliders.hitT, 0, 1);
-      const c = V(
-        a.x + (b.x - a.x) * ht, a.y + (b.y - a.y) * ht, a.z + (b.z - a.z) * ht,
-      );
-      const depth = Math.max(colliders.hitPen, colliders.hitOverlap);
-      const sep = (colliders.hitT <= 1e-6 && depth > 0)
-        ? depth + BOUNCE_SEPARATION
-        : BOUNCE_SEPARATION;
-
-      if (colliders.hitT <= 1e-6 && colliders.hitPen > 0.05) {
-        stats.buried += 1;
-        const place = V(c.x + nx * sep, c.y + ny * sep, c.z + nz * sep);
-        const ps = worldPosToSim(place);
-        if (sim.e.sim_set_pose(ps.x, ps.y, ps.z, st[7], st[8], st[9], st[10]) !== SIM_OK) {
-          break;
-        }
-        st = sim.readState().state;
-        a = poseToWorld(st);
-        b = a;
-        continue;
-      }
-
-      const mat = contactMaterial(colliders.kindName(k));
-      /* Leftover travel with the into-face part removed: the slide. */
-      let rx = (b.x - a.x) * (1 - ht);
-      let ry = (b.y - a.y) * (1 - ht);
-      let rz = (b.z - a.z) * (1 - ht);
-      const dn = rx * nx + ry * ny + rz * nz;
-      if (dn < 0) {
-        rx -= nx * dn;
-        ry -= ny * dn;
-        rz -= nz * dn;
-      }
-
-      const place = V(c.x + nx * sep, c.y + ny * sep, c.z + nz * sep);
-      const ps = worldPosToSim(place);
-      const nS = worldDirToSim(V(nx, ny, nz));
-      const nl = Math.sqrt(nS.x * nS.x + nS.y * nS.y + nS.z * nS.z);
-      if (!(nl > 1e-9)) {
-        break;
-      }
-      const patch = contactPatch(nx, ny, nz, aqx, aqy, aqz, aqw, { x: 0, y: 0, z: 0 });
-      const rS = worldDirToSim(V(patch.x, patch.y, patch.z));
-      const vn = (nS.x * st[4] + nS.y * st[5] + nS.z * st[6]) / nl;
-      if (vn > 0.05) {
-        stats.outbound += 1;
-      } else if (vn < -0.05) {
-        stats.inbound += 1;
-      }
-      const v0 = [st[4], st[5], st[6]];
-      const code = sim.e.sim_contact_at(
-        nS.x / nl, nS.y / nl, nS.z / nl, mat.e, mat.mu,
-        ps.x, ps.y, ps.z, 0, 0, 0, rS.x, rS.y, rS.z,
-      );
-      if (code !== SIM_OK) {
-        break;
-      }
-      st = sim.readState().state;
-      const dv = Math.sqrt(
-        (st[4] - v0[0]) ** 2 + (st[5] - v0[1]) ** 2 + (st[6] - v0[2]) ** 2,
-      );
-      a = poseToWorld(st);
-      if (dv <= 0) {
-        stats.resting += 1;
-        if (rx * rx + ry * ry + rz * rz <= 1e-12) {
-          b = a;
-          break;
-        }
-        b = V(a.x + rx, a.y + ry, a.z + rz);
-        continue;
-      }
-      stats.resolved += 1;
-      b = V(a.x + rx, a.y + ry, a.z + rz);
-    }
-
-    /* The rotors, if the craft is holding itself on the face. Ported from
-     * the shell; the argument and every threshold are in collide.js beside
-     * PRESS_UP_DOT. The rig has no turtle, so the crashflip exemption is
-     * asked of the module rather than of a shell flag. */
-    if (passPressing) {
-      pressIdleMs = 0;
-      pressing = true;
-    } else if (pressing) {
-      pressIdleMs += OBSTACLE_STEP;
-      if (pressIdleMs > PRESS_RELEASE_MS) {
-        pressHeldMs = 0;
-        pressIdleMs = 0;
-        pressing = false;
-      }
-    }
-    if (pressing) {
-      pressHeldMs += OBSTACLE_STEP;
-      if (pressHeldMs >= PRESS_CONFIRM_MS && !sim.e.sim_crashflip_active()) {
-        stats.pressed += 1;
-        sim.e.sim_prop_strike(PRESS_BLEED);
-        st = sim.readState().state;
-      }
-    }
-    obsPrev = poseToWorld(st);
   }
 
   /* One millisecond: sticks on the RC grid, the ground, one plant step, the
@@ -560,12 +395,20 @@ export async function makeRig(opts) {
     obsPhase += 1;
     if (obsPhase >= OBSTACLE_STEP) {
       obsPhase = 0;
-      touchedThisPass = false;
-      closingThisPass = 0;
-      contactPass();
-      if (touchedThisPass && stepIdx - lastTapSimMs >= BOUNCE_COOLDOWN_MS) {
+    }
+    /* The solid world is the plant's now (src/native/world.c); this reads
+     * what it touched, every step, the way the shell reads it every frame. */
+    sim.e.sim_world_report(reportPtr);
+    const rep = new Float64Array(sim.e.memory.buffer, reportPtr, 11);
+    if (rep[0] > 0) {
+      stats.contacts += 1;
+      stats.frame += rep[8] > 0 ? 1 : 0;
+      stats.props += rep[7] > 0 ? 1 : 0;
+      stats.closingMax = rep[1] > stats.closingMax ? rep[1] : stats.closingMax;
+      stats.deepest = rep[9] > stats.deepest ? rep[9] : stats.deepest;
+      if (stepIdx - lastTapSimMs >= BOUNCE_COOLDOWN_MS) {
         lastTapSimMs = stepIdx;
-        det.bump(closingThisPass);
+        det.bump(rep[1]);
       }
     }
   }

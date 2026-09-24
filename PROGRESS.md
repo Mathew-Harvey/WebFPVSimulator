@@ -41814,3 +41814,121 @@ axis aligned box.
 - **Open:** how prop discs should behave in a contact (asked, not yet
   answered), and whether "vanish" is the view or the teleport (moot once the
   teleport is gone and the near plane is fixed, but worth knowing).
+
+## 2026-09-24 | tests, collision | Coverage first: the plant pinned to the bit, and the city crash as guards and targets
+
+The owner's condition on moving obstacle contact into the plant is that the
+checks pinning the core land first and go green. This entry is those
+checks. Nothing in the plant, the shell or the build changed.
+
+### What was already there, and why it was not enough
+
+- `npm run verify` replays one recorded stick stream in free air. It never
+  raises a floor, touches a wall or flies the whoop.
+- `contact:selftest` drives the ground plane but asserts ranges ("the slide
+  is short"). A solver rewrite could move every number it measures and stay
+  green.
+- `check:wall` flies a hand ported copy of the shell's contact pass, which
+  is the code being replaced.
+- Nothing flew into the town.
+
+### What is new
+
+**`npm run check:plant`** (scripts/plant-golden.js, tests/goldens/plant.json).
+21 scripted runs through dist/sim.wasm in Node, both airframes, hashing the
+full state block after every 1 ms step: free air in acro, angle and arcade,
+the air and gravity knobs, a sagging pack, takeoff and landing, a hard drop,
+a belly crash at speed, an inverted landing and a turtle, a side arrival, a
+slope, the launch stand, a deck edge that lifts the plane under a moving
+craft, and every contact entry point the shell calls today. Each run is
+flown twice and must agree with itself, must still exercise what it is named
+for, and must match the golden to the bit. A mismatch names the first 50 ms
+window and the fields that moved. Rewriting the golden is the owner's call,
+recorded here, like baseline.rec.
+
+**`npm run check:plant:selftest`** proves the golden sees a small change and
+only where the change reaches: grass friction up by 1e-7 turns exactly the
+12 grounded runs red and none of the 9 others; the throttle stick up by two
+RC counts turns exactly the 16 runs that open the throttle red and leaves
+the 5 that never do green.
+
+**`npm run check:crash`** (scripts/crash-check.js). The real shell, headless,
+flying nine impacts into one shopfront by the spawn street through the
+in-page pilot park-fly uses, now shared as scripts/lib/pilot.js
+(byte-identical, park-fly imports it). GUARDS must hold before and after the
+move: finite state, centre never inside a solid, no frame moving further
+than its speed allows, and each run reaching what it is named for. TARGETS
+are the owner's crash in numbers; measured every run, enforced with
+`--targets` once the solver lands. The first run's numbers are in
+.loop/evidence/crash-check-before-2026-09-24.json.
+
+### Today's numbers, the baseline the move is measured against
+
+    crash-check, two runs    guards: 0 failed, both runs
+    wall tap 3 m/s           spins 13.9 to 14.4 rad/s; still on the wall
+                             after 1 s (gap 0.06 m)
+    head-on 5 m/s            rebound 0.06 to 0.08 m/s (target met); spins
+                             15.8 rad/s
+    head-on 20 m/s           131 to 133 rad/s; +2.0 to +2.1 m/s upward off
+                             a vertical wall
+    glancing 35 deg 12 m/s   keeps 45 percent of its speed; up.y 0.24 to 0.26
+    roof dive 8 m/s          slides 5.3 and 7.0 m, falls off the roof
+    roof settle 2 m/s        0.27 then 0.16 m/s after 2 s: marginal either
+                             side of the 0.2 target
+    wall hit, full throttle  never leaves the wall
+    Crashed catch            0 in every run (it did not fire here; the
+                             owner has ruled it out regardless)
+
+### Found on the way, not fixed
+
+- **A five inch landing on its side at speed never registers a ground
+  contact.** `sim_ground_contacts()` read 0 for the whole run while the
+  plant's projection and settle stopped the craft on the grass. The shell's
+  landing, bounce cue and crash count all read that counter. Pinned in the
+  golden as it is; the solver work will have to decide it.
+- **Sticks are quantised to RC counts before the controller sees them.** A
+  1e-9 throttle nudge changed nothing in any run, and two counts on a stick
+  held at zero stay under Betaflight's low throttle band. Both are the
+  receiver behaving like one, and the self test is written around them.
+- **park:fly reads 12 of 20 right**, where the last recorded run was 16 of
+  20. Pre-existing: the pilot string it flies is byte-identical to before
+  this entry. Not investigated. The Wall Tap case is recognised (CLEAN),
+  which is the number the move has to keep.
+
+### What coverage still cannot see
+
+- The shell's own state machine around the plant (perch, the turtle latch,
+  takeoff) is covered by lint:input, lint:frame and check:crash, not bit for
+  bit.
+- Cross host determinism of CONTACT: verify's check 3 compares Node and
+  Chrome on free air only, because obstacle contact runs in JS today. Once it
+  runs in the module, the city's boxes can be fed to the module in Node and
+  the crash runs pinned the way the plant runs are.
+- check 1 (build-clean) skips here: no emcc, Betaflight not checked out.
+  Both are reachable from this container. Rebuilding today's module and
+  getting the same golden back is the first step of the move, before a line
+  of the solver is written.
+
+### RUN LOG
+
+    npm run check:plant            all 21 passed
+    npm run check:plant:selftest   3 of 3 passed
+    npm run check:crash            0 guards failed, twice (1m20 each)
+    npm run verify                 15 of 15 passing, check 1 SKIP (no
+                                   emcc, vendor/betaflight not checked
+                                   out). Trace de0401cd4266, Node and
+                                   Chrome identical
+    npm run contact:selftest       all passed
+    npm run check:wall             57 passed
+    npm run lint:frame             34 passed
+    npm run input:selftest         166 passed
+    npm run score:selftest         1 failed, the pre-existing Maverick
+                                   Loop case, unchanged
+    npm run replay:selftest        passed
+    npm run ghost:selftest         all passed
+    npm run lint:fc                33 of 33 clean
+    npm run lint:presets           4 of 4 clean
+    npm run lint:catalog           could not run: reads
+                                   vendor/betaflight, not checked out
+    npm run park:fly               12 of 20 right, see above
+    git diff --stat vendor/betaflight   empty

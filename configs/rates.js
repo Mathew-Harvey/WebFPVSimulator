@@ -594,9 +594,10 @@ export function throttleSummary(r, airframe = '5inch') {
 /*
  * READ AT THE WEIGHT THE SHELL FLIES, NOT THE HARNESS'S. The module's own
  * gravity is 1.0 and every check in tests/ runs there; the shell asserts
- * configs/airframes.js gravityBase, 1.62, through sim_set_gravity before a
- * pilot ever touches the stick, and a menu that quoted the 1.0 hover to a
- * pilot flying at 1.62 would be eight and a half points low at every cap.
+ * configs/airframes.js gravityBase, 1.62 on the five inch and 2.025 on the
+ * whoop, through sim_set_gravity before a pilot ever touches the stick, and
+ * a menu that quoted the 1.0 hover to a pilot flying at 1.62 would be eight
+ * and a half points low at every cap.
  * So:
  *
  *     node scripts/flightcheck.js --gravity=1.62
@@ -605,13 +606,16 @@ export function throttleSummary(r, airframe = '5inch') {
  * table it replaced read 26.5, 28.9, 31.8, 33.6, 35.6, 38.0, 40.8, 47.9,
  * 58.6, for anyone reading an old report against a new one.
  *
- * ONE TABLE FOR BOTH ENTRIES, because configs/airframes.js gives both a
- * simId of 0: the shell's whoop flies the five inch plant, so its hover is
- * the five inch's. The whoop column this replaced, 33.6 at cap 100, had been
- * read off SIM_AIRFRAME_WHOOP65 with --airframe=whoop65, which selects a
- * plant the shell does not, and had been quoting a machine nobody flew since
- * that entry moved to simId 0. If a whoop plant is ever selected again it
- * gets its own row read at its own gravityBase.
+ * THE WHOOP HAS ITS OWN TABLE AGAIN, on the same plant. Both entries have
+ * a simId of 0, so the whoop flies the five inch plant, and for a while that
+ * meant one table for both. Then the whoop's gravityBase moved to 2.025, the
+ * five inch's 125, and a plant flown at a different gravity hovers at a
+ * different stick: HOVER_WHOOP below is the same five inch plant read at
+ * the whoop's own weights, with --gravity and no --airframe. The whoop
+ * column before that one, 33.6 at cap 100, had been read off
+ * SIM_AIRFRAME_WHOOP65 with --airframe=whoop65, a plant the shell does not
+ * select. If a whoop plant is ever selected again it gets its own table
+ * read at its own gravityBase.
  */
 const HOVER_5IN_AT_BASE = new Map([
   [100, 35.0], [90, 38.3], [80, 42.5], [75, 44.9], [70, 47.8],
@@ -657,9 +661,12 @@ const HOVER_5IN_AT_BASE = new Map([
  *
  * and so on for 1.62 and 2.268, and 3.8 and 3.5. The weight 100 column at
  * 4.2 reproduced HOVER_5IN_AT_BASE above to the tenth at every cap.
+ *
+ * The columns are per airframe because the slider's top is: the five inch
+ * reads 60, 100 and 140, the whoop 60, 100 and 120, since the module
+ * refuses the whoop's 125 and above.
  */
 const HOVER_CELLS = [4.2, 3.8, 3.5];
-const HOVER_WEIGHTS = [60, 100, 140];
 const HOVER_5IN = new Map([
   [4.2, [
     new Map([
@@ -701,9 +708,66 @@ const HOVER_5IN = new Map([
     ]),
   ]],
 ]);
+/*
+ * THE WHOOP, at its own base of 2.025 and its own slider: weight 60, 100 and
+ * 120 are 1.215, 2.025 and 2.43 times g. Taken 2026-09-24 the same way as
+ * the five inch's above, nine runs of
+ *
+ *     node scripts/flightcheck.js --gravity=2.025 --cell=4.2
+ *
+ * and so on, five inch plant and baseline config, because that is what the
+ * whoop flies. Weight 80 on the whoop is 1.62, the five inch's normal, and
+ * its column interpolates to 34.8 against the 35.0 measured there. Weight
+ * 110 interpolates to within 0.1 of the 42.3 measured, uncapped, and is two
+ * points low at a cap of 40, where the 120 column has hit the stop.
+ */
+const HOVER_WHOOP = new Map([
+  [4.2, [
+    new Map([
+      [100, 29.7], [90, 32.3], [80, 35.7], [75, 37.8], [70, 40.1],
+      [65, 42.9], [60, 46.0], [50, 54.2], [40, 66.4],
+    ]),
+    new Map([
+      [100, 39.9], [90, 43.8], [80, 48.7], [75, 51.5], [70, 54.8],
+      [65, 58.7], [60, 63.2], [50, 74.8], [40, 92.2],
+    ]),
+    new Map([
+      [100, 44.6], [90, 48.9], [80, 54.4], [75, 57.7], [70, 61.5],
+      [65, 65.8], [60, 70.9], [50, 84.0], [40, 100],
+    ]),
+  ]],
+  [3.8, [
+    new Map([
+      [100, 32.8], [90, 35.9], [80, 39.7], [75, 42.0], [70, 44.7],
+      [65, 47.7], [60, 51.3], [50, 60.5], [40, 74.4],
+    ]),
+    new Map([
+      [100, 44.3], [90, 48.7], [80, 54.1], [75, 57.3], [70, 61.0],
+      [65, 65.4], [60, 70.4], [50, 83.4], [40, 100],
+    ]),
+    new Map([
+      [100, 49.4], [90, 54.4], [80, 60.5], [75, 64.1], [70, 68.4],
+      [65, 73.3], [60, 79.0], [50, 93.7], [40, 100],
+    ]),
+  ]],
+  [3.5, [
+    new Map([
+      [100, 35.7], [90, 39.1], [80, 43.3], [75, 45.9], [70, 48.8],
+      [65, 52.2], [60, 56.1], [50, 66.3], [40, 81.6],
+    ]),
+    new Map([
+      [100, 48.2], [90, 52.9], [80, 58.9], [75, 62.5], [70, 66.6],
+      [65, 71.4], [60, 76.9], [50, 91.3], [40, 100],
+    ]),
+    new Map([
+      [100, 53.8], [90, 59.2], [80, 66.0], [75, 70.0], [70, 74.7],
+      [65, 80.1], [60, 86.3], [50, 100], [40, 100],
+    ]),
+  ]],
+]);
 const HOVER_STICK_PERCENT = {
-  '5inch': HOVER_5IN,
-  whoop65: HOVER_5IN,
+  '5inch': { weights: [60, 100, 140], cells: HOVER_5IN },
+  whoop65: { weights: [60, 100, 120], cells: HOVER_WHOOP },
 };
 
 /*
@@ -717,10 +781,10 @@ const HOVER_STICK_PERCENT = {
  */
 export function hoverStickPercent(cap, airframe = '5inch', weight = 100, cellV = 4.2) {
   const table = HOVER_STICK_PERCENT[airframe] ?? HOVER_STICK_PERCENT['5inch'];
-  const cols = table.get(nearest(HOVER_CELLS, Number(cellV) || 4.2));
+  const cols = table.cells.get(nearest(HOVER_CELLS, Number(cellV) || 4.2));
   const c = nearest(THROTTLE_CAP_CHOICES, cap);
   const at = (i) => cols[i].get(c) ?? cols[i].get(100);
-  const [light, mid, heavy] = HOVER_WEIGHTS;
+  const [light, mid, heavy] = table.weights;
   const w = Math.min(heavy, Math.max(light, Number(weight) || mid));
   /* Out from the middle column, so the stock weight returns the table's own
    * figure exactly rather than a sum that rounds to it. */

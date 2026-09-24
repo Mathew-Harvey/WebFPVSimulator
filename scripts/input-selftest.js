@@ -845,12 +845,17 @@ section('the keyboard throttle: hover is the measured one');
     hoverStickPercent(100) === 35 && hoverStickPercent(100, '5inch', 100, 4.2) === 35);
   check('and it follows the weight, the pack and the cap',
     hoverStickPercent(100, '5inch', 60, 4.2) === 26 && hoverStickPercent(100, '5inch', 140, 4.2) === 42.8
-    && hoverStickPercent(100, '5inch', 100, 3.8) === 38.8 && hoverStickPercent(65, 'whoop65', 100, 4.2) === 51.1,
+    && hoverStickPercent(100, '5inch', 100, 3.8) === 38.8 && hoverStickPercent(65, 'whoop65', 100, 4.2) === 58.7,
     [hoverStickPercent(100, '5inch', 60, 4.2), hoverStickPercent(100, '5inch', 140, 4.2),
       hoverStickPercent(100, '5inch', 100, 3.8), hoverStickPercent(65, 'whoop65', 100, 4.2)].join(' '));
   const w80 = hoverStickPercent(100, '5inch', 80, 4.2);
   check('between columns it interpolates, inside half a point of the 30.7 measured at weight 80',
     Math.abs(w80 - 30.7) <= 0.5, String(w80));
+  check('the whoop reads its own table at its own base: 39.9 at 100, 44.6 at its top of 120, and 140 is its top',
+    hoverStickPercent(100, 'whoop65', 100, 4.2) === 39.9 && hoverStickPercent(100, 'whoop65', 120, 4.2) === 44.6
+    && hoverStickPercent(100, 'whoop65', 140, 4.2) === 44.6,
+    [hoverStickPercent(100, 'whoop65', 100, 4.2), hoverStickPercent(100, 'whoop65', 120, 4.2),
+      hoverStickPercent(100, 'whoop65', 140, 4.2)].join(' '));
 
   const rig = new Rig(null);
   const im = rig.im;

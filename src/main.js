@@ -2066,7 +2066,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * runGravityScale is the multiple of 9.80665 the module is actually
    * holding, which starts at 1.0 because that is the module's own default
    * and the machine every harness replay flies; the shell's normal is
-   * configs/airframes.js gravityBase, 1.62. So at boot the two disagree by
+   * configs/airframes.js gravityBase, 1.62 on the five inch and 2.025 on
+   * the whoop. So at boot the two disagree by
    * construction, applySettings sees it and pushes the base through the ONE
    * path that talks to sim_set_gravity, and the record key is built from the
    * scale the plant is holding rather than from the slider, so it survives
@@ -3717,7 +3718,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * never flew.
      */
     {
-      const wantWeight = clampWeight(s.weight);
+      /* Against the run's airframe, whose top is the one the module has to
+       * take: the whoop's is 120, because 125 of its base is over 2.5. */
+      const wantWeight = clampWeight(s.weight, runAirframe);
       /*
        * The scale follows the airframe as well as the slider, because the
        * base lives on the airframe entry; and the test is on the SCALE, not
@@ -3753,6 +3756,9 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
         runWeight = wantWeight;
       }
+      /* And the slider follows, because an airframe swap can move its top
+       * and pull a stored weight down to it. */
+      ui.paintAir();
     }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);

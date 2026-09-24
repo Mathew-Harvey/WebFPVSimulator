@@ -113,6 +113,14 @@ export const AIRFRAMES = [
      */
     gravityBase: 1.62,
     /*
+     * The top of the Weight slider on this airframe, a slider value and not a
+     * gravity. The module refuses a scale above 2.5 (sim_set_gravity in
+     * src/native/sim.c), and 140 of 1.62 is 2.268, so the five inch gets the
+     * whole of the shell's WEIGHT_MAX. The whoop's base is heavier and its
+     * top is lower; see there.
+     */
+    weightMax: 140,
+    /*
      * Betaflight 4.5.1's own rate defaults, which is what RATE_DEFAULTS in
      * configs/rates.js already is. Named here as well so the two airframes
      * are read the same way rather than one of them being the special case
@@ -258,10 +266,35 @@ export const AIRFRAMES = [
      */
     packVoltages: [4.2, 3.8, 3.5],
     packLabels: { 4.2: 'Charged', 3.8: 'Half', 3.5: 'Nearly empty' },
-    /* The five inch's base, because simId above is the five inch's plant:
-     * the pilot who set 1.62 flew the only plant this entry flies. A whoop
-     * plant of its own would carry its own number here. */
-    gravityBase: 1.62,
+    /*
+     * 2.025, WHICH IS 125 PERCENT OF THE FIVE INCH'S 1.62, AND THE OWNER'S.
+     *
+     * This was 1.62, on the argument that the pilot who set that number flew
+     * the only plant this entry flies. Then a pilot flew the same track back
+     * to back in Vdrone and here and had to take the whoop's Weight slider to
+     * 120 to 130 before it felt right, and the owner made 125 the whoop's
+     * normal. The plant is still the five inch's and the five inch keeps
+     * 1.62, which the owner asked for in the same breath: the report was
+     * about the whoop, and nobody has said the five inch is floaty.
+     *
+     * So Weight 100 on a whoop flies what Weight 125 flew before, 2.025
+     * times 9.80665, and the record key agrees: both round to `.g203`, so a
+     * whoop best set at 125 before this change is still the best at 100
+     * after it. Measured at this base, same bisection and same probe as the
+     * five inch's figures above (the punch is 400 ms at 60 percent stick):
+     * hover 39.9 percent, ten metres of fall in 1.07 s, balloon 0.945 m,
+     * props level descent 31.6 m/s.
+     */
+    gravityBase: 2.025,
+    /*
+     * 120, NOT THE FIVE INCH'S 140, because the module refuses a gravity
+     * above 2.5 and 125 of 2.025 is 2.53. 120 is 2.43, the heaviest step
+     * the module will take, and it is already 150 percent of the whoop this
+     * entry used to be. Raising the module's ceiling is a rebuild of
+     * dist/sim.wasm and was not done for this. The floaty end is 60, 1.215,
+     * which is where the old slider's 75 was.
+     */
+    weightMax: 120,
     /*
      * THE FIVE INCH'S TUNE, BECAUSE THE PLANT IS THE FIVE INCH'S.
      *

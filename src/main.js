@@ -66,7 +66,7 @@ import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf } from './game/plantworld.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor } from './ui/ui.js';
 import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
@@ -2965,9 +2965,10 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
-   * WHERE THE CRAFT LAST FLEW IN THE OPEN, its centre outside every solid and
-   * above the ground, taken every frame it is. The recovery refuses a spot it
-   * cannot reach from here in a straight line, which is what keeps a craft
+   * WHERE THE CRAFT LAST FLEW IN THE OPEN, clear of every solid by its own
+   * radius and above the ground, taken every frame it is. The recovery
+   * refuses a spot it cannot reach from here in a straight line, which is
+   * what keeps a craft
    * stuck in a wall on the side of it the pilot was flying, and a craft over
    * a room's ceiling out of the room under it. The crash position alone
    * cannot say which side of a slab is which: a centre already through a
@@ -3016,6 +3017,68 @@ export async function boot({ loading, bootStart, mapId }) {
     if (typeof audio.event === 'function') {
       audio.event('land');
     }
+  }
+
+  /*
+   * STUCK IS A RESET. The owner, flying the solid world for the first time
+   * on 2026-09-24: "crashing head first into a building i get stuck on the
+   * wall, it should reset on this or fall to the ground", and "crashing back
+   * first into the ground i get stuck again".
+   *
+   * Measured in the shell, both are the same state. A 6, 10 or 15 m/s head
+   * on hit slides down the face and comes to rest standing on its nose at
+   * the foot of the wall, top plate leaning on the masonry like a ladder,
+   * which a real quad can do too. A tail first arrival latches turtle the
+   * moment it touches and freezes, pointing at the sky. Either way the craft
+   * is not upright, so throttle is not a takeoff, and full throttle only
+   * presses it harder into whatever it leans on. Since the Crashed catch
+   * went, nothing but X ever got the pilot out, and nothing on screen says X.
+   *
+   * So a craft that has been AT REST and NOT UPRIGHT for STUCK_MS of sim time
+   * is set down nearby, exactly as X does it. Still is the whole test: a
+   * craft more than 60 degrees from level cannot hold still in the air, so
+   * if it is still, something is holding it. A tumble, a skid, a pilot
+   * working the sticks or the turtle flip all move it and restart the clock.
+   * A turtle the pilot may want to fly out of gets STUCK_TURTLE_MS instead.
+   * This is the shell's recovery, not physics: the plant is never touched
+   * until the moment X would touch it.
+   */
+  const STUCK_MS = 1500;
+  const STUCK_TURTLE_MS = 5000;
+  const STUCK_SPEED = 0.3;
+  const STUCK_RATE = 1.5;
+  let stuckSinceMs = -1;
+  function stuckTick() {
+    const st = stateCurr;
+    const still = mode === 'flight'
+      && ui.screen === 'flight'
+      && !poseLock
+      && !launchStaging
+      && !landed
+      && !turtleFlip.active
+      && !turtleRecover
+      && st
+      && plantUpZ(st) < TURTLE_EXIT_UPZ
+      && plantSpeed(st) < STUCK_SPEED
+      && plantRateMag(st) < STUCK_RATE;
+    if (!still) {
+      stuckSinceMs = -1;
+      return;
+    }
+    if (stuckSinceMs < 0) {
+      stuckSinceMs = simTimeMs;
+      return;
+    }
+    const turtling = turtleWait || manualFlip || crashflipOn;
+    if (simTimeMs - stuckSinceMs < (turtling ? STUCK_TURTLE_MS : STUCK_MS)) {
+      return;
+    }
+    stuckSinceMs = -1;
+    setManualFlip(false);
+    setCrashflip(false);
+    turtleRecover = false;
+    setDownNearby();
+    notice = { text: 'Stuck, so you were set down nearby.\nX does this any time.', untilMs: performance.now() + 2800 };
   }
 
   /* The craft's heading, flattened onto the ground plane, as a spawn yaw.
@@ -4824,9 +4887,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /*
      * The pilot's own unstick: set down on the flat surface nearest to
-     * where you are, upright, run untouched. The only recovery there is:
-     * nothing does it for the pilot any more. It refuses on the ground so it
-     * cannot be used as a free reposition between laps.
+     * where you are, upright, run untouched. stuckTick does the same for a
+     * craft left still and not upright; this is the pilot's way to ask for
+     * it sooner. It refuses on the ground so it cannot be used as a free
+     * reposition between laps.
      */
     if (code === 'KeyX' && ui.screen === 'flight' && mode === 'flight') {
       if (landed || launchStaging || poseLock) {
@@ -6043,12 +6107,19 @@ export async function boot({ loading, bootStart, mapId }) {
     obsImpulse = 0;
     obsImpulseKind = '';
 
-    /* See recoverFrom: the last place the craft's centre was in the open,
-     * outside every solid and above the ground, for X to set it down on the
-     * pilot's side of whatever it is wedged against. */
+    /* See recoverFrom: the last place the WHOLE CRAFT was in the open,
+     * above the ground and at least its own radius from every solid, for X
+     * and stuckTick to set it down on the pilot's side of whatever it is
+     * wedged against. The centre alone is not enough, and the city showed
+     * why on 2026-09-24: a head-on hit slid the craft into the 10 cm slot
+     * between a shopfront and the 1.5 m block in front of it, where it stood
+     * on its nose with its centre outside every solid. That slot became the
+     * last open air, every spot on the pavement was across the block from
+     * it, and the set down fell through to the start line. */
     if (mode === 'flight' && !poseLock && view.colliders) {
       const hy = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS);
-      if (!(hy > pCurr.y) && view.colliders.gapAt(pCurr.x, pCurr.y, pCurr.z, 0.05) > 0) {
+      if (!(hy > pCurr.y)
+        && view.colliders.gapAt(pCurr.x, pCurr.y, pCurr.z, CRAFT_WORLD_R) >= CRAFT_WORLD_R) {
         recoverFrom.x = pCurr.x;
         recoverFrom.y = pCurr.y;
         recoverFrom.z = pCurr.z;
@@ -6069,6 +6140,8 @@ export async function boot({ loading, bootStart, mapId }) {
     if (isTurtleParked() && !turtleParkedNow) {
       setTurtleParkMotors(true);
     }
+    /* After the turtle has had its look: see STUCK IS A RESET. */
+    stuckTick();
 
     /* Race logic runs on the rendered world position, timed on the sim
      * clock at that state: gate crossings are swept over the frame's

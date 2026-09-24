@@ -1,6 +1,14 @@
 /*
  * gallery.js: lay every freestyle asset out on a plot and draw it the way a
- * built map draws it. See gallery.html for the query parameters.
+ * built map draws it. See gallery.html for the query parameters, and one
+ * more it does not list:
+ *
+ *   ?dims={"floors":8}    JSON merged over the shown asset's dimensions,
+ *                         so a size can be looked at without a map
+ *
+ * window.__gallery carries the renderer (its info counts the whole last
+ * frame, every pass of the post chain), the props group, and how many
+ * batches the kit made, for a check to read.
  *
  * It uses the town's lights, sky and post chain exactly as
  * src/maps/city/index.js sets them up, so this page is a faithful preview,
@@ -32,6 +40,7 @@ import { PROPS, FURNITURE, partsOf, planBounds } from './catalog.js';
 import { PROP_GROUPS, styleDims } from './types.js';
 import { PropKit } from './kit.js';
 import { placedYaw } from './solids.js';
+import { sincos } from './trig.js';
 import { defaultDims, ELEMENTS } from '../trackbuilder/elements.js';
 
 const params = new URLSearchParams(window.location.search);
@@ -42,6 +51,10 @@ renderer.toneMapping = THREE.NoToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.setClearColor(new THREE.Color(PAL.fog), 1);
+/* The post chain renders several passes a frame, and three.js clears its
+ * counts at every one of them by default, so the triangles it reported were
+ * the last full screen quad's. Cleared once a frame instead, in frame(). */
+renderer.info.autoReset = false;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(PAL.fog, 60, 420);
@@ -74,13 +87,24 @@ scene.add(ground);
 const items = [];
 const only = params.get('asset');
 const row = params.get('row');
+/* ?dims=, over the defaults. A page with a typo in it shows the defaults
+ * and says why in the console, rather than showing nothing. */
+let dimsOver = {};
+if (params.get('dims')) {
+  try {
+    const d = JSON.parse(params.get('dims'));
+    dimsOver = d && typeof d === 'object' ? d : {};
+  } catch (e) {
+    console.warn(`gallery: ?dims is not JSON (${e.message}), showing the defaults`);
+  }
+}
 for (const [id, def] of Object.entries(PROPS)) {
   if (def.zone || (only && only !== id) || (row && def.group !== row)) {
     continue;
   }
   const styles = params.get('style') ? [params.get('style')] : (def.styles ?? [undefined]);
   for (const style of styles) {
-    items.push({ id: `el-${id}-${style ?? ''}`, type: id, style, dims: { ...def.dims, ...(styleDims(id, style) ?? {}) }, position: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0 });
+    items.push({ id: `el-${id}-${style ?? ''}`, type: id, style, dims: { ...def.dims, ...(styleDims(id, style) ?? {}), ...dimsOver }, position: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0 });
   }
 }
 if (!only && !row) {
@@ -97,7 +121,7 @@ if (!only && !row) {
 }
 if (only && FURNITURE[only]) {
   const def = ELEMENTS[only];
-  items.push({ id: `el-${only}`, type: only, dims: defaultDims(only, 'full'), position: { x: 0, y: 0, z: def.defaultZ ?? 0 }, yaw: 0, pitch: def.pitch ?? 0, flagSide: def.flagSide });
+  items.push({ id: `el-${only}`, type: only, dims: { ...defaultDims(only, 'full'), ...dimsOver }, position: { x: 0, y: 0, z: def.defaultZ ?? 0 }, yaw: 0, pitch: def.pitch ?? 0, flagSide: def.flagSide });
 }
 
 /* Lay them out in a row, left to right, each on its own footprint. */
@@ -105,23 +129,53 @@ const kit = new PropKit();
 let cursor = 0;
 let tallest = 0;
 const placed = [];
+const SC = { s: 0, c: 1 };
 for (const el of items) {
   const parts = partsOf(el);
   const b = planBounds(parts);
-  const w = b.x1 - b.x0;
-  const x = cursor - b.x0;
   const top = parts.reduce((m, p) => Math.max(m, p.t === 'box' ? p.hi[1] : Math.max(p.a[1], p.b[1]) + p.r), 1);
   tallest = Math.max(tallest, top);
   const turns = (PROPS[el.type] ?? FURNITURE[el.type]).turns;
   /* Every asset's front is its +x; a heading of -pi/2 turns that toward
    * the camera, which stands on +z. */
   const yaw = placedYaw(turns, Number(params.get('yaw') ?? -Math.PI / 2));
+  /*
+   * THE ROW RUNS ALONG WORLD X, AND THE ASSET STANDS TURNED, so it is
+   * spaced by its plan turned to that heading: at -pi/2 a building's depth
+   * lies along the row and its width across it. Spaced by the unturned
+   * bounds, a wide asset took its depth's room and overlapped its
+   * neighbours. The turn is kit.begin's, x' = x c + z s and z' = z c - x s.
+   */
+  sincos(yaw, SC);
+  let e0 = Infinity;
+  let e1 = -Infinity;
+  let f0 = Infinity;
+  let f1 = -Infinity;
+  for (const lx of [b.x0, b.x1]) {
+    for (const lz of [b.z0, b.z1]) {
+      const wx = lx * SC.c + lz * SC.s;
+      const wz = lz * SC.c - lx * SC.s;
+      e0 = Math.min(e0, wx);
+      e1 = Math.max(e1, wx);
+      f0 = Math.min(f0, wz);
+      f1 = Math.max(f1, wz);
+    }
+  }
+  const w = e1 - e0;
+  const x = cursor - e0;
   kit.begin(x, el.position.z, 0, yaw, '');
   kit.element(el);
-  placed.push({ el, x: x + (b.x0 + b.x1) / 2, w, d: b.z1 - b.z0, top });
+  placed.push({ el, x: x + (e0 + e1) / 2, w, d: f1 - f0, top });
   cursor += w + 6;
 }
-scene.add(kit.finish());
+const props = kit.finish();
+scene.add(props);
+let batches = 0;
+props.traverse((o) => {
+  if (o.isMesh) {
+    batches += 1;
+  }
+});
 
 /* ---- the camera ---- */
 const label = document.getElementById('label');
@@ -171,6 +225,7 @@ resize();
 
 let frames = 0;
 function frame() {
+  renderer.info.reset();
   pipeline.render();
   frames += 1;
   if (frames === 2) {
@@ -185,4 +240,9 @@ function frame() {
   requestAnimationFrame(frame);
 }
 frame();
-window.__gallery = { items: placed.map((p) => ({ type: p.el.type, style: p.el.style, x: p.x })), renderer };
+window.__gallery = {
+  items: placed.map((p) => ({ type: p.el.type, style: p.el.style, x: p.x, w: p.w, dims: p.el.dims })),
+  renderer,
+  props,
+  batches,
+};

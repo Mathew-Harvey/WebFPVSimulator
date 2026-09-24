@@ -2589,12 +2589,14 @@ function suiteFreestyle() {
     const pads = freestylePlace(d, 'startPads', 40, 40);
     const w = freestyleReport(d).warnings.find((x) => x.code === 'fs-spawn');
     check('start pads inside a building are a warning, pointing at the pads', w && w.elementId === pads.id);
-    /* The flats' front wall is 8 m out from its centre; its balconies stand
-     * out to 9.25 m, but from 2.7 m up, well over a craft on the ground. */
-    pads.position.x = 40 + 8 + 0.6;
+    /* The flats are 9 m deep, front to back along their own x, so at
+     * heading 0 the back wall is 4.5 m west of the centre. The balconies
+     * stand out 1.8 m past it, to 6.3 m, but their slab's underside is
+     * 2.72 m up, well over a craft on the ground. Measured with partsOf. */
+    pads.position.x = 40 - 4.5 - 0.6;
     check('and so are pads within a metre of its wall', codesOf(d).includes('fs-spawn'));
-    pads.position.x = 40 + 8 + 1.85;
-    check('but not pads under its balconies, 1.85 m off the wall and 2.6 m below them', !codesOf(d).includes('fs-spawn'));
+    pads.position.x = 40 - 4.5 - 1.4;
+    check('but not pads under its balconies, 1.4 m off the wall and 2.6 m below them', !codesOf(d).includes('fs-spawn'));
   }
   {
     const d = fresh();
@@ -2627,8 +2629,11 @@ function suiteFreestyle() {
     check('a slot exactly at the gap rule is allowed', !slot(GAP_MIN + 1e-6));
     const d = fresh();
     freestylePlace(d, 'startPads', 140, 140);
+    /* The flats' balconies reach 6.3 m west of their centre. The lamp's arm
+     * reaches 2 m along its own x, so it is turned to point away, and the
+     * post alone stands 0.6 m off the balconies' parapet and slab. */
     freestylePlace(d, 'building', 40, 40);
-    freestylePlace(d, 'lamp', 40 + 9.25 + 0.6, 40);
+    freestylePlace(d, 'lamp', 40 - 6.3 - 0.6, 40, { yaw: Math.PI });
     check('a lamp post 0.6 m off a building\u2019s balconies is a slot, capsule against box', codesOf(d).includes('fs-slot'));
   }
   {
@@ -2640,8 +2645,13 @@ function suiteFreestyle() {
     check('a lamp post standing in a named gap blocks it, pointing at the gap', w && w.elementId === gap.id);
     const d2 = fresh();
     freestylePlace(d2, 'startPads', 140, 140);
+    /* A building's front is its own +x, so it is turned a quarter to face
+     * south at the window, which lies across it: the front wall is 3 m
+     * north of the window's plane and the open corridor, 1.6 m deep from
+     * 2.72 m up, reaches to 1.4 m from it. The stair is on an end, 6 m or
+     * more east or west of the window's side. */
     freestylePlace(d2, 'gap', 40, 40, { yaw: Math.PI / 2 });
-    freestylePlace(d2, 'building', 40, 40 + 3 + 4.5);
+    freestylePlace(d2, 'building', 40, 40 + 3 + 4.5, { yaw: -Math.PI / 2 });
     check('a gap across a building’s front, clear of it, is not blocked', !codesOf(d2).includes('fs-gap-blocked'));
     freestylePlace(d2, 'containers', 40, 40, { yaw: Math.PI / 2 });
     check('but a container parked in it is', codesOf(d2).includes('fs-gap-blocked'));

@@ -326,7 +326,9 @@ export class Panels {
       groups.set(g.id, div);
     }
     const course = el('div', 'tb-group');
-    course.append(el('h3', null, 'Course'));
+    /* The race palette's gates and markers, placed as furniture: a map has
+     * no track, so the heading names what they are. */
+    course.append(el('h3', null, 'Gates and markers'));
     groups.set('course', course);
     const extra = el('div', 'tb-group');
     extra.append(el('h3', null, 'Extra'));
@@ -1130,7 +1132,7 @@ export class Panels {
     host.append(el('h3', null, 'Map'));
     const line = el('p', 'tb-help');
     line.append(el('strong', null, 'Freestyle map'));
-    line.append(document.createTextNode(': a place to fly, with no course through it. Built from the town’s own assets, flown on a five inch, and every solid you place is solid in the air.'));
+    line.append(document.createTextNode(': a place to fly, with no track through it. Built from the town’s own assets, flown on a five inch, and every solid you place is solid in the air.'));
     host.append(line);
     host.append(el('h3', null, 'Plot'));
     const grid = el('div', 'tb-grid3');

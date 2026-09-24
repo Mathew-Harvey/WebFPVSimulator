@@ -390,11 +390,18 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * fetched on a cold load, because 61 sat here for a round and nothing
  * could notice.
  *
- * There is one freestyle world now. Industrial bando, Municipal baths and
- * Bardwell's yard were removed on 2026-08-30, and their three entries went
- * with them. `npm run lint:memory` prints the fetched count per map beside
- * this number. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1 };
+ * Industrial bando, Municipal baths and Bardwell's yard were removed on
+ * 2026-08-30, and their three entries went with them. `npm run lint:memory`
+ * prints the fetched count per map beside this number.
+ *
+ * built: index.js, place.js and starter.js, the three files under its own
+ * directory, measured from the resource entries on a cold load of Your map.
+ * It also fetches src/props and twelve of the town's vendored modules
+ * (scripts/memory-check.js lists them), but the counter matches one prefix
+ * and neither of those is this map's alone. With no entry here it expected
+ * the default four, got three, and the bar sat at 75 percent until the
+ * import resolved. */
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 3 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -407,6 +414,7 @@ const MAP_MODULE_PREFIX = {
   field: '/src/maps/field',
   city: '/src/maps/city/',
   custom: '/src/maps/custom',
+  built: '/src/maps/built/',
 };
 
 async function loadMap(shell, id, loading, options) {

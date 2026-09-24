@@ -63,6 +63,12 @@ export const STYLE_DIMS = {
     warehouse: { width: 26, depth: 18, floors: 2 },
     shop: { width: 8, depth: 11, floors: 3 },
   },
+  /* A footbridge is a walkway over a lane, not a road bridge with the
+   * sides pulled in: narrower, a shorter span, and no middle pier. */
+  bridge: {
+    road: { span: 24, width: 8, height: 6, piers: 1 },
+    footbridge: { span: 18, width: 2.6, height: 5.6, piers: 0 },
+  },
 };
 
 export function styleDims(type, style) {
@@ -177,8 +183,12 @@ export const PROP_TYPES = {
     turns: 'quarter',
     styles: SCAFFOLD_STYLES,
     note: 'Tube and board, a lift every two metres. Between the boards is a tunnel the length of it.',
-    dims: { width: 10, height: 10, depth: 1.3 },
-    limits: { width: [2.5, 40, M], height: [2, 40, M], depth: [1, 2.5, M] },
+    /* 1.55 m is the shallowest src/props/industrial.js builds
+     * (SCAFFOLD_MIN_DEPTH): anything less leaves the tunnel between the
+     * boards under the gap rule. A default or a limit under it offered a
+     * size the asset silently refused. */
+    dims: { width: 10, height: 10, depth: 1.55 },
+    limits: { width: [2.5, 40, M], height: [2, 40, M], depth: [1.55, 2.5, M] },
     labels: { width: 'Length', height: 'Height', depth: 'Depth' },
   },
   bridge: {
@@ -357,32 +367,85 @@ export function gapPointsOf(value) {
 }
 
 /*
- * How tall an asset stands, roughly, for the builder: the 3D view's height
- * drag and the inspector's readout. Not a physics number; the solids are
- * the truth and src/props/catalog.js can measure them exactly.
+ * HOW TALL AN ASSET STANDS, for the builder: the 3D view's height drag and
+ * the inspector's readout. Not a physics number (the solids are the truth,
+ * and src/props/catalog.js can measure them exactly), but it must NEVER come
+ * out under what is drawn: the drag's handle would sit inside the roof, and
+ * the readout would promise air over a sign that is not there. A little
+ * over costs nothing.
+ *
+ * So every number here is measured rather than guessed, the top of every
+ * part (partsOf, in Node) and of the drawn batches (the gallery, in the
+ * browser) over each asset's limits, and each formula sits at or above the
+ * worst of the two. The comment on a line says what reaches that high.
+ *
+ * Buildings: the ground storey, every storey over it, and the most the
+ * roof carries over the last one. The storeys are src/props/buildings.js's
+ * own table and must move with it.
  */
-const FLOOR_H = { flats: 2.9, office: 3.6, warehouse: 5.0, shop: 3.0 };
+const BUILDING_H = {
+  flats: { g: 2.9, fh: 2.9, roof: 3.6 }, /* the aerial, to 3.54 over the roof */
+  office: { g: 4.2, fh: 3.6, roof: 5.75 }, /* the rooftop sign on its legs, 5.7 */
+  warehouse: { g: 5.0, fh: 5.0, roof: 1.3 }, /* the ventilators, drawn to 1.23 */
+  shop: { g: 3.4, fh: 2.9, roof: 3.1 }, /* the aerial, 3.04 */
+};
+/* A parked car's roof, from the town's table; what the town's builder
+ * draws on top reaches up to 7 cm over it. */
 const CAR_H = { kei: 1.7, keivan: 1.88, hatch: 1.52, sedan: 1.44, wagon: 1.54, minivan: 1.8, van: 1.98, boxtruck: 2.46, minibus: 2.6 };
+/*
+ * A tree's top per unit of size, over EVERY seed, because this is not told
+ * which tree it is. These are the layouts' own bounds, every random draw at
+ * its top at once (src/props/street.js): a cherry's trunk, limb, fork, the
+ * blossom's lift and its radius, 2.8 + 2.0 + 1.82 + 0.95 + 0.73; a street
+ * tree's 4.14 + 1.76 + 1.5 + 0.9; a pine's tallest tier 1.224 times its
+ * 12.51 m. Sampled trees stand at 5 to 7.5 and 9 to 12.9, so the readout is
+ * generous for most of them and short for none.
+ */
+const TREE_H = { sakura: 8.35, street: 8.35, pine: 15.35 };
 
 export function approxHeight(type, dims, style) {
   const d = dims || {};
   switch (type) {
-    case 'building': return (d.floors ?? 1) * (FLOOR_H[style] ?? 3) + 1;
-    case 'bando': return (d.floors ?? 1) * 3.4 + 1.2;
-    case 'crane': return (d.height ?? 30) + 7.6;
-    case 'waterTower': return (d.height ?? 16) + 2 * (d.radius ?? 3) + (d.tank ?? 0) + 1.2;
-    case 'mast': return (d.height ?? 30) + 3;
-    case 'chimney': case 'pylon': case 'utilityPole': return d.height ?? 10;
-    case 'containers': return (d.stack ?? 1) * 2.591;
-    case 'scaffold': return (d.height ?? 10) + 1;
-    case 'bridge': return (d.height ?? 6) + (style === 'footbridge' ? 1.2 : 7.2);
-    case 'billboard': return (d.lift ?? 5) + (d.height ?? 3) + 0.6;
-    case 'lamp': return (d.height ?? 7) + 0.3;
-    case 'vending': return 1.95;
-    case 'car': return CAR_H[style] ?? 1.7;
-    case 'rail': case 'ledge': case 'quarterPipe': case 'gap': return d.height ?? 1;
-    case 'stairs': return (d.steps ?? 7) * 0.17 + 0.9;
-    case 'tree': return (style === 'pine' ? 9 : 5.2) * (d.size ?? 1);
+    case 'building': {
+      const b = BUILDING_H[style] ?? BUILDING_H.flats;
+      return b.g + (Math.max(1, d.floors ?? 1) - 1) * b.fh + b.roof;
+    }
+    /* The rooftop sign over the stair core, 4.4 over the top slab. */
+    case 'bando': return (d.floors ?? 1) * 3.4 + 4.5;
+    /* The cathead and its pendants, 7.35 over the mast, drawn to 8.2. */
+    case 'crane': return (d.height ?? 30) + 8.3;
+    /* The finial over the vent, drawn 1.23 over the tank's top. */
+    case 'waterTower': return (d.height ?? 16) + 2 * (d.radius ?? 3.6) + (d.tank ?? 0) + 1.3;
+    /* The lightning rod, 3.05 over the lattice, drawn to 3.19. */
+    case 'mast': return (d.height ?? 32) + 3.3;
+    /* The corbel and the flue, drawn 0.9 over the brick. */
+    case 'chimney': return (d.height ?? 24) + 1;
+    /* The peak's capsule, 0.25 over the lattice. */
+    case 'pylon': return (d.height ?? 28) + 0.3;
+    /* Drawn 5 cm over the pole's height. */
+    case 'utilityPole': return (d.height ?? 10) + 0.1;
+    /* Drawn 2 cm over the top box. */
+    case 'containers': return (d.stack ?? 1) * 2.591 + 0.05;
+    /* The standards, which run on past the top lift as its guard rail's
+     * posts: 1.03, drawn to 1.05. */
+    case 'scaffold': return (d.height ?? 10) + 1.1;
+    /* The road bridge's gantry sign, to 7.65 over the deck; a footbridge's
+     * sign, 1.25. */
+    case 'bridge': return (d.height ?? 6) + (style === 'footbridge' ? 1.3 : 7.7);
+    /* The lamps over the board, 0.63. */
+    case 'billboard': return (d.lift ?? 5) + (d.height ?? 3.2) + 0.7;
+    /* The head, drawn to 0.41 over the height. */
+    case 'lamp': return (d.height ?? 7) + 0.45;
+    /* The town's machine, drawn to 2.04 with its header. */
+    case 'vending': return 2.05;
+    case 'car': return (CAR_H[style] ?? CAR_H.kei) + 0.1;
+    /* The rail's bar, the ledge's edge and the pipe's coping, drawn up to
+     * 3.5 cm over the height. */
+    case 'rail': case 'ledge': case 'quarterPipe': return (d.height ?? 1) + 0.05;
+    case 'gap': return d.height ?? 1;
+    /* The hand rail, 0.88 over the top step. */
+    case 'stairs': return (d.steps ?? 7) * 0.17 + 0.95;
+    case 'tree': return (TREE_H[style] ?? TREE_H.sakura) * (d.size ?? 1);
     default: return 1;
   }
 }

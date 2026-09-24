@@ -1351,10 +1351,10 @@ export function billboardDraw(el, parts, K) {
  * and a wrapped 電柱広告, and the yellow and black sleeve at its foot.
  *
  * The wires run from its insulator tops to the nearest other pole, drawn by
- * the map (src/maps/built/index.js, wireAnchors): the tops are at h - 0.25
- * over z = -0.8, 0, 0.8 and at h - 1.38 over z = +-0.6, and they must stay
- * there. The wires are not solid; the pole, the arms, the insulators and
- * the cans are.
+ * the map (src/maps/built/index.js, wireAnchors), which asks
+ * poleWireAnchors below where the tops are: h - 0.25 over z = -0.8, 0, 0.8
+ * and h - 1.38 over z = +-0.6. The wires are not solid; the pole, the arms,
+ * the insulators and the cans are.
  * ------------------------------------------------------------------ */
 
 const POLE_R0 = 0.19;
@@ -1369,9 +1369,9 @@ const POLE_ARMS = [
 
 /*
  * Where the wires leave a pole, in its own frame, grouped by crossarm: the
- * insulator tops. src/maps/built/index.js restates these numbers in its
- * wireAnchors(); reading them from here instead means a change to the arms
- * cannot leave the wires hanging off air.
+ * insulator tops. src/maps/built/index.js's wireAnchors() reads them from
+ * here rather than keeping its own copy, so a change to the arms cannot
+ * leave the wires hanging off air.
  */
 export function poleWireAnchors(el) {
   const h = dim(el, 'height', 10, 5, 16);

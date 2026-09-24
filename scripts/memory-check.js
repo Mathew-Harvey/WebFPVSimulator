@@ -82,6 +82,50 @@ function underMap(urls, id) {
   return urls.filter((u) => u.includes(`/src/maps/${id}/`));
 }
 
+/*
+ * WHAT ONE WORLD MAY TAKE FROM ANOTHER, BY DESIGN, AND NOTHING MORE.
+ *
+ * Your map is drawn in the town's style on purpose (FREESTYLE-MAPS-PLAN.md):
+ * src/props/kit.js makes every material with the town's cel kit, and draws
+ * the town's own cars and vending machines with the town's own builders,
+ * rather than keeping a second copy of either that would drift. So choosing
+ * it fetches these modules from under src/maps/city, and that is the whole
+ * of what it may fetch there. The list is exact rather than a prefix, so a
+ * props file that one day imports the town's index, or a vendored builder
+ * that grows an import, fails here instead of quietly putting the town on a
+ * yard's load.
+ */
+const BORROWS = {
+  built: {
+    city: [
+      'vendored/core/palette.js',
+      'vendored/core/post.js',
+      'vendored/core/sky.js',
+      'vendored/core/textures.js',
+      'vendored/core/toon.js',
+      'vendored/core/util.js',
+      'vendored/core/outline.js',
+      'vendored/world/vehicles.js',
+      'vendored/world/vending.js',
+      /* Not the kit's: vehicles.js imports its kei truck from here. */
+      'vendored/world/props.js',
+      /* And props.js takes its kerb and footway numbers from street.js,
+       * which takes its trench from landform.js. */
+      'vendored/world/street.js',
+      'vendored/world/landform.js',
+    ],
+  },
+};
+
+/* The URLs under another world that this one is not allowed to have. */
+function bleedOf(urls, id, other) {
+  const allowed = (BORROWS[id] && BORROWS[id][other]) || [];
+  return underMap(urls, other).filter((u) => {
+    const path = u.split(/[?#]/)[0];
+    return !allowed.some((a) => path.endsWith(`/src/maps/${other}/${a}`));
+  });
+}
+
 function parseArgs(argv) {
   const opts = { maps: HEAVY };
   for (const a of argv) {
@@ -127,8 +171,12 @@ async function main() {
       `${base.textures} textures, ${bootUrls.length} requests`,
     );
 
-    /* Half one. Nothing heavy may be on the wire before it is chosen. */
-    for (const id of HEAVY) {
+    /* Half one. Nothing heavy may be on the wire before it is chosen, and
+     * neither may a map this run was asked about, which is how a lighter
+     * world like Your map gets the same laziness check as the town. The
+     * field is the one map that is meant to be there at boot. */
+    const lazy = [...new Set([...HEAVY, ...opts.maps])].filter((id) => id !== 'custom');
+    for (const id of lazy) {
       const hits = underMap(bootUrls, id);
       if (hits.length) {
         failures.push(
@@ -137,7 +185,7 @@ async function main() {
       }
     }
     if (!failures.length) {
-      console.log(`none of ${HEAVY.join(', ')} fetched at boot`);
+      console.log(`none of ${lazy.join(', ')} fetched at boot`);
     }
 
     /* Half two, per map: choosing it fetches its graph and nobody else's,
@@ -167,7 +215,7 @@ async function main() {
         if (other === id) {
           continue;
         }
-        const bleed = underMap(afterUrls, other);
+        const bleed = bleedOf(afterUrls, id, other);
         if (bleed.length) {
           failures.push(`${id}: pulled in ${bleed.length} ${other} module(s), first ${bleed[0]}`);
         }

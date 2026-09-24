@@ -239,9 +239,12 @@ function slugOf(doc) {
     .slice(0, 60) || 'track';
 }
 
-/* A filename that is recognisably the track and is safe on every platform. */
+/* A filename that is recognisably the track and is safe on every platform.
+ * A freestyle map says so in its name: the two are the same format, and a
+ * folder holding both should not need each file opened to tell a map to fly
+ * round from a course to race. */
 export function exportFilename(doc) {
-  return `${slugOf(doc)}.track.json`;
+  return `${slugOf(doc)}.${docModeOf(doc) === 'freestyle' ? 'map' : 'track'}.json`;
 }
 
 export function animationFilename(doc) {

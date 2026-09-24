@@ -67,31 +67,26 @@ const SPEC = {
   concreteDark: { c: PAL.concreteDark, tint: 0x655d84 },
   /* the bando: weathered, warmer, and a block infill that is not render */
   concreteWorn: { c: 0xbdb6bb, tint: 0x655d84 }, slab: { c: 0xc8c2c8, tint: 0x655d84 },
-  block: { c: 0xc2b8ae, tint: 0x6a6288 }, blockDark: { c: 0xa69c95, tint: 0x5f5880 },
-  rubble: { c: 0xa19a93, tint: 0x5f5880 },
+  block: { c: 0xc2b8ae, tint: 0x6a6288 }, rubble: { c: 0xa19a93, tint: 0x5f5880 },
   /* sheet metal, three colours, and a darker rib for each */
   sheet: { c: 0xb2b0aa, tint: 0x64607f }, sheetRib: { c: 0x929089, tint: 0x5a5678 },
   sheetBlue: { c: 0xa4b8c8, tint: 0x64607f }, sheetBlueRib: { c: 0x8298aa, tint: 0x5a5678 },
   sheetGreen: { c: 0xadc0a8, tint: 0x64607f }, sheetGreenRib: { c: 0x8ca487, tint: 0x5a5678 },
-  trim: { c: PAL.trim, tint: TD }, band: { c: 0xcfc9d3 }, balcony: { c: PAL.wallWhite },
+  trim: { c: PAL.trim, tint: TD }, band: { c: 0xcfc9d3 },
   acUnit: { c: 0xe6e3dc }, awning: { c: PAL.redSoft }, tank: { c: 0xdfe7ec }, tankSeam: { c: 0xb4c1ca },
-  door: { c: 0x8f98ab, tint: TD },
   metal: { c: PAL.metal, tint: 0x666090 }, metalDark: { c: PAL.metalDark, tint: TD },
-  rust: { c: 0xa87a5e, tint: 0x6a5a80 }, rustDeep: { c: 0x8a5c46, tint: 0x5f4f74 },
-  brick: { c: 0x9c6c54, tint: 0x62527a }, soot: { c: 0x4c4454, tint: 0x3f3a50 },
+  rustDeep: { c: 0x8a5c46, tint: 0x5f4f74 }, brick: { c: 0x9c6c54, tint: 0x62527a },
   shutter: { c: PAL.shutter, tint: TD }, shutterLight: { c: PAL.shutterLight, tint: TD },
-  yellow: { c: PAL.yellow, tint: 0x7a6a78 },
   /* glass and light */
-  glass: { f: PAL.glass, noCast: true }, glassDark: { f: PAL.glassDark, noCast: true },
+  glassDark: { f: PAL.glassDark, noCast: true },
   glassBlue: { f: 0x86abc9, noCast: true }, glassLit: { f: 0xffe4ad, noCast: true },
-  glassShop: { f: 0xc0d9e2, noCast: true },
   curtainPink: { f: 0xf2c9d2, noCast: true }, curtainBlue: { f: 0xc2d5ea, noCast: true },
   curtainCream: { f: 0xf4e7cb, noCast: true }, curtainGreen: { f: 0xd0e3cd, noCast: true },
   lampGlow: { f: 0xfff4d8, noCast: true }, lampRed: { f: 0xff5145, noCast: true },
   lampHead: { c: 0x5e5c68, tint: TD },
   /* industrial */
   craneYellow: { c: 0xf2bd34, tint: 0x7d6a74 }, craneYellowDeep: { c: 0xd89c22, tint: 0x6d5a70 },
-  white: { c: 0xf4f2f0 }, rope: { c: 0x3d3a45, tint: 0x4b4560 }, hook: { c: PAL.yellow },
+  white: { c: 0xf4f2f0 }, rope: { c: 0x3d3a45, tint: 0x4b4560 },
   towerSteel: { c: 0xa3b6c0, tint: 0x646080 }, rod: { c: 0x828e97, tint: 0x5c5680 },
   tankPaint: { c: 0xe8eef3, tint: 0x7d74a0 }, grating: { c: 0x7a8390, tint: TD },
   mastRed: { c: 0xe0453f, tint: 0x7a4a6a }, mastWhite: { c: 0xf4f2f6, tint: 0x7d74a0 },
@@ -104,36 +99,28 @@ const SPEC = {
   containerTeal: { c: 0x2f918e, tint: 0x3f5a70 }, containerTealRib: { c: 0x277a77, tint: 0x344d66 },
   containerGrey: { c: 0x8e919b, tint: 0x5a5678 }, containerGreyRib: { c: 0x767983, tint: 0x4d4a6c },
   containerWhite: { c: 0xe7e5df }, containerWhiteRib: { c: 0xc9c6bf, tint: TD },
-  cornerCasting: { c: 0x4a4552, tint: 0x3f3a50 }, containerInside: { f: 0x34303f },
+  cornerCasting: { c: 0x4a4552, tint: 0x3f3a50 },
   scaffold: { c: 0x93a3b2, tint: 0x5f5c80 }, plywood: { c: 0xc9a676, tint: 0x6f5f7a },
   toeBoard: { c: 0xb58f5c, tint: 0x6a5a78 },
   net: { net: true },
   hazard: { stripes: true },
   /* street */
   bridgeSteel: { c: 0xa2cdb8, tint: 0x5f6a86 }, bridgeSteelDark: { c: 0x7ea796, tint: 0x55607e },
-  bridgeDeck: { c: 0x8f8b9d, tint: 0x5f5880 }, asphalt: { c: PAL.road, tint: 0x6a608f },
+  asphalt: { c: PAL.road, tint: 0x6a608f },
   lineWhite: { f: PAL.lineWhite, noCast: true },
   billboardSteel: { c: 0x8c94a1, tint: TD }, billboardSteelDark: { c: 0x6c7381, tint: 0x4d4a6c },
-  poleConcrete: { c: 0xd8d5da }, transformer: { c: 0x9ca6b0, tint: TD }, lampPost: { c: 0x6c7381, tint: TD },
   trunk: { c: PAL.trunk, tint: 0x8a7290 },
-  /* the town's canopy tones, and its high key ramp for blossom */
+  /* the town's canopy tones: the cherry's blossom on the high key ramp,
+   * and two leaf greens for the flower boxes. The street tree and the pine
+   * carry their own greens in src/props/street.js. */
   blossom0: { c: PAL.blossomLight, bands: 'soft', tint: 0xe2c3d2, noReceive: true },
   blossom1: { c: PAL.blossom, bands: 'soft', tint: 0xd8b2c6, noReceive: true },
   blossom2: { c: PAL.blossomDeep, bands: 'soft', tint: 0xc99cba, noReceive: true },
   leaf0: { c: 0x8cb884, tint: 0x5f7390, noReceive: true },
   leaf1: { c: 0x5f9470, tint: 0x4f6488, noReceive: true },
-  leaf2: { c: 0x4f8566, tint: 0x465a80, noReceive: true },
-  pine0: { c: 0x4f7e62, tint: 0x465a80 }, pine1: { c: PAL.cedar, tint: 0x3f4d70 }, pine2: { c: 0x355c47, tint: 0x3a4568 },
-  /* skate */
-  railSteel: { c: 0xaab3bd, tint: 0x646080 }, ledge: { c: 0xc9c3c9 }, coping: { c: 0x7c8591, tint: TD },
-  wax: { c: 0xa39ca6, tint: TD }, stairConcrete: { c: 0xd3ced5 }, nosing: { c: 0x6d687a, tint: TD },
-  rampDeck: { c: 0xc9a676, tint: 0x6f5f7a }, rampFace: { c: 0xdac9a6, tint: 0x7a6a86 },
-  rampSeam: { c: 0xb39a70, tint: 0x6a5a7a }, rampSide: { c: 0x6f7d8d, tint: 0x4d4a6c },
-  /* course furniture */
-  gatePipe: { c: 0xf2f0ee, tint: 0x7d74a0 }, flagMast: { c: 0x9aa0a8, tint: TD },
-  cone: { c: 0xe8702a, tint: 0x7a5068 }, poleRed: { c: 0xc0392b, tint: 0x6a3a5a },
-  startWood: { c: 0xa47c52, tint: 0x6a5a78 }, startFoam: { c: 0x3d3a45, tint: 0x4b4560 },
-  startLip: { c: 0xe0453f, tint: 0x6a3a5a }, panelEdge: { c: 0x3d4461, tint: 0x3f3a50 },
+  /* course furniture: the pennant's mast and the printed panels' edge,
+   * which K.pennant and K.panel name; the rest is src/props/course.js's */
+  flagMast: { c: 0x9aa0a8, tint: TD }, panelEdge: { c: 0x3d4461, tint: 0x3f3a50 },
 };
 
 /* The families' own colours join the table; a name in both is a mistake. */
@@ -239,12 +226,35 @@ function texMat(key, make) {
   return m;
 }
 
-function signMat(key, variant) {
+/*
+ * A painted key at a variant: a family's own painter (FAMILY_PAINTERS in
+ * ./catalog.js) or one of ./textures.js's, the variant wrapped to the looks
+ * the key has. One place, so a sign and a wrap of the same key and variant
+ * are the same texture and the same material.
+ */
+function painted(key, variant) {
   const fam = FAMILY_PAINTERS[key];
-  const wrap = fam ? (fam.variants ?? 1) : PT.SIGN_VARIANTS[key];
-  const v = wrap ? Math.abs(Math.round(variant)) % wrap : Math.abs(Math.round(variant));
-  const paint = fam ? () => fam.paint(v) : () => PT.sign(key, v);
-  return texMat(`sign:${key}:${v}`, () => flat({ color: 0xffffff, map: texture(paint()), alphaTest: 0.4, cache: false }));
+  const looks = fam ? (fam.variants ?? 1) : PT.SIGN_VARIANTS[key];
+  const n = Math.abs(Math.round(Number(variant) || 0));
+  const v = looks ? n % looks : n;
+  return {
+    v,
+    lit: Boolean(fam && fam.lit),
+    paint: fam ? () => fam.paint(v) : () => PT.sign(key, v),
+  };
+}
+
+/*
+ * A sign is flat by default, the way the town draws a lit plate: it keeps
+ * its colours in shadow. A family painter that sets `lit` asks for a painted
+ * surface instead, cel shaded with the standard tint like the wall it is
+ * painted on, for a mural or a stencil that should go dark with the wall.
+ */
+function signMat(key, variant) {
+  const p = painted(key, variant);
+  return texMat(`sign:${key}:${p.v}`, () => (p.lit
+    ? cel({ color: 0xffffff, map: texture(p.paint()), bands: 3, tint: T, alphaTest: 0.4, cache: false })
+    : flat({ color: 0xffffff, map: texture(p.paint()), alphaTest: 0.4, cache: false })));
 }
 
 function townMat(fn, arg) {
@@ -256,12 +266,92 @@ function bannerMat(key) {
     if (key === 'barrierVinyl') {
       return cel({ color: 0xffffff, map: texture(PT.barrierVinyl()), bands: 3, tint: T, cache: false });
     }
-    const size = key === 'gateHeader' ? BANNER_SIZE.header : BANNER_SIZE.sleeve;
+    const header = key === 'gateHeader';
+    const size = header ? BANNER_SIZE.header : BANNER_SIZE.sleeve;
     const c = bannerCanvas(size[0], size[1]);
     const g = c.getContext('2d');
-    (key === 'gateHeader' ? paintGateHeader : paintGateSleeve)(g, size[0], size[1], {});
+    if (header) {
+      paintGateHeader(g, size[0], size[1], {});
+    } else {
+      /* gateSleeveFlip is the far leg's sleeve: the design mirrored in the
+       * paint, so the chequer runs down the outside of both legs. See
+       * paintGateSleeve for why it is not a negative scale on the mesh. */
+      paintGateSleeve(g, size[0], size[1], { flip: key === 'gateSleeveFlip' });
+    }
     return cel({ color: 0xffffff, map: texture(c), bands: 3, tint: T, cache: false });
   });
+}
+
+/* ------------------------------------------------------------------ *
+ * The town's own materials, as K.town folds them in.
+ * ------------------------------------------------------------------ */
+
+/* A colour as an exact key, not rounded to eight bits a channel. */
+const colKey = (c) => (c ? `${c.r},${c.g},${c.b}` : '-');
+
+/*
+ * WHAT A TOWN MATERIAL DRAWS, AS A STRING.
+ *
+ * The kit batches by material, and the town's builders make some of theirs
+ * fresh on every call: the vending machine's drinks, its glass, the
+ * highlight on the glass, and every printed plate on it (the town's cel and
+ * flat never cache a mapped material, and the rest ask for cache: false).
+ * Batched by uuid, every machine brought a new batch of each, so two
+ * machines cost more draw calls than one. Two materials with the same
+ * signature draw the same pixels, so the first one met stands for all of
+ * them. Everything that picks the program or feeds its uniforms is in it:
+ * the type, the colour, the map, the cel ramp (which is the bands), alpha
+ * and blending, faces, depth, vertex colours, emission, fog, and the town's
+ * shadow tint.
+ */
+function townSignature(m) {
+  return [
+    m.type, colKey(m.color), m.map ? m.map.uuid : '-', m.gradientMap ? m.gradientMap.uuid : '-',
+    m.alphaMap ? m.alphaMap.uuid : '-', m.transparent, m.opacity, m.alphaTest, m.blending, m.side,
+    m.depthWrite, m.depthTest, m.vertexColors, colKey(m.emissive), m.emissiveIntensity ?? '-',
+    m.fog, m.toneMapped, m.userData.shadowTint ? colKey(m.userData.shadowTint.value) : '-',
+  ].join('|');
+}
+
+const TOWN_MATS = new Map();
+function townMaterial(m) {
+  const sig = townSignature(m);
+  const first = TOWN_MATS.get(sig);
+  if (first) {
+    return first;
+  }
+  TOWN_MATS.set(sig, m);
+  return m;
+}
+
+/*
+ * A town material with one instance's colour multiplied in: what three.js
+ * does with an InstancedMesh's instanceColor, and what a batch, which has no
+ * instances, cannot. Dropping the colour left every bottle in a vending
+ * machine white. Made once per material and colour, so a street of
+ * machines is a dozen drink batches and not a dozen per machine.
+ *
+ * clone() copies a material's parameters and none of the town's shadow
+ * tint, which is an onBeforeCompile hook, a program cache key and a uniform
+ * kept in userData; Material.copy does not carry the first two and passes
+ * userData through JSON, which does not keep a uniform. A clone without
+ * them shades its dark side grey where every other cel surface goes violet,
+ * so all three are carried over, the uniform shared rather than copied.
+ */
+const TINTS = new Map();
+function tintedMaterial(src, c) {
+  const key = `${src.uuid}|${colKey(c)}`;
+  let m = TINTS.get(key);
+  if (!m) {
+    m = src.clone();
+    m.color.multiply(c);
+    m.onBeforeCompile = src.onBeforeCompile;
+    m.customProgramCacheKey = src.customProgramCacheKey;
+    m.userData = { ...src.userData };
+    OWNED.add(m);
+    TINTS.set(key, m);
+  }
+  return m;
 }
 
 /* ------------------------------------------------------------------ *
@@ -291,8 +381,12 @@ const _s = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const _dir = new THREE.Vector3();
 
-/* A matrix that takes a Y axis cylinder of height 1 onto a to b. */
-function alongMatrix(a, b, sx, sz, out) {
+/*
+ * A matrix that takes a Y axis cylinder of height 1 onto a to b. With
+ * `stretch` false it only turns and moves, for a shape already built at the
+ * length it needs.
+ */
+function alongMatrix(a, b, sx, sz, out, stretch = true) {
   _dir.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
   const len = _dir.length();
   if (len < 1e-6) {
@@ -301,7 +395,7 @@ function alongMatrix(a, b, sx, sz, out) {
   _dir.divideScalar(len);
   _q.setFromUnitVectors(_up, _dir);
   _v.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
-  _s.set(sx, len, sz);
+  _s.set(sx, stretch ? len : 1, sz);
   return out.compose(_v, _q, _s);
 }
 
@@ -389,6 +483,14 @@ export class PropKit {
     }
   }
 
+  /*
+   * The whole rounded shape of a solid capsule: its axis a to b, r round it
+   * and r past each end. CapsuleGeometry is built at that size already, its
+   * straight part `len` long, so it is turned onto the axis and never
+   * stretched. Stretched by alongMatrix as a unit cylinder is, every one was
+   * drawn len times its own height: a 0.45 m ventilator came out squashed to
+   * 0.47 m tall where its solid is 1.05 m.
+   */
   capsule(mat, a, b, r, seg = 12) {
     _dir.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
     const len = _dir.length();
@@ -397,7 +499,7 @@ export class PropKit {
       return;
     }
     const g = new THREE.CapsuleGeometry(r, len, 4, seg);
-    this.add(mat, g, alongMatrix(a, b, 1, 1, new THREE.Matrix4()));
+    this.add(mat, g, alongMatrix(a, b, 1, 1, new THREE.Matrix4(), false));
   }
 
   ball(mat, c, r) {
@@ -501,8 +603,12 @@ export class PropKit {
     this.add(material, g, m);
   }
 
+  /* A painted plate on a face. Under a centimetre either way it is dropped,
+   * which is below anything a pilot could read; the floor was five
+   * centimetres, and a narrow strip a family asked for vanished without a
+   * word. */
   sign(key, x, y, z, w, h, face, variant = 0) {
-    if (!(w > 0.05 && h > 0.05)) {
+    if (!(w > 0.01 && h > 0.01)) {
       return;
     }
     this.plane(signMat(key, variant), x, y, z, w, h, face);
@@ -536,10 +642,21 @@ export class PropKit {
     this.plane(mat, x, y, z, r * 2, r * 2, '+y');
   }
 
-  /* An advert or a painted band round a cylinder. */
-  wrap(key, c, r, h) {
-    const mat = texMat(`wrap:${key}`, () => cel({ color: 0xffffff, map: texture(PT.sign(key, 0)), bands: 3, tint: T, cache: false }));
-    const g = new THREE.CylinderGeometry(r, r, h, 40, 1, true);
+  /*
+   * An advert or a painted band round a cylinder: `key` is a ./textures.js
+   * painter or a family's, at `variant`, on an open cylinder of radius r and
+   * height h centred on c. `start` and `arc` are CylinderGeometry's
+   * thetaStart and thetaLength, in radians, for a band that only goes part
+   * of the way round (a name facing one way, a label on the front of a
+   * tank); the whole texture is stretched over the arc. The default is all
+   * the way round, which is what wrap(key, c, r, h) always drew.
+   */
+  wrap(key, c, r, h, variant = 0, start = 0, arc = Math.PI * 2) {
+    const p = painted(key, variant);
+    const mat = texMat(`wrap:${key}:${p.v}`, () => cel({ color: 0xffffff, map: texture(p.paint()), bands: 3, tint: T, cache: false }));
+    /* Forty segments round a whole turn, and as many per radian for less. */
+    const seg = Math.max(6, Math.ceil((40 * arc) / (Math.PI * 2)));
+    const g = new THREE.CylinderGeometry(r, r, h, seg, 1, true, start, arc);
     g.translate(c[0], c[1], c[2]);
     this.add(mat, g);
   }
@@ -577,8 +694,8 @@ export class PropKit {
 
   /*
    * Something the vendored town builds: its meshes, folded into these
-   * batches at their own materials, turned by `ry` and placed at `pos` in
-   * the element's frame.
+   * batches at their own materials (by signature, see townMaterial), turned
+   * by `ry` and placed at `pos` in the element's frame.
    */
   town(kind, opts, pos, ry) {
     let obj;
@@ -592,27 +709,44 @@ export class PropKit {
     obj.rotation.y = ry;
     obj.position.set(pos[0], pos[1], pos[2]);
     obj.updateMatrixWorld(true);
-    obj.traverse((o) => {
+    /*
+     * Only what the town would draw. traverseVisible never enters a hidden
+     * object: the vending machine keeps its interaction hitbox as a red box
+     * it never shows, and its dispensed can hidden until somebody buys a
+     * drink, and folded into a batch both were drawn, so every machine was
+     * a red block. The ink shells hullOutline hangs on a mesh are left out
+     * as well: they are ShaderMaterials the town's outline pass sizes to the
+     * screen every frame, not paint, and a batch baked in world space is not
+     * something they can be.
+     */
+    const tint = new THREE.Color();
+    obj.traverseVisible((o) => {
       if (!o.isMesh || !o.geometry) {
         return;
       }
       const mats = Array.isArray(o.material) ? o.material : [o.material];
-      if (mats.length !== 1) {
+      if (mats.length !== 1 || mats[0].isShaderMaterial) {
         return;
       }
-      if (mats[0].userData.propCast === undefined) {
-        mats[0].userData.propCast = o.castShadow !== false;
-        mats[0].userData.propReceive = o.receiveShadow !== false;
+      const mat = townMaterial(mats[0]);
+      if (mat.userData.propCast === undefined) {
+        mat.userData.propCast = o.castShadow !== false;
+        mat.userData.propReceive = o.receiveShadow !== false;
       }
       if (o.isInstancedMesh) {
         const im = new THREE.Matrix4();
         for (let i = 0; i < o.count; i += 1) {
           o.getMatrixAt(i, im);
-          this.add(mats[0], o.geometry, new THREE.Matrix4().multiplyMatrices(o.matrixWorld, im));
+          let m = mat;
+          if (o.instanceColor) {
+            o.getColorAt(i, tint);
+            m = tintedMaterial(mat, tint);
+          }
+          this.add(m, o.geometry, new THREE.Matrix4().multiplyMatrices(o.matrixWorld, im));
         }
         return;
       }
-      this.add(mats[0], o.geometry, o.matrixWorld.clone());
+      this.add(mat, o.geometry, o.matrixWorld.clone());
     });
     this.counts.town += 1;
   }

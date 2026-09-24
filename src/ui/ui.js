@@ -2778,12 +2778,12 @@ const WAYS = [
      * pilot asks for them. See DEFAULTS.freestyleScoring. The aircraft is
      * named because this card seats one: the town is five hundred metres
      * across and it is the five inch's. */
-    blurb: 'A whole town to fly around on the five inch. Roofs, alleys, a level crossing, a works, a municipal pool and a training field. No clock, no gates, and scoring is a switch inside.',
+    blurb: 'The whole town on the five inch, or a map you build yourself. Roofs, alleys and a level crossing, or cranes and bandos wherever you put them. No clock, no gates, and scoring is a switch inside.',
     /* The mode's three, not the machine's, and the machine is on the card
      * anyway: the plan mark over the picture is the five inch's. Three
      * words that fit one line on a landscape phone, where the blurb is
      * hidden and these are the whole of the card. */
-    facts: ['No gates', 'No clock', 'One town'],
+    facts: ['No gates', 'No clock', 'Build a map'],
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
@@ -3521,7 +3521,7 @@ export class Ui {
      * behind the door has to describe the door that is actually open: the
      * town and the quad, with the scoring named as a switch rather than as
      * the point. See DEFAULTS.freestyleScoring. */
-    freestyle.append(el('p', 'rates-lede', 'A whole town and no gates. Fly it, and this is where the machine you fly it on lives. Scoring is the switch below and it starts off, because the part that names what you flew is still being built.'));
+    freestyle.append(el('p', 'rates-lede', 'The whole town, or a map of your own from the track builder, and no gates in either. Fly one, and this is where the machine you fly it on lives. Scoring is the switch below and it starts off, because the part that names what you flew is still being built.'));
     this.freestyleCards = el('div', 'map-cards');
     const freestyleBlock = wrapMenu();
     this.freestyleMenu = freestyleBlock.menu;
@@ -5399,19 +5399,21 @@ export class Ui {
       const world = seatedFreestyleMap(s);
       const modeRow = this.mode === 'freestyle'
         ? {
-          label: 'The town',
+          label: 'Map',
           value: world ? world.name : 'Not loaded',
           action: 'freestyle',
           /*
-           * Labelled for the ROOM rather than for the choice, because there
-           * is no longer a choice: the gate seats the only freestyle world
-           * and this row is the door to the quad and the physics model. It
-           * used to read "Map: Choose one", which sent a pilot into a
-           * picker with one option in it.
+           * "Map" again, beside the world that is seated. From 30 August it
+           * read "The town", labelled for the room because there was no
+           * choice in it: one freestyle world, seated by the gate, and "Map:
+           * Choose one" had sent a pilot into a picker with one option. Your
+           * map made it a choice again (FREESTYLE-MAPS-PLAN.md, section 6),
+           * and "The town" over "Your map" named the one world that was not
+           * going to be flown.
            */
           note: world
             ? `${world.note} Your quad and the physics model are in here.`
-            : 'One town, no gates. Open it and fly.',
+            : 'The town, or a map of your own. No gates. Open it and fly.',
         }
         : {
           label: 'Track',

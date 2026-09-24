@@ -12,12 +12,13 @@
  * builder is one row away on the Freestyle screen.
  *
  * WHAT IS OURS AND WHAT IS THE TOWN'S. The look is the town's, reproduced
- * from src/maps/city/index.js rather than imported from it: the same fog,
- * the same four lights at the same offsets, the same painted sky and ridge
- * lines, the same post chain with the same shared renderer fixes. The assets
- * are src/props, drawn by src/props/kit.js in the town's cel materials. What
- * is this file's own is the ground (a paved yard, not a town), the wires
- * between poles and pylons, and the title camera's orbit.
+ * from src/maps/city/index.js rather than imported from it: the same fog
+ * colour, the same four lights at the same offsets, the same painted sky and
+ * ridge lines, the same post chain with the same shared renderer fixes. The
+ * assets are src/props, drawn by src/props/kit.js in the town's cel
+ * materials. What is this file's own is the ground (a paved yard, not a
+ * town), how far the fog lets a pilot see (see fogFor), the wires between
+ * poles and pylons, and the title camera's orbit.
  *
  * THE SOLIDS COME FROM ONE PLACE. src/maps/built/place.js places the
  * document and says what is solid; this file puts exactly that into a
@@ -64,6 +65,7 @@ import { docModeOf } from '../../trackbuilder/elements.js';
 import { PropKit, ownedPropMaterials } from '../../props/kit.js';
 import { addSolids } from '../../props/solids.js';
 import { planBounds } from '../../props/catalog.js';
+import { poleWireAnchors } from '../../props/street.js';
 import { sincos } from '../../props/trig.js';
 import { seededRandom } from '../../props/parts.js';
 import { paintGroundLogo } from '../../art/banners.js';
@@ -71,8 +73,66 @@ import { placeDocument } from './place.js';
 import { starterMap } from './starter.js';
 
 /* The town's far plane, for the town's reason: the sky dome and the ridge
- * lines live out past the fog. See CAMERA_FAR in src/maps/city/index.js. */
+ * lines live out past the fog. See CAMERA_FAR in src/maps/city/index.js.
+ * It is the least this map uses; a sky pushed out for a big plot takes the
+ * far plane with it. */
 const CAMERA_FAR = 900;
+
+/*
+ * THE BUILT MAP'S OWN FOG.
+ *
+ * The town's fog is the town's budget. It ends at 65 m on High and 46 on
+ * Low because a street of about twelve hundred draw calls cannot afford to
+ * be seen further, and it hides the chunks the cull switches off. A yard is
+ * a place a pilot reads from one end, and under the town's fog the far half
+ * of a 160 m plot was haze from the spawn and from the air. With the whole
+ * of the starter's plot in view it costs 350 to 540 draw calls on High and
+ * 120 to 400 on Low, shadow pass included (measured with __budget from the
+ * spawn and three cameras over the plot).
+ *
+ * So the fog is sized to the plot. It starts at FOG_NEAR and on High ends
+ * at 1.2 times the plot's diagonal, held between 180 m, so a small plot
+ * still has a horizon rather than a hard edge, and 420 m, inside the sky
+ * dome. three.js fades fog on a smoothstep, so on the starter's plot the
+ * far end, 160 m from the spawn, is about half fogged and reads, and only
+ * the far corner is lost in it. Medium and Low end it sooner: with the cull
+ * radius tied to the fog, a big plot's far chunks switch off sooner, and
+ * the triangles, the draw calls and the shadow casters go with them.
+ */
+const FOG_NEAR = { high: 50, medium: 45, low: 40 };
+/* Low was 0.7 first, 190 m on the starter's plot, and from 45 m up over
+ * one corner the far half of the yard was more fog than yard; 0.8 keeps it
+ * readable and the draw calls barely move, since the whole plot is inside
+ * the cull radius either way. */
+const FOG_REACH = { high: 1, medium: 0.9, low: 0.8 };
+const FOG_DIAGONALS = 1.2;
+const FOG_FAR_MIN = 180;
+const FOG_FAR_MAX = 420;
+
+/* The fog for a preset and a plot, { near, far } in metres. */
+function fogFor(qid, W, D) {
+  const reach = Math.min(FOG_FAR_MAX, Math.max(FOG_FAR_MIN, FOG_DIAGONALS * Math.hypot(W, D)));
+  return { near: FOG_NEAR[qid] ?? FOG_NEAR.high, far: reach * (FOG_REACH[qid] ?? 1) };
+}
+
+/*
+ * THE SHADOW BOX, as a share of the view.
+ *
+ * The town keeps a tight box round the craft (22 m on High), because its
+ * fog ends at 65 m and a shadow past that is never seen. Under a view of a
+ * few hundred metres that left everything more than 22 m off with no shadow
+ * at all, and a building with no shadow on a pale yard does not stand on
+ * it. A quarter of the fog's reach, never less than the town's box and never
+ * over 80 m, puts the shadows of what a pilot is flying at in the map: 68 m
+ * on High is 6.6 cm a texel at 2048, which still holds a lamp post's.
+ */
+const SHADOW_SHARE = 0.25;
+const SHADOW_HALF_MAX = 80;
+
+/* The ridge lines' nearer layer stands this far out (buildDistantHills),
+ * and a plot whose corner reaches it would put a painted hill in the yard. */
+const HILLS_NEAR = 250;
+const HILLS_FAR = 330 * 1.15;
 
 /*
  * The chunk the props are grouped into for culling, in metres.
@@ -447,11 +507,25 @@ function buildGround(placed, doc) {
     v.geometry.dispose();
   }
 
-  /* The terrain, out past the fog. */
+  /*
+   * The terrain, out past the fog.
+   *
+   * IN FORTY METRE CELLS, NOT ONE QUAD. Five centimetres under the paving,
+   * a two kilometre quad came out IN FRONT of it: from 3 m up on High at
+   * 1280 by 720 the whole yard, paint and all, was the terrain's beige
+   * (headless Chromium's software rasteriser; it was there before the fog
+   * moved, and the same frame at 960 by 540 was clean). Its two triangles
+   * are clipped by a near plane 0.2 m from the eye, and the depth across
+   * what is left of a triangle that size is the likely culprit: the same
+   * frame with the terrain hidden, dropped to -0.3 m, or cut into these
+   * cells shows the yard every time. Cells cost 5,000 triangles and no
+   * draw call.
+   */
   const TERRAIN = 2000;
+  const TERRAIN_CELLS = 50;
   const terrainTex = canvasTexture(terrainTexture(), TERRAIN / 40, TERRAIN / 40);
   const terrain = new THREE.Mesh(
-    new THREE.PlaneGeometry(TERRAIN, TERRAIN).rotateX(-Math.PI / 2),
+    new THREE.PlaneGeometry(TERRAIN, TERRAIN, TERRAIN_CELLS, TERRAIN_CELLS).rotateX(-Math.PI / 2),
     cel({ color: 0xffffff, map: terrainTex, bands: 3, tint: 0x7a7396, cache: false }),
   );
   terrain.position.y = -0.05;
@@ -622,16 +696,13 @@ function groundLogo(it, dataUrl) {
  * ------------------------------------------------------------------ */
 
 /* Where each wire leaves an element, in its own frame, grouped by the
- * wire it belongs to. Read off the layouts in src/props/street.js and
- * src/props/industrial.js: the pole's insulator tops, and the bottom of
- * each of the pylon's insulator strings plus its peak. */
+ * wire it belongs to. The pole's insulator tops come from its own layout
+ * (poleWireAnchors in src/props/street.js), so moving an arm moves its
+ * wires with it. The pylon's are read off src/props/industrial.js: the
+ * bottom of each insulator string, and the peak. */
 function wireAnchors(el) {
   if (el.type === 'utilityPole') {
-    const h = Math.min(16, Math.max(5, el.dims.height));
-    return [
-      [[0, h - 0.25, -0.8], [0, h - 0.25, 0], [0, h - 0.25, 0.8]],
-      [[0, h - 1.38, -0.6], [0, h - 1.38, 0.6]],
-    ];
+    return poleWireAnchors(el);
   }
   if (el.type === 'pylon') {
     const H = Math.min(60, Math.max(12, el.dims.height));
@@ -844,16 +915,28 @@ export async function buildMap(shell, onProgress, options) {
   const progress = onProgress ?? (() => {});
   const opts = options || {};
   const q = qualityFor(opts.quality);
-  const fogNear = q.city.fogNear;
-  const fogFar = Math.min(q.city.fogFar, q.city.cullRadius - 4);
-  const half = q.city.shadowHalf;
-  const cullDefault = q.city.cullRadius;
 
   /* The document, repaired the way every read of one is, then placed. */
   const chosen = chooseDocument(opts);
   const { doc, repairs } = normalize(chosen.raw);
   const placed = placeDocument(doc);
   progress(0.05);
+
+  /*
+   * How far the pilot sees, and everything that has to agree with it. The
+   * cull radius is the fog's end plus the town's 4 m, measured to the
+   * nearest point of a chunk, so nothing is switched off while it can still
+   * be seen. The shadow box is a share of the view (SHADOW_SHARE). The
+   * ridge lines are pushed out past the plot's corner if the plot reaches
+   * them, the sky dome past the ridge lines and the fog, and the far plane
+   * past the dome.
+   */
+  const { near: fogNear, far: fogFar } = fogFor(q.id, placed.W, placed.D);
+  const cullDefault = fogFar + 4;
+  const half = Math.min(SHADOW_HALF_MAX, Math.max(q.city.shadowHalf, SHADOW_SHARE * fogFar));
+  const hillScale = Math.max(1, (Math.hypot(placed.W, placed.D) / 2 + 60) / HILLS_NEAR);
+  const skyRadius = Math.max(500, fogFar + 80, HILLS_FAR * hillScale + 60);
+  const cameraFar = Math.max(CAMERA_FAR, skyRadius * 1.8);
 
   /* Renderer state is the map's: the town's filtering and clear colour. */
   renderer.shadowMap.enabled = q.shadows;
@@ -862,7 +945,7 @@ export async function buildMap(shell, onProgress, options) {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(PAL.fog, fogNear, fogFar);
-  camera.far = CAMERA_FAR;
+  camera.far = cameraFar;
   camera.updateProjectionMatrix();
 
   /* The town's four lights, at the town's offsets from the shadow target.
@@ -875,8 +958,13 @@ export async function buildMap(shell, onProgress, options) {
   sun.shadow.camera.right = half;
   sun.shadow.camera.top = half;
   sun.shadow.camera.bottom = -half;
+  /* The shadow camera stands on the sun's line back from the target, far
+   * enough that a tall thing at the edge of a box this wide is in front of
+   * it, and sees on past the far side. With the town's 22 m box this is
+   * the town's own offset and about its 200 m. */
+  const sunBack = Math.max(Math.hypot(-52, 62, 56), 1.5 * half + 40);
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 200;
+  sun.shadow.camera.far = sunBack + 1.5 * half + 60;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.035;
   scene.add(sun);
@@ -888,12 +976,14 @@ export async function buildMap(shell, onProgress, options) {
   scene.add(bounce);
   scene.add(bounce.target);
   scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.12));
-  const SUN_OFFSET = new THREE.Vector3(-52, 62, 56);
+  const SUN_OFFSET = new THREE.Vector3(-52, 62, 56).setLength(sunBack);
   const FILL_OFFSET = new THREE.Vector3(48, 26, -44);
   const BOUNCE_OFFSET = new THREE.Vector3(10, -18, 40);
 
-  const sky = buildSky(scene, 500);
-  buildDistantHills(scene);
+  const sky = buildSky(scene, skyRadius);
+  const hills = buildDistantHills(scene);
+  /* Out, not up: the ridges keep their height and move past the plot. */
+  hills.scale.set(hillScale, 1, hillScale);
   progress(0.1);
   await yieldToPaint();
 
@@ -1096,6 +1186,8 @@ export async function buildMap(shell, onProgress, options) {
       cullRadius,
       fog: { near: fogNear, far: fogFar },
       shadowExtent: half,
+      skyRadius,
+      cameraFar,
       pipelineScale: pipeline.scale,
       pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
       inkPlanar: pipeline.inkPlanar,

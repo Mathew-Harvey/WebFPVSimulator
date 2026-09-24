@@ -34,9 +34,12 @@
  * containers' colours, the trees' limbs) takes its seed from its element's
  * id. A starter that rolled new ids would be a different yard every load.
  *
- * Checked in Node through src/maps/built/place.js: no two elements' solids
- * touch, the spawn is clear, and every named gap's window is clear of every
- * solid. The positions below are in the document's own frame: metres, x
+ * Checked in Node through src/maps/built/place.js, by scripts/props-check.js
+ * and by the builder's own warnings: no two elements' solids overlap, no two
+ * elements leave a slot under the gap rule's 1.4 m between them (the one
+ * pair closer than that is the scaffold, 2 cm off the office wall, which is
+ * closed), the spawn is clear, and every named gap's window is clear of
+ * every solid. The positions below are in the document's own frame: metres, x
  * east, y north, origin at the plot's south west corner, yaw counter
  * clockwise from east.
  *
@@ -86,17 +89,40 @@ function rows() {
     ['bando', 72, 88, EAST, { width: 24, depth: 18, floors: 3, ruin: 0.55, variant: 3 }],
 
     /* ---- the half built block, its scaffold, and the crane over it ---- */
+    /* Facing east, so its roof carries, from the back: the plant room and
+     * the cooling tower in the south half, clear air in the north half, and
+     * the sign on legs along the front parapet, 17.5 to 20.7 m up. The roof
+     * itself is at 15.0 m and the parapet's top at 16.1. */
     ['building', 40, 124, EAST, { width: 16, depth: 14, floors: 4, passage: 0, variant: 2 }, { style: 'office' }],
-    /* Up the west wall, facing the crane, inner face 0.2 m off the wall and
-     * a lift past the roof: the block is still going up. On the west
+    /* Up the north half of the west wall, facing the crane, a lift past the
+     * roof: the block is still going up. Two centimetres off the wall, so
+     * the space between is closed rather than a slot a quad aims at, and
+     * 6.4 m long, so both ends stand the gap rule's 1.4 m clear of what is
+     * beside them: the plant room over the parapet at its south end, the
+     * emergency stair round the corner at its north end. On the west
      * because the crane gap is flown north and south across the roof, and
-     * a scaffold on either of those faces ended the line in its net. Sixteen
-     * metres so the jib passes 1.6 m over its top rail. */
-    ['scaffold', 31.12, 124, SOUTH, { width: 14, height: 16, depth: 1.3 }, { style: 'netted' }],
-    /* West of the block, jib east over its roof. The jib's underside is at
-     * 18.6 m and the roof at 14.4, which is the crane gap. The hook hangs
-     * past the block's front, clear of its canopy by two metres. */
-    ['crane', 24, 124, EAST, { height: 17.5, jib: 32, counterJib: 11, hook: 12, trolley: 0.95 }],
+     * a scaffold on either of those faces ended the line in its net.
+     * 16.6 m so the jib passes 1.6 m over its top rail. 1.55 m deep, the
+     * shallowest the scaffold builds and so the least the document allows:
+     * a shallower depth is clamped up on load, which would move the inner
+     * face into the wall. */
+    ['scaffold', 32.175, 127.3, SOUTH, { width: 6.4, height: 16.6, depth: 1.55 }, { style: 'netted' }],
+    /*
+     * West of the block, jib east over the clear north half of its roof.
+     * The jib's underside is at 19.2 m and the roof at 15.0, which is the
+     * crane gap.
+     *
+     * THE JIB STOPS SHORT OF THE FRONT. The office's sign stands on its
+     * front parapet up to 20.7 m, right in the height band the crane gap is
+     * flown in, so a jib that crossed the front had to run through it or
+     * stand a gap rule over its top, 7 m above the roof, which is a window
+     * and not a slot. At 21 m the nose ends 1.6 m short of the sign's back,
+     * open to the sky above and the roof below. The trolley is run in to
+     * the root, so the hook hangs in the yard behind the block, about 3 m
+     * from the mast and 2.4 m from the scaffold's net, and never over the
+     * roof, where it would leave a slot above it.
+     */
+    ['crane', 24, 127, EAST, { height: 18.1, jib: 21, counterJib: 11, hook: 12, trolley: 0.15 }],
 
     /* ---- the container yard ---- */
     /* The tunnel: open both ends, running east at the billboard. */
@@ -166,8 +192,11 @@ function rows() {
      * the window is `width` across that normal and `height` up from the sill.
      */
     /* Across the office roof, under the jib: 0.5 m over the roof, 0.4 m
-     * under the jib's bottom chords. */
-    ['gap', 40, 124, NORTH, { width: 6, height: 3.3 }, { z: 14.9, name: 'CRANE GAP', points: 1000 }],
+     * under the jib's bottom chords. Its west edge is 0.2 m east of the
+     * cooling tower's line, so a straight run from the south through any
+     * of it is clear at roof height, and its east edge is 0.4 m in from the
+     * jib's nose, so all of it is under the jib. */
+    ['gap', 42.4, 127, NORTH, { width: 4.4, height: 3.3 }, { z: 15.5, name: 'CRANE GAP', points: 1000 }],
     /* Down the middle of the open container, inside its walls and roof. */
     ['gap', 92, 40, EAST, { width: 2, height: 1.9 }, { z: 0.4, name: 'CONTAINER TUNNEL', points: 500 }],
     /* Under the board, between its legs, below the catwalk. */

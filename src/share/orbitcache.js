@@ -32,6 +32,7 @@
 
 import { activeTrackClass, readShareImport } from './session.js';
 import { readAutosave } from '../trackbuilder/storage.js';
+import { docModeOf } from '../trackbuilder/elements.js';
 
 /*
  * 5: the four freestyle worlds were re-cut. Their title cameras used to fly
@@ -101,6 +102,13 @@ export function clipKeyForSeatedShare(shareId) {
  * id if this browser is flying a published one, otherwise by the working
  * document's id and modified stamp, so editing the track records a new
  * shot instead of showing yesterday's layout.
+ *
+ * Your map is a designed world too, so it is keyed the same way, off the
+ * freestyle seat the map itself builds from (chooseDocument in
+ * src/maps/built/index.js): the document's id and stamp when the seat holds
+ * a freestyle map with something on it, the starter otherwise. A bare
+ * 'built' key never changed, so the card went on showing the orbit of a map
+ * the author had since rebuilt.
  */
 export function clipKeyForMap(mapId) {
   if (mapId === 'custom') {
@@ -121,6 +129,19 @@ export function clipKeyForMap(mapId) {
      * room and an empty field are two different worlds and their attract
      * clips are two different clips. */
     return `${clipPrefix()}:custom:empty:${activeTrackClass()}`;
+  }
+  if (mapId === 'built') {
+    try {
+      const saved = readAutosave('full', 'freestyle');
+      const doc = saved && saved.doc;
+      if (doc && doc.id && docModeOf(doc) === 'freestyle' && doc.elements.length > 0) {
+        return `${clipPrefix()}:built:${doc.id}:${doc.modifiedUtc || ''}`;
+      }
+    } catch (e) {
+      /* Private mode, or a corrupt seat: the map flies the starter, and so
+       * does its clip. */
+    }
+    return `${clipPrefix()}:built:starter`;
   }
   return `${clipPrefix()}:${mapId}`;
 }

@@ -68,7 +68,7 @@ import {
   STUCK_UNRESOLVED_MS, STUCK_TRAVEL_MAX, BURIED_DEPTH, BURIED_CONFIRM_MS,
   CLIP_CRASH_HOLD_MS, BOUNCE_SEPARATION, CLIP_SPAWN_GRACE_MS,
   setCraftAirframe, dirtClearance, craftVerticalOffset, craftVerticalHalf,
-  findRecoverSpot, recoverSpotClear,
+  findRestSpot, restSpotAt, CRAFT_WORLD_R,
 } from '../game/collide.js';
 import { AIRFRAMES, airframeById } from '../../configs/airframes.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
@@ -3069,16 +3069,20 @@ function suiteClubhouseShell() {
 }
 
 /*
- * WHERE A CRASH PUTS THE CRAFT BACK, in the RaceGOW room built the way
- * src/render/scene.js builds it: four walls from the floor to the ceiling
- * and a ceiling slab 0.10 m thick at MICRO_SCALE, 0.343 m in the world.
+ * WHERE A CRASH PUTS THE CRAFT BACK: set down on the flat surface nearest to
+ * where it happened, the ground or a roof top, and never in the air. The
+ * owner's rule of 24 September. Three rigs: the RaceGOW room the way
+ * src/render/scene.js builds it (four walls from the floor to the ceiling
+ * and a ceiling slab 0.10 m thick at MICRO_SCALE, 0.343 m in the world), a
+ * building whose roof is a landing surface the way the city's roofs are, and
+ * a kerb.
  *
- * The flight that found it: a whoop pinned under this ceiling at 57 percent
- * throttle, the thrash catch called a crash, and the recovery put it at
- * 14.2 m over a 13.65 m ceiling, on the roof, where it sat. The first spot
- * the search tries is 0.6 m up, and 0.6 m up from under a 0.343 m slab is
- * clear air on top of it. Clear is not enough; the spot has to be on the
- * pilot's side of everything.
+ * The flight that started this: a whoop pinned under the room's ceiling was
+ * put back in the AIR 0.6 m up, which from under a 0.343 m slab is on top of
+ * it, where it sat. A recovery that sets the craft down cannot find that air
+ * at all: the ceiling is a collider, not a surface anything lands on. The
+ * wrong side of a wall is still there to be found, and that is what the
+ * reachability test is for.
  */
 function suiteRecoverSpot() {
   console.log('\nrecover spot');
@@ -3110,65 +3114,89 @@ function suiteRecoverSpot() {
   check('a line through a pole crosses it, one beside it does not',
     pole.segmentCrossesAny(-1, 1, 0, 1, 1, 0) && !pole.segmentCrossesAny(-1, 1, 0.5, 1, 1, 0.5));
 
-  /* Pinned: the highest clear centre under the ceiling, then a hair higher,
-   * so the hull is touching it and the centre is still in the room. */
+  /* Pinned the way the contact pass leaves a craft held against a ceiling:
+   * the highest centre whose hull is still clear of it. */
+  const clearAt = (c, x, y, z) => c.hit(x, y, z, x, y, z, craftVerticalHalf(0), 0, 0, 0, 1, craftVerticalOffset()) < 0;
   let yClear = H - 1;
-  while (recoverSpotClear(room, flat, rest, 0, yClear + 0.001, 0)) {
+  while (clearAt(room, 0, yClear + 0.001, 0)) {
     yClear += 0.001;
   }
-  const pinned = { x: 0, y: yClear + 0.002, z: 0 };
-  check('the rig pins the craft with its hull 2 mm into the ceiling and its centre under it',
-    !recoverSpotClear(room, flat, rest, pinned.x, pinned.y, pinned.z) && pinned.y < H, `${pinned.y} under ${H}`);
-  const out = { x: 0, y: 0, z: 0 };
-  const oldWay = findRecoverSpot(room, flat, rest, pinned.x, pinned.y, pinned.z, null, out);
-  check('without a reference, the search does what it did: clear air on the roof',
-    oldWay && out.y > H + T, `spot ${out.y.toFixed(3)}, roof top ${(H + T).toFixed(3)}`);
-  const newWay = findRecoverSpot(room, flat, rest, pinned.x, pinned.y, pinned.z, pinned, out);
-  check('reachable from where it was pinned, the spot is back in the room, just under the ceiling',
-    newWay && out.y < H && out.y > H - 2.5 && Math.abs(out.x) < halfW && Math.abs(out.z) < halfD,
-    `spot ${out.x.toFixed(2)} ${out.y.toFixed(3)} ${out.z.toFixed(2)}`);
-  /* Flown, the hull is not in the ceiling but a hair under it, because the
-   * contact pass keeps it there, so where it was pinned is itself clear. */
-  const touching = { x: 0, y: yClear, z: 0 };
-  check('pinned with the hull just clear, the way the contact pass leaves it, it is still moved off the ceiling',
-    recoverSpotClear(room, flat, rest, touching.x, touching.y, touching.z)
-    && findRecoverSpot(room, flat, rest, touching.x, touching.y, touching.z, touching, out)
-    && Math.abs(out.y - (touching.y - 0.6)) < 1e-12 && out.x === 0 && out.z === 0,
-    `pinned ${touching.y.toFixed(3)}, spot ${out.x} ${out.y.toFixed(3)} ${out.z}`);
-
-  /* A centre already through the underside: the crash position is inside
-   * the slab and cannot say which side is the room. The last open air can. */
+  const pinned = { x: 0, y: yClear, z: 0 };
+  const out = { x: 0, y: 0, z: 0, surface: 0 };
+  const spot = () => `${out.x.toFixed(3)} ${out.y.toFixed(3)} ${out.z.toFixed(3)} on ${out.surface}`;
+  check('pinned under the ceiling, it is set down on the floor straight below, not in the air and not on the roof',
+    findRestSpot(room, flat, rest, pinned.x, pinned.y, pinned.z, pinned, out)
+    && out.x === 0 && out.z === 0 && out.surface === 0 && out.y === rest, spot());
+  check('and with no reference at all, the same: the ceiling is not a surface anything is set down on',
+    findRestSpot(room, flat, rest, pinned.x, pinned.y, pinned.z, null, out) && out.surface === 0 && out.y === rest, spot());
   const buried = { x: 0, y: H + T * 0.5, z: 0 };
   const below = { x: 0, y: H - 0.4, z: 0 };
-  check('buried in the ceiling from below, it comes back out below',
-    findRecoverSpot(room, flat, rest, buried.x, buried.y, buried.z, below, out) && out.y < H,
-    `spot ${out.y.toFixed(3)}`);
+  check('buried in the ceiling from below, it is set down on the floor under it',
+    findRestSpot(room, flat, rest, buried.x, buried.y, buried.z, below, out) && out.y === rest && Math.abs(out.x) < halfW, spot());
   const above = { x: 0, y: H + T + 0.5, z: 0 };
-  check('and buried from above, by a craft that really was up there, it comes back out on top',
-    findRecoverSpot(room, flat, rest, buried.x, buried.y, buried.z, above, out) && out.y > H + T,
-    `spot ${out.y.toFixed(3)}`);
-
-  /* Stuck in a wall. The first ring the old search walks starts at +x, which
-   * for the +x wall is the far side: outside the room. */
+  check('a craft that really was on top of the room is not put inside it: nothing in reach is on its side, so it goes to the line',
+    !findRestSpot(room, flat, rest, buried.x, buried.y, buried.z, above, out)
+    && !findRestSpot(room, flat, rest, above.x, above.y, above.z, above, out));
   const inWall = { x: halfW + T * 0.5, y: 5, z: 0 };
   const inRoom = { x: halfW - 0.4, y: 5, z: 0 };
-  findRecoverSpot(room, flat, rest, inWall.x, inWall.y, inWall.z, null, out);
-  const oldWall = out.x;
-  check('stuck in a wall, the old search put it outside the room', oldWall > halfW + T, `x ${oldWall.toFixed(2)}`);
-  check('reachable from the room, it goes back into the room',
-    findRecoverSpot(room, flat, rest, inWall.x, inWall.y, inWall.z, inRoom, out)
-    && out.x < halfW && out.y < H, `spot ${out.x.toFixed(2)} ${out.y.toFixed(2)} ${out.z.toFixed(2)}`);
+  findRestSpot(room, flat, rest, inWall.x, inWall.y, inWall.z, null, out);
+  check('stuck in a wall with no reference, the nearest floor can be the far side of it', out.x > halfW + T, spot());
+  check('reachable from the room, it is set down on the room\'s floor',
+    findRestSpot(room, flat, rest, inWall.x, inWall.y, inWall.z, inRoom, out) && out.x < halfW && out.y === rest, spot());
 
-  /* The open world is unchanged where nothing is in the way: a craft on the
-   * grass beside a lone box rises straight up, as it always did. */
-  const open = new Colliders();
-  open.addBox('wall', 1, 0, -1, 3, 2, 1);
-  open.build();
-  const lone = { x: 0.5, y: 0.5, z: 0 };
-  check('in the open it still rises first, 0.6 m straight up',
-    findRecoverSpot(open, flat, rest, lone.x, lone.y, lone.z, lone, out)
-    && out.x === lone.x && out.z === lone.z && Math.abs(out.y - (lone.y + 0.6)) < 1e-12,
-    `spot ${out.x} ${out.y} ${out.z}`);
+  /* A building whose roof is a landing surface, offered to a query made
+   * from within a step of it and seen as the ground under the building from
+   * lower down, which is how the city's heightAt treats a roof. */
+  const B = { x0: 10, x1: 20, z0: -5, z1: 5, top: 7 };
+  const town = new Colliders();
+  town.addBox('wall', B.x0, 0, B.z0, B.x1, B.top, B.z1);
+  town.build();
+  const inPlan = (x, z) => x > B.x0 && x < B.x1 && z > B.z0 && z < B.z1;
+  const roofAt = (x, z, fromY) => (inPlan(x, z) && fromY + 0.55 >= B.top ? B.top : 0);
+  check('over the roof, it is set down on the roof straight below: a roof top',
+    findRestSpot(town, roofAt, rest, 15, B.top + 1.5, 0, { x: 15, y: B.top + 1.5, z: 0 }, out)
+    && out.surface === B.top && out.y === B.top + rest && out.x === 15 && out.z === 0, spot());
+  check('at street level beside it, on the street, outside it',
+    findRestSpot(town, roofAt, rest, B.x1 + 0.3, 1, 0, { x: B.x1 + 1, y: 1, z: 0 }, out)
+    && out.surface === 0 && out.x > B.x1, spot());
+  check('stuck in its wall a metre under the roof, flown from the street: the street, not the roof and not inside',
+    findRestSpot(town, roofAt, rest, B.x1 - 0.05, B.top - 1, 0, { x: B.x1 + 0.5, y: B.top - 1, z: 0 }, out)
+    && out.surface === 0 && out.x > B.x1, spot());
+  const edge = { x: B.x1 - CRAFT_WORLD_R * 0.5, y: B.top + 1, z: 0 };
+  check('over the roof edge, with the craft hanging off it: on the roof a metre in, not on the street seven metres down',
+    findRestSpot(town, roofAt, rest, edge.x, edge.y, edge.z, edge, out)
+    && out.surface === B.top && out.x <= B.x1 - CRAFT_WORLD_R, spot());
+
+  /* A kerb 0.12 m high along x = 30, in the open. */
+  const kerbAt = (x) => (x >= 30 ? 0.12 : 0);
+  const kerb = (x, z) => kerbAt(x);
+  const onKerb = 30 + CRAFT_WORLD_R * 0.25;
+  const found = findRestSpot(null, kerb, rest, onKerb, 1, 0, null, out);
+  const straddles = kerbAt(out.x - CRAFT_WORLD_R) !== kerbAt(out.x + CRAFT_WORLD_R);
+  check('astride a kerb edge is not flat: it is set down clear of the edge, on one level',
+    found && !straddles && out.y === out.surface + rest, spot());
+  /* The city's roof as measured: reported at 6.2 m, and a box whose top is
+   * 6.233 m over this part of it. A landing meets the box first, so a craft
+   * set down there stands on the box. */
+  const seatBox = new Colliders();
+  seatBox.addBox('wall', -2, -60, -2, 2, 6.233, 2);
+  seatBox.build();
+  const cityRoof = () => 6.2;
+  check('a roof reported at 6.2 m that is a box topped at 6.233 m: seated on the box, not refused and not in it',
+    findRestSpot(seatBox, cityRoof, rest, 0, 7.5, 0, { x: 0, y: 7.5, z: 0 }, out)
+    && out.x === 0 && out.z === 0 && Math.abs(out.surface - 6.233) < 0.002
+    && out.y === out.surface + rest && clearAt(seatBox, out.x, out.y, out.z), spot());
+  const tallBox = new Colliders();
+  tallBox.addBox('wall', -2, -60, -2, 2, 6.3, 2);
+  tallBox.build();
+  check('a box ten centimetres up is something in the way, not a floor: set down off it',
+    findRestSpot(tallBox, cityRoof, rest, 0, 7.5, 0, null, out) && Math.max(Math.abs(out.x), Math.abs(out.z)) > 2
+    && out.surface === 6.2, spot());
+  check('in the open over flat ground, straight down',
+    findRestSpot(null, flat, rest, 3, 5, 4, null, out) && out.x === 3 && out.z === 4 && out.y === rest, spot());
+  check('and a single spot can be asked about on its own',
+    restSpotAt(town, roofAt, rest, 15, 0, B.top + 1, out) && out.surface === B.top
+    && !restSpotAt(town, roofAt, rest, 15, 0, B.top - 1, out));
   setCraftAirframe(airframeById('5inch').dims);
 }
 

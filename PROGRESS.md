@@ -41738,3 +41738,149 @@ the pickup, three (held throttle 0, fell to the floor, keys 0).
                                 a second later
     X in a climb, fix, twice    put at 8.525 and 10.757 m, settled 0.551 m
                                 lower by 4.3 s
+
+## 2026-09-24 | collision, shell, board | A crash recovery sets the craft down on the ground or a roof top
+
+The owner: "recovery after crash should always be from a flat surface (the
+ground or roof top)". Until now a recovery handed the craft back in the AIR,
+at the nearest clear air, level and at rest. That is what put a whoop on the
+room's roof, what needed the keys picked up at hover, and what still sagged
+half a metre because sim_reset stops the motors (the two entries above). A
+craft set down has none of those problems.
+
+The owner also said the board may be updated, and a ticket closed once its fix
+is confirmed. Three were closed; see the end of this entry.
+
+### What it does now
+
+finishClipCrash asks findRestSpot (src/game/collide.js) for the flat surface
+nearest the crash and parks the craft on it through resetCraft, the same
+call R makes: upright on its own heading, landed, keys at idle, the
+receiver's held frame at zero. The run is untouched and the pilot takes off
+again. flownThisRun stays true, because this is the middle of a run and the
+banner that promises what a run starts with must not come back. The cue is
+'land', not 'takeoff'.
+
+The surface is the map's own contact surface, view.height: the ground, a
+deck, or a roof, which the city already returns as a landing surface to a
+query made from within a step above it. A solid that is only a collider (a
+car roof, the room's ceiling slab) is not a surface and is never chosen. A
+spot is a candidate when:
+
+- **the surface is flat under the craft**: eight footprint samples at the
+  craft's radius are all within half the rest height of it, so a kerb edge,
+  a stair or a roof edge is refused;
+- **the parked hull is clear**, where touching is not overlap. And a still
+  box whose flat top is within a rest height above the surface is what the
+  craft stands on instead: it is seated on the box (plus a millimetre, a
+  float32 margin);
+- **it is reachable from the last open air**: the rule from the roof fix,
+  kept. It keeps a craft stuck in a wall on the pilot's side of it, and a
+  craft over the room's roof out of the room under it.
+
+Of the candidates straight down and on rings out to 3.5 m, the nearest to
+the crash in three dimensions wins, so a craft over a roof edge goes onto
+the roof a metre in, not to the street seven metres down. None found: the
+start line, as before.
+
+Removed with it: input.resumeAtHover, the airborne pickup of the entry
+above, and the rcHeld re-read after a recovery. resetCraft zeroing rcHeld
+stays: sim_reset zeroes the module's own RC, and the shell's held frame
+follows it for every reset.
+
+### What the real city showed
+
+A Node rig is only as good as its model of the map, so the recovery was
+flown in the real city (scratch script: __placeCraft over a spot, X, read
+where it came to rest). Streets: set down straight below, on the 0.45 m
+surface, parked at 0.495 m. Roofs: the first version sent two craft of four
+from a 6.2 m roof back to the start line and one to a deck at 0.54 m. The
+cause, measured: that roof is reported at 6.2 m, and for fifteen metres of
+it the solid under it is a box whose top is 6.233 m, 3.3 cm higher. The
+parked hull overlapped the box from above and every spot within 3.5 m was
+refused. A craft landing there in flight meets the box first, so a
+recovery now seats it on the box. After that, all four were set down
+straight below on the roof, at 6.279 m, and stayed; W took off again from
+there with no crash and no error.
+
+### Tests
+
+check:clip, "recover spot" rewritten, 20 checks, 548 total. The room: pinned
+under the ceiling, set down on the floor straight below, with or without a
+reference; buried in the slab from below, the floor; from above the room,
+nothing reachable, so the line; stuck in a wall, the far side without a
+reference and the room's floor with one. A building whose roof is a
+landing surface: over it, the roof; beside it, the street; stuck in its wall
+a metre under the roof, the street; over the edge, the roof a metre in. The
+city's roof: a box topped 3.3 cm over the surface, seated on the box; a box
+10 cm up, set down off it. A kerb: never astride it. Open ground: straight
+down.
+
+Mutants, one rule broken each: no flatness, 2 fail (the roof edge and the
+kerb); nearest found first instead of nearest in 3D, 1 (the roof edge);
+no reachability, 2; no seat on the box, 1. A seat LIFT for the hull test,
+a quarter of the rest height, was in the first draft; removing it broke
+nothing, because touching already reads as clear, so it went.
+
+lint:input sections 10 and 11 rewritten, 117 total. 10: pinned under the
+ceiling by a radio's 0.45, handed to the keys, X: set down on the floor,
+landed, and it stays down with the keys at idle, never above the ceiling.
+11: X in a full throttle climb, keys at the top: the held frame is idle,
+parked on the floor under it, stays down, W takes it off again, and R still
+parks at the start line. Three browsers at once: both copies of the fix
+passed; main at 9d5f452 failed three (never came down, held frame 0.35,
+never landed). input:selftest: the two resumeAtHover sections went, and one
+check stays: any reset parks the keys at idle with the latch off. 159.
+
+### The board
+
+The board's own page updates a ticket with POST /api/bugs/<id> and
+{ status, resolution }; BUGS_TOKEN is unset on production, so no token is
+needed. Before closing anything I fetched the live files from webfpv.org/sim
+and found every fix there (KEY_THROTTLE_MODES, flipFlightMode, mapKnown and
+the recovery code, last modified 09:14:30 UTC). Closed as fixed, each with a
+resolution note saying what changed and what to do: bug-3a7be142 (W and S),
+bug-92007f3e (M for Angle and Acro), bug-9983ae9a (the SM001 picker, whose
+note says to run Calibrate sticks, because the picture is now honest about
+the mapping and only the wizard can make an unusual radio fly right).
+bug-c9423f3e is next and stays open until its fix is live.
+
+### Not done, written down
+
+- **A crash over the city's lake sets the craft down on the lake bed.** The
+  physics ground there is the bed, about 7 m under a rendered water
+  surface, and a pilot can already fly down to it. Nothing in the map says
+  where the water is, so nothing here can refuse it.
+- **A box more than a rest height above the reported surface is refused as a
+  seat**, so a roof whose solid top is further off its reported surface
+  than that would still send the craft elsewhere. The 3.3 cm case is the
+  one measured.
+- The touch page button check failed in both loaded fix runs again, as in
+  the entries above.
+
+### What went wrong
+
+- **I misread hit()'s return.** It returns the collider's KIND, and the index
+  is in hitIndex. My first debug printed collider 7 from the static table,
+  a small box 40 m away, and it took a second probe to find the real one.
+- The seat lift, above: added for a case that turned out not to happen,
+  and gone.
+
+### RUN LOG
+
+    npm run check:clip       548 passed (was 542)
+    npm run contact:selftest all contact checks passed
+    npm run input:selftest   all 159 passed (was 166: eight airborne
+                             pickup checks went with the pickup, one came)
+    npm run lint:input       all 117 passed, 75 s, alone. Three at once as
+                             above
+    npm run verify           not run: which spot the recovery picks and the
+                             state it leaves, in the shell. No physics,
+                             plant, ABI or build change. Offered
+
+    Scripted flights in the real city (scratch; the numbers are here):
+    street, fix              set down straight below at 0.495 m, stayed
+    roof, first version      one on the roof 3.5 m over, two to the start
+                             line, one to a deck at 0.54 m
+    roof, seated             all four straight below on the roof at
+                             6.279 m, stayed; W took off, no crash

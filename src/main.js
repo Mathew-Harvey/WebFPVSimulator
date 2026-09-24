@@ -65,7 +65,7 @@ import { FreestyleScore, formatScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, findRecoverSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, PRESS_CONFIRM_MS, PRESS_RELEASE_MS, PRESS_BLEED, thrustIntoFace, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, PRESS_CONFIRM_MS, PRESS_RELEASE_MS, PRESS_BLEED, thrustIntoFace, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor } from './ui/ui.js';
 import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
@@ -2752,7 +2752,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /*
    * Put the craft back at the start line. Hits no longer teleport the
    * craft: R is the pilot asking for a restart, not a recovery from a
-   * lockout. `at` reseats the spawn when the map itself moved.
+   * lockout. `at` reseats the spawn somewhere else first: a crash recovery
+   * parks the craft on the surface it found, at.surface, facing at.yaw.
    */
   function resetCraft(at) {
     /* Wherever it lands, the open air it last flew through is somewhere
@@ -2763,9 +2764,7 @@ export async function boot({ loading, bootStart, mapId }) {
       startZ = at.z;
       startYaw = at.yaw;
       startPitch = 0;
-      startY = at.y != null
-        ? view.height(startX, startZ, at.y)
-        : groundAt(startX, startZ);
+      startY = at.surface != null ? at.surface : groundAt(startX, startZ);
       qSpawn.setFromAxisAngle(AXIS_Y, startYaw);
       qSpawnInv.copy(qSpawn).invert();
     }
@@ -2930,15 +2929,24 @@ export async function boot({ loading, bootStart, mapId }) {
    * instruction is the other way round: "the system should register this
    * state and just reset the quad in place."
    *
-   * So: pick the nearest clear air to where the accident happened, put the
-   * craft there upright on its own heading, and leave the run alone. The
-   * lap being flown keeps running, which is the right price. Nothing about
-   * the race is touched, so `next`, the splits and the clock all carry on.
+   * And set it DOWN, the owner's second rule: "recovery after crash should
+   * always be from a flat surface (the ground or roof top)". So: find the
+   * flat surface nearest to where the accident happened, park the craft on
+   * it upright on its own heading, landed, sticks at idle, exactly as R
+   * leaves it on the start line, and leave the run alone. The pilot takes
+   * off again. The lap being flown keeps running, which is the right price.
+   * Nothing about the race is touched, so `next`, the splits and the clock
+   * all carry on.
    *
-   * Finding that air is findRecoverSpot in src/game/collide.js, which is
-   * where the rules and the reasons now live, beside the watch that calls
-   * the crash. What it needs from here is where the craft last flew in the
-   * open: recoverFrom below.
+   * It used to hand the craft back in the AIR, at the nearest clear air,
+   * level and at rest. That needed the keys picked up at hover, and even
+   * then a quad with its motors stopped by sim_reset sagged half a metre
+   * before it held. A craft that is set down has none of that.
+   *
+   * Finding the surface is findRestSpot in src/game/collide.js, which is
+   * where the rules and the reasons live, beside the watch that calls the
+   * crash. What it needs from here is the map's contact surface and where
+   * the craft last flew in the open: recoverFrom below.
    */
   function recoverGroundAt(x, z, y) {
     return view.height(x, z, y - SURFACE_BIAS);
@@ -2948,12 +2956,14 @@ export async function boot({ loading, bootStart, mapId }) {
    * WHERE THE CRAFT LAST FLEW IN THE OPEN, its centre outside every solid and
    * above the ground, taken every frame it is. The recovery refuses a spot it
    * cannot reach from here in a straight line, which is what keeps a craft
-   * pinned under a room's ceiling from being put on the roof. The crash
-   * position alone cannot say which side of a slab is the room: a centre
-   * already through a face is inside it.
+   * stuck in a wall on the side of it the pilot was flying, and a craft over
+   * a room's ceiling out of the room under it. The crash position alone
+   * cannot say which side of a slab is which: a centre already through a
+   * face is inside it.
    */
   const recoverFrom = { x: 0, y: 0, z: 0 };
   let haveRecoverFrom = false;
+  const restSpot = { x: 0, y: 0, z: 0, surface: 0 };
 
   function finishClipCrash() {
     clipCrashUntil = 0;
@@ -2964,60 +2974,33 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Around the crash first. If everything there is on the far side of
      * something, around the last open air, which by construction is on the
      * near side of it. */
-    const found = findRecoverSpot(
-      view.colliders, recoverGroundAt, REST_HEIGHT, pCurr.x, pCurr.y, pCurr.z, from, pProbe,
-    ) || Boolean(from && findRecoverSpot(
-      view.colliders, recoverGroundAt, REST_HEIGHT, from.x, from.y, from.z, from, pProbe,
+    const found = findRestSpot(
+      view.colliders, recoverGroundAt, REST_HEIGHT, pCurr.x, pCurr.y, pCurr.z, from, restSpot,
+    ) || Boolean(from && findRestSpot(
+      view.colliders, recoverGroundAt, REST_HEIGHT, from.x, from.y, from.z, from, restSpot,
     ));
     if (!found) {
-      /* Nowhere within four and a half metres is clear and reachable. That
-       * is not a glitch any more, it is a craft somewhere it cannot be put
-       * back, so fall through to the old behaviour and give them the line. */
+      /* No flat surface within three and a half metres is clear and
+       * reachable. That is not a glitch any more, it is a craft somewhere
+       * it cannot be put back, so fall through to the old behaviour and
+       * give them the line. */
       reset();
       return;
     }
     /* Heading is kept: being spun to face north because a wall grabbed an
      * arm is its own disorientation, and the pilot was flying somewhere. */
     const yaw = craftHeadingYaw();
-    const spotY = pProbe.y;
-    resetCraft({ x: pProbe.x, z: pProbe.z, y: spotY, yaw });
-    /*
-     * resetCraft seats the spawn frame on the SURFACE under the point and
-     * parks the craft on it, which is right on the start line and wrong
-     * here: the clear air we found may be a storey above that surface, and
-     * the surface itself may be inside whatever the craft was stuck in.
-     * Lift the plant to the point that was actually checked. startY is the
-     * surface, SPAWN_ALT is the parked offset the spawn already carries,
-     * so the plant owes the difference.
-     */
-    const lift = (spotY - startY) - SPAWN_ALT;
-    if (lift > 0) {
-      const code = sim.e.sim_set_pose(0, 0, lift, 1, 0, 0, 0);
-      if (code !== SIM_OK) {
-        throw new Error(`sim_set_pose: ${simErrorName(code)}`);
-      }
-      sim.rest();
-    }
+    /* Parked on the surface found, landed, keys at idle and the receiver's
+     * held frame with them: resetCraft does all of that, exactly as it
+     * does for R. The surface is handed over rather than asked for again,
+     * so the craft sits on the one the search judged flat and clear. */
+    resetCraft({ x: restSpot.x, z: restSpot.z, surface: restSpot.surface, yaw });
     stateCurr = readState();
     statePrev = stateCurr;
     poseFromState(stateCurr, pCurr);
-    /* Airborne, level, at rest, and the pilot has the sticks. */
-    landed = false;
-    takingOff = false;
-    /*
-     * The keys pick it up at hover, not at the idle resetCraft left them
-     * on, or a keyboard pilot's quad falls out of its own recovery: see
-     * resumeAtHover. Then the receiver's held frame is read from the sticks
-     * as they are now, so the first frame flies on hover, or on wherever a
-     * radio's throttle is. poll() is safe to call here: it measures its own
-     * step off the last one, which is why it can already run from a timer
-     * and from the frame both.
-     */
-    input.resumeAtHover();
-    input.poll(performance.now());
-    rcHeld = { ...input.channels };
+    /* Mid run, not a new one: the banner that promises what a run starts
+     * with must not come back, and the stats already count this session. */
     flownThisRun = true;
-    groundY = startY;
     obsHasPrev = false;
     raceHasPrev = false;
     simClockPrevMs = simTimeMs;
@@ -3027,7 +3010,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * a loop the pilot cannot leave, which is worse than the glitch. */
     recoverGraceUntil = performance.now() + CLIP_SPAWN_GRACE_MS;
     if (typeof audio.event === 'function') {
-      audio.event('takeoff');
+      audio.event('land');
     }
   }
 
@@ -4819,9 +4802,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * The pilot's own unstick. The thrash watch catches the states we
      * could name, and it needs 700 ms to be sure; this is the backstop for
      * whatever it did not name, at the cost of one keystroke. Same
-     * recovery: clear air near where you are, upright, run untouched. It
-     * refuses on the ground so it cannot be used as a free reposition
-     * between laps.
+     * recovery: set down on the flat surface nearest to where you are,
+     * upright, run untouched. It refuses on the ground so it cannot be used
+     * as a free reposition between laps.
      */
     if (code === 'KeyX' && ui.screen === 'flight' && mode === 'flight') {
       if (landed || launchStaging || poseLock || crashed) {

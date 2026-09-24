@@ -2135,8 +2135,9 @@ export class Colliders {
    * right for its one caller: the crash recovery, digging a craft out.
    *
    * It exists because a spot can be clear and still be on the wrong side of
-   * something. A craft pinned under a room's ceiling found clear air 0.6 m
-   * above itself, which is on top of the roof. See findRecoverSpot.
+   * something. A craft pinned under a room's ceiling once found clear air
+   * 0.6 m above itself, which was on top of the roof; a craft stuck in a
+   * wall has a street on both sides of it. See findRestSpot.
    */
   segmentCrossesAny(ax, ay, az, bx, by, bz) {
     if (!this.built) {
@@ -2969,91 +2970,128 @@ export const THRASH_MS = 700;
 export const THRASH_TRAVEL = 0.60;
 
 /*
- * WHERE A CRASHED CRAFT IS PUT BACK: the nearest clear air to where the
- * accident happened, so the run carries on. Moved here from src/main.js's
- * finishClipCrash, which still does the putting back, so it can be tested
- * against a room without a browser.
+ * WHERE A CRASHED CRAFT IS PUT BACK: SET DOWN ON A FLAT SURFACE, the ground
+ * or a roof top, as near as possible to where the accident happened, so the
+ * run carries on and the pilot takes off again from a standstill. The
+ * owner's rule, 24 September: "recovery after crash should always be from a
+ * flat surface (the ground or roof top)".
  *
- * Finding clear air is the whole of the work. Reseating inside the wall
- * the craft was stuck in would trip the same detector on the next frame
- * and put the pilot in a loop, which is worse than the glitch. Rise first,
- * because up is where a quad came from and where it wants to go, and only
- * then try the compass. A point is clear when the collider sweep says so at
- * a level attitude and it is above the terrain.
+ * It used to be the nearest clear AIR, handed back level and at rest. That
+ * was a quad in mid air with its motors stopped, which sagged half a metre
+ * before a pilot could catch it, and it found clear air on top of a room's
+ * ceiling slab, where the whoop sat on the roof: see PROGRESS.md for both.
+ * A craft that is set down does neither.
  *
- * AND IT HAS TO BE ON THE PILOT'S SIDE OF EVERYTHING. Clear is not enough.
- * A whoop pinned under its room's ceiling found clear air 0.6 m above
- * itself, which is ON TOP of a ceiling slab thinner than that: it was put
- * on the roof, at 14.2 m over a 13.65 m ceiling, where it sat and could not
- * get back in. So a spot must also be reachable in a straight line from
- * `from`, the last place the craft's centre was in the open, without going
- * in one face of a solid and out of the other. See segmentCrossesAny. When
- * everything above is on the far side of something, the search goes below,
- * so a ceiling hands the craft back a little under where it was pinned.
+ * `surfaceAt(x, z, fromY)` is the map's own contact surface, view.height:
+ * the ground, a deck or a roof top that a craft at fromY over (x, z) would
+ * come down on. It is the surface the landing judgement uses, so a craft set
+ * down on it is simply landed. A solid that is only a collider, a car roof
+ * or a room's ceiling slab, is not one, and is not a place to be put.
  *
- * WHERE IT WAS COMES LAST, after the drops and before the compass. Flown,
- * the pinned whoop's hull sat a hair clear of the ceiling, because the
- * contact pass keeps it there, so where it was is clear air and the first
- * draft, which tried it before the drops, took it: the craft was handed
- * back touching the thing it had been held against, which is not what a
- * recovery is for. It is still worth trying before the compass, for a
- * craft with something close above it and the ground close below.
+ * A spot is a candidate when
+ *   the surface is flat under the craft: every footprint sample is within
+ *     half the rest height of it, so a kerb edge, a stair or a roof edge is
+ *     not somewhere to be set down;
+ *   the parked hull is clear of every collider. Touching is not overlap,
+ *     so a roof whose solid top IS the surface is something to stand on.
+ *     And a still box whose flat top sits within a rest height ABOVE the
+ *     surface is what the craft stands on instead: it is seated on the box.
+ *     Measured in the city, a roof reported at 6.2 m is a box whose top is
+ *     6.233 m for fifteen metres of it; a landing meets the box first, and
+ *     a recovery that refused the overlap sent the craft back to the start
+ *     line from most of that roof;
+ *   and it is on the pilot's side of everything: the straight line from
+ *     `from`, the last place the craft's centre was in the open, to the
+ *     parked craft goes through no solid. See segmentCrossesAny. `from` may
+ *     be null, which skips this.
  *
- * `groundAt(x, z, y)` is the terrain height under (x, z) near y, and
- * `restHeight` the clearance a parked craft needs above it. `from` may be
- * null, which skips the reachability test. The spot is written to out.x,
- * out.y and out.z.
+ * Of the candidates straight down and on rings out to 3.5 m, the one nearest
+ * the crash wins, measured in three dimensions: a craft that crashed over a
+ * roof edge is set down on the roof a metre away, not on the street seven
+ * metres below. The spot is written to out.x, out.y (the parked centre),
+ * out.z and out.surface.
  */
 const RECOVER_OUT = [0, 1.0, 2.0, 3.5];
-const RECOVER_LIFT = [0.6, 1.2, 2.0, 3.0, 4.5, -0.6, -1.2, -2.0, 0];
 const RECOVER_DIR = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
+const FOOTPRINT = [[1, 0], [-1, 0], [0, 1], [0, -1],
+  [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2], [Math.SQRT1_2, -Math.SQRT1_2], [-Math.SQRT1_2, -Math.SQRT1_2]];
+const FLAT_TOL = 0.5;
+/* A millimetre over a seated box top. Not behaviour, a margin: the boxes
+ * are float32 and the hull is float64, and exactly touching reads as clear
+ * today, measured, but a rounding the other way would refuse a whole roof. */
+const SEAT_CLEAR = 0.001;
 
-export function recoverSpotClear(colliders, groundAt, restHeight, x, y, z) {
-  if (!(y - groundAt(x, z, y) > restHeight)) {
+/* Can a craft be set down on the surface under (px, pz), seen from fromY?
+ * Writes the parked centre and the surface to `out` when it can. */
+export function restSpotAt(colliders, surfaceAt, restHeight, px, pz, fromY, out) {
+  const s = surfaceAt(px, pz, fromY);
+  if (!Number.isFinite(s)) {
     return false;
   }
-  if (!colliders) {
-    return true;
+  const r = CRAFT_WORLD_R;
+  const tol = restHeight * FLAT_TOL;
+  for (let i = 0; i < FOOTPRINT.length; i += 1) {
+    const h = surfaceAt(px + FOOTPRINT[i][0] * r, pz + FOOTPRINT[i][1] * r, fromY);
+    if (!(Math.abs(h - s) <= tol)) {
+      return false;
+    }
   }
-  return colliders.hit(
-    x, y, z, x, y, z,
-    craftVerticalHalf(0),
-    0, 0, 0, 1,
-    craftVerticalOffset(),
-  ) < 0;
+  let seat = s;
+  if (colliders) {
+    const hull = (y) => colliders.hit(px, y, pz, px, y, pz, craftVerticalHalf(0), 0, 0, 0, 1, craftVerticalOffset());
+    let kind = hull(seat + restHeight);
+    if (kind >= 0 && colliders.hitMoving < 0 && colliders.hitIndex >= 0 && colliders.fbox[colliders.hitIndex] === 1
+      && colliders.hitNy > 0.5 && colliders.hitPen === 0 && colliders.hitOverlap > 0
+      && colliders.hitOverlap <= restHeight) {
+      seat += colliders.hitOverlap + SEAT_CLEAR;
+      kind = hull(seat + restHeight);
+    }
+    if (kind >= 0) {
+      return false;
+    }
+  }
+  out.x = px;
+  out.y = seat + restHeight;
+  out.z = pz;
+  out.surface = seat;
+  return true;
 }
 
-export function findRecoverSpot(colliders, groundAt, restHeight, x, y, z, from, out) {
-  const take = (px, py, pz) => {
-    if (!recoverSpotClear(colliders, groundAt, restHeight, px, py, pz)) {
-      return false;
+const restProbe = { x: 0, y: 0, z: 0, surface: 0 };
+
+export function findRestSpot(colliders, surfaceAt, restHeight, x, y, z, from, out) {
+  let best = Infinity;
+  const consider = (px, pz) => {
+    if (!restSpotAt(colliders, surfaceAt, restHeight, px, pz, y, restProbe)) {
+      return;
     }
-    if (from && colliders && colliders.segmentCrossesAny(from.x, from.y, from.z, px, py, pz)) {
-      return false;
+    if (from && colliders
+      && colliders.segmentCrossesAny(from.x, from.y, from.z, restProbe.x, restProbe.y, restProbe.z)) {
+      return;
     }
-    out.x = px;
-    out.y = py;
-    out.z = pz;
-    return true;
+    const dx = restProbe.x - x;
+    const dy = restProbe.y - y;
+    const dz = restProbe.z - z;
+    const d = dx * dx + dy * dy + dz * dz;
+    if (d < best) {
+      best = d;
+      out.x = restProbe.x;
+      out.y = restProbe.y;
+      out.z = restProbe.z;
+      out.surface = restProbe.surface;
+    }
   };
   for (let ri = 0; ri < RECOVER_OUT.length; ri += 1) {
     const r = RECOVER_OUT[ri];
-    for (let li = 0; li < RECOVER_LIFT.length; li += 1) {
-      const py = y + RECOVER_LIFT[li];
-      if (r === 0) {
-        if (take(x, py, z)) {
-          return true;
-        }
-        continue;
-      }
-      for (let di = 0; di < RECOVER_DIR.length; di += 1) {
-        if (take(x + RECOVER_DIR[di][0] * r, py, z + RECOVER_DIR[di][1] * r)) {
-          return true;
-        }
-      }
+    if (r === 0) {
+      consider(x, z);
+      continue;
+    }
+    for (let di = 0; di < RECOVER_DIR.length; di += 1) {
+      consider(x + RECOVER_DIR[di][0] * r, z + RECOVER_DIR[di][1] * r);
     }
   }
-  return false;
+  return best < Infinity;
 }
 
 export function makeClipWatch() {

@@ -320,6 +320,9 @@ const FACE_ROT = {
  */
 export class PropKit {
   constructor() {
+    /* Handed to a family's draw() so it can build a geometry the kit has no
+     * word for, without importing a renderer into a file Node must load. */
+    this.THREE = THREE;
     this.batches = new Map();
     this.place = new THREE.Matrix4();
     this.chunk = '';

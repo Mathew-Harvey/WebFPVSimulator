@@ -846,6 +846,47 @@ async function mousePage(page) {
     guessHint.hint);
   check('and the saved mapping is back afterwards', guessHint.restored === true);
   await ev("ui.act('padpick-cancel'); return ui.screen;");
+
+  /* --------------------------------------------------------------------
+   * 6c. The radio's restart switch. bug-a25bc2dd: "As people start to
+   *     grind tracks they will need ready access to a restart race hot
+   *     key... can be assigned to an AUX on the radio too." Assigned from
+   *     its row in Settings by flipping it, the way a pilot would, then
+   *     flipped in flight. This radio's axis 5 sits at -1 like an AUX.
+   * ------------------------------------------------------------------ */
+  section('the restart switch: assigned by flipping it, and a flip in flight is the start line');
+  const restartRow = await ev(`ui.show('pilot'); const items = ui.items(); const i = items.findIndex((it) => it && it.label === 'Restart switch');
+    ui.setCursor(i); return JSON.stringify({ i, value: i >= 0 ? items[i].value : null });`).then(JSON.parse);
+  check('with a radio, Settings has a Restart switch row, not set', restartRow.i >= 0 && restartRow.value === 'Not set', JSON.stringify(restartRow));
+  await page.tap('Enter');
+  await page.until('window.__input.padSummary().restartCapturing === true', 3000).catch(() => {});
+  await page.until("window.__ui.items().some((it) => it && it.label === 'Restart switch' && it.value === 'Flip it now')", 3000).catch(() => {});
+  const listening = await ev("const it = ui.items().find((x) => x && x.label === 'Restart switch'); return JSON.stringify({ value: it && it.value });")
+    .then(JSON.parse);
+  check('choosing it listens, and the row says to flip it', listening.value === 'Flip it now', JSON.stringify(listening));
+  await page.evaluate('window.__pad.axes[5] = 1; window.__pad.timestamp += 1; 0');
+  await page.until("window.__ui.items().some((it) => it && it.label === 'Restart switch' && it.value === 'Switch on axis 5')", 3000).catch(() => {});
+  const assigned = await ev(`const it = ui.items().find((x) => x && x.label === 'Restart switch');
+    return JSON.stringify({ value: it && it.value, forget: ui.items().some((x) => x && x.label === 'Forget restart switch'),
+      kept: JSON.parse(localStorage.getItem('webfpv.restart.v1') || 'null') });`).then(JSON.parse);
+  check('the AUX flipped is the switch: the row names it, offers to forget it, and it is kept',
+    assigned.value === 'Switch on axis 5' && assigned.forget && assigned.kept && assigned.kept.index === 5, JSON.stringify(assigned));
+  /* In the air, well above the ground, so it is still flying when the
+   * switch goes. The pad's throttle is parked, so it is falling. */
+  await ev('const sp = window.__map().spawn; window.__placeCraft(sp.x + 6, sp.y + 30, sp.z); return 1;');
+  await page.until("window.__ui.screen === 'flight' && !window.__craftState().landed", 5000).catch(() => {});
+  await page.sleep(300);
+  const away = await ev('const c = window.__craftState(); return JSON.stringify({ y: c.worldY, landed: c.landed, screen: ui.screen });').then(JSON.parse);
+  await page.evaluate('window.__pad.axes[5] = -1; window.__pad.timestamp += 1; 0');
+  await page.sleep(200);
+  await page.evaluate('window.__pad.axes[5] = 1; window.__pad.timestamp += 1; 0');
+  let restarted = true;
+  await page.until(`(() => { const c = window.__craftState(); const sp = window.__map().spawn;
+    return c.landed && Math.abs(c.worldX - sp.x) < 1 && Math.abs(c.worldZ - sp.z) < 1; })()`, 5000).catch(() => { restarted = false; });
+  check('in flight, off and on again: back on the start line, parked', !away.landed && away.screen === 'flight' && restarted, JSON.stringify(away));
+  await ev("ui.act('restart-switch-clear'); return 1;");
+  await page.evaluate('window.__pad.axes[5] = -1; window.__pad.timestamp += 1; 0');
+  check('and it can be forgotten', await ev("return input.padSummary().restart === null && localStorage.getItem('webfpv.restart.v1') === null;"));
 }
 
 async function touchPage(page) {

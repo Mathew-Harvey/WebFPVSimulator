@@ -41969,3 +41969,84 @@ four seconds and not before, and the report shows axis 3 at -1.
     npm run verify           not run: an observation about the pad, a title
                              row and a report field. No physics, plant, ABI
                              or build change. Offered
+
+## 2026-09-24 | input, shell | bug-a25bc2dd: a restart switch on the radio
+
+Le Star, flying a radio on their own RaceGOW track: "I suck at the start of
+the RaceGOW tracks and hit the first gate on launch far too much", and
+"As people start to grind tracks they will need ready access to a restart
+race hot key. The default in VDrone is A but can be assigned to an AUX on
+the radio too."
+
+### What there was
+
+R restarts, and has for a long time: reset(), the start line, parked, the
+race cleared. The how-to lists it on the keyboard page. A is yaw here, so
+VDrone's key cannot be copied. What a radio pilot did NOT have was a way to
+it without taking a hand off the radio: a radio's buttons are only read in
+menus, and the pause menu's Restart run is three presses away.
+
+### The fix
+
+A **Restart switch** row in Settings, under Sticks, shown only with a radio:
+choose it, flip the switch or press the button you want, and it is kept. In
+flight, flipping it does what R does.
+
+- **Any button, or a switch that arrives as an axis**, the usual AUX. A
+  button counts when it goes down; an axis when it moves half its travel
+  from where it was when the row was chosen, and the side it moved to is
+  "on". The four stick axes the map uses are never taken.
+- **One flip, one restart.** Only the moment off becomes on counts, so a
+  two position switch left on does nothing more, the flip that assigned it
+  is not a restart, and a switch already on when the page loads is not
+  either. A three position switch taken to the middle and back is a flip.
+- **Kept per radio, under its own key** (webfpv.restart.v1, against the
+  pad's id), not in the stick map: saving the map would make an
+  uncalibrated guess look calibrated, and button 5 on one radio is an
+  arming switch on another.
+- **main.js takes the edge every frame and acts in flight only**, where R
+  acts, right after the frame's input poll so the frame flies from the
+  start line. A flip in a menu is spent there. A capture left running when
+  the pilot leaves Settings is dropped, or the next press in flight would
+  become the switch.
+- A notice names the switch when it is set; a Forget restart switch row
+  appears once one is set; the radio how-to has a Restart line.
+
+### Tests
+
+input:selftest, section 5c, 19 new, 189: nothing assigned; a press before
+the row is chosen is not captured; the four sticks swept end to end are not
+taken; a button, kept, and its press is not a restart; release, press, one
+restart; held, not two; a new page has it; forgotten, nothing. An AUX
+axis: the side it went to; one restart per off and on; two seconds on is
+still one; a three position middle is off. A switch kept for another radio
+does nothing; a switch on at load is not a flip.
+
+lint:input, section 6c on the mouse page's radio, 5 new, 124: the row is
+there and not set; Enter listens and the row says so; axis 5 flipped is
+"Switch on axis 5", kept, with Forget offered; the craft placed 30 m up and
+6 m off the start line, the switch off and on again, and it is parked on
+the start line; forgotten.
+
+lint:shell: its pilot and how-to screens have no radio, so the new rows do
+not show there and nothing it measures moved (pilot 746 px, how-to 123
+px). The one failure is the title's 23 px from 9ed8b9c, as in every entry
+since.
+
+### Not done, written down
+
+- Restart from the pause screen by the switch. It acts in flight only, on
+  purpose: a flip while paused is spent, not saved for later.
+- The ticket's first half, hitting the first gate on launch, is a skill
+  note rather than a fault, and launch control (L) is the sim's answer to a
+  clean start.
+
+### RUN LOG
+
+    npm run input:selftest   all 189 passed (was 170)
+    npm run lint:input       all 124 passed, 85 s, alone (was 119)
+    npm run lint:shell       FAIL, 1 problem: the title's 23 px, from
+                             9ed8b9c, unchanged
+    npm run verify           not run: a menu row, a stored switch and a
+                             call to reset(). No physics, plant, ABI or
+                             build change. Offered

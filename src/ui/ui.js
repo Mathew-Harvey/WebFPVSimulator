@@ -5969,6 +5969,29 @@ export class Ui {
             + ' moves on screen, one key puts them on the other hands. Nothing is kept until you save.',
         },
         /*
+         * RESTART FROM THE RADIO, bug-a25bc2dd: "As people start to grind
+         * tracks they will need ready access to a restart race hot key...
+         * can be assigned to an AUX on the radio too." R was the only way
+         * that did not go through the pause menu, and it is on the keyboard.
+         * Only offered with a radio, because on the keyboard it is R. See
+         * noteRestartSwitch in input.js.
+         */
+        ...(this.padInfo && this.padInfo.count > 0 && this.padInfo.using !== 'Keyboard' ? [{
+          label: 'Restart switch',
+          value: this.padInfo.restartCapturing ? 'Flip it now' : (this.padInfo.restart || 'Not set'),
+          action: 'restart-switch',
+          note: this.padInfo.restartCapturing
+            ? 'Flip the switch or press the button you want to restart with. Choose this row again to stop.'
+            : (this.padInfo.restart
+              ? 'In flight, flipping it takes you back to the start line, like R on the keyboard. Choose this row to pick another.'
+              : 'A switch or button on your radio that takes you back to the start line in flight, like R on the keyboard. Choose this row, then flip it.'),
+        }] : []),
+        ...(this.padInfo && this.padInfo.restart && !this.padInfo.restartCapturing ? [{
+          label: 'Forget restart switch',
+          action: 'restart-switch-clear',
+          note: 'R on the keyboard still restarts.',
+        }] : []),
+        /*
          * WHICH STICK CARRIES WHICH CHANNEL, and it sits here because the
          * two rows above are the other two things a pilot does to their
          * sticks before flying.
@@ -9561,6 +9584,7 @@ export class Ui {
         ['Right stick', `${stickCaption(this.settings.stickMode, 'right')}.`],
         ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Settings.'],
         ['In the menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
+        ['Restart', 'R on the keyboard, or a switch on the radio: Settings, Restart switch, then flip it.'],
         ['Acro', 'Hands off holds the attitude you left it in. Every turn has to be flown back out again.'],
         ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Pitch or roll with the right stick to flip over. You do not have to time it. Centre the stick, then take off.'],
       ]
@@ -10984,6 +11008,8 @@ export class Ui {
 
   setPadInfo(info) {
     const was = padTroubleItem(this.padInfo);
+    const wasRestart = (this.padInfo && this.padInfo.restart) || null;
+    const wasCapturing = Boolean(this.padInfo && this.padInfo.restartCapturing);
     this.padInfo = info || { count: 0, using: 'Keyboard' };
     /*
      * A TROUBLE ROW THAT APPEARS MID SESSION HAS TO ASK FOR THE PAINT.
@@ -11008,6 +11034,12 @@ export class Ui {
     const now = padTroubleItem(this.padInfo);
     const label = (r) => (r ? r.label : '');
     if (this.screen === 'title' && label(was) !== label(now)) {
+      this.renderMenu();
+    }
+    /* The same for the restart switch row in Settings, which changes when
+     * a flip lands rather than when anything is pressed on the page. */
+    if (this.screen === 'pilot' && (wasRestart !== (this.padInfo.restart || null)
+      || wasCapturing !== Boolean(this.padInfo.restartCapturing))) {
       this.renderMenu();
     }
   }

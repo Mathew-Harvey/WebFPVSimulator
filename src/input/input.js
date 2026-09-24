@@ -60,6 +60,26 @@ import { hoverStickPercent } from '../../configs/rates.js';
 
 const STORE_KEY = 'webfpv_stick_map_v1';
 const PAD_STORE_KEY = 'webfpv.pad.v1';
+/*
+ * THE RADIO'S RESTART SWITCH, bug-a25bc2dd: "As people start to grind
+ * tracks they will need ready access to a restart race hot key. The default
+ * in VDrone is A but can be assigned to an AUX on the radio too." R is the
+ * key and has been; a pilot with both hands on a radio had no way to it but
+ * the pause menu. This is any button, or a switch that arrives as an axis,
+ * picked by flipping it from the Restart switch row in Settings.
+ *
+ * Kept under its own key and against the pad's id, not in the stick map:
+ * saving the map would make an uncalibrated guess look calibrated, and a
+ * button number on one radio is an arming switch on another.
+ */
+const RESTART_STORE_KEY = 'webfpv.restart.v1';
+/* An axis counts as the switch being flipped when it moves this far from
+ * where it was when the row was chosen: half its travel, so a three
+ * position switch moved one notch counts and a jittering gimbal does not. */
+const RESTART_FLIP = 1.0;
+/* And the switch is ON while the axis is this far towards the side it was
+ * flipped to. */
+const RESTART_ON = 0.5;
 
 const DEFAULT_MAP = {
   /* AETR axis order, up and right positive, throttle low at -1. */
@@ -343,6 +363,49 @@ function savePadChoice(choice) {
   } catch (e) {
     /* private mode */
   }
+}
+
+function loadRestartSpec() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RESTART_STORE_KEY) || 'null');
+    if (raw && typeof raw.id === 'string' && (raw.kind === 'button' || raw.kind === 'axis')
+      && Number.isInteger(raw.index) && raw.index >= 0 && (raw.dir === 1 || raw.dir === -1)) {
+      return { id: raw.id, kind: raw.kind, index: raw.index, dir: raw.dir };
+    }
+  } catch (e) {
+    /* Private mode or a corrupt blob: no switch, and R still works. */
+  }
+  return null;
+}
+
+function saveRestartSpec(spec) {
+  try {
+    if (!spec) {
+      localStorage.removeItem(RESTART_STORE_KEY);
+      return true;
+    }
+    localStorage.setItem(RESTART_STORE_KEY, JSON.stringify(spec));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/* Is the assigned switch on right now, on this pad? */
+function restartOn(gp, spec) {
+  if (spec.kind === 'button') {
+    return Boolean(gp.buttons && gp.buttons[spec.index] && gp.buttons[spec.index].pressed);
+  }
+  return spec.index < gp.axes.length && gp.axes[spec.index] * spec.dir > RESTART_ON;
+}
+
+/* What the Settings row says. Axes are numbered as the calibrate screen's
+ * axis strip numbers them, from zero, so the two agree. */
+export function describeRestart(spec) {
+  if (!spec) {
+    return null;
+  }
+  return spec.kind === 'button' ? `Button ${spec.index}` : `Switch on axis ${spec.index}`;
 }
 
 function maxAbsDelta(axes, rest) {
@@ -992,6 +1055,14 @@ export class InputManager {
     this.guessYawParked = false;
     this.yawParkAt = null;
     this.yawParkMs = 0;
+    /* The radio's restart switch. See RESTART_STORE_KEY and
+     * noteRestartSwitch. restartPrevOn starts unknown, so a switch that is
+     * already on when the page loads is not a flip. */
+    this.restartSpec = loadRestartSpec();
+    this.restartPrevOn = null;
+    this.restartCapture = null;
+    this.restartFired = false;
+    this.restartResult = null;
     /* The hold-to-select bootstrap for a radio reporting zero buttons.
      * See SELECT_STEP. */
     this.holdMs = 0;
@@ -1351,6 +1422,110 @@ export class InputManager {
     if (this.yawParkMs >= GUESS.PARK_MS) {
       this.guessYawParked = true;
     }
+  }
+
+  /*
+   * THE RESTART SWITCH, watched on every poll that reads a radio.
+   *
+   * A flip is the moment it goes from off to on. Only that moment counts, so
+   * a two position switch left on after a restart does nothing more until
+   * it is turned off and on again, and a switch that was on before anyone
+   * assigned it is not a flip either. main.js takes it with takeRestart and
+   * acts on it in flight only, exactly where R acts.
+   */
+  noteRestartSwitch(gp) {
+    if (this.restartCapture) {
+      this.runRestartCapture(gp);
+      return;
+    }
+    const spec = this.restartSpec;
+    if (!spec || spec.id !== gp.id) {
+      this.restartPrevOn = null;
+      return;
+    }
+    const on = restartOn(gp, spec);
+    if (this.restartPrevOn === false && on) {
+      this.restartFired = true;
+    }
+    this.restartPrevOn = on;
+  }
+
+  /* Choosing the row: the next button to go down, or the next axis the
+   * sticks do not use to move half its travel, becomes the switch. The pad
+   * is snapshotted on the first poll after this, so whatever is already
+   * held or flipped does not count. */
+  beginRestartCapture() {
+    this.restartCapture = { id: null, buttons: null, axes: null };
+    this.restartResult = null;
+  }
+
+  cancelRestartCapture() {
+    this.restartCapture = null;
+  }
+
+  clearRestartSwitch() {
+    this.restartSpec = null;
+    this.restartPrevOn = null;
+    this.restartFired = false;
+    saveRestartSpec(null);
+  }
+
+  runRestartCapture(gp) {
+    const cap = this.restartCapture;
+    const pressedAt = (i) => Boolean(gp.buttons && gp.buttons[i] && gp.buttons[i].pressed);
+    if (!cap.buttons || cap.id !== gp.id) {
+      cap.id = gp.id;
+      cap.buttons = (gp.buttons || []).map((b, i) => pressedAt(i));
+      cap.axes = Array.from(gp.axes);
+      return;
+    }
+    let spec = null;
+    for (let i = 0; i < cap.buttons.length && !spec; i += 1) {
+      const p = pressedAt(i);
+      if (p && !cap.buttons[i]) {
+        spec = { id: gp.id, kind: 'button', index: i, dir: 1 };
+      }
+      /* Let go, and it can be pressed for the job after all. */
+      cap.buttons[i] = p;
+    }
+    if (!spec) {
+      const sticks = new Set();
+      for (const ch of IDENT_CHANNELS) {
+        const m = this.map[ch];
+        if (m && Number.isInteger(m.axis)) {
+          sticks.add(m.axis);
+        }
+      }
+      for (let i = 0; i < gp.axes.length && i < cap.axes.length && !spec; i += 1) {
+        const d = gp.axes[i] - cap.axes[i];
+        if (!sticks.has(i) && Math.abs(d) >= RESTART_FLIP) {
+          spec = { id: gp.id, kind: 'axis', index: i, dir: (gp.axes[i] > 0 || (gp.axes[i] === 0 && d > 0)) ? 1 : -1 };
+        }
+      }
+    }
+    if (!spec) {
+      return;
+    }
+    this.restartSpec = spec;
+    this.restartCapture = null;
+    /* On now, because it was just flipped on: the flip that assigned it is
+     * not a restart. */
+    this.restartPrevOn = restartOn(gp, spec);
+    this.restartFired = false;
+    this.restartResult = saveRestartSpec(spec) ? 'saved' : 'unsaved';
+  }
+
+  /* One flip, one restart. */
+  takeRestart() {
+    const fired = this.restartFired;
+    this.restartFired = false;
+    return fired;
+  }
+
+  takeRestartResult() {
+    const r = this.restartResult;
+    this.restartResult = null;
+    return r;
   }
 
   /* Can the mapping be trusted for more than flying: a pilot's own map
@@ -1793,6 +1968,13 @@ export class InputManager {
        *            way a throttle does: the pilot's throttle is on the axis
        *            being flown as yaw. See noteYawParked. */
       guessYawParked: this.guessYawParked,
+      /* restart    the restart switch for the pad in use, as the Settings
+       *            row names it, or null. restartCapturing: the row is
+       *            waiting for a flip. See noteRestartSwitch. */
+      restart: selected && this.restartSpec && this.restartSpec.id === selected.id
+        ? describeRestart(this.restartSpec)
+        : null,
+      restartCapturing: Boolean(this.restartCapture),
     };
   }
 
@@ -2809,6 +2991,7 @@ export class InputManager {
       this.noteThrottleParked(gp);
       this.noteGuessOrder(gp);
       this.noteYawParked(gp, dtMs);
+      this.noteRestartSwitch(gp);
       this.source = this.mapUsable() ? 'a radio' : 'a radio whose stick order is a guess';
       /* Keyboard still works while a pad is plugged in: any held stick
        * key overrides that channel. */

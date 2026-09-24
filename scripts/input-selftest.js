@@ -725,6 +725,102 @@ section('the throttle-as-yaw verdict on an uncalibrated radio');
 }
 
 /* ------------------------------------------------------------------------
+ * 5c. The radio's restart switch. bug-a25bc2dd: "As people start to grind
+ *     tracks they will need ready access to a restart race hot key... can
+ *     be assigned to an AUX on the radio too." One flip, one restart; the
+ *     flip that assigns it is not one; a latched switch never repeats.
+ * ---------------------------------------------------------------------- */
+section('the restart switch');
+{
+  const store = memoryStorage();
+  const pad = makePad([0, 0, -1, 0, 0, -1], 8, 'Restart radio');
+  const rig = new Rig(pad, store);
+  const im = rig.im;
+  const press = (i, on) => { pad.buttons[i].pressed = on; pad.buttons[i].value = on ? 1 : 0; pad.timestamp += 1; };
+  rig.run(64);
+  check('nothing assigned: the row says so and no flip restarts anything',
+    im.padSummary().restart === null && im.takeRestart() === false);
+  press(5, true);
+  rig.run(64);
+  press(5, false);
+  rig.run(64);
+  check('a button pressed before the row was chosen is not captured', im.padSummary().restart === null);
+  im.beginRestartCapture();
+  rig.run(32);
+  check('choosing the row listens', im.padSummary().restartCapturing === true);
+  rig.ax(0, 1); rig.ax(1, -1); rig.ax(2, 1); rig.ax(3, 1);
+  rig.run(64);
+  rig.ax(0, 0); rig.ax(1, 0); rig.ax(2, -1); rig.ax(3, 0);
+  rig.run(64);
+  check('the four sticks swept end to end are not taken for the switch',
+    im.padSummary().restart === null && im.padSummary().restartCapturing === true);
+  press(5, true);
+  rig.run(32);
+  check('a button pressed while it listens is the switch, and it is kept',
+    im.padSummary().restart === 'Button 5' && im.padSummary().restartCapturing === false
+    && JSON.parse(store.getItem('webfpv.restart.v1')).index === 5 && im.takeRestartResult() === 'saved');
+  check('and the press that assigned it is not a restart', im.takeRestart() === false);
+  press(5, false);
+  rig.run(32);
+  check('let go: nothing', im.takeRestart() === false);
+  press(5, true);
+  rig.run(32);
+  check('pressed again: one restart', im.takeRestart() === true);
+  rig.run(500);
+  check('held: no second one', im.takeRestart() === false);
+  const fresh = new InputManager();
+  check('a new page on the same browser has it', fresh.padSummary().restart === 'Button 5');
+  im.clearRestartSwitch();
+  press(5, false); rig.run(32); press(5, true); rig.run(32);
+  check('forgotten, the button restarts nothing', im.padSummary().restart === null && im.takeRestart() === false
+    && store.getItem('webfpv.restart.v1') === null);
+}
+{
+  /* A two position switch that arrives as an axis, the usual AUX. */
+  const pad = makePad([0, 0, -1, 0, 0, -1], 0, 'Aux radio');
+  const rig = new Rig(pad);
+  const im = rig.im;
+  rig.run(64);
+  im.beginRestartCapture();
+  rig.run(32);
+  rig.ax(5, 1);
+  rig.run(32);
+  check('an AUX switch flipped while it listens is the switch, on the side it went to',
+    im.padSummary().restart === 'Switch on axis 5');
+  check('and that flip is not a restart', im.takeRestart() === false);
+  rig.ax(5, -1); rig.run(32);
+  check('off: nothing', im.takeRestart() === false);
+  rig.ax(5, 1); rig.run(32);
+  check('on: one restart', im.takeRestart() === true);
+  rig.run(2000);
+  check('left on for two seconds: still one', im.takeRestart() === false);
+  rig.ax(5, 0); rig.run(32); rig.ax(5, 1); rig.run(32);
+  check('a three position switch taken to the middle and back is a flip: the middle is off',
+    im.takeRestart() === true);
+}
+{
+  /* Stored for one radio, flown with another. */
+  const store = memoryStorage();
+  store.setItem('webfpv.restart.v1', JSON.stringify({ id: 'Some other radio', kind: 'button', index: 2, dir: 1 }));
+  const pad = makePad([0, 0, -1, 0, 0, -1], 4, 'This radio');
+  const rig = new Rig(pad, store);
+  rig.run(32);
+  pad.buttons[2].pressed = true; pad.timestamp += 1;
+  rig.run(32);
+  check('a switch kept for another radio does nothing on this one',
+    rig.im.padSummary().restart === null && rig.im.takeRestart() === false);
+}
+{
+  /* On when the page loads is not a flip. */
+  const store = memoryStorage();
+  store.setItem('webfpv.restart.v1', JSON.stringify({ id: 'Latched radio', kind: 'axis', index: 5, dir: 1 }));
+  const pad = makePad([0, 0, -1, 0, 0, 1], 0, 'Latched radio');
+  const rig = new Rig(pad, store);
+  rig.run(200);
+  check('a switch already on when the page loads is not a restart', rig.im.takeRestart() === false);
+}
+
+/* ------------------------------------------------------------------------
  * 6. The save that used to say "saved" over a throw. bug-ed4d2bce.
  * ---------------------------------------------------------------------- */
 section('saving when storage refuses');

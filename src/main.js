@@ -4649,6 +4649,19 @@ export async function boot({ loading, bootStart, mapId }) {
           : { text: 'Stick mapping saved.', untilMs: performance.now() + 2800 };
         input.calResult = null;
       }
+    } else if (action === 'restart-switch') {
+      /* The row toggles: choose it to listen for a flip, choose it again to
+       * stop. See beginRestartCapture in input.js. */
+      if (!input.firstGamepad()) {
+        notice = { text: 'No radio or gamepad found.\nPlug one in, set it to joystick mode, and reload.', untilMs: performance.now() + 3200 };
+      } else if (input.restartCapture) {
+        input.cancelRestartCapture();
+      } else {
+        input.beginRestartCapture();
+      }
+    } else if (action === 'restart-switch-clear') {
+      input.clearRestartSwitch();
+      notice = { text: 'Restart switch forgotten.\nR on the keyboard still restarts.', untilMs: performance.now() + 2800 };
     } else if (action === 'choosepad') {
       openPadPick('menu');
     } else if (action === 'padpick-yes') {
@@ -5880,6 +5893,21 @@ export async function boot({ loading, bootStart, mapId }) {
     }
 
     input.poll(nowWall);
+    /*
+     * The radio's restart switch, bug-a25bc2dd: see noteRestartSwitch in
+     * input.js. Taken on every frame, so a flip made in a menu is spent
+     * there, and acted on only where R acts, in flight. Here, before
+     * anything else in the frame reads the craft, so the frame that follows
+     * flies from the start line exactly as it does after R. A capture left
+     * running when the pilot leaves Settings is dropped, or the next button
+     * they pressed in flight would become the switch.
+     */
+    if (input.takeRestart() && ui.screen === 'flight' && mode === 'flight') {
+      reset();
+    }
+    if (input.restartCapture && ui.screen !== 'pilot') {
+      input.cancelRestartCapture();
+    }
     pollManualFlip();
     const launchNow = syncLaunchControl(nowWall);
     input.forcePadRest = launchStaging;
@@ -7323,7 +7351,14 @@ export async function boot({ loading, bootStart, mapId }) {
       && !turtleRecover
       && lastUpz >= 0
     ) ? guidedPrompt(race) : '';
-    ui.setPadInfo(input.padSummary());
+    const padSum = input.padSummary();
+    ui.setPadInfo(padSum);
+    const restartSet = input.takeRestartResult();
+    if (restartSet && padSum.restart) {
+      notice = restartSet === 'saved'
+        ? { text: `Restart switch: ${padSum.restart}.\nFlip it in flight to go back to the start line.`, untilMs: nowWall + 3600 }
+        : { text: `Restart switch: ${padSum.restart}, until you reload.\nThis browser would not keep it.`, untilMs: nowWall + 4800 };
+    }
     const queuedPick = input.takePadPickQueue();
     if (queuedPick) {
       openPadPick(queuedPick);

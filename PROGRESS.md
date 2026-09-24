@@ -43596,3 +43596,27 @@ it is the owner's call and is not in this change.
                                    plant, the ABI or the build changed
     npm run check:plant            not run, for the same reason
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | git | The crash reset pushed to main, for the owner to fly
+
+The owner, on the entry above: "push to main and i'll fly it". The approval
+to put the crash reset on main, and the verification scale chosen is flying
+it. main was at 2180895, the wiki rewrite entry, which was already merged
+into claude/zealous-cerf-gik7au, so the branch went onto main as a fast
+forward. Nothing was rewritten.
+
+What to look for is in the entry above. Nose first into a wall, tail first
+and flat on the back into the ground, and onto a roof: each is set down at
+once with "Crashed, set down nearby", the roof one on the roof. A hard
+belly landing, a gentle wall tap and a knock on a ceiling are not reset.
+Wrong would be any pause before a reset, or a reset on a belly landing. A
+flat back first crash is still silent apart from the notice.
+
+### RUN LOG
+
+    code                     unchanged since the entry above; only this
+                             entry is new
+    checks                   not rerun: nothing they read changed
+    git merge-base           2180895, one history; main is an ancestor
+                             of the branch
+    git diff --stat vendor/betaflight   empty

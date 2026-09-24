@@ -42269,3 +42269,26 @@ not fixed here.
     npm run verify           not run: a merge of two shell changes, no
                              physics, plant, ABI or build change on this
                              branch; main's gravity base is its own session's
+
+### The board, once it was live
+
+webfpv.org served fbe2f67 about a minute after the push: takeRestart in
+src/input/input.js, cells: 1 beside gravityBase: 2.025 in
+configs/airframes.js, the whoop card's 1S facts and the Restart switch row
+in src/ui/ui.js, and PLANT_CELLS in src/main.js, each read off the live
+site with and without a cache busting query. Then:
+
+    bug-a25bc2dd  Restart hot keys  fixed: R as before, and a radio switch
+                  set under Settings, Restart switch, restarts as R does
+    bug-eb0552d6  6S Whoops         fixed: the whoop reads 1S, 4.2 volts
+                                    charged; display only
+    bug-c9423f3e  Radiomaster pocket: throttle on yaw, stays in_progress:
+                  what shipped is the notice and the report's stick block,
+                  and only the reporter's next report says whether their
+                  Pocket is the case it catches
+
+The reporter of bug-eb0552d6 also asked whether voltage matters or is
+cosmetic. It matters to the plant, which sags and hovers higher up the
+stick on a tired pack, and the OSD number is now that same pack scaled to
+one cell. The resolution does not say so; it is here for whoever answers
+them next.

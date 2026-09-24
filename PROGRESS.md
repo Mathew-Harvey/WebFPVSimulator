@@ -42419,3 +42419,26 @@ The other 26 feel reports are read, tabulated above, and untouched.
                                      reads what the stick path already
                                      computed. build:wasm cannot run
                                      here: no emcc. Offered
+
+## 2026-09-24 | board | The 26 other feel reports closed wontfix
+
+The owner: "close them as wontfix". Every open feel report except
+bug-08577148, the 26 filed from the 21st to the 23rd and tabulated in the
+entry above, each checked still open and still a feel report before the
+write, with no ticket arriving in between. wontfix with an empty
+resolution, which is how the sweeps of the 19th and 21st closed theirs.
+They were filed before a report carried anything from the flight, so
+there is nothing more to get out of them than the table above already
+holds.
+
+The board now reads 169 tickets: 78 fixed, 88 wontfix, 1 duplicate, none
+open, 2 in progress. bug-08577148 waits on a report that carries
+stick.flight; bug-c9423f3e waits on its reporter.
+
+### What went wrong
+
+The first attempt was stopped by the session's permission check as a bulk
+write to an outside system, before any ticket changed, and a read only
+recount after it was stopped as well. Nothing was worked around. The
+owner said to go ahead, and the same 26 writes then ran: 26 wontfix, no
+failures.

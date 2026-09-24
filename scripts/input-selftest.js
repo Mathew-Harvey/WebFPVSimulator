@@ -3,8 +3,8 @@
  * plain Node against a synthetic radio, with one assertion per defect that
  * has already shipped once.
  *
- * Every check in here is a bug that reached the public board between the
- * 18th and the 21st of September 2026, was reproduced, fixed, and closed.
+ * Every check in here is a bug that reached the public board from the 18th
+ * of September 2026 on, was reproduced, fixed, and closed.
  * Each names its ticket. The probes that found them were written in a
  * scratch directory and died with the container, which is how a fix gets
  * to be un-fixed a month later by somebody tidying up. This file is those
@@ -118,7 +118,10 @@ function makePad(axes, buttons = 0, id = 'Selftest radio') {
 /* The module is imported AFTER the first shim exists, because the
  * constructor reaches for window on its first line of real work. */
 installEnv(null);
-const { InputManager, calSteps, SELECT_STEP } = await import('../src/input/input.js');
+const {
+  InputManager, calSteps, SELECT_STEP, KEY_THROTTLE_MODES, normaliseKeyThrottle,
+} = await import('../src/input/input.js');
+const { hoverStickPercent } = await import('../configs/rates.js');
 const {
   stickChannels, stickCaption, stickSideOf, normaliseStickMode, STICK_MODES,
 } = await import('../src/input/stickmode.js');
@@ -777,6 +780,173 @@ section('stickmode: the wizard names the right hand');
   rig.im.setStickMode(1);
   check('mode 1: pitch is the left stick', /left stick/.test(rig.view().prompt), rig.view().prompt);
   rig.im.setStickMode(2);
+}
+
+/* ------------------------------------------------------------------------
+ * 9. The keyboard throttle. bug-3a7be142, "whenever I press W or S, it
+ *    snaps strangely, and doesn't hold position like a real radio". The
+ *    keys sprang back to 0.22 while the shipped quad hovers at 0.350, so
+ *    letting go of W lost a metre in half a second. Asserted at the stop:
+ *    the spring clamps onto its target, so "rests at hover" is an equality.
+ * ---------------------------------------------------------------------- */
+section('the keyboard throttle: hover is the measured one');
+{
+  check('the table reads 35.0 at the shipped weight on a fresh pack, as the menu always did',
+    hoverStickPercent(100) === 35 && hoverStickPercent(100, '5inch', 100, 4.2) === 35);
+  check('and it follows the weight, the pack and the cap',
+    hoverStickPercent(100, '5inch', 60, 4.2) === 26 && hoverStickPercent(100, '5inch', 140, 4.2) === 42.8
+    && hoverStickPercent(100, '5inch', 100, 3.8) === 38.8 && hoverStickPercent(65, 'whoop65', 100, 4.2) === 51.1,
+    [hoverStickPercent(100, '5inch', 60, 4.2), hoverStickPercent(100, '5inch', 140, 4.2),
+      hoverStickPercent(100, '5inch', 100, 3.8), hoverStickPercent(65, 'whoop65', 100, 4.2)].join(' '));
+  const w80 = hoverStickPercent(100, '5inch', 80, 4.2);
+  check('between columns it interpolates, inside half a point of the 30.7 measured at weight 80',
+    Math.abs(w80 - 30.7) <= 0.5, String(w80));
+
+  const rig = new Rig(null);
+  const im = rig.im;
+  const hold = (code, ms) => { im.keys.add(code); rig.run(ms); };
+  const release = (code, ms = 400) => { im.keys.delete(code); rig.run(ms); };
+  check('told nothing, the keys rest at the shipped hover rather than 0.22',
+    Math.abs(im.kbHover - 0.35) < 1e-12, String(im.kbHover));
+  im.setKeyHover(0.511);
+  check('setKeyHover takes the run\'s own hover', im.kbHover === 0.511);
+  im.setKeyHover('not a number');
+  check('and ignores what is not a number', im.kbHover === 0.511, String(im.kbHover));
+  hold('KeyW', 1264);
+  check('W held off the pad goes to the top', im.channels.throttle === 1, String(im.channels.throttle));
+  release('KeyW');
+  check('let go in the air, it rests on hover exactly', im.channels.throttle === 0.511, String(im.channels.throttle));
+  hold('KeyS', 304);
+  const sink = im.channels.throttle;
+  check('S sinks from there', sink > 0.04 && sink < 0.511, String(sink));
+  release('KeyS');
+  check('and let go of S, back on hover', im.channels.throttle === 0.511, String(im.channels.throttle));
+}
+
+section('the keyboard throttle: a tap on the pad does not launch, a press past takeoff does');
+{
+  const rig = new Rig(null);
+  const im = rig.im;
+  const hold = (code, ms) => { im.keys.add(code); rig.run(ms); };
+  const release = (code, ms = 400) => { im.keys.delete(code); rig.run(ms); };
+  im.noteLanded(true);
+  hold('KeyW', 112);
+  const tap = im.channels.throttle;
+  check('a short tap stays under takeoff', tap > 0.1 && tap < 0.25, String(tap));
+  release('KeyW');
+  check('let go, it goes back to idle rather than up to hover', im.channels.throttle === 0, String(im.channels.throttle));
+  hold('KeyW', 304);
+  check('a longer press passes takeoff', im.channels.throttle >= 0.25, String(im.channels.throttle));
+  /* Released while main.js still has the craft down: it has not read the
+   * sample that lifts it yet. The latch must survive that gap. */
+  release('KeyW', 48);
+  im.noteLanded(true);
+  rig.run(400);
+  check('let go before the shell has lifted it, it still rests at hover',
+    im.channels.throttle === im.kbHover, String(im.channels.throttle));
+  im.noteLanded(false);
+  rig.run(200);
+  check('and still does once it is flying', im.channels.throttle === im.kbHover, String(im.channels.throttle));
+}
+
+section('the keyboard throttle: touching down parks it, a touch and go does not');
+{
+  const rig = new Rig(null);
+  const im = rig.im;
+  const hold = (code, ms) => { im.keys.add(code); rig.run(ms); };
+  const release = (code, ms = 400) => { im.keys.delete(code); rig.run(ms); };
+  im.noteLanded(false);
+  hold('KeyW', 1264);
+  release('KeyW');
+  hold('KeyS', 304);
+  im.noteLanded(true);
+  release('KeyS');
+  check('down on S and let go, it goes to idle rather than back up to hover',
+    im.channels.throttle === 0, String(im.channels.throttle));
+  rig.run(1000);
+  check('and stays there, so a landed quad does not leave by itself', im.channels.throttle === 0);
+  im.noteLanded(false);
+  hold('KeyW', 1264);
+  release('KeyW');
+  hold('KeyW', 208);
+  const brushing = im.channels.throttle;
+  im.noteLanded(true);
+  rig.run(64);
+  /* Clearing the latch here would drop the stick from "hover and up" to
+   * "idle and up" under a held key, a dip of a quarter of the stick. */
+  check('brushing the ground with W held does not dip the throttle under the key',
+    im.channels.throttle >= brushing, `${brushing} -> ${im.channels.throttle}`);
+  release('KeyW');
+  check('and let go, it is still on hover, flying',
+    im.channels.throttle === im.kbHover, String(im.channels.throttle));
+}
+
+section('the keyboard throttle that stays put');
+{
+  check('two modes, and anything else is the spring',
+    KEY_THROTTLE_MODES.join() === 'hover,hold' && normaliseKeyThrottle('hold') === 'hold'
+    && normaliseKeyThrottle('x') === 'hover' && normaliseKeyThrottle(undefined) === 'hover');
+  const rig = new Rig(null);
+  const im = rig.im;
+  const hold = (code, ms) => { im.keys.add(code); rig.run(ms); };
+  const release = (code, ms = 1000) => { im.keys.delete(code); rig.run(ms); };
+  im.setKeyThrottle('hold');
+  hold('KeyW', 96);
+  const tap = im.channels.throttle;
+  check('a tap moves it about a percent', tap > 0.008 && tap < 0.015, String(tap));
+  release('KeyW');
+  check('and it stays where it was left', im.channels.throttle === tap, String(im.channels.throttle));
+  hold('KeyW', 1200);
+  check('a long hold reaches the top', im.channels.throttle === 1, String(im.channels.throttle));
+  release('KeyW');
+  check('and stays at the top, with no spring back to hover', im.channels.throttle === 1);
+  hold('KeyS', 400);
+  const down = im.channels.throttle;
+  release('KeyS');
+  check('S brings it down and it stays there', down < 1 && down > 0.5 && im.channels.throttle === down, String(down));
+  im.noteLanded(true);
+  rig.run(500);
+  check('touching down changes nothing, a radio throttle does not know', im.channels.throttle === down);
+  /* The same hold, sliced three ways. The travel is the difference of one
+   * curve, so the slices cannot change it: the poll rate is not the pilot. */
+  const travel = (stepMs) => {
+    const r = new Rig(null);
+    r.im.setKeyThrottle('hold');
+    r.im.lastWall = r.t;
+    r.im.keys.add('KeyW');
+    for (let e = 0; e < 480; e += stepMs) {
+      r.step(stepMs);
+    }
+    return r.im.kb.throttle;
+  };
+  const t2 = travel(2);
+  const t16 = travel(16);
+  const t40 = travel(40);
+  check('the same 480 ms hold travels the same at 2, 16 and 40 ms polls',
+    Math.abs(t2 - t16) < 1e-9 && Math.abs(t16 - t40) < 1e-9, `${t2} ${t16} ${t40}`);
+}
+
+section('the keyboard throttle: switching back to the spring');
+{
+  const rig = new Rig(null);
+  const im = rig.im;
+  const hold = (code, ms) => { im.keys.add(code); rig.run(ms); };
+  const release = (code, ms = 48) => { im.keys.delete(code); rig.run(ms); };
+  im.setKeyThrottle('hold');
+  hold('KeyW', 560);
+  release('KeyW');
+  const up = im.channels.throttle;
+  im.setKeyThrottle('hover');
+  rig.run(400);
+  check('in the air, it rests at hover rather than springing to idle under a flying quad',
+    up >= 0.25 && im.channels.throttle === im.kbHover, `${up} -> ${im.channels.throttle}`);
+  im.setKeyThrottle('hold');
+  hold('KeyW', 560);
+  release('KeyW');
+  im.noteLanded(true);
+  im.setKeyThrottle('hover');
+  rig.run(400);
+  check('on the ground, it goes to idle', im.channels.throttle === 0, String(im.channels.throttle));
 }
 
 console.log(failed ? `\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);

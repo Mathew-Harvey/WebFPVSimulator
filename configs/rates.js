@@ -617,17 +617,114 @@ const HOVER_5IN_AT_BASE = new Map([
   [100, 35.0], [90, 38.3], [80, 42.5], [75, 44.9], [70, 47.8],
   [65, 51.1], [60, 54.9], [50, 64.9], [40, 79.8],
 ]);
+
+/*
+ * AND AT THE PILOT'S WEIGHT AND PACK, because since bug-3a7be142 something
+ * flies on this number rather than printing it: the keyboard's throttle
+ * keys spring back to hover when they are let go, and a spring to the wrong
+ * number is a quad that falls out of the sky every time a key comes up.
+ *
+ * It did. The keyboard sprang to 0.22, "a hair over measured hover 0.2051",
+ * a figure taken at 1.0 g on the plant of 15 August. At the shipped weight
+ * hover is 35.0, so letting go of W dropped the stick thirteen points under
+ * it and the quad lost a metre in half a second and three in under one.
+ *
+ * Hover moves with three things a pilot sets, so it is read at all three:
+ *
+ *   the throttle cap, the rows, which is the table above;
+ *   the Weight slider, the columns: 60, 100 and 140 are its ends and its
+ *     middle, flown at gravityScaleFor's 0.972, 1.62 and 2.268;
+ *   the pack charge a run starts on, the blocks: 4.2, 3.8 and 3.5 per
+ *     cell, which are PACK_VOLTAGES and the only charges a run can start at.
+ *
+ * Nothing else moves it. The pack does not run down in flight: four minutes
+ * at hover read 25.05 V under load from the first second to the last, so the
+ * charge a run STARTS on is the charge it hovers on throughout.
+ *
+ * Between two weight columns the answer is interpolated, which is 0.2 of a
+ * point at worst uncapped and 0.5 at a cap of 40, measured against all
+ * seventeen stops of the slider. Near hover this plant climbs or sinks
+ * about 0.9 m/s per point of stick, so half a point is a drift a pilot
+ * corrects with a tap, where thirteen was a fall.
+ *
+ * 100 means full stick is not enough: a 140 weight on a tired pack at a cap
+ * of 40 cannot hover at all, and the bisection says so by hitting the stop.
+ *
+ * Taken 2026-09-24 with the same bisection as scripts/flightcheck.js, on the
+ * same config, at each of the nine pairs:
+ *
+ *     node scripts/flightcheck.js --gravity=0.972 --cell=4.2
+ *
+ * and so on for 1.62 and 2.268, and 3.8 and 3.5. The weight 100 column at
+ * 4.2 reproduced HOVER_5IN_AT_BASE above to the tenth at every cap.
+ */
+const HOVER_CELLS = [4.2, 3.8, 3.5];
+const HOVER_WEIGHTS = [60, 100, 140];
+const HOVER_5IN = new Map([
+  [4.2, [
+    new Map([
+      [100, 26.0], [90, 28.4], [80, 31.4], [75, 33.1], [70, 35.1],
+      [65, 37.3], [60, 40.1], [50, 47.0], [40, 57.6],
+    ]),
+    HOVER_5IN_AT_BASE,
+    new Map([
+      [100, 42.8], [90, 46.9], [80, 52.2], [75, 55.3], [70, 58.8],
+      [65, 63.0], [60, 67.8], [50, 80.4], [40, 99.2],
+    ]),
+  ]],
+  [3.8, [
+    new Map([
+      [100, 28.9], [90, 31.6], [80, 34.8], [75, 36.8], [70, 39.1],
+      [65, 41.7], [60, 44.8], [50, 52.6], [40, 64.5],
+    ]),
+    new Map([
+      [100, 38.8], [90, 42.5], [80, 47.2], [75, 50.0], [70, 53.2],
+      [65, 56.9], [60, 61.2], [50, 72.5], [40, 89.3],
+    ]),
+    new Map([
+      [100, 47.4], [90, 52.1], [80, 58.0], [75, 61.5], [70, 65.5],
+      [65, 70.1], [60, 75.5], [50, 89.7], [40, 100],
+    ]),
+  ]],
+  [3.5, [
+    new Map([
+      [100, 31.5], [90, 34.3], [80, 38.0], [75, 40.2], [70, 42.7],
+      [65, 45.6], [60, 48.9], [50, 57.8], [40, 70.9],
+    ]),
+    new Map([
+      [100, 42.2], [90, 46.3], [80, 51.5], [75, 54.5], [70, 58.1],
+      [65, 62.1], [60, 66.9], [50, 79.3], [40, 97.9],
+    ]),
+    new Map([
+      [100, 51.6], [90, 56.7], [80, 63.2], [75, 67.1], [70, 71.5],
+      [65, 76.7], [60, 82.6], [50, 98.1], [40, 100],
+    ]),
+  ]],
+]);
 const HOVER_STICK_PERCENT = {
-  '5inch': HOVER_5IN_AT_BASE,
-  whoop65: HOVER_5IN_AT_BASE,
+  '5inch': HOVER_5IN,
+  whoop65: HOVER_5IN,
 };
 
 /*
  * Where hover sits on the stick, as a percentage of travel, for this cap on
  * this aircraft. The airframe is optional and defaults to the five inch,
  * which is what every caller meant when there was one aircraft.
+ *
+ * Weight and the pack's starting charge per cell are optional too, and
+ * default to the shipped machine on a fresh pack, which is what the menu
+ * quotes. The keyboard passes the run's own, because it flies on the answer.
  */
-export function hoverStickPercent(cap, airframe = '5inch') {
+export function hoverStickPercent(cap, airframe = '5inch', weight = 100, cellV = 4.2) {
   const table = HOVER_STICK_PERCENT[airframe] ?? HOVER_STICK_PERCENT['5inch'];
-  return table.get(nearest(THROTTLE_CAP_CHOICES, cap)) ?? table.get(100);
+  const cols = table.get(nearest(HOVER_CELLS, Number(cellV) || 4.2));
+  const c = nearest(THROTTLE_CAP_CHOICES, cap);
+  const at = (i) => cols[i].get(c) ?? cols[i].get(100);
+  const [light, mid, heavy] = HOVER_WEIGHTS;
+  const w = Math.min(heavy, Math.max(light, Number(weight) || mid));
+  /* Out from the middle column, so the stock weight returns the table's own
+   * figure exactly rather than a sum that rounds to it. */
+  const edge = w < mid ? 0 : 2;
+  const u = (w - mid) / ((edge === 0 ? light : heavy) - mid);
+  return u === 0 ? at(1) : at(1) + (at(edge) - at(1)) * u;
 }

@@ -56,6 +56,7 @@
 import {
   stickChannels, stickCaption, stickSideOf, DEFAULT_STICK_MODE, normaliseStickMode,
 } from './stickmode.js';
+import { hoverStickPercent } from '../../configs/rates.js';
 
 const STORE_KEY = 'webfpv_stick_map_v1';
 const PAD_STORE_KEY = 'webfpv.pad.v1';
@@ -830,6 +831,78 @@ function analogMag(heldMs) {
   return CRUISE + (1 - CRUISE) * u;
 }
 
+/*
+ * THE TWO THINGS A THROTTLE KEY CAN DO WHEN IT IS LET GO, the pilot's
+ * choice on the Settings screen. bug-3a7be142: "whenever I press W or S, it
+ * snaps strangely, and doesn't hold position like a real radio", asking for
+ * "an option to toggle snapping, or for the throttle to hold position".
+ *
+ *   'hover'  springs back to hover once airborne and to idle on the pad.
+ *            What the keys have always done, and the default.
+ *   'hold'   stays exactly where it was left, the way a radio's throttle
+ *            does, because a radio's throttle has no spring.
+ */
+export const KEY_THROTTLE_MODES = ['hover', 'hold'];
+
+export function normaliseKeyThrottle(mode) {
+  return mode === 'hold' ? 'hold' : 'hover';
+}
+
+/*
+ * The stick a throttle key has to reach before letting go rests at hover.
+ * It is main.js's TAKEOFF_THROTTLE, the point where the shell lifts a
+ * landed craft, so the keys and the shell agree about what a takeoff is.
+ * See applyKeyboardCollective.
+ */
+const KEY_LIFTOFF = 0.25;
+
+/*
+ * HOLD TIME TO TRAVEL, for the throttle that stays put.
+ *
+ * analogMag above is a POSITION, which is right for a key that springs back:
+ * letting go ends the gesture. A throttle that stays put needs a RATE
+ * instead, because every gesture starts from wherever the last one left it,
+ * and the rate has to serve two jobs a single number cannot. Near hover this
+ * plant climbs or sinks about 0.9 m/s per point of stick, so trimming a
+ * hover wants taps worth a point or so. Punching out of a hover or cutting
+ * to idle wants the whole stick in about a second.
+ *
+ * So the rate starts slow and speeds up the longer the key is held:
+ *
+ *   tap      90 ms  ->  1.1 points  a trim
+ *   hold    250 ms  ->  5.5 points
+ *   hold    500 ms  -> 27.4 points
+ *   hold    750 ms  -> 65.2 points  hover to full at the shipped weight
+ *   full    968 ms  -> the whole stick, idle to the top
+ *
+ * latchTravel(heldMs) is the travel a hold of that length has made in total,
+ * and a poll moves the throttle by the difference across its own slice of
+ * the hold. The travel is then the same however the slices fall, so the
+ * poll rate, the frame rate and a dropped frame cannot change it. The hold
+ * clock still advances at most 40 ms a poll, as it does for analogMag.
+ */
+function latchTravel(heldMs) {
+  const SLOW = 0.12;       /* stick per second for the first touch */
+  const FAST = 1.6;        /* stick per second once the key is held */
+  const TAP_MS = 120;      /* the slow band: a tap stays inside it */
+  const RAMP_MS = 500;     /* then the rate climbs to FAST over this */
+  if (heldMs <= 0) {
+    return 0;
+  }
+  const t = heldMs / 1000;
+  const tap = TAP_MS / 1000;
+  const ramp = RAMP_MS / 1000;
+  if (t <= tap) {
+    return SLOW * t;
+  }
+  const inRamp = Math.min(t - tap, ramp);
+  let d = SLOW * tap + SLOW * inRamp + ((FAST - SLOW) / (2 * ramp)) * inRamp * inRamp;
+  if (t > tap + ramp) {
+    d += FAST * (t - tap - ramp);
+  }
+  return d;
+}
+
 export class InputManager {
   constructor() {
     this.channels = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
@@ -848,8 +921,27 @@ export class InputManager {
     this.kbAir = false;
     this.kbThrFromKeys = false;
     /* While launch control is holding on the pad, rest is idle, never hover,
-     * so a W tap cannot spring to 22 percent and fire the launch. */
+     * so a W tap cannot spring to hover and fire the launch. */
     this.forcePadRest = false;
+    /*
+     * What the throttle keys do when let go, 'hover' or 'hold'. See
+     * KEY_THROTTLE_MODES. main.js sets it from Settings.
+     */
+    this.keyThrottle = 'hover';
+    /*
+     * WHERE 'hover' SPRINGS TO, as stick travel. It was a constant, 0.22, and
+     * it was wrong by thirteen points at the shipped weight: bug-3a7be142.
+     * main.js now hands over the measured hover for the run's own throttle
+     * cap, weight and pack through setKeyHover. This starting value is the
+     * shipped machine, so a shell that never calls it still holds height.
+     */
+    this.kbHover = hoverStickPercent(100) / 100;
+    /*
+     * Whether the craft was sitting on something at the end of the last
+     * frame, from main.js through noteLanded. Only the moment it BECOMES true
+     * is used: see noteLanded for why the level would be wrong.
+     */
+    this.kbLanded = false;
     /*
      * The harness stick, set through window.__stick and nothing else. When
      * non-null it IS the channels, held like a radio's gimbals until the
@@ -2319,10 +2411,31 @@ export class InputManager {
    * Only the keyboard-as-primary path calls this. A radio keeps analog
    * latch. __stick and a reset clear the flags so a written throttle is
    * not sprung out from under them.
+   *
+   * HOVER IS HANDED IN, NOT WRITTEN HERE. It was 0.22 here, "a hair over
+   * measured hover 0.2051", taken at 1.0 g on the plant of 15 August. The
+   * shell has flown at 1.62 g since the 18th of September, where hover is
+   * 35.0 percent of stick, so letting go dropped the stick thirteen points
+   * under it and the quad lost a metre in half a second: bug-3a7be142, "it
+   * snaps strangely, and doesn't hold position". kbHover is the measured
+   * hover for the run's cap, weight and pack. See setKeyHover.
+   *
+   * LIFTOFF IS THE SHELL'S OWN TAKEOFF, main.js's TAKEOFF_THROTTLE. It was
+   * 0.18, and that only worked because the wrong hover sat under takeoff:
+   * springing to 0.22 on the pad never launched anything. A real hover sits
+   * above it, so latching hover on the pad IS a launch, and only a press
+   * that launched the craft may do it. A shorter tap springs back to idle.
+   * Coming DOWN is noteLanded's job.
+   *
+   * 'hold' does none of this: see holdKeyboardCollective.
    */
   applyKeyboardCollective(dtHold, w, s, springStep) {
-    const HOVER = 0.22; /* a hair over measured hover 0.2051, so level holds */
-    const LIFTOFF = 0.18;
+    if (this.keyThrottle === 'hold') {
+      this.holdKeyboardCollective(dtHold, w, s);
+      return;
+    }
+    const HOVER = this.kbHover;
+    const LIFTOFF = KEY_LIFTOFF;
 
     const air = this.forcePadRest ? false : this.kbAir;
     if (w && !s) {
@@ -2361,6 +2474,92 @@ export class InputManager {
         this.kb.throttle = Math.max(target, this.kb.throttle - springStep);
       }
     }
+  }
+
+  /*
+   * THE THROTTLE THAT STAYS PUT: a key held moves it, a key let go leaves
+   * it, and there is no rest to go back to. Both keys at once is neither.
+   * The pad, hover and the airborne latch mean nothing here, because a
+   * radio's throttle does not know whether the quad is flying either.
+   */
+  holdKeyboardCollective(dtHold, w, s) {
+    if (w === s) {
+      if (w) {
+        this.kbThrFromKeys = true;
+      }
+      this.kbHoldMs.w = 0;
+      this.kbHoldMs.s = 0;
+      return;
+    }
+    this.kbThrFromKeys = true;
+    const key = w ? 'w' : 's';
+    const was = this.kbHoldMs[key];
+    this.kbHoldMs[key] = was + dtHold;
+    this.kbHoldMs[w ? 's' : 'w'] = 0;
+    const move = latchTravel(this.kbHoldMs[key]) - latchTravel(was);
+    this.kb.throttle = Math.max(0, Math.min(1, this.kb.throttle + (w ? move : -move)));
+  }
+
+  /*
+   * What the throttle keys do when let go, from Settings. The collective
+   * stays where it is across the change, the same promise setStickMode
+   * makes. Coming back to 'hover' in the air re-arms the rest at hover, or
+   * the first poll would spring a flying quad to idle: 'hold' keeps no
+   * airborne latch, because it has no rest to latch.
+   */
+  setKeyThrottle(mode) {
+    const m = normaliseKeyThrottle(mode);
+    if (m === this.keyThrottle) {
+      return m;
+    }
+    this.keyThrottle = m;
+    this.kbHoldMs.w = 0;
+    this.kbHoldMs.s = 0;
+    if (m === 'hover') {
+      this.kbAir = !this.kbLanded && this.kb.throttle >= KEY_LIFTOFF;
+    }
+    return m;
+  }
+
+  /*
+   * Where 'hover' springs to, as stick travel from 0 to 1: main.js passes
+   * hoverStickPercent for the run's throttle cap, weight and pack, on every
+   * settings write, so the weight slider in flight moves it too. Anything
+   * that is not a number is ignored rather than trusted.
+   */
+  setKeyHover(frac) {
+    const v = Number(frac);
+    if (Number.isFinite(v)) {
+      this.kbHover = Math.max(0, Math.min(1, v));
+    }
+    return this.kbHover;
+  }
+
+  /*
+   * THE CRAFT HAS COME DOWN, so the collective's rest goes back to idle.
+   *
+   * A real hover sits above the shell's takeoff throttle, so a quad that
+   * touched down and was let go would spring back to hover and lift off
+   * again by itself: land on a roof, let go of S, and it leaves. The old
+   * 0.22 hid that by being wrong, low enough to sit under takeoff.
+   *
+   * main.js calls this once a frame, AFTER that frame's landing judgement,
+   * so the polls between frames already know. Only the moment it becomes
+   * true is acted on, never the level, and the level would be a bug: a
+   * pilot presses past takeoff on the pad and lets go, the release latches
+   * hover, and the craft is still marked landed until main.js reads the
+   * sample. A level test would un-latch it in that gap and spring the stick
+   * to idle under a quad that had just been told to fly.
+   *
+   * Touching down with the throttle key held is a touch and go: the latch
+   * stays, and the throttle that is up relaunches it on the next frame.
+   */
+  noteLanded(on) {
+    const down = Boolean(on);
+    if (down && !this.kbLanded && !this.keys.has(this.throttleKeys.up)) {
+      this.kbAir = false;
+    }
+    this.kbLanded = down;
   }
 
   /* Zero the sticks and the collective so a reset or a harness poke

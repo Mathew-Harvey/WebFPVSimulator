@@ -91,8 +91,18 @@ const config = await readFile(
   join(root, WHOOP ? 'configs/whoop-champion.diff' : 'tests/fixtures/config-baseline.diff'),
   'utf8',
 );
-/* A 1S pack, fresh, against a 6S one. */
-const CELL_V = 4.2;
+/*
+ * A 1S pack, fresh, against a 6S one.
+ *
+ * --cell=VOLTS, default 4.2, is the charge per cell a run starts on. The
+ * shell offers 4.2, 3.8 and 3.5, and hover moves up the stick as it drops,
+ * so the keyboard's hover table in configs/rates.js is read at all three.
+ */
+const CELL_V = Number(process.argv.slice(2)
+  .find((a) => a.startsWith('--cell='))?.slice('--cell='.length) ?? '4.2');
+if (!(CELL_V >= 3 && CELL_V <= 4.4)) {
+  throw new Error(`--cell=${CELL_V} is not a charge a LiPo cell is flown at`);
+}
 
 async function fresh(cellV = CELL_V) {
   const sim = await loadSim(wasm);
@@ -244,7 +254,7 @@ hold(roll, 400, { throttle: 0.35, roll: 1 }, (i, st) => {
 });
 row('peak roll acceleration', `${(peakAccel * 180 / Math.PI).toFixed(0)} deg/s^2`, '', '');
 
-console.log(`\nFLIGHT CHARACTERISTICS, measured off dist/sim.wasm${GRAVITY === 1 ? '' : ` at gravity ${GRAVITY} times 9.80665`}\n`);
+console.log(`\nFLIGHT CHARACTERISTICS, measured off dist/sim.wasm${GRAVITY === 1 ? '' : ` at gravity ${GRAVITY} times 9.80665`}${CELL_V === 4.2 ? '' : ` from ${CELL_V} V per cell`}\n`);
 console.log(`${'quantity'.padEnd(30)}${'measured'.padEnd(26)}${'STAGE1.md says'.padEnd(24)}note`);
 for (const r of rows) {
   console.log(`${r.what.padEnd(30)}${String(r.measured).padEnd(26)}${String(r.declared).padEnd(24)}${r.note}`);

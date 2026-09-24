@@ -88,7 +88,7 @@ import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { airframeById, simIdFor } from '../configs/airframes.js';
 import { buildWhoopCraft } from './render/whoopcraft.js';
-import { normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
+import { hoverStickPercent, normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
 import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
 import { cliMap, composeConfig, FC_DUMP_KEY, FC_DUMP_AIRFRAME_KEY, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, tuneBody } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
@@ -3061,6 +3061,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * without this a player could change packs mid run and have the lap
      * compared against another pack's record. */
     runVoltage = ui.settings.packVoltage;
+    syncKeyHover();
     /* Back to the MAP's own spawn. A crash recovery moves the spawn offset
      * to a point on the course, and a new run must not begin from wherever
      * the last one happened to end. */
@@ -3281,8 +3282,9 @@ export async function boot({ loading, bootStart, mapId }) {
   /*
    * ANGLE MODE is a Betaflight flight-mode flag, not a plant change. The
    * module defaults to acro. Keyboard stick input cannot hold a rate, so
-   * it always raises ANGLE_MODE; a radio uses the setting. Changing this
-   * does not re-init the module and does not reset the craft.
+   * racing on keys starts in ANGLE_MODE; a radio uses the setting, and M in
+   * flight changes whichever of the two is flying. See flightModeSetting.
+   * Changing this does not re-init the module and does not reset the craft.
    */
   let angleModeOn = false;
   /* L-switch for launch control. The Settings row only enables the
@@ -3294,19 +3296,26 @@ export async function boot({ loading, bootStart, mapId }) {
   let lcPrevState = 0;
   let lcGoUntil = 0;
 
-  function wantAngleMode() {
-    if (crashflipOn || turtleRecover) {
-      return false;
-    }
-    if (lcAcroUntil === Infinity || (lcAcroUntil > 0 && performance.now() < lcAcroUntil)) {
-      return false;
-    }
+  /*
+   * WHICH STORED CHOICE DECIDES ANGLE OR ACRO RIGHT NOW: 'flightMode', the
+   * Flight mode row in Quad, or 'keyRaceMode', the keyboard's own choice for
+   * racing. Split out of wantAngleMode so the M key flips the same choice
+   * this reads, and cannot flip one while the other is flying.
+   *
+   * Racing on keys used to FORCE Angle, with nothing a pilot could do about
+   * it: bug-92007f3e, "Using m+k freestyle mode defaults to acro while the
+   * race courses default to angle. If there is a key to swap between modes
+   * on the keyboard I haven't found it." There was not. The guard's reason
+   * stands, so it stays as the DEFAULT, Angle, and becomes a choice the
+   * pilot can change with M and keep.
+   */
+  function flightModeSetting() {
     /* The thumb sticks are a proportional stick, so they are a RADIO here,
      * not a keyboard: they fly whichever mode the setting says. Keys keep
      * forcing angle because a key is a bang-bang input and acro on one is
      * a crash generator. */
     if (input.isTouchPrimary()) {
-      return ui.settings.flightMode === 'angle';
+      return 'flightMode';
     }
     /*
      * THE HARNESS OVERRIDE IS A GIMBAL, NOT A KEY.
@@ -3324,7 +3333,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * out of acro. A pilot on a radio is unaffected either way.
      */
     if (input.harnessChannels) {
-      return ui.settings.flightMode === 'angle';
+      return 'flightMode';
     }
     /*
      * FREESTYLE IS THE TRICK MODE, AND NO TRICK IS POSSIBLE IN ANGLE.
@@ -3347,11 +3356,53 @@ export async function boot({ loading, bootStart, mapId }) {
      * So in freestyle the SETTING decides, on a keyboard as much as on a
      * radio. Racing keeps the guard, where holding a line matters more than
      * inverting and a key is a bang bang input.
+     *
+     * The guard is now a default the pilot can change rather than a lock:
+     * keyRaceMode starts at Angle, and only M in flight moves it.
      */
     if (view && view.mode === 'freestyle') {
-      return ui.settings.flightMode === 'angle';
+      return 'flightMode';
     }
-    return input.isKeyboardPrimary() || ui.settings.flightMode === 'angle';
+    return input.isKeyboardPrimary() ? 'keyRaceMode' : 'flightMode';
+  }
+
+  function wantAngleMode() {
+    if (crashflipOn || turtleRecover) {
+      return false;
+    }
+    if (lcAcroUntil === Infinity || (lcAcroUntil > 0 && performance.now() < lcAcroUntil)) {
+      return false;
+    }
+    return ui.settings[flightModeSetting()] === 'angle';
+  }
+
+  /*
+   * M IN FLIGHT: ANGLE OR ACRO, FROM THE KEYBOARD. bug-92007f3e.
+   *
+   * It flips whichever choice is flying right now and saves it, so a pilot
+   * racing on keys who picks Acro stays in Acro on the next race, and one
+   * who picks Angle in freestyle has changed the Flight mode row, the same
+   * row the FC screen's switch and Settings write. M, because it is far
+   * from both hands' keys: a mode that flips when a finger slips off D in a
+   * hard yaw is worse than no key at all.
+   *
+   * Turtle, crash flip and a launch hold Acro whatever the choice says,
+   * and still do. The choice is saved and takes over when they let go. The
+   * banner hides notices under both, so the OSD's mode readout, which is
+   * always the live one, is what says so.
+   */
+  function flipFlightMode() {
+    const key = flightModeSetting();
+    const next = ui.settings[key] === 'angle' ? 'acro' : 'angle';
+    ui.settings[key] = next;
+    ui.persistSettings();
+    syncAngleMode();
+    notice = {
+      text: next === 'angle'
+        ? 'ANGLE\nSticks are tilt. Let go and it levels.\nM switches back.'
+        : 'ACRO\nSticks are rates. Let go and it holds its attitude.\nM switches back.',
+      untilMs: performance.now() + 2600,
+    };
   }
 
   function pitchNoseDownDeg(st) {
@@ -3534,6 +3585,21 @@ export async function boot({ loading, bootStart, mapId }) {
      */
   }
 
+  /*
+   * WHERE THE KEYBOARD'S THROTTLE SPRINGS BACK TO: the measured hover for
+   * the throttle cap, weight and pack this run is actually flying, which is
+   * why it reads the run's values and not the stored settings. The keys
+   * sprang to a constant 0.22 until bug-3a7be142, thirteen points under the
+   * shipped hover, and the quad fell whenever W came up. Called from
+   * applySettings, which every settings write reaches, the weight slider in
+   * flight included, and from the run start, where the pack is latched.
+   */
+  function syncKeyHover() {
+    input.setKeyHover(hoverStickPercent(
+      normaliseRates(ui.settings.rates).throttleCap, runAirframe, runWeight, runVoltage,
+    ) / 100);
+  }
+
   function applySettings(s) {
     /*
      * The pilot's stick mode, first, because everything below it that draws
@@ -3545,6 +3611,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (ui.setStickMode) {
       ui.setStickMode(s.stickMode);
     }
+    /* What the throttle keys do when let go. The collective stays where it
+     * is across a change, so this is safe mid flight. */
+    input.setKeyThrottle(s.keyThrottle);
     camTilt = clampCameraAngle(s.cameraAngle);
     s.cameraAngle = camTilt;
     qTilt.setFromAxisAngle(AXIS_X, cameraTiltRad(camTilt));
@@ -3817,6 +3886,9 @@ export async function boot({ loading, bootStart, mapId }) {
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
+    /* Last, after the weight, the aircraft, the pack and the rates above
+     * have all settled on what the run is flying. */
+    syncKeyHover();
     syncAngleMode();
   }
 
@@ -4760,6 +4832,11 @@ export async function boot({ loading, bootStart, mapId }) {
       setCrashflip(false);
       turtleRecover = false;
       finishClipCrash();
+      return;
+    }
+    /* Angle or Acro, from the keyboard. See flipFlightMode. */
+    if (code === 'KeyM' && ui.screen === 'flight' && mode === 'flight') {
+      flipFlightMode();
       return;
     }
     if (code === 'KeyL' && ui.screen === 'flight') {
@@ -6313,6 +6390,9 @@ export async function boot({ loading, bootStart, mapId }) {
       adoptSimClock();
       statePrev = stateCurr;
     }
+    /* After this frame's landing judgement, so the key polls between frames
+     * already know the craft is down. See noteLanded in src/input/input.js. */
+    input.noteLanded(landed);
 
     /* Render: interpolate the two most recent physics states. The sim
      * flies about its own origin; the start gate placement is a render
@@ -8364,6 +8444,18 @@ export async function boot({ loading, bootStart, mapId }) {
     ...input.stats(),
     rcHz: RC_HZ,
     fps: Math.round(fps),
+    /*
+     * What the controller was actually flying and what the keys were set to
+     * do. The report's own flightMode is the Flight mode ROW, which a race
+     * on keys does not read: bug-92007f3e was filed on the keyboard from the
+     * pause screen of a twelve gate race, which flies Angle, and its report
+     * said "acro". Inside `stick` rather than beside it, because the board
+     * caps a report at 32 top level keys.
+     */
+    flying: angleModeOn ? 'angle' : 'acro',
+    keyRaceMode: ui.settings.keyRaceMode,
+    keyThrottle: input.keyThrottle,
+    keyHover: Math.round(input.kbHover * 1000) / 10,
   }));
   window.__stickPath = () => ({
     ...input.stats(),

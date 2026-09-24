@@ -21,7 +21,8 @@
  * axis 3, installed by overriding navigator.getGamepads before the shell
  * boots. It is deliberately the radio the AETR guess gets wrong, because
  * a radio the guess gets right exercises none of this. A second page with
- * touch emulation on covers the thumb sticks.
+ * touch emulation on covers the thumb sticks, and a third with no radio at
+ * all flies a real race on the keys.
  *
  * Not part of `npm run verify`: this says nothing about the flight model.
  * Same shape as lint:shell. Run it on a change to src/input, to the
@@ -49,8 +50,10 @@
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { openPage } from '../tests/lib/page.js';
+import { keyInfo, openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
+import { hoverStickPercent } from '../configs/rates.js';
+import { presetsForClass } from '../src/trackbuilder/presets.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -99,6 +102,27 @@ const PAD_SEED = `window.__pad = {
   buttons: [0, 1, 2, 3].map(() => ({ pressed: false, touched: false, value: 0 })),
 };
 navigator.getGamepads = () => [window.__pad];`;
+
+/*
+ * The keyboard pilot: no radio, no touch, on the whoop, with one shipped
+ * RaceGOW track saved in this browser the way the builder saves one. The
+ * whoop because the shipped tracks are all whoop tracks and the board is
+ * not here to hand over a five inch one, and a race because racing on keys
+ * is the one place the keyboard's own Angle choice is read.
+ */
+const KEY_TRACK = {
+  ...presetsForClass('micro')[0],
+  id: 'trk-6b0a2d00',
+  name: 'Keyboard check track',
+  modifiedUtc: '2026-09-24T00:00:00.000Z',
+};
+const KEYBOARD_SEED = `try {
+  const k = ${JSON.stringify(SETTINGS_KEY)};
+  const s = JSON.parse(localStorage.getItem(k) || '{}');
+  s.airframe = 'whoop65';
+  localStorage.setItem(k, JSON.stringify(s));
+  localStorage.setItem('webfpv.trackbuilder.library.v1', ${JSON.stringify(JSON.stringify({ [KEY_TRACK.id]: KEY_TRACK }))});
+} catch (e) { /* Storage refused. The race below then fails to seat, and says so. */ }`;
 
 /* Every walk starts past the gate, for the same reason lint:shell's do:
  * the menu these checks are about is behind it. */
@@ -784,6 +808,156 @@ async function touchPage(page) {
   check('one arrow right puts it back', await ev("return ui.settings.stickMode === 2 && input.throttleKeys.up === 'KeyW';"));
 }
 
+async function keyboardPage(page) {
+  const ev = (expr) => page.evaluate(`(() => { const ui = window.__ui; const input = window.__input; ${expr} })()`);
+  /* A key held for real wall time, which is what the keyboard's hold clock
+   * runs on. page.tap is a 30 ms press and cannot hold anything. */
+  const hold = async (code, ms) => {
+    const info = keyInfo(code);
+    await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...info }, page.sessionId);
+    await page.sleep(ms);
+    await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...info }, page.sessionId);
+  };
+  const craft = () => ev(`const c = window.__craftState(); return JSON.stringify({ y: c.worldY, vy: c.vel ? c.vel.y : 0,
+    landed: c.landed, thr: input.channels.throttle, hover: input.kbHover });`).then(JSON.parse);
+
+  /* --------------------------------------------------------------------
+   * 8. The throttle keys. bug-3a7be142, "whenever I press W or S, it
+   *    snaps strangely, and doesn't hold position like a real radio",
+   *    asking for "an option to toggle snapping, or for the throttle to
+   *    hold position". The keys sprang back to 0.22 where the shipped
+   *    quad hovers at 0.350, so letting go of W fell out of the sky:
+   *    measured through this same flow on the code before the fix, the
+   *    quad dropped from 13.6 m to the floor in two and a half seconds.
+   *    Both halves: the spring now lands on the measured hover, and the
+   *    pilot can choose a throttle that does not spring at all.
+   * ------------------------------------------------------------------ */
+  section('keyboard: the throttle keys spring to the measured hover, or stay put');
+  const hand = await ev(`
+    ${PAST_GATE}
+    const s = ui.settings;
+    return JSON.stringify({ kb: input.isKeyboardPrimary(), cap: s.rates.throttleCap, af: s.airframe, w: s.weight, v: s.packVoltage,
+      hover: input.kbHover });
+  `).then(JSON.parse);
+  check('no radio: the keyboard is the stick', hand.kb === true);
+  const want = hoverStickPercent(hand.cap, hand.af, hand.w, hand.v) / 100;
+  check(`the keys rest at the measured hover for this cap, aircraft, weight and pack, ${want}`,
+    Math.abs(hand.hover - want) < 1e-12, JSON.stringify(hand));
+  const heavy = await ev(`
+    ui.settings.weight = 140;
+    ui.writeSettings();
+    const at = input.kbHover;
+    ui.settings.weight = 100;
+    ui.writeSettings();
+    return JSON.stringify({ at, back: input.kbHover });
+  `).then(JSON.parse);
+  check('and the weight slider moves it: heavier hovers higher up the stick',
+    Math.abs(heavy.at - hoverStickPercent(hand.cap, hand.af, 140, hand.v) / 100) < 1e-12 && heavy.at > hand.hover
+    && Math.abs(heavy.back - hand.hover) < 1e-12, JSON.stringify(heavy));
+
+  const row = await ev(`
+    ui.show('pilot');
+    const items = ui.items();
+    const i = items.findIndex((it) => it && it.label === 'Keyboard throttle');
+    ui.setCursor(i);
+    return JSON.stringify({ i, before: i > 0 ? items[i - 1].label : null, value: i >= 0 ? items[i].value : null, mode: input.keyThrottle });
+  `).then(JSON.parse);
+  check('Settings has a Keyboard throttle row, beside Stick mode', row.i >= 0 && row.before === 'Stick mode', JSON.stringify(row));
+  check('and it starts on the spring, which is what the keys always did', row.value === 'Springs back' && row.mode === 'hover',
+    JSON.stringify(row));
+  await page.tap('ArrowRight');
+  await page.until("window.__input.keyThrottle === 'hold'", 3000).catch(() => {});
+  const held = await ev(`
+    const it = ui.items()[ui.cursor];
+    const stored = JSON.parse(localStorage.getItem(${JSON.stringify(SETTINGS_KEY)}) || '{}').keyThrottle;
+    ui.show('howto');
+    ui.setHowtoSource('keyboard');
+    const dt = Array.from(ui.howtoKeys.querySelectorAll('dt')).map((n) => n.textContent);
+    const dd = Array.from(ui.howtoKeys.querySelectorAll('dd')).map((n) => n.textContent);
+    ui.show('pilot');
+    return JSON.stringify({ value: it.value, mode: input.keyThrottle, stored, ws: dd[dt.indexOf('W and S')] || '' });
+  `).then(JSON.parse);
+  check('one arrow right is Stays put, in the keys and in storage',
+    held.value === 'Stays put' && held.mode === 'hold' && held.stored === 'hold', JSON.stringify(held));
+  check('and the how-to says so', /stays where you leave it/.test(held.ws), held.ws);
+  await page.tap('ArrowLeft');
+  await page.until("window.__input.keyThrottle === 'hover'", 3000).catch(() => {});
+  check('one arrow left is the spring again', await ev("return input.keyThrottle === 'hover' && ui.settings.keyThrottle === 'hover';"));
+
+  /* Into a real race, on the start line, through the Race room and the
+   * launch card, which is how a pilot gets there. */
+  const seat = await ev(`
+    ui.mode = 'race';
+    ui.show('courses');
+    ui.act('local:${KEY_TRACK.id}');
+    return JSON.stringify({ map: ui.settings.map, screen: ui.screen });
+  `).then(JSON.parse);
+  check('the saved track seats', seat.map === 'custom', JSON.stringify(seat));
+  /* The world swap is asynchronous. Flying before it lands flies the world
+   * that was there before, which is freestyle, and every check below would
+   * be reading the wrong branch. */
+  const RACE_READY = "(() => { const m = window.__map(); return m.id === 'custom' && m.ready && m.mode !== 'freestyle' && m.gates > 0; })()";
+  let raceReady = true;
+  await page.until(RACE_READY, 60000).catch(() => { raceReady = false; });
+  check('and the world it builds is a race with gates', raceReady, await page.evaluate('JSON.stringify(window.__map())').catch(() => ''));
+  await ev("ui.act('fly'); return ui.screen;");
+  await page.until("window.__ui.screen === 'launch'", 20000);
+  await page.tap('Enter');
+  await page.until("window.__ui.screen === 'flight' && window.__craftState().mode === 'flight'", 60000);
+  await page.sleep(1000);
+
+  /* --------------------------------------------------------------------
+   * 9. Angle or Acro from the keyboard. bug-92007f3e, "Using m+k
+   *    freestyle mode defaults to acro while the race courses default to
+   *    angle. If there is a key to swap between modes on the keyboard I
+   *    haven't found it." There was none: racing on keys forced Angle.
+   *    M flips whichever choice is flying and keeps it.
+   * ------------------------------------------------------------------ */
+  section('keyboard: M switches Angle and Acro in flight, and keeps the choice');
+  const race0 = await ev("return JSON.stringify({ mode: window.__flightMode(), krm: ui.settings.keyRaceMode, fm: ui.settings.flightMode });")
+    .then(JSON.parse);
+  check('racing on keys starts in Angle, as it always has', race0.mode === 'angle' && race0.krm === 'angle', JSON.stringify(race0));
+  await page.tap('KeyM');
+  /* The mode flips inside the key handler; the banner is painted by the
+   * next frame, which is a hundred milliseconds away on this rasteriser. */
+  await page.until("window.__flightMode() === 'acro' && /^ACRO/.test(window.__craftState().banner)", 3000).catch(() => {});
+  const race1 = await ev(`return JSON.stringify({ mode: window.__flightMode(), krm: ui.settings.keyRaceMode, fm: ui.settings.flightMode,
+    stored: JSON.parse(localStorage.getItem(${JSON.stringify(SETTINGS_KEY)}) || '{}').keyRaceMode, banner: window.__craftState().banner });`)
+    .then(JSON.parse);
+  check('M is Acro, and the keyboard racing choice is saved', race1.mode === 'acro' && race1.krm === 'acro' && race1.stored === 'acro',
+    JSON.stringify(race1));
+  check('the Flight mode row is left alone, because it is not what a race on keys reads', race1.fm === race0.fm, JSON.stringify(race1));
+  check('and the pilot is told, in words', /^ACRO/.test(race1.banner), JSON.stringify(race1.banner));
+  await page.tap('KeyM');
+  await page.until("window.__flightMode() === 'angle'", 3000).catch(() => {});
+  check('M again is Angle', await ev("return window.__flightMode() === 'angle' && ui.settings.keyRaceMode === 'angle';"));
+  const probe = await ev('return JSON.stringify(ui.bugSnapshot().stick);').then(JSON.parse);
+  check('a report says what was flying and what the keys were set to, inside the stick block',
+    probe.flying === 'angle' && probe.keyRaceMode === 'angle' && probe.keyThrottle === 'hover'
+    && Math.abs(probe.keyHover - hand.hover * 100) < 0.05, JSON.stringify(probe));
+
+  section('keyboard: let go of W in the air and the quad holds height');
+  await hold('KeyW', 1000);
+  await page.sleep(500);
+  const let0 = await craft();
+  check('let go in the air, the throttle rests on the measured hover', !let0.landed && let0.thr === let0.hover, JSON.stringify(let0));
+  await page.sleep(2500);
+  const let1 = await craft();
+  /* Before the fix this read 0.22 on the stick and minus six to minus
+   * eleven metres a second on the way down. */
+  check('three seconds on, it is still flying and has stopped climbing or sinking',
+    !let1.landed && let1.thr === let1.hover && Math.abs(let1.vy) < 1.5, JSON.stringify(let1));
+
+  await ev("ui.settings.keyThrottle = 'hold'; ui.writeSettings(); return input.keyThrottle;");
+  await hold('KeyS', 300);
+  const put0 = await craft();
+  await page.sleep(1500);
+  const put1 = await craft();
+  check('on Stays put, a throttle key let go leaves the stick exactly where it was',
+    put0.thr < let1.thr && put1.thr === put0.thr, `${let1.thr} -> ${put0.thr} -> ${put1.thr}`);
+  await ev("ui.settings.keyThrottle = 'hover'; ui.writeSettings(); return input.keyThrottle;");
+}
+
 async function main() {
   const t0 = Date.now();
   let page = null;
@@ -801,6 +975,14 @@ async function main() {
     await touchPage(page);
     const uncaught2 = page.errors.filter((e) => e.startsWith('uncaught:'));
     check('no uncaught exception on the touch page', uncaught2.length === 0, uncaught2.slice(0, 3).join(' | '));
+    await page.close();
+    page = null;
+
+    console.log('\nbooting the shell with no radio, as a keyboard pilot on a whoop race');
+    page = await bootPage({ seed: [SETTINGS_SEED, KEYBOARD_SEED] });
+    await keyboardPage(page);
+    const uncaught3 = page.errors.filter((e) => e.startsWith('uncaught:'));
+    check('no uncaught exception on the keyboard page', uncaught3.length === 0, uncaught3.slice(0, 3).join(' | '));
     await page.close();
     page = null;
   } catch (e) {

@@ -42,7 +42,7 @@
  */
 
 import { MAPS } from '../maps/registry.js';
-import { CAL_STEPS } from '../input/input.js';
+import { CAL_STEPS, KEY_THROTTLE_MODES, normaliseKeyThrottle } from '../input/input.js';
 import {
   STICK_MODES, DEFAULT_STICK_MODE, normaliseStickMode, stickChannels, stickCaption,
 } from '../input/stickmode.js';
@@ -611,14 +611,25 @@ const DEFAULTS = {
   /*
    * Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    *
-   * Keyboard flight raises angle over this value ON A RACE TRACK, where
-   * holding a line matters more than inverting and a key is a bang bang
-   * input. It does NOT in freestyle, where angle holds the craft to about
-   * thirty degrees of bank and puts the whole trick catalogue out of reach:
-   * see wantAngleMode in src/main.js. This comment used to say "always",
-   * which stopped being true when the town arrived.
+   * Keyboard flight does not read this value ON A RACE TRACK, where holding
+   * a line matters more than inverting and a key is a bang bang input: it
+   * reads keyRaceMode below instead. It does read it in freestyle, where
+   * angle holds the craft to about thirty degrees of bank and puts the whole
+   * trick catalogue out of reach: see flightModeSetting in src/main.js. This
+   * comment used to say "always", which stopped being true when the town
+   * arrived.
    */
   flightMode: 'acro',
+  /*
+   * ANGLE_MODE FOR RACING ON THE KEYBOARD, and 'angle' is the default, which
+   * is exactly what the keys were before it existed: they forced Angle on a
+   * race track with no way out. bug-92007f3e asked for the way out, so M in
+   * flight flips this one while racing on keys, and flightMode everywhere
+   * else. A new key rather than a reading of flightMode, because every
+   * returning pilot has flightMode stored as 'acro' whether or not they ever
+   * chose it, and reading that would move them all off Angle at once.
+   */
+  keyRaceMode: 'angle',
   /*
    * WHICH STICK CARRIES WHICH CHANNEL. Mode 2 is what this shell has always
    * been and what every record on the board was flown on. It reaches the
@@ -627,6 +638,15 @@ const DEFAULTS = {
    * screen that draws them. See src/input/stickmode.js.
    */
   stickMode: DEFAULT_STICK_MODE,
+  /*
+   * WHAT THE THROTTLE KEYS DO WHEN THEY ARE LET GO. 'hover' springs back to
+   * hover in the air and to idle on the pad, which is what they have always
+   * done. 'hold' leaves the throttle where it was put, like a radio's.
+   * bug-3a7be142 asked for the choice. See KEY_THROTTLE_MODES in
+   * src/input/input.js. The keyboard only: a radio and the thumb sticks
+   * already keep their throttle where it is left.
+   */
+  keyThrottle: 'hover',
   /*
    * FREESTYLE IS THREE DIFFERENT ACTIVITIES AND THEY WANT DIFFERENT RULES.
    * See FREESTYLE_SCORING above for what each value does.
@@ -870,7 +890,11 @@ export function loadSettings() {
   if (s.flightMode !== 'angle') {
     s.flightMode = 'acro';
   }
+  if (s.keyRaceMode !== 'acro') {
+    s.keyRaceMode = 'angle';
+  }
   s.stickMode = normaliseStickMode(s.stickMode);
+  s.keyThrottle = normaliseKeyThrottle(s.keyThrottle);
   /*
    * A setting the pilot picks off a LIST has to still be on that list.
    *
@@ -1411,11 +1435,17 @@ function thrNote(mode, side) {
  * What each key pair does, named for the channel this mode put on it. The
  * four rows used to be constants, which is what a Mode 1 pilot on a keyboard
  * was reading when the arrows turned out to be throttle.
+ *
+ * The throttle row also follows what the keys do when let go, which is the
+ * pilot's choice since bug-3a7be142. "Let go and it holds height" was the
+ * promise that ticket caught the keys breaking, and it is true again now.
  */
-function keyHowtoRows(mode) {
+function keyHowtoRows(mode, keyThrottle = 'hover') {
   const c = stickChannels(mode);
   const say = {
-    throttle: 'Throttle. Tap for a nudge, hold to climb, long hold to punch. Let go and it holds height.',
+    throttle: normaliseKeyThrottle(keyThrottle) === 'hold'
+      ? 'Throttle. It stays where you leave it, like a radio. A tap moves it about a percent, a longer hold moves it faster.'
+      : 'Throttle. Tap for a nudge, hold to climb, long hold to punch. Let go and it holds height.',
     pitch: 'Pitch. Forward is stick forward, nose down, fly forward.',
     yaw: 'Yaw, left and right on the spot.',
     roll: 'Roll.',
@@ -5831,7 +5861,7 @@ export class Ui {
         { label: 'Flight', section: true },
         choice(
           'Flight mode',
-          'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Racing on a keyboard always uses Angle. Freestyle uses this setting whatever you fly with, because Angle holds the craft to about thirty degrees of bank and no trick in the book can be flown in it.',
+          'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Racing on a keyboard starts in Angle instead, because a key is on or off. Freestyle uses this setting whatever you fly with, because Angle holds the craft to about thirty degrees of bank and no trick in the book can be flown in it. M in flight switches whichever one you are flying, and keeps it.',
           FLIGHT_MODES,
           s.flightMode === 'angle' ? 'angle' : 'acro',
           (id) => (id === 'angle' ? 'Angle' : 'Acro'),
@@ -5939,6 +5969,24 @@ export class Ui {
           s.stickMode,
           (n) => `Mode ${n}`,
           (n) => { s.stickMode = normaliseStickMode(n); },
+        ),
+        /*
+         * WHAT THE THROTTLE KEYS DO WHEN LET GO, beside the row that decides
+         * which keys they are. bug-3a7be142: "it snaps strangely, and doesn't
+         * hold position like a real radio", asking for "an option to toggle
+         * snapping, or for the throttle to hold position". The note says it
+         * is the keyboard only, for the same reason the Stick mode note says
+         * what a radio ignores.
+         */
+        choice(
+          'Keyboard throttle',
+          s.keyThrottle === 'hold'
+            ? 'Stays put: the throttle keys move the throttle and it stays wherever you leave it, the way a radio\'s does. A tap moves it about a percent, a longer hold moves it faster. The keyboard only.'
+            : 'Springs back: a tap nudges, a hold climbs, and letting go settles the throttle at hover for this quad, its weight, its throttle cap and its pack, so it holds height. Back on the ground it goes to idle. The keyboard only.',
+          KEY_THROTTLE_MODES,
+          s.keyThrottle,
+          (id) => (id === 'hold' ? 'Stays put' : 'Springs back'),
+          (id) => { s.keyThrottle = normaliseKeyThrottle(id); },
         ),
         ratesItem(s, midRun),
         choice(
@@ -9499,13 +9547,14 @@ export class Ui {
           ['Turn it on', 'Quad, Launch control, On. It stays off until you do. Then press L on the start line, before you raise throttle.'],
           ['Set the angle', 'Throttle at idle. Pitch forward until the OSD reads around 30 to 40 degrees. Centre the stick. The motors hold it.'],
           ['Go', 'Punch throttle past about 20 percent. The hold dumps, the props bite, and you are flying. L again resets it after a launch.'],
-          ['Keyboard', 'Up arrow is pitch forward. W is throttle. Launch control switches you to Acro for the hold, then Angle comes back after you go.'],
+          ['Keyboard', 'Up arrow is pitch forward. W is throttle. Launch control switches you to Acro for the hold, then your own mode comes back after you go.'],
           ['Radio', 'Same sequence as a real board. L is the mode switch. Fine-tune launch_angle_limit and launch_trigger_throttle_percent on the Flight controller screen.'],
           ['Turtle', 'If you tip over on the blocks, TURTLE MODE takes over. Pitch or roll to flip. You do not have to time it. Centre the stick, then press L and launch again.'],
         ]
       : [
-        ...keyHowtoRows(this.settings.stickMode),
+        ...keyHowtoRows(this.settings.stickMode, this.settings.keyThrottle),
         ['L', 'Launch control, if you turned it on in Quad. Pitch, centre, punch.'],
+        ['M', 'Switches Angle and Acro in flight, and keeps the choice.'],
         ['R, then Escape', 'Back to the start line, and pause.'],
         ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Pitch or roll with the arrow keys to flip over. You do not have to time it. Let go, then take off.'],
         ['F8', 'Report a bug or give feedback. Pauses if you are in the air, then opens the form.'],
@@ -9523,10 +9572,10 @@ export class Ui {
     this.howtoMode.textContent = source === 'touch'
       ? 'Thumb sticks are a real proportional stick, so they fly whichever Flight mode is set in Quad: Acro, like a radio, by default. Angle is gentler while you learn: let go of the right pad and the quad levels itself.'
       : source === 'radio'
-        ? 'A radio flies Acro by default: the sticks ask for a rate of rotation, and letting go asks for none, which holds whatever attitude the quad is in. Change it under Flight mode in Quad.'
+        ? 'A radio flies Acro by default: the sticks ask for a rate of rotation, and letting go asks for none, which holds whatever attitude the quad is in. Change it under Flight mode in Quad, or with M in flight.'
         : source === 'launch'
           ? 'Off by default, because a punch from a hold is violent and not everyone wants it. Turn it on in Quad, then L on the pad. The green LAUNCH readout is the pitch angle. It blinks when throttle is close to firing.'
-          : 'Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold sits at a flyable amount, a long hold goes to full. Keyboard flight is Angle, so letting go brings the quad back to level.';
+          : 'Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold sits at a flyable amount, a long hold goes to full. Races on keys start in Angle, so letting go levels the quad.';
   }
 
   /* Live channels for the tutorial's gimbals, fed by the shell's loop. */

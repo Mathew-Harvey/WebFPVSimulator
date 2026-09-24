@@ -40962,3 +40962,246 @@ reopens. The check costs one screen of walk time and holds the line.
 
     Probed directly, because the lint walks in race mode and one of the two
     rows was freestyle only: every screen, both modes, zero doors.
+
+## 2026-09-24 | input, shell | Two keyboard tickets: letting go of W dropped the quad, and no key for Angle or Acro
+
+The owner asked for the two bug tickets on the board. The board holds 30
+open tickets, and 27 of them are flight feel feedback from the survey. The
+two newest of the other three are both keyboard reports, filed on the 23rd:
+
+    bug-3a7be142  Lucas, wrong behaviour, on the keyboard
+                  "whenever I press W or S, it snaps strangely, and doesn't
+                   hold position like a real radio"
+                  expected: "an option to toggle snapping, or for the
+                   throttle to hold position"
+    bug-92007f3e  Anonymous, other, mouse and keyboard
+                  "Using m+k freestyle mode defaults to acro while the race
+                   courses default to angle. If there is a key to swap
+                   between modes on the keyboard I haven't found it."
+
+The third, bug-9983ae9a, is titled with the reporter's email address, is
+about an SM001 USB controller on the joystick picker, and says "I need to
+send a movie for this". It was not touched: see Not done, below.
+
+### bug-3a7be142 was a real fault, not only a request
+
+The request is reasonable on its own, and it is answered below. But the
+spring it complains about was also broken, and that is the bigger half.
+
+`applyKeyboardCollective` sprang the throttle back to `HOVER = 0.22`, "a hair
+over measured hover 0.2051". That hover was taken on 15 August at 1.0 g. The
+shell has flown at gravityBase 1.62 since 81bc874 on the 18th of September,
+where hover is 35.0 percent of stick uncapped (configs/rates.js already said
+so for the menu). So every time a keyboard pilot let go of W, the stick went
+thirteen points under hover. Measured off dist/sim.wasm, hovering and then
+dropping the stick to 0.22:
+
+    five inch, weight 100, cap 100   1 m lost in 523 ms, 3 m in 915 ms,
+                                     sinking 18.4 m/s three seconds on
+    the whoop's default cap of 65    1 m in 447 ms, 3 m in 765 ms, 22.9 m/s
+    weight 60, cap 100               1 m in 1016 ms, 3 m in 1854 ms
+
+And in the live shell, keyboard only, through the Race room and the launch
+card on a shipped whoop track, W held a second and let go:
+
+    before (9ed8b9c)  stick 0.22 on release. 13.56 m at +1 s, 10.47 at +2,
+                      3.59 at +3, on the floor by +3.5, arriving at 11.4 m/s
+    after             stick 0.350. Settles at 12.85 m and stays, vertical
+                      speed inside 0.11 m/s from +3.5 s to +6 s
+
+That is "doesn't hold position". The how-to has promised "Let go and it
+holds height" throughout, and it has not been true since the 18th.
+
+### What moves hover, measured rather than assumed
+
+With the same bisection scripts/flightcheck.js uses, on the same config:
+
+    the throttle cap       the existing table's rows
+    the Weight slider      26.0 at 60, 35.0 at 100, 42.8 at 140, uncapped
+    the pack a run starts  35.0 from 4.2 V a cell, 38.8 from 3.8, 42.2 from 3.5
+
+The pack does not run down in flight: four minutes at hover read 25.05 V
+under load from the first second to the last. And near hover this plant
+climbs or sinks about 0.9 m/s per point of stick (measured at one, two and
+four points either side), which is what decides how exact the target has
+to be: half a point is a drift a pilot trims out with a tap.
+
+### The fix, in four parts
+
+**The table.** `hoverStickPercent(cap, airframe, weight, cellV)` in
+configs/rates.js reads a measured table: nine caps by weights 60, 100 and 140
+by packs 4.2, 3.8 and 3.5, with weight interpolated between columns. Checked
+against all seventeen stops of the slider at every cap: worst 0.5 of a point
+at a cap of 40, 0.2 uncapped. The weight 100 column at 4.2 reproduced
+HOVER_5IN_AT_BASE to the tenth at every cap, and the menu's two argument
+calls return exactly what they returned before. scripts/flightcheck.js
+gained `--cell=VOLTS` so the table can be regenerated with the tool that made
+the rest of it; `--gravity=0.972 --cell=3.8` reproduces its column to the
+tenth.
+
+**The spring.** main.js hands the input manager the measured hover for the
+cap, aircraft, weight and pack the RUN is flying, on every settings write and
+at the run start, where the pack is latched. The weight slider in flight
+moves it too.
+
+**Two things the wrong number had been hiding.** 0.22 sat under main.js's
+TAKEOFF_THROTTLE of 0.25, and that is the only reason springing to "hover"
+never launched a landed craft. A real hover sits above it at every setting
+the shell offers, so two rules had to change with it or the fix would have
+made two new bugs:
+
+- A pilot who landed on S and let go would be relaunched by the spring.
+  main.js now calls `input.noteLanded(landed)` once a frame, after the
+  frame's landing judgement, and the moment the craft comes down the rest
+  goes back to idle. The MOMENT, not the level: the level un-latches a
+  launching release in the gap before main.js has read the sample that
+  lifts the craft, and springs the stick to idle under a quad that was just
+  told to fly. Touching down with W held keeps the latch, because clearing
+  it under a held key dips the stick by a quarter of its travel.
+- A 110 ms tap on the pad crossed the old latch of 0.18 and, with a real
+  hover to spring to, launched into a hover. The latch is now 0.25, the
+  shell's own takeoff, so only a press that launched the craft rests it at
+  hover.
+
+**The option the ticket asked for.** A Keyboard throttle row in Settings,
+under Sticks beside Stick mode: Springs back, the default, which is what the
+keys always did and now does properly, and Stays put, which leaves the
+throttle wherever it was let go, like a radio's. Stays put is a rate rather
+than a position, slow for the first touch and faster the longer the key is
+held: a 90 ms tap moves it 1.1 points, a 750 ms hold 65, the whole stick in
+968 ms. The travel is the difference of one curve across each poll's slice,
+so it is the same at 2, 16 and 40 ms polls, which a check asserts.
+
+### bug-92007f3e: M switches Angle and Acro
+
+Racing on keys forced Angle, with no way out. Freestyle follows the Flight
+mode row, which is Acro unless the pilot changed it. So the reporter saw
+exactly what they described, and there was no key.
+
+The guard's reason stands (a key is on or off, and Acro on one is hard), so
+it stays as the DEFAULT and becomes a choice: a new setting `keyRaceMode`,
+'angle' by default, read only when racing on keys. A new key rather than
+reading flightMode, because settings are saved whole and every returning
+pilot has flightMode stored as 'acro' whether or not they chose it: reading
+it would have moved every keyboard racer off Angle at once.
+
+`flightModeSetting()` in main.js names which stored choice decides the mode
+right now, with every one of wantAngleMode's old branch comments kept, and
+wantAngleMode reads it. M in flight flips THAT choice, saves it, and says
+so in the banner. So M in a keyboard race sets the keyboard's racing mode,
+and M anywhere else sets the Flight mode row, the same one Settings and the
+firmware bench's switch write. M because it is far from both hands' keys: a
+mode that flips when a finger slips off D in a hard yaw is worse than none.
+Turtle, crash flip and a launch still hold Acro whatever the choice is.
+
+The Flight mode row's note, the how-to's key list (a new M row) and its
+closing sentences say so.
+
+**The report could not have told us.** bug-92007f3e was filed on the
+keyboard from the pause screen of "Flags and cones", which the board says
+has twelve gates: a race, so it flew Angle. Its report said
+`flightMode: "acro"`, because that field is the Settings row. The `stick`
+block of every report now carries `flying` (what the controller was
+actually flying), `keyRaceMode`, `keyThrottle` and `keyHover`. Inside
+`stick`, because the board caps a report at 32 top level keys; a report is
+19 keys and 754 characters with them.
+
+### The baseline moved, and this is the argument
+
+tests/shell-baseline.json, two numbers: pilot overflow 702 to 746, which is
+the Keyboard throttle row, and howto belowFold 70 to 123, which is the M row.
+Both are rows added on purpose, the same argument made for the Stick mode
+row and the Check sticks row: the file calls itself today's overflow rather
+than a target, and lint:devices still reaches every row and every note on
+five device sizes. The how-to's first attempt grew 75 px, because my longer
+closing sentence wrapped one word onto a third line; it is now shorter than
+the sentence it replaced, and the growth is the one row.
+
+EDITED BY HAND, NOT WITH --record, and that is deliberate. `--record` would
+also have written the title's overflow, which is 23 px against a baseline of
+0, and that is not this change's: lint:shell passes at 14d8e35 and fails at
+9ed8b9c, "The support link sits under the wordmark on the title", on the
+title alone. Recording it would hide it. Whether that layout is the intended
+one is the owner's call, so lint:shell stays red on the title and says why.
+
+### Not done, written down
+
+- **bug-9983ae9a, the SM001 controller.** The joystick picker's picture draws
+  raw axes 0 to 3 as two sticks, which is right for a gamepad's standard
+  mapping and means nothing for a radio whose channels arrive in another
+  order. That is probably what "one side the bullet is moving for both
+  sticks" is, and Calibrate sticks is what fixes the mapping. Not changed:
+  the reporter says they need to send a video, and the board has no way for
+  them to. A reply asking them to run Calibrate sticks, or to email the
+  video, is the owner's to send.
+- **The board was not written.** All three tickets are still open. Marking
+  the two fixed before this reaches webfpv.org would tell the reporters
+  something that is not true yet.
+- The menu's "hover near N percent" still quotes the shipped weight on a
+  fresh pack. It could pass the run's own now that the table has them.
+- W and S over a connected radio still latch at a constant 0.9 per second.
+  Untouched; the ticket is about the keyboard as the stick.
+
+### What went wrong
+
+**The first browser check flew the wrong world.** It pressed Fly the moment
+the track was seated, and the world swap is asynchronous, so it flew the
+freestyle world that was still loaded: M flipped the Flight mode row and the
+quad sat "landed" at 1.15 m. It now waits on window.__map() reporting a race
+with gates, and that wait is itself a check.
+
+**A check read the banner before it was painted.** The mode flips inside the
+key handler and the banner changes on the next frame, a hundred milliseconds
+away on this rasteriser. It waits for the banner now.
+
+**A mutation survived the first selftest.** Letting the landing clear the
+latch under a held W was not caught, because the release re-latches anyway.
+The guard's real job is no dip under the held key, and the check now asserts
+exactly that.
+
+**A two option row that did not fit.** "Springs to hover" and "Stays put" are
+25 characters and the segment strip holds 24, so lint:shell caught a popup
+opened to answer a yes or no. Renamed Springs back; the note says where it
+springs to.
+
+**Not explained.** A scratch probe that set `ui.settings.airframe` directly
+mid session stalled on Fly, waiting on the config. The Aircraft row moves the
+tune with the airframe and a direct write does not, which is the likely
+reason, but it was not pursued and no shipped path does that.
+
+### RUN LOG
+
+    npm run input:selftest   all 151 passed (was 122). 29 new, section 9,
+                             each naming bug-3a7be142. Ten mutations of the
+                             fix, each caught: hover back to 0.22, liftoff
+                             back to 0.18, landing that ignores a held W,
+                             landing on the level, landing that does nothing,
+                             hold mode that springs, no re-arm switching
+                             back, a constant rate for hold, a 0.22 default,
+                             setKeyHover that trusts anything
+    npm run lint:input       all 104 passed, 40 s (was 84). A third page, no
+                             radio: the Settings row, the how-to, the hover
+                             hand-off and the weight slider, then a real race
+                             on the keys for M and for W let go in the air.
+                             Browser mutations: hover back to 0.22 fails 3,
+                             the M binding removed fails 2
+    npm run lint:shell       FAIL, 1 problem: title overflow 0 to 23 px, from
+                             9ed8b9c, above. pilot 746 and howto 123 as
+                             recorded, 23 stops on Settings all reached, the
+                             popup rule passes
+    npm run lint:devices     PASS on five device sizes
+    npm run lint:boot        9 of 9
+    npm run lint:fc          33 of 33
+    npm run lint:presets     4 of 4
+    npm run verify           NOT RUN. CLAUDE.md reserves it for physics, the
+                             plant, the ABI and the build, and this touches
+                             none of them. The trace cannot move:
+                             tests/browser/harness.js imports recfile,
+                             simmod and replay and nothing this changed, and
+                             it replays recorded channels, never a key.
+                             build:wasm cannot run here (no emcc).
+                             git diff --stat vendor/betaflight is empty.
+
+Flight feel is not verified. Letting go of W holding height is measured; how
+it feels on the keys, and whether Stays put's rate is the right one, is the
+pilot's to judge.

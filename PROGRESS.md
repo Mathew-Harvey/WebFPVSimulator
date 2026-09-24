@@ -43328,3 +43328,192 @@ landings, launches off the block and crashflip feel exactly as before.
     checks                   not rerun: nothing they read changed
     git merge-base           295617f, one history
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | shell | A crash is a reset, at once
+
+The owner, after flying tumble flat: "when i crash head first or tail first
+into somthing i should not pause , defying gravety, i should immediately
+reset, fix the delay". Shell only. The plant, the module ABI and the build
+are unchanged, so no approval beyond the request was needed, and this entry
+records why the shell reads what it reads.
+
+### What the delay was
+
+Three things stood between a crash and a set down:
+
+- stuckTick waits for a craft that is still and not upright: 1.5 s, or 5 s
+  in turtle. A craft on a wall face or on its back met that only after the
+  pause the owner saw.
+- A tail first crash rolled flat for the best part of a second (TUMBLE
+  FLAT), and only then did turtle latch, which is a wait for the pilot.
+- A flat back first crash was never seen as a crash at all. See the STOP
+  below: the shell was told there had been no ground contact.
+
+### What changed
+
+**CRASH IS A RESET (src/main.js).** A crash now sets the craft down nearby
+on the frame it is read, the same set down X and stuckTick use, with the
+notice "Crashed, set down nearby. R restarts the run." A crash is a smack,
+GRAZE_SPEED_MAX (4 m/s) or more, the line the trick recogniser and the
+impact cue already draw between a touch and a hit, landing anywhere but on
+the belly (body up within about 45 degrees of the contact's normal,
+CRASH_BELLY_UP 0.7). There are three ways the shell reads one:
+
+1. A solid (a wall, a gate, a tree, the train): the world report's frame or
+   lens steps, not a prop alone, at that closing speed, with the contact's
+   normal not along body up, and not an underside. A contact whose normal
+   points more than 30 degrees below level (CRASH_UNDERSIDE_NZ, -0.5) is a
+   ceiling or a deck overhead. Gravity takes the craft off it by itself, so
+   there is no pause to cut short, and a craft held against one is held by
+   the pilot's throttle.
+2. The ground, a roof included: the ground judgement's own hit speed, with
+   body up at the hardest contact step not along the ground's up.
+3. A STOP: one step that changed the craft's velocity by 4 m/s or more, with
+   the craft not belly down after it, in a frame where no solid reported any
+   contact. 4 m/s in a millisecond is about 400 g; thrust and gravity give a
+   few tens. With no solid touched, the contact was the ground.
+
+The rule is wider than "nose or tail" on purpose. A craft flying forward
+meets a wall pitched fifty degrees nose down, so its top front edge arrives
+first, and a nose only test would miss the very crash that was reported.
+What stays physics: a belly first hit (a hard landing, a skid, a bounce
+flown out of), anything under 4 m/s (a wall tap, a nudge), a prop clip and
+a knock on a ceiling.
+Those still tumble flat and turtle as before, and stuckTick still catches
+whatever is left still and not upright.
+
+**The set down knows roofs (src/game/collide.js, Colliders.topAt).** The
+first run of the crash reset put a craft that crashed on a roof down on the
+street, because view.height is the city's heightAt, which knows only its
+platforms. topAt returns the highest static box top whose footprint holds the
+point and which is no more than 0.3 m above the craft's centre, so a craft
+at the foot of a building is never lifted onto its roof. recoverGroundAt
+takes the higher of the two. Three new check:clip cases pin it.
+
+### What went wrong
+
+- **The flat back first crash went to turtle, and the logs said the crash
+  code never ran.** An instrumented run found the plant stopping the craft
+  from 10.3 m/s to 0.02 m/s in one 1 ms step with sim_ground_contacts
+  reading 0. Flat on its back, the top plate bump had not touched yet; the
+  projection had lifted the hull out of the grass (g_ground_projected), and
+  the props down grab in ground_settle zeroed velocity because it counts
+  the projection as touching. sim_ground_contacts returns g_ground_hits,
+  impulse hits only. So the shell saw no ground contact: no hit speed, no
+  impact cue, no crash, and on the next frame a slow inverted craft, which
+  is turtle. The STOP reads the plant's result instead of its flag.
+- **I first gated the STOP on "no frame or lens contact", on the grounds
+  that a prop alone could not make one.** That is true on the five inch
+  (60 N a blade, PROP_F_MAX, on 0.71 kg is under 0.1 m/s a step) and false
+  on the 23 g whoop, where one blade can take 2.6 m/s a step. The gate is
+  now "no solid contact of any kind this frame". The support box, the roof
+  the plant has taken as ground, is skipped in world.c's contact loop, so a
+  crash on a roof is still a STOP.
+- **Earlier in the turn, a run over a roof set the craft down on the
+  street.** That is the topAt fix above.
+- A frame that touches a solid with a prop and the ground flat on its back
+  in the same frame is not read as a STOP. It falls to stuckTick, 5 s in
+  turtle. Rare, and written down rather than guessed at.
+- **The scratch probe that proved the flat case lied twice before it told
+  the truth.** The tail first probe pitches on the wall clock, so each run
+  lands at a different attitude: the run that reproduced the bug arrived at
+  up -0.96, and the first run after the fix happened to arrive between
+  -0.03 and -0.91 in all six, which proves the tilted cases and says
+  nothing about the flat one. A deterministic drop replaced it:
+  `__seatCraft('invertedAir')`, flat on its back 4 m up. Its second and
+  third drops then sat on the ground in turtle from the first frame,
+  without falling. That is a harness quirk and not this change:
+  __seatCraft copies sim_ground_contacts() into lastGroundHits after a
+  teleport, and the count is the last step's, here the belly landing
+  before it. turtleInContact() then reads a craft 4 m up as seated, and
+  beginTurtleWait parks it on the ground. A craft in flight never teleports
+  upside down into the air, so the pilot cannot reach it. The probe now
+  lifts the craft first so the plant steps once in free air, and all three
+  flat drops fell and reset. Not fixed here: it is a harness hook's bug, and
+  no check calls invertedAir.
+- **The first version reset a whoop for touching a ceiling.** lint:input's
+  "a radio's 0.47 throttle holds it against the ceiling, and nothing calls a
+  crash" failed: the whoop climbed into the room's ceiling top first, faster
+  than 4 m/s, and the solid rule read the top plate meeting a surface as a
+  crash that did not land on the belly. In the body's own frame, that is
+  the same contact as landing flat on the back, which the owner does want
+  reset. What tells them apart is gravity: off a ceiling the craft falls
+  away and flies on, and on the ground it lies there. The check was right
+  and is unchanged; the rule now leaves undersides alone, and lint:input
+  passes all 131 again.
+- **The crash check's arrival speed can now land on the set down.** It
+  calls a craft at the wall when its centre is within 0.25 m of the face,
+  and the reset fires on the first frame or lens contact, which on a
+  pitched craft comes before the centre crosses that line. The set down
+  that follows is at least CRAFT_WORLD_R from any solid, which can be
+  inside the line, so in some runs the frame the check calls the touch is
+  the craft sitting still after its set down: "reached what it is named
+  for: at 0.008 m/s" on the 10 m/s head on, 0.351 and 0.624 on the 20 m/s,
+  and 0.313 on the 15 m/s left alone, each of which read 9 to 14 m/s in
+  another run. The guard only asks whether the craft got there, so it
+  passes either way, but the targets read off the touch window then
+  measure the scripted pilot flying back into the wall from rest. The
+  targets are unchanged and so is the check. Measuring the approach from
+  the frame before the first set down would fix the reading; that is a
+  change to what the check measures, and it is left for the owner.
+- **One full crash-check run read "wall hit, then full throttle" with its
+  very first recorded frame already at the wall** (touch at 0 ms, arrival
+  0.039 m/s), after which full throttle climbed to 43 m. That is not the
+  artifact above: the settle before recording had ended at the wall. It did
+  not come back in four more runs of that scenario: alone (8.975 m/s),
+  after "settle onto a roof" with the settle logged (no reset in the
+  settle, target met), and in two more full runs (8.96 and 8.973 m/s). Not
+  diagnosed; written down.
+- **The 3 m/s wall tap's "barely spins, under 5 rad/s" sits on its line.**
+  It read 5.111, 5.087, 4.812, 5.139, 5.063 and 5.019 across six runs
+  today, the first two before the STOP existed. The tap makes no set down,
+  so the reset never acts on it. Not re-thresholded.
+
+### Proposed, not done
+
+sim_ground_contacts could count the projection as contact, since
+ground_settle already treats it as touching. The shell's perch, takeoff and
+turtle tests all read that count, so it would be more honest everywhere,
+and the flat back first crash would then get its impact cue, and at 18 m/s
+or more its crash count, which it still does not: it is reset, but
+silently, with only the notice. That changes what an ABI export means, so
+it is the owner's call and is not in this change.
+
+### RUN LOG
+
+    probe, the owner's crashes     11 of 11 reset on the frame after
+      (scratch, wall clock pilot)  impact, none latched turtle: the wall
+                                   runs named 6, 10 (three throttles) and
+                                   15 m/s, arriving at 10.7 to 13.7 m/s;
+                                   tail first falls at 6.7 to 10.8 m/s,
+                                   up -0.03 to -0.91. Before the STOP, the
+                                   run landing at up -0.96 latched turtle.
+                                   Run before the underside exemption,
+                                   which acts only on a contact facing down
+                                   and so on none of these.
+    drop probe (scratch, final)    flat on its back from 4 m, 10.6 m/s:
+                                   3 of 3 reset on the impact frame, never
+                                   turtle. Belly first, same height and
+                                   speed: 3 of 3 landed, no reset.
+    npm run check:crash --targets  three full runs on this change, the last
+                                   on the final code: 0 guards failed each
+                                   time, and the same 5 targets not met,
+                                   all unmet before this change: the tap
+                                   leaving the wall, the tap spin (on its
+                                   line), 20 m/s tumble and up kick, and
+                                   the glancing keep. The roof dive now
+                                   stops on the roof (6.808, was 0.045),
+                                   and "full throttle frees it" is met
+                                   because the reset takes the craft off
+                                   the wall.
+    npm run lint:input             131 of 131 on the final code; 130 of
+                                   131 on the first version (the ceiling)
+    npm run lint:frame             34 passed
+    npm run lint:preload           up to date
+    npm run check:clip             552 passed, 3 of them new (topAt)
+    npm run lint:boot              9 of 9 clean
+    npm run lint:quality           56 of 56 clean
+    npm run verify                 not run: shell only, nothing in the
+                                   plant, the ABI or the build changed
+    npm run check:plant            not run, for the same reason
+    git diff --stat vendor/betaflight   empty

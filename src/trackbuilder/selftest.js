@@ -3172,6 +3172,14 @@ function suiteRecoverSpot() {
   check('stuck in its wall a metre under the roof, flown from the street: the street, not the roof and not inside',
     findRestSpot(town, roofAt, rest, B.x1 - 0.05, B.top - 1, 0, { x: B.x1 + 0.5, y: B.top - 1, z: 0 }, out)
     && out.surface === 0 && out.x > B.x1, spot());
+  /* Colliders.topAt, which the shell's set down reads because the city's
+   * heightAt knows only its platforms (2026-09-24). */
+  check('topAt: a craft over the roof finds the roof top',
+    town.topAt(15, 0, B.top + 0.1, 0.3) === B.top);
+  check('topAt: a craft at the foot of the building does not find its roof',
+    town.topAt(15, 0, 1, 0.3) === -Infinity);
+  check('topAt: nothing outside the footprint',
+    town.topAt(B.x1 + 1, 0, B.top + 0.1, 0.3) === -Infinity);
   const edge = { x: B.x1 - CRAFT_WORLD_R * 0.5, y: B.top + 1, z: 0 };
   check('over the roof edge, with the craft hanging off it: on the roof a metre in, not on the street seven metres down',
     findRestSpot(town, roofAt, rest, edge.x, edge.y, edge.z, edge, out)

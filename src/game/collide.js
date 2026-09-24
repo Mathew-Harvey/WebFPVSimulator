@@ -1373,6 +1373,57 @@ export class Colliders {
   }
 
   /*
+   * THE TOP OF THE BOX UNDER A POINT: the highest static box whose footprint
+   * holds (px, pz) and whose top is no higher than fromY + step, or -Infinity.
+   *
+   * A set down needs to know a roof is somewhere to stand, and the city's
+   * heightAt answers only for its platforms: under an ordinary building it
+   * returns the street. Since 2026-09-24 the plant treats any box top under
+   * the CG as ground, so a crash on a roof is common, and the set down that
+   * follows it went back to the start line from the middle of a shop's roof
+   * and to the street from its edges. This is the shell's side of the same
+   * fact. Boxes are filed by their centres, so the walk pads by the largest,
+   * the way gapAt does.
+   */
+  topAt(px, pz, fromY, step) {
+    if (!this.built) {
+      return -Infinity;
+    }
+    this.queryId += 1;
+    const id = this.queryId;
+    const pad = this.maxR;
+    const cx0 = clampCell(Math.floor((px - pad) / CELL));
+    const cx1 = clampCell(Math.floor((px + pad) / CELL));
+    const cz0 = clampCell(Math.floor((pz - pad) / CELL));
+    const cz1 = clampCell(Math.floor((pz + pad) / CELL));
+    const ceiling = fromY + step;
+    let best = -Infinity;
+    for (let cx = cx0; cx <= cx1; cx += 1) {
+      for (let cz = cz0; cz <= cz1; cz += 1) {
+        const bucket = this.grid.get((cx + GRID_HALF) * GRID_SPAN + (cz + GRID_HALF));
+        if (bucket === undefined) {
+          continue;
+        }
+        for (let bi = 0; bi < bucket.length; bi += 1) {
+          const i = bucket[bi];
+          if (this.stamp[i] === id) {
+            continue;
+          }
+          this.stamp[i] = id;
+          if (!this.fbox[i] || px < this.fax[i] || px > this.fbx[i] || pz < this.faz[i] || pz > this.fbz[i]) {
+            continue;
+          }
+          const top = this.fby[i];
+          if (top <= ceiling && top > best) {
+            best = top;
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  /*
    * THE NEAREST SOLID'S OWN DIRECTION, and where its middle is.
    *
    * gapAt answers "is there something there", which is enough to say a trick

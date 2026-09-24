@@ -584,31 +584,49 @@ const MANOEUVRES = [
        * touched: near is not tapped. A pilot tapping a wall flies at the
        * wall.
        */
-      /* Aim THROUGH the face, not up to it: near is not tapped. */
+      /*
+       * THE TRICK AS WRITTEN: "a 90 pitch back while simultaneously cutting
+       * the throttle. Gently tap the wall, and then perform a 90 pitch
+       * forward to level out and fly away." Pitch back on the run in, coast
+       * into the face base first, and pitch forward ON the tap.
+       *
+       * Until 2026-09-24 this flew into the face and pitched back on the
+       * clock, half a second later. That only ever worked because the craft
+       * STAYED on the wall: the old shell contact pass left it pressed there
+       * for over a second, which is the sticking the owner reported. Since
+       * the solid world moved into the plant a 2.9 m/s arrival comes back
+       * off at 0.4 m/s, so half a second later it was 27 cm clear and the
+       * tap fell outside the recogniser's 200 ms window. Measured frame by
+       * frame, PROGRESS.md 2026-09-24. A pilot reacts to the tap; so does
+       * this.
+       */
+      const touches = () => (window.__contacts ? window.__contacts().steps : 0);
+      const k0 = touches();
+      /* Aim THROUGH the face, not up to it: near is not tapped. The pitch
+       * back starts 1.3 m out, about what the quarter costs at this pace. */
       await window.__fly(window.__line(from, V(W.x, W.target, W.faceZ + 0.45), 2.6),
-        { heading: Math.atan2(0, 1) });
+        { heading: Math.atan2(0, 1), until: (c) => W.faceZ - c.worldZ < 1.3 });
       /*
-       * A quarter back, touch, a quarter forward: the trick as written, and
-       * flown GENTLY. At 0.6 of stick the second quarter kept going and
-       * came out a whole Flip, which is a different trick; the hold has to
-       * stop at a quarter, not somewhere past it.
+       * Nose up a quarter, braked so it stops at a quarter rather than
+       * carrying on to a Flip, and then coast in base first until the tap.
+       *
+       * THE THROTTLE IS THE PILOT JUDGING THE CLOSING SPEED, because no one
+       * fixed number works and a pilot does not fly one. Pitched back, the
+       * thrust axis points away from the wall, so throttle is a brake.
+       * Measured: cut to 0.06 the craft arrived at 4.2 m/s, over
+       * GRAZE_SPEED_MAX, so the recogniser rightly called it a hit and not a
+       * tap; held at 0.3 it stopped 9 to 25 cm short and fell. So it aims
+       * for 2.5 m/s toward the face (vel.z, the face is at +z) and brakes
+       * only above it; idle then bleeds that to about 1.5 m/s at the touch.
        */
+      const thrIn = (c) => cl(0.12 + 0.2 * ((c && c.vel ? c.vel.z : 0) - 2.5), 0.04, 0.6);
       const TURN = Math.PI * 2;
-      /*
-       * A quarter is a QUARTER. Held on a rate stick the craft carries on
-       * past it, and two quarters that each ran to a half came out a Double
-       * Flip. Each one is now stopped by flying the attitude back to level
-       * on the sticks before the next is asked for.
-       */
-      /*
-       * Two quarters, sharply, with nothing between them. A levelling pass
-       * in the middle was tried and it ATE the second quarter: the pitch
-       * back and the levelling that followed cancelled to one primitive and
-       * the trick came out as a single quarter turn.
-       */
-      /* Nose up a quarter, touch, nose down a quarter, each one braked so it
-       * stops where it was asked to. See window.__quarter. */
-      await window.__quarter(1);
+      await window.__stickHold((c) => [0, 0.55, 0, thrIn(c)], 900,
+        (c, t, a) => Math.abs(a.q) >= TURN * 0.25 * 0.62 || touches() > k0);
+      await window.__stickHold((c) => [0, -0.5, 0, thrIn(c)], 500,
+        (c) => touches() > k0 || !c.rates || Math.abs(c.rates.q) < 1.2);
+      await window.__stickHold((c) => [0, 0, 0, thrIn(c)], 1200, () => touches() > k0);
+      /* And a quarter forward, off the tap. See window.__quarter. */
       await window.__quarter(-1);
       await window.__stickHold(
         (c) => [0, cl(c.fwd.y * 2.4, -0.45, 0.45), 0, 0.58], 700,

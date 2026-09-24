@@ -26,6 +26,8 @@
     "lint:fc": "node scripts/fc-trace.js",
     "lint:frame": "node scripts/frame-check.js",
     "check:wall": "node scripts/wall-check.js",
+    "check:plant": "node scripts/plant-golden.js",
+    "check:plant:selftest": "node scripts/plant-golden.js --selftest",
     "check:clip": "node src/trackbuilder/selftest.js",
     "check:orbit": "node scripts/orbit-check.js",
     "check:path": "node scripts/path-check.js",

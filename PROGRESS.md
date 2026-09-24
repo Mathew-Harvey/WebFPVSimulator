@@ -42228,3 +42228,44 @@ weight of 140 reads its top, 44.6.
                      and the harness never calls sim_set_gravity.
     shots            not run. The slider's new top on the whoop has not been
                      seen in a picture.
+
+## 2026-09-24 | git | Main merged into claude/bug-fixes-eq62eq, then pushed to main
+
+The owner: "push to main remote, merge as needed". A fetch showed main had
+moved from 7d3f181 to 555c98c ("The whoop's normal weight is the five
+inch's 125", another session) while this branch carried 752a25d, 46a1eb4
+and 666d8f9. merge-base came back 7d3f181, so the histories are one line
+and a merge is the right answer, not a stop.
+
+Only PROGRESS.md conflicted: both sides had appended entries at the end.
+Both are kept, this branch's three first, then main's. configs/airframes.js,
+src/main.js, src/ui/ui.js and scripts/input-selftest.js merged on their
+own and were read after: the whoop entry carries this branch's blurb,
+facts ['1S', '65 mm', 'Indoors'] and cells: 1 beside main's gravityBase
+2.025 and weightMax 120, and main.js has both the OSD's cells over
+PLANT_CELLS and main's clampWeight(s.weight, runAirframe) and paintAir.
+The two changes do not touch each other: the pack's display scale reads
+cells and never gravity, and the weight path never reads cells.
+
+### What went wrong
+
+Nothing in the merge. score:selftest fails one check, "the same lap
+without the flip is a Maverick Loop", and it fails the same way on main
+(555c98c), on this branch before the merge (666d8f9) and on the merge base
+(7d3f181), each run in its own worktree, so it predates all of this and is
+not fixed here.
+
+### RUN LOG (on the merged tree)
+
+    npm run input:selftest   all 190 passed
+    npm run check:clip       548 passed, 0 failed
+    npm run contact:selftest all contact checks passed
+    npm run lint:presets     4 of 4 presets clean
+    npm run score:selftest   1 FAILED, the Maverick Loop check, pre-existing
+                             on main, the branch and the merge base
+    npm run lint:input       all 127 passed, 85 s
+    npm run lint:shell       FAIL, 1 problem: the title's 23 px, from
+                             9ed8b9c, unchanged
+    npm run verify           not run: a merge of two shell changes, no
+                             physics, plant, ABI or build change on this
+                             branch; main's gravity base is its own session's

@@ -43098,6 +43098,55 @@ within 5 s; and a cold load is the live measurement of the preload.
     git merge-base           e88b7e7, main is an ancestor of the branch
     git diff --stat vendor/betaflight   empty
 
+## 2026-09-24 | wiki | A Year 10 voice sample for the FPV wiki, pushed to main
+
+The owner asked for the whole FPV wiki to be rewritten with the humanizer skill
+(github.com/blader/humanizer, version 3.0.0) so that it makes sense and reads
+like a textbook for Year 10 students, in plain English, with the analogies
+gone. Then, on the result below: "push to main".
+
+Changed: `WIKI-REWRITE.md` at the root. It holds the rules the rewrite follows,
+four pages rewritten in that voice (The closed loop, Vortex ring state, The PID
+controller, and the P roll settings page), notes under each page on what was
+removed, defined, corrected and cut, the structure changes the pages assume,
+and what is left. No code changed.
+
+What went wrong: the wiki is not in this repository. It moved to
+`landingpage-WebFPVSimulator-` on 2026-08-26 (the entry "wiki moved to the
+landing site" above). Attaching that repository was refused twice by the
+session's permission check, first with push access and then read only, so
+nothing was read from or written to it, and no other route to it was tried.
+The four pages were rewritten from the copy that last lived here, commit
+18e086f, after deepening this clone's shallow history to reach it. That copy
+turned out to be stale as well as hard to read: it says the 5 inch is the only
+aircraft, that prop torque ignores the airflow, that there is no ground effect,
+and it uses old screen names. `WIKI-REWRITE.md` lists what was found. The
+sample pages were checked against today's code, and the check caught one
+error in the first draft: Arcade switches off the simulated gyro noise, so
+"adds simulated vibration" needed "in the Expert flight style".
+
+Found in passing, not changed: `src/native/plant.c` uses "the windmill brake
+state" in two comments with two different meanings, a shallow descent in the
+descent branch and a broken-down wake on `k_rotor_axial`. In rotor theory the
+name usually means the fast descent beyond the vortex ring state. The sample
+page does not use the term.
+
+Open, for the owner: access to `landingpage-WebFPVSimulator-` with push, and a
+yes or no on the voice and on each structure change in `WIKI-REWRITE.md`
+(section labels, chapter names, "physics model" for "plant", status chips in
+words).
+
+### RUN LOG
+
+    code                     unchanged; a new document and this entry
+    checks                   none run: nothing they read changed
+    dashes and curly quotes  none in WIKI-REWRITE.md (grep)
+    git merge-base           e88b7e7, one history. main moved by three
+                             commits during the turn (429cb9b, ff945c0,
+                             638560d); they were merged in with main's
+                             PROGRESS entries first, then this one
+    git diff --stat vendor/betaflight   empty
+
 ## 2026-09-24 | physics, plant, shell | Tumble flat, always
 
 The owner, as the advisor, on the question the entry before last left open

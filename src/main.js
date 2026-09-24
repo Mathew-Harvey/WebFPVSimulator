@@ -86,6 +86,7 @@ import {
 import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
+import { MAP_PRELOAD } from './maps/preload.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { airframeById, simIdFor } from '../configs/airframes.js';
 import { buildWhoopCraft } from './render/whoopcraft.js';
@@ -409,9 +410,33 @@ const MAP_MODULE_PREFIX = {
   custom: '/src/maps/custom',
 };
 
+/*
+ * Ask for every module a map brings at once, the moment it is chosen. The
+ * browser otherwise finds them one import level at a time, a round trip per
+ * level, and on a real link that waiting is most of the city's module
+ * stage: 72 files. A hint only: the import in loadMap still
+ * resolves them, a module already in the page is not fetched again, and
+ * the list is scripts/gen-preload.js's, checked by npm run lint:preload.
+ */
+const mapPreloaded = new Set();
+function preloadMapModules(id) {
+  const list = MAP_PRELOAD[id];
+  if (!list || mapPreloaded.has(id) || typeof document === 'undefined') {
+    return;
+  }
+  mapPreloaded.add(id);
+  for (const path of list) {
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = new URL(path, import.meta.url).href;
+    document.head.appendChild(link);
+  }
+}
+
 async function loadMap(shell, id, loading, options) {
   const entry = mapById(id);
   loading.start('module');
+  preloadMapModules(entry.id);
   const counter = moduleCounter(
     MAP_MODULE_PREFIX[id] ?? `/src/maps/${id}`,
     MAP_MODULE_COUNT[id] ?? 4,

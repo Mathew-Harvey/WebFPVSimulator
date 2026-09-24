@@ -971,6 +971,18 @@ async function keyboardPage(page) {
    *    Both halves: the spring now lands on the measured hover, and the
    *    pilot can choose a throttle that does not spring at all.
    * ------------------------------------------------------------------ */
+  /* The front page's whoop card says its pack the way the five inch's
+   * says 6S. See 8b below for the OSD. */
+  const whoopCard = await ev(`ui.firstRun = false; ui.craftGate = true; ui.show('title');
+    const it = ui.items().find((x) => x && x.card === 'race-whoop65');
+    const five = ui.items().find((x) => x && x.card === 'race-5inch');
+    const out = JSON.stringify({ whoop: it && it.facts, five: five && five.facts });
+    ui.craftGate = false;
+    return out;`).then(JSON.parse);
+  check('the front page whoop card leads with 1S, as the five inch card leads with 6S',
+    Array.isArray(whoopCard.whoop) && whoopCard.whoop[0] === '1S' && Array.isArray(whoopCard.five) && whoopCard.five[0] === '6S',
+    JSON.stringify(whoopCard));
+
   section('keyboard: the throttle keys spring to the measured hover, or stay put');
   const hand = await ev(`
     ${PAST_GATE}
@@ -1044,6 +1056,21 @@ async function keyboardPage(page) {
   await page.tap('Enter');
   await page.until("window.__ui.screen === 'flight' && window.__craftState().mode === 'flight'", 60000);
   await page.sleep(1000);
+
+  /* --------------------------------------------------------------------
+   * 8b. The whoop says 1S. bug-eb0552d6, "6S Whoops": "The battery voltage
+   *     displays 25v at the start of the race." The owner: make the whoop
+   *     say 1S and 4.2 V, and do not change the physics at all. Read on the
+   *     start line, charged and at rest, beside the plant's own number.
+   * ------------------------------------------------------------------ */
+  section('keyboard: the whoop says a 1S pack, 4.2 volts charged, over the same 6S plant');
+  const pack = await ev(`const c = window.__craftState();
+    return JSON.stringify({ osd: ui.osdPack.textContent, plant: c.packVolts, landed: c.landed, perCell: ui.settings.packVoltage });`)
+    .then(JSON.parse);
+  check('charged, on the start line, the OSD reads 4.2 volts', pack.osd === '4.2 volts' && pack.perCell === 4.2 && pack.landed,
+    JSON.stringify(pack));
+  check('and the plant under it still holds its 6S pack, about 25.2 volts: only the display changed',
+    Math.abs(pack.plant - 25.2) < 0.1, JSON.stringify(pack));
 
   /* --------------------------------------------------------------------
    * 9. Angle or Acro from the keyboard. bug-92007f3e, "Using m+k

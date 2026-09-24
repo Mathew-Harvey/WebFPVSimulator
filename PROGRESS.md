@@ -42050,3 +42050,56 @@ since.
     npm run verify           not run: a menu row, a stored switch and a
                              call to reset(). No physics, plant, ABI or
                              build change. Offered
+
+## 2026-09-24 | shell, data | bug-eb0552d6: the whoop says 1S and 4.2 volts
+
+Le Star: "The battery voltage displays 25v at the start of the race", on a
+whoop, and "Does voltage actually matter in the sim or is it just
+cosmetic?" The owner's answer: "make the whoop say 1s and 4.2v, don't change
+the physics at all".
+
+### Why it said 25
+
+The whoop flies the five inch's plant, which is 6S (PLANT.cells in
+src/native/plant.c), and its thrust is keyed to pack volts. The OSD printed
+the plant's pack, 6 x 4.2 = 25.2 V charged. configs/airframes.js kept the
+whoop at `cells: 6` on purpose, calling a 1S card over a 6S plant a seam in
+the fiction. The pilot asked for the fiction, so it goes.
+
+Voltage does matter: the Pack charge row moves the plant's cell voltage, a
+half pack hovers at 38.8 percent of stick against 35.0 charged, and the
+pack sags under load. That is unchanged.
+
+### The change, display only
+
+- configs/airframes.js: whoop65 `cells: 1`, and its facts lead with 1S.
+  Nothing that flies reads `cells`: the only reader is the OSD line below,
+  checked by grep across src, configs, scripts and tests.
+- src/main.js: the OSD's volts are the plant's scaled by the airframe's
+  cells over PLANT_CELLS (6, the plant's, now named once instead of written
+  as a bare 6 in the charge bar's two ends). A whoop reads 4.2 V charged and
+  sags in proportion; the five inch reads 25.2 as before. The charge bar and
+  everything physical read the plant's own volts.
+- src/ui/ui.js: the front page's whoop card leads with 1S, as the five
+  inch's leads with 6S. "Indoors" went; the blurb already says it, and
+  "5 inch feel" is the one fact a whoop pilot would not guess.
+- __craftState carries packVolts, the plant's own, so a check can see the
+  display change and the physics not.
+
+### Tests
+
+lint:input, 3 new, 127: the front page whoop card leads with 1S and the five
+inch card with 6S; on the start line, charged, the OSD reads "4.2 volts";
+and the plant under it still reads its 6S pack, about 25.2 volts.
+input:selftest 189, check:clip 548 and lint:presets 4 of 4 clean, all
+unchanged.
+
+### RUN LOG
+
+    npm run lint:input       all 127 passed, 82 s, alone (was 124)
+    npm run input:selftest   all 189 passed
+    npm run check:clip       548 passed
+    npm run lint:presets     4 of 4 presets clean
+    npm run verify           not run: a display scale, a data field and a
+                             card. No physics, plant, ABI or build change,
+                             which was the instruction. Offered

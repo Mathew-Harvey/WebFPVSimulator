@@ -330,8 +330,9 @@ const WALL_NEAR_M = 2.0;
  * does not report it. These are the HUD gauge's ends only: the physics reads
  * its own constant and never these. Change the plant's cell count and this
  * has to follow, or the bar lies while the flight is right. */
-const PACK_EMPTY_V = 6 * 3.3;
-const PACK_FULL_V = 6 * 4.2;
+const PLANT_CELLS = 6;
+const PACK_EMPTY_V = PLANT_CELLS * 3.3;
+const PACK_FULL_V = PLANT_CELLS * 4.2;
 /* Full throttle rotor speed on a charged pack, measured off the compiled
  * module at 25,570 RPM. Only the lens shake reads it, to turn motor speed
  * into a 0 to 1 imbalance scale, so a few percent either way is invisible. */
@@ -7245,7 +7246,11 @@ export async function boot({ loading, bootStart, mapId }) {
         gate: race.next + 1,
         gateCount: race.gates.length,
         gateCue: nextGt && nextGt.cue ? nextGt.cue : '',
-        volts: st[18],
+        /* The pack the airframe SAYS it has: the plant's 6S volts scaled to
+         * the airframe's cells, so a whoop reads 1S, 4.2 V charged. Display
+         * only; the physics and the charge bar below read the plant's own.
+         * See `cells` in configs/airframes.js. */
+        volts: st[18] * (airframeById(runAirframe).cells / PLANT_CELLS),
         lastLapMs: race.lastLapMs,
         packFrac: (st[18] - PACK_EMPTY_V) / (PACK_FULL_V - PACK_EMPTY_V),
         /* The same biased fromY every contact query in this file uses, and
@@ -8105,6 +8110,9 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__craftState = () => ({
     mode,
     flownThisRun,
+    /* The plant's own pack volts, which the OSD scales to the airframe's
+     * cells: a check can see the display change and the physics not. */
+    packVolts: stateCurr ? stateCurr[18] : null,
     landed,
     crashed,
     clipCrash: crashed,

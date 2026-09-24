@@ -239,16 +239,22 @@ export const AIRFRAMES = [
     name: '65 mm whoop',
     short: 'Whoop',
     blurb: 'A 65 mm ducted whoop indoors, flying the five inch\'s flight model. The hall and its gates are built to match it, so what you see is a whoop through 28 inch gates and what you feel is the 5 inch.',
-    facts: ['Indoors', '65 mm', '5 inch feel'],
+    facts: ['1S', '65 mm', '5 inch feel'],
     trackClass: 'micro',
     /*
-     * SIX, BECAUSE THE PLANT IS THE FIVE INCH'S AND ITS THRUST IS KEYED TO
-     * PACK VOLTS. A 1S pack on a 6S plant is a quad that will not leave the
-     * floor. The launch card says 6S on a whoop, which is a visible seam in
-     * the fiction and is the honest place to put one: the alternative is a
-     * card that lies about the machine it is about to hand over.
+     * WHAT THE PACK SAYS, NOT WHAT FLIES IT. A whoop is 1S, and the owner's
+     * word on bug-eb0552d6 ("6S Whoops", an OSD reading 25 volts) was to
+     * make it say 1S and 4.2 V and not to change the physics at all.
+     *
+     * The plant under it is still the five inch's, 6S, and its thrust is
+     * still keyed to 6S pack volts: PLANT.cells in src/native/plant.c,
+     * restated as PLANT_CELLS in src/main.js. Nothing that flies reads this
+     * field. The OSD scales the plant's pack by cells / PLANT_CELLS, so a
+     * whoop reads 4.2 V charged and sags as a 1S pack would, in proportion.
+     * This used to be 6, on the argument that a card saying 1S over a 6S
+     * plant was a seam in the fiction; the pilot asked for the fiction.
      */
-    cells: 6,
+    cells: 1,
     /*
      * A 1S LiHV charges to 4.35 and a whoop is flown until it is at about
      * 3.40 under load, which is why the empty figure here is higher than the

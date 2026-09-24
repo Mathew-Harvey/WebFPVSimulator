@@ -42950,3 +42950,24 @@ decision that Freestyle offers the town and nothing else.
 
     code        none changed, so no checks were run
     git merge-base HEAD origin/main   9ed8b9c, one history
+
+## 2026-09-24 | plan | Freestyle maps: the owner's decisions
+
+Asked in the conversation, answered by the owner the same day. These are the
+approvals CLAUDE.md requires to be written down, and they cover exactly this:
+
+- **P1 and P2 approved, as Stage D.** Turned static boxes, and movers that
+  turn and follow a road computed inside the module (FREESTYLE-MAPS-PLAN.md
+  section 10). Not before Stages A to C, and not before the section 10
+  coverage is in and green. The approval covers the world's shapes and
+  movers only: not the plant, the controller, the rates or the craft.
+- **The counter: geometry on, tricks opt in.** Gaps, close calls, the chase
+  and the egg show by default on freestyle maps; trick names stay behind the
+  existing Scoring switch, whose default stays off.
+- **The egg on built maps: the sim hides it**, the editor never shows it,
+  and the spot is stable per map.
+- **The manga layer: freestyle maps, on by default**, with a Clean FPV
+  switch. Race stays clean.
+
+Still open: katakana sound effects (Stage C), the town's egg spot (Stage B),
+the STF logo as a file (Stage B). Stage A needs none of them and starts now.

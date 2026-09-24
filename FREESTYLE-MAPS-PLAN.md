@@ -430,20 +430,29 @@ wants the look first. *Checks:* the budget capture on every tier; `shots` at
 rest and at speed. *Fly:* judge whether the tone shimmers and whether the
 lines ever get in the way.
 
-## 12. Decisions needed from the owner
+## 12. Decisions
 
-1. **The physics changes P1 and P2.** Approve, decline, or pick an
-   alternative from section 10.
-2. **The counter's default.** Show the reliable events (gaps, close calls,
-   chase, the egg) by default on freestyle maps, with trick names still behind
-   the Scoring switch; or keep everything behind the switch as today.
-3. **The egg on built maps.** The sim hides it and the author cannot see it
-   (proposed); or the author places it once and cannot delete it.
-4. **The manga layer's reach.** Freestyle maps only, on by default with a
-   Clean FPV switch (proposed); freestyle and race; or off by default.
-5. **Katakana sound effects** beside the English callouts: yes or no.
+Decided by the owner on 24 September 2026, in the conversation:
+
+1. **The physics changes P1 and P2: approved, as Stage D.** The editor, the
+   egg and the counter come first with no physics change. Then the coverage
+   of section 10 lands and goes green, then turned boxes and road following
+   movers.
+2. **The counter's default: geometry on, tricks opt in.** Gaps, close calls,
+   the chase and the egg show by default on freestyle maps. Trick names stay
+   behind the existing Scoring switch until naming is settled.
+3. **The egg on built maps: the sim hides it.** The editor never shows it,
+   and the spot is the same every time a given map is flown.
+4. **The manga layer: freestyle maps, on by default**, with a Clean FPV
+   switch in Settings. Race stays clean.
+
+Still open:
+
+5. **Katakana sound effects** beside the English callouts: yes or no. Needed
+   by Stage C.
 6. **The town's egg spot**: inside the works shed roof space, or elsewhere.
-7. **The STF file**, committed to `assets/`.
+   Needed by Stage B.
+7. **The STF file**, committed to `assets/`. Needed by Stage B.
 
 ## 13. Not in this plan
 

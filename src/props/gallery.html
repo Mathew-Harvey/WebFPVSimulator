@@ -1,0 +1,56 @@
+<!doctype html>
+<!--
+  gallery.html: every freestyle asset, drawn through the town's own pipeline.
+
+  A place to look at the art without building a map: the lights, the sky,
+  the ink pass and the grade are the town's, so what is on this page is what
+  a built freestyle map shows. Query parameters choose what is framed:
+
+    ?asset=crane          one asset, orbited
+    ?asset=building&style=office
+    ?cam=x,y,z&at=x,y,z   an exact camera
+    ?row=industrial       one palette group in a row
+
+  This file is part of WebFPVSimulator.
+
+  WebFPVSimulator is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or (at
+  your option) any later version.
+
+  WebFPVSimulator is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY, without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Freestyle assets</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #e6ecf7; }
+      canvas { display: block; width: 100%; height: 100%; }
+      #label {
+        position: fixed; left: 16px; bottom: 14px; font: 700 15px system-ui, sans-serif;
+        color: #39324f; background: rgba(251, 247, 238, 0.85); padding: 6px 10px; border-radius: 6px;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="label"></div>
+    <script type="module" src="./gallery.js"></script>
+  </body>
+</html>

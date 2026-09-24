@@ -887,6 +887,53 @@ async function mousePage(page) {
   await ev("ui.act('restart-switch-clear'); return 1;");
   await page.evaluate('window.__pad.axes[5] = -1; window.__pad.timestamp += 1; 0');
   check('and it can be forgotten', await ev("return input.padSummary().restart === null && localStorage.getItem('webfpv.restart.v1') === null;"));
+
+  /* --------------------------------------------------------------------
+   * 6d. bug-08577148. A feel report is sent from the pause or results
+   *     screen with the sticks at rest, so the stick rate it read there
+   *     said 0 Hz for eleven of the twenty two radio feel reports open on
+   *     the 24th of September. The flight keeps its own record now. Flown
+   *     here on the radio at the page's own pace, the throttle never past
+   *     half and roll both ways, then paused, and the report read from the
+   *     pause screen the way a pilot sends one.
+   * ------------------------------------------------------------------ */
+  section('a feel report sent from the pause screen carries what the flight measured');
+  await ev('const sp = window.__map().spawn; window.__placeCraft(sp.x + 6, sp.y + 30, sp.z); return 1;');
+  await page.until("window.__ui.screen === 'flight' && !window.__craftState().landed", 5000).catch(() => {});
+  const flown = await page.evaluate(`(async () => {
+    const pad = window.__pad;
+    const im = window.__input;
+    const m = im.map;
+    const half = m.throttle.low + 0.5 * (m.throttle.high - m.throttle.low);
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const t0 = performance.now();
+    let k = 0;
+    while (performance.now() - t0 < 1600) {
+      pad.axes[m.throttle.axis] = k % 2 ? half : m.throttle.low;
+      pad.axes[m.roll.axis] = [1, 0, -1, 0][k % 4];
+      pad.timestamp += 1;
+      k += 1;
+      await sleep(20);
+    }
+    pad.axes[m.throttle.axis] = m.throttle.low;
+    pad.axes[m.roll.axis] = 0;
+    pad.timestamp += 1;
+    return JSON.stringify({ k, screen: window.__ui.screen, thr: m.throttle });
+  })()`).then(JSON.parse);
+  await ev("ui.act('pause'); return 1;");
+  await page.until("window.__ui.screen === 'paused'", 3000).catch(() => {});
+  /* Two whole rate windows with the sticks at rest, as a pilot's are
+   * while they fill in the form. */
+  await page.sleep(1300);
+  const sent = await ev('return JSON.stringify(ui.bugSnapshot().stick);').then(JSON.parse);
+  const fr = sent && sent.flight;
+  check('the moment of sending, from the pause screen with the sticks at rest, reads 0 Hz, as the old reports did',
+    flown.screen === 'flight' && sent.padHz === 0, JSON.stringify({ flown, padHz: sent && sent.padHz }));
+  check('the report carries the flight: a radio, its own refresh ceiling, and how long it covers',
+    !!fr && fr.source === 'a radio' && fr.padHzMax >= 10 && fr.seconds >= 1.5, JSON.stringify(fr));
+  check('the top of the throttle is the half it was flown at, and the bottom is idle',
+    !!fr && fr.travel.throttle[0] === 0 && fr.travel.throttle[1] === 0.5, JSON.stringify(fr && fr.travel));
+  check('and roll went both ways, to the stop', !!fr && fr.travel.roll.join() === '-1,1', JSON.stringify(fr && fr.travel));
 }
 
 async function touchPage(page) {

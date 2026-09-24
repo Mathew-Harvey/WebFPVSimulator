@@ -1111,6 +1111,37 @@ export class InputManager {
     this.sampleHz = 0;
 
     /*
+     * WHAT THE FLIGHT MEASURED, for a feel report. bug-08577148.
+     *
+     * padHz above is read when a report is sent, and a report is sent from
+     * the pause or results screen, with the pilot's hand on the mouse and
+     * the sticks at rest. The browsers on the board move the Gamepad
+     * timestamp only when something changes, so on the 24th of September
+     * eleven of the twenty two radio reports among the open feel reports
+     * said 0 Hz, ten of them sent from the pause screen, and the one that
+     * said 12 was sent from results. A number that looks like an answer and
+     * is not one, which is what the round that put padHz in the report
+     * warned of.
+     *
+     * So the flight keeps its own record, and only the flight writes it.
+     * main.js sets `flying` every frame. A rate window counts only when
+     * every poll in it was in flight, so a window that straddles the pause
+     * lends neither side its number. padHzMax is the highest such window: a
+     * timestamp cannot change faster than the browser refreshes it, so the
+     * highest window is the ceiling, and the ceiling is the question. travel
+     * is how far each channel went, as the controller was fed it, so "it
+     * will not give me the thrust to recover" can be read against the top
+     * of the throttle the pilot actually reached.
+     *
+     * Forgotten with the pad and with a new map, beside the stick
+     * resolution, and when the kind of source changes, because a record
+     * that mixes the keyboard's travel with a radio's describes neither.
+     */
+    this.flying = false;
+    this.windowFlying = true;
+    this.flightRec = null;
+
+    /*
      * STICK RESOLUTION, AND WHY THE MEASUREMENT IS ONE SIDED.
      *
      * padHz says how OFTEN the browser refreshes a stick. It says nothing
@@ -1624,6 +1655,7 @@ export class InputManager {
     this.yawParkMs = 0;
     /* And so is the stick resolution. Same line, same reason. */
     this.forgetAxisResolution();
+    this.forgetFlightRecord();
   }
 
   seedPadRoster() {
@@ -2329,8 +2361,10 @@ export class InputManager {
      * buttons never assigned one and carries null, which is the same as
      * before this existed. */
     this.map = cloneMap({ ...c.draft, stored: true });
-    /* New axes to watch, so the old axes' step is not this map's. */
+    /* New axes to watch, so the old axes' step is not this map's, and the
+     * flight flown on the old map is not a flight on this one. */
     this.forgetAxisResolution();
+    this.forgetFlightRecord();
     /* A calibrated map answers the guess's questions by existing, and the
      * evidence gathered against the guess is about a map that is gone. */
     this.guessSpan = null;
@@ -2946,6 +2980,8 @@ export class InputManager {
   poll(nowWall) {
     const dtMs = Math.min(nowWall - this.lastWall, 100);
     this.lastWall = nowWall;
+    /* One poll off the flight spoils its rate window. See flightRec. */
+    this.windowFlying = this.windowFlying && this.flying;
 
     const gp = this.firstGamepad();
     this.notePadRoster();
@@ -2963,6 +2999,12 @@ export class InputManager {
     if (this.rateWindowMs >= 500) {
       this.padHz = Math.round((this.padUpdates * 1000) / this.rateWindowMs);
       this.sampleHz = Math.round((this.samplesTaken * 1000) / this.rateWindowMs);
+      if (this.windowFlying) {
+        const r = this.flightRecord();
+        r.padHzMax = Math.max(r.padHzMax, this.padHz);
+        r.sampleHzMax = Math.max(r.sampleHzMax, this.sampleHz);
+      }
+      this.windowFlying = true;
       this.padUpdates = 0;
       this.samplesTaken = 0;
       this.rateWindowMs = 0;
@@ -3015,6 +3057,9 @@ export class InputManager {
     } else {
       next = this.readKeyboard(dtMs, true);
       this.source = 'the keyboard';
+    }
+    if (this.flying) {
+      this.noteFlightTravel(next, dtMs);
     }
 
     const changed =
@@ -3105,6 +3150,67 @@ export class InputManager {
   forgetAxisResolution() {
     this.axisPrev.clear();
     this.axisStepMin = 0;
+  }
+
+  /* And the flight's record, for the same reason. See flightRec. */
+  forgetFlightRecord() {
+    this.flightRec = null;
+  }
+
+  /*
+   * The record for the source flying now, started afresh when the kind of
+   * source changes. 'a radio' and 'a radio whose stick order is a guess'
+   * are one kind: the guess becomes usable in mid flight once its throttle
+   * is seen parked, and that is the same radio in the same hands.
+   */
+  flightRecord() {
+    const kind = this.source.startsWith('a radio') ? 'a radio' : this.source;
+    if (!this.flightRec || this.flightRec.source !== kind) {
+      this.flightRec = { source: kind, ms: 0, padHzMax: 0, sampleHzMax: 0, travel: null };
+    }
+    return this.flightRec;
+  }
+
+  noteFlightTravel(ch, dtMs) {
+    const r = this.flightRecord();
+    r.ms += dtMs;
+    if (!r.travel) {
+      r.travel = {};
+      for (const name of IDENT_CHANNELS) {
+        r.travel[name] = [ch[name], ch[name]];
+      }
+      return;
+    }
+    for (const name of IDENT_CHANNELS) {
+      const span = r.travel[name];
+      span[0] = Math.min(span[0], ch[name]);
+      span[1] = Math.max(span[1], ch[name]);
+    }
+  }
+
+  /*
+   * The flight's record as a report carries it, or null before the first
+   * flight. Hundredths, because the question it answers is "did the
+   * throttle ever reach the top", and 0.52 answers that where
+   * 0.5213541666 only looks more careful.
+   */
+  flightReport() {
+    const r = this.flightRec;
+    if (!r || !r.travel) {
+      return null;
+    }
+    const two = (v) => Math.round(v * 100) / 100;
+    const travel = {};
+    for (const name of IDENT_CHANNELS) {
+      travel[name] = r.travel[name].map(two);
+    }
+    return {
+      source: r.source,
+      seconds: Math.round(r.ms / 100) / 10,
+      padHzMax: r.padHzMax,
+      sampleHzMax: r.sampleHzMax,
+      travel,
+    };
   }
 
   stats() {

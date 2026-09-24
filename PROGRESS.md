@@ -42292,3 +42292,130 @@ cosmetic. It matters to the plant, which sags and hovers higher up the
 stick on a tired pack, and the OSD number is now that same pack scaled to
 one cell. The resolution does not say so; it is here for whoever answers
 them next.
+
+## 2026-09-24 | input, shell | bug-08577148: a feel report carries what the flight measured, not what the pause screen does
+
+The owner: "start the next ticket". The board, read with `?limit=500`,
+holds 169 tickets and 28 open: bug-c9423f3e in progress waiting on its
+reporter, and 27 flight feel reports from the 21st to the 23rd. So the
+next ticket is a feel report, and the oldest is bug-08577148, garefpv from
+Paraguay: "floppy, bounces back after a stop", ticked "wobbles in
+propwash", weight 75, and in Spanish, "quiere caer muy rapido el drone
+mientras recupero el ya aterriza y no le da la fuerza de empuje en mi tbs
+mambo": it drops very fast, by the time I recover it has already landed,
+and it will not give me the thrust, on my TBS Mambo. Firefox on a Mac, a
+radio, 43 fps, Betaflight's default tune, 670 deg/s rates, cap 100.
+
+### What the report could and could not say
+
+It says padHz 12, which would be a browser refreshing the radio twelve
+times a second, a staircase that Betaflight's feedforward turns into
+spikes and that would feel exactly like floppy and bouncing back. But it
+was read on the results screen. padHz counts changes of the Gamepad
+object's own timestamp, and the browsers on the board move that only when
+something changes, so a report sent from a menu with the pilot's hand on
+the mouse reads the sticks at rest. Across the 27 open feel reports:
+
+    22 from a radio   11 read 0 Hz: 10 sent from the pause screen, 1 from
+                      results. The other 11 read 10 to 216, 9 of them
+                      from results, where a hand may still be on a stick
+     5 from the keys  0 Hz, correctly, there is no pad
+
+So half the radio reports carry a number that looks like an answer and is
+not one, which is the failure the round that put padHz in the report
+(Round: five feel reports that were not about the quad) warned about for a
+boot time snapshot. It moved from boot to the pause screen and stayed.
+
+And the pilot's own sentence, it will not give me the thrust to recover,
+is a question about the top of their throttle, and nothing in the report
+says how far the throttle went. A Mambo whose throttle axis only reaches
+half of its travel in this browser would fly exactly like that; so would
+several other things. The report cannot tell them apart.
+
+### What changed
+
+src/input/input.js keeps a record that only the flight writes. main.js
+sets `input.flying` every frame (flight screen and flight mode), and the
+2 ms timer's polls between frames read the same flag.
+
+- **padHzMax and sampleHzMax**: the highest 500 ms rate window in which
+  every poll was in flight. A window that straddles the pause lends
+  neither side its number. The highest, because a timestamp cannot change
+  faster than the browser refreshes it, so the highest window is the
+  ceiling, and the ceiling is the question.
+- **travel**: the lowest and highest each channel reached as the
+  controller was fed it, throttle 0 to 1 and the rest -1 to 1, to the
+  hundredth. On keys it shows the keyboard's own reach too, which is what
+  "stiff" on keys has been about before.
+- **seconds**: how much flight the record covers.
+- **source**: the kind of source. A change of kind starts a new record,
+  and 'a radio whose stick order is a guess' counts as 'a radio', because
+  the guess turns usable in mid flight once its throttle is seen parked.
+- Forgotten beside the stick resolution: a pad chosen and a map saved.
+
+The report carries it as `stick.flight`, inside the stick block because
+the board caps a report at 32 top level keys. Nothing it reads is written
+back: the channels, the queue, the heartbeat and every timestamp are what
+they were.
+
+### Declined, with the reason
+
+A notice to the pilot when the throttle never reaches the top in flight.
+It would answer this pilot directly if the travel is the cause, and it
+would also fire on every pilot who flies gently, which is most of them on
+a whoop. The record first; a notice when a report shows the case.
+
+### What went wrong
+
+The first draft of the comment, the selftest's header and the browser
+check's header said "fifteen of the twenty seven open feel reports said
+0 Hz". Counted from memory of a table. Recounted before committing: 16 of
+27 read 0, 5 of those are keyboard reports that are right to, and the
+number that makes the point is 11 of 22 radio reports. Corrected in all
+three places.
+
+### Tests, and that they can fail
+
+scripts/input-selftest.js, section 12, 8 checks. The menus move the sticks
+at 62.5 Hz and take the throttle to the top; the flight moves them at
+31.25 Hz and never takes the throttle past 0.52; each phase boundary falls
+in the middle of a 512 ms window. The record must say 31 and 0.52 while
+the at-send reading says 0. Five mutants of input.js, each caught by the
+check meant for it:
+
+    every window counts            padHzMax 63, fails the ceiling check
+    travel noted in the menus too  throttle top 1, record made with no
+                                   flight: fails three checks
+    window judged by its last poll padHzMax 47, the straddling window
+    window flag never re-armed     padHzMax 0
+    source change keeps the record harness travel lent to the radio's
+
+scripts/input-check.js, section 6d, 4 checks in the shell: fly the six
+axis radio at the page's own pace, throttle never past half and roll both
+ways, pause, wait out two windows, read ui.bugSnapshot().stick. The at-send
+padHz is 0, and the flight says a radio, padHzMax at least 10, at least
+1.5 s, throttle 0 to 0.5, roll -1 to 1. With the `input.flying` line taken
+out of main.js, three of the four fail with the record null, so the check
+sees the wiring and not only the class.
+
+### What this does not do
+
+It does not answer bug-08577148. That report is what it is: the next
+report from this pilot, or from anyone, will carry the throttle's top and
+the flight's refresh ceiling. The ticket goes to in progress on the board.
+The other 26 feel reports are read, tabulated above, and untouched.
+
+### RUN LOG
+
+    node scripts/input-selftest.js   all 198 passed (190 before, 8 new)
+    npm run lint:input               all 131 passed, 92 s (127 before,
+                                     4 new); the main.js mutant: 3 FAIL
+    npm run lint:shell               FAIL, 1 problem: the title's 23 px,
+                                     from 9ed8b9c, unchanged
+    npm run verify                   not run. The verify-flight-model
+                                     skill asks for it on any change under
+                                     src/input; CLAUDE.md makes it the
+                                     owner's call, and this change only
+                                     reads what the stick path already
+                                     computed. build:wasm cannot run
+                                     here: no emcc. Offered

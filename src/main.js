@@ -5899,6 +5899,10 @@ export async function boot({ loading, bootStart, mapId }) {
       heldNotes = null;
     }
 
+    /* Which polls are flight, for the report's record of what the flight
+     * measured rather than what the pause screen does: see flightRec in
+     * input.js. The 2 ms timer's polls between frames read the same flag. */
+    input.flying = ui.screen === 'flight' && mode === 'flight';
     input.poll(nowWall);
     /*
      * The radio's restart switch, bug-a25bc2dd: see noteRestartSwitch in
@@ -8500,6 +8504,11 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Which axes are being flown and what they read: see mapReport.
      * bug-c9423f3e could not be checked without it. */
     map: input.mapReport(),
+    /* padHz, sampleHz and fps above are read at the moment of sending,
+     * from a menu with the sticks at rest. This is the flight: its stick
+     * refresh ceiling and how far each channel went. See flightRec in
+     * input.js. bug-08577148. */
+    flight: input.flightReport(),
   }));
   window.__stickPath = () => ({
     ...input.stats(),

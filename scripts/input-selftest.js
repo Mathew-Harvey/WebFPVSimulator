@@ -1178,6 +1178,101 @@ section('the joystick picker draws what the page will fly, not raw axes');
   im.cancelPadPick();
 }
 
+/*
+ * 12. What the flight measured, for a feel report. bug-08577148: "floppy,
+ *     bounces back after a stop", and in Spanish, it falls too fast and
+ *     will not give the thrust to recover, on a TBS Mambo. Its report said
+ *     padHz 12, read on the results screen with the sticks at rest, and
+ *     said nothing at all about how far the throttle went.
+ *
+ *     The menus here move the sticks at 62.5 Hz and take the throttle to
+ *     the top. The flight moves them at 31.25 Hz and never takes the
+ *     throttle past 52 percent. Each phase boundary falls in the middle of
+ *     a 512 ms rate window, so a window that straddled one would read 47 Hz
+ *     and a record that let the menus in would read 63 or say 1.0. The
+ *     record has to say 31 and 0.52, while the at-send reading, idle, says
+ *     0, which is what eleven of the twenty two radio feel reports open on
+ *     the 24th of September said.
+ */
+section('what the flight measured: a feel report\'s stick path is the flight\'s, not the menu\'s');
+{
+  const pad = makePad([0, 0, -1, 0], 4, 'Feel radio');
+  const rig = new Rig(pad);
+  const im = rig.im;
+  im.map = {
+    roll: { axis: 0, center: 0, full: 1 },
+    pitch: { axis: 1, center: 0, full: 1 },
+    yaw: { axis: 3, center: 0, full: 1 },
+    throttle: { axis: 2, low: -1, high: 1 },
+    reverse: {},
+    stored: true,
+  };
+  /* One refresh of the radio: every axis at once and one timestamp, the
+   * way a browser hands over a HID report. */
+  const report = (roll, pitch, thr, yaw) => {
+    pad.axes[0] = roll;
+    pad.axes[1] = pitch;
+    pad.axes[2] = thr;
+    pad.axes[3] = yaw;
+    pad.timestamp += 1;
+  };
+  const menu = (steps) => {
+    for (let i = 0; i < steps; i += 1) {
+      report(i % 2 ? 1 : -1, 0, 1, 0);
+      rig.step(16);
+    }
+  };
+  /* Throttle axis -1, -0.5, 0.04: the channel reads 0, 0.25 and 0.52. */
+  const FLOWN = [[0, 0, -1, 0], [1, 0.25, -0.5, 0.25], [0, 0.5, 0.04, 0], [-1, 0.25, -0.5, -0.25]];
+  const fly = (steps) => {
+    for (let i = 0; i < steps; i += 1) {
+      if (i % 2 === 0) {
+        report(...FLOWN[(i / 2) % FLOWN.length]);
+      }
+      rig.step(16);
+    }
+  };
+  menu(48);
+  check('menus alone, full throttle and all: no flight, no record', im.flightReport() === null,
+    JSON.stringify(im.flightReport()));
+  im.flying = true;
+  fly(128);
+  im.flying = false;
+  menu(64);
+  for (let i = 0; i < 64; i += 1) {
+    rig.step(16);
+  }
+  const at = im.stats();
+  const rec = im.flightReport();
+  check('the reading at the moment of sending, sticks at rest, is 0 Hz: the old report\'s answer',
+    at.padHz === 0, JSON.stringify(at));
+  check('the flight\'s ceiling is its own 31 Hz: no menu window, and no window across a boundary',
+    rec && rec.padHzMax === 31 && rec.source === 'a radio', JSON.stringify(rec));
+  check('the throttle went from 0 to 0.52 in flight, and the menus\' full throttle is not in it',
+    rec && rec.travel.throttle[0] === 0 && rec.travel.throttle[1] === 0.52, JSON.stringify(rec && rec.travel));
+  check('roll, pitch and yaw are the flight\'s travel to the hundredth',
+    rec && rec.travel.roll.join() === '-1,1' && rec.travel.pitch.join() === '0,0.5'
+    && rec.travel.yaw.join() === '-0.25,0.25', JSON.stringify(rec && rec.travel));
+  check('and it says how much flight it covers: 128 polls of 16 ms, 2.0 s', rec && rec.seconds === 2,
+    JSON.stringify(rec));
+  im.flying = true;
+  im.harnessChannels = { roll: 0, pitch: 0, yaw: 0, throttle: 0.9 };
+  rig.step(16);
+  im.harnessChannels = null;
+  im.flying = false;
+  const other = im.flightReport();
+  check('another kind of source starts a record of its own rather than lending this one its travel',
+    other && other.source === 'the harness override' && other.travel.throttle.join() === '0.9,0.9',
+    JSON.stringify(other));
+  im.flying = true;
+  fly(32);
+  im.flying = false;
+  const kept = im.flightReport();
+  im.setPadChoice({ kind: 'pad', id: pad.id, index: 0 });
+  check('and a pad chosen again forgets it, beside the stick resolution',
+    kept !== null && kept.source === 'a radio' && im.flightReport() === null, JSON.stringify(kept));
+}
+
 console.log(failed ? `\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);
 for (const f of fails) {
   console.log(`  FAIL ${f}`);

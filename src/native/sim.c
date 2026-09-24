@@ -76,6 +76,12 @@ static double g_ground_n[3] = { 0.0, 0.0, 1.0 };
 static double g_ground_d = -0.045;
 static double g_ground_mu = 1.40;
 static double g_ground_e = 0.0;
+/* The plane exactly as the shell raised it. g_ground_* above is what the
+ * solver uses this step, which world.c may replace with the top of a box the
+ * CG is over (a roof is ground). With no world it is never touched, so the
+ * two are the same doubles and every recorded trace stands. */
+static double g_terrain_n[3] = { 0.0, 0.0, 1.0 };
+static double g_terrain_d = -0.045;
 static int g_ground_hits = 0;
 static int g_ground_projected = 0;
 static int g_ground_near = 0;
@@ -224,6 +230,7 @@ static void reset_dynamics(void) {
   g_ground_hits = 0;
   g_ground_projected = 0;
   g_ground_near = 0;
+  world_forget();
 }
 
 SIM_EXPORT int sim_init(const unsigned char *diff_utf8, int len) {
@@ -969,6 +976,10 @@ SIM_EXPORT int sim_set_ground(int on,
   g_ground_mu = mu;
   g_ground_e = restitution;
   g_ground_on = 1;
+  g_terrain_n[0] = g_ground_n[0];
+  g_terrain_n[1] = g_ground_n[1];
+  g_terrain_n[2] = g_ground_n[2];
+  g_terrain_d = g_ground_d;
   return SIM_OK;
 }
 
@@ -1012,6 +1023,7 @@ SIM_EXPORT int sim_set_pose(double px, double py, double pz,
   S.quat[1] = qx * ninv;
   S.quat[2] = qy * ninv;
   S.quat[3] = qz * ninv;
+  world_forget();
   return SIM_OK;
 }
 
@@ -1295,6 +1307,11 @@ SIM_EXPORT int sim_step(int n) {
      * this file's, and handed over as two numbers rather than a callback so
      * plant_step stays a pure function of its state.
      */
+    /* This step's ground: the shell's plane, or a roof the CG is over. Only
+     * with a world loaded, so a harness replay never reaches it. */
+    if (g_ground_on && !g_stand_on && world_active()) {
+      world_select_support(&S, g_terrain_n, g_terrain_d, g_ground_n, &g_ground_d);
+    }
     if (g_ground_on) {
       S.ground_h = g_ground_n[0] * S.pos[0] + g_ground_n[1] * S.pos[1]
         + g_ground_n[2] * S.pos[2] - g_ground_d;
@@ -1306,6 +1323,9 @@ SIM_EXPORT int sim_step(int n) {
     }
     plant_step(&S, duty);
     ground_apply();
+    if (!g_stand_on) {
+      world_step(&S, g_ground_on, g_ground_n, g_ground_d);
+    }
     stand_apply();
     S.step_index += 1;
   }

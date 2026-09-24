@@ -298,6 +298,21 @@ extern double SIM_GRAVITY;
 #define PLANT_POS_Y (PLANT.pos_y)
 #define PLANT_POS_Z (PLANT.pos_z)
 
+/*
+ * world.c: the solid world, stepped from sim.c. See that file's header.
+ *   world_active          a world has been built and has something in it
+ *   world_forget          a teleport or a reset: forget last step's points
+ *   world_select_support  pick this step's ground: the shell's plane, or the
+ *                         top of the box the CG is over if that is higher
+ *   world_step            contacts against every nearby solid, solved in
+ *                         world.c with accumulated impulses
+ */
+int world_active(void);
+void world_forget(void);
+int world_select_support(const SimState *s, const double tn[3], double td,
+                         double out_n[3], double *out_d);
+void world_step(SimState *s, int ground_on, const double gn[3], double gd);
+
 void plant_reset(SimState *s);
 
 /* sqrt for the debug exports, backed by libm/sim_math.h. */

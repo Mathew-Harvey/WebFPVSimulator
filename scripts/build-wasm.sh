@@ -76,7 +76,7 @@ fi
 CFLAGS_COMMON="-std=gnu17 -O2 -fno-fast-math -ffp-contract=off"
 
 # Simulator sources, plain includes.
-SIM_SRC="src/native/sim.c src/native/plant.c src/native/bridge.c src/native/libm/sim_math.c"
+SIM_SRC="src/native/sim.c src/native/plant.c src/native/bridge.c src/native/world.c src/native/libm/sim_math.c"
 
 # Betaflight sources compiled with the SITL target configuration, plus the
 # glue that feeds the simulated gyro in and reads motor outputs back.

@@ -145,6 +145,19 @@ export function wrapDelta(x) {
  * it. armT is 0 for arms up and 1 for arms fully down.
  */
 export function crossingState(step) {
+  const out = crossingInto(step, {});
+  /* 1.6 cycles a second, the town's own rate, as a closed form. */
+  out.blink = (step * 0.001 * 1.6) % 1;
+  return out;
+}
+
+/*
+ * The same state written into `out`, allocating nothing, because the plant
+ * reads the solid train and booms every 1 ms step (src/native/world.c).
+ * Writes offset, armT, down, closing, and visible: whether the set is inside
+ * VISIBLE_RANGE, outside which it is not in the town at all.
+ */
+export function crossingInto(step, out) {
   const a = CITY_ANIM;
   const x = a.X0 + a.SPEED * step * 0.001;
   const offset = wrapDelta(x);
@@ -167,14 +180,12 @@ export function crossingState(step) {
       armT = 0;
     }
   }
-  return {
-    offset,
-    armT,
-    down: armT > a.ARM_THRESHOLD,
-    closing: tau < CLOSED_S,
-    /* 1.6 cycles a second, the town's own rate, as a closed form. */
-    blink: (step * 0.001 * 1.6) % 1,
-  };
+  out.offset = offset;
+  out.armT = armT;
+  out.down = armT > a.ARM_THRESHOLD;
+  out.closing = tau < CLOSED_S;
+  out.visible = Math.abs(offset) < a.VISIBLE_RANGE;
+  return out;
 }
 
 /*
@@ -388,9 +399,26 @@ export function cityAnimation(world, colliders, boomIndices, trainCars) {
     return out;
   }
 
+  /*
+   * The solid parts for the plant, which reads them every millisecond: the
+   * cars' boxes (collider moving indices, centres in the group's frame), the
+   * booms' two heights, and the closed form to put them where they are at a
+   * step. The train goes SPEED along +x; a wrap moves the boxes but never
+   * the velocity, so the plant never reads a jump as speed.
+   */
+  const solids = {
+    cars: cars || [],
+    booms,
+    speed: CITY_ANIM.SPEED,
+    boomDown: [BOOM_Y0, BOOM_Y1],
+    boomParked: [BOOM_PARKED_Y0, BOOM_PARKED_Y1],
+    at: crossingInto,
+  };
+
   return {
     update,
     boomExtentDown,
+    solids,
     stats: () => ({
       trainOffset: state.offset,
       trainSolidCars: cars ? cars.length : 0,

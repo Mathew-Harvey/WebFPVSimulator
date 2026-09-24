@@ -415,6 +415,105 @@ int sim_set_gravity(double scale);
 /* The gravity scale in force. */
 double sim_gravity(void);
 
+/*
+ * THE SOLID WORLD, src/native/world.c. Since 2026-09-24 every wall, roof,
+ * gate, tree and the train is resolved inside the plant at 1 kHz, by the
+ * same step as the ground, instead of by a shell pass that ran after the
+ * fact every 4 ms. The owner approved the move with soft props and with no
+ * automatic teleport; PROGRESS.md carries the review and the numbers.
+ *
+ * All positions are the physics frame (Z up, SI), the shell converting
+ * through src/render/frame.js as it does every other position. The world is
+ * held in WORLD coordinates and the plant's own origin is placed in it by
+ * sim_world_frame, so a restart moves one origin rather than every shape.
+ *
+ * Additive ABI change, version unchanged: no existing entry point moved or
+ * changed meaning, and a module that is never handed a world is bit
+ * identical to one from before these existed. That is MEASURED, by
+ * scripts/plant-golden.js, which hashes the state after every 1 ms step
+ * across 21 scenarios and was recorded before world.c was written. The
+ * harness never calls any of these.
+ *
+ * e and mu are the low-speed restitution and the Coulomb friction, e in 0
+ * to 1 and mu in 0 to 2, anything else SIM_ERR_BAD_ARG.
+ */
+
+/* Empty the world: shapes, movers and the grid. */
+int sim_world_clear(void);
+
+/*
+ * Place the plant's origin in the world: a world point is Rz(yaw) times the
+ * plant point, plus (ox, oy, oz). yaw is radians about world +z, turned into
+ * a rotation with the module's own libm. Must follow every move of the
+ * shell's spawn, or the world the plant sees is somewhere else.
+ */
+int sim_world_frame(double ox, double oy, double oz, double yaw);
+
+/*
+ * An axis aligned box, world frame, min corner then max corner. Returns its
+ * index, which is the order shapes were added in, so the host can keep its
+ * own table beside it and read a reported contact against it. Returns
+ * SIM_ERR_BAD_STATE when the world is full.
+ */
+int sim_world_box(double x0, double y0, double z0,
+                  double x1, double y1, double z1,
+                  double e, double mu);
+
+/* A capsule: the segment a to b and a radius r > 0, world frame. A sphere
+ * is a capsule with a == b. Returns its index, as sim_world_box does. */
+int sim_world_capsule(double ax, double ay, double az,
+                      double bx, double by, double bz,
+                      double r, double e, double mu);
+
+/* Change box i's vertical extent, for the level crossing's booms. The
+ * footprint is what the grid files a box under, so it cannot change. */
+int sim_world_box_z(int i, double z0, double z1);
+
+/*
+ * Mover m (0 or 1): a box that moves, set every step from the map's own
+ * closed form, so its position is a function of the step count and nothing
+ * else. v is its surface velocity, m/s, which the contact reads for
+ * friction and restitution. x1 < x0 parks it.
+ */
+int sim_world_mover(int m, double x0, double y0, double z0,
+                    double x1, double y1, double z1,
+                    double vx, double vy, double vz,
+                    double e, double mu);
+
+/*
+ * File every shape in the ground-plane grid. Nothing is solved until this
+ * has run. Returns the number of shapes, or SIM_ERR_BAD_STATE when the
+ * grid cannot hold them, which a host must treat as loudly as a missing
+ * export: a world the plant does not have is one the craft flies through.
+ */
+int sim_world_build(void);
+
+/* How many shapes the world holds. */
+int sim_world_count(void);
+
+/*
+ * The box acting as the ground this step, or -1 for the shell's own plane.
+ * A roof is ground: when the CG is over the top of a box higher than the
+ * plane sim_set_ground raised, that top replaces the plane for the step,
+ * so a roof lands, slides, settles, perches and turtles as the street does.
+ */
+int sim_world_support(void);
+
+/*
+ * What touched what since the last read, then cleared. Eleven doubles:
+ *   [0]      steps with any obstacle contact
+ *   [1]      largest closing speed, m/s
+ *   [2]      largest CG velocity change in one step, m/s
+ *   [3]      the shape of [2]; -2 - m for mover m, -1 none
+ *   [4..6]   its normal, world frame, out of the solid
+ *   [7]      steps with a prop disc in contact
+ *   [8]      steps with a frame or lens contact
+ *   [9]      deepest penetration seen, m
+ *   [10]     the support box now, -1 for the shell's plane
+ */
+#define SIM_WORLD_REPORT_DOUBLES 11
+int sim_world_report(double *out);
+
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);
 

@@ -3011,7 +3011,15 @@ export const THRASH_TRAVEL = 0.60;
  * metres below. The spot is written to out.x, out.y (the parked centre),
  * out.z and out.surface.
  */
-const RECOVER_OUT = [0, 1.0, 2.0, 3.5];
+/*
+ * The rings start a quarter metre out. With only 1, 2 and 3.5 m, a craft
+ * left standing on its nose at the foot of the city's shopfront (the state
+ * stuckTick in main.js sets down automatically) had every candidate either
+ * across the kerb step, unreachable in a straight line, or inside the shop,
+ * and went back to the start line; the plain answer, the same pavement a
+ * quarter metre out from the wall, was never asked. Measured 2026-09-24.
+ */
+const RECOVER_OUT = [0, 0.25, 0.5, 1.0, 1.5, 2.0, 2.75, 3.5];
 const RECOVER_DIR = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
 const FOOTPRINT = [[1, 0], [-1, 0], [0, 1], [0, -1],
   [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2], [Math.SQRT1_2, -Math.SQRT1_2], [-Math.SQRT1_2, -Math.SQRT1_2]];

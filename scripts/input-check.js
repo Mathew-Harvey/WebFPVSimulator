@@ -54,6 +54,9 @@ import { keyInfo, openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
 import { hoverStickPercent } from '../configs/rates.js';
 import { presetsForClass } from '../src/trackbuilder/presets.js';
+import { ROOM_HEIGHT } from '../src/trackbuilder/racegow.js';
+import { MICRO_SCALE } from '../src/game/track.js';
+import { THRASH_THROTTLE } from '../src/game/collide.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -777,7 +780,11 @@ async function mousePage(page) {
   check('calibrated earlier in this run, it says the sticks follow the saved calibration',
     /saved calibration/.test(pick0.hint), pick0.hint);
   await page.evaluate('window.__pad.axes[0] = 1; window.__pad.timestamp += 1;');
-  await page.sleep(300);
+  /* Waited on, not slept on: the plates are repainted by the frame loop,
+   * and with two browsers on this machine a frame took longer than the
+   * 300 ms this used to sleep. */
+  await page.until(`(() => { const n = document.querySelectorAll('.pad-card .osd-gimbal')[1].querySelector('.osd-nub');
+    return Math.abs((parseFloat(n.style.left) || 0) - ${pick0.right[0]}) > 20; })()`, 3000).catch(() => {});
   const pick1 = await ev(`${plates} return JSON.stringify({ left: at(g[0]), right: at(g[1]) });`).then(JSON.parse);
   await page.evaluate('window.__pad.axes[0] = 0; window.__pad.timestamp += 1;');
   /* Sideways, not rightwards: section 5b reversed this page's roll and
@@ -792,12 +799,22 @@ async function mousePage(page) {
     const kept = localStorage.getItem(key);
     localStorage.removeItem(key);
     input.map = input.loadMap();
-    return new Promise((done) => setTimeout(() => {
-      const hint = ui.padHint.textContent;
-      if (kept !== null) { localStorage.setItem(key, kept); }
-      input.map = input.loadMap();
-      done(JSON.stringify({ hint, restored: input.map.stored }));
-    }, 300));
+    /* The same wait as the plates above, for the same reason: this slept
+     * 300 ms and read the hint, and a slow frame left the old one there. */
+    return new Promise((done) => {
+      const t0 = performance.now();
+      const look = () => {
+        const hint = ui.padHint.textContent;
+        if (!/a guess until you calibrate/.test(hint) && performance.now() - t0 < 3000) {
+          requestAnimationFrame(look);
+          return;
+        }
+        if (kept !== null) { localStorage.setItem(key, kept); }
+        input.map = input.loadMap();
+        done(JSON.stringify({ hint, restored: input.map.stored }));
+      };
+      requestAnimationFrame(look);
+    });
   `).then(JSON.parse);
   check('uncalibrated, it says the picture is a guess and sends the pilot to Calibrate sticks in the room that holds it',
     /a guess until you calibrate/.test(guessHint.hint) && guessHint.hint.includes(`Calibrate sticks in ${signs.roomName}`),
@@ -1012,6 +1029,64 @@ async function keyboardPage(page) {
   check('on Stays put, a throttle key let go leaves the stick exactly where it was',
     put0.thr < let1.thr && put1.thr === put0.thr, `${let1.thr} -> ${put0.thr} -> ${put1.thr}`);
   await ev("ui.settings.keyThrottle = 'hover'; ui.writeSettings(); return input.keyThrottle;");
+
+  /* --------------------------------------------------------------------
+   * 10. The roof. Flying these checks by hand found it: held under the
+   *     room's ceiling at full throttle the whoop is a thrash, the catch
+   *     calls a crash, and the recovery tried clear air 0.6 m up first,
+   *     which from under a ceiling slab 0.343 m thick is on top of it.
+   *     Measured through this flow on the code before the fix: pinned at
+   *     13.65 m, put back at 14.32 m over a roof whose top is 14.06 m, and
+   *     sitting on it.
+   *
+   *     Driven here through X, the pilot's own unstick, which runs the same
+   *     recovery, pinned by a radio's throttle under the thrash throttle so
+   *     that only X can fire. Not through the catch: whether a thrash
+   *     confirms depends on how the contact flickers at the page's frame
+   *     rate, and it fired in seven runs of eight here. A check that
+   *     fires seven times in eight is not a check.
+   * ------------------------------------------------------------------ */
+  section('keyboard: X under the ceiling puts the whoop back in the room, not on the roof');
+  /* The room stands on the ground at zero. The pinned height below is what
+   * says so: pinned anywhere else, it fails. */
+  const ceiling = ROOM_HEIGHT * MICRO_SCALE;
+  const lean = Math.round((hand.hover + THRASH_THROTTLE) * 50) / 100;
+  await page.evaluate(`window.__stick(0, 0, 0, ${lean}); 0`);
+  /* Not still: held there, it bounces between 13.54 and 13.65 m at up to
+   * half a metre a second, measured frame by frame. So pinned is a height,
+   * and the recovery is told from the bounce by going lower than any of
+   * it: the drop is 0.6 m from the centre, the bounce under 0.2. The wait
+   * is long because it is wall clock and the climb is sim clock, which a
+   * busy machine slows: with four browsers here it took longer than 15 s. */
+  let pinned = null;
+  await page.until(`window.__craftState().worldY > ${ceiling - 0.3}`, 60000)
+    .then(async () => {
+      await page.sleep(1500);
+      pinned = await ev('const c = window.__craftState(); return JSON.stringify({ y: c.worldY, crashed: c.crashed });').then(JSON.parse);
+    })
+    .catch(() => {});
+  check(`a radio's ${lean} throttle holds it against the ceiling, and nothing calls a crash`,
+    Boolean(pinned) && !pinned.crashed && pinned.y > ceiling - 0.3 && pinned.y < ceiling,
+    `${JSON.stringify(pinned)} under a ${ceiling.toFixed(3)} m ceiling`);
+  /* Every frame, in the page, from the key on: the craft leaves its spot on
+   * the next physics step, so a poll from here could miss where it was put. */
+  await page.evaluate(`window.__roofTrace = (async () => {
+    const out = [];
+    const t0 = performance.now();
+    while (performance.now() - t0 < 3000) {
+      await new Promise((r) => requestAnimationFrame(r));
+      out.push(window.__craftState().worldY);
+    }
+    return out;
+  })(); 0`);
+  await page.tap('KeyX');
+  const ys = await page.evaluate('window.__roofTrace');
+  const put = pinned ? ys.find((y) => y < ceiling - 0.45) : undefined;
+  const highest = Math.max(...ys);
+  check('X puts it back in the room, off the ceiling, and never on the roof',
+    put !== undefined && put > 1 && highest < ceiling,
+    `${put === undefined ? 'never moved off the ceiling' : `put at ${put.toFixed(3)}`}, highest ${highest.toFixed(3)}, ceiling ${ceiling.toFixed(3)}`);
+  await page.evaluate('window.__stick(); 0');
 }
 
 async function main() {

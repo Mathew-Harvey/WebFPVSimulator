@@ -2127,6 +2127,60 @@ export class Colliders {
     return this.crossedStatic(this.hitIndex, ax, ay, az, bx, by, bz);
   }
 
+  /*
+   * Does the straight line from a to b go THROUGH any solid at all? The
+   * same per solid rule as crossedStatic and crossedMoving, in one face and
+   * out of the opposite one, asked of every collider the line could reach.
+   * An end that sits inside a solid does not count as crossing it, which is
+   * right for its one caller: the crash recovery, digging a craft out.
+   *
+   * It exists because a spot can be clear and still be on the wrong side of
+   * something. A craft pinned under a room's ceiling found clear air 0.6 m
+   * above itself, which is on top of the roof. See findRecoverSpot.
+   */
+  segmentCrossesAny(ax, ay, az, bx, by, bz) {
+    if (!this.built) {
+      return false;
+    }
+    if (
+      !Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(az)
+      || !Number.isFinite(bx) || !Number.isFinite(by) || !Number.isFinite(bz)
+    ) {
+      return false;
+    }
+    this.queryId += 1;
+    const id = this.queryId;
+    const pad = this.maxR;
+    const cx0 = clampCell(Math.floor((Math.min(ax, bx) - pad) / CELL));
+    const cx1 = clampCell(Math.floor((Math.max(ax, bx) + pad) / CELL));
+    const cz0 = clampCell(Math.floor((Math.min(az, bz) - pad) / CELL));
+    const cz1 = clampCell(Math.floor((Math.max(az, bz) + pad) / CELL));
+    for (let cx = cx0; cx <= cx1; cx += 1) {
+      for (let cz = cz0; cz <= cz1; cz += 1) {
+        const bucket = this.grid.get((cx + GRID_HALF) * GRID_SPAN + (cz + GRID_HALF));
+        if (bucket === undefined) {
+          continue;
+        }
+        for (let bi = 0; bi < bucket.length; bi += 1) {
+          const i = bucket[bi];
+          if (this.stamp[i] === id) {
+            continue;
+          }
+          this.stamp[i] = id;
+          if (this.crossedStatic(i, ax, ay, az, bx, by, bz)) {
+            return true;
+          }
+        }
+      }
+    }
+    for (let i = 0; i < this.movingCount; i += 1) {
+      if (this.crossedMoving(i, ax, ay, az, bx, by, bz)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   kindName(k) {
     return KINDS[k] ?? 'none';
   }
@@ -2913,6 +2967,94 @@ export const THRASH_RATE = 12.0;      /* rad/s, about 690 deg/s */
 export const THRASH_THROTTLE = 0.55;
 export const THRASH_MS = 700;
 export const THRASH_TRAVEL = 0.60;
+
+/*
+ * WHERE A CRASHED CRAFT IS PUT BACK: the nearest clear air to where the
+ * accident happened, so the run carries on. Moved here from src/main.js's
+ * finishClipCrash, which still does the putting back, so it can be tested
+ * against a room without a browser.
+ *
+ * Finding clear air is the whole of the work. Reseating inside the wall
+ * the craft was stuck in would trip the same detector on the next frame
+ * and put the pilot in a loop, which is worse than the glitch. Rise first,
+ * because up is where a quad came from and where it wants to go, and only
+ * then try the compass. A point is clear when the collider sweep says so at
+ * a level attitude and it is above the terrain.
+ *
+ * AND IT HAS TO BE ON THE PILOT'S SIDE OF EVERYTHING. Clear is not enough.
+ * A whoop pinned under its room's ceiling found clear air 0.6 m above
+ * itself, which is ON TOP of a ceiling slab thinner than that: it was put
+ * on the roof, at 14.2 m over a 13.65 m ceiling, where it sat and could not
+ * get back in. So a spot must also be reachable in a straight line from
+ * `from`, the last place the craft's centre was in the open, without going
+ * in one face of a solid and out of the other. See segmentCrossesAny. When
+ * everything above is on the far side of something, the search goes below,
+ * so a ceiling hands the craft back a little under where it was pinned.
+ *
+ * WHERE IT WAS COMES LAST, after the drops and before the compass. Flown,
+ * the pinned whoop's hull sat a hair clear of the ceiling, because the
+ * contact pass keeps it there, so where it was is clear air and the first
+ * draft, which tried it before the drops, took it: the craft was handed
+ * back touching the thing it had been held against, which is not what a
+ * recovery is for. It is still worth trying before the compass, for a
+ * craft with something close above it and the ground close below.
+ *
+ * `groundAt(x, z, y)` is the terrain height under (x, z) near y, and
+ * `restHeight` the clearance a parked craft needs above it. `from` may be
+ * null, which skips the reachability test. The spot is written to out.x,
+ * out.y and out.z.
+ */
+const RECOVER_OUT = [0, 1.0, 2.0, 3.5];
+const RECOVER_LIFT = [0.6, 1.2, 2.0, 3.0, 4.5, -0.6, -1.2, -2.0, 0];
+const RECOVER_DIR = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
+
+export function recoverSpotClear(colliders, groundAt, restHeight, x, y, z) {
+  if (!(y - groundAt(x, z, y) > restHeight)) {
+    return false;
+  }
+  if (!colliders) {
+    return true;
+  }
+  return colliders.hit(
+    x, y, z, x, y, z,
+    craftVerticalHalf(0),
+    0, 0, 0, 1,
+    craftVerticalOffset(),
+  ) < 0;
+}
+
+export function findRecoverSpot(colliders, groundAt, restHeight, x, y, z, from, out) {
+  const take = (px, py, pz) => {
+    if (!recoverSpotClear(colliders, groundAt, restHeight, px, py, pz)) {
+      return false;
+    }
+    if (from && colliders && colliders.segmentCrossesAny(from.x, from.y, from.z, px, py, pz)) {
+      return false;
+    }
+    out.x = px;
+    out.y = py;
+    out.z = pz;
+    return true;
+  };
+  for (let ri = 0; ri < RECOVER_OUT.length; ri += 1) {
+    const r = RECOVER_OUT[ri];
+    for (let li = 0; li < RECOVER_LIFT.length; li += 1) {
+      const py = y + RECOVER_LIFT[li];
+      if (r === 0) {
+        if (take(x, py, z)) {
+          return true;
+        }
+        continue;
+      }
+      for (let di = 0; di < RECOVER_DIR.length; di += 1) {
+        if (take(x + RECOVER_DIR[di][0] * r, py, z + RECOVER_DIR[di][1] * r)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 export function makeClipWatch() {
   return {

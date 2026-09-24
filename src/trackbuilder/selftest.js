@@ -68,6 +68,7 @@ import {
   STUCK_UNRESOLVED_MS, STUCK_TRAVEL_MAX, BURIED_DEPTH, BURIED_CONFIRM_MS,
   CLIP_CRASH_HOLD_MS, BOUNCE_SEPARATION, CLIP_SPAWN_GRACE_MS,
   setCraftAirframe, dirtClearance, craftVerticalOffset, craftVerticalHalf,
+  findRecoverSpot, recoverSpotClear,
 } from '../game/collide.js';
 import { AIRFRAMES, airframeById } from '../../configs/airframes.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
@@ -3067,6 +3068,110 @@ function suiteClubhouseShell() {
   }
 }
 
+/*
+ * WHERE A CRASH PUTS THE CRAFT BACK, in the RaceGOW room built the way
+ * src/render/scene.js builds it: four walls from the floor to the ceiling
+ * and a ceiling slab 0.10 m thick at MICRO_SCALE, 0.343 m in the world.
+ *
+ * The flight that found it: a whoop pinned under this ceiling at 57 percent
+ * throttle, the thrash catch called a crash, and the recovery put it at
+ * 14.2 m over a 13.65 m ceiling, on the roof, where it sat. The first spot
+ * the search tries is 0.6 m up, and 0.6 m up from under a 0.343 m slab is
+ * clear air on top of it. Clear is not enough; the spot has to be on the
+ * pilot's side of everything.
+ */
+function suiteRecoverSpot() {
+  console.log('\nrecover spot');
+  const whoop = airframeById('whoop65').dims;
+  setCraftAirframe(whoop);
+  const rest = whoop.vHalfDown;
+  const K = MICRO_SCALE;
+  const halfW = 10 * K * 0.5;
+  const halfD = 12 * K * 0.5;
+  const H = 4 * K;
+  const T = 0.10 * K;
+  const room = new Colliders();
+  room.addBox('wall', -halfW - T, 0, -halfD - T, halfW + T, H, -halfD);
+  room.addBox('wall', -halfW - T, 0, halfD, halfW + T, H, halfD + T);
+  room.addBox('wall', -halfW - T, 0, -halfD - T, -halfW, H, halfD + T);
+  room.addBox('wall', halfW, 0, -halfD - T, halfW + T, H, halfD + T);
+  room.addBox('wall', -halfW - T, H, -halfD - T, halfW + T, H + T, halfD + T);
+  room.build();
+  const flat = () => 0;
+
+  check('a line up through the ceiling crosses it', room.segmentCrossesAny(0, H - 0.1, 0, 0, H + T + 0.5, 0));
+  check('a line that stays under it does not', !room.segmentCrossesAny(0, H - 0.1, 0, 0, H - 1.5, 0));
+  check('a line out through a wall crosses it', room.segmentCrossesAny(halfW - 1, 5, 0, halfW + T + 1, 5, 0));
+  check('a line that starts inside the slab does not count as crossing it',
+    !room.segmentCrossesAny(0, H + T * 0.5, 0, 0, H + T + 0.5, 0));
+  const pole = new Colliders();
+  pole.add('wall', 0, 0, 0, 0, 3, 0, 0.2);
+  pole.build();
+  check('a line through a pole crosses it, one beside it does not',
+    pole.segmentCrossesAny(-1, 1, 0, 1, 1, 0) && !pole.segmentCrossesAny(-1, 1, 0.5, 1, 1, 0.5));
+
+  /* Pinned: the highest clear centre under the ceiling, then a hair higher,
+   * so the hull is touching it and the centre is still in the room. */
+  let yClear = H - 1;
+  while (recoverSpotClear(room, flat, rest, 0, yClear + 0.001, 0)) {
+    yClear += 0.001;
+  }
+  const pinned = { x: 0, y: yClear + 0.002, z: 0 };
+  check('the rig pins the craft with its hull 2 mm into the ceiling and its centre under it',
+    !recoverSpotClear(room, flat, rest, pinned.x, pinned.y, pinned.z) && pinned.y < H, `${pinned.y} under ${H}`);
+  const out = { x: 0, y: 0, z: 0 };
+  const oldWay = findRecoverSpot(room, flat, rest, pinned.x, pinned.y, pinned.z, null, out);
+  check('without a reference, the search does what it did: clear air on the roof',
+    oldWay && out.y > H + T, `spot ${out.y.toFixed(3)}, roof top ${(H + T).toFixed(3)}`);
+  const newWay = findRecoverSpot(room, flat, rest, pinned.x, pinned.y, pinned.z, pinned, out);
+  check('reachable from where it was pinned, the spot is back in the room, just under the ceiling',
+    newWay && out.y < H && out.y > H - 2.5 && Math.abs(out.x) < halfW && Math.abs(out.z) < halfD,
+    `spot ${out.x.toFixed(2)} ${out.y.toFixed(3)} ${out.z.toFixed(2)}`);
+  /* Flown, the hull is not in the ceiling but a hair under it, because the
+   * contact pass keeps it there, so where it was pinned is itself clear. */
+  const touching = { x: 0, y: yClear, z: 0 };
+  check('pinned with the hull just clear, the way the contact pass leaves it, it is still moved off the ceiling',
+    recoverSpotClear(room, flat, rest, touching.x, touching.y, touching.z)
+    && findRecoverSpot(room, flat, rest, touching.x, touching.y, touching.z, touching, out)
+    && Math.abs(out.y - (touching.y - 0.6)) < 1e-12 && out.x === 0 && out.z === 0,
+    `pinned ${touching.y.toFixed(3)}, spot ${out.x} ${out.y.toFixed(3)} ${out.z}`);
+
+  /* A centre already through the underside: the crash position is inside
+   * the slab and cannot say which side is the room. The last open air can. */
+  const buried = { x: 0, y: H + T * 0.5, z: 0 };
+  const below = { x: 0, y: H - 0.4, z: 0 };
+  check('buried in the ceiling from below, it comes back out below',
+    findRecoverSpot(room, flat, rest, buried.x, buried.y, buried.z, below, out) && out.y < H,
+    `spot ${out.y.toFixed(3)}`);
+  const above = { x: 0, y: H + T + 0.5, z: 0 };
+  check('and buried from above, by a craft that really was up there, it comes back out on top',
+    findRecoverSpot(room, flat, rest, buried.x, buried.y, buried.z, above, out) && out.y > H + T,
+    `spot ${out.y.toFixed(3)}`);
+
+  /* Stuck in a wall. The first ring the old search walks starts at +x, which
+   * for the +x wall is the far side: outside the room. */
+  const inWall = { x: halfW + T * 0.5, y: 5, z: 0 };
+  const inRoom = { x: halfW - 0.4, y: 5, z: 0 };
+  findRecoverSpot(room, flat, rest, inWall.x, inWall.y, inWall.z, null, out);
+  const oldWall = out.x;
+  check('stuck in a wall, the old search put it outside the room', oldWall > halfW + T, `x ${oldWall.toFixed(2)}`);
+  check('reachable from the room, it goes back into the room',
+    findRecoverSpot(room, flat, rest, inWall.x, inWall.y, inWall.z, inRoom, out)
+    && out.x < halfW && out.y < H, `spot ${out.x.toFixed(2)} ${out.y.toFixed(2)} ${out.z.toFixed(2)}`);
+
+  /* The open world is unchanged where nothing is in the way: a craft on the
+   * grass beside a lone box rises straight up, as it always did. */
+  const open = new Colliders();
+  open.addBox('wall', 1, 0, -1, 3, 2, 1);
+  open.build();
+  const lone = { x: 0.5, y: 0.5, z: 0 };
+  check('in the open it still rises first, 0.6 m straight up',
+    findRecoverSpot(open, flat, rest, lone.x, lone.y, lone.z, lone, out)
+    && out.x === lone.x && out.z === lone.z && Math.abs(out.y - (lone.y + 0.6)) < 1e-12,
+    `spot ${out.x} ${out.y} ${out.z}`);
+  setCraftAirframe(airframeById('5inch').dims);
+}
+
 function main() {
   if (process.argv.includes('--emit')) {
     process.stdout.write(serialize(demoTrack()));
@@ -3078,6 +3183,7 @@ function main() {
   suitePresets();
   suiteCrashRule();
   suiteClipCatch();
+  suiteRecoverSpot();
   suiteFaces();
   suitePath();
   suiteSteering();

@@ -65,7 +65,7 @@ import { FreestyleScore, formatScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, PRESS_CONFIRM_MS, PRESS_RELEASE_MS, PRESS_BLEED, thrustIntoFace, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, findRecoverSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, PRESS_CONFIRM_MS, PRESS_RELEASE_MS, PRESS_BLEED, thrustIntoFace, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor } from './ui/ui.js';
 import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
@@ -2755,6 +2755,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * lockout. `at` reseats the spawn when the map itself moved.
    */
   function resetCraft(at) {
+    /* Wherever it lands, the open air it last flew through is somewhere
+     * else now. The next frame in the open records it again. */
+    haveRecoverFrom = false;
     if (at) {
       startX = at.x;
       startZ = at.z;
@@ -2925,67 +2928,44 @@ export async function boot({ loading, bootStart, mapId }) {
    * lap being flown keeps running, which is the right price. Nothing about
    * the race is touched, so `next`, the splits and the clock all carry on.
    *
-   * Finding clear air is the whole of the work. Reseating inside the wall
-   * the craft was stuck in would trip the same detector on the next frame
-   * and put the pilot in a loop, which is worse than the glitch. Rise
-   * first, because up is where a quad came from and where it wants to go,
-   * and only then try the compass. A point is clear when the collider
-   * sweep says so at a level attitude and it is above the terrain.
+   * Finding that air is findRecoverSpot in src/game/collide.js, which is
+   * where the rules and the reasons now live, beside the watch that calls
+   * the crash. What it needs from here is where the craft last flew in the
+   * open: recoverFrom below.
    */
-  const RECOVER_RISE = [0.6, 1.2, 2.0, 3.0, 4.5];
-  const RECOVER_OUT = [0, 1.0, 2.0, 3.5];
-  const RECOVER_DIR = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
-
-  function recoverSpotClear(x, y, z) {
-    const surf = view.height(x, z, y - SURFACE_BIAS);
-    if (!(y - surf > REST_HEIGHT)) {
-      return false;
-    }
-    if (!view.colliders) {
-      return true;
-    }
-    return view.colliders.hit(
-      x, y, z, x, y, z,
-      craftVerticalHalf(0),
-      0, 0, 0, 1,
-      craftVerticalOffset(),
-    ) < 0;
+  function recoverGroundAt(x, z, y) {
+    return view.height(x, z, y - SURFACE_BIAS);
   }
 
-  function findRecoverSpot(x, y, z, out) {
-    for (let ri = 0; ri < RECOVER_OUT.length; ri += 1) {
-      const out_r = RECOVER_OUT[ri];
-      for (let li = 0; li < RECOVER_RISE.length; li += 1) {
-        const lift = RECOVER_RISE[li];
-        if (out_r === 0) {
-          if (recoverSpotClear(x, y + lift, z)) {
-            out.set(x, y + lift, z);
-            return true;
-          }
-          continue;
-        }
-        for (let di = 0; di < RECOVER_DIR.length; di += 1) {
-          const px = x + RECOVER_DIR[di][0] * out_r;
-          const pz = z + RECOVER_DIR[di][1] * out_r;
-          if (recoverSpotClear(px, y + lift, pz)) {
-            out.set(px, y + lift, pz);
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
+  /*
+   * WHERE THE CRAFT LAST FLEW IN THE OPEN, its centre outside every solid and
+   * above the ground, taken every frame it is. The recovery refuses a spot it
+   * cannot reach from here in a straight line, which is what keeps a craft
+   * pinned under a room's ceiling from being put on the roof. The crash
+   * position alone cannot say which side of a slab is the room: a centre
+   * already through a face is inside it.
+   */
+  const recoverFrom = { x: 0, y: 0, z: 0 };
+  let haveRecoverFrom = false;
 
   function finishClipCrash() {
     clipCrashUntil = 0;
     clipCrashKind = '';
     crashed = false;
     resetClipWatch(clipWatch);
-    if (!findRecoverSpot(pCurr.x, pCurr.y, pCurr.z, pProbe)) {
-      /* Nowhere within four and a half metres is clear. That is not a
-       * glitch any more, it is a craft somewhere it cannot be put back,
-       * so fall through to the old behaviour and give them the line. */
+    const from = haveRecoverFrom ? recoverFrom : null;
+    /* Around the crash first. If everything there is on the far side of
+     * something, around the last open air, which by construction is on the
+     * near side of it. */
+    const found = findRecoverSpot(
+      view.colliders, recoverGroundAt, REST_HEIGHT, pCurr.x, pCurr.y, pCurr.z, from, pProbe,
+    ) || Boolean(from && findRecoverSpot(
+      view.colliders, recoverGroundAt, REST_HEIGHT, from.x, from.y, from.z, from, pProbe,
+    ));
+    if (!found) {
+      /* Nowhere within four and a half metres is clear and reachable. That
+       * is not a glitch any more, it is a craft somewhere it cannot be put
+       * back, so fall through to the old behaviour and give them the line. */
       reset();
       return;
     }
@@ -6536,6 +6516,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (mode === 'flight' && !poseLock) {
       const hy = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS);
       const buriedDepth = hy > pCurr.y ? hy - pCurr.y : 0;
+      /* See recoverFrom. Taken before the watch is asked, so the frame that
+       * calls a crash is only recorded if its centre was still in the open. */
+      if (!crashed && interiorDepth <= CLIP_CENTER_EPS && buriedDepth === 0) {
+        recoverFrom.x = pCurr.x;
+        recoverFrom.y = pCurr.y;
+        recoverFrom.z = pCurr.z;
+        haveRecoverFrom = true;
+      }
       /* Ticked on the SIM clock, not the wall clock. Every threshold in
        * the watch is a duration, and while it counted frame deltas a
        * stutter aged it as fast as real time did: a machine that dropped
@@ -8230,6 +8218,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Same reason as __placeCraft: a seat is a teleport. */
     obsHasPrev = false;
     obsPhase = 0;
+    haveRecoverFrom = false;
     parkedLift = 0;
     adoptSimClock();
     acc = 0;
@@ -8312,9 +8301,10 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A place is a teleport. Re-seed the contact pass or its next sweep is
      * the segment from wherever the craft used to be to here, which is a
      * line through half the map and reads as a punch through every solid
-     * on it. */
+     * on it. The recovery's last open air is somewhere else now too. */
     obsHasPrev = false;
     obsPhase = 0;
+    haveRecoverFrom = false;
     adoptSimClock();
     acc = 0;
     stateCurr = readState();

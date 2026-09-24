@@ -41438,3 +41438,158 @@ parked throttle, read as roll. That is now asserted as the finding.
 Only a real SM001 can say whether its sticks now read right once calibrated.
 The wizard assigns whatever axis moves, so it should; the reporter is the
 one person who can confirm it.
+
+## 2026-09-24 | collision, shell | The crash recovery put a whoop on the roof
+
+Found while flying the keyboard fixes (the flight entry above), and the owner
+asked for it fixed next.
+
+### What it was
+
+The recovery looks for clear air near the crash: straight up first, 0.6,
+1.2, 2.0, 3.0 and 4.5 m, then rings 1.0, 2.0 and 3.5 m out at the same
+lifts. A point was taken when the hull cleared every collider at a level
+attitude and sat above the terrain. Nothing asked which side of anything the
+point was on.
+
+The RaceGOW room's ceiling is a slab 0.10 m thick at MICRO_SCALE, 0.343 m in
+the world: underside 13.716 m, top 14.059 m. A whoop pinned under it has its
+centre at 13.65 m, and 0.6 m up from there is 14.25 m, which is clear air on
+top of the slab. So the first point the search tried was the roof, every
+time. (The flight entry's "ceiling at 13.65 m" was the pinned centre, not
+the ceiling.) Anything thinner than the lift did the same: a craft stuck in
+the room's +x wall came out on the far side, because the ring walks +x first.
+
+Measured through the shell before the fix, the whoop's race on keys, W held
+into the ceiling until the catch fired: pinned at 13.648 m, thrash, put back
+at 14.279, 14.317 and 14.325 m in three runs.
+
+### The fix
+
+- **The search moved to src/game/collide.js**, as findRecoverSpot and
+  recoverSpotClear, so a Node test can build the room and ask it. main.js's
+  finishClipCrash still does the putting back.
+- **A spot has to be reachable.** A straight line from `from`, the last place
+  the craft's centre was in the open, to the spot must not go in one face of
+  a solid and out of another: Colliders.segmentCrossesAny, the per solid
+  rule crossedStatic and crossedMoving already had, asked of every collider
+  along the line. main.js records `from` on every flight frame whose centre
+  is outside every solid and above the ground, never during a crash hold.
+  resetCraft, __placeCraft and __seatCraft clear it, since each is a
+  teleport; with no `from` the search is exactly the old one.
+- **It can go down.** With everything above on the far side, it tries 0.6,
+  1.2 and 2.0 m down, then where it was, then the compass as before.
+- **Around the crash first, then around `from`**, then the start line as
+  before when nothing is clear and reachable.
+
+In the open nothing changes: 0.6 m straight up is still the first choice,
+and a test says so.
+
+**Where it was comes after the drops, and the first draft had it before
+them.** The Node rig pinned the hull 2 mm into the ceiling, so "where it
+was" was not clear there and the drop was taken. The shell showed otherwise:
+the contact pass keeps the hull a hair clear of the ceiling, so "where it
+was" was clear, and the first draft handed the whoop back exactly where it
+had been pinned, touching the ceiling. Measured: pinned 13.648, put at
+13.640. Reordered, put at 13.083. The rig now pins it both ways.
+
+### Tests
+
+check:clip, a new suite "recover spot", 14 checks. The room as scene.js
+builds it. segmentCrossesAny: through the ceiling yes, staying under no,
+out through a wall yes, starting inside the slab no, a capsule pole through
+yes and beside no. With no reference, the search still finds the roof,
+which is the rig proving it reproduces the bug. With one, the spot is back
+in the room under the ceiling, for a hull 2 mm in and for a hull just clear
+(0.6 m down exactly). Buried in the slab from below, it comes out below;
+from above, by a craft really up there, it stays on top. Stuck in the +x
+wall: the old search outside the room, the new one inside. In the open,
+0.6 m up, unchanged.
+
+lint:input, section 10 on the keyboard page. A radio's 0.45 throttle
+through window.__stick, halfway between hover and THRASH_THROTTLE, holds the
+whoop against the ceiling without calling a crash; then X, the pilot's own
+unstick, which runs the same recovery. Every frame is recorded in the page.
+The whoop must go lower than its own bounce reaches (ceiling less 0.45 m)
+and never above the ceiling. Old code: fails, put on the roof, then climbed
+away to 15.4 and 17.6 m in two runs. First draft's order: fails, never off
+the ceiling (13.645). Fix: passes, alone and with four browsers running.
+
+It is X and not the catch because the catch did not confirm reliably: it
+fired in seven runs of eight here, and in the eighth, with two browsers,
+12 s of full throttle against the ceiling never confirmed a thrash. At a low
+frame rate the contact flickers and the thrash timer resets. Not this
+change's to fix, and not a check.
+
+### Also fixed: my own picker check from bug-9983ae9a
+
+Section 6b slept 300 ms and then read what the frame loop repaints: the
+plates after a roll, and the hint after the calibration was put aside. With
+two browsers on this machine a frame took longer than that, and the hint
+check failed, reading the calibrated text. Both now wait for the repaint,
+up to 3 s. Passed with four browsers.
+
+### Not done, written down
+
+- **After any recovery in the air, the keyboard throttle goes to idle and
+  the craft falls.** resetCraft calls input.resetKeyboardSticks() on every
+  reset, this one included. Measured: put back at 13.08 m, keys at 0, the
+  whoop fell to the floor. The same before this change: on the roof the
+  keys went to 0 too, and it sat on the slab instead of falling. A radio
+  pilot's stick is wherever their thumb is, so this is keys and touch only.
+  The proposal is to re-arm the keys' airborne latch when finishClipCrash
+  leaves the craft in the air, so Springs back rests at hover. The owner's
+  call: R and the pad must still rest at idle, and resetKeyboardSticks has a
+  reason written on it for the touch sticks.
+- **The frames right after a recovery rise.** Put at 13.083 m with the stick
+  at idle, the whoop was at 13.52 m 250 ms later. The old code did it too:
+  14.279 to 14.592 m on the roof. Seen, not investigated.
+- **lint:input's "the input layer and the button agree with the setting"
+  reads a frame too early.** On the touch page it waits for the stick mode
+  setting to change, then reads the button label at once, and the label is
+  painted by the frame loop through ui.setCalibration. It failed in 11 of
+  13 runs with two to four browsers and passes alone. The fix is one line,
+  waiting on the label the way the check above it does. It dates from
+  a46d888, nothing here touches it, and it is not changed.
+- THRASH_THROTTLE's comment still says hover measures 0.28. At 1.62 g it is
+  0.35. Not touched.
+
+### What went wrong
+
+- The first draft's order, above. The rig could not see it, and flying the
+  shell did.
+- The browser check's first form waited for the pinned whoop to be still.
+  It never is: it bounces between 13.54 and 13.65 m at up to half a metre a
+  second, so the check passed or failed on when a poll landed. It also
+  waited 15 s of wall clock for a climb that runs on the sim clock, and a
+  busy machine slows the sim (a frame advances it 100 ms at most), so with
+  four browsers the climb took longer. Pinned is now a height, and the wait
+  is 60 s.
+- Its first form also drove the catch itself, and one run in eight never
+  confirmed a thrash. Dropped, as above.
+
+### RUN LOG
+
+    npm run check:clip       542 passed, 0 failed (was 528). "recover
+                             spot", 14 new
+    npm run contact:selftest all contact checks passed
+    npm run input:selftest   all 158 passed, unchanged: input.js did not
+                             move
+    npm run lint:input       all 112 passed, 68 s, alone (was 110).
+                             Section 10, two new. Four browsers at once:
+                             the fix passed section 10 twice, the old code
+                             failed it (roof, 15.4 m), the first draft's
+                             order failed it (13.645 m); the only other
+                             failure in those runs was the touch page's
+                             button check above
+    npm run lint:shell       not run: nothing on screen changed
+    npm run verify           not run: which spot the recovery picks, in the
+                             shell's collision layer. No physics, plant,
+                             ABI or build change
+
+    Scripted flights through the shell, W held into the ceiling until the
+    catch fired (scratch; the numbers are here):
+    before, 8867633          pinned 13.648, thrash, put at 14.279, on the
+                             roof (top 14.059)
+    first draft              pinned 13.648, thrash, put at 13.640
+    after                    pinned 13.648, thrash, put at 13.083

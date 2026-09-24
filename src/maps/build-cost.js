@@ -4,7 +4,7 @@
  * It is its own file for one reason: src/boot.js needs the number BEFORE it
  * imports anything else, so the loading screen's stage weights are right from
  * the first frame, and importing src/maps/registry.js there would be fine
- * today and a trap tomorrow. The registry's whole job is to hold the two
+ * today and a trap tomorrow. The registry's whole job is to hold the
  * loader thunks, and the day somebody turns one of those dynamic imports into
  * a static one the city's 59 file graph would arrive at boot for every
  * player, which is exactly what deliverable 4 forbids. A file with two
@@ -41,4 +41,10 @@ export const MAP_BUILD_MS = {
    * have. */
   custom: 2964,
   city: 7994,
+  /* Your map, measured on the starter yard (src/maps/built/starter.js, 47
+   * placed assets) at 1280 by 720 on High, as the loading screen's world
+   * stage: 1305, 1565 and 1190 ms, and 1209 on Low. A pilot's own map is
+   * as heavy as what they put on it, so this is the weight of a full yard
+   * rather than a promise about every map. */
+  built: 1353,
 };

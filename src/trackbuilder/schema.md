@@ -16,7 +16,13 @@ disagree about what a document means. The dependency is one way and stays one
 way: the game may read the builder's data modules, the builder may not import
 anything from the game.
 
-Everything below describes `schemaVersion: 1`.
+Everything below describes `schemaVersion: 3`.
+
+The same document describes two things. A **race track** is what this builder
+has always made: elements on a field and a flying order through them. A
+**freestyle map** says `"mode": "freestyle"` and is a place made of assets,
+buildings, cranes, a skate set, named gaps, with no flying order at all. Most
+of this file is common to both; **Freestyle maps** below is what a map adds.
 
 The worked example at the end is not hand written. It is emitted by
 
@@ -78,14 +84,17 @@ the file.
 
 ```jsonc
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "id": "trk-1a2b3c4d",
   "name": "Ladder Loop, demo",
   "createdUtc": "2026-01-01T00:00:00Z",
   "modifiedUtc": "2026-01-01T00:00:00Z",
+  "trackClass": "full",
+  // "mode": "freestyle",       written only on a freestyle map
   "field":    { ... },
   "settings": { ... },
   "branding": { ... },
+  "credit":   null,
   "elements": [ ... ],
   "sequence": [ ... ]
 }
@@ -93,11 +102,13 @@ the file.
 
 | field | type | meaning |
 | --- | --- | --- |
-| `schemaVersion` | integer | The version of THIS document. `2` today. A consumer seeing a HIGHER number reads on a best effort basis, drops what it does not recognise and says so, which is what `normalize()` does and what the Versioning section below states. |
+| `schemaVersion` | integer | The version of THIS document. `3` today. A consumer seeing a HIGHER number reads on a best effort basis, drops what it does not recognise and says so, which is what `normalize()` does and what the Versioning section below states. |
 | `id` | string | Stable identity of the track, `trk-` followed by eight hex digits. Used as the key in local storage. Two identical tracks are still two tracks, so this is not derived from the contents. |
 | `name` | string | What the author calls it. Not unique, not an identifier. |
 | `createdUtc` | string | ISO 8601 UTC, seconds resolution, when the track was first made. |
 | `modifiedUtc` | string | Same format, last edit. The Load list sorts on this. |
+| `trackClass` | `"full"` or `"micro"` | Which kind of track. `full` is the sixty metre field flown on a 5 inch through MultiGP sized gates; `micro` is a RaceGOW room flown on a 65 mm whoop. It decides the palette, the sizes a new element gets, the grid, the warnings and which autosave seat and board the track belongs to. Always written; read as `full` when absent, which is what every version 2 document is. A freestyle map is always `full`. |
+| `mode` | `"freestyle"`, or absent | **Written only on a freestyle map.** Absent means a race track, which is every document written before maps existed, so no race track's bytes changed when maps arrived. Anything other than `"freestyle"` reads as a race track. See **Freestyle maps**. |
 | `field` | object | The ground the course stands on. |
 | `settings` | object | Per track tuning for the derived racing line. |
 | `branding` | object | The sponsors' logos the course is dressed in. Optional; see below. |
@@ -217,6 +228,8 @@ course; that is what `sequence` is for.
 | `yawOverridden` | boolean | `true` when the AUTHOR set the heading, which stops the tool re-deriving it. See **Faces and pass sides**. |
 | `dims` | object | Dimensions, in metres, whose keys depend on `type`. Always complete: a missing key is filled from the default on read. |
 | `text` | string | **Labels only.** The text drawn on the field. |
+| `style` | string | **Freestyle assets that have looks only.** Which look: a building's `flats`, `office`, `warehouse` or `shop`, a container's `40ft`, a tree's `sakura`. One of that type's styles in the table under **Freestyle maps**; an unknown style reads as the type's first. Not a dimension. |
+| `points` | integer | **Named gaps only.** What flying through it is worth: one of 100, 250, 500, 1000 or 2500, and anything else snaps to the nearest. |
 | `flagSide` | `"left"`, `"right"`, `"both"` or `"top"` | **Flagged gates and flagged doubles only.** Where the pennant stands on the top header, as seen facing the gate. `top` is one mast on the CENTRE of the board, over the opening. Default `left`. Not a dimension; the mast's height is, and it is `dims.flagH`. |
 | `logoId` | string | **Ground logos only.** The `id` of the entry in `branding.logos` this footprint is painted with. Empty means the course's first logo. Not a dimension. |
 | `unbuilt` | `true`, or absent | **Apertures only.** The opening is a GAP IN THE LATTICE rather than a gate with a frame of its own: it scores, it lights, it carries its number and it pins the racing line, and no pipe is built for it in the world, the export, the preview or the card. The pipe that bounds it belongs to the structures around it. Written only when true, so an ordinary gate's JSON is unchanged. RaceGOW builds this way wherever a leg is carried up past a bar: the opening over the bar has the bar below and a pole beside and nothing else, and drawing a square there puts PVC in mid air. See `isUnbuilt` in `elements.js` and `TRACK-FROM-GIF.md`. |
@@ -238,9 +251,19 @@ Each row's `kind` decides everything the tool does with it.
 | `flag` | F | marker | yes, with a pass side | `height poleRadius clearance` |
 | `cone` | C | marker | yes, with a pass side | `height baseRadius clearance` |
 | `waypoint` | W | marker | yes, at zero clearance | `height poleRadius clearance` |
+| `pole` | U | marker | yes, with a pass side | `height poleRadius clearance`. A bare upright pipe, flown round on one side like a flag. On the whoop palette, and furniture on a map. |
+| `horizontalPole` | Z | obstacle | **never** | `width depth height`. A single bar on two legs, placed 1.6 m up on a field and 0.95 m in a room; `position.z` is the underside of the bar. On the whoop palette, and furniture on a map. |
 | `startPads` | S | start | **never**, it is the line itself | `pads spacing padSize` |
 | `label` | L | annotation | **never** | `textHeight` |
 | `groundLogo` | O | decal | **never** | `width depth` |
+
+The keys are the palette's, and each palette has its own: the five inch
+palette, the whoop palette and a map's palette. `pole` and `horizontalPole`
+are on the whoop's and a map's, not the five inch's, and a key that is not on
+the palette in front of the author does nothing.
+
+A map also holds the freestyle assets, of two more kinds, `structure` and
+`zone`; they are listed under **Freestyle maps**.
 
 A `groundLogo` is **paint**, which is what the `decal` kind means: it has a
 footprint and a heading and nothing else. No height, so `position.z` is ignored
@@ -310,6 +333,163 @@ heightAxis  = normal x widthAxis
 `clearW` runs along `widthAxis` and `clearH` along `heightAxis`. For a vertical
 gate `heightAxis` is straight up, which is why a gate's projection onto the
 ground is a bar and a flat dive gate's is a rectangle.
+
+---
+
+## Freestyle maps
+
+A document with `"mode": "freestyle"` is a **map**: a place to fly, built
+from the drawn assets in `src/props/`, with no flying order through it. The
+simulator flies it as a freestyle map in the town's art style
+(`src/maps/built/`), and every solid part of every asset is solid in the air.
+
+* A map is always `trackClass: "full"`, flown on the five inch. Freestyle is
+  not offered on the whoop.
+* A new map's field is a **160 by 160 m plot** with a one metre grid, and the
+  author can resize it.
+* It has **its own autosave seat**, `webfpv.trackbuilder.autosave.freestyle.v1`,
+  so a map in progress and a race track in progress never overwrite each
+  other. The builder remembers which of its three canvases (5 inch, Whoop,
+  Freestyle) was last open in `webfpv.trackbuilder.canvas.v1`, and
+  `?mode=freestyle` in the builder's address opens the map.
+* **Nothing on a map is in `sequence`.** The builder never adds to it, and a
+  gate placed on a map is furniture: solid, drawn in the town's palette, and
+  flown through for style. `settings` is written and means nothing on a map.
+* The race warnings do not apply to a map. It has its own, below.
+
+### The two kinds a map adds
+
+| kind | what it is |
+| --- | --- |
+| `structure` | A freestyle asset: a building, a crane, a tree. Solid, never in `sequence`, drawn and made solid from one list of parts. Only a map's palette offers them. |
+| `zone` | A **named gap**: a scoring window in the air, like a skate game's. Not solid, not drawn in the world, never in `sequence`. |
+
+An element of either kind is an ordinary element: `id`, `type`, `name`,
+`position`, `yaw`, `pitch` (written `0`), `yawOverridden` and `dims`, plus
+`style` for an asset that has looks and `points` for a named gap.
+
+```jsonc
+{
+  "id": "el-4",
+  "type": "building",
+  "name": "Office",
+  "position": { "x": 44, "y": 20, "z": 0 },
+  "yaw": 1.570796,
+  "pitch": 0,
+  "yawOverridden": true,
+  "dims": { "width": 16, "depth": 14, "floors": 6, "passage": 0, "variant": 1 },
+  "style": "office"
+}
+```
+
+### The assets
+
+Generated from `src/props/types.js`, which is the only place any of these is
+written down; `node src/trackbuilder/selftest.js` checks every row against
+it. Each dimension is shown as its default and its limits. A length is in
+metres, a count is a whole number, a fraction runs from 0 to 1 and a scale
+multiplies the asset's natural size. Every dimension is **clamped into its
+limits** on read and on write, which is what keeps a hand edited ninety storey
+warehouse out of the physics. `variant` is a seed, not a quantity: it rolls a
+different wreck, advert or colour.
+
+| `type` | key | palette group | turns | `style` | `dims`: default [min, max] |
+| --- | --- | --- | --- | --- | --- |
+| `building` | 1 | Buildings | quarter | `flats` `office` `warehouse` `shop` | `width` 16 m [4, 80], `depth` 9 m [4, 60], `floors` 4 [1, 30] count, `passage` 0 m [0, 20], `variant` 1 [1, 99] count |
+| `bando` | 3 | Buildings | quarter |  | `width` 24 m [8, 80], `depth` 18 m [8, 60], `floors` 3 [1, 8] count, `ruin` 0.5 [0, 1] fraction, `variant` 1 [1, 99] count |
+| `crane` | 4 | Industrial | any |  | `height` 30 m [10, 80], `jib` 36 m [12, 70], `counterJib` 11 m [6, 24], `hook` 12 m [2, 70], `trolley` 0.6 [0.15, 0.95] fraction |
+| `waterTower` | 5 | Industrial | any |  | `height` 16 m [6, 40], `radius` 3.6 m [1.5, 7], `tank` 0.8 m [0, 10] |
+| `mast` | 6 | Industrial | any |  | `height` 32 m [8, 90], `width` 1.8 m [1, 4] |
+| `chimney` | 7 | Industrial | any |  | `height` 24 m [6, 80], `radius` 1.3 m [0.5, 5] |
+| `pylon` | Y | Industrial | any |  | `height` 28 m [12, 60] |
+| `containers` | 8 | Industrial | quarter | `40ft` `20ft` `40ft open` | `stack` 2 [1, 5] count, `variant` 1 [1, 99] count |
+| `scaffold` | K | Industrial | quarter | `open` `netted` | `width` 10 m [2.5, 40], `height` 10 m [2, 40], `depth` 1.3 m [1, 2.5] |
+| `bridge` | 9 | Street | quarter | `road` `footbridge` | `span` 24 m [6, 80], `width` 8 m [2, 20], `height` 6 m [3, 20], `piers` 1 [0, 6] count |
+| `billboard` | 0 | Street | any |  | `width` 8 m [2, 20], `height` 3.2 m [1.2, 8], `lift` 5 m [1.5, 30], `variant` 1 [1, 99] count |
+| `utilityPole` | none | Street | any |  | `height` 10 m [5, 16] |
+| `lamp` | W | Street | any |  | `height` 7 m [3, 12] |
+| `vending` | none | Street | quarter |  | `count` 2 [1, 4] count, `variant` 1 [1, 99] count |
+| `car` | none | Street | quarter | `kei` `keivan` `hatch` `sedan` `wagon` `minivan` `van` `boxtruck` `minibus` | `variant` 1 [1, 99] count |
+| `rail` | N | Skate | any |  | `length` 6 m [1.5, 30], `height` 0.7 m [0.3, 3] |
+| `ledge` | M | Skate | quarter |  | `length` 6 m [1, 30], `height` 0.5 m [0.2, 2], `depth` 0.9 m [0.3, 4] |
+| `stairs` | H | Skate | quarter |  | `steps` 7 [2, 24] count, `width` 4 m [1.2, 12], `landing` 3 m [0.8, 12] |
+| `quarterPipe` | I | Skate | quarter |  | `height` 2.4 m [0.8, 5], `width` 6 m [2, 20], `deck` 1.4 m [0.6, 6] |
+| `tree` | T | Nature | any | `sakura` `street` `pine` | `size` 1x [0.5, 3] scale, `variant` 1 [1, 99] count |
+| `gap` | J | Scoring | any |  | `width` 4 m [1, 40], `height` 3 m [1, 40] |
+
+The furniture a map may also hold is the builder's own: `gate`,
+`flaggedGate`, `doubleStack`, `ladder`, `diveGate`, `barrier`,
+`horizontalPole`, `flag`, `cone` and `pole`, with the keys and dims in the
+element table above, and the extras `startPads`, `label` and `groundLogo`.
+
+**A style has a starting size.** A warehouse is low and wide and a shop is a
+narrow front, so choosing a building's style also sets its size: `flats` 16
+by 9 m and 4 floors, `office` 16 by 14 m and 6, `warehouse` 26 by 18 m and
+2, `shop` 8 by 11 m and 3 (`STYLE_DIMS` in `src/props/types.js`). A new
+building starts at its first style's size.
+
+### Headings
+
+`turns` in the table is the heading rule, and it comes from the physics.
+The world holds two shapes, boxes that cannot turn and capsules that can
+(`FREESTYLE-MAPS-PLAN.md`, section 1).
+
+* `any`: built of capsules only, so it faces any heading. The builder's
+  rotate handle snaps to 15 degrees and Alt turns it freely.
+* `quarter`: it has boxes, so it keeps to the four compass headings until
+  the physics learns turned boxes. The builder snaps its `yaw` to a quarter
+  turn on the handle, on Q and E and in the inspector, and the simulator
+  places it at the nearest quarter turn whatever the file says
+  (`placedYaw` in `src/props/solids.js`), so the drawing and the solids
+  always agree.
+
+### An asset's own frame
+
+Every asset is laid out in its own frame (`src/props/parts.js`): `+x` is its
+heading, the way it faces and the way a crane's jib points; `+y` is up; `+z`
+is its right, seen facing `+x`. On the plan a local point `(x, z)` lands at
+
+```
+position + x * ( cos yaw, sin yaw ) + z * ( sin yaw, -cos yaw )
+```
+
+which is `x` along the heading and `z` to the right of it. In the simulator
+the document is placed once, by `placeDocument` in
+`src/maps/built/place.js`, as Three.js world metres with the origin in the
+middle of the plot:
+
+```
+worldX =  x - width / 2
+worldZ = -(y - depth / 2)
+worldY =  z
+```
+
+### Named gaps
+
+A `gap` element is a window in the air. It stands at `position`, its
+`dims.width` runs **across its heading** and its `dims.height` runs **up from
+`position.z`**, so a pilot flies through it along its heading, and its
+`name` is what it is called when it is flown, "UNDER THE BRIDGE". A new gap
+is named `GAP` and worth 250. It has no parts: nothing is solid and nothing
+is drawn in the world.
+
+### Map warnings
+
+A map is checked against the solids it will actually be built from, placed
+exactly as the simulator places them. The **gap rule** is the town's: a space
+between two solids is either closed or at least **1.4 m** (`GAP_MIN` in
+`src/props/parts.js`), because a slot a five inch aims at and cannot fit
+through is a trap, not a line.
+
+| code | level | meaning |
+| --- | --- | --- |
+| `fs-no-start` | info | no start pads, so the pilot starts 8 m in from the plot's left edge, halfway up it, facing right |
+| `fs-spawn` | warn | the start is inside a solid, or within 1 m of one |
+| `fs-overlap` | warn | two elements' solids run into each other by more than a centimetre |
+| `fs-slot` | warn | a space between two elements' solids wider than 5 cm and narrower than 1.4 m |
+| `fs-gap-blocked` | warn | a named gap has a solid across its window |
+| `fs-outside` | warn | an element stands outside the plot, or its solids reach more than half a metre past its edge |
+| `fs-solids` | warn | the map has more than 20000 solids |
 
 ---
 
@@ -497,6 +677,11 @@ does. Codes, so a consumer can filter:
 | `empty` | info | nothing in the flying order yet |
 | `no-start` | info | no start pads, so the lap does not close |
 
+These are a race track's. A freestyle map has no flying order and no line,
+so none of them apply to it, and it is checked against its solids instead:
+see **Map warnings** under **Freestyle maps**. A whoop track adds RaceGOW's
+own rules, each with an `rg-` code, from `src/trackbuilder/racegow.js`.
+
 The reversal test is **horizontal**. A flat dive gate is flown straight down,
 so its tangent has no horizontal part and cannot point backwards along the
 plan; the quad climbs past the gate and drops back through it, which is what
@@ -543,6 +728,23 @@ The public board accepts both versions. **Deploy the board before the
 simulator**, or a course published from a new builder is refused by an old
 board for a version it does not know.
 
+### 2 to 3
+
+Version 3 added `trackClass`, when the RaceGOW micro class landed. A version 2
+document has none and reads as `full`, which is what every one of them is, so
+nothing that exists changed meaning. The bump is for the other direction: a
+version 2 reader handed a micro document would drop the field it does not know
+and draw a RaceGOW room as a sixty metre field, which is a document whose
+meaning changed, and that is what a version is for.
+
+### Freestyle maps are not a bump
+
+`mode` is an optional field with a default, `race`, and it is written only on
+a map, so every race track serialises to exactly the bytes it did before maps
+existed and the version stays 3. A reader that does not know `mode` sees a
+map as a race track with no flying order and assets of types it does not
+know, which it drops with a repair note: the best effort reading above.
+
 ---
 
 ## Worked example
@@ -562,6 +764,11 @@ awkward the schema has to express:
 * one `yawOverridden: true`, on the ladder, because the auto rule will not
   rotate a structure that is flown twice and the author chose the heading that
   splits the difference between the two passes.
+
+It is written at version 2, which is how it was first emitted, and it is kept
+that way on purpose: it is also the check that a version 2 document still
+reads. `normalize()` reads it with no repairs, fills in `trackClass: "full"`,
+and writes it back at version 3 as exactly the track `--emit` prints.
 
 Create Path on this document reports a lap of **139.79 m**, a tightest radius of
 **2.59 m**, and no warnings.

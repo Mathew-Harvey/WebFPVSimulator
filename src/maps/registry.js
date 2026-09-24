@@ -13,9 +13,15 @@
  *
  * There used to be four freestyle worlds. Industrial bando, Municipal baths
  * and Bardwell's yard were removed on 2026-08-30 on the owner's ask, so
- * Freestyle offers the town and nothing else. They are in the history at
+ * Freestyle offered the town and nothing else. They are in the history at
  * 974f4ce if they are ever wanted back; what is not in the history is the
  * time a player spends deciding between four things when they wanted one.
+ *
+ * THAT DECISION IS REVERSED FOR ONE WORLD, on the owner's ask of 24 September
+ * 2026 (FREESTYLE-MAPS-PLAN.md, section 6): Freestyle offers the town and
+ * Your map, the freestyle map the pilot built in the track builder, or the
+ * starter yard until they have built one. Two worlds is a choice worth a
+ * card each; it is not the four that were removed.
  *
  * The track world is loaded the same way, for symmetry and because the loading
  * screen then has one shape to report. It is loaded at boot because the title
@@ -64,6 +70,14 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.city,
     poster: 'assets/posters/city.jpg',
     load: () => import('./city/index.js'),
+  },
+  {
+    id: 'built',
+    name: 'Your map',
+    mode: 'freestyle',
+    note: 'A freestyle map you built in the track builder, or Hibari Yard, the starter yard, until you have built one.',
+    buildMs: MAP_BUILD_MS.built,
+    load: () => import('./built/index.js'),
   },
 ];
 

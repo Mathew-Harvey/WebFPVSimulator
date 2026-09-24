@@ -30,7 +30,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, elementByKey, trackClassOf } from './elements.js';
+import { ELEMENTS, KIND, elementByKey, trackClassOf, docModeOf } from './elements.js';
 import {
   createTrack, createElement, deepClone, deserialize, duplicateTrack,
   elementById, kindOf, isSequenceable, normalize, startPadsOf, touch,
@@ -44,17 +44,17 @@ import {
 } from './sequence.js';
 import { applyFigure, defaultFigure, upgradeStackedFigures } from './figures.js';
 import { buildPath } from './path.js';
-import { collectWarnings, sortWarnings } from './warnings.js';
+import { collectWarnings, freestyleReport, sortWarnings } from './warnings.js';
 import { History } from './history.js';
 import {
   animationFilename, deleteTrack, downloadBlob, downloadTrack, listTracks,
   loadTrack, makeAutosaver, readAutosave, readFileText, saveTrack, writeAutosave,
 } from './storage.js';
 import { normaliseLogo, drawBannerPreview, drawGroundPreview } from './logo.js';
-import { View2D } from './view2d.js';
+import { View2D, snapYaw, turnsOf, offCompass, QUARTER_TURN } from './view2d.js';
 import { View3D } from './view3d.js';
 import { Panels } from './ui.js';
-import { RAD } from './geometry.js';
+import { RAD, wrapAngle } from './geometry.js';
 import {
   boardOrigin, boardPageUrl, publishTrack, setBoardOrigin, adoptShareFromLocation,
   TRACK_TAGS, TRACK_TAGS_MAX, tagLabel, usableTags,
@@ -133,6 +133,74 @@ export function newTrackClass() {
   return 'full';
 }
 
+/*
+ * THREE CANVASES: a five inch track, a whoop room, and a freestyle map.
+ *
+ * Each is its own autosave seat (see autosaveKey in storage.js), so moving
+ * between them never destroys work. The two race canvases follow the seated
+ * aircraft, as they always have. A map is flown on the five inch only, and
+ * which canvas the author was last on is remembered here, in the builder's
+ * own key, so reopening the builder brings the map back rather than
+ * dropping the author on a race field they had left.
+ */
+export const CANVAS_KEY = 'webfpv.trackbuilder.canvas.v1';
+
+export function canvasOf(doc) {
+  return docModeOf(doc) === 'freestyle' ? 'freestyle' : trackClassOf(doc);
+}
+
+function readCanvas() {
+  try {
+    const v = localStorage.getItem(CANVAS_KEY);
+    return v === 'freestyle' || v === 'micro' || v === 'full' ? v : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function rememberCanvas(canvas) {
+  try {
+    localStorage.setItem(CANVAS_KEY, canvas);
+  } catch (e) {
+    /* Private mode. The builder opens on the seated aircraft's canvas. */
+  }
+}
+
+/*
+ * Whether this visit opens the map. ?mode=freestyle says so outright, which
+ * is what the simulator's own links will carry. Otherwise the remembered
+ * canvas decides, unless the pilot has since seated the whoop: a map is not
+ * flown on a whoop, and reopening the map would reseat the five inch behind
+ * their back.
+ */
+function urlWantsFreestyle() {
+  try {
+    return new URLSearchParams(window.location.search).get('mode') === 'freestyle';
+  } catch (e) {
+    return false;
+  }
+}
+
+function wantsFreestyle() {
+  return urlWantsFreestyle() || (readCanvas() === 'freestyle' && newTrackClass() !== 'micro');
+}
+
+/* A New intent from the simulator is a map only when it says so, or the
+ * address does: the remembered canvas is where the author was, not what the
+ * simulator's New button asked for. */
+function newIntentIsMap(intent) {
+  return Boolean(intent && intent.kind === 'new' && (intent.mode === 'freestyle' || urlWantsFreestyle()));
+}
+
+function newMap() {
+  return createTrack(undefined, 'full', 'freestyle');
+}
+
+/* Why Publish does nothing on a map, said on the button and on a press.
+ * The board is a separate repository and knows only race tracks
+ * (FREESTYLE-MAPS-PLAN.md, section 13). */
+const PUBLISH_MAP_NOTE = 'The public board does not take freestyle maps yet. Export the map to share it as a file.';
+
 export class App {
   constructor(nodes) {
     /* The builder is the simulator's tab, not a tab of its own: the shell
@@ -154,6 +222,15 @@ export class App {
     this.history = new History();
     this.autosaver = makeAutosaver();
     this.drawQueued = false;
+    /* A map's report: its solid count and its warnings, from the same
+     * placement the simulator makes. Null on a race track. */
+    this.report = null;
+    /* The heading each asset type was last turned to on a map, so a row of
+     * containers placed after turning the first one all come out turned. */
+    this.lastYaw = new Map();
+    /* The compass toast is said once a session: a tool that repeats itself
+     * every drag is a tool people stop reading. */
+    this.compassSaid = false;
 
     this.view2d = new View2D(nodes.canvas2d, this);
     this.view3d = new View3D(nodes.canvas3d, this);
@@ -164,7 +241,8 @@ export class App {
      * builds one in its constructor because it must have something before a
      * document exists, and restore() runs after that, so a reopened RaceGOW
      * session was coming back with a field's tools over a room. */
-    this.panels.buildPalette(trackClassOf(this.doc));
+    this.panels.buildPalette(trackClassOf(this.doc), docModeOf(this.doc));
+    rememberCanvas(canvasOf(this.doc));
     this.buildTopBar();
     this.bindKeys();
     this.bindResize();
@@ -183,7 +261,22 @@ export class App {
      * the autosave must not come back as the canvas they asked to leave. */
     const intent = readBuilderIntent();
     if (intent && intent.kind === 'new') {
-      this.doc = createTrack(undefined, newTrackClass());
+      const map = newIntentIsMap(intent);
+      this.doc = map ? newMap() : createTrack(undefined, newTrackClass());
+      if (map) {
+        setActiveTrackClass('full');
+      }
+      return;
+    }
+    if (wantsFreestyle()) {
+      /* The map's own seat, and the five inch in the chair, because that is
+       * what flies it. A first visit starts a blank map. */
+      setActiveTrackClass('full');
+      const held = readAutosave('full', 'freestyle');
+      this.doc = (held && held.doc) || newMap();
+      if (held && held.repairs.length) {
+        this.toast(`Recovered the working map. ${held.repairs.length} thing${held.repairs.length === 1 ? '' : 's'} needed repairing.`);
+      }
       return;
     }
     const saved = readAutosave();
@@ -207,7 +300,9 @@ export class App {
       const intent = takeBuilderIntent();
       if (intent && intent.kind === 'new') {
         clearShareImport();
-        this.loadDocument(createTrack(undefined, newTrackClass()), 'New map.');
+        this.loadDocument(newIntentIsMap(intent)
+          ? newMap()
+          : createTrack(undefined, newTrackClass()), 'New map.');
         return;
       }
       let share = readShareImport();
@@ -352,6 +447,15 @@ export class App {
   }
 
   rebuildPath() {
+    /* A map has no flying order, so no line to derive. What it has instead
+     * is the world it builds, and the report checks that. */
+    if (docModeOf(this.doc) === 'freestyle') {
+      this.path = null;
+      this.report = freestyleReport(this.doc);
+      this.warnings = sortWarnings(this.report.warnings);
+      return;
+    }
+    this.report = null;
     this.path = buildPath(this.doc);
     this.warnings = sortWarnings(collectWarnings(this.doc, this.path));
   }
@@ -493,6 +597,7 @@ export class App {
       return;
     }
     const def = ELEMENTS[type];
+    const freestyle = docModeOf(this.doc) === 'freestyle';
 
     /* Exactly one set of start pads per track. A second press moves the
      * existing set rather than refusing, because refusing would look like a
@@ -506,9 +611,35 @@ export class App {
           e.position.y = world.y;
         });
         this.setSelection([existing.id]);
-        this.toast('A track has one set of start pads, so this moved the ones you had.');
+        this.toast(freestyle
+          ? 'A map has one set of start pads, where the pilot starts, so this moved the ones you had.'
+          : 'A track has one set of start pads, so this moved the ones you had.');
         return;
       }
+    }
+
+    /*
+     * ON A MAP, NOTHING JOINS A FLYING ORDER, because there is none: a gate
+     * on a map is furniture. And there is no course for a new element to
+     * face along, so it faces the way the author last turned one of its
+     * kind, or east.
+     */
+    if (freestyle) {
+      let newId = null;
+      this.edit(`place ${def.label}`, (d) => {
+        const yaw = def.kind === KIND.ANNOTATION ? 0 : this.newYawFor(type);
+        const element = createElement(d, type, world, yaw);
+        if (def.kind === KIND.DECAL && this.armedLogoId
+          && logosOf(d).some((l) => l.id === this.armedLogoId)) {
+          element.logoId = this.armedLogoId;
+        }
+        d.elements.push(element);
+        newId = element.id;
+      });
+      if (newId) {
+        this.setSelection([newId]);
+      }
+      return;
     }
 
     let newId = null;
@@ -568,6 +699,7 @@ export class App {
        * way its passes are flown as well as which way it points, or the
        * auto rule takes the direction back the moment the drag ends. */
       setYaw(this.doc, id, yaw);
+      this.rememberYaw(elementById(this.doc, id));
     }
     if (this.pathVisible) {
       this.rebuildPath();
@@ -614,6 +746,52 @@ export class App {
       return;
     }
     this.nodes.readout.textContent = `${world.x.toFixed(2)}, ${world.y.toFixed(2)} m`;
+  }
+
+  /* ---------------- headings on a map ---------------- */
+
+  /* The heading a new element of `type` is placed at on a map. */
+  newYawFor(type) {
+    return snapYaw(type, this.lastYaw.get(type) ?? 0, true);
+  }
+
+  rememberYaw(el) {
+    if (el && docModeOf(this.doc) === 'freestyle') {
+      this.lastYaw.set(el.type, el.yaw);
+    }
+  }
+
+  /*
+   * THE FIRST TIME AN AUTHOR TRIES TO TURN A BUILDING OFF THE COMPASS, say
+   * why it will not go. Snapping silently looks like a broken handle, and a
+   * refusal with no reason is the thing a tool should never do.
+   */
+  noteOffCompass() {
+    if (this.compassSaid) {
+      return;
+    }
+    this.compassSaid = true;
+    this.toast('Buildings, containers, bridges and the skate set keep to the compass for now: they turn in quarter turns until the physics learns turned boxes. Cranes, trees, masts and gates turn freely.');
+  }
+
+  /* The inspector's yaw field. A quarter asset snaps, and says so the first
+   * time; everything else takes exactly what was typed, as it always has. */
+  setElementYaw(id, yaw) {
+    const el = elementById(this.doc, id);
+    if (!el || !Number.isFinite(yaw)) {
+      return;
+    }
+    let want = yaw;
+    if (turnsOf(el.type) === 'quarter') {
+      if (offCompass(wrapAngle(yaw)) > 1e-3) {
+        this.noteOffCompass();
+      }
+      want = snapYaw(el.type, yaw);
+    }
+    this.edit('rotate', (d) => {
+      setYaw(d, id, want);
+    });
+    this.rememberYaw(elementById(this.doc, id));
   }
 
   /* ---------------- faces and sequence ---------------- */
@@ -668,6 +846,10 @@ export class App {
   /* ---------------- path ---------------- */
 
   createPath() {
+    /* A map has no racing line to paint. */
+    if (docModeOf(this.doc) === 'freestyle') {
+      return;
+    }
     this.pathVisible = true;
     this.rebuildPath();
     this.panels.renderAll();
@@ -677,6 +859,9 @@ export class App {
   }
 
   togglePath() {
+    if (docModeOf(this.doc) === 'freestyle') {
+      return;
+    }
     if (!this.pathVisible) {
       this.createPath();
       return;
@@ -736,11 +921,21 @@ export class App {
   /* ---------------- documents ---------------- */
 
   loadDocument(doc, message) {
+    /* A document of another canvas moves the author to that canvas, so the
+     * one being left is written to its own seat first, the same as the
+     * toggle does: importing a race track onto a map must not drop the
+     * map's last few seconds of edits. */
+    if (canvasOf(doc) !== canvasOf(this.doc)) {
+      this.autosaver.flush();
+    }
     this.doc = doc;
     /* The palette is the track class's, so it is rebuilt whenever a document
      * arrives rather than once at boot. A RaceGOW room and a sixty metre
-     * field are not made of the same parts. */
-    this.panels.buildPalette(trackClassOf(this.doc));
+     * field are not made of the same parts, and a map is made of neither. */
+    this.panels.buildPalette(trackClassOf(this.doc), docModeOf(this.doc));
+    /* Loading a document is choosing its canvas, so the builder reopens on
+     * it next time. */
+    rememberCanvas(canvasOf(this.doc));
     /*
      * THE DOCUMENT GOVERNS THE CLASS, not only the toggle. A room opened from
      * the library, from a board link or as a remix on a five inch builder
@@ -768,6 +963,12 @@ export class App {
   }
 
   newTrack() {
+    if (docModeOf(this.doc) === 'freestyle') {
+      this.confirm('Start a new map?', 'Anything unsaved in the current one is gone.', () => {
+        this.loadDocument(newMap(), 'New map, on a 160 metre plot.');
+      });
+      return;
+    }
     this.confirm('Start a new track?', 'Anything unsaved in the current one is gone.', () => {
       this.loadDocument(createTrack(undefined, newTrackClass()), 'New track.');
     });
@@ -810,17 +1011,22 @@ export class App {
   removeCurrent() {
     this.confirm(`Delete "${this.doc.name}"?`, 'It is removed from the saved list. This cannot be undone.', () => {
       deleteTrack(this.doc.id);
-      this.loadDocument(createTrack(undefined, newTrackClass()), 'Deleted.');
+      this.loadDocument(docModeOf(this.doc) === 'freestyle' ? newMap() : createTrack(undefined, newTrackClass()), 'Deleted.');
     });
   }
 
   openLoad() {
-    const tracks = listTracks(trackClassOf(this.doc));
+    /* A map lists with maps and a track with tracks, so the Load list of one
+     * canvas never offers the other's documents. */
+    const map = docModeOf(this.doc) === 'freestyle';
+    const tracks = listTracks(trackClassOf(this.doc), docModeOf(this.doc));
     const body = document.createElement('div');
     if (!tracks.length) {
       const p = document.createElement('p');
       p.className = 'tb-help';
-      p.textContent = 'Nothing saved yet. Save the current track, or import a .json file.';
+      p.textContent = map
+        ? 'No maps saved yet. Save the current map, or import a .json file.'
+        : 'Nothing saved yet. Save the current track, or import a .json file.';
       body.append(p);
     }
     for (const t of tracks) {
@@ -831,9 +1037,13 @@ export class App {
       name.textContent = t.name;
       const meta = document.createElement('div');
       meta.className = 'tb-load-meta';
-      meta.textContent = t.preset
-        ? `${t.mix}, ${t.sequence} in the order`
-        : `${t.mix}, ${t.sequence} in the order, changed ${t.modifiedUtc}`;
+      if (map) {
+        meta.textContent = `${t.mix}, changed ${t.modifiedUtc}`;
+      } else {
+        meta.textContent = t.preset
+          ? `${t.mix}, ${t.sequence} in the order`
+          : `${t.mix}, ${t.sequence} in the order, changed ${t.modifiedUtc}`;
+      }
       name.append(meta);
       /*
        * WHOSE TRACK THIS IS, on the row.
@@ -886,7 +1096,7 @@ export class App {
       }
       body.append(row);
     }
-    this.modal('Saved tracks', body);
+    this.modal(map ? 'Saved maps' : 'Saved tracks', body);
   }
 
   exportFile() {
@@ -909,6 +1119,12 @@ export class App {
   async exportAnimation() {
     if (this.nameInput && this.nameInput.value) {
       this.doc.name = this.nameInput.value.trim() || 'Untitled track';
+    }
+    /* A map has no lap to animate. The menu does not offer this on a map;
+     * this is for any other way in. */
+    if (docModeOf(this.doc) === 'freestyle') {
+      this.toast('An animation is one lap of a track, and a map has no lap.');
+      return;
     }
     /* One element is not a lap, which is the same rule the racing line
      * itself applies, so the refusal says the same thing. */
@@ -1005,6 +1221,10 @@ export class App {
   }
 
   openPublish() {
+    if (docModeOf(this.doc) === 'freestyle') {
+      this.toast(PUBLISH_MAP_NOTE);
+      return;
+    }
     if (this.nameInput && this.nameInput.value) {
       this.doc.name = this.nameInput.value.trim() || 'Untitled track';
     }
@@ -1549,23 +1769,39 @@ export class App {
    * track nobody designed. Two canvases is what an author actually has.
    */
   setTrackClass(cls) {
-    const want = cls === 'micro' ? 'micro' : 'full';
-    if (trackClassOf(this.doc) === want) {
+    this.setCanvas(cls === 'micro' ? 'micro' : 'full');
+  }
+
+  /*
+   * The same move for any of the three canvases. A map seats the five inch,
+   * exactly as the 5 inch button does, because that is what flies it.
+   */
+  setCanvas(canvas) {
+    const want = canvas === 'freestyle' || canvas === 'micro' ? canvas : 'full';
+    if (canvasOf(this.doc) === want) {
       return;
     }
+    const cls = want === 'micro' ? 'micro' : 'full';
+    const mode = want === 'freestyle' ? 'freestyle' : 'race';
     /* The canvas being left is written NOW rather than on the debounce, so
      * the last few seconds of editing are still there on the way back. */
     this.autosaver.flush();
-    setActiveTrackClass(want);
+    setActiveTrackClass(cls);
     /* readAutosave hands back { doc, repairs }, not a document: every other
      * caller in this project reads `.doc` off it and the first version of
      * this one did not, which threw inside loadDocument on the first press
      * of the toggle. */
-    const held = readAutosave(want);
-    const doc = (held && held.doc) || createTrack(undefined, want);
+    const held = readAutosave(cls, mode);
+    const doc = (held && held.doc) || (mode === 'freestyle' ? newMap() : createTrack(undefined, cls));
+    const name = { full: 'five inch', micro: 'whoop', freestyle: 'freestyle' }[want];
+    const fresh = {
+      full: 'five inch track, on a sixty metre field',
+      micro: 'whoop track, in a ten by twelve metre hall',
+      freestyle: 'freestyle map, on a 160 metre plot. Place buildings, cranes and a skate set, then fly it',
+    }[want];
     this.loadDocument(doc, held && held.doc
-      ? `Back on the ${want === 'micro' ? 'whoop' : 'five inch'} builder, holding "${doc.name}".`
-      : `A new ${want === 'micro' ? 'whoop track, in a ten by twelve metre hall' : 'five inch track, on a sixty metre field'}.`);
+      ? `Back on the ${name} builder, holding "${doc.name}".`
+      : `A new ${fresh}.`);
   }
 
   buildTopBar() {
@@ -1660,14 +1896,18 @@ export class App {
     this.moreMenu = document.createElement('div');
     this.moreMenu.className = 'tb-more-menu';
     this.moreMenu.hidden = true;
-    for (const [label, fn, title, cls] of [
-      ['Duplicate', () => this.duplicate(), 'Copy this track under a new name', ''],
-      ['Import', () => file.click(), 'Read a .json track file', ''],
-      ['Export', () => this.exportFile(), 'Write a .json track file', ''],
-      ['Export animation', () => this.exportAnimation(), 'Write a looping .gif of one lap', ''],
-      ['Delete', () => this.confirmRemove(), 'Remove this track from this browser', 'tb-danger'],
+    /* Kept by name, because a map words them differently and has no lap to
+     * animate. */
+    this.moreItems = new Map();
+    for (const [id, label, fn, title, cls] of [
+      ['duplicate', 'Duplicate', () => this.duplicate(), 'Copy this track under a new name', ''],
+      ['import', 'Import', () => file.click(), 'Read a .json track file', ''],
+      ['export', 'Export', () => this.exportFile(), 'Write a .json track file', ''],
+      ['animation', 'Export animation', () => this.exportAnimation(), 'Write a looping .gif of one lap', ''],
+      ['delete', 'Delete', () => this.confirmRemove(), 'Remove this track from this browser', 'tb-danger'],
     ]) {
       const b = btn(label, () => { this.closeMore(); fn(); }, title, `tb-more-item ${cls}`.trim());
+      this.moreItems.set(id, b);
       this.moreMenu.append(b);
     }
     this.moreWrap.append(this.moreBtn, this.moreMenu);
@@ -1702,17 +1942,24 @@ export class App {
     this.classToggle.setAttribute('role', 'group');
     this.classToggle.setAttribute('aria-label', 'Which builder');
     this.classBtns = new Map();
-    for (const [cls, label, hint] of [
+    /*
+     * THE THIRD CANVAS IS A MAP, not a third class. It is flown on the five
+     * inch, so choosing it seats the five inch exactly as the first button
+     * does; what it changes is what the document IS: a place made of
+     * assets, with no flying order through it.
+     */
+    for (const [canvas, label, hint] of [
       ['full', '5 inch', 'MultiGP gates on a sixty metre field'],
       ['micro', 'Whoop', 'RaceGOW gates in a ten by twelve metre hall'],
+      ['freestyle', 'Freestyle', 'Your own freestyle map: buildings, cranes, a skate set and named gaps on a 160 metre plot, flown on the five inch'],
     ]) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'tb-class-btn';
       b.textContent = label;
       b.title = hint;
-      b.addEventListener('click', () => this.setTrackClass(cls));
-      this.classBtns.set(cls, b);
+      b.addEventListener('click', () => this.setCanvas(canvas));
+      this.classBtns.set(canvas, b);
       this.classToggle.append(b);
     }
 
@@ -1723,9 +1970,9 @@ export class App {
       this.classToggle,
       name,
       group(
-        btn('New', () => this.newTrack(), 'Start a blank track'),
+        (this.newBtn = btn('New', () => this.newTrack(), 'Start a blank track')),
         btn('Save', () => this.save(), 'Control S'),
-        btn('Load', () => this.openLoad()),
+        (this.loadBtn = btn('Load', () => this.openLoad(), 'Open a saved track')),
       ),
       this.moreWrap,
     );
@@ -1770,15 +2017,49 @@ export class App {
     this.redoBtn.title = this.history.canRedo() ? `Redo ${this.history.redoLabel()}` : 'Nothing to redo';
     this.mode2d.classList.toggle('on', this.mode === '2d');
     this.mode3d.classList.toggle('on', this.mode === '3d');
+    const map = docModeOf(this.doc) === 'freestyle';
     if (this.classBtns) {
-      const cls = trackClassOf(this.doc);
+      const canvas = canvasOf(this.doc);
       for (const [id, b] of this.classBtns) {
-        b.classList.toggle('on', id === cls);
-        b.setAttribute('aria-pressed', id === cls ? 'true' : 'false');
+        b.classList.toggle('on', id === canvas);
+        b.setAttribute('aria-pressed', id === canvas ? 'true' : 'false');
       }
     }
     this.pathBtn.classList.toggle('on', this.pathVisible);
-    if (this.listingChip && this.publishBtn) {
+    /*
+     * A MAP'S BAR. No line to show, no lap to animate, and nothing the board
+     * can take yet, so those go or say why; the words that said "track" say
+     * "map". Everything else on the bar works on a map as it does on a
+     * track.
+     */
+    this.pathBtn.style.display = map ? 'none' : '';
+    document.body.classList.toggle('tb-map', map);
+    this.flyBtn.textContent = map ? 'Fly this map' : 'Fly this track';
+    this.flyBtn.title = map
+      ? 'Build this map in the town\u2019s style and fly it on the five inch'
+      : 'Build the world around this track and fly it';
+    this.newBtn.title = map ? 'Start a blank map' : 'Start a blank track';
+    this.loadBtn.title = map ? 'Open a saved map' : 'Open a saved track';
+    if (this.moreItems) {
+      const noun = map ? 'map' : 'track';
+      this.moreItems.get('duplicate').title = `Copy this ${noun} under a new name`;
+      this.moreItems.get('import').title = `Read a .json ${noun} file`;
+      this.moreItems.get('export').title = `Write a .json ${noun} file`;
+      this.moreItems.get('delete').title = `Remove this ${noun} from this browser`;
+      this.moreItems.get('animation').style.display = map ? 'none' : '';
+    }
+    if (map && this.listingChip && this.publishBtn) {
+      this.listingChip.style.display = 'none';
+      this.publishBtn.textContent = 'Publish';
+      this.publishBtn.title = PUBLISH_MAP_NOTE;
+      this.publishBtn.classList.add('tb-off');
+      this.publishBtn.setAttribute('aria-disabled', 'true');
+    } else if (this.listingChip && this.publishBtn) {
+      this.listingChip.style.display = '';
+      this.publishBtn.classList.remove('tb-off');
+      this.publishBtn.removeAttribute('aria-disabled');
+    }
+    if (!map && this.listingChip && this.publishBtn) {
       const listing = this.listingOfCanvas();
       /* The words come from courseChip in src/share/listing.js, which is
        * also what the simulator's course cards read, so the same course
@@ -1830,6 +2111,18 @@ export class App {
     this.autosaver.flush();
     if (this.nameInput && this.nameInput.value && this.nameInput.value !== this.doc.name) {
       this.doc.name = this.nameInput.value;
+    }
+    /*
+     * A MAP FLIES AS THE BUILT MAP, which the simulator reads from the map's
+     * own autosave seat, so it is flushed again here, after the name is
+     * taken from the field. There is no board listing to bind, because the
+     * board does not take maps.
+     */
+    if (docModeOf(this.doc) === 'freestyle') {
+      this.autosaver.flush();
+      setActiveTrackClass('full');
+      window.location.href = '../../index.html?map=built';
+      return;
     }
     if (readEditKey(this.doc.id)) {
       try {
@@ -1985,7 +2278,8 @@ export class App {
         return;
       }
 
-      const def = elementByKey(e.key, trackClassOf(this.doc));
+      /* The palette's own keys: a map's are not a track's. */
+      const def = elementByKey(e.key, trackClassOf(this.doc), docModeOf(this.doc));
       if (def) {
         this.arm(def.id);
       }
@@ -2000,10 +2294,19 @@ export class App {
       for (const id of this.selection) {
         const element = elementById(d, id);
         if (element && kindOf(element) !== KIND.ANNOTATION) {
-          setYaw(d, id, element.yaw + degrees * RAD);
+          /* A building steps a whole quarter turn, from wherever the
+           * compass has it, rather than fifteen degrees it cannot hold. */
+          if (turnsOf(element.type) === 'quarter') {
+            setYaw(d, id, snapYaw(element.type, snapYaw(element.type, element.yaw) + Math.sign(degrees) * QUARTER_TURN));
+          } else {
+            setYaw(d, id, element.yaw + degrees * RAD);
+          }
         }
       }
     });
+    for (const id of this.selection) {
+      this.rememberYaw(elementById(this.doc, id));
+    }
   }
 }
 

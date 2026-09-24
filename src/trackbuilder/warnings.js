@@ -34,7 +34,13 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, TUNING, trackClassOf, tuningFor } from './elements.js';
+import { ELEMENTS, KIND, TUNING, trackClassOf, tuningFor, docModeOf } from './elements.js';
+/* A map is checked against the world it builds, not against a racing line:
+ * the same placed solids the simulator hands the physics. All pure, no
+ * Three.js, so the checks run in Node too. */
+import { placeDocument } from '../maps/built/place.js';
+import { placeSolids } from '../props/solids.js';
+import { GAP_MIN } from '../props/parts.js';
 import {
   GATE_OPENING_MIN, GATE_OPENING_MAX, GATE_SPACING_MIN, GATE_SPACING_MAX,
   GROUND_GATE_CENTRE_MAX, STACK2_CENTRE_MIN, STACK3_CENTRE_MIN,
@@ -96,6 +102,11 @@ function frameLegs(doc) {
  * returned; pass null to get only the checks that do not need a line.
  */
 export function collectWarnings(doc, path) {
+  /* A map has no flying order and no line, so none of the race warnings
+   * mean anything on one, and the race track's list is untouched by maps. */
+  if (docModeOf(doc) === 'freestyle') {
+    return freestyleReport(doc).warnings;
+  }
   const out = [];
   const legs = frameLegs(doc);
   if (trackClassOf(doc) === 'micro') {
@@ -666,6 +677,577 @@ function centreOf(el) {
  * messages read as sentences and "Gate 3" reads better than an id. */
 function label(el) {
   return el.name || (ELEMENTS[el.type]?.label ?? el.type);
+}
+
+/* ================================================================== */
+/* A FREESTYLE MAP                                                     */
+/* ================================================================== */
+
+/*
+ * WHAT A MAP CAN GET WRONG, checked against the solids it will actually be
+ * built from. src/maps/built/place.js places the document exactly as the
+ * simulator does, in Three.js world metres (x = docX - W/2, z = -(docY -
+ * D/2), y up), and every test below is in that frame. Nothing here is the
+ * physics and nothing here reaches it, so plain Math is fine.
+ *
+ *   fs-no-start      info  no start pads: says where the pilot will start
+ *   fs-spawn         warn  the start is inside a solid or within a metre of
+ *                          one, so the craft cannot take off cleanly
+ *   fs-overlap       warn  two elements' solids run into each other
+ *   fs-slot          warn  a space between two elements narrower than the
+ *                          gap rule's 1.4 m but more than a few centimetres:
+ *                          a slot a five inch aims at and cannot fit through
+ *   fs-gap-blocked   warn  a named gap with a solid across its window
+ *   fs-outside       warn  an element standing outside the plot, or
+ *                          reaching past its edge
+ *   fs-solids        warn  more solids than a map is budgeted
+ *
+ * Every warning names an element, so clicking it selects the element.
+ */
+
+/* The budget. The module's world holds 49152 shapes (WORLD_MAX_SHAPES in
+ * src/native/world.c); a map is kept well under that so the upload, the
+ * broad phase and the plan all stay quick on a slow machine. */
+export const FREESTYLE_SOLIDS_MAX = 20000;
+
+/* Below this a space is two things touching, not a slot. A building built
+ * against another is closed, which the gap rule allows. */
+export const SLOT_FLOOR = 0.05;
+
+/* The air the craft needs round the start to take off. */
+export const SPAWN_CLEAR = 1.0;
+
+/* How far two solids have to run into each other before it is an overlap
+ * rather than two faces that meet. */
+const OVERLAP_EPS = 0.01;
+
+/* How far past the edge of the plot a solid may reach before it counts as
+ * outside it. */
+const PLOT_SLACK = 0.5;
+
+/* A named gap's window is shrunk by this at its edges before testing, so a
+ * gap drawn to exactly fill the space between two walls is not blocked by
+ * the walls it is drawn between. */
+const WINDOW_INSET = 0.05;
+
+/*
+ * Place the map and check it. Returns
+ *
+ *   { warnings, solids, zones, bodies }
+ *
+ * where solids is the count the physics will hold, zones the named gaps and
+ * bodies the elements that have any solid at all.
+ */
+export function freestyleReport(doc) {
+  const out = [];
+  const placed = placeDocument(doc);
+  const W = placed.W;
+  const D = placed.D;
+  const names = labeller(doc);
+
+  /*
+   * Each element's own solids, and the box round them. place.js hands back
+   * one flat list for the physics; the element each solid came from is
+   * what a warning has to name, so they are placed again per element here,
+   * by the same function with the same numbers.
+   */
+  const bodies = [];
+  for (const it of placed.items) {
+    const solids = placeSolids(it.parts, it.x, it.y, it.z, it.yaw, it.turns, []);
+    if (!solids.length) {
+      continue;
+    }
+    const boxes = solids.map(solidBox);
+    bodies.push({ el: it.el, solids, boxes, box: unionBox(boxes) });
+  }
+
+  /* -------- where the pilot starts -------- */
+
+  const pads = startPadsOf(doc);
+  if (!pads) {
+    out.push(note('fs-no-start', 'No start pads, so the pilot starts 8 m in from the left edge of the plot, halfway up it, facing right. Press S and click where they should start.'));
+  }
+  {
+    const base = pads ? (pads.position.z || 0) : 0;
+    const p = [placed.spawn.x, base + 0.1, placed.spawn.z];
+    let worst = null;
+    for (const b of bodies) {
+      if (boxPointDist(grow(b.box, SPAWN_CLEAR), p) > 0) {
+        continue;
+      }
+      for (const s of b.solids) {
+        const d = solidPointClearance(s, p);
+        if (d < SPAWN_CLEAR && (!worst || d < worst.d)) {
+          worst = { d, el: b.el };
+        }
+      }
+    }
+    if (worst) {
+      const where = worst.d <= 0 ? 'inside' : `${worst.d.toFixed(2)} m from`;
+      out.push(pads
+        ? warn('fs-spawn', `The start pads are ${where} ${names(worst.el)}. The craft needs a metre of clear air round it to take off: move the pads into the open.`, { elementId: pads.id })
+        : warn('fs-spawn', `With no start pads the pilot starts ${where} ${names(worst.el)}. Press S and put the start pads in the open.`, { elementId: worst.el.id }));
+    }
+  }
+
+  /* -------- two elements against each other -------- */
+
+  /*
+   * A SWEEP, SO A BIG MAP STAYS QUICK. Bodies are sorted by the west edge
+   * of their box, and each is only compared with the ones whose west edge
+   * starts before its east edge plus the gap rule's width. On a map of
+   * three hundred elements that is a few hundred pairs, not forty five
+   * thousand, and only a pair whose boxes come within 1.4 m ever looks at
+   * a single solid.
+   */
+  const order = [...bodies].sort((a, b) => a.box[0] - b.box[0]);
+  const docIndex = new Map(doc.elements.map((e, i) => [e.id, i]));
+  for (let i = 0; i < order.length; i += 1) {
+    const A = order[i];
+    const reach = grow(A.box, GAP_MIN);
+    for (let j = i + 1; j < order.length; j += 1) {
+      const B = order[j];
+      if (B.box[0] > reach[3]) {
+        break;
+      }
+      if (!boxesTouch(reach, B.box)) {
+        continue;
+      }
+      const d = bodyClearance(A, B);
+      if (d === null) {
+        continue;
+      }
+      /* Named on the one placed later, which is nearly always the one the
+       * author has just put down. */
+      const [first, later] = docIndex.get(A.el.id) < docIndex.get(B.el.id) ? [A.el, B.el] : [B.el, A.el];
+      if (d < -OVERLAP_EPS) {
+        out.push(warn('fs-overlap', `${cap(names(later))} runs into ${names(first)}: one is built through the other. Move one of them.`, {
+          elementId: later.id,
+          otherId: first.id,
+        }));
+      } else if (d > SLOT_FLOOR && d < GAP_MIN) {
+        out.push(warn('fs-slot', `${cap(names(later))} and ${names(first)} leave a ${d.toFixed(2)} m slot between them. A five inch needs ${GAP_MIN} m to get through, so close it up or open it out.`, {
+          elementId: later.id,
+          otherId: first.id,
+          clearance: d,
+        }));
+      }
+    }
+  }
+
+  /* -------- named gaps -------- */
+
+  for (const zone of placed.zones) {
+    const win = zoneWindow(zone);
+    if (!win) {
+      continue;
+    }
+    for (const b of bodies) {
+      if (!boxesTouch(win.box, b.box)) {
+        continue;
+      }
+      if (b.solids.some((s, k) => boxesTouch(win.box, b.boxes[k]) && solidCrossesWindow(s, win))) {
+        out.push(warn('fs-gap-blocked', `${zone.name || 'A named gap'} has ${names(b.el)} across its window, so nothing flies through it clean. Move the gap or what is in it.`, {
+          elementId: zone.el.id,
+          otherId: b.el.id,
+        }));
+        break;
+      }
+    }
+  }
+
+  /* -------- the plot -------- */
+
+  const bodyOf = new Map(bodies.map((b) => [b.el.id, b]));
+  for (const el of doc.elements) {
+    const { x, y } = el.position;
+    if (x < 0 || y < 0 || x > doc.field.width || y > doc.field.depth) {
+      out.push(warn('fs-outside', `${cap(names(el))} is standing outside the plot.`, { elementId: el.id }));
+      continue;
+    }
+    const b = bodyOf.get(el.id);
+    if (b && (b.box[0] < -W / 2 - PLOT_SLACK || b.box[3] > W / 2 + PLOT_SLACK
+      || b.box[2] < -D / 2 - PLOT_SLACK || b.box[5] > D / 2 + PLOT_SLACK)) {
+      out.push(warn('fs-outside', `${cap(names(el))} reaches past the edge of the plot.`, { elementId: el.id }));
+    }
+  }
+
+  /* -------- the budget -------- */
+
+  if (placed.solids.length > FREESTYLE_SOLIDS_MAX) {
+    const biggest = bodies.reduce((m, b) => (!m || b.solids.length > m.solids.length ? b : m), null);
+    out.push(warn('fs-solids', `This map has ${placed.solids.length} solids, over the ${FREESTYLE_SOLIDS_MAX} a map is kept under so it loads and flies smoothly on a slow machine. The biggest is ${names(biggest.el)}, at ${biggest.solids.length}.`, {
+      elementId: biggest.el.id,
+    }));
+  }
+
+  return {
+    warnings: out,
+    solids: placed.solids.length,
+    zones: placed.zones.length,
+    bodies: bodies.length,
+  };
+}
+
+/*
+ * What a warning calls an element: its own name if it has one, and if not
+ * its type, numbered in document order when there is more than one of it,
+ * so "Building 2 and Building 5" says which two.
+ */
+function labeller(doc) {
+  const count = new Map();
+  const nth = new Map();
+  for (const el of doc.elements) {
+    const n = (count.get(el.type) || 0) + 1;
+    count.set(el.type, n);
+    nth.set(el.id, n);
+  }
+  return (el) => {
+    if (el.name) {
+      return el.name;
+    }
+    const lab = ELEMENTS[el.type]?.label ?? el.type;
+    return count.get(el.type) > 1 ? `${lab} ${nth.get(el.id)}` : lab;
+  };
+}
+
+function cap(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/* ---------------- boxes ---------------- */
+
+/* The axis aligned box round one solid: [x0, y0, z0, x1, y1, z1]. */
+function solidBox(s) {
+  if (s.box) {
+    return s.box;
+  }
+  const c = s.cap;
+  const r = c[6];
+  return [
+    Math.min(c[0], c[3]) - r, Math.min(c[1], c[4]) - r, Math.min(c[2], c[5]) - r,
+    Math.max(c[0], c[3]) + r, Math.max(c[1], c[4]) + r, Math.max(c[2], c[5]) + r,
+  ];
+}
+
+function unionBox(boxes) {
+  const u = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  for (const b of boxes) {
+    for (let k = 0; k < 3; k += 1) {
+      u[k] = Math.min(u[k], b[k]);
+      u[k + 3] = Math.max(u[k + 3], b[k + 3]);
+    }
+  }
+  return u;
+}
+
+function grow(b, by) {
+  return [b[0] - by, b[1] - by, b[2] - by, b[3] + by, b[4] + by, b[5] + by];
+}
+
+function boxesTouch(a, b) {
+  return a[0] <= b[3] && b[0] <= a[3] && a[1] <= b[4] && b[1] <= a[4] && a[2] <= b[5] && b[2] <= a[5];
+}
+
+/* Distance from a point to a box, zero inside it. */
+function boxPointDist(b, p) {
+  const dx = Math.max(b[0] - p[0], 0, p[0] - b[3]);
+  const dy = Math.max(b[1] - p[1], 0, p[1] - b[4]);
+  const dz = Math.max(b[2] - p[2], 0, p[2] - b[5]);
+  return Math.hypot(dx, dy, dz);
+}
+
+/* ---------------- clearances ---------------- */
+
+/*
+ * The clear air between two solids: positive is a space that wide,
+ * negative is how far they run into each other (for two boxes, the least
+ * overlap on any axis; for anything with a capsule, minus the radius, which
+ * is only ever read as "overlapping").
+ */
+function solidClearance(a, b) {
+  if (a.box && b.box) {
+    return boxBoxClearance(a.box, b.box);
+  }
+  if (a.cap && b.cap) {
+    return segSegDist(a.cap, 0, 3, b.cap, 0, 3) - a.cap[6] - b.cap[6];
+  }
+  const box = a.box ?? b.box;
+  const c = a.cap ?? b.cap;
+  return segBoxDist(c, box) - c[6];
+}
+
+function boxBoxClearance(a, b) {
+  const gx = Math.max(a[0] - b[3], b[0] - a[3]);
+  const gy = Math.max(a[1] - b[4], b[1] - a[4]);
+  const gz = Math.max(a[2] - b[5], b[2] - a[5]);
+  if (gx < 0 && gy < 0 && gz < 0) {
+    return Math.max(gx, gy, gz);
+  }
+  return Math.hypot(Math.max(gx, 0), Math.max(gy, 0), Math.max(gz, 0));
+}
+
+/* Clearance from a point to a solid: negative inside it. */
+function solidPointClearance(s, p) {
+  if (s.box) {
+    const b = s.box;
+    const d = boxPointDist(b, p);
+    if (d > 0) {
+      return d;
+    }
+    return -Math.min(p[0] - b[0], b[3] - p[0], p[1] - b[1], b[4] - p[1], p[2] - b[2], b[5] - p[2]);
+  }
+  const c = s.cap;
+  return pointSegDist(p, c, 0, 3) - c[6];
+}
+
+/* The least clearance between any solid of A and any solid of B, or null
+ * when no two of their solids even come within the gap rule's width. Stops
+ * at the first overlap, which is all a warning needs to know. */
+function bodyClearance(A, B) {
+  let best = null;
+  for (let i = 0; i < A.solids.length; i += 1) {
+    const ra = grow(A.boxes[i], GAP_MIN);
+    if (!boxesTouch(ra, B.box)) {
+      continue;
+    }
+    for (let j = 0; j < B.solids.length; j += 1) {
+      if (!boxesTouch(ra, B.boxes[j])) {
+        continue;
+      }
+      const d = solidClearance(A.solids[i], B.solids[j]);
+      if (best === null || d < best) {
+        best = d;
+        if (best < -OVERLAP_EPS) {
+          return best;
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function pointSegDist(p, s, ia, ib) {
+  const ax = s[ia];
+  const ay = s[ia + 1];
+  const az = s[ia + 2];
+  const dx = s[ib] - ax;
+  const dy = s[ib + 1] - ay;
+  const dz = s[ib + 2] - az;
+  const len2 = dx * dx + dy * dy + dz * dz;
+  let t = len2 > 0 ? ((p[0] - ax) * dx + (p[1] - ay) * dy + (p[2] - az) * dz) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - (ax + dx * t), p[1] - (ay + dy * t), p[2] - (az + dz * t));
+}
+
+/* The distance between two segments, each given as an array holding its two
+ * end points at offsets ia and ib. The standard closest points of two
+ * segments, clamped, with the parallel case handled. */
+function segSegDist(s, sa, sb, t, ta, tb) {
+  const p1 = [s[sa], s[sa + 1], s[sa + 2]];
+  const q1 = [s[sb], s[sb + 1], s[sb + 2]];
+  const p2 = [t[ta], t[ta + 1], t[ta + 2]];
+  const q2 = [t[tb], t[tb + 1], t[tb + 2]];
+  return segSeg(p1, q1, p2, q2);
+}
+
+function segSeg(p1, q1, p2, q2) {
+  const d1 = [q1[0] - p1[0], q1[1] - p1[1], q1[2] - p1[2]];
+  const d2 = [q2[0] - p2[0], q2[1] - p2[1], q2[2] - p2[2]];
+  const r = [p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]];
+  const a = dot3(d1, d1);
+  const e = dot3(d2, d2);
+  const f = dot3(d2, r);
+  let s;
+  let t;
+  const EPS = 1e-12;
+  if (a <= EPS && e <= EPS) {
+    return Math.hypot(r[0], r[1], r[2]);
+  }
+  if (a <= EPS) {
+    s = 0;
+    t = clamp01(f / e);
+  } else {
+    const c = dot3(d1, r);
+    if (e <= EPS) {
+      t = 0;
+      s = clamp01(-c / a);
+    } else {
+      const b = dot3(d1, d2);
+      const denom = a * e - b * b;
+      s = denom > EPS ? clamp01((b * f - c * e) / denom) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) {
+        t = 0;
+        s = clamp01(-c / a);
+      } else if (t > 1) {
+        t = 1;
+        s = clamp01((b - c) / a);
+      }
+    }
+  }
+  const x = r[0] + d1[0] * s - d2[0] * t;
+  const y = r[1] + d1[1] * s - d2[1] * t;
+  const z = r[2] + d1[2] * s - d2[2] * t;
+  return Math.hypot(x, y, z);
+}
+
+function dot3(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function clamp01(x) {
+  return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+/*
+ * The distance from a capsule's axis to a box. The distance from a point on
+ * a segment to a convex box is a convex function along the segment, so a
+ * golden section search finds its least value; forty steps narrow it to a
+ * few nanometres of a fifty metre member.
+ */
+function segBoxDist(c, box) {
+  const at = (t) => [
+    c[0] + (c[3] - c[0]) * t, c[1] + (c[4] - c[1]) * t, c[2] + (c[5] - c[2]) * t,
+  ];
+  const f = (t) => boxPointDist(box, at(t));
+  const g = (Math.sqrt(5) - 1) / 2;
+  let lo = 0;
+  let hi = 1;
+  let x1 = hi - g * (hi - lo);
+  let x2 = lo + g * (hi - lo);
+  let f1 = f(x1);
+  let f2 = f(x2);
+  for (let k = 0; k < 40; k += 1) {
+    if (f1 <= f2) {
+      hi = x2;
+      x2 = x1;
+      f2 = f1;
+      x1 = hi - g * (hi - lo);
+      f1 = f(x1);
+    } else {
+      lo = x1;
+      x1 = x2;
+      f1 = f2;
+      x2 = lo + g * (hi - lo);
+      f2 = f(x2);
+    }
+  }
+  return Math.min(f1, f2, f(0), f(1));
+}
+
+/* ---------------- a named gap's window ---------------- */
+
+/*
+ * The window as a frame: its centre on the ground, the unit vector across
+ * it and the unit vector through it (its heading), in world x and z, and
+ * its extent across and up. The document's heading (cos, sin) is world
+ * (cos, -sin), and its left (-sin, cos) is world (-sin, -cos): the same one
+ * conversion place.js makes.
+ */
+function zoneWindow(zone) {
+  const hw = zone.w / 2 - WINDOW_INSET;
+  const y0 = zone.y + WINDOW_INSET;
+  const y1 = zone.y + zone.h - WINDOW_INSET;
+  if (!(hw > 0) || !(y1 > y0)) {
+    return null;
+  }
+  const c = Math.cos(zone.yaw);
+  const s = Math.sin(zone.yaw);
+  const across = [-s, -c];
+  const through = [c, -s];
+  const ex = Math.abs(across[0]) * hw;
+  const ez = Math.abs(across[1]) * hw;
+  return {
+    x: zone.x,
+    z: zone.z,
+    hw,
+    y0,
+    y1,
+    across,
+    through,
+    box: [zone.x - ex, y0, zone.z - ez, zone.x + ex, y1, zone.z + ez],
+  };
+}
+
+/* A world point in the window's own terms: n through it, a across it, v up. */
+function inWindow(win, p) {
+  const dx = p[0] - win.x;
+  const dz = p[2] - win.z;
+  return {
+    n: dx * win.through[0] + dz * win.through[1],
+    a: dx * win.across[0] + dz * win.across[1],
+    v: p[1],
+  };
+}
+
+function solidCrossesWindow(s, win) {
+  if (s.box) {
+    const b = s.box;
+    if (b[4] <= win.y0 || b[1] >= win.y1) {
+      return false;
+    }
+    /* The window seen from above is a segment across the heading; does it
+     * pass through the box's plan rectangle? Clip it to the rectangle's two
+     * slabs. */
+    const ox = win.x - win.across[0] * win.hw;
+    const oz = win.z - win.across[1] * win.hw;
+    const dx = win.across[0] * 2 * win.hw;
+    const dz = win.across[1] * 2 * win.hw;
+    let t0 = 0;
+    let t1 = 1;
+    for (const [o, d, lo, hi] of [[ox, dx, b[0], b[3]], [oz, dz, b[2], b[5]]]) {
+      if (Math.abs(d) < 1e-12) {
+        if (o <= lo || o >= hi) {
+          return false;
+        }
+        continue;
+      }
+      let ta = (lo - o) / d;
+      let tb = (hi - o) / d;
+      if (ta > tb) {
+        [ta, tb] = [tb, ta];
+      }
+      t0 = Math.max(t0, ta);
+      t1 = Math.min(t1, tb);
+      if (t0 >= t1) {
+        return false;
+      }
+    }
+    return true;
+  }
+  /*
+   * A capsule crosses the window when its axis comes within its radius of
+   * the window's rectangle. The nearest two points of a segment and a flat
+   * convex rectangle are either where the segment passes through it, or at
+   * one of the segment's ends, or on one of the rectangle's four edges.
+   */
+  const c = s.cap;
+  const r = c[6];
+  const P = inWindow(win, [c[0], c[1], c[2]]);
+  const Q = inWindow(win, [c[3], c[4], c[5]]);
+  const inside = (a, v) => Math.abs(a) <= win.hw && v >= win.y0 && v <= win.y1;
+  if ((P.n <= 0 && Q.n >= 0) || (P.n >= 0 && Q.n <= 0)) {
+    const t = Math.abs(P.n - Q.n) < 1e-12 ? 0 : P.n / (P.n - Q.n);
+    if (inside(P.a + (Q.a - P.a) * t, P.v + (Q.v - P.v) * t)) {
+      return true;
+    }
+  }
+  const toRect = (X) => {
+    const da = Math.max(Math.abs(X.a) - win.hw, 0);
+    const dv = Math.max(win.y0 - X.v, 0, X.v - win.y1);
+    return Math.hypot(X.n, da, dv);
+  };
+  let d = Math.min(toRect(P), toRect(Q));
+  const p = [P.n, P.a, P.v];
+  const q = [Q.n, Q.a, Q.v];
+  const corners = [
+    [0, -win.hw, win.y0], [0, win.hw, win.y0], [0, win.hw, win.y1], [0, -win.hw, win.y1],
+  ];
+  for (let k = 0; k < 4; k += 1) {
+    d = Math.min(d, segSeg(p, q, corners[k], corners[(k + 1) % 4]));
+  }
+  return d < r;
 }
 
 /* Warnings first, notes after, and inside each group the order they were

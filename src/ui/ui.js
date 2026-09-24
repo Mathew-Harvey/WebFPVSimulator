@@ -5840,6 +5840,17 @@ export class Ui {
           (id) => (id === 'arcade' ? 'Arcade' : 'Expert'),
           (id) => { s.flightStyle = id; },
         ),
+        /*
+         * THE DOOR TO THE OTHER HALF OF YOUR MAP. The world card above flies
+         * it; this makes it. It opens the builder on its freestyle canvas,
+         * which is a seat of its own, so a race track in progress is never
+         * touched by it and never flown as a map.
+         */
+        {
+          label: 'Build a freestyle map',
+          action: 'mapbuilder',
+          note: 'Opens the track builder on the freestyle canvas. Place buildings, a crane, containers, a skate set and named gaps, then fly it here as Your map.',
+        },
         { label: 'Back', action: 'back' },
       ];
     }
@@ -12049,6 +12060,10 @@ export class Ui {
      * flight model, only the track document its schema.md describes. */
     if (action === 'trackbuilder') {
       window.location.href = 'src/trackbuilder/index.html';
+      return;
+    }
+    if (action === 'mapbuilder') {
+      window.location.href = 'src/trackbuilder/index.html?mode=freestyle';
       return;
     }
 

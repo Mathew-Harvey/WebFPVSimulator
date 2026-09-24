@@ -65,6 +65,8 @@ import { openPage, keyInfo, describe } from '../tests/lib/page.js';
  * quietly seeding a key nothing reads. */
 import { SETTINGS_KEY, seatAirframe } from '../src/ui/ui.js';
 import { airframeById } from '../configs/airframes.js';
+/* The freestyle map's seat, from the module that owns it, for --map. */
+import { AUTOSAVE_KEY_FREESTYLE } from '../src/trackbuilder/storage.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 /*
@@ -142,6 +144,26 @@ async function main() {
       const k = ${JSON.stringify(SETTINGS_KEY)};
       const s = JSON.parse(localStorage.getItem(k) || '{}');
       s.map = 'custom';
+      localStorage.setItem(k, JSON.stringify(s));
+    } catch (e) { /* Storage refused; the run boots on the default map. */ }`);
+  }
+  /*
+   * --map=FILE seeds a freestyle map document into the builder's freestyle
+   * seat and selects Your map, the same way --course seeds the race seat, so
+   * a built map can be photographed without driving the builder first.
+   */
+  if (opts.map) {
+    const mapText = await readFile(
+      isAbsolute(String(opts.map)) ? String(opts.map)
+        : join(root, String(opts.map)),
+      'utf8',
+    );
+    seed.push(`try {
+      localStorage.setItem(${JSON.stringify(AUTOSAVE_KEY_FREESTYLE)},
+        JSON.stringify(${mapText}));
+      const k = ${JSON.stringify(SETTINGS_KEY)};
+      const s = JSON.parse(localStorage.getItem(k) || '{}');
+      s.map = 'built';
       localStorage.setItem(k, JSON.stringify(s));
     } catch (e) { /* Storage refused; the run boots on the default map. */ }`);
   }

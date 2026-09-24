@@ -39,7 +39,7 @@ import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection } from
 import { addToSequence, addNextLevel, sequenceLabel, faceLabel } from './sequence.js';
 import { applyFigure, matchingFigure, defaultFigure, upgradeStackedFigures } from './figures.js';
 import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
-import { collectWarnings } from './warnings.js';
+import { collectWarnings, freestyleReport, FREESTYLE_SOLIDS_MAX } from './warnings.js';
 import { History } from './history.js';
 import {
   RAD, DEG, wrapAngle, gateSupportFeet, apertureFrame, GATE_POST_R_SCALE,
@@ -47,7 +47,12 @@ import {
 import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight,
   virtualApertureDims, countElementsByType, formatElementCounts,
   GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor, FRAME_TUBE_OD,
+  KIND, FREESTYLE_PALETTE_ORDER, PALETTE_EXTRA, paletteItems, docModeOf,
 } from './elements.js';
+import { planShapeOf, snapYaw, turnsOf } from './view2d.js';
+import { PROP_TYPES, GAP_POINTS, FURNITURE_PALETTE } from '../props/types.js';
+import { partsOf } from '../props/catalog.js';
+import { GAP_MIN } from '../props/parts.js';
 import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
 import { clubhouseSolids } from '../art/clubhouse.js';
 import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
@@ -2374,6 +2379,394 @@ function suiteSchemaDoc() {
     collectWarnings(doc, path).filter((w) => w.level === 'warn').length === 0);
 }
 
+/*
+ * FREESTYLE MAPS IN THE BUILDER. A map is a document with mode freestyle,
+ * made of the assets in src/props, with its own palette and hotkeys, its
+ * own heading rule and its own warnings, checked against the solids the
+ * simulator will actually build. Everything here is the pure half: the
+ * palette, the inspector and the plan are left to the screenshots.
+ */
+function freestylePlace(doc, type, x, y, opts = {}) {
+  const el = place(doc, type, x, y, opts);
+  if (opts.style) {
+    el.style = opts.style;
+  }
+  if (opts.points) {
+    el.points = opts.points;
+  }
+  return el;
+}
+
+function codesOf(doc) {
+  return freestyleReport(doc).warnings.map((w) => w.code);
+}
+
+function suiteFreestyle() {
+  console.log('\nfreestyle maps');
+
+  /* -------- a map, and every asset on it -------- */
+
+  const map = createTrack(undefined, 'full', 'freestyle');
+  check('a new map says it is freestyle, on the full sized class',
+    docModeOf(map) === 'freestyle' && map.trackClass === 'full' && map.name === 'Untitled map');
+  check('and it stands on a 160 by 160 m plot',
+    map.field.width === 160 && map.field.depth === 160, `${map.field.width} by ${map.field.depth}`);
+
+  const every = [...FREESTYLE_PALETTE_ORDER, ...PALETTE_EXTRA];
+  const propIds = Object.keys(PROP_TYPES);
+  check('the map palette offers every asset in src/props/types.js',
+    propIds.every((id) => FREESTYLE_PALETTE_ORDER.includes(id)),
+    propIds.filter((id) => !FREESTYLE_PALETTE_ORDER.includes(id)).join(', '));
+  check('and every piece of course furniture', FURNITURE_PALETTE.every((id) => FREESTYLE_PALETTE_ORDER.includes(id)));
+  let placedAll = true;
+  every.forEach((type, i) => {
+    try {
+      freestylePlace(map, type, 10 + (i % 6) * 26, 10 + Math.floor(i / 6) * 26);
+    } catch (e) {
+      placedAll = false;
+      check(`${type} can be placed on a map`, false, e.message);
+    }
+  });
+  check(`all ${every.length} types place on a map`, placedAll && map.elements.length === every.length);
+  check('nothing placed on a map joins a flying order', map.sequence.length === 0);
+  check('a styled asset starts in its first style',
+    map.elements.filter((e) => ELEMENTS[e.type].styles).every((e) => e.style === ELEMENTS[e.type].styles[0]));
+  const gapEl = map.elements.find((e) => e.type === 'gap');
+  check('a named gap starts with a name and a points tier', gapEl.name === 'GAP' && GAP_POINTS.includes(gapEl.points));
+
+  const text = serialize(map);
+  const back = deserialize(text);
+  check('a map with every asset reads back with no repairs', back.repairs.length === 0, back.repairs.join('; '));
+  check('and round trips byte for byte', serialize(back.doc) === text);
+  check('and still says it is a map', docModeOf(back.doc) === 'freestyle' && JSON.parse(text).mode === 'freestyle');
+
+  /* Every field a map adds, changed from its default, survives too. */
+  const edited = deserialize(text).doc;
+  const byType = (t) => edited.elements.find((e) => e.type === t);
+  byType('building').style = 'warehouse';
+  byType('building').yaw = Math.PI / 2;
+  byType('building').dims.floors = 7;
+  byType('containers').style = '20ft';
+  byType('crane').yaw = 0.7;
+  byType('crane').position.z = 3.5;
+  byType('gap').points = 1000;
+  byType('gap').name = 'CRANE GAP';
+  byType('tree').style = 'pine';
+  byType('tree').dims.variant = 42;
+  const text2 = serialize(edited);
+  check('an edited map round trips byte for byte', serialize(deserialize(text2).doc) === text2);
+  const read2 = deserialize(text2).doc;
+  check('with its styles, points, names and headings intact',
+    read2.elements.find((e) => e.type === 'building').style === 'warehouse'
+    && read2.elements.find((e) => e.type === 'containers').style === '20ft'
+    && read2.elements.find((e) => e.type === 'gap').points === 1000
+    && read2.elements.find((e) => e.type === 'gap').name === 'CRANE GAP'
+    && Math.abs(read2.elements.find((e) => e.type === 'crane').yaw - 0.7) < 1e-6);
+
+  /* -------- hotkeys -------- */
+
+  const fsItems = paletteItems('full', 'freestyle');
+  const fsKeys = fsItems.map((d) => d.key).filter(Boolean);
+  check('every map hotkey is unique', new Set(fsKeys).size === fsKeys.length,
+    fsKeys.filter((k, i) => fsKeys.indexOf(k) !== i).join(', '));
+  /* app.js takes these before the palette sees them. */
+  const reserved = ['Q', 'E', 'X', 'V', 'P'];
+  check('no map hotkey is one the builder keeps for itself',
+    !fsKeys.some((k) => reserved.includes(k)), fsKeys.filter((k) => reserved.includes(k)).join(', '));
+  check('every map hotkey arms what its button says',
+    fsItems.filter((d) => d.key).every((d) => elementByKey(d.key, 'full', 'freestyle') === d)
+    && fsItems.filter((d) => d.key).every((d) => elementByKey(d.key.toLowerCase(), 'full', 'freestyle') === d));
+  /* The race palettes, key for key, as they were before maps existed. */
+  const raceKeys = {
+    full: { G: 'gate', A: 'flaggedGate', 2: 'doubleStack', H: 'flaggedDoubleStack', R: 'ladder', T: 'tower', D: 'diveGate', B: 'barrier', F: 'flag', C: 'cone', W: 'waypoint', S: 'startPads', L: 'label', O: 'groundLogo' },
+    micro: { G: 'gate', 2: 'doubleStack', R: 'ladder', T: 'tower', D: 'diveGate', U: 'pole', Z: 'horizontalPole', C: 'cone', B: 'barrier', W: 'waypoint', S: 'startPads', L: 'label', O: 'groundLogo' },
+  };
+  for (const cls of ['full', 'micro']) {
+    const items = paletteItems(cls, 'race');
+    const got = Object.fromEntries(items.map((d) => [d.key, d.id]));
+    check(`the ${cls} race palette's keys are unchanged`,
+      JSON.stringify(got) === JSON.stringify(Object.fromEntries(Object.entries(raceKeys[cls]).map(([k, v]) => [String(k), v]))),
+      JSON.stringify(got));
+    check(`and no asset is on the ${cls} race palette`, !items.some((d) => PROP_TYPES[d.id]));
+  }
+  check('an asset key does nothing on a race track',
+    ['1', '3', '4', '9', '0', 'Y', 'K', 'J', 'N', 'M', 'I'].every((k) => !elementByKey(k, 'full', 'race')));
+
+  /* -------- headings -------- */
+
+  const deg = (d) => d * RAD;
+  const near = (a, b) => Math.abs(wrapAngle(a - b)) < 1e-9;
+  check('a building snaps to the nearest quarter turn: 40 to 0, 50 to 90, -100 to -90',
+    near(snapYaw('building', deg(40)), 0) && near(snapYaw('building', deg(50)), deg(90))
+    && near(snapYaw('building', deg(-100)), deg(-90)));
+  check('and ignores Alt, because the physics cannot hold what Alt would ask for',
+    near(snapYaw('containers', deg(40), true), 0));
+  check('a crane keeps the 15 degree snap and takes any angle with Alt',
+    near(snapYaw('crane', deg(40)), deg(45)) && near(snapYaw('crane', deg(40), true), deg(40)));
+  check('course furniture turns freely on a map', turnsOf('gate') === 'any' && turnsOf('startPads') === 'any');
+  check('every asset types.js calls quarter snaps, and no other',
+    propIds.every((id) => (turnsOf(id) === 'quarter') === (PROP_TYPES[id].turns === 'quarter')));
+  check('an asset that turns freely has no solid box to turn',
+    propIds.filter((id) => PROP_TYPES[id].turns === 'any').every((id) => {
+      const el = map.elements.find((e) => e.type === id);
+      return !partsOf(el).some((p) => p.t === 'box' && p.solid);
+    }));
+  /* To the file's six decimals: pi is written 3.141593. */
+  const nearFile = (a, b) => Math.abs(wrapAngle(a - b)) < 1e-6;
+  check('a quarter turn is kept through a round trip, and still snaps to itself',
+    [0, 1, 2, 3].every((q) => {
+      const d = createTrack(undefined, 'full', 'freestyle');
+      const b = freestylePlace(d, 'building', 50, 50);
+      setYaw(d, b.id, snapYaw('building', q * Math.PI / 2 + 0.3));
+      const r = deserialize(serialize(d)).doc.elements[0];
+      return nearFile(snapYaw('building', r.yaw), r.yaw) && nearFile(r.yaw, q * Math.PI / 2);
+    }));
+
+  /* -------- plan shapes -------- */
+
+  let finite = true;
+  let sized = true;
+  const bad = [];
+  for (const yaw of [0, 0.7, Math.PI / 2, -2.4]) {
+    for (const el of map.elements) {
+      el.yaw = yaw;
+      const poly = planShapeOf(el);
+      const ok = poly.length === 4 && poly.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+      if (!ok) {
+        finite = false;
+        bad.push(`${el.type}@${yaw}`);
+      }
+      const kind = ELEMENTS[el.type].kind;
+      if ((kind === KIND.STRUCTURE || kind === KIND.ZONE) && !(shoelace(poly) > 0.01)) {
+        sized = false;
+        bad.push(`${el.type} area`);
+      }
+    }
+  }
+  check('every element on a map has a finite plan shape at any heading', finite, bad.join(', '));
+  check('and every asset and gap has an area to pick', sized, bad.join(', '));
+  {
+    const d = createTrack(undefined, 'full', 'freestyle');
+    const b = freestylePlace(d, 'building', 50, 50);
+    const at0 = planShapeOf(b);
+    b.yaw = deg(40);
+    const at40 = planShapeOf(b);
+    check('a building left at 40 degrees is drawn where it stands, at 0',
+      at0.every((p, i) => Math.abs(p.x - at40[i].x) < 1e-9 && Math.abs(p.y - at40[i].y) < 1e-9));
+    const g = freestylePlace(d, 'gap', 20, 20, { dims: { width: 6 } });
+    const gs = planShapeOf(g);
+    const spanY = Math.max(...gs.map((p) => p.y)) - Math.min(...gs.map((p) => p.y));
+    check('a named gap at heading 0 spans its width across the heading', Math.abs(spanY - 6) < 1e-9, `${spanY}`);
+  }
+
+  /* -------- warnings -------- */
+
+  const fresh = () => createTrack(undefined, 'full', 'freestyle');
+  {
+    const d = fresh();
+    freestylePlace(d, 'building', 40, 40);
+    freestylePlace(d, 'crane', 100, 40);
+    freestylePlace(d, 'tree', 40, 100);
+    freestylePlace(d, 'gap', 120, 120);
+    freestylePlace(d, 'gate', 80, 110);
+    freestylePlace(d, 'startPads', 100, 100);
+    const codes = codesOf(d);
+    check('a clean map raises nothing at all', codes.length === 0, codes.join(', '));
+    check('and the race warnings never appear on a map',
+      !collectWarnings(d, null).some((w) => !w.code.startsWith('fs-')));
+  }
+  {
+    const d = fresh();
+    freestylePlace(d, 'building', 40, 40);
+    check('no start pads: a note that says where the pilot starts', codesOf(d).includes('fs-no-start'));
+    freestylePlace(d, 'building', 8, 80);
+    check('and the start it names is checked too: a building on it is a warning',
+      codesOf(d).includes('fs-spawn'));
+  }
+  {
+    const d = fresh();
+    freestylePlace(d, 'building', 40, 40);
+    const pads = freestylePlace(d, 'startPads', 40, 40);
+    const w = freestyleReport(d).warnings.find((x) => x.code === 'fs-spawn');
+    check('start pads inside a building are a warning, pointing at the pads', w && w.elementId === pads.id);
+    /* The flats' front wall is 8 m out from its centre; its balconies stand
+     * out to 9.25 m, but from 2.7 m up, well over a craft on the ground. */
+    pads.position.x = 40 + 8 + 0.6;
+    check('and so are pads within a metre of its wall', codesOf(d).includes('fs-spawn'));
+    pads.position.x = 40 + 8 + 1.85;
+    check('but not pads under its balconies, 1.85 m off the wall and 2.6 m below them', !codesOf(d).includes('fs-spawn'));
+  }
+  {
+    const d = fresh();
+    freestylePlace(d, 'startPads', 140, 140);
+    freestylePlace(d, 'building', 40, 40);
+    const b2 = freestylePlace(d, 'building', 44, 40);
+    const w = freestyleReport(d).warnings.find((x) => x.code === 'fs-overlap');
+    check('two buildings built through each other overlap, naming the later one', w && w.elementId === b2.id);
+    const d2 = fresh();
+    freestylePlace(d2, 'startPads', 140, 140);
+    freestylePlace(d2, 'crane', 60, 60);
+    freestylePlace(d2, 'crane', 60, 60, { yaw: 1.2 });
+    check('two cranes through each other overlap too, capsule on capsule', codesOf(d2).includes('fs-overlap'));
+  }
+  {
+    /* A ledge is one box 0.9 m deep across its heading, so two of them
+     * y metres apart centre to centre leave y - 0.9 of air between. */
+    const slot = (gap) => {
+      const d = fresh();
+      freestylePlace(d, 'startPads', 140, 140);
+      freestylePlace(d, 'ledge', 40, 40);
+      freestylePlace(d, 'ledge', 40, 40 + 0.9 + gap);
+      return freestyleReport(d).warnings.find((x) => x.code === 'fs-slot');
+    };
+    const w = slot(0.8);
+    check('two ledges 0.8 m apart are a slot a five inch cannot fit', Boolean(w) && Math.abs(w.clearance - 0.8) < 1e-6,
+      w ? `${w.clearance}` : 'none');
+    check('but 1.6 m apart they are a line', !slot(1.6));
+    check('and 2 cm apart they are closed, which the gap rule allows', !slot(0.02));
+    check('a slot exactly at the gap rule is allowed', !slot(GAP_MIN + 1e-6));
+    const d = fresh();
+    freestylePlace(d, 'startPads', 140, 140);
+    freestylePlace(d, 'building', 40, 40);
+    freestylePlace(d, 'lamp', 40 + 9.25 + 0.6, 40);
+    check('a lamp post 0.6 m off a building\u2019s balconies is a slot, capsule against box', codesOf(d).includes('fs-slot'));
+  }
+  {
+    const d = fresh();
+    freestylePlace(d, 'startPads', 140, 140);
+    const gap = freestylePlace(d, 'gap', 40, 40, { name: 'LAMP GAP' });
+    freestylePlace(d, 'lamp', 40, 40);
+    const w = freestyleReport(d).warnings.find((x) => x.code === 'fs-gap-blocked');
+    check('a lamp post standing in a named gap blocks it, pointing at the gap', w && w.elementId === gap.id);
+    const d2 = fresh();
+    freestylePlace(d2, 'startPads', 140, 140);
+    freestylePlace(d2, 'gap', 40, 40, { yaw: Math.PI / 2 });
+    freestylePlace(d2, 'building', 40, 40 + 3 + 4.5);
+    check('a gap across a building’s front, clear of it, is not blocked', !codesOf(d2).includes('fs-gap-blocked'));
+    freestylePlace(d2, 'containers', 40, 40, { yaw: Math.PI / 2 });
+    check('but a container parked in it is', codesOf(d2).includes('fs-gap-blocked'));
+    const d3 = fresh();
+    freestylePlace(d3, 'startPads', 140, 140);
+    freestylePlace(d3, 'gap', 40, 40, { z: 4 });
+    freestylePlace(d3, 'car', 40, 40, { yaw: Math.PI / 2 });
+    check('a gap raised four metres over a parked car is clear', !codesOf(d3).includes('fs-gap-blocked'));
+  }
+  {
+    const d = fresh();
+    freestylePlace(d, 'startPads', 140, 140);
+    freestylePlace(d, 'building', -10, 40);
+    freestylePlace(d, 'building', 4, 100);
+    freestylePlace(d, 'gap', 170, 40);
+    const out = freestyleReport(d).warnings.filter((x) => x.code === 'fs-outside');
+    check('an asset outside the plot, one reaching past its edge and a gap off it all warn', out.length === 3,
+      out.map((x) => x.message).join(' | '));
+  }
+  {
+    const d = fresh();
+    freestylePlace(d, 'startPads', 5, 5);
+    const perCrane = partsOf(createElement(d, 'crane', { x: 0, y: 0, z: 0 })).filter((p) => p.solid).length;
+    const n = Math.floor(FREESTYLE_SOLIDS_MAX / perCrane) + 1;
+    const side = Math.ceil(Math.sqrt(n));
+    d.field.width = side * 80 + 40;
+    d.field.depth = side * 80 + 40;
+    for (let i = 0; i < n; i += 1) {
+      freestylePlace(d, 'crane', 30 + (i % side) * 80, 30 + Math.floor(i / side) * 80);
+    }
+    const r = freestyleReport(d);
+    check(`${n} cranes are ${r.solids} solids, over the budget, and it says so`,
+      r.solids > FREESTYLE_SOLIDS_MAX && r.warnings.some((x) => x.code === 'fs-solids'));
+    d.elements.pop();
+    const under = freestyleReport(d);
+    check('one crane fewer is under it and says nothing',
+      under.solids <= FREESTYLE_SOLIDS_MAX && !under.warnings.some((x) => x.code === 'fs-solids'), `${under.solids}`);
+  }
+  {
+    /* Three hundred assets, the size a real map might reach, in the time
+     * an edit can afford. Generous, because this is a shared machine. */
+    const d = fresh();
+    d.field.width = 600;
+    d.field.depth = 600;
+    for (let i = 0; i < 300; i += 1) {
+      freestylePlace(d, FREESTYLE_PALETTE_ORDER[i % FREESTYLE_PALETTE_ORDER.length], 20 + (i % 17) * 34, 20 + Math.floor(i / 17) * 32);
+    }
+    freestyleReport(d);
+    const t0 = performance.now();
+    freestyleReport(d);
+    const ms = performance.now() - t0;
+    check('a 300 element map is checked in well under a quarter second', ms < 250, `${ms.toFixed(1)} ms`);
+  }
+
+  /* -------- a race track is untouched -------- */
+
+  {
+    const race = createTrack('Plain race');
+    place(race, 'gate', 10, 10);
+    place(race, 'startPads', 5, 5);
+    const plain = toPlain(race);
+    check('a race track writes no mode key', !Object.prototype.hasOwnProperty.call(plain, 'mode')
+      && !serialize(race).includes('"mode"'));
+    check('and raises none of the map warnings', !collectWarnings(race, buildPath(race)).some((w) => w.code.startsWith('fs-')));
+    check('and a hand written race mode reads as a race track', docModeOf(deserialize(JSON.stringify({ ...plain, mode: 'race' })).doc) === 'race');
+  }
+}
+
+function shoelace(poly) {
+  let a = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+    a += (poly[j].x + poly[i].x) * (poly[j].y - poly[i].y);
+  }
+  return Math.abs(a) / 2;
+}
+
+/*
+ * schema.md's table of the freestyle assets is written by hand from
+ * src/props/types.js, so this is what keeps it honest: every asset has a
+ * row, and the row names its key, its heading rule and every dimension.
+ */
+function suiteSchemaProps() {
+  console.log('\nschema.md, the freestyle assets');
+  const here = dirname(fileURLToPath(import.meta.url));
+  let md = '';
+  try {
+    md = readFileSync(join(here, 'schema.md'), 'utf8');
+  } catch (e) {
+    check('schema.md is readable', false, e.message);
+    return;
+  }
+  const rows = new Map();
+  for (const line of md.split('\n')) {
+    const m = line.match(/^\| `([A-Za-z]+)` \|/);
+    if (m) {
+      rows.set(m[1], line);
+    }
+  }
+  const missing = [];
+  const wrong = [];
+  for (const [id, t] of Object.entries(PROP_TYPES)) {
+    const row = rows.get(id);
+    if (!row) {
+      missing.push(id);
+      continue;
+    }
+    const cells = row.split('|').map((c) => c.trim());
+    const keyCell = cells[2];
+    const okKey = t.key ? keyCell === t.key : (keyCell === '' || keyCell === 'none');
+    const okTurns = row.includes(t.turns);
+    const okDims = Object.keys(t.dims).every((k) => row.includes(`\`${k}\``));
+    const okStyles = !t.styles || t.styles.every((s) => row.includes(`\`${s}\``));
+    if (!okKey || !okTurns || !okDims || !okStyles) {
+      wrong.push(id);
+    }
+  }
+  check('every asset has a row in schema.md', missing.length === 0, missing.join(', '));
+  check('and each row names its key, its turns, its styles and every dimension', wrong.length === 0, wrong.join(', '));
+  for (const id of ['pole', 'horizontalPole']) {
+    check(`the element table lists ${id}`, rows.has(id));
+  }
+  check('the top of schema.md names the schema version this build writes',
+    md.includes(`Everything below describes \`schemaVersion: ${SCHEMA_VERSION}\``));
+}
+
 function suiteListing() {
   console.log('listing');
   const doc = createTrack('Ladder Loop');
@@ -3225,6 +3618,8 @@ function main() {
   suiteScoring();
   suiteWaypoint();
   suiteSchemaDoc();
+  suiteFreestyle();
+  suiteSchemaProps();
   suiteListing();
   suiteBranding();
   suiteFlagShape();

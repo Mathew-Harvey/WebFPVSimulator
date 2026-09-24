@@ -683,7 +683,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.seatCraftForDoc(fromUrl.document);
       ui.settings.map = 'custom';
       ui.renderMenu();
-    } else if (ui.settings.map !== 'city' && !hasFlyableTrack()) {
+    } else if (mapById(ui.settings.map).mode !== 'freestyle' && !hasFlyableTrack()) {
       const featured = await adoptMostFlownTrack(airframeById(ui.settings.airframe).trackClass);
       if (featured) {
         ui.settings.map = 'custom';
@@ -3685,7 +3685,10 @@ export async function boot({ loading, bootStart, mapId }) {
          * this used to leave everyone, which is the honest fallback.
          */
         const wantCls = airframeById(runAirframe).trackClass;
-        if (s.map !== 'city' && !hasFlyableTrack()) {
+        /* Any freestyle world, not only the town: a pilot seated on Your
+         * map has no race track to be missing, and adopting one here would
+         * move them off the map they chose. */
+        if (mapById(s.map).mode !== 'freestyle' && !hasFlyableTrack()) {
           adoptMostFlownTrack(wantCls).then((got) => {
             if (!got) {
               return;
@@ -4147,6 +4150,20 @@ export async function boot({ loading, bootStart, mapId }) {
 
   async function submitFreestyleRun() {
     const summary = score.summary();
+    /*
+     * A BUILT MAP HAS NO PLACE ON THE BOARD YET. The board files a run under
+     * its map's id, and Your map is a different place for every pilot who
+     * has built one, so a run posted from it would sit on one table beside
+     * runs flown somewhere else entirely. Refused here, first, so the pilot
+     * is not walked through the other refusals to reach this one.
+     */
+    if (view.id === 'built') {
+      notice = {
+        text: 'A map you built is different for every pilot, so its runs stay off the public board.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
     /*
      * FREE FLIGHT IS NOT A SCORE. It has no clock, so there is nothing for
      * a board to compare it against: a pilot could sit in the town for an

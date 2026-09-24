@@ -30,6 +30,7 @@
     "check:plant:selftest": "node scripts/plant-golden.js --selftest",
     "check:crash": "node scripts/crash-check.js",
     "check:world": "node scripts/world-check.js",
+    "check:props": "node scripts/props-check.js",
     "check:clip": "node src/trackbuilder/selftest.js",
     "check:orbit": "node scripts/orbit-check.js",
     "check:path": "node scripts/path-check.js",

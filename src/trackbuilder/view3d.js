@@ -30,6 +30,18 @@
  * with it. This mirrors what src/boot.js does for the simulator, for the same
  * reason.
  *
+ * A FREESTYLE MAP IS PREVIEWED IN THE GAME'S OWN ART, so the preview is the
+ * game. Its assets are drawn by the same src/props/kit.js the built map
+ * draws with, lit by the town's lights under the town's sky, and put through
+ * the town's ink and grade (src/maps/city/vendored/core/post.js). All of that
+ * is fetched the same lazy way as Three.js and later still: only when the 3D
+ * view opens on a freestyle document. A race or whoop document never loads a
+ * line of it, and its preview is the one described above, untouched. The
+ * freestyle half has its own scene with its own root, rotated by the same
+ * one conversion; the kit's assets are Y up in their own frame, and the one
+ * extra frame change that brings them into the document is written down
+ * where it happens, in buildAsset().
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -46,7 +58,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_POLE_R, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
 import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter, logosOf, logoForDecal, dressOrder,
@@ -90,6 +102,9 @@ const COL = {
   start: 0x7dffb4,
   path: 0xffd45c,
   sky: 0x0e1720,
+  /* A named gap's window: a deeper amber than the selection's, so a
+   * selected gap still reads as selected. */
+  gap: 0xffa726,
 };
 
 /* Filled in by loadThree() on the first press of the 3D button. Until then
@@ -108,6 +123,250 @@ async function loadThree() {
     });
   }
   return loading;
+}
+
+/*
+ * THE FREESTYLE HALF, filled in by loadFreestyle() the first time the 3D
+ * view opens on a map. It comes in two parts because they fail differently:
+ *
+ *   FS    src/props/catalog.js and solids.js: what each asset is, its parts,
+ *         and the heading it is placed at. Pure data and arithmetic, no
+ *         Three.js, so it loads wherever the builder itself loads.
+ *   CEL   the props kit, the town's palette, toon materials, sky, outline
+ *         and post pipeline. These reach three/addons through the page's
+ *         import map, so a page or a CDN that cannot serve those must still
+ *         leave a working preview: without CEL each asset is drawn as its
+ *         plain solids in the race preview's scene, and the author is told.
+ */
+let FS = null;
+let CEL = null;
+let celError = null;
+let fsLoading = null;
+
+async function loadFreestyle() {
+  if (FS) {
+    return FS;
+  }
+  if (!fsLoading) {
+    fsLoading = (async () => {
+      const [catalog, solids] = await Promise.all([
+        import('../props/catalog.js'),
+        import('../props/solids.js'),
+      ]);
+      try {
+        const [kit, palette, post, sky, toon, outline] = await Promise.all([
+          import('../props/kit.js'),
+          import('../maps/city/vendored/core/palette.js'),
+          import('../maps/city/vendored/core/post.js'),
+          import('../maps/city/vendored/core/sky.js'),
+          import('../maps/city/vendored/core/toon.js'),
+          import('../maps/city/vendored/core/outline.js'),
+        ]);
+        CEL = {
+          PropKit: kit.PropKit,
+          PAL: palette.PAL,
+          Pipeline: post.Pipeline,
+          buildSky: sky.buildSky,
+          buildDistantHills: sky.buildDistantHills,
+          cel: toon.cel,
+          setOutlineResolution: outline.setOutlineResolution,
+        };
+      } catch (e) {
+        celError = e.message ?? String(e);
+      }
+      FS = { assetOf: catalog.assetOf, partsOf: catalog.partsOf, placedYaw: solids.placedYaw };
+      return FS;
+    })().catch((e) => {
+      /* Forgotten, so the next time the view opens on a map it asks again
+       * rather than holding a failure from a network that has since come
+       * back. */
+      fsLoading = null;
+      throw e;
+    });
+  }
+  return fsLoading;
+}
+
+/*
+ * The sky dome's radius, the town's. The preview scales it (and the ink's
+ * idea of where the sky starts) with the orbit, because an author can pull
+ * the camera out to 600 m and a dome that stayed at 500 would swallow the
+ * far side of the plot.
+ */
+const SKY_R = 500;
+
+/*
+ * The ink, as the built map runs it. BuiltPipeline in src/maps/built/index.js
+ * replaces the town's second difference of linear depth with one of inverse
+ * depth, which is flat across a plane at any angle, so the paving stops
+ * drawing a line on itself where the camera grazes it. The preview replaces
+ * the same two lines on its own copy of the material, so the vendored file
+ * stays byte identical, and if a vendored update ever changes them the
+ * replace finds nothing and the town's ink runs unchanged.
+ */
+const INK_LINEAR = `      float sx = ( dl + dr - 2.0 * dc ) / dc;
+      float sy = ( du + dd - 2.0 * dc ) / dc;`;
+const INK_INVERSE = `      float sx = 2.0 - dc / dl - dc / dr;
+      float sy = 2.0 - dc / du - dc / dd;`;
+
+/*
+ * The town's pipeline, with the two things it does to a shared renderer
+ * undone. Its setSize drops the pixel ratio to one and writes the canvas's
+ * CSS size in pixels, which on this page would pin the canvas at the size it
+ * had when the map opened and leave the race preview at the wrong ratio
+ * after it. Made on first use because the class it extends arrives with CEL.
+ */
+let PreviewPipeline = null;
+function previewPipelineClass() {
+  if (PreviewPipeline) {
+    return PreviewPipeline;
+  }
+  PreviewPipeline = class extends CEL.Pipeline {
+    constructor(renderer, scene, camera, opts) {
+      super(renderer, scene, camera, opts);
+      const frag = this.ink.mat.fragmentShader;
+      if (frag.includes(INK_LINEAR)) {
+        this.ink.mat.fragmentShader = frag.replace(INK_LINEAR, INK_INVERSE);
+        this.ink.mat.needsUpdate = true;
+      }
+    }
+
+    setSize(w, h) {
+      const ratio = this.renderer.getPixelRatio();
+      super.setSize(w, h);
+      this.renderer.setPixelRatio(ratio);
+      this.renderer.setSize(w, h, false);
+      this.renderer.domElement.style.width = '';
+      this.renderer.domElement.style.height = '';
+      /* The town's cars carry inverted hull contours whose width is in
+       * pixels of the buffer they are drawn into. */
+      CEL.setOutlineResolution(this.size.x, this.size.y);
+    }
+  };
+  return PreviewPipeline;
+}
+
+/*
+ * The grid's spacing on the ground. A metre grid over a 60 by 40 field is a
+ * hundred lines, which is nothing, but a 1 m grid over a 500 m field would
+ * be a thousand, so it coarsens the same way the 2D grid does.
+ */
+function gridStep(field) {
+  let s = field.gridSize;
+  while ((field.width / s) + (field.depth / s) > 260) {
+    s *= 5;
+  }
+  return s;
+}
+
+/*
+ * Everything an asset's drawing depends on, and nothing it does not. Where
+ * it stands and which way it faces belong to its holder, so dragging or
+ * turning an element reuses its drawing and the rest of the map is not
+ * rebuilt at all. The id is in the key so a drawing is never shared between
+ * two elements, which is what lets its meshes carry one element's id for
+ * picking. The height is in it for the one layout that reads it:
+ * hpoleLayout in src/props/course.js reaches its legs from the bar down to
+ * the ground.
+ */
+function assetKey(el) {
+  return [
+    el.id, el.type, el.style ?? '', JSON.stringify(el.dims), el.pitch ?? 0, el.flagSide ?? '',
+    el.unbuilt ? 'unbuilt' : '', el.type === 'horizontalPole' ? el.position.z : '',
+  ].join('|');
+}
+
+/*
+ * THE PICK PROXY. A crane's mast, a lattice tower and a gate are mostly
+ * air, and each member is a few centimetres thick, which at the map's
+ * opening orbit is under a pixel: clicked where it plainly is, the ray went
+ * between the members and the drag orbited the camera instead. So every
+ * thin capsule an asset's layout makes is also put, fattened to PICK_R, into
+ * one mesh that is never drawn and is only there to be hit. Only thin
+ * capsules: a wall or a slab is already as large as it looks, and a gate's
+ * opening stays open, so the gate behind it can still be picked through it.
+ */
+const PICK_R = 0.3;
+let pickUnit = null;
+let pickMaterial = null;
+
+function pickProxy(parts) {
+  if (!pickUnit) {
+    pickUnit = new THREE.CylinderGeometry(1, 1, 1, 6, 1).toNonIndexed();
+    /* Never drawn, since the mesh is invisible; both sides, so a ray that
+     * starts inside a fattened member still finds it. */
+    pickMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+  }
+  const unit = pickUnit.getAttribute('position');
+  const out = [];
+  const up = new THREE.Vector3(0, 1, 0);
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const dir = new THREE.Vector3();
+  const mid = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  const m = new THREE.Matrix4();
+  const v = new THREE.Vector3();
+  for (const p of parts) {
+    if (p.t !== 'cap' || !(p.draw || p.solid) || p.r >= PICK_R) {
+      continue;
+    }
+    a.fromArray(p.a);
+    b.fromArray(p.b);
+    const len = a.distanceTo(b);
+    if (len < 1e-6) {
+      continue;
+    }
+    q.setFromUnitVectors(up, dir.subVectors(b, a).divideScalar(len));
+    m.compose(mid.addVectors(a, b).multiplyScalar(0.5), q, size.set(PICK_R, len, PICK_R));
+    for (let i = 0; i < unit.count; i += 1) {
+      v.fromBufferAttribute(unit, i).applyMatrix4(m);
+      out.push(v.x, v.y, v.z);
+    }
+  }
+  if (!out.length) {
+    return null;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(out, 3));
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, pickMaterial);
+  mesh.visible = false;
+  mesh.name = 'pickProxy';
+  return mesh;
+}
+
+/*
+ * THE SELECTION, round a whole asset: an amber box a little larger than
+ * what it drew, tinted faintly, its edges drawn solid where they are seen
+ * and faint where something stands in front of them. A tint on the asset
+ * itself is not possible, because its materials are shared with every other
+ * asset of the same colour, and a box also shows how much of the plot a
+ * selected building takes. Nothing here writes depth, so the ink pass draws
+ * no line round the box and the tint never hides what it is round.
+ */
+function selectionBox(box) {
+  const b = box.isEmpty()
+    ? new THREE.Box3(new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 1, 0.5))
+    : box;
+  const size = b.getSize(new THREE.Vector3()).addScalar(0.4);
+  const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
+  const edges = new THREE.EdgesGeometry(geo);
+  const g = new THREE.Group();
+  b.getCenter(g.position);
+  const tint = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: COL.frameSel, transparent: true, opacity: 0.16, depthWrite: false, fog: false,
+  }));
+  const seen = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
+    color: COL.frameSel, depthWrite: false, fog: false,
+  }));
+  const hidden = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
+    color: COL.frameSel, transparent: true, opacity: 0.4, depthTest: false, depthWrite: false, fog: false,
+  }));
+  hidden.renderOrder = 9;
+  g.add(tint, seen, hidden);
+  return g;
 }
 
 /*
@@ -242,7 +501,20 @@ export class View3D {
     this.orbit = { target: { x: 0, y: 0, z: 0 }, radius: 60, theta: -Math.PI / 2.4, phi: 1.05 };
     this.drag = null;
     this.dirty = true;
+    /* The freestyle half: its scene, once CEL has arrived, and each asset's
+     * drawing, kept across rebuilds by assetKey(). */
+    this.fs = null;
+    this.assets = new Map();
+    this.builtFreestyle = false;
+    this.fsPending = null;
+    this.fsFailed = null;
+    this.viewW = 1;
+    this.viewH = 1;
     this.bind();
+  }
+
+  isFreestyle() {
+    return docModeOf(this.host.doc) === 'freestyle';
   }
 
   /*
@@ -423,11 +695,45 @@ export class View3D {
         return false;
       }
     }
+    /* A map's kit is fetched before the first frame so that frame is the
+     * finished one. A failure is reported by fetchFreestyle and does not
+     * close the view, and it is tried again each time the view is opened;
+     * a map that arrives while the view is already open is fetched from
+     * draw(). */
+    if (this.isFreestyle()) {
+      this.fsFailed = null;
+      await this.fetchFreestyle();
+    }
     this.ensure();
     this.resize();
     this.dirty = true;
     this.host.requestDraw();
     return true;
+  }
+
+  /*
+   * Fetch the freestyle half once, and say so if it could not all come. The
+   * promise never rejects: the preview carries on with what arrived.
+   */
+  fetchFreestyle() {
+    if (FS || this.fsFailed) {
+      return Promise.resolve();
+    }
+    if (!this.fsPending) {
+      this.fsPending = loadFreestyle().then(() => {
+        if (celError) {
+          this.host.toast?.(`The cel kit did not load (${celError}), so the 3D preview draws each asset as its plain solids. The map is unaffected.`);
+        }
+      }, (e) => {
+        this.fsFailed = e.message ?? String(e);
+        this.host.toast?.(`The 3D preview could not load the freestyle assets (${this.fsFailed}), so it shows the plot without them. The 2D view is unaffected.`);
+      }).then(() => {
+        this.fsPending = null;
+        this.dirty = true;
+        this.host.requestDraw();
+      });
+    }
+    return this.fsPending;
   }
 
   resize() {
@@ -437,6 +743,10 @@ export class View3D {
     const rect = this.canvas.getBoundingClientRect();
     const w = Math.max(1, Math.round(rect.width));
     const h = Math.max(1, Math.round(rect.height));
+    /* Kept for the freestyle pipeline, which sizes its targets on the next
+     * frame it draws rather than here, so a race preview never touches it. */
+    this.viewW = w;
+    this.viewH = h;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -620,6 +930,12 @@ export class View3D {
     if (!this.content) {
       return;
     }
+    /* A map's asset drawings outlive the rebuild: they are taken out before
+     * the walk below frees everything it finds, and sweepAssets frees them
+     * when they are no longer wanted. */
+    for (const art of this.assets.values()) {
+      art.group?.removeFromParent();
+    }
     this.content.traverse((o) => {
       if (o.geometry) {
         o.geometry.dispose();
@@ -643,23 +959,26 @@ export class View3D {
         }
       }
     });
-    this.root.remove(this.content);
+    /* From whichever root holds it: a map's content hangs in the freestyle
+     * scene. */
+    this.content.removeFromParent();
     this.content = null;
   }
 
   build() {
     this.disposeContent();
+    this.builtFreestyle = this.isFreestyle();
+    if (this.builtFreestyle) {
+      this.buildFreestyle();
+      return;
+    }
+    /* A race document holds no assets, so any a map left behind go now. */
+    this.sweepAssets(null);
     const doc = this.host.doc;
     const g = new THREE.Group();
     this.pickables = [];
 
-    /* Ground and grid, in document coordinates: the plane spans x and y. */
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(doc.field.width, doc.field.depth),
-      new THREE.MeshLambertMaterial({ color: COL.ground }),
-    );
-    ground.position.set(doc.field.width / 2, doc.field.depth / 2, -0.01);
-    g.add(ground);
+    g.add(this.fieldGround(doc));
     g.add(this.gridLines(doc));
 
     const numbers = sequenceNumbers(doc);
@@ -689,16 +1008,20 @@ export class View3D {
     this.root.add(g);
   }
 
+  /* The race preview's ground, in document coordinates: the plane spans x
+   * and y. */
+  fieldGround(doc) {
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(doc.field.width, doc.field.depth),
+      new THREE.MeshLambertMaterial({ color: COL.ground }),
+    );
+    ground.position.set(doc.field.width / 2, doc.field.depth / 2, -0.01);
+    return ground;
+  }
+
   gridLines(doc) {
     const pts = [];
-    const step = doc.field.gridSize;
-    /* A metre grid over a 60 by 40 field is a hundred lines, which is
-     * nothing, but a 1 m grid over a 500 m field would be a thousand, so it
-     * coarsens the same way the 2D grid does. */
-    let s = step;
-    while ((doc.field.width / s) + (doc.field.depth / s) > 260) {
-      s *= 5;
-    }
+    const s = gridStep(doc.field);
     for (let x = 0; x <= doc.field.width + 1e-6; x += s) {
       pts.push(x, 0, 0, x, doc.field.depth, 0);
     }
@@ -1358,6 +1681,520 @@ export class View3D {
     this.pickables.push(mesh);
   }
 
+  /* ---------------- freestyle ---------------- */
+
+  /*
+   * The freestyle scene, made once CEL has arrived: the town's four lights,
+   * its sky and distant hills, its fog, and its post pipeline, set up the
+   * way src/props/gallery.js and the built map set them up. Its root takes
+   * the same one conversion as the race scene's, so everything under it is
+   * in document coordinates like everything else in this file.
+   */
+  ensureFreestyle() {
+    if (this.fs || !CEL || !this.renderer) {
+      return this.fs;
+    }
+    const { PAL } = CEL;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(PAL.fog);
+    scene.fog = new THREE.Fog(PAL.fog, 60, 420);
+    /* THE ONE CONVERSION, again. Document space is Z up; Three.js is Y up. */
+    const root = new THREE.Group();
+    root.rotation.x = -Math.PI / 2;
+    scene.add(root);
+
+    const sun = new THREE.DirectionalLight(PAL.sun, 2.25);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.035;
+    const fill = new THREE.DirectionalLight(PAL.fill, 1.08);
+    const bounce = new THREE.DirectionalLight(0xd8cbe8, 0.34);
+    scene.add(sun, sun.target, fill, fill.target, bounce, bounce.target);
+    scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.12));
+    const sky = CEL.buildSky(scene, SKY_R);
+    const hills = CEL.buildDistantHills(scene);
+
+    const Pipeline = previewPipelineClass();
+    this.fs = {
+      scene,
+      root,
+      sun,
+      fill,
+      bounce,
+      sky,
+      hills,
+      pipeline: new Pipeline(this.renderer, scene, this.camera, { pixelBudget: 2.6e6 }),
+      /* One kit for every asset: finish() hands its batches over and
+       * starts empty again. */
+      kit: new CEL.PropKit(),
+      ground: null,
+      groundKey: '',
+      sizedFor: '',
+      halfDiag: 1,
+    };
+    return this.fs;
+  }
+
+  /*
+   * The plot, the land round it, the grid, and the lights seated on the
+   * plot. Rebuilt only when the field changes size, since none of it
+   * depends on anything else in the document.
+   *
+   * The plot is the town's paving colour, concreteMid, which is what the
+   * built map's yard is painted round, and the land past it is the town's
+   * terrain colour, the one the gallery stands on. Flat colour rather than
+   * the yard's painted slabs: the grid is what gives the preview its scale,
+   * and slab joints under it would be a second grid that does not line up.
+   */
+  seatFreestyleGround(doc) {
+    const fs = this.fs;
+    const f = doc.field;
+    const step = gridStep(f);
+    const key = `${f.width}|${f.depth}|${step}`;
+    if (fs.groundKey === key) {
+      return;
+    }
+    if (fs.ground) {
+      fs.ground.traverse((o) => {
+        o.geometry?.dispose();
+        /* The cel materials are the toon kit's cache, shared with the
+         * assets; only the line materials are this view's own. */
+        if (o.isLine) {
+          o.material.dispose();
+        }
+      });
+      fs.ground.removeFromParent();
+    }
+    const W = f.width;
+    const D = f.depth;
+    const g = new THREE.Group();
+
+    const plot = new THREE.Mesh(
+      new THREE.PlaneGeometry(W, D),
+      CEL.cel({ color: CEL.PAL.concreteMid, bands: 3, tint: 0x6f6790 }),
+    );
+    /* A centimetre down, where the race preview's ground is, because the
+     * ground paint buildGroundLogo draws for both sits 4 to 8 mm up on the
+     * assumption that the ground is there. */
+    plot.position.set(W / 2, D / 2, -0.01);
+    plot.receiveShadow = true;
+    g.add(plot);
+
+    /* Twelve centimetres under the plot, where the built map's kerb would
+     * be, so the two planes cannot fight for the depth buffer at 300 m. Six
+     * kilometres across, so its edge is always past the fog's. */
+    const LAND = 6000;
+    const land = new THREE.Mesh(
+      new THREE.PlaneGeometry(LAND, LAND),
+      CEL.cel({ color: 0xc4c4b6, bands: 3, tint: 0x7a7396 }),
+    );
+    land.position.set(W / 2, D / 2, -0.12);
+    land.receiveShadow = true;
+    g.add(land);
+
+    /* The grid, faint, in the town's ink, and the plot's edge stronger.
+     * Neither writes depth, so the ink pass draws no line along them. */
+    const pts = [];
+    for (let x = 0; x <= W + 1e-6; x += step) {
+      pts.push(x, 0, 0.03, x, D, 0.03);
+    }
+    for (let y = 0; y <= D + 1e-6; y += step) {
+      pts.push(0, y, 0.03, W, y, 0.03);
+    }
+    const gridGeo = new THREE.BufferGeometry();
+    gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    g.add(new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({
+      color: CEL.PAL.ink, transparent: true, opacity: 0.14, depthWrite: false,
+    })));
+    const edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+      0, 0, 0.04, W, 0, 0.04, W, D, 0.04, 0, D, 0.04,
+    ], 3));
+    g.add(new THREE.LineLoop(edgeGeo, new THREE.LineBasicMaterial({
+      color: CEL.PAL.ink, transparent: true, opacity: 0.55, depthWrite: false,
+    })));
+    fs.root.add(g);
+    fs.ground = g;
+    fs.groundKey = key;
+
+    /*
+     * The lights, seated on the plot's middle in the scene's own Y up
+     * frame (document (W/2, D/2, 0) is scene (W/2, 0, -D/2)), from the
+     * town's directions. The sun is pushed back along its own direction and
+     * its shadow box sized to the plot, because the town's box is sized for
+     * a walker who sees 23 m of ground and this one has to hold a 160 m
+     * plot from above.
+     */
+    const centre = new THREE.Vector3(W / 2, 0, -D / 2);
+    const halfDiag = 0.5 * Math.hypot(W, D);
+    fs.halfDiag = halfDiag;
+    const seat = (light, offset) => {
+      light.target.position.copy(centre);
+      light.position.copy(centre).add(offset);
+      light.target.updateMatrixWorld();
+    };
+    const SUN_BACK = 260;
+    seat(fs.sun, new THREE.Vector3(-52, 62, 56).normalize().multiplyScalar(SUN_BACK));
+    seat(fs.fill, new THREE.Vector3(48, 26, -44));
+    seat(fs.bounce, new THREE.Vector3(10, -18, 40));
+    const half = halfDiag + 12;
+    Object.assign(fs.sun.shadow.camera, {
+      left: -half, right: half, top: half, bottom: -half, near: 1, far: SUN_BACK + halfDiag + 120,
+    });
+    fs.sun.shadow.camera.updateProjectionMatrix();
+    fs.hills.position.copy(centre);
+  }
+
+  /*
+   * Build a freestyle map. The race preview's banner kit, flying order
+   * numbers, racing line and guide paint are not drawn: a map has none of
+   * them. Without CEL the map is drawn into the race preview's scene, on its
+   * ground, with each asset as its plain solids.
+   */
+  buildFreestyle() {
+    const doc = this.host.doc;
+    const fs = this.ensureFreestyle();
+    const g = new THREE.Group();
+    this.pickables = [];
+    if (fs) {
+      this.seatFreestyleGround(doc);
+    } else {
+      g.add(this.fieldGround(doc));
+      g.add(this.gridLines(doc));
+    }
+    const used = new Set();
+    for (const el of doc.elements) {
+      const node = this.buildFreestyleElement(el, used);
+      if (node) {
+        g.add(node);
+      }
+    }
+    if (fs) {
+      /* Labels sit over the drawing and are not part of it: no depth, so
+       * the ink does not box them, and no fog, so a far one still reads. */
+      g.traverse((o) => {
+        if (o.isSprite) {
+          o.material.depthWrite = false;
+          o.material.fog = false;
+          o.renderOrder = 10;
+        }
+      });
+    }
+    this.sweepAssets(used);
+    this.content = g;
+    (fs ? fs.root : this.root).add(g);
+  }
+
+  buildFreestyleElement(el, used) {
+    const def = ELEMENTS[el.type];
+    if (!def) {
+      return null;
+    }
+    const selected = this.host.selection.has(el.id);
+    if (def.kind === KIND.ZONE) {
+      return this.buildGap(el, selected);
+    }
+    const asset = FS ? FS.assetOf(el) : null;
+    if (!asset && def.kind === KIND.STRUCTURE) {
+      /* The asset library did not load, and there is nothing honest to
+       * draw a building as without it. */
+      return null;
+    }
+    if (!asset || def.kind === KIND.DECAL) {
+      /* Paint on the ground, a label, a waypoint: drawn as the race preview
+       * draws them, with no flying order to number them by. */
+      return this.buildElement(el, []);
+    }
+    return this.buildAsset(el, def, asset, selected, used);
+  }
+
+  /*
+   * One asset, drawn by the props kit, in a holder at the element's place.
+   *
+   * THE ONE EXTRA FRAME CHANGE IN THE BUILDER. The kit draws every asset in
+   * its own Y up frame (src/props: +x its heading, +y up, +z its right),
+   * and this file is in the document's Z up frame. So the holder stands at
+   * the element's document position, turned about document z by the
+   * heading the asset is placed at, and inside it a child turned +90
+   * degrees about x takes local up onto document z and local +z onto
+   * document -y. Composed with the root's -90 about x the two cancel, and
+   * the asset reaches the scene exactly as src/maps/built/place.js puts it
+   * in the world: turned about +y by the same heading, from the same
+   * placedYaw, so a building the document holds at 40 degrees is drawn
+   * here at the quarter turn it will be flown at.
+   */
+  buildAsset(el, def, asset, selected, used) {
+    const holder = new THREE.Group();
+    holder.position.set(el.position.x, el.position.y, el.position.z);
+    holder.rotation.z = FS.placedYaw(def.turns ?? asset.turns ?? 'any', el.yaw);
+    const local = new THREE.Group();
+    local.rotation.x = Math.PI / 2;
+    holder.add(local);
+    const art = this.fs ? this.assetArt(el, used) : null;
+    if (art) {
+      local.add(art.group);
+      for (const m of art.meshes) {
+        this.register(m, el);
+      }
+      if (selected) {
+        local.add(selectionBox(art.box));
+      }
+    } else {
+      local.add(this.plainAsset(el, selected));
+    }
+    if (def.kind === KIND.START) {
+      /* Which way the pilot will face, along the holder's heading. */
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.05, 3, 0, 0.05], 3));
+      holder.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: COL.start })));
+    }
+    return holder;
+  }
+
+  /*
+   * An asset's drawing, from the cache or made now. Each element gets a kit
+   * pass of its own, kit.begin(0, 0, 0, 0) at the local origin, so its
+   * batches hold nothing but it: that is what lets the drawing be kept while
+   * its neighbours change, and what lets every mesh in it carry its id.
+   */
+  assetArt(el, used) {
+    const key = assetKey(el);
+    used.add(key);
+    const cached = this.assets.get(key);
+    if (cached) {
+      return cached.group ? cached : null;
+    }
+    const kit = this.fs.kit;
+    let group;
+    let parts;
+    try {
+      kit.begin(0, 0, 0, 0);
+      parts = kit.element(el);
+      group = kit.finish();
+    } catch (e) {
+      /* One asset whose paint throws must not take the preview down. It is
+       * drawn as its solids, and remembered as broken so an edit elsewhere
+       * does not throw it again. A kit that threw part way through may hold
+       * half an element's batches, so it is replaced. */
+      console.error(`3D preview: the ${el.type} asset could not be drawn`, e);
+      this.fs.kit = new CEL.PropKit();
+      this.assets.set(key, { group: null });
+      return null;
+    }
+    const meshes = [];
+    const box = new THREE.Box3();
+    group.traverse((o) => {
+      if (o.isMesh) {
+        meshes.push(o);
+        if (!o.geometry.boundingBox) {
+          o.geometry.computeBoundingBox();
+        }
+        box.union(o.geometry.boundingBox);
+      }
+    });
+    /* After the bounds, so the selection box is round what is drawn. */
+    const proxy = pickProxy(parts);
+    if (proxy) {
+      group.add(proxy);
+      meshes.push(proxy);
+    }
+    const art = { group, meshes, box };
+    this.assets.set(key, art);
+    return art;
+  }
+
+  /*
+   * Free every kept drawing not in `used` (all of them for null). The kit
+   * baked each batch into a geometry of its own, so the geometry is this
+   * view's to free; the materials are the kit's and the toon kit's, shared
+   * by every asset, and are never freed here.
+   */
+  sweepAssets(used) {
+    for (const [key, art] of this.assets) {
+      if (used && used.has(key)) {
+        continue;
+      }
+      if (art.group) {
+        art.group.removeFromParent();
+        for (const m of art.meshes) {
+          m.geometry.dispose();
+        }
+      }
+      this.assets.delete(key);
+    }
+  }
+
+  /*
+   * An asset as its plain parts, in the kit's Y up local frame: every box
+   * and capsule its layout makes, drawn or solid, in the race preview's
+   * frame colour. What the preview shows when the cel kit could not load,
+   * or when one asset's paint threw.
+   */
+  plainAsset(el, selected) {
+    const g = new THREE.Group();
+    let parts;
+    try {
+      parts = FS.partsOf(el);
+    } catch (e) {
+      console.error(`3D preview: the ${el.type} asset has no layout`, e);
+      return g;
+    }
+    const mat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.frame });
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const p of parts) {
+      if (!p.draw && !p.solid) {
+        continue;
+      }
+      let mesh;
+      if (p.t === 'box') {
+        mesh = new THREE.Mesh(new THREE.BoxGeometry(
+          Math.max(0.01, p.hi[0] - p.lo[0]),
+          Math.max(0.01, p.hi[1] - p.lo[1]),
+          Math.max(0.01, p.hi[2] - p.lo[2]),
+        ), mat);
+        mesh.position.set((p.lo[0] + p.hi[0]) / 2, (p.lo[1] + p.hi[1]) / 2, (p.lo[2] + p.hi[2]) / 2);
+      } else {
+        const a = new THREE.Vector3(p.a[0], p.a[1], p.a[2]);
+        const b = new THREE.Vector3(p.b[0], p.b[1], p.b[2]);
+        const len = a.distanceTo(b);
+        mesh = new THREE.Mesh(new THREE.CylinderGeometry(p.r, p.r, Math.max(0.01, len), 8), mat);
+        mesh.position.copy(a).add(b).multiplyScalar(0.5);
+        if (len > 1e-6) {
+          mesh.quaternion.setFromUnitVectors(up, b.sub(a).divideScalar(len));
+        }
+      }
+      this.register(mesh, el);
+      g.add(mesh);
+    }
+    return g;
+  }
+
+  /*
+   * A named gap: a translucent amber window with its name and its points on
+   * a label over it. In the holder's frame x is the gap's heading, the way
+   * through it, and the window spans y across that and z up from the
+   * element's base, which is how schema.md defines it and how
+   * src/maps/built/place.js hands it to the scorer. Nothing here is drawn in
+   * the sim: this is the author's view of a scoring zone.
+   */
+  buildGap(el, selected) {
+    const w = Math.max(0.2, el.dims.width);
+    const h = Math.max(0.2, el.dims.height);
+    const holder = new THREE.Group();
+    holder.position.set(el.position.x, el.position.y, el.position.z);
+    holder.rotation.z = FS ? FS.placedYaw('any', el.yaw) : (el.yaw || 0);
+
+    const pane = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h).rotateY(Math.PI / 2),
+      new THREE.MeshBasicMaterial({
+        color: COL.gap, transparent: true, opacity: selected ? 0.24 : 0.12,
+        side: THREE.DoubleSide, depthWrite: false,
+      }),
+    );
+    pane.position.z = h / 2;
+    this.register(pane, el);
+    holder.add(pane);
+
+    /* The frame lies inside the window's edge, so its outside is the edge
+     * the scorer uses and nothing drawn claims air the gap does not. */
+    const t = clamp(Math.min(w, h) * 0.03, 0.05, 0.14);
+    const frameMat = new THREE.MeshBasicMaterial({
+      color: selected ? COL.frameSel : COL.gap, transparent: true, opacity: selected ? 0.95 : 0.62, depthWrite: false,
+    });
+    const bars = [
+      [t, w, t, 0, t / 2],
+      [t, w, t, 0, h - t / 2],
+      [t, t, h - 2 * t, -(w - t) / 2, h / 2],
+      [t, t, h - 2 * t, (w - t) / 2, h / 2],
+    ];
+    for (const [bx, by, bz, y, z] of bars) {
+      if (bz <= 0) {
+        continue;
+      }
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(bx, by, bz), frameMat);
+      bar.position.set(0, y, z);
+      this.register(bar, el);
+      holder.add(bar);
+    }
+    if (selected) {
+      const loop = new THREE.BufferGeometry();
+      loop.setAttribute('position', new THREE.Float32BufferAttribute([
+        0, -w / 2, 0, 0, w / 2, 0, 0, w / 2, h, 0, -w / 2, h,
+      ], 3));
+      holder.add(new THREE.LineLoop(loop, new THREE.LineBasicMaterial({ color: COL.frameSel, depthWrite: false })));
+    }
+
+    /*
+     * The name and the points, the same size on screen at any distance: a
+     * gap is a note to the author rather than a thing in the world, and at
+     * the map's opening orbit, 180 m out, a label a metre tall is three
+     * pixels. Anchored by its bottom edge, so it sits on the window's top
+     * however large it draws.
+     */
+    const label = textSprite(`${el.name || 'GAP'}  ${el.points ?? ''}`.trim(), 1, '#1d1406', selected ? '#ffd45c' : '#ffb347');
+    label.material.sizeAttenuation = false;
+    label.scale.multiplyScalar(0.042);
+    label.center.set(0.5, 0);
+    label.position.z = h + 0.25;
+    this.register(label, el);
+    holder.add(label);
+    return holder;
+  }
+
+  /*
+   * The freestyle frame. The sky and the hills follow the orbit out, and so
+   * do the fog and the distance the ink fades over, because the town sets
+   * them for a pilot among the buildings and the preview's camera is 180 m
+   * off a 160 m plot: at the town's distances the whole map is past the
+   * fade, so it would be drawn with no ink at all, which is not the game.
+   */
+  renderFreestyle() {
+    const fs = this.fs;
+    const sized = `${this.viewW}x${this.viewH}`;
+    if (fs.sizedFor !== sized) {
+      fs.pipeline.setSize(this.viewW, this.viewH);
+      fs.sizedFor = sized;
+    }
+    this.seatCamera(0.25);
+    const r = this.orbit.radius;
+    const reach = r + fs.halfDiag;
+    /*
+     * The fog has to be complete before the dome, because the dome writes
+     * depth and hides whatever land lies past it: with the fog still thin
+     * there, the land stopped at a hard curve 500 m out. So the dome is
+     * sized to hold both the plot and the fog's far edge, and stays inside
+     * the camera's 2000 m far plane.
+     */
+    const fogFar = 2.4 * r + 300;
+    const k = clamp(Math.max(reach + 60, fogFar / 0.95) / SKY_R, 1, 3.5);
+    const eye = this.camera.position;
+    fs.sky.dome.position.copy(eye);
+    fs.sky.dome.scale.setScalar(k);
+    fs.sky.clouds.position.copy(eye);
+    fs.sky.clouds.scale.setScalar(k);
+    fs.hills.scale.setScalar(clamp((reach + 40) / 250, 1, 6));
+    fs.scene.fog.near = 0.6 * r + 40;
+    fs.scene.fog.far = Math.min(fogFar, 0.95 * SKY_R * k);
+    const ink = fs.pipeline.ink.mat.uniforms;
+    ink.uNear.value = this.camera.near;
+    ink.uFar.value = this.camera.far;
+    ink.uFadeStart.value = Math.max(40, r + 0.5 * fs.halfDiag);
+    ink.uFadeEnd.value = Math.max(98, 2 * reach);
+    ink.uSkyDepth.value = 0.75 * SKY_R * k;
+    this.renderer.shadowMap.enabled = true;
+    fs.pipeline.render();
+  }
+
+  /* The near plane each scene is drawn with: the race preview's own 0.1 m,
+   * and the town's 0.25 m for a map, whose ink reads the depth buffer. */
+  seatCamera(near) {
+    if (this.camera.near !== near) {
+      this.camera.near = near;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
   /* ---------------- frame ---------------- */
 
   draw() {
@@ -1365,16 +2202,37 @@ export class View3D {
       return;
     }
     this.ensure();
+    const freestyle = this.isFreestyle();
+    if (freestyle && !FS && !this.fsFailed) {
+      /* A map opened while the view was open. The first frame is drawn
+       * when its kit has arrived. */
+      this.fetchFreestyle();
+      return;
+    }
+    if (freestyle !== this.builtFreestyle) {
+      this.dirty = true;
+    }
     if (this.dirty) {
       this.build();
       this.dirty = false;
     }
     this.applyCamera();
+    if (freestyle && this.fs) {
+      this.renderFreestyle();
+      return;
+    }
+    this.seatCamera(0.1);
+    this.renderer.shadowMap.enabled = false;
     this.renderer.render(this.scene, this.camera);
   }
 
   dispose() {
     this.disposeContent();
+    this.sweepAssets(null);
+    if (this.fs) {
+      this.fs.pipeline.dispose();
+      this.fs = null;
+    }
     if (this.renderer) {
       this.renderer.dispose();
       this.renderer = null;

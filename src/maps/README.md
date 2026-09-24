@@ -14,8 +14,28 @@ vendored files at boot for a player who only ever flies the race field.
 There used to be three more freestyle worlds, each with its own copy of the
 city's cel kit so that choosing one fetched nothing under `src/maps/city`.
 Industrial bando, Municipal baths and Bardwell's yard were removed on
-2026-08-30 on the owner's ask: Freestyle offers the town and nothing else.
+2026-08-30 on the owner's ask: Freestyle offered the town and nothing else.
 They are in the history at 974f4ce.
+
+On 2026-09-24 the owner asked for one more (FREESTYLE-MAPS-PLAN.md, section
+6), so Freestyle offers two: the town, and **Your map**, `built/`. That is a
+freestyle map made in the track builder, or Hibari Yard, the starter
+(`built/starter.js`), until the pilot has made one. It draws through the
+shared asset library in `src/props`, which uses the town's cel kit where it
+stands, so choosing it fetches twelve files under `src/maps/city/vendored`
+(the core kit, and the town's vehicle and vending machine builders) and
+none of the town itself.
+
+### `built/`, in one paragraph
+
+`place.js` places a freestyle document in the world and says what is
+solid, pure, so the builder's warnings and the map read one answer.
+`index.js` draws what it placed in the town's look (fog, four lights, the
+sky and ridge lines, the post chain), paints a yard under it, wires the
+poles and pylons, and puts exactly the placed solids in the Colliders the
+shell uploads. The ground is flat at zero. A named gap draws nothing. The
+ink pass is the town's with one change, taken on inverse depth so a flat
+yard is not inked along the horizon; the reason is at `BuiltPipeline`.
 
 ## The contract a map module must satisfy
 
@@ -24,13 +44,14 @@ They are in the history at 974f4ce.
 `shell` is `{ renderer, camera, canvas, pixelRatio, quad, discs, resize }`.
 `onProgress(fraction)` is optional and drives the loading screen's world stage.
 `options` is optional. `options.quality` is `'low' | 'medium' | 'high'` and
-selects the graphics preset in `src/render/quality.js`. Custom tracks also
-accept `options.document`. The instance stamps `graphics` with the resolved
+selects the graphics preset in `src/render/quality.js`. Custom tracks and
+built maps also accept `options.document`, which builds that document
+without touching any seat. The instance stamps `graphics` with the resolved
 id.
 
 A MapInstance is:
 
-    id            'field' | 'city' | 'custom'
+    id            'field' | 'city' | 'custom' | 'built'
     name          what the menu shows
     mode          'race' | 'freestyle'
     graphics      'low' | 'medium' | 'high'

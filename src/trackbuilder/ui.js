@@ -34,7 +34,7 @@ import {
   ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf, countElementsByType,
   GATE_PRESETS, MICRO_GATE_PRESETS, gatePresetsFor,
   applyGatePreset, matchingGatePreset, levelPitchFor, apertureLevels,
-  elementHeight, TRACK_CLASS_DEFAULT, trackClassOf,
+  elementHeight, TRACK_CLASS_DEFAULT, trackClassOf, docModeOf, paletteGroupOf,
 } from './elements.js';
 import {
   aperturesOf, elementById, kindOf, isSequenceable, logosOf, logoForDecal,
@@ -44,7 +44,10 @@ import { figuresFor, matchingFigure, figureBlurb, levelName } from './figures.js
 import { elevationProfile } from './path.js';
 import { drawProfile } from './profile.js';
 import { DEG, RAD } from './geometry.js';
-import { setYaw } from './faces.js';
+import { localBoundsOf, turnsOf } from './view2d.js';
+import {
+  PROP_GROUPS, GAP_POINTS, clampDim, styleDims, styleOf as propStyleOf,
+} from '../props/types.js';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -193,6 +196,34 @@ const DIM_LABELS = {
   pads: 'Pads', spacing: 'Pad spacing', padSize: 'Pad size', textHeight: 'Text height',
 };
 
+/*
+ * What a freestyle asset's styles are called on their buttons. The ids are
+ * the document's and are short and lower case; the buttons are read, so they
+ * get words. A style missing here is shown capitalised rather than hidden.
+ */
+const STYLE_LABELS = {
+  flats: 'Flats', office: 'Office', warehouse: 'Warehouse', shop: 'Shop',
+  '40ft': '40 ft', '20ft': '20 ft', '40ft open': '40 ft open',
+  open: 'Open', netted: 'Netted',
+  road: 'Road', footbridge: 'Footbridge',
+  kei: 'Kei truck', keivan: 'Kei van', hatch: 'Hatch', sedan: 'Sedan', wagon: 'Wagon',
+  minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus',
+  sakura: 'Sakura', street: 'Street', pine: 'Pine',
+};
+
+function styleLabel(id) {
+  return STYLE_LABELS[id] ?? `${String(id).charAt(0).toUpperCase()}${String(id).slice(1)}`;
+}
+
+/*
+ * How a freestyle asset's dimension steps, by the kind of number it is
+ * (src/props/types.js): a count by one, a length by half a metre, a fraction
+ * by a twentieth, a multiplier by a tenth. The arrow keys nudge by this and
+ * shift nudges by ten of it, the same as every other field.
+ */
+const LIMIT_STEP = { int: 1, m: 0.5, frac: 0.05, x: 0.1 };
+const LIMIT_PLACES = { int: 0, m: 2, frac: 2, x: 2 };
+
 function flagSideIcon(side) {
   const svg = svgEl('svg', { viewBox: '0 0 72 56', 'aria-hidden': 'true' });
   svg.append(svgEl('rect', {
@@ -240,11 +271,18 @@ export class Panels {
    * micro track has poles and horizontal poles and no flagged gates or
    * MultiGP dive gate. app.js calls it after restore and on every load.
    */
-  buildPalette(cls = TRACK_CLASS_DEFAULT) {
+  buildPalette(cls = TRACK_CLASS_DEFAULT, mode = 'race') {
     const host = this.nodes.palette;
     host.textContent = '';
     this.paletteClass = cls;
+    this.paletteMode = mode;
     this.paletteButtons = new Map();
+    this.pathButton = null;
+
+    if (mode === 'freestyle') {
+      this.buildFreestylePalette(host, cls);
+      return;
+    }
 
     const track = el('div', 'tb-group');
     track.append(el('h3', null, 'Track'));
@@ -273,11 +311,54 @@ export class Panels {
     host.append(el('p', 'tb-help', 'Press a key or click a tool, then click the field. The tool stays armed, so ten gates are ten clicks. Escape or right click puts it away.'));
   }
 
+  /*
+   * THE MAP'S PALETTE: the assets under the headings src/props/types.js
+   * gives them, then the builder's own gates and markers as Course
+   * furniture, then the extras. No Path: a map has no racing line to show.
+   * The hotkeys are the freestyle palette's own (elementByKey with the
+   * map's mode), so a key does what the button beside it says.
+   */
+  buildFreestylePalette(host, cls) {
+    const groups = new Map();
+    for (const g of PROP_GROUPS) {
+      const div = el('div', 'tb-group');
+      div.append(el('h3', null, g.label));
+      groups.set(g.id, div);
+    }
+    const course = el('div', 'tb-group');
+    course.append(el('h3', null, 'Course'));
+    groups.set('course', course);
+    const extra = el('div', 'tb-group');
+    extra.append(el('h3', null, 'Extra'));
+    groups.set('extra', extra);
+
+    for (const def of paletteItems(cls, 'freestyle')) {
+      const b = el('button', 'tb-tool');
+      b.type = 'button';
+      b.title = def.note;
+      /* Three assets have no key of their own: the digits and the free
+       * letters ran out before the list did. They keep an empty chip so the
+       * labels still line up. */
+      b.append(el('span', def.key ? 'tb-tool-key' : 'tb-tool-key none', def.key || ''), el('span', 'tb-tool-label', def.label));
+      b.addEventListener('click', () => this.host.arm(def.id));
+      this.paletteButtons.set(def.id, b);
+      (groups.get(paletteGroupOf(def)) ?? course).append(b);
+    }
+    for (const div of groups.values()) {
+      if (div.children.length > 1) {
+        host.append(div);
+      }
+    }
+    host.append(el('p', 'tb-help', 'Press a key or click a tool, then click the plot. The tool stays armed. Buildings, containers and the skate set keep to the compass; everything else turns freely. Escape or right click puts it away.'));
+  }
+
   renderPalette() {
     for (const [id, b] of this.paletteButtons) {
       b.classList.toggle('on', this.host.armed === id);
     }
-    this.pathButton.classList.toggle('on', this.host.pathVisible);
+    if (this.pathButton) {
+      this.pathButton.classList.toggle('on', this.host.pathVisible);
+    }
   }
 
   /* ---------------- render entry point ---------------- */
@@ -427,13 +508,25 @@ export class Panels {
       return;
     }
     const def = ELEMENTS[element.type];
+    const freestyle = docModeOf(doc) === 'freestyle';
     host.append(el('p', 'tb-kind', `${def.label}. ${def.note}`));
+
+    if (def.kind === KIND.ZONE) {
+      this.renderGapInspector(host, element, def);
+      return;
+    }
 
     host.append(this.field(`name-${element.id}`, 'Name', element.name, (val) => {
       this.host.edit('rename', (d) => { elementById(d, element.id).name = val; });
     }, { text: true }));
 
-    if (def.kind === KIND.APERTURE && aperturesOf(element).length > 1) {
+    if (def.kind === KIND.STRUCTURE) {
+      this.renderStructureInspector(host, element, def);
+      return;
+    }
+
+    /* How a stack is flown is a flying order question, and a map has none. */
+    if (!freestyle && def.kind === KIND.APERTURE && aperturesOf(element).length > 1) {
       this.renderFigurePicker(host, doc, element);
     }
     if (def.kind === KIND.APERTURE) {
@@ -461,11 +554,7 @@ export class Panels {
     host.append(grid);
 
     if (def.kind !== KIND.ANNOTATION) {
-      host.append(this.field(`yaw-${element.id}`, 'Yaw', element.yaw * DEG, (val) => {
-        this.host.edit('rotate', (d) => {
-          setYaw(d, element.id, val * RAD);
-        });
-      }, { suffix: 'deg', step: 5, places: 1 }));
+      this.appendYawField(host, element);
     }
 
     if (def.kind === KIND.APERTURE) {
@@ -537,6 +626,13 @@ export class Panels {
       }, { text: true }));
     }
 
+    if (freestyle) {
+      if (isSequenceable(element)) {
+        host.append(el('p', 'tb-help', 'On a map this is furniture: nothing is timed through it and there is no order to fly it in. It is solid, and it is there to thread.'));
+      }
+      return;
+    }
+
     /* Every sequence entry that points at this element. For a ladder that is
      * where the two levels and the two faces are edited. */
     const entries = doc.sequence
@@ -561,6 +657,182 @@ export class Panels {
           'Add another gate on this stack, on the next unused opening.'));
       }
     }
+  }
+
+  /*
+   * The heading, in degrees because that is how people think about a
+   * heading, stored in radians. It goes through the app rather than
+   * straight to setYaw, because a building keeps to the compass: the field
+   * snaps it, and the first time an author types 40 the tool says why it
+   * came back as 0.
+   */
+  appendYawField(host, element) {
+    const quarter = turnsOf(element.type) === 'quarter';
+    host.append(this.field(`yaw-${element.id}`, 'Yaw', element.yaw * DEG, (val) => {
+      this.host.setElementYaw(element.id, val * RAD);
+    }, { suffix: 'deg', step: quarter ? 90 : 5, places: 1 }));
+    if (quarter) {
+      host.append(el('p', 'tb-help', 'Keeps to the compass, in quarter turns, until the physics learns turned boxes.'));
+    }
+  }
+
+  /* X, Y and the base height, the one grid every element with a place has. */
+  appendPositionGrid(host, element) {
+    const grid = el('div', 'tb-grid3');
+    grid.append(
+      this.field(`x-${element.id}`, 'X', element.position.x, (val) => {
+        this.host.edit('move', (d) => { elementById(d, element.id).position.x = val; });
+      }, { suffix: 'm' }),
+      this.field(`y-${element.id}`, 'Y', element.position.y, (val) => {
+        this.host.edit('move', (d) => { elementById(d, element.id).position.y = val; });
+      }, { suffix: 'm' }),
+      this.field(`z-${element.id}`, 'Base', element.position.z, (val) => {
+        this.host.edit('height', (d) => { elementById(d, element.id).position.z = Math.max(0, val); });
+      }, { suffix: 'm' }),
+    );
+    host.append(grid);
+  }
+
+  /*
+   * One of an asset's dimensions, named, stepped and bounded the way
+   * src/props/types.js says. Whatever is typed is clamped by clampDim, the
+   * same function the document reader uses, so the field can never hold a
+   * number the file would not.
+   */
+  propDimField(element, def, key) {
+    const lim = def.limits?.[key] ?? null;
+    const kind = lim ? lim[2] : 'm';
+    return this.field(`dim-${element.id}-${key}`, def.labels?.[key] ?? DIM_LABELS[key] ?? key, element.dims[key], (val) => {
+      this.host.edit('resize', (d) => {
+        const e2 = elementById(d, element.id);
+        if (e2) {
+          e2.dims[key] = clampDim(element.type, key, val);
+        }
+      });
+    }, {
+      suffix: kind === 'm' ? 'm' : '',
+      step: LIMIT_STEP[kind] ?? 0.1,
+      places: LIMIT_PLACES[kind] ?? 2,
+      min: lim ? lim[0] : undefined,
+      max: lim ? lim[1] : undefined,
+    });
+  }
+
+  /*
+   * A FREESTYLE ASSET: its look, where it stands, which way it faces, and
+   * its size. The style buttons also set the size a style starts at
+   * (styleDims), because a warehouse is not an office with a different
+   * texture: it is lower and wider, and choosing Warehouse on a six storey
+   * office block and keeping six storeys builds nobody's warehouse.
+   */
+  renderStructureInspector(host, element, def) {
+    if (def.styles) {
+      const current = propStyleOf(element);
+      host.append(el('h3', null, 'Style'));
+      const seg = el('div', 'tb-seg');
+      seg.setAttribute('role', 'group');
+      seg.setAttribute('aria-label', 'Style');
+      for (const style of def.styles) {
+        const b = button(styleLabel(style), current === style ? 'tb-seg-btn on' : 'tb-seg-btn', () => {
+          this.host.edit('style', (d) => {
+            const e2 = elementById(d, element.id);
+            if (!e2) {
+              return;
+            }
+            e2.style = style;
+            const sized = styleDims(element.type, style);
+            if (sized) {
+              for (const [k, v] of Object.entries(sized)) {
+                e2.dims[k] = clampDim(element.type, k, v);
+              }
+            }
+          });
+        });
+        b.setAttribute('aria-pressed', current === style ? 'true' : 'false');
+        seg.append(b);
+      }
+      host.append(seg);
+    }
+
+    this.appendPositionGrid(host, element);
+    this.appendYawField(host, element);
+
+    host.append(el('h3', null, 'Size'));
+    const dims = el('div', 'tb-grid2');
+    for (const key of Object.keys(def.dims)) {
+      const field = this.propDimField(element, def, key);
+      if (key === 'variant') {
+        /*
+         * REROLL, beside the number it rolls. A variant is a seed, not a
+         * quantity: 7 is not more of anything than 6. Nobody wants to type
+         * a seed, they want a different one, so the button steps it round
+         * one to 99 and the field stays for the author who wrote down the
+         * one they liked.
+         */
+        const cell = el('div', 'tb-reroll');
+        cell.append(field, button('Reroll', 'tb-btn tb-reroll-btn', () => {
+          this.host.edit('reroll', (d) => {
+            const e2 = elementById(d, element.id);
+            if (e2) {
+              const v = Math.round(Number(e2.dims.variant) || 1);
+              e2.dims.variant = clampDim(element.type, 'variant', (v % 99) + 1);
+            }
+          });
+        }, 'Roll a different one'));
+        dims.append(cell);
+      } else {
+        dims.append(field);
+      }
+    }
+    host.append(dims);
+
+    /* What that adds up to, in the terms a pilot thinks in. */
+    const b = localBoundsOf(element);
+    const tall = elementHeight(def, element.dims, propStyleOf(element));
+    host.append(el('p', 'tb-fig-blurb', `About ${show(tall, 1)} m tall, taking ${show(b.x1 - b.x0, 1)} by ${show(b.z1 - b.z0, 1)} m of ground.`));
+  }
+
+  /*
+   * A NAMED GAP. Its name is the point of it, the way a skate game's gaps
+   * are known by name, so the name is the first and biggest thing here;
+   * then what it is worth, from the tiers a skate game uses; then the
+   * window. Width runs across its heading and Height up from its base.
+   */
+  renderGapInspector(host, element, def) {
+    const name = this.field(`name-${element.id}`, 'Gap name', element.name, (val) => {
+      this.host.edit('rename', (d) => { elementById(d, element.id).name = String(val).slice(0, 40); });
+    }, { text: true });
+    name.classList.add('tb-gap-name');
+    host.append(name);
+
+    host.append(el('h3', null, 'Points'));
+    const seg = el('div', 'tb-seg');
+    seg.setAttribute('role', 'group');
+    seg.setAttribute('aria-label', 'Points');
+    for (const pts of GAP_POINTS) {
+      const on = element.points === pts;
+      const b = button(String(pts), on ? 'tb-seg-btn on' : 'tb-seg-btn', () => {
+        this.host.edit('points', (d) => {
+          const e2 = elementById(d, element.id);
+          if (e2) {
+            e2.points = pts;
+          }
+        });
+      });
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      seg.append(b);
+    }
+    host.append(seg);
+
+    host.append(el('h3', null, 'Window'));
+    const dims = el('div', 'tb-grid2');
+    for (const key of Object.keys(def.dims)) {
+      dims.append(this.propDimField(element, def, key));
+    }
+    host.append(dims);
+    this.appendPositionGrid(host, element);
+    this.appendYawField(host, element);
+    host.append(el('p', 'tb-help', `A window ${show(element.dims.width, 1)} m across its heading and ${show(element.dims.height, 1)} m up from its base, ${show(element.position.z, 1)} m off the ground. It is not solid and it is not drawn in the world: a pilot finds it by flying through it.`));
   }
 
   renderFigurePicker(host, doc, element) {
@@ -787,6 +1059,10 @@ export class Panels {
 
   renderFieldSettings(host, doc) {
     host.append(el('p', 'tb-help', 'Nothing selected. Click an element to edit it, or drag a box on empty ground to select several.'));
+    if (docModeOf(doc) === 'freestyle') {
+      this.renderPlotSettings(host, doc);
+      return;
+    }
     /*
      * WHAT KIND OF TRACK THIS IS, said out loud, because everything else on
      * this screen is a consequence of it: the palette, the gate sizes, the
@@ -845,12 +1121,45 @@ export class Panels {
     }, { step: 4, places: 0 }));
   }
 
+  /*
+   * A MAP'S OWN SETTINGS: what it is, and the plot. No racing line block,
+   * because there is no line; a map is five inch only, because freestyle is
+   * not offered on the whoop.
+   */
+  renderPlotSettings(host, doc) {
+    host.append(el('h3', null, 'Map'));
+    const line = el('p', 'tb-help');
+    line.append(el('strong', null, 'Freestyle map'));
+    line.append(document.createTextNode(': a place to fly, with no course through it. Built from the town’s own assets, flown on a five inch, and every solid you place is solid in the air.'));
+    host.append(line);
+    host.append(el('h3', null, 'Plot'));
+    const grid = el('div', 'tb-grid3');
+    grid.append(
+      this.field('field-w', 'Width', doc.field.width, (val) => {
+        this.host.edit('plot', (d) => { d.field.width = Math.max(5, val); });
+      }, { suffix: 'm', step: 10 }),
+      this.field('field-d', 'Depth', doc.field.depth, (val) => {
+        this.host.edit('plot', (d) => { d.field.depth = Math.max(5, val); });
+      }, { suffix: 'm', step: 10 }),
+      this.field('field-g', 'Grid', doc.field.gridSize, (val) => {
+        this.host.edit('plot', (d) => { d.field.gridSize = Math.max(0.005, val); });
+      }, { suffix: 'm', step: 0.5 }),
+    );
+    host.append(grid);
+    host.append(el('p', 'tb-help', 'Everything placed snaps to the grid; hold Alt to place off it.'));
+  }
+
   /* ---------------- sequence ---------------- */
 
   renderSequence() {
     const host = this.nodes.sequence;
     host.textContent = '';
     const doc = this.host.doc;
+    if (docModeOf(doc) === 'freestyle') {
+      host.append(el('h3', null, 'Flying order'));
+      host.append(el('p', 'tb-help', 'A map has no flying order. Fly it any way you like: the gates on it are furniture, and the named gaps are there to be found.'));
+      return;
+    }
     host.append(el('h3', null, `Flying order, ${doc.sequence.length}`));
 
     if (!doc.sequence.length) {
@@ -934,6 +1243,10 @@ export class Panels {
     const path = this.host.path;
 
     host.append(el('h3', null, 'Results'));
+    if (docModeOf(doc) === 'freestyle') {
+      this.renderMapResults(host, doc);
+      return;
+    }
     if (!path) {
       host.append(el('p', 'tb-help', 'Nothing in the flying order yet. Place a gate and it appears here, with the lap figures and any warnings.'));
       appendTypeStats(host, doc);
@@ -982,14 +1295,53 @@ export class Panels {
     host.append(foot);
     drawProfile(this.nodes.profile, elevationProfile(path));
   }
+
+  /*
+   * A MAP'S RESULTS: what is on it, how many solids the physics will hold,
+   * and the warnings. No length, no radius and no elevation, because those
+   * are properties of a lap and a map has none.
+   */
+  renderMapResults(host, doc) {
+    const report = this.host.report ?? null;
+    const stats = el('div', 'tb-stats');
+    stats.append(
+      stat('Elements', String(doc.elements.length)),
+      stat('Solids', report ? String(report.solids) : '0'),
+      stat('Named gaps', report ? String(report.zones) : '0'),
+    );
+    host.append(stats);
+    appendTypeStats(host, doc, 'On the plot');
+    this.appendWarnings(host, 'Nothing to report. Every space between two things is closed or wide enough to fly, the start is clear, and every named gap is open.');
+  }
+
+  appendWarnings(host, allClear) {
+    const warnings = this.host.warnings ?? [];
+    const bad = warnings.filter((w) => w.level === 'warn');
+    host.append(el('h3', null, bad.length ? `Warnings, ${bad.length}` : 'Warnings'));
+    if (!warnings.length) {
+      host.append(el('p', 'tb-help', allClear));
+    }
+    const ul = el('ul', 'tb-warn');
+    for (const w of warnings) {
+      const li = el('li', w.level === 'warn' ? 'warn' : 'info');
+      li.append(el('span', null, w.message));
+      if (w.elementId || w.seqId) {
+        li.classList.add('clickable');
+        li.addEventListener('click', () => this.host.focusWarning(w));
+      }
+      ul.append(li);
+    }
+    host.append(ul);
+    host.append(el('p', 'tb-help', 'Warnings are advisory. Nothing here stops a save or an export.'));
+  }
 }
 
-function appendTypeStats(host, doc) {
+function appendTypeStats(host, doc, heading = 'On the field') {
   const rows = countElementsByType(doc.elements);
   if (!rows.length) {
     return;
   }
-  host.append(el('h3', null, 'On the field'));
+  host.append(el('h3', null, heading));
   const stats = el('div', 'tb-stats');
   for (const row of rows) {
     stats.append(stat(row.label, String(row.count)));

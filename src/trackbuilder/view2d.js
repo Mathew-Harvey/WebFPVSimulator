@@ -33,7 +33,10 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, flagLeanSign, flagSideOf, flagSideSigns, trackClassOf, virtualApertureDims } from './elements.js';
+import {
+  ELEMENTS, KIND, FRAME_TUBE_OD, flagLeanSign, flagSideOf, flagSideSigns, trackClassOf, virtualApertureDims,
+  docModeOf,
+} from './elements.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter, logoForDecal,
 } from './model.js';
@@ -42,9 +45,14 @@ import { figureCue } from './figures.js';
 import { travelDirection, markerPassDir } from './faces.js';
 import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import {
-  add, apertureCorners, clamp, dist, leftOf, normalize, pointSegment, scale, sub, yawVector,
+  add, apertureCorners, clamp, dist, leftOf, normalize, pointSegment, scale, sub, wrapAngle, yawVector,
 } from './geometry.js';
 import { startBlockDims } from '../art/startblock.js';
+/* The freestyle assets. Pure layouts, no Three.js: the plan draws the same
+ * parts the physics is given, so a slot on the plan is a slot in the air. */
+import { partsOf, planBounds } from '../props/catalog.js';
+import { placedYaw } from '../props/solids.js';
+import { styleOf as propStyleOf, styleDims } from '../props/types.js';
 
 const RULER = 26;              /* pixels of ruler along the top and the left */
 const MIN_SCALE = 2;           /* pixels per metre */
@@ -84,7 +92,225 @@ const C = {
   ghost: 'rgba(255, 212, 92, 0.45)',
   band: 'rgba(255, 212, 92, 0.14)',
   bandEdge: 'rgba(255, 212, 92, 0.7)',
+  /* A structure's outline, and the ink between its parts. The parts
+   * themselves are toned by height, see structureTone. */
+  structEdge: 'rgba(207, 224, 238, 0.38)',
+  structInk: 'rgba(8, 14, 20, 0.7)',
+  structName: '#f7e8cd',
+  /* A named gap. Amber and dashed, because it is a window in the air and
+   * not a thing: the same reason ground paint is dashed. */
+  zone: '#ffb347',
+  zoneFill: 'rgba(255, 179, 71, 0.10)',
 };
+
+/* ---------------- headings ---------------- */
+
+/*
+ * THE TWO HEADING RULES, in one place, because the rotate handle, Q and E,
+ * the inspector's yaw field and the checks all have to agree.
+ *
+ * An asset with boxes is 'quarter' in src/props/types.js: it keeps to the
+ * four compass headings until the physics learns turned boxes
+ * (FREESTYLE-MAPS-PLAN.md, P1), and src/props/solids.js placedYaw snaps it
+ * for the solids and the drawing. Snapping it HERE as well means the
+ * document holds the heading that is actually built, so the inspector never
+ * shows 40 degrees for a building standing at 0. Everything else, gates and
+ * markers included, turns freely: 15 degree steps on the handle, and Alt for
+ * any angle, which is the same modifier that turns off the grid.
+ */
+export const QUARTER_TURN = Math.PI / 2;
+export const FREE_STEP = Math.PI / 12;
+
+export function turnsOf(type) {
+  return ELEMENTS[type]?.turns === 'quarter' ? 'quarter' : 'any';
+}
+
+/* How far a heading is from the nearest compass point, in radians. */
+export function offCompass(yaw) {
+  const q = Math.round(yaw / QUARTER_TURN) * QUARTER_TURN;
+  return Math.abs(yaw - q);
+}
+
+/*
+ * The heading an element of `type` gets when the author asks for `yaw`.
+ * `free` is the Alt key on the handle; a quarter asset ignores it, because
+ * the physics cannot hold what it would ask for.
+ */
+export function snapYaw(type, yaw, free = false) {
+  if (!Number.isFinite(yaw)) {
+    return 0;
+  }
+  if (turnsOf(type) === 'quarter') {
+    return wrapAngle(placedYaw('quarter', yaw));
+  }
+  if (free) {
+    return wrapAngle(yaw);
+  }
+  return wrapAngle(Math.round(yaw / FREE_STEP) * FREE_STEP);
+}
+
+/* ---------------- plan shapes, pure ---------------- */
+
+/*
+ * An asset's own plan rectangle in its local frame, cached by what shapes
+ * it. The plan asks for every element's shape on every pointer move to pick
+ * under the cursor, and a crane's layout is 186 parts, so running layouts
+ * there would make a 300 element map stutter under the mouse. Position and
+ * heading are left out of the key on purpose: they are applied afterwards,
+ * so dragging a crane never re-runs its layout.
+ */
+const boundsCache = new Map();
+
+function propKey(el) {
+  return `${el.type}|${propStyleOf(el) ?? ''}|${JSON.stringify(el.dims)}|${el.pitch || 0}`;
+}
+
+export function localBoundsOf(el) {
+  const key = propKey(el);
+  let b = boundsCache.get(key);
+  if (!b) {
+    if (boundsCache.size > 4000) {
+      boundsCache.clear();
+    }
+    b = planBounds(partsOf(el));
+    boundsCache.set(key, b);
+  }
+  return b;
+}
+
+/*
+ * A local point of an asset, on the plan. The local frame is src/props/
+ * parts.js's: +x the heading, +z the asset's right. The document's left is
+ * +90 degrees from the heading, so local +z goes to minus the left:
+ *
+ *   plan = position + x * (cos, sin) - z * (-sin, cos)
+ *
+ * This is the drawing, not the physics, so it may use Math.cos: nothing on
+ * the plan reaches the integrator. The heading is the PLACED one, so a
+ * building the document has at 40 degrees is drawn where it stands, at 0.
+ */
+function planPoint(px, py, c, s, lx, lz) {
+  return { x: px + lx * c + lz * s, y: py + lx * s - lz * c, z: 0 };
+}
+
+/* The turned rectangle of a structure's local bounds, as four plan points. */
+function structureOutline(el) {
+  const b = localBoundsOf(el);
+  const yaw = placedYaw(turnsOf(el.type), el.yaw || 0);
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  const { x, y } = el.position;
+  return [
+    planPoint(x, y, c, s, b.x0, b.z0),
+    planPoint(x, y, c, s, b.x1, b.z0),
+    planPoint(x, y, c, s, b.x1, b.z1),
+    planPoint(x, y, c, s, b.x0, b.z1),
+  ];
+}
+
+/*
+ * A named gap's footprint: its window seen from above is a bar Width long
+ * across its heading. Half a metre deep along the heading, so a pointer can
+ * land on it; the window itself has no depth.
+ */
+const ZONE_PICK_DEPTH = 0.5;
+
+/*
+ * The footprint of an element on the ground, as a polygon in world metres.
+ * Aperture elements project their LOWEST opening's four corners, which is
+ * what turns a vertical gate into a bar and a dive gate into a rectangle.
+ * Exported and pure so the checks can run it over every asset in Node.
+ */
+export function planShapeOf(el) {
+  const def = ELEMENTS[el.type];
+  if (def.kind === KIND.STRUCTURE) {
+    return structureOutline(el);
+  }
+  if (def.kind === KIND.ZONE) {
+    return boxCorners(el.position, el.yaw || 0, ZONE_PICK_DEPTH, Math.max(0.2, el.dims.width));
+  }
+  if (def.kind === KIND.APERTURE) {
+    const aps = aperturesOf(el);
+    const ap = aps[0];
+    const c = apertureCenter(el, 0);
+    const corners = apertureCorners(c, el.yaw, el.pitch, ap.clearW, ap.clearH);
+    /*
+     * Flatten the four corners onto the ground and measure how far they
+     * reach along the element's own two horizontal axes: `u` across the
+     * opening, `w` through it. A vertical gate reaches clearW along u and
+     * NOTHING along w, so it comes out a bar; a horizontal dive gate
+     * reaches clearW along u and clearH along w, so it comes out a
+     * rectangle; a tilted one comes out foreshortened in between. No
+     * special case anywhere, which is the point.
+     */
+    const u = { x: -Math.sin(el.yaw), y: Math.cos(el.yaw) };
+    const w = { x: Math.cos(el.yaw), y: Math.sin(el.yaw) };
+    let hu = 0;
+    let hw = 0;
+    for (const p of corners) {
+      const dx = p.x - el.position.x;
+      const dy = p.y - el.position.y;
+      hu = Math.max(hu, Math.abs(dx * u.x + dy * u.y));
+      hw = Math.max(hw, Math.abs(dx * w.x + dy * w.y));
+    }
+    /* Half a frame tube minimum, so a bar is still something a pointer can
+     * land on and something the eye can see. */
+    hu = Math.max(hu, FRAME_TUBE_OD / 2);
+    hw = Math.max(hw, FRAME_TUBE_OD / 2);
+    return boxCorners(el.position, el.yaw, hw * 2, hu * 2);
+  }
+  if (def.kind === KIND.OBSTACLE) {
+    return boxCorners(el.position, el.yaw, el.dims.width, el.dims.depth);
+  }
+  if (def.kind === KIND.START) {
+    /* The row lies ACROSS the heading, because that is the start line: a
+     * pad element's yaw is the direction the quad faces, and trackdoc runs
+     * it through headingForTravel before the mesh loop steps the stands
+     * sideways off it. boxCorners spends its third argument along the yaw
+     * and its fourth across, so the span is the fourth. Handing it the
+     * third turned the pick box a quarter turn out of the stands it is
+     * supposed to be wrapped around. */
+    const span = Math.max(el.dims.padSize, (el.dims.pads - 1) * el.dims.spacing + el.dims.padSize);
+    return boxCorners(el.position, el.yaw, el.dims.padSize, span);
+  }
+  if (def.kind === KIND.DECAL) {
+    /* The painted footprint itself, so what a pointer grabs is what the
+     * grass wears. Width along the heading, depth across, the same
+     * reading a barrier's dimensions get. */
+    return boxCorners(el.position, el.yaw, Math.max(0.2, el.dims.width), Math.max(0.2, el.dims.depth));
+  }
+  if (def.kind === KIND.MARKER) {
+    const r = Math.max(def.dims.baseRadius ?? 0.2, 0.22);
+    return boxCorners(el.position, el.yaw, r * 2, r * 2);
+  }
+  /* Label. A hit box roughly the size of the drawn text. */
+  const wide = Math.max(1, (el.text || '').length) * el.dims.textHeight * 0.55;
+  return boxCorners(el.position, 0, wide, el.dims.textHeight * 1.4);
+}
+
+/*
+ * HOW TALL READS AS HOW LIGHT. A plan of a town is a map read from above,
+ * and the one thing a flat plan hides is height: a two storey shop and a
+ * twelve storey office are the same rectangle. So a part's fill is its top
+ * height, dark at the ground and pale at forty metres, on a square root so
+ * the first few storeys, which is where most of a map is, spread across
+ * most of the range. Ten steps, so the parts of one element batch into a
+ * handful of paths.
+ */
+const TONE_STEPS = 10;
+const TONE_TOP = 42;
+
+function toneStep(top) {
+  const t = Math.sqrt(clamp(top / TONE_TOP, 0, 1));
+  return Math.min(TONE_STEPS - 1, Math.floor(t * TONE_STEPS));
+}
+
+function structureTone(step, alpha) {
+  const t = step / (TONE_STEPS - 1);
+  const light = Math.round(24 + t * 58);
+  const sat = Math.round(14 + t * 10);
+  return `hsla(206, ${sat}%, ${light}%, ${alpha})`;
+}
 
 export class View2D {
   constructor(canvas, host) {
@@ -154,70 +380,9 @@ export class View2D {
 
   /* ---------------- plan shapes ---------------- */
 
-  /*
-   * The footprint of an element on the ground, as a polygon in world metres.
-   * Aperture elements project their LOWEST opening's four corners, which is
-   * what turns a vertical gate into a bar and a dive gate into a rectangle.
-   */
+  /* The footprint of an element on the ground: see planShapeOf. */
   planShape(el) {
-    const def = ELEMENTS[el.type];
-    if (def.kind === KIND.APERTURE) {
-      const aps = aperturesOf(el);
-      const ap = aps[0];
-      const c = apertureCenter(el, 0);
-      const corners = apertureCorners(c, el.yaw, el.pitch, ap.clearW, ap.clearH);
-      /*
-       * Flatten the four corners onto the ground and measure how far they
-       * reach along the element's own two horizontal axes: `u` across the
-       * opening, `w` through it. A vertical gate reaches clearW along u and
-       * NOTHING along w, so it comes out a bar; a horizontal dive gate
-       * reaches clearW along u and clearH along w, so it comes out a
-       * rectangle; a tilted one comes out foreshortened in between. No
-       * special case anywhere, which is the point.
-       */
-      const u = { x: -Math.sin(el.yaw), y: Math.cos(el.yaw) };
-      const w = { x: Math.cos(el.yaw), y: Math.sin(el.yaw) };
-      let hu = 0;
-      let hw = 0;
-      for (const p of corners) {
-        const dx = p.x - el.position.x;
-        const dy = p.y - el.position.y;
-        hu = Math.max(hu, Math.abs(dx * u.x + dy * u.y));
-        hw = Math.max(hw, Math.abs(dx * w.x + dy * w.y));
-      }
-      /* Half a frame tube minimum, so a bar is still something a pointer can
-       * land on and something the eye can see. */
-      hu = Math.max(hu, FRAME_TUBE_OD / 2);
-      hw = Math.max(hw, FRAME_TUBE_OD / 2);
-      return boxCorners(el.position, el.yaw, hw * 2, hu * 2);
-    }
-    if (def.kind === KIND.OBSTACLE) {
-      return boxCorners(el.position, el.yaw, el.dims.width, el.dims.depth);
-    }
-    if (def.kind === KIND.START) {
-      /* The row lies ACROSS the heading, because that is the start line: a
-       * pad element's yaw is the direction the quad faces, and trackdoc runs
-       * it through headingForTravel before the mesh loop steps the stands
-       * sideways off it. boxCorners spends its third argument along the yaw
-       * and its fourth across, so the span is the fourth. Handing it the
-       * third turned the pick box a quarter turn out of the stands it is
-       * supposed to be wrapped around. */
-      const span = Math.max(el.dims.padSize, (el.dims.pads - 1) * el.dims.spacing + el.dims.padSize);
-      return boxCorners(el.position, el.yaw, el.dims.padSize, span);
-    }
-    if (def.kind === KIND.DECAL) {
-      /* The painted footprint itself, so what a pointer grabs is what the
-       * grass wears. Width along the heading, depth across, the same
-       * reading a barrier's dimensions get. */
-      return boxCorners(el.position, el.yaw, Math.max(0.2, el.dims.width), Math.max(0.2, el.dims.depth));
-    }
-    if (def.kind === KIND.MARKER) {
-      const r = Math.max(def.dims.baseRadius ?? 0.2, 0.22);
-      return boxCorners(el.position, el.yaw, r * 2, r * 2);
-    }
-    /* Label. A hit box roughly the size of the drawn text. */
-    const wide = Math.max(1, (el.text || '').length) * el.dims.textHeight * 0.55;
-    return boxCorners(el.position, 0, wide, el.dims.textHeight * 1.4);
+    return planShapeOf(el);
   }
 
   /* ---------------- picking ---------------- */
@@ -226,6 +391,29 @@ export class View2D {
     const world = this.toWorld(px, py);
     const pad = PICK_PX / this.cam.scale;
     const doc = this.host.doc;
+    /*
+     * ON A MAP THE SMALLEST THING UNDER THE CURSOR WINS. A crane's plan
+     * rectangle is fifty metres of jib, and a lamp post or a named gap
+     * standing under it would otherwise be unpickable whenever the crane
+     * was placed after it. On a race track nothing is that big, and the
+     * rule there stays what it always was.
+     */
+    if (docModeOf(doc) === 'freestyle') {
+      let best = null;
+      let bestArea = Infinity;
+      for (let i = doc.elements.length - 1; i >= 0; i -= 1) {
+        const el = doc.elements[i];
+        const poly = this.planShape(el);
+        if (polyContains(poly, world) || polyNear(poly, world, pad)) {
+          const area = polyArea(poly);
+          if (area < bestArea - 1e-9) {
+            best = el;
+            bestArea = area;
+          }
+        }
+      }
+      return best;
+    }
     /* Back to front, so the most recently placed thing wins a tie the way it
      * does visually. */
     for (let i = doc.elements.length - 1; i >= 0; i -= 1) {
@@ -391,14 +579,16 @@ export class View2D {
       if (!el) {
         return;
       }
-      let yaw = Math.atan2(this.pointer.y - el.position.y, this.pointer.x - el.position.x);
-      if (!e.altKey) {
-        /* Snap to 15 degrees unless the modifier says otherwise, the same
-         * modifier that turns off grid snapping for position. */
-        const step = Math.PI / 12;
-        yaw = Math.round(yaw / step) * step;
+      const raw = Math.atan2(this.pointer.y - el.position.y, this.pointer.x - el.position.x);
+      /* Snap to 15 degrees unless the modifier says otherwise, the same
+       * modifier that turns off grid snapping for position. A building
+       * snaps to the compass whatever the modifier says, and the first
+       * time the author pulls one well off it the tool says why, rather
+       * than refusing silently. */
+      if (turnsOf(el.type) === 'quarter' && offCompass(raw) > QUARTER_TURN / 4) {
+        this.host.noteOffCompass(el);
       }
-      this.host.rotateSelected(yaw);
+      this.host.rotateSelected(snapYaw(el.type, raw, e.altKey));
       return;
     }
 
@@ -465,19 +655,25 @@ export class View2D {
     ctx.fillRect(0, 0, this.w, this.h);
 
     const doc = this.host.doc;
+    /* A map has no flying order, so no racing line, no guide paint and no
+     * numbers: a gate on a map is furniture. */
+    const freestyle = docModeOf(doc) === 'freestyle';
     this.drawField(ctx, doc);
     this.drawGrid(ctx, doc);
 
-    if (this.host.path && this.host.path.samples.length > 1) {
+    if (!freestyle && this.host.path && this.host.path.samples.length > 1) {
       this.drawGuidePaint(ctx, this.host.path);
     }
-    if (this.host.pathVisible && this.host.path) {
+    if (!freestyle && this.host.pathVisible && this.host.path) {
       this.drawPath(ctx, this.host.path);
     }
 
-    const numbers = sequenceNumbers(doc);
+    const numbers = freestyle ? new Map() : sequenceNumbers(doc);
     for (const el of doc.elements) {
       this.drawElement(ctx, el, numbers.get(el.id) ?? []);
+    }
+    if (freestyle) {
+      this.pruneStructureCache(doc);
     }
 
     this.drawHandle(ctx);
@@ -593,7 +789,235 @@ export class View2D {
       this.drawGroundLogo(ctx, el, selected, hovered);
       return;
     }
+    if (def.kind === KIND.STRUCTURE) {
+      this.drawStructure(ctx, el, selected, hovered);
+      return;
+    }
+    if (def.kind === KIND.ZONE) {
+      this.drawZone(ctx, el, selected, hovered);
+      return;
+    }
     this.drawAperture(ctx, el, numbers, selected, hovered);
+  }
+
+  /*
+   * A FREESTYLE ASSET, DRAWN FROM ITS OWN PARTS.
+   *
+   * The same boxes and capsules src/props hands the physics, flattened onto
+   * the ground: a box as a filled rectangle toned by how tall it stands, a
+   * capsule as a stroke as wide as it is (never under a pixel, so a lattice
+   * member does not vanish when zoomed out). A part that is drawn but not
+   * solid is faint, because a quad goes through it. Taller parts are drawn
+   * last, so a roof covers the ground floor under it the way it does from
+   * the air. Then a thin outline of the element's plan rectangle, which is
+   * also what picks it, and its name.
+   *
+   * THE PARTS ARE BATCHED AND CACHED. A crane is 186 parts and a map may
+   * carry three hundred elements, and this runs on every pointer move. Each
+   * element's parts become at most a few Path2D objects in its OWN local
+   * frame, one per height tone, cached by what shapes it (type, style,
+   * dims, base height). The position and the placed heading go on as a
+   * canvas transform at draw time, so moving or turning an element never
+   * re-runs its layout, and a static element never re-runs anything.
+   */
+  structurePaths(el) {
+    if (!this.structCache) {
+      this.structCache = new Map();
+    }
+    const key = `${propKey(el)}|${el.position.z || 0}`;
+    const hit = this.structCache.get(el.id);
+    if (hit && hit.key === key) {
+      return hit;
+    }
+    const base = el.position.z || 0;
+    const buckets = new Map();
+    const bucket = (step, solid, kind, r = 0) => {
+      const id = `${step}|${solid ? 1 : 0}|${kind}|${kind === 'cap' ? Math.round(r * 1000) : 0}`;
+      let b = buckets.get(id);
+      if (!b) {
+        b = { step, solid, kind, r, path: new Path2D() };
+        buckets.set(id, b);
+      }
+      return b;
+    };
+    for (const p of partsOf(el)) {
+      if (!p.solid && !p.draw) {
+        continue;
+      }
+      /* Local (x, z) to the canvas frame this is drawn in, which is the
+       * document's with the element at the origin and its heading along
+       * +x: plan y is minus local z, see planPoint. */
+      if (p.t === 'box') {
+        const b = bucket(toneStep(base + p.hi[1]), p.solid, 'box');
+        b.path.rect(p.lo[0], -p.hi[2], p.hi[0] - p.lo[0], p.hi[2] - p.lo[2]);
+      } else {
+        const b = bucket(toneStep(base + Math.max(p.a[1], p.b[1]) + p.r), p.solid, 'cap', p.r);
+        const ax = p.a[0];
+        const ay = -p.a[2];
+        const bx = p.b[0];
+        const by = -p.b[2];
+        if (Math.hypot(bx - ax, by - ay) < 1e-3) {
+          /* Straight up: a post, a leg, a trunk. On the plan it is its own
+           * round section, drawn as a dot the stroke's width. */
+          b.dots = b.dots || [];
+          b.dots.push([ax, ay]);
+        } else {
+          b.path.moveTo(ax, ay);
+          b.path.lineTo(bx, by);
+        }
+      }
+    }
+    const list = [...buckets.values()].sort((a, b) => (a.step - b.step)
+      || ((a.kind === 'box' ? 0 : 1) - (b.kind === 'box' ? 0 : 1)));
+    const entry = { key, list };
+    this.structCache.set(el.id, entry);
+    return entry;
+  }
+
+  /* Forget the cached drawing of anything no longer on the map. */
+  pruneStructureCache(doc) {
+    if (!this.structCache || this.structCache.size <= doc.elements.length) {
+      return;
+    }
+    const live = new Set(doc.elements.map((e) => e.id));
+    for (const id of this.structCache.keys()) {
+      if (!live.has(id)) {
+        this.structCache.delete(id);
+      }
+    }
+  }
+
+  drawStructure(ctx, el, selected, hovered) {
+    const { list } = this.structurePaths(el);
+    const yaw = placedYaw(turnsOf(el.type), el.yaw || 0);
+    const k = this.cam.scale;
+    const px = 1 / k;
+    ctx.save();
+    /* The camera, then the element: document metres, +y up the screen. */
+    ctx.transform(k, 0, 0, -k, -this.cam.x * k, this.h + this.cam.y * k);
+    ctx.translate(el.position.x, el.position.y);
+    ctx.rotate(yaw);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const b of list) {
+      const alpha = b.solid ? 0.95 : 0.35;
+      if (b.kind === 'box') {
+        ctx.fillStyle = structureTone(b.step, alpha);
+        ctx.fill(b.path);
+        ctx.strokeStyle = C.structInk;
+        ctx.lineWidth = px;
+        ctx.stroke(b.path);
+      } else {
+        const w = Math.max(2 * b.r, px);
+        ctx.strokeStyle = structureTone(b.step, alpha);
+        ctx.lineWidth = w;
+        ctx.stroke(b.path);
+        if (b.dots) {
+          ctx.fillStyle = structureTone(b.step, alpha);
+          ctx.beginPath();
+          for (const [x, y] of b.dots) {
+            ctx.moveTo(x + w / 2, y);
+            ctx.arc(x, y, w / 2, 0, Math.PI * 2);
+          }
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+
+    const poly = this.planShape(el).map((p) => this.toScreen(p));
+    ctx.beginPath();
+    poly.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.strokeStyle = selected ? C.selected : (hovered ? '#ffffff' : C.structEdge);
+    ctx.lineWidth = selected ? 2.2 : 1;
+    ctx.setLineDash(selected || hovered ? [] : [4, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (el.name) {
+      this.drawTag(ctx, el.name, poly, selected ? C.selected : C.structName);
+    }
+  }
+
+  /* A name over an element, at the top of its outline on screen, with a dark
+   * backing so it reads over a pale roof. */
+  drawTag(ctx, text, poly, colour) {
+    const xs = poly.map((p) => p.x);
+    const ys = poly.map((p) => p.y);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const top = Math.min(...ys) - 8;
+    ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(8, 14, 20, 0.72)';
+    ctx.fillRect(cx - w / 2 - 4, top - 8, w + 8, 16);
+    ctx.fillStyle = colour;
+    ctx.fillText(text, cx, top + 0.5);
+  }
+
+  /*
+   * A NAMED GAP, which is a window in the air: Width across its heading and
+   * Height up from its base. From above that is a line, so it is drawn as a
+   * dashed amber bar with a tick at each end, over a faint band the depth a
+   * pointer picks, and labelled with its name and what it is worth.
+   */
+  drawZone(ctx, el, selected, hovered) {
+    const yaw = el.yaw || 0;
+    const across = { x: -Math.sin(yaw), y: Math.cos(yaw) };
+    const along = { x: Math.cos(yaw), y: Math.sin(yaw) };
+    const hw = Math.max(0.1, el.dims.width) / 2;
+    const c = el.position;
+    const a = this.toScreen({ x: c.x - across.x * hw, y: c.y - across.y * hw });
+    const b = this.toScreen({ x: c.x + across.x * hw, y: c.y + across.y * hw });
+    const colour = selected ? C.selected : (hovered ? '#ffffff' : C.zone);
+
+    const band = this.planShape(el).map((p) => this.toScreen(p));
+    ctx.beginPath();
+    band.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.fillStyle = C.zoneFill;
+    ctx.fill();
+
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = selected ? 3.2 : 2.6;
+    ctx.lineCap = 'butt';
+    ctx.setLineDash([7, 5]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    /* End ticks along the heading, so the bar reads as a span with two
+     * ends, like a dimension line, rather than as a stray dash. */
+    const tick = 6;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const p of [a, b]) {
+      ctx.moveTo(p.x - along.x * tick, p.y + along.y * tick);
+      ctx.lineTo(p.x + along.x * tick, p.y - along.y * tick);
+    }
+    ctx.stroke();
+
+    /* The label sits off the bar's far end, clear of it whichever way the
+     * gap is turned: it is pushed out along the bar by its own half extent
+     * in that direction, so it never covers the window it names. */
+    const label = `${el.name || 'GAP'}  ${el.points ?? ''}`.trim();
+    ctx.font = 'italic 700 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText(label).width;
+    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    const ux = span > 1e-6 ? (b.x - a.x) / span : 0;
+    const uy = span > 1e-6 ? (b.y - a.y) / span : -1;
+    const push = Math.abs(ux) * (w / 2 + 4) + Math.abs(uy) * 8 + 8;
+    const ox = b.x + ux * push;
+    const oy = b.y + uy * push;
+    ctx.fillStyle = 'rgba(8, 14, 20, 0.72)';
+    ctx.fillRect(ox - w / 2 - 4, oy - 8, w + 8, 16);
+    ctx.fillStyle = colour;
+    ctx.fillText(label, ox, oy + 0.5);
   }
 
   /*
@@ -1122,6 +1546,15 @@ export class View2D {
     ctx.arc(p.x, p.y, HANDLE_PX, 0, Math.PI * 2);
     ctx.fillStyle = C.selected;
     ctx.fill();
+    /* The handle says it snaps to the compass, on the handle, so a building
+     * that will not turn to 40 degrees is never a mystery. */
+    if (turnsOf(el.type) === 'quarter') {
+      ctx.font = '600 10px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = C.selected;
+      ctx.fillText('90° steps', p.x + HANDLE_PX + 4, p.y);
+    }
   }
 
   drawBand(ctx) {
@@ -1153,6 +1586,24 @@ export class View2D {
     ctx.beginPath();
     ctx.arc(p.x, p.y, 13, 0, Math.PI * 2);
     ctx.stroke();
+    /* A freestyle asset shows the ground it will take before it is placed,
+     * at the heading it will be placed at, because a warehouse is twenty six
+     * metres across and a circle under the cursor says nothing about that. */
+    if (def.kind === KIND.STRUCTURE || def.kind === KIND.ZONE) {
+      const ghost = {
+        type: def.id,
+        style: def.styles ? def.styles[0] : undefined,
+        dims: { ...def.dims, ...(def.styles ? styleDims(def.id, def.styles[0]) ?? {} : {}) },
+        position: { x: at.x, y: at.y, z: 0 },
+        yaw: typeof this.host.newYawFor === 'function' ? this.host.newYawFor(def.id) : 0,
+        pitch: 0,
+      };
+      const poly = planShapeOf(ghost).map((q) => this.toScreen(q));
+      ctx.beginPath();
+      poly.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
+      ctx.closePath();
+      ctx.stroke();
+    }
     ctx.setLineDash([]);
     ctx.fillStyle = C.ghost;
     ctx.font = '11px system-ui, sans-serif';
@@ -1285,6 +1736,15 @@ function polyContains(poly, p) {
     }
   }
   return inside;
+}
+
+/* Area of a simple polygon, by the shoelace. */
+function polyArea(poly) {
+  let a = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+    a += (poly[j].x + poly[i].x) * (poly[j].y - poly[i].y);
+  }
+  return Math.abs(a) / 2;
 }
 
 function polyNear(poly, p, pad) {

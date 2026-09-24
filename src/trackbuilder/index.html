@@ -542,6 +542,9 @@
       .tb-bargroup .tb-btn:hover:not(:where(:disabled, .on, .tb-primary)) { background: var(--lift); border-color: transparent; }
 
       .tb-btn:disabled { color: var(--dim); background: var(--sunk); border-color: var(--rule); cursor: default; }
+      /* Not offered here, but still pressable, so its title can be read and a
+         press can say why. Publish on a freestyle map is the one. */
+      .tb-btn.tb-off, .tb-btn.tb-off:hover { color: var(--dim); background: transparent; border-color: var(--rule); cursor: help; }
 
       /* ---------------- layout ---------------- */
 
@@ -644,6 +647,15 @@
       #tb-inspector { flex: 1 1 40%; }
       #tb-sequence { flex: 1 1 30%; }
       #tb-results { flex: 1 1 30%; }
+      /* A map has no flying order, so its panel shrinks to the one line that
+         says so and the inspector, which on a map carries a style picker and
+         a column of sizes, takes the room. app.js sets the class. */
+      body.tb-map #tb-inspector { flex: 1 1 62%; }
+      body.tb-map #tb-sequence { flex: 0 0 auto; }
+      body.tb-map #tb-results { flex: 1 1 38%; }
+      /* A hint for a gesture a map does not have: nothing on a map has a
+         face to flip. */
+      body.tb-map [data-race-only] { display: none; }
 
       /* ---------------- palette ---------------- */
 
@@ -705,6 +717,9 @@
         color: var(--cream);
       }
       .tb-tool.on .tb-tool-key { background: rgba(15, 21, 15, 0.28); color: var(--deep); }
+      /* A tool with no hotkey keeps its chip, empty and fainter, so the
+         labels in a group still start on one line. */
+      .tb-tool-key.none { background: var(--lift); }
 
       /* ---------------- panels ---------------- */
 
@@ -919,6 +934,51 @@
         margin: var(--s3) 0 var(--s4);
       }
       .tb-side-grid .tb-fig-card svg { height: 52px; }
+
+      /* ---------------------------------------------------------------
+         A FREESTYLE ASSET'S INSPECTOR. The style and a gap's points are
+         segmented buttons that wrap, because a car has nine styles and a
+         row of nine does not fit the panel. The chosen one wears the same
+         amber selection the figure cards do.
+         --------------------------------------------------------------- */
+      .tb-seg {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--s1);
+        margin: var(--s2) 0 var(--s3);
+      }
+      .tb-seg-btn {
+        flex: 1 1 auto;
+        min-width: 56px;
+        min-height: 26px;
+        padding: var(--s1) var(--s2);
+        background: var(--raised);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-ctl);
+        color: var(--slate);
+        font: inherit;
+        font-size: var(--t-label);
+        cursor: pointer;
+        transition: background var(--quick), border-color var(--quick);
+      }
+      .tb-seg-btn:hover:not(.on) { border-color: var(--edge); background: var(--lift); color: var(--cream); }
+      .tb-seg-btn.on { border-color: var(--pick-edge); background: var(--pick); color: var(--cream); font-weight: 650; }
+      .tb-seg-btn:focus-visible { outline: 2px solid var(--sakura); outline-offset: 1px; }
+
+      /* A named gap's name is what the gap IS, so it is set big. */
+      .tb-gap-name input {
+        font-size: 18px;
+        font-weight: 750;
+        letter-spacing: 0.04em;
+        font-style: italic;
+        color: var(--amber);
+        min-height: 34px;
+      }
+
+      /* Variant and the button that rolls it, side by side in one cell. */
+      .tb-reroll { display: flex; align-items: flex-end; gap: var(--s1); min-width: 0; }
+      .tb-reroll .tb-field { flex: 1 1 auto; }
+      .tb-reroll-btn { flex: none; margin: var(--s2) 0; padding: 3px var(--s2); font-size: var(--t-small); }
 
       .tb-mini {
         flex: none;
@@ -1218,6 +1278,20 @@
         #tb-topbar { flex-wrap: wrap; gap: var(--s3) var(--s4); }
         .tb-zone-edit { flex: 1 0 100%; order: 3; justify-content: flex-start; }
         .tb-zone-out { margin-left: auto; }
+        /*
+         * THE FILE ZONE AND THE OUTGOING ZONE SHARE THE FIRST ROW HERE, and
+         * the third canvas button, Freestyle, is 113 px they did not have:
+         * at 1280 the outgoing zone fell to a row of its own and the drawing
+         * lost 37 px of height to chrome. These give it back without hiding
+         * anything: a narrower name field (a track name is short, and it
+         * still scrolls when typed into), tighter canvas buttons, and a
+         * smaller gap inside a zone. Measured at 1280: 1278 px for the row,
+         * as it was before the third button.
+         */
+        .tb-name { flex-basis: 120px; }
+        .tb-class-btn { padding: 7px 10px 8px; letter-spacing: 0.06em; }
+        .tb-zone { gap: var(--s2); }
+        .tb-title { letter-spacing: 0.1em; }
         /* The palette keeps its width. It was 152 before, which is exactly
            the number the comment above says makes "Flagged double" wrap, so
            narrowing it here undid that fix at the one width where it was
@@ -1278,7 +1352,7 @@
               <span><kbd>Drag</kbd>box select</span>
               <span><kbd>Q E</kbd>rotate</span>
               <span><kbd>Alt</kbd>off grid</span>
-              <span><kbd>X</kbd>flip face</span>
+              <span data-race-only><kbd>X</kbd>flip face</span>
               <span><kbd>V</kbd>2D and 3D</span>
               <span><kbd>Del</kbd>remove</span>
               <span><kbd>Ctrl Z</kbd>undo</span>

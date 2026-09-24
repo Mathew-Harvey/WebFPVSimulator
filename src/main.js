@@ -66,7 +66,7 @@ import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf } from './game/plantworld.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor } from './ui/ui.js';
 import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
@@ -86,6 +86,7 @@ import {
 import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
+import { MAP_PRELOAD } from './maps/preload.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { airframeById, simIdFor } from '../configs/airframes.js';
 import { buildWhoopCraft } from './render/whoopcraft.js';
@@ -417,9 +418,33 @@ const MAP_MODULE_PREFIX = {
   built: '/src/maps/built/',
 };
 
+/*
+ * Ask for every module a map brings at once, the moment it is chosen. The
+ * browser otherwise finds them one import level at a time, a round trip per
+ * level, and on a real link that waiting is most of the city's module
+ * stage: 72 files. A hint only: the import in loadMap still
+ * resolves them, a module already in the page is not fetched again, and
+ * the list is scripts/gen-preload.js's, checked by npm run lint:preload.
+ */
+const mapPreloaded = new Set();
+function preloadMapModules(id) {
+  const list = MAP_PRELOAD[id];
+  if (!list || mapPreloaded.has(id) || typeof document === 'undefined') {
+    return;
+  }
+  mapPreloaded.add(id);
+  for (const path of list) {
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = new URL(path, import.meta.url).href;
+    document.head.appendChild(link);
+  }
+}
+
 async function loadMap(shell, id, loading, options) {
   const entry = mapById(id);
   loading.start('module');
+  preloadMapModules(entry.id);
   const counter = moduleCounter(
     MAP_MODULE_PREFIX[id] ?? `/src/maps/${id}`,
     MAP_MODULE_COUNT[id] ?? 4,
@@ -2968,14 +2993,22 @@ export async function boot({ loading, bootStart, mapId }) {
    * crash. What it needs from here is the map's contact surface and where
    * the craft last flew in the open: recoverFrom below.
    */
+  /* The terrain, or a box top the craft is on or over: the city's heightAt
+   * knows only its platforms, and a roof is somewhere to set a craft down.
+   * See Colliders.topAt. Within 0.3 m above the centre, so a craft at the
+   * foot of a building is never put on its roof. */
+  const RECOVER_TOP_STEP = 0.3;
   function recoverGroundAt(x, z, y) {
-    return view.height(x, z, y - SURFACE_BIAS);
+    const h = view.height(x, z, y - SURFACE_BIAS);
+    const top = view.colliders ? view.colliders.topAt(x, z, y, RECOVER_TOP_STEP) : -Infinity;
+    return top > h ? top : h;
   }
 
   /*
-   * WHERE THE CRAFT LAST FLEW IN THE OPEN, its centre outside every solid and
-   * above the ground, taken every frame it is. The recovery refuses a spot it
-   * cannot reach from here in a straight line, which is what keeps a craft
+   * WHERE THE CRAFT LAST FLEW IN THE OPEN, clear of every solid by its own
+   * radius and above the ground, taken every frame it is. The recovery
+   * refuses a spot it cannot reach from here in a straight line, which is
+   * what keeps a craft
    * stuck in a wall on the side of it the pilot was flying, and a craft over
    * a room's ceiling out of the room under it. The crash position alone
    * cannot say which side of a slab is which: a centre already through a
@@ -3024,6 +3057,149 @@ export async function boot({ loading, bootStart, mapId }) {
     if (typeof audio.event === 'function') {
       audio.event('land');
     }
+  }
+
+  /*
+   * STUCK IS A RESET. The owner, flying the solid world for the first time
+   * on 2026-09-24: "crashing head first into a building i get stuck on the
+   * wall, it should reset on this or fall to the ground", and "crashing back
+   * first into the ground i get stuck again".
+   *
+   * Measured in the shell, both are the same state. A 6, 10 or 15 m/s head
+   * on hit slides down the face and comes to rest standing on its nose at
+   * the foot of the wall, top plate leaning on the masonry like a ladder,
+   * which a real quad can do too. A tail first arrival latches turtle the
+   * moment it touches and freezes, pointing at the sky. Either way the craft
+   * is not upright, so throttle is not a takeoff, and full throttle only
+   * presses it harder into whatever it leans on. Since the Crashed catch
+   * went, nothing but X ever got the pilot out, and nothing on screen says X.
+   *
+   * So a craft that has been AT REST and NOT UPRIGHT for STUCK_MS of sim time
+   * is set down nearby, exactly as X does it. Still is the whole test: a
+   * craft more than 60 degrees from level cannot hold still in the air, so
+   * if it is still, something is holding it. A tumble, a skid, a pilot
+   * working the sticks or the turtle flip all move it and restart the clock.
+   * A turtle the pilot may want to fly out of gets STUCK_TURTLE_MS instead.
+   * This is the shell's recovery, not physics: the plant is never touched
+   * until the moment X would touch it.
+   */
+  const STUCK_MS = 1500;
+  const STUCK_TURTLE_MS = 5000;
+  const STUCK_SPEED = 0.3;
+  const STUCK_RATE = 1.5;
+  let stuckSinceMs = -1;
+  function stuckTick() {
+    const st = stateCurr;
+    const still = mode === 'flight'
+      && ui.screen === 'flight'
+      && !poseLock
+      && !launchStaging
+      && !landed
+      && !turtleFlip.active
+      && !turtleRecover
+      && st
+      && plantUpZ(st) < TURTLE_EXIT_UPZ
+      && plantSpeed(st) < STUCK_SPEED
+      && plantRateMag(st) < STUCK_RATE;
+    if (!still) {
+      stuckSinceMs = -1;
+      return;
+    }
+    if (stuckSinceMs < 0) {
+      stuckSinceMs = simTimeMs;
+      return;
+    }
+    const turtling = turtleWait || manualFlip || crashflipOn;
+    if (simTimeMs - stuckSinceMs < (turtling ? STUCK_TURTLE_MS : STUCK_MS)) {
+      return;
+    }
+    stuckSinceMs = -1;
+    setManualFlip(false);
+    setCrashflip(false);
+    turtleRecover = false;
+    setDownNearby();
+    notice = { text: 'Stuck, so you were set down nearby.\nX does this any time.', untilMs: performance.now() + 2800 };
+  }
+
+  /*
+   * CRASH IS A RESET. The owner, 2026-09-24, after flying tumble flat: "when
+   * i crash head first or tail first into somthing i should not pause,
+   * defying gravety, i should immediately reset, fix the delay". stuckTick
+   * waited 1.5 s of stillness (5 s in turtle), and a tail first crash spent
+   * the best part of a second rolling flat before turtle was even offered,
+   * so a crash was a pause with the craft hanging on a wall or lying on the
+   * street, and only then a reset.
+   *
+   * So a CRASH is set down nearby on the frame it is read, exactly as X and
+   * stuckTick do it. A crash is a smack, GRAZE_SPEED_MAX of closing or more,
+   * the line the recogniser and the impact cue already draw between a
+   * deliberate touch and a hit, landed anywhere but on the belly:
+   *   a solid (a wall, a gate, a tree, the train): the frame or the lens in
+   *     contact, not a prop alone, at that closing speed, with the contact's
+   *     normal not along the body's up, and not the underside of something:
+   *     a contact whose normal points more than 30 degrees below level
+   *     (CRASH_UNDERSIDE_NZ) is a ceiling or a deck overhead, and gravity
+   *     takes the craft off it by itself, so there is no pause to cut short
+   *     and a craft held there is held by the pilot's own throttle
+   *     (scripts/input-check.js, the whoop pinned under the room's ceiling,
+   *     which caught the first version of this rule resetting it);
+   *   the ground, a roof included: the ground judgement's own hit speed,
+   *     with the craft not belly down at the hardest contact step;
+   *   or a STOP, one step that changed the craft's velocity by
+   *     GRAZE_SPEED_MAX or more, with the craft not belly down after it, in
+   *     a frame where no solid reported any contact at all. Nothing but a
+   *     contact does that in a millisecond: 4 m/s in 1 ms is about 400 g,
+   *     where thrust and gravity together give a few tens of g. With no
+   *     solid touched, props included, the contact was the ground (the box
+   *     the plant has taken as ground, a roof, is not a solid in the world
+   *     report). Props included because PROP_F_MAX is 60 N a blade, which
+   *     on the 23 g whoop is over 2 m/s a step, so a prop strike alone can
+   *     make a stop. This is the flat back first crash, which the hit speed
+   *     cannot see: flat on its back, the plant's projection lifts the hull
+   *     out of the grass and the props down grab stops it dead in one step
+   *     (ground_settle in src/native/sim.c), and sim_ground_contacts counts
+   *     impulse hits and not the projection, so the shell was told there
+   *     was no contact at all. Measured: 10.3 m/s to 0.02 in one step with
+   *     no contact reported, then turtle on the next frame.
+   * Nose and tail first are the owner's words, and the rule is wider on
+   * purpose, because a craft flying forward meets a wall pitched fifty
+   * degrees nose down: geometrically its top front edge lands first, and a
+   * nose only test would miss the very crash that was reported. What stays
+   * physics: a belly first hit (a hard landing, a skid, a bounce you fly
+   * out of), anything under 4 m/s (a wall tap, a nudge), a prop clip and a
+   * knock on a ceiling. Those still tumble flat and turtle as before.
+   */
+  const CRASH_BELLY_UP = 0.7;
+  const CRASH_UNDERSIDE_NZ = -0.5;
+  let crashReset = false;
+  /* The frame's largest one step velocity change, and body up after it:
+   * the STOP above. Written by the step loop, read and cleared with the
+   * world report. */
+  let stepStopDv = 0;
+  let stepStopUpZ = 1;
+  function bodyUpDot(st, nx, ny, nz) {
+    const w = st[7];
+    const x = st[8];
+    const y = st[9];
+    const z = st[10];
+    return 2 * (x * z + w * y) * nx + 2 * (y * z - w * x) * ny + (1 - 2 * (x * x + y * y)) * nz;
+  }
+  function crashResetTick() {
+    if (!crashReset) {
+      return;
+    }
+    crashReset = false;
+    if (!(mode === 'flight' && ui.screen === 'flight') || poseLock || launchStaging || landed
+      || turtleFlip.active) {
+      return;
+    }
+    stuckSinceMs = -1;
+    setManualFlip(false);
+    setCrashflip(false);
+    turtleRecover = false;
+    turtleWait = false;
+    setDownNearby();
+    notice = { text: 'Crashed, set down nearby.\nR restarts the run.', untilMs: performance.now() + 2400 };
   }
 
   /* The craft's heading, flattened onto the ground plane, as a spawn yaw.
@@ -4849,9 +5025,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /*
      * The pilot's own unstick: set down on the flat surface nearest to
-     * where you are, upright, run untouched. The only recovery there is:
-     * nothing does it for the pilot any more. It refuses on the ground so it
-     * cannot be used as a free reposition between laps.
+     * where you are, upright, run untouched. stuckTick does the same for a
+     * craft left still and not upright; this is the pilot's way to ask for
+     * it sooner. It refuses on the ground so it cannot be used as a free
+     * reposition between laps.
      */
     if (code === 'KeyX' && ui.screen === 'flight' && mode === 'flight') {
       if (landed || launchStaging || poseLock) {
@@ -5592,6 +5769,7 @@ export async function boot({ loading, bootStart, mapId }) {
       scoring = view.mode === 'freestyle';
       let peakGroundClosing = 0;
       let peakGroundSpeed = 0;
+      let peakGroundUpZ = 1;
       let sawGroundHit = false;
       acc += dt;
       let steps = Math.floor(acc / MS_PER_STEP);
@@ -5699,6 +5877,7 @@ export async function boot({ loading, bootStart, mapId }) {
            */
           peakGroundClosing = 0;
           peakGroundSpeed = 0;
+          peakGroundUpZ = 1;
           sawGroundHit = false;
           for (let i = 0; i < steps; i += 1) {
             if (i === 0 || (i & 7) === 0 || plantUpZ(stNow) < 0.5) {
@@ -5708,6 +5887,7 @@ export async function boot({ loading, bootStart, mapId }) {
             const spdBefore = Math.sqrt(
               stNow[4] * stNow[4] + stNow[5] * stNow[5] + stNow[6] * stNow[6],
             );
+            const stBefore = stNow;
             raiseGroundFromState(stNow);
             /* The train and the crossing's booms, where they are at this
              * step of the lap clock. */
@@ -5747,6 +5927,14 @@ export async function boot({ loading, bootStart, mapId }) {
             if (i === steps - 2) {
               statePrev = stNow;
             }
+            const dvx = stNow[4] - stBefore[4];
+            const dvy = stNow[5] - stBefore[5];
+            const dvz = stNow[6] - stBefore[6];
+            const dv2 = dvx * dvx + dvy * dvy + dvz * dvz;
+            if (dv2 > stepStopDv * stepStopDv) {
+              stepStopDv = Math.sqrt(dv2);
+              stepStopUpZ = plantUpZ(stNow);
+            }
             if (sim.e.sim_ground_contacts() > 0) {
               sawGroundHit = true;
               const inbound = -vzBefore;
@@ -5755,6 +5943,7 @@ export async function boot({ loading, bootStart, mapId }) {
               }
               if (spdBefore > peakGroundSpeed) {
                 peakGroundSpeed = spdBefore;
+                peakGroundUpZ = plantUpZ(stNow);
               }
             }
           }
@@ -5910,6 +6099,11 @@ export async function boot({ loading, bootStart, mapId }) {
            * a pilot what they already watched happen, and it does it over
            * the top of the next gate. */
           feelImpact(closing > hitSpeed ? closing : hitSpeed, 'ground');
+          /* A smack that did not land on the belly is a crash, and a crash
+           * resets at once: see CRASH IS A RESET. */
+          if (peakGroundUpZ < CRASH_BELLY_UP) {
+            crashReset = true;
+          }
         }
         groundBounceAtWall = nowWall;
       }
@@ -6010,11 +6204,27 @@ export async function boot({ loading, bootStart, mapId }) {
       /* The report's normal is the physics frame's, Z up, so [6] is how much
        * of it points up: a craft resting on the top of something. */
       obsRoof = rep[6] > 0.5;
+      /* The frame or the lens, not a prop alone, at a smack's closing
+       * speed, on anything but the belly, and not an underside: see CRASH IS
+       * A RESET. The report's normal points out of the solid, so a belly
+       * first hit has it along the body's own up and a ceiling has it
+       * pointing down. */
+      if (rep[8] > 0 && rep[1] >= GRAZE_SPEED_MAX && rep[6] > CRASH_UNDERSIDE_NZ && stateCurr
+        && bodyUpDot(stateCurr, rep[4], rep[5], rep[6]) < CRASH_BELLY_UP) {
+        crashReset = true;
+      }
       upAxis.set(0, 1, 0).applyQuaternion(qPrev);
       lastUpDot = Math.abs(-rep[5] * upAxis.x + rep[6] * upAxis.y - rep[4] * upAxis.z);
       passStats.index = idx;
       passStats.kind = kind;
     }
+    /* A stop in a frame that touched no solid is the ground's: see the
+     * STOP in CRASH IS A RESET. */
+    if (stepStopDv >= GRAZE_SPEED_MAX && stepStopUpZ < CRASH_BELLY_UP && !(rep[0] > 0)) {
+      crashReset = true;
+    }
+    stepStopDv = 0;
+    stepStopUpZ = 1;
     passStats.steps += rep[0];
     passStats.frame += rep[8];
     passStats.props += rep[7];
@@ -6068,18 +6278,28 @@ export async function boot({ loading, bootStart, mapId }) {
     obsImpulse = 0;
     obsImpulseKind = '';
 
-    /* See recoverFrom: the last place the craft's centre was in the open,
-     * outside every solid and above the ground, for X to set it down on the
-     * pilot's side of whatever it is wedged against. */
+    /* See recoverFrom: the last place the WHOLE CRAFT was in the open,
+     * above the ground and at least its own radius from every solid, for X
+     * and stuckTick to set it down on the pilot's side of whatever it is
+     * wedged against. The centre alone is not enough, and the city showed
+     * why on 2026-09-24: a head-on hit slid the craft into the 10 cm slot
+     * between a shopfront and the 1.5 m block in front of it, where it stood
+     * on its nose with its centre outside every solid. That slot became the
+     * last open air, every spot on the pavement was across the block from
+     * it, and the set down fell through to the start line. */
     if (mode === 'flight' && !poseLock && view.colliders) {
       const hy = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS);
-      if (!(hy > pCurr.y) && view.colliders.gapAt(pCurr.x, pCurr.y, pCurr.z, 0.05) > 0) {
+      if (!(hy > pCurr.y)
+        && view.colliders.gapAt(pCurr.x, pCurr.y, pCurr.z, CRAFT_WORLD_R) >= CRAFT_WORLD_R) {
         recoverFrom.x = pCurr.x;
         recoverFrom.y = pCurr.y;
         recoverFrom.z = pCurr.z;
         haveRecoverFrom = true;
       }
     }
+
+    /* Before turtle can take it: see CRASH IS A RESET. */
+    crashResetTick();
 
     if (
       mode === 'flight'
@@ -6094,6 +6314,8 @@ export async function boot({ loading, bootStart, mapId }) {
     if (isTurtleParked() && !turtleParkedNow) {
       setTurtleParkMotors(true);
     }
+    /* After the turtle has had its look: see STUCK IS A RESET. */
+    stuckTick();
 
     /* Race logic runs on the rendered world position, timed on the sim
      * clock at that state: gate crossings are swept over the frame's

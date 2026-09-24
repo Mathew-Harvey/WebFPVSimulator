@@ -221,6 +221,11 @@ function runIn(z, untilMs, after) {
 
 const LEVEL = [1, 0, 0, 0];
 const INVERTED_Q = [0, 1, 0, 0];
+/* 100 degrees of pitch, tail down and past vertical, and 80 of roll: the
+ * attitudes the drop probe of 2026-09-24 left standing. Written out rather
+ * than computed, so nothing transcendental runs on this side. */
+const TAIL_FIRST_Q = [0.6427876096865394, 0, 0.766044443118978, 0];
+const ON_SIDE_Q = [0.766044443118978, 0.6427876096865394, 0, 0];
 /* 90 degrees about body x, rounded; the module normalises it. */
 const KNIFE_Q = [0.707107, 0.707107, 0, 0];
 
@@ -291,8 +296,14 @@ const SCENARIOS = [
     sticks: runIn(2, 1200, (ms) => (ms < 1330 ? [1, 0, 0, 0.05] : [0, 0, 0, 0.05])),
     /* Arrival by height, not by sim_ground_contacts: measured, a five inch
      * that lands on its side at speed is caught by the plant's projection
-     * and settle and the contact counter reads zero throughout. */
-    exercises: (s) => s.arrivalSpeed > 4 && s.endUpZ < 0.5,
+     * and settle and the contact counter reads zero throughout.
+     *
+     * It ends FLAT, since 2026-09-24. This used to require endUpZ < 0.5,
+     * the craft left lying on its side, which was the plant's behaviour
+     * when the golden was written. The owner then decided a crash tumbles
+     * flat, always (TUMBLE FLAT, src/native/sim.c), and this run now ends
+     * on its belly, which is the decision, not a hollow run. */
+    exercises: (s) => s.arrivalSpeed > 4 && Math.abs(s.endUpZ) >= 0.96,
   },
   {
     name: 'slope, land and slide', ms: 4000, ground: 'slope',
@@ -371,6 +382,26 @@ const SCENARIOS = [
     events: [{ ms: 0, pose: { z: 2, q: LEVEL } }, { ms: 1200, angle: false }],
     sticks: runIn(2, 1200, (ms) => (ms < 1330 ? [1, 0, 0, 0.05] : [0, 0, 0, 0.05])),
     exercises: (s) => s.firstContactSpeed > 3,
+  },
+  /*
+   * TUMBLE FLAT, pinned, 2026-09-24. The owner's "yes make it tumble flat
+   * always": dropped onto the grass at an attitude a crash leaves, the
+   * craft ends lying flat on its belly or its back, still, whatever the
+   * flight controller is doing. Before the change the five inch below came
+   * to rest at exactly its drop attitude, tail down and pointing at the
+   * sky, and the whoop balanced on a duct edge under airmode.
+   */
+  {
+    name: 'grass, tail first drop tumbles flat', ms: 4000, ground: 'grass',
+    events: [{ ms: 0, pose: { z: 1.2, q: TAIL_FIRST_Q } }],
+    sticks: seq(hold(0, 4000, 0, 0, 0, 0)),
+    exercises: (s) => Math.abs(s.endUpZ) >= 0.96 && s.endSpeed < 0.05,
+  },
+  {
+    name: 'whoop, side drop tumbles flat', ms: 4000, airframe: 1, ground: 'grass',
+    events: [{ ms: 0, pose: { z: 1.2, q: ON_SIDE_Q } }],
+    sticks: seq(hold(0, 4000, 0, 0, 0, 0)),
+    exercises: (s) => Math.abs(s.endUpZ) >= 0.96 && s.endSpeed < 0.05,
   },
   {
     name: 'whoop, wall contact through sim_contact_at', ms: 3500, airframe: 1, angle: true,

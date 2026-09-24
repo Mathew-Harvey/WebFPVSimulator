@@ -42971,3 +42971,716 @@ approvals CLAUDE.md requires to be written down, and they cover exactly this:
 
 Still open: katakana sound effects (Stage C), the town's egg spot (Stage B),
 the STF logo as a file (Stage B). Stage A needs none of them and starts now.
+
+## 2026-09-24 | shell, loading | The owner's first flight: stuck on a wall, stuck on the ground, and a 47 second load
+
+The owner flew the solid world on main and reported three things, with
+screenshots: the load sat at "still loading the map, 1 of 1 modules, step 4
+of 6, 47s"; "crashing head first into a building i get stuck on the wall, it
+should reset on this or fall to the ground"; and "crashing back first into
+the ground i get stuck again". Nothing in the plant, the ABI or the build
+changed in this entry.
+
+### Stuck: what it was, measured in the shell
+
+A scratch probe flew the real shell into the city shopfront (x = 5.6) at 6,
+10 and 15 m/s, then held the throttle at 0, 0.34, 0.45, 0.5 and 0.6 with the
+sticks centred, and logged every frame.
+
+- **Head first.** Every run ended the same way: the craft pitches nose down
+  with its top plate to the face, slides down the wall in free fall (the
+  rotor bleed has the thrust off, so there is no normal load and no
+  friction), and comes to rest standing on its nose at the foot of the wall,
+  up.y 0, speed 0, rate 0, for as long as anyone waited. It is not upside
+  down, so turtle is not offered; it is not upright, so throttle is not a
+  takeoff; full throttle presses it harder into the wall. Since the Crashed
+  catch went, only X got the pilot out, and nothing on screen says X.
+  At this shopfront it is worse: a 1.5 m block stands 10 cm in front of the
+  face (x 5.1 to 5.5, z 25.8 to 33.4), and the craft slides into that slot,
+  which is just wide enough for it on its nose. That is the owner's picture:
+  the wall filling the view.
+- **Back first.** A 10 m/s tail first arrival latched turtle on the frame it
+  touched, and turtle freezes the plant, so the craft was left pointing at
+  the sky at 64 degrees from flat, the owner's third screenshot. Turtle does
+  flip it on pitch or roll; throttle does nothing.
+
+### Stuck: what changed
+
+**stuckTick (src/main.js).** A craft AT REST (under 0.3 m/s and 1.5 rad/s)
+and NOT UPRIGHT (up.z under 0.5, TURTLE_EXIT_UPZ) for 1.5 s of sim time is
+set down nearby, exactly as X does it, with a notice that says so and names
+X. Still is the whole test: a craft more than 60 degrees from level cannot
+hold still in the air, so if it is still something is holding it. In turtle
+or crashflip the wait is 5 s, so a pilot who wants to flip it has the
+chance. This is the shell's recovery: the plant is not touched until the
+moment X would touch it. It is the owner's "it should reset on this".
+
+**The set down's reference point (src/main.js).** X refuses a spot it cannot
+reach in a straight line from the last open air, which keeps a crash on the
+pilot's side of a wall. "Open air" was the craft's CENTRE outside every
+solid, and the slot above is outside every solid, so every spot on the
+pavement was across the block from it and the set down fell through to the
+start line. It is now the last place the WHOLE CRAFT fitted, clear of every
+solid by its own radius, which for this crash is just before the hit, above
+the block.
+
+**Closer search rings (src/game/collide.js).** RECOVER_OUT was 1, 2 and 3.5
+m; it now starts at 0.25 m. The same pavement a quarter metre out from a wall
+was never asked. check:clip's 548 rest spot and contact tests still pass.
+
+**check:crash** gains a guard on every scenario, never left stuck: still and
+not upright for no longer than 1.5 s plus half a second of frame
+granularity (5.5 s in turtle), and two scenarios that crash head on and are
+left alone for 4.5 s, which must end the right way up. One existing guard
+was touched and it is argued here, not quietly: "no frame moves further than
+its speed allows" read a set down as a teleport. A set down restarts the sim
+clock, so a frame where the clock steps backwards, and the frame after it
+(the render interpolates a frame behind), are now counted as set downs and
+printed instead. The new guard is what bounds when one may happen. No
+threshold moved.
+
+### Load: what it was
+
+- Locally, clean: boot 4.3 s, 101 JS files. With an emulated 300 ms round
+  trip: 12 s, and the files arrived in about 19 waves, because an ES module's
+  imports are only discovered once it has arrived. The city adds 72 files
+  and took 5 s of waiting at 300 ms.
+- Live, from this container: every module is 0.5 to 0.9 s to first byte.
+  Cloudflare answers `s-maxage=300` and reports REVALIDATED or EXPIRED, so
+  the edge goes back to Render at least every five minutes, and a load right
+  after a deploy is cold everywhere. The site speaks HTTP/2 (h3 advertised)
+  and compresses (ui.js 550 KB on disk, 176 KB on the wire).
+- So the owner's 47 s is mostly waiting, not work: about twenty dependent
+  round trips at the best part of a second each before the map, and the same
+  again inside the stage the screenshot shows.
+
+### Load: what changed
+
+**scripts/gen-preload.js** writes the static module graph as `<link
+rel="modulepreload">`: the boot graph (102 files) into index.html after the
+import map, and each lazy map's extra modules (the city's 72) into
+src/maps/preload.js, which loadMap in main.js turns into preload links the
+moment the map is chosen. Every file is then requested in the first wave.
+The generator was checked against a real boot in headless Chromium: the same
+101 files at boot and 72 for the city, none extra, none missing (102 now,
+with preload.js itself). Three.js's add-ons import each other on the CDN,
+which it cannot read offline, so their edges for the pinned 0.160.0 are
+written out and it refuses to run if the import map moves. `npm run
+lint:preload` fails on a stale list; `npm run gen:preload` rewrites it.
+No bundler, no dependency: the files, their URLs and their bytes are
+unchanged, only when they are asked for.
+
+Measured locally, before and after, the same machine, nothing else running:
+
+    emulated RTT    boot wall        last JS arrives    city module stage
+    300 ms          10.7 -> 8.7 s    7.9 -> 5.3 s       4.7 -> 4.4 s
+    600 ms          17.8 -> 14.3 s   15.1 -> 10.4 s     8.7 -> 7.9 s
+
+The gain is smaller locally than it will be live, and the reason is the
+test server, not the change: it speaks HTTP/1.1, so Chrome opens six
+connections to it and 102 requests still queue in about seventeen batches.
+The live site is HTTP/2, one connection with no such queue, where the whole
+graph should cost one or two round trips. That is an argument, not a
+measurement: headless Chromium here rejects the container proxy's
+certificate authority (ERR_CERT_AUTHORITY_INVALID), and certificate checks
+were not switched off to get round it. The owner's next load is the
+measurement.
+
+**More jokes.** The screen already told one every 4.8 s; twenty ran out in
+96 s. There are thirty five now.
+
+### Open, for the owner
+
+- **The tail first freeze.** stuckTick sets it down after 5 s, but the pose
+  it waits in is wrong: turtle latches on the first frame the hull touches,
+  before the crash has played out, and the plant's inverted rest is a single
+  bump through the CG, so a 64 degree arrival never falls flat. Making it
+  fall flat is a change to the ground model or to when turtle latches, and
+  it is asked, not done.
+- The upward pop off a hard wall hit, from the entry above, is unchanged.
+
+### What went wrong
+
+- The scratch probes exited without closing their browsers. By the time it
+  was noticed, seven orphaned headless Chromiums were rendering the city at
+  full load, and a crash check run reported three scenarios "never reached
+  the wall" off four recorded frames. They were killed and every timing in
+  this entry was taken again on a quiet machine; the probes now close their
+  pages.
+- The first stuckTick run sent the craft back to the start line from the
+  middle of the shopfront. That is how the slot and the reference point
+  above were found.
+
+### RUN LOG
+
+    npm run check:crash --targets  0 guards failed (68 guard passes), 7
+                                   targets not met: the same list as the
+                                   entry above, the 3 m/s tap's spin at
+                                   5.11 against 5 this run. Set down after
+                                   1.50 to 1.55 s in all three stuck runs.
+                                   .loop/evidence/crash-check-stuck-2026-09-24.json
+    npm run check:clip             548 passed
+    npm run lint:frame             34 passed
+    npm run lint:input             all 131 passed
+    npm run lint:boot              9 of 9 clean
+    npm run lint:quality           56 of 56 clean
+    npm run lint:memory            PASS, every world is lazy
+    npm run lint:preload           up to date, boot 102, city 72
+    npm run verify                 not run: no physics, plant, ABI or build
+                                   change. Check 16 (map isolation) is the
+                                   part the preload touches. Read, not run:
+                                   it wants no city module before the city
+                                   is chosen (the preload fires in loadMap)
+                                   and the fetched count equal to
+                                   MAP_MODULE_COUNT, 72, which the before
+                                   and after timing runs both fetched.
+                                   lint:memory covers the lazy load too.
+    npm run check:plant, check:world, check:wall   not run: the plant is
+                                   unchanged
+    park:fly                       not run: no pilot or recogniser change
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | git | The stuck fix and the preload pushed to main, for the owner to fly
+
+The owner, on the entry above: "push to main and i'll fly it". The
+verification scale chosen is fly it, and it is the approval to put the
+branch on main. main had not moved since e88b7e7, so the branch went on as
+a fast forward. Nothing was rewritten.
+
+Not yet answered, and asked again with the flight: whether the tail first
+crash should fall flat rather than wait in turtle at the angle it landed,
+which is a ground model or turtle latch change. What to look for is in the
+entry above: left alone after a head on hit, the craft is upright on the
+pavement within about 1.5 s; a tail first crash turtles or is set down
+within 5 s; and a cold load is the live measurement of the preload.
+
+### RUN LOG
+
+    code                     unchanged since the entry above
+    checks                   not rerun: nothing they read changed
+    npm run lint:preload     up to date, boot 102, city 72
+    git merge-base           e88b7e7, main is an ancestor of the branch
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | wiki | A Year 10 voice sample for the FPV wiki, pushed to main
+
+The owner asked for the whole FPV wiki to be rewritten with the humanizer skill
+(github.com/blader/humanizer, version 3.0.0) so that it makes sense and reads
+like a textbook for Year 10 students, in plain English, with the analogies
+gone. Then, on the result below: "push to main".
+
+Changed: `WIKI-REWRITE.md` at the root. It holds the rules the rewrite follows,
+four pages rewritten in that voice (The closed loop, Vortex ring state, The PID
+controller, and the P roll settings page), notes under each page on what was
+removed, defined, corrected and cut, the structure changes the pages assume,
+and what is left. No code changed.
+
+What went wrong: the wiki is not in this repository. It moved to
+`landingpage-WebFPVSimulator-` on 2026-08-26 (the entry "wiki moved to the
+landing site" above). Attaching that repository was refused twice by the
+session's permission check, first with push access and then read only, so
+nothing was read from or written to it, and no other route to it was tried.
+The four pages were rewritten from the copy that last lived here, commit
+18e086f, after deepening this clone's shallow history to reach it. That copy
+turned out to be stale as well as hard to read: it says the 5 inch is the only
+aircraft, that prop torque ignores the airflow, that there is no ground effect,
+and it uses old screen names. `WIKI-REWRITE.md` lists what was found. The
+sample pages were checked against today's code, and the check caught one
+error in the first draft: Arcade switches off the simulated gyro noise, so
+"adds simulated vibration" needed "in the Expert flight style".
+
+Found in passing, not changed: `src/native/plant.c` uses "the windmill brake
+state" in two comments with two different meanings, a shallow descent in the
+descent branch and a broken-down wake on `k_rotor_axial`. In rotor theory the
+name usually means the fast descent beyond the vortex ring state. The sample
+page does not use the term.
+
+Open, for the owner: access to `landingpage-WebFPVSimulator-` with push, and a
+yes or no on the voice and on each structure change in `WIKI-REWRITE.md`
+(section labels, chapter names, "physics model" for "plant", status chips in
+words).
+
+### RUN LOG
+
+    code                     unchanged; a new document and this entry
+    checks                   none run: nothing they read changed
+    dashes and curly quotes  none in WIKI-REWRITE.md (grep)
+    git merge-base           e88b7e7, one history. main moved by three
+                             commits during the turn (429cb9b, ff945c0,
+                             638560d); they were merged in with main's
+                             PROGRESS entries first, then this one
+    git diff --stat vendor/betaflight   empty
+
+---
+
+## 2026-09-24 Board statistics tab: named pilots off the all time strip
+
+Follows the statistics tab copy entry above.
+
+Board commit `dcc8d5f`, on its `main`. The owner: twenty named pilots
+beside 265 pilots today distracts from the real number. Named pilots is
+gone, and so is Back another day, which counts only those same named
+pilots and without them reads as returning visitors, contradicting the
+Pilots today tile. Six facts remain in three columns. The mast's Pilots
+count, the leaderboard's own figure, is untouched and shows on every tab.
+
+    board npm test           1 failed, the same app.js noopener check
+                             that fails on board main without this.
+    served / look at it      not run. Offered to the owner.
+
+## 2026-09-24 | physics, plant, shell | Tumble flat, always
+
+The owner, as the advisor, on the question the entry before last left open
+(whether a tail first crash should fall flat rather than wait in turtle at
+the angle it landed): "yes make it tumble flat always". That approval
+covers a change to the ground model and to when turtle latches, and this
+entry is that change, with every number it moved. The module ABI and the
+build are unchanged: no new export, and world.c is as it was.
+
+### What it was, measured
+
+A Node probe (scratch, not committed) dropped the plant from 1.2 m onto
+grass at 11 pitch and 11 roll attitudes, 60 to 180 degrees either way, on
+both airframes, with the throttle cut and at 0.3, and read how it came to
+rest after five seconds: **70 of 88 drops came to rest off flat**, most of
+them at exactly the attitude they were dropped at. A 100 degree drop sat at
+100 degrees. Three things held them:
+
+1. Past 90 degrees, the plant supported the craft on one point, the top
+   plate's centre (the "bump"), and kept every corner out of the grass with
+   a projection that moves the hull and never turns it. The real support was
+   a corner with no arm.
+2. The settle's props down stop zeroed velocity and rate anywhere past 60
+   degrees from flat, so a craft that did start to fall stopped mid fall.
+3. Betaflight's airmode holds whatever attitude the crash left: a 60 degree
+   drop sat there with its motors split 2,000 to 5,600 rpm, and the whoop,
+   whose ducts keep its props out of the grass, held 35 degrees on a duct
+   edge indefinitely.
+
+### What changed
+
+In src/native/sim.c, under TUMBLE FLAT and A CRASHED CRAFT DOES NOT BALANCE
+ITSELF:
+
+- **The bump carries only a craft within about 25 degrees of flat on its
+  back**; anything steeper stands on its real lowest corner. Except under
+  crashflip, which keeps the bump at every inverted angle, because the
+  motors turning the hull over need it: measured, on a corner the golden's
+  turtle stayed at -0.97 with the flip commanded.
+- **The props down stop only within about 25 degrees of flat** on the back.
+- **The ground stall.** On the ground, slower than 1 m/s, more than 14
+  degrees from flat on belly or back, and either more than 60 degrees over
+  or with the throttle stick under 0.12: every rotor loses half its speed a
+  millisecond. A real crashed quad has its props in the dirt and a pilot who
+  disarms; the sim has no disarm, so the plant stands in for it. At 8
+  percent a millisecond, the soft props' rub, a rotor the controller keeps
+  asking for settled at a third of its speed and airmode still balanced a
+  five inch on its side.
+- **And it goes over.** Stalled, it is tipped toward whichever of belly or
+  back it is nearer, at 200 rad/s2, about the corner it is going over. This
+  is a stand-in, not rigid body physics, and it is written down as one: a
+  real quad lying on its side lies on thin, springy props and arms and rolls
+  off them, and the hull here is a box, which is content to stand on its
+  narrow side face. Tipped about the CG it crept at 0.3 rad/s, because the
+  inelastic corner contact took the tip back out every millisecond; about
+  the corner it goes over in about a quarter of a second. 40 and 60 were
+  measured and left ten of the 88 on their side.
+- **Spin friction stands aside while a crash is being tipped**, and is
+  otherwise exactly as it was. Limiting it to flat everywhere freed the tip
+  but moved the launch stand punch: the block is 28 degrees and the nose is
+  in the grass at release.
+
+In src/game/collide.js, **TURTLE_INVERT_UPZ is -0.95**, flat on the back,
+where it was -0.35, about 110 degrees: a gate at 110 latched the first slow
+millisecond of the new tumble and froze it mid fall.
+
+Tried and taken out: a per disc rub for props dug into the ground plane.
+Once the stall existed it added nothing to the tumble, and it bit every race
+start: the launch block is a drawn ramp over a flat plane, so at release the
+front discs are in that plane for a few milliseconds of full throttle.
+
+### What it is now
+
+- The drop probe: **all 88 end flat**, 17 on the belly and 71 on the back,
+  every one within 14 degrees and at rest. The back is where hard edge
+  landings throw the craft, and a held throttle cartwheels it; the tip only
+  takes over once it is slow.
+- In the shell, the owner's own crash, tail first into the city street:
+  it rolls onto its back within about 50 ms of touching, settles at
+  up.y -0.95 looking at the ground, turtle latches, and pitch flips it.
+- stuckTick still sets down a craft leaning on a wall, which the wall keeps
+  from tipping, 1.5 s after it stops.
+
+### The golden, and the checks that moved
+
+The owner's approval covers rewriting the plant golden for the runs this
+reaches. **17 of 21 are bit identical** to the golden written before any of
+this work: all free air, takeoff and landing on both airframes, the hard
+drops, the slope, the launch stand, the deck edge and every contact entry
+point. **Four moved**, and they are the crashes: grass belly crash at speed
+(from 2.35 s), grass side arrival at speed (from 1.9 s), whoop side arrival
+(from 2.5 s), and whoop inverted landing then turtle (from 3.95 s, the
+moment crashflip lets go). **Two were added**, a five inch tail first drop
+and a whoop side drop, each required to end flat and still, so this
+decision is pinned. The five inch side arrival's `exercises` said it ended
+on its side (endUpZ < 0.5); that was the old behaviour and it now ends flat,
+so the test says so, with the reason beside it. The self test still sees a
+1e-7 friction nudge in exactly the 14 grounded runs.
+
+check:clip: the turtle latch tests used -0.9 and -0.8 as their example of
+upside down. Those are 25 and 37 degrees off flat, still falling now, so
+the examples are -0.98; the gate test that pinned 110 degrees now pins flat,
+and a new one asserts 30 degrees off flat is not turtle. 549 pass.
+
+contact:selftest: "a side arrival rolls instead of locking attitude" failed
+while the tip turned about the CG (0.24 rad/s at 350 ms) and passes about
+the corner (5.3 rad/s). The old module passed it only at that instant: it
+rolled at 13.9 rad/s and then welded at up -0.58 for good, which was the
+bug.
+
+**check:wall, one new failure, argued and not re-thresholded**: "yaw 180 deg
+at 9 m/s: three seconds of nothing and the craft is off the face". It is not
+on the face. The test wall is 8 m tall; the craft ends at x 30.32 (the wall
+spans 30 to 31.5), 8.06 m up, flat on its back, at rest: it crashed onto
+the top of the wall, which has been ground since the solid world moved into
+the plant, and now lies there instead of flailing off the edge. The check
+reads "dropped two metres or cleared the face" and cannot tell a craft lying
+on a roof from one hanging on a face. The other seven failures are the ones
+argued two entries up.
+
+### RUN LOG
+
+    drop probe (scratch)           88 of 88 flat, 17 belly, 71 back
+    npm run check:plant            all 23 passed; 17 unchanged against the
+                                   pre-work golden, 4 re-recorded, 2 new
+    npm run check:plant:selftest   passed
+    npm run contact:selftest       all passed
+    node scripts/world-check.js    all passed
+    npm run check:wall             49 passed, 8 failed: the 7 argued before,
+                                   plus the wall top case above
+    npm run check:crash --targets  0 guards failed; the same 7 targets not
+                                   met. .loop/evidence/crash-check-tumble-2026-09-24.json
+    npm run check:clip             549 passed
+    npm run lint:frame             34 passed
+    npm run lint:input             all 131 passed
+    npm run verify                 16 of 16, build-clean runs; trace
+                                   de0401cd4266 in Node and Chrome,
+                                   unchanged: free air is untouched
+    the owner's tail first crash   flat on its back, turtle latches, flips
+    park:fly                       not run: the change acts only on a hull
+                                   at the ground; no trick touches it
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | git | Tumble flat pushed to main, for the owner to fly
+
+The owner, on the entry above: "pull , merge and push to main". The
+approval to put the tumble flat change on main, and the verification scale
+chosen is flying it. main had moved by two commits since the last merge
+(another session's board statistics entry, 5a5dac1 and a4cebaf, PROGRESS
+only); they were merged into claude/zealous-cerf-gik7au with main's entries
+first, and the branch went onto main as a fast forward. Nothing was
+rewritten.
+
+What to look for is in the entry above: a tail or back first crash rolls
+flat and offers turtle; a side landing flops onto belly or back; takeoffs,
+landings, launches off the block and crashflip feel exactly as before.
+
+### RUN LOG
+
+    code                     unchanged since the entry above; only
+                             PROGRESS.md came in from main
+    checks                   not rerun: nothing they read changed
+    git merge-base           295617f, one history
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | wiki | The whole FPV wiki rewritten as a Year 10 textbook, on the landing site
+
+The owner: "attach the landing page repo with push access pull, merge the push
+as needed". That attached `landingpage-WebFPVSimulator-` to the session, and
+the rewrite the voice sample above proposed was done there and pushed to its
+main as d12c8e6 and 4d125d8. Nothing in this repository's code changed; this
+entry and the status of `WIKI-REWRITE.md` are the only edits here.
+
+What changed, on the landing site: all 36 articles, every settings page and
+family template (706 pages), the text of all 35 figures, the glossary, the
+status chips and the page shell, in plain English for a Year 10 reader with
+the analogies gone. Sections are The idea, How it works and In this simulator;
+chips say Works here, Off at 1 kHz, Stored, not used, Not simulated and
+Configurator only. Its `docs/wiki-voice.md` is the new contract and
+`docs/wiki-textbook-2026-09.md` records the pass, every fact corrected and
+every check. The wiki had fallen behind this repository, and it now follows
+the code: two airframes, a 0.71 kg five inch, figure of merit 0.520, the
+Weight slider's 1.62 g, torque that follows the air flow, contact in world.c,
+ground effect on the whoop, turtle on T, tumble flat, Arcade, check 10's band,
+and no dropped diffs. Its `src/wiki/model.js` and catalog snapshot were
+brought up to date from plant.c and src/fc/catalog.js.
+
+What went wrong: I told the owner, and wrote into the sample, that dropping a
+diff onto the page still loads it, from reading the name of the drop listener
+in main.js and not its body, which says the page no longer flies a dropped
+file. I also built the fact sheet from plant.c's header block, which still
+quotes the old kq and 650 g, and missed the 0.71 kg mass note and the Weight
+slider's gravity until a helper agent caught both. Five helper agents wrote
+the middle of the settings module and the figure text from one brief; two of
+them finished before the corrections reached them, and their numbers were
+fixed by hand. `vendor/betaflight` is not checked out in this clone, so three
+of the helpers read Betaflight's files at the pinned commit 77d01ba from
+GitHub, outside the repositories this session was scoped to; several settings
+page corrections rest on that reading, and the landing record says so.
+
+Found here and not changed, for the owner:
+
+- Four keys src/fc/catalog.js marks LIVE have no effect: pid_at_min_throttle
+  and airmode_start_throttle_percent (read only in fc/core.c, which is not
+  compiled; isAirmodeActivated is stubbed true in bf_stubs.c),
+  ez_landing_speed (GPS speed) and dyn_idle_start_increase (never applies
+  while airmode is always active). Their wiki pages say so under a Works here
+  chip. APPLIED_INERT would make the chip agree.
+- plant.c's block comment still quotes the old full throttle figures (2723
+  rad/s, thrust to weight 9.21); the mass note says 8.43; the current
+  constants give 2669 rad/s and 8.10 at 1 g.
+- plant.c uses "windmill brake state" for two different regimes.
+- The bf_glue.c comment on isFlipOverAfterCrashActive says the shell raises
+  crashflip when the craft is inverted and in contact; main.js raises it only
+  while T is held.
+- src/ui/fc.js line 717 says launch control is "the same Launch control in
+  Settings"; the switch is on the Quad screen.
+- The catalog's INERT reasons for vbat_, ibat_ and bat_ keys say "use Pack
+  charge in Settings"; Pack charge is on Before you fly. motor_kv's reason
+  still says "The airframe is still the Stage 1 5 inch".
+- The PIDs screen intro says "100 is that tune's stock"; the whoop tunes
+  store a master of 75 or 85.
+- The title menu's wiki note still says "The closed loop, the plant, and
+  every Betaflight 4.5.1 key".
+
+### RUN LOG
+
+    this repository          WIKI-REWRITE.md status and this entry only
+    checks here              none run: nothing they read changed
+    landing npm run lint:wiki   ok, 36 articles, 35 figures, 706 pages,
+                             180 authored keys, 161 / 5 / 14
+    landing npm run lint:page   25 of 25 clean
+    landing npm run lint:nouns  PASS
+    landing settings module  page by page against the previous one on the
+                             same catalog: 180 keys, 706 pages, 0 differences
+    landing string scan      6,192 strings: no dash, no curly quote, no
+                             stale number, no analogy from the old copy
+    landing in Chromium      10 pages at 1440, 900 and 430 px, no console
+                             errors, no sideways overflow; four figures
+                             looked at by eye, one overlap fixed
+    git merge-base           295617f, one history; main had moved to
+                             d6157c8 (tumble flat) and was fast forwarded
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | shell | A crash is a reset, at once
+
+The owner, after flying tumble flat: "when i crash head first or tail first
+into somthing i should not pause , defying gravety, i should immediately
+reset, fix the delay". Shell only. The plant, the module ABI and the build
+are unchanged, so no approval beyond the request was needed, and this entry
+records why the shell reads what it reads.
+
+### What the delay was
+
+Three things stood between a crash and a set down:
+
+- stuckTick waits for a craft that is still and not upright: 1.5 s, or 5 s
+  in turtle. A craft on a wall face or on its back met that only after the
+  pause the owner saw.
+- A tail first crash rolled flat for the best part of a second (TUMBLE
+  FLAT), and only then did turtle latch, which is a wait for the pilot.
+- A flat back first crash was never seen as a crash at all. See the STOP
+  below: the shell was told there had been no ground contact.
+
+### What changed
+
+**CRASH IS A RESET (src/main.js).** A crash now sets the craft down nearby
+on the frame it is read, the same set down X and stuckTick use, with the
+notice "Crashed, set down nearby. R restarts the run." A crash is a smack,
+GRAZE_SPEED_MAX (4 m/s) or more, the line the trick recogniser and the
+impact cue already draw between a touch and a hit, landing anywhere but on
+the belly (body up within about 45 degrees of the contact's normal,
+CRASH_BELLY_UP 0.7). There are three ways the shell reads one:
+
+1. A solid (a wall, a gate, a tree, the train): the world report's frame or
+   lens steps, not a prop alone, at that closing speed, with the contact's
+   normal not along body up, and not an underside. A contact whose normal
+   points more than 30 degrees below level (CRASH_UNDERSIDE_NZ, -0.5) is a
+   ceiling or a deck overhead. Gravity takes the craft off it by itself, so
+   there is no pause to cut short, and a craft held against one is held by
+   the pilot's throttle.
+2. The ground, a roof included: the ground judgement's own hit speed, with
+   body up at the hardest contact step not along the ground's up.
+3. A STOP: one step that changed the craft's velocity by 4 m/s or more, with
+   the craft not belly down after it, in a frame where no solid reported any
+   contact. 4 m/s in a millisecond is about 400 g; thrust and gravity give a
+   few tens. With no solid touched, the contact was the ground.
+
+The rule is wider than "nose or tail" on purpose. A craft flying forward
+meets a wall pitched fifty degrees nose down, so its top front edge arrives
+first, and a nose only test would miss the very crash that was reported.
+What stays physics: a belly first hit (a hard landing, a skid, a bounce
+flown out of), anything under 4 m/s (a wall tap, a nudge), a prop clip and
+a knock on a ceiling.
+Those still tumble flat and turtle as before, and stuckTick still catches
+whatever is left still and not upright.
+
+**The set down knows roofs (src/game/collide.js, Colliders.topAt).** The
+first run of the crash reset put a craft that crashed on a roof down on the
+street, because view.height is the city's heightAt, which knows only its
+platforms. topAt returns the highest static box top whose footprint holds the
+point and which is no more than 0.3 m above the craft's centre, so a craft
+at the foot of a building is never lifted onto its roof. recoverGroundAt
+takes the higher of the two. Three new check:clip cases pin it.
+
+### What went wrong
+
+- **The flat back first crash went to turtle, and the logs said the crash
+  code never ran.** An instrumented run found the plant stopping the craft
+  from 10.3 m/s to 0.02 m/s in one 1 ms step with sim_ground_contacts
+  reading 0. Flat on its back, the top plate bump had not touched yet; the
+  projection had lifted the hull out of the grass (g_ground_projected), and
+  the props down grab in ground_settle zeroed velocity because it counts
+  the projection as touching. sim_ground_contacts returns g_ground_hits,
+  impulse hits only. So the shell saw no ground contact: no hit speed, no
+  impact cue, no crash, and on the next frame a slow inverted craft, which
+  is turtle. The STOP reads the plant's result instead of its flag.
+- **I first gated the STOP on "no frame or lens contact", on the grounds
+  that a prop alone could not make one.** That is true on the five inch
+  (60 N a blade, PROP_F_MAX, on 0.71 kg is under 0.1 m/s a step) and false
+  on the 23 g whoop, where one blade can take 2.6 m/s a step. The gate is
+  now "no solid contact of any kind this frame". The support box, the roof
+  the plant has taken as ground, is skipped in world.c's contact loop, so a
+  crash on a roof is still a STOP.
+- **Earlier in the turn, a run over a roof set the craft down on the
+  street.** That is the topAt fix above.
+- A frame that touches a solid with a prop and the ground flat on its back
+  in the same frame is not read as a STOP. It falls to stuckTick, 5 s in
+  turtle. Rare, and written down rather than guessed at.
+- **The scratch probe that proved the flat case lied twice before it told
+  the truth.** The tail first probe pitches on the wall clock, so each run
+  lands at a different attitude: the run that reproduced the bug arrived at
+  up -0.96, and the first run after the fix happened to arrive between
+  -0.03 and -0.91 in all six, which proves the tilted cases and says
+  nothing about the flat one. A deterministic drop replaced it:
+  `__seatCraft('invertedAir')`, flat on its back 4 m up. Its second and
+  third drops then sat on the ground in turtle from the first frame,
+  without falling. That is a harness quirk and not this change:
+  __seatCraft copies sim_ground_contacts() into lastGroundHits after a
+  teleport, and the count is the last step's, here the belly landing
+  before it. turtleInContact() then reads a craft 4 m up as seated, and
+  beginTurtleWait parks it on the ground. A craft in flight never teleports
+  upside down into the air, so the pilot cannot reach it. The probe now
+  lifts the craft first so the plant steps once in free air, and all three
+  flat drops fell and reset. Not fixed here: it is a harness hook's bug, and
+  no check calls invertedAir.
+- **The first version reset a whoop for touching a ceiling.** lint:input's
+  "a radio's 0.47 throttle holds it against the ceiling, and nothing calls a
+  crash" failed: the whoop climbed into the room's ceiling top first, faster
+  than 4 m/s, and the solid rule read the top plate meeting a surface as a
+  crash that did not land on the belly. In the body's own frame, that is
+  the same contact as landing flat on the back, which the owner does want
+  reset. What tells them apart is gravity: off a ceiling the craft falls
+  away and flies on, and on the ground it lies there. The check was right
+  and is unchanged; the rule now leaves undersides alone, and lint:input
+  passes all 131 again.
+- **The crash check's arrival speed can now land on the set down.** It
+  calls a craft at the wall when its centre is within 0.25 m of the face,
+  and the reset fires on the first frame or lens contact, which on a
+  pitched craft comes before the centre crosses that line. The set down
+  that follows is at least CRAFT_WORLD_R from any solid, which can be
+  inside the line, so in some runs the frame the check calls the touch is
+  the craft sitting still after its set down: "reached what it is named
+  for: at 0.008 m/s" on the 10 m/s head on, 0.351 and 0.624 on the 20 m/s,
+  and 0.313 on the 15 m/s left alone, each of which read 9 to 14 m/s in
+  another run. The guard only asks whether the craft got there, so it
+  passes either way, but the targets read off the touch window then
+  measure the scripted pilot flying back into the wall from rest. The
+  targets are unchanged and so is the check. Measuring the approach from
+  the frame before the first set down would fix the reading; that is a
+  change to what the check measures, and it is left for the owner.
+- **One full crash-check run read "wall hit, then full throttle" with its
+  very first recorded frame already at the wall** (touch at 0 ms, arrival
+  0.039 m/s), after which full throttle climbed to 43 m. That is not the
+  artifact above: the settle before recording had ended at the wall. It did
+  not come back in four more runs of that scenario: alone (8.975 m/s),
+  after "settle onto a roof" with the settle logged (no reset in the
+  settle, target met), and in two more full runs (8.96 and 8.973 m/s). Not
+  diagnosed; written down.
+- **The 3 m/s wall tap's "barely spins, under 5 rad/s" sits on its line.**
+  It read 5.111, 5.087, 4.812, 5.139, 5.063 and 5.019 across six runs
+  today, the first two before the STOP existed. The tap makes no set down,
+  so the reset never acts on it. Not re-thresholded.
+
+### Proposed, not done
+
+sim_ground_contacts could count the projection as contact, since
+ground_settle already treats it as touching. The shell's perch, takeoff and
+turtle tests all read that count, so it would be more honest everywhere,
+and the flat back first crash would then get its impact cue, and at 18 m/s
+or more its crash count, which it still does not: it is reset, but
+silently, with only the notice. That changes what an ABI export means, so
+it is the owner's call and is not in this change.
+
+### RUN LOG
+
+    probe, the owner's crashes     11 of 11 reset on the frame after
+      (scratch, wall clock pilot)  impact, none latched turtle: the wall
+                                   runs named 6, 10 (three throttles) and
+                                   15 m/s, arriving at 10.7 to 13.7 m/s;
+                                   tail first falls at 6.7 to 10.8 m/s,
+                                   up -0.03 to -0.91. Before the STOP, the
+                                   run landing at up -0.96 latched turtle.
+                                   Run before the underside exemption,
+                                   which acts only on a contact facing down
+                                   and so on none of these.
+    drop probe (scratch, final)    flat on its back from 4 m, 10.6 m/s:
+                                   3 of 3 reset on the impact frame, never
+                                   turtle. Belly first, same height and
+                                   speed: 3 of 3 landed, no reset.
+    npm run check:crash --targets  three full runs on this change, the last
+                                   on the final code: 0 guards failed each
+                                   time, and the same 5 targets not met,
+                                   all unmet before this change: the tap
+                                   leaving the wall, the tap spin (on its
+                                   line), 20 m/s tumble and up kick, and
+                                   the glancing keep. The roof dive now
+                                   stops on the roof (6.808, was 0.045),
+                                   and "full throttle frees it" is met
+                                   because the reset takes the craft off
+                                   the wall.
+    npm run lint:input             131 of 131 on the final code; 130 of
+                                   131 on the first version (the ceiling)
+    npm run lint:frame             34 passed
+    npm run lint:preload           up to date
+    npm run check:clip             552 passed, 3 of them new (topAt)
+    npm run lint:boot              9 of 9 clean
+    npm run lint:quality           56 of 56 clean
+    npm run verify                 not run: shell only, nothing in the
+                                   plant, the ABI or the build changed
+    npm run check:plant            not run, for the same reason
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | git | The crash reset pushed to main, for the owner to fly
+
+The owner, on the entry above: "push to main and i'll fly it". The approval
+to put the crash reset on main, and the verification scale chosen is flying
+it. main was at 2180895, the wiki rewrite entry, which was already merged
+into claude/zealous-cerf-gik7au, so the branch went onto main as a fast
+forward. Nothing was rewritten.
+
+What to look for is in the entry above. Nose first into a wall, tail first
+and flat on the back into the ground, and onto a roof: each is set down at
+once with "Crashed, set down nearby", the roof one on the roof. A hard
+belly landing, a gentle wall tap and a knock on a ceiling are not reset.
+Wrong would be any pause before a reset, or a reset on a belly landing. A
+flat back first crash is still silent apart from the notice.
+
+### RUN LOG
+
+    code                     unchanged since the entry above; only this
+                             entry is new
+    checks                   not rerun: nothing they read changed
+    git merge-base           2180895, one history; main is an ancestor
+                             of the branch
+    git diff --stat vendor/betaflight   empty

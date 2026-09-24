@@ -1451,18 +1451,22 @@ function suiteCrashRule() {
   check('canPerch refuses leftover rate',
     canPerch(0, 0, PERCH_RATE + 0.01) === false);
 
+  /* The inverted examples below are -0.98, flat on the back, since the
+   * plant tumbles a crash flat and the gate moved to meet it (2026-09-24,
+   * TUMBLE FLAT in src/native/sim.c). They were -0.9 and -0.8, which are 25
+   * and 37 degrees off flat: still tumbling, now, and not a turtle. */
   check('turtle latches when inverted, slow, and on the grass',
-    shouldEnterTurtle(-0.9, 0.4, 0.4, true, 0.05, false) === true);
+    shouldEnterTurtle(-0.98, 0.4, 0.4, true, 0.05, false) === true);
   check('turtle does not latch while still sliding fast',
     shouldEnterTurtle(-1, TURTLE_SPEED, 0, true, 0.05, false) === false);
   check('turtle does not latch while tumbling at rate',
     shouldEnterTurtle(-1, 0, TURTLE_RATE, true, 0.05, false) === false);
   check('turtle does not latch in the air with clearance',
-    shouldEnterTurtle(-0.8, 0.2, 0.2, false, 1.2, false) === false);
+    shouldEnterTurtle(-0.98, 0.2, 0.2, false, 1.2, false) === false);
   check('turtle latches from the seated halo: an inverted rest reports no contact',
-    shouldEnterTurtle(-0.8, 0.2, 0.2, false, 0.10, false) === true);
+    shouldEnterTurtle(-0.98, 0.2, 0.2, false, 0.10, false) === true);
   check('turtle does not latch at the halo edge without contact',
-    shouldEnterTurtle(-0.8, 0.2, 0.2, false, turtleClearance(), false) === false);
+    shouldEnterTurtle(-0.98, 0.2, 0.2, false, turtleClearance(), false) === false);
   check('turtle does not latch on its side: that is still a tumble',
     shouldEnterTurtle(0.2, 0, 0, true, 0.05, false) === false);
   check('turtle does not latch at a 60 degree bank',
@@ -1473,8 +1477,14 @@ function suiteCrashRule() {
     shouldEnterTurtle(TURTLE_INVERT_UPZ - 0.01, 0, 0, true, 0.05, false) === true);
   check('a hull shy of the invert gate does not latch',
     shouldEnterTurtle(TURTLE_INVERT_UPZ, 0, 0, true, 0.05, false) === false);
-  check('the invert gate is past vertical, about 110 degrees',
-    TURTLE_INVERT_UPZ < -0.3 && TURTLE_INVERT_UPZ > -0.5);
+  /* Was "past vertical, about 110 degrees", between -0.3 and -0.5. The
+   * owner's decision of 2026-09-24 is that a crash tumbles flat, always, and
+   * a gate at 110 degrees latched the first slow millisecond of that tumble
+   * and froze the craft where it was, pointing at the sky. */
+  check('the invert gate is flat on the back, within about 18 degrees',
+    TURTLE_INVERT_UPZ <= -0.94 && TURTLE_INVERT_UPZ > -1);
+  check('30 degrees off flat on its back is still falling over, not turtle',
+    shouldEnterTurtle(-0.87, 0, 0, true, 0.05, false) === false);
   check('turtle parks while waiting, sticks centered, and in contact',
     shouldParkTurtle(true, 0, 0.2, true) === true);
   check('turtle does not park without contact',
@@ -1702,11 +1712,11 @@ function suiteCrashRule() {
   check('a whoop halo is inside a RaceGOW opening as built\'s bottom tenth',
     whoopHalo / RACEGOW_OPENING_BUILT < 0.10, whoopHalo / RACEGOW_OPENING_BUILT);
   check('a whoop inverted on the floor still latches turtle',
-    shouldEnterTurtle(-0.9, 0.2, 0.2, false, 0.02, false) === true);
+    shouldEnterTurtle(-0.98, 0.2, 0.2, false, 0.02, false) === true);
   /* 0.35 m up is 10 cm of the picture, which is what this always asked: a
    * machine a RaceGOW gate's height in the air is flying, not seated. */
   check('a whoop inverted a gate\'s height up is still flying, not seated',
-    shouldEnterTurtle(-0.9, 0.2, 0.2, false, 0.10 * MICRO_SCALE, false) === false);
+    shouldEnterTurtle(-0.98, 0.2, 0.2, false, 0.10 * MICRO_SCALE, false) === false);
   const whoopHop = turtleLift();
   check('a whoop flies the five inch hop, because it is a five inch',
     Math.abs(whoopHop - 0.18) < 1e-12, whoopHop);
@@ -3565,6 +3575,14 @@ function suiteRecoverSpot() {
   check('stuck in its wall a metre under the roof, flown from the street: the street, not the roof and not inside',
     findRestSpot(town, roofAt, rest, B.x1 - 0.05, B.top - 1, 0, { x: B.x1 + 0.5, y: B.top - 1, z: 0 }, out)
     && out.surface === 0 && out.x > B.x1, spot());
+  /* Colliders.topAt, which the shell's set down reads because the city's
+   * heightAt knows only its platforms (2026-09-24). */
+  check('topAt: a craft over the roof finds the roof top',
+    town.topAt(15, 0, B.top + 0.1, 0.3) === B.top);
+  check('topAt: a craft at the foot of the building does not find its roof',
+    town.topAt(15, 0, 1, 0.3) === -Infinity);
+  check('topAt: nothing outside the footprint',
+    town.topAt(B.x1 + 1, 0, B.top + 0.1, 0.3) === -Infinity);
   const edge = { x: B.x1 - CRAFT_WORLD_R * 0.5, y: B.top + 1, z: 0 };
   check('over the roof edge, with the craft hanging off it: on the roof a metre in, not on the street seven metres down',
     findRestSpot(town, roofAt, rest, edge.x, edge.y, edge.z, edge, out)

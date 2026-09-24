@@ -1788,6 +1788,29 @@ function padTroubleItem(info) {
         + ' is which.',
     };
   }
+  /*
+   * AND THE GUESS CAN HAVE THE THROTTLE WHERE IT EXPECTS YAW.
+   *
+   * bug-c9423f3e, a Radiomaster Pocket in Firefox: "the throttle is mapped
+   * on the yaw axes and the throttle movement is not detected". Both rows
+   * above stayed quiet for it: the guessed throttle axis had been off
+   * centre once, and the guessed yaw moves plenty, because it IS the
+   * throttle. How it rests is what gives it away: off centre and still for
+   * seconds, which a throttle does and a sprung yaw stick never does. See
+   * noteYawParked in src/input/input.js.
+   */
+  if (!info.calibrated && info.guessYawParked) {
+    return {
+      label: 'This browser has your throttle as yaw',
+      action: 'calibrate',
+      rowClass: 'row-warn',
+      note: 'The axis it guessed was yaw sits off centre and stays there, which a yaw stick'
+        + ' on its spring never does and a throttle always does. So this radio reports its'
+        + ' channels in another order, and your throttle is probably turning the quad'
+        + ' instead of lifting it. Calibrating takes about a minute and tells this page'
+        + ' which axis is which.',
+    };
+  }
   return null;
 }
 

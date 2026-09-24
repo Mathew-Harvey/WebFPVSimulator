@@ -413,6 +413,31 @@ async function mousePage(page) {
   check('and it stays down', await ev('return input.padSummary().guessNoYaw === false && input.padSummary().mapUsable === true;'));
 
   /* --------------------------------------------------------------------
+   * 3b. The throttle where the guess expects yaw. bug-c9423f3e, a
+   *     Radiomaster Pocket in Firefox: "the throttle is mapped on the yaw
+   *     axes and the throttle movement is not detected". Axis 3, which the
+   *     guess calls yaw, is given what a throttle does: parked at the
+   *     bottom and left there. The title says so by itself, after four
+   *     seconds and not before, because before that it could be a thumb.
+   * ------------------------------------------------------------------ */
+  section('title: a throttle resting on the guessed yaw axis earns its own row');
+  const AS_YAW = 'This browser has your throttle as yaw';
+  const asYawShown = `Array.from(window.__ui.screens.title.querySelectorAll('.row-warn .row-label')).some((n) => n.textContent === ${JSON.stringify(AS_YAW)})`;
+  await page.evaluate('window.__pad.axes[3] = -1; window.__pad.timestamp += 1; 0');
+  const parkedAt = Date.now();
+  let asYaw = true;
+  await page.until(asYawShown, 20000).catch(() => { asYaw = false; });
+  const tookMs = Date.now() - parkedAt;
+  check('parked and left, the row arrives by itself, and not before four seconds', asYaw && tookMs >= 4000, `${tookMs} ms`);
+  const asYawReport = await ev(`const r = input.mapReport(); const s = input.padSummary();
+    return JSON.stringify({ parked: s.guessYawParked, noYaw: s.guessNoYaw, map: r && r.map, yawAxis: r && r.axes.yaw, live3: r && r.live[3] });`)
+    .then(JSON.parse);
+  check('and input.js agrees, and a report would show the axis and what it reads',
+    asYawReport.parked === true && asYawReport.noYaw === false && asYawReport.map === 'guess'
+    && asYawReport.yawAxis === 3 && asYawReport.live3 === -1, JSON.stringify(asYawReport));
+  await page.evaluate('window.__pad.axes[3] = 0; window.__pad.timestamp += 1; 0');
+
+  /* --------------------------------------------------------------------
    * 4. The wizard, end to end, on the radio with no way to answer step
    *    seven. bug-89b2c85c: "at step 7 of calibration i can't continue, i
    *    don't have any button on my radio". The step is only asked of a

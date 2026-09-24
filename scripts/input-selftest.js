@@ -674,6 +674,56 @@ section('the no-yaw verdict on an uncalibrated radio');
     rig.im.padSummary().guessNoYaw === false);
 }
 
+/* bug-c9423f3e, a Radiomaster Pocket in Firefox: "the throttle is mapped on
+ * the yaw axes and the throttle movement is not detected". The throttle is
+ * on axis 3, where AETR guesses yaw, parked at the bottom; a sprung stick is
+ * on axis 2, where it guesses throttle. Neither verdict above catches it. */
+section('the throttle-as-yaw verdict on an uncalibrated radio');
+{
+  const rig = new Rig(makePad([0, 0, 0, -1, 0, 0], 4, 'Pocket in Firefox'));
+  rig.ax(2, 0.8); rig.step(); rig.ax(2, 0); rig.step();
+  check('the sprung stick on the guessed throttle axis was off centre once, so the guess counts as "a radio", as the report said',
+    rig.im.padSummary().mapUsable === true && rig.im.stats().source === 'a radio' && rig.im.padSummary().guessNoYaw === false);
+  rig.run(3504);
+  check('three and a half seconds of the throttle resting on the guessed yaw axis: not yet',
+    rig.im.padSummary().guessYawParked === false);
+  rig.run(704);
+  check('past four: the verdict', rig.im.padSummary().guessYawParked === true);
+  rig.ax(3, 0);
+  rig.run(1008);
+  check('and it stays: a throttle moved to the middle is still a throttle', rig.im.padSummary().guessYawParked === true);
+  const rep = rig.im.mapReport();
+  check('a report says which axes are flown, what every one reads, and the verdicts',
+    Boolean(rep) && rep.map === 'guess' && rep.axes.yaw === 3 && rep.axes.throttle === 2
+    && rep.live.length === 6 && rep.live[3] === 0 && rep.usable === true && rep.yawParked === true, JSON.stringify(rep));
+  rig.im.setPadChoice({ kind: 'pad', id: 'Pocket in Firefox', index: 0 });
+  check('choosing the pad again starts the question over', rig.im.padSummary().guessYawParked === false);
+}
+{
+  const rig = new Rig(makePad([0, 0, -1, 0, 0, -1], 4, 'AETR radio'));
+  rig.run(10000);
+  check('an AETR radio resting for ten seconds, throttle parked where it is guessed: no verdict',
+    rig.im.padSummary().guessYawParked === false);
+  for (let t = 0; t < 6000; t += 16) {
+    rig.ax(3, (t / 16) % 2 ? 0.62 : 0.6);
+    rig.step();
+  }
+  check('a thumb holding yaw at sixty percent for six seconds, never still to a hundredth: no verdict',
+    rig.im.padSummary().guessYawParked === false);
+  rig.ax(3, 1);
+  rig.run(3008);
+  check('full yaw against the stop for three seconds: no verdict', rig.im.padSummary().guessYawParked === false);
+  rig.run(1200);
+  check('for four, the one false positive, and what it earns is an offer to calibrate',
+    rig.im.padSummary().guessYawParked === true);
+}
+{
+  const rig = new Rig(makePad([0, 0, 0, -1, 0, 0], 4, 'Calibrated Pocket'));
+  rig.im.map = { ...rig.im.map, stored: true };
+  rig.run(6000);
+  check('a calibrated map is never second guessed', rig.im.padSummary().guessYawParked === false);
+}
+
 /* ------------------------------------------------------------------------
  * 6. The save that used to say "saved" over a throw. bug-ed4d2bce.
  * ---------------------------------------------------------------------- */

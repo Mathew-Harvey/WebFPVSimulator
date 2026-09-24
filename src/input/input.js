@@ -206,6 +206,16 @@ const GUESS = {
   /* The quantiser those levels are counted in. Coarse enough that jitter on
    * a float axis cannot manufacture them. */
   LEVEL_STEP: 1 / 16,
+  /* The guess's yaw axis is PARKED, the way a throttle rests and a sprung
+   * yaw stick never does, when it sits this far off centre, the line
+   * noteThrottleParked draws for the same question... */
+  PARK_OFF: 0.35,
+  /* ...and stays within this of where it settled... */
+  PARK_STILL: 0.01,
+  /* ...for this long. A thumb holding yaw at the stop for four seconds is
+   * seven turns of a spin; a throttle waiting at the bottom on the title
+   * screen is there for minutes. */
+  PARK_MS: 4000,
 };
 
 /*
@@ -977,6 +987,11 @@ export class InputManager {
     this.guessSpan = null;
     this.guessYawAlive = false;
     this.guessWrongOrder = false;
+    /* And whether the guess's yaw axis rests like a throttle. See
+     * noteYawParked. */
+    this.guessYawParked = false;
+    this.yawParkAt = null;
+    this.yawParkMs = 0;
     /* The hold-to-select bootstrap for a radio reporting zero buttons.
      * See SELECT_STEP. */
     this.holdMs = 0;
@@ -1291,12 +1306,91 @@ export class InputManager {
     }
   }
 
+  /*
+   * AND IS THE GUESS'S YAW REALLY A YAW STICK, OR IS IT A THROTTLE?
+   *
+   * bug-c9423f3e, a Radiomaster Pocket in Firefox: "the throttle is mapped on
+   * the yaw axes and the throttle movement is not detected". Neither
+   * question above catches it. noteThrottleParked had seen the guessed
+   * throttle axis off centre once, and noteGuessOrder saw the guessed yaw
+   * move plenty, because what is on it is the throttle.
+   *
+   * What gives a throttle away is how it RESTS. It has no spring, so it
+   * stays where it was left, most often at the bottom, and it stays there
+   * still for as long as nobody touches it. A yaw stick is on a spring and
+   * comes back to the middle the moment the thumb lets go. So if the axis
+   * the guess calls yaw sits off centre and still for PARK_MS, the guess has
+   * a throttle where it expects yaw, and the pilot's throttle is turning the
+   * quad instead of lifting it.
+   *
+   * Sticky, for the reason on noteThrottleParked: a warning that blinks is
+   * worse than either answer. The one false positive is a thumb holding
+   * full yaw against the stop for four seconds, and what it earns is an
+   * offer to calibrate, which is not a wrong thing to offer.
+   */
+  noteYawParked(gp, dtMs) {
+    if (this.map.stored || this.guessYawParked) {
+      return;
+    }
+    const spec = this.map.yaw;
+    if (!gp || !spec || !Number.isInteger(spec.axis) || spec.axis >= gp.axes.length) {
+      return;
+    }
+    const v = gp.axes[spec.axis];
+    if (!(Math.abs(v) >= GUESS.PARK_OFF)) {
+      this.yawParkAt = null;
+      this.yawParkMs = 0;
+      return;
+    }
+    if (this.yawParkAt === null || Math.abs(v - this.yawParkAt) > GUESS.PARK_STILL) {
+      this.yawParkAt = v;
+      this.yawParkMs = 0;
+      return;
+    }
+    this.yawParkMs += dtMs;
+    if (this.yawParkMs >= GUESS.PARK_MS) {
+      this.guessYawParked = true;
+    }
+  }
+
   /* Can the mapping be trusted for more than flying: a pilot's own map
    * always, and the AETR guess once it has behaved like a radio. This is
    * what decides whether the menus let the sticks move left and right, and
    * whether the front page says anything at all. */
   mapUsable() {
     return Boolean(this.map.stored || this.mapSeenParked);
+  }
+
+  /*
+   * WHICH AXES THIS PAGE IS FLYING AND WHAT THEY READ, for a bug report.
+   *
+   * A radio ticket arrived with the stick path's rates and nothing about the
+   * mapping, so "the throttle is mapped on the yaw axes" could not be
+   * checked against anything and the reporter had to be asked for a
+   * screenshot they might never send. This is that screenshot: the pad,
+   * whether the map is the pilot's or the guess, the axis each channel is
+   * read from, every axis as it reads at the moment of sending, and the
+   * three verdicts about the guess. Null with no pad. Every axis, not
+   * snapshotAxes' eight: an axis past the eighth is exactly what the
+   * Android throttle lead in PROGRESS.md suspects and nothing else here
+   * would show it. Sixteen bounds the report.
+   */
+  mapReport() {
+    const gp = this.firstGamepad();
+    if (!gp) {
+      return null;
+    }
+    const m = this.map || {};
+    const at = (ch) => (m[ch] && Number.isInteger(m[ch].axis) ? m[ch].axis : null);
+    return {
+      pad: shortPadName(gp.id),
+      map: m.stored ? 'calibrated' : 'guess',
+      axes: { roll: at('roll'), pitch: at('pitch'), yaw: at('yaw'), throttle: at('throttle') },
+      live: Array.from(gp.axes).slice(0, 16).map((v) => Math.round(v * 100) / 100),
+      usable: this.mapUsable(),
+      noYaw: this.guessWrongOrder,
+      yawParked: this.guessYawParked,
+    };
   }
 
   firstGamepad() {
@@ -1345,10 +1439,14 @@ export class InputManager {
      * a fact about the machine that is plugged in, and this is the line
      * where that machine changes. */
     this.mapSeenParked = false;
-    /* And what its axes have been seen doing: see noteGuessOrder. */
+    /* And what its axes have been seen doing: see noteGuessOrder and
+     * noteYawParked. */
     this.guessSpan = null;
     this.guessYawAlive = false;
     this.guessWrongOrder = false;
+    this.guessYawParked = false;
+    this.yawParkAt = null;
+    this.yawParkMs = 0;
     /* And so is the stick resolution. Same line, same reason. */
     this.forgetAxisResolution();
   }
@@ -1691,6 +1789,10 @@ export class InputManager {
        *            pilot has no yaw and does not know why. See
        *            noteGuessOrder. */
       guessNoYaw: this.guessWrongOrder,
+      /* guessYawParked the guess's yaw axis rests off centre and still, the
+       *            way a throttle does: the pilot's throttle is on the axis
+       *            being flown as yaw. See noteYawParked. */
+      guessYawParked: this.guessYawParked,
     };
   }
 
@@ -2052,6 +2154,9 @@ export class InputManager {
     this.guessSpan = null;
     this.guessYawAlive = false;
     this.guessWrongOrder = false;
+    this.guessYawParked = false;
+    this.yawParkAt = null;
+    this.yawParkMs = 0;
     /* Two outcomes, and the shell says which. See saveMap. */
     this.calResult = this.saveMap() ? 'saved' : 'saved-unstored';
     this.calibration = null;
@@ -2703,6 +2808,7 @@ export class InputManager {
       next = this.readGamepad(gp);
       this.noteThrottleParked(gp);
       this.noteGuessOrder(gp);
+      this.noteYawParked(gp, dtMs);
       this.source = this.mapUsable() ? 'a radio' : 'a radio whose stick order is a guess';
       /* Keyboard still works while a pad is plugged in: any held stick
        * key overrides that channel. */

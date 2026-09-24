@@ -41884,3 +41884,88 @@ bug-c9423f3e is next and stays open until its fix is live.
                              line, one to a deck at 0.54 m
     roof, seated             all four straight below on the roof at
                              6.279 m, stayed; W took off, no crash
+
+## 2026-09-24 | input, shell | bug-c9423f3e: a throttle on the axis the guess calls yaw
+
+"Using firefox, with my radiomaster, the throttle is mapped on the yaw axes
+and the throttle movement is not detected." A Radiomaster Pocket, Firefox 156
+on Linux, `source: "a radio"`, 2047 stick levels, padHz 0.
+
+### What was wrong, and what could be known
+
+Until a pilot calibrates, the page flies the AETR guess: roll 0, pitch 1,
+throttle 2, yaw 3. Their throttle stick is on the axis the guess calls yaw,
+so it steers, and the axis the guess calls throttle is something that does
+not lift. Two observations watch the guess, and this radio passed both:
+
+- noteThrottleParked had seen the guessed throttle axis off centre once,
+  which is what made the report say "a radio" rather than "a radio whose
+  stick order is a guess";
+- noteGuessOrder watches for the guessed yaw never moving, and it moves
+  plenty, because it is the throttle.
+
+So the title said nothing and the pilot was not sent to Calibrate sticks,
+which is what fixes it: the wizard picks each channel by whichever axis
+moves, and the order does not matter to it.
+
+Why Firefox and not Chrome is not known. Firefox is not in this container,
+and the report carries no axis readout. padHz 0 is not the cause: the
+report's 2047 levels needed at least two timestamped readings, so Firefox
+did update the timestamp and the sticks were simply still when it was sent.
+
+### The fix
+
+- **noteYawParked** (src/input/input.js). A throttle has no spring, so it
+  rests where it is left, usually at the bottom, and it stays there STILL.
+  A yaw stick is sprung and comes back to the middle. If the guessed yaw axis
+  sits at least 0.35 off centre (noteThrottleParked's line) and within a
+  hundredth of where it settled for four seconds, the guess has a throttle
+  where it expects yaw. The verdict is sticky, for noteThrottleParked's reason, and
+  resets on calibrating or choosing the pad again. The one false positive is
+  a thumb holding full yaw at the stop for four seconds, over seven turns at
+  this reporter's rates, and it earns an offer to calibrate.
+- **A third title row**, after the two that exist: "This browser has your
+  throttle as yaw", which offers Calibrate sticks and says why.
+- **The bug report says which axes are flown.** input.mapReport(), inside the
+  report's stick block: the pad, calibrated or guess, the axis each channel
+  reads, every axis as it reads when sent (up to sixteen, not
+  snapshotAxes' eight, so the Android throttle lead above could be seen),
+  and the three verdicts. This ticket could not be checked against anything
+  and the next one like it can.
+
+### Tests
+
+input:selftest, 11 new, 170. The Pocket as reported: counts as "a radio",
+no verdict at three and a half seconds, the verdict past four, sticky, the
+report readout, reset on choosing the pad. An AETR radio: ten seconds at
+rest, no verdict; a thumb holding yaw at sixty percent and wobbling by two
+hundredths, none; full yaw at the stop for three seconds, none; for four,
+the false positive, asserted as what it is. A calibrated map: never.
+Mutants: the call removed, 4 fail; "still" made meaningless, 2 fail.
+
+lint:input, section 3b, 2 new, 119. On the mouse page's radio, the guessed
+yaw axis is parked at -1 and left: the title's row arrives by itself, after
+four seconds and not before, and the report shows axis 3 at -1.
+
+### Not done, written down
+
+- **The reporter's radio has not been seen.** Whether its throttle really is
+  on axis 3 in Firefox, and whether the wizard then works there, is
+  inference. The ticket is set to in progress with a note: run Calibrate
+  sticks now, and if it does not see the throttle, send a report again,
+  which will now carry the axes.
+- **noteThrottleParked still takes one reading.** A sprung stick pushed past
+  0.35 once is enough to call the guess "a radio". Asking for the same
+  stillness as noteYawParked would make the first title row fire for this
+  radio too. Not changed: this ticket is caught without it, and that row's
+  timing is older than today.
+- lint:shell not run: its radio banner cases build their own pad info and
+  do not include the new verdict, like guessNoYaw before it.
+
+### RUN LOG
+
+    npm run input:selftest   all 170 passed (was 159)
+    npm run lint:input       all 119 passed, 77 s, alone (was 117)
+    npm run verify           not run: an observation about the pad, a title
+                             row and a report field. No physics, plant, ABI
+                             or build change. Offered

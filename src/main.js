@@ -8448,6 +8448,9 @@ export async function boot({ loading, bootStart, mapId }) {
     keyRaceMode: ui.settings.keyRaceMode,
     keyThrottle: input.keyThrottle,
     keyHover: Math.round(input.kbHover * 1000) / 10,
+    /* Which axes are being flown and what they read: see mapReport.
+     * bug-c9423f3e could not be checked without it. */
+    map: input.mapReport(),
   }));
   window.__stickPath = () => ({
     ...input.stats(),

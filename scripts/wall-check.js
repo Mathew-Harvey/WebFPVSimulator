@@ -265,14 +265,24 @@ for (const [yawName, yaw] of YAWS) {
  * settle, every time. The split is the stricter reading of the two, because
  * it pins the phase the old clause could only cover by accident.
  */
+/*
+ * SINCE 2026-09-24 THE PLANT SOLVES THE WALL ITSELF (src/native/world.c), so
+ * there is no shell pass whose resolved and outbound counters could be asked.
+ * What this asks instead is what those counters stood for: the module
+ * reported the contact on the arrival, with the frame or a prop on the face
+ * and a closing speed like the approach. The sign question the outbound count
+ * answered, a normal reaching the plant turned the wrong way, now lives in
+ * check 4 below and in scripts/world-check.js, which flies the same wall at
+ * four spawn yaws through the module and requires the same answer to 1e-6.
+ */
 for (const r of results) {
   check(
     `yaw ${r.yawName} deg at ${r.speed} m/s: the hull reaches the wall and the plant takes the contact`,
-    r.arrive.contacts > 0 && r.arrive.resolved > 0 && r.arrive.outbound === 0,
-    `on arrival: contacts ${r.arrive.contacts}, resolved ${r.arrive.resolved}, `
-    + `resting ${r.arrive.resting}, inbound ${r.arrive.inbound}, `
-    + `outbound ${r.arrive.outbound}; over the whole flight, `
-    + `${r.stats.contacts} contacts and ${r.stats.outbound} outbound`,
+    r.arrive.contacts > 0 && (r.arrive.frame + r.arrive.props) > 0
+      && r.arrive.closingMax > 0.5 * r.speed,
+    `on arrival: ${r.arrive.contacts} steps in contact, ${r.arrive.frame} with the frame, `
+    + `${r.arrive.props} with a prop, closing at ${r.arrive.closingMax.toFixed(2)} m/s; `
+    + `over the whole flight, ${r.stats.contacts}`,
   );
 }
 
@@ -545,8 +555,8 @@ for (const r of results) {
     + `yaw ${r.yawName.padStart(3)} deg  in ${r.approach.toFixed(2)} m/s  `
     + `peak out ${r.peakOut.toFixed(3)} m/s  furthest ${r.maxGap.toFixed(3)} m  `
     + `flew out to ${r.exitGap.toFixed(2)} m  `
-    + `contacts ${r.stats.contacts} (${r.stats.resolved} solved, `
-    + `${r.stats.resting} resting, ${r.stats.outbound} outbound)`,
+    + `contacts ${r.stats.contacts} (${r.stats.frame} frame, ${r.stats.props} prop, `
+    + `deepest ${(r.stats.deepest * 1000).toFixed(0)} mm)`,
   );
 }
 

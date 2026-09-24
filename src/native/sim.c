@@ -76,6 +76,12 @@ static double g_ground_n[3] = { 0.0, 0.0, 1.0 };
 static double g_ground_d = -0.045;
 static double g_ground_mu = 1.40;
 static double g_ground_e = 0.0;
+/* The plane exactly as the shell raised it. g_ground_* above is what the
+ * solver uses this step, which world.c may replace with the top of a box the
+ * CG is over (a roof is ground). With no world it is never touched, so the
+ * two are the same doubles and every recorded trace stands. */
+static double g_terrain_n[3] = { 0.0, 0.0, 1.0 };
+static double g_terrain_d = -0.045;
 static int g_ground_hits = 0;
 static int g_ground_projected = 0;
 static int g_ground_near = 0;
@@ -224,6 +230,7 @@ static void reset_dynamics(void) {
   g_ground_hits = 0;
   g_ground_projected = 0;
   g_ground_near = 0;
+  world_forget();
 }
 
 SIM_EXPORT int sim_init(const unsigned char *diff_utf8, int len) {
@@ -574,6 +581,123 @@ static void ground_project_hull(void) {
 }
 
 /*
+ * A CRASHED CRAFT DOES NOT BALANCE ITSELF, the other half of TUMBLE FLAT
+ * (2026-09-24). With the lowest corner carrying it, a craft lying at an
+ * angle has its weight on an arm, and it still did not fall: in acro with
+ * the sticks centred, Betaflight's airmode spends the motors' whole range
+ * holding whatever attitude the crash left, and on one support corner that
+ * is enough. Measured on the drop probe, a five inch dropped at 60 degrees
+ * of roll danced on its side for five seconds with its motors between 1,900
+ * and 15,300 rpm, and a whoop, whose ducts keep its props out of the grass,
+ * held 35 degrees on a duct edge indefinitely. A real crashed quad does
+ * neither: its props are in the dirt, and its pilot disarms. The sim has no
+ * disarm, so the plant stands in for it here.
+ *
+ * On the ground (a hull point on it or within the 8 mm halo), slower than
+ * GROUND_STALL_SPEED, more than 14 degrees from lying flat on its belly or
+ * its back, and either more than 60 degrees over or with the throttle stick
+ * down: every rotor stalls, and it goes over, below. Flat on the belly is a
+ * landing and flat on the back is a turtle, and neither is touched. A pilot
+ * holding throttle on a craft only tilted, a landing on a slope or a skid,
+ * keeps their motors. Crashflip is exempt: turtle is the motors. The angle
+ * is taken against the ground's own normal, so a craft sitting flat on a
+ * slope is flat.
+ */
+#define GROUND_STALL_FLAT 0.97
+#define GROUND_STALL_SIDE 0.50
+#define GROUND_STALL_SPEED 1.0
+#define GROUND_STALL_THROTTLE 0.12
+/* A stall, not a rub. Measured at 0.08, the soft props' rate, a rotor
+ * the controller keeps asking for settles at about a third of its speed
+ * against the motor's own spin up, a ninth of its thrust, and airmode
+ * balanced a five inch on its side with that. At 0.5 it settles under a
+ * tenth: stopped, as a disarmed motor is. */
+#define GROUND_STALL_RUB 0.5
+#define GROUND_TIP_ACCEL 200.0
+
+/* Is this a crashed craft lying on the ground, as above? Writes body up
+ * and its component along the ground normal. ground_settle asks it too:
+ * spin friction stands aside while a crash is being tipped flat. */
+static int ground_stall_wanted(double up[3], double *un_out) {
+  if (!(g_ground_hits || g_ground_projected || g_ground_near) || bridge_crashflip_active()) {
+    return 0;
+  }
+  const double zb[3] = { 0.0, 0.0, 1.0 };
+  contact_rotate(zb, up);
+  const double un = up[0] * g_ground_n[0] + up[1] * g_ground_n[1] + up[2] * g_ground_n[2];
+  *un_out = un;
+  if (un > GROUND_STALL_FLAT || un < -GROUND_STALL_FLAT) {
+    return 0;
+  }
+  const double v2 = S.vel[0] * S.vel[0] + S.vel[1] * S.vel[1] + S.vel[2] * S.vel[2];
+  if (!(v2 < GROUND_STALL_SPEED * GROUND_STALL_SPEED)) {
+    return 0;
+  }
+  if (!(un < GROUND_STALL_SIDE) && !(g_current_rc[3] < GROUND_STALL_THROTTLE)) {
+    return 0;
+  }
+  return 1;
+}
+
+static void ground_stall(void) {
+  double up[3];
+  double un = 0.0;
+  if (!ground_stall_wanted(up, &un)) {
+    return;
+  }
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    S.motor_omega[m] *= 1.0 - GROUND_STALL_RUB;
+  }
+  /*
+   * AND IT GOES OVER. With the motors stalled, a quarter of the drop probe
+   * still came to rest off flat, because the hull is a box and a box is
+   * content to stand on its narrow side face, or to sit on one corner with
+   * the projection holding the others up. A real quad lying on its side is
+   * lying on its props and arms, which are thin and springy, and it rolls
+   * off them onto its belly or its back. So a stalled craft is tipped toward
+   * whichever of the two it is nearer, belly on a tie, at GROUND_TIP_ACCEL.
+   * Measured, not chosen by eye: at 40, about what a box's own weight gives
+   * it tipping over an edge, the support corner's contact cancelled it every
+   * millisecond, because leaving the narrow side face means lifting the CG
+   * over its edge, about 0.16 N m against the 0.1 that 40 gives; 60 left
+   * ten of the 88 on their side. At 200 all 88 drops of the probe end flat,
+   * five inch and whoop, throttle cut and held, and one on its side goes
+   * over onto its back in about a quarter of a second. It stops within 14
+   * degrees of flat, and flat is the belly's corners or the back's bump.
+   * The drop probe: PROGRESS.md, 2026-09-24.
+   */
+  const double sgn = un >= 0.0 ? 1.0 : -1.0;
+  const double t[3] = { g_ground_n[0] * sgn, g_ground_n[1] * sgn, g_ground_n[2] * sgn };
+  double ax[3] = {
+    up[1] * t[2] - up[2] * t[1],
+    up[2] * t[0] - up[0] * t[2],
+    up[0] * t[1] - up[1] * t[0],
+  };
+  const double am = sim_sqrt(ax[0] * ax[0] + ax[1] * ax[1] + ax[2] * ax[2]);
+  if (!(am > 1e-9)) {
+    return;
+  }
+  /* About the corner it is going over, not about the CG. Turned about the
+   * CG, that corner is driven into the grass every millisecond and the
+   * contact, which is inelastic, takes the tip back out: measured, a craft
+   * on its side crept over at 0.3 rad/s for seconds. So the CG is given
+   * the velocity that keeps the pivot, the lowest corner, where it is. */
+  double r[3];
+  contact_support_neg_n(g_ground_n, r);
+  double w_world[3];
+  contact_rotate(S.omega, w_world);
+  const double dw = GROUND_TIP_ACCEL * SIM_DT / am;
+  const double dwv[3] = { ax[0] * dw, ax[1] * dw, ax[2] * dw };
+  w_world[0] += dwv[0];
+  w_world[1] += dwv[1];
+  w_world[2] += dwv[2];
+  contact_rotate_inv(w_world, S.omega);
+  S.vel[0] -= dwv[1] * r[2] - dwv[2] * r[1];
+  S.vel[1] -= dwv[2] * r[0] - dwv[0] * r[2];
+  S.vel[2] -= dwv[0] * r[1] - dwv[1] * r[0];
+}
+
+/*
  * Grass is a dead thump, not a trampoline. Baumgarte can leave a 1.2 m/s
  * outbound kick even with e = 0; this removes it once the hull is seated.
  *
@@ -622,8 +746,12 @@ static void ground_settle(double upz, double vn_plant) {
   /* Props-down on grass: stop immediately when the hull is on the
    * plane, or when it is only in the 8 mm halo and not diving in.
    * A live flip whose lowest corner just entered that halo must keep
-   * vel and omega until it actually hits. */
-  if (upz < CONTACT_INVERT_UPZ) {
+   * vel and omega until it actually hits.
+   *
+   * Only within about 25 degrees of flat on its back, since 2026-09-24:
+   * at CONTACT_INVERT_UPZ this froze a craft that had landed 60 degrees
+   * off flat before it could fall the rest of the way. See TUMBLE FLAT. */
+  if (upz < CONTACT_INVERT_HALO_UPZ) {
     const int touching = g_ground_hits || g_ground_projected;
     const int seated_halo = g_ground_near
         && upz < CONTACT_INVERT_HALO_UPZ
@@ -684,12 +812,21 @@ static void ground_settle(double upz, double vn_plant) {
     S.vel[2] = nz * vn + vtz * keep;
   }
 
-  if (upz >= 0.5) {
+  double stall_up[3];
+  double stall_un = 0.0;
+  if (upz >= 0.5 && !ground_stall_wanted(stall_up, &stall_un)) {
     /* Spin friction, the same load acting at the patch radius. A yaw
      * about the normal has no tangent velocity at the impulse point,
      * so the cone above cannot see it: a belly on the grass would spin
      * freely for ever. Torque is mu * N * r, resisted by the inertia
-     * along the spin axis, and like the slide it cannot reverse. */
+     * along the spin axis, and like the slide it cannot reverse.
+     *
+     * Not while a crash is being tipped flat, since 2026-09-24 (TUMBLE
+     * FLAT, ground_stall). It damps the whole rate vector, so it took the
+     * first of a tilted craft's tip every millisecond: measured, drops came
+     * to rest balanced on an edge at exactly 60 and 30 degrees. Everywhere
+     * else it is as it was, which keeps a launch off the 28 degree block,
+     * throttle up with the nose in the grass, bit for bit what it was. */
     const double w2 = S.omega[0] * S.omega[0]
         + S.omega[1] * S.omega[1]
         + S.omega[2] * S.omega[2];
@@ -740,7 +877,23 @@ static void ground_apply(void) {
 
   if (upz < 0.5) {
     int hits = 0;
-    if (upz < 0.0) {
+    /*
+     * TUMBLE FLAT, the owner's decision of 2026-09-24 ("yes make it tumble
+     * flat always"). The bump used to carry EVERY inverted attitude, from
+     * flat on the back to lying on the side. It is the top plate's centre,
+     * so off flat it is nowhere near the lowest point: the real support was
+     * a corner, held out of the dirt by the projection below, which moves
+     * the hull and never turns it. Measured, 70 of 88 drops onto grass at
+     * 60 to 150 degrees came to rest exactly as they arrived, a tail first
+     * crash pointing at the sky. Now the bump carries only a craft within
+     * about 25 degrees of flat on its back, and anything steeper stands on
+     * its real lowest corner, where its weight has an arm and tips it over.
+     * Except under crashflip, which is the motors turning the hull over on
+     * purpose and needs the bump at every inverted angle, for the reason
+     * the next comment gives: measured, on a corner the golden's turtle
+     * stayed at -0.97 with the flip commanded.
+     */
+    if (upz < CONTACT_INVERT_HALO_UPZ || (upz < 0.0 && bridge_crashflip_active())) {
       /* Inverted rest is the camera / vtx bump, through the CG, so the
        * mixer couple is free to pitch. Projection, not an arm contact,
        * keeps the free corners out of the dirt. An arm impulse here
@@ -969,6 +1122,10 @@ SIM_EXPORT int sim_set_ground(int on,
   g_ground_mu = mu;
   g_ground_e = restitution;
   g_ground_on = 1;
+  g_terrain_n[0] = g_ground_n[0];
+  g_terrain_n[1] = g_ground_n[1];
+  g_terrain_n[2] = g_ground_n[2];
+  g_terrain_d = g_ground_d;
   return SIM_OK;
 }
 
@@ -1012,6 +1169,7 @@ SIM_EXPORT int sim_set_pose(double px, double py, double pz,
   S.quat[1] = qx * ninv;
   S.quat[2] = qy * ninv;
   S.quat[3] = qz * ninv;
+  world_forget();
   return SIM_OK;
 }
 
@@ -1295,6 +1453,11 @@ SIM_EXPORT int sim_step(int n) {
      * this file's, and handed over as two numbers rather than a callback so
      * plant_step stays a pure function of its state.
      */
+    /* This step's ground: the shell's plane, or a roof the CG is over. Only
+     * with a world loaded, so a harness replay never reaches it. */
+    if (g_ground_on && !g_stand_on && world_active()) {
+      world_select_support(&S, g_terrain_n, g_terrain_d, g_ground_n, &g_ground_d);
+    }
     if (g_ground_on) {
       S.ground_h = g_ground_n[0] * S.pos[0] + g_ground_n[1] * S.pos[1]
         + g_ground_n[2] * S.pos[2] - g_ground_d;
@@ -1306,6 +1469,12 @@ SIM_EXPORT int sim_step(int n) {
     }
     plant_step(&S, duty);
     ground_apply();
+    if (g_ground_on && !g_stand_on) {
+      ground_stall();
+    }
+    if (!g_stand_on) {
+      world_step(&S, g_ground_on, g_ground_n, g_ground_d);
+    }
     stand_apply();
     S.step_index += 1;
   }

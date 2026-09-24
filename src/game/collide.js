@@ -1373,6 +1373,57 @@ export class Colliders {
   }
 
   /*
+   * THE TOP OF THE BOX UNDER A POINT: the highest static box whose footprint
+   * holds (px, pz) and whose top is no higher than fromY + step, or -Infinity.
+   *
+   * A set down needs to know a roof is somewhere to stand, and the city's
+   * heightAt answers only for its platforms: under an ordinary building it
+   * returns the street. Since 2026-09-24 the plant treats any box top under
+   * the CG as ground, so a crash on a roof is common, and the set down that
+   * follows it went back to the start line from the middle of a shop's roof
+   * and to the street from its edges. This is the shell's side of the same
+   * fact. Boxes are filed by their centres, so the walk pads by the largest,
+   * the way gapAt does.
+   */
+  topAt(px, pz, fromY, step) {
+    if (!this.built) {
+      return -Infinity;
+    }
+    this.queryId += 1;
+    const id = this.queryId;
+    const pad = this.maxR;
+    const cx0 = clampCell(Math.floor((px - pad) / CELL));
+    const cx1 = clampCell(Math.floor((px + pad) / CELL));
+    const cz0 = clampCell(Math.floor((pz - pad) / CELL));
+    const cz1 = clampCell(Math.floor((pz + pad) / CELL));
+    const ceiling = fromY + step;
+    let best = -Infinity;
+    for (let cx = cx0; cx <= cx1; cx += 1) {
+      for (let cz = cz0; cz <= cz1; cz += 1) {
+        const bucket = this.grid.get((cx + GRID_HALF) * GRID_SPAN + (cz + GRID_HALF));
+        if (bucket === undefined) {
+          continue;
+        }
+        for (let bi = 0; bi < bucket.length; bi += 1) {
+          const i = bucket[bi];
+          if (this.stamp[i] === id) {
+            continue;
+          }
+          this.stamp[i] = id;
+          if (!this.fbox[i] || px < this.fax[i] || px > this.fbx[i] || pz < this.faz[i] || pz > this.fbz[i]) {
+            continue;
+          }
+          const top = this.fby[i];
+          if (top <= ceiling && top > best) {
+            best = top;
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  /*
    * THE NEAREST SOLID'S OWN DIRECTION, and where its middle is.
    *
    * gapAt answers "is there something there", which is enough to say a trick
@@ -2584,8 +2635,8 @@ export function canPerch(tiltDeg, speed, rateMag) {
  * plays a fixed flip to heading-preserving upright. The plant does not
  * step during the wait or the flip.
  *
- * Enter only when truly inverted (body +z pointing down past about
- * 110 deg), seated on grass or a roof, and still. On-side is a tumble
+ * Enter only when flat on its back (body +z within about 18 deg of
+ * straight down), seated on grass or a roof, and still. On-side is a tumble
  * you fly out of. An invert in the air is still flight. TURTLE_STICK_MIN
  * is a poke gate, not the mixer deadband: any throw past it starts the
  * flip, and the flip always finishes. turtleLift() is the extra centre
@@ -2594,7 +2645,15 @@ export function canPerch(tiltDeg, speed, rateMag) {
 export const TURTLE_SPEED = 1.0;
 export const TURTLE_RATE = 8.0;
 export const TURTLE_EXIT_UPZ = 0.5;
-export const TURTLE_INVERT_UPZ = -0.35;
+/*
+ * FLAT ON ITS BACK, since 2026-09-24. It was -0.35, about 110 degrees, when
+ * the plant left a crashed craft wherever it landed and turtle was the only
+ * way out. The owner then asked for a crash to tumble flat, always, and the
+ * plant now does (TUMBLE FLAT, src/native/sim.c): it stops at 14 degrees
+ * from flat. A gate at 110 degrees latched the first slow millisecond of that
+ * tumble and froze it mid fall, so the gate is where the tumble ends.
+ */
+export const TURTLE_INVERT_UPZ = -0.95;
 export const TURTLE_STICK_MIN = 0.08;
 export const TURTLE_WAIT_RATE = 1.0;
 export const TURTLE_FLIP_MS = 380;
@@ -3011,7 +3070,15 @@ export const THRASH_TRAVEL = 0.60;
  * metres below. The spot is written to out.x, out.y (the parked centre),
  * out.z and out.surface.
  */
-const RECOVER_OUT = [0, 1.0, 2.0, 3.5];
+/*
+ * The rings start a quarter metre out. With only 1, 2 and 3.5 m, a craft
+ * left standing on its nose at the foot of the city's shopfront (the state
+ * stuckTick in main.js sets down automatically) had every candidate either
+ * across the kerb step, unreachable in a straight line, or inside the shop,
+ * and went back to the start line; the plain answer, the same pavement a
+ * quarter metre out from the wall, was never asked. Measured 2026-09-24.
+ */
+const RECOVER_OUT = [0, 0.25, 0.5, 1.0, 1.5, 2.0, 2.75, 3.5];
 const RECOVER_DIR = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
 const FOOTPRINT = [[1, 0], [-1, 0], [0, 1], [0, -1],
   [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2], [Math.SQRT1_2, -Math.SQRT1_2], [-Math.SQRT1_2, -Math.SQRT1_2]];

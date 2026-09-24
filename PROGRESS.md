@@ -43075,3 +43075,25 @@ measurement.
                                    unchanged
     park:fly                       not run: no pilot or recogniser change
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | git | The stuck fix and the preload pushed to main, for the owner to fly
+
+The owner, on the entry above: "push to main and i'll fly it". The
+verification scale chosen is fly it, and it is the approval to put the
+branch on main. main had not moved since e88b7e7, so the branch went on as
+a fast forward. Nothing was rewritten.
+
+Not yet answered, and asked again with the flight: whether the tail first
+crash should fall flat rather than wait in turtle at the angle it landed,
+which is a ground model or turtle latch change. What to look for is in the
+entry above: left alone after a head on hit, the craft is upright on the
+pavement within about 1.5 s; a tail first crash turtles or is set down
+within 5 s; and a cold load is the live measurement of the preload.
+
+### RUN LOG
+
+    code                     unchanged since the entry above
+    checks                   not rerun: nothing they read changed
+    npm run lint:preload     up to date, boot 102, city 72
+    git merge-base           e88b7e7, main is an ancestor of the branch
+    git diff --stat vendor/betaflight   empty

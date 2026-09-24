@@ -41205,3 +41205,108 @@ reason, but it was not pursued and no shipped path does that.
 Flight feel is not verified. Letting go of W holding height is measured; how
 it feels on the keys, and whether Stays put's rate is the right one, is the
 pilot's to judge.
+
+## 2026-09-24 | input, shell | Flown: the two keyboard fixes in the live shell, and what the flight found
+
+The owner asked me to fly it myself, and to push to main if it was good.
+Two scripted flights in headless Chromium through the real shell, keys sent
+over the DevTools protocol, telemetry every 150 ms: height, vertical speed,
+the stick, landed, crashed, turtle, the OSD's mode readout and the banner.
+The scripts and logs were scratch; the numbers are here.
+
+### A whoop race on the keys
+
+The whoop chosen through the Aircraft row, so its own tune, pack and rates
+came with it (this build's whoop flies the default tune uncapped, so its
+hover is 0.350 too), on a copy of RaceGOW5 Track 8.
+
+    parked            landed, stick 0, OSD Angle
+    120 ms W on pad   stick peaked 0.1845, never left the pad, back to 0
+    W 1.2 s, let go   stick 0.350 from 0.3 s after release. Climbing at
+                      9.7 m/s, it coasted up and met the ceiling at 13.65 m
+    S tap             sank, then vertical speed -0.36 to -0.02 in 2.3 s
+    M                 ACRO in the banner and on the OSD; a roll tap left a
+                      bank of 4 degrees that held at 3; M again, Angle, and
+                      it levelled 2 to 0
+    S held            landed after 2.3 s, let go, stayed down, stick 0
+    pause, Settings   Keyboard throttle to Stays put, the way a pilot does
+    W 0.7 s, let go   stick 0.5724 and exactly that for two seconds
+    R in the air      back on the line, landed, stick 0
+    Acro nose dive    turtle, flipped, landed, stick 0 and stayed down 5 s
+    reload            the race started in Acro, the M choice kept; keys on
+                      Springs back; M put it back to Angle
+    console           no errors
+
+### The five inch in the town, on the keys
+
+    parked            freestyle, OSD Acro, from the Flight mode row
+    M                 Angle, written to the row and stored, banner ANGLE
+    W tap in the air  climbed at up to 0.3 m/s, then held inside 0.33 m
+    Stays put, set    stick stayed on 0.350, held 0.76 to 0.85 m over 3 s
+      mid air
+    W tap             stick 0.350 to 0.3606 and stayed there, climbing
+                      gently to 0.63 m/s
+    S tap             back to 0.3496, held inside 0.08 m
+    S held 1.4 s      stick to 0 and stayed there; fell from 1.46 m,
+                      landed, stayed down
+    back              Springs back, and M back to Acro
+    console           no errors
+
+### What the script called bad, and why none of it is the fix
+
+Five verdicts came back bad across both flights. Read against the logs:
+
+- **The ceiling.** The race room's ceiling is at 13.65 m, and the takeoff's
+  coast ended there, so "holds height over four seconds" measured a climb
+  that was still coasting, and the next W tap was pushing into the ceiling.
+  The mid air hold was shown by the probe before the fix went in: settled at
+  12.85 m, inside 0.11 m/s for two and a half seconds, a metre under it.
+- **The town is slow motion headless.** About nine frames a second, and the
+  frame clamp means the physics sees a sliver of a 100 ms tap. The takeoff
+  there hopped to 0.16 m and the S tap at 0.6 m, in ground effect, showed no
+  sink. Both are the rig, not the keys.
+- **Two thresholds were mine.** Pitch in Angle levelled from 8 degrees to 0,
+  which is the behaviour; the speed bar was set too high for a 0.7 s tap in
+  a small room. The Acro bank held at 3 to 4 degrees; the bar was 8.
+
+### Two things the flight found
+
+**Letting go after a hard climb coasts upward.** From 9.7 m/s at hover
+throttle it took about 3.7 s to fall under 1 m/s, eleven metres of coast.
+That is the plant's own vertical damping, and a real quad at hover throttle
+coasts too; a pilot stops a climb with a tap of S, and the keys now let them.
+Not changed, and physics is not this change's to touch. Written down in case
+the pilot calls it floaty, which would be a question about the plant.
+
+**The crash recovery put the whoop on the roof.** Pinned against the ceiling
+at 55 percent in Stays put, the shell called a crash, and the recovery,
+"clear air near where you are, upright", respawned it at 14.2 m against a
+ceiling at 13.65 m. It then sat on top of the room with the stick at idle
+and did not fall. Pre-existing, nothing to do with the keys, and not fixed
+here. Reproduction: the whoop, a RaceGOW5 room, climb into the ceiling with
+the throttle held above hover until the banner says Crashed.
+
+### Three sentences that were still false
+
+Three pilot facing lines still said keyboard flight is always Angle: the
+firmware bench's angle switch note, the Rates row's note and the Rates
+screen's intro. Each now says races on keys start in Angle, within a few
+characters of the old length, and the comment in isTouchPrimary likewise.
+lint:shell's rates and bench numbers did not move.
+
+### RUN LOG
+
+    flights           the race and the town above, no console errors in
+                      either, every key behaviour as intended
+    npm run lint:shell       FAIL, 1 problem, the title's 23 px from
+                             9ed8b9c as before. rates 440, fc 3613, pilot
+                             746, howto 123, unchanged by the text fixes
+    npm run lint:devices     PASS
+    npm run input:selftest   all 151 passed
+    npm run lint:input       all 104 passed, 40 s
+    npm run verify           not run, for the reason in the entry above: no
+                             physics, plant, ABI or build change
+
+The fix flies as intended in every case the rig can reach. The feel, above
+all Stays put's rate and the coast after a climb, is still the pilot's to
+judge on real hardware at a real frame rate.

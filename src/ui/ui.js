@@ -2443,7 +2443,7 @@ function ratesItem(s, midRun) {
      * sentence would be a warning about something that does not happen.
      * The tune and the PIDs still carry it, because they still do it.
      */
-    note: `How far the sticks go, and how sharply. Yours, not the tune's. A radio in Acro flies this curve; keyboard flight is Angle. Changing them mid run leaves the quad where it is and the clock running.`,
+    note: `How far the sticks go, and how sharply. Yours, not the tune's. A radio in Acro flies this curve; key races start in Angle. Changing them mid run leaves the quad where it is and the clock running.`,
   };
 }
 
@@ -3600,7 +3600,7 @@ export class Ui {
     rates.append(el(
       'p',
       'rates-lede',
-      'How far the sticks go. Pick the rate system you think in and type your own numbers: all five of Betaflight\'s are here and the quad flies whichever you choose. Rates belong to you, not to the tune, so they stay put when you switch tunes. A radio in Acro flies this curve; keyboard flight is Angle and ignores it.',
+      'How far the sticks go. Pick the rate system you think in and type your own numbers: all five of Betaflight\'s are here and the quad flies whichever you choose. Rates belong to you, not to the tune, so they stay put when you switch tunes. A radio in Acro flies this curve; key races start in Angle, which ignores it.',
     ));
     this.ratesPanel = mountRatesPanel();
     const ratesBlock = wrapMenu();

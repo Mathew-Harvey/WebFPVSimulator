@@ -704,7 +704,7 @@ export class FcSession {
       });
       rows.push({
         label: 'ANGLE',
-        note: 'On or off, same sim_set_angle_mode as Flight mode in Settings. A real board uses an AUX range. Keyboard flight always uses Angle.',
+        note: 'On or off, same sim_set_angle_mode as Flight mode in Settings. A real board uses an AUX range. Races on keys start in Angle; M switches.',
         sw: true,
         on: angle,
         value: angle ? 'On' : 'Off',

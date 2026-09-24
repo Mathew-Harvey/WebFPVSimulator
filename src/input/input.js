@@ -2624,9 +2624,9 @@ export class InputManager {
   /*
    * Whether the thumbs are the stick source right now. Split from
    * isKeyboardPrimary because the two answer different questions: the
-   * keyboard forces angle mode and draws its ghost gimbals, while the
-   * thumb sticks are a proportional stick like a radio, fly whichever
-   * flight mode the setting says, and draw themselves.
+   * keyboard races in angle mode by default and draws its ghost gimbals,
+   * while the thumb sticks are a proportional stick like a radio, fly
+   * whichever flight mode the setting says, and draw themselves.
    */
   isTouchPrimary() {
     return this.firstGamepad() === null

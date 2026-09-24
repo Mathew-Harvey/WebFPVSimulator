@@ -41593,3 +41593,148 @@ up to 3 s. Passed with four browsers.
                              roof (top 14.059)
     first draft              pinned 13.648, thrash, put at 13.640
     after                    pinned 13.648, thrash, put at 13.083
+
+## 2026-09-24 | input, shell | After a recovery in the air, the keys pick the quad up at hover
+
+The owner asked for the hover fix proposed in the roof entry above: a
+keyboard pilot's quad fell out of its own crash recovery. It turned out to be
+two faults, and fixing only the one proposed would have made the other worse.
+
+### Two faults
+
+**The keys went to idle.** resetCraft calls input.resetKeyboardSticks() on
+every reset, and the recovery reseats through resetCraft. Right for R and
+the start line, wrong for a craft handed back in the air: the collective
+went to 0 and the airborne latch off. Measured: put back at 13.083 m, the
+whoop fell to the floor.
+
+**The first frame flew on the stick from before the crash.** rcHeld, the
+receiver's held frame in main.js, was never reset. rcPending was cleared and
+the input queue drained, so the first block after a recovery ran on rcHeld
+until a new sample landed at the block's end. When the automatic catch
+finishes a recovery it does so inside the frame loop, so the whole first
+block (up to 100 ms of sim) is stale. Measured on the ceiling catch, W held:
+put back with the whoop already at +2.95 m/s upward. Before this change
+the keys at 0 then dropped it; with only the keys fixed, hover would have
+held that climb, and on a mutant with only that fix it did: put at 13.124 m
+at +3.0 m/s, +6.05 m/s the next frame, back against the ceiling at 13.647 m.
+
+### The fix
+
+- **input.resumeAtHover()**: kb.throttle to the measured hover and the
+  airborne latch on, in both key modes. On Springs back it is as if W had
+  lifted it: let go and it rests at hover, S still parks it. On Stays put
+  it starts from hover, not the throttle that held the craft against
+  whatever it hit. A radio is untouched, because poll() copies the pad's
+  throttle over kb.throttle on every sample; so are the touch sticks.
+- **resetCraft zeroes rcHeld** beside rcPending, as sim_reset zeroes the
+  module's own current RC.
+- **finishClipCrash**, after the reseat: resumeAtHover, one poll, and rcHeld
+  from the channels as they are now. So the first frame flies on hover, or
+  on wherever a radio's throttle is. poll() already runs from a timer and
+  from the frame and measures its own step, so a third caller is safe.
+
+R is unchanged: the start line, parked, keys at idle. A test says so.
+
+### What it does now, measured
+
+The ceiling catch, W held into the ceiling until the crash is called: put
+at 12.988 m, 0.6 m under where it was pinned (13.631), going down at
+0.59 m/s and easing: 12.66 m a second later, keys at 0.35.
+
+X in a full throttle climb, alone, twice: put at 8.525 and 10.757 m, sinks
+0.551 m over four seconds, then holds (vertical speed 0.02 and 0.04 m/s at
+4.9 s). The two runs agree to the millimetre.
+
+**It sags about half a metre, and that is not fixed.** sim_reset stops the
+motors, so for the first few tens of milliseconds hover is asked of rotors
+spinning up from rest, and the craft starts down at 0.59 m/s. At hover only
+drag takes that out. The ABI cannot set motor speed. sim_rest keeps motor
+speeds, so stepping the plant at hover for a moment and then posing it back
+at the spot with sim_rest would hand it over with the rotors turning. That
+steps the plant outside the frame loop, which touches both clocks and the
+flight log, and it is the kind of change the advisor should see first.
+Proposed, not done.
+
+### Tests
+
+input:selftest, 8 new: R alone rests at idle; picked up in the air it rests
+on hover and stays; W climbs from hover and springs back; S held still parks
+it; Stays put comes back at hover, not at the top; a radio's throttle is
+left alone. Mutants: resumeAtHover a no-op, 4 fail; without the latch,
+2 fail, one of them a dip a pilot would feel: the first W press after a
+recovery dropped the stick from hover to a from-zero ramp, 0.34.
+
+lint:input, section 11, 5 new, on the keyboard page. The override climbs
+the whoop at full throttle in the open, hands the stick to the keys at the
+top, and X goes through the window's own key listener. The receiver's held
+frame is read in the same task: it must be the keys at hover. Then the
+flight: the whoop must never climb (0.1 m) and must sink less than a metre
+in the three seconds after, keys on hover. Then R: parked, keys at idle.
+
+The held frame check is there because the flight cannot see the stale
+frame through X. X runs between frames, so only the slice of the next
+block before the key is stale, a few milliseconds. The mutant without the
+rcHeld change passed the climb flight in all three runs.
+
+Four browsers at once, the fix, the old code, the fix without the rcHeld
+change, the fix without the pickup: the fix passed section 11; the old code
+failed three checks (held throttle 1, fell from 8.61 to 6.79 m in five
+frames, keys 0); without rcHeld, the held frame check (throttle 1); without
+the pickup, three (held throttle 0, fell to the floor, keys 0).
+
+### Not done, written down
+
+- The sag above.
+- **The touch sticks still fall after a recovery in the air.** Their reset
+  is deliberate ("a crash recovery that kept it high would relaunch the
+  wreck"), and picking them up at hover means moving the drawn thumb too.
+  The owner's call.
+- **lint:input section 9 is mine, from bug-3a7be142, and fails under load.**
+  In one of twelve runs with four browsers it landed: its W hold is wall
+  clock and the climb is sim clock. A version holding W until the whoop was off the floor failed the
+  other way, still climbing at 10 m/s three wall seconds later. Reverted; the
+  original passes alone. The fix is to time it on the module clock,
+  window.__stickPath().moduleMs.
+- The touch page button check from the roof entry failed in all four loaded
+  runs again.
+
+### What went wrong
+
+- **The kick was half understood.** I expected X in a full throttle climb
+  to show it, and the mutant without the rcHeld change passed that flight
+  in all three runs. Reading the RC grid again is what found the slice: stale for the
+  part of the block before the key, not the block.
+- **The first hold band was set before the sag was measured.** 0.25 m over
+  three seconds; the fix sank 0.28 m in a loaded run and failed it. Measured
+  alone, it sinks 0.55 m and settles. The failures it has to catch are falls
+  of 1.8 m and more.
+- The section 9 attempt, above.
+
+### RUN LOG
+
+    npm run input:selftest   all 166 passed (was 158). Eight new
+    npm run lint:input       all 117 passed, alone (was 112). Section 11,
+                             five new. Four at once: as above
+    git diff --stat vendor/betaflight   empty
+    npm run build:wasm       not run: no emcc in this container, and nothing
+                             native changed
+    npm run verify           not run. The verify-flight-model skill asks
+                             for it on any input path change; CLAUDE.md
+                             makes verify the owner's call and reserves it
+                             for physics, the plant, the ABI and the build.
+                             This is the shell's keys and its held RC frame
+                             after a reset, which verify's harness page does
+                             not load. Offered
+    npm run check:clip       not run: nothing it covers changed
+    npm run lint:shell       not run: nothing on screen changed
+
+    Scripted flights through the shell (scratch; the numbers are here):
+    ceiling catch, before       put at 13.118 m at +2.95 m/s, then fell to
+                                the floor
+    ceiling catch, keys only    put at 13.124 m at +3.0 m/s, +6.05 m/s next
+                                frame, back at the ceiling, 13.647 m
+    ceiling catch, fix          put at 12.988 m, -0.59 m/s easing, 12.66 m
+                                a second later
+    X in a climb, fix, twice    put at 8.525 and 10.757 m, settled 0.551 m
+                                lower by 4.3 s

@@ -1087,6 +1087,91 @@ async function keyboardPage(page) {
     put !== undefined && put > 1 && highest < ceiling,
     `${put === undefined ? 'never moved off the ceiling' : `put at ${put.toFixed(3)}`}, highest ${highest.toFixed(3)}, ceiling ${ceiling.toFixed(3)}`);
   await page.evaluate('window.__stick(); 0');
+
+  /* --------------------------------------------------------------------
+   * 11. And then it holds its height, on the keys. Two faults, both
+   *     measured in this room. Every reset put the keys at idle, a
+   *     recovery's included, so a keyboard pilot's quad fell out of its own
+   *     recovery: put back at 13.08 m, down to the floor. And the first
+   *     frame after a reset flew on the stick from before it, the receiver
+   *     holding its last frame, so a whoop held against the ceiling at full
+   *     throttle came out of the recovery at 3 m/s upward. With the keys at
+   *     hover and nothing to stop it, that is a coast straight back up.
+   *
+   *     So X here is pressed in a full throttle climb, in the open, metres
+   *     under the ceiling where nothing is touched and no catch can fire,
+   *     with the stick at the top and handed to the keys: a throttle key's
+   *     pilot with W held. A stale frame at the top is what it must not fly.
+   * ------------------------------------------------------------------ */
+  section('keyboard: after X in the air, the keys pick the whoop up at hover and it holds its height');
+  await page.evaluate('window.__stick(0, 0, 0, 0.3); 0');
+  await page.until('window.__craftState().worldY < 6', 60000).catch(() => {});
+  await page.evaluate('window.__stick(0, 0, 0, 1); 0');
+  let climbing = false;
+  await page.until('(() => { const c = window.__craftState(); return c.worldY > 7 && c.vel && c.vel.y > 1; })()', 60000)
+    .then(() => { climbing = true; }).catch(() => {});
+  /* Released, the override hands its throttle to the keys where it left
+   * it, and a key nobody has pressed does not spring it. */
+  await page.evaluate('window.__stick(); 0');
+  await page.until('window.__input.channels.throttle === 1', 3000).catch(() => {});
+  /* Read here, not from the trace: the key can land before its first frame. */
+  const before = await ev(`const c = window.__craftState(); return JSON.stringify({ y: c.worldY, vy: c.vel ? c.vel.y : 0,
+    thr: input.channels.throttle, kb: input.isKeyboardPrimary() });`).then(JSON.parse);
+  await page.evaluate(`window.__keepTrace = (async () => {
+    const out = [];
+    const t0 = performance.now();
+    while (performance.now() - t0 < 3500) {
+      await new Promise((r) => requestAnimationFrame(r));
+      const c = window.__craftState();
+      out.push({ y: c.worldY, landed: c.landed, crashed: c.crashed, thr: window.__input.channels.throttle });
+    }
+    return out;
+  })(); 0`);
+  /* X through the window's own key listener, and the receiver's held frame
+   * read in the same task, before any frame can fly it. That frame is what
+   * the first block after a recovery runs on until a new sample lands: all
+   * of it when the catch finishes a recovery inside the frame loop, which is
+   * where the 3 m/s came from, and only the slice before the key when X
+   * does it between frames, which is why the flight below cannot see it. */
+  const heldAtX = await page.evaluate(`(() => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyX', key: 'x' }));
+    const h = window.__stickPath().held;
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyX', key: 'x' }));
+    return JSON.stringify(h);
+  })()`).then(JSON.parse);
+  const kept = await page.evaluate('window.__keepTrace');
+  check('climbing at full throttle on the keys, in the open, when X goes',
+    climbing && before.kb && before.thr === 1 && before.vy > 1 && before.y < ceiling - 0.5, JSON.stringify(before));
+  const hoverAtX = await ev('return input.kbHover;');
+  check('the receiver\'s held frame after the recovery is the keys at hover, not the full stick from before it',
+    heldAtX.throttle === hoverAtX && heldAtX.roll === 0 && heldAtX.pitch === 0 && heldAtX.yaw === 0,
+    `${JSON.stringify(heldAtX)}, hover ${hoverAtX}`);
+  /* The recovery is the frame the keys leave the top. */
+  const at = kept.findIndex((f) => f.thr < 0.9);
+  const after = at < 0 ? [] : kept.slice(at);
+  const spot = after.length ? after[0].y : NaN;
+  const hi = Math.max(...after.map((f) => f.y));
+  const lo = Math.min(...after.map((f) => f.y));
+  const last = after[after.length - 1] || {};
+  /* Not a perfect hold, and the band says what it is instead. sim_reset
+   * stops the motors, so for the first few tens of milliseconds hover is
+   * asked of rotors spinning up from rest and the craft starts down at
+   * 0.59 m/s. At hover nothing but drag takes that out: measured alone,
+   * twice, identically, it sinks 0.55 m over four seconds and holds there.
+   * Falling, the old way, is metres in the same three seconds. */
+  check('put back at rest, it settles instead of falling: it never climbs, and sinks less than a metre',
+    after.length > 0 && hi - spot < 0.1 && spot - lo < 1.0 && after.every((f) => !f.landed && !f.crashed),
+    after.length ? `put at ${spot.toFixed(3)}, then ${lo.toFixed(3)} to ${hi.toFixed(3)}, ${after.length} frames` : 'X did nothing');
+  check('and the keys rest on the measured hover', last.thr === hoverAtX, `${last.thr}, hover ${hoverAtX}`);
+
+  /* R is still the start line with the stick at idle: only a recovery in
+   * the air picks the keys up. */
+  await page.tap('KeyR');
+  await page.until('window.__craftState().landed', 10000).catch(() => {});
+  await page.sleep(1500);
+  const line = await ev('const c = window.__craftState(); return JSON.stringify({ landed: c.landed, thr: input.channels.throttle, air: input.kbAir });')
+    .then(JSON.parse);
+  check('R puts it on the start line, parked, with the keys at idle', line.landed && line.thr === 0 && !line.air, JSON.stringify(line));
 }
 
 async function main() {

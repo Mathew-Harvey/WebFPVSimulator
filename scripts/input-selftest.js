@@ -949,6 +949,65 @@ section('the keyboard throttle: switching back to the spring');
   check('on the ground, it goes to idle', im.channels.throttle === 0, String(im.channels.throttle));
 }
 
+/* A crash recovery reseats the craft through the same reset R uses, and
+ * then, because it leaves the craft in the air, hands the keys back at
+ * hover. Before it did, a keyboard pilot's quad fell out of its own
+ * recovery: put back at 13.08 m, keys at idle, down to the floor. */
+section('the keyboard throttle: a recovery in the air picks it up at hover, R does not');
+{
+  const rig = new Rig(null);
+  const im = rig.im;
+  const hold = (code, ms) => { im.keys.add(code); rig.run(ms); };
+  const release = (code, ms = 400) => { im.keys.delete(code); rig.run(ms); };
+  im.setKeyHover(0.511);
+  im.noteLanded(false);
+  hold('KeyW', 1264);
+  release('KeyW');
+  im.resetKeyboardSticks();
+  rig.run(1000);
+  check('reset alone, which is R, rests at idle', im.channels.throttle === 0 && !im.kbAir, String(im.channels.throttle));
+  im.resumeAtHover();
+  rig.run(2000);
+  check('reset and picked up in the air, it rests on hover exactly, and stays',
+    im.channels.throttle === 0.511 && im.kbAir, String(im.channels.throttle));
+  hold('KeyW', 304);
+  const climb = im.channels.throttle;
+  release('KeyW');
+  check('a W press climbs from hover and springs back to it, as in the air',
+    climb > 0.511 && im.channels.throttle === 0.511, `${climb} -> ${im.channels.throttle}`);
+  hold('KeyS', 2000);
+  check('and S held still takes it all the way down and parks it',
+    im.channels.throttle === 0 && !im.kbAir, String(im.channels.throttle));
+  release('KeyS');
+  check('parked, it stays at idle', im.channels.throttle === 0, String(im.channels.throttle));
+
+  im.setKeyThrottle('hold');
+  hold('KeyW', 1200);
+  release('KeyW');
+  im.resetKeyboardSticks();
+  im.resumeAtHover();
+  rig.run(1000);
+  check('on Stays put, a recovery hands it back at hover too, not at the top it was left at',
+    im.channels.throttle === 0.511, String(im.channels.throttle));
+  hold('KeyW', 96);
+  release('KeyW');
+  const nudged = im.channels.throttle;
+  check('and from there it stays where the keys leave it', nudged > 0.511 && nudged < 0.53, String(nudged));
+}
+
+section('the keyboard throttle: a recovery leaves a radio\'s throttle alone');
+{
+  const rig = new Rig(makePad([0, 0, 0.2, 0, 0, 0]));
+  const im = rig.im;
+  rig.run(200);
+  const before = im.channels.throttle;
+  im.resetKeyboardSticks();
+  im.resumeAtHover();
+  rig.run(64);
+  check('the channel is still the radio\'s stick, not the keys\' hover',
+    im.channels.throttle === before && before !== im.kbHover, `${before} -> ${im.channels.throttle}, hover ${im.kbHover}`);
+}
+
 /* ------------------------------------------------------------------------
  * 10. The joystick picker's picture. bug-9983ae9a, a Flysky SM001: "On the
  *     test image you can see on one side the bullet is moving for both

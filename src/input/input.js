@@ -2603,6 +2603,31 @@ export class InputManager {
     }
   }
 
+  /*
+   * A CRASH RECOVERY HAS PUT THE CRAFT BACK IN THE AIR, level and at rest,
+   * so the keys pick it up at hover, in either throttle mode.
+   *
+   * main.js's finishClipCrash reseats the craft through resetCraft, which
+   * calls resetKeyboardSticks above: right for R and the start line, and
+   * wrong here, because it leaves the collective at idle and the airborne
+   * latch off. A keyboard pilot's quad, handed back in the air, fell: a
+   * whoop put back at 13.08 m under its room's ceiling dropped to the floor.
+   *
+   * 'hover' latches as if W had lifted it, so letting go springs to hover
+   * and S can still park it. 'hold' has no rest, and hover is the useful
+   * place for a stick that stays put to start from: the value it held when
+   * the crash was called is usually the throttle that held the craft
+   * against whatever it hit.
+   *
+   * Only the keys. A radio's throttle is wherever the pilot's thumb is, and
+   * poll() writes it over kb.throttle on the next sample anyway. The thumb
+   * sticks are not touched: their reset is deliberate, see above.
+   */
+  resumeAtHover() {
+    this.kb.throttle = this.kbHover;
+    this.kbAir = true;
+  }
+
   /* The thumb sticks, mounted by the shell on a touch device. */
   attachTouch(source) {
     this.touchSource = source;

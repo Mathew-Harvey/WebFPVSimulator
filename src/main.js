@@ -2784,6 +2784,13 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     acc = 0;
     rcPending.length = 0;
+    /* And the receiver's held frame with them, because sim_reset has just
+     * zeroed the module's own. Left behind, it is the stick from before the
+     * reset, and the first frame after it flies on that until a new sample
+     * lands at the frame's end: a whoop held against a ceiling at full
+     * throttle came out of its crash recovery at 3 m/s upward. A recovery
+     * sets it again from the sticks as they are; see finishClipCrash. */
+    rcHeld = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
     adoptSimClock();
     crashed = false;
     clipCrashUntil = 0;
@@ -2997,6 +3004,18 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Airborne, level, at rest, and the pilot has the sticks. */
     landed = false;
     takingOff = false;
+    /*
+     * The keys pick it up at hover, not at the idle resetCraft left them
+     * on, or a keyboard pilot's quad falls out of its own recovery: see
+     * resumeAtHover. Then the receiver's held frame is read from the sticks
+     * as they are now, so the first frame flies on hover, or on wherever a
+     * radio's throttle is. poll() is safe to call here: it measures its own
+     * step off the last one, which is why it can already run from a timer
+     * and from the frame both.
+     */
+    input.resumeAtHover();
+    input.poll(performance.now());
+    rcHeld = { ...input.channels };
     flownThisRun = true;
     groundY = startY;
     obsHasPrev = false;

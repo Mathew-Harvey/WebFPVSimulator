@@ -42907,3 +42907,46 @@ against a wall, and a craft left on its side at the foot of a wall.
                              run log above is from this tree's code
     git merge-base           bc71ca1, one history
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | plan | Freestyle maps in the editor: the plan, waiting on the owner
+
+The owner asked for freestyle maps built in the track builder: drawn assets
+(buildings, towers, cranes), a trick counter for flying close to things "like
+the skate games", roads with cars to chase, all integrated into the sim, the
+STF mark hidden on every freestyle map as an easter egg, and the whole thing
+cel shaded and manga styled, better than flightdivision.com. Plan first,
+discussed with the owner, then build.
+
+The plan is FREESTYLE-MAPS-PLAN.md. Nothing in the source moved in this
+entry.
+
+### What the plan rests on, found by reading
+
+- A course with no stations already loads as a freestyle map (scene.js), and
+  every collider a course makes already reaches the plant.
+- The world has axis aligned boxes and capsules only, only box tops are
+  landable, and movers are 16 axis aligned boxes written every step. So
+  turned buildings and turning cars need a physics change, which the plan
+  puts to the owner as P1 and P2 and does not start.
+- The town's vendored cel kit is the look to build on; the race field that
+  editor courses use today is not. Built freestyle maps use the town's kit.
+- Flight Division was looked at with a screenshot of its landing page taken
+  from the container's Chromium (the proxy CA's key passed with
+  --ignore-certificate-errors-spki-list, because Chromium here does not read
+  the bundle). Soft lit low poly sky playground, drifting cars, no ink, no
+  editor or trick scoring mentioned. The screenshot was not committed.
+
+### Waiting on the owner
+
+The decisions in section 12 of the plan: P1 and P2; whether the geometric
+events (gaps, close calls, chase, the egg) show by default while trick names
+stay behind the Scoring switch; how the egg is placed on built maps; the
+manga layer's reach; katakana sound effects; the town's egg spot; and the
+STF logo as a file in assets/, since an image in the conversation cannot be
+saved from here. The plan also records that it reverses the 2026-08-30
+decision that Freestyle offers the town and nothing else.
+
+### RUN LOG
+
+    code        none changed, so no checks were run
+    git merge-base HEAD origin/main   9ed8b9c, one history

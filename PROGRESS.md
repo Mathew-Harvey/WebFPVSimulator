@@ -42419,3 +42419,42 @@ The other 26 feel reports are read, tabulated above, and untouched.
                                      reads what the stick path already
                                      computed. build:wasm cannot run
                                      here: no emcc. Offered
+
+---
+
+## 2026-09-24 Board statistics tab: copy rewritten, sponsor plate removed
+
+Board only. Nothing in this repository changed except this entry. The
+board commit is `f09235b` on `claude/great-sagan-bp382s` in
+`Mathew-Harvey/WebFPVSimulator-LeaderBoard`, not merged to its `main`.
+
+The owner read the statistics tab and called the copy AI slop. Every
+visible string on the tab was rewritten against the humanizer skill
+(`github.com/blader/humanizer`): staged contrasts, flourishes, palette
+jargon ("the mint tick") and notes about the plumbing ("named by the
+edge in front of the site") are gone, and each note says what a reader
+wants to know. "No cookie is set" stays word for word because the
+board's self test pins it as the promise.
+
+The "How they arrived / Direct and sponsors" plate is removed, at the
+owner's request, markup and painting code both. The row goes from three
+columns to two. Only the display went: `src/share/stats.js` here still
+sends the sponsor slug, the board still counts it and `GET /api/stats`
+still returns `sources`, and the privacy plate and the board README say
+so.
+
+What went wrong: "The four on the right" in the all time note named what
+is the bottom row of that grid. The note now names the four instead.
+
+### RUN LOG
+
+    board npm test           1 failed: "nothing app.js builds opens a
+                             bare new tab or asks for noopener". It
+                             fails identically on board main without
+                             this change (the Patreon link in
+                             public/app.js from f1dc902). Everything
+                             else passed; the hash check skipped as
+                             it always does without the password.
+    npm run verify           not run: no physics, plant, ABI or build
+                             change, and no file here changed.
+    served / look at it      not run. Offered to the owner.

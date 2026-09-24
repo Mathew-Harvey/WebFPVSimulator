@@ -238,8 +238,8 @@ export const AIRFRAMES = [
     simId: 0,
     name: '65 mm whoop',
     short: 'Whoop',
-    blurb: 'A 65 mm ducted whoop indoors, flying the five inch\'s flight model. The hall and its gates are built to match it, so what you see is a whoop through 28 inch gates and what you feel is the 5 inch.',
-    facts: ['1S', '65 mm', '5 inch feel'],
+    blurb: 'A 65 mm ducted whoop indoors. The hall and its gates are built to match it, so what you see is a whoop through 28 inch gates.',
+    facts: ['1S', '65 mm', 'Indoors'],
     trackClass: 'micro',
     /*
      * WHAT THE PACK SAYS, NOT WHAT FLIES IT. A whoop is 1S, and the owner's

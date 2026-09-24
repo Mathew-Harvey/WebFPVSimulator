@@ -42103,3 +42103,25 @@ unchanged.
     npm run verify           not run: a display scale, a data field and a
                              card. No physics, plant, ABI or build change,
                              which was the instruction. Offered
+
+## 2026-09-24 | copy | The whoop's copy stops calling it a five inch
+
+The owner: "remove the 5 inch feel from the whoop, copy". Every pilot facing
+line that told a whoop pilot they were flying a five inch is gone:
+
+- the front page whoop card: the blurb loses ", flying the five inch's
+  flight model", and the facts are 1S, 65 mm, Indoors ("5 inch feel" out,
+  "Indoors" back, so the card keeps three facts like the other two);
+- configs/airframes.js, whose blurb is the Aircraft row's note in Quad:
+  "flying the five inch's flight model" and "what you feel is the 5 inch"
+  out, facts as above.
+
+Comments and test names that say the whoop flies the five inch's plant stay:
+they are about the code, and it still does. No physics touched.
+
+### RUN LOG
+
+    npm run lint:input       all 127 passed, 82 s (the card check reads 1S
+                             first, unchanged)
+    npm run lint:shell       FAIL, 1 problem: the title's 23 px, from
+                             9ed8b9c, unchanged; quad overflow 0, as before

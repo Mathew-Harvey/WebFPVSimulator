@@ -2729,8 +2729,8 @@ const WAYS = [
      * picture is a whoop's and the hands get the five inch. The old line
      * promised three times the angular acceleration, which was true of a
      * plant nothing selects now. */
-    blurb: 'The same clock, indoors. A 65 mm ducted whoop through a track that fits in a living room, on 28 inch gates, flying the five inch\'s flight model.',
-    facts: ['1S', '65 mm', '5 inch feel'],
+    blurb: 'The same clock, indoors. A 65 mm ducted whoop through a track that fits in a living room, on 28 inch gates.',
+    facts: ['1S', '65 mm', 'Indoors'],
   },
   {
     id: 'freestyle-5inch',

@@ -44779,3 +44779,63 @@ to the branch: no merge commit, nothing rewritten, one history.
     git merge-base           f678dba, main's tip; main moves by
                              fast-forward
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | deploy | The fourth card was live, and a returning browser showed three
+
+The owner, testing the merge on webfpv.org, with a screenshot of the gate
+showing three cards: "opening the simulator does not show the 4th menu
+option". No code changed this turn.
+
+### What it was, measured at 09:23 UTC
+
+- **The deploy was live.** 5f55c2c went out at 09:18:40 UTC (the
+  last-modified on every file), and index.html, src/ui/ui.js,
+  src/trackbuilder/app.js and src/trackbuilder/index.html come through
+  webfpv.org/sim byte for byte as main has them.
+- **It is DEPLOY.md's four hour seam, unchanged since 2026-09-12.** Through
+  the domain the pages come back max-age=0 and every script and picture
+  max-age=14400; the Render origin sends max-age=0 for all of them. So a
+  browser that had the gate open in the last four hours fetched the new
+  index.html and kept the old ui.js.
+- **The screenshot is exactly that mix.** Three cards, which is the old
+  script's WAYS, in the new stylesheet's column: its gaps are the 24 px
+  maximum, and scaled by them the three cards span about 1580 CSS px, the
+  new 100em column. The old 78em column is 1248.
+- **The builder page has the same seam**: a fresh index.html over a cached
+  app.js opens without the chooser.
+- **assets/gate/builder.jpg comes through the domain re-encoded**, 66,038
+  bytes, progressive, 900 by 560, with `vary: accept`, against 71,975 from
+  the origin as committed. Same picture: Cloudflare recompresses images on
+  the way through. Not a fault.
+- **Render is not applying render.yaml's header rules at all.** The origin
+  sends public, max-age=0, s-maxage=300 for /assets/music/* as well, which
+  render.yaml asks to be immutable for a year. Harmless to correctness; it
+  costs the music its long cache.
+
+### What went wrong
+
+- **The hand-over did not say "hard reload".** DEPLOY.md says it outright:
+  until the TTL is fixed, a deploy that changes anything the script and
+  the sheet must agree on needs a hard reload to be safe. A card built by
+  the script and laid out by the sheet is exactly that. The hand-over said
+  instead that it could not find whether main deploys itself; reading
+  DEPLOY.md's caching section before the hand-over would have given the
+  right instruction.
+
+### Not fixed here, and why
+
+The fix is a setting in the owner's Cloudflare dashboard, not code: the
+webfpv.org zone's Browser Cache TTL set to Respect Existing Headers, or
+whichever cache rule sets a browser TTL on static extensions. Nothing in
+this repository can change it. Versioning the module graph would work
+round it, and that is a change to how the page boots, which is the owner's
+to approve before anyone starts it.
+
+### RUN LOG
+
+    curl webfpv.org/sim, 09:23 UTC   the 4 changed code files byte identical
+                                     to main; scripts and pictures
+                                     max-age=14400, pages max-age=0
+    curl webfpvsimulator.onrender.com   every path max-age=0, s-maxage=300,
+                                     the music included
+    code                             unchanged

@@ -489,6 +489,15 @@ Until the TTL is fixed: a deploy that changes a class name, an id the
 stylesheet matches, or anything else the script and the sheet have to agree
 on, needs a hard reload to be safe, and returning pilots will not do one.
 
+Measured again on 2026-09-25 at 09:23 UTC, unchanged: pages `max-age=0`,
+every script and picture `max-age=14400` through the domain, everything
+`max-age=0, s-maxage=300` at the origin, the music included, so Render is
+not applying this repository's `render.yaml` headers either. That morning
+the gate's fourth card was live and byte identical to main, and the owner's
+browser drew the new stylesheet's wider column around the old script's three
+cards. The builder page has the same seam: a fresh `index.html` over a
+cached `app.js`.
+
 Then in a browser, in this order:
 
 1. `https://webfpv.org/` and click **Fly now**. The address bar should read

@@ -44514,3 +44514,119 @@ that passed on the integrator's own baseline run (flaky); every Fly this
 map check passed. The shots under .loop/shots/stf-* are gitignored; I
 looked at the town's found moment, the starter's mark at golden and at
 dusk, and the dusk glow.
+
+## 2026-09-25 | checks | Stage D part 1: the coverage lands before the world changes
+
+The owner's order of 2026-09-25 puts the chase right after Stage B, and
+their condition of 2026-09-24 and CLAUDE.md both say the tests that pin the
+core land, green, before the physics model changes. This is that, as its
+own commit. Nothing in src/native, patches/, vendor/, the plant or the ABI
+changed, and dist/sim.wasm is byte for byte HEAD's.
+
+### The module reproduces from source
+
+npm run build:wasm with emsdk 3.1.61 (/opt/emsdk, clang 19.0.0git
+7cfffe74eeb6), from an empty build/, wrote a dist/sim.wasm byte identical
+to the committed one: sha256 b0f89e9a4df94073611516f4cabdcf3698c7c0c9bd32f58f2a38c31999c56860,
+131330 bytes. The same sources copied outside the repository build the same
+bytes (the module has no custom or producers section, so no path or time
+is in it), and a one digit change to WORLD_SLOP in that copy moves the hash
+(first differing byte 39791), so the rebuild is live and not cached. From
+here, any change in the module is the change being made.
+
+### The baseline, committed module in place
+
+    npm run verify           16 of 16; trace de0401cd4266, Node and Chrome
+    npm run check:plant      23 of 23 (hashes in the golden, unchanged)
+    npm run check:world      all guards pass; --targets: the 5 known
+                             targets argued in this file
+    npm run check:crash      0 guards failed, twice
+
+### What the old checks could not see
+
+- **check:plant and verify never load a world.** world_step returns when
+  no world is uploaded, and no plant scenario or verify replay uploads one:
+  built against a module with WORLD_SLOP moved, both still passed with the
+  same hashes. Until today nothing that runs in Node pinned world.c.
+- **check:crash's targets now measure the crash reset.** Since 4ecbe75 a
+  hit of 4 m/s or more sets the craft down at once, so the touch window
+  targets read the reset craft or the pilot flying back, and they flip
+  between runs (at 20 m/s one run arrived at 0.531 m/s and measured 36.3
+  rad/s, the next arrived at 18.839 m/s and measured 0.235). Its guards are
+  sound; its targets are not a measure of the world any more.
+- Heading invariance is not bit exact today: at quarter turns the plant
+  frame state agrees to about 1e-12, inside world-check's 1e-6.
+
+### What landed
+
+- **The world golden**, scripts/world-golden.js and tests/goldens/world.json
+  (npm run check:world-golden, 4.6 s): 35 runs, 62 flights, 263,200 steps,
+  every step hashed bit for bit (the 20 state doubles and the 11 world
+  report doubles the shell reads), each run flown twice and required to
+  agree with itself and to reach what it is named for before it is
+  compared. The runs: all 15 world-check scenarios at their four yaws; the
+  11 crash-check paths in the town's real solids, from a fixture; built map
+  runs from placeDocument (hover, the flats' wall at 5 m/s, a roof settle,
+  a roof dive, a slide under a scaffold board, a crane chord for capsules);
+  a heading zero mover meeting a craft and a whoop riding beside a van. The
+  recorder wraps WebAssembly.instantiate in the golden's own process, so
+  world-check's flights are pinned without changing their code:
+  world-check.js only gained exports and a main guard, and its output is
+  byte identical.
+- **The town fixture**, tests/fixtures/town-crash.json (43 KB): the 650 of
+  the town's 19,515 collider boxes within 15 m of the crash paths, from the
+  real page, bit exact through Math.fround, carrying the whole town's hash
+  (6c36344a46bd2e1e) and its own (b5b7a44cc308df7d). 15 m because a solid
+  is touched only within the craft's reach, under 0.25 m of its CG, and
+  every town run asserts it stayed within the radius less 1 m of its path
+  (furthest measured 0.40 m). npm run check:world-town (30 s, a browser)
+  re-exports the town and compares: it matched. Editing the fixture is a
+  named failure.
+- **Node against Chrome**, scripts/world-engines.js (npm run
+  check:world-engines, 2.6 s): the golden's 20 page-loadable runs flown in
+  HeadlessChrome 141 through the same wasm and the same modules, every step
+  equal to Node 22's to the bit, and both equal to the golden. Both are V8;
+  the script's header says what SpiderMonkey and JavaScriptCore runs need.
+- **Self tests that must see a fault**: a box moved 1e-9 m (43 of 43 flights
+  red), a mover moved 1e-9 m (3 of 3), a capsule radius 1e-9 m larger (2 of
+  2), a restitution one bit higher (30 of 30 of the flights with 100 or more
+  frame contact steps: world.c's e times WORLD_E_KNEE, 1.7, gives the same
+  double for e = 0.15 with or without its last bit, so a brief touch cannot
+  see it). And a real world.c change, restitution scaled by 0.9, built to a
+  scratch module: 27 runs red, each naming its first step, exactly the runs
+  with a frame or lens contact.
+
+Recording the golden and exporting the fixture were each done once, in this
+part. From here, like tests/goldens/plant.json, re-recording is a reviewed
+act with its reason written here.
+
+### Open questions for the owner
+
+- **Should check:world-golden join npm run verify?** It is the only check
+  that sees world.c, it takes 5 s in Node, and verify is what the physics
+  rule names. Adding it means editing tests/verify.js, which is the owner's
+  to allow. Until then Stage D part 2 runs it by name beside verify.
+- The built map runs are placed live from src/props and the starter, so an
+  asset change moves them and asks for a reviewed re-record; the check says
+  so ("the world it was handed changed"). The other way is a snapshot
+  fixture, as the town has.
+
+### RUN LOG
+
+Run by me on this tree, this turn:
+
+    sha256 dist/sim.wasm           b0f89e9a..., equal to HEAD's
+    npm run check:world-golden     all passed
+    npm run check:world-golden:selftest   all passed
+    npm run check:world-engines    Node and Chromium agree to the bit
+    npm run check:plant            all passed
+    npm run check:world            all passed
+    npm run check:clip             652 passed, 0 failed
+    npm run lint:preload           up to date
+    dash scan, GPL headers         0 dashes; every new file has the header
+    git diff --stat vendor/betaflight   empty
+
+Run by the workflow's agents this turn and reported, not rerun by me: the
+rebuild and its reproducibility, npm run verify 16 of 16, check:crash twice,
+check:world --targets, check:plant:selftest 3 of 3, check:world-town, the
+fixture edit negative test, and the scratch module with restitution scaled.

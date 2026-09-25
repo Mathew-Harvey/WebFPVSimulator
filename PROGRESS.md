@@ -42420,6 +42420,29 @@ The other 26 feel reports are read, tabulated above, and untouched.
                                      computed. build:wasm cannot run
                                      here: no emcc. Offered
 
+## 2026-09-24 | board | The 26 other feel reports closed wontfix
+
+The owner: "close them as wontfix". Every open feel report except
+bug-08577148, the 26 filed from the 21st to the 23rd and tabulated in the
+entry above, each checked still open and still a feel report before the
+write, with no ticket arriving in between. wontfix with an empty
+resolution, which is how the sweeps of the 19th and 21st closed theirs.
+They were filed before a report carried anything from the flight, so
+there is nothing more to get out of them than the table above already
+holds.
+
+The board now reads 169 tickets: 78 fixed, 88 wontfix, 1 duplicate, none
+open, 2 in progress. bug-08577148 waits on a report that carries
+stick.flight; bug-c9423f3e waits on its reporter.
+
+### What went wrong
+
+The first attempt was stopped by the session's permission check as a bulk
+write to an outside system, before any ticket changed, and a read only
+recount after it was stopped as well. Nothing was worked around. The
+owner said to go ahead, and the same 26 writes then ran: 26 wontfix, no
+failures.
+
 ---
 
 ## 2026-09-24 Board statistics tab: copy rewritten, sponsor plate removed
@@ -44035,3 +44058,202 @@ Maverick Loop failure only), the flights above, and the shots under
 dusk, the dusk office and aerial, the crane line and the dusk sky from
 120 m.
 
+## 2026-09-24 | shell, maps | bug-850375dc: a town that failed to load left the pilot in a room with nothing to press
+
+The owner: "Fix the freestyle map entry bug". The board's one new wrong
+ticket: Asylum Fpv, Chrome on Windows, a Radiomaster Zorro, "got stuck on
+this screen while loading freestyle map", expected "load freestyle map".
+The report was sent from `screen: freestyle` with `map: custom` and the
+course "2023 AU NATS 5 inch" seated. Main had moved 28 commits under this
+branch (the solid world in the plant, the preload, tumble flat, the crash
+reset); it was merged first, PROGRESS.md the only conflict, both sides
+kept.
+
+### Reproduced, in the shell
+
+A scratch probe in headless Chromium seated a five inch track, answered the
+gate with Freestyle, and reset the connection on the first request for
+src/maps/city/index.js, the way a dropped connection does:
+
+1. The import failed ("Failed to fetch dynamically imported module").
+   syncWorld's catch put the previous seat back, `ui.settings.map =
+   previous`, rebuilt the track, and showed "Freestyle city could not be
+   loaded." for 4.2 s. The mode stayed freestyle.
+2. The title then read "The town: Not loaded", its note "One town, no
+   gates. Open it and fly."
+3. Fly, with a freestyle mode and no freestyle world seated, fell to
+   `show('freestyle')`, the Freestyle room, which stopped drawing world
+   cards when freestyle went down to one world. It held Scoring, Quad,
+   Physics model and Back. Nothing on it loads anything. The town row
+   opens the same room.
+
+That is the ticket's state exactly, screen and seat. The room and Fly were
+written when the room was a picker; the gate was taught to seat the only
+world directly, and the other two ways in were not.
+
+### Why the pilot's load failed: not known
+
+The report cannot say, which is half of what this entry fixes. The
+candidates at 13:33: a dropped request among the town's 72 modules on a
+connection where each is 0.5 to 0.9 s to first byte (the preload entry
+above); a build that threw on that machine; or a browser holding two
+deploys at once, because scripts are cached for four hours (DEPLOY.md)
+and the town is loaded lazily, so a pilot whose shell was cached before
+today's deploys fetches the town fresh the first time they open it. The
+city's changes today are additive, so the last is possible and not shown.
+
+### A retry in the same page cannot work
+
+The first version of the fix made Fly seat the town again in place. The
+probe then failed the town once and served it the second time: the second
+request reached the network, the file was served, and the import failed
+all the same. The browser keeps a failed module import for the life of the
+page. So a retry in place is a loop of failures, and the retry that works
+is a reload, which is what the loading screen's own Try again already
+does. Caught by the probe before anything was committed.
+
+### What changed
+
+- **seatWorld (src/ui/ui.js).** Seating a freestyle world goes through one
+  method. If that world has already failed to load in this page it saves
+  the seat and reloads, so the new page builds it with a fresh module map
+  and opens on the gate every visit opens on; otherwise it seats it in
+  place as before. Fly, the gate and the room's card all call it.
+- **Fly** in freestyle with no world seated seats the remembered or only
+  world, as the gate does (freestyleWorldToSeat, the gate's own logic
+  moved to one function), instead of opening the room.
+- **The Freestyle room** draws the world cards when no world is seated,
+  even with one world, so it is never the one place that says "The town"
+  and cannot load it.
+- **The town row's note** says "Freestyle city did not load. Fly reloads
+  the page and tries again." after a failure, and the swap's notice says
+  the same, because the notice is gone in four seconds.
+- **loadFailure** in the bug report: the map, the error the browser gave
+  (clipped to 300 characters) and when, set by the swap's catch and by
+  boot's fallback. Only present when there is one, like fault. A report is
+  20 keys and about 1,100 characters against the board's 32 and 8000.
+
+Declined: clearing loadFailure when the same world later loads in place.
+Only a failure that is not a module fetch could do that, and the cost of
+leaving it is one unneeded reload in that case, against losing the record
+from the report.
+
+### Tests, and that they can fail
+
+scripts/input-check.js gains a fourth page, a five inch pilot on a five
+inch track answering Freestyle on a connection that drops the town once:
+the state the ticket was sent from, the town row's note, the report's
+loadFailure, the room's card, and Fly reloading into a page that builds
+the town, with the town asked for exactly twice. Six checks with the
+page's no uncaught exception. Four mutants, each caught by the check meant
+for it, run on that page alone:
+
+    Fly opens the room again       the reload check fails
+    the room without its card      the card check fails
+    retry in place, no reload      the reload check fails: the town is
+                                   not built in the same page
+    no failure recorded            the note, the report and the reload
+                                   checks fail
+
+### What went wrong
+
+- The in place retry, above.
+- seatWorld was first written between seatMap's comment and seatMap, so
+  the comment described the wrong method. Moved before committing.
+- lint:input on the final tree, four full runs: all 137 once; three runs
+  each failed one check that passes in the others, section 3b's throttle
+  as yaw row twice (its 20 s wait for 4 s of poll time) and the touch
+  page's stick mode button once (a repaint that lagged). Both are on pages
+  that run before the new one. Run alone, the mouse page on this branch
+  and on origin/main in a worktree measured the same, 45 to 28 fps across
+  3b with the 4 s reached in all four runs; origin/main's full run passed
+  131 of 131 in 93 s. So they are load sensitive checks on a four core
+  container, not this change. No wait or threshold was touched. The touch
+  button check was already written down in the roof fix entry above: it
+  reads the label a frame too early, 11 of 13 failures with several
+  browsers running, and passes alone.
+
+### RUN LOG
+
+    npm run lint:input       4 runs: all 137 once; 3b twice and touch 7
+                             once, each 1 FAIL, passing in the others;
+                             the freestyle page 6 of 6 in every run
+    origin/main lint:input   all 131, 93 s (worktree, for comparison)
+    npm run input:selftest   all 198 passed
+    npm run lint:preload     up to date, boot 102, city 72
+    npm run lint:boot        9 of 9 clean
+    npm run lint:shell       FAIL, 1 problem: the title's 23 px, from
+                             9ed8b9c, unchanged
+    shots                    not run: the room's card has not been seen
+                             in a picture
+    npm run verify           not run: no physics, plant, ABI or build
+                             change
+
+### Pushed to main, and the ticket closed once it was live
+
+The owner: "Push to main". Main had not moved since the merge, so main went
+857cc71 to 8a39605 by fast forward. webfpv.org served it on the plain URLs,
+the ones a pilot's browser loads, 311 s after the push: seatWorld and
+townNote in src/ui/ui.js and the new notice in src/main.js, read off the
+live files. bug-850375dc was then closed as fixed, with a resolution that
+tells the reporter what changed and asks for a report from that screen if
+it ever fails again, since the report now says why.
+
+## 2026-09-25 | git | Freestyle maps, Stage A, merged to main for the owner to fly
+
+The owner, on the Stage A entry above: "Merge to main". That is the approval
+to put Stage A on main, and the verification scale chosen is flying it
+("Then I'll manually test it"). What to fly and what would count as wrong
+are in the entry above. The three decisions it lists (the built map's ground
+rules, the flat back crash counting in the trick chain, the chimney's taper)
+were put to the owner and are not answered yet; they ride on main as built,
+and flying it is how the owner will judge them.
+
+main had moved four commits since the last merge: bug-850375dc (a town that
+failed to load no longer leaves a dead end), its PROGRESS entries and the
+feel sweep closures. Merged into the branch, not rebased; merge-base
+857cc71, one history.
+
+### The merge
+
+- **src/ui/ui.js conflicted on the title's Map row note.** main replaced
+  the fixed "One town, no gates" with townNote(s, loadFailure), which says
+  when the world failed to load; this branch had reworded the same line for
+  two worlds. Kept main's helper and gave its fallback this branch's words:
+  "The town, or a map of your own. No gates. Open it and fly."
+- **lint:input's new town drop page failed three checks after the merge,
+  and passed them on main.** Measured, not guessed: a scratch copy of the
+  page that printed the state showed the pilot on the Freestyle picker with
+  no world remembered and loadFailure null. With Your map there are two
+  freestyle worlds, so the gate's Freestyle answer opens the picker instead
+  of loading the town; the picker then records the town's card preview in
+  an orbit.html iframe, and that iframe took the dropped request, so the
+  page itself never saw the town fail. The page's seed now remembers the
+  town (freestyleMap 'city', a pilot who has flown it), which puts the
+  ticket's path back exactly as main walks it, and the title row is looked
+  up by its label since the second world arrived, Map, not The town. No
+  assertion changed. After: the six town drop checks pass.
+- **Not fixed, and worth knowing:** a pilot with no world remembered whose
+  connection drops the town during the picker's preview sees no failure
+  there; pressing the town card then loads it for real in the page. That is
+  a normal load, which either works or fails through main's handling.
+
+### RUN LOG
+
+    npm run check:clip             652 passed, 0 failed
+    node scripts/props-check.js    all passed
+    npm run check:plant            all passed
+    npm run check:crash            0 guards failed
+    npm run lint:input             2 failed, 135 passed. Both are "parked
+                                   and left, the row arrives by itself",
+                                   which fail identically on a clean
+                                   worktree of origin/main (4649eb3), run
+                                   this turn; the six town drop checks pass
+    npm run lint:shell             1 problem, title overflow 23 px, main's
+    npm run lint:memory            PASS
+    npm run lint:boot              9 of 9 clean
+    npm run lint:preload           up to date
+    npm run lint:nouns             PASS
+    npm run verify                 NOT RUN: the owner chose to fly it
+    git merge-base                 857cc71, one history
+    git diff --stat vendor/betaflight   empty

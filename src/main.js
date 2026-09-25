@@ -1063,6 +1063,12 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     console.error(e);
     const failed = mapById(ui.settings.map).name;
+    /* The same record the swap keeps: see loadFailure in ui.bugSnapshot. */
+    ui.loadFailure = {
+      map: mapById(ui.settings.map).id,
+      message: String((e && e.message) || e).slice(0, 300),
+      atUtc: new Date().toISOString(),
+    };
     ui.settings.map = 'custom';
     ui.renderMenu();
     view = await loadMap(shell, 'custom', loading, {
@@ -3445,6 +3451,13 @@ export async function boot({ loading, bootStart, mapId }) {
        * behind it used to leave mapReady false forever.
        */
       console.error(e);
+      /* For the next bug report, which is the only way this reaches us:
+       * see loadFailure in ui.bugSnapshot. bug-850375dc. */
+      ui.loadFailure = {
+        map: entry.id,
+        message: String((e && e.message) || e).slice(0, 300),
+        atUtc: new Date().toISOString(),
+      };
       ui.settings.map = previous;
       ui.settings.graphics = previousGraphics;
       try {
@@ -3455,8 +3468,13 @@ export async function boot({ loading, bootStart, mapId }) {
         });
         loading.start('frame');
         adoptLoadedView(keepPlace, stayMode, stayScreen);
+        /* A freestyle world failed under a pilot still in freestyle, and
+         * Fly is what tries it again, with a fresh page (bug-850375dc: see
+         * seatWorld in ui.js), so say so. */
         notice = {
-          text: `${entry.name} could not be loaded.`,
+          text: entry.mode === 'freestyle'
+            ? `${entry.name} could not be loaded. Fly reloads the page and tries again.`
+            : `${entry.name} could not be loaded.`,
           untilMs: performance.now() + 4200,
         };
       } catch (e2) {

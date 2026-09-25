@@ -127,6 +127,31 @@ const KEYBOARD_SEED = `try {
   localStorage.setItem('webfpv.trackbuilder.library.v1', ${JSON.stringify(JSON.stringify({ [KEY_TRACK.id]: KEY_TRACK }))});
 } catch (e) { /* Storage refused. The race below then fails to seat, and says so. */ }`;
 
+/*
+ * The freestyle pilot of bug-850375dc: a five inch, a five inch track
+ * seated, answering the gate with Freestyle. Once per tab, because the
+ * page under test reloads itself and the seed must not put the track back
+ * under the town the page has just saved.
+ */
+const FREE_TRACK = {
+  ...presetsForClass('full')[0],
+  id: 'trk-850375dc',
+  name: 'Freestyle check track',
+  modifiedUtc: '2026-09-24T00:00:00.000Z',
+};
+const FREESTYLE_SEED = `try {
+  if (!sessionStorage.getItem('check.freestyle.seeded')) {
+    sessionStorage.setItem('check.freestyle.seeded', '1');
+    const k = ${JSON.stringify(SETTINGS_KEY)};
+    const s = JSON.parse(localStorage.getItem(k) || '{}');
+    s.airframe = '5inch';
+    s.map = 'custom';
+    s.freestyleMap = 'city';
+    localStorage.setItem(k, JSON.stringify(s));
+    localStorage.setItem('webfpv.trackbuilder.library.v1', ${JSON.stringify(JSON.stringify({ [FREE_TRACK.id]: FREE_TRACK }))});
+  }
+} catch (e) { /* Storage refused. The gate still asks, and the check says what it found. */ }`;
+
 /* Every walk starts past the gate, for the same reason lint:shell's do:
  * the menu these checks are about is behind it. */
 const PAST_GATE = "ui.firstRun = false; ui.craftGate = false; if (!ui.mode) { ui.mode = 'race'; }";
@@ -1300,6 +1325,71 @@ async function keyboardPage(page) {
   check('R puts it on the start line, parked, with the keys at idle', line.landed && line.thr === 0 && !line.air, JSON.stringify(line));
 }
 
+async function freestylePage(page) {
+  const ev = (expr) => page.evaluate(`(() => { const ui = window.__ui; ${expr} })()`);
+
+  /* --------------------------------------------------------------------
+   * 12. The town that did not load. bug-850375dc: "got stuck on this
+   *     screen while loading freestyle map", sent from the Freestyle room
+   *     with the track seated. The town's load failed, the swap put the
+   *     track back under a pilot still in freestyle, and Fly opened a room
+   *     that stopped drawing cards when it was down to one world. Failed
+   *     here the way a dropped connection fails it, once: the first
+   *     request for the town's module is reset, the second is served.
+   *     The pilot has flown the town before (freestyleMap 'city'): with
+   *     Your map there are two freestyle worlds, and with none remembered
+   *     the gate opens the picker instead of loading the town, whose card
+   *     preview (orbit.html in an iframe) would then take the dropped
+   *     request and the page itself would never see it fail. The title's
+   *     row is labelled Map since the second world arrived.
+   * ------------------------------------------------------------------ */
+  section('freestyle: a town that failed to load leaves a way in, not a room with nothing to press');
+  let townRequests = 0;
+  page.cdp.onEvent((msg) => {
+    if (msg.sessionId === page.sessionId && msg.method === 'Fetch.requestPaused'
+      && /\/src\/maps\/city\/index\.js/.test(msg.params.request.url)) {
+      townRequests += 1;
+      if (townRequests === 1) {
+        page.cdp.send('Fetch.failRequest', { requestId: msg.params.requestId, errorReason: 'ConnectionReset' }, page.sessionId)
+          .catch(() => {});
+      }
+    }
+  });
+  await page.cdp.send('Fetch.enable', {
+    patterns: [{ urlPattern: 'https://cdn.jsdelivr.net/*' }, { urlPattern: '*/src/maps/city/index.js*' }],
+  }, page.sessionId);
+  const cards = await ev('return JSON.stringify(ui.items().map((it) => it && it.action));').then(JSON.parse);
+  await ev(`ui.setCursor(${cards.indexOf('way-freestyle-5inch')}); return 1;`);
+  await page.tap('Enter');
+  /* Settled: the fallback has built the track and adopted it. */
+  await page.until(`(() => { const m = window.__map(); const ui = window.__ui;
+    return m.ready && m.id === 'custom' && ui.settings.map === 'custom' && !!ui.loadFailure; })()`, 60000).catch(() => {});
+  const left = await ev(`const town = ui.items().find((x) => x && x.label === 'Map');
+    return JSON.stringify({ mode: ui.mode, map: ui.settings.map, screen: ui.screen,
+      value: town && town.value, note: town && town.note, failure: ui.bugSnapshot().loadFailure || null });`).then(JSON.parse);
+  check('the failed town leaves freestyle with the track under it, the state the ticket was sent from',
+    townRequests === 1 && left.mode === 'freestyle' && left.map === 'custom', JSON.stringify({ townRequests, ...left }));
+  check('the town row says it did not load, and what Fly will do about it',
+    left.value === 'Not loaded' && /did not load\. Fly reloads the page and tries again/.test(left.note || ''), JSON.stringify(left));
+  check('a report carries the failure: the town, and the error the browser gave',
+    !!left.failure && left.failure.map === 'city' && /dynamically imported module/.test(left.failure.message),
+    JSON.stringify(left.failure));
+  await ev("ui.act('freestyle'); return 1;");
+  const room = await ev("return JSON.stringify({ screen: ui.screen, actions: ui.items().map((it) => it && it.action) });").then(JSON.parse);
+  check('the Freestyle room has the town\'s card in it to press, where it had only Scoring, Quad, Physics model and Back',
+    room.screen === 'freestyle' && room.actions.includes('map:city'), JSON.stringify(room));
+  await ev("ui.show('title'); return 1;");
+  const before = await page.evaluate('performance.timeOrigin');
+  await ev("ui.act('fly'); return 1;");
+  let reloaded = true;
+  await page.until(`performance.timeOrigin !== ${before} && window.__shellReady === true`, 90000).catch(() => { reloaded = false; });
+  await page.until("(() => { const m = window.__map(); return m.ready && m.id === 'city'; })()", 60000).catch(() => {});
+  const after = await ev("return JSON.stringify({ map: ui.settings.map, built: window.__map().id, ready: window.__map().ready });")
+    .then(JSON.parse);
+  check('Fly reloads the page, the town is asked for again, and the new page builds it',
+    reloaded && townRequests === 2 && after.map === 'city' && after.built === 'city' && after.ready, JSON.stringify({ reloaded, townRequests, ...after }));
+}
+
 async function main() {
   const t0 = Date.now();
   let page = null;
@@ -1325,6 +1415,14 @@ async function main() {
     await keyboardPage(page);
     const uncaught3 = page.errors.filter((e) => e.startsWith('uncaught:'));
     check('no uncaught exception on the keyboard page', uncaught3.length === 0, uncaught3.slice(0, 3).join(' | '));
+    await page.close();
+    page = null;
+
+    console.log('\nbooting the shell as a five inch pilot answering Freestyle, on a connection that drops the town once');
+    page = await bootPage({ seed: [SETTINGS_SEED, FREESTYLE_SEED] });
+    await freestylePage(page);
+    const uncaught4 = page.errors.filter((e) => e.startsWith('uncaught:'));
+    check('no uncaught exception on the freestyle page', uncaught4.length === 0, uncaught4.slice(0, 3).join(' | '));
     await page.close();
     page = null;
   } catch (e) {

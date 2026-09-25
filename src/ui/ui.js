@@ -288,6 +288,32 @@ function seatedFreestyleMap(s) {
 }
 
 /*
+ * The world to seat when the pilot has said freestyle and none is seated:
+ * the one they last flew, or the only one there is. Null only when there is
+ * a real choice and nothing remembered, which is the one case the Freestyle
+ * room's cards are for. The gate asks this, and so does Fly, because a
+ * failed load puts the old seat back under a pilot who still said
+ * freestyle (bug-850375dc), and Fly has to answer them the way the gate
+ * would rather than open a room with nothing in it to press.
+ */
+function freestyleWorldToSeat(s) {
+  const remembered = MAPS.find((x) => x.id === (s && s.freestyleMap) && x.mode === 'freestyle');
+  const worlds = MAPS.filter((x) => x.mode === 'freestyle');
+  return remembered || (worlds.length === 1 ? worlds[0] : null);
+}
+
+/* The title's town row when no world is seated. After a failed load it
+ * says so, because the notice that said it first is gone in four seconds
+ * and "Not loaded" alone reads like something the pilot forgot to do. */
+function townNote(s, failure) {
+  const world = freestyleWorldToSeat(s);
+  if (world && failure && failure.map === world.id) {
+    return `${world.name} did not load. Fly reloads the page and tries again.`;
+  }
+  return 'The town, or a map of your own. No gates. Open it and fly.';
+}
+
+/*
  * Whether there is a saved Flight controller dump FOR THIS AIRCRAFT. A dump
  * is the whole of one machine's configuration, a 6S 2207's or a 1S 0702's,
  * and offering the five inch's as "Your edits" on the whoop was handing a
@@ -3124,6 +3150,8 @@ export class Ui {
     this.gpuInfo = null;
     /* Set by main.js; see setStickProbe. */
     this.stickProbe = null;
+    /* Set by main.js when a map fails to load; see bugSnapshot. */
+    this.loadFailure = null;
     /* The gravity hint is shown at most once per page load even before the
      * localStorage flag is consulted, so a pilot who dismissed it and then
      * paused and resumed does not get it again on the way back into flight. */
@@ -4683,6 +4711,15 @@ export class Ui {
       screen: this.screen,
       map: s.map || '',
       ...(fault ? { fault } : {}),
+      /*
+       * THE LAST MAP THAT FAILED TO LOAD, AND WHY, if one did this session.
+       * bug-850375dc was a pilot left in the Freestyle room after the town
+       * failed to load, and the report said where they were and nothing
+       * about what failed: a dropped module, a build that threw, or a
+       * browser holding half of one deploy. Only present when there is one,
+       * like fault, and clipped the same way.
+       */
+      ...(this.loadFailure ? { loadFailure: this.loadFailure } : {}),
       courseId: (seat && (seat.shareId || (seat.doc && seat.doc.id))) || '',
       courseName: (seat && seat.name) || '',
       flightMode: s.flightMode || '',
@@ -5449,7 +5486,7 @@ export class Ui {
            */
           note: world
             ? `${world.note} Your quad and the physics model are in here.`
-            : 'The town, or a map of your own. No gates. Open it and fly.',
+            : townNote(s, this.loadFailure),
         }
         : {
           label: 'Track',
@@ -5784,9 +5821,14 @@ export class Ui {
        * here is what a freestyle pilot actually comes looking for: the quad
        * and the physics model. The card machinery stays because the day a
        * second world lands it is a registry entry and nothing else.
+       *
+       * AND WHEN NO WORLD IS SEATED, because then there is a choice to make
+       * even with one world: load it or not. A load that fails puts the old
+       * seat back (bug-850375dc), and without the card this room is the
+       * one place in the menu that says "The town" and cannot load it.
        */
       const worlds = MAPS.filter((x) => x.mode === 'freestyle');
-      const cards = worlds.length > 1 ? worlds.map((x) => ({
+      const cards = worlds.length > 1 || !seatedFreestyleMap(s) ? worlds.map((x) => ({
         label: x.name,
         note: x.note,
         map: x,
@@ -11922,6 +11964,31 @@ export class Ui {
   }
 
   /*
+   * Seat a freestyle world, and if it has already failed to load in this
+   * page, reload into it instead.
+   *
+   * bug-850375dc. A world is a dynamic import, and a browser keeps a failed
+   * module import for the life of the page: measured in headless Chromium,
+   * after a dropped connection the second attempt at the town had its file
+   * served from the network and the import failed all the same. So seating
+   * it again in place is a retry that cannot work. A reload is the one that
+   * can, and it
+   * is what the loading screen's own Try again does. The seat is saved
+   * first so the new page builds the town, and the gate it opens on is the
+   * gate every visit opens on.
+   */
+  seatWorld(world) {
+    if (this.loadFailure && this.loadFailure.map === world.id) {
+      this.settings.map = world.id;
+      this.settings.freestyleMap = world.id;
+      saveSettings(this.settings);
+      window.location.reload();
+      return;
+    }
+    this.seatMap(world.id);
+  }
+
+  /*
    * Seat a map: the one place a chosen world or track becomes the thing the
    * next flight is in.
    *
@@ -12409,16 +12476,12 @@ export class Ui {
          * than as the id of the town. A second freestyle world costs the
          * registry entry and this branch and nothing else.
          */
-        const remembered = MAPS.find(
-          (x) => x.id === this.settings.freestyleMap && x.mode === 'freestyle',
-        );
-        const worlds = MAPS.filter((x) => x.mode === 'freestyle');
-        const want = remembered || (worlds.length === 1 ? worlds[0] : null);
+        const want = freestyleWorldToSeat(this.settings);
         if (!want) {
           this.show('freestyle');
           return;
         }
-        this.seatMap(want.id);
+        this.seatWorld(want);
         return;
       }
       /*
@@ -12503,6 +12566,23 @@ export class Ui {
       this.seatCraftForCourse();
     }
     if (action === 'fly' && !this.seatMatchesMode()) {
+      /*
+       * FREESTYLE WITH NO WORLD SEATED IS FLY'S TO FIX, NOT A ROOM'S.
+       *
+       * bug-850375dc, "got stuck on this screen while loading freestyle
+       * map". The town's load failed, syncWorld put the track back under a
+       * pilot who had said freestyle, and Fly sent them to the Freestyle
+       * room to choose a world. The room stopped drawing cards when it was
+       * down to one world, so it held Scoring, Quad, Physics model and
+       * Back, and nothing that loads anything. So Fly does what the gate
+       * does: seat the world, which is the load tried again, by a reload
+       * when it has already failed in this page. See seatWorld.
+       */
+      const world = this.mode === 'freestyle' ? freestyleWorldToSeat(this.settings) : null;
+      if (world) {
+        this.seatWorld(world);
+        return;
+      }
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(this.mode === 'freestyle' ? 'freestyle' : 'courses');
       return;
@@ -12759,6 +12839,12 @@ export class Ui {
     if (action.startsWith('map:')) {
       const id = action.slice(4);
       if (id === 'custom' && !hasLoadedTrack()) {
+        return;
+      }
+      /* A world's card goes the way Fly and the gate go: see seatWorld. */
+      const world = MAPS.find((x) => x.id === id && x.mode === 'freestyle');
+      if (world) {
+        this.seatWorld(world);
         return;
       }
       this.seatMap(id);

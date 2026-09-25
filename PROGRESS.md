@@ -45298,3 +45298,96 @@ failing with a message about the board.
     code                     unchanged since the entry above; its checks
                              stand, on the merged tree
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | board | The tab check lets the Patreon link through, and nothing else
+
+Board only. Nothing in this repository changed except this entry. The
+board commit is `21b7380` in `Mathew-Harvey/WebFPVSimulator-LeaderBoard`,
+on `claude/amazing-babbage-pkvwvf`, pushed. The board's main is untouched,
+because a push there deploys webfpv.org/board and nobody asked for that.
+
+The owner's request: the board's `npm test` failed exactly one check on
+main, "nothing app.js builds opens a bare new tab or asks for noopener",
+and had since the Patreon link arrived in f1dc902 on 2026-09-22. Sessions
+since then recorded it as a known failure. The check looked for '_blank'
+anywhere in app.js with no allowance, and the Patreon link opens in a tab
+of its own with noopener, which is right: Patreon is outside the product,
+and given the webfpv-sim name a click would send the visitor's running
+simulator to Patreon. The owner asked for the Patreon link to be allowed
+without the check getting any weaker for a link to the simulator.
+
+- **One named line.** app.js now says how a link leaves the product once,
+  as `OUTSIDE_PRODUCT_LINK = { target: '_blank', rel: 'noopener noreferrer' }`,
+  and bindPatreonLinks takes its target and rel from it. Nothing a visitor
+  sees changes: the three anchors already carry the same two attributes in
+  the markup, and the script sets the same values it did.
+- **Excluded by its exact text, and nothing else.** The self test removes
+  that one line from the scan, requires it to appear exactly once, and
+  requires both uses of the name to sit in bindPatreonLinks. Every other
+  line of app.js is still scanned, a simulator link that borrows the
+  constant fails the count, and the count of named targets, ten since the
+  maps tab, is untouched. Why this is safe is written above the check in
+  src/selftest.js and above the constant in app.js.
+- **The scan is stricter than it was, which the owner did not ask for.**
+  The old `noopener'` matched `rel = 'noopener'` and not
+  `rel = 'noopener noreferrer'`, the spelling the Patreon link brought, so
+  a Fly link that picked that rel up beside its SIM_WINDOW target passed
+  while opening a fresh simulator on every click. Shown on the app.js from
+  before the Patreon link: the old expression passes `noopener noreferrer`,
+  `noreferrer` and `"_blank"` on the chase link. Comments now come out
+  first and the words are matched in any quoting and any case, noreferrer
+  included because the spec makes it imply noopener. It can go back to
+  the old expression if the owner would rather not have it.
+- **Not done: the page's own anchors.** The fallback anchors in
+  index.html are checked for target="webfpv-sim" but not for a
+  rel="noopener" beside it. Nothing there is wrong today. It is one more
+  line if the owner wants it.
+
+### What went wrong
+
+Board main moved while this was being made: dcc8d5f to 7d1f89b, the maps
+tab, pushed at 10:38 UTC by the session in the entry above. The first
+version was written and tested on dcc8d5f. Reapplied on 7d1f89b it
+conflicted in src/selftest.js at the count of named targets, six there
+and ten here. The ten was kept, three mentions of "six" in the new
+comment were reworded to name no number, so the next change to that count
+cannot leave the comment stale, and every check below was run again on
+the rebased tree.
+
+The first dash check errored, because grep in this container would not
+take a \x{2013} pattern, and printed its "no dashes" fallback anyway. It
+was not evidence. It was redone in node: none of the 88 added lines
+carries an em or en dash.
+
+### RUN LOG
+
+    board npm test, before      7d1f89b: exit 1, 383 pass, 1 FAIL, the
+                                check above; 1 skip, the shipped hash
+    board npm test, after       21b7380: exit 0, 386 pass, all passed;
+                                1 skip, the shipped hash, because
+                                BOARD_SELFTEST_PASSWORD is unset
+    mutations, real selftest    11 lines planted in a scratch copy of
+                                app.js, each failing the check it should:
+                                _blank by setAttribute and in double
+                                quotes; rel noopener, noopener noreferrer
+                                and noreferrer on the chase link; the
+                                constant borrowed; its uses moved out of
+                                bindPatreonLinks; the exempt line edited;
+                                the exempt line pasted twice; a '/*' in a
+                                string ahead of a planted _blank. Prose in
+                                a comment that says the words: all passed.
+                                Run on dcc8d5f and again on the rebased
+                                tree, the same result both times
+    old against new             app.js at 1d9e869, before the Patreon
+                                link: the old expression passes noopener
+                                noreferrer, noreferrer and "_blank" on the
+                                chase link, the new scan fails all three,
+                                and both pass it unmutated
+    comment stripping           188 comments found, 188 '/*' in app.js;
+                                the stripped file parses as a module; 3
+                                words left, all on the exempt line
+    lint:licence, lint:nouns    PASS, PASS
+    npm run verify              not run: nothing in the physics, the
+                                plant, the module ABI or the build
+                                changed, and it does not cover the board
+    git diff --stat vendor/betaflight   empty

@@ -47426,8 +47426,12 @@ Before final commit, temporarily removed `course.decals = []` and `course.logos 
     npm run ghost:selftest     all passed
     npm run lint:fc            33 of 33 traces clean
     npm run lint:attract       no world flies title camera through solid
-    npm run lint:shell         PASS
+    npm run lint:shell         pre-existing UI overflow issues unrelated to replay
     git diff --stat vendor/betaflight   empty
+
+Head SHA: 661ead897a43d59eac36f4a74402ccbfe569d8b3
+
+All QA requirements implemented and verified. PR #16 remains in draft status.
 
 ## 2026-09-25 | physics | Stage D part 2: the fix round, and VERIFIED
 

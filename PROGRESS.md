@@ -47171,3 +47171,67 @@ that asks as Facebook to check it.
                                card fails to send
     the Worker                 not deployed: that is the owner's Cloudflare
                                account, step 3 above
+
+## 2026-09-25 | git | Share cards go to main in both repositories, for the owner to test
+
+The owner, on the entry above: "push to main". That is the approval to put
+the share cards on main in both repositories: the board's 87bf9fe, its
+merge of the board's main (9717120) and 87da698, and this branch's c4ac6b3,
+1f69895 and the merges of this main. Recorded here because this repository
+is the copy of record for the three. The decisions the entry above lists
+(the lifted camera, no name in the picture, High on every device, the bot
+list, the card rules on republish, the sleeping board) ride on main as
+built; testing it is how they will be judged.
+
+- **The board went first**, as DEPLOY.md asks when the builder starts
+  sending the board something new: the builder now posts every card to
+  /api/tracks/:id/card and /api/maps/:id/card, which the old board answers
+  with a 404. Fetched first, the board's main was 1ed143e, the branch's
+  merge base and ancestor, so it moved by fast-forward to 87da698 at
+  14:57:19 UTC. Measured through webfpv.org/board: at 14:56:33 the card
+  route answered "Nothing at that address." and a listing carried no
+  hasCard; at 14:58:08, 49 s after the push, it answered "That track has no
+  share card." (404, and HEAD answers too), /api/health said postgres, a
+  track listing carried hasCard false and cardUtc null (so schema.sql's new
+  columns are there: the listing's SELECT names them), and the served app.js
+  carries adoptSharedLink and courseShareHref.
+- **This main moved while the board deployed**, fdafe2e to 8bb6705 (the wall
+  tap fix and the STF mark in plain view, merged there), so the first push
+  was refused, rightly. Merged here: only PROGRESS.md conflicted, where both
+  sides appended, and it keeps every entry of both, main's first; against
+  each parent the file only gains lines. src/fresh.js and src/main.js merged
+  by themselves, and fresh.js differs from main by the one card.js line.
+- **Not done, and not mine to do:** the Worker. Until
+  `npx wrangler deploy --config edge/wrangler.toml` is run from a checkout,
+  no link shows a card, because nothing names one to a crawler; the builder
+  and the simulator draw and upload cards from this deploy on regardless.
+  Then, once, the backfill for the 39 tracks and the maps already there:
+  `BOARD_ADMIN_TOKEN=... node scripts/boardcards.js --board https://webfpv.org/board`,
+  from a machine whose browser can reach the board.
+
+What to look for: publish or update a track in the builder and read the
+dialog's last line, "A link to it, posted anywhere, shows the track."; then,
+after the Worker is deployed, paste the board sheet's Copy link (now
+`/board/?track=`) into Facebook's Sharing Debugger or a WhatsApp chat with
+yourself. What would count as wrong: the race field picture on a track that
+has a card, somebody else's track in the picture, a missing picture, or a
+Publish that fails with a message about a picture.
+
+### RUN LOG
+
+    git fetch, both          board main 1ed143e, the branch's ancestor; this
+                             main fdafe2e, then 8bb6705 by the time of the
+                             push
+    board main               1ed143e..87da698, fast-forward, 14:57:19 UTC
+    webfpv.org/board         card route "Nothing at that address." before,
+                             "That track has no share card." at 14:58:08;
+                             listings carry hasCard and cardUtc
+    first push of this main  refused, non fast-forward: main had moved
+    merge of 8bb6705         PROGRESS.md by hand, both sides kept; the rest
+                             by itself
+    merged tree              lint:preload up to date (boot 106, city 73,
+                             built 28, 202 served); check:clip 699 passed,
+                             0 failed; test:edge all passed; lint:nouns
+                             PASS; lint:boot 9 of 9; a map and a track card
+                             drawn headless, 110 and 80 kB, looked at
+    git diff --stat vendor/betaflight   empty

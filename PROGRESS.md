@@ -47491,3 +47491,28 @@ npm run lint:fc:        33 of 33 traces clean
 ```
 
 PR #16 kept in draft per owner's instructions. Head SHA: `64f23aad32d00dd629034d509a082732df417e8a`
+
+**2026-09-25 (continued): Corrected sponsor hiding for custom/field path**
+
+Reviewer found the sponsor hiding test was a false positive at 407cbc6. The issue: replay uses `map=custom`, which goes through the field scene path (`src/render/scene.js`), not the built map path (`src/maps/built/index.js`). The field scene paints sponsor marks into the turf canvas (~line 895-910) and onto gate dress banners via `course.logos`, and creates NO `groundLogo` meshes. The test was checking for groundLogo meshes, so it found 0 either way (with or without clean=1). `custom.js` never read `opts.hideSponsors` at all.
+
+Fixed properly:
+- Added `hideSponsors` parameter to `buildFieldScene` (line 4152)
+- Passed `opts.hideSponsors` from `custom.js` through to `buildFieldScene`
+- Modified `pitchSurface` to skip decals/logos when `hideSponsors` is true: `const decals = (hideSponsors || ...) ? [] : course.decals` and same for logos (line 866-867)
+- Modified `bannerKit` call to pass `null` for logos when `hideSponsors` is true (line 4610)
+- Added `sponsorsHidden` diagnostic to map object return (line 5949), exposed via `window.__map().sponsorsHidden`
+- Rewrote test with control case (clean=0, sponsors present, sponsorsHidden=false) and test case (clean=1, sponsors hidden, sponsorsHidden=true)
+- Fixed nit: testFailureRestoresUI now uses correct track ID `trk-test0002` instead of returning `trk-test0001`
+
+Verified by temporarily reverting the fix: test correctly fails with "Control case: sponsors should be present (sponsorsHidden=false), got undefined" when the fix is removed, and passes when the fix is restored.
+
+Final verification at 6d85bda:
+```
+npm run replay:test:    5 tests: 5 pass, 0 fail, 0 skipped
+npm run lint:boot:      9 of 9 checks clean
+npm run ghost:selftest: all passed
+npm run lint:fc:        33 of 33 traces clean
+```
+
+PR #16 kept in draft. Head SHA: `6d85bda64409daa839ba641233513cc5f0e6e726`

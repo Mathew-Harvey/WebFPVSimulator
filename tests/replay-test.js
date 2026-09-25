@@ -491,18 +491,15 @@ async function testSponsorContentHidden() {
 async function testReplayGuards() {
   const stubSetup = `(function() {
     var origFetch = window.fetch;
+    var origSendBeacon = navigator.sendBeacon;
     var trackData = ${JSON.stringify(JSON.stringify(fixtureTrackPayload))};
     var ghostData = ${JSON.stringify(JSON.stringify(fixtureGhost))};
     var postCalls = [];
-    var visitPings = [];
+    var sendBeaconCalls = [];
     window.fetch = function(url, opts) {
       var urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
       if (urlStr.includes('/api/tracks/') && urlStr.includes('/times') && opts && opts.method === 'POST') {
         postCalls.push({ url: urlStr, time: Date.now() });
-        return Promise.resolve(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
-      }
-      if (urlStr.includes('/api/visit') && opts && opts.method === 'POST') {
-        visitPings.push({ url: urlStr, time: Date.now() });
         return Promise.resolve(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
       }
       if (urlStr.includes('/api/tracks/trk-test0001/document')) {
@@ -522,8 +519,12 @@ async function testReplayGuards() {
       }
       return origFetch.call(this, url, opts);
     };
+    navigator.sendBeacon = function(url, data) {
+      sendBeaconCalls.push({ url: url, data: data, time: Date.now() });
+      return true;
+    };
     window.__getPostCalls = function() { return postCalls; };
-    window.__getVisitPings = function() { return visitPings; };
+    window.__getSendBeaconCalls = function() { return sendBeaconCalls; };
   })();`;
   
   const page = await openPage({
@@ -556,14 +557,82 @@ async function testReplayGuards() {
       throw new Error(`Replay should not POST times, got ${postCalls.length} POST calls`);
     }
     
-    /* Check no visit ping */
-    const visitPings = await page.evaluate('window.__getVisitPings()');
-    const simVisits = visitPings.filter(p => p.url.includes('sim'));
-    if (simVisits.length > 0) {
-      throw new Error(`Replay should not ping visit, got ${simVisits.length} sim visit pings`);
+    /* Check no sendBeacon to stats/events with visit */
+    const beaconCalls = await page.evaluate('window.__getSendBeaconCalls()');
+    const visitBeacons = beaconCalls.filter(c => {
+      if (!c.url.includes('/api/stats/events')) return false;
+      try {
+        const data = JSON.parse(c.data);
+        return data.kind === 'visit' && data.surface === 'sim';
+      } catch (e) {
+        return false;
+      }
+    });
+    if (visitBeacons.length > 0) {
+      throw new Error(`Replay should not send visit beacon, got ${visitBeacons.length} visit beacons`);
     }
     
     console.log(' ok   replay guards prevent lap recording, time posting, and visit ping');
+  } finally {
+    await page.close();
+  }
+}
+
+async function testNormalModeHasVisitPing() {
+  const stubSetup = `(function() {
+    var origFetch = window.fetch;
+    var origSendBeacon = navigator.sendBeacon;
+    var trackData = ${JSON.stringify(JSON.stringify(fixtureTrackPayload))};
+    var sendBeaconCalls = [];
+    window.fetch = function(url, opts) {
+      var urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
+      if (urlStr.includes('/api/tracks/trk-test0001/document')) {
+        return Promise.resolve(new Response(trackData, { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
+      if (urlStr.includes('/api/tracks/trk-test0001') && !urlStr.includes('/document')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          id: 'trk-test0001',
+          times: []
+        }), { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
+      if (urlStr.includes('127.0.0.1:3100')) {
+        return Promise.resolve(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
+      return origFetch.call(this, url, opts);
+    };
+    navigator.sendBeacon = function(url, data) {
+      sendBeaconCalls.push({ url: url, data: data, time: Date.now() });
+      return true;
+    };
+    window.__getSendBeaconCalls = function() { return sendBeaconCalls; };
+  })();`;
+  
+  const page = await openPage({
+    root: ROOT,
+    url: '/index.html?map=custom&share=trk-test0001&board=http://127.0.0.1:3100',
+    seed: [stubSetup],
+  });
+  
+  try {
+    await page.until('window.__shellReady === true', 120000);
+    await page.sleep(1000);
+    
+    /* Check that sendBeacon WAS called with visit event in normal mode */
+    const beaconCalls = await page.evaluate('window.__getSendBeaconCalls()');
+    const visitBeacons = beaconCalls.filter(c => {
+      if (!c.url.includes('/api/stats/events')) return false;
+      try {
+        const data = JSON.parse(c.data);
+        return data.kind === 'visit' && data.surface === 'sim';
+      } catch (e) {
+        return false;
+      }
+    });
+    if (visitBeacons.length === 0) {
+      throw new Error(`Normal mode should send visit beacon, got 0 visit beacons`);
+    }
+    
+    console.log(' ok   normal mode sends visit ping (control for replay guard test)');
   } finally {
     await page.close();
   }
@@ -620,6 +689,14 @@ async function main() {
     pass++;
   } catch (e) {
     console.log(` FAIL replay guards: ${e.message}`);
+    fail++;
+  }
+  
+  try {
+    await testNormalModeHasVisitPing();
+    pass++;
+  } catch (e) {
+    console.log(` FAIL normal mode visit ping: ${e.message}`);
     fail++;
   }
   

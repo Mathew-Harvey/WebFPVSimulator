@@ -45065,3 +45065,57 @@ passed on the merged tree beside main's new chooser checks.
     node scripts/props-check.js    all passed
     npm run check:world-golden     all passed
     git merge-base                 40fe84f, one history
+
+## 2026-09-25 | checks | The world golden joins verify, as check 17
+
+The owner, answering the open question in the Stage D part 1 entry: "add
+the world golden to verify". That is the approval to edit tests/verify.js's
+checks and tests/thresholds.json for this, and it covers exactly this: a
+new row that adds a check, with no band on any existing row touched.
+
+### Why
+
+Every other row of verify flies the plant with no world uploaded, and
+world.c returns from its step when there is none, so verify could not see
+a change to walls, roofs, capsules or movers: built against a module with
+WORLD_SLOP moved, all sixteen rows passed with the same trace. The physics
+procedure (.claude/skills/verify-flight-model) is built round verify, so
+the one check that can see world.c belongs in it, and it lands before the
+first change to world.c since the golden was written, which is Stage D
+part 2.
+
+### What changed
+
+- **tests/lib/checks.js, check 17 world-golden**: runs scripts/world-golden.js
+  as a child process against the module check 1 has just built (a child,
+  because the golden wraps WebAssembly.instantiate in its own process to
+  record), reads its run count and one FAIL line per differing run, and
+  reports "N of 35 runs bit identical". The header's "the 13 Stage 1
+  checks" now says the later checks are written up here, as 15 and 16 were.
+- **tests/thresholds.json, world-golden**: differing_runs 0 (exact: the
+  golden pins every step bit for bit), runs_min 35 (the golden as recorded
+  at 8e5377e, a floor so a golden cut down or emptied cannot pass), and a
+  ten minute timeout for a hung run. Each value carries its source.
+- Stage D part 2's first run was stopped while it was still reading, with
+  nothing written, so that the physics change is verified by the verify that
+  can see it. It restarts on top of this commit.
+
+### Proof it can fail
+
+Check 17 alone, through its own code: on the committed module, "35 of 35
+runs bit identical", pass. With dist/sim.wasm swapped for part 1's scratch
+module (world.c's restitution scaled by 0.9), "8 of 35 runs bit
+identical", FAIL, naming the first: world-check wall tap, 3 m/s, flight 2
+of 3 from step 1112. The committed module was put back and hashed
+(b0f89e9a) before verify ran.
+
+### RUN LOG
+
+    check 17 alone, committed module      35 of 35, pass
+    check 17 alone, restitution x 0.9     8 of 35, FAIL, first named
+    npm run verify                        17 of 17 passing; rows 1 to 16
+                                          identical to part 1's baseline,
+                                          value for value; trace
+                                          de0401cd4266 in Node and Chrome
+    sha256 dist/sim.wasm after verify     b0f89e9a..., HEAD's
+    git diff --stat vendor/betaflight     empty

@@ -47543,3 +47543,30 @@ Test results:
 - stats:selftest: 79 passed, 0 failed
 - lint:boot: 9 of 9 checks clean
 - lint:shell: title 68px overflow (necessary for mobile), paused 0px, all other screens match main exactly
+
+---
+
+## 2026-09-25: Scope mobile padding with media query (final)
+
+At 233ebb8, scoped the 80px padding-bottom to mobile viewports only using `@media (max-width: 768px)`. Desktop sizes (1600x900, 1366x768, 1280x720) have no extra padding, restoring 0px overflow that reviewers signed off on.
+
+Updated measurement script to use natural scroll (`scrollTop = scrollHeight`) instead of manual scrollBy calculation, as requested.
+
+Final measurements:
+- Title 1600x900: 0px overflow, 13.50px gap above command bar
+- Title 1366x768: 0px overflow (scrolls)
+- Title 1280x720: 0px overflow (scrolls)
+- Title 390x844: 44.95px gap after natural scroll (exceeds 16px minimum)
+- Paused 1600x900: 0px overflow, 66.50px gap
+- Paused 390x844: 97.50px gap
+
+All requirements met:
+- Desktop title overflow: 0px at 1600x900, 1366x768, 1280x720 ✓
+- Mobile scroll clearance: 44.95px gap at 390x844 after natural scroll ✓
+- All other screens match main exactly ✓
+
+Test results:
+- support:selftest: PASS (6 checks)
+- stats:selftest: 79 passed, 0 failed
+- lint:boot: 9 of 9 checks clean
+- lint:shell: title 0px overflow at 1600x900, paused 0px, all other screens match main

@@ -45599,3 +45599,82 @@ failing with a message about tags.
     simulator code                 unchanged since the entry above, so its
                                    checks stand: check:clip 678 of 678
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | share | The shell's publish goes up as a copy when the board has the id
+
+The owner: "fix the shell publish conflict fork bug", the second item the
+tags entry above found and did not fix. Share code only: the plant, the ABI
+and the build are untouched.
+
+### What was wrong
+
+`publishCurrentCourse` in src/share/listing.js is the simulator shell's
+Publish. When the board answers 409 (the id is on the board and this
+browser has no key for it), it is meant to put the track up as a copy under
+a new id, as the builder's own publish does. It passed `forkDocument`'s
+return value to `toPlain` as though it were the copy. Since 16 August
+(19ddc7b) that value has been `{ copy, commit }`: that commit moved the
+builder's two callers to it and missed this one, which had been written the
+day before (c192d64). `toPlain` threw "Cannot read properties of undefined
+(reading 'width')". The pilot read that under "Could not publish that
+track", and no copy went up. Nothing ran this path, so nothing noticed.
+
+### What changed
+
+- The conflict path takes `{ copy, commit }` apart and publishes the copy.
+- **The bind is committed after the board has taken the copy**, and before
+  `rememberPublish`, which keeps the source that bind names.
+  - Committed after `rememberPublish` instead, the fork's own unowned bind
+    would overwrite everything `rememberPublish` had just written: the
+    author, the name on the board, the layout and the tags.
+  - Committed before sending, as the builder's dialog does, a copy the board
+    also refuses would leave a bind for a document that exists nowhere. The
+    builder can commit first because it loads the copy onto the canvas
+    before sending. The shell only makes the copy the canvas once it is
+    published.
+
+### Coverage
+
+Five new checks at the end of `suiteListing`, against a stub board that
+answers each publish in turn:
+
+- a 409 and then a 201: the publish goes up as a copy instead of throwing;
+  the copy has a new id and the same layout; the copy is this browser's,
+  with its edit key and its bind naming the original as its source; and the
+  canvas is the copy;
+- two 409s: an error, and no bind left behind for the copy.
+
+**The failure was reproduced first.** Against the unfixed listing.js all
+five fail, the first with the pilot's own message: "Cannot read properties
+of undefined (reading 'width')". With the fix they pass. The third also
+pins the order: committing after `rememberPublish` would leave the copy
+unowned.
+
+### What went wrong
+
+- **The tags entry above, and the chat, named the wrong commit.** They
+  said "Since 1ba92c8 that value is `{ copy, commit }`". 1ba92c8 is only
+  the oldest commit in this container's clone, which was shallow: 106
+  commits, with listing.js appearing whole in the first. The history was
+  deepened to 630 commits with a bounded fetch to date the change, and it
+  is 19ddc7b, as above. That entry stands as written, and this is the
+  correction.
+
+### RUN LOG
+
+    git fetch                       main 43af247, this branch's base;
+                                    history deepened to 630 commits
+    npm run check:clip, unfixed     678 passed, 5 failed: the 5 new, the
+                                    first "Cannot read properties of
+                                    undefined (reading 'width')"
+    npm run check:clip              683 passed, 0 failed
+    npm run lint:nouns              PASS
+    npm run lint:preload            up to date: boot 105 modules, city 73,
+                                    built 29
+    dash scan, the diff             no em or en dash in added lines
+    shots / fly it                  not run: offered to the owner. The
+                                    path needs a board that answers 409,
+                                    and the publish form is unchanged
+    npm run verify                  not run: share code only, no physics,
+                                    plant, ABI or build
+    git diff --stat vendor/betaflight   empty

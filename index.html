@@ -1774,9 +1774,10 @@
       }
       .screen-modal .menu { padding-bottom: 20px; }
       .screen-modal .menu .row { padding: 5px 22px 5px 28px; }
-      /* At mid-size viewports, shift paused menu up to prevent overlap */
+      /* At mid-size viewports (720-768px height), tighten paused menu to fit Support row */
       @media (max-height: 768px) and (min-height: 668px) {
-        .screen-modal .menu { margin-top: -50px; }
+        .screen-modal .menu { padding-bottom: 0; }
+        .screen-modal .menu .row { padding: 2px 22px 2px 28px; }
       }
       .menu-stage .menu { grid-column: 2; margin-top: 0; }
       .menu-scroll {

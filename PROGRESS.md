@@ -47570,3 +47570,41 @@ Test results:
 - stats:selftest: 79 passed, 0 failed
 - lint:boot: 9 of 9 checks clean
 - lint:shell: title 0px overflow at 1600x900, paused 0px, all other screens match main
+
+## 2026-09-25: Fix title screen clearance for Support row
+
+**Problem**: Adding the Support link increased title menu height by one row (~40px). At
+ebd433f, the designer passed the layout with proper clearance, but that was WITHOUT the
+Support row. With the Support row added, the gap at 1600x900 was only 13.50px (needs 16px
+minimum). At mid-size viewports (1366x768, 1280x720), after scrolling to bottom, gaps were
+11-14px (also need 16px minimum).
+
+**Root cause**: The .screen-title has bottom padding calc(1.5vh + var(--bar-bot)) which
+accounts for command bar, but the extra row from Support link pushed the menu 2.5px too low
+at 1600x900. At smaller viewports, the viewport-relative padding (1.5vh) is smaller, making
+the shortfall worse.
+
+**Fix**: Added 6px to .screen-title bottom padding: `padding-bottom: calc(1.5vh + var(--bar-bot)
++ 6px) !important`. This moves the entire title screen content up by 6px at all viewports,
+creating sufficient clearance for the Support row.
+
+**Results** (at 9d16268):
+- 1600x900: gap 19.50px (was 13.50px) ✓
+- 1366x768 scrolled: gap 17.41px (was ~11px) ✓
+- 1280x720 scrolled: gap 17.03px (was ~11px) ✓
+- 390x844 scrolled: gap 98.73px (mobile clearance maintained) ✓
+- Title screen overflow: 0px (improved from 46px on main)
+
+**Attempted paused menu fix**: Added media query to shift paused menu up at mid-size viewports,
+but overlap persists at 1366x768 (-34.36px) and 1280x720 (-81.39px). These failures also
+exist on main branch - not regressions from this PR.
+
+**lint:shell note**: Main branch currently fails lint:shell with 10 problems (title overflow
+46px, plus 8 other screens with increased overflow, plus focus authority). This branch
+improves title overflow to 0px, with same 9 other problems as main. The baseline file
+(tests/shell-baseline.json) was recorded before recent changes to main.
+
+All required tests pass:
+- support:selftest: PASS
+- lint:boot: 9 of 9 checks clean
+- stats:selftest: 79 passed, 0 failed

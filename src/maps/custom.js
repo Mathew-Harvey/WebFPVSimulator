@@ -93,6 +93,15 @@ export async function buildMap(shell, onProgress, options) {
   const share = injected ? null : readShareImport();
   const doc = injected ? opts.document : workingDocument();
   const course = doc ? courseFromDocument(doc) : emptyCourse();
+  /* Under clean=1, suppress sponsor content by emptying decals and logos,
+   * and set hideSponsors on the course for future surfaces to check. */
+  if (opts.hideSponsors) {
+    if (course) {
+      course.decals = [];
+      course.logos = [];
+      course.hideSponsors = true;
+    }
+  }
   const map = await buildFieldScene(shell, reporter(progress), course, q, opts.hideSponsors);
   map.share = share
     ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }

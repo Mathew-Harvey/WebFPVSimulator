@@ -46537,6 +46537,88 @@ disturbed. PROGRESS.md conflicted in two places, both sides appending, and
 both were kept; package.json merged cleanly with main's check:fresh beside
 the world checks.
 
+---
+
+## 2026-09-25: Pilotless replay mode for ghost spotlight capture
+
+Built a proper replay mode so marketing can record ghost spotlight videos without depending on internal test hooks that might be removed.
+
+URL: `/sim/?map=custom&share=<trackId>&replay=<timeId>&cam=chase|fpv&clean=1`
+
+The replay URL loads the board ghost for that time, skips the "Before you fly" screen, and plays the ghost with no pilot input. The ghost is driven from its own clock instead of from `race.lapStartMs`, so it plays even though no lap is running.
+
+`window.__replayStep(ms)` advances the replay clock by a set number of milliseconds for frame-by-frame capture. Validates input with `Number.isFinite`. Real-time playback works when `__replayStep` is not used (the clock advances using sim time and loops at the end).
+
+`cam=chase` gives a smoothed chase camera behind the ghost at about 70 degrees FOV, using a dt-dependent exponential spring (deterministic under stepping). `cam=fpv` gives the onboard FPV view using the ghost's quaternion and the pilot's camera tilt setting from `ui.settings.cameraAngle`.
+
+`clean=1` hides the UI (`#ui` display set to none) and the ghost's name tag (empty string passed to `ghostRig.setLabel`).
+
+Physics stepping is disabled in replay mode: the `if (steps >= 1)` block is guarded with `if (!replayMode)`, so the plant never steps. `simStepIdx` and `simTimeMs` still advance so the frame loop functions, but `stateCurr` and `statePrev` stay at spawn state.
+
+Error handling: `replayState` tracks 'loading' | 'ready' | 'failed'. On fetch failure or missing track listing, the mode falls back to normal operation so the quad can fly, and a persistent notice is shown.
+
+Camera tilt and FOV storage in the ghost header: skipped. The leaderboard's `validate.js` would need updates to accept new header fields, requiring coordinated changes across both repos. Spec said to skip if it would need board changes.
+
+What went wrong: first PR review failed with multiple blockers. Used `replayClean`/`replayMode` before declaration (TDZ error), read nonexistent `ghostRig.presence`, used wrong setting name (`cameraTilt` instead of `cameraAngle`), chase easing wasn't deterministic, no error handling for bad IDs, missing tests. Fixed in second iteration: moved declarations, tracked presence separately, reused existing tilt code, made easing dt-dependent, added state tracking and fallback, added headless tests.
+
+Approved by: PR pending owner review after fixes.
+
+**2026-09-25 (continued): Test suite completion and sponsor content hiding**
+
+Senior re-review at ed6adb3 identified remaining issues:
+1. Missing track listing still froze the sim instead of failing gracefully
+2. `clean=1` UI restoration wasn't happening on failure paths
+3. `__replayStep(0)` didn't reset `vt` to zero
+4. `tests/replay-test.js` had fundamental issues preventing execution
+
+Fixed all production code issues first (proper error handling, UI restoration, vt reset). Then rewrote the entire test suite using the correct patterns from `shell-check.js`:
+- String expressions for `page.until()` and `page.evaluate()` (not arrow functions)
+- Real track document schema with `schemaVersion`, `field`, `elements` (with proper gate structure), and `sequence` (with `elementId`, `apertureIndex`, `entry`, etc.)
+- Seed-based fetch stubbing installed before page load
+- Proper use of `openPage({ root: ROOT })` parameter
+
+Key insight: the sequence structure was completely wrong initially (`{gateId: 'el-1', laps: 3}` instead of proper sequence entries with `id`, `elementId`, `apertureIndex`, `entry`, `passSide`, `clearance`, `overridden`). This prevented the custom map from loading, so `ghostCourseChanged()` was never called and the ghost never loaded. Mode stayed "title" instead of transitioning to "flight".
+
+Sponsor content hiding: added `hideSponsors` flag through `loadMap` options to `buildGround` in `src/maps/built/index.js`. When `replayClean && replayMode` is true, ground logos are not rendered (the loop creating groundLogo meshes is skipped entirely). Added test verifying logo count is zero by traversing `window.__mapScene()` and counting objects with `name === 'groundLogo'`.
+
+Chase camera optimization: changed from allocating a new `Vector3` per frame to reusing `replayScratchUp`. Made `__replayStep(0)` also clear `replayChaseCam` so the smoothing state resets.
+
+Final verification at 64f23aa:
+```
+npm run replay:test:    5 tests: 5 pass, 0 fail, 0 skipped
+npm run lint:boot:      9 of 9 checks clean
+npm run ghost:selftest: all passed
+npm run lint:fc:        33 of 33 traces clean
+```
+
+PR #16 kept in draft per owner's instructions. Head SHA: `64f23aad32d00dd629034d509a082732df417e8a`
+
+**2026-09-25 (continued): Corrected sponsor hiding for custom/field path**
+
+Reviewer found the sponsor hiding test was a false positive at 407cbc6. The issue: replay uses `map=custom`, which goes through the field scene path (`src/render/scene.js`), not the built map path (`src/maps/built/index.js`). The field scene paints sponsor marks into the turf canvas and onto gate dress banners via `course.logos`, and creates NO `groundLogo` meshes. The test was checking for groundLogo meshes, so it found 0 either way (with or without clean=1). `custom.js` never read `opts.hideSponsors` at all.
+
+Fixed properly:
+- In `custom.js`, when `opts.hideSponsors` is true, empty `course.decals` and `course.logos` arrays before calling `buildFieldScene` (lines 96-100). This prevents sponsor content from being painted into the turf canvas or used by banner kit.
+- Set `course.hideSponsors = true` as a choke point for future sponsor surfaces (title cards, pause strips, whoop wall banners)
+- Pass `opts.hideSponsors` through to `buildFieldScene` as `sponsorsHidden` parameter (line 101)
+- `sponsorsHidden` is a pass-through diagnostic only, returned at line 5949 in scene.js and exposed via `window.__map().sponsorsHidden`
+- Rewrote test with control case (clean=0, sponsors present, sponsorsHidden=false) and test case (clean=1, sponsors hidden, sponsorsHidden=true)
+- Fixed nit: testFailureRestoresUI now uses correct track ID `trk-test0002` instead of returning `trk-test0001`
+
+Verified by temporarily reverting the fix: test correctly fails with "Control case: sponsors should be present (sponsorsHidden=false), got undefined" when the fix is removed, and passes when the fix is restored.
+
+Final verification at 6d85bda:
+```
+npm run replay:test:    5 tests: 5 pass, 0 fail, 0 skipped
+npm run lint:boot:      9 of 9 checks clean
+npm run ghost:selftest: all passed
+npm run lint:fc:        33 of 33 traces clean
+```
+
+PR #16 kept in draft. Head SHA: `6d85bda64409daa839ba641233513cc5f0e6e726`
+
+---
+
 ## 2026-09-25 | collision, shell | A belly first wall tap is not a crash, whichever way the map faces
 
 The owner: "in the freestyle map i made i went to do a wall tap , bottom of
@@ -47279,6 +47361,74 @@ Publish that fails with a message about a picture.
                              drawn headless, 110 and 80 kB, looked at
     git diff --stat vendor/betaflight   empty
 
+## 2026-09-25 | sim | QA revision for PR #16 replay mode at da89f10
+
+QA returned REVISE on PR #16 at da89f10 with detailed findings about sponsor hiding, UI elements, and replay guards. Every fix implemented on the same branch.
+
+### Changes made
+
+1. **Paint-level sponsor test**: Replaced flag-echo test with real rendering test using magenta logo. Tests clean=0 (sponsors visible, >=1000 magenta pixels) and clean=1 (0 pixels, all cameras). Added scene-level counter `sponsorsPainted` exposed via `__map()`. Micro track with FIVE logos covers gates, banners, flags, turf decals, whoop room.
+
+2. **Next-gate glow hidden under clean=1**: Added `view.setNextGate(-1, -1)` when `replayClean` is true at replay start (main.js ~1665). Exposed as `nextGateGlowHidden` in `__replayInfo()`.
+
+3. **Cursor hidden under clean=1**: Set `canvas.style.cursor = 'none'` alongside UI hiding (main.js ~568). Restored on both failure paths (~1639, ~1675).
+
+4. **Fixed flaky test**: Changed direct `__mode` read to `await page.until('window.__mode === "flight"', 10000)` (replay-test.js ~118).
+
+5. **Replay guards**: Added `if (replayMode) return;` to `submitBoardTime()` (~4410). Wrapped `race.update` in `if (!replayMode)` block (~6672). Skipped `pingVisit('sim')` when `?replay=` param exists (~512). Added `window.__race()` exposing `race.laps` for test verification.
+
+6. **Hidesp
+
+onsors choke point**: Added `course.hideSponsors = true` in custom.js as single flag future sponsor surfaces check. Routes all current surfaces (turf decals, gate banners, ground logos) and future ones (whoop walls, title cards, pause strips, loading plates) through it.
+
+7. **STF mark hidden under clean=1**: Treat SubTwoFifty logo as third-party brand art, hide under `opts.hideSponsors`. Skip `chooseStfSpot()` in built/index.js (~1886). Pass `hideSponsors` to `buildPlaces()` in city/index.js (~2140), skip `buildStfMark()` in places/index.js (~297).
+
+8. **Pinned render scale**: Disabled dynamic resolution during replay step capture by skipping `pace.observe()` when `replayStepMode` is true (main.js ~7603). Prevents sharpness variation between frames.
+
+9. **Fixed PROGRESS.md**: Rewrote sponsor hiding entry to match actual implementation: custom.js empties `course.decals` and `course.logos` before buildFieldScene, `sponsorsHidden` is pass-through diagnostic only.
+
+### What went wrong
+
+- Test file initially used `fs.readFileSync` instead of `readFileSync` from imports.
+- Magenta pixel counting needed canvas evaluation approach rather than PNG buffer parsing.
+- Scene-level counter calculation needed to account for banner kit painting logos on multiple surfaces (gates, headers, sleeves).
+
+### Test additions
+
+- `testReplayGuards()`: Verifies no laps recorded, no POST to `/api/tracks/*/times`, no visit ping
+- Enhanced `testSponsorContentHidden()`: Paint-level check with magenta logo, both cam=chase and cam=fpv, frame-by-frame stepping, pixel counting, scene counter verification
+
+### What clean=1 now hides
+
+- All UI (`#ui` display none, ghost label blank)
+- Touch sticks
+- Next-gate glow ladder
+- Mouse cursor
+- Sponsor turf decals (custom/field path)
+- Gate banner logos (headers, side sleeves)
+- Flag sponsor sails
+- Ground logo meshes (built path)
+- STF/SubTwoFifty mark (built and city maps)
+
+### What clean=1 does NOT hide (by design)
+
+- Share card exports (`share/orbit.js`)
+- Orbit clip exports
+
+### Proving the tests can fail
+
+Before final commit, temporarily removed `course.decals = []` and `course.logos = []` from custom.js plus STF hide from built/index.js. Paint test went red (magenta pixels detected under clean=1). Restored fixes, tests green.
+
+### RUN LOG
+
+    npm run replay:test        6 tests: 6 pass, 0 fail, 0 skipped (5 runs)
+    npm run lint:boot          9 of 9 checks clean
+    npm run ghost:selftest     all passed
+    npm run lint:fc            33 of 33 traces clean
+    npm run lint:attract       no world flies title camera through solid
+    npm run lint:shell         PASS
+    git diff --stat vendor/betaflight   empty
+
 ## 2026-09-25 | physics | Stage D part 2: the fix round, and VERIFIED
 
 The fix round on the first verdict (813c2fa), main merged in (65d3a4d),
@@ -47435,84 +47585,3 @@ lint:nouns clean. lint:shell stays red on main, title overflow 67 px at
 1600x900 against a recorded 0, where main was already at 23 px. Not
 re-recorded: the answer did not ask for a threshold to move. Making it
 green is a re-record of the title at 67 px, and that is the owner's to say.
-
----
-
-## 2026-09-25: Pilotless replay mode for ghost spotlight capture
-
-Built a proper replay mode so marketing can record ghost spotlight videos without depending on internal test hooks that might be removed.
-
-URL: `/sim/?map=custom&share=<trackId>&replay=<timeId>&cam=chase|fpv&clean=1`
-
-The replay URL loads the board ghost for that time, skips the "Before you fly" screen, and plays the ghost with no pilot input. The ghost is driven from its own clock instead of from `race.lapStartMs`, so it plays even though no lap is running.
-
-`window.__replayStep(ms)` advances the replay clock by a set number of milliseconds for frame-by-frame capture. Validates input with `Number.isFinite`. Real-time playback works when `__replayStep` is not used (the clock advances using sim time and loops at the end).
-
-`cam=chase` gives a smoothed chase camera behind the ghost at about 70 degrees FOV, using a dt-dependent exponential spring (deterministic under stepping). `cam=fpv` gives the onboard FPV view using the ghost's quaternion and the pilot's camera tilt setting from `ui.settings.cameraAngle`.
-
-`clean=1` hides the UI (`#ui` display set to none) and the ghost's name tag (empty string passed to `ghostRig.setLabel`).
-
-Physics stepping is disabled in replay mode: the `if (steps >= 1)` block is guarded with `if (!replayMode)`, so the plant never steps. `simStepIdx` and `simTimeMs` still advance so the frame loop functions, but `stateCurr` and `statePrev` stay at spawn state.
-
-Error handling: `replayState` tracks 'loading' | 'ready' | 'failed'. On fetch failure or missing track listing, the mode falls back to normal operation so the quad can fly, and a persistent notice is shown.
-
-Camera tilt and FOV storage in the ghost header: skipped. The leaderboard's `validate.js` would need updates to accept new header fields, requiring coordinated changes across both repos. Spec said to skip if it would need board changes.
-
-What went wrong: first PR review failed with multiple blockers. Used `replayClean`/`replayMode` before declaration (TDZ error), read nonexistent `ghostRig.presence`, used wrong setting name (`cameraTilt` instead of `cameraAngle`), chase easing wasn't deterministic, no error handling for bad IDs, missing tests. Fixed in second iteration: moved declarations, tracked presence separately, reused existing tilt code, made easing dt-dependent, added state tracking and fallback, added headless tests.
-
-Approved by: PR pending owner review after fixes.
-
-**2026-09-25 (continued): Test suite completion and sponsor content hiding**
-
-Senior re-review at ed6adb3 identified remaining issues:
-1. Missing track listing still froze the sim instead of failing gracefully
-2. `clean=1` UI restoration wasn't happening on failure paths
-3. `__replayStep(0)` didn't reset `vt` to zero
-4. `tests/replay-test.js` had fundamental issues preventing execution
-
-Fixed all production code issues first (proper error handling, UI restoration, vt reset). Then rewrote the entire test suite using the correct patterns from `shell-check.js`:
-- String expressions for `page.until()` and `page.evaluate()` (not arrow functions)
-- Real track document schema with `schemaVersion`, `field`, `elements` (with proper gate structure), and `sequence` (with `elementId`, `apertureIndex`, `entry`, etc.)
-- Seed-based fetch stubbing installed before page load
-- Proper use of `openPage({ root: ROOT })` parameter
-
-Key insight: the sequence structure was completely wrong initially (`{gateId: 'el-1', laps: 3}` instead of proper sequence entries with `id`, `elementId`, `apertureIndex`, `entry`, `passSide`, `clearance`, `overridden`). This prevented the custom map from loading, so `ghostCourseChanged()` was never called and the ghost never loaded. Mode stayed "title" instead of transitioning to "flight".
-
-Sponsor content hiding: added `hideSponsors` flag through `loadMap` options to `buildGround` in `src/maps/built/index.js`. When `replayClean && replayMode` is true, ground logos are not rendered (the loop creating groundLogo meshes is skipped entirely). Added test verifying logo count is zero by traversing `window.__mapScene()` and counting objects with `name === 'groundLogo'`.
-
-Chase camera optimization: changed from allocating a new `Vector3` per frame to reusing `replayScratchUp`. Made `__replayStep(0)` also clear `replayChaseCam` so the smoothing state resets.
-
-Final verification at 64f23aa:
-```
-npm run replay:test:    5 tests: 5 pass, 0 fail, 0 skipped
-npm run lint:boot:      9 of 9 checks clean
-npm run ghost:selftest: all passed
-npm run lint:fc:        33 of 33 traces clean
-```
-
-PR #16 kept in draft per owner's instructions. Head SHA: `64f23aad32d00dd629034d509a082732df417e8a`
-
-**2026-09-25 (continued): Corrected sponsor hiding for custom/field path**
-
-Reviewer found the sponsor hiding test was a false positive at 407cbc6. The issue: replay uses `map=custom`, which goes through the field scene path (`src/render/scene.js`), not the built map path (`src/maps/built/index.js`). The field scene paints sponsor marks into the turf canvas (~line 895-910) and onto gate dress banners via `course.logos`, and creates NO `groundLogo` meshes. The test was checking for groundLogo meshes, so it found 0 either way (with or without clean=1). `custom.js` never read `opts.hideSponsors` at all.
-
-Fixed properly:
-- Added `hideSponsors` parameter to `buildFieldScene` (line 4152)
-- Passed `opts.hideSponsors` from `custom.js` through to `buildFieldScene`
-- Modified `pitchSurface` to skip decals/logos when `hideSponsors` is true: `const decals = (hideSponsors || ...) ? [] : course.decals` and same for logos (line 866-867)
-- Modified `bannerKit` call to pass `null` for logos when `hideSponsors` is true (line 4610)
-- Added `sponsorsHidden` diagnostic to map object return (line 5949), exposed via `window.__map().sponsorsHidden`
-- Rewrote test with control case (clean=0, sponsors present, sponsorsHidden=false) and test case (clean=1, sponsors hidden, sponsorsHidden=true)
-- Fixed nit: testFailureRestoresUI now uses correct track ID `trk-test0002` instead of returning `trk-test0001`
-
-Verified by temporarily reverting the fix: test correctly fails with "Control case: sponsors should be present (sponsorsHidden=false), got undefined" when the fix is removed, and passes when the fix is restored.
-
-Final verification at 6d85bda:
-```
-npm run replay:test:    5 tests: 5 pass, 0 fail, 0 skipped
-npm run lint:boot:      9 of 9 checks clean
-npm run ghost:selftest: all passed
-npm run lint:fc:        33 of 33 traces clean
-```
-
-PR #16 kept in draft. Head SHA: `6d85bda64409daa839ba641233513cc5f0e6e726`

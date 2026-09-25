@@ -285,7 +285,7 @@ function buildStfMark(ctx) {
   return egg;
 }
 
-export function buildPlaces(world, { petals: livePetals = true } = {}) {
+export function buildPlaces(world, { petals: livePetals = true, hideSponsors = false } = {}) {
   const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
   const ctx = placeContext(world);
   const colliders0 = world.colliders.length;
@@ -293,7 +293,8 @@ export function buildPlaces(world, { petals: livePetals = true } = {}) {
   const children0 = world.root.children.length;
 
   const parts = [buildWorksRoad(ctx), buildWorks(ctx), buildPool(ctx), buildTraining(ctx)];
-  const egg = buildStfMark(ctx);
+  /* Skip STF mark under clean=1: treat third-party brand art as sponsor art */
+  const egg = hideSponsors ? null : buildStfMark(ctx);
 
   /* The one hole either place needs cut in the drawn ground. See cutGround. */
   const holes = parts.flatMap((p) => p.holes ?? []);

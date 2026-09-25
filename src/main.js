@@ -507,9 +507,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * Then one visit, counted once per browser per UTC day across all three
    * pages. It sends nothing at all if the pilot has switched counting off
    * or their browser sends Global Privacy Control, and nothing waits for
-   * it either way.
+   * it either way. Skip visit ping in replay mode.
    */
-  pingVisit('sim');
+  if (!replayMode || !params.has('replay')) {
+    pingVisit('sim');
+  }
   const canvas = document.getElementById('view');
   /* The flying view wants the shortest path to the glass it can get, and
    * has nothing to read its own frames back for. See shell.js for what the
@@ -565,6 +567,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Hide UI in replay clean mode */
   if (replayClean && replayMode) {
     uiRoot.style.display = 'none';
+    canvas.style.cursor = 'none';
   }
   const ui = new Ui(uiRoot);
   /*
@@ -1635,6 +1638,7 @@ export async function boot({ loading, bootStart, mapId }) {
         replayMode = false;
         if (replayClean) {
           uiRoot.style.display = '';
+          canvas.style.cursor = '';
         }
         notice = { text: 'Replay failed: no track listing found.', untilMs: performance.now() + 10000 };
       }
@@ -1658,6 +1662,10 @@ export async function boot({ loading, bootStart, mapId }) {
           mode = 'flight';
           ui.show('flight');
           introMs = -1; /* Skip intro */
+          /* Hide next-gate glow in clean replay */
+          if (replayClean) {
+            view.setNextGate(-1, -1);
+          }
         }
       } catch (e) {
         if (ghostCourseKey() !== key) {
@@ -1671,6 +1679,7 @@ export async function boot({ loading, bootStart, mapId }) {
           replayMode = false;
           if (replayClean) {
             uiRoot.style.display = '';
+            canvas.style.cursor = '';
           }
         }
       } finally {
@@ -4407,6 +4416,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   async function submitBoardTime() {
+    if (replayMode) return;
     /* The board is flown on the full model only. An arcade lap is real
      * practice but a different aircraft, and a leaderboard where the two
      * mix is not a leaderboard. */
@@ -6658,14 +6668,16 @@ export async function boot({ loading, bootStart, mapId }) {
           hits: lastGroundHits,
           heightAt: (x, z, y) => view.height(x, z, y - SURFACE_BIAS, y),
         });
-        const res = race.update(racePrev, pCurr, simNow, nowWall, allowPass);
-        if (res.passed != null) {
-          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-          if (typeof audio.event === 'function') {
-            audio.event('gate');
+        if (!replayMode) {
+          const res = race.update(racePrev, pCurr, simNow, nowWall, allowPass);
+          if (res.passed != null) {
+            view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
+            if (typeof audio.event === 'function') {
+              audio.event('gate');
+            }
           }
+          ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
         }
-        ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
         if (!race.freestyle && race.lap >= runLaps) {
           mode = 'results';
           if (turtleWait || turtleFlip.active) {
@@ -7587,7 +7599,8 @@ export async function boot({ loading, bootStart, mapId }) {
      * hardware independent. Two scalars, written not allocated: P8 forbids
      * a new object here. */
     const blockMs = performance.now() - blockStart;
-    if (view && view.post && typeof view.post.applyPace === 'function') {
+    /* Pin render scale during replay step capture */
+    if (view && view.post && typeof view.post.applyPace === 'function' && !replayStepMode) {
       pace.observe(dt, renderMs, blockMs, view.post);
       if (pace.state.dirty) {
         if (view.post.applyPace(pace.state.want)) {
@@ -8261,11 +8274,15 @@ export async function boot({ loading, bootStart, mapId }) {
     stepMode: replayStepMode,
     clock: replayClock ? { startMs: replayClock.startMs, vt: replayClock.vt } : null,
     ghostLoaded: ghostLap != null,
+    nextGateGlowHidden: replayClean && replayMode,
     cameraPosition: shell.camera ? {
       x: shell.camera.position.x,
       y: shell.camera.position.y,
       z: shell.camera.position.z
     } : null,
+  });
+  window.__race = () => ({
+    laps: race ? race.laps : [],
   });
   window.__craftState = () => ({
     mode,
@@ -8929,6 +8946,7 @@ export async function boot({ loading, bootStart, mapId }) {
     graphics: view.graphics,
     gates: view.gates.length,
     sponsorsHidden: view.sponsorsHidden,
+    sponsorsPainted: view.sponsorsPainted ?? 0,
     spawn: { x: startX, y: startY, z: startZ, yaw: startYaw },
     ready: mapReady,
     references: view.references ?? null,

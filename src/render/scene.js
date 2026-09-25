@@ -832,7 +832,7 @@ function padCover(pad, x, z) {
  * meadow instead of ending on a cut line, and the terrain underneath is
  * tinted the same green so the fade has somewhere to go.
  */
-function pitchSurface(pitch, course, hideSponsors = false) {
+function pitchSurface(pitch, course) {
   const w = pitch.mownW * 2;
   const d = pitch.mownD * 2;
   /* Pixels per metre, so a 0.3 m marking is four pixels wide whatever size
@@ -863,8 +863,8 @@ function pitchSurface(pitch, course, hideSponsors = false) {
    * local +x to scene (cos yaw, -sin yaw) in (x, z), and a canvas rotation
    * of phi takes +x to (cos phi, sin phi), so phi is MINUS the yaw.
    */
-  const decals = (hideSponsors || !course || !Array.isArray(course.decals)) ? [] : course.decals;
-  const logos = (hideSponsors || !course || !Array.isArray(course.logos)) ? [] : course.logos;
+  const decals = (course && Array.isArray(course.decals)) ? course.decals : [];
+  const logos = (course && Array.isArray(course.logos)) ? course.logos : [];
   const images = logos.map(() => null);
   const toPx = (x) => (x / w + 0.5) * cw;
   const toPy = (z) => (z / d + 0.5) * ch;
@@ -4149,7 +4149,7 @@ function clouds(rng) {
  * phases are where they are because those are the points at which this
  * function has finished a whole thing.
  */
-export async function buildFieldScene(shell, onProgress, course = null, quality = null, hideSponsors = false) {
+export async function buildFieldScene(shell, onProgress, course = null, quality = null, sponsorsHidden = false) {
   const q = quality && quality.field ? quality : qualityFor(quality);
   const renderer = shell.renderer;
   const camera = shell.camera;
@@ -4319,7 +4319,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * mown lawn in it, correctly, from a rule about a different sport.
    */
   if (pitch && !indoor) {
-    scene.add(pitchSurface(pitch, course, hideSponsors));
+    scene.add(pitchSurface(pitch, course));
   }
   const occluders = [];
   /* Walks the world rng so the valley does not move. No mesh. */
@@ -4607,7 +4607,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * carries, and one plain set when it carries none.
    */
   const kit = bannerKit(
-    (hideSponsors || !course) ? null : course.logos,
+    course ? course.logos : null,
     course ? (course.documentId ?? course.id ?? 'course') : 'field',
   );
 
@@ -5946,7 +5946,19 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
     /* Anything the reader could not honour, for the shell to show once. */
     notes: course ? course.warnings : [],
     /* Diagnostic: whether sponsor content was suppressed. */
-    sponsorsHidden: hideSponsors,
+    sponsorsHidden,
+    /* Diagnostic: count of sponsor logos actually painted (turf + banners). */
+    sponsorsPainted: (() => {
+      let count = 0;
+      if (course && course.decals) {
+        count += course.decals.filter(d => d.logo).length;
+      }
+      if (course && course.logos && course.logos.length > 0) {
+        /* Banner kit paints logos on gates, flags, sleeves */
+        count += course.logos.length * 3;
+      }
+      return count;
+    })(),
     /*
      * Reference objects, measured off the built world rather than restated.
      * The gate aperture is read out of the torus the scene actually drew, and

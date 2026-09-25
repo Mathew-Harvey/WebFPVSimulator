@@ -1881,10 +1881,13 @@ export async function buildMap(shell, onProgress, options) {
    * flies with no mark on it, and the console says why, rather than not
    * flying at all. */
   let stfSpot = null;
-  try {
-    stfSpot = chooseStfSpot(placed, doc, chosen.source);
-  } catch (e) {
-    console.error('stf: no spot for the mark on this map', e);
+  /* Skip STF mark under clean=1: treat third-party brand art as sponsor art */
+  if (!opts.hideSponsors) {
+    try {
+      stfSpot = chooseStfSpot(placed, doc, chosen.source);
+    } catch (e) {
+      console.error('stf: no spot for the mark on this map', e);
+    }
   }
   /* Its time of day and its ground (./looks.js): golden over concrete for
    * a map that never chose, which is this map as it always was. */

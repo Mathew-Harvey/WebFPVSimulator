@@ -29,7 +29,8 @@
  * shell never computes where a car is. The shell does four things:
  *
  *   uploadRoad(sim, points, closed)   once per road, after uploadWorld;
- *                                     returns the road's index
+ *                                     returns the road's index (roadInfo
+ *                                     says how long the module made it)
  *   addVehicle(sim, m, road, car)     a car in mover slot m (0 to 63; the
  *                                     train's cars use slots too, so a map
  *                                     with both keeps them apart)
@@ -255,12 +256,13 @@ export function roadInfo(sim, road) {
  * A car in mover slot m, on road `road`. `car`:
  *   offset      metres along its route from the road's first point at step 0
  *               of the clock (round and round a closed road, out and back an
- *               open one, so past an open road's length is on the way back)
- *   topSpeed    m/s
- *   lateral     the most lateral acceleration it corners at, m/s/s
- *   drift       slip gain per m/s/s of lateral acceleration; 0, the
+ *               open one, so past an open road's length is on the way back),
+ *               within ten thousand kilometres either way
+ *   topSpeed    m/s, 0.1 to 100
+ *   lateral     the most lateral acceleration it corners at, m/s/s, 0.1 to 50
+ *   drift       slip gain per m/s/s of lateral acceleration, to 1; 0, the
  *               default, is an ordinary car and a drift car is about 0.05
- *   length, width, height   its body, Three.js metres
+ *   length, width, height   its body, Three.js metres, to 50
  *   clearance   the gap under its body, Three.js metres, default 0
  *   kind        contactMaterial's name for its e and mu, default 'train',
  *               the painted steel the shell already knows moving things by

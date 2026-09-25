@@ -76,16 +76,20 @@
  *       offset: metres along its route from the road's first point at step
  *       0 of the clock; the route is lap after lap of a closed road, and out
  *       and back of an open one, so an offset past an open road's length is
- *       on the way back. top_speed m/s (to 100); lateral, the most lateral
- *       acceleration its driver corners at, m/s/s (to 50); drift, the slip
- *       gain per m/s/s of lateral acceleration, 0 for an ordinary car (to
- *       1). The body is a box in the car's own frame (x along its heading, y
- *       left, z up from the road point under its centre): length along,
- *       width across, height tall, standing clearance over the road, metres.
- *       e and mu as every shape. SIM_OK, SIM_ERR_BAD_ARG for anything out of
- *       range or a road that does not exist, SIM_ERR_BAD_STATE when the
- *       speed tables are full (sim_world_clear empties them). Taking a
- *       vehicle away is sim_world_mover parking its slot.
+ *       on the way back, to 1e7 either way. top_speed m/s, 0.1 to 100;
+ *       lateral, the most lateral acceleration its driver corners at, m/s/s,
+ *       0.1 to 50; drift, the slip gain per m/s/s of lateral acceleration, 0
+ *       for an ordinary car, to 1. The body is a box in the car's own frame
+ *       (x along its heading, y left, z up from the road point under its
+ *       centre): length along, width across, height tall, standing clearance
+ *       over the road, metres. e and mu as every shape. SIM_OK;
+ *       SIM_ERR_BAD_ARG for anything out of range or a road that does not
+ *       exist; SIM_ERR_BAD_STATE when the speed tables are full
+ *       (sim_world_clear empties them). Taking a vehicle away is
+ *       sim_world_mover parking its slot.
+ *
+ *   Roads bend at most ROAD_KAPPA_MAX (a half metre radius); a knot drawn
+ *   tighter is driven at that.
  *
  *   int sim_world_clock(double step)
  *       The vehicles' clock, a whole number of 1 ms steps, |step| <= 2^53:
@@ -1808,19 +1812,30 @@ static void world_solve(SimState *s, int nc, double np_[][3], double rp_[][3],
 #define VEHICLE_ACCEL 2.5
 #define VEHICLE_BRAKE 4.0
 /* The drift's largest slip, as tan(slip / 2): tan(30 degrees), so a slide
- * never passes 60 degrees. Drift judges score 40 to 55; past 60 a car is
- * spinning, not drifting. Written to 17 figures, one decimal from its
- * double. */
+ * never passes 60 degrees, the far side of a big drift and the near side of
+ * a spin. Seventeen figures, enough to name one double. */
 #define DRIFT_T_MAX 0.57735026918962576
-/* Beyond these the numbers are not a road vehicle, and they keep every
- * table finite: 100 m/s is 360 km/h; 50 m/s/s is five g, more than any tyre
- * gives; a drift gain of 1 per m/s/s reaches the slip cap at 0.6 m/s/s of
- * cornering, so a larger one is the cap everywhere; nothing on a road is
- * 50 m long. */
+/* Beyond these the numbers are not a road vehicle: 100 m/s is 360 km/h; 50
+ * m/s/s is five g, more than any tyre gives; a drift gain of 1 per m/s/s
+ * reaches the slip cap at 0.6 m/s/s of cornering, so a larger one is the cap
+ * everywhere; nothing on a road is 50 m long. */
 #define VEHICLE_SPEED_MAX 100.0
 #define VEHICLE_LATERAL_MAX 50.0
 #define VEHICLE_DRIFT_MAX 1.0
 #define VEHICLE_SIZE_MAX 50.0
+/* And below these, and past the last, the time tables would run to infinity,
+ * and an infinite time is a pose that is not a number, which a contact would
+ * carry into the craft: a car slower than 0.1 m/s is parked, a driver who
+ * corners at under 0.1 m/s/s never turns, and an offset is a place on a road
+ * a few kilometres long, so ten thousand kilometres is not one. */
+#define VEHICLE_SPEED_MIN 0.1
+#define VEHICLE_LATERAL_MIN 0.1
+#define VEHICLE_OFFSET_MAX 1e7
+/* The tightest bend a road keeps, 1/m: half a metre's radius. A corner drawn
+ * as a sharp vertex is a bend of a metre across the window, so no road is
+ * touched by this; a road knotted tighter than it would have a corner speed
+ * with no floor and a lap with no end, so it is driven at this bend. */
+#define ROAD_KAPPA_MAX 2.0
 /* The clock is a whole number of steps held in a double, which holds every
  * integer to 2^53 exactly: 285,000 years of 1 ms steps. */
 #define CLOCK_MAX 9007199254740992.0
@@ -2001,7 +2016,9 @@ SIM_EXPORT int sim_world_road(const double *xyz, int n, int closed) {
     const double bcy = C[1] - q[i].p[1];
     const double cross = abx * bcy - aby * bcx;
     const double den = sim_sqrt(abx * abx + aby * aby) * sim_sqrt(bcx * bcx + bcy * bcy) * cl;
-    q[i].k = den > 0.0 ? 2.0 * cross / den : 0.0;
+    double k = den > 0.0 ? 2.0 * cross / den : 0.0;
+    k = k > ROAD_KAPPA_MAX ? ROAD_KAPPA_MAX : (k < -ROAD_KAPPA_MAX ? -ROAD_KAPPA_MAX : k);
+    q[i].k = k;
   }
   if (closed) {
     q[np - 1].t[0] = q[0].t[0];
@@ -2172,19 +2189,20 @@ static double route_time(const Profile *pf, const Road *r, double offset) {
   return lap * troute + tl;
 }
 
-/*
- * Mover mv's pose at step `clock`. A pure function of the integer: the time
- * is clock / SIM_STEP_HZ from the car's own start, the table says which
- * segment that time falls in and how far along it, and nothing is carried
- * from one step to the next. So the pose at step N set directly is the pose
- * after stepping to N, to the bit.
- */
 /* Is segment i of a time table the one time tl falls in: its start at or
  * before tl, and the next one's after it? */
 static int seg_holds(const double *tt, int i, int last, double tl) {
   return i >= 0 && i <= last && tt[i] <= tl && (i == last || tl < tt[i + 1]);
 }
 
+/*
+ * Mover mv's pose at step `clock`. A pure function of the integer: the time
+ * is clock / SIM_STEP_HZ from the car's own start, the table says which
+ * segment that time falls in and how far along it, and nothing that decides
+ * the pose is carried from one step to the next (the segment it was last on
+ * is kept only as the place to start looking). So the pose at step N set
+ * directly is the pose after stepping to N, to the bit.
+ */
 static void vehicle_pose(Mover *mv, long long clock, Pose *P) {
   const Profile *pf = &g_prof[mv->prof];
   const Road *r = &g_road[pf->road];
@@ -2326,7 +2344,8 @@ static void vehicle_seat(Mover *mv) {
  * Mover m becomes a vehicle on road `road`: `offset` m along its route from
  * the road's first point at step 0 of the clock; top_speed m/s; lateral, the
  * most lateral acceleration its driver takes a corner at, m/s/s; drift, the
- * slip gain per m/s/s of lateral acceleration, 0 for an ordinary car. Its
+ * slip gain per m/s/s of lateral acceleration, 0 for an ordinary car (each
+ * within the bounds VEHICLE_*_MIN, _MAX and VEHICLE_OFFSET_MAX give). Its
  * body is a box in its own frame, x along its heading and z up from the road
  * point under its centre: `length` along, `width` across, `height` tall,
  * starting `clearance` over the road. e and mu as for every shape. Returns
@@ -2340,8 +2359,9 @@ SIM_EXPORT int sim_world_vehicle(int m, int road, double offset,
   if (m < 0 || m >= WORLD_MAX_MOVERS || road < 0 || road >= g_nroad) {
     return SIM_ERR_BAD_ARG;
   }
-  if (!world_finite(offset) || !(top_speed > 0.0 && top_speed <= VEHICLE_SPEED_MAX)
-      || !(lateral > 0.0 && lateral <= VEHICLE_LATERAL_MAX)
+  if (!world_finite(offset) || !(absd(offset) <= VEHICLE_OFFSET_MAX)
+      || !(top_speed >= VEHICLE_SPEED_MIN && top_speed <= VEHICLE_SPEED_MAX)
+      || !(lateral >= VEHICLE_LATERAL_MIN && lateral <= VEHICLE_LATERAL_MAX)
       || !(drift >= 0.0 && drift <= VEHICLE_DRIFT_MAX)
       || !(length > 0.0 && length <= VEHICLE_SIZE_MAX) || !(width > 0.0 && width <= VEHICLE_SIZE_MAX)
       || !(height > 0.0 && height <= VEHICLE_SIZE_MAX)

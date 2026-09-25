@@ -36,6 +36,16 @@
  * computes on the way into the module is transcendental, so either should
  * agree to the bit or name the step where it does not.
  *
+ * AND THE ROAD VEHICLES (Stage D part 2): worldruns.js's vehicleRuns(), cars
+ * the module drives itself along a road, met by a craft. They are not the
+ * golden's (nothing pins them yet), so they are flown after it and apart
+ * from it, and compared twice over: every step's record as above, and every
+ * step's digest of every car's pose as the shell reads it (plantworld.js
+ * readVehicles, in the Three.js frame), so a car drawn a bit differently in
+ * one engine is named at its step even where no craft touched it. The self
+ * test moves every road point a nanometre in the page only and must see it
+ * in every vehicle run's poses.
+ *
  * NOTHING HERE IS RECORDED. The comparison is live, engine against engine;
  * the golden it is also held to is written by scripts/world-golden.js
  * --write, and that is a reviewed act, with the owner's approval and a
@@ -68,7 +78,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { recordModule, RECORD_BYTES, RECORD_FIELDS } from './lib/worldrec.js';
-import { goldenRuns, flyRun } from './lib/worldruns.js';
+import { goldenRuns, flyRun, vehicleRuns } from './lib/worldruns.js';
 import { openPage } from '../tests/lib/page.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -168,6 +178,103 @@ function firstWord(a, b) {
     }
   }
   return 'no word differs (the digests disagree about equal records?)';
+}
+
+/* In the page: fly the vehicle runs, as pageFly flies the golden's, and
+ * hand back each one's per step pose digests too. `nudge` moves every road
+ * point in the page alone, for the self test. */
+function pageFlyVehicles(names, nudge = 0) {
+  return `
+    const { recordModule } = await import('/scripts/lib/worldrec.js');
+    const { vehicleRuns, flyRun } = await import('/scripts/lib/worldruns.js');
+    if (!window.__worldSession) {
+      window.__worldSession = recordModule(WebAssembly, { keep: true });
+    }
+    const session = window.__worldSession;
+    const get = async (p) => {
+      const r = await fetch(p, { cache: 'no-store' });
+      if (!r.ok) { throw new Error(p + ': ' + r.status); }
+      return r;
+    };
+    const wasm = new Uint8Array(await (await get('/dist/sim.wasm')).arrayBuffer());
+    const configs = {
+      0: await (await get('/tests/fixtures/config-baseline.diff')).text(),
+      1: await (await get('/configs/whoop-freestyle.diff')).text(),
+    };
+    const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+    const b64 = (u8) => {
+      let s = '';
+      for (let i = 0; i < u8.length; i += 0x8000) { s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); }
+      return btoa(s);
+    };
+    const names = ${JSON.stringify(names)};
+    window.__kept = window.__kept || {};
+    const runs = {};
+    const t0 = performance.now();
+    for (const run of vehicleRuns({ nudge: ${JSON.stringify(nudge)} })) {
+      if (!names.includes(run.name)) { continue; }
+      session.begin(run.name);
+      let error = null;
+      try { await flyRun(run, { wasm, configs }); } catch (e) { error = String((e && e.stack) || e); }
+      const flights = session.end();
+      window.__kept[run.name] = flights;
+      const out = [];
+      for (const f of flights) {
+        const all = new Uint8Array(f.records.length * ${RECORD_BYTES});
+        f.records.forEach((r, i) => all.set(r, i * ${RECORD_BYTES}));
+        out.push({
+          steps: f.steps,
+          sha256: hex(await crypto.subtle.digest('SHA-256', all)),
+          digests: b64(new Uint8Array(f.digests.buffer, f.digests.byteOffset, f.digests.byteLength)),
+          error: f.error,
+        });
+      }
+      const p = run.rec.digests;
+      runs[run.name] = { error, flights: out, poses: b64(new Uint8Array(p.buffer, p.byteOffset, p.byteLength)) };
+    }
+    return { ms: performance.now() - t0, runs };`;
+}
+
+/* Fly the vehicle runs in Node, recording every step and keeping each run's
+ * pose digests. */
+async function flyNodeVehicles() {
+  const session = recordModule(WebAssembly, { hash: () => createHash('sha256'), keep: true });
+  const runs = new Map();
+  const t0 = performance.now();
+  for (const run of vehicleRuns()) {
+    if (only && !run.name.toLowerCase().includes(only.toLowerCase())) {
+      continue;
+    }
+    session.begin(run.name);
+    let error = null;
+    try {
+      /* eslint-disable-next-line no-await-in-loop */
+      await flyRun(run, vehicleEnv);
+    } catch (e) {
+      error = e.message;
+    }
+    runs.set(run.name, { error, flights: session.end(), poses: run.rec.digests.slice() });
+  }
+  return { runs, ms: performance.now() - t0 };
+}
+let vehicleEnv = null;
+
+/* The first step at which Node's and the page's pose digests differ, or
+ * null when every step agrees. */
+function comparePoses(n, c) {
+  if (!c || !c.poses) {
+    return 'the page read no poses';
+  }
+  const cp = u32(c.poses);
+  if (cp.length !== n.poses.length) {
+    return `${n.poses.length} steps of poses in Node, ${cp.length} in the page`;
+  }
+  for (let k = 0; k < cp.length; k += 1) {
+    if (cp[k] !== n.poses[k]) {
+      return `the cars' poses first differ at step ${k + 1} (${k + 1} ms in)`;
+    }
+  }
+  return null;
 }
 
 /* Fly the runs in Node, recording every step. */
@@ -275,6 +382,8 @@ async function main() {
   const golden = existsSync(join(root, 'tests/goldens/world.json'))
     ? JSON.parse(await readFile(join(root, 'tests/goldens/world.json'), 'utf8')) : null;
   const node = await flyNode(env);
+  vehicleEnv = { wasm: env.wasm, configs: env.configs };
+  const nodeV = await flyNodeVehicles();
   let failures = 0;
   await withPage(async (ev, page) => {
     const chrome = await ev(pageFly([...node.runs.keys()]));
@@ -298,6 +407,20 @@ async function main() {
       const steps = n.flights.reduce((m, f) => m + f.steps, 0);
       console.log(`  equal   ${name}  ${steps} steps, every step to the bit, SHA-256 ${n.flights.map((f) => f.sha256.slice(0, 12)).join(' ')} on both; ${vsGolden}`);
     }
+    /* The road vehicles, apart from the golden's runs. */
+    const chromeV = await ev(pageFlyVehicles([...nodeV.runs.keys()]));
+    console.log(`\n  and ${nodeV.runs.size} road vehicle runs, not the golden's; Node flew them in ${(nodeV.ms / 1000).toFixed(1)} s, Chromium in ${(chromeV.ms / 1000).toFixed(1)} s\n`);
+    for (const { name, diff } of await compare(nodeV, chromeV, ev)) {
+      const n = nodeV.runs.get(name);
+      const poses = comparePoses(n, chromeV.runs[name]);
+      if (diff || poses) {
+        failures += 1;
+        console.log(`  DIFFER  ${name}: ${[diff, poses].filter(Boolean).join('; ')}`);
+        continue;
+      }
+      const steps = n.flights.reduce((m, f) => m + f.steps, 0);
+      console.log(`  equal   ${name}  ${steps} steps and every car's pose at each, to the bit, SHA-256 ${n.flights.map((f) => f.sha256.slice(0, 12)).join(' ')} on both`);
+    }
     if (page.errors.length) {
       failures += page.errors.length;
       console.log(`\n  page errors: ${page.errors.join(' | ')}`);
@@ -318,6 +441,8 @@ async function main() {
 async function selftest() {
   const env = await loadEnv();
   const node = await flyNode(env);
+  vehicleEnv = { wasm: env.wasm, configs: env.configs };
+  const nodeV = await flyNodeVehicles();
   let bad = 0;
   const say = (ok, line) => {
     bad += ok ? 0 : 1;
@@ -352,6 +477,29 @@ async function selftest() {
     const example = faulted.find((r) => r.diff);
     if (example) {
       console.log(`        for example ${example.name}: ${example.diff}`);
+    }
+    /* The road vehicles: equal unfaulted, and with every road point moved a
+     * nanometre in the page only, every run's cars differ at a named step. */
+    const vclean = await ev(pageFlyVehicles([...nodeV.runs.keys()]));
+    const vdiff = [];
+    for (const { name, diff } of await compare(nodeV, vclean, ev)) {
+      const poses = comparePoses(nodeV.runs.get(name), vclean.runs[name]);
+      if (diff || poses) {
+        vdiff.push(name);
+      }
+    }
+    say(vdiff.length === 0, `unfaulted, Node and the page agree on all ${nodeV.runs.size} road vehicle runs, poses included${vdiff.length ? `; differ: ${vdiff.join(', ')}` : ''}`);
+    const vfault = await ev(pageFlyVehicles([...nodeV.runs.keys()], 1e-9));
+    const vseen = [];
+    const vmissed = [];
+    for (const [name, n] of nodeV.runs) {
+      const poses = comparePoses(n, vfault.runs[name]);
+      (poses && /at step \d+/.test(poses) ? vseen : vmissed).push(`${name}${poses ? `: ${poses}` : ''}`);
+    }
+    say(vmissed.length === 0 && vseen.length === nodeV.runs.size,
+      `every road point moved 1e-9 m in the page only: all ${vseen.length} road vehicle runs' poses differ, the step named${vmissed.length ? `\n        MISSED: ${vmissed.join('; ')}` : ''}`);
+    if (vseen.length) {
+      console.log(`        for example ${vseen[0]}`);
     }
   });
   console.log(`\nworld-engines selftest: ${bad === 0 ? 'all passed' : `${bad} FAILED`}`);

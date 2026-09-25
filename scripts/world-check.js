@@ -18,6 +18,7 @@
  * ever ends up inside a solid.
  *
  * Usage: node scripts/world-check.js [--only=name] [--verbose] [--targets]
+ *        [--cost-baseline=PATH]
  * Exit code is the failed guards, plus failed targets with --targets.
  *
  * SCENARIOS and fly are exported for scripts/world-golden.js, which flies
@@ -870,8 +871,11 @@ vehicleScenario('the vehicle ABI refuses what nobody could drive', async () => {
   want('a car on a road that is not there', car(0, 2), SIM_ERR_BAD_ARG);
   want('a car of no length', car(0, 0, { len: 0 }), SIM_ERR_BAD_ARG);
   want('a car standing still', car(0, 0, { top: 0 }), SIM_ERR_BAD_ARG);
+  want('a car slower than 0.1 m/s', car(0, 0, { top: 0.05 }), SIM_ERR_BAD_ARG);
   want('a car past 100 m/s', car(0, 0, { top: 101 }), SIM_ERR_BAD_ARG);
   want('a car with no grip', car(0, 0, { lat: 0 }), SIM_ERR_BAD_ARG);
+  want('a car cornering at under 0.1 m/s/s', car(0, 0, { lat: 0.05 }), SIM_ERR_BAD_ARG);
+  want('an offset past ten thousand kilometres', car(0, 0, { offset: 1.1e7 }), SIM_ERR_BAD_ARG);
   want('a negative drift', car(0, 0, { drift: -0.1 }), SIM_ERR_BAD_ARG);
   want('restitution past 1', car(0, 0, { e: 1.5 }), SIM_ERR_BAD_ARG);
   want('an offset that is not finite', car(0, 0, { offset: Infinity }), SIM_ERR_BAD_ARG);
@@ -910,6 +914,28 @@ vehicleScenario('the vehicle ABI refuses what nobody could drive', async () => {
   }
   want('a ninth speed table', car(8, 0, { top: 30 }), SIM_ERR_BAD_STATE);
   want('a car sharing the first table', car(9, 0, { top: 10 }), 0);
+  /* A road knotted round a circle of 0.3 m, tighter than any road: driven
+   * at world.c's ROAD_KAPPA_MAX, 2 per metre, so its corner speed has a
+   * floor, its lap an end, and its car a place that is a number. */
+  e.sim_world_clear();
+  const knot = [];
+  for (let i = 0; i < 12; i += 1) {
+    const sc = sincos((i * Math.PI) / 6, { s: 0, c: 0 });
+    knot.push([0.3 * sc.c, 0.3 * sc.s, 0]);
+  }
+  want('a road knotted round 0.3 m', road(knot, 1), 0);
+  want('a slow car on it', car(0, 0, { top: 0.1, lat: 0.1 }), 0);
+  let knotted = true;
+  for (const n of [0, 1, 777, 1e6, -1e6, 9007199254740992]) {
+    e.sim_world_clock(n);
+    e.sim_world_vehicle_poses(rawPtr);
+    raw.set(new Float64Array(e.memory.buffer, rawPtr, MOVER_SLOTS * VP));
+    const k = carAt(raw, 0);
+    knotted = knotted && raw.slice(0, VP).every(Number.isFinite) && Math.abs(k.kap) <= 2 && k.speed > 0;
+  }
+  if (!knotted) {
+    bad.push('a car on a road knotted tighter than half a metre is not a finite pose bending at most 2 per metre');
+  }
   check('every refusal is the one the ABI promises, and every good call is taken', bad.length === 0, bad.join('; '));
 });
 

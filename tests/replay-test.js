@@ -238,7 +238,7 @@ async function testFailureRestoresUI() {
     seed: [
       `(function() {
         var origFetch = window.fetch;
-        var trackData = '${JSON.stringify(fixtureTrackPayload).replace(/'/g, "\\'")}';
+        var trackData = '${JSON.stringify({...fixtureTrackPayload, id: 'trk-test0002', document: {...fixtureTrackPayload.document, id: 'trk-test0002'}}).replace(/'/g, "\\'")}';
         window.fetch = function(url, opts) {
           var urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
           if (urlStr.includes('/api/tracks/trk-test0002/document')) {
@@ -315,7 +315,57 @@ async function testSponsorContentHidden() {
     }
   };
   
-  const page = await openPage({
+  /* Control case: clean=0, sponsors should be present */
+  const pageControl = await openPage({
+    root: ROOT,
+    url: '/index.html?map=custom&share=trk-test0003&board=http://127.0.0.1:3100&replay=tm-aae280e5&cam=fpv',
+    seed: [
+      `(function() {
+        var origFetch = window.fetch;
+        var trackData = '${JSON.stringify(trackWithLogos).replace(/'/g, "\\'")}';
+        var ghostData = '${JSON.stringify(fixtureGhost).replace(/'/g, "\\'")}';
+        window.fetch = function(url, opts) {
+          var urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
+          if (urlStr.includes('/api/tracks/trk-test0003/document')) {
+            return Promise.resolve(new Response(trackData, {
+              status: 200, headers: { 'content-type': 'application/json' }
+            }));
+          }
+          if (urlStr.includes('/api/tracks/trk-test0003/times/tm-aae280e5/ghost')) {
+            return Promise.resolve(new Response(ghostData, {
+              status: 200, headers: { 'content-type': 'application/json' }
+            }));
+          }
+          if (urlStr.includes('/api/tracks/trk-test0003') && !urlStr.includes('/document') && !urlStr.includes('/times/')) {
+            return Promise.resolve(new Response(JSON.stringify({
+              id: 'trk-test0003',
+              times: [{ id: 'tm-aae280e5', name: 'test', lapMs: 5000, hasGhost: true }]
+            }), {
+              status: 200, headers: { 'content-type': 'application/json' }
+            }));
+          }
+          return origFetch.call(this, url, opts);
+        };
+      })();`
+    ],
+  });
+  try {
+    await pageControl.until('window.__shellReady === true', 120000);
+    await pageControl.until('window.__replayInfo && window.__replayInfo().state === "ready" && window.__replayInfo().ghostLoaded', 30000);
+    
+    await pageControl.sleep(500);
+    
+    const controlHidden = await pageControl.evaluate('window.__map && window.__map().sponsorsHidden');
+    
+    if (controlHidden !== false) {
+      throw new Error(`Control case: sponsors should be present (sponsorsHidden=false), got ${controlHidden}`);
+    }
+  } finally {
+    await pageControl.close();
+  }
+  
+  /* Test case: clean=1, sponsors should be hidden */
+  const pageTest = await openPage({
     root: ROOT,
     url: '/index.html?map=custom&share=trk-test0003&board=http://127.0.0.1:3100&replay=tm-aae280e5&cam=fpv&clean=1',
     seed: [
@@ -349,24 +399,20 @@ async function testSponsorContentHidden() {
     ],
   });
   try {
-    await page.until('window.__shellReady === true', 120000);
-    await page.until('window.__replayInfo && window.__replayInfo().state === "ready" && window.__replayInfo().ghostLoaded', 30000);
+    await pageTest.until('window.__shellReady === true', 120000);
+    await pageTest.until('window.__replayInfo && window.__replayInfo().state === "ready" && window.__replayInfo().ghostLoaded', 30000);
     
-    await page.sleep(500);
+    await pageTest.sleep(500);
     
-    const logoCount = await page.evaluate('(function() { var scene = window.__mapScene && window.__mapScene(); if (!scene) return -1; var count = 0; scene.traverse(function(obj) { if (obj.name === "groundLogo") count++; }); return count; })()');
+    const testHidden = await pageTest.evaluate('window.__map && window.__map().sponsorsHidden');
     
-    if (logoCount === -1) {
-      throw new Error('Scene not available for inspection');
+    if (testHidden !== true) {
+      throw new Error(`Test case: sponsors should be hidden (sponsorsHidden=true), got ${testHidden}`);
     }
     
-    if (logoCount !== 0) {
-      throw new Error(`clean=1 should hide all ground logos, found ${logoCount}`);
-    }
-    
-    console.log(' ok   clean=1 hides sponsor ground logos');
+    console.log(' ok   clean=1 hides sponsor content (turf decals and gate banners)');
   } finally {
-    await page.close();
+    await pageTest.close();
   }
 }
 

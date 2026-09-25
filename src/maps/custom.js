@@ -93,7 +93,7 @@ export async function buildMap(shell, onProgress, options) {
   const share = injected ? null : readShareImport();
   const doc = injected ? opts.document : workingDocument();
   const course = doc ? courseFromDocument(doc) : emptyCourse();
-  const map = await buildFieldScene(shell, reporter(progress), course, q);
+  const map = await buildFieldScene(shell, reporter(progress), course, q, opts.hideSponsors);
   map.share = share
     ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }
     : null;

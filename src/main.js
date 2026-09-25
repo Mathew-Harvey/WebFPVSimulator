@@ -8928,6 +8928,7 @@ export async function boot({ loading, bootStart, mapId }) {
     mode: view.mode,
     graphics: view.graphics,
     gates: view.gates.length,
+    sponsorsHidden: view.sponsorsHidden,
     spawn: { x: startX, y: startY, z: startZ, yaw: startYaw },
     ready: mapReady,
     references: view.references ?? null,

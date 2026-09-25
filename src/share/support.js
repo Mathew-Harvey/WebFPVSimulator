@@ -24,12 +24,11 @@ import { privacyRefused, optedOut } from './stats.js';
 export const SUPPORT_URL = 'https://www.patreon.com/cw/webfpv';
 
 /*
- * Send a support_click event. Never blocks the link: uses sendBeacon or
- * fetch with keepalive. The event body is exactly as specified: no source,
- * referrer or ref fields are added by this function, unlike the shared
- * sendEvent helper which would add them.
+ * Send a support_click event. Never blocks: uses sendBeacon or fetch with
+ * keepalive. The event body is exactly as specified: no source, referrer or
+ * ref fields are added by this function, unlike the shared sendEvent helper.
  */
-function sendSupportClick() {
+export function trackSupportClick() {
   if (privacyRefused() || optedOut()) {
     return false;
   }
@@ -52,19 +51,3 @@ function sendSupportClick() {
   }
 }
 
-/*
- * Create a Support link anchor element. The caller places it. External link
- * with target="_blank" and noopener noreferrer.
- */
-export function supportAnchor() {
-  const a = document.createElement('a');
-  a.className = 'support-link';
-  a.href = SUPPORT_URL;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  a.textContent = 'Support';
-  a.addEventListener('click', () => {
-    sendSupportClick();
-  });
-  return a;
-}

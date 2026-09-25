@@ -171,7 +171,6 @@ import { formatScore } from '../game/score.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { patreonAnchor } from '../share/patreon.js';
-import { supportAnchor } from '../share/support.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted } from '../input/touchsticks.js';
@@ -199,7 +198,7 @@ import {
  * appear here renders as a plain action, which is the safe default: it gets no
  * chevron it has not earned.
  */
-const LINK_ACTIONS = new Set(['leaderboard', 'wiki']);
+const LINK_ACTIONS = new Set(['leaderboard', 'wiki', 'support']);
 const SCREEN_ACTIONS = new Set([
   'courses', 'race', 'freestyle', 'pilot', 'quad', 'launch', 'standings', 'rates', 'pids', 'fc',
   'howto', 'tricks', 'credits', 'trackbuilder', 'builder', 'remix', 'editown', 'choosepad',
@@ -7156,35 +7155,6 @@ export class Ui {
         this.menuRows.push(head);
         return;
       }
-      /* The Support link is a real anchor element, not a styled div, so it
-       * gets its own row with click tracking built in. */
-      if (it.action === 'support') {
-        const supportRow = el('div', 'row row-link');
-        supportRow.tabIndex = i === this.cursor ? 0 : -1;
-        supportRow.setAttribute('role', 'option');
-        supportRow.setAttribute('aria-selected', String(i === this.cursor));
-        const anchor = supportAnchor();
-        /* Prevent anchor from being tab-focusable independently; row owns focus. */
-        anchor.tabIndex = -1;
-        supportRow.append(anchor);
-        supportRow.addEventListener('focus', () => {
-          if (this.cursor !== i) {
-            this.cursor = i;
-            this.syncCursor(false);
-          }
-        });
-        supportRow.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
-        supportRow.addEventListener('click', (e) => {
-          /* Let the anchor's own click handler run for the tracking, but also
-           * update the UI cursor state. */
-          this.closeDrop();
-          this.cursor = i;
-          this.syncCursor(false);
-        });
-        host.append(supportRow);
-        this.menuRows.push(supportRow);
-        return;
-      }
       const cls = ['row'];
       /* The kind is a class, so the signature is CSS rather than another
        * branch in here. A value row needs no marker: it already carries its
@@ -12636,6 +12606,16 @@ export class Ui {
     }
     if (action === 'wiki') {
       openNamedWindow(wikiPageUrl(), WIKI_WINDOW);
+      return;
+    }
+    if (action === 'support') {
+      /* Send click tracking, then open support page. */
+      import('../share/support.js').then(({ SUPPORT_URL, trackSupportClick }) => {
+        if (trackSupportClick) {
+          trackSupportClick();
+        }
+        openNamedWindow(SUPPORT_URL, '_blank');
+      });
       return;
     }
     /*

@@ -9550,9 +9550,6 @@ export class Ui {
    * leave it alone. After scrolling to the end, the last row's bottom must
    * be at least 16px above the command bar's top.
    *
-   * The 16px clearance is the hard constraint. The 40-60% visibility is
-   * achieved within that constraint.
-   *
    * Applied to title and paused screens. Called after the screen is visible
    * and laid out, on debounced resize, and after document.fonts.ready.
    */
@@ -9598,43 +9595,78 @@ export class Ui {
       return;
     }
 
-    /* Binary search for the maximum menu height that maintains 16px clearance. */
-    const minGap = 16;
-    let minHeight = 100;  /* Minimum reasonable menu height */
-    let maxHeight = menu.scrollHeight;
-    let bestHeight = minHeight;
-    
-    for (let iter = 0; iter < 20; iter++) {
-      const testHeight = (minHeight + maxHeight) / 2;
-      
-      menu.style.maxHeight = `${testHeight}px`;
+    /* Helper to check clearance for a given max-height. */
+    const checkClearance = (height) => {
+      menu.style.maxHeight = `${height}px`;
       menu.style.flexShrink = '0';
       menu.offsetHeight;
       menu.scrollTop = menu.scrollHeight;
-      
-      const lastRowRectTest = lastRow.getBoundingClientRect();
-      const commandBarRectTest = commandBar.getBoundingClientRect();
-      const gap = commandBarRectTest.top - lastRowRectTest.bottom;
-      
-      if (gap >= minGap) {
-        /* This height works, try taller. */
-        bestHeight = testHeight;
-        minHeight = testHeight;
-      } else {
-        /* Too tall, try shorter. */
-        maxHeight = testHeight;
-      }
-      
-      if (maxHeight - minHeight < 1) {
+      const gap = commandBar.getBoundingClientRect().top - lastRow.getBoundingClientRect().bottom;
+      menu.scrollTop = 0;
+      return gap;
+    };
+
+    /* Find first partially visible or hidden row to target. */
+    const menuRect = menu.getBoundingClientRect();
+    const menuBottom = menuRect.bottom;
+    let targetRow = null;
+    
+    for (let i = 0; i < rows.length; i++) {
+      const rowRect = rows[i].getBoundingClientRect();
+      if (rowRect.bottom > menuBottom) {
+        targetRow = rows[i];
         break;
       }
     }
+
+    if (!targetRow) {
+      /* No overflow, but maybe clearance issue. */
+      const gap = checkClearance(menu.scrollHeight);
+      if (gap < 16) {
+        /* Binary search for max height with clearance. */
+        let low = 50, high = menu.scrollHeight;
+        while (high - low > 1) {
+          const mid = (low + high) / 2;
+          if (checkClearance(mid) >= 16) {
+            low = mid;
+          } else {
+            high = mid;
+          }
+        }
+        menu.style.maxHeight = `${low}px`;
+        menu.style.flexShrink = '0';
+      }
+      return;
+    }
+
+    /* Try to show 50% of target row. */
+    const targetRowHeight = targetRow.offsetHeight || targetRow.getBoundingClientRect().height;
+    const targetOffsetTop = targetRow.offsetTop;
+    const desiredHeight = targetOffsetTop + (targetRowHeight * 0.5);
     
-    /* Apply the best height found. */
-    menu.style.maxHeight = `${bestHeight}px`;
+    /* Check if this height maintains clearance. */
+    const gap = checkClearance(desiredHeight);
+    
+    if (gap >= 16) {
+      /* Good! We achieved both goals. */
+      menu.style.maxHeight = `${desiredHeight}px`;
+      menu.style.flexShrink = '0';
+      return;
+    }
+
+    /* Desired height violates clearance. Binary search for max height with clearance. */
+    let low = 50, high = desiredHeight;
+    while (high - low > 1) {
+      const mid = (low + high) / 2;
+      if (checkClearance(mid) >= 16) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    
+    menu.style.maxHeight = `${low}px`;
     menu.style.flexShrink = '0';
-    menu.scrollTop = 0;
-    menu.offsetHeight;
   }
 
   show(screen) {

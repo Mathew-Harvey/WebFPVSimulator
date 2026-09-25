@@ -45298,3 +45298,228 @@ failing with a message about the board.
     code                     unchanged since the entry above; its checks
                              stand, on the merged tree
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | share, builder, board | Tags survive a republish, and clearing them is an empty list
+
+The owner: "A published track loses its tags on the public board whenever
+it is republished from the track builder without re-ticking them, and
+whenever the pilot renames themselves. Two bugs combine. Fix both." The
+share code, the builder's publish dialog, and the board's publish route
+and stores. The plant, the ABI and the build are untouched.
+
+### The two bugs, and why each hid the other
+
+- **The bind never kept the tags.** `rememberPublish` passed `tags` to
+  `writeBind` (src/share/session.js), which copies a fixed list of fields
+  that did not name them. So `publishedTags` always answered `[]`, the
+  builder's publish dialog pre-ticked nothing, and a republish that was not
+  re-ticked went out with an empty list, which `publishTrack` then left out.
+- **The board read a missing list as an empty one.** `inspectTags` in the
+  board's src/validate.js answered `{ tags: [] }` for no list, and both
+  stores wrote that over the stored tags. So the builder's republish above,
+  and `syncOwnedName` and `syncOwnedIdentity`, which send no tags at all,
+  each wiped the track's tags.
+
+The comment on `rememberPublish` said the board "leaves alone" an omitted
+list, and the 2026-09-02 entry above says "The bind remembers what was last
+published, so a second publish pre-ticks rather than untagging." Neither was
+true on the day it was written. The board's selftest stated the rule in a
+comment ("an omitted list ... must leave them be") and had no check for it.
+
+### What changed
+
+Board, WebFPVSimulator-LeaderBoard, branch `claude/wonderful-einstein-j3lgjo`:
+
+- `inspectTags` answers `tags: null` for a request with no list, and for
+  JSON null. A list, empty included, is a list.
+- **One rule for both stores**, `tagsAfter` in src/store.js: a list
+  replaces, null keeps what the track wore, and a new track, or one from
+  before tags, wears none. `FileStore.publishUnlocked` and `PgStore.publish`
+  both call it. Postgres works it out from the row it already holds
+  `FOR UPDATE`, rather than with a COALESCE in the SQL, so the two stores
+  read as the same line.
+- **The publish answer carries `tags`**, the list the track wears
+  afterwards. Additive: a simulator that does not read it is unaffected.
+- README's API table names `tags?`, and a paragraph under it says what
+  leaving it out and sending `[]` each do.
+
+Simulator:
+
+- `writeBind` keeps `tags` when it is a list, empty included, and writes
+  no key otherwise.
+- `publishedTags` answers a list, or **null when this browser does not
+  know**. Null is every track published before today.
+- `rememberPublish` keeps the first of these that is a list: the board's
+  answer, then what was sent, then what the bind already knew. When none
+  is a list, the bind gets no list rather than an empty one.
+- `publishTrack` sends any array as it is, `[]` included, and leaves the
+  key out for anything else.
+- `tagsToSend` (src/share/listing.js) decides what the dialog sends: see
+  below. The dialog seeds from `held = publishedTags(id)` and sends
+  `tagsToSend(held, ticked)`.
+- On an owned track whose tags this browser has no record of, the tag help
+  line says so instead of "Optional, and up to 5": "This browser has no
+  record of the tags this track wears on the board, so none are ticked.
+  Leave them that way to keep whatever it wears, or tick some to replace
+  them." That is the only change a person can see.
+- `syncOwnedName` and `syncOwnedIdentity` still send no tags, now on
+  purpose, with a comment saying why: a rename is not a retag, and the
+  bind's list could be stale.
+
+### How "clear all tags" is said, and why
+
+**An explicit empty list, `tags: []`, and the builder sends one only when
+it knows what it is clearing**, which means the bind holds a list, so the
+dialog pre-ticked exactly what the author then unticked. When the bind has
+no list and nothing is ticked, the builder leaves `tags` out and the board
+keeps what it has.
+
+The reason is the tracks already out there. Every bind written before
+today has no tags in it, so on each of those tracks the dialog opens with
+nothing ticked. It has to: this browser never heard what the board shows.
+Sending `[]` from that dialog would repeat this bug on every existing
+track's first republish after the fix ships. Leaving the list out instead
+keeps the board's tags, the board's answer carries them, `rememberPublish`
+stores them, and from the next publish on the dialog pre-ticks them. The
+"not known" state lasts one publish per track.
+
+Considered and not taken: fetching the board's tags when the dialog opens.
+It would pre-tick even the first time, but it adds a board read, a loading
+state and a failure state to a dialog that has none, for a state that lasts
+one publish.
+
+### Decisions made without asking, for the owner to overrule
+
+1. **JSON null is read as no list**, so it keeps the tags. It is not read
+   as none and not refused. It is how JSON spells absent, and nothing
+   sends it today.
+2. **The board's publish answer now carries `tags`.** That is what lets a
+   bind that never knew learn the board's list.
+3. **Tags the board holds that this build has no button for ride along**
+   on a republish, so a stale builder changes only what it can show.
+   `usableTags`' comment in src/share/board.js promised this and nothing
+   did it. They are not counted against the dialog's limit of five, so if
+   the two together pass it, the board refuses with its own message and
+   the dialog prints it.
+4. **The rename and handle syncs send no tags** rather than the bind's
+   list, as above.
+5. **The "not known" state gets its own help line**, quoted above.
+
+### Ship order
+
+Board first, as DEPLOY.md says, and both orders were worked through:
+
+- **Board first (the plan).** Tag loss stops at once for the simulator
+  already live, because the lists it leaves out now keep. Until the
+  simulator ships, the live builder cannot clear tags, because it still
+  leaves an empty list out.
+- **Simulator first (not the plan).** No worse than today. The old board
+  still wipes on a missing list and sends no tags in its answer, so the
+  bind falls back to what was sent.
+
+### Coverage
+
+- **Board `npm test`, 13 new checks, all passing.** `inspectTags`: no
+  list and JSON null come back null, and `[]` is a list. File store: a
+  first publish answers with its tags; a rename with `tags: null` keeps
+  them; a new handle with the key left out keeps them; `[]` takes them
+  off; a first publish with no list wears none. HTTP: a republish that
+  leaves tags out keeps them and the times; its answer says what the track
+  wears; a new author with no list keeps them; `tags: null` keeps them;
+  `[]` still clears, and its answer says none.
+- **Simulator `check:clip`, 17 new checks in `suiteListing`, all
+  passing.**
+  - The bind round trip: tags kept; kept through the spread rewrite the
+    renames do; `[]` kept as none; a bind with no list, and no bind at all,
+    both read as not known.
+  - `rememberPublish`: a bind that never knew learns from the board's
+    answer; the answer beats what was sent; a rename that sent no list
+    keeps what was known; a sent `[]` is remembered as none; nobody knowing
+    stays not known.
+  - `tagsToSend`: not known and nothing ticked sends nothing; known and
+    all unticked sends `[]`; ticked tags go in the board's order; unshown
+    tags ride along.
+  - `publishTrack` on the wire: `[]` as `[]`, no list as no key, a list as
+    it is.
+  `suiteListing` and `main` are async now, for the wire checks.
+- **Both can fail.** Each repository's new tests were run against its
+  main in a scratch worktree this turn. Board: 12 of the 13 fail. The
+  one that passes is "an empty tag list is a list", which is unchanged
+  behaviour. Simulator: 11 of the 17 fail. `tagsToSend` does not exist on
+  main, so for that run it was stood in, in the worktree only, by the old
+  dialog's own expression, `usableTags(ticked)`. The 6 that pass there
+  pin behaviour that did not change, such as a ticked list going on the
+  wire as it is.
+- **The Postgres store.** The board's selftest runs only the file store,
+  so the same sequence was run through `PgStore` on a scratch Postgres 16
+  cluster (as the published maps entry above did for its own code). It
+  added a stranger's 409, an explicit replace, and a row carrying the
+  column's pre-tags default. 13 of 13 pass. On main's code on the same
+  cluster, 10 of the 13 fail, starting with the tags stored as empty right
+  after a rename. The probe lived in the scratchpad and is not committed.
+  The cluster was stopped and deleted.
+
+### Found, not fixed
+
+- **The board's `npm test` has one failure on main, before this change**:
+  "nothing app.js builds opens a bare new tab or asks for noopener". The
+  Patreon link in its public/app.js trips it, with `target = '_blank'` and
+  `rel = 'noopener noreferrer'`, and that link leaves the product on
+  purpose. Either the check or the link has to change, and which one is
+  the owner's call, so neither was touched.
+- **The simulator shell's publish cannot fork on a conflict.**
+  `publishCurrentCourse` in src/share/listing.js still passes
+  `forkDocument`'s return value to `toPlain`. Since 1ba92c8 that value is
+  `{ copy, commit }`, and `toPlain` throws "Cannot read properties of
+  undefined (reading 'width')" on it (a Node probe this turn). So a 409 on
+  a publish from the shell shows that message instead of putting the track
+  up as a copy. The builder's dialog uses `copy` correctly. Outside this
+  change.
+
+### What went wrong
+
+- **Both mains moved while this was being read.** The simulator's gained
+  four commits (published freestyle maps) and the board's two, in the four
+  board files this change edits. The fetch CLAUDE.md asks for is what
+  caught it. Before any edit, the simulator branch fast-forwarded to main
+  (merge-base was HEAD), the board branch was cut fresh from its new main,
+  and both baselines were rerun: check:clip 661 passed, board 383 pass and
+  the one failure above.
+- **The first cut of the board's store checks called `.join()` on the
+  publish answer's tags.** On main's code, where the answer has none, that
+  threw and took the rest of the suite with it, so the HTTP half never ran
+  there. The checks read the answer with `String()` now and fail cleanly,
+  which is what the run against main above used.
+- **The first dash scan proved nothing.** `grep -P '\x{2013}'` was refused
+  by this shell's locale, and the `|| echo none` behind it printed "none"
+  anyway. Redone with Python: no em or en dash in either diff.
+
+### RUN LOG
+
+    board npm test, the fix         396 pass, 1 FAIL (the Patreon check,
+                                    main too), 1 skip (the admin hash)
+    board npm test, main            383 pass, the same FAIL and skip
+    new board tests on main's code  13 failed: 12 new, and the Patreon one
+    board lint:licence              21 of 21 carry the notice
+    board lint:nouns                PASS
+    PgStore, scratch Postgres 16    13 of 13 pass; main's code 10 of 13
+                                    fail
+    npm run check:clip              678 passed, 0 failed (661 on main)
+    new check:clip on main's code   667 passed, 11 failed (tagsToSend
+                                    stood in, see Coverage)
+    npm run lint:nouns              PASS
+    npm run lint:preload            up to date: boot 105 modules, city 73,
+                                    built 29
+    node --check app.js             parses (no Node check loads the dialog)
+    dash scan, both diffs           no em or en dash in added lines
+    shots / fly it / served         not run: offered to the owner. The
+                                    dialog's new help line is the one
+                                    visible change
+    npm run verify                  not run: share code, a dialog and the
+                                    board; no physics, plant, ABI or build
+    git diff --stat vendor/betaflight   empty
+    git merge-base                  simulator: main 535331f is this
+                                    branch's base; board: main 7d1f89b is
+                                    its branch's base
+    board branch                    cd92dd9 on claude/wonderful-einstein-j3lgjo,
+                                    pushed first; board main untouched

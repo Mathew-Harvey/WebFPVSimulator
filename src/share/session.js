@@ -278,6 +278,22 @@ export function writeBind(trackId, bind) {
     sourceId: bind.sourceId ? String(bind.sourceId) : '',
     sourceName: String(bind.sourceName || ''),
     sourceAuthor: String(bind.sourceAuthor || ''),
+    /*
+     * The tags the board is showing this track under, and until 25
+     * September this list of fields did not name them, so rememberPublish
+     * wrote them and they were dropped here on the way in. The publish
+     * dialog then opened with nothing ticked on every track, sent that,
+     * and untagged it.
+     *
+     * Kept only when it is a list, and a list with nothing in it is kept
+     * too, because "none" and "not known" are different answers: a bind
+     * written before this line, or for a track this browser has not heard
+     * back about, has no list, and publishedTags in ./listing.js reads that
+     * as not known rather than as none.
+     */
+    ...(Array.isArray(bind.tags)
+      ? { tags: bind.tags.filter((t) => typeof t === 'string' && t) }
+      : {}),
   });
 }
 

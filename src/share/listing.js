@@ -31,7 +31,9 @@
 
 import { duplicateTrack, toPlain } from '../trackbuilder/model.js';
 import { readAutosave, writeAutosave } from '../trackbuilder/storage.js';
-import { boardOrigin, fetchTrackDocument, fetchTrackList, publishTrack } from './board.js';
+import {
+  boardOrigin, fetchTrackDocument, fetchTrackList, publishTrack, TRACK_TAGS, usableTags,
+} from './board.js';
 import { readPilotName } from './pilot.js';
 import {
   clearShareImport,
@@ -529,15 +531,25 @@ export function rememberPublish(doc, posted, origin, author, extra = {}) {
      * publish envelope beside the author so they cannot reach the layout
      * hash and clear somebody's times. That means the document cannot
      * remember them either, so the bind does, and the publish dialog reads
-     * them back to pre-tick what was last sent. Without this a second
-     * publish would silently untag a track, because an omitted list is how
-     * a builder from before tags speaks and the board leaves those alone.
+     * them back to pre-tick what the track wears. Without this the dialog
+     * opens with nothing ticked, and sending that takes the tags off.
      *
-     * `extra.tags` undefined means the caller did not send any, which is
-     * different from sending none: the first keeps what was there and the
-     * second is a deliberate clearing.
+     * The first of these that is a list, most trusted first:
+     *
+     *   posted.tags  what the board says the track wears now. A board from
+     *                25 September onward answers every publish with it.
+     *   extra.tags   what this caller sent. A sent list replaces, so it is
+     *                what a board that does not answer is holding.
+     *   prev.tags    what the bind already knew. `extra.tags` undefined
+     *                means the caller sent no list, which the board reads
+     *                as "leave them alone" (see inspectTags in its
+     *                src/validate.js), so what was known still holds.
+     *
+     * When none of them is a list the bind carries none, rather than an
+     * empty one, and publishedTags reports "not known". See tagsToSend for
+     * why that difference is the whole fix.
      */
-    tags: Array.isArray(extra.tags) ? extra.tags.slice() : (prev.tags || []),
+    tags: [posted && posted.tags, extra.tags, prev.tags].find(Array.isArray),
     owned: true,
     sourceId: prev.sourceId || '',
     sourceName: prev.sourceName || '',
@@ -556,12 +568,50 @@ export function rememberPublish(doc, posted, origin, author, extra = {}) {
 }
 
 /*
- * The tags this track was last published under, or an empty list. The bind
- * is the only place they live on this side: see rememberPublish.
+ * The tags the board is showing this track under: a list, empty when it
+ * wears none, or null when this browser does not know. The bind is the
+ * only place they live on this side: see rememberPublish.
+ *
+ * NULL IS NOT NONE. Every track published before binds kept their tags is
+ * null here, and the board may well be showing tags on it.
  */
 export function publishedTags(id) {
   const bind = id ? readBind(id) : null;
-  return bind && Array.isArray(bind.tags) ? bind.tags.slice() : [];
+  return bind && Array.isArray(bind.tags) ? bind.tags.slice() : null;
+}
+
+/*
+ * THE TAG LIST A PUBLISH SENDS, OR NONE AT ALL.
+ *
+ * `held` is publishedTags for the track and `ticked` is what the author
+ * ticked in the publish dialog. The board reads the two ways of saying
+ * nothing differently, and this is where the builder picks one:
+ *
+ *   tags: []      take every tag off. This is how "clear all tags" is
+ *                 said, and it is sent only when `held` is a list, so the
+ *                 dialog was showing the author exactly what they unticked.
+ *   no tags key   leave the board's tags alone. Sent when nothing is
+ *                 ticked and `held` is null, because then the empty row is
+ *                 a dialog that could not see the board's tags, not an
+ *                 author who chose none. That is every track published
+ *                 before binds kept their tags, and sending [] for them is
+ *                 the same untagging this was written to stop. The board's
+ *                 answer carries what the track wears, rememberPublish
+ *                 keeps it, and from then on the dialog knows.
+ *
+ * Tags the board holds that this build has no button for ride along, so a
+ * builder changes only the tags it can show: see usableTags in ./board.js.
+ * They are not counted against the dialog's limit of five, so in the rare
+ * case that the two together pass it the board refuses the publish and
+ * the dialog prints its reason, which is better than dropping one quietly.
+ */
+export function tagsToSend(held, ticked) {
+  const mine = usableTags(ticked);
+  if (!Array.isArray(held) && !mine.length) {
+    return undefined;
+  }
+  const unshown = (held || []).filter((id) => !TRACK_TAGS.some((t) => t.id === id));
+  return [...mine, ...unshown];
 }
 
 export async function syncOwnedName(doc, origin) {
@@ -609,6 +659,15 @@ export async function syncOwnedName(doc, origin) {
   if (publishedFp && publishedFp !== layoutFingerprint(plain)) {
     return { skipped: 'layout-changed' };
   }
+  /*
+   * NO TAGS, ON PURPOSE. This is a rename, and a list left out is the
+   * board's "leave them alone", so the track keeps what it wears whatever
+   * this browser remembers of it. Sending the bind's list instead would put
+   * back a stale one. Until 25 September the board read a missing list as
+   * an empty one, and this call is one of the two that untagged tracks.
+   * syncOwnedIdentity below is the other, and it sends none for the same
+   * reason.
+   */
   const posted = await publishTrack({
     author,
     document: plain,
@@ -660,6 +719,7 @@ export async function syncOwnedIdentity(origin) {
         results.push({ id, skipped: 'current' });
         continue;
       }
+      /* No tags, as in syncOwnedName: a new handle is not a retag. */
       const posted = await publishTrack({
         author,
         document,

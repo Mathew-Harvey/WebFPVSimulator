@@ -82,7 +82,11 @@ import {
   findRestSpot, restSpotAt, CRAFT_WORLD_R,
 } from '../game/collide.js';
 import { AIRFRAMES, airframeById } from '../../configs/airframes.js';
-import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
+import {
+  inspectCourse, layoutFingerprint, publishedTags, rememberPublish, suggestRemixName, tagsToSend,
+} from '../share/listing.js';
+import { readBind, writeBind } from '../share/session.js';
+import { publishTrack } from '../share/board.js';
 import { keepDisplaced } from './storage.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
 
@@ -3133,7 +3137,7 @@ function suiteSchemaProps() {
     md.includes(`Everything below describes \`schemaVersion: ${SCHEMA_VERSION}\``));
 }
 
-function suiteListing() {
+async function suiteListing() {
   console.log('listing');
   const doc = createTrack('Ladder Loop');
   const gate = createElement(doc, 'gate', { x: 10, y: 8, z: 0 });
@@ -3222,6 +3226,102 @@ function suiteListing() {
     check('and when storage refuses it, that is said, so nothing replaces it', !refused.ok && refused.saved === null);
   } finally {
     globalThis.localStorage = had;
+  }
+
+  /*
+   * THE TAGS A TRACK WEARS ON THE BOARD, which this browser can only know
+   * from the bind, because they are not in the document.
+   *
+   * writeBind named every field it kept and tags were not among them, so
+   * the publish dialog opened with nothing ticked on every track and sent
+   * that, and the board read the renames' missing list as an empty one.
+   * Between them a track lost its tags on any republish that did not
+   * re-tick them. The board's half is in its own src/selftest.js; this is
+   * the simulator's: the bind keeps them, "not known" stays apart from
+   * "none", and an empty list reaches the wire as one.
+   */
+  const hadTagStore = globalThis.localStorage;
+  const tagStore = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (tagStore.has(k) ? tagStore.get(k) : null),
+    setItem: (k, v) => {
+      tagStore.set(k, String(v));
+    },
+    removeItem: (k) => {
+      tagStore.delete(k);
+    },
+  };
+  const board = 'http://127.0.0.1:3100';
+  try {
+    const listed = { board, author: 'Ada Rook', nameOnBoard: 'Ladder Loop', owned: true };
+    writeBind('trk-1a2b3c4d', { ...listed, tags: ['race', 'skills'] });
+    check('a bind keeps its tags',
+      String(readBind('trk-1a2b3c4d').tags) === 'race,skills'
+      && String(publishedTags('trk-1a2b3c4d')) === 'race,skills',
+      JSON.stringify(readBind('trk-1a2b3c4d')));
+    /* syncOwnedName and syncOwnedIdentity rewrite a bind by spreading it. */
+    writeBind('trk-1a2b3c4d', { ...readBind('trk-1a2b3c4d'), author: 'Ada Two' });
+    check('and a rename that spreads the bind keeps them',
+      String(publishedTags('trk-1a2b3c4d')) === 'race,skills' && readBind('trk-1a2b3c4d').author === 'Ada Two');
+    writeBind('trk-1a2b3c4d', { ...listed, tags: [] });
+    check('an empty list is kept, as none',
+      Array.isArray(publishedTags('trk-1a2b3c4d')) && publishedTags('trk-1a2b3c4d').length === 0);
+    writeBind('trk-2b3c4d5e', listed);
+    check('a bind with no list reads as not known, not as none',
+      publishedTags('trk-2b3c4d5e') === null && !('tags' in readBind('trk-2b3c4d5e')));
+    check('and so does a track with no bind at all', publishedTags('trk-00000000') === null);
+
+    /* rememberPublish: the board's answer first, then what was sent, then
+     * what the bind knew. */
+    writeBind(doc.id, listed);
+    rememberPublish(doc, { id: doc.id, name: doc.name, tags: ['race'] }, board, 'Ada Rook');
+    check('a bind that never knew its tags learns them from the board’s answer',
+      String(publishedTags(doc.id)) === 'race', String(publishedTags(doc.id)));
+    rememberPublish(doc, { id: doc.id, name: doc.name, tags: ['race', 'experiment'] }, board, 'Ada Rook',
+      { tags: ['experiment', 'race'] });
+    check('and the board’s answer wins over what was sent',
+      String(publishedTags(doc.id)) === 'race,experiment', String(publishedTags(doc.id)));
+    rememberPublish(doc, { id: doc.id, name: 'Renamed Loop' }, board, 'Ada Two');
+    check('a rename that sent no list keeps what the bind knew, when the board does not say',
+      String(publishedTags(doc.id)) === 'race,experiment', String(publishedTags(doc.id)));
+    rememberPublish(doc, { id: doc.id, name: doc.name }, board, 'Ada Rook', { tags: [] });
+    check('an empty list that was sent is remembered as none',
+      Array.isArray(publishedTags(doc.id)) && publishedTags(doc.id).length === 0);
+    const fresh = createTrack('Fresh Loop');
+    rememberPublish(fresh, { id: fresh.id, name: fresh.name }, board, 'Ada Rook');
+    check('and when nobody knows, the bind does not pretend', publishedTags(fresh.id) === null);
+
+    /* tagsToSend: which of the two ways of saying nothing goes. */
+    check('an empty row the dialog could not see behind sends no list, which keeps the board’s',
+      tagsToSend(null, []) === undefined);
+    const unticked = tagsToSend(['race'], []);
+    check('unticking every tag that was shown sends an empty list, which clears',
+      Array.isArray(unticked) && unticked.length === 0);
+    check('ticked tags go in the board’s order', String(tagsToSend(null, ['skills', 'race'])) === 'race,skills');
+    check('a tag this build has no button for rides along',
+      String(tagsToSend(['race', 'night'], ['skills'])) === 'skills,night', String(tagsToSend(['race', 'night'], ['skills'])));
+
+    /* And what publishTrack puts on the wire for each. */
+    const hadFetch = globalThis.fetch;
+    const sent = [];
+    globalThis.fetch = async (url, init) => {
+      sent.push(JSON.parse(init.body));
+      return { ok: true, status: 200, text: async () => '{}' };
+    };
+    try {
+      const plain = toPlain(doc);
+      await publishTrack({ author: 'Ada Rook', document: plain, origin: board, tags: [] });
+      await publishTrack({ author: 'Ada Rook', document: plain, origin: board });
+      await publishTrack({ author: 'Ada Rook', document: plain, origin: board, tags: ['race'] });
+    } finally {
+      globalThis.fetch = hadFetch;
+    }
+    check('an empty tag list goes on the wire as an empty list',
+      Array.isArray(sent[0] && sent[0].tags) && sent[0].tags.length === 0, JSON.stringify(sent[0] && sent[0].tags));
+    check('no tag list leaves the key out altogether', Boolean(sent[1]) && !('tags' in sent[1]));
+    check('a tag list goes as it is', Boolean(sent[2]) && String(sent[2].tags) === 'race');
+  } finally {
+    globalThis.localStorage = hadTagStore;
   }
 }
 
@@ -4011,7 +4111,7 @@ function suiteRecoverSpot() {
   setCraftAirframe(airframeById('5inch').dims);
 }
 
-function main() {
+async function main() {
   if (process.argv.includes('--emit')) {
     process.stdout.write(serialize(demoTrack()));
     return;
@@ -4039,7 +4139,7 @@ function main() {
   suiteFreestyle();
   suiteBoardPlan();
   suiteSchemaProps();
-  suiteListing();
+  await suiteListing();
   suiteBranding();
   suiteFlagShape();
   suiteStartBlock();

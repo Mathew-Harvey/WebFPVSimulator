@@ -7,10 +7,12 @@
  *   Board API      {board}/api/tracks
  *   Fly a track    {sim}/?map=custom&share={id}&board={board}
  *   Orbit thumb    {sim}/src/share/orbit.html?map=custom&share={id}&board={board}
- *   Publish        POST {board}/api/tracks   { author, document, editKey? }
+ *   Publish        POST {board}/api/tracks   { author, document, editKey?, tags? }
  *   Update listing POST {board}/api/tracks   same, with the edit key from
  *                  the browser that first published. A name-only update
- *                  keeps the times. A layout change clears them.
+ *                  keeps the times. A layout change clears them. tags
+ *                  left out keeps what the listing wears and tags: []
+ *                  takes them off. The answer carries the tags it wears.
  *   Post a time    POST {board}/api/tracks/{id}/times   { name, lapMs, threeMs?, ghost? }
  *                  ghost is the base64 lap recording from
  *                  src/share/ghostdata.js, sent when the lap was recorded
@@ -484,7 +486,8 @@ export function tagLabel(id) {
  * A track that came back from a newer board wearing a tag this build has
  * never heard of keeps it on the board and simply does not draw it here,
  * which is the safe way round: dropping it on a republish would silently
- * untag somebody's track. */
+ * untag somebody's track. tagsToSend in ./listing.js is what keeps that
+ * promise, by sending such a tag back beside the ones that were ticked. */
 export function usableTags(list) {
   const want = Array.isArray(list) ? list.map((t) => String(t)) : [];
   return TRACK_TAGS.filter((t) => want.includes(t.id))
@@ -512,10 +515,17 @@ export async function publishTrack({
        * layout hash by hand, where getting it wrong silently clears every
        * republished track's posted times.
        *
-       * Omitted rather than sent empty when there are none, so a board
-       * from before tags sees exactly the request it has always seen.
+       * A LIST GOES AS IT IS, EMPTY INCLUDED, AND ANYTHING ELSE IS LEFT
+       * OUT, because the board reads the two differently: left out is
+       * "leave this track's tags alone", which the rename and handle syncs
+       * in ./listing.js want, and [] is "take them all off", which is how
+       * an author clears them. Which one the dialog sends is tagsToSend's
+       * decision, in ./listing.js. Until 25 September an empty list was
+       * left out too, so that a board from before tags saw the request it
+       * always had; such a board ignores the key either way, and folding
+       * none into "leave them" left an author no way to clear their tags.
        */
-      tags: tags && tags.length ? tags : undefined,
+      tags: Array.isArray(tags) ? tags : undefined,
     }),
   });
   return readJson(res);

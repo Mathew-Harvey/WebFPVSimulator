@@ -45523,3 +45523,79 @@ Board first, as DEPLOY.md says, and both orders were worked through:
                                     its branch's base
     board branch                    cd92dd9 on claude/wonderful-einstein-j3lgjo,
                                     pushed first; board main untouched
+
+## 2026-09-25 | git | The tags fix goes to main in both repositories, for the owner to test
+
+The owner, on the entry above: "merge both to main, i'll test it". That is
+the approval to put the tags fix on main in both repositories, and the
+verification scale chosen is the owner testing it by hand. The five
+decisions the entry above lists were put to the owner and are not answered
+yet: JSON null reads as no list, the publish answer carries tags, unshown
+tags ride along, the renames send none, and the "no record" help line.
+They go to main as built, and testing it is how the owner will judge them.
+
+**The board went first**, as DEPLOY.md says, and its main had moved while
+this waited. 21b7380, another session's fix for the tab check that the
+entry above found failing on main, landed between the fetch at 11:07 UTC
+and the push at 11:09, so the first push was refused. Nothing was forced.
+The branch took the new main in by a merge, 6dee444, with merge-base
+7d1f89b, one history, and no conflicts: the two touched different parts
+of src/selftest.js. On the merged tree `npm test` passed everything,
+with the tab check green for the first time. Board main then
+fast-forwarded to 6dee444 at 11:12:31 UTC.
+
+This main fast-forwards to the branch after it: no merge commit, nothing
+rewritten, one history.
+
+**What can be seen from outside, and what cannot.** The board's change
+leaves no read-only mark. /api/health and every GET answer the same before
+and after. The publish answer and what a republish keeps can only be seen
+by publishing to the public board, which was not done, so the owner's test
+is the first sight of it live. The simulator's change is scripts and
+nothing else, so it can be seen at the origin: src/share/listing.js with
+`tagsToSend` in it.
+
+**Hard reload the builder before testing.** This is DEPLOY.md's four hour
+seam: through webfpv.org every script is cached for up to four hours, and
+this change is scripts only (listing.js, session.js, board.js and the
+builder's app.js). A browser that has the builder cached runs the old code,
+which pre-ticks nothing and cannot clear tags. No class name or stylesheet
+changed, so a stale browser runs the old code whole rather than a broken
+mix.
+
+What to look for:
+
+1. Publish a track from the builder with two tags, then open Publish
+   again: both are ticked.
+2. Rename the track and press Update without touching the tags: the
+   board's card still wears both.
+3. Change the name you fly under: the card still wears both.
+4. Untick everything and Update: the card wears none.
+5. On a track published before today, the dialog says "This browser has no
+   record of the tags this track wears on the board". Update without
+   ticking keeps the board's tags, and the next Publish has them ticked.
+
+What would count as wrong: tags gone from a card after a rename, a
+republish or a new handle; the "no record" line on a track published with
+this build; unticking everything leaving tags on the card; or Publish
+failing with a message about tags.
+
+### RUN LOG
+
+    git fetch, both                board main 7d1f89b, this main 535331f;
+                                   each branch one commit ahead, none
+                                   behind
+    live, before                   webfpv.org/board/api/health
+                                   {"ok":true,"store":"postgres"}; origin
+                                   src/share/listing.js without tagsToSend
+    board push, first              refused: main had moved to 21b7380
+    board branch                   21b7380 merged in, 6dee444; merge-base
+                                   7d1f89b, one history
+    board npm test, merged tree    399 pass, 0 FAIL, 1 skip (the admin
+                                   hash, BOARD_SELFTEST_PASSWORD unset)
+    board lint:licence, lint:nouns 21 of 21 carry the notice; PASS
+    board main                     21b7380..6dee444 at 11:12:31 UTC, by
+                                   fast-forward
+    simulator code                 unchanged since the entry above, so its
+                                   checks stand: check:clip 678 of 678
+    git diff --stat vendor/betaflight   empty

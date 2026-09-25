@@ -4216,6 +4216,28 @@ export class Ui {
     }
     r.append(this.announcer, this.banner, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
     this.syncChips();
+    
+    /* Setup resize handling with debouncing for fitMenuPeek. */
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (this.screen === 'title' || this.screen === 'paused') {
+          this.fitMenuPeek(this.screen);
+        }
+      }, 150);
+    });
+
+    /* Apply fitMenuPeek after fonts are loaded. */
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        if (this.screen === 'title' || this.screen === 'paused') {
+          requestAnimationFrame(() => {
+            this.fitMenuPeek(this.screen);
+          });
+        }
+      });
+    }
   }
 
   setSharedMap(map) {
@@ -9520,6 +9542,123 @@ export class Ui {
     }
   }
 
+  /*
+   * FIT A MENU TO SHOW A PARTIAL ROW when it overflows.
+   *
+   * The goal: where a menu list does not fit, size it to show 40-60% of the
+   * first hidden row, with the label cut through the middle. Where it fits,
+   * leave it alone. After scrolling to the end, the last row's bottom must
+   * be at least 16px above the command bar's top.
+   *
+   * Applied to title and paused screens. Called after the screen is visible
+   * and laid out, on debounced resize, and after document.fonts.ready.
+   */
+  fitMenuPeek(screenName) {
+    if (screenName !== 'title' && screenName !== 'paused') {
+      return;
+    }
+
+    const menu = screenName === 'title' ? this.titleMenu : this.pausedMenu;
+    if (!menu) {
+      return;
+    }
+
+    /* Find which element actually scrolls. */
+    const getScroller = (el) => {
+      const style = window.getComputedStyle(el);
+      const overflowY = style.overflowY;
+      if ((overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
+        return el;
+      }
+      if (el.parentElement && el.parentElement.classList.contains('screen')) {
+        return null;
+      }
+      return el.parentElement ? getScroller(el.parentElement) : null;
+    };
+
+    const scroller = getScroller(menu);
+    if (!scroller) {
+      return;
+    }
+
+    /* Clear any previous max-height so we can measure natural size. */
+    scroller.style.maxHeight = '';
+
+    /* Force a layout to get accurate measurements. */
+    scroller.offsetHeight;
+
+    const rows = Array.from(scroller.querySelectorAll('.row'));
+    if (rows.length === 0) {
+      return;
+    }
+
+    const lastRow = rows[rows.length - 1];
+    const commandBar = document.querySelector('.frame-bot');
+    if (!commandBar) {
+      return;
+    }
+
+    /* Measure natural overflow. */
+    const overflow = scroller.scrollHeight - scroller.clientHeight;
+    
+    if (overflow <= 0) {
+      /* Fits naturally, leave it alone. */
+      return;
+    }
+
+    /* Find the first row that would be cut off. */
+    const scrollerRect = scroller.getBoundingClientRect();
+    const scrollerBottom = scrollerRect.bottom;
+
+    let targetRow = null;
+    for (let i = 0; i < rows.length; i++) {
+      const rowRect = rows[i].getBoundingClientRect();
+      if (rowRect.bottom > scrollerBottom + 1) {
+        targetRow = rows[i];
+        break;
+      }
+    }
+
+    if (!targetRow) {
+      return;
+    }
+
+    /* Calculate height to show 50% of the target row (middle of 40-60% range). */
+    scroller.scrollTop = 0;
+    const targetRect = targetRow.getBoundingClientRect();
+    const targetRowHeight = targetRect.height;
+    const targetTop = targetRect.top;
+    const scrollerTop = scrollerRect.top;
+    
+    /* Distance from scroller top to target row top. */
+    const distanceToTarget = targetTop - scrollerTop + scroller.scrollTop;
+    
+    /* Show 50% of the target row. */
+    const visibleFraction = 0.5;
+    const newHeight = distanceToTarget + (targetRowHeight * visibleFraction);
+    
+    scroller.style.maxHeight = `${newHeight}px`;
+
+    /* Force layout again. */
+    scroller.offsetHeight;
+
+    /* Verify clearance at bottom after natural scroll. */
+    scroller.scrollTop = scroller.scrollHeight;
+    const lastRowRect = lastRow.getBoundingClientRect();
+    const commandBarRect = commandBar.getBoundingClientRect();
+    const gap = commandBarRect.top - lastRowRect.bottom;
+
+    /* If clearance is too small, increase the max-height. */
+    const minGap = 16;
+    if (gap < minGap) {
+      const adjustment = minGap - gap;
+      scroller.style.maxHeight = `${newHeight - adjustment}px`;
+    }
+
+    /* Reset scroll to top. */
+    scroller.scrollTop = 0;
+  }
+
   show(screen) {
     this.closeDrop();
     /*
@@ -9697,6 +9836,10 @@ export class Ui {
     if (typeof this.onScreenChange === 'function') {
       this.onScreenChange(screen);
     }
+    /* Fit menu peek after layout is complete. */
+    requestAnimationFrame(() => {
+      this.fitMenuPeek(screen);
+    });
   }
 
   bindWikiHash() {

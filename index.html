@@ -1768,18 +1768,6 @@
       .screen-title .menu { min-width: 0; width: 100%; margin-top: 0; background: rgba(16, 22, 17, 0.55); padding: 0; overflow-y: auto; }
       .screen-title .menu .row { padding: 6px 22px 6px 28px; }
       .screen-title { padding-bottom: calc(1.5vh + var(--bar-bot) + 6px); }  /* Add 6px clearance for Support row */
-      /* Title menu scroll cue at 1366x768: show 0.5 of first hidden row */
-      @media (min-width: 1366px) and (max-height: 768px) and (min-height: 721px) {
-        .screen-title .menu { max-height: 356px; }
-      }
-      /* Title menu scroll cue at 1280x720: show 0.5 of first hidden row */
-      @media (max-width: 1365px) and (max-height: 720px) and (min-height: 668px) {
-        .screen-title .menu { max-height: 298px; }
-      }
-      /* Title menu scroll cue on narrow viewports */
-      @media (max-width: 768px) and (min-height: 792px) {
-        .screen-title .menu { max-height: 390px; padding-bottom: 80px; }
-      }
       /* At 1280x720, paused screen needs extra bottom padding to prevent menu overlap */
       @media (max-height: 720px) and (min-height: 668px) {
         .screen-modal { padding-bottom: calc(2vh + var(--bar-bot) + 20px); }
@@ -1791,10 +1779,10 @@
         .screen-modal .menu { padding-bottom: 0; }
         .screen-modal .menu .row { padding: 2px 22px 2px 28px; }
       }
-      /* At 1280x720, prevent centering and constrain menu to force scroll with 0.5 row cue */
+      /* At 1280x720, tighten paused menu row padding */
       @media (max-height: 720px) and (min-height: 668px) {
         .screen-modal { justify-content: flex-start; padding-top: 80px; }
-        .screen-modal .menu { padding-bottom: 60px; max-height: 266px; }
+        .screen-modal .menu { padding-bottom: 60px; }
         .screen-modal .menu .row { padding: 2px 22px 2px 28px; }
       }
       .menu-stage .menu { grid-column: 2; margin-top: 0; }

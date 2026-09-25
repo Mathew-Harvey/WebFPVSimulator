@@ -1768,15 +1768,25 @@
       .screen-title .menu { min-width: 0; width: 100%; margin-top: 0; background: rgba(16, 22, 17, 0.55); padding: 0; }
       .screen-title .menu .row { padding: 6px 22px 6px 28px; }
       .screen-title { padding-bottom: calc(1.5vh + var(--bar-bot) + 6px); }  /* Add 6px clearance for Support row */
+      /* At 1280x720, paused screen needs extra bottom padding to prevent menu overlap */
+      @media (max-height: 720px) and (min-height: 668px) {
+        .screen-modal { padding-bottom: calc(2vh + var(--bar-bot) + 20px); }
+      }
       /* On narrow viewports, add extra padding to ensure last row clears the command bar after scroll */
       @media (max-width: 768px) {
         .screen-title .menu { padding-bottom: 80px; }
       }
       .screen-modal .menu { padding-bottom: 20px; }
       .screen-modal .menu .row { padding: 5px 22px 5px 28px; }
-      /* At mid-size viewports (720-768px height), tighten paused menu to fit Support row */
-      @media (max-height: 768px) and (min-height: 668px) {
+      /* At 1366x768, tighten paused menu to fit Support row */
+      @media (max-height: 768px) and (min-height: 721px) {
         .screen-modal .menu { padding-bottom: 0; }
+        .screen-modal .menu .row { padding: 2px 22px 2px 28px; }
+      }
+      /* At 1280x720, prevent centering and constrain menu to force scroll */
+      @media (max-height: 720px) and (min-height: 668px) {
+        .screen-modal { justify-content: flex-start; padding-top: 80px; }
+        .screen-modal .menu { max-height: 380px; padding-bottom: 60px; overflow-y: auto; }
         .screen-modal .menu .row { padding: 2px 22px 2px 28px; }
       }
       .menu-stage .menu { grid-column: 2; margin-top: 0; }

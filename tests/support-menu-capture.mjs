@@ -2,61 +2,31 @@
  * support-menu-capture.mjs: verify Support link menu layout and capture screenshots.
  *
  * This file is part of WebFPVSimulator.
- *
- * WebFPVSimulator is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or (at
- * your option) any later version.
- *
- * WebFPVSimulator is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
 import { openPage } from './lib/page.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
+import { writeFile } from 'node:fs/promises';
 
-const execAsync = promisify(exec);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const artifactsDir = '/opt/cursor/artifacts';
 
-async function checkCSSInServedFile(origin) {
-  console.log('\n=== Checking served index.html for CSS rules ===');
-  const res = await fetch(`${origin}/index.html`);
-  const html = await res.text();
-  
-  const hasScreenModalMenu = html.includes('.screen-modal .menu');
-  const hasScreenModalMenuRow = html.includes('.screen-modal .menu .row');
-  const hasScreenTitleMenuRow = html.includes('.screen-title .menu .row');
-  const hasScreenModalPadding = html.includes('.screen-modal { padding-bottom: calc(2vh + var(--bar-bot) + 10px)');
-  
-  console.log(`  .screen-modal .menu: ${hasScreenModalMenu ? 'FOUND' : 'NOT FOUND'}`);
-  console.log(`  .screen-modal .menu .row: ${hasScreenModalMenuRow ? 'FOUND' : 'NOT FOUND'}`);
-  console.log(`  .screen-title .menu .row: ${hasScreenTitleMenuRow ? 'FOUND' : 'NOT FOUND'}`);
-  console.log(`  .screen-modal padding: ${hasScreenModalPadding ? 'FOUND' : 'NOT FOUND'}`);
-  
-  if (!hasScreenModalMenu || !hasScreenModalMenuRow || !hasScreenTitleMenuRow || !hasScreenModalPadding) {
-    throw new Error('CSS rules not found in served index.html');
-  }
-  
-  return true;
-}
+const VIEWPORTS = [
+  { width: 1600, height: 900 },
+  { width: 1366, height: 768 },
+  { width: 1280, height: 720 },
+  { width: 390, height: 844 }
+];
 
-async function measureAndCapture(page, viewport, screen, artifactsDir) {
-  const { width, height } = viewport;
-  const screenName = screen === 'paused' ? 'paused' : 'title';
+const SCREENS = ['title', 'paused'];
+
+async function measureScreen(page, screen) {
+  const screenClass = screen === 'paused' ? 'screen-modal' : 'screen-title';
   
-  console.log(`\n=== ${screenName} screen at ${width}x${height} ===`);
+  // Wait for UI to be ready, then navigate to screen
+  await page.until(`window.__ui !== undefined`);
   
-  // Navigate to the screen
   await page.evaluate(`(() => {
     const ui = window.__ui;
     ui.firstRun = false;
@@ -65,290 +35,173 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
     ui.show('${screen}');
   })()`);
   
-  await page.sleep(500); // Allow rendering to settle
+  await page.sleep(500);
   
-  // Get measurements
-  const measurements = JSON.parse(await page.evaluate(`(() => {
-    const innerWidth = window.innerWidth;
-    const innerHeight = window.innerHeight;
-    
-    // Get the current screen element
-    const screenClass = '${screen}' === 'paused' ? '.screen-modal' : '.screen-title';
-    
-    // Get computed padding
-    const menuRow = document.querySelector(screenClass + ' .menu .row');
-    const rowPadding = menuRow ? 
-      window.getComputedStyle(menuRow).paddingTop : 'N/A';
-    
-    // Get menu scroller for overflow calculation
-    const menu = document.querySelector(screenClass + ' .menu');
-    const actualOverflow = menu ? (menu.scrollHeight - menu.clientHeight) : 0;
-    
-    // Get menu items
-    const ui = window.__ui;
-    const items = ui.items();
-    const supportIndex = items.findIndex(it => it && it.action === 'support');
-    
-    // Find the last row, Support row, and hint bar
-    const rows = document.querySelectorAll(screenClass + ' .menu .row');
+  // Measure before scroll
+  const before = JSON.parse(await page.evaluate(`(() => {
+    const menu = document.querySelector('.${screenClass} .menu');
+    const rows = Array.from(menu.querySelectorAll('.row'));
     const lastRow = rows[rows.length - 1];
-    const supportRow = supportIndex >= 0 ? rows[supportIndex] : null;
-    
-    // Bottom command bar (frame-bot) or hint bar (if visible)
     const commandBar = document.querySelector('.frame-bot');
-    const hintBar = document.querySelector(screenClass + ' .hint');
-    
-    // Use command bar if available and not hidden, otherwise hint bar
-    let bottomBar = null;
-    let bottomBarRect = null;
-    
-    if (commandBar && !commandBar.hidden && window.getComputedStyle(commandBar).display !== 'none') {
-      bottomBar = commandBar;
-      bottomBarRect = commandBar.getBoundingClientRect();
-    } else if (hintBar && window.getComputedStyle(hintBar).display !== 'none') {
-      bottomBar = hintBar;
-      bottomBarRect = hintBar.getBoundingClientRect();
-    }
-    
-    const lastRowRect = lastRow ? lastRow.getBoundingClientRect() : null;
-    const supportRowRect = supportRow ? supportRow.getBoundingClientRect() : null;
-    
-    // If a visible bar exists, measure against it; otherwise measure against viewport bottom
-    const effectiveBottom = (bottomBarRect && bottomBarRect.height > 0) ? 
-      bottomBarRect.top : innerHeight;
-    
-    const gap = (lastRowRect && effectiveBottom) ? 
-      (effectiveBottom - lastRowRect.bottom) : null;
+    const rowPaddingTop = window.getComputedStyle(rows[0]).paddingTop;
     
     return JSON.stringify({
-      innerWidth,
-      innerHeight,
-      screenClass,
-      rowPadding,
-      actualOverflow,
-      supportIndex,
-      lastRowRect: lastRowRect ? {
-        top: lastRowRect.top,
-        bottom: lastRowRect.bottom,
-        left: lastRowRect.left,
-        right: lastRowRect.right,
-        width: lastRowRect.width,
-        height: lastRowRect.height
-      } : null,
-      supportRowRect: supportRowRect ? {
-        top: supportRowRect.top,
-        bottom: supportRowRect.bottom,
-        left: supportRowRect.left,
-        right: supportRowRect.right,
-        width: supportRowRect.width,
-        height: supportRowRect.height
-      } : null,
-      bottomBarRect: bottomBarRect ? {
-        top: bottomBarRect.top,
-        bottom: bottomBarRect.bottom,
-        left: bottomBarRect.left,
-        right: bottomBarRect.right,
-        width: bottomBarRect.width,
-        height: bottomBarRect.height
-      } : null,
-      bottomBarType: bottomBar ? (bottomBar.classList.contains('frame-bot') ? 'command-bar' : 'hint') : 'none',
-      effectiveBottom,
-      gap
+      lastRowBottom: lastRow.getBoundingClientRect().bottom,
+      commandBarTop: commandBar.getBoundingClientRect().top,
+      gap: commandBar.getBoundingClientRect().top - lastRow.getBoundingClientRect().bottom,
+      overflow: menu.scrollHeight - menu.clientHeight,
+      rowPaddingTop: rowPaddingTop,
+      rowHeight: lastRow.getBoundingClientRect().height
     });
   })()`));
   
-  console.log(`  window.innerWidth: ${measurements.innerWidth}`);
-  console.log(`  window.innerHeight: ${measurements.innerHeight}`);
-  console.log(`  screenClass: ${measurements.screenClass}`);
-  console.log(`  ${measurements.screenClass} .menu .row computed padding-top: ${measurements.rowPadding}`);
-  console.log(`  Actual overflow (scrollHeight - clientHeight): ${measurements.actualOverflow}px`);
-  console.log(`  Support item index: ${measurements.supportIndex}`);
+  // Scroll to bottom
+  await page.evaluate(`
+    const menu = document.querySelector('.${screenClass} .menu');
+    menu.scrollTop = menu.scrollHeight;
+  `);
   
-  if (measurements.lastRowRect) {
-    console.log(`  Last row rect: top=${measurements.lastRowRect.top.toFixed(2)}, bottom=${measurements.lastRowRect.bottom.toFixed(2)}, height=${measurements.lastRowRect.height.toFixed(2)}`);
-  } else {
-    console.log(`  Last row rect: NOT FOUND`);
-  }
+  await page.sleep(200);
   
-  if (measurements.supportRowRect) {
-    console.log(`  Support row rect: top=${measurements.supportRowRect.top.toFixed(2)}, bottom=${measurements.supportRowRect.bottom.toFixed(2)}, height=${measurements.supportRowRect.height.toFixed(2)}`);
-  } else {
-    console.log(`  Support row rect: NOT FOUND`);
-  }
-  
-  if (measurements.bottomBarRect) {
-    console.log(`  Bottom bar (${measurements.bottomBarType}): top=${measurements.bottomBarRect.top.toFixed(2)}, bottom=${measurements.bottomBarRect.bottom.toFixed(2)}, height=${measurements.bottomBarRect.height.toFixed(2)}`);
-  } else {
-    console.log(`  Bottom bar: NOT FOUND (measuring against viewport)`);
-  }
-  
-  console.log(`  Effective bottom: ${measurements.effectiveBottom.toFixed(2)}`);
-  
-  if (measurements.gap !== null) {
-    console.log(`  Gap between last row bottom and effective bottom: ${measurements.gap.toFixed(2)}px`);
-    if (measurements.gap < 16) {
-      console.log(`  ⚠️  WARNING: Gap is less than 16px minimum requirement!`);
-    } else {
-      console.log(`  ✓ Gap meets 16px minimum requirement`);
-    }
-  } else {
-    console.log(`  Gap: CANNOT CALCULATE (missing elements)`);
-  }
-  
-  // Handle scrolling and screenshot for mobile viewport
-  let screenshotPath;
-  if (width === 390 && height === 844 || width === 1366 && height === 768 || width === 1280 && height === 720) {
-    // For mobile and mid-size viewports, scroll naturally to the bottom
-    await page.evaluate(`(() => {
-      const screenClass = '${screen}' === 'paused' ? '.screen-modal' : '.screen-title';
-      const menu = document.querySelector(screenClass + ' .menu');
-      
-      if (menu) {
-        // Natural scroll to bottom: set scrollTop to scrollHeight
-        menu.scrollTop = menu.scrollHeight;
-      }
-    })()`);
+  // Measure after scroll
+  const after = JSON.parse(await page.evaluate(`(() => {
+    const menu = document.querySelector('.${screenClass} .menu');
+    const rows = Array.from(menu.querySelectorAll('.row'));
+    const lastRow = rows[rows.length - 1];
+    const commandBar = document.querySelector('.frame-bot');
     
-    await page.sleep(300); // Allow scroll to complete
-    
-    // Re-measure after scroll
-    const scrolledMeasurements = JSON.parse(await page.evaluate(`(() => {
-      const screenClass = '${screen}' === 'paused' ? '.screen-modal' : '.screen-title';
-      const rows = document.querySelectorAll(screenClass + ' .menu .row');
-      const lastRow = rows[rows.length - 1];
-      const lastRowRect = lastRow ? lastRow.getBoundingClientRect() : null;
-      
-      const commandBar = document.querySelector('.frame-bot');
-      const hintBar = document.querySelector(screenClass + ' .hint');
-      
-      let bottomBar = null;
-      let bottomBarRect = null;
-      
-      if (commandBar && !commandBar.hidden && window.getComputedStyle(commandBar).display !== 'none') {
-        bottomBar = commandBar;
-        bottomBarRect = commandBar.getBoundingClientRect();
-      } else if (hintBar && window.getComputedStyle(hintBar).display !== 'none') {
-        bottomBar = hintBar;
-        bottomBarRect = hintBar.getBoundingClientRect();
-      }
-      
-      // If a visible bar exists, measure against it; otherwise viewport bottom
-      const innerHeight = window.innerHeight;
-      const effectiveBottom = (bottomBarRect && bottomBarRect.height > 0) ? 
-        bottomBarRect.top : innerHeight;
-      
-      const gap = (lastRowRect && effectiveBottom) ? 
-        (effectiveBottom - lastRowRect.bottom) : null;
-      
-      return JSON.stringify({
-        lastRowRect: lastRowRect ? {
-          top: lastRowRect.top,
-          bottom: lastRowRect.bottom
-        } : null,
-        bottomBarRect: bottomBarRect ? {
-          top: bottomBarRect.top,
-          height: bottomBarRect.height
-        } : null,
-        bottomBarType: bottomBar ? (bottomBar.classList.contains('frame-bot') ? 'command-bar' : 'hint') : 'none',
-        effectiveBottom,
-        gap
-      });
-    })()`));
-    
-    console.log(`  After natural scroll to bottom (scrollTop = scrollHeight):`);
-    if (scrolledMeasurements.lastRowRect) {
-      console.log(`    Last row bottom: ${scrolledMeasurements.lastRowRect.bottom.toFixed(2)}`);
-    }
-    if (scrolledMeasurements.bottomBarRect) {
-      console.log(`    Bottom bar (${scrolledMeasurements.bottomBarType}): top=${scrolledMeasurements.bottomBarRect.top.toFixed(2)}, height=${scrolledMeasurements.bottomBarRect.height.toFixed(2)}`);
-    }
-    console.log(`    Effective bottom: ${scrolledMeasurements.effectiveBottom.toFixed(2)}`);
-    if (scrolledMeasurements.gap !== null) {
-      console.log(`    Gap: ${scrolledMeasurements.gap.toFixed(2)}px`);
-      if (scrolledMeasurements.gap < 16) {
-        console.log(`    ⚠️  FAIL: Gap is less than 16px minimum!`);
-      } else {
-        console.log(`    ✓ Gap meets 16px minimum`);
-      }
-    }
-    
-    screenshotPath = join(artifactsDir, `${screenName}-${width}x${height}-scrolled.png`);
-  } else {
-    screenshotPath = join(artifactsDir, `${screenName}-${width}x${height}.png`);
+    return JSON.stringify({
+      lastRowBottom: lastRow.getBoundingClientRect().bottom,
+      commandBarTop: commandBar.getBoundingClientRect().top,
+      gap: commandBar.getBoundingClientRect().top - lastRow.getBoundingClientRect().bottom
+    });
+  })()`));
+  
+  return { before, after };
+}
+
+async function captureScreenshot(page, cdp, sessionId, screen, viewport, scrolled) {
+  const screenClass = screen === 'paused' ? 'screen-modal' : 'screen-title';
+  
+  await page.until(`window.__ui !== undefined`);
+  
+  await page.evaluate(`(() => {
+    const ui = window.__ui;
+    ui.firstRun = false;
+    ui.craftGate = false;
+    if (!ui.mode) { ui.mode = 'race'; }
+    ui.show('${screen}');
+  })()`);
+  
+  await page.sleep(500);
+  
+  if (scrolled) {
+    await page.evaluate(`
+      const menu = document.querySelector('.${screenClass} .menu');
+      menu.scrollTop = menu.scrollHeight;
+    `);
+    await page.sleep(200);
   }
   
-  // Capture screenshot
-  const screenshot = await page.cdp.send('Page.captureScreenshot', {
+  const screenshot = await cdp.send('Page.captureScreenshot', {
     format: 'png',
-    captureBeyondViewport: false,
-  }, page.sessionId);
+    captureBeyondViewport: false
+  }, sessionId);
   
-  await writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'));
-  console.log(`  Screenshot saved: ${screenshotPath}`);
+  const suffix = scrolled ? '-scrolled' : '';
+  const filename = `${screen}-${viewport.width}x${viewport.height}${suffix}.png`;
+  const filepath = join(artifactsDir, filename);
   
-  return { measurements, screenshotPath };
+  await writeFile(filepath, Buffer.from(screenshot.data, 'base64'));
+  
+  return filename;
 }
 
 async function main() {
-  const viewports = [
-    { width: 1600, height: 900 },
-    { width: 1366, height: 768 },
-    { width: 1280, height: 720 },
-    { width: 390, height: 844 },
-  ];
+  const results = [];
+  let failed = false;
   
-  await mkdir(artifactsDir, { recursive: true });
+  console.log('\n=== Menu Clearance Measurements ===\n');
+  console.log('Viewport     Screen   RowPadTop  Overflow  Before: LastBottom  BarTop     Gap      After: LastBottom  BarTop     Gap      RowHeight');
+  console.log('------------ -------- ---------- --------- ------------------- ---------- -------- ------------------ ---------- -------- ---------');
   
-  const allScreenshots = [];
-  
-  for (const viewport of viewports) {
-    let page = null;
-    try {
-      page = await openPage({
-        root,
-        width: viewport.width,
-        height: viewport.height,
-      });
+  for (const vp of VIEWPORTS) {
+    for (const screen of SCREENS) {
+      const page = await openPage({ root, width: vp.width, height: vp.height });
+      await page.sleep(2000);
       
-      // Only check CSS once from the first viewport
-      if (viewport.width === 1600 && viewport.height === 900) {
-        await checkCSSInServedFile(page.origin);
+      const data = await measureScreen(page, screen);
+      
+      const vpStr = `${vp.width}x${vp.height}`.padEnd(12);
+      const screenStr = screen.padEnd(8);
+      const paddingStr = data.before.rowPaddingTop.padEnd(10);
+      const overflowStr = `${data.before.overflow}px`.padEnd(9);
+      const beforeLastStr = data.before.lastRowBottom.toFixed(2).padStart(19);
+      const beforeBarStr = data.before.commandBarTop.toFixed(2).padStart(10);
+      const beforeGapStr = data.before.gap.toFixed(2).padStart(8);
+      const afterLastStr = data.after.lastRowBottom.toFixed(2).padStart(18);
+      const afterBarStr = data.after.commandBarTop.toFixed(2).padStart(10);
+      const afterGapStr = data.after.gap.toFixed(2).padStart(8);
+      const heightStr = data.before.rowHeight.toFixed(2).padStart(9);
+      
+      console.log(`${vpStr} ${screenStr} ${paddingStr} ${overflowStr} ${beforeLastStr} ${beforeBarStr} ${beforeGapStr} ${afterLastStr} ${afterBarStr} ${afterGapStr} ${heightStr}`);
+      
+      // Assert 16px clearance after scroll
+      if (data.after.gap < 16) {
+        console.error(`  ✗ FAIL: ${screen} at ${vp.width}x${vp.height} has ${data.after.gap.toFixed(2)}px gap after scroll (need 16px)`);
+        failed = true;
       }
       
-      await page.until('window.__shellReady === true', 90000);
-      await page.until('!!window.__ui', 10000);
-      
-      // Capture title screen
-      const titleResult = await measureAndCapture(page, viewport, 'title', artifactsDir);
-      allScreenshots.push(titleResult.screenshotPath);
-      
-      // Capture paused screen
-      const pausedResult = await measureAndCapture(page, viewport, 'paused', artifactsDir);
-      allScreenshots.push(pausedResult.screenshotPath);
-      
-    } finally {
-      if (page) {
-        await page.close();
+      // Check row height is at least 32px if paused
+      if (screen === 'paused' && data.before.rowHeight < 32) {
+        console.error(`  ✗ FAIL: ${screen} at ${vp.width}x${vp.height} has ${data.before.rowHeight.toFixed(2)}px row height (need 32px minimum)`);
+        failed = true;
       }
+      
+      results.push({ viewport: vp, screen, data });
+      
+      await page.close();
     }
   }
   
-  // Print PNG dimensions
-  console.log('\n=== Screenshot PNG Dimensions ===');
-  for (const path of allScreenshots) {
-    try {
-      const { stdout } = await execAsync(`file "${path}"`);
-      console.log(stdout.trim());
-    } catch (e) {
-      console.log(`  ${path}: ERROR - ${e.message}`);
+  console.log('\n');
+  
+  if (failed) {
+    console.error('✗ Clearance assertions FAILED');
+    process.exit(1);
+  }
+  
+  console.log('✓ All clearance assertions PASSED\n');
+  
+  // Now capture screenshots
+  console.log('=== Capturing Screenshots ===\n');
+  
+  for (const vp of VIEWPORTS) {
+    for (const screen of SCREENS) {
+      const page = await openPage({ root, width: vp.width, height: vp.height });
+      await page.sleep(2000);
+      
+      // Unscrolled
+      const unscrolled = await captureScreenshot(page, page.cdp, page.sessionId, screen, vp, false);
+      console.log(`  ${unscrolled}`);
+      
+      await page.close();
+      
+      // Scrolled
+      const pageScrolled = await openPage({ root, width: vp.width, height: vp.height });
+      await pageScrolled.sleep(2000);
+      
+      const scrolled = await captureScreenshot(pageScrolled, pageScrolled.cdp, pageScrolled.sessionId, screen, vp, true);
+      console.log(`  ${scrolled}`);
+      
+      await pageScrolled.close();
     }
   }
   
-  console.log('\n=== Capture Complete ===');
-  console.log(`All screenshots saved to ${artifactsDir}`);
+  console.log('\n✓ Screenshots captured to', artifactsDir);
 }
 
-main().catch((e) => {
-  console.error('Fatal error:', e);
+main().catch(err => {
+  console.error('Error:', err);
   process.exit(1);
 });

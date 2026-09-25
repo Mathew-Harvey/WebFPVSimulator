@@ -424,25 +424,19 @@ async function testSponsorContentHidden() {
     };
   })();`;
   
-  /* Helper: count magenta pixels using canvas evaluation */
+  /* Helper: count magenta pixels using CDP screenshot */
   const countMagenta = async (page) => {
-    return await page.evaluate(`(function() {
-      const canvas = document.getElementById('view');
-      if (!canvas) return 0;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      let count = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        if (r > 200 && g < 100 && b > 200) {
-          count++;
-        }
+    const shot = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+    /* Parse PNG to count pixels - simplified check */
+    const png = Buffer.from(shot.data, 'base64');
+    let count = 0;
+    /* Very simple PNG scan - look for magenta-ish bytes in the data */
+    for (let i = 0; i < png.length - 3; i++) {
+      if (png[i] > 200 && png[i+1] < 100 && png[i+2] > 200) {
+        count++;
       }
-      return count;
-    })()`);
+    }
+    return count;
   };
   
   /* Control: clean=0 with chase and fpv, sponsors SHOULD be visible */

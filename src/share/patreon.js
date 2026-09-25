@@ -33,7 +33,7 @@
 /* The public page. Same address in the landing config and the board app. */
 export const PATREON_URL = 'https://www.patreon.com/c/webfpv';
 
-export const PATREON_NOTE = 'Support WebFPV on Patreon. Keep the lights on, $5. Hosting + runway, $12. Build the sim, $25. USD, plus GST on join.';
+export const PATREON_NOTE = 'Support WebFPV on Patreon. Keep the lights on, $3. Hosting + runway, $8. Build the sim, $20. USD a month.';
 
 /* Patreon's symbol. Do not restyle the path. */
 const MARK = 'M15.386.524c-4.764 0-8.64 3.876-8.64 8.64 0 4.75 3.876 8.613 8.64 8.613 4.75 0 8.614-3.864 8.614-8.613C24 4.4 20.136.524 15.386.524M.003 23.537h4.22V.524H.003';

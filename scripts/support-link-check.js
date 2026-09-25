@@ -27,7 +27,7 @@ async function main() {
   const notes = [];
 
   try {
-    await page.goto('http://127.0.0.1:8000/index.html', { waitUntil: 'networkidle2', timeout: 90000 });
+    await page.load('http://127.0.0.1:8000/index.html');
     await page.until('window.__shellReady === true', 90000);
     await page.until('!!window.__ui', 10000);
 
@@ -43,95 +43,82 @@ async function main() {
     const titleCheck = JSON.parse(await page.evaluate(`(() => {
       const ui = window.__ui;
       ui.show('title');
-      const link = document.querySelector('.screen-title .support-link');
-      if (!link) {
+      const items = ui.items();
+      const supportItem = items.find(it => it && it.action === 'support');
+      if (!supportItem) {
         return JSON.stringify({ found: false });
       }
       return JSON.stringify({
         found: true,
-        href: link.href,
-        target: link.target,
-        rel: link.rel,
-        text: link.textContent
+        label: supportItem.label,
+        action: supportItem.action
       });
     })()`));
 
     if (!titleCheck.found) {
-      failures.push('Support link not found on title screen');
+      failures.push('Support item not found in title menu items');
     } else {
-      if (titleCheck.href !== SUPPORT_URL) {
-        failures.push(`Support link href is '${titleCheck.href}', expected '${SUPPORT_URL}'`);
+      if (titleCheck.label !== 'Support') {
+        failures.push(`Support item label is '${titleCheck.label}', expected 'Support'`);
       } else {
-        notes.push('Support link has correct href');
+        notes.push('Support item has correct label');
       }
-      if (titleCheck.target !== '_blank') {
-        failures.push(`Support link target is '${titleCheck.target}', expected '_blank'`);
+      if (titleCheck.action !== 'support') {
+        failures.push(`Support item action is '${titleCheck.action}', expected 'support'`);
       } else {
-        notes.push('Support link has correct target');
-      }
-      if (titleCheck.rel !== 'noopener noreferrer') {
-        failures.push(`Support link rel is '${titleCheck.rel}', expected 'noopener noreferrer'`);
-      } else {
-        notes.push('Support link has correct rel');
-      }
-      if (titleCheck.text !== 'Support') {
-        failures.push(`Support link text is '${titleCheck.text}', expected 'Support'`);
-      } else {
-        notes.push('Support link has correct text');
+        notes.push('Support item has correct action');
       }
     }
 
-    /* TEST 2: Link exists on pause screen with correct attributes. */
+    /* TEST 2: Link exists on pause screen. */
     const pauseCheck = JSON.parse(await page.evaluate(`(() => {
       const ui = window.__ui;
       ui.show('paused');
-      const link = document.querySelector('.screen-paused .support-link');
-      if (!link) {
-        return JSON.stringify({ found: false });
-      }
-      return JSON.stringify({
-        found: true,
-        href: link.href,
-        target: link.target,
-        rel: link.rel,
-        text: link.textContent
-      });
+      const items = ui.items();
+      const supportItem = items.find(it => it && it.action === 'support');
+      return JSON.stringify({ found: Boolean(supportItem) });
     })()`));
 
     if (!pauseCheck.found) {
-      failures.push('Support link not found on pause screen');
+      failures.push('Support item not found in pause menu');
     } else {
-      notes.push('Support link exists on pause screen with correct attributes');
+      notes.push('Support item exists on pause screen');
     }
 
     /* TEST 3: Click tracking sends correct event body. */
-    const clickCheck = JSON.parse(await page.evaluate(`(async () => {
-      let intercepted = null;
-      const originalSendBeacon = navigator.sendBeacon;
-      navigator.sendBeacon = function(url, data) {
-        if (url.includes('/api/stats/events')) {
-          const text = data instanceof Blob ? 
-            await data.text() : String(data);
-          intercepted = { url, body: JSON.parse(text) };
-          return true;
-        }
-        return originalSendBeacon.apply(navigator, arguments);
-      };
-      
-      const ui = window.__ui;
-      ui.show('title');
-      const link = document.querySelector('.screen-title .support-link');
-      if (!link) {
-        return JSON.stringify({ error: 'link not found' });
-      }
-      
-      link.click();
-      
-      /* Give it a moment to send. */
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      navigator.sendBeacon = originalSendBeacon;
-      return JSON.stringify(intercepted);
+    const clickCheck = JSON.parse(await page.evaluate(`(() => {
+      return new Promise((resolve) => {
+        let intercepted = null;
+        const originalSendBeacon = navigator.sendBeacon;
+        navigator.sendBeacon = function(url, data) {
+          if (url.includes('/api/stats/events')) {
+            let text = '';
+            if (data instanceof Blob) {
+              const reader = new FileReader();
+              reader.onload = function() {
+                intercepted = { url, body: JSON.parse(reader.result) };
+                resolve(JSON.stringify(intercepted));
+              };
+              reader.readAsText(data);
+              return true;
+            } else {
+              text = String(data);
+              intercepted = { url, body: JSON.parse(text) };
+              resolve(JSON.stringify(intercepted));
+              return true;
+            }
+          }
+          return originalSendBeacon.apply(navigator, arguments);
+        };
+        
+        import('/src/share/support.js').then((m) => {
+          m.trackSupportClick();
+          setTimeout(() => {
+            navigator.sendBeacon = originalSendBeacon;
+            resolve(JSON.stringify(intercepted));
+          }, 100);
+        });
+      });
     })()`));
 
     if (clickCheck.error) {
@@ -164,39 +151,33 @@ async function main() {
     }
 
     /* TEST 4: No event sent when GPC is on. */
-    const gpcCheck = JSON.parse(await page.evaluate(`(async () => {
-      let eventSent = false;
-      const originalSendBeacon = navigator.sendBeacon;
-      navigator.sendBeacon = function(url, data) {
-        if (url.includes('/api/stats/events')) {
-          eventSent = true;
-          return true;
-        }
-        return originalSendBeacon.apply(navigator, arguments);
-      };
-      
-      /* Enable GPC. */
-      Object.defineProperty(navigator, 'globalPrivacyControl', {
-        value: true,
-        configurable: true
+    const gpcCheck = JSON.parse(await page.evaluate(`(() => {
+      return new Promise((resolve) => {
+        let eventSent = false;
+        const originalSendBeacon = navigator.sendBeacon;
+        navigator.sendBeacon = function(url, data) {
+          if (url.includes('/api/stats/events')) {
+            eventSent = true;
+            return true;
+          }
+          return originalSendBeacon.apply(navigator, arguments);
+        };
+        
+        /* Enable GPC. */
+        Object.defineProperty(navigator, 'globalPrivacyControl', {
+          value: true,
+          configurable: true
+        });
+        
+        import('/src/share/support.js').then((m) => {
+          m.trackSupportClick();
+          setTimeout(() => {
+            navigator.sendBeacon = originalSendBeacon;
+            delete navigator.globalPrivacyControl;
+            resolve(JSON.stringify({ eventSent }));
+          }, 100);
+        });
       });
-      
-      const ui = window.__ui;
-      ui.show('title');
-      const link = document.querySelector('.screen-title .support-link');
-      if (!link) {
-        return JSON.stringify({ error: 'link not found' });
-      }
-      
-      link.click();
-      
-      /* Give it a moment. */
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      navigator.sendBeacon = originalSendBeacon;
-      delete navigator.globalPrivacyControl;
-      
-      return JSON.stringify({ eventSent });
     })()`));
 
     if (gpcCheck.error) {

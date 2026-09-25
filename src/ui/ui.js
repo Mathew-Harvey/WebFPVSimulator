@@ -9599,7 +9599,8 @@ export class Ui {
     const commandBarRect = commandBar.getBoundingClientRect();
     const scrollerRect = scroller.getBoundingClientRect();
     
-    /* Calculate available height: bar top minus 16px clearance, minus scroller top. */
+    /* Calculate available height: bar top minus 16px clearance, minus scroller top.
+     * This is in client-box coordinates (from the scroller's border-box top). */
     const available = commandBarRect.top - 16 - scrollerRect.top;
     
     /* If content fits naturally, clear max-height and stop. */
@@ -9607,17 +9608,20 @@ export class Ui {
       return;
     }
 
-    /* Find the LAST row k where top_k + 0.5*h_k <= available. */
+    /* Find the LAST row k where top_k + 0.5*h_k <= available.
+     * Measure in client-box coordinates (relative to scroller's border-box top).
+     * Use getBoundingClientRect since offsetTop may be relative to a positioned ancestor. */
     let targetRow = null;
     let targetIndex = -1;
     
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const h = row.offsetHeight;
-      const top = row.offsetTop;
+      const rowRect = row.getBoundingClientRect();
+      const h = rowRect.height;
+      const top = rowRect.top - scrollerRect.top + scroller.scrollTop;
       
       if (top + 0.5 * h <= available) {
-        /* Skip section headers - check if this row has the row-head class. */
+        /* Skip section headers. */
         if (!row.classList.contains('row-head')) {
           targetRow = row;
           targetIndex = i;
@@ -9628,19 +9632,30 @@ export class Ui {
     }
 
     if (!targetRow) {
-      /* No row qualifies, use a minimal height that fits at least some content. */
-      scroller.style.maxHeight = `${Math.max(100, available)}px`;
+      /* No row qualifies, use a minimal height. */
+      scroller.style.maxHeight = `${Math.max(100, available - 100)}px`;
       scroller.style.flexShrink = '0';
+      scroller.style.alignSelf = 'start';
       return;
     }
 
-    /* Set max-height to show exactly 50% of the target row. */
-    const top = targetRow.offsetTop;
-    const h = targetRow.offsetHeight;
-    const maxHeight = Math.floor(top + 0.5 * h);
+    /* Set max-height to top_k + 0.5*h_k.
+     * Convert from client-box to content-box for max-height since box-sizing is content-box. */
+    const targetRect = targetRow.getBoundingClientRect();
+    const top = targetRect.top - scrollerRect.top + scroller.scrollTop;
+    const h = targetRect.height;
+    const clientMaxHeight = Math.floor(top + 0.5 * h);
     
-    scroller.style.maxHeight = `${maxHeight}px`;
+    /* Account for padding and border when setting max-height on content-box element. */
+    const scrollerStyle = window.getComputedStyle(scroller);
+    const paddingTop = parseFloat(scrollerStyle.paddingTop) || 0;
+    const paddingBottom = parseFloat(scrollerStyle.paddingBottom) || 0;
+    const borderTop = parseFloat(scrollerStyle.borderTopWidth) || 0;
+    const contentMaxHeight = clientMaxHeight - paddingTop - paddingBottom - borderTop;
+    
+    scroller.style.maxHeight = `${contentMaxHeight}px`;
     scroller.style.flexShrink = '0';
+    scroller.style.alignSelf = 'start';
   }
 
   show(screen) {

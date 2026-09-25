@@ -18,11 +18,14 @@
  */
 
 import { openPage } from '../tests/lib/page.js';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const SUPPORT_URL = 'https://www.patreon.com/cw/webfpv';
 
 async function main() {
-  const page = await openPage();
+  const page = await openPage({ root });
   const failures = [];
   const notes = [];
 

@@ -933,12 +933,36 @@
        *
        * overscroll-behavior stops a flick at the end of the list turning
        * into a pull-to-refresh on the page behind it.
+       *
+       * pointer-events is the half a phone notices.
+       *
+       * .screen is pointer-events: none so a click on empty space falls
+       * through to the world, and the rows opt back in. A scroll is a
+       * different question. iOS Safari will not pan a scroller the finger
+       * cannot hit, even when the finger is on a child that can be hit
+       * (WebKit 183870, still open). Chromium does pan it, which is why a
+       * desktop check stays green. Quad and Rates hand their overflow to
+       * this page on a narrow window: the list's own box is overflow
+       * visible, so this element is the only scroller. How to fly is the
+       * same shape, and most of its lesson is not a hit target, so a drag
+       * there reached the page behind and moved nothing in either browser.
+       *
+       * Courses already declared this on itself, because the page is the
+       * scroller and the page is what the finger has to hit. The pause
+       * modal shares the scroller, so it shares the declaration. Hidden
+       * screens are display: none, so this does not cover the flight canvas.
+       *
+       * bug-d31c33a0, Lucas, iPhone Safari, the Quad screen. The airframe
+       * picture still takes its own drag: touch-action none and a
+       * preventDefault on pointerdown, so a swipe that starts on the quad
+       * orbits it and does not scroll the list.
        */
       .screen-page,
       .screen-modal {
         justify-content: safe center;
         overflow-y: auto;
         overscroll-behavior: contain;
+        pointer-events: auto;
       }
       /* One line under a screen's title, saying what the screen is showing
          when the screen is showing a filtered view of something. Slate,

@@ -44372,3 +44372,57 @@ FREESTYLE-MAPS-PLAN.md section 12 records items 8 and 9.
                              Fly this map entry's run log is this tree's
     git merge-base           e8f74f5, main is an ancestor of the branch
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | shell | A finger can scroll the page menus
+
+Board ticket bug-d31c33a0, Lucas, filed 2026-09-25 07:38 UTC from an iPhone
+(Safari 26, viewport 390 by 797) on the Quad screen: "I am unable to scroll
+down in mobile with my finger." Expected: "To be able to scroll normally."
+
+The list is taller than that window. At 390 by 797 the Quad screen's Back
+row sat near y 1200, about 400 px past the fold, and the page had 650 px of
+scroll travel. Quad and Rates, under the narrow-window rules, set the
+list's own overflow to visible and let `.screen-page` scroll. That element
+inherited `pointer-events: none` from `.screen`. A click on empty space is
+meant to fall through. A scroll is not: iOS Safari will not pan a scroller
+the finger cannot hit, even when the finger is on a child that can be hit
+(WebKit 183870, still open). Chromium will, which is why a drag on a Quad
+row already moved the page here and the report is a phone. How to fly was
+the stricter case: the lesson is not a hit target, so a drag on it hit the
+document body and the page stayed at scroll 0 in Chromium too, with Back
+about 450 px below the fold. `.screen-courses` already set
+`pointer-events: auto` next to its page scroller. The same declaration is
+now on `.screen-page` and `.screen-modal`.
+
+Left alone on purpose: the airframe picture. `showcase.js` calls
+`preventDefault` on pointerdown and the canvas is `touch-action: none`, so
+a drag that starts on the quad still orbits it. The title menu already
+scrolls inside `.menu`, which accepts the touch, and that rule was not
+changed. Hidden screens are `display: none`, so this does not cover the
+flight canvas.
+
+What went wrong on the way. The first probe imported the page driver by a
+`C:` path, which Node's ESM loader rejects. The second passed the repo root
+with forward slashes, and `tests/lib/server.js` 403s that because
+`path.join` on Windows writes backslashes and `startsWith` then fails. A
+reload under `deviceScaleFactor: 3` never reached `__shellReady`. The run
+that counted used `openPage` with a real Windows root and no reload. Local
+`main` was 62 commits behind `origin/main` (9ed8b9c against 40fe84f). The
+branch `GroksBugFixForClaudeToReview` was cut from `origin/main`. Local
+`main` was not moved.
+
+### RUN LOG
+
+    headless Chromium, 390 by 797, touch, mobile metrics
+      before               Quad row drag moved the page; How to fly drag
+                           at mid-screen did not (scrollTop stayed 0,
+                           hit target was body)
+      after                .screen-quad / .screen-rates / .screen-howto
+                           computed pointer-events auto, overflow-y auto
+                           Quad drag scrollTop 0 to 285
+                           How to fly drag scrollTop 0 to 297
+                           Rates mid-screen hit is the page, was body
+                           title stays pointer-events none
+                           flight shows no menu screen (hit is body)
+    npm run verify         not run: stylesheet hit testing, not the plant
+    git diff --stat vendor/betaflight   empty

@@ -44746,3 +44746,36 @@ plant, the ABI and the build are untouched.
     npm run lint:shell, merged     1 problem, the same title overflow
     npm run lint:input, merged     2 failed, 154 passed, the same 2; the
                                    13 new checks pass
+
+## 2026-09-25 | git | The fourth card and the builder's chooser, merged to main for the owner to test
+
+The owner, on the entry above: "merge to main, i'll test it". That is the
+approval to put the gate's Map builder card and the builder's chooser on
+main, and the verification scale chosen is the owner testing it by hand.
+The four decisions that entry lists (the label, when the chooser asks, the
+phone layout, the card's picture) were put to the owner and are not
+answered yet; they ride on main as built, and testing it is how the owner
+will judge them.
+
+What to look for: the fourth card on the gate, Map builder, opens the
+builder with "What are you building?" up over it; picking Freestyle lands
+on the map canvas with the switch in the bar reading FREESTYLE; the switch
+still changes it back. What would count as wrong: the question appearing
+when coming in from the Track room's Build a track or the Freestyle room's
+Build a freestyle map, or after a reload; a key pressed at the question
+doing anything to the canvas behind it; a card on the gate hanging under
+the command bar on a phone.
+
+main had not moved since the branch took f678dba in, so main fast-forwards
+to the branch: no merge commit, nothing rewritten, one history.
+
+### RUN LOG
+
+    code                     unchanged since the merged tree's reruns in
+                             the entry above; this entry is new
+    checks                   not rerun: nothing they read changed since
+                             the entry above's lint:shell and lint:input
+                             on the merged tree
+    git merge-base           f678dba, main's tip; main moves by
+                             fast-forward
+    git diff --stat vendor/betaflight   empty

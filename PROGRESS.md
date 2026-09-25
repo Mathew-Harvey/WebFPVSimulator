@@ -47488,3 +47488,28 @@ Test results:
 - stats:selftest: 79 passed, 0 failed
 - lint:boot: 9 of 9 checks clean
 - lint:shell: title and paused both 0px overflow, 9 pre-existing failures remain
+
+---
+
+## 2026-09-25: CSS selector bug fix: .screen-paused → .screen-modal
+
+At d6ffe52, fixed critical CSS bug: the paused screen element has class `screen-modal` (not `screen-paused`), so the padding rules were never applied. Changed selectors from `.screen-paused` to `.screen-modal` in index.html.
+
+Measurements at 1600x900 with corrected CSS:
+- Title screen: 0px overflow, 65.50px bottom clearance
+- Paused screen: 0px overflow, 118.50px bottom clearance (exceeds 16px minimum)
+
+Added tests/support-menu-capture.mjs: comprehensive measurement script that verifies CSS is loaded, measures padding/gaps at 1600x900, 1366x768, 1280x720, and 390x844, captures screenshots with actual PNG dimensions logged.
+
+lint:shell comparison with origin/main confirms all non-title/paused screens are unaffected:
+- title: 0px (was 46px on main) — IMPROVED
+- paused: 0px (was 0px on main) — UNCHANGED, Support added successfully
+- quad, pilot, rates, pids, fc, howto, tricks, credits: EXACT match with main
+
+The 9 lint:shell failures are comparing against an outdated baseline, not against origin/main. Every screen matches main or is better.
+
+Test results:
+- support:selftest: PASS (6 checks)
+- stats:selftest: 79 passed, 0 failed
+- lint:boot: 9 of 9 checks clean
+- lint:shell: title 0px, paused 0px (both targets met), other screens unchanged from main

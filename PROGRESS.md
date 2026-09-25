@@ -45647,13 +45647,13 @@ without the check getting any weaker for a link to the simulator.
 ### What went wrong
 
 Board main moved while this was being made: dcc8d5f to 7d1f89b, the maps
-tab, pushed at 10:38 UTC by the session in the entry above. The first
-version was written and tested on dcc8d5f. Reapplied on 7d1f89b it
-conflicted in src/selftest.js at the count of named targets, six there
-and ten here. The ten was kept, three mentions of "six" in the new
-comment were reworded to name no number, so the next change to that count
-cannot leave the comment stale, and every check below was run again on
-the rebased tree.
+tab, pushed at 10:38 UTC by the session in the published freestyle maps
+entries. The first version was written and tested on dcc8d5f. Reapplied
+on 7d1f89b it conflicted in src/selftest.js at the count of named
+targets, six there and ten here. The ten was kept, three mentions of
+"six" in the new comment were reworded to name no number, so the next
+change to that count cannot leave the comment stale, and every check
+below was run again on the rebased tree.
 
 The first dash check errored, because grep in this container would not
 take a \x{2013} pattern, and printed its "no dashes" fallback anyway. It
@@ -45739,3 +45739,53 @@ tab or the board, or a Fly click that opens a second simulator.
                              {"ok":true,"store":"postgres"}
     git fetch, simulator     main 535331f, unmoved; this branch 5975db2
                              plus this entry; this main untouched
+
+## 2026-09-25 | git | The tab check's entries go to main, merged with the tags fix
+
+The owner, on the entry above: "yes fast forward simulator main too".
+That is the approval to put claude/amazing-babbage-pkvwvf on this main.
+It covers PROGRESS.md only: the two entries above and this one. The
+branch changes no other file. The line in the entry above saying they
+stay on the branch until the owner says otherwise is overtaken by this.
+
+**Not a pure fast-forward, because main moved while the owner
+answered.** 207b9d3 and 43af247, the tags fix from a parallel session and
+its entry, landed on this main at 10:57 and 11:13 UTC. Main came into the
+branch by a merge, 98e5c42, merge-base 535331f, one history, the way the
+published maps branch took Stage B in. This main then moves to the branch
+by fast-forward, so nothing is rewritten on either side and no commit on
+main is lost. PROGRESS.md was the only conflict, where both sides
+appended. The merge keeps main's file byte for byte and puts this
+branch's entries after it, which is why the tags entries now sit between
+the published freestyle maps entries and these. One phrase in the first
+of these said "the session in the entry above" for the maps session,
+which the merge made wrong. It names the maps entries now, changed in the
+commit that adds this entry.
+
+**The same session carried board main past 21b7380.** Its board push was
+refused because 21b7380 had just landed, so it merged it in without
+forcing, 6dee444, and board main fast-forwarded there at 11:12:31 UTC.
+The tab check is on it and green: the board's npm test on 6dee444 passes
+all 399, the one skip aside, with the three checks this work added among
+them. The live app.js is still byte for byte the one in 21b7380, because
+the tags fix does not touch it.
+
+Nothing in this main's code changes with this push. The merged tree
+differs from 43af247 in PROGRESS.md alone, so no check here can see it,
+and none was run for it.
+
+### RUN LOG
+
+    git fetch, simulator       main 535331f..43af247, the tags fix;
+                               merge-base with this branch 535331f
+    merge                      98e5c42, main into the branch; PROGRESS.md
+                               the only conflict, resolved as main's file
+                               for a prefix and this branch's two entries
+                               for the suffix, checked in node; the merged
+                               tree differs from main in PROGRESS.md only
+    git fetch, board           main 21b7380..6dee444, the tags branch
+                               merged over it; 21b7380 is an ancestor
+    board npm test             6dee444: exit 0, 399 pass, all passed; 1
+                               skip, the shipped hash
+    webfpv.org/board           app.js sha256 b619b03f..., the same as in
+                               21b7380 and in 6dee444

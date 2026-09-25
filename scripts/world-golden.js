@@ -692,7 +692,11 @@ async function exportFromPage() {
     await page.close();
     await Promise.race([exited, sleep(15000)]);
     if (profile.includes('sim-page-')) {
-      await rm(profile, { recursive: true, force: true });
+      /* Retried: a Chrome helper can still be writing into the profile
+       * after the browser's own exit, and the delete then fails with
+       * ENOTEMPTY (measured once in four selftest runs, 2026-09-25). A
+       * directory left in /tmp is not worth failing a check over. */
+      await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   }
 }

@@ -45119,3 +45119,55 @@ of 3 from step 1112. The committed module was put back and hashed
                                           de0401cd4266 in Node and Chrome
     sha256 dist/sim.wasm after verify     b0f89e9a..., HEAD's
     git diff --stat vendor/betaflight     empty
+
+## 2026-09-25 | plan, checks | The owner's go for Stage D part 2, and the drift in the physics
+
+Stage D part 2's first launch after check 17 did not build anything, on
+purpose. Both of its agents stopped: the owner's latest words were "add the
+world golden to verify", which is done, and a physics change needs the
+owner's own go in the run that makes it. They also said, rightly, that the
+brief went past the approval of 2026-09-24 in one place: it put a drift
+car's slide angle into the solid pose, where the plan's section 8 had
+drift as render only and P2's recorded text says only that "a mover gains
+a heading". That changes the physics model's shape, so under CLAUDE.md it
+is the owner's to decide. The verifier checked check 17 instead, from a
+clean build: verify 17 of 17 at 34c8085, rows 1 to 16 identical to part 1;
+with WORLD_SLOP moved in a scratch build, a full verify fails 16 of 17 on
+row 17 alone (12 of 35); with the mover's surface velocity left out,
+exactly the three mover runs go red (32 of 35).
+
+Put to the owner in the conversation, answered 2026-09-25:
+
+- **"Start now"**: Stage D part 2, P2 as approved on 2026-09-24, movers
+  that turn and follow a road computed in the module, the limit 16 to 64,
+  verified with verify including check 17, the train and every existing
+  world bit identical.
+- **Drift "in the physics"**: the solid car turns with its slide, so the
+  car seen is the car hit. The module works out a slide angle from speed
+  and the corner's curvature and turns the car's box by it. This replaces
+  the plan's "drift render only" for the car's body; drift smoke stays
+  render only.
+
+### A flake fixed on the way
+
+check:world-engines:selftest exited 99 once in four runs, after both its
+cases had passed: deleting Chrome's temporary profile failed with ENOTEMPTY
+because a Chrome helper was still writing to it. The delete in
+scripts/world-engines.js and in world-golden.js's --town path now retries
+(maxRetries 10, retryDelay 100). scripts/board-check.js has the same
+delete and is not this work's file. check 17's own path runs in Node and
+never opens a browser.
+
+### Noted, the owner's call
+
+tests/verify.js's check 1 reads the vendor diff from git diff's output and
+not its exit status, so outside a git checkout it passes vacuously. In the
+repository it is real.
+
+### RUN LOG
+
+    npm run check:world-engines:selftest   all passed
+    npm run check:world-engines            Node and Chromium agree to the bit
+    npm run check:world-golden             all passed
+    /tmp/sim-page-* and sim-chrome-*       16 stale profiles deleted, no
+                                           browser running

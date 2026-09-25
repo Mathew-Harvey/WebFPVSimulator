@@ -47291,3 +47291,13 @@ Test results at commit f055ba5:
 - lint:shell: title 0px overflow (fixed), paused 0px, 9 pre-existing failures remain
 
 Screenshots updated: title menu at 1600x900 and 390x844, pause menu at 1600x900.
+
+## 2026-09-25: Patreon pricing update (commit a50778f)
+
+Updated PATREON_NOTE in src/share/patreon.js from old pricing ($5/$12/$25 plus GST) to new pricing: $3 (Keep the lights on), $8 (Hosting + runway), $20 (Build the sim). Removed GST claim. Changed text from "USD, plus GST on join" to "USD a month". Full text is now "Support WebFPV on Patreon. Keep the lights on, $3. Hosting + runway, $8. Build the sim, $20. USD a month."
+
+Also updated historical PROGRESS.md entry from 2026-09-22 with new pricing.
+
+Added test coverage in support:selftest (scripts/support-link-check.js): verifies PATREON_NOTE has exact expected text, does not contain old prices ($5, $12, or $25), and does not reference GST. Test passes with new pricing, would fail if old prices or GST were present.
+
+Part of Support link PR (cursor/support-link-3616), requested by marketing alongside the overflow fix.

@@ -47279,7 +47279,6 @@ Publish that fails with a message about a picture.
                              drawn headless, 110 and 80 kB, looked at
     git diff --stat vendor/betaflight   empty
 
-<<<<<<< HEAD
 ## 2026-09-25: Support link in the menu with first-party click tracking
 
 Small, focused PR. Added a "Support" link in the simulator's main menu,
@@ -47318,23 +47317,28 @@ paused 0px unchanged. The focus authority error in lint:shell is pre-existing
 **Not done:** updating shell-check baseline (overflow values grew by one row as
 expected). Per CLAUDE.md: never change a threshold to make a check pass.
 
+---
 
-## 2026-09-25: Support link overflow fix (commit f055ba5)
+## 2026-09-25: Support link overflow fix and final merge (commits f055ba5, ebd433f)
 
-Fixed title menu overflow at 1600x900 after adding Support link. Title overflow was 94px with the Support link (vs 46px on main without it, vs baseline 0px). Reduced title menu padding from `10px 0 12px` to `0` and title row vertical padding from `10px` to `6px`. Title overflow now 0px with Support link included. Paused menu unchanged at 0px overflow.
+Fixed title menu overflow at 1600x900 after adding Support link. Title overflow was initially 94px with the Support link (vs 46px on main without it, vs baseline 0px). Reduced title menu padding from `10px 0 12px` to `0` and scoped row vertical padding to `.screen-title .menu .row` with `6px` (was `10px` via generic `.screen-title .row`). Title overflow now 0px with Support link included. Paused menu unchanged at 0px overflow.
+
+Scoped CSS selector ensures only title screen rows are affected, preventing unintended impact on other screens. Merged origin/main (Stage D) and resolved PROGRESS.md conflict, keeping both entries. Removed unused `join` import from scripts/support-link-check.js.
 
 All lint:shell failures (9 problems) are pre-existing from main:
 - quad, pilot, rates, pids, fc overflow growth
 - howto and credits belowFold increase  
 - focus authority error
 
-Test results at commit f055ba5:
-- support:selftest: PASS, 5 checks
+Test results at commit ebd433f after merge:
+- support:selftest: PASS, 6 checks (label, action, pause screen, exact payload, Patreon pricing, GPC)
 - stats:selftest: 79 passed, 0 failed
 - lint:boot: 9 of 9 checks clean
 - lint:shell: title 0px overflow (fixed), paused 0px, 9 pre-existing failures remain
 
 Screenshots updated: title menu at 1600x900 and 390x844, pause menu at 1600x900.
+
+---
 
 ## 2026-09-25: Patreon pricing update (commit a50778f)
 
@@ -47345,7 +47349,9 @@ Also updated historical PROGRESS.md entry from 2026-09-22 with new pricing.
 Added test coverage in support:selftest (scripts/support-link-check.js): verifies PATREON_NOTE has exact expected text, does not contain old prices ($5, $12, or $25), and does not reference GST. Test passes with new pricing, would fail if old prices or GST were present.
 
 Part of Support link PR (cursor/support-link-3616), requested by marketing alongside the overflow fix.
-=======
+
+---
+
 ## 2026-09-25 | physics | Stage D part 2: the fix round, and VERIFIED
 
 The fix round on the first verdict (813c2fa), main merged in (65d3a4d),
@@ -47446,6 +47452,8 @@ the 1 ms step here.
 - Two decisions need the owner's recorded answer before this goes to main:
   the yaw rate as the box's own turn, and the new read-only export.
 
+---
+
 ## 2026-09-25 | git, physics | Stage D goes to main: the owner's answers, and the merge
 
 Put to the owner in the conversation, answered 2026-09-25:
@@ -47466,4 +47474,17 @@ What it changes for a pilot today: nothing. No map has a road or a car
 until Stage E, and every existing world, the train included, is bit for
 bit what it was. The verification scale is verify, which ran (17 of 17);
 the owner's fly comes with Stage E, when there is a car to chase.
->>>>>>> origin/main
+
+---
+
+## 2026-09-25: Paused menu padding fix (final)
+
+Applied same tighter row padding to paused menu, scoped to `.screen-paused .menu .row` with 6px vertical padding (was 10px via generic `.row`). This prevents the last row (Quit to title) from overlapping the bottom hint/Resume bar at 1600x900. Paused menu remains at 0px overflow with 13 stops (Support added).
+
+lint:shell at 1600x900: paused 0px overflow (fixed), title 0px overflow, all other screens match main exactly. All 9 failures are pre-existing from main.
+
+Test results:
+- support:selftest: PASS, 6 checks
+- stats:selftest: 79 passed, 0 failed
+- lint:boot: 9 of 9 checks clean
+- lint:shell: title and paused both 0px overflow, 9 pre-existing failures remain

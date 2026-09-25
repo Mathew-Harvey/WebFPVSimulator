@@ -79,8 +79,10 @@ import {
   STUCK_UNRESOLVED_MS, STUCK_TRAVEL_MAX, BURIED_DEPTH, BURIED_CONFIRM_MS,
   CLIP_CRASH_HOLD_MS, BOUNCE_SEPARATION, CLIP_SPAWN_GRACE_MS,
   setCraftAirframe, dirtClearance, craftVerticalOffset, craftVerticalHalf,
-  findRestSpot, restSpotAt, CRAFT_WORLD_R,
+  findRestSpot, restSpotAt, CRAFT_WORLD_R, CRASH_UNDERSIDE_NZ, CRASH_BELLY_UP,
+  bodyUpDotWorld, solidContactCrash,
 } from '../game/collide.js';
+import { sincos } from '../props/trig.js';
 import { AIRFRAMES, airframeById } from '../../configs/airframes.js';
 import {
   inspectCourse, layoutFingerprint, publishCurrentCourse, publishedTags, rememberPublish,
@@ -1808,6 +1810,128 @@ function suiteCrashRule() {
   );
   check('dirt through a dive-height opening still does not score',
     diveDirt === false);
+}
+
+/*
+ * The crash reset's verdict on a solid contact (solidContactCrash and
+ * bodyUpDotWorld in src/game/collide.js), in the two frames it reads. The
+ * attitude is the plant's and the normal is the world's, and the plant's
+ * frame is the world's turned by the spawn yaw. A craft whose nose faces
+ * heading h in the world, pitched back by p, has the plant attitude
+ * qz(h - yaw) qy(-p). Test code, so JS trig builds the attitudes; the
+ * verdict's own turn comes from src/props/trig.js, as the shell's does.
+ */
+function plantQuat(heading, pitchBack, yaw) {
+  const cz = Math.cos((heading - yaw) / 2);
+  const sz = Math.sin((heading - yaw) / 2);
+  const cy = Math.cos(-pitchBack / 2);
+  const sy = Math.sin(-pitchBack / 2);
+  return [cz * cy, -sz * sy, cz * sy, sz * cy];
+}
+
+/* One frame's sim_world_report: a frame contact (unless frame is 0) closing
+ * at `closing` against a normal n. */
+function solidReport(n, closing, frame = 1) {
+  const r = new Float64Array(11);
+  r[0] = 1;
+  r[1] = closing;
+  r[2] = closing;
+  r[4] = n[0];
+  r[5] = n[1];
+  r[6] = n[2];
+  r[8] = frame;
+  r[10] = -1;
+  return r;
+}
+
+function suiteCrashFrame() {
+  console.log('\ncrash reset: a solid contact, judged in the plant\'s frame');
+
+  const deg = Math.PI / 180;
+  const YAWS = [0, Math.PI / 2, Math.PI, -Math.PI / 2, 2.1, -2.9];
+  const HEADINGS = [0, 1.1, Math.PI / 2, -2.4];
+  const bellyWrong = [];
+  const noseWrong = [];
+  const tapReset = [];
+  const crashMissed = [];
+  for (const yaw of YAWS) {
+    const t = sincos(yaw, { s: 0, c: 1 });
+    for (const h of HEADINGS) {
+      /* The wall is ahead along h, so its normal points back along it. */
+      const n = [-Math.cos(h), -Math.sin(h), 0];
+      const belly = plantQuat(h, 90 * deg, yaw);
+      const nose = plantQuat(h, -50 * deg, yaw);
+      const at = `yaw ${yaw.toFixed(2)} heading ${h.toFixed(2)}`;
+      const db = bodyUpDotWorld(...belly, ...n, t.c, t.s);
+      const dn = bodyUpDotWorld(...nose, ...n, t.c, t.s);
+      if (!(Math.abs(db - 1) < 1e-9)) {
+        bellyWrong.push(`${at}: ${db}`);
+      }
+      if (!(Math.abs(dn + Math.sin(50 * deg)) < 1e-9)) {
+        noseWrong.push(`${at}: ${dn}`);
+      }
+      if (solidContactCrash(solidReport(n, 6), ...belly, t.c, t.s)) {
+        tapReset.push(at);
+      }
+      if (!solidContactCrash(solidReport(n, 6), ...nose, t.c, t.s)) {
+        crashMissed.push(at);
+      }
+    }
+  }
+  check('a belly flat on a wall reads 1 at every spawn yaw and wall heading',
+    bellyWrong.length === 0, bellyWrong.slice(0, 3).join('; '));
+  check('a nose first hit, 50 degrees down, reads -sin 50 at every one',
+    noseWrong.length === 0, noseWrong.slice(0, 3).join('; '));
+  check('so a belly first wall tap at 6 m/s is never a crash, whichever way the map faces',
+    tapReset.length === 0, tapReset.slice(0, 3).join('; '));
+  check('and a nose first hit at 6 m/s always is',
+    crashMissed.length === 0, crashMissed.slice(0, 3).join('; '));
+
+  /* The owner's report, 2026-09-25, in the headings that carried it. The
+   * frame blind reading is (c, s) = (1, 0), which is what the shell used. */
+  const wall = [-1, 0, 0];
+  const city = sincos(Math.PI, { s: 0, c: 1 });
+  const tapCity = plantQuat(0, 90 * deg, Math.PI);
+  check('the city spawns at yaw pi: read frame blind, a belly on the wall was the top plate',
+    bodyUpDotWorld(...tapCity, ...wall, 1, 0) < -0.99);
+  check('and turned into the plant, it is the belly',
+    bodyUpDotWorld(...tapCity, ...wall, city.c, city.s) > 0.99);
+  const built = sincos(-Math.PI / 2, { s: 0, c: 1 });
+  const tapBuilt = plantQuat(0, 90 * deg, -Math.PI / 2);
+  check('a built map with no pads spawns at -pi/2: read frame blind, the belly was a side',
+    Math.abs(bodyUpDotWorld(...tapBuilt, ...wall, 1, 0)) < 1e-9);
+  check('and turned into the plant, it is the belly',
+    bodyUpDotWorld(...tapBuilt, ...wall, built.c, built.s) > 0.99);
+
+  /* What does not depend on the heading at all. */
+  let ceiling = 0;
+  let roof = 0;
+  for (const yaw of YAWS) {
+    const t = sincos(yaw, { s: 0, c: 1 });
+    const level = plantQuat(0.7, 0, yaw);
+    ceiling += solidContactCrash(solidReport([0, 0, -1], 8), ...level, t.c, t.s) ? 1 : 0;
+    roof += solidContactCrash(solidReport([0, 0, 1], 8), ...level, t.c, t.s) ? 1 : 0;
+  }
+  check('a ceiling is never a crash: gravity takes the craft off it',
+    ceiling === 0 && CRASH_UNDERSIDE_NZ > -1, `${ceiling}`);
+  check('nor landing level on a roof top', roof === 0, `${roof}`);
+  const nose0 = plantQuat(0, -50 * deg, 0);
+  check('a prop alone is never a crash, however hard',
+    !solidContactCrash(solidReport(wall, 30, 0), ...nose0, 1, 0));
+  check('nor a nose first touch under the graze line',
+    !solidContactCrash(solidReport(wall, GRAZE_SPEED_MAX - 0.01), ...nose0, 1, 0));
+  check('and at the graze line it is',
+    solidContactCrash(solidReport(wall, GRAZE_SPEED_MAX), ...nose0, 1, 0));
+
+  /* The belly is a cone about the normal, CRASH_BELLY_UP wide: about 45
+   * degrees. Pitched back 50 the belly is 40 off square and is a tap;
+   * pitched back 40 it is 50 off square and is not. Unchanged by the fix. */
+  check('the belly cone is about 45 degrees',
+    Math.abs(Math.acos(CRASH_BELLY_UP) / deg - 45.6) < 0.1);
+  check('a tap pitched back 50 degrees is the belly',
+    !solidContactCrash(solidReport(wall, 6), ...plantQuat(0, 50 * deg, 0), 1, 0));
+  check('pitched back 40 degrees it is not',
+    solidContactCrash(solidReport(wall, 6), ...plantQuat(0, 40 * deg, 0), 1, 0));
 }
 
 /*
@@ -4214,6 +4338,7 @@ async function main() {
   suiteElementCounts();
   suitePresets();
   suiteCrashRule();
+  suiteCrashFrame();
   suiteClipCatch();
   suiteRecoverSpot();
   suiteFaces();

@@ -22895,7 +22895,7 @@ The empty address is now `https://www.patreon.com/cw/webfpv`, in
 board name that URL too, so the link works before their scripts run.
 
 The hover line is the three memberships, in Patreon's order: Keep the
-lights on, $5. Hosting + runway, $12. Build the sim, $25. USD, plus GST
+lights on, $3. Hosting + runway, $8. Build the sim, $20. USD a month
 on join. The visible control is still the symbol and the word Patreon.
 The welcome post stays on the Patreon page. The button opens the public
 page, which is where someone joins.

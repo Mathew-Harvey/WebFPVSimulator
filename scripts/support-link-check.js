@@ -151,7 +151,46 @@ async function main() {
       }
     }
 
-    /* TEST 4: No event sent when GPC is on. Also stub fetch in case
+    /* TEST 4: Patreon note has correct pricing and no GST. */
+    const noteCheck = JSON.parse(await page.evaluate(`(() => {
+      return new Promise((resolve) => {
+        import('/src/share/patreon.js').then((m) => {
+          const note = m.PATREON_NOTE;
+          const issues = [];
+          
+          const expected = 'Support WebFPV on Patreon. Keep the lights on, $3. Hosting + runway, $8. Build the sim, $20. USD a month.';
+          if (note !== expected) {
+            issues.push('note_mismatch');
+          }
+          
+          if (note.includes('$5') || note.includes('$12') || note.includes('$25')) {
+            issues.push('old_prices_found');
+          }
+          
+          if (note.toLowerCase().includes('gst')) {
+            issues.push('gst_found');
+          }
+          
+          resolve(JSON.stringify({ note, issues }));
+        });
+      });
+    })()`));
+
+    if (noteCheck.issues.length > 0) {
+      if (noteCheck.issues.includes('note_mismatch')) {
+        failures.push(`PATREON_NOTE text does not match expected. Got: "${noteCheck.note}"`);
+      }
+      if (noteCheck.issues.includes('old_prices_found')) {
+        failures.push('PATREON_NOTE contains old prices ($5, $12, or $25)');
+      }
+      if (noteCheck.issues.includes('gst_found')) {
+        failures.push('PATREON_NOTE contains GST reference');
+      }
+    } else {
+      notes.push('PATREON_NOTE has correct pricing ($3, $8, $20) with no GST');
+    }
+
+    /* TEST 5: No event sent when GPC is on. Also stub fetch in case
      * sendBeacon is not available. */
     const gpcCheck = JSON.parse(await page.evaluate(`(() => {
       return new Promise((resolve) => {

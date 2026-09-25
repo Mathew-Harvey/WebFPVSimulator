@@ -89,6 +89,7 @@ import {
   syncOwnedName,
   syncOwnedIdentity,
   pushOwnedListing,
+  tagsToSend,
 } from '../share/listing.js';
 
 shipMaps([starterMap()]);
@@ -1643,8 +1644,15 @@ export class App {
      *
      * Seeded from the BIND rather than from the document, because tags are
      * not in the document: see rememberPublish in src/share/listing.js.
+     *
+     * `held` is null when this browser does not know which tags the board
+     * shows on this track, which is every track published before binds
+     * kept them. An empty row means something different then: not "none",
+     * but "not seen", and tagsToSend in src/share/listing.js sends no list
+     * for it, so the board keeps what it has.
      */
-    const chosen = new Set(usableTags(publishedTags(this.doc.id)));
+    const held = publishedTags(this.doc.id);
+    const chosen = new Set(usableTags(held));
     const tagField = document.createElement('div');
     tagField.className = 'tb-field';
     const tagLabelEl = document.createElement('label');
@@ -1655,9 +1663,16 @@ export class App {
     const tagHelp = document.createElement('p');
     tagHelp.className = 'tb-help';
     const sayTags = () => {
-      tagHelp.textContent = chosen.size
-        ? `${[...chosen].map(tagLabel).join(', ')}. People filter the board by these.`
-        : `Optional, and up to ${TRACK_TAGS_MAX}. People filter the board by these, so a track with none is harder to find.`;
+      if (chosen.size) {
+        tagHelp.textContent = `${[...chosen].map(tagLabel).join(', ')}. People filter the board by these.`;
+      } else if (owned && !Array.isArray(held)) {
+        /* Said, because an empty row on a track that is already on the
+         * board reads as "it has no tags", and here it only means this
+         * browser never heard which it has. */
+        tagHelp.textContent = 'This browser has no record of the tags this track wears on the board, so none are ticked. Leave them that way to keep whatever it wears, or tick some to replace them.';
+      } else {
+        tagHelp.textContent = `Optional, and up to ${TRACK_TAGS_MAX}. People filter the board by these, so a track with none is harder to find.`;
+      }
     };
     for (const tag of TRACK_TAGS) {
       const btn = document.createElement('button');
@@ -1720,7 +1735,9 @@ export class App {
       const origin = setBoardOrigin(boardInput.value) || boardOrigin();
       send.disabled = true;
       status.textContent = 'Sending the track, logos included.';
-      const tags = usableTags([...chosen]);
+      /* A list, empty when the author unticked every tag they were shown,
+       * or undefined to leave the board's alone. See tagsToSend. */
+      const tags = tagsToSend(held, [...chosen]);
       const sendDoc = async (doc) => {
         const posted = await publishTrack({
           author,
@@ -1729,9 +1746,10 @@ export class App {
           origin,
           tags,
         });
-        /* The bind is where the tags live on this side, so a second publish
-         * pre-ticks what the board is already showing rather than untagging
-         * the track. See rememberPublish. */
+        /* The bind is where the tags live on this side, and rememberPublish
+         * keeps the board's own answer about them, so the next publish
+         * pre-ticks what the board is showing rather than untagging the
+         * track. See rememberPublish. */
         rememberPublish(toPlain(doc), posted, origin, author, { tags });
         writeAutosave(doc);
         return posted;

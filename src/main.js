@@ -434,8 +434,22 @@ const MAP_MODULE_PREFIX = {
  * stage: 72 files. A hint only: the import in loadMap still
  * resolves them, a module already in the page is not fetched again, and
  * the list is scripts/gen-preload.js's, checked by npm run lint:preload.
+ *
+ * At the address the import will use. src/fresh.js gives every module the
+ * deploy's stamp through the page's import map, and a modulepreload href
+ * is an address, not an import, so no map is applied to it: new URL here
+ * would preload a copy nothing imports, possibly one four hours old.
+ * import.meta.resolve applies the map. A CDN path, or a browser without
+ * import.meta.resolve, gets the plain address as before.
  */
 const mapPreloaded = new Set();
+function preloadedHref(path) {
+  if (/^https?:/.test(path) || typeof import.meta.resolve !== 'function') {
+    return new URL(path, import.meta.url).href;
+  }
+  return import.meta.resolve(`./${path}`);
+}
+
 function preloadMapModules(id) {
   const list = MAP_PRELOAD[id];
   if (!list || mapPreloaded.has(id) || typeof document === 'undefined') {
@@ -445,7 +459,7 @@ function preloadMapModules(id) {
   for (const path of list) {
     const link = document.createElement('link');
     link.rel = 'modulepreload';
-    link.href = new URL(path, import.meta.url).href;
+    link.href = preloadedHref(path);
     document.head.appendChild(link);
   }
 }

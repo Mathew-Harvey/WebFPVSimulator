@@ -489,6 +489,25 @@ Until the TTL is fixed: a deploy that changes a class name, an id the
 stylesheet matches, or anything else the script and the sheet have to agree
 on, needs a hard reload to be safe, and returning pilots will not do one.
 
+WORKED ROUND IN CODE SINCE 2026-09-25, at the owner's request, after the
+same seam hid a second deploy from the owner in one day: `src/fresh.js`.
+The simulator, the builder and the orbit page each ask for their own
+Last-Modified before loading anything, which is the deploy's time because
+Render stamps every file of a deploy with it and a page is never cached,
+and then load every module at an address carrying it, `src/main.js?d=...`,
+through one import map. A deploy is a new set of script addresses, so no
+cache, the browser's or the edge's, can hand a new page an old deploy's
+script, and no page runs half of one deploy and half of another.
+`npm run check:fresh` serves the checkout with these headers, deploys under
+a browser and proves the new script is the one running, with the old
+behaviour as its negative control.
+
+The TTL is still worth fixing, for the pictures: they stay up to four hours
+behind a deploy and fresh.js does not cover them. The scripts are covered
+either way. The cost of covering them without content hashes is that a
+deploy sends a returning browser the whole script graph once, changed or
+not, about a megabyte compressed for a boot.
+
 Measured again on 2026-09-25 at 09:23 UTC, unchanged: pages `max-age=0`,
 every script and picture `max-age=14400` through the domain, everything
 `max-age=0, s-maxage=300` at the origin, the music included, so Render is

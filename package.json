@@ -36,6 +36,7 @@
     "check:clip": "node src/trackbuilder/selftest.js",
     "check:orbit": "node scripts/orbit-check.js",
     "check:path": "node scripts/path-check.js",
+    "check:fresh": "node scripts/fresh-check.js",
     "gen:catalog": "node scripts/fc-catalog-gen.js",
     "gen:music": "node scripts/music.js",
     "gen:icons": "node scripts/icons.js sakura . && node scripts/icons.js amber src/trackbuilder",

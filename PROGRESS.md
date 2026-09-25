@@ -45298,3 +45298,118 @@ failing with a message about the board.
     code                     unchanged since the entry above; its checks
                              stand, on the merged tree
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | shell, builder, deploy | Every page loads the scripts of the deploy it was served from
+
+The owner, with a screenshot of the builder's toast "The public board does
+not take freestyle maps yet. Export the map to share it as a file." an hour
+after maps could be published: "apparently i can't publish the map". The
+site was serving the new builder (fetched through the domain and from the
+Render origin, the sentence absent and openPublishMap present); the owner's
+browser was running a cached app.js, DEPLOY.md's four hour seam, the second
+time that day. Offered a code fix that changes how the pages start, the
+owner answered: "do the code fix so it always loads fresh". That is the
+approval, recorded here with its date. It covers src/fresh.js, the first
+lines of the three pages that load it, src/trackbuilder/start.js,
+scripts/gen-preload.js writing into fresh.js instead of index.html, and
+main.js's map preloads. The plant, the module ABI and the WASM build are
+untouched.
+
+### What changed
+
+- **src/fresh.js**, new, a classic script. It writes the page's one import
+  map: three.js from the CDN, as every page's static map did, and, when the
+  page gave it a deploy stamp, every module this site serves at an address
+  carrying it, `src/main.js?d=<stamp>`. An import map applies to every
+  import, static or dynamic, so the whole graph moves with the deploy. Then
+  it preloads the boot graph at those addresses and imports the page's
+  first module once the document is parsed.
+- **The first lines of index.html, src/trackbuilder/index.html and
+  src/share/orbit.html** ask for the page's own Last-Modified with a HEAD
+  no cache may answer, which is the deploy's time because Render stamps
+  every file of a deploy with it and a page is never cached, and load
+  fresh.js with it. None of the three has an import map, a modulepreload
+  or a module script of its own any more: each would start the module
+  loader before the addresses were known.
+- **src/trackbuilder/start.js** is the builder's inline module, moved
+  unchanged, because an inline module is a module script.
+- **scripts/gen-preload.js** writes the boot preload list into fresh.js
+  where it wrote index.html's modulepreload block, adds MODULES, every .js
+  git tracks under src/ and configs/ (201), and reads the import map from
+  fresh.js. `npm run lint:preload` checks both, as before.
+- **src/main.js**'s map preloads use import.meta.resolve, which applies the
+  import map, so the city's preloads are the addresses its imports use.
+- **scripts/fresh-check.js**, `npm run check:fresh`: serves the checkout
+  with webfpv.org's headers, deploys under a browser, and proves the new
+  module is the one running. See its header.
+- **DEPLOY.md**: the seam is worked round; the TTL still matters for
+  pictures.
+
+### Why versions per deploy, and not the other two
+
+- **Content hashes** are the right answer with a build step. This repo has
+  none and the host runs none, and hashes committed by hand would change
+  with every edit to every module, in every session working at once, with
+  a lint to fail each time somebody forgot.
+- **Revalidating the cached scripts when the deploy changes** (fetch with
+  cache: 'no-cache' over the module list) costs a returning browser only
+  the changed files. But the edge keeps a script five minutes
+  (s-maxage=300), so in the minutes after a deploy it can answer a
+  revalidation with the old script, and a page could still run half of one
+  deploy and half of another.
+- **An address per deploy** cannot be mixed by any cache: the edge has
+  never seen the new addresses, the browser has never cached them.
+
+### What it costs, and what it does not cover
+
+- One HEAD request per page load, to the page's own address.
+- A deploy sends a returning browser every script it loads once more,
+  changed or not: about a megabyte compressed for a boot.
+- The module loader starts one round trip later than the markup's
+  modulepreload block did, after the HEAD.
+- Not covered: pictures, still four hours behind a deploy; the landing
+  page, another repository. dist/sim.wasm already goes out max-age=0, and
+  the board's scripts no-store.
+- A module missing from MODULES, when the list is stale, loads at its bare
+  address, which is the old behaviour for that file and not a failure.
+
+### What went wrong
+
+- **The generator's first run listed 200 modules and missed start.js.** It
+  lists what git tracks, and start.js was new. Staged and regenerated: 201.
+- **The first smoke test ran against a local server that had died** and
+  waited two minutes on nothing. Restarted, and it ran.
+
+### RUN LOG
+
+    check:fresh              18 passed, 0 failed: the builder, the
+                             simulator and the orbit page each run the new
+                             deploy's module after a deploy, fetched at
+                             ?d=<new stamp>; the control, the module changed
+                             and the stamp not, runs the cached module, so
+                             the browser here does cache scripts
+    negative control         the same check against the builder page as it
+                             was before this: 0 of 6, still running the
+                             first deploy's module after a deploy, which is
+                             the owner's report reproduced
+    smoke, no stamp          the three pages boot as before on a checkout:
+                             the simulator ready in 6.4 s with 105
+                             preloads, the builder in 1 s, the orbit page
+                             started
+    check:clip               661 passed, 0 failed
+    lint:boot                9 of 9
+    lint:preload             up to date: boot 105, city 73, built 29; 201
+                             served
+    lint:nouns               PASS
+    lint:shell, no board     FAIL 1: the title's 23 px, as on main
+    lint:input               154 passed, 2 failed: the parked throttle row,
+                             as on main
+    lint:board               PASS: 8 tracks listed, 8 cards drawn
+    published maps, served   24 passed, 0 failed, the builder starting from
+                             start.js, the board sheet's camera and Fly
+                             this map through the new loader
+    npm run verify           not run: the plant, the module ABI and the
+                             WASM build are untouched; the pages' start is
+                             what changed, and check:fresh, the smoke run
+                             and the browser checks above drive all three
+    git diff --stat vendor/betaflight   empty

@@ -34,6 +34,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Track Builder, WebFPV</title>
     <!--
+      THE SCRIPTS OF THE DEPLOY THIS PAGE CAME FROM, ALWAYS: see src/fresh.js,
+      and the same lines at the top of the simulator's index.html. This page
+      is never cached and its scripts are, for four hours, which is how an
+      owner's builder went on saying maps could not be published an hour
+      after they could. The builder's first module is start.js, beside this
+      page; the page has no import map or module script of its own because
+      either would start the module loader before the addresses were known.
+    -->
+    <script>
+      (() => {
+        const load = (stamp) => {
+          const s = document.createElement('script');
+          s.src = `../fresh.js${stamp ? `?d=${stamp}` : ''}`;
+          s.dataset.entry = 'src/trackbuilder/start.js';
+          document.head.appendChild(s);
+        };
+        fetch(location.href, { method: 'HEAD', cache: 'no-store' })
+          .then((r) => {
+            const t = Date.parse(r.headers.get('last-modified') || '');
+            load(t > 0 ? Math.round(t / 1000).toString(36) : '');
+          })
+          .catch(() => load(''));
+      })();
+    </script>
+    <!--
       Amber, because amber is this page's colour: everything armed or selected
       in the builder is amber, and a tab is where you look to find the builder
       among the simulator and the board. Relative paths, because the three
@@ -1433,14 +1458,6 @@
         .tb-btn:active:not(:disabled) { transform: none; }
       }
     </style>
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-        }
-      }
-    </script>
   </head>
   <body>
     <div id="tb-app">
@@ -1487,52 +1504,5 @@
     </div>
     <div id="tb-toast"></div>
     <div id="tb-modal" hidden></div>
-    <script type="module">
-      import { App, docFromLocation } from './app.js';
-      import { pingVisit } from '../share/stats.js';
-
-      /*
-       * FIRST, BEFORE ANYTHING READS THE QUERY. It takes a sponsor's
-       * utm_source out of the address and puts it away, takes every utm_
-       * parameter out of the address bar so a shared ?track= link does not
-       * carry somebody else's poster, and counts one visit per browser per
-       * UTC day across all three pages. It sends nothing at all when the
-       * pilot has switched counting off on the board, or when their browser
-       * sends Global Privacy Control. Nothing waits for it.
-       */
-      pingVisit('builder');
-
-      /* One canvas for the elevation chart, created once and re-appended by
-         the results panel on every render. */
-      const profile = document.createElement('canvas');
-      profile.id = 'tb-profile';
-
-      const app = new App({
-        topbar: document.getElementById('tb-topbar'),
-        palette: document.getElementById('tb-palette'),
-        canvas2d: document.getElementById('tb-2d'),
-        canvas3d: document.getElementById('tb-3d'),
-        inspector: document.getElementById('tb-inspector'),
-        sequence: document.getElementById('tb-sequence'),
-        results: document.getElementById('tb-results'),
-        profile,
-        readout: document.getElementById('tb-readout'),
-        toast: document.getElementById('tb-toast'),
-        modal: document.getElementById('tb-modal'),
-      });
-
-      /* A track passed in the URL wins over the autosave, so a link to a
-         track opens that track. A published course from the board, or an
-         Edit a copy intent from the simulator, is adopted after that, and
-         a published map from the board's Remix in the builder after that. */
-      const linked = docFromLocation();
-      if (linked) {
-        app.loadDocument(linked, `Opened "${linked.name}" from the link.`);
-      }
-      await app.adoptIncomingShare();
-      await app.adoptIncomingMap();
-
-      window.trackBuilder = app;
-    </script>
   </body>
 </html>

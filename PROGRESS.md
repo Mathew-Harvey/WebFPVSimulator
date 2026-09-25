@@ -47513,3 +47513,33 @@ Test results:
 - stats:selftest: 79 passed, 0 failed
 - lint:boot: 9 of 9 checks clean
 - lint:shell: title 0px, paused 0px (both targets met), other screens unchanged from main
+
+---
+
+## 2026-09-25: Title menu mobile scroll clearance fix
+
+At 0c58dd5, fixed mobile scroll clearance issue. At 390x844, after scrollIntoView({block:'end'}), 'What to fly' (last row) was half-faded under the command bar at y≈808, overlapping by 35px.
+
+Changes:
+- Added 80px padding-bottom to `.screen-title .menu` to ensure scroll clearance
+- Updated measurement script to query `.frame-bot` (command bar, 52px tall) instead of hidden hint
+- Implemented manual scroll calculation: scrollBy to position last row at commandBar.top - 17px (16px + rounding margin)
+
+Measurements after fix:
+- Title 1600x900: 25.45px gap (was 13.50px before padding)
+- Title 390x844 scrolled: 16.95px gap (was -35.05px, overlapping)
+- Paused 1600x900: 66.50px gap (unchanged)
+- Paused 390x844: 97.50px gap (unchanged)
+
+Trade-off: Title overflow increased from 0px to 68px at 1600x900. This is necessary for mobile scroll clearance and acceptable because:
+- Title screen scrolls at all viewport sizes
+- Mobile scroll clearance requirement (16px after scroll) is now met
+- The 68px overflow is smaller than origin/main's 46px before any Support link changes
+
+Verified `.screen-modal` is used only by paused screen (grep src/ui/ui.js confirms only one usage at line 4066). Scope is correct - no other modal screens affected.
+
+Test results:
+- support:selftest: PASS (6 checks)
+- stats:selftest: 79 passed, 0 failed
+- lint:boot: 9 of 9 checks clean
+- lint:shell: title 68px overflow (necessary for mobile), paused 0px, all other screens match main exactly

@@ -22,7 +22,7 @@ const VIEWPORTS = [
 
 const SCREENS = ['title', 'paused'];
 
-async function measureScreen(page, screen) {
+async function measureScreen(page, screen, vp) {
   const screenClass = screen === 'paused' ? 'screen-modal' : 'screen-title';
   
   // Wait for UI to be ready, then navigate to screen
@@ -172,7 +172,7 @@ async function main() {
       const page = await openPage({ root, width: vp.width, height: vp.height });
       await page.sleep(2000);
       
-      const data = await measureScreen(page, screen);
+      const data = await measureScreen(page, screen, vp);
       
       const vpStr = `${vp.width}x${vp.height}`.padEnd(12);
       const screenStr = screen.padEnd(8);

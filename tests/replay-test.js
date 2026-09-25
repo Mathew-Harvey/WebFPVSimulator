@@ -51,140 +51,32 @@ async function testNormalBoot() {
   }
 }
 
-async function setupIntercept(page, trackId, timeId, ghostData, trackData) {
-  /* Enable Fetch domain for all requests */
-  await page.cdp.send('Fetch.enable', {
-    patterns: [{ urlPattern: '*' }],
-  }, page.sessionId);
-  
-  /* Set up request interception */
-  const handler = async (msg) => {
-    if (msg.method !== 'Fetch.requestPaused') {
-      return;
-    }
-    const { requestId, request } = msg.params;
-    const url = request.url;
-    
-    try {
-      if (url.includes(`/board/api/tracks/${trackId}`) && !url.includes('/times/')) {
-        await page.cdp.send('Fetch.fulfillRequest', {
-          requestId,
-          responseCode: 200,
-          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
-          body: Buffer.from(JSON.stringify(trackData)).toString('base64'),
-        }, page.sessionId);
-      } else if (url.includes(`/board/api/tracks/${trackId}/times/${timeId}/ghost`)) {
-        await page.cdp.send('Fetch.fulfillRequest', {
-          requestId,
-          responseCode: 200,
-          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
-          body: Buffer.from(JSON.stringify(ghostData)).toString('base64'),
-        }, page.sessionId);
-      } else if (url.includes('cdn.jsdelivr.net')) {
-        /* Let the existing CDN handler deal with it */
-        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
-      } else {
-        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
-      }
-    } catch (e) {
-      await page.cdp.send('Fetch.failRequest', {
-        requestId,
-        errorReason: 'Failed'
-      }, page.sessionId).catch(() => {});
-    }
-  };
-  
-  page.cdp.onEvent(handler);
-}
-
-async function setup404Intercept(page, trackId, timeId, trackData) {
-  await page.cdp.send('Fetch.enable', {
-    patterns: [{ urlPattern: '*' }],
-  }, page.sessionId);
-  
-  const handler = async (msg) => {
-    if (msg.method !== 'Fetch.requestPaused') {
-      return;
-    }
-    const { requestId, request } = msg.params;
-    const url = request.url;
-    
-    try {
-      if (url.includes(`/board/api/tracks/${trackId}`) && !url.includes('/times/')) {
-        await page.cdp.send('Fetch.fulfillRequest', {
-          requestId,
-          responseCode: 200,
-          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
-          body: Buffer.from(JSON.stringify(trackData)).toString('base64'),
-        }, page.sessionId);
-      } else if (url.includes('/ghost')) {
-        await page.cdp.send('Fetch.fulfillRequest', {
-          requestId,
-          responseCode: 404,
-          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
-          body: Buffer.from(JSON.stringify({ error: 'Not found' })).toString('base64'),
-        }, page.sessionId);
-      } else if (url.includes('cdn.jsdelivr.net')) {
-        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
-      } else {
-        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
-      }
-    } catch (e) {
-      await page.cdp.send('Fetch.failRequest', {
-        requestId,
-        errorReason: 'Failed'
-      }, page.sessionId).catch(() => {});
-    }
-  };
-  
-  page.cdp.onEvent(handler);
-}
-
-async function setupMissingTrackIntercept(page) {
-  await page.cdp.send('Fetch.enable', {
-    patterns: [{ urlPattern: '*' }],
-  }, page.sessionId);
-  
-  const handler = async (msg) => {
-    if (msg.method !== 'Fetch.requestPaused') {
-      return;
-    }
-    const { requestId, request } = msg.params;
-    const url = request.url;
-    
-    try {
-      if (url.includes('/board/api/tracks/')) {
-        await page.cdp.send('Fetch.fulfillRequest', {
-          requestId,
-          responseCode: 404,
-          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
-          body: Buffer.from(JSON.stringify({ error: 'Not found' })).toString('base64'),
-        }, page.sessionId);
-      } else if (url.includes('cdn.jsdelivr.net')) {
-        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
-      } else {
-        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
-      }
-    } catch (e) {
-      await page.cdp.send('Fetch.failRequest', {
-        requestId,
-        errorReason: 'Failed'
-      }, page.sessionId).catch(() => {});
-    }
-  };
-  
-  page.cdp.onEvent(handler);
-}
-
 async function testReplaySuccess() {
-  const page = await openPage({ url: 'about:blank' });
+  const page = await openPage({
+    url: '/sim/?map=custom&share=trk-test0001&replay=tm-aae280e5&cam=fpv&clean=1',
+    seed: [
+      `
+      /* Stub track and ghost fetches */
+      const _fetch = window.fetch;
+      window.fetch = function(url, opts) {
+        if (url.includes('/board/api/tracks/trk-test0001') && !url.includes('/times/')) {
+          return Promise.resolve(new Response(JSON.stringify(${JSON.stringify(fixtureTrack)}), {
+            status: 200,
+            headers: { 'content-type': 'application/json' }
+          }));
+        }
+        if (url.includes('/board/api/tracks/trk-test0001/times/tm-aae280e5/ghost')) {
+          return Promise.resolve(new Response(JSON.stringify(${JSON.stringify(fixtureGhost)}), {
+            status: 200,
+            headers: { 'content-type': 'application/json' }
+          }));
+        }
+        return _fetch.apply(this, arguments);
+      };
+      `
+    ]
+  });
   try {
-    await setupIntercept(page, 'trk-test0001', 'tm-aae280e5', fixtureGhost, fixtureTrack);
-    
-    await page.cdp.send('Page.navigate', {
-      url: `${page.origin}/sim/?map=custom&share=trk-test0001&replay=tm-aae280e5&cam=fpv&clean=1`
-    }, page.sessionId);
-    
     await page.until(() => window.__shellReady === true, 120000);
     
     /* Wait for ghost to load and replay to be ready */
@@ -277,14 +169,25 @@ async function testReplaySuccess() {
 }
 
 async function testMissingListing() {
-  const page = await openPage({ url: 'about:blank' });
+  const page = await openPage({
+    url: '/sim/?map=custom&share=trk-notfound&replay=tm-00000001',
+    seed: [
+      `
+      /* Stub to return 404 for track document */
+      const _fetch = window.fetch;
+      window.fetch = function(url, opts) {
+        if (url.includes('/board/api/tracks/')) {
+          return Promise.resolve(new Response(JSON.stringify({ error: 'Not found' }), {
+            status: 404,
+            headers: { 'content-type': 'application/json' }
+          }));
+        }
+        return _fetch.apply(this, arguments);
+      };
+      `
+    ]
+  });
   try {
-    await setupMissingTrackIntercept(page);
-    
-    await page.cdp.send('Page.navigate', {
-      url: `${page.origin}/sim/?map=custom&share=trk-notfound&replay=tm-00000001`
-    }, page.sessionId);
-    
     await page.until(() => window.__shellReady === true, 120000);
     
     /* Wait a moment for the check to fail */
@@ -314,14 +217,31 @@ async function testMissingListing() {
 }
 
 async function testFailureRestoresUI() {
-  const page = await openPage({ url: 'about:blank' });
+  const page = await openPage({
+    url: '/sim/?map=custom&share=trk-test0002&replay=tm-00000002&clean=1',
+    seed: [
+      `
+      /* Stub track to succeed, ghost to 404 */
+      const _fetch = window.fetch;
+      window.fetch = function(url, opts) {
+        if (url.includes('/board/api/tracks/trk-test0002') && !url.includes('/times/')) {
+          return Promise.resolve(new Response(JSON.stringify(${JSON.stringify(fixtureTrack)}), {
+            status: 200,
+            headers: { 'content-type': 'application/json' }
+          }));
+        }
+        if (url.includes('/ghost')) {
+          return Promise.resolve(new Response(JSON.stringify({ error: 'Not found' }), {
+            status: 404,
+            headers: { 'content-type': 'application/json' }
+          }));
+        }
+        return _fetch.apply(this, arguments);
+      };
+      `
+    ]
+  });
   try {
-    await setup404Intercept(page, 'trk-test0002', 'tm-00000002', fixtureTrack);
-    
-    await page.cdp.send('Page.navigate', {
-      url: `${page.origin}/sim/?map=custom&share=trk-test0002&replay=tm-00000002&clean=1`
-    }, page.sessionId);
-    
     await page.until(() => window.__shellReady === true, 120000);
     
     /* Wait for fetch to fail */

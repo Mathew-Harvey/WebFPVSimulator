@@ -44426,3 +44426,103 @@ branch `GroksBugFixForClaudeToReview` was cut from `origin/main`. Local
                            flight shows no menu screen (hit is body)
     npm run verify         not run: stylesheet hit testing, not the plant
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | review | Grok's page scroll fix: right cause, right shape, one unmentioned change on Paused
+
+The owner asked for a review of the branch `GroksBugFixForClaudeToReview`,
+written by Grok and committed under the owner's name: 738ae65, one commit on
+40fe84f, which is main's tip. It adds `pointer-events: auto` to
+`.screen-page, .screen-modal` for bug-d31c33a0. One reader, the diff and the
+code around it. Nothing was flown or driven in a browser, and this review
+changed no code. Nothing below was acted on, because the ask was a review.
+
+The fix is sound. The cause is real, the declaration is the smallest one
+that removes it, and it copies what `.screen-courses` already does.
+
+### Open, for the owner
+
+**Paused stops the air slider taking input, and the commit does not say
+so.** `.row-range` is pointer-events auto and the slider sits bottom centre,
+under the empty part of the modal. The note on `.osd-sticks` says `.osd.dim`
+makes the OSD a stacking context "under the menu, where it belongs", so the
+modal is painted over it. While the modal was pointer-events none, a drag
+went through to the slider. Now the modal takes it, and the hint's Got it
+button goes the same way. The entry that hardened the lap void on 2026-09-18
+("A paused change dodged the void") measured that the slider could be
+dragged while paused. That sentence is no longer true. The void guard is
+still correct. The slider just cannot reach it from Paused any more. The
+slider is the only control in the shell that writes `settings.weight`, and
+the feel report's floaty hint, which can be opened from Paused, tells the
+pilot to drag it. After this commit that means resuming first. Probably the
+better behaviour, since the menu is modal, but it is the owner's call and no
+check can see it: nothing in scripts/ or tests/ hit tests the pause screen.
+If the owner wants the old behaviour, take `.screen-modal` out of the
+selector. The pause list already scrolls on its own, because `.menu` is
+pointer-events auto, so on a phone the modal's page scroller barely matters.
+
+**The Quad picture is still a dead zone for a scroll.** At 390 by 797 the
+`max-width: 860px` block makes the canvas about 343 by 167 px, read from the
+sheet, not measured. `.craft-view` is `touch-action: none`, set in the
+sheet and again inline in showcase.js, so a swipe that starts on it orbits
+the quad and does not scroll. The orbit reads only clientX.
+`touch-action: pan-y` in both places would give vertical swipes to the page
+and keep the horizontal orbit. The commit left the picture alone on purpose.
+
+**Only an iPhone can close bug-d31c33a0.** The run log's own before row says
+a drag on a Quad row already moved the page in Chromium, so "Quad 0 to 285"
+reads the same before and after. How to fly and the Rates hit target are
+real before and after changes, but they are the desktop half of the
+problem. Headless Chromium cannot reproduce the iOS behaviour.
+
+### Checked and stood
+
+- The citation. WebKit 183870, "[iOS][pointer-events] Fix scrolling on
+  nested pointer-events: auto inside pointer-events: none", filed
+  2018-03-21, status NEW. Desktop Safari, Chromium and Firefox pan in that
+  case and iOS does not, which is the report.
+- The reach. The declaration lands on fourteen screens and the modal, not
+  three. How to fly, Tricks, Credits, Courses, Freestyle, Quad, Pilot,
+  Standings, Launch, Rates, PIDs, FC, Calibrate and Pad pick carry
+  `.screen-page`, and Paused carries `.screen-modal`. Courses and Freestyle
+  already had auto, so twelve pages and Paused change behaviour.
+- Nothing else relied on empty space passing through. Nothing listens on
+  `canvas#view`. The command bars (z-index 6), chips (6 and 7), dialogs (8)
+  and the loading screen (10) sit above every screen. The thumb-stick
+  overlay is the last child of #ui and is shown only in flight. Hidden
+  screens are `display: none` in show(). The window drop and wake-audio
+  listeners ignore the target, and no later rule sets pointer-events on a
+  screen element.
+- It works where it is needed. `.menu-stage`, `.rates-panel` and the
+  section headings are explicitly none, so a finger on them now falls
+  through to the page, which is the scroller.
+- Unlisted improvements. On any window up to 1280 px wide, a mouse wheel
+  over a heading, the lede or empty space on Quad, Rates or How to fly now
+  scrolls the page, and the page's scrollbar can be grabbed. A click on
+  empty page space now reaches the mousedown handler on #ui, which closes
+  an open dropdown. The phone rule's query is 1280 px, although its comment
+  still says 900, so laptops get these too.
+- The record. There are no em or en dashes and no trailing whitespace. The
+  header matches recent entries, and "62 commits behind" is exact. The
+  commit has no trailer naming Grok, so `git log` alone does not say who
+  wrote it. This entry does.
+
+### Out of scope, noted
+
+The Windows 403 in Grok's entry is real. `tests/lib/server.js` checks
+`join(rootDir, rel)` against `rootDir` as it was passed in, so a
+forward-slash root on Windows, or a `./` relative root on any OS, fails
+every request. The repo's own callers pass native absolute roots and are
+unaffected. Resolving the root once and testing against root plus `sep`
+would fix it.
+
+### RUN LOG
+
+    git merge-base 738ae65 origin/main   40fe84f, main's tip, fetched first
+    git diff --stat vendor/betaflight    empty, on 40fe84f..738ae65
+    WebKit bug 183870                    fetched: title and status as above
+    path.win32.join probe                forward-slash root fails startsWith
+    browser                              not run: the reported bug is iOS
+                                         only and headless Chromium cannot
+                                         see it. Offered to the owner.
+    npm run verify                       not run: a stylesheet review, not
+                                         the plant, the module or the build

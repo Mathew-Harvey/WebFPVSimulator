@@ -43684,3 +43684,354 @@ flat back first crash is still silent apart from the notice.
     git merge-base           2180895, one history; main is an ancestor
                              of the branch
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-24 | props, builder, maps | Freestyle maps, Stage A: build a map, fly it
+
+Stage A of FREESTYLE-MAPS-PLAN.md, on the owner's "build it!", with multi
+agent workflows on the owner's standing opt in. A pilot can now open the
+builder on a third canvas, Freestyle, lay out a map from a library of cel
+shaded assets, and press Fly this map to fly it as "Your map" in the
+Freestyle room. Until they build one, Your map is a starter yard, Hibari
+Yard. The plant, the module ABI and the build are unchanged: every solid a
+map has goes through the existing world upload as AABB boxes and capsules.
+
+### What was built
+
+**The asset library (src/props).** Twenty one types in five groups
+(buildings, industrial, street, skate, course), most with styles: building
+(office, flats, shop, warehouse, tower), bando, crane, water tower, mast,
+chimney, pylon, containers, scaffold, bridge (road, footbridge), billboard,
+utility pole, lamp, vending, car, rail, ledge, stairs, quarter pipe, tree
+(sakura, street, pine), and the named gap. Each asset is one pure layout
+that returns its parts, drawn and solid in the same line, and one draw that
+paints them through PropKit in the town's cel kit (vendored from the city:
+toon materials with the violet shadow tint, the depth ink, the grade).
+Nothing is downloaded: every texture is painted on a canvas (invented manga
+adverts, graffiti, signs, stencils). Assets that turn freely have capsule
+solids only; assets with boxes snap to quarter turns exactly, so their
+AABBs are exact. Solids are placed with fdlibm's sin and cos (trig.js),
+never JS Math.sin or Math.cos. The gap rule: no slot under 1.4 m between
+solids, inside an asset or between two.
+
+**The document.** A track document gains mode 'freestyle' (trackClass
+'full'), prop elements with type, style, dims and yaw, and the gap element
+(a named window with a points tier). Race documents are byte identical:
+serialize(normalize(x)) was compared for the reference course and all eight
+presets. A map has its own autosave seat and exports as .map.json.
+
+**The builder.** A third canvas beside 5 inch and Whoop, remembered across
+visits, with its own palette, inspector (style, size, reroll, quarter turn
+snapping), plan drawing from the parts, a lazily loaded cel 3D preview, and
+freestyle warnings: fs-no-start, fs-spawn, fs-overlap, fs-slot,
+fs-gap-blocked, fs-outside, fs-solids.
+
+**The map (src/maps/built).** place.js turns a document into items, solids,
+zones and a spawn, pure and deterministic. index.js draws it in the town's
+style with its own post pipeline (BuiltPipeline, whose ink reads inverse
+depth, so the open horizon does not draw a band), chunked culling, its own
+fog sized to the plot, terrain in 50 m cells, wires between poles and
+pylons. registry.js lists it as Your map, mode freestyle.
+
+**Checks.** scripts/props-check.js (npm run check:props): every asset at its
+defaults, limits and styles (no solid box on a freely turning asset, no slot
+under the gap rule, solids inside the plan bounds), the furniture,
+determinism (placement hashed twice and across normalize), physics in
+dist/sim.wasm (a roof holds a craft, a mast is hit, a hover over the spawn
+touches nothing), and the starter. check:clip grew to 652 checks.
+src/props/gallery.html shows any asset through the built map's pipeline.
+
+**The scene block.** An optional `scene` on a freestyle map, { time, ground
+}: golden, noon, dusk or overcast, over concrete, tarmac, grass or dirt,
+with Time of day and Ground on the builder's Map panel, through edit() so
+undo works. src/maps/built/looks.js holds one palette per time (sun, fill,
+bounce, hemisphere, fog, sky stops and clouds, ridges, ink, grade). Golden
+is the town's constants number for number and draws pixel identical to the
+map before the block existed (0 differing pixels, spawn and aerial). Dusk
+lights a share of windows, chosen per pane from a hash of its world
+position so the building rolled at dusk is the building rolled at noon,
+drawn in one vertex coloured glow batch per chunk, and puts a pool and a
+halo under every lamp in two additive batches: no lights are added. The
+grounds are drawn procedurally like the rest. toPlain writes the block only
+on a freestyle map and only when it is not the default, so race documents,
+older maps and the starter keep their bytes (measured). The starter stays
+golden over concrete: its composition was set under that light.
+
+### How it went, in order
+
+1. Four build agents (library, document, builder, map) in one workflow,
+   then an integration workflow: two fixers on disjoint files, one
+   integrator, four reviewers (determinism, builder, simulator, art), each
+   refuted by a skeptic. The last agent, the one meant to apply the
+   confirmed findings, died on a session limit before it edited anything.
+   Its transcript shows only reads; the findings were applied in a third
+   workflow, below.
+2. main moved 14 commits while this ran (the crash reset, tumble flat, the
+   module preload). Merged, not rebased; only PROGRESS.md conflicted, both
+   sides kept. merge-base e88b7e7, one history.
+3. A fix workflow: spawn and height with the builder's seat flows, then art
+   with the shell, then the scene block, then an integrator.
+4. A second review of the fix round, three lenses with skeptics, below.
+
+### What went wrong
+
+- **The art pass broke the starter.** Taller ground floors put the office
+  roof at 15.0 m, and its roof sign stands 17.5 to 20.7 m, exactly the band
+  the crane gap is flown in. The jib ran through the sign and the CRANE GAP
+  window sat inside the office. The corner was recomposed rather than the
+  crane raised: the jib 32 to 21 m across the roof's clear north half, the
+  crane 18.1 m, the trolley run in, the scaffold tied to the wall, the gap
+  4.4 by 3.3 m with its sill 0.5 m over the roof. A Node sweep found the old
+  6 m window had its west metre in line with the cooling tower.
+- **A limit moved under a document silently.** The scaffold's depth limit
+  became 1.55 m while the starter asked for 1.3; normalize clamped it and
+  pushed the scaffold 0.125 m into the office (56 overlapping solid pairs),
+  and the builder's repair count said 0, because a clamp is not reported as
+  a repair. props-check caught it. The starter now asks for 1.55 m.
+- **Raised start pads spawned the craft inside the building.** The pads'
+  Base was drawn but dropped by place.js, so pads on a roof put the craft at
+  street level inside the office, pinned for as long as the throttle was
+  held, and the builder's spawn check passed it because it tested at the
+  Base. Found by three reviewers independently.
+- **A remix could lose a race track.** With the map canvas remembered, a
+  Remix, an Edit or a ?share link replaced the unsaved five inch track
+  without asking, or after a confirm that named the map on screen.
+- **The chimney's solid disagreed with its brick both ways.** An invisible
+  dome up to 1.98 m over the rim of a short wide stack, and drawn brick up
+  to 0.57 m outside the solid under the corbel. Neither props-check nor the
+  builder compared drawing with solid, so nothing saw it; props-check now
+  does (block 1b, envelope), and against the old code it fails in three
+  places.
+- **A float tie on the stairs.** The first box top height handed the plant
+  exactly the top. The plant takes a box as ground only when its top is
+  strictly above the shell's plane, so float32 rounding of each tread
+  decided the winner: two treads of the skate stairs became 26 degree ramps
+  and a craft set down there slid 0.19 m and leaned on the next riser.
+  Height now answers the top less 1 mm (SUPPORT_TIE), and every tread holds
+  a craft flat exactly as it did when height was 0.
+- **Two agents at once broke lint:memory.** The builder agent imported the
+  starter into storage.js, which is on the simulator's boot graph, so the
+  starter was fetched at boot; the shell agent, running beside it, saw the
+  failure and correctly left its check strict. The integrator moved the
+  import to app.js, which only the builder loads (storage.js gains
+  shipMaps).
+- **main's preload list did not know the built map.** Its 26 modules would
+  have been found one import level at a time. gen-preload now has it as a
+  root.
+
+### The first review: what was confirmed, what was declined
+
+Confirmed and fixed (the skeptic's corrected fix where it had one):
+
+| id | what | fix |
+| --- | --- | --- |
+| det F1, builder F4, SIM-2 | raised pads spawn inside the building | spawn.y is the surface under the pads; fs-spawn tests there, skipping the support; fs-pads-seat |
+| SIM-1 | height() 0 on built maps: X on a roof went to the pads and wiped the run; OSD 15 m on a roof; 90 rails over roofs counted as trick bars | height answers box tops (topUnder, less 1 mm); main's topAt had already fixed the X half |
+| SIM-5 | spawn between two mats | startBlockLaneOffset along the pads' local z, turned with trig.js, clamped like padsLayout |
+| builder F1, F7 | remix, edit, ?share, import could replace a seat not on screen | loadDocument keeps the destination seat in Load first and names it |
+| builder F2 | race links opened the remembered map | ?mode=race, honoured before the remembered canvas |
+| builder F3 | ?mode=freestyle stuck in the address | removed with replaceState once read |
+| builder F5 | the scene block was missing | built, above |
+| builder F6 | the starter could not be opened in the builder | a shipped row in the maps Load list, opened as a copy |
+| builder F8 | dead intent.mode branch | deleted with the kind 'new' branches; nothing has written one since 5d300b5 |
+| det F4 | plan bounds cache shared across seeded elements | keyed by element id; 38 of 60 were wrong, worst 2.738 m |
+| det F2, art F2 | chimney solid against its brick | chained capsules sized per section, corbel rings, lid, taper capped at 0.06 m per m |
+| art F1 | flats stair drawn with no solids at depth 4 to 4.49 m | drawn only where stair treads exist |
+| art F3 | far power lines as dashes | a 1 px line along each tube's axis |
+| art F4 | cut ridge flats on the horizon | a closed backdrop ring round the plot |
+| art F5 | cherry forks drawn, not solid | solid with the limb's taper |
+| art F8 | coplanar faces of different materials | bando column and slabs, bridge drip band, girder web, container castings, flats tank seams, footbridge fascia |
+| SIM-3 | Post offered on Your map, refused by a banner over the score | the row is disabled with its reason; main.js keeps its refusal |
+| SIM-4 | results headed Freestyle city on Your map | the seated world's name; the Flying chip fixed the same way |
+| SIM-6 | lint:memory checked only the town | both worlds, built first so its borrows are seen; no src/props at boot except types.js |
+| SIM-8 | Fly this map did not remember the freestyle world | boot writes freestyleMap beside map |
+
+Declined, with the skeptic's reason:
+
+- **det F3, Math.sqrt on the solid path.** ECMA-262 21.3.2.33 makes
+  Math.sqrt correctly rounded; it is not in the list of approximated
+  functions (Math.hypot is). The comments that said otherwise, in street.js
+  and industrial.js, were corrected; rootOf stays, because removing it would
+  move the placement hash for nothing.
+- **art F6, a list of 11 to 28 cm drawn against solid gaps.** The radome and
+  water tower claims did not reproduce; the crane cab and slew drum are
+  within the family's written tolerance; the gantry and balustrade boxes
+  close slots under the gap rule on purpose; the car glass is flush.
+- **art F7, batch cost of vending and ledges.** The numbers reproduce, but
+  the tint per colour is designed and shared across machines, and the map is
+  inside its budget. A vertex colour bake is a later improvement.
+- **art F9, the chimney's name on four faces.** The stated design, a taste
+  call, not a defect.
+- **SIM-7, the starter's orbit clip key.** This very change moved the key,
+  and the city is keyed the same way; CLIP_VERSION is the documented bump.
+
+### Measured
+
+Placement hashes, a recorded baseline and not a threshold (props-check):
+the starter went 6856edc6c504895e1bcb54862bebfcee2175657905f56cb73e85990cc673adc0
+(1957 solids) to e72f829e9e2c2b5131f662e7f87d44d1addde528f618fca80da3053ae5171ac3
+(2097: 552 boxes, 1545 capsules); one of everything went
+ee5f8756feed24b1837c8b53c35be1ced90db8d3dcc5b04b914799bada103d49 (2137) to
+9899d9f1d10b08fabdea4c89c5877d609aa679c300840e0fd0df567786d6ec3a (2245).
+Both are the same under all sixteen scenes. The chimney grew from 99 solids
+to 223 on the starter.
+
+Height: the index builds in 0.85 ms on the starter and answers in about 39
+ns; a map of 10712 solids builds in 1.89 ms and answers in 31 ns. At 1 kHz
+plus the five taps that is about 0.06 ms a second.
+
+Flights, the in page pilot on Low, by the integrator:
+
+    hover 3 m, 4 s                 2.978 m, drift 0.024 m, 0 contacts,
+                                   golden and dusk
+    spawn to the bando             0 contacts, peak 7.40 m/s
+    office wall head on            4.68 m/s, set down at the wall's foot
+                                   at once by main's crash reset
+    roof settle 2 m/s              landed at 15.045 m, 0 world contacts
+    roof dive 6 m/s                landed upright at 15.045 m
+    crane gap line at 17.2 m       0 contacts, closest 0.711 m
+    rooftop start                  seated 15.044 m on 14.999, OSD 0.0 m,
+                                   climbed 1.8 m with 0 contacts
+    inverted crash on the roof     set down on the roof, tricks and clock
+                                   kept
+    turtle on the roof, then X     set down upright on the roof, total kept
+    wall at roof height, 7 runs    ground never raised while the centre
+                                   was outside the footprint; no pop onto
+                                   the roof
+    under the footbridge and jib   ground 0 throughout
+
+The obstacle field on the starter went from 394 to 304 obstacles (bars 300
+to 210): the rails standing on roofs are no longer bars.
+
+Budget, window.__budget, calls and triangles at 1280x720:
+
+    spawn FPV, High     golden 416 / 126,971    dusk 407 / 130,571
+    aerial, High        golden 524 / 156,055    dusk 478 / 140,589
+    spawn FPV, Low      golden 215 / 63,549     dusk 230 / 63,295
+    aerial, Low         golden 393 / 109,009    dusk 382 / 101,973
+
+The spawn FPV camera's framing differed between runs, so those rows do not
+compare camera for camera; the aerial rows do. The kit makes 367 batches at
+golden and 368 at dusk. With the fog covering the plot, the 48 m chunks cut
+nothing on the starter by distance; frustum culling still uses them.
+
+### The second review, and where the reviewing stopped
+
+Three lenses on the fix round (git diff 1951c91 59d83eb), each refuted by a
+skeptic: 20 findings, 17 confirmed, 3 declined. One agent applied all 17.
+The owner then asked for the review loop to stop once the work was sound
+enough for beta, so there is no third round: the owner flies it next.
+
+Confirmed and fixed:
+
+| id | what | fix |
+| --- | --- | --- |
+| R2S-1 | the box top height handed a thin box OVERHEAD as ground: a craft climbing under a scaffold board, an open container roof or a bridge flange jumped 0.19 m up through it with no contact (the whoop through all five boards to 17.6 m) | height takes the craft's own height as a fourth argument and leaves out any box whose bottom is over it; main.js passes it at every craft query; the town's height ignores it |
+| R2S-2 | pads drawn at the seat under the row's middle, the craft at its lane mat | the pads are seated at the craft's seat; fs-pads-seat names a mat that sits elsewhere |
+| R2S-3 | fs-spawn fired on a bridge deck for the girders under it | solids wholly under the seat are left out: 253 of 273 deck positions warned, now 42, none for structure under the deck |
+| R2S-4 | the Your map Scoring line was below the bottom bar | each mode shows only its own line; the note ends at 660 px in the town and 641 in Your map, the bar at 668 |
+| R2S-5 | a flat back crash reset by main's STOP path did not bail the combo or count a crash, so the open chain banked later | at 18 m/s or more the STOP path counts it the way the ground branch does |
+| R2B-2 | keepSeat took "the id is in Load" as kept, dropping edits since the last Save | an edited seat is kept as a copy, "(unsaved changes)", in both the builder and the simulator's seatLocal |
+| R2B-3 | when the keep could not save (storage full), the seat was replaced anyway | nothing is opened, and a toast says why |
+| R2B-5 | an owned ?share or Edit replaced local unpublished edits of the same track | the local version is kept as a copy, "(local changes)" |
+| R2A-1 | the backdrop rings read as a floating ribbon from altitude | they fade into the fog between 25 and 60 m of camera height |
+| R2A-2 | the dusk sky did not meet its fog from altitude | the dome mixes to the fog colour below the horizon (the vendored sky.js untouched) |
+| R2A-3 | every sign stayed at golden brightness at dusk and overcast | signs follow the look; adverts, vending and tenant boards stay lit |
+| R2A-4, R2A-5 | lamps under a canopy threw no pool; a pool on a box top hung past its edge | floors asked from under the lamp; pools cut to the box they land on |
+| R2A-6, R2A-7 | tarmac bays across a road lane; dirt ruts over the START paint | lanes and launch boxes kept clear |
+| R2A-8 | the gallery looked through both backdrop rings | scaled and seated on the focus |
+| R2A-9 | a dense chimney cluster passes the plant's 1024 candidate cap, which the module truncates silently | a builder warning, fs-crowded, that copies world_build's grid exactly; props-check holds the copy to the module. The cap itself is unchanged |
+
+R2S-1 landed as a check first: props-check scans every thin box of every
+prop for both hulls and climbs under each kind in dist/sim.wasm, and failed
+six lines at 59d83eb before the fix. Its self test puts the old height back
+and must see the climb go through the board.
+
+Declined, with the skeptic's reason:
+
+- **R2B-1, Load then Open replaces an unsaved map with no confirm.** It
+  does, and it always has on every canvas: the builder's own Load dialog
+  opens over the working copy by design (PROGRESS, the seatLocal entry), and
+  the whoop's eight shipped rooms behave the same.
+- **R2B-4, a ?track= link over the canvas on screen replaces an unsaved
+  map.** The documented rule for every canvas: a link to a track opens that
+  track. The fix round claimed only the cross canvas case, and holds it.
+- **R2B-6, fs-pads-seat says "Set Base to 0.00 m" for pads just short of a
+  roof.** Accurate (the craft does start on the ground there), and fs-spawn
+  fires beside it naming the building.
+
+### For the owner
+
+- **Built map ground, the two rules.** On built maps the plant is handed
+  the highest box top under the craft, less 1 mm (SUPPORT_TIE, for the float
+  tie above), leaving out any box whose bottom is over the craft. Only built
+  maps: check:plant and check:crash pass, the town's height ignores the new
+  argument, the track is untouched.
+- **main's crash reset, one addition.** A flat back crash reset by the STOP
+  path at 18 m/s or more now also bails the trick chain and counts as a
+  crash in freestyle. Under 18 m/s it stays a reset only, as main has it.
+- **The chimney's taper.** CHIMNEY_TAPER_MAX (0.06 m per m) keeps a squat
+  stack's solid inside its brick; a 6 m stack with a 5 m base now narrows to
+  4.64 m, not 3.5 m. The other way is a tighter radius limit in types.js.
+- **The candidate cap.** fs-crowded warns an author; a louder overflow
+  report from the module, or a larger WORLD_MAX_CAND, would be a module
+  change and is the owner's call.
+- **The verification scale.** The owner said they will fly it. npm run
+  verify was not run: the first two points above touch the physics path
+  (the plane handed to the plant, and the shell's crash bookkeeping), so
+  verify stays on offer.
+- Still open from the plan: the STF logo as a file, katakana sound effects
+  (Stage C), the town's egg spot (Stage B).
+
+### Open, not fixed
+
+- fs-slot reports each pair's closest point only, so a second slot between
+  the same two elements is not reported.
+- approxHeight for trees is a worst case over every seed, so the inspector
+  reads 10 to 40 percent high for a typical tree.
+- The CONTAINER TUNNEL and BILLBOARD GAP labels overlap in the builder.
+- On a roof, the pads' START word and chequered line (4 to 6 mm) do not
+  show, and a grey strip crosses mat 2. On the paving, the launch box's
+  outline crosses the START lettering.
+- The builder's 3D preview still uses the town's ridge flats.
+- Overcast pulls the fog in, so the far corner of the plot is hazy from the
+  air. The Ground control wraps Dirt onto a second row at 1280 wide.
+- In adoptIncomingShare's remix path, clearShareImport() with no class
+  clears the seated aircraft's share seat. Older than this branch.
+- A same canvas import or ?track= link replaces an unsaved map (R2B-4,
+  declined above). R2B-5's local copy was tested against a stubbed board;
+  a real board round trip that changes the name or logos would make a
+  "(local changes)" copy each time.
+- recoverGroundAt and colliders.topAt do not take the craft's height, so a
+  set down could still choose the top of a thin board close overhead. Not
+  seen, not tested.
+- The whoop's climbs under thin boxes are covered by the static scan only.
+
+### RUN LOG
+
+Run by me on the final tree, this turn:
+
+    npm run check:clip             652 passed, 0 failed
+    node scripts/props-check.js    all passed
+    props-check --selftest         all passed
+    npm run check:plant            all passed
+    npm run check:crash            0 guards failed
+    npm run lint:memory            PASS, every world is lazy and freed
+    npm run lint:boot              9 of 9 clean
+    npm run lint:preload           up to date, boot 103, city 72, built 27
+    npm run lint:nouns             PASS
+    npm run lint:presets           4 of 4 clean
+    npm run lint:shell             FAIL, 1 problem: title overflow grew
+                                   from 0 to 23 px, main's known failure
+    node --check                   every changed file
+    dash scan of added lines       0
+    Math.sin, cos, pow added on the physics path   0
+    git diff --stat vendor/betaflight   empty
+    npm run verify                 NOT RUN, see For the owner
+
+Run by the workflow agents and reported, not rerun by me: lint:quality 56
+of 56, input:selftest 198, contact:selftest, score:selftest (its known
+Maverick Loop failure only), the flights above, and the shots under
+.loop/shots (gitignored), which I looked at for the spawn at golden and
+dusk, the dusk office and aerial, the crane line and the dusk sky from
+120 m.
+

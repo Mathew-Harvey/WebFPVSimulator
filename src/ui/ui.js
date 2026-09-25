@@ -499,8 +499,9 @@ const SCORING_WARNING = 'This is an unfinished feature and it is still being bui
 /* `where` is the world seated, since Off is that world and nothing else:
  * the town, or Your map. */
 const scoringOff = (where) => `Off: no overlay, no names and no run clock, just ${where} and the quad.`;
-const SCORING_FREE = 'Free flight: tricks are named and scored as you land them, with no clock and no'
-  + ' board, and the run never ends. That is the one to learn a Powerloop in.';
+const SCORING_FREE_ON = 'Free flight: tricks are named and scored as you land them, with no clock and no'
+  + ' board, and the run never ends.';
+const SCORING_FREE = `${SCORING_FREE_ON} That is the one to learn a Powerloop in.`;
 
 const SCORING_BOARD = 'Scored run: two minutes on the clock, and what you finish with goes to the high'
   + ' score board.';
@@ -520,13 +521,15 @@ const SCORING_BOARD_BUILT = 'Scored run: two minutes on the clock, and on Your m
  * own line and nothing else: at 1280 by 720 the warning and all three ran
  * 125 px under the bottom bar, and the line cut off was the one about the
  * board, which is the line a pilot who has just chosen Scored run needs.
+ * Free flight, once chosen, leaves out why to choose it: with it the town's
+ * note still ended 14 px under the bar, where it is the longest.
  */
 function scoringNote(mode, mapId) {
   const board = mapId === 'built' ? SCORING_BOARD_BUILT : SCORING_BOARD;
   if (mode === 'off') {
     return `${scoringOff(mapId === 'built' ? 'Your map' : 'the town')} ${SCORING_FREE} ${board}`;
   }
-  return `${SCORING_WARNING} ${mode === 'free' ? SCORING_FREE : board}`;
+  return `${SCORING_WARNING} ${mode === 'free' ? SCORING_FREE_ON : board}`;
 }
 
 /*

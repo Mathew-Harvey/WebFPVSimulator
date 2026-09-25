@@ -3136,6 +3136,10 @@
           position: static;
           width: 100%;
         }
+        /* Add bottom padding to ensure menu clears command bar at narrow viewports. */
+        .screen-title {
+          padding-bottom: calc(3vh + var(--bar-bot) + 16px);
+        }
         /* No max-height on narrow viewports - let the screen scroll naturally. */
         .screen-title .menu-help {
           position: absolute;

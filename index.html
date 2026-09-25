@@ -3136,9 +3136,7 @@
           position: static;
           width: 100%;
         }
-        .screen-title .menu-scroll {
-          max-height: min(calc(32vh - var(--bars)), 14em);
-        }
+        /* No max-height on narrow viewports - let the screen scroll naturally. */
         .screen-title .menu-help {
           position: absolute;
           left: 0;
@@ -3239,9 +3237,7 @@
         .screen-title .wordmark {
           font-size: clamp(28px, 8vh, 44px);
         }
-        .screen-title .menu-scroll {
-          max-height: min(calc(52vh - var(--bars)), 11em);
-        }
+        /* No max-height on very short viewports - let the screen scroll naturally. */
         .screen-title .row {
           padding: 7px 18px 7px 22px;
           font-size: 15px;

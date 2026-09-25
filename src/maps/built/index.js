@@ -41,8 +41,9 @@
  * the author does not choose where: ./egg.js chooses from the placed map,
  * this file paints it there (paintStfMark) and hands the shell where it is
  * as `egg`. It is paint, so no solid comes of it. The builder imports
- * neither this file nor ./egg.js, so the person who built a map has to find
- * the mark too.
+ * neither this file nor ./egg.js, so it never shows where the mark will be:
+ * the person who built a map sees it from the pads when they fly it, like
+ * everybody else.
  *
  * NOTHING MOVES. Stage A has no vehicles, so updateAnim is a no op and the
  * only per frame work is seating the lights, trailing the sky and switching
@@ -1783,9 +1784,10 @@ function chunkKeyOf(item) {
  * is no element, so it goes in the chunk the paving under it belongs to,
  * a chunk of its own when nothing else was filed there.
  *
- * `look` is handed on as the kit gets it. The paint is lit, so dusk and
- * overcast bring it down with the scene's own lights and it needs nothing
- * more from the look (see makeStfMark).
+ * `look` is handed on as the kit gets it, and the face is tested against
+ * the look's sun: the paint is lit, and on a face the sun never reaches, or
+ * at dusk and overcast, it gives back some of its own colour so the
+ * lettering still reads from the pads (see makeStfMark).
  *
  * Returns the MapInstance's `egg` (src/maps/README.md): the painted plane's
  * centre, the way it faces, its up and its size, world metres, the same
@@ -1800,7 +1802,13 @@ function paintStfMark(props, placed, spot, look) {
   let chunk = props.children.find((g) => g.name === name);
   const lift = drawnRelief(chunk, spot, right) + STF_LIFT;
   const p = spot.p.map((v, k) => v + spot.n[k] * lift);
-  const mark = makeStfMark(THREE, { width: spot.w, height: spot.h, look: kitLook(look.timeId) });
+  /* In shade when the face is turned away from the look's sun: no direct
+   * light reaches it at this time of day (see makeStfMark). */
+  const sun = look.time && look.time.sun ? look.time.sun.at : null;
+  const shade = Boolean(sun) && spot.n[0] * sun[0] + spot.n[1] * sun[1] + spot.n[2] * sun[2] <= 0;
+  const mark = makeStfMark(THREE, {
+    width: spot.w, height: spot.h, look: kitLook(look.timeId), shade,
+  });
   mark.geometry.applyMatrix4(new THREE.Matrix4().makeBasis(right, up, n).setPosition(p[0], p[1], p[2]));
   mark.geometry.computeBoundingBox();
   mark.geometry.computeBoundingSphere();

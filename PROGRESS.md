@@ -46494,6 +46494,495 @@ disturbed. PROGRESS.md conflicted in two places, both sides appending, and
 both were kept; package.json merged cleanly with main's check:fresh beside
 the world checks.
 
+## 2026-09-25 | collision, shell | A belly first wall tap is not a crash, whichever way the map faces
+
+The owner: "in the freestyle map i made i went to do a wall tap , bottom of
+the quad into the wall as slow speed and it registered as a crash, this is
+wrong". Shell only: the plant, the module ABI and the build are unchanged,
+and so is every line the crash reset draws. What changed is the frame the
+shell reads one of its inputs in.
+
+### What was wrong
+
+CRASH IS A RESET (src/main.js) resets a smack of GRAZE_SPEED_MAX (4 m/s) or
+more that did not land on the belly. For a wall it took body up from the
+plant's quaternion and dotted it with sim_world_report's contact normal. That
+normal is in the WORLD frame, the one the solids were uploaded in, and
+src/native/world.c places the plant in it as W = Rz(yaw) p + O. The two were
+a spawn yaw apart, so a belly flat on a wall read cos(yaw), not 1:
+
+- the city spawns at yaw pi, so a belly on a wall read -1, the top plate;
+- a built map spawns at its pads' yaw less a quarter turn, or at -pi/2 with
+  no pads, where the belly read 0, a side;
+- every set down (X, stuck, or a crash) reseats the frame at the craft's own
+  heading, so after the first one the reading was arbitrary on every map.
+
+Wherever the frame's yaw was more than about 46 degrees from zero, a belly
+first tap closing at 4 m/s or more was reset. The closing speed is taken at
+the contact point with the rotation in it, so it is not the approach speed:
+on the whoop, arriving at 2.4 m/s and still turning at 84 rad/s from its
+pitch back, the belly's edge touched at 3.7 m/s and the belly slapped flat
+at 5.7 m/s, reading 0.89 at the touch and 0.99 at the slap. That is how a
+slow tap crosses the line.
+
+The same fault cut the other way at yaw pi, where a steep nose first hit
+read as belly: 7.8 m/s at 68 degrees nose down was missed on every frame
+phase.
+
+Nothing had flown a belly tap over the line at a heading other than zero.
+park:fly's Wall Tap arrives at about 1.5 m/s and check:crash's tap at 3 m/s,
+both under it. world-check's four heading scenario holds the module to 1e-6
+across headings, and it is: the module was right, the shell's reading of it
+was not.
+
+### How it was found
+
+A scratch probe, not committed, flew wall taps through dist/sim.wasm and
+Betaflight in Node: an angle mode run in, an acro pitch back to a set
+attitude with the throttle cut, a coast in base first, and optionally a pitch
+forward on the tap. It applied the shell's three crash rules to frames of 7,
+16 and 33 ms at every phase. 240 five inch flights at yaw 0, runs of 3 to 8
+m/s and pitch backs of 45 to 120 degrees: no clean base first tap was reset
+at any speed. Writing the belly test out by hand for the probe exposed the
+two frames. Flown again with the plant's frame turned by quarter turns, the
+identical 4.5 m/s tap was reset on every phase at 90, 180 and 270 degrees and
+on none at 0.
+
+### What changed
+
+- **src/game/collide.js.** CRASH_BELLY_UP and CRASH_UNDERSIDE_NZ moved here
+  from main.js, unchanged. bodyUpDotWorld turns the world normal into the
+  plant's frame by the frame's yaw before the dot, exactly as world.c's
+  world_to_plant_dir does. solidContactCrash is the solid rule as it was,
+  with that one difference. Both are pure, so a check in Node asks them.
+- **src/main.js.** seatWorldFrame, the one place the yaw goes to the module,
+  keeps its cosine and sine beside it (frameTurn), and the solid rule calls
+  solidContactCrash. bodyUpDot is gone. The ground and STOP rules read body
+  up against the vertical, which no yaw moves, so they are untouched.
+- **The turn comes from src/props/trig.js**, fdlibm's sine and cosine in
+  plain IEEE arithmetic, and not from JS Math.cos, because the verdict moves
+  the craft and CLAUDE.md keeps Math.sin and Math.cos out of anything that
+  does. So trig.js is on the boot graph now: src/fresh.js's boot list
+  carries it, the built map's list in src/maps/preload.js no longer does
+  (npm run gen:preload), and lint:memory's exact list of props modules
+  allowed at boot names it beside types.js, with the reason. That list exists to keep the
+  asset library's weight off boot, and trig.js is 157 lines of arithmetic
+  with no imports and no asset in it.
+
+### Coverage
+
+- **check:clip**, a new suite, "crash reset: a solid contact, judged in the
+  plant's frame", 16 checks: a belly flat on a wall reads 1 and a 50 degree
+  nose first hit reads -sin 50 at six spawn yaws by four wall headings; the
+  city's pi and a padless built map's -pi/2 by name, frame blind and turned;
+  ceilings, roof tops, a prop alone and the graze line; and the belly cone,
+  about 45 degrees, pinned where it was.
+- **check:world**, a new reading, "a wall tap is judged the same whichever
+  way the map faces": a 5.4 m/s base first tap and a 7.7 m/s steep nose first
+  hit, flown through the module at four headings, twice each to the bit, and
+  judged with solidContactCrash on frames of 7, 16 and 33 steps at every
+  phase, folded from per step reports the way the module sums them. The tap
+  is never reset and the hit always is. It also reads each flight frame
+  blind and asserts the old fault is visible in it: the tap reset at 90, 180
+  and 270, the hit missed at 180.
+  It is a READING, in a list of its own beside SCENARIOS, and not a
+  scenario: scripts/world-golden.js pins every step of every scenario, and a
+  run new to that golden is recorded only with the owner's approval. What
+  it judges is src/game/collide.js, not the world solve. Its pilot steers on
+  sin(want - pitch) from the nose vector, with the want turned by trig.js,
+  so no JS trigonometry reaches the module. For all this, fly() keeps each
+  step's report and attitude on its rows, and a run may stop 200 ms after
+  its first contact.
+  Whether its flights should also be pinned in the golden is the owner's
+  call, and they are not in it.
+- **The fault was reproduced against both checks.** With the turn taken out
+  of bodyUpDotWorld, which is the old reading, check:clip failed 6 and
+  check:world failed 2. Put back byte for byte, both pass.
+
+### What went wrong
+
+- **The first fetch named this branch, which is not on the remote yet**, so
+  git refused the whole fetch and origin/main stayed at 9ed8b9c, a stale ref
+  from the container's first clone. For one step it looked as if main were
+  three commits ahead. Fetched alone, main is 6bf90bf, this branch's HEAD,
+  one history.
+- **The probe's first stick law had its damping backwards.** Nose up is
+  negative q in the plant. The sanity run before the sweep caught it.
+- **The probe's "pitch forward on the tap" overshot**, to 60 degrees nose
+  down under throttle, and flew the craft back into the wall, which read as
+  resets that were real nose first hits and not the rule's fault. The tap's
+  verdict was then judged over its own first 60 ms.
+- **main.js changed after lint:memory had run**: frameTurn moved up beside
+  startYaw, so no reset can meet it before it exists, and main.js's unused
+  import of CRASH_UNDERSIDE_NZ went. lint:memory was run again on the final
+  tree.
+- **main moved under the turn**, 6bf90bf to fdafe2e: Stage D part 1's world
+  golden with verify's check 17, the loader (src/fresh.js), and visit source
+  attribution. This branch was still main's ancestor, so the work was
+  stashed, the branch fast forwarded onto main, and the stash applied.
+  PROGRESS.md conflicted where both appended and is main's file with this
+  entry after it. index.html conflicted because the boot list had moved out
+  of it into src/fresh.js: it is main's, and the lists were generated again
+  with main's gen-preload.
+- **The verdict check first went in as a world-check scenario**, which the
+  new world golden would have flown and failed as a run it had not
+  recorded, and its pilot steered with Math.atan2 on a stick that reaches
+  the module, against the golden's rule. Found reading world-golden.js
+  after the merge, before anything was committed. It is a reading now, with
+  a trig free pilot, and the golden passes untouched.
+
+### Found on the way, not fixed
+
+For the owner, because each is a line to draw or a larger change:
+
+1. **The belly cone is about 45 degrees** (CRASH_BELLY_UP 0.7), unchanged.
+   At yaw 0 every reset among the probe's 240 taps was a craft that met the
+   wall pitched back less than about 44 degrees, at 4.2 to 7 m/s, including
+   8 m/s runs whose flip had not finished before the wall. A shallow tap at
+   speed is still a crash.
+2. **At the cone's edge the solid verdict depends on the frame rate.** It
+   reads the attitude at the frame's end with the normal of the frame's
+   biggest step. A 42.6 degree tap at 4.5 m/s was reset on 7 of 7 phases at
+   144 Hz, 8 of 16 at 60 Hz and 8 of 33 at 30 Hz, and CLAUDE.md says a
+   dropped frame must change nothing about the trajectory. The fix is to
+   read the world report every step and judge each step at its own attitude,
+   which needs no ABI change. Offered, not done.
+3. **The closing speed is the fastest of any contact in the frame, props
+   included**, while "not a prop alone" only asks whether the frame touched
+   at all. In the probe's 30 degree tap at 4.8 m/s every step that closed
+   over the line had a prop disc in contact too, so whether the frame itself
+   closed that fast the report cannot say. Telling them apart needs the
+   report to carry the frame's own closing speed, an ABI change.
+4. **The ground half is gated on the wall clock**: it judges a frame only
+   when BOUNCE_COOLDOWN_MS of wall time (nowWall) has passed since the last
+   ground bounce. Another frame time dependence in a decision that moves the
+   craft. Older than this entry, untouched.
+
+Unchanged and worth knowing when flying it: the recogniser still calls a
+contact over GRAZE_SPEED_MAX a bump and not a tap, so a wall tap that closes
+at 4 m/s or more is no longer a crash but does not score as a Wall Tap
+either.
+
+### RUN LOG
+
+    git fetch, main alone          origin/main 9ed8b9c..6bf90bf, this
+                                   branch's HEAD; merge-base 6bf90bf
+    git fetch before committing    main 6bf90bf..fdafe2e, merge-base
+                                   6bf90bf; stash, fast forward, stash
+                                   applied; PROGRESS.md and index.html
+                                   resolved as above. Every check below
+                                   from here on is on the merged tree
+    probe (scratch, Node)          240 five inch taps at yaw 0: no base
+                                   first tap reset. The same 4.5 m/s tap at
+                                   90, 180 and 270: reset on every phase of
+                                   7, 16 and 33 ms. Whoop taps from 3.4 to
+                                   5.5 m/s at 90: all reset before, none
+                                   after, and none at any heading after
+    npm run check:clip             683 passed on the parent, run this turn;
+                                   699 passed, 0 failed, the 16 new
+    npm run check:world            all passed, 48 passes with 9 new; the
+                                   same 5 targets not met as before; every
+                                   line that was there is identical
+    npm run check:world-golden     all passed: 35 runs, 62 flights, each
+                                   flown twice, bit identical to
+                                   tests/goldens/world.json; the reading is
+                                   not among them
+    mutation, the turn removed     check:clip 693 passed, 6 failed;
+                                   check:world 2 FAILED, the reading's two
+                                   verdicts. Restored byte for byte: both
+                                   pass. Run before and after the merge
+    npm run lint:preload           up to date, boot 106 modules, city 73,
+                                   built 28, 201 served (105 and 29 before
+                                   gen:preload)
+    npm run lint:memory            PASS on the final tree; src/props at
+                                   boot: trig.js, types.js
+    npm run lint:nouns             PASS
+    node --check                   every changed file
+    dash scan, the diff            no em or en dash in added lines
+    Math.sin, cos, pow added       none outside test code: the check's pilot
+                                   and the unit test's attitudes
+    npm run verify                 not run: shell only, no plant, ABI or
+                                   build change
+    npm run check:fresh            not run: it proves a returning browser
+                                   gets a new deploy, which this does not
+                                   touch; the list it serves from is
+                                   lint:preload's, up to date
+    npm run check:crash, shots     not run: offered to the owner
+    git diff --stat vendor/betaflight   empty, and not checked out here
+
+## 2026-09-25 | git | The wall tap fix goes to main
+
+The owner, on the entry above: "push to main". That is the approval to put
+the fix on main. No verification scale was named with it: the checks in the
+entry above are the ones that were run, on the very tree that goes to main,
+and flying it stays the suggestion. main had not moved from fdafe2e, the
+base this branch was built on, so main goes to the branch as a fast forward:
+no merge commit on main's side, nothing rewritten.
+
+Still open, asked with the push: whether the reading's two flights should
+also be pinned in the world golden, which is the owner's approval to give.
+
+What to look for when flying it is in the entry above. A belly first wall
+tap at the pace that reset you bounces off with no "Crashed, set down
+nearby", facing any way and after an X set down too. A nose first smack
+still resets at once, in the city as well. Wrong would be a reset on a
+belly tap, or a nose first hit that hangs on the wall.
+
+### RUN LOG
+
+    git fetch                      main fdafe2e, unchanged since the entry
+                                   above; merge-base fdafe2e, main is an
+                                   ancestor of the branch
+    code                           unchanged since the entry above; only
+                                   this entry is new
+    checks                         not rerun: nothing they read changed
+
+## 2026-09-25 | art, maps, checks | The STF mark in plain view: seen from the pads on every freestyle map
+
+The owner: "the logo of SubTwoFIfty is too hard to find, make it easy to
+see on any map". Stage B had hidden it on purpose: in the town inside the
+works shed's roof space, on a built map on a face chosen so it could NOT be
+seen from the pads. This turns that round. No physics change, no ABI or
+build change: the mark is paint, and both built map placement hashes are
+unchanged (starter e72f829e..., one of everything 9899d9f1...).
+
+### The owner's decision, recorded
+
+- **2026-09-25, decision 10 in FREESTYLE-MAPS-PLAN.md section 12: the STF
+  mark is painted to be seen, not hidden.** Big, where the pilot sees it
+  from the pads, in the first frame where the map allows. It replaces
+  decision 3's "the sim hides it" (the sim still chooses the spot and the
+  builder still never shows it) and answers open question 6, the town's
+  spot. Section 9 is rewritten to match. "Any map" is read as every map
+  that carries the mark, the town and every built map; race tracks carry
+  none and still do not (asked below).
+
+### What changed
+
+- **The town, src/maps/city/places/index.js.** The mark leaves the works
+  shed (STF_SPOT and buildStfMark come out of works.js, which is back to
+  its pre Stage B imports) for a 4 by 2 m mural on the south flank of 米・酒
+  なかの, the corner shop that closes the street the pilot starts in: 25 m
+  ahead of the pads, 11 degrees left of the nose, dead centre of the town's
+  first frame. The plain upper storey was mapped by a grid of rays against
+  the drawn town (wall from x 2.5 to 6.8, 3.7 to 6.0 m, between the blade
+  sign and a downpipe, over the string course and under the eave), because
+  northblock.js is vendored and exports none of it. The paint stands 1.5 cm
+  in front of the town's fitted collider face, which is 5 cm proud of the
+  brickwork, so the find's sight line never ends inside a solid.
+- **Built maps, src/maps/built/egg.js, rewritten.** Rules: an upright face
+  of a drawn opaque box; open air 3 m in front; seen from 0.3, 2 and 5 m
+  over the seat (every line to nine points on the mark clear of anything
+  opaque); turned to the pads (within 60 degrees) and 15 to 60 m from them.
+  The pick is the wall whose mark looks biggest from the pads (width times
+  how square it stands, over distance) weighed by the turn (2 plus the
+  cosine off the pads' heading: 3 ahead, 2 abeam, 1 behind). Marks are up
+  to 6 by 3 m, down to 1.8 by 0.9. A map with no such wall gets it flat on
+  the paving 12 m ahead of the pads (then 8, then 18, then the plot's
+  middle), 12 by 6 m, square to the plot, reading away from the pads. No
+  seed any more: the spot is a property of the layout, the same whatever
+  the id. The pads' heading comes from src/props/trig.js's sincos, so the
+  file now imports trig.js instead of parts.js (still pure, still no JS
+  trigonometry).
+- **The paint, src/art/stf.js.** makeStfMark takes `shade`: paint on a face
+  the sun never reaches gives back 0.3 of its own colour, dusk's share. The
+  town's flank faces north at golden hour and its white lettering had gone
+  the lavender grey of the render round it; with it, white and green again.
+  A built map sets it by testing the face against the look's own sun.
+- **Finding it, src/game/egg.js.** findRange(egg): 4 m for a mark up to 1.8
+  m wide, in proportion for a bigger one, so it is found at the same fifth
+  of the frame; capped at 13.5 m, short of the 15 m minimum reach, so no
+  mark is ever found from the pads.
+- **The checks, scripts/props-check.js, egg block and self tests.** Every
+  rule restated in the check's own geometry, with an exact slab test for
+  sight lines; rule 6 checked independently: no wall that scores higher
+  keeps rules 1 to 5 at its middle. The seed checks become "the id moves
+  nothing". The find checks now require the pads' eyes to have a clear
+  line to the mark and not find it. Self tests plant a wall between a mark
+  and the pads (fails rule 4 only), move a mark out of reach (rule 5 only),
+  turn one away (rule 5), and hand the pick a spot on the paving of a map
+  with a wall in view (caught).
+- Docs: FREESTYLE-MAPS-PLAN.md sections 9 and 12, src/maps/README.md, the
+  headers of the files above, src/maps/preload.js regenerated (the town
+  imports stf.js from places/index.js now; order only, counts unchanged).
+
+### Measured
+
+    town, first frame on the pads      the mural centred, lettering legible
+    town, from 7 m in front (page)     found; not found on the pads
+    starter's spot                     the bando's own ground floor wall,
+                                       south face, 4.2 by 2.1 m, 29.9 m
+                                       ahead, in the first frame
+    starter, from 8 m (page)           found; not found on the pads
+    one of everything                  a 1.8 m mark on a balcony parapet
+    50 random maps                     25 on a wall, 25 on the paving,
+                                       5 in the first frame
+    timing                             starter 9.0 ms, 10027 solids 29.6 ms
+                                       (first call, fresh engine)
+
+The found checks in the page placed the craft with window.__placeCraft
+and read window.__egg(), through tests/lib/page.js. The shots were taken
+the same way; they are in the session's scratchpad and are not committed.
+
+### Judgement calls, for the owner
+
+- **The starter's mark is on the bando, over its NEKO tag.** It is lifted
+  clear of the tag, so nothing fights, and it reads as one tag painted
+  over another. Before the band fix below it was on the office block's
+  south face, 6 by 3 m, 60 m out, at the left edge of the first frame; the
+  two scored 0.275 and 0.266. Either is easy to see.
+- **Paint on the paving is the weak case.** A craft on its pads cannot see
+  it (a sliver at the horizon); it reads once the craft is up and pitched
+  forward. It only happens on a map with no wall facing the pads 15 to 60
+  m out, which on the random maps is half of them, because they are sparse
+  scatters with random pads. The alternative, standing the mark up on
+  something the map does not have, means adding geometry that is not
+  solid, which a craft would fly through; I did not do that.
+- **A wall behind the pads counts**, at a third of the weight of one dead
+  ahead, because a mural a pilot sees with one turn beats paint on the
+  paving.
+- **Finding it is now quick**: the town's mark is 25 m up the street, so
+  MARK FOUND comes within seconds of takeoff. That follows from "easy to
+  see"; the find itself is unchanged in kind.
+
+### What went wrong
+
+- **The fit ignored rule 2's ground clearance.** A wall standing on the
+  paving was sized to fit its face 10 cm in from the edges and then
+  rejected because the mark's foot was under 0.3 m, so a single container's
+  side took no mark at all. Now the band starts 10 cm over the clearance,
+  and a single container takes a 4.2 m mark. Stage B's fit had the same
+  flaw; with a 0.9 m mark it rarely showed. Found while restating the rule
+  in the check, and it moved the starter's pick from the office to the
+  bando.
+- **The first draft excluded walls not ahead of the pads.** 35 of 50
+  random maps then fell back to the paving; the diagnosis showed 544 walls
+  facing the pads and only 179 ahead of them. Weighing the turn instead
+  of excluding it brought the paving down to 25.
+- **I misread a ray.** An early probe from the town's spawn hit something
+  at x 4, z 40.5 between the pads and the mural, and I wrote it into a
+  comment as the utility pole crossing the mural. The shots from the pads
+  and from 2 m over them show the whole mural clear; the hit was most
+  likely one of the town's invisible interaction boxes. The comment says
+  what the shots show.
+- The town's SPAWN comment in src/maps/city/index.js still says the pilot
+  faces north at the crossing and the shop; the pilot faces +z, up the
+  street, with the crossing behind. Left as it is, outside this change.
+
+### RUN LOG
+
+Run on the final code, this turn:
+
+    node scripts/props-check.js        all passed, 202 PASS; placement
+                                       hashes unchanged
+    props-check --selftest             all passed
+    npm run check:clip                 683 passed, 0 failed
+    npm run lint:preload               stale (order), regenerated, then
+                                       up to date: boot 105, city 73,
+                                       built 29
+    npm run lint:memory                PASS, every world lazy and freed;
+                                       the town leaves 62 geometries and 6
+                                       textures after freeing against a
+                                       baseline of 61 and 5, and main does
+                                       exactly the same (run on a worktree
+                                       of 6bf90bf), so it predates this
+    dash scan, added lines             none
+    git diff --stat vendor/betaflight  empty
+    shots                              through tests/lib/page.js on the
+                                       real shell (not scripts/shots.js
+                                       itself): town and starter first
+                                       frames, 2 m over the pads, the find
+                                       range's edge and 4 m out; a map of
+                                       trees; before and after the shade
+                                       glow
+    npm run verify                     not run: no physics, plant, ABI or
+                                       build change
+    npm run check:plant, check:crash   not run: nothing solid changed, and
+                                       the hashes say so
+
+After the commit above, main had moved to fdafe2e (Stage D part 1's world
+golden in verify, the loader, visit source attribution). Merged into this
+branch, merge-base 6bf90bf, one history; only PROGRESS.md conflicted, both
+sides appending, resolved as main's entries with this one after them. On
+the merged tree:
+
+    node scripts/world-golden.js       all passed, 5.4 s: the town's
+                                       fixture and both built maps fly bit
+                                       identical, as they should with
+                                       nothing solid changed
+    props-check --only=egg             all passed; the builder, now 23
+                                       files, still reaches none of the
+                                       mark's files
+    npm run check:clip                 683 passed, 0 failed
+    npm run lint:preload               up to date, boot 105, city 73,
+                                       built 29; 201 served
+
+## 2026-09-25 | git | The STF mark in plain view goes to main, for the owner to fly
+
+The owner, on the entry above: "fly it, and just freestlye, push to ain".
+Three answers in one line, recorded as given:
+
+- **"push to ain"**: the approval to put the STF mark in plain view on
+  main. It covers exactly the branch as checked above (cee8eaf and its
+  merge of main, a07674e) and this entry.
+- **"fly it"**: the verification scale is the owner flying it. Nothing
+  further was run for it.
+- **"just freestlye"**: the answer to "did 'any map' include race tracks?".
+  No: the mark stays on freestyle maps, the town and every built map, and
+  race tracks carry none. Written into FREESTYLE-MAPS-PLAN.md decision 10.
+
+**Main moved under the push.** Fetched first, main was fdafe2e, the
+branch's merge base; by the push it was a39b61a, the wall tap fix and its
+entries, and the push was refused as a non-fast-forward, which is git
+doing its job. Merged into the branch instead (merge-base fdafe2e, one
+history; only PROGRESS.md conflicted, both sides appending, resolved as
+main's entries with this branch's after them; src/maps/preload.js
+merged clean). Main then moves to the branch by fast-forward, with no
+merge commit on main's side and nothing rewritten.
+
+**No hard reload.** The loader that went to main earlier today loads every
+script at the new deploy's address on the first visit after it.
+
+What to look for, flying:
+
+- The town: from the pads, the STF mural on the side of the corner shop at
+  the end of the street, just left of the nose, white and green lettering
+  on black. Fly up the street to it and MARK FOUND comes up.
+- Your map, or Hibari Yard if nothing is built: on Hibari Yard the mark is
+  on the bando's ground floor wall, dead ahead of the pads. On a map of
+  your own it is on the wall that looks biggest from the pads, or flat on
+  the ground ahead of them if no wall faces them 15 to 60 m out.
+
+What would count as wrong: no mark in view from the pads on a map with
+walls round them; lettering that reads grey or washed out; MARK FOUND
+before takeoff; the mark flickering against the wall it is on, or floating
+visibly off it; the town's mark still in the works shed, which would mean
+the old scripts are being served.
+
+### RUN LOG
+
+    git fetch, first                main fdafe2e, unmoved since the merge
+                                    above
+    git push HEAD:main              rejected: main had moved to a39b61a
+    git merge origin/main           merge-base fdafe2e; PROGRESS.md
+                                    resolved, preload.js merged clean
+    on the merged tree              see below; the merge brought
+                                    src/game/collide.js and src/main.js
+                                    changes, and the find reads the
+                                    Colliders, so the egg block ran again
+    git diff --stat vendor/betaflight   empty
+
+On the merged tree, this turn:
+
+    node scripts/props-check.js --only=egg   all passed, 43 PASS: the find
+                                             checks against the merged
+                                             Colliders included
+    props-check --selftest                   all passed
+    npm run check:clip                       699 passed, 0 failed
+    node scripts/world-golden.js             all passed
+    npm run lint:preload                     up to date, boot 106, city
+                                             73, built 28
+
 ## 2026-09-25 | board, builder, shell, edge | A shared link to a track or a map shows that track or map
 
 The owner: "when i share a track or a map link in social media the little

@@ -336,6 +336,7 @@
       'src/share/ghostdata.js',
       'src/render/ghostcraft.js',
       'src/game/plantworld.js',
+      'src/props/trig.js',
       'src/ui/ui.js',
       'src/maps/registry.js',
       'configs/registry.js',

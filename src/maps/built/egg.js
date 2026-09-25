@@ -1,78 +1,99 @@
 /*
  * egg.js: where the STF mark is painted on a built freestyle map. Pure: no
- * Three.js, no DOM, no clock, no random stream but the map's own, and no JS
- * trigonometry.
+ * Three.js, no DOM, no clock, no random stream, and no JS trigonometry.
  *
  * WHAT IT IS FOR. Every freestyle map carries the STF mark, the town and
- * every map somebody built (FREESTYLE-MAPS-PLAN.md section 9). On a built
- * map the SIM chooses the spot, not the author, and the builder never shows
- * it (the owner's decision 3, section 12), so the person who built a map has
- * to find it too. This file is that choice. It reads the map exactly as
- * ./place.js placed it, the solids the physics holds and the parts the kit
- * draws, and answers with one face and where on it the mark goes. It draws
- * nothing and makes nothing solid: the mark is paint, and no solid, no
- * placement and no physics number is changed by it.
+ * every map somebody built (FREESTYLE-MAPS-PLAN.md section 9). It used to be
+ * hidden from the pads, and the owner could not find it: "the logo of
+ * SubTwoFIfty is too hard to find, make it easy to see on any map"
+ * (2026-09-25, section 12, decision 10). So it is painted where the pilot
+ * sees it from the pads: big, on a wall turned to them, in the first frame
+ * when the map has such a wall. The SIM still chooses the spot, not the
+ * author, and the builder still never shows it (decision 3's second half).
+ * This file is that choice. It reads the map exactly as ./place.js placed
+ * it, the solids the physics holds and the parts the kit draws, and answers
+ * with one face and where on it the mark goes. It draws nothing and makes
+ * nothing solid: the mark is paint, and no solid, no placement and no
+ * physics number is changed by it.
  *
  * THE RULES, in the order they are applied. The egg block of
  * scripts/props-check.js asserts each one, on the starter, on one of
- * everything, on fifty random maps and on maps built to reach each fallback.
+ * everything, on fifty random maps and on maps built to reach the fallback.
  *
- *   1. PAINT GOES ON A FLAT FACE: a face of a solid box the kit draws as that
- *      box, and not glass. A capsule is round, and a box the kit does not
- *      draw (a car's body, a rubble pile's envelope, a scaffold's net) is not
- *      where paint would be seen. The mark is 1.8 by 0.9 m, the logo's two
- *      to one, shrunk on a smaller face to no less than half that, and it
- *      lies inside its face, EDGE_INSET in from every edge, so it never
- *      overhangs one.
- *   2. OPEN AIR IN FRONT: the mark's rectangle pushed out along the face's
- *      normal is clear of every solid, is GROUND_CLEAR over the paving and is
- *      inside the plot. AIR out from a wall or a roof, room to be seen from;
- *      AIR_UNDER down from a ceiling, which is the room to fly under it that
- *      rule 5 asks of an underside. A bando storey has 3.1 m under its slab,
- *      so a ceiling asking for the wall's 3 m would lose the ground floor.
+ *   1. PAINT GOES ON A WALL: an upright face of a solid box the kit draws as
+ *      that box, and not glass. A capsule is round, a roof is seen from the
+ *      pads at a slant too flat to read, and a box the kit does not draw (a
+ *      car's body, a rubble pile's envelope, a scaffold's net) is not where
+ *      paint would be seen. The mark is up to MARK_W by MARK_H, the logo's
+ *      two to one, shrunk on a smaller face to no less than MARK_MIN_SCALE
+ *      of that, and it lies inside its face, EDGE_INSET in from every edge,
+ *      so it never overhangs one, and EDGE_INSET over GROUND_CLEAR at the
+ *      lowest, so a wall standing on the paving takes the biggest mark that
+ *      keeps rule 2.
+ *   2. OPEN AIR IN FRONT: the mark's rectangle pushed AIR out along the
+ *      face's normal is clear of every solid, is GROUND_CLEAR over the
+ *      paving and is inside the plot. Room to be seen from, and to fly up
+ *      to it.
  *   3. NEVER IN A SOLID: the point LINE_OFF in front of the mark's middle is
  *      in no solid. Rule 2 already means it. It is asked on its own because a
  *      mark inside a wall is the one failure a pilot could never explain.
- *   4. NOT SEEN FROM THE PADS: every line from an eye over the spawn
- *      (EYE_HEIGHTS over the seat) to the mark passes through a solid that
- *      hides what is behind it. The lines go to the mark's middle, its four
- *      corners and the middles of its four edges, SAMPLE_INSET in, and end
- *      LINE_OFF in front of the face, so the face's own box is only in the
- *      way when it really is between the eye and the paint. What hides is
- *      opaque: a box, but not glass, a net, a railing, a balustrade of bars,
- *      a skylight or foliage, and a capsule only when it is OPAQUE_R thick
- *      (a tank, a stack, a cab). A pole or a lattice member stops a line
- *      and hides nothing, and a mark seen between the bars of a pylon is seen.
- *   5. PREFERENCE, the table SCORE: an underside over a back over a plain
- *      side, and a face deep inside its own asset over one on its outside.
- *   6. THE PICK: the faces in order of score, ties broken by the element's
- *      place in the document and then the face's own index, which is a total
- *      order, so every engine's sort gives the same list. Each face is tried
- *      at up to 49 places, middle first, and the first place that keeps rules
- *      2 to 4 is the face's. The best such face of each element, up to
- *      FINALISTS of them, are the finalists, topped up with the next best
- *      faces of any element when fewer elements have one, and a seed from
- *      the document's id picks one: the same spot every time a map is
- *      flown, and a different one on the next map.
- *   7. ALWAYS A SPOT, in named steps (STEP). 'hidden' is rules 1 to 6.
- *      'away', when nothing is hidden: rules 1 to 3 on a face turned away
- *      from the pads, the farthest from them the plot allows. 'ground', when
- *      no box face will take the mark at all (an empty plot, a map of
- *      trees): flat on the paving, in the plot's corner farthest from the
- *      pads whose air is clear, or the farthest corner if none is.
+ *   4. SEEN FROM THE PADS: no line from an eye over the spawn (EYE_HEIGHTS
+ *      over the seat, a craft on its pads to one climbing out) to the mark
+ *      passes through a solid that hides what is behind it. The lines go to
+ *      the mark's middle, its four corners and the middles of its four
+ *      edges, SAMPLE_INSET in, and end LINE_OFF in front of the face. What
+ *      hides is opaque: a box, but not glass, a net, a railing, a
+ *      balustrade of bars, a skylight or foliage, and a capsule only when it
+ *      is OPAQUE_R thick (a tank, a stack, a cab). A pole or a lattice
+ *      member in front of a mark crosses it and hides nothing.
+ *   5. TURNED TO THE PADS AND IN REACH: the wall's outward normal, at the
+ *      middle of the band its mark can take, within 60 degrees of pointing
+ *      at the eye 2 m over the pads (FACE_COS), so the lettering is read
+ *      and not foreshortened to a stripe, and the mark's middle between
+ *      NEAR_MIN and NEAR_MAX from the spawn across the ground: far enough
+ *      that finding it is a flight and never happens on the pads, near
+ *      enough to read and inside every tier's fog.
+ *   6. THE PICK: the walls in the order of how easily the pilot sees them
+ *      from the pads, which is how big the mark looks from there (its width,
+ *      times how square the wall stands to them, over its distance: near
+ *      enough the angle it spans) times how little the pilot has to turn to
+ *      see it (2 plus the cosine across the ground between the pads' heading
+ *      and the way to the mark: 3 straight ahead, 2 abeam, 1 behind), both
+ *      taken at that same middle of the band. So a wall in the first frame
+ *      wins unless one to the side looks half as big again, and one behind
+ *      the pads is still a mural a pilot sees with one turn. Ties go to the
+ *      element's place in the document and then the face's own index, which
+ *      is a total order, so every engine's sort gives the same list. Each
+ *      wall is tried at up to 49 places, middle first and then higher
+ *      before lower, and the first wall with a place that keeps rules 2 to
+ *      5 is the spot. The same map gives the same spot every time it is
+ *      flown, whatever its id: the spot is a property of the layout.
+ *   7. ALWAYS A SPOT, in named steps (STEP). 'seen' is rules 1 to 6.
+ *      'ground', when no wall keeps them (an empty plot, a map of trees,
+ *      every wall turned away or out of reach): flat on the paving ahead of
+ *      the pads and GROUND_SCALE the size of a wall's, square to the plot and
+ *      reading away from them, at the first of GROUND_AHEAD whose air is
+ *      clear, or the first anyway, because every map carries the mark. A
+ *      craft on its pads cannot see paint on the paving, so this is the one
+ *      step that is seen once the pilot is in the air, and it is there only
+ *      for a map that has no wall to put the mark on.
  *
  * THE FRAME is the placed world's: Three.js metres, y up, origin at the
- * plot's middle (./place.js). Every face here is axis aligned, because a box
- * is only ever turned by a quarter (src/props/solids.js), so the mark's
- * normal, up and right are unit axis vectors and every test below is exact
+ * plot's middle (./place.js). A box is only ever turned by a quarter
+ * (src/props/solids.js), so every wall is axis aligned and a wall mark's
+ * normal, up and right are unit axis vectors, and every test below is exact
  * box arithmetic: comparisons, + - * / and the square root, which JavaScript
- * specifies to the bit. The same map gives the same spot in Node and in
- * every browser.
+ * specifies to the bit. The pads' heading is the one angle, and it is turned
+ * into a direction by src/props/trig.js, the project's own sine, which gives
+ * the same bits in every engine. The same map gives the same spot in Node
+ * and in every browser.
  *
  * WHERE IT RUNS. Once, when a built map is built. It reads the whole map, so
  * it is fast rather than clever: the solids are filed on a grid of the plot,
- * a sight line walks only the cells it crosses, and the walk over the faces
- * stops at the eighth finalist. scripts/props-check.js times it.
+ * a sight line walks only the cells it crosses, a wall out of reach or
+ * turned away is dropped before any line is walked, and the walk over the
+ * walls stops at the first that keeps the rules. scripts/props-check.js
+ * times it.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -90,25 +111,26 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { hashString, seededRandom } from '../../props/parts.js';
+import { sincos } from '../../props/trig.js';
 
 /* ------------------------------------------------------------------ */
 /* The numbers                                                         */
 /* ------------------------------------------------------------------ */
 
-/* The mark, in metres: the logo is two to one. A face too small for the
- * whole of it takes it smaller, down to MARK_MIN_SCALE of it and no less,
- * because a stencil smaller than a pizza box is not a thing anybody finds. */
-export const MARK_W = 1.8;
-export const MARK_H = 0.9;
-export const MARK_MIN_SCALE = 0.5;
+/* The mark, in metres: the logo is two to one. Six metres is a mural, 11
+ * degrees across from 30 m, which is three letters a pilot reads in the
+ * first frame. A wall too small for the whole of it takes it smaller, down
+ * to MARK_MIN_SCALE of it and no less: 1.8 m, the size the hidden mark was,
+ * which is still three letters from 15 m. */
+export const MARK_W = 6;
+export const MARK_H = 3;
+export const MARK_MIN_SCALE = 0.3;
 /* How far the mark stays in from every edge of its face. */
 export const EDGE_INSET = 0.1;
 
-/* Rule 2's open air, out from a wall or a roof and down from a ceiling, and
- * how far over the paving the whole of it has to be. */
+/* Rule 2's open air, out from the wall, and how far over the paving the
+ * whole of it has to be. */
 export const AIR = 3;
-export const AIR_UNDER = 2.2;
 export const GROUND_CLEAR = 0.3;
 
 /* Rule 4: the eyes over the seat, from a craft on its pads to one climbing
@@ -129,53 +151,59 @@ const SEE_THROUGH = new Set(['glass', 'net', 'railing', 'balustrade', 'skylight'
 const SEE_THROUGH_KIND = 'canopy';
 
 /*
- * Rule 5, the preference, as named weights. A face's score is the weight of
- * what it is, plus `inside` when it is deep inside its own asset and under
- * its own roof or deck, plus `full` when the whole mark fits on it.
- *
- *   underside  a ceiling or a deck's underside, found by flying under it
- *   back       a wall turned away from the pads, within 60 degrees of
- *              straight away (BACK_COS)
- *   side       any other wall
- *   top        a roof or a floor, the easiest to find from the air
- *   inside     the face's middle at least INSIDE_DEPTH inside the plan of
- *              its own element's solids, with a box of that element over
- *              the air in front of it: inside the bando, under a bridge
- *              deck, in an open container. An underside is its own cover.
- *   full       room for the whole 1.8 by 0.9 m mark
- *
- * So an inside ceiling (7) beats an inside back wall (5), which beats an
- * inside side wall and a plain underside (4 each), and every one of those
- * beats an inside roof (3), a plain back (2), a plain side (1) and a roof
- * (0). The halves are exact in binary, so a score is the same number on
- * every engine.
+ * Rule 5. FACE_COS: the least share of the distance from the pads' middle
+ * eye to the wall's middle that the eye stands out in front of the wall,
+ * the cosine of 60 degrees, so the lettering is never foreshortened to less
+ * than half its width. NEAR_MIN and NEAR_MAX, across the ground from the
+ * spawn: NEAR_MIN is past the find range of the biggest mark (13.3 m for a
+ * 6 m mark, findRange in src/game/egg.js) with room to spare, so the mark
+ * is found by flying to it and never on the pads; NEAR_MAX is short of
+ * where the built map's fog begins to take anything (40 m on Low, a
+ * smoothstep that has taken almost nothing at 60), and a 6 m mark there is
+ * still 5.7 degrees across.
  */
-export const SCORE = Object.freeze({ underside: 4, back: 2, side: 1, top: 0, inside: 3, full: 0.5 });
-export const BACK_COS = 0.5;
-export const INSIDE_DEPTH = 1;
-/* How far in front of a wall the cover over it is looked for. */
-const COVER_PROBE = 0.5;
-/* Which way a ceiling opens (openSide): the line is walked this far under
- * it, where a craft looking up at it flies, and on to this far past its
- * element's plan. */
-const OPEN_DROP = 1;
-const OPEN_PAST = 1;
+export const FACE_COS = 0.5;
+export const NEAR_MIN = 15;
+export const NEAR_MAX = 60;
 
-/* Rule 6: how many finalists the seed picks from. */
-export const FINALISTS = 8;
+/*
+ * Rule 6 reports, and the checks read, whether a wall mark is in the first
+ * frame: within 35 degrees of the pads' heading across the ground, the
+ * cosine written out because a cosine is all the test needs and the file
+ * takes no angles. The narrowest field of view Settings offers is 75
+ * degrees top to bottom (src/render/lens.js), which is wider than 75 across
+ * on any screen wider than it is tall, so a mark within 35 degrees of the
+ * nose is in the picture on the pads at every setting. It orders nothing:
+ * the pick weighs the turn continuously (TURN).
+ */
+export const FRAME_COS = 0.8191520442889918;
+/* Rule 6's weight for the turn: TURN plus the cosine, 3 straight ahead of
+ * the pads, 2 abeam, 1 straight behind. */
+export const TURN = 2;
 
 /* Rule 7's steps, by name. */
-export const STEP = Object.freeze({ HIDDEN: 'hidden', AWAY: 'away', GROUND: 'ground' });
+export const STEP = Object.freeze({ SEEN: 'seen', GROUND: 'ground' });
+
+/* The ground fallback: how much bigger than a wall's full mark it is, 12 by
+ * 6 m, because paint on the paving is only ever seen from above at a slant,
+ * a floor graphic is read from the air the way a helipad's letter is, and
+ * there is nothing on a plot with no walls for it to crowd; the places
+ * ahead of the pads its middle is tried at, in metres across the ground, in
+ * order, then the plot's middle; and how far it stays in from the plot's
+ * edge. 12 m first: a craft that has climbed to 5 m sees it from 18 to 29
+ * degrees below the horizon and 53 degrees across, and a craft on its pads,
+ * a few centimetres over the paving, does not find it (FIND_FRONT in
+ * src/game/egg.js). */
+export const GROUND_SCALE = 2;
+export const GROUND_AHEAD = Object.freeze([12, 8, 18]);
+const GROUND_INSET = 1;
 
 /* Where on a face the mark is tried: a grid of up to 7 by 7 places, about
- * POS_STEP apart, spread to the face's edges, middle first. A big wall or
- * ceiling has a column or a beam in front of some of it and clear air in
- * front of the rest, and the middle alone would lose the face. */
+ * POS_STEP apart, spread to the face's edges, middle first. A big wall has
+ * a column, a tank or a parked car in front of some of it and clear air in
+ * front of the rest, and the middle alone would lose the wall. */
 const POS_STEP = 1.5;
 const POS_HALF = 3;
-
-/* The ground fallback's mark, this far in from both edges of its corner. */
-const GROUND_INSET = 3;
 
 /* Arithmetic slack: a solid that meets the prism in a plane is touching it,
  * not in it. A millimetre off every face of a blocker, so a sight line that
@@ -736,10 +764,10 @@ function inGrid(G, cx, cz) {
 /*
  * Rule 4 for one line: is the straight line from a (at the mark) to b (an
  * eye) hidden by a solid? It walks the grid cells the line's plan crosses
- * (Amanatides and Woo), from the mark outwards, because what hides a mark
- * is usually right beside it, and stops at the first solid that hides the
- * line. A cell the walk could skip at a corner only ever loses a blocker,
- * which makes a mark count as seen and never as hidden.
+ * (Amanatides and Woo), from the mark outwards, and stops at the first
+ * solid that hides the line. Through a corner it asks the two cells either
+ * side as well, so a blocker filed only there is not skipped, which would
+ * call a hidden mark seen.
  */
 function lineHidden(S, G, a, b) {
   const q = nextQuery(G);
@@ -806,13 +834,14 @@ function lineHidden(S, G, a, b) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Faces                                                               */
+/* Walls                                                               */
 /* ------------------------------------------------------------------ */
 
 /* Face f of a box: its axis a (0 x, 1 y, 2 z) is f >> 1 and its outward
  * normal points to the minus side for an even f and the plus side for an
  * odd one. So 0 and 1 face -x and +x, 2 is the underside, 3 the top, and 4
- * and 5 face -z and +z. */
+ * and 5 face -z and +z. The walls are 0, 1, 4 and 5. */
+const WALLS = [0, 1, 4, 5];
 
 /* The sign of e_i x e_j along the third axis, for i and j different. */
 function crossSign(i, j) {
@@ -838,195 +867,116 @@ function fitScale(across, tall) {
 }
 
 /* The places a mark is tried on a face, as whole steps from its middle:
- * nearest the middle first, then the lower along the mark's up (on a wall,
- * nearer the ground) and then the lower along its width, so the order is
- * total and the same on every engine. */
+ * nearest the middle first, then the higher along the mark's up (clear of
+ * whatever stands at the foot of a wall) and then the lower along its
+ * width, so the order is total and the same on every engine. */
 const ORDER = [];
 for (let kv = -POS_HALF; kv <= POS_HALF; kv += 1) {
   for (let ku = -POS_HALF; ku <= POS_HALF; ku += 1) {
     ORDER.push([ku, kv]);
   }
 }
-ORDER.sort((p, q) => (p[0] * p[0] + p[1] * p[1]) - (q[0] * q[0] + q[1] * q[1]) || p[1] - q[1] || p[0] - q[0]);
+ORDER.sort((p, q) => (p[0] * p[0] + p[1] * p[1]) - (q[0] * q[0] + q[1] * q[1]) || q[1] - p[1] || p[0] - q[0]);
 
-/* Each element's plan, from its own solids: [x0, z0, x1, z1]. */
-function footprints(S, count) {
-  const F = new Float64Array(count * 4);
-  for (let ii = 0; ii < count; ii += 1) {
-    F[ii * 4] = Infinity;
-    F[ii * 4 + 1] = Infinity;
-    F[ii * 4 + 2] = -Infinity;
-    F[ii * 4 + 3] = -Infinity;
-  }
-  for (let i = 0; i < S.n; i += 1) {
-    const ii = S.item[i];
-    if (ii < 0 || !S.ok[i]) {
-      continue;
-    }
-    const o = ii * 4;
-    F[o] = S.x0[i] < F[o] ? S.x0[i] : F[o];
-    F[o + 1] = S.z0[i] < F[o + 1] ? S.z0[i] : F[o + 1];
-    F[o + 2] = S.x1[i] > F[o + 2] ? S.x1[i] : F[o + 2];
-    F[o + 3] = S.z1[i] > F[o + 3] ? S.z1[i] : F[o + 3];
-  }
-  return F;
+/* The pads: the spawn's seat, the eyes over it, and its heading as a unit
+ * direction across the ground. The shell faces a craft at `yaw` by turning
+ * its forward, -z, about +y, which is (-sin yaw, 0, -cos yaw); 0 - v, so a
+ * zero comes out as +0 and never -0. */
+function padsOf(placed) {
+  const spawn = placed.spawn;
+  const sc = sincos(spawn.yaw);
+  return {
+    x: spawn.x,
+    z: spawn.z,
+    eyes: EYE_HEIGHTS.map((h) => [spawn.x, spawn.y + h, spawn.z]),
+    /* The middle eye, which rule 5 measures the wall's turn from. */
+    eye: [spawn.x, spawn.y + EYE_HEIGHTS[1], spawn.z],
+    fx: 0 - sc.s,
+    fz: 0 - sc.c,
+  };
 }
 
-/* Is there a box of element ii, other than `host`, whose plan holds (x, z)
- * and whose underside is at or over y: a roof or a deck over that air? */
-function coveredBy(S, G, ii, host, x, z, y) {
-  const c = cellOf(G.ox, G.cell, G.nx, x) * G.nz + cellOf(G.oz, G.cell, G.nz, z);
-  for (let k = G.start[c]; k < G.start[c + 1]; k += 1) {
-    const i = G.items[k];
-    if (i === host || !S.box[i] || S.item[i] !== ii) {
-      continue;
-    }
-    if (S.y0[i] >= y - EPS && x > S.x0[i] && x < S.x1[i] && z > S.z0[i] && z < S.z1[i]) {
-      return true;
-    }
-  }
-  return false;
+/* How far a point is from the pads across the ground, and the cosine of the
+ * angle between the pads' heading and the way to it; -1 at the pads. */
+function reach(pads, x, z) {
+  const gx = x - pads.x;
+  const gz = z - pads.z;
+  const ground = Math.sqrt(gx * gx + gz * gz);
+  return { ground, cos: ground > 0 ? (pads.fx * gx + pads.fz * gz) / ground : -1 };
 }
 
 /*
- * Which way a ceiling opens along plan axis ua: +1 or -1 when the air under
- * it runs out past its element's plan that way and not the other, 0 when it
- * runs out both ways or neither. The line runs OPEN_DROP under the ceiling,
- * from under its middle to OPEN_PAST beyond its element's plan, and anything
- * opaque across it closes that side (lineHidden, so what counts is what
- * hides a mark). A balcony is closed on the side of the wall it stands out
- * from and open on the other; a bridge deck is open both ways and a ceiling
- * deep in a bando closed both ways, and those keep the pads' rule. Measured
- * on a map of flats whose balconies face away from the pads, the pads' rule
- * alone stood the lettering on its head for the one way in.
+ * One wall of box i as a candidate, or null when no mark can go on it or it
+ * cannot be seen as the rules ask: turned away from the pads, or out of
+ * reach wherever the mark goes on it. Its score is taken at its middle
+ * place, so it does not depend on where on the wall the mark ends up.
+ *
+ * THE BAND a mark can take on it: EDGE_INSET in from every edge, and never
+ * lower than EDGE_INSET over GROUND_CLEAR, so a wall that stands on the
+ * paving takes the biggest mark that clears rule 2 rather than the biggest
+ * that fits its face and then none at all. A single container's side, 2.59
+ * m from the paving, takes a 4.2 m mark.
  */
-function openSide(S, G, i, ua, c, F) {
-  const fo = S.item[i] * 4;
-  const lo = ua === 0 ? F[fo] : F[fo + 1];
-  const hi = ua === 0 ? F[fo + 2] : F[fo + 3];
-  const from = [c[0], c[1] - OPEN_DROP, c[2]];
-  const plus = [from[0], from[1], from[2]];
-  const minus = [from[0], from[1], from[2]];
-  plus[ua] = hi + OPEN_PAST;
-  minus[ua] = lo - OPEN_PAST;
-  const openPlus = !lineHidden(S, G, from, plus);
-  const openMinus = !lineHidden(S, G, from, minus);
-  if (openPlus === openMinus) {
-    return 0;
-  }
-  return openPlus ? 1 : -1;
-}
-
-/*
- * One face of box i as a candidate, or null when no mark can go on it. Its
- * score is taken at its middle, so it does not depend on where on the face
- * the mark ends up. The mark's up is world up on a wall. On a ceiling it
- * points the way a pilot comes in from: a craft flying in under a deck with
- * its camera tilted up sees the near part of the ceiling at the top of its
- * picture. That is the way the ceiling opens (openSide) when it opens one
- * way only, a balcony or a canopy standing out from its wall, and back
- * toward the pads otherwise. On a roof it points away from the pads, as a
- * craft flying over sees the far part at the top. Of a ceiling's or a roof's
- * two plan axes, the one that takes the bigger mark, and on a tie the one
- * more in line with the pads.
- */
-function makeFace(S, G, i, f, spawn, F) {
+function makeFace(S, i, f, pads) {
   const a = f >> 1;
   const sg = f & 1 ? 1 : -1;
   const o = i * 7;
   const lo = [S.g[o], S.g[o + 1], S.g[o + 2]];
   const hi = [S.g[o + 3], S.g[o + 4], S.g[o + 5]];
   const plane = sg > 0 ? hi[a] : lo[a];
-  const c = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
-  c[a] = plane;
-  const dx = c[0] - spawn.x;
-  const dz = c[2] - spawn.z;
-  let cls;
-  let ua;
-  let us;
-  let s;
-  if (a === 1) {
-    cls = sg < 0 ? 'underside' : 'top';
-    /* A ceiling's mark reads toward the pads, a roof's away from them. */
-    const tx = sg < 0 ? -dx : dx;
-    const tz = sg < 0 ? -dz : dz;
-    const sx = fitScale(hi[2] - lo[2], hi[0] - lo[0]);
-    const sz = fitScale(hi[0] - lo[0], hi[2] - lo[2]);
-    const ax = tx < 0 ? -tx : tx;
-    const az = tz < 0 ? -tz : tz;
-    if (sx > sz || (sx === sz && ax >= az)) {
-      ua = 0;
-      us = tx < 0 ? -1 : 1;
-      s = sx;
-    } else {
-      ua = 2;
-      us = tz < 0 ? -1 : 1;
-      s = sz;
-    }
-    if (sg < 0) {
-      const open = openSide(S, G, i, ua, c, F);
-      if (open !== 0) {
-        us = open;
-      }
-    }
-  } else {
-    const along = a === 0 ? sg * dx : sg * dz;
-    const len = Math.sqrt(dx * dx + dz * dz);
-    cls = len > 0 && along > BACK_COS * len ? 'back' : 'side';
-    ua = 1;
-    us = 1;
-    s = fitScale(hi[2 - a] - lo[2 - a], hi[1] - lo[1]);
-  }
+  const ra = 2 - a;
+  const floor = lo[1] + EDGE_INSET > GROUND_CLEAR + EDGE_INSET ? lo[1] + EDGE_INSET : GROUND_CLEAR + EDGE_INSET;
+  const band = hi[1] - EDGE_INSET - floor;
+  const s = fitScale(hi[ra] - lo[ra], band + 2 * EDGE_INSET);
   if (!s) {
     return null;
   }
   const w = MARK_W * s;
   const h = MARK_H * s;
-  /* Rule 2 cannot hold anywhere on this face: a ceiling too low to fly
-   * under, a roof at the paving, a wall too short to keep a mark off it. */
-  if ((cls === 'underside' && plane - AIR_UNDER <= GROUND_CLEAR)
-    || (cls === 'top' && plane <= GROUND_CLEAR)
-    || (a !== 1 && hi[1] - EDGE_INSET - h <= GROUND_CLEAR)) {
+  const c = [0, 0, 0];
+  c[a] = plane;
+  c[ra] = (lo[ra] + hi[ra]) / 2;
+  c[1] = floor + band / 2;
+  /* Rule 5's turn: n . (eye - c) >= FACE_COS |eye - c|, n being sg e_a. */
+  const ex = pads.eye[0] - c[0];
+  const ey = pads.eye[1] - c[1];
+  const ez = pads.eye[2] - c[2];
+  const dist = Math.sqrt(ex * ex + ey * ey + ez * ez);
+  const toward = sg * (a === 0 ? ex : ez);
+  if (!(dist > 0) || !(toward >= FACE_COS * dist)) {
     return null;
   }
-  const ra = 3 - ua - a;
-  const rs = us * sg * crossSign(ua, a);
-  const ii = S.item[i];
-  /* Rule 5's `inside`: deep in its own element's plan, and under its own
-   * roof or deck. */
-  const fo = ii * 4;
-  const depthX = c[0] - F[fo] < F[fo + 2] - c[0] ? c[0] - F[fo] : F[fo + 2] - c[0];
-  const depthZ = c[2] - F[fo + 1] < F[fo + 3] - c[2] ? c[2] - F[fo + 1] : F[fo + 3] - c[2];
-  const depth = depthX < depthZ ? depthX : depthZ;
-  let inside = false;
-  if (depth >= INSIDE_DEPTH) {
-    if (cls === 'underside') {
-      inside = true;
-    } else {
-      const px = c[0] + (a === 0 ? sg * COVER_PROBE : 0);
-      const pz = c[2] + (a === 2 ? sg * COVER_PROBE : 0);
-      inside = coveredBy(S, G, ii, i, px, pz, hi[1]);
-    }
-  }
-  const score = SCORE[cls] + (inside ? SCORE.inside : 0) + (s === 1 ? SCORE.full : 0);
+  const at = reach(pads, c[0], c[2]);
   const Ru = (hi[ra] - lo[ra]) / 2 - EDGE_INSET - w / 2;
-  const Rv = (hi[ua] - lo[ua]) / 2 - EDGE_INSET - h / 2;
+  const Rv = band / 2 - h / 2;
+  const R = Ru > 0 ? Ru : 0;
+  /* Rule 5's reach cannot hold anywhere on a wall whose nearest and
+   * farthest places are both out of it. */
+  if (at.ground + R < NEAR_MIN || at.ground - R > NEAR_MAX) {
+    return null;
+  }
   return {
-    i, f, a, sg, plane, ua, us, ra, rs, s, w, h, cls, inside, score,
-    item: ii,
+    i, f, a, sg, plane, ra, s, w, h,
+    rs: sg * crossSign(1, a),
+    item: S.item[i],
     order: S.local[i] * 6 + f,
-    cr: (lo[ra] + hi[ra]) / 2,
-    cu: (lo[ua] + hi[ua]) / 2,
-    Ru: Ru > 0 ? Ru : 0,
+    frame: at.cos >= FRAME_COS,
+    /* How big it looks from the pads: its width, times how square it
+     * stands to them, over its distance. Near enough an angle, in radians. */
+    looks: (w * toward) / (dist * dist),
+    /* And how easily it is seen: that, weighed by the turn (rule 6). */
+    score: ((w * toward) / (dist * dist)) * (TURN + at.cos),
+    cr: c[ra],
+    cu: c[1],
+    Ru: R,
     Rv: Rv > 0 ? Rv : 0,
-    first: null,
   };
 }
 
 /* Highest score first, then the element's place in the document, then the
  * face's own index in its element: a total order, so the sort is the same
  * on every engine. */
-function byScore(p, q) {
+function byView(p, q) {
   return q.score - p.score || p.item - q.item || p.order - q.order;
 }
 
@@ -1045,7 +995,7 @@ function placeAt(face, ku, kv, Ku, Kv) {
   const p = [0, 0, 0];
   p[face.a] = face.plane;
   p[face.ra] = face.cr + (Ku ? (face.Ru * ku) / Ku : 0);
-  p[face.ua] = face.cu + (Kv ? (face.Rv * kv) / Kv : 0);
+  p[1] = face.cu + (Kv ? (face.Rv * kv) / Kv : 0);
   return p;
 }
 
@@ -1053,13 +1003,12 @@ function placeAt(face, ku, kv, Ku, Kv) {
 function airClear(S, G, face, p, W, D) {
   const lo = [0, 0, 0];
   const hi = [0, 0, 0];
-  const depth = face.cls === 'underside' ? AIR_UNDER : AIR;
-  lo[face.a] = face.sg > 0 ? face.plane : face.plane - depth;
-  hi[face.a] = face.sg > 0 ? face.plane + depth : face.plane;
+  lo[face.a] = face.sg > 0 ? face.plane : face.plane - AIR;
+  hi[face.a] = face.sg > 0 ? face.plane + AIR : face.plane;
   lo[face.ra] = p[face.ra] - face.w / 2;
   hi[face.ra] = p[face.ra] + face.w / 2;
-  lo[face.ua] = p[face.ua] - face.h / 2;
-  hi[face.ua] = p[face.ua] + face.h / 2;
+  lo[1] = p[1] - face.h / 2;
+  hi[1] = p[1] + face.h / 2;
   if (lo[0] < -W / 2 - EPS || hi[0] > W / 2 + EPS || lo[2] < -D / 2 - EPS || hi[2] > D / 2 + EPS) {
     return false;
   }
@@ -1075,20 +1024,21 @@ function airClear(S, G, face, p, W, D) {
 }
 
 /* Rule 4 for a mark with its middle at p: every line from every eye. The
- * middle first, from the highest eye, because a mark that is seen at all is
- * most often seen there, and a line that is seen ends the question. */
+ * middle first, from the lowest eye, because a mark that is hidden at all
+ * is most often hidden low, by whatever stands between it and the pads, and
+ * a line that is hidden ends the question. */
 const SAMPLES = [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]];
-function hiddenFrom(S, G, face, p, eyes, stats) {
+function seenFrom(S, G, face, p, eyes, stats) {
   const hu = face.w / 2 - SAMPLE_INSET;
   const hv = face.h / 2 - SAMPLE_INSET;
   const t = [0, 0, 0];
   for (const [su, sv] of SAMPLES) {
     t[face.a] = face.plane + face.sg * LINE_OFF;
     t[face.ra] = p[face.ra] + su * hu;
-    t[face.ua] = p[face.ua] + sv * hv;
-    for (let e = eyes.length - 1; e >= 0; e -= 1) {
+    t[1] = p[1] + sv * hv;
+    for (let e = 0; e < eyes.length; e += 1) {
       stats.lines += 1;
-      if (!lineHidden(S, G, t, eyes[e])) {
+      if (lineHidden(S, G, t, eyes[e])) {
         return false;
       }
     }
@@ -1100,81 +1050,107 @@ function hiddenFrom(S, G, face, p, eyes, stats) {
 /* The choice                                                          */
 /* ------------------------------------------------------------------ */
 
-function faceSpot(key, step, face, p, placed) {
+function faceSpot(key, face, p, placed) {
   const it = placed.items[face.item];
   return {
     key,
-    step,
-    kind: face.cls,
-    inside: face.inside,
+    step: STEP.SEEN,
+    kind: 'wall',
+    frame: face.frame,
     p: [p[0], p[1], p[2]],
     n: axisVec(face.a, face.sg),
-    up: axisVec(face.ua, face.us),
+    up: [0, 1, 0],
     right: axisVec(face.ra, face.rs),
     w: face.w,
     h: face.h,
     elementId: it && it.el ? it.el.id : null,
     type: it && it.el ? it.el.type : null,
     part: placed.solids[face.i].name,
+    looks: face.looks,
     score: face.score,
   };
 }
 
 /*
- * The last step: flat on the paving, in a corner of the plot, GROUND_INSET
- * in from both edges, the corner farthest from the pads first, and the
- * first corner with AIR clear over the mark. With none clear, the farthest
- * anyway, because every map carries the mark.
+ * The last step: flat on the paving ahead of the pads, reading away from
+ * them, so a craft that lifts off and pitches forward reads it the right way
+ * up. Its up is the plan axis most in line with the pads' heading, away
+ * from them, so it reads within 45 degrees of straight and lies square to
+ * the plot, which is what lets its air be tested exactly. Its middle is
+ * tried GROUND_AHEAD ahead of the pads along their heading and then at the
+ * plot's middle, each moved in far enough to lie inside the plot
+ * GROUND_INSET from its edge, and the first with AIR clear over the whole
+ * mark is the spot. With none clear, the first anyway, because every map
+ * carries the mark. A plot too small for the whole mark takes it smaller,
+ * down to the smallest wall mark.
  */
-function groundSpot(key, S, G, placed) {
+function groundSpot(key, S, G, placed, pads) {
   const W = placed.W;
   const D = placed.D;
-  const spawn = placed.spawn;
-  const ex = W / 2 - (GROUND_INSET < W / 2 ? GROUND_INSET : W / 2);
-  const ez = D / 2 - (GROUND_INSET < D / 2 ? GROUND_INSET : D / 2);
-  const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz], k) => {
-    const x = sx * ex;
-    const z = sz * ez;
-    const dx = x - spawn.x;
-    const dz = z - spawn.z;
-    return { k, x, z, dx, dz, d2: dx * dx + dz * dz };
-  });
-  corners.sort((p, q) => q.d2 - p.d2 || p.k - q.k);
+  const alongX = (pads.fx < 0 ? -pads.fx : pads.fx) >= (pads.fz < 0 ? -pads.fz : pads.fz);
+  const up = alongX ? [pads.fx < 0 ? -1 : 1, 0, 0] : [0, 0, pads.fz < 0 ? -1 : 1];
+  /* up x n with n straight up is (-up.z, 0, up.x); 0 - 0 is +0, so no
+   * component comes out as a negative zero. */
+  const right = [0 - up[2], 0, up[0] + 0];
+  /* The scale the plot has room for: the mark's width lies across the
+   * heading's axis and its height along it. */
+  const full = GROUND_SCALE;
+  const spanX = (alongX ? MARK_H : MARK_W) * full;
+  const spanZ = (alongX ? MARK_W : MARK_H) * full;
+  let s = 1;
+  const roomX = (W - 2 * GROUND_INSET) / spanX;
+  const roomZ = (D - 2 * GROUND_INSET) / spanZ;
+  if (roomX < s) {
+    s = roomX;
+  }
+  if (roomZ < s) {
+    s = roomZ;
+  }
+  if (!(s >= MARK_MIN_SCALE / full)) {
+    s = MARK_MIN_SCALE / full;
+  }
+  const w = MARK_W * full * s;
+  const h = MARK_H * full * s;
+  const hx = (alongX ? h : w) / 2;
+  const hz = (alongX ? w : h) / 2;
+  const inside = (v, half, size) => {
+    const lim = size / 2 - GROUND_INSET - half;
+    if (!(lim > 0)) {
+      return 0;
+    }
+    return v < -lim ? -lim : (v > lim ? lim : v);
+  };
+  const tries = GROUND_AHEAD.map((d) => [pads.x + pads.fx * d, pads.z + pads.fz * d]);
+  tries.push([0, 0]);
   let pick = null;
-  for (const c of corners) {
-    /* Up along the plan axis most in line with the way from the pads, and
-     * away from them, so a craft flying over from the pads reads it. */
-    const alongX = (c.dx < 0 ? -c.dx : c.dx) >= (c.dz < 0 ? -c.dz : c.dz);
-    const up = alongX ? [c.dx < 0 ? -1 : 1, 0, 0] : [0, 0, c.dz < 0 ? -1 : 1];
-    const hw = (alongX ? MARK_H : MARK_W) / 2;
-    const hd = (alongX ? MARK_W : MARK_H) / 2;
-    const clear = prismClear(S, G, [c.x - hw, 0, c.z - hd], [c.x + hw, AIR, c.z + hd]);
+  for (const [tx, tz] of tries) {
+    const x = inside(tx, hx, W);
+    const z = inside(tz, hz, D);
+    const clear = prismClear(S, G, [x - hx, 0, z - hz], [x + hx, AIR, z + hz]);
     if (clear || !pick) {
-      pick = { c, up, clear };
+      pick = { x, z, clear };
     }
     if (clear) {
       break;
     }
   }
-  const { c, up, clear } = pick;
   return {
     key,
     step: STEP.GROUND,
     kind: 'ground',
-    inside: false,
-    p: [c.x, 0, c.z],
+    frame: false,
+    p: [pick.x, 0, pick.z],
     n: [0, 1, 0],
     up,
-    /* up x n with n straight up is (-up.z, 0, up.x); 0 - 0 is +0, so no
-     * component comes out as a negative zero. */
-    right: [0 - up[2], 0, up[0] + 0],
-    w: MARK_W,
-    h: MARK_H,
+    right,
+    w,
+    h,
     elementId: null,
     type: null,
     part: null,
+    looks: null,
     score: null,
-    clear,
+    clear: pick.clear,
   };
 }
 
@@ -1183,20 +1159,18 @@ function groundSpot(key, S, G, placed) {
  * `source` is chooseDocument's ('injected', 'canvas' or 'starter'); it
  * changes the key and nothing else.
  *
- * Returns { spot, finalists, stats }: finalists are the spots the seed
- * picked from, best first, and stats counts the faces, the places tried and
- * the sight lines walked.
+ * Returns { spot, faces, stats }: faces are the walls rule 1 and rule 5's
+ * turn and reach let through, in the order they were tried in, as
+ * { elementId, part, f, frame, looks, score }, and stats counts the walls,
+ * the places tried and the sight lines walked.
  */
 export function stfSearch(placed, doc, source) {
   const key = stfKey(doc, source);
   const W = placed.W;
   const D = placed.D;
-  const spawn = placed.spawn;
   const S = readSolids(placed);
   const G = buildGrid(S, W, D);
-  const items = placed.items || [];
-  const F = footprints(S, items.length);
-  const eyes = EYE_HEIGHTS.map((h) => [spawn.x, spawn.y + h, spawn.z]);
+  const pads = padsOf(placed);
   const stats = { faces: 0, tried: 0, lines: 0 };
 
   const faces = [];
@@ -1204,31 +1178,18 @@ export function stfSearch(placed, doc, source) {
     if (!S.paint[i]) {
       continue;
     }
-    for (let f = 0; f < 6; f += 1) {
-      const face = makeFace(S, G, i, f, spawn, F);
+    for (const f of WALLS) {
+      const face = makeFace(S, i, f, pads);
       if (face) {
         faces.push(face);
       }
     }
   }
-  faces.sort(byScore);
+  faces.sort(byView);
   stats.faces = faces.length;
 
-  /* Rules 1 to 6: the finalists, and on the way each face's first place
-   * that keeps rules 2 and 3, which the 'away' step reads if nothing is
-   * hidden (and then the walk has been over every face).
-   *
-   * ONE FINALIST PER ELEMENT FIRST. A bando has dozens of ceiling panels
-   * that score the same, and without this the eight finalists on any map
-   * with one in it were eight panels of one ceiling: the seed chose between
-   * neighbours, and every map hid the mark in its first bando. One each,
-   * and the eight are eight places on the map. When fewer than eight
-   * elements have a hidden face, the best of the other faces fill the list,
-   * so the seed still has a choice on a map of three buildings. */
-  const found = [];
-  const taken = new Uint8Array(items.length);
-  const tryFace = (face) => {
-    face.tried = true;
+  let spot = null;
+  for (const face of faces) {
     const Ku = stepsFor(face.Ru);
     const Kv = stepsFor(face.Rv);
     for (const [ku, kv] of ORDER) {
@@ -1237,93 +1198,70 @@ export function stfSearch(placed, doc, source) {
       }
       stats.tried += 1;
       const p = placeAt(face, ku, kv, Ku, Kv);
+      const at = reach(pads, p[0], p[2]);
+      if (!(at.ground >= NEAR_MIN && at.ground <= NEAR_MAX)) {
+        continue;
+      }
       if (!airClear(S, G, face, p, W, D)) {
         continue;
       }
-      if (!face.first) {
-        face.first = p;
-      }
-      if (hiddenFrom(S, G, face, p, eyes, stats)) {
-        found.push({ face, p });
-        taken[face.item] = 1;
-        return;
+      if (seenFrom(S, G, face, p, pads.eyes, stats)) {
+        spot = faceSpot(key, face, p, placed);
+        break;
       }
     }
+    if (spot) {
+      break;
+    }
+  }
+  if (!spot) {
+    spot = groundSpot(key, S, G, placed, pads);
+  }
+  const it = placed.items;
+  return {
+    spot,
+    faces: faces.map((face) => ({
+      elementId: it[face.item] && it[face.item].el ? it[face.item].el.id : null,
+      part: placed.solids[face.i].name,
+      f: face.f,
+      frame: face.frame,
+      looks: face.looks,
+      score: face.score,
+    })),
+    stats,
   };
-  for (const face of faces) {
-    if (found.length >= FINALISTS) {
-      break;
-    }
-    if (!taken[face.item]) {
-      tryFace(face);
-    }
-  }
-  for (const face of faces) {
-    if (found.length >= FINALISTS) {
-      break;
-    }
-    if (!face.tried) {
-      tryFace(face);
-    }
-  }
-  found.sort((p, q) => byScore(p.face, q.face));
-  const finalists = found.map(({ face, p }) => faceSpot(key, STEP.HIDDEN, face, p, placed));
-
-  let spot;
-  if (finalists.length) {
-    const rnd = seededRandom(hashString(`stf:${doc && doc.id ? doc.id : ''}`));
-    spot = finalists[Math.floor(rnd.next() * finalists.length)];
-  } else {
-    /* 'away': the farthest face turned away from the pads' lowest eye,
-     * with rules 1 to 3. The faces are in score order, so of two as far,
-     * the better scored. */
-    const e = eyes[0];
-    let best = null;
-    for (const face of faces) {
-      const p = face.first;
-      if (!p || face.sg * (p[face.a] - e[face.a]) <= 0) {
-        continue;
-      }
-      const dx = p[0] - spawn.x;
-      const dy = p[1] - spawn.y;
-      const dz = p[2] - spawn.z;
-      const d2 = dx * dx + dy * dy + dz * dz;
-      if (!best || d2 > best.d2) {
-        best = { face, p, d2 };
-      }
-    }
-    spot = best ? faceSpot(key, STEP.AWAY, best.face, best.p, placed) : groundSpot(key, S, G, placed);
-  }
-  return { spot, finalists, stats };
 }
 
 /*
  * Where the STF mark goes on a placed built map.
  *
  *   placed  placeDocument(doc) from ./place.js
- *   doc     the normalized document it was placed from; its id seeds the pick
+ *   doc     the normalized document it was placed from
  *   source  chooseDocument's source in ./index.js; 'starter' keys the stamp
  *           'built:starter', anything else 'built:' + doc.id
  *
  * Returns, in the placed world's frame (Three.js metres, y up):
  *
- *   { key, step, kind, inside, p, n, up, right, w, h, elementId, type,
- *     part, score }
+ *   { key, step, kind, frame, p, n, up, right, w, h, elementId, type,
+ *     part, looks, score }
  *
  *   key        the stamp's key, see stfKey
- *   step       which step of rule 7 found it: 'hidden', 'away' or 'ground'
- *   kind       'underside', 'back', 'side', 'top', or 'ground'
- *   inside     deep inside its own asset and under its own roof or deck
+ *   step       which step of rule 7 found it: 'seen' or 'ground'
+ *   kind       'wall' or 'ground'
+ *   frame      on a wall in the pads' first frame (FRAME_COS); false
+ *              otherwise
  *   p          [x, y, z], the middle of the painted face: on the face, so
  *              whatever draws it lifts it off by its own offset
  *   n          [nx, ny, nz], the face's outward unit normal
- *   up         [ux, uy, uz], the mark's up, a unit vector in the face
+ *   up         [ux, uy, uz], the mark's up, a unit vector in the face:
+ *              world up on a wall, the pads' heading on the ground
  *   right      up x n, the way the lettering reads, seen from the front
  *   w, h       the mark's size in metres, along right and along up
  *   elementId  the id of the element it is painted on; null on the ground
  *   type       that element's type; null on the ground
  *   part       the name of the solid it is painted on; null on the ground
- *   score      its rule 5 score; null on the ground
+ *   looks      how big it looks from the pads (rule 6); null on the ground
+ *   score      rule 6's score, looks weighed by the turn; null on the ground
  *   clear      on the ground only: whether the air over it was clear
  *
  * Nothing it returns is meant for a player to read: the kind, the element

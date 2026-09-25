@@ -2313,6 +2313,62 @@ export const BOUNCE_COOLDOWN_MS = 180;
 export const BOUNCE_SEPARATION = 0.008;
 
 /*
+ * A CRASH IS A RESET, and the two lines it draws beside GRAZE_SPEED_MAX.
+ * src/main.js, under CRASH IS A RESET, has the owner's words and the
+ * argument. The lines live here so that a check in Node asks the question the
+ * shell asks, with the shell's own numbers (scripts/world-check.js, "a wall
+ * tap is judged the same whichever way the map faces").
+ *
+ * CRASH_BELLY_UP: a contact whose normal lies within about 45 degrees of the
+ * craft's own up met the belly, which is a landing or a wall tap and stays
+ * physics. CRASH_UNDERSIDE_NZ: a normal pointing more than 30 degrees below
+ * level is a ceiling or a deck overhead, which gravity takes the craft off.
+ */
+export const CRASH_BELLY_UP = 0.7;
+export const CRASH_UNDERSIDE_NZ = -0.5;
+
+/*
+ * How far a solid's contact normal lies along the craft's own up: 1 for the
+ * belly flat on it, -1 for the top plate.
+ *
+ * TWO FRAMES MEET HERE. The attitude (qw, qx, qy, qz) is the plant's, from
+ * the state block, and the plant flies about its own origin turned by the
+ * spawn yaw. The normal (nx, ny, nz) is the world's: sim_world_report gives
+ * it in the frame the solids were uploaded in, and src/native/world.c places
+ * the plant in that frame as W = Rz(yaw) p + O. So the normal is turned back
+ * by the yaw before it meets the attitude, exactly as world_to_plant_dir
+ * does there. c and s are the cosine and sine of the yaw last handed to
+ * sim_world_frame, from src/props/trig.js, because what this decides moves
+ * the craft.
+ *
+ * Until 2026-09-25 the two frames were read as one, so a belly flat on a
+ * wall scored cos(yaw) and not 1. The city spawns at yaw pi and read it as
+ * the top plate. A built map spawns at its pads' yaw less a quarter turn, or
+ * at -pi/2 with no pads, which read it as a side. Every set down reseats the
+ * frame at the craft's own heading. The owner's belly first wall tap on
+ * their own map was reset as a crash.
+ */
+export function bodyUpDotWorld(qw, qx, qy, qz, nx, ny, nz, c, s) {
+  const px = c * nx + s * ny;
+  const py = c * ny - s * nx;
+  return 2 * (qx * qz + qw * qy) * px + 2 * (qy * qz - qw * qx) * py
+    + (1 - 2 * (qx * qx + qy * qy)) * nz;
+}
+
+/*
+ * The solid world's half of CRASH IS A RESET, read off one sim_world_report:
+ * the frame or the lens touched, not a prop alone; something closed at
+ * GRAZE_SPEED_MAX or more; and the normal the report carries (its strongest
+ * contact, in the step that changed the craft's velocity most) is neither an
+ * underside nor on the belly. rep is the report's eleven doubles, and the
+ * attitude and (c, s) are bodyUpDotWorld's.
+ */
+export function solidContactCrash(rep, qw, qx, qy, qz, c, s) {
+  return rep[8] > 0 && rep[1] >= GRAZE_SPEED_MAX && rep[6] > CRASH_UNDERSIDE_NZ
+    && bodyUpDotWorld(qw, qx, qy, qz, rep[4], rep[5], rep[6], c, s) < CRASH_BELLY_UP;
+}
+
+/*
  * A ROTOR PRESSED INTO A SURFACE CANNOT PULL AIR THROUGH IT.
  *
  * The report: "if you hit a wall i think its programmed to kick you off

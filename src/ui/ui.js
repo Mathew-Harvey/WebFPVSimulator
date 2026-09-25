@@ -9550,6 +9550,9 @@ export class Ui {
    * leave it alone. After scrolling to the end, the last row's bottom must
    * be at least 16px above the command bar's top.
    *
+   * The 16px clearance is the hard constraint. The 40-60% visibility is
+   * achieved within that constraint.
+   *
    * Applied to title and paused screens. Called after the screen is visible
    * and laid out, on debounced resize, and after document.fonts.ready.
    */
@@ -9579,20 +9582,15 @@ export class Ui {
       return;
     }
 
-    /* Clear any previous max-height and flex constraints to measure natural size. */
+    /* Clear constraints. */
     menu.style.maxHeight = '';
     menu.style.flexShrink = '';
     menu.scrollTop = 0;
-    
-    /* Force layout. */
     menu.offsetHeight;
 
-    const menuRect = menu.getBoundingClientRect();
-    const commandBarRect = commandBar.getBoundingClientRect();
     const lastRow = rows[rows.length - 1];
+    const commandBarRect = commandBar.getBoundingClientRect();
     const lastRowRect = lastRow.getBoundingClientRect();
-    
-    /* Check natural clearance. */
     const naturalGap = commandBarRect.top - lastRowRect.bottom;
     
     /* If everything fits with at least 16px clearance, leave it. */
@@ -9600,65 +9598,43 @@ export class Ui {
       return;
     }
 
-    /* Find the first row that is cut off at menu's bottom edge. */
-    const menuBottom = menuRect.bottom;
-    let targetRow = null;
-    let targetIndex = -1;
-    
-    for (let i = 0; i < rows.length; i++) {
-      const rowRect = rows[i].getBoundingClientRect();
-      if (rowRect.top < menuBottom && rowRect.bottom > menuBottom) {
-        /* This row is partially visible. */
-        targetRow = rows[i];
-        targetIndex = i;
-        break;
-      }
-      if (rowRect.top >= menuBottom) {
-        /* This row is the first completely hidden one, use it. */
-        targetRow = rows[i];
-        targetIndex = i;
-        break;
-      }
-    }
-
-    if (!targetRow) {
-      /* All rows fit, but clearance might be < 16px. */
-      if (naturalGap < 16) {
-        const reduction = 16 - naturalGap;
-        menu.style.maxHeight = `${menu.scrollHeight - reduction}px`;
-        menu.style.flexShrink = '0';
-      }
-      return;
-    }
-
-    /* Calculate max-height to show 50% of target row. */
-    const targetRowHeight = targetRow.getBoundingClientRect().height;
-    const targetOffsetTop = targetRow.offsetTop;
-    
-    /* We want the scrollable content height to be: targetOffsetTop + 50% of row height. */
-    const desiredScrollHeight = targetOffsetTop + (targetRowHeight * 0.5);
-    
-    menu.style.maxHeight = `${desiredScrollHeight}px`;
-    menu.style.flexShrink = '0';
-    
-    /* Force layout. */
-    menu.offsetHeight;
-    
-    /* Verify clearance after scrolling to bottom. */
-    menu.scrollTop = menu.scrollHeight;
-    const lastRowRectAfter = lastRow.getBoundingClientRect();
-    const commandBarRectAfter = commandBar.getBoundingClientRect();
-    const gapAfter = commandBarRectAfter.top - lastRowRectAfter.bottom;
-    
-    /* If clearance is too small, reduce further. */
+    /* Binary search for the maximum menu height that maintains 16px clearance. */
     const minGap = 16;
-    if (gapAfter < minGap) {
-      const adjustment = minGap - gapAfter;
-      menu.style.maxHeight = `${desiredScrollHeight - adjustment}px`;
+    let minHeight = 100;  /* Minimum reasonable menu height */
+    let maxHeight = menu.scrollHeight;
+    let bestHeight = minHeight;
+    
+    for (let iter = 0; iter < 20; iter++) {
+      const testHeight = (minHeight + maxHeight) / 2;
+      
+      menu.style.maxHeight = `${testHeight}px`;
+      menu.style.flexShrink = '0';
+      menu.offsetHeight;
+      menu.scrollTop = menu.scrollHeight;
+      
+      const lastRowRectTest = lastRow.getBoundingClientRect();
+      const commandBarRectTest = commandBar.getBoundingClientRect();
+      const gap = commandBarRectTest.top - lastRowRectTest.bottom;
+      
+      if (gap >= minGap) {
+        /* This height works, try taller. */
+        bestHeight = testHeight;
+        minHeight = testHeight;
+      } else {
+        /* Too tall, try shorter. */
+        maxHeight = testHeight;
+      }
+      
+      if (maxHeight - minHeight < 1) {
+        break;
+      }
     }
     
-    /* Reset scroll to top. */
+    /* Apply the best height found. */
+    menu.style.maxHeight = `${bestHeight}px`;
+    menu.style.flexShrink = '0';
     menu.scrollTop = 0;
+    menu.offsetHeight;
   }
 
   show(screen) {

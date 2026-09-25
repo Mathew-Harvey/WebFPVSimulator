@@ -9581,36 +9581,39 @@ export class Ui {
 
     /* Clear any previous max-height to measure natural size. */
     menu.style.maxHeight = '';
+    menu.scrollTop = 0;
     
     /* Force layout. */
     menu.offsetHeight;
 
-    /* Check if menu naturally overflows its container. */
     const menuRect = menu.getBoundingClientRect();
     const commandBarRect = commandBar.getBoundingClientRect();
-    
-    /* Calculate how much space the menu has before hitting the command bar. */
-    const availableHeight = commandBarRect.top - menuRect.top;
-    const naturalHeight = menu.scrollHeight;
-    
-    /* If menu fits naturally with at least 16px clearance, leave it. */
     const lastRow = rows[rows.length - 1];
     const lastRowRect = lastRow.getBoundingClientRect();
+    
+    /* Check natural clearance. */
     const naturalGap = commandBarRect.top - lastRowRect.bottom;
     
-    if (naturalHeight <= availableHeight && naturalGap >= 16) {
-      /* Fits naturally, no adjustment needed. */
+    /* If everything fits with at least 16px clearance, leave it. */
+    if (menu.scrollHeight <= menu.clientHeight && naturalGap >= 16) {
       return;
     }
 
-    /* Menu overflows. Find which row would be the first to be cut off. */
+    /* Find the first row that is cut off at menu's bottom edge. */
+    const menuBottom = menuRect.bottom;
     let targetRow = null;
     let targetIndex = -1;
     
     for (let i = 0; i < rows.length; i++) {
       const rowRect = rows[i].getBoundingClientRect();
-      /* Check if this row extends beyond the available space. */
-      if (rowRect.bottom > menuRect.top + availableHeight) {
+      if (rowRect.top < menuBottom && rowRect.bottom > menuBottom) {
+        /* This row is partially visible. */
+        targetRow = rows[i];
+        targetIndex = i;
+        break;
+      }
+      if (rowRect.top >= menuBottom) {
+        /* This row is the first completely hidden one, use it. */
         targetRow = rows[i];
         targetIndex = i;
         break;
@@ -9618,24 +9621,24 @@ export class Ui {
     }
 
     if (!targetRow) {
-      /* All rows fit, but clearance is < 16px. Reduce menu height. */
-      const reduction = 16 - naturalGap;
-      menu.style.maxHeight = `${naturalHeight - reduction}px`;
+      /* All rows fit, but clearance might be < 16px. */
+      if (naturalGap < 16) {
+        const reduction = 16 - naturalGap;
+        menu.style.maxHeight = `${menu.scrollHeight - reduction}px`;
+      }
       return;
     }
 
-    /* Calculate height to show 50% of the target row. */
+    /* Calculate max-height to show 50% of target row. */
     const targetRowHeight = targetRow.getBoundingClientRect().height;
+    const targetOffsetTop = targetRow.offsetTop;
     
-    /* Get the distance from menu top to target row top. */
-    const targetRowTop = targetRow.offsetTop;
+    /* We want the scrollable content height to be: targetOffsetTop + 50% of row height. */
+    const desiredScrollHeight = targetOffsetTop + (targetRowHeight * 0.5);
     
-    /* New height: show up to 50% of the target row. */
-    const newHeight = targetRowTop + (targetRowHeight * 0.5);
+    menu.style.maxHeight = `${desiredScrollHeight}px`;
     
-    menu.style.maxHeight = `${newHeight}px`;
-    
-    /* Force layout again. */
+    /* Force layout. */
     menu.offsetHeight;
     
     /* Verify clearance after scrolling to bottom. */
@@ -9644,11 +9647,11 @@ export class Ui {
     const commandBarRectAfter = commandBar.getBoundingClientRect();
     const gapAfter = commandBarRectAfter.top - lastRowRectAfter.bottom;
     
-    /* If clearance is still too small, reduce the max-height further. */
+    /* If clearance is too small, reduce further. */
     const minGap = 16;
     if (gapAfter < minGap) {
       const adjustment = minGap - gapAfter;
-      menu.style.maxHeight = `${newHeight - adjustment}px`;
+      menu.style.maxHeight = `${desiredScrollHeight - adjustment}px`;
     }
     
     /* Reset scroll to top. */

@@ -1629,6 +1629,10 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!listing) {
       if (replayMode) {
         replayState = 'failed';
+        replayMode = false;
+        if (replayClean) {
+          uiRoot.style.display = '';
+        }
         notice = { text: 'Replay failed: no track listing found.', untilMs: performance.now() + 10000 };
       }
       return;
@@ -1661,8 +1665,10 @@ export async function boot({ loading, bootStart, mapId }) {
         notice = { text: msg, untilMs: performance.now() + (replayMode ? 10000 : 3600) };
         if (replayMode) {
           replayState = 'failed';
-          /* Fall back to normal mode so physics can run */
           replayMode = false;
+          if (replayClean) {
+            uiRoot.style.display = '';
+          }
         }
       } finally {
         if (ghostCourseKey() === key) {
@@ -8226,7 +8232,10 @@ export async function boot({ loading, bootStart, mapId }) {
       replayStepMode = true;
       replayClock = { startMs: simTimeMs, vt: 0 };
     }
-    if (ms > 0) {
+    if (ms === 0) {
+      /* Reset to start */
+      replayClock.vt = 0;
+    } else {
       replayClock.vt += ms;
     }
     /* Cap at ghost duration */

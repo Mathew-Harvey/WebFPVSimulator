@@ -21,61 +21,177 @@
  */
 
 import { readFileSync } from 'fs';
-import { launchPage } from './lib/page.js';
+import { openPage } from './lib/page.js';
 
 const fixtureGhost = JSON.parse(
-  readFileSync(new URL('../uploads/ghost-tm-aae280e5_2d37.json', import.meta.url), 'utf-8')
+  readFileSync(new URL('./fixtures/ghost-tm-aae280e5.json', import.meta.url), 'utf-8')
 );
 
+const fixtureTrack = {
+  id: 'trk-test0001',
+  name: 'Test Track',
+  author: 'test',
+  version: 1,
+  gates: [],
+};
+
 async function testNormalBoot() {
-  const { page, close } = await launchPage();
+  const page = await openPage();
   try {
-    await page.goto('http://localhost:8080/sim/', { waitUntil: 'load' });
-    await page.waitForFunction(() => window.__shellReady === true, { timeout: 120000 });
+    await page.until(() => window.__shellReady === true, 120000);
     
     const info = await page.evaluate(() => window.__replayInfo());
     if (info.active !== false) {
-      throw new Error(`Normal boot should have replay inactive, got ${JSON.stringify(info)}`);
+      throw new Error(`Normal boot should have replay inactive, got active=${info.active}`);
     }
     
     console.log(' ok   normal boot reaches __shellReady with replay inactive');
-    return true;
   } finally {
-    await close();
+    await page.close();
   }
 }
 
-async function testReplayWithStub() {
-  const { page, close } = await launchPage();
-  try {
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const url = req.url();
-      if (url.includes('/board/api/tracks/trk-test/times/tm-00000000/ghost')) {
-        req.respond({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(fixtureGhost),
-        });
-      } else {
-        req.continue();
-      }
-    });
+async function setupIntercept(page, trackId, timeId, ghostData, trackData) {
+  /* Enable Fetch domain for all requests */
+  await page.cdp.send('Fetch.enable', {
+    patterns: [{ urlPattern: '*' }],
+  }, page.sessionId);
+  
+  /* Set up request interception */
+  const handler = async (msg) => {
+    if (msg.method !== 'Fetch.requestPaused') {
+      return;
+    }
+    const { requestId, request } = msg.params;
+    const url = request.url;
     
-    await page.goto(
-      'http://localhost:8080/sim/?map=custom&share=trk-test&replay=tm-00000000&cam=fpv&clean=1',
-      { waitUntil: 'load' }
-    );
-    await page.waitForFunction(() => window.__shellReady === true, { timeout: 120000 });
+    try {
+      if (url.includes(`/board/api/tracks/${trackId}`) && !url.includes('/times/')) {
+        await page.cdp.send('Fetch.fulfillRequest', {
+          requestId,
+          responseCode: 200,
+          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
+          body: Buffer.from(JSON.stringify(trackData)).toString('base64'),
+        }, page.sessionId);
+      } else if (url.includes(`/board/api/tracks/${trackId}/times/${timeId}/ghost`)) {
+        await page.cdp.send('Fetch.fulfillRequest', {
+          requestId,
+          responseCode: 200,
+          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
+          body: Buffer.from(JSON.stringify(ghostData)).toString('base64'),
+        }, page.sessionId);
+      } else if (url.includes('cdn.jsdelivr.net')) {
+        /* Let the existing CDN handler deal with it */
+        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
+      } else {
+        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
+      }
+    } catch (e) {
+      await page.cdp.send('Fetch.failRequest', {
+        requestId,
+        errorReason: 'Failed'
+      }, page.sessionId).catch(() => {});
+    }
+  };
+  
+  page.cdp.onEvent(handler);
+}
+
+async function setup404Intercept(page, trackId, timeId, trackData) {
+  await page.cdp.send('Fetch.enable', {
+    patterns: [{ urlPattern: '*' }],
+  }, page.sessionId);
+  
+  const handler = async (msg) => {
+    if (msg.method !== 'Fetch.requestPaused') {
+      return;
+    }
+    const { requestId, request } = msg.params;
+    const url = request.url;
+    
+    try {
+      if (url.includes(`/board/api/tracks/${trackId}`) && !url.includes('/times/')) {
+        await page.cdp.send('Fetch.fulfillRequest', {
+          requestId,
+          responseCode: 200,
+          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
+          body: Buffer.from(JSON.stringify(trackData)).toString('base64'),
+        }, page.sessionId);
+      } else if (url.includes('/ghost')) {
+        await page.cdp.send('Fetch.fulfillRequest', {
+          requestId,
+          responseCode: 404,
+          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
+          body: Buffer.from(JSON.stringify({ error: 'Not found' })).toString('base64'),
+        }, page.sessionId);
+      } else if (url.includes('cdn.jsdelivr.net')) {
+        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
+      } else {
+        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
+      }
+    } catch (e) {
+      await page.cdp.send('Fetch.failRequest', {
+        requestId,
+        errorReason: 'Failed'
+      }, page.sessionId).catch(() => {});
+    }
+  };
+  
+  page.cdp.onEvent(handler);
+}
+
+async function setupMissingTrackIntercept(page) {
+  await page.cdp.send('Fetch.enable', {
+    patterns: [{ urlPattern: '*' }],
+  }, page.sessionId);
+  
+  const handler = async (msg) => {
+    if (msg.method !== 'Fetch.requestPaused') {
+      return;
+    }
+    const { requestId, request } = msg.params;
+    const url = request.url;
+    
+    try {
+      if (url.includes('/board/api/tracks/')) {
+        await page.cdp.send('Fetch.fulfillRequest', {
+          requestId,
+          responseCode: 404,
+          responseHeaders: [{ name: 'content-type', value: 'application/json' }],
+          body: Buffer.from(JSON.stringify({ error: 'Not found' })).toString('base64'),
+        }, page.sessionId);
+      } else if (url.includes('cdn.jsdelivr.net')) {
+        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
+      } else {
+        await page.cdp.send('Fetch.continueRequest', { requestId }, page.sessionId);
+      }
+    } catch (e) {
+      await page.cdp.send('Fetch.failRequest', {
+        requestId,
+        errorReason: 'Failed'
+      }, page.sessionId).catch(() => {});
+    }
+  };
+  
+  page.cdp.onEvent(handler);
+}
+
+async function testReplaySuccess() {
+  const page = await openPage();
+  try {
+    await setupIntercept(page, 'trk-test0001', 'tm-aae280e5', fixtureGhost, fixtureTrack);
+    
+    await page.cdp.send('Page.navigate', {
+      url: `${page.origin}/sim/?map=custom&share=trk-test0001&replay=tm-aae280e5&cam=fpv&clean=1`
+    }, page.sessionId);
+    
+    await page.until(() => window.__shellReady === true, 120000);
     
     /* Wait for ghost to load and replay to be ready */
-    await page.waitForFunction(
-      () => {
-        const info = window.__replayInfo();
-        return info.state === 'ready' && info.ghostLoaded;
-      },
-      { timeout: 30000 }
-    );
+    await page.until(() => {
+      const info = window.__replayInfo();
+      return info.state === 'ready' && info.ghostLoaded;
+    }, 30000);
     
     const mode = await page.evaluate(() => window.__mode);
     if (mode !== 'flight') {
@@ -91,116 +207,149 @@ async function testReplayWithStub() {
     }
     
     /* Test deterministic stepping */
+    await page.sleep(200);
+    
     const result1 = await page.evaluate(() => {
-      window.__replayStep(0); /* init */
-      const r1 = window.__replayStep(1000);
-      const cam1 = { x: window.__three.camera.position.x, y: window.__three.camera.position.y, z: window.__three.camera.position.z };
-      return { r1, cam1 };
+      window.__replayStep(0);
+      window.__replayStep(1000);
+      return new Promise(r => requestAnimationFrame(() => {
+        const shell = window.__shell;
+        if (!shell || !shell.camera) throw new Error('Camera not found');
+        const cam = shell.camera;
+        r({
+          vt: window.__replayInfo().clock.vt,
+          x: cam.position.x,
+          y: cam.position.y,
+          z: cam.position.z
+        });
+      }));
     });
     
     const result2 = await page.evaluate(() => {
-      window.__replayStep(0); /* reset */
-      const r2 = window.__replayStep(1000);
-      const cam2 = { x: window.__three.camera.position.x, y: window.__three.camera.position.y, z: window.__three.camera.position.z };
-      return { r2, cam2 };
+      window.__replayStep(0);
+      window.__replayStep(1000);
+      return new Promise(r => requestAnimationFrame(() => {
+        const shell = window.__shell;
+        const cam = shell.camera;
+        r({
+          vt: window.__replayInfo().clock.vt,
+          x: cam.position.x,
+          y: cam.position.y,
+          z: cam.position.z
+        });
+      }));
     });
     
-    if (result1.r1.vt !== 1000 || result2.r2.vt !== 1000) {
-      throw new Error(`Step should advance to 1000ms, got ${result1.r1.vt} and ${result2.r2.vt}`);
+    if (result1.vt !== 1000 || result2.vt !== 1000) {
+      throw new Error(`Step should advance to 1000ms, got ${result1.vt} and ${result2.vt}`);
     }
     
     /* Camera positions should match (deterministic) */
-    const dx = Math.abs(result1.cam1.x - result2.cam2.x);
-    const dy = Math.abs(result1.cam1.y - result2.cam2.y);
-    const dz = Math.abs(result1.cam1.z - result2.cam2.z);
+    const dx = Math.abs(result1.x - result2.x);
+    const dy = Math.abs(result1.y - result2.y);
+    const dz = Math.abs(result1.z - result2.z);
     if (dx > 0.001 || dy > 0.001 || dz > 0.001) {
-      throw new Error(`Camera position not deterministic: delta ${dx}, ${dy}, ${dz}`);
+      throw new Error(`Camera position not deterministic: delta ${dx.toFixed(4)}, ${dy.toFixed(4)}, ${dz.toFixed(4)}`);
     }
     
     /* Camera position should be finite */
-    if (!Number.isFinite(result1.cam1.x) || !Number.isFinite(result1.cam1.y) || !Number.isFinite(result1.cam1.z)) {
-      throw new Error(`Camera position not finite: ${JSON.stringify(result1.cam1)}`);
+    if (!Number.isFinite(result1.x) || !Number.isFinite(result1.y) || !Number.isFinite(result1.z)) {
+      throw new Error(`Camera position not finite: ${JSON.stringify(result1)}`);
     }
     
-    console.log(' ok   replay starts in flight, UI hidden, stepping is deterministic');
-    return true;
-  } finally {
-    await close();
-  }
-}
-
-async function test404Handling() {
-  const { page, close } = await launchPage();
-  try {
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const url = req.url();
-      if (url.includes('/board/api/tracks/') && url.includes('/ghost')) {
-        req.respond({
-          status: 404,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: 'Not found' }),
-        });
-      } else {
-        req.continue();
-      }
+    /* Test __replayStep(0) resets vt */
+    const resetTest = await page.evaluate(() => {
+      window.__replayStep(2000);
+      const before = window.__replayInfo().clock.vt;
+      window.__replayStep(0);
+      const after = window.__replayInfo().clock.vt;
+      return { before, after };
     });
     
-    await page.goto(
-      'http://localhost:8080/sim/?map=custom&share=trk-test&replay=tm-notfound&cam=chase',
-      { waitUntil: 'load' }
-    );
-    await page.waitForFunction(() => window.__shellReady === true, { timeout: 120000 });
-    
-    /* Wait a moment for the fetch to fail */
-    await new Promise(r => setTimeout(r, 2000));
-    
-    const info = await page.evaluate(() => window.__replayInfo());
-    if (info.state !== 'failed') {
-      throw new Error(`404 should result in state 'failed', got ${info.state}`);
+    if (resetTest.before !== 3000 || resetTest.after !== 0) {
+      throw new Error(`Step(0) should reset vt, got before=${resetTest.before}, after=${resetTest.after}`);
     }
     
-    /* Mode should have fallen back to allow normal operation */
-    const mode = await page.evaluate(() => window.__mode);
-    if (mode === 'flight') {
-      /* If it stayed in flight, physics should still work (replayMode turned off) */
-      const canStep = await page.evaluate(() => {
-        return typeof window.__race === 'function';
-      });
-      if (!canStep) {
-        throw new Error('Should be able to use race functions after failure');
-      }
-    }
-    
-    console.log(' ok   404 ghost fetch sets state to failed and falls back gracefully');
-    return true;
+    console.log(' ok   replay starts in flight, UI hidden, stepping is deterministic, step(0) resets');
   } finally {
-    await close();
+    await page.close();
   }
 }
 
-async function testMissingShare() {
-  const { page, close } = await launchPage();
+async function testMissingListing() {
+  const page = await openPage();
   try {
-    /* No share= parameter, so no track listing */
-    await page.goto(
-      'http://localhost:8080/sim/?replay=tm-00000000&cam=chase',
-      { waitUntil: 'load' }
-    );
-    await page.waitForFunction(() => window.__shellReady === true, { timeout: 120000 });
+    await setupMissingTrackIntercept(page);
+    
+    await page.cdp.send('Page.navigate', {
+      url: `${page.origin}/sim/?map=custom&share=trk-notfound&replay=tm-00000001`
+    }, page.sessionId);
+    
+    await page.until(() => window.__shellReady === true, 120000);
     
     /* Wait a moment for the check to fail */
-    await new Promise(r => setTimeout(r, 1000));
+    await page.sleep(2000);
     
     const info = await page.evaluate(() => window.__replayInfo());
     if (info.state !== 'failed') {
-      throw new Error(`Missing share should result in state 'failed', got ${info.state}`);
+      throw new Error(`Missing listing should result in state 'failed', got ${info.state}`);
     }
     
-    console.log(' ok   missing share parameter sets state to failed');
-    return true;
+    if (info.active !== false) {
+      throw new Error(`replayMode should be false after failure, got ${info.active}`);
+    }
+    
+    /* Physics should work (can reach flight mode) */
+    const canFly = await page.evaluate(() => {
+      return window.__mode !== undefined && typeof window.__race === 'function';
+    });
+    if (!canFly) {
+      throw new Error('Physics should work after failure (mode and race available)');
+    }
+    
+    console.log(' ok   missing listing sets state=failed, replayMode=false, physics works');
   } finally {
-    await close();
+    await page.close();
+  }
+}
+
+async function testFailureRestoresUI() {
+  const page = await openPage();
+  try {
+    await setup404Intercept(page, 'trk-test0002', 'tm-00000002', fixtureTrack);
+    
+    await page.cdp.send('Page.navigate', {
+      url: `${page.origin}/sim/?map=custom&share=trk-test0002&replay=tm-00000002&clean=1`
+    }, page.sessionId);
+    
+    await page.until(() => window.__shellReady === true, 120000);
+    
+    /* Wait for fetch to fail */
+    await page.until(() => {
+      const info = window.__replayInfo();
+      return info.state === 'failed';
+    }, 10000);
+    
+    const uiVisible = await page.evaluate(() => {
+      const ui = document.getElementById('ui');
+      return ui && ui.style.display !== 'none';
+    });
+    if (!uiVisible) {
+      throw new Error('UI should be restored (visible) after failure with clean=1');
+    }
+    
+    /* Check that a failure banner/notice is shown */
+    const hasNotice = await page.evaluate(() => {
+      const text = document.body.textContent || '';
+      return text.includes('failed') || text.includes('fetch') || text.includes('ghost');
+    });
+    if (!hasNotice) {
+      throw new Error('Failure banner should be visible after error');
+    }
+    
+    console.log(' ok   clean=1 failure restores #ui and shows visible banner');
+  } finally {
+    await page.close();
   }
 }
 
@@ -219,26 +368,26 @@ async function main() {
   }
   
   try {
-    await testReplayWithStub();
+    await testReplaySuccess();
     pass++;
   } catch (e) {
-    console.log(` FAIL replay with stub: ${e.message}`);
+    console.log(` FAIL replay success: ${e.message}`);
     fail++;
   }
   
   try {
-    await test404Handling();
+    await testMissingListing();
     pass++;
   } catch (e) {
-    console.log(` FAIL 404 handling: ${e.message}`);
+    console.log(` FAIL missing listing: ${e.message}`);
     fail++;
   }
   
   try {
-    await testMissingShare();
+    await testFailureRestoresUI();
     pass++;
   } catch (e) {
-    console.log(` FAIL missing share: ${e.message}`);
+    console.log(` FAIL failure restores UI: ${e.message}`);
     fail++;
   }
   

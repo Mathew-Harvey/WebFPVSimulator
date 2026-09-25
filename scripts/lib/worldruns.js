@@ -1214,8 +1214,12 @@ function vehicleRun(o) {
         addVehicle(sim, c.slot, c.road, c);
       }
       setVehicleClock(sim, o.clock0 || 0);
-      const p = o.pose.p;
-      const q = o.pose.q;
+      /* A run that has to meet a car at an exact step places the craft from
+       * the module's own poses, read here with the clock set ahead and put
+       * back, which moves no car (sim_world_clock). */
+      const pose = o.place ? o.place(sim, f) : o.pose;
+      const p = pose.p;
+      const q = pose.q;
       call(sim, 'sim_set_pose', p[0], p[1], p[2], q[0], q[1], q[2], q[3]);
       call(sim, 'sim_rest');
       readVehicles(sim, rec.poses);
@@ -1359,6 +1363,76 @@ export function driftRun(gain, nudge = 0) {
   });
 }
 
+/*
+ * A drift car ENTERING the stadium's first bend, and a craft hovering just
+ * outside the entry. Coming off the straight at 14 m/s and braking for the
+ * bend, the car's slide grows from nothing to about 45 degrees in the 3 m
+ * the bend is measured across, so its heading turns at up to about 5 rad/s
+ * while its path turns at under 0.7, and its tail swings out through the
+ * craft at several metres a second. That is where the rate a contact reads
+ * matters most: the drift's rate is most of it, and speed times the path's
+ * curvature is a small part. An ordinary car's rear corner passes this spot
+ * about 0.5 m inside it (measured on the pose, 2026-09-25).
+ */
+export function driftEntryRun(nudge = 0) {
+  const probe = [58.3, -1.6];
+  const z = OVER - REST[0];
+  return vehicleRun({
+    name: 'a drift car\'s tail swings out through a craft as it enters a bend',
+    ms: 3000,
+    roads: [{ points: roadToThree(stadiumRoad(60, 15), nudge), closed: true }],
+    cars: [{ slot: 0, road: 0, offset: 40, topSpeed: 14, lateral: 7, drift: 0.06, ...CAR }],
+    pose: { p: [probe[0], probe[1], z], q: [1, 0, 0, 0] },
+    sticks: hoverAt(z),
+    at: probe,
+    watch: 0,
+  });
+}
+
+/* src/native/plant.c: the five inch's rear motors stand 0.0778 m behind its
+ * CG (pos_x) with props of 0.0635 m radius (prop_r) at 0.020 m over it
+ * (pos_z), so a level craft's prop discs reach 0.1413 m behind its CG. */
+const PROP_BACK = 0.0777817459305202 + 0.0635;
+const PROP_UP = 0.020;
+
+/*
+ * A car's front meeting a craft's prop discs 1 cm under its roof line: the
+ * case where the face a point comes in through is not the face nearest it.
+ * A car at 25 m/s on a straight comes up behind a craft hovering level, its
+ * prop discs 1 cm below the roof and its hull's top 8 mm above it. The craft
+ * is placed from the module's own poses so that its rearmost prop tip is
+ * 5 mm clear of the car's front at clock 2 and 20 mm inside it at clock 3:
+ * on step 4 the tips are 20 mm through the front face and 10 mm under the
+ * roof. The face they came in through is the front, which only the car's
+ * pose a step ago can say (world.c point_in_box with the previous point, in
+ * the car's frame as it was then); the face nearest them is the roof. A prop
+ * the car's front pushes up rather than forward is that pose gone wrong.
+ */
+export function propEdgeRun(nudge = 0) {
+  const top = CAR.clearance + CAR.height;
+  const z = top - 0.010 - PROP_UP - REST[0];
+  const probe = [0, 0];
+  return vehicleRun({
+    name: 'a car\'s front meets a craft\'s props a centimetre under its roof line',
+    ms: 400,
+    roads: [{ points: roadToThree(turnRoad(0, 0, 400, 0, 200), nudge), closed: false }],
+    cars: [{ slot: 0, road: 0, offset: 380, topSpeed: 25, lateral: 6, ...CAR }],
+    place(sim, f) {
+      const cars = makeVehiclePoses();
+      setVehicleClock(sim, 2);
+      readVehicles(sim, cars);
+      const front = toPlant(f, cars[0].x, cars[0].y, cars[0].z)[0] + CAR.length / 2;
+      setVehicleClock(sim, 0);
+      probe[0] = front + 0.005 + PROP_BACK;
+      return { p: [probe[0], 0, z], q: [1, 0, 0, 0] };
+    },
+    sticks: hoverAt(z),
+    at: probe,
+    watch: 0,
+    gap: 0.010,
+  });
+}
+
 /* A craft set down, motors idle, on the roof of a car doing 8 m/s down a
  * straight. A car is never ground (world.c section 5), so nothing holds the
  * craft there but friction. Its hull's floor is 3 mm over the roof:
@@ -1462,6 +1536,8 @@ export function vehicleRuns({ nudge = 0 } = {}) {
     clipRun(nudge),
     rideRun(nudge),
     driftRun(0.06, nudge),
+    driftEntryRun(nudge),
+    propEdgeRun(nudge),
     roofRideRun(nudge),
     invarianceRun(37, nudge),
     crowdRun(64, 2000, nudge),

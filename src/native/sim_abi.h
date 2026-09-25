@@ -534,15 +534,28 @@ int sim_world_report(double *out);
  *     [1..3] the road point under its centre, world, m
  *     [4..5] its heading in plan, unit, the drift in it
  *     [6] speed along the road, m/s   [7] distance driven, m
- *     [8..10] velocity, world, m/s    [11] yaw rate about +z, rad/s
+ *     [8..10] velocity, world, m/s    [11] yaw rate about +z, rad/s,
+ *       how fast the box turns from this pose to the next step's (the
+ *       two are what a contact on the car reads)
  *     [12..13] direction of travel in plan, unit
  *     [14] the path's curvature along the travel, 1/m, left positive
  *     [15] tan(slip / 2), left positive, 0 for an ordinary car
+ *   sim_world_vehicle_contacts(out, max)
+ *                                    the last step's contacts against road
+ *                                    vehicles, up to max of 12 doubles;
+ *                                    returns how many there were:
+ *     [0] slot m   [1] 0 the hull, 1 the lens, 2 a prop (at its hub)
+ *     [2..4] the point, world, m     [5..7] the normal, world, unit, from
+ *     the car toward the craft       [8..10] the car's surface velocity
+ *     there, world, m/s              [11] the depth, m
  *
  * A vehicle is never ground. Additive: a module that is never handed a road
- * steps exactly as it did before these existed.
+ * steps exactly as it did before these existed. A road with a point that
+ * turns more than 30 degrees in plan, or folds back, is refused: bends are
+ * eased over several points.
  */
 #define SIM_VEHICLE_POSE_DOUBLES 16
+#define SIM_VEHICLE_CONTACT_DOUBLES 12
 #define SIM_ROAD_INFO_DOUBLES 3
 int sim_world_road(const double *xyz, int n, int closed);
 int sim_world_road_info(int road, double *out);
@@ -552,6 +565,7 @@ int sim_world_vehicle(int m, int road, double offset,
                       double clearance, double e, double mu);
 int sim_world_clock(double step);
 int sim_world_vehicle_poses(double *out);
+int sim_world_vehicle_contacts(double *out, int max);
 
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);

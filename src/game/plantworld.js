@@ -346,6 +346,10 @@ function planDir(x, y) {
  *   speed        m/s along the road     distance  driven, metres, every lap
  *   yawRate      rad/s about +y         curvature 1/m, left positive
  *   slip         tan(slip / 2), left positive, 0 for an ordinary car
+ * The velocity and the yaw rate are what a contact on the car reads: the
+ * yaw rate is how fast its body turns from this step's pose to the next,
+ * the drift's slide coming and going included, which is not speed times
+ * curvature where a bend begins or ends.
  * Read-only: nothing here reaches the physics. Returns out.
  */
 export function readVehicles(sim, out) {

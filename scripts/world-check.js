@@ -18,8 +18,10 @@
  * ever ends up inside a solid.
  *
  * Usage: node scripts/world-check.js [--only=name] [--verbose] [--targets]
- *        [--cost-baseline=PATH]
+ *        [--cost-baseline=PATH] [--wasm=PATH]
  * Exit code is the failed guards, plus failed targets with --targets.
+ * --wasm=PATH flies another module in place of dist/sim.wasm: a scratch
+ * build with a fault planted, to show which checks see it.
  *
  * SCENARIOS and fly are exported for scripts/world-golden.js, which flies
  * these same scenarios and pins every step of them. Importing this file runs
@@ -50,13 +52,13 @@
 
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { loadSim, SIM_OK, SIM_ERR_BAD_ARG, SIM_ERR_BAD_STATE, simErrorName } from '../tests/lib/simmod.js';
 import {
-  sweepRun, clipRun, rideRun, driftRun, roofRideRun, invarianceRun, crowdRun, stadiumRoad, turnRoad, pieceRoad,
-  roadToThree, CAR, HULL,
+  sweepRun, clipRun, rideRun, driftRun, driftEntryRun, propEdgeRun, roofRideRun, invarianceRun, crowdRun, stadiumRoad,
+  turnRoad, pieceRoad, roadToThree, CAR, HULL,
 } from './lib/worldruns.js';
 import {
   uploadRoad, addVehicle, setVehicleClock, readVehicles, makeVehiclePoses, roadInfo, MOVER_SLOTS,
@@ -80,7 +82,9 @@ const TRAIN = { e: 0.06, mu: 0.40 };
 const GRASS_MU = 1.40;
 const GRASS_E = 0.0;
 
-const wasm = await readFile(join(root, 'dist/sim.wasm'));
+const wasmArg = (args.find((a) => a.startsWith('--wasm=')) || '').split('=')[1] || '';
+const wasmPath = wasmArg ? resolve(wasmArg) : join(root, 'dist/sim.wasm');
+const wasm = await readFile(wasmPath);
 const CONFIGS = {
   0: await readFile(join(root, 'tests/fixtures/config-baseline.diff'), 'utf8'),
   1: await readFile(join(root, 'configs/whoop-freestyle.diff'), 'utf8'),
@@ -635,6 +639,10 @@ function vehicleScenario(name, fn) {
 }
 
 const VP = VEHICLE_POSE_DOUBLES;
+/* sim_abi.h SIM_VEHICLE_CONTACT_DOUBLES, and world.c WORLD_MAX_CONTACTS, the
+ * most one step can have. */
+const VC = 12;
+const VC_MAX = 96;
 /* The craft's reach from its CG: the five inch's prop tip and lens are both
  * inside a quarter metre (world.c world_step's reach). */
 const REACH = 0.25;
@@ -666,8 +674,11 @@ function readRaw(sim, ptr, out) {
  * Fly one of worldruns.js's vehicle runs the way its flyRun flies it
  * (sticks on the 4 ms RC grid, the run's own before() ahead of every step,
  * one step at a time), and watch everything after every step: the state,
- * the contact report, every car's pose straight from the module and the
- * watched car as the shell reads it. The trace hash covers the first three.
+ * the contact report, every car's pose straight from the module, the watched
+ * car as the shell reads it, and every contact the step made with a car
+ * (sim_world_vehicle_contacts), each with its car's pose as the step began,
+ * the one the contact was found with, and as it ended. The trace hash covers
+ * all but the shell's reading.
  */
 async function flyCars(run, bytes = wasm) {
   const af = run.airframe || 0;
@@ -686,6 +697,8 @@ async function flyCars(run, bytes = wasm) {
   const repPtr = sim.e.malloc(11 * 8);
   const raw = new Float64Array(MOVER_SLOTS * VP);
   const rawPtr = sim.e.malloc(MOVER_SLOTS * VP * 8);
+  const rawPre = readRaw(sim, rawPtr, new Float64Array(MOVER_SLOTS * VP));
+  const vcPtr = sim.e.malloc(VC_MAX * VC * 8);
   const shell = makeVehiclePoses();
   const hash = createHash('sha256');
   const rows = [];
@@ -709,6 +722,23 @@ async function flyCars(run, bytes = wasm) {
     hash.update(Buffer.from(rep.buffer));
     readRaw(sim, rawPtr, raw);
     hash.update(Buffer.from(raw.buffer));
+    const nvc = call(sim, 'sim_world_vehicle_contacts', vcPtr, VC_MAX);
+    const vcs = new Float64Array(sim.e.memory.buffer, vcPtr, Math.min(nvc, VC_MAX) * VC).slice();
+    hash.update(Buffer.from(vcs.buffer));
+    const vc = [];
+    for (let c = 0; c < vcs.length; c += VC) {
+      const slot = vcs[c];
+      vc.push({
+        slot,
+        kind: vcs[c + 1],
+        p: [vcs[c + 2], vcs[c + 3], vcs[c + 4]],
+        n: [vcs[c + 5], vcs[c + 6], vcs[c + 7]],
+        vs: [vcs[c + 8], vcs[c + 9], vcs[c + 10]],
+        depth: vcs[c + 11],
+        pre: carAt(rawPre, slot),
+        post: carAt(raw, slot),
+      });
+    }
     readVehicles(sim, shell);
     for (let i = 0; i < 14; i += 1) {
       if (!Number.isFinite(st[i])) {
@@ -732,25 +762,41 @@ async function flyCars(run, bytes = wasm) {
       supportNow: sim.e.sim_world_support(),
       ground: sim.e.sim_ground_contacts(),
       car: carAt(raw, watch),
+      carPre: carAt(rawPre, watch),
+      nvc,
+      vc,
       shell: {
         on: s.on, hx: s.hx, hz: s.hz, tx: s.tx, tz: s.tz, qx: s.qx, qy: s.qy, qz: s.qz, qw: s.qw, slip: s.slip,
       },
       cars: run.spec.cars.length > 1 ? Array.from(run.spec.cars, (c) => carAt(raw, c.slot)) : null,
     });
+    rawPre.set(raw);
   }
   sim.e.free(repPtr);
   sim.e.free(rawPtr);
-  return { rows, hash: hash.digest('hex'), digests: run.rec.digests.slice(), af };
+  sim.e.free(vcPtr);
+  return { rows, hash: hash.digest('hex'), digests: run.rec.digests.slice(), af, spec: run.spec };
 }
 
 /* A run flown twice from fresh run objects; `same` is whether the two agree
- * to the bit, trace and pose digests both. */
+ * to the bit, trace and pose digests both. Kept by the run's name, so the
+ * scenarios that hold the same run to different things fly it once. */
+const FLOWN = new Map();
 async function twice(make, bytes = wasm) {
+  const probe = make();
+  const name = `${probe.name} | ${probe.ms} ms`;
+  if (bytes === wasm && FLOWN.has(name)) {
+    return FLOWN.get(name);
+  }
   const a = await flyCars(make(), bytes);
   const b = await flyCars(make(), bytes);
   const same = a.hash === b.hash && a.digests.length === b.digests.length
     && a.digests.every((d, i) => d === b.digests[i]);
-  return { ...a, same };
+  const out = { ...a, same };
+  if (bytes === wasm) {
+    FLOWN.set(name, out);
+  }
+  return out;
 }
 
 /* The craft's CG in the car's own frame, from the pose the module read out
@@ -854,21 +900,60 @@ vehicleScenario('the vehicle ABI refuses what nobody could drive', async () => {
   want('a segment straight up', road([[0, 0, 0], [0, 0, 10]], 0), SIM_ERR_BAD_ARG);
   want('more points than a road holds', road(Array.from({ length: 8193 }, (_, i) => [i, 0, 0]), 0), SIM_ERR_BAD_ARG);
   want('a road longer than a road holds', road([[0, 0, 0], [9000, 0, 0]], 0), SIM_ERR_BAD_STATE);
+  /* The turn limit (world.c ROAD_TURN_COS, 30 degrees at a point in plan)
+   * and the coordinate bound (ROAD_COORD_MAX, a thousand kilometres). A
+   * corner drawn as one point, either side of the limit, placed with
+   * trig.js; a road folded back on itself, whose bend reads as none and
+   * whose car would reverse at speed within a step; a closed triangle, every
+   * corner of it past the limit; and a road out where doubles are 2 m apart,
+   * which cut into pieces of no length and a pose that was not a number
+   * (the verifier's finding of 2026-09-25). */
+  const corner = (deg) => {
+    const sc = sincos((deg * Math.PI) / 180, { s: 0, c: 0 });
+    return [[0, 0, 0], [10, 0, 0], [10 + 10 * sc.c, 10 * sc.s, 0]];
+  };
+  want('a corner of 31 degrees at one point', road(corner(31), 0), SIM_ERR_BAD_ARG);
+  want('a corner of 31 degrees to the right', road(corner(-31), 0), SIM_ERR_BAD_ARG);
+  want('a road folded back on itself', road([[0, 0, 0], [10, 0, 0], [0, 0.5, 0]], 0), SIM_ERR_BAD_ARG);
+  want('a closed triangle, every corner past 30 degrees', road([[0, 0, 0], [50, 0, 0], [50, 50, 0]], 1), SIM_ERR_BAD_ARG);
+  want('a closed road whose joining point folds back', road([[0, 0, 0], [10, 0, 0], [20, 0, 0]], 1), SIM_ERR_BAD_ARG);
+  want('a road at x = 1e16', road([[1e16, 0, 0], [1e16 + 10, 0, 0], [1e16 + 20, 0, 0]], 0), SIM_ERR_BAD_ARG);
+  want('a road a metre past a thousand kilometres', road([[0, 0, 0], [10, 0, 0], [1e6 + 1, 0, 0]], 0), SIM_ERR_BAD_ARG);
+  want('a road dropping past a thousand kilometres', road([[0, 0, 0], [10, 0, -1e6 - 1]], 0), SIM_ERR_BAD_ARG);
   want('an open road 100 m long', road([[0, 0, 0], [100, 0, 0]], 0), 0);
-  want('a closed triangle', road([[0, 0, 0], [50, 0, 0], [50, 50, 0]], 1), 1);
-  want('road info of a road that is not there', e.sim_world_road_info(2, info), SIM_ERR_BAD_ARG);
+  /* A closed 36 sided ring of 20 m radius, 10 degrees at every point: an
+   * eased bend the limit lets through. */
+  const ring = [];
+  for (let i = 0; i < 36; i += 1) {
+    const sc = sincos((i * Math.PI) / 18, { s: 0, c: 0 });
+    ring.push([20 * sc.c, 20 * sc.s, 0]);
+  }
+  want('a closed ring, 10 degrees at every point', road(ring, 1), 1);
+  want('a corner of 29 degrees at one point', road(corner(29), 0), 2);
+  want('road info of a road that is not there', e.sim_world_road_info(3, info), SIM_ERR_BAD_ARG);
   e.sim_world_road_info(0, info);
   const r0 = Array.from(new Float64Array(e.memory.buffer, info, 3));
   e.sim_world_road_info(1, info);
   const r1 = Array.from(new Float64Array(e.memory.buffer, info, 3));
-  /* 100 m cut to a metre is 101 points; the triangle's sides 50, 50 and
-   * 70.7 m are 50, 50 and 71 pieces and its first point again. */
-  if (!(r0[0] === 101 && Math.abs(r0[1] - 100) < 1e-9 && r0[2] === 0 && r1[0] === 172 && r1[2] === 1)) {
-    bad.push(`road info: [${r0}] and [${r1}], not [101, 100, 0] and [172, 170.7, 1]`);
+  /* 100 m cut to a metre is 101 points. The ring's sides are each cut to
+   * the metre too, and its first point comes again at the end; its length
+   * is its sides', summed here from the points it was handed. */
+  let ringPts = 1;
+  let ringLen = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    const l = Math.sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]));
+    ringPts += Math.ceil(l);
+    ringLen += l;
+  }
+  if (!(r0[0] === 101 && Math.abs(r0[1] - 100) < 1e-9 && r0[2] === 0
+    && r1[0] === ringPts && Math.abs(r1[1] - ringLen) < 1e-9 && r1[2] === 1)) {
+    bad.push(`road info: [${r0}] and [${r1}], not [101, 100, 0] and [${ringPts}, ${ringLen}, 1]`);
   }
   want('a car in slot 64', car(64, 0), SIM_ERR_BAD_ARG);
   want('a car in slot -1', car(-1, 0), SIM_ERR_BAD_ARG);
-  want('a car on a road that is not there', car(0, 2), SIM_ERR_BAD_ARG);
+  want('a car on a road that is not there', car(0, 3), SIM_ERR_BAD_ARG);
   want('a car of no length', car(0, 0, { len: 0 }), SIM_ERR_BAD_ARG);
   want('a car standing still', car(0, 0, { top: 0 }), SIM_ERR_BAD_ARG);
   want('a car slower than 0.1 m/s', car(0, 0, { top: 0.05 }), SIM_ERR_BAD_ARG);
@@ -880,7 +965,7 @@ vehicleScenario('the vehicle ABI refuses what nobody could drive', async () => {
   want('restitution past 1', car(0, 0, { e: 1.5 }), SIM_ERR_BAD_ARG);
   want('an offset that is not finite', car(0, 0, { offset: Infinity }), SIM_ERR_BAD_ARG);
   want('a car in slot 63', car(63, 0), 0);
-  want('a car in slot 5 on the triangle', car(5, 1, { drift: 0.05 }), 0);
+  want('a car in slot 5 on the ring', car(5, 1, { drift: 0.05 }), 0);
   want('the clock at half a step', e.sim_world_clock(0.5), SIM_ERR_BAD_ARG);
   want('the clock not a number', e.sim_world_clock(NaN), SIM_ERR_BAD_ARG);
   want('the clock past 2^53', e.sim_world_clock(9007199254740994), SIM_ERR_BAD_ARG);
@@ -914,16 +999,17 @@ vehicleScenario('the vehicle ABI refuses what nobody could drive', async () => {
   }
   want('a ninth speed table', car(8, 0, { top: 30 }), SIM_ERR_BAD_STATE);
   want('a car sharing the first table', car(9, 0, { top: 10 }), 0);
-  /* A road knotted round a circle of 0.3 m, tighter than any road: driven
-   * at world.c's ROAD_KAPPA_MAX, 2 per metre, so its corner speed has a
-   * floor, its lap an end, and its car a place that is a number. */
+  /* A road knotted round a circle of 0.3 m, drawn smoothly (36 points, 10
+   * degrees at each, so the turn limit lets it through) and tighter than any
+   * road: driven at world.c's ROAD_KAPPA_MAX, 2 per metre, so its corner
+   * speed has a floor, its lap an end, and its car a place that is a number. */
   e.sim_world_clear();
   const knot = [];
-  for (let i = 0; i < 12; i += 1) {
-    const sc = sincos((i * Math.PI) / 6, { s: 0, c: 0 });
+  for (let i = 0; i < 36; i += 1) {
+    const sc = sincos((i * Math.PI) / 18, { s: 0, c: 0 });
     knot.push([0.3 * sc.c, 0.3 * sc.s, 0]);
   }
-  want('a road knotted round 0.3 m', road(knot, 1), 0);
+  want('a road knotted round 0.3 m, drawn smoothly', road(knot, 1), 0);
   want('a slow car on it', car(0, 0, { top: 0.1, lat: 0.1 }), 0);
   let knotted = true;
   for (const n of [0, 1, 777, 1e6, -1e6, 9007199254740992]) {
@@ -1331,13 +1417,249 @@ vehicleScenario('a drift car\'s solid body is yawed off its path by the slip', a
       yawed <= REACH && onPath > REACH + 0.3,
       `the craft's CG ${r3(yawed)} m from the yawed body, ${r3(onPath)} m from the same body along the path`);
     /* The contact of step t0 was found with the car where it was as that
-     * step began: the pose read after step t0 - 1. */
-    const used = drift.rows[t0 - 1].car.h;
+     * step began: the pose read after step t0 - 1. A face of that car, and
+     * the face on the craft's side of it: the normal in the car's frame
+     * points the way the craft's CG lies from the car's centre, which a
+     * face's axis alone does not say. */
+    const pre = row.carPre;
+    const used = pre.h;
     const n = row.n;
-    const face = Math.max(Math.abs(n[0] * used[0] + n[1] * used[1]), Math.abs(n[1] * used[0] - n[0] * used[1]));
-    check('drift: the normal it reported is a face of the drawn car, along its heading or across it', Math.abs(face - 1) < 1e-9,
-      `n ${n.map(r3).join(', ')}, heading ${used.map(r3).join(', ')}, off a face by ${Math.abs(face - 1).toExponential(1)}`);
+    const along = n[0] * used[0] + n[1] * used[1];
+    const across = n[1] * used[0] - n[0] * used[1];
+    const face = Math.max(Math.abs(along), Math.abs(across));
+    const l = inCarFrame({ ...row, car: pre }, drift.af, used);
+    const outward = (Math.abs(along) > Math.abs(across) ? along * l[0] : across * l[1]) > 0;
+    check('drift: the normal it reported is a face of the drawn car, along its heading or across it, facing the craft',
+      Math.abs(face - 1) < 1e-9 && outward,
+      `n ${n.map(r3).join(', ')}, heading ${used.map(r3).join(', ')}, off a face by ${Math.abs(face - 1).toExponential(1)}; the craft's CG at ${l.slice(0, 2).map(r3).join(', ')} in the car's frame, ${outward ? 'on' : 'NOT on'} the face's side`);
   }
+});
+
+/* ------------------------------------------------------------------ *
+ * HOW A CAR'S CONTACT MOVES, which way it pushes, and the face a point comes
+ * in by (the verifier's findings on Stage D part 2, 2026-09-25: the yaw rate
+ * in a contact's surface velocity, the drift's share of it, the normal's
+ * sign and the car's pose a step ago were each invisible to every check).
+ * Read from the module's own record of every contact a step made with a
+ * car (sim_world_vehicle_contacts), against the car's poses as the step
+ * began and ended, read back as the shell reads them.
+ * ------------------------------------------------------------------ */
+
+/* The turn from heading a to heading b, rad, left positive, the short way
+ * modulo half a turn, as world.c's vehicle_turn reads it: a box turned half
+ * round is the same box. The test's own arithmetic, atan2 included, none of
+ * which reaches the module. */
+function turnOf(a, b) {
+  let c = a[0] * b[0] + a[1] * b[1];
+  let s = a[0] * b[1] - a[1] * b[0];
+  if (c < 0) {
+    c = -c;
+    s = -s;
+  }
+  return Math.atan2(s, c);
+}
+const STEP_S = 0.001;
+/* src/native/plant.c prop_r: a prop contact is pushed at its hub, and the
+ * car's surface velocity is taken at the rim point that touched (world.c
+ * vehicle_contacts), up to a prop's radius from it. */
+const PROP_R = { 0: 0.0635, 1: 0.0155 };
+
+/* Every vehicle run with a car's contact in it, flown twice (once, shared by
+ * the scenarios that read them). The first five are cars that turn. */
+async function contactFlights() {
+  return {
+    'sweep left': await twice(() => sweepRun(1)),
+    'sweep right': await twice(() => sweepRun(-1)),
+    ride: await twice(() => rideRun()),
+    drift: await twice(() => driftRun(0.06)),
+    'drift entry': await twice(() => driftEntryRun()),
+    clip: await twice(() => clipRun()),
+    'prop edge': await twice(() => propEdgeRun()),
+  };
+}
+const TURNING = ['sweep left', 'sweep right', 'ride', 'drift', 'drift entry'];
+
+vehicleScenario('a drift car\'s tail swings out through a craft as it enters a bend', async () => {
+  const r = (await contactFlights())['drift entry'];
+  const rows = r.rows;
+  const t0 = firstCarTouch(rows);
+  check('drift entry: two runs agree to the bit', r.same);
+  /* The slide's own rate where the tail first touches: the heading's turn
+   * over the step less the path's, from the two poses. */
+  const x = t0 >= 0 ? rows[t0] : null;
+  const slide = x ? (turnOf(x.carPre.h, x.car.h) - turnOf(x.carPre.u, x.car.u)) / STEP_S : 0;
+  check('drift entry: the tail reaches the craft while the slide is still growing', t0 >= 0 && slide > 1,
+    x ? `at ${t0} ms, the slide growing at ${r3(slide)} rad/s, ${r3((2 * Math.atan(x.carPre.slip) * 180) / Math.PI)} degrees of it so far` : 'no touch');
+  const deep = Math.max(...rows.map((y) => hullDepth(y, r.af)));
+  check('drift entry: the hull never 5 cm into the car, and the CG never inside it',
+    deep <= 0.05 && !rows.some((y) => insideBox(inCarFrame(y, r.af))), `${r3(deep)} m`);
+});
+
+vehicleScenario('a contact on a car moves as the drawn car moves', async () => {
+  const flights = await contactFlights();
+  /*
+   * The surface velocity each contact read, less the car's velocity as the
+   * step began, is the car's turn across the lever arm: the turn between the
+   * heading the step began with and the one it ended with, over the step,
+   * about the road point under the car's centre. World.c takes that turn as
+   * 2 tan(turn / 2); this takes it by atan2, and the two part by the turn
+   * cubed over twelve. So each contact's bar is twice that across its lever,
+   * over the step, and a micrometre a second for rounding: 3e-5 m/s at the
+   * fastest turn here, 1e-6 on a car going straight. The parts it has to
+   * see are each far above that and are measured below: the whole turn
+   * across the lever (left out, it is 0);
+   * the drift's share, the heading's turn less the path's (left out, a drift
+   * car is read as if it followed its path); and the path's turn less speed
+   * times curvature (read as v kappa, a car entering or leaving a bend is
+   * read as turning when it is not, or not when it is).
+   *
+   * A prop contact is pushed at its hub and its surface velocity is taken at
+   * the rim point that touched, which the record does not give, so a prop's
+   * is held only to within the turn across a prop's radius. Every hull and
+   * lens contact is held to the bar.
+   */
+  const bar = (w, lever) => 1e-6 + (2 * Math.abs(w * w * w) * STEP_S * STEP_S * lever) / 12;
+  let n = 0;
+  let nProp = 0;
+  let worst = 0;
+  let where = 'none';
+  let barMax = 0;
+  let propWorst = 0;
+  const past = new Map();
+  let yawMax = 0;
+  let driftMax = 0;
+  let vkMax = 0;
+  for (const k of TURNING) {
+    const r = flights[k];
+    for (const x of r.rows) {
+      for (const c of x.vc) {
+        const w = turnOf(c.pre.h, c.post.h) / STEP_S;
+        const wu = turnOf(c.pre.u, c.post.u) / STEP_S;
+        const rx = c.p[0] - c.pre.p[0];
+        const ry = c.p[1] - c.pre.p[1];
+        const lever = Math.sqrt(rx * rx + ry * ry);
+        const err = Math.hypot(c.vs[0] - c.pre.vel[0] + w * ry, c.vs[1] - c.pre.vel[1] - w * rx, c.vs[2] - c.pre.vel[2]);
+        if (c.kind === 2) {
+          nProp += 1;
+          propWorst = Math.max(propWorst, (err - Math.abs(w) * PROP_R[r.af]) / bar(w, lever + PROP_R[r.af]));
+          continue;
+        }
+        n += 1;
+        const b = bar(w, lever);
+        barMax = Math.max(barMax, b);
+        if (err > b) {
+          past.set(k, (past.get(k) || 0) + 1);
+        }
+        if (err / b > worst) {
+          worst = err / b;
+          where = `${err.toExponential(2)} m/s against a bar of ${b.toExponential(2)}, ${k} at ${x.ms} ms, ${r3(lever)} m out, the car turning ${r3(w)} rad/s`;
+        }
+        yawMax = Math.max(yawMax, Math.abs(w) * lever);
+        driftMax = Math.max(driftMax, Math.abs(w - wu) * lever);
+        vkMax = Math.max(vkMax, Math.abs(wu - c.pre.speed * c.pre.kap) * lever);
+      }
+    }
+  }
+  check('contact motion: every hull and lens contact on a turning car moves as the car does, its velocity plus the turn between its two poses across the lever arm, each to its bar',
+    n > 0 && worst <= 1, `${n} contacts in ${TURNING.join(', ')}; the worst for its bar ${where}${past.size ? `; past the bar: ${[...past].map(([k, c]) => `${k} ${c}`).join(', ')}` : ''}`);
+  check('contact motion: every prop contact within a prop\'s radius of that', nProp > 0 && propWorst <= 1,
+    `${nProp} prop contacts, ${propWorst > 0 ? `the worst ${r3(propWorst)} of its bar` : 'none'} past the turn across a prop's radius`);
+  check('contact motion: and each part of the turn is there to be seen, ten times the largest bar or more',
+    yawMax >= 10 * barMax && driftMax >= 10 * barMax && vkMax >= 10 * barMax,
+    `the largest bar ${barMax.toExponential(2)} m/s; at these contacts the turn across the lever reaches ${r3(yawMax)} m/s, the drift's share of it ${r3(driftMax)}, the path's turn less speed times curvature ${r3(vkMax)}`);
+  /*
+   * And the car's velocity is how its point moves: between the two poses of
+   * every step, to half a step of the firmest braking (world.c's
+   * VEHICLE_BRAKE, 4 m/s/s: 2 mm/s). Where a step crosses a point the road
+   * turns at, the point's path bends inside the step and the two are not the
+   * same thing; those steps are counted and left out.
+   */
+  let all = 0;
+  let kept = 0;
+  let lin = 0;
+  let linAt = 'none';
+  for (const [k, r] of Object.entries(flights)) {
+    for (const x of r.rows) {
+      const a = x.carPre;
+      const b = x.car;
+      const d = [(b.p[0] - a.p[0]) / STEP_S, (b.p[1] - a.p[1]) / STEP_S, (b.p[2] - a.p[2]) / STEP_S];
+      const sv = Math.hypot(a.vel[0], a.vel[1]);
+      const sd = Math.hypot(d[0], d[1]);
+      all += 1;
+      if (sv > 1e-6 && sd > 1e-6 && Math.abs(a.vel[0] * d[1] - a.vel[1] * d[0]) / (sv * sd) > 1e-9) {
+        continue;
+      }
+      kept += 1;
+      const e = Math.hypot(d[0] - a.vel[0], d[1] - a.vel[1], d[2] - a.vel[2]);
+      if (e > lin) {
+        lin = e;
+        linAt = `${k} at ${x.ms} ms`;
+      }
+    }
+  }
+  check('contact motion: the car\'s velocity is how its point moves from one pose to the next, to 2 mm/s',
+    kept >= 0.9 * all && lin <= 0.002 * (1 + 1e-6) + 1e-9,
+    `${kept} of ${all} steps (the rest cross a point the road turns at); worst ${lin.toExponential(2)} m/s, ${linAt}`);
+});
+
+vehicleScenario('every contact a car makes pushes the craft away from the car', async () => {
+  const flights = await contactFlights();
+  /* The normal each contact carries, against the line from the car's box
+   * centre (as the step began, the pose the contact was found with) to the
+   * craft's CG: pointing from the car toward the craft, it has a positive
+   * share of that line. A face normal of a box the CG is outside does, and
+   * so does the box test's own separating axis, whose sign is taken from the
+   * two centres; a point whose face was chosen from a stale or wrong pose
+   * does not. Every contact of every step, and the one the report names. */
+  let n = 0;
+  let steps = 0;
+  const bad = [];
+  for (const [k, r] of Object.entries(flights)) {
+    const zc = CAR.clearance + CAR.height / 2;
+    for (const x of r.rows) {
+      const cg = [x.p[0], x.p[1], x.p[2] + REST[r.af]];
+      const away = (nv, pre) => nv[0] * (cg[0] - pre.p[0]) + nv[1] * (cg[1] - pre.p[1]) + nv[2] * (cg[2] - pre.p[2] - zc) > 0;
+      if (x.vc.length) {
+        steps += 1;
+      }
+      for (const c of x.vc) {
+        n += 1;
+        if (!away(c.n, c.pre)) {
+          bad.push(`${k} at ${x.ms} ms (${['hull', 'lens', 'prop'][c.kind]})`);
+        }
+      }
+      if (x.touching && x.shape === -2 && !away(x.n, x.carPre)) {
+        bad.push(`${k} at ${x.ms} ms (reported)`);
+      }
+    }
+  }
+  check('normals: every contact on a car, on every step of every car run, points from the car toward the craft',
+    n > 0 && bad.length === 0,
+    `${n} contacts on ${steps} steps of ${Object.keys(flights).join(', ')}${bad.length ? `; ${bad.length} point into the car, first ${bad.slice(0, 4).join(', ')}` : ''}`);
+});
+
+vehicleScenario('a prop is pushed out of a car by the face it came in through, as the car was a step ago', async () => {
+  const r = (await contactFlights())['prop edge'];
+  const rows = r.rows;
+  check('prop edge: two runs agree to the bit', r.same);
+  /* The first step any disc meets the car. Its tips came in through the
+   * front face: 5 mm clear of it as the car was a step ago, 20 mm through it
+   * now, and 10 mm under the roof, so the roof is the face nearest them and
+   * only the car's pose a step ago says it was the front. */
+  const first = rows.find((x) => x.vc.some((c) => c.kind === 2));
+  const props = first ? first.vc.filter((c) => c.kind === 2) : [];
+  let off = 0;
+  let shallow = Infinity;
+  for (const c of props) {
+    off = Math.max(off, Math.hypot(c.n[0] - c.pre.h[0], c.n[1] - c.pre.h[1], c.n[2]));
+    shallow = Math.min(shallow, c.depth);
+  }
+  check('prop edge: on the step the discs first meet the car, each is pushed along the car\'s heading, out of its front, and not up out of its roof',
+    first && first.ms === 3 && props.length > 0 && off < 1e-12 && shallow > r.spec.gap,
+    first ? `${props.length} prop contacts at step ${first.ms + 1}, each ${r3(shallow)} m or more through the front with the roof ${r.spec.gap} m above; normals off the heading by ${off.toExponential(1)}` : 'no prop met the car');
+  const deep = Math.max(...rows.map((y) => hullDepth(y, r.af)));
+  check('prop edge: the hull never 5 cm into the car, and the CG never inside it',
+    deep <= 0.05 && !rows.some((y) => insideBox(inCarFrame(y, r.af))), `${r3(deep)} m`);
 });
 
 vehicleScenario('a craft set on a moving car\'s roof is not held by it', async () => {
@@ -1449,7 +1771,7 @@ vehicleScenario('sixty four cars on one road, and what a step costs', async () =
 });
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  console.log(`world-check: dist/sim.wasm against constructed worlds\n`);
+  console.log(`world-check: ${wasmArg ? wasmPath : 'dist/sim.wasm'} against constructed worlds\n`);
   for (const s of [...SCENARIOS, ...VEHICLE_SCENARIOS]) {
     if (only && !s.name.toLowerCase().includes(only.toLowerCase())) {
       continue;

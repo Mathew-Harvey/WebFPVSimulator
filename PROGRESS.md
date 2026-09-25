@@ -45299,6 +45299,623 @@ failing with a message about the board.
                              stand, on the merged tree
     git diff --stat vendor/betaflight   empty
 
+## 2026-09-25 | share, builder, board | Tags survive a republish, and clearing them is an empty list
+
+The owner: "A published track loses its tags on the public board whenever
+it is republished from the track builder without re-ticking them, and
+whenever the pilot renames themselves. Two bugs combine. Fix both." The
+share code, the builder's publish dialog, and the board's publish route
+and stores. The plant, the ABI and the build are untouched.
+
+### The two bugs, and why each hid the other
+
+- **The bind never kept the tags.** `rememberPublish` passed `tags` to
+  `writeBind` (src/share/session.js), which copies a fixed list of fields
+  that did not name them. So `publishedTags` always answered `[]`, the
+  builder's publish dialog pre-ticked nothing, and a republish that was not
+  re-ticked went out with an empty list, which `publishTrack` then left out.
+- **The board read a missing list as an empty one.** `inspectTags` in the
+  board's src/validate.js answered `{ tags: [] }` for no list, and both
+  stores wrote that over the stored tags. So the builder's republish above,
+  and `syncOwnedName` and `syncOwnedIdentity`, which send no tags at all,
+  each wiped the track's tags.
+
+The comment on `rememberPublish` said the board "leaves alone" an omitted
+list, and the 2026-09-02 entry above says "The bind remembers what was last
+published, so a second publish pre-ticks rather than untagging." Neither was
+true on the day it was written. The board's selftest stated the rule in a
+comment ("an omitted list ... must leave them be") and had no check for it.
+
+### What changed
+
+Board, WebFPVSimulator-LeaderBoard, branch `claude/wonderful-einstein-j3lgjo`:
+
+- `inspectTags` answers `tags: null` for a request with no list, and for
+  JSON null. A list, empty included, is a list.
+- **One rule for both stores**, `tagsAfter` in src/store.js: a list
+  replaces, null keeps what the track wore, and a new track, or one from
+  before tags, wears none. `FileStore.publishUnlocked` and `PgStore.publish`
+  both call it. Postgres works it out from the row it already holds
+  `FOR UPDATE`, rather than with a COALESCE in the SQL, so the two stores
+  read as the same line.
+- **The publish answer carries `tags`**, the list the track wears
+  afterwards. Additive: a simulator that does not read it is unaffected.
+- README's API table names `tags?`, and a paragraph under it says what
+  leaving it out and sending `[]` each do.
+
+Simulator:
+
+- `writeBind` keeps `tags` when it is a list, empty included, and writes
+  no key otherwise.
+- `publishedTags` answers a list, or **null when this browser does not
+  know**. Null is every track published before today.
+- `rememberPublish` keeps the first of these that is a list: the board's
+  answer, then what was sent, then what the bind already knew. When none
+  is a list, the bind gets no list rather than an empty one.
+- `publishTrack` sends any array as it is, `[]` included, and leaves the
+  key out for anything else.
+- `tagsToSend` (src/share/listing.js) decides what the dialog sends: see
+  below. The dialog seeds from `held = publishedTags(id)` and sends
+  `tagsToSend(held, ticked)`.
+- On an owned track whose tags this browser has no record of, the tag help
+  line says so instead of "Optional, and up to 5": "This browser has no
+  record of the tags this track wears on the board, so none are ticked.
+  Leave them that way to keep whatever it wears, or tick some to replace
+  them." That is the only change a person can see.
+- `syncOwnedName` and `syncOwnedIdentity` still send no tags, now on
+  purpose, with a comment saying why: a rename is not a retag, and the
+  bind's list could be stale.
+
+### How "clear all tags" is said, and why
+
+**An explicit empty list, `tags: []`, and the builder sends one only when
+it knows what it is clearing**, which means the bind holds a list, so the
+dialog pre-ticked exactly what the author then unticked. When the bind has
+no list and nothing is ticked, the builder leaves `tags` out and the board
+keeps what it has.
+
+The reason is the tracks already out there. Every bind written before
+today has no tags in it, so on each of those tracks the dialog opens with
+nothing ticked. It has to: this browser never heard what the board shows.
+Sending `[]` from that dialog would repeat this bug on every existing
+track's first republish after the fix ships. Leaving the list out instead
+keeps the board's tags, the board's answer carries them, `rememberPublish`
+stores them, and from the next publish on the dialog pre-ticks them. The
+"not known" state lasts one publish per track.
+
+Considered and not taken: fetching the board's tags when the dialog opens.
+It would pre-tick even the first time, but it adds a board read, a loading
+state and a failure state to a dialog that has none, for a state that lasts
+one publish.
+
+### Decisions made without asking, for the owner to overrule
+
+1. **JSON null is read as no list**, so it keeps the tags. It is not read
+   as none and not refused. It is how JSON spells absent, and nothing
+   sends it today.
+2. **The board's publish answer now carries `tags`.** That is what lets a
+   bind that never knew learn the board's list.
+3. **Tags the board holds that this build has no button for ride along**
+   on a republish, so a stale builder changes only what it can show.
+   `usableTags`' comment in src/share/board.js promised this and nothing
+   did it. They are not counted against the dialog's limit of five, so if
+   the two together pass it, the board refuses with its own message and
+   the dialog prints it.
+4. **The rename and handle syncs send no tags** rather than the bind's
+   list, as above.
+5. **The "not known" state gets its own help line**, quoted above.
+
+### Ship order
+
+Board first, as DEPLOY.md says, and both orders were worked through:
+
+- **Board first (the plan).** Tag loss stops at once for the simulator
+  already live, because the lists it leaves out now keep. Until the
+  simulator ships, the live builder cannot clear tags, because it still
+  leaves an empty list out.
+- **Simulator first (not the plan).** No worse than today. The old board
+  still wipes on a missing list and sends no tags in its answer, so the
+  bind falls back to what was sent.
+
+### Coverage
+
+- **Board `npm test`, 13 new checks, all passing.** `inspectTags`: no
+  list and JSON null come back null, and `[]` is a list. File store: a
+  first publish answers with its tags; a rename with `tags: null` keeps
+  them; a new handle with the key left out keeps them; `[]` takes them
+  off; a first publish with no list wears none. HTTP: a republish that
+  leaves tags out keeps them and the times; its answer says what the track
+  wears; a new author with no list keeps them; `tags: null` keeps them;
+  `[]` still clears, and its answer says none.
+- **Simulator `check:clip`, 17 new checks in `suiteListing`, all
+  passing.**
+  - The bind round trip: tags kept; kept through the spread rewrite the
+    renames do; `[]` kept as none; a bind with no list, and no bind at all,
+    both read as not known.
+  - `rememberPublish`: a bind that never knew learns from the board's
+    answer; the answer beats what was sent; a rename that sent no list
+    keeps what was known; a sent `[]` is remembered as none; nobody knowing
+    stays not known.
+  - `tagsToSend`: not known and nothing ticked sends nothing; known and
+    all unticked sends `[]`; ticked tags go in the board's order; unshown
+    tags ride along.
+  - `publishTrack` on the wire: `[]` as `[]`, no list as no key, a list as
+    it is.
+  `suiteListing` and `main` are async now, for the wire checks.
+- **Both can fail.** Each repository's new tests were run against its
+  main in a scratch worktree this turn. Board: 12 of the 13 fail. The
+  one that passes is "an empty tag list is a list", which is unchanged
+  behaviour. Simulator: 11 of the 17 fail. `tagsToSend` does not exist on
+  main, so for that run it was stood in, in the worktree only, by the old
+  dialog's own expression, `usableTags(ticked)`. The 6 that pass there
+  pin behaviour that did not change, such as a ticked list going on the
+  wire as it is.
+- **The Postgres store.** The board's selftest runs only the file store,
+  so the same sequence was run through `PgStore` on a scratch Postgres 16
+  cluster (as the published maps entry above did for its own code). It
+  added a stranger's 409, an explicit replace, and a row carrying the
+  column's pre-tags default. 13 of 13 pass. On main's code on the same
+  cluster, 10 of the 13 fail, starting with the tags stored as empty right
+  after a rename. The probe lived in the scratchpad and is not committed.
+  The cluster was stopped and deleted.
+
+### Found, not fixed
+
+- **The board's `npm test` has one failure on main, before this change**:
+  "nothing app.js builds opens a bare new tab or asks for noopener". The
+  Patreon link in its public/app.js trips it, with `target = '_blank'` and
+  `rel = 'noopener noreferrer'`, and that link leaves the product on
+  purpose. Either the check or the link has to change, and which one is
+  the owner's call, so neither was touched.
+- **The simulator shell's publish cannot fork on a conflict.**
+  `publishCurrentCourse` in src/share/listing.js still passes
+  `forkDocument`'s return value to `toPlain`. Since 1ba92c8 that value is
+  `{ copy, commit }`, and `toPlain` throws "Cannot read properties of
+  undefined (reading 'width')" on it (a Node probe this turn). So a 409 on
+  a publish from the shell shows that message instead of putting the track
+  up as a copy. The builder's dialog uses `copy` correctly. Outside this
+  change.
+
+### What went wrong
+
+- **Both mains moved while this was being read.** The simulator's gained
+  four commits (published freestyle maps) and the board's two, in the four
+  board files this change edits. The fetch CLAUDE.md asks for is what
+  caught it. Before any edit, the simulator branch fast-forwarded to main
+  (merge-base was HEAD), the board branch was cut fresh from its new main,
+  and both baselines were rerun: check:clip 661 passed, board 383 pass and
+  the one failure above.
+- **The first cut of the board's store checks called `.join()` on the
+  publish answer's tags.** On main's code, where the answer has none, that
+  threw and took the rest of the suite with it, so the HTTP half never ran
+  there. The checks read the answer with `String()` now and fail cleanly,
+  which is what the run against main above used.
+- **The first dash scan proved nothing.** `grep -P '\x{2013}'` was refused
+  by this shell's locale, and the `|| echo none` behind it printed "none"
+  anyway. Redone with Python: no em or en dash in either diff.
+
+### RUN LOG
+
+    board npm test, the fix         396 pass, 1 FAIL (the Patreon check,
+                                    main too), 1 skip (the admin hash)
+    board npm test, main            383 pass, the same FAIL and skip
+    new board tests on main's code  13 failed: 12 new, and the Patreon one
+    board lint:licence              21 of 21 carry the notice
+    board lint:nouns                PASS
+    PgStore, scratch Postgres 16    13 of 13 pass; main's code 10 of 13
+                                    fail
+    npm run check:clip              678 passed, 0 failed (661 on main)
+    new check:clip on main's code   667 passed, 11 failed (tagsToSend
+                                    stood in, see Coverage)
+    npm run lint:nouns              PASS
+    npm run lint:preload            up to date: boot 105 modules, city 73,
+                                    built 29
+    node --check app.js             parses (no Node check loads the dialog)
+    dash scan, both diffs           no em or en dash in added lines
+    shots / fly it / served         not run: offered to the owner. The
+                                    dialog's new help line is the one
+                                    visible change
+    npm run verify                  not run: share code, a dialog and the
+                                    board; no physics, plant, ABI or build
+    git diff --stat vendor/betaflight   empty
+    git merge-base                  simulator: main 535331f is this
+                                    branch's base; board: main 7d1f89b is
+                                    its branch's base
+    board branch                    cd92dd9 on claude/wonderful-einstein-j3lgjo,
+                                    pushed first; board main untouched
+
+## 2026-09-25 | git | The tags fix goes to main in both repositories, for the owner to test
+
+The owner, on the entry above: "merge both to main, i'll test it". That is
+the approval to put the tags fix on main in both repositories, and the
+verification scale chosen is the owner testing it by hand. The five
+decisions the entry above lists were put to the owner and are not answered
+yet: JSON null reads as no list, the publish answer carries tags, unshown
+tags ride along, the renames send none, and the "no record" help line.
+They go to main as built, and testing it is how the owner will judge them.
+
+**The board went first**, as DEPLOY.md says, and its main had moved while
+this waited. 21b7380, another session's fix for the tab check that the
+entry above found failing on main, landed between the fetch at 11:07 UTC
+and the push at 11:09, so the first push was refused. Nothing was forced.
+The branch took the new main in by a merge, 6dee444, with merge-base
+7d1f89b, one history, and no conflicts: the two touched different parts
+of src/selftest.js. On the merged tree `npm test` passed everything,
+with the tab check green for the first time. Board main then
+fast-forwarded to 6dee444 at 11:12:31 UTC.
+
+This main fast-forwards to the branch after it: no merge commit, nothing
+rewritten, one history.
+
+**What can be seen from outside, and what cannot.** The board's change
+leaves no read-only mark. /api/health and every GET answer the same before
+and after. The publish answer and what a republish keeps can only be seen
+by publishing to the public board, which was not done, so the owner's test
+is the first sight of it live. The simulator's change is scripts and
+nothing else, so it can be seen at the origin: src/share/listing.js with
+`tagsToSend` in it.
+
+**Hard reload the builder before testing.** This is DEPLOY.md's four hour
+seam: through webfpv.org every script is cached for up to four hours, and
+this change is scripts only (listing.js, session.js, board.js and the
+builder's app.js). A browser that has the builder cached runs the old code,
+which pre-ticks nothing and cannot clear tags. No class name or stylesheet
+changed, so a stale browser runs the old code whole rather than a broken
+mix.
+
+What to look for:
+
+1. Publish a track from the builder with two tags, then open Publish
+   again: both are ticked.
+2. Rename the track and press Update without touching the tags: the
+   board's card still wears both.
+3. Change the name you fly under: the card still wears both.
+4. Untick everything and Update: the card wears none.
+5. On a track published before today, the dialog says "This browser has no
+   record of the tags this track wears on the board". Update without
+   ticking keeps the board's tags, and the next Publish has them ticked.
+
+What would count as wrong: tags gone from a card after a rename, a
+republish or a new handle; the "no record" line on a track published with
+this build; unticking everything leaving tags on the card; or Publish
+failing with a message about tags.
+
+### RUN LOG
+
+    git fetch, both                board main 7d1f89b, this main 535331f;
+                                   each branch one commit ahead, none
+                                   behind
+    live, before                   webfpv.org/board/api/health
+                                   {"ok":true,"store":"postgres"}; origin
+                                   src/share/listing.js without tagsToSend
+    board push, first              refused: main had moved to 21b7380
+    board branch                   21b7380 merged in, 6dee444; merge-base
+                                   7d1f89b, one history
+    board npm test, merged tree    399 pass, 0 FAIL, 1 skip (the admin
+                                   hash, BOARD_SELFTEST_PASSWORD unset)
+    board lint:licence, lint:nouns 21 of 21 carry the notice; PASS
+    board main                     21b7380..6dee444 at 11:12:31 UTC, by
+                                   fast-forward
+    simulator code                 unchanged since the entry above, so its
+                                   checks stand: check:clip 678 of 678
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | board | The tab check lets the Patreon link through, and nothing else
+
+Board only. Nothing in this repository changed except this entry. The
+board commit is `21b7380` in `Mathew-Harvey/WebFPVSimulator-LeaderBoard`,
+on `claude/amazing-babbage-pkvwvf`, pushed. The board's main is untouched,
+because a push there deploys webfpv.org/board and nobody asked for that.
+
+The owner's request: the board's `npm test` failed exactly one check on
+main, "nothing app.js builds opens a bare new tab or asks for noopener",
+and had since the Patreon link arrived in f1dc902 on 2026-09-22. Sessions
+since then recorded it as a known failure. The check looked for '_blank'
+anywhere in app.js with no allowance, and the Patreon link opens in a tab
+of its own with noopener, which is right: Patreon is outside the product,
+and given the webfpv-sim name a click would send the visitor's running
+simulator to Patreon. The owner asked for the Patreon link to be allowed
+without the check getting any weaker for a link to the simulator.
+
+- **One named line.** app.js now says how a link leaves the product once,
+  as `OUTSIDE_PRODUCT_LINK = { target: '_blank', rel: 'noopener noreferrer' }`,
+  and bindPatreonLinks takes its target and rel from it. Nothing a visitor
+  sees changes: the three anchors already carry the same two attributes in
+  the markup, and the script sets the same values it did.
+- **Excluded by its exact text, and nothing else.** The self test removes
+  that one line from the scan, requires it to appear exactly once, and
+  requires both uses of the name to sit in bindPatreonLinks. Every other
+  line of app.js is still scanned, a simulator link that borrows the
+  constant fails the count, and the count of named targets, ten since the
+  maps tab, is untouched. Why this is safe is written above the check in
+  src/selftest.js and above the constant in app.js.
+- **The scan is stricter than it was, which the owner did not ask for.**
+  The old `noopener'` matched `rel = 'noopener'` and not
+  `rel = 'noopener noreferrer'`, the spelling the Patreon link brought, so
+  a Fly link that picked that rel up beside its SIM_WINDOW target passed
+  while opening a fresh simulator on every click. Shown on the app.js from
+  before the Patreon link: the old expression passes `noopener noreferrer`,
+  `noreferrer` and `"_blank"` on the chase link. Comments now come out
+  first and the words are matched in any quoting and any case, noreferrer
+  included because the spec makes it imply noopener. It can go back to
+  the old expression if the owner would rather not have it.
+- **Not done: the page's own anchors.** The fallback anchors in
+  index.html are checked for target="webfpv-sim" but not for a
+  rel="noopener" beside it. Nothing there is wrong today. It is one more
+  line if the owner wants it.
+
+### What went wrong
+
+Board main moved while this was being made: dcc8d5f to 7d1f89b, the maps
+tab, pushed at 10:38 UTC by the session in the published freestyle maps
+entries. The first version was written and tested on dcc8d5f. Reapplied
+on 7d1f89b it conflicted in src/selftest.js at the count of named
+targets, six there and ten here. The ten was kept, three mentions of
+"six" in the new comment were reworded to name no number, so the next
+change to that count cannot leave the comment stale, and every check
+below was run again on the rebased tree.
+
+The first dash check errored, because grep in this container would not
+take a \x{2013} pattern, and printed its "no dashes" fallback anyway. It
+was not evidence. It was redone in node: none of the 88 added lines
+carries an em or en dash.
+
+### RUN LOG
+
+    board npm test, before      7d1f89b: exit 1, 383 pass, 1 FAIL, the
+                                check above; 1 skip, the shipped hash
+    board npm test, after       21b7380: exit 0, 386 pass, all passed;
+                                1 skip, the shipped hash, because
+                                BOARD_SELFTEST_PASSWORD is unset
+    mutations, real selftest    11 lines planted in a scratch copy of
+                                app.js, each failing the check it should:
+                                _blank by setAttribute and in double
+                                quotes; rel noopener, noopener noreferrer
+                                and noreferrer on the chase link; the
+                                constant borrowed; its uses moved out of
+                                bindPatreonLinks; the exempt line edited;
+                                the exempt line pasted twice; a '/*' in a
+                                string ahead of a planted _blank. Prose in
+                                a comment that says the words: all passed.
+                                Run on dcc8d5f and again on the rebased
+                                tree, the same result both times
+    old against new             app.js at 1d9e869, before the Patreon
+                                link: the old expression passes noopener
+                                noreferrer, noreferrer and "_blank" on the
+                                chase link, the new scan fails all three,
+                                and both pass it unmutated
+    comment stripping           188 comments found, 188 '/*' in app.js;
+                                the stripped file parses as a module; 3
+                                words left, all on the exempt line
+    lint:licence, lint:nouns    PASS, PASS
+    npm run verify              not run: nothing in the physics, the
+                                plant, the module ABI or the build
+                                changed, and it does not cover the board
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | git, board | The Patreon tab check, fast forwarded onto board main for the owner to look at
+
+The owner, on the entry above: "fast forward board main, i'll look at
+it". That is the approval to put 21b7380 on the board's main, and it
+covers that commit only: the exemption for the Patreon link, the stricter
+scan the owner did not ask for, and the two checks that pin the
+exemption. It is recorded here because this repository is the copy of
+record for the three. The verification scale chosen is the owner looking
+at it. This repository's main is not part of it: this entry and the one
+above are on claude/amazing-babbage-pkvwvf, and stay there until the
+owner says otherwise.
+
+- **A fast-forward.** Fetched first: board main was still 7d1f89b, the
+  merge base, with 21b7380 one commit ahead of it, so main moved with no
+  merge commit and nothing rewritten, 7d1f89b..21b7380 at 11:08:22 UTC.
+  The board's npm test ran again on 21b7380 just before the push: exit 0,
+  386 pass, the one skip.
+- **It deployed on its own.** A push to board main is a deploy of
+  webfpv.org/board. Measured through the domain: app.js without
+  OUTSIDE_PRODUCT_LINK before the push, and with it at 11:09:12 UTC, 50 s
+  after, byte for byte the app.js in 21b7380. app.js is served
+  cache-control: no-store, so a plain reload picks it up.
+
+What to look for, on webfpv.org/board: the Patreon links in the
+masthead, the spine and the footer each open Patreon in a new tab and
+leave the board where it was. Fly on two different tracks, or on a track
+and then a map, lands in the same simulator tab and brings it forward.
+What would count as wrong: a Patreon click that replaces the simulator
+tab or the board, or a Fly click that opens a second simulator.
+
+### RUN LOG
+
+    git fetch, board         main 7d1f89b, unmoved since the rebase; the
+                             merge base of main and 21b7380 is 7d1f89b
+    board npm test           21b7380: exit 0, 386 pass, all passed; 1
+                             skip, the shipped hash
+    board main               7d1f89b..21b7380, fast-forward, pushed at
+                             11:08:22 UTC
+    webfpv.org/board         before: app.js 200, no-store, no
+                             OUTSIDE_PRODUCT_LINK. At 11:09:12: app.js
+                             with it, sha256 b619b03f... on both the
+                             live file and 21b7380's; the page 200 with
+                             its three Patreon anchors; /api/health
+                             {"ok":true,"store":"postgres"}
+    git fetch, simulator     main 535331f, unmoved; this branch 5975db2
+                             plus this entry; this main untouched
+
+## 2026-09-25 | git | The tab check's entries go to main, merged with the tags fix
+
+The owner, on the entry above: "yes fast forward simulator main too".
+That is the approval to put claude/amazing-babbage-pkvwvf on this main.
+It covers PROGRESS.md only: the two entries above and this one. The
+branch changes no other file. The line in the entry above saying they
+stay on the branch until the owner says otherwise is overtaken by this.
+
+**Not a pure fast-forward, because main moved while the owner
+answered.** 207b9d3 and 43af247, the tags fix from a parallel session and
+its entry, landed on this main at 10:57 and 11:13 UTC. Main came into the
+branch by a merge, 98e5c42, merge-base 535331f, one history, the way the
+published maps branch took Stage B in. This main then moves to the branch
+by fast-forward, so nothing is rewritten on either side and no commit on
+main is lost. PROGRESS.md was the only conflict, where both sides
+appended. The merge keeps main's file byte for byte and puts this
+branch's entries after it, which is why the tags entries now sit between
+the published freestyle maps entries and these. One phrase in the first
+of these said "the session in the entry above" for the maps session,
+which the merge made wrong. It names the maps entries now, changed in the
+commit that adds this entry.
+
+**The same session carried board main past 21b7380.** Its board push was
+refused because 21b7380 had just landed, so it merged it in without
+forcing, 6dee444, and board main fast-forwarded there at 11:12:31 UTC.
+The tab check is on it and green: the board's npm test on 6dee444 passes
+all 399, the one skip aside, with the three checks this work added among
+them. The live app.js is still byte for byte the one in 21b7380, because
+the tags fix does not touch it.
+
+Nothing in this main's code changes with this push. The merged tree
+differs from 43af247 in PROGRESS.md alone, so no check here can see it,
+and none was run for it.
+
+### RUN LOG
+
+    git fetch, simulator       main 535331f..43af247, the tags fix;
+                               merge-base with this branch 535331f
+    merge                      98e5c42, main into the branch; PROGRESS.md
+                               the only conflict, resolved as main's file
+                               for a prefix and this branch's two entries
+                               for the suffix, checked in node; the merged
+                               tree differs from main in PROGRESS.md only
+    git fetch, board           main 21b7380..6dee444, the tags branch
+                               merged over it; 21b7380 is an ancestor
+    board npm test             6dee444: exit 0, 399 pass, all passed; 1
+                               skip, the shipped hash
+    webfpv.org/board           app.js sha256 b619b03f..., the same as in
+                               21b7380 and in 6dee444
+
+## 2026-09-25 | share | The shell's publish goes up as a copy when the board has the id
+
+The owner: "fix the shell publish conflict fork bug", the second item the
+tags entry above found and did not fix. Share code only: the plant, the ABI
+and the build are untouched.
+
+### What was wrong
+
+`publishCurrentCourse` in src/share/listing.js is the simulator shell's
+Publish. When the board answers 409 (the id is on the board and this
+browser has no key for it), it is meant to put the track up as a copy under
+a new id, as the builder's own publish does. It passed `forkDocument`'s
+return value to `toPlain` as though it were the copy. Since 16 August
+(19ddc7b) that value has been `{ copy, commit }`: that commit moved the
+builder's two callers to it and missed this one, which had been written the
+day before (c192d64). `toPlain` threw "Cannot read properties of undefined
+(reading 'width')". The pilot read that under "Could not publish that
+track", and no copy went up. Nothing ran this path, so nothing noticed.
+
+### What changed
+
+- The conflict path takes `{ copy, commit }` apart and publishes the copy.
+- **The bind is committed after the board has taken the copy**, and before
+  `rememberPublish`, which keeps the source that bind names.
+  - Committed after `rememberPublish` instead, the fork's own unowned bind
+    would overwrite everything `rememberPublish` had just written: the
+    author, the name on the board, the layout and the tags.
+  - Committed before sending, as the builder's dialog does, a copy the board
+    also refuses would leave a bind for a document that exists nowhere. The
+    builder can commit first because it loads the copy onto the canvas
+    before sending. The shell only makes the copy the canvas once it is
+    published.
+
+### Coverage
+
+Five new checks at the end of `suiteListing`, against a stub board that
+answers each publish in turn:
+
+- a 409 and then a 201: the publish goes up as a copy instead of throwing;
+  the copy has a new id and the same layout; the copy is this browser's,
+  with its edit key and its bind naming the original as its source; and the
+  canvas is the copy;
+- two 409s: an error, and no bind left behind for the copy.
+
+**The failure was reproduced first.** Against the unfixed listing.js all
+five fail, the first with the pilot's own message: "Cannot read properties
+of undefined (reading 'width')". With the fix they pass. The third also
+pins the order: committing after `rememberPublish` would leave the copy
+unowned.
+
+### What went wrong
+
+- **The tags entry above, and the chat, named the wrong commit.** They
+  said "Since 1ba92c8 that value is `{ copy, commit }`". 1ba92c8 is only
+  the oldest commit in this container's clone, which was shallow: 106
+  commits, with listing.js appearing whole in the first. The history was
+  deepened to 630 commits with a bounded fetch to date the change, and it
+  is 19ddc7b, as above. That entry stands as written, and this is the
+  correction.
+
+### RUN LOG
+
+    git fetch                       main 43af247, this branch's base;
+                                    history deepened to 630 commits
+    npm run check:clip, unfixed     678 passed, 5 failed: the 5 new, the
+                                    first "Cannot read properties of
+                                    undefined (reading 'width')"
+    npm run check:clip              683 passed, 0 failed
+    npm run lint:nouns              PASS
+    npm run lint:preload            up to date: boot 105 modules, city 73,
+                                    built 29
+    dash scan, the diff             no em or en dash in added lines
+    shots / fly it                  not run: offered to the owner. The
+                                    path needs a board that answers 409,
+                                    and the publish form is unchanged
+    npm run verify                  not run: share code only, no physics,
+                                    plant, ABI or build
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | git | The shell's fork fix goes to main, for the owner to test
+
+The owner, on the entry above: "merge to main, i'll test it". That is the
+approval to put the shell's conflict fork fix on main, and the
+verification scale chosen is the owner testing it by hand. The one
+decision in the entry above, committing the copy's bind only once the
+board has taken the copy, goes to main as built.
+
+main had moved again while this waited: four commits, all PROGRESS.md,
+another session's entries for the board's tab check. The branch took them
+in by a merge, 2cde6cd, merge-base 43af247, one history. PROGRESS.md
+conflicted where both sides appended, and it keeps main's file whole with
+this branch's entry after it. main then fast-forwards to the branch: no
+merge commit on main's side, nothing rewritten.
+
+**Hard reload before testing.** The change is src/share/listing.js alone,
+which is a script, and scripts sit behind DEPLOY.md's four hour cache
+through webfpv.org.
+
+How to reach the path. It needs a track whose id is on the board and whose
+edit key is not in this browser:
+
+1. Save a track you have published to a file from the builder.
+2. Import that file into the builder in a private window. Import keeps the
+   id, and the private window has no key for it.
+3. Fly it, then Publish from the simulator.
+
+What to look for: "Published "...". Published as a new track." and a
+second card on the board under the same name. Press Publish again in the
+same window and it says "This track is already on the public board.",
+because the copy is now this window's and unchanged. **The second card is
+a real listing on the public board**, so take it off as admin afterwards.
+
+What would count as wrong: "Could not publish that track" with "Cannot
+read properties of undefined (reading 'width')", which is the bug; a third
+card when Publish is pressed again; or the original track's card
+changing.
+
+### RUN LOG
+
+    git fetch                      main 43af247..c48101c, four PROGRESS.md
+                                   commits; merge-base 43af247
+    merged                         2cde6cd, PROGRESS.md resolved as main's
+                                   file plus this branch's entry; no code
+                                   from main
+    npm run check:clip, merged     683 passed, 0 failed
+
 ## 2026-09-25 | shell, builder, deploy | Every page loads the scripts of the deploy it was served from
 
 The owner, with a screenshot of the builder's toast "The public board does
@@ -45413,3 +46030,12 @@ untouched.
                              what changed, and check:fresh, the smoke run
                              and the browser checks above drive all three
     git diff --stat vendor/betaflight   empty
+    merged with main         6bf90bf came in while this was written (the
+                             tags fix, the Patreon tab check, the shell's
+                             fork fix): PROGRESS.md conflicted where both
+                             appended and keeps every entry of both, main's
+                             first; the code merged by itself, and no
+                             module was added, so MODULES did not move
+    merged tree              check:clip 683 of 683; lint:preload up to
+                             date; check:fresh 18 of 18; published maps,
+                             served, 24 of 24

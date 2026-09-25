@@ -79,7 +79,12 @@
 
 /* The city is 19,515 boxes. Static, so nothing here allocates. */
 #define WORLD_MAX_SHAPES 49152
-#define WORLD_MAX_MOVERS 16
+/* Movers, the train's cars and the road vehicles in one table, so a contact
+ * the shell reads names any moving thing the same way (-2 - m) and the one
+ * limit is the one the owner approved on 2026-09-24: sixteen was the train's
+ * three cars and room; sixty four is a built map's traffic beside them. An
+ * empty slot costs one flag test a step. */
+#define WORLD_MAX_MOVERS 64
 #define WORLD_MAX_CELLS (1 << 18)
 #define WORLD_MAX_ITEMS (1 << 20)
 #define WORLD_MAX_CAND 1024
@@ -152,6 +157,22 @@ typedef struct {
   int type;
 } Shape;
 
+/*
+ * Where a road vehicle is at one step of the clock (section 5). World
+ * frame, SI, the same numbers sim_world_vehicle_poses hands the shell.
+ */
+typedef struct {
+  double p[3];    /* the road point under its centre: its own frame's origin */
+  double h[2];    /* its heading in plan, unit: the body's +x, the drift in it */
+  double u[2];    /* its direction of travel in plan, unit */
+  double vel[3];  /* the velocity of p, m/s */
+  double speed;   /* along the road, m/s, never negative */
+  double omega;   /* yaw rate about +z, rad/s: the road's bend and the drift's */
+  double dist;    /* driven, m, from the road's first point, every lap counted */
+  double kap;     /* the path's curvature along the travel, 1/m, left positive */
+  double slip;    /* tan(slip / 2), left positive; 0 for an ordinary car */
+} Pose;
+
 typedef struct {
   double lo[3];
   double hi[3];
@@ -159,6 +180,17 @@ typedef struct {
   double e;
   double mu;
   int on;
+  /* A road vehicle when veh is 1, and then lo and hi are its box in its OWN
+   * frame. Otherwise the train's kind: an axis aligned box in the world that
+   * the shell seats every step, solved by exactly the code it always was. */
+  int veh;
+  int prof;       /* its speed profile, g_prof */
+  double toff;    /* its route time at clock 0, s */
+  double drift;   /* drift gain, per m/s/s of lateral acceleration */
+  double zc;      /* its box's centre over p, m */
+  double rad;     /* its box's bounding radius, m */
+  Pose cur;       /* at the clock */
+  Pose prev;      /* at the clock less one step */
 } Mover;
 
 typedef struct {
@@ -177,6 +209,65 @@ static Shape g_shape[WORLD_MAX_SHAPES];
 static int g_nshape = 0;
 static Mover g_mover[WORLD_MAX_MOVERS];
 static int g_built = 0;
+
+/*
+ * THE ROADS (section 5). Static like everything else here, and bounded:
+ *
+ *   a road keeps at most ROAD_MAX_POINTS points once its long segments are
+ *   cut to ROAD_STEP, 8.2 km of road, and all roads together at most
+ *   WORLD_ROAD_POINTS, at 56 bytes a point: 917,504 bytes;
+ *   a speed profile keeps a speed and a time for every point of its road,
+ *   and all profiles together at most WORLD_PROFILE_POINTS of them, 16
+ *   bytes each: 1,048,576 bytes.
+ *
+ * Under two megabytes, beside the eleven and a half the town's shapes and
+ * grid already hold. The largest built map is 480 m across, so a road right
+ * round it is under two thousand points. sim_world_clear frees all of it.
+ */
+#define WORLD_MAX_ROADS 16
+#define ROAD_MAX_POINTS 8192
+#define WORLD_ROAD_POINTS 16384
+#define WORLD_MAX_PROFILES WORLD_MAX_MOVERS
+#define WORLD_PROFILE_POINTS 65536
+
+typedef struct {
+  double p[3];   /* world, m */
+  double s;      /* arc length from the road's first point, m */
+  double t[2];   /* unit tangent in plan, the chord across ROAD_WINDOW */
+  double k;      /* curvature in plan, 1/m, left positive */
+} RoadPt;
+
+typedef struct {
+  int first;     /* its first point in g_rpt */
+  int np;        /* points kept; a closed road repeats its first at the end */
+  int closed;
+  double len;    /* its length, m, a closed road's closing segment included */
+} Road;
+
+/* A speed and time table: one road driven with one top speed and one
+ * lateral limit. Cars that share all three share the table. */
+typedef struct {
+  int road;
+  int first;     /* its entries in g_pv and g_ptm */
+  double vmax;
+  double alat;
+  double T;      /* one way, s: a lap of a closed road, end to end of an open one */
+} Profile;
+
+static RoadPt g_rpt[WORLD_ROAD_POINTS];
+static int g_nrpt = 0;
+static Road g_road[WORLD_MAX_ROADS];
+static int g_nroad = 0;
+static double g_pv[WORLD_PROFILE_POINTS];
+static double g_ptm[WORLD_PROFILE_POINTS];
+static int g_nppt = 0;
+static Profile g_prof[WORLD_MAX_PROFILES];
+static int g_nprof = 0;
+static int g_nveh = 0;
+/* The vehicles' clock: whole 1 ms steps. The shell sets it from its lap clock
+ * (sim_world_clock) and sim_step advances it one a step, so a pose is a
+ * function of this integer and of nothing about the frame. */
+static long long g_clock = 0;
 
 static double g_cell = WORLD_CELL_MIN;
 static double g_gx0 = 0.0;
@@ -329,7 +420,8 @@ static void body_to_world_point(const double c[3], double R[3][3], const double 
  * exactly as it was.
  * ------------------------------------------------------------------ */
 
-/* Empty the world. Shapes, movers and the grid all go. */
+/* Empty the world. Shapes, movers, roads, vehicles and the grid all go, and
+ * the vehicles' clock goes back to step 0 until the shell sets it. */
 SIM_EXPORT int sim_world_clear(void) {
   g_nshape = 0;
   g_built = 0;
@@ -339,7 +431,14 @@ SIM_EXPORT int sim_world_clear(void) {
   g_prev_ok = 0;
   for (int m = 0; m < WORLD_MAX_MOVERS; m += 1) {
     g_mover[m].on = 0;
+    g_mover[m].veh = 0;
   }
+  g_nroad = 0;
+  g_nrpt = 0;
+  g_nprof = 0;
+  g_nppt = 0;
+  g_nveh = 0;
+  g_clock = 0;
   return SIM_OK;
 }
 
@@ -450,6 +549,7 @@ SIM_EXPORT int sim_world_box_z(int i, double z0, double z1) {
  * the solid train is a function of the step count and nothing else. v is its
  * surface velocity for the friction and restitution the contact reads;
  * position jumps (a wrap, a seek) are never read as speed. x1 < x0 parks it.
+ * m is 0 to WORLD_MAX_MOVERS - 1, one table with the road vehicles.
  */
 SIM_EXPORT int sim_world_mover(int m, double x0, double y0, double z0,
                                double x1, double y1, double z1,
@@ -464,6 +564,12 @@ SIM_EXPORT int sim_world_mover(int m, double x0, double y0, double z0,
     return SIM_ERR_BAD_ARG;
   }
   Mover *mv = &g_mover[m];
+  /* Seating or parking a box here ends a road vehicle in the same slot: this
+   * is also how the shell takes a vehicle away. */
+  if (mv->veh) {
+    mv->veh = 0;
+    g_nveh -= 1;
+  }
   if (!(x1 >= x0) || !(y1 >= y0) || !(z1 >= z0)) {
     mv->on = 0;
     return SIM_OK;

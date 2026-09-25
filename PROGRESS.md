@@ -46039,3 +46039,39 @@ untouched.
     merged tree              check:clip 683 of 683; lint:preload up to
                              date; check:fresh 18 of 18; published maps,
                              served, 24 of 24
+
+## 2026-09-25 | git | The loader goes to main, for the owner to test
+
+The owner, on the entry above: "merge to main, i'll test it". That is the
+approval to put src/fresh.js and the pages' new first lines on main, and
+the verification scale chosen is the owner using the builder as a
+returning visitor would, with no hard reload.
+
+- **A fast-forward.** Fetched first: main was 6bf90bf, this branch's merge
+  base and ancestor, so main moves to the branch with no merge commit and
+  nothing rewritten.
+- **Checked on the live site before the push**, because the fix depends on
+  both: a module asked for at a stamped address through webfpv.org comes
+  back as the module, application/javascript, 380,652 bytes for
+  src/main.js?d=... and 116,721 for the builder's app.js; and the builder
+  and orbit pages answer a HEAD with Last-Modified.
+- **This deploy picks itself up.** The pages are never cached and now
+  carry the lines that load fresh.js, so the first visit after it loads
+  every script at the new deploy's address. No hard reload.
+
+What to look for: the builder, opened the ordinary way, publishes a map;
+and after the next deploy, whatever it is, nothing old comes back. What
+would count as wrong: a message or behaviour from before a deploy after
+it, a page that stays on its loading screen, or the loading taking
+noticeably longer than it did.
+
+### RUN LOG
+
+    git fetch                main 6bf90bf, unmoved since the merge above
+    git merge-base           6bf90bf, main's tip; main moves by
+                             fast-forward
+    live, before the push    stamped module addresses served as the
+                             module; the pages answer HEAD with
+                             Last-Modified
+    code                     unchanged since the merged tree's checks above
+    git diff --stat vendor/betaflight   empty

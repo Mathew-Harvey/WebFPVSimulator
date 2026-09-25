@@ -46709,3 +46709,31 @@ either.
                                    lint:preload's, up to date
     npm run check:crash, shots     not run: offered to the owner
     git diff --stat vendor/betaflight   empty, and not checked out here
+
+## 2026-09-25 | git | The wall tap fix goes to main
+
+The owner, on the entry above: "push to main". That is the approval to put
+the fix on main. No verification scale was named with it: the checks in the
+entry above are the ones that were run, on the very tree that goes to main,
+and flying it stays the suggestion. main had not moved from fdafe2e, the
+base this branch was built on, so main goes to the branch as a fast forward:
+no merge commit on main's side, nothing rewritten.
+
+Still open, asked with the push: whether the reading's two flights should
+also be pinned in the world golden, which is the owner's approval to give.
+
+What to look for when flying it is in the entry above. A belly first wall
+tap at the pace that reset you bounces off with no "Crashed, set down
+nearby", facing any way and after an X set down too. A nose first smack
+still resets at once, in the city as well. Wrong would be a reset on a
+belly tap, or a nose first hit that hangs on the wall.
+
+### RUN LOG
+
+    git fetch                      main fdafe2e, unchanged since the entry
+                                   above; merge-base fdafe2e, main is an
+                                   ancestor of the branch
+    code                           unchanged since the entry above; only
+                                   this entry is new
+    checks                         not rerun: nothing they read changed
+    git diff --stat vendor/betaflight   empty

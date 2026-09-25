@@ -121,7 +121,6 @@ export const MAP_PRELOAD = {
     'props/catalog.js',
     'props/buildings.js',
     'props/parts.js',
-    'props/trig.js',
     'props/textures.js',
     'props/industrial.js',
     'props/street.js',

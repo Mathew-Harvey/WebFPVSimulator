@@ -67,7 +67,8 @@ import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf } from './game/plantworld.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
+import { sincos } from './props/trig.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CRASH_BELLY_UP, solidContactCrash } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor } from './ui/ui.js';
 import {
   adoptMapFromLocation, adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost,
@@ -1141,6 +1142,9 @@ export async function boot({ loading, bootStart, mapId }) {
   let startY = 0;
   let startYaw = 0;
   let startPitch = 0;
+  /* The cosine and sine of the yaw the plant's frame was last seated at,
+   * which seatWorldFrame writes: see bodyUpDotWorld in src/game/collide.js. */
+  const frameTurn = { s: 0, c: 1 };
   /*
    * The height of the surface a craft standing at (x, z) rests on.
    *
@@ -1196,6 +1200,9 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   function seatWorldFrame() {
     setWorldFrame(sim, startX, startY, startZ, startYaw, SPAWN_ALT);
+    /* And the same yaw as a turn, for the world report's normals, which come
+     * back in the world frame: see bodyUpDotWorld in src/game/collide.js. */
+    sincos(startYaw, frameTurn);
   }
 
   /* Hand the current map's solids to the plant. Called whenever a map is
@@ -3243,9 +3250,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * physics: a belly first hit (a hard landing, a skid, a bounce you fly
    * out of), anything under 4 m/s (a wall tap, a nudge), a prop clip and a
    * knock on a ceiling. Those still tumble flat and turtle as before.
+   *
+   * CRASH_BELLY_UP and CRASH_UNDERSIDE_NZ live in src/game/collide.js, with
+   * the solid rule itself, solidContactCrash, so that scripts/world-check.js
+   * can ask it of flights through the module.
    */
-  const CRASH_BELLY_UP = 0.7;
-  const CRASH_UNDERSIDE_NZ = -0.5;
   let crashReset = false;
   /* The frame's largest one step velocity change, and body up after it:
    * the STOP above. Written by the step loop, read and cleared with the
@@ -3257,13 +3266,6 @@ export async function boot({ loading, bootStart, mapId }) {
    * and cleared with it. */
   let stepStopSpeed = 0;
   let frameHardGround = false;
-  function bodyUpDot(st, nx, ny, nz) {
-    const w = st[7];
-    const x = st[8];
-    const y = st[9];
-    const z = st[10];
-    return 2 * (x * z + w * y) * nx + 2 * (y * z - w * x) * ny + (1 - 2 * (x * x + y * y)) * nz;
-  }
   function crashResetTick() {
     if (!crashReset) {
       return;
@@ -6374,9 +6376,11 @@ export async function boot({ loading, bootStart, mapId }) {
        * speed, on anything but the belly, and not an underside: see CRASH IS
        * A RESET. The report's normal points out of the solid, so a belly
        * first hit has it along the body's own up and a ceiling has it
-       * pointing down. */
-      if (rep[8] > 0 && rep[1] >= GRAZE_SPEED_MAX && rep[6] > CRASH_UNDERSIDE_NZ && stateCurr
-        && bodyUpDot(stateCurr, rep[4], rep[5], rep[6]) < CRASH_BELLY_UP) {
+       * pointing down. It is the WORLD's normal and the attitude is the
+       * plant's, so it is turned by the frame's yaw before the two meet:
+       * see bodyUpDotWorld. */
+      if (stateCurr && solidContactCrash(rep, stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10],
+        frameTurn.c, frameTurn.s)) {
         crashReset = true;
       }
       upAxis.set(0, 1, 0).applyQuaternion(qPrev);

@@ -84,8 +84,15 @@ const HEAVY = ['built', 'city'];
  * src/game/trackdoc.js and src/trackbuilder/storage.js), so the data comes
  * along. The list is exact, so a second props module reaching boot fails
  * here by name rather than riding in under the first.
+ *
+ * The second is src/props/trig.js, since 2026-09-25: a sine and cosine that
+ * give the same bits in every engine, with no imports of its own and no
+ * asset in it. The shell turns the solid world's contact normals into the
+ * plant's frame with it before its crash reset judges them (bodyUpDotWorld in
+ * src/game/collide.js), and that judgement moves the craft, so CLAUDE.md
+ * keeps JS Math.sin and Math.cos out of it.
  */
-const BOOT_PROPS = ['types.js'];
+const BOOT_PROPS = ['types.js', 'trig.js'];
 
 /*
  * Every URL the page has fetched, as a plain list. Resource timing is the

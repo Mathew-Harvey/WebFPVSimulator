@@ -46493,3 +46493,219 @@ scripts; merged in a separate worktree so the running part 2 agent was not
 disturbed. PROGRESS.md conflicted in two places, both sides appending, and
 both were kept; package.json merged cleanly with main's check:fresh beside
 the world checks.
+
+## 2026-09-25 | collision, shell | A belly first wall tap is not a crash, whichever way the map faces
+
+The owner: "in the freestyle map i made i went to do a wall tap , bottom of
+the quad into the wall as slow speed and it registered as a crash, this is
+wrong". Shell only: the plant, the module ABI and the build are unchanged,
+and so is every line the crash reset draws. What changed is the frame the
+shell reads one of its inputs in.
+
+### What was wrong
+
+CRASH IS A RESET (src/main.js) resets a smack of GRAZE_SPEED_MAX (4 m/s) or
+more that did not land on the belly. For a wall it took body up from the
+plant's quaternion and dotted it with sim_world_report's contact normal. That
+normal is in the WORLD frame, the one the solids were uploaded in, and
+src/native/world.c places the plant in it as W = Rz(yaw) p + O. The two were
+a spawn yaw apart, so a belly flat on a wall read cos(yaw), not 1:
+
+- the city spawns at yaw pi, so a belly on a wall read -1, the top plate;
+- a built map spawns at its pads' yaw less a quarter turn, or at -pi/2 with
+  no pads, where the belly read 0, a side;
+- every set down (X, stuck, or a crash) reseats the frame at the craft's own
+  heading, so after the first one the reading was arbitrary on every map.
+
+Wherever the frame's yaw was more than about 46 degrees from zero, a belly
+first tap closing at 4 m/s or more was reset. The closing speed is taken at
+the contact point with the rotation in it, so it is not the approach speed:
+on the whoop, arriving at 2.4 m/s and still turning at 84 rad/s from its
+pitch back, the belly's edge touched at 3.7 m/s and the belly slapped flat
+at 5.7 m/s, reading 0.89 at the touch and 0.99 at the slap. That is how a
+slow tap crosses the line.
+
+The same fault cut the other way at yaw pi, where a steep nose first hit
+read as belly: 7.8 m/s at 68 degrees nose down was missed on every frame
+phase.
+
+Nothing had flown a belly tap over the line at a heading other than zero.
+park:fly's Wall Tap arrives at about 1.5 m/s and check:crash's tap at 3 m/s,
+both under it. world-check's four heading scenario holds the module to 1e-6
+across headings, and it is: the module was right, the shell's reading of it
+was not.
+
+### How it was found
+
+A scratch probe, not committed, flew wall taps through dist/sim.wasm and
+Betaflight in Node: an angle mode run in, an acro pitch back to a set
+attitude with the throttle cut, a coast in base first, and optionally a pitch
+forward on the tap. It applied the shell's three crash rules to frames of 7,
+16 and 33 ms at every phase. 240 five inch flights at yaw 0, runs of 3 to 8
+m/s and pitch backs of 45 to 120 degrees: no clean base first tap was reset
+at any speed. Writing the belly test out by hand for the probe exposed the
+two frames. Flown again with the plant's frame turned by quarter turns, the
+identical 4.5 m/s tap was reset on every phase at 90, 180 and 270 degrees and
+on none at 0.
+
+### What changed
+
+- **src/game/collide.js.** CRASH_BELLY_UP and CRASH_UNDERSIDE_NZ moved here
+  from main.js, unchanged. bodyUpDotWorld turns the world normal into the
+  plant's frame by the frame's yaw before the dot, exactly as world.c's
+  world_to_plant_dir does. solidContactCrash is the solid rule as it was,
+  with that one difference. Both are pure, so a check in Node asks them.
+- **src/main.js.** seatWorldFrame, the one place the yaw goes to the module,
+  keeps its cosine and sine beside it (frameTurn), and the solid rule calls
+  solidContactCrash. bodyUpDot is gone. The ground and STOP rules read body
+  up against the vertical, which no yaw moves, so they are untouched.
+- **The turn comes from src/props/trig.js**, fdlibm's sine and cosine in
+  plain IEEE arithmetic, and not from JS Math.cos, because the verdict moves
+  the craft and CLAUDE.md keeps Math.sin and Math.cos out of anything that
+  does. So trig.js is on the boot graph now: src/fresh.js's boot list
+  carries it, the built map's list in src/maps/preload.js no longer does
+  (npm run gen:preload), and lint:memory's exact list of props modules
+  allowed at boot names it beside types.js, with the reason. That list exists to keep the
+  asset library's weight off boot, and trig.js is 157 lines of arithmetic
+  with no imports and no asset in it.
+
+### Coverage
+
+- **check:clip**, a new suite, "crash reset: a solid contact, judged in the
+  plant's frame", 16 checks: a belly flat on a wall reads 1 and a 50 degree
+  nose first hit reads -sin 50 at six spawn yaws by four wall headings; the
+  city's pi and a padless built map's -pi/2 by name, frame blind and turned;
+  ceilings, roof tops, a prop alone and the graze line; and the belly cone,
+  about 45 degrees, pinned where it was.
+- **check:world**, a new reading, "a wall tap is judged the same whichever
+  way the map faces": a 5.4 m/s base first tap and a 7.7 m/s steep nose first
+  hit, flown through the module at four headings, twice each to the bit, and
+  judged with solidContactCrash on frames of 7, 16 and 33 steps at every
+  phase, folded from per step reports the way the module sums them. The tap
+  is never reset and the hit always is. It also reads each flight frame
+  blind and asserts the old fault is visible in it: the tap reset at 90, 180
+  and 270, the hit missed at 180.
+  It is a READING, in a list of its own beside SCENARIOS, and not a
+  scenario: scripts/world-golden.js pins every step of every scenario, and a
+  run new to that golden is recorded only with the owner's approval. What
+  it judges is src/game/collide.js, not the world solve. Its pilot steers on
+  sin(want - pitch) from the nose vector, with the want turned by trig.js,
+  so no JS trigonometry reaches the module. For all this, fly() keeps each
+  step's report and attitude on its rows, and a run may stop 200 ms after
+  its first contact.
+  Whether its flights should also be pinned in the golden is the owner's
+  call, and they are not in it.
+- **The fault was reproduced against both checks.** With the turn taken out
+  of bodyUpDotWorld, which is the old reading, check:clip failed 6 and
+  check:world failed 2. Put back byte for byte, both pass.
+
+### What went wrong
+
+- **The first fetch named this branch, which is not on the remote yet**, so
+  git refused the whole fetch and origin/main stayed at 9ed8b9c, a stale ref
+  from the container's first clone. For one step it looked as if main were
+  three commits ahead. Fetched alone, main is 6bf90bf, this branch's HEAD,
+  one history.
+- **The probe's first stick law had its damping backwards.** Nose up is
+  negative q in the plant. The sanity run before the sweep caught it.
+- **The probe's "pitch forward on the tap" overshot**, to 60 degrees nose
+  down under throttle, and flew the craft back into the wall, which read as
+  resets that were real nose first hits and not the rule's fault. The tap's
+  verdict was then judged over its own first 60 ms.
+- **main.js changed after lint:memory had run**: frameTurn moved up beside
+  startYaw, so no reset can meet it before it exists, and main.js's unused
+  import of CRASH_UNDERSIDE_NZ went. lint:memory was run again on the final
+  tree.
+- **main moved under the turn**, 6bf90bf to fdafe2e: Stage D part 1's world
+  golden with verify's check 17, the loader (src/fresh.js), and visit source
+  attribution. This branch was still main's ancestor, so the work was
+  stashed, the branch fast forwarded onto main, and the stash applied.
+  PROGRESS.md conflicted where both appended and is main's file with this
+  entry after it. index.html conflicted because the boot list had moved out
+  of it into src/fresh.js: it is main's, and the lists were generated again
+  with main's gen-preload.
+- **The verdict check first went in as a world-check scenario**, which the
+  new world golden would have flown and failed as a run it had not
+  recorded, and its pilot steered with Math.atan2 on a stick that reaches
+  the module, against the golden's rule. Found reading world-golden.js
+  after the merge, before anything was committed. It is a reading now, with
+  a trig free pilot, and the golden passes untouched.
+
+### Found on the way, not fixed
+
+For the owner, because each is a line to draw or a larger change:
+
+1. **The belly cone is about 45 degrees** (CRASH_BELLY_UP 0.7), unchanged.
+   At yaw 0 every reset among the probe's 240 taps was a craft that met the
+   wall pitched back less than about 44 degrees, at 4.2 to 7 m/s, including
+   8 m/s runs whose flip had not finished before the wall. A shallow tap at
+   speed is still a crash.
+2. **At the cone's edge the solid verdict depends on the frame rate.** It
+   reads the attitude at the frame's end with the normal of the frame's
+   biggest step. A 42.6 degree tap at 4.5 m/s was reset on 7 of 7 phases at
+   144 Hz, 8 of 16 at 60 Hz and 8 of 33 at 30 Hz, and CLAUDE.md says a
+   dropped frame must change nothing about the trajectory. The fix is to
+   read the world report every step and judge each step at its own attitude,
+   which needs no ABI change. Offered, not done.
+3. **The closing speed is the fastest of any contact in the frame, props
+   included**, while "not a prop alone" only asks whether the frame touched
+   at all. In the probe's 30 degree tap at 4.8 m/s every step that closed
+   over the line had a prop disc in contact too, so whether the frame itself
+   closed that fast the report cannot say. Telling them apart needs the
+   report to carry the frame's own closing speed, an ABI change.
+4. **The ground half is gated on the wall clock**: it judges a frame only
+   when BOUNCE_COOLDOWN_MS of wall time (nowWall) has passed since the last
+   ground bounce. Another frame time dependence in a decision that moves the
+   craft. Older than this entry, untouched.
+
+Unchanged and worth knowing when flying it: the recogniser still calls a
+contact over GRAZE_SPEED_MAX a bump and not a tap, so a wall tap that closes
+at 4 m/s or more is no longer a crash but does not score as a Wall Tap
+either.
+
+### RUN LOG
+
+    git fetch, main alone          origin/main 9ed8b9c..6bf90bf, this
+                                   branch's HEAD; merge-base 6bf90bf
+    git fetch before committing    main 6bf90bf..fdafe2e, merge-base
+                                   6bf90bf; stash, fast forward, stash
+                                   applied; PROGRESS.md and index.html
+                                   resolved as above. Every check below
+                                   from here on is on the merged tree
+    probe (scratch, Node)          240 five inch taps at yaw 0: no base
+                                   first tap reset. The same 4.5 m/s tap at
+                                   90, 180 and 270: reset on every phase of
+                                   7, 16 and 33 ms. Whoop taps from 3.4 to
+                                   5.5 m/s at 90: all reset before, none
+                                   after, and none at any heading after
+    npm run check:clip             683 passed on the parent, run this turn;
+                                   699 passed, 0 failed, the 16 new
+    npm run check:world            all passed, 48 passes with 9 new; the
+                                   same 5 targets not met as before; every
+                                   line that was there is identical
+    npm run check:world-golden     all passed: 35 runs, 62 flights, each
+                                   flown twice, bit identical to
+                                   tests/goldens/world.json; the reading is
+                                   not among them
+    mutation, the turn removed     check:clip 693 passed, 6 failed;
+                                   check:world 2 FAILED, the reading's two
+                                   verdicts. Restored byte for byte: both
+                                   pass. Run before and after the merge
+    npm run lint:preload           up to date, boot 106 modules, city 73,
+                                   built 28, 201 served (105 and 29 before
+                                   gen:preload)
+    npm run lint:memory            PASS on the final tree; src/props at
+                                   boot: trig.js, types.js
+    npm run lint:nouns             PASS
+    node --check                   every changed file
+    dash scan, the diff            no em or en dash in added lines
+    Math.sin, cos, pow added       none outside test code: the check's pilot
+                                   and the unit test's attitudes
+    npm run verify                 not run: shell only, no plant, ABI or
+                                   build change
+    npm run check:fresh            not run: it proves a returning browser
+                                   gets a new deploy, which this does not
+                                   touch; the list it serves from is
+                                   lint:preload's, up to date
+    npm run check:crash, shots     not run: offered to the owner
+    git diff --stat vendor/betaflight   empty, and not checked out here

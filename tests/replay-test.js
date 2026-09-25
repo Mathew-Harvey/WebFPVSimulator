@@ -36,7 +36,7 @@ const fixtureTrack = {
 };
 
 async function testNormalBoot() {
-  const page = await openPage();
+  const page = await openPage({ url: '/sim/' });
   try {
     await page.until(() => window.__shellReady === true, 120000);
     
@@ -177,7 +177,7 @@ async function setupMissingTrackIntercept(page) {
 }
 
 async function testReplaySuccess() {
-  const page = await openPage();
+  const page = await openPage({ url: 'about:blank' });
   try {
     await setupIntercept(page, 'trk-test0001', 'tm-aae280e5', fixtureGhost, fixtureTrack);
     
@@ -277,7 +277,7 @@ async function testReplaySuccess() {
 }
 
 async function testMissingListing() {
-  const page = await openPage();
+  const page = await openPage({ url: 'about:blank' });
   try {
     await setupMissingTrackIntercept(page);
     
@@ -314,7 +314,7 @@ async function testMissingListing() {
 }
 
 async function testFailureRestoresUI() {
-  const page = await openPage();
+  const page = await openPage({ url: 'about:blank' });
   try {
     await setup404Intercept(page, 'trk-test0002', 'tm-00000002', fixtureTrack);
     

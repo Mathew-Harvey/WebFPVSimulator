@@ -366,6 +366,21 @@
         "value": 55,
         "source": "The city's import closure is 59 vendored files plus index.js, animation.js, bake.js and references.js. A floor rather than an equality because the browser may serve some from cache within one page life; anything near this number means the graph really arrived."
       }
+    },
+    "world-golden": {
+      "num": 17,
+      "differing_runs": {
+        "value": 0,
+        "source": "The owner, 2026-09-25: add the world golden to verify. Exact, because scripts/world-golden.js pins every step of every run bit for bit and a run either matches tests/goldens/world.json or it does not."
+      },
+      "runs_min": {
+        "value": 35,
+        "source": "tests/goldens/world.json as recorded at 8e5377e, 35 runs. A floor, so a golden cut down or emptied cannot pass as green; a reviewed re-record that adds runs raises it."
+      },
+      "timeout_ms": {
+        "value": 600000,
+        "source": "Harness choice. The golden takes about 5 s on the container that recorded it; ten minutes is a hung run, not a slow one."
+      }
     }
   }
 }

@@ -83,11 +83,12 @@ import {
 } from '../game/collide.js';
 import { AIRFRAMES, airframeById } from '../../configs/airframes.js';
 import {
-  inspectCourse, layoutFingerprint, publishedTags, rememberPublish, suggestRemixName, tagsToSend,
+  inspectCourse, layoutFingerprint, publishCurrentCourse, publishedTags, rememberPublish,
+  suggestRemixName, tagsToSend,
 } from '../share/listing.js';
-import { readBind, writeBind } from '../share/session.js';
+import { readBind, readEditKey, writeBind } from '../share/session.js';
 import { publishTrack } from '../share/board.js';
-import { keepDisplaced } from './storage.js';
+import { keepDisplaced, readAutosave } from './storage.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
 
 import { readFileSync } from 'node:fs';
@@ -3322,6 +3323,98 @@ async function suiteListing() {
     check('a tag list goes as it is', Boolean(sent[2]) && String(sent[2].tags) === 'race');
   } finally {
     globalThis.localStorage = hadTagStore;
+  }
+
+  /*
+   * THE SHELL'S PUBLISH, WHEN THE BOARD SAYS THE ID IS TAKEN.
+   *
+   * publishCurrentCourse puts the track up as a copy under a new id when
+   * the board answers 409, which is what the builder's own publish does.
+   * From 16 August forkDocument handed back { copy, commit }, and this path
+   * gave the whole of that to toPlain, which threw, so the pilot was told
+   * the track could not be published and no copy went up. Nothing ran this
+   * path until now.
+   */
+  const hadForkStore = globalThis.localStorage;
+  const hadForkFetch = globalThis.fetch;
+  const forkStore = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (forkStore.has(k) ? forkStore.get(k) : null),
+    setItem: (k, v) => {
+      forkStore.set(k, String(v));
+    },
+    removeItem: (k) => {
+      forkStore.delete(k);
+    },
+  };
+  /* A board that answers each publish with the next status in `answers`:
+   * 409 is "that id is taken", and anything else takes the track. */
+  const boardAnswering = (answers, posts) => async (url, init) => {
+    const body = JSON.parse(init.body);
+    posts.push(body);
+    const status = answers[posts.length - 1] ?? 201;
+    if (status === 409) {
+      return {
+        ok: false,
+        status,
+        text: async () => JSON.stringify({ error: 'This track is already on the board.', conflict: true }),
+      };
+    }
+    return {
+      ok: true,
+      status,
+      text: async () => JSON.stringify({
+        id: body.document.id,
+        name: body.document.name,
+        author: body.author,
+        editKey: `key-${body.document.id}`,
+        updated: false,
+        timesCleared: false,
+        tags: [],
+      }),
+    };
+  };
+  /* Caught, so a path that throws fails the checks below rather than
+   * ending the suite. */
+  const tryPublish = async () => {
+    try {
+      return { result: await publishCurrentCourse({ doc, author: 'Ada Rook', origin: board }) };
+    } catch (e) {
+      return { error: e };
+    }
+  };
+  try {
+    const posts = [];
+    globalThis.fetch = boardAnswering([409, 201], posts);
+    const { result, error } = await tryPublish();
+    check('a publish the board refuses as taken goes up as a copy, instead of throwing',
+      !error && Boolean(result) && result.forked === true, error ? error.message : '');
+    const copyId = result && result.doc ? result.doc.id : '';
+    check('under a new id, with the same layout',
+      posts.length === 2 && posts[0].document.id === doc.id && Boolean(copyId) && copyId !== doc.id
+      && posts[1].document.id === copyId && result.posted.id === copyId
+      && layoutFingerprint(posts[1].document) === layoutFingerprint(doc),
+      `${posts.length} publish(es) sent`);
+    const forkBind = copyId ? readBind(copyId) : null;
+    check('and the copy is this browser’s, and remembers what it is a copy of',
+      Boolean(forkBind) && forkBind.owned === true && forkBind.sourceId === doc.id
+      && readEditKey(copyId) === `key-${copyId}`, JSON.stringify(forkBind));
+    const canvas = readAutosave('full');
+    check('and the canvas is the copy now',
+      Boolean(canvas && canvas.doc) && canvas.doc.id === copyId,
+      canvas && canvas.doc ? canvas.doc.id : 'no canvas');
+
+    forkStore.clear();
+    const refusedPosts = [];
+    globalThis.fetch = boardAnswering([409, 409], refusedPosts);
+    const refused = await tryPublish();
+    const refusedId = refusedPosts[1] ? refusedPosts[1].document.id : '';
+    check('a copy the board refuses as well is an error, and leaves no bind behind',
+      Boolean(refused.error) && refusedPosts.length === 2 && Boolean(refusedId) && readBind(refusedId) === null,
+      refused.error ? refused.error.message : 'no error');
+  } finally {
+    globalThis.fetch = hadForkFetch;
+    globalThis.localStorage = hadForkStore;
   }
 }
 

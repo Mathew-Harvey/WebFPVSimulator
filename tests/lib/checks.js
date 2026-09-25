@@ -1,6 +1,7 @@
 /*
- * checks.js: the 13 Stage 1 verification checks from STAGE1.md, one entry
- * each. Every numeric band and method constant comes from
+ * checks.js: the verification checks, one entry each: the 13 Stage 1 checks
+ * from STAGE1.md and the ones added since, each written up in PROGRESS.md
+ * on the day it was added. Every numeric band and method constant comes from
  * tests/thresholds.json; nothing numeric is hardcoded here. Node only.
  *
  * Each check returns { measured, pass, reason }. A SimError thrown while
@@ -23,6 +24,9 @@
  * You should have received a copy of the GNU General Public License
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
+
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 
 import { SIM_OK, simErrorName } from './simmod.js';
 import { SimError, must, replayTrace, runScript, ST } from './replay.js';
@@ -952,6 +956,64 @@ export function buildChecks() {
             `city modules: ${before} with the field selected, ${after} after choosing it; ` +
             (b ? `field P1 ${b.p1}, P2 ${b.p2}, P5 ${b.p5} MB, P10 ${b.p10} MB, ${b.meshes} meshes` : 'no budget') +
             (b2 ? `; after a city round trip P1 ${b2.p1}, P2 ${b2.p2}, P5 ${b2.p5} MB, P10 ${b2.p10} MB` : ''),
+          pass: fails.length === 0,
+          reason: fails.join('; '),
+        };
+      },
+    },
+    {
+      num: 17,
+      id: 'world-golden',
+      thresholdText: 'every step of every world run bit identical to tests/goldens/world.json',
+      /*
+       * THE ONLY CHECK HERE THAT CAN SEE THE SOLID WORLD.
+       *
+       * Every other row flies the plant with no world uploaded, and world.c
+       * returns from its step when there is none, so a change to walls,
+       * roofs, capsules or movers went through verify untouched: built
+       * against a module with WORLD_SLOP moved, all sixteen rows passed with
+       * the same trace (PROGRESS.md, 2026-09-25, Stage D part 1). This runs
+       * scripts/world-golden.js against the module check 1 just built: 35
+       * runs through world-check's scenarios, the town's crash paths, built
+       * map flights and movers, every step of each hashed bit for bit and
+       * compared with the recorded golden. The owner asked for it in verify
+       * on 2026-09-25, ahead of the first change to world.c since it was
+       * written. It is a child process for the same reason the browser rows
+       * are: the golden wraps WebAssembly.instantiate in its own process to
+       * record, and that must not reach this one.
+       */
+      async run(ctx) {
+        const th = ctx.th.checks['world-golden'];
+        const run = spawnSync('node', [join(ctx.root, 'scripts/world-golden.js')], {
+          cwd: ctx.root,
+          encoding: 'utf8',
+          timeout: th.timeout_ms.value,
+          maxBuffer: 16 * 1024 * 1024,
+        });
+        const out = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+        const head = out.match(/(\d+) runs, (\d+) flights, (\d+) steps/);
+        const failedRows = out.split('\n').filter((l) => /^\s*FAIL\s/.test(l));
+        const fails = [];
+        if (run.error) {
+          fails.push(`world-golden could not run: ${run.error.message}`);
+        }
+        if (!head) {
+          fails.push(`world-golden printed no run count: ${out.trim().split('\n').slice(-2).join(' | ')}`);
+        }
+        const runs = head ? Number(head[1]) : 0;
+        if (head && runs < th.runs_min.value) {
+          fails.push(`${runs} runs in the golden, under the ${th.runs_min.value} it was recorded with`);
+        }
+        if (failedRows.length > th.differing_runs.value) {
+          fails.push(`${failedRows.length} run(s) differ, first: ${failedRows[0].trim()}`);
+        }
+        if (run.status !== 0 && fails.length === 0) {
+          fails.push(`world-golden exited ${run.status}: ${out.trim().split('\n').slice(-1)[0]}`);
+        }
+        return {
+          measured: head
+            ? `${runs - failedRows.length} of ${runs} runs bit identical, ${head[2]} flights, ${head[3]} steps each flown twice`
+            : 'no result',
           pass: fails.length === 0,
           reason: fails.join('; '),
         };

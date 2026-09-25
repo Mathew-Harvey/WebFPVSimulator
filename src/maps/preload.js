@@ -3,7 +3,7 @@
  * main.js can ask for all of them the moment the map is chosen rather than
  * letting the browser find them one import level at a time. See
  * scripts/gen-preload.js for why, and for the boot graph's half of the same
- * job, which lives in index.html.
+ * job, which lives in src/fresh.js.
  *
  * Paths are relative to src/. Everything under the marker is written by
  * `node scripts/gen-preload.js`; `npm run lint:preload` fails when it is

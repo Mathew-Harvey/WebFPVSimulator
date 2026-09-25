@@ -767,7 +767,25 @@ export async function publishCurrentCourse({ doc, author, origin, courseName }) 
     if (!e || !e.conflict) {
       throw e;
     }
-    const copy = forkDocument(working, {
+    /*
+     * THE BOARD HAS THIS ID AND THIS BROWSER HAS NO KEY FOR IT, so the
+     * track goes up as a copy under a new id, which is what the builder's
+     * own publish does.
+     *
+     * forkDocument hands back { copy, commit } rather than the copy. It
+     * started to on 16 August (19ddc7b), which moved the builder's callers
+     * and missed this one, written the day before. From then until 25
+     * September this path passed the whole of that to toPlain, which threw
+     * "Cannot read properties of undefined (reading 'width')", so the pilot
+     * read that under "Could not publish that track" and no copy went up.
+     *
+     * The bind is committed only once the board has taken the copy, which
+     * is when the fork has actually happened: a copy the board refuses too
+     * leaves nothing behind. It has to be before rememberPublish, which
+     * keeps the source the bind names, so the listing can still say whose
+     * track this is a copy of.
+     */
+    const { copy, commit } = forkDocument(working, {
       name: working.name,
       board,
       sourceId: working.id,
@@ -776,6 +794,7 @@ export async function publishCurrentCourse({ doc, author, origin, courseName }) 
     });
     const plain = toPlain(copy);
     const posted = await trySend(plain);
+    commit();
     rememberPublish(plain, posted, board, author);
     writeAutosave(plain);
     return { posted, doc: plain, forked: true };

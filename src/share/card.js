@@ -3,10 +3,12 @@
  * shows when somebody posts it.
  *
  * WHAT IT IS. One 1200 by 630 frame of the thing, in the real renderer,
- * from the camera the board's sheet flies (src/share/orbit.html), with the
- * WebFPV wordmark over the top left exactly as og.png has it over the race
- * field. So a pasted link to somebody's track shows their track, and says
- * whose product it is in the same letters the title screen says it in.
+ * built by src/share/orbit.html from the board's own copy and seen from
+ * above and to one side of its middle, with the WebFPV wordmark over the
+ * top left exactly as og.png has it over the race field. So a pasted link
+ * to somebody's track shows their whole track, and says whose product it
+ * is in the same letters the title screen says it in. A RaceGOW room is
+ * seen from inside, the way the board's sheet sees it.
  *
  * NO NAME IN THE PICTURE, and that is a decision rather than an omission.
  * The simulator republishes every track a pilot owns, in the background,

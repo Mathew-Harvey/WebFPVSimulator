@@ -243,6 +243,7 @@
     'src/render/whoopcraft.js',
     'src/share/board.js',
     'src/share/bugs.js',
+    'src/share/card.js',
     'src/share/cardgif.js',
     'src/share/flightlog.js',
     'src/share/ghostdata.js',

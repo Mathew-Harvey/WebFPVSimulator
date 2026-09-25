@@ -46493,3 +46493,192 @@ scripts; merged in a separate worktree so the running part 2 agent was not
 disturbed. PROGRESS.md conflicted in two places, both sides appending, and
 both were kept; package.json merged cleanly with main's check:fresh beside
 the world checks.
+
+## 2026-09-25 | board, builder, shell, edge | A shared link to a track or a map shows that track or map
+
+The owner: "when i share a track or a map link in social media the little
+picture that is shown should be the track or map i've built with the webfpv
+logo over the top".
+
+Two repositories and the Worker: the board (Mathew-Harvey/WebFPVSimulator-LeaderBoard)
+and this one, which holds edge/. Physics, the plant, the module ABI and the
+build are untouched. Both on claude/focused-bell-9tx3vf; neither main is.
+
+### Why every link looked the same
+
+Facebook, X, WhatsApp, Discord, Slack, LinkedIn and iMessage draw a pasted
+link from the og: and twitter: tags in the page's head, and run no script.
+Both pages carried one fixed set of tags, so every link to any track showed
+og.png, the race field, with the site's title. Two more things made it
+worse than it looked:
+
+- **The board's Copy link was `/board/#track=id`.** A fragment never leaves
+  the browser, so a crawler fetched `/board/` and nothing on any server could
+  know which track was meant.
+- **og:url and the canonical link name the front door** on both pages, and
+  Facebook follows og:url and draws what it finds there. Changing the
+  picture alone would have been undone by the crawler going round to `/sim/`.
+
+### What was built
+
+- **The card, drawn by the browser that publishes.** src/share/card.js opens
+  src/share/orbit.html?card=1 in a frame laid out off the page. The page
+  builds the published copy from the board in the real renderer at High, one
+  1200 by 630 frame, and card.js puts the WebFPV wordmark over the top left:
+  og.png's mark at og.png's size and place, WEB in cream and FPV in sakura,
+  drawn a glyph at a time. JPEG, stepped down only if over 300 kB. It goes up
+  with the edit key the publish used. Called from the builder's track Publish,
+  the builder's map Publish, and the simulator menu's Publish (lazily
+  imported there, so the boot graph is unchanged). Nothing in it throws: a
+  failure leaves a published track and a sentence saying its link shows the
+  WebFPV card for now.
+- **The camera is the sheet's camera, lifted.** The board's orbit camera,
+  held still at 1200 by 630, was a strip of course on the horizon over half
+  a card of lawn, and on Hibari Yard one street. The card keeps the sheet's
+  centre and starting side and climbs to about 33 degrees over the layout,
+  from the scale each world already hands over (attractOrbit's radius for a
+  course, orbitPath's circle for a map), with the airframe low in the near
+  right. A RaceGOW room keeps the sheet's own frame, since lifting it puts
+  the lens in the joists. For the card only: nothing is culled for distance
+  (setCullRadius), and the shadow focus is the layout's middle rather than the
+  airframe, which is high over the field and nowhere near a shadow.
+- **The board keeps it.** `card` and `card_utc` on `tracks` and `maps`, added
+  on start. GET and HEAD `/api/tracks/:id/card` and `/api/maps/:id/card`,
+  immutable when the address carries `?v=`, five minutes when not. POST with
+  the edit key or the admin token. inspectCard: JPEG only, exactly 1200 by
+  630 (the tags promise that size to Facebook before it fetches a byte), the
+  file must end FF D9, 400 kB at most. Listings carry `hasCard` and `cardUtc`,
+  never the bytes.
+- **The edge writes the preview, for preview bots only.** edge/preview.js,
+  called from edge/router.js. For a GET from a known preview bot on a page
+  that names one of the board's ids (`/sim/?share=`, `?mapshare=`, the
+  builder page, `/board/?track=`, `?map=`), it asks the board for that
+  listing alongside the page and rewrites og:url, the canonical link, the
+  title ("2025 WA States, a WebFPV track by andAgainFPV"), the description
+  (the record, or that it is open, then "Fly it in your browser on a real
+  Betaflight control loop. No install, no account.") and, when there is a
+  card, the six picture tags. A person's request never takes that path.
+- **Copy link hands out `/board/?track=` and `/board/?map=`**, and the page
+  swaps the query for the hash as it loads, keeping any other parameter. Old
+  `#track=` links still open their sheet.
+- **scripts/boardcards.js** (`npm run gen:boardcards`) draws the card for
+  everything published before this, through the same page, and uploads with
+  BOARD_ADMIN_TOKEN; boardgif.js's pattern.
+
+### Decisions the owner may want to overrule
+
+1. **The lifted camera**, rather than the frame the board's sheet opens on.
+   It shows the whole layout; the sheet's frame shows a slice of it.
+2. **No name in the picture.** The simulator republishes a pilot's tracks
+   in the background when they change their name, with no renderer near, so
+   a printed author would be wrong until the next Publish. The name is in the
+   link's text, which is written fresh from the board on every crawl.
+3. **High on every device** for the one frame, so a card looks the same
+   whoever published; the frame is torn down straight after.
+4. **The bot list** is by user agent: facebookexternalhit (and iMessage,
+   which sends it), Twitterbot, WhatsApp (and Signal, which sends it),
+   Discordbot, Slackbot, LinkedInBot, TelegramBot, and a few more. Googlebot
+   and Bingbot are left out on purpose: a search result should be the page a
+   person gets. An unknown fetcher gets the site's card, as before.
+5. **A track's card survives a rename and goes with a relayout**, the
+   animation's rule; **a map's goes with every republish**, because only the
+   builder's Publish republishes a map and it draws the new one at once.
+6. **The sleeping board.** For a simulator link the edge waits the page's
+   time plus four seconds (PREVIEW_WAIT_MS), then sends the untouched page.
+   A link crawled while the free board sleeps therefore shows the site's card,
+   and Facebook keeps that until it scrapes again. A board link waits for the
+   board, as a person on it would.
+
+### What the owner has to do, in order
+
+1. Merge the board branch; Render adds the columns on start.
+2. Merge this branch.
+3. Redeploy the Worker by hand: `npx wrangler deploy --config edge/wrangler.toml`.
+   Until then no link shows a card, because nothing names one to a crawler.
+4. Once, from a machine whose browser can reach the board:
+   `BOARD_ADMIN_TOKEN=... node scripts/boardcards.js --board https://webfpv.org/board`
+   (`--dry --out <dir>` to look first). All 39 tracks and the one map on the
+   board today have no card until this runs.
+5. For links already posted, Scrape Again in Facebook's Sharing Debugger.
+
+DEPLOY.md has all of this under "A card per track and per map", with a curl
+that asks as Facebook to check it.
+
+### What went wrong
+
+- **The first cards used the sheet's camera** and showed a thin band of
+  course; the map's showed one road. Lifted, see above.
+- **The board's http test is one long function**, and two of my names
+  (`listed`, `refused`) were already taken in it. Renamed.
+- **An edge check expected 62.345 s to print as 1:02.35.** It prints 1:02.34
+  here and on the board, whose formatter this mirrors; floating point. The
+  check uses 62.35 s now.
+- **A comment in the board's validate.js gave card sizes before any were
+  measured** (120 to 250 kB). Replaced with the measured 53 to 117 kB.
+- **Both mains moved during the work**: the board gained the visit
+  attribution PR, this repo 21 commits including src/fresh.js. Both merged
+  cleanly (merge bases 6dee444 and 43af247). fresh.js carries a generated
+  list of every module it stamps, and lint:preload caught card.js missing
+  from it; regenerated, one line.
+- **The container's processes were stopped mid turn** (the local board and
+  the scratch Postgres). Nothing on disk was lost; the work was then pushed
+  as WIP commits in both repositories before going on.
+- **The first rerun of the end to end script failed one check**, on its own
+  fixture: the local board still held the first run's ids, a fresh browser
+  profile held no keys, and the builder rightly published copies under new
+  ids. Fresh ids per run; 15 of 15.
+
+### Found, not fixed
+
+- PgStore.publish locks the row with `SELECT *`, which reads the animation's
+  bytes on every publish and now the card's as well, up to 400 kB more.
+  Harmless, and a named column list would avoid it. Not this change's.
+
+### RUN LOG
+
+    npm run test:edge          96 of 96, 69 of them new, including a board
+                               that never answers: untouched page after the
+                               4 s wait, question withdrawn
+    npm run check:clip         683 passed, 0 failed
+    npm run lint:preload       STALE until regenerated (card.js); then up to
+                               date: boot 105, city 73, built 29, 202 served
+    npm run lint:nouns         PASS
+    npm run lint:boot          9 of 9 clean
+    npm run lint:board         PASS against this branch's board, 8 tracks
+                               listed, 8 cards drawn (checkout symlinked)
+    board npm test             518 passed, all passed, 36 of them new
+    board lint:licence         22 of 22; board lint:nouns PASS
+    board on Postgres 16       23 of 23 on a scratch cluster: set, read, list
+                               flags, rename keeps, relayout clears, map card
+                               cleared by a republish, a track's key refused
+                               on a map
+    cards, headless            the live board's 2025 WA States, Flags and
+                               cones, Blind Backnot, Le Training, RaceGOW5
+                               Track 1, Whoop Triple Stack and Hibari Yard,
+                               copied to a local board: 53 to 117 kB, 4 to
+                               13 s each on SwiftShader; every one looked at
+    boardcards.js              7 of 7 drawn and uploaded; a second run, 0 to
+                               draw; no token, refused with a sentence
+    end to end, headless       builder Publish of a track and a map and a map
+                               update, cards on the board through the hidden
+                               frame, ?track= and ?map= adopted, Copy link
+                               the query form, old #track= still lands:
+                               15 of 15, page errors none
+    menu Publish path          sendShareCard inside the running simulator:
+                               sent in 9.8 s, frame removed, the title kept
+                               drawing; a stranger's key, a sentence
+    the real router            in front of the real tree and the local board,
+                               four link kinds described for Facebook and
+                               plain for a person; the card through the edge
+                               200 image/jpeg, immutable
+    rewrite cost               0.37 ms a call on the real 218 kB index.html,
+                               0.11 ms to encode: inside the free plan's 10 ms
+    dash scan, added lines     0 in both repositories
+    git diff --stat vendor/betaflight   empty
+    npm run verify             not run: no physics, plant, module ABI or
+                               build change
+    npm run lint:shell         not run: no screen's layout changed; the one
+                               shell change is a notice line shown when a
+                               card fails to send
+    the Worker                 not deployed: that is the owner's Cloudflare
+                               account, step 3 above

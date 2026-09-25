@@ -368,8 +368,9 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
  */
 const CARD_QUALITY = 'high';
 
-/* Where in the sheet's camera the card is taken: where its clip starts,
- * so the card and the first frame of the board's picture are one view. */
+/* Where in the sheet's camera a room's card is taken: where its clip
+ * starts, so the card and the first frame of the board's picture are one
+ * view. Everything else is lifted off the same start (placeCardCamera). */
 const CARD_AT_MS = 0;
 
 /* Frames drawn and thrown away before the one that is kept. The shadow
@@ -438,10 +439,12 @@ function cardFraming(view) {
   return null;
 }
 
+/* Returns the point the camera looks at, which is where the card wants its
+ * shadows, or null when the world gave nothing to frame by. */
 function placeCardCamera(view, camera, craft, THREE) {
   const f = cardFraming(view);
   if (!f) {
-    return false;
+    return null;
   }
   const target = new THREE.Vector3(f.cx, f.cy + f.aim, f.cz);
   const flat = f.reach * Math.cos(CARD_PITCH);
@@ -470,7 +473,7 @@ function placeCardCamera(view, camera, craft, THREE) {
     craft.lookAt(target);
     craft.rotateZ(-0.35);
   }
-  return true;
+  return target;
 }
 
 async function drawCard(mapId, shareId, mapShareId) {
@@ -515,15 +518,25 @@ async function drawCard(mapId, shareId, mapShareId) {
       view.post.setSize(CARD_W, CARD_H);
     }
     shell.quad.visible = true;
+    /*
+     * NOTHING CULLED FOR DISTANCE. A world that hides what is past its fog
+     * does it for the frame rate of a pilot flying through it, and a card is
+     * one frame from further back than any pilot flies, so a map's far
+     * corner would otherwise be missing from the one picture of it.
+     */
+    if (view.setCullRadius) {
+      view.setCullRadius(1e6);
+    }
     const attract = makeAttractCamera(view);
     const room = view.trackClass === 'micro';
     const draw = () => {
       attract.update(CARD_AT_MS, shell.camera, { craft: shell.quad });
-      if (!room) {
-        placeCardCamera(view, shell.camera, shell.quad, THREE);
-      }
+      /* The shadows go where the card looks, the middle of the layout; the
+       * sheet puts them on the airframe, which here is a few metres from a
+       * lens high over the field, and nowhere near a shadow. */
+      const aim = room ? null : placeCardCamera(view, shell.camera, shell.quad, THREE);
       view.updateAnim(CARD_AT_MS);
-      view.updateShadowFocus(shell.quad.position);
+      view.updateShadowFocus(aim || shell.quad.position);
       view.updateWind(0, shell.quad.position, 0.85);
       view.post.render();
     };

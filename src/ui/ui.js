@@ -10837,17 +10837,17 @@ export class Ui {
   }
 
   /*
-   * THE STF MARK, FOUND (FREESTYLE-MAPS-PLAN.md section 9). The pilot came
-   * within a few metres of the mark and looked straight at it, so the
-   * overlay says so the way it says a trick, lettered in ink with a burst
-   * behind it, and then shows them what they found in a manga panel: the
-   * mark itself, because a pilot at speed may have seen it for a quarter
-   * of a second.
+   * THE STF MARK, FOUND (FREESTYLE-MAPS-PLAN.md section 9). The pilot flew
+   * up to the mark and looked straight at it, so the overlay says so the
+   * way it says a trick, lettered in ink with a burst behind it, and then
+   * shows them what they found in a manga panel: the mark itself, because a
+   * pilot at speed may have seen it for a quarter of a second.
    *
    * DOWN THE RIGHT, NEVER THE MIDDLE. The left column is the score's, the
    * banner and the verdict are centred, and the middle of the frame is the
    * pilot's: the plan's rule is that nothing drawn in flight covers its
-   * centre third, and this fires with a wall four metres away. The callout
+   * centre third, and this fires with the mark a fifth of the frame across
+   * in the middle of it (findRange in src/game/egg.js). The callout
    * sits under the banner's line and the panel under the callout, clear of
    * the speed corner, and neither takes a pointer.
    *

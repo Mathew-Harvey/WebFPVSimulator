@@ -9,6 +9,10 @@
  *   ひばり台市民プール (./pool.js)  the municipal pool, x 53..91, z 82.6..114
  *   ひばり台ドローン練習場 (./training.js)  the practice field, x 0..128, z 118..188
  *
+ * And one thing that is not a place: the STF mark, painted on the side of a
+ * corner shop at the end of the street the pilot starts in (buildStfMark,
+ * below).
+ *
  * All three stand on land the town has never built on: a survey of the built
  * world's own collider list puts nothing at all east of x = 30 past z = 78,
  * and the hills' keep-out rectangle runs to x 88 and z 114, so the ground out
@@ -70,6 +74,7 @@ import { buildWorks, WORKS_SITE, WORKS_LANDMARK } from './works.js';
 import { buildPool, POOL_SITE, POOL_LANDMARK } from './pool.js';
 import { buildTraining, TRAINING_SITE, TRAINING_LANDMARK } from './training.js';
 import { buildBlossom } from './blossom.js';
+import { makeStfMark } from '../../../art/stf.js';
 
 /**
  * The town's builder context, over a world that is already built.
@@ -207,6 +212,79 @@ export function cutGround(root, rects) {
   return stats;
 }
 
+/*
+ * THE STF MARK, on the side of 米・酒 なかの at the end of the pilot's street.
+ *
+ * It was in the works shed's roof space, seen only by a pilot who came in
+ * through the broken clerestory (FREESTYLE-MAPS-PLAN.md section 9), and the
+ * owner could not find it: "the logo of SubTwoFIfty is too hard to find,
+ * make it easy to see on any map" (section 12, decision 10). So it is painted
+ * where the town's first frame looks. The pilot starts on the road at
+ * (0, 24) facing +z up the street, and 25 m ahead the street is closed by
+ * the corner shop with the flat over it (buildCornerShop in
+ * ../vendored/world/northblock.js: SHOP, x 2.0 to 7.0 and z 49.2 to 54.6, its
+ * shopfront facing -x onto the road). Its south flank faces the pads square,
+ * 11 degrees left of the nose, and over the string course the upper storey
+ * is plain wall from x 2.5 to 6.8 and from 3.7 to 6.0 m, under the eave:
+ * the blade sign hangs just past its road end and a downpipe runs down its
+ * far end. A 4 by 2 m mural fits between them with 15 cm to spare all round.
+ * Measured by rays from 3 m in front against the drawn town, 2026-09-25,
+ * because northblock.js is vendored and exports none of it, and a number
+ * read off the drawn town is the one the paint has to agree with.
+ *
+ * WHERE THE PAINT STANDS. The drawn wall is at z 49.2, and the town's fitted
+ * collider face (the one the plant flies against, and the one the find's
+ * sight line is tested against) is 5 cm in front of it, at 49.15. Paint on
+ * the brickwork would be behind that face, where a sight line to it ends
+ * inside a solid. So the paint stands `off` in front of the collider's face,
+ * 6.5 cm off the brickwork, the same way a built map lifts it off a
+ * container's door leaves: nothing a pilot sees from the front, where the
+ * lettering is read.
+ *
+ * Nothing stands between it and the pads: the first frame on the pads and
+ * the view from 2 m over them both show the whole mural, the utility pole
+ * at the left kerb standing just to its left (shots, 2026-09-25).
+ */
+const STF_SPOT = {
+  x: 4.65,
+  y: 4.85,
+  face: 49.15,
+  w: 4.0,
+  h: 2.0,
+  off: 0.015,
+};
+
+/*
+ * Paint the mark STF_SPOT names and return where it is, as the `egg`
+ * src/maps/README.md describes: the centre of the painted face, the way it
+ * faces, the way its lettering reads up, and its size, in world metres.
+ * Drawn and never solid: makeStfMark names it with the Trim suffix, which is
+ * what keeps the collider fit, the cover pass and the audit off it (see
+ * ./kit.js), and nothing here calls ctx.collide.
+ */
+function buildStfMark(ctx) {
+  const egg = {
+    key: 'city',
+    p: [STF_SPOT.x, STF_SPOT.y, STF_SPOT.face - STF_SPOT.off],
+    n: [0, 0, -1],
+    up: [0, 1, 0],
+    w: STF_SPOT.w,
+    h: STF_SPOT.h,
+  };
+  /* In shade: the flank faces -z, and the town's golden sun stands at the
+   * south west, so no direct light ever reaches it (see makeStfMark). */
+  const mark = makeStfMark(THREE, { width: egg.w, height: egg.h, shade: true });
+  /* The plane's own +X, +Y and +Z onto the lettering's right, its up and the
+   * way it faces. */
+  const n = new THREE.Vector3(...egg.n);
+  const up = new THREE.Vector3(...egg.up);
+  const right = new THREE.Vector3().crossVectors(up, n);
+  mark.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, n));
+  mark.position.set(...egg.p);
+  ctx.add(mark);
+  return egg;
+}
+
 export function buildPlaces(world, { petals: livePetals = true } = {}) {
   const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
   const ctx = placeContext(world);
@@ -215,6 +293,7 @@ export function buildPlaces(world, { petals: livePetals = true } = {}) {
   const children0 = world.root.children.length;
 
   const parts = [buildWorksRoad(ctx), buildWorks(ctx), buildPool(ctx), buildTraining(ctx)];
+  const egg = buildStfMark(ctx);
 
   /* The one hole either place needs cut in the drawn ground. See cutGround. */
   const holes = parts.flatMap((p) => p.holes ?? []);
@@ -274,8 +353,8 @@ export function buildPlaces(world, { petals: livePetals = true } = {}) {
     references,
     blossom,
     /* Where the STF mark is painted, for the town's MapInstance to hand the
-     * shell. The works paints it; see STF_SPOT in ./works.js. */
-    egg: parts.map((p) => p.egg).find(Boolean) ?? null,
+     * shell. See STF_SPOT. */
+    egg,
     updaters: ctx.updaters,
     sites: { works: WORKS_SITE, pool: POOL_SITE, training: TRAINING_SITE },
     landmarks: { works: WORKS_LANDMARK, pool: POOL_LANDMARK, training: TRAINING_LANDMARK },

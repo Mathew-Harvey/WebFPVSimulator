@@ -114,15 +114,23 @@ or off whatever relief is drawn on that face (a built map lifts it clear of
 a container's door leaves, see `drawnRelief` in `built/index.js`). So a
 clear line to it has to stop short of that face, or it meets the face
 first. A map that paints no mark leaves `egg` out or null, and there is
-nothing on it to find. The town's is the works shed's roof space, one
-constant, `STF_SPOT` in `city/places/works.js`, because the owner has not
-confirmed the spot. A built map's is chosen from the placed map by
-`built/egg.js` and painted by `built/index.js`, and the builder imports
-neither, so it never shows it.
+nothing on it to find.
+
+It is painted to be SEEN from the spawn, big, and in the first frame where
+the map allows (FREESTYLE-MAPS-PLAN.md section 12, decision 10: the owner
+found the hidden one too hard to find). The town's is a 4 by 2 m mural on
+the side of the corner shop that closes the street the pilot starts in, one
+constant, `STF_SPOT` in `city/places/index.js`. A built map's is chosen
+from the placed map by `built/egg.js`: the wall that looks biggest from the
+pads with nothing between, weighed by how far the pilot turns to see it,
+and flat on the paving ahead of the pads when the map has no such wall. It
+is painted by `built/index.js`, and the builder imports neither, so it never
+shows where the mark will be.
 
 The shell asks `seesMark` in `src/game/egg.js` whether the FPV camera has
-found it (within 4 m, in front of the paint and at least 15 degrees off it,
-looking at it, a clear line), and keeps the stamp in `src/share/stamps.js`
+found it (within its range, 4 m for a mark up to 1.8 m wide and further for
+a bigger one, in front of the paint and at least 15 degrees off it, looking
+at it, a clear line), and keeps the stamp in `src/share/stamps.js`
 under `key`.
 
 ### Renderer state belongs to the map

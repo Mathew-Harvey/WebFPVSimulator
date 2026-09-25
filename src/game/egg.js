@@ -3,11 +3,12 @@
  * clock and no JS trigonometry, so it runs in Node against real colliders.
  *
  * WHAT FOUND MEANS. FREESTYLE-MAPS-PLAN.md section 9: the craft within about
- * 4 m of the mark, looking at it, with a clear line to it. Every clause is
- * about what the FPV camera sees, so the shell asks with the camera's own
- * position and the way it points, not with the craft's centre: the lens is
- * forward of the centre and tilted up from the nose (src/render/lens.js),
- * and a pilot looks through it, not through the frame.
+ * 4 m of the mark (further from a bigger one, see findRange), looking at
+ * it, with a clear line to it. Every clause is about what the FPV camera
+ * sees, so the shell asks with the camera's own position and the way it
+ * points, not with the craft's centre: the lens is forward of the centre
+ * and tilted up from the nose (src/render/lens.js), and a pilot looks
+ * through it, not through the frame.
  *
  * The mark is `egg` from the map (src/maps/README.md): its centre p, the way
  * it faces n, its up and its size, world metres, Three.js frame, y up. The
@@ -18,7 +19,9 @@
  * multiplications, which is what lets the shell ask every few frames for a
  * whole flight: almost every answer stops at the range.
  *
- *   1. RANGE. The eye within FIND_RANGE of the mark's centre.
+ *   1. RANGE. The eye within findRange(egg) of the mark's centre: 4 m for
+ *      a mark up to 1.8 m wide, and further for a bigger one, so a mark is
+ *      found at the same size in the picture whatever size it is painted.
  *   2. THE PAINTED SIDE. The eye at least FIND_FRONT out in front of the
  *      painted plane, and at least FIND_FACE of its distance out, so the
  *      paint is seen at a slant and not edge on. Behind it, a pilot is
@@ -54,12 +57,34 @@
  */
 
 /*
- * How near, in metres: the plan's "about 4 m". From there the town's 1.7 m
- * mark and a built map's 1.8 m one span about a fifth of the default
+ * How near, in metres: the plan's "about 4 m", for a mark FIND_REF_W wide
+ * or smaller. From there a 1.8 m mark spans about a fifth of the default
  * frame's width, which is near enough to have come looking and far enough
  * that a pilot flying past it, rather than hovering at it, still counts.
+ *
+ * A BIGGER MARK IS FOUND FROM FURTHER, in proportion, so it is found at that
+ * same fifth of the frame. The mark was made big so it could be seen from
+ * the pads (FREESTYLE-MAPS-PLAN.md section 12, decision 10), and a 6 m mural
+ * found only from 4 m would be found with the craft nearly touching the
+ * wall and the lettering spilling out of the picture. FIND_RANGE_MAX caps
+ * it for the biggest paint there is, the 12 m mark a built map with no wall
+ * lays on its paving, which at 4 m per 1.8 m would be found from 27 m, a
+ * speck; 13.5 m is a 6 m wall mark's own range with a little over, and it
+ * is short of NEAR_MIN in src/maps/built/egg.js, so no mark is ever found
+ * from the pads.
  */
 export const FIND_RANGE = 4.0;
+export const FIND_REF_W = 1.8;
+export const FIND_RANGE_MAX = 13.5;
+
+/* How near the eye has to be to this mark, in metres: FIND_RANGE, times
+ * the mark's width over FIND_REF_W when it is wider, never more than
+ * FIND_RANGE_MAX. A width that is not a number is taken as FIND_REF_W. */
+export function findRange(egg) {
+  const w = egg && egg.w > FIND_REF_W ? egg.w : FIND_REF_W;
+  const r = (FIND_RANGE * w) / FIND_REF_W;
+  return r < FIND_RANGE_MAX ? r : FIND_RANGE_MAX;
+}
 
 /*
  * How far out in front of the painted plane the eye has to be, in metres.
@@ -103,19 +128,20 @@ export const FIND_LINE_OFF = 0.02;
 
 /*
  * The walk along the sight line, in metres. A tenth of a metre is 40 points
- * at the full range, a fraction of a millisecond, and nothing a craft can
- * be hidden behind is thinner than that except a plate, which the opposite
- * faces question catches.
+ * at 4 m and 135 at FIND_RANGE_MAX, a fraction of a millisecond, and
+ * nothing a craft can be hidden behind is thinner than that except a plate,
+ * which the opposite faces question catches.
  */
 export const FIND_STEP = 0.1;
 
 /*
- * Does the eye see the mark? True when it is within FIND_RANGE, in front of
- * the paint, looking at it, and nothing solid is between.
+ * Does the eye see the mark? True when it is within findRange(egg), in
+ * front of the paint, looking at it, and nothing solid is between.
  *
  *   eye       { x, y, z }: the FPV camera's position, world metres
  *   forward   { x, y, z }: the way the camera points, world frame; any length
- *   egg       the map's `egg`, { p: [x, y, z], n: [nx, ny, nz], ... }, or null
+ *   egg       the map's `egg`, { p: [x, y, z], n: [nx, ny, nz], w, ... },
+ *             or null
  *   colliders the map's Colliders, or null for a map with nothing solid
  *
  * Never throws on a bad number: a NaN fails the comparisons and answers
@@ -132,7 +158,8 @@ export function seesMark(eye, forward, egg, colliders) {
   const dy = py - eye.y;
   const dz = pz - eye.z;
   const d2 = dx * dx + dy * dy + dz * dz;
-  if (!(d2 <= FIND_RANGE * FIND_RANGE)) {
+  const range = findRange(egg);
+  if (!(d2 <= range * range)) {
     return false;
   }
   /* (eye - p) . n: how far out in front of the painted plane the eye is. */

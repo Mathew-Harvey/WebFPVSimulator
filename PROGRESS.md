@@ -45916,3 +45916,166 @@ changing.
                                    from main
     npm run check:clip, merged     683 passed, 0 failed
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | art, maps, checks | The STF mark in plain view: seen from the pads on every freestyle map
+
+The owner: "the logo of SubTwoFIfty is too hard to find, make it easy to
+see on any map". Stage B had hidden it on purpose: in the town inside the
+works shed's roof space, on a built map on a face chosen so it could NOT be
+seen from the pads. This turns that round. No physics change, no ABI or
+build change: the mark is paint, and both built map placement hashes are
+unchanged (starter e72f829e..., one of everything 9899d9f1...).
+
+### The owner's decision, recorded
+
+- **2026-09-25, decision 10 in FREESTYLE-MAPS-PLAN.md section 12: the STF
+  mark is painted to be seen, not hidden.** Big, where the pilot sees it
+  from the pads, in the first frame where the map allows. It replaces
+  decision 3's "the sim hides it" (the sim still chooses the spot and the
+  builder still never shows it) and answers open question 6, the town's
+  spot. Section 9 is rewritten to match. "Any map" is read as every map
+  that carries the mark, the town and every built map; race tracks carry
+  none and still do not (asked below).
+
+### What changed
+
+- **The town, src/maps/city/places/index.js.** The mark leaves the works
+  shed (STF_SPOT and buildStfMark come out of works.js, which is back to
+  its pre Stage B imports) for a 4 by 2 m mural on the south flank of 米・酒
+  なかの, the corner shop that closes the street the pilot starts in: 25 m
+  ahead of the pads, 11 degrees left of the nose, dead centre of the town's
+  first frame. The plain upper storey was mapped by a grid of rays against
+  the drawn town (wall from x 2.5 to 6.8, 3.7 to 6.0 m, between the blade
+  sign and a downpipe, over the string course and under the eave), because
+  northblock.js is vendored and exports none of it. The paint stands 1.5 cm
+  in front of the town's fitted collider face, which is 5 cm proud of the
+  brickwork, so the find's sight line never ends inside a solid.
+- **Built maps, src/maps/built/egg.js, rewritten.** Rules: an upright face
+  of a drawn opaque box; open air 3 m in front; seen from 0.3, 2 and 5 m
+  over the seat (every line to nine points on the mark clear of anything
+  opaque); turned to the pads (within 60 degrees) and 15 to 60 m from them.
+  The pick is the wall whose mark looks biggest from the pads (width times
+  how square it stands, over distance) weighed by the turn (2 plus the
+  cosine off the pads' heading: 3 ahead, 2 abeam, 1 behind). Marks are up
+  to 6 by 3 m, down to 1.8 by 0.9. A map with no such wall gets it flat on
+  the paving 12 m ahead of the pads (then 8, then 18, then the plot's
+  middle), 12 by 6 m, square to the plot, reading away from the pads. No
+  seed any more: the spot is a property of the layout, the same whatever
+  the id. The pads' heading comes from src/props/trig.js's sincos, so the
+  file now imports trig.js instead of parts.js (still pure, still no JS
+  trigonometry).
+- **The paint, src/art/stf.js.** makeStfMark takes `shade`: paint on a face
+  the sun never reaches gives back 0.3 of its own colour, dusk's share. The
+  town's flank faces north at golden hour and its white lettering had gone
+  the lavender grey of the render round it; with it, white and green again.
+  A built map sets it by testing the face against the look's own sun.
+- **Finding it, src/game/egg.js.** findRange(egg): 4 m for a mark up to 1.8
+  m wide, in proportion for a bigger one, so it is found at the same fifth
+  of the frame; capped at 13.5 m, short of the 15 m minimum reach, so no
+  mark is ever found from the pads.
+- **The checks, scripts/props-check.js, egg block and self tests.** Every
+  rule restated in the check's own geometry, with an exact slab test for
+  sight lines; rule 6 checked independently: no wall that scores higher
+  keeps rules 1 to 5 at its middle. The seed checks become "the id moves
+  nothing". The find checks now require the pads' eyes to have a clear
+  line to the mark and not find it. Self tests plant a wall between a mark
+  and the pads (fails rule 4 only), move a mark out of reach (rule 5 only),
+  turn one away (rule 5), and hand the pick a spot on the paving of a map
+  with a wall in view (caught).
+- Docs: FREESTYLE-MAPS-PLAN.md sections 9 and 12, src/maps/README.md, the
+  headers of the files above, src/maps/preload.js regenerated (the town
+  imports stf.js from places/index.js now; order only, counts unchanged).
+
+### Measured
+
+    town, first frame on the pads      the mural centred, lettering legible
+    town, from 7 m in front (page)     found; not found on the pads
+    starter's spot                     the bando's own ground floor wall,
+                                       south face, 4.2 by 2.1 m, 29.9 m
+                                       ahead, in the first frame
+    starter, from 8 m (page)           found; not found on the pads
+    one of everything                  a 1.8 m mark on a balcony parapet
+    50 random maps                     25 on a wall, 25 on the paving,
+                                       5 in the first frame
+    timing                             starter 9.0 ms, 10027 solids 29.6 ms
+                                       (first call, fresh engine)
+
+The found checks in the page placed the craft with window.__placeCraft
+and read window.__egg(), through tests/lib/page.js. The shots were taken
+the same way; they are in the session's scratchpad and are not committed.
+
+### Judgement calls, for the owner
+
+- **The starter's mark is on the bando, over its NEKO tag.** It is lifted
+  clear of the tag, so nothing fights, and it reads as one tag painted
+  over another. Before the band fix below it was on the office block's
+  south face, 6 by 3 m, 60 m out, at the left edge of the first frame; the
+  two scored 0.275 and 0.266. Either is easy to see.
+- **Paint on the paving is the weak case.** A craft on its pads cannot see
+  it (a sliver at the horizon); it reads once the craft is up and pitched
+  forward. It only happens on a map with no wall facing the pads 15 to 60
+  m out, which on the random maps is half of them, because they are sparse
+  scatters with random pads. The alternative, standing the mark up on
+  something the map does not have, means adding geometry that is not
+  solid, which a craft would fly through; I did not do that.
+- **A wall behind the pads counts**, at a third of the weight of one dead
+  ahead, because a mural a pilot sees with one turn beats paint on the
+  paving.
+- **Finding it is now quick**: the town's mark is 25 m up the street, so
+  MARK FOUND comes within seconds of takeoff. That follows from "easy to
+  see"; the find itself is unchanged in kind.
+
+### What went wrong
+
+- **The fit ignored rule 2's ground clearance.** A wall standing on the
+  paving was sized to fit its face 10 cm in from the edges and then
+  rejected because the mark's foot was under 0.3 m, so a single container's
+  side took no mark at all. Now the band starts 10 cm over the clearance,
+  and a single container takes a 4.2 m mark. Stage B's fit had the same
+  flaw; with a 0.9 m mark it rarely showed. Found while restating the rule
+  in the check, and it moved the starter's pick from the office to the
+  bando.
+- **The first draft excluded walls not ahead of the pads.** 35 of 50
+  random maps then fell back to the paving; the diagnosis showed 544 walls
+  facing the pads and only 179 ahead of them. Weighing the turn instead
+  of excluding it brought the paving down to 25.
+- **I misread a ray.** An early probe from the town's spawn hit something
+  at x 4, z 40.5 between the pads and the mural, and I wrote it into a
+  comment as the utility pole crossing the mural. The shots from the pads
+  and from 2 m over them show the whole mural clear; the hit was most
+  likely one of the town's invisible interaction boxes. The comment says
+  what the shots show.
+- The town's SPAWN comment in src/maps/city/index.js still says the pilot
+  faces north at the crossing and the shop; the pilot faces +z, up the
+  street, with the crossing behind. Left as it is, outside this change.
+
+### RUN LOG
+
+Run on the final code, this turn:
+
+    node scripts/props-check.js        all passed, 202 PASS; placement
+                                       hashes unchanged
+    props-check --selftest             all passed
+    npm run check:clip                 683 passed, 0 failed
+    npm run lint:preload               stale (order), regenerated, then
+                                       up to date: boot 105, city 73,
+                                       built 29
+    npm run lint:memory                PASS, every world lazy and freed;
+                                       the town leaves 62 geometries and 6
+                                       textures after freeing against a
+                                       baseline of 61 and 5, and main does
+                                       exactly the same (run on a worktree
+                                       of 6bf90bf), so it predates this
+    dash scan, added lines             none
+    git diff --stat vendor/betaflight  empty
+    shots                              through tests/lib/page.js on the
+                                       real shell (not scripts/shots.js
+                                       itself): town and starter first
+                                       frames, 2 m over the pads, the find
+                                       range's edge and 4 m out; a map of
+                                       trees; before and after the shade
+                                       glow
+    npm run verify                     not run: no physics, plant, ABI or
+                                       build change
+    npm run check:plant, check:crash   not run: nothing solid changed, and
+                                       the hashes say so

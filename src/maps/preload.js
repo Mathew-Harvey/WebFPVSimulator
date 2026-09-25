@@ -96,11 +96,11 @@ export const MAP_PRELOAD = {
     'maps/city/places/road.js',
     'maps/city/places/kit.js',
     'maps/city/places/works.js',
-    'art/stf.js',
     'maps/city/places/signs.js',
     'maps/city/places/pool.js',
     'maps/city/places/training.js',
     'maps/city/places/blossom.js',
+    'art/stf.js',
     'maps/city/drawn.js',
   ],
   built: [

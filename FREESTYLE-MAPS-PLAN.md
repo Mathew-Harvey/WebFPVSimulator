@@ -319,24 +319,33 @@ until the board is taught. The town's board is unchanged.
 
 - **Every freestyle map carries it, always**: the town and every built map.
   The editor offers no way to remove it.
-- **In the town**, one hand chosen spot that rewards exploring: the proposal
-  is inside the derelict works shed, painted on the inside of the roof space,
-  seen only by a pilot who comes in through the broken clerestory glazing.
-  The owner can pick another.
+- **Easy to see, from the pads** (decision 10, 2026-09-25). It was first
+  built hidden, and the owner could not find it: "the logo of SubTwoFIfty is
+  too hard to find, make it easy to see on any map". So it is painted big,
+  where the pilot sees it from the pads, in the first frame where the map
+  allows, and finding it is flying up to it.
+- **In the town**, a 4 by 2 m mural on the side of 米・酒 なかの, the corner
+  shop that closes the street the pilot starts in, 25 m ahead of the pads
+  and 11 degrees left of the nose. It was inside the derelict works shed,
+  on the inside of the roof space, seen only by a pilot who came in through
+  the broken clerestory glazing.
 - **On a built map** the sim chooses the spot, not the author, and the editor
-  never shows it, so the person who built the map has to find it too. The
-  spot is chosen from the map's own assets: a face that cannot be seen from
-  the spawn, with open air in front of it, preferring undersides and
-  backs (under the bridge deck, the back of a billboard, inside the bando,
-  under the crane's counter jib). The choice is seeded from the map's
-  identity, so it is the same spot every time that map is flown, and
-  different on the next map.
+  never shows it. The spot is chosen from the map's own assets: a wall that
+  faces the pads with nothing opaque between them and it and open air in
+  front, 15 to 60 m out, painted up to 6 by 3 m, the wall whose mark looks
+  biggest from the pads, weighed by how far the pilot has to turn to see it.
+  A map with no such wall gets it flat on the paving ahead of the pads, 12
+  by 6 m. It is a property of the layout, so it is the same spot every time
+  that map is flown, whatever its id.
 - It is painted as a sprayed stencil with the town's ink treatment, so it
-  looks like it belongs to the world rather than floating on it.
-- **Found** means the craft within about 4 m of it, looking at it, with a
-  clear line to it. The pilot gets a lettered STF callout and a manga panel,
-  a bonus into the combo when scoring is on, and a stamp on that map's card
-  that stays in this browser.
+  looks like it belongs to the world rather than floating on it. On a wall
+  the sun never reaches it gives back some of its own colour, as it does at
+  dusk, so the lettering reads in shade.
+- **Found** means the craft within about 4 m of it, further in proportion
+  for a bigger mark so it is found at the same size in the picture (13.5 m
+  at most), looking at it, with a clear line to it. The pilot gets a
+  lettered STF callout and a manga panel, a bonus into the combo when
+  scoring is on, and a stamp on that map's card that stays in this browser.
 - **The file is needed.** The logo reached this conversation as a picture,
   and a picture in a chat cannot be saved into the repository from here. It
   needs committing as a file, ideally an SVG, or a PNG of at least 1024 px
@@ -442,7 +451,8 @@ Decided by the owner on 24 September 2026, in the conversation:
    the chase and the egg show by default on freestyle maps. Trick names stay
    behind the existing Scoring switch until naming is settled.
 3. **The egg on built maps: the sim hides it.** The editor never shows it,
-   and the spot is the same every time a given map is flown.
+   and the spot is the same every time a given map is flown. The hiding is
+   replaced by decision 10; the rest stands.
 4. **The manga layer: freestyle maps, on by default**, with a Clean FPV
    switch in Settings. Race stays clean.
 
@@ -451,7 +461,8 @@ Still open:
 5. **Katakana sound effects** beside the English callouts: yes or no. Needed
    by Stage C.
 6. **The town's egg spot**: inside the works shed roof space, or elsewhere.
-   Needed by Stage B.
+   Needed by Stage B. Answered by decision 10: the corner shop at the end of
+   the spawn's street.
 7. **The STF file**, committed to `assets/`. Needed by Stage B.
 
 Answered 2026-09-25, when the owner asked for "the drift car that is driving
@@ -465,6 +476,18 @@ on the track, so we can practice chasing":
    changes.
 9. **Cars drive on built freestyle maps only**, as section 8 has it. Not on
    race tracks.
+
+Answered 2026-09-25, when the owner, having flown Stage B, wrote "the logo
+of SubTwoFIfty is too hard to find, make it easy to see on any map":
+
+10. **The STF mark is painted to be seen, not hidden.** Big, where the pilot
+    sees it from the pads, in the first frame where the map allows (section
+    9). This replaces decision 3's "the sim hides it"; the sim still chooses
+    the spot and the editor still never shows it. It answers decision 6: the
+    town's mark leaves the works shed for the corner shop at the end of the
+    street the pilot starts in. Finding it is unchanged in kind, flying up
+    to it and looking at it, with the range grown in proportion to the
+    mark.
 
 ## 13. Not in this plan
 

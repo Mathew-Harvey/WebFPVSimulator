@@ -45868,3 +45868,51 @@ unowned.
     npm run verify                  not run: share code only, no physics,
                                     plant, ABI or build
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | git | The shell's fork fix goes to main, for the owner to test
+
+The owner, on the entry above: "merge to main, i'll test it". That is the
+approval to put the shell's conflict fork fix on main, and the
+verification scale chosen is the owner testing it by hand. The one
+decision in the entry above, committing the copy's bind only once the
+board has taken the copy, goes to main as built.
+
+main had moved again while this waited: four commits, all PROGRESS.md,
+another session's entries for the board's tab check. The branch took them
+in by a merge, 2cde6cd, merge-base 43af247, one history. PROGRESS.md
+conflicted where both sides appended, and it keeps main's file whole with
+this branch's entry after it. main then fast-forwards to the branch: no
+merge commit on main's side, nothing rewritten.
+
+**Hard reload before testing.** The change is src/share/listing.js alone,
+which is a script, and scripts sit behind DEPLOY.md's four hour cache
+through webfpv.org.
+
+How to reach the path. It needs a track whose id is on the board and whose
+edit key is not in this browser:
+
+1. Save a track you have published to a file from the builder.
+2. Import that file into the builder in a private window. Import keeps the
+   id, and the private window has no key for it.
+3. Fly it, then Publish from the simulator.
+
+What to look for: "Published "...". Published as a new track." and a
+second card on the board under the same name. Press Publish again in the
+same window and it says "This track is already on the public board.",
+because the copy is now this window's and unchanged. **The second card is
+a real listing on the public board**, so take it off as admin afterwards.
+
+What would count as wrong: "Could not publish that track" with "Cannot
+read properties of undefined (reading 'width')", which is the bug; a third
+card when Publish is pressed again; or the original track's card
+changing.
+
+### RUN LOG
+
+    git fetch                      main 43af247..c48101c, four PROGRESS.md
+                                   commits; merge-base 43af247
+    merged                         2cde6cd, PROGRESS.md resolved as main's
+                                   file plus this branch's entry; no code
+                                   from main
+    npm run check:clip, merged     683 passed, 0 failed
+    git diff --stat vendor/betaflight   empty

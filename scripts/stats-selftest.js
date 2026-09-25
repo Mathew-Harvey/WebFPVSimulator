@@ -146,10 +146,10 @@ check(
   referrerDomain(mockDoc(''), mockLoc('https://webfpv.org/sim/?referrer=news.ycombinator.com')) === 'news.ycombinator.com',
 );
 
-/* ?referrer= with invalid domain (no TLD). */
+/* ?referrer= with single-label hostname (no TLD) - accepted by client, will be rejected by server. */
 check(
-  '?referrer= with invalid domain returns null',
-  referrerDomain(mockDoc(''), mockLoc('https://webfpv.org/sim/?referrer=localhost')) === null,
+  '?referrer=localhost accepted by client (server validates)',
+  referrerDomain(mockDoc(''), mockLoc('https://webfpv.org/sim/?referrer=localhost')) === 'localhost',
 );
 
 /* ?referrer= with junk returns null. */
@@ -162,6 +162,28 @@ check(
 check(
   '?referrer= empty falls back to document.referrer',
   referrerDomain(mockDoc('https://reddit.com/'), mockLoc('https://webfpv.org/sim/?referrer=')) === 'reddit.com',
+);
+
+/* ?referrer= with same host returns null. */
+check(
+  '?referrer=webfpv.org returns null (same-host)',
+  referrerDomain(mockDoc(''), mockLoc('https://webfpv.org/sim/?referrer=webfpv.org')) === null,
+);
+
+check(
+  '?referrer=https://webfpv.org returns null (same-host)',
+  referrerDomain(mockDoc(''), mockLoc('https://webfpv.org/sim/?referrer=https://webfpv.org')) === null,
+);
+
+/* Bare hostnames that start with 'http' should still work. */
+check(
+  'bare httpbin.org works',
+  referrerDomain(mockDoc(''), mockLoc('https://webfpv.org/sim/?referrer=httpbin.org')) === 'httpbin.org',
+);
+
+check(
+  'bare httpexample.com works',
+  referrerDomain(mockDoc(''), mockLoc('https://webfpv.org/sim/?referrer=httpexample.com')) === 'httpexample.com',
 );
 
 console.log('\nstats-selftest: normaliseRefTag()\n');
@@ -284,6 +306,46 @@ check('GPC on AND opted out -> not counting', counting() === false);
 mockNavigator.globalPrivacyControl = false;
 setOptedOut(false);
 
+console.log('\nstats-selftest: sendEvent/pingVisit send nothing under GPC and opt-out\n');
+
+/* sendEvent returns false under GPC. */
+mockNavigator.globalPrivacyControl = true;
+const gpcSent = sendEvent({ kind: 'test', value: 100 });
+check('sendEvent returns false under GPC', gpcSent === false);
+
+/* sendEvent returns false under opt-out. */
+mockNavigator.globalPrivacyControl = false;
+setOptedOut(true);
+const optOutSent = sendEvent({ kind: 'test', value: 101 });
+check('sendEvent returns false under opt-out', optOutSent === false);
+
+/* Mock window for pingVisit tests. */
+globalThis.window = {
+  location: mockLoc('https://webfpv.org/sim/'),
+  history: { replaceState: () => {} },
+};
+globalThis.document = mockDoc('');
+
+/* pingVisit returns false under GPC. */
+mockNavigator.globalPrivacyControl = true;
+setOptedOut(false);
+const gpcVisit = pingVisit('sim');
+check('pingVisit returns false under GPC', gpcVisit === false);
+
+/* pingVisit returns false under opt-out. */
+mockNavigator.globalPrivacyControl = false;
+setOptedOut(true);
+const optOutVisit = pingVisit('sim');
+check('pingVisit returns false under opt-out', optOutVisit === false);
+
+/* Clean up globals. */
+delete globalThis.window;
+delete globalThis.document;
+
+/* Reset to counting state for next tests. */
+mockNavigator.globalPrivacyControl = false;
+setOptedOut(false);
+
 console.log('\nstats-selftest: sendEvent with session attribution\n');
 
 /* Clear session storage. */
@@ -320,6 +382,45 @@ sendEvent({ kind: 'test', value: 4, ref: 'hn' });
 parsed = JSON.parse(sentBody);
 check('sendEvent mixed: referrer from session', parsed.referrer === 'reddit.com');
 check('sendEvent mixed: ref from payload', parsed.ref === 'hn');
+
+console.log('\nstats-selftest: attribution stored on every page load\n');
+
+/* Clear storage and localStorage first. */
+sessionStorage.removeItem('webfpv.session.attribution');
+localStorage.removeItem('webfpv.stats.v1');
+
+/* Mock today's date so markVisit will succeed on first call. */
+const mockToday = new Date().toISOString().slice(0, 10);
+
+/* First pingVisit on a new day - should store attribution. */
+globalThis.document = mockDoc('https://github.com/');
+globalThis.window = {
+  location: mockLoc('https://webfpv.org/sim/?ref=gh'),
+  history: { replaceState: () => {} },
+};
+let visitSent = pingVisit('sim');
+check('first pingVisit succeeds (new day)', visitSent === true);
+let stored = sessionAttribution();
+check(
+  'first pingVisit stores attribution',
+  stored.referrer === 'github.com' && stored.ref === 'github',
+  `got referrer=${stored.referrer}, ref=${stored.ref}`,
+);
+
+/* Second pingVisit on same day with different params - visit should be skipped but attribution should update. */
+globalThis.document = mockDoc('https://reddit.com/');
+globalThis.window = {
+  location: mockLoc('https://webfpv.org/sim/?ref=reddit'),
+  history: { replaceState: () => {} },
+};
+visitSent = pingVisit('sim');
+check('second pingVisit on same day returns false (already counted)', visitSent === false);
+stored = sessionAttribution();
+check('second pingVisit still stores fresh attribution', stored.referrer === 'reddit.com' && stored.ref === 'reddit');
+
+/* Clean up globals. */
+delete globalThis.document;
+delete globalThis.window;
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

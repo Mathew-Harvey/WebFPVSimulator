@@ -25,9 +25,10 @@
  * UTC day and never reads a clock from here, because a browser's clock is
  * wrong often enough to put laps in tomorrow.
  *
- * THE REFERRER DOMAIN AND ?ref= TAG are captured at visit time and sent as
- * optional fields. Only the domain is sent (not the full URL), same-origin
- * referrers are excluded, and nothing is stored locally.
+ * THE REFERRER DOMAIN AND ?ref= TAG are captured on every page load and sent
+ * as optional fields. Only the domain is sent (not the full URL), same-origin
+ * referrers are excluded. The values are stored in sessionStorage for the tab
+ * session, so later events (laps) in the same session carry attribution.
  *
  * THE TAB HANDLE IS THE ONE UNIQUE STRING, and it is deliberately useless.
  * It is made fresh at page load, it answers exactly one question ("how many
@@ -225,8 +226,9 @@ export function heldSource() {
 /*
  * EXTRACT THE REFERRER DOMAIN, stripping the protocol and path.
  *
- * Referrer is captured at visit time only, never stored, and only the domain
- * is sent. A full URL would be personal data; a domain is attribution.
+ * Referrer is captured on every page load and stored in sessionStorage for
+ * the session, so later events (laps) carry attribution. Only the domain is
+ * sent. A full URL would be personal data; a domain is attribution.
  *
  * PREFERS AN EXPLICIT ?referrer= PARAMETER over document.referrer. This is
  * the carry-through from the landing page: when a visitor arrives from an
@@ -238,28 +240,41 @@ export function heldSource() {
  * Same-origin referrers are folded to null: somebody navigating within
  * webfpv.org is not an external referrer.
  */
+function extractHostname(urlOrDomain) {
+  /* Try parsing as a URL first (handles http://example.com/path). */
+  try {
+    const parsed = new URL(urlOrDomain);
+    return parsed.hostname;
+  } catch (e) {
+    /* Not a URL. Try parsing with a scheme prepended (handles example.com). */
+    try {
+      const parsed = new URL(`https://${urlOrDomain}`);
+      return parsed.hostname;
+    } catch (e2) {
+      /* Still not valid. Return null. */
+      return null;
+    }
+  }
+}
+
+function isSameHost(hostname, loc) {
+  if (!hostname || !loc) {
+    return false;
+  }
+  return hostname === loc.hostname;
+}
+
 export function referrerDomain(doc = document, loc = window.location) {
   try {
+    const currentHost = loc.hostname;
     /* First, check for an explicit ?referrer= parameter from the landing page. */
     const url = new URL(loc.href);
     const explicit = url.searchParams.get('referrer');
     if (explicit) {
-      /* Sanitise to domain only: strip protocol, path, and anything that isn't a hostname. */
       const clean = String(explicit).trim().toLowerCase();
       if (clean) {
-        /* Accept it if it looks like a domain. The landing page should send
-         * domain only, but a belt to that braces: try parsing it as a URL
-         * in case it's a full URL, and fall back to the string itself. */
-        let hostname = null;
-        try {
-          const parsed = new URL(clean.startsWith('http') ? clean : `https://${clean}`);
-          hostname = parsed.hostname;
-        } catch (e) {
-          /* Not a parseable URL. Check if the string itself looks like a domain. */
-          hostname = clean;
-        }
-        /* Only accept if it looks like a proper domain (has at least one dot and a TLD). */
-        if (hostname && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(hostname)) {
+        const hostname = extractHostname(clean);
+        if (hostname && !isSameHost(hostname, loc)) {
           return hostname;
         }
       }
@@ -269,12 +284,11 @@ export function referrerDomain(doc = document, loc = window.location) {
     if (!ref) {
       return null;
     }
-    const refUrl = new URL(ref);
-    const currentHost = loc.hostname;
-    if (refUrl.hostname === currentHost) {
-      return null;
+    const hostname = extractHostname(ref);
+    if (hostname && !isSameHost(hostname, loc)) {
+      return hostname;
     }
-    return refUrl.hostname;
+    return null;
   } catch (e) {
     return null;
   }
@@ -286,6 +300,10 @@ export function referrerDomain(doc = document, loc = window.location) {
  * Maps common referrer sources to short tags (reddit, yt, discord, etc).
  * Unknown values are sanitised and length-limited. This is separate from
  * utm_source (sponsor slugs) and is meant for organic/manual attribution.
+ *
+ * The server has a closed list and folds unknowns to "other". This client-side
+ * normalisation helps with URL variations (e.g., "Reddit" vs "reddit"), but
+ * the server is the authority.
  */
 export function normaliseRefTag(raw) {
   if (raw == null || raw === '') {
@@ -295,28 +313,31 @@ export function normaliseRefTag(raw) {
   if (!clean) {
     return null;
   }
-  /* Map common variants to canonical short tags. */
+  /* Map common variants to canonical short tags, matching the board's
+   * KNOWN_REFS in src/validate.js. These are the only tags the server
+   * accepts without folding to "other". */
   const known = {
     reddit: 'reddit',
     r: 'reddit',
-    youtube: 'yt',
     yt: 'yt',
-    discord: 'discord',
-    twitter: 'x',
+    youtube: 'yt',
+    hn: 'hn',
+    hackernews: 'hn',
     x: 'x',
+    twitter: 'x',
     facebook: 'facebook',
     fb: 'facebook',
     instagram: 'instagram',
     ig: 'instagram',
-    hn: 'hn',
-    hackernews: 'hn',
     github: 'github',
     gh: 'github',
+    discord: 'discord',
   };
   if (known[clean]) {
     return known[clean];
   }
-  /* For unknown values, sanitise to alphanumeric and hyphens, limit length. */
+  /* For unknown values, sanitise to alphanumeric and hyphens, limit length.
+   * These will be folded to "other" by the server's closed list. */
   const sanitised = clean.replace(/[^a-z0-9-]/g, '').slice(0, 16);
   return sanitised || null;
 }
@@ -466,14 +487,19 @@ export function pingVisit(surface, url = eventsUrl()) {
   if (!counting()) {
     return false;
   }
-  const visit = markVisit();
-  if (!visit) {
-    return false;
-  }
+  /* Capture referrer and ref on EVERY page load, not just the first visit
+   * of the day. This lets a visitor arriving with a new ?ref= parameter get
+   * that attribution, even if they already visited today. Fresh values are
+   * stored and override any stale sessionStorage values. */
   const referrer = referrerDomain();
   const ref = captureRefTag();
-  /* Store in sessionStorage so flush events can include them. */
   storeSessionAttribution(referrer, ref);
+  const visit = markVisit();
+  if (!visit) {
+    /* Already counted today. Attribution is still stored above, so later
+     * events in this session get the fresh values. */
+    return false;
+  }
   return sendEvent({
     kind: 'visit', surface, returning: visit.returning, referrer, ref,
   }, url);

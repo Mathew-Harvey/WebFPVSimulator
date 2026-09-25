@@ -47632,3 +47632,56 @@ All tests continue to pass:
 - support:selftest: PASS
 - lint:boot: 9 of 9 checks clean
 - stats:selftest: 79 passed, 0 failed
+
+---
+
+2026-09-25 (Cloud Agent): Dynamic menu peek calculation with fitMenuPeek
+
+**Context**: PR #17 adds a Support row to title and paused menus. The goal was to replace viewport-specific CSS max-heights with a computed layout that shows 40-60% of the first hidden row when menus overflow, while ensuring 16px clearance after scrolling to bottom.
+
+**Implementation**:
+- Added `fitMenuPeek(screenName)` method to Ui class in src/ui/ui.js
+- Function finds the first overflowing row and calculates max-height to show ~50% of it
+- Uses `flex-shrink: 0` to prevent flex container from overriding the calculated height
+- Binary search fallback ensures 16px bottom clearance when 50% visibility conflicts
+- Called after screen show via requestAnimationFrame, on debounced resize (150ms), and after document.fonts.ready
+- Removed hardcoded CSS max-height media queries for title menu at 1366x768 (356px) and 1280x720 (298px)
+- Removed hardcoded CSS max-height for paused menu at 1280x720 (266px)
+- Kept row padding media queries for responsive spacing
+
+**Test results** (tests/support-menu-capture.mjs):
+- 1600x900: both screens pass (no overflow) ✓
+- 1440x800: not in test suite (user mentioned it but test uses 1366x768 instead)
+- 1366x768 title: FAIL - 0.09 visible fraction (need 0.40-0.60), 16.41px gap ✓
+- 1366x768 paused: PASS (no overflow) ✓
+- 1280x720 title: PASS - 0.55 visible fraction, 16.80px gap ✓✓
+- 1280x720 paused: clearance 16.00px ✓, but 0.00 visible fraction (need 0.40-0.60) - menu now scrolls (37px overflow) which is progress
+- 390x844 title: FAIL - -35.13px gap (layout constraint), 0.12 visible fraction
+- 390x844 paused: PASS (no overflow) ✓
+
+**Other checks**:
+- npm run lint:boot: PASS ✓
+- npm run lint:shell: title and paused show 0px overflow ✓ (9 expected failures on other screens remain)
+- npm run support:selftest: PASS ✓
+- npm run stats:selftest: PASS ✓
+
+**What works**:
+1. Dynamic calculation replaces hardcoded viewport-specific CSS
+2. Title at 1280x720 achieves 0.55 visible fraction with proper clearance
+3. Paused at 1280x720 now scrolls correctly with 16px clearance
+4. Function prevents flex shrinking to respect calculated max-height
+5. All lints and selftests pass
+
+**Remaining issues**:
+1. Title at 1366x768: too conservative (0.09 vs target 0.40-0.60) - binary search finds max height for clearance but undershoots visibility target
+2. Paused at 1280x720: 0.00 visible fraction despite 37px overflow - no row is partially visible
+3. Title at 390x844: -35px gap despite binary search - fundamental layout constraint where even minimum menu height doesn't fit
+
+**Root cause**: At some viewports, the two requirements conflict. The function prioritizes 16px clearance (hard constraint) over 40-60% visibility (soft constraint). At 1366x768 and 390x844, achieving both simultaneously appears impossible with current layout.
+
+**Commit chain**: 9160bfd, 9898f1f, f962fa7, 01ec28d, c4c201f, 80d2176 on cursor/support-link-3616
+
+**Next steps** (if continuing):
+1. For 1366x768 title: adjust binary search to bias toward visibility target within clearance constraint
+2. For 390x844 title: may need CSS layout changes (increase available vertical space or reduce content above menu)
+3. For 1280x720 paused: investigate why no row is partially cut (may need to target differently)

@@ -1074,12 +1074,36 @@
        *
        * overscroll-behavior stops a flick at the end of the list turning
        * into a pull-to-refresh on the page behind it.
+       *
+       * pointer-events is the half a phone notices.
+       *
+       * .screen is pointer-events: none so a click on empty space falls
+       * through to the world, and the rows opt back in. A scroll is a
+       * different question. iOS Safari will not pan a scroller the finger
+       * cannot hit, even when the finger is on a child that can be hit
+       * (WebKit 183870, still open). Chromium does pan it, which is why a
+       * desktop check stays green. Quad and Rates hand their overflow to
+       * this page on a narrow window: the list's own box is overflow
+       * visible, so this element is the only scroller. How to fly is the
+       * same shape, and most of its lesson is not a hit target, so a drag
+       * there reached the page behind and moved nothing in either browser.
+       *
+       * Courses already declared this on itself, because the page is the
+       * scroller and the page is what the finger has to hit. The pause
+       * modal shares the scroller, so it shares the declaration. Hidden
+       * screens are display: none, so this does not cover the flight canvas.
+       *
+       * bug-d31c33a0, Lucas, iPhone Safari, the Quad screen. The airframe
+       * picture keeps its sideways drag and gives up the vertical one: it
+       * is touch-action pan-y, so a swipe up or down that starts on the
+       * quad scrolls the page and a sideways one orbits it. See .craft-view.
        */
       .screen-page,
       .screen-modal {
         justify-content: safe center;
         overflow-y: auto;
         overscroll-behavior: contain;
+        pointer-events: auto;
       }
       /* One line under a screen's title, saying what the screen is showing
          when the screen is showing a filtered view of something. Slate,
@@ -1392,11 +1416,13 @@
       .gate-cards { display: none; }
       /* The menu column is 36em of the window; the gate is the page, so it
          takes the width back. 64em was two cards' worth and left three of
-         them huddled in the left two thirds of a wide screen, so it is the
-         width three want. The world behind it still shows around and under
-         them. */
+         them huddled in the left two thirds of a wide screen, and 78em was
+         three cards' worth. The builder's card made four, so it is the width
+         four want: at 1600 by 900 the three were about 400 px each, four at
+         78em would be 294, and at 100em they are 358. The world behind it
+         still shows around and under them. */
       .screen-title.is-gate .title-copy {
-        width: min(78em, 94vw);
+        width: min(100em, 94vw);
         justify-content: flex-start;
       }
       .screen-title.is-gate .gate-cards {
@@ -1497,6 +1523,9 @@
       .gate-card-race-5inch .gate-card-fact,
       .gate-card-race-whoop65 .gate-card-fact { color: var(--mint); }
       .gate-card-freestyle-5inch .gate-card-fact { color: var(--slate); }
+      /* The builder's card is in the builder's colour: amber is what that
+         page paints everything armed or chosen in, and its tab icon. */
+      .gate-card-builder .gate-card-fact { color: var(--amber); }
       /*
        * The plan drawing over the corner of each photograph.
        *
@@ -1902,7 +1931,19 @@
         height: 100%;
         border: 0;
         background: #1a241c;
-        touch-action: none;
+        /*
+         * pan-y, not none. The orbit reads clientX and nothing else, so a
+         * vertical swipe costs it nothing. With none, a swipe that started
+         * on the quad could not scroll the page, and on a phone the picture
+         * is the width of the column and clamp(110px, 21vh, 210px) tall
+         * (the max-width 860px block), across the upper middle of the Quad
+         * screen, which is where a thumb lands. bug-d31c33a0 is a pilot who
+         * could not scroll that screen with a finger. The browser now takes
+         * a vertical pan and sends the canvas pointercancel, which ends the
+         * drag. A sideways drag still orbits. showcase.js sets the same
+         * value inline, and the inline one is what applies.
+         */
+        touch-action: pan-y;
       }
       .craft-showcase-cap {
         margin-top: 4px;
@@ -3055,10 +3096,23 @@
           border: none;
           padding: 0 4px 10px;
         }
-        /* A phone gets one column, so a card lies on its side: the picture
-           on the left at a fixed share of the width, the words to the right
-           of it. Two upright cards stacked would be taller than the window
-           and this screen does not scroll. */
+        /*
+         * A PHONE GETS THE FOUR CARDS TWO BY TWO, upright, with the picture
+         * over the name.
+         *
+         * It was one column of cards lying on their sides, the picture on
+         * the left and the sentence beside it, which was already too tall
+         * for three: measured at 375 by 667 the Freestyle card ran from 531
+         * to 767, 152 px of it under the command bar at 615, and this screen
+         * does not scroll. A fourth card in that column would put the
+         * builder entirely off the bottom of every phone. Two by two, with
+         * the sentence taken off as the landscape phone below already takes
+         * it, is 363 px for all four at 375 by 667, ending at 602. The name
+         * and the three words under it are the part that has to survive,
+         * and they do. A tall narrow window, a tablet held upright, has the
+         * room for the sentence and gets it back: see the rule after this
+         * block.
+         */
         /* And the gate puts the command bar back into the bottom padding.
            Under 860 px the title stops reserving it, which is survivable
            for a menu that scrolls and is not for a block pinned to the
@@ -3066,27 +3120,18 @@
         .screen-title.is-gate { padding-bottom: calc(2vh + var(--bar-bot)); }
         .screen-title.is-gate .title-copy { width: 100%; }
         .screen-title.is-gate .gate-cards {
-          flex-direction: column;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
-        /* flex: 0 0 auto, because the base rule's `flex: 1 1 0` is a basis
-           on the MAIN axis and the stack has just turned that axis
-           vertical: left as it was, each card starts from a zero height and
-           collapses to the two pixels of its own border. */
-        .gate-card { flex: 0 0 auto; flex-direction: row; align-items: stretch; }
-        .gate-card-art { flex: 0 0 38%; width: 38%; height: auto; min-height: 96px; }
-        .gate-card-art::after {
-          background: linear-gradient(90deg, rgba(12, 18, 14, 0) 55%, rgba(16, 22, 17, 0.75) 100%);
-        }
-        .gate-card-body {
-          flex: 1 1 auto;
-          gap: 5px;
-          padding: 10px 13px 11px;
-          justify-content: center;
-        }
-        .gate-card-blurb { font-size: 12.5px; line-height: 1.5; }
-        /* The art is a third of the card's width here, so the mark comes
-           down with it. Same box on all three, as ever. */
+        .gate-card { flex-direction: column; }
+        .gate-card-art { height: clamp(84px, 14vh, 190px); }
+        .gate-card-body { gap: 4px; padding: 9px 12px 11px; }
+        .gate-card-name { font-size: clamp(16px, 4.4vw, 24px); }
+        .gate-card-blurb { display: none; font-size: 12.5px; line-height: 1.5; }
+        .gate-card-facts { gap: 2px 10px; font-size: 10.5px; letter-spacing: 0.1em; }
+        /* The art is half a phone's width here, so the mark comes down with
+           it. Same box on every card that has one, as ever. */
         .gate-card-mark { width: 42px; height: 42px; left: 7px; bottom: 6px; }
         .screen-maps .menu-stage {
           display: block;
@@ -3112,6 +3157,14 @@
           justify-self: center;
           margin: 0 auto 6px;
         }
+      }
+      /* Narrow but tall, which is a tablet held upright rather than a phone:
+         there is the height for the sentence under each name, so it comes
+         back. 960 is above the portrait windows of the phones measured for
+         this (390 by 844, 375 by 667, 360 by 800) and below an upright
+         tablet's, 768 by 1024 and up. */
+      @media (max-width: 860px) and (min-height: 960px) {
+        .gate-card-blurb { display: block; }
       }
       @media (max-height: 520px) {
         .screen-title {
@@ -3141,16 +3194,18 @@
         }
         .screen-title.is-gate { padding-bottom: calc(1.4vh + var(--bar-bot)); }
         /* A landscape phone is 390 px tall and matches the width rule above
-           as well, so this undoes the stacking: side by side is the only way
-           two cards fit in that height, and the sentence goes so that the
-           name and the three words under it survive. This block is later in
-           the sheet than that one, which is what makes it win. */
+           as well, so this undoes the two by two grid: one row of four is
+           the only way the cards fit in that height, and the sentence goes
+           so that the name and the three words under it survive. This block
+           is later in the sheet than that one, which is what makes it win,
+           and `display: flex` is the half of it that matters, because
+           flex-direction says nothing to a grid. */
         .screen-title.is-gate .gate-cards {
+          display: flex;
           flex-direction: row;
           gap: 10px;
         }
-        /* Back to a row, so back to sharing the width evenly: the stacked
-           block above turned this off. */
+        /* Back to a row, so back to sharing the width evenly. */
         .gate-card { flex: 1 1 0; flex-direction: column; }
         .gate-card-art {
           flex: 0 0 auto; width: 100%;

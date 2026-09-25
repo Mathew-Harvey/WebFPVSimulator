@@ -1,10 +1,12 @@
 /*
- * gatecards.js: the three pictures on the front door, drawn by the game.
+ * gatecards.js: the four pictures on the front door, drawn by the game and
+ * by the builder.
  *
  * The first screen asks one question, what to fly, and it asks it with three
  * pictures rather than three words, because the difference between them is a
  * difference between PLACES and a sentence is a poor way to describe a
- * place. See PROGRESS.md for the argument.
+ * place. See PROGRESS.md for the argument. The fourth card makes something
+ * instead of flying it, and its picture is the builder's; see BUILDER below.
  *
  * WHY THEY ARE FILES AND NOT LIVE. The shell already records a short clip of
  * a world for the picker cards, and it records the world the player is
@@ -18,6 +20,11 @@
  * REGENERATE, DO NOT EDIT, the same rule as og.js and the icons:
  *
  *     npm run gen:gatecards
+ *     npm run gen:gatecards -- builder     only the pictures named
+ *
+ * Naming them is for a change that is about one card: the other three are
+ * not captured, so their files are not rewritten by a change that is not
+ * about them, and three simulator boots are not paid for.
  *
  * WHAT EACH FRAME IS, and why those numbers.
  *
@@ -47,6 +54,22 @@
  * with __setCam for the same reason: the attract camera is always moving, so
  * a capture that just waited would be a different picture every time.
  *
+ * Builder is the builder's own 3D preview (src/trackbuilder/view3d.js) on
+ * the starter map, Hibari Yard (src/maps/built/starter.js), from a hundred
+ * metres out over the south west corner: the bando in the middle, the crane
+ * over the crane gap's office on the left, the chimney, the water tower and
+ * the pylon behind, the containers on the right, and the named gaps'
+ * labels. The subjects sit in the top two thirds of the frame, because the
+ * card darkens its bottom half under a gradient. That is the screen an
+ * author gets, so it is the honest picture of what the card opens. The
+ * starter's ids are fixed, so every seeded asset rolls the same way on every
+ * regeneration, and the orbit is set by number rather than dragged.
+ *
+ * It goes through tests/lib/page.js directly and not through shots.js,
+ * because shots.js asks every frame which gate the race wants and records a
+ * fault when nothing answers, which is right for the simulator and
+ * meaningless on a page with no race in it.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -64,10 +87,12 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, rm, copyFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { openPage } from '../tests/lib/page.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -142,9 +167,98 @@ const SHOTS = [
   },
 ];
 
+/*
+ * THE BUILDER'S FRAME. The orbit is the preview's own: a point on the plot
+ * in document metres (x east, y north, from the south west corner), how far
+ * out, which way round (radians counter clockwise from east, in the
+ * preview's frame) and how high (radians above the ground). The page is
+ * opened on the map canvas by ?mode=freestyle, which is also what keeps the
+ * builder's chooser from opening over the thing being photographed.
+ */
+const BUILDER = {
+  name: 'builder',
+  url: '/src/trackbuilder/index.html?mode=freestyle',
+  orbit: { x: 80, y: 82, radius: 104, theta: 2.2, phi: 0.5 },
+};
+
+/* The builder's chrome, which is the whole page except the drawing. */
+const BUILDER_HIDE = ['#tb-topbar', '#tb-keep', '#tb-palette', '#tb-side', '#tb-status', '#tb-toast', '#tb-modal'];
+
+async function captureBuilder(outDir) {
+  const page = await openPage({ root, width: W, height: H, url: BUILDER.url });
+  try {
+    await page.until('!!window.trackBuilder', 60000);
+    await page.evaluate(`import('/src/maps/built/starter.js').then((m) => {
+      window.trackBuilder.loadDocument(m.starterMap(), '');
+      return true;
+    })`);
+    /* The stage fills the window, square cornered, so the frame is the
+     * drawing and nothing else. */
+    await page.evaluate(`(() => {
+      ${JSON.stringify(BUILDER_HIDE)}.forEach((s) => {
+        const n = document.querySelector(s);
+        if (n) { n.style.display = 'none'; }
+      });
+      document.getElementById('tb-main').style.padding = '0';
+      document.getElementById('tb-stage').style.borderRadius = '0';
+      document.querySelectorAll('#tb-stage canvas').forEach((c) => { c.style.borderRadius = '0'; });
+      window.trackBuilder.view2d.resize();
+      window.trackBuilder.setMode('3d');
+      return true;
+    })()`);
+    /* Three.js and the map's kit arrive after the button, and the first
+     * frame is drawn once both have. */
+    await page.until(`(() => {
+      const v = window.trackBuilder.view3d;
+      return !!v.renderer && !!v.fs && !v.fsPending && !v.dirty;
+    })()`, 90000);
+    const o = BUILDER.orbit;
+    await page.evaluate(`(() => {
+      const v = window.trackBuilder.view3d;
+      v.orbit.target = { x: ${o.x}, y: 0, z: ${-o.y} };
+      v.orbit.radius = ${o.radius};
+      v.orbit.theta = ${o.theta};
+      v.orbit.phi = ${o.phi};
+      window.trackBuilder.requestDraw();
+      return true;
+    })()`);
+    /* Drawn on demand rather than every frame, so this waits for the view
+     * to settle and then asks for one more frame and lets two go by. */
+    await page.until('!window.trackBuilder.view3d.dirty && !window.trackBuilder.drawQueued', 30000);
+    await page.sleep(1500);
+    await page.evaluate(`new Promise((done) => {
+      window.trackBuilder.requestDraw();
+      requestAnimationFrame(() => requestAnimationFrame(() => done(true)));
+    })`);
+    const { data } = await page.cdp.send('Page.captureScreenshot',
+      { format: 'jpeg', quality: QUALITY }, page.sessionId);
+    const path = join(outDir, `${BUILDER.name}.jpg`);
+    await writeFile(path, Buffer.from(data, 'base64'));
+    console.log(`shot ${path}`);
+    /* A thrown error or a console.error means the frame may be of a page
+     * that half built. A refused request does not: the page's visit ping
+     * goes to a board that a local server does not run. */
+    const faults = page.errors.filter((e) => !e.startsWith('network:'));
+    if (faults.length) {
+      throw new Error(`the builder logged ${faults.length} error(s): ${faults.join(' | ')}`);
+    }
+  } finally {
+    await page.close();
+  }
+}
+
+/* Which pictures to make: the names given, or all four. */
+const ALL = [...SHOTS.map((s) => s.name), BUILDER.name];
+const asked = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const unknown = asked.filter((n) => !ALL.includes(n));
+if (unknown.length) {
+  throw new Error(`no gate picture called ${unknown.join(', ')}; there are ${ALL.join(', ')}`);
+}
+const wanted = asked.length ? asked : ALL;
+
 const out = await mkdtemp(join(tmpdir(), 'webfpv-gatecards-'));
 try {
-  for (const shot of SHOTS) {
+  for (const shot of SHOTS.filter((s) => wanted.includes(s.name))) {
     const steps = [
       'until:!!window.__boot && window.__boot().frames > 2',
       `eval:(() => { ${hide} })()`,
@@ -174,12 +288,17 @@ try {
       throw new Error(`shots.js exited ${run.status} on ${shot.name}`);
     }
   }
+  if (wanted.includes(BUILDER.name)) {
+    await captureBuilder(out);
+  }
 
+  /* Copied only once every capture has succeeded, so a run that fails part
+   * way leaves the shipped pictures as they were rather than half new. */
   const dir = join(root, 'assets', 'gate');
   await mkdir(dir, { recursive: true });
-  for (const shot of SHOTS) {
-    await copyFile(join(out, `${shot.name}.jpg`), join(dir, `${shot.name}.jpg`));
-    console.log(`${shot.name}.jpg -> ${join(dir, `${shot.name}.jpg`)}`);
+  for (const name of wanted) {
+    await copyFile(join(out, `${name}.jpg`), join(dir, `${name}.jpg`));
+    console.log(`${name}.jpg -> ${join(dir, `${name}.jpg`)}`);
   }
 } finally {
   await rm(out, { recursive: true, force: true });

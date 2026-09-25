@@ -429,6 +429,14 @@
         background: var(--sakura);
       }
       .tb-class-btn:focus-visible { outline: 2px solid var(--sakura); outline-offset: -2px; }
+      /* Pointed at once, when the chooser closes: two pulses of the same
+         sakura, so the author sees where the way back to the other two
+         canvases lives. The global reduced motion rule flattens it. */
+      @keyframes tb-class-hint {
+        0% { box-shadow: 0 0 0 0 rgba(232, 168, 184, 0.75); }
+        100% { box-shadow: 0 0 0 9px rgba(232, 168, 184, 0); }
+      }
+      .tb-class.tb-class-hint { animation: tb-class-hint 0.9s ease-out 2; }
 
       .tb-name {
         background: var(--sunk);
@@ -1166,6 +1174,116 @@
         font-size: var(--t-title);
         font-weight: 700;
         color: var(--cream);
+      }
+
+      /* ---------------- the chooser ---------------- */
+
+      /*
+       * THE SIMULATOR'S GATE CARDS, ON THIS PAGE. Same pictures, same names,
+       * same shape: the picture over the words, a sakura line along the top,
+       * and the cursor ringed in sakura with its name in sakura, which is how
+       * the gate marks its cursor and how the switch in the bar marks its
+       * chosen half. The cursor is the focus, so the ring is drawn on :focus
+       * and the tool's own focus outline is not drawn round it a second time.
+       * Not amber: amber is a selected OBJECT on this page, and a canvas is
+       * not one. The facts keep the gate's colours too, mint for the two race
+       * canvases and slate for the map.
+       *
+       * Three across, wider than every other dialog here, because each card
+       * is a picture and a picture at a third of 620 px says nothing.
+       */
+      .tb-modal.tb-chooser {
+        width: min(1040px, 94vw);
+        max-width: min(1040px, 94vw);
+        max-height: 92vh;
+      }
+      .tb-choose-lede { margin: 0 0 var(--s4); max-width: 80ch; }
+      .tb-choose {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--s4);
+        margin-bottom: var(--s2);
+      }
+      .tb-choose-card {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-top: 2px solid rgba(232, 168, 184, 0.28);
+        border-radius: 4px;
+        overflow: hidden;
+        background: var(--raised);
+        box-shadow: inset 0 0 0 1px var(--rule);
+        color: var(--cream);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition: transform var(--quick), box-shadow var(--quick), border-color var(--quick);
+      }
+      .tb-choose-card:hover {
+        transform: translateY(-2px);
+        box-shadow: inset 0 0 0 1px var(--edge), 0 10px 24px rgba(0, 0, 0, 0.45);
+      }
+      .tb-choose-card:focus {
+        outline: none;
+        transform: translateY(-2px);
+        border-top-color: var(--sakura);
+        box-shadow: inset 0 0 0 2px var(--sakura), 0 12px 28px rgba(0, 0, 0, 0.5);
+      }
+      .tb-choose-card:active { transform: translateY(1px); }
+      .tb-choose-art {
+        position: relative;
+        display: block;
+        aspect-ratio: 16 / 10;
+        background: #1a241c;
+        overflow: hidden;
+      }
+      .tb-choose-shot { display: block; width: 100%; height: 100%; object-fit: cover; }
+      .tb-choose-art::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(36, 48, 38, 0) 55%, rgba(36, 48, 38, 0.9) 100%);
+      }
+      .tb-choose-body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s2);
+        padding: var(--s3) var(--s4) var(--s4);
+      }
+      .tb-choose-name {
+        font-size: var(--t-title);
+        font-weight: 650;
+        letter-spacing: 0.02em;
+        line-height: 1.15;
+        color: var(--cream);
+      }
+      .tb-choose-card:focus .tb-choose-name { color: var(--sakura); }
+      .tb-choose-blurb { color: var(--slate); font-size: var(--t-small); line-height: 1.55; }
+      .tb-choose-facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px var(--s4);
+        font-size: var(--t-micro);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .tb-choose-card[data-canvas="full"] .tb-choose-fact,
+      .tb-choose-card[data-canvas="micro"] .tb-choose-fact { color: var(--mint); }
+      .tb-choose-card[data-canvas="freestyle"] .tb-choose-fact { color: var(--slate); }
+      /* A narrow window gets the cards lying on their sides, one to a row,
+         the way the gate's used to on a phone. This is not a phone tool
+         (see the narrow block at the foot), but a dialog must not be the
+         thing that breaks on a small window. */
+      @media (max-width: 760px) {
+        .tb-choose { grid-template-columns: 1fr; gap: var(--s3); }
+        .tb-choose-card { flex-direction: row; }
+        .tb-choose-art { flex: 0 0 38%; aspect-ratio: auto; min-height: 96px; }
+        .tb-choose-art::after {
+          background: linear-gradient(90deg, rgba(36, 48, 38, 0) 55%, rgba(36, 48, 38, 0.85) 100%);
+        }
       }
 
       /* The gate's header board, drawn at the proportions the renderer

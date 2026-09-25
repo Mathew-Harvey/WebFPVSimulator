@@ -44630,3 +44630,438 @@ Run by the workflow's agents this turn and reported, not rerun by me: the
 rebuild and its reproducibility, npm run verify 16 of 16, check:crash twice,
 check:world --targets, check:plant:selftest 3 of 3, check:world-town, the
 fixture edit negative test, and the scratch module with restitution scaled.
+
+## 2026-09-25 | shell | A finger can scroll the page menus
+
+Board ticket bug-d31c33a0, Lucas, filed 2026-09-25 07:38 UTC from an iPhone
+(Safari 26, viewport 390 by 797) on the Quad screen: "I am unable to scroll
+down in mobile with my finger." Expected: "To be able to scroll normally."
+
+The list is taller than that window. At 390 by 797 the Quad screen's Back
+row sat near y 1200, about 400 px past the fold, and the page had 650 px of
+scroll travel. Quad and Rates, under the narrow-window rules, set the
+list's own overflow to visible and let `.screen-page` scroll. That element
+inherited `pointer-events: none` from `.screen`. A click on empty space is
+meant to fall through. A scroll is not: iOS Safari will not pan a scroller
+the finger cannot hit, even when the finger is on a child that can be hit
+(WebKit 183870, still open). Chromium will, which is why a drag on a Quad
+row already moved the page here and the report is a phone. How to fly was
+the stricter case: the lesson is not a hit target, so a drag on it hit the
+document body and the page stayed at scroll 0 in Chromium too, with Back
+about 450 px below the fold. `.screen-courses` already set
+`pointer-events: auto` next to its page scroller. The same declaration is
+now on `.screen-page` and `.screen-modal`.
+
+Left alone on purpose: the airframe picture. `showcase.js` calls
+`preventDefault` on pointerdown and the canvas is `touch-action: none`, so
+a drag that starts on the quad still orbits it. The title menu already
+scrolls inside `.menu`, which accepts the touch, and that rule was not
+changed. Hidden screens are `display: none`, so this does not cover the
+flight canvas.
+
+What went wrong on the way. The first probe imported the page driver by a
+`C:` path, which Node's ESM loader rejects. The second passed the repo root
+with forward slashes, and `tests/lib/server.js` 403s that because
+`path.join` on Windows writes backslashes and `startsWith` then fails. A
+reload under `deviceScaleFactor: 3` never reached `__shellReady`. The run
+that counted used `openPage` with a real Windows root and no reload. Local
+`main` was 62 commits behind `origin/main` (9ed8b9c against 40fe84f). The
+branch `GroksBugFixForClaudeToReview` was cut from `origin/main`. Local
+`main` was not moved.
+
+### RUN LOG
+
+    headless Chromium, 390 by 797, touch, mobile metrics
+      before               Quad row drag moved the page; How to fly drag
+                           at mid-screen did not (scrollTop stayed 0,
+                           hit target was body)
+      after                .screen-quad / .screen-rates / .screen-howto
+                           computed pointer-events auto, overflow-y auto
+                           Quad drag scrollTop 0 to 285
+                           How to fly drag scrollTop 0 to 297
+                           Rates mid-screen hit is the page, was body
+                           title stays pointer-events none
+                           flight shows no menu screen (hit is body)
+    npm run verify         not run: stylesheet hit testing, not the plant
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | review | Grok's page scroll fix: right cause, right shape, one unmentioned change on Paused
+
+The owner asked for a review of the branch `GroksBugFixForClaudeToReview`,
+written by Grok and committed under the owner's name: 738ae65, one commit on
+40fe84f, which is main's tip. It adds `pointer-events: auto` to
+`.screen-page, .screen-modal` for bug-d31c33a0. One reader, the diff and the
+code around it. Nothing was flown or driven in a browser, and this review
+changed no code. Nothing below was acted on, because the ask was a review.
+
+The fix is sound. The cause is real, the declaration is the smallest one
+that removes it, and it copies what `.screen-courses` already does.
+
+### Open, for the owner
+
+**Paused stops the air slider taking input, and the commit does not say
+so.** `.row-range` is pointer-events auto and the slider sits bottom centre,
+under the empty part of the modal. The note on `.osd-sticks` says `.osd.dim`
+makes the OSD a stacking context "under the menu, where it belongs", so the
+modal is painted over it. While the modal was pointer-events none, a drag
+went through to the slider. Now the modal takes it, and the hint's Got it
+button goes the same way. The entry that hardened the lap void on 2026-09-18
+("A paused change dodged the void") measured that the slider could be
+dragged while paused. That sentence is no longer true. The void guard is
+still correct. The slider just cannot reach it from Paused any more. The
+slider is the only control in the shell that writes `settings.weight`, and
+the feel report's floaty hint, which can be opened from Paused, tells the
+pilot to drag it. After this commit that means resuming first. Probably the
+better behaviour, since the menu is modal, but it is the owner's call and no
+check can see it: nothing in scripts/ or tests/ hit tests the pause screen.
+If the owner wants the old behaviour, take `.screen-modal` out of the
+selector. The pause list already scrolls on its own, because `.menu` is
+pointer-events auto, so on a phone the modal's page scroller barely matters.
+
+**The Quad picture is still a dead zone for a scroll.** At 390 by 797 the
+`max-width: 860px` block makes the canvas about 343 by 167 px, read from the
+sheet, not measured. `.craft-view` is `touch-action: none`, set in the
+sheet and again inline in showcase.js, so a swipe that starts on it orbits
+the quad and does not scroll. The orbit reads only clientX.
+`touch-action: pan-y` in both places would give vertical swipes to the page
+and keep the horizontal orbit. The commit left the picture alone on purpose.
+
+**Only an iPhone can close bug-d31c33a0.** The run log's own before row says
+a drag on a Quad row already moved the page in Chromium, so "Quad 0 to 285"
+reads the same before and after. How to fly and the Rates hit target are
+real before and after changes, but they are the desktop half of the
+problem. Headless Chromium cannot reproduce the iOS behaviour.
+
+### Checked and stood
+
+- The citation. WebKit 183870, "[iOS][pointer-events] Fix scrolling on
+  nested pointer-events: auto inside pointer-events: none", filed
+  2018-03-21, status NEW. Desktop Safari, Chromium and Firefox pan in that
+  case and iOS does not, which is the report.
+- The reach. The declaration lands on fourteen screens and the modal, not
+  three. How to fly, Tricks, Credits, Courses, Freestyle, Quad, Pilot,
+  Standings, Launch, Rates, PIDs, FC, Calibrate and Pad pick carry
+  `.screen-page`, and Paused carries `.screen-modal`. Courses and Freestyle
+  already had auto, so twelve pages and Paused change behaviour.
+- Nothing else relied on empty space passing through. Nothing listens on
+  `canvas#view`. The command bars (z-index 6), chips (6 and 7), dialogs (8)
+  and the loading screen (10) sit above every screen. The thumb-stick
+  overlay is the last child of #ui and is shown only in flight. Hidden
+  screens are `display: none` in show(). The window drop and wake-audio
+  listeners ignore the target, and no later rule sets pointer-events on a
+  screen element.
+- It works where it is needed. `.menu-stage`, `.rates-panel` and the
+  section headings are explicitly none, so a finger on them now falls
+  through to the page, which is the scroller.
+- Unlisted improvements. On any window up to 1280 px wide, a mouse wheel
+  over a heading, the lede or empty space on Quad, Rates or How to fly now
+  scrolls the page, and the page's scrollbar can be grabbed. A click on
+  empty page space now reaches the mousedown handler on #ui, which closes
+  an open dropdown. The phone rule's query is 1280 px, although its comment
+  still says 900, so laptops get these too.
+- The record. There are no em or en dashes and no trailing whitespace. The
+  header matches recent entries, and "62 commits behind" is exact. The
+  commit has no trailer naming Grok, so `git log` alone does not say who
+  wrote it. This entry does.
+
+### Out of scope, noted
+
+The Windows 403 in Grok's entry is real. `tests/lib/server.js` checks
+`join(rootDir, rel)` against `rootDir` as it was passed in, so a
+forward-slash root on Windows, or a `./` relative root on any OS, fails
+every request. The repo's own callers pass native absolute roots and are
+unaffected. Resolving the root once and testing against root plus `sep`
+would fix it.
+
+### RUN LOG
+
+    git merge-base 738ae65 origin/main   40fe84f, main's tip, fetched first
+    git diff --stat vendor/betaflight    empty, on 40fe84f..738ae65
+    WebKit bug 183870                    fetched: title and status as above
+    path.win32.join probe                forward-slash root fails startsWith
+    browser                              not run: the reported bug is iOS
+                                         only and headless Chromium cannot
+                                         see it. Offered to the owner.
+    npm run verify                       not run: a stylesheet review, not
+                                         the plant, the module or the build
+
+## 2026-09-25 | shell, git | A swipe on the quad scrolls Quad, and the page scroll fix goes to main
+
+The owner's answers, 2026-09-25, after the review above. Do not ignore
+bug-d31c33a0 and do not replace Grok's fix: keep it as written, with
+`.screen-modal` included. Add `touch-action: pan-y` to the Quad picture.
+Merge to main for the owner to fly.
+
+What changed. `.craft-view` in index.html and the inline style in
+src/render/showcase.js go from `touch-action: none` to `pan-y`. The inline
+value is the one that applies, and the sheet says the same thing so the two
+cannot be read as disagreeing. The orbit reads clientX only, so the vertical
+swipe it gives up was never used. The browser takes a vertical pan and sends
+pointercancel, which the existing endDrag already handles. Grok's comment on
+`.screen-page` described the old none and now describes pan-y. The picture
+exists on the Quad screen only, so nothing else moves.
+
+Where the review's findings stand:
+
+- The Quad picture as a scroll dead zone: acted on, above.
+- Paused no longer lets the Weight slider be dragged: kept, so this one is
+  declined. The menu is modal, and the feel report's floaty hint says the
+  slider is "on the flight screen", so nothing promises a paused drag.
+- Only an iPhone can close the ticket: open until the owner flies it.
+- The Windows 403 in tests/lib/server.js: not done, out of scope. Queuing it
+  as a separate task timed out, so this entry and the review are its record.
+
+What went wrong. The first read of the sheet gave the picture as up to 46vh,
+half a phone screen, from the `.screen-quad .craft-showcase-frame` cap. The
+`max-width: 860px` block that sets its height to clamp(110px, 21vh, 210px)
+was found second. The first draft of the new comment said 21vh flat, which
+is wrong on a phone held sideways, where the 110 px floor applies.
+
+What to fly. An iPhone, portrait, the Quad screen: a swipe up or down that
+starts on the rows, the text or the picture scrolls the page, and a sideways
+drag on the picture still turns the quad. How to fly and Rates scroll from
+anywhere on the page. Pause: the menu works, and the Weight slider under it
+stays put until Resume. Wrong would be a row swipe that does not scroll,
+which means Grok's line did not take on that phone, or a quad that turns
+more than a hair during a vertical scroll, which means the pan and the orbit
+are fighting.
+
+### RUN LOG
+
+    node --check src/render/showcase.js   OK
+    stylesheet braces     901 open, 901 close, before and after. The comment
+                          count reads one over on both, from a pre-existing
+                          assets/gate/*.jpg inside a comment
+    eslint                no config in the repo, not run
+    browser               not run: the owner flies it on an iPhone, the only
+                          place the ticket's bug exists. Headless Chromium
+                          cannot see WebKit 183870
+    npm run verify        not run: a stylesheet value and an inline style,
+                          not the plant, the module or the build
+    git merge-base        40fe84f, main's tip. main moves by fast-forward
+
+## 2026-09-25 | shell, builder | A fourth card on the gate, and the builder asks what is being built
+
+The owner, with three screenshots (the gate's three cards, and the
+builder's bar with its 5 INCH, WHOOP, FREESTYLE switch circled): "on this
+page i want a 4th box - map builder. Then in the track builder app make the
+menu to change between 5 inch whoop and freestyle way more prominant. do
+this by offering an modal overlay, showing the same three menu boxes wiht
+images, then if the user clicks on one they get that toggle, retain the
+current method so the user can change back". Shell and builder only; the
+plant, the ABI and the build are untouched.
+
+### What changed
+
+- **The gate has a fourth card, Map builder** (BUILDER_CARD in
+  src/ui/ui.js). It is not a fourth way in: a way seats an aircraft and a
+  mode, and this seats nothing. Pressing it leaves for the builder with
+  nothing in the address, and the builder asks the rest. It is last, after
+  the three ways and before the pad trouble row (renderMenu's row offset
+  needs every card before every row). Its facts are Tracks, Rooms, Maps, in
+  amber, the builder's colour. No plan drawing over its picture: the
+  drawing is the aircraft to scale, and this card seats no aircraft.
+- **Its picture**, assets/gate/builder.jpg, is a frame of the builder's own
+  3D preview on the starter map, Hibari Yard: the bando, the crane over the
+  crane gap, the chimney, the water tower, the pylon, the containers and
+  the named gaps' labels. Written by scripts/gatecards.js like the other
+  three, through tests/lib/page.js rather than shots.js (shots.js records a
+  fault on any frame with no race gate to report, which is every frame of
+  the builder). `npm run gen:gatecards -- builder` now regenerates one
+  picture without rewriting the other three.
+- **Four across on a desktop, two by two on a phone** (index.html). The
+  gate's column is 100em wide, from 78em, so four cards are 358 px each at
+  1600 by 900 rather than 294. A portrait phone gets a two by two grid of
+  upright cards with the sentence taken off, as the landscape phone already
+  had it; an upright tablet (860 px wide or less, 960 px tall or more) gets
+  the sentence back. The landscape phone keeps one row, now of four.
+- **The builder's chooser** (openChooser in src/trackbuilder/app.js): "What
+  are you building?" over the whole page, three cards with the gate's own
+  names and the gate's own pictures (../../assets/gate/*.jpg, files, not
+  modules, so the builder still imports none of the shell), and sentences
+  about building rather than flying. A card is the switch: it calls the same
+  setCanvas the bar's buttons do, so nothing is converted and each canvas
+  keeps its own seat. The cursor is the keyboard focus, drawn as the gate
+  draws its cursor (a sakura ring and a sakura name), opens on the canvas
+  behind, and follows the pointer as the gate's does. Arrows walk the
+  cards, Enter or a click picks, and Escape, Close and a click outside keep
+  the canvas behind.
+- **The switch in the bar is kept**, unchanged, and when the chooser closes
+  it pulses twice in sakura, so the way back is seen once rather than found
+  later. Reduced motion flattens the pulse like every other animation.
+- **When it asks** (asksCanvas): on arrival, unless the way in already
+  said. ?mode= (the Track room's and the Freestyle room's rows), an Edit a
+  copy or Edit this track intent, ?share= (the board), ?track= and ?class=
+  are not asked, which is the rule the simulator's gate keeps with its
+  links. A reload or Back and Forward is not asked either
+  (performance.getEntriesByType('navigation')), because by then ?mode has
+  been taken out of the address and every reload would otherwise ask an
+  author what they are building in the middle of building it.
+- **Keys are held while it is up** (bindKeys). It opens before the author
+  has touched anything, and G, V or Delete pressed at it would otherwise
+  reach the canvas behind: a tool armed, the view flipped. Only Escape goes
+  through.
+- **Every builder dialog is now role=dialog, aria-modal, named by its
+  title** (modal()). One addition beyond the ask, in the function the
+  chooser is built on; nothing on screen changes.
+
+### Decisions made without asking, for the owner to overrule
+
+1. **The label is the owner's words, Map builder**, though the page calls
+   itself Track Builder and makes race tracks too. The blurb and the facts
+   (Tracks, Rooms, Maps) say it makes all three.
+2. **The chooser asks only when the way in names nothing**: the gate's new
+   card, a bookmark, the canonical address. The Track and Freestyle rooms'
+   builder rows go straight to their canvas as before. If the owner wants
+   the question on every arrival, it is asksCanvas returning true.
+3. **A portrait phone loses the cards' sentences.** Four sentenced cards do
+   not fit a phone, and three already did not: see What went wrong.
+4. **The builder card's picture is the builder, not the simulator.** The
+   three ways are places to fly and their pictures are the places; this
+   card opens a tool, and the honest picture of it is the tool.
+
+### Coverage
+
+- **lint:shell**: the gate pins four cards, the three ways in exactly as
+  before with a photograph and a plan each, then Map builder with a
+  photograph and no plan, acting as the builder. It still fails on one
+  problem, the title's 23 px menu overflow, which clean main fails
+  identically (run this turn).
+- **lint:input sections 15 and 16**: from the real gate, the fourth card
+  pressed with Enter must land on the builder with nothing in the address
+  and the chooser up; three cards with the gate's names and loaded
+  pictures; the cursor on the canvas behind; G and V pressed at it change
+  nothing; the arrows walk and stop at the last card; Enter on Freestyle
+  opens the map canvas and the bar says Freestyle; the bar's 5 inch still
+  changes it back; a reload is not asked. Then ?mode=race and
+  ?mode=freestyle are not asked, and Escape, on a visit that was asked,
+  keeps the canvas behind.
+- **Both can fail.** The updated checks were run against main's code in a
+  clean worktree this turn: lint:shell adds four gate failures to the
+  overflow it already has, and lint:input fails nine of section 15's ten
+  checks and the Escape check. The tenth, no uncaught exception, has
+  nothing to catch on a page that never reaches the builder. The ?mode
+  checks pass there, as they must: they guard against the question
+  arriving where it should not, and main never asks.
+
+### What went wrong
+
+- **The gate already did not fit a small phone.** Measured before this
+  change at 375 by 667: the three stacked cards ran from 144 to 767 under a
+  command bar at 615, so 84 px of the Freestyle card's 236 showed. Found
+  while fitting the fourth; the two by two grid fixes both, the last card
+  ending at 602 against the bar's 615.
+- **The first builder picture** cut CRANE GAP at the left edge and left the
+  bottom third as empty ground, which is the part of the card its gradient
+  darkens. Recomposed from eight candidate orbits; the one kept puts every
+  subject in the top two thirds.
+- **The first chooser drew two cursors.** The canvas behind was ringed, and
+  the keyboard focus drew its outline as well, so after one arrow press two
+  cards looked chosen. The ring is the focus now, and the pointer moves it.
+- **shots.js cannot photograph the builder cleanly**: every frame records
+  a harness fault, because the page has no race gate to report. That is
+  right for the simulator and is why gatecards.js drives the builder
+  through tests/lib/page.js instead; shots.js is unchanged.
+- **The first cut of the new checks was weaker than it looked**, and the
+  run against main's code is what showed it. An unguarded click on the
+  bar's 5 inch button threw when the builder never opened and aborted the
+  run before section 16; the state probe threw on a builder with no
+  choosing(); the Escape check would have passed on a builder that never
+  asks at all, because it did not require the question to be up first; and
+  lint:shell read the last card's action without showing the gate first,
+  so it depended on whichever screen the probe happened to be on. All four
+  fixed before the final runs below.
+
+### RUN LOG
+
+    npm run lint:shell             1 problem, title overflow 23 px; clean
+                                   main (40fe84f, worktree) fails the same
+                                   one problem with every number equal,
+                                   run this turn; all gate checks pass
+    npm run lint:input             2 failed, 154 passed; the 2 are "parked
+                                   and left", failing on main's code too;
+                                   the 13 new checks pass
+    updated checks, main's code    lint:shell 5 problems (the overflow and
+                                   4 gate); lint:input 12 failed (the 2
+                                   parked, 9 of section 15, Escape)
+    npm run check:clip             652 passed, 0 failed
+    npm run lint:nouns             PASS
+    npm run lint:boot              9 of 9 clean
+    npm run lint:preload           up to date
+    node scripts/gatecards.js builder   assets/gate/builder.jpg, 72 kB
+    shots, the gate                1600x900, 1280x720, 768x1024, 390x844,
+                                   375x667, 844x390: every card above the
+                                   command bar
+    shots, the chooser             1600x900, 1280x720, 1024x600 (fits, no
+                                   scroll), 720x820 (cards on their sides)
+    npm run verify                 not run: shell and builder only, no
+                                   physics, plant, ABI or build change
+    git diff --stat vendor/betaflight   empty
+    merged main, f678dba           after the runs above: the page scroll
+                                   fix, no file in common but index.html
+                                   (other rules) and this file; merge-base
+                                   40fe84f, one history
+    npm run lint:shell, merged     1 problem, the same title overflow
+    npm run lint:input, merged     2 failed, 154 passed, the same 2; the
+                                   13 new checks pass
+
+## 2026-09-25 | git | The fourth card and the builder's chooser, merged to main for the owner to test
+
+The owner, on the entry above: "merge to main, i'll test it". That is the
+approval to put the gate's Map builder card and the builder's chooser on
+main, and the verification scale chosen is the owner testing it by hand.
+The four decisions that entry lists (the label, when the chooser asks, the
+phone layout, the card's picture) were put to the owner and are not
+answered yet; they ride on main as built, and testing it is how the owner
+will judge them.
+
+What to look for: the fourth card on the gate, Map builder, opens the
+builder with "What are you building?" up over it; picking Freestyle lands
+on the map canvas with the switch in the bar reading FREESTYLE; the switch
+still changes it back. What would count as wrong: the question appearing
+when coming in from the Track room's Build a track or the Freestyle room's
+Build a freestyle map, or after a reload; a key pressed at the question
+doing anything to the canvas behind it; a card on the gate hanging under
+the command bar on a phone.
+
+main had not moved since the branch took f678dba in, so main fast-forwards
+to the branch: no merge commit, nothing rewritten, one history.
+
+### RUN LOG
+
+    code                     unchanged since the merged tree's reruns in
+                             the entry above; this entry is new
+    checks                   not rerun: nothing they read changed since
+                             the entry above's lint:shell and lint:input
+                             on the merged tree
+    git merge-base           f678dba, main's tip; main moves by
+                             fast-forward
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | git | Merge main: the fourth gate card and the builder's chooser
+
+main had moved seven commits: a finger scrolls the page menus on an iPhone,
+the Quad picture gives vertical swipes to the page, and a fourth card on
+the gate with the builder asking which canvas to start on when the way in
+names nothing (asksCanvas). Merged into this branch, not rebased;
+merge-base 40fe84f, one history. Only PROGRESS.md conflicted, and both
+sides were kept.
+
+The one interaction worth checking was Fly this map against the chooser:
+every way into the map builder this branch uses carries ?mode=freestyle,
+which the chooser does not ask over, and lint:input's Fly this map pages
+passed on the merged tree beside main's new chooser checks.
+
+### RUN LOG
+
+    npm run check:clip             652 passed, 0 failed
+    npm run lint:input             2 failed, 154 passed: the "parked and
+                                   left" pair main has; every Fly this map
+                                   and chooser check passes
+    npm run lint:shell             1 problem, title overflow 23 px, main's
+    npm run lint:boot              9 of 9 clean
+    npm run lint:preload           up to date
+    npm run lint:nouns             PASS
+    node scripts/props-check.js    all passed
+    npm run check:world-golden     all passed
+    git merge-base                 40fe84f, one history

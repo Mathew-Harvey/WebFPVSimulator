@@ -1300,6 +1300,12 @@ const BEHAVIOUR = `(() => {
    * three cropped photographs cannot carry. So the detector counts both, and
    * a card missing either is the failure.
    *
+   * AND A FOURTH CARD, Map builder, which the owner asked for on 2026-09-25.
+   * It is not a fourth way in: it seats nothing and leaves for the builder,
+   * so it is last, it carries a picture and NO drawing (the drawing is the
+   * aircraft, and it seats no aircraft), and the three ways in are pinned
+   * exactly as they were. lint:input walks it into the builder.
+   *
    * Answered through act(), which is what a keypress calls, so the seat has
    * to follow the answer as well as the flag.
    */
@@ -1321,6 +1327,10 @@ const BEHAVIOUR = `(() => {
     const gateItems = ui.items().filter((it) => ui.isStop(it));
     const gate = gateItems.map((it) => it.label);
     const cards = cardsOf();
+    /* The last card's action, read and not pressed: pressing it leaves for
+     * the builder, which would end this probe. */
+    const lastCard = gateItems.filter((it) => it.card).pop();
+    const builderAction = lastCard ? lastCard.action : null;
     /*
      * THE GATE WITH THE MODE ALREADY ANSWERED, which is the case that
      * shipped broken once and which a probe that always nulls the mode
@@ -1448,16 +1458,20 @@ const BEHAVIOUR = `(() => {
       cards,
       backFromWhoop,
       whoop,
-      /* Three cards, every one of them with a photograph AND a plan drawing,
+      /* The three ways in, every one of them with a photograph AND a plan
+       * drawing, then the builder's card with a photograph and no drawing,
        * and not a row among them: the whole point of the screen is that it
        * is not a menu. */
-      asksThree: gate.length === 3 && gate.join() === 'Five inch racing,Whoop racing,Freestyle'
+      asksFour: gate.length === 4
+        && gate.join() === 'Five inch racing,Whoop racing,Freestyle,Map builder'
         && gateItems.filter((it) => !it.card).length === 0,
-      asCards: cards.length === 3 && cards.every((c) => c.shot && c.drawn),
+      asCards: cards.length === 4 && cards.slice(0, 3).every((c) => c.shot && c.drawn)
+        && Boolean(cards[3].shot) && !cards[3].drawn,
+      builderAction,
       modeSetGate,
-      /* Three cards, laid out and visible, and the menu's own copy off the
+      /* Four cards, laid out and visible, and the menu's own copy off the
        * screen, when the mode is answered and the aircraft is not. */
-      gateWithMode: modeSetGate.isGate && modeSetGate.cards.length === 3
+      gateWithMode: modeSetGate.isGate && modeSetGate.cards.length === 4
         && modeSetGate.cards.every((c) => c.wide) && modeSetGate.keepNote === 0,
       /* One press: the whoop is seated, the mode is race, the seat is a
        * track rather than a world, the gate is gone and no Freestyle row
@@ -1835,13 +1849,16 @@ async function main() {
       failures.push(`the gate: ${b.modeGate ? b.modeGate.error : 'no result'}`);
     } else {
       const g = b.modeGate;
-      if (!g.asksThree) {
-        failures.push(`the gate opens on ${g.gate.join(', ') || 'nothing'}, not on the three ways in`);
+      if (!g.asksFour) {
+        failures.push(`the gate opens on ${g.gate.join(', ') || 'nothing'}, not on the three ways in and the builder`);
       }
       if (!g.asCards) {
         failures.push(
-          `the gate: ${g.cards.length} card(s) drawn as ${JSON.stringify(g.cards)}, so a card is a row again or has lost its picture or its plan`,
+          `the gate: ${g.cards.length} card(s) drawn as ${JSON.stringify(g.cards)}, so a card is a row again, has lost its picture or its plan, or the builder's card has grown an aircraft`,
         );
+      }
+      if (g.builderAction !== 'builder') {
+        failures.push(`the gate's last card acts as ${g.builderAction}, not as the builder`);
       }
       if (!g.gateWithMode) {
         failures.push(`the gate: with the mode already answered it drew ${g.modeSetGate.cards.length} card(s), ${g.modeSetGate.cards.filter((c) => c.wide).length} of them visible, is-gate ${g.modeSetGate.isGate}, ${g.modeSetGate.keepNote} menu note(s) still showing`);

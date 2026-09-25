@@ -179,6 +179,88 @@ function rememberCanvas(canvas) {
 const CANVAS_NAMES = { full: 'five inch', micro: 'whoop', freestyle: 'freestyle' };
 
 /*
+ * THE CHOOSER'S THREE CARDS, which are the simulator's gate cards with the
+ * builder's words on them.
+ *
+ * The owner asked on 2026-09-25 for the switch between five inch, whoop and
+ * freestyle to be "way more prominent", as an overlay showing the gate's
+ * three boxes with their pictures, a click on one doing what the switch
+ * does, and the switch in the bar kept so an author can change back. So
+ * these carry the gate's own names and its own pictures, the files
+ * scripts/gatecards.js writes for the title, and a pilot who pressed Five
+ * inch racing on the gate knows this card on sight. The sentences are about
+ * building rather than flying, because this is the page where the question
+ * is what to make.
+ *
+ * The pictures are the only thing taken from the simulator's side, and they
+ * are files, not modules: the builder still imports none of the shell.
+ */
+const CHOICES = [
+  {
+    canvas: 'full',
+    label: 'Five inch racing',
+    art: '../../assets/gate/race.jpg',
+    blurb: 'A race track on a sixty metre field. MultiGP gates, flags and dive gates on a grid in metres, flown on the five inch and published to the board.',
+    facts: ['5 ft gates', '60 m field', 'The board'],
+  },
+  {
+    canvas: 'micro',
+    label: 'Whoop racing',
+    art: '../../assets/gate/whoop.jpg',
+    blurb: 'A room for the 65 mm whoop. RaceGOW’s 28 inch gates in a ten by twelve metre hall, a grid in inches, and RaceGOW’s own rules checking the layout.',
+    facts: ['28 in gates', 'Indoors', 'RaceGOW'],
+  },
+  {
+    canvas: 'freestyle',
+    label: 'Freestyle',
+    art: '../../assets/gate/freestyle.jpg',
+    blurb: 'A map of your own on a 160 metre plot. Buildings, cranes, a skate set and named gaps wherever you put them, flown on the five inch with no gates and no clock.',
+    facts: ['No gates', '160 m plot', 'Five inch'],
+  },
+];
+
+/*
+ * WHETHER THIS VISIT IS ASKED WHICH CANVAS, which is the same rule the
+ * simulator's gate keeps: ask on arrival, unless the way in already said.
+ *
+ * Every link the simulator has into the builder says: ?mode= from the Track
+ * room and the Freestyle room, an intent from Edit a copy and Edit this
+ * track, ?share= from the board, ?track= from a pasted link. Those are not
+ * asked, because a chooser in front of a decision made on the page before
+ * is a keypress somebody has to spend for nothing. ?class= is a hand typed
+ * answer and counts as one.
+ *
+ * What is left is a visit that names nothing: the gate's Map builder card,
+ * a bookmark, the canonical address. Those are asked.
+ *
+ * And only a fresh visit. A reload is the same visit again, usually in the
+ * middle of the work, and the address has already lost its ?mode by then
+ * (see dropUrlMode), so without this every reload would ask what the author
+ * is building while they are building it. Back and forward are the same.
+ */
+function asksCanvas(intent) {
+  if (urlMode() || isRaceVisit(intent)) {
+    return false;
+  }
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('track') || params.has('class')) {
+      return false;
+    }
+  } catch (e) {
+    return false;
+  }
+  try {
+    const nav = performance.getEntriesByType('navigation')[0];
+    return !nav || nav.type === 'navigate';
+  } catch (e) {
+    /* No navigation timing. Ask: a question too many is recoverable with
+     * one press and a question too few is the thing being fixed. */
+    return true;
+  }
+}
+
+/*
  * WHETHER THIS VISIT OPENS THE MAP. Three answers, in order:
  *
  *   ?mode=         the address says outright. The simulator's own links
@@ -314,6 +396,11 @@ export class App {
     this.view3d = new View3D(nodes.canvas3d, this);
     this.panels = new Panels(this, nodes);
 
+    /* Read before restore(), which takes ?mode out of the address. */
+    const asking = asksCanvas(readBuilderIntent());
+    /* Run once when the open dialog closes, however it closes. The chooser
+     * uses it to point at the switch in the bar. See closeModal. */
+    this.afterModal = null;
     this.restore();
     /* The palette is the RESTORED document's class, not the default. Panels
      * builds one in its constructor because it must have something before a
@@ -330,6 +417,9 @@ export class App {
     this.view2d.frameField();
     this.view3d.frameField();
     this.refresh();
+    if (asking) {
+      this.openChooser();
+    }
   }
 
   /* ---------------- lifecycle ---------------- */
@@ -1983,6 +2073,133 @@ export class App {
       : `A new ${fresh}.`);
   }
 
+  /*
+   * THE CHOOSER: the three canvases as the gate's three picture cards, over
+   * the whole page, on arrival. See asksCanvas for when, and CHOICES for why
+   * these cards.
+   *
+   * A card does exactly what the switch in the bar does, through the same
+   * setCanvas, so nothing is converted and nothing is lost: each canvas is
+   * its own seat. The switch stays where it was, and when the chooser closes
+   * the switch is pointed at, so the way back is seen once rather than
+   * found later.
+   *
+   * The cursor is the keyboard focus, drawn as the gate draws its cursor: a
+   * sakura ring and a sakura name. It opens on the canvas already behind
+   * the chooser, which is the one the builder reopened on, the way the
+   * gate's cursor opens on the seated aircraft's card. Enter keeps it, and
+   * so do Escape, Close and a click outside: closing is an answer too, and
+   * it is "the one behind".
+   *
+   * Real buttons, not the gate's role=button divs. The gate's Enter is its
+   * own handler's; here Enter and Space are the browser's, and the page's
+   * keys are held while the chooser is up (see bindKeys), so nothing behind
+   * it arms a tool or flips the view.
+   */
+  openChooser() {
+    const now = canvasOf(this.doc);
+    const body = document.createElement('div');
+    const lede = document.createElement('p');
+    lede.className = 'tb-help tb-choose-lede';
+    lede.textContent = 'Each keeps its own work, so nothing is lost by picking. The 5 inch, Whoop and Freestyle switch at the top left moves between them any time.';
+    const grid = document.createElement('div');
+    grid.className = 'tb-choose';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Which builder');
+    let current = null;
+    for (const c of CHOICES) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'tb-choose-card';
+      card.dataset.canvas = c.canvas;
+      const art = document.createElement('span');
+      art.className = 'tb-choose-art';
+      const img = document.createElement('img');
+      img.className = 'tb-choose-shot';
+      img.src = c.art;
+      /* The name is right under it. */
+      img.alt = '';
+      img.decoding = 'async';
+      art.append(img);
+      const text = document.createElement('span');
+      text.className = 'tb-choose-body';
+      const name = document.createElement('span');
+      name.className = 'tb-choose-name';
+      name.textContent = c.label;
+      const blurb = document.createElement('span');
+      blurb.className = 'tb-choose-blurb';
+      blurb.textContent = c.blurb;
+      const facts = document.createElement('span');
+      facts.className = 'tb-choose-facts';
+      for (const f of c.facts) {
+        const fact = document.createElement('span');
+        fact.className = 'tb-choose-fact';
+        fact.textContent = f;
+        facts.append(fact);
+      }
+      text.append(name, blurb, facts);
+      card.append(art, text);
+      if (c.canvas === now) {
+        card.setAttribute('aria-current', 'true');
+        current = card;
+      }
+      card.addEventListener('click', () => this.chooseCanvas(c.canvas));
+      /* The ring is the cursor, as on the gate, and the cursor follows the
+       * pointer there, so it does here: the card under the pointer takes
+       * the focus and the ring with it, and there is never one card ringed
+       * while another is about to be picked. */
+      card.addEventListener('pointerenter', () => card.focus({ preventScroll: true }));
+      grid.append(card);
+    }
+    /* Arrows walk the cards, as they walk the gate's. */
+    grid.addEventListener('keydown', (e) => {
+      const cards = [...grid.querySelectorAll('.tb-choose-card')];
+      const at = cards.indexOf(document.activeElement);
+      if (at < 0) {
+        return;
+      }
+      const to = {
+        ArrowRight: at + 1, ArrowDown: at + 1, ArrowLeft: at - 1, ArrowUp: at - 1,
+        Home: 0, End: cards.length - 1,
+      }[e.key];
+      if (to === undefined) {
+        return;
+      }
+      e.preventDefault();
+      cards[Math.max(0, Math.min(cards.length - 1, to))].focus();
+    });
+    body.append(lede, grid);
+    this.modal('What are you building?', body, [], { cls: 'tb-chooser' });
+    this.afterModal = () => this.pointAtSwitch();
+    (current || grid.querySelector('.tb-choose-card')).focus();
+  }
+
+  /* Whether the chooser is the dialog that is up. */
+  choosing() {
+    return !this.nodes.modal.hidden && Boolean(this.nodes.modal.querySelector('.tb-choose'));
+  }
+
+  chooseCanvas(canvas) {
+    this.closeModal();
+    this.setCanvas(canvas);
+  }
+
+  /* Two sakura pulses round the switch in the bar, which is the way back to
+   * the other canvases once the chooser has gone. Reduced motion flattens
+   * them to nothing, like every other animation here. */
+  pointAtSwitch() {
+    const t = this.classToggle;
+    if (!t) {
+      return;
+    }
+    t.classList.remove('tb-class-hint');
+    /* A read of the layout between the two, so a second chooser in one
+     * session pulses again rather than finding the class already there. */
+    void t.offsetWidth;
+    t.classList.add('tb-class-hint');
+    t.addEventListener('animationend', () => t.classList.remove('tb-class-hint'), { once: true });
+  }
+
   buildTopBar() {
     const bar = this.nodes.topbar;
     bar.textContent = '';
@@ -2328,12 +2545,22 @@ export class App {
     this.toastTimer = setTimeout(() => node.classList.remove('on'), 4200);
   }
 
-  modal(title, body, actions = []) {
+  /* `opts.cls` adds a class to the box, for a dialog that needs its own
+   * width: the chooser is three picture cards across, not a column. */
+  modal(title, body, actions = [], opts = {}) {
     const back = this.nodes.modal;
     back.textContent = '';
     back.hidden = false;
+    /* A new dialog replaces the old one's content without closing it, so
+     * whatever the old one wanted run on close no longer applies. */
+    this.afterModal = null;
     const box = document.createElement('div');
-    box.className = 'tb-modal';
+    box.className = opts.cls ? `tb-modal ${opts.cls}` : 'tb-modal';
+    /* Said to a screen reader as what it is: a dialog, named by its title,
+     * with the page behind it out of reach until it closes. */
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', title);
     const h = document.createElement('h2');
     h.textContent = title;
     box.append(h, body);
@@ -2385,6 +2612,11 @@ export class App {
   closeModal() {
     this.nodes.modal.hidden = true;
     this.nodes.modal.textContent = '';
+    const after = this.afterModal;
+    this.afterModal = null;
+    if (after) {
+      after();
+    }
   }
 
   /* ---------------- keyboard ---------------- */
@@ -2393,6 +2625,17 @@ export class App {
     window.addEventListener('keydown', (e) => {
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) {
+        return;
+      }
+      /* The chooser is a question, and nothing behind it moves while it is
+       * asked. It opens before the author has touched anything, so a first
+       * key pressed at it (G for a gate, V for the 3D view, Delete) would
+       * otherwise land on a canvas they have not chosen yet. Its own keys,
+       * the arrows, Enter and Space, are handled on its cards. */
+      if (this.choosing()) {
+        if (e.key === 'Escape') {
+          this.closeModal();
+        }
         return;
       }
       const mod = e.ctrlKey || e.metaKey;

@@ -201,7 +201,7 @@ import {
 const LINK_ACTIONS = new Set(['leaderboard', 'wiki']);
 const SCREEN_ACTIONS = new Set([
   'courses', 'race', 'freestyle', 'pilot', 'quad', 'launch', 'standings', 'rates', 'pids', 'fc',
-  'howto', 'tricks', 'credits', 'trackbuilder', 'remix', 'editown', 'choosepad',
+  'howto', 'tricks', 'credits', 'trackbuilder', 'builder', 'remix', 'editown', 'choosepad',
   'calibrate',
 ]);
 
@@ -2914,6 +2914,31 @@ const WAYS = [
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
+/*
+ * THE FOURTH CARD, WHICH MAKES SOMETHING RATHER THAN FLYING IT. The owner
+ * asked for it on 2026-09-25: "on this page i want a 4th box - map builder".
+ *
+ * It is kept out of WAYS on purpose. A way seats an aircraft and a mode and
+ * lands on the menu behind the gate; this seats nothing. It leaves for the
+ * builder, a separate page, and the builder opens by asking which of its
+ * three canvases to start on, with the same three pictures this gate uses
+ * (openChooser in src/trackbuilder/app.js). So what is being made is asked
+ * on the page where it is made, and asked once.
+ *
+ * The picture is a frame of the builder's own 3D preview on the starter
+ * map, written by scripts/gatecards.js like the other three. There is no
+ * plan drawing over it, because the drawing is the aircraft to scale and
+ * this card seats no aircraft. Its facts are amber, the builder's colour.
+ */
+const BUILDER_CARD = {
+  id: 'builder',
+  label: 'Map builder',
+  art: 'assets/gate/builder.jpg',
+  blurb: 'Make your own. A race track for the five inch, a room for the whoop, or a freestyle map of bandos, cranes and named gaps, drawn from above and flown from the same page.',
+  facts: ['Tracks', 'Rooms', 'Maps'],
+  action: 'builder',
+};
+
 /* The way that is seated right now, which is what the gate's cursor opens
  * on and what a menu that has been backed out of returns to. The mode is
  * only set once the gate has been answered, so before that the racing card
@@ -5520,6 +5545,16 @@ export class Ui {
             facts: w.facts,
             action: w.action,
           })),
+          /* Last of the cards and before the trouble row, which has to
+           * come after every card: see the offset note above. */
+          {
+            label: BUILDER_CARD.label,
+            card: BUILDER_CARD.id,
+            art: BUILDER_CARD.art,
+            blurb: BUILDER_CARD.blurb,
+            facts: BUILDER_CARD.facts,
+            action: BUILDER_CARD.action,
+          },
           ...(trouble ? [trouble] : []),
         ];
       }
@@ -12359,6 +12394,13 @@ export class Ui {
     }
     if (action === 'mapbuilder') {
       window.location.href = 'src/trackbuilder/index.html?mode=freestyle';
+      return;
+    }
+    /* The gate's fourth card. No ?mode, because nothing on the gate has
+     * said which canvas: the builder asks, with the gate's own three
+     * pictures. See BUILDER_CARD. */
+    if (action === 'builder') {
+      window.location.href = 'src/trackbuilder/index.html';
       return;
     }
 

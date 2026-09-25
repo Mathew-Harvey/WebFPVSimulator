@@ -44526,3 +44526,59 @@ would fix it.
                                          see it. Offered to the owner.
     npm run verify                       not run: a stylesheet review, not
                                          the plant, the module or the build
+
+## 2026-09-25 | shell, git | A swipe on the quad scrolls Quad, and the page scroll fix goes to main
+
+The owner's answers, 2026-09-25, after the review above. Do not ignore
+bug-d31c33a0 and do not replace Grok's fix: keep it as written, with
+`.screen-modal` included. Add `touch-action: pan-y` to the Quad picture.
+Merge to main for the owner to fly.
+
+What changed. `.craft-view` in index.html and the inline style in
+src/render/showcase.js go from `touch-action: none` to `pan-y`. The inline
+value is the one that applies, and the sheet says the same thing so the two
+cannot be read as disagreeing. The orbit reads clientX only, so the vertical
+swipe it gives up was never used. The browser takes a vertical pan and sends
+pointercancel, which the existing endDrag already handles. Grok's comment on
+`.screen-page` described the old none and now describes pan-y. The picture
+exists on the Quad screen only, so nothing else moves.
+
+Where the review's findings stand:
+
+- The Quad picture as a scroll dead zone: acted on, above.
+- Paused no longer lets the Weight slider be dragged: kept, so this one is
+  declined. The menu is modal, and the feel report's floaty hint says the
+  slider is "on the flight screen", so nothing promises a paused drag.
+- Only an iPhone can close the ticket: open until the owner flies it.
+- The Windows 403 in tests/lib/server.js: not done, out of scope. Queuing it
+  as a separate task timed out, so this entry and the review are its record.
+
+What went wrong. The first read of the sheet gave the picture as up to 46vh,
+half a phone screen, from the `.screen-quad .craft-showcase-frame` cap. The
+`max-width: 860px` block that sets its height to clamp(110px, 21vh, 210px)
+was found second. The first draft of the new comment said 21vh flat, which
+is wrong on a phone held sideways, where the 110 px floor applies.
+
+What to fly. An iPhone, portrait, the Quad screen: a swipe up or down that
+starts on the rows, the text or the picture scrolls the page, and a sideways
+drag on the picture still turns the quad. How to fly and Rates scroll from
+anywhere on the page. Pause: the menu works, and the Weight slider under it
+stays put until Resume. Wrong would be a row swipe that does not scroll,
+which means Grok's line did not take on that phone, or a quad that turns
+more than a hair during a vertical scroll, which means the pan and the orbit
+are fighting.
+
+### RUN LOG
+
+    node --check src/render/showcase.js   OK
+    stylesheet braces     901 open, 901 close, before and after. The comment
+                          count reads one over on both, from a pre-existing
+                          assets/gate/*.jpg inside a comment
+    eslint                no config in the repo, not run
+    browser               not run: the owner flies it on an iPhone, the only
+                          place the ticket's bug exists. Headless Chromium
+                          cannot see WebKit 183870
+    npm run verify        not run: a stylesheet value and an inline style,
+                          not the plant, the module or the build
+    git merge-base        40fe84f, main's tip. main moves by fast-forward
+    git diff --stat vendor/betaflight   empty

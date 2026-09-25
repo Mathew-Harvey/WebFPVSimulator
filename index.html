@@ -953,9 +953,9 @@
        * screens are display: none, so this does not cover the flight canvas.
        *
        * bug-d31c33a0, Lucas, iPhone Safari, the Quad screen. The airframe
-       * picture still takes its own drag: touch-action none and a
-       * preventDefault on pointerdown, so a swipe that starts on the quad
-       * orbits it and does not scroll the list.
+       * picture keeps its sideways drag and gives up the vertical one: it
+       * is touch-action pan-y, so a swipe up or down that starts on the
+       * quad scrolls the page and a sideways one orbits it. See .craft-view.
        */
       .screen-page,
       .screen-modal {
@@ -1785,7 +1785,19 @@
         height: 100%;
         border: 0;
         background: #1a241c;
-        touch-action: none;
+        /*
+         * pan-y, not none. The orbit reads clientX and nothing else, so a
+         * vertical swipe costs it nothing. With none, a swipe that started
+         * on the quad could not scroll the page, and on a phone the picture
+         * is the width of the column and clamp(110px, 21vh, 210px) tall
+         * (the max-width 860px block), across the upper middle of the Quad
+         * screen, which is where a thumb lands. bug-d31c33a0 is a pilot who
+         * could not scroll that screen with a finger. The browser now takes
+         * a vertical pan and sends the canvas pointercancel, which ends the
+         * drag. A sideways drag still orbits. showcase.js sets the same
+         * value inline, and the inline one is what applies.
+         */
+        touch-action: pan-y;
       }
       .craft-showcase-cap {
         margin-top: 4px;

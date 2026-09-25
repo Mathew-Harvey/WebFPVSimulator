@@ -534,6 +534,7 @@ export async function boot({ loading, bootStart, mapId }) {
   let replayTimeId = '';
   let replayCamera = 'chase'; /* chase or fpv */
   let replayClean = false;
+  let cleanMode = false; /* clean=1 hides all sponsor art, independent of replay */
   let replayState = 'loading'; /* loading, ready, failed */
   let replayClock = null; /* { startMs, vt } when active */
   let replayStepMode = false; /* true when using __replayStep */
@@ -546,13 +547,15 @@ export async function boot({ loading, bootStart, mapId }) {
   const replayScratchUp = new THREE.Vector3();
   try {
     const params = new URLSearchParams(window.location.search);
+    /* Parse clean=1 independently: hides sponsor art on any map (built, freestyle, custom, share) */
+    cleanMode = params.get('clean') === '1';
     const replayParam = params.get('replay') || '';
     if (/^tm-[0-9a-f]{8}$/.test(replayParam)) {
       replayMode = true;
       replayTimeId = replayParam;
       const camParam = (params.get('cam') || 'chase').toLowerCase();
       replayCamera = camParam === 'fpv' ? 'fpv' : 'chase';
-      replayClean = params.get('clean') === '1';
+      replayClean = cleanMode; /* replayClean tracks clean within replay context */
     }
   } catch (e) {
     /* No URL to read. */
@@ -1145,7 +1148,7 @@ export async function boot({ loading, bootStart, mapId }) {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: ui.settings.graphics,
       renderScale: renderScaleOf(ui.settings),
-      hideSponsors: replayClean && replayMode,
+      hideSponsors: cleanMode,
       ...worldDocument(ui.settings.map),
     });
   } catch (e) {
@@ -1165,7 +1168,7 @@ export async function boot({ loading, bootStart, mapId }) {
     view = await loadMap(shell, 'custom', loading, {
       quality: ui.settings.graphics,
       renderScale: renderScaleOf(ui.settings),
-      hideSponsors: replayClean && replayMode,
+      hideSponsors: cleanMode,
     });
     /* The banner, not `notice`: that is declared with the frame loop's own
      * state further down and does not exist yet. This is the same way the

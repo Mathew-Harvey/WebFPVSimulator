@@ -9579,8 +9579,9 @@ export class Ui {
       return;
     }
 
-    /* Clear any previous max-height to measure natural size. */
+    /* Clear any previous max-height and flex constraints to measure natural size. */
     menu.style.maxHeight = '';
+    menu.style.flexShrink = '';
     menu.scrollTop = 0;
     
     /* Force layout. */
@@ -9625,6 +9626,7 @@ export class Ui {
       if (naturalGap < 16) {
         const reduction = 16 - naturalGap;
         menu.style.maxHeight = `${menu.scrollHeight - reduction}px`;
+        menu.style.flexShrink = '0';
       }
       return;
     }
@@ -9637,6 +9639,7 @@ export class Ui {
     const desiredScrollHeight = targetOffsetTop + (targetRowHeight * 0.5);
     
     menu.style.maxHeight = `${desiredScrollHeight}px`;
+    menu.style.flexShrink = '0';
     
     /* Force layout. */
     menu.offsetHeight;

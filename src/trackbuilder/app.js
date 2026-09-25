@@ -68,6 +68,7 @@ import {
   adoptShareFromLocation, TRACK_TAGS, TRACK_TAGS_MAX, tagLabel, usableTags,
 } from '../share/board.js';
 import { sendCardAnimation } from '../share/cardgif.js';
+import { sendShareCard } from '../share/card.js';
 import { BOARD_WINDOW, SIM_WINDOW, claimWindowName } from '../share/windows.js';
 import { patreonAnchor } from '../share/patreon.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
@@ -1550,6 +1551,29 @@ export class App {
   }
 
   /*
+   * THE SHARE CARD, drawn here for the reason the animation is. A link to
+   * this track posted on Facebook, X or WhatsApp shows a picture, their
+   * crawlers run no script to find one, and the board renders nothing, so
+   * the picture has to exist before anybody posts the link and only a
+   * browser can draw it. Every track and every map gets one, a field track
+   * included. See src/share/card.js.
+   *
+   * After the animation rather than beside it: two worlds built at once is
+   * two GPU contexts on a machine that may only have been happy with one.
+   * `noun` is "track" or "map", for the sentence.
+   */
+  async renderShareCardForBoard({ kind, noun, origin, editKey, status }) {
+    const was = status.textContent;
+    status.textContent = `${was} Drawing the picture a link to it shows.`;
+    const done = await sendShareCard({
+      kind, id: this.doc.id, board: origin, editKey,
+    });
+    status.textContent = done.error
+      ? `${was} The ${noun} is up, but its share picture could not be sent, so a link to it shows the WebFPV card for now: ${done.error}`
+      : `${was} A link to it, posted anywhere, shows the ${noun}.`;
+  }
+
+  /*
    * Put this course on the public board. The document goes as it is, logo
    * included, so every gate and every flag on the board copy wears the
    * same print the author sees here.
@@ -1796,6 +1820,9 @@ export class App {
          * anyway. See inspectGif in the board's src/validate.js.
          */
         await this.renderCardForBoard(origin, status);
+        await this.renderShareCardForBoard({
+          kind: 'track', noun: 'track', origin, editKey: readEditKey(this.doc.id), status,
+        });
         this.updateTopBar();
         const open = document.createElement('a');
         open.className = 'tb-btn tb-primary';
@@ -1951,6 +1978,13 @@ export class App {
           ? `This id was already on the board, so it went up as a new map, "${posted.name}".`
           : `${verb} as "${posted.name}".`;
         this.toast(`${verb} "${posted.name}" on the board.`);
+        /* The board drops a map's share card on every republish, because
+         * this is the only thing that republishes one, and it draws the
+         * new card here. See publishMapUnlocked in the board's store.js. */
+        const held = readMapListing(this.doc.id);
+        await this.renderShareCardForBoard({
+          kind: 'map', noun: 'map', origin, editKey: held ? held.editKey : '', status,
+        });
         this.updateTopBar();
         const open = document.createElement('a');
         open.className = 'tb-btn tb-primary';

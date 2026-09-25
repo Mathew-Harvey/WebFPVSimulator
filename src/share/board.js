@@ -561,6 +561,27 @@ export async function postTrackGif({ id, gif, editKey, origin }) {
 }
 
 /*
+ * THE SHARE CARD, for a track or a map: the 1200 by 630 JPEG a link to it
+ * shows when it is posted. Drawn by ./card.js in the browser that
+ * published, sent as base64 with that browser's edit key, exactly as the
+ * animation above is. `kind` is 'track' or 'map', which is only which of
+ * the board's two routes it goes to; a map's key opens a map's card and
+ * nothing else.
+ */
+export async function postShareCard({
+  kind, id, card, editKey, origin,
+}) {
+  const board = trimOrigin(origin || boardOrigin());
+  const route = kind === 'map' ? 'maps' : 'tracks';
+  const res = await fetch(`${board}/api/${route}/${encodeURIComponent(id)}/card`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ card, editKey: editKey || undefined }),
+  });
+  return readJson(res);
+}
+
+/*
  * A FREESTYLE MAP ON THE BOARD, which keeps maps apart from tracks.
  *
  * The board serves them at /api/maps and never at /api/tracks, so nothing

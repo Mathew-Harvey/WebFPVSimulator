@@ -80,6 +80,7 @@ import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import { stampFor, writeStamp } from './share/stamps.js';
 import {
   clearPendingTime,
+  readEditKey,
   readPendingTime,
   writePendingTime,
   writePostedBest,
@@ -4676,6 +4677,31 @@ export async function boot({ loading, bootStart, mapId }) {
           lapMs: ui.resultsFastest,
           threeMs: view.trackClass === 'micro' && race.bestThreeMs ? race.bestThreeMs() : null,
         });
+      }
+      /*
+       * THE SHARE CARD: the picture a link to this track shows when it is
+       * posted, drawn here for the reason the room's animation is drawn
+       * above. Every track gets one, a field included. Last, after the
+       * pending time is written, because it takes a few seconds and a
+       * pilot who closes the tab in them should lose the picture rather
+       * than the lap.
+       *
+       * Imported here rather than at the top, so the boot graph does not
+       * carry it (scripts/gen-preload.js) and a pilot who never publishes
+       * never fetches it. Nothing in it throws.
+       */
+      const { sendShareCard } = await import('./share/card.js');
+      const shared = await sendShareCard({
+        kind: 'track',
+        id: result.posted.id,
+        board: listing.board,
+        editKey: readEditKey(result.posted.id),
+      });
+      if (shared.error) {
+        notice = {
+          text: `Published "${result.posted.name}". Its share picture could not be sent, so a link to it shows the WebFPV card for now.`,
+          untilMs: performance.now() + 4000,
+        };
       }
     } catch (e) {
       notice = { text: `Could not publish that track.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };

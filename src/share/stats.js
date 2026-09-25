@@ -270,7 +270,6 @@ function isSameHost(hostname, loc) {
 
 export function referrerDomain(doc = document, loc = window.location) {
   try {
-    const currentHost = loc.hostname;
     /* First, check for an explicit ?referrer= parameter from the landing page. */
     const url = new URL(loc.href);
     const explicit = url.searchParams.get('referrer');
@@ -403,7 +402,13 @@ function storeSessionAttribution(referrer, ref) {
   try {
     /* Always write both keys, even when null, to clear any stale sessionStorage
      * value. A visitor arriving without a ?ref= after having one earlier should
-     * not keep the old value. */
+     * not keep the old value.
+     *
+     * Both fields are written together (not merged with existing values), so
+     * storeSessionAttribution(null, 'hn') wipes the referrer even if one was
+     * stored earlier. This is intentional: each page load captures fresh
+     * attribution from its own URL params and document.referrer, and those are
+     * the values that should ride on later events in this session. */
     const attr = {
       referrer: referrer || null,
       ref: ref || null,

@@ -426,9 +426,6 @@ console.log('\nstats-selftest: attribution stored on every page load\n');
 sessionStorage.removeItem('webfpv.session.attribution');
 localStorage.removeItem('webfpv.stats.v1');
 
-/* Mock today's date so markVisit will succeed on first call. */
-const mockToday = new Date().toISOString().slice(0, 10);
-
 /* First pingVisit on a new day - should store attribution. */
 globalThis.document = mockDoc('https://github.com/');
 globalThis.window = {
@@ -454,6 +451,25 @@ visitSent = pingVisit('sim');
 check('second pingVisit on same day returns false (already counted)', visitSent === false);
 stored = sessionAttribution();
 check('second pingVisit still stores fresh attribution', stored.referrer === 'reddit.com' && stored.ref === 'reddit');
+
+/* Test that a direct visit (no params, no referrer) clears stale session attribution. */
+sessionStorage.setItem('webfpv.session.attribution', JSON.stringify({ referrer: 'github.com', ref: 'gh' }));
+globalThis.document = mockDoc('');
+globalThis.window = {
+  location: mockLoc('https://webfpv.org/sim/'),
+  history: { replaceState: () => {} },
+};
+let directVisitBody = null;
+mockNavigator.sendBeacon = (url, blob) => {
+  directVisitBody = blob.parts[0];
+  return true;
+};
+/* Simulate a new day so pingVisit actually sends */
+localStorage.removeItem('webfpv.stats.v1');
+pingVisit('sim');
+const directParsed = JSON.parse(directVisitBody);
+check('direct visit clears stale referrer', directParsed.referrer === null);
+check('direct visit clears stale ref', directParsed.ref === null);
 
 /* Clean up globals. */
 delete globalThis.document;

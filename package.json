@@ -56,6 +56,7 @@
     "ghost:selftest": "node scripts/ghost-selftest.js",
     "contact:selftest": "node scripts/contact-selftest.js",
     "score:selftest": "node scripts/score-selftest.js",
+    "replay:test": "node tests/replay-test.js",
     "replay:selftest": "node scripts/replay-log.js --selftest",
     "replay": "node scripts/replay-log.js",
     "link:selftest": "node scripts/link-selftest.js",

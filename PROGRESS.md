@@ -1,31 +1,5 @@
 # PROGRESS.md
 
-## 2026-09-25: Pilotless replay mode for ghost spotlight capture
-
-Built a proper replay mode so marketing can record ghost spotlight videos without depending on internal test hooks that might be removed.
-
-URL: `/sim/?map=custom&share=<trackId>&replay=<timeId>&cam=chase|fpv&clean=1`
-
-The replay URL loads the board ghost for that time, skips the "Before you fly" screen, and plays the ghost with no pilot input. The ghost is driven from its own clock instead of from `race.lapStartMs`, so it plays even though no lap is running.
-
-`window.__replayStep(ms)` advances the replay clock by a set number of milliseconds for frame-by-frame capture. Call with `ms = 0` to initialize step mode, then call with positive ms to step forward. Real-time playback works when `__replayStep` is not used (the clock advances automatically and loops at the end).
-
-`cam=chase` gives a smoothed chase camera behind the ghost at about 70 degrees FOV, using a damped spring arm. `cam=fpv` gives the onboard FPV view using the ghost's quaternion and the pilot's camera tilt setting.
-
-`clean=1` hides the UI (`#ui` display set to none) and the ghost's name tag (empty string passed to `ghostRig.setLabel`).
-
-Physics stepping is disabled in replay mode: the `if (steps >= 1)` block that calls `sim.step` is wrapped in `if (!replayMode)`, so the plant never steps and no stick input reaches the controller. `simStepIdx` and `simTimeMs` still advance so the frame loop functions normally, but `stateCurr` and `statePrev` stay at spawn state.
-
-The existing test hooks (`window.__setCam`, `window.__race`) are untouched. Normal play is unchanged when the `replay` param is absent.
-
-Camera tilt and FOV storage in the ghost header: skipped. The leaderboard's `validate.js` mirrors the ghost header structure and checks every field except the reserved u32 at offset 28. Storing camera settings there would require a coordinated change to both repos (simulator encoding + board validation), and the spec said to skip it if it would need a board change. Noted in the PR for future work.
-
-What went wrong: none. The implementation was straightforward. The ghost loading, clock management, camera positioning, and UI hiding all worked on the first attempt after the code compiled.
-
-Approved by: PR open for owner review.
-
-# PROGRESS.md
-
 State between loop runs. Append only. Newest entry at the bottom. Never rewrite history, including the parts where something went wrong, because that is the most useful part of this file.
 
 ---
@@ -47461,3 +47435,29 @@ lint:nouns clean. lint:shell stays red on main, title overflow 67 px at
 1600x900 against a recorded 0, where main was already at 23 px. Not
 re-recorded: the answer did not ask for a threshold to move. Making it
 green is a re-record of the title at 67 px, and that is the owner's to say.
+
+---
+
+## 2026-09-25: Pilotless replay mode for ghost spotlight capture
+
+Built a proper replay mode so marketing can record ghost spotlight videos without depending on internal test hooks that might be removed.
+
+URL: `/sim/?map=custom&share=<trackId>&replay=<timeId>&cam=chase|fpv&clean=1`
+
+The replay URL loads the board ghost for that time, skips the "Before you fly" screen, and plays the ghost with no pilot input. The ghost is driven from its own clock instead of from `race.lapStartMs`, so it plays even though no lap is running.
+
+`window.__replayStep(ms)` advances the replay clock by a set number of milliseconds for frame-by-frame capture. Validates input with `Number.isFinite`. Real-time playback works when `__replayStep` is not used (the clock advances using sim time and loops at the end).
+
+`cam=chase` gives a smoothed chase camera behind the ghost at about 70 degrees FOV, using a dt-dependent exponential spring (deterministic under stepping). `cam=fpv` gives the onboard FPV view using the ghost's quaternion and the pilot's camera tilt setting from `ui.settings.cameraAngle`.
+
+`clean=1` hides the UI (`#ui` display set to none) and the ghost's name tag (empty string passed to `ghostRig.setLabel`).
+
+Physics stepping is disabled in replay mode: the `if (steps >= 1)` block is guarded with `if (!replayMode)`, so the plant never steps. `simStepIdx` and `simTimeMs` still advance so the frame loop functions, but `stateCurr` and `statePrev` stay at spawn state.
+
+Error handling: `replayState` tracks 'loading' | 'ready' | 'failed'. On fetch failure or missing track listing, the mode falls back to normal operation so the quad can fly, and a persistent notice is shown.
+
+Camera tilt and FOV storage in the ghost header: skipped. The leaderboard's `validate.js` would need updates to accept new header fields, requiring coordinated changes across both repos. Spec said to skip if it would need board changes.
+
+What went wrong: first PR review failed with multiple blockers. Used `replayClean`/`replayMode` before declaration (TDZ error), read nonexistent `ghostRig.presence`, used wrong setting name (`cameraTilt` instead of `cameraAngle`), chase easing wasn't deterministic, no error handling for bad IDs, missing tests. Fixed in second iteration: moved declarations, tracked presence separately, reused existing tilt code, made easing dt-dependent, added state tracking and fallback, added headless tests.
+
+Approved by: PR pending owner review after fixes.

@@ -520,6 +520,37 @@ export async function boot({ loading, bootStart, mapId }) {
    * high-performance. A dual-GPU laptop must not pick the battery chip
    * because a debug URL was opened once; this query is not stored. */
   const gpuQuery = new URLSearchParams(window.location.search).get('gpu');
+  /*
+   * Replay mode: ?replay=tm-xxxxxxxx loads a ghost and plays it pilotless
+   * for frame-by-frame capture. Used by the marketing team to record ghost
+   * spotlight videos without depending on internal test hooks.
+   */
+  let replayMode = false;
+  let replayTimeId = '';
+  let replayCamera = 'chase'; /* chase or fpv */
+  let replayClean = false;
+  let replayState = 'loading'; /* loading, ready, failed */
+  let replayClock = null; /* { startMs, vt } when active */
+  let replayStepMode = false; /* true when using __replayStep */
+  let replayChaseCam = null; /* { pos, look, prevDt } for chase camera smoothing */
+  let replayPresence = 0; /* tracked separately since ghostRig doesn't expose it */
+  const replayScratchPos = new THREE.Vector3();
+  const replayScratchQuat = new THREE.Quaternion();
+  const replayScratchDir = new THREE.Vector3();
+  const replayScratchTilt = new THREE.Quaternion();
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const replayParam = params.get('replay') || '';
+    if (/^tm-[0-9a-f]{8}$/.test(replayParam)) {
+      replayMode = true;
+      replayTimeId = replayParam;
+      const camParam = (params.get('cam') || 'chase').toLowerCase();
+      replayCamera = camParam === 'fpv' ? 'fpv' : 'chase';
+      replayClean = params.get('clean') === '1';
+    }
+  } catch (e) {
+    /* No URL to read. */
+  }
   const shell = buildShell(canvas, {
     desynchronized: true,
     powerPreference: gpuQuery === 'low' ? 'low-power' : 'high-performance',
@@ -811,31 +842,6 @@ export async function boot({ loading, bootStart, mapId }) {
     const fromUrl = new URLSearchParams(window.location.search).get('ghost') || '';
     if (/^tm-[0-9a-f]{8}$/.test(fromUrl)) {
       wantGhostId = fromUrl;
-    }
-  } catch (e) {
-    /* No URL to read. */
-  }
-  /*
-   * Replay mode: ?replay=tm-xxxxxxxx loads a ghost and plays it pilotless
-   * for frame-by-frame capture. Used by the marketing team to record ghost
-   * spotlight videos without depending on internal test hooks.
-   */
-  let replayMode = false;
-  let replayTimeId = '';
-  let replayCamera = 'chase'; /* chase or fpv */
-  let replayClean = false;
-  let replayClock = null; /* { startMs, pausedAt, vt } when active */
-  let replayStepMode = false; /* true when using __replayStep */
-  let replayChaseCam = null; /* { pos, look } for chase camera smoothing */
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const replayParam = params.get('replay') || '';
-    if (/^tm-[0-9a-f]{8}$/.test(replayParam)) {
-      replayMode = true;
-      replayTimeId = replayParam;
-      const camParam = (params.get('cam') || 'chase').toLowerCase();
-      replayCamera = camParam === 'fpv' ? 'fpv' : 'chase';
-      replayClean = params.get('clean') === '1';
     }
   } catch (e) {
     /* No URL to read. */
@@ -1621,6 +1627,10 @@ export async function boot({ loading, bootStart, mapId }) {
   function loadBoardGhost(timeId) {
     const listing = ghostListing();
     if (!listing) {
+      if (replayMode) {
+        replayState = 'failed';
+        notice = { text: 'Replay failed: no track listing found.', untilMs: performance.now() + 10000 };
+      }
       return;
     }
     const key = ghostCourseKey();
@@ -1636,7 +1646,8 @@ export async function boot({ loading, bootStart, mapId }) {
         armGhost();
         /* Start replay mode if active */
         if (replayMode && ghostLap) {
-          replayClock = { startMs: performance.now(), pausedAt: null, vt: 0 };
+          replayClock = { startMs: simTimeMs, vt: 0 };
+          replayState = 'ready';
           mode = 'flight';
           ui.show('flight');
           introMs = -1; /* Skip intro */
@@ -1646,7 +1657,13 @@ export async function boot({ loading, bootStart, mapId }) {
           return;
         }
         ghostBoardLap = null;
-        notice = { text: `Could not fetch that ghost.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
+        const msg = `Could not fetch that ghost.\n${e.message ?? e}`;
+        notice = { text: msg, untilMs: performance.now() + (replayMode ? 10000 : 3600) };
+        if (replayMode) {
+          replayState = 'failed';
+          /* Fall back to normal mode so physics can run */
+          replayMode = false;
+        }
       } finally {
         if (ghostCourseKey() === key) {
           ghostBoardBusy = false;
@@ -1803,28 +1820,19 @@ export async function boot({ loading, bootStart, mapId }) {
         /* Step mode: use virtual time */
         t = replayClock.vt;
       } else {
-        /* Real-time mode: advance clock */
-        const now = performance.now();
-        replayClock.vt = now - replayClock.startMs;
+        /* Real-time mode: advance clock using sim time */
+        replayClock.vt = simNow - replayClock.startMs;
         t = replayClock.vt;
         /* Loop at end */
-        if (t > ghostLap.durationMs + 400) {
-          replayClock.startMs = now;
+        if (t > ghostLap.durationMs) {
+          replayClock.startMs = simNow;
           replayClock.vt = 0;
           t = 0;
         }
       }
-      const tail = ghostLap.durationMs - t;
-      let presence = 1;
-      if (t < 400) {
-        presence = t / 400;
-      }
-      if (tail < 0) {
-        presence = Math.max(0, 1 + tail / 400);
-      }
-      if (ghostSampleInto(t)) {
-        presence = Math.min(presence, 0.15);
-      }
+      /* No fade - always full presence as per spec */
+      const presence = ghostSampleInto(t) ? 0.15 : 1;
+      replayPresence = presence;
       ghostRig.group.position.set(ghostSample.px, ghostSample.py, ghostSample.pz);
       ghostRig.group.quaternion.set(ghostSample.qx, ghostSample.qy, ghostSample.qz, ghostSample.qw);
       ghostRig.setPresence(presence);
@@ -6986,41 +6994,49 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     } else {
       /* Replay mode camera overrides */
-      if (replayMode && ghostLap && ghostRig.presence > 0) {
+      if (replayMode && ghostLap && replayPresence > 0) {
         shell.quad.visible = false;
-        const ghostPos = new THREE.Vector3(ghostSample.px, ghostSample.py, ghostSample.pz);
-        const ghostQuat = new THREE.Quaternion(ghostSample.qx, ghostSample.qy, ghostSample.qz, ghostSample.qw);
+        replayScratchPos.set(ghostSample.px, ghostSample.py, ghostSample.pz);
+        replayScratchQuat.set(ghostSample.qx, ghostSample.qy, ghostSample.qz, ghostSample.qw);
         if (replayCamera === 'fpv') {
           /* FPV camera: ghost position and orientation with camera tilt */
-          const cameraTilt = cameraTiltRad(ui.settings.cameraTilt);
-          const tiltQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), cameraTilt);
-          const fpvReplayQuat = ghostQuat.clone().multiply(tiltQuat);
-          shell.camera.position.copy(ghostPos);
-          shell.camera.quaternion.copy(fpvReplayQuat);
-          shell.camera.fov = ui.settings.cameraFov;
+          replayScratchTilt.setFromAxisAngle(AXIS_X, cameraTiltRad(camTilt));
+          shell.camera.position.copy(replayScratchPos);
+          shell.camera.quaternion.copy(replayScratchQuat).multiply(replayScratchTilt);
+          if (shell.camera.fov !== ui.settings.cameraFov) {
+            shell.camera.fov = ui.settings.cameraFov;
+            shell.camera.updateProjectionMatrix();
+          }
         } else {
           /* Chase camera: smoothed spring arm behind the ghost */
-          const ghostFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(ghostQuat);
-          const micro = shell.quad.name && shell.quad.name.includes('whoop');
+          replayScratchDir.set(0, 0, -1).applyQuaternion(replayScratchQuat);
+          const micro = CRAFT_R < 0.15;
           const BACK = micro ? 0.55 : 1.6;
           const UP = BACK * 0.35;
           const AHEAD = BACK * 1.1;
+          const dt = replayStepMode ? (replayClock.vt - (replayChaseCam ? replayChaseCam.prevDt : 0)) : frameSteps * MS_PER_STEP;
           if (!replayChaseCam) {
             replayChaseCam = {
-              pos: ghostPos.clone().addScaledVector(ghostFwd, -BACK).add(new THREE.Vector3(0, UP, 0)),
-              look: ghostPos.clone().addScaledVector(ghostFwd, AHEAD),
+              pos: replayScratchPos.clone().addScaledVector(replayScratchDir, -BACK).add(new THREE.Vector3(0, UP, 0)),
+              look: replayScratchPos.clone().addScaledVector(replayScratchDir, AHEAD),
+              prevDt: replayClock.vt,
             };
           }
-          const wantPos = ghostPos.clone().addScaledVector(ghostFwd, -BACK).add(new THREE.Vector3(0, UP, 0));
-          const wantLook = ghostPos.clone().addScaledVector(ghostFwd, AHEAD);
-          replayChaseCam.pos.lerp(wantPos, 0.2);
-          replayChaseCam.look.lerp(wantLook, 0.3);
+          const k = 5; /* spring constant */
+          const alpha = 1 - Math.exp(-k * dt / 1000);
+          replayScratchPos.addScaledVector(replayScratchDir, -BACK).add(new THREE.Vector3(0, UP, 0));
+          replayChaseCam.pos.lerp(replayScratchPos, alpha);
+          replayScratchPos.set(ghostSample.px, ghostSample.py, ghostSample.pz).addScaledVector(replayScratchDir, AHEAD);
+          replayChaseCam.look.lerp(replayScratchPos, alpha);
+          replayChaseCam.prevDt = replayClock.vt;
           shell.camera.up.set(0, 1, 0);
           shell.camera.position.copy(replayChaseCam.pos);
           shell.camera.lookAt(replayChaseCam.look);
-          shell.camera.fov = 70;
+          if (shell.camera.fov !== 70) {
+            shell.camera.fov = 70;
+            shell.camera.updateProjectionMatrix();
+          }
         }
-        shell.camera.updateProjectionMatrix();
         setCameraNear(CAMERA_NEAR_OPEN);
       } else {
         /* The camera sits inside the airframe, so the quad must be hidden or
@@ -8202,15 +8218,17 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!replayMode || !ghostLap) {
       return { error: 'Replay mode not active or ghost not loaded' };
     }
-    if (ms < 0) {
-      return { error: 'Step must be non-negative' };
+    if (!Number.isFinite(ms) || ms < 0) {
+      return { error: 'Step must be a finite non-negative number' };
     }
     if (!replayStepMode) {
       /* Initialize step mode */
       replayStepMode = true;
-      replayClock = { startMs: 0, pausedAt: 0, vt: 0 };
+      replayClock = { startMs: simTimeMs, vt: 0 };
     }
-    replayClock.vt += ms;
+    if (ms > 0) {
+      replayClock.vt += ms;
+    }
     /* Cap at ghost duration */
     if (replayClock.vt > ghostLap.durationMs) {
       replayClock.vt = ghostLap.durationMs;
@@ -8219,11 +8237,12 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   window.__replayInfo = () => ({
     active: replayMode,
+    state: replayState,
     timeId: replayTimeId,
     camera: replayCamera,
     clean: replayClean,
     stepMode: replayStepMode,
-    clock: replayClock,
+    clock: replayClock ? { startMs: replayClock.startMs, vt: replayClock.vt } : null,
     ghostLoaded: ghostLap != null,
   });
   window.__craftState = () => ({

@@ -21,7 +21,13 @@
  */
 
 import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { openPage } from './lib/page.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const ROOT = join(__dirname, '..');
 
 const fixtureGhost = JSON.parse(
   readFileSync(new URL('./fixtures/ghost-tm-aae280e5.json', import.meta.url), 'utf-8')
@@ -47,12 +53,21 @@ async function testNormalBoot() {
   try {
     await page.until('window.__shellReady === true', 120000);
     
+    if (page.errors.length > 0) {
+      console.log('  Page errors:', page.errors);
+    }
+    
     const info = await page.evaluate('window.__replayInfo()');
     if (info.active !== false) {
       throw new Error(`Normal boot should have replay inactive, got active=${info.active}`);
     }
     
     console.log(' ok   normal boot reaches __shellReady with replay inactive');
+  } catch (e) {
+    if (page.errors.length > 0) {
+      console.log('  Page errors:', page.errors.slice(0, 5));
+    }
+    throw e;
   } finally {
     await page.close();
   }

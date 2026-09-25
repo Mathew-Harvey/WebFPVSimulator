@@ -47274,3 +47274,20 @@ paused 0px unchanged. The focus authority error in lint:shell is pre-existing
 **Not done:** updating shell-check baseline (overflow values grew by one row as
 expected). Per CLAUDE.md: never change a threshold to make a check pass.
 
+
+## 2026-09-25: Support link overflow fix (commit f055ba5)
+
+Fixed title menu overflow at 1600x900 after adding Support link. Title overflow was 94px with the Support link (vs 46px on main without it, vs baseline 0px). Reduced title menu padding from `10px 0 12px` to `0` and title row vertical padding from `10px` to `6px`. Title overflow now 0px with Support link included. Paused menu unchanged at 0px overflow.
+
+All lint:shell failures (9 problems) are pre-existing from main:
+- quad, pilot, rates, pids, fc overflow growth
+- howto and credits belowFold increase  
+- focus authority error
+
+Test results at commit f055ba5:
+- support:selftest: PASS, 5 checks
+- stats:selftest: 79 passed, 0 failed
+- lint:boot: 9 of 9 checks clean
+- lint:shell: title 0px overflow (fixed), paused 0px, 9 pre-existing failures remain
+
+Screenshots updated: title menu at 1600x900 and 390x844, pause menu at 1600x900.

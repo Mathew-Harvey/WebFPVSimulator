@@ -470,10 +470,12 @@ int sim_world_capsule(double ax, double ay, double az,
 int sim_world_box_z(int i, double z0, double z1);
 
 /*
- * Mover m (0 or 1): a box that moves, set every step from the map's own
+ * Mover m (0 to 63): a box that moves, set every step from the map's own
  * closed form, so its position is a function of the step count and nothing
  * else. v is its surface velocity, m/s, which the contact reads for
- * friction and restitution. x1 < x0 parks it.
+ * friction and restitution. x1 < x0 parks it. The movers and the road
+ * vehicles below share the 64 slots; seating or parking a box in a slot
+ * ends a vehicle there.
  */
 int sim_world_mover(int m, double x0, double y0, double z0,
                     double x1, double y1, double z1,
@@ -513,6 +515,43 @@ int sim_world_support(void);
  */
 #define SIM_WORLD_REPORT_DOUBLES 11
 int sim_world_report(double *out);
+
+/*
+ * ROAD VEHICLES, src/native/world.c section 5 (Stage D part 2, P2 of
+ * FREESTYLE-MAPS-PLAN.md): movers that turn, and follow a road inside the
+ * module, their pose a pure function of the module's own step clock. That
+ * file's header carries the whole of it; in brief:
+ *
+ *   sim_world_road(xyz, n, closed)   a road, n points of x y z, world frame;
+ *                                    returns its index
+ *   sim_world_road_info(road, out)   [points kept, length m, closed]
+ *   sim_world_vehicle(m, road, offset, top_speed, lateral, drift,
+ *                     length, width, height, clearance, e, mu)
+ *                                    mover m follows the road
+ *   sim_world_clock(step)            the vehicles' clock, whole 1 ms steps
+ *   sim_world_vehicle_poses(out)     every slot's pose, 64 of 16 doubles:
+ *     [0] 1 when the slot is a road vehicle, else the slot is all zeros
+ *     [1..3] the road point under its centre, world, m
+ *     [4..5] its heading in plan, unit, the drift in it
+ *     [6] speed along the road, m/s   [7] distance driven, m
+ *     [8..10] velocity, world, m/s    [11] yaw rate about +z, rad/s
+ *     [12..13] direction of travel in plan, unit
+ *     [14] the path's curvature along the travel, 1/m, left positive
+ *     [15] tan(slip / 2), left positive, 0 for an ordinary car
+ *
+ * A vehicle is never ground. Additive: a module that is never handed a road
+ * steps exactly as it did before these existed.
+ */
+#define SIM_VEHICLE_POSE_DOUBLES 16
+#define SIM_ROAD_INFO_DOUBLES 3
+int sim_world_road(const double *xyz, int n, int closed);
+int sim_world_road_info(int road, double *out);
+int sim_world_vehicle(int m, int road, double offset,
+                      double top_speed, double lateral, double drift,
+                      double length, double width, double height,
+                      double clearance, double e, double mu);
+int sim_world_clock(double step);
+int sim_world_vehicle_poses(double *out);
 
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);

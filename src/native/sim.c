@@ -1476,6 +1476,9 @@ SIM_EXPORT int sim_step(int n) {
       world_step(&S, g_ground_on, g_ground_n, g_ground_d);
     }
     stand_apply();
+    /* The road vehicles' clock, here and not in world_step, because the
+     * stand skips world_step and the traffic does not wait for a launch. */
+    world_tick();
     S.step_index += 1;
   }
   return SIM_OK;

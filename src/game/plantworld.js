@@ -22,6 +22,41 @@
  * reports against shape i is view.colliders' collider i, and its kind is
  * kindOf(colliders, i). Movers (the train) have their own numbers.
  *
+ * ROADS AND THE CARS ON THEM (Stage D part 2, world.c section 5). A road is
+ * uploaded once, and a car on it is a mover the module drives itself: its
+ * pose is a pure function of the module's step clock, worked out inside the
+ * module with its own arithmetic, so it is the same in every engine and the
+ * shell never computes where a car is. The shell does four things:
+ *
+ *   uploadRoad(sim, points, closed)   once per road, after uploadWorld;
+ *                                     returns the road's index
+ *   addVehicle(sim, m, road, car)     a car in mover slot m (0 to 63; the
+ *                                     train's cars use slots too, so a map
+ *                                     with both keeps them apart)
+ *   removeVehicle(sim, m)             takes it away
+ *   setVehicleClock(sim, step)        the LAP clock, simTimeMs, in whole
+ *                                     steps: at a run's start, on a seek, and
+ *                                     before stepping whenever the lap clock
+ *                                     ran on without the module stepping
+ *                                     (landed, a turtle wait). The module
+ *                                     advances it one a step itself, on the
+ *                                     launch stand too, and sim_reset leaves
+ *                                     it alone. Setting it every frame to
+ *                                     simTimeMs is harmless and is the
+ *                                     simplest correct use: it matches
+ *                                     pushWorldSolids(simTimeMs + i) for the
+ *                                     train, step for step.
+ *
+ * and reads every car back after a step with readVehicles(sim, poses), into
+ * objects from makeVehiclePoses(), in the Three.js frame, to draw. The pose
+ * read after sim_step is the one at the step the craft's state is at, which
+ * is the clock view.updateAnim(simTimeMs) draws the train at, and the pose
+ * the next step's contacts use: the car drawn is the car hit.
+ *
+ * Lengths cross through frame.js like every position; speeds, accelerations
+ * and the drift gain are SI and cross as they are, as the train's velocity
+ * does in setMover.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -38,12 +73,24 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { threePosToSim, threeDirToSim } from '../render/frame.js';
+import { threePosToSim, threeDirToSim, simPosToThree, simQuatToThree, simLenToWorld } from '../render/frame.js';
 import { contactMaterial } from './collide.js';
 
 const A = { x: 0, y: 0, z: 0 };
 const B = { x: 0, y: 0, z: 0 };
 const V = { x: 0, y: 0, z: 0 };
+/* frame.js's sim to Three.js functions write through .set(), as a Vector3 or
+ * a Quaternion has it. */
+const T3 = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
+const Q3 = { x: 0, y: 0, z: 0, w: 1, set(x, y, z, w) { this.x = x; this.y = y; this.z = z; this.w = w; return this; } };
+
+/* src/native/world.c WORLD_MAX_MOVERS: the mover slots, the train's and the
+ * road vehicles'. */
+export const MOVER_SLOTS = 64;
+/* src/native/sim_abi.h SIM_VEHICLE_POSE_DOUBLES. */
+export const VEHICLE_POSE_DOUBLES = 16;
+/* src/native/sim_abi.h SIM_ROAD_INFO_DOUBLES. */
+const ROAD_INFO_DOUBLES = 3;
 
 /* The kind of collider i, as the name contactMaterial takes. kindName wants
  * the kind's number, not the collider's. */
@@ -142,4 +189,221 @@ export function setBoxHeight(sim, i, y0, y1) {
   threePosToSim(0, y0, 0, A);
   threePosToSim(0, y1, 0, B);
   sim.e.sim_world_box_z(i, Math.min(A.z, B.z), Math.max(A.z, B.z));
+}
+
+/*
+ * A length in Three.js metres as the plant's metres: the conversion every
+ * position takes, on a length laid along up, where it carries no sign.
+ */
+function simLen(len) {
+  return threePosToSim(0, len, 0, V).z;
+}
+
+/*
+ * Upload one road: `points` is its centre line at road level, objects with
+ * x, y and z in Three.js world metres, as the colliders are; `closed` joins
+ * the last point back to the first, which must not be repeated. Draw it
+ * dense (a point a metre or closer on a bend): the car follows the points,
+ * its heading and bend are taken across 1.5 m either way, and straights are
+ * cut to a metre by the module itself. Call after uploadWorld, which clears
+ * the roads with everything else. Returns the road's index; throws if the
+ * module refuses the road, as uploadWorld throws for a collider.
+ */
+export function uploadRoad(sim, points, closed) {
+  need(sim, 'sim_world_road');
+  const n = points.length;
+  const ptr = sim.e.malloc(n * 3 * 8 || 8);
+  if (!ptr) {
+    throw new Error('sim_world_road: malloc failed');
+  }
+  try {
+    const f = new Float64Array(sim.e.memory.buffer, ptr, n * 3);
+    for (let i = 0; i < n; i += 1) {
+      threePosToSim(points[i].x, points[i].y, points[i].z, A);
+      f[3 * i] = A.x;
+      f[3 * i + 1] = A.y;
+      f[3 * i + 2] = A.z;
+    }
+    const code = sim.e.sim_world_road(ptr, n, closed ? 1 : 0);
+    if (code < 0) {
+      throw new Error(`sim_world_road: a road of ${n} points${closed ? ', closed,' : ''} was refused: ${code}`);
+    }
+    return code;
+  } finally {
+    sim.e.free(ptr);
+  }
+}
+
+/* Road `road` as the module keeps it: { points, length, closed }, the
+ * points after it cut the long segments, the length in Three.js metres. */
+export function roadInfo(sim, road) {
+  need(sim, 'sim_world_road_info');
+  const ptr = sim.e.malloc(ROAD_INFO_DOUBLES * 8);
+  try {
+    const code = sim.e.sim_world_road_info(road, ptr);
+    if (code !== 0) {
+      throw new Error(`sim_world_road_info: ${code}`);
+    }
+    const f = new Float64Array(sim.e.memory.buffer, ptr, ROAD_INFO_DOUBLES);
+    return { points: f[0], length: simLenToWorld(f[1]), closed: f[2] === 1 };
+  } finally {
+    sim.e.free(ptr);
+  }
+}
+
+/*
+ * A car in mover slot m, on road `road`. `car`:
+ *   offset      metres along its route from the road's first point at step 0
+ *               of the clock (round and round a closed road, out and back an
+ *               open one, so past an open road's length is on the way back)
+ *   topSpeed    m/s
+ *   lateral     the most lateral acceleration it corners at, m/s/s
+ *   drift       slip gain per m/s/s of lateral acceleration; 0, the
+ *               default, is an ordinary car and a drift car is about 0.05
+ *   length, width, height   its body, Three.js metres
+ *   clearance   the gap under its body, Three.js metres, default 0
+ *   kind        contactMaterial's name for its e and mu, default 'train',
+ *               the painted steel the shell already knows moving things by
+ * Throws if the module refuses it.
+ */
+export function addVehicle(sim, m, road, car) {
+  need(sim, 'sim_world_vehicle');
+  const mat = contactMaterial(car.kind || 'train');
+  const code = sim.e.sim_world_vehicle(
+    m, road, simLen(car.offset || 0),
+    car.topSpeed, car.lateral, car.drift || 0,
+    simLen(car.length), simLen(car.width), simLen(car.height), simLen(car.clearance || 0),
+    mat.e, mat.mu,
+  );
+  if (code !== 0) {
+    throw new Error(`sim_world_vehicle: slot ${m} on road ${road} was refused: ${code}`);
+  }
+}
+
+/* Take the car in slot m away: the module parks the slot, as setMover does
+ * for a hidden train car. */
+export function removeVehicle(sim, m) {
+  sim.e.sim_world_mover(m, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+}
+
+/* The vehicles' clock: the lap clock in whole 1 ms steps (simTimeMs at 1 kHz).
+ * See the header for when. */
+export function setVehicleClock(sim, step) {
+  need(sim, 'sim_world_clock');
+  const code = sim.e.sim_world_clock(step);
+  if (code !== 0) {
+    throw new Error(`sim_world_clock: ${step} was refused: ${code}`);
+  }
+}
+
+/* One object a slot, for readVehicles to fill. */
+export function makeVehiclePoses() {
+  const out = [];
+  for (let m = 0; m < MOVER_SLOTS; m += 1) {
+    out.push({
+      on: false,
+      x: 0, y: 0, z: 0,
+      hx: 0, hz: 0,
+      qx: 0, qy: 0, qz: 0, qw: 1,
+      tx: 0, tz: 0,
+      vx: 0, vy: 0, vz: 0,
+      speed: 0, distance: 0, yawRate: 0, curvature: 0, slip: 0,
+    });
+  }
+  return out;
+}
+
+/* Per module instance: the scratch the poses are read into, and a view of it
+ * that is made again only when memory grows. */
+const POSES = new WeakMap();
+
+/* A plan vector from the plant's frame, unit, as a Three.js ground plane
+ * direction into T3. frame.js has no sim to Three.js direction, and its
+ * position conversion divides by the scale, so the length is divided back
+ * out: a heading stays a unit vector at any scale. */
+function planDir(x, y) {
+  simPosToThree(x, y, 0, T3);
+  const l = Math.sqrt(T3.x * T3.x + T3.z * T3.z) || 1;
+  T3.x /= l;
+  T3.z /= l;
+}
+
+/*
+ * Every car's pose at the module's clock, in the Three.js frame, into `out`
+ * (from makeVehiclePoses), slot by slot; `on` is false for a slot with no
+ * car. Per car:
+ *   x, y, z      the road point under its centre, Three.js metres: its
+ *                body's bottom centre stands `clearance` above it
+ *   hx, hz       its heading on the ground plane, unit: where its nose
+ *                points, the drift in it
+ *   qx..qw       the same heading as a Three.js quaternion, a turn about +y,
+ *                for a model built nose along -z, as the craft's is
+ *   tx, tz       the way it is going, unit; the angle from this to the
+ *                heading is the drift's slip
+ *   vx, vy, vz   its velocity, m/s
+ *   speed        m/s along the road     distance  driven, metres, every lap
+ *   yawRate      rad/s about +y         curvature 1/m, left positive
+ *   slip         tan(slip / 2), left positive, 0 for an ordinary car
+ * Read-only: nothing here reaches the physics. Returns out.
+ */
+export function readVehicles(sim, out) {
+  need(sim, 'sim_world_vehicle_poses');
+  let slot = POSES.get(sim.e);
+  if (!slot) {
+    const ptr = sim.e.malloc(MOVER_SLOTS * VEHICLE_POSE_DOUBLES * 8);
+    if (!ptr) {
+      throw new Error('sim_world_vehicle_poses: malloc failed');
+    }
+    slot = { ptr, view: null };
+    POSES.set(sim.e, slot);
+  }
+  const n = sim.e.sim_world_vehicle_poses(slot.ptr);
+  if (n !== MOVER_SLOTS) {
+    throw new Error(`sim_world_vehicle_poses: ${n} slots, the shell reads ${MOVER_SLOTS}`);
+  }
+  if (!slot.view || slot.view.buffer !== sim.e.memory.buffer) {
+    slot.view = new Float64Array(sim.e.memory.buffer, slot.ptr, MOVER_SLOTS * VEHICLE_POSE_DOUBLES);
+  }
+  const f = slot.view;
+  for (let m = 0; m < MOVER_SLOTS; m += 1) {
+    const o = out[m];
+    const b = m * VEHICLE_POSE_DOUBLES;
+    o.on = f[b] === 1;
+    if (!o.on) {
+      continue;
+    }
+    simPosToThree(f[b + 1], f[b + 2], f[b + 3], T3);
+    o.x = T3.x;
+    o.y = T3.y;
+    o.z = T3.z;
+    const c = f[b + 4];
+    const s = f[b + 5];
+    planDir(c, s);
+    o.hx = T3.x;
+    o.hz = T3.z;
+    /* The half angle identities: a turn about the plant's +z by the angle
+     * whose cosine and sine are the heading's, with square roots only. */
+    const w = Math.sqrt(Math.max(0, (1 + c) / 2));
+    const z = Math.sqrt(Math.max(0, (1 - c) / 2));
+    simQuatToThree(w, 0, 0, s < 0 ? -z : z, Q3);
+    o.qx = Q3.x;
+    o.qy = Q3.y;
+    o.qz = Q3.z;
+    o.qw = Q3.w;
+    planDir(f[b + 12], f[b + 13]);
+    o.tx = T3.x;
+    o.tz = T3.z;
+    simPosToThree(f[b + 8], f[b + 9], f[b + 10], T3);
+    o.vx = T3.x;
+    o.vy = T3.y;
+    o.vz = T3.z;
+    o.speed = simLenToWorld(f[b + 6]);
+    o.distance = simLenToWorld(f[b + 7]);
+    /* A turn about the plant's +z is a turn about Three.js +y, the same way:
+     * frame.js's change of basis is a proper rotation. */
+    o.yawRate = f[b + 11];
+    o.curvature = f[b + 14];
+    o.slip = f[b + 15];
+  }
+  return out;
 }

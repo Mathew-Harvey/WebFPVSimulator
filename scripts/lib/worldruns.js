@@ -21,6 +21,12 @@
  *           craft and carrying one along its side, seated every step by the
  *           shell's own setMover from a closed form of the step count.
  *
+ * And one set that is NOT the golden's, vehicleRuns() at the end: cars that
+ * follow a road inside the module (Stage D part 2). goldenRuns() does not
+ * return them, so tests/goldens/world.json neither holds nor misses them;
+ * scripts/world-engines.js flies them in both engines, and
+ * scripts/world-check.js holds them to their guards.
+ *
  * NOTHING HERE REACHES THE PHYSICS THROUGH JS TRIGONOMETRY. The sticks are
  * + - * / and square roots, which IEEE 754 fixes to the bit; a frame's yaw
  * goes to the module as a number and is turned there by its own libm; where
@@ -50,7 +56,9 @@
 import { loadSim, SIM_OK, simErrorName } from '../../tests/lib/simmod.js';
 import { threePosToSim, threeDirToSim, simPosToThree } from '../../src/render/frame.js';
 import { Colliders, GROUND_MU, GROUND_E } from '../../src/game/collide.js';
-import { uploadWorld, setWorldFrame, setMover } from '../../src/game/plantworld.js';
+import {
+  uploadWorld, setWorldFrame, setMover, uploadRoad, addVehicle, setVehicleClock, readVehicles, makeVehiclePoses,
+} from '../../src/game/plantworld.js';
 import { addSolids, placeSolids } from '../../src/props/solids.js';
 import { sincos } from '../../src/props/trig.js';
 import { PROPS, FURNITURE } from '../../src/props/catalog.js';
@@ -967,4 +975,495 @@ function moverRuns() {
  * fixture. */
 export function goldenRuns(fixture) {
   return [...townRuns(fixture), ...builtRuns(), ...moverRuns()];
+}
+
+/* ------------------------------------------------------------------ *
+ * VEHICLES: cars that follow a road inside the module (Stage D part 2,
+ * src/native/world.c section 5), handed over and read back through the
+ * shell's own src/game/plantworld.js.
+ *
+ * NOT GOLDEN RUNS. goldenRuns() above does not return these, so
+ * tests/goldens/world.json neither holds them nor misses them: pinning them
+ * there is a reviewed act for the owner. scripts/world-engines.js flies
+ * vehicleRuns() in Node and in Chromium and compares every step and every
+ * car's pose to the bit; scripts/world-check.js flies the same runs with its
+ * own loop and holds them to their guards.
+ *
+ * Roads are laid in the physics frame, where their geometry is plain, and
+ * handed over in Three.js metres through frame.js, as a map's will be. A
+ * road's points reach the module, so a bend is placed with trig.js, which is
+ * arithmetic and the same in every engine, and a square is a product, never
+ * the ** operator, which is as loosely specified as Math.pow.
+ * ------------------------------------------------------------------ */
+
+/* A family hatchback: 4.5 m by 1.8 m by 1.4 m, 15 cm off the road. */
+export const CAR = { length: 4.5, width: 1.8, height: 1.4, clearance: 0.15 };
+/* src/native/plant.c hull_hx, the five inch's and the whoop's. */
+export const HULL = { 0: 0.094, 1: 0.041 };
+/* The craft a car meets hovers a metre over the road, halfway up its side. */
+const OVER = 1.0;
+
+/* Physics frame points [x, y, z] as the Three.js points uploadRoad takes.
+ * `nudge` moves every one by that much along x, y and z: the engines
+ * check's self test plants it in one engine only. */
+export function roadToThree(pts, nudge = 0) {
+  return pts.map((p) => {
+    const v = nudge ? simPosToThree(p[0] + nudge, p[1] + nudge, p[2] + nudge, V3())
+      : simPosToThree(p[0], p[1], p[2], V3());
+    return { x: v.x, y: v.y, z: v.z };
+  });
+}
+
+/* A straight in plan from a to b, a point every `step` m or closer, b left
+ * off for whatever follows it. */
+function lineTo(out, a, b, step) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const n = Math.max(1, Math.ceil(Math.sqrt(dx * dx + dy * dy) / step));
+  for (let i = 0; i < n; i += 1) {
+    out.push([a[0] + dx * (i / n), a[1] + dy * (i / n), 0]);
+  }
+}
+
+/* An arc about (cx, cy) of radius r from angle a0 through `sweep` radians,
+ * positive anticlockwise, a point every half metre of arc or closer, the
+ * end left off. */
+function arcTo(out, cx, cy, r, a0, sweep) {
+  const n = Math.max(1, Math.ceil(((sweep < 0 ? -sweep : sweep) * r) / 0.5));
+  const sc = { s: 0, c: 0 };
+  for (let i = 0; i < n; i += 1) {
+    sincos(a0 + sweep * (i / n), sc);
+    out.push([cx + r * sc.c, cy + r * sc.s, 0]);
+  }
+}
+
+/* A closed stadium, driven anticlockwise so every bend is a left: straights
+ * of `len` m along x at y = 0 and y = 2 r, joined by half circles of radius
+ * r. It starts at the origin heading +x, so its first bend's apex is at
+ * (len + r, r). */
+export function stadiumRoad(len, r) {
+  const pts = [];
+  lineTo(pts, [0, 0], [len, 0], 1);
+  arcTo(pts, len, r, r, -Math.PI / 2, Math.PI);
+  lineTo(pts, [len, 2 * r], [0, 2 * r], 1);
+  arcTo(pts, 0, r, r, Math.PI / 2, Math.PI);
+  return pts;
+}
+
+/* An open road: `lead` m straight along +x ending at the origin, then a bend
+ * of radius r through `deg` degrees to the left (side 1) or the right (side
+ * -1), then `tail` m straight on. Side 0 is straight on throughout. */
+export function turnRoad(side, r, lead, deg, tail) {
+  const pts = [];
+  lineTo(pts, [-lead, 0], [0, 0], 1);
+  let end = [0, 0];
+  let dir = [1, 0];
+  if (side !== 0) {
+    const a0 = (-side * Math.PI) / 2;
+    const sweep = (side * deg * Math.PI) / 180;
+    arcTo(pts, 0, side * r, r, a0, sweep);
+    const sc = sincos(a0 + sweep, { s: 0, c: 0 });
+    end = [r * sc.c, side * r + r * sc.s];
+    dir = [-side * sc.s, side * sc.c];
+  }
+  const to = [end[0] + dir[0] * tail, end[1] + dir[1] * tail];
+  lineTo(pts, end, to, 1);
+  pts.push([to[0], to[1], 0]);
+  return pts;
+}
+
+/* An open road from the origin heading +x, piece by piece: { line: m }
+ * straight on, or { bend: [side, r, deg] } a bend of radius r through deg
+ * degrees, left for side 1 and right for -1. A bend turns the offset from
+ * its centre by trig.js's sine and cosine, so no angle is ever read back. */
+export function pieceRoad(pieces) {
+  const pts = [];
+  let at = [0, 0];
+  let dir = [1, 0];
+  const sc = { s: 0, c: 0 };
+  for (const pc of pieces) {
+    if (pc.line) {
+      const to = [at[0] + dir[0] * pc.line, at[1] + dir[1] * pc.line];
+      lineTo(pts, at, to, 1);
+      at = to;
+      continue;
+    }
+    const [side, r, deg] = pc.bend;
+    const cx = at[0] - side * dir[1] * r;
+    const cy = at[1] + side * dir[0] * r;
+    const ox = at[0] - cx;
+    const oy = at[1] - cy;
+    const sweep = (side * deg * Math.PI) / 180;
+    const n = Math.max(1, Math.ceil(((sweep < 0 ? -sweep : sweep) * r) / 0.5));
+    for (let i = 0; i < n; i += 1) {
+      sincos(sweep * (i / n), sc);
+      pts.push([cx + sc.c * ox - sc.s * oy, cy + sc.s * ox + sc.c * oy, 0]);
+    }
+    sincos(sweep, sc);
+    at = [cx + sc.c * ox - sc.s * oy, cy + sc.s * ox + sc.c * oy];
+    dir = [sc.c * dir[0] - sc.s * dir[1], sc.s * dir[0] + sc.c * dir[1]];
+  }
+  pts.push([at[0], at[1], 0]);
+  return pts;
+}
+
+/* A road's points turned about the origin by `deg` degrees, by the test and
+ * not the module: a quarter turn exactly, (x, y) to (-y, x); any other
+ * angle through trig.js. */
+export function turnPoints(pts, deg) {
+  if (deg === 0) {
+    return pts;
+  }
+  if (deg === 90) {
+    return pts.map((p) => [-p[1], p[0], p[2]]);
+  }
+  const sc = sincos((deg * Math.PI) / 180, { s: 0, c: 0 });
+  return pts.map((p) => [sc.c * p[0] - sc.s * p[1], sc.s * p[0] + sc.c * p[1], p[2]]);
+}
+
+/*
+ * A 32 bit digest of every car's pose as the shell reads it: the twenty
+ * numbers readVehicles gives each car in use, through MurmurHash3's x86_32
+ * body and finaliser (scripts/lib/worldrec.js digestRecord's), integer
+ * arithmetic only, so the same bits in every engine.
+ */
+const PD = new Float64Array(20);
+const PDV = new DataView(PD.buffer);
+export function digestPoses(poses) {
+  let h = 0x9747b28c;
+  for (let m = 0; m < poses.length; m += 1) {
+    const o = poses[m];
+    if (!o.on) {
+      continue;
+    }
+    PD[0] = m;
+    PD[1] = o.x;
+    PD[2] = o.y;
+    PD[3] = o.z;
+    PD[4] = o.hx;
+    PD[5] = o.hz;
+    PD[6] = o.qx;
+    PD[7] = o.qy;
+    PD[8] = o.qz;
+    PD[9] = o.qw;
+    PD[10] = o.tx;
+    PD[11] = o.tz;
+    PD[12] = o.vx;
+    PD[13] = o.vy;
+    PD[14] = o.vz;
+    PD[15] = o.speed;
+    PD[16] = o.distance;
+    PD[17] = o.yawRate;
+    PD[18] = o.curvature;
+    PD[19] = o.slip;
+    for (let i = 0; i < 160; i += 4) {
+      let k = PDV.getUint32(i, true);
+      k = Math.imul(k, 0xcc9e2d51);
+      k = (k << 15) | (k >>> 17);
+      k = Math.imul(k, 0x1b873593);
+      h ^= k;
+      h = (h << 13) | (h >>> 19);
+      h = (Math.imul(h, 5) + 0xe6546b64) | 0;
+    }
+  }
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+/* Hover where it was set, height held: the craft a car comes to. */
+function hoverAt(z) {
+  return (ms, st, ctx) => [0, 0, 0, heightHold(ctx, st, z)];
+}
+
+/*
+ * One vehicle run, in the golden runs' shape so flyRun flies it: the world
+ * cleared and built with nothing static in it, the frame at the origin
+ * turned `yaw`, the roads and the cars handed over through plantworld.js as
+ * the shell will hand them, the clock set, the craft posed. The cars are
+ * read as the shell reads them once at setup and then before every step, so
+ * run.rec.digests[ms] is the digest of the pose step `ms` uses, and
+ * ctx.poses is the car a stick script can see.
+ */
+function vehicleRun(o) {
+  const af = o.airframe || 0;
+  const rec = { poses: makeVehiclePoses(), digests: new Uint32Array(0) };
+  const f = frameAt([0, 0, REST[af]], o.yaw || 0);
+  return {
+    name: `vehicles: ${o.name}`,
+    group: 'vehicles',
+    airframe: af,
+    ms: o.ms,
+    rec,
+    spec: o,
+    frame: f,
+    setup(sim, ctx) {
+      call(sim, 'sim_world_clear');
+      setWorldFrame(sim, 0, 0, 0, o.yaw || 0, REST[af]);
+      call(sim, 'sim_world_build');
+      o.roads.forEach((r, i) => {
+        const k = uploadRoad(sim, r.points, r.closed);
+        if (k !== i) {
+          throw new Error(`road ${i} came back as ${k}`);
+        }
+      });
+      for (const c of o.cars) {
+        addVehicle(sim, c.slot, c.road, c);
+      }
+      setVehicleClock(sim, o.clock0 || 0);
+      const p = o.pose.p;
+      const q = o.pose.q;
+      call(sim, 'sim_set_pose', p[0], p[1], p[2], q[0], q[1], q[2], q[3]);
+      call(sim, 'sim_rest');
+      readVehicles(sim, rec.poses);
+      ctx.poses = rec.poses;
+      rec.digests = new Uint32Array(o.ms);
+    },
+    sticks: o.sticks,
+    before(sim, ms) {
+      readVehicles(sim, rec.poses);
+      rec.digests[ms] = digestPoses(rec.poses);
+      call(sim, 'sim_set_ground', 1, 0, 0, 1, 0, 0, -REST[af], GROUND_MU, GROUND_E);
+    },
+    where: (st) => toThree(f, [st[ST.X], st[ST.Y], st[ST.Z]]),
+    exercises: (m) => m.contactSteps >= 0,
+    describe: (m) => `${m.contactSteps} steps in contact, ${m.moverSteps} where a car was the hardest contact, ending ${m.endSpeed.toFixed(3)} m/s`,
+  };
+}
+
+/* A car coming round a bend of 20 m radius at up to 12 m/s, and a craft
+ * hovering on the bend 25 degrees round, in its path. side 1 bends left, -1
+ * right, and 0 is the road straight on, the craft as far along it. */
+export function sweepRun(side, nudge = 0) {
+  const R = 20;
+  const phi = (25 * Math.PI) / 180;
+  const sc = sincos(phi, { s: 0, c: 0 });
+  const at = side === 0 ? [R * phi, 0] : [R * sc.s, side * (R - R * sc.c)];
+  const z = OVER - REST[0];
+  const label = side === 0 ? 'straight on' : (side > 0 ? 'a left bend' : 'a right bend');
+  return vehicleRun({
+    name: `a car on ${label} meets a hovering craft`,
+    ms: 5500,
+    roads: [{ points: roadToThree(turnRoad(side, R, 60, 90, 40), nudge), closed: false }],
+    cars: [{ slot: 0, road: 0, offset: 25, topSpeed: 12, lateral: 6, ...CAR }],
+    pose: { p: [at[0], at[1], z], q: [1, 0, 0, 0] },
+    sticks: hoverAt(z),
+    side,
+    at,
+    watch: 0,
+  });
+}
+
+/* A car at 20 m/s down a straight, and a craft hovering with its hull 5 cm
+ * into the car's path: the car's front corner clips it. */
+export function clipRun(nudge = 0) {
+  const y = CAR.width / 2 + HULL[0] - 0.05;
+  const z = OVER - REST[0];
+  return vehicleRun({
+    name: 'a car\'s front corner clips a hovering craft at 20 m/s',
+    ms: 4000,
+    roads: [{ points: roadToThree(turnRoad(0, 0, 100, 0, 200), nudge), closed: false }],
+    cars: [{ slot: 0, road: 0, offset: 60, topSpeed: 20, lateral: 6, ...CAR }],
+    pose: { p: [0, y, z], q: [1, 0, 0, 0] },
+    sticks: hoverAt(z),
+    at: [0, y],
+    watch: 0,
+  });
+}
+
+/*
+ * A whoop riding beside a car as it pulls away and turns. The car stands at
+ * the start of an open road, pulls away to 6 m/s along a 10 m straight and
+ * takes a bend of 30 m radius left through 150 degrees; the whoop keeps to
+ * its right, on the outside of the bend, a metre ahead of its middle and
+ * asked to be 10 cm into its side so it leans on it, as the van run's whoop
+ * does (moverRuns). The whoop because its ducts are its hull. The target is
+ * the car's own pose as the shell reads it, turned into the plant's frame:
+ * that point of the car, its velocity (the car's own and its turn across the
+ * lever arm), and its acceleration, the turn's centripetal part and the
+ * car's pulling away, which is the change in its speed since the last RC
+ * frame. The tracker is a spring and a damper with no integral, and a
+ * whoop's drag at 6 m/s wants a steady forward push, so it settles about
+ * 2.7 m behind where it is asked, the same whether it leans on the car or
+ * rides 2 cm clear of it (measured; an integral on the error pushed it out
+ * off the side in the bend instead). So it is asked to be RIDE_AHEAD in front
+ * of the car's middle, and rides beside the middle.
+ */
+const RIDE_AHEAD = 2.5;
+export function rideRun(nudge = 0) {
+  const af = 1;
+  const f = frameAt([0, 0, REST[af]], 0);
+  const z = OVER - REST[af];
+  const off = CAR.width / 2 + HULL[af];
+  const target = (ctx, acc) => {
+    const c = ctx.poses[0];
+    const p = toPlant(f, c.x, c.y, c.z);
+    const h = dirToPlant(f, c.hx, 0, c.hz);
+    const v = dirToPlant(f, c.vx, c.vy, c.vz);
+    const w = c.yawRate;
+    const along = RIDE_AHEAD;
+    const out = off - 0.10;
+    const r = [h[0] * along + h[1] * out, h[1] * along - h[0] * out];
+    const tv = [v[0] - w * r[1], v[1] + w * r[0]];
+    return {
+      p: [p[0] + r[0], p[1] + r[1], z],
+      v: [tv[0], tv[1], 0],
+      a: [-w * tv[1] + acc * h[0], w * tv[0] + acc * h[1], 0],
+      h: [h[0], h[1]],
+    };
+  };
+  return vehicleRun({
+    name: 'a whoop rides beside a car as it pulls away and turns',
+    airframe: af,
+    ms: 8000,
+    roads: [{ points: roadToThree(turnRoad(1, 30, 10, 150, 20), nudge), closed: false }],
+    cars: [{ slot: 0, road: 0, offset: 0, topSpeed: 6, lateral: 3, ...CAR }],
+    pose: { p: [-10 + 1.0, -(off + 0.02), z], q: [1, 0, 0, 0] },
+    sticks: (ms, st, ctx) => {
+      const speed = ctx.poses[0].speed;
+      const acc = ctx.rideSpeed === undefined ? 0 : (speed - ctx.rideSpeed) / (RC_MS * 0.001);
+      ctx.rideSpeed = speed;
+      const t = target(ctx, acc);
+      return tracker(() => t, t.h, { hold: true })(ms, st, ctx);
+    },
+    watch: 0,
+    off,
+  });
+}
+
+/*
+ * A car round a stadium's first bend (15 m radius) at its corner speed, and
+ * a craft hovering 1.7 m outside the path at the bend's apex. An ordinary car
+ * (gain 0) passes with its side 0.8 m clear of it. A drift car's nose goes
+ * into the bend and its tail swings out past 2 m, into the craft.
+ */
+export function driftRun(gain, nudge = 0) {
+  const len = 60;
+  const R = 15;
+  const probe = [len + R + 1.7, R];
+  const z = OVER - REST[0];
+  return vehicleRun({
+    name: gain > 0 ? 'a drift car\'s tail swings into a craft outside its bend'
+      : 'an ordinary car passes a craft outside its bend',
+    ms: 4500,
+    roads: [{ points: roadToThree(stadiumRoad(len, R), nudge), closed: true }],
+    cars: [{ slot: 0, road: 0, offset: 55, topSpeed: 14, lateral: 7, drift: gain, ...CAR }],
+    pose: { p: [probe[0], probe[1], z], q: [1, 0, 0, 0] },
+    sticks: hoverAt(z),
+    at: probe,
+    watch: 0,
+    gain,
+  });
+}
+
+/* A craft set down, motors idle, on the roof of a car doing 8 m/s down a
+ * straight. A car is never ground (world.c section 5), so nothing holds the
+ * craft there but friction. Its hull's floor is 3 mm over the roof:
+ * plant.c's hull_hz_down is the rest height, so the plant's z is the roof's
+ * height plus the gap. */
+export function roofRideRun(nudge = 0) {
+  const top = CAR.clearance + CAR.height;
+  return vehicleRun({
+    name: 'a craft set on a moving car\'s roof',
+    ms: 3000,
+    roads: [{ points: roadToThree(turnRoad(0, 0, 100, 0, 300), nudge), closed: false }],
+    cars: [{ slot: 0, road: 0, offset: 60, topSpeed: 8, lateral: 6, ...CAR }],
+    pose: { p: [-40, 0, top + 0.003], q: [1, 0, 0, 0] },
+    sticks: () => [0, 0, 0, 0],
+    watch: 0,
+    top,
+  });
+}
+
+/*
+ * The same hit with the road laid at `deg` degrees: a straight through the
+ * origin, a car at 10 m/s coming up behind a hovering craft. The test turns
+ * the road's points AND the craft (its place and its attitude, through
+ * trig.js), and not the module; the plant's frame stays at yaw 0 in every
+ * run. So the heading reaches the solve only through the car: its tangent,
+ * its frame, the turn into it and back.
+ *
+ * Why not turn the plant's frame instead: sim_world_frame turns a yaw into a
+ * rotation with the libm's small angle series, which stops at x^6 for the
+ * cosine, so at 37 degrees that rotation is itself off by about 2e-9 rad and
+ * 5e-9 in scale (measured 2026-09-25), and a heading test through it tests
+ * that series, not the cars.
+ *
+ * Why the craft is 0.37 m right of the road's centre line and turned 20
+ * degrees left of it: the box test the car is met with (obb_vs_box,
+ * unchanged) makes discrete choices, a face normal's sign from which side of
+ * a centre the craft is on, a clipped corner kept or dropped at a plane. A
+ * craft exactly square to the car, or exactly on its centre line, puts those
+ * on exact ties at 0 and 90 degrees, which any other heading's rounding
+ * settles the other way: measured, square to the car the same hit moved 6e-3
+ * m/s at 90 degrees and over 1 m/s at 37. That is the box test at a tie,
+ * whatever the heading, so this hit keeps clear of every tie.
+ */
+const INV_AT = [0, -0.37];
+const INV_REL = 20;
+export function invarianceRun(deg, nudge = 0) {
+  const z = OVER - REST[0];
+  const at = turnPoints([[INV_AT[0], INV_AT[1], 0]], deg)[0];
+  const h = sincos(((deg + INV_REL) * Math.PI) / 360, { s: 0, c: 0 });
+  return vehicleRun({
+    name: `the same hit on a straight road laid at ${deg} degrees`,
+    ms: 5000,
+    roads: [{ points: roadToThree(turnPoints(turnRoad(0, 0, 60, 0, 60), deg), nudge), closed: false }],
+    cars: [{ slot: 0, road: 0, offset: 30, topSpeed: 10, lateral: 6, ...CAR }],
+    pose: { p: [at[0], at[1], z], q: [h.c, 0, 0, h.s] },
+    sticks: hoverAt(z),
+    watch: 0,
+    deg,
+  });
+}
+
+/*
+ * n cars on one road, a stadium of 150 m straights and 30 m bends, spaced
+ * evenly along it, and a craft hovering 2.5 m out from the near straight's
+ * centre line: every car that passes comes inside its bounding test and is
+ * tested box against hull, and none touches it.
+ */
+export function crowdRun(n = 64, ms = 3000, nudge = 0) {
+  const pts = stadiumRoad(150, 30);
+  let L = 0;
+  for (let i = 0; i < pts.length; i += 1) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    L += Math.sqrt(dx * dx + dy * dy);
+  }
+  const cars = [];
+  for (let k = 0; k < n; k += 1) {
+    cars.push({ slot: k, road: 0, offset: (k * L) / n, topSpeed: 14, lateral: 6, ...CAR });
+  }
+  const z = OVER - REST[0];
+  return vehicleRun({
+    name: `${n} cars on one road pass a hovering craft`,
+    ms,
+    roads: [{ points: roadToThree(pts, nudge), closed: true }],
+    cars,
+    pose: { p: [75, -2.5, z], q: [1, 0, 0, 0] },
+    sticks: hoverAt(z),
+    watch: 0,
+    n,
+  });
+}
+
+/* The vehicle runs the engines check flies. `nudge` moves every road point,
+ * for its self test. */
+export function vehicleRuns({ nudge = 0 } = {}) {
+  return [
+    sweepRun(1, nudge),
+    sweepRun(-1, nudge),
+    clipRun(nudge),
+    rideRun(nudge),
+    driftRun(0.06, nudge),
+    roofRideRun(nudge),
+    invarianceRun(37, nudge),
+    crowdRun(64, 2000, nudge),
+  ];
 }

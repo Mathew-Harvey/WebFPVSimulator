@@ -306,12 +306,15 @@ extern double SIM_GRAVITY;
  *                         top of the box the CG is over if that is higher
  *   world_step            contacts against every nearby solid, solved in
  *                         world.c with accumulated impulses
+ *   world_tick            one step of the road vehicles' clock, every step,
+ *                         on the launch stand too
  */
 int world_active(void);
 void world_forget(void);
 int world_select_support(const SimState *s, const double tn[3], double td,
                          double out_n[3], double *out_d);
 void world_step(SimState *s, int ground_on, const double gn[3], double gd);
+void world_tick(void);
 
 void plant_reset(SimState *s);
 

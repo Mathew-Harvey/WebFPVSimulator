@@ -38,26 +38,30 @@ async function measureScreen(page, screen, vp) {
   
   await page.sleep(500);
   
-  // Log scroller element info
-  const scrollerInfo = await page.evaluate(`(() => {
-    const screenClass = '${screenClass}';
-    const menu = document.querySelector('.' + screenClass + ' .menu');
-    const peekScroller = document.querySelector('[data-peek-scroller]');
-    const style = window.getComputedStyle(menu);
-    
-    return JSON.stringify({
-      menuTag: menu.tagName,
-      menuClasses: menu.className,
-      menuScrollHeight: menu.scrollHeight,
-      menuClientHeight: menu.clientHeight,
-      menuOverflowY: style.overflowY,
-      hasPeekScroller: !!peekScroller,
-      peekScrollerSameAsMenu: peekScroller === menu
-    });
-  })()`);
-  
-  if (screen === 'title' && vp.width === 1366 && vp.height === 768) {
-    console.log(`  Scroller info at ${vp.width}x${vp.height} ${screen}: ${scrollerInfo}`);
+  // Log detailed scroller info for paused at 1280x720
+  if (screen === 'paused' && vp.width === 1280 && vp.height === 720) {
+    const detailedLog = await page.evaluate(`(() => {
+      const screen = document.querySelector('.screen-modal');
+      const menu = screen.querySelector('.menu');
+      const style = window.getComputedStyle(menu);
+      const peekScroller = document.querySelector('[data-peek-scroller]');
+      
+      return JSON.stringify({
+        computedMaxHeight: style.maxHeight,
+        computedHeight: style.height,
+        computedMinHeight: style.minHeight,
+        computedFlexBasis: style.flexBasis,
+        computedFlexGrow: style.flexGrow,
+        computedFlexShrink: style.flexShrink,
+        inlineStyleAttr: menu.getAttribute('style'),
+        hasDataPeekScroller: menu.hasAttribute('data-peek-scroller'),
+        elementsAreIdentical: peekScroller === menu,
+        clientHeight: menu.clientHeight,
+        scrollHeight: menu.scrollHeight
+      }, null, 2);
+    })()`);
+    console.log('  Paused at 1280x720 scroller details:');
+    console.log(detailedLog);
   }
   
   // Measure before scroll

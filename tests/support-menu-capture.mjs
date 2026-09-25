@@ -190,28 +190,14 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
   // Handle scrolling and screenshot for mobile viewport
   let screenshotPath;
   if (width === 390 && height === 844) {
-    // For mobile, we need to ensure the last row clears the command bar
-    // First, scroll the last row into view
+    // For mobile, scroll naturally to the bottom of the menu
     await page.evaluate(`(() => {
       const screenClass = '${screen}' === 'paused' ? '.screen-modal' : '.screen-title';
-      const rows = document.querySelectorAll(screenClass + ' .menu .row');
-      const lastRow = rows[rows.length - 1];
-      const commandBar = document.querySelector('.frame-bot');
+      const menu = document.querySelector(screenClass + ' .menu');
       
-      if (lastRow && commandBar) {
-        const commandBarRect = commandBar.getBoundingClientRect();
-        const menu = lastRow.closest('.menu');
-        
-        if (menu) {
-          // Calculate how much we need to scroll to get 17px clearance (accounting for rounding)
-          // We want lastRow.bottom to be at commandBarRect.top - 17
-          const lastRowRect = lastRow.getBoundingClientRect();
-          const targetBottom = commandBarRect.top - 17;
-          const scrollAdjustment = lastRowRect.bottom - targetBottom;
-          
-          // Scroll by the adjustment amount
-          menu.scrollBy(0, scrollAdjustment);
-        }
+      if (menu) {
+        // Natural scroll to bottom: set scrollTop to scrollHeight
+        menu.scrollTop = menu.scrollHeight;
       }
     })()`);
     
@@ -261,7 +247,7 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
       });
     })()`));
     
-    console.log(`  After scrollIntoView({block:'end'}):`);
+    console.log(`  After natural scroll to bottom (scrollTop = scrollHeight):`);
     if (scrolledMeasurements.lastRowRect) {
       console.log(`    Last row bottom: ${scrolledMeasurements.lastRowRect.bottom.toFixed(2)}`);
     }

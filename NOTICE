@@ -62,7 +62,7 @@ patch rather than a merge.
 ## three.js
 
     Upstream    https://github.com/mrdoob/three.js
-    Version     r160, loaded from a CDN by the import map in index.html
+    Version     r160, loaded from a CDN by the import map src/fresh.js writes
     Licence     MIT, Copyright (c) 2010-2024 three.js authors
     Not vendored; fetched at runtime.
 

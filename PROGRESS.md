@@ -44373,6 +44373,264 @@ FREESTYLE-MAPS-PLAN.md section 12 records items 8 and 9.
     git merge-base           e8f74f5, main is an ancestor of the branch
     git diff --stat vendor/betaflight   empty
 
+## 2026-09-25 | art, maps, shell | Stage B: the STF mark, hidden on every freestyle map
+
+The owner: "this start B". FREESTYLE-MAPS-PLAN.md section 9, built by one
+workflow (two builders on disjoint files, one to wire the find, one
+integrator; no review round, as the owner asked). No physics change: the
+mark is paint. The town's 19515 collider boxes, its 15669 authored
+rectangles and its 801 platforms hash the same before and after, and both
+built map placement hashes are unchanged (starter e72f829e..., one of
+everything 9899d9f1...).
+
+### What was built
+
+- **The mark, src/art/stf.js.** The STF logo painted on a canvas as a
+  sprayed stencil: brush-stroke white S and F with a green T, a violet ink
+  line, a freehand overspray black field, runs and drips. It is placeholder
+  lettering, because the logo file is still not in assets/. STF_LOGO_URL is
+  null and nothing is fetched; set it to the file and the same spray
+  treatment is applied to the owner's lettering (the load and repaint path
+  was tested with a data URL). A lit cel material, so it sits in the shade
+  of whatever it is painted on.
+- **The town's spot**, STF_SPOT in src/maps/city/places/works.js: the
+  underside of the first roof step of the works shed's middle tooth,
+  directly behind the broken clerestory, 1.7 by 0.85 m. It is the plan's
+  proposal and still unconfirmed by the owner. Drawn only, named with the
+  town's Trim suffix, so the collider fit, cover pass and audit ignore it.
+- **The built map's spot, src/maps/built/egg.js**, pure, no trigonometry,
+  seeded from the document id: faces of opaque solid boxes, with open air in
+  front, inside the plot, never seen from 0.3, 2 or 5 m over the spawn,
+  scored by a table (underside 4, back 2, side 1, top 0, inside +3), eight
+  finalists one per element first, a seeded pick. Falls back to a face
+  turned away from the spawn, then to paint on the ground in the far
+  corner. The starter's spot is the door end of the upper container over
+  CONTAINER TUNNEL, facing the billboard. The builder never loads it: a
+  props-check line walks every builder module's imports.
+- **Found, src/game/egg.js seesMark:** the FPV camera within 4 m of the
+  mark, at least 0.2 m in front of the paint and at least 15 degrees off its
+  plane, the mark inside a 35 degree cone, and a clear line (the
+  segmentCrossesAny test plus a 0.1 m walk that catches a line cutting a
+  box's corner, which segmentCrossesAny alone calls clear). Asked every 3
+  frames in flight.
+- **The moment:** a lettered STF callout ("MARK FOUND") and a manga panel
+  with the mark in it, on the right third for 3 s, no pointer events; a
+  stamp in this browser (src/share/stamps.js, webfpv.stf.stamps.v1) shown
+  as a badge on that world's card in the Freestyle picker. eggBonus(egg) in
+  main.js is Stage C's hook for the combo bonus, empty now.
+
+### Departures from the brief, each measured
+
+- A ceiling needs 2.2 m of air under it, not 3: a bando storey has 3.1 m.
+- Finalists are one per element before any element's second face; without
+  it the starter's eight were eight panels of one bando ceiling.
+- Only opaque solids hide the mark (not glass, nets, rails, foliage); the
+  check asserts both rules.
+- The built map paints 1.5 cm off the DRAWN surface, found by 15 rays onto
+  the chunk's batches, not off the collider: on the starter's container the
+  door leaves stand 3.5 to 5.6 cm proud of the solid, and the paint sat
+  behind them while "found" fired.
+- FIND_FACE, the 15 degree slant: without it the town's flight fired edge
+  on, 1.6 m from the mark and 7.6 degrees off its plane.
+- openSide: a ceiling mark reads toward the side its ceiling opens to; the
+  first rule stood a balcony mark upside down for the only way in.
+- A throw in the chooser or the painter leaves the map flying with no mark
+  and a console error, instead of failing the load.
+- **The dusk glow (mine, after the workflow):** lit paint went the grey
+  violet of the steel round it at dusk and the green T all but vanished on
+  the starter's container, 3 m out. At dusk and overcast the paint now
+  gives back STF_GLOW (0.3, 0.12) of its own colour through its emissive
+  map, so the letters lift and the T stays green while the black field
+  stays black. Golden, noon and the town are unchanged. Shot before and
+  after from the same pose.
+
+### Found, as a pilot
+
+In page pilot, Low, final code, by the integrator:
+
+    town        8 negatives not found (spawn, 40 m overhead, the roof over
+                the mark, works lines 1 and 2 both ways); in through the
+                clerestory: found at 1.42 m, 18.9 deg off axis
+    starter     7 negatives (spawn, crane gap both ways, overhead, the
+                stack over the mark, the tunnel); back west under the
+                billboard: found at 3.96 m, 29.2 deg off axis
+    own maps    three maps, three spots, the page agrees with Node
+
+Timing: the chooser's first call in a fresh engine, 15.5 ms on the starter
+and 47.0 ms on 10027 solids. Chrome 141 and Node 22 pick identical spots on
+52 maps (both are V8). A built map gains one draw call and about 15 ms of
+raycasting at build. MAP_MODULE_COUNT.built is 5.
+
+### For the owner
+
+- The town's spot is unconfirmed. From the ground it shows only as a sliver
+  through line 2's side openings and the open gable triangles, and at the
+  top of the frame on lines 1 and 2; it is found only in the roof space.
+- The starter's spot is on a natural line back from the billboard and may
+  be easier to find than wanted. A different STARTER_ID moves it.
+- The finalist rule lets a top face in: one of the integrator's maps got a
+  mark on a stair landing's top, which needs a nose-down look. A minimum
+  score for finalists would favour undersides.
+- On a phone (844 by 390) the callout sits under the Pause chip and the
+  panel covers the top of the right thumb plate for its 3 s.
+- The logo file: commit assets/stf.svg (or a PNG of 1024 px or more on a
+  transparent background) and set STF_LOGO_URL in src/art/stf.js.
+
+### What went wrong
+
+- An orphaned headless Chromium from an earlier rig burned about 3 of the
+  4 cores for three hours before the integrator found and stopped it; one
+  early town flight crashed under it. The final checks and flights ran
+  after.
+- The harness's temporary browser profiles had reached 674 directories and
+  11 GB in /tmp. Deleted, with no browser running.
+- The first built map mark was painted behind the container doors and
+  still reported found. The relief probe and the found test's slant rule
+  came out of that.
+
+### RUN LOG
+
+Run by me on the final tree, this turn:
+
+    npm run check:clip             652 passed, 0 failed
+    node scripts/props-check.js    all passed, 200 PASS; hashes unchanged
+    props-check --selftest         all passed
+    npm run check:plant            all passed
+    npm run check:crash            0 guards failed
+    npm run lint:memory            PASS, every world lazy and freed
+    npm run lint:boot              9 of 9 clean
+    npm run lint:preload           up to date, boot 105, city 73, built 29
+    npm run lint:nouns             PASS
+    npm run lint:presets           4 of 4 clean
+    npm run lint:shell             1 problem, title overflow 23 px, main's
+    dash scan, added lines         0; GPLv3 header on the three new files
+    git diff --stat vendor/betaflight   empty
+    npm run verify                 not run: no physics change
+
+Run by the integrator on this tree before the dusk glow, which is render
+only and touches no screen: lint:quality 56 of 56; lint:input 2 failed,
+141 passed, the two being the "parked and left" pair that main has and
+that passed on the integrator's own baseline run (flaky); every Fly this
+map check passed. The shots under .loop/shots/stf-* are gitignored; I
+looked at the town's found moment, the starter's mark at golden and at
+dusk, and the dusk glow.
+
+## 2026-09-25 | checks | Stage D part 1: the coverage lands before the world changes
+
+The owner's order of 2026-09-25 puts the chase right after Stage B, and
+their condition of 2026-09-24 and CLAUDE.md both say the tests that pin the
+core land, green, before the physics model changes. This is that, as its
+own commit. Nothing in src/native, patches/, vendor/, the plant or the ABI
+changed, and dist/sim.wasm is byte for byte HEAD's.
+
+### The module reproduces from source
+
+npm run build:wasm with emsdk 3.1.61 (/opt/emsdk, clang 19.0.0git
+7cfffe74eeb6), from an empty build/, wrote a dist/sim.wasm byte identical
+to the committed one: sha256 b0f89e9a4df94073611516f4cabdcf3698c7c0c9bd32f58f2a38c31999c56860,
+131330 bytes. The same sources copied outside the repository build the same
+bytes (the module has no custom or producers section, so no path or time
+is in it), and a one digit change to WORLD_SLOP in that copy moves the hash
+(first differing byte 39791), so the rebuild is live and not cached. From
+here, any change in the module is the change being made.
+
+### The baseline, committed module in place
+
+    npm run verify           16 of 16; trace de0401cd4266, Node and Chrome
+    npm run check:plant      23 of 23 (hashes in the golden, unchanged)
+    npm run check:world      all guards pass; --targets: the 5 known
+                             targets argued in this file
+    npm run check:crash      0 guards failed, twice
+
+### What the old checks could not see
+
+- **check:plant and verify never load a world.** world_step returns when
+  no world is uploaded, and no plant scenario or verify replay uploads one:
+  built against a module with WORLD_SLOP moved, both still passed with the
+  same hashes. Until today nothing that runs in Node pinned world.c.
+- **check:crash's targets now measure the crash reset.** Since 4ecbe75 a
+  hit of 4 m/s or more sets the craft down at once, so the touch window
+  targets read the reset craft or the pilot flying back, and they flip
+  between runs (at 20 m/s one run arrived at 0.531 m/s and measured 36.3
+  rad/s, the next arrived at 18.839 m/s and measured 0.235). Its guards are
+  sound; its targets are not a measure of the world any more.
+- Heading invariance is not bit exact today: at quarter turns the plant
+  frame state agrees to about 1e-12, inside world-check's 1e-6.
+
+### What landed
+
+- **The world golden**, scripts/world-golden.js and tests/goldens/world.json
+  (npm run check:world-golden, 4.6 s): 35 runs, 62 flights, 263,200 steps,
+  every step hashed bit for bit (the 20 state doubles and the 11 world
+  report doubles the shell reads), each run flown twice and required to
+  agree with itself and to reach what it is named for before it is
+  compared. The runs: all 15 world-check scenarios at their four yaws; the
+  11 crash-check paths in the town's real solids, from a fixture; built map
+  runs from placeDocument (hover, the flats' wall at 5 m/s, a roof settle,
+  a roof dive, a slide under a scaffold board, a crane chord for capsules);
+  a heading zero mover meeting a craft and a whoop riding beside a van. The
+  recorder wraps WebAssembly.instantiate in the golden's own process, so
+  world-check's flights are pinned without changing their code:
+  world-check.js only gained exports and a main guard, and its output is
+  byte identical.
+- **The town fixture**, tests/fixtures/town-crash.json (43 KB): the 650 of
+  the town's 19,515 collider boxes within 15 m of the crash paths, from the
+  real page, bit exact through Math.fround, carrying the whole town's hash
+  (6c36344a46bd2e1e) and its own (b5b7a44cc308df7d). 15 m because a solid
+  is touched only within the craft's reach, under 0.25 m of its CG, and
+  every town run asserts it stayed within the radius less 1 m of its path
+  (furthest measured 0.40 m). npm run check:world-town (30 s, a browser)
+  re-exports the town and compares: it matched. Editing the fixture is a
+  named failure.
+- **Node against Chrome**, scripts/world-engines.js (npm run
+  check:world-engines, 2.6 s): the golden's 20 page-loadable runs flown in
+  HeadlessChrome 141 through the same wasm and the same modules, every step
+  equal to Node 22's to the bit, and both equal to the golden. Both are V8;
+  the script's header says what SpiderMonkey and JavaScriptCore runs need.
+- **Self tests that must see a fault**: a box moved 1e-9 m (43 of 43 flights
+  red), a mover moved 1e-9 m (3 of 3), a capsule radius 1e-9 m larger (2 of
+  2), a restitution one bit higher (30 of 30 of the flights with 100 or more
+  frame contact steps: world.c's e times WORLD_E_KNEE, 1.7, gives the same
+  double for e = 0.15 with or without its last bit, so a brief touch cannot
+  see it). And a real world.c change, restitution scaled by 0.9, built to a
+  scratch module: 27 runs red, each naming its first step, exactly the runs
+  with a frame or lens contact.
+
+Recording the golden and exporting the fixture were each done once, in this
+part. From here, like tests/goldens/plant.json, re-recording is a reviewed
+act with its reason written here.
+
+### Open questions for the owner
+
+- **Should check:world-golden join npm run verify?** It is the only check
+  that sees world.c, it takes 5 s in Node, and verify is what the physics
+  rule names. Adding it means editing tests/verify.js, which is the owner's
+  to allow. Until then Stage D part 2 runs it by name beside verify.
+- The built map runs are placed live from src/props and the starter, so an
+  asset change moves them and asks for a reviewed re-record; the check says
+  so ("the world it was handed changed"). The other way is a snapshot
+  fixture, as the town has.
+
+### RUN LOG
+
+Run by me on this tree, this turn:
+
+    sha256 dist/sim.wasm           b0f89e9a..., equal to HEAD's
+    npm run check:world-golden     all passed
+    npm run check:world-golden:selftest   all passed
+    npm run check:world-engines    Node and Chromium agree to the bit
+    npm run check:plant            all passed
+    npm run check:world            all passed
+    npm run check:clip             652 passed, 0 failed
+    npm run lint:preload           up to date
+    dash scan, GPL headers         0 dashes; every new file has the header
+    git diff --stat vendor/betaflight   empty
+
+Run by the workflow's agents this turn and reported, not rerun by me: the
+rebuild and its reproducibility, npm run verify 16 of 16, check:crash twice,
+check:world --targets, check:plant:selftest 3 of 3, check:world-town, the
+fixture edit negative test, and the scratch module with restitution scaled.
+
 ## 2026-09-25 | shell | A finger can scroll the page menus
 
 Board ticket bug-d31c33a0, Lucas, filed 2026-09-25 07:38 UTC from an iPhone
@@ -45915,7 +46173,326 @@ changing.
                                    file plus this branch's entry; no code
                                    from main
     npm run check:clip, merged     683 passed, 0 failed
+
+## 2026-09-25 | shell, builder, deploy | Every page loads the scripts of the deploy it was served from
+
+The owner, with a screenshot of the builder's toast "The public board does
+not take freestyle maps yet. Export the map to share it as a file." an hour
+after maps could be published: "apparently i can't publish the map". The
+site was serving the new builder (fetched through the domain and from the
+Render origin, the sentence absent and openPublishMap present); the owner's
+browser was running a cached app.js, DEPLOY.md's four hour seam, the second
+time that day. Offered a code fix that changes how the pages start, the
+owner answered: "do the code fix so it always loads fresh". That is the
+approval, recorded here with its date. It covers src/fresh.js, the first
+lines of the three pages that load it, src/trackbuilder/start.js,
+scripts/gen-preload.js writing into fresh.js instead of index.html, and
+main.js's map preloads. The plant, the module ABI and the WASM build are
+untouched.
+
+### What changed
+
+- **src/fresh.js**, new, a classic script. It writes the page's one import
+  map: three.js from the CDN, as every page's static map did, and, when the
+  page gave it a deploy stamp, every module this site serves at an address
+  carrying it, `src/main.js?d=<stamp>`. An import map applies to every
+  import, static or dynamic, so the whole graph moves with the deploy. Then
+  it preloads the boot graph at those addresses and imports the page's
+  first module once the document is parsed.
+- **The first lines of index.html, src/trackbuilder/index.html and
+  src/share/orbit.html** ask for the page's own Last-Modified with a HEAD
+  no cache may answer, which is the deploy's time because Render stamps
+  every file of a deploy with it and a page is never cached, and load
+  fresh.js with it. None of the three has an import map, a modulepreload
+  or a module script of its own any more: each would start the module
+  loader before the addresses were known.
+- **src/trackbuilder/start.js** is the builder's inline module, moved
+  unchanged, because an inline module is a module script.
+- **scripts/gen-preload.js** writes the boot preload list into fresh.js
+  where it wrote index.html's modulepreload block, adds MODULES, every .js
+  git tracks under src/ and configs/ (201), and reads the import map from
+  fresh.js. `npm run lint:preload` checks both, as before.
+- **src/main.js**'s map preloads use import.meta.resolve, which applies the
+  import map, so the city's preloads are the addresses its imports use.
+- **scripts/fresh-check.js**, `npm run check:fresh`: serves the checkout
+  with webfpv.org's headers, deploys under a browser, and proves the new
+  module is the one running. See its header.
+- **DEPLOY.md**: the seam is worked round; the TTL still matters for
+  pictures.
+
+### Why versions per deploy, and not the other two
+
+- **Content hashes** are the right answer with a build step. This repo has
+  none and the host runs none, and hashes committed by hand would change
+  with every edit to every module, in every session working at once, with
+  a lint to fail each time somebody forgot.
+- **Revalidating the cached scripts when the deploy changes** (fetch with
+  cache: 'no-cache' over the module list) costs a returning browser only
+  the changed files. But the edge keeps a script five minutes
+  (s-maxage=300), so in the minutes after a deploy it can answer a
+  revalidation with the old script, and a page could still run half of one
+  deploy and half of another.
+- **An address per deploy** cannot be mixed by any cache: the edge has
+  never seen the new addresses, the browser has never cached them.
+
+### What it costs, and what it does not cover
+
+- One HEAD request per page load, to the page's own address.
+- A deploy sends a returning browser every script it loads once more,
+  changed or not: about a megabyte compressed for a boot.
+- The module loader starts one round trip later than the markup's
+  modulepreload block did, after the HEAD.
+- Not covered: pictures, still four hours behind a deploy; the landing
+  page, another repository. dist/sim.wasm already goes out max-age=0, and
+  the board's scripts no-store.
+- A module missing from MODULES, when the list is stale, loads at its bare
+  address, which is the old behaviour for that file and not a failure.
+
+### What went wrong
+
+- **The generator's first run listed 200 modules and missed start.js.** It
+  lists what git tracks, and start.js was new. Staged and regenerated: 201.
+- **The first smoke test ran against a local server that had died** and
+  waited two minutes on nothing. Restarted, and it ran.
+
+### RUN LOG
+
+    check:fresh              18 passed, 0 failed: the builder, the
+                             simulator and the orbit page each run the new
+                             deploy's module after a deploy, fetched at
+                             ?d=<new stamp>; the control, the module changed
+                             and the stamp not, runs the cached module, so
+                             the browser here does cache scripts
+    negative control         the same check against the builder page as it
+                             was before this: 0 of 6, still running the
+                             first deploy's module after a deploy, which is
+                             the owner's report reproduced
+    smoke, no stamp          the three pages boot as before on a checkout:
+                             the simulator ready in 6.4 s with 105
+                             preloads, the builder in 1 s, the orbit page
+                             started
+    check:clip               661 passed, 0 failed
+    lint:boot                9 of 9
+    lint:preload             up to date: boot 105, city 73, built 29; 201
+                             served
+    lint:nouns               PASS
+    lint:shell, no board     FAIL 1: the title's 23 px, as on main
+    lint:input               154 passed, 2 failed: the parked throttle row,
+                             as on main
+    lint:board               PASS: 8 tracks listed, 8 cards drawn
+    published maps, served   24 passed, 0 failed, the builder starting from
+                             start.js, the board sheet's camera and Fly
+                             this map through the new loader
+    npm run verify           not run: the plant, the module ABI and the
+                             WASM build are untouched; the pages' start is
+                             what changed, and check:fresh, the smoke run
+                             and the browser checks above drive all three
     git diff --stat vendor/betaflight   empty
+    merged with main         6bf90bf came in while this was written (the
+                             tags fix, the Patreon tab check, the shell's
+                             fork fix): PROGRESS.md conflicted where both
+                             appended and keeps every entry of both, main's
+                             first; the code merged by itself, and no
+                             module was added, so MODULES did not move
+    merged tree              check:clip 683 of 683; lint:preload up to
+                             date; check:fresh 18 of 18; published maps,
+                             served, 24 of 24
+
+## 2026-09-25 | git | The loader goes to main, for the owner to test
+
+The owner, on the entry above: "merge to main, i'll test it". That is the
+approval to put src/fresh.js and the pages' new first lines on main, and
+the verification scale chosen is the owner using the builder as a
+returning visitor would, with no hard reload.
+
+- **A fast-forward.** Fetched first: main was 6bf90bf, this branch's merge
+  base and ancestor, so main moves to the branch with no merge commit and
+  nothing rewritten.
+- **Checked on the live site before the push**, because the fix depends on
+  both: a module asked for at a stamped address through webfpv.org comes
+  back as the module, application/javascript, 380,652 bytes for
+  src/main.js?d=... and 116,721 for the builder's app.js; and the builder
+  and orbit pages answer a HEAD with Last-Modified.
+- **This deploy picks itself up.** The pages are never cached and now
+  carry the lines that load fresh.js, so the first visit after it loads
+  every script at the new deploy's address. No hard reload.
+
+What to look for: the builder, opened the ordinary way, publishes a map;
+and after the next deploy, whatever it is, nothing old comes back. What
+would count as wrong: a message or behaviour from before a deploy after
+it, a page that stays on its loading screen, or the loading taking
+noticeably longer than it did.
+
+### RUN LOG
+
+    git fetch                main 6bf90bf, unmoved since the merge above
+    git merge-base           6bf90bf, main's tip; main moves by
+                             fast-forward
+    live, before the push    stamped module addresses served as the
+                             module; the pages answer HEAD with
+                             Last-Modified
+    code                     unchanged since the merged tree's checks above
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | git | Merge main: the fourth gate card and the builder's chooser
+
+main had moved seven commits: a finger scrolls the page menus on an iPhone,
+the Quad picture gives vertical swipes to the page, and a fourth card on
+the gate with the builder asking which canvas to start on when the way in
+names nothing (asksCanvas). Merged into this branch, not rebased;
+merge-base 40fe84f, one history. Only PROGRESS.md conflicted, and both
+sides were kept.
+
+The one interaction worth checking was Fly this map against the chooser:
+every way into the map builder this branch uses carries ?mode=freestyle,
+which the chooser does not ask over, and lint:input's Fly this map pages
+passed on the merged tree beside main's new chooser checks.
+
+### RUN LOG
+
+    npm run check:clip             652 passed, 0 failed
+    npm run lint:input             2 failed, 154 passed: the "parked and
+                                   left" pair main has; every Fly this map
+                                   and chooser check passes
+    npm run lint:shell             1 problem, title overflow 23 px, main's
+    npm run lint:boot              9 of 9 clean
+    npm run lint:preload           up to date
+    npm run lint:nouns             PASS
+    node scripts/props-check.js    all passed
+    npm run check:world-golden     all passed
+    git merge-base                 40fe84f, one history
+
+## 2026-09-25 | checks | The world golden joins verify, as check 17
+
+The owner, answering the open question in the Stage D part 1 entry: "add
+the world golden to verify". That is the approval to edit tests/verify.js's
+checks and tests/thresholds.json for this, and it covers exactly this: a
+new row that adds a check, with no band on any existing row touched.
+
+### Why
+
+Every other row of verify flies the plant with no world uploaded, and
+world.c returns from its step when there is none, so verify could not see
+a change to walls, roofs, capsules or movers: built against a module with
+WORLD_SLOP moved, all sixteen rows passed with the same trace. The physics
+procedure (.claude/skills/verify-flight-model) is built round verify, so
+the one check that can see world.c belongs in it, and it lands before the
+first change to world.c since the golden was written, which is Stage D
+part 2.
+
+### What changed
+
+- **tests/lib/checks.js, check 17 world-golden**: runs scripts/world-golden.js
+  as a child process against the module check 1 has just built (a child,
+  because the golden wraps WebAssembly.instantiate in its own process to
+  record), reads its run count and one FAIL line per differing run, and
+  reports "N of 35 runs bit identical". The header's "the 13 Stage 1
+  checks" now says the later checks are written up here, as 15 and 16 were.
+- **tests/thresholds.json, world-golden**: differing_runs 0 (exact: the
+  golden pins every step bit for bit), runs_min 35 (the golden as recorded
+  at 8e5377e, a floor so a golden cut down or emptied cannot pass), and a
+  ten minute timeout for a hung run. Each value carries its source.
+- Stage D part 2's first run was stopped while it was still reading, with
+  nothing written, so that the physics change is verified by the verify that
+  can see it. It restarts on top of this commit.
+
+### Proof it can fail
+
+Check 17 alone, through its own code: on the committed module, "35 of 35
+runs bit identical", pass. With dist/sim.wasm swapped for part 1's scratch
+module (world.c's restitution scaled by 0.9), "8 of 35 runs bit
+identical", FAIL, naming the first: world-check wall tap, 3 m/s, flight 2
+of 3 from step 1112. The committed module was put back and hashed
+(b0f89e9a) before verify ran.
+
+### RUN LOG
+
+    check 17 alone, committed module      35 of 35, pass
+    check 17 alone, restitution x 0.9     8 of 35, FAIL, first named
+    npm run verify                        17 of 17 passing; rows 1 to 16
+                                          identical to part 1's baseline,
+                                          value for value; trace
+                                          de0401cd4266 in Node and Chrome
+    sha256 dist/sim.wasm after verify     b0f89e9a..., HEAD's
+    git diff --stat vendor/betaflight     empty
+
+## 2026-09-25 | plan, checks | The owner's go for Stage D part 2, and the drift in the physics
+
+Stage D part 2's first launch after check 17 did not build anything, on
+purpose. Both of its agents stopped: the owner's latest words were "add the
+world golden to verify", which is done, and a physics change needs the
+owner's own go in the run that makes it. They also said, rightly, that the
+brief went past the approval of 2026-09-24 in one place: it put a drift
+car's slide angle into the solid pose, where the plan's section 8 had
+drift as render only and P2's recorded text says only that "a mover gains
+a heading". That changes the physics model's shape, so under CLAUDE.md it
+is the owner's to decide. The verifier checked check 17 instead, from a
+clean build: verify 17 of 17 at 34c8085, rows 1 to 16 identical to part 1;
+with WORLD_SLOP moved in a scratch build, a full verify fails 16 of 17 on
+row 17 alone (12 of 35); with the mover's surface velocity left out,
+exactly the three mover runs go red (32 of 35).
+
+Put to the owner in the conversation, answered 2026-09-25:
+
+- **"Start now"**: Stage D part 2, P2 as approved on 2026-09-24, movers
+  that turn and follow a road computed in the module, the limit 16 to 64,
+  verified with verify including check 17, the train and every existing
+  world bit identical.
+- **Drift "in the physics"**: the solid car turns with its slide, so the
+  car seen is the car hit. The module works out a slide angle from speed
+  and the corner's curvature and turns the car's box by it. This replaces
+  the plan's "drift render only" for the car's body; drift smoke stays
+  render only.
+
+### A flake fixed on the way
+
+check:world-engines:selftest exited 99 once in four runs, after both its
+cases had passed: deleting Chrome's temporary profile failed with ENOTEMPTY
+because a Chrome helper was still writing to it. The delete in
+scripts/world-engines.js and in world-golden.js's --town path now retries
+(maxRetries 10, retryDelay 100). scripts/board-check.js has the same
+delete and is not this work's file. check 17's own path runs in Node and
+never opens a browser.
+
+### Noted, the owner's call
+
+tests/verify.js's check 1 reads the vendor diff from git diff's output and
+not its exit status, so outside a git checkout it passes vacuously. In the
+repository it is real.
+
+### RUN LOG
+
+    npm run check:world-engines:selftest   all passed
+    npm run check:world-engines            Node and Chromium agree to the bit
+    npm run check:world-golden             all passed
+    /tmp/sim-page-* and sim-chrome-*       16 stale profiles deleted, no
+                                           browser running
+
+## 2026-09-25 | git | Stage D's verified half goes to main: the world golden in verify
+
+The owner: "we good with the drift car chase? lets deploy to main before we
+run out of token", on top of their standing "merge stage D to main when
+it's verified". The drift car chase is not built yet: Stage D part 2, the
+turning movers, was being written when this was asked and is not verified,
+and Stage E, the road tool, the drift car and the Tail meter, comes after
+it. So only the verified half of Stage D goes, up to 121efd8:
+
+- Stage D part 1 (8e5377e): the module reproduces byte for byte from
+  source; the world golden (35 runs, every step pinned) with its self test;
+  the Node against Chrome comparison; the town fixture.
+- check 17 in npm run verify (34c8085): 17 of 17, rows 1 to 16 identical
+  to the baseline, and it fails when world.c changes.
+- The owner's go for part 2 and the drift decision (121efd8), and the
+  retry on Chrome profile deletes in the world scripts.
+
+No physics change goes: dist/sim.wasm on main stays b0f89e9a..., and the
+half written world.c on the branch (54c7ed4 and after) does not come. Main
+had moved to e61e992 (published freestyle maps, the tags and fork fixes,
+the loader), none of it in src/native, dist, tests, patches or the world
+scripts; merged in a separate worktree so the running part 2 agent was not
+disturbed. PROGRESS.md conflicted in two places, both sides appending, and
+both were kept; package.json merged cleanly with main's check:fresh beside
+the world checks.
 
 ## 2026-09-25 | art, maps, checks | The STF mark in plain view: seen from the pads on every freestyle map
 
@@ -46079,3 +46656,20 @@ Run on the final code, this turn:
                                        build change
     npm run check:plant, check:crash   not run: nothing solid changed, and
                                        the hashes say so
+
+After the commit above, main had moved to fdafe2e (Stage D part 1's world
+golden in verify, the loader, visit source attribution). Merged into this
+branch, merge-base 6bf90bf, one history; only PROGRESS.md conflicted, both
+sides appending, resolved as main's entries with this one after them. On
+the merged tree:
+
+    node scripts/world-golden.js       all passed, 5.4 s: the town's
+                                       fixture and both built maps fly bit
+                                       identical, as they should with
+                                       nothing solid changed
+    props-check --only=egg             all passed; the builder, now 23
+                                       files, still reaches none of the
+                                       mark's files
+    npm run check:clip                 683 passed, 0 failed
+    npm run lint:preload               up to date, boot 105, city 73,
+                                       built 29; 201 served

@@ -17,6 +17,27 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>WebFPV, orbit</title>
+    <!--
+      THE SCRIPTS OF THE DEPLOY THIS PAGE CAME FROM, ALWAYS: see src/fresh.js.
+      The board frames this page, so a stale orbit.js here is a board sheet
+      flying the wrong world. The page's first module is orbit.js, beside it.
+    -->
+    <script>
+      (() => {
+        const load = (stamp) => {
+          const s = document.createElement('script');
+          s.src = `../fresh.js${stamp ? `?d=${stamp}` : ''}`;
+          s.dataset.entry = 'src/share/orbit.js';
+          document.head.appendChild(s);
+        };
+        fetch(location.href, { method: 'HEAD', cache: 'no-store' })
+          .then((r) => {
+            const t = Date.parse(r.headers.get('last-modified') || '');
+            load(t > 0 ? Math.round(t / 1000).toString(36) : '');
+          })
+          .catch(() => load(''));
+      })();
+    </script>
     <link rel="icon" href="data:," />
     <style>
       html, body {
@@ -36,18 +57,9 @@
       }
       #status.gone { display: none; }
     </style>
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-        }
-      }
-    </script>
   </head>
   <body>
     <canvas id="view"></canvas>
     <div id="status">Loading the world.</div>
-    <script type="module" src="./orbit.js"></script>
   </body>
 </html>

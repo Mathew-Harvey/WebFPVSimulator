@@ -43774,3 +43774,13 @@ for it, run on that page alone:
                              in a picture
     npm run verify           not run: no physics, plant, ABI or build
                              change
+
+### Pushed to main, and the ticket closed once it was live
+
+The owner: "Push to main". Main had not moved since the merge, so main went
+857cc71 to 8a39605 by fast forward. webfpv.org served it on the plain URLs,
+the ones a pilot's browser loads, 311 s after the push: seatWorld and
+townNote in src/ui/ui.js and the new notice in src/main.js, read off the
+live files. bug-850375dc was then closed as fixed, with a resolution that
+tells the reporter what changed and asks for a report from that screen if
+it ever fails again, since the report now says why.

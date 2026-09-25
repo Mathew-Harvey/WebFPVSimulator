@@ -252,6 +252,50 @@ export function paintLights(lights, T) {
 }
 
 /*
+ * THE DOME'S OWN SHADING, with two changes, on the dome's material after
+ * buildSky made it (so the vendored file stays byte identical).
+ *
+ * Its height is the direction from the dome's centre, the object space
+ * position, where the vendored shader took normalize(vWorld). The dome is
+ * trailed on the camera, so from 120 m up the world position put the haze
+ * 13.9 degrees under the true horizon and sky colour at it. And under the
+ * horizon it goes to the fog's colour, uFog. The dome writes depth and
+ * the land stops at it, or at the far plane, short of the horizon from any
+ * height, and at dusk the amber haze filled that gap: from altitude an
+ * amber band lay under the horizon where the violet fogged land should be,
+ * and the map read as a disc hanging in the sky. Now the dome carries the
+ * fogged land on to the horizon. At the ground the gap is a fifth of a
+ * degree and nothing changes. The vendored shader's reversed smoothstep is
+ * written the other way round here, the same curve, because GLSL leaves a
+ * smoothstep whose first edge is the higher undefined.
+ */
+const DOME_VERTEX = /* glsl */ `
+      varying vec3 vDir;
+      void main() {
+        vDir = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+      }
+    `;
+const DOME_FRAGMENT = /* glsl */ `
+      uniform vec3 uTop, uMid, uHaze, uFog;
+      uniform float uBands;
+      varying vec3 vDir;
+
+      void main() {
+        float h = normalize( vDir ).y;
+        float t = clamp( h * 1.15 + 0.02, 0.0, 1.0 );
+        float q = floor( t * uBands ) / uBands;
+        t = mix( t, q, 0.35 );
+
+        vec3 col = mix( uHaze, uMid, smoothstep( 0.0, 0.30, t ) );
+        col = mix( col, uTop, smoothstep( 0.26, 0.92, t ) );
+        col = mix( col, uHaze, ( 1.0 - smoothstep( -0.05, 0.12, h ) ) * 0.6 );
+        col = mix( col, uFog, 1.0 - smoothstep( -0.03, 0.0, h ) );
+        gl_FragColor = vec4( col, 1.0 );
+      }
+    `;
+
+/*
  * The dome and the clouds, as buildSky in the vendored core/sky.js made
  * them: it takes no colours, so they are set here after it has built them,
  * and the vendored file stays byte identical. Each puff is a group of two
@@ -260,7 +304,15 @@ export function paintLights(lights, T) {
  * so setting them touches nothing else.
  */
 export function paintSky(sky, T) {
-  const u = sky.dome.material.uniforms;
+  const m = sky.dome.material;
+  const u = m.uniforms;
+  if (m.fragmentShader !== DOME_FRAGMENT) {
+    u.uFog = { value: u.uHaze.value.clone() };
+    m.vertexShader = DOME_VERTEX;
+    m.fragmentShader = DOME_FRAGMENT;
+    m.needsUpdate = true;
+  }
+  u.uFog.value.set(T.fog.color);
   u.uTop.value.set(T.sky.top);
   u.uMid.value.set(T.sky.mid);
   u.uHaze.value.set(T.sky.haze);

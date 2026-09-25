@@ -47,7 +47,7 @@ import { buildPath } from './path.js';
 import { collectWarnings, freestyleReport, sortWarnings } from './warnings.js';
 import { History } from './history.js';
 import {
-  animationFilename, deleteTrack, downloadBlob, downloadTrack, listTracks,
+  animationFilename, deleteTrack, downloadBlob, downloadTrack, keepDisplaced, listTracks,
   loadTrack, makeAutosaver, readAutosave, readFileText, saveTrack, shipMaps, trackExists, writeAutosave,
 } from './storage.js';
 /* The yard Your map flies while the map seat is empty, listed in Load as
@@ -80,6 +80,7 @@ import {
   forkDocument,
   inspectCourse,
   isEmptyCanvas,
+  layoutFingerprint,
   publishedTags,
   rememberPublish,
   suggestRemixName,
@@ -256,6 +257,23 @@ function newMap() {
   return createTrack(undefined, 'full', 'freestyle');
 }
 
+/*
+ * Whether a local version of a board track holds work the board's does
+ * not: the flying layout the Publish button compares (layoutFingerprint),
+ * the name, or the logos, which the fingerprint leaves out. Not the whole
+ * document: the board's copy has been through the board's own handling
+ * (credit, field defaults), so an unedited seat would not compare equal
+ * to it and every open of your own board link would ask.
+ */
+function localDrift(seated, incoming) {
+  const logos = (d) => {
+    const p = toPlain(d);
+    return JSON.stringify([p.branding, p.elements.filter((e) => e.type === 'groundLogo')]);
+  };
+  return layoutFingerprint(seated) !== layoutFingerprint(incoming) || seated.name !== incoming.name
+    || logos(seated) !== logos(incoming);
+}
+
 /* Why Publish does nothing on a map, said on the button and on a press.
  * The board is a separate repository and knows only race tracks
  * (FREESTYLE-MAPS-PLAN.md, section 13). */
@@ -381,7 +399,21 @@ export class App {
       const seated = this.seatedFor(incoming);
       if (wantEdit) {
         const load = () => {
-          this.loadDocument(incoming, `Editing "${incoming.name}" on the board.`);
+          /* The seat may hold this same track with edits the board has not
+           * had: the Publish button calls that drift and offers to send it.
+           * Opening the board's version must not drop them, so they are
+           * kept in Load as a copy under a new id (never under the board's
+           * id, which would be two documents behind one edit key). */
+          let local = '';
+          if (!isEmptyCanvas(seated) && seated.id === incoming.id && localDrift(seated, incoming)) {
+            const copy = duplicateTrack(seated, `${seated.name} (local changes)`);
+            if (!saveTrack(copy)) {
+              this.toast(`Nothing was opened: "${seated.name}" has changes the board does not, and they could not be kept because local storage is unavailable or full. Export it first.`);
+              return;
+            }
+            local = `Your local changes are in Load as "${copy.name}".`;
+          }
+          this.loadDocument(incoming, [`Editing "${incoming.name}" on the board.`, local].filter(Boolean).join(' '));
         };
         if (!isEmptyCanvas(seated) && seated.id !== incoming.id) {
           this.confirm(
@@ -403,12 +435,21 @@ export class App {
         board: share.board || boardOrigin(),
       });
       const load = () => {
+        /* The other canvas's document is kept FIRST, because it can fail
+         * (storage full), and then nothing may happen: loadDocument would
+         * refuse, but only after the bind below was committed. The keep
+         * is handed to loadDocument rather than asked for twice. */
+        const keep = canvasOf(copy) !== canvasOf(this.doc) ? this.keepSeat(copy) : null;
+        if (keep && !keep.ok) {
+          this.toast(keep.said);
+          return;
+        }
         /* Committed HERE, not in forkDocument: the confirm below can be
          * declined, and a bind for a copy the author never opened is a
          * course this browser claims to own and has never seen. */
         commit();
         clearShareImport();
-        this.loadDocument(copy, `This is your copy of "${share.name || incoming.name}". Publish it under a new name to put it on the board.`);
+        this.loadDocument(copy, `This is your copy of "${share.name || incoming.name}". Publish it under a new name to put it on the board.`, keep);
       };
       if (!isEmptyCanvas(seated) && seated.id !== share.id) {
         this.confirm(
@@ -998,7 +1039,7 @@ export class App {
     return [
       `Replace "${seated.name}" on the ${where} canvas?`,
       `${what} opens on the ${where} canvas in its place. ${trackExists(seated.id)
-        ? 'The copy saved in Load stays, but changes made since it was saved are replaced.'
+        ? 'The copy saved in Load stays, and any changes made since it was saved go into Load beside it.'
         : `"${seated.name}" goes into Load first, so it is not lost.`}`,
     ];
   }
@@ -1008,33 +1049,57 @@ export class App {
    * sight. Importing a map on a race track, a ?track= link to one, a room
    * imported on the five inch, or a copy of a board track opened while the
    * map was up, each wrote over a seat the author could not see. What was
-   * there goes into the library first unless the library already has it,
+   * there goes into the library first, by keepDisplaced in ./storage.js,
    * the rule seatLocal in src/ui/ui.js applies when the simulator seats a
-   * track, and the toast says where it went. The toggle hands over the
-   * seat's own document, the same id, so it never saves anything here.
-   * Returns what to say, or ''.
+   * track: as itself when Load does not have it, as a copy beside the
+   * saved one when it was edited after its last Save, and not at all when
+   * Load has it as it is. The toast says where it went. The toggle hands
+   * over the seat's own document, the same id, so it never saves anything
+   * here. Returns { ok, said }: ok is false when the seat needed keeping
+   * and could not be kept, and then nothing may replace it.
    */
   keepSeat(doc) {
     const seated = this.seatedFor(doc);
-    if (isEmptyCanvas(seated) || seated.id === doc.id || trackExists(seated.id)) {
-      return '';
+    if (isEmptyCanvas(seated) || seated.id === doc.id) {
+      return { ok: true, said: '' };
     }
     const where = CANVAS_NAMES[canvasOf(doc)];
-    return saveTrack(seated)
-      ? `"${seated.name}" was on the ${where} canvas, so it is in Load now.`
-      : `"${seated.name}" was on the ${where} canvas and could not be kept: local storage is unavailable or full.`;
+    const kept = keepDisplaced(seated);
+    if (!kept.ok) {
+      return {
+        ok: false,
+        said: `Nothing was opened: "${seated.name}" is on the ${where} canvas and could not be kept, because local storage is unavailable or full. Export it first.`,
+      };
+    }
+    if (!kept.saved) {
+      return { ok: true, said: '' };
+    }
+    return {
+      ok: true,
+      said: kept.saved === seated
+        ? `"${seated.name}" was on the ${where} canvas, so it is in Load now.`
+        : `"${seated.name}" on the ${where} canvas had changes made after it was saved, so they are in Load as "${kept.saved.name}".`,
+    };
   }
 
-  loadDocument(doc, message) {
+  loadDocument(doc, message, keep = null) {
     /* A document of another canvas moves the author to that canvas, so the
      * one being left is written to its own seat first, the same as the
      * toggle does: importing a race track onto a map must not drop the
      * map's last few seconds of edits. Then whatever the other canvas held
-     * is kept, see keepSeat. */
+     * is kept, see keepSeat, or was already by a caller that had to know
+     * first and hands the answer in as `keep`. If it could not be kept,
+     * nothing changes: the screen, both seats and the canvas stay as they
+     * were, and the author is told. Returns whether the document opened. */
     let kept = '';
     if (canvasOf(doc) !== canvasOf(this.doc)) {
       this.autosaver.flush();
-      kept = this.keepSeat(doc);
+      const k = keep ?? this.keepSeat(doc);
+      if (!k.ok) {
+        this.toast(k.said);
+        return false;
+      }
+      kept = k.said;
     }
     this.doc = doc;
     /* The palette is the track class's, so it is rebuilt whenever a document
@@ -1069,6 +1134,7 @@ export class App {
     if (said) {
       this.toast(said);
     }
+    return true;
   }
 
   newTrack() {

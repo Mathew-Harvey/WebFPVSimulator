@@ -79,7 +79,7 @@ import { poleWireAnchors } from '../../props/street.js';
 import { sincos } from '../../props/trig.js';
 import { seededRandom, hashString } from '../../props/parts.js';
 import { paintGroundLogo } from '../../art/banners.js';
-import { placeDocument, groundUnder } from './place.js';
+import { placeDocument, groundUnder, topUnder, PLATFORM_REACH } from './place.js';
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost } from './looks.js';
 
@@ -843,7 +843,12 @@ const ARROW_EVERY = 24;
 function tarmacMarks(paint, mat, placed, painted) {
   const ex = placed.W / 2 - EDGE_LINE_INSET;
   const ez = placed.D / 2 - EDGE_LINE_INSET;
-  const busy = footprints(placed, 0.3);
+  /* A bridge's road runs the plot's whole depth under it, and a bay or an
+   * arrow painted across it is a car park laid over a road. */
+  const busy = [
+    ...footprints(placed, 0.3),
+    ...lanesOf(placed).map((l) => ({ x0: l.x0 - 0.3, x1: l.x1 + 0.3, z0: l.z0 - 0.3, z1: l.z1 + 0.3 })),
+  ];
   /* Each side as a frame: `along` runs the way the aisle's traffic goes
    * (anticlockwise seen from above), `inward` points into the plot, and
    * `e` is how far the edge line is from the middle. */
@@ -924,6 +929,25 @@ function dirtRuts(placed, doc) {
       [t * W, -D / 2 + 2], [W / 2 - 2, t * D], [t * W, D / 2 - 2], [-W / 2 + 2, t * D],
     ][side];
   };
+  /* The start's paint on the paving, the launch box and the chevron ahead
+   * of it (buildGround), in each pads' own frame and grown by half a rut:
+   * a rut is transparent and drawn after the paint, so it printed over the
+   * START text, the chequer and the box line. It breaks there as it does
+   * at a lane. */
+  const starts = placed.items.filter((it) => it.el.type === 'startPads' && it.y === 0).map((it) => {
+    const b = planBounds(it.parts);
+    const S = { s: 0, c: 1 };
+    sincos(it.yaw, S);
+    const g = RUT_W / 2;
+    return { x: it.x, z: it.z, s: S.s, c: S.c, x0: b.x0 - 1.0 - g, x1: b.x1 + 4.2 + g, z0: b.z0 - 0.8 - g, z1: b.z1 + 0.8 + g };
+  });
+  const inStart = (x, z) => starts.some((r) => {
+    const dx = x - r.x;
+    const dz = z - r.z;
+    const lx = dx * r.c - dz * r.s;
+    const lz = dx * r.s + dz * r.c;
+    return lx > r.x0 && lx < r.x1 && lz > r.z0 && lz < r.z1;
+  });
   const pos = [];
   const uv = [];
   const index = [];
@@ -948,7 +972,7 @@ function dirtRuts(placed, doc) {
         const mx = c.x + nx * off;
         const mz = c.z + nz * off;
         const inLane = lanes.some((l) => mx > l.x0 && mx < l.x1 && mz > l.z0 && mz < l.z1);
-        if (inLane || Math.abs(mx) > W / 2 - 0.4 || Math.abs(mz) > D / 2 - 0.4) {
+        if (inLane || inStart(mx, mz) || Math.abs(mx) > W / 2 - 0.4 || Math.abs(mz) > D / 2 - 0.4) {
           prev = -1;
           continue;
         }
@@ -1303,13 +1327,42 @@ export function buildBackdrop(scene, scale, hills = { far: PAL.hillFar, near: PA
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setIndex(index);
-    const mesh = new THREE.Mesh(geo, flat({ color: hills[L.tone], fog: false, side: THREE.DoubleSide }));
+    /* Its own material, not the toon kit's cached flat of that colour,
+     * because fadeBackdrop changes its colour. */
+    const mesh = new THREE.Mesh(geo, flat({ color: hills[L.tone], fog: false, side: THREE.DoubleSide, cache: false }));
+    mesh.userData.base = mesh.material.color.clone();
     mesh.renderOrder = -8;
     mesh.frustumCulled = false;
     group.add(mesh);
   }
   scene.add(group);
   return group;
+}
+
+/*
+ * FROM ALTITUDE THE RINGS ARE NOT A HORIZON. They are unlit and out of the
+ * fog, and the fog is complete short of them, so from about 40 m up the
+ * near ring showed as a ribbon lying on the fogged land in front of it and
+ * behind it, and the far ring as a pale wall, in every heading and on every
+ * setting. They fade into the fog's colour as the camera climbs, starting at
+ * BACKDROP_FADE[0] and gone at BACKDROP_FADE[1], where both rings' tops are
+ * under the true horizon, and the fogged land and the dome under the
+ * horizon (paintSky in ./looks.js) meet the sky instead. Render only:
+ * `y` is the camera's height, and nothing here reaches the physics.
+ */
+const BACKDROP_FADE = [25, 60];
+
+export function fadeBackdrop(group, y, fogColor) {
+  const u = (y - BACKDROP_FADE[0]) / (BACKDROP_FADE[1] - BACKDROP_FADE[0]);
+  const k = u <= 0 ? 0 : (u >= 1 ? 1 : u * u * (3 - 2 * u));
+  if (group.userData.fade === k) {
+    return;
+  }
+  group.userData.fade = k;
+  for (const mesh of group.children) {
+    mesh.material.color.copy(mesh.userData.base).lerp(fogColor, k);
+    mesh.visible = k < 1;
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -1483,14 +1536,56 @@ function buildWires(placed, lineColor = WIRE_COLOR) {
  * No lights. Every pool is one quad in one additive batch, every halo one
  * point in one more, so a map of fifty lamps costs two draw calls and no
  * shading anywhere else. Neither writes depth, so the ink draws no line
- * round a glow. A pool lands on the surface under the lamp (groundUnder in
- * ./place.js, the same the shell asks), so a lamp over a roof lights the
- * roof; it widens and fades with the lamp's height, and a lamp too high to
- * light anything gets only its halo.
+ * round a glow. A pool lands on the surface under the lamp (topUnder in
+ * ./place.js, the query the shell's height makes), so a lamp over a roof
+ * lights the roof; it widens and fades with the lamp's height, and a lamp
+ * too high to light anything gets only its halo.
+ *
+ * Asked from below the lamp's mount (POOL_FROM), so that the slab a lamp
+ * hangs under, a canopy or a soffit, is never taken for its floor: asked
+ * from 0.2 m under the lamp any top up to 0.35 m over it counted, and every
+ * canopy and soffit lamp lit nothing. And a pool on a box top is cut to
+ * that box, a landing or a bridge deck, rather than hanging past its edge
+ * as light in the air; its texture stays centred on the lamp, so the cut is
+ * a clean edge and not a smaller pool.
  */
+const POOL_FROM = 0.25 + PLATFORM_REACH;
 const POOL_COLOR = 0xffc58a;
 const VENDING_COLOR = 0xe2eaff;
 const HALO_COLOR = 0xffdcae;
+
+/*
+ * Cut a pool quad (the unit quad, scaled by 2r about the lamp) to the box
+ * whose top is `top` and whose footprint holds the lamp, strictly, as the
+ * query found it. Each corner is moved to the box's edge where the pool
+ * passes it and its UV follows, (p - lamp) / (2r) + 0.5, so the glow stays
+ * centred on the lamp. False when nothing of the pool is left.
+ */
+function cutPool(g, l, r, solids, top) {
+  const s = solids.find((o) => o.box && o.box[4] === top
+    && l.x > o.box[0] && l.x < o.box[3] && l.z > o.box[2] && l.z < o.box[5]);
+  if (!s) {
+    return true;
+  }
+  const b = s.box;
+  const d = 2 * r;
+  const x0 = Math.max(-0.5, (b[0] - l.x) / d);
+  const x1 = Math.min(0.5, (b[3] - l.x) / d);
+  const z0 = Math.max(-0.5, (b[2] - l.z) / d);
+  const z1 = Math.min(0.5, (b[5] - l.z) / d);
+  if (!(x0 < x1 && z0 < z1)) {
+    return false;
+  }
+  const pos = g.attributes.position;
+  const uv = g.attributes.uv;
+  for (let i = 0; i < pos.count; i += 1) {
+    const x = pos.getX(i) < 0 ? x0 : x1;
+    const z = pos.getZ(i) < 0 ? z0 : z1;
+    pos.setXYZ(i, x, 0, z);
+    uv.setXY(i, x + 0.5, 0.5 - z);
+  }
+  return true;
+}
 
 function buildLampGlow(lamps, placed) {
   /* One per lamp: a lamp drawn as a lens and a housing is logged twice.
@@ -1509,7 +1604,8 @@ function buildLampGlow(lamps, placed) {
   const parts = [];
   const tint = new THREE.Color();
   for (const l of kept) {
-    const floor = groundUnder(placed.tops, l.x, l.z, l.y - 0.2);
+    const top = topUnder(placed.tops, l.x, l.z, l.y - POOL_FROM);
+    const floor = groundUnder(placed.tops, l.x, l.z, l.y - POOL_FROM);
     const h = l.y - floor;
     if (!(h > 0.3 && h < 16)) {
       continue;
@@ -1518,6 +1614,10 @@ function buildLampGlow(lamps, placed) {
     const r = l.halo ? Math.min(6.5, Math.max(1.8, 1.1 + 0.5 * h)) : 1.9;
     const k = l.halo ? Math.min(0.85, Math.max(0.28, 1.05 - h / 14)) : 0.42;
     const g = quad.clone();
+    if (top > 0 && !cutPool(g, l, r, placed.solids, top)) {
+      g.dispose();
+      continue;
+    }
     tint.set(l.halo ? POOL_COLOR : VENDING_COLOR).multiplyScalar(k);
     const col = new Float32Array(g.attributes.position.count * 3);
     for (let i = 0; i < col.length; i += 3) {
@@ -1728,7 +1828,7 @@ export async function buildMap(shell, onProgress, options) {
 
   const sky = buildSky(scene, skyRadius);
   paintSky(sky, T);
-  buildBackdrop(scene, hillScale, T.hills);
+  const backdrop = buildBackdrop(scene, hillScale, T.hills);
   progress(0.1);
   await yieldToPaint();
 
@@ -1857,6 +1957,7 @@ export async function buildMap(shell, onProgress, options) {
     seat(bounce, BOUNCE_OFFSET, shadowTarget);
     sky.dome.position.copy(camera.position);
     sky.clouds.position.copy(camera.position);
+    fadeBackdrop(backdrop, camera.position.y, scene.fog.color);
     cullTo(camera.position);
   }
   /* Seated once now, so the first frame, and the title behind the menu,
@@ -1905,9 +2006,12 @@ export async function buildMap(shell, onProgress, options) {
      * seat, the OSD altitude, the obstacles' clearance and the set down.
      * Without it a craft parked on a roof was 15 m up as far as the shell
      * knew. See groundUnder in ./place.js for why it answers a millimetre
-     * under the top rather than at it.
+     * under the top rather than at it, and for cgY, the craft's own
+     * height, which the shell passes wherever it asks for a craft so a
+     * thin board over the craft is never its ground. The town's height
+     * takes no cgY and needs none: its decks are thick.
      */
-    height: (x, z, fromY) => groundUnder(placed.tops, x, z, fromY),
+    height: (x, z, fromY, cgY) => groundUnder(placed.tops, x, z, fromY, cgY),
     setNextGate() {},
     targetAim: () => AIM,
     approachSide: () => null,

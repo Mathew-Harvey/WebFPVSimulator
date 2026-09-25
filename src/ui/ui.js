@@ -185,7 +185,7 @@ import { FC_DUMP_KEY, FC_DUMP_AIRFRAME_KEY } from '../fc/dump.js';
  * about to stop being the active one. See seatCraftForCourse and seatLocal.
  */
 import {
-  listTracks, loadTrack, readAutosave, saveTrack, trackExists, writeAutosave,
+  keepDisplaced, listTracks, loadTrack, readAutosave, writeAutosave,
 } from '../trackbuilder/storage.js';
 
 /* Whether a Flight controller save exists, which is what puts Your edits
@@ -498,23 +498,36 @@ const SCORING_WARNING = 'This is an unfinished feature and it is still being bui
 
 /* `where` is the world seated, since Off is that world and nothing else:
  * the town, or Your map. */
-const scoringHow = (where) => `Off: no overlay, no names and no run clock, just ${where} and the quad.`
-  + ' Free flight: tricks are named and scored as you land them, with no clock and no'
+const scoringOff = (where) => `Off: no overlay, no names and no run clock, just ${where} and the quad.`;
+const SCORING_FREE = 'Free flight: tricks are named and scored as you land them, with no clock and no'
   + ' board, and the run never ends. That is the one to learn a Powerloop in.';
 
-const SCORING_BOARD = ' Scored run: two minutes on the clock, and what you finish with goes to the high'
+const SCORING_BOARD = 'Scored run: two minutes on the clock, and what you finish with goes to the high'
   + ' score board.';
 
 /*
  * Your map is a different place for every pilot who has built one, so the
  * board will not take a run flown on it (see BUILT_OFF_BOARD). The Scored
  * run line says so while it is seated, rather than promising a board the
- * results screen then greys out. The reason is left to the results row:
- * this note already fills the help column at 720 px tall, and a longer one
- * ran under the bottom bar.
+ * results screen then greys out. The reason is left to the results row.
  */
-const SCORING_BOARD_BUILT = ' Scored run: two minutes on the clock, and on Your map what you'
+const SCORING_BOARD_BUILT = 'Scored run: two minutes on the clock, and on Your map what you'
   + ' finish with stays off the high score board.';
+
+/*
+ * Off lists all three, because that is where a pilot reads what the other
+ * two are before choosing one. A mode that is on says the warning and its
+ * own line and nothing else: at 1280 by 720 the warning and all three ran
+ * 125 px under the bottom bar, and the line cut off was the one about the
+ * board, which is the line a pilot who has just chosen Scored run needs.
+ */
+function scoringNote(mode, mapId) {
+  const board = mapId === 'built' ? SCORING_BOARD_BUILT : SCORING_BOARD;
+  if (mode === 'off') {
+    return `${scoringOff(mapId === 'built' ? 'Your map' : 'the town')} ${SCORING_FREE} ${board}`;
+  }
+  return `${SCORING_WARNING} ${mode === 'free' ? SCORING_FREE : board}`;
+}
 
 /*
  * Why a run flown on Your map cannot be posted, said once for the results
@@ -525,13 +538,6 @@ const SCORING_BOARD_BUILT = ' Scored run: two minutes on the clock, and on Your 
  */
 const BUILT_OFF_BOARD = 'A map you built is a different place for every pilot who has one, so its runs'
   + ' stay off the public board. Fly the town for a run that can go up.';
-
-function scoringNote(mode, mapId) {
-  const how = mapId === 'built'
-    ? scoringHow('Your map') + SCORING_BOARD_BUILT
-    : scoringHow('the town') + SCORING_BOARD;
-  return mode === 'off' ? how : `${SCORING_WARNING} ${how}`;
-}
 
 /*
  * WHO TO NAME ON A TRACK, IN ONE PLACE.
@@ -8609,10 +8615,13 @@ export class Ui {
    * IS the thing the autosave holds, so putting it anywhere else would
    * give the builder two answers about what you are working on.
    *
-   * NOTHING IS LOST BY IT. The document about to be displaced is saved
-   * into the library first if it is not already there, so a pilot who had
-   * an unsaved track in the builder and pressed one of these cards finds
-   * it in the library rather than finding it gone. The builder's own Load
+   * NOTHING IS LOST BY IT. The document about to be displaced is kept in
+   * the library first, by keepDisplaced in src/trackbuilder/storage.js,
+   * the builder's own rule: as itself if the library does not have it, as
+   * a copy beside the saved one if it was edited after its last Save. So a
+   * pilot who had an unsaved track in the builder and pressed one of these
+   * cards finds it in the library rather than finding it gone, and when
+   * storage will not take it nothing is replaced. The builder's own Load
    * dialog opens straight over the working copy; this room is further from
    * the builder than that dialog is, so it takes the extra care.
    */
@@ -8625,15 +8634,17 @@ export class Ui {
       return false;
     }
     const cls = trackClassOf(doc);
+    let held = null;
     try {
       const working = readAutosave(cls);
-      const held = working && working.doc ? working.doc : null;
-      if (held && held.id !== doc.id && !trackExists(held.id)) {
-        saveTrack(held);
-      }
+      held = working && working.doc ? working.doc : null;
     } catch (e) {
       /* Nothing to displace, or a browser that will not say. Carry on: the
        * load below is what the pilot asked for. */
+    }
+    if (held && held.id !== doc.id && !keepDisplaced(held).ok) {
+      this.boardNote.textContent = `This browser would not keep "${held.name}", the track in the builder, so it is still there. Export it from the builder first.`;
+      return false;
     }
     /* inspectCourse reads the share seat BEFORE the autosave, so a share
      * left over from the last board track would shadow the track that was

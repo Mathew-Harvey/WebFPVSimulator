@@ -26,7 +26,11 @@
  *                  src/props/trig.js against the engine's own sine
  *   4. physics     that map uploaded to the module exactly as the shell does
  *                  it, and flown: a roof lands, the crane's mast stops a
- *                  craft, the spawn is clear
+ *                  craft, the spawn is clear; and under every box thin
+ *                  enough for the height to reach, the height answers
+ *                  from under it and a climb meets its underside; and the
+ *                  builder's copy of the module's grid (fs-crowded) drops
+ *                  what the module drops, and no map here is over it
  *   5. starter     the starter map (src/maps/built/starter.js): no two
  *                  elements' solids overlap, every named gap is clear, and
  *                  the craft takes off from its pads, and from the same
@@ -82,8 +86,8 @@ import {
   createTrack, createElement, normalize, serialize, deserialize, SCENE_TIMES, SCENE_GROUNDS, sceneOf,
 } from '../src/trackbuilder/model.js';
 import { ELEMENTS, KIND } from '../src/trackbuilder/elements.js';
-import { placeDocument, groundUnder } from '../src/maps/built/place.js';
-import { freestyleReport } from '../src/trackbuilder/warnings.js';
+import { placeDocument, groundUnder, indexTops, PLATFORM_REACH } from '../src/maps/built/place.js';
+import { freestyleReport, crowdOf, CANDIDATES_MAX } from '../src/trackbuilder/warnings.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = process.argv.slice(2);
@@ -1235,12 +1239,12 @@ async function newSim() {
  * throttle], on the shell's 4 ms RC grid. The ground is raised every step.
  * With world.height it is the shell's (src/main.js raiseGroundFromState and
  * sampleGroundNormal): the map's height under the CG, asked from
- * SURFACE_BIAS under it, with the five tap limited slope taken every eight
- * steps, and every step while the craft is past 60 degrees. Without it, it
- * is level at the frame's height, which is the street for the flights that
- * prove the module holds the solids: a roof the harness handed the plant
- * as ground could not show that. Returns every step's row and a hash of
- * every state block and contact report.
+ * SURFACE_BIAS under it with the CG itself as cgY, with the five tap
+ * limited slope taken every eight steps, and every step while the craft is
+ * past 60 degrees. Without it, it is level at the frame's height, which is
+ * the street for the flights that prove the module holds the solids: a
+ * roof the harness handed the plant as ground could not show that. Returns
+ * every step's row and a hash of every state block and contact report.
  */
 async function fly(world, f, sc) {
   const sim = await newSim();
@@ -1271,13 +1275,13 @@ async function fly(world, f, sc) {
       const from = w[1] - SURFACE_BIAS;
       if ((ms & 7) === 0 || upZ(st) < 0.5) {
         const e = 0.35;
-        const h0 = world.height(w[0], w[2], from);
-        const nx = limitSlope(h0 - world.height(w[0] + e, w[2], from), world.height(w[0] - e, w[2], from) - h0);
-        const nz = limitSlope(h0 - world.height(w[0], w[2] + e, from), world.height(w[0], w[2] - e, from) - h0);
+        const h0 = world.height(w[0], w[2], from, w[1]);
+        const nx = limitSlope(h0 - world.height(w[0] + e, w[2], from, w[1]), world.height(w[0] - e, w[2], from, w[1]) - h0);
+        const nz = limitSlope(h0 - world.height(w[0], w[2] + e, from, w[1]), world.height(w[0], w[2] - e, from, w[1]) - h0);
         const inv = 1 / Math.sqrt(nx * nx + e * e + nz * nz);
         ground.n = dirToPlant(f, nx * inv, e * inv, nz * inv);
       }
-      const gp = toPlant(f, w[0], world.height(w[0], w[2], from), w[2]);
+      const gp = toPlant(f, w[0], world.height(w[0], w[2], from, w[1]), w[2]);
       call(sim, 'sim_set_ground', 1, ground.n[0], ground.n[1], ground.n[2], gp[0], gp[1], gp[2], GROUND_MU, GROUND_E);
     } else {
       call(sim, 'sim_set_ground', 1, 0, 0, 1, 0, 0, -REST, GROUND_MU, GROUND_E);
@@ -1609,6 +1613,195 @@ async function spawnScenario(world, f, label) {
     `${bTouch} steps in contact, height ${r3(Math.min(...zs))} to ${r3(Math.max(...zs))} m, drift ${r3(drift)} m`);
 }
 
+/*
+ * (d) UNDER A THIN BOX. The shell asks the map's height from SURFACE_BIAS
+ * under the CG, and ./place.js counts a top as ground up to PLATFORM_REACH
+ * over that, so a top up to 0.15 m over the CG is in reach. A box thinner
+ * than that with air under it (a scaffold board, an open container's roof,
+ * a bridge flange) is then in reach of a craft still under it, and a height
+ * that handed its top as the ground lifted the craft up through it in one
+ * step, with no contact. Every such place, in every prop, style and dim
+ * set, for each airframe's hull (src/native/plant.c hull_hx, hull_hz_down,
+ * hull_hz_up; the plan half width taken to the corner): the height asked
+ * as the shell asks it must answer from under the craft. And a climb into
+ * one box of each name must meet its underside in the module.
+ */
+const HULLS = [
+  { name: 'five inch', plan: 0.094 * Math.SQRT2, down: 0.045, up: 0.038 },
+  { name: 'whoop', plan: 0.041 * Math.SQRT2, down: 0.010, up: 0.018 },
+];
+const REACH_OVER_CG = PLATFORM_REACH - SURFACE_BIAS;
+/* More than a metre a millisecond is not a climb. */
+const STEP_JUMP = 0.05;
+
+/* Every place under a thin box of one asset where the hull touches
+ * nothing and the box's top is within reach of the shell's query, and what
+ * `ask`, the map's groundUnder unless a self test plants another, answers
+ * there. */
+function thinBoxSpots(type, style, dims, hull, ask = groundUnder) {
+  const el = assetEl(type, style, dims);
+  const solids = placeSolids(partsOf(el), 0, 0, 0, 0, PROPS[type].turns ?? 'any', []);
+  const tops = indexTops(solids);
+  const bounds = solids.map(aabbOf);
+  const spots = [];
+  for (const s of solids) {
+    const b = s.box;
+    if (!b || !(b[4] - b[1] < REACH_OVER_CG)) {
+      continue;
+    }
+    for (let i = 1; i < 10; i += 2) {
+      for (let j = 1; j < 10; j += 2) {
+        const x = b[0] + ((b[3] - b[0]) * i) / 10;
+        const z = b[2] + ((b[5] - b[2]) * j) / 10;
+        const col = bounds.filter((a) => x > a[0] - hull.plan && x < a[3] + hull.plan
+          && z > a[2] - hull.plan && z < a[5] + hull.plan);
+        const clear = (cg) => cg - hull.down > 0 && col.every((a) => a[4] <= cg - hull.down || a[1] >= cg + hull.up);
+        for (let cg = b[1] - hull.up - 0.001; cg >= b[4] - REACH_OVER_CG; cg -= 0.005) {
+          if (clear(cg)) {
+            spots.push({ s, b, x, z, cg, clear, h: ask(tops, x, z, cg - SURFACE_BIAS, cg) });
+          }
+        }
+      }
+    }
+  }
+  return { solids, tops, spots };
+}
+
+function thinBoxScan(ask = groundUnder) {
+  const found = [];
+  for (const hull of HULLS) {
+    let places = 0;
+    const boxes = new Set();
+    const bad = [];
+    const firsts = new Map();
+    for (const [type, def] of Object.entries(PROPS)) {
+      if (def.zone) {
+        continue;
+      }
+      for (const style of def.styles ?? [null]) {
+        for (const [name, dims] of dimSets(type, style)) {
+          const { spots } = thinBoxSpots(type, style, dims, hull, ask);
+          for (const sp of spots) {
+            places += 1;
+            const key = `${type}${style ? ` ${style}` : ''} ${sp.s.name}`;
+            boxes.add(key);
+            if (!firsts.has(key)) {
+              firsts.set(key, { type, style, dims, name, key, x: sp.x, z: sp.z });
+            }
+            if (!(sp.h <= sp.cg - hull.down)) {
+              bad.push(`${key} (${name}) y ${r3(sp.b[1])} to ${r3(sp.b[4])} at (${r3(sp.x)}, ${r3(sp.z)}): CG ${r3(sp.cg)} m, height ${r3(sp.h)} m`);
+            }
+          }
+        }
+      }
+    }
+    check(`(d) under a thin box, ${hull.name}: the height never hands a box over the craft as its ground`, bad.length === 0 && places > 0,
+      bad.length ? `${bad.length} of ${places}: ${bad.slice(0, 3).join(' | ')}`
+        : `${places} places under ${boxes.size} boxes thinner than ${r3(REACH_OVER_CG)} m: ${[...boxes].join(', ')}`);
+    if (hull === HULLS[0]) {
+      found.push(...firsts.values());
+    }
+  }
+  return found;
+}
+
+/* A climb straight up into the box from as far under it as the column is
+ * clear, up to 0.6 m, with the shell's own ground under the craft. */
+async function thinBoxClimb(spot, ask = groundUnder) {
+  const el = assetEl(spot.type, spot.style, spot.dims);
+  const solids = placeSolids(partsOf(el), 0, 0, 0, 0, PROPS[spot.type].turns ?? 'any', []);
+  const tops = indexTops(solids);
+  const { spots } = thinBoxSpots(spot.type, spot.style, spot.dims, HULLS[0]);
+  const sp = spots.find((c) => `${spot.type}${spot.style ? ` ${spot.style}` : ''} ${c.s.name}` === spot.key
+    && c.x === spot.x && c.z === spot.z);
+  let cg = sp.cg;
+  while (cg - 0.005 > sp.b[1] - 0.6 && sp.clear(cg - 0.005)) {
+    cg -= 0.005;
+  }
+  const f = frameOf({ x: sp.x, z: sp.z, yaw: 0 }, 0);
+  const w = {
+    colliders: buildColliders({ solids }),
+    height: (X, Z, fromY, cgY) => ask(tops, X, Z, fromY, cgY),
+  };
+  const run = await fly(w, f, {
+    ms: 2000,
+    p: toPlant(f, sp.x, cg, sp.z),
+    sticks: (ms) => [0, 0, 0, ms < 200 ? HOVER : HOVER + 0.06],
+  });
+  let jump = 0;
+  let top = -Infinity;
+  for (let i = 0; i < run.rows.length; i += 1) {
+    const y = run.rows[i].p[2] + f.o[2];
+    top = Math.max(top, y);
+    if (i) {
+      jump = Math.max(jump, run.rows[i].p[2] - run.rows[i - 1].p[2]);
+    }
+  }
+  const steps = run.rows.filter((row) => row.touching).length;
+  check(`(d) under a thin box: a climb into the ${spot.key} meets its underside`,
+    steps > 0 && jump < STEP_JUMP && top < sp.b[1],
+    `from CG ${r3(cg)} m under a box from ${r3(sp.b[1])} to ${r3(sp.b[4])} m (${spot.name}): first contact at ${run.t0} ms, ${steps} steps in contact, highest CG ${r3(top)} m, largest rise in one step ${r3(jump)} m`);
+}
+
+async function thinBoxScenario() {
+  for (const spot of thinBoxScan()) {
+    await thinBoxClimb(spot);
+  }
+}
+
+/*
+ * (e) THE MODULE'S GRID. src/native/world.c gathers the shapes round the
+ * craft from 8 m cells and keeps the first WORLD_MAX_CAND of them, dropping
+ * the rest without a word, and crowdOf in src/trackbuilder/warnings.js
+ * (fs-crowded) is the builder's copy of that grid. Here the copy is held to
+ * the module: laid out in the plan crowdOf assumes and uploaded the shell's
+ * way, 1100 small shapes high in one cell and a wall just inside the next,
+ * with the craft's hull 3 cm into the wall from the first cell's side. The
+ * module must gather the first cell first and never see the wall, and see
+ * it with the filler gone. And the maps flown here must be under the cap.
+ */
+function simBox(a) {
+  /* A box in the plant's plan as a Three.js box: x is -sim y, z is -sim x. */
+  return { kind: 'wall', name: 'grid', box: [-a[4], a[2], -a[3], -a[1], a[5], -a[0]] };
+}
+
+async function gridScenario(maps) {
+  const corner = simBox([0, 0, 60, 0.1, 0.1, 60.1]);
+  const filler = [];
+  for (let i = 0; i < 1100; i += 1) {
+    const x = 4 + (i % 30) * 0.1;
+    const y = 0.5 + Math.floor(i / 30) * 0.15;
+    filler.push(simBox([x, y, 50, x + 0.05, y + 0.05, 50.05]));
+  }
+  const wall = simBox([8.01, 3, 0, 9, 4, 20]);
+  const touch = async (solids) => {
+    const sim = await newSim();
+    upload(sim, buildColliders({ solids }));
+    call(sim, 'sim_set_pose', 7.95, 3.5, 10, 1, 0, 0, 0);
+    for (let ms = 0; ms < 20; ms += 1) {
+      sim.input(ms / 1000, 0, 0, 0, 0.45);
+      sim.step(1);
+    }
+    const rep = new Float64Array(11);
+    const ptr = sim.e.malloc(11 * 8);
+    call(sim, 'sim_world_report', ptr);
+    rep.set(new Float64Array(sim.e.memory.buffer, ptr, 11));
+    sim.e.free(ptr);
+    return rep[0];
+  };
+  const crowded = [corner, ...filler, wall];
+  const hidden = await touch(crowded);
+  const seen = await touch([corner, wall]);
+  check('(e) the module drops shapes past the cap, where crowdOf counts them',
+    hidden === 0 && seen > 0 && crowdOf(crowded).max > CANDIDATES_MAX && crowdOf([corner, wall]).max <= CANDIDATES_MAX,
+    `a wall behind ${filler.length} shapes of the cell before it: ${hidden} steps in contact, alone ${seen}; crowdOf ${crowdOf(crowded).max} and ${crowdOf([corner, wall]).max}`);
+  for (const [label, placed] of maps) {
+    const c = crowdOf(placed.solids);
+    check(`(e) ${label}: no two by two block of the module's cells holds more than ${CANDIDATES_MAX} shapes`, c.max <= CANDIDATES_MAX,
+      `the most is ${c.max}`);
+  }
+}
+
 async function physicsBlock(world) {
   console.log('\n4. physics: the map of everything, in dist/sim.wasm');
   if (!(await loadModule())) {
@@ -1653,6 +1846,17 @@ async function physicsBlock(world) {
     await spawnScenario(w, f, '(c) spawn');
   } catch (e) {
     fail('(c) spawn', e.stack);
+  }
+  try {
+    await thinBoxScenario();
+  } catch (e) {
+    fail('(d) under a thin box', e.stack);
+  }
+  try {
+    const starter = (await import(pathToFileURL(join(root, 'src/maps/built/starter.js')).href)).starterMap();
+    await gridScenario([['the map of everything', placed], ['the starter', placeDocument(normalize(starter).doc)]]);
+  } catch (e) {
+    fail('(e) the module grid', e.stack);
   }
 }
 
@@ -1821,9 +2025,9 @@ async function starterBlock() {
       const up = upload(sim, colliders);
       check('the starter: sim_world_build returns the count', up.built === placed.solids.length && up.count === up.built,
         `${up.built} for ${placed.solids.length} solids`);
-      const height = (x, z, fromY) => groundUnder(placed.tops, x, z, fromY);
+      const height = (x, z, fromY, cgY) => groundUnder(placed.tops, x, z, fromY, cgY);
       await spawnScenario({ placed, colliders, height }, builtFrame(placed), 'the starter spawn');
-      const roofHeight = (x, z, fromY) => groundUnder(roofPlaced.tops, x, z, fromY);
+      const roofHeight = (x, z, fromY, cgY) => groundUnder(roofPlaced.tops, x, z, fromY, cgY);
       await spawnScenario({ placed: roofPlaced, colliders: buildColliders(roofPlaced), height: roofHeight },
         builtFrame(roofPlaced), 'the starter, pads on the office roof');
     } catch (e) {
@@ -1976,7 +2180,7 @@ async function selftestFlights() {
   const rp = placeDocument(normalize(raw).doc);
   captured = [];
   try {
-    const height = (x, z, fromY) => groundUnder(rp.tops, x, z, fromY);
+    const height = (x, z, fromY, cgY) => groundUnder(rp.tops, x, z, fromY, cgY);
     await spawnScenario({ placed: rp, colliders: buildColliders(rp), height }, frameOf(rp.spawn, 0), 'planted');
   } finally {
     const got = captured;
@@ -1984,6 +2188,27 @@ async function selftestFlights() {
     const lift = got.find((c) => c.name.startsWith('planted: lifting off the pads touches nothing'));
     check('self test: raised pads seated at 0, inside the office, touch it lifting off', Boolean(lift) && !lift.ok,
       lift ? lift.detail : 'the line never ran');
+  }
+
+  /*
+   * Under a thin box, with the height asked as it was before the shell
+   * passed the CG: the places must be seen, and the climb into a scaffold
+   * board must be seen to go up through it.
+   */
+  const blind = (tops, x, z, fromY) => groundUnder(tops, x, z, fromY);
+  captured = [];
+  try {
+    const spots = thinBoxScan(blind);
+    await thinBoxClimb(spots.find((c) => c.type === 'scaffold'), blind);
+  } finally {
+    const got = captured;
+    captured = null;
+    const scan = got.find((c) => c.name.startsWith('(d) under a thin box, five inch'));
+    const climb = got.find((c) => c.name.startsWith('(d) under a thin box: a climb into the scaffold'));
+    check('self test: a height that leaves out the CG hands a thin box over the craft as its ground', Boolean(scan) && !scan.ok,
+      scan ? scan.detail.slice(0, 200) : 'the line never ran');
+    check('self test: and a climb under a scaffold board goes up through it', Boolean(climb) && !climb.ok,
+      climb ? climb.detail : 'the line never ran');
   }
 }
 

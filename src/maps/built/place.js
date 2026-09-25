@@ -77,8 +77,16 @@ function wrap(a) {
  * src/maps/city/cavity.js), restated here because importing either would
  * drag the town into the builder. It is what lets a craft fly UNDER a deck
  * and land ON it: the shell asks from 0.40 m under the CG (SURFACE_BIAS in
- * src/main.js), so a top is ground from 0.15 m under the CG down, and a
- * deck overhead never is. Omit fromY and every top counts, as in the town.
+ * src/main.js), so a top is in reach up to 0.15 m OVER the CG. The town's
+ * decks are thick, and their underside stops a craft long before that. A
+ * built map's are not: a scaffold board is 5 cm, an open container's roof
+ * 10 cm, and a craft climbing under one had its top handed to it as the
+ * ground and was lifted up through it in one step, with no contact. So the
+ * shell also passes the CG, cgY, and a box whose bottom is over the CG is
+ * over the craft and is never its ground, however thin. Omit cgY and no
+ * box is left out for that (the spawn seat, the obstacles, the intro
+ * camera ask with a fromY that is not a craft's). Omit fromY as well and
+ * every top counts, as in the town.
  *
  * The footprint test is strict, the way the plant's own support test is
  * (world_select_support in src/native/world.c): a point on a box's edge is
@@ -93,7 +101,8 @@ export const PLATFORM_REACH = 0.55;
  * every TOP_CELL square its footprint reaches, not by its centre, so a
  * query reads the one cell its point is in and never a neighbour's. Each
  * cell's boxes are sorted highest top first, so the first one that holds
- * the point within reach is the answer and the walk stops there.
+ * the point within reach, and is not over the CG, is the answer and the
+ * walk stops there.
  */
 const TOP_CELL = 4;
 
@@ -117,7 +126,8 @@ export function indexTops(solids) {
     n, ox: 0, oz: 0, nx: 0, nz: 0,
     start: new Int32Array(1), items: new Int32Array(0),
     x0: new Float64Array(n), z0: new Float64Array(n),
-    x1: new Float64Array(n), z1: new Float64Array(n), top: new Float64Array(n),
+    x1: new Float64Array(n), z1: new Float64Array(n),
+    top: new Float64Array(n), bottom: new Float64Array(n),
   };
   if (!n) {
     return ix;
@@ -133,6 +143,7 @@ export function indexTops(solids) {
     ix.x1[i] = b[3];
     ix.z1[i] = b[5];
     ix.top[i] = b[4];
+    ix.bottom[i] = b[1];
     ox = b[0] < ox ? b[0] : ox;
     oz = b[2] < oz ? b[2] : oz;
     ex = b[3] > ex ? b[3] : ex;
@@ -181,15 +192,18 @@ export function indexTops(solids) {
 /*
  * The query. `src` is an index from indexTops, or a plain list of solids,
  * which is walked whole: the same answer, slowly, and the definition the
- * index is checked against.
+ * index is checked against. A box with its bottom over cgY is skipped and
+ * the walk goes on to the next top down.
  */
-export function topUnder(src, x, z, fromY) {
+export function topUnder(src, x, z, fromY, cgY) {
   const reach = fromY === undefined ? Infinity : fromY + PLATFORM_REACH;
+  const cg = cgY === undefined ? Infinity : cgY;
   if (Array.isArray(src)) {
     let best = 0;
     for (const s of src) {
       const b = s.box;
-      if (b && b[4] > best && b[4] <= reach && x > b[0] && x < b[3] && z > b[2] && z < b[5]) {
+      if (b && b[4] > best && b[4] <= reach && !(b[1] > cg)
+        && x > b[0] && x < b[3] && z > b[2] && z < b[5]) {
         best = b[4];
       }
     }
@@ -208,7 +222,8 @@ export function topUnder(src, x, z, fromY) {
   for (let k = ix.start[c]; k < ix.start[c + 1]; k += 1) {
     const i = ix.items[k];
     const top = ix.top[i];
-    if (top <= reach && x > ix.x0[i] && x < ix.x1[i] && z > ix.z0[i] && z < ix.z1[i]) {
+    if (top <= reach && !(ix.bottom[i] > cg)
+      && x > ix.x0[i] && x < ix.x1[i] && z > ix.z0[i] && z < ix.z1[i]) {
       return top;
     }
   }
@@ -237,8 +252,8 @@ export function topUnder(src, x, z, fromY) {
  */
 export const SUPPORT_TIE = 0.001;
 
-export function groundUnder(src, x, z, fromY) {
-  const top = topUnder(src, x, z, fromY);
+export function groundUnder(src, x, z, fromY, cgY) {
+  const top = topUnder(src, x, z, fromY, cgY);
   return top > 0 ? top - SUPPORT_TIE : 0;
 }
 
@@ -313,8 +328,11 @@ function spawnFrom(el, yaw, W, D, tops) {
  *
  *   items   [{ el, kind, x, y, z, yaw, turns, parts }]  every drawable
  *           element: yaw is the placed (possibly snapped) world heading;
- *           the start pads' y is the seat under their middle, so they are
- *           drawn on what the craft stands on
+ *           the start pads' y is the spawn's seat, on the mat the craft
+ *           starts on and not under the row's middle, so the craft's own
+ *           mat is drawn under it. A row laid across two heights has its
+ *           other mats floating or buried, and fs-pads-seat in
+ *           src/trackbuilder/warnings.js says so
  *   solids  what src/props/solids.js placeSolids makes of every item
  *   tops    the box tops, indexed for topUnder
  *   zones   [{ el, x, y, z, yaw, w, h, name, points }] the named gaps
@@ -372,7 +390,7 @@ export function placeDocument(doc) {
     const pads = items.find((it) => it.el === start);
     spawn = spawnFrom(start, pads ? pads.yaw : placedYaw('any', start.yaw), W, D, tops);
     if (pads) {
-      pads.y = topUnder(tops, pads.x, pads.z, pads.y);
+      pads.y = spawn.y;
     }
   } else {
     spawn = defaultSpawn(W, tops);

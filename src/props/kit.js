@@ -154,9 +154,18 @@ const OWNED = new Set();
  */
 
 /* The unlit materials that are lights, and keep their colour at any hour.
- * glassLit is a lit room; the kit's signs (K.sign) are lit plates too and
- * never take a look, which is what lights a billboard at dusk. */
+ * glassLit is a lit room. */
 const LIGHTS = new Set(['lampGlow', 'lampRed', 'glassLit']);
+
+/*
+ * The signs (K.sign) that are lights: a billboard's face, a vending
+ * machine's front, the lit tenant board down an office's corner. They keep
+ * their colour at any hour, which is what lights a billboard at dusk. Every
+ * other sign is paint (ivy, soot, a stencil, a logo, a load plate, a name)
+ * and takes the look's flats like the wall it is painted on: at dusk they
+ * all shone like lightboxes on walls gone violet.
+ */
+const SIGN_LIGHTS = new Set(['mangaAd', 'bldVend', 'bldTenant']);
 
 /* A colour multiplied, in linear light, by a look's `flats`. */
 function dimmed(hex, f) {
@@ -340,12 +349,15 @@ function painted(key, variant) {
  * its colours in shadow. A family painter that sets `lit` asks for a painted
  * surface instead, cel shaded with the standard tint like the wall it is
  * painted on, for a mural or a stencil that should go dark with the wall.
+ * Under a look a flat sign is dimmed by the look's flats, as every unlit
+ * material that is not a light is, unless it is one of SIGN_LIGHTS.
  */
-function signMat(key, variant) {
+function signMat(key, variant, look = null) {
   const p = painted(key, variant);
-  return texMat(`sign:${key}:${p.v}`, () => (p.lit
+  const dim = Boolean(look && look.flats) && !p.lit && !SIGN_LIGHTS.has(key);
+  return texMat(`sign:${key}:${p.v}${dim ? `:${look.key}` : ''}`, () => (p.lit
     ? cel({ color: 0xffffff, map: texture(p.paint()), bands: 3, tint: T, alphaTest: 0.4, cache: false })
-    : flat({ color: 0xffffff, map: texture(p.paint()), alphaTest: 0.4, cache: false })));
+    : flat({ color: dim ? dimmed(0xffffff, look.flats) : 0xffffff, map: texture(p.paint()), alphaTest: 0.4, cache: false })));
 }
 
 function townMat(fn, arg) {
@@ -793,7 +805,7 @@ export class PropKit {
     if (!(w > 0.01 && h > 0.01)) {
       return;
     }
-    this.plane(signMat(key, variant), x, y, z, w, h, face);
+    this.plane(signMat(key, variant, this.look), x, y, z, w, h, face);
   }
 
   townSign(fn, arg, x, y, z, w, h, face) {

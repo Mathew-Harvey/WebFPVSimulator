@@ -190,6 +190,41 @@ export function trackExists(id) {
   return Boolean(readLibrary()[id]) || isPresetId(id) || Boolean(shippedMap(id));
 }
 
+/*
+ * KEEP WHAT A SEAT HELD before something replaces it: the one rule for the
+ * builder (keepSeat in ./app.js) and the simulator (seatLocal in
+ * src/ui/ui.js). A document the library does not have goes in as itself.
+ * One the library has, but not as it is now, because it was edited on the
+ * autosave after its last Save, goes in as a copy beside the saved one, so
+ * both versions survive: writing over the saved one would lose the version
+ * the author chose to save. One the library has as it is, or a shipped
+ * track (the seat holds a copy of one under its own id, never the shipped
+ * id), needs nothing. modifiedUtc is not compared, because saveTrack
+ * touches it and the autosave does not.
+ *
+ * Returns { ok, saved }: saved is what was written to the library (the
+ * document or its copy), or null when nothing needed writing, and ok is
+ * false when something needed writing and storage refused it.
+ */
+export function keepDisplaced(doc) {
+  if (!doc) {
+    return { ok: true, saved: null };
+  }
+  const lib = readLibrary();
+  if (!lib[doc.id]) {
+    if (isPresetId(doc.id) || shippedMap(doc.id)) {
+      return { ok: true, saved: null };
+    }
+    return saveTrack(doc) ? { ok: true, saved: doc } : { ok: false, saved: null };
+  }
+  const plain = (d) => JSON.stringify({ ...toPlain(d), modifiedUtc: '' });
+  if (plain(normalize(lib[doc.id]).doc) === plain(doc)) {
+    return { ok: true, saved: null };
+  }
+  const copy = duplicateTrack(doc, `${doc.name} (unsaved changes)`);
+  return saveTrack(copy) ? { ok: true, saved: copy } : { ok: false, saved: null };
+}
+
 /* ------------------------------------------------------------------ */
 /* Autosave                                                            */
 /* ------------------------------------------------------------------ */

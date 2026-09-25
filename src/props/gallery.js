@@ -44,7 +44,7 @@
 
 import * as THREE from 'three';
 import { PAL } from '../maps/city/vendored/core/palette.js';
-import { BuiltPipeline, buildBackdrop } from '../maps/built/index.js';
+import { BuiltPipeline, buildBackdrop, fadeBackdrop } from '../maps/built/index.js';
 import { TIMES, GROUNDS, kitLook, paintLights, paintSky, paintPost } from '../maps/built/looks.js';
 import { buildSky } from '../maps/city/vendored/core/sky.js';
 import { cel } from '../maps/city/vendored/core/toon.js';
@@ -92,9 +92,6 @@ scene.add(bounce, bounce.target);
 const hemi = new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.12);
 scene.add(hemi);
 paintLights({ sun, fill, bounce, hemi }, T);
-const sky = buildSky(scene, 500);
-paintSky(sky, T);
-buildBackdrop(scene, 1, T.hills);
 
 /* Ground: the town's terrain colour, or a map ground's. */
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), G
@@ -221,6 +218,27 @@ if (params.get('cam')) {
 }
 camera.position.copy(eye);
 camera.lookAt(at);
+
+/*
+ * The sky and the ridges, seated on what the camera looks at and pushed
+ * out past the camera, the way the map pushes them past its plot. Centred
+ * on the origin, every asset's camera stood outside both rings, a few
+ * hundred metres down a row several hundred long, and looked back through
+ * them: two bands across the foreground. The dome, which writes depth, and
+ * the far plane go out past the far ring with them, as the map sizes its
+ * own (skyRadius and cameraFar in src/maps/built/index.js), and the rings
+ * fade with the camera's height as they do on the map.
+ */
+const reach = eye.distanceTo(at);
+const hillScale = Math.max(1, (reach + 60) / 250);
+const backdrop = buildBackdrop(scene, hillScale, T.hills);
+backdrop.position.set(at.x, 0, at.z);
+fadeBackdrop(backdrop, eye.y, scene.fog.color);
+const skyRadius = Math.max(500, reach + 379.5 * hillScale + 60);
+const sky = buildSky(scene, skyRadius);
+paintSky(sky, T);
+camera.far = Math.max(900, 1.8 * skyRadius);
+camera.updateProjectionMatrix();
 
 /* Lights follow the plot. */
 const focus = at.clone();

@@ -516,12 +516,14 @@ through is a trap, not a line.
 | code | level | meaning |
 | --- | --- | --- |
 | `fs-no-start` | info | no start pads, so the pilot starts 8 m in from the plot's left edge, halfway up it, facing right |
-| `fs-spawn` | warn | the start is inside a solid, or within 1 m of one |
+| `fs-spawn` | warn | the start is inside a solid, or within 1 m of one (what it stands on, and anything wholly under that, left out) |
+| `fs-pads-seat` | warn | the pads' Base is more than 5 cm from what the craft's mat stands on, or the row stands across two heights |
 | `fs-overlap` | warn | two elements' solids run into each other by more than a centimetre |
 | `fs-slot` | warn | a space between two elements' solids wider than 5 cm and narrower than 1.4 m |
 | `fs-gap-blocked` | warn | a named gap has a solid across its window |
 | `fs-outside` | warn | an element stands outside the plot, or its solids reach more than half a metre past its edge |
 | `fs-solids` | warn | the map has more than 20000 solids |
+| `fs-crowded` | warn | two by two cells of the physics' 8 m grid hold more than the 1024 shapes it checks round a craft, so some would be left out |
 
 ---
 

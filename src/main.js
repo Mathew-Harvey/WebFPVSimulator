@@ -207,6 +207,12 @@ const TAKEOFF_WINDOW_MS = 250;
  * that a deck can never be your floor from underneath it. The remaining
  * gap under the deck, centre heights 6.91 m and up, is inside the bridge's
  * own structure and the underside slab collider crashes it.
+ *
+ * A built map's boards are thinner than that 0.15 m (a scaffold board is
+ * 5 cm), so every query made for the craft also passes the craft's own
+ * height as a fourth argument, and the built map leaves out any box whose
+ * bottom is over it (topUnder in src/maps/built/place.js). The town's
+ * height takes three arguments and ignores it.
  */
 const SURFACE_BIAS = 0.40;
 /*
@@ -1207,7 +1213,7 @@ export async function boot({ loading, bootStart, mapId }) {
   function fpvNear(p) {
     const reach = CAMERA_NEAR_OPEN / CAMERA_NEAR_FRACTION;
     let gap = view.colliders ? view.colliders.gapAt(p.x, p.y, p.z, reach) : Infinity;
-    const floor = p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS);
+    const floor = p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y);
     if (floor < gap) {
       gap = floor;
     }
@@ -2281,7 +2287,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * query cannot see) keeps its own height: the street below is not
      * its support, and seating a low-obstacle turtle on the terrain
      * would bury the hull inside the collider it rests on. */
-    const hy = view.height(wx, wz, wy - SURFACE_BIAS);
+    const hy = view.height(wx, wz, wy - SURFACE_BIAS, wy);
     if (lastGroundHits > 0 || (!turtleOnSupport && wy - hy < turtleClearance())) {
       return hy;
     }
@@ -2617,7 +2623,7 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     poseFromState(stateCurr, pProbe);
-    lastClearance = pProbe.y - view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+    lastClearance = pProbe.y - view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS, pProbe.y);
     raiseGroundFromState(stateCurr);
     lastGroundHits = sim.e.sim_ground_contacts();
     turtleOnSupport = lastGroundHits > 0;
@@ -2846,7 +2852,7 @@ export async function boot({ loading, bootStart, mapId }) {
       statePrev = stateCurr;
       noteTurtleState(stateCurr);
       poseFromState(stateCurr, pProbe);
-      lastClearance = pProbe.y - view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+      lastClearance = pProbe.y - view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS, pProbe.y);
     }
   }
 
@@ -3194,6 +3200,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * world report. */
   let stepStopDv = 0;
   let stepStopUpZ = 1;
+  /* The speed going into that step, and whether the ground's own hit
+   * judgement counted a hard hit this frame: the STOP's bookkeeping, read
+   * and cleared with it. */
+  let stepStopSpeed = 0;
+  let frameHardGround = false;
   function bodyUpDot(st, nx, ny, nz) {
     const w = st[7];
     const x = st[8];
@@ -5279,16 +5290,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * the difference is centred and cannot lean toward +x and +z on ground
    * that is level.
    */
-  function sampleGroundNormal(wx, wz, fromY, out) {
+  function sampleGroundNormal(wx, wz, fromY, cgY, out) {
     const eps = 0.35;
-    const h0 = view.height(wx, wz, fromY);
+    const h0 = view.height(wx, wz, fromY, cgY);
     const nx = limitSlope(
-      h0 - view.height(wx + eps, wz, fromY),
-      view.height(wx - eps, wz, fromY) - h0,
+      h0 - view.height(wx + eps, wz, fromY, cgY),
+      view.height(wx - eps, wz, fromY, cgY) - h0,
     );
     const nz = limitSlope(
-      h0 - view.height(wx, wz + eps, fromY),
-      view.height(wx, wz - eps, fromY) - h0,
+      h0 - view.height(wx, wz + eps, fromY, cgY),
+      view.height(wx, wz - eps, fromY, cgY) - h0,
     );
     const ny = eps;
     const n2 = nx * nx + ny * ny + nz * nz;
@@ -5303,12 +5314,12 @@ export async function boot({ loading, bootStart, mapId }) {
 
   function sampleGroundNormalFromState(st) {
     poseFromState(st, pProbe);
-    sampleGroundNormal(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS, groundNWorld);
+    sampleGroundNormal(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS, pProbe.y, groundNWorld);
   }
 
   function raiseGroundFromState(st) {
     poseFromState(st, pProbe);
-    const hy = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+    const hy = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS, pProbe.y);
     worldPosToSim(pProbe.x, hy, pProbe.z, pSim);
     /*
      * The plane's POINT goes through worldPosToSim, which undoes the spawn
@@ -5957,6 +5968,7 @@ export async function boot({ loading, bootStart, mapId }) {
             if (dv2 > stepStopDv * stepStopDv) {
               stepStopDv = Math.sqrt(dv2);
               stepStopUpZ = plantUpZ(stNow);
+              stepStopSpeed = spdBefore;
             }
             if (sim.e.sim_ground_contacts() > 0) {
               sawGroundHit = true;
@@ -5998,7 +6010,7 @@ export async function boot({ loading, bootStart, mapId }) {
       simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qCollide);
       qCollide.premultiply(qSpawn);
       vHalfFrame = craftVerticalHalf(Math.sqrt(1 - craftUpY() * craftUpY()));
-      const surf = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+      const surf = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS, pProbe.y);
       const clearance = pProbe.y - surf;
       const hits = launchStaging ? 0 : sim.e.sim_ground_contacts();
       const upz = plantUpZ(stateCurr);
@@ -6107,6 +6119,7 @@ export async function boot({ loading, bootStart, mapId }) {
            */
           if (hard) {
             flightStats.noteCrash();
+            frameHardGround = true;
           }
           if (view.mode === 'freestyle') {
             if (hard) {
@@ -6245,9 +6258,26 @@ export async function boot({ loading, bootStart, mapId }) {
      * STOP in CRASH IS A RESET. */
     if (stepStopDv >= GRAZE_SPEED_MAX && stepStopUpZ < CRASH_BELLY_UP && !(rep[0] > 0)) {
       crashReset = true;
+      /*
+       * And a stop from BOUNCE_SPEED_MAX or more is the ground's hard hit,
+       * which the ground judgement above counts, bails and scores as a
+       * crash when sim_ground_contacts sees it, and never sees flat on the
+       * back. So it is counted here, on the same line and once a frame.
+       * Under the line a stop stays a reset and nothing more, as a bump
+       * does there.
+       */
+      if (stepStopSpeed >= BOUNCE_SPEED_MAX && !frameHardGround) {
+        flightStats.noteCrash();
+        if (view.mode === 'freestyle') {
+          trickDetector.reset();
+          score.crash();
+        }
+      }
     }
     stepStopDv = 0;
     stepStopUpZ = 1;
+    stepStopSpeed = 0;
+    frameHardGround = false;
     passStats.steps += rep[0];
     passStats.frame += rep[8];
     passStats.props += rep[7];
@@ -6311,7 +6341,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * last open air, every spot on the pavement was across the block from
      * it, and the set down fell through to the start line. */
     if (mode === 'flight' && !poseLock && view.colliders) {
-      const hy = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS);
+      const hy = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS, pCurr.y);
       if (!(hy > pCurr.y)
         && view.colliders.gapAt(pCurr.x, pCurr.y, pCurr.z, CRAFT_WORLD_R) >= CRAFT_WORLD_R) {
         recoverFrom.x = pCurr.x;
@@ -6355,7 +6385,7 @@ export async function boot({ loading, bootStart, mapId }) {
           upz: lastUpz,
           clearance: lastClearance,
           hits: lastGroundHits,
-          heightAt: (x, z, y) => view.height(x, z, y - SURFACE_BIAS),
+          heightAt: (x, z, y) => view.height(x, z, y - SURFACE_BIAS, y),
         });
         const res = race.update(racePrev, pCurr, simNow, nowWall, allowPass);
         if (res.passed != null) {
@@ -6477,7 +6507,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * the lens inside that band, so the terrain is clipped even when
        * the mount is a centimetre above the mesh. Lift only when the
        * picture looks into the dirt; a high inverted pass stays put. */
-      const camFloor = view.height(fpvPos.x, fpvPos.z, fpvPos.y - SURFACE_BIAS)
+      const camFloor = view.height(fpvPos.x, fpvPos.z, fpvPos.y - SURFACE_BIAS, fpvPos.y)
         + fpvLensClear(camFwd.y, camUp.y);
       if (fpvPos.y < camFloor) {
         fpvPos.y = camFloor;
@@ -6994,7 +7024,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * craft's own height finds the deck the quad is UNDER rather than
          * the road it is over, and the readout prints a negative altitude
          * under the overbridge. See SURFACE_BIAS. */
-        altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS),
+        altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y),
         speedKph: speed * 3.6,
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
@@ -7431,8 +7461,8 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   window.__ground = () => ({
     y: pCurr.y,
-    surf: view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS),
-    above: pCurr.y - view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS),
+    surf: view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS, pCurr.y),
+    above: pCurr.y - view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS, pCurr.y),
     clearance: lastClearance,
     landed,
     rest: REST_HEIGHT,
@@ -7925,7 +7955,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Biased like the OSD's altitude and like every contact query. A
      * harness reading this against a flight is reading the same number the
      * pilot is. */
-    groundClearance: shell.quad.position.y - view.height(shell.quad.position.x, shell.quad.position.z, shell.quad.position.y - SURFACE_BIAS),
+    groundClearance: shell.quad.position.y - view.height(shell.quad.position.x, shell.quad.position.z, shell.quad.position.y - SURFACE_BIAS, shell.quad.position.y),
     fpvY: lastFpvY,
     camFloor: lastCamFloor,
     camClear: lastCamClear,
@@ -7964,7 +7994,7 @@ export async function boot({ loading, bootStart, mapId }) {
       return null;
     }
     poseFromState(stateCurr, pProbe);
-    const hy = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+    const hy = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS, pProbe.y);
     const seatY = kind === 'invertedAir' ? hy + 4 : hy + REST_HEIGHT;
     worldPosToSim(pProbe.x, seatY, pProbe.z, pSim);
     let qw = 1;
@@ -8024,7 +8054,7 @@ export async function boot({ loading, bootStart, mapId }) {
     lastCamFwdY = camFwd.y;
     lastCamUpY = camUp.y;
     lastCamClear = fpvLensClear(camFwd.y, camUp.y);
-    lastCamFloor = view.height(fpvPos.x, fpvPos.z, fpvPos.y - SURFACE_BIAS) + lastCamClear;
+    lastCamFloor = view.height(fpvPos.x, fpvPos.z, fpvPos.y - SURFACE_BIAS, fpvPos.y) + lastCamClear;
     if (fpvPos.y < lastCamFloor) {
       fpvPos.y = lastCamFloor;
     }
@@ -8537,7 +8567,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The active map's contact surface, exactly as the ground sweep queries it.
    * `fromY` is what makes a deck climbable from above and transparent from
    * below, so a capture can assert that rather than describe it. */
-  window.__surface = (x, z, fromY) => view.height(x, z, fromY);
+  window.__surface = (x, z, fromY, cgY) => view.height(x, z, fromY, cgY);
   /*
    * Where the camera is, and what is directly under it. The intro camera
    * once ended its pan INSIDE a launch block and the only way to see it was

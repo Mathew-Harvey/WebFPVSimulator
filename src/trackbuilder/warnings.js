@@ -38,8 +38,9 @@ import { ELEMENTS, KIND, TUNING, trackClassOf, tuningFor, docModeOf } from './el
 /* A map is checked against the world it builds, not against a racing line:
  * the same placed solids the simulator hands the physics. All pure, no
  * Three.js, so the checks run in Node too. */
-import { placeDocument } from '../maps/built/place.js';
+import { placeDocument, topUnder } from '../maps/built/place.js';
 import { placeSolids } from '../props/solids.js';
+import { sincos, turnY } from '../props/trig.js';
 import { GAP_MIN } from '../props/parts.js';
 import {
   GATE_OPENING_MIN, GATE_OPENING_MAX, GATE_SPACING_MIN, GATE_SPACING_MAX,
@@ -695,10 +696,13 @@ function label(el) {
  *                          one, so the craft cannot take off cleanly. Measured
  *                          where the simulator seats the craft: on the mat
  *                          it starts on, on the box top under it, and not
- *                          against that box, whose top is its floor
+ *                          against that box, whose top is its floor, or
+ *                          against anything wholly under that floor
  *   fs-pads-seat     warn  the pads' Base is more than 5 cm from what they
  *                          stand on in the simulator: a roof they were
- *                          raised onto, or the ground they float over
+ *                          raised onto, or the ground they float over; or
+ *                          the row stands across two heights, so the mats
+ *                          beside the craft's float or are buried
  *   fs-overlap       warn  two elements' solids run into each other
  *   fs-slot          warn  a space between two elements narrower than the
  *                          gap rule's 1.4 m but more than a few centimetres:
@@ -707,6 +711,9 @@ function label(el) {
  *   fs-outside       warn  an element standing outside the plot, or
  *                          reaching past its edge
  *   fs-solids        warn  more solids than a map is budgeted
+ *   fs-crowded       warn  a patch of the physics' grid holding more shapes
+ *                          than it looks at round the craft at once, so
+ *                          some would be left out there (crowdOf)
  *
  * Every warning names an element, so clicking it selects the element.
  */
@@ -788,15 +795,23 @@ export function freestyleReport(doc) {
      */
     const sp = placed.spawn;
     const p = [sp.x, sp.y + 0.1, sp.z];
+    /* On a box, what lies wholly under its top is under the floor, not in
+     * the air the craft takes off into: a bridge's girders and cross frames
+     * under its deck. On the paving there is nothing under the floor. */
+    const floor = sp.y > 0 ? sp.y + 0.001 : -Infinity;
     let worst = null;
     let seatEl = null;
     for (const b of bodies) {
       if (boxPointDist(grow(b.box, SPAWN_CLEAR), p) > 0) {
         continue;
       }
-      for (const s of b.solids) {
+      for (let k = 0; k < b.solids.length; k += 1) {
+        const s = b.solids[k];
         if (standsOn(s, sp)) {
           seatEl = b.el;
+          continue;
+        }
+        if (b.boxes[k][4] <= floor) {
           continue;
         }
         const d = solidPointClearance(s, p);
@@ -805,9 +820,20 @@ export function freestyleReport(doc) {
         }
       }
     }
+    /* The row is drawn at the seat of the craft's own mat. A mat beside it
+     * over a different height floats over it or is buried in it, whatever
+     * Base says, so that is said too. */
+    const split = pads ? splitMat(placed, pads) : null;
+    const across = split
+      ? `The row also stands across two heights: mat ${split.n} sits at ${split.y.toFixed(2)} m and the craft's mat at ${sp.y.toFixed(2)} m, so the mats are drawn at ${sp.y.toFixed(2)} m and some float or are buried. Move the row onto one surface.`
+      : '';
     if (pads && Math.abs(sp.base - sp.y) > SEAT_SLACK) {
       const where = seatEl ? `on top of ${names(seatEl)} at ${sp.y.toFixed(2)} m` : 'on the ground';
-      out.push(warn('fs-pads-seat', `The start pads have a Base of ${sp.base.toFixed(2)} m, but in the simulator they sit ${where}, and the craft starts there. Set Base to ${sp.y.toFixed(2)} m to see them where they will be.`, {
+      out.push(warn('fs-pads-seat', `The start pads have a Base of ${sp.base.toFixed(2)} m, but in the simulator they sit ${where}, and the craft starts there. Set Base to ${sp.y.toFixed(2)} m to see them where they will be.${across ? ` ${across}` : ''}`, {
+        elementId: pads.id,
+      }));
+    } else if (split) {
+      out.push(warn('fs-pads-seat', `The start pads stand across two heights: mat ${split.n} sits at ${split.y.toFixed(2)} m and the craft's mat at ${sp.y.toFixed(2)} m. The mats are drawn at ${sp.y.toFixed(2)} m, so some float or are buried. Move the row onto one surface.`, {
         elementId: pads.id,
       }));
     }
@@ -910,12 +936,159 @@ export function freestyleReport(doc) {
     }));
   }
 
+  /* -------- more shapes in one place than the physics looks at -------- */
+
+  const crowd = crowdOf(placed.solids);
+  if (crowd.max > CANDIDATES_MAX) {
+    /* Named by the element with the most shapes in the patch. bodies is
+     * placed.solids cut up by element, in order, so an index walks it. */
+    const own = new Map();
+    let at = 0;
+    for (const b of bodies) {
+      for (let k = 0; k < b.solids.length; k += 1) {
+        if (crowd.shapes.has(at + k)) {
+          own.set(b, (own.get(b) ?? 0) + 1);
+        }
+      }
+      at += b.solids.length;
+    }
+    const most = [...own.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    out.push(warn('fs-crowded', `Round ${names(most.el)} the physics would have ${crowd.max} shapes to check against a craft, and it checks ${CANDIDATES_MAX} at most: the rest are left out, and a craft there could pass through them. Spread these elements further apart or use fewer of them.`, {
+      elementId: most.el.id,
+    }));
+  }
+
   return {
     warnings: out,
     solids: placed.solids.length,
     zones: placed.zones.length,
     bodies: bodies.length,
   };
+}
+
+/*
+ * THE PHYSICS' OWN GRID, AS IT WILL BE BUILT. src/native/world.c files
+ * every shape in 8 m cells of the plant's plan (sim_world_build: the origin
+ * is the least corner of every shape, and the cell doubles while there are
+ * more than 2^18 of them), and a contact query gathers the cells round the
+ * craft, which reaches under a quarter of a metre, so up to two by two of
+ * them. It keeps the first WORLD_MAX_CAND shapes it meets and drops the
+ * rest without a word (world_gather). Measured on a block of six tall
+ * chimneys with 1.2 m slots: a craft 7 cm into the brick got no contact.
+ * scripts/props-check.js (e) holds this copy to the module: a wall behind
+ * 1100 shapes of the cell gathered before it is never touched.
+ *
+ * So each shape's plan bounds are taken the way the module is handed them:
+ * float32 in the colliders (src/game/collide.js build), through
+ * threePosToSim (sim x is -z, sim y is -x), a capsule padded by its
+ * radius. Then every two by two block of cells counts its distinct shapes.
+ * The origin depends on every shape in the map, so moving anything can
+ * move every boundary, and this is recomputed with the rest of the report
+ * on every edit. Returns { max, shapes }: the most any block holds, and
+ * the indices into `solids` of the shapes in that block.
+ */
+export const CANDIDATES_MAX = 1024;
+const WORLD_CELL_MIN = 8;
+const WORLD_MAX_CELLS = 1 << 18;
+
+export function crowdOf(solids) {
+  const n = solids.length;
+  if (!n) {
+    return { max: 0, shapes: new Set() };
+  }
+  const f = Math.fround;
+  const lo0 = new Float64Array(n);
+  const lo1 = new Float64Array(n);
+  const hi0 = new Float64Array(n);
+  const hi1 = new Float64Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const s = solids[i];
+    if (s.box) {
+      const b = s.box;
+      lo0[i] = -f(Math.max(b[2], b[5]));
+      hi0[i] = -f(Math.min(b[2], b[5]));
+      lo1[i] = -f(Math.max(b[0], b[3]));
+      hi1[i] = -f(Math.min(b[0], b[3]));
+    } else {
+      const c = s.cap;
+      const r = f(c[6]);
+      const az = -f(c[2]);
+      const bz = -f(c[5]);
+      const ax = -f(c[0]);
+      const bx = -f(c[3]);
+      lo0[i] = Math.min(az, bz) - r;
+      hi0[i] = Math.max(az, bz) + r;
+      lo1[i] = Math.min(ax, bx) - r;
+      hi1[i] = Math.max(ax, bx) + r;
+    }
+  }
+  let x0 = lo0[0];
+  let y0 = lo1[0];
+  let x1 = hi0[0];
+  let y1 = hi1[0];
+  for (let i = 1; i < n; i += 1) {
+    x0 = lo0[i] < x0 ? lo0[i] : x0;
+    y0 = lo1[i] < y0 ? lo1[i] : y0;
+    x1 = hi0[i] > x1 ? hi0[i] : x1;
+    y1 = hi1[i] > y1 ? hi1[i] : y1;
+  }
+  let cell = WORLD_CELL_MIN;
+  let nx = 0;
+  let ny = 0;
+  for (;;) {
+    nx = Math.trunc((x1 - x0) / cell) + 1;
+    ny = Math.trunc((y1 - y0) / cell) + 1;
+    if (nx * ny <= WORLD_MAX_CELLS) {
+      break;
+    }
+    cell *= 2;
+  }
+  const cells = Array.from({ length: nx * ny }, () => []);
+  for (let i = 0; i < n; i += 1) {
+    const cx0 = Math.trunc((lo0[i] - x0) / cell);
+    const cx1 = Math.trunc((hi0[i] - x0) / cell);
+    const cy0 = Math.trunc((lo1[i] - y0) / cell);
+    const cy1 = Math.trunc((hi1[i] - y0) / cell);
+    for (let cx = cx0; cx <= cx1; cx += 1) {
+      for (let cy = cy0; cy <= cy1; cy += 1) {
+        cells[cx * ny + cy].push(i);
+      }
+    }
+  }
+  const stamp = new Int32Array(n);
+  let query = 0;
+  let max = 0;
+  let worst = null;
+  for (let cx = 0; cx < nx; cx += 1) {
+    for (let cy = 0; cy < ny; cy += 1) {
+      query += 1;
+      let count = 0;
+      for (let ax = cx; ax <= cx + 1 && ax < nx; ax += 1) {
+        for (let ay = cy; ay <= cy + 1 && ay < ny; ay += 1) {
+          for (const i of cells[ax * ny + ay]) {
+            if (stamp[i] !== query) {
+              stamp[i] = query;
+              count += 1;
+            }
+          }
+        }
+      }
+      if (count > max) {
+        max = count;
+        worst = [cx, cy];
+      }
+    }
+  }
+  const shapes = new Set();
+  const [wx, wy] = worst;
+  for (let ax = wx; ax <= wx + 1 && ax < nx; ax += 1) {
+    for (let ay = wy; ay <= wy + 1 && ay < ny; ay += 1) {
+      for (const i of cells[ax * ny + ay]) {
+        shapes.add(i);
+      }
+    }
+  }
+  return { max, shapes };
 }
 
 /*
@@ -976,6 +1149,37 @@ function grow(b, by) {
 
 function boxesTouch(a, b) {
   return a[0] <= b[3] && b[0] <= a[3] && a[1] <= b[4] && b[1] <= a[4] && a[2] <= b[5] && b[2] <= a[5];
+}
+
+/*
+ * The first mat of the start row whose own seat is more than SEAT_SLACK from
+ * the spawn's, as { n, y } with n counted from 1, or null. Each mat's seat
+ * is asked at its middle from the pads' Base, the way place.js spawnFrom
+ * asks for the craft's, and the mat is turned the way placeSolids turns a
+ * part.
+ */
+const MAT_SC = { s: 0, c: 1 };
+const MAT_AT = { x: 0, z: 0 };
+function splitMat(placed, pads) {
+  const it = placed.items.find((i) => i.el === pads);
+  if (!it) {
+    return null;
+  }
+  const sp = placed.spawn;
+  sincos(it.yaw, MAT_SC);
+  let n = 0;
+  for (const part of it.parts) {
+    if (part.name !== 'pad') {
+      continue;
+    }
+    n += 1;
+    turnY((part.lo[0] + part.hi[0]) / 2, (part.lo[2] + part.hi[2]) / 2, MAT_SC.s, MAT_SC.c, MAT_AT);
+    const y = topUnder(placed.tops, it.x + MAT_AT.x, it.z + MAT_AT.z, sp.base);
+    if (Math.abs(y - sp.y) > SEAT_SLACK) {
+      return { n, y };
+    }
+  }
+  return null;
 }
 
 /* Whether a solid is the box the craft at the spawn stands on: its top is

@@ -80,6 +80,7 @@ import {
 } from '../game/collide.js';
 import { AIRFRAMES, airframeById } from '../../configs/airframes.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
+import { keepDisplaced } from './storage.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
 
 import { readFileSync } from 'node:fs';
@@ -2719,6 +2720,45 @@ function suiteFreestyle() {
   }
   {
     /*
+     * A ROW ACROSS TWO HEIGHTS. Four pads with the craft's mat (the second,
+     * 0.75 m along the row) over a 0.5 m ledge and the rest on the paving.
+     * The row is drawn at the seat of the craft's own mat, whatever the
+     * middle of the row stands on, and the builder says the other mats are
+     * off it, with Base right or wrong.
+     */
+    const d = fresh();
+    freestylePlace(d, 'ledge', 80, 80.75, { dims: { length: 6, height: 0.5, depth: 0.9 } });
+    const pads = freestylePlace(d, 'startPads', 80, 80, { z: 0.5, dims: { pads: 4 } });
+    const placed = placeDocument(d);
+    const drawn = placed.items.find((it) => it.el === pads);
+    check('a row across a ledge is drawn at the seat of the craft’s mat, on the ledge',
+      placed.spawn.y === 0.5 && drawn.y === placed.spawn.y, `seat ${placed.spawn.y}, drawn at ${drawn.y}`);
+    const seat = freestyleReport(d).warnings.find((x) => x.code === 'fs-pads-seat');
+    check('and fs-pads-seat names a mat that is off it', Boolean(seat) && /mat 1 sits at 0\.00 m/.test(seat.message),
+      seat ? seat.message : 'no fs-pads-seat');
+    pads.position.z = 0;
+    const low = freestyleReport(d).warnings.find((x) => x.code === 'fs-pads-seat');
+    check('and with Base left at 0 it says both: where to set Base, and that the row is split',
+      Boolean(low) && /Set Base to 0\.50 m/.test(low.message) && /two heights/.test(low.message),
+      low ? low.message : 'no fs-pads-seat');
+  }
+  {
+    /*
+     * A START ON A BRIDGE DECK. The road bridge's girders and cross frames
+     * are under its deck, within a metre of a craft on it, and under its
+     * floor, not in the air it takes off into.
+     */
+    const d = fresh();
+    freestylePlace(d, 'bridge', 80, 80, { style: 'road' });
+    const deck = placeDocument(d).solids.find((s) => s.name === 'deck').box;
+    freestylePlace(d, 'startPads', 80, 80.75, { z: deck[4], dims: { pads: 1 } });
+    const placed = placeDocument(d);
+    const codes = codesOf(d);
+    check('pads on a road bridge’s deck, over a cross frame, are seated on it and say nothing',
+      placed.spawn.y === deck[4] && codes.length === 0, `seat ${placed.spawn.y}, deck ${deck[4]}: ${codes.join(', ')}`);
+  }
+  {
+    /*
      * ON A MAT. The pads' middle is bare paving between two mats whenever
      * there is an even number of them, so the spawn is moved along the row
      * onto the mat the race path uses (startBlockLaneOffset), and must land
@@ -2774,6 +2814,11 @@ function suiteFreestyle() {
       if (a !== topUnder(placed.solids, x, z, from)) {
         differ += 1;
       }
+      /* And asked for a craft, with its CG, the way the shell asks. */
+      const cg = from === undefined ? undefined : from + rnd() * 0.6;
+      if (topUnder(placed.tops, x, z, from, cg) !== topUnder(placed.solids, x, z, from, cg)) {
+        differ += 1;
+      }
       if (a > 0) {
         roofs += 1;
       }
@@ -2806,6 +2851,23 @@ function suiteFreestyle() {
       roofTop > 3 && topUnder(p2.tops, body[0] - 0.01, it.z, roofTop + CG - BIAS) === 0
       && topUnder(p2.tops, body[0] + 0.01, it.z, roofTop + CG - BIAS) === roofTop,
       `wall at x ${body[0]}, roof ${roofTop}`);
+    /* A scaffold board is 5 cm, well inside the 0.15 m the query reaches
+     * over the CG: to a craft under it, with the CG passed, it is sky, and
+     * to a craft on it the ground. */
+    const d3 = fresh();
+    freestylePlace(d3, 'scaffold', 80, 80);
+    const p3 = placeDocument(d3);
+    const board = p3.solids.find((s) => s.name === 'board' && s.box[1] > 1).box;
+    const bx = (board[0] + board[3]) / 2;
+    const bz = (board[2] + board[5]) / 2;
+    const under = board[1] - 0.04;
+    const on = board[4] + CG;
+    check('a scaffold board is sky to a craft under it, with the CG passed, and ground to one on it',
+      board[4] - board[1] < 0.15
+      && groundUnder(p3.tops, bx, bz, under - BIAS, under) < board[1]
+      && groundUnder(p3.tops, bx, bz, under - BIAS) === board[4] - SUPPORT_TIE
+      && groundUnder(p3.tops, bx, bz, on - BIAS, on) === board[4] - SUPPORT_TIE,
+      `board ${board[1]} to ${board[4]}: under ${groundUnder(p3.tops, bx, bz, under - BIAS, under)}, without the CG ${groundUnder(p3.tops, bx, bz, under - BIAS)}, on ${groundUnder(p3.tops, bx, bz, on - BIAS, on)}`);
   }
   {
     const d = fresh();
@@ -2819,6 +2881,28 @@ function suiteFreestyle() {
     freestylePlace(d2, 'crane', 60, 60);
     freestylePlace(d2, 'crane', 60, 60, { yaw: 1.2 });
     check('two cranes through each other overlap too, capsule on capsule', codesOf(d2).includes('fs-overlap'));
+  }
+  {
+    /*
+     * MORE SHAPES IN ONE PLACE THAN THE PHYSICS LOOKS AT. Six tall stacks
+     * of radius 2.4 m in a block with 1.2 m slots put some 1700 shapes in
+     * two by two cells of the module's grid, which keeps 1024 of them round
+     * the craft (crowdOf; the module's side of it is held in
+     * scripts/props-check.js). One stack does not, and neither does the
+     * starter.
+     */
+    const block = (n) => {
+      const d = fresh();
+      freestylePlace(d, 'startPads', 140, 140);
+      for (let i = 0; i < n; i += 1) {
+        freestylePlace(d, 'chimney', 60 + (i % 3) * 6, 60 + Math.floor(i / 3) * 6, { dims: { height: 20, radius: 2.4 } });
+      }
+      return d;
+    };
+    const six = freestyleReport(block(6)).warnings.find((x) => x.code === 'fs-crowded');
+    check('six tall stacks with 1.2 m slots are more than the physics looks at, and it says so',
+      Boolean(six) && /1024 at most/.test(six.message), six ? six.message : 'no fs-crowded');
+    check('one is not', !codesOf(block(1)).includes('fs-crowded'));
   }
   {
     /* A ledge is one box 0.9 m deep across its heading, so two of them
@@ -3032,6 +3116,50 @@ function suiteListing() {
     pilotName: 'Ada Two',
   });
   check('an owned handle change is author drift, not layout drift', authorShift.authorDrift === true && authorShift.layoutDrift === false && authorShift.canUpdateListing === true);
+
+  /*
+   * KEEPING WHAT A SEAT HELD before it is replaced (keepDisplaced in
+   * ./storage.js, the builder's keepSeat and the simulator's seatLocal),
+   * in a storage held in memory, then in one that is full.
+   */
+  const had = globalThis.localStorage;
+  const store = new Map();
+  let full = false;
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => {
+      if (full) {
+        throw new Error('QuotaExceededError');
+      }
+      store.set(k, String(v));
+    },
+    removeItem: (k) => {
+      store.delete(k);
+    },
+  };
+  try {
+    const lib = () => Object.values(JSON.parse(store.get('webfpv.trackbuilder.library.v1') || '{}'));
+    const map = createTrack('My map', 'full', 'freestyle');
+    map.elements.push(createElement(map, 'tree', { x: 20, y: 20, z: 0 }, 0));
+    const first = keepDisplaced(map);
+    check('a seat Load does not have goes into Load as itself', first.ok && first.saved === map && lib().length === 1);
+    const same = keepDisplaced(normalize(toPlain(map)).doc);
+    check('the same document again needs nothing', same.ok && same.saved === null && lib().length === 1);
+    map.elements.push(createElement(map, 'tree', { x: 40, y: 20, z: 0 }, 0));
+    const edited = keepDisplaced(map);
+    check('one edited since its Save goes in as a copy, and the saved one stays',
+      edited.ok && Boolean(edited.saved) && edited.saved.id !== map.id && edited.saved.name === 'My map (unsaved changes)'
+      && lib().length === 2 && lib().some((d) => d.id === map.id && d.elements.length === 1)
+      && lib().some((d) => d.id === edited.saved.id && d.elements.length === 2),
+      lib().map((d) => `${d.name}/${d.elements.length}`).join(', '));
+    full = true;
+    const other = createTrack('Other');
+    other.elements.push(createElement(other, 'gate', { x: 10, y: 10, z: 0 }));
+    const refused = keepDisplaced(other);
+    check('and when storage refuses it, that is said, so nothing replaces it', !refused.ok && refused.saved === null);
+  } finally {
+    globalThis.localStorage = had;
+  }
 }
 
 /*

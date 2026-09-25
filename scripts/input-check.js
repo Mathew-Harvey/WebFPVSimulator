@@ -22,7 +22,8 @@
  * boots. It is deliberately the radio the AETR guess gets wrong, because
  * a radio the guess gets right exercises none of this. A second page with
  * touch emulation on covers the thumb sticks, and a third with no radio at
- * all flies a real race on the keys.
+ * all flies a real race on the keys. The last two walk the builder's Fly
+ * this map into the air, and a linked map that fails to load.
  *
  * Not part of `npm run verify`: this says nothing about the flight model.
  * Same shape as lint:shell. Run it on a change to src/input, to the
@@ -57,6 +58,7 @@ import { presetsForClass } from '../src/trackbuilder/presets.js';
 import { ROOM_HEIGHT } from '../src/trackbuilder/racegow.js';
 import { MICRO_SCALE } from '../src/game/track.js';
 import { THRASH_THROTTLE } from '../src/game/collide.js';
+import { starterMap } from '../src/maps/built/starter.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -1390,6 +1392,99 @@ async function freestylePage(page) {
     reloaded && townRequests === 2 && after.map === 'city' && after.built === 'city' && after.ready, JSON.stringify({ reloaded, townRequests, ...after }));
 }
 
+/*
+ * The builder's Fly this map, walked from the builder's own button. The
+ * owner, 2026-09-25: "fix the flow from fly this map, to be actually
+ * starting the map, it bumps me back to the fly menu, the my map etc". The
+ * link named the map and not the aircraft, so the gate opened on every
+ * visit, and nothing after it flew: three presses to the air. The pilot
+ * here last flew the whoop and comes in the way the Freestyle room's Build
+ * a freestyle map row sends them, ?mode=freestyle, so the builder's reseat
+ * of the five inch is part of what is checked. Seeded once per tab,
+ * because the page navigates and reloads.
+ */
+const FLY_MAP = { ...starterMap(), id: 'trk-f1e5ea9e', name: 'Fly this map check' };
+const FLY_MAP_SEED = `try {
+  if (!sessionStorage.getItem('check.flymap.seeded')) {
+    sessionStorage.setItem('check.flymap.seeded', '1');
+    const k = ${JSON.stringify(SETTINGS_KEY)};
+    const s = JSON.parse(localStorage.getItem(k) || '{}');
+    s.airframe = 'whoop65';
+    s.airframeAsked = true;
+    s.map = 'custom';
+    localStorage.setItem(k, JSON.stringify(s));
+    localStorage.setItem('webfpv.trackbuilder.autosave.freestyle.v1', ${JSON.stringify(JSON.stringify(FLY_MAP))});
+    localStorage.setItem('webfpv.trackbuilder.canvas.v1', 'freestyle');
+  }
+} catch (e) { /* Storage refused. The builder then opens blank, and the checks say so. */ }`;
+
+async function flyMapPages() {
+  /* ----------------------------------------------------------------------
+   * 13. Fly this map, from the builder to the air in the one press.
+   * -------------------------------------------------------------------- */
+  section('fly this map: the builder\'s button puts the pilot in the air on that map, with no menu between');
+  let page = await openPage({ root, width: 1280, height: 720, url: '/src/trackbuilder/index.html?mode=freestyle', seed: [SETTINGS_SEED, FLY_MAP_SEED] });
+  try {
+    await page.until('!!window.trackBuilder', 60000).catch(() => {});
+    const builder = await page.evaluate(`(() => { const app = window.trackBuilder;
+      return JSON.stringify({ mode: app && app.doc.mode, name: app && app.doc.name, fly: app && app.flyBtn && app.flyBtn.textContent }); })()`).then(JSON.parse);
+    check('the builder opens the seeded map, and its button says Fly this map',
+      builder.mode === 'freestyle' && builder.name === FLY_MAP.name && builder.fly === 'Fly this map', JSON.stringify(builder));
+    await page.evaluate('(() => { window.trackBuilder.flyBtn.click(); return 1; })()');
+    await page.until("window.__shellReady === true && window.__mode === 'flight'", 120000).catch(() => {});
+    const air = await page.evaluate(`(() => { const ui = window.__ui; const m = window.__map ? window.__map() : null;
+      return JSON.stringify({ shell: window.__mode || null, screen: ui && ui.screen, world: m && m.id, source: m && m.source,
+        name: m && m.name, airframe: ui && ui.settings.airframe, search: location.search }); })()`).then(JSON.parse);
+    check('it lands in the air on the map it was pressed on, with no press between, on the five inch',
+      air.shell === 'flight' && air.screen === 'flight' && air.world === 'built' && air.source === 'canvas'
+        && air.name === FLY_MAP.name && air.airframe === '5inch', JSON.stringify(air));
+    check('the one time fly=1 is gone from the address, and the map and the aircraft stay',
+      air.search === '?map=built&craft=5inch', JSON.stringify(air));
+    await page.evaluate('(() => { location.reload(); return 1; })()').catch(() => {});
+    await page.until("window.__shellReady === true && !!window.__ui && window.__mode === 'title'", 120000).catch(() => {});
+    const back = await page.evaluate(`(() => { const ui = window.__ui;
+      return JSON.stringify({ shell: window.__mode || null, screen: ui && ui.screen, gate: ui && ui.onGate(), map: ui && ui.settings.map }); })()`).then(JSON.parse);
+    check('a reload is a pilot reloading: the title, with the gate answered, not the air again',
+      back.shell === 'title' && back.screen === 'title' && back.gate === false && back.map === 'built', JSON.stringify(back));
+    const uncaught = page.errors.filter((e) => e.startsWith('uncaught:'));
+    check('no uncaught exception on the fly this map pages', uncaught.length === 0, uncaught.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+
+  /* ----------------------------------------------------------------------
+   * 14. The same link when the map fails to load. main.js puts the track
+   *     back under the pilot and says why; fly=1 must not then fly the
+   *     track, which nobody asked for.
+   * -------------------------------------------------------------------- */
+  section('fly this map: a linked map that fails to load leaves the pilot on the title, not in the track put back');
+  page = await openPage({ root, width: 1280, height: 720, url: '/index.html?map=built&craft=5inch&fly=1', seed: [SETTINGS_SEED] });
+  try {
+    let builtRequests = 0;
+    page.cdp.onEvent((msg) => {
+      if (msg.sessionId === page.sessionId && msg.method === 'Fetch.requestPaused'
+        && /\/src\/maps\/built\/index\.js/.test(msg.params.request.url)) {
+        builtRequests += 1;
+        page.cdp.send('Fetch.failRequest', { requestId: msg.params.requestId, errorReason: 'ConnectionReset' }, page.sessionId)
+          .catch(() => {});
+      }
+    });
+    await page.cdp.send('Fetch.enable', {
+      patterns: [{ urlPattern: 'https://cdn.jsdelivr.net/*' }, { urlPattern: '*/src/maps/built/index.js*' }],
+    }, page.sessionId);
+    await page.until('window.__shellReady === true && !!window.__ui', 120000).catch(() => {});
+    await new Promise((r) => setTimeout(r, 2500));
+    const left = await page.evaluate(`(() => { const ui = window.__ui; const m = window.__map ? window.__map() : null;
+      return JSON.stringify({ shell: window.__mode || null, screen: ui && ui.screen, map: ui && ui.settings.map, world: m && m.id,
+        failed: ui && ui.loadFailure ? ui.loadFailure.map : null, search: location.search }); })()`).then(JSON.parse);
+    check('the map failed, the track is back under the pilot, and they are on the title, not flying it',
+      builtRequests >= 1 && left.failed === 'built' && left.world === 'custom' && left.shell === 'title' && left.screen === 'title'
+        && left.search === '?map=built&craft=5inch', JSON.stringify({ builtRequests, ...left }));
+  } finally {
+    await page.close();
+  }
+}
+
 async function main() {
   const t0 = Date.now();
   let page = null;
@@ -1425,6 +1520,9 @@ async function main() {
     check('no uncaught exception on the freestyle page', uncaught4.length === 0, uncaught4.slice(0, 3).join(' | '));
     await page.close();
     page = null;
+
+    console.log('\nopening the builder on a map and pressing Fly this map');
+    await flyMapPages();
   } catch (e) {
     check('the run completed', false, String(e && e.stack ? e.stack : e));
     if (page) {

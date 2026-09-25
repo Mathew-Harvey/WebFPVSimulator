@@ -2683,6 +2683,53 @@ function linkedMode() {
 }
 
 /*
+ * FLY NOW, WHEN THE LINK SAID SO: the id of the map the link asked to be
+ * flown the moment it has loaded, or null.
+ *
+ * The builder's Fly this map is a press that has already said everything:
+ * this map, the five inch, fly it. With ?map= and ?craft= the gate is
+ * answered, but the pilot still landed on the title, whose Fly row and
+ * Map: Your map only asked the same question a third time, and the owner's
+ * report on 2026-09-25 was exactly that: Fly this map "bumps me back" to
+ * the menu. ?fly=1 is the rest of the sentence. It only counts beside a
+ * map the registry knows, and main.js only acts on it when that map is the
+ * one that loaded and the gate is answered, so a map that failed to load
+ * leaves the pilot on the title with the failure said, as before.
+ */
+function linkedFly() {
+  let params;
+  try {
+    params = new URLSearchParams(window.location.search);
+  } catch (e) {
+    return null;
+  }
+  if (params.get('fly') !== '1') {
+    return null;
+  }
+  const wanted = params.get('map');
+  return wanted && MAPS.some((x) => x.id === wanted) ? wanted : null;
+}
+
+/*
+ * Take one parameter out of the address, keeping every other one and the
+ * hash. A link's one-time instruction must not outlive the load it was
+ * for: a reload of a ?fly=1 page is a pilot reloading, not a pilot asking
+ * to be put in the air again.
+ */
+function dropLinkParam(name) {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(name)) {
+      return;
+    }
+    url.searchParams.delete(name);
+    history.replaceState(history.state, '', url);
+  } catch (e) {
+    /* No history to write. The parameter stays; main.js has already read it. */
+  }
+}
+
+/*
  * The two aircraft in plan, drawn TO ONE SCALE.
  *
  * The viewBox is 300 mm across for both, so the five inch fills it and the
@@ -2969,6 +3016,13 @@ export class Ui {
      * the seated aircraft is a real answer rather than a default.
      */
     this.craftGate = !linkedAf;
+    /* The map a ?fly=1 link asked to be flown once it has loaded, read
+     * once and taken out of the address at once. main.js acts on it after
+     * the first frame. See linkedFly. */
+    this.flyOnLoad = linkedFly();
+    if (this.flyOnLoad) {
+      dropLinkParam('fly');
+    }
     /* A link that names the whoop has answered the mode question too, so
      * that pair of link parameters is still one press from the air. */
     if (this.syncMode()) {

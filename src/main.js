@@ -7310,7 +7310,36 @@ export async function boot({ loading, bootStart, mapId }) {
       finishLoadingOnFrame = false;
       loading.done('frame');
       loading.finish();
+      flyIfLinked();
     }
+  }
+  /*
+   * THE BUILDER'S FLY THIS MAP, carried the last step into the air.
+   *
+   * Its link names the map, the aircraft and ?fly=1 (see linkedFly in
+   * ui.js). The first two answer the gate; this answers the title, once,
+   * after the first frame, when the world is on screen and the loading
+   * screen has gone. Only when the map that loaded is the one the link
+   * named and the gate is answered: a map that failed to load put the
+   * track back and left the pilot on the title with the failure said, and
+   * flying the track instead would be a second surprise on top of the
+   * first. Through ui.act('fly'), the Fly row's own path, so the launch is
+   * exactly the one a press gives. wakeAudio first: the browser may hold
+   * the context until the first key or click, and start() resumes it then.
+   */
+  function flyIfLinked() {
+    const wanted = ui.flyOnLoad;
+    ui.flyOnLoad = null;
+    if (!wanted || view.id !== wanted || ui.settings.map !== wanted || ui.screen !== 'title' || ui.onGate()) {
+      return;
+    }
+    setTimeout(() => {
+      if (ui.screen !== 'title' || view.id !== wanted) {
+        return;
+      }
+      wakeAudio();
+      ui.act('fly');
+    }, 0);
   }
   let worstBlockMs = 0;
   let worstShellMs = 0;

@@ -44257,3 +44257,89 @@ feel sweep closures. Merged into the branch, not rebased; merge-base
     npm run verify                 NOT RUN: the owner chose to fly it
     git merge-base                 857cc71, one history
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | shell, builder | Fly this map goes straight into the air
+
+The owner, flying Stage A on main: "fix the flow from fly this map, to be
+actually starting the map, it bumps me back to the fly menu, the my map etc
+etc". Shell and builder only; the plant, the ABI and the build are
+untouched.
+
+### What it was, measured
+
+A scratch rig seeded a map in the freestyle seat, opened the builder's own
+link (/index.html?map=built) and pressed Enter on whatever was under the
+cursor, logging every screen. A returning pilot got the gate ("Five inch
+racing, Whoop racing, Freestyle", cursor on Freestyle), then the title (Fly,
+Map: Your map, Quad...), and only the third press flew. Two causes:
+
+- **The gate opens every visit unless the link answers both halves.**
+  ?map=built answers Race or Freestyle (linkedMode); the aircraft half is
+  answered only by ?craft= (linkedCraft), by design, since the gate is the
+  root menu. The builder's link named the map and not the aircraft, although
+  the builder had already seated the five inch in the settings.
+- **Nothing after the gate flew.** The link had no way to say "and fly it",
+  so the pilot landed on the title and pressed Fly.
+
+### What changed
+
+- **The builder's Fly this map** now links to
+  /index.html?map=built&craft=5inch&fly=1 (src/trackbuilder/app.js). Maps
+  are five inch only, and the builder seats the five inch before it goes.
+- **?fly=1** (linkedFly in src/ui/ui.js) names a map to fly the moment it
+  has loaded. It is read once in the Ui constructor and taken out of the
+  address at once with replaceState, keeping every other parameter, so a
+  reload is a pilot reloading and lands on the title with the gate
+  answered, not in the air again.
+- **main.js flyIfLinked**, called after the first frame's loading.finish():
+  only when the map that loaded is the one the link named and the gate is
+  answered, it wakes the audio (a paused context the first key or click
+  resumes, which start() already handles) and presses Fly through
+  ui.act('fly'), the Fly row's own path. A map that failed to load has put
+  the track back and said so on the title; it is not then flown.
+- The race side is unchanged: Fly this track still links to ?map=custom,
+  which answers the mode and not the aircraft, so it still opens the gate.
+  It is the same cause and the same one line fix, and it is the owner's to
+  ask for, because race has its launch card behind Fly.
+
+### Coverage
+
+lint:input gains two pages (section 13 and 14 of scripts/input-check.js):
+the builder opened on a seeded map the way the Freestyle room opens it
+(?mode=freestyle, with the whoop seated), its button pressed, and the pilot
+must be in the air on that map on the five inch with fly gone from the
+address, then a reload must land on the answered title; and a ?fly=1 link
+whose map module is reset must leave the pilot on the title with the track
+back and loadFailure recorded. With the old link put back, the first page
+fails three checks.
+
+### What went wrong
+
+- The first version of the check opened the builder with no ?mode and the
+  whoop seated, and the builder correctly opened the race canvas: it does
+  not reopen a remembered map over a seated whoop, because that reseats the
+  five inch behind the pilot's back. The check now comes in the way a pilot
+  does.
+- A scratch rig that enabled Fetch interception for the built module alone
+  replaced tests/lib/page.js's own CDN patterns, and three.js failed to
+  load. The check lists the CDN pattern beside its own, as the town drop
+  page already does.
+
+### RUN LOG
+
+    rig, returning, fresh and whoop pilots   in the air with 0 presses
+    rig, builder -> Fly this map             in the air in 9.1 s, on the
+                                             seeded map, source canvas
+    rig, reload                              title, gate answered
+    rig, built module reset                  title, track back, loadFailure
+                                             'built'
+    npm run lint:input             2 failed, 141 passed; the 2 are "parked
+                                   and left", failing on main too; the 6
+                                   new checks pass
+    old link put back              3 of the new checks fail
+    npm run check:clip             652 passed, 0 failed
+    npm run lint:boot              9 of 9 clean
+    npm run lint:nouns             PASS
+    npm run lint:preload           up to date
+    npm run lint:shell             1 problem, title overflow 23 px, main's
+    npm run verify                 not run: shell only

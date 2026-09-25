@@ -2300,7 +2300,11 @@ export class App {
     if (docModeOf(this.doc) === 'freestyle') {
       this.autosaver.flush();
       setActiveTrackClass('full');
-      window.location.href = '../../index.html?map=built';
+      /* The map, the aircraft and fly=1: the simulator's gate opens every
+       * visit unless the link names both what and which aircraft, and
+       * fly=1 takes the title's Fly press too, so this press is the one
+       * that puts the pilot in the air. See linkedFly in src/ui/ui.js. */
+      window.location.href = '../../index.html?map=built&craft=5inch&fly=1';
       return;
     }
     if (readEditKey(this.doc.id)) {

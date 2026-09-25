@@ -45171,3 +45171,46 @@ repository it is real.
     npm run check:world-golden             all passed
     /tmp/sim-page-* and sim-chrome-*       16 stale profiles deleted, no
                                            browser running
+
+## 2026-09-25 | physics | Stage D part 2 built, and NOT VERIFIED on its first check
+
+The turning movers (P2) were built on the owner's go (121efd8): one table of
+64 mover slots shared with the train, roads uploaded once and resampled at
+1 m, a curvature speed profile with forward and backward passes, the pose a
+pure function of the module's step clock (world_tick in sim_step), the drift
+turning the box by a rational rotation, the craft tested in the car's own
+frame, a vehicle never ground. dist/sim.wasm 8100a38a..., 140,831 bytes. The
+builder's run and then an independent verifier's, one check at a time from
+a clean build, agreed: the build reproduces; verify 17 of 17 with rows 1 to
+16 identical to 121efd8 (row 14 is the audio clock in real time) and row 17
+35 of 35; check:plant 23 of 23; the golden 35 of 35 and its selftest; the
+five known check:world targets; Node against Chrome equal on all 20 golden
+and 8 vehicle runs; check:crash 0 guards failed; nothing under tests/
+changed. 64 cars add about 4.5 us to a 1 ms step here.
+
+**The verdict was NOT VERIFIED**, so it did not go to main under the owner's
+"merge stage D to main when it's verified". Planting faults in scratch
+builds: the drift left out of the solid box, the clock advanced twice, the
+braking pass skipped and a vehicle offered as ground each turned a named
+check red; **the yaw rate left out of the contact's surface velocity turned
+nothing red**, though it moved outcomes a long way (a drift hit ending at
+3.28 m against 11.33; a whoop leaning on a car 3519 steps against 327). A
+physics change no check can see is not ready (CLAUDE.md). With it: the
+previous pose was unchecked (never updated, the drift hit's normal pointed
+away from the craft on 524 of 722 contact steps, all green), the reach test
+let a NaN through at absurd coordinates, and a road folded back on itself
+reversed a car at 10 m/s in one step.
+
+**One model decision, taken by me and put to the owner in the handover:**
+the contact read a yaw rate of speed times the road's curvature from three
+points 1.5 m apart, which is not how fast the solid box turns (0.045 read
+against 0.245 rad/s entering a bend at 11 m/s; up to about 0.45 m/s of
+surface velocity at the car's ends for about 0.3 s per bend). It is changed
+to the rate the box's own heading turns, from the pose function, drift
+included. That is the owner's "the car seen is the car hit", applied to how
+the car moves as well as where it is.
+
+A fix round is under way: that change, checks that see the yaw term, the
+drift rate, the normal's sign and the previous pose, a fold refused, a
+NaN-safe reach test, every planted fault required to turn a check red, then
+the verifier again. Checkpoints a8b8f64 and before are unverified.

@@ -1767,12 +1767,17 @@
       }
       .screen-title .menu { min-width: 0; width: 100%; margin-top: 0; background: rgba(16, 22, 17, 0.55); padding: 0; }
       .screen-title .menu .row { padding: 6px 22px 6px 28px; }
-      /* On narrow viewports, add padding to ensure last row clears the command bar after scroll */
+      .screen-title { padding-bottom: calc(1.5vh + var(--bar-bot) + 6px) !important; }  /* Add 6px clearance for Support row */
+      /* On narrow viewports, add extra padding to ensure last row clears the command bar after scroll */
       @media (max-width: 768px) {
         .screen-title .menu { padding-bottom: 80px; }
       }
       .screen-modal .menu { padding-bottom: 20px; }
       .screen-modal .menu .row { padding: 5px 22px 5px 28px; }
+      /* At mid-size viewports, shift paused menu up to prevent overlap */
+      @media (max-height: 768px) and (min-height: 668px) {
+        .screen-modal .menu { margin-top: -50px; }
+      }
       .menu-stage .menu { grid-column: 2; margin-top: 0; }
       .menu-scroll {
         max-height: min(calc(58vh - var(--bars)), 34em);

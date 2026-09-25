@@ -36,12 +36,14 @@ async function checkCSSInServedFile(origin) {
   const hasScreenModalMenu = html.includes('.screen-modal .menu');
   const hasScreenModalMenuRow = html.includes('.screen-modal .menu .row');
   const hasScreenTitleMenuRow = html.includes('.screen-title .menu .row');
+  const hasScreenModalPadding = html.includes('.screen-modal { padding-bottom: calc(2vh + var(--bar-bot) + 10px)');
   
   console.log(`  .screen-modal .menu: ${hasScreenModalMenu ? 'FOUND' : 'NOT FOUND'}`);
   console.log(`  .screen-modal .menu .row: ${hasScreenModalMenuRow ? 'FOUND' : 'NOT FOUND'}`);
   console.log(`  .screen-title .menu .row: ${hasScreenTitleMenuRow ? 'FOUND' : 'NOT FOUND'}`);
+  console.log(`  .screen-modal padding: ${hasScreenModalPadding ? 'FOUND' : 'NOT FOUND'}`);
   
-  if (!hasScreenModalMenu || !hasScreenModalMenuRow || !hasScreenTitleMenuRow) {
+  if (!hasScreenModalMenu || !hasScreenModalMenuRow || !hasScreenTitleMenuRow || !hasScreenModalPadding) {
     throw new Error('CSS rules not found in served index.html');
   }
   
@@ -77,6 +79,10 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
     const menuRow = document.querySelector(screenClass + ' .menu .row');
     const rowPadding = menuRow ? 
       window.getComputedStyle(menuRow).paddingTop : 'N/A';
+    
+    // Get menu scroller for overflow calculation
+    const menu = document.querySelector(screenClass + ' .menu');
+    const actualOverflow = menu ? (menu.scrollHeight - menu.clientHeight) : 0;
     
     // Get menu items
     const ui = window.__ui;
@@ -119,6 +125,7 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
       innerHeight,
       screenClass,
       rowPadding,
+      actualOverflow,
       supportIndex,
       lastRowRect: lastRowRect ? {
         top: lastRowRect.top,
@@ -154,6 +161,7 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
   console.log(`  window.innerHeight: ${measurements.innerHeight}`);
   console.log(`  screenClass: ${measurements.screenClass}`);
   console.log(`  ${measurements.screenClass} .menu .row computed padding-top: ${measurements.rowPadding}`);
+  console.log(`  Actual overflow (scrollHeight - clientHeight): ${measurements.actualOverflow}px`);
   console.log(`  Support item index: ${measurements.supportIndex}`);
   
   if (measurements.lastRowRect) {
@@ -189,8 +197,8 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
   
   // Handle scrolling and screenshot for mobile viewport
   let screenshotPath;
-  if (width === 390 && height === 844) {
-    // For mobile, scroll naturally to the bottom of the menu
+  if (width === 390 && height === 844 || width === 1366 && height === 768 || width === 1280 && height === 720) {
+    // For mobile and mid-size viewports, scroll naturally to the bottom
     await page.evaluate(`(() => {
       const screenClass = '${screen}' === 'paused' ? '.screen-modal' : '.screen-title';
       const menu = document.querySelector(screenClass + ' .menu');
@@ -259,6 +267,8 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
       console.log(`    Gap: ${scrolledMeasurements.gap.toFixed(2)}px`);
       if (scrolledMeasurements.gap < 16) {
         console.log(`    ⚠️  FAIL: Gap is less than 16px minimum!`);
+      } else {
+        console.log(`    ✓ Gap meets 16px minimum`);
       }
     }
     

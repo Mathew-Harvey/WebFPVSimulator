@@ -454,6 +454,18 @@ Still open:
    Needed by Stage B.
 7. **The STF file**, committed to `assets/`. Needed by Stage B.
 
+Answered 2026-09-25, when the owner asked for "the drift car that is driving
+on the track, so we can practice chasing":
+
+8. **The chase comes right after Stage B.** The order is now A, B, D, E, C,
+   F: Stage D (the coverage first, then the physics) and Stage E (roads,
+   vehicles, the chase) move ahead of the counter. Decision 1's "not before
+   Stages A to C" is replaced by this; its other condition stands, and so
+   does CLAUDE.md's: the coverage lands and goes green before the physics
+   changes.
+9. **Cars drive on built freestyle maps only**, as section 8 has it. Not on
+   race tracks.
+
 ## 13. Not in this plan
 
 - Publishing freestyle maps to the public board, and a board per built map:

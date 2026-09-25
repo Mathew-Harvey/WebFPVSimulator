@@ -44343,3 +44343,32 @@ fails three checks.
     npm run lint:preload           up to date
     npm run lint:shell             1 problem, title overflow 23 px, main's
     npm run verify                 not run: shell only
+
+## 2026-09-25 | plan, git | The chase moves ahead of the counter, and Fly this map goes to main
+
+The owner asked: "are we going to add in the drift car that is driving on
+the track obstacle, so we can practice chasing?" It is Stage E, which needs
+Stage D's turning movers first (the module's 16 movers are axis aligned
+boxes that cannot turn, so a car at a diagonal would be an invisible 4.5 m
+square). Put to the owner with the order as the question, answered the same
+day in the conversation:
+
+- **Right after Stage B: D, then E, then C.** The order is now A, B, D, E,
+  C, F. This replaces decision 1's "not before Stages A to C". Its other
+  condition stands, and so does CLAUDE.md's coverage rule: the section 10
+  coverage lands and goes green before world.c changes.
+- **Built freestyle maps only**, as the plan's section 8 already had it. No
+  car on race tracks.
+- **Merge the Fly this map fix to main now**, ahead of Stage B, which
+  follows in its own merge. The verification scale is the owner flying it.
+
+FREESTYLE-MAPS-PLAN.md section 12 records items 8 and 9.
+
+### RUN LOG
+
+    code                     unchanged since the Fly this map entry above;
+                             this entry and the plan's section 12 are new
+    checks                   not rerun: nothing they read changed; the
+                             Fly this map entry's run log is this tree's
+    git merge-base           e8f74f5, main is an ancestor of the branch
+    git diff --stat vendor/betaflight   empty

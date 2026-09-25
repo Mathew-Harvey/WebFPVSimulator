@@ -1052,7 +1052,7 @@ function dirtRuts(placed, doc) {
  * Returns the group, what it painted for stats(), and a way to stop a logo
  * still decoding from painting into a map that has gone.
  */
-function buildGround(placed, doc, look) {
+function buildGround(placed, doc, look, hideSponsors = false) {
   const { W, D } = placed;
   const G = look.ground;
   const groundId = look.groundId;
@@ -1234,19 +1234,21 @@ function buildGround(placed, doc, look) {
 
   /* ---- the sponsors' marks, from the document's own logos ---- */
   const logos = [];
-  for (const it of placed.items) {
-    if (it.el.type !== 'groundLogo') {
-      continue;
+  if (!hideSponsors) {
+    for (const it of placed.items) {
+      if (it.el.type !== 'groundLogo') {
+        continue;
+      }
+      const mark = logoForDecal(doc, it.el);
+      if (!mark || typeof mark.image !== 'string' || !mark.image.startsWith('data:image/')) {
+        continue;
+      }
+      logos.push(groundLogo(it, mark.image));
+      painted.logos += 1;
     }
-    const mark = logoForDecal(doc, it.el);
-    if (!mark || typeof mark.image !== 'string' || !mark.image.startsWith('data:image/')) {
-      continue;
+    for (const l of logos) {
+      group.add(l.mesh);
     }
-    logos.push(groundLogo(it, mark.image));
-    painted.logos += 1;
-  }
-  for (const l of logos) {
-    group.add(l.mesh);
   }
   return {
     group,
@@ -1963,7 +1965,7 @@ export async function buildMap(shell, onProgress, options) {
   await yieldToPaint();
 
   /* The ground and its paint. */
-  const ground = buildGround(placed, doc, look);
+  const ground = buildGround(placed, doc, look, opts.hideSponsors);
   scene.add(ground.group);
   progress(0.2);
   await yieldToPaint();

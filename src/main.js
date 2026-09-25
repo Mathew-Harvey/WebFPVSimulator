@@ -538,6 +538,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const replayScratchQuat = new THREE.Quaternion();
   const replayScratchDir = new THREE.Vector3();
   const replayScratchTilt = new THREE.Quaternion();
+  const replayScratchUp = new THREE.Vector3();
   try {
     const params = new URLSearchParams(window.location.search);
     const replayParam = params.get('replay') || '';
@@ -1138,6 +1139,7 @@ export async function boot({ loading, bootStart, mapId }) {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: ui.settings.graphics,
       renderScale: renderScaleOf(ui.settings),
+      hideSponsors: replayClean && replayMode,
       ...worldDocument(ui.settings.map),
     });
   } catch (e) {
@@ -1157,6 +1159,7 @@ export async function boot({ loading, bootStart, mapId }) {
     view = await loadMap(shell, 'custom', loading, {
       quality: ui.settings.graphics,
       renderScale: renderScaleOf(ui.settings),
+      hideSponsors: replayClean && replayMode,
     });
     /* The banner, not `notice`: that is declared with the frame loop's own
      * state further down and does not exist yet. This is the same way the
@@ -3650,6 +3653,7 @@ export async function boot({ loading, bootStart, mapId }) {
       view = await loadMap(shell, wantId, loading, {
         quality: wantQ,
         renderScale: renderScaleOf(ui.settings),
+        hideSponsors: replayClean && replayMode,
         ...worldDocument(wantId),
       });
       loading.start('frame');
@@ -3676,6 +3680,7 @@ export async function boot({ loading, bootStart, mapId }) {
         view = await loadMap(shell, previous, loading, {
           quality: previousGraphics,
           renderScale: renderScaleOf(ui.settings),
+          hideSponsors: replayClean && replayMode,
           ...worldDocument(previous),
         });
         loading.start('frame');
@@ -7022,15 +7027,17 @@ export async function boot({ loading, bootStart, mapId }) {
           const AHEAD = BACK * 1.1;
           const dt = replayStepMode ? (replayClock.vt - (replayChaseCam ? replayChaseCam.prevDt : 0)) : frameSteps * MS_PER_STEP;
           if (!replayChaseCam) {
+            replayScratchUp.set(0, UP, 0);
             replayChaseCam = {
-              pos: replayScratchPos.clone().addScaledVector(replayScratchDir, -BACK).add(new THREE.Vector3(0, UP, 0)),
+              pos: replayScratchPos.clone().addScaledVector(replayScratchDir, -BACK).add(replayScratchUp),
               look: replayScratchPos.clone().addScaledVector(replayScratchDir, AHEAD),
               prevDt: replayClock.vt,
             };
           }
           const k = 5; /* spring constant */
           const alpha = 1 - Math.exp(-k * dt / 1000);
-          replayScratchPos.addScaledVector(replayScratchDir, -BACK).add(new THREE.Vector3(0, UP, 0));
+          replayScratchUp.set(0, UP, 0);
+          replayScratchPos.addScaledVector(replayScratchDir, -BACK).add(replayScratchUp);
           replayChaseCam.pos.lerp(replayScratchPos, alpha);
           replayScratchPos.set(ghostSample.px, ghostSample.py, ghostSample.pz).addScaledVector(replayScratchDir, AHEAD);
           replayChaseCam.look.lerp(replayScratchPos, alpha);
@@ -8235,6 +8242,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (ms === 0) {
       /* Reset to start */
       replayClock.vt = 0;
+      replayChaseCam = null;
     } else {
       replayClock.vt += ms;
     }

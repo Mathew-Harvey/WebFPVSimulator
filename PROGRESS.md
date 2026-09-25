@@ -44372,3 +44372,161 @@ FREESTYLE-MAPS-PLAN.md section 12 records items 8 and 9.
                              Fly this map entry's run log is this tree's
     git merge-base           e8f74f5, main is an ancestor of the branch
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | shell, builder | A fourth card on the gate, and the builder asks what is being built
+
+The owner, with three screenshots (the gate's three cards, and the
+builder's bar with its 5 INCH, WHOOP, FREESTYLE switch circled): "on this
+page i want a 4th box - map builder. Then in the track builder app make the
+menu to change between 5 inch whoop and freestyle way more prominant. do
+this by offering an modal overlay, showing the same three menu boxes wiht
+images, then if the user clicks on one they get that toggle, retain the
+current method so the user can change back". Shell and builder only; the
+plant, the ABI and the build are untouched.
+
+### What changed
+
+- **The gate has a fourth card, Map builder** (BUILDER_CARD in
+  src/ui/ui.js). It is not a fourth way in: a way seats an aircraft and a
+  mode, and this seats nothing. Pressing it leaves for the builder with
+  nothing in the address, and the builder asks the rest. It is last, after
+  the three ways and before the pad trouble row (renderMenu's row offset
+  needs every card before every row). Its facts are Tracks, Rooms, Maps, in
+  amber, the builder's colour. No plan drawing over its picture: the
+  drawing is the aircraft to scale, and this card seats no aircraft.
+- **Its picture**, assets/gate/builder.jpg, is a frame of the builder's own
+  3D preview on the starter map, Hibari Yard: the bando, the crane over the
+  crane gap, the chimney, the water tower, the pylon, the containers and
+  the named gaps' labels. Written by scripts/gatecards.js like the other
+  three, through tests/lib/page.js rather than shots.js (shots.js records a
+  fault on any frame with no race gate to report, which is every frame of
+  the builder). `npm run gen:gatecards -- builder` now regenerates one
+  picture without rewriting the other three.
+- **Four across on a desktop, two by two on a phone** (index.html). The
+  gate's column is 100em wide, from 78em, so four cards are 358 px each at
+  1600 by 900 rather than 294. A portrait phone gets a two by two grid of
+  upright cards with the sentence taken off, as the landscape phone already
+  had it; an upright tablet (860 px wide or less, 960 px tall or more) gets
+  the sentence back. The landscape phone keeps one row, now of four.
+- **The builder's chooser** (openChooser in src/trackbuilder/app.js): "What
+  are you building?" over the whole page, three cards with the gate's own
+  names and the gate's own pictures (../../assets/gate/*.jpg, files, not
+  modules, so the builder still imports none of the shell), and sentences
+  about building rather than flying. A card is the switch: it calls the same
+  setCanvas the bar's buttons do, so nothing is converted and each canvas
+  keeps its own seat. The cursor is the keyboard focus, drawn as the gate
+  draws its cursor (a sakura ring and a sakura name), opens on the canvas
+  behind, and follows the pointer as the gate's does. Arrows walk the
+  cards, Enter or a click picks, and Escape, Close and a click outside keep
+  the canvas behind.
+- **The switch in the bar is kept**, unchanged, and when the chooser closes
+  it pulses twice in sakura, so the way back is seen once rather than found
+  later. Reduced motion flattens the pulse like every other animation.
+- **When it asks** (asksCanvas): on arrival, unless the way in already
+  said. ?mode= (the Track room's and the Freestyle room's rows), an Edit a
+  copy or Edit this track intent, ?share= (the board), ?track= and ?class=
+  are not asked, which is the rule the simulator's gate keeps with its
+  links. A reload or Back and Forward is not asked either
+  (performance.getEntriesByType('navigation')), because by then ?mode has
+  been taken out of the address and every reload would otherwise ask an
+  author what they are building in the middle of building it.
+- **Keys are held while it is up** (bindKeys). It opens before the author
+  has touched anything, and G, V or Delete pressed at it would otherwise
+  reach the canvas behind: a tool armed, the view flipped. Only Escape goes
+  through.
+- **Every builder dialog is now role=dialog, aria-modal, named by its
+  title** (modal()). One addition beyond the ask, in the function the
+  chooser is built on; nothing on screen changes.
+
+### Decisions made without asking, for the owner to overrule
+
+1. **The label is the owner's words, Map builder**, though the page calls
+   itself Track Builder and makes race tracks too. The blurb and the facts
+   (Tracks, Rooms, Maps) say it makes all three.
+2. **The chooser asks only when the way in names nothing**: the gate's new
+   card, a bookmark, the canonical address. The Track and Freestyle rooms'
+   builder rows go straight to their canvas as before. If the owner wants
+   the question on every arrival, it is asksCanvas returning true.
+3. **A portrait phone loses the cards' sentences.** Four sentenced cards do
+   not fit a phone, and three already did not: see What went wrong.
+4. **The builder card's picture is the builder, not the simulator.** The
+   three ways are places to fly and their pictures are the places; this
+   card opens a tool, and the honest picture of it is the tool.
+
+### Coverage
+
+- **lint:shell**: the gate pins four cards, the three ways in exactly as
+  before with a photograph and a plan each, then Map builder with a
+  photograph and no plan, acting as the builder. It still fails on one
+  problem, the title's 23 px menu overflow, which clean main fails
+  identically (run this turn).
+- **lint:input sections 15 and 16**: from the real gate, the fourth card
+  pressed with Enter must land on the builder with nothing in the address
+  and the chooser up; three cards with the gate's names and loaded
+  pictures; the cursor on the canvas behind; G and V pressed at it change
+  nothing; the arrows walk and stop at the last card; Enter on Freestyle
+  opens the map canvas and the bar says Freestyle; the bar's 5 inch still
+  changes it back; a reload is not asked. Then ?mode=race and
+  ?mode=freestyle are not asked, and Escape, on a visit that was asked,
+  keeps the canvas behind.
+- **Both can fail.** The updated checks were run against main's code in a
+  clean worktree this turn: lint:shell adds four gate failures to the
+  overflow it already has, and lint:input fails nine of section 15's ten
+  checks and the Escape check. The tenth, no uncaught exception, has
+  nothing to catch on a page that never reaches the builder. The ?mode
+  checks pass there, as they must: they guard against the question
+  arriving where it should not, and main never asks.
+
+### What went wrong
+
+- **The gate already did not fit a small phone.** Measured before this
+  change at 375 by 667: the three stacked cards ran from 144 to 767 under a
+  command bar at 615, so 84 px of the Freestyle card's 236 showed. Found
+  while fitting the fourth; the two by two grid fixes both, the last card
+  ending at 602 against the bar's 615.
+- **The first builder picture** cut CRANE GAP at the left edge and left the
+  bottom third as empty ground, which is the part of the card its gradient
+  darkens. Recomposed from eight candidate orbits; the one kept puts every
+  subject in the top two thirds.
+- **The first chooser drew two cursors.** The canvas behind was ringed, and
+  the keyboard focus drew its outline as well, so after one arrow press two
+  cards looked chosen. The ring is the focus now, and the pointer moves it.
+- **shots.js cannot photograph the builder cleanly**: every frame records
+  a harness fault, because the page has no race gate to report. That is
+  right for the simulator and is why gatecards.js drives the builder
+  through tests/lib/page.js instead; shots.js is unchanged.
+- **The first cut of the new checks was weaker than it looked**, and the
+  run against main's code is what showed it. An unguarded click on the
+  bar's 5 inch button threw when the builder never opened and aborted the
+  run before section 16; the state probe threw on a builder with no
+  choosing(); the Escape check would have passed on a builder that never
+  asks at all, because it did not require the question to be up first; and
+  lint:shell read the last card's action without showing the gate first,
+  so it depended on whichever screen the probe happened to be on. All four
+  fixed before the final runs below.
+
+### RUN LOG
+
+    npm run lint:shell             1 problem, title overflow 23 px; clean
+                                   main (40fe84f, worktree) fails the same
+                                   one problem with every number equal,
+                                   run this turn; all gate checks pass
+    npm run lint:input             2 failed, 154 passed; the 2 are "parked
+                                   and left", failing on main's code too;
+                                   the 13 new checks pass
+    updated checks, main's code    lint:shell 5 problems (the overflow and
+                                   4 gate); lint:input 12 failed (the 2
+                                   parked, 9 of section 15, Escape)
+    npm run check:clip             652 passed, 0 failed
+    npm run lint:nouns             PASS
+    npm run lint:boot              9 of 9 clean
+    npm run lint:preload           up to date
+    node scripts/gatecards.js builder   assets/gate/builder.jpg, 72 kB
+    shots, the gate                1600x900, 1280x720, 768x1024, 390x844,
+                                   375x667, 844x390: every card above the
+                                   command bar
+    shots, the chooser             1600x900, 1280x720, 1024x600 (fits, no
+                                   scroll), 720x820 (cards on their sides)
+    npm run verify                 not run: shell and builder only, no
+                                   physics, plant, ABI or build change
+    git diff --stat vendor/betaflight   empty

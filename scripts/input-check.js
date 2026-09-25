@@ -22,8 +22,9 @@
  * boots. It is deliberately the radio the AETR guess gets wrong, because
  * a radio the guess gets right exercises none of this. A second page with
  * touch emulation on covers the thumb sticks, and a third with no radio at
- * all flies a real race on the keys. The last two walk the builder's Fly
- * this map into the air, and a linked map that fails to load.
+ * all flies a real race on the keys. Two more walk the builder's Fly this
+ * map into the air, and a linked map that fails to load, and the last walk
+ * the gate's Map builder card into the builder and its chooser.
  *
  * Not part of `npm run verify`: this says nothing about the flight model.
  * Same shape as lint:shell. Run it on a change to src/input, to the
@@ -1485,6 +1486,123 @@ async function flyMapPages() {
   }
 }
 
+/*
+ * The gate's fourth card and the builder's chooser behind it. The owner,
+ * 2026-09-25: "on this page i want a 4th box - map builder", and in the
+ * builder, make the switch between 5 inch, whoop and freestyle "way more
+ * prominant ... by offering an modal overlay, showing the same three menu
+ * boxes wiht images, then if the user clicks on one they get that toggle,
+ * retain the current method so the user can change back". Walked the way a
+ * pilot walks it: the card on the gate, Enter, the builder's three cards,
+ * a pick with the keys, and the switch in the bar changing it back. Then
+ * the visits that must NOT be asked, because the way in already said.
+ */
+const CHOOSER_STATE = `(() => { const app = window.trackBuilder;
+  const at = document.activeElement;
+  return JSON.stringify({
+    path: location.pathname, search: location.search,
+    choosing: !!app && typeof app.choosing === 'function' && app.choosing(),
+    canvas: app ? (app.doc.mode === 'freestyle' ? 'freestyle' : app.doc.trackClass) : null,
+    focus: at && at.dataset ? (at.dataset.canvas || null) : null,
+    cards: [...document.querySelectorAll('.tb-choose-card .tb-choose-name')].map((n) => n.textContent),
+    imgs: [...document.querySelectorAll('.tb-choose-shot')].map((i) => i.naturalWidth),
+    bar: [...document.querySelectorAll('.tb-class-btn.on')].map((b) => b.textContent),
+    armed: app ? app.armed : null, view: app ? app.mode : null,
+  }); })()`;
+
+async function builderChooserPages() {
+  /* ----------------------------------------------------------------------
+   * 15. The gate's Map builder card opens the builder, the builder asks
+   *     with the gate's three cards, a card does what the switch does, and
+   *     the switch still changes it back.
+   * -------------------------------------------------------------------- */
+  section('the builder: the gate\'s Map builder card opens it, and it asks what is being built with the gate\'s three cards');
+  let page = await openPage({ root, width: 1280, height: 720, seed: [SETTINGS_SEED] });
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui && window.__ui.onGate()', 120000).catch(() => {});
+    const gate = await page.evaluate(`(() => { const items = window.__ui.items();
+      return JSON.stringify({ cards: items.filter((it) => it.card).map((it) => it.label),
+        at: items.findIndex((it) => it.action === 'builder') }); })()`).then(JSON.parse);
+    check('the gate carries a fourth card, Map builder, after the three ways in',
+      gate.cards.join() === 'Five inch racing,Whoop racing,Freestyle,Map builder' && gate.at === 3, JSON.stringify(gate));
+    await page.evaluate(`(() => { window.__ui.setCursor(${gate.at}); return 1; })()`);
+    await page.tap('Enter');
+    await page.until("location.pathname.endsWith('/src/trackbuilder/index.html') && !!window.trackBuilder", 60000).catch(() => {});
+    await page.until(`(() => { const shots = [...document.querySelectorAll('.tb-choose-shot')];
+      return shots.length > 0 && shots.every((i) => i.complete && i.naturalWidth > 0); })()`, 20000).catch(() => {});
+    const asked = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
+    check('Enter on it opens the builder with nothing in the address, and the builder asks',
+      asked.path.endsWith('/src/trackbuilder/index.html') && asked.search === '' && asked.choosing, JSON.stringify(asked));
+    check('the question is the gate\'s three cards, each with its picture loaded',
+      asked.cards.join() === 'Five inch racing,Whoop racing,Freestyle' && asked.imgs.length === 3
+        && asked.imgs.every((w) => w > 0), JSON.stringify(asked));
+    check('the cursor opens on the canvas behind it, the five inch field for a five inch pilot',
+      asked.canvas === 'full' && asked.focus === 'full', JSON.stringify(asked));
+    await page.tap('KeyG');
+    await page.tap('KeyV');
+    const held = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
+    check('a key pressed at the question does nothing behind it: no tool armed, no 3D view',
+      held.choosing && held.armed === null && held.view === '2d', JSON.stringify(held));
+    await page.tap('ArrowRight');
+    await page.tap('ArrowRight');
+    await page.tap('ArrowRight');
+    const walked = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
+    check('the arrows walk the cards and stop at the last', walked.focus === 'freestyle', JSON.stringify(walked));
+    await page.tap('Enter');
+    await page.until('!window.trackBuilder.choosing()', 10000).catch(() => {});
+    const picked = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
+    check('Enter on Freestyle is the switch\'s Freestyle: the map canvas, and the bar says so',
+      !picked.choosing && picked.canvas === 'freestyle' && picked.bar.join() === 'Freestyle', JSON.stringify(picked));
+    const pressed = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.tb-class-btn')]
+      .find((x) => x.textContent === '5 inch');
+      if (!b) { return false; }
+      b.click();
+      return true; })()`).catch(() => false);
+    const back = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
+    check('the switch in the bar is still there and still changes it back',
+      pressed && back.canvas === 'full' && back.bar.join() === '5 inch' && !back.choosing, JSON.stringify(back));
+    await page.evaluate('(() => { location.reload(); return 1; })()').catch(() => {});
+    await page.until('!!window.trackBuilder', 60000).catch(() => {});
+    const reloaded = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
+    check('a reload is the same visit, in the middle of the work, and is not asked again',
+      !reloaded.choosing && reloaded.canvas === 'full', JSON.stringify(reloaded));
+    const uncaught = page.errors.filter((e) => e.startsWith('uncaught:'));
+    check('no uncaught exception on the chooser pages', uncaught.length === 0, uncaught.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+
+  /* ----------------------------------------------------------------------
+   * 16. The ways in that have already answered. The Track room's Build a
+   *     track says race, the Freestyle room's row says the map, and a
+   *     chooser in front of either is a press spent on a decision made on
+   *     the page before. Escape on an asked visit keeps what is behind.
+   * -------------------------------------------------------------------- */
+  section('the builder: a way in that already said is not asked, and Escape keeps what is behind');
+  for (const [url, want] of [['?mode=race', 'full'], ['?mode=freestyle', 'freestyle']]) {
+    page = await openPage({ root, width: 1280, height: 720, url: `/src/trackbuilder/index.html${url}`, seed: [SETTINGS_SEED] });
+    try {
+      await page.until('!!window.trackBuilder', 60000).catch(() => {});
+      const s = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
+      check(`${url} opens its canvas with no question`, !s.choosing && s.canvas === want, JSON.stringify(s));
+    } finally {
+      await page.close();
+    }
+  }
+  page = await openPage({ root, width: 1280, height: 720, url: '/src/trackbuilder/index.html', seed: [SETTINGS_SEED] });
+  try {
+    await page.until('!!window.trackBuilder && window.trackBuilder.choosing()', 60000).catch(() => {});
+    /* Asked first, or a builder with no question at all passes this. */
+    const before = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
+    await page.tap('Escape');
+    const kept = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
+    check('Escape closes the question and keeps the canvas behind it',
+      before.choosing && !kept.choosing && kept.canvas === 'full', JSON.stringify({ before: before.choosing, ...kept }));
+  } finally {
+    await page.close();
+  }
+}
+
 async function main() {
   const t0 = Date.now();
   let page = null;
@@ -1523,6 +1641,9 @@ async function main() {
 
     console.log('\nopening the builder on a map and pressing Fly this map');
     await flyMapPages();
+
+    console.log('\nopening the builder from the gate\'s fourth card');
+    await builderChooserPages();
   } catch (e) {
     check('the run completed', false, String(e && e.stack ? e.stack : e));
     if (page) {

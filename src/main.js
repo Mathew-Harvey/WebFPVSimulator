@@ -530,6 +530,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * See src/input/input.js for what that was costing feedforward.
    */
   input.startPolling(2);
+  /* Hide UI in replay clean mode */
+  if (replayClean && replayMode) {
+    uiRoot.style.display = 'none';
+  }
   const ui = new Ui(uiRoot);
   /*
    * The thumb sticks, on a device that has thumbs to offer. Mounted after
@@ -807,6 +811,31 @@ export async function boot({ loading, bootStart, mapId }) {
     const fromUrl = new URLSearchParams(window.location.search).get('ghost') || '';
     if (/^tm-[0-9a-f]{8}$/.test(fromUrl)) {
       wantGhostId = fromUrl;
+    }
+  } catch (e) {
+    /* No URL to read. */
+  }
+  /*
+   * Replay mode: ?replay=tm-xxxxxxxx loads a ghost and plays it pilotless
+   * for frame-by-frame capture. Used by the marketing team to record ghost
+   * spotlight videos without depending on internal test hooks.
+   */
+  let replayMode = false;
+  let replayTimeId = '';
+  let replayCamera = 'chase'; /* chase or fpv */
+  let replayClean = false;
+  let replayClock = null; /* { startMs, pausedAt, vt } when active */
+  let replayStepMode = false; /* true when using __replayStep */
+  let replayChaseCam = null; /* { pos, look } for chase camera smoothing */
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const replayParam = params.get('replay') || '';
+    if (/^tm-[0-9a-f]{8}$/.test(replayParam)) {
+      replayMode = true;
+      replayTimeId = replayParam;
+      const camParam = (params.get('cam') || 'chase').toLowerCase();
+      replayCamera = camParam === 'fpv' ? 'fpv' : 'chase';
+      replayClean = params.get('clean') === '1';
     }
   } catch (e) {
     /* No URL to read. */
@@ -1493,7 +1522,9 @@ export async function boot({ loading, bootStart, mapId }) {
   function armGhost() {
     ghostLap = resolveGhost();
     if (ghostLap) {
-      ghostRig.setLabel(ghostLabelFor(ghostLap));
+      /* Hide label in replay clean mode */
+      const label = (replayClean && replayMode) ? '' : ghostLabelFor(ghostLap);
+      ghostRig.setLabel(label);
     }
   }
 
@@ -1603,6 +1634,13 @@ export async function boot({ loading, bootStart, mapId }) {
         }
         adoptBoardGhost(payload, timeId);
         armGhost();
+        /* Start replay mode if active */
+        if (replayMode && ghostLap) {
+          replayClock = { startMs: performance.now(), pausedAt: null, vt: 0 };
+          mode = 'flight';
+          ui.show('flight');
+          introMs = -1; /* Skip intro */
+        }
       } catch (e) {
         if (ghostCourseKey() !== key) {
           return;
@@ -1645,6 +1683,13 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostPrev.valid = false;
     ghostRig.setPresence(0);
     ghostChoice = normalizeGhostChoice(ui.settings.ghost);
+    /* Replay mode: load the specified ghost and start replay. */
+    if (replayMode && replayTimeId) {
+      ghostChoice = `board:${replayTimeId}`;
+      syncGhostRow();
+      loadBoardGhost(replayTimeId);
+      return;
+    }
     syncGhostRow();
     const listing = ghostListing();
     if (!listing || race.freestyle) {
@@ -1751,6 +1796,44 @@ export async function boot({ loading, bootStart, mapId }) {
    * off the line, out past its finish, and down across a recorded crash
    * recovery. Runs every frame; zero presence parks the whole group. */
   function ghostFrame(simNow) {
+    /* Replay mode: driven by replay clock, not race */
+    if (replayMode && ghostLap && replayClock) {
+      let t;
+      if (replayStepMode) {
+        /* Step mode: use virtual time */
+        t = replayClock.vt;
+      } else {
+        /* Real-time mode: advance clock */
+        const now = performance.now();
+        replayClock.vt = now - replayClock.startMs;
+        t = replayClock.vt;
+        /* Loop at end */
+        if (t > ghostLap.durationMs + 400) {
+          replayClock.startMs = now;
+          replayClock.vt = 0;
+          t = 0;
+        }
+      }
+      const tail = ghostLap.durationMs - t;
+      let presence = 1;
+      if (t < 400) {
+        presence = t / 400;
+      }
+      if (tail < 0) {
+        presence = Math.max(0, 1 + tail / 400);
+      }
+      if (ghostSampleInto(t)) {
+        presence = Math.min(presence, 0.15);
+      }
+      ghostRig.group.position.set(ghostSample.px, ghostSample.py, ghostSample.pz);
+      ghostRig.group.quaternion.set(ghostSample.qx, ghostSample.qy, ghostSample.qz, ghostSample.qw);
+      ghostRig.setPresence(presence);
+      if (presence > 0 && shell.quad.parent && ghostRig.group.parent !== shell.quad.parent) {
+        shell.quad.parent.add(ghostRig.group);
+      }
+      return;
+    }
+    /* Normal chase mode */
     const running = ghostLap && !race.freestyle && race.lapStartMs != null
       && (mode === 'flight' || mode === 'paused');
     if (!running) {
@@ -6040,7 +6123,16 @@ export async function boot({ loading, bootStart, mapId }) {
         rcNextMs = rcLink.nextMs;
       }
       if (steps >= 1) {
-        if (launchStaging) {
+        /*
+         * Replay mode: don't step the physics, just tick time for ghost replay.
+         * The ghost is driven by the replay clock, not the sim. Still advance
+         * simStepIdx and simTimeMs so the frame loop functions normally.
+         */
+        if (replayMode) {
+          simStepIdx += steps;
+          simTimeMs = simStepIdx * MS_PER_STEP;
+          /* Keep stateCurr and statePrev as spawn state for rendering */
+        } else if (launchStaging) {
           sim.e.sim_set_ground(0, 0, 0, 1, 0, 0, 0, 0, 0);
           /* On the stand the module holds the pose and resolves no world
            * contact, so the moving solids only need to be where they end. */
@@ -6893,15 +6985,54 @@ export async function boot({ loading, bootStart, mapId }) {
         shell.camera.updateProjectionMatrix();
       }
     } else {
-      /* The camera sits inside the airframe, so the quad must be hidden or
-       * you fly looking at the inside of its own outline hull. */
-      shell.quad.visible = false;
-      shell.camera.position.copy(fpvPos);
-      shell.camera.quaternion.copy(fpvQuat);
-      setCameraNear(fpvNear(fpvPos));
-      if (shell.camera.fov !== ui.settings.cameraFov) {
-        shell.camera.fov = ui.settings.cameraFov;
+      /* Replay mode camera overrides */
+      if (replayMode && ghostLap && ghostRig.presence > 0) {
+        shell.quad.visible = false;
+        const ghostPos = new THREE.Vector3(ghostSample.px, ghostSample.py, ghostSample.pz);
+        const ghostQuat = new THREE.Quaternion(ghostSample.qx, ghostSample.qy, ghostSample.qz, ghostSample.qw);
+        if (replayCamera === 'fpv') {
+          /* FPV camera: ghost position and orientation with camera tilt */
+          const cameraTilt = cameraTiltRad(ui.settings.cameraTilt);
+          const tiltQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), cameraTilt);
+          const fpvReplayQuat = ghostQuat.clone().multiply(tiltQuat);
+          shell.camera.position.copy(ghostPos);
+          shell.camera.quaternion.copy(fpvReplayQuat);
+          shell.camera.fov = ui.settings.cameraFov;
+        } else {
+          /* Chase camera: smoothed spring arm behind the ghost */
+          const ghostFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(ghostQuat);
+          const micro = shell.quad.name && shell.quad.name.includes('whoop');
+          const BACK = micro ? 0.55 : 1.6;
+          const UP = BACK * 0.35;
+          const AHEAD = BACK * 1.1;
+          if (!replayChaseCam) {
+            replayChaseCam = {
+              pos: ghostPos.clone().addScaledVector(ghostFwd, -BACK).add(new THREE.Vector3(0, UP, 0)),
+              look: ghostPos.clone().addScaledVector(ghostFwd, AHEAD),
+            };
+          }
+          const wantPos = ghostPos.clone().addScaledVector(ghostFwd, -BACK).add(new THREE.Vector3(0, UP, 0));
+          const wantLook = ghostPos.clone().addScaledVector(ghostFwd, AHEAD);
+          replayChaseCam.pos.lerp(wantPos, 0.2);
+          replayChaseCam.look.lerp(wantLook, 0.3);
+          shell.camera.up.set(0, 1, 0);
+          shell.camera.position.copy(replayChaseCam.pos);
+          shell.camera.lookAt(replayChaseCam.look);
+          shell.camera.fov = 70;
+        }
         shell.camera.updateProjectionMatrix();
+        setCameraNear(CAMERA_NEAR_OPEN);
+      } else {
+        /* The camera sits inside the airframe, so the quad must be hidden or
+         * you fly looking at the inside of its own outline hull. */
+        shell.quad.visible = false;
+        shell.camera.position.copy(fpvPos);
+        shell.camera.quaternion.copy(fpvQuat);
+        setCameraNear(fpvNear(fpvPos));
+        if (shell.camera.fov !== ui.settings.cameraFov) {
+          shell.camera.fov = ui.settings.cameraFov;
+          shell.camera.updateProjectionMatrix();
+        }
       }
     }
 
@@ -8061,6 +8192,40 @@ export async function boot({ loading, bootStart, mapId }) {
     const lap = which === 'previous' ? ghostBook.previous(key) : ghostBook.best(key);
     return lap ? ghostToBase64(encodeGhost(lap)) : null;
   };
+  /*
+   * Replay mode: advance the replay clock by a fixed amount for
+   * frame-by-frame capture. When called, switches to step mode and pauses
+   * the real-time clock. Call with ms = 0 to initialize step mode, then
+   * call with positive ms to advance frame by frame.
+   */
+  window.__replayStep = (ms) => {
+    if (!replayMode || !ghostLap) {
+      return { error: 'Replay mode not active or ghost not loaded' };
+    }
+    if (ms < 0) {
+      return { error: 'Step must be non-negative' };
+    }
+    if (!replayStepMode) {
+      /* Initialize step mode */
+      replayStepMode = true;
+      replayClock = { startMs: 0, pausedAt: 0, vt: 0 };
+    }
+    replayClock.vt += ms;
+    /* Cap at ghost duration */
+    if (replayClock.vt > ghostLap.durationMs) {
+      replayClock.vt = ghostLap.durationMs;
+    }
+    return { vt: replayClock.vt, durationMs: ghostLap.durationMs };
+  };
+  window.__replayInfo = () => ({
+    active: replayMode,
+    timeId: replayTimeId,
+    camera: replayCamera,
+    clean: replayClean,
+    stepMode: replayStepMode,
+    clock: replayClock,
+    ghostLoaded: ghostLap != null,
+  });
   window.__craftState = () => ({
     mode,
     flownThisRun,

@@ -45391,3 +45391,50 @@ carries an em or en dash.
                                 plant, the module ABI or the build
                                 changed, and it does not cover the board
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | git, board | The Patreon tab check, fast forwarded onto board main for the owner to look at
+
+The owner, on the entry above: "fast forward board main, i'll look at
+it". That is the approval to put 21b7380 on the board's main, and it
+covers that commit only: the exemption for the Patreon link, the stricter
+scan the owner did not ask for, and the two checks that pin the
+exemption. It is recorded here because this repository is the copy of
+record for the three. The verification scale chosen is the owner looking
+at it. This repository's main is not part of it: this entry and the one
+above are on claude/amazing-babbage-pkvwvf, and stay there until the
+owner says otherwise.
+
+- **A fast-forward.** Fetched first: board main was still 7d1f89b, the
+  merge base, with 21b7380 one commit ahead of it, so main moved with no
+  merge commit and nothing rewritten, 7d1f89b..21b7380 at 11:08:22 UTC.
+  The board's npm test ran again on 21b7380 just before the push: exit 0,
+  386 pass, the one skip.
+- **It deployed on its own.** A push to board main is a deploy of
+  webfpv.org/board. Measured through the domain: app.js without
+  OUTSIDE_PRODUCT_LINK before the push, and with it at 11:09:12 UTC, 50 s
+  after, byte for byte the app.js in 21b7380. app.js is served
+  cache-control: no-store, so a plain reload picks it up.
+
+What to look for, on webfpv.org/board: the Patreon links in the
+masthead, the spine and the footer each open Patreon in a new tab and
+leave the board where it was. Fly on two different tracks, or on a track
+and then a map, lands in the same simulator tab and brings it forward.
+What would count as wrong: a Patreon click that replaces the simulator
+tab or the board, or a Fly click that opens a second simulator.
+
+### RUN LOG
+
+    git fetch, board         main 7d1f89b, unmoved since the rebase; the
+                             merge base of main and 21b7380 is 7d1f89b
+    board npm test           21b7380: exit 0, 386 pass, all passed; 1
+                             skip, the shipped hash
+    board main               7d1f89b..21b7380, fast-forward, pushed at
+                             11:08:22 UTC
+    webfpv.org/board         before: app.js 200, no-store, no
+                             OUTSIDE_PRODUCT_LINK. At 11:09:12: app.js
+                             with it, sha256 b619b03f... on both the
+                             live file and 21b7380's; the page 200 with
+                             its three Patreon anchors; /api/health
+                             {"ok":true,"store":"postgres"}
+    git fetch, simulator     main 535331f, unmoved; this branch 5975db2
+                             plus this entry; this main untouched

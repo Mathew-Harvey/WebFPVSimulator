@@ -509,7 +509,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * or their browser sends Global Privacy Control, and nothing waits for
    * it either way. Skip visit ping in replay mode.
    */
-  if (!replayMode || !params.has('replay')) {
+  if (!window.location.search.includes('replay=tm-')) {
     pingVisit('sim');
   }
   const canvas = document.getElementById('view');

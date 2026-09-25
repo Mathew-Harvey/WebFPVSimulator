@@ -47461,3 +47461,33 @@ Camera tilt and FOV storage in the ghost header: skipped. The leaderboard's `val
 What went wrong: first PR review failed with multiple blockers. Used `replayClean`/`replayMode` before declaration (TDZ error), read nonexistent `ghostRig.presence`, used wrong setting name (`cameraTilt` instead of `cameraAngle`), chase easing wasn't deterministic, no error handling for bad IDs, missing tests. Fixed in second iteration: moved declarations, tracked presence separately, reused existing tilt code, made easing dt-dependent, added state tracking and fallback, added headless tests.
 
 Approved by: PR pending owner review after fixes.
+
+**2026-09-25 (continued): Test suite completion and sponsor content hiding**
+
+Senior re-review at ed6adb3 identified remaining issues:
+1. Missing track listing still froze the sim instead of failing gracefully
+2. `clean=1` UI restoration wasn't happening on failure paths
+3. `__replayStep(0)` didn't reset `vt` to zero
+4. `tests/replay-test.js` had fundamental issues preventing execution
+
+Fixed all production code issues first (proper error handling, UI restoration, vt reset). Then rewrote the entire test suite using the correct patterns from `shell-check.js`:
+- String expressions for `page.until()` and `page.evaluate()` (not arrow functions)
+- Real track document schema with `schemaVersion`, `field`, `elements` (with proper gate structure), and `sequence` (with `elementId`, `apertureIndex`, `entry`, etc.)
+- Seed-based fetch stubbing installed before page load
+- Proper use of `openPage({ root: ROOT })` parameter
+
+Key insight: the sequence structure was completely wrong initially (`{gateId: 'el-1', laps: 3}` instead of proper sequence entries with `id`, `elementId`, `apertureIndex`, `entry`, `passSide`, `clearance`, `overridden`). This prevented the custom map from loading, so `ghostCourseChanged()` was never called and the ghost never loaded. Mode stayed "title" instead of transitioning to "flight".
+
+Sponsor content hiding: added `hideSponsors` flag through `loadMap` options to `buildGround` in `src/maps/built/index.js`. When `replayClean && replayMode` is true, ground logos are not rendered (the loop creating groundLogo meshes is skipped entirely). Added test verifying logo count is zero by traversing `window.__mapScene()` and counting objects with `name === 'groundLogo'`.
+
+Chase camera optimization: changed from allocating a new `Vector3` per frame to reusing `replayScratchUp`. Made `__replayStep(0)` also clear `replayChaseCam` so the smoothing state resets.
+
+Final verification at 64f23aa:
+```
+npm run replay:test:    5 tests: 5 pass, 0 fail, 0 skipped
+npm run lint:boot:      9 of 9 checks clean
+npm run ghost:selftest: all passed
+npm run lint:fc:        33 of 33 traces clean
+```
+
+PR #16 kept in draft per owner's instructions. Head SHA: `64f23aad32d00dd629034d509a082732df417e8a`

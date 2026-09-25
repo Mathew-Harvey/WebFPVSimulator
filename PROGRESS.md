@@ -45243,3 +45243,58 @@ is src/props, where another session is adding pieces.
                                 board FAIL 1, the title's 23 px as above;
                                 lint:input 154 passed, 2 failed, the
                                 parked throttle row as above
+
+## 2026-09-25 | git | Published freestyle maps, merged to main in both repositories for the owner to test
+
+The owner, on the entry above: "merge both to main, i'll test it". That is
+the approval to put published freestyle maps on main in both repositories:
+the board's 9d6de10 and 7d1f89b on its main, and this branch's f053521, the
+merge of Stage B, fc18a09, and this entry on this main. It is recorded here
+because this repository is the copy of record for the three. The
+verification scale chosen is the owner testing it by hand. The decisions
+the entry above lists (Fly this map straight into the air, a published map
+held for the page load, its runs off the freestyle board, no author sync on
+a rename, no tags on maps) were put to the owner and ride on main as
+built; testing it is how they will be judged.
+
+- **Both are fast-forwards.** Fetched first: the board's main was dcc8d5f
+  and this main b649f71, each its branch's merge base and ancestor, so each
+  main moves to its branch with no merge commit and nothing rewritten.
+- **The board went first**, as DEPLOY.md asks whenever the builder starts
+  sending the board something new: the builder's Publish on a map posts to
+  /api/maps, which the old board answers with a 404. Measured through
+  webfpv.org/board: a 404 before the push, and at 10:39:17 UTC, 45 s after
+  it, {"maps":[]} from the Postgres store, with the maps tab in the page
+  and mapCardFor in its script. This main was pushed after that.
+- **The board makes its own tables.** PgStore runs schema.sql on start,
+  and `maps`, `assets` and `map_assets` are CREATE TABLE IF NOT EXISTS, so
+  the database needs nothing done by hand. The scratch cluster in the entry
+  above started from an empty database the same way.
+- **A hard reload is needed on the simulator and the builder.** DEPLOY.md's
+  four hour seam is still open (the deploy entry above): their pages and
+  scripts change together, and a returning browser keeps the old scripts
+  for up to four hours. The board is not behind it: its app.js came back
+  cache-control: no-store through the domain.
+
+What to look for: the board's masthead has Site statistics beside Admin
+and #stats still opens them; the second tab is Freestyle maps; a map
+published from the builder's map canvas appears there with its drawing and
+its named gaps; its sheet flies it; Fly this map puts you in the air on it;
+the builder's own Fly this map afterwards flies your own map. What would
+count as wrong: a blank card, a sheet or a flight showing a different map,
+your own map changed after flying somebody else's, or Publish on a map
+failing with a message about the board.
+
+### RUN LOG
+
+    git fetch, both          board main dcc8d5f, this main b649f71, neither
+                             moved since the branches last took them in
+    git merge-base           each main its branch's ancestor; both move by
+                             fast-forward
+    board main               dcc8d5f..7d1f89b, pushed at 10:38 UTC
+    webfpv.org/board         /api/maps 404 before, 200 {"maps":[]} at
+                             10:39:17; /api/health store postgres; the
+                             page carries tab-maps, view-maps, stats-link
+    code                     unchanged since the entry above; its checks
+                             stand, on the merged tree
+    git diff --stat vendor/betaflight   empty

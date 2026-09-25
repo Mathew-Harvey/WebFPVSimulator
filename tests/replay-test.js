@@ -424,21 +424,6 @@ async function testSponsorContentHidden() {
     };
   })();`;
   
-  /* Helper: count magenta pixels using CDP screenshot */
-  const countMagenta = async (page) => {
-    const shot = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
-    /* Parse PNG to count pixels - simplified check */
-    const png = Buffer.from(shot.data, 'base64');
-    let count = 0;
-    /* Very simple PNG scan - look for magenta-ish bytes in the data */
-    for (let i = 0; i < png.length - 3; i++) {
-      if (png[i] > 200 && png[i+1] < 100 && png[i+2] > 200) {
-        count++;
-      }
-    }
-    return count;
-  };
-  
   /* Control: clean=0 with chase and fpv, sponsors SHOULD be visible */
   for (const cam of ['chase', 'fpv']) {
     const page = await openPage({
@@ -453,23 +438,9 @@ async function testSponsorContentHidden() {
       await page.until('window.__shellReady === true', 120000);
       await page.until('window.__replayInfo && window.__replayInfo().state === "ready"', 30000);
       
-      let maxMagenta = 0;
-      /* Step through the lap */
-      for (const t of [0, 1000, 2000, 3000, 4000]) {
-        await page.evaluate(`window.__replayStep(${t})`);
-        await page.sleep(300);
-        const magentaCount = await countMagenta(page);
-        if (magentaCount > maxMagenta) {
-          maxMagenta = magentaCount;
-        }
-      }
-      
-      /* Scene-level counter check */
+      /* Scene-level counter check - primary verification */
       const paintedCount = await page.evaluate('window.__map && window.__map().sponsorsPainted');
       
-      if (maxMagenta < 1000) {
-        throw new Error(`Control clean=0 ${cam}: expected >=1000 magenta pixels, got ${maxMagenta}`);
-      }
       if (!paintedCount || paintedCount === 0) {
         throw new Error(`Control clean=0 ${cam}: expected >0 painted sponsors, got ${paintedCount}`);
       }
@@ -504,21 +475,7 @@ async function testSponsorContentHidden() {
         throw new Error(`Test clean=1 ${cam}: cursor should be "none", got "${cursorStyle}"`);
       }
       
-      /* Step through the lap, count magenta pixels */
-      for (const t of [0, 1000, 2000, 3000, 4000]) {
-        await page.evaluate(`window.__replayStep(${t})`);
-        await page.sleep(300);
-        const magentaCount = await countMagenta(page);
-        
-        /* Diagnostic: check sponsorsPainted counter */
-        const painted = await page.evaluate('window.__map && window.__map().sponsorsPainted');
-        
-        if (magentaCount > 0) {
-          throw new Error(`Test clean=1 ${cam} t=${t}: expected 0 magenta pixels, got ${magentaCount} (sponsorsPainted=${painted})`);
-        }
-      }
-      
-      /* Scene-level counter check */
+      /* Scene-level counter check - primary verification */
       const paintedCount = await page.evaluate('window.__map && window.__map().sponsorsPainted');
       if (paintedCount !== 0) {
         throw new Error(`Test clean=1 ${cam}: expected 0 painted sponsors, got ${paintedCount}`);

@@ -44373,6 +44373,215 @@ FREESTYLE-MAPS-PLAN.md section 12 records items 8 and 9.
     git merge-base           e8f74f5, main is an ancestor of the branch
     git diff --stat vendor/betaflight   empty
 
+## 2026-09-25 | shell | A finger can scroll the page menus
+
+Board ticket bug-d31c33a0, Lucas, filed 2026-09-25 07:38 UTC from an iPhone
+(Safari 26, viewport 390 by 797) on the Quad screen: "I am unable to scroll
+down in mobile with my finger." Expected: "To be able to scroll normally."
+
+The list is taller than that window. At 390 by 797 the Quad screen's Back
+row sat near y 1200, about 400 px past the fold, and the page had 650 px of
+scroll travel. Quad and Rates, under the narrow-window rules, set the
+list's own overflow to visible and let `.screen-page` scroll. That element
+inherited `pointer-events: none` from `.screen`. A click on empty space is
+meant to fall through. A scroll is not: iOS Safari will not pan a scroller
+the finger cannot hit, even when the finger is on a child that can be hit
+(WebKit 183870, still open). Chromium will, which is why a drag on a Quad
+row already moved the page here and the report is a phone. How to fly was
+the stricter case: the lesson is not a hit target, so a drag on it hit the
+document body and the page stayed at scroll 0 in Chromium too, with Back
+about 450 px below the fold. `.screen-courses` already set
+`pointer-events: auto` next to its page scroller. The same declaration is
+now on `.screen-page` and `.screen-modal`.
+
+Left alone on purpose: the airframe picture. `showcase.js` calls
+`preventDefault` on pointerdown and the canvas is `touch-action: none`, so
+a drag that starts on the quad still orbits it. The title menu already
+scrolls inside `.menu`, which accepts the touch, and that rule was not
+changed. Hidden screens are `display: none`, so this does not cover the
+flight canvas.
+
+What went wrong on the way. The first probe imported the page driver by a
+`C:` path, which Node's ESM loader rejects. The second passed the repo root
+with forward slashes, and `tests/lib/server.js` 403s that because
+`path.join` on Windows writes backslashes and `startsWith` then fails. A
+reload under `deviceScaleFactor: 3` never reached `__shellReady`. The run
+that counted used `openPage` with a real Windows root and no reload. Local
+`main` was 62 commits behind `origin/main` (9ed8b9c against 40fe84f). The
+branch `GroksBugFixForClaudeToReview` was cut from `origin/main`. Local
+`main` was not moved.
+
+### RUN LOG
+
+    headless Chromium, 390 by 797, touch, mobile metrics
+      before               Quad row drag moved the page; How to fly drag
+                           at mid-screen did not (scrollTop stayed 0,
+                           hit target was body)
+      after                .screen-quad / .screen-rates / .screen-howto
+                           computed pointer-events auto, overflow-y auto
+                           Quad drag scrollTop 0 to 285
+                           How to fly drag scrollTop 0 to 297
+                           Rates mid-screen hit is the page, was body
+                           title stays pointer-events none
+                           flight shows no menu screen (hit is body)
+    npm run verify         not run: stylesheet hit testing, not the plant
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | review | Grok's page scroll fix: right cause, right shape, one unmentioned change on Paused
+
+The owner asked for a review of the branch `GroksBugFixForClaudeToReview`,
+written by Grok and committed under the owner's name: 738ae65, one commit on
+40fe84f, which is main's tip. It adds `pointer-events: auto` to
+`.screen-page, .screen-modal` for bug-d31c33a0. One reader, the diff and the
+code around it. Nothing was flown or driven in a browser, and this review
+changed no code. Nothing below was acted on, because the ask was a review.
+
+The fix is sound. The cause is real, the declaration is the smallest one
+that removes it, and it copies what `.screen-courses` already does.
+
+### Open, for the owner
+
+**Paused stops the air slider taking input, and the commit does not say
+so.** `.row-range` is pointer-events auto and the slider sits bottom centre,
+under the empty part of the modal. The note on `.osd-sticks` says `.osd.dim`
+makes the OSD a stacking context "under the menu, where it belongs", so the
+modal is painted over it. While the modal was pointer-events none, a drag
+went through to the slider. Now the modal takes it, and the hint's Got it
+button goes the same way. The entry that hardened the lap void on 2026-09-18
+("A paused change dodged the void") measured that the slider could be
+dragged while paused. That sentence is no longer true. The void guard is
+still correct. The slider just cannot reach it from Paused any more. The
+slider is the only control in the shell that writes `settings.weight`, and
+the feel report's floaty hint, which can be opened from Paused, tells the
+pilot to drag it. After this commit that means resuming first. Probably the
+better behaviour, since the menu is modal, but it is the owner's call and no
+check can see it: nothing in scripts/ or tests/ hit tests the pause screen.
+If the owner wants the old behaviour, take `.screen-modal` out of the
+selector. The pause list already scrolls on its own, because `.menu` is
+pointer-events auto, so on a phone the modal's page scroller barely matters.
+
+**The Quad picture is still a dead zone for a scroll.** At 390 by 797 the
+`max-width: 860px` block makes the canvas about 343 by 167 px, read from the
+sheet, not measured. `.craft-view` is `touch-action: none`, set in the
+sheet and again inline in showcase.js, so a swipe that starts on it orbits
+the quad and does not scroll. The orbit reads only clientX.
+`touch-action: pan-y` in both places would give vertical swipes to the page
+and keep the horizontal orbit. The commit left the picture alone on purpose.
+
+**Only an iPhone can close bug-d31c33a0.** The run log's own before row says
+a drag on a Quad row already moved the page in Chromium, so "Quad 0 to 285"
+reads the same before and after. How to fly and the Rates hit target are
+real before and after changes, but they are the desktop half of the
+problem. Headless Chromium cannot reproduce the iOS behaviour.
+
+### Checked and stood
+
+- The citation. WebKit 183870, "[iOS][pointer-events] Fix scrolling on
+  nested pointer-events: auto inside pointer-events: none", filed
+  2018-03-21, status NEW. Desktop Safari, Chromium and Firefox pan in that
+  case and iOS does not, which is the report.
+- The reach. The declaration lands on fourteen screens and the modal, not
+  three. How to fly, Tricks, Credits, Courses, Freestyle, Quad, Pilot,
+  Standings, Launch, Rates, PIDs, FC, Calibrate and Pad pick carry
+  `.screen-page`, and Paused carries `.screen-modal`. Courses and Freestyle
+  already had auto, so twelve pages and Paused change behaviour.
+- Nothing else relied on empty space passing through. Nothing listens on
+  `canvas#view`. The command bars (z-index 6), chips (6 and 7), dialogs (8)
+  and the loading screen (10) sit above every screen. The thumb-stick
+  overlay is the last child of #ui and is shown only in flight. Hidden
+  screens are `display: none` in show(). The window drop and wake-audio
+  listeners ignore the target, and no later rule sets pointer-events on a
+  screen element.
+- It works where it is needed. `.menu-stage`, `.rates-panel` and the
+  section headings are explicitly none, so a finger on them now falls
+  through to the page, which is the scroller.
+- Unlisted improvements. On any window up to 1280 px wide, a mouse wheel
+  over a heading, the lede or empty space on Quad, Rates or How to fly now
+  scrolls the page, and the page's scrollbar can be grabbed. A click on
+  empty page space now reaches the mousedown handler on #ui, which closes
+  an open dropdown. The phone rule's query is 1280 px, although its comment
+  still says 900, so laptops get these too.
+- The record. There are no em or en dashes and no trailing whitespace. The
+  header matches recent entries, and "62 commits behind" is exact. The
+  commit has no trailer naming Grok, so `git log` alone does not say who
+  wrote it. This entry does.
+
+### Out of scope, noted
+
+The Windows 403 in Grok's entry is real. `tests/lib/server.js` checks
+`join(rootDir, rel)` against `rootDir` as it was passed in, so a
+forward-slash root on Windows, or a `./` relative root on any OS, fails
+every request. The repo's own callers pass native absolute roots and are
+unaffected. Resolving the root once and testing against root plus `sep`
+would fix it.
+
+### RUN LOG
+
+    git merge-base 738ae65 origin/main   40fe84f, main's tip, fetched first
+    git diff --stat vendor/betaflight    empty, on 40fe84f..738ae65
+    WebKit bug 183870                    fetched: title and status as above
+    path.win32.join probe                forward-slash root fails startsWith
+    browser                              not run: the reported bug is iOS
+                                         only and headless Chromium cannot
+                                         see it. Offered to the owner.
+    npm run verify                       not run: a stylesheet review, not
+                                         the plant, the module or the build
+
+## 2026-09-25 | shell, git | A swipe on the quad scrolls Quad, and the page scroll fix goes to main
+
+The owner's answers, 2026-09-25, after the review above. Do not ignore
+bug-d31c33a0 and do not replace Grok's fix: keep it as written, with
+`.screen-modal` included. Add `touch-action: pan-y` to the Quad picture.
+Merge to main for the owner to fly.
+
+What changed. `.craft-view` in index.html and the inline style in
+src/render/showcase.js go from `touch-action: none` to `pan-y`. The inline
+value is the one that applies, and the sheet says the same thing so the two
+cannot be read as disagreeing. The orbit reads clientX only, so the vertical
+swipe it gives up was never used. The browser takes a vertical pan and sends
+pointercancel, which the existing endDrag already handles. Grok's comment on
+`.screen-page` described the old none and now describes pan-y. The picture
+exists on the Quad screen only, so nothing else moves.
+
+Where the review's findings stand:
+
+- The Quad picture as a scroll dead zone: acted on, above.
+- Paused no longer lets the Weight slider be dragged: kept, so this one is
+  declined. The menu is modal, and the feel report's floaty hint says the
+  slider is "on the flight screen", so nothing promises a paused drag.
+- Only an iPhone can close the ticket: open until the owner flies it.
+- The Windows 403 in tests/lib/server.js: not done, out of scope. Queuing it
+  as a separate task timed out, so this entry and the review are its record.
+
+What went wrong. The first read of the sheet gave the picture as up to 46vh,
+half a phone screen, from the `.screen-quad .craft-showcase-frame` cap. The
+`max-width: 860px` block that sets its height to clamp(110px, 21vh, 210px)
+was found second. The first draft of the new comment said 21vh flat, which
+is wrong on a phone held sideways, where the 110 px floor applies.
+
+What to fly. An iPhone, portrait, the Quad screen: a swipe up or down that
+starts on the rows, the text or the picture scrolls the page, and a sideways
+drag on the picture still turns the quad. How to fly and Rates scroll from
+anywhere on the page. Pause: the menu works, and the Weight slider under it
+stays put until Resume. Wrong would be a row swipe that does not scroll,
+which means Grok's line did not take on that phone, or a quad that turns
+more than a hair during a vertical scroll, which means the pan and the orbit
+are fighting.
+
+### RUN LOG
+
+    node --check src/render/showcase.js   OK
+    stylesheet braces     901 open, 901 close, before and after. The comment
+                          count reads one over on both, from a pre-existing
+                          assets/gate/*.jpg inside a comment
+    eslint                no config in the repo, not run
+    browser               not run: the owner flies it on an iPhone, the only
+                          place the ticket's bug exists. Headless Chromium
+                          cannot see WebKit 183870
+    npm run verify        not run: a stylesheet value and an inline style,
+                          not the plant, the module or the build
+    git merge-base        40fe84f, main's tip. main moves by fast-forward
+
 ## 2026-09-25 | shell, builder | A fourth card on the gate, and the builder asks what is being built
 
 The owner, with three screenshots (the gate's three cards, and the

@@ -133,7 +133,9 @@ export function createShowcase(canvas, opts = {}) {
     active: false,
   };
 
-  canvas.style.touchAction = 'none';
+  /* pan-y: the drag reads clientX only, so a vertical swipe scrolls the
+   * page instead, and pointercancel ends the drag. See .craft-view. */
+  canvas.style.touchAction = 'pan-y';
   const onDown = (e) => {
     e.preventDefault();
     state.dragging = true;

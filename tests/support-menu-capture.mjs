@@ -41,7 +41,7 @@ async function measureScreen(page, screen) {
   // Log scroller element info
   const scrollerInfo = await page.evaluate(`(() => {
     const screenClass = '${screenClass}';
-    const menu = document.querySelector('.\${screenClass} .menu');
+    const menu = document.querySelector('.' + screenClass + ' .menu');
     const peekScroller = document.querySelector('[data-peek-scroller]');
     const style = window.getComputedStyle(menu);
     
@@ -57,7 +57,7 @@ async function measureScreen(page, screen) {
   })()`);
   
   if (screen === 'title' && vp.width === 1366 && vp.height === 768) {
-    console.log(\`  Scroller info at \${vp.width}x\${vp.height} \${screen}: \${scrollerInfo}\`);
+    console.log(`  Scroller info at ${vp.width}x${vp.height} ${screen}: ${scrollerInfo}`);
   }
   
   // Measure before scroll

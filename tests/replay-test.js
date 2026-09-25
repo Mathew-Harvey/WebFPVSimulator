@@ -510,8 +510,11 @@ async function testSponsorContentHidden() {
         await page.sleep(300);
         const magentaCount = await countMagenta(page);
         
+        /* Diagnostic: check sponsorsPainted counter */
+        const painted = await page.evaluate('window.__map && window.__map().sponsorsPainted');
+        
         if (magentaCount > 0) {
-          throw new Error(`Test clean=1 ${cam} t=${t}: expected 0 magenta pixels, got ${magentaCount}`);
+          throw new Error(`Test clean=1 ${cam} t=${t}: expected 0 magenta pixels, got ${magentaCount} (sponsorsPainted=${painted})`);
         }
       }
       

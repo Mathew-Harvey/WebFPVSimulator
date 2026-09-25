@@ -171,6 +171,7 @@ import { formatScore } from '../game/score.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { patreonAnchor } from '../share/patreon.js';
+import { SUPPORT_URL, trackSupportClick } from '../share/support.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted } from '../input/touchsticks.js';
@@ -12609,13 +12610,16 @@ export class Ui {
       return;
     }
     if (action === 'support') {
-      /* Send click tracking, then open support page. */
-      import('../share/support.js').then(({ SUPPORT_URL, trackSupportClick }) => {
-        if (trackSupportClick) {
-          trackSupportClick();
-        }
-        openNamedWindow(SUPPORT_URL, '_blank');
-      });
+      /* Track the click, then open support page. Never blocks the open:
+       * tracking is best-effort and a failed track must not stop the link.
+       * window.open with noopener and noreferrer, not openNamedWindow, because
+       * this is an off-product link and windows.js forbids the helper for those. */
+      try {
+        trackSupportClick();
+      } catch (e) {
+        /* Tracking failed. Open anyway. */
+      }
+      window.open(SUPPORT_URL, '_blank', 'noopener,noreferrer');
       return;
     }
     /*

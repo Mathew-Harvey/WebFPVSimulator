@@ -22889,7 +22889,7 @@ Where it sits:
 
 ## 2026-09-22 Patreon page is live
 
-The empty address is now `https://www.patreon.com/c/webfpv`, in
+The empty address is now `https://www.patreon.com/cw/webfpv`, in
 `src/share/patreon.js`, the landing `src/config.js`, and the board
 `public/app.js`. The static anchors on the landing page, the wiki and the
 board name that URL too, so the link works before their scripts run.

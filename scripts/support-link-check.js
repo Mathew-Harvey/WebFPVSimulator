@@ -22,7 +22,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const SUPPORT_URL = 'https://www.patreon.com/cw/webfpv';
 
 async function main() {
   const page = await openPage({ root });
@@ -30,7 +29,6 @@ async function main() {
   const notes = [];
 
   try {
-    await page.load('http://127.0.0.1:8000/index.html');
     await page.until('window.__shellReady === true', 90000);
     await page.until('!!window.__ui', 10000);
 
@@ -153,17 +151,26 @@ async function main() {
       }
     }
 
-    /* TEST 4: No event sent when GPC is on. */
+    /* TEST 4: No event sent when GPC is on. Also stub fetch in case
+     * sendBeacon is not available. */
     const gpcCheck = JSON.parse(await page.evaluate(`(() => {
       return new Promise((resolve) => {
         let eventSent = false;
         const originalSendBeacon = navigator.sendBeacon;
+        const originalFetch = window.fetch;
         navigator.sendBeacon = function(url, data) {
           if (url.includes('/api/stats/events')) {
             eventSent = true;
             return true;
           }
           return originalSendBeacon.apply(navigator, arguments);
+        };
+        window.fetch = function(url, options) {
+          if (url.includes('/api/stats/events')) {
+            eventSent = true;
+            return Promise.resolve(new Response());
+          }
+          return originalFetch.apply(window, arguments);
         };
         
         /* Enable GPC. */
@@ -176,6 +183,7 @@ async function main() {
           m.trackSupportClick();
           setTimeout(() => {
             navigator.sendBeacon = originalSendBeacon;
+            window.fetch = originalFetch;
             delete navigator.globalPrivacyControl;
             resolve(JSON.stringify({ eventSent }));
           }, 100);

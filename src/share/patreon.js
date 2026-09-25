@@ -31,7 +31,7 @@
  */
 
 /* The public page. Same address in the landing config and the board app. */
-export const PATREON_URL = 'https://www.patreon.com/c/webfpv';
+export const PATREON_URL = 'https://www.patreon.com/cw/webfpv';
 
 export const PATREON_NOTE = 'Support WebFPV on Patreon. Keep the lights on, $5. Hosting + runway, $12. Build the sim, $25. USD, plus GST on join.';
 

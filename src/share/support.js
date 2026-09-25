@@ -19,14 +19,16 @@
 
 import { boardOrigin } from './board.js';
 import { privacyRefused, optedOut } from './stats.js';
+import { PATREON_URL } from './patreon.js';
 
-/* The Support page URL. */
-export const SUPPORT_URL = 'https://www.patreon.com/cw/webfpv';
+/* The Support page URL. Reuses PATREON_URL from patreon.js. */
+export const SUPPORT_URL = PATREON_URL;
 
 /*
  * Send a support_click event. Never blocks: uses sendBeacon or fetch with
- * keepalive. The event body is exactly as specified: no source, referrer or
- * ref fields are added by this function, unlike the shared sendEvent helper.
+ * keepalive. The event body is exactly as specified, with kind and source
+ * fields. Unlike the shared sendEvent helper, this does not add referrer
+ * or ref fields.
  */
 export function trackSupportClick() {
   if (privacyRefused() || optedOut()) {

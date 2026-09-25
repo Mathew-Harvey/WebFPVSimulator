@@ -9550,11 +9550,19 @@ export class Ui {
    * leave it alone. After scrolling to the end, the last row's bottom must
    * be at least 16px above the command bar's top.
    *
+   * On narrow viewports (width <= 768px), the screen itself scrolls, so skip
+   * menu height capping to preserve the original behavior.
+   *
    * Applied to title and paused screens. Called after the screen is visible
    * and laid out, on debounced resize, and after document.fonts.ready.
    */
   fitMenuPeek(screenName) {
     if (screenName !== 'title' && screenName !== 'paused') {
+      return;
+    }
+
+    /* Skip on narrow viewports where the screen itself scrolls. */
+    if (window.innerWidth <= 768) {
       return;
     }
 
@@ -9605,9 +9613,8 @@ export class Ui {
     
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const rowRect = row.getBoundingClientRect();
-      const top = rowRect.top - scrollerRect.top + scroller.scrollTop;
-      const h = rowRect.height;
+      const h = row.offsetHeight;
+      const top = row.offsetTop;
       
       if (top + 0.5 * h <= available) {
         /* Skip section headers - check if this row has the row-head class. */
@@ -9621,16 +9628,15 @@ export class Ui {
     }
 
     if (!targetRow) {
-      /* No row qualifies, use a minimal height. */
+      /* No row qualifies, use a minimal height that fits at least some content. */
       scroller.style.maxHeight = `${Math.max(100, available)}px`;
       scroller.style.flexShrink = '0';
       return;
     }
 
     /* Set max-height to show exactly 50% of the target row. */
-    const rowRect = targetRow.getBoundingClientRect();
-    const top = rowRect.top - scrollerRect.top + scroller.scrollTop;
-    const h = rowRect.height;
+    const top = targetRow.offsetTop;
+    const h = targetRow.offsetHeight;
     const maxHeight = Math.floor(top + 0.5 * h);
     
     scroller.style.maxHeight = `${maxHeight}px`;

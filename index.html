@@ -507,6 +507,147 @@
         .score-hud.tier-5 .score-lines { animation: none; }
       }
 
+      /* ------------------------------------------------------------------
+         THE STF MARK, FOUND. See stfFound in src/ui/ui.js: a lettered
+         callout and a manga panel with the mark in it, down the right,
+         three seconds, gone.
+
+         The same clothes as the score's anime layer above: flat fills,
+         hard stops, an ink line round everything and no glow, and every
+         moving thing a keyframe on a node that is removed when it is done.
+         The keyframes all run 3 s, STF_FOUND_MS in ui.js: change both.
+
+         DOWN THE RIGHT, because the left column is the score's and the
+         middle is the pilot's. The callout sits under the banner's line
+         (22 percent), so a notice and a find can be up at once without
+         touching, and a margin in from the edge that keeps the whole of
+         it out of the centre third at any width. The panel hangs under the
+         callout and ends above the speed corner.
+         ------------------------------------------------------------------ */
+      .stf-found { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      .stf-call {
+        position: absolute; right: clamp(18px, 3vw, 40px); top: 29%;
+        display: flex; flex-direction: column; align-items: flex-end;
+        opacity: 0;
+        animation: stf-call 3s cubic-bezier(0.14, 1, 0.3, 1) forwards;
+      }
+      /* THE LETTERING: heavy, slanted, the mark's own white with its green
+         T, and a hard ink line round every glyph. Eight one-step offsets
+         at two widths make the line thick enough to read as brushed ink
+         over a lit roof or a dark roof space, and the drop under it is
+         hard, because cel shading has no falloff. Sized with the trick
+         callout: the word about as big as the combo line under a trick
+         name, and the line under it about as big as the name. */
+      .stf-call-word {
+        position: relative; display: block;
+        font-size: clamp(24px, 2.8vw, 36px); font-weight: 900; font-style: italic;
+        letter-spacing: 0.08em; line-height: 1;
+        color: #f3f0e8;
+        transform: skewX(-14deg);
+        text-shadow:
+          -3px 0 0 #0b1116, 3px 0 0 #0b1116, 0 -3px 0 #0b1116, 0 3px 0 #0b1116,
+          -2px -2px 0 #0b1116, 2px -2px 0 #0b1116, -2px 2px 0 #0b1116, 2px 2px 0 #0b1116,
+          5px 6px 0 #0b1116;
+      }
+      .stf-t { color: #3cc04f; }
+      .stf-call-line {
+        position: relative; margin-top: 6px;
+        font-size: clamp(14px, 1.7vw, 20px); font-weight: 800;
+        letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--cream);
+        text-shadow:
+          -1px -1px 0 rgba(8, 12, 9, 0.92),  1px -1px 0 rgba(8, 12, 9, 0.92),
+          -1px  1px 0 rgba(8, 12, 9, 0.92),  1px  1px 0 rgba(8, 12, 9, 0.92),
+          0 2px 10px rgba(0, 0, 0, 0.9);
+      }
+      /* The speed lines behind the word: an ink fan with a cream fan inside
+         it, punched hollow so the type stays readable, thrown once. The
+         same construction as .score-burst, larger, because this is a
+         bigger moment than one trick. */
+      .stf-call-burst {
+        position: absolute; right: -40px; top: 50%;
+        width: 220px; height: 220px; margin-top: -110px;
+        background: repeating-conic-gradient(#0b1116 0deg 6deg, transparent 6deg 15deg);
+        -webkit-mask-image: radial-gradient(closest-side, transparent 0 28%, #000 31% 76%, transparent 80%);
+        mask-image: radial-gradient(closest-side, transparent 0 28%, #000 31% 76%, transparent 80%);
+        opacity: 0;
+        animation: stf-burst 760ms cubic-bezier(0.16, 0.9, 0.3, 1) forwards;
+      }
+      .stf-call-burst::before {
+        content: ''; position: absolute; inset: 0;
+        background: repeating-conic-gradient(#f3f0e8 0deg 4deg, transparent 4deg 15deg);
+        -webkit-mask-image: radial-gradient(closest-side, transparent 0 31%, #000 34% 72%, transparent 76%);
+        mask-image: radial-gradient(closest-side, transparent 0 31%, #000 34% 72%, transparent 76%);
+      }
+      /* THE PANEL: a manga panel's hard black border with the paper's
+         white gutter round it, the page's 45 degree dot tone, a burst
+         from its middle, and the mark itself over all of it, tilted a
+         few degrees the way a panel that breaks the grid is. */
+      .stf-panel {
+        position: absolute; right: clamp(18px, 3vw, 40px);
+        top: calc(29% + clamp(60px, 6.4vw, 84px));
+        width: min(22vw, 260px); box-sizing: border-box; padding: 7px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle, rgba(11, 17, 22, 0.34) 1.1px, transparent 1.6px) 0 0 / 7px 7px,
+          radial-gradient(circle, rgba(11, 17, 22, 0.34) 1.1px, transparent 1.6px) 3.5px 3.5px / 7px 7px,
+          #f3ead4;
+        border: 4px solid #0b1116;
+        box-shadow: 0 0 0 3px #f3ead4, 0 0 0 5px #0b1116, 8px 9px 0 5px rgba(11, 17, 22, 0.75);
+        transform: rotate(-2.5deg);
+        opacity: 0;
+        animation: stf-panel 3s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+      }
+      .stf-panel-burst {
+        position: absolute; left: 50%; top: 50%;
+        width: 170%; aspect-ratio: 1; transform: translate(-50%, -50%);
+        background: repeating-conic-gradient(rgba(11, 17, 22, 0.8) 0deg 2.2deg, transparent 2.2deg 9deg);
+        -webkit-mask-image: radial-gradient(closest-side, transparent 0 22%, #000 32%);
+        mask-image: radial-gradient(closest-side, transparent 0 22%, #000 32%);
+      }
+      .stf-panel-mark { position: relative; display: block; width: 100%; height: auto; }
+      @keyframes stf-call {
+        0%   { opacity: 0; transform: translateX(52px) skewX(-18deg) scale(1.45); }
+        6%   { opacity: 1; transform: translateX(-4px) skewX(5deg) scale(0.95); }
+        11%  { transform: translateX(0) skewX(0) scale(1); }
+        84%  { opacity: 1; transform: translateX(0); }
+        100% { opacity: 0; transform: translateY(-16px); }
+      }
+      @keyframes stf-burst {
+        0%   { opacity: 0.95; transform: scale(0.28) rotate(-10deg); }
+        55%  { opacity: 0.45; }
+        100% { opacity: 0; transform: scale(1.3) rotate(6deg); }
+      }
+      /* The panel slides in a beat after the word, from the right edge, and
+         leaves the way it came. */
+      @keyframes stf-panel {
+        0%, 5% { opacity: 0; transform: translateX(125%) rotate(-2.5deg); }
+        14%    { opacity: 1; transform: translateX(-5%) rotate(-3.5deg); }
+        19%    { transform: translateX(0) rotate(-2.5deg); }
+        84%    { opacity: 1; transform: translateX(0) rotate(-2.5deg); }
+        100%   { opacity: 0; transform: translateX(118%) rotate(-2.5deg); }
+      }
+      /* A short screen is a phone on its side, with the pause and bug chips
+         down to about 85 px on the right and the right thumb's plate from a
+         little over a third of the way down. The callout goes under the
+         chips and the panel shrinks; its foot can reach the plate's top
+         edge for the three seconds it is up, and the plate still takes the
+         thumb, because nothing here takes a pointer. */
+      @media (max-height: 560px) {
+        .stf-call { top: 92px; }
+        .stf-panel { top: 140px; width: min(20vw, 170px); padding: 5px; }
+      }
+      /* Nothing that carries meaning is hidden: the word and the panel both
+         come, stand still and fade. The burst and the slide go. */
+      @keyframes stf-still {
+        0%, 88% { opacity: 1; }
+        100%    { opacity: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .stf-call, .stf-panel { animation: stf-still 3s linear forwards; }
+        .stf-call-burst { display: none; }
+      }
+
       .bar {
         height: 5px; margin-top: 7px; border-radius: 3px;
         background: rgba(12, 22, 34, 0.65);
@@ -3218,6 +3359,22 @@
         margin-left: auto; color: var(--mint); font-size: 11px;
         letter-spacing: 0.1em; text-transform: uppercase;
       }
+      /* THE STF STAMP on a world whose mark this browser has found: the
+         mark's own lettering, white with the green T on its black field,
+         slapped on the corner of the picture at an angle like a sticker
+         on a toolbox. Over the reel and the still (z-index 3), and type
+         rather than the painted mark: see stfLettering in src/ui/ui.js. */
+      .map-card-stamp {
+        position: absolute; top: 10px; right: 10px; z-index: 4;
+        padding: 3px 8px 4px 7px; border-radius: 3px;
+        background: #19171e; color: #f3f0e8;
+        font-size: 15px; font-weight: 900; font-style: italic;
+        letter-spacing: 0.08em; line-height: 1;
+        box-shadow: 0 0 0 2px #39324f, 3px 4px 0 2px rgba(11, 17, 22, 0.7);
+        transform: rotate(-7deg);
+        pointer-events: none;
+      }
+      .map-card-stamp[hidden] { display: none; }
 
       /*
        * The Courses screen. Worlds in one strip, courses in another, and
@@ -4427,6 +4584,7 @@
     <link rel="modulepreload" href="src/game/trickdetect.js">
     <link rel="modulepreload" href="src/game/obstacles.js">
     <link rel="modulepreload" href="src/game/tricks.js">
+    <link rel="modulepreload" href="src/game/egg.js">
     <link rel="modulepreload" href="src/game/score.js">
     <link rel="modulepreload" href="src/game/ghost.js">
     <link rel="modulepreload" href="src/share/ghostdata.js">
@@ -4446,11 +4604,12 @@
     <link rel="modulepreload" href="src/ui/trickfilm.js">
     <link rel="modulepreload" href="src/share/bugs.js">
     <link rel="modulepreload" href="src/share/pilot.js">
-    <link rel="modulepreload" href="src/share/listing.js">
+    <link rel="modulepreload" href="src/share/stamps.js">
+    <link rel="modulepreload" href="src/trackbuilder/storage.js">
     <link rel="modulepreload" href="src/trackbuilder/model.js">
     <link rel="modulepreload" href="src/trackbuilder/geometry.js">
-    <link rel="modulepreload" href="src/trackbuilder/storage.js">
     <link rel="modulepreload" href="src/trackbuilder/presets.js">
+    <link rel="modulepreload" href="src/share/listing.js">
     <link rel="modulepreload" href="src/share/plan.js">
     <link rel="modulepreload" href="src/share/summary.js">
     <link rel="modulepreload" href="src/share/orbitcache.js">

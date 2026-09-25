@@ -273,6 +273,9 @@ export function buildPlaces(world, { petals: livePetals = true } = {}) {
   return {
     references,
     blossom,
+    /* Where the STF mark is painted, for the town's MapInstance to hand the
+     * shell. The works paints it; see STF_SPOT in ./works.js. */
+    egg: parts.map((p) => p.egg).find(Boolean) ?? null,
     updaters: ctx.updaters,
     sites: { works: WORKS_SITE, pool: POOL_SITE, training: TRAINING_SITE },
     landmarks: { works: WORKS_LANDMARK, pool: POOL_LANDMARK, training: TRAINING_LANDMARK },

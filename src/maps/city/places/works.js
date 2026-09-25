@@ -76,9 +76,11 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import * as THREE from 'three';
 import { PAL } from '../vendored/core/palette.js';
 import { cyl, rngKit } from '../vendored/core/util.js';
 import { meshFence } from '../vendored/world/ground.js';
+import { makeStfMark } from '../../../art/stf.js';
 import {
   GROUND, mats, slab, decal, hit, deck, post, wallPanel, ribs, board, patch,
 } from './kit.js';
@@ -154,6 +156,9 @@ const SHED = {
  * town, so the row of glazed faces is what you see on the way in. */
 const TEETH = 3;
 const TOOTH = (SHED.z1 - SHED.z0) / TEETH;
+/* The clerestory's thickness, which is also where each tooth's roof starts
+ * behind it. */
+const CLERE_T = 0.18;
 /*
  * The roof is STEPPED, and drawn exactly as it is solid.
  *
@@ -187,6 +192,41 @@ const SHED_SIDE = { z0: 99.0, z1: 102.2, y1: 4.05 };
  * third tooth's roof. */
 const CLERE_OUT = { x0: 26.0, x1: 29.2 };
 const ROOF_HOLE = { x0: 34.0, x1: 37.2, step0: 1, step1: 2 };
+/*
+ * THE STF MARK, and where it is painted is a proposal rather than a decision.
+ * FREESTYLE-MAPS-PLAN.md section 9 puts it in this shed's roof space, seen by
+ * a pilot who comes in through the broken clerestory (line 3), and section 12
+ * still lists the town's spot as the owner's to confirm. So the spot is this
+ * one constant: change it and the mark, the `egg` the town hands the shell
+ * (src/maps/README.md) and everything measured from it follow.
+ *
+ * WHY THE UNDERSIDE OF THE FIRST STEP BEHIND THE GAP. A sawtooth's roof
+ * space is a wedge open to the shed below it: the clerestory's inside face,
+ * the stepped underside of the roof, and air. The clerestory's inside faces
+ * north, so line 1 flown south looks straight at it, and so does anyone on
+ * the practice field looking in through the north door. The roof's
+ * underside faces down, and this step is the one a pilot coming through the
+ * gap has just over and ahead of them, in the top of the frame a camera's
+ * own uptilt gives a craft flown level through the glazing. Line 1 flown
+ * north never sees it: the first tooth's roof comes down to the eave
+ * between the south door and here. What it cannot be is hidden from the
+ * floor, because nothing up here is: line 2 runs straight under this tooth,
+ * so from line 2, and from line 1 flown south, it is a patch high in the
+ * frame at a glancing angle for a moment, never what the line points at.
+ *
+ * The step is under a metre deep, so the mark is sized to it: the step less
+ * `margin` at each edge, and twice that across, which is the lettering's own
+ * aspect. Its top is toward the glazing it is read from, so a pilot coming
+ * in reads it the right way up. `off` stands it clear of the face it is
+ * painted on; it is paint, and has no collider of its own.
+ */
+const STF_SPOT = {
+  tooth: 1,                               // the middle tooth, whose glazing is out
+  step: 0,                                // the first step of its roof, behind the gap
+  x: (CLERE_OUT.x0 + CLERE_OUT.x1) / 2,   // centred on the gap
+  margin: 0.06,
+  off: 0.015,
+};
 
 const COLS = { x: 26.4, half: 0.24, zs: [97.0, 103.0, 109.0] };
 const CRANE = { y0: 4.60, y1: 5.05, z0: 101.70, z1: 102.05 };
@@ -208,6 +248,7 @@ export function buildWorks(ctx) {
   buildShed(ctx, m, rng);
   buildTower(ctx, m);
   buildYard(ctx, m, rng, out);
+  out.egg = buildStfMark(ctx);
 
   /*
    * Measured off what was built, not off the table above, so the numbers in
@@ -624,7 +665,7 @@ function buildShed(ctx, m, rng) {
      * is entry line 3. */
     const out = k === 1 ? [{ from: CLERE_OUT.x0, to: CLERE_OUT.x1, y0: s.eave, y1: s.ridge }] : [];
     wallPanel(ctx, m.trim, {
-      axis: 'x', at: z0 + 0.09, t: 0.18, from: s.x0, to: s.x1, y0: s.eave, y1: s.ridge,
+      axis: 'x', at: z0 + CLERE_T / 2, t: CLERE_T, from: s.x0, to: s.x1, y0: s.eave, y1: s.ridge,
       holes: out, name: 'worksClerestory',
     });
     /* The glass in it, drawn only, and skipped where it is out. */
@@ -642,8 +683,8 @@ function buildShed(ctx, m, rng) {
        * lowest step's underside then lands exactly on the eave, sharing a
        * face with the wall head instead of cutting 0.15 m into it. */
       const top = s.ridge - ((s.ridge - s.eave) / ROOF_STEPS) * i;
-      const za = z0 + 0.18 + (TOOTH - 0.18) * (i / ROOF_STEPS);
-      const zb = z0 + 0.18 + (TOOTH - 0.18) * ((i + 1) / ROOF_STEPS);
+      const za = z0 + CLERE_T + (TOOTH - CLERE_T) * (i / ROOF_STEPS);
+      const zb = z0 + CLERE_T + (TOOTH - CLERE_T) * ((i + 1) / ROOF_STEPS);
       /* The hole through the third tooth. Two steps out of six, 3.2 m
        * across: a drop into a shed that has two ways out at floor level,
        * which is what stops it being a dive with nowhere to go. */
@@ -657,8 +698,8 @@ function buildShed(ctx, m, rng) {
   }
   /* The torn flashing round the roof hole, so the hole has an edge. */
   for (const x of [ROOF_HOLE.x0, ROOF_HOLE.x1]) {
-    decal(ctx, m.rust, x - 0.07, s.eave + 0.9, s.z0 + 2 * TOOTH + 0.18 + (TOOTH - 0.18) / 6,
-      x + 0.07, s.eave + 1.5, s.z0 + 2 * TOOTH + 0.18 + (TOOTH - 0.18) / 2,
+    decal(ctx, m.rust, x - 0.07, s.eave + 0.9, s.z0 + 2 * TOOTH + CLERE_T + (TOOTH - CLERE_T) / 6,
+      x + 0.07, s.eave + 1.5, s.z0 + 2 * TOOTH + CLERE_T + (TOOTH - CLERE_T) / 2,
       { name: 'worksTorn', noOutline: false });
   }
 
@@ -724,6 +765,53 @@ function buildShed(ctx, m, rng) {
       name: 'worksOil',
     });
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * The STF mark, in the roof space. See STF_SPOT for why there.
+ * ------------------------------------------------------------------ */
+
+/*
+ * Paint the mark on the underside of the roof step STF_SPOT names and return
+ * where it is, as the `egg` src/maps/README.md describes: the centre of the
+ * painted face, the way it faces, the way its lettering reads up, and its
+ * size, in world metres in this file's own frame.
+ *
+ * The step is placed with the same expressions the roof loop in buildShed
+ * uses, from the same constants, so the paint cannot drift off the steel.
+ * Drawn and never solid: makeStfMark names it with the Trim suffix, which is
+ * what keeps the collider fit, the cover pass and the audit off it (see
+ * ./kit.js), and nothing here calls ctx.collide.
+ */
+function buildStfMark(ctx) {
+  const s = SHED;
+  const i = STF_SPOT.step;
+  const z0 = s.z0 + STF_SPOT.tooth * TOOTH;
+  const top = s.ridge - ((s.ridge - s.eave) / ROOF_STEPS) * i;
+  const za = z0 + CLERE_T + (TOOTH - CLERE_T) * (i / ROOF_STEPS);
+  const zb = z0 + CLERE_T + (TOOTH - CLERE_T) * ((i + 1) / ROOF_STEPS);
+  /* To the millimetre, which is all paint needs, so the size handed out
+   * reads as the size it is. */
+  const h = Math.round((zb - za - 2 * STF_SPOT.margin) * 1000) / 1000;
+  const egg = {
+    key: 'city',
+    p: [STF_SPOT.x, top - ROOF_T - STF_SPOT.off, (za + zb) / 2],
+    n: [0, -1, 0],
+    up: [0, 0, -1],
+    w: 2 * h,
+    h,
+  };
+
+  const mark = makeStfMark(THREE, { width: egg.w, height: egg.h });
+  /* The plane's own +X, +Y and +Z onto the lettering's right, its up and the
+   * way it faces. */
+  const n = new THREE.Vector3(...egg.n);
+  const up = new THREE.Vector3(...egg.up);
+  const right = new THREE.Vector3().crossVectors(up, n);
+  mark.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, n));
+  mark.position.set(...egg.p);
+  ctx.add(mark);
+  return egg;
 }
 
 /* ------------------------------------------------------------------ *

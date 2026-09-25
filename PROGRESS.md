@@ -47235,3 +47235,42 @@ Publish that fails with a message about a picture.
                              PASS; lint:boot 9 of 9; a map and a track card
                              drawn headless, 110 and 80 kB, looked at
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25: Support link in the menu with first-party click tracking
+
+Small, focused PR. Added a "Support" link in the simulator's main menu,
+placed after Credits on both the title and pause screens. Opens
+https://www.patreon.com/cw/webfpv in a new tab.
+
+**First-party click tracking** that never blocks the link: on click, sends
+POST to `<board base>/api/stats/events` with JSON body `{"v":1,"kind":"support_click","source":"sim"}`.
+Uses sendBeacon/keepalive mechanism and respects Global Privacy Control, same
+as existing pingVisit / src/share/stats.js code. Event body is exactly as
+specified - no shared helper overwrites or adds ref/referrer fields to this
+event.
+
+**Implementation:** new src/share/support.js exports SUPPORT_URL constant and
+trackSupportClick() function. Link handled as action in ui.js act() method
+like 'leaderboard' and 'wiki'. Added 'support' to LINK_ACTIONS set so it
+renders with link styling. Works with keyboard and gamepad menu navigation.
+
+**Tests:** scripts/support-link-check.js verifies:
+- Link exists in menu with exact href, target and rel attributes
+- Click sends exactly {"v":1,"kind":"support_click","source":"sim"}
+- Nothing sent when GPC is on
+- Link appears on both title and pause screens
+
+**lint:shell overflow changes:** Adding one row increased menu overflow as
+expected: title 0→94px (was 46px on main before other recent changes),
+paused 0px unchanged. The focus authority error in lint:shell is pre-existing
+(also fails on origin/main) and unrelated to this change.
+
+**What changed:**
+- src/share/support.js: new file with SUPPORT_URL constant and trackSupportClick()
+- src/ui/ui.js: Support menu item after Credits on title and pause; 'support' action handler
+- src/fresh.js: added support.js to module lists
+- scripts/support-link-check.js: comprehensive tests for link and tracking
+
+**Not done:** updating shell-check baseline (overflow values grew by one row as
+expected). Per CLAUDE.md: never change a threshold to make a check pass.
+

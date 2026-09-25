@@ -47278,3 +47278,103 @@ Publish that fails with a message about a picture.
                              PASS; lint:boot 9 of 9; a map and a track card
                              drawn headless, 110 and 80 kB, looked at
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | physics | Stage D part 2: the fix round, and VERIFIED
+
+The fix round on the first verdict (813c2fa), main merged in (65d3a4d),
+and the same independent verifier again on exactly that tree.
+
+### What the fix round changed
+
+- **The contact's yaw rate is the box's own turn** (world.c vehicle_turn):
+  the signed turn from the heading at the clock to the heading one step
+  later, 2 cross / (1 + |dot|) times SIM_STEP_HZ, + - * / only, which is
+  2 tan(turn / 2) and off the true turn by the turn cubed over twelve. Each
+  car keeps a next pose; world_tick shifts prev, cur, nxt and works out one
+  new pose a step; sim_world_clock seats all three, so the poses stay a pure
+  function of the clock. The drift's rate is in it by construction; speed
+  times curvature and the analytic drift rate are gone. The linear part
+  stays the pose's analytic velocity: a finite difference of positions
+  amplified rounding a thousandfold and pushed the 37 degree heading
+  invariance to 1.04e-9, over its 1e-9 bar (with the analytic velocity,
+  3.28e-12).
+- **A new read-only export, sim_world_vehicle_contacts(double *out, int
+  max)**: the last step's contacts against cars, 12 doubles each (slot,
+  kind, point, normal, surface velocity, depth), written only when a car
+  exists, read by nothing in the physics. It is what lets a check hold the
+  surface velocity the module reports against the car's own motion.
+- **Roads**: a point where the road turns more than 30 degrees in plan,
+  folds and a closed road's joining point included, is refused
+  (SIM_ERR_BAD_ARG), as are coordinates past 1e6 m and a piece that
+  resamples to no length. The header now says the shell's road tool must
+  hand over eased bends. The reach test is !(d2 <= rr*rr), so a NaN is
+  skipped.
+- **Coverage**, in VEHICLE_SCENARIOS and the engines' vehicle runs (10
+  now): contact motion (477 hull and lens contacts held to the car's
+  velocity plus its turn between two read back poses across the lever arm,
+  worst 2.73e-5 m/s against a bar of 5.55e-5; 1,208 prop contacts within a
+  prop's radius), the normal's sign on 4,089 contacts on 1,701 steps, a
+  drift entry, and a prop edge case where the previous frame test decides
+  the push.
+
+### The second verdict: VERIFIED
+
+On 65d3a4d, dist/sim.wasm 5408b3e2be286ee8..., 141,813 bytes, run one at a
+time by the verifier:
+
+    npm run build:wasm             reproduces 5408b3e2 exactly
+    git diff --stat vendor/betaflight   empty
+    npm run verify                 17 of 17; every row equal to 121efd8's
+                                   run except row 14's real time audio
+                                   clock (2.50 s against 2.52); trace
+                                   de0401cd4266; row 17 35 of 35
+    npm run check:plant            23 of 23, hashes unchanged
+    npm run check:world-golden     35 of 35; selftest all passed
+    npm run check:world            all passed (old scenarios, main's
+                                   READINGS, every vehicle check);
+                                   --targets the same five known
+    npm run check:world-engines    20 golden and 10 vehicle runs equal to
+                                   the bit, Node 22 and Chrome 141
+    npm run check:world-town       the fixture is the town
+    npm run check:crash            0 guards failed
+    npm run check:clip             699 passed, 0 failed
+    node scripts/props-check.js    all passed
+    npm run lint:preload           up to date
+    git diff --stat 121efd8 -- tests   empty
+
+Planted faults, each in a scratch build whose unfaulted twin reproduced
+5408b3e2, the golden 35 of 35 under every one:
+
+    yaw rate out of the surface velocity    contact motion (2 checks)
+    drift rate out                          contact motion (2)
+    speed times curvature (the old way)     contact motion (2)
+    previous pose never updated             drift normal, normals
+    previous points in the current frame    prop edge
+    drift out of the solid box              4 drift checks
+    clock advanced twice                    10 checks
+    braking pass skipped                    5 checks
+    a vehicle offered as ground             roof
+    turn limit 90 degrees                   refusals
+    coordinate limit 1e300                  refusals
+    the contact record's normal negated     normals, prop edge
+
+Step cost, 9 interleaved rounds of 20,000 steps, sim_step median: no car
+3.03 us (121efd8 3.79), the train alone 4.07 (4.17), 16 cars 5.47, 64 cars
+9.96, 64 cars all on the craft 30.5. About 6 us for 64 cars, 0.6 percent of
+the 1 ms step here.
+
+### Still open
+
+- The vehicle runs are not in the world golden, so verify's check 17 does
+  not see the vehicle code; check:world's vehicle scenarios and
+  check:world-engines do. Pinning them is a reviewed re-record.
+- For the owner in flight, once Stage E puts cars on a map: a single point
+  corner up to 30 degrees turns a car's velocity in one step (up to about
+  2 m/s at a 6 m/s2 corner), and a drift car's yaw rate steps by up to 4.2
+  rad/s where a bend starts (the slide angle itself is continuous). The
+  road tool's eased bends are the answer to both.
+- "contact motion: the car's velocity" measures 2.00e-3 m/s against a
+  2 mm/s bar, the exact analytic bound: deterministic, no headroom by
+  design.
+- Two decisions need the owner's recorded answer before this goes to main:
+  the yaw rate as the box's own turn, and the new read-only export.

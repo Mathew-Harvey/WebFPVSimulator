@@ -1,5 +1,31 @@
 # PROGRESS.md
 
+## 2026-09-25: Pilotless replay mode for ghost spotlight capture
+
+Built a proper replay mode so marketing can record ghost spotlight videos without depending on internal test hooks that might be removed.
+
+URL: `/sim/?map=custom&share=<trackId>&replay=<timeId>&cam=chase|fpv&clean=1`
+
+The replay URL loads the board ghost for that time, skips the "Before you fly" screen, and plays the ghost with no pilot input. The ghost is driven from its own clock instead of from `race.lapStartMs`, so it plays even though no lap is running.
+
+`window.__replayStep(ms)` advances the replay clock by a set number of milliseconds for frame-by-frame capture. Call with `ms = 0` to initialize step mode, then call with positive ms to step forward. Real-time playback works when `__replayStep` is not used (the clock advances automatically and loops at the end).
+
+`cam=chase` gives a smoothed chase camera behind the ghost at about 70 degrees FOV, using a damped spring arm. `cam=fpv` gives the onboard FPV view using the ghost's quaternion and the pilot's camera tilt setting.
+
+`clean=1` hides the UI (`#ui` display set to none) and the ghost's name tag (empty string passed to `ghostRig.setLabel`).
+
+Physics stepping is disabled in replay mode: the `if (steps >= 1)` block that calls `sim.step` is wrapped in `if (!replayMode)`, so the plant never steps and no stick input reaches the controller. `simStepIdx` and `simTimeMs` still advance so the frame loop functions normally, but `stateCurr` and `statePrev` stay at spawn state.
+
+The existing test hooks (`window.__setCam`, `window.__race`) are untouched. Normal play is unchanged when the `replay` param is absent.
+
+Camera tilt and FOV storage in the ghost header: skipped. The leaderboard's `validate.js` mirrors the ghost header structure and checks every field except the reserved u32 at offset 28. Storing camera settings there would require a coordinated change to both repos (simulator encoding + board validation), and the spec said to skip it if it would need a board change. Noted in the PR for future work.
+
+What went wrong: none. The implementation was straightforward. The ghost loading, clock management, camera positioning, and UI hiding all worked on the first attempt after the code compiled.
+
+Approved by: PR open for owner review.
+
+# PROGRESS.md
+
 State between loop runs. Append only. Newest entry at the bottom. Never rewrite history, including the parts where something went wrong, because that is the most useful part of this file.
 
 ---

@@ -47378,3 +47378,24 @@ the 1 ms step here.
   design.
 - Two decisions need the owner's recorded answer before this goes to main:
   the yaw rate as the box's own turn, and the new read-only export.
+
+## 2026-09-25 | git, physics | Stage D goes to main: the owner's answers, and the merge
+
+Put to the owner in the conversation, answered 2026-09-25:
+
+- **The contact's turn rate: "The car's actual turn"**, the box's own turn
+  from one step to the next, drift included, as verified; not speed times
+  the road's curvature.
+- **sim_world_vehicle_contacts: "Keep it"**, the read-only readback of the
+  last step's car contacts that the contact motion and normal checks use.
+
+With those recorded, Stage D is verified under the owner's standing "merge
+stage D to main when it's verified", and goes: part 1 was already on main
+(0da5afb); part 2 is the turning movers, verified at 65d3a4d (the entry
+above), with only these PROGRESS entries after it. main was at 5abb0a2, an
+ancestor of the branch, so it fast forwards and nothing is rewritten.
+
+What it changes for a pilot today: nothing. No map has a road or a car
+until Stage E, and every existing world, the train included, is bit for
+bit what it was. The verification scale is verify, which ran (17 of 17);
+the owner's fly comes with Stage E, when there is a car to chase.

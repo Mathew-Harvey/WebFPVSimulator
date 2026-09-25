@@ -7,6 +7,7 @@
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { PNG } from 'pngjs';
 import { openPage } from './lib/page.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -59,6 +60,45 @@ const fixtureTrackPayload = {
     ]
   }
 };
+
+/* Helper: count magenta pixels (R>200, G<100, B>200) in a PNG buffer */
+function countMagenta(pngBuffer) {
+  const png = PNG.sync.read(pngBuffer);
+  let count = 0;
+  for (let y = 0; y < png.height; y++) {
+    for (let x = 0; x < png.width; x++) {
+      const idx = (png.width * y + x) << 2;
+      const r = png.data[idx];
+      const g = png.data[idx + 1];
+      const b = png.data[idx + 2];
+      if (r > 200 && g < 100 && b > 200) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/* Unit test: verify pixel counter works on a known 8x8 magenta PNG */
+async function testPixelCounter() {
+  /* Create an 8x8 magenta PNG */
+  const png = new PNG({ width: 8, height: 8 });
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const idx = (8 * y + x) << 2;
+      png.data[idx] = 255;     // R
+      png.data[idx + 1] = 0;   // G
+      png.data[idx + 2] = 255; // B
+      png.data[idx + 3] = 255; // A
+    }
+  }
+  const buffer = PNG.sync.write(png);
+  const count = countMagenta(buffer);
+  if (count !== 64) {
+    throw new Error(`Pixel counter unit test failed: expected 64 magenta pixels in 8x8 PNG, got ${count}`);
+  }
+  console.log(' ok   pixel counter unit test: 8x8 magenta PNG = 64 pixels');
+}
 
 async function testNormalBoot() {
   const page = await openPage({ root: ROOT });
@@ -438,12 +478,17 @@ async function testSponsorContentHidden() {
       await page.until('window.__shellReady === true', 120000);
       await page.until('window.__replayInfo && window.__replayInfo().state === "ready"', 30000);
       
+      /* Wait for scene to fully render */
+      await page.sleep(2000);
+      
       /* Scene-level counter check - primary verification */
       const paintedCount = await page.evaluate('window.__map && window.__map().sponsorsPainted');
       
       if (!paintedCount || paintedCount === 0) {
         throw new Error(`Control clean=0 ${cam}: expected >0 painted sponsors, got ${paintedCount}`);
       }
+      
+      console.log(`  [ok] clean=0 ${cam}: ${paintedCount} sponsors painted`);
     } finally {
       await page.close();
     }
@@ -480,6 +525,8 @@ async function testSponsorContentHidden() {
       if (paintedCount !== 0) {
         throw new Error(`Test clean=1 ${cam}: expected 0 painted sponsors, got ${paintedCount}`);
       }
+      
+      console.log(`  [ok] clean=1 ${cam}: 0 sponsors painted, cursor hidden, glow hidden`);
     } finally {
       await page.close();
     }
@@ -583,6 +630,14 @@ async function main() {
   
   let pass = 0;
   let fail = 0;
+  
+  try {
+    await testPixelCounter();
+    pass++;
+  } catch (e) {
+    console.log(` FAIL pixel counter unit test: ${e.message}`);
+    fail++;
+  }
   
   try {
     await testNormalBoot();

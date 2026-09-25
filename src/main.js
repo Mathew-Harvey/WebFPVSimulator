@@ -75,7 +75,7 @@ import {
   fetchTrackDocument, fetchTrackTimes, postFreestyleRun, postTime,
 } from './share/board.js';
 import { findBoardTwin, hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
-import { createFlightStats, pingVisit } from './share/stats.js';
+import { captureSource, createFlightStats, pingVisit } from './share/stats.js';
 import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import { stampFor, writeStamp } from './share/stamps.js';
@@ -509,6 +509,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * or their browser sends Global Privacy Control, and nothing waits for
    * it either way. Skip visit ping in replay mode.
    */
+  /* Capture attribution (utm_source) from URL, even in replay mode.
+   * Only skip the visit ping itself for replay. */
+  captureSource();
   if (!window.location.search.includes('replay=tm-')) {
     pingVisit('sim');
   }

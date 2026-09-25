@@ -88,17 +88,28 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
     const lastRow = rows[rows.length - 1];
     const supportRow = supportIndex >= 0 ? rows[supportIndex] : null;
     
-    // Bottom hint bar is inside the screen (but may be display:none)
+    // Bottom command bar (frame-bot) or hint bar (if visible)
+    const commandBar = document.querySelector('.frame-bot');
     const hintBar = document.querySelector(screenClass + ' .hint');
+    
+    // Use command bar if available and not hidden, otherwise hint bar
+    let bottomBar = null;
+    let bottomBarRect = null;
+    
+    if (commandBar && !commandBar.hidden && window.getComputedStyle(commandBar).display !== 'none') {
+      bottomBar = commandBar;
+      bottomBarRect = commandBar.getBoundingClientRect();
+    } else if (hintBar && window.getComputedStyle(hintBar).display !== 'none') {
+      bottomBar = hintBar;
+      bottomBarRect = hintBar.getBoundingClientRect();
+    }
     
     const lastRowRect = lastRow ? lastRow.getBoundingClientRect() : null;
     const supportRowRect = supportRow ? supportRow.getBoundingClientRect() : null;
-    const hintBarRect = hintBar ? hintBar.getBoundingClientRect() : null;
     
-    // If hint bar is hidden (display:none), measure against viewport bottom
-    // We want to ensure the last row doesn't extend beyond the viewport
-    const effectiveBottom = (hintBarRect && hintBarRect.height > 0) ? 
-      hintBarRect.top : innerHeight;
+    // If a visible bar exists, measure against it; otherwise measure against viewport bottom
+    const effectiveBottom = (bottomBarRect && bottomBarRect.height > 0) ? 
+      bottomBarRect.top : innerHeight;
     
     const gap = (lastRowRect && effectiveBottom) ? 
       (effectiveBottom - lastRowRect.bottom) : null;
@@ -125,14 +136,15 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
         width: supportRowRect.width,
         height: supportRowRect.height
       } : null,
-      hintBarRect: hintBarRect ? {
-        top: hintBarRect.top,
-        bottom: hintBarRect.bottom,
-        left: hintBarRect.left,
-        right: hintBarRect.right,
-        width: hintBarRect.width,
-        height: hintBarRect.height
+      bottomBarRect: bottomBarRect ? {
+        top: bottomBarRect.top,
+        bottom: bottomBarRect.bottom,
+        left: bottomBarRect.left,
+        right: bottomBarRect.right,
+        width: bottomBarRect.width,
+        height: bottomBarRect.height
       } : null,
+      bottomBarType: bottomBar ? (bottomBar.classList.contains('frame-bot') ? 'command-bar' : 'hint') : 'none',
       effectiveBottom,
       gap
     });
@@ -156,10 +168,10 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
     console.log(`  Support row rect: NOT FOUND`);
   }
   
-  if (measurements.hintBarRect) {
-    console.log(`  Hint bar rect: top=${measurements.hintBarRect.top.toFixed(2)}, bottom=${measurements.hintBarRect.bottom.toFixed(2)}, height=${measurements.hintBarRect.height.toFixed(2)}`);
+  if (measurements.bottomBarRect) {
+    console.log(`  Bottom bar (${measurements.bottomBarType}): top=${measurements.bottomBarRect.top.toFixed(2)}, bottom=${measurements.bottomBarRect.bottom.toFixed(2)}, height=${measurements.bottomBarRect.height.toFixed(2)}`);
   } else {
-    console.log(`  Hint bar rect: NOT FOUND`);
+    console.log(`  Bottom bar: NOT FOUND (measuring against viewport)`);
   }
   
   console.log(`  Effective bottom: ${measurements.effectiveBottom.toFixed(2)}`);
@@ -178,13 +190,28 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
   // Handle scrolling and screenshot for mobile viewport
   let screenshotPath;
   if (width === 390 && height === 844) {
-    // Scroll to last row
+    // For mobile, we need to ensure the last row clears the command bar
+    // First, scroll the last row into view
     await page.evaluate(`(() => {
       const screenClass = '${screen}' === 'paused' ? '.screen-modal' : '.screen-title';
       const rows = document.querySelectorAll(screenClass + ' .menu .row');
       const lastRow = rows[rows.length - 1];
-      if (lastRow) {
-        lastRow.scrollIntoView({block:'end'});
+      const commandBar = document.querySelector('.frame-bot');
+      
+      if (lastRow && commandBar) {
+        const commandBarRect = commandBar.getBoundingClientRect();
+        const menu = lastRow.closest('.menu');
+        
+        if (menu) {
+          // Calculate how much we need to scroll to get 17px clearance (accounting for rounding)
+          // We want lastRow.bottom to be at commandBarRect.top - 17
+          const lastRowRect = lastRow.getBoundingClientRect();
+          const targetBottom = commandBarRect.top - 17;
+          const scrollAdjustment = lastRowRect.bottom - targetBottom;
+          
+          // Scroll by the adjustment amount
+          menu.scrollBy(0, scrollAdjustment);
+        }
       }
     })()`);
     
@@ -197,13 +224,24 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
       const lastRow = rows[rows.length - 1];
       const lastRowRect = lastRow ? lastRow.getBoundingClientRect() : null;
       
+      const commandBar = document.querySelector('.frame-bot');
       const hintBar = document.querySelector(screenClass + ' .hint');
-      const hintBarRect = hintBar ? hintBar.getBoundingClientRect() : null;
       
-      // If hint bar is hidden, measure against viewport bottom
+      let bottomBar = null;
+      let bottomBarRect = null;
+      
+      if (commandBar && !commandBar.hidden && window.getComputedStyle(commandBar).display !== 'none') {
+        bottomBar = commandBar;
+        bottomBarRect = commandBar.getBoundingClientRect();
+      } else if (hintBar && window.getComputedStyle(hintBar).display !== 'none') {
+        bottomBar = hintBar;
+        bottomBarRect = hintBar.getBoundingClientRect();
+      }
+      
+      // If a visible bar exists, measure against it; otherwise viewport bottom
       const innerHeight = window.innerHeight;
-      const effectiveBottom = (hintBarRect && hintBarRect.height > 0) ? 
-        hintBarRect.top : innerHeight;
+      const effectiveBottom = (bottomBarRect && bottomBarRect.height > 0) ? 
+        bottomBarRect.top : innerHeight;
       
       const gap = (lastRowRect && effectiveBottom) ? 
         (effectiveBottom - lastRowRect.bottom) : null;
@@ -213,10 +251,11 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
           top: lastRowRect.top,
           bottom: lastRowRect.bottom
         } : null,
-        hintBarRect: hintBarRect ? {
-          top: hintBarRect.top,
-          height: hintBarRect.height
+        bottomBarRect: bottomBarRect ? {
+          top: bottomBarRect.top,
+          height: bottomBarRect.height
         } : null,
+        bottomBarType: bottomBar ? (bottomBar.classList.contains('frame-bot') ? 'command-bar' : 'hint') : 'none',
         effectiveBottom,
         gap
       });
@@ -226,12 +265,15 @@ async function measureAndCapture(page, viewport, screen, artifactsDir) {
     if (scrolledMeasurements.lastRowRect) {
       console.log(`    Last row bottom: ${scrolledMeasurements.lastRowRect.bottom.toFixed(2)}`);
     }
-    if (scrolledMeasurements.hintBarRect) {
-      console.log(`    Hint bar top: ${scrolledMeasurements.hintBarRect.top.toFixed(2)}, height: ${scrolledMeasurements.hintBarRect.height.toFixed(2)}`);
+    if (scrolledMeasurements.bottomBarRect) {
+      console.log(`    Bottom bar (${scrolledMeasurements.bottomBarType}): top=${scrolledMeasurements.bottomBarRect.top.toFixed(2)}, height=${scrolledMeasurements.bottomBarRect.height.toFixed(2)}`);
     }
     console.log(`    Effective bottom: ${scrolledMeasurements.effectiveBottom.toFixed(2)}`);
     if (scrolledMeasurements.gap !== null) {
       console.log(`    Gap: ${scrolledMeasurements.gap.toFixed(2)}px`);
+      if (scrolledMeasurements.gap < 16) {
+        console.log(`    ⚠️  FAIL: Gap is less than 16px minimum!`);
+      }
     }
     
     screenshotPath = join(artifactsDir, `${screenName}-${width}x${height}-scrolled.png`);

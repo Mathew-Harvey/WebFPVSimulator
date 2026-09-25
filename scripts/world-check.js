@@ -20,6 +20,10 @@
  * Usage: node scripts/world-check.js [--only=name] [--verbose] [--targets]
  * Exit code is the failed guards, plus failed targets with --targets.
  *
+ * SCENARIOS and fly are exported for scripts/world-golden.js, which flies
+ * these same scenarios and pins every step of them. Importing this file runs
+ * nothing: the checks below run only when it is the script node was given.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -39,7 +43,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 
@@ -180,7 +184,7 @@ function heightHold(ctx, st, z) {
  * and may set ctx.angle. The ground plane is level grass at z = 0 minus the
  * rest height, as the shell raises it, unless sc.noGround.
  */
-async function fly(sc, frame = { o: [0, 0, 0], quarter: 0 }) {
+export async function fly(sc, frame = { o: [0, 0, 0], quarter: 0 }) {
   const af = sc.airframe || 0;
   const sim = await loadSim(wasm);
   call(sim, 'sim_set_airframe', af);
@@ -301,7 +305,7 @@ function r3(v) {
 
 /* ------------------------------------------------------------------ */
 
-const SCENARIOS = [];
+export const SCENARIOS = [];
 function scenario(name, fn) {
   SCENARIOS.push({ name, fn });
 }
@@ -594,19 +598,21 @@ scenario('the train', async () => {
   check('and throws it no faster than a train goes', maxSp < 30, `${r3(maxSp)} m/s`);
 });
 
-console.log(`world-check: dist/sim.wasm against constructed worlds\n`);
-for (const s of SCENARIOS) {
-  if (only && !s.name.toLowerCase().includes(only.toLowerCase())) {
-    continue;
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  console.log(`world-check: dist/sim.wasm against constructed worlds\n`);
+  for (const s of SCENARIOS) {
+    if (only && !s.name.toLowerCase().includes(only.toLowerCase())) {
+      continue;
+    }
+    console.log(`  ${s.name}`);
+    try {
+      /* eslint-disable no-await-in-loop */
+      await s.fn();
+    } catch (e) {
+      failures += 1;
+      console.log(`  FAIL  ${s.name}: ${e.message}`);
+    }
   }
-  console.log(`  ${s.name}`);
-  try {
-    /* eslint-disable no-await-in-loop */
-    await s.fn();
-  } catch (e) {
-    failures += 1;
-    console.log(`  FAIL  ${s.name}: ${e.message}`);
-  }
+  console.log(`\nworld-check: ${failures === 0 ? 'all passed' : `${failures} FAILED`}`);
+  process.exit(failures);
 }
-console.log(`\nworld-check: ${failures === 0 ? 'all passed' : `${failures} FAILED`}`);
-process.exit(failures);

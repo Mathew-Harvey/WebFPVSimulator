@@ -45600,6 +45600,196 @@ failing with a message about tags.
                                    checks stand: check:clip 678 of 678
     git diff --stat vendor/betaflight   empty
 
+## 2026-09-25 | board | The tab check lets the Patreon link through, and nothing else
+
+Board only. Nothing in this repository changed except this entry. The
+board commit is `21b7380` in `Mathew-Harvey/WebFPVSimulator-LeaderBoard`,
+on `claude/amazing-babbage-pkvwvf`, pushed. The board's main is untouched,
+because a push there deploys webfpv.org/board and nobody asked for that.
+
+The owner's request: the board's `npm test` failed exactly one check on
+main, "nothing app.js builds opens a bare new tab or asks for noopener",
+and had since the Patreon link arrived in f1dc902 on 2026-09-22. Sessions
+since then recorded it as a known failure. The check looked for '_blank'
+anywhere in app.js with no allowance, and the Patreon link opens in a tab
+of its own with noopener, which is right: Patreon is outside the product,
+and given the webfpv-sim name a click would send the visitor's running
+simulator to Patreon. The owner asked for the Patreon link to be allowed
+without the check getting any weaker for a link to the simulator.
+
+- **One named line.** app.js now says how a link leaves the product once,
+  as `OUTSIDE_PRODUCT_LINK = { target: '_blank', rel: 'noopener noreferrer' }`,
+  and bindPatreonLinks takes its target and rel from it. Nothing a visitor
+  sees changes: the three anchors already carry the same two attributes in
+  the markup, and the script sets the same values it did.
+- **Excluded by its exact text, and nothing else.** The self test removes
+  that one line from the scan, requires it to appear exactly once, and
+  requires both uses of the name to sit in bindPatreonLinks. Every other
+  line of app.js is still scanned, a simulator link that borrows the
+  constant fails the count, and the count of named targets, ten since the
+  maps tab, is untouched. Why this is safe is written above the check in
+  src/selftest.js and above the constant in app.js.
+- **The scan is stricter than it was, which the owner did not ask for.**
+  The old `noopener'` matched `rel = 'noopener'` and not
+  `rel = 'noopener noreferrer'`, the spelling the Patreon link brought, so
+  a Fly link that picked that rel up beside its SIM_WINDOW target passed
+  while opening a fresh simulator on every click. Shown on the app.js from
+  before the Patreon link: the old expression passes `noopener noreferrer`,
+  `noreferrer` and `"_blank"` on the chase link. Comments now come out
+  first and the words are matched in any quoting and any case, noreferrer
+  included because the spec makes it imply noopener. It can go back to
+  the old expression if the owner would rather not have it.
+- **Not done: the page's own anchors.** The fallback anchors in
+  index.html are checked for target="webfpv-sim" but not for a
+  rel="noopener" beside it. Nothing there is wrong today. It is one more
+  line if the owner wants it.
+
+### What went wrong
+
+Board main moved while this was being made: dcc8d5f to 7d1f89b, the maps
+tab, pushed at 10:38 UTC by the session in the published freestyle maps
+entries. The first version was written and tested on dcc8d5f. Reapplied
+on 7d1f89b it conflicted in src/selftest.js at the count of named
+targets, six there and ten here. The ten was kept, three mentions of
+"six" in the new comment were reworded to name no number, so the next
+change to that count cannot leave the comment stale, and every check
+below was run again on the rebased tree.
+
+The first dash check errored, because grep in this container would not
+take a \x{2013} pattern, and printed its "no dashes" fallback anyway. It
+was not evidence. It was redone in node: none of the 88 added lines
+carries an em or en dash.
+
+### RUN LOG
+
+    board npm test, before      7d1f89b: exit 1, 383 pass, 1 FAIL, the
+                                check above; 1 skip, the shipped hash
+    board npm test, after       21b7380: exit 0, 386 pass, all passed;
+                                1 skip, the shipped hash, because
+                                BOARD_SELFTEST_PASSWORD is unset
+    mutations, real selftest    11 lines planted in a scratch copy of
+                                app.js, each failing the check it should:
+                                _blank by setAttribute and in double
+                                quotes; rel noopener, noopener noreferrer
+                                and noreferrer on the chase link; the
+                                constant borrowed; its uses moved out of
+                                bindPatreonLinks; the exempt line edited;
+                                the exempt line pasted twice; a '/*' in a
+                                string ahead of a planted _blank. Prose in
+                                a comment that says the words: all passed.
+                                Run on dcc8d5f and again on the rebased
+                                tree, the same result both times
+    old against new             app.js at 1d9e869, before the Patreon
+                                link: the old expression passes noopener
+                                noreferrer, noreferrer and "_blank" on the
+                                chase link, the new scan fails all three,
+                                and both pass it unmutated
+    comment stripping           188 comments found, 188 '/*' in app.js;
+                                the stripped file parses as a module; 3
+                                words left, all on the exempt line
+    lint:licence, lint:nouns    PASS, PASS
+    npm run verify              not run: nothing in the physics, the
+                                plant, the module ABI or the build
+                                changed, and it does not cover the board
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | git, board | The Patreon tab check, fast forwarded onto board main for the owner to look at
+
+The owner, on the entry above: "fast forward board main, i'll look at
+it". That is the approval to put 21b7380 on the board's main, and it
+covers that commit only: the exemption for the Patreon link, the stricter
+scan the owner did not ask for, and the two checks that pin the
+exemption. It is recorded here because this repository is the copy of
+record for the three. The verification scale chosen is the owner looking
+at it. This repository's main is not part of it: this entry and the one
+above are on claude/amazing-babbage-pkvwvf, and stay there until the
+owner says otherwise.
+
+- **A fast-forward.** Fetched first: board main was still 7d1f89b, the
+  merge base, with 21b7380 one commit ahead of it, so main moved with no
+  merge commit and nothing rewritten, 7d1f89b..21b7380 at 11:08:22 UTC.
+  The board's npm test ran again on 21b7380 just before the push: exit 0,
+  386 pass, the one skip.
+- **It deployed on its own.** A push to board main is a deploy of
+  webfpv.org/board. Measured through the domain: app.js without
+  OUTSIDE_PRODUCT_LINK before the push, and with it at 11:09:12 UTC, 50 s
+  after, byte for byte the app.js in 21b7380. app.js is served
+  cache-control: no-store, so a plain reload picks it up.
+
+What to look for, on webfpv.org/board: the Patreon links in the
+masthead, the spine and the footer each open Patreon in a new tab and
+leave the board where it was. Fly on two different tracks, or on a track
+and then a map, lands in the same simulator tab and brings it forward.
+What would count as wrong: a Patreon click that replaces the simulator
+tab or the board, or a Fly click that opens a second simulator.
+
+### RUN LOG
+
+    git fetch, board         main 7d1f89b, unmoved since the rebase; the
+                             merge base of main and 21b7380 is 7d1f89b
+    board npm test           21b7380: exit 0, 386 pass, all passed; 1
+                             skip, the shipped hash
+    board main               7d1f89b..21b7380, fast-forward, pushed at
+                             11:08:22 UTC
+    webfpv.org/board         before: app.js 200, no-store, no
+                             OUTSIDE_PRODUCT_LINK. At 11:09:12: app.js
+                             with it, sha256 b619b03f... on both the
+                             live file and 21b7380's; the page 200 with
+                             its three Patreon anchors; /api/health
+                             {"ok":true,"store":"postgres"}
+    git fetch, simulator     main 535331f, unmoved; this branch 5975db2
+                             plus this entry; this main untouched
+
+## 2026-09-25 | git | The tab check's entries go to main, merged with the tags fix
+
+The owner, on the entry above: "yes fast forward simulator main too".
+That is the approval to put claude/amazing-babbage-pkvwvf on this main.
+It covers PROGRESS.md only: the two entries above and this one. The
+branch changes no other file. The line in the entry above saying they
+stay on the branch until the owner says otherwise is overtaken by this.
+
+**Not a pure fast-forward, because main moved while the owner
+answered.** 207b9d3 and 43af247, the tags fix from a parallel session and
+its entry, landed on this main at 10:57 and 11:13 UTC. Main came into the
+branch by a merge, 98e5c42, merge-base 535331f, one history, the way the
+published maps branch took Stage B in. This main then moves to the branch
+by fast-forward, so nothing is rewritten on either side and no commit on
+main is lost. PROGRESS.md was the only conflict, where both sides
+appended. The merge keeps main's file byte for byte and puts this
+branch's entries after it, which is why the tags entries now sit between
+the published freestyle maps entries and these. One phrase in the first
+of these said "the session in the entry above" for the maps session,
+which the merge made wrong. It names the maps entries now, changed in the
+commit that adds this entry.
+
+**The same session carried board main past 21b7380.** Its board push was
+refused because 21b7380 had just landed, so it merged it in without
+forcing, 6dee444, and board main fast-forwarded there at 11:12:31 UTC.
+The tab check is on it and green: the board's npm test on 6dee444 passes
+all 399, the one skip aside, with the three checks this work added among
+them. The live app.js is still byte for byte the one in 21b7380, because
+the tags fix does not touch it.
+
+Nothing in this main's code changes with this push. The merged tree
+differs from 43af247 in PROGRESS.md alone, so no check here can see it,
+and none was run for it.
+
+### RUN LOG
+
+    git fetch, simulator       main 535331f..43af247, the tags fix;
+                               merge-base with this branch 535331f
+    merge                      98e5c42, main into the branch; PROGRESS.md
+                               the only conflict, resolved as main's file
+                               for a prefix and this branch's two entries
+                               for the suffix, checked in node; the merged
+                               tree differs from main in PROGRESS.md only
+    git fetch, board           main 21b7380..6dee444, the tags branch
+                               merged over it; 21b7380 is an ancestor
+    board npm test             6dee444: exit 0, 399 pass, all passed; 1
+                               skip, the shipped hash
+    webfpv.org/board           app.js sha256 b619b03f..., the same as in
+                               21b7380 and in 6dee444
+
 ## 2026-09-25 | share | The shell's publish goes up as a copy when the board has the id
 
 The owner: "fix the shell publish conflict fork bug", the second item the

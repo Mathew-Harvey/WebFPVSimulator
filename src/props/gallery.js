@@ -1,19 +1,30 @@
 /*
  * gallery.js: lay every freestyle asset out on a plot and draw it the way a
- * built map draws it. See gallery.html for the query parameters, and one
+ * built map draws it. See gallery.html for the query parameters, and three
  * more it does not list:
  *
  *   ?dims={"floors":8}    JSON merged over the shown asset's dimensions,
  *                         so a size can be looked at without a map
+ *   ?time=dusk            a built map's time of day (golden, noon, dusk,
+ *                         overcast), lit, skied and graded from
+ *                         src/maps/built/looks.js; golden by default
+ *   ?ground=grass         the ground painted in that map ground's colour
+ *                         (concrete, tarmac, grass, dirt) instead of the
+ *                         town's terrain
  *
  * window.__gallery carries the renderer (its info counts the whole last
  * frame, every pass of the post chain), the props group, and how many
  * batches the kit made, for a check to read.
  *
- * It uses the town's lights, sky and post chain exactly as
- * src/maps/city/index.js sets them up, so this page is a faithful preview,
- * and it sets window.__galleryReady once the first frame is drawn, which is
- * what scripts/shots.js waits on.
+ * It uses the town's lights and sky as src/maps/city/index.js sets them
+ * up, and the built map's own post chain and ridge line (BuiltPipeline and
+ * buildBackdrop in src/maps/built/index.js), so this page is a faithful
+ * preview of a built map: the town's chain inks the second difference of
+ * linear depth, which on open ground draws a dark band along the horizon
+ * that no built map shows, and the town's ridge flats end in cut slabs.
+ * Importing them brings the built map's modules with it, which a page for
+ * looking at art can afford. It sets window.__galleryReady once the
+ * first frame is drawn, which is what scripts/shots.js waits on.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -33,8 +44,9 @@
 
 import * as THREE from 'three';
 import { PAL } from '../maps/city/vendored/core/palette.js';
-import { Pipeline } from '../maps/city/vendored/core/post.js';
-import { buildSky, buildDistantHills } from '../maps/city/vendored/core/sky.js';
+import { BuiltPipeline, buildBackdrop } from '../maps/built/index.js';
+import { TIMES, GROUNDS, kitLook, paintLights, paintSky, paintPost } from '../maps/built/looks.js';
+import { buildSky } from '../maps/city/vendored/core/sky.js';
 import { cel } from '../maps/city/vendored/core/toon.js';
 import { PROPS, FURNITURE, partsOf, planBounds } from './catalog.js';
 import { PROP_GROUPS, styleDims } from './types.js';
@@ -44,20 +56,24 @@ import { sincos } from './trig.js';
 import { defaultDims, ELEMENTS } from '../trackbuilder/elements.js';
 
 const params = new URLSearchParams(window.location.search);
+/* The time of day and the ground, as a built map would have them. */
+const timeId = Object.prototype.hasOwnProperty.call(TIMES, params.get('time')) ? params.get('time') : 'golden';
+const T = TIMES[timeId];
+const G = Object.prototype.hasOwnProperty.call(GROUNDS, params.get('ground')) ? GROUNDS[params.get('ground')] : null;
 const canvas = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.setClearColor(new THREE.Color(PAL.fog), 1);
+renderer.setClearColor(new THREE.Color(T.fog.color), 1);
 /* The post chain renders several passes a frame, and three.js clears its
  * counts at every one of them by default, so the triangles it reported were
  * the last full screen quad's. Cleared once a frame instead, in frame(). */
 renderer.info.autoReset = false;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(PAL.fog, 60, 420);
+scene.fog = new THREE.Fog(T.fog.color, 60, 420);
 const camera = new THREE.PerspectiveCamera(55, 1, 0.25, 900);
 
 /* The town's two light anime setup. */
@@ -73,12 +89,17 @@ const fill = new THREE.DirectionalLight(PAL.fill, 1.08);
 scene.add(fill, fill.target);
 const bounce = new THREE.DirectionalLight(0xd8cbe8, 0.34);
 scene.add(bounce, bounce.target);
-scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.12));
+const hemi = new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.12);
+scene.add(hemi);
+paintLights({ sun, fill, bounce, hemi }, T);
 const sky = buildSky(scene, 500);
-buildDistantHills(scene);
+paintSky(sky, T);
+buildBackdrop(scene, 1, T.hills);
 
-/* Ground: the town's terrain colour, and a paved plot. */
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), cel({ color: 0xc4c4b6, bands: 3, tint: 0x7a7396 }));
+/* Ground: the town's terrain colour, or a map ground's. */
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), G
+  ? cel({ color: G.plot, bands: 3, tint: G.tint })
+  : cel({ color: 0xc4c4b6, bands: 3, tint: 0x7a7396 }));
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
@@ -125,7 +146,7 @@ if (only && FURNITURE[only]) {
 }
 
 /* Lay them out in a row, left to right, each on its own footprint. */
-const kit = new PropKit();
+const kit = new PropKit(kitLook(timeId));
 let cursor = 0;
 let tallest = 0;
 const placed = [];
@@ -204,15 +225,16 @@ camera.lookAt(at);
 /* Lights follow the plot. */
 const focus = at.clone();
 sun.target.position.copy(focus);
-sun.position.copy(focus).add(new THREE.Vector3(-52, 62, 56));
+sun.position.copy(focus).add(new THREE.Vector3(...T.sun.at));
 fill.target.position.copy(focus);
-fill.position.copy(focus).add(new THREE.Vector3(48, 26, -44));
+fill.position.copy(focus).add(new THREE.Vector3(...T.fill.at));
 bounce.target.position.copy(focus);
-bounce.position.copy(focus).add(new THREE.Vector3(10, -18, 40));
+bounce.position.copy(focus).add(new THREE.Vector3(...T.bounce.at));
 sky.dome.position.copy(camera.position);
 sky.clouds.position.copy(camera.position);
 
-const pipeline = new Pipeline(renderer, scene, camera, { pixelBudget: 2.6e6 });
+const pipeline = new BuiltPipeline(renderer, scene, camera, { pixelBudget: 2.6e6 });
+paintPost(pipeline, T);
 function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;

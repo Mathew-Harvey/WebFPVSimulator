@@ -17,10 +17,11 @@
  *
  * WHAT THIS ADDS:
  *
- *   1. The other three maps. Check 16 covers city against field. Industrial
- *      the city is the only freestyle world now, and it copies nothing into
- *      their own directory precisely so choosing one does not drag in the
- *      city's, and nothing was measuring that.
+ *   1. Your map. Check 16 covers city against field. Your map is the other
+ *      freestyle world, it borrows a named handful of the town's modules
+ *      and no more (see BORROWS), and its asset library, src/props, must
+ *      stay off the wire until it is chosen, apart from the one data table
+ *      the builder's element table reads (see BOOT_PROPS).
  *   2. Release, not just laziness. After switching away, three.js's own count
  *      of live geometries and textures has to come back down. A lazy load
  *      that never frees is a leak with extra steps.
@@ -29,8 +30,9 @@
  * WASM module and this has nothing to say about the flight model.
  *
  * Usage:
- *   node scripts/memory-check.js
+ *   node scripts/memory-check.js                 the town and Your map
  *   node scripts/memory-check.js --map=city      just one map
+ *   node scripts/memory-check.js --map=built,city  these, in this order
  *
  * This file is part of WebFPVSimulator.
  *
@@ -56,9 +58,34 @@ import { SETTINGS_KEY } from '../src/ui/ui.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
-/* The four dressed worlds. `custom` is the field and is the baseline: it is
- * loaded at boot because the title screen has a world behind it. */
-const HEAVY = ['city'];
+/* The worlds fetched only when chosen, which is both freestyle worlds.
+ * `custom` is the field and is the baseline: it is loaded at boot because
+ * the title screen has a world behind it. Both are the default run, because
+ * a check that only ever visits the town says nothing about Your map.
+ *
+ * Your map goes FIRST. It borrows modules from the town, and a module the
+ * page has already imported is not fetched again, so visited after the town
+ * its borrowing is invisible and the BORROWS check below passes by seeing
+ * nothing. The town learns nothing from the order: it imports nothing of
+ * Your map's. */
+const HEAVY = ['built', 'city'];
+
+/*
+ * WHAT BOOT MAY TAKE FROM THE PROPS LIBRARY, AND WHY IT IS NOT NOTHING.
+ *
+ * src/props is Your map's asset library: the layouts, the meshes and the
+ * solids the craft collides with, and none of it belongs on the wire before
+ * Your map is chosen. The one exception is src/props/types.js, the asset
+ * table as data (names, groups, styles, rough heights) with no imports of
+ * its own. The builder's element table, src/trackbuilder/elements.js, lists
+ * the assets from it, and the track document's model, src/trackbuilder/
+ * model.js, reads a prop's styles and gap points from it to normalise a
+ * map. The simulator imports both at boot for its tracks (through
+ * src/game/trackdoc.js and src/trackbuilder/storage.js), so the data comes
+ * along. The list is exact, so a second props module reaching boot fails
+ * here by name rather than riding in under the first.
+ */
+const BOOT_PROPS = ['types.js'];
 
 /*
  * Every URL the page has fetched, as a plain list. Resource timing is the
@@ -131,7 +158,7 @@ function parseArgs(argv) {
   for (const a of argv) {
     const m = a.match(/^--map=(.*)$/);
     if (m) {
-      opts.maps = [m[1]];
+      opts.maps = m[1].split(',').map((id) => id.trim()).filter(Boolean);
     }
   }
   return opts;
@@ -186,6 +213,20 @@ async function main() {
     }
     if (!failures.length) {
       console.log(`none of ${lazy.join(', ')} fetched at boot`);
+    }
+    const bootProps = bootUrls
+      .map((u) => u.split(/[?#]/)[0])
+      .filter((u) => u.includes('/src/props/'));
+    const strayProps = bootProps.filter(
+      (u) => !BOOT_PROPS.some((a) => u.endsWith(`/src/props/${a}`)),
+    );
+    if (strayProps.length) {
+      failures.push(
+        `${strayProps.length} src/props module(s) fetched at boot, first ${strayProps[0]}`,
+      );
+    } else {
+      const seen = bootProps.map((u) => u.slice(u.lastIndexOf('/src/props/') + 1));
+      console.log(`src/props at boot: ${seen.length ? seen.join(', ') : 'nothing'}`);
     }
 
     /* Half two, per map: choosing it fetches its graph and nobody else's,

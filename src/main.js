@@ -395,14 +395,15 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * 2026-08-30, and their three entries went with them. `npm run lint:memory`
  * prints the fetched count per map beside this number.
  *
- * built: index.js, place.js and starter.js, the three files under its own
- * directory, measured from the resource entries on a cold load of Your map.
- * It also fetches src/props and twelve of the town's vendored modules
- * (scripts/memory-check.js lists them), but the counter matches one prefix
- * and neither of those is this map's alone. With no entry here it expected
- * the default four, got three, and the bar sat at 75 percent until the
- * import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 3 };
+ * built: index.js, place.js, starter.js and looks.js, the four files under
+ * its own directory, measured from the resource entries on a cold load of
+ * Your map. It also fetches src/props and twelve of the town's vendored
+ * modules (scripts/memory-check.js lists them), but the counter matches one
+ * prefix and neither of those is this map's alone. The entry is written out
+ * although it is the default, because it was three before looks.js came,
+ * and with no entry then the bar sat at 75 percent until the import
+ * resolved. */
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 4 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -656,6 +657,22 @@ export async function boot({ loading, bootStart, mapId }) {
   if (mapId && ui.settings.map !== mapId) {
     ui.settings.map = mapId;
     ui.renderMenu();
+  }
+  /*
+   * A freestyle world seated at boot is also remembered as the pilot's
+   * world, which is what seatMap does for one chosen on the picker. Without
+   * it the builder's Fly this map link (?map=built) seated Your map while
+   * freestyleMap still named the town from an earlier visit, so a pilot who
+   * went through Race on the gate and then chose Freestyle landed in the
+   * town. Written here rather than through seatMap, which would put the
+   * title up and fire onSettings in the middle of boot. Outside the guard
+   * above, because a blob saved before this line existed can already hold
+   * map 'built' beside freestyleMap 'city', and that pilot is the same case.
+   */
+  const bootWorld = mapById(ui.settings.map);
+  if (bootWorld.mode === 'freestyle' && ui.settings.freestyleMap !== bootWorld.id) {
+    ui.settings.freestyleMap = bootWorld.id;
+    ui.persistSettings();
   }
   /*
    * THE FLIGHT CONTROLLER'S BYTES ARE ASKED FOR BEFORE THE BOARD IS, AND
@@ -4340,6 +4357,12 @@ export async function boot({ loading, bootStart, mapId }) {
      * has built one, so a run posted from it would sit on one table beside
      * runs flown somewhere else entirely. Refused here, first, so the pilot
      * is not walked through the other refusals to reach this one.
+     *
+     * The results row is greyed on a built map with the same reason
+     * (BUILT_OFF_BOARD in src/ui/ui.js), because a refusal belongs on the
+     * row before it is pressed and not in a notice after. This stays as the
+     * backstop for a press that reaches it some other way, a harness hook
+     * included.
      */
     if (view.id === 'built') {
       notice = {

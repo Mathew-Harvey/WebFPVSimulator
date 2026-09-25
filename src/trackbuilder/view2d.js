@@ -158,6 +158,13 @@ export function snapYaw(type, yaw, free = false) {
  * there would make a 300 element map stutter under the mouse. Position and
  * heading are left out of the key on purpose: they are applied afterwards,
  * so dragging a crane never re-runs its layout.
+ *
+ * The element's id IS in the key. A tree, a container or a bando is laid
+ * out from seedOf in src/props/parts.js, the id and the variant, so two
+ * equal trees are two different trees. Forty trees placed with the same
+ * settings differ by up to 2.7 m at an edge of their plan rectangles, and
+ * forty container stacks by 0.35 m, so sharing one cached rectangle drew
+ * an outline off the element's own parts and let a click on it miss.
  */
 const boundsCache = new Map();
 
@@ -166,7 +173,7 @@ function propKey(el) {
 }
 
 export function localBoundsOf(el) {
-  const key = propKey(el);
+  const key = `${el.id}|${propKey(el)}`;
   let b = boundsCache.get(key);
   if (!b) {
     if (boundsCache.size > 4000) {

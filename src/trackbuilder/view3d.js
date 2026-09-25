@@ -154,13 +154,14 @@ async function loadFreestyle() {
         import('../props/solids.js'),
       ]);
       try {
-        const [kit, palette, post, sky, toon, outline] = await Promise.all([
+        const [kit, palette, post, sky, toon, outline, looks] = await Promise.all([
           import('../props/kit.js'),
           import('../maps/city/vendored/core/palette.js'),
           import('../maps/city/vendored/core/post.js'),
           import('../maps/city/vendored/core/sky.js'),
           import('../maps/city/vendored/core/toon.js'),
           import('../maps/city/vendored/core/outline.js'),
+          import('../maps/built/looks.js'),
         ]);
         CEL = {
           PropKit: kit.PropKit,
@@ -169,7 +170,9 @@ async function loadFreestyle() {
           buildSky: sky.buildSky,
           buildDistantHills: sky.buildDistantHills,
           cel: toon.cel,
+          flat: toon.flat,
           setOutlineResolution: outline.setOutlineResolution,
+          looks,
         };
       } catch (e) {
         celError = e.message ?? String(e);
@@ -1711,9 +1714,17 @@ export class View3D {
     const fill = new THREE.DirectionalLight(PAL.fill, 1.08);
     const bounce = new THREE.DirectionalLight(0xd8cbe8, 0.34);
     scene.add(sun, sun.target, fill, fill.target, bounce, bounce.target);
-    scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.12));
+    const hemi = new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.12);
+    scene.add(hemi);
     const sky = CEL.buildSky(scene, SKY_R);
     const hills = CEL.buildDistantHills(scene);
+    /* Which ridge each flat is, from the colour the town built it in, so a
+     * time of day can repaint it (seatScene). */
+    hills.traverse((o) => {
+      if (o.isMesh) {
+        o.userData.tone = o.material.color.getHex() === PAL.hillFar ? 'far' : 'near';
+      }
+    });
 
     const Pipeline = previewPipelineClass();
     this.fs = {
@@ -1722,12 +1733,16 @@ export class View3D {
       sun,
       fill,
       bounce,
+      hemi,
       sky,
       hills,
       pipeline: new Pipeline(this.renderer, scene, this.camera, { pixelBudget: 2.6e6 }),
       /* One kit for every asset: finish() hands its batches over and
-       * starts empty again. */
+       * starts empty again. Made again with the time's look when the
+       * map's time of day changes (seatScene). */
       kit: new CEL.PropKit(),
+      /* The time of day the scene is lit for, '' until the first seat. */
+      time: '',
       ground: null,
       groundKey: '',
       sizedFor: '',
@@ -1737,21 +1752,57 @@ export class View3D {
   }
 
   /*
+   * THE MAP'S SCENE: its time of day, lit and painted from the same table
+   * the simulator paints from (src/maps/built/looks.js), so the preview's
+   * dusk is the game's. The lights' colours, the sky, the fog, the ridges
+   * and the grade follow at once. The assets are drawn again in the time's
+   * look, since at dusk the kit dims their glass and lights their windows,
+   * so the kept drawings are all let go and the kit made anew. Where the
+   * lights stand is seatFreestyleGround's, which follows the time too.
+   */
+  seatScene(doc) {
+    const fs = this.fs;
+    const L = CEL.looks;
+    const { time: T, timeId } = L.lookOf(doc);
+    if (fs.time === timeId) {
+      return;
+    }
+    L.paintLights(fs, T);
+    L.paintSky(fs.sky, T);
+    L.paintPost(fs.pipeline, T);
+    fs.scene.background.set(T.fog.color);
+    fs.scene.fog.color.set(T.fog.color);
+    /* The ridges' materials are the toon kit's cached flats, shared by
+     * colour, so each is swapped for the flat of its new colour rather
+     * than repainted. */
+    fs.hills.traverse((o) => {
+      if (o.isMesh) {
+        o.material = CEL.flat({ color: T.hills[o.userData.tone], fog: false });
+      }
+    });
+    this.sweepAssets(null);
+    fs.kit = new CEL.PropKit(L.kitLook(timeId));
+    fs.time = timeId;
+  }
+
+  /*
    * The plot, the land round it, the grid, and the lights seated on the
-   * plot. Rebuilt only when the field changes size, since none of it
-   * depends on anything else in the document.
+   * plot. Rebuilt only when the field, the ground or the time of day
+   * changes, since none of it depends on anything else in the document.
    *
-   * The plot is the town's paving colour, concreteMid, which is what the
-   * built map's yard is painted round, and the land past it is the town's
-   * terrain colour, the one the gallery stands on. Flat colour rather than
-   * the yard's painted slabs: the grid is what gives the preview its scale,
-   * and slab joints under it would be a second grid that does not line up.
+   * The plot is the map's ground in its one flat colour (the town's paving
+   * colour, concreteMid, for concrete, which is what the built map's yard
+   * is painted round) and the land past it is the ground's terrain colour,
+   * for concrete the one the gallery stands on. Flat colour rather than
+   * the map's painted slabs or bays: the grid is what gives the preview
+   * its scale, and a second pattern under it would fight it.
    */
   seatFreestyleGround(doc) {
     const fs = this.fs;
     const f = doc.field;
     const step = gridStep(f);
-    const key = `${f.width}|${f.depth}|${step}`;
+    const { time: T, ground: G, timeId, groundId } = CEL.looks.lookOf(doc);
+    const key = `${f.width}|${f.depth}|${step}|${timeId}|${groundId}`;
     if (fs.groundKey === key) {
       return;
     }
@@ -1772,7 +1823,7 @@ export class View3D {
 
     const plot = new THREE.Mesh(
       new THREE.PlaneGeometry(W, D),
-      CEL.cel({ color: CEL.PAL.concreteMid, bands: 3, tint: 0x6f6790 }),
+      CEL.cel({ color: G.plot, bands: 3, tint: G.tint }),
     );
     /* A centimetre down, where the race preview's ground is, because the
      * ground paint buildGroundLogo draws for both sits 4 to 8 mm up on the
@@ -1787,7 +1838,7 @@ export class View3D {
     const LAND = 6000;
     const land = new THREE.Mesh(
       new THREE.PlaneGeometry(LAND, LAND),
-      CEL.cel({ color: 0xc4c4b6, bands: 3, tint: 0x7a7396 }),
+      CEL.cel({ color: new THREE.Color(G.terrain.base).getHex(), bands: 3, tint: 0x7a7396 }),
     );
     land.position.set(W / 2, D / 2, -0.12);
     land.receiveShadow = true;
@@ -1835,9 +1886,9 @@ export class View3D {
       light.target.updateMatrixWorld();
     };
     const SUN_BACK = 260;
-    seat(fs.sun, new THREE.Vector3(-52, 62, 56).normalize().multiplyScalar(SUN_BACK));
-    seat(fs.fill, new THREE.Vector3(48, 26, -44));
-    seat(fs.bounce, new THREE.Vector3(10, -18, 40));
+    seat(fs.sun, new THREE.Vector3(...T.sun.at).normalize().multiplyScalar(SUN_BACK));
+    seat(fs.fill, new THREE.Vector3(...T.fill.at));
+    seat(fs.bounce, new THREE.Vector3(...T.bounce.at));
     const half = halfDiag + 12;
     Object.assign(fs.sun.shadow.camera, {
       left: -half, right: half, top: half, bottom: -half, near: 1, far: SUN_BACK + halfDiag + 120,
@@ -1858,6 +1909,7 @@ export class View3D {
     const g = new THREE.Group();
     this.pickables = [];
     if (fs) {
+      this.seatScene(doc);
       this.seatFreestyleGround(doc);
     } else {
       g.add(this.fieldGround(doc));
@@ -1978,7 +2030,7 @@ export class View3D {
        * does not throw it again. A kit that threw part way through may hold
        * half an element's batches, so it is replaced. */
       console.error(`3D preview: the ${el.type} asset could not be drawn`, e);
-      this.fs.kit = new CEL.PropKit();
+      this.fs.kit = new CEL.PropKit(CEL.looks.kitLook(this.fs.time));
       this.assets.set(key, { group: null });
       return null;
     }

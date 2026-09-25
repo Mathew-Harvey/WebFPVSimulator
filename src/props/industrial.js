@@ -56,11 +56,15 @@ import { canvas } from './textures.js';
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 /*
- * A square root for numbers that reach the physics, from + - * / alone,
- * for the reason ./trig.js gives: ECMAScript leaves Math.sqrt's last bit to
- * the engine. Newton's step from above falls monotonically onto the root,
- * and it stops the first time a step does not fall, so the same argument
- * gives the same bits everywhere. Render code keeps using Math.sqrt.
+ * A square root for numbers that reach the physics, from + - * / alone.
+ * Newton's step from above falls monotonically onto the root, and it stops
+ * the first time a step does not fall, so the same argument gives the same
+ * bits everywhere. Math.sqrt would too: ECMA-262 (21.3.2.33) makes it
+ * correctly rounded, and it is Math.hypot, like the sines ./trig.js
+ * replaces, that the language leaves to the engine. This one stays because
+ * every layout that reaches the physics was written with it, and swapping
+ * it would move the recorded placements by an ulp for nothing. Render code
+ * keeps using Math.sqrt.
  */
 function rootOf(x) {
   if (!(x > 0)) {
@@ -1226,20 +1230,41 @@ export function mastDraw(el, parts, K) {
 }
 
 /* ------------------------------------------------------------------ *
- * THE CHIMNEY. A tapering brick stack on a flared foot, iron hoops up it, a
- * corbelled cap with a dark flue, a caged ladder, a lightning conductor. A
- * short one is a bathhouse's, with its name down the stack in white under
- * the hot spring mark; a tall one wears the red and white rings and a
- * railed gallery with lamps. Solid as three capsules that follow the taper,
- * a ring of small ones round the rim, and the gallery's rails.
+ * THE CHIMNEY. A tapering brick stack on a darker foot course, iron hoops
+ * up it, a corbelled cap with a dark flue, a caged ladder, a lightning
+ * conductor. A short one is a bathhouse's, with its name down the stack in
+ * white under the hot spring mark; a tall one wears the red and white
+ * rings and a railed gallery with lamps.
+ *
+ * SOLID AS THE BRICK IS DRAWN, to within a few centimetres, and never over
+ * the rim. It turns freely, so it is all capsules (chimneyLayout says how).
  * ------------------------------------------------------------------ */
+
+/* The steepest a stack tapers, in metres of radius a metre. The town's
+ * stacks narrow to 0.7 of their base; on a short fat stack that is a lean
+ * no upright capsule can follow closely without its round top standing
+ * out of the brick above it, and a real stack's batter is a few
+ * centimetres a metre, so a squat one tapers less rather than more. Every
+ * stack of the default's proportions is untouched by it. */
+const CHIMNEY_TAPER_MAX = 0.06;
+/* The drawn stack's sides. At 32 its flats stand at cos(pi / 32), 0.9952
+ * of its radius, which is where CHIMNEY_FIT keeps the solids. */
+const CHIMNEY_SEG = 32;
+const CHIMNEY_FIT = 0.995;
+/* The foot course, 5 cm proud at the plinth and 3 at its top; the corbel,
+ * 0.14 proud over its top 0.9 m on a 45 degree underside. */
+const FOOT_Y0 = 0.18;
+const FOOT_Y1 = 1.9;
+const FOOT_OUT0 = 0.05;
+const FOOT_OUT1 = 0.03;
+const CORBEL_OUT = 0.14;
 
 function chimneySpec(el) {
   const d = el.dims;
   const H = clamp(d.height, 6, 80);
   const r0 = clamp(d.radius, 0.5, 5);
   return {
-    H, r0, r1: r0 * 0.7,
+    H, r0, r1: 0.3 * r0 <= CHIMNEY_TAPER_MAX * H ? r0 * 0.7 : r0 - CHIMNEY_TAPER_MAX * H,
     banded: H >= 30,
     named: H >= 12 && H < 40,
     gallery: H >= 16,
@@ -1249,6 +1274,21 @@ function chimneySpec(el) {
 
 function chimneyR(s, y) {
   return s.r0 + (s.r1 - s.r0) * (y / s.H);
+}
+
+/* The brick's outer radius at height y as chimneyDraw draws it: the foot
+ * course, the shaft, the corbel's underside and the corbel. */
+function chimneyOuter(s, y) {
+  const R = chimneyR(s, y);
+  if (y < FOOT_Y1) {
+    const t = y < FOOT_Y0 ? 0 : (y - FOOT_Y0) / (FOOT_Y1 - FOOT_Y0);
+    return R + FOOT_OUT0 + (FOOT_OUT1 - FOOT_OUT0) * t;
+  }
+  const flare = s.H - 0.9 - CORBEL_OUT;
+  if (y <= flare) {
+    return R;
+  }
+  return R + (y < s.H - 0.9 ? y - flare : CORBEL_OUT);
 }
 
 /* The name's characters: their size and the height of each centre. */
@@ -1275,31 +1315,137 @@ function chimneyName(s) {
   return out.length >= 3 ? out : [];
 }
 
+/* A horizontal ring of `n` capsules round the axis at height y. */
+function ringOf(P, rad, y, rc, n, name) {
+  for (let i = 0; i < n; i += 1) {
+    const [ax, az] = around(rad, (i / n) * Math.PI * 2);
+    const [bx, bz] = around(rad, ((i + 1) / n) * Math.PI * 2);
+    P.cap('brick', [ax, y, az], [bx, y, bz], rc, { draw: false, name, kind: 'wall' });
+  }
+}
+
+/* Sides for a ring of radius rad whose chords sag at most 2 cm inside its
+ * circle: 1 - cos(pi / n) is under (pi / n)^2 / 2, so n >= pi sqrt(25 rad). */
+function ringSides(rad) {
+  return Math.max(8, Math.ceil(Math.PI * rootOf(25 * rad)));
+}
+
 export function chimneyLayout(el) {
   const s = chimneySpec(el);
   const P = new Parts();
-  /* Drawn: one tapered cylinder. Solid: three capsules under it, the top
-   * one ending just under the rim. */
-  P.cap('brick', [0, 0, 0], [0, s.H, 0], s.r0, { rTop: s.r1, solid: false, seg: 24, name: 'stackDraw' });
-  const cuts = [0, 0.34, 0.68, 1];
-  for (let i = 0; i < 3; i += 1) {
-    const ya = cuts[i] * s.H;
-    const yb = cuts[i + 1] * s.H;
-    const r = Math.min(chimneyR(s, ya), chimneyR(s, yb)) * 0.98;
-    const top = i === 2 ? s.H - r - 0.05 : yb;
-    P.cap('brick', [0, ya, 0], [0, Math.max(ya, top), 0], r, { draw: false, name: 'stack', kind: 'wall' });
+  const H = s.H;
+  const k = (s.r0 - s.r1) / H;
+  P.cap('brick', [0, 0, 0], [0, H - 0.05, 0], s.r0, { rTop: chimneyR(s, H - 0.05), solid: false, seg: CHIMNEY_SEG, name: 'stackDraw' });
+
+  /*
+   * THE SHAFT: upright capsules on the axis, chained end to end, each as
+   * thick as the stack is at the section's top, where it is thinnest. Its
+   * round top then sits against the leaning wall over it, so the radius is
+   * also drawn in by that lean, 1 / sqrt(1 + k^2), or the dome would stand
+   * out of the brick a metre up. A section is as long as keeps its foot,
+   * where the drawn brick stands furthest out of it, within SHORT: 7 cm,
+   * where three long sections left half a metre. The last one stops where
+   * its dome meets the underside of the rim, rather than collapsing to a
+   * ball that stood two metres over a squat stack.
+   */
+  const SHORT = 0.07;
+  const fit = CHIMNEY_FIT / rootOf(1 + k * k);
+  const cap = H - 0.02;
+  const topAt = (cap - fit * s.r0) / (1 - fit * k);
+  let ya = 0;
+  for (let n = 0; n < 400; n += 1) {
+    const proud = chimneyOuter(s, ya < FOOT_Y0 ? FOOT_Y0 : ya) - fit * chimneyR(s, ya);
+    let yb = ya + clamp((SHORT - proud) / (fit * k), 0.1, H);
+    const last = yb >= topAt;
+    if (last) {
+      yb = topAt > ya + 0.1 ? topAt : ya + 0.1;
+    }
+    const r = Math.min(fit * chimneyR(s, yb), cap - yb);
+    P.cap('brick', [0, ya, 0], [0, yb, 0], r, { draw: false, name: 'stack', kind: 'wall' });
+    if (last) {
+      break;
+    }
+    ya = yb;
   }
-  /* The rim, inside the corbelled cap: a ring of small capsules, so a
-   * pilot skimming the lip meets it where it is drawn. */
-  const n = 12;
-  for (let i = 0; i < n; i += 1) {
-    const [ax, az] = around(s.r1, (i / n) * Math.PI * 2);
-    const [bx, bz] = around(s.r1, ((i + 1) / n) * Math.PI * 2);
-    P.cap('brick', [ax, s.H - 0.15, az], [bx, s.H - 0.15, bz], 0.13, { draw: false, name: 'rim', kind: 'wall' });
+
+  /*
+   * THE CAP. The top metre, the corbel and its underside, is rings of
+   * capsules round the axis, 0.2 m round and 0.2 m apart, so the groove
+   * between two is 2.7 cm and no slot at all, with the shaft's last dome
+   * filling the middle under them. Each ring stands as far out as the
+   * brick lets it over its whole height, so the ones in the corbel are
+   * the corbel's size: a pilot skimming up the stack or over the cap meets
+   * the corbel where it is drawn rather than sinking into it.
+   */
+  const rc = 0.2;
+  const reach = (yc, r) => {
+    let out = Infinity;
+    for (let i = 0; i <= 12; i += 1) {
+      const t = i / 6 - 1;
+      out = Math.min(out, CHIMNEY_FIT * chimneyOuter(s, yc + t * r) - r * rootOf(1 - t * t));
+    }
+    return out;
+  };
+  const rings = 5;
+  const lowest = H - rc * rings;
+  let rimRad = 0;
+  for (let j = 0; j < rings; j += 1) {
+    const yc = H - rc * (j + 1);
+    const rad = reach(yc, rc);
+    ringOf(P, rad, yc, rc, ringSides(rad), 'rim');
+    if (j === 0) {
+      rimRad = rad;
+    }
   }
+  /* And two thin ones where a 0.2 m ring cannot reach into the brick's
+   * corners: the rim's outer edge, which it rounds off by 8 cm, and the
+   * corbel's underside, where the one below it is held in by the shaft's
+   * wall and the one above by the corbel's face. */
+  for (const [yc, r] of [[H - 0.08, 0.08], [H - 0.95, 0.1]]) {
+    const rad = reach(yc, r);
+    ringOf(P, rad, yc, r, ringSides(rad), 'rim');
+  }
+  /*
+   * A wide stack's shaft stops well under the corbel, its radius under the
+   * rim, and the wall between is held by staves: capsules up the wall
+   * that lean with it, as many round as keeps the groove between two to
+   * 4 cm. One stave a line of wall rather than one ring a hand's height,
+   * which on a stack ten metres across is seventy capsules and not seven
+   * hundred.
+   */
+  if (topAt < lowest - rc) {
+    const rs = clamp(0.12 * chimneyR(s, topAt), 0.2, 0.5);
+    const ys0 = topAt - rs;
+    const ys1 = lowest;
+    const lean = rs * rootOf(1 + k * k);
+    const in0 = CHIMNEY_FIT * chimneyR(s, ys0) - lean;
+    const in1 = CHIMNEY_FIT * chimneyR(s, ys1) - lean;
+    const gap = 2 * rootOf(rs * rs - (rs - 0.04) * (rs - 0.04));
+    const n = Math.max(8, Math.ceil((Math.PI * 2 * in0) / gap));
+    for (let i = 0; i < n; i += 1) {
+      const [c0, s0] = around(1, (i / n) * Math.PI * 2);
+      P.cap('brick', [c0 * in0, ys0, s0 * in0], [c0 * in1, ys1, s0 * in1], rs, { draw: false, name: 'stave', kind: 'wall' });
+    }
+  }
+  /*
+   * THE FLUE IS LIDDED, on purpose: bars across the top ring, their tops
+   * level with the rim, so a pilot who lands on the chimney sits on the
+   * dark disc drawn there. Left open it would drop a craft into a stack
+   * nothing is drawn inside.
+   */
+  const rl = clamp(0.08 * rimRad, 0.2, 0.4);
+  const ends = rimRad + rc - rl;
+  const bars = Math.max(1, Math.ceil((2 * ends) / rl));
+  for (let i = 0; i < bars; i += 1) {
+    const z = (i - (bars - 1) / 2) * rl;
+    const half = rootOf(Math.max(0, ends * ends - z * z));
+    P.cap('brick', [-half, H - rl, z], [half, H - rl, z], rl, { draw: false, name: 'lid', kind: 'wall' });
+  }
+
   if (s.gallery) {
     const rs = chimneyR(s, s.yg);
     const rg = rs + 0.85;
+    const n = 12;
     deckRings(P, 'grating', s.yg + 0.05, rs - 0.02, rg, n, 'galleryDeck');
     for (let i = 0; i < n; i += 1) {
       const [ax, az] = around(rg, (i / n) * Math.PI * 2);
@@ -1314,10 +1460,12 @@ export function chimneyLayout(el) {
 export function chimneyDraw(el, parts, K) {
   const s = chimneySpec(el);
   const R = (y) => chimneyR(s, y);
-  const band = (mat, y0, y1, out) => K.cyl(mat, [0, y0, 0], [0, y1, 0], R(y0) + out, 24, R(y1) + out);
-  /* The plinth and the flared foot. */
+  /* Every band as many sided as the stack, so a band 2 cm proud of it is
+   * 2 cm proud at every corner. */
+  const band = (mat, y0, y1, out) => K.cyl(mat, [0, y0, 0], [0, y1, 0], R(y0) + out, CHIMNEY_SEG, R(y1) + out);
+  /* The plinth and the foot course, chimneyOuter's. */
   K.box('concrete', -s.r0 - 0.7, 0, -s.r0 - 0.7, s.r0 + 0.7, 0.18, s.r0 + 0.7);
-  K.cyl('indBrickDark', [0, 0.18, 0], [0, 1.9, 0], s.r0 + 0.15, 24, R(1.9) + 0.03);
+  K.cyl('indBrickDark', [0, FOOT_Y0, 0], [0, FOOT_Y1, 0], R(FOOT_Y0) + FOOT_OUT0, CHIMNEY_SEG, R(FOOT_Y1) + FOOT_OUT1);
   /* The name, or nothing, where the hoops would cross it. */
   const name = chimneyName(s);
   const clear = (y) => !name.some((c) => Math.abs(c.y - y) < c.cs * 0.6);
@@ -1344,11 +1492,17 @@ export function chimneyDraw(el, parts, K) {
     }
   } else {
     band('indSoot', s.H - 3.0, s.H - 2.0, 0.02);
-    band('indSootDeep', s.H - 2.0, s.H - 1.1, 0.02);
+    band('indSootDeep', s.H - 2.0, s.H - 0.9 - CORBEL_OUT, 0.02);
   }
-  K.cyl('indBrickDark', [0, s.H - 1.1, 0], [0, s.H - 0.9, 0], R(s.H - 1.1) + 0.03, 24, R(s.H - 0.9) + 0.14);
-  band('indBrickDark', s.H - 0.9, s.H, 0.14);
-  K.cyl('indFlue', [0, s.H, 0], [0, s.H + 0.02, 0], s.r1 - 0.12, 20);
+  /* The corbel's 45 degree underside and the corbel. The stack itself
+   * stops 5 cm inside the corbel (the stackDraw part), so the corbel's
+   * top is the only surface at the rim: level with it, the two tops fought
+   * over the whole disc. The flue sinks a centimetre into the corbel's top
+   * for the same reason. */
+  const flare = s.H - 0.9 - CORBEL_OUT;
+  K.cyl('indBrickDark', [0, flare, 0], [0, s.H - 0.9, 0], R(flare) + 0.005, CHIMNEY_SEG, R(s.H - 0.9) + CORBEL_OUT);
+  band('indBrickDark', s.H - 0.9, s.H, CORBEL_OUT);
+  K.cyl('indFlue', [0, s.H - 0.01, 0], [0, s.H + 0.02, 0], s.r1 - 0.12, 20);
   /* Three lightning spikes on the rim, and the conductor down the back. */
   for (let k = 0; k < 3; k += 1) {
     const a = (k / 3) * Math.PI * 2 + 0.5;
@@ -1358,7 +1512,7 @@ export function chimneyDraw(el, parts, K) {
   /* The conductor down one diagonal, and on the opposite one the ladder,
    * clear of the name, with a safety cage from head height. */
   const cd = [-Math.SQRT1_2, -Math.SQRT1_2];
-  K.cyl('indHoop', [cd[0] * (s.r0 + 0.17), 0.18, cd[1] * (s.r0 + 0.17)], [cd[0] * (R(1.9) + 0.06), 1.9, cd[1] * (R(1.9) + 0.06)], 0.02, 4);
+  K.cyl('indHoop', [cd[0] * (R(0.18) + 0.08), 0.18, cd[1] * (R(0.18) + 0.08)], [cd[0] * (R(1.9) + 0.06), 1.9, cd[1] * (R(1.9) + 0.06)], 0.02, 4);
   K.cyl('indHoop', [cd[0] * (R(1.9) + 0.06), 1.9, cd[1] * (R(1.9) + 0.06)], [cd[0] * (R(s.H - 0.2) + 0.16), s.H - 0.2, cd[1] * (R(s.H - 0.2) + 0.16)], 0.02, 4);
   const out = [Math.SQRT1_2, Math.SQRT1_2];
   const across = [-Math.SQRT1_2, Math.SQRT1_2];
@@ -1625,7 +1779,9 @@ export function containerDraw(el, parts, K) {
         K.box(C, xi, b.y0 + 0.12, zi, xo, b.y1 - 0.12, zo);
         const xci = x === b.x0 ? x + 0.18 : x - 0.18;
         const zci = z === b.z0 ? z + 0.18 : z - 0.18;
-        const xco = x === b.x0 ? x - 0.06 : x + 0.06;
+        /* A closed box's door end carries its header and sill out to
+         * 0.06, and a casting there at 0.06 shared their face plane. */
+        const xco = x === b.x0 ? x - 0.06 : x + (b.open ? 0.06 : 0.07);
         const zco = z === b.z0 ? z - 0.06 : z + 0.06;
         K.box('cornerCasting', xci, b.y0, zci, xco, b.y0 + 0.13, zco);
         K.box('cornerCasting', xci, b.y1 - 0.13, zci, xco, b.y1 + 0.01, zco);

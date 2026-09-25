@@ -134,6 +134,95 @@ for (const [name, spec] of Object.entries(FAMILY_MATERIALS)) {
 const MATS = new Map();
 const OWNED = new Set();
 
+/*
+ * THE TIME OF DAY, AS FAR AS THE KIT IS CONCERNED.
+ *
+ * A lit cel material needs nothing from the kit to follow the light: the
+ * scene's sun and sky shade it. An unlit one does. Glass, curtains, lines
+ * and plates are flat colours drawn the same whatever the lights do, which
+ * at golden hour is the point (a pane keeps its colour in shadow, the way
+ * the town paints one) and at dusk would be a pane as bright as noon in a
+ * wall gone violet. So a kit may be handed a look (src/maps/built/looks.js
+ * makes them): `flats`, a linear colour every unlit material that is not a
+ * light is multiplied by, sized to what that time's lights do to a pale
+ * wall; and `night`, which lights a share of the windows (windowLight and
+ * glow below) and keeps a list of where the lamps are, for the map to hang
+ * their glow on.
+ *
+ * No look is the town's own golden hour and draws exactly what the kit drew
+ * before looks existed: the same materials, from the same caches.
+ */
+
+/* The unlit materials that are lights, and keep their colour at any hour.
+ * glassLit is a lit room; the kit's signs (K.sign) are lit plates too and
+ * never take a look, which is what lights a billboard at dusk. */
+const LIGHTS = new Set(['lampGlow', 'lampRed', 'glassLit']);
+
+/* A colour multiplied, in linear light, by a look's `flats`. */
+function dimmed(hex, f) {
+  const c = new THREE.Color(hex);
+  c.r *= f[0];
+  c.g *= f[1];
+  c.b *= f[2];
+  return c.getHex();
+}
+
+/*
+ * THE LIT WINDOWS: one material for all of them, the colour carried by the
+ * vertices, so a whole town of lit rooms in every tone of lamp and every
+ * curtain colour is one batch a chunk rather than one a tone. Unlit, and
+ * neither casting nor taking shadow: a lit window is the light.
+ */
+let glowMat = null;
+function glowMaterial() {
+  if (!glowMat) {
+    glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    glowMat.name = 'propWindowGlow';
+    glowMat.userData.propCast = false;
+    glowMat.userData.propReceive = false;
+    OWNED.add(glowMat);
+  }
+  return glowMat;
+}
+
+/* A unit box painted one colour, one per colour, shared. */
+const GLOW_BOXES = new Map();
+function glowBox(hex) {
+  let g = GLOW_BOXES.get(hex);
+  if (!g) {
+    g = new THREE.BoxGeometry(1, 1, 1);
+    const c = new THREE.Color(hex);
+    const n = g.attributes.position.count;
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i += 1) {
+      col[i * 3] = c.r;
+      col[i * 3 + 1] = c.g;
+      col[i * 3 + 2] = c.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    GLOW_BOXES.set(hex, g);
+  }
+  return g;
+}
+
+/*
+ * Which windows are lit, from where they are rather than from any draw's
+ * random stream: a draw that asked its stream would roll a different
+ * building at dusk than at noon. A window's world position, to a sixty
+ * fourth of a metre, through a 32 bit integer mix (murmur3's finaliser), so
+ * neighbours are unrelated and no floor, column or facade lights in a
+ * pattern.
+ */
+function mix32(a, b, c) {
+  let h = Math.imul(a, 0x9e3779b1) ^ Math.imul(b, 0x85ebca77) ^ Math.imul(c, 0xc2b2ae3d);
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
 function stripesTexture() {
   const c = PT.canvas(128, 128);
   const g = c.getContext('2d');
@@ -185,30 +274,32 @@ function texture(canvasEl, repeat = false) {
   return t;
 }
 
-/* A named material, made once. */
-export function propMaterial(name) {
-  let m = MATS.get(name);
-  if (m) {
-    return m;
-  }
+/* A named material, made once, and once more for each look that dims it. */
+export function propMaterial(name, look = null) {
   const s = SPEC[name];
   if (!s) {
     throw new Error(`props: no material named ${name}`);
   }
+  const dim = Boolean(look && look.flats && (s.f !== undefined || s.net) && !LIGHTS.has(name));
+  const key = dim ? `${look.key}:${name}` : name;
+  let m = MATS.get(key);
+  if (m) {
+    return m;
+  }
   if (s.f !== undefined) {
-    m = flat({ color: s.f });
+    m = flat({ color: dim ? dimmed(s.f, look.flats) : s.f });
   } else if (s.stripes) {
     m = cel({ color: 0xffffff, map: stripesTexture(), bands: 3, tint: 0x6a5a78, cache: false });
     OWNED.add(m);
   } else if (s.net) {
-    m = flat({ color: 0xffffff, map: netTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide, cache: false });
+    m = flat({ color: dim ? dimmed(0xffffff, look.flats) : 0xffffff, map: netTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide, cache: false });
     OWNED.add(m);
   } else {
     m = cel({ color: s.c, bands: s.bands ?? 3, tint: s.tint ?? T });
   }
   m.userData.propCast = !s.noCast && !s.net;
   m.userData.propReceive = !s.noReceive;
-  MATS.set(name, m);
+  MATS.set(key, m);
   return m;
 }
 
@@ -354,6 +445,31 @@ function tintedMaterial(src, c) {
   return m;
 }
 
+/*
+ * A town car's unlit material under a look: its glass and plates dimmed
+ * with everything else unlit, its lamps not. The lamps are the two colours
+ * vehicles.js lights a car with, which is how they are told apart. A
+ * vending machine takes no look at all: it is lit from inside, and at dusk
+ * a row of them glowing is half of what says a Japanese street at dusk.
+ */
+const CAR_LAMPS = new Set([0xfff2d4, 0xd8564e]);
+const DIMMED_TOWN = new Map();
+function lookedTownMaterial(m, look) {
+  if (!m.isMeshBasicMaterial || CAR_LAMPS.has(m.color.getHex())) {
+    return m;
+  }
+  const key = `${m.uuid}|${look.key}`;
+  let d = DIMMED_TOWN.get(key);
+  if (!d) {
+    d = m.clone();
+    d.color.setHex(dimmed(m.color.getHex(), look.flats));
+    d.userData = { ...m.userData };
+    OWNED.add(d);
+    DIMMED_TOWN.set(key, d);
+  }
+  return d;
+}
+
 /* ------------------------------------------------------------------ *
  * Shared geometry: unit shapes scaled by a matrix, so the batches clone
  * one small buffer each time rather than building a new one.
@@ -413,14 +529,20 @@ const FACE_ROT = {
  * element, the map makes one for the whole map.
  */
 export class PropKit {
-  constructor() {
+  /* `look` is a time of day's say over the materials, from
+   * src/maps/built/looks.js, or nothing for the town's own golden hour. */
+  constructor(look = null) {
     /* Handed to a family's draw() so it can build a geometry the kit has no
      * word for, without importing a renderer into a file Node must load. */
     this.THREE = THREE;
     this.batches = new Map();
     this.place = new THREE.Matrix4();
     this.chunk = '';
-    this.counts = { parts: 0, decor: 0, town: 0 };
+    this.counts = { parts: 0, decor: 0, town: 0, lit: 0 };
+    this.look = look && (look.flats || look.night) ? look : null;
+    /* At night, every lamp drawn, in world metres: see add(). */
+    this.lamps = [];
+    this.lampMat = propMaterial('lampGlow');
   }
 
   /* Where the next element goes: world position and heading. */
@@ -433,7 +555,7 @@ export class PropKit {
 
   /* Add a geometry in the current element's frame. */
   add(mat, geometry, local = null) {
-    const material = typeof mat === 'string' ? propMaterial(mat) : mat;
+    const material = typeof mat === 'string' ? propMaterial(mat, this.look) : mat;
     const key = `${material.uuid}|${this.chunk}`;
     let b = this.batches.get(key);
     if (!b) {
@@ -448,6 +570,66 @@ export class PropKit {
     }
     b.items.push({ geometry, matrix: m });
     this.counts.decor += 1;
+    /* A lamp, remembered at night by the middle of what was drawn, so the
+     * map can put its pool of light on the ground and its halo round it
+     * without every family saying where its lamps are. */
+    if (material === this.lampMat && this.night) {
+      if (!geometry.boundingBox) {
+        geometry.computeBoundingBox();
+      }
+      const c = geometry.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(m);
+      this.lamps.push({ x: c.x, y: c.y, z: c.z, halo: true });
+    }
+  }
+
+  /* Whether this kit draws at night: lit windows and remembered lamps. */
+  get night() {
+    return Boolean(this.look && this.look.night);
+  }
+
+  /*
+   * AT NIGHT, whether the window at (x, y, z) in the element's frame is
+   * lit, and in what colour: one of `tones` (colours, weighted by being
+   * repeated) for a lit one, 0 for one left dark or for any window by day.
+   * `share` is the fraction of such windows lit; 1 lights every one (a
+   * room that was lit by day as well).
+   */
+  windowLight(x, y, z, share, tones = [0xffc978]) {
+    if (!this.night) {
+      return 0;
+    }
+    _v.set(x, y, z).applyMatrix4(this.place);
+    const h = mix32(Math.round(_v.x * 64), Math.round(_v.y * 64), Math.round(_v.z * 64));
+    if ((h >>> 8) / 16777216 >= share) {
+      return 0;
+    }
+    return tones[(h & 0xff) % tones.length];
+  }
+
+  /* A lit box: a window's pane or a curtain with the room lit behind it,
+   * `hex` its colour, into the one glow batch. */
+  glow(hex, x0, y0, z0, x1, y1, z1) {
+    const w = Math.abs(x1 - x0);
+    const h = Math.abs(y1 - y0);
+    const d = Math.abs(z1 - z0);
+    if (w < 1e-4 || h < 1e-4 || d < 1e-4) {
+      return;
+    }
+    _v.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    _s.set(w, h, d);
+    _q.identity();
+    this.add(glowMaterial(), glowBox(hex), new THREE.Matrix4().compose(_v, _q, _s));
+    this.counts.lit += 1;
+  }
+
+  /* The colour a look lays over an unlit texture, white by day. */
+  flatTint() {
+    return this.look && this.look.flats ? dimmed(0xffffff, this.look.flats) : 0xffffff;
+  }
+
+  /* The key a look adds to a cached unlit texture material. */
+  lookKey() {
+    return this.look && this.look.flats ? `:${this.look.key}` : '';
   }
 
   /* ---- the vocabulary a draw() speaks ---- */
@@ -636,8 +818,8 @@ export class PropKit {
 
   patch(key, x, y, z, r, seed) {
     const v = Math.abs(seed) % 4;
-    const mat = texMat(`patch:${key}:${v}`, () => flat({
-      color: 0xffffff, map: texture(PT.patchTex(key, v)), transparent: true, depthWrite: false, cache: false,
+    const mat = texMat(`patch:${key}:${v}${this.lookKey()}`, () => flat({
+      color: this.flatTint(), map: texture(PT.patchTex(key, v)), transparent: true, depthWrite: false, cache: false,
     }));
     this.plane(mat, x, y, z, r * 2, r * 2, '+y');
   }
@@ -683,7 +865,7 @@ export class PropKit {
   /* A pennant on a mast: the mast from `base` up `h`, a sail off it. */
   pennant(base, h, dir) {
     this.cyl('flagMast', base, [base[0], base[1] + h, base[2]], 0.014, 6);
-    const mat = texMat('pennant', () => flat({ color: 0xffffff, map: texture(PT.pennant(0)), alphaTest: 0.4, side: THREE.DoubleSide, cache: false }));
+    const mat = texMat(`pennant${this.lookKey()}`, () => flat({ color: this.flatTint(), map: texture(PT.pennant(0)), alphaTest: 0.4, side: THREE.DoubleSide, cache: false }));
     const sw = Math.min(0.6, h * 0.3);
     const sh = h * 0.8;
     const g = new THREE.PlaneGeometry(sw, sh);
@@ -709,6 +891,13 @@ export class PropKit {
     obj.rotation.y = ry;
     obj.position.set(pos[0], pos[1], pos[2]);
     obj.updateMatrixWorld(true);
+    /* A vending machine is lit from inside, and at night its front throws
+     * light on the ground the way a lamp does: remembered as a lamp at the
+     * middle of its face, with no halo, since the glow is the machine. */
+    if (kind === 'vending' && this.night) {
+      const c = new THREE.Vector3(0, 1.0, 0.8).applyMatrix4(obj.matrixWorld).applyMatrix4(this.place);
+      this.lamps.push({ x: c.x, y: c.y, z: c.z, halo: false });
+    }
     /*
      * Only what the town would draw. traverseVisible never enters a hidden
      * object: the vending machine keeps its interaction hitbox as a red box
@@ -728,10 +917,13 @@ export class PropKit {
       if (mats.length !== 1 || mats[0].isShaderMaterial) {
         return;
       }
-      const mat = townMaterial(mats[0]);
+      let mat = townMaterial(mats[0]);
       if (mat.userData.propCast === undefined) {
         mat.userData.propCast = o.castShadow !== false;
         mat.userData.propReceive = o.receiveShadow !== false;
+      }
+      if (kind === 'car' && this.look && this.look.flats) {
+        mat = lookedTownMaterial(mat, this.look);
       }
       if (o.isInstancedMesh) {
         const im = new THREE.Matrix4();

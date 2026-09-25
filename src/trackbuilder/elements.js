@@ -1233,7 +1233,9 @@ export function formatElementCounts(rows) {
     return 'no elements';
   }
   return rows.map((row) => {
-    const word = row.count === 1 ? row.label : `${row.label}s`;
+    /* A label that is plural already (Containers, a stack of them) keeps
+     * its one s: the Load list read "7 containerss". */
+    const word = row.count === 1 || /s$/.test(row.label) ? row.label : `${row.label}s`;
     return `${row.count} ${word.toLowerCase()}`;
   }).join(', ');
 }

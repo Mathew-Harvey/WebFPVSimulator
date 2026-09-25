@@ -45,6 +45,8 @@
 import { ELEMENTS, KIND } from '../../trackbuilder/elements.js';
 import { assetOf, partsOf } from '../../props/catalog.js';
 import { placeSolids, placedYaw } from '../../props/solids.js';
+import { sincos, turnY } from '../../props/trig.js';
+import { startBlockLaneOffset } from '../../art/startblock.js';
 
 const HALF_PI = Math.PI / 2;
 const TAU = Math.PI * 2;
@@ -62,11 +64,192 @@ function wrap(a) {
 }
 
 /*
- * Where a pilot with no start pads starts: eight metres in from the plot's
- * west edge, on its middle line, facing across it.
+ * THE GROUND UNDER A POINT: the highest solid box top whose plan footprint
+ * holds (x, z) and whose top is no more than PLATFORM_REACH over fromY, or
+ * the paving at 0 when there is none. The built map's `height` is this, a
+ * millimetre under a top (groundUnder, below), so it is on the physics
+ * path: the shell asks it for the plane it hands the plant on every 1 ms
+ * step, five more times every eight steps for the slope, and for the spawn
+ * seat. Plain comparisons only.
+ *
+ * The reach is the town's, 0.55 m (heightAt in
+ * src/maps/city/vendored/world/index.js, restated in
+ * src/maps/city/cavity.js), restated here because importing either would
+ * drag the town into the builder. It is what lets a craft fly UNDER a deck
+ * and land ON it: the shell asks from 0.40 m under the CG (SURFACE_BIAS in
+ * src/main.js), so a top is ground from 0.15 m under the CG down, and a
+ * deck overhead never is. Omit fromY and every top counts, as in the town.
+ *
+ * The footprint test is strict, the way the plant's own support test is
+ * (world_select_support in src/native/world.c): a point on a box's edge is
+ * not over it. Only boxes: a capsule is a pole, a bar or a lattice member,
+ * and nothing a craft stands on.
  */
-function defaultSpawn(W) {
-  return { x: -W / 2 + 8, z: 0, yaw: -HALF_PI };
+export const PLATFORM_REACH = 0.55;
+
+/*
+ * Filed on a grid, because the shell calls the query thousands of times a
+ * second and a map may hold twenty thousand solids. Each box is filed in
+ * every TOP_CELL square its footprint reaches, not by its centre, so a
+ * query reads the one cell its point is in and never a neighbour's. Each
+ * cell's boxes are sorted highest top first, so the first one that holds
+ * the point within reach is the answer and the walk stops there.
+ */
+const TOP_CELL = 4;
+
+/*
+ * Build the index once per placement. Returns an object topUnder reads.
+ * A box whose plan edges are not finite is a layout bug, which
+ * scripts/props-check.js fails, and it is not filed; neither is one whose
+ * top is at or under the paving, which can never be the answer.
+ */
+export function indexTops(solids) {
+  const boxes = [];
+  for (const s of solids) {
+    const b = s.box;
+    if (b && b[4] > 0 && Number.isFinite(b[0]) && Number.isFinite(b[2])
+      && Number.isFinite(b[3]) && Number.isFinite(b[5]) && b[0] < b[3] && b[2] < b[5]) {
+      boxes.push(b);
+    }
+  }
+  const n = boxes.length;
+  const ix = {
+    n, ox: 0, oz: 0, nx: 0, nz: 0,
+    start: new Int32Array(1), items: new Int32Array(0),
+    x0: new Float64Array(n), z0: new Float64Array(n),
+    x1: new Float64Array(n), z1: new Float64Array(n), top: new Float64Array(n),
+  };
+  if (!n) {
+    return ix;
+  }
+  let ox = Infinity;
+  let oz = Infinity;
+  let ex = -Infinity;
+  let ez = -Infinity;
+  for (let i = 0; i < n; i += 1) {
+    const b = boxes[i];
+    ix.x0[i] = b[0];
+    ix.z0[i] = b[2];
+    ix.x1[i] = b[3];
+    ix.z1[i] = b[5];
+    ix.top[i] = b[4];
+    ox = b[0] < ox ? b[0] : ox;
+    oz = b[2] < oz ? b[2] : oz;
+    ex = b[3] > ex ? b[3] : ex;
+    ez = b[5] > ez ? b[5] : ez;
+  }
+  ix.ox = ox;
+  ix.oz = oz;
+  ix.nx = Math.floor((ex - ox) / TOP_CELL) + 1;
+  ix.nz = Math.floor((ez - oz) / TOP_CELL) + 1;
+  const cells = [];
+  for (let c = 0; c < ix.nx * ix.nz; c += 1) {
+    cells.push([]);
+  }
+  for (let i = 0; i < n; i += 1) {
+    const cx0 = Math.floor((ix.x0[i] - ox) / TOP_CELL);
+    const cx1 = Math.floor((ix.x1[i] - ox) / TOP_CELL);
+    const cz0 = Math.floor((ix.z0[i] - oz) / TOP_CELL);
+    const cz1 = Math.floor((ix.z1[i] - oz) / TOP_CELL);
+    for (let cx = cx0; cx <= cx1; cx += 1) {
+      for (let cz = cz0; cz <= cz1; cz += 1) {
+        cells[cx * ix.nz + cz].push(i);
+      }
+    }
+  }
+  let total = 0;
+  for (const list of cells) {
+    total += list.length;
+  }
+  ix.start = new Int32Array(cells.length + 1);
+  ix.items = new Int32Array(total);
+  let k = 0;
+  for (let c = 0; c < cells.length; c += 1) {
+    /* Highest first; equal tops in solid order, so the list is the same
+     * on every engine whatever its sort does with ties. */
+    const list = cells[c].sort((a, b) => ix.top[b] - ix.top[a] || a - b);
+    ix.start[c] = k;
+    for (const i of list) {
+      ix.items[k] = i;
+      k += 1;
+    }
+  }
+  ix.start[cells.length] = k;
+  return ix;
+}
+
+/*
+ * The query. `src` is an index from indexTops, or a plain list of solids,
+ * which is walked whole: the same answer, slowly, and the definition the
+ * index is checked against.
+ */
+export function topUnder(src, x, z, fromY) {
+  const reach = fromY === undefined ? Infinity : fromY + PLATFORM_REACH;
+  if (Array.isArray(src)) {
+    let best = 0;
+    for (const s of src) {
+      const b = s.box;
+      if (b && b[4] > best && b[4] <= reach && x > b[0] && x < b[3] && z > b[2] && z < b[5]) {
+        best = b[4];
+      }
+    }
+    return best;
+  }
+  const ix = src;
+  if (!ix || !ix.n) {
+    return 0;
+  }
+  const cx = Math.floor((x - ix.ox) / TOP_CELL);
+  const cz = Math.floor((z - ix.oz) / TOP_CELL);
+  if (!(cx >= 0 && cx < ix.nx && cz >= 0 && cz < ix.nz)) {
+    return 0;
+  }
+  const c = cx * ix.nz + cz;
+  for (let k = ix.start[c]; k < ix.start[c + 1]; k += 1) {
+    const i = ix.items[k];
+    const top = ix.top[i];
+    if (top <= reach && x > ix.x0[i] && x < ix.x1[i] && z > ix.z0[i] && z < ix.z1[i]) {
+      return top;
+    }
+  }
+  return 0;
+}
+
+/*
+ * THE BUILT MAP'S `height`: topUnder, a millimetre under any box top.
+ *
+ * The plant stands a craft on a box top itself when the top is strictly
+ * above the plane the shell raised (world_select_support in
+ * src/native/world.c), and the box it holds is the float32 of the top. A
+ * plane AT the top ties with it, and the tie goes whichever way float32
+ * rounded that top. Measured on the starter's stairs with the shell's own
+ * ground handling: the treads at 0.51 and 1.02 m round down, so the plant
+ * took the shell's limited plane there, a 26 degree slope across the
+ * risers, and a craft set down on either slid 0.19 m and leaned on the next
+ * riser (1512 steps of world contact in 2.5 s), where every tread that
+ * rounds up held it flat. A millimetre under the top, the box always wins,
+ * so a craft over a box stands on exactly the box it stood on while the
+ * height was 0 everywhere, and what the shell learns (the spawn seat, the
+ * altitude, the obstacles, the set down) is a roof and not the paving. A
+ * millimetre is more than float32's rounding of any top under a kilometre
+ * and less than anything a pilot or the plant can tell apart: a craft
+ * seated a millimetre low settles to the same rest height, with no speed.
+ */
+export const SUPPORT_TIE = 0.001;
+
+export function groundUnder(src, x, z, fromY) {
+  const top = topUnder(src, x, z, fromY);
+  return top > 0 ? top - SUPPORT_TIE : 0;
+}
+
+/*
+ * Where a pilot with no start pads starts: eight metres in from the plot's
+ * west edge, on its middle line, facing across it, on whatever is laid
+ * there.
+ */
+function defaultSpawn(W, tops) {
+  const x = -W / 2 + 8;
+  return { x, y: topUnder(tops, x, 0, 0), z: 0, yaw: -HALF_PI, base: 0 };
 }
 
 /*
@@ -77,25 +260,66 @@ function defaultSpawn(W) {
  * headingForTravel(cos yaw, -sin yaw) = atan2(-cos yaw, sin yaw), which is
  * yaw - pi/2 for every yaw. Written as the subtraction, so the heading the
  * physics frame is seated at never passes through JS trigonometry.
+ *
+ * ON A MAT, not between two. The element's middle is bare paving whenever
+ * it has an even number of pads, so the craft goes where the race path puts
+ * it, startBlockLaneOffset along the row, which is the pads' local z (see
+ * padsLayout in src/props/course.js). The row is turned by the pads' placed
+ * heading with ./trig.js, because this point is where the plant's frame is
+ * seated.
+ *
+ * AT ITS SEAT, not at 0. `base` is the Base the author gave the pads, and
+ * the seat is what the craft actually stands on there: a roof the pads
+ * were raised onto, or the paving when they were raised over nothing. The
+ * builder warns when the two differ (fs-pads-seat in
+ * src/trackbuilder/warnings.js). The shell asks `height` from spawn.y
+ * (adoptSpawn in src/main.js), which finds this same top and answers a
+ * millimetre under it, so the craft is put on the seat.
  */
-function spawnFrom(el, W, D) {
+const SC = { s: 0, c: 1 };
+const LANE = { x: 0, z: 0 };
+
+/* The row as padsLayout draws it, which clamps what startBlockLaneOffset
+ * does not: 1 to 12 pads, at least 0.3 m apart. The same numbers for any
+ * row the builder makes, and a mat under the craft for a hand edited one
+ * too, where 20 pads or a spacing of 0 put it off the end of the row. */
+function laneOffset(dims) {
+  const n = Math.round(dims.pads ?? 1);
+  return startBlockLaneOffset({
+    pads: n < 1 ? 1 : n > 12 ? 12 : n,
+    spacing: Math.max(0.3, dims.spacing ?? 1.5),
+  });
+}
+
+function spawnFrom(el, yaw, W, D, tops) {
+  const base = el.position.z || 0;
+  sincos(yaw, SC);
+  turnY(0, laneOffset(el.dims), SC.s, SC.c, LANE);
+  const x = el.position.x - W / 2 + LANE.x;
+  const z = -(el.position.y - D / 2) + LANE.z;
   return {
-    x: el.position.x - W / 2,
-    z: -(el.position.y - D / 2),
+    x,
+    y: topUnder(tops, x, z, base),
+    z,
     yaw: wrap(el.yaw - HALF_PI),
+    base,
   };
 }
 
 /*
  * Place a normalized document. Returns
  *
- *   { W, D, items, solids, zones, spawn, stats }
+ *   { W, D, items, solids, tops, zones, spawn, stats }
  *
  *   items   [{ el, kind, x, y, z, yaw, turns, parts }]  every drawable
- *           element: yaw is the placed (possibly snapped) world heading
+ *           element: yaw is the placed (possibly snapped) world heading;
+ *           the start pads' y is the seat under their middle, so they are
+ *           drawn on what the craft stands on
  *   solids  what src/props/solids.js placeSolids makes of every item
+ *   tops    the box tops, indexed for topUnder
  *   zones   [{ el, x, y, z, yaw, w, h, name, points }] the named gaps
- *   spawn   { x, z, yaw } in the shell's convention
+ *   spawn   { x, y, z, yaw, base } in the shell's convention: y is the
+ *           seat and base the Base the author gave the pads (0 with none)
  */
 export function placeDocument(doc) {
   const W = doc.field.width;
@@ -104,7 +328,7 @@ export function placeDocument(doc) {
   const solids = [];
   const zones = [];
   const stats = { inflated: 0 };
-  let spawn = null;
+  let start = null;
   for (const el of doc.elements) {
     const def = ELEMENTS[el.type];
     if (!def) {
@@ -113,8 +337,8 @@ export function placeDocument(doc) {
     const x = el.position.x - W / 2;
     const z = -(el.position.y - D / 2);
     const y = el.position.z || 0;
-    if (def.kind === KIND.START && !spawn) {
-      spawn = spawnFrom(el, W, D);
+    if (def.kind === KIND.START && !start) {
+      start = el;
     }
     if (def.kind === KIND.ZONE) {
       zones.push({
@@ -140,5 +364,18 @@ export function placeDocument(doc) {
     placeSolids(parts, x, y, z, yaw, turns, solids, stats);
     items.push({ el, kind: def.kind, x, y, z, yaw, turns, parts });
   }
-  return { W, D, items, solids, zones, spawn: spawn ?? defaultSpawn(W), stats };
+  /* The spawn is seated after everything is placed, because the roof the
+   * pads stand on may come later in the document than the pads. */
+  const tops = indexTops(solids);
+  let spawn;
+  if (start) {
+    const pads = items.find((it) => it.el === start);
+    spawn = spawnFrom(start, pads ? pads.yaw : placedYaw('any', start.yaw), W, D, tops);
+    if (pads) {
+      pads.y = topUnder(tops, pads.x, pads.z, pads.y);
+    }
+  } else {
+    spawn = defaultSpawn(W, tops);
+  }
+  return { W, D, items, solids, tops, zones, spawn, stats };
 }

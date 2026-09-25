@@ -692,7 +692,13 @@ function label(el) {
  *
  *   fs-no-start      info  no start pads: says where the pilot will start
  *   fs-spawn         warn  the start is inside a solid or within a metre of
- *                          one, so the craft cannot take off cleanly
+ *                          one, so the craft cannot take off cleanly. Measured
+ *                          where the simulator seats the craft: on the mat
+ *                          it starts on, on the box top under it, and not
+ *                          against that box, whose top is its floor
+ *   fs-pads-seat     warn  the pads' Base is more than 5 cm from what they
+ *                          stand on in the simulator: a roof they were
+ *                          raised onto, or the ground they float over
  *   fs-overlap       warn  two elements' solids run into each other
  *   fs-slot          warn  a space between two elements narrower than the
  *                          gap rule's 1.4 m but more than a few centimetres:
@@ -716,6 +722,11 @@ export const SLOT_FLOOR = 0.05;
 
 /* The air the craft needs round the start to take off. */
 export const SPAWN_CLEAR = 1.0;
+
+/* How far the pads' Base may be from their seat before the builder says
+ * so: more than a mat's thickness and less than anything that reads as a
+ * step when the pads are drawn on the seat. */
+const SEAT_SLACK = 0.05;
 
 /* How far two solids have to run into each other before it is an overlap
  * rather than two faces that meet. */
@@ -768,19 +779,37 @@ export function freestyleReport(doc) {
     out.push(note('fs-no-start', 'No start pads, so the pilot starts 8 m in from the left edge of the plot, halfway up it, facing right. Press S and click where they should start.'));
   }
   {
-    const base = pads ? (pads.position.z || 0) : 0;
-    const p = [placed.spawn.x, base + 0.1, placed.spawn.z];
+    /*
+     * Where the simulator puts the craft: on the mat it starts on, on the
+     * seat under it (src/maps/built/place.js spawnFrom), a hand above it.
+     * The box it stands on is not in the way, because its top is the
+     * floor: counting it said a craft on a roof was 0.10 m from the
+     * building under it.
+     */
+    const sp = placed.spawn;
+    const p = [sp.x, sp.y + 0.1, sp.z];
     let worst = null;
+    let seatEl = null;
     for (const b of bodies) {
       if (boxPointDist(grow(b.box, SPAWN_CLEAR), p) > 0) {
         continue;
       }
       for (const s of b.solids) {
+        if (standsOn(s, sp)) {
+          seatEl = b.el;
+          continue;
+        }
         const d = solidPointClearance(s, p);
         if (d < SPAWN_CLEAR && (!worst || d < worst.d)) {
           worst = { d, el: b.el };
         }
       }
+    }
+    if (pads && Math.abs(sp.base - sp.y) > SEAT_SLACK) {
+      const where = seatEl ? `on top of ${names(seatEl)} at ${sp.y.toFixed(2)} m` : 'on the ground';
+      out.push(warn('fs-pads-seat', `The start pads have a Base of ${sp.base.toFixed(2)} m, but in the simulator they sit ${where}, and the craft starts there. Set Base to ${sp.y.toFixed(2)} m to see them where they will be.`, {
+        elementId: pads.id,
+      }));
     }
     if (worst) {
       const where = worst.d <= 0 ? 'inside' : `${worst.d.toFixed(2)} m from`;
@@ -947,6 +976,14 @@ function grow(b, by) {
 
 function boxesTouch(a, b) {
   return a[0] <= b[3] && b[0] <= a[3] && a[1] <= b[4] && b[1] <= a[4] && a[2] <= b[5] && b[2] <= a[5];
+}
+
+/* Whether a solid is the box the craft at the spawn stands on: its top is
+ * the seat and its footprint holds the spawn, strictly, the way topUnder
+ * finds it. */
+function standsOn(s, sp) {
+  const b = s.box;
+  return Boolean(b) && b[4] === sp.y && sp.x > b[0] && sp.x < b[3] && sp.z > b[2] && sp.z < b[5];
 }
 
 /* Distance from a point to a box, zero inside it. */

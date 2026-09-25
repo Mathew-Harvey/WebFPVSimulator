@@ -34,6 +34,7 @@ import {
   createTrack, createElement, createSequenceEntry, deserialize, elementById, normalize,
   roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf,
   logoForDecal, dressOrder, LOGO_SLOTS, SCHEMA_VERSION,
+  SCENE_TIMES, SCENE_GROUNDS, SCENE_DEFAULT, sceneOf, deepClone,
 } from './model.js';
 import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection } from './faces.js';
 import { addToSequence, addNextLevel, sequenceLabel, faceLabel } from './sequence.js';
@@ -54,6 +55,8 @@ import { PROP_TYPES, GAP_POINTS, FURNITURE_PALETTE } from '../props/types.js';
 import { partsOf } from '../props/catalog.js';
 import { GAP_MIN } from '../props/parts.js';
 import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
+import { padsLayout } from '../props/course.js';
+import { placeDocument, topUnder, groundUnder, SUPPORT_TIE } from '../maps/built/place.js';
 import { clubhouseSolids } from '../art/clubhouse.js';
 import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
@@ -263,6 +266,8 @@ function suiteElementCounts() {
   check('the printed mix is the palette order, pluralised',
     formatElementCounts(rows) === '4 gates, 1 triple stack, 1 tower, 1 dive gate, 1 barrier, 1 flag, 1 cone',
     formatElementCounts(rows));
+  const stacks = formatElementCounts([{ type: 'containers', label: ELEMENTS.containers.label, count: 7 }]);
+  check('a label that is plural already is not pluralised again', stacks === '7 containers', stacks);
 
   const mixed = createTrack();
   place(mixed, 'gate', 0, 0);
@@ -2473,6 +2478,68 @@ function suiteFreestyle() {
     && read2.elements.find((e) => e.type === 'gap').name === 'CRANE GAP'
     && Math.abs(read2.elements.find((e) => e.type === 'crane').yaw - 0.7) < 1e-6);
 
+  /* -------- the scene: time of day and ground -------- */
+
+  {
+    check('a new map holds the default scene, golden over concrete',
+      map.scene && map.scene.time === 'golden' && map.scene.ground === 'concrete');
+    check('and does not write it, so a map saved before scenes keeps its bytes',
+      !Object.prototype.hasOwnProperty.call(JSON.parse(text), 'scene'));
+    let every = true;
+    for (const time of SCENE_TIMES) {
+      for (const ground of SCENE_GROUNDS) {
+        const d = deserialize(text).doc;
+        d.scene = { time, ground };
+        const t = serialize(d);
+        const r = deserialize(t);
+        const wrote = JSON.parse(t).scene;
+        const def = time === SCENE_DEFAULT.time && ground === SCENE_DEFAULT.ground;
+        const ok = r.repairs.length === 0 && serialize(r.doc) === t
+          && r.doc.scene.time === time && r.doc.scene.ground === ground
+          && (def ? wrote === undefined : wrote.time === time && wrote.ground === ground);
+        if (!ok) {
+          every = false;
+          check(`the scene ${time} over ${ground} round trips`, false, JSON.stringify(wrote));
+        }
+      }
+    }
+    check(`all ${SCENE_TIMES.length * SCENE_GROUNDS.length} scenes round trip byte for byte, written only when not the default`, every);
+
+    const junk = normalize({ ...JSON.parse(text), scene: { time: 'midnight', ground: 'lava' } });
+    check('an unknown time and ground read as the defaults', junk.doc.scene.time === 'golden' && junk.doc.scene.ground === 'concrete');
+    check('and each says so', junk.repairs.length === 2 && junk.repairs.every((r) => r.includes('scene')), junk.repairs.join('; '));
+    const half = normalize({ ...JSON.parse(text), scene: { time: 'lunchtime', ground: 'dirt' } });
+    check('one bad key does not cost the good one', half.doc.scene.time === 'golden' && half.doc.scene.ground === 'dirt'
+      && half.repairs.length === 1);
+    const notObj = normalize({ ...JSON.parse(text), scene: 'dusk' });
+    check('a scene that is not an object reads as the default, with a note',
+      notObj.doc.scene.time === 'golden' && notObj.doc.scene.ground === 'concrete' && notObj.repairs.length === 1);
+    check('and repaired, writes nothing', !serialize(junk.doc).includes('"scene"'));
+
+    const race = createTrack('Race with a scene');
+    const racePlain = { ...toPlain(race), scene: { time: 'dusk', ground: 'grass' } };
+    const raceRead = normalize(racePlain);
+    check('a race track never carries a scene, even a hand written one',
+      !('scene' in raceRead.doc) && !serialize(raceRead.doc).includes('"scene"'));
+    check('and sceneOf a race track is the default', sceneOf(raceRead.doc).time === 'golden' && sceneOf(raceRead.doc).ground === 'concrete');
+
+    /* The builder's controls edit through history like any other edit. */
+    const h = new History();
+    let d = deserialize(text).doc;
+    const before = deepClone(d);
+    d.scene = { ...d.scene, time: 'dusk' };
+    h.record(before, d, 'scene');
+    d.scene = { ...d.scene, ground: 'tarmac' };
+    h.record(deepClone({ ...d, scene: { ...d.scene, ground: 'concrete' } }), d, 'scene');
+    d = h.undo(d);
+    check('undo takes a ground change back', d.scene.time === 'dusk' && d.scene.ground === 'concrete');
+    d = h.undo(d);
+    check('and then the time', d.scene.time === 'golden' && d.scene.ground === 'concrete');
+    d = h.redo(d);
+    d = h.redo(d);
+    check('and redo puts both back', d.scene.time === 'dusk' && d.scene.ground === 'tarmac');
+  }
+
   /* -------- hotkeys -------- */
 
   const fsItems = paletteItems('full', 'freestyle');
@@ -2607,6 +2674,138 @@ function suiteFreestyle() {
     check('and so are pads within a metre of its wall', codesOf(d).includes('fs-spawn'));
     pads.position.x = 40 - 4.5 - 1.4;
     check('but not pads under its balconies, 1.4 m off the wall and 2.6 m below them', !codesOf(d).includes('fs-spawn'));
+  }
+  {
+    /*
+     * A ROOFTOP START. The flats' roof is open for three metres round its
+     * middle (the stair head is further off), so pads raised onto it start
+     * the craft on the roof, and the roof under the mat is its floor, not a
+     * wall it is 0.10 m from.
+     */
+    const d = fresh();
+    freestylePlace(d, 'building', 40, 40);
+    const pads = freestylePlace(d, 'startPads', 40, 40);
+    let placed = placeDocument(d);
+    const inside = freestyleReport(d).warnings.find((x) => x.code === 'fs-spawn');
+    check('pads at Base 0 under a building are fs-spawn, inside it', Boolean(inside) && /inside/.test(inside.message)
+      && placed.spawn.y === 0, inside ? inside.message : 'no fs-spawn');
+    check('and that is not fs-pads-seat: they stand on the ground they were put on', !codesOf(d).includes('fs-pads-seat'));
+    const top = topUnder(placed.solids, placed.spawn.x, placed.spawn.z);
+    pads.position.z = top;
+    placed = placeDocument(d);
+    const padsItem = placed.items.find((it) => it.el === pads);
+    check('pads raised to the roof are seated on it, at its top, and drawn there',
+      top > 3 && placed.spawn.y === top && placed.spawn.base === top && padsItem.y === top,
+      `roof ${top}, seat ${placed.spawn.y}, base ${placed.spawn.base}, drawn at ${padsItem.y}`);
+    const onRoof = codesOf(d);
+    check('with the roof open round the mat that is no warning at all', onRoof.length === 0, onRoof.join(', '));
+    pads.position.z = top + 0.03;
+    check('a Base 3 cm off the roof is the roof, and says nothing', placeDocument(d).spawn.y === top && codesOf(d).length === 0,
+      codesOf(d).join(', '));
+    pads.position.z = top + 1;
+    placed = placeDocument(d);
+    const seat = freestyleReport(d).warnings.find((x) => x.code === 'fs-pads-seat');
+    check('a Base 1 m over the roof is still seated on the roof', placed.spawn.y === top && placed.spawn.base === top + 1,
+      `seat ${placed.spawn.y}`);
+    check('and fs-pads-seat says where, naming the building and the roof’s height',
+      Boolean(seat) && seat.elementId === pads.id && seat.message.includes('on top of Building')
+      && seat.message.includes(`${top.toFixed(2)} m`), seat ? seat.message : 'no fs-pads-seat');
+    check('but nothing is in the way of the craft there', !codesOf(d).includes('fs-spawn'));
+    pads.position.x = 100;
+    const ground = freestyleReport(d).warnings.find((x) => x.code === 'fs-pads-seat');
+    check('pads raised over nothing are on the ground, and it says so',
+      placeDocument(d).spawn.y === 0 && Boolean(ground) && ground.message.includes('on the ground'),
+      ground ? ground.message : 'no fs-pads-seat');
+  }
+  {
+    /*
+     * ON A MAT. The pads' middle is bare paving between two mats whenever
+     * there is an even number of them, so the spawn is moved along the row
+     * onto the mat the race path uses (startBlockLaneOffset), and must land
+     * on a mat's centre as padsLayout lays it, at every heading. The last
+     * three rows are hand edits the builder would not make: padsLayout
+     * draws a spacing under 0.3 m at 0.3, and the craft follows the drawing.
+     */
+    const off = [];
+    for (const [n, spacing] of [[1], [2], [3], [4], [4, 0], [2, 0.1], [3, 0.2]]) {
+      for (const yaw of [0, 0.7, Math.PI / 2, 2.2, -Math.PI, -1.1]) {
+        const d = fresh();
+        const dims = spacing === undefined ? { pads: n } : { pads: n, spacing };
+        const pads = freestylePlace(d, 'startPads', 80, 80, { yaw, dims });
+        const placed = placeDocument(d);
+        const it = placed.items.find((i) => i.el === pads);
+        const mats = padsLayout(pads).map((p) => (p.lo[2] + p.hi[2]) / 2);
+        const want = mats[Math.floor((n - 1) / 2)];
+        /* The spawn in the pads' own frame, turned back with plain Math:
+         * this is the reference, not the physics. */
+        const c = Math.cos(it.yaw);
+        const s = Math.sin(it.yaw);
+        const dx = placed.spawn.x - it.x;
+        const dz = placed.spawn.z - it.z;
+        const lx = dx * c - dz * s;
+        const lz = dx * s + dz * c;
+        const heading = Math.abs(wrapAngle(placed.spawn.yaw - (pads.yaw - Math.PI / 2)));
+        if (!(Math.abs(lx) < 1e-9 && Math.abs(lz - want) < 1e-9 && heading < 1e-12)) {
+          off.push(`${n} pads ${spacing ?? 'default'} apart at ${yaw.toFixed(2)}: local (${lx.toFixed(4)}, ${lz.toFixed(4)}), mat at ${want}`);
+        }
+      }
+    }
+    check('the spawn is on a mat for 1, 2, 3 and 4 pads, and rows spaced under 0.3 m, at six headings, facing the pads’ way', off.length === 0, off.join('; '));
+  }
+  {
+    /*
+     * THE GROUND UNDER A POINT, which is the built map's height. The index
+     * answers what walking every solid answers, at every point and every
+     * height a query is made from.
+     */
+    const placed = placeDocument(map);
+    let seed = 12345;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    let differ = 0;
+    let roofs = 0;
+    for (let i = 0; i < 20000; i += 1) {
+      const x = -90 + rnd() * 180;
+      const z = -90 + rnd() * 180;
+      const from = rnd() < 0.1 ? undefined : -1 + rnd() * 30;
+      const a = topUnder(placed.tops, x, z, from);
+      if (a !== topUnder(placed.solids, x, z, from)) {
+        differ += 1;
+      }
+      if (a > 0) {
+        roofs += 1;
+      }
+    }
+    check('the box top index answers exactly what the plain walk does, at 20000 points', differ === 0 && roofs > 100,
+      `${differ} differ, ${roofs} over a box`);
+    /* A footbridge's deck is ground to a craft on it and sky to one under
+     * it, and a wall's face is not a floor from beside it: the warehouse's
+     * west wall, which has nothing built off it. */
+    const d = fresh();
+    freestylePlace(d, 'bridge', 80, 80);
+    const b = freestylePlace(d, 'building', 30, 30, { style: 'warehouse' });
+    const p2 = placeDocument(d);
+    /* Three metres in from the deck's end, clear of the pier in its
+     * middle. */
+    const deck = p2.solids.find((s) => s.name === 'deck').box;
+    const mx = deck[0] + 3;
+    const mz = (deck[2] + deck[5]) / 2;
+    const CG = 0.045;
+    const BIAS = 0.4;
+    check('under a footbridge the ground is the paving, on it the deck',
+      groundUnder(p2.tops, mx, mz, deck[1] - 1.5 - BIAS) === 0
+      && groundUnder(p2.tops, mx, mz, deck[4] + CG - BIAS) === deck[4] - SUPPORT_TIE,
+      `under ${groundUnder(p2.tops, mx, mz, deck[1] - 1.5 - BIAS)}, on ${groundUnder(p2.tops, mx, mz, deck[4] + CG - BIAS)}, deck ${deck[4]}`);
+    const it = p2.items.find((i) => i.el === b);
+    const roofTop = topUnder(p2.solids, it.x, it.z);
+    const body = p2.solids.find((s) => s.box && s.box[4] === roofTop && s.box[0] < it.x && s.box[3] > it.x
+      && s.box[2] < it.z && s.box[5] > it.z).box;
+    check('a centimetre off a building’s wall at its roof’s height is the paving, a centimetre in is the roof',
+      roofTop > 3 && topUnder(p2.tops, body[0] - 0.01, it.z, roofTop + CG - BIAS) === 0
+      && topUnder(p2.tops, body[0] + 0.01, it.z, roofTop + CG - BIAS) === roofTop,
+      `wall at x ${body[0]}, roof ${roofTop}`);
   }
   {
     const d = fresh();

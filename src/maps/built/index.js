@@ -14,18 +14,28 @@
  * WHAT IS OURS AND WHAT IS THE TOWN'S. The look is the town's, reproduced
  * from src/maps/city/index.js rather than imported from it: the same fog
  * colour, the same four lights at the same offsets, the same painted sky and
- * ridge lines, the same post chain with the same shared renderer fixes. The
- * assets are src/props, drawn by src/props/kit.js in the town's cel
- * materials. What is this file's own is the ground (a paved yard, not a
- * town), how far the fog lets a pilot see (see fogFor), the wires between
- * poles and pylons, and the title camera's orbit.
+ * ridge lines (closed into rings round the plot, see buildBackdrop), the
+ * same post chain with the same shared renderer fixes. The assets are
+ * src/props, drawn by src/props/kit.js in the town's cel materials. What
+ * is this file's own is the ground (a plot, not a town), how far the fog
+ * lets a pilot see (see fogFor), the wires between poles and pylons, the
+ * lamps' glow at dusk, and the title camera's orbit.
+ *
+ * A MAP HAS A TIME OF DAY AND A GROUND (the document's scene, see
+ * ./looks.js). Golden hour over concrete is the town's light on a concrete
+ * yard, number for number what this map was before scenes existed; the
+ * other times repaint the same lights, sky, fog and grade from ./looks.js,
+ * and the other grounds are painted here, each in the yard's manner.
  *
  * THE SOLIDS COME FROM ONE PLACE. src/maps/built/place.js places the
  * document and says what is solid; this file puts exactly that into a
  * Colliders and hands it to the shell, which uploads it to the plant. The
  * builder's warnings read the same placement, so the map and the editor
- * cannot disagree about where a wall is. The ground is flat and at zero,
- * everywhere, so `height` is a constant.
+ * cannot disagree about where a wall is. The paving is flat and at zero,
+ * and `height` is the top of the box under a point, when there is one
+ * within a step of the query (groundUnder in ./place.js), so the shell
+ * seats, measures and sets a craft down on a roof as the plant already
+ * stands it on one.
  *
  * NOTHING MOVES. Stage A has no vehicles, so updateAnim is a no op and the
  * only per frame work is seating the lights, trailing the sky and switching
@@ -50,9 +60,9 @@
 import * as THREE from 'three';
 import { PAL } from '../city/vendored/core/palette.js';
 import { Pipeline } from '../city/vendored/core/post.js';
-import { buildSky, buildDistantHills } from '../city/vendored/core/sky.js';
+import { buildSky } from '../city/vendored/core/sky.js';
 import { setOutlineResolution } from '../city/vendored/core/outline.js';
-import { cel } from '../city/vendored/core/toon.js';
+import { cel, flat } from '../city/vendored/core/toon.js';
 import { bake, sagCurve } from '../city/vendored/core/util.js';
 import { Colliders } from '../../game/collide.js';
 import { disposeSceneGraph } from '../../render/shell.js';
@@ -67,10 +77,11 @@ import { addSolids } from '../../props/solids.js';
 import { planBounds } from '../../props/catalog.js';
 import { poleWireAnchors } from '../../props/street.js';
 import { sincos } from '../../props/trig.js';
-import { seededRandom } from '../../props/parts.js';
+import { seededRandom, hashString } from '../../props/parts.js';
 import { paintGroundLogo } from '../../art/banners.js';
-import { placeDocument } from './place.js';
+import { placeDocument, groundUnder } from './place.js';
 import { starterMap } from './starter.js';
+import { lookOf, kitLook, paintLights, paintSky, paintPost } from './looks.js';
 
 /* The town's far plane, for the town's reason: the sky dome and the ridge
  * lines live out past the fog. See CAMERA_FAR in src/maps/city/index.js.
@@ -129,8 +140,9 @@ function fogFor(qid, W, D) {
 const SHADOW_SHARE = 0.25;
 const SHADOW_HALF_MAX = 80;
 
-/* The ridge lines' nearer layer stands this far out (buildDistantHills),
- * and a plot whose corner reaches it would put a painted hill in the yard. */
+/* The ridge lines' nearer ring stands this far out (buildBackdrop), and a
+ * plot whose corner reaches it would put a painted hill in the yard. The
+ * far ring stands where the town's far layer stands behind the camera. */
 const HILLS_NEAR = 250;
 const HILLS_FAR = 330 * 1.15;
 
@@ -230,8 +242,10 @@ const INK_INVERSE = `      float sx = 2.0 - dc / dl - dc / dr;
  * two are CityPipeline from src/maps/city/index.js, restated rather than
  * exported from there, because importing the city's index would fetch the
  * whole town for a yard. The reasons for every line are in that file.
+ * Exported for src/props/gallery.js, so the asset gallery inks the way a
+ * built map does.
  */
-class BuiltPipeline extends Pipeline {
+export class BuiltPipeline extends Pipeline {
   constructor(renderer, scene, camera, opts) {
     super(renderer, scene, camera, opts);
     this.shellPixelRatio = renderer.getPixelRatio();
@@ -361,15 +375,17 @@ function yardTexture() {
  * The ground past the kerb: the town's own terrain colour, 0xc4c4b6 from
  * its street grid, mottled so a pilot high over the plot reads distance off
  * it rather than a flat sheet. The same colour the gallery sits on, which
- * is why it is only ever seen past a verge and a kerb here.
+ * is why it is only ever seen past a verge and a kerb here. A grass or dirt
+ * plot stands in land of its own kind (the ground's `terrain` in
+ * ./looks.js), since a lawn in a beige plain reads as a carpet.
  */
-function terrainTexture() {
+function terrainTexture(tone) {
   const S = 256;
   const c = document.createElement('canvas');
   c.width = S;
   c.height = S;
   const g = c.getContext('2d');
-  g.fillStyle = '#c4c4b6';
+  g.fillStyle = tone.base;
   g.fillRect(0, 0, S, S);
   const rng = seededRandom(0x7e4a11);
   for (let n = 0; n < 40; n += 1) {
@@ -378,7 +394,7 @@ function terrainTexture() {
     const r = rng.range(10, 42);
     const light = rng.chance(0.5);
     const grad = g.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, light ? 'rgba(212, 210, 196, 0.5)' : 'rgba(170, 176, 150, 0.45)');
+    grad.addColorStop(0, light ? tone.light : tone.dark);
     grad.addColorStop(1, 'rgba(196, 196, 182, 0)');
     g.fillStyle = grad;
     /* Drawn at every wrap so the tile has no seam. */
@@ -389,6 +405,328 @@ function terrainTexture() {
     }
   }
   return c;
+}
+
+/*
+ * THE OTHER GROUNDS, each one tile of paint in the yard's manner: a flat
+ * base, broad soft mottling a pilot reads distance off from the air, and
+ * a little close detail, all of it low in contrast, because the cel ramp
+ * bands the ground by the light already and anything louder than paving
+ * reads as a pattern. Every mark is drawn at each wrap of the tile, so
+ * tiles meet with no seam.
+ */
+const GROUND_TILE = { tarmac: 16, grass: 12, dirt: 14 };
+
+function groundCanvas(S, base) {
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = base;
+  g.fillRect(0, 0, S, S);
+  /* Draw at every wrap, so a mark over the tile's edge comes back in on
+   * the other side. */
+  const wrapped = (draw) => {
+    for (const ox of [-S, 0, S]) {
+      for (const oy of [-S, 0, S]) {
+        draw(ox, oy);
+      }
+    }
+  };
+  const blob = (x, y, r, inner, outer) => {
+    wrapped((ox, oy) => {
+      const grad = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+      grad.addColorStop(0, inner);
+      grad.addColorStop(1, outer);
+      g.fillStyle = grad;
+      g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+    });
+  };
+  return { c, g, wrapped, blob };
+}
+
+/*
+ * TARMAC: a car park's asphalt, dark and a little violet like the town's
+ * road, with the fine grain of its stone, the lighter wear where wheels
+ * have run, tar sealing wandering along old cracks, and oil. The markings
+ * and the cut and filled repairs are laid over it in the world
+ * (tarmacMarks, tarmacRepairs), not in the tile.
+ */
+function tarmacTexture() {
+  const S = 512;
+  const { c, g, wrapped, blob } = groundCanvas(S, '#6b6978');
+  const rng = seededRandom(0x2a7c55);
+  for (let n = 0; n < 30; n += 1) {
+    const light = rng.chance(0.5);
+    blob(rng.range(0, S), rng.range(0, S), rng.range(30, 110),
+      light ? 'rgba(146, 142, 158, 0.18)' : 'rgba(76, 74, 90, 0.2)', 'rgba(107, 105, 120, 0)');
+  }
+  /* The stone in it: single texels, pale and dark, faint. */
+  for (let n = 0; n < 2600; n += 1) {
+    g.fillStyle = rng.chance(0.5) ? 'rgba(178, 172, 190, 0.3)' : 'rgba(58, 54, 72, 0.3)';
+    g.fillRect(Math.floor(rng.range(0, S)), Math.floor(rng.range(0, S)), 1, 1);
+  }
+  /* Crack sealing: a wandering dark line, and oil where cars stood. Few
+   * and faint, because a tile repeats every GROUND_TILE metres and
+   * anything that catches the eye in one is a pattern across the plot.
+   * The cut and filled repairs, which do catch it, are laid in the world
+   * instead (tarmacRepairs), where they do not repeat. */
+  for (let n = 0; n < 4; n += 1) {
+    const pts = [[rng.range(0, S), rng.range(0, S)]];
+    const steps = 8 + Math.floor(rng.range(0, 10));
+    let a = rng.range(0, Math.PI * 2);
+    for (let k = 0; k < steps; k += 1) {
+      a += rng.range(-0.7, 0.7);
+      const [px, py] = pts[pts.length - 1];
+      pts.push([px + Math.cos(a) * rng.range(6, 16), py + Math.sin(a) * rng.range(6, 16)]);
+    }
+    const width = rng.range(1.2, 2);
+    wrapped((ox, oy) => {
+      g.strokeStyle = 'rgba(46, 42, 58, 0.34)';
+      g.lineWidth = width;
+      g.lineJoin = 'round';
+      g.beginPath();
+      pts.forEach(([px, py], k) => (k ? g.lineTo(px + ox, py + oy) : g.moveTo(px + ox, py + oy)));
+      g.stroke();
+    });
+  }
+  for (let n = 0; n < 8; n += 1) {
+    blob(rng.range(0, S), rng.range(0, S), rng.range(8, 22), 'rgba(40, 36, 52, 0.2)', 'rgba(40, 36, 52, 0)');
+  }
+  return c;
+}
+
+/*
+ * GRASS: the town's own lawn tone, PAL.grass, painted the way a background
+ * painter does a field: broad patches a shade lighter and darker, clover
+ * in darker clumps, short strokes of blade in both, and a very few white
+ * and yellow flowers. No mowing stripes: from the air they are a second
+ * grid.
+ */
+function grassTexture() {
+  const S = 512;
+  const { c, g, blob } = groundCanvas(S, '#86ab84');
+  const rng = seededRandom(0x3b8d21);
+  for (let n = 0; n < 46; n += 1) {
+    const light = rng.chance(0.55);
+    blob(rng.range(0, S), rng.range(0, S), rng.range(24, 90),
+      light ? 'rgba(160, 196, 146, 0.34)' : 'rgba(104, 146, 110, 0.32)', 'rgba(134, 171, 132, 0)');
+  }
+  for (let n = 0; n < 70; n += 1) {
+    const x = rng.range(0, S);
+    const y = rng.range(0, S);
+    for (let k = 0; k < 9; k += 1) {
+      blob(x + rng.range(-9, 9), y + rng.range(-9, 9), rng.range(2, 4.5), 'rgba(92, 132, 98, 0.5)', 'rgba(92, 132, 98, 0)');
+    }
+  }
+  g.lineWidth = 1;
+  for (let n = 0; n < 4200; n += 1) {
+    const x = rng.range(0, S);
+    const y = rng.range(0, S);
+    g.strokeStyle = rng.chance(0.5) ? 'rgba(176, 206, 158, 0.28)' : 'rgba(94, 132, 96, 0.28)';
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + rng.range(-1.2, 1.2), y - rng.range(2.5, 5));
+    g.stroke();
+  }
+  for (let n = 0; n < 36; n += 1) {
+    g.fillStyle = rng.chance(0.6) ? 'rgba(250, 248, 238, 0.85)' : 'rgba(246, 212, 96, 0.85)';
+    g.fillRect(Math.floor(rng.range(1, S - 2)), Math.floor(rng.range(1, S - 2)), 2, 2);
+  }
+  return c;
+}
+
+/*
+ * DIRT: a worked earth yard, warm and held back from ochre the way the
+ * town's clay is, dry and pale where it is packed, darker where the damp
+ * sits, gravel and a few stones through it. The ruts are laid over it as
+ * their own paint (dirtRuts), because a rut runs across the whole plot and
+ * a tile would repeat it.
+ */
+function dirtTexture() {
+  const S = 512;
+  const { c, g, blob } = groundCanvas(S, '#c2ad95');
+  const rng = seededRandom(0x5d19e3);
+  for (let n = 0; n < 40; n += 1) {
+    const light = rng.chance(0.55);
+    blob(rng.range(0, S), rng.range(0, S), rng.range(26, 100),
+      light ? 'rgba(214, 198, 172, 0.26)' : 'rgba(164, 142, 118, 0.22)', 'rgba(194, 173, 149, 0)');
+  }
+  for (let n = 0; n < 2200; n += 1) {
+    g.fillStyle = rng.chance(0.5) ? 'rgba(150, 140, 150, 0.45)' : 'rgba(120, 100, 86, 0.4)';
+    const r = rng.chance(0.8) ? 1 : 2;
+    g.fillRect(Math.floor(rng.range(0, S)), Math.floor(rng.range(0, S)), r, r);
+  }
+  /* Stones: a pale top and a dark lower edge, so the light reads on them. */
+  for (let n = 0; n < 70; n += 1) {
+    const x = rng.range(4, S - 4);
+    const y = rng.range(4, S - 4);
+    const r = rng.range(1.5, 3.5);
+    g.fillStyle = 'rgba(112, 96, 88, 0.6)';
+    g.beginPath();
+    g.ellipse(x, y + 0.8, r * 1.3, r, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = 'rgba(214, 204, 198, 0.8)';
+    g.beginPath();
+    g.ellipse(x, y, r * 1.2, r * 0.85, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  return c;
+}
+
+/*
+ * A PLOT THAT DOES NOT REPEAT. A tile of tarmac, grass or dirt is a dozen
+ * metres, and over a 160 m plot its broad patches line up into a grid a
+ * pilot sees from the air at once. So the plot's own vertices carry a
+ * second, slower variation, laid in world space and never repeating: two
+ * octaves of smoothed value noise, one on a lattice of LATTICE metres and
+ * one at a third of that, multiplying the texture by a few percent. A
+ * lawn's also leans its hue, yellower where it is drier and bluer where it
+ * is lush, because that is what a real one does. Concrete keeps the one
+ * flat plane it always had.
+ */
+const LATTICE = 30;
+const PLOT_VARY = { tarmac: [0.07, 0, 0], grass: [0.08, 0.05, 0.06], dirt: [0.09, 0.03, 0] };
+
+function plotGeometry(W, D, groundId, seed) {
+  const vary = PLOT_VARY[groundId];
+  /* Four metre cells, well inside the noise's lattice, and no more than a
+   * hundred a side, so a plot of a kilometre is 20,000 triangles and not
+   * half a million. */
+  const nx = Math.min(100, Math.max(1, Math.round(W / 4)));
+  const nz = Math.min(100, Math.max(1, Math.round(D / 4)));
+  const geo = new THREE.PlaneGeometry(W, D, nx, nz).rotateX(-Math.PI / 2);
+  if (!vary) {
+    return geo;
+  }
+  const lattice = (i, j, k) => seededRandom((Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ Math.imul(k, 83492791) ^ seed) >>> 0).next() * 2 - 1;
+  const smooth = (t) => t * t * (3 - 2 * t);
+  const noise = (x, z, cell, k) => {
+    const fx = x / cell;
+    const fz = z / cell;
+    const i = Math.floor(fx);
+    const j = Math.floor(fz);
+    const u = smooth(fx - i);
+    const v = smooth(fz - j);
+    const a = lattice(i, j, k) + (lattice(i + 1, j, k) - lattice(i, j, k)) * u;
+    const b = lattice(i, j + 1, k) + (lattice(i + 1, j + 1, k) - lattice(i, j + 1, k)) * u;
+    return a + (b - a) * v;
+  };
+  const pos = geo.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  for (let n = 0; n < pos.count; n += 1) {
+    const x = pos.getX(n);
+    const z = pos.getZ(n);
+    const value = 0.7 * noise(x, z, LATTICE, 1) + 0.3 * noise(x, z, LATTICE / 3, 2);
+    const hue = noise(x, z, LATTICE * 1.4, 3);
+    const k = 1 + vary[0] * value;
+    col[n * 3] = k * (1 + vary[1] * hue);
+    col[n * 3 + 1] = k;
+    col[n * 3 + 2] = k * (1 - vary[2] * hue);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
+
+/* The lanes buildGround paints under bridges, as world rectangles at their
+ * widest, for paint that must not lie on a road. */
+function lanesOf(placed) {
+  const { W, D } = placed;
+  const out = [];
+  const S = { s: 0, c: 1 };
+  for (const it of placed.items) {
+    if (it.el.type === 'bridge') {
+      sincos(it.yaw, S);
+      const hw = 4;
+      out.push(Math.abs(S.s) > 0.5
+        ? { x0: -W / 2, x1: W / 2, z0: it.z - hw, z1: it.z + hw }
+        : { x0: it.x - hw, x1: it.x + hw, z0: -D / 2, z1: D / 2 });
+    }
+  }
+  return out;
+}
+
+/*
+ * TARMAC REPAIRS, cut and filled: a few rectangles a shade fresher or
+ * older than the rest, laid in the world where the plot's tile cannot
+ * repeat them, at quarter turns the way a crew cuts them, seeded by the
+ * document so each car park has its own.
+ */
+function tarmacRepairs(paint, placed, doc) {
+  const rng = seededRandom(hashString(doc.id) ^ 0x7ea1c0);
+  const fresh = cel({ color: 0x625e72, bands: 3, tint: 0x5a5480, cache: false });
+  const old = cel({ color: 0x7a768a, bands: 3, tint: 0x5a5480, cache: false });
+  const lanes = lanesOf(placed);
+  const n = Math.max(4, Math.round((placed.W * placed.D) / 1400));
+  let laid = 0;
+  for (let i = 0; i < n; i += 1) {
+    const w = rng.range(1.6, 7);
+    const d = rng.range(1.2, 4.5);
+    const x = rng.range(-0.46, 0.46) * placed.W;
+    const z = rng.range(-0.46, 0.46) * placed.D;
+    const turn = rng.chance(0.5);
+    const fromFresh = rng.chance(0.6);
+    const hx = (turn ? d : w) / 2 + 0.5;
+    const hz = (turn ? w : d) / 2 + 0.5;
+    if (!clearOf(lanes, x - hx, x + hx, z - hz, z + hz)) {
+      continue;
+    }
+    paint.rect(fromFresh ? fresh : old, x, z, w, d, turn ? Math.PI / 2 : 0, 0.003);
+    laid += 1;
+  }
+  return laid;
+}
+
+/*
+ * One tyre rut, across a strip of texture: the width of a tyre's track,
+ * soft at both edges, packed darker in the middle, with the tread's
+ * chevrons pressed into it every few texels along the length.
+ */
+function rutTexture() {
+  const W = 32;
+  const H = 128;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d');
+  const across = g.createLinearGradient(0, 0, W, 0);
+  across.addColorStop(0, 'rgba(120, 96, 76, 0)');
+  across.addColorStop(0.25, 'rgba(120, 96, 76, 0.42)');
+  across.addColorStop(0.5, 'rgba(110, 88, 70, 0.5)');
+  across.addColorStop(0.75, 'rgba(120, 96, 76, 0.42)');
+  across.addColorStop(1, 'rgba(120, 96, 76, 0)');
+  g.fillStyle = across;
+  g.fillRect(0, 0, W, H);
+  g.strokeStyle = 'rgba(86, 66, 54, 0.4)';
+  g.lineWidth = 2;
+  for (let y = 0; y < H; y += 8) {
+    g.beginPath();
+    g.moveTo(8, y + 4);
+    g.lineTo(W / 2, y);
+    g.lineTo(W - 8, y + 4);
+    g.stroke();
+  }
+  return c;
+}
+
+/* A soft round glow, bright in the middle and gone at the edge, for the
+ * light a lamp throws on the ground and the halo round its head. */
+function glowTexture(size, falloff) {
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const g = c.getContext('2d');
+  const r = size / 2;
+  const grad = g.createRadialGradient(r, r, 0, r, r, r);
+  grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  grad.addColorStop(falloff, 'rgba(255, 255, 255, 0.35)');
+  grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.needsUpdate = true;
+  return t;
 }
 
 /*
@@ -448,21 +786,225 @@ class Paint {
 }
 
 /*
+ * Where the author's things stand, as world rectangles grown by `pad`, for
+ * paint that should go round them. A car is left out, since a car may
+ * stand in a painted bay, and so is anything with no footprint.
+ */
+function footprints(placed, pad) {
+  const out = [];
+  const S = { s: 0, c: 1 };
+  for (const it of placed.items) {
+    const type = it.el.type;
+    if (type === 'car' || !it.parts || !it.parts.length) {
+      continue;
+    }
+    const b = planBounds(it.parts);
+    sincos(it.yaw, S);
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    for (const lx of [b.x0, b.x1]) {
+      for (const lz of [b.z0, b.z1]) {
+        const wx = it.x + lx * S.c + lz * S.s;
+        const wz = it.z - lx * S.s + lz * S.c;
+        x0 = Math.min(x0, wx);
+        x1 = Math.max(x1, wx);
+        z0 = Math.min(z0, wz);
+        z1 = Math.max(z1, wz);
+      }
+    }
+    /* The pads' launch box is painted out past their mats. */
+    const p = type === 'startPads' ? pad + 1.6 : pad;
+    out.push({ x0: x0 - p, x1: x1 + p, z0: z0 - p, z1: z1 + p });
+  }
+  return out;
+}
+
+function clearOf(rects, x0, x1, z0, z1) {
+  return !rects.some((r) => r.x0 < x1 && r.x1 > x0 && r.z0 < z1 && r.z1 > z0);
+}
+
+/*
+ * A CAR PARK'S MARKINGS, on a tarmac plot: a row of bays along each side,
+ * in from the yard's edge line, open onto an aisle that runs round the plot
+ * one way, with an arrow painted in the aisle every so often. A bay is left
+ * out wherever something stands on it (a car is allowed to), so the lines
+ * go round the author's map rather than under it, and an arrow the same.
+ * Bays 2.5 by 5 m and a 6 m aisle, the proportions of a real one.
+ */
+const BAY_W = 2.5;
+const BAY_D = 5;
+const BAY_GAP = 0.4;
+const AISLE = 6;
+const BAY_LINE = 0.1;
+const ARROW_EVERY = 24;
+
+function tarmacMarks(paint, mat, placed, painted) {
+  const ex = placed.W / 2 - EDGE_LINE_INSET;
+  const ez = placed.D / 2 - EDGE_LINE_INSET;
+  const busy = footprints(placed, 0.3);
+  /* Each side as a frame: `along` runs the way the aisle's traffic goes
+   * (anticlockwise seen from above), `inward` points into the plot, and
+   * `e` is how far the edge line is from the middle. */
+  const sides = [
+    { along: [1, 0], inward: [0, -1], e: ez, len: ex },
+    { along: [0, -1], inward: [-1, 0], e: ex, len: ez },
+    { along: [-1, 0], inward: [0, 1], e: ez, len: ex },
+    { along: [0, 1], inward: [1, 0], e: ex, len: ez },
+  ];
+  const corner = BAY_GAP + BAY_D + AISLE + 1;
+  const y = 0.008;
+  for (const s of sides) {
+    const [ax, az] = s.along;
+    const [nx, nz] = s.inward;
+    const alongX = Math.abs(ax) > 0.5;
+    /* A point `t` along the side and `u` in from its edge line. */
+    const at = (t, u) => [-nx * s.e + ax * t + nx * u, -nz * s.e + az * t + nz * u];
+    const rect = (t0, t1, u0, u1) => {
+      const [px, pz] = at(t0, u0);
+      const [qx, qz] = at(t1, u1);
+      return [Math.min(px, qx), Math.max(px, qx), Math.min(pz, qz), Math.max(pz, qz)];
+    };
+    const n = Math.floor((2 * (s.len - corner)) / BAY_W);
+    const t0 = -(n * BAY_W) / 2;
+    const free = [];
+    for (let i = 0; i < n; i += 1) {
+      free.push(clearOf(busy, ...rect(t0 + i * BAY_W, t0 + (i + 1) * BAY_W, BAY_GAP, BAY_GAP + BAY_D)));
+    }
+    for (let i = 0; i <= n; i += 1) {
+      if (!free[i - 1] && !free[i]) {
+        continue;
+      }
+      const [cx, cz] = at(t0 + i * BAY_W, BAY_GAP + BAY_D / 2);
+      paint.rect(mat, cx, cz, alongX ? BAY_LINE : BAY_D, alongX ? BAY_D : BAY_LINE, 0, y);
+    }
+    painted.parking += free.filter(Boolean).length;
+    /* The arrows, down the middle of the aisle: a shaft, and a head of two
+     * bars folded back from its tip. Headings from atan2, which is render
+     * only: nothing here is solid. */
+    const u = BAY_GAP + BAY_D + AISLE / 2;
+    for (let t = -s.len + corner + ARROW_EVERY / 2; t < s.len - corner; t += ARROW_EVERY) {
+      if (!clearOf(busy, ...rect(t - 2, t + 2, u - 1.2, u + 1.2))) {
+        continue;
+      }
+      const [cx, cz] = at(t, u);
+      const yaw = Math.atan2(-az, ax);
+      paint.rect(mat, cx, cz, 2.6, 0.2, yaw, y);
+      const [tx, tz] = at(t + 1.25, u);
+      for (const side of [-1, 1]) {
+        const a = yaw + Math.PI + side * 0.62;
+        const dx = Math.cos(a);
+        const dz = -Math.sin(a);
+        paint.rect(mat, tx + dx * 0.5, tz + dz * 0.5, 1.1, 0.2, a, y);
+      }
+      painted.arrows += 1;
+    }
+  }
+}
+
+/*
+ * TYRE RUTS over a dirt plot: the tracks of whatever worked the yard, a
+ * few long sweeps from one side of the plot to another, each a pair of
+ * ruts a truck's track apart. Seeded by the document's id, so every map
+ * has its own and keeps them. They run under whatever stands on them, as
+ * ruts in a yard do, but not across a painted lane, which is paved.
+ */
+const RUT_TRACK = 1.8;
+const RUT_W = 0.42;
+const RUT_REPEAT = 1.6;
+
+function dirtRuts(placed, doc) {
+  const { W, D } = placed;
+  const rng = seededRandom(hashString(doc.id) ^ 0x5eed17);
+  const lanes = lanesOf(placed);
+  const onEdge = (side) => {
+    const t = rng.range(-0.4, 0.4);
+    return [
+      [t * W, -D / 2 + 2], [W / 2 - 2, t * D], [t * W, D / 2 - 2], [-W / 2 + 2, t * D],
+    ][side];
+  };
+  const pos = [];
+  const uv = [];
+  const index = [];
+  const paths = Math.max(3, Math.min(9, Math.round((W * D) / 5000)));
+  for (let p = 0; p < paths; p += 1) {
+    const a = rng.int(0, 3);
+    const b = (a + rng.int(1, 3)) % 4;
+    const pts = [onEdge(a), [rng.range(-0.3, 0.3) * W, rng.range(-0.3, 0.3) * D],
+      [rng.range(-0.3, 0.3) * W, rng.range(-0.3, 0.3) * D], onEdge(b)]
+      .map(([x, z]) => new THREE.Vector3(x, 0, z));
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    const len = curve.getLength();
+    const steps = Math.max(8, Math.ceil(len / 0.8));
+    for (const off of [-RUT_TRACK / 2, RUT_TRACK / 2]) {
+      let prev = -1;
+      for (let i = 0; i <= steps; i += 1) {
+        const f = i / steps;
+        const c = curve.getPointAt(f);
+        const tg = curve.getTangentAt(f);
+        const nx = -tg.z;
+        const nz = tg.x;
+        const mx = c.x + nx * off;
+        const mz = c.z + nz * off;
+        const inLane = lanes.some((l) => mx > l.x0 && mx < l.x1 && mz > l.z0 && mz < l.z1);
+        if (inLane || Math.abs(mx) > W / 2 - 0.4 || Math.abs(mz) > D / 2 - 0.4) {
+          prev = -1;
+          continue;
+        }
+        const v = (f * len) / RUT_REPEAT;
+        const base = pos.length / 3;
+        pos.push(mx - nx * (RUT_W / 2), 0.003, mz - nz * (RUT_W / 2), mx + nx * (RUT_W / 2), 0.003, mz + nz * (RUT_W / 2));
+        uv.push(0, v, 1, v);
+        if (prev >= 0) {
+          index.push(prev, prev + 1, base, prev + 1, base + 1, base);
+        }
+        prev = base;
+      }
+    }
+  }
+  if (!index.length) {
+    return null;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length).fill(0).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(index);
+  geo.computeBoundingSphere();
+  const tex = canvasTexture(rutTexture(), 1, 1);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  const mat = cel({ color: 0xffffff, map: tex, bands: 3, tint: 0x6f5f86, transparent: true, depthWrite: false, cache: false });
+  mat.polygonOffset = true;
+  mat.polygonOffsetFactor = -1;
+  mat.polygonOffsetUnits = -1;
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  mesh.name = 'ruts';
+  return { mesh, count: paths };
+}
+
+/*
  * The plot, its kerb, the verge, the terrain, and the paint on the plot.
  * Returns the group, what it painted for stats(), and a way to stop a logo
  * still decoding from painting into a map that has gone.
  */
-function buildGround(placed, doc) {
+function buildGround(placed, doc, look) {
   const { W, D } = placed;
+  const G = look.ground;
+  const groundId = look.groundId;
   const group = new THREE.Group();
   group.name = 'ground';
 
-  /* The paving: a plane the size of the field, at exactly zero, which is
-   * the height the plant flies over. */
-  const yard = canvasTexture(yardTexture(), W / (SLAB * TILE_SLABS), D / (SLAB * TILE_SLABS));
+  /* The plot: a plane the size of the field, at exactly zero, which is the
+   * height the plant flies over, painted with the map's ground. Whatever
+   * it is painted as, it is the same flat plane: a ground is paint. */
+  const painter = { tarmac: tarmacTexture, grass: grassTexture, dirt: dirtTexture }[groundId];
+  const tile = painter ? GROUND_TILE[groundId] : SLAB * TILE_SLABS;
+  const yard = canvasTexture(painter ? painter() : yardTexture(), W / tile, D / tile);
   const plot = new THREE.Mesh(
-    new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2),
-    cel({ color: 0xffffff, map: yard, bands: 3, tint: 0x6f6790, cache: false }),
+    painter ? plotGeometry(W, D, groundId, hashString(doc.id)) : new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2),
+    cel({ color: 0xffffff, map: yard, bands: 3, tint: G.tint, vertexColors: Boolean(painter), cache: false }),
   );
   plot.receiveShadow = true;
   plot.name = 'plot';
@@ -523,7 +1065,7 @@ function buildGround(placed, doc) {
    */
   const TERRAIN = 2000;
   const TERRAIN_CELLS = 50;
-  const terrainTex = canvasTexture(terrainTexture(), TERRAIN / 40, TERRAIN / 40);
+  const terrainTex = canvasTexture(terrainTexture(G.terrain), TERRAIN / 40, TERRAIN / 40);
   const terrain = new THREE.Mesh(
     new THREE.PlaneGeometry(TERRAIN, TERRAIN, TERRAIN_CELLS, TERRAIN_CELLS).rotateX(-Math.PI / 2),
     cel({ color: 0xffffff, map: terrainTex, bands: 3, tint: 0x7a7396, cache: false }),
@@ -538,12 +1080,18 @@ function buildGround(placed, doc) {
   const yellow = cel({ color: PAL.lineYellow, bands: 2, tint: 0x8a7a70, cache: false });
   const asphalt = cel({ color: PAL.road, bands: 3, tint: 0x6a608f, cache: false });
   const paint = new Paint();
-  const painted = { lanes: 0, bays: 0, startBox: 0, logos: 0 };
+  const painted = { lanes: 0, bays: 0, startBox: 0, logos: 0, parking: 0, arrows: 0, ruts: 0 };
 
-  /* The line round the plot. */
+  /* The line round the plot, on a ground anybody would paint one on. */
   const ex = W / 2 - EDGE_LINE_INSET;
   const ez = D / 2 - EDGE_LINE_INSET;
-  paint.outline(yellow, 0, 0, 0, -ex, ex, -ez, ez, LINE_W, 0.008);
+  if (G.edgeLine) {
+    paint.outline(yellow, 0, 0, 0, -ex, ex, -ez, ez, LINE_W, 0.008);
+  }
+  if (groundId === 'tarmac') {
+    painted.repairs = tarmacRepairs(paint, placed, doc);
+    tarmacMarks(paint, white, placed, painted);
+  }
 
   for (const it of placed.items) {
     const type = it.el.type;
@@ -587,13 +1135,16 @@ function buildGround(placed, doc) {
       painted.lanes += 1;
     }
     /* A container stack gets its bay painted round it, half a metre out. */
-    if (type === 'containers') {
+    if (type === 'containers' && G.bays) {
       const b = planBounds(it.parts);
       paint.outline(yellow, it.x, it.z, it.yaw, b.x0 - 0.6, b.x1 + 0.6, b.z0 - 0.6, b.z1 + 0.6, LINE_W, 0.008);
       painted.bays += 1;
     }
-    /* The launch box round the pads, and an arrow the way they face. */
-    if (type === 'startPads') {
+    /* The launch box round the pads, and an arrow the way they face, when
+     * the pads stand on the paving. Pads raised onto a roof are seated on
+     * it (it.y, see placeDocument), and this paint is the paving's, so it
+     * would lie at 0 inside the building under them. */
+    if (type === 'startPads' && it.y === 0) {
       const b = planBounds(it.parts);
       paint.outline(white, it.x, it.z, it.yaw, b.x0 - 1.0, b.x1 + 1.6, b.z0 - 0.8, b.z1 + 0.8, 0.12, 0.009);
       const S = { s: 0, c: 1 };
@@ -610,6 +1161,13 @@ function buildGround(placed, doc) {
     }
   }
   paint.finish(group);
+  if (groundId === 'dirt') {
+    const ruts = dirtRuts(placed, doc);
+    if (ruts) {
+      group.add(ruts.mesh);
+      painted.ruts = ruts.count;
+    }
+  }
 
   /* ---- the sponsors' marks, from the document's own logos ---- */
   const logos = [];
@@ -689,6 +1247,69 @@ function groundLogo(it, dataUrl) {
       img.onload = null;
     },
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * The horizon.
+ * ------------------------------------------------------------------ */
+
+/*
+ * THE BACKDROP: the town's two layers of painted ridge, closed into rings
+ * round the plot.
+ *
+ * The town's buildDistantHills paints four straight flats, one ahead and
+ * one behind for each layer, cut off square at their ends. In the town the
+ * streets hide the ends. On an open yard they stood on the horizon to the
+ * north east and the north west as pale slabs with vertical sides. So the
+ * same silhouettes, the town's sum of falling sines at the town's heights
+ * and colours, unlit and out of the fog, go all the way round instead: a
+ * whole number of each bump per turn, so each ring meets itself with no
+ * seam. The rings stand out past the plot's corner, as the flats were
+ * pushed (`scale`), and keep their height.
+ */
+const BACKDROP = [
+  /* far first, so the near ring draws over it where they cross */
+  { r: HILLS_FAR, h: 46, tone: 'far', y: -6, bumps: [2, 5, 7, 9, 11, 14, 16, 18, 20], phase: 0.7 },
+  { r: HILLS_NEAR, h: 34, tone: 'near', y: -4, bumps: [2, 4, 5, 7, 9, 11, 12], phase: 0 },
+];
+const BACKDROP_STEPS = 360;
+
+/* Exported for src/props/gallery.js, whose open ground showed the town's
+ * cut ends the same way. `hills` is a time of day's ridge colours
+ * (./looks.js), the town's own by default. */
+export function buildBackdrop(scene, scale, hills = { far: PAL.hillFar, near: PAL.hill }) {
+  const group = new THREE.Group();
+  group.name = 'backdrop';
+  for (const L of BACKDROP) {
+    const r = L.r * scale;
+    const pos = new Float32Array((BACKDROP_STEPS + 1) * 2 * 3);
+    const index = [];
+    for (let i = 0; i <= BACKDROP_STEPS; i += 1) {
+      const a = (i / BACKDROP_STEPS) * Math.PI * 2;
+      let y = 0;
+      L.bumps.forEach((m, k) => {
+        const b = k + 1;
+        y += Math.sin(a * m + b * 2.1 + L.phase) * (L.h / (b * 1.25));
+      });
+      const top = L.y + Math.max(2, y * 0.55 + L.h * 0.55);
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      pos.set([x, top, z, x, -60, z], i * 6);
+      if (i < BACKDROP_STEPS) {
+        const v = i * 2;
+        index.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setIndex(index);
+    const mesh = new THREE.Mesh(geo, flat({ color: hills[L.tone], fog: false, side: THREE.DoubleSide }));
+    mesh.renderOrder = -8;
+    mesh.frustumCulled = false;
+    group.add(mesh);
+  }
+  scene.add(group);
+  return group;
 }
 
 /* ------------------------------------------------------------------ *
@@ -776,11 +1397,24 @@ function wirePairs(items, reach) {
  * material. Render only: nothing here reaches the colliders. Each run's
  * anchors are matched across by their offset to the side of the run, so
  * two poles facing opposite ways still wire left to left.
+ *
+ * AND THE SAME WIRES AGAIN AS LINES, for the far spans. A tube 4 to 8 cm
+ * across is under a pixel from 20 to 40 m out, and a triangle under a
+ * pixel is drawn or not by where its centre falls, so under the built
+ * map's 270 m of fog a span across the sky came apart into dashes that
+ * crawled as the camera moved. A GL line is a pixel wide at any range and
+ * never breaks. It runs down each tube's own centre line, so wherever the
+ * tube is wider than a pixel its near face hides the line, and there is
+ * nothing to switch over with range: near, the tube; far, the line.
  */
-function buildWires(placed) {
+const WIRE_SEGMENTS = 16;
+const WIRE_COLOR = 0x4c4658;
+
+function buildWires(placed, lineColor = WIRE_COLOR) {
   const poles = placed.items.filter((it) => it.el.type === 'utilityPole');
   const pylons = placed.items.filter((it) => it.el.type === 'pylon');
   const tubes = [];
+  const line = [];
   let runs = 0;
   const wireRun = (A, B, sagOf, r) => {
     const ga = wireAnchors(A.el);
@@ -795,7 +1429,13 @@ function buildWires(placed) {
       for (let k = 0; k < Math.min(pa.length, pb.length); k += 1) {
         const dist = pa[k].distanceTo(pb[k]);
         const curve = sagCurve(pa[k], pb[k], sagOf(dist), 12);
-        tubes.push({ geometry: new THREE.TubeGeometry(curve, 16, r, 4, false) });
+        tubes.push({ geometry: new THREE.TubeGeometry(curve, WIRE_SEGMENTS, r, 4, false) });
+        /* TubeGeometry puts its rings at getPointAt(i / segments), which
+         * is what getSpacedPoints returns: the line is the tube's axis. */
+        const pts = curve.getSpacedPoints(WIRE_SEGMENTS);
+        for (let i = 0; i < WIRE_SEGMENTS; i += 1) {
+          line.push(pts[i].x, pts[i].y, pts[i].z, pts[i + 1].x, pts[i + 1].y, pts[i + 1].z);
+        }
       }
     }
     runs += 1;
@@ -809,19 +1449,113 @@ function buildWires(placed) {
     wireRun(a, b, (dist) => 0.035 * dist, 0.04);
   }
   if (!tubes.length) {
-    return { mesh: null, runs: 0, triangles: 0 };
+    return { mesh: null, lines: null, runs: 0, triangles: 0 };
   }
   const geo = bake(tubes);
   for (const t of tubes) {
     t.geometry.dispose();
   }
   geo.computeBoundingSphere();
-  const mesh = new THREE.Mesh(geo, cel({ color: 0x4c4658, bands: 2, tint: 0x413c58 }));
+  const mesh = new THREE.Mesh(geo, cel({ color: WIRE_COLOR, bands: 2, tint: 0x413c58 }));
   mesh.name = 'wires';
   mesh.castShadow = false;
   mesh.receiveShadow = false;
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(line, 3));
+  lineGeo.computeBoundingSphere();
+  const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: lineColor }));
+  lines.name = 'wireLines';
   const tris = geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
-  return { mesh, runs, triangles: tris };
+  return { mesh, lines, runs, triangles: tris };
+}
+
+/* ------------------------------------------------------------------ *
+ * Lamps at night.
+ * ------------------------------------------------------------------ */
+
+/*
+ * THE LIGHT THE LAMPS THROW, at dusk: a warm pool on whatever is under each
+ * lamp, and a soft halo round its head. The kit remembers where every lamp
+ * it drew is (K.lamps in src/props/kit.js), so this needs no family to say
+ * where its lamps are, and a lamp on a billboard, a canopy or a pole all
+ * light the ground the same way.
+ *
+ * No lights. Every pool is one quad in one additive batch, every halo one
+ * point in one more, so a map of fifty lamps costs two draw calls and no
+ * shading anywhere else. Neither writes depth, so the ink draws no line
+ * round a glow. A pool lands on the surface under the lamp (groundUnder in
+ * ./place.js, the same the shell asks), so a lamp over a roof lights the
+ * roof; it widens and fades with the lamp's height, and a lamp too high to
+ * light anything gets only its halo.
+ */
+const POOL_COLOR = 0xffc58a;
+const VENDING_COLOR = 0xe2eaff;
+const HALO_COLOR = 0xffdcae;
+
+function buildLampGlow(lamps, placed) {
+  /* One per lamp: a lamp drawn as a lens and a housing is logged twice.
+   * Vending machines stand closer than that, a pool each. */
+  const kept = [];
+  for (const l of lamps) {
+    const near = l.halo ? 1.0 : 0.3;
+    if (!kept.some((k) => k.halo === l.halo && Math.hypot(k.x - l.x, k.y - l.y, k.z - l.z) < near)) {
+      kept.push(l);
+    }
+  }
+  if (!kept.length) {
+    return null;
+  }
+  const quad = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  const parts = [];
+  const tint = new THREE.Color();
+  for (const l of kept) {
+    const floor = groundUnder(placed.tops, l.x, l.z, l.y - 0.2);
+    const h = l.y - floor;
+    if (!(h > 0.3 && h < 16)) {
+      continue;
+    }
+    /* A vending machine's light is whiter and lies close in front of it. */
+    const r = l.halo ? Math.min(6.5, Math.max(1.8, 1.1 + 0.5 * h)) : 1.9;
+    const k = l.halo ? Math.min(0.85, Math.max(0.28, 1.05 - h / 14)) : 0.42;
+    const g = quad.clone();
+    tint.set(l.halo ? POOL_COLOR : VENDING_COLOR).multiplyScalar(k);
+    const col = new Float32Array(g.attributes.position.count * 3);
+    for (let i = 0; i < col.length; i += 3) {
+      col[i] = tint.r;
+      col[i + 1] = tint.g;
+      col[i + 2] = tint.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    parts.push({ geometry: g, matrix: new THREE.Matrix4().makeScale(2 * r, 1, 2 * r).setPosition(l.x, floor + 0.03, l.z) });
+  }
+  const group = new THREE.Group();
+  group.name = 'lampGlow';
+  if (parts.length) {
+    const geo = bake(parts);
+    for (const p of parts) {
+      p.geometry.dispose();
+    }
+    geo.computeBoundingSphere();
+    const pools = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      map: glowTexture(128, 0.35), vertexColors: true, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }));
+    pools.name = 'lampPools';
+    pools.renderOrder = 2;
+    group.add(pools);
+  }
+  quad.dispose();
+  const pts = new THREE.BufferGeometry();
+  pts.setAttribute('position', new THREE.Float32BufferAttribute(kept.filter((l) => l.halo).flatMap((l) => [l.x, l.y, l.z]), 3));
+  pts.computeBoundingSphere();
+  const halos = new THREE.Points(pts, new THREE.PointsMaterial({
+    color: HALO_COLOR, map: glowTexture(64, 0.22), size: 2.2, sizeAttenuation: true,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+  halos.name = 'lampHalos';
+  halos.renderOrder = 3;
+  group.add(halos);
+  return { group, lamps: kept.length, pools: parts.length };
 }
 
 /* ------------------------------------------------------------------ *
@@ -920,6 +1654,10 @@ export async function buildMap(shell, onProgress, options) {
   const chosen = chooseDocument(opts);
   const { doc, repairs } = normalize(chosen.raw);
   const placed = placeDocument(doc);
+  /* Its time of day and its ground (./looks.js): golden over concrete for
+   * a map that never chose, which is this map as it always was. */
+  const look = lookOf(doc);
+  const T = look.time;
   progress(0.05);
 
   /*
@@ -931,7 +1669,11 @@ export async function buildMap(shell, onProgress, options) {
    * them, the sky dome past the ridge lines and the fog, and the far plane
    * past the dome.
    */
-  const { near: fogNear, far: fogFar } = fogFor(q.id, placed.W, placed.D);
+  const fogPlot = fogFor(q.id, placed.W, placed.D);
+  /* A time's air is clearer or thicker than golden hour's, and everything
+   * sized off the fog below (the cull, the shadow box, the dome) follows. */
+  const fogNear = fogPlot.near * T.fog.near;
+  const fogFar = fogPlot.far * T.fog.far;
   const cullDefault = fogFar + 4;
   const half = Math.min(SHADOW_HALF_MAX, Math.max(q.city.shadowHalf, SHADOW_SHARE * fogFar));
   const hillScale = Math.max(1, (Math.hypot(placed.W, placed.D) / 2 + 60) / HILLS_NEAR);
@@ -941,15 +1683,17 @@ export async function buildMap(shell, onProgress, options) {
   /* Renderer state is the map's: the town's filtering and clear colour. */
   renderer.shadowMap.enabled = q.shadows;
   renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.setClearColor(new THREE.Color(PAL.fog), 1);
+  renderer.setClearColor(new THREE.Color(T.fog.color), 1);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(PAL.fog, fogNear, fogFar);
+  scene.fog = new THREE.Fog(T.fog.color, fogNear, fogFar);
   camera.far = cameraFar;
   camera.updateProjectionMatrix();
 
-  /* The town's four lights, at the town's offsets from the shadow target.
-   * See src/maps/city/index.js for the shadow box and its numbers. */
+  /* The town's four lights, at the town's offsets from the shadow target,
+   * in the colours and at the offsets the map's time of day gives them
+   * (golden's are the town's). See src/maps/city/index.js for the shadow
+   * box and its numbers. */
   const sun = new THREE.DirectionalLight(PAL.sun, 2.25);
   sun.castShadow = q.shadows;
   const shadowMap = q.city.shadowMap || 2048;
@@ -962,7 +1706,7 @@ export async function buildMap(shell, onProgress, options) {
    * enough that a tall thing at the edge of a box this wide is in front of
    * it, and sees on past the far side. With the town's 22 m box this is
    * the town's own offset and about its 200 m. */
-  const sunBack = Math.max(Math.hypot(-52, 62, 56), 1.5 * half + 40);
+  const sunBack = Math.max(Math.hypot(...T.sun.at), 1.5 * half + 40);
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = sunBack + 1.5 * half + 60;
   sun.shadow.bias = -0.0004;
@@ -975,20 +1719,21 @@ export async function buildMap(shell, onProgress, options) {
   const bounce = new THREE.DirectionalLight(0xd8cbe8, 0.34);
   scene.add(bounce);
   scene.add(bounce.target);
-  scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.12));
-  const SUN_OFFSET = new THREE.Vector3(-52, 62, 56).setLength(sunBack);
-  const FILL_OFFSET = new THREE.Vector3(48, 26, -44);
-  const BOUNCE_OFFSET = new THREE.Vector3(10, -18, 40);
+  const hemi = new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.12);
+  scene.add(hemi);
+  paintLights({ sun, fill, bounce, hemi }, T);
+  const SUN_OFFSET = new THREE.Vector3(...T.sun.at).setLength(sunBack);
+  const FILL_OFFSET = new THREE.Vector3(...T.fill.at);
+  const BOUNCE_OFFSET = new THREE.Vector3(...T.bounce.at);
 
   const sky = buildSky(scene, skyRadius);
-  const hills = buildDistantHills(scene);
-  /* Out, not up: the ridges keep their height and move past the plot. */
-  hills.scale.set(hillScale, 1, hillScale);
+  paintSky(sky, T);
+  buildBackdrop(scene, hillScale, T.hills);
   progress(0.1);
   await yieldToPaint();
 
   /* The ground and its paint. */
-  const ground = buildGround(placed, doc);
+  const ground = buildGround(placed, doc, look);
   scene.add(ground.group);
   progress(0.2);
   await yieldToPaint();
@@ -1000,7 +1745,7 @@ export async function buildMap(shell, onProgress, options) {
    * hundred draw calls at most and a chunk switched off takes all of its
    * batches with it.
    */
-  const kit = new PropKit();
+  const kit = new PropKit(kitLook(look.timeId));
   for (const it of placed.items) {
     kit.begin(it.x, it.y, it.z, it.yaw, chunkKeyOf(it));
     kit.element(it.el);
@@ -1011,9 +1756,14 @@ export async function buildMap(shell, onProgress, options) {
   scene.add(props);
   progress(0.8);
 
-  const wires = buildWires(placed);
+  const wires = buildWires(placed, T.wire);
   if (wires.mesh) {
-    scene.add(wires.mesh);
+    scene.add(wires.mesh, wires.lines);
+  }
+  /* At dusk, the light the lamps throw. */
+  const lampGlow = kit.night ? buildLampGlow(kit.lamps, placed) : null;
+  if (lampGlow) {
+    scene.add(lampGlow.group);
   }
 
   /*
@@ -1061,6 +1811,7 @@ export async function buildMap(shell, onProgress, options) {
   });
   pipeline.enabled.ink = q.city.ink;
   pipeline.enabled.fxaa = q.city.fxaa;
+  paintPost(pipeline, T);
   const dims = shell.resize();
   pipeline.setSize(dims.w, dims.h);
 
@@ -1109,8 +1860,9 @@ export async function buildMap(shell, onProgress, options) {
     cullTo(camera.position);
   }
   /* Seated once now, so the first frame, and the title behind the menu,
-   * are lit before anything calls in. */
-  updateShadowFocus(new THREE.Vector3(placed.spawn.x, 0, placed.spawn.z));
+   * are lit before anything calls in. At the seat, which is a roof when
+   * the pads were raised onto one. */
+  updateShadowFocus(new THREE.Vector3(placed.spawn.x, placed.spawn.y, placed.spawn.z));
 
   /* One frozen answer: a map with no gates has no target, ever. */
   const AIM = Object.freeze({ active: false, sceneIndex: -1, correct: true, distance: 0 });
@@ -1146,9 +1898,16 @@ export async function buildMap(shell, onProgress, options) {
       aimDrop: 3,
     },
     references: {},
-    /* Flat, at zero, everywhere: the paving and the ground past it. Every
-     * roof and deck is a box, and the plant lands on box tops itself. */
-    height: () => 0,
+    /*
+     * The paving at zero, or a box top within a step of fromY. The plant
+     * lands on box tops itself; this is the same ground for the shell,
+     * which asks it for the plane it hands the plant every step, the spawn
+     * seat, the OSD altitude, the obstacles' clearance and the set down.
+     * Without it a craft parked on a roof was 15 m up as far as the shell
+     * knew. See groundUnder in ./place.js for why it answers a millimetre
+     * under the top rather than at it.
+     */
+    height: (x, z, fromY) => groundUnder(placed.tops, x, z, fromY),
     setNextGate() {},
     targetAim: () => AIM,
     approachSide: () => null,
@@ -1183,6 +1942,8 @@ export async function buildMap(shell, onProgress, options) {
       wireRuns: wires.runs,
       painted: ground.painted,
       kit: { ...kit.counts },
+      scene: { time: look.timeId, ground: look.groundId },
+      lamps: lampGlow ? { lamps: lampGlow.lamps, pools: lampGlow.pools } : null,
       cullRadius,
       fog: { near: fogNear, far: fogFar },
       shadowExtent: half,

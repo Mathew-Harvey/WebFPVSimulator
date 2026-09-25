@@ -341,6 +341,13 @@ export function writePostedBest(trackId, lapMs) {
   return mapSet(POSTED_KEY, trackId, { lapMs: next });
 }
 
+/*
+ * What the simulator asks the builder to do on arrival: 'remix' opens a
+ * copy of the seated board track and 'edit' opens the pilot's own. Those
+ * are the only kinds written. A 'new' went with the simulator's New button
+ * on 17 August and the builder no longer reads one. Only the kind is
+ * stored: which canvas to open is the address's to say, with ?mode=.
+ */
 export function writeBuilderIntent(intent) {
   if (!intent || typeof intent !== 'object') {
     return false;

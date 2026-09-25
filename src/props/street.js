@@ -74,12 +74,15 @@ function dim(el, key, fallback, lo, hi) {
 }
 
 /*
- * A square root for numbers that reach the physics, from + - * / alone:
- * ECMAScript leaves Math.sqrt's last bit to the engine, and ./trig.js
- * gives the reason that matters. Newton's step from above falls
- * monotonically onto the root and stops the first time a step does not
- * fall, so the same argument gives the same bits everywhere. Drawing code
- * keeps Math.sqrt and Math.hypot.
+ * A square root for numbers that reach the physics, from + - * / alone.
+ * Newton's step from above falls monotonically onto the root and stops
+ * the first time a step does not fall, so the same argument gives the
+ * same bits everywhere. Math.sqrt would too: ECMA-262 (21.3.2.33) makes
+ * it correctly rounded, and it is Math.hypot, like the sines ./trig.js
+ * replaces, that the language leaves to the engine. This one stays
+ * because every layout that reaches the physics was written with it, and
+ * swapping it would move the recorded placements by an ulp for nothing.
+ * Drawing code keeps Math.sqrt and Math.hypot.
  */
 function rootOf(x) {
   if (!(x > 0)) {
@@ -794,8 +797,10 @@ function roadDraw(s, K) {
   /* The carriageway: tarmac, white edge lines, a yellow centre line on a
    * road wide enough for two lanes, and a dark joint over every pier. */
   K.box('asphalt', x0 + 0.5, h - 0.01, ze0, x1 - 0.5, h + 0.012, ze1);
-  K.box('asphalt', x0, h - 0.01, z0 + 0.5, x0 + 0.5, h + 0.012, z1 - 0.5);
-  K.box('asphalt', x1 - 0.5, h - 0.01, z0 + 0.5, x1, h + 0.012, z1 - 0.5);
+  /* The two end strips run out to the deck's ends, so they lie on the
+   * deck rather than in it: sunk, their end faces lay in the deck's. */
+  K.box('asphalt', x0, h, z0 + 0.5, x0 + 0.5, h + 0.012, z1 - 0.5);
+  K.box('asphalt', x1 - 0.5, h, z0 + 0.5, x1, h + 0.012, z1 - 0.5);
   K.box('lineWhite', x0, h + 0.012, ze0 + 0.25, x1, h + 0.02, ze0 + 0.4);
   K.box('lineWhite', x0, h + 0.012, ze1 - 0.4, x1, h + 0.02, ze1 - 0.25);
   /* One solid yellow line, 追越し禁止: a double line 0.14 m apart
@@ -807,9 +812,12 @@ function roadDraw(s, K) {
     K.box('stJoint', x - 0.08, h + 0.012, ze0, x + 0.08, h + 0.022, ze1);
   }
   /* The slab's edge: a darker drip band under the fascia, the line that
-   * separates the deck from the girders in the ink. */
-  K.box('concreteDark', x0, h - SLAB - 0.001, z0 - 0.01, x1, h - SLAB + 0.08, z0 + 0.4);
-  K.box('concreteDark', x0, h - SLAB - 0.001, z1 - 0.4, x1, h - SLAB + 0.08, z1 + 0.01);
+   * separates the deck from the girders in the ink. It hangs a real 2 cm
+   * under the soffit: a millimetre under it, the two undersides fought
+   * for the depth buffer from about 60 m out, the range a pilot sees the
+   * underside of a bridge from. */
+  K.box('concreteDark', x0, h - SLAB - 0.02, z0 - 0.01, x1, h - SLAB + 0.08, z0 + 0.4);
+  K.box('concreteDark', x0, h - SLAB - 0.02, z1 - 0.4, x1, h - SLAB + 0.08, z1 + 0.01);
   /* The parapet's coping and the railing on it; a construction joint down
    * its outer face every five metres and a scupper under the slab edge
    * between them, which is what stops a long fascia reading as one blank
@@ -845,7 +853,10 @@ function roadDraw(s, K) {
    * faces, which is what makes an underside read as steel from below. */
   const webTop = h - SLAB;
   for (const z of L.girders) {
-    K.box('stGirder', x0 + 0.1, L.yGb, z - 0.07, x1 - 0.1, webTop, z + 0.07);
+    /* The web stops a centimetre inside both flanges and short of their
+     * ends, so its underside and its end faces are not in the flanges'
+     * planes: a girder is seen from under it. */
+    K.box('stGirder', x0 + 0.11, L.yGb + 0.01, z - 0.07, x1 - 0.11, webTop - 0.01, z + 0.07);
     K.box('stGirderDeep', x0 + 0.1, L.yGb, z - 0.26, x1 - 0.1, L.yGb + 0.08, z + 0.26);
     K.box('stGirderDeep', x0 + 0.1, webTop - 0.06, z - 0.2, x1 - 0.1, webTop, z + 0.2);
     for (let x = x0 + 1.2; x < x1 - 0.6; x += 2.0) {
@@ -1098,7 +1109,10 @@ function footDraw(s, K) {
    * as a box girder rather than a plank. */
   for (const [za, zb] of [[z0 - 0.012, z0], [z1, z1 + 0.012]]) {
     K.box('bridgeSteelDark', x0 - w, h - 0.3, za, x1 + w, h - 0.24, zb);
-    K.box('bridgeSteelDark', x0 - w, dy - 0.001, za, x1 + w, dy + 0.06, zb);
+    /* The lower band hangs 1.2 cm under the soffit, as the soffit plate
+     * does: at a millimetre its underside fought the guide sign's, where
+     * the sign hangs on the fascia. */
+    K.box('bridgeSteelDark', x0 - w, dy - 0.012, za, x1 + w, dy + 0.06, zb);
   }
   K.box('bridgeSteelDark', x0 - w + 0.12, dy - 0.012, z0 + 0.12, x1 + w - 0.12, dy, z1 - 0.12);
   /* Balustrades round the deck and landings, open where the stairs leave. */
@@ -1159,7 +1173,10 @@ function footDraw(s, K) {
       }
     }
     for (const ld of st.lands) {
-      K.box('stWalk', st.xa + 0.1, ld.y - 0.01, ld.t0, st.xb - 0.1, ld.y + 0.012, ld.t1);
+      /* Laid on the landing, not sunk into it: sunk, its ends lay in the
+       * landing's own end faces, and the riser under the flight down
+       * carried a strip of both. */
+      K.box('stWalk', st.xa + 0.1, ld.y, ld.t0, st.xb - 0.1, ld.y + 0.012, ld.t1);
       balustrade(K, 'z', st.xa + 0.05, ld.t0, ld.t1, ld.y);
       balustrade(K, 'z', st.xb - 0.05, ld.t0, ld.t1, ld.y);
       if (ld.y - STEP_D >= CLOSE_UNDER) {
@@ -1901,6 +1918,12 @@ export function treeLayout(el) {
   }
   for (const l of t.limbs) {
     capIn(P, wood, l.a, l.b, l.r, l.rTop, l.seg, { name: 'limb', kind: 'tree' });
+  }
+  /* A cherry's forks are wood too, drawn in the trunk's paint and often
+   * clear of the blossom, so they are solid the way the limbs are, inside
+   * their own taper: a pilot who clips one meets it. */
+  for (const l of t.twigs) {
+    capIn(P, wood, l.a, l.b, l.r, l.rTop, l.seg, { name: 'fork', kind: 'tree' });
   }
   for (const b of t.blobs) {
     P.cap('stGrove1', b.c, b.c, 0.78 * Math.min(b.r, b.ry), { draw: false, name: 'canopy', kind: 'canopy' });

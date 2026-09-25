@@ -77,6 +77,26 @@ import { activeTrackClass, readJson, writeJson } from '../share/session.js';
 import { presetsForClass, presetById, isPresetId } from './presets.js';
 import { duplicateTrack } from './model.js';
 
+/*
+ * THE SHIPPED MAPS, handed in by the builder (src/trackbuilder/app.js)
+ * rather than imported here. This file is on the simulator's boot graph
+ * (src/ui/ui.js, src/share/listing.js and src/maps/custom.js import it),
+ * and the one shipped map is Your map's starter yard, which lives with Your
+ * map in src/maps/built and stays off the wire until that world is chosen
+ * (scripts/memory-check.js fails a boot that fetches it). The simulator
+ * never lists or opens a map from the library, so it never hands any in
+ * and loses nothing.
+ */
+let shippedMaps = [];
+
+export function shipMaps(docs) {
+  shippedMaps = Array.isArray(docs) ? docs : [];
+}
+
+function shippedMap(id) {
+  return shippedMaps.find((d) => d.id === id) ?? null;
+}
+
 /* ------------------------------------------------------------------ */
 /* The library                                                         */
 /* ------------------------------------------------------------------ */
@@ -120,8 +140,13 @@ export function listTracks(cls = activeTrackClass(), mode = 'race') {
    * back a COPY with a fresh trk- id, so the copy saves, exports and
    * publishes like any other track and the shipped one stays pristine
    * beside it. That is the whole of the copy on write.
+   *
+   * A map's shipped set is the starter yard, on the same terms. It is what
+   * a pilot who has built nothing flies as Your map, and without this row
+   * it was the one map they had flown that the builder could not open.
    */
-  const stock = mode === 'freestyle' ? [] : presetsForClass(cls).map((d) => summarise(d, true));
+  const stock = (mode === 'freestyle' ? shippedMaps : presetsForClass(cls))
+    .map((d) => summarise(d, true));
   return [...mine, ...stock];
 }
 
@@ -144,7 +169,7 @@ export function loadTrack(id) {
      * by running the board's own validate.js over all six. The copy keeps
      * the credit, because saving a layout does not make it yours.
      */
-    const stock = presetById(id);
+    const stock = presetById(id) ?? shippedMap(id);
     return stock ? normalize(duplicateTrack(stock, stock.name)) : null;
   }
   return normalize(lib[id]);
@@ -162,7 +187,7 @@ export function deleteTrack(id) {
 }
 
 export function trackExists(id) {
-  return Boolean(readLibrary()[id]) || isPresetId(id);
+  return Boolean(readLibrary()[id]) || isPresetId(id) || Boolean(shippedMap(id));
 }
 
 /* ------------------------------------------------------------------ */

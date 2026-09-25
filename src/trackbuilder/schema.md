@@ -91,6 +91,7 @@ the file.
   "modifiedUtc": "2026-01-01T00:00:00Z",
   "trackClass": "full",
   // "mode": "freestyle",       written only on a freestyle map
+  // "scene": { ... },          a map's time of day and ground, when not the default
   "field":    { ... },
   "settings": { ... },
   "branding": { ... },
@@ -109,6 +110,7 @@ the file.
 | `modifiedUtc` | string | Same format, last edit. The Load list sorts on this. |
 | `trackClass` | `"full"` or `"micro"` | Which kind of track. `full` is the sixty metre field flown on a 5 inch through MultiGP sized gates; `micro` is a RaceGOW room flown on a 65 mm whoop. It decides the palette, the sizes a new element gets, the grid, the warnings and which autosave seat and board the track belongs to. Always written; read as `full` when absent, which is what every version 2 document is. A freestyle map is always `full`. |
 | `mode` | `"freestyle"`, or absent | **Written only on a freestyle map.** Absent means a race track, which is every document written before maps existed, so no race track's bytes changed when maps arrived. Anything other than `"freestyle"` reads as a race track. See **Freestyle maps**. |
+| `scene` | object, or absent | **A map's only, and written only when it is not the default.** Its time of day and its ground; see **The scene** under **Freestyle maps**. Absent reads as golden hour over concrete, which is what every map looked like before the block existed. Never read or written on a race track. |
 | `field` | object | The ground the course stands on. |
 | `settings` | object | Per track tuning for the derived racing line. |
 | `branding` | object | The sponsors' logos the course is dressed in. Optional; see below. |
@@ -350,12 +352,42 @@ simulator flies it as a freestyle map in the town's art style
 * It has **its own autosave seat**, `webfpv.trackbuilder.autosave.freestyle.v1`,
   so a map in progress and a race track in progress never overwrite each
   other. The builder remembers which of its three canvases (5 inch, Whoop,
-  Freestyle) was last open in `webfpv.trackbuilder.canvas.v1`, and
-  `?mode=freestyle` in the builder's address opens the map.
+  Freestyle) was last open in `webfpv.trackbuilder.canvas.v1`.
+  `?mode=freestyle` in the builder's address opens the map and `?mode=race`
+  the race canvas, and the builder takes `?mode=` out of the address once it
+  has read it, so a reload opens whatever the author switched to since.
+* It has **a scene**, a time of day and a ground, below.
 * **Nothing on a map is in `sequence`.** The builder never adds to it, and a
   gate placed on a map is furniture: solid, drawn in the town's palette, and
   flown through for style. `settings` is written and means nothing on a map.
 * The race warnings do not apply to a map. It has its own, below.
+
+### The scene
+
+A map's time of day and its ground, the two things that change its mood
+more than any single asset does. Chosen on the builder's Map panel and
+drawn by the simulator (`src/maps/built/looks.js`); the builder's 3D preview
+follows both.
+
+```jsonc
+"scene": { "time": "dusk", "ground": "tarmac" }
+```
+
+| field | values | meaning |
+| --- | --- | --- |
+| `time` | `"golden"`, `"noon"`, `"dusk"`, `"overcast"` | The light. `golden` is golden hour, the town's own. `noon` is a high clear sun. `dusk` is the sun on the horizon, a violet sky, and the town lit: a share of the building windows glow, and the street lamps, billboards and vending machines light the ground round them. `overcast` is a flat grey violet day with soft shadows. |
+| `ground` | `"concrete"`, `"tarmac"`, `"grass"`, `"dirt"` | What the plot is paved with. `concrete` is a yard of sawn slabs, `tarmac` a dark car park with painted bays and arrows, `grass` a lawn inside the kerb, `dirt` a worked earth yard with tyre ruts. |
+
+**Defaults, and when it is written.** `golden` and `concrete`, which is what
+every map looked like before the block existed. `toPlain` writes the block
+only when a map has chosen something else, so a map saved before scenes
+existed, and the starter, keep their bytes. An unknown value reads as its
+default, one key at a time, with a repair note; a block that is not an
+object reads as the default with a note. Only a map carries it: `normalize`
+drops it from a race track, so no race track's bytes changed.
+
+**It changes no physics.** Time and ground are paint and light. The ground
+is flat at zero whatever it is drawn as, and no solid moves.
 
 ### The two kinds a map adds
 
@@ -744,6 +776,11 @@ a map, so every race track serialises to exactly the bytes it did before maps
 existed and the version stays 3. A reader that does not know `mode` sees a
 map as a race track with no flying order and assets of types it does not
 know, which it drops with a repair note: the best effort reading above.
+
+`scene` is the same kind of change: optional, a map's only, with a default
+that is what a map without it always looked like. A reader that does not
+know it draws the map at golden hour on concrete, which is a picture that
+differs from the author's rather than a map whose meaning changed.
 
 ---
 

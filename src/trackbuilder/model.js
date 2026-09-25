@@ -202,6 +202,40 @@ export function deepClone(o) {
 }
 
 /*
+ * A MAP'S SCENE: its time of day and its ground, the two things that change
+ * a map's mood more than any one asset does (FREESTYLE-MAPS-PLAN.md, 3.1).
+ *
+ * The first of each list is the default and is what every built map looked
+ * like before the block existed: golden hour over a concrete yard. So a map
+ * that never chose one looks as it always did, and toPlain writes the block
+ * only when a map has chosen something else, which keeps the bytes of every
+ * map saved before this and of the starter. Only a map has a scene: a race
+ * track is flown on the race field, which reads none of it, so normalize
+ * does not carry one onto a race track and no race track's bytes change.
+ *
+ * What each value looks like is src/maps/built/looks.js's business. This is
+ * only the vocabulary, so the document can be checked without a renderer.
+ */
+export const SCENE_TIMES = ['golden', 'noon', 'dusk', 'overcast'];
+export const SCENE_GROUNDS = ['concrete', 'tarmac', 'grass', 'dirt'];
+export const SCENE_DEFAULT = Object.freeze({ time: SCENE_TIMES[0], ground: SCENE_GROUNDS[0] });
+
+/* A map's scene, always both keys and always known values. A race track
+ * and a map written before scenes existed both answer the default. */
+export function sceneOf(doc) {
+  const s = doc && doc.scene && typeof doc.scene === 'object' ? doc.scene : {};
+  return {
+    time: SCENE_TIMES.includes(s.time) ? s.time : SCENE_DEFAULT.time,
+    ground: SCENE_GROUNDS.includes(s.ground) ? s.ground : SCENE_DEFAULT.ground,
+  };
+}
+
+/* Whether a scene is the default one, which is the one toPlain leaves out. */
+export function isDefaultScene(scene) {
+  return scene.time === SCENE_DEFAULT.time && scene.ground === SCENE_DEFAULT.ground;
+}
+
+/*
  * Ids. Derived from what is already in the document rather than from a
  * counter held somewhere, so an id is never reused after an undo and the
  * document carries no hidden state.
@@ -334,6 +368,9 @@ export function createTrack(name, cls = TRACK_CLASS_DEFAULT, mode = 'race') {
   if (freestyle) {
     /* Only written when it is freestyle: see DOC_MODES in elements.js. */
     doc.mode = 'freestyle';
+    /* Held on every map in memory, so the builder's controls always have
+     * something to show; written only once it is not the default. */
+    doc.scene = { ...SCENE_DEFAULT };
   }
   return doc;
 }
@@ -630,6 +667,24 @@ export function normalize(raw) {
   if (src.mode === 'freestyle') {
     doc.mode = 'freestyle';
     doc.trackClass = 'full';
+    /* The scene, repaired to the default one key at a time: a map asking
+     * for a time this build has never heard of still keeps the ground it
+     * asked for. No block at all is silent, because that is every map
+     * written before scenes existed. */
+    doc.scene = sceneOf(src);
+    if (src.scene !== undefined) {
+      const raw = src.scene && typeof src.scene === 'object' ? src.scene : null;
+      if (!raw) {
+        repairs.push(`the scene was not an object, read as ${SCENE_DEFAULT.time} over ${SCENE_DEFAULT.ground}.`);
+      } else {
+        if (raw.time !== undefined && raw.time !== doc.scene.time) {
+          repairs.push(`the scene's time of day "${String(raw.time).slice(0, 40)}" is not one this build knows, read as ${SCENE_DEFAULT.time}.`);
+        }
+        if (raw.ground !== undefined && raw.ground !== doc.scene.ground) {
+          repairs.push(`the scene's ground "${String(raw.ground).slice(0, 40)}" is not one this build knows, read as ${SCENE_DEFAULT.ground}.`);
+        }
+      }
+    }
   }
 
   /*
@@ -885,6 +940,8 @@ export function normalize(raw) {
  * insertion order for string keys, which is what makes this work.
  */
 export function toPlain(doc) {
+  const freestyle = docModeOf(doc) === 'freestyle';
+  const scene = sceneOf(doc);
   return {
     schemaVersion: SCHEMA_VERSION,
     id: doc.id,
@@ -899,7 +956,9 @@ export function toPlain(doc) {
      * RaceGOW course on a sixty metre paddock. A field that is not written
      * is a field that does not exist. */
     trackClass: trackClassOf(doc),
-    ...(docModeOf(doc) === 'freestyle' ? { mode: 'freestyle' } : {}),
+    ...(freestyle ? { mode: 'freestyle' } : {}),
+    /* A map's scene, and only once it is not the default: see SCENE_TIMES. */
+    ...(freestyle && !isDefaultScene(scene) ? { scene } : {}),
     field: {
       width: num(doc.field.width),
       depth: num(doc.field.depth),

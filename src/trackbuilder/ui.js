@@ -38,6 +38,7 @@ import {
 } from './elements.js';
 import {
   aperturesOf, elementById, kindOf, isSequenceable, logosOf, logoForDecal,
+  SCENE_TIMES, SCENE_GROUNDS, sceneOf,
 } from './model.js';
 import { sequenceLabel, faceLabel, unsequencedElements } from './sequence.js';
 import { figuresFor, matchingFigure, figureBlurb, levelName } from './figures.js';
@@ -209,6 +210,23 @@ const STYLE_LABELS = {
   kei: 'Kei truck', keivan: 'Kei van', hatch: 'Hatch', sedan: 'Sedan', wagon: 'Wagon',
   minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus',
   sakura: 'Sakura', street: 'Street', pine: 'Pine',
+};
+
+/* A map's scene, as the Map panel names and explains it. What each looks
+ * like is src/maps/built/looks.js; this is only what the author reads. */
+const TIME_LABELS = { golden: 'Golden', noon: 'Noon', dusk: 'Dusk', overcast: 'Overcast' };
+const TIME_HELP = {
+  golden: 'Golden hour: a low warm sun and long violet shadows. The town\u2019s own light.',
+  noon: 'A high white sun, short hard shadows and a deep blue sky.',
+  dusk: 'The sun on the horizon and a violet sky. Windows, street lamps, billboards and vending machines light up.',
+  overcast: 'A flat grey violet day with soft shadows and a nearer haze.',
+};
+const GROUND_LABELS = { concrete: 'Concrete', tarmac: 'Tarmac', grass: 'Grass', dirt: 'Dirt' };
+const GROUND_HELP = {
+  concrete: 'A yard of sawn concrete slabs, with a yellow line round it.',
+  tarmac: 'A dark car park, with bays and arrows painted round whatever you place.',
+  grass: 'A lawn inside the kerb. No lines are painted on it except the launch box.',
+  dirt: 'A worked earth yard with tyre ruts across it.',
 };
 
 function styleLabel(id) {
@@ -1124,9 +1142,9 @@ export class Panels {
   }
 
   /*
-   * A MAP'S OWN SETTINGS: what it is, and the plot. No racing line block,
-   * because there is no line; a map is five inch only, because freestyle is
-   * not offered on the whoop.
+   * A MAP'S OWN SETTINGS: what it is, its scene, and the plot. No racing
+   * line block, because there is no line; a map is five inch only, because
+   * freestyle is not offered on the whoop.
    */
   renderPlotSettings(host, doc) {
     host.append(el('h3', null, 'Map'));
@@ -1134,6 +1152,35 @@ export class Panels {
     line.append(el('strong', null, 'Freestyle map'));
     line.append(document.createTextNode(': a place to fly, with no track through it. Built from the town’s own assets, flown on a five inch, and every solid you place is solid in the air.'));
     host.append(line);
+    /*
+     * THE SCENE: when it is, and what the plot is paved with. The two
+     * things that change a map's mood more than any asset, so they come
+     * straight after what a map is, above the plot's numbers, where an
+     * author sees them without scrolling. Each is an edit like any other,
+     * so Undo takes it back and the autosave keeps it.
+     */
+    const scene = sceneOf(doc);
+    const choose = (heading, values, labels, current, set) => {
+      host.append(el('h3', null, heading));
+      const seg = el('div', 'tb-seg');
+      seg.setAttribute('role', 'group');
+      seg.setAttribute('aria-label', heading);
+      for (const v of values) {
+        const on = current === v;
+        const b = button(labels[v], on ? 'tb-seg-btn on' : 'tb-seg-btn', () => {
+          if (sceneOf(this.host.doc)[set] !== v) {
+            this.host.edit(heading.toLowerCase(), (d) => { d.scene = { ...sceneOf(d), [set]: v }; });
+          }
+        });
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        seg.append(b);
+      }
+      host.append(seg);
+    };
+    choose('Time of day', SCENE_TIMES, TIME_LABELS, scene.time, 'time');
+    host.append(el('p', 'tb-help', TIME_HELP[scene.time]));
+    choose('Ground', SCENE_GROUNDS, GROUND_LABELS, scene.ground, 'ground');
+    host.append(el('p', 'tb-help', GROUND_HELP[scene.ground]));
     host.append(el('h3', null, 'Plot'));
     const grid = el('div', 'tb-grid3');
     grid.append(

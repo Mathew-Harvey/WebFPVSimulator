@@ -48,8 +48,14 @@ import { collectWarnings, freestyleReport, sortWarnings } from './warnings.js';
 import { History } from './history.js';
 import {
   animationFilename, deleteTrack, downloadBlob, downloadTrack, listTracks,
-  loadTrack, makeAutosaver, readAutosave, readFileText, saveTrack, writeAutosave,
+  loadTrack, makeAutosaver, readAutosave, readFileText, saveTrack, shipMaps, trackExists, writeAutosave,
 } from './storage.js';
+/* The yard Your map flies while the map seat is empty, listed in Load as
+ * the maps' one shipped row. A plain document with no imports of its own,
+ * so the builder takes nothing of the simulator's world with it. Handed to
+ * storage.js from here, because storage.js is on the simulator's boot
+ * graph and this is not (see shipMaps). */
+import { starterMap } from '../maps/built/starter.js';
 import { normaliseLogo, drawBannerPreview, drawGroundPreview } from './logo.js';
 import { View2D, snapYaw, turnsOf, offCompass, QUARTER_TURN } from './view2d.js';
 import { View3D } from './view3d.js';
@@ -81,6 +87,8 @@ import {
   syncOwnedIdentity,
   pushOwnedListing,
 } from '../share/listing.js';
+
+shipMaps([starterMap()]);
 
 /*
  * WHICH KIND OF TRACK A NEW ONE IS.
@@ -166,30 +174,82 @@ function rememberCanvas(canvas) {
   }
 }
 
+/* What each canvas is called where the builder names one to the author. */
+const CANVAS_NAMES = { full: 'five inch', micro: 'whoop', freestyle: 'freestyle' };
+
 /*
- * Whether this visit opens the map. ?mode=freestyle says so outright, which
- * is what the simulator's own links will carry. Otherwise the remembered
- * canvas decides, unless the pilot has since seated the whoop: a map is not
- * flown on a whoop, and reopening the map would reseat the five inch behind
- * their back.
+ * WHETHER THIS VISIT OPENS THE MAP. Three answers, in order:
+ *
+ *   ?mode=         the address says outright. The simulator's own links
+ *                  carry ?mode=freestyle from the map side and ?mode=race
+ *                  from the race side, because the remembered canvas is
+ *                  where the author last was, not what the link they
+ *                  pressed was about: Open in the track builder on a race
+ *                  track has to show that track, not yesterday's map.
+ *   a race visit   Edit a copy or Edit this track from the simulator, or a
+ *                  board link. Each brings a race track that is compared
+ *                  with, and lands in, the race seat, so opening the map
+ *                  first had adoptIncomingShare testing the map for
+ *                  emptiness and then writing the race seat without asking.
+ *   the remembered canvas, unless the pilot has since seated the whoop: a
+ *                  map is not flown on a whoop, and reopening the map would
+ *                  reseat the five inch behind their back.
+ *
+ * Not a race visit: the share seat on its own, which holds the last board
+ * track flown for nearly every returning pilot and is adopted only with an
+ * intent, and ?track=, which can carry a map and is loaded after this by
+ * loadDocument, which follows the document's own canvas.
  */
-function urlWantsFreestyle() {
+function urlMode() {
   try {
-    return new URLSearchParams(window.location.search).get('mode') === 'freestyle';
+    const v = new URLSearchParams(window.location.search).get('mode');
+    return v === 'freestyle' || v === 'race' ? v : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function isRaceVisit(intent) {
+  if (intent && (intent.kind === 'remix' || intent.kind === 'edit')) {
+    return true;
+  }
+  try {
+    return Boolean(new URLSearchParams(window.location.search).get('share'));
   } catch (e) {
     return false;
   }
 }
 
-function wantsFreestyle() {
-  return urlWantsFreestyle() || (readCanvas() === 'freestyle' && newTrackClass() !== 'micro');
+function opensMap(intent) {
+  const asked = urlMode();
+  if (asked) {
+    return asked === 'freestyle';
+  }
+  if (isRaceVisit(intent)) {
+    return false;
+  }
+  return readCanvas() === 'freestyle' && newTrackClass() !== 'micro';
 }
 
-/* A New intent from the simulator is a map only when it says so, or the
- * address does: the remembered canvas is where the author was, not what the
- * simulator's New button asked for. */
-function newIntentIsMap(intent) {
-  return Boolean(intent && intent.kind === 'new' && (intent.mode === 'freestyle' || urlWantsFreestyle()));
+/*
+ * ?mode= comes out of the address once it has been read. It says which
+ * canvas to open on arrival and nothing after that: left in the bar, a
+ * reload after moving to the whoop went back to the map and reseated the
+ * five inch over the whoop. Every other parameter stays, the way
+ * src/share/stats.js takes out only the utm_ ones.
+ */
+function dropUrlMode() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('mode')) {
+      return;
+    }
+    url.searchParams.delete('mode');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch (e) {
+    /* A sandboxed frame. The parameter stays in the bar, and a reload opens
+     * the canvas it names. */
+  }
 }
 
 function newMap() {
@@ -257,18 +317,9 @@ export class App {
   /* ---------------- lifecycle ---------------- */
 
   restore() {
-    /* Start new map is chosen in the simulator before this page loads, so
-     * the autosave must not come back as the canvas they asked to leave. */
-    const intent = readBuilderIntent();
-    if (intent && intent.kind === 'new') {
-      const map = newIntentIsMap(intent);
-      this.doc = map ? newMap() : createTrack(undefined, newTrackClass());
-      if (map) {
-        setActiveTrackClass('full');
-      }
-      return;
-    }
-    if (wantsFreestyle()) {
+    const map = opensMap(readBuilderIntent());
+    dropUrlMode();
+    if (map) {
       /* The map's own seat, and the five inch in the chair, because that is
        * what flies it. A first visit starts a blank map. */
       setActiveTrackClass('full');
@@ -298,13 +349,6 @@ export class App {
   async adoptIncomingShare() {
     try {
       const intent = takeBuilderIntent();
-      if (intent && intent.kind === 'new') {
-        clearShareImport();
-        this.loadDocument(newIntentIsMap(intent)
-          ? newMap()
-          : createTrack(undefined, newTrackClass()), 'New map.');
-        return;
-      }
       let share = readShareImport();
       const params = new URLSearchParams(window.location.search);
       if (params.get('share')) {
@@ -329,14 +373,22 @@ export class App {
         return;
       }
       const incoming = normalize(share.document).doc;
+      /* What the incoming track replaces is whatever its OWN seat holds,
+       * which is the canvas on screen only when the two are the same kind:
+       * a room from a board link opened on a five inch lands in the whoop
+       * seat, and asking about the five inch track on screen asked about
+       * the one thing that was not going to change. */
+      const seated = this.seatedFor(incoming);
       if (wantEdit) {
         const load = () => {
           this.loadDocument(incoming, `Editing "${incoming.name}" on the board.`);
         };
-        if (!isEmptyCanvas(this.doc) && this.doc.id !== incoming.id) {
+        if (!isEmptyCanvas(seated) && seated.id !== incoming.id) {
           this.confirm(
-            'Replace the track on the canvas?',
-            'Your current canvas will be replaced with this published track. Save it first if you still need it.',
+            ...this.replaceWords(seated, incoming, 'This published track', [
+              'Replace the track on the canvas?',
+              'Your current canvas will be replaced with this published track. Save it first if you still need it.',
+            ]),
             load,
           );
         } else {
@@ -358,10 +410,12 @@ export class App {
         clearShareImport();
         this.loadDocument(copy, `This is your copy of "${share.name || incoming.name}". Publish it under a new name to put it on the board.`);
       };
-      if (!isEmptyCanvas(this.doc) && this.doc.id !== share.id) {
+      if (!isEmptyCanvas(seated) && seated.id !== share.id) {
         this.confirm(
-          `Open a copy of "${share.name || incoming.name}"?`,
-          'The track on your canvas will be replaced. Save it first if you still need it.',
+          ...this.replaceWords(seated, incoming, `A copy of "${share.name || incoming.name}"`, [
+            `Open a copy of "${share.name || incoming.name}"?`,
+            'The track on your canvas will be replaced. Save it first if you still need it.',
+          ]),
           load,
         );
       } else {
@@ -920,13 +974,67 @@ export class App {
 
   /* ---------------- documents ---------------- */
 
+  /* The document `doc` would replace: the one on screen when the two are
+   * the same kind of canvas, otherwise what that canvas's seat holds, or
+   * null when it holds nothing. */
+  seatedFor(doc) {
+    if (canvasOf(doc) === canvasOf(this.doc)) {
+      return this.doc;
+    }
+    const held = readAutosave(trackClassOf(doc), docModeOf(doc));
+    return held && held.doc ? held.doc : null;
+  }
+
+  /*
+   * A confirm's title and body for replacing `seated`. On screen, the words
+   * the caller always had. Off screen, the seat is named, because the
+   * author cannot see it, and what keepSeat will do with it is said.
+   */
+  replaceWords(seated, incoming, what, onScreen) {
+    if (seated === this.doc) {
+      return onScreen;
+    }
+    const where = CANVAS_NAMES[canvasOf(incoming)];
+    return [
+      `Replace "${seated.name}" on the ${where} canvas?`,
+      `${what} opens on the ${where} canvas in its place. ${trackExists(seated.id)
+        ? 'The copy saved in Load stays, but changes made since it was saved are replaced.'
+        : `"${seated.name}" goes into Load first, so it is not lost.`}`,
+    ];
+  }
+
+  /*
+   * A DOCUMENT OF ANOTHER CANVAS REPLACES WHAT THAT CANVAS HELD, out of
+   * sight. Importing a map on a race track, a ?track= link to one, a room
+   * imported on the five inch, or a copy of a board track opened while the
+   * map was up, each wrote over a seat the author could not see. What was
+   * there goes into the library first unless the library already has it,
+   * the rule seatLocal in src/ui/ui.js applies when the simulator seats a
+   * track, and the toast says where it went. The toggle hands over the
+   * seat's own document, the same id, so it never saves anything here.
+   * Returns what to say, or ''.
+   */
+  keepSeat(doc) {
+    const seated = this.seatedFor(doc);
+    if (isEmptyCanvas(seated) || seated.id === doc.id || trackExists(seated.id)) {
+      return '';
+    }
+    const where = CANVAS_NAMES[canvasOf(doc)];
+    return saveTrack(seated)
+      ? `"${seated.name}" was on the ${where} canvas, so it is in Load now.`
+      : `"${seated.name}" was on the ${where} canvas and could not be kept: local storage is unavailable or full.`;
+  }
+
   loadDocument(doc, message) {
     /* A document of another canvas moves the author to that canvas, so the
      * one being left is written to its own seat first, the same as the
      * toggle does: importing a race track onto a map must not drop the
-     * map's last few seconds of edits. */
+     * map's last few seconds of edits. Then whatever the other canvas held
+     * is kept, see keepSeat. */
+    let kept = '';
     if (canvasOf(doc) !== canvasOf(this.doc)) {
       this.autosaver.flush();
+      kept = this.keepSeat(doc);
     }
     this.doc = doc;
     /* The palette is the track class's, so it is rebuilt whenever a document
@@ -957,8 +1065,9 @@ export class App {
     this.view3d.frameField();
     this.view3d.markDirty();
     this.refresh();
-    if (message) {
-      this.toast(message);
+    const said = [message, kept].filter(Boolean).join(' ');
+    if (said) {
+      this.toast(said);
     }
   }
 
@@ -1038,7 +1147,11 @@ export class App {
       const meta = document.createElement('div');
       meta.className = 'tb-load-meta';
       if (map) {
-        meta.textContent = `${t.mix}, changed ${t.modifiedUtc}`;
+        /* The shipped yard has no change date worth showing; what a pilot
+         * knows it as is the map the simulator flew them round. */
+        meta.textContent = t.preset
+          ? `${t.mix}, the yard Your map flies until you build one`
+          : `${t.mix}, changed ${t.modifiedUtc}`;
       } else {
         meta.textContent = t.preset
           ? `${t.mix}, ${t.sequence} in the order`
@@ -1793,7 +1906,7 @@ export class App {
      * of the toggle. */
     const held = readAutosave(cls, mode);
     const doc = (held && held.doc) || (mode === 'freestyle' ? newMap() : createTrack(undefined, cls));
-    const name = { full: 'five inch', micro: 'whoop', freestyle: 'freestyle' }[want];
+    const name = CANVAS_NAMES[want];
     const fresh = {
       full: 'five inch track, on a sixty metre field',
       micro: 'whoop track, in a ten by twelve metre hall',

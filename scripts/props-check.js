@@ -9,7 +9,7 @@
  * an asset that makes a NaN, an asset that turns a box by 0.4 rad, or a
  * layout that rolls a different ruin on a second load is a wall a quad
  * flies through or a trace that differs between two browsers. None of that
- * shows in a screenshot. This file looks for it in plain Node, in five
+ * shows in a screenshot. This file looks for it in plain Node, in six
  * blocks:
  *
  *   1. assets      every prop type, every style, at its default dims and at
@@ -17,6 +17,9 @@
  *                  number finite, every part a real box or capsule, no solid
  *                  box on an asset that turns freely, quarter turns that are
  *                  exact permutations to the bit, nothing inflated
+ *   1b. envelope   the same dims, what is solid against what is drawn: no
+ *                  solid over the drawn top, the chimney's solids on its
+ *                  brick, no stair drawn where the layout built none
  *   2. furniture   every course element a freestyle map may hold, the same
  *   3. determinism a map holding one of everything, placed twice from two
  *                  fresh documents, compared as Float64 bits and hashed, and
@@ -25,7 +28,10 @@
  *                  it, and flown: a roof lands, the crane's mast stops a
  *                  craft, the spawn is clear
  *   5. starter     the starter map (src/maps/built/starter.js): no two
- *                  elements' solids overlap and every named gap is clear
+ *                  elements' solids overlap, every named gap is clear, and
+ *                  the craft takes off from its pads, and from the same
+ *                  pads raised onto the office roof, seated where the
+ *                  shell seats it, on the map's own ground
  *
  * WHAT A FAILURE MEANS. The line names the asset, the style, the dimension
  * set and the heading, and the first numbers that are wrong. A threshold
@@ -37,7 +43,7 @@
  * contact, on the five inch, which is the only craft freestyle is offered
  * on. Every flight is flown twice and must agree with itself to the bit.
  *
- * Usage: node scripts/props-check.js [--only=assets|furniture|determinism|physics|starter] [--verbose]
+ * Usage: node scripts/props-check.js [--only=assets|envelope|furniture|determinism|physics|starter] [--verbose]
  *        node scripts/props-check.js --selftest    prove each detector sees a planted fault
  * Exit code is the number of failed checks.
  *
@@ -65,16 +71,19 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 import { PROPS, FURNITURE, partsOf } from '../src/props/catalog.js';
-import { styleDims } from '../src/props/types.js';
+import { styleDims, approxHeight } from '../src/props/types.js';
 import { GAP_MIN } from '../src/props/parts.js';
 import { placeSolids, placedYaw, addSolids } from '../src/props/solids.js';
 import { sincos, quarterTurns, quarterSinCos } from '../src/props/trig.js';
 import { Colliders, KINDS, GROUND_MU, GROUND_E } from '../src/game/collide.js';
 import { uploadWorld, setWorldFrame } from '../src/game/plantworld.js';
 import { threePosToSim, threeDirToSim } from '../src/render/frame.js';
-import { createTrack, createElement, normalize } from '../src/trackbuilder/model.js';
+import {
+  createTrack, createElement, normalize, serialize, deserialize, SCENE_TIMES, SCENE_GROUNDS, sceneOf,
+} from '../src/trackbuilder/model.js';
 import { ELEMENTS, KIND } from '../src/trackbuilder/elements.js';
-import { placeDocument } from '../src/maps/built/place.js';
+import { placeDocument, groundUnder } from '../src/maps/built/place.js';
+import { freestyleReport } from '../src/trackbuilder/warnings.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = process.argv.slice(2);
@@ -503,6 +512,228 @@ function furnitureBlock() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Envelope                                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * WHAT IS SOLID AGAINST WHAT IS DRAWN. Block 1 proves every part well
+ * formed, and a part can be well formed and still in the wrong place: a
+ * chimney whose last capsule stood two metres of invisible dome over its
+ * rim, drawn brick half a metre outside its solid at the foot of every
+ * section, a block of flats that drew an external stair its layout had
+ * refused and so had nothing under it. Each of those passed every line
+ * above. These look at the pair, at every dimension set block 1 uses,
+ * which for a seeded asset is ten of its variants:
+ *
+ *   top      no solid stands more than TOP_SLACK over the asset's drawn
+ *            height, src/props/types.js approxHeight, which is measured
+ *            never to come out under what is drawn
+ *   chimney  at every 5 cm of height and 16 headings round it, the
+ *            outermost solid point is within BRICK_SHORT of the drawn
+ *            brick and never more than BRICK_PROUD outside it, and the
+ *            brick's solids stop at the rim
+ *   stair    a building draws stair stringers only where its layout holds
+ *            stair treads
+ *
+ * What is drawn is read by running the asset's own draw() against a kit
+ * that records its calls instead of making meshes, which the buildings
+ * and the chimney allow in plain Node.
+ */
+const TOP_SLACK = 0.05;
+const BRICK_SHORT = 0.10;
+const BRICK_PROUD = 0.01;
+const BRICK = new Set(['brick', 'indBrickDark']);
+
+/* An asset's draw() against a kit that writes its calls down. */
+function recordDraw(el, parts) {
+  const calls = [];
+  const K = new Proxy({}, {
+    get(t, k) {
+      return k === 'THREE' ? undefined : (...a) => {
+        calls.push([k, ...a]);
+      };
+    },
+  });
+  PROPS[el.type].draw(el, parts, K);
+  return calls;
+}
+
+function topOf(p) {
+  return p.t === 'box' ? p.hi[1] : Math.max(p.a[1], p.b[1]) + p.r;
+}
+
+/* How far the highest solid stands over the asset's drawn height, and
+ * which part it is, or null when nothing is solid. */
+function overDrawnTop(type, style, dims, parts) {
+  let best = null;
+  for (const p of parts) {
+    if (p.solid && (!best || topOf(p) > topOf(best))) {
+      best = p;
+    }
+  }
+  return best ? { over: topOf(best) - approxHeight(type, dims, style), part: best } : null;
+}
+
+/* The drawn brick's radius at height y, from every upright cylinder on the
+ * axis the chimney draws in brick, whether a drawn part or a draw() call. */
+function brickProfile(parts, calls) {
+  const cyl = [];
+  const onAxis = (a, b) => a[0] === 0 && a[2] === 0 && b[0] === 0 && b[2] === 0;
+  for (const p of parts) {
+    if (p.draw && p.t === 'cap' && BRICK.has(p.m) && onAxis(p.a, p.b)) {
+      cyl.push([p.a[1], p.b[1], p.r, p.rTop ?? p.r]);
+    }
+  }
+  for (const c of calls) {
+    if (c[0] === 'cyl' && BRICK.has(c[1]) && onAxis(c[2], c[3])) {
+      cyl.push([c[2][1], c[3][1], c[4], c[6] ?? c[4]]);
+    }
+  }
+  return (y) => {
+    let r = 0;
+    for (const [y0, y1, r0, r1] of cyl) {
+      if (y >= y0 && y <= y1 && y1 > y0) {
+        r = Math.max(r, r0 + ((r1 - r0) * (y - y0)) / (y1 - y0));
+      }
+    }
+    return r;
+  };
+}
+
+function insideCap(x, y, z, p) {
+  const ex = p.b[0] - p.a[0];
+  const ey = p.b[1] - p.a[1];
+  const ez = p.b[2] - p.a[2];
+  const L = ex * ex + ey * ey + ez * ez;
+  let t = L > 0 ? ((x - p.a[0]) * ex + (y - p.a[1]) * ey + (z - p.a[2]) * ez) / L : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const dx = p.a[0] + ex * t - x;
+  const dy = p.a[1] + ey * t - y;
+  const dz = p.a[2] + ez * t - z;
+  return dx * dx + dy * dy + dz * dz <= p.r * p.r;
+}
+
+/*
+ * The chimney's brick against its solids: the worst shortfall and the
+ * worst overshoot, in metres, and where. The reach at a height and a
+ * heading is the outermost solid point on the ray out from the axis,
+ * found walking in from outside the brick in 5 mm steps, which is the
+ * point a craft coming in from outside meets.
+ */
+function chimneyFit(H, parts, calls) {
+  const drawn = brickProfile(parts, calls);
+  const solid = parts.filter((p) => p.solid && p.t === 'cap' && p.m === 'brick');
+  const out = { short: 0, shortAt: 0, proud: -Infinity, proudAt: 0, top: -Infinity };
+  for (const p of solid) {
+    out.top = Math.max(out.top, topOf(p));
+  }
+  const N = 16;
+  for (let y = 0.2; y <= H - 0.02; y += 0.05) {
+    const d = drawn(y);
+    const near = solid.filter((p) => Math.min(p.a[1], p.b[1]) - p.r <= y && Math.max(p.a[1], p.b[1]) + p.r >= y);
+    for (let i = 0; i < N; i += 1) {
+      const sc = sincos(((i + 0.37) / N) * 2 * Math.PI, { s: 0, c: 0 });
+      let reach = -Infinity;
+      for (let m = d + 0.1; m >= 0; m -= 0.005) {
+        if (near.some((p) => insideCap(m * sc.c, y, m * sc.s, p))) {
+          reach = m;
+          break;
+        }
+      }
+      if (d - reach > out.short) {
+        out.short = d - reach;
+        out.shortAt = y;
+      }
+      if (reach - d > out.proud) {
+        out.proud = reach - d;
+        out.proudAt = y;
+      }
+    }
+  }
+  return out;
+}
+
+/* How many stair stringers a draw made, and how many treads the layout
+ * holds under them. */
+function stairCounts(parts, calls) {
+  return {
+    stringers: calls.filter((c) => c[0] === 'cyl' && (c[1] === 'bldStair' || c[1] === 'bldStairGreen')).length,
+    treads: parts.filter((p) => p.name === 'stairTread').length,
+  };
+}
+
+/* The chimney at the four corners of its limits as well: a short fat
+ * stack is where its solids went wrong, and neither the all-min nor the
+ * all-max set is one. */
+function envelopeSets(type, style) {
+  const sets = dimSets(type, style);
+  if (type === 'chimney') {
+    const L = PROPS.chimney.limits;
+    for (const h of L.height.slice(0, 2)) {
+      for (const r of L.radius.slice(0, 2)) {
+        sets.push([`height ${h} radius ${r}`, { ...PROPS.chimney.dims, height: h, radius: r }]);
+      }
+    }
+  }
+  return sets;
+}
+
+function envelopeBlock() {
+  console.log('\n1b. envelope: what is solid against what is drawn, at every dim set');
+  for (const [type, def] of Object.entries(PROPS)) {
+    if (def.zone) {
+      continue;
+    }
+    for (const style of def.styles ?? [null]) {
+      const label = `${type}${style ? ` ${style}` : ''}`;
+      const sets = envelopeSets(type, style);
+      let worstTop = -Infinity;
+      let topBad = null;
+      const fit = { short: 0, proud: -Infinity, over: -Infinity, bad: [] };
+      const stair = { drawn: 0, bad: [] };
+      for (const [name, dims] of sets) {
+        const el = assetEl(type, style, dims);
+        const parts = partsOf(el);
+        const hi = overDrawnTop(type, style, dims, parts);
+        if (hi) {
+          worstTop = Math.max(worstTop, hi.over);
+          if (hi.over > TOP_SLACK && !topBad) {
+            topBad = `${name}: ${hi.part.name || hi.part.t} tops out ${r3(hi.over)} m over the drawn ${r3(approxHeight(type, dims, style))} m`;
+          }
+        }
+        if (type === 'chimney') {
+          const f = chimneyFit(dims.height, parts, recordDraw(el, parts));
+          fit.short = Math.max(fit.short, f.short);
+          fit.proud = Math.max(fit.proud, f.proud);
+          fit.over = Math.max(fit.over, f.top - dims.height);
+          if (f.short > BRICK_SHORT || f.proud > BRICK_PROUD || f.top > dims.height + TOP_SLACK) {
+            fit.bad.push(`${name}: ${r3(f.short)} m short at ${r3(f.shortAt)} m, ${r3(f.proud)} m proud at ${r3(f.proudAt)} m, top ${r3(f.top - dims.height)} m over the rim`);
+          }
+        }
+        if (type === 'building') {
+          const c = stairCounts(parts, recordDraw(el, parts));
+          stair.drawn += c.stringers;
+          if (c.stringers > 0 && c.treads === 0) {
+            stair.bad.push(`${name}: ${c.stringers} stringers drawn, no treads`);
+          }
+        }
+      }
+      check(`${label}: no solid over the drawn top`, !topBad,
+        topBad ?? `highest ${r3(worstTop)} m against approxHeight over ${sets.length} dim sets`);
+      if (type === 'chimney') {
+        check(`${label}: the solid follows the drawn brick and stops at the rim`, fit.bad.length === 0,
+          fit.bad.length ? fit.bad.slice(0, 3).join(' | ')
+            : `worst ${r3(fit.short)} m short of the brick, ${r3(fit.proud)} m outside it, ${r3(fit.over)} m over the rim, over ${sets.length} dim sets`);
+      }
+      if (type === 'building') {
+        check(`${label}: no stair drawn without stair solids`, stair.bad.length === 0,
+          stair.bad.length ? stair.bad.slice(0, 3).join(' | ') : `${stair.drawn} stringers over ${sets.length} dim sets, every one on treads`);
+      }
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* One of everything                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -565,7 +796,7 @@ function placementRecords(placed) {
   for (const z of placed.zones) {
     recs.push([`zone|${z.name}|${z.points}`, [z.x, z.y, z.z, z.yaw, z.w, z.h]]);
   }
-  recs.push(['spawn', [placed.spawn.x, placed.spawn.z, placed.spawn.yaw]]);
+  recs.push(['spawn', [placed.spawn.x, placed.spawn.y, placed.spawn.z, placed.spawn.yaw, placed.spawn.base]]);
   return recs;
 }
 
@@ -907,13 +1138,39 @@ function approach(pitch, z, after = [0, 0, 0, 0.34]) {
  * The plant's frame for a map, as the shell seats it (src/main.js
  * seatWorldFrame): the origin at the spawn, SPAWN_ALT up, facing the spawn
  * yaw. The frame's sine comes from src/props/trig.js, so turning a point
- * into the plant's frame takes no JS trigonometry either.
+ * into the plant's frame takes no JS trigonometry either. `y` is the
+ * height the shell seats it at, which adoptSpawn asks the map's height for
+ * from spawn.y: 0 on the paving, a roof under raised pads.
  */
-function frameOf(spawn) {
-  const o = threePosToSim(spawn.x, 0, spawn.z, { x: 0, y: 0, z: 0 });
+function frameOf(spawn, y = 0) {
+  const o = threePosToSim(spawn.x, y, spawn.z, { x: 0, y: 0, z: 0 });
   const sc = sincos(spawn.yaw, { s: 0, c: 0 });
-  return { spawn, o: [o.x, o.y, o.z + REST], s: sc.s, c: sc.c };
+  return { spawn, y, o: [o.x, o.y, o.z + REST], s: sc.s, c: sc.c };
 }
+
+/*
+ * The frame for a built map, from the map's own height, exactly as
+ * adoptSpawn in src/main.js takes it: height(x, z, spawn.y).
+ */
+function builtFrame(placed) {
+  const sp = placed.spawn;
+  return frameOf(sp, groundUnder(placed.tops, sp.x, sp.z, sp.y));
+}
+
+/*
+ * The one sided slope limiter the shell puts on the ground's normal
+ * (limitSlope in src/main.js): opposite signs are a step or a ridge and
+ * read as level, matching signs a slope, and the gentler is taken.
+ */
+function limitSlope(a, b) {
+  if (a * b <= 0) {
+    return 0;
+  }
+  return (a < 0 ? -a : a) < (b < 0 ? -b : b) ? a : b;
+}
+/* src/main.js SURFACE_BIAS: the ground is asked for from this far under
+ * the CG, so a deck overhead is never the ground. */
+const SURFACE_BIAS = 0.40;
 /* A Three.js world point into the plant's frame: p = Rz(-yaw)(W - O). */
 function toPlant(f, X, Y, Z) {
   const w = threePosToSim(X, Y, Z, { x: 0, y: 0, z: 0 });
@@ -975,14 +1232,20 @@ async function newSim() {
 
 /*
  * Fly one run in a map. sc.sticks(ms, st, ctx) returns [roll, pitch, yaw,
- * throttle], on the shell's 4 ms RC grid. The ground is the shell's: level,
- * at the map's street, raised every step. Returns every step's row and a
- * hash of every state block and contact report.
+ * throttle], on the shell's 4 ms RC grid. The ground is raised every step.
+ * With world.height it is the shell's (src/main.js raiseGroundFromState and
+ * sampleGroundNormal): the map's height under the CG, asked from
+ * SURFACE_BIAS under it, with the five tap limited slope taken every eight
+ * steps, and every step while the craft is past 60 degrees. Without it, it
+ * is level at the frame's height, which is the street for the flights that
+ * prove the module holds the solids: a roof the harness handed the plant
+ * as ground could not show that. Returns every step's row and a hash of
+ * every state block and contact report.
  */
 async function fly(world, f, sc) {
   const sim = await newSim();
   const up = upload(sim, sc.empty ? null : (world.upload ?? world.colliders));
-  setWorldFrame(sim, f.spawn.x, 0, f.spawn.z, f.spawn.yaw, REST);
+  setWorldFrame(sim, f.spawn.x, f.y, f.spawn.z, f.spawn.yaw, REST);
   call(sim, 'sim_set_pose', sc.p[0], sc.p[1], sc.p[2], ...(sc.q ?? [1, 0, 0, 0]));
   call(sim, 'sim_rest');
   const ctx = { i: 0, angle: sc.angle ?? true, touched: false, t0: -1 };
@@ -992,6 +1255,7 @@ async function fly(world, f, sc) {
   const repPtr = sim.e.malloc(11 * 8);
   const hash = createHash('sha256');
   const rows = [];
+  const ground = { n: [0, 0, 1] };
   let st = sim.readState().state;
   for (let ms = 0; ms < sc.ms; ms += 1) {
     if (ms % 4 === 0) {
@@ -1002,7 +1266,22 @@ async function fly(world, f, sc) {
       }
       sim.input(ms / 1000, k[0], k[1], k[2], k[3]);
     }
-    call(sim, 'sim_set_ground', 1, 0, 0, 1, 0, 0, -REST, GROUND_MU, GROUND_E);
+    if (world.height) {
+      const w = toThree(f, [st[ST.X], st[ST.Y], st[ST.Z]]);
+      const from = w[1] - SURFACE_BIAS;
+      if ((ms & 7) === 0 || upZ(st) < 0.5) {
+        const e = 0.35;
+        const h0 = world.height(w[0], w[2], from);
+        const nx = limitSlope(h0 - world.height(w[0] + e, w[2], from), world.height(w[0] - e, w[2], from) - h0);
+        const nz = limitSlope(h0 - world.height(w[0], w[2] + e, from), world.height(w[0], w[2] - e, from) - h0);
+        const inv = 1 / Math.sqrt(nx * nx + e * e + nz * nz);
+        ground.n = dirToPlant(f, nx * inv, e * inv, nz * inv);
+      }
+      const gp = toPlant(f, w[0], world.height(w[0], w[2], from), w[2]);
+      call(sim, 'sim_set_ground', 1, ground.n[0], ground.n[1], ground.n[2], gp[0], gp[1], gp[2], GROUND_MU, GROUND_E);
+    } else {
+      call(sim, 'sim_set_ground', 1, 0, 0, 1, 0, 0, -REST, GROUND_MU, GROUND_E);
+    }
     sim.step(1);
     st = sim.readState().state;
     hash.update(sim.readStateBytes().bytes);
@@ -1509,7 +1788,30 @@ async function starterBlock() {
       worst === Infinity ? what : `nearest ${what} at ${r3(worst)} m`);
   }
 
-  /* And the pilot can take off where the starter puts them. */
+  /*
+   * THE PADS ON THE ROOF. The same map with its pads moved onto the open
+   * north half of the office roof, facing north, at a Base of the roof's
+   * 15 m: the builder has nothing to say, and the simulator seats the
+   * craft on the roof, on a mat.
+   */
+  const raised = mod.starterMap();
+  const padsEl = raised.elements.find((e) => e.type === 'startPads');
+  padsEl.position = { x: 42, y: 129, z: 15 };
+  padsEl.yaw = Math.PI / 2;
+  const roofDoc = normalize(raised).doc;
+  const roofPlaced = placeDocument(roofDoc);
+  const office = ranges.find((r) => r.item.el.type === 'building' && r.item.el.style === 'office');
+  const roof = office.own.find((s) => s.name === 'body').box;
+  const rs = roofPlaced.spawn;
+  check('the starter, pads on the office roof: the craft is seated on the roof, not in the building under it',
+    rs.y === roof[4] && rs.base === 15 && rs.x > roof[0] && rs.x < roof[3] && rs.z > roof[2] && rs.z < roof[5],
+    `seat ${r3(rs.y)} m at (${r3(rs.x)}, ${r3(rs.z)}), Base ${r3(rs.base)}, roof ${r3(roof[4])} m over x ${r3(roof[0])} to ${r3(roof[3])}, z ${r3(roof[2])} to ${r3(roof[5])}`);
+  const roofWarn = freestyleReport(roofDoc).warnings;
+  check('the starter, pads on the office roof: the builder report is clean', roofWarn.length === 0,
+    roofWarn.map((w) => `${w.code}: ${w.message}`).join(' | ') || 'no warnings');
+
+  /* And the pilot can take off where the starter puts them, on the ground
+   * and on the roof, with the shell's own ground under them. */
   if (!(await loadModule())) {
     fail('the starter in the module', 'dist/sim.wasm does not exist');
   } else {
@@ -1519,7 +1821,11 @@ async function starterBlock() {
       const up = upload(sim, colliders);
       check('the starter: sim_world_build returns the count', up.built === placed.solids.length && up.count === up.built,
         `${up.built} for ${placed.solids.length} solids`);
-      await spawnScenario({ placed, colliders }, frameOf(placed.spawn), 'the starter spawn');
+      const height = (x, z, fromY) => groundUnder(placed.tops, x, z, fromY);
+      await spawnScenario({ placed, colliders, height }, builtFrame(placed), 'the starter spawn');
+      const roofHeight = (x, z, fromY) => groundUnder(roofPlaced.tops, x, z, fromY);
+      await spawnScenario({ placed: roofPlaced, colliders: buildColliders(roofPlaced), height: roofHeight },
+        builtFrame(roofPlaced), 'the starter, pads on the office roof');
     } catch (e) {
       fail('the starter in the module', e.message);
     }
@@ -1565,7 +1871,32 @@ function selftestBlock() {
   check('self test: a clean quarter asset passes', run(() => [box([-1, 0, -2], [3, 1, 0.5]), cap([0, 0, 0], [1, 2, 3], 0.2)], 'quarter').length === 0);
   check('self test: a clean free asset passes', run(() => [cap([0.3, 0, -0.7], [4, 2, 1.1], 0.2)], 'any').length === 0);
 
-  const base = { solids: [{ kind: 'wall', name: 'a', box: [0, 0, 0, 1, 1, 1] }], zones: [], spawn: { x: 0, z: 0, yaw: 0 } };
+  /* The envelope's detectors (block 1b), each against the defect it was
+   * written for, planted on a clean asset. */
+  const chim = assetEl('chimney', null, PROPS.chimney.dims);
+  const H = chim.dims.height;
+  const cp = partsOf(chim);
+  const cCalls = recordDraw(chim, cp);
+  const clean = chimneyFit(H, cp, cCalls);
+  check('self test: the default chimney fits its brick', clean.short <= BRICK_SHORT && clean.proud <= BRICK_PROUD && clean.top <= H + TOP_SLACK,
+    `${r3(clean.short)} m short, ${r3(clean.proud)} m proud, top ${r3(clean.top - H)} m over the rim`);
+  const noCap = chimneyFit(H, cp.filter((p) => p.name !== 'rim'), cCalls);
+  check('self test: a chimney without its cap rings is seen short of the corbel', noCap.short > BRICK_SHORT,
+    `${r3(noCap.short)} m short at ${r3(noCap.shortAt)} m`);
+  const dome = cap([0, H - 0.4, 0], [0, H - 0.4, 0], 1.2, { m: 'brick', kind: 'wall', draw: false });
+  const domed = chimneyFit(H, [...cp, dome], cCalls);
+  check('self test: a dome over the rim is seen over it and outside the brick', domed.top > H + TOP_SLACK && domed.proud > BRICK_PROUD,
+    `top ${r3(domed.top - H)} m over the rim, ${r3(domed.proud)} m proud`);
+  const high = overDrawnTop('chimney', null, chim.dims, [...cp, cap([0, H + 1.5, 0], [0, H + 1.5, 0], 0.5, { kind: 'wall' })]);
+  check('self test: a solid over the drawn top is seen', Boolean(high) && high.over > TOP_SLACK, high ? `${r3(high.over)} m over` : 'nothing solid');
+  const flatsDims = { ...PROPS.building.dims, ...styleDims('building', 'flats') };
+  const flats = assetEl('building', 'flats', flatsDims);
+  const fp = partsOf(flats);
+  const stairs = stairCounts(fp.filter((p) => p.name !== 'stairTread'), recordDraw(flats, fp));
+  check('self test: stringers drawn over a layout without treads are seen', stairs.stringers > 0 && stairs.treads === 0,
+    `${stairs.stringers} stringers, ${stairs.treads} treads`);
+
+  const base = { solids: [{ kind: 'wall', name: 'a', box: [0, 0, 0, 1, 1, 1] }], zones: [], spawn: { x: 0, y: 0, z: 0, yaw: 0, base: 0 } };
   const ulp = { ...base, solids: [{ kind: 'wall', name: 'a', box: [0, 0, 0, 1 + 2 ** -52, 1, 1] }] };
   const negZero = { ...base, solids: [{ kind: 'wall', name: 'a', box: [-0, 0, 0, 1, 1, 1] }] };
   check('self test: a placement one ulp off is a difference', firstDifference(base, ulp) !== null);
@@ -1632,6 +1963,208 @@ async function selftestFlights() {
     check('self test: with no world in the module, the roof drop fails', Boolean(roof) && !roof.ok, roof ? roof.detail : 'the line never ran');
     check('self test: with no world in the module, the mast run fails', Boolean(mast) && !mast.ok, mast ? mast.detail : 'the line never ran');
   }
+
+  /*
+   * The rooftop start, seated where the simulator used to seat it: at 0,
+   * in the office under the pads, which is what dropping the pads' Base
+   * did. The lift off must then be seen to touch the building.
+   */
+  const raw = (await import(pathToFileURL(join(root, 'src/maps/built/starter.js')).href)).starterMap();
+  const padsEl = raw.elements.find((e) => e.type === 'startPads');
+  padsEl.position = { x: 42, y: 129, z: 15 };
+  padsEl.yaw = Math.PI / 2;
+  const rp = placeDocument(normalize(raw).doc);
+  captured = [];
+  try {
+    const height = (x, z, fromY) => groundUnder(rp.tops, x, z, fromY);
+    await spawnScenario({ placed: rp, colliders: buildColliders(rp), height }, frameOf(rp.spawn, 0), 'planted');
+  } finally {
+    const got = captured;
+    captured = null;
+    const lift = got.find((c) => c.name.startsWith('planted: lifting off the pads touches nothing'));
+    check('self test: raised pads seated at 0, inside the office, touch it lifting off', Boolean(lift) && !lift.ok,
+      lift ? lift.detail : 'the line never ran');
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* The scene                                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A MAP'S TIME OF DAY AND GROUND ARE PAINT AND LIGHT. So, for the starter
+ * and for one of everything, at each of the sixteen scenes:
+ *
+ *   the scene round trips through the file, and a map with it places to
+ *   exactly the solids, zones and spawn it places to with none, bit for
+ *   bit, which is the statement that no scene changes the physics;
+ *   src/maps/built/looks.js has a time for every time the document knows
+ *   and a ground for every ground, each with every field it is read for,
+ *   and golden asks the kit for nothing, so golden draws what it always
+ *   drew;
+ *   the buildings' lit windows (src/props/buildings.js, pane) change only
+ *   glass: drawn at night against a kit that lights a share of panes, a
+ *   building makes every other call it makes by day, in the same order
+ *   with the same numbers, so the building a pilot sees at dusk is the one
+ *   rolled at noon; and by day it lights nothing.
+ *
+ * Only what is pure is run here. The ground's paint and the lamps' glow
+ * are Three.js, and are looked at in the shots.
+ */
+const LOOK_FIELDS = ['sun', 'fill', 'bounce', 'hemi', 'fog', 'sky', 'hills', 'ink', 'grade', 'wire'];
+const GLASS = new Set(['bldPane', 'bldFrosted', 'bldBlind', 'bldSky', 'glassDark', 'glassBlue', 'glassLit',
+  'curtainPink', 'curtainBlue', 'curtainCream', 'curtainGreen']);
+
+/* A building's draw() against a kit that writes its calls down, lit or
+ * not: at night a pane is lit when a hash of where it stands falls under
+ * its share, which is enough to see the plumbing work without the real
+ * kit's hash, which needs Three.js. */
+function recordLit(el, parts, night) {
+  const calls = [];
+  let panes = 0;
+  let lit = 0;
+  const K = new Proxy({}, {
+    get(t, k) {
+      if (k === 'THREE') {
+        return undefined;
+      }
+      if (k === 'night') {
+        return night;
+      }
+      if (k === 'windowLight') {
+        return (x, y, z, share) => {
+          panes += 1;
+          if (!night) {
+            return 0;
+          }
+          const h = ((Math.imul(Math.round(x * 64), 73856093) ^ Math.imul(Math.round(y * 64), 19349663)
+            ^ Math.imul(Math.round(z * 64), 83492791)) >>> 0) / 4294967296;
+          if (h < share) {
+            lit += 1;
+            return 0xffc978;
+          }
+          return 0;
+        };
+      }
+      return (...a) => {
+        calls.push([k, ...a]);
+      };
+    },
+  });
+  PROPS[el.type].draw(el, parts, K);
+  return { calls, panes, lit };
+}
+
+/* Everything but glass: the glow calls, and a box or plane in a glass
+ * material, are what night is allowed to change. */
+function notGlass(calls) {
+  return calls.filter((c) => c[0] !== 'glow' && !(typeof c[1] === 'string' && GLASS.has(c[1])));
+}
+
+async function sceneBlock() {
+  console.log('\n6. the scene: time of day and ground');
+  let looks;
+  try {
+    looks = await import(pathToFileURL(join(root, 'src/maps/built/looks.js')).href);
+  } catch (e) {
+    fail('src/maps/built/looks.js imports in Node', e.message);
+    return;
+  }
+  const { TIMES, GROUNDS, kitLook } = looks;
+  check('looks.js has a time for every time the document knows, and no other',
+    JSON.stringify(Object.keys(TIMES)) === JSON.stringify(SCENE_TIMES), Object.keys(TIMES).join(', '));
+  check('and a ground for every ground', JSON.stringify(Object.keys(GROUNDS)) === JSON.stringify(SCENE_GROUNDS), Object.keys(GROUNDS).join(', '));
+  const missing = [];
+  for (const [id, T] of Object.entries(TIMES)) {
+    for (const f of LOOK_FIELDS) {
+      if (T[f] == null) {
+        missing.push(`${id}.${f}`);
+      }
+    }
+    for (const f of ['sun', 'fill', 'bounce']) {
+      if (!(T[f] && Array.isArray(T[f].at) && T[f].at.length === 3 && T[f].at.every(Number.isFinite) && Number.isFinite(T[f].intensity))) {
+        missing.push(`${id}.${f}.at/intensity`);
+      }
+    }
+    if (!(T.sun.at[1] > 0)) {
+      missing.push(`${id}: the sun is below the horizon`);
+    }
+    if (!(T.fog.near > 0 && T.fog.far > 0)) {
+      missing.push(`${id}.fog`);
+    }
+  }
+  for (const [id, G] of Object.entries(GROUNDS)) {
+    if (!(Number.isInteger(G.plot) && Number.isInteger(G.tint) && G.terrain && typeof G.terrain.base === 'string')) {
+      missing.push(`ground ${id}`);
+    }
+  }
+  check('every time and ground has every field it is read for', missing.length === 0, missing.join(', '));
+  check('golden asks the kit for nothing, so it draws what it always drew', kitLook('golden') === null);
+  check('dusk lights the windows and dims the unlit materials',
+    Boolean(kitLook('dusk') && kitLook('dusk').night && kitLook('dusk').flats));
+
+  const starter = (await import(pathToFileURL(join(root, 'src/maps/built/starter.js')).href)).starterMap();
+  for (const [label, raw] of [['the starter', starter], ['one of everything', everythingDoc().doc]]) {
+    const base = normalize(raw).doc;
+    const want = placementHash(placeDocument(base));
+    let trips = 0;
+    let same = 0;
+    const odd = [];
+    for (const time of SCENE_TIMES) {
+      for (const ground of SCENE_GROUNDS) {
+        const d = normalize(raw).doc;
+        d.scene = { time, ground };
+        const back = deserialize(serialize(d));
+        const sc = sceneOf(back.doc);
+        if (back.repairs.length === 0 && sc.time === time && sc.ground === ground) {
+          trips += 1;
+        } else {
+          odd.push(`${time}/${ground} read back as ${sc.time}/${sc.ground}`);
+        }
+        const got = placementHash(placeDocument(back.doc));
+        if (got === want) {
+          same += 1;
+        } else {
+          odd.push(`${time}/${ground} placed differently: ${firstDifference(placeDocument(base), placeDocument(back.doc))}`);
+        }
+      }
+    }
+    const n = SCENE_TIMES.length * SCENE_GROUNDS.length;
+    check(`${label}: all ${n} scenes round trip through the file`, trips === n, odd.join('; '));
+    check(`${label}: and every one places to the same solids, zones and spawn, bit for bit`, same === n, odd.join('; ') || want.slice(0, 16));
+  }
+
+  /* The lit windows. Every building style at three variants. */
+  let buildings = 0;
+  let unchanged = 0;
+  let darkByDay = 0;
+  let panes = 0;
+  let lit = 0;
+  const changed = [];
+  for (const style of PROPS.building.styles) {
+    for (const variant of [1, 7, 42]) {
+      const el = assetEl('building', style, { ...styleDims('building', style), variant });
+      const parts = partsOf(el);
+      const day = recordLit(el, parts, false);
+      const night = recordLit(el, parts, true);
+      buildings += 1;
+      if (!day.calls.some((c) => c[0] === 'glow')) {
+        darkByDay += 1;
+      }
+      const a = JSON.stringify(notGlass(day.calls));
+      const b = JSON.stringify(notGlass(night.calls));
+      if (a === b) {
+        unchanged += 1;
+      } else {
+        changed.push(`${style} ${variant}`);
+      }
+      panes += night.panes;
+      lit += night.lit;
+    }
+  }
+  check(`no building lights a window by day (${buildings} buildings)`, darkByDay === buildings);
+  check('at night a building draws exactly what it draws by day, glass aside', unchanged === buildings, changed.join(', '));
+  check('and at night a share of its panes is lit', panes > 0 && lit > 0.2 * panes && lit < 0.8 * panes, `${lit} of ${panes}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1640,10 +2173,12 @@ console.log('props-check: the freestyle assets, their placement, and the physics
 const world = {};
 const blocks = args.includes('--selftest') ? [['selftest', selftestBlock], ['selftest', selftestFlights]] : [
   ['assets', assetsBlock],
+  ['envelope', envelopeBlock],
   ['furniture', furnitureBlock],
   ['determinism', determinismBlock],
   ['physics', physicsBlock],
   ['starter', starterBlock],
+  ['scene', sceneBlock],
 ];
 for (const [name, fn] of blocks) {
   if (only && name !== only) {

@@ -496,14 +496,41 @@ const SCORING_WARNING = 'This is an unfinished feature and it is still being bui
   + ' the ones it catches, so read it as a work in progress rather than as a verdict'
   + ' on your flying.';
 
-const SCORING_HOW = 'Off: no overlay, no names and no run clock, just the town and the quad.'
+/* `where` is the world seated, since Off is that world and nothing else:
+ * the town, or Your map. */
+const scoringHow = (where) => `Off: no overlay, no names and no run clock, just ${where} and the quad.`
   + ' Free flight: tricks are named and scored as you land them, with no clock and no'
-  + ' board, and the run never ends. That is the one to learn a Powerloop in.'
-  + ' Scored run: two minutes on the clock, and what you finish with goes to the high'
+  + ' board, and the run never ends. That is the one to learn a Powerloop in.';
+
+const SCORING_BOARD = ' Scored run: two minutes on the clock, and what you finish with goes to the high'
   + ' score board.';
 
-function scoringNote(mode) {
-  return mode === 'off' ? SCORING_HOW : `${SCORING_WARNING} ${SCORING_HOW}`;
+/*
+ * Your map is a different place for every pilot who has built one, so the
+ * board will not take a run flown on it (see BUILT_OFF_BOARD). The Scored
+ * run line says so while it is seated, rather than promising a board the
+ * results screen then greys out. The reason is left to the results row:
+ * this note already fills the help column at 720 px tall, and a longer one
+ * ran under the bottom bar.
+ */
+const SCORING_BOARD_BUILT = ' Scored run: two minutes on the clock, and on Your map what you'
+  + ' finish with stays off the high score board.';
+
+/*
+ * Why a run flown on Your map cannot be posted, said once for the results
+ * row. The board files a run under its map's id, and 'built' names a
+ * different yard in every browser, so a run posted from one would sit on
+ * a table beside runs flown somewhere else entirely. main.js refuses the
+ * post as well, as a backstop for a press that reaches it some other way.
+ */
+const BUILT_OFF_BOARD = 'A map you built is a different place for every pilot who has one, so its runs'
+  + ' stay off the public board. Fly the town for a run that can go up.';
+
+function scoringNote(mode, mapId) {
+  const how = mapId === 'built'
+    ? scoringHow('Your map') + SCORING_BOARD_BUILT
+    : scoringHow('the town') + SCORING_BOARD;
+  return mode === 'off' ? how : `${SCORING_WARNING} ${how}`;
 }
 
 /*
@@ -5774,7 +5801,7 @@ export class Ui {
         {
           ...choice(
             'Scoring',
-            scoringNote(s.freestyleScoring),
+            scoringNote(s.freestyleScoring, s.map),
             FREESTYLE_SCORING,
             s.freestyleScoring,
             (id) => FREESTYLE_SCORING_LABEL[id],
@@ -6404,6 +6431,11 @@ export class Ui {
          */
         const run = this.freestyleRun;
         const nothing = !run || !(run.total > 0) || !(run.tricks > 0);
+        /* Your map comes first among the refusals: nothing flown on it can
+         * be posted, so telling a pilot to fly a trick first, or to switch
+         * to Scored, would send them to fix something that is not the
+         * reason. */
+        const built = this.settings.map === 'built';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -6425,15 +6457,15 @@ export class Ui {
                * screen is a press that does nothing at all. A row that says
                * why it is off is the same answer given before it is needed.
                */
-              disabled: nothing || Boolean(run && run.assisted)
+              disabled: built || nothing || Boolean(run && run.assisted)
                 || (run && run.timed === false),
-              note: nothing
+              note: built ? BUILT_OFF_BOARD : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false
                   ? 'Free flight has no clock, so there is nothing for a board to compare it against. Switch Run to Scored on the Freestyle screen and fly it again.'
                   : (run && run.assisted
                     ? 'This run used the harness hooks, so it is not a flown score and the board will not take it.'
-                    : `${formatScore(run.total)} from ${run.tricks} tricks. One entry per pilot on the board, and only your best.`)),
+                    : `${formatScore(run.total)} from ${run.tricks} tricks. One entry per pilot on the board, and only your best.`))),
             },
           {
             label: 'Open Tracks and Statistics',
@@ -9518,7 +9550,9 @@ export class Ui {
       } else if (listing && listing.canRemix) {
         writeBuilderIntent({ kind: 'remix' });
       }
-      window.location.href = 'src/trackbuilder/index.html';
+      /* ?mode=race: the track just seated is a race track, and without it
+       * a builder that remembers the map canvas opened the map instead. */
+      window.location.href = 'src/trackbuilder/index.html?mode=race';
     };
     if (card.course.kind === 'local') {
       /* Seat it first, so liveListing reads the track the pilot pointed at
@@ -10623,9 +10657,15 @@ export class Ui {
     void screen.offsetWidth;
     screen.classList.add('is-in');
 
+    /* The world the run was flown in, by the registry's name for it, which
+     * is what the Map row and the world cards call it. Written in as the
+     * town's name, it told a pilot back from Your map that they had been
+     * somewhere else. */
+    const world = seatedFreestyleMap(this.settings);
+    const where = world ? world.name : 'Freestyle';
     this.resultsKicker.textContent = summary.timed === false
-      ? 'Freestyle city, free flight'
-      : 'Freestyle city';
+      ? `${where}, free flight`
+      : where;
     this.resultsHead.textContent = summary.tricks
       ? (clean ? 'Clean run' : 'Run complete')
       : 'Run ended';
@@ -11514,8 +11554,12 @@ export class Ui {
     if (this.screen === 'flight' || this.screen === 'fc') {
       return out;
     }
-    const seat = activeCourseSummary();
+    /* The course only when the seat is the track world, as on the title's
+     * Track row. A race track stays seated underneath a freestyle world, so
+     * without the guard a pilot in Your map read "Flying" and the name of a
+     * track they were not in. */
     const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
+    const seat = m.id === 'custom' ? activeCourseSummary() : null;
     out.push({ label: 'Flying', value: seat && seat.name ? seat.name : m.name });
     const name = readPilotName();
     if (name) {
@@ -11631,6 +11675,17 @@ export class Ui {
     const p = items.findIndex((it) => it && it.primary && this.isStop(it));
     if (p >= 0) {
       return p;
+    }
+    /*
+     * The world cards open on the world that is seated, for the same
+     * reason. The first stop is the town's card, so a pilot seated in Your
+     * map met the cursor on the town, the tag "Flying now" on the other
+     * card, and the town's note beside a world they were not in.
+     */
+    const seated = items.findIndex((it) => it && it.map && it.map.id === this.settings.map
+      && this.isStop(it));
+    if (seated >= 0) {
+      return seated;
     }
     return this.firstStop(items);
   }
@@ -12059,9 +12114,14 @@ export class Ui {
      * than a screen. It has to be here and not in main.js's action handler
      * because leaving the page tears the simulator down, which is the whole
      * point: the builder shares no module, no canvas and no state with the
-     * flight model, only the track document its schema.md describes. */
+     * flight model, only the track document its schema.md describes.
+     *
+     * A race row opens the builder with ?mode=race. The builder otherwise
+     * reopens the canvas the author was last on, and from the Track room
+     * that is the wrong answer whenever it was the map. Edit a copy's
+     * intent already tells the builder it is a race visit. */
     if (action === 'trackbuilder') {
-      window.location.href = 'src/trackbuilder/index.html';
+      window.location.href = 'src/trackbuilder/index.html?mode=race';
       return;
     }
     if (action === 'mapbuilder') {
@@ -12076,7 +12136,7 @@ export class Ui {
     }
     if (action === 'editown') {
       writeBuilderIntent({ kind: 'edit' });
-      window.location.href = 'src/trackbuilder/index.html';
+      window.location.href = 'src/trackbuilder/index.html?mode=race';
       return;
     }
     /* Leaderboard and Choose new map are the same page. The board opens

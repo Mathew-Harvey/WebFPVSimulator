@@ -129,5 +129,6 @@ export const MAP_PRELOAD = {
     'props/solids.js',
     'maps/built/place.js',
     'maps/built/starter.js',
+    'maps/built/looks.js',
   ],
 };

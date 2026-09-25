@@ -442,6 +442,66 @@ function fb(K, m, face, at, u0, u1, y0, y1, n0, n1) {
   K.box(m, ...faceBox(face, at, u0, u1, y0, y1, n0, n1));
 }
 
+/*
+ * A PANE OF GLASS ON A FACE, which at dusk may be a lit room.
+ *
+ * By day this is fb and nothing else. At night the kit decides from where
+ * the pane stands whether somebody is home (K.windowLight, never the draw's
+ * own random stream, so the building rolled at dusk is the one rolled at
+ * noon) and a lit pane goes into the kit's one glow batch in the colour of
+ * the light left on. `share` is how many such panes are lit; a pane drawn
+ * as glassLit was a lit room by day and is lit at night too. Returns the
+ * tone, 0 for a dark pane, so what hangs behind the glass can follow it.
+ */
+function pane(K, m, face, at, u0, u1, y0, y1, n0, n1, share, tones) {
+  const box = faceBox(face, at, u0, u1, y0, y1, n0, n1);
+  const tone = K.windowLight((box[0] + box[3]) / 2, (box[1] + box[4]) / 2, (box[2] + box[5]) / 2,
+    m === 'glassLit' ? 1 : share, tones);
+  if (tone) {
+    K.glow(tone, ...box);
+  } else {
+    K.box(m, ...box);
+  }
+  return tone;
+}
+
+/* A run of glass between mullions, one box by day. At night each of its
+ * `n` panes is its own room, lit or not, since a whole floor lit or dark
+ * as one ribbon is the pattern a lit town must not have. */
+function paneRun(K, m, face, at, r0, r1, y0, y1, n0, n1, n, share, tones) {
+  if (K.night !== true) {
+    fb(K, m, face, at, r0, r1, y0, y1, n0, n1);
+    return;
+  }
+  for (let k = 0; k < n; k += 1) {
+    pane(K, m, face, at, r0 + (k / n) * (r1 - r0), r0 + ((k + 1) / n) * (r1 - r0), y0, y1, n0, n1, share, tones);
+  }
+}
+
+/*
+ * THE COLOURS A LIT ROOM IS, weighted by repeating them. A home is mostly
+ * a warm bulb, some paper shade amber, some a cooler ceiling light, the odd
+ * one a television's blue; an office is its fluorescent tubes. Values are
+ * picked to stay warm against the dusk look's violet, since a lit window is
+ * the one warm thing on a face in shade.
+ */
+const WINDOW_TONES = {
+  home: [0xffc978, 0xffc978, 0xffc978, 0xffd494, 0xffd494, 0xffab62, 0xffab62, 0xfff0d2, 0xfff0d2, 0xbcd0ff],
+  office: [0xfff3da, 0xfff3da, 0xfff3da, 0xf2f6ff, 0xf2f6ff, 0xffe2b0],
+  frosted: [0xfff0d8, 0xffe6bf],
+  blind: [0xffe7c2],
+};
+
+/* A curtain with the room lit behind it glows in its own colour, warmed. */
+const CURTAIN_LIT = {
+  curtainPink: 0xffbfb0, curtainBlue: 0xd9d5f0, curtainCream: 0xffe1a6, curtainGreen: 0xe5eab4,
+};
+
+/* How many of each kind of window are lit at dusk: a home at the hour
+ * people come back to it, an office still working, a stair and a lobby
+ * lit all night. */
+const LIT = { home: 0.46, kitchen: 0.4, frosted: 0.3, office: 0.52, side: 0.45, stair: 0.85, lobby: 1, shed: 0.3 };
+
 /* The plinth a building stands on, a few centimetres proud of its walls,
  * split round the arcade so no kerb is drawn across the way through. */
 function plinthDraw(K, s, h) {
@@ -499,12 +559,20 @@ function paintAround(K, m, face, at, u0, u1, y0, y1, hole, n0, n1) {
 function windowOn(K, face, at, u, y, w, h, o = {}) {
   const f = o.frame ?? 'bldFrame';
   fb(K, f, face, at, u - w / 2 - 0.07, u + w / 2 + 0.07, y - h / 2 - 0.07, y + h / 2 + 0.07, -0.01, 0.05);
-  fb(K, o.glass ?? 'bldPane', face, at, u - w / 2, u + w / 2, y - h / 2, y + h / 2, 0.05, 0.06);
+  const glass = o.glass ?? 'bldPane';
+  const frosted = glass === 'bldFrosted';
+  const lit = pane(K, glass, face, at, u - w / 2, u + w / 2, y - h / 2, y + h / 2, 0.05, 0.06,
+    o.lit ?? (frosted ? LIT.frosted : LIT.home), frosted ? WINDOW_TONES.frosted : WINDOW_TONES.home);
   if (o.inside) {
     const side = o.insideSide ?? -1;
     const cw = w * (o.insideFrac ?? 0.34);
     const c0 = side < 0 ? u - w / 2 : u + w / 2 - cw;
-    fb(K, o.inside, face, at, c0, c0 + cw, y - h / 2 + 0.02, y + h / 2 - 0.02, 0.06, 0.065);
+    /* A drawn curtain in front of a lit room glows in its own colour. */
+    if (lit && CURTAIN_LIT[o.inside]) {
+      K.glow(CURTAIN_LIT[o.inside], ...faceBox(face, at, c0, c0 + cw, y - h / 2 + 0.02, y + h / 2 - 0.02, 0.06, 0.065));
+    } else {
+      fb(K, o.inside, face, at, c0, c0 + cw, y - h / 2 + 0.02, y + h / 2 - 0.02, 0.06, 0.065);
+    }
   }
   if (o.mullion !== false) {
     fb(K, f, face, at, u - 0.03, u + 0.03, y - h / 2, y + h / 2, 0.06, 0.09);
@@ -1171,17 +1239,19 @@ function roofDraw(K, x0, x1, z0, z1, y, par, cope = 'bldFrame') {
   }
 }
 
-/* The panel tank's seams, its lid, its ladder. */
+/* The panel tank's seams, its lid, its ladder. The seams that run over
+ * the top stand 1.2 cm proud of it, as a flange does: flush, their tops
+ * lay in the tank's own top and the two paints fought along every seam. */
 function tankDraw(K, p) {
   const [ax, ay, az] = p.lo;
   const [bx, by, bz] = p.hi;
   for (let k = 1; k < 2; k += 1) {
     const x = ax + (k / 2) * (bx - ax);
-    K.box('tankSeam', x - 0.025, ay, az - 0.025, x + 0.025, by, bz + 0.025);
+    K.box('tankSeam', x - 0.025, ay, az - 0.025, x + 0.025, by + 0.012, bz + 0.025);
   }
   for (let k = 1; k < 3; k += 1) {
     const z = az + (k / 3) * (bz - az);
-    K.box('tankSeam', ax - 0.025, ay, z - 0.025, bx + 0.025, by, z + 0.025);
+    K.box('tankSeam', ax - 0.025, ay, z - 0.025, bx + 0.025, by + 0.012, z + 0.025);
   }
   K.box('tankSeam', ax - 0.025, (ay + by) / 2 - 0.025, az - 0.025, bx + 0.025, (ay + by) / 2 + 0.025, bz + 0.025);
   K.box('metalDark', ax - 0.04, ay - 0.1, az - 0.04, bx + 0.04, ay, bz + 0.04);
@@ -1314,7 +1384,7 @@ function flatsDraw(K, s, parts, rng) {
         /* The entrance: glass doors, the name over them, post boxes. */
         const zc = (za + zb) / 2;
         fb(K, 'bldFrame', '+x', xf, zc - 1.25, zc + 1.25, 0.4, 2.12, -0.01, 0.05);
-        fb(K, 'glassDark', '+x', xf, zc - 1.15, zc + 1.15, 0.45, 2.05, 0.05, 0.06);
+        pane(K, 'glassDark', '+x', xf, zc - 1.15, zc + 1.15, 0.45, 2.05, 0.05, 0.06, LIT.lobby, WINDOW_TONES.office);
         fb(K, 'bldFrame', '+x', xf, zc - 0.03, zc + 0.03, 0.45, 2.05, 0.06, 0.09);
         fb(K, 'lampGlow', '+x', xf, zc - 1.1, zc + 1.1, 1.75, 2.0, 0.06, 0.065);
         K.sign('flatsName', xf + 0.07, 2.4, zc, Math.min(1.7, uw - 0.6), 0.44, '+x', rng.int(0, 7));
@@ -1341,7 +1411,7 @@ function flatsDraw(K, s, parts, rng) {
       const wz = Math.min(zb - 0.9, dz + 2.2);
       if (!sparse && wz - 0.5 > dz + 1.3) {
         windowOn(K, '+x', xf, wz, y + base + 1.6, 0.9, 0.9, {
-          glass: rng.chance(0.2) ? 'glassLit' : 'bldFrosted', grille: rich, mullion: false, sill: false,
+          glass: rng.chance(0.2) ? 'glassLit' : 'bldFrosted', grille: rich, mullion: false, sill: false, lit: LIT.kitchen,
         });
       }
       /* The light on the soffit over the door. */
@@ -1429,8 +1499,8 @@ function flatsDraw(K, s, parts, rng) {
        * stair inside draws itself on the outside. */
       for (let i = 0; i < N; i += 1) {
         const y = level(i);
-        fb(K, 'bldPane', outFace, outAt, tx0 + 0.6, tx0 + 1.6, y + 1.9, y + 2.5, -0.01, 0.02);
-        fb(K, 'bldPane', outFace, outAt, tx1 - 1.6, tx1 - 0.6, y + 0.45, y + 1.05, -0.01, 0.02);
+        pane(K, 'bldPane', outFace, outAt, tx0 + 0.6, tx0 + 1.6, y + 1.9, y + 2.5, -0.01, 0.02, LIT.stair, WINDOW_TONES.office);
+        pane(K, 'bldPane', outFace, outAt, tx1 - 1.6, tx1 - 0.6, y + 0.45, y + 1.05, -0.01, 0.02, LIT.stair, WINDOW_TONES.office);
         if (i > 0) {
           fb(K, 'trim', '+x', tx1, Math.min(tz0, tz1) + 0.8, Math.min(tz0, tz1) + 1.9, y, y + 2.15, -0.01, 0.05);
           fb(K, 'bldDoorGrey', '+x', tx1, Math.min(tz0, tz1) + 0.86, Math.min(tz0, tz1) + 1.84, y + 0.02, y + 2.1, 0.05, 0.08);
@@ -1440,7 +1510,11 @@ function flatsDraw(K, s, parts, rng) {
       K.box('bldFrame', tx0 - 0.04, ty1, tz0 - 0.04, tx1 + 0.04, ty1 + 0.08, tz1 + 0.04);
       fb(K, 'lampRed', '+x', tx1, (tz0 + tz1) / 2 - 0.1, (tz0 + tz1) / 2 + 0.1, ty1 - 0.4, ty1 - 0.2, 0, 0.03);
     }
-  } else if (N >= 2 && W >= 6) {
+  } else if (parts.some((p) => p.name === 'stairTread')) {
+    /* Drawn when the layout built one, read off its treads as the tower is
+     * read off its part: a test of its own here drew the stringers and
+     * rails of a stair the layout had refused, on a block too shallow for
+     * it, hanging in the air with nothing solid under them. */
     const g = stairGeom({ xa: xf, back: -1, zWall: zw, sz: side, levels, landD: CORRIDOR, halfD: 1.2, flightW: 1.2 });
     stairDraw(K, g, { zWall: zw, mat: 'bldStair' });
   }
@@ -1477,7 +1551,7 @@ function officeDraw(K, s, parts, rng) {
       if (i === 0) {
         /* The lobby: dark glass the height of the storey, a door pair. */
         fb(K, 'bldFrame', '+x', xf, za, zb, 0.3, top - 0.5, -0.01, 0.03);
-        fb(K, 'glassDark', '+x', xf, za + 0.08, zb - 0.08, 0.35, top - 0.6, 0.03, 0.04);
+        pane(K, 'glassDark', '+x', xf, za + 0.08, zb - 0.08, 0.35, top - 0.6, 0.03, 0.04, LIT.lobby, WINDOW_TONES.office);
         fb(K, 'bldFrame', '+x', xf, (za + zb) / 2 - 0.03, (za + zb) / 2 + 0.03, 0.35, top - 0.6, 0.04, 0.07);
         fb(K, 'bldFrame', '+x', xf, za + 0.08, zb - 0.08, 2.4, 2.46, 0.04, 0.07);
         continue;
@@ -1491,9 +1565,14 @@ function officeDraw(K, s, parts, rng) {
         const u1 = za + ((k + 1) / n) * (zb - za);
         const roll = rng.next();
         const glass = roll < 0.08 ? 'glassLit' : roll < 0.3 ? 'bldSky' : 'glassBlue';
-        fb(K, glass, '+x', xf, u0, u1, g0, g1, -0.01, 0.01);
+        const lit = pane(K, glass, '+x', xf, u0, u1, g0, g1, -0.01, 0.01, LIT.office, WINDOW_TONES.office);
         if (!dense && roll > 0.55 && roll < 0.8) {
-          fb(K, 'bldBlind', '+x', xf, u0 + 0.04, u1 - 0.04, g1 - (g1 - g0) * rng.range(0.3, 0.8), g1 - 0.04, 0.01, 0.015);
+          const bb = faceBox('+x', xf, u0 + 0.04, u1 - 0.04, g1 - (g1 - g0) * rng.range(0.3, 0.8), g1 - 0.04, 0.01, 0.015);
+          if (lit) {
+            K.glow(WINDOW_TONES.blind[0], ...bb);
+          } else {
+            K.box('bldBlind', ...bb);
+          }
         }
         fb(K, 'bldFrame', '+x', xf, u0 - 0.03, u0 + 0.03, g0, g1, 0.0, 0.06);
       }
@@ -1527,11 +1606,11 @@ function officeDraw(K, s, parts, rng) {
           continue;
         }
         const glassMat = rng.chance(0.25) ? 'bldSky' : 'glassBlue';
+        const n = Math.max(1, Math.round((r1 - r0) / (dense ? 4.5 : 1.8)));
         if (!(face === '-x' && pw && g0 < ph && r1 > -pw / 2 && r0 < pw / 2)) {
           fb(K, 'bldFrame', face, at, r0 - 0.06, r1 + 0.06, g0 - 0.06, g1 + 0.06, -0.01, 0.04);
-          fb(K, glassMat, face, at, r0, r1, g0, g1, 0.04, 0.05);
+          paneRun(K, glassMat, face, at, r0, r1, g0, g1, 0.04, 0.05, n, LIT.side, WINDOW_TONES.office);
         }
-        const n = Math.max(1, Math.round((r1 - r0) / (dense ? 4.5 : 1.8)));
         for (let k = 1; k < n; k += 1) {
           const u = r0 + (k / n) * (r1 - r0);
           fb(K, 'bldFrame', face, at, u - 0.035, u + 0.035, g0, g1, 0.05, 0.08);
@@ -1680,7 +1759,7 @@ function warehouseDraw(K, s, parts, rng) {
       const u0 = xb + (b / n) * D + 0.5;
       const u1 = xb + ((b + 1) / n) * D - 0.5;
       fb(K, 'bldFrame', face, at, u0, u1, H - 1.45, H - 0.65, 0.0, 0.08);
-      fb(K, 'bldPane', face, at, u0 + 0.06, u1 - 0.06, H - 1.39, H - 0.71, 0.08, 0.09);
+      pane(K, 'bldPane', face, at, u0 + 0.06, u1 - 0.06, H - 1.39, H - 0.71, 0.08, 0.09, LIT.shed, WINDOW_TONES.office);
     }
   }
   /*
@@ -2342,21 +2421,43 @@ export function bandoLayout(el) {
    * are the structure there, and a column inside it would narrow it. */
   const shaftColI = plan.coreI === 0 ? 0 : nx;
   const shaftColK = plan.coreK === 0 ? 0 : nz;
+  /* The stair core's cell. The column on the building's face at the
+   * core's inner edge stands half inside the core, and its outer face lay
+   * in the core's own face, two materials in one plane that fought for
+   * every pixel of it. It stops at the core's face instead. */
+  const kx0 = cellX(s, stair.i);
+  const kx1 = cellX(s, stair.i + 1);
+  const kz0 = cellZ(s, stair.k);
+  const kz1 = cellZ(s, stair.k + 1);
   for (const c of cols) {
     if (c.i === shaftColI && c.k === shaftColK) {
       continue;
     }
     const x = colX(s, c.i);
     const z = colZ(s, c.k);
-    P.box(plan.burntAt(c.i, c.k) ? 'bandoSooty' : 'bandoColumn', x - col, 0, z - col, x + col, c.top, z + col, { name: c.stump ? 'columnStump' : 'column' });
+    let za = z - col;
+    let zb = z + col;
+    if (x - col < kx1 && x + col > kx0) {
+      if (za < kz0 && zb > kz0) {
+        zb = kz0;
+      }
+      if (za < kz1 && zb > kz1) {
+        za = kz1;
+      }
+    }
+    P.box(plan.burntAt(c.i, c.k) ? 'bandoSooty' : 'bandoColumn', x - col, 0, za, x + col, c.top, zb, { name: c.stump ? 'columnStump' : 'column' });
   }
 
-  /* SLABS, cell by cell, merged into rectangles of one material. */
+  /* SLABS, cell by cell, merged into rectangles of one material. Never in
+   * the stair core's cell, which the core fills solid from the ground up:
+   * a slab run through it ended in the core's own faces, and every floor
+   * drew a strip of slab fighting the core's paint across its outside. */
   const cellMat = (i, k) => (plan.burntAt((i + 0.5) / 2, (k + 0.5) / 2) ? 'bandoSooty' : 'slab');
   for (let f = 1; f <= N; f += 1) {
     const y = f * fh;
     const cells = holes[f - 1];
     const used = new Uint8Array(ci * ck);
+    used[stair.i * ck + stair.k] = 1;
     for (let i = 0; i < ci; i += 1) {
       for (let k = 0; k < ck; k += 1) {
         if (cells[i * ck + k] || used[i * ck + k]) {

@@ -47608,3 +47608,27 @@ All required tests pass:
 - support:selftest: PASS
 - lint:boot: 9 of 9 checks clean
 - stats:selftest: 79 passed, 0 failed
+
+## 2026-09-25: Evidence pack for PR review
+
+**HEAD**: 797f6b5b2acdd21a1e80fbb8aef10989ffc1c12d
+
+### Paused Menu Fix (cdaf739 → 797f6b5)
+
+Fixed paused menu overlap at 1366x768 and 1280x720 by tightening row padding at
+mid-size viewports. Added media query `@media (max-height: 768px) and (min-height: 668px)`
+to reduce `.screen-modal .menu .row` padding from 5px to 2px and remove bottom padding.
+
+This saves ~59px total height, allowing the 13-row paused menu (with Support) to fit
+where main's 12-row menu (without Support) fit before.
+
+### !important Removal (797f6b5)
+
+Removed unnecessary `!important` from `.screen-title { padding-bottom: ... }` rule.
+The rule comes after the base `.screen-title` rule (line 1770 vs 1080), so cascade
+order wins without needing !important.
+
+All tests continue to pass:
+- support:selftest: PASS
+- lint:boot: 9 of 9 checks clean
+- stats:selftest: 79 passed, 0 failed

@@ -1,14 +1,16 @@
 /*
- * stf.js: the STF mark, the easter egg every freestyle map carries.
+ * stf.js: the STF mark, the SubTwoFifty logo every freestyle map carries.
  *
  * WHAT IT IS. The STF logo, a white brush lettered S and F with a green T on
  * black, sprayed through a stencil onto something in the world, with the
  * town's ink treatment: a rough overspray edge, a dark ink line round the
  * letters, the odd drip. It is paint, so it is drawn and never solid, and it
  * takes the light like the surface it is sprayed on. FREESTYLE-MAPS-PLAN.md
- * section 9 is where it comes from and says what finding it means.
+ * section 9 is where it comes from and says what finding it means, and
+ * section 12, decision 10, is why it is painted big and where the pilot
+ * sees it from the pads.
  *
- * THE INTERFACE, which src/maps/city/places/works.js and
+ * THE INTERFACE, which src/maps/city/places/index.js and
  * src/maps/built/index.js both call, exactly:
  *
  *   STF_LOGO_URL                     null, or the owner's logo file (below)
@@ -18,7 +20,7 @@
  *                                    overspray, opaque inside it.
  *   stfDataUrl() -> string           the same canvas as a PNG data URL, for
  *                                    the found panel in the HUD.
- *   makeStfMark(THREE, { width, height, look }) -> THREE.Mesh
+ *   makeStfMark(THREE, { width, height, look, shade }) -> THREE.Mesh
  *       A plane `width` by `height` metres in its own XY plane, facing its
  *       own +Z, centred on its origin, with +Y the way the lettering reads
  *       up. To paint it on a face whose outward unit normal is n, reading up
@@ -48,8 +50,16 @@
  *       end, 3 m out). So at dusk and overcast the paint also gives back a
  *       little of its own colour, STF_GLOW of it, through the canvas as its
  *       emissive map: the letters lift and the T stays green, and the black
- *       field, which gives back nothing, stays black. Golden hour, noon and
- *       the town are exactly as before.
+ *       field, which gives back nothing, stays black.
+ *       `shade` says the face the paint is on is turned away from the sun,
+ *       so no direct light reaches it at any time of day: a north wall at
+ *       golden hour. Paint there sits in the violet of the shadow side, and
+ *       on the town's corner shop the white lettering went the lavender grey
+ *       of the render round it (measured from the spawn, 25 m out, and at
+ *       4 m). A mark painted to be seen from the pads has to read there, so
+ *       paint in shade gives back STF_SHADE_GLOW of its own colour, the way
+ *       dusk does, whatever the time of day. Sunlit paint gives back
+ *       nothing at golden hour and noon, as before.
  *       castShadow is false, receiveShadow is true, renderOrder is 1,
  *       userData.stf is true and userData.noOutline is true, and the name
  *       is 'stfMarkTrim': the town's collider fit, its cover pass and its
@@ -778,10 +788,13 @@ function paintMaterial(THREE, map) {
  * The share of its own colour the paint gives back when the light is low,
  * by the look's key: enough to read the lettering and see the green T at 3
  * to 4 m, not enough to read as a lit sign. Any other look gives none.
+ * STF_SHADE_GLOW is the same for paint on a face the sun never reaches,
+ * dusk's share, and the paint takes whichever of the two is more.
  */
 const STF_GLOW = { dusk: 0.3, overcast: 0.12 };
+const STF_SHADE_GLOW = 0.3;
 
-export function makeStfMark(THREE, { width, height, look = null } = {}) {
+export function makeStfMark(THREE, { width, height, look = null, shade = false } = {}) {
   const map = new THREE.CanvasTexture(stfCanvas());
   map.colorSpace = THREE.SRGBColorSpace;
   map.anisotropy = 8;
@@ -801,7 +814,8 @@ export function makeStfMark(THREE, { width, height, look = null } = {}) {
   map.addEventListener('dispose', () => LIVE.delete(map));
 
   const mat = paintMaterial(THREE, map);
-  const glow = look && STF_GLOW[look.key];
+  const byLook = (look && STF_GLOW[look.key]) || 0;
+  const glow = shade && STF_SHADE_GLOW > byLook ? STF_SHADE_GLOW : byLook;
   if (glow) {
     mat.emissive.set(0xffffff);
     mat.emissiveMap = map;

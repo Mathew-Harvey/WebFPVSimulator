@@ -278,6 +278,60 @@ export function writeBind(trackId, bind) {
     sourceId: bind.sourceId ? String(bind.sourceId) : '',
     sourceName: String(bind.sourceName || ''),
     sourceAuthor: String(bind.sourceAuthor || ''),
+    /*
+     * The tags the board is showing this track under, and until 25
+     * September this list of fields did not name them, so rememberPublish
+     * wrote them and they were dropped here on the way in. The publish
+     * dialog then opened with nothing ticked on every track, sent that,
+     * and untagged it.
+     *
+     * Kept only when it is a list, and a list with nothing in it is kept
+     * too, because "none" and "not known" are different answers: a bind
+     * written before this line, or for a track this browser has not heard
+     * back about, has no list, and publishedTags in ./listing.js reads that
+     * as not known rather than as none.
+     */
+    ...(Array.isArray(bind.tags)
+      ? { tags: bind.tags.filter((t) => typeof t === 'string' && t) }
+      : {}),
+  });
+}
+
+/*
+ * A FREESTYLE MAP THIS BROWSER PUT ON THE BOARD: its edit key, the board it
+ * went to, and the name and author it went up under, one record per map id.
+ *
+ * In a key of its own rather than in EDIT_KEY and BIND_KEY above, and that
+ * is the point of it. Everything that walks those, syncOwnedIdentity in
+ * ./listing.js above all, republishes what it finds to /api/tracks when the
+ * pilot changes their name, and the board refuses a map there. A map kept
+ * in this list is never reached by that walk, so a rename cannot turn into
+ * a string of refused requests about maps.
+ */
+const MAP_LISTING_KEY = 'webfpv.share.maps.v1';
+
+export function readMapListing(mapId) {
+  const row = mapGet(MAP_LISTING_KEY, mapId);
+  if (!row || typeof row.editKey !== 'string' || !row.editKey) {
+    return null;
+  }
+  return {
+    editKey: row.editKey,
+    board: String(row.board || ''),
+    author: String(row.author || ''),
+    nameOnBoard: String(row.nameOnBoard || ''),
+  };
+}
+
+export function writeMapListing(mapId, listing) {
+  if (!listing || !listing.editKey) {
+    return mapSet(MAP_LISTING_KEY, mapId, null);
+  }
+  return mapSet(MAP_LISTING_KEY, mapId, {
+    editKey: String(listing.editKey),
+    board: String(listing.board || ''),
+    author: String(listing.author || ''),
+    nameOnBoard: String(listing.nameOnBoard || ''),
   });
 }
 

@@ -3,7 +3,7 @@
  * main.js can ask for all of them the moment the map is chosen rather than
  * letting the browser find them one import level at a time. See
  * scripts/gen-preload.js for why, and for the boot graph's half of the same
- * job, which lives in index.html.
+ * job, which lives in src/fresh.js.
  *
  * Paths are relative to src/. Everything under the marker is written by
  * `node scripts/gen-preload.js`; `npm run lint:preload` fails when it is
@@ -96,11 +96,11 @@ export const MAP_PRELOAD = {
     'maps/city/places/road.js',
     'maps/city/places/kit.js',
     'maps/city/places/works.js',
-    'art/stf.js',
     'maps/city/places/signs.js',
     'maps/city/places/pool.js',
     'maps/city/places/training.js',
     'maps/city/places/blossom.js',
+    'art/stf.js',
     'maps/city/drawn.js',
   ],
   built: [
@@ -121,7 +121,6 @@ export const MAP_PRELOAD = {
     'props/catalog.js',
     'props/buildings.js',
     'props/parts.js',
-    'props/trig.js',
     'props/textures.js',
     'props/industrial.js',
     'props/street.js',

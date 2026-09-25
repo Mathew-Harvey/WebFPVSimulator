@@ -7,10 +7,12 @@
  *   Board API      {board}/api/tracks
  *   Fly a track    {sim}/?map=custom&share={id}&board={board}
  *   Orbit thumb    {sim}/src/share/orbit.html?map=custom&share={id}&board={board}
- *   Publish        POST {board}/api/tracks   { author, document, editKey? }
+ *   Publish        POST {board}/api/tracks   { author, document, editKey?, tags? }
  *   Update listing POST {board}/api/tracks   same, with the edit key from
  *                  the browser that first published. A name-only update
- *                  keeps the times. A layout change clears them.
+ *                  keeps the times. A layout change clears them. tags
+ *                  left out keeps what the listing wears and tags: []
+ *                  takes them off. The answer carries the tags it wears.
  *   Post a time    POST {board}/api/tracks/{id}/times   { name, lapMs, threeMs?, ghost? }
  *                  ghost is the base64 lap recording from
  *                  src/share/ghostdata.js, sent when the lap was recorded
@@ -484,7 +486,8 @@ export function tagLabel(id) {
  * A track that came back from a newer board wearing a tag this build has
  * never heard of keeps it on the board and simply does not draw it here,
  * which is the safe way round: dropping it on a republish would silently
- * untag somebody's track. */
+ * untag somebody's track. tagsToSend in ./listing.js is what keeps that
+ * promise, by sending such a tag back beside the ones that were ticked. */
 export function usableTags(list) {
   const want = Array.isArray(list) ? list.map((t) => String(t)) : [];
   return TRACK_TAGS.filter((t) => want.includes(t.id))
@@ -512,10 +515,17 @@ export async function publishTrack({
        * layout hash by hand, where getting it wrong silently clears every
        * republished track's posted times.
        *
-       * Omitted rather than sent empty when there are none, so a board
-       * from before tags sees exactly the request it has always seen.
+       * A LIST GOES AS IT IS, EMPTY INCLUDED, AND ANYTHING ELSE IS LEFT
+       * OUT, because the board reads the two differently: left out is
+       * "leave this track's tags alone", which the rename and handle syncs
+       * in ./listing.js want, and [] is "take them all off", which is how
+       * an author clears them. Which one the dialog sends is tagsToSend's
+       * decision, in ./listing.js. Until 25 September an empty list was
+       * left out too, so that a board from before tags saw the request it
+       * always had; such a board ignores the key either way, and folding
+       * none into "leave them" left an author no way to clear their tags.
        */
-      tags: tags && tags.length ? tags : undefined,
+      tags: Array.isArray(tags) ? tags : undefined,
     }),
   });
   return readJson(res);
@@ -548,6 +558,103 @@ export async function postTrackGif({ id, gif, editKey, origin }) {
     body: JSON.stringify({ gif, editKey: editKey || undefined }),
   });
   return readJson(res);
+}
+
+/*
+ * THE SHARE CARD, for a track or a map: the 1200 by 630 JPEG a link to it
+ * shows when it is posted. Drawn by ./card.js in the browser that
+ * published, sent as base64 with that browser's edit key, exactly as the
+ * animation above is. `kind` is 'track' or 'map', which is only which of
+ * the board's two routes it goes to; a map's key opens a map's card and
+ * nothing else.
+ */
+export async function postShareCard({
+  kind, id, card, editKey, origin,
+}) {
+  const board = trimOrigin(origin || boardOrigin());
+  const route = kind === 'map' ? 'maps' : 'tracks';
+  const res = await fetch(`${board}/api/${route}/${encodeURIComponent(id)}/card`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ card, editKey: editKey || undefined }),
+  });
+  return readJson(res);
+}
+
+/*
+ * A FREESTYLE MAP ON THE BOARD, which keeps maps apart from tracks.
+ *
+ * The board serves them at /api/maps and never at /api/tracks, so nothing
+ * on this side that reads the track list (the Courses grid, the most flown
+ * track a first visit is seated on, findBoardTwin) can mistake a map for a
+ * track. The edit keys are kept apart for the same reason: see
+ * readMapListing in ./session.js.
+ *
+ * A map goes up as its document, which is already a list of references
+ * with their modifiers (a type, a position, a heading, a size, a style),
+ * and a drawing of it: the ground outline of every piece, measured by the
+ * builder, because the board keeps no list of what pieces look like. See
+ * boardPlanOf in src/trackbuilder/view2d.js. The board stores each sponsor
+ * picture once however many maps wear it and hands the document back whole.
+ */
+export async function publishMap({
+  author, document, plan, editKey, origin,
+}) {
+  const board = trimOrigin(origin || boardOrigin());
+  const res = await fetch(`${board}/api/maps`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      author,
+      document,
+      plan,
+      editKey: editKey || undefined,
+    }),
+  });
+  return readJson(res);
+}
+
+export async function fetchMapDocument(id, origin = boardOrigin()) {
+  const res = await boardGet(`${trimOrigin(origin)}/api/maps/${encodeURIComponent(id)}/document`);
+  return readJson(res);
+}
+
+/*
+ * A ?mapshare= id in the URL, from the board's Fly this map, fetched and
+ * handed back as { id, name, author, board, document }, or null when the
+ * URL names no map.
+ *
+ * NOTHING IS WRITTEN. A track from the board goes into the share seat,
+ * because the custom world reads its course from there; a map is handed
+ * to the built world as a document for this page load and no longer, so
+ * Your map, the pilot's own, is never displaced by somebody else's. See
+ * worldDocument in src/main.js.
+ */
+export async function adoptMapFromLocation() {
+  let id = '';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    /* A ?share= track wins, as it does in boot.js and orbit.js: the two
+     * never arrive together from the board, and one rule in three places
+     * is what keeps a hand made link from building one world and naming
+     * another. */
+    id = params.get('share') ? '' : (params.get('mapshare') || '');
+  } catch (e) {
+    return null;
+  }
+  if (!id) {
+    return null;
+  }
+  const origin = boardOrigin();
+  const payload = await fetchMapDocument(id, origin);
+  const document = payload.document || payload;
+  return {
+    id: payload.id || id,
+    name: payload.name || document.name || 'Untitled map',
+    author: payload.author || '',
+    board: origin,
+    document,
+  };
 }
 
 /*

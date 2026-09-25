@@ -28,6 +28,12 @@
  * right. So /sim and /board are permanent redirects to /sim/ and /board/, and
  * that redirect is load bearing rather than tidiness.
  *
+ * ONE THING IS NOT PASSED THROUGH UNTOUCHED, and only for link preview bots:
+ * a page that names one published track or map has that track's name and
+ * share card written into its preview tags on the way back, so a link to a
+ * track posted on Facebook or WhatsApp shows that track. A person's browser
+ * never takes that path. ./preview.js is all of it, and says why.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -44,6 +50,10 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import {
+  fetchSubject, isPreviewBot, previewOf, subjectOf, withPreview, PREVIEW_WAIT_MS,
+} from './preview.js';
+
 /*
  * The mounts, longest prefix first so that a future /boardgame could never be
  * swallowed by /board. Each upstream is an origin with no trailing slash.
@@ -57,6 +67,10 @@ const MOUNTS = [
   { prefix: '/board', upstream: 'https://webfpv-board.onrender.com' },
   { prefix: '/sim', upstream: 'https://webfpvsimulator.onrender.com' },
 ];
+
+/* The board, by name, for the link previews in ./preview.js, which ask it
+ * directly rather than going round through this Worker a second time. */
+const BOARD_UPSTREAM = MOUNTS.find((m) => m.prefix === '/board').upstream;
 
 /*
  * Everything that is not a mount is the landing page. GitHub Pages serves a
@@ -78,6 +92,49 @@ const LANDING_BASE = new URL(LANDING).pathname.replace(/\/+$/, '');
 
 function mountFor(pathname) {
   return MOUNTS.find((m) => pathname === m.prefix || pathname.startsWith(`${m.prefix}/`)) || null;
+}
+
+/*
+ * A LINK PREVIEW, when a preview bot asked for a page that names one
+ * published track or map: the upstream's page with that track's preview
+ * tags written in, or null to send the page as it came.
+ *
+ * `listing` was asked for alongside the page, never instead of it, and it
+ * gets PREVIEW_WAIT_MS past the page's own arrival and no longer: a sleeping
+ * board costs a crawler four seconds and the site's own card, and costs a
+ * person nothing, because a person never gets here. See ./preview.js.
+ *
+ * The rewritten page is no-store and varies on the user agent, because it
+ * is not the page anybody else is sent for that address.
+ */
+async function withLinkPreview(out, { subject, listing, giveUp, url }) {
+  const type = out.headers.get('content-type') || '';
+  if (out.status !== 200 || !type.includes('text/html')) {
+    giveUp.abort();
+    return null;
+  }
+  let timer = 0;
+  const item = await Promise.race([
+    listing,
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), PREVIEW_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  giveUp.abort();
+  if (!item) {
+    return null;
+  }
+  const html = await out.text();
+  const headers = new Headers(out.headers);
+  /* The body is not the one these described. */
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  headers.delete('etag');
+  headers.set('cache-control', 'no-store');
+  headers.append('vary', 'User-Agent');
+  const preview = previewOf(subject, item, { pageUrl: url.href, site: url.origin });
+  return new Response(withPreview(html, preview), { status: 200, headers });
 }
 
 /*
@@ -192,6 +249,20 @@ export default {
       init.duplex = 'half';
     }
 
+    /*
+     * Which track or map this page names, when a preview bot is the one
+     * asking, and that thing's listing, asked for NOW so that it runs
+     * alongside the page rather than after it. See ./preview.js.
+     */
+    const subject = request.method === 'GET' && mount
+      && isPreviewBot(request.headers.get('user-agent'))
+      ? subjectOf(mount.prefix, url.pathname.slice(mount.prefix.length), url.searchParams, [
+        `${url.origin}/board`, BOARD_UPSTREAM,
+      ])
+      : null;
+    const giveUp = subject ? new AbortController() : null;
+    const listing = subject ? fetchSubject(subject, BOARD_UPSTREAM, giveUp.signal) : null;
+
     const upstream = await fetch(new Request(target, init));
 
     const out = new Response(upstream.body, upstream);
@@ -205,6 +276,14 @@ export default {
      * attribute will be written for the upstream's root and will need the
      * prefix put back on here.
      */
+    if (subject) {
+      const described = await withLinkPreview(out, {
+        subject, listing, giveUp, url,
+      });
+      if (described) {
+        return described;
+      }
+    }
     return out;
   },
 };

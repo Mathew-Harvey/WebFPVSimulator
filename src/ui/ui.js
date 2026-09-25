@@ -2692,6 +2692,11 @@ function linkedMode() {
   if (params.get('share') || params.get('ghost')) {
     return 'race';
   }
+  /* A published map from the board is freestyle whatever else the link
+   * says; the board's own link says ?map=built beside it anyway. */
+  if (params.get('mapshare')) {
+    return 'freestyle';
+  }
   const wanted = params.get('map');
   const m = wanted ? MAPS.find((x) => x.id === wanted) : null;
   if (!m) {
@@ -3227,6 +3232,10 @@ export class Ui {
     };
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.share = null;       /* published course this run is flying, or null */
+    /* A published freestyle map this page load is flying in the built
+     * world, from ?mapshare=: { id, name, author, board }, or null. The
+     * title names it rather than Your map. See sharedMap in main.js. */
+    this.sharedMap = null;
     this.timePosted = null;  /* last successful post on the results screen */
     /* The freestyle run the results screen is showing, and whether it has
      * been sent. Both cleared by resetScore, which every restart calls. */
@@ -4206,6 +4215,12 @@ export class Ui {
     }
     r.append(this.announcer, this.banner, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
     this.syncChips();
+  }
+
+  setSharedMap(map) {
+    this.sharedMap = map
+      ? { id: map.id, name: map.name, author: map.author || '', board: map.board || '' }
+      : null;
   }
 
   setShare(share) {
@@ -5588,10 +5603,13 @@ export class Ui {
        * exists to prevent.
        */
       const world = seatedFreestyleMap(s);
+      /* A map from the board is flown in the built world, and the row names
+       * that map and its builder rather than calling it Your map. */
+      const shared = world && world.id === 'built' ? this.sharedMap : null;
       const modeRow = this.mode === 'freestyle'
         ? {
           label: 'Map',
-          value: world ? world.name : 'Not loaded',
+          value: shared ? shared.name : (world ? world.name : 'Not loaded'),
           action: 'freestyle',
           /*
            * "Map" again, beside the world that is seated. From 30 August it
@@ -5602,9 +5620,11 @@ export class Ui {
            * and "The town" over "Your map" named the one world that was not
            * going to be flown.
            */
-          note: world
-            ? `${world.note} Your quad and the physics model are in here.`
-            : townNote(s, this.loadFailure),
+          note: shared
+            ? `${shared.name}${shared.author ? `, built by ${shared.author}` : ''}, from the board. Your quad and the physics model are in here.`
+            : (world
+              ? `${world.note} Your quad and the physics model are in here.`
+              : townNote(s, this.loadFailure)),
         }
         : {
           label: 'Track',
@@ -10817,17 +10837,17 @@ export class Ui {
   }
 
   /*
-   * THE STF MARK, FOUND (FREESTYLE-MAPS-PLAN.md section 9). The pilot came
-   * within a few metres of the mark and looked straight at it, so the
-   * overlay says so the way it says a trick, lettered in ink with a burst
-   * behind it, and then shows them what they found in a manga panel: the
-   * mark itself, because a pilot at speed may have seen it for a quarter
-   * of a second.
+   * THE STF MARK, FOUND (FREESTYLE-MAPS-PLAN.md section 9). The pilot flew
+   * up to the mark and looked straight at it, so the overlay says so the
+   * way it says a trick, lettered in ink with a burst behind it, and then
+   * shows them what they found in a manga panel: the mark itself, because a
+   * pilot at speed may have seen it for a quarter of a second.
    *
    * DOWN THE RIGHT, NEVER THE MIDDLE. The left column is the score's, the
    * banner and the verdict are centred, and the middle of the frame is the
    * pilot's: the plan's rule is that nothing drawn in flight covers its
-   * centre third, and this fires with a wall four metres away. The callout
+   * centre third, and this fires with the mark a fifth of the frame across
+   * in the middle of it (findRange in src/game/egg.js). The callout
    * sits under the banner's line and the panel under the callout, clear of
    * the speed corner, and neither takes a pointer.
    *

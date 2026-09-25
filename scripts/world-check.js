@@ -65,6 +65,7 @@ import {
   VEHICLE_POSE_DOUBLES,
 } from '../src/game/plantworld.js';
 import { threeDirToSim } from '../src/render/frame.js';
+import { GRAZE_SPEED_MAX, bodyUpDotWorld, solidContactCrash } from '../src/game/collide.js';
 import { sincos } from '../src/props/trig.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -265,7 +266,14 @@ export async function fly(sc, frame = { o: [0, 0, 0], quarter: 0 }) {
       rpm: [st[14], st[15], st[16], st[17]],
       inside: insideDepth(sc.world || [], st),
       ground: sim.e.sim_ground_contacts(),
+      /* The whole step's report and the attitude after it, for the shell's
+       * crash verdict, which reads both (frameReport below). */
+      rep: Float64Array.from(rep),
+      q: [st[ST.QW], st[ST.QX], st[ST.QY], st[ST.QZ]],
     });
+    if (sc.stopAfterTouch != null && ctx.touched && ms - ctx.t0 >= sc.stopAfterTouch) {
+      break;
+    }
   }
   return { rows, hash: hash.digest('hex'), t0: ctx.t0 };
 }
@@ -330,6 +338,18 @@ function r3(v) {
 export const SCENARIOS = [];
 function scenario(name, fn) {
   SCENARIOS.push({ name, fn });
+}
+
+/*
+ * THE SHELL'S READINGS of what the module reports. Flown through the module
+ * like the scenarios above, but what they judge is the shell's own code
+ * (src/game/collide.js), not the world solve. They are kept out of SCENARIOS
+ * because scripts/world-golden.js pins every step of every scenario, and a
+ * run new to that golden is recorded only with the owner's approval.
+ */
+const READINGS = [];
+function reading(name, fn) {
+  READINGS.push({ name, fn });
 }
 
 /* A wall across the approach, face `gap` metres past where the craft first
@@ -416,6 +436,168 @@ scenario('the same wall at four spawn yaws', async () => {
     && Math.abs(s.end.p[2] - base.end.p[2]) < 1e-6);
   check('a wall hit is the same whichever way the map faces', same,
     got.map((s) => `${r3(s.peakRate)} rad/s, end x ${r3(s.end.p[0])}`).join(' | '));
+});
+
+/*
+ * THE SHELL'S CRASH VERDICT, asked of flights through the module.
+ *
+ * src/main.js resets a crash on the frame it reads one (CRASH IS A RESET),
+ * and for the solid world it asks solidContactCrash in src/game/collide.js,
+ * once a frame, of the frame's sim_world_report and the attitude at the
+ * frame's end. The report's normal is the world's and the attitude is the
+ * plant's, and until 2026-09-25 the two were read as one frame, so a belly
+ * flat on a wall scored cos(yaw) where it should score 1. The owner's belly
+ * first wall tap, on a map of their own, was reset as a crash. The module
+ * was right all along (the scenario above holds it to 1e-6 across headings);
+ * the shell's reading of it was not, and nothing flew a tap faster than
+ * GRAZE_SPEED_MAX at a heading other than zero.
+ *
+ * So: a wall tap, base first, at a smack's closing speed, and a steep nose
+ * first hit, each flown at the four headings, and judged as the shell judges
+ * them for frames of 7, 16 and 33 steps at every phase: 144, 60 and 30 Hz.
+ */
+
+/* What the shell reads once a frame: sim_world_report summed over steps
+ * [a, b) the way the module sums it between two reads, folded from the
+ * per-step reads fly() keeps. */
+function frameReport(rows, a, b) {
+  const f = new Float64Array(11);
+  f[3] = -1;
+  for (let k = a; k < b; k += 1) {
+    const r = rows[k].rep;
+    if (!(r[0] > 0)) {
+      continue;
+    }
+    f[0] += r[0];
+    f[1] = r[1] > f[1] ? r[1] : f[1];
+    if (r[2] >= f[2]) {
+      f[2] = r[2];
+      f[3] = r[3];
+      f[4] = r[4];
+      f[5] = r[5];
+      f[6] = r[6];
+    }
+    f[7] += r[7];
+    f[8] += r[8];
+    f[9] = r[9] > f[9] ? r[9] : f[9];
+  }
+  f[10] = rows[b - 1].rep[10];
+  return f;
+}
+
+/* Of a frame length's phases, how many have the shell reset the run within
+ * 150 ms of its first contact, with the world turned into the plant by
+ * (c, s). */
+function resetPhases(res, len, c, s) {
+  const rows = res.rows;
+  let hits = 0;
+  for (let ph = 0; ph < len; ph += 1) {
+    for (let a = res.t0 - len + ph; a <= res.t0 + 150 && a + len <= rows.length; a += len) {
+      const q = rows[a + len - 1].q;
+      if (a >= 0 && solidContactCrash(frameReport(rows, a, a + len), q[0], q[1], q[2], q[3], c, s)) {
+        hits += 1;
+        break;
+      }
+    }
+  }
+  return hits;
+}
+
+/*
+ * Run in along plant +x in angle mode, height held at 4 m, at vRun; once the
+ * face is dFlip ahead, acro, and the stick on the error to a pitch of
+ * pitchDeg (nose up positive) at throttle thr, held into the wall. A pitch
+ * of 90 with the throttle cut is the workbook's Wall Tap: "a 90 pitch back
+ * while simultaneously cutting the throttle. Gently tap the wall".
+ */
+function flipPilot(face, vRun, dFlip, pitchDeg, thr) {
+  /* The wanted pitch as a direction, turned with src/props/trig.js: the stick
+   * reaches the module, and no JS trigonometry does (the same rule
+   * scripts/world-golden.js keeps for the runs it pins). */
+  const want = sincos((pitchDeg * Math.PI) / 180, { s: 0, c: 1 });
+  return (ms, st, ctx) => {
+    if (ctx.flip || face - st[ST.X] <= dFlip) {
+      ctx.flip = true;
+      ctx.angle = false;
+      const w = st[ST.QW];
+      const x = st[ST.QX];
+      const y = st[ST.QY];
+      const z = st[ST.QZ];
+      /* The nose, body x, in the plant's x z plane, and the sine of the pitch
+       * still to go: sin(want - pitch). Nose up is negative q. */
+      const nx = 1 - 2 * (y * y + z * z);
+      const nz = 2 * (x * z - w * y);
+      const err = want.s * nx - want.c * nz;
+      return [0, clamp(1.6 * err + 0.03 * st[ST.Q], -1, 1), 0, thr];
+    }
+    ctx.cruise = ctx.cruise || st[ST.VX] >= vRun;
+    const stick = ctx.cruise ? -clamp(0.3 + 0.2 * (vRun - st[ST.VX]), 0, 0.8) : -0.8;
+    return [0, stick, 0, heightHold(ctx, st, 4)];
+  };
+}
+
+reading('a wall tap is judged the same whichever way the map faces', async () => {
+  const world = [{ box: [0, -20, -1, 1, 20, 30], m: WALL }];
+  const runs = {
+    tap: { ms: 9000, world, pose: { p: [-30, 0, 4], q: [1, 0, 0, 0] }, stopAfterTouch: 200,
+      sticks: flipPilot(0, 7, 1.3, 90, 0.05) },
+    nose: { ms: 9000, world, pose: { p: [-30, 0, 4], q: [1, 0, 0, 0] }, stopAfterTouch: 200,
+      sticks: flipPilot(0, 7, 1.6, -75, 0.35) },
+  };
+  const LENS = [7, 16, 33];
+  const out = { tap: [], nose: [] };
+  for (let q = 0; q < 4; q += 1) {
+    const frame = { o: [12.5, -40.25, 3.5], quarter: q };
+    const turn = sincos(q * (Math.PI / 2), { s: 0, c: 1 });
+    for (const [name, sc] of Object.entries(runs)) {
+      const res = await fly(sc, frame);
+      const res2 = await fly(sc, frame);
+      const pre = res.rows[res.t0 - 1];
+      out[name].push({
+        q,
+        same: res.hash === res2.hash,
+        t0: res.t0,
+        closing: Math.max(...res.rows.slice(res.t0, res.t0 + 20).map((r) => r.closing)),
+        /* The belly against the wall's own normal, plant frame: the wall is
+         * at +x in the plant whatever the heading, so its normal is -x. */
+        belly: bodyUpDotWorld(pre.q[0], pre.q[1], pre.q[2], pre.q[3], -1, 0, 0, 1, 0),
+        fixed: LENS.map((n) => resetPhases(res, n, turn.c, turn.s)),
+        blind: LENS.map((n) => resetPhases(res, n, 1, 0)),
+      });
+    }
+  }
+  const tap = out.tap;
+  const nose = out.nose;
+  const show = (rs, k) => rs.map((r) => `${r.q * 90}: ${r[k].join('/')}`).join(' | ');
+  if (verbose) {
+    for (const r of [...tap, ...nose]) {
+      console.log(`     ${JSON.stringify({ q: r.q, t0: r.t0, closing: r3(r.closing), belly: r3(r.belly), fixed: r.fixed, blind: r.blind })}`);
+    }
+  }
+  check('every run agrees with itself to the bit', [...tap, ...nose].every((r) => r.same));
+  check('the tap reaches the wall at every heading', tap.every((r) => r.t0 >= 0));
+  check('the tap arrives at a smack\'s closing speed, so the verdict is asked',
+    tap.every((r) => r.closing >= GRAZE_SPEED_MAX + 0.5),
+    tap.map((r) => `${r3(r.closing)} m/s`).join(', '));
+  check('and belly first, within about 25 degrees of square to the face',
+    tap.every((r) => r.belly >= 0.9), tap.map((r) => r3(r.belly)).join(', '));
+  check('a belly first tap is never reset, at any heading, frame rate or phase',
+    tap.every((r) => r.fixed.every((n) => n === 0)),
+    `phases reset of 7/16/33, by heading ${show(tap, 'fixed')}`);
+  check('the nose first hit reaches the wall steep, at a smack\'s closing speed',
+    nose.every((r) => r.t0 >= 0 && r.belly <= -0.8 && r.closing >= GRAZE_SPEED_MAX + 0.5),
+    nose.map((r) => `${r3(r.closing)} m/s, belly ${r3(r.belly)}`).join(', '));
+  check('a steep nose first hit is reset at every heading, frame rate and phase',
+    nose.every((r) => r.fixed.every((n, i) => n === LENS[i])),
+    `phases reset of 7/16/33, by heading ${show(nose, 'fixed')}`);
+  /* And the check can see the fault it was written for: read in one frame,
+   * as the shell did until 2026-09-25, the same tap is reset at the three
+   * headings that are not zero, and the nose first hit is missed at 180. */
+  check('read without the frame\'s turn, the tap would be reset at 90, 180 and 270 and not at 0',
+    tap[0].blind.every((n) => n === 0) && tap.slice(1).every((r) => r.blind.some((n) => n > 0)),
+    show(tap, 'blind'));
+  check('and the nose first hit would be missed at 180',
+    nose[2].blind.every((n) => n === 0), show(nose, 'blind'));
 });
 
 /* A 20 by 20 m roof, 5 m up, the craft arriving from above and to one side. */
@@ -1772,7 +1954,7 @@ vehicleScenario('sixty four cars on one road, and what a step costs', async () =
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   console.log(`world-check: ${wasmArg ? wasmPath : 'dist/sim.wasm'} against constructed worlds\n`);
-  for (const s of [...SCENARIOS, ...VEHICLE_SCENARIOS]) {
+  for (const s of [...SCENARIOS, ...READINGS, ...VEHICLE_SCENARIOS]) {
     if (only && !s.name.toLowerCase().includes(only.toLowerCase())) {
       continue;
     }

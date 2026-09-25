@@ -57,21 +57,24 @@ import {
  * graph and this is not (see shipMaps). */
 import { starterMap } from '../maps/built/starter.js';
 import { normaliseLogo, drawBannerPreview, drawGroundPreview } from './logo.js';
-import { View2D, snapYaw, turnsOf, offCompass, QUARTER_TURN } from './view2d.js';
+import {
+  View2D, boardPlanOf, snapYaw, turnsOf, offCompass, QUARTER_TURN,
+} from './view2d.js';
 import { View3D } from './view3d.js';
 import { Panels } from './ui.js';
 import { RAD, wrapAngle } from './geometry.js';
 import {
-  boardOrigin, boardPageUrl, publishTrack, setBoardOrigin, adoptShareFromLocation,
-  TRACK_TAGS, TRACK_TAGS_MAX, tagLabel, usableTags,
+  boardOrigin, boardPageUrl, fetchMapDocument, publishMap, publishTrack, setBoardOrigin,
+  adoptShareFromLocation, TRACK_TAGS, TRACK_TAGS_MAX, tagLabel, usableTags,
 } from '../share/board.js';
 import { sendCardAnimation } from '../share/cardgif.js';
+import { sendShareCard } from '../share/card.js';
 import { BOARD_WINDOW, SIM_WINDOW, claimWindowName } from '../share/windows.js';
 import { patreonAnchor } from '../share/patreon.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import {
-  clearShareImport, readBuilderIntent, readEditKey, readShareImport,
-  setActiveTrackClass, takeBuilderIntent,
+  clearShareImport, readBuilderIntent, readEditKey, readMapListing, readShareImport,
+  setActiveTrackClass, takeBuilderIntent, writeMapListing,
 } from '../share/session.js';
 import {
   bindOwnedCanvas,
@@ -87,6 +90,7 @@ import {
   syncOwnedName,
   syncOwnedIdentity,
   pushOwnedListing,
+  tagsToSend,
 } from '../share/listing.js';
 
 shipMaps([starterMap()]);
@@ -356,10 +360,14 @@ function localDrift(seated, incoming) {
     || logos(seated) !== logos(incoming);
 }
 
-/* Why Publish does nothing on a map, said on the button and on a press.
- * The board is a separate repository and knows only race tracks
- * (FREESTYLE-MAPS-PLAN.md, section 13). */
-const PUBLISH_MAP_NOTE = 'The public board does not take freestyle maps yet. Export the map to share it as a file.';
+/*
+ * A MAP GOES ON THE BOARD NOW. Publish did nothing on a map while the
+ * board knew only race tracks (FREESTYLE-MAPS-PLAN.md, section 13, which
+ * left it out of that plan). The owner asked for published maps on the
+ * board on 2026-09-25, so a map is published by openPublishMap below, to
+ * the board's own /api/maps, with the drawing its card is made from.
+ */
+const PUBLISH_MAP_TITLE = 'Put this map on the public board, sponsor prints and all';
 
 export class App {
   constructor(nodes) {
@@ -554,6 +562,75 @@ export class App {
       }
     } finally {
       this.syncBoardIdentity();
+    }
+  }
+
+  /*
+   * A PUBLISHED MAP FROM THE BOARD, as ?mapshare=id: its Remix in the
+   * builder, which also carries ?mode=freestyle so restore() has already
+   * opened the map canvas.
+   *
+   * A map this browser published opens as itself, so Publish updates it. Any
+   * other opens as a copy under a new id and a remix's name, so Publish puts
+   * up a new map and the original stays its builder's. Nothing is written to
+   * the track seats or binds: a map's only record is its own key, and a copy
+   * has none until it is published.
+   *
+   * The parameter comes out of the address once read, as ?mode= does, so a
+   * reload is the author reloading their copy rather than asking the board
+   * for another one.
+   */
+  async adoptIncomingMap() {
+    let id = '';
+    try {
+      const url = new URL(window.location.href);
+      id = url.searchParams.get('mapshare') || '';
+      if (id) {
+        url.searchParams.delete('mapshare');
+        history.replaceState(history.state, '', url);
+      }
+    } catch (e) {
+      return;
+    }
+    if (!id) {
+      return;
+    }
+    let payload;
+    try {
+      payload = await fetchMapDocument(id, boardOrigin());
+    } catch (e) {
+      this.toast(`Could not open that published map. ${e.message || e}`);
+      return;
+    }
+    const incoming = normalize(payload.document || payload).doc;
+    if (docModeOf(incoming) !== 'freestyle') {
+      this.toast('That link names a race track, not a map.');
+      return;
+    }
+    const name = payload.name || incoming.name;
+    const owned = Boolean(readMapListing(incoming.id));
+    const seated = this.seatedFor(incoming);
+    if (owned && seated && seated.id === incoming.id) {
+      /* Already on the canvas, perhaps with edits the board has not had.
+       * Replacing it with the board's copy would throw those away. */
+      this.toast(`"${seated.name}" is already on your canvas.`);
+      return;
+    }
+    const doc = owned ? incoming : duplicateTrack(incoming, suggestRemixName(name));
+    const by = payload.author ? ` by ${payload.author}` : '';
+    const load = () => this.loadDocument(doc, owned
+      ? `Editing "${name}" on the board. Publish updates it.`
+      : `This is your copy of "${name}"${by}. Publish it to put it on the board under your name. The original stays.`);
+    if (!isEmptyCanvas(seated) && seated.id !== doc.id) {
+      this.confirm(
+        ...this.replaceWords(seated, doc, owned ? `"${name}"` : `A copy of "${name}"`, [
+          owned ? `Open "${name}"?` : `Open a copy of "${name}"?`,
+          'The map on your canvas will be replaced. Save it first if you still need it.',
+        ]),
+        load,
+      );
+    } else {
+      load();
     }
   }
 
@@ -1474,6 +1551,29 @@ export class App {
   }
 
   /*
+   * THE SHARE CARD, drawn here for the reason the animation is. A link to
+   * this track posted on Facebook, X or WhatsApp shows a picture, their
+   * crawlers run no script to find one, and the board renders nothing, so
+   * the picture has to exist before anybody posts the link and only a
+   * browser can draw it. Every track and every map gets one, a field track
+   * included. See src/share/card.js.
+   *
+   * After the animation rather than beside it: two worlds built at once is
+   * two GPU contexts on a machine that may only have been happy with one.
+   * `noun` is "track" or "map", for the sentence.
+   */
+  async renderShareCardForBoard({ kind, noun, origin, editKey, status }) {
+    const was = status.textContent;
+    status.textContent = `${was} Drawing the picture a link to it shows.`;
+    const done = await sendShareCard({
+      kind, id: this.doc.id, board: origin, editKey,
+    });
+    status.textContent = done.error
+      ? `${was} The ${noun} is up, but its share picture could not be sent, so a link to it shows the WebFPV card for now: ${done.error}`
+      : `${was} A link to it, posted anywhere, shows the ${noun}.`;
+  }
+
+  /*
    * Put this course on the public board. The document goes as it is, logo
    * included, so every gate and every flag on the board copy wears the
    * same print the author sees here.
@@ -1491,7 +1591,7 @@ export class App {
 
   openPublish() {
     if (docModeOf(this.doc) === 'freestyle') {
-      this.toast(PUBLISH_MAP_NOTE);
+      this.openPublishMap();
       return;
     }
     if (this.nameInput && this.nameInput.value) {
@@ -1568,8 +1668,15 @@ export class App {
      *
      * Seeded from the BIND rather than from the document, because tags are
      * not in the document: see rememberPublish in src/share/listing.js.
+     *
+     * `held` is null when this browser does not know which tags the board
+     * shows on this track, which is every track published before binds
+     * kept them. An empty row means something different then: not "none",
+     * but "not seen", and tagsToSend in src/share/listing.js sends no list
+     * for it, so the board keeps what it has.
      */
-    const chosen = new Set(usableTags(publishedTags(this.doc.id)));
+    const held = publishedTags(this.doc.id);
+    const chosen = new Set(usableTags(held));
     const tagField = document.createElement('div');
     tagField.className = 'tb-field';
     const tagLabelEl = document.createElement('label');
@@ -1580,9 +1687,16 @@ export class App {
     const tagHelp = document.createElement('p');
     tagHelp.className = 'tb-help';
     const sayTags = () => {
-      tagHelp.textContent = chosen.size
-        ? `${[...chosen].map(tagLabel).join(', ')}. People filter the board by these.`
-        : `Optional, and up to ${TRACK_TAGS_MAX}. People filter the board by these, so a track with none is harder to find.`;
+      if (chosen.size) {
+        tagHelp.textContent = `${[...chosen].map(tagLabel).join(', ')}. People filter the board by these.`;
+      } else if (owned && !Array.isArray(held)) {
+        /* Said, because an empty row on a track that is already on the
+         * board reads as "it has no tags", and here it only means this
+         * browser never heard which it has. */
+        tagHelp.textContent = 'This browser has no record of the tags this track wears on the board, so none are ticked. Leave them that way to keep whatever it wears, or tick some to replace them.';
+      } else {
+        tagHelp.textContent = `Optional, and up to ${TRACK_TAGS_MAX}. People filter the board by these, so a track with none is harder to find.`;
+      }
     };
     for (const tag of TRACK_TAGS) {
       const btn = document.createElement('button');
@@ -1645,7 +1759,9 @@ export class App {
       const origin = setBoardOrigin(boardInput.value) || boardOrigin();
       send.disabled = true;
       status.textContent = 'Sending the track, logos included.';
-      const tags = usableTags([...chosen]);
+      /* A list, empty when the author unticked every tag they were shown,
+       * or undefined to leave the board's alone. See tagsToSend. */
+      const tags = tagsToSend(held, [...chosen]);
       const sendDoc = async (doc) => {
         const posted = await publishTrack({
           author,
@@ -1654,9 +1770,10 @@ export class App {
           origin,
           tags,
         });
-        /* The bind is where the tags live on this side, so a second publish
-         * pre-ticks what the board is already showing rather than untagging
-         * the track. See rememberPublish. */
+        /* The bind is where the tags live on this side, and rememberPublish
+         * keeps the board's own answer about them, so the next publish
+         * pre-ticks what the board is showing rather than untagging the
+         * track. See rememberPublish. */
         rememberPublish(toPlain(doc), posted, origin, author, { tags });
         writeAutosave(doc);
         return posted;
@@ -1703,6 +1820,9 @@ export class App {
          * anyway. See inspectGif in the board's src/validate.js.
          */
         await this.renderCardForBoard(origin, status);
+        await this.renderShareCardForBoard({
+          kind: 'track', noun: 'track', origin, editKey: readEditKey(this.doc.id), status,
+        });
         this.updateTopBar();
         const open = document.createElement('a');
         open.className = 'tb-btn tb-primary';
@@ -1722,6 +1842,167 @@ export class App {
     });
     body.append(send);
     this.modal(owned ? 'Update this track' : (remix ? 'Publish as yours' : 'Publish this track'), body);
+  }
+
+  /*
+   * PUT THIS MAP ON THE BOARD: the map's own Publish, beside the track's.
+   *
+   * Simpler than a track's, because less rides on it: no flying order to
+   * require, no posted times a changed layout would clear, and no tags,
+   * whose vocabulary is a race track's. Two shapes, a first publish and an
+   * update of a map this browser put up, told apart by the map's own key
+   * (readMapListing in src/share/session.js) and never by a track's.
+   *
+   * The document goes as it is, which is already a list of references with
+   * their modifiers, sponsor prints included; the board keeps each print
+   * once however many maps wear it. The drawing for its card goes beside
+   * it, measured here by boardPlanOf, because the board does not know what
+   * a piece looks like and is not meant to.
+   */
+  openPublishMap() {
+    if (this.nameInput && this.nameInput.value) {
+      this.doc.name = this.nameInput.value.trim() || 'Untitled map';
+    }
+    /* The board's own rule, asked here first so the author is told before
+     * the request rather than by it: a label, the start and paint on the
+     * ground are not pieces, and a map of nothing else is refused there.
+     * See NOT_A_PIECE in the board's src/validate.js. */
+    const standing = this.doc.elements.some((el) => {
+      const kind = ELEMENTS[el.type] && ELEMENTS[el.type].kind;
+      return kind && kind !== KIND.ANNOTATION && kind !== KIND.START && kind !== KIND.DECAL;
+    });
+    if (!standing) {
+      this.toast('A published map needs at least one piece on it.');
+      return;
+    }
+    this.autosaver.flush();
+    const owned = Boolean(readMapListing(this.doc.id));
+    const body = document.createElement('div');
+    const help = document.createElement('p');
+    help.className = 'tb-help';
+    help.textContent = owned
+      ? 'This map is already on the board. Updating it puts this version up in its place.'
+      : 'The public board keeps a copy of this map, sponsor prints included, and draws its card from the pieces on it. Anybody can fly it from there.';
+    body.append(help);
+
+    const field = (label, input) => {
+      const row = document.createElement('div');
+      row.className = 'tb-field';
+      const name = document.createElement('label');
+      name.className = 'tb-field-label';
+      name.textContent = label;
+      row.append(name, input);
+      body.append(row);
+    };
+    const mapInput = document.createElement('input');
+    mapInput.type = 'text';
+    mapInput.maxLength = 80;
+    mapInput.value = this.doc.name;
+    field('Map name', mapInput);
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.maxLength = 24;
+    nameInput.value = readPilotName() || '';
+    field('Your name', nameInput);
+    const nameHelp = document.createElement('p');
+    nameHelp.className = 'tb-help';
+    nameHelp.textContent = nameRules();
+    body.append(nameHelp);
+    const boardInput = document.createElement('input');
+    boardInput.type = 'url';
+    boardInput.value = boardOrigin();
+    field('Board address', boardInput);
+
+    const status = document.createElement('p');
+    status.className = 'tb-help';
+    body.append(status);
+
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'tb-btn tb-primary';
+    send.textContent = owned ? 'Update the board' : 'Publish this map';
+    send.addEventListener('click', async () => {
+      const author = writePilotName(nameInput.value);
+      if (!author) {
+        status.textContent = nameRules();
+        return;
+      }
+      const mapName = String(mapInput.value || '').trim() || 'Untitled map';
+      this.doc.name = mapName;
+      if (this.nameInput) {
+        this.nameInput.value = mapName;
+      }
+      const origin = setBoardOrigin(boardInput.value) || boardOrigin();
+      send.disabled = true;
+      status.textContent = 'Sending the map, sponsor prints included.';
+      const sendDoc = async (doc) => {
+        const held = readMapListing(doc.id);
+        const posted = await publishMap({
+          author,
+          document: toPlain(doc),
+          plan: boardPlanOf(doc),
+          editKey: held ? held.editKey : '',
+          origin,
+        });
+        /* The key comes back on the first publish only, so an update keeps
+         * the one already held. */
+        writeMapListing(doc.id, {
+          editKey: posted.editKey || (held && held.editKey) || '',
+          board: origin,
+          author,
+          nameOnBoard: posted.name || doc.name,
+        });
+        writeAutosave(doc);
+        return posted;
+      };
+      try {
+        let posted;
+        let forked = false;
+        try {
+          posted = await sendDoc(this.doc);
+        } catch (e) {
+          if (!e || !e.conflict) {
+            throw e;
+          }
+          /* The id is on the board under a key this browser does not hold:
+           * a map imported from a file somebody had already published. It
+           * goes up as a new map under a new id, which is what a track does
+           * in the same case, and the original stays theirs. */
+          const copy = duplicateTrack(this.doc, mapName);
+          this.loadDocument(copy, '');
+          posted = await sendDoc(this.doc);
+          forked = true;
+        }
+        const verb = posted.updated ? 'Updated' : 'Published';
+        status.textContent = forked
+          ? `This id was already on the board, so it went up as a new map, "${posted.name}".`
+          : `${verb} as "${posted.name}".`;
+        this.toast(`${verb} "${posted.name}" on the board.`);
+        /* The board drops a map's share card on every republish, because
+         * this is the only thing that republishes one, and it draws the
+         * new card here. See publishMapUnlocked in the board's store.js. */
+        const held = readMapListing(this.doc.id);
+        await this.renderShareCardForBoard({
+          kind: 'map', noun: 'map', origin, editKey: held ? held.editKey : '', status,
+        });
+        this.updateTopBar();
+        const open = document.createElement('a');
+        open.className = 'tb-btn tb-primary';
+        /* Straight to the map's own sheet on the board's maps tab. */
+        open.href = `${boardPageUrl(origin)}#map=${encodeURIComponent(posted.id)}`;
+        /* The board's own tab, reused if it is already open. No rel here:
+         * noopener would send this to a fresh tab every time. */
+        open.target = BOARD_WINDOW;
+        open.textContent = 'Open Tracks and Statistics';
+        send.replaceWith(open);
+      } catch (e) {
+        send.disabled = false;
+        status.textContent = e.message || 'The board could not take that map.';
+        this.toast(`Could not publish: ${e.message || e}`);
+      }
+    });
+    body.append(send);
+    this.modal(owned ? 'Update this map' : 'Publish this map', body);
   }
 
   /* ---------------- the sponsors' logos ---------------- */
@@ -2445,11 +2726,16 @@ export class App {
       this.moreItems.get('animation').style.display = map ? 'none' : '';
     }
     if (map && this.listingChip && this.publishBtn) {
+      /* A map's listing is its own key, and there is no chip for it: the
+       * button's word says whether this map is on the board. */
+      const listed = Boolean(readMapListing(this.doc.id));
       this.listingChip.style.display = 'none';
-      this.publishBtn.textContent = 'Publish';
-      this.publishBtn.title = PUBLISH_MAP_NOTE;
-      this.publishBtn.classList.add('tb-off');
-      this.publishBtn.setAttribute('aria-disabled', 'true');
+      this.publishBtn.textContent = listed ? 'Update board' : 'Publish';
+      this.publishBtn.title = listed
+        ? 'This map is on the public board. Send this version up in its place.'
+        : PUBLISH_MAP_TITLE;
+      this.publishBtn.classList.remove('tb-off');
+      this.publishBtn.removeAttribute('aria-disabled');
     } else if (this.listingChip && this.publishBtn) {
       this.listingChip.style.display = '';
       this.publishBtn.classList.remove('tb-off');

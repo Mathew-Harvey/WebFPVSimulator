@@ -50,7 +50,10 @@ import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elemen
   GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor, FRAME_TUBE_OD,
   KIND, FREESTYLE_PALETTE_ORDER, PALETTE_EXTRA, paletteItems, docModeOf,
 } from './elements.js';
-import { planShapeOf, snapYaw, turnsOf } from './view2d.js';
+import {
+  boardPlanOf, planShapeOf, snapYaw, turnsOf,
+} from './view2d.js';
+import { starterMap } from '../maps/built/starter.js';
 import { PROP_TYPES, GAP_POINTS, FURNITURE_PALETTE } from '../props/types.js';
 import { partsOf } from '../props/catalog.js';
 import { GAP_MIN } from '../props/parts.js';
@@ -76,11 +79,18 @@ import {
   STUCK_UNRESOLVED_MS, STUCK_TRAVEL_MAX, BURIED_DEPTH, BURIED_CONFIRM_MS,
   CLIP_CRASH_HOLD_MS, BOUNCE_SEPARATION, CLIP_SPAWN_GRACE_MS,
   setCraftAirframe, dirtClearance, craftVerticalOffset, craftVerticalHalf,
-  findRestSpot, restSpotAt, CRAFT_WORLD_R,
+  findRestSpot, restSpotAt, CRAFT_WORLD_R, CRASH_UNDERSIDE_NZ, CRASH_BELLY_UP,
+  bodyUpDotWorld, solidContactCrash,
 } from '../game/collide.js';
+import { sincos } from '../props/trig.js';
 import { AIRFRAMES, airframeById } from '../../configs/airframes.js';
-import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
-import { keepDisplaced } from './storage.js';
+import {
+  inspectCourse, layoutFingerprint, publishCurrentCourse, publishedTags, rememberPublish,
+  suggestRemixName, tagsToSend,
+} from '../share/listing.js';
+import { readBind, readEditKey, writeBind } from '../share/session.js';
+import { publishTrack } from '../share/board.js';
+import { keepDisplaced, readAutosave } from './storage.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
 
 import { readFileSync } from 'node:fs';
@@ -1803,6 +1813,128 @@ function suiteCrashRule() {
 }
 
 /*
+ * The crash reset's verdict on a solid contact (solidContactCrash and
+ * bodyUpDotWorld in src/game/collide.js), in the two frames it reads. The
+ * attitude is the plant's and the normal is the world's, and the plant's
+ * frame is the world's turned by the spawn yaw. A craft whose nose faces
+ * heading h in the world, pitched back by p, has the plant attitude
+ * qz(h - yaw) qy(-p). Test code, so JS trig builds the attitudes; the
+ * verdict's own turn comes from src/props/trig.js, as the shell's does.
+ */
+function plantQuat(heading, pitchBack, yaw) {
+  const cz = Math.cos((heading - yaw) / 2);
+  const sz = Math.sin((heading - yaw) / 2);
+  const cy = Math.cos(-pitchBack / 2);
+  const sy = Math.sin(-pitchBack / 2);
+  return [cz * cy, -sz * sy, cz * sy, sz * cy];
+}
+
+/* One frame's sim_world_report: a frame contact (unless frame is 0) closing
+ * at `closing` against a normal n. */
+function solidReport(n, closing, frame = 1) {
+  const r = new Float64Array(11);
+  r[0] = 1;
+  r[1] = closing;
+  r[2] = closing;
+  r[4] = n[0];
+  r[5] = n[1];
+  r[6] = n[2];
+  r[8] = frame;
+  r[10] = -1;
+  return r;
+}
+
+function suiteCrashFrame() {
+  console.log('\ncrash reset: a solid contact, judged in the plant\'s frame');
+
+  const deg = Math.PI / 180;
+  const YAWS = [0, Math.PI / 2, Math.PI, -Math.PI / 2, 2.1, -2.9];
+  const HEADINGS = [0, 1.1, Math.PI / 2, -2.4];
+  const bellyWrong = [];
+  const noseWrong = [];
+  const tapReset = [];
+  const crashMissed = [];
+  for (const yaw of YAWS) {
+    const t = sincos(yaw, { s: 0, c: 1 });
+    for (const h of HEADINGS) {
+      /* The wall is ahead along h, so its normal points back along it. */
+      const n = [-Math.cos(h), -Math.sin(h), 0];
+      const belly = plantQuat(h, 90 * deg, yaw);
+      const nose = plantQuat(h, -50 * deg, yaw);
+      const at = `yaw ${yaw.toFixed(2)} heading ${h.toFixed(2)}`;
+      const db = bodyUpDotWorld(...belly, ...n, t.c, t.s);
+      const dn = bodyUpDotWorld(...nose, ...n, t.c, t.s);
+      if (!(Math.abs(db - 1) < 1e-9)) {
+        bellyWrong.push(`${at}: ${db}`);
+      }
+      if (!(Math.abs(dn + Math.sin(50 * deg)) < 1e-9)) {
+        noseWrong.push(`${at}: ${dn}`);
+      }
+      if (solidContactCrash(solidReport(n, 6), ...belly, t.c, t.s)) {
+        tapReset.push(at);
+      }
+      if (!solidContactCrash(solidReport(n, 6), ...nose, t.c, t.s)) {
+        crashMissed.push(at);
+      }
+    }
+  }
+  check('a belly flat on a wall reads 1 at every spawn yaw and wall heading',
+    bellyWrong.length === 0, bellyWrong.slice(0, 3).join('; '));
+  check('a nose first hit, 50 degrees down, reads -sin 50 at every one',
+    noseWrong.length === 0, noseWrong.slice(0, 3).join('; '));
+  check('so a belly first wall tap at 6 m/s is never a crash, whichever way the map faces',
+    tapReset.length === 0, tapReset.slice(0, 3).join('; '));
+  check('and a nose first hit at 6 m/s always is',
+    crashMissed.length === 0, crashMissed.slice(0, 3).join('; '));
+
+  /* The owner's report, 2026-09-25, in the headings that carried it. The
+   * frame blind reading is (c, s) = (1, 0), which is what the shell used. */
+  const wall = [-1, 0, 0];
+  const city = sincos(Math.PI, { s: 0, c: 1 });
+  const tapCity = plantQuat(0, 90 * deg, Math.PI);
+  check('the city spawns at yaw pi: read frame blind, a belly on the wall was the top plate',
+    bodyUpDotWorld(...tapCity, ...wall, 1, 0) < -0.99);
+  check('and turned into the plant, it is the belly',
+    bodyUpDotWorld(...tapCity, ...wall, city.c, city.s) > 0.99);
+  const built = sincos(-Math.PI / 2, { s: 0, c: 1 });
+  const tapBuilt = plantQuat(0, 90 * deg, -Math.PI / 2);
+  check('a built map with no pads spawns at -pi/2: read frame blind, the belly was a side',
+    Math.abs(bodyUpDotWorld(...tapBuilt, ...wall, 1, 0)) < 1e-9);
+  check('and turned into the plant, it is the belly',
+    bodyUpDotWorld(...tapBuilt, ...wall, built.c, built.s) > 0.99);
+
+  /* What does not depend on the heading at all. */
+  let ceiling = 0;
+  let roof = 0;
+  for (const yaw of YAWS) {
+    const t = sincos(yaw, { s: 0, c: 1 });
+    const level = plantQuat(0.7, 0, yaw);
+    ceiling += solidContactCrash(solidReport([0, 0, -1], 8), ...level, t.c, t.s) ? 1 : 0;
+    roof += solidContactCrash(solidReport([0, 0, 1], 8), ...level, t.c, t.s) ? 1 : 0;
+  }
+  check('a ceiling is never a crash: gravity takes the craft off it',
+    ceiling === 0 && CRASH_UNDERSIDE_NZ > -1, `${ceiling}`);
+  check('nor landing level on a roof top', roof === 0, `${roof}`);
+  const nose0 = plantQuat(0, -50 * deg, 0);
+  check('a prop alone is never a crash, however hard',
+    !solidContactCrash(solidReport(wall, 30, 0), ...nose0, 1, 0));
+  check('nor a nose first touch under the graze line',
+    !solidContactCrash(solidReport(wall, GRAZE_SPEED_MAX - 0.01), ...nose0, 1, 0));
+  check('and at the graze line it is',
+    solidContactCrash(solidReport(wall, GRAZE_SPEED_MAX), ...nose0, 1, 0));
+
+  /* The belly is a cone about the normal, CRASH_BELLY_UP wide: about 45
+   * degrees. Pitched back 50 the belly is 40 off square and is a tap;
+   * pitched back 40 it is 50 off square and is not. Unchanged by the fix. */
+  check('the belly cone is about 45 degrees',
+    Math.abs(Math.acos(CRASH_BELLY_UP) / deg - 45.6) < 0.1);
+  check('a tap pitched back 50 degrees is the belly',
+    !solidContactCrash(solidReport(wall, 6), ...plantQuat(0, 50 * deg, 0), 1, 0));
+  check('pitched back 40 degrees it is not',
+    solidContactCrash(solidReport(wall, 6), ...plantQuat(0, 40 * deg, 0), 1, 0));
+}
+
+/*
  * Clip-through catch. The adversarial cases are the point: a bounce, a
  * perch, a turtle, a wall scrape and a roof sit must never reset the
  * craft. Only a centre inside a solid, a leftover overlap that is not
@@ -2415,6 +2547,66 @@ function freestylePlace(doc, type, x, y, opts = {}) {
 
 function codesOf(doc) {
   return freestyleReport(doc).warnings.map((w) => w.code);
+}
+
+/*
+ * THE DRAWING ON A PUBLISHED MAP'S CARD.
+ *
+ * boardPlanOf in ./view2d.js measures it, and the board checks it with
+ * inspectMapPlan in its own src/validate.js, which this file cannot import
+ * because the board is another repository. So the board's rules are written
+ * down here as the contract, and the two constants below MIRROR the board's
+ * PIECE_TYPE_RE and MAP_PLAN_KINDS: change one side, change both. Every
+ * type in the palette is drawn, so a piece added to src/props/types.js is
+ * held to this the day it arrives, which is the reason the drawing is
+ * measured on this side rather than kept as a list of shapes on the board.
+ */
+const BOARD_PIECE_TYPE_RE = /^[A-Za-z][A-Za-z0-9]{0,31}$/;
+const BOARD_PLAN_KINDS = ['structure', 'gap', 'aperture', 'obstacle', 'marker', 'start', 'decal', 'other'];
+
+function suiteBoardPlan() {
+  console.log('\nthe board drawing of a map');
+  const map = createTrack(undefined, 'full', 'freestyle');
+  const every = [...FREESTYLE_PALETTE_ORDER, ...PALETTE_EXTRA];
+  every.forEach((type, i) => {
+    freestylePlace(map, type, 10 + (i % 6) * 26, 10 + Math.floor(i / 6) * 26);
+  });
+  map.elements.find((e) => e.type === 'gap').name = 'CRANE GAP';
+  const plan = boardPlanOf(map);
+  const labels = map.elements.filter((e) => ELEMENTS[e.type].kind === KIND.ANNOTATION).length;
+  check('every piece on a map is drawn, and a label is the one thing left out',
+    labels === 1 && plan.marks.length === map.elements.length - labels,
+    `${plan.marks.length} marks for ${map.elements.length} elements, ${labels} label(s)`);
+  const refused = plan.marks.filter((m) => !BOARD_PIECE_TYPE_RE.test(m.t)
+    || !BOARD_PLAN_KINDS.includes(m.k)
+    || m.p.length < 2 || m.p.length > 16
+    || m.p.some((pt) => pt.length !== 2 || !pt.every(Number.isFinite)));
+  check('and every outline is one the board takes', refused.length === 0,
+    refused.map((m) => m.t).join(', '));
+  check('no piece in the palette falls through to the board\u2019s "other"',
+    plan.marks.every((m) => m.k !== 'other'), plan.marks.filter((m) => m.k === 'other').map((m) => m.t).join(', '));
+  const gap = plan.marks.find((m) => m.t === 'gap');
+  check('a named gap is drawn as a gap and carries its name', gap && gap.k === 'gap' && gap.n === 'CRANE GAP');
+  check('a solid is drawn as a structure, and carries no name',
+    plan.marks.filter((m) => m.t === 'building').every((m) => m.k === 'structure' && !('n' in m)));
+  /* Within a millionth of a centimetre, because 45.59 is not a binary
+   * fraction and 45.59 * 100 is 4558.999999999999. */
+  const onCm = (v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6;
+  check('numbers are in centimetres, which is what the board keeps',
+    plan.marks.every((m) => m.p.every(([x, y]) => onCm(x) && onCm(y))));
+  check('and the plot is the map\u2019s own', plan.width === map.field.width && plan.depth === map.field.depth);
+  /* The starter yard is what a first publish looks like, so it is the one
+   * measured: its drawing rides beside a document of about nine kilobytes
+   * and should not outweigh it. */
+  const yard = normalize(starterMap()).doc;
+  const yardPlan = boardPlanOf(yard);
+  const yardBytes = JSON.stringify(yardPlan).length;
+  check('the starter yard draws every piece in less than its own document weighs',
+    yardPlan.marks.length === yard.elements.length && yardBytes < JSON.stringify(toPlain(yard)).length,
+    `${yardPlan.marks.length} marks, ${yardBytes} bytes`);
+  check('and its five named gaps keep their names',
+    yardPlan.marks.filter((m) => m.k === 'gap').map((m) => m.n).join('|')
+      === yard.elements.filter((e) => e.type === 'gap').map((e) => e.name).join('|'));
 }
 
 function suiteFreestyle() {
@@ -3070,7 +3262,7 @@ function suiteSchemaProps() {
     md.includes(`Everything below describes \`schemaVersion: ${SCHEMA_VERSION}\``));
 }
 
-function suiteListing() {
+async function suiteListing() {
   console.log('listing');
   const doc = createTrack('Ladder Loop');
   const gate = createElement(doc, 'gate', { x: 10, y: 8, z: 0 });
@@ -3159,6 +3351,194 @@ function suiteListing() {
     check('and when storage refuses it, that is said, so nothing replaces it', !refused.ok && refused.saved === null);
   } finally {
     globalThis.localStorage = had;
+  }
+
+  /*
+   * THE TAGS A TRACK WEARS ON THE BOARD, which this browser can only know
+   * from the bind, because they are not in the document.
+   *
+   * writeBind named every field it kept and tags were not among them, so
+   * the publish dialog opened with nothing ticked on every track and sent
+   * that, and the board read the renames' missing list as an empty one.
+   * Between them a track lost its tags on any republish that did not
+   * re-tick them. The board's half is in its own src/selftest.js; this is
+   * the simulator's: the bind keeps them, "not known" stays apart from
+   * "none", and an empty list reaches the wire as one.
+   */
+  const hadTagStore = globalThis.localStorage;
+  const tagStore = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (tagStore.has(k) ? tagStore.get(k) : null),
+    setItem: (k, v) => {
+      tagStore.set(k, String(v));
+    },
+    removeItem: (k) => {
+      tagStore.delete(k);
+    },
+  };
+  const board = 'http://127.0.0.1:3100';
+  try {
+    const listed = { board, author: 'Ada Rook', nameOnBoard: 'Ladder Loop', owned: true };
+    writeBind('trk-1a2b3c4d', { ...listed, tags: ['race', 'skills'] });
+    check('a bind keeps its tags',
+      String(readBind('trk-1a2b3c4d').tags) === 'race,skills'
+      && String(publishedTags('trk-1a2b3c4d')) === 'race,skills',
+      JSON.stringify(readBind('trk-1a2b3c4d')));
+    /* syncOwnedName and syncOwnedIdentity rewrite a bind by spreading it. */
+    writeBind('trk-1a2b3c4d', { ...readBind('trk-1a2b3c4d'), author: 'Ada Two' });
+    check('and a rename that spreads the bind keeps them',
+      String(publishedTags('trk-1a2b3c4d')) === 'race,skills' && readBind('trk-1a2b3c4d').author === 'Ada Two');
+    writeBind('trk-1a2b3c4d', { ...listed, tags: [] });
+    check('an empty list is kept, as none',
+      Array.isArray(publishedTags('trk-1a2b3c4d')) && publishedTags('trk-1a2b3c4d').length === 0);
+    writeBind('trk-2b3c4d5e', listed);
+    check('a bind with no list reads as not known, not as none',
+      publishedTags('trk-2b3c4d5e') === null && !('tags' in readBind('trk-2b3c4d5e')));
+    check('and so does a track with no bind at all', publishedTags('trk-00000000') === null);
+
+    /* rememberPublish: the board's answer first, then what was sent, then
+     * what the bind knew. */
+    writeBind(doc.id, listed);
+    rememberPublish(doc, { id: doc.id, name: doc.name, tags: ['race'] }, board, 'Ada Rook');
+    check('a bind that never knew its tags learns them from the board’s answer',
+      String(publishedTags(doc.id)) === 'race', String(publishedTags(doc.id)));
+    rememberPublish(doc, { id: doc.id, name: doc.name, tags: ['race', 'experiment'] }, board, 'Ada Rook',
+      { tags: ['experiment', 'race'] });
+    check('and the board’s answer wins over what was sent',
+      String(publishedTags(doc.id)) === 'race,experiment', String(publishedTags(doc.id)));
+    rememberPublish(doc, { id: doc.id, name: 'Renamed Loop' }, board, 'Ada Two');
+    check('a rename that sent no list keeps what the bind knew, when the board does not say',
+      String(publishedTags(doc.id)) === 'race,experiment', String(publishedTags(doc.id)));
+    rememberPublish(doc, { id: doc.id, name: doc.name }, board, 'Ada Rook', { tags: [] });
+    check('an empty list that was sent is remembered as none',
+      Array.isArray(publishedTags(doc.id)) && publishedTags(doc.id).length === 0);
+    const fresh = createTrack('Fresh Loop');
+    rememberPublish(fresh, { id: fresh.id, name: fresh.name }, board, 'Ada Rook');
+    check('and when nobody knows, the bind does not pretend', publishedTags(fresh.id) === null);
+
+    /* tagsToSend: which of the two ways of saying nothing goes. */
+    check('an empty row the dialog could not see behind sends no list, which keeps the board’s',
+      tagsToSend(null, []) === undefined);
+    const unticked = tagsToSend(['race'], []);
+    check('unticking every tag that was shown sends an empty list, which clears',
+      Array.isArray(unticked) && unticked.length === 0);
+    check('ticked tags go in the board’s order', String(tagsToSend(null, ['skills', 'race'])) === 'race,skills');
+    check('a tag this build has no button for rides along',
+      String(tagsToSend(['race', 'night'], ['skills'])) === 'skills,night', String(tagsToSend(['race', 'night'], ['skills'])));
+
+    /* And what publishTrack puts on the wire for each. */
+    const hadFetch = globalThis.fetch;
+    const sent = [];
+    globalThis.fetch = async (url, init) => {
+      sent.push(JSON.parse(init.body));
+      return { ok: true, status: 200, text: async () => '{}' };
+    };
+    try {
+      const plain = toPlain(doc);
+      await publishTrack({ author: 'Ada Rook', document: plain, origin: board, tags: [] });
+      await publishTrack({ author: 'Ada Rook', document: plain, origin: board });
+      await publishTrack({ author: 'Ada Rook', document: plain, origin: board, tags: ['race'] });
+    } finally {
+      globalThis.fetch = hadFetch;
+    }
+    check('an empty tag list goes on the wire as an empty list',
+      Array.isArray(sent[0] && sent[0].tags) && sent[0].tags.length === 0, JSON.stringify(sent[0] && sent[0].tags));
+    check('no tag list leaves the key out altogether', Boolean(sent[1]) && !('tags' in sent[1]));
+    check('a tag list goes as it is', Boolean(sent[2]) && String(sent[2].tags) === 'race');
+  } finally {
+    globalThis.localStorage = hadTagStore;
+  }
+
+  /*
+   * THE SHELL'S PUBLISH, WHEN THE BOARD SAYS THE ID IS TAKEN.
+   *
+   * publishCurrentCourse puts the track up as a copy under a new id when
+   * the board answers 409, which is what the builder's own publish does.
+   * From 16 August forkDocument handed back { copy, commit }, and this path
+   * gave the whole of that to toPlain, which threw, so the pilot was told
+   * the track could not be published and no copy went up. Nothing ran this
+   * path until now.
+   */
+  const hadForkStore = globalThis.localStorage;
+  const hadForkFetch = globalThis.fetch;
+  const forkStore = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (forkStore.has(k) ? forkStore.get(k) : null),
+    setItem: (k, v) => {
+      forkStore.set(k, String(v));
+    },
+    removeItem: (k) => {
+      forkStore.delete(k);
+    },
+  };
+  /* A board that answers each publish with the next status in `answers`:
+   * 409 is "that id is taken", and anything else takes the track. */
+  const boardAnswering = (answers, posts) => async (url, init) => {
+    const body = JSON.parse(init.body);
+    posts.push(body);
+    const status = answers[posts.length - 1] ?? 201;
+    if (status === 409) {
+      return {
+        ok: false,
+        status,
+        text: async () => JSON.stringify({ error: 'This track is already on the board.', conflict: true }),
+      };
+    }
+    return {
+      ok: true,
+      status,
+      text: async () => JSON.stringify({
+        id: body.document.id,
+        name: body.document.name,
+        author: body.author,
+        editKey: `key-${body.document.id}`,
+        updated: false,
+        timesCleared: false,
+        tags: [],
+      }),
+    };
+  };
+  /* Caught, so a path that throws fails the checks below rather than
+   * ending the suite. */
+  const tryPublish = async () => {
+    try {
+      return { result: await publishCurrentCourse({ doc, author: 'Ada Rook', origin: board }) };
+    } catch (e) {
+      return { error: e };
+    }
+  };
+  try {
+    const posts = [];
+    globalThis.fetch = boardAnswering([409, 201], posts);
+    const { result, error } = await tryPublish();
+    check('a publish the board refuses as taken goes up as a copy, instead of throwing',
+      !error && Boolean(result) && result.forked === true, error ? error.message : '');
+    const copyId = result && result.doc ? result.doc.id : '';
+    check('under a new id, with the same layout',
+      posts.length === 2 && posts[0].document.id === doc.id && Boolean(copyId) && copyId !== doc.id
+      && posts[1].document.id === copyId && result.posted.id === copyId
+      && layoutFingerprint(posts[1].document) === layoutFingerprint(doc),
+      `${posts.length} publish(es) sent`);
+    const forkBind = copyId ? readBind(copyId) : null;
+    check('and the copy is this browser’s, and remembers what it is a copy of',
+      Boolean(forkBind) && forkBind.owned === true && forkBind.sourceId === doc.id
+      && readEditKey(copyId) === `key-${copyId}`, JSON.stringify(forkBind));
+    const canvas = readAutosave('full');
+    check('and the canvas is the copy now',
+      Boolean(canvas && canvas.doc) && canvas.doc.id === copyId,
+      canvas && canvas.doc ? canvas.doc.id : 'no canvas');
+
+    forkStore.clear();
+    const refusedPosts = [];
+    globalThis.fetch = boardAnswering([409, 409], refusedPosts);
+    const refused = await tryPublish();
+    const refusedId = refusedPosts[1] ? refusedPosts[1].document.id : '';
+    check('a copy the board refuses as well is an error, and leaves no bind behind',
+      Boolean(refused.error) && refusedPosts.length === 2 && Boolean(refusedId) && readBind(refusedId) === null,
+      refused.error ? refused.error.message : 'no error');
+  } finally {
+    globalThis.fetch = hadForkFetch;
+    globalThis.localStorage = hadForkStore;
   }
 }
 
@@ -3948,7 +4328,7 @@ function suiteRecoverSpot() {
   setCraftAirframe(airframeById('5inch').dims);
 }
 
-function main() {
+async function main() {
   if (process.argv.includes('--emit')) {
     process.stdout.write(serialize(demoTrack()));
     return;
@@ -3958,6 +4338,7 @@ function main() {
   suiteElementCounts();
   suitePresets();
   suiteCrashRule();
+  suiteCrashFrame();
   suiteClipCatch();
   suiteRecoverSpot();
   suiteFaces();
@@ -3974,8 +4355,9 @@ function main() {
   suiteWaypoint();
   suiteSchemaDoc();
   suiteFreestyle();
+  suiteBoardPlan();
   suiteSchemaProps();
-  suiteListing();
+  await suiteListing();
   suiteBranding();
   suiteFlagShape();
   suiteStartBlock();

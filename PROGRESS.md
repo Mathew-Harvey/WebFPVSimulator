@@ -45038,6 +45038,1302 @@ to the branch: no merge commit, nothing rewritten, one history.
                              fast-forward
     git diff --stat vendor/betaflight   empty
 
+## 2026-09-25 | deploy | The fourth card was live, and a returning browser showed three
+
+The owner, testing the merge on webfpv.org, with a screenshot of the gate
+showing three cards: "opening the simulator does not show the 4th menu
+option". No code changed this turn.
+
+### What it was, measured at 09:23 UTC
+
+- **The deploy was live.** 5f55c2c went out at 09:18:40 UTC (the
+  last-modified on every file), and index.html, src/ui/ui.js,
+  src/trackbuilder/app.js and src/trackbuilder/index.html come through
+  webfpv.org/sim byte for byte as main has them.
+- **It is DEPLOY.md's four hour seam, unchanged since 2026-09-12.** Through
+  the domain the pages come back max-age=0 and every script and picture
+  max-age=14400; the Render origin sends max-age=0 for all of them. So a
+  browser that had the gate open in the last four hours fetched the new
+  index.html and kept the old ui.js.
+- **The screenshot is exactly that mix.** Three cards, which is the old
+  script's WAYS, in the new stylesheet's column: its gaps are the 24 px
+  maximum, and scaled by them the three cards span about 1580 CSS px, the
+  new 100em column. The old 78em column is 1248.
+- **The builder page has the same seam**: a fresh index.html over a cached
+  app.js opens without the chooser.
+- **assets/gate/builder.jpg comes through the domain re-encoded**, 66,038
+  bytes, progressive, 900 by 560, with `vary: accept`, against 71,975 from
+  the origin as committed. Same picture: Cloudflare recompresses images on
+  the way through. Not a fault.
+- **Render is not applying render.yaml's header rules at all.** The origin
+  sends public, max-age=0, s-maxage=300 for /assets/music/* as well, which
+  render.yaml asks to be immutable for a year. Harmless to correctness; it
+  costs the music its long cache.
+
+### What went wrong
+
+- **The hand-over did not say "hard reload".** DEPLOY.md says it outright:
+  until the TTL is fixed, a deploy that changes anything the script and
+  the sheet must agree on needs a hard reload to be safe. A card built by
+  the script and laid out by the sheet is exactly that. The hand-over said
+  instead that it could not find whether main deploys itself; reading
+  DEPLOY.md's caching section before the hand-over would have given the
+  right instruction.
+
+### Not fixed here, and why
+
+The fix is a setting in the owner's Cloudflare dashboard, not code: the
+webfpv.org zone's Browser Cache TTL set to Respect Existing Headers, or
+whichever cache rule sets a browser TTL on static extensions. Nothing in
+this repository can change it. Versioning the module graph would work
+round it, and that is a change to how the page boots, which is the owner's
+to approve before anyone starts it.
+
+### RUN LOG
+
+    curl webfpv.org/sim, 09:23 UTC   the 4 changed code files byte identical
+                                     to main; scripts and pictures
+                                     max-age=14400, pages max-age=0
+    curl webfpvsimulator.onrender.com   every path max-age=0, s-maxage=300,
+                                     the music included
+    code                             unchanged
+
+## 2026-09-25 | art, maps, shell | Stage B: the STF mark, hidden on every freestyle map
+
+The owner: "this start B". FREESTYLE-MAPS-PLAN.md section 9, built by one
+workflow (two builders on disjoint files, one to wire the find, one
+integrator; no review round, as the owner asked). No physics change: the
+mark is paint. The town's 19515 collider boxes, its 15669 authored
+rectangles and its 801 platforms hash the same before and after, and both
+built map placement hashes are unchanged (starter e72f829e..., one of
+everything 9899d9f1...).
+
+### What was built
+
+- **The mark, src/art/stf.js.** The STF logo painted on a canvas as a
+  sprayed stencil: brush-stroke white S and F with a green T, a violet ink
+  line, a freehand overspray black field, runs and drips. It is placeholder
+  lettering, because the logo file is still not in assets/. STF_LOGO_URL is
+  null and nothing is fetched; set it to the file and the same spray
+  treatment is applied to the owner's lettering (the load and repaint path
+  was tested with a data URL). A lit cel material, so it sits in the shade
+  of whatever it is painted on.
+- **The town's spot**, STF_SPOT in src/maps/city/places/works.js: the
+  underside of the first roof step of the works shed's middle tooth,
+  directly behind the broken clerestory, 1.7 by 0.85 m. It is the plan's
+  proposal and still unconfirmed by the owner. Drawn only, named with the
+  town's Trim suffix, so the collider fit, cover pass and audit ignore it.
+- **The built map's spot, src/maps/built/egg.js**, pure, no trigonometry,
+  seeded from the document id: faces of opaque solid boxes, with open air in
+  front, inside the plot, never seen from 0.3, 2 or 5 m over the spawn,
+  scored by a table (underside 4, back 2, side 1, top 0, inside +3), eight
+  finalists one per element first, a seeded pick. Falls back to a face
+  turned away from the spawn, then to paint on the ground in the far
+  corner. The starter's spot is the door end of the upper container over
+  CONTAINER TUNNEL, facing the billboard. The builder never loads it: a
+  props-check line walks every builder module's imports.
+- **Found, src/game/egg.js seesMark:** the FPV camera within 4 m of the
+  mark, at least 0.2 m in front of the paint and at least 15 degrees off its
+  plane, the mark inside a 35 degree cone, and a clear line (the
+  segmentCrossesAny test plus a 0.1 m walk that catches a line cutting a
+  box's corner, which segmentCrossesAny alone calls clear). Asked every 3
+  frames in flight.
+- **The moment:** a lettered STF callout ("MARK FOUND") and a manga panel
+  with the mark in it, on the right third for 3 s, no pointer events; a
+  stamp in this browser (src/share/stamps.js, webfpv.stf.stamps.v1) shown
+  as a badge on that world's card in the Freestyle picker. eggBonus(egg) in
+  main.js is Stage C's hook for the combo bonus, empty now.
+
+### Departures from the brief, each measured
+
+- A ceiling needs 2.2 m of air under it, not 3: a bando storey has 3.1 m.
+- Finalists are one per element before any element's second face; without
+  it the starter's eight were eight panels of one bando ceiling.
+- Only opaque solids hide the mark (not glass, nets, rails, foliage); the
+  check asserts both rules.
+- The built map paints 1.5 cm off the DRAWN surface, found by 15 rays onto
+  the chunk's batches, not off the collider: on the starter's container the
+  door leaves stand 3.5 to 5.6 cm proud of the solid, and the paint sat
+  behind them while "found" fired.
+- FIND_FACE, the 15 degree slant: without it the town's flight fired edge
+  on, 1.6 m from the mark and 7.6 degrees off its plane.
+- openSide: a ceiling mark reads toward the side its ceiling opens to; the
+  first rule stood a balcony mark upside down for the only way in.
+- A throw in the chooser or the painter leaves the map flying with no mark
+  and a console error, instead of failing the load.
+- **The dusk glow (mine, after the workflow):** lit paint went the grey
+  violet of the steel round it at dusk and the green T all but vanished on
+  the starter's container, 3 m out. At dusk and overcast the paint now
+  gives back STF_GLOW (0.3, 0.12) of its own colour through its emissive
+  map, so the letters lift and the T stays green while the black field
+  stays black. Golden, noon and the town are unchanged. Shot before and
+  after from the same pose.
+
+### Found, as a pilot
+
+In page pilot, Low, final code, by the integrator:
+
+    town        8 negatives not found (spawn, 40 m overhead, the roof over
+                the mark, works lines 1 and 2 both ways); in through the
+                clerestory: found at 1.42 m, 18.9 deg off axis
+    starter     7 negatives (spawn, crane gap both ways, overhead, the
+                stack over the mark, the tunnel); back west under the
+                billboard: found at 3.96 m, 29.2 deg off axis
+    own maps    three maps, three spots, the page agrees with Node
+
+Timing: the chooser's first call in a fresh engine, 15.5 ms on the starter
+and 47.0 ms on 10027 solids. Chrome 141 and Node 22 pick identical spots on
+52 maps (both are V8). A built map gains one draw call and about 15 ms of
+raycasting at build. MAP_MODULE_COUNT.built is 5.
+
+### For the owner
+
+- The town's spot is unconfirmed. From the ground it shows only as a sliver
+  through line 2's side openings and the open gable triangles, and at the
+  top of the frame on lines 1 and 2; it is found only in the roof space.
+- The starter's spot is on a natural line back from the billboard and may
+  be easier to find than wanted. A different STARTER_ID moves it.
+- The finalist rule lets a top face in: one of the integrator's maps got a
+  mark on a stair landing's top, which needs a nose-down look. A minimum
+  score for finalists would favour undersides.
+- On a phone (844 by 390) the callout sits under the Pause chip and the
+  panel covers the top of the right thumb plate for its 3 s.
+- The logo file: commit assets/stf.svg (or a PNG of 1024 px or more on a
+  transparent background) and set STF_LOGO_URL in src/art/stf.js.
+
+### What went wrong
+
+- An orphaned headless Chromium from an earlier rig burned about 3 of the
+  4 cores for three hours before the integrator found and stopped it; one
+  early town flight crashed under it. The final checks and flights ran
+  after.
+- The harness's temporary browser profiles had reached 674 directories and
+  11 GB in /tmp. Deleted, with no browser running.
+- The first built map mark was painted behind the container doors and
+  still reported found. The relief probe and the found test's slant rule
+  came out of that.
+
+### RUN LOG
+
+Run by me on the final tree, this turn:
+
+    npm run check:clip             652 passed, 0 failed
+    node scripts/props-check.js    all passed, 200 PASS; hashes unchanged
+    props-check --selftest         all passed
+    npm run check:plant            all passed
+    npm run check:crash            0 guards failed
+    npm run lint:memory            PASS, every world lazy and freed
+    npm run lint:boot              9 of 9 clean
+    npm run lint:preload           up to date, boot 105, city 73, built 29
+    npm run lint:nouns             PASS
+    npm run lint:presets           4 of 4 clean
+    npm run lint:shell             1 problem, title overflow 23 px, main's
+    dash scan, added lines         0; GPLv3 header on the three new files
+    git diff --stat vendor/betaflight   empty
+    npm run verify                 not run: no physics change
+
+Run by the integrator on this tree before the dusk glow, which is render
+only and touches no screen: lint:quality 56 of 56; lint:input 2 failed,
+141 passed, the two being the "parked and left" pair that main has and
+that passed on the integrator's own baseline run (flaky); every Fly this
+map check passed. The shots under .loop/shots/stf-* are gitignored; I
+looked at the town's found moment, the starter's mark at golden and at
+dusk, and the dusk glow.
+
+## 2026-09-25 | git | Stage B, the STF mark, merged to main for the owner to fly
+
+The owner: "merge stage B to main". That is the approval to put Stage B on
+main, and the verification scale is the owner flying it: into the works
+shed through the broken clerestory, looking up; on Your map, the back of
+the container stack. What would count as wrong is in the Stage B entry
+above.
+
+Only Stage B goes: 410cbba, merged onto main at 5f55c2c (the fourth gate
+card and the builder's chooser), in a separate worktree so the session's
+running Stage D work was not disturbed. Stage D part 1 (the world golden,
+8e5377e) stays on the branch until Stage D is done. Only PROGRESS.md
+conflicted, both sides appending, and both were kept. The code in this
+merge is the code the branch's own merge of the same main (c0dd6d1) was
+checked on, less part 1's scripts and test data, and the checks below were
+rerun on this tree.
+
+## 2026-09-25 | board, builder, shell | Published freestyle maps: a tab on the board, Publish in the builder, Fly and Remix from the board
+
+The owner: "now we need to update the tracks and statistics page to
+include published freestylle maps, move the stie statistics to beside the
+admin menu item and put the freestyle maps here, follow the same pattern as
+the race tracks maps can we do this in a clever way where we don't re save
+the same assets over and over again in the db rather a reference to an
+asset with config moderfiers saved sucto reflect the track". And, part way
+through: "there are new map pieces being build btw".
+
+Two repositories: the board (Mathew-Harvey/WebFPVSimulator-LeaderBoard)
+and this one. The plant, the module ABI and the build are untouched, and so
+is src/props, where another session is adding pieces.
+
+### The owner's decision, recorded
+
+- **2026-09-25, publishing freestyle maps to the public board.** This
+  reverses FREESTYLE-MAPS-PLAN.md section 13, which left "publishing
+  freestyle maps to the public board, and a board per built map" out of
+  that plan because the board is a separate repository. It covers the
+  first half: storing and listing maps, the board's tab and sheet, the
+  builder's Publish, and Fly and Remix from the board. It does not cover a
+  board of runs per built map: a run flown on any built map, a published
+  one included, still stays off the freestyle board (BUILT_OFF_BOARD in
+  src/ui/ui.js, unchanged).
+- **2026-09-25, the page's second tab.** Site statistics leaves the tab row
+  for the masthead, beside Admin, and the tab is Freestyle maps. #stats
+  still opens the statistics, so every link already out there still lands.
+
+### The storage, which is the "clever way" asked for
+
+- **A map document already is references with modifiers.** Each piece is a
+  type and what places it: position, heading, dimensions, style, variant, a
+  named gap's name and points. No geometry travels and none is stored; the
+  simulator builds every piece from its own catalogue when the map is
+  flown. Hibari Yard is 52 pieces in 8,914 bytes.
+- **The heavy part, sponsor pictures, is stored once.** On publish the
+  board takes each logo out of the document into an `assets` table keyed
+  by the sha256 of its bytes, and the document keeps `asset:<hash>` in its
+  place. `map_assets` records which map wears which picture, with a foreign
+  key, so a picture cannot be deleted while a map wears it; removing or
+  republishing a map drops a picture only when nothing else wears it.
+  `GET /api/maps/:id/document` puts the images back, so the simulator is
+  handed what the builder sent. The board's selftest publishes two maps
+  wearing one picture and finds one row.
+- **Maps have their own routes**, /api/maps, and nothing that reads
+  /api/tracks sees one: not the Courses grid, not the most flown track a
+  first visit is seated on, not findBoardTwin.
+
+### New pieces, which the board must not have to know about
+
+- **The board keeps no list of piece types.** A type is checked for being
+  a plausible name (letters and digits, 32 at most) and nothing more.
+- **The card's drawing is measured here and sent beside the document.**
+  boardPlanOf in src/trackbuilder/view2d.js runs planShapeOf, the builder's
+  own 2D outline, over every piece and sends `{ t, k, p, n? }`: the type, a
+  kind that only picks a colour on the board, the outline in centimetres,
+  and a named gap's name. The board's plan.js fills and strokes polygons by
+  kind. A piece added next week is drawn on the board by the builder that
+  knows it. Hibari Yard's drawing is 52 outlines in 4,899 bytes.
+- suiteBoardPlan in src/trackbuilder/selftest.js places every type in the
+  palette and holds each outline to the board's rules, so a new piece is
+  checked the day it lands in src/props/types.js. The board's type pattern
+  and kind list are mirrored there, and say so.
+
+### What changed, the board
+
+- schema.sql: `maps`, `assets`, `map_assets`. src/store.js: both stores
+  (file and Postgres) list, read, publish with the track's edit key rule,
+  remove, and sweep pictures nothing wears. src/validate.js: inspectMap,
+  inspectMapPlan, expandAssets. src/server.js: GET /api/maps, GET
+  /api/maps/:id, GET /api/maps/:id/document, POST /api/maps, POST
+  /api/maps/:id/remove (admin).
+- public/index.html: the masthead's Site statistics link beside Admin, lit
+  with the chosen tab's mint rule while #stats shows; the Freestyle maps
+  tab and its section with the tracks tab's toolbar (search, which also
+  finds a gap by name, Built by, Order), grid and rail.
+- public/app.js: the maps tab on the tracks tab's pattern. A card per map
+  with its drawing, its plot size and its named gaps as chips; Fly this map
+  and Map detail. A sheet at #map=id in the track sheet's dialog: the big
+  drawing with the gaps named on it, the simulator's orbit camera over it,
+  the facts, Fly this map, Remix in the builder, Copy link, and the same
+  two press removal for an admin. The rail ranks builders by maps
+  published and lists the latest. The maps are fetched on their own and
+  never waited on, so the tab works on a board with no tracks or a failed
+  track list. Closing a map's sheet goes back to the maps tab.
+- public/plan.js: a map's drawing from its outlines, by kind.
+- README.md: the maps, how they are stored, and their routes.
+
+### What changed, here
+
+- src/share/board.js: publishMap, fetchMapDocument, adoptMapFromLocation.
+- src/share/session.js: readMapListing and writeMapListing, a map's edit
+  key, board, author and name, under `webfpv.share.maps.v1`. Not in the
+  track keys ON PURPOSE: syncOwnedIdentity walks those on every rename and
+  republishes each to /api/tracks, and the board refuses a map there.
+- src/trackbuilder/app.js: Publish on a map is live (openPublishMap): map
+  name, your name, board address, and Update the board once this browser
+  holds the map's key. A 409 goes up as a new map under a new id, as a
+  track does. The top bar reads Update board for a published map. A map of
+  nothing but a label, a start and ground paint is refused here with the
+  board's own sentence rather than by the request.
+- adoptIncomingMap, for the board's Remix in the builder
+  (?mapshare=id&mode=freestyle): a map this browser published opens as
+  itself, anybody else's opens as "<name> remix" under a new id, and
+  either asks before replacing a map on the canvas.
+- src/main.js: ?mapshare= is fetched in the board stage and held for the
+  page load, and every build of the built world is handed it as its
+  document (worldDocument), a rebuild for a graphics change included. It
+  is never written to the map seat, so Your map, the pilot's own, is where
+  they left it; the builder's Fly this map flies it again. A ?share= track
+  wins over a ?mapshare= map, the same rule in boot.js, main.js and
+  orbit.js.
+- src/ui/ui.js: a ?mapshare= link is a freestyle visit; the title's Map row
+  names the published map and its builder.
+- src/share/orbit.js and orbitcache.js: the board's map sheet camera, keyed
+  by the map id and its update stamp (?v=), so a republished map records a
+  new flight.
+
+### Decisions the owner may want to overrule
+
+1. **Fly this map carries ?fly=1**, straight into the air like the
+   builder's own Fly this map; the board's Fly this track does not.
+2. **A published map is flown for the page load, not seated.** During that
+   page load the Map picker's Your map is the published map; a reload
+   keeps it (?mapshare= stays in the address); the builder's Fly this map
+   or any link without ?mapshare= flies the pilot's own again.
+3. **Runs on a published map stay off the freestyle board**, as on any
+   built map. A board per published map is the half of section 13 not
+   done.
+4. **A rename does not reach the author line of maps already published.**
+   Maps are kept out of syncOwnedIdentity's walk (above); Update the board
+   carries the new name.
+5. **No tags on maps.** The vocabulary is a race track's.
+6. **An outline far off the plot is left off the drawing** rather than
+   refusing the map. The first board version refused it, and writing the
+   builder side showed a piece dragged off the plot would have kept the
+   whole map off the board over a picture.
+7. Newest first is the maps tab's default order, and the builders rail
+   ranks by maps published.
+
+### What went wrong
+
+- **The first end to end run failed three checks, all in the script.** It
+  built the pilot's own map with createElement, which returns a piece
+  without adding it, so the map was empty: the built world rightly flew
+  the starter instead, and the builder rightly replaced an empty canvas
+  without asking. It also never pressed Yes on the copy's confirm. The
+  second run failed one more, also the script: it read the shell's mode
+  once, in the frame between the screen going to flight and the mode
+  following it; its own screenshot shows the pilot on the pad with the
+  clock running. The script waits for the mode now.
+- **The board's gap note first said the simulator names each gap as it is
+  flown.** Checked: placeDocument collects the zones and the built world
+  only counts them (stats().zones); nothing scores or names one in flight
+  yet. The sentence was taken out.
+- **suiteBoardPlan's centimetre check compared floats exactly** and failed
+  on 45.59, which is 4558.999999999999 hundredths. It compares within a
+  millionth of a centimetre now.
+- **The first lint:shell run was taken with a local board up**, on
+  127.0.0.1:3100, which is the simulator's default board address. The board
+  answered, the launch screen grew a ninth row, and the check reported its
+  overflow growing to 11 px. lint:shell is written to run with no board
+  ("7 network fetch(es) refused" is its own note); rerun without one, the
+  launch screen is 8 rows and 0 px as on main.
+- **The orbit page called a published map "Your map"** while it built it
+  (seen in the board sheet's picture during the end to end run), because
+  it names the world. It says "the map" until the map arrives and the
+  map's own name after.
+
+### Found, not fixed
+
+- **The board's selftest has one failure that is on its main too:**
+  "nothing app.js builds opens a bare new tab or asks for noopener". The
+  Patreon link at public/app.js:60 sets `'_blank'` with noopener, which is
+  right for a link that leaves the product, and the check does not allow
+  for it. Not this change's.
+- **A republished track loses its tags on the board.** rememberPublish
+  puts the tags in the bind for the next publish dialog to pre-tick, and
+  writeBind in src/share/session.js leaves them out of its field list, so
+  publishedTags always reads empty. A republish that is not re-ticked by
+  hand then sends no tags, and the board reads no tags as none
+  (inspectTags in its src/validate.js answers `[]` for a missing list and
+  the store writes it), so the track's tags are cleared. syncOwnedName and
+  syncOwnedIdentity send none either, so a rename clears them too. The
+  comment on rememberPublish says the board leaves an omitted list alone;
+  measured against the board's code, it does not. Not this change's, and
+  worth its own fix on both sides.
+
+### RUN LOG
+
+    check:clip                  661 passed, 0 failed; suiteBoardPlan is 9
+                                of them, new
+    lint:nouns                  PASS
+    lint:preload                up to date: boot 103 modules, city 72,
+                                built 27
+    lint:shell, board up        FAIL 2: title 23 px, launch 11 px (the
+                                board's row, see What went wrong)
+    lint:shell, no board        FAIL 1: title overflow 0 to 23 px, the same
+                                failure as every run today, main included
+    lint:input                  154 passed, 2 failed: the parked throttle
+                                row, failing in every run today, main
+                                included
+    lint:board                  PASS against this branch's board: 8 tracks
+                                listed, 8 cards drawn (the board checkout
+                                symlinked where the check looks for it)
+    board npm test              383 pass, 1 fail, the Patreon '_blank'
+                                check, which fails on board main too
+    end to end, served          24 passed, 0 failed: a local board on
+                                3100, the simulator on 8000, headless
+                                Chromium through Publish, update, the maps
+                                tab, the sheet and its camera, Fly this
+                                map, the title, the pilot's own map after,
+                                Remix owned and not owned, admin removal.
+                                The third run; the first two failed on
+                                the script, see What went wrong
+    orbit page, published map   "Building Hibari Yard, 100 percent."
+    npm run verify              not run: nothing in the physics, the plant,
+                                the module ABI or the build changed
+    git diff --stat vendor/betaflight   empty
+    board branch                9d6de10 and 7d1f89b on
+                                claude/focused-hypatia-4qcizm, pushed;
+                                board main untouched
+    board on Postgres 16        14 passed, 0 failed: a scratch cluster and
+                                the board on it, two maps sharing one
+                                picture (one row in assets; the stored
+                                document holds asset:<hash>), an update
+                                that changes it, a stranger refused with a
+                                409, the foreign key refusing to delete a
+                                worn picture (23503), and removals sweeping
+                                what nothing wears. The board's selftest
+                                runs the file store only, so this is the
+                                one run of the Postgres map code
+    merged with main            b649f71, Stage B, came in: PROGRESS.md
+                                conflicted where both appended and keeps
+                                every entry of both, in order, nothing
+                                dropped from either side; src/main.js and
+                                src/ui/ui.js merged by themselves
+    merged tree                 check:clip 661 of 661; lint:preload up to
+                                date (boot 105, city 73, built 29); the end
+                                to end run 24 of 24; lint:shell with no
+                                board FAIL 1, the title's 23 px as above;
+                                lint:input 154 passed, 2 failed, the
+                                parked throttle row as above
+
+## 2026-09-25 | git | Published freestyle maps, merged to main in both repositories for the owner to test
+
+The owner, on the entry above: "merge both to main, i'll test it". That is
+the approval to put published freestyle maps on main in both repositories:
+the board's 9d6de10 and 7d1f89b on its main, and this branch's f053521, the
+merge of Stage B, fc18a09, and this entry on this main. It is recorded here
+because this repository is the copy of record for the three. The
+verification scale chosen is the owner testing it by hand. The decisions
+the entry above lists (Fly this map straight into the air, a published map
+held for the page load, its runs off the freestyle board, no author sync on
+a rename, no tags on maps) were put to the owner and ride on main as
+built; testing it is how they will be judged.
+
+- **Both are fast-forwards.** Fetched first: the board's main was dcc8d5f
+  and this main b649f71, each its branch's merge base and ancestor, so each
+  main moves to its branch with no merge commit and nothing rewritten.
+- **The board went first**, as DEPLOY.md asks whenever the builder starts
+  sending the board something new: the builder's Publish on a map posts to
+  /api/maps, which the old board answers with a 404. Measured through
+  webfpv.org/board: a 404 before the push, and at 10:39:17 UTC, 45 s after
+  it, {"maps":[]} from the Postgres store, with the maps tab in the page
+  and mapCardFor in its script. This main was pushed after that.
+- **The board makes its own tables.** PgStore runs schema.sql on start,
+  and `maps`, `assets` and `map_assets` are CREATE TABLE IF NOT EXISTS, so
+  the database needs nothing done by hand. The scratch cluster in the entry
+  above started from an empty database the same way.
+- **A hard reload is needed on the simulator and the builder.** DEPLOY.md's
+  four hour seam is still open (the deploy entry above): their pages and
+  scripts change together, and a returning browser keeps the old scripts
+  for up to four hours. The board is not behind it: its app.js came back
+  cache-control: no-store through the domain.
+
+What to look for: the board's masthead has Site statistics beside Admin
+and #stats still opens them; the second tab is Freestyle maps; a map
+published from the builder's map canvas appears there with its drawing and
+its named gaps; its sheet flies it; Fly this map puts you in the air on it;
+the builder's own Fly this map afterwards flies your own map. What would
+count as wrong: a blank card, a sheet or a flight showing a different map,
+your own map changed after flying somebody else's, or Publish on a map
+failing with a message about the board.
+
+### RUN LOG
+
+    git fetch, both          board main dcc8d5f, this main b649f71, neither
+                             moved since the branches last took them in
+    git merge-base           each main its branch's ancestor; both move by
+                             fast-forward
+    board main               dcc8d5f..7d1f89b, pushed at 10:38 UTC
+    webfpv.org/board         /api/maps 404 before, 200 {"maps":[]} at
+                             10:39:17; /api/health store postgres; the
+                             page carries tab-maps, view-maps, stats-link
+    code                     unchanged since the entry above; its checks
+                             stand, on the merged tree
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | share, builder, board | Tags survive a republish, and clearing them is an empty list
+
+The owner: "A published track loses its tags on the public board whenever
+it is republished from the track builder without re-ticking them, and
+whenever the pilot renames themselves. Two bugs combine. Fix both." The
+share code, the builder's publish dialog, and the board's publish route
+and stores. The plant, the ABI and the build are untouched.
+
+### The two bugs, and why each hid the other
+
+- **The bind never kept the tags.** `rememberPublish` passed `tags` to
+  `writeBind` (src/share/session.js), which copies a fixed list of fields
+  that did not name them. So `publishedTags` always answered `[]`, the
+  builder's publish dialog pre-ticked nothing, and a republish that was not
+  re-ticked went out with an empty list, which `publishTrack` then left out.
+- **The board read a missing list as an empty one.** `inspectTags` in the
+  board's src/validate.js answered `{ tags: [] }` for no list, and both
+  stores wrote that over the stored tags. So the builder's republish above,
+  and `syncOwnedName` and `syncOwnedIdentity`, which send no tags at all,
+  each wiped the track's tags.
+
+The comment on `rememberPublish` said the board "leaves alone" an omitted
+list, and the 2026-09-02 entry above says "The bind remembers what was last
+published, so a second publish pre-ticks rather than untagging." Neither was
+true on the day it was written. The board's selftest stated the rule in a
+comment ("an omitted list ... must leave them be") and had no check for it.
+
+### What changed
+
+Board, WebFPVSimulator-LeaderBoard, branch `claude/wonderful-einstein-j3lgjo`:
+
+- `inspectTags` answers `tags: null` for a request with no list, and for
+  JSON null. A list, empty included, is a list.
+- **One rule for both stores**, `tagsAfter` in src/store.js: a list
+  replaces, null keeps what the track wore, and a new track, or one from
+  before tags, wears none. `FileStore.publishUnlocked` and `PgStore.publish`
+  both call it. Postgres works it out from the row it already holds
+  `FOR UPDATE`, rather than with a COALESCE in the SQL, so the two stores
+  read as the same line.
+- **The publish answer carries `tags`**, the list the track wears
+  afterwards. Additive: a simulator that does not read it is unaffected.
+- README's API table names `tags?`, and a paragraph under it says what
+  leaving it out and sending `[]` each do.
+
+Simulator:
+
+- `writeBind` keeps `tags` when it is a list, empty included, and writes
+  no key otherwise.
+- `publishedTags` answers a list, or **null when this browser does not
+  know**. Null is every track published before today.
+- `rememberPublish` keeps the first of these that is a list: the board's
+  answer, then what was sent, then what the bind already knew. When none
+  is a list, the bind gets no list rather than an empty one.
+- `publishTrack` sends any array as it is, `[]` included, and leaves the
+  key out for anything else.
+- `tagsToSend` (src/share/listing.js) decides what the dialog sends: see
+  below. The dialog seeds from `held = publishedTags(id)` and sends
+  `tagsToSend(held, ticked)`.
+- On an owned track whose tags this browser has no record of, the tag help
+  line says so instead of "Optional, and up to 5": "This browser has no
+  record of the tags this track wears on the board, so none are ticked.
+  Leave them that way to keep whatever it wears, or tick some to replace
+  them." That is the only change a person can see.
+- `syncOwnedName` and `syncOwnedIdentity` still send no tags, now on
+  purpose, with a comment saying why: a rename is not a retag, and the
+  bind's list could be stale.
+
+### How "clear all tags" is said, and why
+
+**An explicit empty list, `tags: []`, and the builder sends one only when
+it knows what it is clearing**, which means the bind holds a list, so the
+dialog pre-ticked exactly what the author then unticked. When the bind has
+no list and nothing is ticked, the builder leaves `tags` out and the board
+keeps what it has.
+
+The reason is the tracks already out there. Every bind written before
+today has no tags in it, so on each of those tracks the dialog opens with
+nothing ticked. It has to: this browser never heard what the board shows.
+Sending `[]` from that dialog would repeat this bug on every existing
+track's first republish after the fix ships. Leaving the list out instead
+keeps the board's tags, the board's answer carries them, `rememberPublish`
+stores them, and from the next publish on the dialog pre-ticks them. The
+"not known" state lasts one publish per track.
+
+Considered and not taken: fetching the board's tags when the dialog opens.
+It would pre-tick even the first time, but it adds a board read, a loading
+state and a failure state to a dialog that has none, for a state that lasts
+one publish.
+
+### Decisions made without asking, for the owner to overrule
+
+1. **JSON null is read as no list**, so it keeps the tags. It is not read
+   as none and not refused. It is how JSON spells absent, and nothing
+   sends it today.
+2. **The board's publish answer now carries `tags`.** That is what lets a
+   bind that never knew learn the board's list.
+3. **Tags the board holds that this build has no button for ride along**
+   on a republish, so a stale builder changes only what it can show.
+   `usableTags`' comment in src/share/board.js promised this and nothing
+   did it. They are not counted against the dialog's limit of five, so if
+   the two together pass it, the board refuses with its own message and
+   the dialog prints it.
+4. **The rename and handle syncs send no tags** rather than the bind's
+   list, as above.
+5. **The "not known" state gets its own help line**, quoted above.
+
+### Ship order
+
+Board first, as DEPLOY.md says, and both orders were worked through:
+
+- **Board first (the plan).** Tag loss stops at once for the simulator
+  already live, because the lists it leaves out now keep. Until the
+  simulator ships, the live builder cannot clear tags, because it still
+  leaves an empty list out.
+- **Simulator first (not the plan).** No worse than today. The old board
+  still wipes on a missing list and sends no tags in its answer, so the
+  bind falls back to what was sent.
+
+### Coverage
+
+- **Board `npm test`, 13 new checks, all passing.** `inspectTags`: no
+  list and JSON null come back null, and `[]` is a list. File store: a
+  first publish answers with its tags; a rename with `tags: null` keeps
+  them; a new handle with the key left out keeps them; `[]` takes them
+  off; a first publish with no list wears none. HTTP: a republish that
+  leaves tags out keeps them and the times; its answer says what the track
+  wears; a new author with no list keeps them; `tags: null` keeps them;
+  `[]` still clears, and its answer says none.
+- **Simulator `check:clip`, 17 new checks in `suiteListing`, all
+  passing.**
+  - The bind round trip: tags kept; kept through the spread rewrite the
+    renames do; `[]` kept as none; a bind with no list, and no bind at all,
+    both read as not known.
+  - `rememberPublish`: a bind that never knew learns from the board's
+    answer; the answer beats what was sent; a rename that sent no list
+    keeps what was known; a sent `[]` is remembered as none; nobody knowing
+    stays not known.
+  - `tagsToSend`: not known and nothing ticked sends nothing; known and
+    all unticked sends `[]`; ticked tags go in the board's order; unshown
+    tags ride along.
+  - `publishTrack` on the wire: `[]` as `[]`, no list as no key, a list as
+    it is.
+  `suiteListing` and `main` are async now, for the wire checks.
+- **Both can fail.** Each repository's new tests were run against its
+  main in a scratch worktree this turn. Board: 12 of the 13 fail. The
+  one that passes is "an empty tag list is a list", which is unchanged
+  behaviour. Simulator: 11 of the 17 fail. `tagsToSend` does not exist on
+  main, so for that run it was stood in, in the worktree only, by the old
+  dialog's own expression, `usableTags(ticked)`. The 6 that pass there
+  pin behaviour that did not change, such as a ticked list going on the
+  wire as it is.
+- **The Postgres store.** The board's selftest runs only the file store,
+  so the same sequence was run through `PgStore` on a scratch Postgres 16
+  cluster (as the published maps entry above did for its own code). It
+  added a stranger's 409, an explicit replace, and a row carrying the
+  column's pre-tags default. 13 of 13 pass. On main's code on the same
+  cluster, 10 of the 13 fail, starting with the tags stored as empty right
+  after a rename. The probe lived in the scratchpad and is not committed.
+  The cluster was stopped and deleted.
+
+### Found, not fixed
+
+- **The board's `npm test` has one failure on main, before this change**:
+  "nothing app.js builds opens a bare new tab or asks for noopener". The
+  Patreon link in its public/app.js trips it, with `target = '_blank'` and
+  `rel = 'noopener noreferrer'`, and that link leaves the product on
+  purpose. Either the check or the link has to change, and which one is
+  the owner's call, so neither was touched.
+- **The simulator shell's publish cannot fork on a conflict.**
+  `publishCurrentCourse` in src/share/listing.js still passes
+  `forkDocument`'s return value to `toPlain`. Since 1ba92c8 that value is
+  `{ copy, commit }`, and `toPlain` throws "Cannot read properties of
+  undefined (reading 'width')" on it (a Node probe this turn). So a 409 on
+  a publish from the shell shows that message instead of putting the track
+  up as a copy. The builder's dialog uses `copy` correctly. Outside this
+  change.
+
+### What went wrong
+
+- **Both mains moved while this was being read.** The simulator's gained
+  four commits (published freestyle maps) and the board's two, in the four
+  board files this change edits. The fetch CLAUDE.md asks for is what
+  caught it. Before any edit, the simulator branch fast-forwarded to main
+  (merge-base was HEAD), the board branch was cut fresh from its new main,
+  and both baselines were rerun: check:clip 661 passed, board 383 pass and
+  the one failure above.
+- **The first cut of the board's store checks called `.join()` on the
+  publish answer's tags.** On main's code, where the answer has none, that
+  threw and took the rest of the suite with it, so the HTTP half never ran
+  there. The checks read the answer with `String()` now and fail cleanly,
+  which is what the run against main above used.
+- **The first dash scan proved nothing.** `grep -P '\x{2013}'` was refused
+  by this shell's locale, and the `|| echo none` behind it printed "none"
+  anyway. Redone with Python: no em or en dash in either diff.
+
+### RUN LOG
+
+    board npm test, the fix         396 pass, 1 FAIL (the Patreon check,
+                                    main too), 1 skip (the admin hash)
+    board npm test, main            383 pass, the same FAIL and skip
+    new board tests on main's code  13 failed: 12 new, and the Patreon one
+    board lint:licence              21 of 21 carry the notice
+    board lint:nouns                PASS
+    PgStore, scratch Postgres 16    13 of 13 pass; main's code 10 of 13
+                                    fail
+    npm run check:clip              678 passed, 0 failed (661 on main)
+    new check:clip on main's code   667 passed, 11 failed (tagsToSend
+                                    stood in, see Coverage)
+    npm run lint:nouns              PASS
+    npm run lint:preload            up to date: boot 105 modules, city 73,
+                                    built 29
+    node --check app.js             parses (no Node check loads the dialog)
+    dash scan, both diffs           no em or en dash in added lines
+    shots / fly it / served         not run: offered to the owner. The
+                                    dialog's new help line is the one
+                                    visible change
+    npm run verify                  not run: share code, a dialog and the
+                                    board; no physics, plant, ABI or build
+    git diff --stat vendor/betaflight   empty
+    git merge-base                  simulator: main 535331f is this
+                                    branch's base; board: main 7d1f89b is
+                                    its branch's base
+    board branch                    cd92dd9 on claude/wonderful-einstein-j3lgjo,
+                                    pushed first; board main untouched
+
+## 2026-09-25 | git | The tags fix goes to main in both repositories, for the owner to test
+
+The owner, on the entry above: "merge both to main, i'll test it". That is
+the approval to put the tags fix on main in both repositories, and the
+verification scale chosen is the owner testing it by hand. The five
+decisions the entry above lists were put to the owner and are not answered
+yet: JSON null reads as no list, the publish answer carries tags, unshown
+tags ride along, the renames send none, and the "no record" help line.
+They go to main as built, and testing it is how the owner will judge them.
+
+**The board went first**, as DEPLOY.md says, and its main had moved while
+this waited. 21b7380, another session's fix for the tab check that the
+entry above found failing on main, landed between the fetch at 11:07 UTC
+and the push at 11:09, so the first push was refused. Nothing was forced.
+The branch took the new main in by a merge, 6dee444, with merge-base
+7d1f89b, one history, and no conflicts: the two touched different parts
+of src/selftest.js. On the merged tree `npm test` passed everything,
+with the tab check green for the first time. Board main then
+fast-forwarded to 6dee444 at 11:12:31 UTC.
+
+This main fast-forwards to the branch after it: no merge commit, nothing
+rewritten, one history.
+
+**What can be seen from outside, and what cannot.** The board's change
+leaves no read-only mark. /api/health and every GET answer the same before
+and after. The publish answer and what a republish keeps can only be seen
+by publishing to the public board, which was not done, so the owner's test
+is the first sight of it live. The simulator's change is scripts and
+nothing else, so it can be seen at the origin: src/share/listing.js with
+`tagsToSend` in it.
+
+**Hard reload the builder before testing.** This is DEPLOY.md's four hour
+seam: through webfpv.org every script is cached for up to four hours, and
+this change is scripts only (listing.js, session.js, board.js and the
+builder's app.js). A browser that has the builder cached runs the old code,
+which pre-ticks nothing and cannot clear tags. No class name or stylesheet
+changed, so a stale browser runs the old code whole rather than a broken
+mix.
+
+What to look for:
+
+1. Publish a track from the builder with two tags, then open Publish
+   again: both are ticked.
+2. Rename the track and press Update without touching the tags: the
+   board's card still wears both.
+3. Change the name you fly under: the card still wears both.
+4. Untick everything and Update: the card wears none.
+5. On a track published before today, the dialog says "This browser has no
+   record of the tags this track wears on the board". Update without
+   ticking keeps the board's tags, and the next Publish has them ticked.
+
+What would count as wrong: tags gone from a card after a rename, a
+republish or a new handle; the "no record" line on a track published with
+this build; unticking everything leaving tags on the card; or Publish
+failing with a message about tags.
+
+### RUN LOG
+
+    git fetch, both                board main 7d1f89b, this main 535331f;
+                                   each branch one commit ahead, none
+                                   behind
+    live, before                   webfpv.org/board/api/health
+                                   {"ok":true,"store":"postgres"}; origin
+                                   src/share/listing.js without tagsToSend
+    board push, first              refused: main had moved to 21b7380
+    board branch                   21b7380 merged in, 6dee444; merge-base
+                                   7d1f89b, one history
+    board npm test, merged tree    399 pass, 0 FAIL, 1 skip (the admin
+                                   hash, BOARD_SELFTEST_PASSWORD unset)
+    board lint:licence, lint:nouns 21 of 21 carry the notice; PASS
+    board main                     21b7380..6dee444 at 11:12:31 UTC, by
+                                   fast-forward
+    simulator code                 unchanged since the entry above, so its
+                                   checks stand: check:clip 678 of 678
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | board | The tab check lets the Patreon link through, and nothing else
+
+Board only. Nothing in this repository changed except this entry. The
+board commit is `21b7380` in `Mathew-Harvey/WebFPVSimulator-LeaderBoard`,
+on `claude/amazing-babbage-pkvwvf`, pushed. The board's main is untouched,
+because a push there deploys webfpv.org/board and nobody asked for that.
+
+The owner's request: the board's `npm test` failed exactly one check on
+main, "nothing app.js builds opens a bare new tab or asks for noopener",
+and had since the Patreon link arrived in f1dc902 on 2026-09-22. Sessions
+since then recorded it as a known failure. The check looked for '_blank'
+anywhere in app.js with no allowance, and the Patreon link opens in a tab
+of its own with noopener, which is right: Patreon is outside the product,
+and given the webfpv-sim name a click would send the visitor's running
+simulator to Patreon. The owner asked for the Patreon link to be allowed
+without the check getting any weaker for a link to the simulator.
+
+- **One named line.** app.js now says how a link leaves the product once,
+  as `OUTSIDE_PRODUCT_LINK = { target: '_blank', rel: 'noopener noreferrer' }`,
+  and bindPatreonLinks takes its target and rel from it. Nothing a visitor
+  sees changes: the three anchors already carry the same two attributes in
+  the markup, and the script sets the same values it did.
+- **Excluded by its exact text, and nothing else.** The self test removes
+  that one line from the scan, requires it to appear exactly once, and
+  requires both uses of the name to sit in bindPatreonLinks. Every other
+  line of app.js is still scanned, a simulator link that borrows the
+  constant fails the count, and the count of named targets, ten since the
+  maps tab, is untouched. Why this is safe is written above the check in
+  src/selftest.js and above the constant in app.js.
+- **The scan is stricter than it was, which the owner did not ask for.**
+  The old `noopener'` matched `rel = 'noopener'` and not
+  `rel = 'noopener noreferrer'`, the spelling the Patreon link brought, so
+  a Fly link that picked that rel up beside its SIM_WINDOW target passed
+  while opening a fresh simulator on every click. Shown on the app.js from
+  before the Patreon link: the old expression passes `noopener noreferrer`,
+  `noreferrer` and `"_blank"` on the chase link. Comments now come out
+  first and the words are matched in any quoting and any case, noreferrer
+  included because the spec makes it imply noopener. It can go back to
+  the old expression if the owner would rather not have it.
+- **Not done: the page's own anchors.** The fallback anchors in
+  index.html are checked for target="webfpv-sim" but not for a
+  rel="noopener" beside it. Nothing there is wrong today. It is one more
+  line if the owner wants it.
+
+### What went wrong
+
+Board main moved while this was being made: dcc8d5f to 7d1f89b, the maps
+tab, pushed at 10:38 UTC by the session in the published freestyle maps
+entries. The first version was written and tested on dcc8d5f. Reapplied
+on 7d1f89b it conflicted in src/selftest.js at the count of named
+targets, six there and ten here. The ten was kept, three mentions of
+"six" in the new comment were reworded to name no number, so the next
+change to that count cannot leave the comment stale, and every check
+below was run again on the rebased tree.
+
+The first dash check errored, because grep in this container would not
+take a \x{2013} pattern, and printed its "no dashes" fallback anyway. It
+was not evidence. It was redone in node: none of the 88 added lines
+carries an em or en dash.
+
+### RUN LOG
+
+    board npm test, before      7d1f89b: exit 1, 383 pass, 1 FAIL, the
+                                check above; 1 skip, the shipped hash
+    board npm test, after       21b7380: exit 0, 386 pass, all passed;
+                                1 skip, the shipped hash, because
+                                BOARD_SELFTEST_PASSWORD is unset
+    mutations, real selftest    11 lines planted in a scratch copy of
+                                app.js, each failing the check it should:
+                                _blank by setAttribute and in double
+                                quotes; rel noopener, noopener noreferrer
+                                and noreferrer on the chase link; the
+                                constant borrowed; its uses moved out of
+                                bindPatreonLinks; the exempt line edited;
+                                the exempt line pasted twice; a '/*' in a
+                                string ahead of a planted _blank. Prose in
+                                a comment that says the words: all passed.
+                                Run on dcc8d5f and again on the rebased
+                                tree, the same result both times
+    old against new             app.js at 1d9e869, before the Patreon
+                                link: the old expression passes noopener
+                                noreferrer, noreferrer and "_blank" on the
+                                chase link, the new scan fails all three,
+                                and both pass it unmutated
+    comment stripping           188 comments found, 188 '/*' in app.js;
+                                the stripped file parses as a module; 3
+                                words left, all on the exempt line
+    lint:licence, lint:nouns    PASS, PASS
+    npm run verify              not run: nothing in the physics, the
+                                plant, the module ABI or the build
+                                changed, and it does not cover the board
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | git, board | The Patreon tab check, fast forwarded onto board main for the owner to look at
+
+The owner, on the entry above: "fast forward board main, i'll look at
+it". That is the approval to put 21b7380 on the board's main, and it
+covers that commit only: the exemption for the Patreon link, the stricter
+scan the owner did not ask for, and the two checks that pin the
+exemption. It is recorded here because this repository is the copy of
+record for the three. The verification scale chosen is the owner looking
+at it. This repository's main is not part of it: this entry and the one
+above are on claude/amazing-babbage-pkvwvf, and stay there until the
+owner says otherwise.
+
+- **A fast-forward.** Fetched first: board main was still 7d1f89b, the
+  merge base, with 21b7380 one commit ahead of it, so main moved with no
+  merge commit and nothing rewritten, 7d1f89b..21b7380 at 11:08:22 UTC.
+  The board's npm test ran again on 21b7380 just before the push: exit 0,
+  386 pass, the one skip.
+- **It deployed on its own.** A push to board main is a deploy of
+  webfpv.org/board. Measured through the domain: app.js without
+  OUTSIDE_PRODUCT_LINK before the push, and with it at 11:09:12 UTC, 50 s
+  after, byte for byte the app.js in 21b7380. app.js is served
+  cache-control: no-store, so a plain reload picks it up.
+
+What to look for, on webfpv.org/board: the Patreon links in the
+masthead, the spine and the footer each open Patreon in a new tab and
+leave the board where it was. Fly on two different tracks, or on a track
+and then a map, lands in the same simulator tab and brings it forward.
+What would count as wrong: a Patreon click that replaces the simulator
+tab or the board, or a Fly click that opens a second simulator.
+
+### RUN LOG
+
+    git fetch, board         main 7d1f89b, unmoved since the rebase; the
+                             merge base of main and 21b7380 is 7d1f89b
+    board npm test           21b7380: exit 0, 386 pass, all passed; 1
+                             skip, the shipped hash
+    board main               7d1f89b..21b7380, fast-forward, pushed at
+                             11:08:22 UTC
+    webfpv.org/board         before: app.js 200, no-store, no
+                             OUTSIDE_PRODUCT_LINK. At 11:09:12: app.js
+                             with it, sha256 b619b03f... on both the
+                             live file and 21b7380's; the page 200 with
+                             its three Patreon anchors; /api/health
+                             {"ok":true,"store":"postgres"}
+    git fetch, simulator     main 535331f, unmoved; this branch 5975db2
+                             plus this entry; this main untouched
+
+## 2026-09-25 | git | The tab check's entries go to main, merged with the tags fix
+
+The owner, on the entry above: "yes fast forward simulator main too".
+That is the approval to put claude/amazing-babbage-pkvwvf on this main.
+It covers PROGRESS.md only: the two entries above and this one. The
+branch changes no other file. The line in the entry above saying they
+stay on the branch until the owner says otherwise is overtaken by this.
+
+**Not a pure fast-forward, because main moved while the owner
+answered.** 207b9d3 and 43af247, the tags fix from a parallel session and
+its entry, landed on this main at 10:57 and 11:13 UTC. Main came into the
+branch by a merge, 98e5c42, merge-base 535331f, one history, the way the
+published maps branch took Stage B in. This main then moves to the branch
+by fast-forward, so nothing is rewritten on either side and no commit on
+main is lost. PROGRESS.md was the only conflict, where both sides
+appended. The merge keeps main's file byte for byte and puts this
+branch's entries after it, which is why the tags entries now sit between
+the published freestyle maps entries and these. One phrase in the first
+of these said "the session in the entry above" for the maps session,
+which the merge made wrong. It names the maps entries now, changed in the
+commit that adds this entry.
+
+**The same session carried board main past 21b7380.** Its board push was
+refused because 21b7380 had just landed, so it merged it in without
+forcing, 6dee444, and board main fast-forwarded there at 11:12:31 UTC.
+The tab check is on it and green: the board's npm test on 6dee444 passes
+all 399, the one skip aside, with the three checks this work added among
+them. The live app.js is still byte for byte the one in 21b7380, because
+the tags fix does not touch it.
+
+Nothing in this main's code changes with this push. The merged tree
+differs from 43af247 in PROGRESS.md alone, so no check here can see it,
+and none was run for it.
+
+### RUN LOG
+
+    git fetch, simulator       main 535331f..43af247, the tags fix;
+                               merge-base with this branch 535331f
+    merge                      98e5c42, main into the branch; PROGRESS.md
+                               the only conflict, resolved as main's file
+                               for a prefix and this branch's two entries
+                               for the suffix, checked in node; the merged
+                               tree differs from main in PROGRESS.md only
+    git fetch, board           main 21b7380..6dee444, the tags branch
+                               merged over it; 21b7380 is an ancestor
+    board npm test             6dee444: exit 0, 399 pass, all passed; 1
+                               skip, the shipped hash
+    webfpv.org/board           app.js sha256 b619b03f..., the same as in
+                               21b7380 and in 6dee444
+
+## 2026-09-25 | share | The shell's publish goes up as a copy when the board has the id
+
+The owner: "fix the shell publish conflict fork bug", the second item the
+tags entry above found and did not fix. Share code only: the plant, the ABI
+and the build are untouched.
+
+### What was wrong
+
+`publishCurrentCourse` in src/share/listing.js is the simulator shell's
+Publish. When the board answers 409 (the id is on the board and this
+browser has no key for it), it is meant to put the track up as a copy under
+a new id, as the builder's own publish does. It passed `forkDocument`'s
+return value to `toPlain` as though it were the copy. Since 16 August
+(19ddc7b) that value has been `{ copy, commit }`: that commit moved the
+builder's two callers to it and missed this one, which had been written the
+day before (c192d64). `toPlain` threw "Cannot read properties of undefined
+(reading 'width')". The pilot read that under "Could not publish that
+track", and no copy went up. Nothing ran this path, so nothing noticed.
+
+### What changed
+
+- The conflict path takes `{ copy, commit }` apart and publishes the copy.
+- **The bind is committed after the board has taken the copy**, and before
+  `rememberPublish`, which keeps the source that bind names.
+  - Committed after `rememberPublish` instead, the fork's own unowned bind
+    would overwrite everything `rememberPublish` had just written: the
+    author, the name on the board, the layout and the tags.
+  - Committed before sending, as the builder's dialog does, a copy the board
+    also refuses would leave a bind for a document that exists nowhere. The
+    builder can commit first because it loads the copy onto the canvas
+    before sending. The shell only makes the copy the canvas once it is
+    published.
+
+### Coverage
+
+Five new checks at the end of `suiteListing`, against a stub board that
+answers each publish in turn:
+
+- a 409 and then a 201: the publish goes up as a copy instead of throwing;
+  the copy has a new id and the same layout; the copy is this browser's,
+  with its edit key and its bind naming the original as its source; and the
+  canvas is the copy;
+- two 409s: an error, and no bind left behind for the copy.
+
+**The failure was reproduced first.** Against the unfixed listing.js all
+five fail, the first with the pilot's own message: "Cannot read properties
+of undefined (reading 'width')". With the fix they pass. The third also
+pins the order: committing after `rememberPublish` would leave the copy
+unowned.
+
+### What went wrong
+
+- **The tags entry above, and the chat, named the wrong commit.** They
+  said "Since 1ba92c8 that value is `{ copy, commit }`". 1ba92c8 is only
+  the oldest commit in this container's clone, which was shallow: 106
+  commits, with listing.js appearing whole in the first. The history was
+  deepened to 630 commits with a bounded fetch to date the change, and it
+  is 19ddc7b, as above. That entry stands as written, and this is the
+  correction.
+
+### RUN LOG
+
+    git fetch                       main 43af247, this branch's base;
+                                    history deepened to 630 commits
+    npm run check:clip, unfixed     678 passed, 5 failed: the 5 new, the
+                                    first "Cannot read properties of
+                                    undefined (reading 'width')"
+    npm run check:clip              683 passed, 0 failed
+    npm run lint:nouns              PASS
+    npm run lint:preload            up to date: boot 105 modules, city 73,
+                                    built 29
+    dash scan, the diff             no em or en dash in added lines
+    shots / fly it                  not run: offered to the owner. The
+                                    path needs a board that answers 409,
+                                    and the publish form is unchanged
+    npm run verify                  not run: share code only, no physics,
+                                    plant, ABI or build
+    git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | git | The shell's fork fix goes to main, for the owner to test
+
+The owner, on the entry above: "merge to main, i'll test it". That is the
+approval to put the shell's conflict fork fix on main, and the
+verification scale chosen is the owner testing it by hand. The one
+decision in the entry above, committing the copy's bind only once the
+board has taken the copy, goes to main as built.
+
+main had moved again while this waited: four commits, all PROGRESS.md,
+another session's entries for the board's tab check. The branch took them
+in by a merge, 2cde6cd, merge-base 43af247, one history. PROGRESS.md
+conflicted where both sides appended, and it keeps main's file whole with
+this branch's entry after it. main then fast-forwards to the branch: no
+merge commit on main's side, nothing rewritten.
+
+**Hard reload before testing.** The change is src/share/listing.js alone,
+which is a script, and scripts sit behind DEPLOY.md's four hour cache
+through webfpv.org.
+
+How to reach the path. It needs a track whose id is on the board and whose
+edit key is not in this browser:
+
+1. Save a track you have published to a file from the builder.
+2. Import that file into the builder in a private window. Import keeps the
+   id, and the private window has no key for it.
+3. Fly it, then Publish from the simulator.
+
+What to look for: "Published "...". Published as a new track." and a
+second card on the board under the same name. Press Publish again in the
+same window and it says "This track is already on the public board.",
+because the copy is now this window's and unchanged. **The second card is
+a real listing on the public board**, so take it off as admin afterwards.
+
+What would count as wrong: "Could not publish that track" with "Cannot
+read properties of undefined (reading 'width')", which is the bug; a third
+card when Publish is pressed again; or the original track's card
+changing.
+
+### RUN LOG
+
+    git fetch                      main 43af247..c48101c, four PROGRESS.md
+                                   commits; merge-base 43af247
+    merged                         2cde6cd, PROGRESS.md resolved as main's
+                                   file plus this branch's entry; no code
+                                   from main
+    npm run check:clip, merged     683 passed, 0 failed
+
+## 2026-09-25 | shell, builder, deploy | Every page loads the scripts of the deploy it was served from
+
+The owner, with a screenshot of the builder's toast "The public board does
+not take freestyle maps yet. Export the map to share it as a file." an hour
+after maps could be published: "apparently i can't publish the map". The
+site was serving the new builder (fetched through the domain and from the
+Render origin, the sentence absent and openPublishMap present); the owner's
+browser was running a cached app.js, DEPLOY.md's four hour seam, the second
+time that day. Offered a code fix that changes how the pages start, the
+owner answered: "do the code fix so it always loads fresh". That is the
+approval, recorded here with its date. It covers src/fresh.js, the first
+lines of the three pages that load it, src/trackbuilder/start.js,
+scripts/gen-preload.js writing into fresh.js instead of index.html, and
+main.js's map preloads. The plant, the module ABI and the WASM build are
+untouched.
+
+### What changed
+
+- **src/fresh.js**, new, a classic script. It writes the page's one import
+  map: three.js from the CDN, as every page's static map did, and, when the
+  page gave it a deploy stamp, every module this site serves at an address
+  carrying it, `src/main.js?d=<stamp>`. An import map applies to every
+  import, static or dynamic, so the whole graph moves with the deploy. Then
+  it preloads the boot graph at those addresses and imports the page's
+  first module once the document is parsed.
+- **The first lines of index.html, src/trackbuilder/index.html and
+  src/share/orbit.html** ask for the page's own Last-Modified with a HEAD
+  no cache may answer, which is the deploy's time because Render stamps
+  every file of a deploy with it and a page is never cached, and load
+  fresh.js with it. None of the three has an import map, a modulepreload
+  or a module script of its own any more: each would start the module
+  loader before the addresses were known.
+- **src/trackbuilder/start.js** is the builder's inline module, moved
+  unchanged, because an inline module is a module script.
+- **scripts/gen-preload.js** writes the boot preload list into fresh.js
+  where it wrote index.html's modulepreload block, adds MODULES, every .js
+  git tracks under src/ and configs/ (201), and reads the import map from
+  fresh.js. `npm run lint:preload` checks both, as before.
+- **src/main.js**'s map preloads use import.meta.resolve, which applies the
+  import map, so the city's preloads are the addresses its imports use.
+- **scripts/fresh-check.js**, `npm run check:fresh`: serves the checkout
+  with webfpv.org's headers, deploys under a browser, and proves the new
+  module is the one running. See its header.
+- **DEPLOY.md**: the seam is worked round; the TTL still matters for
+  pictures.
+
+### Why versions per deploy, and not the other two
+
+- **Content hashes** are the right answer with a build step. This repo has
+  none and the host runs none, and hashes committed by hand would change
+  with every edit to every module, in every session working at once, with
+  a lint to fail each time somebody forgot.
+- **Revalidating the cached scripts when the deploy changes** (fetch with
+  cache: 'no-cache' over the module list) costs a returning browser only
+  the changed files. But the edge keeps a script five minutes
+  (s-maxage=300), so in the minutes after a deploy it can answer a
+  revalidation with the old script, and a page could still run half of one
+  deploy and half of another.
+- **An address per deploy** cannot be mixed by any cache: the edge has
+  never seen the new addresses, the browser has never cached them.
+
+### What it costs, and what it does not cover
+
+- One HEAD request per page load, to the page's own address.
+- A deploy sends a returning browser every script it loads once more,
+  changed or not: about a megabyte compressed for a boot.
+- The module loader starts one round trip later than the markup's
+  modulepreload block did, after the HEAD.
+- Not covered: pictures, still four hours behind a deploy; the landing
+  page, another repository. dist/sim.wasm already goes out max-age=0, and
+  the board's scripts no-store.
+- A module missing from MODULES, when the list is stale, loads at its bare
+  address, which is the old behaviour for that file and not a failure.
+
+### What went wrong
+
+- **The generator's first run listed 200 modules and missed start.js.** It
+  lists what git tracks, and start.js was new. Staged and regenerated: 201.
+- **The first smoke test ran against a local server that had died** and
+  waited two minutes on nothing. Restarted, and it ran.
+
+### RUN LOG
+
+    check:fresh              18 passed, 0 failed: the builder, the
+                             simulator and the orbit page each run the new
+                             deploy's module after a deploy, fetched at
+                             ?d=<new stamp>; the control, the module changed
+                             and the stamp not, runs the cached module, so
+                             the browser here does cache scripts
+    negative control         the same check against the builder page as it
+                             was before this: 0 of 6, still running the
+                             first deploy's module after a deploy, which is
+                             the owner's report reproduced
+    smoke, no stamp          the three pages boot as before on a checkout:
+                             the simulator ready in 6.4 s with 105
+                             preloads, the builder in 1 s, the orbit page
+                             started
+    check:clip               661 passed, 0 failed
+    lint:boot                9 of 9
+    lint:preload             up to date: boot 105, city 73, built 29; 201
+                             served
+    lint:nouns               PASS
+    lint:shell, no board     FAIL 1: the title's 23 px, as on main
+    lint:input               154 passed, 2 failed: the parked throttle row,
+                             as on main
+    lint:board               PASS: 8 tracks listed, 8 cards drawn
+    published maps, served   24 passed, 0 failed, the builder starting from
+                             start.js, the board sheet's camera and Fly
+                             this map through the new loader
+    npm run verify           not run: the plant, the module ABI and the
+                             WASM build are untouched; the pages' start is
+                             what changed, and check:fresh, the smoke run
+                             and the browser checks above drive all three
+    git diff --stat vendor/betaflight   empty
+    merged with main         6bf90bf came in while this was written (the
+                             tags fix, the Patreon tab check, the shell's
+                             fork fix): PROGRESS.md conflicted where both
+                             appended and keeps every entry of both, main's
+                             first; the code merged by itself, and no
+                             module was added, so MODULES did not move
+    merged tree              check:clip 683 of 683; lint:preload up to
+                             date; check:fresh 18 of 18; published maps,
+                             served, 24 of 24
+
+## 2026-09-25 | git | The loader goes to main, for the owner to test
+
+The owner, on the entry above: "merge to main, i'll test it". That is the
+approval to put src/fresh.js and the pages' new first lines on main, and
+the verification scale chosen is the owner using the builder as a
+returning visitor would, with no hard reload.
+
+- **A fast-forward.** Fetched first: main was 6bf90bf, this branch's merge
+  base and ancestor, so main moves to the branch with no merge commit and
+  nothing rewritten.
+- **Checked on the live site before the push**, because the fix depends on
+  both: a module asked for at a stamped address through webfpv.org comes
+  back as the module, application/javascript, 380,652 bytes for
+  src/main.js?d=... and 116,721 for the builder's app.js; and the builder
+  and orbit pages answer a HEAD with Last-Modified.
+- **This deploy picks itself up.** The pages are never cached and now
+  carry the lines that load fresh.js, so the first visit after it loads
+  every script at the new deploy's address. No hard reload.
+
+What to look for: the builder, opened the ordinary way, publishes a map;
+and after the next deploy, whatever it is, nothing old comes back. What
+would count as wrong: a message or behaviour from before a deploy after
+it, a page that stays on its loading screen, or the loading taking
+noticeably longer than it did.
+
+### RUN LOG
+
+    git fetch                main 6bf90bf, unmoved since the merge above
+    git merge-base           6bf90bf, main's tip; main moves by
+                             fast-forward
+    live, before the push    stamped module addresses served as the
+                             module; the pages answer HEAD with
+                             Last-Modified
+    code                     unchanged since the merged tree's checks above
+    git diff --stat vendor/betaflight   empty
+
 ## 2026-09-25 | git | Merge main: the fourth gate card and the builder's chooser
 
 main had moved seven commits: a finger scrolls the page menus on an iPhone,
@@ -45214,3 +46510,771 @@ A fix round is under way: that change, checks that see the yaw term, the
 drift rate, the normal's sign and the previous pose, a fold refused, a
 NaN-safe reach test, every planted fault required to turn a check red, then
 the verifier again. Checkpoints a8b8f64 and before are unverified.
+
+## 2026-09-25 | git | Stage D's verified half goes to main: the world golden in verify
+
+The owner: "we good with the drift car chase? lets deploy to main before we
+run out of token", on top of their standing "merge stage D to main when
+it's verified". The drift car chase is not built yet: Stage D part 2, the
+turning movers, was being written when this was asked and is not verified,
+and Stage E, the road tool, the drift car and the Tail meter, comes after
+it. So only the verified half of Stage D goes, up to 121efd8:
+
+- Stage D part 1 (8e5377e): the module reproduces byte for byte from
+  source; the world golden (35 runs, every step pinned) with its self test;
+  the Node against Chrome comparison; the town fixture.
+- check 17 in npm run verify (34c8085): 17 of 17, rows 1 to 16 identical
+  to the baseline, and it fails when world.c changes.
+- The owner's go for part 2 and the drift decision (121efd8), and the
+  retry on Chrome profile deletes in the world scripts.
+
+No physics change goes: dist/sim.wasm on main stays b0f89e9a..., and the
+half written world.c on the branch (54c7ed4 and after) does not come. Main
+had moved to e61e992 (published freestyle maps, the tags and fork fixes,
+the loader), none of it in src/native, dist, tests, patches or the world
+scripts; merged in a separate worktree so the running part 2 agent was not
+disturbed. PROGRESS.md conflicted in two places, both sides appending, and
+both were kept; package.json merged cleanly with main's check:fresh beside
+the world checks.
+
+## 2026-09-25 | collision, shell | A belly first wall tap is not a crash, whichever way the map faces
+
+The owner: "in the freestyle map i made i went to do a wall tap , bottom of
+the quad into the wall as slow speed and it registered as a crash, this is
+wrong". Shell only: the plant, the module ABI and the build are unchanged,
+and so is every line the crash reset draws. What changed is the frame the
+shell reads one of its inputs in.
+
+### What was wrong
+
+CRASH IS A RESET (src/main.js) resets a smack of GRAZE_SPEED_MAX (4 m/s) or
+more that did not land on the belly. For a wall it took body up from the
+plant's quaternion and dotted it with sim_world_report's contact normal. That
+normal is in the WORLD frame, the one the solids were uploaded in, and
+src/native/world.c places the plant in it as W = Rz(yaw) p + O. The two were
+a spawn yaw apart, so a belly flat on a wall read cos(yaw), not 1:
+
+- the city spawns at yaw pi, so a belly on a wall read -1, the top plate;
+- a built map spawns at its pads' yaw less a quarter turn, or at -pi/2 with
+  no pads, where the belly read 0, a side;
+- every set down (X, stuck, or a crash) reseats the frame at the craft's own
+  heading, so after the first one the reading was arbitrary on every map.
+
+Wherever the frame's yaw was more than about 46 degrees from zero, a belly
+first tap closing at 4 m/s or more was reset. The closing speed is taken at
+the contact point with the rotation in it, so it is not the approach speed:
+on the whoop, arriving at 2.4 m/s and still turning at 84 rad/s from its
+pitch back, the belly's edge touched at 3.7 m/s and the belly slapped flat
+at 5.7 m/s, reading 0.89 at the touch and 0.99 at the slap. That is how a
+slow tap crosses the line.
+
+The same fault cut the other way at yaw pi, where a steep nose first hit
+read as belly: 7.8 m/s at 68 degrees nose down was missed on every frame
+phase.
+
+Nothing had flown a belly tap over the line at a heading other than zero.
+park:fly's Wall Tap arrives at about 1.5 m/s and check:crash's tap at 3 m/s,
+both under it. world-check's four heading scenario holds the module to 1e-6
+across headings, and it is: the module was right, the shell's reading of it
+was not.
+
+### How it was found
+
+A scratch probe, not committed, flew wall taps through dist/sim.wasm and
+Betaflight in Node: an angle mode run in, an acro pitch back to a set
+attitude with the throttle cut, a coast in base first, and optionally a pitch
+forward on the tap. It applied the shell's three crash rules to frames of 7,
+16 and 33 ms at every phase. 240 five inch flights at yaw 0, runs of 3 to 8
+m/s and pitch backs of 45 to 120 degrees: no clean base first tap was reset
+at any speed. Writing the belly test out by hand for the probe exposed the
+two frames. Flown again with the plant's frame turned by quarter turns, the
+identical 4.5 m/s tap was reset on every phase at 90, 180 and 270 degrees and
+on none at 0.
+
+### What changed
+
+- **src/game/collide.js.** CRASH_BELLY_UP and CRASH_UNDERSIDE_NZ moved here
+  from main.js, unchanged. bodyUpDotWorld turns the world normal into the
+  plant's frame by the frame's yaw before the dot, exactly as world.c's
+  world_to_plant_dir does. solidContactCrash is the solid rule as it was,
+  with that one difference. Both are pure, so a check in Node asks them.
+- **src/main.js.** seatWorldFrame, the one place the yaw goes to the module,
+  keeps its cosine and sine beside it (frameTurn), and the solid rule calls
+  solidContactCrash. bodyUpDot is gone. The ground and STOP rules read body
+  up against the vertical, which no yaw moves, so they are untouched.
+- **The turn comes from src/props/trig.js**, fdlibm's sine and cosine in
+  plain IEEE arithmetic, and not from JS Math.cos, because the verdict moves
+  the craft and CLAUDE.md keeps Math.sin and Math.cos out of anything that
+  does. So trig.js is on the boot graph now: src/fresh.js's boot list
+  carries it, the built map's list in src/maps/preload.js no longer does
+  (npm run gen:preload), and lint:memory's exact list of props modules
+  allowed at boot names it beside types.js, with the reason. That list exists to keep the
+  asset library's weight off boot, and trig.js is 157 lines of arithmetic
+  with no imports and no asset in it.
+
+### Coverage
+
+- **check:clip**, a new suite, "crash reset: a solid contact, judged in the
+  plant's frame", 16 checks: a belly flat on a wall reads 1 and a 50 degree
+  nose first hit reads -sin 50 at six spawn yaws by four wall headings; the
+  city's pi and a padless built map's -pi/2 by name, frame blind and turned;
+  ceilings, roof tops, a prop alone and the graze line; and the belly cone,
+  about 45 degrees, pinned where it was.
+- **check:world**, a new reading, "a wall tap is judged the same whichever
+  way the map faces": a 5.4 m/s base first tap and a 7.7 m/s steep nose first
+  hit, flown through the module at four headings, twice each to the bit, and
+  judged with solidContactCrash on frames of 7, 16 and 33 steps at every
+  phase, folded from per step reports the way the module sums them. The tap
+  is never reset and the hit always is. It also reads each flight frame
+  blind and asserts the old fault is visible in it: the tap reset at 90, 180
+  and 270, the hit missed at 180.
+  It is a READING, in a list of its own beside SCENARIOS, and not a
+  scenario: scripts/world-golden.js pins every step of every scenario, and a
+  run new to that golden is recorded only with the owner's approval. What
+  it judges is src/game/collide.js, not the world solve. Its pilot steers on
+  sin(want - pitch) from the nose vector, with the want turned by trig.js,
+  so no JS trigonometry reaches the module. For all this, fly() keeps each
+  step's report and attitude on its rows, and a run may stop 200 ms after
+  its first contact.
+  Whether its flights should also be pinned in the golden is the owner's
+  call, and they are not in it.
+- **The fault was reproduced against both checks.** With the turn taken out
+  of bodyUpDotWorld, which is the old reading, check:clip failed 6 and
+  check:world failed 2. Put back byte for byte, both pass.
+
+### What went wrong
+
+- **The first fetch named this branch, which is not on the remote yet**, so
+  git refused the whole fetch and origin/main stayed at 9ed8b9c, a stale ref
+  from the container's first clone. For one step it looked as if main were
+  three commits ahead. Fetched alone, main is 6bf90bf, this branch's HEAD,
+  one history.
+- **The probe's first stick law had its damping backwards.** Nose up is
+  negative q in the plant. The sanity run before the sweep caught it.
+- **The probe's "pitch forward on the tap" overshot**, to 60 degrees nose
+  down under throttle, and flew the craft back into the wall, which read as
+  resets that were real nose first hits and not the rule's fault. The tap's
+  verdict was then judged over its own first 60 ms.
+- **main.js changed after lint:memory had run**: frameTurn moved up beside
+  startYaw, so no reset can meet it before it exists, and main.js's unused
+  import of CRASH_UNDERSIDE_NZ went. lint:memory was run again on the final
+  tree.
+- **main moved under the turn**, 6bf90bf to fdafe2e: Stage D part 1's world
+  golden with verify's check 17, the loader (src/fresh.js), and visit source
+  attribution. This branch was still main's ancestor, so the work was
+  stashed, the branch fast forwarded onto main, and the stash applied.
+  PROGRESS.md conflicted where both appended and is main's file with this
+  entry after it. index.html conflicted because the boot list had moved out
+  of it into src/fresh.js: it is main's, and the lists were generated again
+  with main's gen-preload.
+- **The verdict check first went in as a world-check scenario**, which the
+  new world golden would have flown and failed as a run it had not
+  recorded, and its pilot steered with Math.atan2 on a stick that reaches
+  the module, against the golden's rule. Found reading world-golden.js
+  after the merge, before anything was committed. It is a reading now, with
+  a trig free pilot, and the golden passes untouched.
+
+### Found on the way, not fixed
+
+For the owner, because each is a line to draw or a larger change:
+
+1. **The belly cone is about 45 degrees** (CRASH_BELLY_UP 0.7), unchanged.
+   At yaw 0 every reset among the probe's 240 taps was a craft that met the
+   wall pitched back less than about 44 degrees, at 4.2 to 7 m/s, including
+   8 m/s runs whose flip had not finished before the wall. A shallow tap at
+   speed is still a crash.
+2. **At the cone's edge the solid verdict depends on the frame rate.** It
+   reads the attitude at the frame's end with the normal of the frame's
+   biggest step. A 42.6 degree tap at 4.5 m/s was reset on 7 of 7 phases at
+   144 Hz, 8 of 16 at 60 Hz and 8 of 33 at 30 Hz, and CLAUDE.md says a
+   dropped frame must change nothing about the trajectory. The fix is to
+   read the world report every step and judge each step at its own attitude,
+   which needs no ABI change. Offered, not done.
+3. **The closing speed is the fastest of any contact in the frame, props
+   included**, while "not a prop alone" only asks whether the frame touched
+   at all. In the probe's 30 degree tap at 4.8 m/s every step that closed
+   over the line had a prop disc in contact too, so whether the frame itself
+   closed that fast the report cannot say. Telling them apart needs the
+   report to carry the frame's own closing speed, an ABI change.
+4. **The ground half is gated on the wall clock**: it judges a frame only
+   when BOUNCE_COOLDOWN_MS of wall time (nowWall) has passed since the last
+   ground bounce. Another frame time dependence in a decision that moves the
+   craft. Older than this entry, untouched.
+
+Unchanged and worth knowing when flying it: the recogniser still calls a
+contact over GRAZE_SPEED_MAX a bump and not a tap, so a wall tap that closes
+at 4 m/s or more is no longer a crash but does not score as a Wall Tap
+either.
+
+### RUN LOG
+
+    git fetch, main alone          origin/main 9ed8b9c..6bf90bf, this
+                                   branch's HEAD; merge-base 6bf90bf
+    git fetch before committing    main 6bf90bf..fdafe2e, merge-base
+                                   6bf90bf; stash, fast forward, stash
+                                   applied; PROGRESS.md and index.html
+                                   resolved as above. Every check below
+                                   from here on is on the merged tree
+    probe (scratch, Node)          240 five inch taps at yaw 0: no base
+                                   first tap reset. The same 4.5 m/s tap at
+                                   90, 180 and 270: reset on every phase of
+                                   7, 16 and 33 ms. Whoop taps from 3.4 to
+                                   5.5 m/s at 90: all reset before, none
+                                   after, and none at any heading after
+    npm run check:clip             683 passed on the parent, run this turn;
+                                   699 passed, 0 failed, the 16 new
+    npm run check:world            all passed, 48 passes with 9 new; the
+                                   same 5 targets not met as before; every
+                                   line that was there is identical
+    npm run check:world-golden     all passed: 35 runs, 62 flights, each
+                                   flown twice, bit identical to
+                                   tests/goldens/world.json; the reading is
+                                   not among them
+    mutation, the turn removed     check:clip 693 passed, 6 failed;
+                                   check:world 2 FAILED, the reading's two
+                                   verdicts. Restored byte for byte: both
+                                   pass. Run before and after the merge
+    npm run lint:preload           up to date, boot 106 modules, city 73,
+                                   built 28, 201 served (105 and 29 before
+                                   gen:preload)
+    npm run lint:memory            PASS on the final tree; src/props at
+                                   boot: trig.js, types.js
+    npm run lint:nouns             PASS
+    node --check                   every changed file
+    dash scan, the diff            no em or en dash in added lines
+    Math.sin, cos, pow added       none outside test code: the check's pilot
+                                   and the unit test's attitudes
+    npm run verify                 not run: shell only, no plant, ABI or
+                                   build change
+    npm run check:fresh            not run: it proves a returning browser
+                                   gets a new deploy, which this does not
+                                   touch; the list it serves from is
+                                   lint:preload's, up to date
+    npm run check:crash, shots     not run: offered to the owner
+    git diff --stat vendor/betaflight   empty, and not checked out here
+
+## 2026-09-25 | git | The wall tap fix goes to main
+
+The owner, on the entry above: "push to main". That is the approval to put
+the fix on main. No verification scale was named with it: the checks in the
+entry above are the ones that were run, on the very tree that goes to main,
+and flying it stays the suggestion. main had not moved from fdafe2e, the
+base this branch was built on, so main goes to the branch as a fast forward:
+no merge commit on main's side, nothing rewritten.
+
+Still open, asked with the push: whether the reading's two flights should
+also be pinned in the world golden, which is the owner's approval to give.
+
+What to look for when flying it is in the entry above. A belly first wall
+tap at the pace that reset you bounces off with no "Crashed, set down
+nearby", facing any way and after an X set down too. A nose first smack
+still resets at once, in the city as well. Wrong would be a reset on a
+belly tap, or a nose first hit that hangs on the wall.
+
+### RUN LOG
+
+    git fetch                      main fdafe2e, unchanged since the entry
+                                   above; merge-base fdafe2e, main is an
+                                   ancestor of the branch
+    code                           unchanged since the entry above; only
+                                   this entry is new
+    checks                         not rerun: nothing they read changed
+
+## 2026-09-25 | art, maps, checks | The STF mark in plain view: seen from the pads on every freestyle map
+
+The owner: "the logo of SubTwoFIfty is too hard to find, make it easy to
+see on any map". Stage B had hidden it on purpose: in the town inside the
+works shed's roof space, on a built map on a face chosen so it could NOT be
+seen from the pads. This turns that round. No physics change, no ABI or
+build change: the mark is paint, and both built map placement hashes are
+unchanged (starter e72f829e..., one of everything 9899d9f1...).
+
+### The owner's decision, recorded
+
+- **2026-09-25, decision 10 in FREESTYLE-MAPS-PLAN.md section 12: the STF
+  mark is painted to be seen, not hidden.** Big, where the pilot sees it
+  from the pads, in the first frame where the map allows. It replaces
+  decision 3's "the sim hides it" (the sim still chooses the spot and the
+  builder still never shows it) and answers open question 6, the town's
+  spot. Section 9 is rewritten to match. "Any map" is read as every map
+  that carries the mark, the town and every built map; race tracks carry
+  none and still do not (asked below).
+
+### What changed
+
+- **The town, src/maps/city/places/index.js.** The mark leaves the works
+  shed (STF_SPOT and buildStfMark come out of works.js, which is back to
+  its pre Stage B imports) for a 4 by 2 m mural on the south flank of 米・酒
+  なかの, the corner shop that closes the street the pilot starts in: 25 m
+  ahead of the pads, 11 degrees left of the nose, dead centre of the town's
+  first frame. The plain upper storey was mapped by a grid of rays against
+  the drawn town (wall from x 2.5 to 6.8, 3.7 to 6.0 m, between the blade
+  sign and a downpipe, over the string course and under the eave), because
+  northblock.js is vendored and exports none of it. The paint stands 1.5 cm
+  in front of the town's fitted collider face, which is 5 cm proud of the
+  brickwork, so the find's sight line never ends inside a solid.
+- **Built maps, src/maps/built/egg.js, rewritten.** Rules: an upright face
+  of a drawn opaque box; open air 3 m in front; seen from 0.3, 2 and 5 m
+  over the seat (every line to nine points on the mark clear of anything
+  opaque); turned to the pads (within 60 degrees) and 15 to 60 m from them.
+  The pick is the wall whose mark looks biggest from the pads (width times
+  how square it stands, over distance) weighed by the turn (2 plus the
+  cosine off the pads' heading: 3 ahead, 2 abeam, 1 behind). Marks are up
+  to 6 by 3 m, down to 1.8 by 0.9. A map with no such wall gets it flat on
+  the paving 12 m ahead of the pads (then 8, then 18, then the plot's
+  middle), 12 by 6 m, square to the plot, reading away from the pads. No
+  seed any more: the spot is a property of the layout, the same whatever
+  the id. The pads' heading comes from src/props/trig.js's sincos, so the
+  file now imports trig.js instead of parts.js (still pure, still no JS
+  trigonometry).
+- **The paint, src/art/stf.js.** makeStfMark takes `shade`: paint on a face
+  the sun never reaches gives back 0.3 of its own colour, dusk's share. The
+  town's flank faces north at golden hour and its white lettering had gone
+  the lavender grey of the render round it; with it, white and green again.
+  A built map sets it by testing the face against the look's own sun.
+- **Finding it, src/game/egg.js.** findRange(egg): 4 m for a mark up to 1.8
+  m wide, in proportion for a bigger one, so it is found at the same fifth
+  of the frame; capped at 13.5 m, short of the 15 m minimum reach, so no
+  mark is ever found from the pads.
+- **The checks, scripts/props-check.js, egg block and self tests.** Every
+  rule restated in the check's own geometry, with an exact slab test for
+  sight lines; rule 6 checked independently: no wall that scores higher
+  keeps rules 1 to 5 at its middle. The seed checks become "the id moves
+  nothing". The find checks now require the pads' eyes to have a clear
+  line to the mark and not find it. Self tests plant a wall between a mark
+  and the pads (fails rule 4 only), move a mark out of reach (rule 5 only),
+  turn one away (rule 5), and hand the pick a spot on the paving of a map
+  with a wall in view (caught).
+- Docs: FREESTYLE-MAPS-PLAN.md sections 9 and 12, src/maps/README.md, the
+  headers of the files above, src/maps/preload.js regenerated (the town
+  imports stf.js from places/index.js now; order only, counts unchanged).
+
+### Measured
+
+    town, first frame on the pads      the mural centred, lettering legible
+    town, from 7 m in front (page)     found; not found on the pads
+    starter's spot                     the bando's own ground floor wall,
+                                       south face, 4.2 by 2.1 m, 29.9 m
+                                       ahead, in the first frame
+    starter, from 8 m (page)           found; not found on the pads
+    one of everything                  a 1.8 m mark on a balcony parapet
+    50 random maps                     25 on a wall, 25 on the paving,
+                                       5 in the first frame
+    timing                             starter 9.0 ms, 10027 solids 29.6 ms
+                                       (first call, fresh engine)
+
+The found checks in the page placed the craft with window.__placeCraft
+and read window.__egg(), through tests/lib/page.js. The shots were taken
+the same way; they are in the session's scratchpad and are not committed.
+
+### Judgement calls, for the owner
+
+- **The starter's mark is on the bando, over its NEKO tag.** It is lifted
+  clear of the tag, so nothing fights, and it reads as one tag painted
+  over another. Before the band fix below it was on the office block's
+  south face, 6 by 3 m, 60 m out, at the left edge of the first frame; the
+  two scored 0.275 and 0.266. Either is easy to see.
+- **Paint on the paving is the weak case.** A craft on its pads cannot see
+  it (a sliver at the horizon); it reads once the craft is up and pitched
+  forward. It only happens on a map with no wall facing the pads 15 to 60
+  m out, which on the random maps is half of them, because they are sparse
+  scatters with random pads. The alternative, standing the mark up on
+  something the map does not have, means adding geometry that is not
+  solid, which a craft would fly through; I did not do that.
+- **A wall behind the pads counts**, at a third of the weight of one dead
+  ahead, because a mural a pilot sees with one turn beats paint on the
+  paving.
+- **Finding it is now quick**: the town's mark is 25 m up the street, so
+  MARK FOUND comes within seconds of takeoff. That follows from "easy to
+  see"; the find itself is unchanged in kind.
+
+### What went wrong
+
+- **The fit ignored rule 2's ground clearance.** A wall standing on the
+  paving was sized to fit its face 10 cm in from the edges and then
+  rejected because the mark's foot was under 0.3 m, so a single container's
+  side took no mark at all. Now the band starts 10 cm over the clearance,
+  and a single container takes a 4.2 m mark. Stage B's fit had the same
+  flaw; with a 0.9 m mark it rarely showed. Found while restating the rule
+  in the check, and it moved the starter's pick from the office to the
+  bando.
+- **The first draft excluded walls not ahead of the pads.** 35 of 50
+  random maps then fell back to the paving; the diagnosis showed 544 walls
+  facing the pads and only 179 ahead of them. Weighing the turn instead
+  of excluding it brought the paving down to 25.
+- **I misread a ray.** An early probe from the town's spawn hit something
+  at x 4, z 40.5 between the pads and the mural, and I wrote it into a
+  comment as the utility pole crossing the mural. The shots from the pads
+  and from 2 m over them show the whole mural clear; the hit was most
+  likely one of the town's invisible interaction boxes. The comment says
+  what the shots show.
+- The town's SPAWN comment in src/maps/city/index.js still says the pilot
+  faces north at the crossing and the shop; the pilot faces +z, up the
+  street, with the crossing behind. Left as it is, outside this change.
+
+### RUN LOG
+
+Run on the final code, this turn:
+
+    node scripts/props-check.js        all passed, 202 PASS; placement
+                                       hashes unchanged
+    props-check --selftest             all passed
+    npm run check:clip                 683 passed, 0 failed
+    npm run lint:preload               stale (order), regenerated, then
+                                       up to date: boot 105, city 73,
+                                       built 29
+    npm run lint:memory                PASS, every world lazy and freed;
+                                       the town leaves 62 geometries and 6
+                                       textures after freeing against a
+                                       baseline of 61 and 5, and main does
+                                       exactly the same (run on a worktree
+                                       of 6bf90bf), so it predates this
+    dash scan, added lines             none
+    git diff --stat vendor/betaflight  empty
+    shots                              through tests/lib/page.js on the
+                                       real shell (not scripts/shots.js
+                                       itself): town and starter first
+                                       frames, 2 m over the pads, the find
+                                       range's edge and 4 m out; a map of
+                                       trees; before and after the shade
+                                       glow
+    npm run verify                     not run: no physics, plant, ABI or
+                                       build change
+    npm run check:plant, check:crash   not run: nothing solid changed, and
+                                       the hashes say so
+
+After the commit above, main had moved to fdafe2e (Stage D part 1's world
+golden in verify, the loader, visit source attribution). Merged into this
+branch, merge-base 6bf90bf, one history; only PROGRESS.md conflicted, both
+sides appending, resolved as main's entries with this one after them. On
+the merged tree:
+
+    node scripts/world-golden.js       all passed, 5.4 s: the town's
+                                       fixture and both built maps fly bit
+                                       identical, as they should with
+                                       nothing solid changed
+    props-check --only=egg             all passed; the builder, now 23
+                                       files, still reaches none of the
+                                       mark's files
+    npm run check:clip                 683 passed, 0 failed
+    npm run lint:preload               up to date, boot 105, city 73,
+                                       built 29; 201 served
+
+## 2026-09-25 | git | The STF mark in plain view goes to main, for the owner to fly
+
+The owner, on the entry above: "fly it, and just freestlye, push to ain".
+Three answers in one line, recorded as given:
+
+- **"push to ain"**: the approval to put the STF mark in plain view on
+  main. It covers exactly the branch as checked above (cee8eaf and its
+  merge of main, a07674e) and this entry.
+- **"fly it"**: the verification scale is the owner flying it. Nothing
+  further was run for it.
+- **"just freestlye"**: the answer to "did 'any map' include race tracks?".
+  No: the mark stays on freestyle maps, the town and every built map, and
+  race tracks carry none. Written into FREESTYLE-MAPS-PLAN.md decision 10.
+
+**Main moved under the push.** Fetched first, main was fdafe2e, the
+branch's merge base; by the push it was a39b61a, the wall tap fix and its
+entries, and the push was refused as a non-fast-forward, which is git
+doing its job. Merged into the branch instead (merge-base fdafe2e, one
+history; only PROGRESS.md conflicted, both sides appending, resolved as
+main's entries with this branch's after them; src/maps/preload.js
+merged clean). Main then moves to the branch by fast-forward, with no
+merge commit on main's side and nothing rewritten.
+
+**No hard reload.** The loader that went to main earlier today loads every
+script at the new deploy's address on the first visit after it.
+
+What to look for, flying:
+
+- The town: from the pads, the STF mural on the side of the corner shop at
+  the end of the street, just left of the nose, white and green lettering
+  on black. Fly up the street to it and MARK FOUND comes up.
+- Your map, or Hibari Yard if nothing is built: on Hibari Yard the mark is
+  on the bando's ground floor wall, dead ahead of the pads. On a map of
+  your own it is on the wall that looks biggest from the pads, or flat on
+  the ground ahead of them if no wall faces them 15 to 60 m out.
+
+What would count as wrong: no mark in view from the pads on a map with
+walls round them; lettering that reads grey or washed out; MARK FOUND
+before takeoff; the mark flickering against the wall it is on, or floating
+visibly off it; the town's mark still in the works shed, which would mean
+the old scripts are being served.
+
+### RUN LOG
+
+    git fetch, first                main fdafe2e, unmoved since the merge
+                                    above
+    git push HEAD:main              rejected: main had moved to a39b61a
+    git merge origin/main           merge-base fdafe2e; PROGRESS.md
+                                    resolved, preload.js merged clean
+    on the merged tree              see below; the merge brought
+                                    src/game/collide.js and src/main.js
+                                    changes, and the find reads the
+                                    Colliders, so the egg block ran again
+    git diff --stat vendor/betaflight   empty
+
+On the merged tree, this turn:
+
+    node scripts/props-check.js --only=egg   all passed, 43 PASS: the find
+                                             checks against the merged
+                                             Colliders included
+    props-check --selftest                   all passed
+    npm run check:clip                       699 passed, 0 failed
+    node scripts/world-golden.js             all passed
+    npm run lint:preload                     up to date, boot 106, city
+                                             73, built 28
+
+## 2026-09-25 | board, builder, shell, edge | A shared link to a track or a map shows that track or map
+
+The owner: "when i share a track or a map link in social media the little
+picture that is shown should be the track or map i've built with the webfpv
+logo over the top".
+
+Two repositories and the Worker: the board (Mathew-Harvey/WebFPVSimulator-LeaderBoard)
+and this one, which holds edge/. Physics, the plant, the module ABI and the
+build are untouched. Both on claude/focused-bell-9tx3vf; neither main is.
+
+### Why every link looked the same
+
+Facebook, X, WhatsApp, Discord, Slack, LinkedIn and iMessage draw a pasted
+link from the og: and twitter: tags in the page's head, and run no script.
+Both pages carried one fixed set of tags, so every link to any track showed
+og.png, the race field, with the site's title. Two more things made it
+worse than it looked:
+
+- **The board's Copy link was `/board/#track=id`.** A fragment never leaves
+  the browser, so a crawler fetched `/board/` and nothing on any server could
+  know which track was meant.
+- **og:url and the canonical link name the front door** on both pages, and
+  Facebook follows og:url and draws what it finds there. Changing the
+  picture alone would have been undone by the crawler going round to `/sim/`.
+
+### What was built
+
+- **The card, drawn by the browser that publishes.** src/share/card.js opens
+  src/share/orbit.html?card=1 in a frame laid out off the page. The page
+  builds the published copy from the board in the real renderer at High, one
+  1200 by 630 frame, and card.js puts the WebFPV wordmark over the top left:
+  og.png's mark at og.png's size and place, WEB in cream and FPV in sakura,
+  drawn a glyph at a time. JPEG, stepped down only if over 300 kB. It goes up
+  with the edit key the publish used. Called from the builder's track Publish,
+  the builder's map Publish, and the simulator menu's Publish (lazily
+  imported there, so the boot graph is unchanged). Nothing in it throws: a
+  failure leaves a published track and a sentence saying its link shows the
+  WebFPV card for now.
+- **The camera is the sheet's camera, lifted.** The board's orbit camera,
+  held still at 1200 by 630, was a strip of course on the horizon over half
+  a card of lawn, and on Hibari Yard one street. The card keeps the sheet's
+  centre and starting side and climbs to about 33 degrees over the layout,
+  from the scale each world already hands over (attractOrbit's radius for a
+  course, orbitPath's circle for a map), with the airframe low in the near
+  right. A RaceGOW room keeps the sheet's own frame, since lifting it puts
+  the lens in the joists. For the card only: nothing is culled for distance
+  (setCullRadius), and the shadow focus is the layout's middle rather than the
+  airframe, which is high over the field and nowhere near a shadow.
+- **The board keeps it.** `card` and `card_utc` on `tracks` and `maps`, added
+  on start. GET and HEAD `/api/tracks/:id/card` and `/api/maps/:id/card`,
+  immutable when the address carries `?v=`, five minutes when not. POST with
+  the edit key or the admin token. inspectCard: JPEG only, exactly 1200 by
+  630 (the tags promise that size to Facebook before it fetches a byte), the
+  file must end FF D9, 400 kB at most. Listings carry `hasCard` and `cardUtc`,
+  never the bytes.
+- **The edge writes the preview, for preview bots only.** edge/preview.js,
+  called from edge/router.js. For a GET from a known preview bot on a page
+  that names one of the board's ids (`/sim/?share=`, `?mapshare=`, the
+  builder page, `/board/?track=`, `?map=`), it asks the board for that
+  listing alongside the page and rewrites og:url, the canonical link, the
+  title ("2025 WA States, a WebFPV track by andAgainFPV"), the description
+  (the record, or that it is open, then "Fly it in your browser on a real
+  Betaflight control loop. No install, no account.") and, when there is a
+  card, the six picture tags. A person's request never takes that path.
+- **Copy link hands out `/board/?track=` and `/board/?map=`**, and the page
+  swaps the query for the hash as it loads, keeping any other parameter. Old
+  `#track=` links still open their sheet.
+- **scripts/boardcards.js** (`npm run gen:boardcards`) draws the card for
+  everything published before this, through the same page, and uploads with
+  BOARD_ADMIN_TOKEN; boardgif.js's pattern.
+
+### Decisions the owner may want to overrule
+
+1. **The lifted camera**, rather than the frame the board's sheet opens on.
+   It shows the whole layout; the sheet's frame shows a slice of it.
+2. **No name in the picture.** The simulator republishes a pilot's tracks
+   in the background when they change their name, with no renderer near, so
+   a printed author would be wrong until the next Publish. The name is in the
+   link's text, which is written fresh from the board on every crawl.
+3. **High on every device** for the one frame, so a card looks the same
+   whoever published; the frame is torn down straight after.
+4. **The bot list** is by user agent: facebookexternalhit (and iMessage,
+   which sends it), Twitterbot, WhatsApp (and Signal, which sends it),
+   Discordbot, Slackbot, LinkedInBot, TelegramBot, and a few more. Googlebot
+   and Bingbot are left out on purpose: a search result should be the page a
+   person gets. An unknown fetcher gets the site's card, as before.
+5. **A track's card survives a rename and goes with a relayout**, the
+   animation's rule; **a map's goes with every republish**, because only the
+   builder's Publish republishes a map and it draws the new one at once.
+6. **The sleeping board.** For a simulator link the edge waits the page's
+   time plus four seconds (PREVIEW_WAIT_MS), then sends the untouched page.
+   A link crawled while the free board sleeps therefore shows the site's card,
+   and Facebook keeps that until it scrapes again. A board link waits for the
+   board, as a person on it would.
+
+### What the owner has to do, in order
+
+1. Merge the board branch; Render adds the columns on start.
+2. Merge this branch.
+3. Redeploy the Worker by hand: `npx wrangler deploy --config edge/wrangler.toml`.
+   Until then no link shows a card, because nothing names one to a crawler.
+4. Once, from a machine whose browser can reach the board:
+   `BOARD_ADMIN_TOKEN=... node scripts/boardcards.js --board https://webfpv.org/board`
+   (`--dry --out <dir>` to look first). All 39 tracks and the one map on the
+   board today have no card until this runs.
+5. For links already posted, Scrape Again in Facebook's Sharing Debugger.
+
+DEPLOY.md has all of this under "A card per track and per map", with a curl
+that asks as Facebook to check it.
+
+### What went wrong
+
+- **The first cards used the sheet's camera** and showed a thin band of
+  course; the map's showed one road. Lifted, see above.
+- **The board's http test is one long function**, and two of my names
+  (`listed`, `refused`) were already taken in it. Renamed.
+- **An edge check expected 62.345 s to print as 1:02.35.** It prints 1:02.34
+  here and on the board, whose formatter this mirrors; floating point. The
+  check uses 62.35 s now.
+- **A comment in the board's validate.js gave card sizes before any were
+  measured** (120 to 250 kB). Replaced with the measured 53 to 117 kB.
+- **Both mains moved during the work**: the board gained the visit
+  attribution PR, this repo 21 commits including src/fresh.js. Both merged
+  cleanly (merge bases 6dee444 and 43af247). fresh.js carries a generated
+  list of every module it stamps, and lint:preload caught card.js missing
+  from it; regenerated, one line.
+- **The container's processes were stopped mid turn** (the local board and
+  the scratch Postgres). Nothing on disk was lost; the work was then pushed
+  as WIP commits in both repositories before going on.
+- **The first rerun of the end to end script failed one check**, on its own
+  fixture: the local board still held the first run's ids, a fresh browser
+  profile held no keys, and the builder rightly published copies under new
+  ids. Fresh ids per run; 15 of 15.
+
+### Found, not fixed
+
+- PgStore.publish locks the row with `SELECT *`, which reads the animation's
+  bytes on every publish and now the card's as well, up to 400 kB more.
+  Harmless, and a named column list would avoid it. Not this change's.
+
+### RUN LOG
+
+    npm run test:edge          96 of 96, 69 of them new, including a board
+                               that never answers: untouched page after the
+                               4 s wait, question withdrawn
+    npm run check:clip         683 passed, 0 failed
+    npm run lint:preload       STALE until regenerated (card.js); then up to
+                               date: boot 105, city 73, built 29, 202 served
+    npm run lint:nouns         PASS
+    npm run lint:boot          9 of 9 clean
+    npm run lint:board         PASS against this branch's board, 8 tracks
+                               listed, 8 cards drawn (checkout symlinked)
+    board npm test             518 passed, all passed, 36 of them new
+    board lint:licence         22 of 22; board lint:nouns PASS
+    board on Postgres 16       23 of 23 on a scratch cluster: set, read, list
+                               flags, rename keeps, relayout clears, map card
+                               cleared by a republish, a track's key refused
+                               on a map
+    cards, headless            the live board's 2025 WA States, Flags and
+                               cones, Blind Backnot, Le Training, RaceGOW5
+                               Track 1, Whoop Triple Stack and Hibari Yard,
+                               copied to a local board: 53 to 117 kB, 4 to
+                               13 s each on SwiftShader; every one looked at
+    boardcards.js              7 of 7 drawn and uploaded; a second run, 0 to
+                               draw; no token, refused with a sentence
+    end to end, headless       builder Publish of a track and a map and a map
+                               update, cards on the board through the hidden
+                               frame, ?track= and ?map= adopted, Copy link
+                               the query form, old #track= still lands:
+                               15 of 15, page errors none
+    menu Publish path          sendShareCard inside the running simulator:
+                               sent in 9.8 s, frame removed, the title kept
+                               drawing; a stranger's key, a sentence
+    the real router            in front of the real tree and the local board,
+                               four link kinds described for Facebook and
+                               plain for a person; the card through the edge
+                               200 image/jpeg, immutable
+    rewrite cost               0.37 ms a call on the real 218 kB index.html,
+                               0.11 ms to encode: inside the free plan's 10 ms
+    dash scan, added lines     0 in both repositories
+    git diff --stat vendor/betaflight   empty
+    npm run verify             not run: no physics, plant, module ABI or
+                               build change
+    npm run lint:shell         not run: no screen's layout changed; the one
+                               shell change is a notice line shown when a
+                               card fails to send
+    the Worker                 not deployed: that is the owner's Cloudflare
+                               account, step 3 above
+
+## 2026-09-25 | git | Share cards go to main in both repositories, for the owner to test
+
+The owner, on the entry above: "push to main". That is the approval to put
+the share cards on main in both repositories: the board's 87bf9fe, its
+merge of the board's main (9717120) and 87da698, and this branch's c4ac6b3,
+1f69895 and the merges of this main. Recorded here because this repository
+is the copy of record for the three. The decisions the entry above lists
+(the lifted camera, no name in the picture, High on every device, the bot
+list, the card rules on republish, the sleeping board) ride on main as
+built; testing it is how they will be judged.
+
+- **The board went first**, as DEPLOY.md asks when the builder starts
+  sending the board something new: the builder now posts every card to
+  /api/tracks/:id/card and /api/maps/:id/card, which the old board answers
+  with a 404. Fetched first, the board's main was 1ed143e, the branch's
+  merge base and ancestor, so it moved by fast-forward to 87da698 at
+  14:57:19 UTC. Measured through webfpv.org/board: at 14:56:33 the card
+  route answered "Nothing at that address." and a listing carried no
+  hasCard; at 14:58:08, 49 s after the push, it answered "That track has no
+  share card." (404, and HEAD answers too), /api/health said postgres, a
+  track listing carried hasCard false and cardUtc null (so schema.sql's new
+  columns are there: the listing's SELECT names them), and the served app.js
+  carries adoptSharedLink and courseShareHref.
+- **This main moved while the board deployed**, fdafe2e to 8bb6705 (the wall
+  tap fix and the STF mark in plain view, merged there), so the first push
+  was refused, rightly. Merged here: only PROGRESS.md conflicted, where both
+  sides appended, and it keeps every entry of both, main's first; against
+  each parent the file only gains lines. src/fresh.js and src/main.js merged
+  by themselves, and fresh.js differs from main by the one card.js line.
+- **Not done, and not mine to do:** the Worker. Until
+  `npx wrangler deploy --config edge/wrangler.toml` is run from a checkout,
+  no link shows a card, because nothing names one to a crawler; the builder
+  and the simulator draw and upload cards from this deploy on regardless.
+  Then, once, the backfill for the 39 tracks and the maps already there:
+  `BOARD_ADMIN_TOKEN=... node scripts/boardcards.js --board https://webfpv.org/board`,
+  from a machine whose browser can reach the board.
+
+What to look for: publish or update a track in the builder and read the
+dialog's last line, "A link to it, posted anywhere, shows the track."; then,
+after the Worker is deployed, paste the board sheet's Copy link (now
+`/board/?track=`) into Facebook's Sharing Debugger or a WhatsApp chat with
+yourself. What would count as wrong: the race field picture on a track that
+has a card, somebody else's track in the picture, a missing picture, or a
+Publish that fails with a message about a picture.
+
+### RUN LOG
+
+    git fetch, both          board main 1ed143e, the branch's ancestor; this
+                             main fdafe2e, then 8bb6705 by the time of the
+                             push
+    board main               1ed143e..87da698, fast-forward, 14:57:19 UTC
+    webfpv.org/board         card route "Nothing at that address." before,
+                             "That track has no share card." at 14:58:08;
+                             listings carry hasCard and cardUtc
+    first push of this main  refused, non fast-forward: main had moved
+    merge of 8bb6705         PROGRESS.md by hand, both sides kept; the rest
+                             by itself
+    merged tree              lint:preload up to date (boot 106, city 73,
+                             built 28, 202 served); check:clip 699 passed,
+                             0 failed; test:edge all passed; lint:nouns
+                             PASS; lint:boot 9 of 9; a map and a track card
+                             drawn headless, 110 and 80 kB, looked at
+    git diff --stat vendor/betaflight   empty

@@ -39,14 +39,15 @@
  *   6. scene       a map's time of day and ground change paint and light
  *                  and never a solid
  *   7. egg         where the STF mark goes (src/maps/built/egg.js): on a
- *                  drawn box face with open air in front, in no solid, out
- *                  of sight of the pads, the preferred kind, the seed's
- *                  pick and the same every time, on the starter, one of
- *                  everything, fifty random maps and a map built to reach
- *                  each fallback; pure, and timed on the starter and on ten
- *                  thousand solids. Then finding it (src/game/egg.js),
- *                  against the starter's real colliders, and that nothing
- *                  the builder loads can draw it
+ *                  drawn wall with open air in front, in no solid, in full
+ *                  sight of the pads, turned to them and in reach, no wall
+ *                  that scores higher keeping the rules, the same every
+ *                  time and whatever the id, on the starter, one of
+ *                  everything, fifty random maps and maps built to reach
+ *                  the ground fallback; pure, and timed on the starter and
+ *                  on ten thousand solids. Then finding it
+ *                  (src/game/egg.js), against the starter's real colliders,
+ *                  and that nothing the builder loads can draw it
  *
  * WHAT A FAILURE MEANS. The line names the asset, the style, the dimension
  * set and the heading, and the first numbers that are wrong. A threshold
@@ -2409,60 +2410,76 @@ async function sceneBlock() {
 /* ------------------------------------------------------------------ */
 
 /*
- * WHERE THE STF MARK GOES ON A BUILT MAP (src/maps/built/egg.js, Stage B of
- * FREESTYLE-MAPS-PLAN.md). The sim chooses the spot from the map's own
- * assets and nothing a player reads says where, so this is the only place
- * anybody can see that the spot keeps its rules. Each rule is restated here
- * in this file's own geometry, the distances the starter block already
- * trusts, so a mistake in egg.js's arithmetic shows as a spot that breaks
- * one:
+ * WHERE THE STF MARK GOES ON A BUILT MAP (src/maps/built/egg.js). The sim
+ * chooses the spot from the map's own assets and nothing a player reads says
+ * where, so this is the only place anybody can see that the spot keeps its
+ * rules. Since 2026-09-25 the mark is painted to be SEEN from the pads,
+ * where Stage B hid it from them: the owner, "the logo of SubTwoFIfty is too
+ * hard to find, make it easy to see on any map" (FREESTYLE-MAPS-PLAN.md
+ * section 12, decision 10). Each rule is restated here in this file's own
+ * geometry, the distances the starter block already trusts, so a mistake in
+ * egg.js's arithmetic shows as a spot that breaks one:
  *
- *   1  paint on a flat face: the mark is on a face of a solid box its
- *      element draws, not glass, 1.8 by 0.9 m or down to half that, two to
- *      one, and inside the face
- *   2  open air: the mark pushed out 3 m along its normal (2.2 m down from a
- *      ceiling, the height to fly under it) is clear of every solid, over
- *      0.3 m and inside the plot
+ *   1  paint on a wall: the mark is on an upright face of a solid box its
+ *      element draws, not glass, 6 by 3 m or down to 0.3 of that, two to
+ *      one, and inside the face; a wall's mark is the biggest that fits 10
+ *      cm in from its edges and 10 cm over rule 2's 0.3 m
+ *   2  open air: the mark pushed out 3 m along its normal is clear of every
+ *      solid, over 0.3 m and inside the plot
  *   3  never in a solid: the point 2 cm off the mark's middle is in none
- *   4  not seen from the pads: every line from 0.3, 2 and 5 m over the seat
- *      to the mark's middle and corners, 5 cm in, ending 2 cm off the face,
- *      passes through a solid; and, stricter, through one a pilot cannot see
- *      through: not glass, a net, a railing, a balustrade of bars, a
- *      skylight or foliage, and no capsule under 0.3 m
- *   5  the preference: the spot is the kind it says it is, the table puts
- *      undersides and backs over sides and inside over outside, and the
- *      finalists come best first, one per element until elements run out
- *   6  the pick: the finalist the document's seed names, the same on a
- *      second run and after normalize(normalize(doc)), and over fifty
- *      random maps, how often a different document gets a different spot
- *   7  always a spot: 'away' and 'ground', each on a map built to reach it
- *   8  pure and quick: nothing imported but src/props/parts.js, no DOM, no
+ *   4  seen from the pads: no line from 0.3, 2 and 5 m over the seat to the
+ *      mark's middle, corners and edge middles, 5 cm in and ending 2 cm off
+ *      the face, passes through a solid a pilot cannot see through: a box
+ *      that is not glass, a net, a railing, a balustrade of bars or a
+ *      skylight, not foliage, or a capsule 0.3 m thick or more
+ *   5  turned to the pads and in reach: the wall's normal, at the middle of
+ *      the band a mark can take on it, within 60 degrees of the eye 2 m over
+ *      the seat, and the mark's middle 15 to 60 m from the spawn across the
+ *      ground
+ *   6  the pick: no wall that scores higher (the width of the mark it takes,
+ *      times how square it stands to the pads, over its distance, times 2
+ *      plus the cosine of the turn from the pads' heading, all at the
+ *      wall's middle) keeps rules 1 to 5 at its middle; the score the spot
+ *      reports is the one this file computes; the walls come best first;
+ *      the same spot on a second run, after normalize(normalize(doc)), and
+ *      under another id
+ *   7  always a spot: 'ground' only when no wall keeps rules 1 to 5 at its
+ *      middle; flat on the paving, 12 by 6 m or the most the plot has room
+ *      for, square to the plot and reading away from the pads, at the first
+ *      of its places whose air is clear, or the first; each on a map built
+ *      to reach it
+ *   8  pure and quick: nothing imported but src/props/trig.js, no DOM, no
  *      clock, no Math.random, and the time on the starter and on a map of
  *      ten thousand solids
  *   9  no JS trigonometry or powers anywhere in the file
  *
- * Every finalist on the starter, on one of everything and on the random
- * maps is held to rules 1 to 4, not only the one picked, because a copy of
- * any of those maps under a new id picks another.
+ * Rule 6 is checked at each wall's middle only. egg.js tries a wall at up to
+ * 49 places, and a wall whose middle is blocked can still take the mark to
+ * one side; restating that walk would be restating egg.js. What this sees is
+ * the failure that matters: a better wall, clear at its middle, passed over.
  */
 
 /* The brief's numbers, restated rather than read from egg.js, so a change
  * there is a failure here. */
 const EGG = {
-  W: 1.8,
-  H: 0.9,
-  MIN: 0.5,
+  W: 6,
+  H: 3,
+  MIN: 0.3,
+  EDGE: 0.1,
   AIR: 3,
-  AIR_UNDER: 2.2,
   GROUND: 0.3,
   EYES: [0.3, 2, 5],
   OFF: 0.02,
   INSET: 0.05,
-  BACK_COS: 0.5,
+  FACE_COS: 0.5,
+  NEAR_MIN: 15,
+  NEAR_MAX: 60,
+  TURN: 2,
   OPAQUE_R: 0.3,
   SEE_THROUGH: new Set(['glass', 'net', 'railing', 'balustrade', 'skylight']),
-  GROUND_INSET: 3,
-  FINALISTS: 8,
+  GROUND_SCALE: 2,
+  GROUND_AHEAD: [12, 8, 18],
+  GROUND_INSET: 1,
   STARTER_MS: 30,
   STRESS_MS: 200,
   STRESS_SOLIDS: 10000,
@@ -2533,21 +2550,51 @@ function solidInBox(solids, box) {
   return null;
 }
 
-/* The first solid a line passes through, or null: a box it meets (the
- * distance is a ternary search, so a line through a box comes back within
- * a micrometre of none), a capsule it passes inside. */
-function lineBlocker(solids, a, b, opaqueOnly) {
+/* Does the segment a to b pass through the box, a millimetre in from its
+ * faces? The slab method, written out here: the stretch of the segment
+ * between each pair of planes, intersected, and something left. */
+function segThroughBox(a, b, box) {
+  let t0 = 0;
+  let t1 = 1;
+  for (let k = 0; k < 3; k += 1) {
+    const lo = box[k] + 0.001;
+    const hi = box[k + 3] - 0.001;
+    const d = b[k] - a[k];
+    if (d === 0) {
+      if (!(a[k] > lo && a[k] < hi)) {
+        return false;
+      }
+      continue;
+    }
+    const u0 = Math.min((lo - a[k]) / d, (hi - a[k]) / d);
+    const u1 = Math.max((lo - a[k]) / d, (hi - a[k]) / d);
+    t0 = Math.max(t0, u0);
+    t1 = Math.min(t1, u1);
+    if (!(t0 < t1)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* The first solid a pilot cannot see through that the line a to b passes
+ * through, or null: a box it goes into, a capsule it passes inside. */
+function sightBlocker(solids, a, b) {
   const box = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.min(a[2], b[2]),
     Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.max(a[2], b[2])];
   for (const s of solids) {
-    if (opaqueOnly && !eggOpaque(s)) {
+    if (!eggOpaque(s) || !aabbNear(aabbOf(s), box, 0)) {
       continue;
     }
-    if (!aabbNear(aabbOf(s), box, 0)) {
-      continue;
-    }
-    if (segClearance(a, b, s) <= 1e-6) {
-      return s;
+    if (s.box) {
+      if (segThroughBox(a, b, s.box)) {
+        return s;
+      }
+    } else {
+      const [c0, c1, r] = capEnds(s);
+      if (segSegDist(a, b, c0, c1) < r - 0.001) {
+        return s;
+      }
     }
   }
   return null;
@@ -2557,33 +2604,128 @@ function nameOf(s) {
   return s ? `${s.kind} ${s.name}` : 'nothing';
 }
 
-/* The four corners of the ground fallback's plot, as egg.js's rule 7 puts
- * them, with the mark each would carry and whether its air is clear. */
-function groundCorners(placed) {
+/* The pads: the eyes over the seat, and the heading across the ground the
+ * shell faces a craft at the spawn's yaw, (-sin yaw, 0, -cos yaw). */
+function eggPads(placed) {
+  const sp = placed.spawn;
+  const sc = sincos(sp.yaw);
+  return {
+    x: sp.x,
+    z: sp.z,
+    eyes: EGG.EYES.map((h) => [sp.x, sp.y + h, sp.z]),
+    eye: [sp.x, sp.y + EGG.EYES[1], sp.z],
+    fx: -sc.s,
+    fz: -sc.c,
+  };
+}
+
+/* The band a wall's mark can take, EDGE in from every edge and EDGE over
+ * GROUND at the lowest, as { floor, band }, and its middle place. */
+function eggBand(box) {
+  const floor = Math.max(box[1] + EGG.EDGE, EGG.GROUND + EGG.EDGE);
+  return { floor, band: box[4] - EGG.EDGE - floor };
+}
+function bandMid(box, a, plane) {
+  const { floor, band } = eggBand(box);
+  const ra = 2 - a;
+  const mid = [0, 0, 0];
+  mid[a] = plane;
+  mid[ra] = (box[ra] + box[ra + 3]) / 2;
+  mid[1] = floor + band / 2;
+  return mid;
+}
+
+/* Every upright face of every drawn, solid, opaque box on the map, with its
+ * element, its part and the mark it would take. */
+function eggWalls(placed) {
+  const out = [];
+  for (const it of placed.items) {
+    const own = placeSolids(it.parts, it.x, it.y, it.z, it.yaw, it.turns, []);
+    const parts = it.parts.filter((p) => p.solid);
+    own.forEach((s, k) => {
+      const part = parts[k];
+      if (!s.box || !part || part.t !== 'box' || !part.draw || !eggOpaque(s)) {
+        return;
+      }
+      const b = s.box;
+      for (const [a, sg] of [[0, -1], [0, 1], [2, -1], [2, 1]]) {
+        const ra = 2 - a;
+        const scale = Math.min(1, (b[ra + 3] - b[ra] - 2 * EGG.EDGE) / EGG.W, eggBand(b).band / EGG.H);
+        if (!(scale >= EGG.MIN)) {
+          continue;
+        }
+        const n = [0, 0, 0];
+        n[a] = sg;
+        const mid = bandMid(b, a, sg > 0 ? b[a + 3] : b[a]);
+        out.push({ el: it.el, part, box: b, n, mid, w: EGG.W * scale, h: EGG.H * scale });
+      }
+    });
+  }
+  return out;
+}
+
+/* Rule 6's score at a wall's middle, or null when rule 5 turns it away. */
+function wallScore(pads, n, mid, w) {
+  const d = sub(pads.eye, mid);
+  const dist = Math.sqrt(dot(d, d));
+  const toward = dot(n, d);
+  if (!(dist > 0) || !(toward >= EGG.FACE_COS * dist)) {
+    return null;
+  }
+  const gx = mid[0] - pads.x;
+  const gz = mid[2] - pads.z;
+  const g = Math.sqrt(gx * gx + gz * gz);
+  const cos = g > 0 ? (pads.fx * gx + pads.fz * gz) / g : -1;
+  return ((w * toward) / (dist * dist)) * (EGG.TURN + cos);
+}
+
+/* How far a point is from the spawn across the ground. */
+function eggReach(pads, p) {
+  return Math.sqrt((p[0] - pads.x) * (p[0] - pads.x) + (p[2] - pads.z) * (p[2] - pads.z));
+}
+
+/* The ground step's mark and its places, as rule 7 puts them. */
+function groundPlan(placed, pads) {
   const W = placed.W;
   const D = placed.D;
-  const ex = W / 2 - Math.min(EGG.GROUND_INSET, W / 2);
-  const ez = D / 2 - Math.min(EGG.GROUND_INSET, D / 2);
-  return [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => {
-    const x = sx * ex;
-    const z = sz * ez;
-    const dx = x - placed.spawn.x;
-    const dz = z - placed.spawn.z;
-    const alongX = Math.abs(dx) >= Math.abs(dz);
-    const hw = (alongX ? EGG.H : EGG.W) / 2;
-    const hd = (alongX ? EGG.W : EGG.H) / 2;
-    const air = [x - hw, 0, z - hd, x + hw, EGG.AIR, z + hd];
-    return { x, z, d2: dx * dx + dz * dz, clear: solidInBox(placed.solids, air) === null };
+  const alongX = Math.abs(pads.fx) >= Math.abs(pads.fz);
+  const up = alongX ? [pads.fx < 0 ? -1 : 1, 0, 0] : [0, 0, pads.fz < 0 ? -1 : 1];
+  const spanX = (alongX ? EGG.H : EGG.W) * EGG.GROUND_SCALE;
+  const spanZ = (alongX ? EGG.W : EGG.H) * EGG.GROUND_SCALE;
+  let s = Math.min(1, (W - 2 * EGG.GROUND_INSET) / spanX, (D - 2 * EGG.GROUND_INSET) / spanZ);
+  if (!(s >= EGG.MIN / EGG.GROUND_SCALE)) {
+    s = EGG.MIN / EGG.GROUND_SCALE;
+  }
+  const w = EGG.W * EGG.GROUND_SCALE * s;
+  const h = EGG.H * EGG.GROUND_SCALE * s;
+  const hx = (alongX ? h : w) / 2;
+  const hz = (alongX ? w : h) / 2;
+  const inside = (v, half, size) => {
+    const lim = size / 2 - EGG.GROUND_INSET - half;
+    return lim > 0 ? clamp(v, -lim, lim) : 0;
+  };
+  const places = [...EGG.GROUND_AHEAD.map((d) => [pads.x + pads.fx * d, pads.z + pads.fz * d]), [0, 0]].map(([tx, tz]) => {
+    const x = inside(tx, hx, W);
+    const z = inside(tz, hz, D);
+    return { x, z, clear: solidInBox(placed.solids, [x - hx, 0, z - hz, x + hx, EGG.AIR, z + hz]) === null };
   });
+  return { up, w, h, places };
 }
 
 /*
- * Rules 1 to 4 (or the fallback's own) for one spot, as a list of
- * { rule, ok, detail }. Pure: the self test hands it planted spots.
+ * Rules 1 to 5 (or the ground step's own) for one spot, as a list of
+ * { rule, ok, detail }. Pure: the self test hands it planted spots, and
+ * rule 6 hands it each better wall's middle. `quick` stops at the first
+ * broken rule and asks rule 5 first, the cheap one, for the walk over every
+ * wall that scores higher.
  */
-function eggRules(placed, spot) {
+function eggRules(placed, spot, quick = false) {
   const out = [];
-  const say = (rule, ok, detail) => out.push({ rule, ok: Boolean(ok), detail });
+  const say = (rule, ok, detail) => {
+    out.push({ rule, ok: Boolean(ok), detail });
+    return Boolean(ok);
+  };
+  const pads = eggPads(placed);
   const a = unitAxis(spot.n);
   const ua = unitAxis(spot.up);
   if (a < 0 || ua < 0 || a === ua || !(spot.w > 0 && spot.h > 0) || !spot.p.every(Number.isFinite)) {
@@ -2598,27 +2740,26 @@ function eggRules(placed, spot) {
     `n ${spot.n.join(' ')}, up ${spot.up.join(' ')}, right ${right.map((v) => v + 0).join(' ')}`);
 
   if (spot.step === 'ground') {
-    const flat = spot.n[0] === 0 && spot.n[1] === 1 && spot.n[2] === 0 && spot.p[1] === 0 && ua !== 1;
-    const mark = markPrism(spot, right, 0);
-    const size = spot.w === EGG.W && spot.h === EGG.H;
-    say('ground: flat on the paving, full size, inside the plot', flat && size && inPlot(mark),
-      `at (${r3(spot.p[0])}, ${r3(spot.p[1])}, ${r3(spot.p[2])}), ${spot.w} by ${spot.h} m`);
-    const corners = groundCorners(placed);
-    const at = corners.find((c) => c.x === spot.p[0] && c.z === spot.p[2]);
-    const farther = at ? corners.filter((c) => c.d2 > at.d2) : [];
-    say('ground: the farthest corner from the pads whose air is clear, or the farthest',
-      Boolean(at) && (at.clear ? farther.every((c) => !c.clear) : farther.length === 0 && corners.every((c) => !c.clear))
-        && at.clear === spot.clear,
-      at ? `corner ${r3(at.x)}, ${r3(at.z)}, ${r3(Math.sqrt(at.d2))} m from the pads, air ${at.clear ? 'clear' : 'not clear'}; `
-        + `${farther.length} corners farther, ${farther.filter((c) => c.clear).length} of them clear` : 'not at a corner');
+    const plan = groundPlan(placed, pads);
+    const flat = spot.n[0] === 0 && spot.n[1] === 1 && spot.n[2] === 0 && spot.p[1] === 0
+      && spot.up.every((v, k) => sameValue(v, plan.up[k]));
+    const size = Math.abs(spot.w - plan.w) < 1e-9 && Math.abs(spot.h - plan.h) < 1e-9;
+    say('ground: flat on the paving, square to the plot, reading away from the pads, the size the plot has room for', flat && size,
+      `up ${spot.up.join(' ')} (the pads' axis ${plan.up.join(' ')}), ${r3(spot.w)} by ${r3(spot.h)} m (${r3(plan.w)} by ${r3(plan.h)})`);
+    const at = plan.places.findIndex((c) => Math.abs(c.x - spot.p[0]) < 1e-9 && Math.abs(c.z - spot.p[2]) < 1e-9);
+    const firstClear = plan.places.findIndex((c) => c.clear);
+    const want = firstClear >= 0 ? firstClear : 0;
+    say('ground: the first of its places whose air is clear, or the first', at === want && spot.clear === (firstClear >= 0),
+      `at place ${at + 1} of ${plan.places.length} (${plan.places.map((c) => (c.clear ? 'clear' : 'not clear')).join(', ')}), `
+      + `${r3(eggReach(pads, spot.p))} m from the pads`);
     return out;
   }
 
-  /* 1. On a face of a drawn, solid, opaque box of its element, inside it. */
-  const sizeOk = Math.abs(spot.w - 2 * spot.h) < 1e-9 && spot.w <= EGG.W + 1e-9 && spot.w >= EGG.W * EGG.MIN - 1e-9;
+  /* 5, first when quick: turned to the pads at the wall's middle, and the
+   * mark in reach. */
   const it = placed.items.find((x) => x.el && x.el.id === spot.elementId);
   let host = null;
-  if (it) {
+  if (it && a !== 1 && ua === 1 && spot.up[1] === 1) {
     const own = placeSolids(it.parts, it.x, it.y, it.z, it.yaw, it.turns, []);
     const parts = it.parts.filter((p) => p.solid);
     for (let k = 0; k < own.length && !host; k += 1) {
@@ -2644,14 +2785,32 @@ function eggRules(placed, spot) {
       }
     }
   }
-  say(1, sizeOk && host, `${r3(spot.w)} by ${r3(spot.h)} m, ${host ? `inside the face of ${it.el.id} ${it.el.type} ${host.part.name}` : `on no drawn box face of ${spot.elementId}`}`);
+  const reach = eggReach(pads, spot.p);
+  let turned = null;
+  if (host) {
+    const d = sub(pads.eye, bandMid(host.box, a, spot.p[a]));
+    turned = dot(spot.n, d) / Math.sqrt(dot(d, d));
+  }
+  if (!say(5, spot.kind === 'wall' && (turned === null || turned >= EGG.FACE_COS) && reach >= EGG.NEAR_MIN && reach <= EGG.NEAR_MAX,
+    `${spot.kind}, turned ${turned === null ? 'unknown' : r3(turned)} of the way to the pads (at least ${EGG.FACE_COS}), `
+    + `${r3(reach)} m from them (${EGG.NEAR_MIN} to ${EGG.NEAR_MAX})`) && quick) {
+    return out;
+  }
+
+  /* 1. On an upright face of a drawn, solid, opaque box of its element,
+   * inside it. */
+  const sizeOk = Math.abs(spot.w - 2 * spot.h) < 1e-9 && spot.w <= EGG.W + 1e-9 && spot.w >= EGG.W * EGG.MIN - 1e-9;
+  if (!say(1, sizeOk && host, `${r3(spot.w)} by ${r3(spot.h)} m, ${host ? `inside the face of ${it.el.id} ${it.el.type} ${host.part.name}` : `on no drawn upright box face of ${spot.elementId}`}`) && quick) {
+    return out;
+  }
 
   /* 2. Open air in front. */
-  const depth = spot.kind === 'underside' ? EGG.AIR_UNDER : EGG.AIR;
-  const prism = markPrism(spot, right, depth);
+  const prism = markPrism(spot, right, EGG.AIR);
   const intruder = solidInBox(placed.solids, prism);
-  say(2, inPlot(prism) && prism[1] > EGG.GROUND && !intruder,
-    `${depth} m out: ${intruder ? `${nameOf(intruder)} in it` : 'clear'}, lowest ${r3(prism[1])} m, ${inPlot(prism) ? 'inside' : 'outside'} the plot`);
+  if (!say(2, inPlot(prism) && prism[1] > EGG.GROUND && !intruder,
+    `${EGG.AIR} m out: ${intruder ? `${nameOf(intruder)} in it` : 'clear'}, lowest ${r3(prism[1])} m, ${inPlot(prism) ? 'inside' : 'outside'} the plot`) && quick) {
+    return out;
+  }
 
   /* 3. The point 2 cm off the middle is in no solid. */
   const q = markPoint(spot, right, 0, 0, EGG.OFF);
@@ -2671,59 +2830,32 @@ function eggRules(placed, spot) {
       }
     }
   }
-  say(3, !holder, holder ? `the point is in ${nameOf(holder)}` : `(${r3(q[0])}, ${r3(q[1])}, ${r3(q[2])}) is in no solid`);
-
-  /* The kind it says it is, from its face and the spawn. */
-  if (host) {
-    const sp = placed.spawn;
-    const c = [0, 1, 2].map((k) => (host.box[k] + host.box[k + 3]) / 2);
-    c[a] = spot.p[a];
-    let kind;
-    if (a === 1) {
-      kind = spot.n[1] < 0 ? 'underside' : 'top';
-    } else {
-      const dx = c[0] - sp.x;
-      const dz = c[2] - sp.z;
-      const len = Math.sqrt(dx * dx + dz * dz);
-      kind = len > 0 && spot.n[0] * dx + spot.n[2] * dz > EGG.BACK_COS * len ? 'back' : 'side';
-    }
-    say(5, spot.kind === kind, `says ${spot.kind}, is ${kind}`);
-  }
-
-  if (spot.step === 'away') {
-    const e = [placed.spawn.x, placed.spawn.y + EGG.EYES[0], placed.spawn.z];
-    const facing = dot(spot.n, sub(spot.p, e));
-    say('away: turned away from the pads', facing > 0, `n . (p - eye) = ${r3(facing)}`);
+  if (!say(3, !holder, holder ? `the point is in ${nameOf(holder)}` : `(${r3(q[0])}, ${r3(q[1])}, ${r3(q[2])}) is in no solid`) && quick) {
     return out;
   }
 
-  /* 4. Every line from every eye passes through a solid. */
-  const eyes = EGG.EYES.map((h) => [placed.spawn.x, placed.spawn.y + h, placed.spawn.z]);
+  /* 4. No line from any eye passes through a solid a pilot cannot see
+   * through. */
   const hu = spot.w / 2 - EGG.INSET;
   const hv = spot.h / 2 - EGG.INSET;
-  const pts = [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]].map(([su, sv]) => markPoint(spot, right, su * hu, sv * hv, EGG.OFF));
-  let blocked = 0;
-  let opaque = 0;
+  const pts = [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]
+    .map(([su, sv]) => markPoint(spot, right, su * hu, sv * hv, EGG.OFF));
   let lines = 0;
-  let seen = null;
-  let seenOpaque = null;
-  for (const e of eyes) {
+  let hidden = null;
+  for (const e of pads.eyes) {
     for (const t of pts) {
       lines += 1;
-      if (lineBlocker(placed.solids, e, t, false)) {
-        blocked += 1;
-      } else if (!seen) {
-        seen = `from ${r3(e[1] - placed.spawn.y)} m to (${r3(t[0])}, ${r3(t[1])}, ${r3(t[2])})`;
-      }
-      if (lineBlocker(placed.solids, e, t, true)) {
-        opaque += 1;
-      } else if (!seenOpaque) {
-        seenOpaque = `from ${r3(e[1] - placed.spawn.y)} m to (${r3(t[0])}, ${r3(t[1])}, ${r3(t[2])})`;
+      const s = sightBlocker(placed.solids, e, t);
+      if (s) {
+        hidden = `from ${r3(e[1] - placed.spawn.y)} m to (${r3(t[0])}, ${r3(t[1])}, ${r3(t[2])}) through ${nameOf(s)}`;
+        break;
       }
     }
+    if (hidden) {
+      break;
+    }
   }
-  say(4, blocked === lines, `${blocked} of ${lines} lines pass through a solid${seen ? `; seen ${seen}` : ''}`);
-  say('4 opaque', opaque === lines, `${opaque} of ${lines} through one a pilot cannot see through${seenOpaque ? `; seen ${seenOpaque}` : ''}`);
+  say(4, !hidden, hidden ? `hidden ${hidden}` : `${lines} lines from ${EGG.EYES.join(', ')} m, none through a solid a pilot cannot see through`);
   return out;
 }
 
@@ -2746,6 +2878,45 @@ function spotDifference(a, b) {
     }
   }
   return null;
+}
+
+/*
+ * Rule 6 and the first half of rule 7: the best wall, restated. Every wall
+ * that scores higher than the spot's own (a ground spot's own is nothing)
+ * is tried at its middle, and the first that keeps rules 1 to 5 there is
+ * returned, or null. Also the spot's own score, from this file's
+ * arithmetic.
+ */
+function betterWall(placed, spot) {
+  const pads = eggPads(placed);
+  let mine = -Infinity;
+  if (spot.step === 'seen') {
+    const it = placed.items.find((x) => x.el && x.el.id === spot.elementId);
+    const own = eggWalls({ ...placed, items: it ? [it] : [] });
+    const a = unitAxis(spot.n);
+    const wall = own.find((w) => w.n.every((v, k) => v === spot.n[k]) && Math.abs(w.mid[a] - spot.p[a]) < 1e-9
+      && [0, 1, 2].every((k) => k === a || (spot.p[k] >= w.box[k] - 1e-9 && spot.p[k] <= w.box[k + 3] + 1e-9)));
+    mine = wall ? wallScore(pads, wall.n, wall.mid, wall.w) : NaN;
+  }
+  let better = null;
+  let tried = 0;
+  for (const wall of eggWalls(placed)) {
+    const score = wallScore(pads, wall.n, wall.mid, wall.w);
+    if (score === null || !(score > mine * (1 + 1e-9))) {
+      continue;
+    }
+    const reach = eggReach(pads, wall.mid);
+    if (reach < EGG.NEAR_MIN || reach > EGG.NEAR_MAX) {
+      continue;
+    }
+    tried += 1;
+    const at = { step: 'seen', kind: 'wall', p: [...wall.mid], n: wall.n, up: [0, 1, 0], w: wall.w, h: wall.h, elementId: wall.el.id };
+    if (eggRules(placed, at, true).every((r) => r.ok)) {
+      better = { wall, score };
+      break;
+    }
+  }
+  return { mine, better, tried };
 }
 
 /* A seeded random freestyle map: a plot, maybe pads, and three to thirty
@@ -2798,30 +2969,30 @@ function randomEggMap(k) {
   return doc;
 }
 
-/* A block of flats with its balconies on the side away from the pads: the
- * pads in the south of the plot, the flats in the north with their
- * balconies facing north, out to the edge of the plot. */
-function balconyEggMap() {
-  const doc = createTrack('Egg balconies', 'full', 'freestyle');
-  doc.id = 'trk-egg-balcony';
-  doc.field.width = 120;
-  doc.field.depth = 100;
-  eggElement(doc, 'startPads', 14, 50, 0);
-  eggElement(doc, 'building', 46, 80, -Math.PI / 2, 'flats', { width: 18, depth: 10, floors: 5 });
+/* A 40 ft container 25 m ahead of pads that face north, the side that looks
+ * at them in full view: a wall mark, in the first frame. `ahead` moves it. */
+function containerEggMap(id, ahead = 25) {
+  const doc = createTrack('Egg container', 'full', 'freestyle');
+  doc.id = id;
+  doc.field.width = 60;
+  doc.field.depth = 40 + ahead;
+  eggElement(doc, 'startPads', 30, 10, Math.PI / 2);
+  eggElement(doc, 'containers', 30, 10 + ahead, 0, '40ft', { stack: 1 });
   return doc;
 }
 
-/* The maps built to reach each fallback. */
-function fallbackMaps() {
+/* The maps built to reach each step. */
+function eggStepMaps() {
   const maps = [];
+  maps.push({ label: 'a container ahead of the pads', doc: containerEggMap('trk-egg-view'), step: 'seen', frame: true });
   /* An empty plot with only its pads: no solid at all. */
   const pads = createTrack('Egg pads', 'full', 'freestyle');
   pads.id = 'trk-egg-pads';
   pads.field.width = 60;
   pads.field.depth = 40;
   eggElement(pads, 'startPads', 10, 10, Math.PI / 4);
-  maps.push({ label: 'an empty plot with only its pads', doc: pads, step: 'ground' });
-  /* A map of trees: solids, and not one flat face. */
+  maps.push({ label: 'an empty plot with only its pads', doc: pads, step: 'ground', first: true });
+  /* A map of trees: solids, and not one wall. */
   const trees = createTrack('Egg trees', 'full', 'freestyle');
   trees.id = 'trk-egg-trees';
   trees.field.width = 80;
@@ -2830,22 +3001,9 @@ function fallbackMaps() {
   for (let i = 0; i < 12; i += 1) {
     eggElement(trees, 'tree', 20 + (i % 4) * 14, 20 + Math.floor(i / 4) * 16, 0, PROPS.tree.styles[i % PROPS.tree.styles.length]);
   }
-  maps.push({ label: 'a map of trees', doc: trees, step: 'ground' });
-  /* The same, with a tree over the farthest corner's paving. */
-  const corner = normalize(trees).doc;
-  corner.id = 'trk-egg-corner';
-  eggElement(corner, 'tree', 77, 77, 0, 'street');
-  maps.push({ label: 'a map of trees with one over the farthest corner', doc: corner, step: 'ground', notFarthest: true });
-  /* A 20 ft container against the far edge of a plot hardly wider than it:
-   * its back and ends have no air in front inside the plot, its front faces
-   * the pads in the open, and its roof is seen from 5 m over them. */
-  const away = createTrack('Egg away', 'full', 'freestyle');
-  away.id = 'trk-egg-away';
-  away.field.width = 6.4;
-  away.field.depth = 40;
-  eggElement(away, 'startPads', 3.2, 5, Math.PI / 2);
-  eggElement(away, 'containers', 3.2, 40 - 1.22 - 0.05, 0, '20ft', { stack: 1 });
-  maps.push({ label: 'a container against the far edge of a narrow plot', doc: away, step: 'away' });
+  maps.push({ label: 'a map of trees, the first place ahead under one', doc: trees, step: 'ground', notFirst: true });
+  /* A container out of reach: the only wall that faces the pads is 75 m off. */
+  maps.push({ label: 'a container out of reach', doc: containerEggMap('trk-egg-far', 75), step: 'ground' });
   return maps;
 }
 
@@ -2869,13 +3027,15 @@ function stressEggMap() {
   return doc;
 }
 
-/* The source with its comments taken out, and what it reaches for. */
+/* The source with its comments taken out, and what it reaches for. The one
+ * import allowed is src/props/trig.js, the project's own sine, which gives
+ * the same bits in every engine: the pads' heading is an angle. */
 function eggSourceProblems(src) {
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   const problems = [];
   const imports = [...code.matchAll(/^\s*(?:import|export)\s[^;]*?from\s+['"]([^'"]+)['"]/gm)].map((m) => m[1]);
   const dynamic = [...code.matchAll(/\bimport\s*\(/g)].length;
-  if (imports.some((p) => p !== '../../props/parts.js') || dynamic) {
+  if (imports.some((p) => p !== '../../props/trig.js') || dynamic) {
     problems.push(`imports ${imports.join(', ') || 'nothing'}${dynamic ? ' and a dynamic import' : ''}`);
   }
   const ALLOWED = new Set(['abs', 'ceil', 'floor', 'max', 'min', 'round', 'sign', 'sqrt', 'trunc', 'imul', 'fround', 'PI']);
@@ -2943,7 +3103,7 @@ async function eggBlock() {
     fail('src/maps/built/egg.js imports in Node', e.message);
     return;
   }
-  const { stfSearch, chooseStfSpot, stfKey, SCORE, FINALISTS } = egg;
+  const { stfSearch, chooseStfSpot, stfKey } = egg;
 
   /* 8. Quick: the first call in a fresh engine, held to the budget, and
    * the warm median beside it. */
@@ -2973,54 +3133,40 @@ async function eggBlock() {
   }
   check(`quick: the starter in under ${EGG.STARTER_MS} ms`, sCold < EGG.STARTER_MS,
     `first call in a fresh engine ${r3(sCold)} ms (best of 2), warm median of 7 ${r3(warm(sPlaced, sDoc, 'starter'))} ms; `
-    + `${sPlaced.solids.length} solids, ${sRun.stats.faces} faces, ${sRun.stats.tried} places tried, ${sRun.stats.lines} sight lines`);
+    + `${sPlaced.solids.length} solids, ${sRun.stats.faces} walls, ${sRun.stats.tried} places tried, ${sRun.stats.lines} sight lines`);
   check(`quick: ${stPlaced.solids.length} solids in under ${EGG.STRESS_MS} ms`,
     stPlaced.solids.length >= EGG.STRESS_SOLIDS && stCold < EGG.STRESS_MS,
     `first call in a fresh engine ${r3(stCold)} ms (best of 2), warm median of 7 ${r3(warm(stPlaced, stDoc, 'canvas'))} ms; `
-    + `${stDoc.elements.length} elements, ${stRun.stats.faces} faces, found ${stRun.spot.step} ${stRun.spot.kind}`);
+    + `${stDoc.elements.length} elements, ${stRun.stats.faces} walls, found ${stRun.spot.step} ${stRun.spot.kind}`);
 
   /* 8 and 9. What the file reaches for. */
   const src = await readFile(path, 'utf8');
   const problems = eggSourceProblems(src);
-  check('pure: imports only src/props/parts.js; no DOM, clock, Three.js or Math.random; no JS trigonometry or powers',
+  check('pure: imports only src/props/trig.js; no DOM, clock, Three.js or Math.random; no JS trigonometry or powers',
     problems.length === 0, problems.join('; ') || `Math.${[...new Set([...src.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/\bMath\.([A-Za-z0-9_]+)/g)].map((m) => m[1]))].join(', Math.')} only`);
 
-  /* 5. The table. */
-  check('the table: undersides and backs over plain sides, inside over outside',
-    SCORE.underside > SCORE.side && SCORE.back > SCORE.side && SCORE.underside > SCORE.back
-      && SCORE.inside > 0 && SCORE.top <= SCORE.side && FINALISTS === EGG.FINALISTS,
-    Object.entries(SCORE).map(([k, v]) => `${k} ${v}`).join(', '));
-
-  /* A map's spot and every finalist, held to the rules; the finalists'
-   * order; the pick; and the same spot again. */
+  /* A map's spot held to the rules, the best wall, the walls' order, and
+   * the same spot again. */
   const judge = (label, placed, doc, source, run, opts = {}) => {
-    const { spot, finalists } = run;
-    const all = spot.step === 'hidden' ? finalists : [spot];
-    const broken = [];
-    for (const f of all) {
-      for (const r of eggRules(placed, f)) {
-        if (!r.ok) {
-          broken.push(`${f.kind} on ${f.elementId} ${f.type} ${f.part}: rule ${r.rule}: ${r.detail}`);
-        }
-      }
-    }
+    const { spot } = run;
+    const broken = eggRules(placed, spot).filter((r) => !r.ok)
+      .map((r) => `${spot.kind} on ${spot.elementId ?? 'the paving'} ${spot.type ?? ''} ${spot.part ?? ''}: rule ${r.rule}: ${r.detail}`);
     if (!opts.quiet || broken.length) {
-      check(`${label}: ${spot.step === 'hidden' ? `every one of ${finalists.length} finalists keeps` : `the ${spot.step} spot keeps`} its rules`,
-        broken.length === 0, broken.slice(0, 3).join(' | ')
-          || (spot.step === 'hidden' ? 'rules 1 to 4, and the kind each says it is' : `the ${spot.step} step's`));
+      check(`${label}: the ${spot.step} spot keeps its rules`, broken.length === 0,
+        broken.slice(0, 3).join(' | ') || (spot.step === 'seen' ? 'rules 1 to 5' : "the ground step's"));
     }
+    const { mine, better, tried } = betterWall(placed, spot);
+    const scored = spot.step !== 'seen' || (Number.isFinite(mine) && Math.abs(spot.score - mine) <= 1e-12 * Math.abs(mine));
     let order = true;
-    for (let i = 1; i < finalists.length; i += 1) {
-      order = order && finalists[i - 1].score >= finalists[i].score;
+    for (let i = 1; i < run.faces.length; i += 1) {
+      order = order && run.faces[i - 1].score >= run.faces[i].score;
     }
-    const distinct = new Set(finalists.map((f) => f.elementId)).size;
-    const pickAt = finalists.length ? Math.floor(seededRandom(hashString(`stf:${doc.id}`)).next() * finalists.length) : -1;
-    const picked = spot.step !== 'hidden' || (pickAt >= 0 && spotDifference(spot, finalists[pickAt]) === null);
-    const ok = order && (distinct === finalists.length || distinct < EGG.FINALISTS) && picked
-      && finalists.length <= EGG.FINALISTS && (spot.step === 'hidden') === (finalists.length > 0);
-    if ((!opts.quiet && finalists.length) || !ok) {
-      check(`${label}: finalists best first, one per element first, and the seed's pick`, ok,
-        `${finalists.length} finalists from ${distinct} elements, scores ${finalists.map((f) => f.score).join(' ')}, picked number ${pickAt + 1}`);
+    const best = !better && scored && order;
+    if (!opts.quiet || !best) {
+      check(`${label}: ${spot.step === 'seen' ? 'no wall that scores higher' : 'no wall'} keeps rules 1 to 5 at its middle, and the walls come best first`, best,
+        better ? `${better.wall.el.id} ${better.wall.el.type} ${better.wall.part.name} scores ${r3(better.score)} against ${r3(mine)} and keeps them`
+          : `${tried} better walls tried, none keeps them; score ${spot.step === 'seen' ? `${r3(spot.score)}, this file's ${r3(mine)}` : 'none, on the paving'}; `
+          + `${run.faces.length} walls ${order ? 'in order' : 'OUT OF ORDER'}`);
     }
     const again = chooseStfSpot(placed, doc, source);
     const twice = normalize(normalize(doc).doc).doc;
@@ -3030,21 +3176,20 @@ async function eggBlock() {
     if (!opts.quiet || d1 || d2) {
       check(`${label}: the same spot on a second run and after normalize(normalize(doc)), to the bit`, !d1 && !d2, d1 || d2 || 'the same');
     }
-    return broken.length === 0 && ok && !d1 && !d2;
+    return broken.length === 0 && best && !d1 && !d2;
   };
-  const where = (s) => `${s.step} ${s.kind}${s.inside ? ' inside' : ''} on ${s.elementId ?? 'the paving'} ${s.type ?? ''} ${s.part ?? ''}`.replace(/\s+/g, ' ').trim()
+  const where = (s) => `${s.step} ${s.kind}${s.frame ? ' in the first frame' : ''} on ${s.elementId ?? 'the paving'} ${s.type ?? ''} ${s.part ?? ''}`.replace(/\s+/g, ' ').trim()
     + ` at (${r3(s.p[0])}, ${r3(s.p[1])}, ${r3(s.p[2])}) facing (${s.n.join(', ')}), ${r3(s.w)} by ${r3(s.h)} m`;
 
   /* The starter. Its key is 'built:starter' whatever its id is; the source
    * changes the key and nothing else. */
   const sSpot = sRun.spot;
-  console.log(`        the starter's spot: ${where(sSpot)}`);
-  note(`finalists: ${sRun.finalists.map((f) => `${f.kind}${f.inside ? ' inside' : ''} ${f.elementId} ${f.type} ${f.part} (${f.score})`).join('; ')}`);
+  console.log(`        the starter's spot: ${where(sSpot)}, ${r3(eggReach(eggPads(sPlaced), sSpot.p))} m from the pads`);
   check("the starter's key is 'built:starter'", sSpot.key === 'built:starter' && stfKey(sDoc, 'starter') === 'built:starter', sSpot.key);
   const asCanvas = chooseStfSpot(sPlaced, sDoc, 'canvas');
   check("the same map from the seat keys by its id, at the same spot", asCanvas.key === `built:${sDoc.id}`
     && spotDifference({ ...asCanvas, key: '' }, { ...sSpot, key: '' }) === null, asCanvas.key);
-  check('the starter: a hidden spot', sSpot.step === 'hidden', sSpot.step);
+  check('the starter: a wall seen from the pads', sSpot.step === 'seen' && sSpot.kind === 'wall', `${sSpot.step} ${sSpot.kind}`);
   for (const r of eggRules(sPlaced, sSpot)) {
     note(`rule ${r.rule}: ${r.ok ? 'kept' : 'BROKEN'}, ${r.detail}`);
   }
@@ -3055,7 +3200,7 @@ async function eggBlock() {
   check('the starter: choosing the spot leaves the placement as it was, to the bit', placementHash(sPlaced) === hashBefore,
     `placement hash ${hashBefore.slice(0, 16)}`);
 
-  /* One of everything, under a fixed id so two runs pick alike. */
+  /* One of everything, under a fixed id. */
   const eDoc = everythingDoc().doc;
   eDoc.id = 'trk-egg-everything';
   const ePlaced = placeDocument(eDoc);
@@ -3066,76 +3211,44 @@ async function eggBlock() {
   check('one of everything: choosing the spot leaves the placement as it was, to the bit', placementHash(ePlaced) === eHash,
     `placement hash ${eHash.slice(0, 16)}`);
 
-  /* 6 and 7. Fifty random maps. */
+  /* 6 and 7. Fifty random maps, and the id moves nothing. */
   const steps = {};
   let good = 0;
-  let otherId = 0;
-  let hiddenMaps = 0;
-  let consecutive = 0;
-  let prev = null;
+  let moved = 0;
+  let frame = 0;
   for (let k = 0; k < EGG.RANDOM_MAPS; k += 1) {
     const doc = normalize(randomEggMap(k)).doc;
     const placed = placeDocument(doc);
     const run = stfSearch(placed, doc, 'canvas');
     steps[run.spot.step] = (steps[run.spot.step] || 0) + 1;
+    frame += run.spot.frame ? 1 : 0;
     if (judge(`random map ${k}`, placed, doc, 'canvas', run, { quiet: true })) {
       good += 1;
     }
     const copy = { ...doc, id: `${doc.id}-copy` };
     if (spotDifference({ ...run.spot, key: '' }, { ...chooseStfSpot(placed, copy, 'canvas'), key: '' })) {
-      otherId += 1;
+      moved += 1;
     }
-    if (run.spot.step === 'hidden') {
-      hiddenMaps += 1;
-    }
-    const at = JSON.stringify([run.spot.p, run.spot.n]);
-    if (prev !== null && at !== prev) {
-      consecutive += 1;
-    }
-    prev = at;
   }
-  check(`${EGG.RANDOM_MAPS} random maps: every spot and finalist keeps its rules, and comes back the same`, good === EGG.RANDOM_MAPS,
-    `${good} of ${EGG.RANDOM_MAPS}; steps ${Object.entries(steps).map(([s, n]) => `${s} ${n}`).join(', ')}`);
-  check('different documents usually differ: the next random map, and the same map under another id',
-    consecutive > (EGG.RANDOM_MAPS - 1) / 2 && otherId > EGG.RANDOM_MAPS / 2,
-    `the next map's spot differs ${consecutive} of ${EGG.RANDOM_MAPS - 1} times; the same layout under a second id `
-    + `${otherId} of ${EGG.RANDOM_MAPS} (${otherId} of the ${hiddenMaps} with a hidden spot; a ground spot has no seed)`);
+  check(`${EGG.RANDOM_MAPS} random maps: every spot keeps its rules, no better wall is passed over, and it comes back the same`, good === EGG.RANDOM_MAPS,
+    `${good} of ${EGG.RANDOM_MAPS}; steps ${Object.entries(steps).map(([s, n]) => `${s} ${n}`).join(', ')}; ${frame} in the first frame`);
+  check('the id moves nothing: each random map under a second id, the same spot to the bit', moved === 0,
+    `${moved} of ${EGG.RANDOM_MAPS} moved`);
 
-  /* 7. Each fallback, on a map built to reach it. */
-  for (const m of fallbackMaps()) {
+  /* 7. Each step, on a map built to reach it. */
+  for (const m of eggStepMaps()) {
     const doc = normalize(m.doc).doc;
     const placed = placeDocument(doc);
     const run = stfSearch(placed, doc, 'canvas');
-    const reached = run.spot.step === m.step && run.finalists.length === 0
-      && (m.step !== 'ground' || run.stats.faces === 0 || run.spot.step === 'ground')
-      && (!m.notFarthest || groundCorners(placed).some((c) => !c.clear));
-    check(`always a spot: ${m.label} reaches '${m.step}'`, reached,
-      `${where(run.spot)}; ${placed.solids.length} solids, ${run.stats.faces} faces`);
+    const plan = m.step === 'ground' ? groundPlan(placed, eggPads(placed)) : null;
+    const atFirst = plan && Math.abs(run.spot.p[0] - plan.places[0].x) < 1e-9 && Math.abs(run.spot.p[2] - plan.places[0].z) < 1e-9;
+    const reached = run.spot.step === m.step && (!m.frame || run.spot.frame)
+      && (!m.first || (plan.places[0].clear && atFirst)) && (!m.notFirst || (!plan.places[0].clear && !atFirst));
+    check(`a spot on every map: ${m.label} reaches '${m.step}'${m.frame ? ', in the first frame' : ''}`
+      + `${m.first ? ', at the first place ahead' : ''}${m.notFirst ? ', not at the first place' : ''}`, reached,
+      `${where(run.spot)}; ${placed.solids.length} solids, ${run.stats.faces} walls`);
     judge(m.label, placed, doc, 'canvas', run);
   }
-
-  /* Which way a ceiling's mark reads. A pilot looking up at a ceiling sees
-   * its near part at the top of the picture, so the lettering's up has to
-   * point the way the pilot comes in from, and under a balcony that is its
-   * open side, whichever side the pads are on. */
-  const bDoc = normalize(balconyEggMap()).doc;
-  const bPlaced = placeDocument(bDoc);
-  const bRun = stfSearch(bPlaced, bDoc, 'canvas');
-  const balconies = bRun.finalists.filter((f) => f.kind === 'underside' && f.part === 'balconySlab');
-  const readings = balconies.map((f) => {
-    const it = bPlaced.items.find((x) => x.el && x.el.id === f.elementId);
-    const own = placeSolids(it.parts, it.x, it.y, it.z, it.yaw, it.turns, []).filter((s) => s.box);
-    const ua = unitAxis(f.up);
-    const lo = Math.min(...own.map((s) => s.box[ua]));
-    const hi = Math.max(...own.map((s) => s.box[ua + 3]));
-    const out = Math.sign(f.p[ua] - (lo + hi) / 2);
-    const pads = Math.sign(bPlaced.spawn[ua === 0 ? 'x' : 'z'] - f.p[ua]);
-    return { up: f.up[ua], out, pads };
-  });
-  check('a balcony facing away from the pads reads up toward its open side, not toward the pads',
-    balconies.length > 0 && readings.every((r) => r.up === r.out && r.pads !== r.out),
-    `${balconies.length} balcony undersides among ${bRun.finalists.length} finalists; up, out of the flats and toward the pads: `
-    + `${readings.map((r) => `${r.up} ${r.out} ${r.pads}`).join('; ') || 'none'}`);
 
   /* Finding it, on the starter, where its map paints it. */
   await eggFind(sPlaced, sSpot);
@@ -3156,11 +3269,12 @@ async function eggBlock() {
  *
  *   NEAR in front, looking at it          found
  *   the same eye turned round             not found
- *   FAR in front                          not found: out of range
+ *   FAR past its range, in front          not found: out of range, which
+ *                                         grows with the mark's width
  *   BEHIND past the solid it is on        not found, and no clear line
- *   the spawn's eyes (the chooser's)      not found, and no clear line, so
- *                                         hidden by solids and not only by
- *                                         the range
+ *   the spawn's eyes (the chooser's)      a clear line and not found: seen
+ *                                         from the pads, and found only by
+ *                                         flying to it
  *   a plate planted square across         not found: the line goes in one
  *                                         face and out of the opposite one
  *   a box whose corner the line cuts,     not found, where the opposite
@@ -3170,10 +3284,11 @@ async function eggBlock() {
  * paint clear of the relief the kit draws on the face (drawnRelief there,
  * 5.6 cm on the starter's container door), which Node cannot draw, so the
  * eyes here look at paint nearer the solid than the page puts it: the
- * harder case for the clear line. NEAR, FAR, BEHIND and HIGH are the
- * brief's distances and the corner case's height, in metres.
+ * harder case for the clear line. NEAR, BEHIND and HIGH are the brief's
+ * distances and the corner case's height, in metres, and FAR is how far past
+ * the mark's own range the far eye stands.
  */
-const EGG_FIND = { LIFT: 0.015, NEAR: 3, FAR: 6, BEHIND: 1, HIGH: 1.5, EDGE_OUT: 0.3, SLANT_OUT: 1.2 };
+const EGG_FIND = { LIFT: 0.015, NEAR: 3, FAR: 2, BEHIND: 1, HIGH: 1.5, EDGE_OUT: 0.3, SLANT_OUT: 1.2 };
 
 /* A point in the mark's own frame: `a` out along its normal, `u` along its
  * up and `r` along its right, from the painted centre. */
@@ -3208,7 +3323,7 @@ async function eggFind(placed, spot) {
     fail('src/game/egg.js imports in Node', e.message);
     return;
   }
-  const { seesMark, clearLineTo, FIND_RANGE, FIND_FACE } = find;
+  const { seesMark, clearLineTo, findRange, FIND_FACE } = find;
   const colliders = buildColliders(placed);
   const egg = {
     key: spot.key,
@@ -3228,9 +3343,12 @@ async function eggFind(placed, spot) {
   const back = eggToward(near, egg);
   check('the find: the same eye turned round does not', !seesMark(near, { x: -back.x, y: -back.y, z: -back.z }, egg, colliders),
     'looking straight away from it');
-  const far = eggAt(egg, right, EGG_FIND.FAR, 0, 0);
-  check(`the find: ${EGG_FIND.FAR} m in front, looking at it, does not`, FIND_RANGE < EGG_FIND.FAR && !sees(far),
-    `range ${FIND_RANGE} m`);
+  const range = findRange(egg);
+  const far = eggAt(egg, right, range + EGG_FIND.FAR, 0, 0);
+  const inReach = eggAt(egg, right, range - 0.5, 0, 0);
+  check(`the find: ${EGG_FIND.FAR} m past its range in front, looking at it, does not; half a metre inside it, it does`,
+    !sees(far) && sees(inReach) && range > EGG_FIND.NEAR,
+    `range ${r3(range)} m for a ${r3(egg.w)} m mark`);
 
   /* Edge on: 3 m along the face and a little out from it, looking at the
    * centre. In range, in front of the paint, looking at it, with a clear
@@ -3263,10 +3381,13 @@ async function eggFind(placed, spot) {
   }
 
   const sp = placed.spawn;
-  const spawnEyes = [0.3, 2, 5].map((h) => ({ x: sp.x, y: sp.y + h, z: sp.z }));
-  const seenFromPads = spawnEyes.filter((e) => sees(e) || clearLineTo(e, egg, colliders));
-  check('the find: the spawn\'s eyes, 0.3, 2 and 5 m over the seat, do not, and have no clear line to it',
-    seenFromPads.length === 0, seenFromPads.map(at).join(', ') || 'hidden by solids at every height, not only by the range');
+  const spawnEyes = EGG.EYES.map((h) => ({ x: sp.x, y: sp.y + h, z: sp.z }));
+  const blind = spawnEyes.filter((e) => !clearLineTo(e, egg, colliders));
+  const foundOnPads = spawnEyes.filter((e) => sees(e));
+  check(`the find: the spawn's eyes, ${EGG.EYES.join(', ')} m over the seat, have a clear line to it and do not find it`,
+    blind.length === 0 && foundOnPads.length === 0,
+    blind.length ? `no clear line from ${blind.map(at).join(', ')}`
+      : (foundOnPads.length ? `found from ${foundOnPads.map(at).join(', ')}` : `seen from the pads, ${r3(Math.hypot(egg.p[0] - sp.x, egg.p[2] - sp.z))} m off, past its ${r3(range)} m range`));
 
   /* A plate square across the line, 5 cm thick, half way. */
   const plate = eggPlant(egg, right, 1.5, 1.55, -1, 1, -1, 1, 'plantedPlate');
@@ -3353,39 +3474,62 @@ async function eggBuilderBlind() {
 }
 
 /*
- * The egg's detectors against planted faults: a spot in full view of the
- * pads must fail rule 4 and only rule 4, a spot with a solid planted in
- * front of it must fail rule 3, a mark too wide for its face rule 1, a pole
- * in its air rule 2, and a source that takes a sine the purity scan.
+ * The egg's detectors against planted faults: a mark in full view of the
+ * pads keeps every rule, and fails rule 4 and only rule 4 with a wall
+ * planted between; a mark out of reach fails rule 5 and only rule 5, and one
+ * on the side turned away fails rule 5; a spot with a solid planted in
+ * front of it fails rule 3, a mark too wide for its face rule 1, a pole in
+ * its air rule 2; a ground spot on a map with a wall in view is caught
+ * passing that wall over; and a source that takes a sine fails the purity
+ * scan.
  */
 async function selftestEgg() {
   const path = join(root, 'src/maps/built/egg.js');
   const egg = await import(pathToFileURL(path).href);
   const starter = await import(pathToFileURL(join(root, 'src/maps/built/starter.js')).href);
   const failed = (list) => list.filter((r) => !r.ok).map((r) => String(r.rule));
-
-  /* In full view: a container 25 m in front of the pads, the mark on the
-   * face that looks at them. */
-  const doc = createTrack('Egg view', 'full', 'freestyle');
-  doc.id = 'trk-egg-view';
-  doc.field.width = 60;
-  doc.field.depth = 60;
-  eggElement(doc, 'startPads', 30, 10, Math.PI / 2);
-  eggElement(doc, 'containers', 30, 35, 0, '40ft', { stack: 1 });
-  const vDoc = normalize(doc).doc;
-  const vPlaced = placeDocument(vDoc);
-  const box = vPlaced.solids.find((s) => s.box && s.name === 'container').box;
-  const sp = vPlaced.spawn;
-  const faceTo = box[5] < sp.z ? 1 : -1;
-  const plane = faceTo > 0 ? box[5] : box[2];
-  const viewSpot = {
-    key: 'built:trk-egg-view', step: 'hidden', kind: 'side', inside: false,
-    p: [(box[0] + box[3]) / 2, 1.3, plane], n: [0, 0, faceTo], up: [0, 1, 0], right: cross3([0, 1, 0], [0, 0, faceTo]).map((v) => v + 0),
-    w: 1.8, h: 0.9, elementId: vDoc.elements.find((e) => e.type === 'containers').id, type: 'containers', part: 'container', score: 1.5,
+  /* The mark at the middle of a map's wall that faces the pads, or the one
+   * behind it when `away`. */
+  const wallOn = (placed, away) => {
+    const pads = eggPads(placed);
+    const walls = eggWalls(placed);
+    const seen = walls.find((w) => wallScore(pads, w.n, w.mid, w.w) !== null);
+    const w = away ? walls.find((x) => x.el === seen.el && x.box === seen.box && x.n.every((v, k) => v === -seen.n[k])) : seen;
+    return {
+      key: 'built:selftest', step: 'seen', kind: 'wall', p: [...w.mid], n: w.n, up: [0, 1, 0],
+      right: cross3([0, 1, 0], w.n).map((v) => v + 0), w: w.w, h: w.h, elementId: w.el.id,
+    };
   };
-  const view = failed(eggRules(vPlaced, viewSpot));
-  check('self test: a mark in full view of the pads fails rule 4, and nothing else', view.includes('4') && view.every((r) => r.startsWith('4')),
-    view.join(', ') || 'nothing failed');
+
+  /* In full view: a container 25 m ahead of the pads, the mark on the side
+   * that looks at them. Then a wall planted half way. */
+  const vDoc = normalize(containerEggMap('trk-egg-view')).doc;
+  const vPlaced = placeDocument(vDoc);
+  const viewSpot = wallOn(vPlaced, false);
+  check('self test: a mark in full view of the pads keeps every rule', failed(eggRules(vPlaced, viewSpot)).length === 0,
+    failed(eggRules(vPlaced, viewSpot)).join(', ') || 'clean');
+  const mz = (vPlaced.spawn.z + viewSpot.p[2]) / 2;
+  const between = { kind: 'wall', name: 'planted', box: [-10, 0, mz - 0.25, 10, 8, mz + 0.25] };
+  const hidden = failed(eggRules({ ...vPlaced, solids: [...vPlaced.solids, between] }, viewSpot));
+  check('self test: the same mark with a wall planted between it and the pads fails rule 4, and nothing else',
+    hidden.includes('4') && hidden.every((r) => r === '4'), hidden.join(', ') || 'nothing failed');
+  const turned = failed(eggRules(vPlaced, wallOn(vPlaced, true)));
+  check('self test: a mark on the side turned away from the pads fails rule 5', turned.includes('5'), turned.join(', ') || 'nothing failed');
+  const fDoc = normalize(containerEggMap('trk-egg-far', 75)).doc;
+  const fPlaced = placeDocument(fDoc);
+  const far = failed(eggRules(fPlaced, wallOn(fPlaced, false)));
+  check('self test: a mark 75 m from the pads fails rule 5, and nothing else', far.includes('5') && far.every((r) => r === '5'),
+    far.join(', ') || 'nothing failed');
+
+  /* The pick: the paving chosen on a map with a wall in view. */
+  const plan = groundPlan(vPlaced, eggPads(vPlaced));
+  const onPaving = {
+    key: 'built:selftest', step: 'ground', kind: 'ground', p: [plan.places[0].x, 0, plan.places[0].z], n: [0, 1, 0], up: plan.up,
+    right: cross3(plan.up, [0, 1, 0]).map((v) => v + 0), w: plan.w, h: plan.h, clear: plan.places[0].clear,
+  };
+  const passed = betterWall(vPlaced, onPaving);
+  check('self test: a spot on the paving of a map with a wall in view is caught passing the wall over', Boolean(passed.better),
+    passed.better ? `${passed.better.wall.el.type} ${passed.better.wall.part.name} keeps the rules` : 'nothing caught');
 
   /* The starter's own spot, clean, then with a box planted over the air
    * in front of it, then too wide for its face, then with a pole in its air. */

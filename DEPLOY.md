@@ -489,6 +489,34 @@ Until the TTL is fixed: a deploy that changes a class name, an id the
 stylesheet matches, or anything else the script and the sheet have to agree
 on, needs a hard reload to be safe, and returning pilots will not do one.
 
+WORKED ROUND IN CODE SINCE 2026-09-25, at the owner's request, after the
+same seam hid a second deploy from the owner in one day: `src/fresh.js`.
+The simulator, the builder and the orbit page each ask for their own
+Last-Modified before loading anything, which is the deploy's time because
+Render stamps every file of a deploy with it and a page is never cached,
+and then load every module at an address carrying it, `src/main.js?d=...`,
+through one import map. A deploy is a new set of script addresses, so no
+cache, the browser's or the edge's, can hand a new page an old deploy's
+script, and no page runs half of one deploy and half of another.
+`npm run check:fresh` serves the checkout with these headers, deploys under
+a browser and proves the new script is the one running, with the old
+behaviour as its negative control.
+
+The TTL is still worth fixing, for the pictures: they stay up to four hours
+behind a deploy and fresh.js does not cover them. The scripts are covered
+either way. The cost of covering them without content hashes is that a
+deploy sends a returning browser the whole script graph once, changed or
+not, about a megabyte compressed for a boot.
+
+Measured again on 2026-09-25 at 09:23 UTC, unchanged: pages `max-age=0`,
+every script and picture `max-age=14400` through the domain, everything
+`max-age=0, s-maxage=300` at the origin, the music included, so Render is
+not applying this repository's `render.yaml` headers either. That morning
+the gate's fourth card was live and byte identical to main, and the owner's
+browser drew the new stylesheet's wider column around the old script's three
+cards. The builder page has the same seam: a fresh `index.html` over a
+cached `app.js`.
+
 Then in a browser, in this order:
 
 1. `https://webfpv.org/` and click **Fly now**. The address bar should read
@@ -683,6 +711,76 @@ drift between them.
 **Facebook and X cache what they scraped.** Changing the card does not change
 what a re-share shows until their crawler comes back. Force it with Facebook's
 Sharing Debugger and X's Card Validator, one URL at a time.
+
+### A card per track and per map
+
+A link to one track or one map shows that track or map, not the race field:
+a 1200 by 630 frame of it in the real renderer, from above and to one side
+of its middle, with the WebFPV wordmark over the top left where `og.png` has
+it. The title under it is the track's name and who made it, and the line
+under that is its record. Three pieces make that happen, one per repository
+that has a server side or a browser in it:
+
+| Piece | Where | What it does |
+| --- | --- | --- |
+| The card | `src/share/card.js`, `orbit.html?card=1` | The browser that publishes draws it and uploads it with the edit key |
+| The storage | the board's `/api/tracks/:id/card` and `/api/maps/:id/card` | Keeps one JPEG per track and per map, serves it to crawlers |
+| The preview | `edge/preview.js`, called by `edge/router.js` | Writes the name, the record and the card into a shared page's head |
+
+The edge does the writing because nothing else can. A crawler runs no
+script, the simulator is a static site, and a link like
+`/sim/?map=custom&share=trk-...` reaches no server of ours but the Worker.
+It rewrites **only for link preview bots**, by user agent, and only a page
+that names one of the board's ids. A person's browser gets the page exactly
+as before and never waits on the board.
+
+**The board's Copy link now hands out `/board/?track=` and `/board/?map=`.**
+A `#track=` fragment never leaves the browser, so every link copied off the
+board before this was previewed as the board's front page. The page swaps
+the query for the hash as it loads. Old `#track=` links still open their
+sheet; they just keep showing the site's card.
+
+**Deploy it in this order**, which is the order each piece starts being
+asked for:
+
+1. The board. Its `schema.sql` adds `card` and `card_utc` to `tracks` and
+   `maps` on start, additively, and it learns the card routes. A simulator
+   deployed first would upload cards to a board that answers 404; the track
+   would still publish, with a sentence about its picture.
+2. The simulator. Every publish from here on draws and uploads a card.
+3. The Worker, by hand, from a checkout: `npx wrangler deploy --config
+   edge/wrangler.toml`. Until this is done no link shows a card, because
+   nothing names one to a crawler.
+4. The backfill, once, from a machine whose Chromium can reach the board.
+   It draws a card for every track and map that has none, with the same page
+   the builder uses, and uploads each with the admin token. `--dry --out
+   <dir>` draws them into a folder without uploading, to look at first.
+
+```bash
+BOARD_ADMIN_TOKEN=... node scripts/boardcards.js --board https://webfpv.org/board
+```
+
+**Check it** without a social network, by asking as one:
+
+```bash
+curl -s -A "facebookexternalhit/1.1" \
+  "https://webfpv.org/sim/?map=custom&share=trk-54902a69" | grep -E 'og:|canonical'
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" \
+  "https://webfpv.org/board/api/tracks/trk-54902a69/card"
+```
+
+The first should name the track in `og:title`, put the asked address in
+`og:url`, and point `og:image` at `/board/api/tracks/trk-54902a69/card?v=...`.
+The same request without `-A` must come back as the plain page.
+
+**A sleeping board costs a crawler the card, not a person anything.** The
+board is a free Render service and sleeps after a quiet quarter of an hour.
+For a simulator link the Worker gives the board the page's own time plus
+four seconds (`PREVIEW_WAIT_MS`), then sends the untouched page, which is
+the site's card. Facebook then keeps that until it scrapes again: Scrape
+Again in the Sharing Debugger fixes one link. A link shared straight after
+flying or publishing finds the board awake, which is most of them. A board
+link waits for the board to wake, the way a person arriving on it does.
 
 ## The site icons
 

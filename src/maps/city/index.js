@@ -2465,6 +2465,10 @@ export async function buildMap(shell, onProgress, options) {
     /* The parts of the town that move and are solid, for the plant to read
      * every step. See solids in ./animation.js. */
     solids: anim.solids,
+    /* Where the STF mark is painted, in the works shed's roof space: see
+     * STF_SPOT in ./places/works.js and `egg` in src/maps/README.md. Paint
+     * only; nothing about it is solid. */
+    egg: places.egg,
     setNextGate() {},
     /* No gates, so nothing is ever the next one. Present so the shell has
      * one call shape for both maps and the target mark stays off here. */

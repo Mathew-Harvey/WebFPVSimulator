@@ -44779,3 +44779,162 @@ to the branch: no merge commit, nothing rewritten, one history.
     git merge-base           f678dba, main's tip; main moves by
                              fast-forward
     git diff --stat vendor/betaflight   empty
+
+## 2026-09-25 | art, maps, shell | Stage B: the STF mark, hidden on every freestyle map
+
+The owner: "this start B". FREESTYLE-MAPS-PLAN.md section 9, built by one
+workflow (two builders on disjoint files, one to wire the find, one
+integrator; no review round, as the owner asked). No physics change: the
+mark is paint. The town's 19515 collider boxes, its 15669 authored
+rectangles and its 801 platforms hash the same before and after, and both
+built map placement hashes are unchanged (starter e72f829e..., one of
+everything 9899d9f1...).
+
+### What was built
+
+- **The mark, src/art/stf.js.** The STF logo painted on a canvas as a
+  sprayed stencil: brush-stroke white S and F with a green T, a violet ink
+  line, a freehand overspray black field, runs and drips. It is placeholder
+  lettering, because the logo file is still not in assets/. STF_LOGO_URL is
+  null and nothing is fetched; set it to the file and the same spray
+  treatment is applied to the owner's lettering (the load and repaint path
+  was tested with a data URL). A lit cel material, so it sits in the shade
+  of whatever it is painted on.
+- **The town's spot**, STF_SPOT in src/maps/city/places/works.js: the
+  underside of the first roof step of the works shed's middle tooth,
+  directly behind the broken clerestory, 1.7 by 0.85 m. It is the plan's
+  proposal and still unconfirmed by the owner. Drawn only, named with the
+  town's Trim suffix, so the collider fit, cover pass and audit ignore it.
+- **The built map's spot, src/maps/built/egg.js**, pure, no trigonometry,
+  seeded from the document id: faces of opaque solid boxes, with open air in
+  front, inside the plot, never seen from 0.3, 2 or 5 m over the spawn,
+  scored by a table (underside 4, back 2, side 1, top 0, inside +3), eight
+  finalists one per element first, a seeded pick. Falls back to a face
+  turned away from the spawn, then to paint on the ground in the far
+  corner. The starter's spot is the door end of the upper container over
+  CONTAINER TUNNEL, facing the billboard. The builder never loads it: a
+  props-check line walks every builder module's imports.
+- **Found, src/game/egg.js seesMark:** the FPV camera within 4 m of the
+  mark, at least 0.2 m in front of the paint and at least 15 degrees off its
+  plane, the mark inside a 35 degree cone, and a clear line (the
+  segmentCrossesAny test plus a 0.1 m walk that catches a line cutting a
+  box's corner, which segmentCrossesAny alone calls clear). Asked every 3
+  frames in flight.
+- **The moment:** a lettered STF callout ("MARK FOUND") and a manga panel
+  with the mark in it, on the right third for 3 s, no pointer events; a
+  stamp in this browser (src/share/stamps.js, webfpv.stf.stamps.v1) shown
+  as a badge on that world's card in the Freestyle picker. eggBonus(egg) in
+  main.js is Stage C's hook for the combo bonus, empty now.
+
+### Departures from the brief, each measured
+
+- A ceiling needs 2.2 m of air under it, not 3: a bando storey has 3.1 m.
+- Finalists are one per element before any element's second face; without
+  it the starter's eight were eight panels of one bando ceiling.
+- Only opaque solids hide the mark (not glass, nets, rails, foliage); the
+  check asserts both rules.
+- The built map paints 1.5 cm off the DRAWN surface, found by 15 rays onto
+  the chunk's batches, not off the collider: on the starter's container the
+  door leaves stand 3.5 to 5.6 cm proud of the solid, and the paint sat
+  behind them while "found" fired.
+- FIND_FACE, the 15 degree slant: without it the town's flight fired edge
+  on, 1.6 m from the mark and 7.6 degrees off its plane.
+- openSide: a ceiling mark reads toward the side its ceiling opens to; the
+  first rule stood a balcony mark upside down for the only way in.
+- A throw in the chooser or the painter leaves the map flying with no mark
+  and a console error, instead of failing the load.
+- **The dusk glow (mine, after the workflow):** lit paint went the grey
+  violet of the steel round it at dusk and the green T all but vanished on
+  the starter's container, 3 m out. At dusk and overcast the paint now
+  gives back STF_GLOW (0.3, 0.12) of its own colour through its emissive
+  map, so the letters lift and the T stays green while the black field
+  stays black. Golden, noon and the town are unchanged. Shot before and
+  after from the same pose.
+
+### Found, as a pilot
+
+In page pilot, Low, final code, by the integrator:
+
+    town        8 negatives not found (spawn, 40 m overhead, the roof over
+                the mark, works lines 1 and 2 both ways); in through the
+                clerestory: found at 1.42 m, 18.9 deg off axis
+    starter     7 negatives (spawn, crane gap both ways, overhead, the
+                stack over the mark, the tunnel); back west under the
+                billboard: found at 3.96 m, 29.2 deg off axis
+    own maps    three maps, three spots, the page agrees with Node
+
+Timing: the chooser's first call in a fresh engine, 15.5 ms on the starter
+and 47.0 ms on 10027 solids. Chrome 141 and Node 22 pick identical spots on
+52 maps (both are V8). A built map gains one draw call and about 15 ms of
+raycasting at build. MAP_MODULE_COUNT.built is 5.
+
+### For the owner
+
+- The town's spot is unconfirmed. From the ground it shows only as a sliver
+  through line 2's side openings and the open gable triangles, and at the
+  top of the frame on lines 1 and 2; it is found only in the roof space.
+- The starter's spot is on a natural line back from the billboard and may
+  be easier to find than wanted. A different STARTER_ID moves it.
+- The finalist rule lets a top face in: one of the integrator's maps got a
+  mark on a stair landing's top, which needs a nose-down look. A minimum
+  score for finalists would favour undersides.
+- On a phone (844 by 390) the callout sits under the Pause chip and the
+  panel covers the top of the right thumb plate for its 3 s.
+- The logo file: commit assets/stf.svg (or a PNG of 1024 px or more on a
+  transparent background) and set STF_LOGO_URL in src/art/stf.js.
+
+### What went wrong
+
+- An orphaned headless Chromium from an earlier rig burned about 3 of the
+  4 cores for three hours before the integrator found and stopped it; one
+  early town flight crashed under it. The final checks and flights ran
+  after.
+- The harness's temporary browser profiles had reached 674 directories and
+  11 GB in /tmp. Deleted, with no browser running.
+- The first built map mark was painted behind the container doors and
+  still reported found. The relief probe and the found test's slant rule
+  came out of that.
+
+### RUN LOG
+
+Run by me on the final tree, this turn:
+
+    npm run check:clip             652 passed, 0 failed
+    node scripts/props-check.js    all passed, 200 PASS; hashes unchanged
+    props-check --selftest         all passed
+    npm run check:plant            all passed
+    npm run check:crash            0 guards failed
+    npm run lint:memory            PASS, every world lazy and freed
+    npm run lint:boot              9 of 9 clean
+    npm run lint:preload           up to date, boot 105, city 73, built 29
+    npm run lint:nouns             PASS
+    npm run lint:presets           4 of 4 clean
+    npm run lint:shell             1 problem, title overflow 23 px, main's
+    dash scan, added lines         0; GPLv3 header on the three new files
+    git diff --stat vendor/betaflight   empty
+    npm run verify                 not run: no physics change
+
+Run by the integrator on this tree before the dusk glow, which is render
+only and touches no screen: lint:quality 56 of 56; lint:input 2 failed,
+141 passed, the two being the "parked and left" pair that main has and
+that passed on the integrator's own baseline run (flaky); every Fly this
+map check passed. The shots under .loop/shots/stf-* are gitignored; I
+looked at the town's found moment, the starter's mark at golden and at
+dusk, and the dusk glow.
+
+## 2026-09-25 | git | Stage B, the STF mark, merged to main for the owner to fly
+
+The owner: "merge stage B to main". That is the approval to put Stage B on
+main, and the verification scale is the owner flying it: into the works
+shed through the broken clerestory, looking up; on Your map, the back of
+the container stack. What would count as wrong is in the Stage B entry
+above.
+
+Only Stage B goes: 410cbba, merged onto main at 5f55c2c (the fourth gate
+card and the builder's chooser), in a separate worktree so the session's
+running Stage D work was not disturbed. Stage D part 1 (the world golden,
+8e5377e) stays on the branch until Stage D is done. Only PROGRESS.md
+conflicted, both sides appending, and both were kept. The code in this
+merge is the code the branch's own merge of the same main (c0dd6d1) was
+checked on, less part 1's scripts and test data, and the checks below were
+rerun on this tree.

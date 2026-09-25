@@ -14,6 +14,7 @@ const artifactsDir = '/opt/cursor/artifacts';
 
 const VIEWPORTS = [
   { width: 1600, height: 900 },
+  { width: 1440, height: 800 },
   { width: 1366, height: 768 },
   { width: 1280, height: 720 },
   { width: 390, height: 844 }
@@ -36,6 +37,28 @@ async function measureScreen(page, screen) {
   })()`);
   
   await page.sleep(500);
+  
+  // Log scroller element info
+  const scrollerInfo = await page.evaluate(`(() => {
+    const screenClass = '${screenClass}';
+    const menu = document.querySelector('.\${screenClass} .menu');
+    const peekScroller = document.querySelector('[data-peek-scroller]');
+    const style = window.getComputedStyle(menu);
+    
+    return JSON.stringify({
+      menuTag: menu.tagName,
+      menuClasses: menu.className,
+      menuScrollHeight: menu.scrollHeight,
+      menuClientHeight: menu.clientHeight,
+      menuOverflowY: style.overflowY,
+      hasPeekScroller: !!peekScroller,
+      peekScrollerSameAsMenu: peekScroller === menu
+    });
+  })()`);
+  
+  if (screen === 'title' && vp.width === 1366 && vp.height === 768) {
+    console.log(\`  Scroller info at \${vp.width}x\${vp.height} \${screen}: \${scrollerInfo}\`);
+  }
   
   // Measure before scroll
   const before = JSON.parse(await page.evaluate(`(() => {

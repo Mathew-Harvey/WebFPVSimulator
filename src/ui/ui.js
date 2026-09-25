@@ -9564,12 +9564,15 @@ export class Ui {
       return;
     }
 
-    const menu = screen.querySelector('.menu');
-    if (!menu) {
+    const scroller = screen.querySelector('.menu');
+    if (!scroller) {
       return;
     }
 
-    const rows = Array.from(menu.querySelectorAll('.row'));
+    /* Mark this as the scroller for test instrumentation. */
+    scroller.setAttribute('data-peek-scroller', 'true');
+
+    const rows = Array.from(scroller.querySelectorAll('.row'));
     if (rows.length === 0) {
       return;
     }
@@ -9579,94 +9582,59 @@ export class Ui {
       return;
     }
 
-    /* Clear constraints. */
-    menu.style.maxHeight = '';
-    menu.style.flexShrink = '';
-    menu.scrollTop = 0;
-    menu.offsetHeight;
+    /* Clear constraints to measure natural size. */
+    scroller.style.maxHeight = '';
+    scroller.style.flexShrink = '';
+    scroller.scrollTop = 0;
+    scroller.offsetHeight;
 
-    const lastRow = rows[rows.length - 1];
     const commandBarRect = commandBar.getBoundingClientRect();
-    const lastRowRect = lastRow.getBoundingClientRect();
-    const naturalGap = commandBarRect.top - lastRowRect.bottom;
+    const scrollerRect = scroller.getBoundingClientRect();
     
-    /* If everything fits with at least 16px clearance, leave it. */
-    if (menu.scrollHeight <= menu.clientHeight && naturalGap >= 16) {
+    /* Calculate available height: bar top minus 16px clearance, minus scroller top. */
+    const available = commandBarRect.top - 16 - scrollerRect.top;
+    
+    /* If content fits naturally, clear max-height and stop. */
+    if (scroller.scrollHeight <= available) {
       return;
     }
 
-    /* Helper to check clearance for a given max-height. */
-    const checkClearance = (height) => {
-      menu.style.maxHeight = `${height}px`;
-      menu.style.flexShrink = '0';
-      menu.offsetHeight;
-      menu.scrollTop = menu.scrollHeight;
-      const gap = commandBar.getBoundingClientRect().top - lastRow.getBoundingClientRect().bottom;
-      menu.scrollTop = 0;
-      return gap;
-    };
-
-    /* Find first partially visible or hidden row to target. */
-    const menuRect = menu.getBoundingClientRect();
-    const menuBottom = menuRect.bottom;
+    /* Find the LAST row k where top_k + 0.5*h_k <= available. */
     let targetRow = null;
+    let targetIndex = -1;
     
     for (let i = 0; i < rows.length; i++) {
-      const rowRect = rows[i].getBoundingClientRect();
-      if (rowRect.bottom > menuBottom) {
-        targetRow = rows[i];
+      const row = rows[i];
+      const rowRect = row.getBoundingClientRect();
+      const top = rowRect.top - scrollerRect.top + scroller.scrollTop;
+      const h = rowRect.height;
+      
+      if (top + 0.5 * h <= available) {
+        /* Skip section headers - check if this row has the row-head class. */
+        if (!row.classList.contains('row-head')) {
+          targetRow = row;
+          targetIndex = i;
+        }
+      } else {
         break;
       }
     }
 
     if (!targetRow) {
-      /* No overflow, but maybe clearance issue. */
-      const gap = checkClearance(menu.scrollHeight);
-      if (gap < 16) {
-        /* Binary search for max height with clearance. */
-        let low = 50, high = menu.scrollHeight;
-        while (high - low > 1) {
-          const mid = (low + high) / 2;
-          if (checkClearance(mid) >= 16) {
-            low = mid;
-          } else {
-            high = mid;
-          }
-        }
-        menu.style.maxHeight = `${low}px`;
-        menu.style.flexShrink = '0';
-      }
+      /* No row qualifies, use a minimal height. */
+      scroller.style.maxHeight = `${Math.max(100, available)}px`;
+      scroller.style.flexShrink = '0';
       return;
     }
 
-    /* Try to show 50% of target row. */
-    const targetRowHeight = targetRow.offsetHeight || targetRow.getBoundingClientRect().height;
-    const targetOffsetTop = targetRow.offsetTop;
-    const desiredHeight = targetOffsetTop + (targetRowHeight * 0.5);
+    /* Set max-height to show exactly 50% of the target row. */
+    const rowRect = targetRow.getBoundingClientRect();
+    const top = rowRect.top - scrollerRect.top + scroller.scrollTop;
+    const h = rowRect.height;
+    const maxHeight = Math.floor(top + 0.5 * h);
     
-    /* Check if this height maintains clearance. */
-    const gap = checkClearance(desiredHeight);
-    
-    if (gap >= 16) {
-      /* Good! We achieved both goals. */
-      menu.style.maxHeight = `${desiredHeight}px`;
-      menu.style.flexShrink = '0';
-      return;
-    }
-
-    /* Desired height violates clearance. Binary search for max height with clearance. */
-    let low = 50, high = desiredHeight;
-    while (high - low > 1) {
-      const mid = (low + high) / 2;
-      if (checkClearance(mid) >= 16) {
-        low = mid;
-      } else {
-        high = mid;
-      }
-    }
-    
-    menu.style.maxHeight = `${low}px`;
-    menu.style.flexShrink = '0';
+    scroller.style.maxHeight = `${maxHeight}px`;
+    scroller.style.flexShrink = '0';
   }
 
   show(screen) {

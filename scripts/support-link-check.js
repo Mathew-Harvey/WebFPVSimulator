@@ -18,7 +18,7 @@
  */
 
 import { openPage } from '../tests/lib/page.js';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));

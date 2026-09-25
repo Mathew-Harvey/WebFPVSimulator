@@ -43,6 +43,92 @@
  *      friction, and costs that rotor speed: a strike in proportion to the
  *      closing speed, and a rub for every millisecond it stays in contact.
  *
+ *   5. VEHICLES (section 5 below, Stage D part 2). A road is uploaded once
+ *      and a car on it is a mover with a heading, its pose worked out here
+ *      from the module's own step clock. The craft meets a car in the car's
+ *      own frame, by the same box test as every box, and the contacts are
+ *      turned back with the car's surface velocity where they touch: its
+ *      velocity, and the rate its box actually turns, taken from the pose
+ *      itself at this step and the next. The shell reads the pose back to
+ *      draw the car, so the car a pilot sees, a drift car's slide included,
+ *      is the car the craft hits, where it is and how it moves.
+ *
+ * THE VEHICLE ABI, added 2026-09-25, additive like the rest: a module never
+ * handed a road steps exactly as it did before. World frame, SI throughout.
+ *
+ *   int sim_world_road(const double *xyz, int n, int closed)
+ *       A road's centre line at road level: n points, x y z each (3 n
+ *       doubles), metres. closed 1 joins the last point to the first, which
+ *       is not repeated. Returns the road's index, 0 up in the order roads
+ *       were added. SIM_ERR_BAD_ARG: fewer than 2 points (3 closed), more
+ *       than ROAD_MAX_POINTS, a coordinate not finite or past ROAD_COORD_MAX,
+ *       a segment under ROAD_MIN_SEG in plan, or a point where the road
+ *       turns by more than ROAD_TURN_MAX_DEG (30 degrees) in plan, a fold
+ *       back on itself included. SIM_ERR_BAD_STATE: WORLD_MAX_ROADS roads
+ *       already, or more points than the tables hold once long segments are
+ *       cut to ROAD_STEP. Refused, it leaves nothing behind.
+ *
+ *       What the shell's road tool must hand over: bends EASED over several
+ *       points, a point every metre or closer on a bend, never a corner as
+ *       one sharp point. The car's centre follows the points, so at each one
+ *       its velocity turns by the road's own turn there within a step; eased,
+ *       that is a few degrees at a time, and a corner drawn as one point is
+ *       refused rather than driven as a lurch.
+ *
+ *   int sim_world_road_info(int road, double *out)
+ *       Three doubles: the points kept after cutting, the length in metres,
+ *       and 1 if closed.
+ *
+ *   int sim_world_vehicle(int m, int road, double offset,
+ *                         double top_speed, double lateral, double drift,
+ *                         double length, double width, double height,
+ *                         double clearance, double e, double mu)
+ *       Mover slot m (0 to 63, shared with sim_world_mover) follows `road`.
+ *       offset: metres along its route from the road's first point at step
+ *       0 of the clock; the route is lap after lap of a closed road, and out
+ *       and back of an open one, so an offset past an open road's length is
+ *       on the way back, to 1e7 either way. top_speed m/s, 0.1 to 100;
+ *       lateral, the most lateral acceleration its driver corners at, m/s/s,
+ *       0.1 to 50; drift, the slip gain per m/s/s of lateral acceleration, 0
+ *       for an ordinary car, to 1. The body is a box in the car's own frame
+ *       (x along its heading, y left, z up from the road point under its
+ *       centre): length along, width across, height tall, standing clearance
+ *       over the road, metres. e and mu as every shape. SIM_OK;
+ *       SIM_ERR_BAD_ARG for anything out of range or a road that does not
+ *       exist; SIM_ERR_BAD_STATE when the speed tables are full
+ *       (sim_world_clear empties them). Taking a vehicle away is
+ *       sim_world_mover parking its slot.
+ *
+ *   The speed a car takes a bend at comes from the bend's curvature, capped
+ *   at ROAD_KAPPA_MAX (a half metre radius): a road drawn smoothly but
+ *   tighter than that is driven as if it were that. A road drawn with a
+ *   sharp corner or a fold is not driven at all: sim_world_road refuses it.
+ *
+ *   int sim_world_clock(double step)
+ *       The vehicles' clock, a whole number of 1 ms steps, |step| <= 2^53:
+ *       the shell's lap clock. sim_step advances it one a step, on the
+ *       launch stand too; sim_reset leaves it; sim_world_clear sets it to 0.
+ *       Setting it to the value it has changes nothing.
+ *
+ *   int sim_world_vehicle_poses(double *out)
+ *       64 slots of SIM_VEHICLE_POSE_DOUBLES (16), laid out in sim_abi.h:
+ *       the pose at the clock, which after sim_step is the step the craft's
+ *       state is at and the pose the next step's contacts use. Returns 64.
+ *       Its velocity is the pose's own, and its yaw rate is how fast the box
+ *       turns from this step's pose to the next one's: what a contact on
+ *       the car reads.
+ *
+ *   int sim_world_vehicle_contacts(double *out, int max)
+ *       The last step's contacts against road vehicles, for the checks that
+ *       hold a car's contact to the car drawn: up to max of them,
+ *       SIM_VEHICLE_CONTACT_DOUBLES (12) each, laid out in sim_abi.h.
+ *       Returns how many there were, which may be more than max. Reading
+ *       only: nothing it keeps is read back by the physics.
+ *
+ * A vehicle is never ground: its roof is never the support, so a craft on a
+ * moving car is held by friction and nothing else (plan section 8's limit).
+ * Contacts report a vehicle as -2 - m, as they report the train.
+ *
  * Everything is in the plant's own units and runs on the plant's clock. The
  * shell hands the world over once, in the physics frame (Z up, SI), and the
  * spawn transform as an origin and a yaw, which this file turns into a
@@ -79,7 +165,12 @@
 
 /* The city is 19,515 boxes. Static, so nothing here allocates. */
 #define WORLD_MAX_SHAPES 49152
-#define WORLD_MAX_MOVERS 16
+/* Movers, the train's cars and the road vehicles in one table, so a contact
+ * the shell reads names any moving thing the same way (-2 - m) and the one
+ * limit is the one the owner approved on 2026-09-24: sixteen was the train's
+ * three cars and room; sixty four is a built map's traffic beside them. An
+ * empty slot costs one flag test a step. */
+#define WORLD_MAX_MOVERS 64
 #define WORLD_MAX_CELLS (1 << 18)
 #define WORLD_MAX_ITEMS (1 << 20)
 #define WORLD_MAX_CAND 1024
@@ -152,6 +243,25 @@ typedef struct {
   int type;
 } Shape;
 
+/*
+ * Where a road vehicle is at one step of the clock (section 5). World
+ * frame, SI, the same numbers sim_world_vehicle_poses hands the shell.
+ * omega is the turn from this step's heading to the next step's
+ * (vehicle_turn), so it is set only on the pose the contacts use; every
+ * other number is the pose function's own at this step.
+ */
+typedef struct {
+  double p[3];    /* the road point under its centre: its own frame's origin */
+  double h[2];    /* its heading in plan, unit: the body's +x, the drift in it */
+  double u[2];    /* its direction of travel in plan, unit */
+  double vel[3];  /* the velocity of p, m/s: its speed along its segment */
+  double speed;   /* along the road, m/s, never negative */
+  double omega;   /* how fast h turns over the next step, about +z, rad/s */
+  double dist;    /* driven, m, from the road's first point, every lap counted */
+  double kap;     /* the path's curvature along the travel, 1/m, left positive */
+  double slip;    /* tan(slip / 2), left positive; 0 for an ordinary car */
+} Pose;
+
 typedef struct {
   double lo[3];
   double hi[3];
@@ -159,6 +269,20 @@ typedef struct {
   double e;
   double mu;
   int on;
+  /* A road vehicle when veh is 1, and then lo and hi are its box in its OWN
+   * frame. Otherwise the train's kind: an axis aligned box in the world that
+   * the shell seats every step, solved by exactly the code it always was. */
+  int veh;
+  int prof;       /* its speed profile, g_prof */
+  int seg;        /* the segment its last pose fell in: where to look first */
+  double toff;    /* its route time at clock 0, s */
+  double drift;   /* drift gain, per m/s/s of lateral acceleration */
+  double zc;      /* its box's centre over p, m */
+  double rad;     /* its box's bounding radius, m */
+  Pose cur;       /* at the clock, with its turn to nxt */
+  Pose prev;      /* at the clock less one step */
+  Pose nxt;       /* at the clock plus one step, kept so a step works out one
+                   * new pose and not two */
 } Mover;
 
 typedef struct {
@@ -177,6 +301,73 @@ static Shape g_shape[WORLD_MAX_SHAPES];
 static int g_nshape = 0;
 static Mover g_mover[WORLD_MAX_MOVERS];
 static int g_built = 0;
+
+/*
+ * THE ROADS (section 5). Static like everything else here, and bounded:
+ *
+ *   a road keeps at most ROAD_MAX_POINTS points once its long segments are
+ *   cut to ROAD_STEP, 8.2 km of road, and all roads together at most
+ *   WORLD_ROAD_POINTS, at 56 bytes a point: 917,504 bytes;
+ *   a speed profile keeps a speed and a time for every point of its road,
+ *   and all profiles together at most WORLD_PROFILE_POINTS of them, 16
+ *   bytes each: 1,048,576 bytes.
+ *
+ * Under two megabytes, beside the eleven and a half the town's shapes and
+ * grid already hold. The largest built map is 480 m across, so a road right
+ * round it is under two thousand points. sim_world_clear frees all of it.
+ */
+#define WORLD_MAX_ROADS 16
+#define ROAD_MAX_POINTS 8192
+#define WORLD_ROAD_POINTS 16384
+#define WORLD_MAX_PROFILES WORLD_MAX_MOVERS
+#define WORLD_PROFILE_POINTS 65536
+
+typedef struct {
+  double p[3];   /* world, m */
+  double s;      /* arc length from the road's first point, m */
+  double t[2];   /* unit tangent in plan, the chord across ROAD_WINDOW */
+  double k;      /* curvature in plan, 1/m, left positive */
+} RoadPt;
+
+typedef struct {
+  int first;     /* its first point in g_rpt */
+  int np;        /* points kept; a closed road repeats its first at the end */
+  int closed;
+  double len;    /* its length, m, a closed road's closing segment included */
+} Road;
+
+/* A speed and time table: one road driven with one top speed and one
+ * lateral limit. Cars that share all three share the table. */
+typedef struct {
+  int road;
+  int first;     /* its entries in g_pv and g_ptm */
+  double vmax;
+  double alat;
+  double T;      /* one way, s: a lap of a closed road, end to end of an open one */
+} Profile;
+
+static RoadPt g_rpt[WORLD_ROAD_POINTS];
+static int g_nrpt = 0;
+static Road g_road[WORLD_MAX_ROADS];
+static int g_nroad = 0;
+static double g_pv[WORLD_PROFILE_POINTS];
+static double g_ptm[WORLD_PROFILE_POINTS];
+static int g_nppt = 0;
+static Profile g_prof[WORLD_MAX_PROFILES];
+static int g_nprof = 0;
+static int g_nveh = 0;
+/* The vehicles' clock: whole 1 ms steps. The shell sets it from its lap clock
+ * (sim_world_clock) and sim_step advances it one a step, so a pose is a
+ * function of this integer and of nothing about the frame. */
+static long long g_clock = 0;
+/* The contacts against road vehicles, for sim_world_vehicle_contacts:
+ * world_step writes them and how many it found, and world_tick hands the
+ * count over at the end of the step, so a step that never reached
+ * world_step (the launch stand) reads as none. Written here and never read
+ * back by anything that moves the craft. */
+static double g_vc[WORLD_MAX_CONTACTS][SIM_VEHICLE_CONTACT_DOUBLES];
+static int g_nvc_found = 0;
+static int g_nvc = 0;
 
 static double g_cell = WORLD_CELL_MIN;
 static double g_gx0 = 0.0;
@@ -329,7 +520,8 @@ static void body_to_world_point(const double c[3], double R[3][3], const double 
  * exactly as it was.
  * ------------------------------------------------------------------ */
 
-/* Empty the world. Shapes, movers and the grid all go. */
+/* Empty the world. Shapes, movers, roads, vehicles and the grid all go, and
+ * the vehicles' clock goes back to step 0 until the shell sets it. */
 SIM_EXPORT int sim_world_clear(void) {
   g_nshape = 0;
   g_built = 0;
@@ -339,7 +531,16 @@ SIM_EXPORT int sim_world_clear(void) {
   g_prev_ok = 0;
   for (int m = 0; m < WORLD_MAX_MOVERS; m += 1) {
     g_mover[m].on = 0;
+    g_mover[m].veh = 0;
   }
+  g_nroad = 0;
+  g_nrpt = 0;
+  g_nprof = 0;
+  g_nppt = 0;
+  g_nveh = 0;
+  g_clock = 0;
+  g_nvc_found = 0;
+  g_nvc = 0;
   return SIM_OK;
 }
 
@@ -450,6 +651,7 @@ SIM_EXPORT int sim_world_box_z(int i, double z0, double z1) {
  * the solid train is a function of the step count and nothing else. v is its
  * surface velocity for the friction and restitution the contact reads;
  * position jumps (a wrap, a seek) are never read as speed. x1 < x0 parks it.
+ * m is 0 to WORLD_MAX_MOVERS - 1, one table with the road vehicles.
  */
 SIM_EXPORT int sim_world_mover(int m, double x0, double y0, double z0,
                                double x1, double y1, double z1,
@@ -464,6 +666,12 @@ SIM_EXPORT int sim_world_mover(int m, double x0, double y0, double z0,
     return SIM_ERR_BAD_ARG;
   }
   Mover *mv = &g_mover[m];
+  /* Seating or parking a box here ends a road vehicle in the same slot: this
+   * is also how the shell takes a vehicle away. */
+  if (mv->veh) {
+    mv->veh = 0;
+    g_nveh -= 1;
+  }
   if (!(x1 >= x0) || !(y1 >= y0) || !(z1 >= z0)) {
     mv->on = 0;
     return SIM_OK;
@@ -1598,6 +1806,928 @@ static void world_solve(SimState *s, int nc, double np_[][3], double rp_[][3],
   q_rot_inv(s->quat, w, s->omega);
 }
 
+/* ================================================================== *
+ * 5. VEHICLES: movers that turn, and follow a road inside the module.
+ *
+ * P2 of FREESTYLE-MAPS-PLAN.md, approved by the owner on 2026-09-24, with
+ * the go on 2026-09-25 and a drift car's slide put in the physics, so the car
+ * a pilot sees sliding is the car the craft hits. A road is uploaded once, and
+ * everything about driving it that can be worked out once is worked out
+ * here, once, with + - * / and the square root, which is f64.sqrt and which
+ * the WebAssembly specification defines to the bit: the arc length, the
+ * direction and the bend at every point, the speed a car takes there, and the
+ * time it gets there. From then on a car's pose is a lookup in those tables at
+ * the module's own clock, the same bits in Node and in every browser, and the
+ * shell reads the pose back to draw it.
+ *
+ * No trigonometry, anywhere. A heading is a unit vector, never an angle, and
+ * the drift turns it by a rational rotation of t = tan(slip / 2):
+ * cos = (1 - t^2) / (1 + t^2), sin = 2 t / (1 + t^2).
+ * ================================================================== */
+
+/* The longest segment a road keeps, m. The speed profile lives at the
+ * points, and a car has to be able to brake and pull away between two
+ * corners, so a straight drawn as one long segment is cut into pieces no
+ * longer than this. Along a piece v squared is linear in distance, which is
+ * exactly constant acceleration, so the cut costs nothing in accuracy, and a
+ * point every metre is finer than any change of speed a pilot could see on a
+ * car five metres long. */
+#define ROAD_STEP 1.0
+/* A segment shorter than this in plan gives no direction to drive in, m. */
+#define ROAD_MIN_SEG 0.01
+/* The most a road may turn at one of its points, in plan: 30 degrees, held
+ * as its cosine, the square root of 3 over 2 to seventeen figures. The car's
+ * centre follows the points, so where the road turns, the car's velocity
+ * turns by as much within one step. An eased bend drawn a point a metre
+ * turns under 29 degrees a point down to a two metre radius, far tighter
+ * than any car steers. A corner drawn as one point past this is refused, and
+ * so is a road folded back on itself, where the chord its bend is measured
+ * across folds to nothing, the bend reads as none, and a car would reverse at
+ * speed within one step. */
+#define ROAD_TURN_MAX_DEG 30
+#define ROAD_TURN_COS 0.86602540378443865
+/* No road coordinate past a thousand kilometres, m. No map is a thousandth
+ * of that, and a road far enough out (1e16 m, where doubles are 2 m apart)
+ * cuts into pieces of no length, whose direction is not a number. */
+#define ROAD_COORD_MAX 1e6
+/* Half the chord a direction and a bend are taken across, m. A car's heading
+ * is the line from its rear axle to its front axle, 2.7 m apart on a family
+ * car, so the road's direction under a car is the chord that long through
+ * it: a road drawn a point every metre or closer does not step at every
+ * point, and where the road turns at a point the heading turns smoothly
+ * across the window rather than at the point, which is what a driver makes
+ * of a bend. */
+#define ROAD_WINDOW 1.5
+/* Pulling away and braking for a corner, m/s/s. VEHICLE_ACCEL is a family
+ * car pulling away briskly, 0 to 100 km/h in about eleven seconds.
+ * VEHICLE_BRAKE is firm braking for a corner the driver can see coming,
+ * 0.4 g: an emergency stop is twice that, and nobody drives a lap as a
+ * series of emergency stops. */
+#define VEHICLE_ACCEL 2.5
+#define VEHICLE_BRAKE 4.0
+/* The drift's largest slip, as tan(slip / 2): tan(30 degrees), so a slide
+ * never passes 60 degrees, the far side of a big drift and the near side of
+ * a spin. Seventeen figures, enough to name one double. */
+#define DRIFT_T_MAX 0.57735026918962576
+/* Beyond these the numbers are not a road vehicle: 100 m/s is 360 km/h; 50
+ * m/s/s is five g, more than any tyre gives; a drift gain of 1 per m/s/s
+ * reaches the slip cap at 0.6 m/s/s of cornering, so a larger one is the cap
+ * everywhere; nothing on a road is 50 m long. */
+#define VEHICLE_SPEED_MAX 100.0
+#define VEHICLE_LATERAL_MAX 50.0
+#define VEHICLE_DRIFT_MAX 1.0
+#define VEHICLE_SIZE_MAX 50.0
+/* And below these, and past the last, the time tables would run to infinity,
+ * and an infinite time is a pose that is not a number, which a contact would
+ * carry into the craft: a car slower than 0.1 m/s is parked, a driver who
+ * corners at under 0.1 m/s/s never turns, and an offset is a place on a road
+ * a few kilometres long, so ten thousand kilometres is not one. */
+#define VEHICLE_SPEED_MIN 0.1
+#define VEHICLE_LATERAL_MIN 0.1
+#define VEHICLE_OFFSET_MAX 1e7
+/* The tightest bend a road keeps, 1/m: half a metre's radius. Under the
+ * turn limit above, a road drawn with its points a quarter metre apart or
+ * more never bends this tight, so no real road is touched by this; a road
+ * drawn smoothly with its points closer and knotted tighter than this would
+ * have a corner speed with no floor and a lap with no end, so it is driven
+ * at this bend. */
+#define ROAD_KAPPA_MAX 2.0
+/* The clock is a whole number of steps held in a double, which holds every
+ * integer to 2^53 exactly: 285,000 years of 1 ms steps. */
+#define CLOCK_MAX 9007199254740992.0
+
+/* The segment arc length sg falls on: the last point at or before it, found
+ * by halving, so a long road costs a dozen comparisons. */
+static int road_seg_s(const Road *r, double sg) {
+  const RoadPt *q = &g_rpt[r->first];
+  int lo = 0;
+  int hi = r->np - 2;
+  while (lo < hi) {
+    const int mid = (lo + hi + 1) / 2;
+    if (q[mid].s <= sg) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo;
+}
+
+/* An arc length on the road: round and round a closed one, stopped at the
+ * ends of an open one. */
+static double road_on(const Road *r, double sg) {
+  if (r->closed) {
+    sg -= __builtin_floor(sg / r->len) * r->len;
+  }
+  return sg < 0.0 ? 0.0 : (sg > r->len ? r->len : sg);
+}
+
+static void road_point_at(const Road *r, double sg, double out[3]) {
+  const double at = road_on(r, sg);
+  const int i = road_seg_s(r, at);
+  const RoadPt *a = &g_rpt[r->first + i];
+  const RoadPt *b = a + 1;
+  double f = (at - a->s) / (b->s - a->s);
+  f = f < 0.0 ? 0.0 : (f > 1.0 ? 1.0 : f);
+  for (int c = 0; c < 3; c += 1) {
+    out[c] = a->p[c] + (b->p[c] - a->p[c]) * f;
+  }
+}
+
+/* How many pieces a segment of this length is cut into. An open road of one
+ * short segment is still cut in two: a car stops at each end to turn round,
+ * and needs a point between them to be moving at. */
+static int road_pieces(double len, int lone) {
+  int k = (int)__builtin_ceil(len / ROAD_STEP);
+  k = k < 1 ? 1 : k;
+  if (lone && k < 2) {
+    k = 2;
+  }
+  return k;
+}
+
+/*
+ * A road: n points of x, y, z, world frame, SI, the centre line at road
+ * level. closed 1 joins the last point back to the first, which is not
+ * repeated. Returns the road's index, 0 up in the order roads were added;
+ * SIM_ERR_BAD_ARG for a road nobody could drive (too few points, a
+ * coordinate that is not finite or is past ROAD_COORD_MAX, a segment shorter
+ * than ROAD_MIN_SEG in plan, a point where it turns by more than
+ * ROAD_TURN_MAX_DEG, a piece that cuts to no length), SIM_ERR_BAD_STATE when
+ * it will not fit the tables. A road that is refused leaves nothing behind.
+ */
+SIM_EXPORT int sim_world_road(const double *xyz, int n, int closed) {
+  if (g_nroad >= WORLD_MAX_ROADS) {
+    return SIM_ERR_BAD_STATE;
+  }
+  if (xyz == 0 || n < (closed ? 3 : 2) || n > ROAD_MAX_POINTS) {
+    return SIM_ERR_BAD_ARG;
+  }
+  for (int i = 0; i < 3 * n; i += 1) {
+    if (!world_finite(xyz[i]) || !(absd(xyz[i]) <= ROAD_COORD_MAX)) {
+      return SIM_ERR_BAD_ARG;
+    }
+  }
+  const int nseg = closed ? n : n - 1;
+  const int lone = !closed && nseg == 1;
+  /* Counted before anything is written. */
+  long long total = 1;
+  for (int i = 0; i < nseg; i += 1) {
+    const double *a = &xyz[3 * i];
+    const double *b = &xyz[3 * ((i + 1) % n)];
+    const double dx = b[0] - a[0];
+    const double dy = b[1] - a[1];
+    const double dz = b[2] - a[2];
+    if (!(sim_sqrt(dx * dx + dy * dy) >= ROAD_MIN_SEG)) {
+      return SIM_ERR_BAD_ARG;
+    }
+    const double len = sim_sqrt(dx * dx + dy * dy + dz * dz);
+    if (!(len <= ROAD_STEP * (double)ROAD_MAX_POINTS)) {
+      return SIM_ERR_BAD_STATE;
+    }
+    total += road_pieces(len, lone);
+    if (total > ROAD_MAX_POINTS) {
+      return SIM_ERR_BAD_STATE;
+    }
+  }
+  /* The turn at every point with a segment either side, in plan, as the
+   * cosine of the angle between them: the dot product over the product of
+   * their lengths, which the loop above has shown are not nothing. Written
+   * as "not at least", so a turn the arithmetic cannot put a number to is
+   * refused too. */
+  for (int i = closed ? 0 : 1; i < (closed ? n : n - 1); i += 1) {
+    const double *a = &xyz[3 * ((i + n - 1) % n)];
+    const double *b = &xyz[3 * i];
+    const double *c = &xyz[3 * ((i + 1) % n)];
+    const double ux = b[0] - a[0];
+    const double uy = b[1] - a[1];
+    const double vx = c[0] - b[0];
+    const double vy = c[1] - b[1];
+    const double lens = sim_sqrt(ux * ux + uy * uy) * sim_sqrt(vx * vx + vy * vy);
+    if (!(ux * vx + uy * vy >= ROAD_TURN_COS * lens)) {
+      return SIM_ERR_BAD_ARG;
+    }
+  }
+  if (g_nrpt + total > WORLD_ROAD_POINTS) {
+    return SIM_ERR_BAD_STATE;
+  }
+  Road *r = &g_road[g_nroad];
+  RoadPt *q = &g_rpt[g_nrpt];
+  r->first = g_nrpt;
+  r->closed = closed ? 1 : 0;
+  int np = 0;
+  for (int i = 0; i < nseg; i += 1) {
+    const double *a = &xyz[3 * i];
+    const double *b = &xyz[3 * ((i + 1) % n)];
+    const double dx = b[0] - a[0];
+    const double dy = b[1] - a[1];
+    const double dz = b[2] - a[2];
+    const int k = road_pieces(sim_sqrt(dx * dx + dy * dy + dz * dz), lone);
+    /* A point the shell drew is kept as it came; the cuts lie on the
+     * segment between two of them. */
+    for (int c = 0; c < 3; c += 1) {
+      q[np].p[c] = a[c];
+    }
+    np += 1;
+    for (int j = 1; j < k; j += 1) {
+      const double f = (double)j / (double)k;
+      for (int c = 0; c < 3; c += 1) {
+        q[np].p[c] = a[c] + (b[c] - a[c]) * f;
+      }
+      np += 1;
+    }
+  }
+  /* The end: an open road's last point, or a closed road's first again, so
+   * every segment runs from a point to the next and a lap ends where it
+   * began. */
+  const double *end = closed ? &xyz[0] : &xyz[3 * (n - 1)];
+  for (int c = 0; c < 3; c += 1) {
+    q[np].p[c] = end[c];
+  }
+  np += 1;
+  r->np = np;
+  q[0].s = 0.0;
+  for (int i = 1; i < np; i += 1) {
+    const double dx = q[i].p[0] - q[i - 1].p[0];
+    const double dy = q[i].p[1] - q[i - 1].p[1];
+    const double dz = q[i].p[2] - q[i - 1].p[2];
+    q[i].s = q[i - 1].s + sim_sqrt(dx * dx + dy * dy + dz * dz);
+    /* Every piece has a length, or a car on it has a direction that is not
+     * a number. Nothing counted yet, so the refusal leaves nothing behind. */
+    if (!(q[i].s > q[i - 1].s)) {
+      return SIM_ERR_BAD_ARG;
+    }
+  }
+  r->len = q[np - 1].s;
+  /*
+   * Each point's direction and bend, from the road ROAD_WINDOW behind it and
+   * ROAD_WINDOW ahead. The direction is the chord between those two, as a
+   * car's is the line from its rear axle to its front one. The bend is the
+   * Menger curvature of the three points, twice the cross product over the
+   * product of the three sides (four times the triangle's area over them):
+   * exact for any three points on a circle, zero on a straight, and signed,
+   * left positive, by the cross product.
+   */
+  const int own = closed ? np - 1 : np;
+  for (int i = 0; i < own; i += 1) {
+    double A[3];
+    double C[3];
+    road_point_at(r, q[i].s - ROAD_WINDOW, A);
+    road_point_at(r, q[i].s + ROAD_WINDOW, C);
+    const double cx = C[0] - A[0];
+    const double cy = C[1] - A[1];
+    const double cl = sim_sqrt(cx * cx + cy * cy);
+    if (cl > 1e-9) {
+      q[i].t[0] = cx / cl;
+      q[i].t[1] = cy / cl;
+    } else {
+      /* A hairpin tighter than the window folds the chord to nothing: the
+       * point's own segment has a direction. */
+      const int j = i + 1 < np ? i : i - 1;
+      const double sx = q[j + 1].p[0] - q[j].p[0];
+      const double sy = q[j + 1].p[1] - q[j].p[1];
+      const double sl = sim_sqrt(sx * sx + sy * sy);
+      q[i].t[0] = sx / sl;
+      q[i].t[1] = sy / sl;
+    }
+    const double abx = q[i].p[0] - A[0];
+    const double aby = q[i].p[1] - A[1];
+    const double bcx = C[0] - q[i].p[0];
+    const double bcy = C[1] - q[i].p[1];
+    const double cross = abx * bcy - aby * bcx;
+    const double den = sim_sqrt(abx * abx + aby * aby) * sim_sqrt(bcx * bcx + bcy * bcy) * cl;
+    double k = den > 0.0 ? 2.0 * cross / den : 0.0;
+    k = k > ROAD_KAPPA_MAX ? ROAD_KAPPA_MAX : (k < -ROAD_KAPPA_MAX ? -ROAD_KAPPA_MAX : k);
+    q[i].k = k;
+  }
+  if (closed) {
+    q[np - 1].t[0] = q[0].t[0];
+    q[np - 1].t[1] = q[0].t[1];
+    q[np - 1].k = q[0].k;
+  }
+  g_nrpt += np;
+  g_nroad += 1;
+  return g_nroad - 1;
+}
+
+/* Road r as the module keeps it, three doubles: [0] the points kept, its
+ * long segments cut; [1] its length, m; [2] 1 if it is closed. */
+SIM_EXPORT int sim_world_road_info(int road, double *out) {
+  if (out == 0 || road < 0 || road >= g_nroad) {
+    return SIM_ERR_BAD_ARG;
+  }
+  out[0] = (double)g_road[road].np;
+  out[1] = g_road[road].len;
+  out[2] = (double)g_road[road].closed;
+  return SIM_OK;
+}
+
+/*
+ * The speed and time tables for road `road` driven with top speed vmax and
+ * lateral limit alat, shared by every car that drives it so. Returns the
+ * profile, or -1 when the tables are full.
+ *
+ * The speed at each point is the lowest of three. The top speed. The corner
+ * speed, sqrt(alat / curvature), taking the tightest curvature on either
+ * segment that touches the point: along a segment v squared runs between its
+ * two ends and so does the curvature, so their product, the lateral
+ * acceleration, then keeps under alat between the points as well as on
+ * them. And what braking and pulling away allow, a pass forward with
+ * VEHICLE_ACCEL and a pass back with VEHICLE_BRAKE, each v' = sqrt(v^2 +
+ * 2 a L). On a closed road both passes start at the slowest point, which
+ * nothing can make slower, so one lap each way settles the whole loop, the
+ * join included. An open road stops at each end to turn round, so its ends
+ * are 0, and its way back is its way out run backwards in time, which would
+ * pull away at the braking rate: both its passes use VEHICLE_ACCEL, so it
+ * is drivable both ways.
+ *
+ * Then the time. Along a segment the acceleration is constant, so a segment
+ * of length L from v0 to v1 takes exactly 2 L / (v0 + v1).
+ */
+static int profile_for(int road, double vmax, double alat) {
+  for (int i = 0; i < g_nprof; i += 1) {
+    if (g_prof[i].road == road && g_prof[i].vmax == vmax && g_prof[i].alat == alat) {
+      return i;
+    }
+  }
+  const Road *r = &g_road[road];
+  if (g_nprof >= WORLD_MAX_PROFILES || g_nppt + r->np > WORLD_PROFILE_POINTS) {
+    return -1;
+  }
+  Profile *pf = &g_prof[g_nprof];
+  pf->road = road;
+  pf->first = g_nppt;
+  pf->vmax = vmax;
+  pf->alat = alat;
+  const RoadPt *q = &g_rpt[r->first];
+  double *v = &g_pv[pf->first];
+  double *t = &g_ptm[pf->first];
+  const int np = r->np;
+  const int nu = r->closed ? np - 1 : np;
+  for (int i = 0; i < nu; i += 1) {
+    int ia = i - 1;
+    int ib = i + 1;
+    if (r->closed) {
+      ia = (i + nu - 1) % nu;
+      ib = (i + 1) % nu;
+    } else {
+      ia = ia < 0 ? 0 : ia;
+      ib = ib > np - 1 ? np - 1 : ib;
+    }
+    double kk = absd(q[i].k);
+    kk = absd(q[ia].k) > kk ? absd(q[ia].k) : kk;
+    kk = absd(q[ib].k) > kk ? absd(q[ib].k) : kk;
+    double vc = vmax;
+    if (kk > 0.0) {
+      const double vl = sim_sqrt(alat / kk);
+      vc = vl < vc ? vl : vc;
+    }
+    v[i] = vc;
+  }
+  if (r->closed) {
+    int m = 0;
+    for (int i = 1; i < nu; i += 1) {
+      if (v[i] < v[m]) {
+        m = i;
+      }
+    }
+    for (int j = 1; j < nu; j += 1) {
+      const int i = (m + j) % nu;
+      const int h = (i + nu - 1) % nu;
+      const double lim = sim_sqrt(v[h] * v[h] + 2.0 * VEHICLE_ACCEL * (q[h + 1].s - q[h].s));
+      v[i] = lim < v[i] ? lim : v[i];
+    }
+    for (int j = 1; j < nu; j += 1) {
+      const int i = (m + nu - j) % nu;
+      const int h = (i + 1) % nu;
+      const double lim = sim_sqrt(v[h] * v[h] + 2.0 * VEHICLE_BRAKE * (q[i + 1].s - q[i].s));
+      v[i] = lim < v[i] ? lim : v[i];
+    }
+    v[np - 1] = v[0];
+  } else {
+    v[0] = 0.0;
+    v[np - 1] = 0.0;
+    for (int i = 1; i < np; i += 1) {
+      const double lim = sim_sqrt(v[i - 1] * v[i - 1] + 2.0 * VEHICLE_ACCEL * (q[i].s - q[i - 1].s));
+      v[i] = lim < v[i] ? lim : v[i];
+    }
+    for (int i = np - 2; i >= 0; i -= 1) {
+      const double lim = sim_sqrt(v[i + 1] * v[i + 1] + 2.0 * VEHICLE_ACCEL * (q[i + 1].s - q[i].s));
+      v[i] = lim < v[i] ? lim : v[i];
+    }
+  }
+  t[0] = 0.0;
+  for (int i = 0; i + 1 < np; i += 1) {
+    t[i + 1] = t[i] + 2.0 * (q[i + 1].s - q[i].s) / (v[i] + v[i + 1]);
+  }
+  pf->T = t[np - 1];
+  g_nppt += np;
+  g_nprof += 1;
+  return g_nprof - 1;
+}
+
+/* The time into a profile at which its car reaches arc length sg: the
+ * constant acceleration of the segment solved for time, 2 d / (v0 + v(d)),
+ * which never divides by a speed that is nearly nothing. */
+static double time_at_s(const Profile *pf, const Road *r, double sg) {
+  const RoadPt *q = &g_rpt[r->first];
+  const double *vt = &g_pv[pf->first];
+  const double *tt = &g_ptm[pf->first];
+  const double at = sg < 0.0 ? 0.0 : (sg > r->len ? r->len : sg);
+  const int i = road_seg_s(r, at);
+  const double L = q[i + 1].s - q[i].s;
+  double d = at - q[i].s;
+  d = d < 0.0 ? 0.0 : (d > L ? L : d);
+  const double v0 = vt[i];
+  const double v1 = vt[i + 1];
+  double w = v0 * v0 + (v1 * v1 - v0 * v0) * (d / L);
+  w = w < 0.0 ? 0.0 : w;
+  const double den = v0 + sim_sqrt(w);
+  return tt[i] + (den > 0.0 ? 2.0 * d / den : 0.0);
+}
+
+/*
+ * A car's route is its road driven over and over: lap after lap of a closed
+ * road, out and back and out again on an open one. `offset` is a distance
+ * along that route, m, from the road's first point, so an offset past an
+ * open road's length is on the way back. Returns the route time at which
+ * the car is there.
+ */
+static double route_time(const Profile *pf, const Road *r, double offset) {
+  const double troute = r->closed ? pf->T : 2.0 * pf->T;
+  const double sroute = r->closed ? r->len : 2.0 * r->len;
+  double lap = __builtin_floor(offset / sroute);
+  double rem = offset - lap * sroute;
+  if (rem >= sroute) {
+    rem -= sroute;
+    lap += 1.0;
+  }
+  rem = rem < 0.0 ? 0.0 : rem;
+  const double tl = r->closed || rem <= r->len
+      ? time_at_s(pf, r, rem)
+      : troute - time_at_s(pf, r, sroute - rem);
+  return lap * troute + tl;
+}
+
+/* Is segment i of a time table the one time tl falls in: its start at or
+ * before tl, and the next one's after it? */
+static int seg_holds(const double *tt, int i, int last, double tl) {
+  return i >= 0 && i <= last && tt[i] <= tl && (i == last || tl < tt[i + 1]);
+}
+
+/*
+ * Mover mv's pose at step `clock`. A pure function of the integer: the time
+ * is clock / SIM_STEP_HZ from the car's own start, the table says which
+ * segment that time falls in and how far along it, and nothing that decides
+ * the pose is carried from one step to the next (the segment it was last on
+ * is kept only as the place to start looking). So the pose at step N set
+ * directly is the pose after stepping to N, to the bit. Its yaw rate is left
+ * at nothing here: vehicle_turn works it out from this pose and the next.
+ */
+static void vehicle_pose(Mover *mv, long long clock, Pose *P) {
+  const Profile *pf = &g_prof[mv->prof];
+  const Road *r = &g_road[pf->road];
+  const RoadPt *q = &g_rpt[r->first];
+  const double *vt = &g_pv[pf->first];
+  const double *tt = &g_ptm[pf->first];
+  const double T = pf->T;
+  const double troute = r->closed ? T : 2.0 * T;
+  const double sroute = r->closed ? r->len : 2.0 * r->len;
+  const double tau = mv->toff + (double)clock / (double)SIM_STEP_HZ;
+  double lap = __builtin_floor(tau / troute);
+  double tr = tau - lap * troute;
+  if (tr >= troute) {
+    tr -= troute;
+    lap += 1.0;
+  }
+  tr = tr < 0.0 ? 0.0 : tr;
+  /* An open road's way back is its way out run backwards in time. */
+  const int back = !r->closed && tr > T;
+  double tl = back ? troute - tr : tr;
+  tl = tl < 0.0 ? 0.0 : (tl > T ? T : tl);
+  /* The segment the time falls in: the last point at or before it. A car
+   * moves a millimetre or two a step, so the segment it was on is tried
+   * first, then the ones either side, and only then is the table halved.
+   * The times strictly increase, so there is one answer however it is
+   * found, and where the search starts changes no bit of the pose. */
+  const int last = r->np - 2;
+  int lo = mv->seg;
+  if (!seg_holds(tt, lo, last, tl)) {
+    if (seg_holds(tt, lo + 1, last, tl)) {
+      lo += 1;
+    } else if (seg_holds(tt, lo - 1, last, tl)) {
+      lo -= 1;
+    } else {
+      lo = 0;
+      int hi = last;
+      while (lo < hi) {
+        const int mid = (lo + hi + 1) / 2;
+        if (tt[mid] <= tl) {
+          lo = mid;
+        } else {
+          hi = mid - 1;
+        }
+      }
+    }
+  }
+  mv->seg = lo;
+  const RoadPt *a = &q[lo];
+  const RoadPt *b = &q[lo + 1];
+  const double dt = tt[lo + 1] - tt[lo];
+  double into = tl - tt[lo];
+  into = into < 0.0 ? 0.0 : (into > dt ? dt : into);
+  /* Constant acceleration along the segment: the speed is linear in time,
+   * held between its two ends so no rounding takes it past either, and the
+   * distance is the time times the mean of the speeds. */
+  const double v0 = vt[lo];
+  const double v1 = vt[lo + 1];
+  double v = v0 + (v1 - v0) * (into / dt);
+  const double vlo = v0 < v1 ? v0 : v1;
+  const double vhi = v0 < v1 ? v1 : v0;
+  v = v < vlo ? vlo : (v > vhi ? vhi : v);
+  const double L = b->s - a->s;
+  double d = into * (v0 + v) * 0.5;
+  d = d > L ? L : d;
+  const double f = d / L;
+  for (int c = 0; c < 3; c += 1) {
+    P->p[c] = a->p[c] + (b->p[c] - a->p[c]) * f;
+  }
+  /* The road's direction here, between its two points' own, and its bend. */
+  double tx = a->t[0] + (b->t[0] - a->t[0]) * f;
+  double ty = a->t[1] + (b->t[1] - a->t[1]) * f;
+  double tn = sim_sqrt(tx * tx + ty * ty);
+  if (!(tn > 1e-9)) {
+    tx = b->p[0] - a->p[0];
+    ty = b->p[1] - a->p[1];
+    tn = sim_sqrt(tx * tx + ty * ty);
+  }
+  tx /= tn;
+  ty /= tn;
+  const double k = a->k + (b->k - a->k) * f;
+  const double sg = back ? -1.0 : 1.0;
+  const double sh = a->s + d;
+  P->u[0] = sg * tx;
+  P->u[1] = sg * ty;
+  P->kap = sg * k;
+  /* The velocity of p is the pose's own derivative, exactly: p runs along
+   * the segment at speed v. Differencing two positions tens of metres out
+   * instead would round at their size, a thousand times over in a velocity,
+   * and a hit on a road laid at 37 degrees then parts from the same hit at
+   * 0 by 1e-9 (measured 2026-09-25) where this keeps it at 3e-12. */
+  for (int c = 0; c < 3; c += 1) {
+    P->vel[c] = sg * v * ((b->p[c] - a->p[c]) / L);
+  }
+  P->speed = v;
+  P->dist = lap * sroute + (back ? sroute - sh : sh);
+  P->omega = 0.0;
+  if (mv->drift > 0.0) {
+    /*
+     * THE DRIFT. The slip grows with the lateral acceleration, speed squared
+     * times the path's curvature, times the car's gain, capped, and the
+     * nose goes INTO the corner, which is what a drifting car does: the
+     * body is turned from its direction of travel toward the inside of the
+     * bend. As tan(slip / 2) the turn is rational: no angle is ever formed.
+     * How fast the slip changes is not worked out here: it is in the turn of
+     * the heading from one step to the next, which vehicle_turn reads.
+     */
+    double t = mv->drift * v * v * P->kap;
+    t = t > DRIFT_T_MAX ? DRIFT_T_MAX : (t < -DRIFT_T_MAX ? -DRIFT_T_MAX : t);
+    const double den = 1.0 + t * t;
+    const double c = (1.0 - t * t) / den;
+    const double s = 2.0 * t / den;
+    P->h[0] = c * P->u[0] - s * P->u[1];
+    P->h[1] = s * P->u[0] + c * P->u[1];
+    P->slip = t;
+  } else {
+    /* An ordinary car points the way it goes, untouched. */
+    P->h[0] = P->u[0];
+    P->h[1] = P->u[1];
+    P->slip = 0.0;
+  }
+}
+
+/*
+ * How fast the box turns over the step from pose P to pose N, the pose one
+ * step later, written into P as its yaw rate. It is read from the headings
+ * the pose function gives, so the surface a contact feels turning is the box
+ * the shell draws at this step and the next: the road's bend as the heading
+ * actually follows it (a chord across the window, which turns before a bend
+ * and after it where the curvature at the point says nothing yet), and the
+ * drift's slide coming and going, all in it by construction and none of it
+ * modelled twice.
+ *
+ * The turn is 2 c / (1 + d) for the cross c and dot d of the two headings,
+ * which is 2 tan(turn / 2): the turn itself to a few parts in a million
+ * for anything a car does in a millisecond (the difference is the turn cubed
+ * over twelve), and + - * / only. A box is the same box turned half round, so the
+ * turn is read the short way modulo half a turn: where an open road's car
+ * turns round, its nose becomes its tail within one step and no part of the
+ * solid moves, and 1 + |d| is never less than 1.
+ */
+static void vehicle_turn(Pose *P, const Pose *N) {
+  const double sn = P->h[0] * N->h[1] - P->h[1] * N->h[0];
+  const double cs = P->h[0] * N->h[0] + P->h[1] * N->h[1];
+  const double sg = cs < 0.0 ? -1.0 : 1.0;
+  P->omega = 2.0 * sg * sn / (1.0 + sg * cs) * (double)SIM_STEP_HZ;
+}
+
+/* A car's poses a step before the clock, at it, and a step after it: the
+ * first for the face a point of the craft came in through, as the car saw
+ * it, the last for how fast it turns over the step. */
+static void vehicle_seat(Mover *mv) {
+  vehicle_pose(mv, g_clock - 1, &mv->prev);
+  vehicle_pose(mv, g_clock, &mv->cur);
+  vehicle_pose(mv, g_clock + 1, &mv->nxt);
+  vehicle_turn(&mv->cur, &mv->nxt);
+}
+
+/*
+ * Mover m becomes a vehicle on road `road`: `offset` m along its route from
+ * the road's first point at step 0 of the clock; top_speed m/s; lateral, the
+ * most lateral acceleration its driver takes a corner at, m/s/s; drift, the
+ * slip gain per m/s/s of lateral acceleration, 0 for an ordinary car (each
+ * within the bounds VEHICLE_*_MIN, _MAX and VEHICLE_OFFSET_MAX give). Its
+ * body is a box in its own frame, x along its heading and z up from the road
+ * point under its centre: `length` along, `width` across, `height` tall,
+ * starting `clearance` over the road. e and mu as for every shape. Returns
+ * SIM_OK; SIM_ERR_BAD_ARG for anything out of range, SIM_ERR_BAD_STATE when
+ * the speed tables are full (sim_world_clear empties them).
+ */
+SIM_EXPORT int sim_world_vehicle(int m, int road, double offset,
+                                 double top_speed, double lateral, double drift,
+                                 double length, double width, double height,
+                                 double clearance, double e, double mu) {
+  if (m < 0 || m >= WORLD_MAX_MOVERS || road < 0 || road >= g_nroad) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!world_finite(offset) || !(absd(offset) <= VEHICLE_OFFSET_MAX)
+      || !(top_speed >= VEHICLE_SPEED_MIN && top_speed <= VEHICLE_SPEED_MAX)
+      || !(lateral >= VEHICLE_LATERAL_MIN && lateral <= VEHICLE_LATERAL_MAX)
+      || !(drift >= 0.0 && drift <= VEHICLE_DRIFT_MAX)
+      || !(length > 0.0 && length <= VEHICLE_SIZE_MAX) || !(width > 0.0 && width <= VEHICLE_SIZE_MAX)
+      || !(height > 0.0 && height <= VEHICLE_SIZE_MAX)
+      || !(clearance >= 0.0 && clearance <= VEHICLE_SIZE_MAX) || !shape_material_ok(e, mu)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  const int pf = profile_for(road, top_speed, lateral);
+  if (pf < 0) {
+    return SIM_ERR_BAD_STATE;
+  }
+  Mover *mv = &g_mover[m];
+  if (!mv->veh) {
+    g_nveh += 1;
+  }
+  mv->veh = 1;
+  mv->on = 1;
+  mv->prof = pf;
+  mv->seg = 0;
+  mv->lo[0] = -0.5 * length;
+  mv->lo[1] = -0.5 * width;
+  mv->lo[2] = clearance;
+  mv->hi[0] = 0.5 * length;
+  mv->hi[1] = 0.5 * width;
+  mv->hi[2] = clearance + height;
+  mv->v[0] = 0.0;
+  mv->v[1] = 0.0;
+  mv->v[2] = 0.0;
+  mv->e = e;
+  mv->mu = mu;
+  mv->drift = drift;
+  mv->zc = clearance + 0.5 * height;
+  mv->rad = 0.5 * sim_sqrt(length * length + width * width + height * height);
+  mv->toff = route_time(&g_prof[pf], &g_road[road], offset);
+  vehicle_seat(mv);
+  return SIM_OK;
+}
+
+/*
+ * The vehicles' clock, a whole number of 1 ms steps: the shell's lap clock.
+ * Set it at a run's start, on a seek, and whenever the lap clock has run on
+ * without the module stepping (a craft parked on the ground, a turtle
+ * wait); setting it to the value it has changes nothing. sim_step advances
+ * it one a step, on the launch stand too, and sim_reset leaves it alone,
+ * because a crash does not stop the traffic.
+ */
+SIM_EXPORT int sim_world_clock(double step) {
+  if (!world_finite(step) || step != __builtin_floor(step) || absd(step) > CLOCK_MAX) {
+    return SIM_ERR_BAD_ARG;
+  }
+  g_clock = (long long)step;
+  for (int m = 0; m < WORLD_MAX_MOVERS; m += 1) {
+    if (g_mover[m].veh) {
+      vehicle_seat(&g_mover[m]);
+    }
+  }
+  return SIM_OK;
+}
+
+/*
+ * Every mover slot's vehicle pose at the clock, SIM_VEHICLE_POSE_DOUBLES
+ * each, slot by slot: all zeros for a slot that is not a road vehicle.
+ * Returns WORLD_MAX_MOVERS, the number of slots written. After sim_step it is
+ * the pose at the step the craft's state is at, the one the next step's
+ * contacts use.
+ */
+SIM_EXPORT int sim_world_vehicle_poses(double *out) {
+  if (out == 0) {
+    return SIM_ERR_BAD_ARG;
+  }
+  for (int m = 0; m < WORLD_MAX_MOVERS; m += 1) {
+    double *o = &out[m * SIM_VEHICLE_POSE_DOUBLES];
+    const Mover *mv = &g_mover[m];
+    if (!mv->veh) {
+      for (int j = 0; j < SIM_VEHICLE_POSE_DOUBLES; j += 1) {
+        o[j] = 0.0;
+      }
+      continue;
+    }
+    const Pose *P = &mv->cur;
+    o[0] = 1.0;
+    o[1] = P->p[0];
+    o[2] = P->p[1];
+    o[3] = P->p[2];
+    o[4] = P->h[0];
+    o[5] = P->h[1];
+    o[6] = P->speed;
+    o[7] = P->dist;
+    o[8] = P->vel[0];
+    o[9] = P->vel[1];
+    o[10] = P->vel[2];
+    o[11] = P->omega;
+    o[12] = P->u[0];
+    o[13] = P->u[1];
+    o[14] = P->kap;
+    o[15] = P->slip;
+  }
+  return WORLD_MAX_MOVERS;
+}
+
+/*
+ * The contacts the craft made with road vehicles on the last step, up to max
+ * of them, SIM_VEHICLE_CONTACT_DOUBLES each: [0] the slot m; [1] what
+ * touched, 0 the hull, 1 the lens, 2 a prop (at its hub, where the shove
+ * reaches the frame); [2..4] the point, world, m; [5..7] the normal, world,
+ * unit, from the car toward the craft; [8..10] the car's surface velocity
+ * there, world, m/s; [11] the depth, m. Returns how many there were, which
+ * may be more than max. The checks read it to hold a contact to the car the
+ * shell draws; the physics never reads it back.
+ */
+SIM_EXPORT int sim_world_vehicle_contacts(double *out, int max) {
+  if (max < 0 || (out == 0 && max > 0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  const int n = g_nvc < max ? g_nvc : max;
+  for (int c = 0; c < n; c += 1) {
+    for (int j = 0; j < SIM_VEHICLE_CONTACT_DOUBLES; j += 1) {
+      out[c * SIM_VEHICLE_CONTACT_DOUBLES + j] = g_vc[c][j];
+    }
+  }
+  return g_nvc;
+}
+
+/* One step of the vehicles' clock, from sim_step after each step's contacts:
+ * with no vehicle it is an integer add and a count handed over. The pose a
+ * step ahead becomes the pose at the clock, so a step works out one new pose
+ * a car, and every pose is still the pose function's own. */
+void world_tick(void) {
+  g_clock += 1;
+  g_nvc = g_nvc_found;
+  g_nvc_found = 0;
+  if (g_nveh == 0) {
+    return;
+  }
+  for (int m = 0; m < WORLD_MAX_MOVERS; m += 1) {
+    Mover *mv = &g_mover[m];
+    if (mv->veh) {
+      mv->prev = mv->cur;
+      mv->cur = mv->nxt;
+      vehicle_pose(mv, g_clock + 1, &mv->nxt);
+      vehicle_turn(&mv->cur, &mv->nxt);
+    }
+  }
+}
+
+/* The car's own frame: origin at the road point under its centre, x along
+ * its heading, z up. A heading about the vertical only, so z passes. */
+static void veh_in(const Pose *P, const double w[3], double out[3]) {
+  const double dx = w[0] - P->p[0];
+  const double dy = w[1] - P->p[1];
+  out[0] = P->h[0] * dx + P->h[1] * dy;
+  out[1] = -P->h[1] * dx + P->h[0] * dy;
+  out[2] = w[2] - P->p[2];
+}
+
+static void veh_dir_in(const Pose *P, const double w[3], double out[3]) {
+  out[0] = P->h[0] * w[0] + P->h[1] * w[1];
+  out[1] = -P->h[1] * w[0] + P->h[0] * w[1];
+  out[2] = w[2];
+}
+
+static void veh_dir_out(const Pose *P, const double l[3], double out[3]) {
+  out[0] = P->h[0] * l[0] - P->h[1] * l[1];
+  out[1] = P->h[1] * l[0] + P->h[0] * l[1];
+  out[2] = l[2];
+}
+
+/* The car's surface velocity at world point w: its origin's velocity, plus
+ * the rate its heading turns over the step (vehicle_turn) across the lever
+ * arm from that origin. */
+static void veh_surface(const Pose *P, const double w[3], double out[3]) {
+  out[0] = P->vel[0] - P->omega * (w[1] - P->p[1]);
+  out[1] = P->vel[1] + P->omega * (w[0] - P->p[0]);
+  out[2] = P->vel[2];
+}
+
+/*
+ * The craft against road vehicle m, in the vehicle's own frame. The hull,
+ * the lens and the prop points are turned into it, the box test is the one
+ * every box has (obb_vs_box, sphere_in_box, point_in_box, unchanged), and
+ * each contact is turned back with the car's surface velocity where it
+ * touches. A car is never ground (plan section 8): its faces are never
+ * merged with the plane the plant stands the craft on, and world_select_support
+ * never offers one, so a craft on a car's roof is held only by friction.
+ */
+static int vehicle_contacts(int nc, int m, const Obb *o, const double cg[3], double reach,
+                            const double lens[3], double lens_r, int prev_ok, int exposed,
+                            const double prop_pts[][PROP_RIM + 1][3], double prop_depth[],
+                            double prop_n[][3], double prop_e[], double prop_vs[][3],
+                            int prop_shape[], const double gn[3], double gd) {
+  const Mover *mv = &g_mover[m];
+  const Pose *P = &mv->cur;
+  /* The cheap reject first: the car's bounding sphere against the craft's
+   * reach, squared, so a car across the map costs a few multiplies. Written
+   * as "not within", so a pose that is not a number is skipped and never
+   * reaches the craft. */
+  const double bx = cg[0] - P->p[0];
+  const double by = cg[1] - P->p[1];
+  const double bz = cg[2] - (P->p[2] + mv->zc);
+  const double rr = reach + mv->rad;
+  if (!(bx * bx + by * by + bz * bz <= rr * rr)) {
+    return nc;
+  }
+  const int shape = -2 - m;
+  const double zero[3] = { 0.0, 0.0, 0.0 };
+  Obb ol;
+  veh_in(P, o->c, ol.c);
+  for (int j = 0; j < 3; j += 1) {
+    const double col[3] = { o->R[0][j], o->R[1][j], o->R[2][j] };
+    double lc[3];
+    veh_dir_in(P, col, lc);
+    ol.R[0][j] = lc[0];
+    ol.R[1][j] = lc[1];
+    ol.R[2][j] = lc[2];
+    ol.h[j] = o->h[j];
+  }
+  const int nc0 = nc;
+  nc = obb_vs_box(nc, &ol, mv->lo, mv->hi, mv->e, mv->mu, zero, shape, 0, gn, gd);
+  double ll[3];
+  double lprev[3];
+  veh_in(P, lens, ll);
+  if (prev_ok) {
+    veh_in(&mv->prev, g_prev_lens, lprev);
+  }
+  double ln[3];
+  double lp[3];
+  const double ld = sphere_in_box(ll, lens_r, prev_ok ? lprev : 0, mv->lo, mv->hi, ln, lp);
+  if (ld > 0.0) {
+    nc = push_contact(nc, ln, lp, ld, mv->e, mv->mu, zero, shape, 1, -1);
+  }
+  for (int c = nc0; c < nc; c += 1) {
+    Contact *ct = &g_con[c];
+    double n[3];
+    double p[3];
+    veh_dir_out(P, ct->n, n);
+    veh_dir_out(P, ct->p, p);
+    for (int a = 0; a < 3; a += 1) {
+      ct->n[a] = n[a];
+      ct->p[a] = p[a] + P->p[a];
+    }
+    veh_surface(P, ct->p, ct->vs);
+  }
+  if (exposed) {
+    for (int k = 0; k < SIM_MOTOR_COUNT; k += 1) {
+      for (int q = 0; q <= PROP_RIM; q += 1) {
+        double ql[3];
+        double qprev[3];
+        double pn[3];
+        veh_in(P, prop_pts[k][q], ql);
+        if (prev_ok) {
+          veh_in(&mv->prev, g_prev_prop[k][q], qprev);
+        }
+        const double pd = point_in_box(ql, prev_ok ? qprev : 0, mv->lo, mv->hi, pn);
+        if (pd > prop_depth[k]) {
+          prop_depth[k] = pd;
+          veh_dir_out(P, pn, prop_n[k]);
+          prop_e[k] = 0.0;
+          veh_surface(P, prop_pts[k][q], prop_vs[k]);
+          prop_shape[k] = shape;
+        }
+      }
+    }
+  }
+  return nc;
+}
+
 static int props_exposed(void) {
   /* A duct IS the hull: when the hull box already reaches past every disc,
    * the props cannot touch anything the hull does not touch first. */
@@ -1707,6 +2837,13 @@ void world_step(SimState *s, int ground_on, const double gn[3], double gd) {
       if (!g_mover[m].on) {
         continue;
       }
+      if (g_mover[m].veh) {
+        /* A road vehicle has a heading, so it is met in its own frame. */
+        nc = vehicle_contacts(nc, m, &o, cg, reach, lens, lens_r, prev_ok, exposed,
+                              (const double (*)[PROP_RIM + 1][3])prop_pts, prop_depth, prop_n,
+                              prop_e, prop_vs, prop_shape, gn, gd);
+        continue;
+      }
       shape = -2 - m;
       lo = g_mover[m].lo;
       hi = g_mover[m].hi;
@@ -1771,6 +2908,27 @@ void world_step(SimState *s, int ground_on, const double gn[3], double gd) {
         nc = push_contact(nc, prop_n[m], prop_pts[m][PROP_RIM], prop_depth[m], prop_e[m],
                           PROP_MU, prop_vs[m], prop_shape[m], 2, m);
       }
+    }
+  }
+
+  /* Keep the contacts against road vehicles for sim_world_vehicle_contacts,
+   * as they go into the solve. Only written, so no run is changed by it. */
+  if (g_nveh > 0) {
+    for (int c = 0; c < nc; c += 1) {
+      const Contact *ct = &g_con[c];
+      if (ct->shape > -2 || !g_mover[-2 - ct->shape].veh) {
+        continue;
+      }
+      double *o = g_vc[g_nvc_found];
+      o[0] = (double)(-2 - ct->shape);
+      o[1] = (double)ct->kind;
+      for (int a = 0; a < 3; a += 1) {
+        o[2 + a] = ct->p[a];
+        o[5 + a] = ct->n[a];
+        o[8 + a] = ct->vs[a];
+      }
+      o[11] = ct->depth;
+      g_nvc_found += 1;
     }
   }
 

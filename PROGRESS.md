@@ -46468,6 +46468,49 @@ repository it is real.
     /tmp/sim-page-* and sim-chrome-*       16 stale profiles deleted, no
                                            browser running
 
+## 2026-09-25 | physics | Stage D part 2 built, and NOT VERIFIED on its first check
+
+The turning movers (P2) were built on the owner's go (121efd8): one table of
+64 mover slots shared with the train, roads uploaded once and resampled at
+1 m, a curvature speed profile with forward and backward passes, the pose a
+pure function of the module's step clock (world_tick in sim_step), the drift
+turning the box by a rational rotation, the craft tested in the car's own
+frame, a vehicle never ground. dist/sim.wasm 8100a38a..., 140,831 bytes. The
+builder's run and then an independent verifier's, one check at a time from
+a clean build, agreed: the build reproduces; verify 17 of 17 with rows 1 to
+16 identical to 121efd8 (row 14 is the audio clock in real time) and row 17
+35 of 35; check:plant 23 of 23; the golden 35 of 35 and its selftest; the
+five known check:world targets; Node against Chrome equal on all 20 golden
+and 8 vehicle runs; check:crash 0 guards failed; nothing under tests/
+changed. 64 cars add about 4.5 us to a 1 ms step here.
+
+**The verdict was NOT VERIFIED**, so it did not go to main under the owner's
+"merge stage D to main when it's verified". Planting faults in scratch
+builds: the drift left out of the solid box, the clock advanced twice, the
+braking pass skipped and a vehicle offered as ground each turned a named
+check red; **the yaw rate left out of the contact's surface velocity turned
+nothing red**, though it moved outcomes a long way (a drift hit ending at
+3.28 m against 11.33; a whoop leaning on a car 3519 steps against 327). A
+physics change no check can see is not ready (CLAUDE.md). With it: the
+previous pose was unchecked (never updated, the drift hit's normal pointed
+away from the craft on 524 of 722 contact steps, all green), the reach test
+let a NaN through at absurd coordinates, and a road folded back on itself
+reversed a car at 10 m/s in one step.
+
+**One model decision, taken by me and put to the owner in the handover:**
+the contact read a yaw rate of speed times the road's curvature from three
+points 1.5 m apart, which is not how fast the solid box turns (0.045 read
+against 0.245 rad/s entering a bend at 11 m/s; up to about 0.45 m/s of
+surface velocity at the car's ends for about 0.3 s per bend). It is changed
+to the rate the box's own heading turns, from the pose function, drift
+included. That is the owner's "the car seen is the car hit", applied to how
+the car moves as well as where it is.
+
+A fix round is under way: that change, checks that see the yaw term, the
+drift rate, the normal's sign and the previous pose, a fold refused, a
+NaN-safe reach test, every planted fault required to turn a check red, then
+the verifier again. Checkpoints a8b8f64 and before are unverified.
+
 ## 2026-09-25 | git | Stage D's verified half goes to main: the world golden in verify
 
 The owner: "we good with the drift car chase? lets deploy to main before we
@@ -47236,6 +47279,7 @@ Publish that fails with a message about a picture.
                              drawn headless, 110 and 80 kB, looked at
     git diff --stat vendor/betaflight   empty
 
+<<<<<<< HEAD
 ## 2026-09-25: Support link in the menu with first-party click tracking
 
 Small, focused PR. Added a "Support" link in the simulator's main menu,
@@ -47301,3 +47345,125 @@ Also updated historical PROGRESS.md entry from 2026-09-22 with new pricing.
 Added test coverage in support:selftest (scripts/support-link-check.js): verifies PATREON_NOTE has exact expected text, does not contain old prices ($5, $12, or $25), and does not reference GST. Test passes with new pricing, would fail if old prices or GST were present.
 
 Part of Support link PR (cursor/support-link-3616), requested by marketing alongside the overflow fix.
+=======
+## 2026-09-25 | physics | Stage D part 2: the fix round, and VERIFIED
+
+The fix round on the first verdict (813c2fa), main merged in (65d3a4d),
+and the same independent verifier again on exactly that tree.
+
+### What the fix round changed
+
+- **The contact's yaw rate is the box's own turn** (world.c vehicle_turn):
+  the signed turn from the heading at the clock to the heading one step
+  later, 2 cross / (1 + |dot|) times SIM_STEP_HZ, + - * / only, which is
+  2 tan(turn / 2) and off the true turn by the turn cubed over twelve. Each
+  car keeps a next pose; world_tick shifts prev, cur, nxt and works out one
+  new pose a step; sim_world_clock seats all three, so the poses stay a pure
+  function of the clock. The drift's rate is in it by construction; speed
+  times curvature and the analytic drift rate are gone. The linear part
+  stays the pose's analytic velocity: a finite difference of positions
+  amplified rounding a thousandfold and pushed the 37 degree heading
+  invariance to 1.04e-9, over its 1e-9 bar (with the analytic velocity,
+  3.28e-12).
+- **A new read-only export, sim_world_vehicle_contacts(double *out, int
+  max)**: the last step's contacts against cars, 12 doubles each (slot,
+  kind, point, normal, surface velocity, depth), written only when a car
+  exists, read by nothing in the physics. It is what lets a check hold the
+  surface velocity the module reports against the car's own motion.
+- **Roads**: a point where the road turns more than 30 degrees in plan,
+  folds and a closed road's joining point included, is refused
+  (SIM_ERR_BAD_ARG), as are coordinates past 1e6 m and a piece that
+  resamples to no length. The header now says the shell's road tool must
+  hand over eased bends. The reach test is !(d2 <= rr*rr), so a NaN is
+  skipped.
+- **Coverage**, in VEHICLE_SCENARIOS and the engines' vehicle runs (10
+  now): contact motion (477 hull and lens contacts held to the car's
+  velocity plus its turn between two read back poses across the lever arm,
+  worst 2.73e-5 m/s against a bar of 5.55e-5; 1,208 prop contacts within a
+  prop's radius), the normal's sign on 4,089 contacts on 1,701 steps, a
+  drift entry, and a prop edge case where the previous frame test decides
+  the push.
+
+### The second verdict: VERIFIED
+
+On 65d3a4d, dist/sim.wasm 5408b3e2be286ee8..., 141,813 bytes, run one at a
+time by the verifier:
+
+    npm run build:wasm             reproduces 5408b3e2 exactly
+    git diff --stat vendor/betaflight   empty
+    npm run verify                 17 of 17; every row equal to 121efd8's
+                                   run except row 14's real time audio
+                                   clock (2.50 s against 2.52); trace
+                                   de0401cd4266; row 17 35 of 35
+    npm run check:plant            23 of 23, hashes unchanged
+    npm run check:world-golden     35 of 35; selftest all passed
+    npm run check:world            all passed (old scenarios, main's
+                                   READINGS, every vehicle check);
+                                   --targets the same five known
+    npm run check:world-engines    20 golden and 10 vehicle runs equal to
+                                   the bit, Node 22 and Chrome 141
+    npm run check:world-town       the fixture is the town
+    npm run check:crash            0 guards failed
+    npm run check:clip             699 passed, 0 failed
+    node scripts/props-check.js    all passed
+    npm run lint:preload           up to date
+    git diff --stat 121efd8 -- tests   empty
+
+Planted faults, each in a scratch build whose unfaulted twin reproduced
+5408b3e2, the golden 35 of 35 under every one:
+
+    yaw rate out of the surface velocity    contact motion (2 checks)
+    drift rate out                          contact motion (2)
+    speed times curvature (the old way)     contact motion (2)
+    previous pose never updated             drift normal, normals
+    previous points in the current frame    prop edge
+    drift out of the solid box              4 drift checks
+    clock advanced twice                    10 checks
+    braking pass skipped                    5 checks
+    a vehicle offered as ground             roof
+    turn limit 90 degrees                   refusals
+    coordinate limit 1e300                  refusals
+    the contact record's normal negated     normals, prop edge
+
+Step cost, 9 interleaved rounds of 20,000 steps, sim_step median: no car
+3.03 us (121efd8 3.79), the train alone 4.07 (4.17), 16 cars 5.47, 64 cars
+9.96, 64 cars all on the craft 30.5. About 6 us for 64 cars, 0.6 percent of
+the 1 ms step here.
+
+### Still open
+
+- The vehicle runs are not in the world golden, so verify's check 17 does
+  not see the vehicle code; check:world's vehicle scenarios and
+  check:world-engines do. Pinning them is a reviewed re-record.
+- For the owner in flight, once Stage E puts cars on a map: a single point
+  corner up to 30 degrees turns a car's velocity in one step (up to about
+  2 m/s at a 6 m/s2 corner), and a drift car's yaw rate steps by up to 4.2
+  rad/s where a bend starts (the slide angle itself is continuous). The
+  road tool's eased bends are the answer to both.
+- "contact motion: the car's velocity" measures 2.00e-3 m/s against a
+  2 mm/s bar, the exact analytic bound: deterministic, no headroom by
+  design.
+- Two decisions need the owner's recorded answer before this goes to main:
+  the yaw rate as the box's own turn, and the new read-only export.
+
+## 2026-09-25 | git, physics | Stage D goes to main: the owner's answers, and the merge
+
+Put to the owner in the conversation, answered 2026-09-25:
+
+- **The contact's turn rate: "The car's actual turn"**, the box's own turn
+  from one step to the next, drift included, as verified; not speed times
+  the road's curvature.
+- **sim_world_vehicle_contacts: "Keep it"**, the read-only readback of the
+  last step's car contacts that the contact motion and normal checks use.
+
+With those recorded, Stage D is verified under the owner's standing "merge
+stage D to main when it's verified", and goes: part 1 was already on main
+(0da5afb); part 2 is the turning movers, verified at 65d3a4d (the entry
+above), with only these PROGRESS entries after it. main was at 5abb0a2, an
+ancestor of the branch, so it fast forwards and nothing is rewritten.
+
+What it changes for a pilot today: nothing. No map has a road or a car
+until Stage E, and every existing world, the train included, is bit for
+bit what it was. The verification scale is verify, which ran (17 of 17);
+the owner's fly comes with Stage E, when there is a car to chase.
+>>>>>>> origin/main

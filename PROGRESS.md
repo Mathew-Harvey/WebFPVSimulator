@@ -46673,3 +46673,52 @@ the merged tree:
     npm run check:clip                 683 passed, 0 failed
     npm run lint:preload               up to date, boot 105, city 73,
                                        built 29; 201 served
+
+## 2026-09-25 | git | The STF mark in plain view goes to main, for the owner to fly
+
+The owner, on the entry above: "fly it, and just freestlye, push to ain".
+Three answers in one line, recorded as given:
+
+- **"push to ain"**: the approval to put the STF mark in plain view on
+  main. It covers exactly the branch as checked above (cee8eaf and its
+  merge of main, a07674e) and this entry.
+- **"fly it"**: the verification scale is the owner flying it. Nothing
+  further was run for it.
+- **"just freestlye"**: the answer to "did 'any map' include race tracks?".
+  No: the mark stays on freestyle maps, the town and every built map, and
+  race tracks carry none. Written into FREESTYLE-MAPS-PLAN.md decision 10.
+
+**A fast-forward.** Fetched first: main was fdafe2e, the branch's merge
+base with main and so its ancestor, and main moves to the branch with no
+merge commit and nothing rewritten.
+
+**No hard reload.** The loader that went to main earlier today loads every
+script at the new deploy's address on the first visit after it.
+
+What to look for, flying:
+
+- The town: from the pads, the STF mural on the side of the corner shop at
+  the end of the street, just left of the nose, white and green lettering
+  on black. Fly up the street to it and MARK FOUND comes up.
+- Your map, or Hibari Yard if nothing is built: on Hibari Yard the mark is
+  on the bando's ground floor wall, dead ahead of the pads. On a map of
+  your own it is on the wall that looks biggest from the pads, or flat on
+  the ground ahead of them if no wall faces them 15 to 60 m out.
+
+What would count as wrong: no mark in view from the pads on a map with
+walls round them; lettering that reads grey or washed out; MARK FOUND
+before takeoff; the mark flickering against the wall it is on, or floating
+visibly off it; the town's mark still in the works shed, which would mean
+the old scripts are being served.
+
+### RUN LOG
+
+    git fetch                       main fdafe2e, unmoved since the merge
+                                    above
+    git merge-base HEAD origin/main fdafe2e, main's tip; main moves by
+                                    fast-forward
+    code                            unchanged since the merged tree's
+                                    checks above; this commit is
+                                    PROGRESS.md and one sentence of
+                                    FREESTYLE-MAPS-PLAN.md
+    git diff --stat vendor/betaflight   empty

@@ -487,7 +487,8 @@ of SubTwoFIfty is too hard to find, make it easy to see on any map":
     town's mark leaves the works shed for the corner shop at the end of the
     street the pilot starts in. Finding it is unchanged in kind, flying up
     to it and looking at it, with the range grown in proportion to the
-    mark.
+    mark. Race tracks do not carry it: asked whether "any map" took them
+    in too, the owner answered "just freestyle" (2026-09-25).
 
 ## 13. Not in this plan
 

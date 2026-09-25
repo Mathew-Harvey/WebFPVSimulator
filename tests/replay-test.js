@@ -27,20 +27,27 @@ const fixtureGhost = JSON.parse(
   readFileSync(new URL('./fixtures/ghost-tm-aae280e5.json', import.meta.url), 'utf-8')
 );
 
-const fixtureTrack = {
+/* Real board track document shape: payload has id, name, author, board, document */
+const fixtureTrackPayload = {
   id: 'trk-test0001',
   name: 'Test Track',
   author: 'test',
-  version: 1,
-  gates: [],
+  board: 'http://127.0.0.1:3100',
+  document: {
+    id: 'trk-test0001',
+    name: 'Test Track',
+    version: 1,
+    trackClass: 'full',
+    gates: [],
+  },
 };
 
 async function testNormalBoot() {
-  const page = await openPage({ url: '/sim/' });
+  const page = await openPage({ url: '/index.html' });
   try {
-    await page.until(() => window.__shellReady === true, 120000);
+    await page.until('window.__shellReady === true', 120000);
     
-    const info = await page.evaluate(() => window.__replayInfo());
+    const info = await page.evaluate('window.__replayInfo()');
     if (info.active !== false) {
       throw new Error(`Normal boot should have replay inactive, got active=${info.active}`);
     }
@@ -53,19 +60,30 @@ async function testNormalBoot() {
 
 async function testReplaySuccess() {
   const page = await openPage({
-    url: '/sim/?map=custom&share=trk-test0001&replay=tm-aae280e5&cam=fpv&clean=1',
+    url: '/index.html?map=custom&share=trk-test0001&replay=tm-aae280e5&cam=fpv&clean=1',
     seed: [
       `
       /* Stub track and ghost fetches */
       const _fetch = window.fetch;
       window.fetch = function(url, opts) {
-        if (url.includes('/board/api/tracks/trk-test0001') && !url.includes('/times/')) {
-          return Promise.resolve(new Response(JSON.stringify(${JSON.stringify(fixtureTrack)}), {
+        const urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
+        if (urlStr.includes('/api/tracks/trk-test0001/document')) {
+          return Promise.resolve(new Response(JSON.stringify(${JSON.stringify(fixtureTrackPayload)}), {
             status: 200,
             headers: { 'content-type': 'application/json' }
           }));
         }
-        if (url.includes('/board/api/tracks/trk-test0001/times/tm-aae280e5/ghost')) {
+        if (urlStr.includes('/api/tracks/trk-test0001') && !urlStr.includes('/document')) {
+          /* Track times listing */
+          return Promise.resolve(new Response(JSON.stringify({
+            id: 'trk-test0001',
+            times: [{ id: 'tm-aae280e5', name: 'test', lapMs: 5000, hasGhost: true }]
+          }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' }
+          }));
+        }
+        if (urlStr.includes('/api/tracks/trk-test0001/times/tm-aae280e5/ghost')) {
           return Promise.resolve(new Response(JSON.stringify(${JSON.stringify(fixtureGhost)}), {
             status: 200,
             headers: { 'content-type': 'application/json' }
@@ -77,23 +95,17 @@ async function testReplaySuccess() {
     ]
   });
   try {
-    await page.until(() => window.__shellReady === true, 120000);
+    await page.until('window.__shellReady === true', 120000);
     
     /* Wait for ghost to load and replay to be ready */
-    await page.until(() => {
-      const info = window.__replayInfo();
-      return info.state === 'ready' && info.ghostLoaded;
-    }, 30000);
+    await page.until('window.__replayInfo && window.__replayInfo().state === "ready" && window.__replayInfo().ghostLoaded', 30000);
     
-    const mode = await page.evaluate(() => window.__mode);
+    const mode = await page.evaluate('window.__mode');
     if (mode !== 'flight') {
       throw new Error(`Replay should start in flight mode, got ${mode}`);
     }
     
-    const uiHidden = await page.evaluate(() => {
-      const ui = document.getElementById('ui');
-      return ui && ui.style.display === 'none';
-    });
+    const uiHidden = await page.evaluate('document.getElementById("ui") && document.getElementById("ui").style.display === "none"');
     if (!uiHidden) {
       throw new Error('UI should be hidden with clean=1');
     }
@@ -101,36 +113,42 @@ async function testReplaySuccess() {
     /* Test deterministic stepping */
     await page.sleep(200);
     
-    const result1 = await page.evaluate(() => {
-      window.__replayStep(0);
-      window.__replayStep(1000);
-      return new Promise(r => requestAnimationFrame(() => {
-        const shell = window.__shell;
-        if (!shell || !shell.camera) throw new Error('Camera not found');
-        const cam = shell.camera;
-        r({
-          vt: window.__replayInfo().clock.vt,
-          x: cam.position.x,
-          y: cam.position.y,
-          z: cam.position.z
+    const result1 = await page.evaluate(`
+      (function() {
+        window.__replayStep(0);
+        window.__replayStep(1000);
+        return new Promise(function(r) {
+          requestAnimationFrame(function() {
+            var info = window.__replayInfo();
+            if (!info.cameraPosition) throw new Error('Camera position not available');
+            r({
+              vt: info.clock.vt,
+              x: info.cameraPosition.x,
+              y: info.cameraPosition.y,
+              z: info.cameraPosition.z
+            });
+          });
         });
-      }));
-    });
+      })()
+    `);
     
-    const result2 = await page.evaluate(() => {
-      window.__replayStep(0);
-      window.__replayStep(1000);
-      return new Promise(r => requestAnimationFrame(() => {
-        const shell = window.__shell;
-        const cam = shell.camera;
-        r({
-          vt: window.__replayInfo().clock.vt,
-          x: cam.position.x,
-          y: cam.position.y,
-          z: cam.position.z
+    const result2 = await page.evaluate(`
+      (function() {
+        window.__replayStep(0);
+        window.__replayStep(1000);
+        return new Promise(function(r) {
+          requestAnimationFrame(function() {
+            var info = window.__replayInfo();
+            r({
+              vt: info.clock.vt,
+              x: info.cameraPosition.x,
+              y: info.cameraPosition.y,
+              z: info.cameraPosition.z
+            });
+          });
         });
-      }));
-    });
+      })()
+    `);
     
     if (result1.vt !== 1000 || result2.vt !== 1000) {
       throw new Error(`Step should advance to 1000ms, got ${result1.vt} and ${result2.vt}`);
@@ -150,13 +168,15 @@ async function testReplaySuccess() {
     }
     
     /* Test __replayStep(0) resets vt */
-    const resetTest = await page.evaluate(() => {
-      window.__replayStep(2000);
-      const before = window.__replayInfo().clock.vt;
-      window.__replayStep(0);
-      const after = window.__replayInfo().clock.vt;
-      return { before, after };
-    });
+    const resetTest = await page.evaluate(`
+      (function() {
+        window.__replayStep(2000);
+        var before = window.__replayInfo().clock.vt;
+        window.__replayStep(0);
+        var after = window.__replayInfo().clock.vt;
+        return { before: before, after: after };
+      })()
+    `);
     
     if (resetTest.before !== 3000 || resetTest.after !== 0) {
       throw new Error(`Step(0) should reset vt, got before=${resetTest.before}, after=${resetTest.after}`);
@@ -170,13 +190,14 @@ async function testReplaySuccess() {
 
 async function testMissingListing() {
   const page = await openPage({
-    url: '/sim/?map=custom&share=trk-notfound&replay=tm-00000001',
+    url: '/index.html?map=custom&share=trk-notfound&replay=tm-00000001',
     seed: [
       `
       /* Stub to return 404 for track document */
       const _fetch = window.fetch;
       window.fetch = function(url, opts) {
-        if (url.includes('/board/api/tracks/')) {
+        const urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
+        if (urlStr.includes('/api/tracks/')) {
           return Promise.resolve(new Response(JSON.stringify({ error: 'Not found' }), {
             status: 404,
             headers: { 'content-type': 'application/json' }
@@ -188,12 +209,12 @@ async function testMissingListing() {
     ]
   });
   try {
-    await page.until(() => window.__shellReady === true, 120000);
+    await page.until('window.__shellReady === true', 120000);
     
     /* Wait a moment for the check to fail */
     await page.sleep(2000);
     
-    const info = await page.evaluate(() => window.__replayInfo());
+    const info = await page.evaluate('window.__replayInfo()');
     if (info.state !== 'failed') {
       throw new Error(`Missing listing should result in state 'failed', got ${info.state}`);
     }
@@ -203,9 +224,7 @@ async function testMissingListing() {
     }
     
     /* Physics should work (can reach flight mode) */
-    const canFly = await page.evaluate(() => {
-      return window.__mode !== undefined && typeof window.__race === 'function';
-    });
+    const canFly = await page.evaluate('window.__mode !== undefined && typeof window.__race === "function"');
     if (!canFly) {
       throw new Error('Physics should work after failure (mode and race available)');
     }
@@ -218,19 +237,29 @@ async function testMissingListing() {
 
 async function testFailureRestoresUI() {
   const page = await openPage({
-    url: '/sim/?map=custom&share=trk-test0002&replay=tm-00000002&clean=1',
+    url: '/index.html?map=custom&share=trk-test0002&replay=tm-00000002&clean=1',
     seed: [
       `
       /* Stub track to succeed, ghost to 404 */
       const _fetch = window.fetch;
       window.fetch = function(url, opts) {
-        if (url.includes('/board/api/tracks/trk-test0002') && !url.includes('/times/')) {
-          return Promise.resolve(new Response(JSON.stringify(${JSON.stringify(fixtureTrack)}), {
+        const urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
+        if (urlStr.includes('/api/tracks/trk-test0002/document')) {
+          return Promise.resolve(new Response(JSON.stringify(${JSON.stringify(fixtureTrackPayload)}), {
             status: 200,
             headers: { 'content-type': 'application/json' }
           }));
         }
-        if (url.includes('/ghost')) {
+        if (urlStr.includes('/api/tracks/trk-test0002') && !urlStr.includes('/document')) {
+          return Promise.resolve(new Response(JSON.stringify({
+            id: 'trk-test0002',
+            times: [{ id: 'tm-00000002', name: 'test', lapMs: 5000, hasGhost: true }]
+          }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' }
+          }));
+        }
+        if (urlStr.includes('/ghost')) {
           return Promise.resolve(new Response(JSON.stringify({ error: 'Not found' }), {
             status: 404,
             headers: { 'content-type': 'application/json' }
@@ -242,27 +271,18 @@ async function testFailureRestoresUI() {
     ]
   });
   try {
-    await page.until(() => window.__shellReady === true, 120000);
+    await page.until('window.__shellReady === true', 120000);
     
     /* Wait for fetch to fail */
-    await page.until(() => {
-      const info = window.__replayInfo();
-      return info.state === 'failed';
-    }, 10000);
+    await page.until('window.__replayInfo && window.__replayInfo().state === "failed"', 10000);
     
-    const uiVisible = await page.evaluate(() => {
-      const ui = document.getElementById('ui');
-      return ui && ui.style.display !== 'none';
-    });
+    const uiVisible = await page.evaluate('(function() { var ui = document.getElementById("ui"); return ui && ui.style.display !== "none"; })()');
     if (!uiVisible) {
       throw new Error('UI should be restored (visible) after failure with clean=1');
     }
     
     /* Check that a failure banner/notice is shown */
-    const hasNotice = await page.evaluate(() => {
-      const text = document.body.textContent || '';
-      return text.includes('failed') || text.includes('fetch') || text.includes('ghost');
-    });
+    const hasNotice = await page.evaluate('(function() { var text = document.body.textContent || ""; return text.includes("failed") || text.includes("fetch") || text.includes("ghost"); })()');
     if (!hasNotice) {
       throw new Error('Failure banner should be visible after error');
     }

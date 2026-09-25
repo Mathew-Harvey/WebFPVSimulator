@@ -8253,6 +8253,11 @@ export async function boot({ loading, bootStart, mapId }) {
     stepMode: replayStepMode,
     clock: replayClock ? { startMs: replayClock.startMs, vt: replayClock.vt } : null,
     ghostLoaded: ghostLap != null,
+    cameraPosition: shell.camera ? {
+      x: shell.camera.position.x,
+      y: shell.camera.position.y,
+      z: shell.camera.position.z
+    } : null,
   });
   window.__craftState = () => ({
     mode,

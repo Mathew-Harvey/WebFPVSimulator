@@ -18,11 +18,12 @@
  * everything, on fifty random maps and on maps built to reach each fallback.
  *
  *   1. PAINT GOES ON A FLAT FACE: a face of a solid box the kit draws as that
- *      box. A capsule is round, and a box the kit does not draw (a car's body,
- *      a rubble pile's envelope, a scaffold's net) is not where paint would be
- *      seen. The mark is 1.8 by 0.9 m, the logo's two to one, shrunk on a
- *      smaller face to no less than half that, and it lies inside its face,
- *      EDGE_INSET in from every edge, so it never overhangs one.
+ *      box, and not glass. A capsule is round, and a box the kit does not
+ *      draw (a car's body, a rubble pile's envelope, a scaffold's net) is not
+ *      where paint would be seen. The mark is 1.8 by 0.9 m, the logo's two
+ *      to one, shrunk on a smaller face to no less than half that, and it
+ *      lies inside its face, EDGE_INSET in from every edge, so it never
+ *      overhangs one.
  *   2. OPEN AIR IN FRONT: the mark's rectangle pushed out along the face's
  *      normal is clear of every solid, is GROUND_CLEAR over the paving and is
  *      inside the plot. AIR out from a wall or a roof, room to be seen from;
@@ -48,9 +49,11 @@
  *      place in the document and then the face's own index, which is a total
  *      order, so every engine's sort gives the same list. Each face is tried
  *      at up to 49 places, middle first, and the first place that keeps rules
- *      2 to 4 is the face's. The first FINALISTS faces that have one are the
- *      finalists, and the map's own seed picks one: the same spot every time
- *      a map is flown, and a different one on the next map.
+ *      2 to 4 is the face's. The best such face of each element, up to
+ *      FINALISTS of them, are the finalists, topped up with the next best
+ *      faces of any element when fewer elements have one, and a seed from
+ *      the document's id picks one: the same spot every time a map is
+ *      flown, and a different one on the next map.
  *   7. ALWAYS A SPOT, in named steps (STEP). 'hidden' is rules 1 to 6.
  *      'away', when nothing is hidden: rules 1 to 3 on a face turned away
  *      from the pads, the farthest from them the plot allows. 'ground', when
@@ -141,16 +144,22 @@ const SEE_THROUGH_KIND = 'canopy';
  *              deck, in an open container. An underside is its own cover.
  *   full       room for the whole 1.8 by 0.9 m mark
  *
- * So an inside ceiling (7) beats an inside back wall (5), which ties an
- * inside side wall with a plain underside (4), and every one of those beats
- * a plain back (2), a side (1) and a roof (0). The halves are exact in
- * binary, so a score is the same number on every engine.
+ * So an inside ceiling (7) beats an inside back wall (5), which beats an
+ * inside side wall and a plain underside (4 each), and every one of those
+ * beats an inside roof (3), a plain back (2), a plain side (1) and a roof
+ * (0). The halves are exact in binary, so a score is the same number on
+ * every engine.
  */
 export const SCORE = Object.freeze({ underside: 4, back: 2, side: 1, top: 0, inside: 3, full: 0.5 });
 export const BACK_COS = 0.5;
 export const INSIDE_DEPTH = 1;
 /* How far in front of a wall the cover over it is looked for. */
 const COVER_PROBE = 0.5;
+/* Which way a ceiling opens (openSide): the line is walked this far under
+ * it, where a craft looking up at it flies, and on to this far past its
+ * element's plan. */
+const OPEN_DROP = 1;
+const OPEN_PAST = 1;
 
 /* Rule 6: how many finalists the seed picks from. */
 export const FINALISTS = 8;
@@ -194,8 +203,9 @@ const CELLS_MAX = 256;
  * seat holds no freestyle map with something on it, and chooseDocument
  * reports it as source 'starter'. So the caller passes that source, and a
  * card on the menu, which cannot import this lazily loaded file or the
- * starter at boot, keys the same way from the seat alone, as clipKeyForMap
- * in src/share/orbitcache.js already does for the orbit clip. A pilot who
+ * starter at boot, keys the same way from the seat alone (stampKeyForMap in
+ * src/share/stamps.js), as clipKeyForMap in src/share/orbitcache.js already
+ * does for the orbit clip. A pilot who
  * opens the starter in the builder and flies it from the seat is flying a
  * map of their own, source 'canvas', and it keys by its id like any other.
  */
@@ -298,7 +308,8 @@ function readSolids(placed) {
       }
       S.item[k] = ii;
       S.local[k] = local;
-      if (p.t === 'box' && p.draw && S.ok[k]) {
+      /* Drawn, and not glass: paint on a skylight would float on the sky. */
+      if (p.t === 'box' && p.draw && S.ok[k] && S.opaque[k]) {
         S.paint[k] = 1;
       }
       k += 1;
@@ -397,104 +408,179 @@ function nextQuery(G) {
 /* Exact tests                                                         */
 /* ------------------------------------------------------------------ */
 
-/* Does the segment from a to b meet the box lo..hi, shrunk by `shrink` on
- * every side, over a stretch of the segment longer than none? The slab
- * method: the parameter interval inside each pair of planes, intersected. */
-function segHitsBox(ax, ay, az, bx, by, bz, x0, y0, z0, x1, y1, z1, shrink) {
-  let t0 = 0;
-  let t1 = 1;
-  const A = [ax, ay, az];
-  const Dd = [bx - ax, by - ay, bz - az];
-  const LO = [x0 + shrink, y0 + shrink, z0 + shrink];
-  const HI = [x1 - shrink, y1 - shrink, z1 - shrink];
-  for (let k = 0; k < 3; k += 1) {
-    if (!(LO[k] < HI[k])) {
-      return false;
-    }
-    const d = Dd[k];
-    if (d === 0) {
-      if (A[k] <= LO[k] || A[k] >= HI[k]) {
-        return false;
-      }
-      continue;
-    }
-    let u0 = (LO[k] - A[k]) / d;
-    let u1 = (HI[k] - A[k]) / d;
-    if (u0 > u1) {
-      const t = u0;
-      u0 = u1;
-      u1 = t;
-    }
-    if (u0 > t0) {
-      t0 = u0;
-    }
-    if (u1 < t1) {
-      t1 = u1;
-    }
-    if (!(t0 < t1)) {
-      return false;
-    }
+/*
+ * THE SLAB METHOD, a segment against a box: the stretch of the segment's
+ * parameter, 0 at its start and 1 at its end, between each pair of the
+ * box's planes, intersected. The stretch lives in SPAN while one test runs,
+ * so a test allocates nothing, and a sight line is tested against every
+ * solid in every cell it crosses.
+ */
+const SPAN = { t0: 0, t1: 1 };
+
+/* Narrow SPAN to where a + d t is strictly between lo and hi. False when
+ * nothing is left. */
+function slabOpen(a, d, lo, hi) {
+  if (!(lo < hi)) {
+    return false;
   }
-  return true;
+  if (d === 0) {
+    return a > lo && a < hi;
+  }
+  let u0 = (lo - a) / d;
+  let u1 = (hi - a) / d;
+  if (u0 > u1) {
+    const t = u0;
+    u0 = u1;
+    u1 = t;
+  }
+  if (u0 > SPAN.t0) {
+    SPAN.t0 = u0;
+  }
+  if (u1 < SPAN.t1) {
+    SPAN.t1 = u1;
+  }
+  return SPAN.t0 < SPAN.t1;
 }
 
-/* The same, closed and grown by `grow`: does the segment come within the
- * box grown by `grow` on every side? A capsule of radius r whose axis meets
- * the prism grown by r may touch the prism, and one that does not cannot,
- * so rule 2 asks this of a capsule: never too lenient, at worst a corner's
- * width too strict. */
-function segNearBox(ax, ay, az, bx, by, bz, lo, hi, grow) {
-  let t0 = 0;
-  let t1 = 1;
-  const A = [ax, ay, az];
-  const Dd = [bx - ax, by - ay, bz - az];
+/* The same with the planes included: a touch counts. */
+function slabClosed(a, d, lo, hi) {
+  if (d === 0) {
+    return a >= lo && a <= hi;
+  }
+  let u0 = (lo - a) / d;
+  let u1 = (hi - a) / d;
+  if (u0 > u1) {
+    const t = u0;
+    u0 = u1;
+    u1 = t;
+  }
+  if (u0 > SPAN.t0) {
+    SPAN.t0 = u0;
+  }
+  if (u1 < SPAN.t1) {
+    SPAN.t1 = u1;
+  }
+  return SPAN.t0 <= SPAN.t1;
+}
+
+/* Does the segment a to b pass through the box shrunk by `shrink` on every
+ * side, over a stretch longer than none? */
+function segHitsBox(ax, ay, az, bx, by, bz, x0, y0, z0, x1, y1, z1, shrink) {
+  SPAN.t0 = 0;
+  SPAN.t1 = 1;
+  return slabOpen(ax, bx - ax, x0 + shrink, x1 - shrink)
+    && slabOpen(ay, by - ay, y0 + shrink, y1 - shrink)
+    && slabOpen(az, bz - az, z0 + shrink, z1 - shrink);
+}
+
+/* How far a coordinate is outside lo..hi, 0 inside. */
+function outside(v, lo, hi) {
+  return v < lo ? lo - v : (v > hi ? v - hi : 0);
+}
+
+/*
+ * The squared distance from the segment a + t (b - a), t from 0 to 1, to
+ * the box lo..hi, exactly. Along each axis the distance outside the box is
+ * linear in t between the places the segment crosses the box's two planes,
+ * so between consecutive crossings the squared distance is one quadratic,
+ * and its least value on each piece is at the quadratic's vertex or at an
+ * end of the piece. Rule 2 asks it of a capsule's axis, so a capsule that
+ * does not touch the air in front of a mark is never counted as in it.
+ */
+const KINKS = new Float64Array(8);
+const SEG_A = new Float64Array(3);
+const SEG_D = new Float64Array(3);
+
+/* Add the place where a + d t crosses `plane` to KINKS, when it is inside
+ * the segment. Returns the new count. */
+function addKink(n, a, d, plane) {
+  const t = (plane - a) / d;
+  if (t > 0 && t < 1) {
+    KINKS[n] = t;
+    return n + 1;
+  }
+  return n;
+}
+
+function segBoxDist2(ax, ay, az, bx, by, bz, lo, hi) {
+  const A = SEG_A;
+  const Dd = SEG_D;
+  A[0] = ax;
+  A[1] = ay;
+  A[2] = az;
+  Dd[0] = bx - ax;
+  Dd[1] = by - ay;
+  Dd[2] = bz - az;
+  let n = 0;
+  KINKS[n] = 0;
+  n += 1;
+  KINKS[n] = 1;
+  n += 1;
   for (let k = 0; k < 3; k += 1) {
-    const l = lo[k] - grow;
-    const h = hi[k] + grow;
-    const d = Dd[k];
-    if (d === 0) {
-      if (A[k] < l || A[k] > h) {
-        return false;
-      }
-      continue;
-    }
-    let u0 = (l - A[k]) / d;
-    let u1 = (h - A[k]) / d;
-    if (u0 > u1) {
-      const t = u0;
-      u0 = u1;
-      u1 = t;
-    }
-    if (u0 > t0) {
-      t0 = u0;
-    }
-    if (u1 < t1) {
-      t1 = u1;
-    }
-    if (t0 > t1) {
-      return false;
+    if (Dd[k] !== 0) {
+      n = addKink(n, A[k], Dd[k], lo[k]);
+      n = addKink(n, A[k], Dd[k], hi[k]);
     }
   }
-  return true;
+  /* At most eight, so an insertion sort. */
+  for (let i = 1; i < n; i += 1) {
+    const v = KINKS[i];
+    let j = i - 1;
+    while (j >= 0 && KINKS[j] > v) {
+      KINKS[j + 1] = KINKS[j];
+      j -= 1;
+    }
+    KINKS[j + 1] = v;
+  }
+  let best = Infinity;
+  for (let s = 0; s + 1 < n; s += 1) {
+    const t0 = KINKS[s];
+    const t1 = KINKS[s + 1];
+    const tm = (t0 + t1) / 2;
+    /* Which planes the segment is outside on this piece, and the vertex. */
+    let num = 0;
+    let den = 0;
+    for (let k = 0; k < 3; k += 1) {
+      const v = A[k] + Dd[k] * tm;
+      if (v < lo[k]) {
+        num += Dd[k] * (lo[k] - A[k]);
+        den += Dd[k] * Dd[k];
+      } else if (v > hi[k]) {
+        num += Dd[k] * (hi[k] - A[k]);
+        den += Dd[k] * Dd[k];
+      }
+    }
+    let t = den > 0 ? num / den : t0;
+    t = t < t0 ? t0 : (t > t1 ? t1 : t);
+    const ex = outside(A[0] + Dd[0] * t, lo[0], hi[0]);
+    const ey = outside(A[1] + Dd[1] * t, lo[1], hi[1]);
+    const ez = outside(A[2] + Dd[2] * t, lo[2], hi[2]);
+    const d2 = ex * ex + ey * ey + ez * ez;
+    if (d2 < best) {
+      best = d2;
+    }
+  }
+  return best;
 }
 
 function clamp01(v) {
   return v < 0 ? 0 : (v > 1 ? 1 : v);
 }
 
-/* Squared distance between two segments, p1 to q1 and p2 to q2 (Ericson,
- * Real-Time Collision Detection, 5.1.9, the routine scripts/props-check.js
- * uses for its own clearances). */
-function segSegDist2(p1, q1, p2, q2) {
-  const d1x = q1[0] - p1[0];
-  const d1y = q1[1] - p1[1];
-  const d1z = q1[2] - p1[2];
-  const d2x = q2[0] - p2[0];
-  const d2y = q2[1] - p2[1];
-  const d2z = q2[2] - p2[2];
-  const rx = p1[0] - p2[0];
-  const ry = p1[1] - p2[1];
-  const rz = p1[2] - p2[2];
+/* Squared distance between two segments, the sight line p to q and the
+ * capsule axis at g[o] to g[o + 5] (Ericson, Real-Time Collision
+ * Detection, 5.1.9, the routine scripts/props-check.js uses for its own
+ * clearances). */
+function segSegDist2(p, q, g, o) {
+  const d1x = q[0] - p[0];
+  const d1y = q[1] - p[1];
+  const d1z = q[2] - p[2];
+  const d2x = g[o + 3] - g[o];
+  const d2y = g[o + 4] - g[o + 1];
+  const d2z = g[o + 5] - g[o + 2];
+  const rx = p[0] - g[o];
+  const ry = p[1] - g[o + 1];
+  const rz = p[2] - g[o + 2];
   const a = d1x * d1x + d1y * d1y + d1z * d1z;
   const e = d2x * d2x + d2y * d2y + d2z * d2z;
   const f = d2x * rx + d2y * ry + d2z * rz;
@@ -579,7 +665,8 @@ function prismClear(S, G, lo, hi) {
         }
         const o = i * 7;
         const g = S.g;
-        if (segNearBox(g[o], g[o + 1], g[o + 2], g[o + 3], g[o + 4], g[o + 5], lo, hi, g[o + 6])) {
+        const r = g[o + 6] - EPS;
+        if (segBoxDist2(g[o], g[o + 1], g[o + 2], g[o + 3], g[o + 4], g[o + 5], lo, hi) < r * r) {
           return false;
         }
       }
@@ -620,16 +707,39 @@ function hides(S, i, a, b) {
       g[o], g[o + 1], g[o + 2], g[o + 3], g[o + 4], g[o + 5], SHRINK);
   }
   const r = g[o + 6] - SHRINK;
-  return segSegDist2(a, b, [g[o], g[o + 1], g[o + 2]], [g[o + 3], g[o + 4], g[o + 5]]) < r * r;
+  return segSegDist2(a, b, g, o) < r * r;
+}
+
+/* Does anything filed in cell c hide the line a to b? Each solid is asked
+ * once per line (query q), and only when the line's height reaches it. */
+function cellHides(S, G, c, q, a, b, ylo, yhi) {
+  for (let k = G.start[c]; k < G.start[c + 1]; k += 1) {
+    const i = G.items[k];
+    if (G.stamp[i] === q) {
+      continue;
+    }
+    G.stamp[i] = q;
+    if (S.y1[i] < ylo || S.y0[i] > yhi) {
+      continue;
+    }
+    if (hides(S, i, a, b)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function inGrid(G, cx, cz) {
+  return cx >= 0 && cx < G.nx && cz >= 0 && cz < G.nz;
 }
 
 /*
  * Rule 4 for one line: is the straight line from a (at the mark) to b (an
- * eye) hidden by a solid? It walks the grid cells the line's plan crosses,
- * from the mark outwards, because what hides a mark is usually right beside
- * it, and stops at the first solid that hides the line. A cell the walk
- * could skip at a corner only ever loses a blocker, which makes a mark
- * count as seen and never as hidden.
+ * eye) hidden by a solid? It walks the grid cells the line's plan crosses
+ * (Amanatides and Woo), from the mark outwards, because what hides a mark
+ * is usually right beside it, and stops at the first solid that hides the
+ * line. A cell the walk could skip at a corner only ever loses a blocker,
+ * which makes a mark count as seen and never as hidden.
  */
 function lineHidden(S, G, a, b) {
   const q = nextQuery(G);
@@ -637,64 +747,15 @@ function lineHidden(S, G, a, b) {
   const yhi = a[1] > b[1] ? a[1] : b[1];
   const dx = b[0] - a[0];
   const dz = b[2] - a[2];
-  const gx0 = G.ox;
-  const gx1 = G.ox + G.nx * G.cell;
-  const gz0 = G.oz;
-  const gz1 = G.oz + G.nz * G.cell;
-  let t0 = 0;
-  let t1 = 1;
-  if (dx === 0) {
-    if (a[0] < gx0 || a[0] > gx1) {
-      return false;
-    }
-  } else {
-    let u0 = (gx0 - a[0]) / dx;
-    let u1 = (gx1 - a[0]) / dx;
-    if (u0 > u1) {
-      const t = u0;
-      u0 = u1;
-      u1 = t;
-    }
-    t0 = u0 > t0 ? u0 : t0;
-    t1 = u1 < t1 ? u1 : t1;
-  }
-  if (dz === 0) {
-    if (a[2] < gz0 || a[2] > gz1) {
-      return false;
-    }
-  } else {
-    let u0 = (gz0 - a[2]) / dz;
-    let u1 = (gz1 - a[2]) / dz;
-    if (u0 > u1) {
-      const t = u0;
-      u0 = u1;
-      u1 = t;
-    }
-    t0 = u0 > t0 ? u0 : t0;
-    t1 = u1 < t1 ? u1 : t1;
-  }
-  if (t0 > t1) {
+  /* Only the stretch of the line over the grid: the plot. */
+  SPAN.t0 = 0;
+  SPAN.t1 = 1;
+  if (!slabClosed(a[0], dx, G.ox, G.ox + G.nx * G.cell) || !slabClosed(a[2], dz, G.oz, G.oz + G.nz * G.cell)) {
     return false;
   }
-  const cellHides = (cx, cz) => {
-    const c = cx * G.nz + cz;
-    for (let k = G.start[c]; k < G.start[c + 1]; k += 1) {
-      const i = G.items[k];
-      if (G.stamp[i] === q) {
-        continue;
-      }
-      G.stamp[i] = q;
-      if (S.y1[i] < ylo || S.y0[i] > yhi) {
-        continue;
-      }
-      if (hides(S, i, a, b)) {
-        return true;
-      }
-    }
-    return false;
-  };
-  let cx = cellOf(G.ox, G.cell, G.nx, a[0] + dx * t0);
-  let cz = cellOf(G.oz, G.cell, G.nz, a[2] + dz * t0);
+  const t1 = SPAN.t1;
+  let cx = cellOf(G.ox, G.cell, G.nx, a[0] + dx * SPAN.t0);
+  let cz = cellOf(G.oz, G.cell, G.nz, a[2] + dz * SPAN.t0);
   const stepX = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
   const stepZ = dz > 0 ? 1 : (dz < 0 ? -1 : 0);
   let tMaxX = Infinity;
@@ -711,9 +772,8 @@ function lineHidden(S, G, a, b) {
   }
   const tDX = stepX ? G.cell / (dx < 0 ? -dx : dx) : Infinity;
   const tDZ = stepZ ? G.cell / (dz < 0 ? -dz : dz) : Infinity;
-  const inGrid = (x, z) => x >= 0 && x < G.nx && z >= 0 && z < G.nz;
   for (;;) {
-    if (cellHides(cx, cz)) {
+    if (cellHides(S, G, cx * G.nz + cz, q, a, b, ylo, yhi)) {
       return true;
     }
     const tNext = tMaxX < tMaxZ ? tMaxX : tMaxZ;
@@ -728,10 +788,10 @@ function lineHidden(S, G, a, b) {
       tMaxZ += tDZ;
     } else {
       /* Through a corner: the two cells either side of it, then on. */
-      if (inGrid(cx + stepX, cz) && cellHides(cx + stepX, cz)) {
+      if (inGrid(G, cx + stepX, cz) && cellHides(S, G, (cx + stepX) * G.nz + cz, q, a, b, ylo, yhi)) {
         return true;
       }
-      if (inGrid(cx, cz + stepZ) && cellHides(cx, cz + stepZ)) {
+      if (inGrid(G, cx, cz + stepZ) && cellHides(S, G, cx * G.nz + cz + stepZ, q, a, b, ylo, yhi)) {
         return true;
       }
       cx += stepX;
@@ -739,7 +799,7 @@ function lineHidden(S, G, a, b) {
       tMaxX += tDX;
       tMaxZ += tDZ;
     }
-    if (!inGrid(cx, cz)) {
+    if (!inGrid(G, cx, cz)) {
       return false;
     }
   }
@@ -778,7 +838,9 @@ function fitScale(across, tall) {
 }
 
 /* The places a mark is tried on a face, as whole steps from its middle:
- * nearest the middle first, then lower before higher, then left to right. */
+ * nearest the middle first, then the lower along the mark's up (on a wall,
+ * nearer the ground) and then the lower along its width, so the order is
+ * total and the same on every engine. */
 const ORDER = [];
 for (let kv = -POS_HALF; kv <= POS_HALF; kv += 1) {
   for (let ku = -POS_HALF; ku <= POS_HALF; ku += 1) {
@@ -827,15 +889,46 @@ function coveredBy(S, G, ii, host, x, z, y) {
 }
 
 /*
+ * Which way a ceiling opens along plan axis ua: +1 or -1 when the air under
+ * it runs out past its element's plan that way and not the other, 0 when it
+ * runs out both ways or neither. The line runs OPEN_DROP under the ceiling,
+ * from under its middle to OPEN_PAST beyond its element's plan, and anything
+ * opaque across it closes that side (lineHidden, so what counts is what
+ * hides a mark). A balcony is closed on the side of the wall it stands out
+ * from and open on the other; a bridge deck is open both ways and a ceiling
+ * deep in a bando closed both ways, and those keep the pads' rule. Measured
+ * on a map of flats whose balconies face away from the pads, the pads' rule
+ * alone stood the lettering on its head for the one way in.
+ */
+function openSide(S, G, i, ua, c, F) {
+  const fo = S.item[i] * 4;
+  const lo = ua === 0 ? F[fo] : F[fo + 1];
+  const hi = ua === 0 ? F[fo + 2] : F[fo + 3];
+  const from = [c[0], c[1] - OPEN_DROP, c[2]];
+  const plus = [from[0], from[1], from[2]];
+  const minus = [from[0], from[1], from[2]];
+  plus[ua] = hi + OPEN_PAST;
+  minus[ua] = lo - OPEN_PAST;
+  const openPlus = !lineHidden(S, G, from, plus);
+  const openMinus = !lineHidden(S, G, from, minus);
+  if (openPlus === openMinus) {
+    return 0;
+  }
+  return openPlus ? 1 : -1;
+}
+
+/*
  * One face of box i as a candidate, or null when no mark can go on it. Its
  * score is taken at its middle, so it does not depend on where on the face
- * the mark ends up. The mark's up is world up on a wall. On a ceiling it is
- * the plan axis pointing back toward the pads: a craft flying in under a
- * deck with its camera tilted up sees the near part of the ceiling at the
- * top of its picture. On a roof it points away from the pads, as a craft
- * flying over sees the far part at the top. Of a ceiling's or a roof's two
- * plan axes, the one that takes the bigger mark, and on a tie the one more
- * in line with the pads.
+ * the mark ends up. The mark's up is world up on a wall. On a ceiling it
+ * points the way a pilot comes in from: a craft flying in under a deck with
+ * its camera tilted up sees the near part of the ceiling at the top of its
+ * picture. That is the way the ceiling opens (openSide) when it opens one
+ * way only, a balcony or a canopy standing out from its wall, and back
+ * toward the pads otherwise. On a roof it points away from the pads, as a
+ * craft flying over sees the far part at the top. Of a ceiling's or a roof's
+ * two plan axes, the one that takes the bigger mark, and on a tie the one
+ * more in line with the pads.
  */
 function makeFace(S, G, i, f, spawn, F) {
   const a = f >> 1;
@@ -869,6 +962,12 @@ function makeFace(S, G, i, f, spawn, F) {
       ua = 2;
       us = tz < 0 ? -1 : 1;
       s = sz;
+    }
+    if (sg < 0) {
+      const open = openSide(S, G, i, ua, c, F);
+      if (open !== 0) {
+        us = open;
+      }
     }
   } else {
     const along = a === 0 ? sg * dx : sg * dz;
@@ -1119,17 +1218,17 @@ export function stfSearch(placed, doc, source) {
    * that keeps rules 2 and 3, which the 'away' step reads if nothing is
    * hidden (and then the walk has been over every face).
    *
-   * ONE FINALIST PER ELEMENT. A bando has dozens of ceiling panels that
-   * score the same, and without this the eight finalists on any map with
-   * one in it were eight panels of one ceiling: the seed chose between
+   * ONE FINALIST PER ELEMENT FIRST. A bando has dozens of ceiling panels
+   * that score the same, and without this the eight finalists on any map
+   * with one in it were eight panels of one ceiling: the seed chose between
    * neighbours, and every map hid the mark in its first bando. One each,
-   * and the eight are eight places on the map. */
-  const finalists = [];
+   * and the eight are eight places on the map. When fewer than eight
+   * elements have a hidden face, the best of the other faces fill the list,
+   * so the seed still has a choice on a map of three buildings. */
+  const found = [];
   const taken = new Uint8Array(items.length);
-  for (const face of faces) {
-    if (taken[face.item]) {
-      continue;
-    }
+  const tryFace = (face) => {
+    face.tried = true;
     const Ku = stepsFor(face.Ru);
     const Kv = stepsFor(face.Rv);
     for (const [ku, kv] of ORDER) {
@@ -1145,15 +1244,30 @@ export function stfSearch(placed, doc, source) {
         face.first = p;
       }
       if (hiddenFrom(S, G, face, p, eyes, stats)) {
-        finalists.push(faceSpot(key, STEP.HIDDEN, face, p, placed));
+        found.push({ face, p });
         taken[face.item] = 1;
-        break;
+        return;
       }
     }
-    if (finalists.length >= FINALISTS) {
+  };
+  for (const face of faces) {
+    if (found.length >= FINALISTS) {
       break;
     }
+    if (!taken[face.item]) {
+      tryFace(face);
+    }
   }
+  for (const face of faces) {
+    if (found.length >= FINALISTS) {
+      break;
+    }
+    if (!face.tried) {
+      tryFace(face);
+    }
+  }
+  found.sort((p, q) => byScore(p.face, q.face));
+  const finalists = found.map(({ face, p }) => faceSpot(key, STEP.HIDDEN, face, p, placed));
 
   let spot;
   if (finalists.length) {
@@ -1206,9 +1320,11 @@ export function stfSearch(placed, doc, source) {
  *   up         [ux, uy, uz], the mark's up, a unit vector in the face
  *   right      up x n, the way the lettering reads, seen from the front
  *   w, h       the mark's size in metres, along right and along up
- *   elementId  the element it is painted on, and its type and the solid
- *   type, part   part's name; null on the ground
+ *   elementId  the id of the element it is painted on; null on the ground
+ *   type       that element's type; null on the ground
+ *   part       the name of the solid it is painted on; null on the ground
  *   score      its rule 5 score; null on the ground
+ *   clear      on the ground only: whether the air over it was clear
  *
  * Nothing it returns is meant for a player to read: the kind, the element
  * and the part are for the checks.

@@ -70,6 +70,7 @@ A MapInstance is:
     updateAnim(stepIndex)
     dispose()
     stats()       optional, harness only
+    egg           optional: where the STF mark is painted, see below
 
 ### `height(x, z, fromY)` is three arguments, and the third one is the point
 
@@ -90,6 +91,39 @@ dropped frame changes the trajectory from the scenery side. During a run the
 step count is the physics clock, so a collision is reproducible from a
 recorded input stream. See `city/animation.js` for the worked example: a level
 crossing whose booms were an integrator over raw frame time.
+
+### `egg` is where the STF mark is painted, and a map without one has none
+
+Every freestyle map carries the STF mark, painted by `src/art/stf.js`
+(FREESTYLE-MAPS-PLAN.md section 9). `egg` tells the shell where it is, so it
+can tell when a pilot has found it:
+
+    egg = { key, p: [x, y, z], n: [nx, ny, nz], up: [ux, uy, uz], w, h }
+
+    key   the map's identity, for the found stamp this browser keeps:
+          'city' for the town; on a built map 'built:' and its document's
+          id, or 'built:starter' for the starter (stfKey in built/egg.js)
+    p     the centre of the painted face, world metres, Three.js frame
+    n     the unit normal the paint faces, out of the surface it is on
+    up    the unit direction the lettering reads up, lying in the face
+    w, h  the painted plane's size in metres, along up x n and along up
+
+The mark is paint: it is drawn and never solid, nothing in `colliders`
+stands for it, and `p` is a centimetre or two off the solid face behind it,
+or off whatever relief is drawn on that face (a built map lifts it clear of
+a container's door leaves, see `drawnRelief` in `built/index.js`). So a
+clear line to it has to stop short of that face, or it meets the face
+first. A map that paints no mark leaves `egg` out or null, and there is
+nothing on it to find. The town's is the works shed's roof space, one
+constant, `STF_SPOT` in `city/places/works.js`, because the owner has not
+confirmed the spot. A built map's is chosen from the placed map by
+`built/egg.js` and painted by `built/index.js`, and the builder imports
+neither, so it never shows it.
+
+The shell asks `seesMark` in `src/game/egg.js` whether the FPV camera has
+found it (within 4 m, in front of the paint and at least 15 degrees off it,
+looking at it, a clear line), and keeps the stamp in `src/share/stamps.js`
+under `key`.
 
 ### Renderer state belongs to the map
 

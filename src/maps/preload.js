@@ -96,6 +96,7 @@ export const MAP_PRELOAD = {
     'maps/city/places/road.js',
     'maps/city/places/kit.js',
     'maps/city/places/works.js',
+    'art/stf.js',
     'maps/city/places/signs.js',
     'maps/city/places/pool.js',
     'maps/city/places/training.js',
@@ -127,8 +128,10 @@ export const MAP_PRELOAD = {
     'props/skate.js',
     'props/course.js',
     'props/solids.js',
+    'art/stf.js',
     'maps/built/place.js',
     'maps/built/starter.js',
     'maps/built/looks.js',
+    'maps/built/egg.js',
   ],
 };

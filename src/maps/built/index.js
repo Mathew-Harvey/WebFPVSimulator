@@ -37,6 +37,13 @@
  * seats, measures and sets a craft down on a roof as the plant already
  * stands it on one.
  *
+ * EVERY MAP CARRIES THE STF MARK (FREESTYLE-MAPS-PLAN.md section 9), and
+ * the author does not choose where: ./egg.js chooses from the placed map,
+ * this file paints it there (paintStfMark) and hands the shell where it is
+ * as `egg`. It is paint, so no solid comes of it. The builder imports
+ * neither this file nor ./egg.js, so the person who built a map has to find
+ * the mark too.
+ *
  * NOTHING MOVES. Stage A has no vehicles, so updateAnim is a no op and the
  * only per frame work is seating the lights, trailing the sky and switching
  * chunks on and off by distance.
@@ -79,9 +86,11 @@ import { poleWireAnchors } from '../../props/street.js';
 import { sincos } from '../../props/trig.js';
 import { seededRandom, hashString } from '../../props/parts.js';
 import { paintGroundLogo } from '../../art/banners.js';
+import { makeStfMark } from '../../art/stf.js';
 import { placeDocument, groundUnder, topUnder, PLATFORM_REACH } from './place.js';
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost } from './looks.js';
+import { chooseStfSpot } from './egg.js';
 
 /* The town's far plane, for the town's reason: the sky dome and the ridge
  * lines live out past the fog. See CAMERA_FAR in src/maps/city/index.js.
@@ -178,6 +187,35 @@ const LINE_W = 0.14;
  * that. The numbers are the ones the palette's notes promise the author. */
 const POLE_REACH = 45;
 const PYLON_REACH = 150;
+
+/* How far the STF mark stands off the surface it is sprayed on, in metres:
+ * the town's own lift (STF_SPOT.off in src/maps/city/places/works.js), so
+ * paint reads the same in both worlds. Enough that the depth buffer never
+ * mixes the paint with the steel at the range a pilot finds it from, and
+ * little enough that it reads as sprayed on, not hung in front. */
+const STF_LIFT = 0.015;
+
+/*
+ * THE DRAWN SKIN IS NOT THE SOLID. ./egg.js chooses a face of a solid box,
+ * and the kit draws detail proud of its boxes: a container's door leaves
+ * stand 3.5 cm off the collider's face, their ribs 5 cm, the locking bars
+ * 12 cm and the cam keepers 13, and its flutes and rails 3.5 to 5 cm. Paint
+ * lifted off the collider's face sat behind the doors, and a pilot who was
+ * told they had found it saw a container door. So the drawn surface under
+ * the mark is probed: rays from STF_PROBE out along the normal back onto
+ * the face, on a grid of STF_PROBE_U by STF_PROBE_V shares of the mark,
+ * against the drawn batches of its chunk, and the paint goes STF_LIFT off
+ * the depth STF_PROBE_SHARE of the way up those depths sorted: in front of
+ * the door leaves, their ribs and the placard, 5.6 cm out on the starter's
+ * container, and behind a locking bar across them, which then stands in
+ * front of the paint the way a real one would. STF_PROBE is past the
+ * proudest detail the kit puts on a box face and short of anything that is
+ * not the asset's own skin.
+ */
+const STF_PROBE = 0.2;
+const STF_PROBE_U = [-0.45, -0.225, 0, 0.225, 0.45];
+const STF_PROBE_V = [-0.4, 0, 0.4];
+const STF_PROBE_SHARE = 0.75;
 
 /*
  * The document to build.
@@ -1731,6 +1769,78 @@ function chunkKeyOf(item) {
   return `${Math.floor(item.x / CHUNK)},${Math.floor(item.z / CHUNK)}`;
 }
 
+/*
+ * THE STF MARK, painted where ./egg.js chose, and where it is.
+ *
+ * The spot's `p` is ON the solid's face; the paint stands STF_LIFT off the
+ * drawn surface over it (drawnRelief, and STF_PROBE for why the two are not
+ * the same), and polygonOffset does the rest (src/art/stf.js). The
+ * plane's pose is baked into its geometry, the way the kit bakes every
+ * batch, so the mesh sits at an identity transform in the cull chunk of the
+ * element it is sprayed on, and the chunk's bounds, measured below from
+ * each batch's geometry, take it in like any other batch: it switches off
+ * with the wall it is on and never on its own. On the ground fallback there
+ * is no element, so it goes in the chunk the paving under it belongs to,
+ * a chunk of its own when nothing else was filed there.
+ *
+ * `look` is handed on as the kit gets it. The paint is lit, so dusk and
+ * overcast bring it down with the scene's own lights and it needs nothing
+ * more from the look (see makeStfMark).
+ *
+ * Returns the MapInstance's `egg` (src/maps/README.md): the painted plane's
+ * centre, the way it faces, its up and its size, world metres, the same
+ * shape the town hands the shell.
+ */
+function paintStfMark(props, placed, spot, look) {
+  const n = new THREE.Vector3(...spot.n);
+  const up = new THREE.Vector3(...spot.up);
+  const right = new THREE.Vector3().crossVectors(up, n);
+  const item = spot.elementId ? placed.items.find((it) => it.el.id === spot.elementId) : null;
+  const name = `props:${chunkKeyOf(item || { x: spot.p[0], z: spot.p[2] })}`;
+  let chunk = props.children.find((g) => g.name === name);
+  const lift = drawnRelief(chunk, spot, right) + STF_LIFT;
+  const p = spot.p.map((v, k) => v + spot.n[k] * lift);
+  const mark = makeStfMark(THREE, { width: spot.w, height: spot.h, look: kitLook(look.timeId) });
+  mark.geometry.applyMatrix4(new THREE.Matrix4().makeBasis(right, up, n).setPosition(p[0], p[1], p[2]));
+  mark.geometry.computeBoundingBox();
+  mark.geometry.computeBoundingSphere();
+  if (!chunk) {
+    chunk = new THREE.Group();
+    chunk.name = name;
+    props.add(chunk);
+  }
+  chunk.add(mark);
+  return { key: spot.key, p, n: [...spot.n], up: [...spot.up], w: spot.w, h: spot.h };
+}
+
+/* How far the drawn surface under the mark stands off the solid face the
+ * spot is on, in metres: see STF_PROBE. 0 where nothing is drawn proud of
+ * it, which is the ground and a plain slab. */
+function drawnRelief(chunk, spot, right) {
+  if (!chunk) {
+    return 0;
+  }
+  const ray = new THREE.Raycaster();
+  ray.far = STF_PROBE + 0.01;
+  const back = new THREE.Vector3(-spot.n[0], -spot.n[1], -spot.n[2]);
+  const from = new THREE.Vector3();
+  const depths = [];
+  for (const u of STF_PROBE_U) {
+    for (const v of STF_PROBE_V) {
+      from.set(
+        spot.p[0] + right.x * u * spot.w + spot.up[0] * v * spot.h + spot.n[0] * STF_PROBE,
+        spot.p[1] + right.y * u * spot.w + spot.up[1] * v * spot.h + spot.n[1] * STF_PROBE,
+        spot.p[2] + right.z * u * spot.w + spot.up[2] * v * spot.h + spot.n[2] * STF_PROBE,
+      );
+      ray.set(from, back);
+      const hit = ray.intersectObjects(chunk.children, false)[0];
+      depths.push(hit ? Math.max(0, STF_PROBE - hit.distance) : 0);
+    }
+  }
+  depths.sort((a, b) => a - b);
+  return depths[Math.floor((depths.length - 1) * STF_PROBE_SHARE)];
+}
+
 function trianglesOf(root) {
   let n = 0;
   root.traverse((o) => {
@@ -1754,6 +1864,18 @@ export async function buildMap(shell, onProgress, options) {
   const chosen = chooseDocument(opts);
   const { doc, repairs } = normalize(chosen.raw);
   const placed = placeDocument(doc);
+  /* Where the STF mark goes (./egg.js), chosen once, from what was just
+   * placed: the same spot every time this document is flown. Read only;
+   * it changes nothing placed. The mark is an easter egg and the map is
+   * what the pilot came to fly, so a document the chooser cannot read
+   * flies with no mark on it, and the console says why, rather than not
+   * flying at all. */
+  let stfSpot = null;
+  try {
+    stfSpot = chooseStfSpot(placed, doc, chosen.source);
+  } catch (e) {
+    console.error('stf: no spot for the mark on this map', e);
+  }
   /* Its time of day and its ground (./looks.js): golden over concrete for
    * a map that never chose, which is this map as it always was. */
   const look = lookOf(doc);
@@ -1853,6 +1975,17 @@ export async function buildMap(shell, onProgress, options) {
   progress(0.7);
   await yieldToPaint();
   const props = kit.finish();
+  /* Before the cull cells are measured, so the mark is in its chunk's. And
+   * for the chooser's reason, a mark that cannot be painted leaves the map
+   * without one. */
+  let egg = null;
+  if (stfSpot) {
+    try {
+      egg = paintStfMark(props, placed, stfSpot, look);
+    } catch (e) {
+      console.error('stf: the mark could not be painted on this map', e);
+    }
+  }
   scene.add(props);
   progress(0.8);
 
@@ -2024,6 +2157,10 @@ export async function buildMap(shell, onProgress, options) {
      * Stage E) this is where they are posed, from the step count. */
     updateAnim() {},
     setCullRadius,
+    /* Where the STF mark is painted, for the shell to tell when a pilot has
+     * found it: see paintStfMark and `egg` in src/maps/README.md. Paint
+     * only; nothing about it is solid. */
+    egg,
     /* Which document this is and where it came from, for the harness and
      * for the shell to say so. */
     documentId: doc.id,
@@ -2047,6 +2184,18 @@ export async function buildMap(shell, onProgress, options) {
       painted: ground.painted,
       kit: { ...kit.counts },
       scene: { time: look.timeId, ground: look.groundId },
+      /* Which rule of ./egg.js found the mark's spot and what it is on,
+       * for the harness. Never shown: the pilot has to find it. */
+      egg: stfSpot ? {
+        key: stfSpot.key,
+        step: stfSpot.step,
+        kind: stfSpot.kind,
+        inside: stfSpot.inside,
+        elementId: stfSpot.elementId,
+        type: stfSpot.type,
+        part: stfSpot.part,
+        painted: Boolean(egg),
+      } : null,
       lamps: lampGlow ? { lamps: lampGlow.lamps, pools: lampGlow.pools } : null,
       cullRadius,
       fog: { near: fogNear, far: fogFar },

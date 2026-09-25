@@ -61,6 +61,7 @@ import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.j
 import { Race } from './game/race.js';
 import { TrickDetector } from './game/trickdetect.js';
 import { deriveObstacles, OB_BAR, OB_POLE } from './game/obstacles.js';
+import { seesMark } from './game/egg.js';
 import { FreestyleScore, formatScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
@@ -76,6 +77,7 @@ import { findBoardTwin, hasFlyableTrack, inspectCourse, publishCurrentCourse, pu
 import { createFlightStats, pingVisit } from './share/stats.js';
 import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
+import { stampFor, writeStamp } from './share/stamps.js';
 import {
   clearPendingTime,
   readPendingTime,
@@ -401,15 +403,15 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * 2026-08-30, and their three entries went with them. `npm run lint:memory`
  * prints the fetched count per map beside this number.
  *
- * built: index.js, place.js, starter.js and looks.js, the four files under
- * its own directory, measured from the resource entries on a cold load of
- * Your map. It also fetches src/props and twelve of the town's vendored
- * modules (scripts/memory-check.js lists them), but the counter matches one
- * prefix and neither of those is this map's alone. The entry is written out
- * although it is the default, because it was three before looks.js came,
- * and with no entry then the bar sat at 75 percent until the import
- * resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 4 };
+ * built: index.js, place.js, starter.js, looks.js and egg.js, the five
+ * files under its own directory, measured from the resource entries on a
+ * cold load of Your map. It also fetches src/props, src/art/stf.js and
+ * twelve of the town's vendored modules (scripts/memory-check.js lists
+ * them), but the counter matches one prefix and none of those is this map's
+ * alone. The entry is written out because it has moved with the directory:
+ * it was three before looks.js came and four before egg.js, and with no
+ * entry then the bar sat at 75 percent until the import resolved. */
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -3255,11 +3257,75 @@ export async function boot({ loading, bootStart, mapId }) {
    * not reaching forward into a dead zone. */
   let frameFault = null;
 
+  /*
+   * WHETHER THIS RUN HAS FOUND THE STF MARK, so a find happens once a run
+   * rather than on every frame the pilot keeps looking. Here for
+   * frameFault's reason: reset() clears it, so a fresh run can find the
+   * mark again, and the counter's bonus (eggBonus) is paid once a run the
+   * way everything else a run scores is. A crash recovery is not a new run
+   * and keeps it. See findEgg.
+   */
+  let eggFound = false;
+
+  /*
+   * How often the shell asks, in rendered frames. The first three of
+   * seesMark's tests are a few multiplications and the sight line is only
+   * walked once the pilot is close and looking, so the question is nearly
+   * free; every third frame is still twenty times a second at sixty, and a
+   * pilot passing at 10 m/s is inside the range for most of a second.
+   */
+  const EGG_EVERY = 3;
+  const eggFwd = new THREE.Vector3();
+
+  /*
+   * THE STF MARK (FREESTYLE-MAPS-PLAN.md section 9): has the pilot found
+   * it? Asked from the frame loop in flight, with the FPV camera's own
+   * position and the way it points, the lens and not the craft's centre,
+   * because finding it is seeing it (src/game/egg.js). The first yes in a
+   * run is the find: the stamp on this map's card that stays in this
+   * browser (src/share/stamps.js), the callout and the panel, and the
+   * counter's hook.
+   */
+  function findEgg() {
+    eggFwd.set(0, 0, -1).applyQuaternion(fpvQuat);
+    if (!seesMark(fpvPos, eggFwd, view.egg, view.colliders)) {
+      return;
+    }
+    eggFound = true;
+    writeStamp(view.egg.key);
+    eggBonus(view.egg);
+    /*
+     * The panel's picture is the mark itself (stfDataUrl). The map that
+     * painted the mark has already loaded src/art/stf.js, so this import
+     * is the module it already holds and fetches nothing. It is dynamic so
+     * that a pilot who only ever races never loads the mark at boot.
+     */
+    import('./art/stf.js')
+      .then((m) => ui.stfFound(m.stfDataUrl()))
+      .catch(() => ui.stfFound(null));
+  }
+
+  /*
+   * STAGE C'S HOOK: THE EGG BONUS. Section 9 pays a found mark into the
+   * combo when scoring is on, and paying is the counter's business
+   * (section 7, Stage C), so this is the one place the counter will add
+   * it, once a run, from findEgg. Nothing is paid here yet: there is no
+   * counter, and a bonus the trick scorer invented for itself would be a
+   * second opinion on what a run is worth that Stage C would have to take
+   * back out.
+   */
+  function eggBonus(egg) {
+    /* Stage C: when scoringWanted(), the counter adds the bonus for `egg`
+     * to the combo here. */
+  }
+
   function reset() {
     /* A reset is the pilot taking the offer the fault banner made, so the
      * next fault is a new one and deserves to be reported in its turn. See
      * the frame boundary. */
     frameFault = null;
+    /* A new run, so the mark is there to be found again. */
+    eggFound = false;
     /* The pack charge a run flies on is fixed when the run starts. It is
      * a setting, and settings are reachable from the pause menu, so
      * without this a player could change packs mid run and have the lap
@@ -6983,6 +7049,11 @@ export async function boot({ loading, bootStart, mapId }) {
         const q = shell.quad.position;
         trickDetector.near(view.colliders.gapAt(q.x, q.y, q.z, WALL_NEAR_M));
       }
+      /* The STF mark, on a map that carries one, until this run finds it:
+       * see findEgg. */
+      if (view.egg && !eggFound && ui.screen === 'flight' && frames % EGG_EVERY === 0) {
+        findEgg();
+      }
       if (view.mode === 'freestyle') {
         const wasOver = score.over();
         score.tick(simTimeMs);
@@ -8560,6 +8631,13 @@ export async function boot({ loading, bootStart, mapId }) {
       span250mmPx: Number.isFinite(span) ? span : null,
     };
   };
+  /* Harness: the STF mark on this map (null where it carries none),
+   * whether this run has found it, and this browser's stamp for it. */
+  window.__egg = () => ({
+    egg: view.egg ?? null,
+    foundThisFlight: eggFound,
+    stamped: view.egg ? stampFor(view.egg.key) : null,
+  });
   /* Which world is loaded, what it cost, and what is solid in it. Harness
    * only; nothing in the shell reads these. */
   window.__map = () => ({

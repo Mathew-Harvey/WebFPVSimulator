@@ -122,6 +122,7 @@ import { TrickFilmPlayer, filmFor, VIEW_LABEL } from './trickfilm.js';
 import { BOARD_WINDOW, WIKI_WINDOW, openNamedWindow } from '../share/windows.js';
 import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
+import { stampFor, stampKeyForMap } from '../share/stamps.js';
 import { courseChip, hasFlyableTrack, inspectCourse, isEmptyCanvas } from '../share/listing.js';
 import { isoLapMs, drawIso, drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
 import { activeCourseSummary } from '../share/summary.js';
@@ -2328,6 +2329,23 @@ function markPoster(card, map) {
 }
 
 /*
+ * The STF lettering as type: the S and the F in the element's own colour
+ * and the T in the logo's green, the way src/art/stf.js paints the mark,
+ * for the found callout and for the stamp on a found map's card. Type and
+ * not the painted mark, because a menu should not pay to paint a canvas
+ * for a badge the size of a thumbnail.
+ */
+function stfLettering(cls) {
+  const word = el('span', cls);
+  word.append(el('span', null, 'S'), el('span', 'stf-t', 'T'), el('span', null, 'F'));
+  return word;
+}
+
+/* How long the found moment is up, callout and panel together, in ms. The
+ * stf- keyframes in index.html run this long: change both. */
+const STF_FOUND_MS = 3000;
+
+/*
  * A course card's identity, stable across the rebuilds items() does on every
  * render. The card objects themselves are made fresh each time, so the chosen
  * card is remembered by this key rather than by reference.
@@ -3292,6 +3310,17 @@ export class Ui {
      * screen. Keeping it a sibling means each is shown on its own terms.
      */
     this.scoreHud = new ScoreHud(r);
+
+    /*
+     * THE STF MARK, FOUND: a layer of its own beside the score, for the
+     * score's reason. The OSD is dimmed and hidden as a unit and the score
+     * is switched off with Scoring, and a found mark is a moment rather
+     * than an instrument, shown whether or not the run is scored. Before
+     * the screens, so a menu opened over it covers it. See stfFound.
+     */
+    this.stfLayer = el('div', 'stf-found');
+    this.stfTimer = 0;
+    r.append(this.stfLayer);
 
     /* Centre banner: launch prompt, lap splits, crash notice, and the
      * stick calibration prompts, which have to read over a screen, so the
@@ -8467,8 +8496,15 @@ export class Ui {
         const name = el('div', 'map-card-name', it.label);
         const tag = el('div', 'map-card-tag', '');
         const still = el('div', 'map-card-still', '');
+        /* The STF stamp, up when this browser has found the mark in the
+         * world this card flies. See the update below. */
+        const stamp = stfLettering('map-card-stamp');
+        stamp.hidden = true;
+        stamp.title = 'You found the STF mark here';
+        stamp.setAttribute('role', 'img');
+        stamp.setAttribute('aria-label', 'You found the STF mark here');
         body.append(name, tag);
-        card.append(shot, still, body);
+        card.append(shot, still, stamp, body);
         card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
         card.addEventListener('click', () => {
           this.cursor = i;
@@ -8476,7 +8512,7 @@ export class Ui {
         });
         host.append(card);
         return {
-          card, shot, tag, still, name, id: it.map.id, liveCanvas: null,
+          card, shot, tag, still, stamp, name, id: it.map.id, liveCanvas: null,
         };
       });
       this.startReels();
@@ -8484,6 +8520,17 @@ export class Ui {
     this.mapCards.forEach((c, i) => {
       c.card.classList.toggle('on', i === this.cursor);
       c.tag.textContent = c.id === this.settings.map ? 'Flying now' : '';
+      /*
+       * THE STAMP IS FOR THE WORLD THE CARD WOULD FLY, asked every render,
+       * because Your map is whatever the builder's freestyle seat holds and
+       * that can change in another tab while this one sits on the menu. It
+       * reads the seat and the stamp record and builds nothing: well under
+       * a millisecond for the starter's document.
+       */
+      const found = Boolean(stampFor(stampKeyForMap(c.id)));
+      if (c.stamp.hidden === found) {
+        c.stamp.hidden = !found;
+      }
     });
   }
 
@@ -10732,6 +10779,57 @@ export class Ui {
      * pilot who flew a second run saw the first one's "Run posted" row. */
     this.freestyleRun = null;
     this.runPosted = null;
+  }
+
+  /*
+   * THE STF MARK, FOUND (FREESTYLE-MAPS-PLAN.md section 9). The pilot came
+   * within a few metres of the mark and looked straight at it, so the
+   * overlay says so the way it says a trick, lettered in ink with a burst
+   * behind it, and then shows them what they found in a manga panel: the
+   * mark itself, because a pilot at speed may have seen it for a quarter
+   * of a second.
+   *
+   * DOWN THE RIGHT, NEVER THE MIDDLE. The left column is the score's, the
+   * banner and the verdict are centred, and the middle of the frame is the
+   * pilot's: the plan's rule is that nothing drawn in flight covers its
+   * centre third, and this fires with a wall four metres away. The callout
+   * sits under the banner's line and the panel under the callout, clear of
+   * the speed corner, and neither takes a pointer.
+   *
+   * THREE SECONDS AND GONE (STF_FOUND_MS). Keyframes on nodes this removes,
+   * and no frame of its own, the rule src/ui/scorehud.js opens with. A
+   * second call while one is up replaces it rather than stacking.
+   *
+   * `imageUrl` is the mark as an image (stfDataUrl in src/art/stf.js). Null
+   * brings the callout alone, which is still the news.
+   */
+  stfFound(imageUrl) {
+    const layer = this.stfLayer;
+    if (!layer) {
+      return;
+    }
+    layer.textContent = '';
+    const call = el('div', 'stf-call');
+    /* The burst first and the type after it, so the type paints over the
+     * rays by DOM order: see .score-name > span in index.html for why not
+     * a z-index. */
+    call.append(el('div', 'stf-call-burst'), stfLettering('stf-call-word'), el('div', 'stf-call-line', 'Mark found'));
+    layer.append(call);
+    if (imageUrl) {
+      const panel = el('div', 'stf-panel');
+      const img = el('img', 'stf-panel-mark');
+      img.alt = 'The STF mark';
+      img.src = imageUrl;
+      panel.append(el('div', 'stf-panel-burst'), img);
+      layer.append(panel);
+    }
+    this.announce('STF mark found.');
+    clearTimeout(this.stfTimer);
+    /* The timer removes the nodes rather than animationend, which is not
+     * promised on a node whose animation never runs (reduced motion). */
+    this.stfTimer = setTimeout(() => {
+      layer.textContent = '';
+    }, STF_FOUND_MS + 200);
   }
 
   /* The freestyle board's answer, so the results row can say what happened

@@ -551,6 +551,82 @@ export async function postTrackGif({ id, gif, editKey, origin }) {
 }
 
 /*
+ * A FREESTYLE MAP ON THE BOARD, which keeps maps apart from tracks.
+ *
+ * The board serves them at /api/maps and never at /api/tracks, so nothing
+ * on this side that reads the track list (the Courses grid, the most flown
+ * track a first visit is seated on, findBoardTwin) can mistake a map for a
+ * track. The edit keys are kept apart for the same reason: see
+ * readMapListing in ./session.js.
+ *
+ * A map goes up as its document, which is already a list of references
+ * with their modifiers (a type, a position, a heading, a size, a style),
+ * and a drawing of it: the ground outline of every piece, measured by the
+ * builder, because the board keeps no list of what pieces look like. See
+ * boardPlanOf in src/trackbuilder/view2d.js. The board stores each sponsor
+ * picture once however many maps wear it and hands the document back whole.
+ */
+export async function publishMap({
+  author, document, plan, editKey, origin,
+}) {
+  const board = trimOrigin(origin || boardOrigin());
+  const res = await fetch(`${board}/api/maps`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      author,
+      document,
+      plan,
+      editKey: editKey || undefined,
+    }),
+  });
+  return readJson(res);
+}
+
+export async function fetchMapDocument(id, origin = boardOrigin()) {
+  const res = await boardGet(`${trimOrigin(origin)}/api/maps/${encodeURIComponent(id)}/document`);
+  return readJson(res);
+}
+
+/*
+ * A ?mapshare= id in the URL, from the board's Fly this map, fetched and
+ * handed back as { id, name, author, board, document }, or null when the
+ * URL names no map.
+ *
+ * NOTHING IS WRITTEN. A track from the board goes into the share seat,
+ * because the custom world reads its course from there; a map is handed
+ * to the built world as a document for this page load and no longer, so
+ * Your map, the pilot's own, is never displaced by somebody else's. See
+ * worldDocument in src/main.js.
+ */
+export async function adoptMapFromLocation() {
+  let id = '';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    /* A ?share= track wins, as it does in boot.js and orbit.js: the two
+     * never arrive together from the board, and one rule in three places
+     * is what keeps a hand made link from building one world and naming
+     * another. */
+    id = params.get('share') ? '' : (params.get('mapshare') || '');
+  } catch (e) {
+    return null;
+  }
+  if (!id) {
+    return null;
+  }
+  const origin = boardOrigin();
+  const payload = await fetchMapDocument(id, origin);
+  const document = payload.document || payload;
+  return {
+    id: payload.id || id,
+    name: payload.name || document.name || 'Untitled map',
+    author: payload.author || '',
+    board: origin,
+    document,
+  };
+}
+
+/*
  * Put a finished freestyle run on the board.
  *
  * The board keeps ONE row per pilot per map and only their best, so posting

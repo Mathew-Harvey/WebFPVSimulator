@@ -69,8 +69,8 @@ import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf } from './ga
 import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor } from './ui/ui.js';
 import {
-  adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
-  fetchTrackTimes, postFreestyleRun, postTime,
+  adoptMapFromLocation, adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost,
+  fetchTrackDocument, fetchTrackTimes, postFreestyleRun, postTime,
 } from './share/board.js';
 import { findBoardTwin, hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
 import { createFlightStats, pingVisit } from './share/stats.js';
@@ -749,6 +749,31 @@ export async function boot({ loading, bootStart, mapId }) {
   } catch (e) {
     ui.setBanner(`Could not open that published track.\n${e.message ?? e}`, true);
   }
+  /*
+   * A PUBLISHED FREESTYLE MAP arrives as ?mapshare=id, from the board's Fly
+   * this map, beside ?map=built. Fetched in the same stage as a track, for
+   * the same reason: the board may be asleep and the pilot should be told
+   * that is what they are waiting for.
+   *
+   * It is held HERE, for this page load, and handed to the built world as
+   * its document every time that world is built (worldDocument, below),
+   * including a rebuild for a graphics change. It is never written to the
+   * map seat, so Your map, the pilot's own, is exactly where they left it:
+   * the builder's Fly this map, or any page load without ?mapshare=, flies
+   * that again. A board that cannot answer leaves the pilot on their own
+   * map with the reason on the banner.
+   */
+  let sharedMap = null;
+  try {
+    sharedMap = await adoptMapFromLocation();
+    if (sharedMap) {
+      ui.settings.map = 'built';
+      ui.setSharedMap(sharedMap);
+      ui.renderMenu();
+    }
+  } catch (e) {
+    ui.setBanner(`Could not open that published map.\n${e.message ?? e}`, true);
+  }
   /* Done either way: a board that was down is a board that has finished
    * being asked. Without this the stage records no duration and the bar
    * keeps its weight without ever filling it. */
@@ -1052,10 +1077,15 @@ export async function boot({ loading, bootStart, mapId }) {
    * here, so if it cannot build there is nothing to fall back TO and the
    * throw is honest.
    */
+  /* The document a world is built from when it is not the one it would
+   * choose for itself: a published map from ?mapshare=, for the built world
+   * and nothing else. See sharedMap above. */
+  const worldDocument = (id) => (id === 'built' && sharedMap ? { document: sharedMap.document } : {});
   try {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: ui.settings.graphics,
       renderScale: renderScaleOf(ui.settings),
+      ...worldDocument(ui.settings.map),
     });
   } catch (e) {
     if (ui.settings.map === 'custom') {
@@ -3440,6 +3470,7 @@ export async function boot({ loading, bootStart, mapId }) {
       view = await loadMap(shell, wantId, loading, {
         quality: wantQ,
         renderScale: renderScaleOf(ui.settings),
+        ...worldDocument(wantId),
       });
       loading.start('frame');
       adoptLoadedView(keepPlace, stayMode, stayScreen);
@@ -3465,6 +3496,7 @@ export async function boot({ loading, bootStart, mapId }) {
         view = await loadMap(shell, previous, loading, {
           quality: previousGraphics,
           renderScale: renderScaleOf(ui.settings),
+          ...worldDocument(previous),
         });
         loading.start('frame');
         adoptLoadedView(keepPlace, stayMode, stayScreen);

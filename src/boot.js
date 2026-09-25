@@ -95,6 +95,10 @@ async function start() {
      * world and the title lands on the course the board sent. */
     if (params.get('share')) {
       mapId = 'custom';
+    } else if (params.get('mapshare')) {
+      /* A published freestyle map is flown in the built world, the same
+       * way a published course is flown in the custom one. */
+      mapId = 'built';
     }
   } catch (e) {
     /* No URL to read. Keep the stored setting. */

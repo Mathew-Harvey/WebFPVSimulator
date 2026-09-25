@@ -44839,3 +44839,227 @@ to approve before anyone starts it.
     curl webfpvsimulator.onrender.com   every path max-age=0, s-maxage=300,
                                      the music included
     code                             unchanged
+
+## 2026-09-25 | board, builder, shell | Published freestyle maps: a tab on the board, Publish in the builder, Fly and Remix from the board
+
+The owner: "now we need to update the tracks and statistics page to
+include published freestylle maps, move the stie statistics to beside the
+admin menu item and put the freestyle maps here, follow the same pattern as
+the race tracks maps can we do this in a clever way where we don't re save
+the same assets over and over again in the db rather a reference to an
+asset with config moderfiers saved sucto reflect the track". And, part way
+through: "there are new map pieces being build btw".
+
+Two repositories: the board (Mathew-Harvey/WebFPVSimulator-LeaderBoard)
+and this one. The plant, the module ABI and the build are untouched, and so
+is src/props, where another session is adding pieces.
+
+### The owner's decision, recorded
+
+- **2026-09-25, publishing freestyle maps to the public board.** This
+  reverses FREESTYLE-MAPS-PLAN.md section 13, which left "publishing
+  freestyle maps to the public board, and a board per built map" out of
+  that plan because the board is a separate repository. It covers the
+  first half: storing and listing maps, the board's tab and sheet, the
+  builder's Publish, and Fly and Remix from the board. It does not cover a
+  board of runs per built map: a run flown on any built map, a published
+  one included, still stays off the freestyle board (BUILT_OFF_BOARD in
+  src/ui/ui.js, unchanged).
+- **2026-09-25, the page's second tab.** Site statistics leaves the tab row
+  for the masthead, beside Admin, and the tab is Freestyle maps. #stats
+  still opens the statistics, so every link already out there still lands.
+
+### The storage, which is the "clever way" asked for
+
+- **A map document already is references with modifiers.** Each piece is a
+  type and what places it: position, heading, dimensions, style, variant, a
+  named gap's name and points. No geometry travels and none is stored; the
+  simulator builds every piece from its own catalogue when the map is
+  flown. Hibari Yard is 52 pieces in 8,914 bytes.
+- **The heavy part, sponsor pictures, is stored once.** On publish the
+  board takes each logo out of the document into an `assets` table keyed
+  by the sha256 of its bytes, and the document keeps `asset:<hash>` in its
+  place. `map_assets` records which map wears which picture, with a foreign
+  key, so a picture cannot be deleted while a map wears it; removing or
+  republishing a map drops a picture only when nothing else wears it.
+  `GET /api/maps/:id/document` puts the images back, so the simulator is
+  handed what the builder sent. The board's selftest publishes two maps
+  wearing one picture and finds one row.
+- **Maps have their own routes**, /api/maps, and nothing that reads
+  /api/tracks sees one: not the Courses grid, not the most flown track a
+  first visit is seated on, not findBoardTwin.
+
+### New pieces, which the board must not have to know about
+
+- **The board keeps no list of piece types.** A type is checked for being
+  a plausible name (letters and digits, 32 at most) and nothing more.
+- **The card's drawing is measured here and sent beside the document.**
+  boardPlanOf in src/trackbuilder/view2d.js runs planShapeOf, the builder's
+  own 2D outline, over every piece and sends `{ t, k, p, n? }`: the type, a
+  kind that only picks a colour on the board, the outline in centimetres,
+  and a named gap's name. The board's plan.js fills and strokes polygons by
+  kind. A piece added next week is drawn on the board by the builder that
+  knows it. Hibari Yard's drawing is 52 outlines in 4,899 bytes.
+- suiteBoardPlan in src/trackbuilder/selftest.js places every type in the
+  palette and holds each outline to the board's rules, so a new piece is
+  checked the day it lands in src/props/types.js. The board's type pattern
+  and kind list are mirrored there, and say so.
+
+### What changed, the board
+
+- schema.sql: `maps`, `assets`, `map_assets`. src/store.js: both stores
+  (file and Postgres) list, read, publish with the track's edit key rule,
+  remove, and sweep pictures nothing wears. src/validate.js: inspectMap,
+  inspectMapPlan, expandAssets. src/server.js: GET /api/maps, GET
+  /api/maps/:id, GET /api/maps/:id/document, POST /api/maps, POST
+  /api/maps/:id/remove (admin).
+- public/index.html: the masthead's Site statistics link beside Admin, lit
+  with the chosen tab's mint rule while #stats shows; the Freestyle maps
+  tab and its section with the tracks tab's toolbar (search, which also
+  finds a gap by name, Built by, Order), grid and rail.
+- public/app.js: the maps tab on the tracks tab's pattern. A card per map
+  with its drawing, its plot size and its named gaps as chips; Fly this map
+  and Map detail. A sheet at #map=id in the track sheet's dialog: the big
+  drawing with the gaps named on it, the simulator's orbit camera over it,
+  the facts, Fly this map, Remix in the builder, Copy link, and the same
+  two press removal for an admin. The rail ranks builders by maps
+  published and lists the latest. The maps are fetched on their own and
+  never waited on, so the tab works on a board with no tracks or a failed
+  track list. Closing a map's sheet goes back to the maps tab.
+- public/plan.js: a map's drawing from its outlines, by kind.
+- README.md: the maps, how they are stored, and their routes.
+
+### What changed, here
+
+- src/share/board.js: publishMap, fetchMapDocument, adoptMapFromLocation.
+- src/share/session.js: readMapListing and writeMapListing, a map's edit
+  key, board, author and name, under `webfpv.share.maps.v1`. Not in the
+  track keys ON PURPOSE: syncOwnedIdentity walks those on every rename and
+  republishes each to /api/tracks, and the board refuses a map there.
+- src/trackbuilder/app.js: Publish on a map is live (openPublishMap): map
+  name, your name, board address, and Update the board once this browser
+  holds the map's key. A 409 goes up as a new map under a new id, as a
+  track does. The top bar reads Update board for a published map. A map of
+  nothing but a label, a start and ground paint is refused here with the
+  board's own sentence rather than by the request.
+- adoptIncomingMap, for the board's Remix in the builder
+  (?mapshare=id&mode=freestyle): a map this browser published opens as
+  itself, anybody else's opens as "<name> remix" under a new id, and
+  either asks before replacing a map on the canvas.
+- src/main.js: ?mapshare= is fetched in the board stage and held for the
+  page load, and every build of the built world is handed it as its
+  document (worldDocument), a rebuild for a graphics change included. It
+  is never written to the map seat, so Your map, the pilot's own, is where
+  they left it; the builder's Fly this map flies it again. A ?share= track
+  wins over a ?mapshare= map, the same rule in boot.js, main.js and
+  orbit.js.
+- src/ui/ui.js: a ?mapshare= link is a freestyle visit; the title's Map row
+  names the published map and its builder.
+- src/share/orbit.js and orbitcache.js: the board's map sheet camera, keyed
+  by the map id and its update stamp (?v=), so a republished map records a
+  new flight.
+
+### Decisions the owner may want to overrule
+
+1. **Fly this map carries ?fly=1**, straight into the air like the
+   builder's own Fly this map; the board's Fly this track does not.
+2. **A published map is flown for the page load, not seated.** During that
+   page load the Map picker's Your map is the published map; a reload
+   keeps it (?mapshare= stays in the address); the builder's Fly this map
+   or any link without ?mapshare= flies the pilot's own again.
+3. **Runs on a published map stay off the freestyle board**, as on any
+   built map. A board per published map is the half of section 13 not
+   done.
+4. **A rename does not reach the author line of maps already published.**
+   Maps are kept out of syncOwnedIdentity's walk (above); Update the board
+   carries the new name.
+5. **No tags on maps.** The vocabulary is a race track's.
+6. **An outline far off the plot is left off the drawing** rather than
+   refusing the map. The first board version refused it, and writing the
+   builder side showed a piece dragged off the plot would have kept the
+   whole map off the board over a picture.
+7. Newest first is the maps tab's default order, and the builders rail
+   ranks by maps published.
+
+### What went wrong
+
+- **The first end to end run failed three checks, all in the script.** It
+  built the pilot's own map with createElement, which returns a piece
+  without adding it, so the map was empty: the built world rightly flew
+  the starter instead, and the builder rightly replaced an empty canvas
+  without asking. It also never pressed Yes on the copy's confirm. The
+  second run failed one more, also the script: it read the shell's mode
+  once, in the frame between the screen going to flight and the mode
+  following it; its own screenshot shows the pilot on the pad with the
+  clock running. The script waits for the mode now.
+- **The board's gap note first said the simulator names each gap as it is
+  flown.** Checked: placeDocument collects the zones and the built world
+  only counts them (stats().zones); nothing scores or names one in flight
+  yet. The sentence was taken out.
+- **suiteBoardPlan's centimetre check compared floats exactly** and failed
+  on 45.59, which is 4558.999999999999 hundredths. It compares within a
+  millionth of a centimetre now.
+- **The first lint:shell run was taken with a local board up**, on
+  127.0.0.1:3100, which is the simulator's default board address. The board
+  answered, the launch screen grew a ninth row, and the check reported its
+  overflow growing to 11 px. lint:shell is written to run with no board
+  ("7 network fetch(es) refused" is its own note); rerun without one, the
+  launch screen is 8 rows and 0 px as on main.
+- **The orbit page called a published map "Your map"** while it built it
+  (seen in the board sheet's picture during the end to end run), because
+  it names the world. It says "the map" until the map arrives and the
+  map's own name after.
+
+### Found, not fixed
+
+- **The board's selftest has one failure that is on its main too:**
+  "nothing app.js builds opens a bare new tab or asks for noopener". The
+  Patreon link at public/app.js:60 sets `'_blank'` with noopener, which is
+  right for a link that leaves the product, and the check does not allow
+  for it. Not this change's.
+- **A republished track loses its tags on the board.** rememberPublish
+  puts the tags in the bind for the next publish dialog to pre-tick, and
+  writeBind in src/share/session.js leaves them out of its field list, so
+  publishedTags always reads empty. A republish that is not re-ticked by
+  hand then sends no tags, and the board reads no tags as none
+  (inspectTags in its src/validate.js answers `[]` for a missing list and
+  the store writes it), so the track's tags are cleared. syncOwnedName and
+  syncOwnedIdentity send none either, so a rename clears them too. The
+  comment on rememberPublish says the board leaves an omitted list alone;
+  measured against the board's code, it does not. Not this change's, and
+  worth its own fix on both sides.
+
+### RUN LOG
+
+    check:clip                  661 passed, 0 failed; suiteBoardPlan is 9
+                                of them, new
+    lint:nouns                  PASS
+    lint:preload                up to date: boot 103 modules, city 72,
+                                built 27
+    lint:shell, board up        FAIL 2: title 23 px, launch 11 px (the
+                                board's row, see What went wrong)
+    lint:shell, no board        FAIL 1: title overflow 0 to 23 px, the same
+                                failure as every run today, main included
+    lint:input                  154 passed, 2 failed: the parked throttle
+                                row, failing in every run today, main
+                                included
+    lint:board                  PASS against this branch's board: 8 tracks
+                                listed, 8 cards drawn (the board checkout
+                                symlinked where the check looks for it)
+    board npm test              383 pass, 1 fail, the Patreon '_blank'
+                                check, which fails on board main too
+    end to end, served          24 passed, 0 failed: a local board on
+                                3100, the simulator on 8000, headless
+                                Chromium through Publish, update, the maps
+                                tab, the sheet and its camera, Fly this
+                                map, the title, the pilot's own map after,
+                                Remix owned and not owned, admin removal.
+                                The third run; the first two failed on
+                                the script, see What went wrong
+    orbit page, published map   "Building Hibari Yard, 100 percent."
+    npm run verify              not run: nothing in the physics, the plant,
+                                the module ABI or the build changed
+    git diff --stat vendor/betaflight   empty
+    board branch                9d6de10 and 7d1f89b on
+                                claude/focused-hypatia-4qcizm, pushed;
+                                board main untouched

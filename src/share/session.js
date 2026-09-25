@@ -281,6 +281,44 @@ export function writeBind(trackId, bind) {
   });
 }
 
+/*
+ * A FREESTYLE MAP THIS BROWSER PUT ON THE BOARD: its edit key, the board it
+ * went to, and the name and author it went up under, one record per map id.
+ *
+ * In a key of its own rather than in EDIT_KEY and BIND_KEY above, and that
+ * is the point of it. Everything that walks those, syncOwnedIdentity in
+ * ./listing.js above all, republishes what it finds to /api/tracks when the
+ * pilot changes their name, and the board refuses a map there. A map kept
+ * in this list is never reached by that walk, so a rename cannot turn into
+ * a string of refused requests about maps.
+ */
+const MAP_LISTING_KEY = 'webfpv.share.maps.v1';
+
+export function readMapListing(mapId) {
+  const row = mapGet(MAP_LISTING_KEY, mapId);
+  if (!row || typeof row.editKey !== 'string' || !row.editKey) {
+    return null;
+  }
+  return {
+    editKey: row.editKey,
+    board: String(row.board || ''),
+    author: String(row.author || ''),
+    nameOnBoard: String(row.nameOnBoard || ''),
+  };
+}
+
+export function writeMapListing(mapId, listing) {
+  if (!listing || !listing.editKey) {
+    return mapSet(MAP_LISTING_KEY, mapId, null);
+  }
+  return mapSet(MAP_LISTING_KEY, mapId, {
+    editKey: String(listing.editKey),
+    board: String(listing.board || ''),
+    author: String(listing.author || ''),
+    nameOnBoard: String(listing.nameOnBoard || ''),
+  });
+}
+
 export function readPendingTime() {
   const raw = readJson(PENDING_KEY, null);
   if (!raw || typeof raw !== 'object' || !raw.trackId || !Number.isFinite(raw.lapMs)) {

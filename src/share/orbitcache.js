@@ -73,6 +73,17 @@ export function clipKeyForShare(shareId, stamp = '') {
 }
 
 /*
+ * A published freestyle map's clip, for the board's map sheet. Stamped with
+ * the map's last update, which the board puts in the orbit link as ?v=,
+ * because the orbit page has to know its key before it fetches anything:
+ * a republished map records a new flight rather than replaying the old one
+ * for as long as the cache lives.
+ */
+export function clipKeyForMapShare(mapId, stamp = '') {
+  return `${clipPrefix()}:built:share:${mapId}:${stamp}`;
+}
+
+/*
  * The key for a published course, stamped with the version of it this
  * browser is holding.
  *

@@ -296,6 +296,63 @@ export function planShapeOf(el) {
 }
 
 /*
+ * THE DRAWING ON A PUBLISHED MAP'S CARD, measured here because this is the
+ * one place that knows what every piece looks like from above.
+ *
+ * The board keeps no list of piece types, on purpose: pieces are added to
+ * the simulator all the time, and a drawing per type over there would be a
+ * list that the newest piece is always missing from. So a map is published
+ * with its outlines: for every piece, the ground polygon this view already
+ * draws and picks by (planShapeOf), the piece's type, a kind that only
+ * picks a colour, and a named gap's name. A piece added next week is drawn
+ * on the board by the builder that knows it, and nothing there changes.
+ *
+ * Labels are left out, because they are words for the author rather than
+ * things standing on the plot. A piece whose outline cannot be measured is
+ * left out rather than failing the publish: the drawing is a courtesy and
+ * the map is the thing being sent. The board checks the shape of this and
+ * nothing else, see inspectMapPlan in its src/validate.js, and rounds to
+ * the centimetre, so this does too and sends no more than it keeps.
+ */
+const BOARD_KINDS = {
+  [KIND.STRUCTURE]: 'structure',
+  [KIND.ZONE]: 'gap',
+  [KIND.APERTURE]: 'aperture',
+  [KIND.OBSTACLE]: 'obstacle',
+  [KIND.MARKER]: 'marker',
+  [KIND.START]: 'start',
+  [KIND.DECAL]: 'decal',
+};
+
+const toCm = (v) => Math.round(v * 100) / 100;
+
+export function boardPlanOf(doc) {
+  const marks = [];
+  for (const el of doc.elements) {
+    const def = ELEMENTS[el.type];
+    if (!def || def.kind === KIND.ANNOTATION) {
+      continue;
+    }
+    let outline;
+    try {
+      outline = planShapeOf(el);
+    } catch (e) {
+      continue;
+    }
+    const p = outline.map((q) => [toCm(q.x), toCm(q.y)]);
+    if (p.length < 2 || p.some(([x, y]) => !Number.isFinite(x) || !Number.isFinite(y))) {
+      continue;
+    }
+    const mark = { t: el.type, k: BOARD_KINDS[def.kind] || 'other', p };
+    if (def.kind === KIND.ZONE) {
+      mark.n = String(el.name || 'GAP').trim().slice(0, 40) || 'GAP';
+    }
+    marks.push(mark);
+  }
+  return { width: doc.field.width, depth: doc.field.depth, marks };
+}
+
+/*
  * HOW TALL READS AS HOW LIGHT. A plan of a town is a map read from above,
  * and the one thing a flat plan hides is height: a two storey shop and a
  * twelve storey office are the same rectangle. So a part's fill is its top

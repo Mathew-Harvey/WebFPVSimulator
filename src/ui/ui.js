@@ -2674,6 +2674,11 @@ function linkedMode() {
   if (params.get('share') || params.get('ghost')) {
     return 'race';
   }
+  /* A published map from the board is freestyle whatever else the link
+   * says; the board's own link says ?map=built beside it anyway. */
+  if (params.get('mapshare')) {
+    return 'freestyle';
+  }
   const wanted = params.get('map');
   const m = wanted ? MAPS.find((x) => x.id === wanted) : null;
   if (!m) {
@@ -3209,6 +3214,10 @@ export class Ui {
     };
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.share = null;       /* published course this run is flying, or null */
+    /* A published freestyle map this page load is flying in the built
+     * world, from ?mapshare=: { id, name, author, board }, or null. The
+     * title names it rather than Your map. See sharedMap in main.js. */
+    this.sharedMap = null;
     this.timePosted = null;  /* last successful post on the results screen */
     /* The freestyle run the results screen is showing, and whether it has
      * been sent. Both cleared by resetScore, which every restart calls. */
@@ -4177,6 +4186,12 @@ export class Ui {
     }
     r.append(this.announcer, this.banner, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
     this.syncChips();
+  }
+
+  setSharedMap(map) {
+    this.sharedMap = map
+      ? { id: map.id, name: map.name, author: map.author || '', board: map.board || '' }
+      : null;
   }
 
   setShare(share) {
@@ -5559,10 +5574,13 @@ export class Ui {
        * exists to prevent.
        */
       const world = seatedFreestyleMap(s);
+      /* A map from the board is flown in the built world, and the row names
+       * that map and its builder rather than calling it Your map. */
+      const shared = world && world.id === 'built' ? this.sharedMap : null;
       const modeRow = this.mode === 'freestyle'
         ? {
           label: 'Map',
-          value: world ? world.name : 'Not loaded',
+          value: shared ? shared.name : (world ? world.name : 'Not loaded'),
           action: 'freestyle',
           /*
            * "Map" again, beside the world that is seated. From 30 August it
@@ -5573,9 +5591,11 @@ export class Ui {
            * and "The town" over "Your map" named the one world that was not
            * going to be flown.
            */
-          note: world
-            ? `${world.note} Your quad and the physics model are in here.`
-            : townNote(s, this.loadFailure),
+          note: shared
+            ? `${shared.name}${shared.author ? `, built by ${shared.author}` : ''}, from the board. Your quad and the physics model are in here.`
+            : (world
+              ? `${world.note} Your quad and the physics model are in here.`
+              : townNote(s, this.loadFailure)),
         }
         : {
           label: 'Track',

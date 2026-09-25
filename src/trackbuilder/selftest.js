@@ -50,7 +50,10 @@ import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elemen
   GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor, FRAME_TUBE_OD,
   KIND, FREESTYLE_PALETTE_ORDER, PALETTE_EXTRA, paletteItems, docModeOf,
 } from './elements.js';
-import { planShapeOf, snapYaw, turnsOf } from './view2d.js';
+import {
+  boardPlanOf, planShapeOf, snapYaw, turnsOf,
+} from './view2d.js';
+import { starterMap } from '../maps/built/starter.js';
 import { PROP_TYPES, GAP_POINTS, FURNITURE_PALETTE } from '../props/types.js';
 import { partsOf } from '../props/catalog.js';
 import { GAP_MIN } from '../props/parts.js';
@@ -2417,6 +2420,66 @@ function codesOf(doc) {
   return freestyleReport(doc).warnings.map((w) => w.code);
 }
 
+/*
+ * THE DRAWING ON A PUBLISHED MAP'S CARD.
+ *
+ * boardPlanOf in ./view2d.js measures it, and the board checks it with
+ * inspectMapPlan in its own src/validate.js, which this file cannot import
+ * because the board is another repository. So the board's rules are written
+ * down here as the contract, and the two constants below MIRROR the board's
+ * PIECE_TYPE_RE and MAP_PLAN_KINDS: change one side, change both. Every
+ * type in the palette is drawn, so a piece added to src/props/types.js is
+ * held to this the day it arrives, which is the reason the drawing is
+ * measured on this side rather than kept as a list of shapes on the board.
+ */
+const BOARD_PIECE_TYPE_RE = /^[A-Za-z][A-Za-z0-9]{0,31}$/;
+const BOARD_PLAN_KINDS = ['structure', 'gap', 'aperture', 'obstacle', 'marker', 'start', 'decal', 'other'];
+
+function suiteBoardPlan() {
+  console.log('\nthe board drawing of a map');
+  const map = createTrack(undefined, 'full', 'freestyle');
+  const every = [...FREESTYLE_PALETTE_ORDER, ...PALETTE_EXTRA];
+  every.forEach((type, i) => {
+    freestylePlace(map, type, 10 + (i % 6) * 26, 10 + Math.floor(i / 6) * 26);
+  });
+  map.elements.find((e) => e.type === 'gap').name = 'CRANE GAP';
+  const plan = boardPlanOf(map);
+  const labels = map.elements.filter((e) => ELEMENTS[e.type].kind === KIND.ANNOTATION).length;
+  check('every piece on a map is drawn, and a label is the one thing left out',
+    labels === 1 && plan.marks.length === map.elements.length - labels,
+    `${plan.marks.length} marks for ${map.elements.length} elements, ${labels} label(s)`);
+  const refused = plan.marks.filter((m) => !BOARD_PIECE_TYPE_RE.test(m.t)
+    || !BOARD_PLAN_KINDS.includes(m.k)
+    || m.p.length < 2 || m.p.length > 16
+    || m.p.some((pt) => pt.length !== 2 || !pt.every(Number.isFinite)));
+  check('and every outline is one the board takes', refused.length === 0,
+    refused.map((m) => m.t).join(', '));
+  check('no piece in the palette falls through to the board\u2019s "other"',
+    plan.marks.every((m) => m.k !== 'other'), plan.marks.filter((m) => m.k === 'other').map((m) => m.t).join(', '));
+  const gap = plan.marks.find((m) => m.t === 'gap');
+  check('a named gap is drawn as a gap and carries its name', gap && gap.k === 'gap' && gap.n === 'CRANE GAP');
+  check('a solid is drawn as a structure, and carries no name',
+    plan.marks.filter((m) => m.t === 'building').every((m) => m.k === 'structure' && !('n' in m)));
+  /* Within a millionth of a centimetre, because 45.59 is not a binary
+   * fraction and 45.59 * 100 is 4558.999999999999. */
+  const onCm = (v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6;
+  check('numbers are in centimetres, which is what the board keeps',
+    plan.marks.every((m) => m.p.every(([x, y]) => onCm(x) && onCm(y))));
+  check('and the plot is the map\u2019s own', plan.width === map.field.width && plan.depth === map.field.depth);
+  /* The starter yard is what a first publish looks like, so it is the one
+   * measured: its drawing rides beside a document of about nine kilobytes
+   * and should not outweigh it. */
+  const yard = normalize(starterMap()).doc;
+  const yardPlan = boardPlanOf(yard);
+  const yardBytes = JSON.stringify(yardPlan).length;
+  check('the starter yard draws every piece in less than its own document weighs',
+    yardPlan.marks.length === yard.elements.length && yardBytes < JSON.stringify(toPlain(yard)).length,
+    `${yardPlan.marks.length} marks, ${yardBytes} bytes`);
+  check('and its five named gaps keep their names',
+    yardPlan.marks.filter((m) => m.k === 'gap').map((m) => m.n).join('|')
+      === yard.elements.filter((e) => e.type === 'gap').map((e) => e.name).join('|'));
+}
+
 function suiteFreestyle() {
   console.log('\nfreestyle maps');
 
@@ -3974,6 +4037,7 @@ function main() {
   suiteWaypoint();
   suiteSchemaDoc();
   suiteFreestyle();
+  suiteBoardPlan();
   suiteSchemaProps();
   suiteListing();
   suiteBranding();

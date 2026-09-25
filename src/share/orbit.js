@@ -10,7 +10,8 @@
  *
  * A ?share= id fetches that course from the board and injects the document
  * into the custom map without writing the player's share seat, so several
- * board cards can show several courses without colliding.
+ * board cards can show several courses without colliding. A ?mapshare= id
+ * does the same for a published freestyle map, into the built world.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -30,11 +31,12 @@
 
 import { mapById } from '../maps/registry.js';
 import { CAMERA_FOV_DEFAULT } from '../render/lens.js';
-import { fetchTrackDocument } from './board.js';
+import { fetchMapDocument, fetchTrackDocument } from './board.js';
 import {
   CLIP_W,
   CLIP_H,
   clipKeyForMap,
+  clipKeyForMapShare,
   clipKeyForSeatedShare,
   clipDurationMs,
   getClip,
@@ -80,6 +82,10 @@ function clipKey() {
   const shareId = params.get('share') || '';
   if (shareId) {
     return clipKeyForSeatedShare(shareId);
+  }
+  const mapShareId = params.get('mapshare') || '';
+  if (mapShareId) {
+    return clipKeyForMapShare(mapShareId, params.get('v') || '');
   }
   const mapId = params.get('map') === 'field' ? 'custom' : (params.get('map') || 'custom');
   return clipKeyForMap(mapId);
@@ -161,13 +167,17 @@ function loseRenderer(shell) {
   }
 }
 
-async function renderAndCapture(mapId, shareId, key) {
+async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
   const THREE = await import('three');
   const { buildShell } = await import('../render/shell.js');
   const { makeAttractCamera } = await import('../render/attract.js');
 
   const spec = mapById(mapId);
-  setStatus(`Loading ${spec.name}.`);
+  /* What the status line calls the world. A published map is flown in the
+   * built world, whose name is Your map, and on the board's sheet that is
+   * somebody else's map, so it is called by its own name once it is here. */
+  let called = mapShareId ? 'the map' : spec.name;
+  setStatus(`Loading ${called}.`);
 
   let options;
   if (shareId) {
@@ -175,6 +185,12 @@ async function renderAndCapture(mapId, shareId, key) {
     const trackDoc = payload.document || payload;
     options = { document: trackDoc };
     window.document.title = payload.name || trackDoc.name || 'WebFPV, orbit';
+  } else if (mapShareId) {
+    const payload = await fetchMapDocument(mapShareId);
+    const mapDoc = payload.document || payload;
+    options = { document: mapDoc };
+    called = payload.name || mapDoc.name || called;
+    window.document.title = payload.name || mapDoc.name || 'WebFPV, orbit';
   }
 
   const shell = buildShell(canvas, { pixelRatio: 1, powerPreference: 'low-power' });
@@ -197,7 +213,7 @@ async function renderAndCapture(mapId, shareId, key) {
 
   const mod = await spec.load();
   const view = await mod.buildMap(shell, (f) => {
-    setStatus(`Building ${spec.name}, ${Math.round(f * 100)} percent.`);
+    setStatus(`Building ${called}, ${Math.round(f * 100)} percent.`);
   }, { ...(options || {}), quality: 'low' });
   pinThumb(shell, view, THREE);
   if (view.post) {
@@ -330,8 +346,11 @@ async function renderAndCapture(mapId, shareId, key) {
 async function boot() {
   let mapId = params.get('map') || 'custom';
   const shareId = params.get('share') || '';
+  const mapShareId = shareId ? '' : (params.get('mapshare') || '');
   if (shareId) {
     mapId = 'custom';
+  } else if (mapShareId) {
+    mapId = 'built';
   }
   if (mapId === 'field') {
     mapId = 'custom';
@@ -365,7 +384,7 @@ async function boot() {
         return;
       }
     }
-    await renderAndCapture(mapId, shareId, key);
+    await renderAndCapture(mapId, shareId, key, mapShareId);
   });
 }
 

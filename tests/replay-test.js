@@ -478,17 +478,99 @@ async function testSponsorContentHidden() {
       await page.until('window.__shellReady === true', 120000);
       await page.until('window.__replayInfo && window.__replayInfo().state === "ready"', 30000);
       
-      /* Wait for scene to fully render */
-      await page.sleep(2000);
+      /* Log WebGL renderer */
+      const renderer = await page.evaluate(`(() => {
+        const canvas = document.getElementById('view');
+        const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
+        if (!gl) return 'no WebGL context';
+        return gl.getParameter(gl.RENDERER);
+      })()`);
+      console.log(`  [renderer] ${renderer}`);
       
-      /* Scene-level counter check - primary verification */
+      /* Debug: check course logos array */
+      const courseDebug = await page.evaluate(`(() => {
+        /* Access internal course data if available */
+        const view = window.__mapScene && window.__mapScene();
+        if (!view || !view.userData || !view.userData.course) {
+          return { error: 'no course data' };
+        }
+        const course = view.userData.course;
+        return {
+          hasLogos: !!course.logos,
+          logosLength: course.logos ? course.logos.length : 0,
+          hasDecals: !!course.decals,
+          decalsLength: course.decals ? course.decals.length : 0,
+          firstLogoPrefix: course.logos && course.logos[0] ? course.logos[0].substring(0, 30) : null,
+        };
+      })()`);
+      console.log(`  [course] ${JSON.stringify(courseDebug)}`);
+      
+      /* Debug: check camera and logo info */
+      const debugInfo = await page.evaluate(`(() => {
+        const info = window.__replayInfo && window.__replayInfo();
+        const map = window.__map && window.__map();
+        
+        /* Try to access course/scene info via scene graph */
+        const scene = window.__mapScene && window.__mapScene();
+        let logoMeshCount = 0;
+        if (scene) {
+          scene.traverse((obj) => {
+            if (obj.name && obj.name.includes('logo')) {
+              logoMeshCount++;
+            }
+            if (obj.material && obj.material.map && obj.material.map.image) {
+              const src = obj.material.map.image.src || '';
+              if (src.includes('data:image/png')) {
+                logoMeshCount++;
+              }
+            }
+          });
+        }
+        
+        return {
+          camPos: info && info.camera ? {x: info.camera.x, y: info.camera.y, z: info.camera.z} : null,
+          logoMeshCount,
+          sponsorsPainted: map && map.sponsorsPainted,
+          sponsorsHidden: map && map.sponsorsHidden,
+        };
+      })()`);
+      console.log(`  [debug] camPos=${JSON.stringify(debugInfo.camPos)}, logoMeshCount=${debugInfo.logoMeshCount}, sponsorsPainted=${debugInfo.sponsorsPainted}, sponsorsHidden=${debugInfo.sponsorsHidden}`);
+      
+      /* Wait much longer for textures to load */
+      await page.sleep(5000);
+      
+      /* Scene-level counter check */
       const paintedCount = await page.evaluate('window.__map && window.__map().sponsorsPainted');
       
       if (!paintedCount || paintedCount === 0) {
         throw new Error(`Control clean=0 ${cam}: expected >0 painted sponsors, got ${paintedCount}`);
       }
       
-      console.log(`  [ok] clean=0 ${cam}: ${paintedCount} sponsors painted`);
+      /* Pixel-level check: step through lap and find at least one frame with magenta pixels */
+      let maxMagenta = 0;
+      let debugSaved = false;
+      for (let t = 0; t <= 5000; t += 500) {
+        await page.evaluate(`window.__replayStep(${t})`);
+        await page.sleep(200);
+        const shot = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+        const pngBuffer = Buffer.from(shot.data, 'base64');
+        const count = countMagenta(pngBuffer);
+        if (count > maxMagenta) {
+          maxMagenta = count;
+        }
+        /* Save first frame for debugging */
+        if (!debugSaved && t === 0) {
+          const fs = await import('fs');
+          fs.writeFileSync(`/tmp/debug-clean0-${cam}-t${t}.png`, pngBuffer);
+          debugSaved = true;
+        }
+      }
+      
+      console.log(`  [clean=0 ${cam}] paintedCount=${paintedCount}, maxMagenta=${maxMagenta}`);
+      
+      if (maxMagenta < 200) {
+        throw new Error(`Control clean=0 ${cam}: expected >= 200 magenta pixels in at least one frame, got max ${maxMagenta}`);
+      }
     } finally {
       await page.close();
     }
@@ -520,13 +602,30 @@ async function testSponsorContentHidden() {
         throw new Error(`Test clean=1 ${cam}: cursor should be "none", got "${cursorStyle}"`);
       }
       
-      /* Scene-level counter check - primary verification */
+      /* Scene-level counter check */
       const paintedCount = await page.evaluate('window.__map && window.__map().sponsorsPainted');
       if (paintedCount !== 0) {
         throw new Error(`Test clean=1 ${cam}: expected 0 painted sponsors, got ${paintedCount}`);
       }
       
-      console.log(`  [ok] clean=1 ${cam}: 0 sponsors painted, cursor hidden, glow hidden`);
+      /* Pixel-level check: step through lap and ensure ZERO magenta pixels in every frame */
+      let maxMagenta = 0;
+      for (let t = 0; t <= 5000; t += 500) {
+        await page.evaluate(`window.__replayStep(${t})`);
+        await page.sleep(200);
+        const shot = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+        const pngBuffer = Buffer.from(shot.data, 'base64');
+        const count = countMagenta(pngBuffer);
+        if (count > maxMagenta) {
+          maxMagenta = count;
+        }
+      }
+      
+      console.log(`  [clean=1 ${cam}] paintedCount=${paintedCount}, maxMagenta=${maxMagenta}`);
+      
+      if (maxMagenta !== 0) {
+        throw new Error(`Test clean=1 ${cam}: expected 0 magenta pixels, got max ${maxMagenta}`);
+      }
     } finally {
       await page.close();
     }

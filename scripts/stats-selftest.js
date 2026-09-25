@@ -186,6 +186,22 @@ check(
   referrerDomain(mockDoc(''), mockLoc('https://webfpv.org/sim/?referrer=httpexample.com')) === 'httpexample.com',
 );
 
+/* www. stripping in same-host check. */
+check(
+  '?referrer=www.webfpv.org returns null (same-host with www)',
+  referrerDomain(mockDoc(''), mockLoc('https://webfpv.org/sim/?referrer=www.webfpv.org')) === null,
+);
+
+check(
+  '?referrer=webfpv.org returns null when loc has www',
+  referrerDomain(mockDoc(''), mockLoc('https://www.webfpv.org/sim/?referrer=webfpv.org')) === null,
+);
+
+check(
+  'document.referrer with www.webfpv.org returns null',
+  referrerDomain(mockDoc('https://www.webfpv.org/'), mockLoc('https://webfpv.org/sim/')) === null,
+);
+
 console.log('\nstats-selftest: normaliseRefTag()\n');
 
 /* Known aliases are normalised. */
@@ -278,6 +294,20 @@ const both = sessionAttribution();
 check(
   'retrieve both referrer and ref',
   both.referrer === 'reddit.com' && both.ref === 'hn',
+);
+
+/* Clear session by calling storeSessionAttribution with null. */
+sessionStorage.setItem('webfpv.session.attribution', JSON.stringify({ referrer: 'reddit.com', ref: 'hn' }));
+/* Simulate the internal storeSessionAttribution behavior */
+sessionStorage.setItem('webfpv.session.attribution', JSON.stringify({ referrer: null, ref: null }));
+const cleared = sessionAttribution();
+check(
+  'null clears session (referrer)',
+  cleared.referrer === null,
+);
+check(
+  'null clears session (ref)',
+  cleared.ref === null,
 );
 
 console.log('\nstats-selftest: privacy controls\n');
@@ -382,6 +412,13 @@ sendEvent({ kind: 'test', value: 4, ref: 'hn' });
 parsed = JSON.parse(sentBody);
 check('sendEvent mixed: referrer from session', parsed.referrer === 'reddit.com');
 check('sendEvent mixed: ref from payload', parsed.ref === 'hn');
+
+/* sendEvent with explicit null in payload should clear stale session value. */
+sessionStorage.setItem('webfpv.session.attribution', JSON.stringify({ referrer: 'reddit.com', ref: 'hn' }));
+sendEvent({ kind: 'test', value: 5, referrer: null, ref: null });
+parsed = JSON.parse(sentBody);
+check('sendEvent explicit null: referrer cleared', parsed.referrer === null);
+check('sendEvent explicit null: ref cleared', parsed.ref === null);
 
 console.log('\nstats-selftest: attribution stored on every page load\n');
 

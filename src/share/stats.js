@@ -261,7 +261,11 @@ function isSameHost(hostname, loc) {
   if (!hostname || !loc) {
     return false;
   }
-  return hostname === loc.hostname;
+  /* Strip leading www. for comparison, so www.example.com and example.com
+   * are treated as same-host. */
+  const cleanHostname = hostname.startsWith('www.') ? hostname.slice(4) : hostname;
+  const cleanLoc = loc.hostname.startsWith('www.') ? loc.hostname.slice(4) : loc.hostname;
+  return cleanHostname === cleanLoc;
 }
 
 export function referrerDomain(doc = document, loc = window.location) {
@@ -397,16 +401,14 @@ const SESSION_ATTR_KEY = 'webfpv.session.attribution';
 
 function storeSessionAttribution(referrer, ref) {
   try {
-    const attr = {};
-    if (referrer) {
-      attr.referrer = referrer;
-    }
-    if (ref) {
-      attr.ref = ref;
-    }
-    if (Object.keys(attr).length > 0) {
-      sessionStorage.setItem(SESSION_ATTR_KEY, JSON.stringify(attr));
-    }
+    /* Always write both keys, even when null, to clear any stale sessionStorage
+     * value. A visitor arriving without a ?ref= after having one earlier should
+     * not keep the old value. */
+    const attr = {
+      referrer: referrer || null,
+      ref: ref || null,
+    };
+    sessionStorage.setItem(SESSION_ATTR_KEY, JSON.stringify(attr));
   } catch (e) {
     /* Private mode or storage full. Non-fatal: attribution just won't
      * persist to later events. */
@@ -451,12 +453,15 @@ export function sendEvent(payload, url = eventsUrl()) {
   let body;
   try {
     const attr = sessionAttribution();
+    /* Use `in` operator to check for explicit keys, so an explicit null in
+     * the payload (clearing attribution) overrides a stale session value.
+     * `||` would re-credit stale session when payload has null. */
     body = JSON.stringify({
       v: 1,
       ...payload,
       source: heldSource(),
-      referrer: payload.referrer || attr.referrer || null,
-      ref: payload.ref || attr.ref || null,
+      referrer: 'referrer' in payload ? payload.referrer : (attr.referrer || null),
+      ref: 'ref' in payload ? payload.ref : (attr.ref || null),
     });
   } catch (e) {
     return false;

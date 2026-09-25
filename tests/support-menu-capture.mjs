@@ -44,14 +44,33 @@ async function measureScreen(page, screen) {
     const lastRow = rows[rows.length - 1];
     const commandBar = document.querySelector('.frame-bot');
     const rowPaddingTop = window.getComputedStyle(rows[0]).paddingTop;
+    const menuRect = menu.getBoundingClientRect();
+    const overflow = menu.scrollHeight - menu.clientHeight;
+    
+    let visibleFraction = 0;
+    if (overflow > 0) {
+      menu.scrollTop = 0;
+      
+      for (let i = 0; i < rows.length; i++) {
+        const rowRect = rows[i].getBoundingClientRect();
+        const menuBottom = menuRect.bottom;
+        
+        if (rowRect.top < menuBottom && rowRect.bottom > menuBottom) {
+          const visibleHeight = menuBottom - rowRect.top;
+          visibleFraction = visibleHeight / rowRect.height;
+          break;
+        }
+      }
+    }
     
     return JSON.stringify({
       lastRowBottom: lastRow.getBoundingClientRect().bottom,
       commandBarTop: commandBar.getBoundingClientRect().top,
       gap: commandBar.getBoundingClientRect().top - lastRow.getBoundingClientRect().bottom,
-      overflow: menu.scrollHeight - menu.clientHeight,
+      overflow: overflow,
       rowPaddingTop: rowPaddingTop,
-      rowHeight: lastRow.getBoundingClientRect().height
+      rowHeight: lastRow.getBoundingClientRect().height,
+      visibleFraction: visibleFraction
     });
   })()`));
   
@@ -122,8 +141,8 @@ async function main() {
   let failed = false;
   
   console.log('\n=== Menu Clearance Measurements ===\n');
-  console.log('Viewport     Screen   RowPadTop  Overflow  Before: LastBottom  BarTop     Gap      After: LastBottom  BarTop     Gap      RowHeight');
-  console.log('------------ -------- ---------- --------- ------------------- ---------- -------- ------------------ ---------- -------- ---------');
+  console.log('Viewport     Screen   RowPadTop  Overflow  VisFrac  Before: LastBottom  BarTop     Gap      After: LastBottom  BarTop     Gap      RowHeight');
+  console.log('------------ -------- ---------- --------- -------- ------------------- ---------- -------- ------------------ ---------- -------- ---------');
   
   for (const vp of VIEWPORTS) {
     for (const screen of SCREENS) {
@@ -136,6 +155,7 @@ async function main() {
       const screenStr = screen.padEnd(8);
       const paddingStr = data.before.rowPaddingTop.padEnd(10);
       const overflowStr = `${data.before.overflow}px`.padEnd(9);
+      const visFracStr = data.before.overflow > 0 ? data.before.visibleFraction.toFixed(2).padStart(8) : '-'.padStart(8);
       const beforeLastStr = data.before.lastRowBottom.toFixed(2).padStart(19);
       const beforeBarStr = data.before.commandBarTop.toFixed(2).padStart(10);
       const beforeGapStr = data.before.gap.toFixed(2).padStart(8);
@@ -144,12 +164,20 @@ async function main() {
       const afterGapStr = data.after.gap.toFixed(2).padStart(8);
       const heightStr = data.before.rowHeight.toFixed(2).padStart(9);
       
-      console.log(`${vpStr} ${screenStr} ${paddingStr} ${overflowStr} ${beforeLastStr} ${beforeBarStr} ${beforeGapStr} ${afterLastStr} ${afterBarStr} ${afterGapStr} ${heightStr}`);
+      console.log(`${vpStr} ${screenStr} ${paddingStr} ${overflowStr} ${visFracStr} ${beforeLastStr} ${beforeBarStr} ${beforeGapStr} ${afterLastStr} ${afterBarStr} ${afterGapStr} ${heightStr}`);
       
       // Assert 16px clearance after scroll
       if (data.after.gap < 16) {
         console.error(`  ✗ FAIL: ${screen} at ${vp.width}x${vp.height} has ${data.after.gap.toFixed(2)}px gap after scroll (need 16px)`);
         failed = true;
+      }
+      
+      // Assert visible fraction is between 0.4 and 0.6 when there's overflow
+      if (data.before.overflow > 0) {
+        if (data.before.visibleFraction < 0.4 || data.before.visibleFraction > 0.6) {
+          console.error(`  ✗ FAIL: ${screen} at ${vp.width}x${vp.height} has ${data.before.visibleFraction.toFixed(2)} visible fraction (need 0.40-0.60)`);
+          failed = true;
+        }
       }
       
       // Check row height is at least 32px if paused

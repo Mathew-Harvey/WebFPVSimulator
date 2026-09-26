@@ -49693,3 +49693,76 @@ forced).
   box from its clearance up), so the chase pays a low pass across a moving
   car's roof instead. Recorded by the chase agent, the owner's to overturn.
 - lint:shell's title overflow grew on main from 23 to 67 px; not Stage E's.
+
+## 2026-09-26 | shell | Fly this track goes straight to the starting blocks
+
+The owner: "when i click fly this track from the builder i should go
+straight to the starting blocks not the initial menu".
+
+Cause: yesterday's fix for Fly this map (`?map=built&craft=5inch&fly=1`,
+see linkedFly in src/ui/ui.js) covered only the freestyle half of the
+builder's button. A race track still linked to a bare `?map=custom`, so the
+pilot landed on the title, pressed Fly, got the launch card, and pressed
+Go. Two presses between the builder and the grid for a track they had just
+asked to fly.
+
+Changes:
+
+- src/trackbuilder/app.js, flyThisTrack: the race link now carries the
+  aircraft the document's class is built for (`whoop65` for a micro track,
+  `5inch` otherwise) and `fly=1`, the same three answers a map's link gives.
+- src/main.js, flyIfLinked: after `ui.act('fly')`, a race seat stops on the
+  launch card. The link asked for the grid, so it presses `launch-go`, the
+  card's own button, which runs the same `flown()` and `onAction('fly')`.
+  The card only restates settings already seated, so nothing is chosen
+  that the pilot's press would not have chosen.
+- scripts/input-check.js, section 15: walks the builder's button on a seeded
+  whoop track, from a pilot whose settings sat on a freestyle map, and checks
+  the shell lands in flight on the custom world on the whoop, with `fly=1`
+  gone from the address.
+
+What went wrong on the way: the first fetch of the turn printed `forced
+update` for main and `git merge-base` between the old and new main came
+back empty. That was the container's first clone being `--depth 50`, not a
+rewrite: after `git fetch --unshallow`, the old head 9ed8b9c is an ancestor
+of the new head 2924ca3, one root, 709 commits. Recorded because it looks
+exactly like 2026-08-26 until the clone is deepened.
+
+Not checked: the new section was not run against the old code to watch it
+fail. A reload after the flight is not rechecked for the race link; the
+same dropLinkParam path is checked for the map in section 13. shots.js and
+verify were not run; nothing in the physics, the plant, the ABI or the
+build changed.
+
+### RUN LOG
+
+    node --check                   main.js, ui.js, trackbuilder/app.js,
+                                   input-check.js: ok
+    node scripts/input-check.js    all 160 passed, 174s, including section
+                                   15's four
+
+### To main
+
+The owner: "push to main". main had moved twice while this was checked:
+2924ca3 to 4c1d284 (five commits: the RaceGOW three lap standings, the
+racing line, labels off, the lap export fix), then to 5cdcc71 (Stage E,
+the roads and cars, and its merges). Rebased onto each rather than merged,
+so main takes it as a fast forward. Both sides appended to PROGRESS.md
+each time, and that was the only conflict: main's entries stay where they
+are and this one follows. The code merged clean both times. The first push
+was rejected because main had moved again, and the answer was the second
+rebase, not a force.
+
+A failure that is main's, not this change's: on 4c1d284, input-check fails
+two checks in the radio section, "parked and left, the row arrives by
+itself, and not before four seconds" (20476 ms) and "and input.js agrees"
+({"parked":false,"noYaw":false,"map":"guess","yawAxis":3,"live3":-1}). The
+same two fail the same way on a clean worktree of origin/main 4c1d284 with
+none of this change in it, and all 160 passed on 2924ca3 in this container
+earlier in the turn, so it arrived in one of those five commits. Not
+fixed here: it is outside the change asked for.
+
+    input-check on 4c1d284 + this  158 passed, 2 failed (the two above)
+    input-check on clean 4c1d284   the same two failed, same output
+    input-check on 5cdcc71 + this  158 passed, 2 failed (the same two);
+                                   section 15's four pass

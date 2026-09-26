@@ -3353,7 +3353,15 @@ export class App {
     } else {
       flyCanvasWithoutListing();
     }
-    window.location.href = '../../index.html?map=custom';
+    /*
+     * The same three answers as a map's link: the track, the aircraft its
+     * class is built for, and fly=1. Without them the pilot landed on the
+     * title and had to press Fly and then Go to reach the grid, for a
+     * track they had just asked to fly. The owner's report on 2026-09-26:
+     * Fly this track should go straight to the starting blocks.
+     */
+    const craft = trackClassOf(this.doc) === 'micro' ? 'whoop65' : '5inch';
+    window.location.href = `../../index.html?map=custom&craft=${craft}&fly=1`;
   }
 
   toast(message) {

@@ -7983,9 +7983,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
   /*
-   * THE BUILDER'S FLY THIS MAP, carried the last step into the air.
+   * THE BUILDER'S FLY THIS MAP AND FLY THIS TRACK, carried the last step
+   * into the air.
    *
-   * Its link names the map, the aircraft and ?fly=1 (see linkedFly in
+   * Their links name the map, the aircraft and ?fly=1 (see linkedFly in
    * ui.js). The first two answer the gate; this answers the title, once,
    * after the first frame, when the world is on screen and the loading
    * screen has gone. Only when the map that loaded is the one the link
@@ -8008,6 +8009,12 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       wakeAudio();
       ui.act('fly');
+      /* A race seat stops on the launch card, which only restates what is
+       * already seated. The link asked for the grid, so it presses Go the
+       * way the card's own button does. */
+      if (ui.screen === 'launch') {
+        ui.act('launch-go');
+      }
     }, 0);
   }
   let worstBlockMs = 0;

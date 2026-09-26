@@ -2719,6 +2719,11 @@ function linkedMode() {
  * map the registry knows, and main.js only acts on it when that map is the
  * one that loaded and the gate is answered, so a map that failed to load
  * leaves the pilot on the title with the failure said, as before.
+ *
+ * Fly this track carries it too since 2026-09-26, as ?map=custom with the
+ * aircraft its class is for, and main.js takes a race seat past the launch
+ * card to the grid, because the owner asked for the starting blocks and
+ * not a card in front of them.
  */
 function linkedFly() {
   let params;

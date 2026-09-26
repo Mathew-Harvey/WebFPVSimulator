@@ -1419,6 +1419,36 @@ const FLY_MAP_SEED = `try {
   }
 } catch (e) { /* Storage refused. The builder then opens blank, and the checks say so. */ }`;
 
+/*
+ * The builder's Fly this track, the race half of the same press. The owner,
+ * 2026-09-26: "when i click fly this track from the builder i should go
+ * straight to the starting blocks not the initial menu". Its link was a
+ * bare ?map=custom, so the pilot landed on the title and then the launch
+ * card: two presses between the builder and the grid. The pilot here last
+ * flew a freestyle map on the whoop, so the map in the settings is not the
+ * one the link names, and the track is a whoop track, so the aircraft the
+ * link names is read from the document's class.
+ */
+const FLY_TRACK = {
+  ...presetsForClass('micro')[0],
+  id: 'trk-f1e5ea7c',
+  name: 'Fly this track check',
+  modifiedUtc: '2026-09-26T00:00:00.000Z',
+};
+const FLY_TRACK_SEED = `try {
+  if (!sessionStorage.getItem('check.flytrack.seeded')) {
+    sessionStorage.setItem('check.flytrack.seeded', '1');
+    const k = ${JSON.stringify(SETTINGS_KEY)};
+    const s = JSON.parse(localStorage.getItem(k) || '{}');
+    s.airframe = 'whoop65';
+    s.airframeAsked = true;
+    s.map = 'built';
+    localStorage.setItem(k, JSON.stringify(s));
+    localStorage.setItem('webfpv.trackbuilder.autosave.micro.v1', ${JSON.stringify(JSON.stringify(FLY_TRACK))});
+    localStorage.setItem('webfpv.trackbuilder.canvas.v1', 'micro');
+  }
+} catch (e) { /* Storage refused. The builder then opens blank, and the checks say so. */ }`;
+
 async function flyMapPages() {
   /* ----------------------------------------------------------------------
    * 13. Fly this map, from the builder to the air in the one press.
@@ -1481,6 +1511,35 @@ async function flyMapPages() {
     check('the map failed, the track is back under the pilot, and they are on the title, not flying it',
       builtRequests >= 1 && left.failed === 'built' && left.world === 'custom' && left.shell === 'title' && left.screen === 'title'
         && left.search === '?map=built&craft=5inch', JSON.stringify({ builtRequests, ...left }));
+  } finally {
+    await page.close();
+  }
+
+  /* ----------------------------------------------------------------------
+   * 15. Fly this track, from the builder to the starting blocks in the one
+   *     press: no title, no launch card.
+   * -------------------------------------------------------------------- */
+  section('fly this track: the builder\'s button puts the pilot on the grid of that track, with no menu or card between');
+  page = await openPage({ root, width: 1280, height: 720, url: '/src/trackbuilder/index.html?mode=race', seed: [SETTINGS_SEED, FLY_TRACK_SEED] });
+  try {
+    await page.until('!!window.trackBuilder', 60000).catch(() => {});
+    const builder = await page.evaluate(`(() => { const app = window.trackBuilder;
+      return JSON.stringify({ mode: app && (app.doc.mode || 'race'), cls: app && app.doc.trackClass, name: app && app.doc.name,
+        fly: app && app.flyBtn && app.flyBtn.textContent }); })()`).then(JSON.parse);
+    check('the builder opens the seeded whoop track, and its button says Fly this track',
+      builder.mode === 'race' && builder.name === FLY_TRACK.name && builder.fly === 'Fly this track', JSON.stringify(builder));
+    await page.evaluate('(() => { window.trackBuilder.flyBtn.click(); return 1; })()');
+    await page.until("window.__shellReady === true && window.__mode === 'flight'", 120000).catch(() => {});
+    const air = await page.evaluate(`(() => { const ui = window.__ui; const m = window.__map ? window.__map() : null;
+      return JSON.stringify({ shell: window.__mode || null, screen: ui && ui.screen, world: m && m.id, map: ui && ui.settings.map,
+        name: m && m.name, airframe: ui && ui.settings.airframe, search: location.search }); })()`).then(JSON.parse);
+    check('it lands on the grid of the track it was pressed on, with no press between, on the whoop',
+      air.shell === 'flight' && air.screen === 'flight' && air.world === 'custom' && air.map === 'custom'
+        && air.airframe === 'whoop65', JSON.stringify(air));
+    check('the one time fly=1 is gone from the address, and the track and the aircraft stay',
+      air.search === '?map=custom&craft=whoop65', JSON.stringify(air));
+    const uncaught = page.errors.filter((e) => e.startsWith('uncaught:'));
+    check('no uncaught exception on the fly this track pages', uncaught.length === 0, uncaught.slice(0, 3).join(' | '));
   } finally {
     await page.close();
   }

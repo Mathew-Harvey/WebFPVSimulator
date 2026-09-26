@@ -37,6 +37,7 @@
     "check:world-town": "node scripts/world-golden.js --town",
     "check:world-engines": "node scripts/world-engines.js",
     "check:world-engines:selftest": "node scripts/world-engines.js --selftest",
+    "check:chase": "node scripts/chase-check.js",
     "check:props": "node scripts/props-check.js",
     "check:clip": "node src/trackbuilder/selftest.js",
     "check:orbit": "node scripts/orbit-check.js",

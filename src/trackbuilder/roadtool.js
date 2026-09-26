@@ -883,7 +883,21 @@ export function laneClashes(traffic, horizon) {
       out.push({ kind: 'head-on', a: g[0].v, b: other.v });
       continue;
     }
-    /* One lane, one way round: only cars with different tables can meet. */
+    /* One lane, one way round: only cars with different tables can meet.
+     * Worked out once for a lane and its cars as they are, and remembered,
+     * because the map's report is made again on every edit and a lap table
+     * a car is a few milliseconds that moving a building does not change. */
+    const e0 = g[0].entry;
+    const p0 = e0.points[0];
+    const key = [e0.element, e0.lane, e0.points.length, e0.length, p0.x, p0.z, horizon,
+      ...g.map(({ v }) => `${v.element}:${v.topSpeed}:${v.lateral}:${v.offset}:${v.length}`)].join('|');
+    if (CLASH_MEMO.has(key)) {
+      const hit = CLASH_MEMO.get(key);
+      if (hit) {
+        out.push({ ...hit, a: g.find((x) => x.v.element === hit.a).v, b: g.find((x) => x.v.element === hit.b).v });
+      }
+      continue;
+    }
     let found = null;
     for (let i = 0; i < g.length && !found; i += 1) {
       for (let j = i + 1; j < g.length && !found; j += 1) {
@@ -902,9 +916,18 @@ export function laneClashes(traffic, horizon) {
         }
       }
     }
+    if (CLASH_MEMO.size >= CLASH_MEMO_MAX) {
+      CLASH_MEMO.delete(CLASH_MEMO.keys().next().value);
+    }
+    CLASH_MEMO.set(key, found ? { kind: found.kind, at: found.at, a: found.a.element, b: found.b.element } : null);
     if (found) {
       out.push(found);
     }
   }
   return out;
 }
+
+/* laneClashes' memory of the lanes it has timed: a lane and its cars, as a
+ * string, to the clash found there or null. */
+const CLASH_MEMO = new Map();
+const CLASH_MEMO_MAX = 64;

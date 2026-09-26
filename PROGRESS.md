@@ -47784,3 +47784,237 @@ Run this turn on the final code:
     dash scan, new and changed    none
     npm run verify                not run: no physics, plant, ABI or build
                                   change, and the task said not to
+
+## 2026-09-26 | builder, maps, checks | Stage E: the road tool, vehicles, and Play in the preview
+
+Stage E ("Roads, vehicles and the chase", approved by the owner on
+2026-09-25), the track builder's side of it: FREESTYLE-MAPS-PLAN.md 5.2's
+road tool, vehicles put on roads, their warnings, and Play in the 3D
+preview. No physics, no module ABI, no build: dist/sim.wasm, src/native and
+tests/goldens are untouched, and so are src/main.js, src/maps/built/index.js
+and src/ui/. A race track is exactly what it was: the race palettes, their
+keys and their warnings are unchanged, and the self test says so.
+
+### What an author can do now
+
+- **The palette's last group, Roads and vehicles**, on a map only: Road and
+  Vehicle, no hotkeys (the digits and free letters ran out before the
+  assets did).
+- **Lay a road.** Pick Road, click where it goes, node by node. It is drawn
+  as it will be driven, the eased line from src/maps/built/road.js with its
+  edges and the dashed middle of two lanes, on through the pointer while it
+  is laid, so the author sees the curve and not the corners they clicked.
+  Click the first node (three down) to close a loop; the loop is previewed
+  closed and the first node rings when the pointer is on it. Click the last
+  node, double click, or press Enter to finish it open. Escape puts the half
+  laid road away and keeps the tool; Backspace takes back the last node; a
+  right click puts it away. Nothing is in the document until it is
+  finished, so the whole road is one undo step.
+- **Edit it.** Select a road (a road is picked last, by its surface, so a car
+  on it or a lamp beside it wins): its nodes get handles, the first bigger,
+  and every leg a + at its middle. Drag a node to reshape, drag a + to pull a
+  new node out of it, click a node and press Delete (or the inspector's
+  Delete node) to take it out, drag the road itself to move it. Each is one
+  undo step, and a click that moves nothing is none. Every car on the road
+  stays where it was drawn (reseatVehicles), because its place is a
+  distance along the line and reshaping the line would otherwise slide it.
+- **See what road.js made of it.** A node it had to leave out is ringed red
+  and crossed, one it ran straight past ringed amber, a self crossing
+  crossed, and on the selected road a bend eased more than a twentieth
+  tighter than the radius asked for says its radius at its apex. The
+  selected road shows chevrons the way its nodes run, the way Forward
+  drives it.
+- **The road inspector**: Open road or Loop (a loop needs three nodes), one
+  lane or two, width, bend radius, where it starts, its length, its
+  tightest bend, how cars drive it, and the cars on it, each a button that
+  selects it.
+- **Put a car on it.** Pick Vehicle and click on or beside a road: the car
+  goes on the nearest point of its centre line, which sets its road and
+  offset. On a two lane loop the half clicked is the lane it drives, so a
+  car dropped on the right hand half is set to Reverse. The ghost shows the
+  car where it would go before the click. Drag a car to slide it along its
+  road. It is drawn where the physics starts it (traffic.js vehicleStart),
+  its body the car's own length and width, its windscreen darker, an arrow
+  the way it drives; the drift car is orange.
+- **The vehicle inspector**: its style (the town's nine), Traffic or Drift
+  car (the drift car starts at DRIFT.speed, a style at its own speed),
+  Forward or Reverse, top speed in km/h (m/s in the document, converted in
+  ui.js and nowhere else), its start in metres along the road, and its
+  colour with a Reroll.
+- **Delete a road with cars on it**: the cars keep the road they named and
+  stay parked, as normalize keeps them, drawn dashed red in a row along the
+  plot's south edge (PARK), and a toast and the warning say so. Dragging
+  one onto a road puts it back on one.
+- **Open the 3D view**: the roads and the cars are drawn by the simulator's
+  own src/maps/built/roadmesh.js and cars.js, in the cel look, the cars
+  where they start. **Play**, over the preview's corner on a map with cars,
+  drives them; Stop puts them back; an edit while it plays goes to the
+  module at once and the clock carries on.
+
+### The warnings added (warnings.js roadWarnings, the tests in roadtool.js)
+
+    rd-solid        a road through a solid, allowing for a car: the solid
+                    comes within the lane's offset plus half the widest car
+                    on the road (half its diagonal for a drift car, which
+                    slides) of the centre line, and stands lower than the
+                    tallest of those cars. A bridge deck over a road is not
+                    in its way; its piers are
+    rd-start        a road over the start pads, or within that reach and a
+                    metre of where the craft starts (with no pads, the
+                    default start 8 m in from the left edge)
+    fs-outside      also a road whose line runs past the edge of the plot
+    rd-*            road.js's own problems, named on the road: a node left
+                    out (rd-tight, rd-fold, warn), run straight past
+                    (rd-kink, info) and the rest. Clicking one also picks
+                    the node it names
+    tr-no-road      a vehicle with no road: its road deleted, or never given
+    tr-*            everything else trafficOf leaves parked (tr-slots,
+                    tr-lane, tr-tables), in trafficOf's own words with the
+                    car's name put in, so no limit is restated
+    tr-lane-clash   two cars in one lane that will drive through each
+                    other: two on one open road, two opposite ways round a
+                    one lane loop, or two in one lane of a loop whose laps
+                    differ and who meet within ten minutes of the clock,
+                    saying when
+    tr-overlap      two cars that start on top of each other
+
+Every one names its element and selects it when clicked, like the others.
+schema.md's Map warnings table carries them all.
+
+### Decisions, and why
+
+- **"Different speeds" is not the test; different laps are.** The starter's
+  box truck and kei van share a lane at 10 and 8.8582 m/s on purpose, their
+  laps matched to the millisecond, and a warning on the shipped yard would
+  be a lie. Only the module knows a lap, so roadtool.js moduleRoad and
+  lapTable restate world.c's sim_world_road (the cut into 1 m pieces, the
+  bend across 1.5 m either way) and profile_for (corner speeds, the pull
+  away and braking passes, the time table) on the very numbers uploadRoad
+  hands it, the way road.js moduleCheck restates its refusals. Checked in a
+  scratch run against the module: the port's speed equals readVehicles' to
+  six decimals at every clock tried, on all three starter cars. The self
+  test ties it to the starter: the pair's laps agree to 1e-4 s, and a car
+  half as fast again in their lane is a clash. firstMeeting then steps the
+  two cars' routes 0.1 s at a time for ten minutes and says when they first
+  touch, catching a pass between two steps. It drives nothing: Play and the
+  simulator read every pose from the module. If world.c's profile changes,
+  this has to follow it, and the starter test is what would show it had
+  not.
+- **The road draft is not in the document** until it is finished, so a road
+  is one undo step and Escape leaves nothing behind.
+- **The first node is kept at the position.** A laid road starts there, and
+  moving or deleting the first node moves the position with it, so the
+  inspector's X and Y, a box select and the plot check read the road's
+  first node. Any road is still read as it is.
+- **A car stays where it was drawn when its road is reshaped**, not at its
+  old distance along the new line: the author put it at a place.
+- **A new element never takes an id a roadless car still names**
+  (model.js newElementId): handed on, it would have put the car on
+  whatever was placed next.
+- **The preview's roads and cars hang in a holder** that undoes the root's
+  turn and moves the plot's middle to the world origin, so roadmesh.js and
+  cars.js draw in the simulator's own world frame unchanged. It is the
+  builder's second frame change, written down in view3d.js buildTraffic
+  beside the first (buildAsset).
+- **Play's clock** is the milliseconds since Play was pressed, in whole
+  steps as the lap clock is. Every frame the module is set to that step and
+  the next and read at both, and each car is drawn between them at the
+  fraction of a step the frame is at, as the simulator draws the craft; the
+  drift smoke is fed the module's poses every eighth step. The module is
+  loaded with tests/lib/simmod.js, the shell's own loader, into a world
+  holding nothing but the traffic (sim_world_clear, sim_world_build,
+  uploadTraffic).
+- **Loading.** Opening the builder loads roadtool.js and nothing else new;
+  roadmesh.js and cars.js come with the cel kit when the 3D view first opens
+  on a map, on their own so their failure leaves every asset drawn; the
+  module comes on the first Play. The Play rig below checks all three.
+- **The map report stays quick**: traffic costs the starter about 3 ms an
+  edit (5.3 ms median against 2.3 without its roads, 60 runs), because a
+  lane's clash is remembered until the lane or its cars change.
+
+### Checks, run in this session on the final code
+
+    npm run check:clip       785 passed, 0 failed (727 before; 58 new in
+                             "the road tool": laying, closing, finishing,
+                             insert, move, delete, pick, snap, the lane
+                             side, the parking row, the id, overlap, the
+                             lap port, and every warning firing and not)
+    npm run check:roads      all passed (4.1 s), after the merge of the
+                             wider loop
+    npm run lint:memory      PASS, every world lazy and freed; baseline 61
+                             geometries, 5 textures, 124 requests
+    npm run lint:boot        9 of 9 checks clean
+    npm run lint:input       all 156 passed (211 s), the builder's freestyle
+                             flow and its chooser included
+    npm run lint:preload     STALE after the merge (the render modules), so
+                             src/fresh.js was regenerated: roadtool.js,
+                             cars.js and roadmesh.js are served; up to date
+                             after
+    dash scan, the diff      none
+    npm run verify           not run: no physics, plant, ABI or build
+                             change, and the task said not to
+
+Two scratch rigs in the style of scripts/shots.js drove the builder with
+real mouse and key events through the DevTools protocol (not committed):
+the 2D rig, 19 of 19 (the group and its two tools; a loop laid in one undo
+step; a double click and Enter finishing open roads; Escape cancelling;
+four cars on the loop, the right hand one reversed; a node dragged and a +
+dragged, each one step; a car slid 12 m; a node picked and deleted; the
+warnings present and a warning click selecting its car), and the Play rig,
+9 of 9 on Hibari Yard (nothing new at boot; the render modules with the 3D
+view and not the module; three cars drawn; Play fetching the module; every
+car 50 to 100 m from its start seven seconds in; each car drawn between the
+module's poses at the step drawn and the next; an edit while playing
+re-uploaded and the clock carried on; Stop putting every car back). The
+only console error in either is the board's stats ping refused, which no
+board runs here to answer.
+
+The pictures, looked at, in the session's scratchpad: the road tool mid
+edit (the eased road on through the pointer, three handles); the loop about
+to close (its first node ringed, the loop previewed closed); a closed loop
+selected with four cars on it, its handles, chevrons and inspector; a node
+picked; the warnings panel with the new warnings; the 3D preview with the
+yard's three cars where they start; and during Play at 0:11.4, the drift
+car by the billboard and the box truck by the water tower, far from where
+they started.
+
+### What went wrong
+
+- The worktree was made at 2df3020, an older main, not at the Stage E
+  branch the task named. It had no commits of its own, so it was moved to
+  b20e626 with a reset; the classifier then flagged that reset as a
+  destructive git action. Nothing was lost: 2df3020 is on origin/main.
+- The first lane test counted top speeds, and would have warned about the
+  starter's own matched pair. Hence the lap port.
+- The first rig clicked the loop where a car was and selected the car, and
+  the first + it dragged was where the leg had been before a node moved:
+  the rig's mistakes, fixed in the rig. It also found a click on a node
+  leaving an empty undo step when the clock's second rolled over (endEdit
+  touches modifiedUtc); a node or car click that moves nothing now cancels
+  its gesture. The same holds for the older move drag and was left alone.
+- A squeezed bend was first labelled at 0.05 m under the radius asked,
+  which labelled every bend (the easing lands a few centimetres off it);
+  now at a twentieth.
+- The roadless parking row first stood 3 m in, where its tag was cut by the
+  ruler; now 8 m.
+
+### For whoever merges
+
+- Branch worktree-agent-ae0dc9c34578ee8f4 has merged
+  claude/vibrant-wozniak-v2pg5e as far as df97e59 (roadmesh.js, cars.js and
+  the wider Hibari Yard loop). Expect src/fresh.js to conflict with the
+  main.js wiring's own regeneration: run node scripts/gen-preload.js after
+  the merge. PROGRESS.md may conflict at its end: keep both entries.
+- roadmesh.js and cars.js are used unchanged, and needed no change.
+
+### For the owner
+
+- **Play it, then fly it.** In the builder on a map: lay a loop, put a few
+  cars on it, open 3D and press Play. What would be wrong: a car in the
+  preview anywhere but on its lane, a car in Play that is not where the
+  simulator puts it at the same clock, or a warning about two cars that
+  never meet.
+- The drift car's nose crossing into the other lane (the foundation's
+  finding, fixed on the yard by the wider loop) is not a warning: the lane
+  test is one lane at a time. Two cars on roads that cross each other are
+  not warned about either. Both are open.

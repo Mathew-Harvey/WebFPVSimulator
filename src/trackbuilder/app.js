@@ -849,6 +849,12 @@ export class App {
   focusWarning(w) {
     if (w.elementId) {
       this.setSelection([w.elementId]);
+      /* A road's warning about one of its nodes picks that node too, so
+       * Delete, or a drag, is the next thing to do. */
+      const el = elementById(this.doc, w.elementId);
+      if (el && kindOf(el) === KIND.ROAD && Number.isInteger(w.node) && w.node < el.nodes.length) {
+        this.setActiveNode(el.id, w.node);
+      }
       this.focusSelection();
       return;
     }

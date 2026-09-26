@@ -699,7 +699,7 @@ export class View2D {
       if (i >= 0) {
         this.host.setActiveNode(road.id, i);
         this.host.beginEdit('move node');
-        this.drag = { kind: 'node', id: road.id, index: i, starts: this.host.vehicleStarts(road.id) };
+        this.drag = { kind: 'node', id: road.id, index: i, starts: this.host.vehicleStarts(road.id), moved: false };
         return;
       }
       const leg = pickLeg(road, world.x, world.y, reach);
@@ -711,7 +711,7 @@ export class View2D {
           this.host.cancelEdit();
           return;
         }
-        this.drag = { kind: 'node', id: road.id, index, starts };
+        this.drag = { kind: 'node', id: road.id, index, starts, moved: true };
         return;
       }
     }
@@ -753,7 +753,7 @@ export class View2D {
     if (isVehicleEl(hit) && !e.shiftKey) {
       this.host.setSelection([hit.id]);
       this.host.beginEdit('slide vehicle');
-      this.drag = { kind: 'slide', id: hit.id };
+      this.drag = { kind: 'slide', id: hit.id, moved: false };
       return;
     }
     this.host.beginEdit('move');
@@ -794,11 +794,13 @@ export class View2D {
     }
 
     if (this.drag.kind === 'node') {
+      this.drag.moved = true;
       this.host.moveRoadNode(this.drag.id, this.drag.index, this.host.snap(this.pointer, e.altKey), this.drag.starts);
       return;
     }
 
     if (this.drag.kind === 'slide') {
+      this.drag.moved = true;
       this.host.slideVehicle(this.drag.id, this.pointer, SNAP_PX / this.cam.scale);
       return;
     }
@@ -859,7 +861,11 @@ export class View2D {
       this.host.setSelection(ids, this.band.additive);
       this.band = null;
     }
-    if (kind === 'move' || kind === 'rotate' || kind === 'node' || kind === 'slide') {
+    /* A click on a node or a car that did not move it is a pick, not an
+     * edit, and leaves no undo step behind. */
+    if ((kind === 'node' || kind === 'slide') && !this.drag.moved) {
+      this.host.cancelEdit();
+    } else if (kind === 'move' || kind === 'rotate' || kind === 'node' || kind === 'slide') {
       this.host.endEdit();
     }
     this.drag = null;

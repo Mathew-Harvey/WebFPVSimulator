@@ -123,8 +123,6 @@
     'src/input/stickmode.js',
     'src/input/touchsticks.js',
     'src/main.js',
-    'src/main.js',
-    'src/main.js',
     'src/maps/build-cost.js',
     'src/maps/built/cars.js',
     'src/maps/built/egg.js',

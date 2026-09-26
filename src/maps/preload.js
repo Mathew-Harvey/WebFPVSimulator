@@ -136,5 +136,6 @@ export const MAP_PRELOAD = {
     'maps/built/road.js',
     'maps/built/roadmesh.js',
     'maps/built/cars.js',
+    'maps/built/ground.js',
   ],
 };

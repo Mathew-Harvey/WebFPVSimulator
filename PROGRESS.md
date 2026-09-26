@@ -50851,3 +50851,38 @@ takes the showpiece too.
     npm run verify              not run: no physics, plant, ABI or build
                                 change; the showpiece is a document and the
                                 checks above hold it in the module
+
+## 2026-09-26 | maps, landing | The built map's ground, in a module of its own
+
+### What changed
+
+`src/maps/built/ground.js`: the ground section of `src/maps/built/index.js`
+moved whole, `buildGround` and everything only it uses (the plot and its
+textures, the kerb, the verge, the terrain, the paint, the repairs, the
+marks, the ruts, the ground logos, and the constants they read), with
+`buildGround` exported. `index.js` imports it and calls it exactly as
+before. `glowTexture`, which sat in the middle of the section but is the
+lamps' at dusk, stays in `index.js`, at the head of the lamps' section.
+
+### Why
+
+The landing page's freestyle chapter builds the showpiece behind its film
+from this repository's own code, copied byte for byte. `index.js` cannot be
+that code: its imports bring the shell, the loading screen and the
+builder's storage. The ground was the one part of the map's look with no
+module of its own.
+
+### Checked
+
+The move, line for line: every line of the old `index.js` is in the new
+`index.js` or `ground.js` and nothing else is, except the four imports that
+moved, the section banner, and `export` on `buildGround`.
+
+`scripts/shots.js` on `/index.html?map=built&craft=5inch&fly=1`, High, 1280
+by 720, before and after: the same frame, 0.60 per cent of pixels over 24
+levels apart, all of it the music title in the corner and the props' blur.
+
+### RUN LOG
+
+    npm run lint:preload        regenerated: built 33 modules, 217 served
+    npm run verify              not run: no physics, plant, ABI or build

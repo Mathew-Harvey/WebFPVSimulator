@@ -129,6 +129,7 @@
     'src/maps/build-cost.js',
     'src/maps/built/cars.js',
     'src/maps/built/egg.js',
+    'src/maps/built/ground.js',
     'src/maps/built/index.js',
     'src/maps/built/looks.js',
     'src/maps/built/place.js',

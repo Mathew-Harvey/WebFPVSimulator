@@ -49604,3 +49604,92 @@ or the lead's to approve.
   drawn, smoke across the lens, or two cars through each other on the yard.
 - The loop is wider (7.5 m) and the chicane softer; the drift car's lap is
   24.8 s, the working pair's 38.0 s.
+
+## 2026-09-26 | integration, main | Stage E to main: two merges of main, the checks on the merged tree
+
+The owner asked "push to main" while Stage E's sim agent was stopped by a
+session limit. Its code was all committed (653b06b, df97e59, c01548d); only
+its PROGRESS entry was left in the tree, complete, and was committed as it
+left it (the entry above). Stage E went to main as 93ebc67, a fast forward.
+No physics, module ABI or build change: dist/sim.wasm and src/native are
+untouched and `git diff --stat vendor/betaflight` is empty.
+
+### The merges
+
+main moved twice while Stage E was being checked, so it was merged in twice
+(merge bases 6d8c1a2 and 9b67a96, both found; nothing rebased, nothing
+forced).
+
+- **Replay mode** (bd2bb69). One conflict, main.js's step block: replay's
+  branch, which steps nothing, beside Stage E's `stood`. Both kept, and one
+  change of Stage E's own: the traffic's after steps read is skipped in a
+  replay. A replay advances simTimeMs without stepping the plant, so the
+  read would have taken a pose at a clock nothing advanced and marked the
+  frame as read; now a replay's frames read the cars as any frame that did
+  not step does, in trafficFrame at the replay's clock.
+- **The whoop builder** (93ebc67): picked gate sides, the racing line bent
+  in 3D, labels off. Conflicts in app.js, view3d.js, model.js and
+  selftest.js, all kept from both sides: selection changes prune both a
+  road's picked node and a gate's picked pipe; loading a document clears the
+  node, the road draft and the side; Delete takes a picked road node, then a
+  picked pipe, then the selection; the 3D press takes main's hit and line
+  bend first, then Stage E's rule that a picked car is selected and orbits;
+  the import lists are unions.
+- src/fresh.js: the first regeneration ran while src/main.js was still
+  unmerged in the index, which lists a conflicted file once per stage, so it
+  named main.js three times (04fbeac fixed it; lint:preload up to date).
+
+### Checks on the merged tree (93ebc67 unless said)
+
+    npm run check:clip           876 passed, 0 failed
+    npm run check:roads          all passed
+    npm run check:chase          all passed
+    npm run check:props          all passed
+    npm run check:world          all passed
+    npm run check:world-golden   all passed (on bd2bb69)
+    npm run check:world-engines  Node and Chromium equal to the bit on every
+                                 run, Hibari Yard's traffic among them (on
+                                 04fbeac)
+    npm run check:path           12 passed, 0 failed
+    npm run lint:boot            9 of 9 clean
+    npm run lint:memory          PASS
+    npm run lint:preload         up to date
+    npm run support:selftest     17 of 17 (on bd2bb69)
+    npm run replay:test          8 of 8 (on 04fbeac, after the replay merge)
+    npm run lint:input           2 failed, 154 passed: "parked and left" and
+                                 "input.js agrees", the pair the sim agent
+                                 found failing on b20e626 before any Stage E
+                                 shell work. The stick mode reading passed.
+    npm run lint:shell           FAIL, "title: overflow grew from 0 to 67 px";
+                                 main alone (origin/main 9b67a96, a scratch
+                                 worktree) reads the same 67 px, so it is
+                                 main's, grown from the 23 px known before
+    the builder's road rig       19 of 19, and the Play rig 9 of 9, rerun on
+                                 the merged tree (scratch, not committed);
+                                 the Play picture looked at: the drift car
+                                 sliding by the billboard with its smoke,
+                                 the box truck by the water tower
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change
+
+### What went wrong
+
+- The builder agent's worktree was created at an old origin/main rather
+  than at the branch, and it moved its branch with a hard reset before it
+  had any commits; nothing was lost, and it said so.
+- main moved during the first round of checks, so the push was refused and
+  main was merged a second time; the checks above were run again after it.
+- The builder rigs pointed at the deleted worktree; copies pointed at the
+  repository were run instead.
+
+### Open, for the owner
+
+- **Set down on a road** (the sim agent's note above): a crash on a road
+  sets the craft down on it, and cars drive through a landed craft.
+- **The drift car's yaw rate** still steps by up to 0.51 rad/s where the
+  module's speed profile turns from speeding up to braking. Physics, not the
+  road; printed by check:roads as a target, not asserted.
+- **HURDLE in place of UNDER**: nothing can fly under a moving truck (one
+  box from its clearance up), so the chase pays a low pass across a moving
+  car's roof instead. Recorded by the chase agent, the owner's to overturn.
+- lint:shell's title overflow grew on main from 23 to 67 px; not Stage E's.

@@ -322,13 +322,19 @@
         height: 100%; width: 100%; background: var(--amber);
         transform-origin: left center; transform: scaleX(1);
       }
-      /* Banked or bailed. Centre screen for one beat, because it is the one
-         moment worth looking away from the quad for. */
+      /* Banked or bailed, ON THE COMBO LINE, the number it is the verdict
+         on. It used to land in the middle of the screen, "the one moment
+         worth looking away from the quad for", and FREESTYLE-MAPS-PLAN.md
+         section 3.3 is that nothing drawn in flight covers the centre
+         third: the moment is loud enough where the combo was. Grows from
+         its bottom left corner, so it never swells toward the middle. */
       .score-verdict {
-        position: absolute; left: 50%; top: 38%;
-        transform: translate(-50%, -50%);
-        font-size: clamp(30px, 4.6vw, 54px); font-weight: 700;
-        letter-spacing: 0.14em; text-transform: uppercase;
+        position: absolute; left: 22px; bottom: 24vh;
+        display: flex; align-items: flex-start;
+        transform-origin: left bottom;
+        font-size: clamp(26px, 3.4vw, 44px); font-weight: 700;
+        letter-spacing: 0.12em; text-transform: uppercase;
+        white-space: nowrap;
         opacity: 0;
       }
       .score-verdict.is-on { animation: score-verdict 1.15s ease-out forwards; }
@@ -339,16 +345,16 @@
          saturation to mean something. */
       .score-verdict.is-bail { color: #ff7d96; }
       @keyframes score-verdict {
-        0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.82); }
-        14%  { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
-        24%  { transform: translate(-50%, -50%) scale(1); }
+        0%   { opacity: 0; transform: scale(0.82); }
+        14%  { opacity: 1; transform: scale(1.06); }
+        24%  { transform: scale(1); }
         70%  { opacity: 1; }
-        100% { opacity: 0; transform: translate(-50%, -74%) scale(1); }
+        100% { opacity: 0; transform: translateY(-36px); }
       }
       /* Phones fly with the touch sticks up and a much shorter screen, so
          the combo climbs out of their way and the stack keeps two rows. */
       @media (max-height: 560px) {
-        .score-combo { bottom: 34vh; }
+        .score-combo, .score-verdict { bottom: 34vh; }
         .score-names { bottom: calc(34vh + 52px); }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -473,9 +479,12 @@
 
       /* BANKED. A hard ring, not a bloom: one 3 px stroke expanding once.
          Cel shading has no falloff, so neither does this. */
+      /* Round the verdict, on the combo line: 110 px in and 22 px up is
+         the middle of a banked number at its usual size, and at full
+         spread (3.4 times) the ring still ends inside the outer third. */
       .score-ring {
-        position: absolute; left: 50%; top: 38%;
-        width: 90px; height: 90px; margin: -45px 0 0 -45px;
+        position: absolute; left: 110px; bottom: calc(24vh + 22px);
+        width: 90px; height: 90px; margin: 0 0 -45px -45px;
         border: 3px solid var(--mint); border-radius: 50%;
         opacity: 0; pointer-events: none;
         animation: score-ring 620ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
@@ -490,21 +499,24 @@
          losing a chain should feel like a hit, not like a fade. */
       .score-verdict.is-bank { animation: score-verdict-bank 1.15s cubic-bezier(0.1, 1.3, 0.3, 1) forwards; }
       @keyframes score-verdict-bank {
-        0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5) rotate(-5deg); }
-        12%  { opacity: 1; transform: translate(-50%, -50%) scale(1.22) rotate(2deg); }
-        22%  { transform: translate(-50%, -50%) scale(1) rotate(0); }
+        0%   { opacity: 0; transform: scale(0.5) rotate(-5deg); }
+        12%  { opacity: 1; transform: scale(1.22) rotate(2deg); }
+        22%  { transform: scale(1) rotate(0); }
         68%  { opacity: 1; }
-        100% { opacity: 0; transform: translate(-50%, -96%) scale(1); }
+        100% { opacity: 0; transform: translateY(-64px) scale(1); }
       }
+      /* A big bank, with its balloon, holds a beat longer: a balloon is
+         read, not glimpsed. */
+      .score-verdict.is-bank.is-big { animation-duration: 1.7s; }
       .score-verdict.is-bail { animation: score-verdict-bail 1.15s ease-out forwards; }
       @keyframes score-verdict-bail {
-        0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.5) skewX(-14deg); }
-        8%   { opacity: 1; transform: translate(-52%, -50%) scale(1) skewX(0); }
-        13%  { transform: translate(-48%, -50%); }
-        18%  { transform: translate(-51%, -50%); }
-        23%  { transform: translate(-50%, -50%); }
+        0%   { opacity: 0; transform: scale(1.5) skewX(-14deg); }
+        8%   { opacity: 1; transform: translateX(-8px) scale(1) skewX(0); }
+        13%  { transform: translateX(8px); }
+        18%  { transform: translateX(-4px); }
+        23%  { transform: translateX(0); }
         70%  { opacity: 1; }
-        100% { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
+        100% { opacity: 0; transform: scale(0.94); }
       }
 
       /* SPEED LINES down both edges, and ONLY while a chain is worth
@@ -540,6 +552,115 @@
         .score-combo.tier-4 .score-combo-line,
         .score-combo.tier-5 .score-combo-line { animation: none; }
         .score-hud.tier-5 .score-lines { animation: none; }
+      }
+
+      /* ------------------------------------------------------------------
+         THE LETTERING (FREESTYLE-MAPS-PLAN.md section 3.2 item 3). The
+         names, the verdict and the chase's callouts are hand lettered
+         canvases on a freestyle map (src/ui/lettering.js); this is only
+         where they sit and how they land. .is-manga on a HUD's root is the
+         manga layer on. .is-clean is Clean FPV, or a race track, and gives
+         back the plain HUD text these overlays had before it.
+         ------------------------------------------------------------------ */
+      .lettering { position: relative; display: block; flex: 0 0 auto; }
+      .score-hud.is-manga .score-name { align-items: flex-start; gap: 0; }
+      /* THE SOUND EFFECT lands a beat after its word, small, turned and
+         lifted off the word's line, the way an effect is scrawled beside a
+         shout rather than set after it. */
+      .lettering-sfx {
+        position: relative; display: block; flex: 0 0 auto;
+        transform: translateY(-22%) rotate(-7deg);
+        animation: lettering-sfx 380ms cubic-bezier(0.1, 1.5, 0.4, 1) 110ms backwards;
+      }
+      @keyframes lettering-sfx {
+        0%   { opacity: 0; transform: translateY(-22%) scale(0.2) rotate(-28deg); }
+        60%  { opacity: 1; transform: translateY(-22%) scale(1.25) rotate(4deg); }
+        100% { transform: translateY(-22%) rotate(-7deg); }
+      }
+      /* The total and the combo line in the same hand, in CSS rather than on
+         a canvas, because they change whenever the chain does: heavy,
+         sheared, an ink line and a hard drop. On the spans, because the
+         combo line's own transform is its throb. */
+      .score-hud.is-manga .score-value,
+      .score-hud.is-manga .score-combo-points,
+      .score-hud.is-manga .score-combo-mult {
+        display: inline-block; font-weight: 900;
+        transform: skewX(-13deg); transform-origin: left bottom;
+        text-shadow:
+          -2px 0 0 #0b1116, 2px 0 0 #0b1116, 0 -2px 0 #0b1116, 0 2px 0 #0b1116,
+          -2px -2px 0 #0b1116, 2px -2px 0 #0b1116, -2px 2px 0 #0b1116, 2px 2px 0 #0b1116,
+          3px 4px 0 #0b1116;
+      }
+      .score-hud.is-manga .score-value { display: block; }
+      /* CLEAN FPV: the plain HUD text. No ray fans, no rings, no speed lines,
+         no throb, and the names fade in rather than slam. */
+      .score-hud.is-clean .score-burst,
+      .score-hud.is-clean .score-ring,
+      .score-hud.is-clean .score-lines { display: none; }
+      .score-hud.is-clean .score-name { animation: score-name-in 2.2s ease-out forwards; }
+      .score-hud.is-clean .score-combo-line,
+      .score-hud.is-clean .score-tier { animation: none; }
+
+      /* THE SKIM METER: the Tail meter's construction (.chase-meter below)
+         on the score's side, over the combo line a held skim is keeping
+         alive. The sky is the close calls' colour, and the bar is how close
+         the craft is, full at contact and empty at a metre. The names step
+         up out of its way while it is up, by a transform, so the step costs
+         no layout. */
+      .skim-meter {
+        position: absolute; left: 22px; bottom: calc(24vh + 52px);
+        width: clamp(150px, 16vw, 210px);
+      }
+      .skim-meter.is-off { display: none; }
+      .skim-meter-head {
+        display: flex; align-items: baseline; gap: 8px;
+        font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .skim-meter-kind { color: #8fe0ff; font-weight: 700; }
+      .skim-meter-gap { color: var(--cream); letter-spacing: 0.08em; text-transform: none; }
+      .skim-meter-line {
+        display: flex; align-items: baseline; gap: 4px; margin-top: 2px;
+        font-weight: 800; line-height: 1; color: #8fe0ff;
+      }
+      .skim-meter-time { font-size: clamp(26px, 3.2vw, 38px); font-style: italic; }
+      .skim-meter-unit { font-size: clamp(14px, 1.6vw, 18px); }
+      .skim-meter-bar {
+        margin-top: 6px; height: 6px; width: 100%;
+        border-radius: 3px; background: rgba(12, 22, 34, 0.7);
+        box-shadow: inset 0 0 0 1px rgba(157, 179, 200, 0.35), 0 0 0 1px rgba(8, 12, 9, 0.7);
+        overflow: hidden;
+      }
+      .skim-meter-fill {
+        height: 100%; width: 100%; background: #8fe0ff;
+        transform-origin: left center; transform: scaleX(0);
+      }
+      .score-names { transition: transform 160ms ease-out; }
+      .score-hud.is-skim .score-names { transform: translateY(-64px); }
+      /* A phone on its side has no room to lift the names into, so the
+         meter goes under the total and the stack keeps two lines while it
+         is up (scorehud.js, shortScreen). */
+      @media (max-height: 560px) {
+        /* One line, SKIM and the gap beside the seconds, and the bar under
+           both: 38 px between the total and the names, where the full meter
+           would reach down over them. */
+        .skim-meter {
+          top: calc(var(--bar-top) + 104px); bottom: auto;
+          width: clamp(130px, 22vw, 180px);
+          display: grid; grid-template-columns: auto auto;
+          justify-content: start; align-items: baseline; column-gap: 8px;
+        }
+        .skim-meter.is-off { display: none; }
+        .skim-meter-line { grid-column: 1; grid-row: 1; margin-top: 0; }
+        .skim-meter-head { grid-column: 2; grid-row: 1; }
+        .skim-meter-bar { grid-column: 1 / -1; }
+        .skim-meter-time { font-size: 22px; }
+        .score-ring { bottom: calc(34vh + 22px); }
+        .score-hud.is-skim .score-names { transform: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lettering-sfx { animation: none; }
+        .score-names { transition: none; }
       }
 
       /* ------------------------------------------------------------------
@@ -828,6 +949,24 @@
         .chase-call { animation: chase-still 1.8s linear forwards; }
         .chase-call-burst { display: none; }
         .chase-meter.is-grace { animation: none; opacity: 0.55; }
+      }
+      /* The lettered callout: the sound effect on the inside of the word,
+         the word and its line right set on one canvas. */
+      .chase-call-row { display: flex; align-items: flex-start; justify-content: flex-end; }
+      /* CLEAN FPV, for the chase's callouts and the found mark: plain type,
+         no ray fans; the found panel stays, because the mark in it is the
+         news, not the decoration. */
+      .chase-hud.is-clean .chase-call-burst,
+      .stf-found.is-clean .stf-call-burst,
+      .stf-found.is-clean .stf-panel-burst { display: none; }
+      .chase-hud.is-clean .chase-call { animation: chase-still 1.8s linear forwards; }
+      .chase-hud.is-clean .chase-call-word,
+      .stf-found.is-clean .stf-call-word {
+        font-style: normal; font-weight: 700; transform: none;
+        text-shadow:
+          -1px -1px 0 rgba(8, 12, 9, 0.92),  1px -1px 0 rgba(8, 12, 9, 0.92),
+          -1px  1px 0 rgba(8, 12, 9, 0.92),  1px  1px 0 rgba(8, 12, 9, 0.92),
+          0 2px 10px rgba(0, 0, 0, 0.9);
       }
 
       .bar {
@@ -4295,6 +4434,70 @@
         .results-hero-time { font-size: clamp(36px, 12vh, 56px); }
         .results { max-height: min(18vh, 7em); }
         .screen-results .menu-scroll { max-height: min(36vh, 9em); }
+      }
+
+      /* THE MANGA PAGE (src/ui/mangapage.js): a freestyle run's results as a
+         page of panels, down the open side where a race shows its course,
+         from the copy column's edge to the screen's and top to bottom inside
+         the screen's padding. The canvas is drawn at the box's own size, so
+         the page lays itself out for a tall box, a square one or a strip. */
+      /* Under the bug chip and the music dock, which sit in the top right
+         corner under the bar, and over the bar at the foot with its Fly
+         again: the page is under neither. */
+      /* Over the copy column, which is a flex item with a z-index and so
+         paints above anything positioned without one: on a phone its rows
+         run the whole width, under where the page is. */
+      .results-manga {
+        position: absolute; z-index: 2;
+        top: calc(var(--bar-top) + 92px); bottom: calc(var(--bar-bot) + 14px); right: 4vw;
+        left: calc(4vw + min(38em, 46vw) + 3vw);
+        max-width: 820px; margin-left: auto;
+        pointer-events: none;
+      }
+      .results-manga[hidden] { display: none; }
+      .results-manga-page { display: block; box-shadow: 8px 10px 0 rgba(0, 0, 0, 0.55); }
+      .screen-results.is-in .results-manga { animation: results-manga-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+      @keyframes results-manga-in {
+        from { opacity: 0; transform: translateX(24px) rotate(1.2deg); }
+        to { opacity: 1; transform: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .screen-results.is-in .results-manga { animation: none; }
+      }
+      /* A phone held upright: the copy takes the left half and the page the
+         right, under the chips and over the menu, which keeps the width at
+         the foot. */
+      @media (max-width: 860px) {
+        .results-manga {
+          left: auto; width: 44vw; right: 4.5vw;
+          bottom: calc(2vh + min(28vh, 12em) + 34px);
+        }
+        .screen-results.has-manga .results-top { width: 50%; }
+        .screen-results.has-manga .results-hero-time { font-size: clamp(34px, 9vw, 56px); }
+      }
+      /* On its side: the menu is 540 px wide from the left edge, so the page
+         takes what is right of it, under the chips, down to the bar. */
+      @media (max-width: 860px) and (max-height: 520px) {
+        .results-manga {
+          left: calc(4.5vw + min(540px, 82vw) + 12px); width: auto;
+          bottom: calc(var(--bar-bot) + 10px);
+        }
+        .screen-results.has-manga .results-top { width: auto; }
+      }
+      /* SIX ROWS ON A PHONE ON ITS SIDE. A freestyle run's results carry
+         Save share card now, and on a coarse pointer a row is its 44 px
+         target plus 20 px of padding, so five rows already filled 360 of the
+         372 px there and the sixth pushed Back to title off the glass
+         (lint:devices, phone landscape). Counting the padding inside the 44
+         keeps every target at the 44 px the touch rule asks for. */
+      @media (pointer: coarse) and (max-height: 520px) {
+        .screen-results .row { box-sizing: border-box; }
+      }
+      /* A narrower phone on its side leaves the page under 150 px wide, a
+         postage stamp: there it is not drawn, and Save share card is the
+         page at its full size. */
+      @media (max-width: 760px) and (max-height: 520px) {
+        .results-manga { display: none; }
       }
 
       /* Loading. This markup is STATIC, and that is the point: it paints on

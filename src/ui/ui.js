@@ -170,6 +170,9 @@ import {
 } from '../render/lens.js';
 import { ScoreHud } from './scorehud.js';
 import { ChaseHud, chaseCallText } from './chasehud.js';
+import {
+  closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
+} from './mangapage.js';
 import { formatScore } from '../game/score.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
@@ -625,6 +628,49 @@ const BOARD_MAP_OFF_BOARD = 'The board keeps no runs for a published map yet, so
   + ' stays here. Fly the town for a run that can go up.';
 
 /*
+ * The counter's bests as plain results rows, [label, value], for the
+ * results screen when there is no manga page to draw them on (Clean FPV).
+ * The same four things the page's panels are: src/ui/mangapage.js.
+ */
+function counterRows(s) {
+  const out = [];
+  if (s.bestGap && s.bestGap.name) {
+    out.push([`Best gap, ${s.bestGap.name}`, `+${formatScore(s.bestGap.points || 0)}`]);
+  }
+  if (s.longestSkim && s.longestSkim.ms > 0) {
+    out.push([`Longest skim, ${s.longestSkim.name || 'Skim'}`, `${(s.longestSkim.ms / 1000).toFixed(1)} s`]);
+  }
+  if (s.bestTail && s.bestTail.ms > 0) {
+    out.push([s.bestTail.drift ? 'Best tail, the drift car' : 'Best tail', `${(s.bestTail.ms / 1000).toFixed(1)} s`]);
+  }
+  if (s.eggFound) {
+    out.push(['STF mark', 'Found']);
+  }
+  return out;
+}
+
+/* The best counter total this browser has for the map, from the summary,
+ * or null when the summary does not carry one. The shell writes it as
+ * `counterBest` (endFreestyleRun in main.js, from src/game/counterbest.js),
+ * 0 when the map has none yet, which is no best to show. `localBest`, a
+ * number or an object holding one as `counter` (or `total`), is the shape
+ * the harness fixtures carry. */
+function localBestOf(s) {
+  if (s && typeof s.counterBest === 'number') {
+    return s.counterBest > 0 ? s.counterBest : null;
+  }
+  const b = s ? s.localBest : null;
+  if (typeof b === 'number') {
+    return b;
+  }
+  if (b && typeof b === 'object') {
+    const v = b.counter != null ? b.counter : b.total;
+    return typeof v === 'number' ? v : null;
+  }
+  return null;
+}
+
+/*
  * WHO TO NAME ON A TRACK, IN ONE PLACE.
  *
  * A board track's `author` is the account that published it. On a track
@@ -864,6 +910,16 @@ const DEFAULTS = {
   cameraFov: CAMERA_FOV_DEFAULT,
   renderScale: 100,
   fpsCap: 0,
+  /*
+   * CLEAN FPV: the manga layer off (FREESTYLE-MAPS-PLAN.md sections 3.2 and
+   * 3.3, decision 4). Off by default, because the layer is for freestyle
+   * maps and on there unless the pilot turns it off; a race track is clean
+   * whatever this says. Today it takes the lettered callouts, their sound
+   * effects and the manga results page back to plain HUD text; Stage F's
+   * speed lines, screentone and impact frame answer to it when they land.
+   * See syncManga.
+   */
+  cleanFpv: false,
   packVoltage: 4.2,
   /*
    * How heavy the quad is, as a percentage of the weight the airframe is
@@ -3486,6 +3542,12 @@ export class Ui {
     this.stfLayer = el('div', 'stf-found');
     this.stfTimer = 0;
     r.append(this.stfLayer);
+    /* The lettering on or off, before anything is called out: see
+     * syncManga. The harness hooks, for the pictures the counter needs
+     * before the scorer that feeds it exists: see installLetteringHooks. */
+    this.letterHold = false;
+    this.syncManga();
+    this.installLetteringHooks();
 
     /* Centre banner: launch prompt, lap splits, crash notice, and the
      * stick calibration prompts, which have to read over a screen, so the
@@ -4247,6 +4309,29 @@ export class Ui {
     resultsFoot.append(resultsBlock.stage, hintWithKeys(['Esc'], 'Goes back to the title. Back to title is also a row.'));
     resultsCopy.append(resultsTop, resultsFoot);
     results.append(resultsCopy);
+    /*
+     * THE MANGA PAGE (FREESTYLE-MAPS-PLAN.md section 3.2 item 6): a freestyle
+     * run's results as three to five panels, down the open side of the
+     * screen where a race shows its course. One canvas, drawn when the
+     * results are shown and when the window changes size; its accessible
+     * name is the page in words. See showMangaPage and src/ui/mangapage.js.
+     */
+    this.resultsManga = el('div', 'results-manga');
+    this.resultsManga.hidden = true;
+    this.resultsMangaCanvas = el('canvas', 'results-manga-page');
+    this.resultsMangaCanvas.setAttribute('role', 'img');
+    this.resultsManga.append(this.resultsMangaCanvas);
+    results.append(this.resultsManga);
+    this.mangaPanels = [];
+    this.mangaStf = null;
+    this.mangaTimer = 0;
+    window.addEventListener('resize', () => {
+      if (this.screen !== 'results' || !this.mangaPanels.length) {
+        return;
+      }
+      clearTimeout(this.mangaTimer);
+      this.mangaTimer = setTimeout(() => this.paintMangaPage(), 150);
+    });
     this.screens.results = results;
 
     this.nameDialog = el('div', 'name-dialog');
@@ -6493,6 +6578,21 @@ export class Ui {
           (n) => (n === 0 ? 'Uncapped' : `${n} fps`),
           (n) => { s.fpsCap = n; },
         ),
+        /*
+         * THE MANGA LAYER'S ONE SWITCH (FREESTYLE-MAPS-PLAN.md section 3.3:
+         * "a Clean FPV setting turns all of it off in one row"). The note
+         * says what it turns off today and that the rest of the layer will
+         * answer to it, so a pilot who turned it on does not find speed
+         * lines arriving in Stage F that ignore them.
+         */
+        toggle(
+          'Clean FPV',
+          s.cleanFpv
+            ? 'On: freestyle maps show plain HUD text, the way a race track does. Callouts are words and numbers, and the results are a list. Speed lines, screentone and the impact frame will answer to this switch too when they arrive.'
+            : 'Off: on a freestyle map, tricks, gaps and combos are hand lettered like a manga, with a small katakana sound effect beside the big ones, and the results come back as a page of panels. Race tracks are always clean. The rest of the manga layer, speed lines, screentone and the impact frame, will answer to this switch too.',
+          s.cleanFpv,
+          (v) => { s.cleanFpv = v; },
+        ),
         { label: 'Sound', section: true },
         toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
         stepper('Volume', 'Overall level. Zero to ten.', `${s.volume}`, (d) => {
@@ -6817,6 +6917,28 @@ export class Ui {
                     ? 'This run used the harness hooks, so it is not a flown score and the board will not take it.'
                     : `${formatScore(run.total)} from ${run.tricks} tricks. One entry per pilot on the board, and only your best.`))),
             },
+          /*
+           * THE SHARE CARD, the run's manga page beside its score. A row of
+           * its own rather than a part of posting, because most runs cannot
+           * be posted (Your map, free flight) and every run with something
+           * to draw can have a picture. See saveRunCard.
+           */
+          (() => {
+            const drawn = Boolean(run) && mangaPanels(run).length > 0;
+            const saved = this.cardSaved;
+            return {
+              label: saved && saved.name ? 'Share card saved' : 'Save share card',
+              action: 'savecard',
+              disabled: !drawn,
+              note: !drawn
+                ? 'A run with nothing to draw has no card. A trick, a gap, a skim or a tail puts one here.'
+                : (saved && saved.error
+                  ? `The card could not be made: ${saved.error}`
+                  : (saved && saved.name
+                    ? `Saved as ${saved.name}. Choose this row again for another copy.`
+                    : 'The run as a manga page beside its score, 1200 by 630, the size a link preview uses. Saved as a JPEG to post wherever you like.')),
+            };
+          })(),
           {
             label: 'Open Tracks and Statistics',
             action: 'leaderboard',
@@ -10545,6 +10667,7 @@ export class Ui {
      */
     this.syncScoreVisible();
     this.syncChaseVisible();
+    this.syncManga();
     const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
     const seat = this.settings.map === 'custom' ? activeCourseSummary() : null;
     /* A map from the board is flown in the built world, and is not Your map. */
@@ -10659,6 +10782,11 @@ export class Ui {
     const screen = this.screens.results;
     screen.classList.toggle('is-record', Boolean(isRecord));
     screen.classList.toggle('is-empty', !clean.length);
+    /* A race's results have a course to draw, not a manga page: a page
+     * left from a freestyle run would sit over the course plate. */
+    screen.classList.remove('has-manga');
+    this.mangaPanels = [];
+    this.resultsManga.hidden = true;
     screen.classList.remove('is-in');
     void screen.offsetWidth;
     screen.classList.add('is-in');
@@ -11213,11 +11341,42 @@ export class Ui {
   }
 
   setScore(view) {
+    if (this.letterHold) {
+      return;
+    }
     this.scoreHud.update(view);
   }
 
   scoreEvents(list) {
+    if (this.letterHold) {
+      return;
+    }
     this.scoreHud.events(list);
+  }
+
+  /*
+   * THE MANGA LAYER, ON OR OFF (FREESTYLE-MAPS-PLAN.md section 3.2 and 3.3,
+   * decision 4): on a freestyle map unless the pilot chose Clean FPV, and
+   * never on a race track. Called wherever the mode or a setting can have
+   * changed, which is setBest (a map adopted, and every settings commit
+   * through refreshBest), and once at build. Each layer holds its own flag
+   * and ignores a call that changes nothing.
+   *
+   * What answers to it today: the score's names and verdict, the chase's
+   * callouts, the found mark's ray fans, and the results page. Stage F's
+   * speed lines, screentone and impact frame read `this.manga` too.
+   */
+  syncManga() {
+    this.manga = this.osdMode === 'freestyle' && !this.settings.cleanFpv;
+    if (this.scoreHud) {
+      this.scoreHud.setManga(this.manga);
+    }
+    if (this.chaseHud) {
+      this.chaseHud.setManga(this.manga);
+    }
+    if (this.stfLayer) {
+      Ui.klass(this.stfLayer, this.manga ? 'stf-found' : 'stf-found is-clean');
+    }
   }
 
   showScore(on) {
@@ -11269,13 +11428,16 @@ export class Ui {
   }
 
   chaseMeter(view) {
+    if (this.letterHold) {
+      return;
+    }
     if (this.chaseHud) {
       this.chaseHud.meter(this.chaseHud.visible ? view : null);
     }
   }
 
   chaseEvents(list) {
-    if (!list) {
+    if (!list || this.letterHold) {
       return;
     }
     for (const e of list) {
@@ -11370,16 +11532,33 @@ export class Ui {
    * rows are the tricks the pilot actually landed, biggest earner first,
    * which is the one sentence a freestyle scorer can say that a pilot
    * cares about: you flew nine flips and they were worth this much.
+   *
+   * THE COUNTER (Stage C). The headline is the whole counter, `counter`,
+   * when the summary carries one: tricks, gaps, close calls, the chase and
+   * the mark. The board is still posted the trick total, `total`, because
+   * the board cannot be taught geometry from here (FREESTYLE-MAPS-PLAN.md
+   * section 7, "The board"), so the note under the rows says which number
+   * went where rather than letting a pilot think the board has the bigger
+   * one. A local best for the map, when the summary carries one
+   * (`localBest`, a number or an object with `counter`), is said too.
+   *
+   * THE MANGA PAGE. On a freestyle map with the manga layer on, what the
+   * run is remembered by is drawn as a page of panels down the open side
+   * (showMangaPage); with Clean FPV the same things are plain rows under
+   * the tricks.
    */
   showFreestyleResults(summary) {
     this.freestyleRun = summary;
     this.runPosted = null;
+    this.cardSaved = null;
     this.resultsBody.textContent = '';
     this.resultsNote.textContent = '';
     const screen = this.screens.results;
-    const clean = summary.crashes === 0 && summary.tricks > 0;
+    const counter = summary.counter != null ? summary.counter : summary.total;
+    const scored = summary.tricks > 0 || counter > 0;
+    const clean = summary.crashes === 0 && scored;
     screen.classList.toggle('is-record', clean);
-    screen.classList.toggle('is-empty', !summary.tricks);
+    screen.classList.toggle('is-empty', !scored);
     screen.classList.remove('is-in');
     void screen.offsetWidth;
     screen.classList.add('is-in');
@@ -11395,24 +11574,28 @@ export class Ui {
     this.resultsKicker.textContent = summary.timed === false
       ? `${where}, free flight`
       : where;
-    this.resultsHead.textContent = summary.tricks
+    this.resultsHead.textContent = scored
       ? (clean ? 'Clean run' : 'Run complete')
       : 'Run ended';
     this.resultsHeroCap.textContent = 'Score';
-    this.resultsHeroTime.textContent = formatScore(summary.total);
+    this.resultsHeroTime.textContent = formatScore(counter);
     /* A town has no plan drawing, and an empty blueprint plate beside a
      * freestyle score is a picture of nothing. */
     this.resultsPlan.planData = null;
     this.resultsPlanWrap.hidden = true;
-    if (!summary.tricks) {
+    const notes = [];
+    if (!scored) {
       this.resultsHeroMeta.textContent = '';
       this.resultsHeroMeta.className = 'results-hero-meta';
       this.resultsBody.append(el('p', 'results-empty', summary.timed === false
         ? 'Nothing the recogniser could name. A trick is a whole rotation about one axis, or a lap around something: a flip, a roll, a 360 of yaw, a powerloop under a rail. Turning a corner is not a trick and is deliberately worth nothing.'
         : 'Two minutes and nothing the recogniser could name. A trick is a whole rotation about one axis, or a lap around something: a flip, a roll, a 360 of yaw, a powerloop under a rail. Turning a corner is not a trick and is deliberately worth nothing.'));
     } else {
+      const calls = closeCallCount(summary.closeCalls);
       const parts = [
-        `${summary.tricks} tricks, ${summary.unique} of them different`,
+        summary.tricks > 0 ? `${summary.tricks} tricks, ${summary.unique} of them different` : '',
+        summary.gaps > 0 ? `${summary.gaps} gap${summary.gaps === 1 ? '' : 's'}` : '',
+        calls > 0 ? `${calls} close call${calls === 1 ? '' : 's'}` : '',
         summary.bestCombo > 0 ? `best chain ${formatScore(summary.bestCombo)}` : '',
         summary.bonus > 0 ? `variety bonus ${formatScore(summary.bonus)}` : '',
         summary.crashes === 0 ? 'no crashes' : `${summary.crashes} crash${summary.crashes === 1 ? '' : 'es'}`,
@@ -11422,7 +11605,14 @@ export class Ui {
       /* The rows are the run's own tally, biggest earner first, and the bar
        * is that trick's share of the trick score. Same idiom the lap rows
        * use, which is why they can share the stylesheet. */
-      const top = summary.rows.length ? summary.rows[0].points : 0;
+      /* The counter's own bests, first, as plain rows, when there is no
+       * page to draw them on: they are what the run is remembered by, and
+       * under the tricks they sat below the fold of a list that scrolls. */
+      if (!this.manga) {
+        this.appendCounterRows(summary);
+      }
+      const rows = summary.rows || [];
+      const top = rows.length ? rows[0].points : 0;
       /*
        * TEN, and the container scrolls, so this is a choice rather than a
        * fit. A run can name twenty five kinds of trick and the tail of that
@@ -11431,8 +11621,8 @@ export class Ui {
        * answers it. The note below says how many are not shown, so nothing
        * is hidden without saying so.
        */
-      for (const row of summary.rows.slice(0, 10)) {
-        const line = el('div', `result-row${row === summary.rows[0] ? ' fastest' : ''}`);
+      for (const row of rows.slice(0, 10)) {
+        const line = el('div', `result-row${row === rows[0] ? ' fastest' : ''}`);
         const main = el('div', 'result-main');
         main.append(el('span', 'result-label', row.count > 1 ? `${row.name} x${row.count}` : row.name));
         main.append(el('span', 'result-time', formatScore(row.points)));
@@ -11446,14 +11636,289 @@ export class Ui {
         }
         this.resultsBody.append(line);
       }
-      const hidden = summary.rows.length - 10;
+      const hidden = rows.length - 10;
       if (hidden > 0) {
-        this.resultsNote.textContent = hidden === 1
+        notes.push(hidden === 1
           ? 'And one more kind of trick, further down the list.'
-          : `And ${hidden} more kinds of trick, further down the list.`;
+          : `And ${hidden} more kinds of trick, further down the list.`);
       }
     }
+    /* Which number went to the board, and which stays here. */
+    if (summary.counter != null && summary.counter !== summary.total
+      && this.settings.map !== 'built' && summary.timed !== false && summary.tricks > 0) {
+      notes.push(`Post this run sends the board the trick score, ${formatScore(summary.total)}. The board knows tricks and nothing else yet, so the gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here and not there.`);
+    }
+    const best = localBestOf(summary);
+    if (best != null && scored) {
+      notes.push(counter >= best
+        ? `Your best on this map in this browser: this run, ${formatScore(counter)}.`
+        : `Your best on this map in this browser: ${formatScore(best)}.`);
+    }
+    this.resultsNote.textContent = notes.join(' ');
+    this.mangaPanels = this.manga ? mangaPanels(summary) : [];
+    screen.classList.toggle('has-manga', this.mangaPanels.length > 0);
     this.show('results');
+    this.showMangaPage();
+  }
+
+  /*
+   * The manga page, on the results screen: up with its panels, or down when
+   * there are none (a run of nothing, or Clean FPV). Drawn after show(),
+   * because a box on a screen that is not displayed measures nothing. The
+   * found panel wants the painted mark, which is loaded the first time it
+   * is asked for (main.js loads it too, when the mark is found, so this is
+   * usually a module already in hand), and the page is drawn again when it
+   * arrives.
+   */
+  showMangaPage() {
+    const panels = this.mangaPanels;
+    this.resultsManga.hidden = !panels.length;
+    if (!panels.length) {
+      return;
+    }
+    /* A phone too narrow for the page does not draw it (index.html, under
+     * .results-manga), nor one where it would come out smaller than reads,
+     * and then the counter's bests go in the list, as they do for Clean
+     * FPV, rather than nowhere. */
+    this.fitMangaBox();
+    const box = this.resultsManga.getBoundingClientRect();
+    if (this.resultsManga.offsetParent === null || box.width < 140 || box.height < 140) {
+      this.resultsManga.hidden = true;
+      this.appendCounterRows(this.freestyleRun, true);
+      return;
+    }
+    this.resultsMangaCanvas.setAttribute('aria-label', `The run as a manga page. ${pageSentence(panels)}`);
+    this.paintMangaPage();
+    if (!this.mangaStf && panels.some((p) => p.kind === 'stf')) {
+      import('../art/stf.js').then((m) => {
+        this.mangaStf = m.stfCanvas();
+        if (this.screen === 'results' && this.mangaPanels === panels) {
+          this.paintMangaPage();
+        }
+      }).catch(() => { /* The lettering stands in for the mark. */ });
+    }
+  }
+
+  /* The counter's bests as plain rows in the results list, at its head
+   * when `first`, or where the list has got to. */
+  appendCounterRows(summary, first) {
+    const lines = counterRows(summary || {}).map(([label, value]) => {
+      const line = el('div', 'result-row');
+      const main = el('div', 'result-main');
+      main.append(el('span', 'result-label', label), el('span', 'result-time', value));
+      line.append(main);
+      return line;
+    });
+    if (first) {
+      this.resultsBody.prepend(...lines);
+    } else {
+      this.resultsBody.append(...lines);
+    }
+  }
+
+  /*
+   * On a phone held upright the page sits over the menu, whose height is
+   * its rows' (it does not scroll), and a row is 64 px on a finger and 39
+   * on a mouse: so the page's foot is set from where the menu actually
+   * starts rather than from a guess in the stylesheet. A phone on its side
+   * and a desktop put the page beside the menu, and keep the stylesheet's.
+   */
+  fitMangaBox() {
+    const box = this.resultsManga;
+    box.style.bottom = '';
+    if (window.innerWidth > 860 || window.innerHeight <= 520) {
+      return;
+    }
+    const foot = this.screens.results.querySelector('.results-foot');
+    if (foot) {
+      const top = foot.getBoundingClientRect().top;
+      box.style.bottom = `${Math.max(0, Math.round(window.innerHeight - top + 12))}px`;
+    }
+  }
+
+  paintMangaPage() {
+    const c = this.resultsMangaCanvas;
+    if (this.resultsManga.offsetParent === null) {
+      return;
+    }
+    this.fitMangaBox();
+    const box = this.resultsManga.getBoundingClientRect();
+    const w = Math.max(120, Math.round(box.width));
+    const h = Math.max(90, Math.round(box.height));
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    c.style.width = `${w}px`;
+    c.style.height = `${h}px`;
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawMangaPage(ctx, w, h, this.mangaPanels, { stf: this.mangaStf });
+  }
+
+  /*
+   * THE SHARE CARD: the run's page beside its score, at the card code's
+   * 1200 by 630 (src/share/card.js), with that code's wordmark and its
+   * JPEG encoder, which keeps a card under the size WhatsApp drops. The
+   * card code is loaded on the press, not at boot. Null when the run has
+   * nothing to draw. Drawn from the page whether or not Clean FPV is on:
+   * it is a picture the pilot asked for, not something over their flying.
+   */
+  async runCardBytes() {
+    const run = this.freestyleRun;
+    const panels = run ? mangaPanels(run) : [];
+    if (!panels.length) {
+      return null;
+    }
+    const card = await import('../share/card.js');
+    if (!this.mangaStf && panels.some((p) => p.kind === 'stf')) {
+      try {
+        this.mangaStf = (await import('../art/stf.js')).stfCanvas();
+      } catch (e) {
+        /* The lettering stands in for the mark. */
+      }
+    }
+    const world = seatedFreestyleMap(this.settings);
+    const canvas = document.createElement('canvas');
+    drawRunCard(canvas, card.CARD_W, card.CARD_H, {
+      summary: run, panels, mapName: world ? world.name : 'Freestyle', stf: this.mangaStf,
+    }, card.drawWordmark);
+    return card.encodeCard(canvas);
+  }
+
+  /* The card, saved as a file: there is no board entry for a run to hang
+   * it on, so it goes to the pilot, to post wherever they like. */
+  async saveRunCard() {
+    const run = this.freestyleRun;
+    try {
+      const bytes = await this.runCardBytes();
+      if (!bytes) {
+        return;
+      }
+      const world = seatedFreestyleMap(this.settings);
+      const slug = String(world ? world.name : 'freestyle').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const total = run.counter != null ? run.counter : run.total;
+      const name = `webfpv-${slug || 'freestyle'}-${Math.round(total)}.jpg`;
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      this.cardSaved = { name };
+    } catch (e) {
+      this.cardSaved = { error: e && e.message ? e.message : String(e) };
+    }
+    if (this.screen === 'results') {
+      this.renderMenu();
+    }
+  }
+
+  /*
+   * HARNESS HOOKS for the lettering and the results page, window.__lettering,
+   * because the pictures Stage C needs cannot wait for a scorer and a
+   * pilot: every callout kind, a big bank, a bail, the skim meter, the page
+   * with five panels and with two, the card, and each with Clean FPV. Its
+   * fixtures are in src/ui/letterdemo.js, loaded only when asked for.
+   *
+   *   hold(on)      stop the frame loop's own score and chase views from
+   *                 writing over what the harness put up
+   *   feed(list)    scorer events into the score HUD, shown
+   *   view(v)       a scorer view into the score HUD (the skim meter)
+   *   chase(list)   chase events into the chase HUD, shown
+   *   meter(v)      a chase view into the Tail meter
+   *   clean(on)     Clean FPV on or off, as the Settings row sets it
+   *   results(s)    a summary onto the results screen; the panels drawn
+   *   card()        the share card as a JPEG data URL
+   *   centre()      every drawn node of the flight overlays that reaches
+   *                 into the middle third of the window, which must be none
+   *   demo()        the fixtures module
+   *
+   * A run shown this way is marked assisted by its fixtures, so Post this
+   * run refuses it, as it refuses every harness run.
+   */
+  installLetteringHooks() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const ui = this;
+    window.__lettering = {
+      hold(on) {
+        ui.letterHold = on !== false;
+        return ui.letterHold;
+      },
+      feed(list) {
+        ui.scoreHud.setVisible(true);
+        ui.scoreHud.events(list);
+        return ui.scoreHud.names.childElementCount;
+      },
+      view(v) {
+        ui.scoreHud.setVisible(true);
+        ui.scoreHud.update(v);
+        return true;
+      },
+      chase(list) {
+        ui.chaseHud.setVisible(true);
+        ui.chaseHud.events(list);
+        return ui.chaseHud.calls.childElementCount;
+      },
+      meter(v) {
+        ui.chaseHud.setVisible(true);
+        ui.chaseHud.meter(v);
+        return true;
+      },
+      clean(on) {
+        ui.settings.cleanFpv = Boolean(on);
+        ui.syncManga();
+        return ui.manga;
+      },
+      results(summary) {
+        ui.showFreestyleResults(summary);
+        return ui.mangaPanels.map((p) => p.kind);
+      },
+      async card() {
+        const bytes = await ui.runCardBytes();
+        if (!bytes) {
+          return null;
+        }
+        let raw = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+          raw += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        }
+        return `data:image/jpeg;base64,${btoa(raw)}`;
+      },
+      centre() {
+        const W = window.innerWidth;
+        const x0 = W / 3;
+        const x1 = (2 * W) / 3;
+        const hits = [];
+        for (const layer of [ui.scoreHud.root, ui.chaseHud.root, ui.stfLayer]) {
+          for (const n of layer.querySelectorAll('*')) {
+            /* What is drawn: a leaf, or a node with text of its own. A
+             * column's box is not a thing on the screen. */
+            const own = Array.from(n.childNodes).some((c) => c.nodeType === 3 && c.textContent.trim());
+            if (n.childElementCount && !own) {
+              continue;
+            }
+            const r = n.getBoundingClientRect();
+            if (!r.width || !r.height || r.width >= W * 0.9) {
+              continue;
+            }
+            if (r.right > x0 + 0.5 && r.left < x1 - 0.5) {
+              hits.push({
+                cls: String(n.className), left: Math.round(r.left), right: Math.round(r.right),
+              });
+            }
+          }
+        }
+        return hits;
+      },
+      demo() {
+        return import('./letterdemo.js');
+      },
+    };
   }
 
   /*
@@ -13083,6 +13548,12 @@ export class Ui {
     }
     if (action === 'wiki') {
       openNamedWindow(wikiPageUrl(), WIKI_WINDOW);
+      return;
+    }
+    /* The freestyle run's share card, drawn and saved here: nothing of the
+     * shell's is needed for it. See saveRunCard. */
+    if (action === 'savecard') {
+      this.saveRunCard();
       return;
     }
     /* Patreon, which is not one of our sites, so not a named tab. */

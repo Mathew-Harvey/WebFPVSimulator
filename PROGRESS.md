@@ -50702,3 +50702,17 @@ This commit sits on e07dda2. Merged onto f3f81b6 it touches none of the
 lines f3f81b6 changed in ui.js (localBestOf's hunk is separate from the
 new counterBestSentence, which goes above counterRows); scorehud.js and
 letterdemo.js are unchanged on the lead's side since e07dda2.
+
+### Addendum, the lettering's last commit (c552782)
+
+The lettering agent's 511c1d5 (its entry above: a tail called out once,
+repeats on every line, the results leading with the counter and the best)
+arrived after the merge above and was merged as c552782. Rerun on it:
+score:selftest 1 FAILED (Maverick Loop, main's), check:counter all
+passed, lint:boot 9 of 9, lint:memory PASS, lint:preload up to date,
+lint:shell the known 67 px title only, lint:devices PASS, lint:responsive
+PASS. lint:input was last run on f3f81b6 (all 160 passed), not on
+c552782. Flown again end to end with the draw on: a wall skim along
+Hibari Yard's container stack, 0.93 s at 0.35 m, lettered "WALL SKIM 182
+0.9 s" in sky blue down the left while it paid, then banked into the
+total, 182; the posted trick total 0, the counter 182.

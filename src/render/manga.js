@@ -245,8 +245,11 @@ const GRADE_BODY = /* glsl */ `
         }
       }
 
-      /* SPEED LINES, only where a stroke can be. */
-      if ( uMangaLines > 0.0 && mangaEn > ${LINES_REACH_FAST.toFixed(2)} ) {
+      /* SPEED LINES, only where a stroke can be: no stroke starts inside
+       * the reach, so the pixels there skip the arithmetic: about six in
+       * ten of the frame at 25 m/s, three in ten at full speed. */
+      if ( uMangaLines > 0.0
+           && mangaEn > mix( ${LINES_REACH_SLOW.toFixed(2)}, ${LINES_REACH_FAST.toFixed(2)}, uMangaLines ) ) {
         float s = mangaStrokes( mangaQ, uMangaFocus, mangaEn, ${LINE_COUNT.toFixed(1)},
                                 mix( ${LINE_SHARE_SLOW.toFixed(2)}, ${LINE_SHARE_FAST.toFixed(2)}, uMangaLines ),
                                 mix( ${LINES_REACH_SLOW.toFixed(2)}, ${LINES_REACH_FAST.toFixed(2)}, uMangaLines ),

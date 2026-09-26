@@ -620,6 +620,27 @@
       }
       #tb-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: var(--r-panel); }
       #tb-stage canvas[hidden] { display: none; }
+      /* Play, over the 3D preview's corner on a map with cars: the button,
+         and the clock the cars are at. view3d.js makes it. */
+      .tb-play {
+        position: absolute;
+        top: var(--s3);
+        left: var(--s3);
+        display: flex;
+        align-items: center;
+        gap: var(--s3);
+        padding: var(--s2);
+        border-radius: var(--r-panel);
+        background: rgba(8, 13, 20, 0.72);
+      }
+      .tb-play[hidden] { display: none; }
+      .tb-play-btn { min-width: 7.5em; }
+      .tb-play-clock {
+        font-family: var(--mono);
+        font-size: var(--t-small);
+        color: var(--amber);
+        padding-right: var(--s2);
+      }
 
       /*
        * The status bar carried the cursor readout and then 226 characters of

@@ -42,6 +42,16 @@
  * extra frame change that brings them into the document is written down
  * where it happens, in buildAsset().
  *
+ * A MAP'S ROADS AND CARS are drawn by the simulator's own
+ * src/maps/built/roadmesh.js and cars.js, from trafficOf, fetched with the
+ * cel kit, and the cars stand where they start. PLAY drives them: the
+ * first press fetches the physics module (dist/sim.wasm, through the
+ * loader the shell uses), hands it the map's traffic, and from then on
+ * every car is drawn where the module says it is at the clock, the
+ * milliseconds since Play was pressed. Stop puts them back. The frame
+ * change they need and the clock are written down in buildTraffic() and
+ * poseTraffic().
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -68,6 +78,13 @@ import { levelName } from './figures.js';
 import { travelDirection, markerPassDir } from './faces.js';
 import { apertureFrame, clamp, gateSupportFeet, leftOf, normalize, scale } from './geometry.js';
 import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
+/* A map's traffic, as the physics is handed it, and where each car starts:
+ * already on the 2D view's graph, so importing them here loads nothing. The
+ * module that drives them, and the code that draws them, are fetched later
+ * (loadFreestyle, loadPlay). */
+import { trafficOf, uploadTraffic, vehicleStart } from '../maps/built/traffic.js';
+import { docToWorld } from '../maps/built/place.js';
+import { makeVehiclePoses, readVehicles, setVehicleClock } from '../game/plantworld.js';
 
 /*
  * The printed vinyl the world dresses its gates and flags in, so what an
@@ -142,6 +159,48 @@ let FS = null;
 let CEL = null;
 let celError = null;
 let fsLoading = null;
+let TRAFFIC = null;
+let trafficError = null;
+
+/*
+ * PLAY: the physics module, fetched the first time Play is pressed and
+ * never before, so opening the builder, and opening the 3D view, cost what
+ * they always did. tests/lib/simmod.js is the loader the simulator's shell
+ * boots the module with; the bytes are dist/sim.wasm, resolved against this
+ * file the way src/main.js resolves them against its own.
+ */
+const WASM_URL = new URL('../../dist/sim.wasm', import.meta.url).href;
+let SIM = null;
+let simLoading = null;
+
+async function loadPlay() {
+  if (SIM) {
+    return SIM;
+  }
+  if (!simLoading) {
+    simLoading = (async () => {
+      const [{ loadSim }, res] = await Promise.all([
+        import('../../tests/lib/simmod.js'),
+        fetch(WASM_URL),
+      ]);
+      if (!res.ok) {
+        throw new Error(`dist/sim.wasm: ${res.status}`);
+      }
+      SIM = await loadSim(await res.arrayBuffer());
+      return SIM;
+    })().catch((e) => {
+      simLoading = null;
+      throw e;
+    });
+  }
+  return simLoading;
+}
+
+/* The smoke's feed, every this many steps of the clock (cars.js emit). */
+const EMIT_EVERY = 8;
+/* A tab that was hidden for minutes comes back to this much of the clock's
+ * smoke and no more, ms: every puff older is long gone. */
+const EMIT_BACKLOG = 5000;
 
 async function loadFreestyle() {
   if (FS) {
@@ -176,6 +235,21 @@ async function loadFreestyle() {
         };
       } catch (e) {
         celError = e.message ?? String(e);
+      }
+      /* The roads and the moving cars, drawn by the modules the simulator
+       * draws them with, so the preview's road and car are the game's. In
+       * the town's cel materials, so only once those have come, and on
+       * their own, so a failure here leaves every asset drawn. */
+      if (CEL) {
+        try {
+          const [roadmesh, cars] = await Promise.all([
+            import('../maps/built/roadmesh.js'),
+            import('../maps/built/cars.js'),
+          ]);
+          TRAFFIC = { buildRoadMesh: roadmesh.buildRoadMesh, buildCars: cars.buildCars };
+        } catch (e) {
+          trafficError = e.message ?? String(e);
+        }
       }
       FS = { assetOf: catalog.assetOf, partsOf: catalog.partsOf, placedYaw: solids.placedYaw };
       return FS;
@@ -513,6 +587,11 @@ export class View3D {
     this.fsFailed = null;
     this.viewW = 1;
     this.viewH = 1;
+    /* A map's roads and cars, drawn, kept across rebuilds until the traffic
+     * changes (buildTraffic); and Play's state while it runs. */
+    this.traffic = null;
+    this.play = null;
+    this.playUi = null;
     this.bind();
   }
 
@@ -688,6 +767,9 @@ export class View3D {
   async setEnabled(on) {
     this.enabled = on;
     if (!on) {
+      /* Play is a preview of the 3D view's; leaving the view stops it. */
+      this.stopPlay();
+      this.updatePlayUi();
       return true;
     }
     if (!THREE) {
@@ -840,6 +922,14 @@ export class View3D {
       return;
     }
     const id = this.pick(e);
+    const picked = id ? elementById(this.host.doc, id) : null;
+    /* A car is selected and nothing more: it has no height of its own, and
+     * the drag orbits. */
+    if (picked && ELEMENTS[picked.type]?.kind === KIND.VEHICLE) {
+      this.host.setSelection([id]);
+      this.drag = { kind: 'orbit', last: at };
+      return;
+    }
     if (id) {
       if (e.shiftKey) {
         this.host.toggleSelection(id);
@@ -975,8 +1065,12 @@ export class View3D {
       this.buildFreestyle();
       return;
     }
-    /* A race document holds no assets, so any a map left behind go now. */
+    /* A race document holds no assets, so any a map left behind go now,
+     * and no traffic. */
     this.sweepAssets(null);
+    this.stopPlay();
+    this.disposeTraffic();
+    this.updatePlayUi();
     const doc = this.host.doc;
     const g = new THREE.Group();
     this.pickables = [];
@@ -1936,6 +2030,7 @@ export class View3D {
     this.sweepAssets(used);
     this.content = g;
     (fs ? fs.root : this.root).add(g);
+    this.buildTraffic(doc);
   }
 
   buildFreestyleElement(el, used) {
@@ -1948,8 +2043,8 @@ export class View3D {
       return this.buildGap(el, selected);
     }
     if (def.kind === KIND.ROAD || def.kind === KIND.VEHICLE) {
-      /* Drawn by the road tool and Play (Stage E), which are not in yet.
-       * Until they are, nothing, rather than a label sprite with no text. */
+      /* Drawn all together by buildTraffic, the way the simulator draws
+       * them, not one element at a time. */
       return null;
     }
     const asset = FS ? FS.assetOf(el) : null;
@@ -2199,6 +2294,291 @@ export class View3D {
     return holder;
   }
 
+  /* ---------------- roads, cars and Play ---------------- */
+
+  /*
+   * A MAP'S ROADS AND CARS, DRAWN BY THE SIMULATOR'S OWN CODE. trafficOf is
+   * the one function the physics is handed a map's traffic by, and
+   * src/maps/built/roadmesh.js and cars.js draw what it says in the town's
+   * cel look, exactly as the built map does in the air, so the preview's
+   * road is the flown road and its car the flown car.
+   *
+   * THE SECOND FRAME CHANGE IN THE BUILDER. Those two draw in the simulator's
+   * world frame, Three.js metres with the plot's middle at the origin (the
+   * one conversion, src/maps/built/place.js docToWorld: x = docX - W/2, y up,
+   * z = -(docY - D/2)), and this file draws in the document's frame under a
+   * root turned -90 degrees about x. So they hang in a holder at the plot's
+   * middle, (W/2, D/2, 0) in the document, turned +90 degrees about x: the
+   * two turns cancel, and a world point (x, y, z) lands on document (x + W/2,
+   * D/2 - z, y), which is docToWorld undone. Nothing else is converted.
+   *
+   * Kept across rebuilds by what it is drawn from (the roads, the vehicles,
+   * the plot, the time and the ground), so moving a building rebuilds no
+   * car, and freed when that changes. While Play runs, a change is handed to
+   * the module too (uploadPlay) and the clock carries on.
+   */
+  buildTraffic(doc) {
+    if (!this.fs || !TRAFFIC) {
+      this.disposeTraffic();
+      return;
+    }
+    const look = CEL.looks.lookOf(doc);
+    const key = JSON.stringify([
+      doc.field.width, doc.field.depth, look.timeId, look.groundId,
+      doc.elements.filter((e) => ELEMENTS[e.type]?.kind === KIND.ROAD || ELEMENTS[e.type]?.kind === KIND.VEHICLE),
+    ]);
+    if (this.traffic && this.traffic.key === key) {
+      this.registerCars();
+      return;
+    }
+    this.disposeTraffic();
+    const traffic = trafficOf(doc);
+    const holder = new THREE.Group();
+    holder.name = 'traffic';
+    holder.position.set(doc.field.width / 2, doc.field.depth / 2, 0);
+    holder.rotation.x = Math.PI / 2;
+    let roads = null;
+    let cars = null;
+    try {
+      roads = TRAFFIC.buildRoadMesh(THREE, look, traffic, { y: 0 });
+      holder.add(roads.group);
+      cars = TRAFFIC.buildCars(THREE, look, traffic, {});
+      holder.add(cars.group);
+    } catch (e) {
+      /* A road or a car that cannot be drawn must not take the preview
+       * down: the map is drawn without its traffic, and the author told. */
+      console.error('3D preview: the roads and cars could not be drawn', e);
+      roads?.dispose();
+      cars?.dispose();
+      this.host.toast?.(`The 3D preview could not draw the roads and cars (${e.message ?? e}). The map is unaffected.`);
+      this.traffic = { key, traffic, holder: null, roads: null, cars: null, starts: null };
+      return;
+    }
+    this.fs.root.add(holder);
+    this.traffic = { key, traffic, holder, roads, cars, starts: this.startPoses(doc, traffic) };
+    this.registerCars();
+    if (this.play && this.play.running) {
+      if (cars.cars.length) {
+        this.uploadPlay();
+      } else {
+        /* The last car went: nothing left to play. */
+        this.stopPlay();
+      }
+    }
+  }
+
+  /* Every car's meshes, pickable as its element, so a click selects it. */
+  registerCars() {
+    const cars = this.traffic?.cars;
+    if (!cars) {
+      return;
+    }
+    for (const car of cars.cars) {
+      car.root.traverse((o) => {
+        if (o.isMesh) {
+          o.userData.elementId = car.element;
+          this.pickables.push(o);
+        }
+      });
+    }
+  }
+
+  disposeTraffic() {
+    const t = this.traffic;
+    this.traffic = null;
+    if (!t) {
+      return;
+    }
+    t.holder?.removeFromParent();
+    t.roads?.dispose();
+    t.cars?.dispose();
+  }
+
+  /*
+   * Every car where it starts, as the pose objects cars.js places from:
+   * traffic.js vehicleStart, the line and the offset trafficOf hands the
+   * module, taken to the world by place.js docToWorld, standing still. What
+   * cars.js asks of a caller with no module; once Play runs, every pose is
+   * the module's.
+   */
+  startPoses(doc, traffic) {
+    const poses = makeVehiclePoses();
+    const W = doc.field.width;
+    const D = doc.field.depth;
+    const a = { x: 0, y: 0, z: 0 };
+    const b = { x: 0, y: 0, z: 0 };
+    for (const v of traffic.vehicles) {
+      const el = elementById(doc, v.element);
+      const at = el ? vehicleStart(doc, el) : null;
+      if (!at) {
+        continue;
+      }
+      docToWorld(W, D, at.x, at.y, 0, a);
+      docToWorld(W, D, at.x + at.tx, at.y + at.ty, 0, b);
+      const o = poses[v.slot];
+      o.on = true;
+      o.x = a.x;
+      o.y = a.y;
+      o.z = a.z;
+      o.hx = b.x - a.x;
+      o.hz = b.z - a.z;
+      o.speed = 0;
+      o.distance = 0;
+      o.curvature = 0;
+      o.slip = 0;
+    }
+    return poses;
+  }
+
+  /*
+   * Pose the cars for this frame: at their start, or, while Play runs, as
+   * the module has them at the clock. THE CLOCK is the milliseconds since
+   * Play was pressed, in whole steps as the simulator's lap clock is; each
+   * frame the module is set to that step and to the next and read at both
+   * (setVehicleClock, readVehicles), and every car is drawn between the two
+   * at the fraction of a step the frame falls at, the way the simulator
+   * draws the craft between two physics states. Nothing here works out
+   * where a car is. The drift smoke is fed the module's poses every eighth
+   * step the clock passed, as the shell feeds it.
+   */
+  poseTraffic() {
+    const t = this.traffic;
+    if (!t || !t.cars) {
+      return;
+    }
+    const p = this.play;
+    if (!p || !p.running || !SIM) {
+      t.cars.place(t.starts, t.starts, 1, 0);
+      return;
+    }
+    const elapsed = Math.max(0, performance.now() - p.t0);
+    const step = Math.floor(elapsed);
+    const first = Math.max(p.lastEmit + EMIT_EVERY, step - EMIT_BACKLOG);
+    for (let k = Math.ceil(first / EMIT_EVERY) * EMIT_EVERY; k <= step; k += EMIT_EVERY) {
+      setVehicleClock(SIM, k);
+      readVehicles(SIM, p.feed);
+      t.cars.emit(k, p.feed);
+      p.lastEmit = k;
+    }
+    setVehicleClock(SIM, step);
+    readVehicles(SIM, p.prev);
+    setVehicleClock(SIM, step + 1);
+    readVehicles(SIM, p.curr);
+    t.cars.place(p.prev, p.curr, elapsed - step, elapsed);
+    p.clock = elapsed;
+    /* The next frame, for as long as it runs. */
+    this.host.requestDraw();
+  }
+
+  /* Hand the map's traffic to the module: every road and every car, on a
+   * world with nothing else in it. Carries on from the clock it is at. */
+  uploadPlay() {
+    if (!SIM || !this.traffic) {
+      return;
+    }
+    SIM.e.sim_world_clear();
+    SIM.e.sim_world_build();
+    const up = uploadTraffic(SIM, this.traffic.traffic);
+    if (up.problems.length) {
+      this.host.toast?.(`The physics did not take everything: ${up.problems[0].message}.`);
+    }
+    if (this.play) {
+      /* A new set of cars has no smoke to carry on. */
+      this.play.lastEmit = Math.floor(this.play.clock ?? 0);
+    }
+  }
+
+  async togglePlay() {
+    if (this.play && (this.play.running || this.play.loading)) {
+      this.stopPlay();
+      this.updatePlayUi();
+      this.host.requestDraw();
+      return;
+    }
+    this.play = {
+      running: false, loading: true, t0: 0, clock: 0, lastEmit: -EMIT_EVERY,
+      prev: makeVehiclePoses(), curr: makeVehiclePoses(), feed: makeVehiclePoses(),
+    };
+    this.updatePlayUi();
+    try {
+      await loadPlay();
+    } catch (e) {
+      this.play = null;
+      this.updatePlayUi();
+      this.host.toast?.(`Play could not load the physics (${e.message ?? e}). The map is unaffected.`);
+      return;
+    }
+    /* Stopped, or the view put away, while the module came. */
+    if (!this.play || !this.play.loading || !this.enabled) {
+      return;
+    }
+    this.play.loading = false;
+    this.play.running = true;
+    this.uploadPlay();
+    this.play.t0 = performance.now();
+    this.play.lastEmit = -EMIT_EVERY;
+    this.updatePlayUi();
+    this.host.requestDraw();
+  }
+
+  /* Stop: every car back where it starts, the smoke gone. */
+  stopPlay() {
+    if (!this.play) {
+      return;
+    }
+    this.play = null;
+    const t = this.traffic;
+    if (t && t.cars) {
+      t.cars.clearSmoke();
+      t.cars.place(t.starts, t.starts, 1, 0);
+    }
+  }
+
+  /*
+   * THE PLAY BUTTON, over the preview's corner: on a map with a car to
+   * drive, while the 3D view is open. Its clock says how far Play has run,
+   * the clock the cars are at.
+   */
+  updatePlayUi() {
+    const cars = this.traffic?.cars ? this.traffic.cars.cars.length : 0;
+    const show = this.enabled && this.isFreestyle() && cars > 0;
+    if (!show && !this.playUi) {
+      return;
+    }
+    if (!this.playUi) {
+      const box = document.createElement('div');
+      box.className = 'tb-play';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tb-btn tb-primary tb-play-btn';
+      btn.addEventListener('click', () => this.togglePlay());
+      const clock = document.createElement('span');
+      clock.className = 'tb-play-clock';
+      box.append(btn, clock);
+      this.canvas.parentElement.append(box);
+      this.playUi = { box, btn, clock, text: '' };
+    }
+    const ui = this.playUi;
+    ui.box.hidden = !show;
+    if (!show) {
+      return;
+    }
+    const p = this.play;
+    const label = p ? (p.loading ? 'Loading the physics' : 'Stop') : 'Play';
+    const secs = p && p.running ? p.clock / 1000 : 0;
+    const clock = p && p.running
+      ? `${Math.floor(secs / 60)}:${(secs % 60).toFixed(1).padStart(4, '0')}`
+      : `${cars} car${cars === 1 ? '' : 's'}, where they start`;
+    const text = `${label}|${clock}`;
+    if (text !== ui.text) {
+      ui.text = text;
+      ui.btn.textContent = label;
+      ui.btn.disabled = Boolean(p && p.loading);
+      ui.btn.title = p ? 'Stop the cars and put them back where they start' : 'Drive the cars round their roads, as the simulator will';
+      ui.clock.textContent = clock;
+    }
+  }
+
   /*
    * The freestyle frame. The sky and the hills follow the orbit out, and so
    * do the fog and the distance the ink fades over, because the town sets
@@ -2275,7 +2655,9 @@ export class View3D {
     }
     this.applyCamera();
     if (freestyle && this.fs) {
+      this.poseTraffic();
       this.renderFreestyle();
+      this.updatePlayUi();
       return;
     }
     this.seatCamera(0.1);
@@ -2284,6 +2666,10 @@ export class View3D {
   }
 
   dispose() {
+    this.stopPlay();
+    this.disposeTraffic();
+    this.playUi?.box.remove();
+    this.playUi = null;
     this.disposeContent();
     this.sweepAssets(null);
     if (this.fs) {

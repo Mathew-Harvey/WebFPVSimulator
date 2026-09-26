@@ -49535,10 +49535,10 @@ window.__vehicles.
     npm run check:world-engines  20 golden and 12 vehicle runs equal to the
                                  bit in Node and Chromium, Hibari Yard's
                                  new loop among them
-    npm run lint:boot            9 of 9 clean
+    npm run lint:boot            9 of 9 clean (on 80808d3)
     npm run lint:memory          PASS; built 9 modules, 61 -> 232 -> 61
                                  geometries, 5 -> 42 -> 5 textures
-    npm run lint:quality         56 of 56 clean
+    npm run lint:quality         56 of 56 clean (on 80808d3)
     npm run lint:preload         up to date after node scripts/gen-preload.js
                                  (boot 108, city 73, built 32)
     npm run lint:shell           FAIL, 1 problem, the known "title: overflow
@@ -49651,7 +49651,7 @@ forced).
                                  run, Hibari Yard's traffic among them (on
                                  04fbeac)
     npm run check:path           12 passed, 0 failed
-    npm run lint:boot            9 of 9 clean
+    npm run lint:boot            9 of 9 clean (on 80808d3)
     npm run lint:memory          PASS
     npm run lint:preload         up to date
     npm run support:selftest     17 of 17 (on bd2bb69)
@@ -50178,7 +50178,7 @@ window.__counter() after each line.
     npm run check:chase          all passed
     npm run check:roads          all passed (3.1 s)
     npm run check:props          all passed
-    npm run lint:boot            9 of 9 clean
+    npm run lint:boot            9 of 9 clean (on 80808d3)
     npm run lint:memory          PASS, every world lazy and freed; boot 61
                                  geometries, 5 textures, 127 requests (the
                                  three new modules)
@@ -50558,7 +50558,7 @@ above). No physics, module ABI or build change.
     npm run check:props          all passed
     npm run check:clip           876 passed, 0 failed
     npm run check:world          all passed
-    npm run lint:boot            9 of 9 clean
+    npm run lint:boot            9 of 9 clean (on 80808d3)
     npm run lint:memory          PASS
     npm run lint:preload         up to date
     npm run lint:shell           FAIL, the known "title: overflow grew from
@@ -51020,21 +51020,23 @@ commits after it touch only this file):
                                  untouched (on 80808d3 and on 6cc2972)
     npm run check:world-engines  Node and Chromium equal to the bit on all
                                  32 runs, Hibari Yard's traffic with the r32
-                                 among them (on the smoke commit)
+                                 among them (on 16470b3)
     npm run check:chase          all passed (on 80808d3)
     npm run check:counter        all passed (on 80808d3)
-    npm run lint:boot            9 of 9 clean
+    npm run lint:boot            9 of 9 clean (on 80808d3)
     npm run lint:memory          PASS; built 9 modules, 61 -> 223 -> 61
                                  geometries, 5 -> 39 -> 5 textures; city 60
                                  modules, 61 -> 344 -> 62, 5 -> 42 -> 6
-    npm run lint:quality         56 of 56 clean
+    npm run lint:quality         56 of 56 clean (on 80808d3)
     npm run lint:preload         up to date after node scripts/gen-preload.js
                                  (boot 113, city 74, built 33; 216 served)
     npm run lint:shell           FAIL, 1 problem, the known "title: overflow
-                                 grew from 0 to 67 px"
+                                 grew from 0 to 67 px" (on 16470b3)
     the town's solids            19,515 boxes, hash a118277a on High and on
-                                 Low, the same as 716562b; Hibari Yard's
-                                 552 boxes, da1fb02b, the same
+                                 Low, the same as 716562b (dumped on
+                                 16b1655 with the fit fed the vendored
+                                 drawing, which later commits do not touch);
+                                 Hibari Yard's 552 boxes, da1fb02b, the same
     dash scan, new and changed   none
     npm run verify               not run: no physics, plant, ABI or build
                                  change, and dist/sim.wasm and src/native

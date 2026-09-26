@@ -343,6 +343,7 @@ export class Race {
     this.lap = 0;
     this.lapStartMs = null; /* sim clock */
     this.lastLapMs = null;
+    this.lastLapRecord = false; /* whether lastLapMs set the record */
     this.prevSimMs = null;
     this.flash = null; /* { text, untilMs } on the wall clock */
     /*
@@ -545,7 +546,10 @@ export class Race {
         this.laps.push(this.lastLapMs);
         this.log.push({ n: this.lapNumber(), ms: this.lastLapMs });
         let msgText = `Lap ${this.log.length}   ${fmt(this.lastLapMs)}`;
-        if (this.bestMs == null || this.lastLapMs < this.bestMs) {
+        /* Kept for the shell's spoken call (src/render/voice.js), so the
+         * voice reads the flash's decision rather than making its own. */
+        this.lastLapRecord = this.bestMs == null || this.lastLapMs < this.bestMs;
+        if (this.lastLapRecord) {
           this.bestMs = this.lastLapMs;
           msgText += '\nNew track record';
           /* Off the flight frame. This runs from the render loop, and a

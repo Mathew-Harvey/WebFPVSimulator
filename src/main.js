@@ -54,6 +54,7 @@ import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE } from './render/frame.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
+import { LapVoice, lapCall } from './render/voice.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { mountTouchSticks, touchWanted } from './input/touchsticks.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
@@ -929,6 +930,9 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
   const audio = new MotorAudio();
+  /* The lap time said out loud. Beside the audio because it answers to the
+   * same Sound switch and Volume, but not in its graph: see voice.js. */
+  const lapVoice = new LapVoice();
   audio.music.onChange = (st) => {
     ui.setMusicNow(st);
   };
@@ -3997,6 +4001,8 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     resetCraft(null);
     race.reset();
+    /* A new run starts quiet: last run's final lap is not called over it. */
+    lapVoice.stop();
     /* A new run scores from nothing, and the detector's clock goes back to
      * zero with the sim clock above so the two agree about when a trick
      * happened. */
@@ -5910,6 +5916,9 @@ export async function boot({ loading, bootStart, mapId }) {
 
   input.onKey = (code, repeat) => {
     wakeAudio();
+    /* Here and on pointerdown, never inside wakeAudio, which a link's
+     * timer also calls: the voice is opened by a gesture or not at all. */
+    lapVoice.prime();
     if (ui.handleKey(code, repeat)) {
       return;
     }
@@ -5970,7 +5979,10 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
   };
-  window.addEventListener('pointerdown', wakeAudio);
+  window.addEventListener('pointerdown', () => {
+    wakeAudio();
+    lapVoice.prime();
+  });
 
   /*
    * Swallow a dropped file, and say why nothing happened.
@@ -7320,6 +7332,16 @@ export async function boot({ loading, bootStart, mapId }) {
             }
           }
           ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
+          /* A lap counted this frame is called out loud, in every run and
+           * on the last lap of one too, which the results screen covers but
+           * the ear still hears. Read off the entry the flash was written
+           * from, so the voice and the screen say the same lap. */
+          if (race.laps.length > lapsBefore && ui.settings.sound) {
+            lapVoice.say(
+              lapCall(race.log.length, race.lastLapMs, race.lastLapRecord),
+              ui.settings.volume / 10,
+            );
+          }
         }
         if (!race.freestyle && runComplete(race.lap, runLaps)) {
           mode = 'results';

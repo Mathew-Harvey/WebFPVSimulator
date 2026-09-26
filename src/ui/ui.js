@@ -6635,8 +6635,8 @@ export class Ui {
           (v) => { s.cleanFpv = v; },
         ),
         { label: 'Sound', section: true },
-        toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
-        stepper('Volume', 'Overall level. Zero to ten.', `${s.volume}`, (d) => {
+        toggle('Sound', 'All sound: motors, wind, music, cues and every lap time called out loud.', s.sound, (v) => { s.sound = v; }),
+        stepper('Volume', 'Overall level, the lap call included. Zero to ten.', `${s.volume}`, (d) => {
           s.volume = Math.max(0, Math.min(10, s.volume + d));
         }),
         stepper('Motors', 'The blade pass tone. You fly on its pitch, so keep some of it.', `${s.motorLevel}`, (d) => {

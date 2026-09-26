@@ -644,6 +644,48 @@ const R32_SHAPE = {
   wheel: 'multi', bumpers: 'body',
 };
 
+/*
+ * THE E82, a new kind: the compact rear drive coupe of the late 2000s in
+ * its six cylinder turbo form. The real car's sizes: 4.36 m long, 1.75 m
+ * wide, 1.41 m high, a 2.66 m wheelbase with the front axle well forward
+ * (0.72 m of overhang) and 0.98 m behind, on 18 inch wheels of 0.315 m
+ * radius. src/props/street.js CAR_KINDS carries the same numbers, with its
+ * glasshouse's width at the roof and the step down to its bonnet.
+ *
+ * What says what it is, with no roundel and no name on it: a long bonnet
+ * with the glasshouse set back over the rear axle, the glasshouse tall and
+ * compact with the rear side window kinked forward at the C pillar (the
+ * kink the maker has used since the sixties, drawn here as a shape); a
+ * shoulder line rising to the tail and a deep sill; twin round lamps with
+ * bright rings under a straight brow; the split twin grille; L shaped tail
+ * lamps wrapping onto the boot lid and round the corner; twin tips on one
+ * side; double spoke wheels; bumpers with big intakes.
+ */
+const E82 = {
+  L: 4.36, W: 1.75, R: 0.315, axle: [1.46, -1.20],
+  sill: 0.33, waist: 0.92, roof: 1.41,
+  cab: [-1.27, 0.63], rakeF: 0.50, rakeR: 0.50,
+  seams: [-0.55], handles: [-0.40],
+  cw: 1.32,
+  bonnet: { x: 0.63, y: 0.83 },
+  tw: 0.225,
+};
+const E82_SHAPE = {
+  nose: { edge: 0.80, face: 0.01, out: 0.05, bumper: 0.60, dam: 0.22, lean: 0.06, tuck: 0.09 },
+  tail: { edge: 0.96, face: 0.01, out: 0.045, bumper: 0.62, dam: 0.30, lean: 0.06, tuck: 0.08 },
+  arch: { gap: 0.035, lift: 0.02, lip: 0.03 },
+  cham: { e: [0.035, 0.04], n: [0.10, 0.12] },
+  cabin: { shoulder: 0.03, tuck: 0.18, roof: 0.05 },
+  glass: { belt: 0.03, frame: 0.045, pillars: 'dark', kink: { x: -1.04, top: -0.5, foot: 0.13, at: 0.13 } },
+  front: { lamps: 'twin', lampY: [0.64, 0.782], lampW: 0.47, grille: 'kidney', intake: [0.29, 0.45, 0.62], sideIntakes: true, plateY: 0.52 },
+  rear: { lamps: 'L', lampY: [0.76, 0.915], lampW: 0.40, lip: true, diffuser: true },
+  wheel: 'double', bumpers: 'body', exhaust: 2, sillH: 0.1,
+  /* The side's two lines, each [x0, y0, x1, y1]: the shoulder rising from
+   * the front arch to the tail lamp, and the lower one rising from behind
+   * the front wheel into the rear arch. */
+  creases: [[1.02, 0.80, -1.90, 0.87], [0.95, 0.54, -0.72, 0.60, 'concave']],
+};
+
 /* The kei truck: makeKeiTruck's own sizes, which its colliders are. */
 const KEITRUCK = {
   L: 3.32, W: 1.46, R: 0.29, axle: [0.94, -1.06],
@@ -655,6 +697,7 @@ const KEITRUCK = {
 export const MODEL = Object.freeze(Object.fromEntries([
   ...Object.keys(SHAPE).map((k) => [k, Object.freeze({ kind: k, ...TOWN_SPEC[k], ...SHAPE[k] })]),
   ['r32', Object.freeze({ kind: 'r32', ...R32, ...R32_SHAPE })],
+  ['e82', Object.freeze({ kind: 'e82', ...E82, ...E82_SHAPE })],
   ['keitruck', Object.freeze({ kind: 'keitruck', ...KEITRUCK, wheel: 'steel' })],
 ]));
 
@@ -874,6 +917,60 @@ function hexa(M, role, f, k, back = false) {
   }
 }
 
+/* A point on the nose (sign 1) or the tail (-1): at height y, across at
+ * z, `lift` off the face. */
+function endPoint(chain, sign, y, z, lift) {
+  const f = faceOf(chain, y, sign);
+  return [f.x + f.nx * lift, y + f.ny * lift, z];
+}
+
+/* A plane polygon of [z, y] drawn on one face of the nose or the tail. */
+function onEndPoly(M, role, chain, sign, poly, lift) {
+  const q = area2(poly) >= 0 ? poly : poly.slice().reverse();
+  const f = faceOf(chain, q[0][1], sign);
+  M.face(role, q.map(([z, y]) => endPoint(chain, sign, y, z, lift)), {
+    tris: q.length > 4 ? triangulate(q) : null, toward: [sign * Math.abs(f.nx), f.ny, 0],
+  });
+}
+
+/* A round lamp's ring (r0 to r1) or disc (r0 0) on the nose or the tail. */
+function endRing(M, role, chain, sign, yc, zc, r0, r1, lift, N = 14) {
+  const f = faceOf(chain, yc, sign);
+  const toward = [sign * Math.abs(f.nx), f.ny, 0];
+  if (r0 <= 0) {
+    const pts = [];
+    for (let k = 0; k < N; k += 1) {
+      const t = (k / N) * TAU;
+      pts.push(endPoint(chain, sign, yc + r1 * Math.sin(t), zc + r1 * Math.cos(t), lift));
+    }
+    M.face(role, pts, { toward });
+    return;
+  }
+  for (let k = 0; k < N; k += 1) {
+    const t0 = (k / N) * TAU;
+    const t1 = ((k + 1) / N) * TAU;
+    M.face(role, [
+      endPoint(chain, sign, yc + r0 * Math.sin(t0), zc + r0 * Math.cos(t0), lift),
+      endPoint(chain, sign, yc + r1 * Math.sin(t0), zc + r1 * Math.cos(t0), lift),
+      endPoint(chain, sign, yc + r1 * Math.sin(t1), zc + r1 * Math.cos(t1), lift),
+      endPoint(chain, sign, yc + r0 * Math.sin(t1), zc + r0 * Math.cos(t1), lift),
+    ], { toward });
+  }
+}
+
+/* A rounded rectangle [z, y], corners of radius r in three steps. */
+function roundRect(z0, y0, z1, y1, r) {
+  const out = [];
+  const corners = [[z1 - r, y0 + r, -Math.PI / 2], [z1 - r, y1 - r, 0], [z0 + r, y1 - r, Math.PI / 2], [z0 + r, y0 + r, Math.PI]];
+  for (const [cz, cy, a0] of corners) {
+    for (let k = 0; k <= 2; k += 1) {
+      const a = a0 + (k * Math.PI) / 4;
+      out.push([cz + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+  }
+  return out;
+}
+
 /* A housing standing `depth` proud of the nose or the tail. */
 function blockOnEnd(M, role, chain, sign, y0, y1, z0, z1, depth, raise = 0) {
   const f = endQuad(chain, sign, y0, y1, z0, z1, depth, raise);
@@ -964,7 +1061,7 @@ function wheel(M, s, detail, rimRole) {
   const h = tyreWidth(s) / 2;
   const sh = Math.min(0.04, R * 0.13);
   const style = s.wheel;
-  const rimR = R * (style === 'multi' ? 0.68 : (style === 'truck' || style === 'bus' ? 0.6 : 0.63));
+  const rimR = R * ({ multi: 0.68, double: 0.72, truck: 0.6, bus: 0.6 }[style] ?? 0.63);
   const lip = style === 'multi' ? 0.022 : 0.013;
   /* The tyre: tread, shoulders, sidewalls. */
   lathe(M, 'dark', R, -(h - sh), R, h - sh, N, 1, 0);
@@ -984,7 +1081,7 @@ function wheel(M, s, detail, rimRole) {
     lathe(M, 'briteDark', fr, h + 0.004, fr, faceZ, N, -1, 0);
   }
   const faceRole = {
-    cap: 'brite', steel: 'briteDark', alloy5: rimRole, alloy6: rimRole, multi: rimRole, truck: 'brite', bus: 'brite',
+    cap: 'brite', steel: 'briteDark', alloy5: rimRole, alloy6: rimRole, multi: rimRole, double: rimRole, truck: 'brite', bus: 'brite',
   }[style] ?? rimRole;
   disc(M, faceRole, fr, faceZ, N, 1);
   const z = faceZ + 0.003;
@@ -995,6 +1092,23 @@ function wheel(M, s, detail, rimRole) {
     spokeWindows(M, 6, hub + 0.02, fr - 0.014, 0.045, z, 0.1);
   } else if (style === 'multi') {
     spokeWindows(M, 10, hub + 0.03, fr - 0.01, 0.024, z, 0.15);
+  } else if (style === 'double') {
+    /* Five pairs of spokes: five big windows between the pairs, and a
+     * slot down the middle of each pair. */
+    spokeWindows(M, 5, hub + 0.025, fr - 0.012, 0.085, z, 0.2);
+    for (let k = 0; k < 5; k += 1) {
+      const a = 0.2 + (k / 5) * TAU;
+      const r0 = hub + 0.045;
+      const r1 = fr - 0.02;
+      const c = Math.cos(a);
+      const sn = Math.sin(a);
+      const w0 = 0.004;
+      const w1 = 0.011;
+      M.face('dark', [
+        [r0 * c + w0 * sn, r0 * sn - w0 * c, z], [r1 * c + w1 * sn, r1 * sn - w1 * c, z],
+        [r1 * c - w1 * sn, r1 * sn + w1 * c, z], [r0 * c - w0 * sn, r0 * sn + w0 * c, z],
+      ], { toward: [0, 0, 1] });
+    }
   } else if (style === 'cap') {
     /* A plastic trim: short dark slots round its rim. */
     spokeWindows(M, 8, fr * 0.66, fr - 0.012, fr * 0.36, z, 0.2);
@@ -1128,6 +1242,20 @@ function sideGlass(M, s, cap, hw) {
     dlo = clip(dlo, 1, 0, -s.side[0]);
     dlo = clip(dlo, -1, 0, s.side[1]);
   }
+  if (g.kink) {
+    /* The rear side window's kink: its back edge comes down the C pillar
+     * running rearward, and a little above the belt turns sharply forward
+     * to meet it, so the pane's rearmost point is a corner at the kink.
+     * Two half planes, x at least each of the two lines through it. */
+    const yb = s.waist + g.belt;
+    const yk = yb + (g.kink.at ?? 0.1);
+    const yt = s.roof - g.frame;
+    const kx = g.kink.x;
+    const m = g.kink.foot / (yk - yb);
+    dlo = clip(dlo, 1, m, -(kx + m * yk));
+    const sl = (g.kink.top - kx) / (yt - yk);
+    dlo = clip(dlo, 1, -sl, -(kx - sl * yk));
+  }
   if (dlo.length < 3) {
     return;
   }
@@ -1190,7 +1318,26 @@ function frontEnd(M, s, ch, zf, lamps) {
   for (const side of [1, -1]) {
     const z0 = side > 0 ? inner : -outer;
     const z1 = side > 0 ? outer : -inner;
-    if (f.lamps === 'bumper') {
+    if (f.lamps === 'twin') {
+      /* Twin round lamps with bright rings in a housing whose top edge is
+       * a straight brow, falling a little toward the grille, and the
+       * brow itself in paint across the rings' tops. */
+      const zo = side * outer;
+      const zi = side * inner;
+      const housing = [[zi, ly0 + 0.035], [zo - side * 0.05, ly0 - 0.012], [zo, ly0 + 0.02], [zo, ly1 + 0.004], [zi, ly1 - 0.02]];
+      onEndPoly(M, 'dark', ch.front, 1, housing, 0.012);
+      const yc = (ly0 + ly1) / 2 - 0.006;
+      for (const [dz, r] of [[0.1, 0.064], [0.25, 0.056]]) {
+        const zc = side * (outer - dz);
+        endRing(M, 'lampF', ch.front, 1, yc, zc, r * 0.7, r, 0.018);
+        endRing(M, 'clear', ch.front, 1, yc, zc, 0, r * 0.7, 0.016, 10);
+        endRing(M, 'lampF', ch.front, 1, yc, zc, 0, r * 0.22, 0.019, 8);
+      }
+      /* The indicator along the housing's inner foot. */
+      onEndPoly(M, 'amber', ch.front, 1, [[zi + side * 0.02, ly0 + 0.03], [zi + side * 0.13, ly0 + 0.02], [zi + side * 0.13, ly0 + 0.042], [zi + side * 0.02, ly0 + 0.05]], 0.02);
+      /* The brow. */
+      onEndPoly(M, 'body', ch.front, 1, [[zi, ly1 - 0.03], [zo, ly1 - 0.016], [zo, ly1 + 0.004], [zi, ly1 - 0.01]], 0.022);
+    } else if (f.lamps === 'bumper') {
       /* The lorry's: square lamps set in the steel bumper's corners. */
       blockOnEnd(M, 'dark', ch.front, 1, ly0 - 0.015, ly1 + 0.015, z0 - 0.015, z1 + 0.015, 0.02);
       onEnd(M, 'lampF', ch.front, 1, ly0, ly1, side > 0 ? z0 + 0.08 : z0, side > 0 ? z1 : z1 - 0.08, 0.024);
@@ -1220,7 +1367,23 @@ function frontEnd(M, s, ch, zf, lamps) {
   }
   /* The grille, between the lamps. */
   const gz = inner - 0.03;
-  if (f.grille === 'slim' || f.grille === 'narrow') {
+  if (f.grille === 'kidney') {
+    /* Two tall rounded openings side by side: a bright surround, the dark
+     * inside, upright slats. */
+    for (const side of [1, -1]) {
+      const za = side * 0.016;
+      const zb = side * 0.172;
+      const y0 = ly0 - 0.02;
+      const y1 = ly1 - 0.004;
+      const outline = roundRect(Math.min(za, zb), y0, Math.max(za, zb), y1, 0.035);
+      onEndPoly(M, 'brite', ch.front, 1, outline, 0.012);
+      onEndPoly(M, 'dark', ch.front, 1, inset(outline, outline.map(() => 0.012)), 0.016);
+      for (let k = 1; k < 5; k += 1) {
+        const z = za + (zb - za) * (k / 5);
+        onEnd(M, 'briteDark', ch.front, 1, y0 + 0.02, y1 - 0.02, z - 0.005, z + 0.005, 0.019);
+      }
+    }
+  } else if (f.grille === 'slim' || f.grille === 'narrow') {
     const gy0 = f.grille === 'narrow' ? ly0 + 0.005 : ly0 + 0.02;
     const gy1 = f.grille === 'narrow' ? ly1 - 0.012 : ly1 - 0.02;
     blockOnEnd(M, 'dark', ch.front, 1, gy0, gy1, -gz, gz, 0.012);
@@ -1247,7 +1410,18 @@ function frontEnd(M, s, ch, zf, lamps) {
     const [iy0, iy1, iw] = f.intake;
     blockOnEnd(M, 'dark', ch.front, 1, iy0, iy1, -iw / 2, iw / 2, 0.006);
   }
-  const py = f.intake ? (f.intake[0] + f.intake[1]) / 2 : (n.dam + n.bumper) / 2;
+  if (f.sideIntakes) {
+    /* Bumpers with bigger intakes: a tall opening at each corner, a round
+     * fog lamp in it, and a painted bar across the middle one. */
+    for (const side of [1, -1]) {
+      const z = side * (zf - 0.11);
+      blockOnEnd(M, 'dark', ch.front, 1, n.dam + 0.07, n.dam + 0.25, z - 0.08, z + 0.08, 0.006);
+      endRing(M, 'clear', ch.front, 1, n.dam + 0.2, z, 0, 0.032, 0.012, 10);
+    }
+    const [iy0, iy1, iw] = f.intake;
+    onEnd(M, 'body', ch.front, 1, (iy0 + iy1) / 2 - 0.012, (iy0 + iy1) / 2 + 0.012, -iw / 2 + 0.03, iw / 2 - 0.03, 0.012);
+  }
+  const py = f.plateY ?? (f.intake ? (f.intake[0] + f.intake[1]) / 2 : (n.dam + n.bumper) / 2);
   plate(M, ch.front, 1, py);
   if (s.bumpers === 'dark' || s.bumpers === 'steel') {
     const role = s.bumpers === 'steel' ? 'brite' : 'dark';
@@ -1290,6 +1464,40 @@ function rearEnd(M, s, ch, zr, lamps) {
   }
   const [ly0, ly1] = r.lampY;
   const outer = zr - 0.015;
+  if (r.lamps === 'L') {
+    /* L shaped lamps: a leg down the corner and an arm along the boot
+     * lid's edge, in dark housings, the leg wrapping round the corner onto
+     * the flank. The arm carries the reversing lamp at its inner end and
+     * the leg the indicator at its foot. */
+    const leg = 0.13;
+    const arm = ly1 - 0.075;
+    const hw = (s.door ?? s.W) / 2;
+    const [cn, dn] = s.cham.n;
+    for (const side of [1, -1]) {
+      const zo = side * outer;
+      const zl = side * (outer - leg);
+      const za = side * (outer - r.lampW);
+      const shape = [[zo, ly0], [zo, ly1], [za, ly1], [za, arm], [zl, arm], [zl, ly0]];
+      onEndPoly(M, 'dark', ch.rear, -1, inset(area2(shape) >= 0 ? shape : shape.slice().reverse(), shape.map(() => -0.012)), 0.012);
+      onEndPoly(M, 'lampR', ch.rear, -1, [[zo, ly0 + 0.03], [zo, ly1], [zl, ly1], [zl, ly0 + 0.03]], 0.018);
+      onEndPoly(M, 'lampR', ch.rear, -1, [[zl, arm + 0.02], [zl, ly1], [za, ly1], [za, arm + 0.02]], 0.018);
+      onEndPoly(M, 'clear', ch.rear, -1, [[za + side * 0.07, arm + 0.02], [za + side * 0.07, arm + 0.045], [za + side * 0.005, arm + 0.045], [za + side * 0.005, arm + 0.02]], 0.021);
+      onEndPoly(M, 'amber', ch.rear, -1, [[zo, ly0], [zo, ly0 + 0.026], [zl, ly0 + 0.026], [zl, ly0]], 0.018);
+      /* The light guide: a brighter line along the L. */
+      onEndPoly(M, 'dark', ch.rear, -1, [[zo - side * 0.02, ly1 - 0.028], [zo - side * 0.02, ly1 - 0.018], [za + side * 0.1, ly1 - 0.018], [za + side * 0.1, ly1 - 0.028]], 0.02);
+      /* Round the corner: across the plan chamfer and onto the flank. */
+      for (const [y0, y1] of [[ly0 + 0.03, ly1]]) {
+        const a0 = endPoint(ch.rear, -1, y0, side * (hw - dn), 0.004);
+        const a1 = endPoint(ch.rear, -1, y1, side * (hw - dn), 0.004);
+        const b0 = [a0[0] + cn, y0, side * (hw + 0.004)];
+        const b1 = [a1[0] + cn, y1, side * (hw + 0.004)];
+        M.face('lampR', [a0, b0, b1, a1], { toward: [-1, 0, side] });
+        M.face('lampR', [b0, [b0[0] + 0.16, y0 + 0.012, b0[2]], [b1[0] + 0.14, y1, b1[2]], b1], { toward: [0, 0, side] });
+      }
+      lamps.rear.push([chainX(ch.rear, (ly0 + ly1) / 2) - 0.03, (ly0 + ly1) / 2, side * (outer - leg / 2)]);
+    }
+    return;
+  }
   if (r.lamps === 'quad') {
     /* The four round lamps, in a dark panel the width of the tail. */
     blockOnEnd(M, 'dark', ch.rear, -1, ly0 - 0.035, ly1 + 0.035, -outer, outer, 0.012);
@@ -1465,9 +1673,36 @@ export const R32_LIVERIES = [
   { name: 'mustard', body: 0xd9b45f, rim: 0x55535e },
 ];
 
-export function r32Livery(variant) {
+/*
+ * THE E82'S COLOURS, by variant: blue first, because blue is the one the
+ * owner asked for. A bright mid metallic blue in the manner of the maker's
+ * racing blue, lifted into the town's range so its shadow band stays a
+ * violet blue rather than going to ink; a deeper blue; a grey blue; a
+ * silver; a white. Its wheels are bright alloy in every one.
+ */
+export const E82_LIVERIES = [
+  { name: 'racing blue', body: 0x4675c6 },
+  { name: 'deep blue', body: 0x3c5aa2 },
+  { name: 'grey blue', body: 0x6c8bb4 },
+  { name: 'silver', body: 0xc4c6cc },
+  { name: 'white', body: 0xf1efe9 },
+];
+
+const LIVERIES = { r32: R32_LIVERIES, e82: E82_LIVERIES };
+
+/* A kind's livery by variant, or null for a kind that takes its colour
+ * from its seed like the town's cars. */
+export function carLivery(kind, variant) {
+  const list = LIVERIES[kind];
+  if (!list) {
+    return null;
+  }
   const v = Math.max(1, Math.round(Number(variant) || 1));
-  return R32_LIVERIES[(v - 1) % R32_LIVERIES.length];
+  return list[(v - 1) % list.length];
+}
+
+export function r32Livery(variant) {
+  return carLivery('r32', variant);
 }
 
 function bodyOf(M, s, detail, rimRole) {
@@ -1550,16 +1785,28 @@ function bodyOf(M, s, detail, rimRole) {
     /* A tailgate's shut line across the back, or a boot lid's. */
     const gy = s.tail.bumper + 0.03;
     onEnd(M, 'dark', ch.rear, -1, gy, gy + 0.014, -(zf - 0.2), zf - 0.2, 0.012);
-    /* The exhaust, low under the bumper. */
-    const ez = -(hw - 0.35);
-    const ex = -L2 - s.tail.out + 0.06;
-    _wp.set(ex, s.tail.dam + 0.02, ez);
-    _wq.setFromEuler(_we.set(0, -Math.PI / 2, 0));
-    M.at(_wm.compose(_wp, _wq, _ws));
-    const er = s.kind === 'r32' ? 0.05 : 0.03;
-    lathe(M, 'briteDark', er, -0.12, er, 0.02, 8, 1, 0);
-    disc(M, 'dark', er * 0.8, 0.021, 8, 1);
-    M.at(null);
+    if (s.rear.diffuser) {
+      /* The bumper's lower band in dark, as a sporting bumper has it. */
+      onEnd(M, 'dark', ch.rear, -1, s.tail.dam + 0.01, s.tail.dam + 0.13, -(zf - 0.02), zf - 0.02, 0.006);
+    }
+    if (s.rear.lip) {
+      /* A lip along the boot lid's trailing edge. */
+      const tx = -L2 - s.tail.face + s.tail.lean;
+      slab(M, 'body', [[tx + 0.1, s.tail.edge + 0.012], [tx - 0.01, s.tail.edge + 0.03], [tx - 0.015, s.tail.edge + 0.004]], -(zf - 0.12), zf - 0.12);
+    }
+    /* The exhaust, low under the bumper: one tip, or twin tips on one side. */
+    const tips = s.exhaust ?? 1;
+    const er = s.kind === 'r32' ? 0.05 : (tips > 1 ? 0.04 : 0.03);
+    for (let k = 0; k < tips; k += 1) {
+      const ez = -(hw - 0.35 - k * 0.11);
+      const ex = -L2 - s.tail.out + 0.06;
+      _wp.set(ex, s.tail.dam + 0.025, ez);
+      _wq.setFromEuler(_we.set(0, -Math.PI / 2, 0));
+      M.at(_wm.compose(_wp, _wq, _ws));
+      lathe(M, 'brite', er, -0.12, er, 0.02, 10, 1, 0);
+      disc(M, 'dark', er * 0.8, 0.021, 10, 1);
+      M.at(null);
+    }
   }
 
   /* ---- the flanks ---- */
@@ -1575,7 +1822,21 @@ function bodyOf(M, s, detail, rimRole) {
   /* The sill: a darker strip from arch to arch. */
   const sillX0 = s.axle[1] + A + 0.02;
   const sillX1 = s.axle[0] - A - 0.02;
-  onFlank(M, s.kind === 'r32' ? 'dark' : 'deep', hw, sillX0, s.sill + 0.004, sillX1, s.sill + (s.kind === 'r32' ? 0.08 : 0.06), 0.004);
+  const sillH = s.sillH ?? (s.kind === 'r32' ? 0.08 : 0.06);
+  onFlank(M, s.kind === 'r32' ? 'dark' : 'deep', hw, sillX0, s.sill + 0.004, sillX1, s.sill + sillH, 0.004);
+  if (s.creases) {
+    /* A deep sill's own crease over it, and the kind's lines along the
+     * side: each a lit edge over a shadow, which is how a crease reads in
+     * the cel ramp at any distance. */
+    onFlank(M, 'hi', hw, sillX0 + 0.02, s.sill + sillH, sillX1 - 0.02, s.sill + sillH + 0.014, 0.004);
+    for (const [x0, y0, x1, y1, shape] of s.creases) {
+      /* A convex line is lit over its shadow, a concave one the other way
+       * up: the play of the two is what the flame surfaced side is. */
+      const [above, below] = shape === 'concave' ? ['deep', 'hi'] : ['hi', 'deep'];
+      polyOnFlank(M, above, hw, [[x0, y0], [x1, y1], [x1, y1 + 0.016], [x0, y0 + 0.016]], 0.005);
+      polyOnFlank(M, below, hw, [[x0, y0 - 0.012], [x1, y1 - 0.012], [x1, y1], [x0, y0]], 0.005);
+    }
+  }
   /* Shut lines: the front door's leading edge, then the kind's seams. */
   const top = s.waist - 0.015;
   const doorFront = Math.min(s.cab[1] - 0.03, s.axle[0] - A - 0.05);
@@ -1599,6 +1860,19 @@ function bodyOf(M, s, detail, rimRole) {
 
   /* ---- the bonnet's shut lines, where there is a bonnet ---- */
   const noseTop = L2 + s.nose.face - s.nose.lean;
+  if (s.creases && noseTop - s.cab[1] > 0.8) {
+    /* Two lines down the bonnet, converging on the grille. */
+    const xa = noseTop - 0.15;
+    const xb = s.cab[1] + 0.07;
+    const ya = s.nose.edge + 0.022 + ((s.waist + 0.004 - s.nose.edge - 0.022) * (noseTop - 0.12 - xa)) / (noseTop - 0.12 - s.cab[1] - 0.03);
+    const yb = s.waist + 0.004 - 0.001;
+    for (const side of [1, -1]) {
+      const za = side * 0.2;
+      const zb = side * 0.33;
+      M.face('hi', [[xa, ya + 0.005, za], [xb, yb + 0.005, zb], [xb, yb + 0.005, zb + side * 0.016], [xa, ya + 0.005, za + side * 0.012]], { toward: [0, 1, 0] });
+      M.face('deep', [[xa, ya + 0.005, za - side * 0.01], [xb, yb + 0.005, zb - side * 0.012], [xb, yb + 0.005, zb], [xa, ya + 0.005, za]], { toward: [0, 1, 0] });
+    }
+  }
   if (noseTop - s.cab[1] > 0.4) {
     for (const side of [1, -1]) {
       const z = side * (hw - 0.14);
@@ -1909,14 +2183,15 @@ function keiTruckBody(M, s, o, lamps) {
  * ------------------------------------------------------------------ */
 
 const NO_CAST = new Set(['glass', 'glint', 'lampF', 'lampR', 'amber', 'clear', 'plate']);
-const ORDER = ['body', 'body2', 'stripe', 'accent', 'deep', 'dark', 'brite', 'briteDark', 'rim', 'bed', 'crate', 'crate2', 'sheet', 'rope', 'glass', 'glint', 'lampF', 'lampR', 'amber', 'clear', 'plate'];
+const ORDER = ['body', 'body2', 'stripe', 'accent', 'hi', 'deep', 'dark', 'brite', 'briteDark', 'rim', 'bed', 'crate', 'crate2', 'sheet', 'rope', 'glass', 'glint', 'lampF', 'lampR', 'amber', 'clear', 'plate'];
 
 /*
  * One car at the origin, nose along +x, as a Group of one mesh a material.
  *
  *   o.kind     a MODEL key; anything else is a kei
  *   o.color    the body colour (a CAR value); the r32 takes its livery
- *   o.variant  the r32's livery, by number (r32Livery), unless o.livery
+ *   o.variant  the r32's and the e82's livery, by number (carLivery),
+ *              unless o.livery
  *   o.wheels   false leaves the wheels out, for a caller that draws its
  *              own that turn (src/maps/built/cars.js)
  *   o.detail   'parked' (the default) or 'full'
@@ -1931,7 +2206,7 @@ export function buildCar(o = {}) {
   const s = MODEL[kind];
   const m = mats();
   const detail = o.detail === 'full' ? 'full' : 'parked';
-  const livery = kind === 'r32' ? (o.livery ?? r32Livery(o.variant)) : null;
+  const livery = LIVERIES[kind] ? (o.livery ?? carLivery(kind, o.variant)) : null;
   const truck = kind === 'keitruck';
   const col = livery ? livery.body : (o.color ?? (truck ? PAL.taxiYellow : CAR.white));
   const rimRole = livery && livery.rim ? 'rim' : 'brite';
@@ -1995,6 +2270,10 @@ export function buildCar(o = {}) {
   }
   if (s.band) {
     matFor.accent = paint(s.band);
+  }
+  if (s.creases) {
+    /* The lit edge of a crease: the paint a shade toward white. */
+    matFor.hi = paint(new THREE.Color(col).lerp(new THREE.Color(0xffffff), 0.35).getHex());
   }
   if (truck) {
     matFor.bed = cel({ color: 0xbba98c, bands: 3, tint: 0x6f6790 });

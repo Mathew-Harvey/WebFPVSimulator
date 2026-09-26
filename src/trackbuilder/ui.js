@@ -217,7 +217,7 @@ const STYLE_LABELS = {
   open: 'Open', netted: 'Netted',
   road: 'Road', footbridge: 'Footbridge',
   kei: 'Kei car', keivan: 'Kei van', hatch: 'Hatch', sedan: 'Sedan', wagon: 'Wagon',
-  minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus', r32: 'R32',
+  minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus', r32: 'R32', e82: 'E82',
   sakura: 'Sakura', street: 'Street', pine: 'Pine',
 };
 

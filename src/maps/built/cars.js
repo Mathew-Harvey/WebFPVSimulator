@@ -101,7 +101,7 @@
  */
 
 import {
-  buildCar, carWheelGeometry, carWheelBase, r32Livery, MODEL, CAR, LAMP_FRONT, LAMP_REAR,
+  buildCar, carWheelGeometry, carWheelBase, carLivery, MODEL, CAR, LAMP_FRONT, LAMP_REAR,
 } from '../../art/cars.js';
 import { PAL } from '../city/vendored/core/palette.js';
 import { cel } from '../city/vendored/core/toon.js';
@@ -113,7 +113,7 @@ import { kitLook } from './looks.js';
 /* How the meter names a car nobody named, by its body. */
 const STYLE_LABEL = {
   kei: 'Kei car', keivan: 'Kei van', hatch: 'Hatch', sedan: 'Sedan', wagon: 'Wagon',
-  minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus', r32: 'Coupe',
+  minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus', r32: 'Coupe', e82: 'Coupe',
 };
 
 /* The front wheels never steer past this, rad: about 34 degrees. */
@@ -559,7 +559,7 @@ export function buildCars(THREE, look, traffic, opts = {}) {
   for (const v of vehicles) {
     const style = MODEL[v.style] ? v.style : 'kei';
     const colour = CAR[carColourOf(v.seed)] ?? CAR.white;
-    const livery = style === 'r32' ? r32Livery(v.variant) : null;
+    const livery = carLivery(style, v.variant);
     const root = new THREE.Object3D();
     root.name = `car:${v.element}`;
     root.visible = false;

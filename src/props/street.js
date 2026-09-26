@@ -1625,14 +1625,14 @@ export function vendingDraw(el, parts, K) {
  *           within half their depth rather than not at all.
  *   box     a box lorry's body.
  *
- * THE R32 is ours, not the town's: its sizes are the R32 table in
- * src/art/cars.js, which draws every car (the town's included, through the
- * vendored builder's hook), restated here for the same reason. Two fields
- * only it carries: `cw`, its glasshouse's width at the roof, since a coupe's
- * glass leans in far more than the town's boxes do and a solid at W - 0.14
- * would stand out of it; and `bonnet`, where its low bonnet begins in x and
- * how high it is, so the body's solid steps down to it rather than filling
- * the air over the nose to the waist.
+ * THE R32 AND THE E82 are ours, not the town's: their sizes are the R32 and
+ * E82 tables in src/art/cars.js, which draws every car (the town's
+ * included, through the vendored builder's hook), restated here for the
+ * same reason. Two fields only they carry: `cw`, the glasshouse's width at
+ * the roof, since a coupe's glass leans in far more than the town's boxes
+ * do and a solid at W - 0.14 would stand out of it; and `bonnet`, where
+ * the low bonnet begins in x and how high it is, so the body's solid steps
+ * down to it rather than filling the air over the nose to the waist.
  * ------------------------------------------------------------------ */
 
 export const CAR_KINDS = {
@@ -1651,6 +1651,10 @@ export const CAR_KINDS = {
   r32: {
     L: 4.50, W: 1.76, H: 1.34, sill: 0.30, waist: 0.86, roof: 1.34, cab: [-1.45, 0.55], rakeF: 0.62, rakeR: 0.50,
     cw: 1.32, bonnet: { x: 0.55, y: 0.80 },
+  },
+  e82: {
+    L: 4.36, W: 1.75, H: 1.41, sill: 0.33, waist: 0.92, roof: 1.41, cab: [-1.27, 0.63], rakeF: 0.50, rakeR: 0.50,
+    cw: 1.32, bonnet: { x: 0.63, y: 0.83 },
   },
 };
 /* The body's own width, which for the box lorry is the chassis's, 1.695:
@@ -1696,9 +1700,9 @@ export function carColourOf(seed) {
   return seededRandom(seed).pick(CAR_COLOURS);
 }
 
-/* The r32 takes its livery from its variant (src/art/cars.js r32Livery)
- * rather than a colour from its seed, so an author picks one; every other
- * car ignores the variant it is handed. */
+/* The r32 and the e82 take their livery from the variant (src/art/cars.js
+ * carLivery) rather than a colour from the seed, so an author picks one;
+ * every other car ignores the variant it is handed. */
 export function carDraw(el, parts, K) {
   K.town('car', { kind: CAR_KINDS[el.style] ? el.style : 'kei', colour: carColourOf(seedOf(el)), variant: el.dims?.variant }, [0, 0, 0], 0);
 }

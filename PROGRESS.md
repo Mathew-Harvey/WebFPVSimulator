@@ -53053,3 +53053,243 @@ by side should have three different faces. What would be wrong: a lamp or
 plate floating off a face or sinking into it, a bumper with a gap between
 it and the body at a corner, a far wheel showing as a black blade, glass
 that reads as paint.
+
+## 2026-09-26 | ui, hud, results | Polish item 19: the menus in the manga hand, the tier kana drawn, the quad inked
+
+The owner, 2026-09-26, in order of work: "starting with map card and stage
+f then manga menus". The map card and Stage F are on main; this is the
+manga menus, POLISH-PLAN.md item 19: the lettering lived only in the
+freestyle callouts and the results page, the wordmark and the room titles
+were the system sans, the combo tier kana were font glyphs that a machine
+with no Japanese font draws as boxes, and the results panels drew the quad
+as four circles and a box. Built on claude/vibrant-wozniak-v2pg5e at
+3040628, branch manga-menus, not pushed: the lead merges it. Shell, UI and
+2D canvas only: no physics, plant, module ABI or build change; nothing
+under src/game, src/native, src/render, vendor or patches moved.
+
+### What was built, a commit each
+
+- **The wordmark and the room titles** (6d8ca51). WEBFPV and every room's
+  title (Tracks, Freestyle, Quad, Settings, Rates, PIDs, How to fly, Trick
+  list, Standings, Before you fly, Calibrate sticks, Choose joystick,
+  Credits, Paused, and the results' head; every screen's own h2, so the
+  last three are lettered by the same rule, not pictured, because main.js
+  decides when they show) are drawn by the lettering's own
+  code, src/ui/lettering.js paintTitle: heavy slanted capitals, the ink
+  line, the hard drop and the two cel bands of the callouts. The wordmark
+  is one word in two runs, WEB in cream and FPV in sakura (drawRuns, of
+  which drawWord is now the one run case, drawing exactly as before), so
+  the B and the F share one outline. The fill is the heading's own CSS
+  colour, read when it is lettered: a record's title is mint because its
+  CSS says so. The ink is a fifth of the size at callout sizes and thins to
+  a tenth on the 104 px wordmark, where a fifth closed the letters up.
+  - **Accessible and searchable.** The heading keeps its words in the DOM,
+    in their place and at their size, with their fill made transparent;
+    the lettering is an aria-hidden canvas laid on the text's own baseline
+    (a zero sized probe on the baseline says where). A screen reader, find
+    in page and a search engine read the words; the layout is the text's
+    to the pixel, which is why lint:shell cannot move. Forced colours turns
+    the drawing off and the text back on.
+  - **Painted once.** A heading is painted when its screen is shown and
+    again only when its words, colour, size or room change (a key on the
+    element), from show() and one resize listener that waits for the window
+    to settle. A screen visited twice paints nothing the second time;
+    nothing is drawn per frame. The results head's text goes through
+    setHeadingText, which letters it again at once, because textContent
+    takes the canvas with it.
+  - **Clean FPV does not turn this off, on purpose.** Clean FPV is about
+    flight: nothing drawn over the picture while flying (decision 4, section
+    3.3). A menu is not flying, and a title is looked at, not read at speed,
+    so the menus wear the game's hand whatever Clean FPV says, on race
+    tracks too. The pause menu's title is lettered over a race; the race's
+    flight HUD is not touched.
+- **An ink frame on the menu panels** (a9f1c56). Square corners, a 2 px
+  ink frame in the town's ink (a new token, --ink-line, #0b1116), a hairline
+  of the page's paper outside it, the gutter a manga panel is cut from, and
+  a hard 7 by 8 px drop with no blur, the way the results page sits on the
+  share card. The sakura top line, the menus' chrome in index.html's colour
+  rule, stays inside the frame. All box shadow, so no layout moves. The
+  rows stay the system's text: they are read, not looked at. The Betaflight
+  bench keeps its own look. Kept restrained for the owner's eye: the map
+  and gate cards, which are panels with pictures, were left as they are.
+- **The tier kana drawn with the stroke kana** (0568889, then 9559499 and
+  188a688, below). The tiers switch to katakana, the way a manga
+  letters a shout, and the stroke set grows to spell them: イイネ, スゴイ,
+  ヤバイ, and サイコー for 最高. **最高 is not drawn**: it is ten and ten
+  strokes of kanji at a badge's twelve pixels, a smudge, and サイコー is
+  the spelling a manga gives it when somebody yells it. Five kana added,
+  イ ネ コ ヤ サ, and ゴ is コ voiced, the way the set already builds ズ
+  and バ. paintKana draws a word as one ink brush line with no core, a
+  steadier hand than an effect's, painted once per tier at a 28 px cell
+  and set by CSS at the badge's size, so it never repaints. The word stays
+  in the DOM for a screen reader. drawSfx and paintKana share one walker
+  (eachKana), and the sound effects draw exactly as before.
+- **The results panels' quad, inked** (e1e2691). A stretched X of carbon
+  arms, a steel bell and shaft on each, the stack's plate, the pack in two
+  cel bands under its strap, a camera pod at the nose in sakura with the
+  camera, its lens and a glint, the antenna off the back, and the props as
+  blurred discs with two speed arcs each. Two line weights, as an inker
+  uses them: heavy round the outside, light within, and one width all round
+  however far it is squashed, because the points are placed by hand and
+  not under a squashed transform. Under fourteen pixels a side the fine
+  work (hubs, strap, glint, arcs) is left out. The pod's sakura is the only
+  sakura on the craft, so which way it points is never in doubt; the
+  antenna marks the tail.
+  - **The Tricks room's film draws it too.** trickfilm.js's drawQuad is the
+    one drawing the page imports, on purpose (its comment: the craft in a
+    gap is the one the films teach with), and the page's BEST TRICK panel
+    is a film still. So the change is in drawQuad and the film has it. Its
+    caption, "the pink nose is the front", is still true.
+
+### Not done, and why
+
+- **The OSD numerals stay the system's type.** The brief's list left them
+  out and item 5 of it is to keep race flight clean; a numeral is read, and
+  it changes every frame, which the lettering is not for.
+- Dialog titles (Your name, Report a bug, Keep this report?, How does it
+  fly?) are not rooms and are not lettered.
+- The share card's wordmark is src/share/card.js's drawWordmark, which the
+  track cards and the board draw with too; left as it is, for the owner to
+  ask for.
+
+### Race flight stays clean
+
+Nothing in the flight HUD changes on a race track. The tier badge is the
+freestyle score HUD's, which a race never shows; the race OSD's rules in
+index.html are untouched. What a pilot on a race track sees differently is
+menus: the lettered titles and the framed panels, the pause menu included.
+
+### The badge and the outer third
+
+サイコー is four kana where 最高 was two glyphs, so the Perfect badge is
+wider. At the effects' advance the combo line's box ran to 280.5 px of
+the 281.3 px first third at 844 by 390, so a badge word now steps at 0.86
+of it (188a688). Measured after, the Perfect badge's right edge: 241.9 px
+of 281.3 at 844 by 390, 321 px of 533.3 at 1600 by 900. On a 390 px
+portrait phone the combo line was already past the first third before
+this (its box to 246.6 px of 130, with the font glyphs): the portrait
+layout's, found and not changed. The combo box is the height it was with
+the font glyphs: 44 px at 1600 by 900, 33.625 px at 844 by 390, 32 px at
+390 by 844 (9559499).
+
+### RUN LOG
+
+Browser profiles in a private temp folder (TMPDIR), removed at the end.
+
+    npm run check:clip        910 passed, 0 failed (e1e2691 and 188a688)
+    npm run lint:preload      up to date, boot 115 modules, city 74, built
+                              33; 220 served, no regeneration needed (no
+                              module was added) (e1e2691 and 188a688)
+    npm run lint:boot         9 of 9 checks clean (e1e2691 and 188a688)
+    npm run lint:shell        PASS, title overflow 0 px, every screen at or
+                              under its baseline (e1e2691); one note, below
+    npm run lint:devices      PASS, five devices all clear, four builder
+                              windows clear, results at 1280x720 and
+                              1600x900 clear of the menu (9559499)
+    npm run lint:responsive   PASS, freestyle 333 frames, worst gap 394 ms,
+                              0 over 500 ms
+    npm run lint:memory       PASS, every world lazy and freed; boot baseline
+                              61 geometries, 5 textures, 131 requests
+    npm run lint:input        all 160 passed, 190 s
+    node --check, and Node    ui.js, lettering.js, scorehud.js, trickfilm.js
+    imports                   and mangapage.js import in Node (188a688)
+    dash scan                 none, U+2012 to U+2015 by code point, in every
+                              added line
+    npm run verify            not run: no physics, plant, ABI or build
+                              change, and the brief said not to
+
+lint:memory and lint:input ran on 188a688's tree before it was committed;
+lint:responsive started as its two lines of lettering.js were written, and
+they change only the spacing of the badge's kana, which a responsive run
+never draws. 9559499 and 188a688 touch only the badge, which lint:shell
+and lint:devices do not reach. No threshold, baseline or golden moved:
+tests/shell-baseline.json is untouched.
+
+### Pictures
+
+In the session scratchpad, never committed:
+`/tmp/claude-0/-home-user-WebFPVSimulator/6ddfd91b-7f5b-543b-a441-691d12014517/scratchpad/manga-menus/shots/`.
+b- is before, served from a git archive of 3040628 in the scratchpad; a1-
+and a2- after. The real shell through tests/lib/page.js (a rig in the
+style of scripts/shots.js), with Flags and cones (the board's document)
+seeded as the race track, and Hibari Yard reached through the gate's
+Freestyle card for the freestyle map; the results page is the lettering's
+five and two panel fixtures through window.__lettering.
+
+Looked at, every one:
+
+- **1600 by 900, race track seated**: b-1600-00-gate and a1-1600-00-gate
+  (the gate, the wordmark lettered over the four cards); -01-title (the
+  title, the lettered wordmark over the framed menu); -02-freestyle, quad,
+  pilot (SETTINGS), rates, pids, howto, tricks (the film with the new
+  craft), fc (the Betaflight bench, unchanged in both), show-standings,
+  credits; a1-1600-02-courses (TRACKS, left set over its sakura rule; its
+  before at this size went with the first, mislabelled before set, and the
+  phones' b-844-11-courses and b-390-11-courses stand in);
+  -04-pause (PAUSED over the race's dimmed OSD, the OSD unchanged);
+  b-1600-launch and a3-1600-launch (BEFORE YOU FLY).
+- **1600 by 900, Hibari Yard**: -12-pause-free; -14-flight-hud (the yard's
+  HUD with the Perfect badge in stroke kana); -15-results-all and -two (the
+  five and two panel pages, every craft inked); -16-card.jpg (the share
+  card); b-1600-05-tier-2 to 5 and -13-tier-5-clean against a3-1600-tier-2
+  to 5 and a1-1600-13-tier-5-clean, and a1-crop-tier-2 to 5 at four times
+  (イイネ, スゴイ, ヤバイ, サイコー, each legible).
+- **Phones, touch**: b-844- and a2-844-, b-390- and a2-390-: the title,
+  Tracks, Freestyle, Quad, Settings, How to fly, the pause menu, the tier
+  badges, the flight HUD and both results pages.
+- **Close ups**: b-crop-wordmark and h1-crop-wordmark (the wordmark before
+  and after at two times); a1-crop-corner (the menu frame at three times);
+  b-crop-gap and a1-crop-gap (the gap panel's craft at four times);
+  b-crop-film and a1-crop-film (the Tricks room's film craft); q3-quads (the
+  inked quad from 8 to 110 px, plan, squashed, turned, and its underside).
+
+### What went wrong
+
+- The first before run pressed Enter on the gate, which took the race card
+  into the Tracks room, and pictured that as the title; the flows now show
+  the title after the gate. Fly then went to the Tracks room, having no
+  track: a seeded course fixed it for the race, and the gate's Freestyle
+  card for the yard.
+- The heading's own text shadow still drew under the lettering as a grey
+  ghost: .screen h1 outranked .is-lettered. The rule takes two classes now,
+  and a third for the results head, whose own rule is later in the sheet.
+- The quad's first camera pod read black: the heavy ink ate the sakura,
+  and the antenna's sakura cap put pink at both ends. Two line weights, a
+  wider pod and a carbon cap.
+- The badge kana at a 0.15 line read thin beside the heavy English word:
+  0.19, in a canvas a cell and a third tall so the strokes are not clipped.
+  That grew the combo line by 0.7 px until its margins were set inside the
+  line (9559499).
+- A second picture job was started from the worktree rather than the
+  scratchpad and wrote its log there: nothing ran, and the log was deleted
+  before any commit.
+- grep for U+2012 to U+2015 matched the bytes of kana under the C locale;
+  the dash scan was done by code point in Python instead.
+
+### Found, not fixed
+
+- lint:shell notes "tricks: overflow improved from 1649 to 1605 px,
+  re-record the baseline". It is not this work's: the same run on the
+  base snapshot (3040628) prints the same note. 44 px is one row of the
+  list, which has 42 tricks now; most likely the row that went is the
+  Maverick Loop the owner had removed (decision 9), but that was not
+  traced. Not re-recorded: a baseline moves with an argument, not as a
+  side effect of other work.
+- On a 390 by 844 phone the bug chip and the music chip sit over the
+  Settings and Tracks titles and over the Tracks lede, before and after
+  this alike (b-390-11-pilot, a2-390-11-pilot): the portrait layout's.
+
+### For the owner, when flying
+
+Verification to choose: this is shell and 2D canvas only, so **shots** or
+**fly it** would see it; verify would not. **Look for**: the wordmark and
+every room's title in the callouts' hand, crisp, on the text's own line and
+not shifted; the menu panels with a thin ink frame and a hard shadow, the
+rows plain and easy to read; the combo tier badge on a freestyle map
+reading イイネ, スゴイ, ヤバイ, サイコー in brush strokes; the results
+page's quads with arms, motors, props and a pink camera pod at the front;
+the Tricks room's film with the same craft. **Wrong would be**: a title
+doubled (the drawing and the text both visible), cut off or overlapping a
+lede; a frame that looks like a web form's border rather than a panel's;
+a tier badge taller than it was or reaching into the middle third; any
+lettering in a race's flight view.

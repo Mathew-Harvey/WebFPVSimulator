@@ -48000,3 +48000,181 @@ or a takeoff blip. A normal flight must still take off on the throttle.
     code                           unchanged since the entry above; only
                                    this entry is new
     checks                         not rerun: nothing they read changed
+
+## 2026-09-26 | shell, tests | R restarts a replay that has looped
+
+The two entries above left R in a replay open as the owner's call. The
+owner was asked before any code changed, and answered. Shell and tests
+only: the plant, the module ABI and the build are unchanged, and a normal
+flight takes exactly the paths it took before, because the change is
+behind replayMode.
+
+### The owner's answer, 2026-09-26
+
+The question: after a replay loops, R freezes the ghost on its first
+frame for about one lap, so what should R and the radio's restart switch
+do in a replay? Three options were put: (a) R restarts it, reset()
+setting the real time replay clock back to 0; (b) R and the switch do
+nothing, with the note that the pause menu's Restart run and a tune change
+also call reset() and would still freeze the ghost; (b) with (a)'s clock
+line as well. The answer: (a).
+
+What it covers: every reset() in a real time replay puts the replay clock
+back to 0 with the lap clock. That is R, the radio's restart switch, the
+pause menu's Restart run, and the other paths that end in reset(), a tune
+change (swapTune) and a PID change (applySettings) among them. Step mode is
+left alone, because the capture drives vt there through __replayStep; that
+was part of option (a) as it was put. It does not cover the chase camera
+below, or the replay path inside the step branch, which stays open from
+the entry two above.
+
+### What R did, measured
+
+The new check on the shell without the fix, run A below:
+
+    FAIL testReplayRestartsOnR: R after a loop (startMs 6598 ms): 1 first
+    frame after R at vt -6499.4 ms, not within 100 ms of 0; 11 frames
+    after R where the FPV camera did not move (vt -6499 -6416 -6316 -6216
+    -6133 -6049 -5966 -5883 -5783 -5700 -5600 -5500)
+
+After one loop, at 6598 ms of sim time, R put vt at -6499 ms, and the FPV
+camera, which sits on the ghost, stood still on every one of the 11
+frames traced after it. That agrees with the probe in the entry two above
+(-6550 on the frame after R).
+
+### The change, src/main.js
+
+- reset() puts replayClock.startMs and vt back to 0 when a real time
+  replay is running: replayMode, a clock, and not step mode. It sits
+  beside trickTouchAtSimMs, the other stamp on the lap clock that reset()
+  already sends back with it. Four lines and a comment.
+- __replayInfo() gains simMs, the lap clock. Harness only: nothing in the
+  shell reads it. It is how the check sees that R landed in step mode,
+  where vt does not follow the lap clock.
+
+### The test
+
+tests/replay-test.js gains testReplayRestartsOnR, the eighth test. A clean
+FPV replay of the fixture lap (6550 ms) runs in real time until
+__replayInfo().clock.startMs > 0, which is its first loop. R goes in
+through the harness (page.tap), with a trace running from before the key
+until twelve frames after the frame it landed on. That frame is the first
+one where the lap clock is below its reading before the key, which happens
+with or without the fix, so a key that never arrived fails rather than
+passes. From that frame:
+
+- vt is within 100 ms of 0 on the first frame, which is one capped frame
+  of steps (the frame's dt is capped at 100 ms);
+- vt rises on every frame;
+- the FPV camera moves on every frame (more than 1 mm; the fixture ghost
+  moves at least 41 mm per 17 ms over its first 2.5 s).
+
+Then step mode on the same page: __replayStep(0), __replayStep(1500), R,
+a wait until the lap clock went back (so R is known to have landed), and
+one frame. vt must still read 1500, and the next __replayStep(500) must
+reach 2000.
+
+traceUntil now also records vt, the lap clock and the camera position on
+every frame. testReplayIgnoresSticks reads none of them and its assertions
+are unchanged.
+
+### Shown failing
+
+Run A: the whole suite, npm run replay:test, on src/main.js with the
+readback and without the reset() lines (sha256 da2eb4f8d0fac70b), and on
+the test before two cosmetic edits (a local renamed, the pass line
+reworded): 8 tests, 7 pass, 1 fail, the failure quoted above, 3 min 33 s.
+
+Then on the final test file, through a scratch copy that runs only this
+test and differs from the committed file only in its import paths, ROOT,
+the fixture's URL and the list of tests. src/main.js was restored byte for
+byte after each (sha256 ce242ff99d4a9231 before and after):
+
+    reset() lines taken out
+      FAIL R after a loop (startMs 6582 ms): 1 first frame after R at vt
+      -6483.2 ms, not within 100 ms of 0; 11 frames after R where the FPV
+      camera did not move (vt -6483 -6383 -6367 -6267 -6217 -6133 -6033
+      -5950 -5933 -5850 -5750 -5700)
+    step mode guard taken out (if (replayMode && replayClock))
+      FAIL R after a loop (startMs 6599 ms): 1 step mode: R moved vt from
+      1500 to 0; 1 step mode: the step after R reached 500 ms, not 2000
+
+Neither the scratch copy nor the probe below is committed.
+
+### Checks, run this turn on the final tree
+
+src/main.js sha256 ce242ff99d4a9231, tests/replay-test.js 64a5178f8bf73c10.
+
+    npm run replay:test      8 tests: 8 pass, 0 fail, 3 min 31 s
+    npm run lint:boot        9 of 9 checks clean
+    npm run lint:fc          33 of 33 traces clean
+
+The new test's line in that run:
+
+    ok   R after the replay looped (startMs 6599 ms) starts it again: vt
+         99.0 ms on the frame R landed, rising on all 11 frames after it
+         to 982 ms, with the FPV camera moving on every one; in step mode
+         R leaves vt at 1500 and the next step reaches 2000
+
+These are the checks the request named. npm run verify was not run:
+nothing here touches physics, the plant, the module ABI or the build, and
+it was not asked for. Whether to spend a further pass, shots or flying it,
+is asked at the end of the turn.
+
+### What went wrong on the way
+
+- The fetch at the start printed `forced update` for main again, and
+  merge-base against the old tip came back empty, from the same kind of
+  shallow first clone (depth 50, taken 2026-09-24 at 9ed8b9c). The check
+  the entry two above wrote down worked: after git fetch --unshallow,
+  9ed8b9c is an ancestor of main's b166485, which is 152 commits ahead
+  of it, and merge-base is 9ed8b9c. Nothing was rewritten.
+- The request's check for (a), vt starting again from about 0 and
+  advancing on every frame, is half blind. Without the fix vt also
+  advances on every frame, only below zero: run A reports no frame where
+  it did not. The first frame bound and the camera are what see the bug.
+  The advance claim stays beside them, because it is what would catch a
+  clock that restarted and then stuck.
+- The first pass line printed vt as read before R. It read 0, because the
+  wait for the loop was met on the loop's own frame, so it said nothing,
+  and it is gone. A local was also called landed, a word this file uses
+  for the parked craft, and is now atR. The comments first called startMs
+  the sim time of the last loop, which is wrong before the first loop, when
+  it is the sim time the replay started at. All three were fixed before
+  the final run.
+
+### Found and not changed: the chase camera in a real time replay
+
+In real time, not step mode, with cam=chase, the camera never moves. The
+chase spring takes its step from frameSteps (dt = frameSteps *
+MS_PER_STEP), and frameSteps is only set in the step branch's common
+tail, which runs only while the craft is unparked. A replay's craft is
+always parked, so dt is 0 on every frame, the spring's alpha is 0, and the
+camera stays where the first frame put it while the ghost flies away.
+Step mode is not affected, because there dt comes from vt, and every
+chase capture in tests/replay-test.js runs in step mode, which is why no
+check saw it. A probe, not committed, ten frames each from about vt 230 ms:
+
+    cam=chase  camera -3.659, 1.714, 0.515 on all 10 frames, while the
+               ghost went from -1.638, 0.190, 0.202 to 3.587, 0.908, -1.254
+    cam=fpv    camera equal to the ghost's position on all 10 frames
+
+It is not R and it was not asked for. The fix looks small, the spring's
+dt from the frame's own dt or from vt, but which clock the chase camera
+follows is a choice, so it is the owner's.
+
+### Still open
+
+- The chase camera above: the owner's call.
+- The replay path inside the step branch, from the entry two above:
+  unchanged, still the owner's call.
+- The check drives R only. The radio's switch and the pause menu's
+  Restart run reach the same reset() and were not driven.
+- R in a replay, open in the two entries above, is closed by this one.
+
+What to look for when flying it: a replay URL with &cam=fpv (the chase
+camera does not move in real time, above, with or without R). Let the lap
+loop at least once, then press R. Right is the ghost starting again from
+the top of its lap at once and flying on. Wrong is the view standing on
+the lap's first frame for about a lap before it moves. R before the first
+loop must restart it the same way, as it always did.

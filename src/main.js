@@ -3519,6 +3519,21 @@ export async function boot({ loading, bootStart, mapId }) {
      * inside a cooldown that has already expired. */
     trickTouchAtSimMs = -1e9;
     /*
+     * A real time replay holds one: startMs, the sim time its lap last
+     * started at. Left there after a loop, vt went below zero and the ghost
+     * stood on its first frame for as long as the replay had run up to that
+     * loop.
+     * Back to 0 with the clock, so R, the radio's restart switch and the
+     * pause menu's Restart run all start the ghost again from the top, as R
+     * already did before the first loop. The owner's call, 2026-09-26. Step
+     * mode is left alone: the capture drives vt there through __replayStep,
+     * and startMs is not read.
+     */
+    if (replayMode && replayClock && !replayStepMode) {
+      replayClock.startMs = 0;
+      replayClock.vt = 0;
+    }
+    /*
      * Everything else a reset does to the CRAFT is resetCraft's job, and it
      * used to be a verbatim copy of it, comments and all, which is the kind
      * of duplication that survives until the two drift and a crash recovery
@@ -8304,6 +8319,10 @@ export async function boot({ loading, bootStart, mapId }) {
     clean: replayClean,
     stepMode: replayStepMode,
     clock: replayClock ? { startMs: replayClock.startMs, vt: replayClock.vt } : null,
+    /* The lap clock, which a real time replay is timed on. Every reset()
+     * puts it back to 0, so a check can see that R landed even in step
+     * mode, where vt does not follow it. */
+    simMs: simTimeMs,
     ghostLoaded: ghostLap != null,
     cameraPosition: shell.camera ? {
       x: shell.camera.position.x,

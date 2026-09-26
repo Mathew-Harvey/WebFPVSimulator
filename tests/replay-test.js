@@ -511,11 +511,12 @@ const PAGEHIDE = 'window.dispatchEvent(new PageTransitionEvent("pagehide", { per
 
 /*
  * Every frame from now on, read after the shell's own frame, until `when`
- * has held for `frames` of them: the stick, the craft, and the replay's
- * clock as startMs + vt, the sim time the replay is reading. That rises on
- * every frame, through the lap's wrap as well, where vt alone drops back
- * to 0. Thirty seconds of wall clock at most, so a key that never lands
- * fails rather than hangs.
+ * has held for `frames` of them: the stick, the craft, the replay's clock
+ * as startMs + vt, the sim time the replay is reading, vt on its own, the
+ * lap clock and where the camera is. startMs + vt rises on every frame,
+ * through the lap's wrap as well, where vt alone drops back to 0. Thirty
+ * seconds of wall clock at most, so a key that never lands fails rather
+ * than hangs.
  */
 function traceUntil(when, frames) {
   return `window.__keyTrace = (async () => {
@@ -525,10 +526,12 @@ function traceUntil(when, frames) {
     while (held < ${frames} && performance.now() - t0 < 30000) {
       await new Promise((r) => requestAnimationFrame(r));
       const c = window.__craftState();
-      const clock = window.__replayInfo().clock;
+      const replay = window.__replayInfo();
+      const clock = replay.clock;
       out.push({
         thr: window.__input.channels.throttle, landed: c.landed, flown: c.flownThisRun,
-        clockMs: clock ? clock.startMs + clock.vt : null,
+        clockMs: clock ? clock.startMs + clock.vt : null, vt: clock ? clock.vt : null,
+        simMs: replay.simMs, cam: replay.cameraPosition,
       });
       if (held > 0 || (${when})) {
         held += 1;
@@ -669,11 +672,87 @@ async function testReplayIgnoresSticks() {
   }
 }
 
+/*
+ * R RESTARTS A REPLAY FROM THE TOP, EVEN AFTER IT HAS LOOPED.
+ *
+ * R, the radio's restart switch and the pause menu's Restart run all call
+ * reset(), which puts the lap clock back to 0. A real time replay reads
+ * that clock from startMs, the sim time its lap last started at. Before
+ * the owner's answer of 2026-09-26, reset() left startMs where it was:
+ * before the first loop that is 0 and R restarted the replay, but after
+ * one, vt went below zero and the ghost stood on its first frame for as
+ * long as the replay had run up to that loop.
+ *
+ * So the replay runs in real time past its first loop and R goes in
+ * through the keyboard. The frame it lands on is the one where the lap
+ * clock went back, which it does with or without the fix, so a key that
+ * never arrived fails rather than passes. From that frame vt must start
+ * within the frame's own steps of 0 (one capped frame, 100 ms) and rise on
+ * every frame, and the FPV camera, which sits on the ghost, must move on
+ * every frame.
+ *
+ * Then step mode, which the owner's answer leaves alone: the capture
+ * drives vt there through __replayStep, so R must not rewind it, and the
+ * next step carries on from where the capture was.
+ */
+async function testReplayRestartsOnR() {
+  const page = await openPage({
+    root: ROOT,
+    url: replayUrl({ id: PLAIN.id, time: AJAX.id, cam: 'fpv', clean: true }),
+    seed: [boardSeed({ id: PLAIN.id, document: PLAIN, ghosts: [AJAX] })],
+    ...SHOT,
+  });
+  try {
+    await untilFlying(page);
+    /* One loop of the lap in real time. startMs is the sim time of it. */
+    await page.until('window.__replayInfo().clock.startMs > 0', 60000);
+    const before = await page.evaluate('window.__replayInfo()');
+    await page.evaluate(traceUntil(`window.__replayInfo().simMs < ${before.simMs}`, 12));
+    await page.tap('KeyR');
+    const trace = await page.evaluate('window.__keyTrace');
+    const atR = trace.findIndex((f) => f.simMs < before.simMs);
+    if (atR < 0) {
+      throw new Error(`R never landed: the lap clock never went back below ${before.simMs} ms in ${trace.length} frames`);
+    }
+    const after = trace.slice(atR);
+    const moved = (a, b) => Math.hypot(a.cam.x - b.cam.x, a.cam.y - b.cam.y, a.cam.z - b.cam.z) > 0.001;
+    const vts = after.map((f) => Math.round(f.vt)).join(' ');
+
+    /* Step mode, on the same page. */
+    await page.evaluate('window.__replayStep(0)');
+    const stepped = await page.evaluate('window.__replayStep(1500)');
+    const stepSim = await page.evaluate('window.__replayInfo().simMs');
+    await page.tap('KeyR');
+    await page.until(`window.__replayInfo().simMs < ${stepSim}`, 10000);
+    await page.evaluate(NEXT_FRAME);
+    const stepAfter = await page.evaluate('window.__replayInfo().clock.vt');
+    const next = await page.evaluate(`window.__replayStep(${STEP_MS})`);
+
+    /* Every claim is reported, not just the first to fail. */
+    const problems = [
+      [after[0].vt >= 0 && after[0].vt <= 100 ? 0 : 1, `first frame after R at vt ${after[0].vt.toFixed(1)} ms, not within 100 ms of 0`],
+      [after.filter((f, i) => i > 0 && !(f.vt > after[i - 1].vt)).length, `frames after R where vt did not advance (${vts})`],
+      [after.filter((f, i) => i > 0 && !moved(f, after[i - 1])).length, `frames after R where the FPV camera did not move (vt ${vts})`],
+      [stepAfter === stepped.vt ? 0 : 1, `step mode: R moved vt from ${stepped.vt} to ${stepAfter}`],
+      [next.vt === stepped.vt + STEP_MS ? 0 : 1, `step mode: the step after R reached ${next.vt} ms, not ${stepped.vt + STEP_MS}`],
+    ].filter(([n]) => n !== 0).map(([n, what]) => `${n} ${what}`);
+    if (problems.length) {
+      throw new Error(`R after a loop (startMs ${Math.round(before.clock.startMs)} ms): ${problems.join('; ')}`);
+    }
+    console.log(` ok   R after the replay looped (startMs ${Math.round(before.clock.startMs)} ms) `
+      + `starts it again: vt ${after[0].vt.toFixed(1)} ms on the frame R landed, rising on all ${after.length - 1} frames after it `
+      + `to ${Math.round(after[after.length - 1].vt)} ms, with the FPV camera moving on every one; in step mode R leaves vt at `
+      + `${stepAfter} and the next step reaches ${next.vt}`);
+  } finally {
+    await page.close();
+  }
+}
+
 async function main() {
   console.log('replay-test: headless browser checks for replay mode\n');
   const tests = [
     testMagentaCounter, testNormalBoot, testReplaySuccess, testFailuresRestore,
-    testSponsorsHidden, testReplayGuards, testReplayIgnoresSticks,
+    testSponsorsHidden, testReplayGuards, testReplayIgnoresSticks, testReplayRestartsOnR,
   ];
   let fail = 0;
   for (const test of tests) {

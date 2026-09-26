@@ -47,14 +47,17 @@
  * browser.
  *
  * DEGENERATE INPUT never throws and never makes a NaN. Nodes that are not
- * finite are dropped; a node within NODE_MERGE of the one before it is
- * merged into it; a node where the road turns so sharply that no bend fits
- * its legs at DRIVE_RADIUS_MIN (a fold back on itself included) is dropped,
- * and the road is worked out again without it. Each of those is a problem
- * entry naming the node. A road left with fewer than two nodes (three
- * closed) has no centre line and says so.
+ * finite are left out (the document's normalize has dropped them already,
+ * with a note); a node within NODE_MERGE of the one before it is merged
+ * into it; a node where the road turns so sharply that no bend fits its
+ * legs at DRIVE_RADIUS_MIN (a fold back on itself included), or whose legs
+ * are too short for even the least bend, is dropped, and the road is
+ * worked out again without it. Each of those is a problem entry naming the
+ * node. A road left with fewer than two nodes (three closed) has no centre
+ * line and says so.
  *
- * THE API. Every function takes plain objects and returns new ones.
+ * THE API. Plain objects in, plain objects out, nothing kept but roadOf's
+ * memory of recent answers.
  *
  *   roadNodesOf(el)                  the element's nodes in plan, absolute:
  *                                    [{ x, y, node }], `node` its index in
@@ -170,7 +173,7 @@ export const RADIUS_DEFAULT = 12;
  * The tightest a car's own line may bend, m. The module drives any smooth
  * road, and its speed tables treat anything tighter than half a metre as
  * half a metre (world.c ROAD_KAPPA_MAX). A metre keeps a car on the road it
- * is drawn on and keeps every point of a bend at least 4 cm from the next.
+ * is drawn on, and a bend of it is sampled about every 5 cm.
  * A lane line is the centre moved sideways, and a move toward the inside of
  * a bend shortens its radius by the move, so a road whose cars keep to a
  * lane is eased with the lane's offset added to this (roadOf): the lane
@@ -428,9 +431,9 @@ function planPass(nodes, closed, radius, floor, shapes, ramp) {
 
 /* A turn's shape in a few numbers: g, the tangent length over the
  * plateau's radius; lam, the half bend's length over its tangent length;
- * least, the tangent length of a half bend of MIN_STEPS unit steps. The same turn
- * gives the same numbers, so a plan that goes round again after dropping a
- * node works out only the turns that changed. */
+ * least, the tangent length of a half bend of MIN_STEPS unit steps. The
+ * same turn gives the same numbers, so a plan that goes round again after
+ * dropping a node works out only the turns that changed. */
 function shapeOf(dot, shapes, ramp) {
   let sh = shapes.get(dot);
   if (!sh) {

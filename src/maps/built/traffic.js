@@ -162,10 +162,13 @@ function problem(level, code, message, elementId) {
 
 /*
  * The line a vehicle drives, in the plan, and where on it the vehicle is at
- * step 0. Returns { key, lane, fwd, line, offset } or a problem: `line` is
- * what is uploaded, `fwd` the same lane in node order (the one the offset is
- * measured along), `offset` the module's, metres along `line` from its
- * first point, round a loop or out and back along an open road.
+ * step 0. Returns { key, lane, fwd, line, offset, reverse }: `key` names the
+ * line, so the cars that share one share one upload; `line` is what is
+ * uploaded, `fwd` the same lane in node order (the one the document's offset
+ * is measured along, point for point with the centre), `offset` the
+ * module's, metres along `line` from its first point, round a loop or out
+ * and back along an open road; `reverse` whether `line` runs against the
+ * node order. `r` is road.js roadOf's answer for the vehicle's road.
  */
 function drive(r, el) {
   const centre = r.centre;

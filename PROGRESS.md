@@ -50519,3 +50519,88 @@ verdict readable where the combo was; Clean FPV turning all of it to plain
 text. **Wrong would be**: anything lettered in the middle third, an effect
 you notice before the word, a balloon that hides the combo, or a results
 page over the menu.
+
+## 2026-09-26 | integration | Stage C merged: the counter and the lettering together, checked on one tree
+
+The owner asked on 2026-09-26 to "implement the full scoring system,
+chasing the car works well as do the named gaps", and answered the plan's
+open katakana question "Yes, small" (decision 11, ec33f25). Two agents
+built Stage C at once against one event contract written into both
+briefs: the scoring core in the tree (a91d578 to 616d340, its entry
+above) and the lettering in a worktree (ce80d7b to e07dda2, its entry
+above). No physics, module ABI or build change.
+
+### The merges
+
+- **main** (d52cd69): the board's newest maps and the pause row. ui.js's
+  scoring notes conflicted: Stage C's meaning (Lines only counts the
+  geometry, Free flight adds trick names, a scored run keeps a best) was
+  kept, with main's third seat, a map from the board, named "this map";
+  the Freestyle lede takes both. PROGRESS.md both sides, main's first.
+- **The lettering** (f3f81b6): merged cleanly apart from PROGRESS.md
+  (both kept). One seam between the two agents' work, fixed in the merge:
+  the results page read the local best as `summary.localBest`, and the
+  shell writes it as `summary.counterBest` (0 when the map has none), so
+  the best would never have shown. localBestOf reads counterBest first and
+  falls back to the fixtures' localBest. src/fresh.js regenerated.
+- The lettering agent's tests/shell-baseline.json change (the Settings
+  overflow 746 to 790 px, the one new row, Clean FPV) is a baseline moved
+  for a new row, as earlier Settings rows moved it (8a34503, 090e432,
+  e403425); the title's 67 px, main's, stays visible as a failure.
+
+### Checks on the merged tree (f3f81b6)
+
+    npm run score:selftest       1 FAILED: the known Maverick Loop, main's;
+                                 the rest pass, the crash twins among them
+    npm run check:counter        all passed
+    npm run check:chase          all passed
+    npm run check:roads          all passed
+    npm run check:props          all passed
+    npm run check:clip           876 passed, 0 failed
+    npm run check:world          all passed
+    npm run lint:boot            9 of 9 clean
+    npm run lint:memory          PASS
+    npm run lint:preload         up to date
+    npm run lint:shell           FAIL, the known "title: overflow grew from
+                                 0 to 67 px" only; freestyle 0 px
+    npm run lint:responsive      PASS
+    npm run lint:devices         PASS
+    npm run lint:input           all 160 passed
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change
+
+### Flown, end to end (scratch rig, not committed)
+
+The scoring agent's in-page pilot rig, copied to 1280 by 720 with the draw
+on and a picture every 350 ms, flew Hibari Yard's container tunnel line.
+The real counter fed the real lettering: Low pass, CONTAINER TUNNEL 500,
+Under, Roof skim, Thread, Low pass, the combo lettered down the left at
+1,736 x6 and climbing, the skim meter up during the roof skim. With the
+draw on, the scripted pilot tracks worse (19 m worst error against a
+few at 400 by 260 with the draw off), overshot into the loop's lane and
+was hit by the kei van: the whole chain, 10,416, bailed and nothing was
+paid, which is the rule. Centre third clear in the frames looked at. The
+"PERFECT 最高" tag on the combo line is the combo grade table of
+2026-09-17 (7c2aac7), not Stage C's katakana.
+
+### What went wrong
+
+- The lettering agent finished before the note that the scoring core had
+  landed reached it, so it was built and photographed against fixtures
+  only; the seam above is what that cost, and the end to end flight is
+  what checked the rest.
+- The first end to end flight could not hold its line with the draw on;
+  it still showed what it needed to, a real chain lettered and a real
+  crash bailing it.
+
+### Open, for the owner
+
+- **Prices are first guesses** (the scoring agent's entry has them all).
+- **Set down crashes and the posted score**: a crash under 18 m/s that
+  sets the craft down never reached the trick scorer, before Stage C too.
+  The counter bails on it; the trick scorer, whose total the board is
+  posted, still does not, so the board's number keeps its old meaning.
+  One line to change, and it changes what the town's board means.
+- **A tail is announced twice**: big down the right by the chase HUD, and
+  as a line in the combo's stack on the left, which is the combo's ledger.
+- A skim over any solid top is a "Roof skim", a container's floor too.

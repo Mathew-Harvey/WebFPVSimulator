@@ -1,6 +1,6 @@
 /*
  * manga.js: the manga layer's picture, Stage F (FREESTYLE-MAPS-PLAN.md
- * section 3.2 item 1): speed lines.
+ * section 3.2 items 1 and 4): speed lines and the impact frame.
  *
  * NO NEW PASS. It is folded into the grade, a pass the freestyle maps
  * already run, because the post chain has a budget (src/render/budget.js)
@@ -30,10 +30,12 @@
  *
  * THE PERIPHERY ONLY (section 3.3). A stroke is drawn only where the
  * pixel's elliptical distance from the frame's centre, one at the middle of
- * each edge, is at least LINES_REACH_FAST. The centre third of the frame is
+ * each edge, is at least STROKE_REACH_MIN. The centre third of the frame is
  * the box inside a third of that distance on both axes, whose corners are
  * at the square root of two ninths, 0.471. Every stroke starts outside
- * 0.62, so none can reach the centre third, at any speed or focus.
+ * 0.52, so none can reach the centre third, at any speed or focus. The
+ * impact frame's re-inked picture is a grade of the frame and not a thing
+ * drawn over it: the centre third still shows the scene, in ink.
  *
  * Render only. Nothing here reads or writes the physics state; the shell
  * hands it a velocity already converted at the render boundary
@@ -76,12 +78,17 @@ const LINE_COUNT = 120;
 const LINE_SHARE_SLOW = 0.3;
 const LINE_SHARE_FAST = 0.62;
 const LINE_WEIGHT = 12;
+const IMPACT_COUNT = 90;
+const IMPACT_SHARE = 0.7;
+const IMPACT_WEIGHT = 14;
 
 /*
- * Where a stroke may start, as the elliptical distance from the centre:
- * from 0.95 at the least speed to 0.62 at full, both over 0.471, the centre
- * third's corner. See THE PERIPHERY ONLY above.
+ * Where a stroke may start, as the elliptical distance from the centre.
+ * The speed lines reach from 0.95 at the least speed to 0.62 at full; the
+ * impact frame's to 0.52. Both over 0.471, the centre third's corner: see
+ * THE PERIPHERY ONLY above.
  */
+const STROKE_REACH_MIN = 0.52;
 const LINES_REACH_SLOW = 0.95;
 const LINES_REACH_FAST = 0.62;
 
@@ -106,6 +113,36 @@ const FOCUS_MS = 90;
  * the system asks for reduced motion. */
 const LINES_REDRAW_HZ = 10;
 
+/*
+ * THE IMPACT FRAME. A crash holds the last picture before the hit for
+ * IMPACT_HOLD_MS, re-inked, then lets it go over IMPACT_RELEASE_MS while
+ * the shell has already set the craft down. 67 ms is two frames of an
+ * anime cut timed at 30, a little over one and a half at 24: long enough to
+ * read on any display, short enough to be a beat and not a pause.
+ *
+ * GENTLE, because a flash is a photosensitivity question:
+ *   - never a white flash: the dark half goes to ink and the light half
+ *     to the paper tone on a curve that darkens its mid tones and keeps
+ *     its lightest at their own brightness, so the frame gains contrast
+ *     and loses a little light: no pixel's luminance rises by more than
+ *     two percent of white;
+ *   - the re-inked picture is mixed in at most IMPACT_MIX, so the scene
+ *     always shows through;
+ *   - the release is a fade, not a cut, so the return is not a second
+ *     change of the same size in the other direction;
+ *   - at most one every IMPACT_EVERY_MS, so at most half a flash a
+ *     second, where the WCAG guideline's line is three;
+ *   - its own switch in Settings, Clean FPV, and off whenever the system
+ *     asks for reduced motion.
+ */
+export const IMPACT_HOLD_MS = 67;
+export const IMPACT_RELEASE_MS = 240;
+export const IMPACT_EVERY_MS = 2000;
+const IMPACT_MIX = 0.8;
+
+/* The paper of the impact frame: the shell's cream (index.html, --cream). */
+const PAPER = new THREE.Color(0xf3ead4);
+
 
 /* ------------------------------------------------------------------ *
  * The shaders.
@@ -117,9 +154,12 @@ const GRADE_OUT = 'gl_FragColor = vec4( linearToSRGB( max( c, vec3( 0.0 ) ) ), 1
 
 const GRADE_HEAD = /* glsl */ `
     uniform float uMangaLines;
+    uniform float uMangaImpact;
     uniform vec2 uMangaFocus;
     uniform vec3 uMangaFrame;
+    uniform float uMangaSeed;
     uniform vec3 uMangaInk;
+    uniform vec3 uMangaPaper;
 
     /* A hash with no sine in it: a sine's precision is the driver's, and
      * a stroke should be the same stroke on every GPU. */
@@ -163,6 +203,24 @@ const GRADE_BODY = /* glsl */ `
       float mangaEn = length( ( vUv - 0.5 ) * 2.0 );
       float mangaPx = uMangaFrame.y / 1080.0;
 
+      /* THE IMPACT FRAME: the dark half to ink, the light half to paper on
+       * a curve that only ever darkens it (a pixel at the paper's own
+       * brightness stays there, one below it goes further below), heavy
+       * strokes round the edge. More contrast, never more light: see the
+       * header's GENTLE. */
+      if ( uMangaImpact > 0.0 ) {
+        float li = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
+        float lp = dot( uMangaPaper, vec3( 0.2126, 0.7152, 0.0722 ) );
+        float t = smoothstep( 0.1, 0.12, li );
+        vec3 paper = uMangaPaper * min( 1.0, pow( li / lp, 1.2 ) + 0.02 );
+        c = mix( c, mix( uMangaInk, paper, t ), uMangaImpact * ${IMPACT_MIX.toFixed(2)} );
+        if ( mangaEn > ${STROKE_REACH_MIN.toFixed(2)} ) {
+          float s = mangaStrokes( mangaQ, uMangaFocus, mangaEn, ${IMPACT_COUNT.toFixed(1)}, ${IMPACT_SHARE.toFixed(2)},
+                                  ${STROKE_REACH_MIN.toFixed(2)}, ${IMPACT_WEIGHT.toFixed(1)} * mangaPx, uMangaSeed, 0.0 );
+          c = mix( c, uMangaInk, s * uMangaImpact );
+        }
+      }
+
       /* SPEED LINES, only where a stroke can be. */
       if ( uMangaLines > 0.0 && mangaEn > ${LINES_REACH_FAST.toFixed(2)} ) {
         float s = mangaStrokes( mangaQ, uMangaFocus, mangaEn, ${LINE_COUNT.toFixed(1)},
@@ -196,9 +254,12 @@ export function mangaPipeline(pipeline) {
     .replace(GRADE_OUT, GRADE_BODY);
   Object.assign(g.uniforms, {
     uMangaLines: { value: 0 },
+    uMangaImpact: { value: 0 },
     uMangaFocus: { value: new THREE.Vector2() },
     uMangaFrame: { value: new THREE.Vector3(16 / 9, 1080, 0) },
+    uMangaSeed: { value: 0 },
     uMangaInk: { value: new THREE.Color(0x39324f) },
+    uMangaPaper: { value: PAPER.clone() },
   });
   g.needsUpdate = true;
   out.ok = true;
@@ -212,23 +273,29 @@ function clamp01(v) {
 
 /*
  * The layer's state from frame to frame: the smoothed amount of speed
- * lines, the smoothed focus, and the strokes' clock. One per shell. The
- * shell calls tick once a frame and frame just before the post chain
- * draws.
+ * lines, the smoothed focus, and the impact frame's clock. One per shell.
+ * The shell calls tick once a frame, impact on a crash, holding while it
+ * places the camera, and frame just before the post chain draws.
  */
 export class MangaLayer {
   constructor() {
     this.clockMs = 0;
     /* A harness can hold the clock at a named time, so a picture of the
-     * strokes is the same picture on every run. Null runs free. */
+     * impact frame is the same picture on every run. Null runs free. */
     this.clockAt = null;
     this.lines = 0;
     this.fx = 0;
     this.fy = 0;
+    this.impactAt = -1e9;
+    this.impacts = 0;
+    this.seed = 0;
+    this.holdPos = new THREE.Vector3();
+    this.holdQuat = new THREE.Quaternion();
+    this.holdSet = false;
     /* The harness's override for a measurement at a fixed camera:
-     * { lines, focus: [x, y] }, either of them, or null. */
+     * { lines, focus: [x, y], impact }, any of them, or null. */
     this.force = null;
-    this.shown = { lines: 0, focus: [0, 0], speed: 0 };
+    this.shown = { lines: 0, impact: 0, focus: [0, 0], speed: 0 };
   }
 
   tick(dtMs) {
@@ -240,9 +307,51 @@ export class MangaLayer {
   }
 
   /*
+   * A crash. Starts an impact frame holding `camera`'s pose, unless one
+   * began under IMPACT_EVERY_MS ago, and returns whether it did. Each one
+   * has its own strokes: the seed is new every time, so no two impact
+   * frames are the same drawing.
+   */
+  impact(camera) {
+    if (this.clockMs - this.impactAt < IMPACT_EVERY_MS) {
+      return false;
+    }
+    this.impactAt = this.clockMs;
+    this.impacts += 1;
+    this.seed = ((this.impacts * 0.6180339887) % 1) * 97.0 + 3.0;
+    if (camera) {
+      this.holdPos.copy(camera.position);
+      this.holdQuat.copy(camera.quaternion);
+      this.holdSet = true;
+    } else {
+      this.holdSet = false;
+    }
+    return true;
+  }
+
+  /* Whether the camera is held on the moment of the hit. */
+  holding() {
+    const t = this.clockMs - this.impactAt;
+    return this.holdSet && t >= 0 && t < IMPACT_HOLD_MS;
+  }
+
+  impactAmount() {
+    const t = this.clockMs - this.impactAt;
+    if (t < 0 || t >= IMPACT_HOLD_MS + IMPACT_RELEASE_MS) {
+      return 0;
+    }
+    if (t < IMPACT_HOLD_MS) {
+      return 1;
+    }
+    const u = 1 - (t - IMPACT_HOLD_MS) / IMPACT_RELEASE_MS;
+    return u * u;
+  }
+
+  /*
    * The uniforms for this frame. `s`:
    *   lines    the speed lines may be drawn (a freestyle map, manga on,
    *            flying, the FPV camera)
+   *   impact   the impact frame may be drawn
    *   still    the system asks for reduced motion: the strokes stop
    *            redrawing themselves
    *   speed    the craft's speed, m/s
@@ -290,6 +399,7 @@ export class MangaLayer {
     }
 
     let lines = this.lines;
+    let impact = s.impact ? this.impactAmount() : 0;
     let fx = this.fx;
     let fy = this.fy;
     const f = this.force;
@@ -297,12 +407,16 @@ export class MangaLayer {
       if (f.lines != null) {
         lines = clamp01(Number(f.lines));
       }
+      if (f.impact != null) {
+        impact = clamp01(Number(f.impact));
+      }
       if (Array.isArray(f.focus)) {
         fx = Number(f.focus[0]) || 0;
         fy = Number(f.focus[1]) || 0;
       }
     }
     this.shown.lines = lines;
+    this.shown.impact = impact;
     this.shown.focus[0] = fx;
     this.shown.focus[1] = fy;
     this.shown.speed = s.speed;
@@ -312,6 +426,7 @@ export class MangaLayer {
 
     const g = m.grade;
     g.uMangaLines.value = lines;
+    g.uMangaImpact.value = impact;
     g.uMangaFocus.value.set(fx, fy);
     /* The grade draws into the fxaa pass's target when there is one and
      * onto the canvas when there is not: the strokes' widths are in the
@@ -324,6 +439,7 @@ export class MangaLayer {
       outH,
       s.still ? 0 : (this.clockMs * 0.001 * LINES_REDRAW_HZ) % 4096,
     );
+    g.uMangaSeed.value = this.seed;
     /* The map's own ink, so the strokes are the same ink as the lines the
      * ink pass draws at every time of day. */
     const ink = post.ink && post.ink.mat && post.ink.mat.uniforms.uInk

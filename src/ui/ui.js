@@ -940,6 +940,15 @@ const DEFAULTS = {
    * See syncManga.
    */
   cleanFpv: false,
+  /*
+   * THE IMPACT FRAME'S OWN SWITCH (the plan, section 3.2 item 4): a crash
+   * holds the moment for a beat, re-inked, then lets go. On by default on a
+   * freestyle map, and a row of its own as well as Clean FPV, because a
+   * flash is a photosensitivity question and not only a style one. Off
+   * whatever this says when the system asks for reduced motion. See
+   * src/render/manga.js, GENTLE.
+   */
+  impactFrame: true,
   packVoltage: 4.2,
   /*
    * How heavy the quad is, as a percentage of the weight the airframe is

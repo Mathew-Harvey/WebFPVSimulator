@@ -30,9 +30,9 @@
  *                     west past the pylon's foot, north between the
  *                     billboard and the street trees, a chicane west, and
  *                     north past the water tower to come back east along
- *                     the north edge. The drift car laps it in 25 s, and two
- *                     working vehicles come the other way. See THE YARD
- *                     LOOP below.
+ *                     the north edge. The drift car laps it in 25 s, a blue
+ *                     coupe half a lap behind it, and two working vehicles
+ *                     come the other way. See THE YARD LOOP below.
  *   the water tower   in the north east, WATER TOWER through its legs under
  *                     the tank.
  *   the skate corner  a quarter pipe, a ledge, a rail and a stair set beside
@@ -52,11 +52,14 @@
  * 7.5 m keep at least 1.5 m from every solid a car could reach, and every
  * car's box at least 2 m, the drift car's sliding tail included, at every
  * step of a lap (scripts/roads-check.js measures both on the poses the
- * physics module drives). The drift car drives the loop in the node order,
- * alone in its lane: nothing in the physics stops one car driving through
- * another, so a faster car must not share a lane with a slower one. The box
- * truck and the kei van come the other way, half a lap apart, the van's top
- * speed set so its lap matches the truck's, so the two keep their spacing.
+ * physics module drives). The drift car drives the loop in the node order
+ * with the blue coupe half a lap behind: nothing in the physics stops one
+ * car driving through another, so a faster car must not share a lane with a
+ * slower one, and the coupe shares the drift car's lane only because it
+ * shares its speed table (its top speed and its 8 m/s/s cornering), so the
+ * two lap in the same time to the step. The box truck and the kei van come
+ * the other way, half a lap apart, the van's top speed set so its lap
+ * matches the truck's, so the two keep their spacing.
  * The two parked cars that stood on the lane moved to its east verge when
  * the loop came, clear of it, of the footbridge's stair and of the pylons.
  *
@@ -288,6 +291,17 @@ function rows() {
     }],
     ['vehicle', 0, 0, EAST, { offset: 207.5, speed: VAN_SPEED, variant: 1 }, {
       style: 'keivan', road: 'el-53', reverse: true,
+    }],
+    /* The blue coupe, the e82 in its first livery, in the drift car's lane
+     * half a lap behind it: 171 m along the centre line is 178.3 m along
+     * the lane, 0.13 m short of half its 303.9 m from the drift car's
+     * 26.5. It corners at the drift car's 8 m/s/s on the drift car's top
+     * speed, so the module drives the two on one speed table: they lap in
+     * the same time to the step, and the gap, 124 to 163 m along the lane as
+     * the two brake and pull away, comes round the same every lap. It grips
+     * where the drift car slides. Appended last, so no id above moved. */
+    ['vehicle', 0, 0, EAST, { offset: 171, speed: 20, variant: 1 }, {
+      name: 'Blue coupe', style: 'e82', road: 'el-53',
     }],
   ];
 }

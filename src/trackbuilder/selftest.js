@@ -3577,10 +3577,18 @@ function suiteRoadsAndVehicles() {
     && rl.problems.length === 0, rl.problems.map((p) => p.message).join('; '));
   const traffic = trafficOf(yard.doc);
   const drift = traffic.vehicles.filter((v) => v.drift > 0);
-  check('trafficOf the starter: two lanes, three vehicles, one of them the drift car, no problems',
-    traffic.roads.length === 2 && traffic.vehicles.length === 3 && drift.length === 1 && drift[0].drift === DRIFT.gain
+  check('trafficOf the starter: two lanes, four vehicles, one of them the drift car, no problems',
+    traffic.roads.length === 2 && traffic.vehicles.length === 4 && drift.length === 1 && drift[0].drift === DRIFT.gain
     && traffic.vehicles.some((v) => v.style === 'boxtruck') && traffic.problems.length === 0,
     traffic.problems.map((p) => p.message).join('; '));
+  /* The blue coupe shares the drift car's lane, so it must share its speed
+   * table (lane, top speed and cornering) or one would drive through the
+   * other; scripts/roads-check.js holds the two apart for 30 minutes. */
+  const coupe = traffic.vehicles.find((v) => v.style === 'e82');
+  check('the starter\'s coupe drives the drift car\'s lane on its speed table, without its slide',
+    coupe !== undefined && drift.length === 1 && coupe.road === drift[0].road && coupe.topSpeed === drift[0].topSpeed
+    && coupe.lateral === drift[0].lateral && coupe.drift === 0,
+    coupe ? `road ${coupe.road}, ${coupe.topSpeed} m/s, ${coupe.lateral} m/s/s, drift ${coupe.drift}` : 'no e82');
 }
 
 /*

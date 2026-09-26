@@ -139,10 +139,16 @@ import {
 } from './road.js';
 
 /* How hard each of the town's cars is driven round a bend, m/s/s: a
- * driver's comfortable 0.25 to 0.4 g, the tall and the heavy ones gentler. */
+ * driver's comfortable 0.25 to 0.4 g, the tall and the heavy ones gentler.
+ * The e82 is the exception: it is driven hard, at the drift car's
+ * DRIFT.lateral, 8 m/s/s, about 0.8 g and inside a compact rear drive
+ * coupe's grip on the road, without the drift car's slide. On the drift
+ * car's top speed it then shares the drift car's speed table, lap for lap,
+ * so it can run the drift car's lane a fixed time behind it (Hibari Yard
+ * does). */
 const LATERAL = {
   kei: 3.5, keivan: 3.0, hatch: 4.0, sedan: 4.0, wagon: 4.0, minivan: 3.5, van: 3.0, boxtruck: 2.5, minibus: 2.5,
-  r32: 4.5, e82: 4.5,
+  r32: 4.5, e82: 8,
 };
 
 /* Each of the town's cars as the module drives it. The body is the drawn

@@ -50886,3 +50886,29 @@ levels apart, all of it the music title in the corner and the props' blur.
 
     npm run lint:preload        regenerated: built 33 modules, 217 served
     npm run verify              not run: no physics, plant, ABI or build
+
+## 2026-09-26 | maps | Drift smoke near the eye thins to white, not to ink
+
+### What changed
+
+`src/maps/built/cars.js`, the smoke's shaders: the ink ring round each
+puff, the band just inside its cut, now narrows to nothing as the puff
+near the eye thins away (`vNear`, the vertex shader's own `nearCut` handed
+on).
+
+### Why
+
+A puff the eye comes near has its cut raised toward its core so it thins
+away before the eye reaches it. The ink band stayed 0.07 wide inside that
+cut, and inside a cut that has risen to a puff's core the band is the whole
+core, so a puff a pilot flew into went black before it went: dark discs
+across the lens on a drift car's tail. Found on the landing page, whose
+freestyle chapter flies a camera behind the showpiece's tandem and drew a
+row of black discs across the frame in the north west corner. At range
+nothing changes: `vNear` is zero past SMOKE_CLEAR's 5 m.
+
+### RUN LOG
+
+    npm run verify              not run: a shader's colour, no physics
+    shots                       not run here: seen on the landing page's
+                                chase, which draws this file's smoke

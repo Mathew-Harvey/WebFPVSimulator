@@ -162,6 +162,7 @@ const SMOKE_VERTEX = /* glsl */ `
   attribute vec4 puff;
   varying vec2 vUv;
   varying float vCut;
+  varying float vNear;
   varying vec2 vLight;
   #include <fog_pars_vertex>
   void main() {
@@ -177,6 +178,7 @@ const SMOKE_VERTEX = /* glsl */ `
     gl_Position = projectionMatrix * mvPosition;
     vUv = corner * 0.5 + 0.5;
     vCut = mix( puff.z, 1.02, nearCut );
+    vNear = nearCut;
     /* The light from the upper left of the picture, in the puff's own
      * turned frame, so every puff is lit from the same side. */
     vec2 L = vec2( -0.7071, 0.7071 );
@@ -192,6 +194,7 @@ const SMOKE_FRAGMENT = /* glsl */ `
   uniform vec3 uInk;
   varying vec2 vUv;
   varying float vCut;
+  varying float vNear;
   varying vec2 vLight;
   #include <fog_pars_fragment>
   void main() {
@@ -200,7 +203,11 @@ const SMOKE_FRAGMENT = /* glsl */ `
     /* Denser toward the light is the side turned away from it. */
     float toward = texture2D( uMap, vUv + vLight * 0.07 ).r;
     vec3 col = toward > d + 0.03 ? uShade : uFill;
-    if ( d < vCut + 0.07 ) col = uInk;
+    /* The ink ring is the band just inside the cut, and it narrows to
+     * nothing as a puff near the eye thins away. Left the width it is at
+     * range, the band inside a cut that has risen to a puff's core IS the
+     * core, so a puff a pilot flew into went black before it went. */
+    if ( d < vCut + 0.07 * ( 1.0 - vNear ) ) col = uInk;
     gl_FragColor = vec4( col, 1.0 );
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

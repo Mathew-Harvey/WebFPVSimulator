@@ -48644,3 +48644,37 @@ and loading another track does not turn it back on.
 
 npm run verify was not run. This does not touch the plant, the module ABI
 or the build. node scripts/shots.js was not run.
+
+## 2026-09-26 | builder | Once through a gate, the line goes on to the next
+
+The racing line is a Hermite between the gates. The tangent at a gate
+points out of the red face, the way the quad is going, and the curve
+knows nothing else. When the next gate sits back behind a face that is
+locked that way, the line leaves through the green face and then comes
+back through the same opening, from the red side toward the green.
+
+That return is refused. A steering knot is set just outside the frame,
+on the nearer edge, and the line reaches the next gate around it. A
+second pass of the same opening is the next gate, so that leg is left
+alone. A stack's own wrap is unchanged. A gate that already faces the
+next one grows no knot.
+
+The first cut of the test missed a whoop gate: the fold back through
+the hole was shorter than one sample step, so the two sides of the
+crossing never fell in the same step. It also sent a dead-centre fold
+under the floor, because the top and the side were equally near and a
+single rounding error picked down. The line now remembers that it has
+left, and it goes around a stile rather than through the ground.
+
+A stack flown twice with a gate between still does not wrap the stack.
+The gate between faces away from the second pass, so the line goes
+around that gate. That is the one existing check this changed.
+
+### RUN LOG
+
+    node src/trackbuilder/selftest.js    790 passed, 0 failed
+
+npm run verify was not run. This does not touch the plant, the module ABI
+or the build. node scripts/shots.js was not run. The lap length of a
+track whose line used to reverse through a gate will change, because
+that line now goes around the frame.

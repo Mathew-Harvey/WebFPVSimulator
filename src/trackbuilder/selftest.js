@@ -136,6 +136,51 @@ function place(doc, type, x, y, opts = {}) {
 }
 
 /*
+ * How many times the drawn line, having left an opening along its tangent,
+ * comes back across that opening's plane inside the clear rectangle.
+ */
+function backThroughOpening(path, el, apertureIndex = 0) {
+  const knot = path.knots.find((k) => k.role === 'aperture' && k.elementId === el.id
+    && (k.seq?.apertureIndex ?? 0) === apertureIndex);
+  if (!knot || path.samples.length < 2) {
+    return 0;
+  }
+  const ap = aperturesOf(el)[apertureIndex] ?? aperturesOf(el)[0];
+  const f = apertureFrame(el.yaw, el.pitch);
+  const c = knot.pos;
+  const fwd = knot.tangent;
+  const dotp = (p, q) => p.x * q.x + p.y * q.y + p.z * q.z;
+  const rel = (p) => ({ x: p.x - c.x, y: p.y - c.y, z: p.z - c.z });
+  let prev = path.samples[0].pos;
+  let prevD = dotp(rel(prev), fwd);
+  let left = prevD > 0.02;
+  let n = 0;
+  for (let i = 1; i < path.samples.length; i += 1) {
+    const p = path.samples[i].pos;
+    const d = dotp(rel(p), fwd);
+    if (d > 0.02) {
+      left = true;
+    }
+    if (left && prevD > 0 && d < 0) {
+      const s = prevD / (prevD - d);
+      const x = {
+        x: prev.x + (p.x - prev.x) * s,
+        y: prev.y + (p.y - prev.y) * s,
+        z: prev.z + (p.z - prev.z) * s,
+      };
+      const u = dotp(rel(x), f.widthAxis);
+      const v = dotp(rel(x), f.heightAxis);
+      if (Math.abs(u) <= ap.clearW / 2 && Math.abs(v) <= ap.clearH / 2) {
+        n += 1;
+      }
+    }
+    prev = p;
+    prevD = d;
+  }
+  return n;
+}
+
+/*
  * The worked example, and the track schema.md documents field by field.
  *
  * It is deliberately the awkward case the task names: ten sequenced entries
@@ -721,6 +766,94 @@ function suiteSteering() {
   }
 }
 
+/*
+ * ONCE THROUGH A GATE, ON TO THE NEXT ONE.
+ *
+ * Green is the entry face. After the line has left through the gate, the
+ * run to the next gate must not come back through that same opening from
+ * the red side. A face locked pointing away from the next gate is the case
+ * that used to do it: the curve shoots out along the tangent and folds
+ * back through the hole. The fold on a whoop gate is shorter than one
+ * sample step, which is how the first cut of this rule missed it, and a
+ * dead-centre fold is equally near the top and the side, which is how the
+ * same cut sent the knot through the floor.
+ */
+function suiteWrongWay() {
+  console.log('\nonce through a gate, on to the next');
+
+  const locked = (cls, ax, ay, bx, by) => {
+    const doc = createTrack('Wrong way', cls);
+    const a = place(doc, 'gate', ax, ay, { yaw: 0 });
+    const b = place(doc, 'gate', bx, by, { yaw: Math.PI });
+    a.yawOverridden = true;
+    b.yawOverridden = true;
+    for (const el of [a, b]) {
+      const s = createSequenceEntry(doc, el.id, 0);
+      s.entry = 1;
+      s.overridden = true;
+      doc.sequence.push(s);
+    }
+    return { doc, a, b };
+  };
+
+  const steered = (label, cls, ax, ay, bx, by) => {
+    const { doc, a, b } = locked(cls, ax, ay, bx, by);
+    const path = buildPath(doc);
+    const wraps = path.knots.filter((k) => k.role === 'wrap' && k.elementId === null);
+    check(`${label}: the line does not come back through the gate`,
+      path.samples.length > 2 && backThroughOpening(path, a) === 0,
+      `${backThroughOpening(path, a)} returns`);
+    check(`${label}: it goes around the frame instead`,
+      wraps.length >= 1 && wraps.every((k) => Math.abs(k.pos.y - a.position.y) > a.dims.clearW / 2),
+      wraps.map((k) => `${k.pos.y.toFixed(2)}`).join(',') || 'no knot');
+    check(`${label}: and the knot stays above the floor`,
+      path.samples.every((smp) => smp.pos.z >= -1e-6),
+      `lowest ${Math.min(...path.samples.map((smp) => smp.pos.z)).toFixed(3)} m`);
+    check(`${label}: the next gate is still the end of the line`,
+      path.knots[path.knots.length - 1].elementId === b.id);
+  };
+
+  steered('full, next gate behind', 'full', 20, 20, 14, 21);
+  steered('full, next gate dead behind', 'full', 20, 20, 14, 20);
+  steered('whoop, next gate behind', 'micro', 2, 2, 0.4, 2.3);
+  steered('whoop, next gate dead behind', 'micro', 3, 2.5, 0.5, 2.5);
+
+  {
+    const doc = createTrack('Straight', 'full');
+    const a = place(doc, 'gate', 10, 20);
+    const b = place(doc, 'gate', 20, 20);
+    addToSequence(doc, a.id, 0);
+    addToSequence(doc, b.id, 0);
+    const path = buildPath(doc);
+    const wraps = path.knots.filter((k) => k.role === 'wrap');
+    check('a gate that faces the next one grows no steering knot',
+      wraps.length === 0 && backThroughOpening(path, a) === 0,
+      `${wraps.length} knots, ${backThroughOpening(path, a)} returns`);
+  }
+
+  {
+    /* The second pass of this same opening is the next gate. The figure
+     * already wraps beside the frame. This rule must not add another knot
+     * on top of that, and both passes stay stations. */
+    const doc = createTrack('Twice', 'full');
+    const a = place(doc, 'gate', 20, 20, { yaw: 0 });
+    a.yawOverridden = true;
+    const first = createSequenceEntry(doc, a.id, 0);
+    first.entry = 1;
+    first.overridden = true;
+    const second = createSequenceEntry(doc, a.id, 0);
+    second.entry = -1;
+    second.overridden = true;
+    doc.sequence.push(first, second);
+    const path = buildPath(doc);
+    const steering = path.knots.filter((k) => k.role === 'wrap' && k.elementId === null);
+    const passes = path.knots.filter((k) => k.role === 'aperture' && k.elementId === a.id);
+    check('a second pass of the same opening is not steered away',
+      steering.length === 0 && passes.length === 2,
+      `${steering.length} steering knots, ${passes.length} passes`);
+  }
+}
+
 function suiteGuide() {
   console.log('\nground marks');
 
@@ -1187,11 +1320,18 @@ function suiteFigures() {
   addToSequence(skipped, lad.id, 0);
   addToSequence(skipped, b.id, 0);
   addNextLevel(skipped, lad.id);
-  /* Second ladder pass is at the end, not consecutive with the first. */
+  /* Second ladder pass is at the end, not consecutive with the first, so
+   * the figure does not wrap the stack. The gate between them faces away
+   * from that second pass, and the line goes around the gate instead of
+   * coming back through it. */
   const between = buildPath(skipped);
-  check('a stack flown twice with a gate between does not wrap',
-    between.knots.filter((k) => k.role === 'wrap').length === 0,
-    `${between.knots.filter((k) => k.role === 'wrap').length} wraps`);
+  const onStack = between.knots.filter((k) => k.role === 'wrap' && k.elementId === lad.id);
+  const around = between.knots.filter((k) => k.role === 'wrap' && k.elementId === null);
+  check('a stack flown twice with a gate between does not wrap the stack',
+    onStack.length === 0, `${onStack.length} stack wraps`);
+  check('the gate between faces away from the next pass, so the line goes around it',
+    around.length >= 1 && backThroughOpening(between, b) === 0,
+    `${around.length} steering, ${backThroughOpening(between, b)} returns`);
 }
 
 function suiteFlaggedGate() {
@@ -4655,6 +4795,7 @@ async function main() {
   suiteFaces();
   suitePath();
   suiteSteering();
+  suiteWrongWay();
   suiteGuide();
   suiteWarnings();
   suiteHistory();

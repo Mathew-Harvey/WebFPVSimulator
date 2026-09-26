@@ -273,8 +273,9 @@ export function buildKnots(doc, { closeLoop = false } = {}) {
     });
   }
   /* Last, because the closing leg back to the first gate has to be checked
-   * for a gate in the way exactly like every other leg. */
-  return avoidForeignApertures(doc, withWraps);
+   * for a gate in the way exactly like every other leg. The wrong-way pass
+   * runs after that, on the line the author will actually see. */
+  return avoidWrongWay(doc, avoidForeignApertures(doc, withWraps));
 }
 
 /*
@@ -413,6 +414,194 @@ function avoidForeignApertures(doc, knots) {
         continue;
       }
       out.splice(i + 1, 0, {
+        pos: hit.pos,
+        tangent: hit.tangent,
+        role: 'wrap',
+        seq: null,
+        index: null,
+        elementId: null,
+      });
+      inserted = true;
+      break;
+    }
+    if (!inserted) {
+      return out;
+    }
+  }
+  return out;
+}
+
+/*
+ * ONCE THROUGH THE GATE, ON TO THE NEXT ONE.
+ *
+ * Green is the entry face and red is the exit face, the same paint the
+ * builder and the race use. The tangent points out of the red face, the
+ * way the quad is going. The Hermite only knows that tangent and the next
+ * knot, so when the next gate sits back behind this one the curve leaves
+ * through the gate and then comes back through the same opening, from the
+ * red side toward the green. That is the wrong way. The pilot has already
+ * passed this gate. The line has to reach the next one by going around
+ * the frame.
+ *
+ * A second pass of the SAME opening is the next gate, not a reversal, so
+ * that leg is left alone. A stack's wrap is a different opening and is
+ * checked like any other leg. The steering knot is not a station.
+ *
+ * The line counts as having left once it is a few centimetres out of the
+ * red face. The return is a later crossing of the plane back toward the
+ * green, inside the opening. One sample step usually straddles that
+ * plane, which is why the two halves of the test are not asked to happen
+ * inside the same step: a whoop gate's hook is shorter than the step.
+ */
+function openingRect(doc, knot) {
+  if (!knot || knot.role !== 'aperture' || !knot.seq || !knot.elementId) {
+    return null;
+  }
+  const el = elementById(doc, knot.elementId);
+  if (!el || kindOf(el) !== KIND.APERTURE) {
+    return null;
+  }
+  const idx = knot.seq.apertureIndex ?? 0;
+  const ap = aperturesOf(el)[idx];
+  if (!ap) {
+    return null;
+  }
+  return {
+    c: apertureCenter(el, idx),
+    f: apertureFrame(el.yaw, el.pitch),
+    hw: ap.clearW / 2,
+    hh: ap.clearH / 2,
+    forward: normalize(knot.tangent, { x: 1, y: 0, z: 0 }),
+  };
+}
+
+/* The next thing the lap actually passes. Wraps are steering, not gates. */
+function nextStation(knots, i) {
+  for (let j = i + 1; j < knots.length; j += 1) {
+    const k = knots[j];
+    if (k.role === 'aperture' || k.role === 'marker' || k.role === 'finish') {
+      return k;
+    }
+  }
+  return null;
+}
+
+function sameOpening(a, b) {
+  if (!a || !b || !a.elementId || a.elementId !== b.elementId) {
+    return false;
+  }
+  return (a.seq?.apertureIndex ?? 0) === (b.seq?.apertureIndex ?? 0);
+}
+
+/* Out of the red face by this much, the line has left the gate. */
+const LEFT_THE_GATE = 0.02;
+
+/*
+ * The first time this leg comes back through `rect` after leaving it.
+ * `from` is the aperture just passed. `end` is the index of the next
+ * station, or the last knot when the leg runs off the end of the line.
+ * Segments are [j, j + 1] for j in [from, end).
+ */
+function reverseOnLeg(knots, from, end, rect, kScale, clear) {
+  let prev = knots[from].pos;
+  let prevD = dot(sub(prev, rect.c), rect.forward);
+  let left = prevD > LEFT_THE_GATE;
+  for (let j = from; j < end; j += 1) {
+    const a = knots[j];
+    const b = knots[j + 1];
+    const span = dist(a.pos, b.pos);
+    if (span < 1e-6) {
+      prev = b.pos;
+      prevD = dot(sub(prev, rect.c), rect.forward);
+      if (prevD > LEFT_THE_GATE) {
+        left = true;
+      }
+      continue;
+    }
+    const m0 = scale(a.tangent, span * kScale);
+    const m1 = scale(b.tangent, span * kScale);
+    for (let i = 1; i <= DODGE_PROBE; i += 1) {
+      const t = i / DODGE_PROBE;
+      const p = hermite(a.pos, b.pos, m0, m1, t);
+      const d = dot(sub(p, rect.c), rect.forward);
+      if (d > LEFT_THE_GATE) {
+        left = true;
+      }
+      /* Back through the plane, and only after the line had actually left.
+       * The departure starts on the plane, so it is not this. */
+      if (left && prevD > 0 && d < 0) {
+        const s = prevD / (prevD - d);
+        const x = add(prev, scale(sub(p, prev), s));
+        const rel = sub(x, rect.c);
+        const u = dot(rel, rect.f.widthAxis);
+        const v = dot(rel, rect.f.heightAxis);
+        if (Math.abs(u) <= rect.hw && Math.abs(v) <= rect.hh) {
+          const outU = rect.hw - Math.abs(u);
+          const outV = rect.hh - Math.abs(v);
+          /* Around a stile, not through the floor. A dead-centre crossing
+           * is equally near either edge, and a single ulp used to send it
+           * down: the bottom of a gate is the ground, so that knot went
+           * underground and the line followed. Over or under only when
+           * that edge is clearly nearer and the knot stays above the floor. */
+          const rise = (v >= 0 ? 1 : -1) * (outV + clear);
+          const riseZ = x.z + rect.f.heightAxis.z * rise;
+          const useVertical = outV + 1e-4 < outU && riseZ >= 0.02;
+          const axis = useVertical ? rect.f.heightAxis : rect.f.widthAxis;
+          const along = useVertical ? v : u;
+          const out = useVertical ? outV : outU;
+          const sign = along > 1e-9 ? 1 : along < -1e-9 ? -1 : 1;
+          const pos = add(x, scale(axis, sign * (out + clear)));
+          /* Sideways out of the opening, then on toward the next knot.
+           * The curve's own tangent here points back through the hole,
+           * which is the direction being refused. */
+          const side = normalize(sub(pos, rect.c), rect.forward);
+          const ahead = normalize(sub(b.pos, pos), side);
+          return {
+            pos,
+            tangent: normalize(add(side, ahead), side),
+            at: j,
+          };
+        }
+      }
+      prev = p;
+      prevD = d;
+    }
+  }
+  return null;
+}
+
+function avoidWrongWay(doc, knots) {
+  if (knots.length < 2) {
+    return knots;
+  }
+  const kScale = doc.settings.tangentScale;
+  const clear = tuningFor(trackClassOf(doc)).barrierClearance;
+  const out = knots.slice();
+  for (let guard = 0; guard < DODGE_LIMIT; guard += 1) {
+    let inserted = false;
+    for (let i = 0; i < out.length - 1; i += 1) {
+      const rect = openingRect(doc, out[i]);
+      if (!rect) {
+        continue;
+      }
+      const station = nextStation(out, i);
+      if (station && sameOpening(out[i], station)) {
+        continue;
+      }
+      let end = out.length - 1;
+      if (station) {
+        for (let j = i + 1; j < out.length; j += 1) {
+          if (out[j] === station) {
+            end = j;
+            break;
+          }
+        }
+      }
+      const hit = reverseOnLeg(out, i, end, rect, kScale, clear);
+      if (!hit) {
+        continue;
+      }
+      out.splice(hit.at + 1, 0, {
         pos: hit.pos,
         tangent: hit.tangent,
         role: 'wrap',

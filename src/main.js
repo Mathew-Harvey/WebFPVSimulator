@@ -1957,7 +1957,7 @@ export async function boot({ loading, bootStart, mapId }) {
   function ghostRowChoices() {
     const list = [
       { id: 'off', label: 'Off' },
-      { id: 'best', label: 'Your best this session' },
+      { id: 'best', label: 'Your best lap' },
       { id: 'previous', label: 'Your previous lap' },
     ];
     for (const t of ghostBoardTimes || []) {

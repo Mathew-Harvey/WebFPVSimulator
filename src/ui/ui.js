@@ -86,6 +86,7 @@ import {
   rateField,
   ratesAreDefault,
   ratesFromLegacy,
+  ratesShort,
   ratesSummary,
   throttleSummary,
 } from '../../configs/rates.js';
@@ -2766,7 +2767,7 @@ function ratesChanged(s) {
 function ratesItem(s, midRun) {
   return {
     label: 'Rates',
-    value: ratesSummary(s.rates),
+    value: ratesShort(s.rates),
     action: 'rates',
     /*
      * NO MID RUN WARNING ANY MORE, and its absence is the point.
@@ -6390,7 +6391,7 @@ export class Ui {
            * nearly two thirds, which is the tilt a pilot wrote in about.
            */
           `How far the camera tilts up from the airframe. ${CAMERA_ANGLE_MIN} is flat, looking along the nose. ${CAMERA_ANGLE_DEFAULT} is a typical cruise. 45 to ${CAMERA_ANGLE_MAX} is race. Above about 30, yaw starts to roll the horizon: at ${s.cameraAngle} degrees, ${Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100)} percent of a yaw shows up as roll in the picture. That is what a real tilted camera does. Lower Yaw max rate on the Rates screen to tame it.`,
-          `${s.cameraAngle} degrees`,
+          `${s.cameraAngle}°`,
           (d) => {
             const before = s.cameraAngle;
             s.cameraAngle = clampCameraAngle(before + d);
@@ -6449,7 +6450,7 @@ export class Ui {
          */
         {
           label: 'Rates',
-          value: ratesSummary(s.rates),
+          value: ratesShort(s.rates),
           action: 'rates',
           note: `Not the machine's. Rates are yours, so they live under ${SCREEN_TITLES.pilot} and stay put when you switch tunes. Changing the aircraft reseeds them only if you are still on stock rates. This row goes there, and changing them mid run leaves the quad where it is.`,
         },
@@ -6853,7 +6854,7 @@ export class Ui {
          */
         {
           label: 'Rates',
-          value: ratesSummary(s.rates),
+          value: ratesShort(s.rates),
           action: 'rates',
           note: 'How far the sticks go, and the throttle limit. Yours, not the tune\'s. Changing them here leaves the quad where it is and the clock running.',
         },
@@ -6866,14 +6867,16 @@ export class Ui {
           note: `PIDs, camera, flight mode and the firmware bench.${MID_RUN_WARNING}`,
         },
         {
-          /* Named for what is in it, as on the title. See there. */
+          /* Named for what is in it, as on the title, and it reads what the
+           * title's reads: the pilot's name. It used to read the rates, the
+           * same string as the Rates row four rows above it. */
           label: 'Settings',
-          value: ratesSummary(s.rates),
+          value: readPilotName() || 'Not set',
           action: 'pilot',
           /* Rates are the first thing in this room and they no longer cost
            * the run, so the blanket warning would be wrong more often than
            * right. The rows that still restart a run carry it themselves. */
-          note: 'Rates, your radio, graphics and sound.',
+          note: 'Your name, your radio, rates, graphics and sound.',
         },
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },

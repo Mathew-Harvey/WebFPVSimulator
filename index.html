@@ -2852,6 +2852,17 @@
       .row-control {
         display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0;
       }
+      /*
+       * A VALUE INSIDE A CONTROL IS NOT CAPPED AT HALF ITS PARENT. The 52
+       * percent above is of the row, which is right for a bare value. A
+       * stepper wraps its value in .row-control, which sizes to its
+       * content, so the same 52 percent became half of "30 degrees" plus
+       * its arrows, and Camera angle read "30 d..." and Ghost "Your best
+       * ..." with a row of empty space beside them. The control shrinks
+       * with min-width 0 when the row is genuinely tight, and the ellipsis
+       * is still there for that.
+       */
+      .row-control > .row-value { max-width: none; }
       .step-col {
         display: inline-flex; flex-direction: column; gap: 2px;
       }
@@ -4908,7 +4919,9 @@
          the only thing here that is not what a div would have given. */
       .music-title {
         appearance: none; border: 0; background: none; border-radius: 3px;
-        max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        /* 14em: the longest track name, "Hypnotic Acid Loop", is 18
+           characters and was cut at 11. */
+        max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         padding: 4px 6px; cursor: pointer;
         font: 11px/1.2 var(--ui-font); letter-spacing: 0.04em; color: var(--cream);
       }
@@ -4920,6 +4933,14 @@
       .music-dock.is-muted .music-title { text-decoration: line-through; }
       @media (max-width: 520px) {
         .music-title { max-width: 6.5em; font-size: 10px; }
+        /* Over a menu the chip hangs under the bug chip with the width of
+           the screen to its left, so it takes the name whole. In flight it
+           stays short, beside the clock. */
+        .music-dock:not(.on-flight) .music-title { max-width: 12em; }
+        /* On a phone held upright a row's label is a word or two, so its
+           value may have more of the row than half: "Actual 670/670/670"
+           was cut at 52 percent of 340 px. */
+        .row-value { max-width: 62%; }
       }
 
       /* The target mark. A bracket on the next gate while it is in frame,

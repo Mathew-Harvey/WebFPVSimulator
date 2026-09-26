@@ -47399,3 +47399,189 @@ What it changes for a pilot today: nothing. No map has a road or a car
 until Stage E, and every existing world, the train included, is bit for
 bit what it was. The verification scale is verify, which ran (17 of 17);
 the owner's fly comes with Stage E, when there is a car to chase.
+
+## 2026-09-26 | maps, builder, checks | Stage E foundation: roads, vehicles and Hibari Yard's loop
+
+The owner approved Stage E on 2026-09-25 ("Yep" to "Want me to start
+Stage E now?"). This is its foundation, the contract the builder's road
+tool and Play, the sim's drawing, main.js and the chase build on. No
+physics, no module ABI, no build: dist/sim.wasm, src/native and
+tests/goldens are untouched.
+
+### What was built
+
+- **src/maps/built/road.js**, pure and arithmetic only: a road element's
+  nodes eased into a centre line the module accepts, lane lines, edges for
+  drawing, pointAt and nearestOn for placing a car, a report (length,
+  tightest radius and where, a self crossing), and moduleCheck, the
+  module's own sim_world_road tests restated so a refusal is a problem
+  entry and not a throw at load.
+- **src/maps/built/traffic.js**: trafficOf(doc), the one function the
+  sim, the builder's Play and the checks all call, giving the lanes to
+  upload (Three.js metres, as uploadRoad takes them) and the vehicles
+  (slot, lane, offset, speed, cornering, drift, body, material, style,
+  variant, seed, element), with a problem for everything left out;
+  uploadTraffic(sim, t), which never throws; vehicleStart(doc, el) for
+  drawing a car where it starts without the module; VEHICLE_KINDS and
+  DRIFT.
+- **The document**: two element types of two new kinds, `road` and
+  `vehicle`, a map's only (normalize drops them from a race track, toPlain
+  never writes one there). A road's `nodes` are relative to its position,
+  so dragging it moves position alone; `closed`; dims width, lanes, radius.
+  A vehicle names its `road`, and dims `offset` (metres along the centre
+  line from the first node), `speed`, `variant`, with `style`, `reverse`
+  and `drift`. Its position, yaw and pitch are written 0 and never read:
+  where a car is comes from its road and offset alone. Not a schema bump:
+  new optional types that an older reader drops with a note. schema.md
+  documents both with examples the self test reads back exactly.
+- **src/maps/built/place.js** gained docToWorld, the conversion every
+  element already went through, now one function that traffic.js uses
+  too; placeDocument's arithmetic is unchanged (the world golden and the
+  starter's placement hash agree).
+- **Hibari Yard** carries a two lane closed loop, 295 m, down the lane
+  under the footbridge, west, north between the billboard and the street
+  trees, a chicane, north past the water tower and back east; the drift car
+  (a wine red hatch) laps it in 26 s in the node order, and a box truck
+  and a kei van come the other way half a lap apart. New elements are
+  appended as el-53 to el-56; no id or row moved.
+- **The builder's views** draw nothing for the two kinds yet (the road tool
+  is another agent's), instead of falling into the aperture drawing, which
+  throws on them; planShapeOf gives a road its node line out and back (no
+  area, so it never picks from inside a loop) and a vehicle its car where it
+  starts, which needs the document as a new optional argument.
+
+### Decisions, and why
+
+- **The easing.** At each turning node a symmetric bend: the first half
+  walks from the tangent point in equal steps whose turn ramps up linearly
+  over half the half, then holds (a discrete clothoid into an arc), the
+  second half is the first reflected across the bisector. Turns are
+  rational rotations by tan(turn / 2), as world.c turns a drift; the
+  plateau's rate is found by halving until the half ends on the bisector's
+  heading. Curvature rises from zero at the straight, holds, falls to zero.
+  The single Bezier the brief suggested (P0, C, C, P3) was measured first on
+  paper: its peak curvature is 5.3 / T for a right angle against 1.3 / T
+  for this, four times tighter for the same room, which a car would crawl
+  round. Every node that turns at all is eased; the least bend is eight
+  steps a half, so it ramps in quarters.
+- **Sampling**: bends at radius / 50 (0.05 to 0.5 m), straights at 1 m, the
+  module's own step, except within 3 m of a bend, where they take the
+  bend's step. Measured: with the straights a metre apart up to each bend,
+  the drift car's yaw rate stepped by 1.3 rad/s in a millisecond where a
+  bend began; with the fine approach, 0.62.
+- **Degenerate input** is repaired, never thrown about: nodes on top of each
+  other merged, a fold or a turn no bend fits dropped, each named in a
+  problem, a road left with too few nodes an error problem and no line.
+- **Lanes**: a car keeps to its own left, width / 4 off the centre, on a
+  closed road of two lanes (Japan drives on the left). The centre is eased
+  with the lane's offset added to the tightest radius (1 m), so a lane line
+  is acceptable to the module by construction, not by a clamp. **An open
+  road's cars drive its centre line**, both ways: the module turns a car
+  round at each end on the line it came along, so a car kept left on the
+  way out would come back on the wrong side.
+- **The body**: one box from the road to the roof, the drawn car's length,
+  width and height (the box lorry's box width), **clearance 0**. A clearance
+  at the sill would leave the slot the parked car closes open under a moving
+  one, a gap between the wheels a quad could be flown through. Over a
+  saloon's bonnet and boot the box fills some air: the module holds one box
+  a car, and one that stopped at the waist would let a quad through the
+  cabin.
+- **Speeds**: traffic 10 to 14 m/s top by style (STYLE_DIMS.vehicle in
+  src/props/types.js), cornering 2.5 to 4 m/s/s. The drift car: gain 0.05
+  (world.c allows 0 to 1), cornering 8 m/s/s, so its nose sits 43.6 degrees
+  inside its path at a bend's height and nothing on a straight; 20 m/s top
+  is what the builder offers when drift goes on, and the starter's has it.
+  Its pull away is the module's 2.5 m/s/s, so a five inch has to work
+  through the bends and has nothing to do on the straights.
+- **Road height** is 0: the built map's ground is flat at zero, and roads
+  lie on it.
+- **The parked cars** at (142.2, 78) and (137.8, 106) stood on the lane.
+  They MOVED to the east verge, (148.5, 62) and (148.5, 116), 4.8 m off the
+  loop's edge, rather than being taken out, because a starter's ids come
+  from row order and every seeded asset after them would have rolled
+  differently.
+- **Oncoming traffic** is matched: the kei van's top speed, 8.8318 m/s, is
+  the one that makes its lap the box truck's to a tenth of a millisecond
+  over ten laps, so the two keep half a lap apart. The drift car has its
+  lane to itself, because nothing in the physics stops one car driving
+  through another.
+
+### Checks, run in this session
+
+    npm run check:roads                all passed (new): 52 roads, 80
+                                       lines and lanes accepted by the
+                                       module, spaced, under 10 degrees a
+                                       point, largest curvature step 0.398
+                                       of a bend's peak (bar 0.5); the
+                                       uneased square caught; 20 s of the
+                                       starter's traffic on its lines, the
+                                       drift car sliding 42 to 44 degrees
+                                       in every bend, 6e-14 on straights;
+                                       every car 2.155 m or more from every
+                                       solid over a lap (bar 2), the road
+                                       1.534 m (bar 1.5); laps 40.011 and
+                                       40.011 s; the yaw step target met,
+                                       0.623 rad/s, 1.151 with the easing
+                                       taken out
+    npm run check:clip                 727 passed, 0 failed (699 before;
+                                       28 new in "roads and vehicles")
+    npm run check:props                all passed; the STF mark's spot on
+                                       the starter unchanged
+    npm run check:world                all passed
+    npm run check:world-golden         all passed; tests/goldens unchanged
+    npm run check:world-engines        20 golden and 12 vehicle runs equal
+                                       to the bit in Node and Chromium,
+                                       the 2 new ones Hibari Yard's traffic
+                                       built by trafficOf in each engine
+    npm run check:world-engines:selftest   all passed: the nanometre road
+                                       fault seen in all 12 vehicle runs
+    npm run lint:memory                PASS
+    npm run lint:boot                  9 of 9 clean
+    npm run lint:preload               up to date, after regenerating
+                                       src/fresh.js for the two new modules
+
+npm run verify was not run: nothing here touches the physics, the plant,
+the module ABI or the build, and the vehicle code it would see is covered
+by check:world, check:world-engines and check:roads. shots was not run:
+the builder draws nothing new yet, and the sim does not load traffic until
+main.js is wired.
+
+### What went wrong
+
+- The first check:roads failed three ways. Its own test called a straight
+  a bend wherever collinear points rounded to a curvature of 1e-16 (fixed
+  in the check). Tiny turns were left as single point kinks (now every
+  turn is eased, and a node whose legs are too short for the least bend is
+  dropped with a note). And bends of four steps a half stepped by half
+  their peak curvature at a point (now eight, in quarters).
+- The drift car's 1.3 rad/s yaw step, above, found by that check.
+- Changing the sampling moved the laps, so the van's matched speed was
+  found a second time; the starter says to find it again if the loop
+  changes.
+- lint:preload was stale for the two new modules until src/fresh.js was
+  regenerated.
+- The lead checkpointed the half built work as d787767 while this was
+  running, so the session's clean tree hook would pass; the finished pieces
+  are the commits on top of it.
+
+### For the owner
+
+- **The drift car's yaw rate still steps by up to 0.62 rad/s** in a
+  millisecond, in the chicane where the module's speed profile switches
+  from pulling away to braking: the drift's slip follows speed squared
+  times curvature, and a step in the car's acceleration is a step in its
+  rate of slip. That is the physics' speed profile, not the road, and
+  softening it is a physics change. Measured, printed by check:roads as a
+  target (1 rad/s), not counted.
+- **The drift car's nose reaches into the oncoming lane** at the chicane's
+  7 m bends: sliding 44 degrees on a 6 m road, its front corner passes the
+  centre line, and over 30 minutes of clock it overlaps the box truck for
+  3.8 s in all, by up to 0.23 m. Cars do not touch each other in the
+  physics, so it drives through. A 7.2 m road, a softer drift, or leaving
+  it are all open; a wider road means moving the loop, which is tight
+  against the water tower's legs as it is.
+- The builder shows no road and no car until the road tool lands, and the
+  builder's 2D view now imports traffic.js, and through it
+  src/game/plantworld.js and collide.js.
+- A published map with a road carries element types and fields the board
+  has never seen. The board is another repository; it was not checked here.

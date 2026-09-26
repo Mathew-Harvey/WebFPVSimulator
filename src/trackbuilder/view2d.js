@@ -937,6 +937,9 @@ export class View2D {
     /* A map has no flying order, so no racing line, no guide paint and no
      * numbers: a gate on a map is furniture. */
     const freestyle = docModeOf(doc) === 'freestyle';
+    /* Names and gap labels are queued as the elements draw and laid out
+     * together at the end: see drawLabels. */
+    this.labelQueue = [];
     this.drawField(ctx, doc);
     this.drawGrid(ctx, doc);
 
@@ -973,6 +976,7 @@ export class View2D {
       this.drawDraft(ctx);
       this.pruneStructureCache(doc);
     }
+    this.drawLabels(ctx, freestyle);
 
     this.drawHandle(ctx);
     this.drawBand(ctx);
@@ -1247,20 +1251,83 @@ export class View2D {
   }
 
   /* A name over an element, at the top of its outline on screen, with a dark
-   * backing so it reads over a pale roof. */
-  drawTag(ctx, text, poly, colour) {
+   * backing so it reads over a pale roof. Queued, and drawn by drawLabels. */
+  drawTag(ctx, text, poly, colour, keep = false) {
     const xs = poly.map((p) => p.x);
     const ys = poly.map((p) => p.y);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
     const top = Math.min(...ys) - 8;
-    ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    this.queueLabel({
+      text, x: cx, y: top, colour, keep: keep || colour === C.selected,
+      font: '600 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    });
+  }
+
+  queueLabel(label) {
+    if (this.labelQueue) {
+      this.labelQueue.push(label);
+    } else {
+      this.paintLabel(this.canvas.getContext('2d'), label, label.x, label.y);
+    }
+  }
+
+  /*
+   * THE NAMES, LAID OUT TOGETHER AND LAST.
+   *
+   * Each name used to be painted where its element was drawn, so two that
+   * fell on the same pixels printed over each other (on Hibari Yard,
+   * CONTAINER TUNNEL 500 and BILLBOARD GAP 250 at every zoom that shows
+   * both) and a later element's roof could paint over an earlier name. Now
+   * they are placed after everything else, selected first, and a label that
+   * would land on one already placed steps down or up a line at a time,
+   * with a hairline back to where it belongs. On a map the Labels switch
+   * puts them away, all but the selected element's and a warning.
+   */
+  drawLabels(ctx, freestyle) {
+    const queue = this.labelQueue || [];
+    this.labelQueue = null;
+    const hide = freestyle && this.host.labelsVisible === false;
+    const order = queue.filter((l) => !hide || l.keep)
+      .sort((a, b) => Number(b.keep) - Number(a.keep));
+    const placed = [];
+    const STEP = 18;
+    for (const l of order) {
+      ctx.font = l.font;
+      const w = ctx.measureText(l.text).width + 8;
+      const h = 16;
+      let y = l.y;
+      for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+        const cy = l.y + k * STEP;
+        const box = { x0: l.x - w / 2, x1: l.x + w / 2, y0: cy - h / 2, y1: cy + h / 2 };
+        if (!placed.some((q) => box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0)) {
+          y = cy;
+          break;
+        }
+      }
+      placed.push({ x0: l.x - w / 2, x1: l.x + w / 2, y0: y - h / 2, y1: y + h / 2 });
+      if (y !== l.y) {
+        ctx.strokeStyle = l.colour;
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(l.x, l.y);
+        ctx.lineTo(l.x, y + (y > l.y ? -h / 2 : h / 2));
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      this.paintLabel(ctx, l, l.x, y);
+    }
+  }
+
+  paintLabel(ctx, l, x, y) {
+    ctx.font = l.font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const w = ctx.measureText(text).width;
+    const w = ctx.measureText(l.text).width;
     ctx.fillStyle = 'rgba(8, 14, 20, 0.72)';
-    ctx.fillRect(cx - w / 2 - 4, top - 8, w + 8, 16);
-    ctx.fillStyle = colour;
-    ctx.fillText(text, cx, top + 0.5);
+    ctx.fillRect(x - w / 2 - 4, y - 8, w + 8, 16);
+    ctx.fillStyle = l.colour;
+    ctx.fillText(l.text, x, y + 0.5);
   }
 
   /* A list of plan points as a canvas path, closed or not. */
@@ -1485,7 +1552,7 @@ export class View2D {
     const tag = !at.onRoad ? `${el.name ? `${el.name}, ` : ''}no road` : el.name;
     if (tag) {
       const poly = footprint(at).map((q) => this.toScreen(q));
-      this.drawTag(ctx, tag, poly, !at.onRoad ? C.bad : (selected ? C.selected : C.structName));
+      this.drawTag(ctx, tag, poly, !at.onRoad ? C.bad : (selected ? C.selected : C.structName), !at.onRoad);
     }
   }
 
@@ -1644,12 +1711,10 @@ export class View2D {
     const ux = span > 1e-6 ? (b.x - a.x) / span : 0;
     const uy = span > 1e-6 ? (b.y - a.y) / span : -1;
     const push = Math.abs(ux) * (w / 2 + 4) + Math.abs(uy) * 8 + 8;
-    const ox = b.x + ux * push;
-    const oy = b.y + uy * push;
-    ctx.fillStyle = 'rgba(8, 14, 20, 0.72)';
-    ctx.fillRect(ox - w / 2 - 4, oy - 8, w + 8, 16);
-    ctx.fillStyle = colour;
-    ctx.fillText(label, ox, oy + 0.5);
+    this.queueLabel({
+      text: label, x: b.x + ux * push, y: b.y + uy * push, colour, keep: selected,
+      font: 'italic 700 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    });
   }
 
   /*

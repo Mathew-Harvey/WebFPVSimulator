@@ -52028,3 +52028,199 @@ One commit, 89ca675, on 716562b: src/main.js (the frame loop's film,
 beside worldLive, the attract camera and the frame cap), src/ui/ui.js (the
 reels and show()), src/share/orbitcache.js and one rule in index.html.
 Nothing else merged into it.
+
+## 2026-09-26 | shell, hud, builder, checks | Polish: the quick wins, items 1 to 4, 6 to 9 and 13
+
+The owner asked for a polish list on 2026-09-26 and said "lets do it". This
+is the list's quick wins (POLISH-PLAN.md on claude/vibrant-wozniak-v2pg5e),
+on a branch from main at 716562b, one commit per item. Shell, render and UI
+only: no physics, plant, module ABI or build change. Every item was
+pictured before and after through tests/lib/page.js rigs in the style of
+scripts/shots.js; the pictures stay in the session scratchpad.
+
+**The owner's decision on the Weight slider, 2026-09-26**, passed on by the
+lead during this work: "once in flight fade it out, show it when landed or
+pause screen". It superseded the brief's "do not move or hide the slider",
+and it is in item 2 below.
+
+### What changed
+
+- **1. No Split-S cue on a plain gate** (9e77fc9). matchingFigureOf tried
+  splitS first on every element, and on one opening figurePlan's Split-S
+  falls through to a single pass, so every gate, flag and cone matched it:
+  built through courseFromDocument, the eight RaceGOW5 presets and the
+  three board tracks the survey read cued 174 of 176 stations "Split-S,
+  level 1". It now tries only the figures figuresFor offers, and
+  figureCueOf says nothing on fewer than two openings: 0 of 176 cued. The
+  race OSD reads "GATE 1 OF 12" on Flags and cones, where it read "GATE 1
+  OF 12, SPLIT-S, LEVEL 1". The real Split-S keeps "Split-S, top" and
+  "Split-S, bottom", and the builder inspector stops heading a plain gate
+  "Passes, 1". check:clip gains three lines (the plain gates beside the
+  Split-S, a gate, flagged gate, flag, cone and gate, and none of them a
+  Split-S); all three fail on the old figures.js.
+- **3. Air is airtime** (42ccc4a). With scoring off the clock slot read
+  simTimeMs, the lap clock, which runs on the pads: 3.88 s at 0 km/h
+  before any takeoff. airtimeMs is now its own count, the sim steps the
+  flying branch takes off the stand, zeroed with simTimeMs on a new run
+  and held while landed, perched, set down or turtled. The pads read a
+  dimmed 0.00; flown and landed it held 16.62 through two seconds on the
+  ground. Display only: simTimeMs, the lap clock and the scorer's run
+  clock are untouched, and the count is sim time, never frame time.
+- **2. The Weight card retires by itself; the slider fades in flight**
+  (cadb108). The card waited for Got it or a touch on the track, came back
+  every session until clicked, and showed through the pause menu. It now
+  retires, remembered as before (webfpv.airhint.v2), on the first landing
+  or crash, after 8 s of airtime, or on the first roll, pitch or yaw past
+  0.12 from a radio or gamepad in the air; under the pause menu or the
+  name dialog it is put away, not retired, and a pause buys it no air.
+  The slider, Floaty, Sinky and the Weight caption carry is-aloft while the
+  quad flies and fade by CSS transition (visibility follows, so a faded
+  track takes no pointer or thumb), and come back landed, perched, set
+  down, on its back and paused. It stays up while its card is, because the
+  card points at it: on a first flight that is up to 8 s of air. Measured
+  on the field: card up at 0.5 s of air, retired at 8.67, row opacity 0
+  and hidden, back to 1 on landing; with a pretend radio the card went on
+  the first stick; on an 844x390 phone with touch the same.
+- **4. The OSD is inked** (a9835b2). Every readout carries a hard edge in
+  the town's ink, #0b1116: eight 1 px offsets on the small print, eight
+  2 px on the clock, the pack and speed values and the launch call, each
+  with a short drop, as the lettering does. The labels go from --slate to
+  --osd-slate, #c6d4e1. Before, over Hibari Yard's concrete at noon and
+  the overcast palette, PACK, the height line, THROTTLE, SCORE, AIR and
+  the stick captions were gone; after, every one reads.
+- **6. Values read whole** (92a7c30). Camera angle "30°" (was "30 d...":
+  a stepper's value sat in .row-control, so .row-value's 52 percent cap
+  was of the value plus its arrows; .row-control > .row-value is uncapped
+  now). Rates on Quad, Settings and pause read ratesShort, "Actual
+  670/670/670"; ratesSummary's sentence stays for the reports, the presets
+  and lint:fc. The ghost choice is "Your best lap". The music chip takes
+  14em (12em over a menu on an upright phone). Pause's Settings row reads
+  the pilot's name, as the title's does, not the rates again. Measured by
+  scrollWidth on every row value at 1600x900, 1280x720, 844x390 and
+  390x844: nothing named here is cut. Still cut: the GPU row's vendor
+  string on Settings.
+- **7. The builder's top bar wraps when it must** (914e5b2). fitTopBar sums
+  the three zones on one row and wraps the bar when they do not fit,
+  measured unwrapped; the canvas zone is safe centred. Before, on the race
+  canvas at 1440 the whole canvas zone was clipped, at 1600 Undo, Redo,
+  2D, 3D, Labels and Sponsor logos, at 1920 Undo and Sponsor logos. After,
+  at 1280 to 1920 on both canvases, two rows at most and nothing covered;
+  one row at 2200, and on the freestyle canvas at 1920.
+- **8. The results menu no longer covers the rows** (5177f0d). Top three
+  kinds of trick and one quiet "N more kinds of trick" line with what they
+  paid; the copy's top half is the column's one scroller, above the menu;
+  the note leads with the best line; the copy is set 40 px closer; under
+  800 px of height on a laptop the menu scrolls at three and a half rows
+  and the score steps down to 11vh; the screen clears both bars. Before,
+  at 1280x720 the copy spilled 152 px under Fly again (35 px at 1600x900,
+  over the note) and the kicker sat on RUN COMPLETE. After, at 1280x720,
+  1366x768 and 1600x900 all rows and the best line are above the fold,
+  and at 1920x1080 everything fits.
+- **9. A lighter title** (6165d80). BETA is a chip on one row with
+  Patreon, its sentence the chip's hover title and a screen reader's text.
+  The keep note leaves the title (it was wrong with a freestyle map
+  seated) for the Race room's Build a track and Open in the track builder
+  note; the builder's strip already said it. Kept: the wordmark, the
+  strapline, Patreon, the lap chip, the first run note and the wiki
+  teaser, which gets its own line. Read first: the 2026-09 entry that put
+  the beta notice there ("not dismissible", under the wordmark, "the word
+  is the part that has to survive") and the Patreon and wiki teaser
+  entries; all of that stands. The title's list also drops the generic
+  58vh .menu-scroll cap on a desktop, which it had picked up with the
+  class it carries for phones, and which was the binding limit once the
+  copy was lighter. Title overflow at 1600x900 0 px, was 67, all ten rows
+  shown; at 1280x720 98 px, was 234.
+- **13. Builder labels** (2a1a2d8). 2D: names and gap labels are laid out
+  last, and one that would land on another steps a line down or up with a
+  hairline back to its anchor; CONTAINER TUNNEL 500 and BILLBOARD GAP 250
+  no longer print over each other. 3D: a gap label was a constant 4.2
+  percent of the view; now it is sized as a sign 60 m off, capped at 2.8
+  percent, floored at 0.7 of that, and faded from 90 m to 60 percent at
+  260 m, the selected gap full and solid. The freestyle canvas has the
+  Labels switch; on a map it puts away the gap labels in both views and
+  the names on the plan, keeping the selected element's name and a car's
+  no road warning.
+
+### Checks added, and no threshold, baseline or golden moved
+
+- check:clip: three lines for item 1 (above).
+- lint:devices: the builder's top bar at 1440x900, 1600x900 and 1920x1080
+  on the race canvas and 1440x900 on the freestyle canvas, every visible
+  control hit tested at both ends and its middle; on the old builder it
+  fails with 19 covered controls. And the freestyle results page at
+  1280x720 and 1600x900 with the lettering's five panel fixture: no spill
+  under the menu, every row and the best line's first line above the
+  fold, the kicker clear of the bar; on the old page it fails 7 ways.
+- tests/shell-baseline.json is untouched. lint:shell went green by the
+  title getting lighter, not by a re-record.
+
+### RUN LOG
+
+On 2a1a2d8, the branch head:
+
+    npm run check:clip        879 passed, 0 failed
+    npm run lint:preload      up to date, boot 113 modules, city 73,
+                              built 32; 215 served (no regeneration)
+    npm run lint:boot         9 of 9 checks clean
+    npm run lint:memory       PASS, every world is lazy and every world
+                              is freed
+    npm run lint:shell        PASS, title overflow 0 px, every screen at
+                              or under its baseline
+    npm run lint:responsive   PASS, freestyle 238 frames, worst gap 631 ms
+    npm run lint:devices      PASS, five devices all clear, 4 builder
+                              windows clear (19, 19, 19, 18 controls),
+                              results at 1280x720 and 1600x900 clear
+    npm run lint:input        first run 3 failed, 157 passed; rerun 1
+                              failed, 159 passed. See below.
+    npm run score:selftest    1 FAILED, "the same lap without the flip
+                              is a Maverick Loop", main's, as it stands
+    npm run check:counter     all passed
+    npm run check:chase       all passed
+    npm run verify            not run: no physics, plant, ABI or build
+
+lint:input: the failure in both runs is "and the input layer and the
+button agree with the setting", the calibration screen's Stick mode
+button read "Stick mode 2" a moment after M set mode 3. The same check on
+an export of main at 716562b failed the same line, 1 failed, 159 passed,
+so it is main's and a race between the key and the button's next paint.
+The other two in the first run were the known parked row timing ("the row
+arrives by itself", 24.96 s) and its follower; they passed on the rerun
+and on 716562b. Nothing here touches the input path or calibration.
+
+### What went wrong
+
+- The survey's rig pointed at another worktree and assumed the gate on
+  arrival; its flows were rewritten against window.__ui.
+- Chromium would not start with its profiles under the scratchpad (the
+  path is too long for its socket), so the rigs' profiles went to a short
+  private folder under /tmp, removed at the end. No /tmp/sim-page-* was
+  left by this work.
+- The first results fix put the copy in a scroller and left the best line
+  just below its fold at 1600x900, where the old page still showed its
+  first line: a regression the new lint:devices lines now catch. Setting
+  the copy 40 px closer fixed it.
+- The first 3D label sizes (cap 0.026, floor 0.55) were too small and too
+  faint to read at the opening orbit; the picture said so.
+- A hit test on the results note read BODY, because #ui takes no pointer
+  and text is not a hit target; the check measures geometry instead.
+- Item 13's commit message first said check:clip 882; the run said 879,
+  and the unpushed commit was amended to say so.
+
+### Not done, and for the owner
+
+- The Weight slider on the pause screen is shown, dimmed under the pause
+  menu with the rest of the OSD, and cannot be dragged there: the pause
+  screen takes the pointer. Making it a control on pause means lifting it
+  out of the OSD's dim, which is a layout choice.
+- On a first flight the slider stays up with its card for up to 8 s of
+  air before it fades, because the card says "Drag this".
+- The title at 1280x720 still scrolls its list 98 px; the GPU row on
+  Settings still truncates its vendor string.
+- Items 5, 10 to 12 and 14 onward were not in this brief.
+
+Verification to choose: the change is to the shell and the builder, so
+**shots** or **fly it** would see it. Fly: the first flight's Weight card
+should go by itself within 8 s of air, the slider should fade after
+takeoff and be back on landing and on pause, Air should read 0.00 on the
+pads and hold when landed, and the OSD's small print should read over the
+yard at noon and overcast.

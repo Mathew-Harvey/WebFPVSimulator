@@ -1332,6 +1332,7 @@ export class View3D {
 
   build() {
     this.disposeContent();
+    this.gapLabels = [];
     this.builtFreestyle = this.isFreestyle();
     if (this.builtFreestyle) {
       this.buildFreestyle();
@@ -2390,6 +2391,7 @@ export class View3D {
     const fs = this.ensureFreestyle();
     const g = new THREE.Group();
     this.pickables = [];
+    this.gapLabels = [];
     if (fs) {
       this.seatScene(doc);
       this.seatFreestyleGround(doc);
@@ -2666,20 +2668,60 @@ export class View3D {
     }
 
     /*
-     * The name and the points, the same size on screen at any distance: a
-     * gap is a note to the author rather than a thing in the world, and at
-     * the map's opening orbit, 180 m out, a label a metre tall is three
-     * pixels. Anchored by its bottom edge, so it sits on the window's top
-     * however large it draws.
+     * The name and the points, sized on screen: a gap is a note to the
+     * author rather than a thing in the world, and at the map's opening
+     * orbit, 180 m out, a label a metre tall is three pixels. Anchored by
+     * its bottom edge, so it sits on the window's top however large it
+     * draws. How large, and how faint, is fitGapLabels's, on every frame
+     * the view draws. Under the Labels switch, as the race canvas's numbers
+     * are; the selected gap keeps its name.
      */
+    if (this.host.labelsVisible === false && !selected) {
+      return holder;
+    }
     const label = textSprite(`${el.name || 'GAP'}  ${el.points ?? ''}`.trim(), 1, '#1d1406', selected ? '#ffd45c' : '#ffb347');
     label.material.sizeAttenuation = false;
-    label.scale.multiplyScalar(0.042);
+    label.userData.aspect = label.scale.x;
+    label.userData.selected = selected;
+    label.scale.multiplyScalar(GAP_LABEL.cap);
     label.center.set(0.5, 0);
     label.position.z = h + 0.25;
     this.register(label, el);
     holder.add(label);
+    if (this.gapLabels) {
+      this.gapLabels.push(label);
+    }
     return holder;
+  }
+
+  /*
+   * THE GAP LABELS, FITTED TO THE CAMERA.
+   *
+   * They were a constant 4.2 percent of the view's height at any range, so
+   * close in, on Play or orbiting the yard, each one was a banner wider than
+   * the containers and the footbridge it named, and two neighbours printed
+   * over each other. Now a label is the size a sign REF_M metres off would
+   * be, never larger than CAP of the view and never smaller than MIN of it,
+   * and it fades from NEAR_M out to FAR_M, so the far ones step back and
+   * the map reads through them. The selected gap is always full size and
+   * solid. A handful of sprites, a scale and an opacity each.
+   */
+  fitGapLabels() {
+    const labels = this.gapLabels;
+    if (!labels || !labels.length || !this.camera) {
+      return;
+    }
+    const cam = this.camera.position;
+    const at = new THREE.Vector3();
+    for (const s of labels) {
+      s.getWorldPosition(at);
+      const d = at.distanceTo(cam);
+      const sel = s.userData.selected;
+      const k = sel ? GAP_LABEL.cap : GAP_LABEL.cap * clamp(GAP_LABEL.refM / Math.max(d, 1), GAP_LABEL.min, 1);
+      s.scale.set(k * s.userData.aspect, k, 1);
+      const fade = clamp((d - GAP_LABEL.nearM) / (GAP_LABEL.farM - GAP_LABEL.nearM), 0, 1);
+      s.material.opacity = sel ? 1 : 1 - fade * (1 - GAP_LABEL.faintest);
+    }
   }
 
   /* ---------------- roads, cars and Play ---------------- */
@@ -3042,6 +3084,7 @@ export class View3D {
       this.dirty = false;
     }
     this.applyCamera();
+    this.fitGapLabels();
     if (freestyle && this.fs) {
       this.poseTraffic();
       this.renderFreestyle();
@@ -3070,6 +3113,18 @@ export class View3D {
     }
   }
 }
+
+/*
+ * The gap labels' screen sizing, in fractions of the view's height (a
+ * sprite with sizeAttenuation off) and metres. CAP is the size a label
+ * reaches at REF_M and closer, two thirds of the 0.042 it was at every
+ * range. MIN is the floor of the shrink, so a label at the opening orbit
+ * is still a word: 0.55 of the cap was measured there as too small to read
+ * in the first picture. FAINTEST is the opacity at FAR_M and beyond.
+ */
+const GAP_LABEL = {
+  cap: 0.028, min: 0.7, refM: 60, nearM: 90, farM: 260, faintest: 0.6,
+};
 
 /*
  * A text label as a camera facing sprite. Canvas2D into a texture is the

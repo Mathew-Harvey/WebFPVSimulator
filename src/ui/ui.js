@@ -86,6 +86,7 @@ import {
   rateField,
   ratesAreDefault,
   ratesFromLegacy,
+  ratesShort,
   ratesSummary,
   throttleSummary,
 } from '../../configs/rates.js';
@@ -667,6 +668,14 @@ function counterBestSentence(s) {
   return `Your best on this map in this browser: ${formatScore(best)}.`;
 }
 
+/* Where a built track lives, said in the Race room beside the row that
+ * builds one. It was the title's, where it was three lines on every visit
+ * and wrong with a freestyle map seated. The builder's strip says the same. */
+const KEEP_NOTE = 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.';
+
+/* How many kinds of trick a freestyle result lists before "N more". */
+const RESULT_TRICK_ROWS = 3;
+
 /*
  * The counter's bests as plain results rows, [label, value], for the
  * results screen when there is no manga page to draw them on (Clean FPV).
@@ -1036,6 +1045,10 @@ const DEFAULTS = {
  * the version in the key is for, and it is cheaper than being wrong quietly.
  */
 const AIR_HINT_KEY = 'webfpv.airhint.v2';
+/* How long the card stays up in the air, on the run's airtime. Long enough
+ * to read two sentences in a hover, short enough that it is gone before the
+ * pilot is looking at the ground it covers. */
+const AIR_HINT_AIR_MS = 8000;
 
 function airHintSeen() {
   try {
@@ -2792,7 +2805,7 @@ function ratesChanged(s) {
 function ratesItem(s, midRun) {
   return {
     label: 'Rates',
-    value: ratesSummary(s.rates),
+    value: ratesShort(s.rates),
     action: 'rates',
     /*
      * NO MID RUN WARNING ANY MORE, and its absence is the point.
@@ -3495,6 +3508,8 @@ export class Ui {
      * localStorage flag is consulted, so a pilot who dismissed it and then
      * paused and resumed does not get it again on the way back into flight. */
     this.airHintDone = false;
+    /* The airtime at which the card first went up, for its eight seconds. */
+    this.airHintAtMs = null;
     this.ptrX = null;
     this.ptrY = null;
     this.build();
@@ -3680,13 +3695,22 @@ export class Ui {
      * directly under the wordmark: a pilot who is about to meet a bug
      * should have been told before the lap, not after it. It is not
      * dismissible, because the thing it warns about has not stopped
-     * being true by the second visit. */
+     * being true by the second visit.
+     *
+     * A CHIP NOW, NOT A SENTENCE (2026-09-26). The word is the part that
+     * has to survive, which the short screen already knew; the sentence
+     * cost the title two lines at every width and is the chip's hover
+     * title and a screen reader's text instead. It shares a row with
+     * Patreon, so both keep their place under the wordmark and the menu
+     * gets the lines back. */
+    const betaLine = 'Expect bugs and rough edges. It is still being built, and it will improve.';
     const beta = el('p', 'beta-note');
-    beta.append(
-      el('span', 'beta-tag', 'Beta'),
-      el('span', null, 'Expect bugs and rough edges. It is still being built, and it will improve.'),
-    );
-    brand.append(beta);
+    const betaTag = el('span', 'beta-tag', 'Beta');
+    betaTag.title = betaLine;
+    beta.append(betaTag, el('span', 'sr-only', ` ${betaLine}`));
+    const chips = el('div', 'brand-chips');
+    chips.append(beta);
+    brand.append(chips);
     /*
      * The support link lives HERE on the title, under the wordmark, because
      * the title hides the top bar and the command bar's right corner is
@@ -3696,12 +3720,18 @@ export class Ui {
     this.patreonSlot = el('div', 'brand-patreon');
     this.patreonLink = patreonAnchor();
     this.patreonSlot.append(this.patreonLink);
-    brand.append(this.patreonSlot);
+    chips.append(this.patreonSlot);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
-    this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.');
-    brand.append(this.keepNote);
-    /* First run only. Replaced by the keep note once a lap has been flown. */
+    /*
+     * NO KEEP NOTE HERE ANY MORE. "Tracks you build stay in this browser"
+     * was three lines on the front page, drawn with a freestyle map seated
+     * too, where it said track, and it cost the title its last menu row:
+     * lint:shell's 67 px. It is true and useful where a track is built or
+     * chosen, so it is the Race room's Build a track note (KEEP_NOTE) and
+     * the builder's own strip, which already said it.
+     */
+    /* First run only. */
     this.firstNote = el('p', 'keep-note first-note', 'A quad has no brakes and no wings. Point it where you want to go and push. Two minutes and you will be through a gate.');
     brand.append(this.firstNote);
     this.wikiTeaser = btn('wiki-teaser', 'Simulating FPV, for nerds');
@@ -6184,8 +6214,8 @@ export class Ui {
           label: loaded ? 'Open in the track builder' : 'Build a track',
           action: 'trackbuilder',
           note: loaded
-            ? 'Opens the track builder on the track above. New in there starts a blank one.'
-            : 'Opens the track builder on an empty field.',
+            ? `Opens the track builder on the track above. New in there starts a blank one. ${KEEP_NOTE}`
+            : `Opens the track builder on an empty field. ${KEEP_NOTE}`,
         },
         publishAction(listing, this.coursePublished),
         uploadAction(listing, {
@@ -6423,7 +6453,7 @@ export class Ui {
            * nearly two thirds, which is the tilt a pilot wrote in about.
            */
           `How far the camera tilts up from the airframe. ${CAMERA_ANGLE_MIN} is flat, looking along the nose. ${CAMERA_ANGLE_DEFAULT} is a typical cruise. 45 to ${CAMERA_ANGLE_MAX} is race. Above about 30, yaw starts to roll the horizon: at ${s.cameraAngle} degrees, ${Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100)} percent of a yaw shows up as roll in the picture. That is what a real tilted camera does. Lower Yaw max rate on the Rates screen to tame it.`,
-          `${s.cameraAngle} degrees`,
+          `${s.cameraAngle}°`,
           (d) => {
             const before = s.cameraAngle;
             s.cameraAngle = clampCameraAngle(before + d);
@@ -6482,7 +6512,7 @@ export class Ui {
          */
         {
           label: 'Rates',
-          value: ratesSummary(s.rates),
+          value: ratesShort(s.rates),
           action: 'rates',
           note: `Not the machine's. Rates are yours, so they live under ${SCREEN_TITLES.pilot} and stay put when you switch tunes. Changing the aircraft reseeds them only if you are still on stock rates. This row goes there, and changing them mid run leaves the quad where it is.`,
         },
@@ -6888,7 +6918,7 @@ export class Ui {
          */
         {
           label: 'Rates',
-          value: ratesSummary(s.rates),
+          value: ratesShort(s.rates),
           action: 'rates',
           note: 'How far the sticks go, and the throttle limit. Yours, not the tune\'s. Changing them here leaves the quad where it is and the clock running.',
         },
@@ -6901,14 +6931,16 @@ export class Ui {
           note: `PIDs, camera, flight mode and the firmware bench.${MID_RUN_WARNING}`,
         },
         {
-          /* Named for what is in it, as on the title. See there. */
+          /* Named for what is in it, as on the title, and it reads what the
+           * title's reads: the pilot's name. It used to read the rates, the
+           * same string as the Rates row four rows above it. */
           label: 'Settings',
-          value: ratesSummary(s.rates),
+          value: readPilotName() || 'Not set',
           action: 'pilot',
           /* Rates are the first thing in this room and they no longer cost
            * the run, so the blanket warning would be wrong more often than
            * right. The rows that still restart a run carry it themselves. */
-          note: 'Rates, your radio, graphics and sound.',
+          note: 'Your name, your radio, rates, graphics and sound.',
         },
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
@@ -10353,6 +10385,7 @@ export class Ui {
     this.syncFrame();
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
+    this.pauseAirSlider(screen);
     /* The score follows the OSD onto and off the screen, but only in
      * freestyle: a race has no score and an empty Score 0 over a lap timer
      * is a readout that never changes. */
@@ -11376,10 +11409,11 @@ export class Ui {
       if (runScored === false) {
         /*
          * SCORING OFF MEANS THERE IS NO RUN, so the slot goes back to the
-         * airtime it carried before a run was a thing that ends: the sim
-         * clock since this flight began, which is what a pilot flying a
-         * pack wants beside the pack bar. See the note above about this
-         * slot having counted an airtime up in it.
+         * airtime it carried before a run was a thing that ends, which is
+         * what a pilot flying a pack wants beside the pack bar. Airtime is
+         * time in the air: main.js starts it at takeoff and holds it while
+         * the quad sits landed, so the pads read a dimmed 0.00 and not the
+         * seconds spent reading the banner. See airtimeMs there.
          */
         Ui.text(this.osdClockLabel, 'Air');
         Ui.text(this.osdTimer, running ? formatTime(lapMs) : '0.00');
@@ -11785,14 +11819,16 @@ export class Ui {
       const rows = summary.rows || [];
       const top = rows.length ? rows[0].points : 0;
       /*
-       * TEN, and the container scrolls, so this is a choice rather than a
-       * fit. A run can name twenty five kinds of trick and the tail of that
-       * list is quarter rolls worth three points each: what a pilot reads a
-       * results screen for is what EARNED, and a top ten is the shape that
-       * answers it. The note below says how many are not shown, so nothing
-       * is hidden without saying so.
+       * THREE, and one line for the rest. It was ten in a list that
+       * scrolled, and at 1280 by 720 the Fly again row sat over the third
+       * of them and over the best line under them: the page was taller
+       * than the column. What a pilot reads a results screen for is what
+       * EARNED, and the top three answer it; the manga page beside them
+       * carries the best trick, and the rest are counted, with what they
+       * paid between them, on a line of their own, so nothing is hidden
+       * without saying so.
        */
-      for (const row of rows.slice(0, 10)) {
+      for (const row of rows.slice(0, RESULT_TRICK_ROWS)) {
         const line = el('div', `result-row${row === rows[0] ? ' fastest' : ''}`);
         const main = el('div', 'result-main');
         main.append(el('span', 'result-label', row.count > 1 ? `${row.name} x${row.count}` : row.name));
@@ -11807,11 +11843,16 @@ export class Ui {
         }
         this.resultsBody.append(line);
       }
-      const hidden = rows.length - 10;
-      if (hidden > 0) {
-        notes.push(hidden === 1
-          ? 'And one more kind of trick, further down the list.'
-          : `And ${hidden} more kinds of trick, further down the list.`);
+      const rest = rows.slice(RESULT_TRICK_ROWS);
+      if (rest.length) {
+        const line = el('div', 'result-row result-more');
+        const main = el('div', 'result-main');
+        main.append(
+          el('span', 'result-label', rest.length === 1 ? 'One more kind of trick' : `${rest.length} more kinds of trick`),
+          el('span', 'result-time', formatScore(rest.reduce((sum, r) => sum + (r.points || 0), 0))),
+        );
+        line.append(main);
+        this.resultsBody.append(line);
       }
     }
     /* Which number went to the board, and which stays here. */
@@ -11821,9 +11862,11 @@ export class Ui {
         ? `Post this run sends the board the trick score, ${formatScore(summary.total)}. The board knows tricks and nothing else yet, so the gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here and not there.`
         : `The board takes tricks only, and this run named none, so there is nothing to post. The gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here.`);
     }
+    /* The best line leads the note: it is the sentence the pilot was
+     * waiting for, and the board's small print can follow it. */
     const bestNote = scored ? counterBestSentence(summary) : null;
     if (bestNote) {
-      notes.push(bestNote);
+      notes.unshift(bestNote);
     }
     this.resultsNote.textContent = notes.join(' ');
     this.mangaPanels = this.manga ? mangaPanels(summary) : [];
@@ -12204,16 +12247,44 @@ export class Ui {
    * never again. Not on the title, not in a menu: a tooltip on a control the
    * reader cannot see is a riddle, and the sentence it carries only means
    * anything while there is a quad in the air to try it on.
+   *
+   * `ready` is the quad in the air: off the pads, not perched, not set down
+   * and not on its back. `airMs` is the run's airtime on the sim clock and
+   * `padFlying` is a radio or gamepad's sticks moving the quad in the air.
+   *
+   * THE SLIDER FADES IN THE AIR. The owner's decision of 2026-09-26: "once
+   * in flight fade it out, show it when landed or pause screen". The block
+   * carries is-aloft while the quad flies and the sheet does the fade, so
+   * nothing here runs per frame beyond the cached class write. It stays up
+   * while its card is, because the card is pointing at it.
    */
-  setAirSlider(show, ready = true) {
+  setAirSlider(show, ready = true, { airMs = 0, padFlying = false } = {}) {
     const air = this.osdAir;
     if (!air) {
       return;
     }
-    Ui.klass(air.box, show ? 'osd-air' : 'osd-air is-off');
     Ui.klass(this.osdSticks, show ? 'osd-sticks' : 'osd-sticks is-off');
     if (!show) {
+      Ui.klass(air.box, 'osd-air is-off');
       return;
+    }
+    /*
+     * THE CARD RETIRES WITHOUT A POINTER. It used to wait for Got it or a
+     * touch on the track, which a pilot holding a radio never gives, so it
+     * sat over the ground ahead for the whole first session and came back
+     * the next one. It now goes, and is remembered as dismissed, on the
+     * first landing or crash (ready drops), after about eight seconds of
+     * airtime, or on the first stick a radio or gamepad flies the quad with.
+     */
+    const dialog = Boolean(this.nameDialog && !this.nameDialog.hidden);
+    if (!air.hint.hidden) {
+      if (!ready || padFlying || airMs - this.airHintAtMs >= AIR_HINT_AIR_MS) {
+        this.dismissAirHint();
+      } else if (dialog) {
+        /* Never drawn under a modal. Put away, not retired: it comes back
+         * with the flight, on the airtime it had already used. */
+        air.hint.hidden = true;
+      }
     }
     /*
      * WHEN THE HINT IS RAISED, and both halves of the test were learned
@@ -12232,8 +12303,30 @@ export class Ui {
      * collision is a layout problem and it is solved in the sheet, where the
      * card flips below the slider on a short screen.
      */
-    if (!this.airHintDone && air.hint.hidden && ready && !airHintSeen()) {
+    if (!this.airHintDone && air.hint.hidden && ready && !padFlying && !dialog && !airHintSeen()) {
       air.hint.hidden = false;
+      /* The first raise starts its eight seconds. A raise after a pause
+       * keeps the stamp, so the pause does not buy the card more air. */
+      if (this.airHintAtMs == null) {
+        this.airHintAtMs = airMs;
+      }
+    }
+    Ui.klass(air.box, ready && air.hint.hidden ? 'osd-air is-aloft' : 'osd-air');
+  }
+
+  /*
+   * Off the screen, the card is put away rather than retired, so it is
+   * never drawn through the pause menu or a dialog over it. The slider
+   * itself comes back on the pause screen: see setAirSlider.
+   */
+  pauseAirSlider(screen) {
+    const air = this.osdAir;
+    if (!air || screen === 'flight') {
+      return;
+    }
+    air.hint.hidden = true;
+    if (air.box.__wfClass === 'osd-air is-aloft') {
+      Ui.klass(air.box, 'osd-air');
     }
   }
 

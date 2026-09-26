@@ -192,6 +192,14 @@ const TAKEOFF_RELEASE = 0.18;
  */
 const GROUND_CUE_GAP_MS = 220;
 /*
+ * How far a radio or gamepad's roll, pitch or yaw has to move off centre,
+ * in the air, to count as the pilot flying the quad with it: that is when
+ * the first flight's Weight card retires for a pilot with no pointer in
+ * hand. Past a stick's centre noise, well short of a real input. Display
+ * only; nothing in the flight reads it.
+ */
+const PAD_FLYING_STICK = 0.12;
+/*
  * How long after a takeoff the contact cues stay muted, on the WALL clock.
  *
  * 8ebd6b8 muted them on the `takingOff` flag, and the flag is not a window:
@@ -1976,7 +1984,7 @@ export async function boot({ loading, bootStart, mapId }) {
   function ghostRowChoices() {
     const list = [
       { id: 'off', label: 'Off' },
-      { id: 'best', label: 'Your best this session' },
+      { id: 'best', label: 'Your best lap' },
       { id: 'previous', label: 'Your previous lap' },
     ];
     for (const t of ghostBoardTimes || []) {
@@ -2751,6 +2759,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * branch each frame and read by the obstacle query later in the same
    * frame. Starts level. */
   let vHalfFrame = craftVerticalHalf(0);
+  /*
+   * Airtime, for the freestyle display with scoring off: the sim time this
+   * run has spent in the air. It starts at takeoff and holds while the
+   * quad sits landed, perched or set down, the way Betaflight's OSD keeps
+   * its fly time apart from its on time; before 2026-09-26 it was the lap
+   * clock itself and read 3.72 s on the pads at 0 km/h. Added from the
+   * steps the flying branch takes, so it is sim time and never frame time.
+   * Display only: the scorer's run clock and the lap clock are simTimeMs
+   * and do not read it.
+   */
   let airtimeMs = 0;
   /* The freestyle run's clock, as the OSD reads it. Written once a frame
    * from score.view() just above setOsd, so the readout is this frame's
@@ -4001,6 +4019,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * pinRcGrid follow simStepIdx, which mirrors the module.
      */
     simTimeMs = 0;
+    airtimeMs = 0;
     /* Anything that holds a stamp ON that clock has to go back with it, or a
      * fresh run compares a zeroed clock against last run's stamp and stays
      * inside a cooldown that has already expired. */
@@ -6954,6 +6973,10 @@ export async function boot({ loading, bootStart, mapId }) {
           stateCurr = stNow;
         }
         simTimeMs += steps * MS_PER_STEP;
+        /* Airtime: only steps flown off the stand. See airtimeMs. */
+        if (!stood && !replayMode) {
+          airtimeMs += steps * MS_PER_STEP;
+        }
         simStepIdx += steps;
         frameSteps = steps;
         /* A replay steps nothing, so its frames read the cars as a frame
@@ -7426,12 +7449,6 @@ export async function boot({ loading, bootStart, mapId }) {
       ghostPrev.qw = qPrev.w;
     }
     ghostFrame(simNow);
-
-    /* Airtime, for the freestyle display: the simulation clock since this
-     * run began, which is what a pilot flying a pack wants beside the pack
-     * bar. It reads on the sim clock for the same reason a lap does, so a
-     * frame hitch cannot spend a pilot's battery for them. */
-    airtimeMs = simTimeMs;
 
     /*
      * The world is the title picture, the flight picture, the pause
@@ -8141,7 +8158,8 @@ export async function boot({ loading, bootStart, mapId }) {
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({
         mode: view.mode,
-        lapMs: race.freestyle ? airtimeMs : race.currentLapMs(simNow),
+        /* No airtime yet reads a dimmed 0.00, like a lap before its gate. */
+        lapMs: race.freestyle ? (airtimeMs > 0 ? airtimeMs : null) : race.currentLapMs(simNow),
         /* The freestyle clock is the RUN's, counting down, and it is the
          * only clock on the screen: see setOsd. Read straight off the
          * scorer, which is the thing that decides when the run ends, rather
@@ -8198,10 +8216,20 @@ export async function boot({ loading, bootStart, mapId }) {
       });
       /* The air slider rides the same test as the gimbals it sits between,
        * but not the same SOURCE test: it belongs to every pilot, radio,
-       * keyboard and thumbs alike, so it is up whenever there is a quad in
-       * the air to try it on. This is also where its first-run hint is
-       * raised, which is why it is here and not in show(). */
-      ui.setAirSlider(true, !landed && !launchStaging && !poseLock);
+       * keyboard and thumbs alike. This is also where its first-run hint is
+       * raised and retired, which is why it is here and not in show().
+       * Aloft is off the pads, not perched or set down, and not on its
+       * back: the slider fades while it is true and the card retires when
+       * it goes false. A radio or gamepad moving the sticks in the air is
+       * the pilot answering the card without a pointer. */
+      const aloft = !landed && !launchStaging && !poseLock && !turtleWait && !turtleFlip.active;
+      ui.setAirSlider(true, aloft, {
+        airMs: airtimeMs,
+        padFlying: aloft && !input.isKeyboardPrimary()
+          && (Math.abs(ch.roll) > PAD_FLYING_STICK
+            || Math.abs(ch.pitch) > PAD_FLYING_STICK
+            || Math.abs(ch.yaw) > PAD_FLYING_STICK),
+      });
       updateTargetLock();
     } else if (mode !== 'paused') {
       ui.setStickOverlay({ show: false, roll: 0, pitch: 0, yaw: 0, throttle: 0 });

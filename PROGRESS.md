@@ -47768,3 +47768,27 @@ module ABI or the build, and it was not asked for.
   identical. It moves the clean=0 counts a little from run to run (the
   room from the chase camera read 4949, 6407 and 5258 on three runs) and
   cannot move clean=1 off zero.
+
+## 2026-09-26 | git | Replay mode (PR #16) goes to main
+
+The owner, on the entry above: "push to main". That is the approval to put
+PR #16 on main. No verification scale was named with it: the checks in the
+entry above are the ones that were run, on the very code that goes to main,
+and flying a clean replay stays the suggestion. main had not moved from
+2df3020, the base the branch was rebased onto, so main goes to the branch
+as a fast forward: no merge commit, nothing rewritten, and every commit id
+the entry above cites stays true.
+
+What to look for when flying it: a replay URL with &clean=1, once with
+cam=chase and once with cam=fpv. Wrong would be a logo, the next gate's
+glow, any UI or a cursor on screen, or a camera that looks broken. The same
+URL without &clean=1 brings the logos, the glow and the UI back.
+
+### RUN LOG
+
+    git fetch                      main 2df3020, unchanged since the entry
+                                   above; merge-base 2df3020, main is an
+                                   ancestor of the branch
+    code                           unchanged since the entry above; only
+                                   this entry is new
+    checks                         not rerun: nothing they read changed

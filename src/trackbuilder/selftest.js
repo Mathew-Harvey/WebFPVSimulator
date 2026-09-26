@@ -69,7 +69,7 @@ import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/s
 import { padsLayout } from '../props/course.js';
 import { placeDocument, topUnder, groundUnder, SUPPORT_TIE } from '../maps/built/place.js';
 import { roadOf, nearestOn } from '../maps/built/road.js';
-import { trafficOf, DRIFT } from '../maps/built/traffic.js';
+import { trafficOf, DRIFT, roadKeepOut } from '../maps/built/traffic.js';
 import {
   addDraftNode, closesDraft, endsDraft, roadFromDraft, legCount, legMidpoints, insertNode, moveNode, deleteNode,
   pickNode, pickLeg, snapToRoad, vehiclePlace, PARK, bodiesOverlap, moduleRoad, laneXyz, lapTable, laneClashes,
@@ -5057,6 +5057,43 @@ function suiteRecoverSpot() {
     restSpotAt(town, roofAt, rest, 15, 0, B.top + 1, out) && out.surface === B.top
     && !restSpotAt(town, roofAt, rest, 15, 0, B.top - 1, out));
   setCraftAirframe(airframeById('5inch').dims);
+
+  /*
+   * A CRASH ON A ROAD IS SET DOWN ON THE VERGE, the owner's decision of
+   * 2026-09-26: a landed craft is not stepped, and a car drove through the
+   * one set down on Hibari Yard's lane. Its loop, on flat ground with no
+   * solids, so what is measured is the traffic's rule and nothing else:
+   * the lane 100 m up from its south end, where the loop runs north and
+   * south at x = 140 in the plan.
+   */
+  const yard = starterMap();
+  const keep = roadKeepOut(trafficOf(yard));
+  const yardW = yard.field.width;
+  const yardD = yard.field.depth;
+  const fiveRest = airframeById('5inch').dims.vHalfDown;
+  const loopLine = keep ? keep.roads[0] : null;
+  const offCentre = () => nearestOn(loopLine.line, out.x + yardW / 2, yardD / 2 - out.z).d;
+  const planToWorld = (x, y) => ({ x: x - yardW / 2, z: yardD / 2 - y });
+  check('Hibari Yard keeps the set down off the one road its cars drive',
+    Boolean(keep) && keep.roads.length === 1, keep ? `${keep.roads.length}` : 'none');
+  const lane = planToWorld(140 - 1.875, 100);
+  check('without it a crash on the lane is set down on the lane',
+    findRestSpot(null, flat, fiveRest, lane.x, 1, lane.z, null, out) && offCentre() < 2, spot());
+  check('with it, on the verge, clear of a car in either lane, the drift car sideways included',
+    findRestSpot(null, flat, fiveRest, lane.x, 1, lane.z, null, out, keep)
+    && offCentre() >= loopLine.clear + CRAFT_WORLD_R && Math.hypot(out.x - lane.x, out.z - lane.z) < 3,
+    `${spot()}, ${offCentre().toFixed(2)} m off the centre line against ${(loopLine.clear + CRAFT_WORLD_R).toFixed(2)}`);
+  const middle = planToWorld(140, 100);
+  check('and a crash on the centre line, past the rings, is offered the verge square off the road',
+    findRestSpot(null, flat, fiveRest, middle.x, 1, middle.z, null, out, keep)
+    && offCentre() >= loopLine.clear + CRAFT_WORLD_R && offCentre() < loopLine.clear + CRAFT_WORLD_R + 0.5,
+    `${spot()}, ${offCentre().toFixed(2)} m off the centre line`);
+  check('a deck above the tallest car, a footbridge, is not in the traffic',
+    Boolean(keep) && keep.blocks(lane.x, lane.z, 0, CRAFT_WORLD_R) && !keep.blocks(lane.x, lane.z, 4.5, CRAFT_WORLD_R));
+  const parkedOnly = starterMap();
+  parkedOnly.elements = parkedOnly.elements.filter((e) => e.type !== 'vehicle');
+  check('only on a map with traffic: no car driving, no keep out, and a race track has none',
+    roadKeepOut(trafficOf(parkedOnly)) === null && roadKeepOut(trafficOf(createTrack())) === null);
 }
 
 /*

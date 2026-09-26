@@ -3626,13 +3626,18 @@ export async function boot({ loading, bootStart, mapId }) {
      * on. The trick scorer is told only where it always was. */
     counterCrash(false);
     const from = haveRecoverFrom ? recoverFrom : null;
+    /* On a map with traffic, never in a car's path: a landed craft is not
+     * stepped, and the car would drive through it. The verge instead, the
+     * owner's decision of 2026-09-26; see roadKeepOut in
+     * src/maps/built/traffic.js. Null on every other map. */
+    const keepOut = trafficOn ? (view.restKeepOut ?? null) : null;
     /* Around the crash first. If everything there is on the far side of
      * something, around the last open air, which by construction is on the
      * near side of it. */
     const found = findRestSpot(
-      view.colliders, recoverGroundAt, REST_HEIGHT, pCurr.x, pCurr.y, pCurr.z, from, restSpot,
+      view.colliders, recoverGroundAt, REST_HEIGHT, pCurr.x, pCurr.y, pCurr.z, from, restSpot, keepOut,
     ) || Boolean(from && findRestSpot(
-      view.colliders, recoverGroundAt, REST_HEIGHT, from.x, from.y, from.z, from, restSpot,
+      view.colliders, recoverGroundAt, REST_HEIGHT, from.x, from.y, from.z, from, restSpot, keepOut,
     ));
     if (!found) {
       /* No flat surface within three and a half metres is clear and

@@ -746,6 +746,7 @@ const KEITRUCK = {
   sill: 0.51, waist: 0.85, roof: 1.91,
   cab: [0.35, 1.61],
   tw: 0.18,
+  p2: true,
 };
 
 export const MODEL = Object.freeze(Object.fromEntries([
@@ -2908,6 +2909,34 @@ function liveryOn(M, s, info, lv) {
  * sides to 1.27), drawn the same way as the cars.
  * ------------------------------------------------------------------ */
 
+/* The kei truck's second pass face: its bumper wrapping the corners, the
+ * lamps at the corners in painted rims, a black barred grille between
+ * them, the plate on the bumper, and a lip on the front arch. */
+function keiTruckFrontP2(M, s, hw, front, lamps, arch) {
+  const t = {
+    ...s,
+    nose: { face: -0.005, bumper: 0.575, dam: 0.38, wrap: { rp: [0.07, 0.08], front: 0.045, side: 0.02 } },
+    arch: arch.arch, lip: { w: 0.035, proud: 0.012 },
+  };
+  const fb = bumperLoft(M, t, 1, hw, 'brite');
+  const chain = [...fb, [chainX(front, 0.576), 0.576], ...front.filter((p) => p[1] > 0.577)];
+  endP2(M, t, chain, 1, hw, {
+    pods: [
+      {
+        poly: rrect(0.37, 0.70, 0.65, 0.86, 0.02, 1), mirror: true, rim: 0.018, h: 0.02, lens: 0.006,
+        rimRole: 'body', lensRole: 'lampF', lamp: true, lampAt: [0.47, 0.78],
+        parts: [{ role: 'amber', poly: rrect(0.575, 0.716, 0.63, 0.844, 0.006, 1) }, { role: 'dark', poly: rrect(0.47, 0.716, 0.477, 0.844, 0.002, 1) }],
+      },
+      {
+        poly: rrect(-0.31, 0.725, 0.31, 0.835, 0.015, 1), rim: 0.012, h: 0.016, lens: 0.004, rimRole: 'dark', lensRole: 'dark',
+        bars: { n: 2, w: 0.014, role: 'briteDark' },
+      },
+    ],
+    plate: 0.47,
+  }, lamps);
+  archLipP2(M, { ...arch, lip: t.lip }, hw, s.axle[0]);
+}
+
 function keiTruckBody(M, s, o, lamps) {
   const L2 = s.L / 2;
   const hw = s.W / 2;
@@ -2923,22 +2952,34 @@ function keiTruckBody(M, s, o, lamps) {
   }
   prof[prof.length - 1].edge = 'under';
   const f0 = prof.length;
-  P(L2 + 0.03 - 0.05, 0.38, 0.05, 0.06, 'bumper');
-  P(L2 + 0.03, 0.42, 0.05, 0.06, 'bumper');
-  P(L2 + 0.03, 0.56, 0.05, 0.06, 'body');
-  P(L2 - 0.005, 0.575, 0.05, 0.06, 'body');
+  if (s.p2) {
+    /* The bumper is a piece of its own (bumperLoft), below. */
+    P(L2 - 0.03, 0.42, 0.05, 0.06, 'body');
+    P(L2 - 0.005, 0.55, 0.05, 0.06, 'body');
+  } else {
+    P(L2 + 0.03 - 0.05, 0.38, 0.05, 0.06, 'bumper');
+    P(L2 + 0.03, 0.42, 0.05, 0.06, 'bumper');
+    P(L2 + 0.03, 0.56, 0.05, 0.06, 'body');
+    P(L2 - 0.005, 0.575, 0.05, 0.06, 'body');
+  }
   P(L2 - 0.02, 1.0, 0.05, 0.06, 'body');
   const front = prof.slice(f0).map((p) => [p.x, p.y]);
   P(L2 - 0.045, 1.05, 0.04, 0.04, 'body');
   P(L2 - 0.2, s.roof + 0.02, 0.06, 0.06, 'body');
   P(xb + 0.04, s.roof + 0.02, 0.06, 0.06, 'body');
   P(xb, s.roof - 0.06, 0.03, 0.03, 'body');
-  const cap = prism(M, 'body', prof, () => hw, { edgeRole: (i, ch) => (ch ? 'body' : ({ well: 'dark', under: 'dark', bumper: 'brite' }[prof[i].edge] ?? 'body')) });
+  const cap = prism(M, 'body', prof, () => hw, {
+    smooth: s.p2 === true, edgeRole: (i, ch) => (ch ? 'body' : ({ well: 'dark', under: 'dark', bumper: 'brite' }[prof[i].edge] ?? 'body')),
+  });
   /* The roof's lip, a thin cap a touch wider than the cab, where the
    * vendored truck had its own: the one crisp line over the cab. */
   M.box('deep', xb + 0.02, s.roof + 0.005, -(hw + 0.015), L2 - 0.17, s.roof + 0.04, hw + 0.015, '-y');
   /* Glass: the screen on the raked face, the door windows on the flanks. */
-  screen(M, [L2 - 0.045, 1.05], [L2 - 0.2, s.roof + 0.02], hw - 0.04, hw - 0.06, [1, 1], { frame: 0.06, bottom: 0.05 });
+  const zs = hw - 0.04;
+  screen(M, [L2 - 0.045, 1.05], [L2 - 0.2, s.roof + 0.02], zs, hw - 0.06, [1, 1], {
+    frame: 0.06, bottom: 0.05, band: s.p2 ? [0.55, 0.78] : null,
+    wipers: s.p2 ? [[0.42 * zs, 0.012, -0.3 * zs, 0.06], [-0.26 * zs, 0.012, -0.88 * zs, 0.05]] : null,
+  });
   const dlo = clip(clip(clip(inset(cap, cap.map(() => 0.07)), 0, 1, -1.18), 1, 0, -(xb + 0.12)), -1, 0, L2 - 0.1);
   for (const side of [1, -1]) {
     const lay = (role, poly, lift) => {
@@ -2948,6 +2989,15 @@ function keiTruckBody(M, s, o, lamps) {
     lay('dark', inset(dlo, dlo.map(() => -0.012)), 0.005);
     const glass = inset(dlo, dlo.map(() => 0.012));
     lay('glass', glass, 0.009);
+    if (s.p2) {
+      let y0 = Infinity;
+      let y1 = -Infinity;
+      for (const p of glass) {
+        y0 = Math.min(y0, p[1]);
+        y1 = Math.max(y1, p[1]);
+      }
+      lay('band', clip(clip(glass, 0, 1, -(y0 + (y1 - y0) * 0.55)), 0, -1, y0 + (y1 - y0) * 0.78), 0.0105);
+    }
     glints(glass, 0.9, [[0.35, 0.12]], (q) => lay('glint', q, 0.012));
   }
   /* The door's shut lines and handle, the step under it. */
@@ -2960,7 +3010,10 @@ function keiTruckBody(M, s, o, lamps) {
   onFlank(M, 'brite', hw, doorX0 + 0.09, 1.04, doorX0 + 0.21, 1.06, 0.008);
   /* The front: lamps at the corners, the grille slot, the plate. */
   const ch = { front };
-  for (const side of [1, -1]) {
+  if (s.p2) {
+    keiTruckFrontP2(M, s, hw, front, lamps, arch);
+  }
+  for (const side of s.p2 ? [] : [1, -1]) {
     const z0 = side > 0 ? hw - 0.36 : -(hw - 0.08);
     const z1 = side > 0 ? hw - 0.08 : -(hw - 0.36);
     blockOnEnd(M, 'dark', ch.front, 1, 0.7, 0.86, z0 - 0.012, z1 + 0.012, 0.016);
@@ -2970,8 +3023,10 @@ function keiTruckBody(M, s, o, lamps) {
     onEnd(M, 'amber', ch.front, 1, 0.712, 0.848, side > 0 ? z1 - 0.062 : z0, side > 0 ? z1 : z0 + 0.062, 0.02);
     lamps.front.push([L2 + 0.03, 0.78, side * (hw - 0.22)]);
   }
-  blockOnEnd(M, 'dark', ch.front, 1, 0.74, 0.82, -(hw - 0.42), hw - 0.42, 0.01);
-  plate(M, ch.front, 1, 0.47);
+  if (!s.p2) {
+    blockOnEnd(M, 'dark', ch.front, 1, 0.74, 0.82, -(hw - 0.42), hw - 0.42, 0.01);
+    plate(M, ch.front, 1, 0.47);
+  }
   mirrors(M, { ...s, cab: [xb, L2 - 0.1], waist: 1.08 }, hw, 'dark');
   /* The chassis under the bed, with the rear arch cut in it. */
   const cz = hw - 0.04;
@@ -3014,8 +3069,16 @@ function keiTruckBody(M, s, o, lamps) {
   for (const side of [1, -1]) {
     const z = side * (hw - 0.2);
     M.box('dark', -L2 - 0.02, 0.62, z - 0.13, -L2 + 0.02, 0.76, z + 0.13);
-    M.face('lampR', [[-L2 - 0.022, 0.66, z + 0.11], [-L2 - 0.022, 0.66, z - 0.11], [-L2 - 0.022, 0.74, z - 0.11], [-L2 - 0.022, 0.74, z + 0.11]], { toward: [-1, 0, 0] });
-    M.face('amber', [[-L2 - 0.022, 0.635, z + 0.11], [-L2 - 0.022, 0.635, z - 0.11], [-L2 - 0.022, 0.655, z - 0.11], [-L2 - 0.022, 0.655, z + 0.11]], { toward: [-1, 0, 0] });
+    if (s.p2) {
+      /* In a rim on the housing's face, the tail lamp over the amber. */
+      pod(M, [[-L2 - 0.02, 0.5], [-L2 - 0.02, 0.9]], -1, rrect(z - 0.115, 0.632, z + 0.115, 0.748, 0.012, 1), {
+        rim: 0.012, h: 0.012, lens: 0.004, rimRole: 'briteDark', lensRole: 'lampR',
+        parts: [{ role: 'amber', poly: [[z - 0.1, 0.644], [z + 0.1, 0.644], [z + 0.1, 0.664], [z - 0.1, 0.664]] }],
+      });
+    } else {
+      M.face('lampR', [[-L2 - 0.022, 0.66, z + 0.11], [-L2 - 0.022, 0.66, z - 0.11], [-L2 - 0.022, 0.74, z - 0.11], [-L2 - 0.022, 0.74, z + 0.11]], { toward: [-1, 0, 0] });
+      M.face('amber', [[-L2 - 0.022, 0.635, z + 0.11], [-L2 - 0.022, 0.635, z - 0.11], [-L2 - 0.022, 0.655, z - 0.11], [-L2 - 0.022, 0.655, z + 0.11]], { toward: [-1, 0, 0] });
+    }
     lamps.rear.push([-L2 - 0.05, 0.7, z]);
   }
   M.face('plate', [[-L2 - 0.01, 0.95, -0.2], [-L2 - 0.01, 0.95, 0.2], [-L2 - 0.01, 1.15, 0.2], [-L2 - 0.01, 1.15, -0.2]], { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]], toward: [-1, 0, 0] });

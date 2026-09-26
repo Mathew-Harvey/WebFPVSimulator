@@ -516,7 +516,6 @@ export class Chase {
     this.pKind.fill(K_NONE);
     this.craftSeq = 0;
     this.lastCX = 0;
-    this.lastCY = 0;
     this.lastCZ = 0;
     this.liveSlot = -1;
     this.liveHeldMs = 0;
@@ -685,7 +684,6 @@ export class Chase {
     }
     this.craftSeq = seq;
     this.lastCX = cx;
-    this.lastCY = cy;
     this.lastCZ = cz;
 
     /* A contact or a crash at this step loses everything open, what was

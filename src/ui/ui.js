@@ -167,6 +167,7 @@ import {
   clampCameraAngle,
 } from '../render/lens.js';
 import { ScoreHud } from './scorehud.js';
+import { ChaseHud, chaseCallText } from './chasehud.js';
 import { formatScore } from '../game/score.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
@@ -3344,6 +3345,16 @@ export class Ui {
      * screen. Keeping it a sibling means each is shown on its own terms.
      */
     this.scoreHud = new ScoreHud(r);
+
+    /*
+     * THE CHASE: the Tail meter and the chase callouts (src/ui/chasehud.js),
+     * a layer of its own beside the score. Not behind the Scoring switch:
+     * the chase is geometry, and geometry shows by default on a freestyle
+     * map (FREESTYLE-MAPS-PLAN.md section 12, decision 2). Down until the
+     * shell says the map has cars: see setChaseCars.
+     */
+    this.chaseHud = new ChaseHud(r);
+    this.chaseCarsOn = false;
 
     /*
      * THE STF MARK, FOUND: a layer of its own beside the score, for the
@@ -9685,6 +9696,7 @@ export class Ui {
      * freestyle: a race has no score and an empty Score 0 over a lap timer
      * is a readout that never changes. */
     this.syncScoreVisible();
+    this.syncChaseVisible();
     this.renderMenu();
     this.syncChips();
     /* Last, and unconditionally. Last because a listener is entitled to
@@ -10153,6 +10165,7 @@ export class Ui {
      * score up without waiting for the next show().
      */
     this.syncScoreVisible();
+    this.syncChaseVisible();
     const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
     const seat = this.settings.map === 'custom' ? activeCourseSummary() : null;
     const worldName = (seat && seat.name) || m.name;
@@ -10834,6 +10847,74 @@ export class Ui {
      * pilot who flew a second run saw the first one's "Run posted" row. */
     this.freestyleRun = null;
     this.runPosted = null;
+  }
+
+  /*
+   * THE CHASE (FREESTYLE-MAPS-PLAN.md section 7 item 4, Stage E): the Tail
+   * meter and the chase callouts, fed from src/game/chase.js. What the shell
+   * calls, and every one of them is safe with no cars, on a race track, and
+   * before build() has run:
+   *
+   *   setChaseCars(n)     when a map is adopted: how many cars it drives.
+   *                       0, a race track or a map with no roads, keeps the
+   *                       layer down whatever else is called.
+   *   chaseMeter(view)    every flight frame, with chase.view(). A view with
+   *                       nothing open, or null, takes the meter down.
+   *   chaseEvents(list)   every flight frame, with chase.drainEvents() (null
+   *                       when nothing happened); chaseEvent(e) for one.
+   *                       Each paying event and each loss gets a callout,
+   *                       and the paying ones are spoken as well.
+   *   resetChase()        a new run, with resetScore.
+   *
+   * Up only on a freestyle map with cars, in flight or paused, as the score
+   * is; not behind the Scoring switch, for the reason at chaseHud in build().
+   */
+  setChaseCars(n) {
+    this.chaseCarsOn = n > 0;
+    this.syncChaseVisible();
+  }
+
+  syncChaseVisible() {
+    if (!this.chaseHud) {
+      return;
+    }
+    this.chaseHud.setVisible(
+      this.chaseCarsOn
+      && this.osdMode === 'freestyle'
+      && (this.screen === 'flight' || this.screen === 'paused'),
+    );
+  }
+
+  chaseMeter(view) {
+    if (this.chaseHud) {
+      this.chaseHud.meter(this.chaseHud.visible ? view : null);
+    }
+  }
+
+  chaseEvents(list) {
+    if (!list) {
+      return;
+    }
+    for (const e of list) {
+      this.chaseEvent(e);
+    }
+  }
+
+  chaseEvent(e) {
+    if (!this.chaseHud || !this.chaseHud.visible) {
+      return;
+    }
+    this.chaseHud.event(e);
+    const t = chaseCallText(e);
+    if (t && !t.lost) {
+      this.announce(`${t.word}, ${t.line}.`);
+    }
+  }
+
+  resetChase() {
+    if (this.chaseHud) {
+      this.chaseHud.reset();
+    }
   }
 
   /*

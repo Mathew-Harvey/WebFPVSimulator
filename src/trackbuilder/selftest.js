@@ -32,12 +32,12 @@
 
 import {
   createTrack, createElement, createSequenceEntry, deserialize, elementById, normalize, isSequenceable,
-  roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf,
+  roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf, newElementId,
   logoForDecal, dressOrder, LOGO_SLOTS, SCHEMA_VERSION,
   SCENE_TIMES, SCENE_GROUNDS, SCENE_DEFAULT, sceneOf, deepClone,
 } from './model.js';
 import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection } from './faces.js';
-import { addToSequence, addNextLevel, sequenceLabel, faceLabel } from './sequence.js';
+import { addToSequence, addNextLevel, sequenceLabel, faceLabel, removeElement } from './sequence.js';
 import { applyFigure, matchingFigure, defaultFigure, upgradeStackedFigures } from './figures.js';
 import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
 import { collectWarnings, freestyleReport, FREESTYLE_SOLIDS_MAX } from './warnings.js';
@@ -61,8 +61,13 @@ import { GAP_MIN } from '../props/parts.js';
 import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
 import { padsLayout } from '../props/course.js';
 import { placeDocument, topUnder, groundUnder, SUPPORT_TIE } from '../maps/built/place.js';
-import { roadOf } from '../maps/built/road.js';
+import { roadOf, nearestOn } from '../maps/built/road.js';
 import { trafficOf, DRIFT } from '../maps/built/traffic.js';
+import {
+  addDraftNode, closesDraft, endsDraft, roadFromDraft, legCount, legMidpoints, insertNode, moveNode, deleteNode,
+  pickNode, pickLeg, snapToRoad, vehiclePlace, PARK, bodiesOverlap, moduleRoad, laneXyz, lapTable, laneClashes,
+} from './roadtool.js';
+import { CLASH_HORIZON } from './warnings.js';
 import { clubhouseSolids } from '../art/clubhouse.js';
 import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
@@ -3431,6 +3436,288 @@ function suiteRoadsAndVehicles() {
     traffic.problems.map((p) => p.message).join('; '));
 }
 
+/*
+ * THE ROAD TOOL. Everything it decides is a pure function in ./roadtool.js,
+ * so each rule is held here: laying and closing a road, inserting, moving
+ * and deleting a node, putting a car on a road and where a car with none is
+ * drawn, the lap time the lane warning reads, and every road warning, each
+ * with a case that fires and a case that does not.
+ */
+function roadMap(opts = {}) {
+  const d = createTrack(undefined, 'full', 'freestyle');
+  const road = createElement(d, 'road', { x: 50, y: 50 });
+  road.nodes = opts.nodes ?? [{ x: 0, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 40 }, { x: 0, y: 40 }];
+  road.closed = opts.closed ?? true;
+  road.dims.lanes = opts.lanes ?? 2;
+  d.elements.push(road);
+  freestylePlace(d, 'startPads', 80, 75);
+  return { d, road };
+}
+
+function addCar(d, road, offset, opts = {}) {
+  const car = createElement(d, 'vehicle', { x: 0, y: 0 });
+  car.road = road.id;
+  car.dims.offset = offset;
+  if (opts.speed != null) {
+    car.dims.speed = opts.speed;
+  }
+  car.reverse = opts.reverse === true;
+  car.drift = opts.drift === true;
+  if (opts.style) {
+    car.style = opts.style;
+  }
+  d.elements.push(car);
+  return car;
+}
+
+function roadCodes(d) {
+  return freestyleReport(d).warnings.filter((w) => /^(rd|tr)-/.test(w.code) || w.code === 'fs-outside');
+}
+
+function suiteRoadTool() {
+  console.log('\nthe road tool');
+  const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
+
+  /* -------- laying a road -------- */
+
+  let draft = [];
+  draft = addDraftNode(draft, { x: 10, y: 10 });
+  draft = addDraftNode(draft, { x: 10, y: 10.01 });
+  check('a click on the last node is not a second node', draft.length === 1);
+  draft = addDraftNode(draft, { x: 40, y: 10 });
+  check('two nodes finish an open road, on the last node', endsDraft(draft, 40.2, 10, 0.5) && !endsDraft(draft, 30, 10, 0.5));
+  check('and do not close a loop, even on the first node', !closesDraft(draft, 10, 10, 0.5));
+  draft = addDraftNode(draft, { x: 40, y: 40 });
+  check('three nodes close a loop on the first node, and only there',
+    closesDraft(draft, 10.3, 10.2, 0.5) && !closesDraft(draft, 12, 10, 0.5));
+  const laid = roadFromDraft(draft, true);
+  check('a laid road starts at its first node, its nodes measured from there',
+    laid && laid.position.x === 10 && laid.position.y === 10 && laid.closed === true
+    && laid.nodes[0].x === 0 && laid.nodes[2].x === 30 && laid.nodes[2].y === 30);
+  check('too few nodes lay nothing', roadFromDraft(draft.slice(0, 2), true) === null
+    && roadFromDraft(draft.slice(0, 1), false) === null && roadFromDraft(draft.slice(0, 2), false) !== null);
+
+  /* -------- editing its nodes -------- */
+
+  const open = { position: { x: 10, y: 10 }, nodes: [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 30 }], closed: false };
+  const loop = { ...open, closed: true };
+  check('an open road has a leg fewer than its nodes, a loop as many', legCount(open) === 2 && legCount(loop) === 3);
+  const mids = legMidpoints(loop);
+  check('each leg offers its middle for a new node, the loop’s closing leg too',
+    mids.length === 3 && mids[0].x === 25 && mids[0].y === 10 && mids[2].x === 25 && mids[2].y === 25);
+  const ins = insertNode(open, 1, { x: 45, y: 20 });
+  check('a node inserted on leg 2 goes between nodes 2 and 3, and nothing else moves',
+    ins && ins.index === 2 && ins.nodes.length === 4 && ins.nodes[2].x === 35 && ins.nodes[2].y === 10
+    && ins.position.x === 10 && ins.nodes[3].x === 30);
+  const insLoop = insertNode(loop, 2, { x: 5, y: 20 });
+  check('on a loop’s closing leg it goes last', insLoop && insLoop.index === 3 && insLoop.nodes[3].x === -5);
+  check('a leg the road does not have takes no node', insertNode(open, 2, { x: 0, y: 0 }) === null && insertNode(open, -1, { x: 0, y: 0 }) === null);
+  const full = { position: { x: 0, y: 0 }, nodes: Array.from({ length: ROAD_NODES_MAX }, (_, i) => ({ x: i, y: 0 })), closed: false };
+  check(`nor does a road of ${ROAD_NODES_MAX} nodes`, insertNode(full, 0, { x: 0.5, y: 1 }) === null);
+  const mv0 = moveNode(open, 0, { x: 0, y: 5 });
+  check('moving the first node moves the road’s position and leaves the rest where they were',
+    mv0.position.x === 0 && mv0.position.y === 5 && mv0.nodes[0].x === 0
+    && mv0.position.x + mv0.nodes[2].x === 40 && mv0.position.y + mv0.nodes[2].y === 40);
+  const mv2 = moveNode(open, 2, { x: 50, y: 50 });
+  check('moving another moves only it', mv2.position.x === 10 && mv2.nodes[2].x === 40 && mv2.nodes[1].x === 30);
+  const del1 = deleteNode(open, 1);
+  check('deleting a node leaves the others where they were', del1 && del1.nodes.length === 2 && del1.nodes[1].x === 30 && del1.nodes[1].y === 30 && del1.closed === false);
+  const del0 = deleteNode(loop, 0);
+  check('deleting the first node starts the road at the next, and a loop of three opens',
+    del0 && del0.position.x === 40 && del0.position.y === 10 && del0.nodes.length === 2 && del0.closed === false);
+  check('an open road of two nodes loses none', deleteNode(del1, 0) === null && deleteNode(open, 5) === null);
+  check('a node is picked within reach, the nearest', pickNode(open, 40.3, 10.2, 1) === 1 && pickNode(open, 25, 25, 1) === -1);
+  check('and a leg by its middle', pickLeg(loop, 25.4, 10, 1) === 0 && pickLeg(open, 25, 25, 1) === -1);
+
+  /* -------- a vehicle on a road -------- */
+
+  const { d, road } = roadMap();
+  const r = roadOf(road);
+  const snap = snapToRoad(d, 80, 50.5, 2);
+  check('a car dropped on a road goes on it, at the nearest point of its middle',
+    snap && snap.road === road.id && near(snap.offset, Math.round(nearestOn(r.centre, 80, 50.5).s * 100) / 100) && near(snap.y, 50, 1e-6));
+  check('dropped too far from any road, nowhere', snapToRoad(d, 80, 70, 2) === null);
+  check('on the right hand half of a two lane loop it faces the other way',
+    snapToRoad(d, 80, 48.5, 2).right === true && snap.right === false && snap.twoLaneLoop === true);
+  check('sliding keeps a car to its own road, however far the pointer goes',
+    snapToRoad(d, 80, 140, Infinity, road.id)?.road === road.id && snapToRoad(d, 80, 140, Infinity, 'el-99') === null);
+  const car = addCar(d, road, snap.offset);
+  const placeOn = vehiclePlace(d, car);
+  check('a car on a road is drawn where the physics starts it, on its lane, facing along it',
+    placeOn.onRoad && near(placeOn.x, 80, 0.05) && near(placeOn.y, 51.5, 0.05) && near(placeOn.tx, 1, 1e-6));
+  const lost = addCar(d, road, 0);
+  lost.road = 'el-99';
+  const lost2 = addCar(d, road, 0);
+  lost2.road = '';
+  const p1 = vehiclePlace(d, lost);
+  const p2 = vehiclePlace(d, lost2);
+  check('a car with no road is parked in a row along the south edge, nose north',
+    !p1.onRoad && p1.x === PARK.x && p1.y === PARK.y && p2.x === PARK.x + PARK.step && p1.ty === 1);
+  check('and a new element never takes the id a car still names',
+    newElementId(d) !== 'el-99' && Number(newElementId(d).slice(3)) > 99);
+  check('two bodies on top of each other overlap, two apart do not',
+    bodiesOverlap({ x: 0, y: 0, tx: 1, ty: 0, length: 4, width: 2 }, { x: 2.5, y: 0.5, tx: 0, ty: 1, length: 4, width: 2 })
+    && !bodiesOverlap({ x: 0, y: 0, tx: 1, ty: 0, length: 4, width: 2 }, { x: 4.5, y: 0, tx: 1, ty: 0, length: 4, width: 2 }));
+
+  /* -------- the module's lap time, restated -------- */
+
+  const yard = normalize(starterMap()).doc;
+  const tf = trafficOf(yard);
+  const lane = tf.roads[tf.vehicles.find((v) => v.style === 'boxtruck').road];
+  const mroad = moduleRoad(laneXyz(lane), lane.closed);
+  const truck = tf.vehicles.find((v) => v.style === 'boxtruck');
+  const van = tf.vehicles.find((v) => v.style === 'keivan');
+  const tTruck = lapTable(mroad, truck.topSpeed, truck.lateral).T;
+  const tVan = lapTable(mroad, van.topSpeed, van.lateral).T;
+  check('the module’s lap, restated: the starter’s box truck and kei van lap together to a ten thousandth of a second',
+    Math.abs(tTruck - tVan) < 1e-4 && tTruck > 30, `${tTruck} and ${tVan}`);
+  check('so they are never a clash, however different their top speeds', laneClashes(tf, CLASH_HORIZON).length === 0);
+  check('and a car half as fast again in their lane would be',
+    laneClashes({ ...tf, vehicles: [truck, { ...van, topSpeed: truck.topSpeed * 1.5, lateral: truck.lateral * 1.5 }] }, CLASH_HORIZON)
+      .some((c) => c.kind === 'catch'));
+
+  /* -------- the warnings, each firing and not -------- */
+
+  check('the starter yard raises no road or vehicle warning', roadCodes(yard).length === 0,
+    roadCodes(yard).map((w) => w.message).join(' | '));
+  {
+    const m = roadMap();
+    addCar(m.d, m.road, 20);
+    const clean = roadCodes(m.d);
+    check('a clean loop with a car on it raises nothing', clean.length === 0, clean.map((w) => w.message).join(' | '));
+  }
+  {
+    const m = roadMap();
+    freestylePlace(m.d, 'building', 80, 50);
+    const w = roadCodes(m.d).find((x) => x.code === 'rd-solid');
+    check('a road through a building warns, on the road, naming the building',
+      w && w.elementId === m.road.id && w.message.includes('Building'));
+    const m2 = roadMap();
+    freestylePlace(m2.d, 'building', 80, 70);
+    check('and one well clear of it does not', !roadCodes(m2.d).some((x) => x.code === 'rd-solid'));
+    const m3 = roadMap();
+    freestylePlace(m3.d, 'lamp', 80, 50 - 1.5 - 0.7);
+    const m4 = roadMap();
+    freestylePlace(m4.d, 'lamp', 80, 50 - 1.5 - 1.6);
+    check('a lamp post within a car’s half width of the lane warns, one a car passes does not',
+      roadCodes(m3.d).some((x) => x.code === 'rd-solid') && !roadCodes(m4.d).some((x) => x.code === 'rd-solid'));
+    const m5 = roadMap();
+    const bridge = freestylePlace(m5.d, 'bridge', 80, 50, { yaw: Math.PI / 2 });
+    bridge.dims.piers = 0;
+    check('a bridge deck over the road is not in a car’s way', !roadCodes(m5.d).some((x) => x.code === 'rd-solid'),
+      roadCodes(m5.d).map((x) => x.message).join(' | '));
+  }
+  {
+    const m = roadMap();
+    m.d.elements.find((e) => e.type === 'startPads').position = { x: 80, y: 50, z: 0 };
+    const w = roadCodes(m.d).find((x) => x.code === 'rd-start');
+    check('a road over the start pads warns', w && w.elementId === m.road.id && w.message.includes('start pads'));
+    const bare = createTrack(undefined, 'full', 'freestyle');
+    const through = createElement(bare, 'road', { x: 2, y: 80 });
+    through.nodes = [{ x: 0, y: 0 }, { x: 30, y: 0 }];
+    bare.elements.push(through);
+    check('with no pads, a road through where the pilot starts warns',
+      roadCodes(bare).some((x) => x.code === 'rd-start' && x.message.includes('8 m in')));
+    through.position.y = 100;
+    check('and one clear of it does not', !roadCodes(bare).some((x) => x.code === 'rd-start'));
+  }
+  {
+    const m = roadMap();
+    m.road.nodes[1].x = 140;
+    m.road.nodes[2].x = 140;
+    const w = roadCodes(m.d).find((x) => x.code === 'fs-outside');
+    check('a road run past the edge of the plot warns', w && w.elementId === m.road.id);
+  }
+  {
+    const m = roadMap();
+    const c1 = addCar(m.d, m.road, 20);
+    removeElement(m.d, m.road.id);
+    const w = roadCodes(m.d).find((x) => x.code === 'tr-no-road');
+    check('a vehicle whose road was deleted warns that its road is gone, and names the car',
+      w && w.elementId === c1.id && w.message.includes('not on the map any more'));
+    const m2 = roadMap();
+    addCar(m2.d, m2.road, 20);
+    check('and one on a road does not', !roadCodes(m2.d).some((x) => x.code === 'tr-no-road'));
+  }
+  {
+    const fold = roadMap({ nodes: [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 10, y: 0 }], closed: false });
+    const w = roadCodes(fold.d).find((x) => x.code === 'rd-fold' || x.code === 'rd-tight');
+    check('a node road.js has to leave out warns, naming the road and the node', w && w.level === 'warn'
+      && w.elementId === fold.road.id && w.node === 1 && w.message.startsWith('Road: '), w && w.message);
+    const kink = roadMap({ nodes: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10.3, y: 0.004 }, { x: 25, y: 0.004 }], closed: false });
+    const k = roadCodes(kink.d).find((x) => x.code === 'rd-kink');
+    check('a node it runs straight past is a note, naming the node', k && k.level === 'info' && Number.isInteger(k.node),
+      roadCodes(kink.d).map((x) => x.code).join(', '));
+    check('and a road with neither says nothing of its nodes', !roadCodes(roadMap().d).some((x) => /^rd-(fold|tight|kink)/.test(x.code)));
+  }
+  {
+    /* The physics' limits, in trafficOf's own words. */
+    const m = roadMap({ nodes: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 90 }, { x: 0, y: 90 }] });
+    for (let i = 0; i < 65; i += 1) {
+      addCar(m.d, m.road, i * 6);
+    }
+    const over = roadCodes(m.d).filter((x) => x.code === 'tr-slots');
+    const last = m.d.elements[m.d.elements.length - 1];
+    check('more vehicles than the physics drives warns on the one left out, in trafficOf’s words',
+      over.length === 1 && over[0].elementId === last.id && over[0].message.includes('64'));
+    m.d.elements.pop();
+    check('and 64 do not', !roadCodes(m.d).some((x) => x.code === 'tr-slots'));
+    const lanes = createTrack(undefined, 'full', 'freestyle');
+    for (let i = 0; i < 17; i += 1) {
+      const rr = createElement(lanes, 'road', { x: 5, y: 5 + i * 8 });
+      lanes.elements.push(rr);
+      addCar(lanes, rr, 5);
+    }
+    check('more lanes of road than the physics holds warns on the car left parked',
+      roadCodes(lanes).filter((x) => x.code === 'tr-lane').length === 1);
+    lanes.elements.splice(-2, 2);
+    check('and 16 do not', !roadCodes(lanes).some((x) => x.code === 'tr-lane'));
+  }
+  {
+    const m = roadMap();
+    addCar(m.d, m.road, 10, { speed: 10 });
+    const fast = addCar(m.d, m.road, 90, { speed: 14 });
+    const w = roadCodes(m.d).find((x) => x.code === 'tr-lane-clash');
+    check('two cars in one lane at different speeds warn, on the second, saying when they meet',
+      w && w.elementId === fast.id && w.message.includes('36 km/h') && w.message.includes('50 km/h'), w && w.message);
+    const same = roadMap();
+    addCar(same.d, same.road, 10, { speed: 12 });
+    addCar(same.d, same.road, 90, { speed: 12 });
+    check('two at the same speed do not', !roadCodes(same.d).some((x) => x.code === 'tr-lane-clash'));
+    const both = roadMap();
+    addCar(both.d, both.road, 10, { speed: 10 });
+    addCar(both.d, both.road, 90, { speed: 14, reverse: true });
+    check('nor two in opposite lanes of a two lane loop', !roadCodes(both.d).some((x) => x.code === 'tr-lane-clash'));
+    const one = roadMap({ lanes: 1 });
+    addCar(one.d, one.road, 10);
+    addCar(one.d, one.road, 90, { reverse: true });
+    check('but two going opposite ways round a one lane loop do: head on',
+      roadCodes(one.d).some((x) => x.code === 'tr-lane-clash' && x.message.includes('opposite directions')));
+    const openRoad = roadMap({ closed: false });
+    addCar(openRoad.d, openRoad.road, 10);
+    addCar(openRoad.d, openRoad.road, 60);
+    check('and so do two on one open road, out and back along its middle',
+      roadCodes(openRoad.d).some((x) => x.code === 'tr-lane-clash' && x.message.includes('open road')));
+  }
+  {
+    const m = roadMap();
+    const a = addCar(m.d, m.road, 20);
+    const b = addCar(m.d, m.road, 21);
+    const w = roadCodes(m.d).find((x) => x.code === 'tr-overlap');
+    check('two cars that start on top of each other warn, on the second', w && w.elementId === b.id && w.otherId === a.id);
+    b.dims.offset = 40;
+    check('and two a car apart do not', !roadCodes(m.d).some((x) => x.code === 'tr-overlap'));
+  }
+  check('a race track is never asked about any of it', collectWarnings(createTrack(), null).every((w) => !/^(rd|tr)-/.test(w.code)));
+
+  /* -------- the palette -------- */
+
+  const items = paletteItems('full', 'freestyle').map((dd) => dd.id);
+  check('a map’s palette ends its assets with the road tool and the vehicle, under Roads and vehicles',
+    items.includes('road') && items.includes('vehicle') && ELEMENTS.road.propGroup === 'roads' && ELEMENTS.vehicle.propGroup === 'roads'
+    && items.indexOf('road') > items.indexOf(FREESTYLE_PALETTE_ORDER[FREESTYLE_PALETTE_ORDER.length - 1]));
+}
+
 async function suiteListing() {
   console.log('listing');
   const doc = createTrack('Ladder Loop');
@@ -4527,6 +4814,7 @@ async function main() {
   suiteBoardPlan();
   suiteSchemaProps();
   suiteRoadsAndVehicles();
+  suiteRoadTool();
   await suiteListing();
   suiteBranding();
   suiteFlagShape();

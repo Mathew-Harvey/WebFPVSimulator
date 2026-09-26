@@ -290,7 +290,11 @@ function nextId(existing, prefix) {
 }
 
 export function newElementId(doc) {
-  return nextId(doc.elements.map((e) => e.id), 'el');
+  /* A vehicle whose road was deleted still names it, so that id is not
+   * free: handed to the next element placed, it would put the car on a
+   * road, or a building, nobody put it on. */
+  const named = doc.elements.filter((e) => typeof e.road === 'string' && e.road).map((e) => e.road);
+  return nextId([...doc.elements.map((e) => e.id), ...named], 'el');
 }
 
 export function newSequenceId(doc) {

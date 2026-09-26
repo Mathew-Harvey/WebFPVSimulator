@@ -50,6 +50,14 @@ import {
 import { elementById, elementNormal, kindOf, startPadsOf } from './model.js';
 import { sequenceLabel, unsequencedElements } from './sequence.js';
 import { dist, insideYawedBox, lerp, wrapAngle, yawVector } from './geometry.js';
+/* Roads and vehicles: what the physics will be handed (trafficOf, whose
+ * problems are the limits, never restated here), the road's eased line, and
+ * the road tool's own tests. */
+import { trafficOf } from '../maps/built/traffic.js';
+import { roadOf } from '../maps/built/road.js';
+import {
+  footprint, laneClashes, lineShapeDist, roadReach, startOverlaps,
+} from './roadtool.js';
 
 function warn(code, message, extra = {}) {
   return { level: 'warn', code, message, ...extra };
@@ -715,6 +723,27 @@ function label(el) {
  *                          than it looks at round the craft at once, so
  *                          some would be left out there (crowdOf)
  *
+ * And a map's roads and vehicles, only when it has any (roadWarnings):
+ *
+ *   rd-solid         warn  a road passes within a car's reach of a solid
+ *                          that stands lower than its cars' roofs
+ *   rd-start         warn  a road passes over the start pads, or within a
+ *                          car's reach and a metre of where the craft starts
+ *   fs-outside       warn  a road running past the edge of the plot
+ *   rd-tight, rd-fold, rd-kink, rd-merged, rd-too-few, rd-crossing
+ *                          a road's own problems from src/maps/built/road.js:
+ *                          a node it had to leave out (warn), a bend it ran
+ *                          straight past (info), and the rest
+ *   tr-no-road       warn  a vehicle with no road, its road deleted or never
+ *                          given one
+ *   tr-*             warn  everything else trafficOf left parked, in its own
+ *                          words: more vehicles, lanes or road than the
+ *                          physics holds
+ *   tr-lane-clash    warn  two cars in one lane that will drive through
+ *                          each other: laps of different times, opposite
+ *                          ways round one lane, or both on an open road
+ *   tr-overlap       warn  two cars that start on top of each other
+ *
  * Every warning names an element, so clicking it selects the element.
  */
 
@@ -927,6 +956,10 @@ export function freestyleReport(doc) {
     }
   }
 
+  /* -------- roads and vehicles -------- */
+
+  roadWarnings(doc, placed, bodies, names, out);
+
   /* -------- the budget -------- */
 
   if (placed.solids.length > FREESTYLE_SOLIDS_MAX) {
@@ -964,6 +997,213 @@ export function freestyleReport(doc) {
     zones: placed.zones.length,
     bodies: bodies.length,
   };
+}
+
+/*
+ * A MAP'S ROADS AND VEHICLES, checked against the solids beside them, the
+ * start, and each other. All of it in the document's plan, where the road
+ * tool works: a solid's world box (x, z) is taken back to the plan by the
+ * inverse of place.js's one conversion, plan x = x + W/2, plan y = D/2 - z.
+ *
+ * A road is in a solid's way when the solid comes within a car's reach of
+ * the road's centre line (roadReach in ./roadtool.js: the lane's offset and
+ * half the widest car on it, half its diagonal for a drift car, which
+ * slides) and stands lower than the tallest of those cars' roofs, so a
+ * bridge deck over a road is not in its way and the bridge's piers are.
+ * The start pads are not a solid, and are held to the same reach; where the
+ * craft starts is held to it and SPAWN_CLEAR more, the metre of air the
+ * craft needs to take off.
+ *
+ * Two cars in one lane are held to CLASH_HORIZON: ten minutes of the clock,
+ * a long session. The starter yard's box truck and kei van share a lane at
+ * different top speeds with laps the same to a hundred thousandth of a
+ * second, so they do not meet in the life of the sun, and are not warned
+ * about; see laneClashes in ./roadtool.js.
+ */
+export const CLASH_HORIZON = 600;
+
+/* A solid whose top is under this is paving, a mat or a kerb: a car drives
+ * over it, m. */
+const ROAD_FLOOR = 0.05;
+
+/* A world box's plan rectangle in the document's plan: [x0, y0, x1, y1]. */
+function planBox(b, W, D) {
+  return [b[0] + W / 2, D / 2 - b[5], b[3] + W / 2, D / 2 - b[2]];
+}
+
+function rectPoly(r) {
+  return [{ x: r[0], y: r[1] }, { x: r[2], y: r[1] }, { x: r[2], y: r[3] }, { x: r[0], y: r[3] }];
+}
+
+function polyBox(poly) {
+  const xs = poly.map((p) => p.x);
+  const ys = poly.map((p) => p.y);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+/* A car's top speed as the author set it, and whether it drifts. */
+function speedWords(v) {
+  return `${Math.round(v.topSpeed * 3.6)} km/h${v.drift ? ', drifting' : ''}`;
+}
+
+function roadWarnings(doc, placed, bodies, names, out) {
+  const roads = doc.elements.filter((e) => ELEMENTS[e.type]?.kind === KIND.ROAD);
+  const vehicles = doc.elements.filter((e) => ELEMENTS[e.type]?.kind === KIND.VEHICLE);
+  if (!roads.length && !vehicles.length) {
+    return;
+  }
+  const W = placed.W;
+  const D = placed.D;
+  const byId = new Map(doc.elements.map((e) => [e.id, e]));
+  const pads = startPadsOf(doc);
+
+  /* -------- what the physics will be handed, and what it leaves out -------- */
+
+  const traffic = trafficOf(doc);
+  for (const p of traffic.problems) {
+    const el = byId.get(p.elementId);
+    if (!el) {
+      continue;
+    }
+    const level = p.level === 'info' ? 'info' : 'warn';
+    if (p.code === 'tr-no-road') {
+      const target = el.road ? byId.get(el.road) : null;
+      const why = !el.road
+        ? 'it was never put on one'
+        : (target ? `it names ${names(target)}, which is not a road` : `its road, ${el.road}, is not on the map any more`);
+      out.push(warn('tr-no-road', `${cap(names(el))} has no road: ${why}. It stays parked, and is drawn in the row along the south edge of the plot. Drag it onto a road, or delete it.`, {
+        elementId: el.id,
+      }));
+      continue;
+    }
+    /* A road's own: a node road.js left out or ran straight past, and the
+     * rest, named on the road. */
+    if (ELEMENTS[el.type]?.kind === KIND.ROAD) {
+      out.push({
+        level,
+        code: p.code,
+        message: `${cap(names(el))}: ${p.message}`,
+        elementId: el.id,
+        ...(p.node !== undefined ? { node: p.node } : {}),
+      });
+      continue;
+    }
+    /* A vehicle the physics has no room for, in trafficOf's own words, the
+     * limits included, so the builder never says a different number. */
+    const message = /^A vehicle/.test(p.message)
+      ? p.message.replace(/^A vehicle/, cap(names(el)))
+      : `${cap(names(el))}: ${p.message}`;
+    out.push({ level, code: p.code, message, elementId: el.id });
+  }
+
+  /* -------- each road against the map it runs through -------- */
+
+  let padsPoly = null;
+  if (pads) {
+    const n = Math.max(1, Math.round(pads.dims.pads ?? 1));
+    const size = Math.max(0.1, pads.dims.padSize ?? 0.6);
+    const span = Math.max(size, (n - 1) * Math.max(0.3, pads.dims.spacing ?? 1.5) + size);
+    const yaw = pads.yaw || 0;
+    padsPoly = footprint({
+      x: pads.position.x, y: pads.position.y, tx: Math.cos(yaw), ty: Math.sin(yaw), length: size, width: span,
+    });
+  }
+  const spawn = [placed.spawn.x + W / 2, D / 2 - placed.spawn.z];
+  for (const road of roads) {
+    const r = roadOf(road);
+    const line = r.centre;
+    if (line.points.length < 2) {
+      continue;
+    }
+    const pts = line.points;
+    const { reach, height } = roadReach(doc, road);
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const p of pts) {
+      x0 = Math.min(x0, p.x);
+      y0 = Math.min(y0, p.y);
+      x1 = Math.max(x1, p.x);
+      y1 = Math.max(y1, p.y);
+    }
+    if (x0 < -PLOT_SLACK || y0 < -PLOT_SLACK || x1 > doc.field.width + PLOT_SLACK || y1 > doc.field.depth + PLOT_SLACK) {
+      out.push(warn('fs-outside', `${cap(names(road))} runs past the edge of the plot.`, { elementId: road.id }));
+    }
+    for (const b of bodies) {
+      if (b.el === pads) {
+        continue;
+      }
+      const bb = planBox(b.box, W, D);
+      if (bb[2] < x0 - reach || bb[0] > x1 + reach || bb[3] < y0 - reach || bb[1] > y1 + reach) {
+        continue;
+      }
+      let hit = false;
+      for (let k = 0; k < b.solids.length && !hit; k += 1) {
+        const box = b.boxes[k];
+        if (box[1] >= height || box[4] <= ROAD_FLOOR) {
+          continue;
+        }
+        const pb = planBox(box, W, D);
+        const s = b.solids[k];
+        const shape = s.box
+          ? { poly: rectPoly(pb) }
+          : { seg: [s.cap[0] + W / 2, D / 2 - s.cap[2], s.cap[3] + W / 2, D / 2 - s.cap[5]], r: s.cap[6] };
+        hit = lineShapeDist(pts, line.closed, shape, pb, reach) < reach;
+      }
+      if (hit) {
+        out.push(warn('rd-solid', `${cap(names(road))} runs through ${names(b.el)}: a car on it would drive into it. Move the road, or ${names(b.el)}, until a car has room to pass.`, {
+          elementId: road.id,
+          otherId: b.el.id,
+        }));
+      }
+    }
+    if (padsPoly && lineShapeDist(pts, line.closed, { poly: padsPoly }, polyBox(padsPoly), reach) < reach) {
+      out.push(warn('rd-start', `${cap(names(road))} runs over the start pads, so a car on it drives through the craft waiting to launch. Move the road or the pads.`, {
+        elementId: road.id,
+        otherId: pads.id,
+      }));
+    } else if (lineShapeDist(pts, line.closed, { point: spawn }, [spawn[0], spawn[1], spawn[0], spawn[1]], reach + SPAWN_CLEAR) < reach + SPAWN_CLEAR) {
+      out.push(warn('rd-start', pads
+        ? `${cap(names(road))} passes within a metre of where the craft starts, so a car on it clips the craft before it has left the pad. Move the road or the pads.`
+        : `${cap(names(road))} runs through where the pilot starts, 8 m in from the left edge of the plot with no start pads, so a car on it drives through the craft. Move the road, or press S and put the start pads clear of it.`, {
+        elementId: road.id,
+        ...(pads ? { otherId: pads.id } : {}),
+      }));
+    }
+  }
+
+  /* -------- the cars against each other -------- */
+
+  for (const c of laneClashes(traffic, CLASH_HORIZON)) {
+    const a = byId.get(c.a.element);
+    const b = byId.get(c.b.element);
+    const road = byId.get(traffic.roads[c.a.road].element);
+    if (!a || !b || !road) {
+      continue;
+    }
+    const A = cap(names(a));
+    const B = names(b);
+    let message;
+    if (c.kind === 'open') {
+      message = `${A} and ${B} are both on ${names(road)}, an open road: every car drives its middle out to the end and back, so the two meet head on and drive through each other. Close the road into a loop, or keep one car on it.`;
+    } else if (c.kind === 'head-on') {
+      message = `${A} and ${B} drive ${names(road)}'s one lane in opposite directions, so they meet head on and drive through each other. Give the road two lanes, or turn one of them round.`;
+    } else {
+      const when = c.at < 1 ? 'at once' : (c.at < 90 ? `${Math.round(c.at)} s in` : `about ${Math.round(c.at / 60)} minutes in`);
+      const fix = roadOf(road).lanes === 2
+        ? 'Give them the same top speed and the same drift, or set one to Reverse so it drives the other lane.'
+        : 'Give them the same top speed and the same drift, or give the road two lanes and set one to Reverse.';
+      message = `${A} (${speedWords(c.a)}) and ${B} (${speedWords(c.b)}) share a lane of ${names(road)} but not a lap time, so ${when} one drives through the other: cars never touch each other. ${fix}`;
+    }
+    out.push(warn('tr-lane-clash', message, { elementId: b.id, otherId: a.id }));
+  }
+  for (const [a, b] of startOverlaps(doc)) {
+    out.push(warn('tr-overlap', `${cap(names(b))} starts on top of ${names(a)}. Slide one of them along the road.`, {
+      elementId: b.id,
+      otherId: a.id,
+    }));
+  }
 }
 
 /*

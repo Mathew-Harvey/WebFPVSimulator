@@ -518,8 +518,13 @@ is drawn in the world.
 Cars drive on maps and nowhere else (`FREESTYLE-MAPS-PLAN.md`, decision 9):
 `normalize` drops a road or a vehicle from a race track with a repair note,
 and `toPlain` never writes one there, so no race track's bytes changed when
-they arrived. Neither is in any palette's hotkeys; the builder's road tool
-places them.
+they arrived. A map's palette offers both under **Roads and vehicles**, with
+no hotkey: the Road tool lays a road a node a click (on its first node to
+close it, on its last or with Enter to leave it open), and a Vehicle clicked
+on or beside a road goes on it at the nearest point of its centre line,
+which sets its `road` and `dims.offset`. The builder keeps a road's first
+node at its `position` (moving or deleting that node moves the position),
+but reads any road as it is.
 
 A **road**:
 
@@ -634,6 +639,26 @@ through is a trap, not a line.
 | `fs-outside` | warn | an element stands outside the plot, or its solids reach more than half a metre past its edge |
 | `fs-solids` | warn | the map has more than 20000 solids |
 | `fs-crowded` | warn | two by two cells of the physics' 8 m grid hold more than the 1024 shapes it checks round a craft, so some would be left out |
+
+A map's roads and vehicles add these, and only a map that has any
+(`roadWarnings` in `src/trackbuilder/warnings.js`, the tests in
+`src/trackbuilder/roadtool.js`). A road is measured by its eased centre line,
+the line cars drive, and a car's reach from it is the lane's offset plus half
+the widest car on the road (half its diagonal for a drift car, which slides),
+or half the widest of the town's cars on a road with none.
+
+| code | level | meaning |
+| --- | --- | --- |
+| `rd-solid` | warn | a road passes within a car's reach of a solid that stands lower than the tallest of its cars: a car would drive into it. A deck higher than every car is not in the way. |
+| `rd-start` | warn | a road passes over the start pads, or within a car's reach and a metre of where the craft starts |
+| `fs-outside` | warn | also a road whose line runs past the edge of the plot |
+| `rd-tight`, `rd-fold` | warn | `src/maps/built/road.js` left a node out: it turns too sharply for its legs, or folds back |
+| `rd-kink`, `rd-merged` | info | road.js ran straight past a node, or read it as the one before it |
+| `rd-too-few`, `rd-crossing` | warn | a road with no line to drive, or one that crosses itself |
+| `tr-no-road` | warn | a vehicle whose road is not on the map (deleted, or never given): it stays parked, drawn in a row along the south edge of the plot |
+| `tr-slots`, `tr-lane`, `tr-tables`, `tr-road-unusable` | warn | a vehicle `trafficOf` left parked because the physics has no room for it, in trafficOf's own words, so the builder never quotes a different limit |
+| `tr-lane-clash` | warn | two cars in one lane that will drive through each other: two on one open road, two going opposite ways round a one lane loop, or two in one lane of a loop whose laps differ and which meet within ten minutes of the clock. The lap is the physics' own, restated from `src/native/world.c`, so two cars at different top speeds whose laps match (the starter yard's box truck and kei van) are not warned about. |
+| `tr-overlap` | warn | two cars that start on top of each other |
 
 ---
 

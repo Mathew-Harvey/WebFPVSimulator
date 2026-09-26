@@ -843,8 +843,10 @@ for (const [id, t] of Object.entries(PROP_TYPES)) {
 /*
  * ROADS AND VEHICLES (Stage E, FREESTYLE-MAPS-PLAN.md sections 5 and 8), a
  * map's only: normalize drops them from a race track, where no car drives
- * (the plan's decision 9). Neither is on any palette yet; the road tool
- * offers them. Their fields are in schema.md, under Roads and vehicles.
+ * (the plan's decision 9). A map's palette offers both, under Roads and
+ * vehicles (ROAD_PALETTE below), and src/trackbuilder/roadtool.js is how
+ * they are laid, edited and placed. Their fields are in schema.md, under
+ * Roads and vehicles.
  *
  *   road     `nodes`, control points RELATIVE TO `position`, so dragging a
  *            road moves its position and nothing else; `closed`; and in
@@ -874,7 +876,7 @@ ELEMENTS.road = {
   propGroup: 'roads',
   kind: KIND.ROAD,
   styles: null,
-  note: 'A road. Click to lay its nodes, click the first node to close it into a loop. Its bends are eased into curves a car can drive. Vehicles drive on it.',
+  note: 'A road. Click to lay its nodes, click the first node to close it into a loop, or press Enter or double click to finish it open. Its bends are eased into curves a car can drive. Vehicles drive on it.',
   dims: { width: 6, lanes: 2, radius: 12 },
   limits: { width: [3, 20, 'm'], lanes: [1, 2, 'int'], radius: [2, 60, 'm'] },
   labels: { width: 'Width', lanes: 'Lanes', radius: 'Bend radius' },
@@ -1098,13 +1100,23 @@ export const MICRO_PALETTE_ORDER = [
   'pole', 'horizontalPole', 'cone', 'barrier', 'waypoint',
 ];
 
-/* The palette for a track class. */
+/* The palette for a track class. A map's is its assets, then its roads and
+ * vehicles; a race track has neither of the last two, whatever its class. */
 export function paletteFor(cls, mode = 'race') {
   if (mode === 'freestyle') {
-    return FREESTYLE_PALETTE_ORDER;
+    return [...FREESTYLE_PALETTE_ORDER, ...ROAD_PALETTE];
   }
   return cls === 'micro' ? MICRO_PALETTE_ORDER : PALETTE_ORDER;
 }
+
+/*
+ * THE ROAD TOOLS, a map's palette's last group (FREESTYLE-MAPS-PLAN.md 5.2).
+ * Kept apart from FREESTYLE_PALETTE_ORDER, which is the placed assets: a
+ * road is laid node by node and a vehicle is put on a road, not dropped at
+ * a point, and neither is an asset with parts. Neither has a hotkey: the
+ * digits and the free letters ran out before the assets did.
+ */
+export const ROAD_PALETTE = ['road', 'vehicle'];
 
 /*
  * The freestyle palette: every asset, grouped the way src/props/types.js

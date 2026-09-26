@@ -275,6 +275,7 @@
     'src/trackbuilder/presets.js',
     'src/trackbuilder/profile.js',
     'src/trackbuilder/racegow.js',
+    'src/trackbuilder/roadtool.js',
     'src/trackbuilder/selftest.js',
     'src/trackbuilder/sequence.js',
     'src/trackbuilder/stage.js',

@@ -50716,3 +50716,207 @@ c552782. Flown again end to end with the draw on: a wall skim along
 Hibari Yard's container stack, 0.93 s at 0.35 m, lettered "WALL SKIM 182
 0.9 s" in sky blue down the left while it paid, then banked into the
 total, 182; the posted trick total 0, the counter 182.
+
+## 2026-09-26 | art, maps, props | The cars rebuilt, and an R32 drift coupe for Hibari Yard
+
+The owner, 2026-09-26: "i'd like the cars to be better, add a r32 drift
+car, make it very nicely modeled within the art style, upgrade all the car
+models to match the polish of the r32 car". No physics, no module ABI, no
+build: dist/sim.wasm, src/native and tests/goldens are untouched and
+`git diff --stat vendor/betaflight` is empty. Commits 16b1655 (the model,
+the routing, the r32), 6cc2972 (the lead's checkpoint of an edit the spend
+limit stopped mid way: 14 sided parked wheels, calmer swept lamps),
+then the shoulders' quarter round and this entry.
+
+### The approach, and why this one
+
+Two ways were offered: patch the vendored builder, or write the models in
+our own module and route the three callers through it with the smallest
+honest patch. The second, because NOTICE's rule is that our shell wraps a
+vendored module rather than editing it ("an upstream update is a re-copy
+plus one patch rather than a merge"), and a rebuilt car is several hundred
+lines that would otherwise live in an MIT file as a diff nobody could merge.
+
+- **src/art/cars.js** (new, GPLv3) draws every car: `buildCar(o)` for a
+  body at the origin nose +x (the vendored convention), `townVehicle` and
+  `townKeiTruck` for the town's hooks, `carWheelGeometry` and
+  `carWheelBase` for a moving car's wheels, `r32Livery`, `MODEL`.
+- **The town**: the vendored `makeVehicle` and `makeKeiTruck` each take a
+  hook, `setVehicleModel` and `setKeiTruckModel`, unset by default so the
+  upstream drawing is what runs when nothing registers. Recorded as
+  ./vendored/PATCH-world-vehicles.diff (which now replaces Stage E's
+  `wheels: false` option: nothing uses it, so that change is reverted and
+  the file differs from its pre Stage E state by the hook alone) and the
+  new PATCH-world-props.diff, the kei truck's, so the hero truck at the
+  crossing, which world/index.js builds with makeKeiTruck directly, is the
+  same model as the parked ones. src/maps/city/index.js registers both
+  while the town is built and clears them after. SPEC, vehicleSize,
+  parkVehicle and every placement row are untouched.
+- **A built map's parked car**: src/props/kit.js `town('car')` calls
+  buildCar; street.js carDraw passes the element's variant, which the r32
+  takes as its livery.
+- **A built map's moving car**: src/maps/built/cars.js builds each body with
+  `wheels: false, detail: 'full'`, and draws every wheel of one kind (and
+  one r32 livery) as one InstancedMesh of carWheelGeometry's wheel, the
+  matrices written every frame from the pose (rolled by distance, the front
+  pair steered by the bicycle angle less the slip, the r32's 0.05 rad of
+  negative camber), with scratch objects made once: nothing allocated on a
+  frame. The dusk glow's halos now sit on the lamps where the model put them
+  (buildCar's userData.lamps), four smaller ones for the r32's four tail
+  lamps.
+
+### How a car is drawn
+
+Two bevelled prisms and what is laid on them. The lower body is the car's
+side profile (bumpers, bonnet, the waist under the glass, boot or tailgate,
+and both wheel arches cut out of its lower edge, dark inside) extruded
+across the car, with a quarter round of two facets along both flanks and a
+deeper plan corner at the nose and tail; the glasshouse is a second prism on
+the waist, stepped in by a shoulder and narrowing to the roof. On them, a
+few millimetres proud and never inside: side glass in a dark surround
+between pillars at the kind's seams, windscreen and backlight in their
+frames, and a pale streak or two across every pane (the palette's dark glass
+with an animator's reflection); headlamps in dark housings with amber
+indicators; tail clusters stacked tail, amber, clear reversing lens (a new
+colour, never lit, so a parked car's reversing lamps do not glow at dusk);
+grilles by kind; the plate front and back, reading the right way round;
+arch lips, a darker sill, shut lines, handles, the side repeater, door
+mirrors on arms, wipers, rails, spoilers. Wheels: tyre with shoulders,
+the rim's lip standing proud, spokes by kind (five, six, ten, a steel wheel
+and cap, a plastic trim, a lorry's and a bus's hub), 14 sides parked, 16
+moving with both faces and the dish. Every material is the vendored cel()
+or flat() in a look the vendored cars already used, so the town's bake
+folds a car into buckets its neighbours already open: the town costs no
+new draw call for them.
+
+### The kinds
+
+| kind | what changed |
+| --- | --- |
+| kei | swept lamps over a slim grille and a lower intake, a big upright screen, blacked out B pillar, pillar tail lamps, roof spoiler, plastic trim wheels |
+| keivan | short flat nose with rectangle lamps and a slatted grille, dark bumpers, glass over the cab only, rails, steel wheels |
+| keitruck | cab over the front arch with its screen and door glass, roof lip, a guard frame behind the cab, the bed's drop sides with pressed ribs and hinges, lamps under the tailgate, the same three loads; the one at the crossing keeps its ink shell, the parked ones no longer carry one |
+| hatch | sloped short bonnet, swept lamps, raked hatch glass and spoiler, corner tail lamps, five spoke alloys |
+| sedan | long bonnet with rectangle lamps either side of a chrome grille, chrome window frames and waist strip, a wide tail with a garnish, six spoke alloys |
+| wagon | the commercial estate: dark bumpers, long roof to an upright tailgate, pillar tail lamps, steel wheels |
+| minivan | short nose, big raked screen, sliding door track, rails, tall tail lamps |
+| van | one box, flat front, glass over the cab, blank sides, rails, steel wheels |
+| boxtruck | the cab over the front axle with a grille panel and lamps in its steel bumper, the box with ribs, cant rail, roller shutter, marker lamps, a dark chassis under it with a side guard, twinned rear wheels, lamps and plate on the under run bar |
+| minibus | rounded roof edges, destination sign, doors with glass, a roof unit, a sage band along the flanks |
+
+### The R32
+
+A new kind, `r32`, at the real coupe's sizes: 4.50 m long, 1.76 m over its
+flares (1.71 at the doors), 1.34 m high, a 2.615 m wheelbase (axles at
++1.30 and -1.315) on 0.315 m radius tyres 0.225 wide, sill 0.30, waist
+0.86, glasshouse from -1.45 to 0.55 with rakes of 0.62 and 0.50, the roof
+1.32 wide. What says what it is, with no badge or name anywhere: the long
+bonnet and short upright glasshouse on a boxy two door body; slim oblong
+headlamps either side of a narrow grille with a bright top rail; a deep
+front bumper with a big intake, corner lamps and a dark lip; squared
+flares standing 25 mm out of the doors over all four arches; four round
+tail lamps in a dark panel, the inner pair with clear reversing centres; a
+wing on two stays on the boot lid; ten spoke wheels; the lowered stance
+(arches 3 cm over the tyres) and a touch of negative camber. Seven liveries
+by variant: gun grey, white, midnight, red over charcoal with a cream
+pinstripe and bronze wheels (variant 4, Hibari Yard's), white with a blue
+stripe, silver over gun grey, mustard.
+
+It is in CAR_STYLES (last, so every default stays `kei`), CAR_KINDS (with
+`cw`, its glasshouse's width at the roof, and `bonnet`, where its low
+bonnet starts and how high, so its parked solid steps down over the nose
+instead of standing 6 cm into the air above it), CAR_H, STYLE_DIMS (16 m/s),
+traffic.js LATERAL (4.5 m/s/s), the builder's labels ('R32'), cars.js's
+meter label ('Coupe') and schema.md. Hibari Yard's drift car row changed its
+style from `hatch` to `r32` and nothing else: every id, row and number kept.
+The builder's 'kei' button said 'Kei truck' for the tall wagon; it says 'Kei
+car' now, as the chase meter already did.
+
+### Dimensions are physics
+
+Every existing kind's L, W, R, axles, sill, waist, roof, cab, rakes, box,
+seams and handles are the vendored SPEC's own, imported, not copied, so
+CAR_KINDS, VEHICLE_KINDS and vehicleSize are unchanged and no parked or
+moving solid moved. The drawing is built round the solid boxes: flanks on
+the boxes' faces, bumpers and the lamp faces standing past L / 2 as the
+vendored bumper bar did, and where a chamfer rounds an edge or a nose leans
+back the solid's corner is at most about 3 cm outside the paint (5 cm at the
+very top of the steepest noses).
+
+**The town's collider fit reads its drawing, and that was the catch.** Its
+authored rectangles are hugged onto the drawn meshes inside them, and a car
+parked inside one is drawing: the multi storey car park's deck pieces reach
+up over the cars on it, and the lake layby's round the truck and the hatch.
+With the new cars drawn, 94 of the town's 19,515 boxes changed and 46 more
+appeared (dumped from the page with `__colliderBoxes` before and after and
+diffed). So each town car is built twice while the town is built: our model
+to draw, marked `fitSkip`, and the vendored one (the hooks unset) in an
+invisible holder beside it, which the fit's drawnBoxes reads and the renderer
+never draws, and which is dropped as soon as the colliders exist, before the
+audits, the references and the merge. The fit is fed the same boxes in the
+same order, and the town's 19,515 boxes hash the same as before, a118277a on
+High and on Low; Hibari Yard's 552 boxes likewise, da1fb02b.
+
+### Triangles, a car
+
+Counted from the built geometry in Node (every mesh, wheels in):
+
+    kind       vendored   parked   moving body + 4 wheels
+    kei          2,012     1,369     1,003 + 4 x 252
+    keivan       1,940     1,383     1,017 + 4 x 248
+    keitruck       690     1,205       839 + 4 x 248
+    hatch        2,024     1,331       987 + 4 x 243
+    sedan        2,036     1,377     1,021 + 4 x 246
+    wagon        2,024     1,363     1,013 + 4 x 248
+    minivan      2,024     1,401     1,057 + 4 x 243
+    van          1,940     1,381     1,027 + 4 x 248
+    boxtruck     2,144     1,397       985 + 6 x 258
+    minibus      2,048     1,431     1,059 + 4 x 266
+    r32              -     1,835     1,467 + 4 x 258
+
+The vendored car spent 768 of its 2,000 on arch tori and 544 on wheels with
+both faces; the arch is now a cut in the profile, dark inside, with a
+14 triangle lip, and a parked wheel draws only what stands outside its arch.
+The kei truck costs more than it did because it had no arches, one box a
+panel and 12 sided wheels. The town's 51 vehicles (44 parked cars, six
+parked kei trucks and the crossing's) went from 81,178 triangles to 60,507.
+
+### The budget
+
+window.__budget on Low at 1280 by 720, the same camera each pair
+(scratch rig, not committed), calls / triangles:
+
+    the town, golden          before              after
+    spawn 0,1.6,24         406 / 853,598       406 / 832,817
+    street 0,2.5,6         373 / 890,416       373 / 869,635
+    car park over 7 cars   194 / 819,590       194 / 798,577
+    rokuchome bays         215 / 826,182       215 / 805,169
+    school staff bays      203 / 855,678       203 / 834,737
+    high 0,70,40           219 / 856,346       220 / 835,661
+
+No new draw call in the town (the one at `high` is a shadow proxy cell's
+share, within a frame's noise of the cull grid): every car material is a
+look the town already had, so the bake folds cars into buckets the cell
+already opens. About 21,000 fewer triangles in every view. Attribute
+memory 52.1 MB before, 52.2 after.
+
+    Hibari Yard, golden         before              after
+    verge, the parked pair    79 / 47,121         90 / 46,704
+      cars hidden             61 / 42,609         67 / 41,273
+    aerial, south east       363 / 106,661       372 / 102,596
+      cars hidden            327 / 97,673        333 / 96,337
+    aerial, whole plot       499 / 130,133       508 / 126,068
+      cars hidden            463 / 121,145       469 / 119,809
+    Hibari Yard, dusk
+    verge                     85 / 47,197         96 / 46,788
+    aerial, south east       372 / 107,397       381 / 103,340
+    aerial, whole plot       504 / 130,239       513 / 126,182
+
+On a built map the kit batches by material, so the parked pair brings six
+more batches (the glass streak, the amber, the clear lens, the dark steel,
+and two paints' own deep): 368 to 374 prop batches. The moving cars:
+stats() 37 meshes and 9,308 triangles before, 40 and 6,579 after (43 and
+6,619 at dusk with the glow): three bodies of 11 to 15 meshes, three wheel
+sets (one draw call each for all the wheels of a kind, where Stage E drew
+twelve), the smoke. Shown against hidden on the whole plot, the three
+moving cars cost 36 calls before and 39 after.

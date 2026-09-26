@@ -101,7 +101,86 @@ const PASS_MARGIN = 0.02;
  */
 const PASS_MARGIN_MICRO = 0.008;
 
+/*
+ * THE LEAST FLYING BETWEEN TWO STATIONS, which is one pass depth.
+ *
+ * A pass is credited anywhere in a box that reaches the pass depth either
+ * side of an opening's plane, and nothing asked the craft to have gone
+ * anywhere between one credit and the next. Two stations whose boxes share
+ * ground could therefore both be credited from one spot. The Orbit course
+ * on the board is two flags at one pole, (30, 24); as its line is solved
+ * they score one square, passed one way and then the other, and a craft
+ * rocking in that square was credited both in two frames. The board holds
+ * 10 ms and 15 ms laps of it (the owner, 2026-09-26, POLISH-PLAN.md item 5).
+ *
+ * So after a credit the next station waits for this much more flying. One
+ * pass depth is what takes a craft from the face of a box, where it is
+ * credited, to the opening's own plane. It is the smallest length that
+ * separates two credits by real travel, and it has to stay under the box's
+ * whole depth, because two stations at one point with one direction of
+ * travel are flown as ONE pass: RaceGOW6 Track 1 has two gates standing on
+ * the same spot in its order, its racing line has no length between them,
+ * and a longer rule would refuse every lap its board holds. At one pass
+ * depth that straight pass is credited at the face and at the plane, with
+ * the other half of the box to spare.
+ *
+ * Measured against every course in tracks/ and all 41 on the board, the
+ * shortest racing line leg between two DIFFERENT points is 0.28 m (a flag
+ * standing just in front of a gate on WCMRC Round 5 and 2022 MultiGP GQ),
+ * and that pair is still credited with 0.78 m to spare, because the gate's
+ * box starts before the flag's plane. Flown on their racing lines, three
+ * laps each, every course credits every station it did and closes the
+ * same laps; where two boxes overlap the second credit comes up to 35 ms
+ * later in the lap, which moves a split and not a lap time. PROGRESS.md,
+ * 2026-09-26, has the run.
+ *
+ * Distance and not time, because the race is timed on the sim clock and a
+ * rule in milliseconds would move with the craft's speed. It counts only
+ * the travel the race is judging (see update's `allow`).
+ */
+const LEG_MIN_DEPTHS = 1;
+
+/*
+ * The same length in a DOCUMENT's metres, for the builder's warning that
+ * two stations of a flying order stand closer than it
+ * (src/trackbuilder/warnings.js). A room's constants are RaceGOW's own
+ * metres, which are its document's; the race pays MICRO_SCALE on them once,
+ * in the constructor, for the room as built.
+ */
+export function stationLegMin(trackClass = 'full') {
+  return (trackClass === 'micro' ? PASS_DEPTH_MICRO : PASS_DEPTH) * LEG_MIN_DEPTHS;
+}
+
 const DEFAULT_KEY = 'webfpv.bestLapMs';
+
+/*
+ * PRACTICE: a run with no lap limit, offered on the launch card beside 1, 3
+ * and 5 laps.
+ *
+ * It is a lap count of zero, stored in the same `laps` setting, on the rule
+ * FPS_CAPS in src/ui/ui.js already uses for uncapped. A word would read
+ * better in localStorage and would not survive there: loadSettings keeps a
+ * stored value only when its type matches the default's, and the default
+ * is a number, so a stored 'practice' would quietly come back as 3.
+ *
+ * Nothing in the Race changes for it. A practice lap is timed, split,
+ * flashed and held against the record exactly as a counted one is, because
+ * a lap is a lap. What practice takes away is the END of the run, and with
+ * it the results screen, and the public board: submitBoardTime in
+ * src/main.js will not send a lap flown in practice.
+ */
+export const PRACTICE_LAPS = 0;
+
+/*
+ * Is a run of `runLaps` over once `lapsDone` clean laps are in?
+ *
+ * One copy of the rule. main.js ends the run on it, and
+ * src/trackbuilder/selftest.js checks it, which used to write the
+ * comparison out again beside the laps it was checking.
+ */
+export function runComplete(lapsDone, runLaps) {
+  return runLaps !== PRACTICE_LAPS && lapsDone >= runLaps;
+}
 
 /*
  * A gate's own frame, from its heading and pitch. Exported because
@@ -184,6 +263,9 @@ export class Race {
     const k = this.micro ? MICRO_SCALE : 1;
     this.passDepth = (this.micro ? PASS_DEPTH_MICRO : PASS_DEPTH) * k;
     this.passMargin = (this.micro ? PASS_MARGIN_MICRO : PASS_MARGIN) * k;
+    /* The flying a station waits for after the last credit. See
+     * LEG_MIN_DEPTHS. */
+    this.legMin = this.passDepth * LEG_MIN_DEPTHS;
     /*
      * A map with no gates is a freestyle map, and it is not an error.
      *
@@ -311,9 +393,13 @@ export class Race {
 
   reset() {
     this.next = 0;
+    /* Metres flown since the last credited pass: infinite with none, so
+     * the first station of a run is never kept waiting. See LEG_MIN_DEPTHS. */
+    this.flownM = Infinity;
     this.lap = 0;
     this.lapStartMs = null; /* sim clock */
     this.lastLapMs = null;
+    this.lastLapRecord = false; /* whether lastLapMs set the record */
     this.prevSimMs = null;
     this.flash = null; /* { text, untilMs } on the wall clock */
     /*
@@ -380,6 +466,7 @@ export class Race {
     this.lapStartMs = null;
     this.splits = [];
     this.next = 0;
+    this.flownM = Infinity;
     this.flash = { text: reason, untilMs: wallMs + 1800 };
   }
 
@@ -410,8 +497,13 @@ export class Race {
    * The opening is an AABB: the visible rectangle extruded PASS_DEPTH either
    * side of the plane. Forward motion only, so a reverse pass does not
    * count. Returns the parameter t in [0, 1] at first contact, or -1.
+   *
+   * `tMin` is the earliest t that may count, 0 unless the station is still
+   * waiting for LEG_MIN_DEPTHS of flying: the contact is then the first
+   * point of the box at or after it, so a travel that is already inside the
+   * box when the wait runs out is credited there and not refused.
    */
-  openingHits(a, b, halfW, halfH) {
+  openingHits(a, b, halfW, halfH, tMin = 0) {
     if (!(halfW > 0) || !(halfH > 0)) {
       return -1;
     }
@@ -421,7 +513,7 @@ export class Race {
     if (dz <= 1e-9) {
       return -1;
     }
-    let t0 = 0;
+    let t0 = tMin;
     let t1 = 1;
     const clip = (p, d, lo, hi) => {
       if (Math.abs(d) < 1e-12) {
@@ -468,6 +560,17 @@ export class Race {
   tryPass(prev, curr, prevSimMs, simMs, wallMs) {
     const g = this.gates[this.next];
     /*
+     * THE WAIT FOR LEG_MIN_DEPTHS OF FLYING, as the earliest point of this
+     * travel that may count: where the flying since the last credit reaches
+     * it. Past the end of the travel nothing in it counts, and the travel
+     * is added to the flying.
+     */
+    const len = Math.hypot(curr.x - prev.x, curr.y - prev.y, curr.z - prev.z);
+    let tMin = 0;
+    if (this.flownM < this.legMin) {
+      tMin = len > 0 ? (this.legMin - this.flownM) / len : 2;
+    }
+    /*
      * Every opening is tested in ITS OWN frame. On an upright stack all of
      * them share one plane, so this is the single crossing test it always
      * was, run once per opening against identical arithmetic. On a tilted
@@ -483,13 +586,13 @@ export class Race {
      */
     let used = -1;
     let t = 0;
-    for (let k = 0; k < g.apertures.length; k += 1) {
+    for (let k = 0; k < g.apertures.length && tMin <= 1; k += 1) {
       const ap = g.apertures[k];
       const a = this.local(g, ap.centreY, prev.x, prev.y, prev.z);
       const b = this.local(g, ap.centreY, curr.x, curr.y, curr.z);
       const halfW = ap.clearW * 0.5 - this.passMargin;
       const halfH = ap.clearH * 0.5 - this.passMargin;
-      const tk = this.openingHits(a, b, halfW, halfH);
+      const tk = this.openingHits(a, b, halfW, halfH, tMin);
       if (tk < 0) {
         continue;
       }
@@ -498,8 +601,11 @@ export class Race {
       break;
     }
     if (used < 0) {
+      this.flownM += len;
       return null;
     }
+    /* The flying for the next station starts from this crossing. */
+    this.flownM = (1 - t) * len;
     const crossMs = prevSimMs + (simMs - prevSimMs) * t;
     const passed = this.next;
     this.next = (this.next + 1) % this.gates.length;
@@ -516,7 +622,10 @@ export class Race {
         this.laps.push(this.lastLapMs);
         this.log.push({ n: this.lapNumber(), ms: this.lastLapMs });
         let msgText = `Lap ${this.log.length}   ${fmt(this.lastLapMs)}`;
-        if (this.bestMs == null || this.lastLapMs < this.bestMs) {
+        /* Kept for the shell's spoken call (src/render/voice.js), so the
+         * voice reads the flash's decision rather than making its own. */
+        this.lastLapRecord = this.bestMs == null || this.lastLapMs < this.bestMs;
+        if (this.lastLapRecord) {
           this.bestMs = this.lastLapMs;
           msgText += '\nNew track record';
           /* Off the flight frame. This runs from the render loop, and a
@@ -556,7 +665,8 @@ export class Race {
      * allow is the shell's judgement that this travel was flown, not a
      * clip through the dirt or an inverted tumble on the grass. False
      * still advances the clock so the next legal pass is not timed
-     * across the burial.
+     * across the burial. Its travel is not flying, so it does not count
+     * towards LEG_MIN_DEPTHS either.
      */
     if (!allow) {
       this.prevSimMs = simMs;

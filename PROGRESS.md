@@ -49535,10 +49535,10 @@ window.__vehicles.
     npm run check:world-engines  20 golden and 12 vehicle runs equal to the
                                  bit in Node and Chromium, Hibari Yard's
                                  new loop among them
-    npm run lint:boot            9 of 9 clean
+    npm run lint:boot            9 of 9 clean (on 80808d3)
     npm run lint:memory          PASS; built 9 modules, 61 -> 232 -> 61
                                  geometries, 5 -> 42 -> 5 textures
-    npm run lint:quality         56 of 56 clean
+    npm run lint:quality         56 of 56 clean (on 80808d3)
     npm run lint:preload         up to date after node scripts/gen-preload.js
                                  (boot 108, city 73, built 32)
     npm run lint:shell           FAIL, 1 problem, the known "title: overflow
@@ -49651,7 +49651,7 @@ forced).
                                  run, Hibari Yard's traffic among them (on
                                  04fbeac)
     npm run check:path           12 passed, 0 failed
-    npm run lint:boot            9 of 9 clean
+    npm run lint:boot            9 of 9 clean (on 80808d3)
     npm run lint:memory          PASS
     npm run lint:preload         up to date
     npm run support:selftest     17 of 17 (on bd2bb69)
@@ -50178,7 +50178,7 @@ window.__counter() after each line.
     npm run check:chase          all passed
     npm run check:roads          all passed (3.1 s)
     npm run check:props          all passed
-    npm run lint:boot            9 of 9 clean
+    npm run lint:boot            9 of 9 clean (on 80808d3)
     npm run lint:memory          PASS, every world lazy and freed; boot 61
                                  geometries, 5 textures, 127 requests (the
                                  three new modules)
@@ -50558,7 +50558,7 @@ above). No physics, module ABI or build change.
     npm run check:props          all passed
     npm run check:clip           876 passed, 0 failed
     npm run check:world          all passed
-    npm run lint:boot            9 of 9 clean
+    npm run lint:boot            9 of 9 clean (on 80808d3)
     npm run lint:memory          PASS
     npm run lint:preload         up to date
     npm run lint:shell           FAIL, the known "title: overflow grew from
@@ -50716,6 +50716,1514 @@ c552782. Flown again end to end with the draw on: a wall skim along
 Hibari Yard's container stack, 0.93 s at 0.35 m, lettered "WALL SKIM 182
 0.9 s" in sky blue down the left while it paid, then banked into the
 total, 182; the posted trick total 0, the counter 182.
+
+## 2026-09-26 | race, shell | Practice: a fourth lap count, with no end and nothing for the board
+
+The owner: "in the 5 inch and whoop racing tracks, add a race mode from the
+1, 3 and 5 lap options to practice mode where you just keep going with times
+called out each lap, no time is recorded on the board in practice mode".
+
+Changes:
+
+- src/game/race.js: `PRACTICE_LAPS`, which is 0, and `runComplete(lapsDone,
+  runLaps)`, the one copy of the run end rule. Zero and not a word, because
+  loadSettings keeps a stored value only when its type matches the
+  default's, so a stored 'practice' would come back as 3 on the next load.
+  FPS_CAPS already spends 0 on uncapped. Nothing in the Race class changes:
+  a practice lap is timed, split and flashed exactly as a counted one is.
+- src/ui/ui.js: LAP_COUNTS is [1, 3, 5, PRACTICE_LAPS] and the launch card's
+  Laps row reads Practice for the last one, with its own help. The sentence
+  under Fly leaves the lap count out in practice and ends "Practice laps stay
+  off the public board, so this run will not count there." The Race room's
+  Upload row, disabled for want of a lap, gives the practice reason instead
+  of "Fly a clean lap on this track".
+- src/main.js: the run ends on runComplete, so practice never reaches the
+  results screen, which is also the only place a pending time is written.
+  submitBoardTime takes no lap from a practice run. It reads runLaps, which
+  is latched at run start beside race.reset(), so it describes the run the
+  laps in `race` were flown in, not what the menu says now. A lap pending
+  from an earlier counted run on the same track can still go up: it was not
+  flown in practice, and it is the lap the Upload row names. The pre-flight
+  banner's second line reads "Practice: no lap limit. The green gate starts
+  your lap".
+- src/trackbuilder/selftest.js: the three lap checks call runComplete rather
+  than restating `lap >= runLaps`, and four new ones: the counted runs end
+  where they did (1 of 1, 5 of 5, not 4 of 5); twelve practice laps and no
+  end; the twelfth practice lap is timed and flashed "Lap 12   1.00"; practice
+  is never over at 0, 1 or 500 laps.
+
+Both classes of track get it from the same row: the launch card is the same
+card for a five inch field and a whoop room (seatIsRace), and the run end
+has never known the class.
+
+Decisions taken here that are the owner's to reverse:
+
+- "Called out" is the flash every lap already had, "Lap N   time", with "New
+  track record" under it when it is one, and the polite live region reads it
+  to a screen reader. Nothing is spoken aloud: there is no voice anywhere in
+  the simulator. Asked in the conversation whether the owner wants one.
+- A practice lap still counts against the pilot's own best in this browser:
+  the New track record line, the best on the HUD, and the record the next
+  counted run's results are measured against. Only the public board is
+  closed to it. A separate local record for practice would flash New track
+  record on the first practice lap of every session, however slow.
+- The board's statistics page still counts practice laps. It counts laps
+  flown and never a time (src/share/stats.js), so nothing about a practice
+  lap's time leaves the browser.
+- Practice has no results screen, so its lap list is shown nowhere at the
+  end; Restart run and Quit to title stop it. The ghost's session best and
+  previous laps still fill from practice, which is the pacer a practising
+  pilot wants.
+
+Seen and not changed: recordSentence says a best is filed under a lap
+count, and recordKey() in src/main.js hashes the config, the pack, the
+style, the airframe and the weight, not the laps. A 1 lap and a 5 lap run
+already file their bests together. Practice follows what the key does.
+
+What went wrong: the first fetch printed `forced update` for main, the same
+thing the "Fly this track" entry above recorded. The same cause: the
+container's clone was `--depth 50`. After `git fetch --unshallow`, the old
+head 9ed8b9c is an ancestor of 716562b.
+
+Deliberate break, read back: runComplete put back to `lapsDone >= runLaps`
+fails "practice never finishes a run, twelve laps in: lap 12, over true"
+and "practice is never over, whatever has been flown", 878 passed and 2
+failed. Restored.
+
+Not checked: nothing ran in a browser. shots.js, lint:shell and verify were
+not run, and which of them to run was put to the owner. Nothing in the
+physics, the plant, the module ABI or the build changed.
+
+### RUN LOG
+
+    node --check                        race.js, main.js, ui.js,
+                                        trackbuilder/selftest.js: ok
+    import ui.js under node             loads, LAP_COUNTS [1,3,5,0]
+    node src/trackbuilder/selftest.js   880 passed, 0 failed
+    node scripts/gen-preload.js --check up to date, boot 113, city 73,
+                                        built 32; 215 served
+    dash scan of the diff               none
+
+### To main
+
+The owner, 2026-09-26: "Push to main i'll test it by flying". That is the
+verification chosen for this change: the owner flies it, so shots.js,
+lint:shell and verify were not run. main had not moved: origin/main was
+still 716562b, the parent of add5bdd, so it went up as a fast forward.
+Whether the lap times should also be spoken was asked and not answered,
+so nothing is spoken.
+
+## 2026-09-26 | race, audio | Lap times called out loud
+
+The owner: "call lap times out loud", the answer to the question the
+practice entry above left open.
+
+Changes:
+
+- src/render/voice.js, new: `lapCall(n, ms, record)`, the words, and
+  `LapVoice`, which hands them to the browser's own speechSynthesis. The
+  time is fmt's arithmetic from race.js, so the voice and the flash cannot
+  differ by a hundredth. Past a minute it is said in words, "Lap 3, 1
+  minute 3.20", because "1:03.20" may be read as a time of day. The voice
+  is the pilot's own English where the machine has it (en-AU on an
+  Australian one), a local voice before a network one, since a network
+  voice starts late; with no English voice, the default; with none at
+  all, silence. It says nothing on a page nobody has touched
+  (navigator.userActivation), because the browser refuses and writes a
+  console warning each time. A call still going is cut off by the next,
+  and a paused engine is resumed first.
+- src/game/race.js: `lastLapRecord`, set where the flash decides "New
+  track record", so the voice reads that decision instead of making its
+  own. The condition is the same expression it was.
+- src/main.js: the voice is made beside the audio, speaks when the race
+  counts a lap (race.laps grew this frame), in every run, practice or
+  counted, the last lap included, and is stopped by reset(). It is primed
+  from the keydown and pointerdown handlers and NOT from wakeAudio, which
+  flyIfLinked calls from a timer: iOS opens speech only for a call made
+  inside a gesture.
+- src/ui/ui.js: the Sound and Volume help say they cover the lap call.
+- src/fresh.js: regenerated by gen-preload for the new module.
+- src/trackbuilder/selftest.js: eleven checks. The words, a minute and
+  over, record on exactly the laps the flash says it, the voice choice,
+  and LapVoice against a stand-in engine: priming once and silently, the
+  voice and volume that reach the engine, the cut off, volume 0, no voice
+  installed, and no speech at all.
+
+Decisions taken here that are the owner's to reverse:
+
+- Every race lap is called, not only practice. The flash was already on
+  every lap, and the voice says what the flash says.
+- No switch or level of its own. It follows Sound and Volume. A Lap
+  callouts level beside Motors, Wind and Music would be one more row on
+  Settings, which already scrolls 790 px past its window, and the shell
+  check fails a screen that grows past its baseline. Not added without
+  asking, because the way through that check is re-recording the baseline.
+- No ducking. speechSynthesis does not pass through the Web Audio graph,
+  and duckParam's release is a straight ramp back to unity, so holding the
+  music down for the length of a sentence would need a new shape in
+  audio.js. Left until the owner has heard it over the mix.
+- The browser's voice, not a recorded one. How it sounds depends on the
+  machine and the browser, and a machine with no voice installed stays
+  quiet.
+
+Deliberate breaks, read back: lastLapRecord forced to true fails "the call
+says record on exactly the laps the flash does" (500:true:true
+550:true:true 100:true:true) and the practice flash check, 889 passed and 2
+failed; the cut off removed from say() fails "the next lap cuts off a call
+still going", 890 passed and 1 failed. Both restored and compared byte for
+byte with the copies taken before.
+
+Not checked: nobody has heard it. Nothing here ran in a browser, and a
+stand-in engine proves what is handed to speechSynthesis, not how it
+sounds or whether it is heard over the motors and the music. shots.js,
+lint:shell and verify were not run. Nothing in the physics, the plant, the
+module ABI or the build changed.
+
+### RUN LOG
+
+    node --check                        voice.js, race.js, main.js,
+                                        selftest.js: ok
+    node src/trackbuilder/selftest.js   891 passed, 0 failed
+    node scripts/gen-preload.js         wrote src/fresh.js, boot 114,
+                                        city 73, built 32; 216 served
+    node scripts/gen-preload.js --check up to date
+    node scripts/boot-check.js          9 of 9 checks clean
+    dash scan of the diff               none
+
+### To main
+
+The owner, 2026-09-26, asked before the push because the earlier "push to
+main" covered practice and not this: "Push to main, I'll fly it". Flying
+it is the verification for this change, so shots.js, lint:shell and verify
+were not run. main had not moved from 5744b85, the parent of 9dc0ea7, so
+it went up as a fast forward.
+
+### Flown
+
+The owner, 2026-09-26, after flying it: "lap call outs are good." That is
+the check the entry above said nobody had made: the voice is heard, at the
+Volume level, over the mix, with no ducking. The two offers left open, a
+level of its own and the music dipping under the call, stay unbuilt unless
+asked for. The report was about the callouts. It said nothing either way
+about practice's own behaviour: no lap limit, no results screen, and the
+Upload row.
+
+## 2026-09-26 | plan | The whoop room: a hall in the town
+
+Asked: make the whoop room "much nicer", in the sakura theme, tastefully
+decorate its walls with the slap pack stickers (https://webfpv.org/stickers/),
+and make it match the city and the freestyle builder; plan it and discuss it
+first. Done: a plan, WHOOP-ROOM-PLAN.md. No source file changed.
+
+**What the plan found.** The room cannot match the town by recolouring alone:
+it renders through the race field's kit (celmat.js, ink 0x1a2230, the field's
+grade) while the town and Your map use toon.js, ink 0x39324f and the town's
+grade. The one thing that works, cream PVC against a dark mat and mid dark
+walls, is what a naive pale repaint would break, so the plan keeps a dark mat
+and a tall dark wainscot and puts the pale town plaster above it. The walls
+stand exactly on the builder's micro field edge, so the plan's rule is that
+nothing proud of a wall is more than 30 mm or solid, and anything deeper is
+behind glass or closed: the collider set, the plant, the ABI and the build do
+not move. No check looks at the room's pixels today; the plan's first stage is
+a hall-check that pins the colliders and records a gate contrast baseline.
+
+**Stickers.** 22 pure SVGs, GPLv3, fonts subsetted under the OFL. The landing
+page draws them as DOM SVG, never into a WebGL texture, so that path is
+unproven; the plan proposes baking a sticker atlas in headless Chromium, which
+ships no fonts.
+
+**The fetch that said forced update.** This container's first clone was
+`--depth 50` of main at 9ed8b9c, taken 2026-09-24. `git fetch --deepen=400
+origin main` then printed `+ 9ed8b9c...716562b main -> origin/main (forced
+update)`, and before deepening `git merge-base HEAD origin/main` had come back
+empty: both of the signs the Git section of CLAUDE.md names. It was the
+shallow clone, not a rewrite. After deepening, `git merge-base main
+origin/main` is 9ed8b9c itself, and `git merge-base --is-ancestor` confirms
+9ed8b9c, 14d8e35 and b5e274e are all reachable from 716562b, 210 commits
+along. The graft points in .git/shallow had hidden the ancestry from the fast
+forward test. Nothing merged, nothing pushed to main.
+
+**Run this turn.** `node scripts/shots.js` once, on Living room 1 with the
+whoop seated, four parked cameras, for before pictures (kept out of the
+repository): exit 0, one console error, a refused network request that is not
+the room. `npm run verify` not run: nothing physical, no plant, ABI or build.
+No other check run: no code changed.
+
+**Waiting on the owner:** section 9 of the plan.
+
+## 2026-09-26 | render, art | The whoop room recoloured in the sakura theme, with the slap pack on its walls
+
+**The owner's answers to WHOOP-ROOM-PLAN.md, 2026-09-26.** In their words:
+recolour the basement and decorate it "with larger versions of the stickers
+as well art"; "use the stickers to make posters and or banners, sakura theme
+remember"; on the post chain question, "i don't know what this means, but
+don't break existing tracks at all"; and "its a room, wiht lights, dont make
+it seem like sun set". That covered the concept (the basement, recoloured,
+not the community hall), the art (posters and banners from the stickers),
+the render pipeline (the shared post chain was left alone) and the light
+(neutral, lit, no low warm key). None of it touched the physics model, the
+module ABI or the build, so nothing here needed the advisor's approval
+beyond the answers themselves. They are recorded in the plan's section 10.
+
+**Changed.**
+
+- `src/render/scene.js`, the indoor branch only. New ROOM palette: deep green
+  gate band to 1.2 m, sakura rail, pale sakura plaster, cream ceiling painted
+  as lit, pale beams, twelve unlit light panels, honey boards round a mat in
+  the town's dark. Four neutral white lamps a sixth of the width off the
+  centre line, a bright hemisphere, a near overhead key that casts nothing
+  in a room, pale air from 5.5 to 44 m. The shell is merged per material.
+  The skirting now stands proud on all four walls; it was flush on two, its
+  20 mm added to the length of the east and west walls. `keyDir` replaces
+  `SUN_DIR` in the two places that place the sun, and is `SUN_DIR` on the
+  field.
+- `src/art/wallart.js`, new: hangs twelve pieces on four walls from one atlas,
+  one draw call, layer 1, no collider; banners on bamboo rods. Loaded by
+  dynamic import from the indoor branch only, and never fatal: a module that
+  does not arrive in 6 s, a missing piece or a picture that fails leaves the
+  room bare and the race intact.
+- `scripts/wallart.js`, new, `npm run gen:wallart`: reads the slap pack at
+  webfpv.org/stickers/ (or `--pack=FILE`), composes seven A0 posters, two
+  4.4 m banners, a nobori and a cut vinyl wordmark around sixteen stickers,
+  renders them in headless Chromium with the pack's own fonts and writes
+  `assets/wallart/atlas.webp` (345 KB, 405 px per printed metre) and
+  `src/art/wallart-atlas.js`. No font file ships; NOTICE records the art's
+  origin and the OFL faces its type was set in.
+- `scripts/gatecards.js`: the whoop card's camera through MICRO_SCALE, and
+  its aim lifted from 0.35 to 0.75 m. `assets/gate/whoop.jpg` retaken.
+- `src/fresh.js` regenerated for the two new modules; `package.json`,
+  `NOTICE`, `WHOOP-ROOM-PLAN.md`.
+
+**Why the gate band.** The pipe is 0x9aa2b0. It reads against anything clearly
+darker or clearly paler than itself and against nothing of its own value, so
+there is no mid tone anywhere a gate stands in front of: dark below 1.2 m,
+pale above. Measured as luma across the same upright of Living room 1's
+ladder, old room against new, fixed camera:
+
+    High, band behind      old: core 44 to 100 over a 33 wall
+                           new: core 45 to 52 over an 88 band
+    High, plaster behind   old: core 50 over a 35 wall
+                           new: ink 110 to 120 under a 200 plaster
+    Low, band behind       new: core 65 to 77 over an 85 band
+    Low, plaster behind    new: body 11 to 36 under a 198 plaster, with a
+                                dark terminator edge
+
+The last line is the weak one and it is written down: Low has no ink pass,
+so a tall element's top seen against the plaster reads by a thin dark edge
+and by hue, not by value. Everything below 1.2 m, which is where RaceGOW
+gates are, reads at least as well as it did.
+
+**What went wrong, in order.**
+
+1. The first light pass (hemisphere 0.9, lamps 21, key 0.6) clipped the
+   plaster and the ceiling to white and hid the light panels. Brought down
+   to 0.6, 10 and 0.45, with the ceiling painted as lit rather than lit.
+2. It was tuned on Low, which is what this container picks, and High was
+   different. With shadows on, a near vertical key runs along every upright,
+   so each pipe shadowed itself and went dark in front of the dark band: the
+   one pairing the room exists to avoid. The key casts nothing in a room now,
+   which is also what the old room's 0.16 key amounted to. Bloom (threshold
+   0.78) lit hot patches on the plaster; the plaster went a shade deeper.
+3. Moving the lamps in over the track at 15 each blew the far plaster out
+   into bloom again. Back to 10, kept over the track.
+4. The generator's font check passed a face whose status was "unloaded",
+   because "unloaded" ends in "loaded". Caught on the first run; every face
+   is now loaded and checked by status.
+5. A light streak in the first preview was the preview's compositing, not the
+   atlas: every pixel sampled in it was rgba(0,0,0,0).
+6. shots.js exits 1 on any console error, and every capture here logs one
+   refused board request, including the baseline on unchanged code. My early
+   runs piped through tail and hid that exit code. It is also why
+   `npm run gen:gatecards` cannot finish in this container, so the whoop card
+   was taken by calling shots.js with the generator's own parameters, as on
+   2026-09-09.
+7. The whoop card's camera was written on 2026-09-09 and the room grew by
+   MICRO_SCALE on 2026-09-14 (91c77eb), so its numbers put the lens 1.6 m
+   from the start gate. It now goes through MICRO_SCALE.
+
+**Checks, run this turn, on the committed code unless said.**
+
+    colliders, Living room 1   6 boxes identical to 1e-6, census identical,
+                               28 solids: wall 5, gate 13, obstacle 8, pole 2
+    colliders, 5 inch field    2064 identical
+    field render               100 calls, 389041 triangles, 61 geometries,
+                               5 textures, 26 programs: identical
+    field pixels               before against after, 1101 and 481 pixels
+                               differ, max 9 and 1 levels; the same code
+                               twice, 341 and 205, max 9 and 20: noise
+    room render                134 to 118 calls, 118503 to 118783
+                               triangles, textures 3 to 4, programs 18 to 22
+    npm run micro:check        267 pass, 0 fail
+    npm run lint:preload       up to date, boot 113 unchanged, 217 served
+    gen:wallart                saved pack and live pack: rev cc911c84d03b both
+    node --check               every changed module
+
+The field and collider comparisons were taken before the last edit to
+scene.js (a 6 s wait on the art's modules and a comment); the room's
+colliders and render were re-taken after it and are the same. Pictures at
+Low and High from six cameras are in the scratch directory, not here.
+
+**Not run.** `npm run verify`: nothing physical, no plant, ABI or build, and
+check 16's claim holds by construction (no module under src/maps/city is
+imported; the art modules are imported only inside the indoor branch; the
+boot preload list did not change). `lint:memory`, `lint:shell`,
+`lint:responsive`, `lint:boot`: none of them loads a micro course or has
+anything in it that changed, apart from one picture on the title.
+`gen:gatecards` in full, for the reason in item 6. The board's card renderer
+(src/share/orbit.html) builds rooms through the same buildMap and will show
+the new room; it was not exercised here.
+
+**To fly.** A whoop on Living room 1, on your own machine and preset. What
+counts as wrong: a gate you lose against the dark band or the plaster, walls
+glowing on High, the room reading as dusk, a poster or banner blurred or
+missing, or any difference at all in how a wall tap, a gate or a lap behaves.
+
+### Addendum: to main, the owner flies it
+
+The owner, 2026-09-26: "push to main and i'll fly it". main moved twice while
+this was in review, by the Practice lap count and by the lap calls
+(src/render/voice.js); both were merged into this branch, not rebased and not
+forced, with PROGRESS.md keeping main's entries where main has them. Run on
+the merged tree that went to main: `npm run lint:preload` up to date, boot
+114 and 218 served; `npm run micro:check` 267 pass, 0 fail; `node --check` on
+every module either side touched; and the room captured again, its six
+collider boxes and 28 solids identical to the baseline, 118 draw calls, the
+art up. The push to main is a fast forward. `npm run verify` not run, for
+the reason in the entry above.
+
+## 2026-09-26 | ui | The whoop's OSD loses its speed readout
+
+**Asked.** The owner, 2026-09-26: "remove speed recording on the whoop". The
+only speed the shell shows or keeps is the km/h readout in the OSD's right
+corner; nothing on the board, the results or the lap calls records a speed.
+So that is what goes, on the whoop only. The five inch keeps it.
+
+**Why the number was wrong on a whoop anyway.** The whoop flies the five
+inch's plant in a room built MICRO_SCALE (3.4289) times life size, so the
+readout was a five inch's ground speed printed over the picture of a whoop.
+
+**Changed.**
+
+- `configs/airframes.js`: `osdSpeed` on both airframes, true on the five inch,
+  false on the whoop, with the owner's words. Display only, like `cells`.
+- `src/main.js`: `speedKph` is null when the seated airframe's `osdSpeed` is
+  false. Read per frame off `runAirframe`, so a seat change mid session
+  takes effect on the next frame.
+- `src/ui/ui.js`: `setOsd` hides the readout with `is-off` when `speedKph`
+  is null, rather than leaving an empty line. The OSD's doc comment says
+  the machine decides.
+- `index.html`: `.osd-value.is-off { display: none; }`.
+
+Nothing physical: no plant, ABI, build, scoring or collider change.
+
+**Checks, run this turn.** `node --check` on the three changed modules;
+`configs/airframes.js` imported in Node, `5inch:true whoop65:false`, and its
+MICRO_SCALE assertion still loads; `npm run lint:preload` up to date, exit 0.
+
+**Not run.** `npm run verify`: nothing physical. `node scripts/shots.js`: not
+run, pending the owner's answer on the verification scale. No picture of the
+OSD with the readout gone has been taken.
+
+**Seen, not touched.** The altitude line has the same seam on a whoop: it is
+metres in the MICRO_SCALE room, so it reads 3.43 times the height the
+picture shows. Not asked for; left as it is.
+
+### Addendum: to main, the owner flies it
+
+The owner, 2026-09-26, asked which verification scale: "push to main and
+i'll fly it". So the check is the pilot's: on the whoop, no km/h line and no
+gap above the mode in the right corner; on the five inch, the readout as
+before; and a change of seat mid session updating the corner on the next
+frame. main had not moved since eb06a87, so the push is a fast forward.
+`node scripts/shots.js` and `npm run verify` not run, for the reasons above.
+
+## 2026-09-26 | art, maps, props | The cars rebuilt, and an R32 drift coupe for Hibari Yard
+
+The owner, 2026-09-26: "i'd like the cars to be better, add a r32 drift
+car, make it very nicely modeled within the art style, upgrade all the car
+models to match the polish of the r32 car". No physics, no module ABI, no
+build: dist/sim.wasm, src/native and tests/goldens are untouched and
+`git diff --stat vendor/betaflight` is empty. Commits 16b1655 (the model,
+the routing, the r32), 6cc2972 (the lead's checkpoint of an edit the spend
+limit stopped mid way: 14 sided parked wheels, calmer swept lamps),
+then the shoulders' quarter round and this entry.
+
+### The approach, and why this one
+
+Two ways were offered: patch the vendored builder, or write the models in
+our own module and route the three callers through it with the smallest
+honest patch. The second, because NOTICE's rule is that our shell wraps a
+vendored module rather than editing it ("an upstream update is a re-copy
+plus one patch rather than a merge"), and a rebuilt car is several hundred
+lines that would otherwise live in an MIT file as a diff nobody could merge.
+
+- **src/art/cars.js** (new, GPLv3) draws every car: `buildCar(o)` for a
+  body at the origin nose +x (the vendored convention), `townVehicle` and
+  `townKeiTruck` for the town's hooks, `carWheelGeometry` and
+  `carWheelBase` for a moving car's wheels, `r32Livery`, `MODEL`.
+- **The town**: the vendored `makeVehicle` and `makeKeiTruck` each take a
+  hook, `setVehicleModel` and `setKeiTruckModel`, unset by default so the
+  upstream drawing is what runs when nothing registers. Recorded as
+  ./vendored/PATCH-world-vehicles.diff (which now replaces Stage E's
+  `wheels: false` option: nothing uses it, so that change is reverted and
+  the file differs from its pre Stage E state by the hook alone) and the
+  new PATCH-world-props.diff, the kei truck's, so the hero truck at the
+  crossing, which world/index.js builds with makeKeiTruck directly, is the
+  same model as the parked ones. src/maps/city/index.js registers both
+  while the town is built and clears them after. SPEC, vehicleSize,
+  parkVehicle and every placement row are untouched.
+- **A built map's parked car**: src/props/kit.js `town('car')` calls
+  buildCar; street.js carDraw passes the element's variant, which the r32
+  takes as its livery.
+- **A built map's moving car**: src/maps/built/cars.js builds each body with
+  `wheels: false, detail: 'full'`, and draws every wheel of one kind (and
+  one r32 livery) as one InstancedMesh of carWheelGeometry's wheel, the
+  matrices written every frame from the pose (rolled by distance, the front
+  pair steered by the bicycle angle less the slip, the r32's 0.05 rad of
+  negative camber), with scratch objects made once: nothing allocated on a
+  frame. The dusk glow's halos now sit on the lamps where the model put them
+  (buildCar's userData.lamps), four smaller ones for the r32's four tail
+  lamps.
+
+### How a car is drawn
+
+Two bevelled prisms and what is laid on them. The lower body is the car's
+side profile (bumpers, bonnet, the waist under the glass, boot or tailgate,
+and both wheel arches cut out of its lower edge, dark inside) extruded
+across the car, with a quarter round of two facets along both flanks and a
+deeper plan corner at the nose and tail; the glasshouse is a second prism on
+the waist, stepped in by a shoulder and narrowing to the roof. On them, a
+few millimetres proud and never inside: side glass in a dark surround
+between pillars at the kind's seams, windscreen and backlight in their
+frames, and a pale streak or two across every pane (the palette's dark glass
+with an animator's reflection); headlamps in dark housings with amber
+indicators; tail clusters stacked tail, amber, clear reversing lens (a new
+colour, never lit, so a parked car's reversing lamps do not glow at dusk);
+grilles by kind; the plate front and back, reading the right way round;
+arch lips, a darker sill, shut lines, handles, the side repeater, door
+mirrors on arms, wipers, rails, spoilers. Wheels: tyre with shoulders,
+the rim's lip standing proud, spokes by kind (five, six, ten, a steel wheel
+and cap, a plastic trim, a lorry's and a bus's hub), 14 sides parked, 16
+moving with both faces and the dish. Every material is the vendored cel()
+or flat() in a look the vendored cars already used, so the town's bake
+folds a car into buckets its neighbours already open: the town costs no
+new draw call for them.
+
+### The kinds
+
+| kind | what changed |
+| --- | --- |
+| kei | swept lamps over a slim grille and a lower intake, a big upright screen, blacked out B pillar, pillar tail lamps, roof spoiler, plastic trim wheels |
+| keivan | short flat nose with rectangle lamps and a slatted grille, dark bumpers, glass over the cab only, rails, steel wheels |
+| keitruck | cab over the front arch with its screen and door glass, roof lip, a guard frame behind the cab, the bed's drop sides with pressed ribs and hinges, lamps under the tailgate, the same three loads; the one at the crossing keeps its ink shell, the parked ones no longer carry one |
+| hatch | sloped short bonnet, swept lamps, raked hatch glass and spoiler, corner tail lamps, five spoke alloys |
+| sedan | long bonnet with rectangle lamps either side of a chrome grille, chrome window frames and waist strip, a wide tail with a garnish, six spoke alloys |
+| wagon | the commercial estate: dark bumpers, long roof to an upright tailgate, pillar tail lamps, steel wheels |
+| minivan | short nose, big raked screen, sliding door track, rails, tall tail lamps |
+| van | one box, flat front, glass over the cab, blank sides, rails, steel wheels |
+| boxtruck | the cab over the front axle with a grille panel and lamps in its steel bumper, the box with ribs, cant rail, roller shutter, marker lamps, a dark chassis under it with a side guard, twinned rear wheels, lamps and plate on the under run bar |
+| minibus | rounded roof edges, destination sign, doors with glass, a roof unit, a sage band along the flanks |
+
+### The R32
+
+A new kind, `r32`, at the real coupe's sizes: 4.50 m long, 1.76 m over its
+flares (1.71 at the doors), 1.34 m high, a 2.615 m wheelbase (axles at
++1.30 and -1.315) on 0.315 m radius tyres 0.225 wide, sill 0.30, waist
+0.86, glasshouse from -1.45 to 0.55 with rakes of 0.62 and 0.50, the roof
+1.32 wide. What says what it is, with no badge or name anywhere: the long
+bonnet and short upright glasshouse on a boxy two door body; slim oblong
+headlamps either side of a narrow grille with a bright top rail; a deep
+front bumper with a big intake, corner lamps and a dark lip; squared
+flares standing 25 mm out of the doors over all four arches; four round
+tail lamps in a dark panel, the inner pair with clear reversing centres; a
+wing on two stays on the boot lid; ten spoke wheels; the lowered stance
+(arches 3 cm over the tyres) and a touch of negative camber. Seven liveries
+by variant: gun grey, white, midnight, red over charcoal with a cream
+pinstripe and bronze wheels (variant 4, Hibari Yard's), white with a blue
+stripe, silver over gun grey, mustard.
+
+It is in CAR_STYLES (last, so every default stays `kei`), CAR_KINDS (with
+`cw`, its glasshouse's width at the roof, and `bonnet`, where its low
+bonnet starts and how high, so its parked solid steps down over the nose
+instead of standing 6 cm into the air above it), CAR_H, STYLE_DIMS (16 m/s),
+traffic.js LATERAL (4.5 m/s/s), the builder's labels ('R32'), cars.js's
+meter label ('Coupe') and schema.md. Hibari Yard's drift car row changed its
+style from `hatch` to `r32` and nothing else: every id, row and number kept.
+The builder's 'kei' button said 'Kei truck' for the tall wagon; it says 'Kei
+car' now, as the chase meter already did.
+
+### Dimensions are physics
+
+Every existing kind's L, W, R, axles, sill, waist, roof, cab, rakes, box,
+seams and handles are the vendored SPEC's own, imported, not copied, so
+CAR_KINDS, VEHICLE_KINDS and vehicleSize are unchanged and no parked or
+moving solid moved. The drawing is built round the solid boxes: flanks on
+the boxes' faces, bumpers and the lamp faces standing past L / 2 as the
+vendored bumper bar did, and where a chamfer rounds an edge or a nose leans
+back the solid's corner is at most about 3 cm outside the paint (5 cm at the
+very top of the steepest noses).
+
+**The town's collider fit reads its drawing, and that was the catch.** Its
+authored rectangles are hugged onto the drawn meshes inside them, and a car
+parked inside one is drawing: the multi storey car park's deck pieces reach
+up over the cars on it, and the lake layby's round the truck and the hatch.
+With the new cars drawn, 94 of the town's 19,515 boxes changed and 46 more
+appeared (dumped from the page with `__colliderBoxes` before and after and
+diffed). So each town car is built twice while the town is built: our model
+to draw, marked `fitSkip`, and the vendored one (the hooks unset) in an
+invisible holder beside it, which the fit's drawnBoxes reads and the renderer
+never draws, and which is dropped as soon as the colliders exist, before the
+audits, the references and the merge. The fit is fed the same boxes in the
+same order, and the town's 19,515 boxes hash the same as before, a118277a on
+High and on Low; Hibari Yard's 552 boxes likewise, da1fb02b.
+
+### Triangles, a car
+
+Counted from the built geometry in Node (every mesh, wheels in):
+
+    kind       vendored   parked   moving body + 4 wheels
+    kei          2,012     1,369       753 + 4 x 252
+    keivan       1,940     1,383       783 + 4 x 248
+    keitruck       690     1,205       605 + 4 x 248
+    hatch        2,024     1,331       751 + 4 x 243
+    sedan        2,036     1,377       785 + 4 x 246
+    wagon        2,024     1,363       763 + 4 x 248
+    minivan      2,024     1,401       821 + 4 x 243
+    van          1,940     1,381       781 + 4 x 248
+    boxtruck     2,144     1,397       709 + 6 x 258
+    minibus      2,048     1,431       759 + 4 x 266
+    r32              -     1,835     1,195 + 4 x 258
+
+The vendored car spent 768 of its 2,000 on arch tori and 544 on wheels with
+both faces; the arch is now a cut in the profile, dark inside, with a
+14 triangle lip, and a parked wheel draws only what stands outside its arch.
+The kei truck costs more than it did because it had no arches, one box a
+panel and 12 sided wheels. The town's 51 vehicles (44 parked cars, six
+parked kei trucks and the crossing's) went from 81,178 triangles to 60,507.
+
+### The budget
+
+window.__budget on Low at 1280 by 720, the same camera each pair
+(scratch rig, not committed), calls / triangles:
+
+    the town, golden          before              after
+    spawn 0,1.6,24         406 / 853,598       406 / 832,817
+    street 0,2.5,6         373 / 890,416       373 / 869,635
+    car park over 7 cars   194 / 819,590       194 / 798,577
+    rokuchome bays         215 / 826,182       215 / 805,169
+    school staff bays      203 / 855,678       203 / 834,737
+    high 0,70,40           219 / 856,346       220 / 835,661
+
+No new draw call in the town (the one at `high` is a shadow proxy cell's
+share, within a frame's noise of the cull grid): every car material is a
+look the town already had, so the bake folds cars into buckets the cell
+already opens. About 21,000 fewer triangles in every view. Attribute
+memory 52.1 MB before, 52.2 after.
+
+    Hibari Yard, golden         before              after
+    verge, the parked pair    79 / 47,121         90 / 46,704
+      cars hidden             61 / 42,609         67 / 41,273
+    aerial, south east       363 / 106,661       372 / 102,596
+      cars hidden            327 / 97,673        333 / 96,337
+    aerial, whole plot       499 / 130,133       508 / 126,068
+      cars hidden            463 / 121,145       469 / 119,809
+    Hibari Yard, dusk
+    verge                     85 / 47,197         96 / 46,788
+    aerial, south east       372 / 107,397       381 / 103,340
+    aerial, whole plot       504 / 130,239       513 / 126,182
+
+On a built map the kit batches by material, so the parked pair brings six
+more batches (the glass streak, the amber, the clear lens, the dark steel,
+and two paints' own deep): 368 to 374 prop batches. The moving cars:
+stats() 37 meshes and 9,308 triangles before, 40 and 6,579 after (43 and
+6,619 at dusk with the glow): three bodies of 11 to 14 meshes, three wheel
+sets (one draw call each for all the wheels of a kind, where Stage E drew
+twelve), the smoke. Shown against hidden on the whole plot, the three
+moving cars cost 36 calls before and 39 after.
+
+### Pictures, looked at, in the session's scratchpad (not committed)
+
+- **Every kind side by side**, a scratch rig drawing each through the kit
+  (the parked car's own path) in a built map's lights, sky, ink and grade:
+  front three quarter and rear three quarter, golden and dusk, the eleven
+  in two rows at one scale; and each kind alone at 6.5 m front and rear,
+  and the kei, hatch, minivan and sedan at 3.6 m. At 30 m each reads as
+  what it is by its silhouette and its glass: the kei a tall box on corner
+  wheels, the van and kei van one boxes glazed over the cab, the lorry's
+  step from cab to box, the bus's length and band, the sedan's boot, the
+  r32's long bonnet, short glass and wing. At 10 m the lamps, grilles,
+  pillars and wheels' spokes read; at 3 m the shut lines, handles, the
+  arch's dark well, the plate's characters and the streaks on the glass.
+  At dusk the headlamps keep their colour against the dimmed paint and
+  glass, as the kit kept the vendored lamps.
+- **The r32 drifting in Hibari Yard's bends**, the real shell on High, a
+  camera placed off window.__vehicles a quarter second ahead of the drift
+  car: sliding through the south east and chicane bends at 8.6 to 11 m/s,
+  tan(slip / 2) 0.39 to 0.40, the cream smoke trailing off both rear
+  wheels, the wing, the four round lamps, the flares and the bronze wheels
+  on their camber; at dusk the slim headlamps lit with their halos and the
+  warm pool on the road ahead.
+- **The town, before and after from the same six cameras** (the tree at
+  716562b extracted beside this one): the multi storey car park's seven
+  cars, the rokuchome bays with the kei truck and the kei van, the tsuki
+  car park, the coin park on nanachome, and the yellow truck at the
+  crossing. The cars that were boxes with tori for arches are cars with
+  arches, glass and faces, and stand in the same bays at the same size.
+
+### What went wrong
+
+- The first build read both plates mirrored: a plate's u ran toward the
+  viewer's left. Seen in the first close picture of the r32's nose; it runs
+  from the reader's left now, front and back, and on the lorry and the kei
+  truck.
+- A panel laid across two faces of a nose (a bumper and the raked face
+  above it) was one quad between its ends, so most of it sat inside the
+  bumper: the r32's charcoal lower was invisible. onEnd now cuts at every
+  corner of the face's chain.
+- The first noses leaned back 12 to 16 cm from L / 2 at their tops, which
+  would have put the solid's top front edge that far outside the paint. The
+  faces now stand forward so the top of the steepest one is 5 cm in.
+- The first r32 flares were big trapezoid slabs, and the first door
+  mirrors read as cubes floating on a stalk. The flares follow the arch at
+  7 cm now, squared at the top; the mirrors sit on a short arm at the door's
+  top front corner with a rounded housing.
+- The town's collider fit moved with the drawing (94 boxes changed, 46 new,
+  at the car park and the lake layby) before the fit was fed the vendored
+  drawing; found by diffing the page's boxes, not by any check, because the
+  golden's town fixture is round the shopfront where no car stands.
+- The town's kei trucks looked dark in the first town pictures. Not the
+  model: shadows off, they were bright. The new cab roof stood at 1.89 m,
+  under the shadow line of the walls they park beside, where the vendored
+  roof lip had stood in the sun at 1.95; the cab and its lip go to 1.95 now.
+- The drifting pictures: on the software rasteriser a frame is about a
+  second, so a camera set off one pose photographs the car a step later;
+  the rig places it a quarter second of the title's clock ahead.
+- The drifting pictures from the drift car's tail showed old puffs drawn
+  as solid discs of ink with stepped edges, most of the trail a pilot
+  tailing the car sits in. Stage E's smoke, not the car, but it spoils the
+  car's best view, so it is fixed here (src/maps/built/cars.js, render
+  only): the density is a sum of blobs with broad plateaus where they
+  overlap, and the ink rim, a fixed 0.07 of density over a cut that rises
+  to 0.87 with age and toward 1 as the eye comes near, took in most of a
+  plateau. The rim now narrows with the puff's age (written into the
+  puff's unused fourth component, no new buffer) and with the eye's
+  nearness. The chase pictures after: cream puffs with thin ink edges and
+  no dark discs.
+- The spend limit stopped this session twice: the lead checkpointed an edit
+  as 6cc2972 and this entry as 552e21f, both left as they are.
+
+### Found, not fixed
+
+- NOTICE said the 59 vendored files were byte identical but for three.
+  Diffed against upstream de01898 (cloned into the scratchpad), 46 differ,
+  almost all of it the thinning and freestyle collider work, which
+  PROGRESS.md records change by change. NOTICE now says so and lists the
+  two new hooks; making a diff file of the rest was not this task.
+
+### Checks, run in this session
+
+On f3e043a unless said (the car model's last change; the entry's own
+commits after it touch only this file):
+
+    npm run check:props          all passed
+    npm run check:roads          all passed; the r32 as the drift car keeps
+                                 2.311 m from every solid (the pole at
+                                 (132.4, 16.2); the hatch kept 2.403), and
+                                 the nearest two cars come in 30 minutes is
+                                 0.272 m, the r32 and the box truck (the
+                                 hatch came 0.403): longer by 0.45 m, the
+                                 r32 still clears, so the map is unchanged
+    npm run check:clip           876 passed, 0 failed (875 and 1 until
+                                 schema.md's car rows named r32)
+    npm run check:world          all passed (on 80808d3 and on 6cc2972)
+    npm run check:world-golden   all passed, tests/goldens/world.json
+                                 untouched (on 80808d3 and on 6cc2972)
+    npm run check:world-engines  Node and Chromium equal to the bit on all
+                                 32 runs, Hibari Yard's traffic with the r32
+                                 among them (on 16470b3)
+    npm run check:chase          all passed (on 80808d3)
+    npm run check:counter        all passed (on 80808d3)
+    npm run lint:boot            9 of 9 clean (on 80808d3)
+    npm run lint:memory          PASS; built 9 modules, 61 -> 223 -> 61
+                                 geometries, 5 -> 39 -> 5 textures; city 60
+                                 modules, 61 -> 344 -> 62, 5 -> 42 -> 6
+    npm run lint:quality         56 of 56 clean (on 80808d3)
+    npm run lint:preload         up to date after node scripts/gen-preload.js
+                                 (boot 113, city 74, built 33; 216 served)
+    npm run lint:shell           FAIL, 1 problem, the known "title: overflow
+                                 grew from 0 to 67 px" (on 16470b3)
+    the town's solids            19,515 boxes, hash a118277a on High and on
+                                 Low, the same as 716562b (dumped on
+                                 16b1655 with the fit fed the vendored
+                                 drawing, which later commits do not touch);
+                                 Hibari Yard's 552 boxes, da1fb02b, the same
+    dash scan, new and changed   none
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change, and dist/sim.wasm and src/native
+                                 are untouched, as the task said
+
+Not run: lint:input and score:selftest (nothing here reaches them; both
+have known failures on main).
+
+### For the owner, when flying
+
+- **Hibari Yard's drift car is the R32 now.** Tail it through the bends:
+  the wing, the four round tail lamps (brighter under braking), the car
+  sliding about 44 degrees with the front wheels countersteering and the
+  tops of the wheels leaning in, the smoke off both rear wheels. The smoke
+  from its tail should be cream puffs with thin ink edges that thin away
+  as you close; a dark disc in the trail would be wrong. At dusk the slim
+  headlamps light with a pool on the road ahead.
+- **The town's cars**: the multi storey car park, the rokuchome bays, the
+  yellow kei truck at the crossing. They stand in the same bays at the same
+  size and hit exactly where they did: every town solid is bit for bit what
+  it was. Wrong would be meeting a car where none is drawn or passing
+  through paint, a plate reading backwards, glass that flickers, or a
+  parked car's lamps lit at dusk (they keep their colour, as before; only
+  moving cars light).
+- **The builder** offers 'R32' among a vehicle's and a parked car's styles;
+  its Variant picks one of seven liveries. The 'kei' button now says 'Kei
+  car' (it said 'Kei truck' for the tall wagon).
+- **The budget**: the town's draw calls are unchanged and about 21,000
+  fewer triangles are drawn in every view; on Hibari Yard about nine more
+  draw calls (the parked pair's new glass streak, amber and clear lens, and
+  the moving cars' wheel sets) and about 4,000 fewer triangles.
+
+## 2026-09-26 | owner, board, polish | The owner's answers on the polish list, and the board's impossible laps removed
+
+The owner asked for a polish list, got one (POLISH-PLAN.md, 845ac1c, a
+survey of main at 716562b by one agent in a read only worktree; the
+fpv-judge-loop workflow was not run, since the request was for a list and
+CLAUDE.md keeps review workflows for when they are asked for), and
+answered its open decisions on 2026-09-26. The answers are written out in
+POLISH-PLAN.md (e7085c2); in short:
+
+1. Scoring: agreed, a low pass pays points and buys no multiplier.
+2. Remove the impossible records from the public board.
+3. A crash on a road sets the craft down on the verge.
+4. The Weight slider fades out in flight, shows when landed and on pause.
+5. **PHYSICS PATH, approved: judge crashes per physics step** (item 16).
+   Under CLAUDE.md its check:crash coverage lands first and the change
+   goes through the verify-flight-model procedure. Not started yet.
+6. The lens, 7. the race field restyle, and 8. the thrust: left as they are.
+9. Maverick Loop: the cheap fix, remove the trick.
+
+Order of work: the map card, Stage F, the manga menus, then the rest.
+
+### The board
+
+The board is Mathew-Harvey/WebFPVSimulator-LeaderBoard, attached to this
+session with push access. The admin password is not here and was not
+sought, so the records were removed through code: 7075761 on that
+repository adds judgeLap (no lap under 250 ms on any course, none faster
+than the course's station to station length at 50 m/s) to every post, and
+a one time, recorded, idempotent purge of the stored laps that fail it,
+run as the service starts. Before it shipped, the rule was applied to the
+live data (GET only) and listed exactly three laps: Flags and cones 200 ms
+(Oliver, 2026-08-27), Orbit (Anticlockwise) 10 ms and 15 ms (AsylumFPV,
+2026-08-31). The owner saw that list and chose "Deploy it"; the board's
+main went 1558b98 to 7075761, a fast forward. The absolute floor is 250 ms
+rather than the two seconds first suggested, because two seconds would
+have removed laps that look real (Simple Orbits 659 ms, Orbit 739 ms, one
+of Power Loops at 1743 ms). Five room rows the API never lists could not be
+seen before the purge; one would go only if it were under its own floor.
+
+Checked after the deploy, GET only, https://webfpv.org/board/api/tracks:
+Flags and cones' best is now 8524 ms (Asylum Fpv) and Orbit's 739 ms
+(Crapshack), as predicted; Simple Orbits keeps its 659 ms. The board
+agent's npm test: 592 pass, 1 skip (the admin hash, which needs its
+password); a scratch Postgres seeded from the live data removed exactly the
+three rows and refused posts under the floor.
+
+### The cars
+
+The car rebuild's own entry is above (16b1655 to 2bf3718, with the two
+lead checkpoints 6cc2972 and 552e21f): one GPLv3 model module,
+src/art/cars.js, for the town, the parked props and the moving cars; the
+R32 as a new kind and Hibari Yard's drift car; every existing kind's
+dimensions kept, so the town's 19,515 boxes and Hibari Yard's 552 hash as
+before and the world golden is untouched; about 21,000 fewer triangles in
+every town view. Looked at by the lead: the R32 reads from the chase seat
+(four round tail lamps, the wing, the stance) and in its three quarter;
+the other kinds are clean and consistent with the town's flat shading but
+simple, and the kei, hatch and minivan fronts are close to one another up
+close. Put to the owner with the pictures.
+
+### Running
+
+The quick wins (items 1, 2, 3, 4, 6, 7, 8, 9, 13, with the slider answer),
+the owner's four decisions (1, 3, 9 and the simulator's side of 2), the
+map card (17) and Stage F (18), each in its own worktree off main.
+
+## 2026-09-26 | game, shell, builder, checks | Four of the owner's decisions: a low pass buys nothing, the verge, no Maverick Loop, half a metre between stations
+
+The owner answered the polish survey's open decisions on 2026-09-26
+(POLISH-PLAN.md, "The owner's answers, 2026-09-26", on
+claude/vibrant-wozniak-v2pg5e, whose car rebuild is not merged here). Four
+of them are carried out here, on a worktree branch off 716562b, one commit
+each, for the lead to merge.
+
+### The owner's decisions this covers, 2026-09-26
+
+1. **Scoring (item 15): "agree".** A low pass pays points and buys no
+   multiplier. The list's two other suggestions, each kind buying
+   multiplier once a combo and a tier table for the counter apart from the
+   trick one, were not agreed, and nothing here touches them.
+2. **A crash on a road sets the craft down on the verge (item 10).**
+3. **Maverick Loop (the survey's open decision 12): "make a cheap fix,
+   remove the trick".**
+4. **Impossible laps (item 5).** The board's floor and purge are another
+   agent's, in Mathew-Harvey/WebFPVSimulator-LeaderBoard; the simulator's
+   side, that it stops producing them, is here.
+
+None of the four touches the physics model, the plant, the module ABI or
+the build: nothing under src/native, patches, vendor, configs or dist
+changed, so none needed putting to the owner first, and verify was not run.
+
+### What changed
+
+- **A low pass pays and buys nothing** (dd1e890). In score.js addGeometry
+  a low pass adds its points to the combo, is multiplied by what the rest
+  of it bought and is lost with it on a crash, but is not a point of
+  multiplier and never moves the window: it goes in the way a trick worth
+  nothing does in land(), so one that opens a combo opens it for the usual
+  three seconds and a run of low passes alone banks three seconds after
+  the first. comboMultiplier is 1, not 0, for a combo holding points that
+  bought nothing, which only low passes can make, so a lone low pass still
+  pays. score:selftest has six new lines and every old one is unchanged.
+  The lettering demo's small bank, Split-S and a low pass at x2, is now a
+  shape the rule can make: 320 at x1.
+- **The survey's straight line, replayed.** From its logged points (low
+  pass 22, low pass 20, thread 339, CONTAINER TUNNEL 500, under 227, roof
+  skim 185, thread 224, low pass 24, under 156: 1,697), fed a second apart,
+  which is what one x9 combo needs: it banks **10,182 at x6**, where it
+  banked 15,273 at x9. The times are an assumption; the survey logged no
+  atMs. score:selftest pins it. Flown again in the page with the survey's
+  own rig and line on this tree, the pilot's line came out different, as
+  it does: CONTAINER TUNNEL 500, Under 207, Roof skim 185, Thread 248, then
+  a Low pass 39 that took the combo from 1,140 to 1,179 and left it at x4;
+  banked 4,716 at x4, where the old rule would have made it 5,895 at x5.
+- **The verge** (14c55b3). src/maps/built/traffic.js roadKeepOut(t): a
+  rest spot is refused within a lane's half width, plus the most a car on
+  that road reaches from the line it drives, plus the craft's radius, of
+  the centre line of a road some car drives (road.js nearestOn, in the
+  plan). A car reaches half its width; the drift car, whose body turns
+  across its path in a slide, half its diagonal, the most it reaches at
+  any slip. On Hibari Yard that is 1.875 + 2.195 + 0.174 = 4.24 m from the
+  loop's centre line. A spot on a surface above the tallest car on the
+  road, the footbridge's deck, is not in the traffic. It also offers the
+  verge square off each road from the crash, 0.1 m past that line, so a
+  crash in the middle of the road finds one beyond findRestSpot's 3.5 m
+  rings instead of going back to the start line. findRestSpot takes it as
+  an optional last argument, setDownNearby passes the map's own when cars
+  drive (view.restKeepOut), and every other map passes null and is set
+  down exactly as before. check:clip has six new lines for it.
+- **No Maverick Loop** (6cfbfe2). Its pattern is gone from
+  src/game/trickdetect.js, so the trick list and the trick film, both read
+  off PATTERNS, drop it too. src/game/tricks.js keeps its row, with a note:
+  it is the workbook's transcription and score:selftest holds it to the
+  workbook name for name. score:selftest's red line, "the same lap without
+  the flip is a Maverick Loop", **is removed as an expectation, not
+  changed**, and score:selftest is fully green for the first time since
+  f9b7db4. What the recogniser names that shape now is the lap's own whole
+  roll as a Roll, 50, on 55 of trick:sweep's 105 samples, silent on the
+  rest, nothing over: trick:sweep's 'roll loop' case wants a Roll, and
+  park:fly's roll loop wants Mavvy Roll or Roll. src/game/proven.js loses
+  the one row, 'Maverick Loop'; see "What went wrong" for the nine rows a
+  full regeneration also moves.
+- **Half a metre between stations** (e0f2ef3). After a credit, the race
+  waits for one pass depth of flying before the next station counts: 0.5 m
+  on the field, 0.154 m in a room as built (0.045 m of RaceGOW's). That is
+  what takes a craft from the face of a box, where it is credited, to the
+  opening's own plane. It stays under the box's whole depth on purpose:
+  RaceGOW6 Track 1 has two gates standing on one spot in its order, flown
+  as one pass, and a longer rule would refuse every lap its board holds.
+  Only the travel the race judges counts, and a travel already inside the
+  box when the wait runs out is credited there rather than refused. The
+  builder warns, 'close-stations', when two stations in a row stand closer
+  than that, judged where the race scores them: an opening at its centre, a
+  flag at its square's centre. check:clip has nine new lines for the two.
+
+### No real lap is refused: flown, and from the geometry
+
+Both, on every course in tracks/json (11) and every course on the board
+(41, read with GET from webfpv.org/board/api/tracks/ID/document into the
+scratchpad; nothing was written to the board).
+
+- **Flown.** No committed harness flies whole laps through Race, so a
+  scratch rig did (not committed): every course's racing line from
+  courseFromDocument, lifted 0.3 m (a marker's knot sits on the bottom
+  edge of its square, which a pilot flies over), walked in 5 cm steps for
+  three laps through 716562b's Race and this one, pass for pass. 50 of 52
+  closed laps; the two that did not stalled at the same station in both
+  (Orbit's line has no length, and Vertical Speed Arrest's line peaks
+  0.38 m under its first dive gate). 43 identical to the microsecond. 9
+  differ only where two stations' boxes overlap and the second credit now
+  waits for its half metre: a split up to 35 ms later on 2022 AU
+  Nationals, 2022 MultiGP GQ, WCMRC Round 5 and FAI Turkiye 2024 (each in
+  tracks/ and on the board), with every lap time the same, and RaceGOW6
+  Track 1's first lap 9 ms longer, because the rig starts on its timing
+  plane and its finish gate stands on the same spot as the gate before it;
+  its later laps are the same. No station was refused on any course.
+- **Geometry.** A real lap crosses each opening's plane inside it, and the
+  credit before came at or before that station's own plane, so a lap can
+  only be refused where the flying from one plane to the next is under
+  half a metre. The shortest racing line leg between two different points
+  is 0.28 m, a flag standing just before a gate on WCMRC Round 5 and 2022
+  MultiGP GQ, and the gate's box begins before the flag's plane, so the
+  gate is credited at the flag's plane with 0.78 m of box to spare. The
+  only legs under that are stations at one point: Orbit, 2022 AU Nationals'
+  gate flown twice in a row, and RaceGOW6 Track 1's two pairs, each
+  credited at the face and then at the plane on one straight pass.
+- **The impossible lap.** Orbit's two flags, at one pole, score one square
+  passed one way and then the other. Rocking two centimetres a frame in it
+  closed a lap every two frames, 32 ms, through 716562b's Race; through
+  this one each lap is 416 ms at that rate, a metre of flying. A real there
+  and back through the square, 0.6 m or 2 m either side, closes the same
+  laps in the same times in both.
+
+### Flown, Hibari Yard, with the in-page pilot
+
+The survey's rig (tests/lib/page.js and scripts/lib/pilot.js on the
+shell's frame clock), Low, the draw off for the control rate, on this tree
+and on 716562b extracted into the scratchpad:
+
+    X over the loop's centre line   716562b: set down 0.00 m off the centre
+                                    line, cars passing 0.82 m clear
+                                    now: 4.34 m off it, on the west verge,
+                                    every car 1.45 m clear or more for 40 s
+    a kei van hits the craft        716562b: "Crashed, set down nearby",
+    hovering in its lane            1.95 m off the centre line, in the lane;
+                                    the box truck and the van then drove
+                                    through it (clearance -0.98 and -0.84 m)
+                                    now: "Crashed, set down nearby", 4.34 m
+                                    off it; every car 1.42 m clear or more
+                                    for the next 40 s
+
+Clearance is from the parked hull to each car's footprint, from the car's
+own pose, every frame. Looked at: the craft on the verge beside the lane
+under the footbridge, and after the van, the banner over the verge with
+the road to its left.
+
+### RUN LOG
+
+On the last code (14c55b3's tree; the browser checks ran on the same
+files before they were committed):
+
+    npm run score:selftest   all passed, 264 (716562b: 258 and 1 FAILED,
+                             the Maverick Loop)
+    npm run trick:sweep      exit 0, "nothing was ever paid more than it
+                             was worth"
+    npm run trick:proven     All 46 flown, nothing over (47 before); only
+                             the removed row kept, see below
+    npm run check:counter    all passed, 26
+    npm run check:chase      all passed, 58
+    npm run check:crash      0 guards failed; 68 guard lines passed, 21
+                             targets met, 2 not (measured, not enforced,
+                             and they read the crash reset since 4ecbe75)
+    npm run check:clip       891 passed, 0 failed (716562b: 876)
+    npm run check:path       12 passed, 0 failed
+    node scripts/micro-check.js   exit 0, 267 passed
+    npm run lint:boot        9 of 9 checks clean
+    npm run lint:memory      PASS; built 9 modules, 61 -> 223 -> 61
+                             geometries
+    npm run lint:input       1 failed, 159 passed: "and the input layer and
+                             the button agree with the setting", the known
+                             stick mode read; 716562b in the same session:
+                             the same line, 1 failed, 159 passed
+    npm run lint:preload     up to date, boot 113, city 73, built 32; 215
+    park:fly --only="Roll loop"   0 of 5 on 716562b and 0 of 5 here, the
+                             pilot's path error over 2 m and the craft
+                             bumping, so it says nothing about the names;
+                             a 3 rep run on 716562b once hit 1 of 3
+    dash scan                none in any added line
+    npm run verify           not run: no physics, plant, ABI or build
+                             change, and the brief said not to
+
+### What went wrong
+
+- The warning's first cut judged a flag at its foot, which put Simple
+  Orbits (two flags on one pole passed on the left, a real orbit with its
+  squares 4.5 m apart) and WCMRC Winter 2026 Round 3 in the wrong. It now
+  judges a flag at its square; on the 52 documents it speaks on Orbit,
+  2022 AU Nationals and RaceGOW6 Track 1's two pairs, all true.
+- The race's comment first said no course credited a pass later for the
+  rule. The flights said otherwise (the 35 ms splits) and it was corrected
+  before the commit.
+- The first flown car crash was not one: the craft, placed and held at
+  once, sagged onto the lane in 136 ms, the pilot stopped on "landed", and
+  the drift car drove through a craft that had landed on the road itself.
+  The scenario now settles the hover first and waits for the shell's
+  crash. The verge commit's message first read 4.30 m and 1.90 m off the
+  one decimal readout; it was amended to 4.34 and 1.95 before anything
+  was pushed.
+- trick:proven, run on the removal, moved nine more rows (Blindflip,
+  Mavvelmann, Matty Twister, Half Matty, 540 Half Matty, Stellar Eject
+  Roll, Cinnamon Roll and Side Loop to fewer landed, and Yaw Spin's place).
+  A regeneration of 716562b's own recogniser moves the same nine, so
+  src/game/proven.js is stale on main; only the Maverick Loop row was
+  taken out, and the nine are for the owner.
+- Several one line shell commands were refused by the worktree's guard
+  and had to be split; nothing else came of it.
+- The scratchpad is shared with another agent of this session, which was
+  running browser checks at the same time: the /tmp/sim-page-* profiles
+  were removed by matching them to this work's own runs (41), and the 25
+  made by the other agent's runs were left.
+
+### For the lead
+
+- Four commits on this worktree's branch, dd1e890, 6cfbfe2, e0f2ef3,
+  14c55b3, then this entry. Comments cite POLISH-PLAN.md, which lives on
+  claude/vibrant-wozniak-v2pg5e.
+- The car rebuild will meet the verge. roadKeepOut reads every car's
+  length, width, height and drift from trafficOf, so a new car is kept
+  out by its own size; check:clip's six lines use Hibari Yard's lane at
+  x = 140 in the plan and read the clearance off roadKeepOut, not a
+  number, so they hold unless the loop moves off that line.
+- **Same opening twice in a row** is still one pass. 2022 AU Nationals
+  flies gate 32-36 twice in a row round a loop; one straight pass through
+  it credits both, before this change and after it (face, then plane), so
+  its lap can skip the loop. No distance can tell that from RaceGOW6's two
+  gates on one spot, which ARE one pass; the rule that can is that the
+  same opening, element and hole, is not credited again until the craft
+  has left its box. That changes what a lap is again and is the owner's.
+  The builder's warning now names the pair.
+
+### For the owner, when flying
+
+- **Scoring.** Hug the ground on Hibari Yard: a low pass still pays its
+  points into the combo, but the multiplier in the corner should only
+  climb for gaps, skims, unders, threads and the chase. Wrong would be a
+  low pass taking the x number up, or a lone low pass paying nothing.
+- **The verge.** Crash on the loop, or press X over it: you should be put
+  down beside the road, a little over four metres from its middle, facing
+  the way you were, with the traffic going past you. Wrong would be the
+  camera under a car, or a crash in the middle of the road sending you to
+  the start line.
+- **Tricks.** A plain roll around a rail now scores as a Roll or nothing,
+  never a Maverick Loop, and the trick list no longer offers it.
+- **Laps.** Nothing should feel different on any course. On Orbit, rocking
+  on the flag no longer counts laps.
+
+## 2026-09-26 | shell, share | The Freestyle room pictures the world you are flying
+
+Item 17 of the polish list (POLISH-PLAN.md on claude/vibrant-wozniak-v2pg5e),
+the first of the bigger items in the owner's order of 2026-09-26: "do the
+bigger items also starting with map card and stage f then manga menus". The
+list left the way to do it, rendering the loaded world under the room or
+filming it through the orbit frame, as a render path and memory choice; the
+brief for this turn was to measure both on the Low tier and take the one
+that costs less, and say why. No physics, plant, ABI or build change.
+
+### What was wrong
+
+The Freestyle room's card for the world already LOADED was filmed from the
+live view (captureCurrentCard), but main.js only drew the world behind a
+room, and only copied it onto a card (paintMapThumbs), on the 'courses'
+screen, where world cards no longer live. On 'freestyle' the canvas is
+hidden, so the recorder took twelve seconds of the grey its canvas was
+filled with and cached it in IndexedDB. Seen again this turn at 716562b
+with a map of the pilot's own seated (My Yard, the starter under a new id):
+the card's canvas measured mean 33, standard deviation 0 over twelve
+seconds, the clip it stored never reached a decodable frame
+(readyState 1), and the card stayed a flat grey rectangle beside "Flying
+now" at 1600 by 900, 844 by 390 and 390 by 844. The town's card was the
+same whenever the town was the world loaded.
+
+### The two ways, measured
+
+The same page, twice per world, the loaded world's card the only one
+missing from the cache (the other card was given a cached clip first, so
+nothing else recorded in the window). 1600 by 900, Low, headless Chromium
+on SwiftShader, the whole window from opening the room to the clip on the
+card. Memory is PSS summed over every Chromium process, sampled every
+150 ms from /proc; the JS heap from Runtime.getHeapUsage.
+
+    Your map loaded           film          orbit frame
+    room to clip              16.0 s        21.1 s
+    long tasks                8, longest    23, longest
+                              819 ms,       1169 ms,
+                              3.5 s total   9.3 s total
+    PSS, peak over before     +33 MB        +261 MB
+    JS heap, peak over        +2.0 MB       +19.9 MB
+
+    Town loaded               film          orbit frame
+    room to clip              16.5 s        56.3 s
+    long tasks                5, longest    12, longest
+                              1688 ms,      9590 ms,
+                              2.1 s total   33.6 s total
+    PSS, peak over before     +21 MB        +1233 MB
+    JS heap, peak over        +0.9 MB       +265 MB
+
+A first pass, at a lower machine load but with a sampler that stalled
+behind the page and missed peaks, read the same way: Your map 13.9 s
+against 21.7 s, longest task 165 ms against 936 ms, +59 MB against
++242 MB; the town's orbit frame 34.4 s with a 4727 ms task. The load
+average ran from 8 to 21 on four cores shared with other agents'
+Chromium, so the times move by two or three times between runs; the
+memory does not, and it is the number the choice rests on.
+
+A key pressed while the film was running, to the second frame painted
+after it: 18, 278, 205 and 277 ms on Your map, 26, 371, 303 and 24 ms on
+the town, and the key ended the film all eight times. The same key on the
+title, where the world is drawn every frame at the window's size: 568, 15,
+632 and 297 ms, and 3866, 2102, 895 and 995 ms. On this machine a frame
+of the town at Low costs about as much at the clip's size as at the
+title's (a film frame every 520 to 650 ms, a title frame 415 to 900 ms).
+
+THE FILM, because it holds no second world. The orbit frame builds the
+map again in a same origin iframe, with its own renderer and its own
+copy of every mesh and texture, while the loaded world is still resident,
+and that is a gigabyte and a quarter of PSS for the town here, which no
+graphics card makes smaller; its build is also one task of up to nine
+and a half seconds that no key can cut short, since the teardown on a
+key only runs between tasks. The film draws a world that is already in
+memory, at the clip's 854 by 480 and ten frames a second, and its
+longest task is one world frame at that size. On a machine with a GPU
+the frame costs shrink; the memory does not.
+
+### What changed
+
+- src/main.js: the film. While ui.reelFilm names the world that is loaded
+  (the same clip key, taken when the world was built, noteWorldClip), the
+  mode is title and the screen is Freestyle, the world is drawn behind the
+  room with the canvas still hidden, the renderer held at 854 by 480 so
+  the frame is the clip's shape on any window (a portrait phone included),
+  on the title camera flown from the start of its line on the clip's own
+  clock (one whole cycle in the clip, as src/share/orbit.js records it),
+  no more than CLIP_FPS times a second, and each drawn frame is copied onto
+  the card in the same task. The window's size is put back the next time
+  the world is drawn for anything else, on the way out of the room, rather
+  than on the key that stopped the film; a resize meanwhile waits for it.
+  ui.loadedWorld says which world is loaded, its key and its camera's
+  period, or null mid swap and for a map from the board.
+- src/ui/ui.js: captureCurrentCard asks for the film, starts the recorder
+  only after three frames have reached the card, and records one camera
+  cycle (clipDurationMs of the period) rather than twelve seconds of
+  whatever the camera was doing. The wait on the card becomes a caption
+  over the film once it is drawing (index.html, .map-reel-wait-film), so
+  the card pictures its world within a second of the room going quiet. A
+  world that draws nothing in ten seconds sends the card to the orbit
+  frame instead, and so does Your map when the seat has changed since the
+  world was built. paintMapThumbs copies the film's frame and nothing
+  else; its 'courses' path had no cards to paint and is gone.
+- src/share/orbitcache.js: CLIP_VERSION 5 to 6, so every grey clip already
+  cached is dropped (the v5 rows are evicted by age as new clips arrive,
+  as at every bump). Your map is keyed on its document's id and a hash of
+  what it holds (docStamp: FNV-1a over the stored document with
+  modifiedUtc blanked, the same "same document" keepDisplaced asks), not
+  on modifiedUtc. Only an edit in the builder touches modifiedUtc; a file
+  opened over the seat keeps the stamp it was saved with and a newer
+  deploy's repairs on read touch nothing, so the map can change under an
+  unchanged stamp. Checked in Node: the stamp alone changed, same key; one
+  piece moved 5 m, a new key; put back, the first key again. 0.78 ms to
+  read the seat and hash it, once per room entry.
+- Found on the way, and fixed because the film depends on it: leaving the
+  Freestyle room never stopped its reels, only leaving the Race room did.
+  whenQuiet asks only that nothing was pressed for 900 ms, so a pilot who
+  left before a capture began got one anyway. At 716562b, out of the room
+  300 ms after opening it: for the next twelve seconds of the title an
+  orbit frame was building the town and the title's own world was hidden
+  (reelFreezeWorld, canvas visibility hidden); a radio pilot who then took
+  off presses no key to end it. With this change: no frame, no freeze, the
+  world visible. And the clips in the room are no longer left paused when
+  a hidden tab comes back (onVis hid everything off 'courses').
+
+### Looked at (pictures in the scratchpad, not committed)
+
+Before, 716562b, My Yard seated: the Your map card grey beside "Flying
+now" at 1600 by 900 after 26 s, at 844 by 390 and 390 by 844 after 20 s.
+After: at 2.5 s the card shows My Yard being filmed with "loading" at its
+foot; from about 15 s its clip plays (sampled frames mean 180 to 210,
+standard deviation 17 to 40, not a flat fill), at all three sizes; in
+portrait the clip is the 16:9 shot, not a crop of the portrait canvas.
+With the town loaded, the town filmed where it stands and Your map through
+the orbit frame, both playing by 36 s and still playing at 105 s. A seat
+edited after the world was built: the film never started and Your map's
+card went to the orbit frame. The board's maps in the room (five on the
+live board, read through a read only proxy that refused every write):
+pictured 5 of 5 in every run, before and after; they are share card
+images and this change does not touch them.
+
+### RUN LOG
+
+On 89ca675's tree (lint:memory, lint:shell, lint:devices and the first
+lint:input and lint:responsive ran before two comments were reworded in
+it, with the code identical):
+
+    npm run lint:preload         up to date, boot 113 modules, city 73,
+                                 built 32; 215 served
+    npm run lint:boot            9 of 9 checks clean
+    npm run lint:memory          PASS, every world is lazy and every world
+                                 is freed (built 61 -> 234 -> 61, city
+                                 61 -> 305 -> 62 geometries)
+    npm run lint:shell           FAIL, 1 problem: "title: overflow grew
+                                 from 0 to 67 px", main's known one;
+                                 freestyle 7 stops, 0 px
+    npm run lint:responsive      at load 20: FAIL twice (97, 112 frames),
+                                 and 716562b failed beside it the same way
+                                 (98, 87 frames); at load 8: PASS, 269
+                                 frames, worst gap 519 ms
+    npm run lint:devices         PASS on all five
+    npm run lint:input           1 failed, 159 passed: "the input layer
+                                 and the button agree with the setting",
+                                 the stick mode reading recorded above as
+                                 reading the button a frame early
+    npm run lint:input, again    on 89ca675 itself, at a lower load: all
+                                 160 passed, 269 s
+    check:orbit                  not run: it checks the orbit trick's
+                                 recogniser, not the orbit page
+    dash scan                    none
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change, and the brief said not to
+
+### What went wrong
+
+- A pkill aimed at a stuck Chromium matched its own shell's command line
+  and killed the shell, as one did in the board maps entry above; nothing
+  was lost, and nothing was killed by pattern after it (the board proxy
+  this turn ran was stopped by its process id, after checking its folder).
+- The rig's first Chromium never answered: its profile sat under the
+  scratchpad's long path, too long for the browser's socket. The profiles
+  went to a short folder of this turn's own in /tmp instead, removed at
+  the end.
+- The first measurement let both cards record, so the orbit frame's
+  window held the town's build as well as Your map's. Redone with the
+  other card cached first. Its memory sampler also waited on the page and
+  missed the build's peak; redone with a sampler that does not.
+- lint:responsive failed at a load average of 20 and passed at 8; the
+  base commit failed beside it at 20, so the failures were the machine.
+- Stopped once by the spend limit with the change uncommitted; the tree
+  was intact and was committed first on resuming.
+
+### Found, not fixed
+
+- No check sees this card. lint:responsive presses a key every 400 ms, so
+  the film never starts in it, and nothing asserts that the loaded world's
+  card is not a flat fill. The scratch rig's test (a card canvas's
+  standard deviation above zero, then a video that decodes) would make
+  one; not added here, because adding a check was not the brief.
+- The orbit frame's capture of the town took 34 to 56 s on this machine,
+  and it still builds a second town for the town's card whenever the town
+  is not the world loaded. Unchanged.
+- clipKeyForMap's 'custom' branch still keys a course on modifiedUtc. No
+  room shows a world card for a course any more, so it was left.
+
+### For the owner, when flying
+
+With a map of your own seated, open Freestyle and let go of the keys: in
+about a second Your map's card shows your map being flown round with
+"loading" at its foot, and after about thirteen seconds it loops. Press a
+key during it and the room answers at once; the card films again after a
+second of quiet. Edit the map in the builder and come back: the card films
+the new layout. Wrong would be a grey card, a hitch on the key, the title
+looking soft or stretched after leaving the room (the renderer's size put
+back), or a card still showing the old layout after an edit. The film is
+at your own graphics tier, so on High your card is sharper than the other
+cards, which the orbit frame records at Low.
+
+### For the lead
+
+One commit, 89ca675, on 716562b: src/main.js (the frame loop's film,
+beside worldLive, the attract camera and the frame cap), src/ui/ui.js (the
+reels and show()), src/share/orbitcache.js and one rule in index.html.
+Nothing else merged into it.
+
+## 2026-09-26 | shell, hud, builder, checks | Polish: the quick wins, items 1 to 4, 6 to 9 and 13
+
+The owner asked for a polish list on 2026-09-26 and said "lets do it". This
+is the list's quick wins (POLISH-PLAN.md on claude/vibrant-wozniak-v2pg5e),
+on a branch from main at 716562b, one commit per item. Shell, render and UI
+only: no physics, plant, module ABI or build change. Every item was
+pictured before and after through tests/lib/page.js rigs in the style of
+scripts/shots.js; the pictures stay in the session scratchpad.
+
+**The owner's decision on the Weight slider, 2026-09-26**, passed on by the
+lead during this work: "once in flight fade it out, show it when landed or
+pause screen". It superseded the brief's "do not move or hide the slider",
+and it is in item 2 below.
+
+### What changed
+
+- **1. No Split-S cue on a plain gate** (9e77fc9). matchingFigureOf tried
+  splitS first on every element, and on one opening figurePlan's Split-S
+  falls through to a single pass, so every gate, flag and cone matched it:
+  built through courseFromDocument, the eight RaceGOW5 presets and the
+  three board tracks the survey read cued 174 of 176 stations "Split-S,
+  level 1". It now tries only the figures figuresFor offers, and
+  figureCueOf says nothing on fewer than two openings: 0 of 176 cued. The
+  race OSD reads "GATE 1 OF 12" on Flags and cones, where it read "GATE 1
+  OF 12, SPLIT-S, LEVEL 1". The real Split-S keeps "Split-S, top" and
+  "Split-S, bottom", and the builder inspector stops heading a plain gate
+  "Passes, 1". check:clip gains three lines (the plain gates beside the
+  Split-S, a gate, flagged gate, flag, cone and gate, and none of them a
+  Split-S); all three fail on the old figures.js.
+- **3. Air is airtime** (42ccc4a). With scoring off the clock slot read
+  simTimeMs, the lap clock, which runs on the pads: 3.88 s at 0 km/h
+  before any takeoff. airtimeMs is now its own count, the sim steps the
+  flying branch takes off the stand, zeroed with simTimeMs on a new run
+  and held while landed, perched, set down or turtled. The pads read a
+  dimmed 0.00; flown and landed it held 16.62 through two seconds on the
+  ground. Display only: simTimeMs, the lap clock and the scorer's run
+  clock are untouched, and the count is sim time, never frame time.
+- **2. The Weight card retires by itself; the slider fades in flight**
+  (cadb108). The card waited for Got it or a touch on the track, came back
+  every session until clicked, and showed through the pause menu. It now
+  retires, remembered as before (webfpv.airhint.v2), on the first landing
+  or crash, after 8 s of airtime, or on the first roll, pitch or yaw past
+  0.12 from a radio or gamepad in the air; under the pause menu or the
+  name dialog it is put away, not retired, and a pause buys it no air.
+  The slider, Floaty, Sinky and the Weight caption carry is-aloft while the
+  quad flies and fade by CSS transition (visibility follows, so a faded
+  track takes no pointer or thumb), and come back landed, perched, set
+  down, on its back and paused. It stays up while its card is, because the
+  card points at it: on a first flight that is up to 8 s of air. Measured
+  on the field: card up at 0.5 s of air, retired at 8.67, row opacity 0
+  and hidden, back to 1 on landing; with a pretend radio the card went on
+  the first stick; on an 844x390 phone with touch the same.
+- **4. The OSD is inked** (a9835b2). Every readout carries a hard edge in
+  the town's ink, #0b1116: eight 1 px offsets on the small print, eight
+  2 px on the clock, the pack and speed values and the launch call, each
+  with a short drop, as the lettering does. The labels go from --slate to
+  --osd-slate, #c6d4e1. Before, over Hibari Yard's concrete at noon and
+  the overcast palette, PACK, the height line, THROTTLE, SCORE, AIR and
+  the stick captions were gone; after, every one reads.
+- **6. Values read whole** (92a7c30). Camera angle "30°" (was "30 d...":
+  a stepper's value sat in .row-control, so .row-value's 52 percent cap
+  was of the value plus its arrows; .row-control > .row-value is uncapped
+  now). Rates on Quad, Settings and pause read ratesShort, "Actual
+  670/670/670"; ratesSummary's sentence stays for the reports, the presets
+  and lint:fc. The ghost choice is "Your best lap". The music chip takes
+  14em (12em over a menu on an upright phone). Pause's Settings row reads
+  the pilot's name, as the title's does, not the rates again. Measured by
+  scrollWidth on every row value at 1600x900, 1280x720, 844x390 and
+  390x844: nothing named here is cut. Still cut: the GPU row's vendor
+  string on Settings.
+- **7. The builder's top bar wraps when it must** (914e5b2). fitTopBar sums
+  the three zones on one row and wraps the bar when they do not fit,
+  measured unwrapped; the canvas zone is safe centred. Before, on the race
+  canvas at 1440 the whole canvas zone was clipped, at 1600 Undo, Redo,
+  2D, 3D, Labels and Sponsor logos, at 1920 Undo and Sponsor logos. After,
+  at 1280 to 1920 on both canvases, two rows at most and nothing covered;
+  one row at 2200, and on the freestyle canvas at 1920.
+- **8. The results menu no longer covers the rows** (5177f0d). Top three
+  kinds of trick and one quiet "N more kinds of trick" line with what they
+  paid; the copy's top half is the column's one scroller, above the menu;
+  the note leads with the best line; the copy is set 40 px closer; under
+  800 px of height on a laptop the menu scrolls at three and a half rows
+  and the score steps down to 11vh; the screen clears both bars. Before,
+  at 1280x720 the copy spilled 152 px under Fly again (35 px at 1600x900,
+  over the note) and the kicker sat on RUN COMPLETE. After, at 1280x720,
+  1366x768 and 1600x900 all rows and the best line are above the fold,
+  and at 1920x1080 everything fits.
+- **9. A lighter title** (6165d80). BETA is a chip on one row with
+  Patreon, its sentence the chip's hover title and a screen reader's text.
+  The keep note leaves the title (it was wrong with a freestyle map
+  seated) for the Race room's Build a track and Open in the track builder
+  note; the builder's strip already said it. Kept: the wordmark, the
+  strapline, Patreon, the lap chip, the first run note and the wiki
+  teaser, which gets its own line. Read first: the 2026-09 entry that put
+  the beta notice there ("not dismissible", under the wordmark, "the word
+  is the part that has to survive") and the Patreon and wiki teaser
+  entries; all of that stands. The title's list also drops the generic
+  58vh .menu-scroll cap on a desktop, which it had picked up with the
+  class it carries for phones, and which was the binding limit once the
+  copy was lighter. Title overflow at 1600x900 0 px, was 67, all ten rows
+  shown; at 1280x720 98 px, was 234.
+- **13. Builder labels** (2a1a2d8). 2D: names and gap labels are laid out
+  last, and one that would land on another steps a line down or up with a
+  hairline back to its anchor; CONTAINER TUNNEL 500 and BILLBOARD GAP 250
+  no longer print over each other. 3D: a gap label was a constant 4.2
+  percent of the view; now it is sized as a sign 60 m off, capped at 2.8
+  percent, floored at 0.7 of that, and faded from 90 m to 60 percent at
+  260 m, the selected gap full and solid. The freestyle canvas has the
+  Labels switch; on a map it puts away the gap labels in both views and
+  the names on the plan, keeping the selected element's name and a car's
+  no road warning.
+
+### Checks added, and no threshold, baseline or golden moved
+
+- check:clip: three lines for item 1 (above).
+- lint:devices: the builder's top bar at 1440x900, 1600x900 and 1920x1080
+  on the race canvas and 1440x900 on the freestyle canvas, every visible
+  control hit tested at both ends and its middle; on the old builder it
+  fails with 19 covered controls. And the freestyle results page at
+  1280x720 and 1600x900 with the lettering's five panel fixture: no spill
+  under the menu, every row and the best line's first line above the
+  fold, the kicker clear of the bar; on the old page it fails 7 ways.
+- tests/shell-baseline.json is untouched. lint:shell went green by the
+  title getting lighter, not by a re-record.
+
+### RUN LOG
+
+On 2a1a2d8, the branch head:
+
+    npm run check:clip        879 passed, 0 failed
+    npm run lint:preload      up to date, boot 113 modules, city 73,
+                              built 32; 215 served (no regeneration)
+    npm run lint:boot         9 of 9 checks clean
+    npm run lint:memory       PASS, every world is lazy and every world
+                              is freed
+    npm run lint:shell        PASS, title overflow 0 px, every screen at
+                              or under its baseline
+    npm run lint:responsive   PASS, freestyle 238 frames, worst gap 631 ms
+    npm run lint:devices      PASS, five devices all clear, 4 builder
+                              windows clear (19, 19, 19, 18 controls),
+                              results at 1280x720 and 1600x900 clear
+    npm run lint:input        first run 3 failed, 157 passed; rerun 1
+                              failed, 159 passed. See below.
+    npm run score:selftest    1 FAILED, "the same lap without the flip
+                              is a Maverick Loop", main's, as it stands
+    npm run check:counter     all passed
+    npm run check:chase       all passed
+    npm run verify            not run: no physics, plant, ABI or build
+
+lint:input: the failure in both runs is "and the input layer and the
+button agree with the setting", the calibration screen's Stick mode
+button read "Stick mode 2" a moment after M set mode 3. The same check on
+an export of main at 716562b failed the same line, 1 failed, 159 passed,
+so it is main's and a race between the key and the button's next paint.
+The other two in the first run were the known parked row timing ("the row
+arrives by itself", 24.96 s) and its follower; they passed on the rerun
+and on 716562b. Nothing here touches the input path or calibration.
+
+### What went wrong
+
+- The survey's rig pointed at another worktree and assumed the gate on
+  arrival; its flows were rewritten against window.__ui.
+- Chromium would not start with its profiles under the scratchpad (the
+  path is too long for its socket), so the rigs' profiles went to a short
+  private folder under /tmp, removed at the end. No /tmp/sim-page-* was
+  left by this work.
+- The first results fix put the copy in a scroller and left the best line
+  just below its fold at 1600x900, where the old page still showed its
+  first line: a regression the new lint:devices lines now catch. Setting
+  the copy 40 px closer fixed it.
+- The first 3D label sizes (cap 0.026, floor 0.55) were too small and too
+  faint to read at the opening orbit; the picture said so.
+- A hit test on the results note read BODY, because #ui takes no pointer
+  and text is not a hit target; the check measures geometry instead.
+- Item 13's commit message first said check:clip 882; the run said 879,
+  and the unpushed commit was amended to say so.
+
+### Not done, and for the owner
+
+- The Weight slider on the pause screen is shown, dimmed under the pause
+  menu with the rest of the OSD, and cannot be dragged there: the pause
+  screen takes the pointer. Making it a control on pause means lifting it
+  out of the OSD's dim, which is a layout choice.
+- On a first flight the slider stays up with its card for up to 8 s of
+  air before it fades, because the card says "Drag this".
+- The title at 1280x720 still scrolls its list 98 px; the GPU row on
+  Settings still truncates its vendor string.
+- Items 5, 10 to 12 and 14 onward were not in this brief.
+
+Verification to choose: the change is to the shell and the builder, so
+**shots** or **fly it** would see it. Fly: the first flight's Weight card
+should go by itself within 8 s of air, the slider should fade after
+takeoff and be back on landing and on pause, Air should read 0.00 on the
+pads and hold when landed, and the OSD's small print should read over the
+yard at noon and overcast.
 
 ## 2026-09-26 | city, landing | The town and its bake, buildable in steps
 

@@ -275,10 +275,12 @@ function rows() {
       closed: true,
       nodes: [[0, 0], [0, -121.5], [-19.5, -121.5], [-19.5, -77.5], [-40, -55.5], [-40, 0]],
     }],
-    /* The drift car, wine red, in the node order: south down the lane from
-     * the north east bend, 25 m down it at step 0. */
+    /* The drift car, the r32 in its fourth livery (red over charcoal, a
+     * cream pinstripe, bronze wheels), in the node order: south down the
+     * lane from the north east bend, 25 m down it at step 0. It was a
+     * hatch until the r32 came; only its style changed. */
     ['vehicle', 0, 0, EAST, { offset: 25, speed: 20, variant: 4 }, {
-      name: 'Drift car', style: 'hatch', road: 'el-53', drift: true,
+      name: 'Drift car', style: 'r32', road: 'el-53', drift: true,
     }],
     /* The working traffic, against the node order, half a lap apart. */
     ['vehicle', 0, 0, EAST, { offset: 60, speed: 10, variant: 1 }, {

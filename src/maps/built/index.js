@@ -94,7 +94,7 @@ import { placeDocument, groundUnder, topUnder, PLATFORM_REACH } from './place.js
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost } from './looks.js';
 import { chooseStfSpot } from './egg.js';
-import { trafficOf, uploadTraffic } from './traffic.js';
+import { trafficOf, uploadTraffic, roadKeepOut } from './traffic.js';
 import { buildRoadMesh, roadCover } from './roadmesh.js';
 import { buildCars } from './cars.js';
 import { buildGround } from './ground.js';
@@ -1234,8 +1234,12 @@ export async function buildMap(shell, onProgress, options) {
      *                       clock, from readVehicles at that step
      *   clearSmoke()        a new run
      *   carGap(x, y, z, reach)   the nearest drawn car, for the near plane
+     *   restKeepOut         the roads a car drives, where a crash is not
+     *                       set down (./traffic.js roadKeepOut, read by
+     *                       src/game/collide.js findRestSpot)
      */
     traffic: carSet ? traffic : null,
+    restKeepOut: carSet ? roadKeepOut(traffic) : null,
     uploadTraffic: (sim) => (carSet ? uploadTraffic(sim, traffic) : { roads: 0, vehicles: 0, problems: [] }),
     chaseCars: () => (carSet ? carSet.chaseCars() : []),
     poseCars(prev, curr, alpha, now) {

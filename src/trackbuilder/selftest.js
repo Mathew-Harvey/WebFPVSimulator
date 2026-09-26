@@ -69,7 +69,7 @@ import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/s
 import { padsLayout } from '../props/course.js';
 import { placeDocument, topUnder, groundUnder, SUPPORT_TIE } from '../maps/built/place.js';
 import { roadOf, nearestOn } from '../maps/built/road.js';
-import { trafficOf, DRIFT } from '../maps/built/traffic.js';
+import { trafficOf, DRIFT, roadKeepOut } from '../maps/built/traffic.js';
 import {
   addDraftNode, closesDraft, endsDraft, roadFromDraft, legCount, legMidpoints, insertNode, moveNode, deleteNode,
   pickNode, pickLeg, snapToRoad, vehiclePlace, PARK, bodiesOverlap, moduleRoad, laneXyz, lapTable, laneClashes,
@@ -80,7 +80,8 @@ import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE, MICRO_SCALE } from '../game/track.js';
-import { Race } from '../game/race.js';
+import { PRACTICE_LAPS, Race, runComplete, stationLegMin } from '../game/race.js';
+import { LapVoice, lapCall, pickVoice } from '../render/voice.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
   GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
@@ -1067,6 +1068,134 @@ function suiteWarnings() {
   check('a track with no start pads says the lap does not close',
     codes(collectWarnings(noStart, buildPath(noStart))).has('no-start'));
   check('warnings never throw on an empty track', collectWarnings(createTrack(), null).length >= 1);
+
+  /*
+   * TWO STATIONS IN A ROW AT ONE POINT, the Orbit course's shape: two flags
+   * on one pole, turned a quarter apart, both passed on the right, one after
+   * the other in the order. Their squares come out as one, one pass can
+   * reach both, and the board holds 10 ms laps of it, so the builder says
+   * so; the race asks for stationLegMin of flying between two credits
+   * (src/game/race.js, the owner, 2026-09-26). Simple Orbits is the same
+   * two flags passed on the left, which is a real orbit with its squares
+   * 4.5 m apart, and is not warned about.
+   */
+  const orbitDoc = (side, cls = 'full', gap = 0) => {
+    const d = createTrack(undefined, cls);
+    place(d, 'startPads', 12, 24);
+    const f1 = place(d, 'flag', 30, 24);
+    const f2 = place(d, 'flag', 30 + gap, 24, { yaw: -Math.PI / 2 });
+    f2.yawOverridden = true;
+    for (const f of [f1, f2]) {
+      const e = addToSequence(d, f.id, 0);
+      e.passSide = side;
+      e.overridden = true;
+    }
+    return d;
+  };
+  const closeWarns = (d) => collectWarnings(d, buildPath(d)).filter((w) => w.code === 'close-stations');
+  const together = closeWarns(orbitDoc('right'));
+  check('two flags in a row whose squares coincide warn that one pass can reach both',
+    together.length === 1 && /0\.00 m apart/.test(together[0].message)
+      && together[0].message.includes(`${stationLegMin('full')} m more flying`),
+    together.map((w) => w.message).join(' | '));
+  check('and the same flags passed on the other side, a real orbit, do not',
+    closeWarns(orbitDoc('left')).length === 0,
+    closeWarns(orbitDoc('left')).map((w) => w.message).join(' | '));
+  check('the distance is the race\'s own, half a metre on the field and 45 mm in a room',
+    stationLegMin('full') === 0.5 && stationLegMin('micro') === 0.045);
+  const splitDoc = createTrack();
+  const splitStack = place(splitDoc, 'doubleStack', 20, 20);
+  addToSequence(splitDoc, splitStack.id, 1);
+  addToSequence(splitDoc, splitStack.id, 0);
+  const splitGate = place(splitDoc, 'gate', 40, 20);
+  addToSequence(splitDoc, splitGate.id, 0);
+  check('a split-S through one stack is two openings a level apart, not a warning',
+    closeWarns(splitDoc).length === 0);
+  const twice = (cls, gap) => {
+    const d = createTrack(undefined, cls);
+    const a = place(d, 'gate', 10, 10);
+    const way = place(d, 'waypoint', 20, 14);
+    const b = place(d, 'gate', 10, 10 + gap);
+    for (const el of [a, way, b]) {
+      addToSequence(d, el.id, 0);
+    }
+    return d;
+  };
+  check('a waypoint between two gates at one point does not part them',
+    closeWarns(twice('full', 0)).length >= 1);
+  check('and 0.3 m apart is close on the field and not in a room',
+    closeWarns(twice('full', 0.3)).length >= 1 && closeWarns(twice('micro', 0.3)).length === 0);
+
+  /*
+   * And the race's side of it, on the Orbit course as it is built: its two
+   * flags score one square, passed one way and then the other. Rocking two
+   * centimetres a frame in that square closed a lap every two frames, 32 ms;
+   * now each lap is twice stationLegMin of flying. A real there and back
+   * through it closes every lap it did.
+   */
+  const orbitGates = [0, Math.PI].map((heading, i) => ({
+    position: { x: 30, y: 0, z: -24 },
+    heading,
+    flyOrder: i,
+    virtual: true,
+    apertures: [{ centreY: 2.25, clearW: 4.5, clearH: 4.5 }],
+  }));
+  const sq = new Race(orbitGates).gates[0];
+  const sqAt = (s) => ({
+    x: sq.x + sq.az.x * s, y: sq.y + sq.apertures[0].centreY, z: sq.z + sq.az.z * s,
+  });
+  const rock = new Race(orbitGates);
+  let rockMs = 0;
+  let rockPrev = sqAt(-0.6);
+  for (let i = 1; i <= 40; i += 1) {
+    const c = sqAt(-0.6 + 0.02 * i);
+    rockMs += 16;
+    rock.update(rockPrev, c, rockMs, rockMs);
+    rockPrev = c;
+  }
+  for (let i = 0; i < 200; i += 1) {
+    const c = sqAt(i % 2 === 0 ? 0.22 : 0.2);
+    rockMs += 16;
+    rock.update(rockPrev, c, rockMs, rockMs);
+    rockPrev = c;
+  }
+  const rockFloor = 16 * ((2 * stationLegMin('full')) / 0.02 - 1);
+  check('rocking in one square no longer closes a lap in two frames',
+    rock.laps.length > 0 && Math.min(...rock.laps) >= rockFloor,
+    `${rock.laps.map((ms) => `${ms} ms`).join(', ')} against ${rockFloor}`);
+  const thereBack = new Race(orbitGates);
+  let tbMs = 0;
+  let tbPrev = sqAt(-2);
+  for (let lap = 0; lap < 3; lap += 1) {
+    for (const at of [-1, 0, 1, 2, 1, 0, -1, -2]) {
+      const c = sqAt(at);
+      tbMs += 16;
+      thereBack.update(tbPrev, c, tbMs, tbMs);
+      tbPrev = c;
+    }
+  }
+  check('and a real there and back through it closes every lap it did',
+    thereBack.laps.length === 2 && thereBack.laps.every((ms) => ms === 128),
+    thereBack.laps.join(', '));
+  /* Two stations standing on one spot facing one way are flown as ONE pass:
+   * RaceGOW6 Track 1 has a pair like that, and its racing line has no length
+   * between them. That pass still credits both, the second at the plane. */
+  const pairGates = [0, 0, -20].map((z, i) => ({
+    position: { x: 0, y: 0, z },
+    heading: 0,
+    flyOrder: i,
+    apertures: [{ centreY: 1, clearW: 1.75, clearH: 1.75 }],
+  }));
+  const pair = new Race(pairGates);
+  let pairPrev = { x: 0, y: 1, z: 2 };
+  for (let i = 1; i <= 40; i += 1) {
+    const c = { x: 0, y: 1, z: 2 - 0.1 * i };
+    pair.update(pairPrev, c, 10 * i, 10 * i);
+    pairPrev = c;
+  }
+  check('one straight pass through two stations at one point still credits both',
+    pair.next === 2 && pair.splits.length === 1 && Math.abs(pair.splits[0] - 50) < 1e-3,
+    `next ${pair.next}, splits ${pair.splits.join(', ')}`);
 }
 
 function suiteHistory() {
@@ -1234,6 +1363,26 @@ function suiteFigures() {
     stacked[0]?.cue);
   check('the second station cues the bottom', stacked[1]?.cue === 'Split-S, bottom',
     stacked[1]?.cue);
+  /* The plain gates either side of the Split-S. Before 2026-09-26 the
+   * Split-S plan on one opening fell through to a single pass and matched
+   * first, so every one of these cued "Split-S, level 1". */
+  const plain = course.stations.filter((s) => s.elementId === g0.id || s.elementId === g1.id);
+  check('the plain gates around it carry no cue', plain.length === 2 && plain.every((s) => s.cue === ''),
+    plain.map((s) => JSON.stringify(s.cue)).join(', '));
+  {
+    const flat = createTrack();
+    const lone = [place(flat, 'gate', 0, 0), place(flat, 'flaggedGate', 10, 0),
+      place(flat, 'flag', 20, 4), place(flat, 'cone', 30, 0), place(flat, 'gate', 40, 0)];
+    for (const e of lone) {
+      addToSequence(flat, e.id, 0);
+    }
+    const flown = courseFromDocument(flat).stations;
+    const cued = flown.filter((s) => s.cue);
+    check('a gate, a flag and a cone cue nothing', flown.length === lone.length && cued.length === 0,
+      `${flown.length} stations, cued: ${cued.map((s) => s.cue).join(', ') || 'none'}`);
+    check('and none of them is taken for a Split-S', lone.every((e) => matchingFigure(flat, e) !== 'splitS'),
+      lone.map((e) => matchingFigure(flat, e)).join(', '));
+  }
   check('the course carries one figure ribbon', course.figures.length === 1, `${course.figures.length}`);
   check('the ribbon goes opening, wrap, opening', course.figures[0]?.points.length === 3,
     `${course.figures[0]?.points.length}`);
@@ -1940,19 +2089,136 @@ function suiteCrashRule() {
   three.update(airSeg.prev, airSeg.curr, 10, 10);
   three.update(airSeg.prev, airSeg.curr, 20, 20);
   check('lap 1 of 3 is not the finished-track screen',
-    three.lap === 1 && !(three.lap >= runLaps));
+    three.lap === 1 && !runComplete(three.lap, runLaps));
   const midDirt = shouldScorePass(dirtSeg.prev, dirtSeg.curr, {
     upz: -1, clearance: 0.05, hits: 0, heightAt: flat,
   });
   three.update(dirtSeg.prev, dirtSeg.curr, 30, 30, midDirt);
   check('inverted dirt mid run does not steal a lap on a 3-lap race',
-    midDirt === false && three.lap === 1 && !(three.lap >= runLaps));
+    midDirt === false && three.lap === 1 && !runComplete(three.lap, runLaps));
   three.update(airSeg.prev, airSeg.curr, 40, 40);
   check('lap 2 of 3 is still not the results screen',
-    three.lap === 2 && !(three.lap >= runLaps));
+    three.lap === 2 && !runComplete(three.lap, runLaps));
   three.update(airSeg.prev, airSeg.curr, 50, 50);
   check('only the third flown lap would finish a 3-lap run',
-    three.lap === 3 && three.lap >= runLaps);
+    three.lap === 3 && runComplete(three.lap, runLaps));
+  check('and the counted runs end where they always did: 1 of 1, 5 of 5, not 4 of 5',
+    runComplete(1, 1) && runComplete(5, 5) && !runComplete(4, 5) && !runComplete(0, 1));
+
+  /*
+   * PRACTICE, the launch card's fourth lap count: the same laps flown the
+   * same way, and none of them is ever the last one. Twelve is past every
+   * counted run, so a practice that fell back on any of them would show.
+   */
+  const practice = new Race([{
+    position: { x: 0, y: 0, z: 0 },
+    heading: 0,
+    pitch: 0,
+    flyOrder: 0,
+    apertures: [{ centreY: 2.5, clearW: 3.5, clearH: 5.0 }],
+    aperture: { centreY: 2.5, clearW: 3.5, clearH: 5.0 },
+  }]);
+  practice.update(airSeg.prev, airSeg.curr, 10, 10);
+  let practiceOver = false;
+  for (let k = 1; k <= 12; k += 1) {
+    const t = 10 + k * 1000;
+    practice.update(airSeg.prev, airSeg.curr, t, t);
+    practiceOver = practiceOver || runComplete(practice.lap, PRACTICE_LAPS);
+  }
+  check('practice never finishes a run, twelve laps in',
+    practice.lap === 12 && practice.laps.length === 12 && !practiceOver,
+    `lap ${practice.lap}, over ${practiceOver}`);
+  check('and every practice lap is timed and called out like a counted one',
+    practice.lastLapMs === 1000 && practice.flashText(12010) === 'Lap 12   1.00',
+    `${practice.lastLapMs} ${JSON.stringify(practice.flashText(12010))}`);
+  check('practice is never over, whatever has been flown',
+    !runComplete(0, PRACTICE_LAPS) && !runComplete(1, PRACTICE_LAPS) && !runComplete(500, PRACTICE_LAPS));
+
+  /*
+   * THE LAP CALLED OUT LOUD (src/render/voice.js). What is said, whether it
+   * says record when the flash does, and what reaches the speech engine,
+   * against a stand-in engine because node has no voice.
+   */
+  check('a lap is called as the flash writes it: Lap 7, 12.34',
+    lapCall(7, 12340) === 'Lap 7, 12.34', lapCall(7, 12340));
+  check('past a minute the time is said in words, not as a clock',
+    lapCall(3, 63200, true) === 'Lap 3, 1 minute 3.20. New track record'
+    && lapCall(2, 125000) === 'Lap 2, 2 minutes 5.00',
+    `${lapCall(3, 63200, true)} | ${lapCall(2, 125000)}`);
+  const rec = new Race([{
+    position: { x: 0, y: 0, z: 0 },
+    heading: 0,
+    pitch: 0,
+    flyOrder: 0,
+    apertures: [{ centreY: 2.5, clearW: 3.5, clearH: 5.0 }],
+    aperture: { centreY: 2.5, clearW: 3.5, clearH: 5.0 },
+  }]);
+  const recSeen = [];
+  for (const t of [0, 1000, 1100, 1200]) {
+    const before = rec.laps.length;
+    rec.update(airSeg.prev, airSeg.curr, t, t);
+    if (rec.laps.length > before) {
+      recSeen.push(`${rec.lastLapMs}:${rec.lastLapRecord}:${/New track record/.test(rec.flashText(t) || '')}`);
+    }
+  }
+  check('the call says record on exactly the laps the flash does',
+    recSeen.join(' ') === '500:true:true 550:false:false 100:true:true', recSeen.join(' '));
+
+  const voices = [
+    { name: 'Network US', lang: 'en-US', localService: false, default: true },
+    { name: 'Local US', lang: 'en-US', localService: true, default: false },
+    { name: 'Karen', lang: 'en_AU', localService: true, default: false },
+    { name: 'Amelie', lang: 'fr-FR', localService: true, default: false },
+  ];
+  check('the voice is the pilot\'s own English, on the machine before the network',
+    pickVoice(voices, 'en-AU').name === 'Karen'
+    && pickVoice(voices, 'en-US').name === 'Local US'
+    && pickVoice(voices, 'de-DE').name === 'Local US',
+    ['en-AU', 'en-US', 'de-DE'].map((l) => pickVoice(voices, l).name).join(', '));
+  check('no English voice falls back to the default, and no voice at all is silence',
+    pickVoice([voices[3]], 'en-AU').name === 'Amelie' && pickVoice([], 'en-AU') === null);
+
+  const spoken = [];
+  let cancels = 0;
+  const engine = {
+    speaking: false,
+    pending: false,
+    list: voices,
+    getVoices() { return this.list; },
+    speak(u) { spoken.push(u); this.speaking = true; },
+    cancel() { cancels += 1; this.speaking = false; },
+    addEventListener() {},
+  };
+  class Said {
+    constructor(text) { this.text = text; }
+  }
+  const lv = new LapVoice({ synth: engine, Utterance: Said, lang: 'en-AU' });
+  lv.prime();
+  lv.prime();
+  check('priming speaks once, empty and silent',
+    spoken.length === 1 && spoken[0].text === '' && spoken[0].volume === 0);
+  engine.speaking = false;
+  spoken.length = 0;
+  const first = lv.say(lapCall(7, 12340), 0.6);
+  check('a call reaches the engine in the chosen voice, at the volume given',
+    first && spoken.length === 1 && spoken[0].text === 'Lap 7, 12.34'
+    && spoken[0].voice.name === 'Karen' && spoken[0].volume === 0.6 && spoken[0].rate > 1,
+    JSON.stringify(spoken.map((u) => ({ t: u.text, v: u.voice && u.voice.name, vol: u.volume }))));
+  const cancelsBefore = cancels;
+  lv.say(lapCall(8, 11990), 1.5);
+  check('the next lap cuts off a call still going, and volume stops at 1',
+    cancels === cancelsBefore + 1 && spoken.length === 2 && spoken[1].volume === 1);
+  check('at volume 0 nothing is said',
+    lv.say('Lap 9, 12.00', 0) === false && spoken.length === 2);
+  engine.list = [];
+  const mute = new LapVoice({ synth: engine, Utterance: Said, lang: 'en-AU' });
+  check('with no voice installed, a call is silence and not an error',
+    mute.say('Lap 1, 12.00', 1) === false && spoken.length === 2);
+  const none = new LapVoice({ synth: undefined, Utterance: undefined });
+  none.prime();
+  none.stop();
+  check('and a browser with no speech at all is quiet too',
+    none.say('Lap 1, 12.00', 1) === false);
 
   const free = new Race([]);
   const freeRes = free.update(airSeg.prev, airSeg.curr, 10, 10);
@@ -4929,6 +5195,43 @@ function suiteRecoverSpot() {
     restSpotAt(town, roofAt, rest, 15, 0, B.top + 1, out) && out.surface === B.top
     && !restSpotAt(town, roofAt, rest, 15, 0, B.top - 1, out));
   setCraftAirframe(airframeById('5inch').dims);
+
+  /*
+   * A CRASH ON A ROAD IS SET DOWN ON THE VERGE, the owner's decision of
+   * 2026-09-26: a landed craft is not stepped, and a car drove through the
+   * one set down on Hibari Yard's lane. Its loop, on flat ground with no
+   * solids, so what is measured is the traffic's rule and nothing else:
+   * the lane 100 m up from its south end, where the loop runs north and
+   * south at x = 140 in the plan.
+   */
+  const yard = starterMap();
+  const keep = roadKeepOut(trafficOf(yard));
+  const yardW = yard.field.width;
+  const yardD = yard.field.depth;
+  const fiveRest = airframeById('5inch').dims.vHalfDown;
+  const loopLine = keep ? keep.roads[0] : null;
+  const offCentre = () => nearestOn(loopLine.line, out.x + yardW / 2, yardD / 2 - out.z).d;
+  const planToWorld = (x, y) => ({ x: x - yardW / 2, z: yardD / 2 - y });
+  check('Hibari Yard keeps the set down off the one road its cars drive',
+    Boolean(keep) && keep.roads.length === 1, keep ? `${keep.roads.length}` : 'none');
+  const lane = planToWorld(140 - 1.875, 100);
+  check('without it a crash on the lane is set down on the lane',
+    findRestSpot(null, flat, fiveRest, lane.x, 1, lane.z, null, out) && offCentre() < 2, spot());
+  check('with it, on the verge, clear of a car in either lane, the drift car sideways included',
+    findRestSpot(null, flat, fiveRest, lane.x, 1, lane.z, null, out, keep)
+    && offCentre() >= loopLine.clear + CRAFT_WORLD_R && Math.hypot(out.x - lane.x, out.z - lane.z) < 3,
+    `${spot()}, ${offCentre().toFixed(2)} m off the centre line against ${(loopLine.clear + CRAFT_WORLD_R).toFixed(2)}`);
+  const middle = planToWorld(140, 100);
+  check('and a crash on the centre line, past the rings, is offered the verge square off the road',
+    findRestSpot(null, flat, fiveRest, middle.x, 1, middle.z, null, out, keep)
+    && offCentre() >= loopLine.clear + CRAFT_WORLD_R && offCentre() < loopLine.clear + CRAFT_WORLD_R + 0.5,
+    `${spot()}, ${offCentre().toFixed(2)} m off the centre line`);
+  check('a deck above the tallest car, a footbridge, is not in the traffic',
+    Boolean(keep) && keep.blocks(lane.x, lane.z, 0, CRAFT_WORLD_R) && !keep.blocks(lane.x, lane.z, 4.5, CRAFT_WORLD_R));
+  const parkedOnly = starterMap();
+  parkedOnly.elements = parkedOnly.elements.filter((e) => e.type !== 'vehicle');
+  check('only on a map with traffic: no car driving, no keep out, and a race track has none',
+    roadKeepOut(trafficOf(parkedOnly)) === null && roadKeepOut(trafficOf(createTrack())) === null);
 }
 
 /*

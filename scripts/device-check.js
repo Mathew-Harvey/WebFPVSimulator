@@ -195,6 +195,124 @@ async function run(label, w, h) {
   }
 }
 
+/*
+ * THE BUILDER'S TOP BAR, ON A LAPTOP. Not a phone defect, and here all the
+ * same, because it is the same defect this file exists for: a control a
+ * person cannot reach. On the race canvas the bar's three zones need about
+ * 1944 px on one row, and until fitTopBar wrapped it, Undo, Redo, 2D, Labels
+ * and Sponsor logos sat clipped under the other two zones at 1440 and 1600,
+ * and Undo and Sponsor logos were still cut at 1920. Every visible control
+ * on the bar is hit tested at its two ends and its middle: the point has to
+ * land on the control, not on a neighbour or on nothing.
+ */
+const BUILDER_WINDOWS = [
+  ['race canvas', 'race', 1440, 900],
+  ['race canvas', 'race', 1600, 900],
+  ['race canvas', 'race', 1920, 1080],
+  ['freestyle canvas', 'freestyle', 1440, 900],
+];
+
+const BAR_PROBE = `(() => {
+  const bar = document.getElementById('tb-topbar');
+  if (!bar) { return JSON.stringify({ bad: ['no top bar'] }); }
+  const bad = [];
+  let seen = 0;
+  for (const c of bar.querySelectorAll('button, a, input')) {
+    const b = c.getBoundingClientRect();
+    if (b.width < 2 || b.height < 2 || getComputedStyle(c).visibility === 'hidden') { continue; }
+    if (c.closest('.tb-more-menu')) { continue; }
+    seen += 1;
+    const y = b.top + b.height / 2;
+    for (const x of [b.left + 3, b.left + b.width / 2, b.right - 3]) {
+      const e = document.elementFromPoint(x, y);
+      if (!(e && (e === c || c.contains(e)))) {
+        bad.push((c.textContent || c.value || c.className).trim().slice(0, 24)
+          + ' is covered at x ' + Math.round(x) + (e ? ' by ' + (e.textContent || e.className).trim().slice(0, 24) : ''));
+        break;
+      }
+    }
+  }
+  if (seen < 10) { bad.push('only ' + seen + ' controls on the bar'); }
+  return JSON.stringify({ bad, seen });
+})()`;
+
+/*
+ * THE FREESTYLE RESULTS PAGE, ON A LAPTOP. The lettering's five panel
+ * fixture has four kinds of trick, which is three rows and a "more" line.
+ * At 1280 by 720 the copy column used to run under the menu, and Fly again
+ * was drawn over the third row and over the best line; at 1600 by 900 over
+ * the note. So: the copy stops at the menu, every row is above the fold of
+ * the copy, the note leads with the best line and its first line is above
+ * that fold too, and the kicker is clear of the status bar.
+ */
+const RESULTS_WINDOWS = [[1280, 720], [1600, 900]];
+
+const RESULTS_PROBE = `(async () => {
+  const m = await window.__lettering.demo();
+  window.__lettering.results(m.demoSummary('full'));
+  await new Promise((r) => setTimeout(r, 600));
+  const scr = document.querySelector('.screen-results');
+  for (const a of scr.getAnimations({ subtree: true })) { a.finish(); }
+  const top = scr.querySelector('.results-top');
+  const menu = scr.querySelector('.menu');
+  const bad = [];
+  const tb = top.getBoundingClientRect();
+  const mb = menu.getBoundingClientRect();
+  const fold = Math.min(tb.bottom, mb.top);
+  const spill = top.scrollHeight - top.clientHeight;
+  if (tb.bottom > mb.top + 1) {
+    bad.push('the copy runs ' + Math.round(tb.bottom - mb.top) + ' px under the menu');
+  } else if (spill > 1 && getComputedStyle(top).overflowY === 'visible') {
+    bad.push('the copy spills ' + spill + ' px out of its box, under the menu');
+  }
+  const rows = [...scr.querySelectorAll('.results .result-row')];
+  if (rows.length !== 4) {
+    bad.push('the fixture drew ' + rows.length + ' rows, not three and a more line');
+  }
+  for (const r of rows) {
+    if (r.getBoundingClientRect().bottom > fold + 1) {
+      bad.push('a row is below the fold of the copy: ' + r.textContent.trim().slice(0, 24));
+      break;
+    }
+  }
+  const note = scr.querySelector('.results-note');
+  const nb = note.getBoundingClientRect();
+  const line = parseFloat(getComputedStyle(note).lineHeight) || 21;
+  if (!/^Your best/.test(note.textContent)) {
+    bad.push('the note does not lead with the best line');
+  } else if (nb.top + line > fold + 1) {
+    bad.push('the best line is ' + Math.round(nb.top + line - fold) + ' px below the fold of the copy');
+  }
+  const bar = document.querySelector('.frame-top');
+  const kick = scr.querySelector('.results-kicker').getBoundingClientRect();
+  if (bar && kick.top < bar.getBoundingClientRect().bottom - 1) {
+    bad.push('the kicker is under the status bar');
+  }
+  return JSON.stringify({ bad });
+})()`;
+
+async function runResults(w, h) {
+  const page = await openPage({ root, width: w, height: h });
+  try {
+    await page.until('window.__shellReady === true', 90000);
+    await page.until('!!window.__lettering', 10000);
+    return JSON.parse(await page.evaluate(RESULTS_PROBE));
+  } finally {
+    await page.close();
+  }
+}
+
+async function runBuilder(label, mode, w, h) {
+  const page = await openPage({ root, width: w, height: h, url: `/src/trackbuilder/index.html?mode=${mode}` });
+  try {
+    await page.until('!!(window.trackBuilder && window.trackBuilder.doc)', 60000);
+    await page.sleep(1200);
+    return JSON.parse(await page.evaluate(BAR_PROBE));
+  } finally {
+    await page.close();
+  }
+}
+
 async function main() {
   const failures = [];
   console.log('device check: every screen, on a phone and a tablet\n');
@@ -213,6 +331,26 @@ async function main() {
     }
   }
 
+  console.log('\nthe track builder\'s top bar, on a laptop\n');
+  for (const [label, mode, w, h] of BUILDER_WINDOWS) {
+    const r = await runBuilder(label, mode, w, h);
+    const where = `builder ${label} ${w}x${h}`;
+    console.log(`  ${where.padEnd(34)} ${r.bad.length ? `${r.bad.length} control(s) covered` : `all ${r.seen} controls clear`}`);
+    for (const problem of r.bad) {
+      failures.push(`${where}: ${problem}`);
+    }
+  }
+
+  console.log('\nthe freestyle results page, on a laptop\n');
+  for (const [w, h] of RESULTS_WINDOWS) {
+    const r = await runResults(w, h);
+    const where = `results ${w}x${h}`;
+    console.log(`  ${where.padEnd(34)} ${r.bad.length ? `${r.bad.length} problem(s)` : 'rows and best line clear of the menu'}`);
+    for (const problem of r.bad) {
+      failures.push(`${where}: ${problem}`);
+    }
+  }
+
   if (failures.length) {
     console.log(`\nFAIL, ${failures.length} problem(s):`);
     for (const f of failures) {
@@ -220,7 +358,7 @@ async function main() {
     }
     return 1;
   }
-  console.log('\nPASS, every row and every note is reachable on every device');
+  console.log('\nPASS, every row and every note is reachable on every device, every builder bar control on a laptop, and the results page clear of its menu');
   return 0;
 }
 

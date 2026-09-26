@@ -80,7 +80,7 @@ export const SCORE_EVENTS = {
     kind: 'bank', points: 12340, mult: 5, names: ['CRANE GAP', 'Roof skim', 'Powerloop'],
   }],
   smallBank: [{
-    kind: 'bank', points: 640, mult: 2, names: ['Split-S', 'Low pass'],
+    kind: 'bank', points: 320, mult: 1, names: ['Split-S', 'Low pass'],
   }],
   bail: [{ kind: 'bail', points: 2400, names: ['Thread', 'Under the deck'] }],
 };

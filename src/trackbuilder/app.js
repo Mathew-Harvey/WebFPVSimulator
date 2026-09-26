@@ -682,6 +682,7 @@ export class App {
       this.view3d.resize();
       this.requestDraw();
       this.panels.renderResults();
+      this.fitTopBar();
     };
     window.addEventListener('resize', onResize);
     window.addEventListener('beforeunload', () => this.autosaver.flush());
@@ -3239,10 +3240,15 @@ export class App {
      * A MAP'S BAR. No line to show, no lap to animate, and nothing the board
      * can take yet, so those go or say why; the words that said "track" say
      * "map". Everything else on the bar works on a map as it does on a
-     * track. A map has no flying order, so it has no numbers to hide.
+     * track. A map has no flying order and so no numbers, but it has names:
+     * the named gaps' labels in both views and the names on the plan, and
+     * Labels puts those away so the map can be seen. The selected element
+     * keeps its name, and a car off its road keeps its warning.
      */
     this.pathBtn.style.display = map ? 'none' : '';
-    this.labelsBtn.style.display = map ? 'none' : '';
+    this.labelsBtn.title = map
+      ? 'The named gaps\u2019 labels and the names on the plan. Turn them off to see the map.'
+      : 'Flying-order numbers on the gates. Turn them off to see the racing line.';
     document.body.classList.toggle('tb-map', map);
     /* The status bar's hints for the 3D view's own gestures. */
     document.body.classList.toggle('tb-in-3d', this.mode === '3d');
@@ -3303,6 +3309,50 @@ export class App {
         this.publishBtn.title = 'Put this track on the public board, logos and all';
       }
     }
+    this.fitTopBar();
+  }
+
+  /*
+   * THE BAR WRAPS WHEN ITS ZONES DO NOT FIT, MEASURED RATHER THAN GUESSED.
+   *
+   * The 1330 px media query gives the canvas zone its own row on a small
+   * laptop. Above it the three zones shared one row whatever they held, and
+   * on the race canvas they need about 1944 px: at 1440 and 1600 Undo, Redo,
+   * 2D, Labels and Sponsor logos sat clipped under the file and outgoing
+   * zones, and at 1920 Undo and Sponsor logos were still cut, because a
+   * centred row that overflows spills off BOTH ends and a scroller cannot
+   * reach the left one. A breakpoint cannot know the width: the bar's words
+   * change with the canvas, the listing and the button labels. So this sums
+   * what the zones hold and puts .tb-bar-wrap on the bar when the sum is
+   * wider than the bar, which is the 1330 layout. Called when the bar's
+   * words change and on resize; nothing per frame.
+   */
+  fitTopBar() {
+    const bar = this.nodes.topbar;
+    const zones = bar ? [...bar.children].filter((z) => z.classList.contains('tb-zone')) : [];
+    if (zones.length !== 3) {
+      return;
+    }
+    /* Measured on one row, as it would be drawn unwrapped: the wrapped bar
+     * is tightened, and judging from that would flip it back and forth. */
+    bar.classList.remove('tb-bar-wrap');
+    const px = (v) => parseFloat(v) || 0;
+    const content = (z) => {
+      const kids = [...z.children].filter((k) => k.getBoundingClientRect().width > 0);
+      const gap = px(getComputedStyle(z).columnGap);
+      return kids.reduce((sum, k) => sum + k.getBoundingClientRect().width, 0)
+        + gap * Math.max(0, kids.length - 1);
+    };
+    const cs = getComputedStyle(bar);
+    /* The one row's gap, not the wrapped bar's, and the edit zone's 12 px
+     * fade at each end, which would otherwise dim a button that only just
+     * fits. */
+    const rowGap = px(cs.getPropertyValue('--s5'));
+    const need = zones.reduce((sum, z) => sum + content(z), 0)
+      + rowGap * (zones.length - 1)
+      + px(cs.paddingLeft) + px(cs.paddingRight)
+      + 24;
+    bar.classList.toggle('tb-bar-wrap', need > bar.clientWidth);
   }
 
   async syncNameIfOwned() {

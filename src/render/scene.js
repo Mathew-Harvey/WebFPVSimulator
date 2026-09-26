@@ -191,23 +191,56 @@ const HORIZON = 0xf2e3cb;
  * The floor is the darkest thing in the picture on purpose. RaceGOW pilots
  * write about this: white pipe on a white floor is unflyable, and the
  * organiser's mat is what makes a white gate read.
+ *
+ * RECOLOURED IN THE SAKURA THEME, on the owner's ask of 26 September 2026:
+ * the same basement, the same walls, joists and mat, painted in the brand's
+ * palette and lit as a room with its lights on rather than by two orange
+ * bulbs in the dark, with the slap pack's stickers hung on the walls as
+ * posters and banners (src/art/wallart.js). WHOOP-ROOM-PLAN.md has the
+ * reasoning; the numbers that matter are these.
+ *
+ * THE GATE BAND STAYS DARK. The pipe is 0x9aa2b0, a pale grey, and it reads
+ * against anything clearly darker or clearly paler than itself and against
+ * nothing of its own value. So the wall is dark from the floor to 1.2 m, the
+ * band a whoop sees a gate against from racing height, and pale above it,
+ * where the pipe reads darker than the plaster, with a thin sakura rail
+ * between. No mid tone anywhere a gate can stand in front of.
  */
 const ROOM = {
   width: ROOM_WIDTH,
   depth: ROOM_DEPTH,
   height: ROOM_HEIGHT,
-  /* What the fog and the background are: the air of an unlit basement. */
-  air: 0x14100c,
-  /* The mat, and the concrete under it where the mat does not reach. */
-  floor: 0x1c1c1e,
-  floorEdge: 0x3a352e,
-  /* Pine board walls and the OSB ceiling between the joists. */
-  wall: 0x6b5335,
-  wallLow: 0x4a3a26,
-  ceiling: 0x3d3128,
-  joist: 0x59462e,
-  skirt: 0x2a2118,
+  /* What the fog and the background are: the air of a lit room, pale and
+   * neutral, so distance softens a wall rather than blacking it out. */
+  air: 0xcfc3c6,
+  /* The mat, the town's own dark rather than a neutral black, and the
+   * honey boards of the floor where the mat does not reach. */
+  floor: 0x2f2b36,
+  floorEdge: 0xc6a887,
+  /* Pale sakura plaster above the rail, deep green below it: the brand's
+   * sakura on deep, which is also the town's pale pink wall. */
+  wall: 0xeed5d6,
+  wallLow: 0x27332c,
+  rail: 0xe8a8b8,
+  /* A cream ceiling and pale beams, so the room's own light comes back off
+   * it instead of into a brown lid. */
+  ceiling: 0xc9beb2,
+  joist: 0xd9cabe,
+  skirt: 0x1b231e,
+  /* The ceiling's light panels and their frames, and the light they give,
+   * a neutral warm white: a room with its lights on, not a sunset. */
+  lamp: 0xfffaf2,
+  lampFrame: 0xd8d0cb,
+  light: 0xfff4ea,
 };
+/* The room's key light stands almost straight overhead, like the ceiling it
+ * stands in for, so it lights the floor and the tops of things evenly and
+ * throws no hot side across the room. Almost, not exactly: a light aimed
+ * exactly down its own up vector has no orientation to build a camera on. */
+const ROOM_KEY_DIR = new THREE.Vector3(0.16, 1, 0.24).normalize();
+/* How far off the centre line the lamps and their panels stand, as a
+ * fraction of the room's width. */
+const ROOM_LAMP_X = 1 / 6;
 /* Zenith blue. Measured at 0x2e6bb8 the sky's linear luminance was 0.248
  * and the lit meadow's was 0.257, so sky and ground occupied ONE value
  * band and separated by hue alone. Blue carries little luminance, so the
@@ -4344,6 +4377,19 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * and a room is built instead: four walls, a ceiling, and a bulb.
    */
   const indoor = Boolean(course && course.trackClass === 'micro');
+  /*
+   * The wall art's two modules, asked for now so they arrive while the room
+   * is being built rather than after it. Only a room asks: the race field
+   * must not fetch a byte of it, and a failure here costs the posters and
+   * nothing else, so it is caught here and the room goes up bare.
+   */
+  const wallArtModules = indoor
+    ? Promise.all([import('../art/wallart.js'), import('../art/wallart-atlas.js')])
+      .catch((e) => {
+        console.warn(`scene: the whoop room's wall art did not load: ${e && e.message}`);
+        return null;
+      })
+    : null;
 
   const scene = new THREE.Scene();
   /*
@@ -4361,8 +4407,15 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * ended a third of the way across the floor. Scaled with the walls, the
    * far wall recedes exactly as far as it did in the 12 m room.
    */
+  /*
+   * AND LONGER AND PALER SINCE THE ROOM HAS ITS LIGHTS ON. At 3.5 to 14 m
+   * into near black the far wall of a 12 m room was a third of the way to
+   * night, which is what a room lit by one bulb looks like and exactly what
+   * the owner did not want. 5.5 to 44 m of pale air takes the far wall a
+   * sixth of the way to the air and no further: enough to say it is far.
+   */
   scene.fog = indoor
-    ? new THREE.Fog(ROOM.air, 3.5 * MICRO_SCALE, 14 * MICRO_SCALE)
+    ? new THREE.Fog(ROOM.air, 5.5 * MICRO_SCALE, 44 * MICRO_SCALE)
     : new THREE.Fog(HORIZON, FOG_NEAR, FOG_FAR);
   if (!indoor) {
     const sky = skyDome();
@@ -4373,15 +4426,17 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
   const rng = makeRng(20260811);
 
   /*
-   * THE BULB.
+   * THE ROOM'S LIGHTS.
    *
-   * One warm incandescent over the middle of the room, which is what every
-   * RaceGOW build video is lit by, plus a dim cool bounce so the undersides
-   * of the ducts are not black. The sun is still built, because the shadow
-   * camera and half the material setup below read it, but indoors it is
-   * turned down to nothing and pointed straight down so what casts shadows
-   * is the bulb's own falloff rather than a directional key from a sky that
-   * is not there.
+   * This was one warm incandescent over the middle of the room, then two,
+   * which is what the RaceGOW build videos are lit by, and it read as a
+   * cellar at dusk: orange pools in the middle, brown going to black at the
+   * walls. The owner asked for a room with its lights on and nothing like a
+   * sunset, so the lamps are a neutral warm white now, there are four of
+   * them on a grid under the ceiling's light panels, the hemisphere is a
+   * bright ceiling above and a warm bounce off the floor below, and the sun
+   * is the room's key: almost straight down, as a lit ceiling is. It casts
+   * nothing (see castShadow below).
    */
   if (indoor) {
     /*
@@ -4409,18 +4464,49 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * already scales, because it is a multiple of the room's depth, and the
      * hemisphere needs nothing because it has no distance in it.
      */
-    for (const lz of [-ROOM.depth * 0.25, ROOM.depth * 0.25]) {
-      const bulb = new THREE.PointLight(0xffd9a0, 42 * MICRO_SCALE ** 1.7, ROOM.depth * 2.5, 1.7);
-      bulb.position.set(0, ROOM.height - 0.25 * MICRO_SCALE, lz);
-      bulb.castShadow = false;
-      scene.add(bulb);
+    /*
+     * FOUR NOW, ON A GRID, a sixth of the room's width either side of the
+     * centre line, which is where a RaceGOW track stands. Out at a quarter
+     * the track was lit less than it had been by the two orange bulbs over
+     * the middle, and on Medium and High, where every pipe carries ink down
+     * both sides, a pipe lit less reads as a dark line: in front of the dark
+     * band, that is a gate you cannot see. In here the lamps light the track
+     * first and the walls second, which also keeps pale plaster under the
+     * bloom's threshold on High.
+     *
+     * THE NUMBERS ARE SET FROM PICTURES, not from the derivation above, which
+     * is kept because it is why the lamps are scaled by MICRO_SCALE to the
+     * 1.7 at all. Ten each, the hemisphere at 0.6 and the key at 0.45 were
+     * chosen on Low and on High from fixed cameras on Living room 1 and read
+     * back as luma: plaster about 200, the gate band about 88, a pipe's core
+     * 45 to 75 above the band and its ink 110 or more below the plaster. At
+     * 15 each the far plaster crossed the bloom threshold and glowed.
+     */
+    for (const lx of [-ROOM.width * ROOM_LAMP_X, ROOM.width * ROOM_LAMP_X]) {
+      for (const lz of [-ROOM.depth * 0.25, ROOM.depth * 0.25]) {
+        const lamp = new THREE.PointLight(ROOM.light, 10 * MICRO_SCALE ** 1.7, ROOM.depth * 2.5, 1.7);
+        lamp.position.set(lx, ROOM.height - 0.9 * MICRO_SCALE, lz);
+        lamp.castShadow = false;
+        scene.add(lamp);
+      }
     }
-    scene.add(new THREE.HemisphereLight(0xc9d6e8, 0x2a2420, 0.42));
+    scene.add(new THREE.HemisphereLight(0xfbf6f4, 0xc8b5b8, 0.6));
   }
 
-  const sun = new THREE.DirectionalLight(0xffe9c4, indoor ? 0.16 : 1.45);
-  sun.position.copy(SUN_DIR).multiplyScalar(120);
-  sun.castShadow = q.shadows;
+  /* The key light's direction: the sun's on the field, the ceiling's in a
+   * room. updateShadowFocus below re-aims it every frame along this. */
+  const keyDir = indoor ? ROOM_KEY_DIR : SUN_DIR;
+  const sun = new THREE.DirectionalLight(indoor ? ROOM.light : 0xffe9c4, indoor ? 0.45 : 1.45);
+  sun.position.copy(keyDir).multiplyScalar(120);
+  /*
+   * NOT IN A ROOM. A key standing almost straight down runs along every
+   * upright of a gate, so on Medium and High each pipe shadowed itself from
+   * its top to its foot and went dark, which put dark pipe in front of the
+   * dark gate band: the one pairing the room is built to avoid. The room's
+   * old key was all but off, so its gates never cast in practice either, and
+   * without it a room also saves the whole shadow pass.
+   */
+  sun.castShadow = q.shadows && !indoor;
   const shadowMap = q.field.shadowMap || 2048;
   sun.shadow.mapSize.set(shadowMap, shadowMap);
   sun.shadow.camera.near = 1;
@@ -4542,6 +4628,9 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * fly out over an invisible paddock, and the one thing every RaceGOW
    * pilot's footage has in it is a wall.
    */
+  /* The wall art, which is hung inside the room block and waited for at the
+   * very end, so its picture decodes while the course is being built. */
+  let wallArt = null;
   if (indoor) {
     /*
      * EVERY BARE METRE IN THIS BLOCK IS A ROOM'S METRE. The room is built
@@ -4561,31 +4650,47 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
     const T = 0.10 * K; /* wall thickness, so a corner reads as a corner */
     const y0 = height(0, 0);
 
-    const wallMat = celMaterial({ color: ROOM.wall, rim: 0.16, spec: 0.06 });
-    const wallLowMat = celMaterial({ color: ROOM.wallLow, rim: 0.12, spec: 0.04 });
-    const ceilMat = celMaterial({ color: ROOM.ceiling, rim: 0.10, spec: 0.03 });
-    const joistMat = celMaterial({ color: ROOM.joist, rim: 0.14, spec: 0.05 });
-    const skirtMat = celMaterial({ color: ROOM.skirt, rim: 0.18, spec: 0.10 });
-    const matMat = celMaterial({ color: ROOM.floor, rim: 0.10, spec: 0.05 });
-    const edgeMat = celMaterial({ color: ROOM.floorEdge, rim: 0.08, spec: 0.03 });
+    /* The room's rim light is warm. The field's is sky blue, for a sky this
+     * room does not have, and on sakura plaster it read as a cold edge. */
+    const RIM = 0xffe8ec;
+    const wallMat = celMaterial({ color: ROOM.wall, rim: 0.16, rimColor: RIM, spec: 0.06 });
+    const wallLowMat = celMaterial({ color: ROOM.wallLow, rim: 0.12, rimColor: RIM, spec: 0.04 });
+    const railMat = celMaterial({ color: ROOM.rail, rim: 0.16, rimColor: RIM, spec: 0.10 });
+    /*
+     * THE CEILING IS PAINTED AS LIT, not lit. Under four lamps a metre below
+     * it, a lit ceiling took a hot streak over every lamp that swallowed the
+     * light panels and read as the brightest thing in the room, which a real
+     * ceiling, lit only by what comes back off the floor, never is. So it is
+     * one even cream, a step under the plaster, and the beams, which are lit,
+     * and the panels, which are the light, read against it.
+     */
+    const ceilMat = new THREE.MeshBasicMaterial({ color: ROOM.ceiling });
+    const joistMat = celMaterial({ color: ROOM.joist, rim: 0.14, rimColor: RIM, spec: 0.05 });
+    const skirtMat = celMaterial({ color: ROOM.skirt, rim: 0.18, rimColor: RIM, spec: 0.10 });
+    const matMat = celMaterial({ color: ROOM.floor, rim: 0.10, rimColor: RIM, spec: 0.05 });
+    const edgeMat = celMaterial({ color: ROOM.floorEdge, rim: 0.08, rimColor: RIM, spec: 0.03 });
+    const frameMat = celMaterial({ color: ROOM.lampFrame, rim: 0.10, rimColor: RIM, spec: 0.05 });
+    /* A light panel IS the light, so it is not lit and not fogged: it reads
+     * as on from anywhere in the room. */
+    const lampMat = new THREE.MeshBasicMaterial({ color: ROOM.lamp, fog: false });
 
     /*
-     * The mat, and a border of bare concrete round it, so the floor has two
-     * tones and the eye can read distance across it. The concrete runs a
-     * long way past the walls: the terrain under it is a paddock this room
+     * The mat, and a border of honey floorboards round it, so the floor has
+     * two tones and the eye can read distance across it. The boards run a
+     * long way past the walls: the terrain under them is a paddock this room
      * is standing on and nothing should ever see a blade of it, and a floor
      * that stops at the skirting shows one through the gap at every corner.
      *
      * 4 mm and 8 mm above the terrain, which is dead level indoors, so the
      * two planes cannot z fight each other or the ground.
      */
-    const concrete = new THREE.Mesh(
+    const boards = new THREE.Mesh(
       new THREE.PlaneGeometry(ROOM.width + 24 * K, ROOM.depth + 24 * K), edgeMat,
     );
-    concrete.rotation.x = -Math.PI * 0.5;
-    concrete.position.set(0, y0 + 0.004 * K, 0);
-    concrete.receiveShadow = false;
-    scene.add(concrete);
+    boards.rotation.x = -Math.PI * 0.5;
+    boards.position.set(0, y0 + 0.004 * K, 0);
+    boards.receiveShadow = false;
+    scene.add(boards);
     /*
      * THE MAT IS THE DARKEST THING IN THE ROOM AND THAT IS THE POINT.
      * RaceGOW pilots write about it: white pipe on a white floor is
@@ -4602,34 +4707,63 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * outdoors is not built in here. See roomDecals. */
     scene.add(roomDecals(course, y0 + 0.010 * K, sponsorMarks));
 
+    /*
+     * THE ROOM'S SHELL, built into one group and merged per material, the
+     * way the field's scenery is. It was about thirty separate meshes, each
+     * drawn twice a frame, once for colour and once for the ink prepass. It
+     * casts no shadow and takes none: the key light stands above the
+     * ceiling, and a ceiling that cast would put the whole floor in shade.
+     */
+    const shellGroup = new THREE.Group();
+
     /* Four walls. Each is a box from the floor to the ceiling, drawn from
-     * the inside, with a darker band below skirting height because that is
-     * what a panelled wall looks like and because it gives a pilot a
-     * horizon to fly against. */
+     * the inside: the dark gate band, the sakura rail, the plaster, and a
+     * skirting. The band is also what gives a pilot a horizon to fly
+     * against. */
     const wallSpecs = [
       { x: 0, z: -halfD - T * 0.5, w: ROOM.width + T * 2, d: T },
       { x: 0, z: halfD + T * 0.5, w: ROOM.width + T * 2, d: T },
       { x: -halfW - T * 0.5, z: 0, w: T, d: ROOM.depth + T * 2 },
       { x: halfW + T * 0.5, z: 0, w: T, d: ROOM.depth + T * 2 },
     ];
-    /* The panel line, the dado and the skirting, in the room's metres. */
-    const dado = 0.9 * K;
-    const band = 0.82 * K;
+    /* The gate band's top, the rail and the skirting, in the room's metres.
+     * The band was 0.82 m under a 0.9 m panel line with a slot of dark
+     * between them; it is 1.2 m now, the height a whoop sees a gate against
+     * from racing height, and the slot is a rail. */
+    const band = 1.2 * K;
+    const railH = 0.06 * K;
     const skirtH = 0.08 * K;
     for (const w of wallSpecs) {
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(w.w, H - dado, w.d), wallMat);
-      upper.position.set(w.x, y0 + dado + (H - dado) * 0.5, w.z);
-      scene.add(upper);
+      const upperY = band + railH;
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(w.w, H - upperY, w.d), wallMat);
+      upper.position.set(w.x, y0 + upperY + (H - upperY) * 0.5, w.z);
+      shellGroup.add(upper);
       const lower = new THREE.Mesh(new THREE.BoxGeometry(w.w, band, w.d), wallLowMat);
       lower.position.set(w.x, y0 + band * 0.5, w.z);
-      scene.add(lower);
-      const skirt = new THREE.Mesh(new THREE.BoxGeometry(w.w, skirtH, w.d + 0.02 * K), skirtMat);
+      shellGroup.add(lower);
+      /*
+       * The rail and the skirting stand proud of the wall face by 12 and
+       * 10 mm, grown across the wall's THICKNESS whichever axis that is. The
+       * skirting used to add its 20 mm to the second box dimension, which is
+       * the thickness of the north and south walls and the LENGTH of the
+       * east and west ones, so two walls had a skirting flush with the
+       * plaster. Paint either way: the collider below is the wall's box.
+       */
+      const across = (grow) => (w.w < w.d
+        ? [w.w + grow, w.d]
+        : [w.w, w.d + grow]);
+      const [rw, rd] = across(0.024 * K);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(rw, railH, rd), railMat);
+      rail.position.set(w.x, y0 + band + railH * 0.5, w.z);
+      shellGroup.add(rail);
+      const [sw, sd] = across(0.02 * K);
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(sw, skirtH, sd), skirtMat);
       skirt.position.set(w.x, y0 + skirtH * 0.5, w.z);
-      scene.add(skirt);
+      shellGroup.add(skirt);
       /*
        * ONE box per wall, spanning the whole height, and the visible split
-       * into three pieces is paint. A collider per painted piece would be
-       * three boxes where a craft can only ever touch one of them.
+       * into four pieces is paint. A collider per painted piece would be
+       * four boxes where a craft can only ever touch one of them.
        */
       colliders.addBox('wall',
         w.x - w.w * 0.5, y0, w.z - w.d * 0.5,
@@ -4643,7 +4777,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
       new THREE.BoxGeometry(ROOM.width + T * 2, T, ROOM.depth + T * 2), ceilMat,
     );
     ceil.position.set(0, y0 + H + T * 0.5, 0);
-    scene.add(ceil);
+    shellGroup.add(ceil);
     colliders.addBox('wall',
       -halfW - T, y0 + H, -halfD - T, halfW + T, y0 + H + T, halfD + T);
     /*
@@ -4658,11 +4792,67 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
     /* Judged on the room RaceGOW would recognise, not the built one, or every
      * room is over 7 m and the branch is dead. */
     const purlinD = (ROOM_WIDTH_TRUE > 7 ? 0.14 : 0.075) * K;
+    const bay = ROOM.depth / purlins;
     for (let i = 0; i < purlins; i += 1) {
-      const jz = -halfD + (i + 0.5) * (ROOM.depth / purlins);
+      const jz = -halfD + (i + 0.5) * bay;
       const joist = new THREE.Mesh(new THREE.BoxGeometry(ROOM.width, purlinD, 0.055 * K), joistMat);
       joist.position.set(0, y0 + H - purlinD * 0.5, jz);
-      scene.add(joist);
+      shellGroup.add(joist);
+    }
+    /*
+     * THE LIGHTS YOU CAN SEE: a 1.2 by 0.3 m panel in every other bay, in
+     * two rows across the room, each in a pale frame flat on the ceiling
+     * between two purlins, so nothing hangs lower than the purlins already
+     * did. The bays are taken in pairs from both ends, which keeps the rows
+     * symmetric whatever the purlin count comes out as.
+     */
+    const fixtureRows = [];
+    for (let k = 1; k < purlins / 2; k += 2) {
+      fixtureRows.push(-halfD + k * bay, halfD - k * bay);
+    }
+    for (const fz of fixtureRows) {
+      for (const fx of [-ROOM.width * ROOM_LAMP_X, ROOM.width * ROOM_LAMP_X]) {
+        const frame = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.28 * K, 0.38 * K).rotateX(Math.PI * 0.5), frameMat,
+        );
+        frame.position.set(fx, y0 + H - 0.003 * K, fz);
+        shellGroup.add(frame);
+        const panel = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.2 * K, 0.3 * K).rotateX(Math.PI * 0.5), lampMat,
+        );
+        panel.position.set(fx, y0 + H - 0.006 * K, fz);
+        shellGroup.add(panel);
+      }
+    }
+    const shellBaker = makeBaker();
+    shellBaker.bake(shellGroup);
+    for (const m of shellBaker.flush(scene)) {
+      m.castShadow = false;
+      m.receiveShadow = false;
+    }
+
+    /*
+     * THE POSTERS AND BANNERS, from the slap pack (src/art/wallart.js). They
+     * are paint: nothing in the collider set stands for them and none stands
+     * proud of its wall by more than a rod's width. If either module failed
+     * to arrive the room is simply bare, because a missing poster must never
+     * be a missing race.
+     */
+    /* A stalled fetch must not stall the room: after a few seconds it goes
+     * up bare, and the modules that arrive late are simply not used. */
+    const art = await Promise.race([
+      wallArtModules,
+      new Promise((done) => { setTimeout(() => done(null), 6000); }),
+    ]);
+    if (art) {
+      try {
+        const [{ hangWallArt }, { WALLART }] = art;
+        wallArt = hangWallArt(WALLART, { halfW, halfD, y0, K });
+        scene.add(wallArt.group);
+      } catch (e) {
+        console.warn(`scene: the whoop room's wall art was not hung: ${e && e.message}`);
+        wallArt = null;
+      }
     }
   }
   /* Hoisted above the obstacles so their static parts can bake into the same
@@ -5997,7 +6187,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
     } else {
       shadowFocus.copy(target);
     }
-    sun.position.copy(shadowFocus).addScaledVector(SUN_DIR, 130);
+    sun.position.copy(shadowFocus).addScaledVector(keyDir, 130);
     sun.target.position.copy(shadowFocus);
     sun.target.updateMatrixWorld();
   }
@@ -6101,6 +6291,14 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * the three references below cannot disagree about which sport they quote
    * or about which gate they measured. */
   const gateRef = (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture;
+  /* The wall art's picture, which has been decoding since the room was
+   * built. Waited for so the first frame of a room, and the board's card of
+   * it, has its posters; hangWallArt gives up waiting after a few seconds
+   * and hangs them the moment they arrive, so a slow picture costs a moment
+   * of bare wall and never a race. */
+  if (wallArt) {
+    await wallArt.ready;
+  }
   const microCourse = Boolean(course && course.trackClass === 'micro');
   const gateOpening = microCourse ? RACEGOW_GATE_OPENING_MAX : 1.524 * GATE_SCALE;
   const gateReal = microCourse

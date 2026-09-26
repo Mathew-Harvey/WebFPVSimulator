@@ -17,8 +17,9 @@
  * src/maps/city/places/kit.js pulls its rust and tile, so a crane beside a
  * house looks as if one artist drew both.
  *
- * The town's own vehicles and vending machines are drawn by the vendored
- * builders and their meshes folded into the same batches.
+ * The town's own vending machines are drawn by the vendored builder, and
+ * its cars by src/art/cars.js, the model the town itself now draws them
+ * with; their meshes are folded into the same batches.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -41,7 +42,7 @@ import { PAL } from '../maps/city/vendored/core/palette.js';
 import { cel, flat } from '../maps/city/vendored/core/toon.js';
 import { bake } from '../maps/city/vendored/core/util.js';
 import * as TownTex from '../maps/city/vendored/core/textures.js';
-import { makeVehicle, CAR } from '../maps/city/vendored/world/vehicles.js';
+import { buildCar, CAR } from '../art/cars.js';
 import { makeVendingMachine } from '../maps/city/vendored/world/vending.js';
 import { paintGateHeader, paintGateSleeve, bannerCanvas, BANNER_SIZE } from '../art/banners.js';
 import { styleOf } from './types.js';
@@ -889,14 +890,16 @@ export class PropKit {
   }
 
   /*
-   * Something the vendored town builds: its meshes, folded into these
-   * batches at their own materials (by signature, see townMaterial), turned
-   * by `ry` and placed at `pos` in the element's frame.
+   * Something the town builds: a car (src/art/cars.js buildCar, the r32
+   * taking its livery from opts.variant) or a vending machine, its meshes
+   * folded into these batches at their own materials (by signature, see
+   * townMaterial), turned by `ry` and placed at `pos` in the element's
+   * frame.
    */
   town(kind, opts, pos, ry) {
     let obj;
     if (kind === 'car') {
-      obj = makeVehicle({ kind: opts.kind, color: CAR[opts.colour] ?? CAR.white, x: 0, y: 0, z: 0, ry: 0 });
+      obj = buildCar({ kind: opts.kind, color: CAR[opts.colour] ?? CAR.white, variant: opts.variant });
     } else if (kind === 'vending') {
       obj = makeVendingMachine(opts.variant ?? 0, opts.seed ?? 1);
     } else {

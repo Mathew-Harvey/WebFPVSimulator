@@ -28,10 +28,12 @@
  * ground where it is lower than that. Decoration that is not solid is thin
  * or out of reach.
  *
- * THE VENDING MACHINE AND THE CARS ARE THE TOWN'S, drawn by the vendored
- * builders in src/maps/city/vendored/world/ through the kit, so a kei van in
- * a built map is the same kei van that is parked outside the conbini. Their
- * solids are written here from the same dimensions those builders use.
+ * THE VENDING MACHINE AND THE CARS ARE THE TOWN'S: the machine drawn by the
+ * vendored builder in src/maps/city/vendored/world/, the cars by
+ * src/art/cars.js, which the town draws its own parked cars with too, both
+ * through the kit, so a kei van in a built map is the same kei van that is
+ * parked outside the conbini. Their solids are written here from the same
+ * dimensions those builders use.
  *
  * THE TREES ARE THE TOWN'S THREE GENERATORS, restated: buildSakura,
  * buildGrove and buildCedar from src/maps/city/vendored/world/trees.js, with
@@ -1622,6 +1624,15 @@ export function vendingDraw(el, parts, K) {
  *           at that half height, so the screens' wedges are solid to
  *           within half their depth rather than not at all.
  *   box     a box lorry's body.
+ *
+ * THE R32 is ours, not the town's: its sizes are the R32 table in
+ * src/art/cars.js, which draws every car (the town's included, through the
+ * vendored builder's hook), restated here for the same reason. Two fields
+ * only it carries: `cw`, its glasshouse's width at the roof, since a coupe's
+ * glass leans in far more than the town's boxes do and a solid at W - 0.14
+ * would stand out of it; and `bonnet`, where its low bonnet begins in x and
+ * how high it is, so the body's solid steps down to it rather than filling
+ * the air over the nose to the waist.
  * ------------------------------------------------------------------ */
 
 export const CAR_KINDS = {
@@ -1637,10 +1648,15 @@ export const CAR_KINDS = {
     box: { x0: -2.40, x1: 0.28, y0: 1.06, y1: 2.46 },
   },
   minibus: { L: 6.30, W: 2.08, H: 2.60, sill: 0.52, waist: 1.26, roof: 2.60, cab: [-3.04, 2.94], rakeF: 0.26, rakeR: 0.08 },
+  r32: {
+    L: 4.50, W: 1.76, H: 1.34, sill: 0.30, waist: 0.86, roof: 1.34, cab: [-1.45, 0.55], rakeF: 0.62, rakeR: 0.50,
+    cw: 1.32, bonnet: { x: 0.55, y: 0.80 },
+  },
 };
 /* The body's own width, which for the box lorry is the chassis's, 1.695:
- * its box body stands 30 mm proud of the cab on each flank. */
-const CAR_BODY_W = { boxtruck: 1.695 };
+ * its box body stands 30 mm proud of the cab on each flank. The r32's is its
+ * doors', 1.71: its flares stand 25 mm proud of them, to its 1.76. */
+const CAR_BODY_W = { boxtruck: 1.695, r32: 1.71 };
 const CAR_COLOURS = ['white', 'white', 'pearl', 'silver', 'silver', 'cream', 'gunmetal', 'charcoal', 'skyblue', 'slate', 'mint', 'forest', 'wine', 'tea', 'mustard', 'navy'];
 
 export function carLayout(el) {
@@ -1650,11 +1666,16 @@ export function carLayout(el) {
   const P = new Parts();
   const o = { draw: false, kind: 'obstacle' };
   P.box('carBody', -(k.L - 0.16) / 2, 0, -(W - 0.07) / 2, (k.L - 0.16) / 2, k.sill, (W - 0.07) / 2, { ...o, name: 'under' });
-  P.box('carBody', -k.L / 2, k.sill, -W / 2, k.L / 2, k.waist, W / 2, { ...o, name: 'body' });
+  if (k.bonnet) {
+    P.box('carBody', -k.L / 2, k.sill, -W / 2, k.bonnet.x, k.waist, W / 2, { ...o, name: 'body' });
+    P.box('carBody', k.bonnet.x, k.sill, -W / 2, k.L / 2, k.bonnet.y, W / 2, { ...o, name: 'body' });
+  } else {
+    P.box('carBody', -k.L / 2, k.sill, -W / 2, k.L / 2, k.waist, W / 2, { ...o, name: 'body' });
+  }
   const rf = k.cab[1] - k.rakeF;
   const rr = k.cab[0] + k.rakeR;
   const ym = (k.waist + k.roof) / 2;
-  const cw = (W - 0.14) / 2;
+  const cw = (k.cw ?? (W - 0.14)) / 2;
   P.box('carBody', (k.cab[0] + rr) / 2, k.waist, -cw, (k.cab[1] + rf) / 2, ym, cw, { ...o, name: 'glass' });
   P.box('carBody', rr, ym, -cw, rf, k.roof, cw, { ...o, name: 'glass' });
   if (k.box) {
@@ -1675,8 +1696,11 @@ export function carColourOf(seed) {
   return seededRandom(seed).pick(CAR_COLOURS);
 }
 
+/* The r32 takes its livery from its variant (src/art/cars.js r32Livery)
+ * rather than a colour from its seed, so an author picks one; every other
+ * car ignores the variant it is handed. */
 export function carDraw(el, parts, K) {
-  K.town('car', { kind: CAR_KINDS[el.style] ? el.style : 'kei', colour: carColourOf(seedOf(el)) }, [0, 0, 0], 0);
+  K.town('car', { kind: CAR_KINDS[el.style] ? el.style : 'kei', colour: carColourOf(seedOf(el)), variant: el.dims?.variant }, [0, 0, 0], 0);
 }
 
 /* ------------------------------------------------------------------ *

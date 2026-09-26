@@ -46,7 +46,7 @@ export const BUILDING_STYLES = ['flats', 'office', 'warehouse', 'shop'];
 export const CONTAINER_STYLES = ['40ft', '20ft', '40ft open'];
 export const SCAFFOLD_STYLES = ['open', 'netted'];
 export const BRIDGE_STYLES = ['road', 'footbridge'];
-export const CAR_STYLES = ['kei', 'keivan', 'hatch', 'sedan', 'wagon', 'minivan', 'van', 'boxtruck', 'minibus'];
+export const CAR_STYLES = ['kei', 'keivan', 'hatch', 'sedan', 'wagon', 'minivan', 'van', 'boxtruck', 'minibus', 'r32'];
 export const TREE_STYLES = ['sakura', 'street', 'pine'];
 
 /*
@@ -86,6 +86,9 @@ export const STYLE_DIMS = {
     van: { speed: 11 },
     boxtruck: { speed: 10 },
     minibus: { speed: 10 },
+    /* The coupe, quicker than the traffic; a drift car is offered
+     * src/maps/built/traffic.js DRIFT.speed instead. */
+    r32: { speed: 16 },
   },
 };
 
@@ -266,7 +269,7 @@ export const PROP_TYPES = {
     group: 'street',
     turns: 'quarter',
     styles: CAR_STYLES,
-    note: 'A parked vehicle from the town, nose the way you point it. Variant changes the colour.',
+    note: 'A parked vehicle from the town, nose the way you point it. Variant changes the colour, or the r32\u2019s livery.',
     dims: { variant: 1 },
     limits: { variant: [1, 99, INT] },
     labels: { variant: 'Variant' },
@@ -409,7 +412,7 @@ const BUILDING_H = {
 };
 /* A parked car's roof, from the town's table; what the town's builder
  * draws on top reaches up to 7 cm over it. */
-const CAR_H = { kei: 1.7, keivan: 1.88, hatch: 1.52, sedan: 1.44, wagon: 1.54, minivan: 1.8, van: 1.98, boxtruck: 2.46, minibus: 2.6 };
+const CAR_H = { kei: 1.7, keivan: 1.88, hatch: 1.52, sedan: 1.44, wagon: 1.54, minivan: 1.8, van: 1.98, boxtruck: 2.46, minibus: 2.6, r32: 1.34 };
 /*
  * A tree's top per unit of size, over EVERY seed, because this is not told
  * which tree it is. These are the layouts' own bounds, every random draw at

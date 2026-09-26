@@ -54,11 +54,12 @@ import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE } from './render/frame.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
+import { LapVoice, lapCall } from './render/voice.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { mountTouchSticks, touchWanted } from './input/touchsticks.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.js';
-import { Race } from './game/race.js';
+import { PRACTICE_LAPS, Race, runComplete } from './game/race.js';
 import { TrickDetector } from './game/trickdetect.js';
 import { deriveObstacles, OB_BAR, OB_POLE } from './game/obstacles.js';
 import { seesMark } from './game/egg.js';
@@ -83,6 +84,7 @@ import { captureSource, createFlightStats, pingVisit } from './share/stats.js';
 import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import { stampFor, writeStamp } from './share/stamps.js';
+import { CLIP_FPS, CLIP_H, CLIP_W, clipKeyForMap } from './share/orbitcache.js';
 import {
   clearPendingTime,
   readEditKey,
@@ -189,6 +191,14 @@ const TAKEOFF_RELEASE = 0.18;
  * physics are untouched by it.
  */
 const GROUND_CUE_GAP_MS = 220;
+/*
+ * How far a radio or gamepad's roll, pitch or yaw has to move off centre,
+ * in the air, to count as the pilot flying the quad with it: that is when
+ * the first flight's Weight card retires for a pilot with no pointer in
+ * hand. Past a stick's centre noise, well short of a real input. Display
+ * only; nothing in the flight reads it.
+ */
+const PAD_FLYING_STICK = 0.12;
 /*
  * How long after a takeoff the contact cues stay muted, on the WALL clock.
  *
@@ -895,11 +905,17 @@ export async function boot({ loading, bootStart, mapId }) {
    * most a screen can show anyway.
    */
   let resizeDirty = false;
+  /* True while the renderer is held at the clip's size for the Freestyle
+   * room's film of the loaded world (see `film` in frameBody). A resize that
+   * arrives meanwhile waits: the film's frames have to be the clip's shape,
+   * and the window's size is put back the next time the world is drawn for
+   * anything else. */
+  let filmPinned = false;
   window.addEventListener('resize', () => {
     resizeDirty = true;
   });
   function applyResizeIfDirty() {
-    if (!resizeDirty) {
+    if (!resizeDirty || filmPinned) {
       return;
     }
     resizeDirty = false;
@@ -929,6 +945,9 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
   const audio = new MotorAudio();
+  /* The lap time said out loud. Beside the audio because it answers to the
+   * same Sound switch and Volume, but not in its graph: see voice.js. */
+  const lapVoice = new LapVoice();
   audio.music.onChange = (st) => {
     ui.setMusicNow(st);
   };
@@ -1191,6 +1210,22 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.setBanner(`${failed} could not be loaded.\nThe track was loaded instead.`, true);
   }
   ui.setShare(view.share || null);
+  /*
+   * THE CLIP KEY OF THE WORLD AS IT WAS BUILT, taken now rather than when a
+   * card asks, because a card's key is read off the seat when the card is
+   * drawn and the seat can change under a built world: an author editing
+   * Your map in another tab. The Freestyle room films the loaded world
+   * where it stands only when the two agree (ui.captureCurrentCard);
+   * otherwise the orbit frame builds the map from the seat as it is now.
+   * A map from the board has no key of its own here, because Your map's
+   * card is keyed by the pilot's seat and filming the board's map in place
+   * would file it under the pilot's.
+   */
+  let worldClipKey = null;
+  const noteWorldClip = () => {
+    worldClipKey = view && !view.shared ? clipKeyForMap(view.id) : null;
+  };
+  noteWorldClip();
   loading.start('frame');
 
   /*
@@ -1949,7 +1984,7 @@ export async function boot({ loading, bootStart, mapId }) {
   function ghostRowChoices() {
     const list = [
       { id: 'off', label: 'Off' },
-      { id: 'best', label: 'Your best this session' },
+      { id: 'best', label: 'Your best lap' },
       { id: 'previous', label: 'Your previous lap' },
     ];
     for (const t of ghostBoardTimes || []) {
@@ -2724,6 +2759,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * branch each frame and read by the obstacle query later in the same
    * frame. Starts level. */
   let vHalfFrame = craftVerticalHalf(0);
+  /*
+   * Airtime, for the freestyle display with scoring off: the sim time this
+   * run has spent in the air. It starts at takeoff and holds while the
+   * quad sits landed, perched or set down, the way Betaflight's OSD keeps
+   * its fly time apart from its on time; before 2026-09-26 it was the lap
+   * clock itself and read 3.72 s on the pads at 0 km/h. Added from the
+   * steps the flying branch takes, so it is sim time and never frame time.
+   * Display only: the scorer's run clock and the lap clock are simTimeMs
+   * and do not read it.
+   */
   let airtimeMs = 0;
   /* The freestyle run's clock, as the OSD reads it. Written once a frame
    * from score.view() just above setOsd, so the readout is this frame's
@@ -2785,7 +2830,9 @@ export async function boot({ loading, bootStart, mapId }) {
   let padPickReturn = 'title';
   /* How many laps THIS run lasts. Settings.laps can change from pause, and
    * reading it live used to end a 5 lap run the moment someone dropped the
-   * setting to 1. */
+   * setting to 1. PRACTICE_LAPS is a run with no end, and it is latched
+   * here for the same reason: whether a lap may go to the board is decided
+   * by the run it was flown in, not by what the menu says afterwards. */
   let runLaps = ui.settings.laps;
   race.setRecordKey(recordKey());
   ui.setBest(race.bestMs, view.mode);
@@ -3626,13 +3673,18 @@ export async function boot({ loading, bootStart, mapId }) {
      * on. The trick scorer is told only where it always was. */
     counterCrash(false);
     const from = haveRecoverFrom ? recoverFrom : null;
+    /* On a map with traffic, never in a car's path: a landed craft is not
+     * stepped, and the car would drive through it. The verge instead, the
+     * owner's decision of 2026-09-26; see roadKeepOut in
+     * src/maps/built/traffic.js. Null on every other map. */
+    const keepOut = trafficOn ? (view.restKeepOut ?? null) : null;
     /* Around the crash first. If everything there is on the far side of
      * something, around the last open air, which by construction is on the
      * near side of it. */
     const found = findRestSpot(
-      view.colliders, recoverGroundAt, REST_HEIGHT, pCurr.x, pCurr.y, pCurr.z, from, restSpot,
+      view.colliders, recoverGroundAt, REST_HEIGHT, pCurr.x, pCurr.y, pCurr.z, from, restSpot, keepOut,
     ) || Boolean(from && findRestSpot(
-      view.colliders, recoverGroundAt, REST_HEIGHT, from.x, from.y, from.z, from, restSpot,
+      view.colliders, recoverGroundAt, REST_HEIGHT, from.x, from.y, from.z, from, restSpot, keepOut,
     ));
     if (!found) {
       /* No flat surface within three and a half metres is clear and
@@ -3967,6 +4019,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * pinRcGrid follow simStepIdx, which mirrors the module.
      */
     simTimeMs = 0;
+    airtimeMs = 0;
     /* Anything that holds a stamp ON that clock has to go back with it, or a
      * fresh run compares a zeroed clock against last run's stamp and stays
      * inside a cooldown that has already expired. */
@@ -3995,6 +4048,8 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     resetCraft(null);
     race.reset();
+    /* A new run starts quiet: last run's final lap is not called over it. */
+    lapVoice.stop();
     /* A new run scores from nothing, and the detector's clock goes back to
      * zero with the sim clock above so the two agree about when a trick
      * happened. */
@@ -4057,6 +4112,13 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A new view is a new set of solids, whether or not the place is kept. */
     uploadPlantWorld();
     attractCam = makeAttractCamera(view);
+    noteWorldClip();
+    /* The new world was built at the window's size; the hold a film had on
+     * the old one's renderer size is over. */
+    if (filmPinned) {
+      filmPinned = false;
+      resizeDirty = true;
+    }
     if (!keepPlace) {
       race = new Race(view.gates, view.trackClass ?? 'full');
       race.setRecordKey(recordKey());
@@ -4977,8 +5039,15 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /* race owns what a record lap is. This used to re-filter and re-min
      * the log beside it, which is the same answer until one of them
-     * changes its mind about a voided lap. */
-    const fromRun = race.bestLapMs();
+     * changes its mind about a voided lap.
+     *
+     * NOTHING FROM A PRACTICE RUN. Practice is laps for the pilot and none
+     * for the board, so a practice run offers no lap here, whatever it
+     * flew. A lap still pending from an earlier counted run on this track
+     * can still go up: it was not flown in practice, and it is the lap the
+     * Upload row names. */
+    const practice = runLaps === PRACTICE_LAPS;
+    const fromRun = practice ? null : race.bestLapMs();
     const pending = readPendingTime();
     const fastest = fromRun != null
       ? fromRun
@@ -4995,7 +5064,12 @@ export async function boot({ loading, bootStart, mapId }) {
         : (pending && pending.trackId === trackId ? pending.threeMs : null))
       : null;
     if (fastest == null) {
-      notice = { text: 'No clean lap to upload.', untilMs: performance.now() + 2800 };
+      notice = practice
+        ? {
+          text: 'Practice laps stay off the public board.\nSet Laps to 1, 3 or 5 and fly it again.',
+          untilMs: performance.now() + 3600,
+        }
+        : { text: 'No clean lap to upload.', untilMs: performance.now() + 2800 };
       return;
     }
     let name = readPilotName();
@@ -5896,6 +5970,9 @@ export async function boot({ loading, bootStart, mapId }) {
 
   input.onKey = (code, repeat) => {
     wakeAudio();
+    /* Here and on pointerdown, never inside wakeAudio, which a link's
+     * timer also calls: the voice is opened by a gesture or not at all. */
+    lapVoice.prime();
     if (ui.handleKey(code, repeat)) {
       return;
     }
@@ -5956,7 +6033,10 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
   };
-  window.addEventListener('pointerdown', wakeAudio);
+  window.addEventListener('pointerdown', () => {
+    wakeAudio();
+    lapVoice.prime();
+  });
 
   /*
    * Swallow a dropped file, and say why nothing happened.
@@ -6212,6 +6292,15 @@ export async function boot({ loading, bootStart, mapId }) {
    * know which frame to ask for. Rebuilt on every swap, below.
    */
   let attractCam = makeAttractCamera(view);
+  /*
+   * The world the Freestyle room can film where it stands: which map, the
+   * clip key it was built under (noteWorldClip) and how long its title
+   * camera takes to fly its line once, or null mid swap and for a map from
+   * the board. Asked when the room's reels start; see ui.startReels.
+   */
+  ui.loadedWorld = () => (mapReady && !swapInFlight && view && worldClipKey
+    ? { id: view.id, key: worldClipKey, periodMs: attractCam.periodMs || 0 }
+    : null);
   applySettings(ui.settings);
 
   const bootPick = input.takePadPickQueue();
@@ -6419,6 +6508,8 @@ export async function boot({ loading, bootStart, mapId }) {
   let titleStepMs = 0;
   /* Wall time of the last frame the cap let through. */
   let capLastDraw = -1e9;
+  /* And of the last frame the Freestyle room's film drew. */
+  let filmLastDraw = -1e9;
 
   /*
    * ONE FAULT USED TO FREEZE THE PICTURE AND SAY NOTHING.
@@ -6882,6 +6973,10 @@ export async function boot({ loading, bootStart, mapId }) {
           stateCurr = stNow;
         }
         simTimeMs += steps * MS_PER_STEP;
+        /* Airtime: only steps flown off the stand. See airtimeMs. */
+        if (!stood && !replayMode) {
+          airtimeMs += steps * MS_PER_STEP;
+        }
         simStepIdx += steps;
         frameSteps = steps;
         /* A replay steps nothing, so its frames read the cars as a frame
@@ -7306,8 +7401,18 @@ export async function boot({ loading, bootStart, mapId }) {
             }
           }
           ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
+          /* A lap counted this frame is called out loud, in every run and
+           * on the last lap of one too, which the results screen covers but
+           * the ear still hears. Read off the entry the flash was written
+           * from, so the voice and the screen say the same lap. */
+          if (race.laps.length > lapsBefore && ui.settings.sound) {
+            lapVoice.say(
+              lapCall(race.log.length, race.lastLapMs, race.lastLapRecord),
+              ui.settings.volume / 10,
+            );
+          }
         }
-        if (!race.freestyle && race.lap >= runLaps) {
+        if (!race.freestyle && runComplete(race.lap, runLaps)) {
           mode = 'results';
           if (turtleWait || turtleFlip.active) {
             if (turtleWait && !turtleFlip.active) {
@@ -7345,12 +7450,6 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     ghostFrame(simNow);
 
-    /* Airtime, for the freestyle display: the simulation clock since this
-     * run began, which is what a pilot flying a pack wants beside the pack
-     * bar. It reads on the sim clock for the same reason a lap does, so a
-     * frame hitch cannot spend a pilot's battery for them. */
-    airtimeMs = simTimeMs;
-
     /*
      * The world is the title picture, the flight picture, the pause
      * picture, the finish picture and the map-card recorder. Settings
@@ -7373,6 +7472,30 @@ export async function boot({ loading, bootStart, mapId }) {
     const attractOn = !freezeWorld && mode === 'title'
       && (ui.screen === 'title' || ui.screen === 'launch');
     const studioOn = ui.screen === 'quad';
+    /*
+     * THE FREESTYLE ROOM'S FILM OF THE LOADED WORLD.
+     *
+     * The room keeps the world hidden, and its card for the world already
+     * loaded used to copy this canvas into its recorder anyway, so it
+     * recorded twelve seconds of the grey the card was filled with and kept
+     * it. While ui.captureCurrentCard asks for it (ui.reelFilm), the world
+     * is drawn again, still hidden behind the room, at the clip's size and
+     * the clip's frame rate, on the title camera run from the start of its
+     * line on the clip's clock, and every drawn frame is copied onto the
+     * card (ui.paintMapThumbs). The world is already built, so the film
+     * costs a 854 by 480 draw ten times a second and a small canvas, where
+     * the orbit frame the other cards use builds a second copy of the world.
+     *
+     * Only the world the card names: the same key, taken when this world
+     * was built (noteWorldClip), so an edit made since is not filmed under
+     * the new key. And only while the pilot is in the room, which the
+     * reels already arrange: the film starts when the room has been quiet
+     * and any key or touch ends it (ui.noteInteraction).
+     */
+    const film = ui.reelFilm && !freezeWorld && mode === 'title' && ui.screen === 'freestyle'
+      && worldClipKey && ui.reelFilm.key === worldClipKey
+      ? ui.reelFilm
+      : null;
     const worldLive = !freezeWorld && (
       Boolean(finishLoadingOnFrame)
       || mode === 'flight'
@@ -7380,11 +7503,30 @@ export async function boot({ loading, bootStart, mapId }) {
       || mode === 'results'
       || ui.screen === 'courses'
       || attractOn
+      || Boolean(film)
       || Boolean(camOverride)
     );
-    const wantVis = worldLive ? 'visible' : 'hidden';
+    /* The film draws behind the room, not in front of it: hidden, which
+     * still draws, and copied out before the frame ends. */
+    const wantVis = worldLive && !film ? 'visible' : 'hidden';
     if (shell.canvas.style.visibility !== wantVis) {
       shell.canvas.style.visibility = wantVis;
+    }
+    if (film && !filmPinned) {
+      filmPinned = true;
+      shell.renderer.setSize(CLIP_W, CLIP_H, false);
+      shell.camera.aspect = CLIP_W / CLIP_H;
+      shell.camera.updateProjectionMatrix();
+      if (view.post && view.post.setSize) {
+        view.post.setSize(CLIP_W, CLIP_H);
+      }
+    } else if (!film && filmPinned && worldLive) {
+      /* Put the window's size back the first time the world is drawn for
+       * something else, which is on the way out of the room, rather than
+       * the moment the film stops, which is a key the pilot just pressed. */
+      filmPinned = false;
+      resizeDirty = true;
+      applyResizeIfDirty();
     }
 
     /* Prop discs spin at a visibly aliased fraction of true RPM, the way
@@ -7497,7 +7639,15 @@ export async function boot({ loading, bootStart, mapId }) {
      * is set in its branch below. See fpvNear. */
     setCameraNear(CAMERA_NEAR_OPEN);
     if (mode === 'title') {
-      if (worldLive && !camOverride) {
+      if (film && !camOverride) {
+        /* The shot the orbit frame records (src/share/orbit.js): the line
+         * from its start, one whole cycle in the clip, no overlay and no
+         * sticks. film.t0 is set when the recorder starts; until then the
+         * camera holds the first pose, so the clip opens on it. */
+        shell.quad.visible = true;
+        const camMs = film.t0 < 0 ? 0 : Math.max(0, nowWall - film.t0) * film.scale;
+        attractCam.update(camMs, shell.camera, { craft: shell.quad });
+      } else if (worldLive && !camOverride) {
         shell.quad.visible = true;
         attractCam.update(nowWall, shell.camera, {
           craft: shell.quad,
@@ -7791,7 +7941,18 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     const capHz = Number(ui.settings.fpsCap) || 0;
     let drawThis = !harnessNoDraw;
-    if (capHz > 0 && worldLive) {
+    if (film) {
+      /* The clip is CLIP_FPS frames a second, so the film draws no more
+       * than that: drawing sixty a second to keep ten throws five draws of
+       * the world in every six away behind a menu. The recorder takes a
+       * frame when the card's canvas changes, which is when one of these
+       * is copied. */
+      if (nowWall - filmLastDraw < 1000 / CLIP_FPS - 1.0) {
+        drawThis = false;
+      } else {
+        filmLastDraw = nowWall;
+      }
+    } else if (capHz > 0 && worldLive) {
       if (nowWall - capLastDraw < 1000 / capHz - 1.0) {
         drawThis = false;
       } else {
@@ -7801,7 +7962,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (worldLive && drawThis) {
       view.post.render();
     }
-    if (ui.screen === 'courses') {
+    /* In the same task as the draw: the canvas keeps no drawing buffer, so
+     * this is the one moment it still holds the frame. */
+    if (film && drawThis) {
       ui.paintMapThumbs(shell.canvas);
     }
     const renderMs = performance.now() - renderStart;
@@ -7995,7 +8158,8 @@ export async function boot({ loading, bootStart, mapId }) {
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({
         mode: view.mode,
-        lapMs: race.freestyle ? airtimeMs : race.currentLapMs(simNow),
+        /* No airtime yet reads a dimmed 0.00, like a lap before its gate. */
+        lapMs: race.freestyle ? (airtimeMs > 0 ? airtimeMs : null) : race.currentLapMs(simNow),
         /* The freestyle clock is the RUN's, counting down, and it is the
          * only clock on the screen: see setOsd. Read straight off the
          * scorer, which is the thing that decides when the run ends, rather
@@ -8022,7 +8186,9 @@ export async function boot({ loading, bootStart, mapId }) {
          * the road it is over, and the readout prints a negative altitude
          * under the overbridge. See SURFACE_BIAS. */
         altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y),
-        speedKph: speed * 3.6,
+        /* Null on an airframe whose OSD has no speed, and the readout goes.
+         * See osdSpeed in configs/airframes.js. */
+        speedKph: airframeById(runAirframe).osdSpeed ? speed * 3.6 : null,
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
         /* No damage model, so nothing to count down. How much this run has
@@ -8050,10 +8216,20 @@ export async function boot({ loading, bootStart, mapId }) {
       });
       /* The air slider rides the same test as the gimbals it sits between,
        * but not the same SOURCE test: it belongs to every pilot, radio,
-       * keyboard and thumbs alike, so it is up whenever there is a quad in
-       * the air to try it on. This is also where its first-run hint is
-       * raised, which is why it is here and not in show(). */
-      ui.setAirSlider(true, !landed && !launchStaging && !poseLock);
+       * keyboard and thumbs alike. This is also where its first-run hint is
+       * raised and retired, which is why it is here and not in show().
+       * Aloft is off the pads, not perched or set down, and not on its
+       * back: the slider fades while it is true and the card retires when
+       * it goes false. A radio or gamepad moving the sticks in the air is
+       * the pilot answering the card without a pointer. */
+      const aloft = !landed && !launchStaging && !poseLock && !turtleWait && !turtleFlip.active;
+      ui.setAirSlider(true, aloft, {
+        airMs: airtimeMs,
+        padFlying: aloft && !input.isKeyboardPrimary()
+          && (Math.abs(ch.roll) > PAD_FLYING_STICK
+            || Math.abs(ch.pitch) > PAD_FLYING_STICK
+            || Math.abs(ch.yaw) > PAD_FLYING_STICK),
+      });
       updateTargetLock();
     } else if (mode !== 'paused') {
       ui.setStickOverlay({ show: false, roll: 0, pitch: 0, yaw: 0, throttle: 0 });
@@ -8199,7 +8375,11 @@ export async function boot({ loading, bootStart, mapId }) {
       const start = ui.settings.launchControl
         ? 'L for launch control, or throttle up'
         : 'Throttle up to take off';
-      let second = '\nThe green gate starts your lap';
+      /* Practice is the one race that does not end, so it says so on the
+       * line that promises what starts. See PRACTICE_LAPS. */
+      let second = runLaps === PRACTICE_LAPS
+        ? '\nPractice: no lap limit. The green gate starts your lap'
+        : '\nThe green gate starts your lap';
       if (race.freestyle) {
         /* The counter counts the lines in every position (decision 2), so
          * even Lines only has something to promise now. */

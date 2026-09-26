@@ -49,6 +49,13 @@ import { Pipeline } from './vendored/core/post.js';
 import { buildSky } from './vendored/core/sky.js';
 import { setOutlineResolution } from './vendored/core/outline.js';
 import { buildWorld } from './vendored/world/index.js';
+/* The town's cars are drawn by our model (src/art/cars.js); the vendored
+ * builders place them and hand the drawing over through these two hooks,
+ * ./vendored/PATCH-world-vehicles.diff and PATCH-world-props.diff. Both
+ * modules are already in the graph through world/index.js. */
+import { makeVehicle, setVehicleModel } from './vendored/world/vehicles.js';
+import { makeKeiTruck, setKeiTruckModel } from './vendored/world/props.js';
+import { townVehicle, townKeiTruck } from '../../art/cars.js';
 /* The road's own centreline, so the title screen's camera flies the street
  * the town was laid out along instead of a circle drawn over the top of it.
  * Already in the import graph through world/index.js, so this costs no
@@ -1629,16 +1636,81 @@ function fitRect(c, y0, y1, boxes, grid, floorAt, scratch, { roof = true } = {})
   return out;
 }
 
+/*
+ * THE TOWN'S CARS, AND WHAT THE COLLIDER FIT READS OF THEM.
+ *
+ * The cars are drawn by src/art/cars.js at the town's own sizes, and each
+ * car's own solid is parkVehicle's box from vehicleSize, which skips the fit
+ * and so does not move. But the fit hugs every OTHER authored rectangle onto
+ * the drawing standing in it, and a car parked inside one is drawing: the
+ * multi storey car park's deck pieces reach up over the cars on it, and the
+ * lake layby's pieces round the truck and the hatch. Fitted to the new
+ * drawing, 94 of the town's 19,515 boxes changed shape and 46 more were cut,
+ * measured on 2026-09-26: a change to the town's solids, which is the
+ * owner's to approve and was not asked for. So the fit goes on reading the
+ * drawing it was always fitted to: each car is built twice, the new model to
+ * draw and the vendored one (the hooks unset, so makeVehicle and makeKeiTruck
+ * draw as upstream does) in an invisible holder beside it, which the fit's
+ * drawnBoxes reads (it skips a mesh only when the mesh itself is hidden) and
+ * the renderer never draws; the new model is marked `fitSkip`. The holder is
+ * dropped as soon as the colliders are built, before the audits, the
+ * references and the merge, so none of them ever sees it. The traversal
+ * order of the old meshes is what it was, so the fit is fed the same boxes
+ * in the same order and every collider comes out to the bit.
+ */
+function townCar(o, draw, vendored, carFit) {
+  const car = draw(o);
+  setVehicleModel(null);
+  setKeiTruckModel(null);
+  let was;
+  try {
+    was = vendored(o);
+  } finally {
+    setVehicleModel((q) => townCar(q, townVehicle, makeVehicle, carFit));
+    setKeiTruckModel((q) => townCar(q, townKeiTruck, makeKeiTruck, carFit));
+  }
+  const holder = new THREE.Group();
+  holder.name = car.name;
+  holder.position.copy(car.position);
+  holder.rotation.copy(car.rotation);
+  holder.userData = car.userData;
+  car.position.set(0, 0, 0);
+  car.rotation.set(0, 0, 0);
+  car.userData = { ...car.userData, fitSkip: true };
+  was.position.set(0, 0, 0);
+  was.rotation.set(0, 0, 0);
+  was.visible = false;
+  holder.add(car, was);
+  carFit.push({ holder, was });
+  return holder;
+}
+
+function dropCarFit(carFit) {
+  for (const { holder, was } of carFit) {
+    holder.remove(was);
+    was.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        if (o.material && o.material.isShaderMaterial) {
+          o.material.dispose();
+        }
+      }
+    });
+  }
+  carFit.length = 0;
+}
+
 function buildColliders(world) {
   const colliders = new Colliders();
   let noTop = 0;
   let noBottom = 0;
 
-  /* The fit's own index over the drawn meshes. */
+  /* The fit's own index over the drawn meshes. The town's cars are read as
+   * the vendored drawing, not as ours: see townCar. */
   const fitStart = (typeof performance !== 'undefined' ? performance.now() : 0);
   const boxes = drawnBoxes(world.root, {
     maxFootprint: FIT_MAX_FOOTPRINT,
-    skip: (o) => COVER_SOFT.test(o.name || '') || FIT_MOVING.test(o.name || ''),
+    skip: (o) => COVER_SOFT.test(o.name || '') || FIT_MOVING.test(o.name || '') || o.userData.fitSkip === true,
   });
   const grid = new Map();
   for (let i = 0; i < boxes.length; i += 1) {
@@ -2046,7 +2118,18 @@ export async function buildMap(shell, onProgress, options) {
    * the previous one.
    */
   await yieldToPaint();
-  const world = buildWorld(scene, { bake: false });
+  /* Every parked car, and the kei truck at the crossing, drawn by our model
+   * at the town's own sizes and placed by the town; see townCar below. */
+  const carFit = [];
+  setVehicleModel((o) => townCar(o, townVehicle, makeVehicle, carFit));
+  setKeiTruckModel((o) => townCar(o, townKeiTruck, makeKeiTruck, carFit));
+  let world;
+  try {
+    world = buildWorld(scene, { bake: false });
+  } finally {
+    setVehicleModel(null);
+    setKeiTruckModel(null);
+  }
   /*
    * THE LIVE BLOSSOM FIELD, SETTLED BEFORE ANYTHING IN THE BAKE SEES IT.
    *
@@ -2142,6 +2225,9 @@ export async function buildMap(shell, onProgress, options) {
   await yieldToPaint();
 
   const { colliders, noTop, noBottom, slabs, fit } = buildColliders(world);
+  /* The collider fit has read the vendored cars; they go now, before the
+   * audits, the references and the merge see anything. */
+  dropCarFit(carFit);
 
   /*
    * The train, as three moving boxes.

@@ -53,6 +53,10 @@ import { startBlockDims } from '../art/startblock.js';
 import { partsOf, planBounds } from '../props/catalog.js';
 import { placedYaw } from '../props/solids.js';
 import { styleOf as propStyleOf, styleDims } from '../props/types.js';
+/* Roads and vehicles: where a road's nodes are and where a vehicle starts,
+ * worked out the way the simulator will drive them. */
+import { roadNodesOf } from '../maps/built/road.js';
+import { vehicleStart } from '../maps/built/traffic.js';
 
 const RULER = 26;              /* pixels of ruler along the top and the left */
 const MIN_SCALE = 2;           /* pixels per metre */
@@ -223,13 +227,56 @@ function structureOutline(el) {
 const ZONE_PICK_DEPTH = 0.5;
 
 /*
+ * A ROAD'S OUTLINE is its line of nodes, out along them and back, so it is
+ * a line with no area: a pointer picks it near the line and never inside a
+ * loop, where the yard is, and the board's card draws it as a line. The
+ * card takes at most 16 points an outline, so a road of more nodes is
+ * outlined through ROAD_OUTLINE_STOPS of them, evenly, ends kept.
+ */
+const ROAD_OUTLINE_STOPS = 9;
+
+function roadOutline(el) {
+  const nodes = roadNodesOf(el);
+  if (nodes.length < 2) {
+    return boxCorners(nodes[0] ?? el.position, 0, 0.5, 0.5);
+  }
+  const run = el.closed === true ? [...nodes, nodes[0]] : nodes;
+  const stops = [];
+  const k = Math.min(ROAD_OUTLINE_STOPS, run.length);
+  for (let i = 0; i < k; i += 1) {
+    const p = run[Math.round((i * (run.length - 1)) / (k - 1))];
+    stops.push({ x: p.x, y: p.y, z: 0 });
+  }
+  return [...stops, ...stops.slice(1, -1).reverse()];
+}
+
+/* A VEHICLE'S FOOTPRINT is its car where it starts, on its road: its place
+ * is its road and its offset (src/maps/built/traffic.js vehicleStart), so
+ * it needs the document. Without one, or without a road, a metre square at
+ * the plot's corner, where its unused position is. */
+function vehicleOutline(el, doc) {
+  const at = doc ? vehicleStart(doc, el) : null;
+  if (!at) {
+    return boxCorners(el.position, 0, 1, 1);
+  }
+  return boxCorners({ x: at.x, y: at.y }, Math.atan2(at.ty, at.tx), at.length, at.width);
+}
+
+/*
  * The footprint of an element on the ground, as a polygon in world metres.
  * Aperture elements project their LOWEST opening's four corners, which is
  * what turns a vertical gate into a bar and a dive gate into a rectangle.
  * Exported and pure so the checks can run it over every asset in Node.
+ * `doc` is needed only for a vehicle, whose place is on its road.
  */
-export function planShapeOf(el) {
+export function planShapeOf(el, doc = null) {
   const def = ELEMENTS[el.type];
+  if (def.kind === KIND.ROAD) {
+    return roadOutline(el);
+  }
+  if (def.kind === KIND.VEHICLE) {
+    return vehicleOutline(el, doc);
+  }
   if (def.kind === KIND.STRUCTURE) {
     return structureOutline(el);
   }
@@ -322,6 +369,11 @@ const BOARD_KINDS = {
   [KIND.MARKER]: 'marker',
   [KIND.START]: 'start',
   [KIND.DECAL]: 'decal',
+  /* The board knows no road and no car, and needs to know none: a road is
+   * paint, drawn as a line; a car is something solid, drawn where it
+   * starts. */
+  [KIND.ROAD]: 'decal',
+  [KIND.VEHICLE]: 'obstacle',
 };
 
 const toCm = (v) => Math.round(v * 100) / 100;
@@ -335,7 +387,7 @@ export function boardPlanOf(doc) {
     }
     let outline;
     try {
-      outline = planShapeOf(el);
+      outline = planShapeOf(el, doc);
     } catch (e) {
       continue;
     }
@@ -446,7 +498,7 @@ export class View2D {
 
   /* The footprint of an element on the ground: see planShapeOf. */
   planShape(el) {
-    return planShapeOf(el);
+    return planShapeOf(el, this.host.doc);
   }
 
   /* ---------------- picking ---------------- */
@@ -833,6 +885,12 @@ export class View2D {
     const selected = this.host.selection.has(el.id);
     const hovered = this.hover === el.id;
 
+    if (def.kind === KIND.ROAD || def.kind === KIND.VEHICLE) {
+      /* Drawn by the road tool (Stage E), which is not in yet. Until it is,
+       * nothing, rather than falling through to the aperture drawing,
+       * which has no opening to draw and throws. */
+      return;
+    }
     if (def.kind === KIND.ANNOTATION) {
       this.drawLabel(ctx, el, selected);
       return;

@@ -1947,6 +1947,11 @@ export class View3D {
     if (def.kind === KIND.ZONE) {
       return this.buildGap(el, selected);
     }
+    if (def.kind === KIND.ROAD || def.kind === KIND.VEHICLE) {
+      /* Drawn by the road tool and Play (Stage E), which are not in yet.
+       * Until they are, nothing, rather than a label sprite with no text. */
+      return null;
+    }
     const asset = FS ? FS.assetOf(el) : null;
     if (!asset && def.kind === KIND.STRUCTURE) {
       /* The asset library did not load, and there is nothing honest to

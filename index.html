@@ -513,10 +513,12 @@
          (scorehud.js tierKana), painted once at a big cell and set here at
          the badge's own size, so a machine with no Japanese font gets the
          word and not a row of boxes. The negative margins keep the badge
-         the height its type made it: the cell is taller than a line. */
+         the height its type made it, since the cell is taller than a line:
+         the margin box sits inside the line's ascent and descent, and the
+         drawing hangs where the kana's own baseline would be. */
       .score-tier .score-tier-kana {
         display: inline-block; height: 1.3em; width: auto;
-        margin: -0.2em 0; vertical-align: -0.32em;
+        margin: -0.08em 0 -0.32em; vertical-align: -0.2em;
       }
       @keyframes score-tier-in {
         0%   { transform: scale(0.4) rotate(-8deg); opacity: 0; }

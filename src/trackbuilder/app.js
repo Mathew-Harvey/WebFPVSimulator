@@ -3238,10 +3238,15 @@ export class App {
      * A MAP'S BAR. No line to show, no lap to animate, and nothing the board
      * can take yet, so those go or say why; the words that said "track" say
      * "map". Everything else on the bar works on a map as it does on a
-     * track. A map has no flying order, so it has no numbers to hide.
+     * track. A map has no flying order and so no numbers, but it has names:
+     * the named gaps' labels in both views and the names on the plan, and
+     * Labels puts those away so the map can be seen. The selected element
+     * keeps its name, and a car off its road keeps its warning.
      */
     this.pathBtn.style.display = map ? 'none' : '';
-    this.labelsBtn.style.display = map ? 'none' : '';
+    this.labelsBtn.title = map
+      ? 'The named gaps\u2019 labels and the names on the plan. Turn them off to see the map.'
+      : 'Flying-order numbers on the gates. Turn them off to see the racing line.';
     document.body.classList.toggle('tb-map', map);
     /* The status bar's hints for the 3D view's own gestures. */
     document.body.classList.toggle('tb-in-3d', this.mode === '3d');

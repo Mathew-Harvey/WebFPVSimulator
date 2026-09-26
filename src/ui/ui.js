@@ -648,6 +648,11 @@ function counterBestSentence(s) {
   return `Your best on this map in this browser: ${formatScore(best)}.`;
 }
 
+/* Where a built track lives, said in the Race room beside the row that
+ * builds one. It was the title's, where it was three lines on every visit
+ * and wrong with a freestyle map seated. The builder's strip says the same. */
+const KEEP_NOTE = 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.';
+
 /* How many kinds of trick a freestyle result lists before "N more". */
 const RESULT_TRICK_ROWS = 3;
 
@@ -3654,13 +3659,22 @@ export class Ui {
      * directly under the wordmark: a pilot who is about to meet a bug
      * should have been told before the lap, not after it. It is not
      * dismissible, because the thing it warns about has not stopped
-     * being true by the second visit. */
+     * being true by the second visit.
+     *
+     * A CHIP NOW, NOT A SENTENCE (2026-09-26). The word is the part that
+     * has to survive, which the short screen already knew; the sentence
+     * cost the title two lines at every width and is the chip's hover
+     * title and a screen reader's text instead. It shares a row with
+     * Patreon, so both keep their place under the wordmark and the menu
+     * gets the lines back. */
+    const betaLine = 'Expect bugs and rough edges. It is still being built, and it will improve.';
     const beta = el('p', 'beta-note');
-    beta.append(
-      el('span', 'beta-tag', 'Beta'),
-      el('span', null, 'Expect bugs and rough edges. It is still being built, and it will improve.'),
-    );
-    brand.append(beta);
+    const betaTag = el('span', 'beta-tag', 'Beta');
+    betaTag.title = betaLine;
+    beta.append(betaTag, el('span', 'sr-only', ` ${betaLine}`));
+    const chips = el('div', 'brand-chips');
+    chips.append(beta);
+    brand.append(chips);
     /*
      * The support link lives HERE on the title, under the wordmark, because
      * the title hides the top bar and the command bar's right corner is
@@ -3670,12 +3684,18 @@ export class Ui {
     this.patreonSlot = el('div', 'brand-patreon');
     this.patreonLink = patreonAnchor();
     this.patreonSlot.append(this.patreonLink);
-    brand.append(this.patreonSlot);
+    chips.append(this.patreonSlot);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
-    this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.');
-    brand.append(this.keepNote);
-    /* First run only. Replaced by the keep note once a lap has been flown. */
+    /*
+     * NO KEEP NOTE HERE ANY MORE. "Tracks you build stay in this browser"
+     * was three lines on the front page, drawn with a freestyle map seated
+     * too, where it said track, and it cost the title its last menu row:
+     * lint:shell's 67 px. It is true and useful where a track is built or
+     * chosen, so it is the Race room's Build a track note (KEEP_NOTE) and
+     * the builder's own strip, which already said it.
+     */
+    /* First run only. */
     this.firstNote = el('p', 'keep-note first-note', 'A quad has no brakes and no wings. Point it where you want to go and push. Two minutes and you will be through a gate.');
     brand.append(this.firstNote);
     this.wikiTeaser = btn('wiki-teaser', 'Simulating FPV, for nerds');
@@ -6158,8 +6178,8 @@ export class Ui {
           label: loaded ? 'Open in the track builder' : 'Build a track',
           action: 'trackbuilder',
           note: loaded
-            ? 'Opens the track builder on the track above. New in there starts a blank one.'
-            : 'Opens the track builder on an empty field.',
+            ? `Opens the track builder on the track above. New in there starts a blank one. ${KEEP_NOTE}`
+            : `Opens the track builder on an empty field. ${KEEP_NOTE}`,
         },
         publishAction(listing, this.coursePublished),
         uploadAction(listing, { timePosted: this.timePosted }),

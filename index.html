@@ -1738,6 +1738,14 @@
         font-size: 13.5px; line-height: 1.6; letter-spacing: 0.01em;
         color: rgba(235, 230, 215, 0.78);
       }
+      /* The chip row under the wordmark: Beta, then Patreon. One line where
+         the sentence and the link took three. */
+      .brand-chips {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
+        margin-top: 14px;
+      }
+      .brand-chips .beta-note, .brand-chips .brand-patreon { margin: 0; }
+      .beta-tag { cursor: help; }
       .beta-tag {
         flex: 0 0 auto;
         padding: 3px 9px; border-radius: 3px;
@@ -2104,6 +2112,17 @@
         border-top: 2px solid rgba(232, 168, 184, 0.55);
       }
       .screen-title .menu { min-width: 0; width: 100%; margin-top: 0; background: rgba(16, 22, 17, 0.55); }
+      /*
+       * THE TITLE'S LIST IS SIZED BY THE COLUMN, NOT BY A VH CAP. It carries
+       * .menu-scroll so the phone caps further down apply to it, and that
+       * brought the generic 58vh cap with it on every desktop, which with ten
+       * rows was the title's 67 px of overflow at 1600 by 900 however much
+       * room the column had. The menu stage above already shrinks and
+       * scrolls when the column runs out, which is the rule that matters, so
+       * a desktop title takes what it has. The narrow and short caps below
+       * still win in their own media.
+       */
+      .screen-title .menu-scroll { max-height: none; }
       .menu-stage .menu { grid-column: 2; margin-top: 0; }
       .menu-scroll {
         max-height: min(calc(58vh - var(--bars)), 34em);
@@ -2175,6 +2194,9 @@
        */
       .screen-title .wiki-teaser {
         transition: opacity 140ms ease;
+        /* Its own line. The keep note used to sit between it and the best
+           lap chip; without it the two ran on one line. */
+        display: flex; width: fit-content;
       }
       .screen-title.has-help .wiki-teaser {
         opacity: 0;
@@ -3450,7 +3472,7 @@
         /* The storage note above goes at this width. The beta notice does
            not: a phone hits the same bugs a desktop does, and it is one
            line where that note was four. */
-        .screen-title .beta-note { gap: 8px; margin-top: 10px; font-size: 12.5px; }
+        .screen-title .brand-chips { margin-top: 10px; }
         .screen-title .brand-best {
           margin-top: 8px;
           padding: 5px 10px;
@@ -3561,11 +3583,9 @@
         .screen-title .title-foot .hint {
           display: none;
         }
-        /* Under 520 px of height the menu barely fits, so the sentence
-           goes and the tag stays: the word is the part that has to
-           survive, and it costs one line. */
-        .screen-title .beta-note { margin-top: 8px; }
-        .screen-title .beta-note span:not(.beta-tag) { display: none; }
+        /* Under 520 px of height the menu barely fits. The tag is all
+           there is of the notice now, so only the row closes up. */
+        .screen-title .brand-chips { margin-top: 8px; }
         .screen-title .wordmark {
           font-size: clamp(28px, 8vh, 44px);
         }

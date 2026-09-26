@@ -50048,3 +50048,101 @@ verdict readable where the combo was; Clean FPV turning all of it to plain
 text. **Wrong would be**: anything lettered in the middle third, an effect
 you notice before the word, a balloon that hides the combo, or a results
 page over the menu.
+
+## 2026-09-26 | hud, results | Stage C: the lettering read against the counter as it landed
+
+The scoring core landed on claude/vibrant-wozniak-v2pg5e (616d340, then
+f3f81b6, which also merged the lettering in, ce80d7b to e07dda2, and fixed
+the one seam: the local best is `summary.counterBest`). The lead asked for
+the lettering to be tested against the real events and brought to four
+points of the landed contract (the header of src/game/score.js). This
+worktree could not merge the branch: the merge was refused by the session's
+permission check, so it was not attempted another way. The work below is
+on e07dda2 and was checked against f3f81b6's src/game read out with git
+archive into the scratchpad, never into the tree.
+
+### What changed
+
+- **A tail is called out once.** A banked tail, a car thread and a hurdle
+  reach the score HUD as scorer events and the chase HUD as chase events,
+  and both drew them: two callouts for one tail. stackCall now returns
+  null for 'tail', 'chase-thread' and 'hurdle'; the chase HUD's callout,
+  beside its meter and the one that also calls a tail lost, is the one.
+  The points are in the combo line. The STF mark keeps its small line,
+  because the found callout says what was found and not what it paid.
+  Known: the chase callout shows chase.js's value, and the combo takes it
+  priced down when the same chase event repeats inside one combo.
+- **Every geometry line carries its repeat**: x2 for the second, from
+  `repeat` (this run's crossings for a gap, this combo's for the rest),
+  beside the seconds held for a skim or a low pass and the clearance for
+  under and a thread ("0.6 m x2"). A gap crossed a fourth time pays 0 and
+  is still sent; it is lettered with its x4 and no balloon or ズバッ.
+- **The results lead with the counter and its best.** The meta line opens
+  with "a new best for this map" or "best 15,100", then "trick score
+  4,200, the board's" (the board's number, tricks only, 0 in a run with
+  none; not called the board's on Your map). The note says the board
+  takes tricks only and, when the run named none, that there is nothing
+  to post. counterBestSentence reads `counterImproved` and
+  `counterBestBefore` beside localBestOf's number ("A new best ... up from
+  N", "The first counted run on this map", "Your best on this map: N").
+  localBestOf itself is left exactly as e07dda2 had it, because f3f81b6
+  changed it to read counterBest first: this touches none of its lines.
+- The fixtures in src/ui/letterdemo.js now have the landed shapes: repeat
+  on every geometry event, clearance on under and thread, holdMs and
+  clearance on a low pass, the tail at chase.js's own 585, the egg at 1000,
+  and counterBest, counterBestBefore and counterImproved (with localBest
+  kept beside them, so the page reads the best before and after the merge).
+
+### Checked against the real scorer
+
+f3f81b6's Counter, in Node, through a run: a trick, a gap, a skim, under,
+a thread twice, a low pass, a held skim, a tail, a car thread, a leapfrog,
+the mark, a bank, the same gap again, a crash, the horn. Every event it
+drained went through stackCall:
+
+    trick         Powerloop | 200
+    gap           CRANE GAP | 1,000 | balloon | ズバッ
+    skim          Roof skim | 310 | 2.4 s | シュッ
+    under         Under | 160 | 0.8 m
+    thread        Thread | 260 | 0.6 m | ギュン
+    thread        Thread | 195 | 0.5 m x2 | ギュン
+    lowpass       Low pass | 40 | 1.3 s
+    tail, chase-thread, hurdle     null (the chase HUD's)
+    egg           STF mark | 1,000
+    bank, bail, finish             the verdict's
+    gap again     CRANE GAP | 750 | x2 | balloon | ズバッ
+
+view().skim came back { on: true, holdMs: 1700, clearance: 0.38 }, the
+shape the meter reads. The real summary gave all five panels and "Best
+trick: Powerloop, 200. Best gap: CRANE GAP, +1,000. Longest skim: Roof
+skim, 2.4 s. The chase: Drift Tail, 5.8 s. The STF mark, found." The
+gap ladder at 1000: 1,000, 750 x2, 500 x3 with a balloon; 0 x4 without.
+
+### RUN LOG
+
+On this commit's tree:
+
+    npm run lint:preload        up to date, boot 110, city 73, built 32; 212
+    npm run lint:boot           9 of 9 checks clean
+    npm run lint:shell          FAIL, 1 problem: "title: overflow grew from
+                                0 to 67 px", the known one
+    npm run lint:devices        PASS on all five
+    the rig, 1600 by 900        16 pictures, centre third 0 hits
+    the rig, 844 by 390         16 pictures, centre third 0 hits
+    dash scan                   none
+    npm run verify              not run: no physics, plant, ABI or build
+
+Looked at: the chase moment with the chase's three calls down the right
+and only the mark's line down the left; the close calls with 0.8 m,
+0.6 m x2 and 1.3 s; the two panel results on Your map, "a new best for
+this map, trick score 0" and "The first counted run on this map in this
+browser, so its best."; the five panel page with "best 15,100, trick
+score 4,200". Not run again, nothing they see changed since 97eb19a:
+lint:memory, lint:responsive, lint:input.
+
+### For the lead
+
+This commit sits on e07dda2. Merged onto f3f81b6 it touches none of the
+lines f3f81b6 changed in ui.js (localBestOf's hunk is separate from the
+new counterBestSentence, which goes above counterRows); scorehud.js and
+letterdemo.js are unchanged on the lead's side since e07dda2.

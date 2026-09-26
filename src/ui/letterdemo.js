@@ -26,7 +26,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* The score HUD's events, in groups a stack of six can hold at once. */
+/* The score HUD's events, in groups a stack of six can hold at once, in the
+ * shapes the header of src/game/score.js gives them. */
 export const SCORE_EVENTS = {
   tricks: [
     { kind: 'trick', name: 'Powerloop', points: 480, execution: 'CLEAN' },
@@ -38,7 +39,7 @@ export const SCORE_EVENTS = {
       kind: 'gap', name: 'CRANE GAP', tier: 1000, repeat: 0, points: 1000, atMs: 41200,
     },
     {
-      kind: 'gap', name: 'FOOTBRIDGE', tier: 250, repeat: 1, points: 190, atMs: 44800,
+      kind: 'gap', name: 'FOOTBRIDGE', tier: 250, repeat: 1, points: 188, atMs: 44800,
     },
     {
       kind: 'gap', name: 'WATER TOWER', tier: 2500, repeat: 0, points: 2500, atMs: 52100,
@@ -46,33 +47,33 @@ export const SCORE_EVENTS = {
   ],
   close: [
     {
-      kind: 'skim', name: 'Roof skim', holdMs: 2400, clearance: 0.42, points: 310, atMs: 60100,
+      kind: 'skim', name: 'Roof skim', holdMs: 2400, clearance: 0.42, repeat: 0, points: 310, atMs: 60100,
     },
     {
-      kind: 'skim', name: 'Wall skim', holdMs: 900, clearance: 0.61, points: 90, atMs: 61800,
+      kind: 'skim', name: 'Wall skim', holdMs: 900, clearance: 0.61, repeat: 0, points: 90, atMs: 61800,
     },
     {
-      kind: 'under', name: 'Under the deck', points: 160, atMs: 63300,
+      kind: 'under', name: 'Under', clearance: 0.8, repeat: 0, points: 160, atMs: 63300,
     },
     {
-      kind: 'thread', name: 'Thread', points: 260, atMs: 64900,
+      kind: 'thread', name: 'Thread', clearance: 0.55, repeat: 1, points: 195, atMs: 64900,
     },
     {
-      kind: 'lowpass', name: 'Low pass', points: 40, atMs: 66000,
+      kind: 'lowpass', name: 'Low pass', holdMs: 1300, clearance: 0.3, repeat: 0, points: 40, atMs: 66000,
     },
   ],
   chase: [
     {
-      kind: 'tail', name: 'Drift Tail', holdMs: 5800, drift: true, points: 1160, atMs: 80400,
+      kind: 'tail', name: 'Drift Tail', holdMs: 5850, drift: true, repeat: 0, points: 585, atMs: 80400,
     },
     {
-      kind: 'chase-thread', name: 'Thread', points: 420, atMs: 82000,
+      kind: 'chase-thread', name: 'Thread', repeat: 0, points: 420, atMs: 82000,
     },
     {
-      kind: 'hurdle', name: 'Leapfrog', points: 330, atMs: 83900,
+      kind: 'hurdle', name: 'Leapfrog', repeat: 0, points: 330, atMs: 83900,
     },
     {
-      kind: 'egg', name: 'STF', points: 500, atMs: 90000,
+      kind: 'egg', name: 'STF', repeat: 0, points: 1000, atMs: 90000,
     },
   ],
   bank: [{
@@ -114,7 +115,9 @@ export const TAIL_VIEW = {
 /*
  * Two runs' summaries: `all` with every panel the page has, and `two` with
  * a gap and a skim only, no tricks (trick scoring off), no tail and no
- * mark, so the page shows the panels a run has and no empty ones.
+ * mark, so the page shows the panels a run has and no empty ones. The
+ * local best is in both shapes, the shell's `counterBest` and the older
+ * `localBest`, so the page reads it before and after the two meet.
  */
 export function demoSummary(which) {
   if (which === 'two') {
@@ -139,6 +142,12 @@ export function demoSummary(which) {
       eggFound: false,
       gaps: 2,
       closeCalls: { skim: 2 },
+      counterBestCombo: 2310,
+      counterDurationMs: 120000,
+      counterBest: 2310,
+      counterBestBefore: 0,
+      counterImproved: true,
+      localBest: 2310,
     };
   }
   return {
@@ -169,6 +178,11 @@ export function demoSummary(which) {
     closeCalls: {
       skim: 3, under: 2, thread: 1, lowpass: 5,
     },
+    counterBestCombo: 7300,
+    counterDurationMs: 120000,
+    counterBest: 15100,
+    counterBestBefore: 15100,
+    counterImproved: false,
     localBest: 15100,
   };
 }

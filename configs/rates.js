@@ -535,6 +535,21 @@ export function ratesSummary(r) {
 }
 
 /*
+ * The same reading, short enough for a menu row's value column: the type,
+ * then full stick deg/s as roll/pitch/yaw, the way a pilot writes a rate
+ * profile down. ratesSummary's sentence ran past the column on Quad, on
+ * Settings and on pause and ended "Actual, 670 roll and pitc...". The
+ * throttle cap, when there is one, rides at the end. The sentence stays for
+ * the bug report, the feel report and the preset list, which have the room.
+ */
+export function ratesShort(r) {
+  const p = normaliseRates(r);
+  const nums = RATE_AXES.map((axis) => fullStickDeg(p, axis)).join('/');
+  const cap = p.throttleCap < 100 ? `, cap ${p.throttleCap}%` : '';
+  return `${RATE_TYPE_LABEL[p.type]} ${nums}${cap}`;
+}
+
+/*
  * The throttle curve in full, for a bug report rather than for the menu.
  *
  * ratesSummary above says nothing about the throttle when the cap is 100 and

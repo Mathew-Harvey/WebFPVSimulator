@@ -39,8 +39,9 @@
  * three second window, a multiplier to twelve bought one scoring thing at a
  * time, banked when the window runs out and lost on a crash. It never
  * touches the workbook: a gap or a skim adds to the combo's points and buys
- * multiplier, and trickTotal, the streak, the penalties and the obstacle
- * bonus are the tricks' alone. A held skim or a held tail holds the window
+ * multiplier (a low pass adds its points and buys none, see addGeometry),
+ * and trickTotal, the streak, the penalties and the obstacle bonus are the
+ * tricks' alone. A held skim or a held tail holds the window
  * open while it is held, the way a manual does. Geometry repeats pay less
  * by the workbook's own REPEAT_TRICK table, a named gap per run and a close
  * call or a chase event per combo: see gap() and repeatInCombo().
@@ -599,6 +600,19 @@ export class FreestyleScore {
    * worth anything it buys a point of multiplier and holds the window open
    * for another COMBO_WINDOW_MS from when it went in. The first thing a run
    * scores starts the run's clock, whatever kind it is.
+   *
+   * A LOW PASS PAYS AND BUYS NOTHING (the owner, 2026-09-26, POLISH-PLAN.md
+   * item 15). Its points go into the combo like anything else's, and are
+   * multiplied by what the rest of the combo bought and lost with it on a
+   * crash, but it is not a point of multiplier and it never moves the
+   * window: it goes in the way a trick worth nothing does in land(). One
+   * that opens a combo opens it for COMBO_WINDOW_MS, as that trick would,
+   * and a chain of low passes alone banks that long after its first one
+   * however many follow. Measured before this: one straight line through
+   * Hibari Yard's container tunnel at 10 m/s with no trick in it banked
+   * 15,273 at x9, and three of the nine were low passes worth 22, 20 and
+   * 24, so the cheapest multiplier on the map was flying near the ground.
+   * A skate game's multiplier has to be earned.
    */
   addGeometry(e) {
     const at = e.atMs;
@@ -619,7 +633,7 @@ export class FreestyleScore {
     this.combo.names.push(e.name);
     this.combo.kinds.push(e.kind);
     this.combo.points += e.points;
-    if (e.points > 0) {
+    if (e.points > 0 && e.kind !== 'lowpass') {
       this.combo.scoring += 1;
       const until = at + this.comboWindowMs;
       if (until > this.combo.untilMs) {
@@ -817,12 +831,21 @@ export class FreestyleScore {
   /*
    * The open chain's multiplier: how many tricks in it were worth
    * something, capped. Not how many are in it. See land().
+   *
+   * One and not nought for a chain of low passes alone, which holds points
+   * and bought no multiplier (see addGeometry): a low pass pays its points,
+   * it just does not multiply them. Before low passes stopped buying, a
+   * chain holding points had always bought at least one, so every other
+   * chain's multiplier is what it was.
    */
   comboMultiplier() {
     if (!this.combo) {
       return 0;
     }
     const n = this.combo.scoring;
+    if (n === 0 && this.combo.points > 0) {
+      return 1;
+    }
     return n > this.multMax ? this.multMax : n;
   }
 

@@ -3125,6 +3125,13 @@ export const THRASH_TRAVEL = 0.60;
  * roof edge is set down on the roof a metre away, not on the street seven
  * metres below. The spot is written to out.x, out.y (the parked centre),
  * out.z and out.surface.
+ *
+ * `keepOut`, when given, is the map's traffic (src/maps/built/traffic.js
+ * roadKeepOut): a spot in a car's path is not a candidate, because a landed
+ * craft is not stepped and the car would drive through it, and the verge
+ * square off each road from the crash is offered beside the rings, so a
+ * crash on a road is set down on the nearest verge (the owner, 2026-09-26).
+ * Null on every map without cars, which is set down exactly as before.
  */
 /*
  * The rings start a quarter metre out. With only 1, 2 and 3.5 m, a craft
@@ -3182,10 +3189,13 @@ export function restSpotAt(colliders, surfaceAt, restHeight, px, pz, fromY, out)
 
 const restProbe = { x: 0, y: 0, z: 0, surface: 0 };
 
-export function findRestSpot(colliders, surfaceAt, restHeight, x, y, z, from, out) {
+export function findRestSpot(colliders, surfaceAt, restHeight, x, y, z, from, out, keepOut = null) {
   let best = Infinity;
   const consider = (px, pz) => {
     if (!restSpotAt(colliders, surfaceAt, restHeight, px, pz, y, restProbe)) {
+      return;
+    }
+    if (keepOut && keepOut.blocks(restProbe.x, restProbe.z, restProbe.surface, CRAFT_WORLD_R)) {
       return;
     }
     if (from && colliders
@@ -3213,6 +3223,9 @@ export function findRestSpot(colliders, surfaceAt, restHeight, x, y, z, from, ou
     for (let di = 0; di < RECOVER_DIR.length; di += 1) {
       consider(x + RECOVER_DIR[di][0] * r, z + RECOVER_DIR[di][1] * r);
     }
+  }
+  if (keepOut) {
+    keepOut.verges(x, z, CRAFT_WORLD_R, consider);
   }
   return best < Infinity;
 }

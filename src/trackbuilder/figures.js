@@ -250,13 +250,19 @@ export function upgradeStackedFigures(doc) {
  * already are, or null when they are a hand mix. Split-S is tested before
  * spiral down because on a double stack they are the same two holes and
  * Split-S is the name a pilot uses for that dive.
+ *
+ * Only the figures this element offers are tried. On one opening, or on a
+ * flag or cone with none, figurePlan's Split-S falls through to a single
+ * pass, so trying it first named every plain gate a Split-S and the race
+ * OSD read "Split-S, level 1" at every gate of every lap.
  */
 export function matchingFigureOf(el, seqs) {
   if (!seqs.length) {
     return null;
   }
   const approach = seqs[0].entry === -1 ? -1 : 1;
-  const order = ['splitS', 'spiralUp', 'spiralDown', 'single'];
+  const offered = new Set(figuresFor(el).map((f) => f.id));
+  const order = ['splitS', 'spiralUp', 'spiralDown', 'single'].filter((id) => offered.has(id));
   for (const id of order) {
     if (plansMatch(seqs, figurePlan(el, id, approach))) {
       return id;
@@ -297,12 +303,18 @@ export function consecutiveEntries(doc, elementId) {
   return first ? runContaining(doc, first) : [];
 }
 
+/* The words under the lap clock for this pass. A gate, flag or cone with
+ * one opening or none has nothing to say beyond GATE n OF N: there is no
+ * level to pick and no figure to fly. */
 export function figureCueOf(el, seq, seqs) {
+  const n = aperturesOf(el).length;
+  if (n < 2) {
+    return '';
+  }
   const fig = matchingFigureOf(el, seqs);
   const level = levelName(el, seq.apertureIndex);
   if (!fig || fig === 'single') {
-    const n = aperturesOf(el).length;
-    return n > 1 ? level : '';
+    return level;
   }
   return `${FIGURES[fig].label}, ${level}`;
 }

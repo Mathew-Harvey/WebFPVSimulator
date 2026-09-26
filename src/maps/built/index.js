@@ -72,6 +72,7 @@
 import * as THREE from 'three';
 import { PAL } from '../city/vendored/core/palette.js';
 import { Pipeline } from '../city/vendored/core/post.js';
+import { mangaPipeline } from '../../render/manga.js';
 import { buildSky } from '../city/vendored/core/sky.js';
 import { setOutlineResolution } from '../city/vendored/core/outline.js';
 import { cel, flat } from '../city/vendored/core/toon.js';
@@ -97,7 +98,7 @@ import { placeDocument, groundUnder, topUnder, PLATFORM_REACH } from './place.js
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost } from './looks.js';
 import { chooseStfSpot } from './egg.js';
-import { trafficOf, uploadTraffic } from './traffic.js';
+import { trafficOf, uploadTraffic, roadKeepOut } from './traffic.js';
 import { buildRoadMesh, roadCover } from './roadmesh.js';
 import { buildCars } from './cars.js';
 
@@ -304,6 +305,9 @@ export class BuiltPipeline extends Pipeline {
       this.ink.mat.fragmentShader = frag.replace(INK_LINEAR, INK_INVERSE);
       this.ink.mat.needsUpdate = true;
     }
+    /* Stage F's manga layer, folded into the grade and the fxaa pass the
+     * same way, on this pipeline's own materials: see src/render/manga.js. */
+    this.manga = mangaPipeline(this);
   }
 
   setSize(w, h) {
@@ -2236,8 +2240,12 @@ export async function buildMap(shell, onProgress, options) {
      *                       clock, from readVehicles at that step
      *   clearSmoke()        a new run
      *   carGap(x, y, z, reach)   the nearest drawn car, for the near plane
+     *   restKeepOut         the roads a car drives, where a crash is not
+     *                       set down (./traffic.js roadKeepOut, read by
+     *                       src/game/collide.js findRestSpot)
      */
     traffic: carSet ? traffic : null,
+    restKeepOut: carSet ? roadKeepOut(traffic) : null,
     uploadTraffic: (sim) => (carSet ? uploadTraffic(sim, traffic) : { roads: 0, vehicles: 0, problems: [] }),
     chaseCars: () => (carSet ? carSet.chaseCars() : []),
     poseCars(prev, curr, alpha, now) {
@@ -2317,6 +2325,8 @@ export async function buildMap(shell, onProgress, options) {
       pipelineScale: pipeline.scale,
       pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
       inkPlanar: pipeline.inkPlanar,
+      /* Whether Stage F's edit found its lines: see src/render/manga.js. */
+      manga: { lines: pipeline.manga.ok, tone: pipeline.manga.tone },
       buildMs,
     }),
     dispose() {

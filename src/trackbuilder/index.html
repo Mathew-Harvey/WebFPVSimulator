@@ -347,6 +347,9 @@
       .tb-zone-edit {
         flex: 1 1 auto;
         justify-content: center;
+        /* Safe: if it ever overflows, it overflows to the right, where the
+           scroller can reach, instead of off both ends. */
+        justify-content: safe center;
         min-width: 0;
         overflow-x: auto;
         overflow-y: hidden;
@@ -363,6 +366,16 @@
       }
       .tb-zone-edit::-webkit-scrollbar { display: none; }
       .tb-zone-out { flex: 0 0 auto; margin-left: auto; }
+      /* Too full for one row at this width: the canvas zone takes the second
+         row, as it does under 1330 px below. Set by fitTopBar in app.js. */
+      #tb-topbar.tb-bar-wrap { flex-wrap: wrap; gap: var(--s3) var(--s4); }
+      #tb-topbar.tb-bar-wrap .tb-zone-edit { flex: 1 0 100%; order: 3; justify-content: flex-start; }
+      /* And the same tightening, so the file and outgoing zones still share
+         the first row on a 1366 laptop rather than taking a row each. */
+      #tb-topbar.tb-bar-wrap .tb-name { flex-basis: 120px; }
+      #tb-topbar.tb-bar-wrap .tb-class-btn { padding: 7px 10px 8px; letter-spacing: 0.06em; }
+      #tb-topbar.tb-bar-wrap .tb-zone { gap: var(--s2); }
+      #tb-topbar.tb-bar-wrap .tb-title { letter-spacing: 0.1em; }
 
       .tb-more { position: relative; }
       .tb-more-menu {

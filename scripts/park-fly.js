@@ -52,9 +52,9 @@
  * loop is a circle whatever the nose is doing, so WHERE THE NOSE POINTS
  * decides which body axis goes round. Nose across the rail and the aircraft
  * pitches through the loop, which is a Powerloop. Nose along the rail and
- * the same circle is flown on roll, which is a Maverick Loop. The pattern
- * table asks for exactly that distinction and this rig produces it by
- * turning the aircraft, the way a pilot does.
+ * the same circle is flown on roll, which is the Maverick family. The
+ * pattern table asks for exactly that distinction and this rig produces it
+ * by turning the aircraft, the way a pilot does.
  */
 
 import { openPage } from '../tests/lib/page.js';
@@ -360,10 +360,13 @@ const MANOEUVRES = [
   },
   {
     /* Nose along the rail, so the loop is flown on ROLL. The catalogue
-     * calls a lap carrying a whole roll a Mavvy Roll, and it is right to:
-     * a Maverick Loop is the same lap without one. */
+     * calls a lap carrying a whole roll on top a Mavvy Roll, and it is
+     * right to. The same lap without one was a Maverick Loop until the
+     * owner had the recogniser stop naming that trick on 2026-09-26; what
+     * it names now is the lap's own whole roll, a Roll (trick-sweep.js,
+     * 'roll loop'). */
     name: 'Roll loop (nose along the rail)',
-    want: ['Mavvy Roll', 'Maverick Loop'],
+    want: ['Mavvy Roll', 'Roll'],
     body: lapPlan(PARK.arch, { radius: 3.4, secs: 2.3, turns: -1, noseAlong: true }),
   },
   {
@@ -1095,9 +1098,10 @@ async function main() {
          * as a Flip, which is a different trick with a different price.
          * `want` may be a LIST where the catalogue genuinely offers more
          * than one reading of the same shape, which is not the same as
-         * being vague: a lap flown on roll is a Mavvy Roll if the roll came
-         * all the way round and a Maverick Loop if it did not, and how far
-         * round it came is a real property of the flight, not a coin toss.
+         * being vague: a lap flown on roll is a Mavvy Roll if a whole roll
+         * came round on top of the lap's own and a Roll if it did not, and
+         * how far round it came is a real property of the flight, not a
+         * coin toss.
          */
         const wants = Array.isArray(m.want) ? m.want : [m.want];
         const hit = got.filter((g) => wants.some((w) => g.split(' + ').includes(w))).length;

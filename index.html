@@ -145,6 +145,36 @@
         --bars: calc(var(--bar-top) + var(--bar-bot));
         --panel: #1a241c;
         --ink: rgba(12, 18, 14, 0.86);
+        /*
+         * THE OSD IS INKED, like the lettering. Its small print was slate at
+         * 11 to 13 px with a soft blurred shadow, and over Hibari Yard's
+         * concrete, the town's sky and the overcast palette PACK, the height
+         * line, THROTTLE, SCORE and AIR simply went. A soft shadow only
+         * works over a dark world. So every readout gets a hard edge in the
+         * town's ink, #0b1116, the colour src/ui/lettering.js strokes its
+         * callouts with: eight one pixel offsets for the small print, eight
+         * two pixel ones for the big numerals, and a short drop under each
+         * so it does not read as stencilled. Offset shadows rather than
+         * paint-order and a stroke, because they draw the same in every
+         * engine this ships to, which is also why the lettering uses them.
+         *
+         * And the labels one step lighter than --slate. Slate is the menus'
+         * receding grey and stays theirs; over a lit world the same grey
+         * with an edge still read as a gap, so the OSD's labels have their
+         * own.
+         */
+        --osd-ink: #0b1116;
+        --osd-slate: #c6d4e1;
+        --osd-edge:
+          -1px -1px 0 var(--osd-ink), 0 -1px 0 var(--osd-ink), 1px -1px 0 var(--osd-ink),
+          -1px 0 0 var(--osd-ink), 1px 0 0 var(--osd-ink),
+          -1px 1px 0 var(--osd-ink), 0 1px 0 var(--osd-ink), 1px 1px 0 var(--osd-ink),
+          0 2px 5px rgba(0, 0, 0, 0.55);
+        --osd-edge-2:
+          -2px -2px 0 var(--osd-ink), 0 -2px 0 var(--osd-ink), 2px -2px 0 var(--osd-ink),
+          -2px 0 0 var(--osd-ink), 2px 0 0 var(--osd-ink),
+          -2px 2px 0 var(--osd-ink), 0 2px 0 var(--osd-ink), 2px 2px 0 var(--osd-ink),
+          0 3px 8px rgba(0, 0, 0, 0.55);
         --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
       /* overscroll-behavior is for phones: a drag that starts on the world
@@ -166,18 +196,22 @@
       .osd.dim { opacity: 0.4; }
       .osd-top {
         position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
-        text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,0.85);
+        text-align: center; text-shadow: var(--osd-edge);
       }
-      .osd-timer { font-size: 46px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; }
+      .osd-timer {
+        font-size: 46px; font-weight: 600; letter-spacing: 0.02em; line-height: 1;
+        text-shadow: var(--osd-edge-2);
+      }
       .osd-timer.waiting { color: #b9c9d8; }
       .osd-label {
         font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
-        color: var(--slate); margin-bottom: 2px;
+        color: var(--osd-slate); margin-bottom: 2px;
       }
-      .osd-value { font-size: 20px; font-weight: 600; }
-      .osd-sub { font-size: 13px; color: var(--slate); margin-top: 1px; margin-bottom: 8px; }
+      .osd-value { font-size: 20px; font-weight: 600; text-shadow: var(--osd-edge-2); }
+      .osd-value.is-off { display: none; }
+      .osd-sub { font-size: 13px; color: var(--osd-slate); margin-top: 1px; margin-bottom: 8px; }
       .osd-gate { font-size: 15px; color: var(--amber); margin-top: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
-      .osd-best { font-size: 14px; color: var(--slate); margin-top: 3px; }
+      .osd-best { font-size: 14px; color: var(--osd-slate); margin-top: 3px; }
       /* The gap to the ghost, lit for a moment after each gate. Mint when
          the pilot is ahead of it, amber when it is ahead, the same reading
          the rest of this overlay teaches: mint is the good news. */
@@ -187,7 +221,7 @@
       .osd-ghost.behind { color: var(--amber); }
       .osd-corner {
         position: absolute; bottom: 20px; width: 190px;
-        text-shadow: 0 2px 6px rgba(0,0,0,0.85); font-size: 15px;
+        text-shadow: var(--osd-edge); font-size: 15px;
       }
       .osd-left { left: 22px; }
       .osd-right { right: 22px; text-align: right; }
@@ -198,7 +232,7 @@
         font-size: clamp(28px, 4.2vw, 46px); font-weight: 700;
         letter-spacing: 0.18em; text-transform: uppercase;
         color: var(--amber);
-        text-shadow: 0 3px 14px rgba(0, 0, 0, 0.92);
+        text-shadow: var(--osd-edge-2), 0 3px 14px rgba(0, 0, 0, 0.92);
         pointer-events: none;
       }
       .osd-launch.is-off { display: none; }
@@ -225,11 +259,11 @@
          top of the window there and from under the bar everywhere else. */
       .score-total {
         position: absolute; left: 22px; top: calc(var(--bar-top) + 58px);
-        text-shadow: 0 2px 6px rgba(0,0,0,0.85);
+        text-shadow: var(--osd-edge);
       }
       .score-label {
         font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
-        color: var(--slate); margin-bottom: 1px;
+        color: var(--osd-slate); margin-bottom: 1px;
       }
       /* The scorer admits what it is, beside the word it qualifies. Amber
          is the instrument colour this overlay and the menus both use for a
@@ -519,26 +553,11 @@
         100% { opacity: 0; transform: scale(0.94); }
       }
 
-      /* SPEED LINES down both edges, and ONLY while a chain is worth
-         something. Two flat strips of hard vertical stripes, so the frame
-         gets busier exactly as the pilot has more to lose. Nothing here
-         reads a value: it is a class the combo tier already computes. */
-      .score-lines {
-        position: absolute; inset: 0; pointer-events: none; opacity: 0;
-        transition: opacity 220ms linear;
-        background:
-          repeating-linear-gradient(90deg, var(--cream) 0 2px, transparent 2px 13px) left  / 11vw 100% no-repeat,
-          repeating-linear-gradient(90deg, var(--cream) 0 2px, transparent 2px 13px) right / 11vw 100% no-repeat;
-        -webkit-mask-image: linear-gradient(90deg, #000 0, transparent 12vw, transparent calc(100% - 12vw), #000 100%);
-        mask-image: linear-gradient(90deg, #000 0, transparent 12vw, transparent calc(100% - 12vw), #000 100%);
-      }
-      .score-hud.tier-3 .score-lines { opacity: 0.16; }
-      .score-hud.tier-4 .score-lines { opacity: 0.24; }
-      .score-hud.tier-5 .score-lines { opacity: 0.34; animation: score-lines 900ms steps(2) infinite; }
-      @keyframes score-lines {
-        from { transform: translateX(0); }
-        to   { transform: translateX(6px); }
-      }
+      /* No speed lines here. They were two strips of cream stripes down the
+         edges, switched on by the combo tier and not by speed, and at a
+         hover after a combo they looked like a rendering fault. They are
+         drawn in the frame now, by speed, converging on where the craft is
+         going: src/render/manga.js (Stage F). */
 
       @media (prefers-reduced-motion: reduce) {
         .score-name, .score-verdict.is-on { animation-duration: 0.01s; }
@@ -551,7 +570,6 @@
         .score-combo.tier-3 .score-combo-line,
         .score-combo.tier-4 .score-combo-line,
         .score-combo.tier-5 .score-combo-line { animation: none; }
-        .score-hud.tier-5 .score-lines { animation: none; }
       }
 
       /* ------------------------------------------------------------------
@@ -592,11 +610,11 @@
           3px 4px 0 #0b1116;
       }
       .score-hud.is-manga .score-value { display: block; }
-      /* CLEAN FPV: the plain HUD text. No ray fans, no rings, no speed lines,
-         no throb, and the names fade in rather than slam. */
+      /* CLEAN FPV: the plain HUD text. No ray fans, no rings, no throb, and
+         the names fade in rather than slam. The speed lines are the frame's
+         and answer to ui.manga in src/main.js. */
       .score-hud.is-clean .score-burst,
-      .score-hud.is-clean .score-ring,
-      .score-hud.is-clean .score-lines { display: none; }
+      .score-hud.is-clean .score-ring { display: none; }
       .score-hud.is-clean .score-name { animation: score-name-in 2.2s ease-out forwards; }
       .score-hud.is-clean .score-combo-line,
       .score-hud.is-clean .score-tier { animation: none; }
@@ -1035,8 +1053,8 @@
       .osd-gimbal-cap {
         margin-top: 6px;
         font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
-        color: var(--slate); text-align: center;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+        color: var(--osd-slate); text-align: center;
+        text-shadow: var(--osd-edge);
       }
 
       /*
@@ -1060,13 +1078,30 @@
         position: relative;
         display: flex; flex-direction: column; align-items: center;
         gap: 2px; padding-bottom: 2px;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+        text-shadow: var(--osd-edge);
       }
       .osd-air.is-off { display: none; }
       .osd-air-row { display: flex; align-items: center; gap: 8px; }
+      /*
+       * GONE IN THE AIR, BACK ON THE GROUND. The owner's decision of
+       * 2026-09-26: "once in flight fade it out, show it when landed or
+       * pause screen". setAirSlider puts is-aloft on the block while the
+       * quad flies and takes it off when it is landed, perched, set down or
+       * paused, so the fade is this transition and nothing runs per frame.
+       * Visibility follows the opacity out, so a faded track takes no
+       * pointer and no thumb; the card above it is not faded, because it
+       * is up only while the slider is.
+       */
+      .osd-air-row, .osd-air-cap {
+        transition: opacity 0.25s ease, visibility 0s linear 0s;
+      }
+      .osd-air.is-aloft .osd-air-row, .osd-air.is-aloft .osd-air-cap {
+        opacity: 0; visibility: hidden;
+        transition: opacity 0.8s ease 0.6s, visibility 0s linear 1.4s;
+      }
       .osd-air-end {
         font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
-        color: var(--slate); white-space: nowrap;
+        color: var(--osd-slate); white-space: nowrap;
       }
       /*
          Reuses .row-range for the track and thumb geometry, so the menu's
@@ -1103,7 +1138,7 @@
         font-size: 11px; letter-spacing: 0.08em;
         color: var(--amber); white-space: nowrap;
       }
-      .osd-air-cap.is-stock { color: var(--slate); }
+      .osd-air-cap.is-stock { color: var(--osd-slate); }
       /*
        * THE ONE TIME IT EXPLAINS ITSELF.
        *
@@ -1127,6 +1162,8 @@
         background: rgba(16, 22, 17, 0.94);
         box-shadow: inset 0 0 0 1px rgba(255, 212, 92, 0.42), 0 6px 20px rgba(0, 0, 0, 0.5);
         text-align: left; pointer-events: none;
+        /* On its own dark card, so not the OSD's edge. */
+        text-shadow: none;
       }
       .osd-air-hint[hidden] { display: none; }
       /* The pointer down at the track. A rotated square rather than a border
@@ -1686,6 +1723,14 @@
         font-size: 13.5px; line-height: 1.6; letter-spacing: 0.01em;
         color: rgba(235, 230, 215, 0.78);
       }
+      /* The chip row under the wordmark: Beta, then Patreon. One line where
+         the sentence and the link took three. */
+      .brand-chips {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
+        margin-top: 14px;
+      }
+      .brand-chips .beta-note, .brand-chips .brand-patreon { margin: 0; }
+      .beta-tag { cursor: help; }
       .beta-tag {
         flex: 0 0 auto;
         padding: 3px 9px; border-radius: 3px;
@@ -2052,6 +2097,17 @@
         border-top: 2px solid rgba(232, 168, 184, 0.55);
       }
       .screen-title .menu { min-width: 0; width: 100%; margin-top: 0; background: rgba(16, 22, 17, 0.55); }
+      /*
+       * THE TITLE'S LIST IS SIZED BY THE COLUMN, NOT BY A VH CAP. It carries
+       * .menu-scroll so the phone caps further down apply to it, and that
+       * brought the generic 58vh cap with it on every desktop, which with ten
+       * rows was the title's 67 px of overflow at 1600 by 900 however much
+       * room the column had. The menu stage above already shrinks and
+       * scrolls when the column runs out, which is the rule that matters, so
+       * a desktop title takes what it has. The narrow and short caps below
+       * still win in their own media.
+       */
+      .screen-title .menu-scroll { max-height: none; }
       .menu-stage .menu { grid-column: 2; margin-top: 0; }
       .menu-scroll {
         max-height: min(calc(58vh - var(--bars)), 34em);
@@ -2123,6 +2179,9 @@
        */
       .screen-title .wiki-teaser {
         transition: opacity 140ms ease;
+        /* Its own line. The keep note used to sit between it and the best
+           lap chip; without it the two ran on one line. */
+        display: flex; width: fit-content;
       }
       .screen-title.has-help .wiki-teaser {
         opacity: 0;
@@ -2800,6 +2859,17 @@
       .row-control {
         display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0;
       }
+      /*
+       * A VALUE INSIDE A CONTROL IS NOT CAPPED AT HALF ITS PARENT. The 52
+       * percent above is of the row, which is right for a bare value. A
+       * stepper wraps its value in .row-control, which sizes to its
+       * content, so the same 52 percent became half of "30 degrees" plus
+       * its arrows, and Camera angle read "30 d..." and Ghost "Your best
+       * ..." with a row of empty space beside them. The control shrinks
+       * with min-width 0 when the row is genuinely tight, and the ellipsis
+       * is still there for that.
+       */
+      .row-control > .row-value { max-width: none; }
       .step-col {
         display: inline-flex; flex-direction: column; gap: 2px;
       }
@@ -3387,7 +3457,7 @@
         /* The storage note above goes at this width. The beta notice does
            not: a phone hits the same bugs a desktop does, and it is one
            line where that note was four. */
-        .screen-title .beta-note { gap: 8px; margin-top: 10px; font-size: 12.5px; }
+        .screen-title .brand-chips { margin-top: 10px; }
         .screen-title .brand-best {
           margin-top: 8px;
           padding: 5px 10px;
@@ -3498,11 +3568,9 @@
         .screen-title .title-foot .hint {
           display: none;
         }
-        /* Under 520 px of height the menu barely fits, so the sentence
-           goes and the tag stays: the word is the part that has to
-           survive, and it costs one line. */
-        .screen-title .beta-note { margin-top: 8px; }
-        .screen-title .beta-note span:not(.beta-tag) { display: none; }
+        /* Under 520 px of height the menu barely fits. The tag is all
+           there is of the notice now, so only the row closes up. */
+        .screen-title .brand-chips { margin-top: 8px; }
         .screen-title .wordmark {
           font-size: clamp(28px, 8vh, 44px);
         }
@@ -3661,6 +3729,18 @@
             rgba(9, 14, 10, 0.16) 100%
           ),
           var(--poster) center / cover no-repeat;
+        justify-content: flex-end;
+      }
+      /* While the loaded world is filmed onto its card (captureCurrentCard
+         in src/ui/ui.js) the picture under the wait is the world itself,
+         so the scrim goes over the film and the poster stays off it. */
+      .map-card .map-reel-wait.map-reel-wait-film {
+        background: linear-gradient(
+          to top,
+          rgba(9, 14, 10, 0.90) 0%,
+          rgba(9, 14, 10, 0.62) 42%,
+          rgba(9, 14, 10, 0.16) 100%
+        );
         justify-content: flex-end;
       }
       .map-reel-wait-stage {
@@ -4249,7 +4329,10 @@
         justify-content: stretch;
         width: 100%;
         height: 100%;
-        padding: 4.5vh 4vw 3vh;
+        /* Clear of the two bars: at 4.5vh the kicker sat on RUN COMPLETE
+           at every height under 1070 px, and at 3vh the menu's last row ran
+           under the command bar. */
+        padding: max(4.5vh, calc(var(--bar-top) + 12px)) 4vw max(3vh, calc(var(--bar-bot) + 6px));
         background:
           linear-gradient(90deg, rgba(12, 18, 14, 0.84) 0%, rgba(12, 18, 14, 0.50) 28%, rgba(12, 18, 14, 0.10) 54%, rgba(12, 18, 14, 0.12) 100%),
           linear-gradient(180deg, rgba(12, 18, 14, 0.28) 0%, transparent 22%, transparent 64%, rgba(12, 18, 14, 0.40) 100%);
@@ -4265,7 +4348,26 @@
         z-index: 1;
         align-self: flex-start;
       }
-      .results-top { min-height: 0; }
+      /*
+       * THE COPY SCROLLS ABOVE THE MENU, NEVER UNDER IT. The column is a
+       * flex column that puts the menu at its foot, and the top half was
+       * allowed to shrink below its content and spill: at 1280 by 720 Fly
+       * again was drawn over the third trick row and the best line, and at
+       * 1600 by 900 over the note. It is the one scroller in the column
+       * now, so the rows list inside it is not a second one.
+       */
+      .results-top {
+        flex: 0 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(232, 168, 184, 0.45) rgba(16, 22, 17, 0.55);
+      }
+      .screen-results .results { max-height: none; overflow: visible; }
+      .result-row.result-more { border-bottom: none; }
+      .result-row.result-more .result-label,
+      .result-row.result-more .result-time { color: #93a7ba; font-weight: 400; }
       .results-kicker {
         display: flex; align-items: center; gap: 12px;
         font-size: clamp(13px, 1.4vw, 16px); color: #d8d2c0;
@@ -4404,6 +4506,32 @@
         text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
       }
       .screen-results .menu-help:empty { padding: 0; }
+      /*
+       * THE COPY IS SET CLOSER, so the top three and the best line sit above
+       * the fold of the column rather than below it: the head, the meta, the
+       * rows and the note each give back a few pixels, 40 in all.
+       */
+      .screen-results .results-head { margin-top: 8px; }
+      .screen-results .results-hero-meta { margin-top: 6px; }
+      .screen-results .results { margin-top: 10px; }
+      .screen-results .result-row { padding: 6px 0 7px; }
+      .screen-results .results-note { margin-top: 10px; }
+      /*
+       * AND ON A SHORT WINDOW the menu scrolls at three and a half rows and
+       * the number steps down. The menu carried six rows at 44 px, 290 px
+       * of a 720 px window, and Fly again is also the bar's button at the
+       * foot. Nothing here applies at 900 px and up, which is where
+       * lint:shell measures this screen's menu, nor on a phone, whose
+       * layout below has its own sizes.
+       */
+      @media (max-height: 800px) and (min-width: 861px) {
+        .screen-results .menu {
+          max-height: 160px; overflow-y: auto; overscroll-behavior: contain;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(232, 168, 184, 0.45) rgba(16, 22, 17, 0.55);
+        }
+        .screen-results .results-hero-time { font-size: clamp(44px, min(9vw, 11vh), 112px); }
+      }
       @keyframes results-rise {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: none; }
@@ -4856,7 +4984,9 @@
          the only thing here that is not what a div would have given. */
       .music-title {
         appearance: none; border: 0; background: none; border-radius: 3px;
-        max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        /* 14em: the longest track name, "Hypnotic Acid Loop", is 18
+           characters and was cut at 11. */
+        max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         padding: 4px 6px; cursor: pointer;
         font: 11px/1.2 var(--ui-font); letter-spacing: 0.04em; color: var(--cream);
       }
@@ -4868,6 +4998,14 @@
       .music-dock.is-muted .music-title { text-decoration: line-through; }
       @media (max-width: 520px) {
         .music-title { max-width: 6.5em; font-size: 10px; }
+        /* Over a menu the chip hangs under the bug chip with the width of
+           the screen to its left, so it takes the name whole. In flight it
+           stays short, beside the clock. */
+        .music-dock:not(.on-flight) .music-title { max-width: 12em; }
+        /* On a phone held upright a row's label is a word or two, so its
+           value may have more of the row than half: "Actual 670/670/670"
+           was cut at 52 percent of 340 px. */
+        .row-value { max-width: 62%; }
       }
 
       /* The target mark. A bracket on the next gate while it is in frame,
@@ -4928,6 +5066,7 @@
         position: absolute; left: 0; top: 0;
         font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
         color: currentColor; white-space: nowrap;
+        text-shadow: var(--osd-edge);
       }
     </style>
   </head>

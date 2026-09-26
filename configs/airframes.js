@@ -87,6 +87,8 @@ export const AIRFRAMES = [
      * size of track. */
     trackClass: 'full',
     cells: 6,
+    /* The OSD prints ground speed in km/h. See the whoop, which does not. */
+    osdSpeed: true,
     /* Pack open circuit volts a cell, in the order the launch card offers
      * them: charged, mid, empty. A 6S LiPo, so 4.20 down to 3.50. */
     packVoltages: [4.2, 3.8, 3.5],
@@ -263,6 +265,14 @@ export const AIRFRAMES = [
      * plant was a seam in the fiction; the pilot asked for the fiction.
      */
     cells: 1,
+    /*
+     * NO SPEED ON THE OSD. The owner, 2026-09-26: "remove speed recording on
+     * the whoop". The readout was the plant's ground speed, and the plant is
+     * the five inch's in a room built MICRO_SCALE times life size, so it
+     * printed a five inch's km/h over the picture of a whoop. Display only,
+     * like cells: nothing that flies or scores reads it.
+     */
+    osdSpeed: false,
     /*
      * A 1S LiHV charges to 4.35 and a whoop is flown until it is at about
      * 3.40 under load, which is why the empty figure here is higher than the

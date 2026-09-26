@@ -86,6 +86,7 @@ import {
   rateField,
   ratesAreDefault,
   ratesFromLegacy,
+  ratesShort,
   ratesSummary,
   throttleSummary,
 } from '../../configs/rates.js';
@@ -148,7 +149,7 @@ import {
   recordCanvasStream,
   withCaptureLock,
   whenVisible,
-  CLIP_MS_MAX,
+  clipDurationMs,
   CLIP_W,
   CLIP_H,
 } from '../share/orbitcache.js';
@@ -174,6 +175,7 @@ import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
 } from './mangapage.js';
 import { formatScore } from '../game/score.js';
+import { PRACTICE_LAPS } from '../game/race.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { PATREON_NOTE, openSupport, patreonAnchor } from '../share/patreon.js';
@@ -230,6 +232,18 @@ const SCREEN_ACTIONS = new Set([
  * See noteInteraction.
  */
 const REEL_QUIET_MS = 900;
+
+/*
+ * The film of the loaded world (captureCurrentCard): how many of its frames
+ * reach the card before the recorder starts, and how long to wait for them
+ * before sending the card to the orbit frame instead. Three is what the
+ * orbit frame's share card draws before the frame it keeps (CARD_WARMUP in
+ * src/share/orbit.js). The film draws ten a second, so on a machine with a
+ * GPU three take a third of a second; the ten seconds are for a software
+ * rasteriser, where one frame of the town can take most of a second.
+ */
+const FILM_WARMUP = 3;
+const FILM_START_MS = 10000;
 
 /*
  * THE COURSE CARDS FLY THEIR OWN LAP.
@@ -418,7 +432,14 @@ export {
   CAMERA_ANGLE_DEFAULT,
 };
 export const PACK_VOLTAGES = [4.2, 3.8, 3.5];
-export const LAP_COUNTS = [1, 3, 5];
+/* PRACTICE_LAPS, last, is the run with no end: see src/game/race.js. */
+export const LAP_COUNTS = [1, 3, 5, PRACTICE_LAPS];
+
+/* A lap count as the launch card writes it. */
+function lapsLabel(n) {
+  return n === PRACTICE_LAPS ? 'Practice' : `${n}`;
+}
+
 /* Render scale, percent of the preset's resolution, and the frame cap in
  * Hz, 0 meaning uncapped. Both from a board report about lower end
  * machines: fewer pixels is the one lever that always helps a starved
@@ -646,6 +667,14 @@ function counterBestSentence(s) {
   }
   return `Your best on this map in this browser: ${formatScore(best)}.`;
 }
+
+/* Where a built track lives, said in the Race room beside the row that
+ * builds one. It was the title's, where it was three lines on every visit
+ * and wrong with a freestyle map seated. The builder's strip says the same. */
+const KEEP_NOTE = 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.';
+
+/* How many kinds of trick a freestyle result lists before "N more". */
+const RESULT_TRICK_ROWS = 3;
 
 /*
  * The counter's bests as plain results rows, [label, value], for the
@@ -934,12 +963,21 @@ const DEFAULTS = {
    * CLEAN FPV: the manga layer off (FREESTYLE-MAPS-PLAN.md sections 3.2 and
    * 3.3, decision 4). Off by default, because the layer is for freestyle
    * maps and on there unless the pilot turns it off; a race track is clean
-   * whatever this says. Today it takes the lettered callouts, their sound
-   * effects and the manga results page back to plain HUD text; Stage F's
-   * speed lines, screentone and impact frame answer to it when they land.
-   * See syncManga.
+   * whatever this says. It takes the lettered callouts, their sound effects
+   * and the manga results page back to plain HUD text, and the speed lines,
+   * the impact frame and the screentone out of the picture (src/main.js,
+   * mangaFrame, reads ui.manga). See syncManga.
    */
   cleanFpv: false,
+  /*
+   * THE IMPACT FRAME'S OWN SWITCH (the plan, section 3.2 item 4): a crash
+   * holds the moment for a beat, re-inked, then lets go. On by default on a
+   * freestyle map, and a row of its own as well as Clean FPV, because a
+   * flash is a photosensitivity question and not only a style one. Off
+   * whatever this says when the system asks for reduced motion. See
+   * src/render/manga.js, GENTLE.
+   */
+  impactFrame: true,
   packVoltage: 4.2,
   /*
    * How heavy the quad is, as a percentage of the weight the airframe is
@@ -1016,6 +1054,10 @@ const DEFAULTS = {
  * the version in the key is for, and it is cheaper than being wrong quietly.
  */
 const AIR_HINT_KEY = 'webfpv.airhint.v2';
+/* How long the card stays up in the air, on the run's airtime. Long enough
+ * to read two sentences in a hover, short enough that it is gone before the
+ * pilot is looking at the ground it covers. */
+const AIR_HINT_AIR_MS = 8000;
 
 function airHintSeen() {
   try {
@@ -1907,10 +1949,13 @@ function seatIsRace(s) {
 function recordSentence(s, trackName) {
   const style = s.flightStyle === 'arcade' ? 'Arcade' : 'Expert';
   const link = s.link === 'perfect' ? 'a perfect link' : LINK_PRESETS[s.link].label;
+  /* Practice is not in the list, because it is not a different best: a
+   * practice lap is held against the same record a counted lap is. What it
+   * changes is the board, and the last sentence says so. */
   const bits = [
     `${style} physics`,
     `${s.packVoltage.toFixed(2)} V per cell`,
-    `${s.laps} lap${s.laps === 1 ? '' : 's'}`,
+    ...(s.laps === PRACTICE_LAPS ? [] : [`${s.laps} lap${s.laps === 1 ? '' : 's'}`]),
     `the ${tuneById(s.tune).name} tune`,
   ];
   /* clampWeight rather than s.weight raw, the same guard bugSnapshot uses:
@@ -1927,11 +1972,13 @@ function recordSentence(s, trackName) {
   }
   return `Your best on ${trackName} is filed under exactly this: ${bits.join(', ')}.`
     + ' Change any part of it and you are on a different board.'
-    + (s.flightStyle === 'arcade'
-      ? ' Arcade times stay off the public board, so this run will not count there.'
-      : weight !== WEIGHT_STOCK
-        ? ' Times flown at a weight that is not 100 percent stay off the public board, so this run will not count there.'
-        : ` This run is on ${link}.`);
+    + (s.laps === PRACTICE_LAPS
+      ? ' Practice laps stay off the public board, so this run will not count there.'
+      : s.flightStyle === 'arcade'
+        ? ' Arcade times stay off the public board, so this run will not count there.'
+        : weight !== WEIGHT_STOCK
+          ? ' Times flown at a weight that is not 100 percent stay off the public board, so this run will not count there.'
+          : ` This run is on ${link}.`);
 }
 
 /*
@@ -2347,7 +2394,7 @@ function builderReturnItem(s, sharedMap) {
  *
  * `disabled` is honoured by select(), and renderMenu paints it as row-grey.
  */
-function uploadAction(listing, { fastestMs, timePosted }) {
+function uploadAction(listing, { fastestMs, timePosted, practice = false }) {
   const pending = readPendingTime();
   const shareId = listing && listing.shareId;
   const ms = Number.isFinite(fastestMs)
@@ -2383,7 +2430,12 @@ function uploadAction(listing, { fastestMs, timePosted }) {
       label: 'Upload a time',
       action: 'posttime',
       disabled: true,
-      note: 'Fly a clean lap on this track and the lap appears here.',
+      /* A pilot who has just flown twenty clean laps in practice and comes
+       * here to post one is owed the real reason, not an invitation to fly
+       * the lap they already flew. */
+      note: practice
+        ? 'Practice laps stay off the public board. A run of 1, 3 or 5 laps puts its best lap here when it finishes.'
+        : 'Fly a clean lap on this track and the lap appears here.',
     };
   }
   const best = readPostedBest(shareId);
@@ -2762,7 +2814,7 @@ function ratesChanged(s) {
 function ratesItem(s, midRun) {
   return {
     label: 'Rates',
-    value: ratesSummary(s.rates),
+    value: ratesShort(s.rates),
     action: 'rates',
     /*
      * NO MID RUN WARNING ANY MORE, and its absence is the point.
@@ -3450,6 +3502,12 @@ export class Ui {
     this.menuRows = [];
     this.rowOffset = 0;
     this.reelFreezeWorld = false;
+    /* The Freestyle room's film of the loaded world, read by main.js every
+     * frame; see captureCurrentCard. */
+    this.reelFilm = null;
+    /* Set by main.js: which world is loaded and the clip key it was built
+     * under. See startReels. */
+    this.loadedWorld = null;
     this.gpuInfo = null;
     /* Set by main.js; see setStickProbe. */
     this.stickProbe = null;
@@ -3459,6 +3517,8 @@ export class Ui {
      * localStorage flag is consulted, so a pilot who dismissed it and then
      * paused and resumed does not get it again on the way back into flight. */
     this.airHintDone = false;
+    /* The airtime at which the card first went up, for its eight seconds. */
+    this.airHintAtMs = null;
     this.ptrX = null;
     this.ptrY = null;
     this.build();
@@ -3644,13 +3704,22 @@ export class Ui {
      * directly under the wordmark: a pilot who is about to meet a bug
      * should have been told before the lap, not after it. It is not
      * dismissible, because the thing it warns about has not stopped
-     * being true by the second visit. */
+     * being true by the second visit.
+     *
+     * A CHIP NOW, NOT A SENTENCE (2026-09-26). The word is the part that
+     * has to survive, which the short screen already knew; the sentence
+     * cost the title two lines at every width and is the chip's hover
+     * title and a screen reader's text instead. It shares a row with
+     * Patreon, so both keep their place under the wordmark and the menu
+     * gets the lines back. */
+    const betaLine = 'Expect bugs and rough edges. It is still being built, and it will improve.';
     const beta = el('p', 'beta-note');
-    beta.append(
-      el('span', 'beta-tag', 'Beta'),
-      el('span', null, 'Expect bugs and rough edges. It is still being built, and it will improve.'),
-    );
-    brand.append(beta);
+    const betaTag = el('span', 'beta-tag', 'Beta');
+    betaTag.title = betaLine;
+    beta.append(betaTag, el('span', 'sr-only', ` ${betaLine}`));
+    const chips = el('div', 'brand-chips');
+    chips.append(beta);
+    brand.append(chips);
     /*
      * The support link lives HERE on the title, under the wordmark, because
      * the title hides the top bar and the command bar's right corner is
@@ -3660,12 +3729,18 @@ export class Ui {
     this.patreonSlot = el('div', 'brand-patreon');
     this.patreonLink = patreonAnchor();
     this.patreonSlot.append(this.patreonLink);
-    brand.append(this.patreonSlot);
+    chips.append(this.patreonSlot);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
-    this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.');
-    brand.append(this.keepNote);
-    /* First run only. Replaced by the keep note once a lap has been flown. */
+    /*
+     * NO KEEP NOTE HERE ANY MORE. "Tracks you build stay in this browser"
+     * was three lines on the front page, drawn with a freestyle map seated
+     * too, where it said track, and it cost the title its last menu row:
+     * lint:shell's 67 px. It is true and useful where a track is built or
+     * chosen, so it is the Race room's Build a track note (KEEP_NOTE) and
+     * the builder's own strip, which already said it.
+     */
+    /* First run only. */
     this.firstNote = el('p', 'keep-note first-note', 'A quad has no brakes and no wings. Point it where you want to go and push. Two minutes and you will be through a gate.');
     brand.append(this.firstNote);
     this.wikiTeaser = btn('wiki-teaser', 'Simulating FPV, for nerds');
@@ -6148,11 +6223,14 @@ export class Ui {
           label: loaded ? 'Open in the track builder' : 'Build a track',
           action: 'trackbuilder',
           note: loaded
-            ? 'Opens the track builder on the track above. New in there starts a blank one.'
-            : 'Opens the track builder on an empty field.',
+            ? `Opens the track builder on the track above. New in there starts a blank one. ${KEEP_NOTE}`
+            : `Opens the track builder on an empty field. ${KEEP_NOTE}`,
         },
         publishAction(listing, this.coursePublished),
-        uploadAction(listing, { timePosted: this.timePosted }),
+        uploadAction(listing, {
+          timePosted: this.timePosted,
+          practice: s.laps === PRACTICE_LAPS,
+        }),
         remixAction(listing),
         editOwnAction(listing),
         /*
@@ -6384,7 +6462,7 @@ export class Ui {
            * nearly two thirds, which is the tilt a pilot wrote in about.
            */
           `How far the camera tilts up from the airframe. ${CAMERA_ANGLE_MIN} is flat, looking along the nose. ${CAMERA_ANGLE_DEFAULT} is a typical cruise. 45 to ${CAMERA_ANGLE_MAX} is race. Above about 30, yaw starts to roll the horizon: at ${s.cameraAngle} degrees, ${Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100)} percent of a yaw shows up as roll in the picture. That is what a real tilted camera does. Lower Yaw max rate on the Rates screen to tame it.`,
-          `${s.cameraAngle} degrees`,
+          `${s.cameraAngle}°`,
           (d) => {
             const before = s.cameraAngle;
             s.cameraAngle = clampCameraAngle(before + d);
@@ -6443,7 +6521,7 @@ export class Ui {
          */
         {
           label: 'Rates',
-          value: ratesSummary(s.rates),
+          value: ratesShort(s.rates),
           action: 'rates',
           note: `Not the machine's. Rates are yours, so they live under ${SCREEN_TITLES.pilot} and stay put when you switch tunes. Changing the aircraft reseeds them only if you are still on stock rates. This row goes there, and changing them mid run leaves the quad where it is.`,
         },
@@ -6601,21 +6679,34 @@ export class Ui {
         /*
          * THE MANGA LAYER'S ONE SWITCH (FREESTYLE-MAPS-PLAN.md section 3.3:
          * "a Clean FPV setting turns all of it off in one row"). The note
-         * says what it turns off today and that the rest of the layer will
-         * answer to it, so a pilot who turned it on does not find speed
-         * lines arriving in Stage F that ignore them.
+         * says everything it turns off, the picture's half (Stage F) as
+         * well as the lettering's.
          */
         toggle(
           'Clean FPV',
           s.cleanFpv
-            ? 'On: freestyle maps show plain HUD text, the way a race track does. Callouts are words and numbers, and the results are a list. Speed lines, screentone and the impact frame will answer to this switch too when they arrive.'
-            : 'Off: on a freestyle map, tricks, gaps and combos are hand lettered like a manga, with a small katakana sound effect beside the big ones, and the results come back as a page of panels. Race tracks are always clean. The rest of the manga layer, speed lines, screentone and the impact frame, will answer to this switch too.',
+            ? 'On: freestyle maps look and read the way a race track does. No speed lines and no impact frame; callouts are words and numbers, and the results are a list.'
+            : 'Off: on a freestyle map, ink speed lines gather at the edges of the picture above about 20 m/s, a crash lands as an impact frame, tricks, gaps and combos are hand lettered like a manga with a small katakana sound effect beside the big ones, and the results come back as a page of panels. Race tracks are always clean.',
           s.cleanFpv,
           (v) => { s.cleanFpv = v; },
         ),
+        /*
+         * THE IMPACT FRAME'S OWN ROW, beside the switch that also turns it
+         * off: a flash is a photosensitivity question, so it can go without
+         * the rest of the look going with it. The note says what it does,
+         * that it is never a white flash, and what else stops it.
+         */
+        toggle(
+          'Impact frame',
+          s.impactFrame
+            ? 'On: a crash on a freestyle map holds the moment for a beat as a high contrast ink panel with impact lines, then lets go. Never a white flash, at most one every two seconds. Off under Clean FPV, and whenever your system asks for reduced motion.'
+            : 'Off: a crash cuts straight to where you are set down, with no held frame. The rest of the manga look stays.',
+          s.impactFrame,
+          (v) => { s.impactFrame = v; },
+        ),
         { label: 'Sound', section: true },
-        toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
-        stepper('Volume', 'Overall level. Zero to ten.', `${s.volume}`, (d) => {
+        toggle('Sound', 'All sound: motors, wind, music, cues and every lap time called out loud.', s.sound, (v) => { s.sound = v; }),
+        stepper('Volume', 'Overall level, the lap call included. Zero to ten.', `${s.volume}`, (d) => {
           s.volume = Math.max(0, Math.min(10, s.volume + d));
         }),
         stepper('Motors', 'The blade pass tone. You fly on its pitch, so keep some of it.', `${s.motorLevel}`, (d) => {
@@ -6749,10 +6840,12 @@ export class Ui {
         { label: 'What this run counts as', section: true },
         choice(
           'Laps',
-          'How many laps a run lasts before the result screen. Latched when you launch, so changing it mid-run does nothing until the next one.',
+          s.laps === PRACTICE_LAPS
+            ? 'Practice has no end: fly as many laps as you like, each one called out with its time as you cross the line, and stop from the pause menu. Nothing flown in practice goes to the public board. Latched when you launch, so changing it mid-run does nothing until the next one.'
+            : 'How many laps a run lasts before the result screen. Practice has no end and keeps nothing for the board. Latched when you launch, so changing it mid-run does nothing until the next one.',
           LAP_COUNTS,
           s.laps,
-          (n) => `${n}`,
+          lapsLabel,
           (n) => { s.laps = n; },
         ),
         choice(
@@ -6847,7 +6940,7 @@ export class Ui {
          */
         {
           label: 'Rates',
-          value: ratesSummary(s.rates),
+          value: ratesShort(s.rates),
           action: 'rates',
           note: 'How far the sticks go, and the throttle limit. Yours, not the tune\'s. Changing them here leaves the quad where it is and the clock running.',
         },
@@ -6860,14 +6953,16 @@ export class Ui {
           note: `PIDs, camera, flight mode and the firmware bench.${MID_RUN_WARNING}`,
         },
         {
-          /* Named for what is in it, as on the title. See there. */
+          /* Named for what is in it, as on the title, and it reads what the
+           * title's reads: the pilot's name. It used to read the rates, the
+           * same string as the Rates row four rows above it. */
           label: 'Settings',
-          value: ratesSummary(s.rates),
+          value: readPilotName() || 'Not set',
           action: 'pilot',
           /* Rates are the first thing in this room and they no longer cost
            * the run, so the blanket warning would be wrong more often than
            * right. The rows that still restart a run carry it themselves. */
-          note: 'Rates, your radio, graphics and sound.',
+          note: 'Your name, your radio, rates, graphics and sound.',
         },
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
@@ -8876,7 +8971,7 @@ export class Ui {
         });
         host.append(card);
         return {
-          card, shot, tag, still, stamp, name, id: it.map.id, liveCanvas: null,
+          card, shot, tag, still, stamp, name, id: it.map.id,
         };
       });
       this.startReels();
@@ -9595,24 +9690,33 @@ export class Ui {
 
   /*
    * Start the thumbnails. Cached clips play immediately. A miss records
-   * once, one world at a time, then the iframe (or the live copy of the
-   * title view) is thrown away.
+   * once, one world at a time, then the iframe (or the film of the loaded
+   * world) is thrown away.
    */
   startReels() {
     this.stopReels();
     const cards = this.mapCards ?? [];
-    /* The world that is loaded is filmed where it stands, and every other
-     * one in a frame of its own. A map from the board loaded in the built
-     * world is not Your map, whose clip is keyed by the pilot's own seat,
-     * so filming it in place would file somebody else's map under yours. */
-    const current = this.settings.map === 'built' && this.sharedMap ? null : this.settings.map;
+    /*
+     * The world that is loaded is filmed where it stands, and every other
+     * one in a frame of its own. main.js says which world that is and the
+     * key it was built under (loadedWorld there): none for a map from the
+     * board loaded in the built world, which is not Your map, whose clip is
+     * keyed by the pilot's own seat, so filming it in place would file
+     * somebody else's map under yours. And none for Your map when the seat
+     * has changed since the world was built, because then the card names a
+     * map that is not the one loaded; the orbit frame builds it as it is.
+     */
+    const loaded = this.loadedWorld ? this.loadedWorld() : null;
+    const filmsHere = (c) => Boolean(loaded) && c.id === loaded.id && c.clipKey === loaded.key;
     const ac = new AbortController();
     const session = { ac, urls: [], unsub: [] };
     this.reelSession = session;
     this.reelFreezeWorld = false;
 
     const onVis = () => {
-      const hide = document.hidden || this.screen !== 'courses';
+      /* Both rooms: the world cards moved to Freestyle, and a clip paused
+       * by a hidden tab there stayed paused when the tab came back. */
+      const hide = document.hidden || (this.screen !== 'courses' && this.screen !== 'freestyle');
       for (const c of this.mapCards || []) {
         if (!c.clip || !c.clip.pause) {
           continue;
@@ -9630,7 +9734,6 @@ export class Ui {
     const pending = [];
     for (const c of cards) {
       c.shot.replaceChildren();
-      c.liveCanvas = null;
       c.clip = null;
       c.still.textContent = '';
       pending.push(c);
@@ -9661,8 +9764,8 @@ export class Ui {
         });
         this.startReelJokes(session);
       }
-      const currentMiss = misses.filter((c) => c.id === current);
-      const otherMiss = misses.filter((c) => c.id !== current);
+      const currentMiss = misses.filter(filmsHere);
+      const otherMiss = misses.filter((c) => !filmsHere(c));
       /*
        * ONE AT A TIME, AND ONLY WHILE NOBODY IS USING THE ROOM.
        *
@@ -9672,6 +9775,9 @@ export class Ui {
        * visit in a given browser. Waiting for quiet before EACH one means
        * a pilot who arrives and immediately picks a world never pays for
        * any of it, and a pilot who stops to read gets them one by one.
+       *
+       * The loaded world goes first because it costs least: it is filmed
+       * where it stands and nothing is built (captureCurrentCard).
        */
       for (const c of currentMiss) {
         if (this.reelSession !== session) {
@@ -9680,7 +9786,9 @@ export class Ui {
         await this.whenQuiet(session);
         this.reelCapturing = true;
         try {
-          await this.captureCurrentCard(c, session);
+          if (!await this.captureCurrentCard(c, session, loaded)) {
+            otherMiss.push(c);
+          }
         } finally {
           this.reelCapturing = false;
         }
@@ -9709,7 +9817,6 @@ export class Ui {
   attachClip(c, blob, session) {
     const { node, url } = makeClipElement(blob, 'map-reel-view');
     session.urls.push(url);
-    c.liveCanvas = null;
     c.clip = node;
     c.wait = null;
     c.waitJoke = null;
@@ -9755,25 +9862,40 @@ export class Ui {
   }
 
   /*
-   * The world already on screen is the title shot. Copy it into a 480p
-   * canvas for a few seconds rather than loading the same map a second
-   * time, then keep the clip.
+   * THE WORLD ALREADY LOADED IS FILMED WHERE IT STANDS, not built again.
+   *
+   * main.js draws it behind the room, still hidden, at the clip's size and
+   * frame rate, on the title camera flown from the start of its line on the
+   * clip's clock, and copies each frame onto this card's canvas, which the
+   * recorder takes: `film` in main.js's frame, and paintMapThumbs below.
+   * The world is in memory already, so this costs a small canvas and a
+   * small draw. The other way, the orbit frame the other cards use, builds
+   * a second copy of the world on this thread and holds both at once; see
+   * PROGRESS.md, 2026-09-26, for the two measured side by side.
+   *
+   * This is what the card used to get wrong. The copy onto the card was
+   * only ever made on the Race room, where world cards no longer live, so
+   * here the recorder took twelve seconds of the canvas's grey fill and
+   * cached it, and the pilot's own map was the card that looked broken.
+   * So the recorder now starts only once the film has drawn onto the card,
+   * and the clip opens on the world. A world that draws nothing (it cannot
+   * be filmed here after all) answers false, and the caller sends the card
+   * to the orbit frame instead.
    */
-  async captureCurrentCard(c, session) {
+  async captureCurrentCard(c, session, loaded) {
     const canvas = el('canvas', 'map-reel-view');
     canvas.setAttribute('aria-hidden', 'true');
     canvas.width = CLIP_W;
     canvas.height = CLIP_H;
-    canvas.dataset.clip = '1';
     const ctx = canvas.getContext('2d', { alpha: false });
     if (ctx) {
       ctx.fillStyle = '#1a241c';
       ctx.fillRect(0, 0, CLIP_W, CLIP_H);
     }
     c.shot.append(canvas);
-    c.liveCanvas = canvas;
     c.still.textContent = '';
     this.showReelWait(c, session);
+    let filmed = true;
     try {
       await withCaptureLock(async () => {
         if (this.reelSession !== session) {
@@ -9785,24 +9907,85 @@ export class Ui {
           return;
         }
         await whenVisible(session.ac.signal);
-        const blob = await recordCanvasStream(canvas, CLIP_MS_MAX, session.ac.signal);
-        await putClip(c.clipKey, blob);
-        if (this.reelSession !== session) {
-          return;
+        /* One whole cycle of the line in the clip, sped up to fit, as the
+         * orbit frame records it (renderAndCapture in src/share/orbit.js),
+         * so a card looks the same whichever way it was filmed. */
+        const periodMs = loaded && loaded.periodMs > 0 ? loaded.periodMs : 0;
+        const loopMs = clipDurationMs(periodMs);
+        const film = {
+          key: c.clipKey,
+          canvas,
+          scale: (periodMs > 0 ? periodMs : loopMs) / loopMs,
+          t0: -1,
+          frames: 0,
+        };
+        this.reelFilm = film;
+        try {
+          await this.whenFilmed(film, session);
+          /* The picture is there, so the wait becomes a caption over it
+           * rather than a panel in front of it. */
+          if (c.wait) {
+            c.wait.classList.add('map-reel-wait-film');
+          }
+          film.t0 = performance.now();
+          const blob = await recordCanvasStream(canvas, loopMs, session.ac.signal);
+          await putClip(c.clipKey, blob);
+          if (this.reelSession !== session) {
+            return;
+          }
+          this.attachClip(c, blob, session);
+        } finally {
+          if (this.reelFilm === film) {
+            this.reelFilm = null;
+          }
         }
-        this.attachClip(c, blob, session);
       });
     } catch (e) {
       if (e && e.name === 'AbortError') {
-        return;
+        return true;
       }
       c.wait = null;
       c.waitJoke = null;
       c.shot.replaceChildren();
-      c.still.textContent = 'Preview unavailable.';
-    } finally {
-      c.liveCanvas = null;
+      if (e && e.noFilm) {
+        filmed = false;
+      } else {
+        c.still.textContent = 'Preview unavailable.';
+      }
     }
+    return filmed;
+  }
+
+  /*
+   * Resolve once main.js has drawn the film's first frames onto the card:
+   * FILM_WARMUP of them, as the orbit frame waits for its own before it
+   * records, because the shadow focus and the post chain settle on the
+   * first few. Rejects when the session ends, or with `noFilm` when nothing
+   * is drawn in FILM_START_MS, which is main.js declining the film (it
+   * checks the key, the screen and the mode on every frame).
+   */
+  whenFilmed(film, session) {
+    const giveUp = performance.now() + FILM_START_MS;
+    return new Promise((resolve, reject) => {
+      const check = () => {
+        if (this.reelSession !== session || session.ac.signal.aborted) {
+          reject(new DOMException('aborted', 'AbortError'));
+          return;
+        }
+        if (film.frames >= FILM_WARMUP) {
+          resolve();
+          return;
+        }
+        if (performance.now() > giveUp) {
+          const err = new Error('The loaded world drew nothing for its card.');
+          err.noFilm = true;
+          reject(err);
+          return;
+        }
+        setTimeout(check, 50);
+      };
+      check();
+    });
   }
 
   /*
@@ -9886,12 +10069,18 @@ export class Ui {
   }
 
   /*
-   * Copy the title view onto the card for the world that is already loaded,
-   * and onto the recorder, while a first clip is being made. After that
-   * there is nothing to copy: the cards are videos.
+   * Copy a frame of the film onto the card being recorded, which is the
+   * canvas the recorder takes. main.js calls this straight after drawing
+   * one, and only then. After the clip is made there is nothing to copy:
+   * the cards are videos.
+   *
+   * main.js holds its renderer at the clip's size for the film, so this is
+   * a copy and not a crop. The crop is kept for a frame drawn at any other
+   * shape, which then loses its edges rather than being squashed.
    */
   paintMapThumbs(src) {
-    if (this.screen !== 'courses' || !this.mapCards) {
+    const film = this.reelFilm;
+    if (!film || !film.canvas) {
       return;
     }
     const sw = src.width;
@@ -9899,33 +10088,21 @@ export class Ui {
     if (!(sw > 0 && sh > 0)) {
       return;
     }
-    for (const c of this.mapCards) {
-      const dest = c.liveCanvas;
-      if (!dest) {
-        continue;
-      }
-      if (dest.dataset.clip !== '1') {
-        const dw = Math.max(1, dest.clientWidth);
-        const dh = Math.max(1, dest.clientHeight);
-        if (dest.width !== dw || dest.height !== dh) {
-          dest.width = dw;
-          dest.height = dh;
-        }
-      }
-      const dw = dest.width;
-      const dh = dest.height;
-      const scale = Math.max(dw / sw, dh / sh);
-      const cw = dw / scale;
-      const ch = dh / scale;
-      try {
-        dest.getContext('2d').drawImage(
-          src,
-          (sw - cw) * 0.5, (sh - ch) * 0.5, cw, ch,
-          0, 0, dw, dh,
-        );
-      } catch (e) {
-        /* A tainted read would take the frame with it. */
-      }
+    const dest = film.canvas;
+    const dw = dest.width;
+    const dh = dest.height;
+    const scale = Math.max(dw / sw, dh / sh);
+    const cw = dw / scale;
+    const ch = dh / scale;
+    try {
+      dest.getContext('2d').drawImage(
+        src,
+        (sw - cw) * 0.5, (sh - ch) * 0.5, cw, ch,
+        0, 0, dw, dh,
+      );
+      film.frames += 1;
+    } catch (e) {
+      /* A tainted read would take the frame with it. */
     }
   }
 
@@ -10010,6 +10187,8 @@ export class Ui {
   stopReels() {
     this.reelFreezeWorld = false;
     this.reelCapturing = false;
+    /* main.js stops drawing the film on the next frame. */
+    this.reelFilm = null;
     if (this.reelSession && this.reelSession.quietTimer) {
       clearTimeout(this.reelSession.quietTimer);
     }
@@ -10037,7 +10216,6 @@ export class Ui {
     }
     if (this.mapCards) {
       for (const c of this.mapCards) {
-        c.liveCanvas = null;
         c.clip = null;
         if (c.shot) {
           c.shot.replaceChildren();
@@ -10090,6 +10268,22 @@ export class Ui {
       this.courseCardKey = null;
       this.cardSubject = null;
       this.lastCardKey = null;
+    }
+    /*
+     * THE SAME FOR THE FREESTYLE ROOM, where the world cards moved to and
+     * this stop did not. A recorder left waiting there went on after the
+     * pilot left, because whenQuiet asks only that nothing was pressed for
+     * a moment. Seen in headless Chromium: out of the room 300 ms after
+     * opening it, and for the next twelve seconds and more the title had
+     * an orbit frame building the town under it and its own world hidden
+     * (reelFreezeWorld), and a radio pilot who took off presses no key to
+     * stop it. The film of the loaded world would also have kept recording
+     * its last frame once main.js stopped drawing it. The cards are
+     * rebuilt on the way back in, from the cache.
+     */
+    if (this.screen === 'freestyle' && screen !== 'freestyle') {
+      this.stopReels();
+      this.mapCards = null;
     }
     /* ratesFrom belongs to one visit to the Rates screen. Leaving that screen
      * for anywhere else drops it, so a later show('rates') that did not come
@@ -10213,6 +10407,7 @@ export class Ui {
     this.syncFrame();
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
+    this.pauseAirSlider(screen);
     /* The score follows the OSD onto and off the screen, but only in
      * freestyle: a race has no score and an empty Score 0 over a lap timer
      * is a readout that never changes. */
@@ -11149,7 +11344,9 @@ export class Ui {
    *   roof. The shell measures it against the surface query the collision
    *   test uses, so the readout and the thing that kills you agree.
    *   Speed, pack and throttle are the same in both, because they are
-   *   properties of the machine and not of the game around it.
+   *   properties of the machine and not of the game around it, which is
+   *   also why the machine decides whether speed shows at all: osdSpeed in
+   *   configs/airframes.js, false on the whoop.
    */
   /*
    * Say something once, to whoever is listening. The guard is the point: a
@@ -11234,10 +11431,11 @@ export class Ui {
       if (runScored === false) {
         /*
          * SCORING OFF MEANS THERE IS NO RUN, so the slot goes back to the
-         * airtime it carried before a run was a thing that ends: the sim
-         * clock since this flight began, which is what a pilot flying a
-         * pack wants beside the pack bar. See the note above about this
-         * slot having counted an airtime up in it.
+         * airtime it carried before a run was a thing that ends, which is
+         * what a pilot flying a pack wants beside the pack bar. Airtime is
+         * time in the air: main.js starts it at takeoff and holds it while
+         * the quad sits landed, so the pads read a dimmed 0.00 and not the
+         * seconds spent reading the banner. See airtimeMs there.
          */
         Ui.text(this.osdClockLabel, 'Air');
         Ui.text(this.osdTimer, running ? formatTime(lapMs) : '0.00');
@@ -11287,7 +11485,10 @@ export class Ui {
       }
     }
     Ui.bar(this.osdPackBar, packFrac);
-    Ui.text(this.osdSpeed, `${speedKph.toFixed(0)} km/h`);
+    /* Gone, not blank, on an airframe that has no speed to print: see
+     * osdSpeed in configs/airframes.js. */
+    Ui.klass(this.osdSpeed, speedKph == null ? 'osd-value is-off' : 'osd-value');
+    Ui.text(this.osdSpeed, speedKph == null ? '' : `${speedKph.toFixed(0)} km/h`);
     if (this.osdFlight) {
       Ui.text(this.osdFlight, flightMode === 'turtle'
         ? 'Turtle'
@@ -11382,9 +11583,10 @@ export class Ui {
    * through refreshBest), and once at build. Each layer holds its own flag
    * and ignores a call that changes nothing.
    *
-   * What answers to it today: the score's names and verdict, the chase's
-   * callouts, the found mark's ray fans, and the results page. Stage F's
-   * speed lines, screentone and impact frame read `this.manga` too.
+   * What answers to it: the score's names and verdict, the chase's
+   * callouts, the found mark's ray fans, the results page, and Stage F's
+   * speed lines, impact frame and screentone, which src/main.js's
+   * mangaFrame reads from `this.manga` every frame.
    */
   syncManga() {
     this.manga = this.osdMode === 'freestyle' && !this.settings.cleanFpv;
@@ -11640,14 +11842,16 @@ export class Ui {
       const rows = summary.rows || [];
       const top = rows.length ? rows[0].points : 0;
       /*
-       * TEN, and the container scrolls, so this is a choice rather than a
-       * fit. A run can name twenty five kinds of trick and the tail of that
-       * list is quarter rolls worth three points each: what a pilot reads a
-       * results screen for is what EARNED, and a top ten is the shape that
-       * answers it. The note below says how many are not shown, so nothing
-       * is hidden without saying so.
+       * THREE, and one line for the rest. It was ten in a list that
+       * scrolled, and at 1280 by 720 the Fly again row sat over the third
+       * of them and over the best line under them: the page was taller
+       * than the column. What a pilot reads a results screen for is what
+       * EARNED, and the top three answer it; the manga page beside them
+       * carries the best trick, and the rest are counted, with what they
+       * paid between them, on a line of their own, so nothing is hidden
+       * without saying so.
        */
-      for (const row of rows.slice(0, 10)) {
+      for (const row of rows.slice(0, RESULT_TRICK_ROWS)) {
         const line = el('div', `result-row${row === rows[0] ? ' fastest' : ''}`);
         const main = el('div', 'result-main');
         main.append(el('span', 'result-label', row.count > 1 ? `${row.name} x${row.count}` : row.name));
@@ -11662,11 +11866,16 @@ export class Ui {
         }
         this.resultsBody.append(line);
       }
-      const hidden = rows.length - 10;
-      if (hidden > 0) {
-        notes.push(hidden === 1
-          ? 'And one more kind of trick, further down the list.'
-          : `And ${hidden} more kinds of trick, further down the list.`);
+      const rest = rows.slice(RESULT_TRICK_ROWS);
+      if (rest.length) {
+        const line = el('div', 'result-row result-more');
+        const main = el('div', 'result-main');
+        main.append(
+          el('span', 'result-label', rest.length === 1 ? 'One more kind of trick' : `${rest.length} more kinds of trick`),
+          el('span', 'result-time', formatScore(rest.reduce((sum, r) => sum + (r.points || 0), 0))),
+        );
+        line.append(main);
+        this.resultsBody.append(line);
       }
     }
     /* Which number went to the board, and which stays here. */
@@ -11676,9 +11885,11 @@ export class Ui {
         ? `Post this run sends the board the trick score, ${formatScore(summary.total)}. The board knows tricks and nothing else yet, so the gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here and not there.`
         : `The board takes tricks only, and this run named none, so there is nothing to post. The gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here.`);
     }
+    /* The best line leads the note: it is the sentence the pilot was
+     * waiting for, and the board's small print can follow it. */
     const bestNote = scored ? counterBestSentence(summary) : null;
     if (bestNote) {
-      notes.push(bestNote);
+      notes.unshift(bestNote);
     }
     this.resultsNote.textContent = notes.join(' ');
     this.mangaPanels = this.manga ? mangaPanels(summary) : [];
@@ -12059,16 +12270,44 @@ export class Ui {
    * never again. Not on the title, not in a menu: a tooltip on a control the
    * reader cannot see is a riddle, and the sentence it carries only means
    * anything while there is a quad in the air to try it on.
+   *
+   * `ready` is the quad in the air: off the pads, not perched, not set down
+   * and not on its back. `airMs` is the run's airtime on the sim clock and
+   * `padFlying` is a radio or gamepad's sticks moving the quad in the air.
+   *
+   * THE SLIDER FADES IN THE AIR. The owner's decision of 2026-09-26: "once
+   * in flight fade it out, show it when landed or pause screen". The block
+   * carries is-aloft while the quad flies and the sheet does the fade, so
+   * nothing here runs per frame beyond the cached class write. It stays up
+   * while its card is, because the card is pointing at it.
    */
-  setAirSlider(show, ready = true) {
+  setAirSlider(show, ready = true, { airMs = 0, padFlying = false } = {}) {
     const air = this.osdAir;
     if (!air) {
       return;
     }
-    Ui.klass(air.box, show ? 'osd-air' : 'osd-air is-off');
     Ui.klass(this.osdSticks, show ? 'osd-sticks' : 'osd-sticks is-off');
     if (!show) {
+      Ui.klass(air.box, 'osd-air is-off');
       return;
+    }
+    /*
+     * THE CARD RETIRES WITHOUT A POINTER. It used to wait for Got it or a
+     * touch on the track, which a pilot holding a radio never gives, so it
+     * sat over the ground ahead for the whole first session and came back
+     * the next one. It now goes, and is remembered as dismissed, on the
+     * first landing or crash (ready drops), after about eight seconds of
+     * airtime, or on the first stick a radio or gamepad flies the quad with.
+     */
+    const dialog = Boolean(this.nameDialog && !this.nameDialog.hidden);
+    if (!air.hint.hidden) {
+      if (!ready || padFlying || airMs - this.airHintAtMs >= AIR_HINT_AIR_MS) {
+        this.dismissAirHint();
+      } else if (dialog) {
+        /* Never drawn under a modal. Put away, not retired: it comes back
+         * with the flight, on the airtime it had already used. */
+        air.hint.hidden = true;
+      }
     }
     /*
      * WHEN THE HINT IS RAISED, and both halves of the test were learned
@@ -12087,8 +12326,30 @@ export class Ui {
      * collision is a layout problem and it is solved in the sheet, where the
      * card flips below the slider on a short screen.
      */
-    if (!this.airHintDone && air.hint.hidden && ready && !airHintSeen()) {
+    if (!this.airHintDone && air.hint.hidden && ready && !padFlying && !dialog && !airHintSeen()) {
       air.hint.hidden = false;
+      /* The first raise starts its eight seconds. A raise after a pause
+       * keeps the stamp, so the pause does not buy the card more air. */
+      if (this.airHintAtMs == null) {
+        this.airHintAtMs = airMs;
+      }
+    }
+    Ui.klass(air.box, ready && air.hint.hidden ? 'osd-air is-aloft' : 'osd-air');
+  }
+
+  /*
+   * Off the screen, the card is put away rather than retired, so it is
+   * never drawn through the pause menu or a dialog over it. The slider
+   * itself comes back on the pause screen: see setAirSlider.
+   */
+  pauseAirSlider(screen) {
+    const air = this.osdAir;
+    if (!air || screen === 'flight') {
+      return;
+    }
+    air.hint.hidden = true;
+    if (air.box.__wfClass === 'osd-air is-aloft') {
+      Ui.klass(air.box, 'osd-air');
     }
   }
 

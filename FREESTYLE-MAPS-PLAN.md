@@ -490,6 +490,16 @@ of SubTwoFIfty is too hard to find, make it easy to see on any map":
     mark. Race tracks do not carry it: asked whether "any map" took them
     in too, the owner answered "just freestyle" (2026-09-25).
 
+Answered 2026-09-26, when the owner, having flown Stage E, asked to
+"implement the full scoring system, chasing the car works well as do the
+named gaps":
+
+11. **Katakana sound effects: yes, small.** Asked decision 5's question, the
+    owner chose "Yes, small": a small katakana sound effect beside the big
+    callouts (gaps, combos, a banked tail), in the periphery and never over
+    the centre third, turned off with the rest of the manga layer by Clean
+    FPV. This answers decision 5. Stage C starts on this answer.
+
 ## 13. Not in this plan
 
 - Publishing freestyle maps to the public board, and a board per built map:

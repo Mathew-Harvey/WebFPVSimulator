@@ -50894,7 +50894,9 @@ levels apart, all of it the music title in the corner and the props' blur.
 `src/maps/built/cars.js`, the smoke's shaders: the ink ring round each
 puff, the band just inside its cut, now narrows to nothing as the puff
 near the eye thins away (`vNear`, the vertex shader's own `nearCut` handed
-on).
+on), and is never more than a third of what is left of the puff above its
+cut, which is the same fault at the end of a puff's life: the cut rises
+with age too, and an old puff went dark before it went.
 
 ### Why
 

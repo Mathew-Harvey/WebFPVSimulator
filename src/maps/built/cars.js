@@ -203,11 +203,14 @@ const SMOKE_FRAGMENT = /* glsl */ `
     /* Denser toward the light is the side turned away from it. */
     float toward = texture2D( uMap, vUv + vLight * 0.07 ).r;
     vec3 col = toward > d + 0.03 ? uShade : uFill;
-    /* The ink ring is the band just inside the cut, and it narrows to
-     * nothing as a puff near the eye thins away. Left the width it is at
-     * range, the band inside a cut that has risen to a puff's core IS the
-     * core, so a puff a pilot flew into went black before it went. */
-    if ( d < vCut + 0.07 * ( 1.0 - vNear ) ) col = uInk;
+    /* The ink ring is the band just inside the cut. Never more than a
+     * third of what is left of the puff above its cut, and nothing at all
+     * as a puff near the eye thins away: at a fixed width, the band inside
+     * a cut that has risen to a puff's core IS the core, so a puff went
+     * black before it went, at the end of its life and in front of a
+     * pilot who flew into it. */
+    float ring = min( 0.07, ( 1.0 - vCut ) * 0.3 ) * ( 1.0 - vNear );
+    if ( d < vCut + ring ) col = uInk;
     gl_FragColor = vec4( col, 1.0 );
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

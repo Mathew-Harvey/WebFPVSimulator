@@ -285,15 +285,29 @@ where it was.
 **1. Create the Worker.** In the Cloudflare dashboard: **Compute (Workers)**,
 then **Workers & Pages**, then **Create**, then **Start with Hello World!**,
 then **Deploy**. Name it `webfpv-router`. Open **Edit code**, select
-everything in the editor, paste the whole of `edge/router.js` over it, and
+everything in the editor, paste the one-file Worker over it (below), and
 **Deploy** again.
 
 From a checkout the same thing is one command, and no dependency is added to
-`package.json` to do it:
+`package.json` to do it. It is the way to redeploy, because it reads both
+files and the custom domains from `edge/wrangler.toml`:
 
 ```bash
 npx wrangler deploy --config edge/wrangler.toml
 ```
+
+**`edge/router.js` alone is no longer the whole Worker.** Since the share
+cards it imports `edge/preview.js`, so pasting `router.js` by itself into the
+dashboard fails on the missing import. The paste is the two files bundled
+into one, which the same tool writes without deploying or logging in:
+
+```bash
+npx wrangler deploy --dry-run --outdir ../webfpv-worker --config edge/wrangler.toml
+```
+
+and `../webfpv-worker/router.js` is then the file to paste. Outside the
+checkout on purpose: it is generated, and nothing in the repository should
+grow a second copy of the Worker to drift from the first.
 
 **2. Give it the domain.** On the Worker: **Settings**, then **Domains &
 Routes**, then **Add**, then **Custom domain**. Enter `webfpv.org` and add it.

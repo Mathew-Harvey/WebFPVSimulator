@@ -997,6 +997,97 @@ function pitchSurface(pitch, course, sponsorMarks) {
   return mesh;
 }
 
+/*
+ * The sponsors' marks painted on a whoop room's floor.
+ *
+ * WHY THIS IS NOT pitchSurface. Outdoors every decal is stamped into the
+ * pitch's canvas, and a micro course has no pitch: the room lays a rubber
+ * mat instead (see the room block in buildFieldScene), so the decals the
+ * course carried were read, handed to a painter that was never built, and
+ * the floor came out bare while the builder's preview showed them. So each
+ * decal is its own plane here, the size of its footprint, lying on the mat.
+ *
+ * One plane per decal rather than one canvas the size of the room, because
+ * a room canvas at the pitch's density would be mostly black mat that the
+ * mat already draws, and a decal's own 512 px is sharper than its share of
+ * a 2048 px floor would be.
+ *
+ * THE SAME FRAME AS THE PITCH'S. PlaneGeometry turned -90 about X puts the
+ * canvas's right along the decal's local x and its down along local z, and
+ * a Y rotation of yaw takes local +x to scene (cos yaw, -sin yaw), which is
+ * exactly where pitchSurface's canvas rotation of minus yaw sends it. So a
+ * logo reads the same way round on the mat as it does on the turf and in
+ * the builder.
+ *
+ * LAYER 1, the no ink layer. The outline prepass draws layer 0 with its own
+ * opaque material, so a plane lying a few millimetres over the mat would be
+ * a solid rectangle there and could ink its own border. depthWrite false
+ * keeps promoteToPrepass (post.js) from putting it in the depth half too:
+ * it is paint, not an occluder. renderOrder stays 0, under the racing
+ * line's 4, so the line is drawn over a logo and not under it.
+ *
+ * Counted into sponsorMarks as each one is actually painted, the same as
+ * the turf's, and none at all on a course that says hideSponsors.
+ */
+function roomDecals(course, y, sponsorMarks) {
+  const group = new THREE.Group();
+  group.name = 'roomDecals';
+  const decals = (course && !course.hideSponsors && Array.isArray(course.decals)) ? course.decals : [];
+  const logos = (course && Array.isArray(course.logos)) ? course.logos : [];
+  /* Each mark is decoded once however many decals wear it. */
+  const bySlot = new Map();
+  for (const dec of decals) {
+    const url = logos[dec.logo];
+    if (typeof url !== 'string' || !url.startsWith('data:image/')) {
+      continue;
+    }
+    const w = Math.max(0.01, dec.w);
+    const d = Math.max(0.01, dec.d);
+    const long = 512;
+    const cw = w >= d ? long : Math.max(8, Math.round((long * w) / d));
+    const ch = w >= d ? Math.max(8, Math.round((long * d) / w)) : long;
+    const cv = document.createElement('canvas');
+    cv.width = cw;
+    cv.height = ch;
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    /* The mat's own rim and spec, so the ink is lit as the rubber is. */
+    const mat = celMaterial({
+      color: 0xffffff, rim: 0.10, spec: 0.05, transparent: true,
+      map: tex, key: `roomDecal:${group.children.length}`,
+    });
+    mat.depthWrite = false;
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = -2;
+    mat.polygonOffsetUnits = -2;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), mat);
+    mesh.position.set(dec.x, y, dec.z);
+    mesh.rotation.y = dec.yaw;
+    mesh.name = 'roomDecal';
+    mesh.layers.set(1);
+    group.add(mesh);
+    if (!bySlot.has(dec.logo)) {
+      bySlot.set(dec.logo, { url, targets: [] });
+    }
+    bySlot.get(dec.logo).targets.push({ cv, tex });
+  }
+  for (const { url, targets } of bySlot.values()) {
+    const img = new Image();
+    img.onload = () => {
+      for (const t of targets) {
+        const g = t.cv.getContext('2d');
+        g.imageSmoothingQuality = 'high';
+        paintGroundLogo(g, t.cv.width, t.cv.height, { logo: img });
+        t.tex.needsUpdate = true;
+        sponsorMarks.painted += 1;
+      }
+    };
+    img.src = url;
+  }
+  return group;
+}
+
 /* Terrain height, shared by the mesh and by anything placed on it. */
 function makeHeightField(samples, pitch, pad, indoor = false) {
   /*
@@ -4438,6 +4529,9 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
     mat.rotation.x = -Math.PI * 0.5;
     mat.position.set(0, y0 + 0.008 * K, 0);
     scene.add(mat);
+    /* The sponsors' marks, 2 mm up on the mat. The pitch that paints them
+     * outdoors is not built in here. See roomDecals. */
+    scene.add(roomDecals(course, y0 + 0.010 * K, sponsorMarks));
 
     /* Four walls. Each is a box from the floor to the ceiling, drawn from
      * the inside, with a darker band below skirting height because that is

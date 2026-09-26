@@ -48199,3 +48199,72 @@ true.
     code                           unchanged since the entry above; only
                                    this entry is new
     checks                         not rerun: nothing they read changed
+
+## 2026-09-26 | render | the whoop room paints its floor logos
+
+The owner: "the logos painted on the floor don't show on the whoop track
+when i fly it".
+
+### Why
+
+A ground logo is paint, and outdoors the paint goes into the pitch's
+canvas: pitchSurface stamps every course.decals entry onto the turf. A
+micro course has no pitch. buildFieldScene lays the room's rubber mat
+instead and skips pitchSurface with `if (pitch && !indoor)`, so the
+decals trackdoc.js had already converted into the room's metres were
+handed to a painter that was never built. The builder's 3D preview draws
+decals itself, which is why they showed while building and vanished when
+flown. Nothing was dropping them on the way: groundDecals scales them by
+MICRO_SCALE like every other length, and custom.js passes them through.
+
+### What changed
+
+src/render/scene.js only. A new roomDecals(course, y, sponsorMarks) builds
+one plane per decal, the size of its footprint, at 512 px on the long side,
+painted with the same paintGroundLogo at the same ink as the turf. The room
+block adds it at y0 + 0.010 K, which is 0.034 m: 2 room mm over the mat at
+0.027 m, and under the racing line's 0.05 m lift.
+
+- Same frame as the pitch's: PlaneGeometry turned -90 about X, then yaw
+  about Y, which sends local +x where pitchSurface's canvas rotation of
+  minus yaw does. The same construction src/maps/built/index.js uses for
+  its ground logos. So a logo is not mirrored or turned against the
+  builder.
+- Layer 1, depthWrite false. The outline prepass draws layer 0 with an
+  opaque override material, so a plane over the mat on layer 0 could ink
+  its own rectangle. depthWrite false keeps promoteToPrepass from treating
+  it as an occluder. renderOrder 0 keeps it under the racing line's 4.
+- Each mark is decoded once however many decals wear it.
+- hideSponsors paints none. Each decal adds to sponsorMarks.painted when it
+  is actually painted, as the turf's do, so tests/replay-test.js's clean=1
+  count still has to come back zero and clean=0 can see room decals too.
+
+Not touched: the physics, the plant, the module ABI, the build. Nothing a
+collider or the trace reads.
+
+### What went wrong
+
+- The first container fetch printed `forced update` on main, and
+  `git merge-base main origin/main` came back empty. CLAUDE.md says stop on
+  that. The clone was shallow (depth 50); after `git fetch --deepen=400`
+  the merge base was the old main, 9ed8b9c, and it is an ancestor of
+  origin/main. Nothing was rewritten. Written down because a shallow clone
+  looks exactly like the 2026-08-26 incident until it is deepened.
+- The first attempt at this turn was cut off before the edit. Nothing was
+  committed from it.
+
+### RUN LOG
+
+    node --check src/render/scene.js   ok
+    diff scan for em and en dashes     none
+    shots, verify, replay:test         NOT run. The change is on screen
+                                       only and CLAUDE.md makes the scale
+                                       the owner's call. No check in this
+                                       turn has seen a decal on the mat.
+
+What to look for when flying it: a whoop track with a ground logo placed
+in the builder. Right is the logo on the black mat, where the builder put
+it, the same size, reading the same way round, lit like the floor round
+it, with the racing line drawn over it where they cross. Wrong is a bare
+mat, a mirrored or turned logo, a black outline round the logo's
+rectangle, or the logo flickering against the mat.

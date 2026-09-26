@@ -53,9 +53,16 @@ import { startBlockDims } from '../art/startblock.js';
 import { partsOf, planBounds } from '../props/catalog.js';
 import { placedYaw } from '../props/solids.js';
 import { styleOf as propStyleOf, styleDims } from '../props/types.js';
-/* Roads and vehicles: where a road's nodes are and where a vehicle starts,
- * worked out the way the simulator will drive them. */
-import { roadNodesOf } from '../maps/built/road.js';
+/* Roads and vehicles: a road's eased line, where its nodes are and where a
+ * vehicle starts, worked out the way the simulator will drive them, and the
+ * road tool's own arithmetic. */
+import {
+  roadNodesOf, roadOf, centreLine, edgesOf, nearestOn, pointAt, DRIVE_RADIUS_MIN,
+} from '../maps/built/road.js';
+import {
+  absNodes, addDraftNode, closesDraft, footprint, legMidpoints, pickLeg, pickNode, snapToRoad,
+  vehiclePlace,
+} from './roadtool.js';
 import { vehicleStart } from '../maps/built/traffic.js';
 
 const RULER = 26;              /* pixels of ruler along the top and the left */
@@ -105,7 +112,27 @@ const C = {
    * not a thing: the same reason ground paint is dashed. */
   zone: '#ffb347',
   zoneFill: 'rgba(255, 179, 71, 0.10)',
+  /* A road: dark tarmac a shade off the plot, cream edges, and a dashed
+   * line down the middle of a two lane road, the way a Japanese back road
+   * is painted. Under everything else, because it is paint. */
+  road: 'rgba(44, 54, 66, 0.95)',
+  roadEdge: 'rgba(247, 232, 205, 0.7)',
+  roadPaint: 'rgba(247, 232, 205, 0.55)',
+  roadArrow: 'rgba(247, 232, 205, 0.5)',
+  node: '#101a26',
+  /* A node the road leaves out, and one it runs straight past. */
+  bad: '#ff6b6b',
+  flat: '#ffb347',
+  car: 'rgba(207, 224, 238, 0.9)',
+  carDrift: 'rgba(255, 154, 77, 0.95)',
+  carGlass: 'rgba(16, 26, 38, 0.75)',
+  carInk: 'rgba(8, 14, 20, 0.85)',
 };
+
+/* How close to a road a vehicle has to be dropped to go on it, pixels past
+ * the road's own edge, and how close a click has to be to a node, pixels. */
+const SNAP_PX = 36;
+const NODE_PX = 11;
 
 /* ---------------- headings ---------------- */
 
@@ -252,14 +279,14 @@ function roadOutline(el) {
 
 /* A VEHICLE'S FOOTPRINT is its car where it starts, on its road: its place
  * is its road and its offset (src/maps/built/traffic.js vehicleStart), so
- * it needs the document. Without one, or without a road, a metre square at
- * the plot's corner, where its unused position is. */
+ * it needs the document. With no road it is its place in the row the plan
+ * parks roadless cars in (vehiclePlace in ./roadtool.js). Without the
+ * document, a metre square at its unused position. */
 function vehicleOutline(el, doc) {
-  const at = doc ? vehicleStart(doc, el) : null;
-  if (!at) {
+  if (!doc) {
     return boxCorners(el.position, 0, 1, 1);
   }
-  return boxCorners({ x: at.x, y: at.y }, Math.atan2(at.ty, at.tx), at.length, at.width);
+  return footprint(vehiclePlace(doc, el)).map((p) => ({ x: p.x, y: p.y, z: 0 }));
 }
 
 /*
@@ -519,6 +546,9 @@ export class View2D {
       let bestArea = Infinity;
       for (let i = doc.elements.length - 1; i >= 0; i -= 1) {
         const el = doc.elements[i];
+        if (isRoadEl(el)) {
+          continue;
+        }
         const poly = this.planShape(el);
         if (polyContains(poly, world) || polyNear(poly, world, pad)) {
           const area = polyArea(poly);
@@ -528,7 +558,34 @@ export class View2D {
           }
         }
       }
-      return best;
+      if (best) {
+        return best;
+      }
+      /* A ROAD IS PICKED LAST, and by its surface: it is paint under
+       * everything, so a car on it or a lamp beside it wins, and what a
+       * pointer lands on is the eased road as drawn, not its node line. */
+      let road = null;
+      let roadD = Infinity;
+      for (const el of doc.elements) {
+        if (!isRoadEl(el)) {
+          continue;
+        }
+        const r = roadOf(el);
+        if (r.centre.points.length < 2) {
+          const poly = this.planShape(el);
+          if (polyNear(poly, world, pad) && !road) {
+            road = el;
+            roadD = pad;
+          }
+          continue;
+        }
+        const hit = nearestOn(r.centre, world.x, world.y);
+        if (hit.d <= r.width / 2 + pad && hit.d < roadD) {
+          road = el;
+          roadD = hit.d;
+        }
+      }
+      return road;
     }
     /* Back to front, so the most recently placed thing wins a tie the way it
      * does visually. */
@@ -549,7 +606,9 @@ export class View2D {
       return null;
     }
     const el = elementById(this.host.doc, ids[0]);
-    if (!el || kindOf(el) === KIND.ANNOTATION) {
+    /* A road is turned by its nodes and a vehicle by its road, so neither
+     * has a heading to drag. */
+    if (!el || kindOf(el) === KIND.ANNOTATION || isRoadEl(el) || isVehicleEl(el)) {
       return null;
     }
     const gap = HANDLE_GAP_PX / this.cam.scale;
@@ -592,8 +651,13 @@ export class View2D {
     const world = this.toWorld(p.x, p.y);
 
     /* Middle button, or right button, pans. Right also cancels an armed
-     * palette tool, which is the fastest way to stop placing. */
+     * palette tool, which is the fastest way to stop placing; a road half
+     * laid is put away first, and the tool with it on a second press. */
     if (e.button === 1 || e.button === 2) {
+      if (e.button === 2 && this.host.roadDraft) {
+        this.host.cancelDraft();
+        return;
+      }
       if (e.button === 2 && this.host.armed) {
         this.host.disarm();
         return;
@@ -605,11 +669,51 @@ export class View2D {
       return;
     }
 
+    /* THE ROAD TOOL lays a node a click, and the road lands as one edit
+     * when it is finished: on its first node to close it, on its last to
+     * leave it open (a double click lands there twice), or with Enter. */
+    if (this.host.armed === 'road') {
+      this.host.draftClick(world, this.host.snap(world, e.altKey), NODE_PX / this.cam.scale);
+      return;
+    }
+    /* A vehicle goes on the road nearest the click. */
+    if (this.host.armed === 'vehicle') {
+      this.host.dropVehicle(world, SNAP_PX / this.cam.scale);
+      return;
+    }
+
     /* An armed palette tool places on click and stays armed, so ten gates
      * are ten clicks. */
     if (this.host.armed) {
       this.host.placeAt(this.host.snap(world, e.altKey));
       return;
+    }
+
+    /* A selected road's handles come before anything under them: a node
+     * to drag, or a + between two to drag a new node out of. Each is one
+     * undo step, the insert and its drag together. */
+    const road = this.selectedRoad();
+    if (road && !e.shiftKey) {
+      const reach = NODE_PX / this.cam.scale;
+      const i = pickNode(road, world.x, world.y, reach);
+      if (i >= 0) {
+        this.host.setActiveNode(road.id, i);
+        this.host.beginEdit('move node');
+        this.drag = { kind: 'node', id: road.id, index: i, starts: this.host.vehicleStarts(road.id) };
+        return;
+      }
+      const leg = pickLeg(road, world.x, world.y, reach);
+      if (leg >= 0) {
+        const starts = this.host.vehicleStarts(road.id);
+        this.host.beginEdit('add node');
+        const index = this.host.insertRoadNode(road.id, leg, this.host.snap(world, e.altKey), starts);
+        if (index < 0) {
+          this.host.cancelEdit();
+          return;
+        }
+        this.drag = { kind: 'node', id: road.id, index, starts };
+        return;
+      }
     }
 
     const handle = this.handlePos();
@@ -644,6 +748,14 @@ export class View2D {
     } else if (!this.host.selection.has(hit.id)) {
       this.host.setSelection([hit.id]);
     }
+    /* A vehicle is not moved, it is slid along its road: where it is IS
+     * how far along its road it starts. */
+    if (isVehicleEl(hit) && !e.shiftKey) {
+      this.host.setSelection([hit.id]);
+      this.host.beginEdit('slide vehicle');
+      this.drag = { kind: 'slide', id: hit.id };
+      return;
+    }
     this.host.beginEdit('move');
     this.drag = {
       kind: 'move',
@@ -670,7 +782,24 @@ export class View2D {
       } else if (this.host.armed) {
         this.host.requestDraw();
       }
+      /* A pointing hand over a road's handles, so they read as things to
+       * take hold of; a crosshair while a road is being laid. */
+      const road = this.host.armed ? null : this.selectedRoad();
+      const reach = NODE_PX / this.cam.scale;
+      const onHandle = road && (pickNode(road, this.pointer.x, this.pointer.y, reach) >= 0
+        || pickLeg(road, this.pointer.x, this.pointer.y, reach) >= 0);
+      this.canvas.style.cursor = this.host.armed === 'road' ? 'crosshair' : (onHandle ? 'pointer' : '');
       this.host.onHoverWorld(this.pointer);
+      return;
+    }
+
+    if (this.drag.kind === 'node') {
+      this.host.moveRoadNode(this.drag.id, this.drag.index, this.host.snap(this.pointer, e.altKey), this.drag.starts);
+      return;
+    }
+
+    if (this.drag.kind === 'slide') {
+      this.host.slideVehicle(this.drag.id, this.pointer, SNAP_PX / this.cam.scale);
       return;
     }
 
@@ -730,7 +859,7 @@ export class View2D {
       this.host.setSelection(ids, this.band.additive);
       this.band = null;
     }
-    if (kind === 'move' || kind === 'rotate') {
+    if (kind === 'move' || kind === 'rotate' || kind === 'node' || kind === 'slide') {
       this.host.endEdit();
     }
     this.drag = null;
@@ -741,7 +870,7 @@ export class View2D {
   }
 
   onCancel() {
-    if (this.drag && (this.drag.kind === 'move' || this.drag.kind === 'rotate')) {
+    if (this.drag && ['move', 'rotate', 'node', 'slide'].includes(this.drag.kind)) {
       this.host.cancelEdit();
     }
     this.drag = null;
@@ -749,14 +878,36 @@ export class View2D {
     this.host.requestDraw();
   }
 
+  /* The one road that is selected, alone, or null: its handles are the
+   * ones on show. */
+  selectedRoad() {
+    if (this.host.selection.size !== 1) {
+      return null;
+    }
+    const el = elementById(this.host.doc, [...this.host.selection][0]);
+    return el && isRoadEl(el) ? el : null;
+  }
+
+  /* What a box select takes: an element whose place is inside it. A road's
+   * place is all its nodes, a vehicle's where it is drawn. */
   elementsInBand(band) {
     const minX = Math.min(band.from.x, band.to.x);
     const maxX = Math.max(band.from.x, band.to.x);
     const minY = Math.min(band.from.y, band.to.y);
     const maxY = Math.max(band.from.y, band.to.y);
-    return this.host.doc.elements
-      .filter((el) => el.position.x >= minX && el.position.x <= maxX
-        && el.position.y >= minY && el.position.y <= maxY)
+    const inside = (p) => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+    const doc = this.host.doc;
+    return doc.elements
+      .filter((el) => {
+        if (isRoadEl(el)) {
+          const nodes = absNodes(el);
+          return nodes.length > 0 && nodes.every(inside);
+        }
+        if (isVehicleEl(el)) {
+          return inside(vehiclePlace(doc, el));
+        }
+        return inside(el.position);
+      })
       .map((el) => el.id);
   }
 
@@ -785,10 +936,29 @@ export class View2D {
     }
 
     const numbers = freestyle ? new Map() : sequenceNumbers(doc);
+    /* Roads first, because they are paint on the ground and everything
+     * stands on them; vehicles last, over a bridge they pass under, because
+     * a car an author cannot see is a car they cannot drag. */
+    if (freestyle) {
+      for (const el of doc.elements) {
+        if (isRoadEl(el)) {
+          this.drawRoad(ctx, el);
+        }
+      }
+    }
     for (const el of doc.elements) {
-      this.drawElement(ctx, el, numbers.get(el.id) ?? []);
+      if (!isRoadEl(el) && !isVehicleEl(el)) {
+        this.drawElement(ctx, el, numbers.get(el.id) ?? []);
+      }
     }
     if (freestyle) {
+      for (const el of doc.elements) {
+        if (isVehicleEl(el)) {
+          this.drawVehicle(ctx, el);
+        }
+      }
+      this.drawRoadHandles(ctx);
+      this.drawDraft(ctx);
       this.pruneStructureCache(doc);
     }
 
@@ -885,10 +1055,12 @@ export class View2D {
     const selected = this.host.selection.has(el.id);
     const hovered = this.hover === el.id;
 
-    if (def.kind === KIND.ROAD || def.kind === KIND.VEHICLE) {
-      /* Drawn by the road tool (Stage E), which is not in yet. Until it is,
-       * nothing, rather than falling through to the aperture drawing,
-       * which has no opening to draw and throws. */
+    if (def.kind === KIND.ROAD) {
+      this.drawRoad(ctx, el);
+      return;
+    }
+    if (def.kind === KIND.VEHICLE) {
+      this.drawVehicle(ctx, el);
       return;
     }
     if (def.kind === KIND.ANNOTATION) {
@@ -1077,6 +1249,332 @@ export class View2D {
     ctx.fillRect(cx - w / 2 - 4, top - 8, w + 8, 16);
     ctx.fillStyle = colour;
     ctx.fillText(text, cx, top + 0.5);
+  }
+
+  /* A list of plan points as a canvas path, closed or not. */
+  tracePath(ctx, pts, closed) {
+    ctx.beginPath();
+    pts.forEach((q, i) => {
+      const s = this.toScreen(q);
+      if (i === 0) {
+        ctx.moveTo(s.x, s.y);
+      } else {
+        ctx.lineTo(s.x, s.y);
+      }
+    });
+    if (closed) {
+      ctx.closePath();
+    }
+  }
+
+  /*
+   * A ROAD, DRAWN AS IT WILL BE DRIVEN: its eased centre line from
+   * src/maps/built/road.js, not the line of nodes, as a band of tarmac its
+   * own width with cream edges and, on two lanes, a dashed line down the
+   * middle. Then what road.js made of the nodes (drawRoadMarks). A road with
+   * no line to drive is drawn as its nodes, dashed red, so it can be found
+   * and fixed.
+   */
+  drawRoad(ctx, el) {
+    const selected = this.host.selection.has(el.id);
+    const hovered = this.hover === el.id;
+    const r = roadOf(el);
+    const line = r.centre;
+    if (line.points.length < 2) {
+      const nodes = absNodes(el);
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = selected ? C.selected : C.bad;
+      ctx.lineWidth = 2;
+      this.tracePath(ctx, nodes, el.closed === true);
+      ctx.stroke();
+      ctx.restore();
+      this.drawRoadMarks(ctx, el, r, selected);
+      return;
+    }
+    this.paintRoad(ctx, line, r.width, r.lanes, { selected, hovered });
+    if (selected) {
+      this.drawRoadArrows(ctx, line);
+    }
+    this.drawRoadMarks(ctx, el, r, selected);
+    if (el.name) {
+      const at = this.toScreen(line.points[0]);
+      this.drawTag(ctx, el.name, [at], selected ? C.selected : C.structName);
+    }
+  }
+
+  /* A line painted as a road: tarmac, two edges, and the middle line. */
+  paintRoad(ctx, line, width, lanes, opts = {}) {
+    const k = this.cam.scale;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'butt';
+    if (opts.draft) {
+      ctx.globalAlpha = 0.72;
+    }
+    this.tracePath(ctx, line.points, line.closed);
+    ctx.strokeStyle = C.road;
+    ctx.lineWidth = Math.max(2, width * k);
+    ctx.stroke();
+    const edges = opts.draft ? edgesOf(line, width) : edgesFor(line, width);
+    ctx.strokeStyle = opts.selected ? C.selected : (opts.hovered ? '#ffffff' : C.roadEdge);
+    ctx.lineWidth = opts.selected ? 2 : 1.2;
+    for (const side of [edges.left, edges.right]) {
+      this.tracePath(ctx, side, line.closed);
+      ctx.stroke();
+    }
+    if (lanes === 2 && width * k > 10) {
+      const dash = Math.max(4, 3 * k);
+      ctx.setLineDash([dash, dash]);
+      ctx.strokeStyle = C.roadPaint;
+      ctx.lineWidth = Math.max(1, 0.15 * k);
+      this.tracePath(ctx, line.points, line.closed);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* Which way the road's nodes run, a chevron every so often down its
+   * middle: the way Forward drives it. Shown on the selected road. */
+  drawRoadArrows(ctx, line) {
+    const every = Math.max(12, 70 / this.cam.scale);
+    for (let s = every / 2; s < line.length; s += every) {
+      const at = pointAt(line, s);
+      const p = this.toScreen(at);
+      arrowHead(ctx, p.x, p.y, Math.atan2(-at.ty, at.tx), 4.5, C.roadArrow);
+    }
+  }
+
+  /*
+   * WHAT road.js MADE OF THE NODES, where it made it: a node it had to leave
+   * out (a fold, or a turn no bend fits) ringed red and crossed; one it ran
+   * straight past, or read as the node before it, ringed amber; a place the
+   * road crosses itself crossed red. On the selected road, a bend eased
+   * tighter than the road's own radius, because its nodes are close, says
+   * its radius at its apex: tighter by more than a twentieth, since every
+   * bend is a few centimetres off the radius asked for where its steps
+   * are rounded to whole numbers.
+   */
+  drawRoadMarks(ctx, el, r, selected) {
+    const nodes = absNodes(el);
+    const ring = (q, colour, cross) => {
+      const p = this.toScreen(q);
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+      ctx.stroke();
+      if (cross) {
+        ctx.beginPath();
+        ctx.moveTo(p.x - 5, p.y - 5);
+        ctx.lineTo(p.x + 5, p.y + 5);
+        ctx.moveTo(p.x + 5, p.y - 5);
+        ctx.lineTo(p.x - 5, p.y + 5);
+        ctx.stroke();
+      }
+    };
+    for (const pr of r.problems) {
+      const q = Number.isInteger(pr.node) ? nodes[pr.node] : null;
+      if (pr.code === 'rd-crossing' && r.report.crossing) {
+        ring(r.report.crossing, C.bad, true);
+      } else if (q && (pr.code === 'rd-tight' || pr.code === 'rd-fold')) {
+        ring(q, C.bad, true);
+      } else if (q) {
+        ring(q, C.flat, false);
+      }
+    }
+    if (!selected) {
+      return;
+    }
+    ctx.font = '600 10px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const c of r.centre.corners) {
+      if (c.radius < r.radius * 0.95) {
+        const p = this.toScreen(c);
+        const text = `${c.radius.toFixed(1)} m`;
+        const w = ctx.measureText(text).width;
+        ctx.fillStyle = 'rgba(8, 14, 20, 0.72)';
+        ctx.fillRect(p.x - w / 2 - 3, p.y - 7, w + 6, 14);
+        ctx.fillStyle = C.flat;
+        ctx.fillText(text, p.x, p.y + 0.5);
+      }
+    }
+  }
+
+  /*
+   * THE SELECTED ROAD'S HANDLES: its node line faint and dashed, a round
+   * handle on every node (the first bigger, since a car's start is measured
+   * from it and a loop starts there; the picked one filled amber), and a +
+   * on the middle of every leg to drag a new node out of.
+   */
+  drawRoadHandles(ctx) {
+    const road = this.selectedRoad();
+    if (!road) {
+      return;
+    }
+    const nodes = absNodes(road);
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = 'rgba(255, 212, 92, 0.45)';
+    ctx.lineWidth = 1;
+    this.tracePath(ctx, nodes, road.closed === true);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const m of legMidpoints(road)) {
+      const p = this.toScreen(m);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(16, 26, 38, 0.85)';
+      ctx.fill();
+      ctx.strokeStyle = C.selected;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(p.x - 3, p.y);
+      ctx.lineTo(p.x + 3, p.y);
+      ctx.moveTo(p.x, p.y - 3);
+      ctx.lineTo(p.x, p.y + 3);
+      ctx.stroke();
+    }
+    const active = this.host.activeNode;
+    nodes.forEach((q, i) => {
+      const p = this.toScreen(q);
+      const on = active && active.id === road.id && active.index === i;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, i === 0 ? 7 : 5.5, 0, Math.PI * 2);
+      ctx.fillStyle = on ? C.selected : C.node;
+      ctx.fill();
+      ctx.strokeStyle = C.selected;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  /*
+   * A VEHICLE, WHERE IT STARTS: its body the drawn car's own length and
+   * width, turned the way it faces, its windscreen darker so the nose reads,
+   * and an arrow ahead of it the way it drives. The drift car is orange. A
+   * vehicle with no road is drawn in the parking row, dashed red.
+   */
+  drawVehicle(ctx, el) {
+    const doc = this.host.doc;
+    const selected = this.host.selection.has(el.id);
+    const hovered = this.hover === el.id;
+    const at = vehiclePlace(doc, el);
+    this.paintCar(ctx, at, {
+      fill: !at.onRoad ? 'rgba(255, 125, 125, 0.3)' : (el.drift ? C.carDrift : C.car),
+      edge: selected ? C.selected : (hovered ? '#ffffff' : (at.onRoad ? C.carInk : C.bad)),
+      width: selected ? 2.2 : 1.2,
+      dashed: !at.onRoad,
+      arrow: at.onRoad ? (selected ? C.selected : C.start) : null,
+    });
+    const tag = !at.onRoad ? `${el.name ? `${el.name}, ` : ''}no road` : el.name;
+    if (tag) {
+      const poly = footprint(at).map((q) => this.toScreen(q));
+      this.drawTag(ctx, tag, poly, !at.onRoad ? C.bad : (selected ? C.selected : C.structName));
+    }
+  }
+
+  /* A car's body in plan, from { x, y, tx, ty, length, width }. */
+  paintCar(ctx, at, o) {
+    const poly = footprint(at).map((q) => this.toScreen(q));
+    ctx.save();
+    ctx.beginPath();
+    poly.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
+    ctx.closePath();
+    ctx.fillStyle = o.fill;
+    ctx.fill();
+    ctx.setLineDash(o.dashed ? [4, 3] : []);
+    ctx.strokeStyle = o.edge;
+    ctx.lineWidth = o.width;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    /* The windscreen: a band across the body a fifth of its length back
+     * from the nose. */
+    const f0 = 0.12;
+    const f1 = 0.3;
+    const glass = footprint({ ...at, x: at.x + at.tx * at.length * (0.5 - (f0 + f1) / 2), y: at.y + at.ty * at.length * (0.5 - (f0 + f1) / 2), length: at.length * (f1 - f0), width: at.width * 0.8 })
+      .map((q) => this.toScreen(q));
+    ctx.beginPath();
+    glass.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
+    ctx.closePath();
+    ctx.fillStyle = C.carGlass;
+    ctx.fill();
+    if (o.arrow) {
+      const nose = this.toScreen({ x: at.x + at.tx * at.length / 2, y: at.y + at.ty * at.length / 2 });
+      const len = Math.max(12, 1.6 * this.cam.scale);
+      const ang = Math.atan2(-at.ty, at.tx);
+      const tip = { x: nose.x + Math.cos(ang) * len, y: nose.y + Math.sin(ang) * len };
+      ctx.strokeStyle = o.arrow;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(nose.x, nose.y);
+      ctx.lineTo(tip.x, tip.y);
+      ctx.stroke();
+      arrowHead(ctx, tip.x, tip.y, ang, 5, o.arrow);
+    }
+    ctx.restore();
+  }
+
+  /*
+   * THE ROAD BEING LAID: its eased line through the nodes so far and on to
+   * the pointer, painted the way it will be, so the author sees the curve
+   * they are making rather than the corners they are clicking. With three
+   * nodes down, the pointer on the first node shows the loop closed, and
+   * the first node rings to say a click there closes it. Nodes road.js
+   * would leave out are ringed as they would be on a laid road.
+   */
+  drawDraft(ctx) {
+    const nodes = this.host.roadDraft;
+    if (this.host.armed !== 'road' || !nodes || !nodes.length) {
+      return;
+    }
+    const reach = NODE_PX / this.cam.scale;
+    const raw = this.pointer;
+    const closing = raw && closesDraft(nodes, raw.x, raw.y, reach);
+    const pts = closing || !raw ? nodes : addDraftNode(nodes, this.host.snap(raw, false));
+    const def = ELEMENTS.road.dims;
+    if (pts.length >= 2) {
+      const laneOffset = closing && def.lanes === 2 ? def.width / 4 : 0;
+      const line = centreLine(pts.map((q, i) => ({ x: q.x, y: q.y, node: i })), Boolean(closing), {
+        radius: def.radius, floor: DRIVE_RADIUS_MIN + laneOffset,
+      });
+      if (line.points.length >= 2) {
+        this.paintRoad(ctx, line, def.width, def.lanes, { draft: true });
+      }
+      for (const pr of line.problems) {
+        const q = Number.isInteger(pr.node) ? pts[pr.node] : null;
+        if (q && pr.level !== 'info') {
+          const p = this.toScreen(q);
+          ctx.strokeStyle = C.bad;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = 'rgba(255, 212, 92, 0.45)';
+    ctx.lineWidth = 1;
+    this.tracePath(ctx, pts, Boolean(closing));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    nodes.forEach((q, i) => {
+      const p = this.toScreen(q);
+      const first = i === 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, first ? (closing ? 10 : 7) : 5.5, 0, Math.PI * 2);
+      ctx.fillStyle = first && closing ? C.selected : C.node;
+      ctx.fill();
+      ctx.strokeStyle = C.selected;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    });
+    ctx.restore();
   }
 
   /*
@@ -1702,6 +2200,10 @@ export class View2D {
     const at = this.host.snap(this.pointer, false);
     const p = this.toScreen(at);
     const def = ELEMENTS[this.host.armed];
+    if (def.kind === KIND.ROAD || def.kind === KIND.VEHICLE) {
+      this.drawTrafficGhost(ctx, def, at, p);
+      return;
+    }
     ctx.strokeStyle = C.ghost;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 4]);
@@ -1732,6 +2234,55 @@ export class View2D {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${def.label}  ${round1(at.x)}, ${round1(at.y)} m`, p.x + 18, p.y);
+  }
+
+  /*
+   * The road tool and the vehicle under the cursor. The road tool says what
+   * the next click does. A vehicle shows the car on the road it would go
+   * on, at the point it would start and facing the way it would drive, or
+   * says there is no road near enough.
+   */
+  drawTrafficGhost(ctx, def, at, p) {
+    let text;
+    if (def.kind === KIND.ROAD) {
+      const nodes = this.host.roadDraft ?? [];
+      const raw = this.pointer;
+      if (!nodes.length) {
+        text = 'Road: click to lay its first node';
+      } else if (closesDraft(nodes, raw.x, raw.y, NODE_PX / this.cam.scale)) {
+        text = 'Click to close the loop';
+      } else {
+        text = `Node ${nodes.length + 1}. Enter or double click finishes, Esc cancels`;
+      }
+      ctx.strokeStyle = C.ghost;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      const snap = snapToRoad(this.host.doc, this.pointer.x, this.pointer.y, SNAP_PX / this.cam.scale);
+      const start = snap ? vehicleStart(this.host.doc, {
+        type: 'vehicle', road: snap.road, dims: { offset: snap.offset }, style: 'kei', reverse: snap.twoLaneLoop && snap.right,
+      }) : null;
+      if (start) {
+        this.paintCar(ctx, start, { fill: 'rgba(255, 212, 92, 0.18)', edge: C.ghost, width: 1.5, dashed: true, arrow: C.ghost });
+        text = `Vehicle, ${snap.offset.toFixed(1)} m along the road`;
+      } else {
+        ctx.strokeStyle = C.ghost;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 13, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        text = 'Vehicle: click on a road';
+      }
+    }
+    ctx.fillStyle = C.ghost;
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, p.x + 18, p.y);
   }
 
   /*
@@ -1830,6 +2381,28 @@ export class View2D {
 }
 
 /* ---------------- small helpers ---------------- */
+
+function isRoadEl(el) {
+  return ELEMENTS[el?.type]?.kind === KIND.ROAD;
+}
+
+function isVehicleEl(el) {
+  return ELEMENTS[el?.type]?.kind === KIND.VEHICLE;
+}
+
+/* A road's two edges, cached by its line: roadOf hands back the same line
+ * until the road changes, so a plan redrawn on every pointer move works
+ * each road's edges out once an edit. */
+const edgeCache = new WeakMap();
+
+function edgesFor(line, width) {
+  let hit = edgeCache.get(line);
+  if (!hit || hit.width !== width) {
+    hit = { width, ...edgesOf(line, width) };
+    edgeCache.set(line, hit);
+  }
+  return hit;
+}
 
 function round1(x) {
   return Math.abs(x - Math.round(x)) < 1e-6 ? String(Math.round(x)) : x.toFixed(1);

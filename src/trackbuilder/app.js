@@ -46,6 +46,12 @@ import { applyFigure, defaultFigure, upgradeStackedFigures } from './figures.js'
 import { buildPath } from './path.js';
 import { collectWarnings, freestyleReport, sortWarnings } from './warnings.js';
 import { History } from './history.js';
+/* The road tool: every rule about nodes and where a car goes is in here,
+ * pure, and this file only applies them as edits. */
+import {
+  addDraftNode, closesDraft, deleteNode, endsDraft, insertNode, moveNode, roadFromDraft, snapToRoad,
+  vehiclePlace, absNodes, OPEN_MIN, LOOP_MIN,
+} from './roadtool.js';
 import {
   animationFilename, deleteTrack, downloadBlob, downloadTrack, keepDisplaced, listTracks,
   loadTrack, makeAutosaver, readAutosave, readFileText, saveTrack, shipMaps, trackExists, writeAutosave,
@@ -399,6 +405,14 @@ export class App {
     /* The compass toast is said once a session: a tool that repeats itself
      * every drag is a tool people stop reading. */
     this.compassSaid = false;
+    /* THE ROAD TOOL'S STATE. The road being laid, as plan points, which is
+     * not in the document until it is finished, so the whole road lands as
+     * one undo step and Escape leaves nothing behind; and the node of the
+     * selected road the author last took hold of, which Delete removes. The
+     * road tool's hints are said once each a session, as the compass's is. */
+    this.roadDraft = null;
+    this.activeNode = null;
+    this.roadSaid = new Set();
 
     this.view2d = new View2D(nodes.canvas2d, this);
     this.view3d = new View3D(nodes.canvas3d, this);
@@ -747,6 +761,7 @@ export class App {
         this.selection.add(id);
       }
     }
+    this.pruneActiveNode();
     this.panels.renderAll();
     this.requestDraw();
   }
@@ -757,8 +772,44 @@ export class App {
     } else {
       this.selection.add(id);
     }
+    this.pruneActiveNode();
     this.panels.renderAll();
     this.requestDraw();
+  }
+
+  /* The picked node belongs to the one road selected, or to nothing. */
+  pruneActiveNode() {
+    const a = this.activeNode;
+    if (!a) {
+      return;
+    }
+    const road = elementById(this.doc, a.id);
+    if (this.selection.size !== 1 || !this.selection.has(a.id) || !road || !(a.index < (road.nodes?.length ?? 0))) {
+      this.activeNode = null;
+    }
+  }
+
+  /*
+   * WHERE AN ELEMENT IS on the plan, for centring the views on it: its
+   * position, except a vehicle's, which is where it is drawn (its position
+   * is written 0 and never read), and a road's, which is the middle of its
+   * nodes rather than its first one.
+   */
+  placeOf(el) {
+    const kind = kindOf(el);
+    if (kind === KIND.VEHICLE) {
+      const at = vehiclePlace(this.doc, el);
+      return { x: at.x, y: at.y, z: 0 };
+    }
+    if (kind === KIND.ROAD) {
+      const nodes = absNodes(el);
+      if (nodes.length) {
+        const xs = nodes.map((p) => p.x);
+        const ys = nodes.map((p) => p.y);
+        return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, z: 0 };
+      }
+    }
+    return el.position;
   }
 
   selectionCentroid() {
@@ -773,9 +824,10 @@ export class App {
     for (const id of ids) {
       const e = elementById(this.doc, id);
       if (e) {
-        x += e.position.x;
-        y += e.position.y;
-        z += e.position.z;
+        const at = this.placeOf(e);
+        x += at.x;
+        y += at.y;
+        z += at.z;
         n += 1;
       }
     }
@@ -813,12 +865,34 @@ export class App {
 
   arm(typeId) {
     this.armed = this.armed === typeId ? null : typeId;
+    /* A road half laid is put away with the tool that was laying it. */
+    if (this.armed !== 'road') {
+      this.roadDraft = null;
+    }
     /* A tool armed from the palette carries no logo with it. The decal it
      * places falls back to the course's first logo, which is what
      * createElement has always done. */
     this.armedLogoId = '';
     this.panels.renderPalette();
     this.requestDraw();
+    if (this.armed === 'road') {
+      this.sayOnce('arm road', 'Click to lay the road’s nodes: it bends through them the way a car can drive. Click the first node to close a loop, press Enter or double click to finish it open, Escape to stop.');
+    } else if (this.armed === 'vehicle') {
+      const roads = this.doc.elements.some((e) => kindOf(e) === KIND.ROAD);
+      this.sayOnce(roads ? 'arm vehicle' : 'arm vehicle, no road', roads
+        ? 'Click on a road to put a car there. On a two lane loop the side you click is the lane it drives.'
+        : 'A vehicle drives a road, and this map has none yet. Lay one with the Road tool first.');
+    }
+  }
+
+  /* A road tool hint, said the first time it applies and not again this
+   * session. */
+  sayOnce(key, message) {
+    if (this.roadSaid.has(key)) {
+      return;
+    }
+    this.roadSaid.add(key);
+    this.toast(message);
   }
 
   /*
@@ -841,8 +915,238 @@ export class App {
   disarm() {
     this.armed = null;
     this.armedLogoId = '';
+    this.roadDraft = null;
     this.panels.renderPalette();
     this.requestDraw();
+  }
+
+  /* ---------------- the road tool ---------------- */
+
+  /*
+   * A click with the road tool. On the draft's first node (three down) it
+   * closes the road into a loop; on its last it finishes it open, which is
+   * where the second click of a double click lands; anywhere else it lays a
+   * node at the snapped point. `raw` is the pointer, so a node can be hit
+   * whatever the grid; `reach` is how close counts, in metres.
+   */
+  draftClick(raw, snapped, reach) {
+    const nodes = this.roadDraft ?? [];
+    if (closesDraft(nodes, raw.x, raw.y, reach)) {
+      this.finishDraft(true);
+      return;
+    }
+    if (endsDraft(nodes, raw.x, raw.y, reach)) {
+      this.finishDraft(false);
+      return;
+    }
+    this.roadDraft = addDraftNode(nodes, snapped);
+    this.requestDraw();
+  }
+
+  /* The draft laid as a road, in one edit, and selected. The tool stays
+   * armed, so the next click starts the next road. */
+  finishDraft(closed) {
+    const nodes = this.roadDraft ?? [];
+    const road = roadFromDraft(nodes, closed);
+    if (!road) {
+      this.toast(closed
+        ? `A loop needs ${LOOP_MIN} nodes.`
+        : `A road needs ${OPEN_MIN} nodes: click where it goes next.`);
+      return;
+    }
+    let newId = null;
+    this.edit(closed ? 'lay loop' : 'lay road', (d) => {
+      const el = createElement(d, 'road', road.position);
+      el.nodes = road.nodes;
+      el.closed = road.closed;
+      d.elements.push(el);
+      newId = el.id;
+    });
+    this.roadDraft = null;
+    if (newId) {
+      this.setSelection([newId]);
+    }
+    this.sayOnce('laid', 'Road laid. Drag a node to reshape it, drag the + between two nodes to add one, click a node and press Delete to take it out. Pick Vehicle and click on it to put a car on it.');
+  }
+
+  cancelDraft() {
+    this.roadDraft = null;
+    this.requestDraw();
+  }
+
+  /* Backspace while laying: the last node back. */
+  undoDraftNode() {
+    if (!this.roadDraft) {
+      return;
+    }
+    this.roadDraft = this.roadDraft.length > 1 ? this.roadDraft.slice(0, -1) : null;
+    this.requestDraw();
+  }
+
+  setActiveNode(id, index) {
+    this.activeNode = { id, index };
+    this.panels.renderInspector();
+    this.requestDraw();
+  }
+
+  /* Where every vehicle on a road is drawn now, by id: taken before an edit
+   * that moves the road's line, so reseatVehicles can put each back. */
+  vehicleStarts(roadId) {
+    const starts = new Map();
+    for (const el of this.doc.elements) {
+      if (kindOf(el) === KIND.VEHICLE && el.road === roadId) {
+        const at = vehiclePlace(this.doc, el);
+        if (at.onRoad) {
+          starts.set(el.id, { x: at.x, y: at.y });
+        }
+      }
+    }
+    return starts;
+  }
+
+  /*
+   * KEEP THE CARS WHERE THEY WERE. A car's place is how far along its road's
+   * centre line it starts, so reshaping the road (a node moved, added or
+   * taken out, a loop opened, a new radius) would slide every car on it to
+   * wherever that distance now falls. Instead each goes to the point of the
+   * new line nearest where it was drawn, which is where the author left it.
+   * Moving the whole road changes no distance, and every car goes with it.
+   */
+  reseatVehicles(doc, roadId, starts) {
+    for (const [id, p] of starts) {
+      const el = elementById(doc, id);
+      const snap = snapToRoad(doc, p.x, p.y, Infinity, roadId);
+      if (el && snap) {
+        el.dims.offset = snap.offset;
+      }
+    }
+  }
+
+  /* An edit to one road that may move its line, with its cars kept. */
+  editRoad(label, id, mutate) {
+    const starts = this.vehicleStarts(id);
+    this.edit(label, (d) => {
+      const el = elementById(d, id);
+      if (el) {
+        mutate(el);
+        this.reseatVehicles(d, id, starts);
+      }
+    });
+  }
+
+  setRoadClosed(id, closed) {
+    const el = elementById(this.doc, id);
+    if (!el || (closed && el.nodes.length < LOOP_MIN)) {
+      return;
+    }
+    this.editRoad(closed ? 'close loop' : 'open loop', id, (e2) => { e2.closed = closed; });
+  }
+
+  /* A node dragged: many of these between beginEdit and endEdit, one undo
+   * step. */
+  moveRoadNode(id, index, p, starts) {
+    const el = elementById(this.doc, id);
+    const moved = el ? moveNode(el, index, p) : null;
+    if (!moved) {
+      return;
+    }
+    el.position = moved.position;
+    el.nodes = moved.nodes;
+    this.reseatVehicles(this.doc, id, starts);
+    this.requestDraw();
+    this.panels.renderInspector();
+  }
+
+  /* A node put in on a leg, inside a gesture the caller began. Returns the
+   * new node's index, or -1. */
+  insertRoadNode(id, leg, p, starts) {
+    const el = elementById(this.doc, id);
+    const out = el ? insertNode(el, leg, p) : null;
+    if (!out) {
+      return -1;
+    }
+    el.position = out.position;
+    el.nodes = out.nodes;
+    this.reseatVehicles(this.doc, id, starts);
+    this.activeNode = { id, index: out.index };
+    this.requestDraw();
+    this.panels.renderInspector();
+    return out.index;
+  }
+
+  deleteRoadNode(id, index) {
+    const el = elementById(this.doc, id);
+    const out = el ? deleteNode(el, index) : null;
+    if (!out) {
+      this.toast('A road needs two nodes. Delete the road itself instead: click away from its nodes and press Delete.');
+      return;
+    }
+    const wasLoop = el.closed === true;
+    this.activeNode = null;
+    this.editRoad('delete node', id, (e2) => {
+      e2.position = out.position;
+      e2.nodes = out.nodes;
+      e2.closed = out.closed;
+    });
+    if (wasLoop && !out.closed) {
+      this.toast('Two nodes cannot close a loop, so the road is open now.');
+    }
+  }
+
+  /*
+   * A click with the vehicle armed: a car on the nearest road within reach,
+   * at the nearest point of its centre line, facing the way the side of a
+   * two lane loop that was clicked drives. `slack` is metres past the
+   * road's own edge.
+   */
+  dropVehicle(world, slack) {
+    const snap = snapToRoad(this.doc, world.x, world.y, slack);
+    if (!snap) {
+      const roads = this.doc.elements.some((e) => kindOf(e) === KIND.ROAD);
+      this.toast(roads
+        ? 'A vehicle goes on a road: click on one, or close beside it.'
+        : 'A vehicle drives a road, and this map has none yet. Lay one with the Road tool first.');
+      return;
+    }
+    let newId = null;
+    this.edit('place Vehicle', (d) => {
+      const el = createElement(d, 'vehicle', { x: 0, y: 0 });
+      el.road = snap.road;
+      el.dims.offset = snap.offset;
+      el.reverse = snap.twoLaneLoop && snap.right;
+      d.elements.push(el);
+      newId = el.id;
+    });
+    if (newId) {
+      this.setSelection([newId]);
+    }
+  }
+
+  /*
+   * A vehicle dragged: slid along its own road, to the point of it nearest
+   * the pointer. A vehicle with no road is put on the nearest one within
+   * reach, which is how one left behind by a deleted road is put back.
+   */
+  slideVehicle(id, world, slack) {
+    const el = elementById(this.doc, id);
+    if (!el) {
+      return;
+    }
+    const road = elementById(this.doc, el.road);
+    const own = road && kindOf(road) === KIND.ROAD;
+    const snap = own
+      ? snapToRoad(this.doc, world.x, world.y, Infinity, road.id)
+      : snapToRoad(this.doc, world.x, world.y, slack);
+    if (!snap) {
+      return;
+    }
+    if (!own) {
+      el.road = snap.road;
+      el.reverse = snap.twoLaneLoop && snap.right;
+    }
+    el.dims.offset = snap.offset;
+    this.requestDraw();
+    this.panels.renderInspector();
   }
 
   snap(world, offGrid) {
@@ -942,7 +1246,9 @@ export class App {
   moveSelected(origin, delta) {
     for (const [id, from] of origin) {
       const element = elementById(this.doc, id);
-      if (element) {
+      /* A vehicle is wherever its road puts it: it goes with its road, or
+       * slides along it, and has no position of its own to move. */
+      if (element && kindOf(element) !== KIND.VEHICLE) {
         element.position.x = from.x + delta.x;
         element.position.y = from.y + delta.y;
       }
@@ -994,13 +1300,23 @@ export class App {
       return;
     }
     const ids = [...this.selection];
+    /* A road's cars are not deleted with it: they keep the road they named
+     * and stay parked until they are put on another, as normalize keeps
+     * them, and the warnings say so. Said here too, once, as it happens. */
+    const gone = new Set(ids);
+    const stranded = this.doc.elements.filter((e) => kindOf(e) === KIND.VEHICLE && !gone.has(e.id)
+      && gone.has(e.road) && kindOf(elementById(this.doc, e.road)) === KIND.ROAD);
     this.edit(`delete ${ids.length}`, (d) => {
       for (const id of ids) {
         removeElement(d, id);
       }
     });
     this.selection.clear();
+    this.activeNode = null;
     this.panels.renderAll();
+    if (stranded.length) {
+      this.toast(`${stranded.length === 1 ? 'A vehicle was' : `${stranded.length} vehicles were`} on that road, and ${stranded.length === 1 ? 'it is' : 'they are'} parked now with no road, in the row along the south edge of the plot. Drag ${stranded.length === 1 ? 'it' : 'each'} onto a road, or delete ${stranded.length === 1 ? 'it' : 'them'}.`);
+    }
   }
 
   onHoverWorld(world) {
@@ -1147,6 +1463,8 @@ export class App {
       return;
     }
     this.mode = mode;
+    /* Roads are laid on the plan. */
+    this.roadDraft = null;
     this.nodes.canvas2d.hidden = mode !== '2d';
     this.nodes.canvas3d.hidden = mode !== '3d';
     /* Three.js arrives on the first press of the 3D button, so this settles
@@ -1288,6 +1606,8 @@ export class App {
     upgradeStackedFigures(this.doc);
     applyAutoFaces(this.doc);
     this.selection.clear();
+    this.activeNode = null;
+    this.roadDraft = null;
     this.history.reset();
     this.path = null;
     this.warnings = [];
@@ -2301,6 +2621,7 @@ export class App {
         this.selection.delete(id);
       }
     }
+    this.pruneActiveNode();
   }
 
   /* ---------------- chrome ---------------- */
@@ -2954,6 +3275,24 @@ export class App {
         return;
       }
 
+      /* A road being laid: Enter finishes it open, Escape puts it away and
+       * leaves the tool armed, and Backspace takes back the last node. */
+      if (this.roadDraft && this.nodes.modal.hidden) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.finishDraft(false);
+          return;
+        }
+        if (e.key === 'Escape') {
+          this.cancelDraft();
+          return;
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          this.undoDraftNode();
+          return;
+        }
+      }
       if (e.key === 'Escape') {
         if (!this.nodes.modal.hidden) {
           this.closeModal();
@@ -2966,6 +3305,12 @@ export class App {
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
+        /* A picked node of the selected road goes, not the road. */
+        this.pruneActiveNode();
+        if (this.activeNode) {
+          this.deleteRoadNode(this.activeNode.id, this.activeNode.index);
+          return;
+        }
         this.deleteSelection();
         return;
       }
@@ -3005,7 +3350,8 @@ export class App {
     this.edit('rotate', (d) => {
       for (const id of this.selection) {
         const element = elementById(d, id);
-        if (element && kindOf(element) !== KIND.ANNOTATION) {
+        /* A road turns by its nodes and a vehicle by its road. */
+        if (element && ![KIND.ANNOTATION, KIND.ROAD, KIND.VEHICLE].includes(kindOf(element))) {
           /* A building steps a whole quarter turn, from wherever the
            * compass has it, rather than fifteen degrees it cannot hold. */
           if (turnsOf(element.type) === 'quarter') {

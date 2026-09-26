@@ -34,7 +34,7 @@ import {
   ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf, countElementsByType,
   GATE_PRESETS, MICRO_GATE_PRESETS, gatePresetsFor,
   applyGatePreset, matchingGatePreset, levelPitchFor, apertureLevels,
-  elementHeight, TRACK_CLASS_DEFAULT, trackClassOf, docModeOf, paletteGroupOf,
+  elementHeight, TRACK_CLASS_DEFAULT, trackClassOf, docModeOf, paletteGroupOf, clampByLimits,
 } from './elements.js';
 import {
   aperturesOf, elementById, kindOf, isSequenceable, logosOf, logoForDecal,
@@ -49,6 +49,15 @@ import { localBoundsOf, turnsOf } from './view2d.js';
 import {
   PROP_GROUPS, GAP_POINTS, clampDim, styleDims, styleOf as propStyleOf,
 } from '../props/types.js';
+/* A road's eased line and the drift car's numbers, for the road and vehicle
+ * inspectors: the same answers the plan draws and the physics is handed. */
+import { roadOf } from '../maps/built/road.js';
+import { DRIFT } from '../maps/built/traffic.js';
+
+/* Metres a second in kilometres an hour. A vehicle's speed is m/s in the
+ * document and km/h in its inspector, the unit a driver reads: this is the
+ * one place the builder converts it. */
+const KMH = 3.6;
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -343,6 +352,12 @@ export class Panels {
       div.append(el('h3', null, g.label));
       groups.set(g.id, div);
     }
+    /* The road tool and the vehicle, after the assets: a road is laid node
+     * by node and a car is put on a road, so they come once there is a
+     * place for them to run through. */
+    const roads = el('div', 'tb-group');
+    roads.append(el('h3', null, 'Roads and vehicles'));
+    groups.set('roads', roads);
     const course = el('div', 'tb-group');
     /* The race palette's gates and markers, placed as furniture: a map has
      * no track, so the heading names what they are. */
@@ -542,6 +557,14 @@ export class Panels {
 
     if (def.kind === KIND.STRUCTURE) {
       this.renderStructureInspector(host, element, def);
+      return;
+    }
+    if (def.kind === KIND.ROAD) {
+      this.renderRoadInspector(host, element, def);
+      return;
+    }
+    if (def.kind === KIND.VEHICLE) {
+      this.renderVehicleInspector(host, element, def);
       return;
     }
 
@@ -810,6 +833,239 @@ export class Panels {
     const b = localBoundsOf(element);
     const tall = elementHeight(def, element.dims, propStyleOf(element));
     host.append(el('p', 'tb-fig-blurb', `About ${show(tall, 1)} m tall, taking ${show(b.x1 - b.x0, 1)} by ${show(b.z1 - b.z0, 1)} m of ground.`));
+  }
+
+  /* A heading and a row of segment buttons, one of them on: the inspector's
+   * way of offering a choice of a few words. `items` are { label, on, run,
+   * disabled, title }. */
+  segRow(host, heading, items) {
+    host.append(el('h3', null, heading));
+    const seg = el('div', 'tb-seg');
+    seg.setAttribute('role', 'group');
+    seg.setAttribute('aria-label', heading);
+    for (const it of items) {
+      const b = button(it.label, it.on ? 'tb-seg-btn on' : 'tb-seg-btn', () => {
+        if (!it.on && !it.disabled) {
+          it.run();
+        }
+      }, it.title);
+      b.setAttribute('aria-pressed', it.on ? 'true' : 'false');
+      if (it.disabled) {
+        b.disabled = true;
+      }
+      seg.append(b);
+    }
+    host.append(seg);
+  }
+
+  /*
+   * A ROAD: whether it closes into a loop, its lanes, how wide it is and
+   * how wide its bends are eased, where it starts, and what that adds up to.
+   * Its nodes are edited on the plan, not here: drag one, drag a + between
+   * two to add one, click one and press Delete. A change that moves the
+   * road's line (closing it, a radius) keeps every car on it where it was
+   * on the plan (reseatVehicles in app.js).
+   */
+  renderRoadInspector(host, element, def) {
+    const doc = this.host.doc;
+    const r = roadOf(element);
+    const n = element.nodes.length;
+    const closed = element.closed === true;
+    const id = element.id;
+    this.segRow(host, 'Shape', [
+      { label: 'Open road', on: !closed, run: () => this.host.setRoadClosed(id, false) },
+      {
+        label: 'Loop',
+        on: closed,
+        run: () => this.host.setRoadClosed(id, true),
+        disabled: !closed && n < 3,
+        title: !closed && n < 3 ? 'A loop needs three nodes. Add one on the plan first.' : 'Join the last node back to the first',
+      },
+    ]);
+    const lanes = element.dims.lanes === 1 ? 1 : 2;
+    this.segRow(host, 'Lanes', [
+      { label: 'One lane', on: lanes === 1, run: () => this.host.editRoad('lanes', id, (e2) => { e2.dims.lanes = 1; }) },
+      { label: 'Two lanes', on: lanes === 2, run: () => this.host.editRoad('lanes', id, (e2) => { e2.dims.lanes = 2; }) },
+    ]);
+
+    host.append(el('h3', null, 'Size'));
+    const dims = el('div', 'tb-grid2');
+    for (const key of ['width', 'radius']) {
+      const lim = def.limits[key];
+      dims.append(this.field(`dim-${id}-${key}`, def.labels[key], element.dims[key], (val) => {
+        this.host.editRoad('resize', id, (e2) => { e2.dims[key] = clampByLimits(def, key, val); });
+      }, { suffix: 'm', step: key === 'width' ? 0.5 : 1, places: 2, min: lim[0], max: lim[1] }));
+    }
+    host.append(dims);
+
+    /* Where it starts: its first node, which is its position. */
+    const grid = el('div', 'tb-grid2');
+    grid.append(
+      this.field(`x-${id}`, 'Start X', element.position.x, (val) => {
+        this.host.edit('move', (d) => { elementById(d, id).position.x = val; });
+      }, { suffix: 'm' }),
+      this.field(`y-${id}`, 'Start Y', element.position.y, (val) => {
+        this.host.edit('move', (d) => { elementById(d, id).position.y = val; });
+      }, { suffix: 'm' }),
+    );
+    host.append(grid);
+
+    const tight = r.report.tightest;
+    const bent = Number.isFinite(tight.radius);
+    const squeezed = bent && tight.radius < r.radius * 0.95;
+    const drives = !closed
+      ? 'Every car on an open road drives its middle, out to the end and back.'
+      : (r.lanes === 2
+        ? `A car keeps left, ${show(r.laneOffset, 2)} m off the middle, and one set to Reverse drives the other lane the other way.`
+        : 'Every car drives the middle of its one lane, so two going opposite ways would meet head on.');
+    host.append(el('p', 'tb-fig-blurb', r.centre.points.length < 2
+      ? 'This road has no line to drive yet: see the warnings.'
+      : `${show(r.centre.length, 1)} m ${closed ? 'round' : 'end to end'}, ${n} node${n === 1 ? '' : 's'}. ${bent
+        ? `Its tightest bend is ${show(tight.radius, 1)} m${squeezed ? `, tighter than the ${show(r.radius, 1)} m asked for where two nodes are close` : ''}.`
+        : 'It runs straight.'} ${drives}`));
+
+    host.append(el('h3', null, 'Nodes'));
+    const active = this.host.activeNode;
+    if (active && active.id === id && active.index < n) {
+      host.append(el('p', 'tb-help', `Node ${active.index + 1} is picked${active.index === 0 ? ', the one the road starts at' : ''}.`));
+      const row = el('div', 'tb-row-btns');
+      row.append(button('Delete node', 'tb-btn tb-danger', () => this.host.deleteRoadNode(id, active.index), 'Shortcut: Delete'));
+      host.append(row);
+    }
+    host.append(el('p', 'tb-help', 'Drag a node to reshape the road, and drag the road itself to move it. Drag a + between two nodes to add one there. Click a node and press Delete to take it out.'));
+
+    const cars = doc.elements.filter((e) => e.type === 'vehicle' && e.road === id);
+    host.append(el('h3', null, cars.length ? `On this road, ${cars.length}` : 'On this road'));
+    if (!cars.length) {
+      host.append(el('p', 'tb-help', 'No vehicles yet. Pick Vehicle in the palette and click on the road.'));
+      return;
+    }
+    const list = el('div', 'tb-spare');
+    cars.forEach((car, i) => {
+      const row = el('div', 'tb-spare-row');
+      row.append(el('span', null, car.name || `${styleLabel(car.style)} ${i + 1}`));
+      row.append(button('Select', 'tb-mini', () => {
+        this.host.setSelection([car.id]);
+        this.host.focusSelection();
+      }));
+      list.append(row);
+    });
+    host.append(list);
+  }
+
+  /*
+   * A VEHICLE: which of the town's cars, how it drives, where it starts and
+   * its colour. Its speed is m/s in the document and km/h here, the unit a
+   * driver reads, converted at this boundary and nowhere else. Where it is
+   * comes from its road and its start along it, so there is no X and Y:
+   * drag it along the road on the plan, or type how far along it starts.
+   */
+  renderVehicleInspector(host, element, def) {
+    const doc = this.host.doc;
+    const id = element.id;
+    const road = elementById(doc, element.road);
+    const onRoad = Boolean(road && ELEMENTS[road.type]?.kind === KIND.ROAD);
+    const styleSpeed = (style) => styleDims('vehicle', style)?.speed ?? def.dims.speed;
+
+    host.append(el('h3', null, 'Style'));
+    const seg = el('div', 'tb-seg');
+    seg.setAttribute('role', 'group');
+    seg.setAttribute('aria-label', 'Style');
+    for (const style of def.styles) {
+      const on = element.style === style;
+      const b = button(styleLabel(style), on ? 'tb-seg-btn on' : 'tb-seg-btn', () => {
+        this.host.edit('style', (d) => {
+          const e2 = elementById(d, id);
+          if (!e2) {
+            return;
+          }
+          e2.style = style;
+          /* A style starts at its own speed, as a building starts at its
+           * own size; the drift car keeps the drift car's. */
+          if (!e2.drift) {
+            e2.dims.speed = clampByLimits(def, 'speed', styleSpeed(style));
+          }
+        });
+      });
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      seg.append(b);
+    }
+    host.append(seg);
+
+    const drift = element.drift === true;
+    this.segRow(host, 'Driving', [
+      {
+        label: 'Traffic',
+        on: !drift,
+        run: () => this.host.edit('drift', (d) => {
+          const e2 = elementById(d, id);
+          e2.drift = false;
+          e2.dims.speed = clampByLimits(def, 'speed', styleSpeed(e2.style));
+        }),
+      },
+      {
+        label: 'Drift car',
+        on: drift,
+        title: `Corners twice as hard and slides, its nose into every bend, at ${Math.round(DRIFT.speed * KMH)} km/h on the straights`,
+        run: () => this.host.edit('drift', (d) => {
+          const e2 = elementById(d, id);
+          e2.drift = true;
+          e2.dims.speed = clampByLimits(def, 'speed', DRIFT.speed);
+        }),
+      },
+    ]);
+    const reverse = element.reverse === true;
+    this.segRow(host, 'Direction', [
+      { label: 'Forward', on: !reverse, run: () => this.host.edit('direction', (d) => { elementById(d, id).reverse = false; }) },
+      { label: 'Reverse', on: reverse, run: () => this.host.edit('direction', (d) => { elementById(d, id).reverse = true; }) },
+    ]);
+
+    host.append(el('h3', null, 'Speed and start'));
+    const grid = el('div', 'tb-grid2');
+    const [lo, hi] = def.limits.speed;
+    grid.append(
+      this.field(`speed-${id}`, def.labels.speed, element.dims.speed * KMH, (val) => {
+        this.host.edit('speed', (d) => { elementById(d, id).dims.speed = clampByLimits(def, 'speed', val / KMH); });
+      }, { suffix: 'km/h', step: 5, places: 0, min: Math.round(lo * KMH), max: Math.round(hi * KMH) }),
+      this.field(`offset-${id}`, def.labels.offset, element.dims.offset, (val) => {
+        this.host.edit('start', (d) => { elementById(d, id).dims.offset = clampByLimits(def, 'offset', val); });
+      }, { suffix: 'm', step: 1, places: 2, min: def.limits.offset[0], max: def.limits.offset[1] }),
+    );
+    host.append(grid);
+    const variant = el('div', 'tb-reroll');
+    variant.append(this.field(`dim-${id}-variant`, def.labels.variant, element.dims.variant, (val) => {
+      this.host.edit('resize', (d) => { elementById(d, id).dims.variant = clampByLimits(def, 'variant', val); });
+    }, { step: 1, places: 0, min: def.limits.variant[0], max: def.limits.variant[1] }), button('Reroll', 'tb-btn tb-reroll-btn', () => {
+      this.host.edit('reroll', (d) => {
+        const e2 = elementById(d, id);
+        const v = Math.round(Number(e2.dims.variant) || 1);
+        e2.dims.variant = clampByLimits(def, 'variant', (v % 99) + 1);
+      });
+    }, 'Paint it another colour'));
+    const colour = el('div', 'tb-grid2');
+    colour.append(variant);
+    host.append(colour);
+
+    const closed = onRoad && road.closed === true;
+    const twoLanes = closed && road.dims.lanes !== 1;
+    const ways = !onRoad ? ''
+      : (!closed
+        ? `Forward sets off along ${road.name || 'the road'} from its first node, Reverse back toward it; either way it turns round at each end.`
+        : (twoLanes
+          ? 'Forward keeps to the left lane in the order the road was laid, Reverse drives the other lane the other way.'
+          : 'Forward goes round in the order the road was laid, Reverse the other way.'));
+    host.append(el('p', 'tb-fig-blurb', onRoad
+      ? `On ${road.name || 'its road'}, starting ${show(element.dims.offset, 1)} m round from its first node, at ${Math.round(element.dims.speed * KMH)} km/h on the straights. It slows for every bend by itself. ${ways}`
+      : 'This vehicle has no road, so it stays parked in the row along the south edge of the plot. Drag it onto a road on the plan.'));
+    if (onRoad) {
+      const row = el('div', 'tb-row-btns');
+      row.append(button('Select its road', 'tb-btn', () => {
+        this.host.setSelection([road.id]);
+        this.host.focusSelection();
+      }));
+      host.append(row);
+    }
+    host.append(el('p', 'tb-help', 'Drag the car on the plan to slide it along its road. A car dropped on the right hand half of a two lane loop drives the other lane.'));
   }
 
   /*
@@ -1358,6 +1614,14 @@ export class Panels {
       stat('Solids', report ? String(report.solids) : '0'),
       stat('Named gaps', report ? String(report.zones) : '0'),
     );
+    /* Roads and vehicles, once there are any: they are not assets, so the
+     * inventory below leaves them out, and a map's traffic is worth a
+     * count of its own. */
+    const roads = doc.elements.filter((e) => e.type === 'road').length;
+    const cars = doc.elements.filter((e) => e.type === 'vehicle').length;
+    if (roads || cars) {
+      stats.append(stat('Roads', String(roads)), stat('Vehicles', String(cars)));
+    }
     host.append(stats);
     appendTypeStats(host, doc, 'On the plot');
     this.appendWarnings(host, 'Nothing to report. Every space between two things is closed or wide enough to fly, the start is clear, and every named gap is open.');

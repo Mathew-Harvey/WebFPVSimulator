@@ -21,13 +21,18 @@
  * thing.
  *
  * THE COUNTER (FREESTYLE-MAPS-PLAN.md section 7, Stage C). The names in 2 are
- * no longer only tricks. One combo is fed by five kinds of thing, and every
- * one of them is a line in the same stack, because it is one chain: a trick,
- * a named gap, a close call (a skim, under, a thread, a low pass), the
- * chase, and the STF mark. The chase's own big callout is the chase HUD's,
- * down the right beside its Tail meter (src/ui/chasehud.js); here it is a
- * small line in the chain, so the stack still reads as the whole combo. A
- * skim is held, like a manual, so it has a meter while it is held (5, below).
+ * no longer only tricks. One combo is fed by five kinds of thing (the
+ * contract is in the header of src/game/score.js): a trick, a named gap, a
+ * close call (a skim, under, a thread, a low pass), the chase, and the STF
+ * mark, and they are lines in the same stack because it is one chain. Bar
+ * one: THE CHASE IS CALLED OUT ONCE, by the chase HUD down the right beside
+ * its Tail meter (src/ui/chasehud.js), which is where the pilot was looking
+ * and which also calls a tail lost. A banked tail, a car thread or a hurdle
+ * also arrives here as a scorer event, and drawing it here as well was two
+ * callouts for one tail; its points are in the combo line. The mark is a
+ * small line here, because the found callout says what was found and not
+ * what it paid. A skim is held, like a manual, so it has a meter while it
+ * is held (5, below).
  *
  *   5. The skim meter. While a skim is held: SKIM, the seconds held, the
  *      clearance, and a bar that fills as the gap closes. The Tail meter's
@@ -210,17 +215,25 @@ function secs(ms) {
  *   big      a burst balloon behind it
  *   sfx      its sound effect, or null
  *   small    a line smaller than the rest, for what has its big moment
- *            somewhere else: the chase (down the right) and the mark
+ *            somewhere else: the mark, whose found callout is down the right
  *
- * The gap's `repeat` is read as how many times this gap was crossed earlier
- * in the run, 0 the first time, and `true` as 1; the tag then says which
- * crossing this was.
+ * `repeat` is how many of the same came before it: this run's crossings for
+ * a gap, this combo's for everything else, 0 the first time (the scorer's
+ * points are already priced down for it). The tag says which one this was,
+ * x2 for the second, beside the seconds a skim or a low pass was held or
+ * the clearance under something or through a thread.
+ *
+ * The chase's three kinds return null: see THE COUNTER in the header.
  */
 export function stackCall(e) {
   if (!e) {
     return null;
   }
   const pts = formatScore(e.points || 0);
+  const before = typeof e.repeat === 'number' ? e.repeat : (e.repeat ? 1 : 0);
+  const again = before > 0 ? `x${before + 1}` : '';
+  const tagOf = (...bits) => bits.filter(Boolean).join(' ') || null;
+  const metres = (m) => (m > 0 ? `${m.toFixed(1)} m` : '');
   switch (e.kind) {
     case 'trick': {
       const ex = e.execution || 'CLEAN';
@@ -236,15 +249,18 @@ export function stackCall(e) {
       };
     }
     case 'gap': {
-      const before = typeof e.repeat === 'number' ? e.repeat : (e.repeat ? 1 : 0);
+      /* A gap flown a fourth time in a run pays nothing and is still sent,
+       * so the pilot sees why: it is lettered, with its x4, but a balloon
+       * and a ズバッ for nothing would celebrate the wrong thing. */
+      const paid = e.points > 0;
       return {
         word: e.name || 'Gap',
         pts,
-        tag: before > 0 ? `x${before + 1}` : null,
+        tag: tagOf(again),
         fill: INKS.amber,
         burst: INKS.amber,
-        big: (e.tier || 0) >= GAP_BALLOON_TIER,
-        sfx: SFX.gap,
+        big: paid && (e.tier || 0) >= GAP_BALLOON_TIER,
+        sfx: paid ? SFX.gap : null,
         small: false,
       };
     }
@@ -252,7 +268,7 @@ export function stackCall(e) {
       return {
         word: e.name || 'Skim',
         pts,
-        tag: e.holdMs > 0 ? secs(e.holdMs) : null,
+        tag: tagOf(e.holdMs > 0 ? secs(e.holdMs) : '', again),
         fill: INKS.sky,
         burst: INKS.sky,
         big: false,
@@ -265,7 +281,9 @@ export function stackCall(e) {
       return {
         word: e.name || (e.kind === 'lowpass' ? 'Low pass' : e.kind),
         pts,
-        tag: null,
+        tag: e.kind === 'lowpass'
+          ? tagOf(e.holdMs > 0 ? secs(e.holdMs) : '', again)
+          : tagOf(metres(e.clearance), again),
         fill: INKS.sky,
         burst: INKS.sky,
         big: false,
@@ -273,28 +291,10 @@ export function stackCall(e) {
         small: false,
       };
     case 'tail':
-      return {
-        word: e.name || 'Tail',
-        pts,
-        tag: e.holdMs > 0 ? secs(e.holdMs) : null,
-        fill: e.drift ? INKS.drift : INKS.cream,
-        burst: null,
-        big: false,
-        sfx: null,
-        small: true,
-      };
     case 'chase-thread':
     case 'hurdle':
-      return {
-        word: e.name || (e.kind === 'hurdle' ? 'Hurdle' : 'Thread'),
-        pts,
-        tag: null,
-        fill: INKS.cream,
-        burst: null,
-        big: false,
-        sfx: null,
-        small: true,
-      };
+      /* Called out once, by the chase HUD: see THE COUNTER above. */
+      return null;
     case 'egg':
       return {
         word: `${e.name || 'STF'} mark`,

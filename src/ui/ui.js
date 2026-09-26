@@ -628,6 +628,26 @@ const BOARD_MAP_OFF_BOARD = 'The board keeps no runs for a published map yet, so
   + ' stays here. Fly the town for a run that can go up.';
 
 /*
+ * What the results say about this browser's best counter on the map. The
+ * number is localBestOf's; whether this run set it, and what it beat, are
+ * the two fields endFreestyleRun in main.js puts beside it
+ * (`counterImproved`, `counterBestBefore`, from src/game/counterbest.js).
+ * Null when there is no best to speak of.
+ */
+function counterBestSentence(s) {
+  const best = localBestOf(s);
+  if (!(best > 0)) {
+    return null;
+  }
+  if (s.counterImproved) {
+    return s.counterBestBefore > 0
+      ? `A new best for this map in this browser, up from ${formatScore(s.counterBestBefore)}.`
+      : 'The first counted run on this map in this browser, so its best.';
+  }
+  return `Your best on this map in this browser: ${formatScore(best)}.`;
+}
+
+/*
  * The counter's bests as plain results rows, [label, value], for the
  * results screen when there is no manga page to draw them on (Clean FPV).
  * The same four things the page's panels are: src/ui/mangapage.js.
@@ -11535,12 +11555,13 @@ export class Ui {
    *
    * THE COUNTER (Stage C). The headline is the whole counter, `counter`,
    * when the summary carries one: tricks, gaps, close calls, the chase and
-   * the mark. The board is still posted the trick total, `total`, because
-   * the board cannot be taught geometry from here (FREESTYLE-MAPS-PLAN.md
-   * section 7, "The board"), so the note under the rows says which number
-   * went where rather than letting a pilot think the board has the bigger
-   * one. A local best for the map, when the summary carries one
-   * (`localBest`, a number or an object with `counter`), is said too.
+   * the mark, with this browser's best for the map beside it (`counterBest`,
+   * `counterImproved`). The board is still posted the trick total, `total`,
+   * because the board cannot be taught geometry from here
+   * (FREESTYLE-MAPS-PLAN.md section 7, "The board"), so the meta line names
+   * the trick score as the board's number and the note says which number
+   * went where, rather than letting a pilot think the board has the bigger
+   * one. In a run with no tricks `total` is 0 and says so.
    *
    * THE MANGA PAGE. On a freestyle map with the manga layer on, what the
    * run is remembered by is drawn as a page of panels down the open side
@@ -11592,7 +11613,12 @@ export class Ui {
         : 'Two minutes and nothing the recogniser could name. A trick is a whole rotation about one axis, or a lap around something: a flip, a roll, a 360 of yaw, a powerloop under a rail. Turning a corner is not a trick and is deliberately worth nothing.'));
     } else {
       const calls = closeCallCount(summary.closeCalls);
+      const counted = summary.counter != null;
       const parts = [
+        counted && summary.counterImproved && localBestOf(summary) > 0 ? 'a new best for this map' : '',
+        counted && !summary.counterImproved && localBestOf(summary) > 0
+          ? `best ${formatScore(localBestOf(summary))}` : '',
+        counted ? `trick score ${formatScore(summary.total || 0)}${this.settings.map === 'built' ? '' : ', the board\'s'}` : '',
         summary.tricks > 0 ? `${summary.tricks} tricks, ${summary.unique} of them different` : '',
         summary.gaps > 0 ? `${summary.gaps} gap${summary.gaps === 1 ? '' : 's'}` : '',
         calls > 0 ? `${calls} close call${calls === 1 ? '' : 's'}` : '',
@@ -11645,14 +11671,14 @@ export class Ui {
     }
     /* Which number went to the board, and which stays here. */
     if (summary.counter != null && summary.counter !== summary.total
-      && this.settings.map !== 'built' && summary.timed !== false && summary.tricks > 0) {
-      notes.push(`Post this run sends the board the trick score, ${formatScore(summary.total)}. The board knows tricks and nothing else yet, so the gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here and not there.`);
+      && this.settings.map !== 'built' && summary.timed !== false) {
+      notes.push(summary.tricks > 0
+        ? `Post this run sends the board the trick score, ${formatScore(summary.total)}. The board knows tricks and nothing else yet, so the gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here and not there.`
+        : `The board takes tricks only, and this run named none, so there is nothing to post. The gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here.`);
     }
-    const best = localBestOf(summary);
-    if (best != null && scored) {
-      notes.push(counter >= best
-        ? `Your best on this map in this browser: this run, ${formatScore(counter)}.`
-        : `Your best on this map in this browser: ${formatScore(best)}.`);
+    const bestNote = scored ? counterBestSentence(summary) : null;
+    if (bestNote) {
+      notes.push(bestNote);
     }
     this.resultsNote.textContent = notes.join(' ');
     this.mangaPanels = this.manga ? mangaPanels(summary) : [];

@@ -50716,3 +50716,90 @@ c552782. Flown again end to end with the draw on: a wall skim along
 Hibari Yard's container stack, 0.93 s at 0.35 m, lettered "WALL SKIM 182
 0.9 s" in sky blue down the left while it paid, then banked into the
 total, 182; the posted trick total 0, the counter 182.
+
+## 2026-09-26 | race, shell | Practice: a fourth lap count, with no end and nothing for the board
+
+The owner: "in the 5 inch and whoop racing tracks, add a race mode from the
+1, 3 and 5 lap options to practice mode where you just keep going with times
+called out each lap, no time is recorded on the board in practice mode".
+
+Changes:
+
+- src/game/race.js: `PRACTICE_LAPS`, which is 0, and `runComplete(lapsDone,
+  runLaps)`, the one copy of the run end rule. Zero and not a word, because
+  loadSettings keeps a stored value only when its type matches the
+  default's, so a stored 'practice' would come back as 3 on the next load.
+  FPS_CAPS already spends 0 on uncapped. Nothing in the Race class changes:
+  a practice lap is timed, split and flashed exactly as a counted one is.
+- src/ui/ui.js: LAP_COUNTS is [1, 3, 5, PRACTICE_LAPS] and the launch card's
+  Laps row reads Practice for the last one, with its own help. The sentence
+  under Fly leaves the lap count out in practice and ends "Practice laps stay
+  off the public board, so this run will not count there." The Race room's
+  Upload row, disabled for want of a lap, gives the practice reason instead
+  of "Fly a clean lap on this track".
+- src/main.js: the run ends on runComplete, so practice never reaches the
+  results screen, which is also the only place a pending time is written.
+  submitBoardTime takes no lap from a practice run. It reads runLaps, which
+  is latched at run start beside race.reset(), so it describes the run the
+  laps in `race` were flown in, not what the menu says now. A lap pending
+  from an earlier counted run on the same track can still go up: it was not
+  flown in practice, and it is the lap the Upload row names. The pre-flight
+  banner's second line reads "Practice: no lap limit. The green gate starts
+  your lap".
+- src/trackbuilder/selftest.js: the three lap checks call runComplete rather
+  than restating `lap >= runLaps`, and four new ones: the counted runs end
+  where they did (1 of 1, 5 of 5, not 4 of 5); twelve practice laps and no
+  end; the twelfth practice lap is timed and flashed "Lap 12   1.00"; practice
+  is never over at 0, 1 or 500 laps.
+
+Both classes of track get it from the same row: the launch card is the same
+card for a five inch field and a whoop room (seatIsRace), and the run end
+has never known the class.
+
+Decisions taken here that are the owner's to reverse:
+
+- "Called out" is the flash every lap already had, "Lap N   time", with "New
+  track record" under it when it is one, and the polite live region reads it
+  to a screen reader. Nothing is spoken aloud: there is no voice anywhere in
+  the simulator. Asked in the conversation whether the owner wants one.
+- A practice lap still counts against the pilot's own best in this browser:
+  the New track record line, the best on the HUD, and the record the next
+  counted run's results are measured against. Only the public board is
+  closed to it. A separate local record for practice would flash New track
+  record on the first practice lap of every session, however slow.
+- The board's statistics page still counts practice laps. It counts laps
+  flown and never a time (src/share/stats.js), so nothing about a practice
+  lap's time leaves the browser.
+- Practice has no results screen, so its lap list is shown nowhere at the
+  end; Restart run and Quit to title stop it. The ghost's session best and
+  previous laps still fill from practice, which is the pacer a practising
+  pilot wants.
+
+Seen and not changed: recordSentence says a best is filed under a lap
+count, and recordKey() in src/main.js hashes the config, the pack, the
+style, the airframe and the weight, not the laps. A 1 lap and a 5 lap run
+already file their bests together. Practice follows what the key does.
+
+What went wrong: the first fetch printed `forced update` for main, the same
+thing the "Fly this track" entry above recorded. The same cause: the
+container's clone was `--depth 50`. After `git fetch --unshallow`, the old
+head 9ed8b9c is an ancestor of 716562b.
+
+Deliberate break, read back: runComplete put back to `lapsDone >= runLaps`
+fails "practice never finishes a run, twelve laps in: lap 12, over true"
+and "practice is never over, whatever has been flown", 878 passed and 2
+failed. Restored.
+
+Not checked: nothing ran in a browser. shots.js, lint:shell and verify were
+not run, and which of them to run was put to the owner. Nothing in the
+physics, the plant, the module ABI or the build changed.
+
+### RUN LOG
+
+    node --check                        race.js, main.js, ui.js,
+                                        trackbuilder/selftest.js: ok
+    import ui.js under node             loads, LAP_COUNTS [1,3,5,0]
+    node src/trackbuilder/selftest.js   880 passed, 0 failed
+    node scripts/gen-preload.js --check up to date, boot 113, city 73,
+                                        built 32; 215 served
+    dash scan of the diff               none

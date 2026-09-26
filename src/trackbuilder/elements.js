@@ -44,7 +44,7 @@ import {
 /* The freestyle assets, as data. src/props/types.js imports nothing, so the
  * builder can list them without their layouts or a renderer. */
 import {
-  PROP_TYPES, PROP_GROUPS, FURNITURE_PALETTE, approxHeight, styleOf as propStyleOf,
+  PROP_TYPES, PROP_GROUPS, FURNITURE_PALETTE, approxHeight, styleOf as propStyleOf, CAR_STYLES,
 } from '../props/types.js';
 
 /* Re-exported because this module's consumers already read it from here. */
@@ -160,6 +160,18 @@ export const KIND = {
    * solid, not drawn in the world, never in the sequence.
    */
   ZONE: 'zone',
+  /*
+   * A road: a line of control nodes, eased into a smooth centre line by
+   * src/maps/built/road.js, painted on the ground and driven by vehicles.
+   * Paint: not solid, never in the sequence. A map's only.
+   */
+  ROAD: 'road',
+  /*
+   * A vehicle driving a road, moved by the physics module itself
+   * (src/native/world.c section 5): solid, but a mover, so it is never one
+   * of the map's static solids and never in the sequence. A map's only.
+   */
+  VEHICLE: 'vehicle',
 };
 
 /*
@@ -828,6 +840,90 @@ for (const [id, t] of Object.entries(PROP_TYPES)) {
   };
 }
 
+/*
+ * ROADS AND VEHICLES (Stage E, FREESTYLE-MAPS-PLAN.md sections 5 and 8), a
+ * map's only: normalize drops them from a race track, where no car drives
+ * (the plan's decision 9). Neither is on any palette yet; the road tool
+ * offers them. Their fields are in schema.md, under Roads and vehicles.
+ *
+ *   road     `nodes`, control points RELATIVE TO `position`, so dragging a
+ *            road moves its position and nothing else; `closed`; and in
+ *            dims its width, its lanes (1 or 2) and the radius its bends are
+ *            eased to where the nodes leave room. Paint on the ground: its
+ *            position.z, yaw and pitch are written 0 and never read.
+ *   vehicle  `road`, the id of the road element it drives; `style`, which
+ *            of the town's cars; `reverse`, true to drive against the node
+ *            order; `drift`, true for the drift car; and in dims its
+ *            `offset`, metres along the road's centre line from its first
+ *            node where it is at the clock's step 0, its top `speed` in m/s,
+ *            and `variant`, its colour. Where it is comes from its road and
+ *            its offset and nothing else, so its position, yaw and pitch
+ *            are written 0 and never read: a second copy of where a car is
+ *            would be a field derived from another.
+ *
+ * `limits` is the props' format ({ key: [min, max, kind] }, see
+ * src/props/types.js), applied on read and on write by clampByLimits.
+ * `speed` is a speed, not a length: m/s. A vehicle's speed starts at its
+ * style's (STYLE_DIMS in src/props/types.js), as a building's size does.
+ */
+ELEMENTS.road = {
+  id: 'road',
+  label: 'Road',
+  key: '',
+  group: 'freestyle',
+  propGroup: 'roads',
+  kind: KIND.ROAD,
+  styles: null,
+  note: 'A road. Click to lay its nodes, click the first node to close it into a loop. Its bends are eased into curves a car can drive. Vehicles drive on it.',
+  dims: { width: 6, lanes: 2, radius: 12 },
+  limits: { width: [3, 20, 'm'], lanes: [1, 2, 'int'], radius: [2, 60, 'm'] },
+  labels: { width: 'Width', lanes: 'Lanes', radius: 'Bend radius' },
+};
+ELEMENTS.vehicle = {
+  id: 'vehicle',
+  label: 'Vehicle',
+  key: '',
+  group: 'freestyle',
+  propGroup: 'roads',
+  kind: KIND.VEHICLE,
+  styles: CAR_STYLES,
+  note: 'A car driving a road, lap after lap of a loop, out and back along an open road. Put it on a road and slide it to where it starts. Drift makes it the drift car.',
+  dims: { offset: 0, speed: 12, variant: 1 },
+  limits: { offset: [0, 10000, 'm'], speed: [1, 50, 'm/s'], variant: [1, 99, 'int'] },
+  labels: { offset: 'Start', speed: 'Top speed', variant: 'Variant' },
+};
+
+/* The most nodes a road keeps, and how far from its position a node may
+ * be, m. A road longer than the module holds is refused by
+ * src/maps/built/traffic.js, with a problem, rather than cut here. */
+export const ROAD_NODES_MAX = 512;
+export const ROAD_NODE_REACH = 100000;
+
+/* Whether a type is a road or a vehicle: a map's only, never a solid of
+ * the map's, never in the sequence. */
+export function isTrafficType(type) {
+  const k = ELEMENTS[type]?.kind;
+  return k === KIND.ROAD || k === KIND.VEHICLE;
+}
+
+/* A dimension clamped into a definition's own limits, a count rounded.
+ * Never throws: a value that is not a number is the default. */
+export function clampByLimits(def, key, value) {
+  const lim = def?.limits?.[key];
+  const fallback = def?.dims?.[key] ?? 0;
+  let v = Number(value);
+  if (!Number.isFinite(v)) {
+    v = fallback;
+  }
+  if (!lim) {
+    return v;
+  }
+  if (lim[2] === 'int') {
+    v = Math.round(v);
+  }
+  return Math.min(lim[1], Math.max(lim[0], v));
+}
+
 export function levelPitchFor(clearH) {
   return clearH + FRAME_TUBE_OD;
 }
@@ -1313,6 +1409,13 @@ export function elementHeight(def, dims, style = null) {
   }
   if (def.kind === KIND.STRUCTURE || def.kind === KIND.ZONE) {
     return approxHeight(def.id, dims, style ?? propStyleOf({ type: def.id }));
+  }
+  if (def.kind === KIND.ROAD) {
+    /* Paint. */
+    return 0;
+  }
+  if (def.kind === KIND.VEHICLE) {
+    return approxHeight('car', dims, CAR_STYLES.includes(style) ? style : CAR_STYLES[0]);
   }
   return dims.textHeight;
 }

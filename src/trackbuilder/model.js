@@ -41,11 +41,12 @@
 import {
   ELEMENTS, KIND, TUNING, TRACK_CLASSES, TRACK_CLASS_DEFAULT, apertureLevels,
   defaultDims, defaultPitch, defaultZ, elementHeight, normalizeFlagSide,
-  trackClassOf, tuningFor, docModeOf,
+  trackClassOf, tuningFor, docModeOf, isTrafficType, clampByLimits,
+  ROAD_NODES_MAX, ROAD_NODE_REACH,
 } from './elements.js';
 import { apertureFrame, wrapAngle } from './geometry.js';
 import {
-  styleOf as propStyleOf, clampDim, gapPointsOf, styleDims, GAP_POINTS,
+  styleOf as propStyleOf, clampDim, gapPointsOf, styleDims, GAP_POINTS, CAR_STYLES,
 } from '../props/types.js';
 
 /*
@@ -200,6 +201,43 @@ function bool(x, fallback = false) {
 export function deepClone(o) {
   return JSON.parse(JSON.stringify(o));
 }
+
+/*
+ * A ROAD'S NODES, read. Each is { x, y }, metres from the road's position.
+ * A node that is not two finite numbers within ROAD_NODE_REACH of the
+ * position is dropped, and past ROAD_NODES_MAX the rest are; `bad` and
+ * `over` count them for normalize's note. The same reading on the way out,
+ * so a node list edited in memory writes what the next read will keep.
+ */
+function roadNodesRead(raw) {
+  const out = { nodes: [], bad: 0, over: 0 };
+  for (const nd of Array.isArray(raw) ? raw : []) {
+    const x = nd && typeof nd === 'object' ? Number(nd.x) : NaN;
+    const y = nd && typeof nd === 'object' ? Number(nd.y) : NaN;
+    if (!Number.isFinite(x) || !Number.isFinite(y)
+      || Math.abs(x) > ROAD_NODE_REACH || Math.abs(y) > ROAD_NODE_REACH) {
+      out.bad += 1;
+      continue;
+    }
+    if (out.nodes.length >= ROAD_NODES_MAX) {
+      out.over += 1;
+      continue;
+    }
+    out.nodes.push({ x: num(x), y: num(y) });
+  }
+  return out;
+}
+
+/* A vehicle's style: one of the town's cars, the first when it names none
+ * this build knows. */
+function vehicleStyleOf(style) {
+  return CAR_STYLES.includes(style) ? style : CAR_STYLES[0];
+}
+
+/* How long a new road is, m: two nodes, the second this far east of the
+ * first. The road tool lays its own nodes; this is only so that a road made
+ * any other way is a road and not a point. */
+const NEW_ROAD_LENGTH = 20;
 
 /*
  * A MAP'S SCENE: its time of day and its ground, the two things that change
@@ -423,6 +461,25 @@ export function createElement(doc, type, position, yaw = 0) {
       el.points = GAP_POINTS[1];
       el.name = 'GAP';
     }
+  }
+  if (def.kind === KIND.ROAD) {
+    /* Paint on the ground, turned by its nodes and not by a heading. */
+    el.position.z = 0;
+    el.yaw = 0;
+    el.pitch = 0;
+    el.nodes = [{ x: 0, y: 0 }, { x: NEW_ROAD_LENGTH, y: 0 }];
+    el.closed = false;
+  }
+  if (def.kind === KIND.VEHICLE) {
+    /* Where it is comes from its road and its offset: see schema.md. */
+    el.position = { x: 0, y: 0, z: 0 };
+    el.yaw = 0;
+    el.pitch = 0;
+    el.style = def.styles[0];
+    Object.assign(el.dims, styleDims(type, el.style) ?? {});
+    el.road = '';
+    el.reverse = false;
+    el.drift = false;
   }
   if (def.kind === KIND.DECAL) {
     /*
@@ -767,6 +824,14 @@ export function normalize(raw) {
       }
       startSeen = true;
     }
+    /* Cars drive on maps and nowhere else (FREESTYLE-MAPS-PLAN.md decision
+     * 9), so a race track carries neither a road nor a vehicle, and no race
+     * track's bytes change for their existing. */
+    const traffic = isTrafficType(type);
+    if (traffic && doc.mode !== 'freestyle') {
+      repairs.push(`dropped a ${def.label.toLowerCase()}: roads and vehicles are a map's only.`);
+      continue;
+    }
     let id = str(rawEl.id);
     if (!id || seenIds.has(id)) {
       id = nextId([...seenIds, ...rawIds], 'el');
@@ -784,7 +849,8 @@ export function normalize(raw) {
        * keeps a hand edited ninety storey warehouse out of the physics. */
       dims[key] = isProp
         ? num(clampDim(type, key, wanted))
-        : (key === 'levels' ? int(wanted, def.dims[key], 1, 24) : Math.max(0, wanted));
+        : (traffic ? num(clampByLimits(def, key, wanted))
+          : (key === 'levels' ? int(wanted, def.dims[key], 1, 24) : Math.max(0, wanted)));
     }
 
     const el = {
@@ -820,6 +886,38 @@ export function normalize(raw) {
        * so in the builder rather than silently repaint itself with the
        * first sponsor's logo. logoForDecal returns null for it. */
       el.logoId = str(rawEl.logoId, '');
+    }
+    if (def.kind === KIND.ROAD) {
+      /* Paint: on the ground, and turned by its nodes. Written 0. */
+      el.position.z = 0;
+      el.yaw = 0;
+      el.pitch = 0;
+      const read = roadNodesRead(rawEl.nodes);
+      if (rawEl.nodes !== undefined && !Array.isArray(rawEl.nodes)) {
+        repairs.push(`road ${id}'s nodes were not a list, read as none.`);
+      }
+      if (read.bad) {
+        repairs.push(`road ${id}: dropped ${read.bad} node${read.bad === 1 ? '' : 's'} that ${read.bad === 1 ? 'was' : 'were'} not a point within ${ROAD_NODE_REACH / 1000} km of the road.`);
+      }
+      if (read.over) {
+        repairs.push(`road ${id}: dropped ${read.over} node${read.over === 1 ? '' : 's'} past the ${ROAD_NODES_MAX} a road keeps.`);
+      }
+      el.nodes = read.nodes;
+      el.closed = rawEl.closed === true;
+      el.yawOverridden = false;
+    }
+    if (def.kind === KIND.VEHICLE) {
+      /* Where it is comes from its road and offset alone. Written 0. A
+       * vehicle whose road is not in the document is KEPT: the builder says
+       * so, and src/maps/built/traffic.js leaves it parked with a problem. */
+      el.position = { x: 0, y: 0, z: 0 };
+      el.yaw = 0;
+      el.pitch = 0;
+      el.style = vehicleStyleOf(rawEl.style);
+      el.road = str(rawEl.road, '');
+      el.reverse = rawEl.reverse === true;
+      el.drift = rawEl.drift === true;
+      el.yawOverridden = false;
     }
     if (def.flagSide) {
       el.flagSide = normalizeFlagSide(rawEl.flagSide, def.flagSide);
@@ -993,16 +1091,25 @@ export function toPlain(doc) {
      * edit between a normalize and a save cannot write anything else.
      */
     credit: creditOf(doc.credit),
-    elements: doc.elements.map((el) => {
+    /* A race track carries no roads and no vehicles, even ones added in
+     * memory, so no race track's bytes change for their existing. */
+    elements: doc.elements.filter((el) => freestyle || !isTrafficType(el.type)).map((el) => {
       const def = ELEMENTS[el.type];
+      /* A road is paint turned by its nodes, a vehicle is wherever its road
+       * puts it: what normalize writes 0, this writes 0, so what is written
+       * is what the next read keeps. */
+      const road = def.kind === KIND.ROAD;
+      const vehicle = def.kind === KIND.VEHICLE;
       const out = {
         id: el.id,
         type: el.type,
         name: el.name ?? '',
-        position: { x: num(el.position.x), y: num(el.position.y), z: num(el.position.z) },
-        yaw: num(el.yaw),
-        pitch: num(el.pitch),
-        yawOverridden: Boolean(el.yawOverridden),
+        position: vehicle
+          ? { x: 0, y: 0, z: 0 }
+          : { x: num(el.position.x), y: num(el.position.y), z: road ? 0 : num(el.position.z) },
+        yaw: road || vehicle ? 0 : num(el.yaw),
+        pitch: road || vehicle ? 0 : num(el.pitch),
+        yawOverridden: road || vehicle ? false : Boolean(el.yawOverridden),
         dims: {},
       };
       /* Dimension keys in the order elements.js declares them, so two
@@ -1011,7 +1118,18 @@ export function toPlain(doc) {
       for (const key of Object.keys(def.dims)) {
         out.dims[key] = isProp
           ? num(clampDim(el.type, key, el.dims[key]))
-          : (key === 'levels' ? int(el.dims[key], def.dims[key], 1, 24) : num(el.dims[key], def.dims[key]));
+          : (road || vehicle ? num(clampByLimits(def, key, el.dims[key]))
+            : (key === 'levels' ? int(el.dims[key], def.dims[key], 1, 24) : num(el.dims[key], def.dims[key])));
+      }
+      if (road) {
+        out.nodes = roadNodesRead(el.nodes).nodes;
+        out.closed = el.closed === true;
+      }
+      if (vehicle) {
+        out.style = vehicleStyleOf(el.style);
+        out.road = str(el.road, '');
+        out.reverse = el.reverse === true;
+        out.drift = el.drift === true;
       }
       if (def.kind === KIND.ANNOTATION) {
         out.text = el.text ?? '';

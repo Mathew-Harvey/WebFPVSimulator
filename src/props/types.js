@@ -69,6 +69,24 @@ export const STYLE_DIMS = {
     road: { span: 24, width: 8, height: 6, piers: 1 },
     footbridge: { span: 18, width: 2.6, height: 5.6, piers: 0 },
   },
+  /*
+   * A moving vehicle's top speed on a straight, m/s: ordinary traffic
+   * through a yard at 36 to 50 km/h, the little and the heavy ones slower.
+   * A vehicle's speed is written in its document; these are only what a new
+   * one of each style starts at. src/maps/built/traffic.js holds the rest
+   * of what each style drives like.
+   */
+  vehicle: {
+    kei: { speed: 11 },
+    keivan: { speed: 10 },
+    hatch: { speed: 13 },
+    sedan: { speed: 14 },
+    wagon: { speed: 13 },
+    minivan: { speed: 12 },
+    van: { speed: 11 },
+    boxtruck: { speed: 10 },
+    minibus: { speed: 10 },
+  },
 };
 
 export function styleDims(type, style) {

@@ -12,7 +12,8 @@
  * THE FRAMES. The document is right handed, Z up, origin at the plot's near
  * left corner (src/trackbuilder/schema.md). The world is Three.js metres, Y
  * up, origin at the plot's middle. The conversion is the one
- * src/game/trackdoc.js makes for race tracks, applied here once:
+ * src/game/trackdoc.js makes for race tracks, applied here once, in
+ * docToWorld:
  *
  *   worldX =  docX - width / 2
  *   worldZ = -(docY - depth / 2)
@@ -50,6 +51,22 @@ import { startBlockLaneOffset } from '../../art/startblock.js';
 
 const HALF_PI = Math.PI / 2;
 const TAU = Math.PI * 2;
+
+/*
+ * THE CONVERSION ITSELF, for one point: the document's plan (x, y) and a
+ * height z, as a world point into `out`. Every element's place goes through
+ * here (placeDocument, spawnFrom), and so does every road point
+ * (./traffic.js), so a road cannot be laid in a different frame from the
+ * buildings beside it. Subtractions and a negation: exact where the inputs
+ * are, and the same bits in every engine.
+ */
+export function docToWorld(W, D, x, y, z, out = { x: 0, y: 0, z: 0 }) {
+  out.x = x - W / 2;
+  out.y = z;
+  out.z = -(y - D / 2);
+  return out;
+}
+const AT = { x: 0, y: 0, z: 0 };
 
 /* Wrap to (-pi, pi] by adding or subtracting whole turns: arithmetic only. */
 function wrap(a) {
@@ -310,8 +327,9 @@ function spawnFrom(el, yaw, W, D, tops) {
   const base = el.position.z || 0;
   sincos(yaw, SC);
   turnY(0, laneOffset(el.dims), SC.s, SC.c, LANE);
-  const x = el.position.x - W / 2 + LANE.x;
-  const z = -(el.position.y - D / 2) + LANE.z;
+  docToWorld(W, D, el.position.x, el.position.y, base, AT);
+  const x = AT.x + LANE.x;
+  const z = AT.z + LANE.z;
   return {
     x,
     y: topUnder(tops, x, z, base),
@@ -352,9 +370,8 @@ export function placeDocument(doc) {
     if (!def) {
       continue;
     }
-    const x = el.position.x - W / 2;
-    const z = -(el.position.y - D / 2);
-    const y = el.position.z || 0;
+    docToWorld(W, D, el.position.x, el.position.y, el.position.z || 0, AT);
+    const { x, y, z } = AT;
     if (def.kind === KIND.START && !start) {
       start = el;
     }

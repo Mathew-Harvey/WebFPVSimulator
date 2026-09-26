@@ -22,8 +22,17 @@
  *   the container yard  an open container lined up east with a billboard, so
  *                     CONTAINER TUNNEL and BILLBOARD GAP are one straight
  *                     line out toward the lane.
- *   the lane          a footbridge over it with two parked cars and a line
- *                     of utility poles, wired, and FOOTBRIDGE under the deck.
+ *   the lane          a footbridge over it, a line of utility poles, wired,
+ *                     FOOTBRIDGE under the deck, and two cars parked on its
+ *                     east verge.
+ *   the yard loop     a two lane road the traffic drives, round the east of
+ *                     the yard: south down the lane under the footbridge,
+ *                     west past the pylon's foot, north between the
+ *                     billboard and the street trees, a chicane west, and
+ *                     north past the water tower to come back east along
+ *                     the north edge. The drift car laps it in 26 s, and two
+ *                     working vehicles come the other way. See THE YARD
+ *                     LOOP below.
  *   the water tower   in the north east, WATER TOWER through its legs under
  *                     the tank.
  *   the skate corner  a quarter pipe, a ledge, a rail and a stair set beside
@@ -33,6 +42,24 @@
  * THE IDS ARE FIXED because every seeded asset (the bando's ruin, the
  * containers' colours, the trees' limbs) takes its seed from its element's
  * id. A starter that rolled new ids would be a different yard every load.
+ *
+ * THE YARD LOOP. Its nodes are the corners of the route, the lane's two
+ * ends at x = 140 (y = 139 and 18), x = 120 between the billboard's legs
+ * and the street trees, the chicane at y = 72, and x = 101.5 between the
+ * container yard's north end, the street tree at (94, 104) and the water
+ * tower; src/maps/built/road.js eases each corner into a bend of 7 to 12 m.
+ * Every node is chosen so the road's 6 m keep at least 1.5 m from every
+ * solid a car could reach, and every car's box at least 2 m, the drift
+ * car's sliding tail included, at every step of a lap
+ * (scripts/roads-check.js measures both on the poses the physics module
+ * drives). The drift car drives the loop in the node order, alone in its
+ * lane: nothing in the physics stops one car driving through another, so a
+ * faster car must not share a lane with a slower one. The box truck and the
+ * kei van come the other way, half a lap apart, the van's top speed set so
+ * its lap matches the truck's to within 5 ms, so the two keep their spacing
+ * for days. The two parked cars that stood on the lane moved to its east
+ * verge when the loop came, clear of it, of the footbridge's stair and of
+ * the pylons.
  *
  * Checked in Node through src/maps/built/place.js, by scripts/props-check.js
  * and by the builder's own warnings: no two elements' solids overlap, no two
@@ -68,6 +95,16 @@ const SOUTH = -Math.PI / 2;
 const NORTH_EAST = Math.PI / 4;
 
 export const STARTER_NAME = 'Hibari Yard';
+
+/* The kei van's top speed, m/s: the one that makes its lap round the yard
+ * loop, against the node order, as long as the box truck's at 10 m/s, 40.29
+ * s, so the two, half a lap apart, stay half a lap apart. It corners harder
+ * than the truck (3 m/s/s against 2.5), so on the same top speed it would
+ * gain 0.9 s a lap and drive through it in about ten minutes. At 8.81 the
+ * two laps differ by 4 ms, and closing half a lap takes two days. Found by
+ * halving on the module's own poses; scripts/roads-check.js holds the two
+ * laps together. */
+const VAN_SPEED = 8.81;
 
 /* The starter's own document id, fixed for the reason in the header. */
 export const STARTER_ID = 'trk-1b4a7d00';
@@ -141,8 +178,11 @@ function rows() {
     /* Spanning east west across the lane; the map paints the lane under
      * every bridge, square to its span. */
     ['bridge', 140, 92, EAST, { span: 14, width: 3, height: 5.2, piers: 0 }, { style: 'footbridge' }],
-    ['car', 142.2, 78, NORTH, { variant: 3 }, { style: 'kei' }],
-    ['car', 137.8, 106, SOUTH, { variant: 5 }, { style: 'hatch' }],
+    /* Parked on the east verge, 4.8 m off the loop's edge: south of the
+     * footbridge's east stair and north of it, clear of both pylons. They
+     * stood on the lane itself until the loop came to drive it. */
+    ['car', 148.5, 62, NORTH, { variant: 3 }, { style: 'kei' }],
+    ['car', 148.5, 116, SOUTH, { variant: 5 }, { style: 'hatch' }],
     /* Poles on the lane's west verge, 34 m apart, so the wires run the
      * lane's length. */
     ['utilityPole', 133.5, 12, NORTH, { height: 10 }],
@@ -206,6 +246,34 @@ function rows() {
     /* Through the legs, in the open panel between the top struts and the
      * tank. */
     ['gap', 112, 128, EAST, { width: 2.6, height: 3.1 }, { z: 11.3, name: 'WATER TOWER', points: 250 }],
+
+    /*
+     * ---- the yard loop and its traffic ----
+     *
+     * Appended after everything else, so no id above moved. The road's
+     * position is its first node, the north end of the lane, and its nodes
+     * are relative to it: south down the lane, west, north, the chicane
+     * west, north, and back east along the north edge. A vehicle's place is
+     * its road and its offset, metres along the centre line from the first
+     * node, so its x, y and heading are written 0.
+     */
+    ['road', 140, 139, EAST, { width: 6, lanes: 2, radius: 12 }, {
+      name: 'Yard loop',
+      closed: true,
+      nodes: [[0, 0], [0, -121], [-20, -121], [-20, -67], [-38.5, -67], [-38.5, 0]],
+    }],
+    /* The drift car, wine red, in the node order: south down the lane from
+     * the north east bend, 25 m down it at step 0. */
+    ['vehicle', 0, 0, EAST, { offset: 25, speed: 20, variant: 4 }, {
+      name: 'Drift car', style: 'hatch', road: 'el-53', drift: true,
+    }],
+    /* The working traffic, against the node order, half a lap apart. */
+    ['vehicle', 0, 0, EAST, { offset: 60, speed: 10, variant: 1 }, {
+      style: 'boxtruck', road: 'el-53', reverse: true,
+    }],
+    ['vehicle', 0, 0, EAST, { offset: 207.5, speed: VAN_SPEED, variant: 1 }, {
+      style: 'keivan', road: 'el-53', reverse: true,
+    }],
   ];
 }
 
@@ -227,6 +295,15 @@ export function starterMap() {
     }
     if (extra.points) {
       el.points = extra.points;
+    }
+    if (type === 'road') {
+      el.nodes = extra.nodes.map(([nx, ny]) => ({ x: nx, y: ny }));
+      el.closed = extra.closed === true;
+    }
+    if (type === 'vehicle') {
+      el.road = extra.road;
+      el.reverse = extra.reverse === true;
+      el.drift = extra.drift === true;
     }
     return el;
   });

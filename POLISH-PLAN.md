@@ -222,3 +222,36 @@ Sizes: S is under half a day, M a day or two, L a week or more. **PHYSICS** mark
 - The board read through a local proxy that refused every non GET; it refused 65 stats pings and nothing else.
 - Not run: `npm run verify` (nothing changed, and the brief said not to), `lint:shell` and `lint:input` (their failures are quoted from PROGRESS, not rerun).
 - Browser profiles went to a private temp folder, removed at the end; no `/tmp/sim-page-*` was created by this survey.
+
+---
+
+## The owner's answers, 2026-09-26
+
+Given in the conversation, answering the open decisions above, with the
+order of work: "do the bigger items also starting with map card and stage f
+then manga menus".
+
+1. **Scoring prices: agreed.** A low pass pays points and buys no
+   multiplier (item 15).
+2. **Remove the impossible records** from the public board (item 5): the
+   board refuses a lap that cannot have been flown, and the ones it holds are
+   removed. Done in the board's own repository,
+   Mathew-Harvey/WebFPVSimulator-LeaderBoard; the exact rows are listed to
+   the owner before the purge is deployed.
+3. **A crash on a road sets the craft down on the verge** (item 10).
+4. **The Weight slider fades out once in flight**, and shows when landed or
+   on the pause screen (items 2 and 12).
+5. **PHYSICS PATH, approved: judge crashes per physics step** (item 16),
+   removing the frame rate dependence. Under CLAUDE.md the check:crash
+   coverage of the edge case lands first, and the change goes through the
+   verify-flight-model procedure.
+6. **The lens: leave it** (item 11). No barrel distortion in freestyle, no
+   fisheye setting.
+7. **The race field restyle: leave it** (item 20).
+8. **Thrust (1.62 g): leave it for now.**
+9. **Maverick Loop: the cheap fix, remove the trick.** The recogniser stops
+   naming it and score:selftest's red line goes with it.
+
+The bigger items, in the owner's order: the Freestyle room's map card (17),
+Stage F (18), the manga menus (19), then the rest (14 the phone OSD, 21 the
+town's budget in its render only steps, 22 to 24).

@@ -1,26 +1,32 @@
 /*
  * manga.js: the manga layer's picture, Stage F (FREESTYLE-MAPS-PLAN.md
- * section 3.2 items 1 and 4): speed lines and the impact frame.
+ * section 3.2 items 1, 2 and 4): speed lines, screentone and the impact
+ * frame.
  *
- * NO NEW PASS. It is folded into the grade, a pass the freestyle maps
- * already run, because the post chain has a budget (src/render/budget.js)
- * and a full screen pass is the most expensive thing that can be added to
- * it.
+ * NO NEW PASS. All three are folded into passes the freestyle maps already
+ * run, because the post chain has a budget (src/render/budget.js) and a
+ * full screen pass is the most expensive thing that can be added to it:
+ *
+ *   the grade      speed lines, the impact frame, and the mask of the
+ *                  darkest cel band, which it writes into the alpha of the
+ *                  target it already writes
+ *   the fxaa pass  the dots of the screentone, at the canvas's own pixels,
+ *                  reading that alpha from the fetch it already makes
  *
  * Nothing here samples a texture or runs a loop, so the budget's P3 (full
  * resolution passes) and P4 (taps per pixel) cannot move, and none of it
  * allocates a target, so P5 cannot either. What it costs is arithmetic in
- * one fragment shader, and the strokes' arithmetic runs only where a
- * stroke can be: the outer ring of the frame.
+ * two fragment shaders, and the strokes' arithmetic runs only where a
+ * stroke can be: the outer ring of the frame, while the craft is fast.
  *
- * THE VENDORED PIPELINE STAYS BYTE IDENTICAL. The grade belongs to
- * src/maps/city/vendored/core/post.js. mangaPipeline edits the pipeline's
- * OWN copy of its material, by finding exact lines and adding after them,
- * the way BuiltPipeline edits its ink (src/maps/built/index.js,
- * INK_LINEAR). If a vendored update ever changes a line this looks for,
- * the edit finds nothing, the map draws exactly as it did before Stage F,
- * and `ok` says so. So there is no PATCH-*.diff for this: nothing under
- * vendored/ is changed.
+ * THE VENDORED PIPELINE STAYS BYTE IDENTICAL. The grade and the fxaa pass
+ * belong to src/maps/city/vendored/core/post.js. mangaPipeline edits the
+ * pipeline's OWN copies of the two materials, by finding exact lines and
+ * adding after them, the way BuiltPipeline edits its ink
+ * (src/maps/built/index.js, INK_LINEAR). If a vendored update ever changes
+ * a line this looks for, the edit finds nothing, the map draws exactly as
+ * it did before Stage F, and `ok` and `tone` say so. So there is no
+ * PATCH-*.diff for this: nothing under vendored/ is changed.
  *
  * FREESTYLE ONLY, BY CONSTRUCTION. Only the town's pipeline and a built
  * map's call mangaPipeline. The race field's chain (src/render/post.js) has
@@ -143,6 +149,22 @@ const IMPACT_MIX = 0.8;
 /* The paper of the impact frame: the shell's cream (index.html, --cream). */
 const PAPER = new THREE.Color(0xf3ead4);
 
+/* The screentone's pitch at 1080 lines, in canvas pixels, and how dark a
+ * dot is: the ink it is mixed toward, and how far. */
+const TONE_PITCH_1080 = 6;
+const TONE_DEPTH = 0.55;
+
+/*
+ * THE DARKEST CEL BAND, as the grade can see it. The grade has a colour and
+ * not a material, so the band is read off the scene's own linear luminance
+ * before the grade: the toon ramps' first stop (80 to 96 of 255 of the sun,
+ * src/maps/city/vendored/core/toon.js) on the kit's mid tones lands under
+ * TONE_BAND_HI, and the tone is full depth under TONE_BAND_LO. A pale wall
+ * in its shadow band is lighter than that and is left alone, which is the
+ * manga's way too: tone goes into the deep shadows, not every shaded face.
+ */
+const TONE_BAND_LO = 0.05;
+const TONE_BAND_HI = 0.09;
 
 /* ------------------------------------------------------------------ *
  * The shaders.
@@ -150,11 +172,13 @@ const PAPER = new THREE.Color(0xf3ead4);
 
 /* The grade's lines this finds, exactly as the vendored file has them. */
 const GRADE_HEAD_AT = 'varying vec2 vUv;';
+const GRADE_LUMA = 'float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );';
 const GRADE_OUT = 'gl_FragColor = vec4( linearToSRGB( max( c, vec3( 0.0 ) ) ), 1.0 );';
 
 const GRADE_HEAD = /* glsl */ `
     uniform float uMangaLines;
     uniform float uMangaImpact;
+    uniform float uMangaTone;
     uniform vec2 uMangaFocus;
     uniform vec3 uMangaFrame;
     uniform float uMangaSeed;
@@ -230,31 +254,72 @@ const GRADE_BODY = /* glsl */ `
         c = mix( c, uMangaInk, s * mix( 0.55, 0.9, uMangaLines ) );
       }
 
-      gl_FragColor = vec4( linearToSRGB( max( c, vec3( 0.0 ) ) ), 1.0 );
+      /* The darkest cel band, for the screentone the fxaa pass draws: the
+       * alpha is one less the band's depth, so an untouched frame is one.
+       * The ink pass's own lines are left out: they are as dark as the
+       * band, and toned they would crawl along every moving silhouette. */
+      float mangaBand = uMangaTone * ( 1.0 - smoothstep( ${TONE_BAND_LO.toFixed(3)}, ${TONE_BAND_HI.toFixed(3)}, l ) )
+        * smoothstep( 0.03, 0.08, distance( mangaIn, uMangaInk ) );
+      gl_FragColor = vec4( linearToSRGB( max( c, vec3( 0.0 ) ) ), 1.0 - mangaBand );
 `;
 
+/* The fxaa pass's lines. */
+const FXAA_HEAD_AT = 'varying vec2 vUv;';
+const FXAA_FETCH = 'vec3 cM = texture2D( tDiffuse, vUv ).rgb;';
+const FXAA_OUT = 'gl_FragColor = vec4( ( lB < lMin || lB > lMax ) ? rgbA : rgbB, 1.0 );';
+
+const FXAA_HEAD = /* glsl */ `
+    uniform float uMangaTone;
+    uniform float uMangaPitch;
+    uniform vec3 uMangaToneInk;
+`;
+
+const FXAA_FETCH_NEW = /* glsl */ `vec4 cM4 = texture2D( tDiffuse, vUv );
+      vec3 cM = cM4.rgb;`;
 
 /*
- * Edit a vendored Pipeline's own grade material. Returns { ok, grade }: ok
- * when the grade took the edit. Called once, from the pipeline's
- * constructor, before the material has compiled.
+ * THE SCREENTONE: a 45 degree dot grid at the canvas's own pixels, so no
+ * later resample turns it to moire, with each dot as big as the pixel
+ * under it is deep in the darkest band. The radius is the pixel's own, not
+ * the cell's, so where the band's edge moves the dots are cut along it
+ * rather than popping on and off whole.
+ */
+const FXAA_OUT_NEW = /* glsl */ `vec3 mangaOut = ( lB < lMin || lB > lMax ) ? rgbA : rgbB;
+      if ( uMangaTone > 0.0 ) {
+        float band = 1.0 - cM4.a;
+        vec2 g = gl_FragCoord.xy / uMangaPitch;
+        vec2 cell = fract( vec2( g.x + g.y, g.x - g.y ) * 0.70710678 ) - 0.5;
+        float dist = length( cell ) * uMangaPitch;
+        float rad = sqrt( band ) * 0.36 * uMangaPitch;
+        float dotCov = 1.0 - smoothstep( rad - 0.6, rad + 0.6, dist );
+        mangaOut = mix( mangaOut, uMangaToneInk, dotCov * step( 0.02, band ) * ${TONE_DEPTH.toFixed(2)} * uMangaTone );
+      }
+      gl_FragColor = vec4( mangaOut, 1.0 );`;
+
+/*
+ * Edit a vendored Pipeline's own grade and fxaa materials. Returns
+ * { ok, tone, grade, fxaa }: ok when the grade took the edit (speed lines
+ * and the impact frame), tone when the fxaa pass did too. Called once, from
+ * the pipeline's constructor, before either material has compiled.
  */
 export function mangaPipeline(pipeline) {
   const g = pipeline.grade && pipeline.grade.mat;
-  const out = { ok: false, grade: null };
+  const out = { ok: false, tone: false, grade: null, fxaa: null };
   if (!g) {
     return out;
   }
   const gs = g.fragmentShader;
-  if (!(gs.includes(GRADE_HEAD_AT) && gs.includes(GRADE_OUT))) {
+  if (!(gs.includes(GRADE_HEAD_AT) && gs.includes(GRADE_LUMA) && gs.includes(GRADE_OUT))) {
     return out;
   }
   g.fragmentShader = gs
     .replace(GRADE_HEAD_AT, `${GRADE_HEAD_AT}\n${GRADE_HEAD}`)
+    .replace(GRADE_LUMA, `${GRADE_LUMA}\n      vec3 mangaIn = c;`)
     .replace(GRADE_OUT, GRADE_BODY);
   Object.assign(g.uniforms, {
     uMangaLines: { value: 0 },
     uMangaImpact: { value: 0 },
+    uMangaTone: { value: 0 },
     uMangaFocus: { value: new THREE.Vector2() },
     uMangaFrame: { value: new THREE.Vector3(16 / 9, 1080, 0) },
     uMangaSeed: { value: 0 },
@@ -264,11 +329,34 @@ export function mangaPipeline(pipeline) {
   g.needsUpdate = true;
   out.ok = true;
   out.grade = g.uniforms;
+
+  const f = pipeline.fxaa && pipeline.fxaa.mat;
+  const fs = f ? f.fragmentShader : '';
+  if (f && fs.includes(FXAA_HEAD_AT) && fs.includes(FXAA_FETCH) && fs.includes(FXAA_OUT)) {
+    f.fragmentShader = fs
+      .replace(FXAA_HEAD_AT, `${FXAA_HEAD_AT}\n${FXAA_HEAD}`)
+      .replace(FXAA_FETCH, FXAA_FETCH_NEW)
+      .replace(FXAA_OUT, FXAA_OUT_NEW);
+    Object.assign(f.uniforms, {
+      uMangaTone: { value: 0 },
+      uMangaPitch: { value: TONE_PITCH_1080 },
+      uMangaToneInk: { value: new THREE.Color(0x39324f) },
+    });
+    f.needsUpdate = true;
+    out.tone = true;
+    out.fxaa = f.uniforms;
+  }
   return out;
 }
 
 function clamp01(v) {
   return v < 0 ? 0 : (v > 1 ? 1 : v);
+}
+
+/* The screentone's ink is written after the sRGB transfer, so it is taken
+ * to sRGB here from the linear colour the ink pass uses. */
+function linearToSrgb(v) {
+  return v <= 0.0031308 ? v * 12.92 : 1.055 * (v ** (1 / 2.4)) - 0.055;
 }
 
 /*
@@ -295,7 +383,7 @@ export class MangaLayer {
     /* The harness's override for a measurement at a fixed camera:
      * { lines, focus: [x, y], impact }, any of them, or null. */
     this.force = null;
-    this.shown = { lines: 0, impact: 0, focus: [0, 0], speed: 0 };
+    this.shown = { lines: 0, impact: 0, tone: 0, focus: [0, 0], speed: 0 };
   }
 
   tick(dtMs) {
@@ -352,6 +440,7 @@ export class MangaLayer {
    *   lines    the speed lines may be drawn (a freestyle map, manga on,
    *            flying, the FPV camera)
    *   impact   the impact frame may be drawn
+   *   tone     the screentone may be drawn (and the tier is High)
    *   still    the system asks for reduced motion: the strokes stop
    *            redrawing themselves
    *   speed    the craft's speed, m/s
@@ -415,8 +504,10 @@ export class MangaLayer {
         fy = Number(f.focus[1]) || 0;
       }
     }
+    const tone = s.tone && m && m.tone && post.enabled && post.enabled.fxaa ? 1 : 0;
     this.shown.lines = lines;
     this.shown.impact = impact;
+    this.shown.tone = tone;
     this.shown.focus[0] = fx;
     this.shown.focus[1] = fy;
     this.shown.speed = s.speed;
@@ -427,6 +518,7 @@ export class MangaLayer {
     const g = m.grade;
     g.uMangaLines.value = lines;
     g.uMangaImpact.value = impact;
+    g.uMangaTone.value = tone;
     g.uMangaFocus.value.set(fx, fy);
     /* The grade draws into the fxaa pass's target when there is one and
      * onto the canvas when there is not: the strokes' widths are in the
@@ -447,6 +539,15 @@ export class MangaLayer {
       : null;
     if (ink) {
       g.uMangaInk.value.copy(ink);
+    }
+    if (m.fxaa) {
+      m.fxaa.uMangaTone.value = tone;
+      if (tone) {
+        const h = post.renderer ? post.renderer.domElement.height : 1080;
+        m.fxaa.uMangaPitch.value = Math.max(4, TONE_PITCH_1080 * (h / 1080));
+        const c = g.uMangaInk.value;
+        m.fxaa.uMangaToneInk.value.setRGB(linearToSrgb(c.r), linearToSrgb(c.g), linearToSrgb(c.b));
+      }
     }
   }
 }

@@ -459,8 +459,8 @@ class CityPipeline extends Pipeline {
     this.shellPixelRatio = renderer.getPixelRatio();
     this.minScale = opts && opts.minScale != null ? opts.minScale : 1;
     this.preferScale = opts && opts.preferScale != null ? opts.preferScale : null;
-    /* Stage F's manga layer, folded into the grade on this pipeline's own
-     * material: see src/render/manga.js. */
+    /* Stage F's manga layer, folded into the grade and the fxaa pass on
+     * this pipeline's own materials: see src/render/manga.js. */
     this.manga = mangaPipeline(this);
   }
 
@@ -2542,7 +2542,7 @@ export async function buildMap(shell, onProgress, options) {
       pipelineScale: pipeline.scale,
       pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
       /* Whether Stage F's edit found its lines: see src/render/manga.js. */
-      manga: { lines: pipeline.manga.ok },
+      manga: { lines: pipeline.manga.ok, tone: pipeline.manga.tone },
       ...anim.stats(),
     }),
     dispose() {

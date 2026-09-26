@@ -1643,6 +1643,18 @@ export async function boot({ loading, bootStart, mapId }) {
   function impactFrameOn() {
     return Boolean(ui.manga && ui.settings.impactFrame) && !reducedMotion();
   }
+  /*
+   * The screentone is judged by flying it before it is kept (the plan,
+   * section 3.2 item 2). Off by default: see the Stage F entry in
+   * PROGRESS.md for the shimmer this found. `?tone=1` turns it on for a
+   * pilot who wants to fly it, at the High tier only.
+   */
+  let mangaToneWanted = false;
+  try {
+    mangaToneWanted = new URLSearchParams(window.location.search).get('tone') === '1';
+  } catch (e) {
+    /* No location: the default. */
+  }
   /* A crash, from crashResetTick: start an impact frame holding the pose
    * the pilot last saw, if the switches allow and none began under two
    * seconds ago. */
@@ -1653,9 +1665,10 @@ export async function boot({ loading, bootStart, mapId }) {
     return manga.impact(shell.camera);
   }
   /* Once a frame the world is drawn, just before the post chain: the speed
-   * lines from the craft's velocity turned into the camera's frame, and the
-   * impact frame's clock. A race track's chain has no manga edit and is
-   * left alone; a freestyle map's gets zeros when ui.manga is false. */
+   * lines from the craft's velocity turned into the camera's frame, the
+   * impact frame's clock, and the screentone's switch. A race track's chain
+   * has no manga edit and is left alone; a freestyle map's gets zeros when
+   * ui.manga is false. */
   function mangaFrame(dt) {
     const on = Boolean(ui.manga) && view.mode === 'freestyle';
     const fpv = on && mode === 'flight' && introMs < 0 && !replayMode && Boolean(stateCurr);
@@ -1675,6 +1688,7 @@ export async function boot({ loading, bootStart, mapId }) {
     manga.frame(view.post, {
       lines: fpv,
       impact: on && impactFrameOn(),
+      tone: on && mangaToneWanted && view.graphics === 'high',
       still: reducedMotion(),
       speed,
       vel: mangaVel,
@@ -6075,11 +6089,11 @@ export async function boot({ loading, bootStart, mapId }) {
   const shakeEuler = new THREE.Euler();
   const lensShake = makeLensShake();
   /*
-   * STAGE F, THE MANGA LAYER'S PICTURE: speed lines and the impact frame,
-   * drawn by the freestyle maps' own grade (src/render/manga.js). Render
-   * only: it is handed the craft's velocity after the render boundary's
-   * conversion and a camera pose, and gives back uniforms and, for one beat
-   * after a crash, the pose to hold.
+   * STAGE F, THE MANGA LAYER'S PICTURE: speed lines, the impact frame and
+   * the screentone, drawn by the freestyle maps' own grade and fxaa pass
+   * (src/render/manga.js). Render only: it is handed the craft's velocity
+   * after the render boundary's conversion and a camera pose, and gives
+   * back uniforms and, for one beat after a crash, the pose to hold.
    */
   const manga = new MangaLayer();
   const mangaVel = new THREE.Vector3();
@@ -8765,7 +8779,7 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   /*
    * THE MANGA LAYER, for the harness (Stage F, src/render/manga.js).
-   *   state()        what the last frame drew: lines, impact, focus,
+   *   state()        what the last frame drew: lines, impact, tone, focus,
    *                  speed, the impact count, and whether the map's
    *                  pipeline took the edit
    *   force(o)       hold the lines, the focus or the impact at a value,
@@ -8776,6 +8790,7 @@ export async function boot({ loading, bootStart, mapId }) {
    *                  runs it free
    *   impact()       a crash's impact frame, staged: the same call the
    *                  crash makes, without the crash
+   *   tone(on)       the screentone's switch, as ?tone=1 sets it
    */
   window.__manga = {
     state() {
@@ -8784,12 +8799,13 @@ export async function boot({ loading, bootStart, mapId }) {
         manga: Boolean(ui.manga),
         lines: manga.shown.lines,
         impact: manga.shown.impact,
+        tone: manga.shown.tone,
         focus: [manga.shown.focus[0], manga.shown.focus[1]],
         speed: manga.shown.speed,
         holding: manga.holding(),
         impacts: manga.impacts,
         clockMs: manga.clockMs,
-        edit: m ? { lines: Boolean(m.ok) } : null,
+        edit: m ? { lines: Boolean(m.ok), tone: Boolean(m.tone) } : null,
         impactOn: impactFrameOn(),
         reduced: reducedMotion(),
       };
@@ -8807,6 +8823,10 @@ export async function boot({ loading, bootStart, mapId }) {
     },
     impact() {
       return mangaCrash();
+    },
+    tone(on) {
+      mangaToneWanted = on !== false;
+      return mangaToneWanted;
     },
     /*
      * THE CENTRE THIRD, MEASURED. The post chain drawn twice at the same
@@ -8876,10 +8896,10 @@ export async function boot({ loading, bootStart, mapId }) {
       return { w, h, cases: out };
     },
     /*
-     * What the layer costs, in this browser: the passes at the end of the
-     * chain (the grade, and the fxaa pass where there is one) drawn n times
-     * over the same frame with the layer off, with the speed lines at full
-     * and with the impact frame at full, each run ended by a one
+     * What the layer costs, in this browser: the passes it lives in (the
+     * grade, and the fxaa pass where there is one) drawn n times over the
+     * same frame with the layer off, with the speed lines at full, with the
+     * impact frame at full, and with the screentone, each run ended by a one
      * pixel read so the GPU's queue is inside the clock. The scene is drawn
      * once first and not timed: it is the same in every case and is most of
      * a frame, so timing it hides the layer in its noise. Under a software
@@ -8895,6 +8915,7 @@ export async function boot({ loading, bootStart, mapId }) {
       const gl = r.getContext();
       const px = new Uint8Array(4);
       const savedForce = manga.force;
+      const toneWas = mangaToneWanted;
       const tail = () => {
         r.setRenderTarget(post.enabled.fxaa ? post.rtB : null);
         post.grade.quad.render(r);
@@ -8904,7 +8925,8 @@ export async function boot({ loading, bootStart, mapId }) {
         }
         r.setRenderTarget(null);
       };
-      const run = (force) => {
+      const run = (force, tone) => {
+        mangaToneWanted = tone;
         manga.force = force;
         mangaFrame(0);
         post.render();
@@ -8924,15 +8946,20 @@ export async function boot({ loading, bootStart, mapId }) {
         return q[Math.floor(q.length / 2)];
       };
       const cases = {
-        off: { lines: 0, impact: 0 },
-        lines: { lines: 1, impact: 0, focus: [0, 0] },
-        impact: { lines: 0, impact: 1, focus: [0, 0] },
+        off: [{ lines: 0, impact: 0 }, false],
+        lines: [{ lines: 1, impact: 0, focus: [0, 0] }, false],
+        impact: [{ lines: 0, impact: 1, focus: [0, 0] }, false],
+        tone: [{ lines: 0, impact: 0 }, true],
       };
-      const times = { off: [], lines: [], impact: [] };
+      const times = { off: [], lines: [], impact: [], tone: [] };
+      let toneOn = 0;
       try {
         for (let round = 0; round < rounds; round += 1) {
           for (const k of Object.keys(cases)) {
-            times[k].push(run(cases[k]));
+            times[k].push(run(cases[k][0], cases[k][1]));
+            if (k === 'tone') {
+              toneOn = manga.shown.tone;
+            }
           }
         }
         return {
@@ -8942,10 +8969,12 @@ export async function boot({ loading, bootStart, mapId }) {
           offMs: median(times.off),
           linesMs: median(times.lines),
           impactMs: median(times.impact),
+          toneMs: toneOn ? median(times.tone) : null,
           spreadOffMs: [Math.min(...times.off), Math.max(...times.off)],
         };
       } finally {
         manga.force = savedForce;
+        mangaToneWanted = toneWas;
       }
     },
   };

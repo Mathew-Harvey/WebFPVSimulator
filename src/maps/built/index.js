@@ -305,8 +305,8 @@ export class BuiltPipeline extends Pipeline {
       this.ink.mat.fragmentShader = frag.replace(INK_LINEAR, INK_INVERSE);
       this.ink.mat.needsUpdate = true;
     }
-    /* Stage F's manga layer, folded into the grade the same way, on this
-     * pipeline's own material: see src/render/manga.js. */
+    /* Stage F's manga layer, folded into the grade and the fxaa pass the
+     * same way, on this pipeline's own materials: see src/render/manga.js. */
     this.manga = mangaPipeline(this);
   }
 
@@ -2322,7 +2322,7 @@ export async function buildMap(shell, onProgress, options) {
       pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
       inkPlanar: pipeline.inkPlanar,
       /* Whether Stage F's edit found its lines: see src/render/manga.js. */
-      manga: { lines: pipeline.manga.ok },
+      manga: { lines: pipeline.manga.ok, tone: pipeline.manga.tone },
       buildMs,
     }),
     dispose() {

@@ -1408,7 +1408,18 @@ const BEHAVIOUR = `(() => {
        is on the object itself. It files by the document's own class, which
        is why this is the micro chair. */
     const autosaved = readKey('webfpv.trackbuilder.autosave.micro.v1');
+    /*
+     * The pause menu's Back to the track builder, for a track of the
+     * pilot's own, which this one out of the library is. Read without
+     * showing the pause screen, which belongs to a flight this check never
+     * starts: items() is the list that screen would draw.
+     */
+    const screenWas = ui.screen;
+    ui.screen = 'paused';
+    const pauseRow = ui.items().find((it) => it.label === 'Back to the track builder') || null;
+    ui.screen = screenWas;
     const stockSeat = {
+      pauseBuilder: pauseRow ? pauseRow.action : null,
       stockCount: stockCards.length,
       count: localCards.length,
       names: localNames,
@@ -1843,6 +1854,11 @@ async function main() {
       }
       if (st.listedAfter !== LIBRARY_SEED.length - 1) {
         failures.push(`with one saved track seated the room lists ${st.listedAfter} others, not ${LIBRARY_SEED.length - 1}`);
+      }
+      /* Escape in flight offers the builder, which is where this track
+       * lives: fly, edit, fly, the owner's ask of 2026-09-26. */
+      if (st.pauseBuilder !== 'trackbuilder') {
+        failures.push(`flying a saved track of the pilot's own, the pause menu's way back to the track builder is ${st.pauseBuilder ? `"${st.pauseBuilder}"` : 'missing'}`);
       }
     }
     if (!b.modeGate || b.modeGate.error) {

@@ -76,7 +76,7 @@ import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, cra
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor } from './ui/ui.js';
 import {
   adoptMapFromLocation, adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost,
-  fetchTrackDocument, fetchTrackTimes, postFreestyleRun, postTime,
+  fetchMapDocument, fetchTrackDocument, fetchTrackTimes, postFreestyleRun, postTime,
 } from './share/board.js';
 import { findBoardTwin, hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
 import { captureSource, createFlightStats, pingVisit } from './share/stats.js';
@@ -491,6 +491,11 @@ async function loadMap(shell, id, loading, options) {
   await yieldToPaint();
   const map = await mod.buildMap(shell, (f) => loading.progress('world', f), options);
   map.graphics = normalizeGraphics(options && options.quality);
+  /* The published map a built world was made from, or null for the
+   * pilot's own. The world does not say, because to it a document is a
+   * document, and the shell has to tell two of them apart: see
+   * loadedCourseKey, and the fallback in syncWorld. */
+  map.shared = (options && options.shared) || null;
   loading.done('world');
   return map;
 }
@@ -1147,9 +1152,13 @@ export async function boot({ loading, bootStart, mapId }) {
    * throw is honest.
    */
   /* The document a world is built from when it is not the one it would
-   * choose for itself: a published map from ?mapshare=, for the built world
-   * and nothing else. See sharedMap above. */
-  const worldDocument = (id) => (id === 'built' && sharedMap ? { document: sharedMap.document } : {});
+   * choose for itself: a published map from ?mapshare= or from a card in
+   * the Freestyle room, for the built world and nothing else. See sharedMap
+   * above, and ui.onBoardMap. `shared` rides along so the world remembers
+   * which map it is (loadMap). */
+  const worldDocument = (id) => (id === 'built' && sharedMap
+    ? { document: sharedMap.document, shared: sharedMap }
+    : {});
   try {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: ui.settings.graphics,
@@ -2059,7 +2068,7 @@ export async function boot({ loading, bootStart, mapId }) {
           introMs = -1; /* Skip intro */
         } else if (replayMode) {
           /* resolveGhost gives a freestyle course no ghost at all. */
-          failReplay('Replay failed: this course has no lap for a ghost to fly.');
+          failReplay('Replay failed: this track has no lap for a ghost to fly.');
         }
       } catch (e) {
         if (ghostCourseKey() !== key) {
@@ -4080,11 +4089,24 @@ export async function boot({ loading, bootStart, mapId }) {
 
   /* Custom is one map id and many courses. A second pick from the board
    * used to no-op because wantId and view.id were both "custom". */
+  /*
+   * Which document a world holds, beside which world. A track is keyed by
+   * its seat. The built world is keyed by the published map it flies, or ''
+   * for the pilot's own: every map from the board is the built world, so
+   * without this, choosing a second one over the first was a swap that
+   * matched and did nothing, and so was choosing Your map after either.
+   */
   function wantedCourseKey(mapId) {
+    if (mapId === 'built') {
+      return sharedMap ? `mapshare:${sharedMap.id}` : '';
+    }
     return mapId === 'custom' ? seatedCourseKey() : '';
   }
 
   function loadedCourseKey(map) {
+    if (map && map.id === 'built') {
+      return map.shared ? `mapshare:${map.shared.id}` : '';
+    }
     if (!map || map.id !== 'custom') {
       return '';
     }
@@ -4143,6 +4165,16 @@ export async function boot({ loading, bootStart, mapId }) {
     await yieldToPaint();
     const previous = view.id;
     const previousGraphics = view.graphics;
+    /*
+     * The published map each side of the swap flies, when it is the built
+     * world. The failure below names the one that would not build by its
+     * own name, and rebuilds the world being left WITH ITS OWN DOCUMENT:
+     * sharedMap already names the new map by now, so rebuilding `previous`
+     * from it would build the failing map again, and the guard at the foot
+     * of this function would go round that for ever.
+     */
+    const wantShared = wantId === 'built' ? sharedMap : null;
+    const previousShared = view.shared || null;
     try {
       view.dispose();
     } catch (e) {
@@ -4175,6 +4207,8 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       ui.settings.map = previous;
       ui.settings.graphics = previousGraphics;
+      sharedMap = previousShared;
+      ui.setSharedMap(sharedMap);
       try {
         applyPixelRatio(shell, previousGraphics, renderScaleOf(ui.settings));
         view = await loadMap(shell, previous, loading, {
@@ -4187,16 +4221,20 @@ export async function boot({ loading, bootStart, mapId }) {
         adoptLoadedView(keepPlace, stayMode, stayScreen);
         /* A freestyle world failed under a pilot still in freestyle, and
          * Fly is what tries it again, with a fresh page (bug-850375dc: see
-         * seatWorld in ui.js), so say so. */
+         * seatWorld in ui.js), so say so. Not for a map from the board: a
+         * fresh page flies Your map, so the promise would not be kept, and
+         * its card in the Freestyle room is the way to try it again. */
         notice = {
-          text: entry.mode === 'freestyle'
-            ? `${entry.name} could not be loaded. Fly reloads the page and tries again.`
-            : `${entry.name} could not be loaded.`,
+          text: wantShared
+            ? `${wantShared.name} could not be loaded.`
+            : (entry.mode === 'freestyle'
+              ? `${entry.name} could not be loaded. Fly reloads the page and tries again.`
+              : `${entry.name} could not be loaded.`),
           untilMs: performance.now() + 4200,
         };
       } catch (e2) {
         console.error(e2);
-        loading.fail(`${entry.name} could not be loaded. ${e.message ?? e}`);
+        loading.fail(`${wantShared ? wantShared.name : entry.name} could not be loaded. ${e.message ?? e}`);
       }
     } finally {
       swapInFlight = false;
@@ -5515,6 +5553,30 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     ui.setShare(share);
     return true;
+  };
+  /*
+   * A published map chosen from the Freestyle room's cards. The fetch a
+   * ?mapshare= link makes at boot, minus the navigation, and nothing else:
+   * it hands the map back and changes nothing, because the room seats it
+   * only if the pilot is still there when it arrives. onSharedMap is the
+   * seating: the built world then flies it (worldDocument), or flies the
+   * pilot's own again when it is handed null. Neither writes a seat, for
+   * the reason adoptMapFromLocation gives: Your map is never displaced.
+   */
+  ui.onBoardMap = async (listing) => {
+    const payload = await fetchMapDocument(listing.id, listing.board);
+    const document = payload.document || payload;
+    return {
+      id: payload.id || listing.id,
+      name: payload.name || document.name || listing.name || 'Untitled map',
+      author: payload.author || listing.author || '',
+      board: listing.board,
+      document,
+    };
+  };
+  ui.onSharedMap = (shared) => {
+    sharedMap = shared || null;
+    ui.setSharedMap(sharedMap);
   };
   /* Menu clicks. The key handler has already woken the audio context by
    * the time the menu moves, so the first keypress is audible too. */

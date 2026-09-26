@@ -623,6 +623,69 @@ export async function fetchMapDocument(id, origin = boardOrigin()) {
 }
 
 /*
+ * Every published freestyle map, as the board lists them: no documents,
+ * the outline drawing the board's own tiles are drawn from, and whether it
+ * holds a share card. What the Freestyle room lists under the town and Your
+ * map, the way fetchTrackList is what the Race room lists.
+ *
+ * Same standing as fetchTrackList: a board that is down, asleep, or older
+ * than published maps (its 404 arrives here as a rejection) means no maps
+ * today and never a broken room, so every caller treats a rejection that
+ * way.
+ */
+export async function fetchMapList(origin = boardOrigin()) {
+  const board = trimOrigin(origin);
+  const res = await boardGet(`${board}/api/maps`);
+  const body = await readJson(res);
+  const maps = body && Array.isArray(body.maps) ? body.maps : [];
+  return maps.map((m) => ({
+    id: String(m.id || ''),
+    name: String(m.name || 'Untitled map'),
+    author: String(m.author || ''),
+    pieces: Number(m.pieces) || 0,
+    gaps: Number(m.gaps) || 0,
+    publishedUtc: m.publishedUtc ? String(m.publishedUtc) : '',
+    plan: m.plan || null,
+    /* The share card is a frame of the map in the renderer the game flies
+     * (./card.js), so it is the picture the room shows. Its stamp goes on
+     * the address, which the board then lets a browser keep for good. */
+    hasCard: Boolean(m.hasCard),
+    cardUtc: m.cardUtc ? String(m.cardUtc) : '',
+    board,
+  })).filter((m) => m.id);
+}
+
+/*
+ * HOW MANY MAPS THE FREESTYLE ROOM SHOWS, AND WHICH.
+ *
+ * Ten, because the owner asked for the top ten (2026-09-26). The board keeps
+ * no times and no count of flights for a map, so "top" is the board page's
+ * own answer to the same question: newest first, "because a map has no
+ * times to rank by and the question a returning visitor asks of this tab is
+ * what is new" (MAP_SORTS in the board's public/app.js). When the board
+ * learns a count, this is the one function to change.
+ */
+export const MAPS_SHOWN = 10;
+
+function byNewest(a, b) {
+  return String(b.publishedUtc || '').localeCompare(String(a.publishedUtc || ''))
+    || String(a.id).localeCompare(String(b.id));
+}
+
+export function pickNewestMaps(maps, limit = MAPS_SHOWN) {
+  return (maps || []).filter((m) => m && m.id).sort(byNewest).slice(0, limit);
+}
+
+/* The address of a listed map's share card, or '' when it has none. */
+export function mapCardUrl(map) {
+  if (!map || !map.hasCard || !map.id) {
+    return '';
+  }
+  const stamp = map.cardUtc ? `?v=${encodeURIComponent(map.cardUtc)}` : '';
+  return `${trimOrigin(map.board || boardOrigin())}/api/maps/${encodeURIComponent(map.id)}/card${stamp}`;
+}
+
+/*
  * A ?mapshare= id in the URL, from the board's Fly this map, fetched and
  * handed back as { id, name, author, board, document }, or null when the
  * URL names no map.

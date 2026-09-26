@@ -49767,6 +49767,188 @@ fixed here: it is outside the change asked for.
     input-check on 5cdcc71 + this  158 passed, 2 failed (the same two);
                                    section 15's four pass
 
+## 2026-09-26 | shell, share, tests | The board's ten newest maps in the Freestyle room; Back to the track builder on pause
+
+Two asks from the owner in one turn.
+
+The first, with a screenshot of the Freestyle room showing only Freestyle
+city and Your map: "in the sim when i click on freestyle in game i should
+see the top 10 avialable freestyle maps like with the race tracks".
+
+The second, mid-turn: "not when im flying the built track if i hit esc i
+should see in the menu, back to the track builder so i can fly , edit, fly
+easily". Read as "now when": the pause menu, on a track or map the pilot
+built, offers the builder.
+
+### What "top ten" means here
+
+The board keeps no times and no count of flights for a map (a run on a
+built map is refused, see BUILT_OFF_BOARD), so there is nothing to rank by
+popularity. "Top" is the board page's own answer to the same question:
+newest first, MAP_SORTS.newest in the board's public/app.js, "because a map
+has no times to rank by". Ten of them, `MAPS_SHOWN` in src/share/board.js.
+When the board learns a count, pickNewestMaps is the one function to
+change. The live board holds three maps today (LaMaquinita, Hibari Yard,
+andAgainFPV01), so the room shows three until more are published.
+
+### Changes
+
+- src/share/board.js: `fetchMapList` reads `GET /api/maps` (the board has
+  served it since maps could be published; nothing here read it), with the
+  board's own outline plan and its share card flag and stamp.
+  `pickNewestMaps` and `MAPS_SHOWN` choose the ten. `mapCardUrl` is the
+  share card's address with `?v=` its stamp, which the board then serves as
+  immutable.
+- src/ui/ui.js, the Freestyle room: a second strip, "From the board, newest
+  first", under the town and Your map, loaded on every entry to the room
+  (loadBoardMaps), less the one Your map already flies (ownMapId). Each card
+  wears the map's share card, cropped by CSS to its lower right four fifths
+  so the WebFPV wordmark falls outside it (index.html, .board-map-shot),
+  and falls back to the board's own outline drawing when a map has no card
+  or it will not load. Name, then "by author · N pieces · N named gaps".
+  Flying now and the STF stamp as the world cards have them; a board map's
+  stamp key is `built:` and its id, which egg.js's stfKey gives an
+  injected document. A board that is down leaves one line: "The board is
+  not answering, so only the town and your own map are listed."
+- Choosing a card fetches the map's document through main.js
+  (ui.onBoardMap) and seats the built world with it, only if the pilot is
+  still in the room when it arrives (openBoardMap). The world cards clear
+  it (useSharedMap(null)), so Your map is the pilot's own again. Nothing is
+  written to a seat, the rule adoptMapFromLocation already had for a
+  `?mapshare=` link, and a stale `?mapshare=` is dropped from the address
+  on any choice in the room, so a reload flies what was chosen last and
+  not the link the page was opened with.
+- src/main.js: `worldDocument` carries the shared map, loadMap stamps it on
+  the world as `shared`, and wanted/loadedCourseKey key the built world by
+  it. Without that, a second board map over the first, or Your map after
+  one, matched and did not swap: every board map is the built world. A
+  board map that will not build puts the world being left back WITH ITS
+  OWN DOCUMENT; rebuilding it from sharedMap would have rebuilt the failing
+  map and the guard at the foot of syncWorld would have gone round for
+  ever. Its notice names it and does not promise that Fly retries it.
+- Names: the title's strapline, the top bar's Flying chip, the freestyle
+  results header, the Scoring note ("this map", not a name, because the
+  note is measured against the bottom bar) and the results row's reason
+  (BOARD_MAP_OFF_BOARD) no longer call somebody else's map Your map.
+- src/share/plan.js: the board's map drawing (MAP_INK, MAP_ORDER,
+  isMapPlan, mapMarks), ported from its public/plan.js unchanged, which is
+  the rule at the top of the file: the two copies draw the same picture.
+- The recorder in the room films a world in place only when it is the one
+  loaded. With a board map loaded, Your map's clip would have been filmed
+  from the board map and filed under the pilot's own seat; it now goes
+  through the orbit frame like any world that is not loaded.
+- The pause menu: "Back to the track builder", third, under Resume and
+  Restart run, for the pilot's own race track (kind local or remix opens
+  `?mode=race`; a published track of their own goes through Edit this
+  track, `editown`, so the builder shows it even when the canvas holds
+  another) and for Your map when the freestyle seat holds a map
+  (`mapbuilder`). Absent, not greyed, on the town, the starter yard, a
+  board map or somebody else's track: "back" to a page the pilot never came
+  from would be the wrong word. `mapbuilder` joins SCREEN_ACTIONS so both
+  doors wear the same chevron; the Freestyle room's Build a freestyle map
+  gains it too.
+- Copy: the room's lede and the title's Map note mention the board's maps.
+- src/main.js: the replay failure said "this course", which lint:nouns
+  rejects; it was red at 42567f4 before this turn. One word.
+
+### Checks added
+
+- scripts/board-check.js publishes twelve maps (the starter under twelve
+  ids) into its scratch board and asserts the Freestyle room lists the ten
+  newest in order, all before the rows, beside both worlds, with no note;
+  that choosing one builds it, holds it, and the title's Map row names it;
+  and that Your map afterwards rebuilds the pilot's own and holds no board
+  map. The Race room's strip label query is narrowed to the Race room,
+  because the Freestyle room also wears screen-courses and now has a strip.
+- scripts/shell-check.js: with a saved track of the pilot's own seated,
+  the pause menu's list carries Back to the track builder as `trackbuilder`.
+
+### RUN LOG
+
+    node --check                   ui.js, main.js, board.js, plan.js,
+                                   board-check.js, shell-check.js: ok
+    pickNewestMaps in Node         newest first, ten of fourteen, input
+                                   array untouched
+    npm run lint:nouns             PASS (FAIL 1 before the one word above,
+                                   at HEAD as well)
+    npm run lint:preload           up to date: boot 108, city 73, built 32
+    npm run lint:board             PASS: 8 tracks, 10 of 12 maps listed,
+                                   chose Tram Sheds, Map row "Tram Sheds",
+                                   then Your map built Hibari Yard
+    npm run lint:shell, no board   FAIL 1: "title: overflow grew from 0 to
+                                   67 px", main's, as recorded above and
+                                   left for the owner; the new pause row
+                                   assertion passes
+    npm run lint:shell, board up   FAIL 2: the title's 67 px and launch
+                                   11 px. The launch one is the board's
+                                   row (see 2026-09-25): the scratch board
+                                   was still up on 3100. Rerun without it
+    npm run lint:responsive        PASS, freestyle 324 frames, worst gap
+                                   353 ms
+    shots, scratch board on 3100   the three live maps with their documents,
+                                   plans and share cards copied from
+                                   webfpv.org, and nine copies of Hibari
+                                   Yard without cards. Looked at: the room
+                                   at 1280x800 top and bottom, and 390x844
+                                   (one column, scrollWidth 390); the title
+                                   after choosing a board card by keyboard
+                                   ("Hibari Yard, built by Mat, from the
+                                   board"). Driven: board map to board map
+                                   to Your map, each a rebuild; fly, Escape,
+                                   Back to the track builder, the builder
+                                   on the same track, Fly this track, in
+                                   flight on it (2022 AU Nationals), and
+                                   the same with a map of the pilot's own
+                                   (My Yard, Fly this map); no builder row
+                                   on somebody else's board track, a board
+                                   map, or the town
+    npm run verify                 not run: no physics, plant, ABI or build
+                                   change
+    not run                        lint:input, lint:boot, lint:memory: the
+                                   boot path and the world modules are
+                                   unchanged; the list is fetched on entry
+                                   to the room, not at boot
+
+### What went wrong
+
+- The first lint:shell ran with this turn's scratch board still up on the
+  default port, which adds the launch card's board row and fails launch by
+  11 px. Stopped and rerun; the failure is the harness's, not the shell's.
+- The first board-check pass forced the Freestyle mode instead of
+  answering the gate, so the title after a choice was the gate and the Map
+  row read null. The check now answers the gate as a pilot does and
+  asserts the row.
+- A pkill aimed at the scratch board matched its own shell and killed it;
+  the board was stopped by process id instead.
+- The cursor opens on the town's card when a board map is flying, because
+  the room opens before the list arrives. The board map's card says Flying
+  now once it does. Left as it is.
+
+### Found, not fixed, for the owner
+
+The Freestyle room never draws a preview of the world that is LOADED. The
+owner's screenshot shows it: Your map, Flying now, a flat grey card. The
+recorder films the loaded world from the live view (captureCurrentCard),
+but main.js only renders the world, and only copies it to the card
+(paintMapThumbs), on the 'courses' screen, where world cards no longer
+live. On 'freestyle' the canvas is hidden, so the recording is twelve
+seconds of the grey the card canvas was filled with, cached in IndexedDB
+under that map's clip key until the map is edited. Seen in headless
+Chromium: 40 s after opening the room with My Yard seated, the card is
+still grey. Fixing it is either rendering the world under the room while a
+clip records, or filming the loaded world through the orbit frame as the
+others are, which briefly builds a second copy of it (the town included);
+then CLIP_VERSION goes up so the grey clips already cached are recorded
+again. That is a render path and memory choice, so it is not in this turn.
+
+### To main
+
+Asked which verification pass to run, the owner answered on 2026-09-26:
+"push to main i'll fly it now". Taken as: the pilot flies it, no further
+pass here, and the branch goes to main. main had not moved (origin/main
+42567f4, the merge base), so it is a fast forward of e146bec and this note,
+and the checks in the run log above were run on that tree.
+
 ## 2026-09-26 | game, shell, checks | Stage C: the counter, one combo for tricks, named gaps, close calls, the chase and the STF mark
 
 The owner, having flown Stage E: "can we now implement the full scoring

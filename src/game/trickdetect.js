@@ -582,7 +582,7 @@ const PATH_LOOKBACK = 800;
  *
  * A quarter turn is the widest this can be and still tell 0 from 0.5, which
  * is the only distinction these patterns need: a Powerloop flips through
- * the loop and a Maverick Loop does not, a Matty Flip half flips over the
+ * the loop and a Mavvy Roll does not, a Matty Flip half flips over the
  * object and a Beginner Matty does not.
  *
  * MAGNITUDES ONLY, never signs. The sign of a lap depends on which way the
@@ -729,7 +729,7 @@ export const PATTERNS = [
    * while it flew.
    *
    *   under, whole lap, flipped     Powerloop
-   *   under, whole lap, upright     Maverick Loop
+   *   under, whole lap, upright     no lap trick (Maverick Loop, removed)
    *   under, half lap, half flip    Immelmann, once the roll lands
    *   over,  half lap, half flip    Matty Flip
    *   over,  half lap, and a roll   Split-S
@@ -752,24 +752,20 @@ export const PATTERNS = [
     name: 'Powerloop',
     steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 1 } }],
   },
-  {
-    /*
-     * The same lap flown facing forward the whole way: no flip.
-     *
-     * THE ROLL IS THE LAP'S OWN AND HAS TO BE NAMED. Flying a circle
-     * points the thrust at the middle of it, so a lap is always a rotation
-     * about something: a Powerloop spends it on pitch because the nose
-     * follows the path, and a Maverick spends it on ROLL because the nose
-     * lies along the rail instead. There is no third option, and a lap
-     * with rot { pitch: 0 } and nothing else said was not describing a
-     * Maverick, it was describing every Maverick AND every Mavvy Roll,
-     * because a Mavvy Roll's roll of 1 is exactly what the bare lap
-     * already has. The dearer name won, so every Maverick Loop was paid
-     * 250 instead of 100. See PROGRESS.md, 2026-09-03.
-     */
-    name: 'Maverick Loop',
-    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0, roll: 1 } }],
-  },
+  /*
+   * THE MAVERICK LOOP IS NOT NAMED. The same lap flown facing forward the
+   * whole way, the lap's own roll and no flip, was a pattern here until
+   * 2026-09-26, when the owner chose the cheap fix for it (POLISH-PLAN.md,
+   * open decision 12; PROGRESS.md of that date): "remove the trick". Its
+   * offline check, a constructed lap with no rotation in it, named nothing
+   * from f9b7db4 on and was red on main from then, and the sweep named it
+   * for Power Rolls and Side Loops it could not read. Such a lap now scores
+   * its own whole roll as a Roll when that closes clean, and nothing when
+   * it does not (scripts/trick-sweep.js, 'roll loop'). The workbook still
+   * prices it (src/game/tricks.js is a transcription and keeps every row),
+   * and the rest of the Maverick family, this lap with something more in
+   * it, is below and unchanged.
+   */
   {
     /* Over the object, a 180 roll, then down the back and under it, with
      * the roll falling inside the lap's own window. */

@@ -100,7 +100,10 @@ export const TRICKS = [
   { name: 'Rollani', category: 'Powerloops', difficulty: 'Master', points: 800 },
   { name: 'Flipani', category: 'Powerloops', difficulty: 'Master', points: 850 },
 
-  /* Maverick Loops */
+  /* Maverick Loops. The Maverick Loop itself is priced here and named by
+   * nothing: the owner had the recogniser stop naming it on 2026-09-26
+   * (src/game/trickdetect.js says why). This is the workbook's row, and a
+   * transcription keeps every row. */
   { name: 'Maverick Loop', category: 'Maverick Loops', difficulty: 'Beginner', points: 100 },
   { name: 'Mavvy Roll', category: 'Maverick Loops', difficulty: 'Novice', points: 250 },
   { name: 'Half Mavvy', category: 'Maverick Loops', difficulty: 'Advanced', points: 450 },

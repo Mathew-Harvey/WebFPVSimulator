@@ -1156,10 +1156,17 @@ async function main() {
      * Was ['Mavvy Roll', 'Maverick Loop'], accepting either, because with
      * Maverick Loop's roll unnamed the two patterns described the same
      * motion and there was no right answer to insist on. Now that a Mavvy
-     * Roll is the lap's own roll AND one more, a bare rolled lap is a
+     * Roll is the lap's own roll AND one more, a bare rolled lap was a
      * Maverick Loop and nothing else.
+     *
+     * Then, on 2026-09-26, the owner had the recogniser stop naming the
+     * Maverick Loop (src/game/trickdetect.js). What it names this shape now
+     * is the lap's own whole roll as a Roll, 50, on 55 samples in 105, and
+     * nothing on the rest, so the case wants a Roll: the sweep's question
+     * is still whether a bare rolled lap is ever paid more than that, and
+     * the dearer Mavvy Roll it used to be mistaken for is where it would.
      */
-    ['roll loop', () => sweepLap('Maverick Loop', { turns: 1, from: 'under', noseAlong: true }, {})],
+    ['roll loop', () => sweepLap('Roll', { turns: 1, from: 'under', noseAlong: true }, {})],
     ['Matty Flip', () => sweepLap('Matty Flip', { turns: 0.5, from: 'over' }, {})],
     /*
      * A bare half lap up from under is deliberately NOT a trick: the
@@ -1236,7 +1243,8 @@ async function main() {
      * nose-along lap and call it a Mavvy Roll, which was only ever right
      * because Maverick Loop left its roll unnamed and the dearer of two
      * identical patterns won. It is a Maverick Loop, and a Mavvy Roll is
-     * that plus the 360 the workbook asks for at the peak.
+     * that plus the 360 the workbook asks for at the peak. (The Maverick
+     * Loop is no longer named, since 2026-09-26: see 'roll loop'.)
      */
     ['Mavvy Roll', () => sweepLap('Mavvy Roll', {
       turns: 1, from: 'under', noseAlong: true, addRoll: 1,

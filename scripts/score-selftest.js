@@ -1167,8 +1167,8 @@ console.log('\nthe lap snap');
  * The flights here are geometry, not physics: an arc of a given radius
  * about a given axis, with a stated amount of rotation happening at the
  * same time. That is deliberate. What is under test is the GRAMMAR, that a
- * full lap from under with a flip is a Powerloop and the same lap without
- * the flip is a Maverick Loop, and a real aircraft cannot fly those two
+ * full lap from under with a flip is a Powerloop and half a lap from over
+ * with half a flip is a Matty Flip, and a real aircraft cannot fly those
  * distinctly enough to tell one test failure from one bad flight. The real
  * aircraft flies a Powerloop further down, which is the check that the
  * geometry here is reachable at all.
@@ -1303,15 +1303,10 @@ console.log('\nthe obstacle tricks, on constructed paths');
     s.cruise(900, -8);
     check('a full lap from under, flipping, is a Powerloop', s.finish() === 'Powerloop');
   }
-  /* The same lap flown facing forward: no flip. */
-  {
-    const s = new Path(barField());
-    s.approach(BAR, 4, 0, 500, 8, false);
-    s.arcBar(BAR, 4, 0, -1, 1400, [0, 0, 0], 0);
-    s.cruise(900, -8);
-    check('the same lap without the flip is a Maverick Loop',
-      s.finish() === 'Maverick Loop');
-  }
+  /* The same lap flown facing forward, no flip, was checked here as a
+   * Maverick Loop. The owner had the recogniser stop naming that trick on
+   * 2026-09-26 (POLISH-PLAN.md), so the expectation is removed, not
+   * changed: see PROGRESS.md of that date. */
   /* Over the rail, half a front flip, out underneath. */
   {
     const s = new Path(barField());

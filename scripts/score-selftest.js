@@ -1952,6 +1952,70 @@ console.log('\nthe counter: gaps, close calls, the chase and the mark in the one
     check('and its total is the trick scorer\'s, which flew no tricks', s.total === 0);
   }
   {
+    /* A LOW PASS PAYS AND BUYS NO MULTIPLIER (the owner, 2026-09-26,
+     * POLISH-PLAN.md item 15). A gap at 1000 ms opens a combo until 4000;
+     * a low pass at 2500 goes in and is paid in it, but is not a point of
+     * multiplier and does not move the window, so the pair banks at 4000
+     * at x1. Before this rule it banked at 5500 at x2. */
+    const lowPass = (value, paidStep) => ({
+      kind: 'lowpass', name: 'Low pass', value, holdMs: 1200, clearance: 0.4, paidStep,
+    });
+    const c = new Counter({ timed: false, tricks: true });
+    c.gap('A', 1000, 1000, 0);
+    c.closeCall(lowPass(40, 2500));
+    const v = c.view();
+    check('a low pass adds its points to the combo and buys no multiplier',
+      v.combo && v.combo.points === 1040 && v.combo.names.join('+') === 'A+Low pass' && v.combo.mult === 1);
+    c.tick(3999);
+    const open = c.view().combo !== null;
+    c.tick(4000);
+    check('and does not hold the window open: the combo banks three seconds after the gap',
+      open && c.view().combo === null && c.total() === 1040);
+    /* A low pass on its own still pays its points, at x1, on the window it
+     * opened; a second one inside that window neither buys nor holds. */
+    const alone = new Counter({ timed: false, tricks: true });
+    alone.closeCall(lowPass(40, 1000));
+    alone.closeCall(lowPass(40, 3500));
+    const av = alone.view();
+    alone.tick(4000);
+    check('a low pass alone pays its points at x1, and a second one does not hold its window',
+      av.combo && av.combo.mult === 1 && av.combo.points === 40 + 30 && alone.total() === 70);
+    /* Something that buys, after a low pass: the low pass is multiplied by
+     * what the rest bought, and lost with it on a crash. */
+    const bought = new Counter({ timed: false, tricks: true });
+    bought.closeCall(lowPass(40, 1000));
+    bought.gap('A', 1000, 2000, 0);
+    bought.closeCall({ kind: 'under', name: 'Under', value: 200, holdMs: 0, clearance: 0.8, paidStep: 2500 });
+    check('a low pass rides the multiplier the rest of its combo bought',
+      bought.view().combo && bought.view().combo.mult === 2 && bought.view().combo.value === (40 + 1000 + 200) * 2);
+    bought.crash();
+    bought.tick(10000);
+    check('and is lost with it on a crash', bought.total() === 0);
+    /* The survey's straight line through Hibari Yard's container tunnel,
+     * replayed with the points it logged, one second apart: low pass 22,
+     * low pass 20, thread 339, CONTAINER TUNNEL 500, under 227, roof skim
+     * 185, thread 224, low pass 24, under 156. 1,697 of points; it banked
+     * 15,273 at x9, and now banks 10,182 at x6, the six that are not low
+     * passes. The repeats are priced by this combo's own count, so the
+     * values fed are the ones that price to what was logged. */
+    const line = new Counter({ timed: false, tricks: true });
+    line.closeCall(lowPass(22, 1000));
+    line.closeCall(lowPass(27, 2000));
+    line.closeCall({ kind: 'thread', name: 'Thread', value: 339, holdMs: 0, clearance: 0.5, paidStep: 3000 });
+    line.gap('CONTAINER TUNNEL', 500, 4000, 0);
+    line.closeCall({ kind: 'under', name: 'Under', value: 227, holdMs: 0, clearance: 0.8, paidStep: 5000 });
+    line.closeCall({ kind: 'skim', name: 'Roof skim', value: 185, holdMs: 1500, clearance: 0.4, paidStep: 6000 });
+    line.closeCall({ kind: 'thread', name: 'Thread', value: 299, holdMs: 0, clearance: 0.5, paidStep: 7000 });
+    line.closeCall(lowPass(48, 8000));
+    line.closeCall({ kind: 'under', name: 'Under', value: 208, holdMs: 0, clearance: 0.8, paidStep: 9000 });
+    const lv = line.view();
+    const paid = (line.drainEvents() || []).map((e) => e.points).join(' ');
+    line.tick(20000);
+    check('the survey\'s container tunnel line banks 1,697 at x6, not x9',
+      paid === '22 20 339 500 227 185 224 24 156' && lv.combo && lv.combo.points === 1697
+      && lv.combo.mult === 6 && line.total() === 10182);
+  }
+  {
     /* Tricks count in the counter only when the switch says so; the board
      * counts them whatever it says, and never counts geometry. */
     const plain = new FreestyleScore({ timed: false });

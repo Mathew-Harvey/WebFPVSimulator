@@ -131,7 +131,8 @@ const LINES_REDRAW_HZ = 10;
  *     to the paper tone on a curve that darkens its mid tones and keeps
  *     its lightest at their own brightness, so the frame gains contrast
  *     and loses a little light: no pixel's luminance rises by more than
- *     two percent of white;
+ *     two percent of white, except under the impact strokes, a few pixels
+ *     wide, drawn in paper where the panel is ink so that they show;
  *   - the re-inked picture is mixed in at most IMPACT_MIX, so the scene
  *     always shows through;
  *   - the release is a fade, not a cut, so the return is not a second
@@ -230,8 +231,8 @@ const GRADE_BODY = /* glsl */ `
       /* THE IMPACT FRAME: the dark half to ink, the light half to paper on
        * a curve that only ever darkens it (a pixel at the paper's own
        * brightness stays there, one below it goes further below), heavy
-       * strokes round the edge. More contrast, never more light: see the
-       * header's GENTLE. */
+       * strokes round the edge. More contrast, and no more light but the
+       * strokes': see the header's GENTLE. */
       if ( uMangaImpact > 0.0 ) {
         float li = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
         float lp = dot( uMangaPaper, vec3( 0.2126, 0.7152, 0.0722 ) );
@@ -241,7 +242,9 @@ const GRADE_BODY = /* glsl */ `
         if ( mangaEn > ${STROKE_REACH_MIN.toFixed(2)} ) {
           float s = mangaStrokes( mangaQ, uMangaFocus, mangaEn, ${IMPACT_COUNT.toFixed(1)}, ${IMPACT_SHARE.toFixed(2)},
                                   ${STROKE_REACH_MIN.toFixed(2)}, ${IMPACT_WEIGHT.toFixed(1)} * mangaPx, uMangaSeed, 0.0 );
-          c = mix( c, uMangaInk, s * uMangaImpact );
+          /* Ink strokes on paper, paper strokes on ink: a crash into a dark
+           * face fills the frame with ink, and ink strokes there vanish. */
+          c = mix( c, mix( uMangaPaper, uMangaInk, t ), s * uMangaImpact );
         }
       }
 

@@ -934,10 +934,10 @@ const DEFAULTS = {
    * CLEAN FPV: the manga layer off (FREESTYLE-MAPS-PLAN.md sections 3.2 and
    * 3.3, decision 4). Off by default, because the layer is for freestyle
    * maps and on there unless the pilot turns it off; a race track is clean
-   * whatever this says. Today it takes the lettered callouts, their sound
-   * effects and the manga results page back to plain HUD text; Stage F's
-   * speed lines, screentone and impact frame answer to it when they land.
-   * See syncManga.
+   * whatever this says. It takes the lettered callouts, their sound effects
+   * and the manga results page back to plain HUD text, and the speed lines,
+   * the impact frame and the screentone out of the picture (src/main.js,
+   * mangaFrame, reads ui.manga). See syncManga.
    */
   cleanFpv: false,
   /*
@@ -6610,17 +6610,30 @@ export class Ui {
         /*
          * THE MANGA LAYER'S ONE SWITCH (FREESTYLE-MAPS-PLAN.md section 3.3:
          * "a Clean FPV setting turns all of it off in one row"). The note
-         * says what it turns off today and that the rest of the layer will
-         * answer to it, so a pilot who turned it on does not find speed
-         * lines arriving in Stage F that ignore them.
+         * says everything it turns off, the picture's half (Stage F) as
+         * well as the lettering's.
          */
         toggle(
           'Clean FPV',
           s.cleanFpv
-            ? 'On: freestyle maps show plain HUD text, the way a race track does. Callouts are words and numbers, and the results are a list. Speed lines, screentone and the impact frame will answer to this switch too when they arrive.'
-            : 'Off: on a freestyle map, tricks, gaps and combos are hand lettered like a manga, with a small katakana sound effect beside the big ones, and the results come back as a page of panels. Race tracks are always clean. The rest of the manga layer, speed lines, screentone and the impact frame, will answer to this switch too.',
+            ? 'On: freestyle maps look and read the way a race track does. No speed lines and no impact frame; callouts are words and numbers, and the results are a list.'
+            : 'Off: on a freestyle map, ink speed lines gather at the edges of the picture above about 20 m/s, a crash lands as an impact frame, tricks, gaps and combos are hand lettered like a manga with a small katakana sound effect beside the big ones, and the results come back as a page of panels. Race tracks are always clean.',
           s.cleanFpv,
           (v) => { s.cleanFpv = v; },
+        ),
+        /*
+         * THE IMPACT FRAME'S OWN ROW, beside the switch that also turns it
+         * off: a flash is a photosensitivity question, so it can go without
+         * the rest of the look going with it. The note says what it does,
+         * that it is never a white flash, and what else stops it.
+         */
+        toggle(
+          'Impact frame',
+          s.impactFrame
+            ? 'On: a crash on a freestyle map holds the moment for a beat as a high contrast ink panel with impact lines, then lets go. Never a white flash, at most one every two seconds. Off under Clean FPV, and whenever your system asks for reduced motion.'
+            : 'Off: a crash cuts straight to where you are set down, with no held frame. The rest of the manga look stays.',
+          s.impactFrame,
+          (v) => { s.impactFrame = v; },
         ),
         { label: 'Sound', section: true },
         toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
@@ -11391,9 +11404,10 @@ export class Ui {
    * through refreshBest), and once at build. Each layer holds its own flag
    * and ignores a call that changes nothing.
    *
-   * What answers to it today: the score's names and verdict, the chase's
-   * callouts, the found mark's ray fans, and the results page. Stage F's
-   * speed lines, screentone and impact frame read `this.manga` too.
+   * What answers to it: the score's names and verdict, the chase's
+   * callouts, the found mark's ray fans, the results page, and Stage F's
+   * speed lines, impact frame and screentone, which src/main.js's
+   * mangaFrame reads from `this.manga` every frame.
    */
   syncManga() {
     this.manga = this.osdMode === 'freestyle' && !this.settings.cleanFpv;

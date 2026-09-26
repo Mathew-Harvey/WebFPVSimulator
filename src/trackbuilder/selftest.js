@@ -80,7 +80,8 @@ import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE, MICRO_SCALE } from '../game/track.js';
-import { Race } from '../game/race.js';
+import { PRACTICE_LAPS, Race, runComplete } from '../game/race.js';
+import { LapVoice, lapCall, pickVoice } from '../render/voice.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
   GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
@@ -1940,19 +1941,136 @@ function suiteCrashRule() {
   three.update(airSeg.prev, airSeg.curr, 10, 10);
   three.update(airSeg.prev, airSeg.curr, 20, 20);
   check('lap 1 of 3 is not the finished-track screen',
-    three.lap === 1 && !(three.lap >= runLaps));
+    three.lap === 1 && !runComplete(three.lap, runLaps));
   const midDirt = shouldScorePass(dirtSeg.prev, dirtSeg.curr, {
     upz: -1, clearance: 0.05, hits: 0, heightAt: flat,
   });
   three.update(dirtSeg.prev, dirtSeg.curr, 30, 30, midDirt);
   check('inverted dirt mid run does not steal a lap on a 3-lap race',
-    midDirt === false && three.lap === 1 && !(three.lap >= runLaps));
+    midDirt === false && three.lap === 1 && !runComplete(three.lap, runLaps));
   three.update(airSeg.prev, airSeg.curr, 40, 40);
   check('lap 2 of 3 is still not the results screen',
-    three.lap === 2 && !(three.lap >= runLaps));
+    three.lap === 2 && !runComplete(three.lap, runLaps));
   three.update(airSeg.prev, airSeg.curr, 50, 50);
   check('only the third flown lap would finish a 3-lap run',
-    three.lap === 3 && three.lap >= runLaps);
+    three.lap === 3 && runComplete(three.lap, runLaps));
+  check('and the counted runs end where they always did: 1 of 1, 5 of 5, not 4 of 5',
+    runComplete(1, 1) && runComplete(5, 5) && !runComplete(4, 5) && !runComplete(0, 1));
+
+  /*
+   * PRACTICE, the launch card's fourth lap count: the same laps flown the
+   * same way, and none of them is ever the last one. Twelve is past every
+   * counted run, so a practice that fell back on any of them would show.
+   */
+  const practice = new Race([{
+    position: { x: 0, y: 0, z: 0 },
+    heading: 0,
+    pitch: 0,
+    flyOrder: 0,
+    apertures: [{ centreY: 2.5, clearW: 3.5, clearH: 5.0 }],
+    aperture: { centreY: 2.5, clearW: 3.5, clearH: 5.0 },
+  }]);
+  practice.update(airSeg.prev, airSeg.curr, 10, 10);
+  let practiceOver = false;
+  for (let k = 1; k <= 12; k += 1) {
+    const t = 10 + k * 1000;
+    practice.update(airSeg.prev, airSeg.curr, t, t);
+    practiceOver = practiceOver || runComplete(practice.lap, PRACTICE_LAPS);
+  }
+  check('practice never finishes a run, twelve laps in',
+    practice.lap === 12 && practice.laps.length === 12 && !practiceOver,
+    `lap ${practice.lap}, over ${practiceOver}`);
+  check('and every practice lap is timed and called out like a counted one',
+    practice.lastLapMs === 1000 && practice.flashText(12010) === 'Lap 12   1.00',
+    `${practice.lastLapMs} ${JSON.stringify(practice.flashText(12010))}`);
+  check('practice is never over, whatever has been flown',
+    !runComplete(0, PRACTICE_LAPS) && !runComplete(1, PRACTICE_LAPS) && !runComplete(500, PRACTICE_LAPS));
+
+  /*
+   * THE LAP CALLED OUT LOUD (src/render/voice.js). What is said, whether it
+   * says record when the flash does, and what reaches the speech engine,
+   * against a stand-in engine because node has no voice.
+   */
+  check('a lap is called as the flash writes it: Lap 7, 12.34',
+    lapCall(7, 12340) === 'Lap 7, 12.34', lapCall(7, 12340));
+  check('past a minute the time is said in words, not as a clock',
+    lapCall(3, 63200, true) === 'Lap 3, 1 minute 3.20. New track record'
+    && lapCall(2, 125000) === 'Lap 2, 2 minutes 5.00',
+    `${lapCall(3, 63200, true)} | ${lapCall(2, 125000)}`);
+  const rec = new Race([{
+    position: { x: 0, y: 0, z: 0 },
+    heading: 0,
+    pitch: 0,
+    flyOrder: 0,
+    apertures: [{ centreY: 2.5, clearW: 3.5, clearH: 5.0 }],
+    aperture: { centreY: 2.5, clearW: 3.5, clearH: 5.0 },
+  }]);
+  const recSeen = [];
+  for (const t of [0, 1000, 1100, 1200]) {
+    const before = rec.laps.length;
+    rec.update(airSeg.prev, airSeg.curr, t, t);
+    if (rec.laps.length > before) {
+      recSeen.push(`${rec.lastLapMs}:${rec.lastLapRecord}:${/New track record/.test(rec.flashText(t) || '')}`);
+    }
+  }
+  check('the call says record on exactly the laps the flash does',
+    recSeen.join(' ') === '500:true:true 550:false:false 100:true:true', recSeen.join(' '));
+
+  const voices = [
+    { name: 'Network US', lang: 'en-US', localService: false, default: true },
+    { name: 'Local US', lang: 'en-US', localService: true, default: false },
+    { name: 'Karen', lang: 'en_AU', localService: true, default: false },
+    { name: 'Amelie', lang: 'fr-FR', localService: true, default: false },
+  ];
+  check('the voice is the pilot\'s own English, on the machine before the network',
+    pickVoice(voices, 'en-AU').name === 'Karen'
+    && pickVoice(voices, 'en-US').name === 'Local US'
+    && pickVoice(voices, 'de-DE').name === 'Local US',
+    ['en-AU', 'en-US', 'de-DE'].map((l) => pickVoice(voices, l).name).join(', '));
+  check('no English voice falls back to the default, and no voice at all is silence',
+    pickVoice([voices[3]], 'en-AU').name === 'Amelie' && pickVoice([], 'en-AU') === null);
+
+  const spoken = [];
+  let cancels = 0;
+  const engine = {
+    speaking: false,
+    pending: false,
+    list: voices,
+    getVoices() { return this.list; },
+    speak(u) { spoken.push(u); this.speaking = true; },
+    cancel() { cancels += 1; this.speaking = false; },
+    addEventListener() {},
+  };
+  class Said {
+    constructor(text) { this.text = text; }
+  }
+  const lv = new LapVoice({ synth: engine, Utterance: Said, lang: 'en-AU' });
+  lv.prime();
+  lv.prime();
+  check('priming speaks once, empty and silent',
+    spoken.length === 1 && spoken[0].text === '' && spoken[0].volume === 0);
+  engine.speaking = false;
+  spoken.length = 0;
+  const first = lv.say(lapCall(7, 12340), 0.6);
+  check('a call reaches the engine in the chosen voice, at the volume given',
+    first && spoken.length === 1 && spoken[0].text === 'Lap 7, 12.34'
+    && spoken[0].voice.name === 'Karen' && spoken[0].volume === 0.6 && spoken[0].rate > 1,
+    JSON.stringify(spoken.map((u) => ({ t: u.text, v: u.voice && u.voice.name, vol: u.volume }))));
+  const cancelsBefore = cancels;
+  lv.say(lapCall(8, 11990), 1.5);
+  check('the next lap cuts off a call still going, and volume stops at 1',
+    cancels === cancelsBefore + 1 && spoken.length === 2 && spoken[1].volume === 1);
+  check('at volume 0 nothing is said',
+    lv.say('Lap 9, 12.00', 0) === false && spoken.length === 2);
+  engine.list = [];
+  const mute = new LapVoice({ synth: engine, Utterance: Said, lang: 'en-AU' });
+  check('with no voice installed, a call is silence and not an error',
+    mute.say('Lap 1, 12.00', 1) === false && spoken.length === 2);
+  const none = new LapVoice({ synth: undefined, Utterance: undefined });
+  none.prime();
+  none.stop();
+  check('and a browser with no speech at all is quiet too',
+    none.say('Lap 1, 12.00', 1) === false);
 
   const free = new Race([]);
   const freeRes = free.update(airSeg.prev, airSeg.curr, 10, 10);

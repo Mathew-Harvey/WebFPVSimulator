@@ -174,6 +174,7 @@ import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
 } from './mangapage.js';
 import { formatScore } from '../game/score.js';
+import { PRACTICE_LAPS } from '../game/race.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { PATREON_NOTE, openSupport, patreonAnchor } from '../share/patreon.js';
@@ -418,7 +419,14 @@ export {
   CAMERA_ANGLE_DEFAULT,
 };
 export const PACK_VOLTAGES = [4.2, 3.8, 3.5];
-export const LAP_COUNTS = [1, 3, 5];
+/* PRACTICE_LAPS, last, is the run with no end: see src/game/race.js. */
+export const LAP_COUNTS = [1, 3, 5, PRACTICE_LAPS];
+
+/* A lap count as the launch card writes it. */
+function lapsLabel(n) {
+  return n === PRACTICE_LAPS ? 'Practice' : `${n}`;
+}
+
 /* Render scale, percent of the preset's resolution, and the frame cap in
  * Hz, 0 meaning uncapped. Both from a board report about lower end
  * machines: fewer pixels is the one lever that always helps a starved
@@ -1907,10 +1915,13 @@ function seatIsRace(s) {
 function recordSentence(s, trackName) {
   const style = s.flightStyle === 'arcade' ? 'Arcade' : 'Expert';
   const link = s.link === 'perfect' ? 'a perfect link' : LINK_PRESETS[s.link].label;
+  /* Practice is not in the list, because it is not a different best: a
+   * practice lap is held against the same record a counted lap is. What it
+   * changes is the board, and the last sentence says so. */
   const bits = [
     `${style} physics`,
     `${s.packVoltage.toFixed(2)} V per cell`,
-    `${s.laps} lap${s.laps === 1 ? '' : 's'}`,
+    ...(s.laps === PRACTICE_LAPS ? [] : [`${s.laps} lap${s.laps === 1 ? '' : 's'}`]),
     `the ${tuneById(s.tune).name} tune`,
   ];
   /* clampWeight rather than s.weight raw, the same guard bugSnapshot uses:
@@ -1927,11 +1938,13 @@ function recordSentence(s, trackName) {
   }
   return `Your best on ${trackName} is filed under exactly this: ${bits.join(', ')}.`
     + ' Change any part of it and you are on a different board.'
-    + (s.flightStyle === 'arcade'
-      ? ' Arcade times stay off the public board, so this run will not count there.'
-      : weight !== WEIGHT_STOCK
-        ? ' Times flown at a weight that is not 100 percent stay off the public board, so this run will not count there.'
-        : ` This run is on ${link}.`);
+    + (s.laps === PRACTICE_LAPS
+      ? ' Practice laps stay off the public board, so this run will not count there.'
+      : s.flightStyle === 'arcade'
+        ? ' Arcade times stay off the public board, so this run will not count there.'
+        : weight !== WEIGHT_STOCK
+          ? ' Times flown at a weight that is not 100 percent stay off the public board, so this run will not count there.'
+          : ` This run is on ${link}.`);
 }
 
 /*
@@ -2347,7 +2360,7 @@ function builderReturnItem(s, sharedMap) {
  *
  * `disabled` is honoured by select(), and renderMenu paints it as row-grey.
  */
-function uploadAction(listing, { fastestMs, timePosted }) {
+function uploadAction(listing, { fastestMs, timePosted, practice = false }) {
   const pending = readPendingTime();
   const shareId = listing && listing.shareId;
   const ms = Number.isFinite(fastestMs)
@@ -2383,7 +2396,12 @@ function uploadAction(listing, { fastestMs, timePosted }) {
       label: 'Upload a time',
       action: 'posttime',
       disabled: true,
-      note: 'Fly a clean lap on this track and the lap appears here.',
+      /* A pilot who has just flown twenty clean laps in practice and comes
+       * here to post one is owed the real reason, not an invitation to fly
+       * the lap they already flew. */
+      note: practice
+        ? 'Practice laps stay off the public board. A run of 1, 3 or 5 laps puts its best lap here when it finishes.'
+        : 'Fly a clean lap on this track and the lap appears here.',
     };
   }
   const best = readPostedBest(shareId);
@@ -6152,7 +6170,10 @@ export class Ui {
             : 'Opens the track builder on an empty field.',
         },
         publishAction(listing, this.coursePublished),
-        uploadAction(listing, { timePosted: this.timePosted }),
+        uploadAction(listing, {
+          timePosted: this.timePosted,
+          practice: s.laps === PRACTICE_LAPS,
+        }),
         remixAction(listing),
         editOwnAction(listing),
         /*
@@ -6614,8 +6635,8 @@ export class Ui {
           (v) => { s.cleanFpv = v; },
         ),
         { label: 'Sound', section: true },
-        toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
-        stepper('Volume', 'Overall level. Zero to ten.', `${s.volume}`, (d) => {
+        toggle('Sound', 'All sound: motors, wind, music, cues and every lap time called out loud.', s.sound, (v) => { s.sound = v; }),
+        stepper('Volume', 'Overall level, the lap call included. Zero to ten.', `${s.volume}`, (d) => {
           s.volume = Math.max(0, Math.min(10, s.volume + d));
         }),
         stepper('Motors', 'The blade pass tone. You fly on its pitch, so keep some of it.', `${s.motorLevel}`, (d) => {
@@ -6749,10 +6770,12 @@ export class Ui {
         { label: 'What this run counts as', section: true },
         choice(
           'Laps',
-          'How many laps a run lasts before the result screen. Latched when you launch, so changing it mid-run does nothing until the next one.',
+          s.laps === PRACTICE_LAPS
+            ? 'Practice has no end: fly as many laps as you like, each one called out with its time as you cross the line, and stop from the pause menu. Nothing flown in practice goes to the public board. Latched when you launch, so changing it mid-run does nothing until the next one.'
+            : 'How many laps a run lasts before the result screen. Practice has no end and keeps nothing for the board. Latched when you launch, so changing it mid-run does nothing until the next one.',
           LAP_COUNTS,
           s.laps,
-          (n) => `${n}`,
+          lapsLabel,
           (n) => { s.laps = n; },
         ),
         choice(
@@ -11149,7 +11172,9 @@ export class Ui {
    *   roof. The shell measures it against the surface query the collision
    *   test uses, so the readout and the thing that kills you agree.
    *   Speed, pack and throttle are the same in both, because they are
-   *   properties of the machine and not of the game around it.
+   *   properties of the machine and not of the game around it, which is
+   *   also why the machine decides whether speed shows at all: osdSpeed in
+   *   configs/airframes.js, false on the whoop.
    */
   /*
    * Say something once, to whoever is listening. The guard is the point: a
@@ -11287,7 +11312,10 @@ export class Ui {
       }
     }
     Ui.bar(this.osdPackBar, packFrac);
-    Ui.text(this.osdSpeed, `${speedKph.toFixed(0)} km/h`);
+    /* Gone, not blank, on an airframe that has no speed to print: see
+     * osdSpeed in configs/airframes.js. */
+    Ui.klass(this.osdSpeed, speedKph == null ? 'osd-value is-off' : 'osd-value');
+    Ui.text(this.osdSpeed, speedKph == null ? '' : `${speedKph.toFixed(0)} km/h`);
     if (this.osdFlight) {
       Ui.text(this.osdFlight, flightMode === 'turtle'
         ? 'Turtle'

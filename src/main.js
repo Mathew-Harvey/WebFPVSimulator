@@ -54,11 +54,12 @@ import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE } from './render/frame.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
+import { LapVoice, lapCall } from './render/voice.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { mountTouchSticks, touchWanted } from './input/touchsticks.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.js';
-import { Race } from './game/race.js';
+import { PRACTICE_LAPS, Race, runComplete } from './game/race.js';
 import { TrickDetector } from './game/trickdetect.js';
 import { deriveObstacles, OB_BAR, OB_POLE } from './game/obstacles.js';
 import { seesMark } from './game/egg.js';
@@ -929,6 +930,9 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
   const audio = new MotorAudio();
+  /* The lap time said out loud. Beside the audio because it answers to the
+   * same Sound switch and Volume, but not in its graph: see voice.js. */
+  const lapVoice = new LapVoice();
   audio.music.onChange = (st) => {
     ui.setMusicNow(st);
   };
@@ -2785,7 +2789,9 @@ export async function boot({ loading, bootStart, mapId }) {
   let padPickReturn = 'title';
   /* How many laps THIS run lasts. Settings.laps can change from pause, and
    * reading it live used to end a 5 lap run the moment someone dropped the
-   * setting to 1. */
+   * setting to 1. PRACTICE_LAPS is a run with no end, and it is latched
+   * here for the same reason: whether a lap may go to the board is decided
+   * by the run it was flown in, not by what the menu says afterwards. */
   let runLaps = ui.settings.laps;
   race.setRecordKey(recordKey());
   ui.setBest(race.bestMs, view.mode);
@@ -3995,6 +4001,8 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     resetCraft(null);
     race.reset();
+    /* A new run starts quiet: last run's final lap is not called over it. */
+    lapVoice.stop();
     /* A new run scores from nothing, and the detector's clock goes back to
      * zero with the sim clock above so the two agree about when a trick
      * happened. */
@@ -4977,8 +4985,15 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /* race owns what a record lap is. This used to re-filter and re-min
      * the log beside it, which is the same answer until one of them
-     * changes its mind about a voided lap. */
-    const fromRun = race.bestLapMs();
+     * changes its mind about a voided lap.
+     *
+     * NOTHING FROM A PRACTICE RUN. Practice is laps for the pilot and none
+     * for the board, so a practice run offers no lap here, whatever it
+     * flew. A lap still pending from an earlier counted run on this track
+     * can still go up: it was not flown in practice, and it is the lap the
+     * Upload row names. */
+    const practice = runLaps === PRACTICE_LAPS;
+    const fromRun = practice ? null : race.bestLapMs();
     const pending = readPendingTime();
     const fastest = fromRun != null
       ? fromRun
@@ -4995,7 +5010,12 @@ export async function boot({ loading, bootStart, mapId }) {
         : (pending && pending.trackId === trackId ? pending.threeMs : null))
       : null;
     if (fastest == null) {
-      notice = { text: 'No clean lap to upload.', untilMs: performance.now() + 2800 };
+      notice = practice
+        ? {
+          text: 'Practice laps stay off the public board.\nSet Laps to 1, 3 or 5 and fly it again.',
+          untilMs: performance.now() + 3600,
+        }
+        : { text: 'No clean lap to upload.', untilMs: performance.now() + 2800 };
       return;
     }
     let name = readPilotName();
@@ -5896,6 +5916,9 @@ export async function boot({ loading, bootStart, mapId }) {
 
   input.onKey = (code, repeat) => {
     wakeAudio();
+    /* Here and on pointerdown, never inside wakeAudio, which a link's
+     * timer also calls: the voice is opened by a gesture or not at all. */
+    lapVoice.prime();
     if (ui.handleKey(code, repeat)) {
       return;
     }
@@ -5956,7 +5979,10 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
   };
-  window.addEventListener('pointerdown', wakeAudio);
+  window.addEventListener('pointerdown', () => {
+    wakeAudio();
+    lapVoice.prime();
+  });
 
   /*
    * Swallow a dropped file, and say why nothing happened.
@@ -7306,8 +7332,18 @@ export async function boot({ loading, bootStart, mapId }) {
             }
           }
           ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
+          /* A lap counted this frame is called out loud, in every run and
+           * on the last lap of one too, which the results screen covers but
+           * the ear still hears. Read off the entry the flash was written
+           * from, so the voice and the screen say the same lap. */
+          if (race.laps.length > lapsBefore && ui.settings.sound) {
+            lapVoice.say(
+              lapCall(race.log.length, race.lastLapMs, race.lastLapRecord),
+              ui.settings.volume / 10,
+            );
+          }
         }
-        if (!race.freestyle && race.lap >= runLaps) {
+        if (!race.freestyle && runComplete(race.lap, runLaps)) {
           mode = 'results';
           if (turtleWait || turtleFlip.active) {
             if (turtleWait && !turtleFlip.active) {
@@ -8022,7 +8058,9 @@ export async function boot({ loading, bootStart, mapId }) {
          * the road it is over, and the readout prints a negative altitude
          * under the overbridge. See SURFACE_BIAS. */
         altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y),
-        speedKph: speed * 3.6,
+        /* Null on an airframe whose OSD has no speed, and the readout goes.
+         * See osdSpeed in configs/airframes.js. */
+        speedKph: airframeById(runAirframe).osdSpeed ? speed * 3.6 : null,
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
         /* No damage model, so nothing to count down. How much this run has
@@ -8199,7 +8237,11 @@ export async function boot({ loading, bootStart, mapId }) {
       const start = ui.settings.launchControl
         ? 'L for launch control, or throttle up'
         : 'Throttle up to take off';
-      let second = '\nThe green gate starts your lap';
+      /* Practice is the one race that does not end, so it says so on the
+       * line that promises what starts. See PRACTICE_LAPS. */
+      let second = runLaps === PRACTICE_LAPS
+        ? '\nPractice: no lap limit. The green gate starts your lap'
+        : '\nThe green gate starts your lap';
       if (race.freestyle) {
         /* The counter counts the lines in every position (decision 2), so
          * even Lines only has something to promise now. */

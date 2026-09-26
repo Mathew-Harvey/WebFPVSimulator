@@ -50717,6 +50717,426 @@ Hibari Yard's container stack, 0.93 s at 0.35 m, lettered "WALL SKIM 182
 0.9 s" in sky blue down the left while it paid, then banked into the
 total, 182; the posted trick total 0, the counter 182.
 
+## 2026-09-26 | race, shell | Practice: a fourth lap count, with no end and nothing for the board
+
+The owner: "in the 5 inch and whoop racing tracks, add a race mode from the
+1, 3 and 5 lap options to practice mode where you just keep going with times
+called out each lap, no time is recorded on the board in practice mode".
+
+Changes:
+
+- src/game/race.js: `PRACTICE_LAPS`, which is 0, and `runComplete(lapsDone,
+  runLaps)`, the one copy of the run end rule. Zero and not a word, because
+  loadSettings keeps a stored value only when its type matches the
+  default's, so a stored 'practice' would come back as 3 on the next load.
+  FPS_CAPS already spends 0 on uncapped. Nothing in the Race class changes:
+  a practice lap is timed, split and flashed exactly as a counted one is.
+- src/ui/ui.js: LAP_COUNTS is [1, 3, 5, PRACTICE_LAPS] and the launch card's
+  Laps row reads Practice for the last one, with its own help. The sentence
+  under Fly leaves the lap count out in practice and ends "Practice laps stay
+  off the public board, so this run will not count there." The Race room's
+  Upload row, disabled for want of a lap, gives the practice reason instead
+  of "Fly a clean lap on this track".
+- src/main.js: the run ends on runComplete, so practice never reaches the
+  results screen, which is also the only place a pending time is written.
+  submitBoardTime takes no lap from a practice run. It reads runLaps, which
+  is latched at run start beside race.reset(), so it describes the run the
+  laps in `race` were flown in, not what the menu says now. A lap pending
+  from an earlier counted run on the same track can still go up: it was not
+  flown in practice, and it is the lap the Upload row names. The pre-flight
+  banner's second line reads "Practice: no lap limit. The green gate starts
+  your lap".
+- src/trackbuilder/selftest.js: the three lap checks call runComplete rather
+  than restating `lap >= runLaps`, and four new ones: the counted runs end
+  where they did (1 of 1, 5 of 5, not 4 of 5); twelve practice laps and no
+  end; the twelfth practice lap is timed and flashed "Lap 12   1.00"; practice
+  is never over at 0, 1 or 500 laps.
+
+Both classes of track get it from the same row: the launch card is the same
+card for a five inch field and a whoop room (seatIsRace), and the run end
+has never known the class.
+
+Decisions taken here that are the owner's to reverse:
+
+- "Called out" is the flash every lap already had, "Lap N   time", with "New
+  track record" under it when it is one, and the polite live region reads it
+  to a screen reader. Nothing is spoken aloud: there is no voice anywhere in
+  the simulator. Asked in the conversation whether the owner wants one.
+- A practice lap still counts against the pilot's own best in this browser:
+  the New track record line, the best on the HUD, and the record the next
+  counted run's results are measured against. Only the public board is
+  closed to it. A separate local record for practice would flash New track
+  record on the first practice lap of every session, however slow.
+- The board's statistics page still counts practice laps. It counts laps
+  flown and never a time (src/share/stats.js), so nothing about a practice
+  lap's time leaves the browser.
+- Practice has no results screen, so its lap list is shown nowhere at the
+  end; Restart run and Quit to title stop it. The ghost's session best and
+  previous laps still fill from practice, which is the pacer a practising
+  pilot wants.
+
+Seen and not changed: recordSentence says a best is filed under a lap
+count, and recordKey() in src/main.js hashes the config, the pack, the
+style, the airframe and the weight, not the laps. A 1 lap and a 5 lap run
+already file their bests together. Practice follows what the key does.
+
+What went wrong: the first fetch printed `forced update` for main, the same
+thing the "Fly this track" entry above recorded. The same cause: the
+container's clone was `--depth 50`. After `git fetch --unshallow`, the old
+head 9ed8b9c is an ancestor of 716562b.
+
+Deliberate break, read back: runComplete put back to `lapsDone >= runLaps`
+fails "practice never finishes a run, twelve laps in: lap 12, over true"
+and "practice is never over, whatever has been flown", 878 passed and 2
+failed. Restored.
+
+Not checked: nothing ran in a browser. shots.js, lint:shell and verify were
+not run, and which of them to run was put to the owner. Nothing in the
+physics, the plant, the module ABI or the build changed.
+
+### RUN LOG
+
+    node --check                        race.js, main.js, ui.js,
+                                        trackbuilder/selftest.js: ok
+    import ui.js under node             loads, LAP_COUNTS [1,3,5,0]
+    node src/trackbuilder/selftest.js   880 passed, 0 failed
+    node scripts/gen-preload.js --check up to date, boot 113, city 73,
+                                        built 32; 215 served
+    dash scan of the diff               none
+
+### To main
+
+The owner, 2026-09-26: "Push to main i'll test it by flying". That is the
+verification chosen for this change: the owner flies it, so shots.js,
+lint:shell and verify were not run. main had not moved: origin/main was
+still 716562b, the parent of add5bdd, so it went up as a fast forward.
+Whether the lap times should also be spoken was asked and not answered,
+so nothing is spoken.
+
+## 2026-09-26 | race, audio | Lap times called out loud
+
+The owner: "call lap times out loud", the answer to the question the
+practice entry above left open.
+
+Changes:
+
+- src/render/voice.js, new: `lapCall(n, ms, record)`, the words, and
+  `LapVoice`, which hands them to the browser's own speechSynthesis. The
+  time is fmt's arithmetic from race.js, so the voice and the flash cannot
+  differ by a hundredth. Past a minute it is said in words, "Lap 3, 1
+  minute 3.20", because "1:03.20" may be read as a time of day. The voice
+  is the pilot's own English where the machine has it (en-AU on an
+  Australian one), a local voice before a network one, since a network
+  voice starts late; with no English voice, the default; with none at
+  all, silence. It says nothing on a page nobody has touched
+  (navigator.userActivation), because the browser refuses and writes a
+  console warning each time. A call still going is cut off by the next,
+  and a paused engine is resumed first.
+- src/game/race.js: `lastLapRecord`, set where the flash decides "New
+  track record", so the voice reads that decision instead of making its
+  own. The condition is the same expression it was.
+- src/main.js: the voice is made beside the audio, speaks when the race
+  counts a lap (race.laps grew this frame), in every run, practice or
+  counted, the last lap included, and is stopped by reset(). It is primed
+  from the keydown and pointerdown handlers and NOT from wakeAudio, which
+  flyIfLinked calls from a timer: iOS opens speech only for a call made
+  inside a gesture.
+- src/ui/ui.js: the Sound and Volume help say they cover the lap call.
+- src/fresh.js: regenerated by gen-preload for the new module.
+- src/trackbuilder/selftest.js: eleven checks. The words, a minute and
+  over, record on exactly the laps the flash says it, the voice choice,
+  and LapVoice against a stand-in engine: priming once and silently, the
+  voice and volume that reach the engine, the cut off, volume 0, no voice
+  installed, and no speech at all.
+
+Decisions taken here that are the owner's to reverse:
+
+- Every race lap is called, not only practice. The flash was already on
+  every lap, and the voice says what the flash says.
+- No switch or level of its own. It follows Sound and Volume. A Lap
+  callouts level beside Motors, Wind and Music would be one more row on
+  Settings, which already scrolls 790 px past its window, and the shell
+  check fails a screen that grows past its baseline. Not added without
+  asking, because the way through that check is re-recording the baseline.
+- No ducking. speechSynthesis does not pass through the Web Audio graph,
+  and duckParam's release is a straight ramp back to unity, so holding the
+  music down for the length of a sentence would need a new shape in
+  audio.js. Left until the owner has heard it over the mix.
+- The browser's voice, not a recorded one. How it sounds depends on the
+  machine and the browser, and a machine with no voice installed stays
+  quiet.
+
+Deliberate breaks, read back: lastLapRecord forced to true fails "the call
+says record on exactly the laps the flash does" (500:true:true
+550:true:true 100:true:true) and the practice flash check, 889 passed and 2
+failed; the cut off removed from say() fails "the next lap cuts off a call
+still going", 890 passed and 1 failed. Both restored and compared byte for
+byte with the copies taken before.
+
+Not checked: nobody has heard it. Nothing here ran in a browser, and a
+stand-in engine proves what is handed to speechSynthesis, not how it
+sounds or whether it is heard over the motors and the music. shots.js,
+lint:shell and verify were not run. Nothing in the physics, the plant, the
+module ABI or the build changed.
+
+### RUN LOG
+
+    node --check                        voice.js, race.js, main.js,
+                                        selftest.js: ok
+    node src/trackbuilder/selftest.js   891 passed, 0 failed
+    node scripts/gen-preload.js         wrote src/fresh.js, boot 114,
+                                        city 73, built 32; 216 served
+    node scripts/gen-preload.js --check up to date
+    node scripts/boot-check.js          9 of 9 checks clean
+    dash scan of the diff               none
+
+### To main
+
+The owner, 2026-09-26, asked before the push because the earlier "push to
+main" covered practice and not this: "Push to main, I'll fly it". Flying
+it is the verification for this change, so shots.js, lint:shell and verify
+were not run. main had not moved from 5744b85, the parent of 9dc0ea7, so
+it went up as a fast forward.
+
+### Flown
+
+The owner, 2026-09-26, after flying it: "lap call outs are good." That is
+the check the entry above said nobody had made: the voice is heard, at the
+Volume level, over the mix, with no ducking. The two offers left open, a
+level of its own and the music dipping under the call, stay unbuilt unless
+asked for. The report was about the callouts. It said nothing either way
+about practice's own behaviour: no lap limit, no results screen, and the
+Upload row.
+
+## 2026-09-26 | plan | The whoop room: a hall in the town
+
+Asked: make the whoop room "much nicer", in the sakura theme, tastefully
+decorate its walls with the slap pack stickers (https://webfpv.org/stickers/),
+and make it match the city and the freestyle builder; plan it and discuss it
+first. Done: a plan, WHOOP-ROOM-PLAN.md. No source file changed.
+
+**What the plan found.** The room cannot match the town by recolouring alone:
+it renders through the race field's kit (celmat.js, ink 0x1a2230, the field's
+grade) while the town and Your map use toon.js, ink 0x39324f and the town's
+grade. The one thing that works, cream PVC against a dark mat and mid dark
+walls, is what a naive pale repaint would break, so the plan keeps a dark mat
+and a tall dark wainscot and puts the pale town plaster above it. The walls
+stand exactly on the builder's micro field edge, so the plan's rule is that
+nothing proud of a wall is more than 30 mm or solid, and anything deeper is
+behind glass or closed: the collider set, the plant, the ABI and the build do
+not move. No check looks at the room's pixels today; the plan's first stage is
+a hall-check that pins the colliders and records a gate contrast baseline.
+
+**Stickers.** 22 pure SVGs, GPLv3, fonts subsetted under the OFL. The landing
+page draws them as DOM SVG, never into a WebGL texture, so that path is
+unproven; the plan proposes baking a sticker atlas in headless Chromium, which
+ships no fonts.
+
+**The fetch that said forced update.** This container's first clone was
+`--depth 50` of main at 9ed8b9c, taken 2026-09-24. `git fetch --deepen=400
+origin main` then printed `+ 9ed8b9c...716562b main -> origin/main (forced
+update)`, and before deepening `git merge-base HEAD origin/main` had come back
+empty: both of the signs the Git section of CLAUDE.md names. It was the
+shallow clone, not a rewrite. After deepening, `git merge-base main
+origin/main` is 9ed8b9c itself, and `git merge-base --is-ancestor` confirms
+9ed8b9c, 14d8e35 and b5e274e are all reachable from 716562b, 210 commits
+along. The graft points in .git/shallow had hidden the ancestry from the fast
+forward test. Nothing merged, nothing pushed to main.
+
+**Run this turn.** `node scripts/shots.js` once, on Living room 1 with the
+whoop seated, four parked cameras, for before pictures (kept out of the
+repository): exit 0, one console error, a refused network request that is not
+the room. `npm run verify` not run: nothing physical, no plant, ABI or build.
+No other check run: no code changed.
+
+**Waiting on the owner:** section 9 of the plan.
+
+## 2026-09-26 | render, art | The whoop room recoloured in the sakura theme, with the slap pack on its walls
+
+**The owner's answers to WHOOP-ROOM-PLAN.md, 2026-09-26.** In their words:
+recolour the basement and decorate it "with larger versions of the stickers
+as well art"; "use the stickers to make posters and or banners, sakura theme
+remember"; on the post chain question, "i don't know what this means, but
+don't break existing tracks at all"; and "its a room, wiht lights, dont make
+it seem like sun set". That covered the concept (the basement, recoloured,
+not the community hall), the art (posters and banners from the stickers),
+the render pipeline (the shared post chain was left alone) and the light
+(neutral, lit, no low warm key). None of it touched the physics model, the
+module ABI or the build, so nothing here needed the advisor's approval
+beyond the answers themselves. They are recorded in the plan's section 10.
+
+**Changed.**
+
+- `src/render/scene.js`, the indoor branch only. New ROOM palette: deep green
+  gate band to 1.2 m, sakura rail, pale sakura plaster, cream ceiling painted
+  as lit, pale beams, twelve unlit light panels, honey boards round a mat in
+  the town's dark. Four neutral white lamps a sixth of the width off the
+  centre line, a bright hemisphere, a near overhead key that casts nothing
+  in a room, pale air from 5.5 to 44 m. The shell is merged per material.
+  The skirting now stands proud on all four walls; it was flush on two, its
+  20 mm added to the length of the east and west walls. `keyDir` replaces
+  `SUN_DIR` in the two places that place the sun, and is `SUN_DIR` on the
+  field.
+- `src/art/wallart.js`, new: hangs twelve pieces on four walls from one atlas,
+  one draw call, layer 1, no collider; banners on bamboo rods. Loaded by
+  dynamic import from the indoor branch only, and never fatal: a module that
+  does not arrive in 6 s, a missing piece or a picture that fails leaves the
+  room bare and the race intact.
+- `scripts/wallart.js`, new, `npm run gen:wallart`: reads the slap pack at
+  webfpv.org/stickers/ (or `--pack=FILE`), composes seven A0 posters, two
+  4.4 m banners, a nobori and a cut vinyl wordmark around sixteen stickers,
+  renders them in headless Chromium with the pack's own fonts and writes
+  `assets/wallart/atlas.webp` (345 KB, 405 px per printed metre) and
+  `src/art/wallart-atlas.js`. No font file ships; NOTICE records the art's
+  origin and the OFL faces its type was set in.
+- `scripts/gatecards.js`: the whoop card's camera through MICRO_SCALE, and
+  its aim lifted from 0.35 to 0.75 m. `assets/gate/whoop.jpg` retaken.
+- `src/fresh.js` regenerated for the two new modules; `package.json`,
+  `NOTICE`, `WHOOP-ROOM-PLAN.md`.
+
+**Why the gate band.** The pipe is 0x9aa2b0. It reads against anything clearly
+darker or clearly paler than itself and against nothing of its own value, so
+there is no mid tone anywhere a gate stands in front of: dark below 1.2 m,
+pale above. Measured as luma across the same upright of Living room 1's
+ladder, old room against new, fixed camera:
+
+    High, band behind      old: core 44 to 100 over a 33 wall
+                           new: core 45 to 52 over an 88 band
+    High, plaster behind   old: core 50 over a 35 wall
+                           new: ink 110 to 120 under a 200 plaster
+    Low, band behind       new: core 65 to 77 over an 85 band
+    Low, plaster behind    new: body 11 to 36 under a 198 plaster, with a
+                                dark terminator edge
+
+The last line is the weak one and it is written down: Low has no ink pass,
+so a tall element's top seen against the plaster reads by a thin dark edge
+and by hue, not by value. Everything below 1.2 m, which is where RaceGOW
+gates are, reads at least as well as it did.
+
+**What went wrong, in order.**
+
+1. The first light pass (hemisphere 0.9, lamps 21, key 0.6) clipped the
+   plaster and the ceiling to white and hid the light panels. Brought down
+   to 0.6, 10 and 0.45, with the ceiling painted as lit rather than lit.
+2. It was tuned on Low, which is what this container picks, and High was
+   different. With shadows on, a near vertical key runs along every upright,
+   so each pipe shadowed itself and went dark in front of the dark band: the
+   one pairing the room exists to avoid. The key casts nothing in a room now,
+   which is also what the old room's 0.16 key amounted to. Bloom (threshold
+   0.78) lit hot patches on the plaster; the plaster went a shade deeper.
+3. Moving the lamps in over the track at 15 each blew the far plaster out
+   into bloom again. Back to 10, kept over the track.
+4. The generator's font check passed a face whose status was "unloaded",
+   because "unloaded" ends in "loaded". Caught on the first run; every face
+   is now loaded and checked by status.
+5. A light streak in the first preview was the preview's compositing, not the
+   atlas: every pixel sampled in it was rgba(0,0,0,0).
+6. shots.js exits 1 on any console error, and every capture here logs one
+   refused board request, including the baseline on unchanged code. My early
+   runs piped through tail and hid that exit code. It is also why
+   `npm run gen:gatecards` cannot finish in this container, so the whoop card
+   was taken by calling shots.js with the generator's own parameters, as on
+   2026-09-09.
+7. The whoop card's camera was written on 2026-09-09 and the room grew by
+   MICRO_SCALE on 2026-09-14 (91c77eb), so its numbers put the lens 1.6 m
+   from the start gate. It now goes through MICRO_SCALE.
+
+**Checks, run this turn, on the committed code unless said.**
+
+    colliders, Living room 1   6 boxes identical to 1e-6, census identical,
+                               28 solids: wall 5, gate 13, obstacle 8, pole 2
+    colliders, 5 inch field    2064 identical
+    field render               100 calls, 389041 triangles, 61 geometries,
+                               5 textures, 26 programs: identical
+    field pixels               before against after, 1101 and 481 pixels
+                               differ, max 9 and 1 levels; the same code
+                               twice, 341 and 205, max 9 and 20: noise
+    room render                134 to 118 calls, 118503 to 118783
+                               triangles, textures 3 to 4, programs 18 to 22
+    npm run micro:check        267 pass, 0 fail
+    npm run lint:preload       up to date, boot 113 unchanged, 217 served
+    gen:wallart                saved pack and live pack: rev cc911c84d03b both
+    node --check               every changed module
+
+The field and collider comparisons were taken before the last edit to
+scene.js (a 6 s wait on the art's modules and a comment); the room's
+colliders and render were re-taken after it and are the same. Pictures at
+Low and High from six cameras are in the scratch directory, not here.
+
+**Not run.** `npm run verify`: nothing physical, no plant, ABI or build, and
+check 16's claim holds by construction (no module under src/maps/city is
+imported; the art modules are imported only inside the indoor branch; the
+boot preload list did not change). `lint:memory`, `lint:shell`,
+`lint:responsive`, `lint:boot`: none of them loads a micro course or has
+anything in it that changed, apart from one picture on the title.
+`gen:gatecards` in full, for the reason in item 6. The board's card renderer
+(src/share/orbit.html) builds rooms through the same buildMap and will show
+the new room; it was not exercised here.
+
+**To fly.** A whoop on Living room 1, on your own machine and preset. What
+counts as wrong: a gate you lose against the dark band or the plaster, walls
+glowing on High, the room reading as dusk, a poster or banner blurred or
+missing, or any difference at all in how a wall tap, a gate or a lap behaves.
+
+### Addendum: to main, the owner flies it
+
+The owner, 2026-09-26: "push to main and i'll fly it". main moved twice while
+this was in review, by the Practice lap count and by the lap calls
+(src/render/voice.js); both were merged into this branch, not rebased and not
+forced, with PROGRESS.md keeping main's entries where main has them. Run on
+the merged tree that went to main: `npm run lint:preload` up to date, boot
+114 and 218 served; `npm run micro:check` 267 pass, 0 fail; `node --check` on
+every module either side touched; and the room captured again, its six
+collider boxes and 28 solids identical to the baseline, 118 draw calls, the
+art up. The push to main is a fast forward. `npm run verify` not run, for
+the reason in the entry above.
+
+## 2026-09-26 | ui | The whoop's OSD loses its speed readout
+
+**Asked.** The owner, 2026-09-26: "remove speed recording on the whoop". The
+only speed the shell shows or keeps is the km/h readout in the OSD's right
+corner; nothing on the board, the results or the lap calls records a speed.
+So that is what goes, on the whoop only. The five inch keeps it.
+
+**Why the number was wrong on a whoop anyway.** The whoop flies the five
+inch's plant in a room built MICRO_SCALE (3.4289) times life size, so the
+readout was a five inch's ground speed printed over the picture of a whoop.
+
+**Changed.**
+
+- `configs/airframes.js`: `osdSpeed` on both airframes, true on the five inch,
+  false on the whoop, with the owner's words. Display only, like `cells`.
+- `src/main.js`: `speedKph` is null when the seated airframe's `osdSpeed` is
+  false. Read per frame off `runAirframe`, so a seat change mid session
+  takes effect on the next frame.
+- `src/ui/ui.js`: `setOsd` hides the readout with `is-off` when `speedKph`
+  is null, rather than leaving an empty line. The OSD's doc comment says
+  the machine decides.
+- `index.html`: `.osd-value.is-off { display: none; }`.
+
+Nothing physical: no plant, ABI, build, scoring or collider change.
+
+**Checks, run this turn.** `node --check` on the three changed modules;
+`configs/airframes.js` imported in Node, `5inch:true whoop65:false`, and its
+MICRO_SCALE assertion still loads; `npm run lint:preload` up to date, exit 0.
+
+**Not run.** `npm run verify`: nothing physical. `node scripts/shots.js`: not
+run, pending the owner's answer on the verification scale. No picture of the
+OSD with the readout gone has been taken.
+
+**Seen, not touched.** The altitude line has the same seam on a whoop: it is
+metres in the MICRO_SCALE room, so it reads 3.43 times the height the
+picture shows. Not asked for; left as it is.
+
+### Addendum: to main, the owner flies it
+
+The owner, 2026-09-26, asked which verification scale: "push to main and
+i'll fly it". So the check is the pilot's: on the whoop, no km/h line and no
+gap above the mode in the right corner; on the five inch, the readout as
+before; and a change of seat mid session updating the corner on the next
+frame. main had not moved since eb06a87, so the push is a fast forward.
+`node scripts/shots.js` and `npm run verify` not run, for the reasons above.
+
 ## 2026-09-26 | art, maps, props | The cars rebuilt, and an R32 drift coupe for Hibari Yard
 
 The owner, 2026-09-26: "i'd like the cars to be better, add a r32 drift

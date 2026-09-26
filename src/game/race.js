@@ -104,6 +104,35 @@ const PASS_MARGIN_MICRO = 0.008;
 const DEFAULT_KEY = 'webfpv.bestLapMs';
 
 /*
+ * PRACTICE: a run with no lap limit, offered on the launch card beside 1, 3
+ * and 5 laps.
+ *
+ * It is a lap count of zero, stored in the same `laps` setting, on the rule
+ * FPS_CAPS in src/ui/ui.js already uses for uncapped. A word would read
+ * better in localStorage and would not survive there: loadSettings keeps a
+ * stored value only when its type matches the default's, and the default
+ * is a number, so a stored 'practice' would quietly come back as 3.
+ *
+ * Nothing in the Race changes for it. A practice lap is timed, split,
+ * flashed and held against the record exactly as a counted one is, because
+ * a lap is a lap. What practice takes away is the END of the run, and with
+ * it the results screen, and the public board: submitBoardTime in
+ * src/main.js will not send a lap flown in practice.
+ */
+export const PRACTICE_LAPS = 0;
+
+/*
+ * Is a run of `runLaps` over once `lapsDone` clean laps are in?
+ *
+ * One copy of the rule. main.js ends the run on it, and
+ * src/trackbuilder/selftest.js checks it, which used to write the
+ * comparison out again beside the laps it was checking.
+ */
+export function runComplete(lapsDone, runLaps) {
+  return runLaps !== PRACTICE_LAPS && lapsDone >= runLaps;
+}
+
+/*
  * A gate's own frame, from its heading and pitch. Exported because
  * render/scene.js had travelAxis written out again, and the direction of
  * travel through a gate deciding two different things in two files is how a
@@ -314,6 +343,7 @@ export class Race {
     this.lap = 0;
     this.lapStartMs = null; /* sim clock */
     this.lastLapMs = null;
+    this.lastLapRecord = false; /* whether lastLapMs set the record */
     this.prevSimMs = null;
     this.flash = null; /* { text, untilMs } on the wall clock */
     /*
@@ -516,7 +546,10 @@ export class Race {
         this.laps.push(this.lastLapMs);
         this.log.push({ n: this.lapNumber(), ms: this.lastLapMs });
         let msgText = `Lap ${this.log.length}   ${fmt(this.lastLapMs)}`;
-        if (this.bestMs == null || this.lastLapMs < this.bestMs) {
+        /* Kept for the shell's spoken call (src/render/voice.js), so the
+         * voice reads the flash's decision rather than making its own. */
+        this.lastLapRecord = this.bestMs == null || this.lastLapMs < this.bestMs;
+        if (this.lastLapRecord) {
           this.bestMs = this.lastLapMs;
           msgText += '\nNew track record';
           /* Off the flight frame. This runs from the render loop, and a

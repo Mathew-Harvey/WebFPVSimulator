@@ -973,7 +973,7 @@ function holes(M, n, r, size, z, a0 = 0) {
  */
 function wheel(M, s, detail, rimRole) {
   const full = detail === 'full';
-  const N = full ? 16 : 12;
+  const N = full ? 16 : 14;
   const R = s.R;
   const h = tyreWidth(s) / 2;
   const sh = Math.min(0.04, R * 0.13);
@@ -1211,7 +1211,7 @@ function frontEnd(M, s, ch, zf, lamps) {
       onEnd(M, 'lampF', ch.front, 1, ly0, ly1, side > 0 ? z0 + 0.08 : z0, side > 0 ? z1 : z1 - 0.08, 0.024);
       onEnd(M, 'amber', ch.front, 1, ly0, ly1, side > 0 ? z0 : z1 - 0.07, side > 0 ? z0 + 0.07 : z1, 0.024);
     } else {
-      const raise = f.lamps === 'swept' ? 0.05 : 0;
+      const raise = f.lamps === 'swept' ? 0.028 : 0;
       blockOnEnd(M, 'dark', ch.front, 1, ly0 - 0.012, ly1 + 0.012, z0 - 0.012, z1 + 0.012, 0.016, raise);
       /* The lens, and at its outer end the indicator, in amber. */
       const ind = f.lamps === 'slim' ? 0 : 0.07;
@@ -1220,6 +1220,10 @@ function frontEnd(M, s, ch, zf, lamps) {
       onEnd(M, 'lampF', ch.front, 1, ly0, ly1, lz0, lz1, 0.02, raise * ((lz1 - lz0) / (z1 - z0)));
       if (ind) {
         onEnd(M, 'amber', ch.front, 1, ly0, ly1, side > 0 ? z1 - ind + 0.008 : z0, side > 0 ? z1 : z0 + ind - 0.008, 0.02, raise);
+      }
+      if (f.lamps === 'swept') {
+        /* The projector's shade: a dark bar along the lens's foot. */
+        onEnd(M, 'dark', ch.front, 1, ly0, ly0 + (ly1 - ly0) * 0.28, lz0 + 0.02, lz1 - 0.02, 0.023);
       }
       if (f.lamps === 'rect') {
         /* The inner reflector: a darker division across the lens. */

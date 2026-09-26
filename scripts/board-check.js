@@ -48,6 +48,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
+import { MAPS_SHOWN } from '../src/share/board.js';
+import { starterMap } from '../src/maps/built/starter.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const BOARD_REPO = join(dirname(root), 'WebFPVSimulator-LeaderBoard');
@@ -67,6 +69,22 @@ const TRACKS = [
   ['trk-c0000008', 'Long Paddock', 19, 'sugarK'],
 ];
 const PILOTS = ['sugarK', 'mothcircuit', 'pinerun', 'hendrix fpv', 'bandolier', 'tinnie'];
+
+/*
+ * Freestyle maps, two more than the Freestyle room shows, so "the ten
+ * newest" is a measurably different set from "all of them". Each is the
+ * starter yard under its own id and name, published oldest first: the board
+ * stamps publishedUtc itself, so the order they go up in is the order the
+ * room must list them in, newest first.
+ */
+const MAP_NAMES = [
+  'Kawa Lot', 'Tsuki Works', 'Old Mill', 'Rooftop Run', 'Canal Yard', 'Depot Nine',
+  'Sakura Row', 'Pylon Park', 'Harbour Gap', 'Crane Court', 'Tram Sheds', 'Night Market',
+];
+const PUBLISHED_MAPS = MAP_NAMES.map((name, i) => ({
+  id: `trk-5eed${String(1000 + i).padStart(4, '0')}`,
+  name,
+}));
 
 function trackDoc(id, name, gates) {
   const elements = [];
@@ -153,6 +171,23 @@ async function seed() {
   if (!res.ok) {
     throw new Error(`posting the ghost lap: ${await res.text()}`);
   }
+  for (const [i, m] of PUBLISHED_MAPS.entries()) {
+    const made = await fetch(`${ORIGIN}/api/maps`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        author: PILOTS[i % PILOTS.length],
+        document: { ...starterMap(), id: m.id, name: m.name },
+        plan: null,
+      }),
+    });
+    if (!made.ok) {
+      throw new Error(`publishing the map ${m.name}: ${await made.text()}`);
+    }
+    /* A clock tick apart, so no two share a publishedUtc and the order is
+     * the board's to state rather than a tie broken by id. */
+    await new Promise((resolve) => { setTimeout(resolve, 5); });
+  }
   return target[1];
 }
 
@@ -189,7 +224,7 @@ async function main() {
       return 1;
     }
     const ghostTrack = await seed();
-    console.log(`board check: ${TRACKS.length} tracks published, a ghosted lap on ${ghostTrack}\n`);
+    console.log(`board check: ${TRACKS.length} tracks published, a ghosted lap on ${ghostTrack}, ${PUBLISHED_MAPS.length} freestyle maps\n`);
 
     page = await openPage({
       root,
@@ -227,7 +262,9 @@ async function main() {
         note: String(ui.boardNote.textContent || ''),
         rows: items.filter((i) => !i.course).map((i) => i.label),
         cards: document.querySelectorAll('.screen-courses .course-card').length,
-        stripLabels: [...document.querySelectorAll('.screen-courses .strip-label')].map((n) => n.textContent),
+        /* The Race room's own: the Freestyle room wears screen-courses too,
+         * for the layout, and has a strip of the board's maps. */
+        stripLabels: [...document.querySelectorAll('.screen-courses:not(.screen-freestyle) .strip-label')].map((n) => n.textContent),
       });
     })()`));
 
@@ -340,9 +377,106 @@ async function main() {
       }
     }
 
+    /*
+     * THE FREESTYLE ROOM LISTS THE BOARD'S MAPS, the owner's ask of
+     * 2026-09-26: "the top 10 available freestyle maps like with the race
+     * tracks". Ten, newest first, because a map has no times to rank by
+     * (pickNewestMaps in src/share/board.js), after the two worlds that are
+     * always there and before every row.
+     */
+    const want = PUBLISHED_MAPS.slice().reverse().slice(0, MAPS_SHOWN);
+    await page.evaluate(`(() => {
+      const ui = window.__ui;
+      ui.act('title');
+      /* Answered the way a pilot answers it, so the title a choice lands
+       * on is the freestyle menu, with its Map row, and not the gate. With
+       * no freestyle world remembered it opens the room. */
+      ui.act('way-freestyle-5inch');
+      if (ui.screen !== 'freestyle') {
+        ui.show('freestyle');
+      }
+      return 1;
+    })()`);
+    await page.until('!window.__ui.boardMapsLoading && (window.__ui.boardMaps || []).length > 0', 25000);
+    const fsRoom = JSON.parse(await page.evaluate(`(() => {
+      const ui = window.__ui;
+      const items = ui.items();
+      const kinds = items.map((i) => (i.map || i.boardMap ? 'card' : 'row'));
+      return JSON.stringify({
+        listed: ui.boardMaps.map((m) => m.id),
+        cards: document.querySelectorAll('.screen-freestyle .board-map-card').length,
+        worlds: items.filter((i) => i.map).map((i) => i.map.id),
+        cardsFirst: kinds.lastIndexOf('card') < kinds.indexOf('row'),
+        note: String(ui.boardMapNote.textContent || ''),
+      });
+    })()`));
+    if (fsRoom.listed.join() !== want.map((m) => m.id).join()) {
+      failures.push(`the Freestyle room lists ${fsRoom.listed.join(', ')} where the ${MAPS_SHOWN} newest are ${want.map((m) => m.id).join(', ')}`);
+    }
+    if (fsRoom.cards !== want.length) {
+      failures.push(`the Freestyle room drew ${fsRoom.cards} board map cards for ${want.length} maps`);
+    }
+    if (!fsRoom.worlds.includes('city') || !fsRoom.worlds.includes('built')) {
+      failures.push(`the Freestyle room lost a world card beside the board's maps: ${fsRoom.worlds.join(', ')}`);
+    }
+    if (!fsRoom.cardsFirst) {
+      failures.push('a board map card is listed after a row, so the rows no longer follow the cards');
+    }
+    if (fsRoom.note) {
+      failures.push(`the Freestyle room says "${fsRoom.note}" over a board that answered`);
+    }
+
+    /* Choosing one flies it in the built world, under its own name, and
+     * choosing Your map afterwards flies the pilot's own again: two
+     * documents in one world, which the swap has to tell apart. */
+    const pick = want[1];
+    await page.evaluate(`(() => { window.__ui.act(${JSON.stringify(`boardmap:${pick.id}`)}); return 1; })()`);
+    let flown = null;
+    try {
+      await page.until(`window.__map().ready && window.__map().id === 'built' && window.__map().name === ${JSON.stringify(pick.name)}`, 90000);
+      flown = JSON.parse(await page.evaluate(`JSON.stringify({
+        shared: window.__ui.sharedMap && window.__ui.sharedMap.id,
+        map: (window.__ui.items().find((i) => i.label === 'Map') || {}).value || null,
+      })`));
+    } catch (e) {
+      failures.push(`choosing ${pick.name} in the Freestyle room did not build it: ${e.message || e}`);
+    }
+    if (flown && flown.shared !== pick.id) {
+      failures.push(`${pick.name} was built but the shell holds ${flown.shared} as the map it flies`);
+    }
+    /* And the title names it, rather than calling somebody else's map
+     * Your map. */
+    if (flown && flown.map !== pick.name) {
+      failures.push(`${pick.name} is flying and the title's Map row says "${flown.map}"`);
+    }
+    let own = null;
+    if (flown) {
+      await page.evaluate(`(() => {
+        const ui = window.__ui;
+        ui.show('freestyle');
+        ui.act('map:built');
+        return 1;
+      })()`);
+      try {
+        await page.until(`window.__map().ready && window.__map().id === 'built' && window.__map().name !== ${JSON.stringify(pick.name)}`, 90000);
+        own = JSON.parse(await page.evaluate(`JSON.stringify({
+          name: window.__map().name,
+          shared: window.__ui.sharedMap,
+        })`));
+      } catch (e) {
+        failures.push(`choosing Your map after ${pick.name} did not rebuild the pilot's own map: ${e.message || e}`);
+      }
+      if (own && own.shared) {
+        failures.push('Your map was chosen and the shell still holds a map from the board');
+      }
+    }
+
     console.log(`  Race room     ${room.listed} tracks listed, ${room.cards} cards drawn`);
     console.log(`  strip labels  ${room.stripLabels.join(', ') || '(none)'}`);
     console.log(`  rows          ${room.rows.join(', ')}`);
+    console.log(`  Freestyle     ${fsRoom.listed.length} of ${PUBLISHED_MAPS.length} maps listed, ${fsRoom.cards} cards drawn`);
+    console.log(`  chose         ${flown ? `${pick.name}, Map row "${flown.map}"` : 'nothing built'}`);
+    console.log(`  then Your map ${own ? own.name : 'not rebuilt'}`);
   } finally {
     if (page) {
       await page.close();
@@ -358,7 +492,7 @@ async function main() {
     }
     return 1;
   }
-  console.log('\nPASS, every track is listed and the board is a screen in the game');
+  console.log('\nPASS, every track is listed, the ten newest maps are, and the board is a screen in the game');
   return 0;
 }
 

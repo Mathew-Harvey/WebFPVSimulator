@@ -64,9 +64,10 @@ const CAL_LABELS = {
 import { MENU_TRACKS, trackById, musicIds } from '../render/tracks.js';
 import { CUSTOM_TUNE, TUNES, tuneById, tunesFor } from '../../configs/registry.js';
 import { AIRFRAMES, AIRFRAME_IDS, airframeById, WHOOP_TRUE_DIMS } from '../../configs/airframes.js';
-/* One function, for the one question this file asks the builder: which class
- * is the track a pilot is about to fly. */
-import { trackClassOf } from '../trackbuilder/elements.js';
+/* Two functions, for the two questions this file asks the builder: which
+ * class is the track a pilot is about to fly, and whether the freestyle
+ * seat holds a map of the pilot's own (see ownMapId). */
+import { docModeOf, trackClassOf } from '../trackbuilder/elements.js';
 import {
   RATE_DEFAULTS,
   RATE_FIELDS,
@@ -113,7 +114,8 @@ import {
   setPidsExpert,
 } from '../../configs/pids.js';
 import {
-  boardPageUrl, fetchTrackList, fetchTrackTimes, pickFeaturedTracks, wikiPageUrl,
+  boardPageUrl, fetchMapList, fetchTrackList, fetchTrackTimes, mapCardUrl, pickFeaturedTracks,
+  pickNewestMaps, wikiPageUrl,
 } from '../share/board.js';
 import { PATTERNS } from '../game/trickdetect.js';
 import { PROVEN } from '../game/proven.js';
@@ -200,10 +202,14 @@ import {
  * chevron it has not earned.
  */
 const LINK_ACTIONS = new Set(['leaderboard', 'wiki', 'support']);
+/* mapbuilder is the builder's freestyle door, and it opens the same page
+ * trackbuilder does, so it wears the same chevron: the pause menu's Back to
+ * the track builder is one or the other depending on what is being flown,
+ * and the row should not change shape between the two. */
 const SCREEN_ACTIONS = new Set([
   'courses', 'race', 'freestyle', 'pilot', 'quad', 'launch', 'standings', 'rates', 'pids', 'fc',
-  'howto', 'tricks', 'credits', 'trackbuilder', 'builder', 'remix', 'editown', 'choosepad',
-  'calibrate',
+  'howto', 'tricks', 'credits', 'trackbuilder', 'mapbuilder', 'builder', 'remix', 'editown',
+  'choosepad', 'calibrate',
 ]);
 
 /* What the breadcrumb says, per screen. A room is a navigation parent, so a
@@ -312,7 +318,26 @@ function townNote(s, failure) {
   if (world && failure && failure.map === world.id) {
     return `${world.name} did not load. Fly reloads the page and tries again.`;
   }
-  return 'The town, or a map of your own. No gates. Open it and fly.';
+  return 'The town, a map of your own, or one from the board. No gates. Open it and fly.';
+}
+
+/*
+ * The id of the map Your map flies when it is one the pilot built, or ''
+ * when it flies the starter yard. chooseDocument's rule in
+ * src/maps/built/index.js, restated from the seat alone the way
+ * stampKeyForMap in src/share/stamps.js restates it, because that file
+ * stays off the wire until the world is chosen. Change the three together.
+ */
+function ownMapId() {
+  try {
+    const saved = readAutosave('full', 'freestyle');
+    const doc = saved && saved.doc;
+    return doc && docModeOf(doc) === 'freestyle' && doc.elements.length > 0 && doc.id
+      ? String(doc.id)
+      : '';
+  } catch (e) {
+    return '';
+  }
 }
 
 /*
@@ -525,7 +550,7 @@ const SCORING_WARNING = 'This is an unfinished feature and it is still being bui
   + ' on your flying.';
 
 /* `where` is the world seated, since Off is that world and nothing else:
- * the town, or Your map. */
+ * the town, Your map, or this map when it came from the board. */
 const scoringOff = (where) => `Off: no overlay, no names and no run clock, just ${where} and the quad.`;
 const SCORING_FREE_ON = 'Free flight: tricks are named and scored as you land them, with no clock and no'
   + ' board, and the run never ends.';
@@ -539,8 +564,12 @@ const SCORING_BOARD = 'Scored run: two minutes on the clock, and what you finish
  * board will not take a run flown on it (see BUILT_OFF_BOARD). The Scored
  * run line says so while it is seated, rather than promising a board the
  * results screen then greys out. The reason is left to the results row.
+ * A map from the board flies in the same world and is refused the same way
+ * (BOARD_MAP_OFF_BOARD), so the line names it "this map" rather than
+ * calling somebody else's map yours. Not its name: the note is measured
+ * against the bottom bar, below, and a name is as long as its author made it.
  */
-const SCORING_BOARD_BUILT = 'Scored run: two minutes on the clock, and on Your map what you'
+const scoringBoardBuilt = (where) => `Scored run: two minutes on the clock, and on ${where} what you`
   + ' finish with stays off the high score board.';
 
 /*
@@ -552,10 +581,11 @@ const SCORING_BOARD_BUILT = 'Scored run: two minutes on the clock, and on Your m
  * Free flight, once chosen, leaves out why to choose it: with it the town's
  * note still ended 14 px under the bar, where it is the longest.
  */
-function scoringNote(mode, mapId) {
-  const board = mapId === 'built' ? SCORING_BOARD_BUILT : SCORING_BOARD;
+function scoringNote(mode, mapId, fromBoard = false) {
+  const where = mapId === 'built' ? (fromBoard ? 'this map' : 'Your map') : 'the town';
+  const board = mapId === 'built' ? scoringBoardBuilt(where) : SCORING_BOARD;
   if (mode === 'off') {
-    return `${scoringOff(mapId === 'built' ? 'Your map' : 'the town')} ${SCORING_FREE} ${board}`;
+    return `${scoringOff(where)} ${SCORING_FREE} ${board}`;
   }
   return `${SCORING_WARNING} ${mode === 'free' ? SCORING_FREE_ON : board}`;
 }
@@ -569,6 +599,12 @@ function scoringNote(mode, mapId) {
  */
 const BUILT_OFF_BOARD = 'A map you built is a different place for every pilot who has one, so its runs'
   + ' stay off the public board. Fly the town for a run that can go up.';
+
+/* A map from the board is the same place for everybody, so the reason
+ * above would be untrue of it. The board simply keeps no table of runs for
+ * a published map yet, and main.js refuses the post for every built world. */
+const BOARD_MAP_OFF_BOARD = 'The board keeps no runs for a published map yet, so a run flown on one'
+  + ' stays here. Fly the town for a run that can go up.';
 
 /*
  * WHO TO NAME ON A TRACK, IN ONE PLACE.
@@ -585,6 +621,17 @@ function byLine(t) {
     return `by ${t.designer}`;
   }
   return t && t.author ? `by ${t.author}` : '';
+}
+
+/* What a board map's card says about it, as the board's own card does: its
+ * size in pieces, and its named gaps when it has any, which are the lines
+ * its builder wants flown. */
+function mapFacts(m) {
+  const facts = [`${m.pieces} piece${m.pieces === 1 ? '' : 's'}`];
+  if (m.gaps > 0) {
+    facts.push(`${m.gaps} named gap${m.gaps === 1 ? '' : 's'}`);
+  }
+  return facts;
 }
 
 const DEFAULTS = {
@@ -2142,6 +2189,53 @@ function liveListing(mapId) {
   } catch (e) {
     return null;
   }
+}
+
+/*
+ * BACK TO THE TRACK BUILDER, on the pause menu, or null.
+ *
+ * The owner's ask on 2026-09-26: flying a track they built, Escape should
+ * offer the builder, so the loop is fly, edit, fly. The builder's Fly this
+ * track and Fly this map already come straight back to the starting blocks
+ * (linkedFly), so this is the other half of that loop and nothing more.
+ *
+ * ONLY FOR WHAT THE PILOT BUILT, and absent rather than greyed otherwise.
+ * The rule that every course action always returns a row is about the
+ * course rooms, whose rows are a fixed set of things to do to the seat. A
+ * greyed "Back to the track builder" in the town, or on somebody else's
+ * track, would say "back" to a page the pilot never came from.
+ *
+ * Which door is the one the Track room already uses for the same track. The
+ * race canvas (local, or a copy of somebody else's) opens as it is, with
+ * ?mode=race. A published track of the pilot's own goes through Edit this
+ * track, because it can be seated from the board while the canvas holds
+ * something else, and the builder's edit intent is what brings the seated
+ * one onto the canvas (and keeps local changes, see adoptIncomingShare in
+ * src/trackbuilder/app.js). Your map opens the freestyle canvas, which is
+ * the seat it was flown from, and only when that seat holds a map: the
+ * starter yard and a map from the board are not on it.
+ */
+function builderReturnItem(s, sharedMap) {
+  if (s.map === 'custom') {
+    const listing = liveListing('custom');
+    const kind = listing ? listing.kind : 'none';
+    if (kind !== 'local' && kind !== 'remix' && kind !== 'owned') {
+      return null;
+    }
+    return {
+      label: 'Back to the track builder',
+      action: kind === 'owned' ? 'editown' : 'trackbuilder',
+      note: `Opens ${listing.name || 'this track'} in the track builder. Fly this track in there brings you straight back to the starting blocks.`,
+    };
+  }
+  if (s.map === 'built' && !sharedMap && ownMapId()) {
+    return {
+      label: 'Back to the track builder',
+      action: 'mapbuilder',
+      note: 'Opens your map in the track builder. Fly this map in there brings you straight back to it.',
+    };
+  }
+  return null;
 }
 
 /*
@@ -3718,13 +3812,26 @@ export class Ui {
      * behind the door has to describe the door that is actually open: the
      * town and the quad, with the scoring named as a switch rather than as
      * the point. See DEFAULTS.freestyleScoring. */
-    freestyle.append(el('p', 'rates-lede', 'The whole town, or a map of your own from the track builder, and no gates in either. Fly one, and this is where the machine you fly it on lives. Scoring is the switch below and it starts off, because the part that names what you flew is still being built.'));
+    freestyle.append(el('p', 'rates-lede', 'The whole town, a map of your own from the track builder, or one of the newest maps on the board, and no gates in any of them. Fly one, and this is where the machine you fly it on lives. Scoring is the switch below and it starts off, because the part that names what you flew is still being built.'));
     this.freestyleCards = el('div', 'map-cards');
+    /*
+     * THE BOARD'S MAPS, the Race room's board strip for freestyle: the ten
+     * newest maps published from the builder, under the two worlds that
+     * are always here. A strip of their own rather than more cards in the
+     * one above, because the cards above are the world cards, which record
+     * a clip of each world, and a map from the board has a picture already:
+     * its share card. See renderBoardMapCards.
+     */
+    this.boardMapStrip = el('div', 'card-strip');
+    this.boardMapStrip.append(el('div', 'strip-label', 'From the board, newest first'));
+    this.boardMapHost = el('div', 'map-cards course-cards board-map-cards');
+    this.boardMapNote = el('div', 'board-note', '');
+    this.boardMapStrip.append(this.boardMapHost, this.boardMapNote);
     const freestyleBlock = wrapMenu();
     this.freestyleMenu = freestyleBlock.menu;
     this.freestyleMenu.classList.add('menu-scroll');
     this.freestyleHelp = freestyleBlock.help;
-    freestyle.append(this.freestyleCards, freestyleBlock.stage);
+    freestyle.append(this.freestyleCards, this.boardMapStrip, freestyleBlock.stage);
     this.screens.freestyle = freestyle;
 
     /*
@@ -5989,8 +6096,17 @@ export class Ui {
         map: x,
         action: `map:${x.id}`,
       })) : [];
+      /* The board's maps, after the worlds and before the rows, because the
+       * rows are whatever follows the last card. See loadBoardMaps. */
+      const boardCards = (this.boardMaps || []).map((m) => ({
+        label: m.name,
+        note: `${[m.author ? `Built by ${m.author}` : 'A published map', ...mapFacts(m)].join(', ')}. Choosing it loads the map from the board and flies it here.`,
+        boardMap: m,
+        action: `boardmap:${m.id}`,
+      }));
       return [
         ...cards,
+        ...boardCards,
         /*
          * FIRST, because it is the only choice on this screen that changes
          * what the next two minutes ARE.
@@ -6007,7 +6123,7 @@ export class Ui {
         {
           ...choice(
             'Scoring',
-            scoringNote(s.freestyleScoring, s.map),
+            scoringNote(s.freestyleScoring, s.map, Boolean(this.sharedMap)),
             FREESTYLE_SCORING,
             s.freestyleScoring,
             (id) => FREESTYLE_SCORING_LABEL[id],
@@ -6563,9 +6679,13 @@ export class Ui {
        * context differed, and the rooms carry the same warning through
        * MID_RUN_WARNING on the way in.
        */
+      /* Third, under the two that keep the pilot flying: Escape, down, down,
+       * Enter is the whole way to the builder. See builderReturnItem. */
+      const builder = builderReturnItem(s, this.sharedMap);
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
+        ...(builder ? [builder] : []),
         ...this.ghostItems(),
         { label: 'Does it feel wrong?', section: true },
         tuneItem(s, true),
@@ -6668,7 +6788,7 @@ export class Ui {
                */
               disabled: built || nothing || Boolean(run && run.assisted)
                 || (run && run.timed === false),
-              note: built ? BUILT_OFF_BOARD : (nothing
+              note: built ? (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false
                   ? 'Free flight has no clock, so there is nothing for a board to compare it against. Switch Run to Scored on the Freestyle screen and fly it again.'
@@ -7080,6 +7200,7 @@ export class Ui {
     }
     if (this.screen === 'freestyle') {
       this.renderMapCards();
+      this.renderBoardMapCards();
     }
     if (this.screen === 'tricks') {
       this.renderTricks();
@@ -7158,7 +7279,7 @@ export class Ui {
     /* The Courses screen draws its choices as cards above this menu, so the
      * rows here are only what is left over. */
     const rows = this.cardScreen()
-      ? items.filter((it) => !it.map && !it.course && !it.card)
+      ? items.filter((it) => !it.map && !it.course && !it.card && !it.boardMap)
       : items;
     const offset = items.length - rows.length;
     this.rowOffset = offset;
@@ -8422,6 +8543,11 @@ export class Ui {
     (this.courseCards || []).forEach((c, j) => {
       c.card.classList.toggle('on', j + worlds.length === this.cursor);
     });
+    if (this.screen === 'freestyle') {
+      (this.boardMapCards || []).forEach((c, j) => {
+        c.card.classList.toggle('on', j + worlds.length === this.cursor);
+      });
+    }
   }
 
   /*
@@ -8594,7 +8720,10 @@ export class Ui {
     }
     this.mapCards.forEach((c, i) => {
       c.card.classList.toggle('on', i === this.cursor);
-      c.tag.textContent = c.id === this.settings.map ? 'Flying now' : '';
+      /* A map from the board flies in the built world too, and then it is
+       * that map's card that says so, not Your map's. */
+      const flying = c.id === this.settings.map && !(c.id === 'built' && this.sharedMap);
+      c.tag.textContent = flying ? 'Flying now' : '';
       /*
        * THE STAMP IS FOR THE WORLD THE CARD WOULD FLY, asked every render,
        * because Your map is whatever the builder's freestyle seat holds and
@@ -8603,6 +8732,98 @@ export class Ui {
        * a millisecond for the starter's document.
        */
       const found = Boolean(stampFor(stampKeyForMap(c.id)));
+      if (c.stamp.hidden === found) {
+        c.stamp.hidden = !found;
+      }
+    });
+  }
+
+  /*
+   * The board's maps, as cards under the worlds. Rebuilt when the list
+   * changes, and otherwise only relit, like the course cards.
+   *
+   * THE PICTURE IS THE MAP'S SHARE CARD: one frame of it in the renderer
+   * the game flies, drawn by the browser that published it (src/share/
+   * card.js), so a map is chosen by what it looks like, as the worlds above
+   * are. An <img> and not a background, because a card that will not load
+   * has something better to fall back to than the dark rectangle: the
+   * outline drawing the board's own tile shows (drawPlan in
+   * src/share/plan.js), which is also what a map with no share card gets.
+   * The picture is decorative, so its alt is empty: the name is under it.
+   *
+   * The found STF mark stamps these cards as it does the worlds'. A map
+   * from the board keys its stamp by its document's id, which is the id it
+   * has on the board (stfKey in src/maps/built/egg.js).
+   */
+  renderBoardMapCards() {
+    const host = this.boardMapHost;
+    if (!host) {
+      return;
+    }
+    const items = this.items();
+    const offset = items.filter((it) => it.map).length;
+    const cards = items.filter((it) => it.boardMap);
+    const key = cards.map((it) => `${it.boardMap.id}:${it.boardMap.cardUtc}`).join('|');
+    if (!this.boardMapCards || this.boardMapCardKey !== key) {
+      host.textContent = '';
+      this.boardMapCardKey = key;
+      this.boardMapCards = cards.map((it, k) => {
+        const m = it.boardMap;
+        const card = el('div', 'map-card course-card board-map-card');
+        const shot = el('div', 'map-reel');
+        const c = { card, canvas: null, id: m.id };
+        const drawn = () => {
+          c.canvas = planCanvas(m.plan, `Plan of ${m.name}`);
+          shot.replaceChildren(c.canvas);
+          c.painted = drawPlan(c.canvas, c.canvas.planData);
+        };
+        const picture = mapCardUrl(m);
+        if (picture) {
+          const img = el('img', 'map-reel-view board-map-shot');
+          img.alt = '';
+          img.decoding = 'async';
+          img.loading = 'lazy';
+          img.addEventListener('error', drawn, { once: true });
+          img.src = picture;
+          shot.append(img);
+        }
+        const body = el('div', 'map-card-body');
+        const name = el('div', 'map-card-name', it.label);
+        c.tag = el('div', 'map-card-tag', '');
+        c.stamp = stfLettering('map-card-stamp');
+        c.stamp.hidden = true;
+        c.stamp.title = 'You found the STF mark here';
+        c.stamp.setAttribute('role', 'img');
+        c.stamp.setAttribute('aria-label', 'You found the STF mark here');
+        /* Dotted rather than spaced, as the standings lede is: the page
+         * folds two spaces into one, and "by Mat 51 pieces 5 named gaps"
+         * reads as one run of words. */
+        const meta = el('div', 'map-card-meta', [m.author ? `by ${m.author}` : '', ...mapFacts(m)]
+          .filter(Boolean).join(' \u00b7 '));
+        body.append(name, c.tag);
+        card.append(shot, c.stamp, body, meta);
+        card.addEventListener('mousemove', (e) => this.hoverCursor(e, k + offset));
+        card.addEventListener('click', () => {
+          this.cursor = k + offset;
+          this.select();
+        });
+        host.append(card);
+        if (!picture) {
+          drawn();
+        }
+        return c;
+      });
+    }
+    const flying = this.settings.map === 'built' && this.sharedMap ? this.sharedMap.id : null;
+    this.boardMapCards.forEach((c, k) => {
+      c.card.classList.toggle('on', k + offset === this.cursor);
+      c.tag.textContent = c.id === flying ? 'Flying now' : '';
+      /* A plan drawn while the room was hidden had no size to draw at, so
+       * it is drawn again the first time the room is up. */
+      if (c.canvas && !c.painted) {
+        c.painted = drawPlan(c.canvas, c.canvas.planData);
+      }
+      const found = Boolean(stampFor(`built:${c.id}`));
       if (c.stamp.hidden === found) {
         c.stamp.hidden = !found;
       }
@@ -8971,6 +9192,116 @@ export class Ui {
   }
 
   /*
+   * The board's freestyle maps, fetched once per visit to the Freestyle
+   * room: the ten newest (pickNewestMaps in src/share/board.js), less the
+   * one Your map already flies, which would otherwise be two cards for one
+   * map with nothing saying which is about to be flown. The Race room drops
+   * the seated track's listing for the same reason.
+   *
+   * A NICETY, NOT A DEPENDENCY, as the Race room's list is. A board that is
+   * down leaves the town and Your map exactly as they were, with one line
+   * saying why nothing else is there.
+   */
+  loadBoardMaps() {
+    if (this.boardMapsLoading) {
+      return;
+    }
+    this.boardMapsLoading = true;
+    this.boardMapNote.textContent = 'Reading the board';
+    fetchMapList()
+      .then((list) => {
+        this.boardMapsLoading = false;
+        const own = ownMapId();
+        this.boardMapNote.textContent = list.length
+          ? ''
+          : 'No freestyle maps on the board yet. Build one in the track builder and publish it.';
+        this.relistBoardMaps(pickNewestMaps(list.filter((m) => m.id !== own)));
+      })
+      .catch(() => {
+        this.boardMapsLoading = false;
+        this.boardMapNote.textContent = 'The board is not answering, so only the town and your own map are listed.';
+        this.relistBoardMaps([]);
+      });
+  }
+
+  /*
+   * Swap the listed maps without moving the pilot off the row they are on.
+   * The cards arrive ABOVE the rows, so a cursor kept by index would put a
+   * pilot who had already walked down to Scoring on somebody's map when a
+   * slow board answered.
+   */
+  relistBoardMaps(maps) {
+    const here = this.screen === 'freestyle' ? this.items()[this.cursor] : null;
+    this.boardMaps = maps;
+    if (this.screen !== 'freestyle') {
+      return;
+    }
+    const i = here && here.id ? this.items().findIndex((it) => it.id === here.id) : -1;
+    if (i >= 0) {
+      this.cursor = i;
+    }
+    this.renderMenu();
+  }
+
+  /*
+   * A map from the board, chosen on its card. What the board's own Fly this
+   * map does, without the page load: main.js fetches the document (it owns
+   * the documents worlds are built from, see worldDocument there) and the
+   * built world is seated around it.
+   *
+   * SEATED ONLY IF THE PILOT IS STILL IN THE ROOM when it arrives. One who
+   * backed out while the board woke up has changed their mind, and seating
+   * the map anyway would swap the world under whatever they went to do.
+   */
+  openBoardMap(id) {
+    const m = (this.boardMaps || []).find((x) => x.id === id);
+    if (!m || this.openingBoardMap) {
+      return;
+    }
+    /* Already the map in the built world: there is nothing to fetch. */
+    if (this.settings.map === 'built' && this.sharedMap && this.sharedMap.id === m.id) {
+      this.seatMap('built');
+      return;
+    }
+    if (!this.onBoardMap) {
+      this.boardMapNote.textContent = `${m.name} could not be loaded from the board.`;
+      return;
+    }
+    this.openingBoardMap = true;
+    this.boardMapNote.textContent = `Loading ${m.name}`;
+    this.onBoardMap(m).then((shared) => {
+      this.openingBoardMap = false;
+      this.boardMapNote.textContent = '';
+      if (this.screen !== 'freestyle') {
+        return;
+      }
+      this.useSharedMap(shared);
+      this.seatMap('built');
+    }).catch((err) => {
+      this.openingBoardMap = false;
+      this.boardMapNote.textContent = `${m.name} could not be loaded. ${err.message ?? err}`;
+    });
+  }
+
+  /*
+   * Which document the built world flies: a map from the board, or the
+   * pilot's own when `shared` is null. main.js holds it and builds from it;
+   * this only says which.
+   *
+   * The address stops naming a ?mapshare= map either way, because from
+   * here on it no longer says what is flown, and a reload of it would put
+   * the pilot back on a map they had chosen to leave.
+   */
+  useSharedMap(shared) {
+    if (this.onSharedMap) {
+      this.onSharedMap(shared);
+    } else {
+      this.setSharedMap(shared);
+    }
+    dropLinkParam('mapshare');
+  }
+
+  /*
    * Open the standings for one track, and go and get them.
    *
    * `track` is a board listing, the same shape loadBoardCourses holds: it
@@ -9107,7 +9438,11 @@ export class Ui {
   startReels() {
     this.stopReels();
     const cards = this.mapCards ?? [];
-    const current = this.settings.map;
+    /* The world that is loaded is filmed where it stands, and every other
+     * one in a frame of its own. A map from the board loaded in the built
+     * world is not Your map, whose clip is keyed by the pilot's own seat,
+     * so filming it in place would file somebody else's map under yours. */
+    const current = this.settings.map === 'built' && this.sharedMap ? null : this.settings.map;
     const ac = new AbortController();
     const session = { ac, urls: [], unsub: [] };
     this.reelSession = session;
@@ -9683,6 +10018,9 @@ export class Ui {
       this.loadLocalCourses();
       this.loadBoardCourses();
     }
+    if (screen === 'freestyle') {
+      this.loadBoardMaps();
+    }
     if (screen === 'howto') {
       this.renderHowto();
     }
@@ -10188,7 +10526,9 @@ export class Ui {
     this.syncChaseVisible();
     const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
     const seat = this.settings.map === 'custom' ? activeCourseSummary() : null;
-    const worldName = (seat && seat.name) || m.name;
+    /* A map from the board is flown in the built world, and is not Your map. */
+    const shared = this.settings.map === 'built' ? this.sharedMap : null;
+    const worldName = (seat && seat.name) || (shared && shared.name) || m.name;
     if (this.brandSub) {
       /*
        * "no gates" rather than "free flight", which was the strapline and
@@ -11024,7 +11364,9 @@ export class Ui {
      * town's name, it told a pilot back from Your map that they had been
      * somewhere else. */
     const world = seatedFreestyleMap(this.settings);
-    const where = world ? world.name : 'Freestyle';
+    /* A map from the board by its own name, for the same reason. */
+    const shared = world && world.id === 'built' && this.sharedMap ? this.sharedMap.name : '';
+    const where = shared || (world ? world.name : 'Freestyle');
     this.resultsKicker.textContent = summary.timed === false
       ? `${where}, free flight`
       : where;
@@ -11922,7 +12264,9 @@ export class Ui {
      * track they were not in. */
     const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
     const seat = m.id === 'custom' ? activeCourseSummary() : null;
-    out.push({ label: 'Flying', value: seat && seat.name ? seat.name : m.name });
+    /* And a map from the board by its own name, not as Your map. */
+    const shared = m.id === 'built' && this.sharedMap ? this.sharedMap.name : '';
+    out.push({ label: 'Flying', value: seat && seat.name ? seat.name : (shared || m.name) });
     const name = readPilotName();
     if (name) {
       out.push({ label: 'Pilot', value: name });
@@ -12044,8 +12388,18 @@ export class Ui {
      * map met the cursor on the town, the tag "Flying now" on the other
      * card, and the town's note beside a world they were not in.
      */
+    /* A map from the board is seated in the built world, and its own card
+     * is the one that says Flying now, so that is where the cursor opens
+     * once the list is there. */
+    const shared = this.settings.map === 'built' && this.sharedMap ? this.sharedMap.id : null;
+    const onBoard = shared
+      ? items.findIndex((it) => it && it.boardMap && it.boardMap.id === shared && this.isStop(it))
+      : -1;
+    if (onBoard >= 0) {
+      return onBoard;
+    }
     const seated = items.findIndex((it) => it && it.map && it.map.id === this.settings.map
-      && this.isStop(it));
+      && !(shared && it.map.id === 'built') && this.isStop(it));
     if (seated >= 0) {
       return seated;
     }
@@ -13160,13 +13514,21 @@ export class Ui {
       if (id === 'custom' && !hasLoadedTrack()) {
         return;
       }
-      /* A world's card goes the way Fly and the gate go: see seatWorld. */
+      /* A world's card goes the way Fly and the gate go: see seatWorld.
+       * Choosing one is also choosing off any map from the board, so Your
+       * map flies the pilot's own again rather than the last one listed. */
       const world = MAPS.find((x) => x.id === id && x.mode === 'freestyle');
       if (world) {
+        this.useSharedMap(null);
         this.seatWorld(world);
         return;
       }
       this.seatMap(id);
+      return;
+    }
+    /* A map from the board, from its card in the Freestyle room. */
+    if (action.startsWith('boardmap:')) {
+      this.openBoardMap(action.slice('boardmap:'.length));
       return;
     }
     /* back() is the one implementation. This branch used to be a copy of

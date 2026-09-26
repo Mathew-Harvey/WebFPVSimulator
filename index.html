@@ -145,6 +145,36 @@
         --bars: calc(var(--bar-top) + var(--bar-bot));
         --panel: #1a241c;
         --ink: rgba(12, 18, 14, 0.86);
+        /*
+         * THE OSD IS INKED, like the lettering. Its small print was slate at
+         * 11 to 13 px with a soft blurred shadow, and over Hibari Yard's
+         * concrete, the town's sky and the overcast palette PACK, the height
+         * line, THROTTLE, SCORE and AIR simply went. A soft shadow only
+         * works over a dark world. So every readout gets a hard edge in the
+         * town's ink, #0b1116, the colour src/ui/lettering.js strokes its
+         * callouts with: eight one pixel offsets for the small print, eight
+         * two pixel ones for the big numerals, and a short drop under each
+         * so it does not read as stencilled. Offset shadows rather than
+         * paint-order and a stroke, because they draw the same in every
+         * engine this ships to, which is also why the lettering uses them.
+         *
+         * And the labels one step lighter than --slate. Slate is the menus'
+         * receding grey and stays theirs; over a lit world the same grey
+         * with an edge still read as a gap, so the OSD's labels have their
+         * own.
+         */
+        --osd-ink: #0b1116;
+        --osd-slate: #c6d4e1;
+        --osd-edge:
+          -1px -1px 0 var(--osd-ink), 0 -1px 0 var(--osd-ink), 1px -1px 0 var(--osd-ink),
+          -1px 0 0 var(--osd-ink), 1px 0 0 var(--osd-ink),
+          -1px 1px 0 var(--osd-ink), 0 1px 0 var(--osd-ink), 1px 1px 0 var(--osd-ink),
+          0 2px 5px rgba(0, 0, 0, 0.55);
+        --osd-edge-2:
+          -2px -2px 0 var(--osd-ink), 0 -2px 0 var(--osd-ink), 2px -2px 0 var(--osd-ink),
+          -2px 0 0 var(--osd-ink), 2px 0 0 var(--osd-ink),
+          -2px 2px 0 var(--osd-ink), 0 2px 0 var(--osd-ink), 2px 2px 0 var(--osd-ink),
+          0 3px 8px rgba(0, 0, 0, 0.55);
         --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
       /* overscroll-behavior is for phones: a drag that starts on the world
@@ -166,18 +196,21 @@
       .osd.dim { opacity: 0.4; }
       .osd-top {
         position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
-        text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,0.85);
+        text-align: center; text-shadow: var(--osd-edge);
       }
-      .osd-timer { font-size: 46px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; }
+      .osd-timer {
+        font-size: 46px; font-weight: 600; letter-spacing: 0.02em; line-height: 1;
+        text-shadow: var(--osd-edge-2);
+      }
       .osd-timer.waiting { color: #b9c9d8; }
       .osd-label {
         font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
-        color: var(--slate); margin-bottom: 2px;
+        color: var(--osd-slate); margin-bottom: 2px;
       }
-      .osd-value { font-size: 20px; font-weight: 600; }
-      .osd-sub { font-size: 13px; color: var(--slate); margin-top: 1px; margin-bottom: 8px; }
+      .osd-value { font-size: 20px; font-weight: 600; text-shadow: var(--osd-edge-2); }
+      .osd-sub { font-size: 13px; color: var(--osd-slate); margin-top: 1px; margin-bottom: 8px; }
       .osd-gate { font-size: 15px; color: var(--amber); margin-top: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
-      .osd-best { font-size: 14px; color: var(--slate); margin-top: 3px; }
+      .osd-best { font-size: 14px; color: var(--osd-slate); margin-top: 3px; }
       /* The gap to the ghost, lit for a moment after each gate. Mint when
          the pilot is ahead of it, amber when it is ahead, the same reading
          the rest of this overlay teaches: mint is the good news. */
@@ -187,7 +220,7 @@
       .osd-ghost.behind { color: var(--amber); }
       .osd-corner {
         position: absolute; bottom: 20px; width: 190px;
-        text-shadow: 0 2px 6px rgba(0,0,0,0.85); font-size: 15px;
+        text-shadow: var(--osd-edge); font-size: 15px;
       }
       .osd-left { left: 22px; }
       .osd-right { right: 22px; text-align: right; }
@@ -198,7 +231,7 @@
         font-size: clamp(28px, 4.2vw, 46px); font-weight: 700;
         letter-spacing: 0.18em; text-transform: uppercase;
         color: var(--amber);
-        text-shadow: 0 3px 14px rgba(0, 0, 0, 0.92);
+        text-shadow: var(--osd-edge-2), 0 3px 14px rgba(0, 0, 0, 0.92);
         pointer-events: none;
       }
       .osd-launch.is-off { display: none; }
@@ -225,11 +258,11 @@
          top of the window there and from under the bar everywhere else. */
       .score-total {
         position: absolute; left: 22px; top: calc(var(--bar-top) + 58px);
-        text-shadow: 0 2px 6px rgba(0,0,0,0.85);
+        text-shadow: var(--osd-edge);
       }
       .score-label {
         font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
-        color: var(--slate); margin-bottom: 1px;
+        color: var(--osd-slate); margin-bottom: 1px;
       }
       /* The scorer admits what it is, beside the word it qualifies. Amber
          is the instrument colour this overlay and the menus both use for a
@@ -1035,8 +1068,8 @@
       .osd-gimbal-cap {
         margin-top: 6px;
         font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
-        color: var(--slate); text-align: center;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+        color: var(--osd-slate); text-align: center;
+        text-shadow: var(--osd-edge);
       }
 
       /*
@@ -1060,7 +1093,7 @@
         position: relative;
         display: flex; flex-direction: column; align-items: center;
         gap: 2px; padding-bottom: 2px;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+        text-shadow: var(--osd-edge);
       }
       .osd-air.is-off { display: none; }
       .osd-air-row { display: flex; align-items: center; gap: 8px; }
@@ -1083,7 +1116,7 @@
       }
       .osd-air-end {
         font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
-        color: var(--slate); white-space: nowrap;
+        color: var(--osd-slate); white-space: nowrap;
       }
       /*
          Reuses .row-range for the track and thumb geometry, so the menu's
@@ -1120,7 +1153,7 @@
         font-size: 11px; letter-spacing: 0.08em;
         color: var(--amber); white-space: nowrap;
       }
-      .osd-air-cap.is-stock { color: var(--slate); }
+      .osd-air-cap.is-stock { color: var(--osd-slate); }
       /*
        * THE ONE TIME IT EXPLAINS ITSELF.
        *
@@ -1144,6 +1177,8 @@
         background: rgba(16, 22, 17, 0.94);
         box-shadow: inset 0 0 0 1px rgba(255, 212, 92, 0.42), 0 6px 20px rgba(0, 0, 0, 0.5);
         text-align: left; pointer-events: none;
+        /* On its own dark card, so not the OSD's edge. */
+        text-shadow: none;
       }
       .osd-air-hint[hidden] { display: none; }
       /* The pointer down at the track. A rotated square rather than a border
@@ -4945,6 +4980,7 @@
         position: absolute; left: 0; top: 0;
         font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
         color: currentColor; white-space: nowrap;
+        text-shadow: var(--osd-edge);
       }
     </style>
   </head>

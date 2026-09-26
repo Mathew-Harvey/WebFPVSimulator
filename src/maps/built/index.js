@@ -72,6 +72,7 @@
 import * as THREE from 'three';
 import { PAL } from '../city/vendored/core/palette.js';
 import { Pipeline } from '../city/vendored/core/post.js';
+import { mangaPipeline } from '../../render/manga.js';
 import { buildSky } from '../city/vendored/core/sky.js';
 import { setOutlineResolution } from '../city/vendored/core/outline.js';
 import { cel, flat } from '../city/vendored/core/toon.js';
@@ -304,6 +305,9 @@ export class BuiltPipeline extends Pipeline {
       this.ink.mat.fragmentShader = frag.replace(INK_LINEAR, INK_INVERSE);
       this.ink.mat.needsUpdate = true;
     }
+    /* Stage F's manga layer, folded into the grade the same way, on this
+     * pipeline's own material: see src/render/manga.js. */
+    this.manga = mangaPipeline(this);
   }
 
   setSize(w, h) {
@@ -2317,6 +2321,8 @@ export async function buildMap(shell, onProgress, options) {
       pipelineScale: pipeline.scale,
       pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
       inkPlanar: pipeline.inkPlanar,
+      /* Whether Stage F's edit found its lines: see src/render/manga.js. */
+      manga: { lines: pipeline.manga.ok },
       buildMs,
     }),
     dispose() {

@@ -519,26 +519,11 @@
         100% { opacity: 0; transform: scale(0.94); }
       }
 
-      /* SPEED LINES down both edges, and ONLY while a chain is worth
-         something. Two flat strips of hard vertical stripes, so the frame
-         gets busier exactly as the pilot has more to lose. Nothing here
-         reads a value: it is a class the combo tier already computes. */
-      .score-lines {
-        position: absolute; inset: 0; pointer-events: none; opacity: 0;
-        transition: opacity 220ms linear;
-        background:
-          repeating-linear-gradient(90deg, var(--cream) 0 2px, transparent 2px 13px) left  / 11vw 100% no-repeat,
-          repeating-linear-gradient(90deg, var(--cream) 0 2px, transparent 2px 13px) right / 11vw 100% no-repeat;
-        -webkit-mask-image: linear-gradient(90deg, #000 0, transparent 12vw, transparent calc(100% - 12vw), #000 100%);
-        mask-image: linear-gradient(90deg, #000 0, transparent 12vw, transparent calc(100% - 12vw), #000 100%);
-      }
-      .score-hud.tier-3 .score-lines { opacity: 0.16; }
-      .score-hud.tier-4 .score-lines { opacity: 0.24; }
-      .score-hud.tier-5 .score-lines { opacity: 0.34; animation: score-lines 900ms steps(2) infinite; }
-      @keyframes score-lines {
-        from { transform: translateX(0); }
-        to   { transform: translateX(6px); }
-      }
+      /* No speed lines here. They were two strips of cream stripes down the
+         edges, switched on by the combo tier and not by speed, and at a
+         hover after a combo they looked like a rendering fault. They are
+         drawn in the frame now, by speed, converging on where the craft is
+         going: src/render/manga.js (Stage F). */
 
       @media (prefers-reduced-motion: reduce) {
         .score-name, .score-verdict.is-on { animation-duration: 0.01s; }
@@ -551,7 +536,6 @@
         .score-combo.tier-3 .score-combo-line,
         .score-combo.tier-4 .score-combo-line,
         .score-combo.tier-5 .score-combo-line { animation: none; }
-        .score-hud.tier-5 .score-lines { animation: none; }
       }
 
       /* ------------------------------------------------------------------
@@ -592,11 +576,11 @@
           3px 4px 0 #0b1116;
       }
       .score-hud.is-manga .score-value { display: block; }
-      /* CLEAN FPV: the plain HUD text. No ray fans, no rings, no speed lines,
-         no throb, and the names fade in rather than slam. */
+      /* CLEAN FPV: the plain HUD text. No ray fans, no rings, no throb, and
+         the names fade in rather than slam. The speed lines are the frame's
+         and answer to ui.manga in src/main.js. */
       .score-hud.is-clean .score-burst,
-      .score-hud.is-clean .score-ring,
-      .score-hud.is-clean .score-lines { display: none; }
+      .score-hud.is-clean .score-ring { display: none; }
       .score-hud.is-clean .score-name { animation: score-name-in 2.2s ease-out forwards; }
       .score-hud.is-clean .score-combo-line,
       .score-hud.is-clean .score-tier { animation: none; }

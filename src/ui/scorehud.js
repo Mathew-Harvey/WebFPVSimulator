@@ -145,8 +145,7 @@ const COLUMN_LEFT = 22;
  *   a gap of tier 1000 or more   the named gaps an author prices highest
  *                                (100, 250, 500, 1000, 2500): the crane,
  *                                the water tower, not the kerb
- *   a combo banked at x3 or more the tier this overlay already calls Sweet,
- *                                the first one with speed lines
+ *   a combo banked at x3 or more the tier this overlay already calls Sweet
  */
 export const GAP_BALLOON_TIER = 1000;
 export const BANK_BALLOON_MULT = 3;
@@ -471,11 +470,7 @@ export class ScoreHud {
      * the verdict on: see the header for why not the middle any more. */
     this.verdict = el('div', 'score-verdict score-cut');
 
-    /* Speed lines down both edges, driven entirely by a class on the root.
-     * Behind everything, so it can never sit over a number. */
-    this.lines = el('div', 'score-lines');
-
-    this.root.append(this.lines, this.totalBox, this.names, this.skimBox, this.comboBox, this.verdict);
+    this.root.append(this.totalBox, this.names, this.skimBox, this.comboBox, this.verdict);
     root.append(this.root);
 
     this.shownTotal = -1;
@@ -517,13 +512,12 @@ export class ScoreHud {
     this.root.className = this.rootClass();
   }
 
-  /* The root carries the combo tier, because the speed lines are drawn from
-   * it and they belong to the whole frame rather than to the combo box; the
-   * skim, because the names step up out of the meter's way; and which
-   * lettering is in use. */
+  /* The root carries the skim, because the names step up out of the
+   * meter's way, and which lettering is in use. It carried the combo tier
+   * too, for two strips of CSS speed lines; the speed lines are drawn in
+   * the frame now, by speed, and not by the combo (src/render/manga.js). */
   rootClass() {
-    const t = this.shownMult >= 5 ? 5 : (this.shownMult >= 4 ? 4 : (this.shownMult >= 3 ? 3 : 0));
-    return `score-hud ${this.manga ? 'is-manga' : 'is-clean'}${t ? ` tier-${t}` : ''}`
+    return `score-hud ${this.manga ? 'is-manga' : 'is-clean'}`
       + `${this.shownSkim ? ' is-skim' : ''}${this.visible ? '' : ' is-off'}`;
   }
 
@@ -586,8 +580,8 @@ export class ScoreHud {
     if (c.mult !== this.shownMult) {
       this.shownMult = c.mult;
       this.comboMult.textContent = c.mult > 1 ? ` x ${c.mult}` : '';
-      /* Tier: the colour of the number, the badge beside it and the speed
-       * lines down the frame are one decision made once, here. */
+      /* Tier: the colour of the number and the badge beside it are one
+       * decision made once, here. */
       const t = tierFor(c.mult);
       const step = t ? t.at : 0;
       if (step !== this.shownTier) {
@@ -605,7 +599,6 @@ export class ScoreHud {
           this.tier.hidden = true;
         }
       }
-      this.root.className = this.rootClass();
     }
     /* The bar is a transform, not a width: a width change relayouts the
      * whole overlay every frame and a transform does not. */

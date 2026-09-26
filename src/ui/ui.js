@@ -148,7 +148,7 @@ import {
   recordCanvasStream,
   withCaptureLock,
   whenVisible,
-  CLIP_MS_MAX,
+  clipDurationMs,
   CLIP_W,
   CLIP_H,
 } from '../share/orbitcache.js';
@@ -231,6 +231,18 @@ const SCREEN_ACTIONS = new Set([
  * See noteInteraction.
  */
 const REEL_QUIET_MS = 900;
+
+/*
+ * The film of the loaded world (captureCurrentCard): how many of its frames
+ * reach the card before the recorder starts, and how long to wait for them
+ * before sending the card to the orbit frame instead. Three is what the
+ * orbit frame's share card draws before the frame it keeps (CARD_WARMUP in
+ * src/share/orbit.js). The film draws ten a second, so on a machine with a
+ * GPU three take a third of a second; the ten seconds are for a software
+ * rasteriser, where one frame of the town can take most of a second.
+ */
+const FILM_WARMUP = 3;
+const FILM_START_MS = 10000;
 
 /*
  * THE COURSE CARDS FLY THEIR OWN LAP.
@@ -3468,6 +3480,12 @@ export class Ui {
     this.menuRows = [];
     this.rowOffset = 0;
     this.reelFreezeWorld = false;
+    /* The Freestyle room's film of the loaded world, read by main.js every
+     * frame; see captureCurrentCard. */
+    this.reelFilm = null;
+    /* Set by main.js: which world is loaded and the clip key it was built
+     * under. See startReels. */
+    this.loadedWorld = null;
     this.gpuInfo = null;
     /* Set by main.js; see setStickProbe. */
     this.stickProbe = null;
@@ -8899,7 +8917,7 @@ export class Ui {
         });
         host.append(card);
         return {
-          card, shot, tag, still, stamp, name, id: it.map.id, liveCanvas: null,
+          card, shot, tag, still, stamp, name, id: it.map.id,
         };
       });
       this.startReels();
@@ -9618,24 +9636,33 @@ export class Ui {
 
   /*
    * Start the thumbnails. Cached clips play immediately. A miss records
-   * once, one world at a time, then the iframe (or the live copy of the
-   * title view) is thrown away.
+   * once, one world at a time, then the iframe (or the film of the loaded
+   * world) is thrown away.
    */
   startReels() {
     this.stopReels();
     const cards = this.mapCards ?? [];
-    /* The world that is loaded is filmed where it stands, and every other
-     * one in a frame of its own. A map from the board loaded in the built
-     * world is not Your map, whose clip is keyed by the pilot's own seat,
-     * so filming it in place would file somebody else's map under yours. */
-    const current = this.settings.map === 'built' && this.sharedMap ? null : this.settings.map;
+    /*
+     * The world that is loaded is filmed where it stands, and every other
+     * one in a frame of its own. main.js says which world that is and the
+     * key it was built under (loadedWorld there): none for a map from the
+     * board loaded in the built world, which is not Your map, whose clip is
+     * keyed by the pilot's own seat, so filming it in place would file
+     * somebody else's map under yours. And none for Your map when the seat
+     * has changed since the world was built, because then the card names a
+     * map that is not the one loaded; the orbit frame builds it as it is.
+     */
+    const loaded = this.loadedWorld ? this.loadedWorld() : null;
+    const filmsHere = (c) => Boolean(loaded) && c.id === loaded.id && c.clipKey === loaded.key;
     const ac = new AbortController();
     const session = { ac, urls: [], unsub: [] };
     this.reelSession = session;
     this.reelFreezeWorld = false;
 
     const onVis = () => {
-      const hide = document.hidden || this.screen !== 'courses';
+      /* Both rooms: the world cards moved to Freestyle, and a clip paused
+       * by a hidden tab there stayed paused when the tab came back. */
+      const hide = document.hidden || (this.screen !== 'courses' && this.screen !== 'freestyle');
       for (const c of this.mapCards || []) {
         if (!c.clip || !c.clip.pause) {
           continue;
@@ -9653,7 +9680,6 @@ export class Ui {
     const pending = [];
     for (const c of cards) {
       c.shot.replaceChildren();
-      c.liveCanvas = null;
       c.clip = null;
       c.still.textContent = '';
       pending.push(c);
@@ -9684,8 +9710,8 @@ export class Ui {
         });
         this.startReelJokes(session);
       }
-      const currentMiss = misses.filter((c) => c.id === current);
-      const otherMiss = misses.filter((c) => c.id !== current);
+      const currentMiss = misses.filter(filmsHere);
+      const otherMiss = misses.filter((c) => !filmsHere(c));
       /*
        * ONE AT A TIME, AND ONLY WHILE NOBODY IS USING THE ROOM.
        *
@@ -9695,6 +9721,9 @@ export class Ui {
        * visit in a given browser. Waiting for quiet before EACH one means
        * a pilot who arrives and immediately picks a world never pays for
        * any of it, and a pilot who stops to read gets them one by one.
+       *
+       * The loaded world goes first because it costs least: it is filmed
+       * where it stands and nothing is built (captureCurrentCard).
        */
       for (const c of currentMiss) {
         if (this.reelSession !== session) {
@@ -9703,7 +9732,9 @@ export class Ui {
         await this.whenQuiet(session);
         this.reelCapturing = true;
         try {
-          await this.captureCurrentCard(c, session);
+          if (!await this.captureCurrentCard(c, session, loaded)) {
+            otherMiss.push(c);
+          }
         } finally {
           this.reelCapturing = false;
         }
@@ -9732,7 +9763,6 @@ export class Ui {
   attachClip(c, blob, session) {
     const { node, url } = makeClipElement(blob, 'map-reel-view');
     session.urls.push(url);
-    c.liveCanvas = null;
     c.clip = node;
     c.wait = null;
     c.waitJoke = null;
@@ -9778,25 +9808,40 @@ export class Ui {
   }
 
   /*
-   * The world already on screen is the title shot. Copy it into a 480p
-   * canvas for a few seconds rather than loading the same map a second
-   * time, then keep the clip.
+   * THE WORLD ALREADY LOADED IS FILMED WHERE IT STANDS, not built again.
+   *
+   * main.js draws it behind the room, still hidden, at the clip's size and
+   * frame rate, on the title camera flown from the start of its line on the
+   * clip's clock, and copies each frame onto this card's canvas, which the
+   * recorder takes: `film` in main.js's frame, and paintMapThumbs below.
+   * The world is in memory already, so this costs a small canvas and a
+   * small draw. The other way, the orbit frame the other cards use, builds
+   * a second copy of the world on this thread and holds both at once; see
+   * PROGRESS.md, 2026-09-26, for the two measured side by side.
+   *
+   * This is what the card used to get wrong. The copy onto the card was
+   * only ever made on the Race room, where world cards no longer live, so
+   * here the recorder took twelve seconds of the canvas's grey fill and
+   * cached it, and the pilot's own map was the card that looked broken.
+   * So the recorder now starts only once the film has drawn onto the card,
+   * and the clip opens on the world. A world that draws nothing (it cannot
+   * be filmed here after all) answers false, and the caller sends the card
+   * to the orbit frame instead.
    */
-  async captureCurrentCard(c, session) {
+  async captureCurrentCard(c, session, loaded) {
     const canvas = el('canvas', 'map-reel-view');
     canvas.setAttribute('aria-hidden', 'true');
     canvas.width = CLIP_W;
     canvas.height = CLIP_H;
-    canvas.dataset.clip = '1';
     const ctx = canvas.getContext('2d', { alpha: false });
     if (ctx) {
       ctx.fillStyle = '#1a241c';
       ctx.fillRect(0, 0, CLIP_W, CLIP_H);
     }
     c.shot.append(canvas);
-    c.liveCanvas = canvas;
     c.still.textContent = '';
     this.showReelWait(c, session);
+    let filmed = true;
     try {
       await withCaptureLock(async () => {
         if (this.reelSession !== session) {
@@ -9808,24 +9853,85 @@ export class Ui {
           return;
         }
         await whenVisible(session.ac.signal);
-        const blob = await recordCanvasStream(canvas, CLIP_MS_MAX, session.ac.signal);
-        await putClip(c.clipKey, blob);
-        if (this.reelSession !== session) {
-          return;
+        /* One whole cycle of the line in the clip, sped up to fit, as the
+         * orbit frame records it (renderAndCapture in src/share/orbit.js),
+         * so a card looks the same whichever way it was filmed. */
+        const periodMs = loaded && loaded.periodMs > 0 ? loaded.periodMs : 0;
+        const loopMs = clipDurationMs(periodMs);
+        const film = {
+          key: c.clipKey,
+          canvas,
+          scale: (periodMs > 0 ? periodMs : loopMs) / loopMs,
+          t0: -1,
+          frames: 0,
+        };
+        this.reelFilm = film;
+        try {
+          await this.whenFilmed(film, session);
+          /* The picture is there, so the wait becomes a caption over it
+           * rather than a panel in front of it. */
+          if (c.wait) {
+            c.wait.classList.add('map-reel-wait-film');
+          }
+          film.t0 = performance.now();
+          const blob = await recordCanvasStream(canvas, loopMs, session.ac.signal);
+          await putClip(c.clipKey, blob);
+          if (this.reelSession !== session) {
+            return;
+          }
+          this.attachClip(c, blob, session);
+        } finally {
+          if (this.reelFilm === film) {
+            this.reelFilm = null;
+          }
         }
-        this.attachClip(c, blob, session);
       });
     } catch (e) {
       if (e && e.name === 'AbortError') {
-        return;
+        return true;
       }
       c.wait = null;
       c.waitJoke = null;
       c.shot.replaceChildren();
-      c.still.textContent = 'Preview unavailable.';
-    } finally {
-      c.liveCanvas = null;
+      if (e && e.noFilm) {
+        filmed = false;
+      } else {
+        c.still.textContent = 'Preview unavailable.';
+      }
     }
+    return filmed;
+  }
+
+  /*
+   * Resolve once main.js has drawn the film's first frames onto the card:
+   * FILM_WARMUP of them, as the orbit frame waits for its own before it
+   * records, because the shadow focus and the post chain settle on the
+   * first few. Rejects when the session ends, or with `noFilm` when nothing
+   * is drawn in FILM_START_MS, which is main.js declining the film (it
+   * checks the key, the screen and the mode on every frame).
+   */
+  whenFilmed(film, session) {
+    const giveUp = performance.now() + FILM_START_MS;
+    return new Promise((resolve, reject) => {
+      const check = () => {
+        if (this.reelSession !== session || session.ac.signal.aborted) {
+          reject(new DOMException('aborted', 'AbortError'));
+          return;
+        }
+        if (film.frames >= FILM_WARMUP) {
+          resolve();
+          return;
+        }
+        if (performance.now() > giveUp) {
+          const err = new Error('The loaded world drew nothing for its card.');
+          err.noFilm = true;
+          reject(err);
+          return;
+        }
+        setTimeout(check, 50);
+      };
+      check();
+    });
   }
 
   /*
@@ -9909,12 +10015,18 @@ export class Ui {
   }
 
   /*
-   * Copy the title view onto the card for the world that is already loaded,
-   * and onto the recorder, while a first clip is being made. After that
-   * there is nothing to copy: the cards are videos.
+   * Copy a frame of the film onto the card being recorded, which is the
+   * canvas the recorder takes. main.js calls this straight after drawing
+   * one, and only then. After the clip is made there is nothing to copy:
+   * the cards are videos.
+   *
+   * main.js holds its renderer at the clip's size for the film, so this is
+   * a copy and not a crop. The crop is kept for a frame drawn at any other
+   * shape, which then loses its edges rather than being squashed.
    */
   paintMapThumbs(src) {
-    if (this.screen !== 'courses' || !this.mapCards) {
+    const film = this.reelFilm;
+    if (!film || !film.canvas) {
       return;
     }
     const sw = src.width;
@@ -9922,33 +10034,21 @@ export class Ui {
     if (!(sw > 0 && sh > 0)) {
       return;
     }
-    for (const c of this.mapCards) {
-      const dest = c.liveCanvas;
-      if (!dest) {
-        continue;
-      }
-      if (dest.dataset.clip !== '1') {
-        const dw = Math.max(1, dest.clientWidth);
-        const dh = Math.max(1, dest.clientHeight);
-        if (dest.width !== dw || dest.height !== dh) {
-          dest.width = dw;
-          dest.height = dh;
-        }
-      }
-      const dw = dest.width;
-      const dh = dest.height;
-      const scale = Math.max(dw / sw, dh / sh);
-      const cw = dw / scale;
-      const ch = dh / scale;
-      try {
-        dest.getContext('2d').drawImage(
-          src,
-          (sw - cw) * 0.5, (sh - ch) * 0.5, cw, ch,
-          0, 0, dw, dh,
-        );
-      } catch (e) {
-        /* A tainted read would take the frame with it. */
-      }
+    const dest = film.canvas;
+    const dw = dest.width;
+    const dh = dest.height;
+    const scale = Math.max(dw / sw, dh / sh);
+    const cw = dw / scale;
+    const ch = dh / scale;
+    try {
+      dest.getContext('2d').drawImage(
+        src,
+        (sw - cw) * 0.5, (sh - ch) * 0.5, cw, ch,
+        0, 0, dw, dh,
+      );
+      film.frames += 1;
+    } catch (e) {
+      /* A tainted read would take the frame with it. */
     }
   }
 
@@ -10033,6 +10133,8 @@ export class Ui {
   stopReels() {
     this.reelFreezeWorld = false;
     this.reelCapturing = false;
+    /* main.js stops drawing the film on the next frame. */
+    this.reelFilm = null;
     if (this.reelSession && this.reelSession.quietTimer) {
       clearTimeout(this.reelSession.quietTimer);
     }
@@ -10060,7 +10162,6 @@ export class Ui {
     }
     if (this.mapCards) {
       for (const c of this.mapCards) {
-        c.liveCanvas = null;
         c.clip = null;
         if (c.shot) {
           c.shot.replaceChildren();
@@ -10113,6 +10214,22 @@ export class Ui {
       this.courseCardKey = null;
       this.cardSubject = null;
       this.lastCardKey = null;
+    }
+    /*
+     * THE SAME FOR THE FREESTYLE ROOM, where the world cards moved to and
+     * this stop did not. A recorder left waiting there went on after the
+     * pilot left, because whenQuiet asks only that nothing was pressed for
+     * a moment. Seen in headless Chromium: out of the room 300 ms after
+     * opening it, and for the next twelve seconds and more the title had
+     * an orbit frame building the town under it and its own world hidden
+     * (reelFreezeWorld), and a radio pilot who took off presses no key to
+     * stop it. The film of the loaded world would also have kept recording
+     * its last frame once main.js stopped drawing it. The cards are
+     * rebuilt on the way back in, from the cache.
+     */
+    if (this.screen === 'freestyle' && screen !== 'freestyle') {
+      this.stopReels();
+      this.mapCards = null;
     }
     /* ratesFrom belongs to one visit to the Rates screen. Leaving that screen
      * for anywhere else drops it, so a later show('rates') that did not come

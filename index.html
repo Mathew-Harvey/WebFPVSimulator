@@ -3664,6 +3664,18 @@
           var(--poster) center / cover no-repeat;
         justify-content: flex-end;
       }
+      /* While the loaded world is filmed onto its card (captureCurrentCard
+         in src/ui/ui.js) the picture under the wait is the world itself,
+         so the scrim goes over the film and the poster stays off it. */
+      .map-card .map-reel-wait.map-reel-wait-film {
+        background: linear-gradient(
+          to top,
+          rgba(9, 14, 10, 0.90) 0%,
+          rgba(9, 14, 10, 0.62) 42%,
+          rgba(9, 14, 10, 0.16) 100%
+        );
+        justify-content: flex-end;
+      }
       .map-reel-wait-stage {
         font-size: 13px; letter-spacing: 0.06em; color: var(--cream);
       }

@@ -50978,6 +50978,17 @@ moving cars cost 36 calls before and 39 after.
 - The drifting pictures: on the software rasteriser a frame is about a
   second, so a camera set off one pose photographs the car a step later;
   the rig places it a quarter second of the title's clock ahead.
+- The drifting pictures from the drift car's tail showed old puffs drawn
+  as solid discs of ink with stepped edges, most of the trail a pilot
+  tailing the car sits in. Stage E's smoke, not the car, but it spoils the
+  car's best view, so it is fixed here (src/maps/built/cars.js, render
+  only): the density is a sum of blobs with broad plateaus where they
+  overlap, and the ink rim, a fixed 0.07 of density over a cut that rises
+  to 0.87 with age and toward 1 as the eye comes near, took in most of a
+  plateau. The rim now narrows with the puff's age (written into the
+  puff's unused fourth component, no new buffer) and with the eye's
+  nearness. The chase pictures after: cream puffs with thin ink edges and
+  no dark discs.
 - The spend limit stopped this session twice: the lead checkpointed an edit
   as 6cc2972 and this entry as 552e21f, both left as they are.
 
@@ -50988,7 +50999,3 @@ moving cars cost 36 calls before and 39 after.
   almost all of it the thinning and freestyle collider work, which
   PROGRESS.md records change by change. NOTICE now says so and lists the
   two new hooks; making a diff file of the rest was not this task.
-- A drift puff the eye comes within 1.5 to 5 m of is drawn as a solid ink
-  blob while it thins (Stage E's smoke shader: the ink rim is a fixed 0.07
-  of density above a cut that is rising toward 1). One chase picture
-  caught it with the camera inside the trail. Not changed here.

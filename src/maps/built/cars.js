@@ -158,6 +158,7 @@ const SMOKE_VERTEX = /* glsl */ `
   attribute vec4 puff;
   varying vec2 vUv;
   varying float vCut;
+  varying float vInk;
   varying vec2 vLight;
   #include <fog_pars_vertex>
   void main() {
@@ -173,6 +174,13 @@ const SMOKE_VERTEX = /* glsl */ `
     gl_Position = projectionMatrix * mvPosition;
     vUv = corner * 0.5 + 0.5;
     vCut = mix( puff.z, 1.02, nearCut );
+    /* The ink rim narrows as the puff ages (puff.w, its age over its life)
+     * and as the cut rises for the eye. The density is a sum of blobs with
+     * broad plateaus where they overlap, so a fixed 0.07 over a cut near
+     * its top took in most of a plateau: an old puff, which is the one a
+     * pilot on the drift car's tail is sitting in, was drawn as a solid
+     * disc of ink with a stepped edge before it vanished. */
+    vInk = 0.07 * ( 1.0 - nearCut ) * ( 1.0 - puff.w * puff.w );
     /* The light from the upper left of the picture, in the puff's own
      * turned frame, so every puff is lit from the same side. */
     vec2 L = vec2( -0.7071, 0.7071 );
@@ -188,6 +196,7 @@ const SMOKE_FRAGMENT = /* glsl */ `
   uniform vec3 uInk;
   varying vec2 vUv;
   varying float vCut;
+  varying float vInk;
   varying vec2 vLight;
   #include <fog_pars_fragment>
   void main() {
@@ -196,7 +205,7 @@ const SMOKE_FRAGMENT = /* glsl */ `
     /* Denser toward the light is the side turned away from it. */
     float toward = texture2D( uMap, vUv + vLight * 0.07 ).r;
     vec3 col = toward > d + 0.03 ? uShade : uFill;
-    if ( d < vCut + 0.07 ) col = uInk;
+    if ( d < vCut + vInk ) col = uInk;
     gl_FragColor = vec4( col, 1.0 );
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -486,6 +495,7 @@ class Smoke {
         P[b4 + v * 4] = half;
         P[b4 + v * 4 + 1] = turn;
         P[b4 + v * 4 + 2] = cut;
+        P[b4 + v * 4 + 3] = u;
       }
     }
     if (live || this.live) {

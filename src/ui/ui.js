@@ -11234,10 +11234,11 @@ export class Ui {
       if (runScored === false) {
         /*
          * SCORING OFF MEANS THERE IS NO RUN, so the slot goes back to the
-         * airtime it carried before a run was a thing that ends: the sim
-         * clock since this flight began, which is what a pilot flying a
-         * pack wants beside the pack bar. See the note above about this
-         * slot having counted an airtime up in it.
+         * airtime it carried before a run was a thing that ends, which is
+         * what a pilot flying a pack wants beside the pack bar. Airtime is
+         * time in the air: main.js starts it at takeoff and holds it while
+         * the quad sits landed, so the pads read a dimmed 0.00 and not the
+         * seconds spent reading the banner. See airtimeMs there.
          */
         Ui.text(this.osdClockLabel, 'Air');
         Ui.text(this.osdTimer, running ? formatTime(lapMs) : '0.00');

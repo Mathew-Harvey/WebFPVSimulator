@@ -48569,3 +48569,46 @@ where they are and this turn's two follow them.
                                    gen-preload up to date, 202 served;
                                    the scratch View3D smoke 14 of 14 and
                                    the three.js rotation check 8 of 8
+
+## 2026-09-26 | animation | The lap export linked an elements.js that did not have frameSidesOf
+
+Export animation, and the card drawn in the moment after a publish, both
+import stage.js only when they are asked for. stage.js named frameSidesOf
+from elements.js. The page itself had already loaded the deploy that
+exports it, which is why the builder was open and the dialog could say
+what the file would be. The on demand import resolved a second copy, the
+one a browser is allowed to keep for four hours, from before that export
+existed. A named import of a function that copy does not export fails the
+module before a frame is drawn, and the dialog prints the link error.
+Publishing still put the track up. The picture is sent after that, and it
+takes the same import, so the track arrived with no animation.
+
+stage.js now imports the module as a namespace and calls frameSidesOf when
+the loaded copy has it. A copy from before the function existed draws
+every side, which is what that copy's gates were. The same file serves the
+button and the publish, so both paths get the change.
+
+RaceGOW6 Track 1 (trk-d91e5bbb, Mat, published 2026-09-26 03:10 UTC) was
+the track this happened to: hasGif false, and the row was gone from the
+board by the time the picture could be sent. The board now keeps a 32 hex
+edit key a browser already holds when the row is created again, so that
+browser still owns it, and the lap was rendered and put back on the card.
+
+### RUN LOG
+
+    node import of stage.js        links
+    leaderboard npm test           all passed, after rebasing onto 87da698.
+                                   The first run, before that rebase, failed
+                                   one check that was already on that older
+                                   main: app.js opening a bare tab. The
+                                   rebased tree does not.
+    card gif                       384 by 240, GIF89a, 102068 bytes, 1.5 s,
+                                   one lap of the published document,
+                                   13.46 m, 60 frames. Not yet on the board
+                                   at the time of this entry: the row had
+                                   been removed, and the upload waits on the
+                                   board deploy that keeps the browser's key.
+
+npm run verify was not run. This does not touch the plant, the module ABI
+or the build. node scripts/shots.js was not run. The picture is the GIF
+above, from the same exporter the button and the publish both call.

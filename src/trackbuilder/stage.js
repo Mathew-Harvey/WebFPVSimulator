@@ -47,10 +47,34 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, frameSidesOf, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
+/*
+ * A NAMESPACE IMPORT, not a named one, for frameSidesOf.
+ *
+ * The builder boots on one copy of elements.js and draws the lap from
+ * another. The page's own scripts are stamped with the deploy, and this
+ * file is not among them: it is imported when somebody asks for the
+ * animation, on demand or in the moment after a publish. A browser that
+ * still holds the previous elements.js, which is allowed for four hours,
+ * resolves that second import onto the old file. A named import of a
+ * function the old file does not export fails the module before a single
+ * frame is drawn, and the sentence the dialog shows is the link error.
+ * The namespace import links either way. A module from before the function
+ * existed draws every side, which is what every gate in that module was.
+ */
+import * as elementLib from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
 import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import { aperturesOf, elementById, apertureCenter } from './model.js';
 import { apertureFrame, apertureCorners, clamp } from './geometry.js';
+
+const ALL_SIDES = { top: true, bottom: true, left: true, right: true };
+
+function frameSidesOf(el) {
+  if (typeof elementLib.frameSidesOf === 'function') {
+    return elementLib.frameSidesOf(el);
+  }
+  return ALL_SIDES;
+}
 
 /*
  * THE CAMERA, in six numbers.

@@ -56,12 +56,14 @@ import {
   animationFilename, deleteTrack, downloadBlob, downloadTrack, keepDisplaced, listTracks,
   loadTrack, makeAutosaver, readAutosave, readFileText, saveTrack, shipMaps, trackExists, writeAutosave,
 } from './storage.js';
-/* The yard Your map flies while the map seat is empty, listed in Load as
- * the maps' one shipped row. A plain document with no imports of its own,
- * so the builder takes nothing of the simulator's world with it. Handed to
- * storage.js from here, because storage.js is on the simulator's boot
- * graph and this is not (see shipMaps). */
+/* The yard Your map flies while the map seat is empty, and the showpiece
+ * built on it, the yard with a drift course and a tandem, listed in Load
+ * as the maps' shipped rows. Plain documents with no imports but each
+ * other, so the builder takes nothing of the simulator's world with it.
+ * Handed to storage.js from here, because storage.js is on the
+ * simulator's boot graph and these are not (see shipMaps). */
 import { starterMap } from '../maps/built/starter.js';
+import { showpieceMap } from '../maps/built/showpiece.js';
 import { normaliseLogo, drawBannerPreview, drawGroundPreview } from './logo.js';
 import {
   View2D, boardPlanOf, snapYaw, turnsOf, offCompass, QUARTER_TURN,
@@ -99,7 +101,7 @@ import {
   tagsToSend,
 } from '../share/listing.js';
 
-shipMaps([starterMap()]);
+shipMaps([starterMap(), showpieceMap()]);
 
 /*
  * WHICH KIND OF TRACK A NEW ONE IS.

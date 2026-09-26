@@ -81,9 +81,10 @@ import { duplicateTrack } from './model.js';
  * THE SHIPPED MAPS, handed in by the builder (src/trackbuilder/app.js)
  * rather than imported here. This file is on the simulator's boot graph
  * (src/ui/ui.js, src/share/listing.js and src/maps/custom.js import it),
- * and the one shipped map is Your map's starter yard, which lives with Your
- * map in src/maps/built and stays off the wire until that world is chosen
- * (scripts/memory-check.js fails a boot that fetches it). The simulator
+ * and the shipped maps are Your map's starter yard and the showpiece built
+ * on it, which live with Your map in src/maps/built and stay off the wire
+ * until that world is chosen (scripts/memory-check.js fails a boot that
+ * fetches the starter). The simulator
  * never lists or opens a map from the library, so it never hands any in
  * and loses nothing.
  */
@@ -141,9 +142,11 @@ export function listTracks(cls = activeTrackClass(), mode = 'race') {
    * publishes like any other track and the shipped one stays pristine
    * beside it. That is the whole of the copy on write.
    *
-   * A map's shipped set is the starter yard, on the same terms. It is what
-   * a pilot who has built nothing flies as Your map, and without this row
-   * it was the one map they had flown that the builder could not open.
+   * A map's shipped set is the starter yard and the showpiece, on the
+   * same terms. The yard is what a pilot who has built nothing flies as
+   * Your map, and without its row it was the one map they had flown that
+   * the builder could not open. The showpiece is the yard with a drift
+   * course and a tandem, the map the front door flies.
    */
   const stock = (mode === 'freestyle' ? shippedMaps : presetsForClass(cls))
     .map((d) => summarise(d, true));

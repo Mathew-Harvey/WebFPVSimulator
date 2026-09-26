@@ -31,11 +31,13 @@
  *                  from under it and a climb meets its underside; and the
  *                  builder's copy of the module's grid (fs-crowded) drops
  *                  what the module drops, and no map here is over it
- *   5. starter     the starter map (src/maps/built/starter.js): no two
- *                  elements' solids overlap, every named gap is clear, and
- *                  the craft takes off from its pads, and from the same
- *                  pads raised onto the office roof, seated where the
- *                  shell seats it, on the map's own ground
+ *   5. starter     the starter map (src/maps/built/starter.js) and the
+ *                  showpiece built on it (showpiece.js): no two elements'
+ *                  solids overlap, every named gap is clear, the builder
+ *                  has nothing to warn about, and the craft takes off from
+ *                  the pads, and on the starter from the same pads raised
+ *                  onto the office roof, seated where the shell seats it,
+ *                  on the map's own ground
  *   6. scene       a map's time of day and ground change paint and light
  *                  and never a solid
  *   7. egg         where the STF mark goes (src/maps/built/egg.js): on a
@@ -1867,7 +1869,9 @@ async function physicsBlock(world) {
   }
   try {
     const starter = (await import(pathToFileURL(join(root, 'src/maps/built/starter.js')).href)).starterMap();
-    await gridScenario([['the map of everything', placed], ['the starter', placeDocument(normalize(starter).doc)]]);
+    const showpiece = (await import(pathToFileURL(join(root, 'src/maps/built/showpiece.js')).href)).showpieceMap();
+    await gridScenario([['the map of everything', placed], ['the starter', placeDocument(normalize(starter).doc)],
+      ['the showpiece', placeDocument(normalize(showpiece).doc)]]);
   } catch (e) {
     fail('(e) the module grid', e.stack);
   }
@@ -1916,24 +1920,44 @@ function windowClearance(w, s) {
   return minConvex((t) => pointWindowDist(lerp(c0, c1, t), w)) - r;
 }
 
+/*
+ * The maps this block holds: the starter, and the showpiece built on it
+ * (src/maps/built/showpiece.js), the starter's yard with a drift course
+ * added. The pads on the office roof are the starter's own scenario.
+ */
+const SHIPPED = [
+  { label: 'the starter', file: 'src/maps/built/starter.js', make: 'starterMap', roof: true },
+  { label: 'the showpiece', file: 'src/maps/built/showpiece.js', make: 'showpieceMap', roof: false },
+];
+
 async function starterBlock() {
-  console.log('\n5. starter: src/maps/built/starter.js');
-  const path = join(root, 'src/maps/built/starter.js');
+  for (const map of SHIPPED) {
+    await mapBlock(map);
+  }
+}
+
+async function mapBlock(map) {
+  const L = map.label;
+  console.log(`\n5. ${L.slice(4)}: ${map.file}`);
+  const path = join(root, map.file);
   if (!existsSync(path)) {
-    skip('the starter map', 'src/maps/built/starter.js does not exist yet');
+    skip(`${L} map`, `${map.file} does not exist yet`);
     return;
   }
   let mod;
   try {
     mod = await import(pathToFileURL(path).href);
   } catch (e) {
-    fail('the starter map imports', e.message);
+    fail(`${L} map imports`, e.message);
     return;
   }
-  const { doc, repairs } = normalize(mod.starterMap());
-  check('the starter normalizes with no repairs', repairs.length === 0, repairs.join(' | ') || `${doc.elements.length} elements`);
+  const { doc, repairs } = normalize(mod[map.make]());
+  check(`${L} normalizes with no repairs`, repairs.length === 0, repairs.join(' | ') || `${doc.elements.length} elements`);
   const placed = placeDocument(doc);
-  check('the starter: nothing inflated', (placed.stats.inflated || 0) === 0, `${placed.stats.inflated || 0}`);
+  check(`${L}: nothing inflated`, (placed.stats.inflated || 0) === 0, `${placed.stats.inflated || 0}`);
+  const report = freestyleReport(doc).warnings;
+  check(`${L}: the builder report is clean`, report.length === 0,
+    report.map((w) => `${w.code}: ${w.message}`).join(' | ') || 'no warnings');
   console.log(`        ${countShapes(placed)}, placement hash ${placementHash(placed)}`);
   const ranges = itemRanges(placed);
 
@@ -1970,7 +1994,7 @@ async function starterBlock() {
     }
   }
   const over = [...overlaps].sort((p, q) => p[1].c - q[1].c);
-  check("the starter: no two elements' solids overlap", over.length === 0,
+  check(`${L}: no two elements' solids overlap`, over.length === 0,
     over.length
       ? over.map(([k, v]) => `${k}: ${v.n} solid pairs, deepest ${v.parts} ${r3(-v.c)} m in`).join('; ')
       : `${pairs} nearby solid pairs measured`);
@@ -1981,7 +2005,7 @@ async function starterBlock() {
 
   /* Every named gap's window is clear of every solid. */
   if (placed.zones.length === 0) {
-    fail('the starter has named gaps', 'none');
+    fail(`${L} has named gaps`, 'none');
   }
   for (const z of placed.zones) {
     const w = windowOf(z);
@@ -2001,16 +2025,39 @@ async function starterBlock() {
         }
       }
     }
-    check(`the starter: ${z.name} (${r3(z.w)} by ${r3(z.h)} m) is clear of every solid`, worst > 0,
+    check(`${L}: ${z.name} (${r3(z.w)} by ${r3(z.h)} m) is clear of every solid`, worst > 0,
       worst === Infinity ? what : `nearest ${what} at ${r3(worst)} m`);
   }
 
-  /*
-   * THE PADS ON THE ROOF. The same map with its pads moved onto the open
-   * north half of the office roof, facing north, at a Base of the roof's
-   * 15 m: the builder has nothing to say, and the simulator seats the
-   * craft on the roof, on a mat.
-   */
+  /* And the pilot can take off where the map puts them, with the shell's
+   * own ground under them. */
+  if (!(await loadModule())) {
+    fail(`${L} in the module`, 'dist/sim.wasm does not exist');
+  } else {
+    try {
+      const colliders = buildColliders(placed);
+      const sim = await newSim();
+      const up = upload(sim, colliders);
+      check(`${L}: sim_world_build returns the count`, up.built === placed.solids.length && up.count === up.built,
+        `${up.built} for ${placed.solids.length} solids`);
+      const height = (x, z, fromY, cgY) => groundUnder(placed.tops, x, z, fromY, cgY);
+      await spawnScenario({ placed, colliders, height }, builtFrame(placed), `${L} spawn`);
+    } catch (e) {
+      fail(`${L} in the module`, e.message);
+    }
+  }
+  if (map.roof) {
+    await officeRoofPads(mod, ranges);
+  }
+}
+
+/*
+ * THE PADS ON THE ROOF. The starter with its pads moved onto the open north
+ * half of the office roof, facing north, at a Base of the roof's 15 m: the
+ * builder has nothing to say, and the simulator seats the craft on the
+ * roof, on a mat, and the pilot can take off from it.
+ */
+async function officeRoofPads(mod, ranges) {
   const raised = mod.starterMap();
   const padsEl = raised.elements.find((e) => e.type === 'startPads');
   padsEl.position = { x: 42, y: 129, z: 15 };
@@ -2026,25 +2073,13 @@ async function starterBlock() {
   const roofWarn = freestyleReport(roofDoc).warnings;
   check('the starter, pads on the office roof: the builder report is clean', roofWarn.length === 0,
     roofWarn.map((w) => `${w.code}: ${w.message}`).join(' | ') || 'no warnings');
-
-  /* And the pilot can take off where the starter puts them, on the ground
-   * and on the roof, with the shell's own ground under them. */
-  if (!(await loadModule())) {
-    fail('the starter in the module', 'dist/sim.wasm does not exist');
-  } else {
+  if (await loadModule()) {
     try {
-      const colliders = buildColliders(placed);
-      const sim = await newSim();
-      const up = upload(sim, colliders);
-      check('the starter: sim_world_build returns the count', up.built === placed.solids.length && up.count === up.built,
-        `${up.built} for ${placed.solids.length} solids`);
-      const height = (x, z, fromY, cgY) => groundUnder(placed.tops, x, z, fromY, cgY);
-      await spawnScenario({ placed, colliders, height }, builtFrame(placed), 'the starter spawn');
       const roofHeight = (x, z, fromY, cgY) => groundUnder(roofPlaced.tops, x, z, fromY, cgY);
       await spawnScenario({ placed: roofPlaced, colliders: buildColliders(roofPlaced), height: roofHeight },
         builtFrame(roofPlaced), 'the starter, pads on the office roof');
     } catch (e) {
-      fail('the starter in the module', e.message);
+      fail('the starter, pads on the office roof, in the module', e.message);
     }
   }
 }

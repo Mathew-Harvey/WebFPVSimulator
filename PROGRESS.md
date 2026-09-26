@@ -50762,3 +50762,92 @@ nanachome 567 ms, shotengai 412, school 385, kohan 368, tunnel 293.
 
     npm run lint:preload        up to date, boot 113, city 73, built 32; 215
     npm run verify              not run: no physics, plant, ABI or build
+
+## 2026-09-26 | maps, builder, checks | Hibari Yard Tandem: the showpiece map, a drift course and a tandem
+
+### What changed
+
+`src/maps/built/showpiece.js`: a second shipped freestyle map, Hibari Yard
+Tandem, id `trk-1b4a7d7a`. It is `starterMap()` with every element and id
+unchanged, the plot 94 m deeper to the north (160 by 254), and twenty
+elements added from `el-57` on: a one lane drift course 10 m wide on 22 m
+bends, 335.5 m round, driven counter clockwise; two sedans on it, both
+drifting at 20 m/s, 8 m apart along the line at step zero; a road overpass
+across the main straight with a named gap under it, OVERPASS, 500; four 40
+ft containers two high round the outside of the north west corner, the
+clipping wall; six lamps; a sponsor board; four sakura in the infield. The
+builder lists it in Load beside the starter (`shipMaps` in
+`src/trackbuilder/app.js`).
+
+The owner asked for a showpiece on Hibari Yard with two drift cars in sync
+chased by the quad, framed like D1 drift footage, for the landing page's
+freestyle chapter, and for it to be published on the board.
+
+### Why a second document and not the starter grown
+
+The course needs the plot deeper, and `docToWorld` measures every element
+from the plot's middle, so a deeper starter moves every world coordinate of
+the yard. `scripts/lib/worldruns.js` flies the starter for the world
+golden, and a golden change would need the owner's approval for a drift
+course. The showpiece carries the starter whole instead, so its yard is the
+same yard.
+
+### The tandem is in sync by construction
+
+Two cars on one road at one top speed and one cornering share the module's
+speed table (world.c section 5), so the chase car is the lead car a fixed
+time later. roads-check now measures it: over 30 minutes of clock, read
+every millisecond, the chase is 450.171 ms behind and the gap varies by
+3.8e-5 ms, which is the reading's own interpolation. The gap was picked on
+the module's poses: with the chase 10 m behind the nearest the two
+footprints come in a lap is 2.67 m, 9 m 1.31 m, 8 m 0.84 m, 7 m 0.32 m, and
+at 6 m one drives through the other. 8 m, nearest 0.836 m, at the exit of
+the transition.
+
+### The checks, generalised rather than copied
+
+`scripts/roads-check.js` blocks 3 to 5 ran on the starter alone. They now
+run once for each map in `MAPS` (the starter and the showpiece): block 3
+for every drift car rather than the first, block 4 for every road rather
+than the first, block 5 for each map, with a new check that every tandem,
+two cars sharing a speed table, holds its time gap to `SYNC_MS`, a
+microsecond, argued beside the constant. Block 1 takes every shipped road.
+The first loop's sanity test runs once, as before.
+
+One change to a check's meaning, recorded here because it is not a
+threshold but it did decide a result. Block 3 judged a drift car's slide in
+"every bend it reached in 20 s", and the tandem's chase car was 1 ms into
+the north east bend when the window closed, with a slide of 1.1 degrees so
+far, which failed it. It now judges a bend on a whole pass through it: a
+pass counts when the car next stands on a straight or in another bend, and
+the bend the window closes on still counts when the car has already slid
+past the bar in it, so the starter's drift car is judged on the same five
+bends it always was. `SLIP_IN_BEND` is unchanged.
+
+`scripts/props-check.js` block 5 ran on the starter. It now runs on both
+(`SHIPPED`): normalizes with no repairs, nothing inflated, the builder's own
+report clean (new, and clean on both), no two elements' solids overlap,
+every named gap clear, the spawn clear in the module. The pads on the
+office roof stay the starter's own scenario. The module grid scenario (e)
+takes the showpiece too.
+
+### Checked
+
+    node scripts/roads-check.js      all passed, 50 checks, 9.7 s
+                                     tandem gap 450.171 ms, varying 3.8e-5 ms
+                                     tandem nearest 0.836 m; each drift car
+                                     slides 43.6 degrees in every bend
+                                     every car 2 m from every solid: the
+                                     tandem's nearest 5.02 m, the wall
+                                     the course keeps 1.83 m from the wall
+    node scripts/props-check.js      all passed, 218 checks, 4.4 s
+                                     OVERPASS clear by 1.045 m
+    npm run check:clip               876 passed, 0 failed
+    npm run lint:preload             regenerated for the new module, 216
+                                     served, up to date
+
+### RUN LOG
+
+    npm run verify              not run: no physics, plant, ABI or build
+                                change; the showpiece is a document and the
+                                checks above hold it in the module

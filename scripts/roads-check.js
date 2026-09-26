@@ -1,6 +1,6 @@
 /*
- * roads-check.js: the road tool's geometry and the starter's traffic, held
- * to what the physics module accepts and how it drives.
+ * roads-check.js: the road tool's geometry and the shipped maps' traffic,
+ * held to what the physics module accepts and how it drives.
  *
  * WHY. A road is a list of an author's nodes, and what reaches the physics
  * is the line src/maps/built/road.js eases out of them. The module
@@ -9,42 +9,50 @@
  * keeps, so a corner handed over as one point is a lurch and a curvature
  * that steps from nothing to a bend's full is a drift car's heading
  * kicking. None of that shows in a screenshot. This file looks for it in
- * plain Node, against dist/sim.wasm, in four blocks:
+ * plain Node, against dist/sim.wasm, in five blocks, the last three once
+ * for each shipped map with traffic (MAPS: the starter, and the showpiece,
+ * src/maps/built/showpiece.js, which is the starter's yard with a drift
+ * course and a tandem added):
  *
- *   1. shapes    the starter's road and a hostile set of control polygons
- *                (hairpins, near and exact folds, short legs, duplicate and
- *                collinear nodes, two node roads, closed triangles, a
- *                zigzag, a star, seeded random polygons, a loop round the
- *                edge of a 1 km field): road.js never throws and never makes
- *                a NaN, and gives either a line or an error problem. Every
- *                line, and every lane line of a two lane loop, is spaced as
- *                road.js promises, turns well under 30 degrees at every
- *                point, has zero curvature at both ends of every bend and
- *                no step in curvature inside one, and is ACCEPTED by
- *                sim_world_road, which returns an index. And road.js and
- *                traffic.js call no JS trigonometry, pow, exp or hypot
+ *   1. shapes    the shipped maps' roads and a hostile set of control
+ *                polygons (hairpins, near and exact folds, short legs,
+ *                duplicate and collinear nodes, two node roads, closed
+ *                triangles, a zigzag, a star, seeded random polygons, a
+ *                loop round the edge of a 1 km field): road.js never throws
+ *                and never makes a NaN, and gives either a line or an error
+ *                problem. Every line, and every lane line of a two lane
+ *                loop, is spaced as road.js promises, turns well under 30
+ *                degrees at every point, has zero curvature at both ends of
+ *                every bend and no step in curvature inside one, and is
+ *                ACCEPTED by sim_world_road, which returns an index. And
+ *                road.js and traffic.js call no JS trigonometry, pow, exp
+ *                or hypot
  *   2. mirror    road.js moduleCheck says what the module says, on roads
  *                the module refuses (an uneased corner, a 1 cm segment, a
  *                point past 1e6 m) and on every line of block 1, and the
  *                checks of block 1 fail an uneased polygon, so they can
- *   3. starter   trafficOf(starterMap()) uploads through uploadTraffic with
- *                no problem, and 20 s of the module's clock, set step by
- *                step with sim_world_clock and read with readVehicles, give
+ *   3. traffic   trafficOf(the map) uploads through uploadTraffic with no
+ *                problem, and 20 s of the module's clock, set step by step
+ *                with sim_world_clock and read with readVehicles, give
  *                finite poses, every car on its own line to a micrometre,
- *                ordinary cars that never slip, and a drift car that slides
- *                in every bend and not on a straight; and, as a target, how
- *                far its yaw rate steps in a millisecond (YAW_STEP_TARGET)
- *   4. yard      over a whole lap of each car, every car's box stays at
- *                least CAR_CLEAR from every solid of the starter's that it
- *                could reach, the drift car's slide included; the road's
+ *                ordinary cars that never slip, and drift cars that each
+ *                slide in every bend they drive all the way through and
+ *                none on a straight; and, as a
+ *                target, how far each one's yaw rate steps in a millisecond
+ *                (YAW_STEP_TARGET)
+ *   4. solids    over a whole lap of each car, every car's box stays at
+ *                least CAR_CLEAR from every solid of the map's that it
+ *                could reach, the drift cars' slides included; every road's
  *                width keeps ROAD_CLEAR from every solid under a car's roof
  *                height and PADS_CLEAR from the start pads; the two working
  *                vehicles' laps agree to LAP_MATCH
  *   5. traffic   over OVERLAP_MS of clock, every millisecond, no two of the
- *                starter's cars ever overlap in plan (the physics lets one
- *                car drive through another, so the map has to keep them
- *                apart), and the same test finds the overlaps the
- *                starter's first loop had, so it can see one
+ *                map's cars ever overlap in plan (the physics lets one car
+ *                drive through another, so the map has to keep them
+ *                apart), the same test finds the overlaps the starter's
+ *                first loop had, so it can see one, and every tandem, two
+ *                cars sharing a road's speed table, holds its time gap to
+ *                SYNC_MS
  *
  * A threshold here is never widened to make a line pass (CLAUDE.md); the
  * argument goes in PROGRESS.md.
@@ -80,6 +88,7 @@ import { placeSolids } from '../src/props/solids.js';
 import { seededRandom } from '../src/props/parts.js';
 import { normalize } from '../src/trackbuilder/model.js';
 import { starterMap } from '../src/maps/built/starter.js';
+import { showpieceMap } from '../src/maps/built/showpiece.js';
 import { placeDocument, docToWorld } from '../src/maps/built/place.js';
 import {
   roadOf, roadNodesOf, centreLine, laneLine, nearestOn, moduleCheck,
@@ -140,6 +149,16 @@ const LAP_MATCH = 0.005;
  * span the foundation measured the first loop's overlaps over, a dozen
  * meetings of every pair at every point of the loop. */
 const OVERLAP_MS = 30 * 60 * 1000;
+/* A tandem's time gap, ms: how much it may wander over OVERLAP_MS. Two cars
+ * on one road at one top speed and one cornering share the module's speed
+ * table, so the one behind is the one in front a fixed time later, and the
+ * gap should not move at all. What it can move by here is the reading: the
+ * lead's distance is sampled every millisecond and read between samples
+ * as a straight line, which is out by a·h²/8 in distance, a millionth of a
+ * metre at the module's 8 m/s/s, and a tenth of a microsecond in time at
+ * the tandem's slowest. A microsecond is ten times that, and a quarter of
+ * a millimetre at 20 m/s. */
+const SYNC_MS = 0.001;
 
 let failures = 0;
 function check(name, ok, detail) {
@@ -399,9 +418,9 @@ function roadElement(shape, i) {
   };
 }
 
-async function shapesBlock(sim, shapes, starterRoad) {
-  console.log('\n1. shapes: road.js on the starter\'s road and on hostile control polygons');
-  const all = [{ name: 'the starter\'s yard loop', el: starterRoad, field: 160 }, ...shapes.map((s, i) => ({ name: s.name, el: roadElement(s, i), field: s.field ?? 160 }))];
+async function shapesBlock(sim, shapes, shipped) {
+  console.log('\n1. shapes: road.js on the shipped maps\' roads and on hostile control polygons');
+  const all = [...shipped, ...shapes.map((s, i) => ({ name: s.name, el: roadElement(s, i), field: s.field ?? 160 }))];
   let lines = 0;
   let refusedByModule = [];
   let faulty = [];
@@ -448,7 +467,7 @@ async function shapesBlock(sim, shapes, starterRoad) {
       if (faults.worstStep > worstStep.step) {
         worstStep = { step: faults.worstStep, name: `${s.name}, ${label}` };
       }
-      const xyz = simXYZ(line, s.field, s.field);
+      const xyz = simXYZ(line, s.field, s.depth ?? s.field);
       const code = moduleTakes(sim, xyz, line.closed);
       if (code < 0) {
         refusedByModule.push(`${s.name}, ${label}: ${simErrorName(code)}`);
@@ -616,12 +635,14 @@ function boundsOf(s) {
 }
 
 /*
- * The comparison the yaw rate target is printed beside: the drift car on
- * the starter's loop with its bends built with no easing (road.js ramp 0,
- * circular arcs), in a module of its own, over the same 20 s.
+ * The comparison the yaw rate target is printed beside: a drift car on its
+ * own road with that road's bends built with no easing (road.js ramp 0,
+ * circular arcs), in a module of its own, over the same 20 s. For a car in
+ * the node order, whose lane is the left one, or the centre of a one lane
+ * road.
  */
-async function unrampedYawStep(wasm, doc, traffic) {
-  const roadEl = doc.elements.find((e) => e.type === 'road');
+async function unrampedYawStep(wasm, doc, traffic, v) {
+  const roadEl = doc.elements.find((e) => e.id === traffic.roads[v.road].element);
   const r = roadOf(roadEl);
   const c = centreLine(roadNodesOf(roadEl), true, { radius: r.radius, floor: DRIVE_RADIUS_MIN + r.laneOffset, ramp: 0 });
   const lane = laneLine(c, r.laneOffset);
@@ -629,7 +650,6 @@ async function unrampedYawStep(wasm, doc, traffic) {
   sim.e.sim_world_clear();
   sim.e.sim_world_build();
   const road = uploadRoad(sim, lane.points.map((p) => docToWorld(doc.field.width, doc.field.depth, p.x, p.y, 0)), true);
-  const v = traffic.vehicles.find((q) => q.drift > 0);
   addVehicle(sim, 0, road, v);
   const poses = makeVehiclePoses();
   let prev = null;
@@ -645,14 +665,30 @@ async function unrampedYawStep(wasm, doc, traffic) {
   return worst;
 }
 
-async function starterBlocks(wasm) {
-  const { doc, repairs } = normalize(starterMap());
+/*
+ * The shipped maps with traffic, each held to blocks 3, 4 and 5: the
+ * starter, and the showpiece, which is the starter's yard with a drift
+ * course and a tandem added (src/maps/built/showpiece.js). Both carry the
+ * yard loop's box truck and kei van, whose laps block 4 holds together.
+ */
+const MAPS = [
+  { label: 'starter', call: 'starterMap()', make: starterMap },
+  { label: 'showpiece', call: 'showpieceMap()', make: showpieceMap },
+];
+
+/* A car as a line of the report names it. */
+function carName(v) {
+  return `${v.element} ${v.style}${v.name ? ` '${v.name}'` : ''}`;
+}
+
+async function mapBlocks(wasm, map) {
+  const { doc, repairs } = normalize(map.make());
   const W = doc.field.width;
   const D = doc.field.depth;
   const traffic = trafficOf(doc);
-  console.log('\n3. starter: trafficOf(starterMap()) in the module, 20 s of its clock');
-  check('the starter normalizes with no repairs', repairs.length === 0, repairs.join('; '));
-  check('trafficOf the starter: no problems', traffic.problems.length === 0,
+  console.log(`\n3. ${map.label}: trafficOf(${map.call}) in the module, 20 s of its clock`);
+  check(`the ${map.label} normalizes with no repairs`, repairs.length === 0, repairs.join('; '));
+  check(`trafficOf the ${map.label}: no problems`, traffic.problems.length === 0,
     traffic.problems.map((p) => `${p.code} ${p.message}`).join('; ') || `${traffic.roads.length} lanes, ${traffic.vehicles.length} vehicles`);
   const sim = await loadSim(wasm);
   sim.e.sim_world_clear();
@@ -671,13 +707,25 @@ async function starterBlocks(wasm) {
   let offWhere = '';
   let plainSlip = 0;
   let straightSlip = 0;
-  let yawStep = 0;
-  let yawAt = 0;
-  const drift = cars.findIndex((v) => v.drift > 0);
-  /* Which bends the drift car has slid in: by the node each bend belongs
-   * to, on its own line. */
-  const bendSlip = new Map();
-  let prevYaw = null;
+  const drifting = cars.map((v) => v.drift > 0);
+  /* Which bends each drift car has slid in: by the node each bend belongs
+   * to, on its own line, and only for a pass through the whole bend. A pass
+   * counts when the car next stands on a straight or in another bend, so
+   * the bend a car is in when the window opens or closes is not judged on
+   * the part of it the window saw: with two cars on one road, one of them
+   * is always a few metres into a bend somewhere. The one the window closes
+   * on still counts when the car has already slid in it. And each drift
+   * car's largest step in yaw rate. */
+  const bendSlip = cars.map(() => new Map());
+  const pass = cars.map(() => ({ node: -1, max: 0, whole: false }));
+  const commit = (k) => {
+    const q = pass[k];
+    if (q.node !== -1 && q.whole) {
+      bendSlip[k].set(q.node, Math.max(bendSlip[k].get(q.node) ?? 0, q.max));
+    }
+    q.node = -1;
+  };
+  const yaw = cars.map(() => ({ prev: null, step: 0, at: 0 }));
   for (let step = 0; step <= 20000; step += 1) {
     setVehicleClock(sim, step);
     readVehicles(sim, poses);
@@ -688,7 +736,7 @@ async function starterBlocks(wasm) {
       if (!p.on || nums.some((q) => !Number.isFinite(q))) {
         finite = false;
       }
-      if (step % 10 !== 0 && k !== drift) {
+      if (step % 10 !== 0 && !drifting[k]) {
         continue;
       }
       const line = lines[v.road];
@@ -698,7 +746,7 @@ async function starterBlocks(wasm) {
         offLine = near.d;
         offWhere = `${v.element} ${v.style} at step ${step}`;
       }
-      if (k !== drift) {
+      if (!drifting[k]) {
         plainSlip = Math.max(plainSlip, Math.abs(p.slip));
         continue;
       }
@@ -717,34 +765,58 @@ async function starterBlocks(wasm) {
       }
       if (straight) {
         straightSlip = Math.max(straightSlip, Math.abs(p.slip));
+        commit(k);
       } else if (line.node[idx] !== -1) {
         const n = line.node[idx];
-        bendSlip.set(n, Math.max(bendSlip.get(n) ?? 0, Math.abs(p.slip)));
+        const q = pass[k];
+        if (q.node !== n) {
+          commit(k);
+          q.node = n;
+          q.max = 0;
+          q.whole = step > 0;
+        }
+        q.max = Math.max(q.max, Math.abs(p.slip));
       }
-      if (prevYaw !== null && Math.abs(p.yawRate - prevYaw) > yawStep) {
-        yawStep = Math.abs(p.yawRate - prevYaw);
-        yawAt = step;
+      const y = yaw[k];
+      if (y.prev !== null && Math.abs(p.yawRate - y.prev) > y.step) {
+        y.step = Math.abs(p.yawRate - y.prev);
+        y.at = step;
       }
-      prevYaw = p.yawRate;
+      y.prev = p.yawRate;
     }
   }
+  pass.forEach((q, k) => {
+    if (q.node !== -1 && q.max > SLIP_IN_BEND) {
+      bendSlip[k].set(q.node, Math.max(bendSlip[k].get(q.node) ?? 0, q.max));
+    }
+  });
   check('20 s of poses: every car on, every number finite', finite);
   check(`every car on its own line, to ${ON_LINE} m`, offLine === 0, offLine ? `${r3(offLine)} m off, ${offWhere}` : 'all on');
   check('the ordinary cars never slip', plainSlip === 0, `largest tan(slip / 2) ${plainSlip}`);
-  const dline = lines[cars[drift].road];
-  const bends = [...new Set(dline.node.filter((n) => n !== -1))];
-  const slid = bends.filter((n) => (bendSlip.get(n) ?? 0) > SLIP_IN_BEND);
-  check(`the drift car slides in every bend it reached in 20 s, tan(slip / 2) past ${SLIP_IN_BEND}`,
-    slid.length === bendSlip.size && bendSlip.size >= 4,
-    [...bendSlip].map(([n, t]) => `node ${n + 1} ${r3((2 * Math.atan(t) * 180) / Math.PI)} deg`).join(', '));
-  check(`and not on a straight: tan(slip / 2) under ${SLIP_ON_STRAIGHT}`, straightSlip < SLIP_ON_STRAIGHT, `largest ${straightSlip}`);
-  const unramped = await unrampedYawStep(wasm, doc, traffic);
-  target(`its yaw rate steps by no more than ${YAW_STEP_TARGET} rad/s in a millisecond`, yawStep <= YAW_STEP_TARGET,
-    `largest ${r3(yawStep)} rad/s, at step ${yawAt}; the same loop with its bends' easing taken out, ${r3(unramped)} rad/s`);
+  const drifters = cars.map((v, k) => k).filter((k) => drifting[k]);
+  check(`the ${map.label} has a drift car`, drifters.length > 0, `${drifters.length}`);
+  for (const k of drifters) {
+    const slid = [...bendSlip[k]].filter(([, t]) => t > SLIP_IN_BEND);
+    check(`${carName(cars[k])}, a drift car, slides in every bend it drove through in 20 s, tan(slip / 2) past ${SLIP_IN_BEND}`,
+      slid.length === bendSlip[k].size && bendSlip[k].size >= 4,
+      [...bendSlip[k]].map(([n, t]) => `node ${n + 1} ${r3((2 * Math.atan(t) * 180) / Math.PI)} deg`).join(', '));
+  }
+  check(`and none slides on a straight: tan(slip / 2) under ${SLIP_ON_STRAIGHT}`, straightSlip < SLIP_ON_STRAIGHT, `largest ${straightSlip}`);
+  /* The comparison, once for each road a drift car drives. */
+  const unramped = new Map();
+  for (const k of drifters) {
+    const road = traffic.roads[cars[k].road];
+    if (!unramped.has(road.index)) {
+      unramped.set(road.index, road.reverse ? null : await unrampedYawStep(wasm, doc, traffic, cars[k]));
+    }
+    const u = unramped.get(road.index);
+    target(`${carName(cars[k])}: its yaw rate steps by no more than ${YAW_STEP_TARGET} rad/s in a millisecond`, yaw[k].step <= YAW_STEP_TARGET,
+      `largest ${r3(yaw[k].step)} rad/s, at step ${yaw[k].at}${u === null ? '' : `; the same road with its bends' easing taken out, ${r3(u)} rad/s`}`);
+  }
   note(`drift gain ${DRIFT.gain}, cornering ${DRIFT.lateral} m/s/s`);
 
   /* ---- 4. the yard ---- */
-  console.log('\n4. yard: the loop and its cars against the starter\'s solids');
+  console.log(`\n4. ${map.label}: its roads and cars against its solids`);
   const placed = placeDocument(doc);
   const owner = [];
   for (const it of placed.items) {
@@ -810,39 +882,40 @@ async function starterBlocks(wasm) {
     });
   }
   cars.forEach((v, k) => {
-    check(`${v.element} ${v.style}${v.drift ? ', the drift car,' : ''} keeps ${CAR_CLEAR} m from every solid over its whole lap (${r3(laps[k] / 1000)} s)`,
+    check(`${carName(v)}${v.drift ? ', a drift car,' : ''} keeps ${CAR_CLEAR} m from every solid over its whole lap (${r3(laps[k] / 1000)} s)`,
       worst[k].gap >= CAR_CLEAR, `nearest ${worst[k].what} at ${r3(worst[k].gap)} m, the car at ${worst[k].at}`);
   });
-  /* The road's own 6 m, against every solid a car could reach: under the
-   * tallest car's roof. */
-  const roadEl = doc.elements.find((e) => e.type === 'road');
-  const road = roadOf(roadEl);
+  /* Every road's own width, against every solid a car could reach: under
+   * the tallest car's roof. */
   const tallest = Math.max(...cars.map((v) => v.clearance + v.height));
-  let band = { d: Infinity, what: '', at: '' };
-  for (const p of road.centre.points) {
-    const w = docToWorld(W, D, p.x, p.y, 0);
-    for (let i = 0; i < bounds.length; i += 1) {
-      const b = bounds[i];
-      if (b[1] >= tallest) {
-        continue;
-      }
-      const dx = Math.max(b[0] - w.x, 0, w.x - b[3]);
-      const dz = Math.max(b[2] - w.z, 0, w.z - b[5]);
-      const d = Math.sqrt(dx * dx + dz * dz) - road.width / 2;
-      if (d < band.d) {
-        band = { d, what: `${owner[i]} ${placed.solids[i].name || ''}`, at: `(${r3(p.x)}, ${r3(p.y)})` };
+  const pads = doc.elements.find((e) => e.type === 'startPads');
+  for (const roadEl of doc.elements.filter((e) => e.type === 'road')) {
+    const road = roadOf(roadEl);
+    let band = { d: Infinity, what: '', at: '' };
+    for (const p of road.centre.points) {
+      const w = docToWorld(W, D, p.x, p.y, 0);
+      for (let i = 0; i < bounds.length; i += 1) {
+        const b = bounds[i];
+        if (b[1] >= tallest) {
+          continue;
+        }
+        const dx = Math.max(b[0] - w.x, 0, w.x - b[3]);
+        const dz = Math.max(b[2] - w.z, 0, w.z - b[5]);
+        const d = Math.sqrt(dx * dx + dz * dz) - road.width / 2;
+        if (d < band.d) {
+          band = { d, what: `${owner[i]} ${placed.solids[i].name || ''}`, at: `(${r3(p.x)}, ${r3(p.y)})` };
+        }
       }
     }
+    check(`${roadEl.id} '${roadEl.name}': its ${road.width} m keep ${ROAD_CLEAR} m from every solid under ${r3(tallest)} m`, band.d >= ROAD_CLEAR,
+      `nearest ${band.what} at ${r3(band.d)} m, from the centre line at ${band.at}`);
+    const nearPads = nearestOn(road.centre, pads.position.x, pads.position.y);
+    check(`and ${PADS_CLEAR} m from the start pads`, nearPads.d - road.width / 2 >= PADS_CLEAR, `${r3(nearPads.d - road.width / 2)} m`);
   }
-  check(`the road's ${road.width} m keep ${ROAD_CLEAR} m from every solid under ${r3(tallest)} m`, band.d >= ROAD_CLEAR,
-    `nearest ${band.what} at ${r3(band.d)} m, from the centre line at ${band.at}`);
-  const pads = doc.elements.find((e) => e.type === 'startPads');
-  const nearPads = nearestOn(road.centre, pads.position.x, pads.position.y);
-  check(`and ${PADS_CLEAR} m from the start pads`, nearPads.d - road.width / 2 >= PADS_CLEAR, `${r3(nearPads.d - road.width / 2)} m`);
   const truck = cars.findIndex((v) => v.style === 'boxtruck');
   const van = cars.findIndex((v) => v.style === 'keivan');
   if (truck < 0 || van < 0) {
-    check('the starter has its box truck and kei van', false);
+    check(`the ${map.label} has its box truck and kei van`, false);
   } else {
     /* Ten laps each, so a millisecond's rounding of the clock is a tenth of
      * one in a lap. */
@@ -927,9 +1000,41 @@ function overlapOf(pa, ca, pb, cb) {
 }
 
 /*
+ * THE TANDEMS: every two cars on one road at one top speed and one
+ * cornering, which share the module's speed table, so the one behind is the
+ * one in front a fixed time later. Which is behind is the one whose offset
+ * is less than half a lap behind the other's. `shift` puts the chase car's
+ * distance on the lead's count: the module's distance is the offset plus
+ * what has been driven, so a lead whose offset is the smaller number is a
+ * lap ahead of it.
+ */
+function tandemsOf(traffic) {
+  const cars = traffic.vehicles;
+  const out = [];
+  for (let i = 0; i < cars.length; i += 1) {
+    for (let j = i + 1; j < cars.length; j += 1) {
+      const a = cars[i];
+      const b = cars[j];
+      if (a.road !== b.road || a.topSpeed !== b.topSpeed || a.lateral !== b.lateral) {
+        continue;
+      }
+      const L = traffic.roads[a.road].length;
+      const ahead = (((a.offset - b.offset) % L) + L) % L;
+      const [lead, chase] = ahead < L / 2 ? [a, b] : [b, a];
+      const gap = (((lead.offset - chase.offset) % L) + L) % L;
+      out.push({ lead, chase, shift: gap - (lead.offset - chase.offset), hist: null, j: 0, min: Infinity, max: -Infinity, nearest: Infinity, nearAt: '' });
+    }
+  }
+  return out;
+}
+
+/*
  * Every millisecond of `ms` of clock, every pair of cars whose centres are
  * within reach of each other: how long any two overlapped, the deepest, and
- * the nearest two ever came, with where (plan) and which.
+ * the nearest two ever came, with where (plan) and which. And for every
+ * tandem, its time gap at every step, as the time since the lead was where
+ * the chase car is now, read off the lead's distance by the millisecond,
+ * and the nearest its two cars came.
  */
 async function carOverlaps(wasm, doc, ms) {
   const W = doc.field.width;
@@ -941,7 +1046,11 @@ async function carOverlaps(wasm, doc, ms) {
   uploadTraffic(sim, traffic);
   const poses = makeVehiclePoses();
   const cars = traffic.vehicles;
-  const out = { overlapMs: 0, events: 0, deepest: 0, deepAt: '', nearest: Infinity, nearAt: '' };
+  const tandems = tandemsOf(traffic);
+  for (const t of tandems) {
+    t.hist = new Float64Array(ms + 1);
+  }
+  const out = { overlapMs: 0, events: 0, deepest: 0, deepAt: '', nearest: Infinity, nearAt: '', tandems };
   let inside = false;
   const where = (step, a, b, pa, pb) => {
     const qa = toPlan(W, D, pa.x, pa.z);
@@ -951,6 +1060,19 @@ async function carOverlaps(wasm, doc, ms) {
   for (let step = 0; step <= ms; step += 1) {
     setVehicleClock(sim, step);
     readVehicles(sim, poses);
+    for (const t of tandems) {
+      const h = t.hist;
+      h[step] = poses[t.lead.slot].distance;
+      const dc = poses[t.chase.slot].distance + t.shift;
+      while (t.j + 1 <= step && h[t.j + 1] <= dc) {
+        t.j += 1;
+      }
+      if (dc >= h[0] && t.j + 1 <= step) {
+        const lag = step - (t.j + (dc - h[t.j]) / (h[t.j + 1] - h[t.j]));
+        t.min = Math.min(t.min, lag);
+        t.max = Math.max(t.max, lag);
+      }
+    }
     let any = false;
     for (let i = 0; i < cars.length; i += 1) {
       for (let j = i + 1; j < cars.length; j += 1) {
@@ -966,6 +1088,12 @@ async function carOverlaps(wasm, doc, ms) {
         if (-d < out.nearest) {
           out.nearest = -d;
           out.nearAt = where(step, cars[i], cars[j], pa, pb);
+        }
+        for (const t of tandems) {
+          if (((t.lead === cars[i] && t.chase === cars[j]) || (t.lead === cars[j] && t.chase === cars[i])) && -d < t.nearest) {
+            t.nearest = -d;
+            t.nearAt = where(step, cars[i], cars[j], pa, pb);
+          }
         }
         if (d > 0) {
           any = true;
@@ -985,8 +1113,9 @@ async function carOverlaps(wasm, doc, ms) {
   return out;
 }
 
-async function trafficBlock(wasm) {
-  console.log(`\n5. traffic: the starter's cars against each other, every millisecond of ${OVERLAP_MS / 60000} minutes of clock`);
+/* The test against the starter's first loop, once: it can see an overlap. */
+async function firstLoopBlock(wasm) {
+  console.log('\n5. traffic: the test on the starter\'s first loop');
   const first = starterMap();
   const road = first.elements.find((e) => e.type === 'road');
   road.position.x = FIRST_LOOP.position.x;
@@ -997,10 +1126,19 @@ async function trafficBlock(wasm) {
   const seen = await carOverlaps(wasm, normalize(first).doc, FIRST_LOOP.ms);
   check(`the test sees the first loop's drift car drive through the box truck in its first ${FIRST_LOOP.ms / 1000} s`,
     seen.overlapMs > 0, `${seen.overlapMs} ms in ${seen.events} meetings, up to ${r3(seen.deepest)} m, ${seen.deepAt}`);
-  const now = await carOverlaps(wasm, normalize(starterMap()).doc, OVERLAP_MS);
-  check('no two of the starter\'s cars ever overlap', now.overlapMs === 0,
+}
+
+async function trafficBlock(wasm, map) {
+  console.log(`\n5. traffic: the ${map.label}'s cars against each other, every millisecond of ${OVERLAP_MS / 60000} minutes of clock`);
+  const now = await carOverlaps(wasm, normalize(map.make()).doc, OVERLAP_MS);
+  check(`no two of the ${map.label}'s cars ever overlap`, now.overlapMs === 0,
     now.overlapMs ? `${now.overlapMs} ms in ${now.events} meetings, up to ${r3(now.deepest)} m, ${now.deepAt}`
       : `the nearest two come is ${r3(now.nearest)} m, ${now.nearAt}`);
+  for (const t of now.tandems) {
+    check(`the tandem ${carName(t.lead)} and ${carName(t.chase)} holds its time gap to ${SYNC_MS} ms`,
+      t.max - t.min <= SYNC_MS, `${r3(t.min)} ms behind, varying by ${(t.max - t.min).toExponential(2)} ms`);
+    note(`the nearest its two come: ${r3(t.nearest)} m, ${t.nearAt}`);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1008,14 +1146,25 @@ async function trafficBlock(wasm) {
 async function main() {
   const t0 = performance.now();
   const wasm = await readFile(join(root, 'dist/sim.wasm'));
-  console.log('roads-check: the road tool\'s geometry and the starter\'s traffic, in dist/sim.wasm');
+  console.log('roads-check: the road tool\'s geometry and the shipped maps\' traffic, in dist/sim.wasm');
   const sim = await loadSim(wasm);
-  const starterRoad = normalize(starterMap()).doc.elements.find((e) => e.type === 'road');
-  await shapesBlock(sim, hostileShapes(), starterRoad);
+  const shipped = [];
+  for (const map of MAPS) {
+    const { doc } = normalize(map.make());
+    for (const el of doc.elements.filter((e) => e.type === 'road')) {
+      shipped.push({ name: `the ${map.label}'s ${el.name.toLowerCase()}`, el, field: doc.field.width, depth: doc.field.depth });
+    }
+  }
+  await shapesBlock(sim, hostileShapes(), shipped);
   await sourceBlock();
   await mirrorBlock(sim);
-  await starterBlocks(wasm);
-  await trafficBlock(wasm);
+  for (const map of MAPS) {
+    await mapBlocks(wasm, map);
+  }
+  await firstLoopBlock(wasm);
+  for (const map of MAPS) {
+    await trafficBlock(wasm, map);
+  }
   console.log(`\nroads-check: ${failures === 0 ? 'all passed' : `${failures} FAILED`} (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
   return failures;
 }

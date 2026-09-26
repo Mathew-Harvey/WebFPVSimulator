@@ -48268,3 +48268,23 @@ it, the same size, reading the same way round, lit like the floor round
 it, with the racing line drawn over it where they cross. Wrong is a bare
 mat, a mirrored or turned logo, a black outline round the logo's
 rectangle, or the logo flickering against the mat.
+
+## 2026-09-26 | git | the whoop room's floor logos go to main
+
+The owner, on the entry above: "push to main". That is the approval to put
+406019d on main. No verification scale was named with it, so shots,
+verify and replay:test stay not run, as the entry above says, and flying a
+whoop track with a ground logo on it stays the suggestion. main had not
+moved from 9b67a96, the commit the branch was cut from, so main goes to
+the branch as a fast forward: no merge commit, nothing rewritten.
+
+### RUN LOG
+
+    git fetch                      main 9b67a96, unchanged since the entry
+                                   above; merge-base 9b67a96, main is an
+                                   ancestor of the branch; clone deepened
+                                   earlier this session, still shallow
+                                   below that
+    code                           unchanged since the entry above; only
+                                   this entry is new
+    checks                         not rerun: nothing they read changed

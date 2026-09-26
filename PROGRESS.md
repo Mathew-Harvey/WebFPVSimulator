@@ -52559,3 +52559,68 @@ centre while you slide, an impact frame on a hard landing you flew out
 of, or two in a row. Screentone: open the sim with `?tone=1`, set
 Graphics to High, and fly past dark faces; if the dots swimming on the
 glass bother you, it stays off.
+
+## 2026-09-26 | integration, main | The polish release: cars, the owner's decisions, the map card, the quick wins and Stage F
+
+The owner asked to "push completed tasks to main". The working branch's tip
+carried the 135i and the cars' second pass half done (lead checkpoints
+c44c4e1 and e2adacc), so the release was built in a separate worktree from
+1875b91, the last finished commit on the branch: the R32 and the cars'
+first pass, POLISH-PLAN.md and the owner's answers. Onto it, in order:
+main (37588cf: the whoop room, the lap calls, practice); the owner's four
+decisions (95ca77b); the map card (d8329e9); the quick wins (b6d141c); then
+Stage F (419a7e5). No physics, module ABI or build change: dist, src/native
+and tests/goldens are unchanged against main, and nothing under vendor or
+patches moved.
+
+Conflicts, each kept from both sides: PROGRESS.md at every merge; the
+builder selftest's race.js import (main's practice and lap calls beside the
+station leg rule); index.html's OSD rules (main's hidden speed value beside
+the quick wins' ink edge). tests/shell-baseline.json takes Stage F's pilot
+835 px for its Impact frame row, argued in its own entry. src/fresh.js
+regenerated after each merge.
+
+Pushed to main in two steps, each a fast forward: 45a6af2 (everything but
+Stage F), then Stage F on top.
+
+### Checks, on the release with Stage F (091be0a)
+
+    npm run check:clip           909 passed, 0 failed
+    npm run score:selftest       all passed (the Maverick Loop line is gone
+                                 with the trick, the owner's decision)
+    npm run check:counter        all passed
+    npm run check:chase          all passed
+    npm run check:roads          all passed
+    npm run check:props          all passed
+    npm run check:world          all passed
+    npm run check:world-golden   all passed, the golden untouched
+    npm run check:crash          0 guards failed
+    npm run trick:sweep          nothing was ever paid more than it was worth
+    npm run lint:boot            9 of 9 clean
+    npm run lint:memory          PASS
+    npm run lint:quality         56 of 56 clean
+    npm run lint:preload         up to date
+    npm run check:world-engines  Node and Chromium equal to the bit
+    npm run replay:test          8 of 8
+    npm run lint:devices         PASS, the builder bars and the results page
+                                 included
+    npm run lint:responsive      PASS
+    npm run lint:shell           PASS, the title's overflow gone (it had
+                                 failed at 67 px on main since before Stage E)
+    npm run lint:input           all 160 passed
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change
+
+The same set ran on 45a6af2 before the first push, all green (lint:input
+all 160 there too).
+
+### Still to come
+
+The 135i and the cars' second pass (on the working branch, in progress);
+wave 2 of the polish list: crashes judged per physics step (PHYSICS PATH,
+approved on 2026-09-26, coverage first, then the verify procedure), the
+manga menus, the phone OSD, the town's budget in its render only steps,
+overcast and canopies, the replay chase camera, and the radio help row.
+Open for the owner: a gate sequenced twice in a row (2022 AU Nationals,
+32 to 36) is credited twice by one pass; the screentone, off by default
+because it shimmers, to be judged with ?tone=1 at High.

@@ -48612,3 +48612,12 @@ browser still owns it, and the lap was rendered and put back on the card.
 npm run verify was not run. This does not touch the plant, the module ABI
 or the build. node scripts/shots.js was not run. The picture is the GIF
 above, from the same exporter the button and the publish both call.
+
+The board deploy reported keepsHeldKey, and the row went back up under the
+key the browser already held. The lap followed: 102068 bytes, gifUtc
+2026-09-26T03:38:06.714Z, and the list reads hasGif. The share card did
+not come back with it. A link to the track shows the WebFPV card until
+the builder publishes again and draws one. The simulator's own deploy of
+this stage.js change had not replaced the file on webfpv.org at the time
+of the upload, so a tab that still has the old scripts will show the same
+link error until that deploy is what a reload loads.

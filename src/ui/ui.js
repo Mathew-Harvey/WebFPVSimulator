@@ -1016,6 +1016,10 @@ const DEFAULTS = {
  * the version in the key is for, and it is cheaper than being wrong quietly.
  */
 const AIR_HINT_KEY = 'webfpv.airhint.v2';
+/* How long the card stays up in the air, on the run's airtime. Long enough
+ * to read two sentences in a hover, short enough that it is gone before the
+ * pilot is looking at the ground it covers. */
+const AIR_HINT_AIR_MS = 8000;
 
 function airHintSeen() {
   try {
@@ -3459,6 +3463,8 @@ export class Ui {
      * localStorage flag is consulted, so a pilot who dismissed it and then
      * paused and resumed does not get it again on the way back into flight. */
     this.airHintDone = false;
+    /* The airtime at which the card first went up, for its eight seconds. */
+    this.airHintAtMs = null;
     this.ptrX = null;
     this.ptrY = null;
     this.build();
@@ -10213,6 +10219,7 @@ export class Ui {
     this.syncFrame();
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
+    this.pauseAirSlider(screen);
     /* The score follows the OSD onto and off the screen, but only in
      * freestyle: a race has no score and an empty Score 0 over a lap timer
      * is a readout that never changes. */
@@ -12060,16 +12067,44 @@ export class Ui {
    * never again. Not on the title, not in a menu: a tooltip on a control the
    * reader cannot see is a riddle, and the sentence it carries only means
    * anything while there is a quad in the air to try it on.
+   *
+   * `ready` is the quad in the air: off the pads, not perched, not set down
+   * and not on its back. `airMs` is the run's airtime on the sim clock and
+   * `padFlying` is a radio or gamepad's sticks moving the quad in the air.
+   *
+   * THE SLIDER FADES IN THE AIR. The owner's decision of 2026-09-26: "once
+   * in flight fade it out, show it when landed or pause screen". The block
+   * carries is-aloft while the quad flies and the sheet does the fade, so
+   * nothing here runs per frame beyond the cached class write. It stays up
+   * while its card is, because the card is pointing at it.
    */
-  setAirSlider(show, ready = true) {
+  setAirSlider(show, ready = true, { airMs = 0, padFlying = false } = {}) {
     const air = this.osdAir;
     if (!air) {
       return;
     }
-    Ui.klass(air.box, show ? 'osd-air' : 'osd-air is-off');
     Ui.klass(this.osdSticks, show ? 'osd-sticks' : 'osd-sticks is-off');
     if (!show) {
+      Ui.klass(air.box, 'osd-air is-off');
       return;
+    }
+    /*
+     * THE CARD RETIRES WITHOUT A POINTER. It used to wait for Got it or a
+     * touch on the track, which a pilot holding a radio never gives, so it
+     * sat over the ground ahead for the whole first session and came back
+     * the next one. It now goes, and is remembered as dismissed, on the
+     * first landing or crash (ready drops), after about eight seconds of
+     * airtime, or on the first stick a radio or gamepad flies the quad with.
+     */
+    const dialog = Boolean(this.nameDialog && !this.nameDialog.hidden);
+    if (!air.hint.hidden) {
+      if (!ready || padFlying || airMs - this.airHintAtMs >= AIR_HINT_AIR_MS) {
+        this.dismissAirHint();
+      } else if (dialog) {
+        /* Never drawn under a modal. Put away, not retired: it comes back
+         * with the flight, on the airtime it had already used. */
+        air.hint.hidden = true;
+      }
     }
     /*
      * WHEN THE HINT IS RAISED, and both halves of the test were learned
@@ -12088,8 +12123,30 @@ export class Ui {
      * collision is a layout problem and it is solved in the sheet, where the
      * card flips below the slider on a short screen.
      */
-    if (!this.airHintDone && air.hint.hidden && ready && !airHintSeen()) {
+    if (!this.airHintDone && air.hint.hidden && ready && !padFlying && !dialog && !airHintSeen()) {
       air.hint.hidden = false;
+      /* The first raise starts its eight seconds. A raise after a pause
+       * keeps the stamp, so the pause does not buy the card more air. */
+      if (this.airHintAtMs == null) {
+        this.airHintAtMs = airMs;
+      }
+    }
+    Ui.klass(air.box, ready && air.hint.hidden ? 'osd-air is-aloft' : 'osd-air');
+  }
+
+  /*
+   * Off the screen, the card is put away rather than retired, so it is
+   * never drawn through the pause menu or a dialog over it. The slider
+   * itself comes back on the pause screen: see setAirSlider.
+   */
+  pauseAirSlider(screen) {
+    const air = this.osdAir;
+    if (!air || screen === 'flight') {
+      return;
+    }
+    air.hint.hidden = true;
+    if (air.box.__wfClass === 'osd-air is-aloft') {
+      Ui.klass(air.box, 'osd-air');
     }
   }
 

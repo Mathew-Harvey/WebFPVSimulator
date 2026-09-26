@@ -190,6 +190,14 @@ const TAKEOFF_RELEASE = 0.18;
  */
 const GROUND_CUE_GAP_MS = 220;
 /*
+ * How far a radio or gamepad's roll, pitch or yaw has to move off centre,
+ * in the air, to count as the pilot flying the quad with it: that is when
+ * the first flight's Weight card retires for a pilot with no pointer in
+ * hand. Past a stick's centre noise, well short of a real input. Display
+ * only; nothing in the flight reads it.
+ */
+const PAD_FLYING_STICK = 0.12;
+/*
  * How long after a takeoff the contact cues stay muted, on the WALL clock.
  *
  * 8ebd6b8 muted them on the `takingOff` flag, and the flag is not a window:
@@ -8060,10 +8068,20 @@ export async function boot({ loading, bootStart, mapId }) {
       });
       /* The air slider rides the same test as the gimbals it sits between,
        * but not the same SOURCE test: it belongs to every pilot, radio,
-       * keyboard and thumbs alike, so it is up whenever there is a quad in
-       * the air to try it on. This is also where its first-run hint is
-       * raised, which is why it is here and not in show(). */
-      ui.setAirSlider(true, !landed && !launchStaging && !poseLock);
+       * keyboard and thumbs alike. This is also where its first-run hint is
+       * raised and retired, which is why it is here and not in show().
+       * Aloft is off the pads, not perched or set down, and not on its
+       * back: the slider fades while it is true and the card retires when
+       * it goes false. A radio or gamepad moving the sticks in the air is
+       * the pilot answering the card without a pointer. */
+      const aloft = !landed && !launchStaging && !poseLock && !turtleWait && !turtleFlip.active;
+      ui.setAirSlider(true, aloft, {
+        airMs: airtimeMs,
+        padFlying: aloft && !input.isKeyboardPrimary()
+          && (Math.abs(ch.roll) > PAD_FLYING_STICK
+            || Math.abs(ch.pitch) > PAD_FLYING_STICK
+            || Math.abs(ch.yaw) > PAD_FLYING_STICK),
+      });
       updateTargetLock();
     } else if (mode !== 'paused') {
       ui.setStickOverlay({ show: false, roll: 0, pitch: 0, yaw: 0, throttle: 0 });

@@ -58,7 +58,15 @@ import {
 import {
   ObstacleField, OB_BAR, OB_POLE, deriveObstacles, sameAxis,
 } from '../src/game/obstacles.js';
-import { FreestyleScore, formatScore, RUN_MS } from '../src/game/score.js';
+import {
+  FreestyleScore, Counter, formatScore, RUN_MS, EGG_POINTS,
+} from '../src/game/score.js';
+import { Colliders, CRAFT_WORLD_R } from '../src/game/collide.js';
+import { namedGaps } from '../src/game/gaps.js';
+import {
+  SKIM_POINTS_PER_S, LOW_POINTS_PER_S, UNDER_POINTS, UNDER_NEAR,
+} from '../src/game/closecall.js';
+import { polyline, flyCounter, ofKind } from './lib/counterrun.js';
 import { loadSim, SIM_OK } from '../tests/lib/simmod.js';
 /* The one and only conversion between the plant's frame and the world's,
  * imported rather than retyped: CLAUDE.md says it lives in one file and a
@@ -1689,6 +1697,343 @@ console.log('\nthe obstacle tricks, on constructed paths');
     s.z = POLE.cz + 40;
     s.cruise(4000, -20);
     check('flying straight past a pole scores nothing', s.finish() === 'NOTHING');
+  }
+}
+
+/*
+ * THE COUNTER (FREESTYLE-MAPS-PLAN.md section 7, Stage C): named gaps,
+ * close calls, the chase and the STF mark in the tricks' one combo.
+ *
+ * Synthetic runs: a craft on a straight scripted path past solids built
+ * here, fed through scripts/lib/counterrun.js exactly as src/main.js feeds
+ * the shell's counter (the gaps every step, the close calls every 8 ms, a
+ * crash told at the end of the frame, the counter ticked after it). Each
+ * asserts exactly what scores and what does not, and every run that pays
+ * has a crash twin that must pay nothing (section 14). Real colliders,
+ * Hibari Yard's and the town's, are scripts/counter-check.js's.
+ */
+console.log('\nthe counter: gaps, close calls, the chase and the mark in the one combo');
+{
+  const R = CRAFT_WORLD_R;
+  /* A long wall: its west face on x = 0, 6 m tall, 100 m along z. */
+  const wallWorld = () => {
+    const c = new Colliders();
+    c.addBox('wall', 0, 0, -50, 0.3, 6, 50);
+    return c.build();
+  };
+  /* The line along it: 0.4 m of hull clearance, 2 m up, 15 m/s. */
+  const SKIM_X = -(R + 0.4);
+  const skimPath = (into) => polyline([SKIM_X, 2, -20], into
+    ? [{ to: [SKIM_X, 2, 10], speed: 15 }, { to: [0.05, 2, 12], speed: 15 }]
+    : [{ to: [SKIM_X, 2, 20], speed: 15 }, { to: [-12, 2, 26], speed: 15 }]);
+
+  const wall = flyCounter({ colliders: wallWorld(), path: skimPath(false), groundY: 0 });
+  const skims = ofKind(wall.events, 'skim');
+  check('skimming past a wall pays one Wall skim',
+    skims.length === 1 && skims[0].name === 'Wall skim' && skims[0].points > 0);
+  check('held for the length of the wall, at the clearance flown',
+    skims.length === 1 && Math.abs(skims[0].holdMs - 2667) < 40 && Math.abs(skims[0].clearance - 0.4) < 0.02);
+  check('and priced from speed and closeness: 100 a second x 1.5 x 1.6',
+    skims.length === 1 && Math.abs(skims[0].points - (skims[0].holdMs / 1000) * SKIM_POINTS_PER_S * 1.5 * 1.6) <= 2);
+  check('and nothing else scores on that line',
+    wall.events.every((e) => e.kind === 'skim' || e.kind === 'bank'));
+  check('it banks into the counter when the window runs out',
+    wall.counter.total() === skims[0].points && ofKind(wall.events, 'bank').length === 1);
+  console.log(`        ${skims[0].name} ${(skims[0].holdMs / 1000).toFixed(2)} s at ${skims[0].clearance} m, ${skims[0].points}`);
+
+  const wallCrash = flyCounter({
+    colliders: wallWorld(), path: skimPath(true), groundY: 0, crashOnContact: true,
+  });
+  check('the same skim ending in the wall pays nothing',
+    wallCrash.crashedAt > 0 && ofKind(wallCrash.events, 'skim').length === 0
+    && wallCrash.counter.total() === 0);
+  check('and the close call knows it lost a skim to the contact',
+    wallCrash.ccEvents.some((e) => e.kind === 'lost' && e.of === 'skim'));
+
+  /* A deck 8 m long, its underside 3 m up; a pier across the line 2 m past
+   * its end for the crash twin. */
+  const deckWorld = (pier) => {
+    const c = new Colliders();
+    c.addBox('wall', -5, 3, -4, 5, 3.4, 4);
+    if (pier) {
+      c.addBox('wall', -3, 0, 6, 3, 3, 6.5);
+    }
+    return c.build();
+  };
+  const under = flyCounter({
+    colliders: deckWorld(false), path: polyline([0, 1.5, -15], [{ to: [0, 1.5, 15], speed: 12 }]), groundY: 0,
+  });
+  const unders = ofKind(under.events, 'under');
+  const underWant = Math.round(UNDER_POINTS * 1.2 * (2 - (3 - 1.5 - R) / UNDER_NEAR));
+  check('under a deck pays one Under',
+    unders.length === 1 && unders[0].name === 'Under' && Math.abs(unders[0].points - underWant) <= 1);
+  check('and nothing else scores under it', under.events.every((e) => e.kind === 'under' || e.kind === 'bank'));
+  const underCrash = flyCounter({
+    colliders: deckWorld(true),
+    path: polyline([0, 1.5, -15], [{ to: [0, 1.5, 15], speed: 12 }]),
+    groundY: 0,
+    crashOnContact: true,
+  });
+  check('the same pass under it ending in the pier pays nothing',
+    underCrash.crashedAt > 0 && ofKind(underCrash.events, 'under').length === 0
+    && underCrash.counter.total() === 0
+    && underCrash.ccEvents.some((e) => e.kind === 'lost' && e.of === 'under'));
+
+  /* Two posts 2.2 m apart centre to centre, 0.2 m thick; a third on the
+   * line 2 m past them for the crash twin. */
+  const postWorld = (third) => {
+    const c = new Colliders();
+    c.addPost('pole', -1.1, 0, 0, 4, 0.1);
+    c.addPost('pole', 1.1, 0, 0, 4, 0.1);
+    if (third) {
+      c.addPost('pole', 0, 2, 0, 4, 0.1);
+    }
+    return c.build();
+  };
+  const posts = flyCounter({
+    colliders: postWorld(false), path: polyline([0, 1.5, -15], [{ to: [0, 1.5, 15], speed: 15 }]), groundY: 0,
+  });
+  const threads = ofKind(posts.events, 'thread');
+  check('between two posts pays one Thread',
+    threads.length === 1 && threads[0].name === 'Thread' && threads[0].points > 0);
+  check('at the clearance flown, each side',
+    threads.length === 1 && Math.abs(threads[0].clearance - (1.0 - R)) < 0.02);
+  check('and nothing else scores between them', posts.events.every((e) => e.kind === 'thread' || e.kind === 'bank'));
+  const postCrash = flyCounter({
+    colliders: postWorld(true),
+    path: polyline([0, 1.5, -15], [{ to: [0, 1.5, 15], speed: 15 }]),
+    groundY: 0,
+    crashOnContact: true,
+  });
+  check('the same thread ending in a post pays nothing',
+    postCrash.crashedAt > 0 && ofKind(postCrash.events, 'thread').length === 0
+    && postCrash.counter.total() === 0
+    && postCrash.ccEvents.some((e) => e.kind === 'lost' && e.of === 'thread'));
+  /* Past one post alone, as close as the thread passed each: a pass, and
+   * too short to be a skim, so nothing. */
+  const loneWorld = new Colliders();
+  loneWorld.addPost('pole', -1.1, 0, 0, 4, 0.1);
+  loneWorld.build();
+  const onePost = flyCounter({
+    colliders: loneWorld, path: polyline([0, 1.5, -15], [{ to: [0, 1.5, 15], speed: 15 }]), groundY: 0,
+  });
+  check('past one post alone is no thread, and nothing else', onePost.events.length === 0);
+
+  /* A named gap: a 3 by 2 m window facing +x, its sill 1 m up. */
+  const gapRects = namedGaps([{
+    x: 0, y: 1, z: 0, yaw: 0, w: 3, h: 2, name: 'TEST GAP', points: 500,
+  }]);
+  const empty = new Colliders().build();
+  const through = flyCounter({
+    colliders: empty, gaps: gapRects, path: polyline([-10, 2, 0], [{ to: [10, 2, 0], speed: 15 }]), groundY: -50,
+  });
+  const gapsFlown = ofKind(through.events, 'gap');
+  check('through a named gap pays it, its name and its tier',
+    gapsFlown.length === 1 && gapsFlown[0].name === 'TEST GAP' && gapsFlown[0].tier === 500
+    && gapsFlown[0].points === 500 && gapsFlown[0].repeat === 0);
+  check('and banks it', through.counter.total() === 500);
+  const beside = flyCounter({
+    colliders: empty, gaps: gapRects, path: polyline([-10, 2, 1.6], [{ to: [10, 2, 1.6], speed: 15 }]), groundY: -50,
+  });
+  check('beside the window pays nothing', ofKind(beside.events, 'gap').length === 0);
+  const over = flyCounter({
+    colliders: empty, gaps: gapRects, path: polyline([-10, 3.05, 0], [{ to: [10, 3.05, 0], speed: 15 }]), groundY: -50,
+  });
+  check('over its top pays nothing', ofKind(over.events, 'gap').length === 0);
+  const back = flyCounter({
+    colliders: empty, gaps: gapRects, path: polyline([10, 2, 0], [{ to: [-10, 2, 0], speed: 15 }]), groundY: -50,
+  });
+  check('it pays flown either way', ofKind(back.events, 'gap').length === 1);
+  /* Crossed at 666 ms; a crash 1.5 s later, inside the combo's window. */
+  const gapCrash = flyCounter({
+    colliders: empty, gaps: gapRects, path: polyline([-10, 2, 0], [{ to: [10, 2, 0], speed: 15 }]), groundY: -50, crashAtStep: 2200,
+  });
+  check('through a named gap and a crash inside the combo window pays nothing',
+    gapCrash.counter.total() === 0 && ofKind(gapCrash.events, 'bail').length === 1
+    && ofKind(gapCrash.events, 'bail')[0].points === 500);
+  const gapCrashSoon = flyCounter({
+    colliders: empty, gaps: gapRects, path: polyline([-10, 2, 0], [{ to: [10, 2, 0], speed: 15 }]), groundY: -50, crashAtStep: 760,
+  });
+  check('and a crash just after the crossing loses it before it is ever paid',
+    gapCrashSoon.counter.total() === 0 && ofKind(gapCrashSoon.events, 'gap').length === 0);
+
+  /* Rocking in the window: across its plane and back, 0.3 m either side,
+   * ten times, then away and back through it from 3 m out. */
+  const legs = [];
+  for (let i = 0; i < 10; i += 1) {
+    legs.push({ to: [0.3, 2, 0], speed: 6 }, { to: [-0.3, 2, 0], speed: 6 });
+  }
+  legs.push({ to: [-3.5, 2, 0], speed: 6 }, { to: [3, 2, 0], speed: 12 });
+  const dither = flyCounter({
+    colliders: empty, gaps: gapRects, path: polyline([-0.3, 2, 0], legs), groundY: -50,
+  });
+  const dithered = ofKind(dither.events, 'gap');
+  check('dithering across a gap does not farm it: one crossing in twenty',
+    dither.gapsRun.crossings === 2 && dithered.length === 2);
+  check('and flying away and back through is the same gap again, at three quarters',
+    dithered.length === 2 && dithered[1].repeat === 1 && dithered[1].points === 375);
+
+  /* A low pass: 0.4 m of clearance over open ground at 15 m/s for as long
+   * as the wall skim above, against that skim. */
+  const low = flyCounter({
+    colliders: empty,
+    path: polyline([0, R + 0.4, -20], [{ to: [0, R + 0.4, 20], speed: 15 }, { to: [0, 4, 26], speed: 15 }]),
+    groundY: 0,
+  });
+  const lows = ofKind(low.events, 'lowpass');
+  check('a low pass pays',
+    lows.length === 1 && lows[0].name === 'Low pass' && lows[0].points > 0);
+  check('and less than a skim at the same speed and closeness',
+    lows.length === 1 && skims.length === 1 && lows[0].points < skims[0].points
+    && Math.abs(lows[0].points / skims[0].points - LOW_POINTS_PER_S / SKIM_POINTS_PER_S) < 0.02);
+  console.log(`        low pass ${lows[0] ? lows[0].points : '-'} against the skim's ${skims[0] ? skims[0].points : '-'}`);
+  const lowCrash = flyCounter({
+    colliders: empty,
+    path: polyline([0, R + 0.4, -20], [{ to: [0, R + 0.4, 10], speed: 15 }]),
+    groundY: 0,
+    crashAtStep: 2080,
+  });
+  check('the same low pass ending in the ground pays nothing',
+    ofKind(lowCrash.events, 'lowpass').length === 0 && lowCrash.counter.total() === 0
+    && lowCrash.ccEvents.some((e) => e.kind === 'lost' && e.of === 'lowpass'));
+
+  /* A held skim keeps the combo open: a gap, then a wall along the line for
+   * five and a half seconds. Without the hold the gap would bank alone three
+   * seconds after it went in. */
+  const holdWorld = () => {
+    const c = new Colliders();
+    c.addBox('wall', 5, 0, R + 0.4, 90, 6, R + 0.7);
+    return c.build();
+  };
+  const held = flyCounter({
+    colliders: holdWorld(),
+    gaps: gapRects,
+    path: polyline([-10, 2, 0], [{ to: [90, 2, 0], speed: 15 }, { to: [96, 2, -8], speed: 15 }]),
+    groundY: -50,
+  });
+  const banks = ofKind(held.events, 'bank');
+  const heldGap = ofKind(held.events, 'gap')[0];
+  const heldSkim = ofKind(held.events, 'skim')[0];
+  check('a held skim keeps the combo open past three seconds',
+    Boolean(heldGap && heldSkim) && heldSkim.holdMs > 5000 && banks.length === 1
+    && banks[0].names.join('+') === 'TEST GAP+Wall skim' && banks[0].mult === 2);
+  check('and the gap it held is paid in that combo, times two',
+    Boolean(heldGap && heldSkim) && held.counter.total() === (heldGap.points + heldSkim.points) * 2);
+  const unheld = flyCounter({
+    colliders: empty, gaps: gapRects, path: polyline([-10, 2, 0], [{ to: [90, 2, 0], speed: 15 }]), groundY: -50,
+  });
+  check('without the skim the same gap banks alone',
+    ofKind(unheld.events, 'bank').length === 1 && ofKind(unheld.events, 'bank')[0].names.join('+') === 'TEST GAP');
+
+  /* The combo's rules, off the counter directly. */
+  {
+    const c = new Counter({ timed: false, tricks: true });
+    c.gap('A', 1000, 1000, 0);
+    c.closeCall({ kind: 'skim', name: 'Wall skim', value: 200, holdMs: 900, clearance: 0.3, paidStep: 1500 });
+    c.closeCall({ kind: 'skim', name: 'Wall skim', value: 200, holdMs: 900, clearance: 0.3, paidStep: 2000 });
+    c.closeCall({ kind: 'skim', name: 'Wall skim', value: 200, holdMs: 900, clearance: 0.3, paidStep: 2500 });
+    c.closeCall({ kind: 'skim', name: 'Wall skim', value: 200, holdMs: 900, clearance: 0.3, paidStep: 3000 });
+    const v = c.view();
+    check('geometry buys multiplier the way a scoring trick does',
+      v.combo && v.combo.mult === 4 && v.combo.points === 1000 + 200 + 150 + 100 + 0);
+    check('and the fourth of the same close call in a combo is worth nothing and buys nothing',
+      v.combo && v.combo.names.length === 5 && v.combo.mult === 4);
+    c.tick(6000);
+    check('it banks on the window like a trick chain', c.total() === (1000 + 200 + 150 + 100) * 4);
+    c.gap('A', 1000, 7000, 0);
+    c.gap('A', 1000, 7100, 0);
+    c.gap('A', 1000, 7200, 0);
+    c.tick(20000);
+    const s = c.summary();
+    check('a named gap flown again in the run pays less, per run, by the workbook\'s table',
+      s.counter === (1000 + 200 + 150 + 100) * 4 + (750 + 500 + 0) * 2 && s.gaps === 4);
+    check('the summary keeps the best gap and the counts',
+      s.bestGap && s.bestGap.name === 'A' && s.bestGap.points === 1000 && s.closeCalls.skim === 4);
+    check('and its total is the trick scorer\'s, which flew no tricks', s.total === 0);
+  }
+  {
+    /* Tricks count in the counter only when the switch says so; the board
+     * counts them whatever it says, and never counts geometry. */
+    const plain = new FreestyleScore({ timed: false });
+    const off = new Counter({ timed: false, tricks: false });
+    const on = new Counter({ timed: false, tricks: true });
+    const tricks = [['Powerloop', 1000], ['Flip', 1800], ['Roll', 2600]];
+    for (const [name, at] of tricks) {
+      plain.land({ name, execution: 'CLEAN', endMs: at });
+      off.land({ name, execution: 'CLEAN', endMs: at });
+      on.land({ name, execution: 'CLEAN', endMs: at });
+    }
+    off.gap('A', 500, 2000, 0);
+    on.gap('A', 500, 2000, 0);
+    for (const c of [plain, off, on]) {
+      c.tick(9000);
+    }
+    check('with tricks off the counter holds the geometry and no trick',
+      off.view().total === 500 && off.view().trickCount === 0);
+    const nets = plain.tricks.reduce((a, t) => a + t.net, 0);
+    check('with tricks on the counter holds both in one combo',
+      on.view().total === Math.round((nets + 500) * 4));
+    check('and the board\'s total is the trick scorer\'s own, whatever the counter holds',
+      off.summary().total === plain.summary().total && on.summary().total === plain.summary().total
+      && on.summary().counter === on.view().total);
+  }
+  {
+    /* A crash loses the geometry in the open combo, and the egg pays once. */
+    const c = new Counter({ timed: false, tricks: true });
+    c.egg(1000);
+    c.egg(1500);
+    check('the STF mark pays once a run', c.view().combo && c.view().combo.points === EGG_POINTS);
+    c.crash();
+    c.tick(10000);
+    check('and a crash loses it with the rest of the open combo', c.total() === 0 && c.summary().eggFound);
+    c.reset();
+    c.egg(2000);
+    c.tick(10000);
+    check('a new run can find it again', c.total() === EGG_POINTS);
+  }
+  {
+    /* The chase's paying events go in under their own names. */
+    const c = new Counter({ timed: false, tricks: true });
+    c.chaseEvent({ kind: 'tail', name: 'Drift Tail', value: 600, ms: 3000, drift: true, paidStep: 1000 });
+    c.chaseEvent({ kind: 'thread', name: 'Thread', value: 400, paidStep: 1400 });
+    c.chaseEvent({ kind: 'hurdle', name: 'Leapfrog', value: 300, paidStep: 1600 });
+    c.chaseEvent({ kind: 'lost', name: 'Tail', value: 0, paidStep: 1700 });
+    c.closeCall({ kind: 'thread', name: 'Thread', value: 300, holdMs: 0, clearance: 0.5, paidStep: 1800 });
+    const ev = c.drainEvents() || [];
+    check('the chase goes in as tail, chase-thread and hurdle, and a lost one does not',
+      ev.map((e) => e.kind).join(' ') === 'tail chase-thread hurdle thread');
+    check('a car thread is not a repeat of a close call thread', ev[3] && ev[3].points === 300);
+    c.tick(9000);
+    check('and the summary keeps the best tail', c.summary().bestTail
+      && c.summary().bestTail.ms === 3000 && c.summary().bestTail.drift === true);
+    /* A held tail holds the window open. */
+    const h = new Counter({ timed: false, tricks: true });
+    h.gap('A', 250, 1000, 0);
+    for (let t = 1000; t <= 8000; t += 8) {
+      h.hold(t);
+    }
+    h.tick(8000);
+    check('a held tail keeps the combo open', h.total() === 0 && h.view().combo !== null);
+    h.tick(11001);
+    check('and it banks three seconds after the hold ends', h.total() === 250);
+  }
+  {
+    /* THE SCORED RUN is two minutes from the first thing scored, whatever
+     * kind it is, and the board ends with it. */
+    const c = new Counter({ timed: true, tricks: true });
+    c.tick(4000);
+    check('a scored run has not started before anything is scored', c.view().state === 'ready');
+    c.gap('A', 250, 5000, 0);
+    c.land({ name: 'Flip', execution: 'CLEAN', endMs: 20000 });
+    c.tick(5000 + RUN_MS - 1);
+    check('the first gap starts the two minutes', c.view().state === 'flying' && !c.over());
+    c.tick(5000 + RUN_MS);
+    const s = c.summary();
+    check('and the run and the board end together on the horn',
+      c.over() && s.state === 'over' && c.board.over() && s.timed === true);
+    check('the board holds the tricks flown inside the run the pilot was shown',
+      s.total > 0 && s.durationMs === RUN_MS - 15000 && s.counterDurationMs === RUN_MS);
+    check('and geometry after the horn is not in it', c.gap('A', 250, 5000 + RUN_MS + 5, 0) === null);
   }
 }
 

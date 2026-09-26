@@ -32,6 +32,51 @@
  * disarming, costs the trick half its points and halves the streak but does
  * not break the chain, because in the air a clipped branch is not a bail.
  *
+ * THE COUNTER (FREESTYLE-MAPS-PLAN.md section 7, Stage C). One combo, fed
+ * by five kinds of thing: tricks, named gaps (src/game/gaps.js), close calls
+ * (src/game/closecall.js), the chase (src/game/chase.js) and the STF mark.
+ * The geometry joins the SAME combo a trick does, under the same rules: a
+ * three second window, a multiplier to twelve bought one scoring thing at a
+ * time, banked when the window runs out and lost on a crash. It never
+ * touches the workbook: a gap or a skim adds to the combo's points and buys
+ * multiplier, and trickTotal, the streak, the penalties and the obstacle
+ * bonus are the tricks' alone. A held skim or a held tail holds the window
+ * open while it is held, the way a manual does. Geometry repeats pay less
+ * by the workbook's own REPEAT_TRICK table, a named gap per run and a close
+ * call or a chase event per combo: see gap() and repeatInCombo().
+ *
+ * TWO TOTALS, AND WHICH IS WHICH. The public board bounds every posted run
+ * against trick only arithmetic (src/share/board.js postFreestyleRun), and
+ * the plan keeps the town's board as it is, so the number that goes to the
+ * board is the trick scorer's own, computed as it always was. Counter, at
+ * the bottom, is the pair: `run`, the counter, everything above in one
+ * combo, which is what the HUD shows; and `board`, a second FreestyleScore
+ * fed the tricks alone exactly as the one scorer used to be. Its summary()
+ * keeps every field it had with the board's meaning (`total` is what is
+ * posted) and adds `counter`, the counter's total, beside it.
+ *
+ * THE COUNTER'S EVENTS, from drainEvents() once a frame, for the HUD. The
+ * trick scorer's four are unchanged: { kind: 'trick', name, points,
+ * execution } (only while the Scoring switch counts tricks), { kind: 'bank',
+ * points, mult, names }, { kind: 'bail', points, names } and { kind:
+ * 'finish', points, bonus, mult, switches }. The geometry's, each with
+ * `points` (what it put into the combo, after any repeat) and `atMs` (the
+ * sim ms it went in), and `repeat` (how many of the same were there before
+ * it: this run's crossings for a gap, this combo's for the rest):
+ *
+ *   { kind: 'gap', name, tier }              name and tier are the author's
+ *   { kind: 'skim', name, holdMs, clearance } 'Wall skim' or 'Roof skim'
+ *   { kind: 'under', name, clearance }       'Under'
+ *   { kind: 'thread', name, clearance }      'Thread'
+ *   { kind: 'lowpass', name, holdMs, clearance }   'Low pass'
+ *   { kind: 'tail', name, holdMs, drift }    chase.js: 'Tail', 'Drift Tail'
+ *   { kind: 'chase-thread', name }           chase.js: 'Thread'
+ *   { kind: 'hurdle', name }                 chase.js: 'Hurdle', 'Leapfrog'
+ *   { kind: 'egg', name: 'STF' }             once a run
+ *
+ * A close call is sent when it ends and pays, not while it is held; the
+ * held skim is view().skim, { on, holdMs, clearance }, for a meter.
+ *
  * This file holds no timers of its own and reads no clock. It is told the
  * time. That keeps it testable off a recorded trace and keeps CLAUDE.md's
  * rule that nothing downstream of the physics may read frame time.
@@ -113,6 +158,19 @@ export const RUN_READY = 'ready';
 export const RUN_FLYING = 'flying';
 export const RUN_OVER = 'over';
 
+/*
+ * THE STF MARK, found: a one off bonus into the combo, once a run (section
+ * 9). A named gap's 1000 tier, and not its top one, 2500: since decision 10
+ * the mark is painted to be seen from the pads, so finding it is flying up
+ * to it rather than a search, and it is worth what an author gives a gap
+ * that takes some flying.
+ */
+export const EGG_POINTS = 1000;
+
+/* chase.js's event kinds, as the counter names them: a car thread is not a
+ * close call's thread, and the two are told apart by kind. */
+const CHASE_KIND = { tail: 'tail', thread: 'chase-thread', hurdle: 'hurdle' };
+
 /* A trick that scored nothing still counts as flown, but not as landed: it
  * must not raise the repeat count of a trick the pilot never completed. */
 function landed(execution) {
@@ -139,6 +197,9 @@ export class FreestyleScore {
     /* Off makes the run open ended, which is what every test written before
      * the clock existed assumes. The game always has the clock. */
     this.timed = opts.timed !== false;
+    /* The held skim, for the meter: see setSkim. One object, rewritten in
+     * place and handed out by view(). */
+    this.skim = { on: false, holdMs: 0, clearance: 0 };
     this.reset();
   }
 
@@ -194,6 +255,25 @@ export class FreestyleScore {
     /* The last thing that happened, for the display to announce. Cleared by
      * the reader, so an event is shown once. */
     this.events = [];
+    /*
+     * THE GEOMETRY'S RUN. How many times this run has flown each named gap,
+     * by its key, for the repeat price; whether the STF mark has paid; and
+     * the run's bests for the results page. None of it is read by the
+     * workbook arithmetic above.
+     */
+    this.gapPriors = new Map();
+    this.eggFound = false;
+    this.gapsFlown = 0;
+    this.bestGap = null;
+    this.longestSkim = null;
+    this.bestTail = null;
+    this.bestTailValue = 0;
+    this.closeCalls = {
+      skim: 0, under: 0, thread: 0, lowpass: 0,
+    };
+    this.skim.on = false;
+    this.skim.holdMs = 0;
+    this.skim.clearance = 0;
   }
 
   /* Is the run finished? Nothing more can be scored into it. */
@@ -342,10 +422,11 @@ export class FreestyleScore {
        */
       if (!this.combo) {
         this.combo = {
-          names: [], scoring: 0, points: 0, startMs: at, untilMs: at + this.comboWindowMs,
+          names: [], kinds: [], scoring: 0, points: 0, startMs: at, untilMs: at + this.comboWindowMs,
         };
       }
       this.combo.names.push(name);
+      this.combo.kinds.push('trick');
       this.combo.points += net;
       /*
        * A TRICK THAT SCORED NOTHING BUYS NOTHING, and this is the hole that
@@ -455,6 +536,247 @@ export class FreestyleScore {
   }
 
   /*
+   * ------------------------------------------------------------------
+   * THE GEOMETRY. Everything below adds to the combo and nothing below
+   * reads or writes the workbook's state: trickTotal, the streak, the
+   * repeat counts, the back to back run and the obstacle run are the
+   * tricks' alone, so a run with no geometry in it is scored exactly as it
+   * was before any of this existed.
+   * ------------------------------------------------------------------
+   */
+
+  /*
+   * Can geometry at `atMs` go in? Not into a finished run, and not past the
+   * end of a timed one: tick() finishes the run on the frame, and a gap
+   * crossed a few steps after the horn is not in it. A combo whose window
+   * ran out before `atMs` is banked first, on the event's own clock, so what
+   * goes into which combo is decided by the step stream and not by where a
+   * frame happened to end.
+   */
+  geometryOpen(atMs) {
+    if (this.state === RUN_OVER || !(atMs >= 0 || atMs < 0)) {
+      return false;
+    }
+    if (this.timed && this.state === RUN_FLYING && atMs - this.startedMs >= this.runMs) {
+      return false;
+    }
+    if (this.combo && atMs >= this.combo.untilMs) {
+      this.bank();
+    }
+    return true;
+  }
+
+  /*
+   * How many things of this kind and name are already in the open combo.
+   * THE REPEAT PRICE FOR GEOMETRY is the workbook's own REPEAT_TRICK table
+   * (src/game/tricks.js repeatTrickFactor), full, three quarters, a half,
+   * then nothing, because a skim flown again is the same thing flown again
+   * and the sheet already says what that is worth. It is counted per COMBO
+   * for close calls and the chase, which is Tony Hawk's own rule for a
+   * repeat inside a chain: a line is made of skims and a two minute run
+   * holds dozens of them, so a per run count would price every skim after
+   * the third at nothing, where per combo it prices bobbing along one kerb
+   * to buy multiplier. A thing worth nothing buys nothing (see land()), so
+   * the fourth Wall skim in a chain cannot raise its multiplier.
+   */
+  repeatInCombo(kind, name) {
+    const c = this.combo;
+    if (!c) {
+      return 0;
+    }
+    let n = 0;
+    for (let i = 0; i < c.names.length; i += 1) {
+      if (c.kinds[i] === kind && c.names[i] === name) {
+        n += 1;
+      }
+    }
+    return n;
+  }
+
+  /*
+   * Put one geometric event into the combo, opening one if none is open, as
+   * land() does for a trick: its points add to the combo's, and if it is
+   * worth anything it buys a point of multiplier and holds the window open
+   * for another COMBO_WINDOW_MS from when it went in. The first thing a run
+   * scores starts the run's clock, whatever kind it is.
+   */
+  addGeometry(e) {
+    const at = e.atMs;
+    if (this.state === RUN_READY) {
+      this.state = RUN_FLYING;
+      this.startedMs = at;
+    }
+    if (!this.comboEnabled) {
+      this.banked += e.points;
+      this.events.push(e);
+      return e;
+    }
+    if (!this.combo) {
+      this.combo = {
+        names: [], kinds: [], scoring: 0, points: 0, startMs: at, untilMs: at + this.comboWindowMs,
+      };
+    }
+    this.combo.names.push(e.name);
+    this.combo.kinds.push(e.kind);
+    this.combo.points += e.points;
+    if (e.points > 0) {
+      this.combo.scoring += 1;
+      const until = at + this.comboWindowMs;
+      if (until > this.combo.untilMs) {
+        this.combo.untilMs = until;
+      }
+    }
+    if (this.combo.names.length > this.bestChain) {
+      this.bestChain = this.combo.names.length;
+    }
+    this.events.push(e);
+    /* The chain cashes itself in at the top, as land() says why. */
+    if (this.combo.scoring >= this.multMax) {
+      this.bank();
+    }
+    return e;
+  }
+
+  /*
+   * A NAMED GAP, flown: the author's `tier` (100 to 2500) at `atMs`, priced
+   * down by REPEAT_TRICK for every time this run has already flown it. The
+   * workbook's repeat table fits a gap exactly: a gap is a named line, the
+   * same way a trick is a named figure, and flying it a second time in a
+   * run is the thing the sheet charges for, so the fourth crossing is
+   * worth nothing and buys nothing (and is still shown, so the pilot sees
+   * why). Counted per RUN, not per combo, because a gap is one place: a
+   * pilot who could bank a combo and fly the crane gap again at full price
+   * would fly nothing else. `key` tells two gaps with the same name apart
+   * (a new gap is called GAP until its author names it): the index
+   * src/game/gaps.js reports, or the name when there is none.
+   */
+  gap(name, tier, atMs, key) {
+    if (!this.geometryOpen(atMs)) {
+      return null;
+    }
+    const k = key ?? name;
+    const priors = this.gapPriors.get(k) ?? 0;
+    const t = tier > 0 ? tier : 0;
+    const points = Math.round(t * repeatTrickFactor(priors));
+    this.gapPriors.set(k, priors + 1);
+    this.gapsFlown += 1;
+    if (!this.bestGap || points > this.bestGap.points) {
+      this.bestGap = { name, points };
+    }
+    return this.addGeometry({
+      kind: 'gap', name, tier: t, repeat: priors, points, atMs,
+    });
+  }
+
+  /*
+   * A CLOSE CALL that ended clean and paid: src/game/closecall.js's event,
+   * { kind, name, value, holdMs, clearance, paidStep }, which goes in at
+   * `paidStep`, priced down by REPEAT_TRICK for the same kind and name
+   * already in this combo.
+   */
+  closeCall(c) {
+    const kind = c && c.kind;
+    if (!(kind in this.closeCalls) || !(c.value > 0)) {
+      return null;
+    }
+    const at = c.paidStep;
+    if (!this.geometryOpen(at)) {
+      return null;
+    }
+    const repeat = this.repeatInCombo(kind, c.name);
+    const points = Math.round(c.value * repeatTrickFactor(repeat));
+    this.closeCalls[kind] += 1;
+    const clearance = Math.round(c.clearance * 100) / 100;
+    let e;
+    if (kind === 'skim' || kind === 'lowpass') {
+      if (kind === 'skim' && (!this.longestSkim || c.holdMs > this.longestSkim.ms)) {
+        this.longestSkim = { ms: c.holdMs, name: c.name };
+      }
+      e = {
+        kind, name: c.name, holdMs: c.holdMs, clearance, repeat, points, atMs: at,
+      };
+    } else {
+      e = {
+        kind, name: c.name, clearance, repeat, points, atMs: at,
+      };
+    }
+    return this.addGeometry(e);
+  }
+
+  /*
+   * A CHASE EVENT that paid (src/game/chase.js pays(e)): a tail banked, a
+   * thread between two moving cars, a hurdle or leapfrog over one, with
+   * chase.js's own name and value, going in at its paidStep and priced down
+   * for the same one already in this combo. A car thread is kind
+   * 'chase-thread', so it is not a repeat of a close call's thread.
+   */
+  chaseEvent(ev) {
+    const kind = ev && CHASE_KIND[ev.kind];
+    if (!kind || !(ev.value > 0)) {
+      return null;
+    }
+    const at = ev.paidStep;
+    if (!this.geometryOpen(at)) {
+      return null;
+    }
+    const repeat = this.repeatInCombo(kind, ev.name);
+    const points = Math.round(ev.value * repeatTrickFactor(repeat));
+    let e;
+    if (kind === 'tail') {
+      if (!this.bestTail || ev.value > this.bestTailValue) {
+        this.bestTail = { ms: ev.ms, drift: Boolean(ev.drift) };
+        this.bestTailValue = ev.value;
+      }
+      e = {
+        kind, name: ev.name, holdMs: ev.ms, drift: Boolean(ev.drift), repeat, points, atMs: at,
+      };
+    } else {
+      e = {
+        kind, name: ev.name, repeat, points, atMs: at,
+      };
+    }
+    return this.addGeometry(e);
+  }
+
+  /* THE STF MARK, found: EGG_POINTS into the combo, once a run. */
+  egg(atMs) {
+    if (this.eggFound || !this.geometryOpen(atMs)) {
+      return null;
+    }
+    this.eggFound = true;
+    return this.addGeometry({
+      kind: 'egg', name: 'STF', repeat: 0, points: EGG_POINTS, atMs,
+    });
+  }
+
+  /*
+   * A HELD SKIM OR A HELD TAIL, at `atMs`: the open combo's window is held
+   * open for COMBO_WINDOW_MS from here, the way a manual keeps a skate
+   * game's combo alive. It adds nothing and buys nothing; the skim or the
+   * tail pays when it ends. With no combo open there is nothing to hold.
+   */
+  hold(atMs) {
+    if (!this.combo || this.state === RUN_OVER) {
+      return;
+    }
+    if (atMs >= this.combo.untilMs) {
+      this.bank();
+      return;
+    }
+    const until = atMs + this.comboWindowMs;
+    if (until > this.combo.untilMs) {
+      this.combo.untilMs = until;
+    }
+  }
+
+  /* The skim being held, for view().skim: closecall.js's live skim. */
+  setSkim(on, holdMs, clearance) {
+    this.skim.on = Boolean(on);
+    this.skim.holdMs = on ? holdMs : 0;
+    this.skim.clearance = on ? clearance : 0;
+  }
+
+  /*
    * The run is over. Whatever is open is banked, not lost: the pilot did
    * not crash, the clock ran out.
    *
@@ -540,6 +862,9 @@ export class FreestyleScore {
           remain: Math.max(0, Math.min(1, (c.untilMs - this.nowMs) / this.comboWindowMs)),
         }
         : null,
+      /* The skim being held, for a meter: { on, holdMs, clearance }, the
+       * same object every frame. See setSkim. */
+      skim: this.skim,
     };
   }
 
@@ -612,7 +937,192 @@ export class FreestyleScore {
        * settings what kind of run this was. */
       timed: this.timed,
       rows,
+      /*
+       * THE GEOMETRY, for the results page. `counter` is this scorer's own
+       * total, the same number as `total` here; on Counter's summary, below,
+       * `total` is the board's and `counter` the counter's, and this is the
+       * field that tells them apart.
+       */
+      counter: this.banked,
+      bestGap: this.bestGap ? { name: this.bestGap.name, points: this.bestGap.points } : null,
+      longestSkim: this.longestSkim ? { ms: this.longestSkim.ms, name: this.longestSkim.name } : null,
+      bestTail: this.bestTail ? { ms: this.bestTail.ms, drift: this.bestTail.drift } : null,
+      eggFound: this.eggFound,
+      gaps: this.gapsFlown,
+      closeCalls: { ...this.closeCalls },
     };
+  }
+}
+
+/*
+ * THE COUNTER AND ITS BOARD TWIN, which is what the shell holds.
+ *
+ * `run` is the counter: tricks (while `tricks` says the Scoring switch
+ * counts them), named gaps, close calls, the chase and the STF mark, in one
+ * combo. It owns the run's one clock: a scored run is two minutes from the
+ * first thing it scores, whatever kind that is, and it is what the HUD
+ * draws (view(), drainEvents()).
+ *
+ * `board` is the trick scorer as it always was: every trick the recogniser
+ * names, whatever the switch says (Off is a display decision, and the
+ * scorer keeps its total underneath it, as src/main.js has always said),
+ * crashed where the shell has always told it to crash, and nothing else.
+ * Its total is the number the board is posted, so a run on the town posts
+ * exactly the arithmetic the board's inspectRun bounds. It has no clock of
+ * its own: it ends when the counter's run ends. Every trick it is fed goes
+ * into the counter too while tricks count, so the counter's run starts no
+ * later than the board's first trick and a scored run on the board is
+ * never longer than the two minutes on the screen. When the first thing a
+ * run scores is a trick the two end on the same tick, and the board's
+ * total is exactly what the one scorer's was before the counter existed. When a gap or a skim came first, the board holds the tricks
+ * flown inside the run the pilot was shown.
+ *
+ * The pair allocates nothing more than the one scorer did: the board's
+ * events are thrown away as they are made (events.length = 0), because the
+ * HUD reads the counter's.
+ */
+export class Counter {
+  constructor(opts = {}) {
+    this.run = new FreestyleScore({ ...opts, timed: opts.timed !== false });
+    this.board = new FreestyleScore({ ...opts, timed: false });
+    /* Whether tricks count in the counter: the Scoring switch, re-read by
+     * the shell every run (decision 2). The board counts them regardless. */
+    this.tricks = opts.tricks !== false;
+  }
+
+  get timed() {
+    return this.run.timed;
+  }
+
+  set timed(v) {
+    this.run.timed = v !== false;
+  }
+
+  reset() {
+    this.run.reset();
+    this.board.reset();
+  }
+
+  over() {
+    return this.run.over();
+  }
+
+  remainMs() {
+    return this.run.remainMs();
+  }
+
+  total() {
+    return this.run.total();
+  }
+
+  /* A trick from the recogniser: to the board always, and to the counter
+   * while tricks count. Returns the counter's record, or the board's when
+   * tricks do not count. */
+  land(trick) {
+    if (this.run.over()) {
+      return null;
+    }
+    const b = this.board.land(trick);
+    this.board.events.length = 0;
+    return this.tricks ? this.run.land(trick) : b;
+  }
+
+  tick(nowMs) {
+    this.run.tick(nowMs);
+    this.board.tick(nowMs);
+    if (this.run.over() && this.board.state === RUN_FLYING) {
+      this.board.finish();
+    }
+    this.board.events.length = 0;
+  }
+
+  finish() {
+    const total = this.run.finish();
+    if (this.board.state === RUN_FLYING) {
+      this.board.finish();
+    }
+    this.board.events.length = 0;
+    return total;
+  }
+
+  /* A crash the shell has always told the trick scorer about: both hear
+   * it. */
+  crash() {
+    this.run.crash();
+    this.board.crash();
+    this.board.events.length = 0;
+  }
+
+  /*
+   * A crash on a path that never reached the trick scorer (the solid crash
+   * that sets the craft down, src/main.js crashResetTick): the counter
+   * bails, because a crash must never be paid for and every crash loses the
+   * open combo, and the board is left as it was, so the number it is posted
+   * is still computed as it always was. PROGRESS.md 2026-09-26 puts the
+   * difference to the owner.
+   */
+  bailCounter() {
+    this.run.crash();
+  }
+
+  gap(name, tier, atMs, key) {
+    return this.run.gap(name, tier, atMs, key);
+  }
+
+  closeCall(c) {
+    return this.run.closeCall(c);
+  }
+
+  chaseEvent(e) {
+    return this.run.chaseEvent(e);
+  }
+
+  egg(atMs) {
+    return this.run.egg(atMs);
+  }
+
+  hold(atMs) {
+    this.run.hold(atMs);
+  }
+
+  setSkim(on, holdMs, clearance) {
+    this.run.setSkim(on, holdMs, clearance);
+  }
+
+  /* The counter, for the HUD. */
+  view() {
+    return this.run.view();
+  }
+
+  drainEvents() {
+    this.board.events.length = 0;
+    return this.run.drainEvents();
+  }
+
+  /*
+   * The run summary. Every field the trick scorer's summary had keeps its
+   * meaning and comes from the board: `total` is what is posted, with the
+   * tricks, the best combo, the signature and the duration it is posted
+   * with. `state` and `timed` are the run's, because the run has one clock.
+   * Beside them, the counter's: `counter` its total, `counterBestCombo`,
+   * `counterDurationMs`, and the geometry's bests and counts.
+   */
+  summary() {
+    const s = this.board.summary();
+    const r = this.run.summary();
+    s.state = r.state;
+    s.timed = r.timed;
+    s.assisted = s.assisted || r.assisted;
+    s.counter = r.counter;
+    s.counterBestCombo = r.bestCombo;
+    s.counterDurationMs = r.durationMs;
+    s.bestGap = r.bestGap;
+    s.longestSkim = r.longestSkim;
+    s.bestTail = r.bestTail;
+    s.eggFound = r.eggFound;
+    s.gaps = r.gaps;
+    s.closeCalls = r.closeCalls;
+    return s;
   }
 }
 

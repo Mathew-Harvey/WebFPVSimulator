@@ -88,7 +88,7 @@
 
 import { formatScore } from '../game/score.js';
 import {
-  INKS, SFX, callSize, letterCanvas, paintCall, paintSfx, sideRoom,
+  INK, INKS, SFX, callSize, letterCanvas, paintCall, paintKana, paintSfx, sideRoom,
 } from './lettering.js';
 
 /* Local, because ui.js keeps its own copy private and this file is meant to
@@ -176,13 +176,41 @@ export const SKIM_BAR_M = 1;
  * speaking a different language from the place it sits in. Each is the
  * ordinary spoken word a person would actually use, not a translation of
  * the English one.
+ *
+ * DRAWN, NOT TYPESET (polish item 19). They were font glyphs, いいね, すごい,
+ * やばい and 最高, and a machine with no Japanese font drew them as boxes,
+ * though the sound effects were already brush strokes to avoid exactly
+ * that. So they are the same words in katakana, the way a manga letters a
+ * shout, drawn with the sound effects' stroke kana (src/ui/lettering.js):
+ * イイネ, スゴイ, ヤバイ, and サイコー for 最高, which is the spelling a manga
+ * gives it when somebody yells it. That needed five kana added to the set,
+ * イ ネ コ ヤ サ, and ゴ is コ voiced. The kanji was not drawn: ten and ten
+ * strokes at a badge's twelve pixels is a smudge, and a kana word is what
+ * the page would letter there anyway. The words stay in the DOM as text
+ * for a screen reader; the drawing is aria-hidden.
  */
 const TIERS = [
-  { at: 2, en: 'Nice', jp: 'いいね' },
-  { at: 3, en: 'Sweet', jp: 'すごい' },
-  { at: 4, en: 'Wild', jp: 'やばい' },
-  { at: 5, en: 'Perfect', jp: '最高' },
+  { at: 2, en: 'Nice', jp: 'イイネ' },
+  { at: 3, en: 'Sweet', jp: 'スゴイ' },
+  { at: 4, en: 'Wild', jp: 'ヤバイ' },
+  { at: 5, en: 'Perfect', jp: 'サイコー' },
 ];
+
+/* The tier words' kana, painted once each at a generous cell on first use
+ * and kept: the badge sets them at 1.2 em by CSS, so no window size ever
+ * repaints one, and nothing here is drawn per frame. */
+const KANA_CELL = 28;
+const kanaArt = new Map();
+
+function tierKana(jp) {
+  let c = kanaArt.get(jp);
+  if (!c) {
+    c = letterCanvas('score-tier-kana');
+    paintKana(c, jp, KANA_CELL, INK);
+    kanaArt.set(jp, c);
+  }
+  return c;
+}
 
 function tierFor(mult) {
   let hit = null;
@@ -590,7 +618,7 @@ export class ScoreHud {
         if (t) {
           this.tier.hidden = false;
           this.tierEn.textContent = t.en;
-          this.tierJp.textContent = t.jp;
+          this.tierJp.replaceChildren(tierKana(t.jp), el('span', 'sr-only', t.jp));
           /* Restart the badge's landing animation on each new tier. */
           this.tier.style.animation = 'none';
           void this.tier.offsetWidth;

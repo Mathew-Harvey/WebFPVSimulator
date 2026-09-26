@@ -2,7 +2,8 @@
  * lettering.js: the manga lettering, drawn by our own canvas code. Trick
  * names, gaps, close calls, the combo's verdict and the chase's callouts
  * arrive as hand lettered text (FREESTYLE-MAPS-PLAN.md section 3.2 item 3),
- * and the results page letters its panels with the same hand.
+ * the results page letters its panels with the same hand, and so do the
+ * wordmark and the menus' titles (paintTitle, polish item 19).
  *
  * WHAT "HAND LETTERED" IS HERE, precisely, because there is no font file:
  *
@@ -23,7 +24,9 @@
  *   stored as its strokes in a unit square and drawn as an ink line with a
  *   coloured core. A manga's sound effects are drawn, not typeset, and this
  *   way they look drawn and read the same on a machine with no Japanese
- *   font installed, where the system stack would draw boxes.
+ *   font installed, where the system stack would draw boxes. Five more kana
+ *   spell the combo tiers' words (src/ui/scorehud.js), drawn as one brush
+ *   line in a badge (paintKana), for the same reason.
  *
  * THE SOUND EFFECTS, the whole set, and what each is for. Decision 11 (the
  * owner, 2026-09-26): "Yes, small". Small in size and small in number, so
@@ -135,6 +138,28 @@ function hash(str, i) {
   return (h >>> 0) / 4294967296;
 }
 
+/*
+ * A colour as #rrggbb, from #rrggbb, #rgb or the rgb() and rgba() a computed
+ * style hands back, because a lettered heading takes its fill from the
+ * heading's own CSS colour (a record's title is mint because its CSS says
+ * so) and the cel band below does arithmetic on hex.
+ */
+export function hexOf(colour) {
+  const c = String(colour || '').trim();
+  if (/^#[0-9a-f]{6}$/i.test(c)) {
+    return c;
+  }
+  if (/^#[0-9a-f]{3}$/i.test(c)) {
+    return `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`;
+  }
+  const m = c.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i);
+  if (!m) {
+    return INKS.cream;
+  }
+  const n = (v) => Math.max(0, Math.min(255, Math.round(Number(v))));
+  return `#${((1 << 24) | (n(m[1]) << 16) | (n(m[2]) << 8) | n(m[3])).toString(16).slice(1)}`;
+}
+
 /* The lower cel band: the same hue, darker. Hex in, hex out. */
 function shadeOf(hex, k) {
   const n = parseInt(hex.slice(1), 16);
@@ -167,9 +192,10 @@ function layout(ctx, text, px) {
 }
 
 /* The width a word will take at `px`, including the slant and the drop
- * that reach past its last advance. */
-export function wordWidth(ctx, text, px) {
-  return layout(ctx, text, px).w + px * (SLANT * ASC + DROP_X + INK_W);
+ * that reach past its last advance. `inkW` is the outline as a fraction of
+ * the size, INK_W unless a title asks for a finer one. */
+export function wordWidth(ctx, text, px, inkW = INK_W) {
+  return layout(ctx, text, px).w + px * (SLANT * ASC + DROP_X + inkW);
 }
 
 /*
@@ -179,10 +205,31 @@ export function wordWidth(ctx, text, px) {
  * Returns the advance.
  */
 export function drawWord(ctx, text, x, y, px, fill, opts = {}) {
+  return drawRuns(ctx, [{ text, fill, shade: opts.shade }], x, y, px, opts);
+}
+
+/*
+ * Letter a word made of runs in different colours, { text, fill, shade? }
+ * each, as one word: one hand (the seed is the whole word and a glyph's
+ * place in it), one drop, every outline before any fill, then each run's
+ * fill. The wordmark is the reason, WEB in cream and FPV in sakura, and
+ * why it is not two calls to drawWord: the second word's outline would be
+ * stroked over the first's fill where the B meets the F, and a letterer's
+ * brush joins them. One run is exactly drawWord.
+ *
+ * opts: rim, seed, and inkW (the outline as a fraction of the size).
+ */
+export function drawRuns(ctx, runs, x, y, px, opts = {}) {
+  const text = runs.map((r) => r.text).join('');
   const { chars, adv, w } = layout(ctx, text, px);
+  const runOf = [];
+  runs.forEach((r, k) => {
+    for (let n = Array.from(r.text).length; n > 0; n -= 1) {
+      runOf.push(k);
+    }
+  });
   const x0 = x;
-  const shade = opts.shade || shadeOf(fill, 0.8);
-  const ink = px * INK_W;
+  const ink = px * (opts.inkW > 0 ? opts.inkW : INK_W);
   const seed = opts.seed || text;
   ctx.save();
   ctx.lineJoin = 'round';
@@ -190,12 +237,13 @@ export function drawWord(ctx, text, x, y, px, fill, opts = {}) {
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'center';
   /* One glyph through the hand: moved to its place, turned, sheared, and
-   * drawn by `paint` with the glyph at the local origin. */
-  const each = (dx, dy, paint) => {
+   * drawn by `paint` with the glyph at the local origin. `only` limits it
+   * to one run's glyphs. */
+  const each = (dx, dy, paint, only = -1) => {
     let gx = x0;
     for (let i = 0; i < chars.length; i += 1) {
       const a = adv[i];
-      if (chars[i] !== ' ') {
+      if (chars[i] !== ' ' && (only < 0 || runOf[i] === only)) {
         const rot = (hash(seed, i * 3) - 0.5) * 0.085;
         const lift = (hash(seed, i * 3 + 1) - 0.5) * 0.07 * px;
         const sc = (i === 0 ? 1.08 : 1) + (hash(seed, i * 3 + 2) - 0.5) * 0.05;
@@ -227,13 +275,16 @@ export function drawWord(ctx, text, x, y, px, fill, opts = {}) {
   each(0, 0, (ch) => ctx.strokeText(ch, 0, 0));
   /* Two cel bands with a hard stop, in the glyph's own space so the stop
    * sits at the same height in every glyph however it is turned. */
-  const band = ctx.createLinearGradient(0, -px * 0.74, 0, 0);
-  band.addColorStop(0, fill);
-  band.addColorStop(0.55, fill);
-  band.addColorStop(0.55, shade);
-  band.addColorStop(1, shade);
-  ctx.fillStyle = band;
-  each(0, 0, (ch) => ctx.fillText(ch, 0, 0));
+  runs.forEach((r, k) => {
+    const shade = r.shade || shadeOf(r.fill, 0.8);
+    const band = ctx.createLinearGradient(0, -px * 0.74, 0, 0);
+    band.addColorStop(0, r.fill);
+    band.addColorStop(0.55, r.fill);
+    band.addColorStop(0.55, shade);
+    band.addColorStop(1, shade);
+    ctx.fillStyle = band;
+    each(0, 0, (ch) => ctx.fillText(ch, 0, 0), runs.length > 1 ? k : -1);
+  });
   ctx.restore();
   return w;
 }
@@ -243,11 +294,17 @@ export function drawWord(ctx, text, x, y, px, fill, opts = {}) {
  * ------------------------------------------------------------------ */
 
 /*
- * Ten kana as brush strokes in a unit square, y down, in the order a hand
- * writes them. M moves, L draws a straight line, Q a curve through a
+ * Fifteen kana as brush strokes in a unit square, y down, in the order a
+ * hand writes them. M moves, L draws a straight line, Q a curve through a
  * control point. The voiced kana are these with the voicing mark, and the
  * small ones are these made small, which is how the writing system itself
  * builds them.
+ *
+ * The first ten spell the sound effects. イ ネ コ ヤ サ were added with the
+ * combo tiers' words (src/ui/scorehud.js), which were font glyphs and drew
+ * as boxes on a machine with no Japanese font: イイネ, スゴイ, ヤバイ and
+ * サイコー, the katakana a manga letters a shout in, need these five and
+ * ゴ, which is コ voiced.
  */
 const KANA = {
   'ス': ['M.2 .2 L.76 .2 Q.66 .6 .14 .9', 'M.5 .56 Q.7 .68 .88 .9'],
@@ -260,11 +317,16 @@ const KANA = {
   'キ': ['M.16 .36 L.84 .28', 'M.1 .64 L.9 .56', 'M.42 .08 L.56 .96'],
   'フ': ['M.14 .2 L.82 .2 Q.72 .68 .24 .94'],
   'ー': ['M.06 .54 L.94 .48'],
+  'イ': ['M.76 .06 Q.6 .4 .1 .62', 'M.5 .4 L.5 .96'],
+  'ネ': ['M.44 .04 L.54 .17', 'M.16 .3 L.8 .3 Q.56 .6 .1 .8', 'M.5 .54 L.5 .98', 'M.64 .62 L.88 .8'],
+  'コ': ['M.16 .2 L.8 .2 L.8 .82', 'M.14 .82 L.84 .82'],
+  'ヤ': ['M.06 .44 L.9 .3 Q.84 .5 .64 .62', 'M.32 .08 L.54 .96'],
+  'サ': ['M.04 .34 L.96 .34', 'M.28 .1 L.28 .6', 'M.7 .06 L.7 .48 Q.68 .82 .32 .96'],
 };
 /* The voicing mark, two ticks off the top right. */
 const DAKUTEN = ['M.8 .0 L.88 .2', 'M.95 -.04 L1.03 .16'];
 const VOICED = {
-  'ズ': 'ス', 'バ': 'ハ', 'ド': 'ト', 'ギ': 'キ', 'ブ': 'フ',
+  'ズ': 'ス', 'バ': 'ハ', 'ド': 'ト', 'ギ': 'キ', 'ブ': 'フ', 'ゴ': 'コ',
 };
 const SMALL = { 'ッ': 'ツ', 'ュ': 'ユ' };
 
@@ -305,12 +367,67 @@ function kanaAdvance(ch) {
 }
 
 /* The width a sound effect takes at `px`. */
-export function sfxWidth(text, px) {
+export function sfxWidth(text, px, tight = 1) {
   let w = 0;
   for (const ch of text) {
     w += kanaAdvance(ch);
   }
-  return (w + 0.34) * px;
+  return (w * tight + 0.34) * px;
+}
+
+/*
+ * Walk a line of kana, each cell `px` square with its top left at (x, y)
+ * plus (dx, dy), calling `paint(strokes)` with the context in the cell's
+ * unit square. `hand` is how far each kana is turned and stepped off the
+ * line: 1 for a sound effect scrawled across a panel, less for a word set
+ * in a badge. `tight` scales the advance, 1 for an effect. Shared by both
+ * so they are one hand.
+ */
+function eachKana(ctx, text, x, y, px, hand, dx, dy, paint, tight = 1) {
+  if (!DAKU_STROKES) {
+    DAKU_STROKES = DAKUTEN.map((src) => src.split(/(?=[ML])/).map((cmd) => {
+      const nums = cmd.slice(1).trim().split(/\s+/).map(Number);
+      return [cmd[0], ...nums];
+    }));
+  }
+  const chars = Array.from(text);
+  let gx = x + px * 0.1;
+  for (let i = 0; i < chars.length; i += 1) {
+    const ch = chars[i];
+    const small = SMALL[ch];
+    const base = small || VOICED[ch] || ch;
+    if (KANA[base]) {
+      const rot = (hash(text, i) - 0.5) * 0.28 * hand;
+      const step = (i % 2 ? 0.06 : -0.04) * px * hand;
+      ctx.save();
+      ctx.translate(gx + dx, y + step + dy);
+      ctx.translate(px * 0.5, px * 0.5);
+      ctx.rotate(rot);
+      ctx.transform(1, 0, -SLANT * 0.7, 1, 0, 0);
+      ctx.translate(-px * 0.5, -px * 0.5);
+      ctx.scale(px, px);
+      if (small) {
+        ctx.translate(0.04, 0.36);
+        ctx.scale(0.62, 0.62);
+      } else if (VOICED[ch]) {
+        paint(DAKU_STROKES);
+        ctx.translate(-0.02, 0.07);
+        ctx.scale(0.88, 0.88);
+      }
+      paint(strokesOf(base));
+      ctx.restore();
+    }
+    gx += kanaAdvance(ch) * px * tight;
+  }
+}
+
+/* Strokes in the cell's own units, so one number reads the same at every
+ * size. */
+function inkStrokes(ctx, strokes, colour, w) {
+  tracePath(ctx, strokes);
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = w;
+  ctx.stroke();
 }
 
 /*
@@ -319,58 +436,39 @@ export function sfxWidth(text, px) {
  * is scrawled across a panel rather than set on a line.
  */
 export function drawSfx(ctx, text, x, y, px, fill) {
-  const chars = Array.from(text);
-  if (!DAKU_STROKES) {
-    DAKU_STROKES = DAKUTEN.map((src) => src.split(/(?=[ML])/).map((cmd) => {
-      const nums = cmd.slice(1).trim().split(/\s+/).map(Number);
-      return [cmd[0], ...nums];
-    }));
-  }
   ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  const each = (dx, dy, paint) => {
-    let gx = x + px * 0.1;
-    for (let i = 0; i < chars.length; i += 1) {
-      const ch = chars[i];
-      const small = SMALL[ch];
-      const base = small || VOICED[ch] || ch;
-      if (KANA[base]) {
-        const rot = (hash(text, i) - 0.5) * 0.28;
-        const step = (i % 2 ? 0.06 : -0.04) * px;
-        ctx.save();
-        ctx.translate(gx + dx, y + step + dy);
-        ctx.translate(px * 0.5, px * 0.5);
-        ctx.rotate(rot);
-        ctx.transform(1, 0, -SLANT * 0.7, 1, 0, 0);
-        ctx.translate(-px * 0.5, -px * 0.5);
-        ctx.scale(px, px);
-        if (small) {
-          ctx.translate(0.04, 0.36);
-          ctx.scale(0.62, 0.62);
-        } else if (VOICED[ch]) {
-          paint(DAKU_STROKES);
-          ctx.translate(-0.02, 0.07);
-          ctx.scale(0.88, 0.88);
-        }
-        paint(strokesOf(base));
-        ctx.restore();
-      }
-      gx += kanaAdvance(ch) * px;
-    }
-  };
-  /* Widths are in the cell's own units, so one number reads the same at
-   * every size: the ink a fifth of a cell, the core a ninth. */
-  const inked = (strokes, colour, w) => {
-    tracePath(ctx, strokes);
-    ctx.strokeStyle = colour;
-    ctx.lineWidth = w;
-    ctx.stroke();
-  };
-  each(px * 0.06, px * 0.08, (s) => inked(s, INK, 0.22));
-  each(0, 0, (s) => inked(s, INK, 0.22));
-  each(0, 0, (s) => inked(s, fill, 0.11));
+  /* The ink a fifth of a cell, the core a ninth. */
+  eachKana(ctx, text, x, y, px, 1, px * 0.06, px * 0.08, (s) => inkStrokes(ctx, s, INK, 0.22));
+  eachKana(ctx, text, x, y, px, 1, 0, 0, (s) => inkStrokes(ctx, s, INK, 0.22));
+  eachKana(ctx, text, x, y, px, 1, 0, 0, (s) => inkStrokes(ctx, s, fill, 0.11));
   ctx.restore();
+}
+
+/*
+ * A kana word as a canvas of its own, one brush line in one colour and no
+ * core: the combo tier's word, set in the tier's badge the way the badge
+ * sets its English word, ink punched out of a solid chip (src/ui/scorehud.js).
+ * The hand is steadier than an effect's, because a badge is read, not
+ * glimpsed. Painted once at `px` a cell; the badge scales it by CSS, so a
+ * window changing size never repaints it.
+ */
+const BADGE_TIGHT = 0.86;
+
+export function paintKana(canvas, text, px, colour) {
+  const ctx = canvas.getContext('2d');
+  const dpr = dprNow();
+  const W = Math.ceil(sfxWidth(text, px, BADGE_TIGHT));
+  const H = Math.ceil(px * 1.3);
+  canvas.width = Math.ceil(W * dpr);
+  canvas.height = Math.ceil(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  eachKana(ctx, text, 0, px * 0.15, px, 0.4, 0, 0, (s) => inkStrokes(ctx, s, colour || INK, 0.19), BADGE_TIGHT);
+  return { w: W, h: H };
 }
 
 /* ------------------------------------------------------------------ *
@@ -564,6 +662,57 @@ export function paintSfx(canvas, text, px, fill) {
   ctx.clearRect(0, 0, W, H);
   drawSfx(ctx, text, px * 0.08, px * 0.22, px, fill || INKS.cream);
   return { w: W, h: H };
+}
+
+/*
+ * A TITLE, lettered once into a canvas of its own (polish item 19): the
+ * wordmark and the menus' headings in the callouts' hand, so the game's
+ * own voice is the one that names its rooms.
+ *
+ *   runs    [{ text, fill }]: the heading's words in their colours, WEB and
+ *           FPV for the wordmark, one run for a room's title
+ *   px      its size in CSS pixels, the heading's own font size, so the
+ *           lettering takes the room its text already takes
+ *   maxW    the widest it may be: it is set smaller to fit, never past
+ *   inkW    the outline as a fraction of the size (INK_W unless given)
+ *
+ * Returns { w, h, px, base, left }: its CSS size, the size it was set at
+ * once fitted, its baseline from the canvas's top, and how far in from the
+ * canvas's left edge the lettering's own left edge is, so the caller can
+ * lay it on the heading's baseline and left edge.
+ */
+export function paintTitle(canvas, runs, px, opts = {}) {
+  const ctx = canvas.getContext('2d');
+  const up = runs.map((r) => ({ text: String(r.text).toUpperCase(), fill: hexOf(r.fill) }));
+  const text = up.map((r) => r.text).join('');
+  const inkW = opts.inkW > 0 ? opts.inkW : INK_W;
+  const measure = (s) => {
+    const pad = s * (inkW + 0.12);
+    return {
+      s, pad, W: wordWidth(ctx, text, s, inkW) + pad * 2, H: s * (ASC + DESC) + pad * 2,
+    };
+  };
+  let m = measure(px);
+  if (opts.maxW && m.W > opts.maxW) {
+    m = measure(px * (opts.maxW / m.W));
+    if (m.W > opts.maxW) {
+      m = measure(m.s * (opts.maxW / m.W));
+    }
+  }
+  const dpr = dprNow();
+  const W = Math.ceil(m.W);
+  const H = Math.ceil(m.H);
+  canvas.width = Math.ceil(W * dpr);
+  canvas.height = Math.ceil(H * dpr);
+  canvas.style.width = `${W}px`;
+  canvas.style.height = `${H}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const base = m.pad + m.s * ASC;
+  drawRuns(ctx, up, m.pad + m.s * inkW * 0.5, base, m.s, { inkW, seed: opts.seed });
+  return {
+    w: W, h: H, px: m.s, base, left: m.pad,
+  };
 }
 
 /* A fresh canvas for a callout. aria-hidden, because the words a callout

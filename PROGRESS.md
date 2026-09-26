@@ -51090,3 +51090,40 @@ every module either side touched; and the room captured again, its six
 collider boxes and 28 solids identical to the baseline, 118 draw calls, the
 art up. The push to main is a fast forward. `npm run verify` not run, for
 the reason in the entry above.
+
+## 2026-09-26 | ui | The whoop's OSD loses its speed readout
+
+**Asked.** The owner, 2026-09-26: "remove speed recording on the whoop". The
+only speed the shell shows or keeps is the km/h readout in the OSD's right
+corner; nothing on the board, the results or the lap calls records a speed.
+So that is what goes, on the whoop only. The five inch keeps it.
+
+**Why the number was wrong on a whoop anyway.** The whoop flies the five
+inch's plant in a room built MICRO_SCALE (3.4289) times life size, so the
+readout was a five inch's ground speed printed over the picture of a whoop.
+
+**Changed.**
+
+- `configs/airframes.js`: `osdSpeed` on both airframes, true on the five inch,
+  false on the whoop, with the owner's words. Display only, like `cells`.
+- `src/main.js`: `speedKph` is null when the seated airframe's `osdSpeed` is
+  false. Read per frame off `runAirframe`, so a seat change mid session
+  takes effect on the next frame.
+- `src/ui/ui.js`: `setOsd` hides the readout with `is-off` when `speedKph`
+  is null, rather than leaving an empty line. The OSD's doc comment says
+  the machine decides.
+- `index.html`: `.osd-value.is-off { display: none; }`.
+
+Nothing physical: no plant, ABI, build, scoring or collider change.
+
+**Checks, run this turn.** `node --check` on the three changed modules;
+`configs/airframes.js` imported in Node, `5inch:true whoop65:false`, and its
+MICRO_SCALE assertion still loads; `npm run lint:preload` up to date, exit 0.
+
+**Not run.** `npm run verify`: nothing physical. `node scripts/shots.js`: not
+run, pending the owner's answer on the verification scale. No picture of the
+OSD with the readout gone has been taken.
+
+**Seen, not touched.** The altitude line has the same seam on a whoop: it is
+metres in the MICRO_SCALE room, so it reads 3.43 times the height the
+picture shows. Not asked for; left as it is.

@@ -11172,7 +11172,9 @@ export class Ui {
    *   roof. The shell measures it against the surface query the collision
    *   test uses, so the readout and the thing that kills you agree.
    *   Speed, pack and throttle are the same in both, because they are
-   *   properties of the machine and not of the game around it.
+   *   properties of the machine and not of the game around it, which is
+   *   also why the machine decides whether speed shows at all: osdSpeed in
+   *   configs/airframes.js, false on the whoop.
    */
   /*
    * Say something once, to whoever is listening. The guard is the point: a
@@ -11310,7 +11312,10 @@ export class Ui {
       }
     }
     Ui.bar(this.osdPackBar, packFrac);
-    Ui.text(this.osdSpeed, `${speedKph.toFixed(0)} km/h`);
+    /* Gone, not blank, on an airframe that has no speed to print: see
+     * osdSpeed in configs/airframes.js. */
+    Ui.klass(this.osdSpeed, speedKph == null ? 'osd-value is-off' : 'osd-value');
+    Ui.text(this.osdSpeed, speedKph == null ? '' : `${speedKph.toFixed(0)} km/h`);
     if (this.osdFlight) {
       Ui.text(this.osdFlight, flightMode === 'turtle'
         ? 'Turtle'

@@ -8058,7 +8058,9 @@ export async function boot({ loading, bootStart, mapId }) {
          * the road it is over, and the readout prints a negative altitude
          * under the overbridge. See SURFACE_BIAS. */
         altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y),
-        speedKph: speed * 3.6,
+        /* Null on an airframe whose OSD has no speed, and the readout goes.
+         * See osdSpeed in configs/airframes.js. */
+        speedKph: airframeById(runAirframe).osdSpeed ? speed * 3.6 : null,
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
         /* No damage model, so nothing to count down. How much this run has

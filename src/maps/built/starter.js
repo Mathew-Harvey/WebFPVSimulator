@@ -30,7 +30,7 @@
  *                     west past the pylon's foot, north between the
  *                     billboard and the street trees, a chicane west, and
  *                     north past the water tower to come back east along
- *                     the north edge. The drift car laps it in 26 s, and two
+ *                     the north edge. The drift car laps it in 25 s, and two
  *                     working vehicles come the other way. See THE YARD
  *                     LOOP below.
  *   the water tower   in the north east, WATER TOWER through its legs under
@@ -44,21 +44,34 @@
  * id. A starter that rolled new ids would be a different yard every load.
  *
  * THE YARD LOOP. Its nodes are the corners of the route, the lane's two
- * ends at x = 140 (y = 139 and 18), x = 120 between the billboard's legs
- * and the street trees, the chicane at y = 72, and x = 101.5 between the
- * container yard's north end, the street tree at (94, 104) and the water
- * tower; src/maps/built/road.js eases each corner into a bend of 7 to 12 m.
- * Every node is chosen so the road's 6 m keep at least 1.5 m from every
- * solid a car could reach, and every car's box at least 2 m, the drift
- * car's sliding tail included, at every step of a lap
- * (scripts/roads-check.js measures both on the poses the physics module
- * drives). The drift car drives the loop in the node order, alone in its
- * lane: nothing in the physics stops one car driving through another, so a
- * faster car must not share a lane with a slower one. The box truck and the
- * kei van come the other way, half a lap apart, the van's top speed set so
- * its lap matches the truck's, so the two keep their spacing. The two
- * parked cars that stood on the lane moved to its east verge when the loop
- * came, clear of it, of the footbridge's stair and of the pylons.
+ * ends at x = 140 (y = 139.5 and 18), x = 120.5 between the billboard's
+ * legs and the street trees, the chicane from (120.5, 62) across to
+ * (100, 84), and x = 100 between the container yard's north end, the street
+ * tree at (94, 104) and the water tower; src/maps/built/road.js eases each
+ * corner into a bend of 7.5 to 12 m. Every node is chosen so the road's
+ * 7.5 m keep at least 1.5 m from every solid a car could reach, and every
+ * car's box at least 2 m, the drift car's sliding tail included, at every
+ * step of a lap (scripts/roads-check.js measures both on the poses the
+ * physics module drives). The drift car drives the loop in the node order,
+ * alone in its lane: nothing in the physics stops one car driving through
+ * another, so a faster car must not share a lane with a slower one. The box
+ * truck and the kei van come the other way, half a lap apart, the van's top
+ * speed set so its lap matches the truck's, so the two keep their spacing.
+ * The two parked cars that stood on the lane moved to its east verge when
+ * the loop came, clear of it, of the footbridge's stair and of the pylons.
+ *
+ * WHY 7.5 M AND A SOFT CHICANE. The drift car slides about 44 degrees in
+ * every bend, and in a bend to its right its nose swings across the centre
+ * line toward the oncoming lane, where a long body on a tight bend swings
+ * its own corners out toward the same line. On the first loop, 6 m wide
+ * with a chicane of two square 7 m bends, the drift car drove through the
+ * box truck for 3.8 s in every 30 minutes of clock, by up to 0.23 m, and
+ * the physics lets it, because cars never touch each other. Two 3.75 m
+ * lanes put the lane lines 0.75 m further apart, and the chicane is now a
+ * 43 degree jink either way on 12 m bends instead of two right angles on
+ * 7 m ones: over 30 minutes no two cars ever overlap, and the nearest they
+ * come is 0.40 m, the drift car's tail and the truck's corner in the south
+ * west bends (scripts/roads-check.js holds this).
  *
  * Checked in Node through src/maps/built/place.js, by scripts/props-check.js
  * and by the builder's own warnings: no two elements' solids overlap, no two
@@ -97,13 +110,14 @@ export const STARTER_NAME = 'Hibari Yard';
 
 /* The kei van's top speed, m/s: the one that makes its lap round the yard
  * loop, against the node order, as long as the box truck's at 10 m/s,
- * 40.011 s, so the two, half a lap apart, stay half a lap apart. It corners
+ * 38.028 s, so the two, half a lap apart, stay half a lap apart. It corners
  * harder than the truck (3 m/s/s against 2.5), so on the same top speed it
- * would gain 1.8 s a lap and drive through it in about six minutes. At
- * 8.8318 the two laps agree to a tenth of a millisecond over ten laps.
+ * would gain on it every lap and drive through it within minutes. At
+ * 8.8582 the two laps agree to a tenth of a millisecond over ten laps.
  * Found by halving on the module's own poses; scripts/roads-check.js holds
- * the two laps together. If the loop's shape changes, find it again. */
-const VAN_SPEED = 8.8318;
+ * the two laps together. If the loop's shape changes, find it again (it
+ * was 8.8318 on the first loop, 6 m wide with a square chicane). */
+const VAN_SPEED = 8.8582;
 
 /* The starter's own document id, fixed for the reason in the header. */
 export const STARTER_ID = 'trk-1b4a7d00';
@@ -256,10 +270,10 @@ function rows() {
      * its road and its offset, metres along the centre line from the first
      * node, so its x, y and heading are written 0.
      */
-    ['road', 140, 139, EAST, { width: 6, lanes: 2, radius: 12 }, {
+    ['road', 140, 139.5, EAST, { width: 7.5, lanes: 2, radius: 12 }, {
       name: 'Yard loop',
       closed: true,
-      nodes: [[0, 0], [0, -121], [-20, -121], [-20, -67], [-38.5, -67], [-38.5, 0]],
+      nodes: [[0, 0], [0, -121.5], [-19.5, -121.5], [-19.5, -77.5], [-40, -55.5], [-40, 0]],
     }],
     /* The drift car, wine red, in the node order: south down the lane from
      * the north east bend, 25 m down it at step 0. */

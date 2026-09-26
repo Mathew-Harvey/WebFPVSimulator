@@ -1234,6 +1234,26 @@ function suiteFigures() {
     stacked[0]?.cue);
   check('the second station cues the bottom', stacked[1]?.cue === 'Split-S, bottom',
     stacked[1]?.cue);
+  /* The plain gates either side of the Split-S. Before 2026-09-26 the
+   * Split-S plan on one opening fell through to a single pass and matched
+   * first, so every one of these cued "Split-S, level 1". */
+  const plain = course.stations.filter((s) => s.elementId === g0.id || s.elementId === g1.id);
+  check('the plain gates around it carry no cue', plain.length === 2 && plain.every((s) => s.cue === ''),
+    plain.map((s) => JSON.stringify(s.cue)).join(', '));
+  {
+    const flat = createTrack();
+    const lone = [place(flat, 'gate', 0, 0), place(flat, 'flaggedGate', 10, 0),
+      place(flat, 'flag', 20, 4), place(flat, 'cone', 30, 0), place(flat, 'gate', 40, 0)];
+    for (const e of lone) {
+      addToSequence(flat, e.id, 0);
+    }
+    const flown = courseFromDocument(flat).stations;
+    const cued = flown.filter((s) => s.cue);
+    check('a gate, a flag and a cone cue nothing', flown.length === lone.length && cued.length === 0,
+      `${flown.length} stations, cued: ${cued.map((s) => s.cue).join(', ') || 'none'}`);
+    check('and none of them is taken for a Split-S', lone.every((e) => matchingFigure(flat, e) !== 'splitS'),
+      lone.map((e) => matchingFigure(flat, e)).join(', '));
+  }
   check('the course carries one figure ribbon', course.figures.length === 1, `${course.figures.length}`);
   check('the ribbon goes opening, wrap, opening', course.figures[0]?.points.length === 3,
     `${course.figures[0]?.points.length}`);

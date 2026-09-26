@@ -6,9 +6,12 @@
  * THE SAME CLOTHES AS THE SCORE. Outlined type that reads over a lit road
  * (.score-cut), cream for the words, amber for the number at risk, mint for
  * what has been banked and the saturated sakura the score bails in for what
- * has been lost; the callouts are lettered in ink with a ray fan thrown
- * behind them, like the found mark's. Modest on purpose: Stage F restyles
- * everything on this layer into the manga lettering of section 3.2.
+ * has been lost. On a freestyle map the callouts are hand lettered, in the
+ * hand the score's names are (src/ui/lettering.js, section 3.2 item 3),
+ * with a ray fan thrown behind them and a small sound effect beside a
+ * banked tail and a thread: ブーン for a tail, キキーッ for the drift car's,
+ * ギュン for a thread. Clean FPV gives them back as plain type. The meter is
+ * the same on both: it is an instrument, not a callout.
  *
  * DOWN THE RIGHT, UNDER THE MARK. The left column is the score's, the top
  * centre is the run clock's, the bottom corners are the pack's and the
@@ -47,6 +50,9 @@
 
 import { formatScore } from '../game/score.js';
 import { TAIL_DRIFT_WEIGHT } from '../game/chase.js';
+import {
+  INKS, SFX, callSize, letterCanvas, paintCall, paintSfx, sideRoom,
+} from './lettering.js';
 
 /* Local, as scorehud.js keeps its own. */
 function el(tag, cls, text) {
@@ -67,6 +73,30 @@ export const CHASE_CALL_MS = 1800;
 /* At most this many callouts at once; the oldest goes. A thread and a tail
  * banking together is two, and three is already a lot to read at speed. */
 const CALL_STACK_MAX = 3;
+
+/* A phone on its side: see the media query under .chase-calls. */
+function shortScreen() {
+  return typeof window !== 'undefined' && window.innerHeight < 560;
+}
+
+/* The column's margin at its widest, .chase-calls' `right` in index.html
+ * (clamp(18px, 3vw, 40px)): what the lettering takes off the outer third. */
+const COLUMN_RIGHT = 40;
+
+/*
+ * The sound effect a callout carries, or null. A banked tail and a thread,
+ * the chase's big moments (decision 11: gaps, combos and a banked tail);
+ * not a hurdle, which is a hop, and never a loss.
+ */
+export function chaseSfx(e) {
+  if (!e || e.kind === 'lost' || !(e.value > 0)) {
+    return null;
+  }
+  if (e.kind === 'tail') {
+    return e.drift ? SFX.drift : SFX.tail;
+  }
+  return e.kind === 'thread' ? SFX.thread : null;
+}
 
 /*
  * What a callout says for an event: the word, big, and the line under it.
@@ -122,6 +152,7 @@ export class ChaseHud {
     root.append(this.root);
 
     this.visible = false;
+    this.manga = false;
     this.clearShown();
   }
 
@@ -139,10 +170,28 @@ export class ChaseHud {
       return;
     }
     this.visible = on;
-    this.root.className = on ? 'chase-hud' : 'chase-hud is-off';
+    this.root.className = this.rootClass();
     if (!on) {
       this.clearTransient();
     }
+  }
+
+  rootClass() {
+    return `chase-hud ${this.manga ? 'is-manga' : 'is-clean'}${this.visible ? '' : ' is-off'}`;
+  }
+
+  /*
+   * The manga layer on or off, as the score's is (ScoreHud.setManga): on a
+   * freestyle map unless the pilot chose Clean FPV. Off gives the callouts
+   * back as plain type; the meter is the same either way.
+   */
+  setManga(on) {
+    const m = Boolean(on);
+    if (m === this.manga) {
+      return;
+    }
+    this.manga = m;
+    this.root.className = this.rootClass();
   }
 
   /* The meter down and the callouts gone: a new run, a new map, or the
@@ -218,9 +267,17 @@ export class ChaseHud {
     const call = el('div', `chase-call${t.lost ? ' is-lost' : ''}${e.drift ? ' is-drift' : ''}`);
     /* The burst first, so the type paints over the rays by DOM order: see
      * .score-name > span in index.html for why not a z-index. */
-    call.append(el('div', 'chase-call-burst'), el('div', 'chase-call-word', t.word), el('div', 'chase-call-line', t.line));
+    call.append(el('div', 'chase-call-burst'));
+    if (this.manga) {
+      this.letter(call, e, t);
+    } else {
+      call.append(el('div', 'chase-call-word', t.word), el('div', 'chase-call-line', t.line));
+    }
     this.calls.append(call);
-    while (this.calls.childElementCount > CALL_STACK_MAX) {
+    /* Two on a phone on its side, where three lettered callouts hanging
+     * from under the meter reach down over the speed readout. */
+    const max = shortScreen() ? CALL_STACK_MAX - 1 : CALL_STACK_MAX;
+    while (this.calls.childElementCount > max) {
       this.calls.removeChild(this.calls.firstChild);
     }
     /* The timer removes it rather than animationend, which is not promised
@@ -230,6 +287,40 @@ export class ChaseHud {
         this.calls.removeChild(call);
       }
     }, CHASE_CALL_MS + 200);
+  }
+
+  /*
+   * The lettered callout: the word and the line under it, right set, on one
+   * canvas fitted to the outer third, and its sound effect on a canvas of
+   * its own on the inside of the word, landing a beat later. The colours
+   * are the plain callout's: cream, the drift car's orange, sakura for a
+   * loss; mint for the line that pays and slate for the one that says why.
+   */
+  letter(call, e, t) {
+    const size = callSize(shortScreen() ? 1 : 1.2);
+    const sfx = chaseSfx(e);
+    let room = sideRoom(COLUMN_RIGHT);
+    const row = el('div', 'chase-call-row');
+    if (sfx) {
+      const fx = letterCanvas('lettering-sfx');
+      const w = paintSfx(fx, sfx, Math.round(Math.min(26, Math.max(14, size * 0.72))), INKS.cream).w;
+      const tuck = Math.round(w * 0.12);
+      fx.style.marginRight = `${-tuck}px`;
+      room -= w - tuck;
+      row.append(fx);
+    }
+    const word = letterCanvas('lettering');
+    paintCall(word, {
+      word: t.word,
+      fill: t.lost ? INKS.bail : (e.drift ? INKS.drift : INKS.cream),
+      line: t.line,
+      lineFill: t.lost ? INKS.slate : INKS.mint,
+      size,
+      align: 'right',
+      maxW: room,
+    });
+    row.append(word);
+    call.append(row);
   }
 
   dispose() {

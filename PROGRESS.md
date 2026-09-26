@@ -48018,3 +48018,28 @@ they started.
   finding, fixed on the yard by the wider loop) is not a warning: the lane
   test is one lane at a time. Two cars on roads that cross each other are
   not warned about either. Both are open.
+
+### After merging c01548d, the shell's own roads and cars
+
+The Stage E branch moved on while this ran (c01548d: main.js drives the
+cars, index.js draws the roads, cars.js thins its smoke near the eye), so it
+was merged here too, cleanly, with src/fresh.js up to date as merged. Run
+again on the merged code:
+
+    npm run check:clip       785 passed, 0 failed
+    npm run check:roads      all passed (3.8 s)
+    npm run lint:boot        9 of 9 checks clean
+    npm run lint:memory      PASS; built 9 modules, 61 -> 228 -> 61
+                             geometries; city 61 -> 293 -> 62
+    npm run lint:preload     up to date, boot 108, city 73, built 32
+    the Play rig             9 of 9, the drift car's smoke in the picture
+    npm run lint:input       NOT clean: "and the input layer and the button
+                             agree with the setting" (the calibrate
+                             screen's stick mode button reads Stick mode 2
+                             with the setting at 3) failed in both of two
+                             runs, and the known flaky "parked and left"
+                             in one. Before this merge the same check was
+                             156 of 156. Nothing in this branch touches
+                             src/ui, src/input or main.js, so it came with
+                             c01548d or is a flake it made likelier; it was
+                             not run on c01548d alone, and is for the lead.

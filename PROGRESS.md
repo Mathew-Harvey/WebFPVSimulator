@@ -48621,3 +48621,26 @@ the builder publishes again and draws one. The simulator's own deploy of
 this stage.js change had not replaced the file on webfpv.org at the time
 of the upload, so a tab that still has the old scripts will show the same
 link error until that deploy is what a reload loads.
+
+## 2026-09-26 | builder | Labels can be switched off while building
+
+The flying-order numbers sit on the opening, which is where the racing
+line passes, so on a dense room the line is behind a stack of chips.
+Labels, next to Show line, turns those numbers off in the plan and in the
+3D view. Amber means they are drawn. The sequence list keeps the order,
+the gates and the line stay, and a map has no numbers so the button is
+not on its bar. It is a view choice: it is not written into the track,
+and loading another track does not turn it back on.
+
+### RUN LOG
+
+    headless builder               Labels starts on, one click turns it
+                                   off, the next turns it back on. On a
+                                   map the button is hidden, and coming
+                                   back to the five inch it is showing
+                                   again and still on. One console line,
+                                   a refused connection from the visit
+                                   ping, which this change does not make.
+
+npm run verify was not run. This does not touch the plant, the module ABI
+or the build. node scripts/shots.js was not run.

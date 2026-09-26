@@ -401,6 +401,10 @@ export class App {
     this.armedLogoId = '';
     this.mode = '2d';
     this.pathVisible = false;
+    /* Flying-order numbers, on by default. A view choice, like the line:
+     * it is not stored in the track, and turning it off does not change
+     * what gets flown or published. */
+    this.labelsVisible = true;
     this.path = null;
     this.warnings = [];
     this.history = new History();
@@ -1315,6 +1319,20 @@ export class App {
      * panel keeps reporting on the course either way. */
     this.pathVisible = false;
     this.panels.renderAll();
+    this.updateTopBar();
+    this.view3d.markDirty();
+    this.requestDraw();
+  }
+
+  /*
+   * The flying-order numbers on the gates. They sit on the opening, which
+   * is where the racing line passes, so a dense room is a field of chips
+   * with the line hiding behind them. Off, the numbers go and the line,
+   * the gates and the sequence list stay. The list is where the order is
+   * read while the canvas is clear.
+   */
+  toggleLabels() {
+    this.labelsVisible = !this.labelsVisible;
     this.updateTopBar();
     this.view3d.markDirty();
     this.requestDraw();
@@ -2706,6 +2724,7 @@ export class App {
      * which is the state that matters. */
     /* The line is derived on every edit now, so this only paints it. */
     this.pathBtn = btn('Show line', () => this.togglePath(), 'Draw the racing line on the canvas');
+    this.labelsBtn = btn('Labels', () => this.toggleLabels(), 'Flying-order numbers on the gates. Turn them off to see the racing line.');
 
     const file = document.createElement('input');
     file.type = 'file';
@@ -2844,6 +2863,7 @@ export class App {
       group(
         btn('Fit', () => this.frameAll(), 'Frame the whole field'),
         this.pathBtn,
+        this.labelsBtn,
         btn('Sponsor logos', () => this.openLogo(), 'Up to five sponsors\u2019 logos, shared out over the gates, the flags and the grass'),
       ),
     );
@@ -2885,13 +2905,15 @@ export class App {
       }
     }
     this.pathBtn.classList.toggle('on', this.pathVisible);
+    this.labelsBtn.classList.toggle('on', this.labelsVisible);
     /*
      * A MAP'S BAR. No line to show, no lap to animate, and nothing the board
      * can take yet, so those go or say why; the words that said "track" say
      * "map". Everything else on the bar works on a map as it does on a
-     * track.
+     * track. A map has no flying order, so it has no numbers to hide.
      */
     this.pathBtn.style.display = map ? 'none' : '';
+    this.labelsBtn.style.display = map ? 'none' : '';
     document.body.classList.toggle('tb-map', map);
     /* The status bar's hints for the 3D view's own gestures. */
     document.body.classList.toggle('tb-in-3d', this.mode === '3d');

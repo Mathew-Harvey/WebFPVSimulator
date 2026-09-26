@@ -1640,6 +1640,10 @@ export class View2D {
   }
 
   drawNumbers(ctx, el, all, selected) {
+    /* The Labels button. The sequence list still has the order. */
+    if (this.host.labelsVisible === false) {
+      return;
+    }
     /* A waypoint has no number: see gateNumbers in sequence.js. */
     const numbers = all.filter((n) => n.number != null);
     if (!numbers.length) {

@@ -1445,7 +1445,10 @@ export class View3D {
      * gap is a number floating in the air away from what it names.
      */
     const k = trackClassOf(this.host.doc) === 'micro' ? 0.30 : 1;
-    for (const n of numbers) {
+    /* Same switch as the plan. Off, the opening is bare and the line
+     * through it can be read. The sequence list still has the numbers. */
+    const showLabels = this.host.labelsVisible !== false;
+    for (const n of showLabels ? numbers : []) {
       /* A waypoint has no number: see gateNumbers in sequence.js. */
       if (n.number == null) {
         continue;

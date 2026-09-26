@@ -4474,6 +4474,15 @@
         }
         .screen-results.has-manga .results-top { width: auto; }
       }
+      /* SIX ROWS ON A PHONE ON ITS SIDE. A freestyle run's results carry
+         Save share card now, and on a coarse pointer a row is its 44 px
+         target plus 20 px of padding, so five rows already filled 360 of the
+         372 px there and the sixth pushed Back to title off the glass
+         (lint:devices, phone landscape). Counting the padding inside the 44
+         keeps every target at the 44 px the touch rule asks for. */
+      @media (pointer: coarse) and (max-height: 520px) {
+        .screen-results .row { box-sizing: border-box; }
+      }
       /* A narrower phone on its side leaves the page under 150 px wide, a
          postage stamp: there it is not drawn, and Save share card is the
          page at its full size. */

@@ -11305,9 +11305,13 @@ export class Ui {
       return;
     }
     /* A phone too narrow for the page does not draw it (index.html, under
-     * .results-manga), and then the counter's bests go in the list, as
-     * they do for Clean FPV, rather than nowhere. */
-    if (this.resultsManga.offsetParent === null) {
+     * .results-manga), nor one where it would come out smaller than reads,
+     * and then the counter's bests go in the list, as they do for Clean
+     * FPV, rather than nowhere. */
+    this.fitMangaBox();
+    const box = this.resultsManga.getBoundingClientRect();
+    if (this.resultsManga.offsetParent === null || box.width < 140 || box.height < 140) {
+      this.resultsManga.hidden = true;
       this.appendCounterRows(this.freestyleRun, true);
       return;
     }
@@ -11340,11 +11344,32 @@ export class Ui {
     }
   }
 
+  /*
+   * On a phone held upright the page sits over the menu, whose height is
+   * its rows' (it does not scroll), and a row is 64 px on a finger and 39
+   * on a mouse: so the page's foot is set from where the menu actually
+   * starts rather than from a guess in the stylesheet. A phone on its side
+   * and a desktop put the page beside the menu, and keep the stylesheet's.
+   */
+  fitMangaBox() {
+    const box = this.resultsManga;
+    box.style.bottom = '';
+    if (window.innerWidth > 860 || window.innerHeight <= 520) {
+      return;
+    }
+    const foot = this.screens.results.querySelector('.results-foot');
+    if (foot) {
+      const top = foot.getBoundingClientRect().top;
+      box.style.bottom = `${Math.max(0, Math.round(window.innerHeight - top + 12))}px`;
+    }
+  }
+
   paintMangaPage() {
     const c = this.resultsMangaCanvas;
     if (this.resultsManga.offsetParent === null) {
       return;
     }
+    this.fitMangaBox();
     const box = this.resultsManga.getBoundingClientRect();
     const w = Math.max(120, Math.round(box.width));
     const h = Math.max(90, Math.round(box.height));

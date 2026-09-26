@@ -107,6 +107,7 @@
     'src/game/circuit.js',
     'src/game/closecall.js',
     'src/game/collide.js',
+    'src/game/counterbest.js',
     'src/game/egg.js',
     'src/game/gaps.js',
     'src/game/ghost.js',

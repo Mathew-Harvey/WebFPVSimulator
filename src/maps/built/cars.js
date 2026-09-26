@@ -5,27 +5,28 @@
  * brighten under braking, and cel drift smoke off the drift car's rear
  * wheels.
  *
- * THE SAME CAR AS THE PARKED ONE. Each body is the town's own
- * (makeVehicle in the vendored world/vehicles.js, the builder src/props/
- * kit.js folds a parked car in with), in the colour the parked car of the
- * same element would be (carColourOf in src/props/street.js, from the
- * vehicle's seed), in the town's cel materials, and at a time of day with
+ * THE SAME CAR AS THE PARKED ONE. Each body is src/art/cars.js buildCar,
+ * the model every parked car in the town and on a built map is drawn with
+ * (src/props/kit.js folds a parked one in), at its 'full' detail, in the
+ * colour the parked car of the same element would be (carColourOf in
+ * src/props/street.js, from the vehicle's seed; the r32 in the livery its
+ * variant names), in the town's cel materials, and at a time of day with
  * flats its glass and plates are dimmed as the kit dims a parked car's
  * (lookedTownMaterial). The ink is the post pipeline's, which inks every
- * silhouette in the frame, a parked car's and this one's alike; the
- * vendored hero shell is left off, as the kit leaves it off.
+ * silhouette in the frame, a parked car's and this one's alike.
  *
- * THE WHEELS ARE ITS OWN. The vendored wheel is a tyre, a plain rim disc
- * and a hub, rotationally symmetric, so turning it would show nothing; the
- * body is built with wheels: false (PATCH-world-vehicles.diff in the
- * vendored folder) and each wheel here is the same tyre and rim with five
- * dark windows in the rim's face, both faces, so a pilot sees it turn. One
- * vertex coloured cel batch a wheel, turned by the distance the car has
+ * THE WHEELS ARE INSTANCES. The body is built with wheels: false and every
+ * wheel of every car of one kind (and livery) is one InstancedMesh of
+ * carWheelGeometry's wheel, its tyre, rim, spokes and hub painted into one
+ * vertex coloured cel batch: three kinds on a map are three draw calls for
+ * all their wheels rather than one a wheel. Each wheel's matrix is written
+ * every frame from its car's pose: turned by the distance the car has
  * driven over the wheel's radius (the pose's `distance`), so it rolls
- * without slipping exactly as far as the car went. The front pair steers,
- * render only: the bicycle angle of the road's curvature over the
- * wheelbase, less the drift's slip, so a drift car countersteers into its
- * slide the way a driver holds one.
+ * without slipping exactly as far as the car went, and the front pair
+ * steered, render only, by the bicycle angle of the road's curvature over
+ * the wheelbase less the drift's slip, so a drift car countersteers into
+ * its slide the way a driver holds one. The r32 stands on a touch of
+ * negative camber, the tops of its wheels in, as a drift car does.
  *
  * RENDER READS THE POSE THE PHYSICS USED. Nothing here works out where a
  * car is: place() is handed two readVehicles arrays (src/game/
@@ -99,7 +100,9 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { makeVehicle, CAR, SPEC } from '../city/vendored/world/vehicles.js';
+import {
+  buildCar, carWheelGeometry, carWheelBase, r32Livery, MODEL, CAR, LAMP_FRONT, LAMP_REAR,
+} from '../../art/cars.js';
 import { PAL } from '../city/vendored/core/palette.js';
 import { cel } from '../city/vendored/core/toon.js';
 import { bake, trs } from '../city/vendored/core/util.js';
@@ -110,22 +113,15 @@ import { kitLook } from './looks.js';
 /* How the meter names a car nobody named, by its body. */
 const STYLE_LABEL = {
   kei: 'Kei car', keivan: 'Kei van', hatch: 'Hatch', sedan: 'Sedan', wagon: 'Wagon',
-  minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus',
+  minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus', r32: 'Coupe',
 };
-
-/* The wheel's colours: the vendored tyre, its rim (a steel wheel is the
- * body's deep colour, as the vendored wagon's is), and the dark of the
- * windows between the spokes and the hub. */
-const TYRE = 0x36333e;
-const WINDOW = 0x2a2733;
 
 /* The front wheels never steer past this, rad: about 34 degrees. */
 const STEER_MAX = 0.6;
 
-/* The lamps the vendored builder lights a car with (kit.js CAR_LAMPS), and
- * what they become: a tail lamp under braking, and both lit after dark. */
-const LAMP_FRONT = 0xfff2d4;
-const LAMP_REAR = 0xd8564e;
+/* The lamps src/art/cars.js lights a car with (kit.js CAR_LAMPS),
+ * LAMP_FRONT and LAMP_REAR, and what they become: a tail lamp under
+ * braking, and both lit after dark. */
 const LAMP_FRONT_LIT = 0xfffbf0;
 const LAMP_REAR_LIT = 0xf06a58;
 const LAMP_BRAKE = 0xff3a2e;
@@ -235,35 +231,6 @@ function painted(THREE, geo, hex) {
   return geo;
 }
 
-/*
- * One wheel, centred on its axle, the axle along z: the vendored tyre
- * (radius R, the vendored width), and on each face the vendored rim disc at
- * 0.62 R standing 6 mm proud, five windows between its spokes and a hub.
- */
-function wheelGeometry(THREE, spec, rimHex) {
-  const R = spec.R;
-  const TW = R < 0.3 ? 0.165 : 0.195;
-  const parts = [];
-  const add = (geo, hex, m) => parts.push({ geometry: painted(THREE, geo, hex), matrix: m });
-  add(new THREE.CylinderGeometry(R, R, TW, 16), TYRE, trs(0, 0, 0, Math.PI / 2));
-  for (const side of [-1, 1]) {
-    const z = side * (TW / 2 + 0.006);
-    add(new THREE.CylinderGeometry(R * 0.62, R * 0.62, 0.012, 16), rimHex, trs(0, 0, z, Math.PI / 2));
-    for (let k = 0; k < 5; k += 1) {
-      const a = (k * 2 * Math.PI) / 5;
-      add(new THREE.BoxGeometry(R * 0.2, R * 0.15, 0.012), WINDOW,
-        trs(R * 0.37 * Math.cos(a), R * 0.37 * Math.sin(a), z + side * 0.005, 0, 0, a));
-    }
-    add(new THREE.CylinderGeometry(R * 0.16, R * 0.16, 0.02, 8), WINDOW, trs(0, 0, z + side * 0.008, Math.PI / 2));
-  }
-  const geo = bake(parts);
-  for (const p of parts) {
-    p.geometry.dispose();
-  }
-  geo.computeBoundingSphere();
-  return geo;
-}
-
 /* The smoke's density: a cauliflower of soft round blobs, summed, so a cut
  * at a low density is the whole cloud and a higher one eats it from its edge
  * toward the cores. Read as data, not colour. */
@@ -314,9 +281,10 @@ function glowTexture(THREE) {
 /*
  * The light a car's lamps throw after dark, in its own frame (nose +x): a
  * warm pool on the road ahead, a red one behind, and a halo standing on
- * each lamp. One geometry, vertex coloured, drawn additively.
+ * each lamp where the model put it (buildCar's userData.lamps). One
+ * geometry, vertex coloured, drawn additively.
  */
-function glowGeometry(THREE, spec) {
+function glowGeometry(THREE, L, lamps) {
   const parts = [];
   const quad = (hex, k, m, w, h) => {
     const geo = new THREE.PlaneGeometry(w, h);
@@ -324,16 +292,17 @@ function glowGeometry(THREE, spec) {
     painted(THREE, geo, c.getHex());
     parts.push({ geometry: geo, matrix: m });
   };
-  const L = spec.L;
-  const lampY = Math.min(spec.waist - 0.17, spec.sill + 0.36);
-  const lz = spec.W / 2 - 0.2;
   /* On the road, 3 cm up, facing up. */
   quad(0xffe0a8, 0.55, trs(L / 2 + 3.4, 0.03, 0, -Math.PI / 2), 7, 3.6);
   quad(0xff4a3a, 0.4, trs(-L / 2 - 0.9, 0.03, 0, -Math.PI / 2), 2, 2.2);
-  /* On the lamps, facing out. */
-  for (const t of [-1, 1]) {
-    quad(0xfff4dc, 0.9, trs(L / 2 + 0.05, lampY, t * lz, 0, Math.PI / 2), 0.7, 0.5);
-    quad(0xff5040, 0.7, trs(-L / 2 - 0.05, lampY + 0.05, t * lz, 0, -Math.PI / 2), 0.45, 0.4);
+  /* On the lamps, facing out; a car with four tail lamps gets four
+   * smaller halos. */
+  for (const [x, y, z] of lamps.front) {
+    quad(0xfff4dc, 0.9, trs(x + 0.03, y, z, 0, Math.PI / 2), 0.7, 0.5);
+  }
+  const k = lamps.rear.length > 2 ? 0.7 : 1;
+  for (const [x, y, z] of lamps.rear) {
+    quad(0xff5040, 0.7, trs(x - 0.03, y, z, 0, -Math.PI / 2), 0.45 * k, 0.4 * k);
   }
   const geo = bake(parts);
   for (const p of parts) {
@@ -548,8 +517,11 @@ export function buildCars(THREE, look, traffic, opts = {}) {
 
   /* Shared by every car in the set: the wheels' material, and after dark
    * the lit headlamp and the glow. */
-  const wheelMat = cel({ color: 0xffffff, vertexColors: true, bands: 2, tint: 0x4b4560, cache: false });
+  const wheelMat = cel({ color: 0xffffff, vertexColors: true, bands: 3, tint: 0x5c5680, cache: false });
   owned.materials.push(wheelMat);
+  /* A wheel not drawn: every instance starts here, and a car that goes
+   * off puts its wheels back. */
+  const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
   let lampLit = null;
   let glowMat = null;
   if (night) {
@@ -568,16 +540,20 @@ export function buildCars(THREE, look, traffic, opts = {}) {
   const cars = [];
   let meshes = 0;
   let triangles = 0;
-  const countTriangles = (geo) => {
-    triangles += geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
+  const countTriangles = (geo, times = 1) => {
+    triangles += times * (geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3);
   };
+  /* The wheel sets: one InstancedMesh for every wheel of one kind in one
+   * wheel colour, filled in below once every car has said how many it has. */
+  const wheelSets = new Map();
   for (const v of vehicles) {
-    const spec = SPEC[v.style] ?? SPEC.kei;
+    const style = MODEL[v.style] ? v.style : 'kei';
     const colour = CAR[carColourOf(v.seed)] ?? CAR.white;
+    const livery = style === 'r32' ? r32Livery(v.variant) : null;
     const root = new THREE.Object3D();
     root.name = `car:${v.element}`;
     root.visible = false;
-    const body = makeVehicle({ kind: v.style, color: colour, x: 0, y: 0, z: 0, ry: 0, wheels: false });
+    const body = buildCar({ kind: style, color: colour, variant: v.variant, wheels: false, detail: 'full' });
     let tailMat = null;
     body.traverse((o) => {
       if (!o.isMesh) {
@@ -602,30 +578,28 @@ export function buildCars(THREE, look, traffic, opts = {}) {
     });
     root.add(body);
 
-    /* The wheels: a pivot at each axle end, which the front pair steers
-     * about, and the wheel in it, which rolls. */
-    const rimHex = spec.steelies ? new THREE.Color(colour).multiplyScalar(0.76).getHex() : PAL.metal;
-    const wgeo = wheelGeometry(THREE, spec, rimHex);
-    owned.geometries.push(wgeo);
-    const TRACK = spec.W - 0.17;
+    /* The wheels: where each stands on the car, and which set draws it. */
+    const base = carWheelBase(style);
+    const rim = livery && livery.rim ? livery.rim : null;
+    const key = `${style}|${rim ?? '-'}`;
+    let set = wheelSets.get(key);
+    if (!set) {
+      set = { style, rim, count: 0, mesh: null };
+      wheelSets.set(key, set);
+    }
     const wheels = [];
-    for (let a = 0; a < spec.axle.length; a += 1) {
-      for (const t of [-1, 1]) {
-        const pivot = new THREE.Object3D();
-        pivot.position.set(spec.axle[a], spec.R, t * (TRACK / 2));
-        const wheel = new THREE.Mesh(wgeo, wheelMat);
-        wheel.name = 'carWheel';
-        wheel.castShadow = true;
-        wheel.receiveShadow = true;
-        pivot.add(wheel);
-        root.add(pivot);
-        wheels.push({ pivot, wheel, front: a === 0 });
-        countTriangles(wgeo);
-        meshes += 1;
+    for (let a = 0; a < base.axle.length; a += 1) {
+      for (const side of [1, -1]) {
+        wheels.push({ set, index: set.count, x: base.axle[a], z: side * base.z, side, front: a === 0 });
+        set.count += 1;
       }
     }
+    for (const t of base.twins) {
+      wheels.push({ set, index: set.count, x: t.x, z: t.z, side: t.z > 0 ? 1 : -1, front: false });
+      set.count += 1;
+    }
     if (night) {
-      const ggeo = glowGeometry(THREE, spec);
+      const ggeo = glowGeometry(THREE, MODEL[style].L, body.userData.lamps);
       owned.geometries.push(ggeo);
       const glow = new THREE.Mesh(ggeo, glowMat);
       glow.name = 'carGlow';
@@ -647,10 +621,11 @@ export function buildCars(THREE, look, traffic, opts = {}) {
       wheels,
       tailMat,
       braking: false,
-      R: spec.R,
-      wheelbase: spec.axle[0] - spec.axle[1],
-      axleRear: spec.axle[1],
-      track: TRACK,
+      R: base.R,
+      camber: base.camber,
+      wheelbase: base.axle[0] - base.axle[1],
+      axleRear: base.axle[1],
+      track: 2 * base.z,
       length: v.length,
       width: v.width,
       height: v.height,
@@ -665,10 +640,39 @@ export function buildCars(THREE, look, traffic, opts = {}) {
     });
   }
 
+  /* Each wheel set's one batch: the kind's wheel, a matrix a wheel, written
+   * by place() every frame. Never culled as a whole: its bounds would be
+   * wherever the cars were when they were first measured. */
+  for (const set of wheelSets.values()) {
+    const geo = carWheelGeometry(set.style, { rim: set.rim });
+    owned.geometries.push(geo);
+    const mesh = new THREE.InstancedMesh(geo, wheelMat, set.count);
+    mesh.name = 'carWheels';
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    for (let i = 0; i < set.count; i += 1) {
+      mesh.setMatrixAt(i, HIDDEN);
+    }
+    set.mesh = mesh;
+    group.add(mesh);
+    countTriangles(geo, set.count);
+    meshes += 1;
+  }
+
   const smoke = new Smoke(THREE, look);
   group.add(smoke.mesh);
   const drifters = cars.filter((c) => c.drift);
   const TAU = Math.PI * 2;
+  /* place()'s scratch, made once so a frame allocates nothing. */
+  const W_EULER = new THREE.Euler();
+  const W_QUAT = new THREE.Quaternion();
+  const W_FLIP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+  const W_POS = new THREE.Vector3();
+  const W_ONE = new THREE.Vector3(1, 1, 1);
+  const W_LOCAL = new THREE.Matrix4();
+  const W_MATRIX = new THREE.Matrix4();
 
   function place(prev, curr, alpha, now) {
     const a = alpha > 0 ? (alpha < 1 ? alpha : 1) : 0;
@@ -681,6 +685,11 @@ export function buildCars(THREE, look, traffic, opts = {}) {
         if (car.on) {
           car.on = false;
           car.root.visible = false;
+          for (let w = 0; w < car.wheels.length; w += 1) {
+            const wh = car.wheels[w];
+            wh.set.mesh.setMatrixAt(wh.index, HIDDEN);
+            wh.set.mesh.instanceMatrix.needsUpdate = true;
+          }
         }
         continue;
       }
@@ -717,10 +726,22 @@ export function buildCars(THREE, look, traffic, opts = {}) {
       const slipAngle = 2 * Math.atan(q.slip || 0);
       let steer = Math.atan(car.wheelbase * (q.curvature || 0)) - slipAngle;
       steer = steer > STEER_MAX ? STEER_MAX : (steer < -STEER_MAX ? -STEER_MAX : steer);
+      /* Each wheel: at its axle end, steered if it is a front one,
+       * cambered, rolled, and turned out on its side, then carried by the
+       * car. Written straight into its set's instance buffer. */
+      root.updateMatrix();
       for (let w = 0; w < car.wheels.length; w += 1) {
         const wh = car.wheels[w];
-        wh.wheel.rotation.z = roll;
-        wh.pivot.rotation.y = wh.front ? steer : 0;
+        W_EULER.set(-wh.side * car.camber, wh.front ? steer : 0, roll, 'YXZ');
+        W_QUAT.setFromEuler(W_EULER);
+        if (wh.side < 0) {
+          W_QUAT.multiply(W_FLIP);
+        }
+        W_POS.set(wh.x, car.R, wh.z);
+        W_LOCAL.compose(W_POS, W_QUAT, W_ONE);
+        W_MATRIX.multiplyMatrices(root.matrix, W_LOCAL);
+        wh.set.mesh.setMatrixAt(wh.index, W_MATRIX);
+        wh.set.mesh.instanceMatrix.needsUpdate = true;
       }
       if (car.tailMat) {
         /* One step apart, so the change in speed is a deceleration in
@@ -792,6 +813,9 @@ export function buildCars(THREE, look, traffic, opts = {}) {
       }
       for (const t of owned.textures) {
         t.dispose();
+      }
+      for (const set of wheelSets.values()) {
+        set.mesh.dispose();
       }
       smoke.dispose();
       group.clear();

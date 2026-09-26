@@ -216,8 +216,8 @@ const STYLE_LABELS = {
   '40ft': '40 ft', '20ft': '20 ft', '40ft open': '40 ft open',
   open: 'Open', netted: 'Netted',
   road: 'Road', footbridge: 'Footbridge',
-  kei: 'Kei truck', keivan: 'Kei van', hatch: 'Hatch', sedan: 'Sedan', wagon: 'Wagon',
-  minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus',
+  kei: 'Kei car', keivan: 'Kei van', hatch: 'Hatch', sedan: 'Sedan', wagon: 'Wagon',
+  minivan: 'Minivan', van: 'Van', boxtruck: 'Box truck', minibus: 'Minibus', r32: 'R32',
   sakura: 'Sakura', street: 'Street', pine: 'Pine',
 };
 

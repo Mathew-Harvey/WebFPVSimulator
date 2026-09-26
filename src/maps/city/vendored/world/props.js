@@ -180,6 +180,13 @@ export function makeWires(ctx, runs) {
 
 /* -------------------------------- kei truck -------------------------------- */
 
+/* Who draws the kei truck.  A host may hand it to a model of its own, as
+ * makeVehicle's setVehicleModel does for the rest; unset, it is drawn here. */
+let keiTruckModel = null;
+export function setKeiTruckModel(fn) {
+  keiTruckModel = fn;
+}
+
 /**
  * 軽トラック -- the flatbed.
  *
@@ -197,6 +204,7 @@ export function makeWires(ctx, runs) {
  * 'empty' for an open bed.
  */
 export function makeKeiTruck(o = {}) {
+  if (keiTruckModel) return keiTruckModel(o);
   const m = mats();
   const g = new THREE.Group();
   const base = o.color ?? PAL.taxiYellow;

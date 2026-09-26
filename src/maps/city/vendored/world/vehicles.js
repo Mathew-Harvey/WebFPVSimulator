@@ -270,6 +270,14 @@ function emit(g, parts, matFor, o = {}) {
  * The generator.
  * ------------------------------------------------------------------ */
 
+/* Who draws the body.  A host may hand every vehicle's drawing to a model
+ * of its own: `fn(o)` is given makeVehicle's options and returns the group,
+ * placed and named as below.  Unset, makeVehicle draws as it always has. */
+let vehicleModel = null;
+export function setVehicleModel(fn) {
+  vehicleModel = fn;
+}
+
 /**
  * One parked vehicle.
  *
@@ -280,10 +288,9 @@ function emit(g, parts, matFor, o = {}) {
  * @param o.ry      the direction the nose faces (see the convention above)
  * @param o.hero    inverted-hull outline as well as the ink pass.  Reserved
  *                  for anything the player stands within three metres of.
- * @param o.wheels  false leaves the tyres, rims and hubs out (the arches stay),
- *                  for a vehicle whose caller draws wheels that turn.
  */
 export function makeVehicle(o = {}) {
+  if (vehicleModel) return vehicleModel(o);
   if (o.kind === 'keitruck') {
     return makeKeiTruck({
       x: o.x, y: o.y, z: o.z, ry: o.ry,
@@ -415,14 +422,12 @@ export function makeVehicle(o = {}) {
   for (const ax of s.axle) {
     for (const t of [-1, 1]) {
       const z = t * (TRACK / 2);
-      if (o.wheels !== false) {
-        push('dark', new THREE.CylinderGeometry(s.R, s.R, TW, 14), trs(ax, s.R, z, Math.PI / 2));
-        push(s.steelies ? 'deep' : 'brite',
-          new THREE.CylinderGeometry(s.R * 0.62, s.R * 0.62, TW + 0.02, 12),
-          trs(ax, s.R, z, Math.PI / 2));
-        push('dark', new THREE.CylinderGeometry(s.R * 0.22, s.R * 0.22, TW + 0.04, 8),
-          trs(ax, s.R, z, Math.PI / 2));
-      }
+      push('dark', new THREE.CylinderGeometry(s.R, s.R, TW, 14), trs(ax, s.R, z, Math.PI / 2));
+      push(s.steelies ? 'deep' : 'brite',
+        new THREE.CylinderGeometry(s.R * 0.62, s.R * 0.62, TW + 0.02, 12),
+        trs(ax, s.R, z, Math.PI / 2));
+      push('dark', new THREE.CylinderGeometry(s.R * 0.22, s.R * 0.22, TW + 0.04, 8),
+        trs(ax, s.R, z, Math.PI / 2));
       /* The arch is two pieces and it has to be, because it is doing two jobs.
        * The *well* is a dark arc set inboard of the flank: it is the shadow
        * inside the wheel opening, and without it the tyre is a dark shape on a

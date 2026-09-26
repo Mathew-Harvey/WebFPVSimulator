@@ -450,7 +450,7 @@ different wreck, advert or colour.
 | `utilityPole` | none | Street | any |  | `height` 10 m [5, 16] |
 | `lamp` | W | Street | any |  | `height` 7 m [3, 12] |
 | `vending` | none | Street | quarter |  | `count` 2 [1, 4] count, `variant` 1 [1, 99] count |
-| `car` | none | Street | quarter | `kei` `keivan` `hatch` `sedan` `wagon` `minivan` `van` `boxtruck` `minibus` | `variant` 1 [1, 99] count |
+| `car` | none | Street | quarter | `kei` `keivan` `hatch` `sedan` `wagon` `minivan` `van` `boxtruck` `minibus` `r32` | `variant` 1 [1, 99] count |
 | `rail` | N | Skate | any |  | `length` 6 m [1.5, 30], `height` 0.7 m [0.3, 3] |
 | `ledge` | M | Skate | quarter |  | `length` 6 m [1, 30], `height` 0.5 m [0.2, 2], `depth` 0.9 m [0.3, 4] |
 | `stairs` | H | Skate | quarter |  | `steps` 7 [2, 24] count, `width` 4 m [1.2, 12], `landing` 3 m [0.8, 12] |
@@ -601,7 +601,7 @@ A **vehicle**:
 | `dims.offset` | Where it is at step 0 of the clock: metres along the road's centre line from its first node, 0 to 10,000 (round a loop, and held to an open road's end). A closed road's centre line starts at the middle of its first node's bend. |
 | `dims.speed` | Its top speed on a straight, m/s, 1 to 50. A new vehicle starts at its style's: 10 to 14 m/s, a yard's traffic. It slows for bends by itself (below). |
 | `dims.variant` | Its colour, as a parked car's: a seed, 1 to 99. |
-| `style` | Which of the town's cars: `kei`, `keivan`, `hatch`, `sedan`, `wagon`, `minivan`, `van`, `boxtruck` or `minibus`. |
+| `style` | Which car: the town's `kei`, `keivan`, `hatch`, `sedan`, `wagon`, `minivan`, `van`, `boxtruck` or `minibus`, or `r32`, the drift coupe, whose `variant` picks its livery. |
 | `reverse` | `true` drives against the node order. On a two lane loop that is the other lane. Default `false`. |
 | `drift` | `true` makes it the drift car: it corners twice as hard as traffic does and slides, its nose turned into each bend by up to about 44 degrees at the bend's height and straight again on the straights. Default `false`. The builder offers 20 m/s when drift is switched on. |
 

@@ -142,6 +142,7 @@ import {
  * driver's comfortable 0.25 to 0.4 g, the tall and the heavy ones gentler. */
 const LATERAL = {
   kei: 3.5, keivan: 3.0, hatch: 4.0, sedan: 4.0, wagon: 4.0, minivan: 3.5, van: 3.0, boxtruck: 2.5, minibus: 2.5,
+  r32: 4.5,
 };
 
 /* Each of the town's cars as the module drives it. The body is the drawn

@@ -16,7 +16,7 @@ header pasted onto it.
     Commit      de01898e89c7f6ab3fad93fa802f0f5ac66fbd81
     Licence     MIT, Copyright (c) 2026 Kenton Wang
     Vendored at src/maps/city/vendored/
-    Files       59 JavaScript source files, byte identical to upstream
+    Files       59 JavaScript source files, changed as recorded below
     Licence text travels with them at src/maps/city/vendored/LICENSE
 
 The 59 files are exactly the transitive import closure of the three entry
@@ -27,8 +27,12 @@ is on that path, so no upstream music, walker, interface or entry point is
 incorporated, and the 3.9 MB music mp3 in the upstream repository is not
 vendored.
 
-Three of the 59 city files carry changes; the other 56 are byte identical
-to upstream.
+Five of the 59 city files carry an interface change recorded as a diff
+beside the tree (below). They are not the only files that differ from
+upstream: measured on 2026-09-26 against de01898, 46 of the 59 differ, almost
+all of it the town thinning and freestyle collider work of August and
+September (dressing stripped, colliders added or made flush), which
+PROGRESS.md describes change by change rather than as diff files.
 
   * `world/index.js` carries the four line change recorded in full at
     `src/maps/city/vendored/PATCH-world-index.diff`, which makes the planet
@@ -49,6 +53,19 @@ to upstream.
     `hillTuft`, `lakeReed`); these three were the exception, and two passes
     of ours read mesh names to decide what a drawn thing means. Nothing about
     what is drawn changes.
+  * `world/vehicles.js` carries the change recorded at
+    `src/maps/city/vendored/PATCH-world-vehicles.diff`: `setVehicleModel`,
+    a hook through which a host draws every vehicle makeVehicle is asked for,
+    unset by default, so upstream's own drawing is what runs when nothing is
+    registered. `src/maps/city/index.js` registers `src/art/cars.js`, our
+    GPLv3 car model, while the town is built; the vendored table, sizes and
+    placement (SPEC, vehicleSize, parkVehicle) are untouched. It replaces the
+    `wheels: false` option Stage E added, which nothing uses now.
+  * `world/props.js` carries the same hook for the kei truck,
+    `setKeiTruckModel`, recorded at
+    `src/maps/city/vendored/PATCH-world-props.diff`, so the truck at the
+    crossing, which the town builds with makeKeiTruck directly, is drawn by
+    the same model as the parked ones.
 
 The line above used to read "fifty eight of the 59 city files are byte
 identical", which stopped being true when `core/toon.js` was patched and was

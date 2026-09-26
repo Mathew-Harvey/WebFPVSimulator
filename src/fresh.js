@@ -94,6 +94,7 @@
     'configs/rates.js',
     'configs/registry.js',
     'src/art/banners.js',
+    'src/art/cars.js',
     'src/art/clubhouse.js',
     'src/art/startblock.js',
     'src/art/stf.js',

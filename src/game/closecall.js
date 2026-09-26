@@ -610,12 +610,28 @@ export class CloseCalls {
     }
   }
 
-  /* Once a frame, with the lap clock: what has waited while no feed came
-   * pays now. A flying craft is fed every 8 ms and has settled already. */
+  /*
+   * Once a frame, with the lap clock: what has waited while no feed came
+   * (the craft landed, a turtle wait) pays now. A flying craft is fed every
+   * CC_EVERY steps and settles at its feeds, so while feeds are coming this
+   * does nothing, and what pays when is decided by the step stream and not
+   * by where a frame ended.
+   */
   tick(step) {
+    if (this.fed && step - this.lastStep < CC_EVERY) {
+      return;
+    }
     if (step >= this.nowStep) {
       this.nowStep = step;
+      /* A close call left open when the feeds stopped ends at its grace,
+       * as it would have at a feed. */
+      for (let k = 0; k < KINDS; k += 1) {
+        if (this.on[k] && (step - this.lastHeld[k]) * STEP_MS > CC_GRACE_MS) {
+          this.end(k);
+        }
+      }
       this.settle(step);
+      this.writeLive();
     }
   }
 

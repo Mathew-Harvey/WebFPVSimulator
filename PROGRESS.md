@@ -49766,3 +49766,285 @@ fixed here: it is outside the change asked for.
     input-check on clean 4c1d284   the same two failed, same output
     input-check on 5cdcc71 + this  158 passed, 2 failed (the same two);
                                    section 15's four pass
+
+## 2026-09-26 | hud, results, settings | Stage C: the manga lettering, Clean FPV and the results page
+
+The owner asked on 2026-09-26 for "the full scoring system", Stage C, the
+counter, and answered decision 5 the same day: katakana sound effects,
+"Yes, small" (FREESTYLE-MAPS-PLAN.md decision 11). Stage C was split in
+two. Another agent builds the scoring core in the main tree: named gaps,
+close calls, the chase and the mark feeding one combo. This is the other
+half, how it looks: the lettered callouts, the score HUD restyled, the
+chase's callouts in the same hand, Clean FPV, and the results page as a
+manga page with a share card. Render and UI only: no physics, no plant, no
+ABI, no build; `git diff --stat vendor/betaflight` is empty and nothing in
+src/main.js or src/game/ was touched. Commits ce80d7b (the modules),
+50588ed (the wiring), 97eb19a (phones, the preload list, the baseline).
+
+It is built against the event contract the scoring agent emits, and fed,
+until that lands, by harness hooks (window.__lettering, below). Nothing
+here has been driven by the real scorer yet.
+
+### What was built
+
+- **src/ui/lettering.js**, the lettering, no font file and no dependency:
+  - **The capitals.** The system's heaviest sans (the shell's own font
+    stack at 900) as a skeleton only. Each glyph is set on its own,
+    sheared by our own slant (0.24, about 13 degrees; not the font's
+    italic, which is a different angle on every platform and a fake
+    oblique on most), turned up to 2.4 degrees, lifted up to 3.5 percent
+    and the first glyph 8 percent larger, all by a hash of the word and the
+    glyph's place, so a word always wears the same hand. Then inked: a hard
+    ink drop down and right, a thick ink outline (a fifth of the size)
+    stroked round every glyph before any glyph is filled, so touching
+    glyphs share one line as a brush joins them, and a fill in two cel
+    bands with a hard stop at 55 percent.
+  - **The katakana are strokes, not a font.** Ten kana (ス ハ ツ ト ン シ
+    ユ キ フ ー) and the voicing mark, each a few brush strokes in a unit
+    square, drawn as an ink line with a cream core; the voiced kana are
+    the base with the mark, the small ones the base made small, as the
+    script itself builds them. A manga's effects are drawn, not typeset,
+    and a pilot on a machine with no Japanese font gets the same effect
+    and not a row of boxes.
+  - **The burst balloon**: paper, a hard ink drop, an ink line and a finer
+    second line inside it, spikes set by the lettering's size rather than
+    the ellipse's (the first draft's long names became a flat lens with
+    needles off each end).
+  - paintCall and paintSfx paint a callout's canvas once, when it arrives,
+    fitted to a width it is given; sideRoom is the outer third of the
+    window less the column's margin.
+- **The sound effects, the whole set**, and nothing else gets one:
+
+      ズバッ     zuba'    every named gap: a clean slash through
+      ドン       don      a combo banked at x3 or more
+      シュッ     shu'     a skim held 1.5 s or longer
+      ギュン     gyun     a thread, close call or chase
+      ブーン     buun     a tail banked
+      キキーッ   kikii'   the drift car's tail banked
+
+  Not a trick (the name is the event), not a bail, not under, not a low
+  pass, not a hurdle. Small: a kana cell is 0.72 of the word's size,
+  between 14 and 26 px, landing 110 ms after its word.
+- **src/ui/scorehud.js**, the four THPS readouts kept down the left:
+  - Every line in the stack is lettered: tricks in cream (sloppy amber,
+    bumped sakura), the counter's named gaps in amber with ズバッ and a
+    balloon at tier 1000 and up, close calls (skim, under, thread, low
+    pass) in the town's sky lifted to read over it, and the chase's events
+    and the mark as small lines, because the chase HUD and the found panel
+    have their big moments down the right and the stack is the whole
+    combo. stackCall(e) is the one table the lettering and the plain text
+    both read.
+  - **The verdict left the middle of the screen.** It landed at 50 percent
+    by 38, "the one moment the pilot should look away from the quad", and
+    section 3.3 is that nothing drawn in flight covers the centre third.
+    It lands on the combo line now, the number it is the verdict on,
+    growing from its bottom left corner, with the rings round it: BAILED
+    in the saturated sakura, the banked number in mint, and for a bank at
+    x3 or more a balloon and ドン, held 1.7 s instead of 1.15.
+  - **The skim meter**, from view.skim {on, holdMs, clearance}: the Tail
+    meter's construction (SKIM and the clearance over the seconds, big,
+    and a bar) directly over the combo line a held skim keeps alive, the
+    names stepping up out of its way by a transform. The bar is
+    closeness, full at contact and empty at a metre (the plan's "within
+    about a metre"), because the seconds are already written beside it.
+  - The total and the combo line are the same hand in CSS (900, sheared,
+    an ink line and a drop), not canvas: they change whenever the chain
+    does, and a text node is cheaper to rewrite than a canvas to repaint.
+  - "in development" now reads "trick names in development" and is up
+    only once the run has named a trick: gaps, close calls, the chase and
+    the mark are geometry and cannot misname anything (section 7).
+- **src/ui/chasehud.js**: its callouts lettered the same way, right set,
+  with ブーン, キキーッ and ギュン on the inside of the word; its meter,
+  its API and chaseCallText unchanged. setManga(on) added.
+- **Clean FPV**, one Settings row under Screen, off by default
+  (DEFAULTS.cleanFpv). On, the lettering, the effects, the ray fans, the
+  rings, the speed line strips and the results page go back to plain HUD
+  text; the found mark's burst goes and its panel stays, because the mark
+  in it is the news. Race tracks are always clean: ui.syncManga() makes
+  `this.manga` true only for a freestyle map without Clean FPV, and runs
+  from setBest, which every map adoption and every settings commit reaches.
+  The row's note says the rest of the manga layer (speed lines, screentone,
+  the impact frame) will answer to it too, so Stage F reads `ui.manga`.
+- **The results page** (src/ui/mangapage.js):
+  - Panels only for what the run has, biggest first: BEST TRICK drawn by
+    the trick film itself (drawFilm at the end of the trick, its line and
+    its ghosts, from the matched pattern), BEST GAP (the craft through a
+    striped portal under focus lines, ズバッ), LONGEST SKIM (along a wall
+    with the town's sakura band, or over a roof edge for a roof skim,
+    シュッ), THE CHASE (the car from behind on its road; the drift car
+    sliding in cream and violet smoke with キキーッ, any other with
+    ブーン), MARK FOUND (Stage B's panel as stfFound lays it out: paper, a
+    45 degree dot tone, a burst, the painted mark from src/art/stf.js).
+    Narration boxes typeset, names lettered.
+  - One drawing for any box: slanted gutters, alternately leaning; three
+    and five panel layouts for a tall page, two over three for a square
+    one, a strip for a very wide box. Down the open side of the results
+    screen, where a race shows its course, under the bug chip and the
+    music dock and over the bar.
+  - The hero is the counter total when the summary has one. The note says
+    which number the board is sent ("Post this run sends the board the
+    trick score, 4,200 ... counted here and not there") on a map the board
+    takes, and the local best when the summary carries `localBest`.
+  - **Save share card**, a results row: the page beside the score at the
+    card code's 1200 by 630 with its wordmark (card.js now exports
+    drawWordmark) and encodeCard's JPEG ladder (152 kB here), saved as a
+    file, because a run has no board entry to hang a card on. card.js is
+    imported on the press, not at boot.
+- **Harness**: window.__lettering (installLetteringHooks in ui.js):
+  hold, feed, view, chase, meter, clean, results, card, centre and demo,
+  with the fixtures in src/ui/letterdemo.js, loaded only when asked. The
+  fixtures are marked `assisted`, which Post this run refuses.
+
+### For the scoring agent and the lead
+
+- **The score HUD's visibility is still syncScoreVisible's**:
+  freestyleScoring !== 'off'. Decision 2 has geometry showing by default
+  with tricks opt in, so that rule has to change with the scorer, or the
+  counter's callouts are drawn into a hidden overlay. Not changed here:
+  it is the Scoring setting's rule, the scoring agent's.
+- Read as: a gap's `repeat` is how many times it was crossed earlier in
+  the run, 0 the first time (`true` reads as 1), and the tag says which
+  crossing this was, x2 for the second; view.skim.clearance is metres;
+  summary.total is the trick total the board is sent and summary.counter
+  the whole counter; summary.localBest a number, or an object with
+  `counter`. Each is one line to change if the scorer says otherwise.
+- The chase kinds in scoreEvents (tail, chase-thread, hurdle) get a small
+  line in the stack; the big callout stays the chase HUD's, from
+  chase.drainEvents, so there is one big callout and not two.
+- ui.js, every place touched: the mangapage.js import; counterRows and
+  localBestOf beside BUILT_OFF_BOARD; DEFAULTS.cleanFpv; build() (after
+  the STF layer: letterHold, syncManga, installLetteringHooks; after the
+  results copy: the page element and a resize listener); the Clean FPV
+  row under Screen in Settings; the Save share card row in the freestyle
+  results menu; showResults (a race clears the page); setBest (one
+  syncManga call); setScore, scoreEvents, chaseMeter and chaseEvents (a
+  harness hold, one boolean); syncManga, new, after scoreEvents;
+  showFreestyleResults rewritten, and after it showMangaPage,
+  appendCounterRows, fitMangaBox, paintMangaPage, runCardBytes,
+  saveRunCard and installLetteringHooks, new; act() gains 'savecard'.
+  Nothing of the freestyleScoring setting's text, syncScoreVisible or the
+  Post this run row was changed.
+
+### Phones
+
+A phone on its side has about a hundred pixels between the total and the
+combo line. There: a big gap is lettered with its effect but no balloon,
+the banked balloon is smaller with shorter spikes, the stack keeps three
+lines (two while skimming), the skim meter goes on one line under the
+total, and the chase keeps two callouts, where three reached down over the
+speed readout. The results page goes right of the menu under the chips;
+held upright it goes over the menu and ends where the menu actually starts
+(measured when laid out: that menu does not scroll, and a row is 64 px on
+a finger); a page under 140 px either way is not drawn and the counter's
+bests go into the list, as on Clean FPV.
+
+### The baseline, and the argument
+
+tests/shell-baseline.json: Settings overflow 746 to 790 px, the one Clean
+FPV row, edited by hand. The same argument as the Stick mode, Check sticks
+and Keyboard throttle rows: the file calls itself today's overflow rather
+than a target, the row is deliberate, and lint:devices reaches every row
+and note on five devices. Not --record, which would also write the title's
+67 px, the known failure that is main's, not this.
+
+### What went wrong
+
+- The first balloon was a flat lens: spikes scaled with the ellipse. Fixed
+  as above. The first page's found panel broke the grid over the bottom
+  right corner, as the flight panel does, and hid the chase panel's car
+  and its lettering; the five panel page is a grid now.
+- The first card put the page over the wordmark's V.
+- The first results page sat under the bug chip, the music dock and the
+  bar's Fly again. On a phone the copy column's rows painted over the
+  page: the copy is a flex item with a z-index, so it paints above a
+  positioned element without one.
+- The first phone pictures had balloon rows over the total and the skim
+  meter over the names; the plain bail at phone width reached 13 px into
+  the middle third (fitPlain now sets plain lines smaller).
+- lint:devices failed phone landscape on the results screen: "a row cannot
+  be scrolled into view: Back to title". Five rows at 64 px already filled
+  it, and Save share card is a sixth. On a coarse pointer and a short
+  screen the results rows count their padding inside the 44 px target.
+  lint:devices passes on the base commit and now passes here.
+- **A bug found, older than this**: a trick name left the stack when its
+  points' pop animation ended, not after its own 2.2 s. The row listened
+  for animationend without asking whose, and a child's bubbles up.
+  Measured in headless Chromium on ec33f25: the row got score-pop's end
+  from its points span and was gone then (1384 ms of this page's slow
+  wall clock, 710 ms of animation time); now it stays for its own (2679
+  ms here, its 2.2 s plus the frame lag). Under reduced motion the points
+  animation is 0.01 s, so the name went at once.
+- The phone results screen's own layout is crowded at 844 by 390 with or
+  without any of this (the menu covers the hero's meta line); not changed.
+
+### RUN LOG
+
+Run this turn. On 97eb19a, the final commit, unless said:
+
+    npm run lint:boot            9 of 9 checks clean
+    npm run lint:memory          PASS, every world lazy and freed; boot
+                                 baseline 62 geometries, 6 textures, 126
+                                 requests (61, 5 and 126 on 50588ed). The
+                                 requests are Stage E's 124 and the two new
+                                 boot modules; nothing here makes a
+                                 geometry or a texture, and 61 against 62
+                                 moves between runs, as Stage E found
+    npm run lint:shell           FAIL, 1 problem: "title: overflow grew from
+                                 0 to 67 px", the known one; on 50588ed,
+                                 before the baseline moved, a second: "pilot:
+                                 overflow grew from 746 to 790 px" (above)
+    npm run lint:responsive      PASS, freestyle 356 frames, worst gap
+                                 281 ms, 0 over 500 ms
+    npm run lint:devices         PASS on all five (FAIL on 50588ed, phone
+                                 landscape results, fixed in 97eb19a;
+                                 PASS on ec33f25, a scratch copy)
+    npm run lint:preload         up to date after node scripts/gen-preload.js:
+                                 boot 110 modules, city 73, built 32; 212
+    npm run lint:input           2 failed, 158 passed: "parked and left" and
+                                 "input.js agrees", the known pair
+    npm run check:chase          all passed (imports none of this)
+    npm run score:selftest       1 FAILED, "the same lap without the flip is
+                                 a Maverick Loop", the known one on main
+                                 (imports none of this)
+    node --check                 every changed module; ui.js, scorehud.js,
+                                 chasehud.js, lettering.js and mangapage.js
+                                 import in Node
+    dash scan                    none, in every new and changed file
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change, and the task said not to
+
+Pictures, a scratch rig in shots.js's style (not committed): the real
+shell on Hibari Yard at Low, window.__lettering feeding the fixtures,
+every animation frozen at a named time before each picture, and
+window.__lettering.centre() asked at every one for any drawn node reaching
+into the middle third of the width. Looked at, every one; in the session's
+scratchpad, not committed.
+
+    1600 by 900, manga and Clean FPV   16 pictures, centre third 0 hits
+    844 by 390, manga and Clean FPV    16 pictures, centre third 0 hits
+    390 by 844, the results page       4 pictures, centre third 0 hits
+
+What they show: tricks, sloppy and bumped, with the two balloon gaps and
+the repeat's x2; the five close calls in sky with シュッ and ギュン; the
+chase's small lines and the mark down the left, the lettered chase calls
+with キキーッ and ギュン over the unchanged Tail meter down the right; the
+big bank's balloon with ドン on the combo line; BAILED; the skim meter at
+0.38 m and 1.7 s over the x4 combo; DRIFT TAIL LOST; the results page with
+five panels and with two (the gap and the skim of a run with trick scoring
+off); the card; the same with Clean FPV, plain type and a plain list with
+the counter's rows first; the Settings row and its note. Save share card
+pressed in the shell: saved "webfpv-freestyle-12340.jpg", the row became
+Share card saved, and a run with nothing to draw has it disabled with a
+note.
+
+### For the owner, when flying
+
+Nothing a pilot sees changes until the scorer lands and feeds it, except
+the verdict (now on the combo line, not the middle), the chase's lettered
+callouts on Hibari Yard, the Settings row, and the trick names staying up
+their full 2.2 s. **Look for**: the lettering reading at a glance over the
+yard at speed; the effects small and beside, never in your line; the
+verdict readable where the combo was; Clean FPV turning all of it to plain
+text. **Wrong would be**: anything lettered in the middle third, an effect
+you notice before the word, a balloon that hides the combo, or a results
+page over the menu.

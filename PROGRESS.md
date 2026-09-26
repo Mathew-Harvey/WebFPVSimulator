@@ -47974,3 +47974,29 @@ module ABI or the build, and it was not asked for.
   and the owner's call.
 - The replay entry's "A replay still reads the sticks" is closed by this
   one.
+
+## 2026-09-26 | git | The replay stick guards go to main
+
+The owner, on the entry above: "push to main". That is the approval to put
+870aec5 on main. No verification scale was named with it, and no answer on
+R: the checks in the entry above are the ones that were run, on the very
+code that goes to main, flying a replay with the sticks held stays the
+suggestion, and R in a replay stays open. main had not moved from 833b8c7,
+the commit the branch was cut from, so main goes to the branch as a fast
+forward: no merge commit, nothing rewritten, and every commit id the entry
+above cites stays true.
+
+What to look for when flying it: a replay URL with &clean=1, the throttle
+held for a few seconds, then launch control switched on in Quad and L
+tapped. Right is the ghost flying on without a hitch and no takeoff blip.
+Wrong is the ghost jumping back to the start of its lap or standing still,
+or a takeoff blip. A normal flight must still take off on the throttle.
+
+### RUN LOG
+
+    git fetch                      main 833b8c7, unchanged since the entry
+                                   above; merge-base 833b8c7, main is an
+                                   ancestor of the branch
+    code                           unchanged since the entry above; only
+                                   this entry is new
+    checks                         not rerun: nothing they read changed

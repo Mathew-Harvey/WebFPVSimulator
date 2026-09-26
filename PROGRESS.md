@@ -50999,3 +50999,70 @@ moving cars cost 36 calls before and 39 after.
   almost all of it the thinning and freestyle collider work, which
   PROGRESS.md records change by change. NOTICE now says so and lists the
   two new hooks; making a diff file of the rest was not this task.
+
+### Checks, run in this session
+
+On f3e043a unless said (the car model's last change; the entry's own
+commits after it touch only this file):
+
+    npm run check:props          all passed
+    npm run check:roads          all passed; the r32 as the drift car keeps
+                                 2.311 m from every solid (the pole at
+                                 (132.4, 16.2); the hatch kept 2.403), and
+                                 the nearest two cars come in 30 minutes is
+                                 0.272 m, the r32 and the box truck (the
+                                 hatch came 0.403): longer by 0.45 m, the
+                                 r32 still clears, so the map is unchanged
+    npm run check:clip           876 passed, 0 failed (875 and 1 until
+                                 schema.md's car rows named r32)
+    npm run check:world          all passed (on 80808d3 and on 6cc2972)
+    npm run check:world-golden   all passed, tests/goldens/world.json
+                                 untouched (on 80808d3 and on 6cc2972)
+    npm run check:world-engines  Node and Chromium equal to the bit on all
+                                 32 runs, Hibari Yard's traffic with the r32
+                                 among them (on the smoke commit)
+    npm run check:chase          all passed (on 80808d3)
+    npm run check:counter        all passed (on 80808d3)
+    npm run lint:boot            9 of 9 clean
+    npm run lint:memory          PASS; built 9 modules, 61 -> 223 -> 61
+                                 geometries, 5 -> 39 -> 5 textures; city 60
+                                 modules, 61 -> 344 -> 62, 5 -> 42 -> 6
+    npm run lint:quality         56 of 56 clean
+    npm run lint:preload         up to date after node scripts/gen-preload.js
+                                 (boot 113, city 74, built 33; 216 served)
+    npm run lint:shell           FAIL, 1 problem, the known "title: overflow
+                                 grew from 0 to 67 px"
+    the town's solids            19,515 boxes, hash a118277a on High and on
+                                 Low, the same as 716562b; Hibari Yard's
+                                 552 boxes, da1fb02b, the same
+    dash scan, new and changed   none
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change, and dist/sim.wasm and src/native
+                                 are untouched, as the task said
+
+Not run: lint:input and score:selftest (nothing here reaches them; both
+have known failures on main).
+
+### For the owner, when flying
+
+- **Hibari Yard's drift car is the R32 now.** Tail it through the bends:
+  the wing, the four round tail lamps (brighter under braking), the car
+  sliding about 44 degrees with the front wheels countersteering and the
+  tops of the wheels leaning in, the smoke off both rear wheels. The smoke
+  from its tail should be cream puffs with thin ink edges that thin away
+  as you close; a dark disc in the trail would be wrong. At dusk the slim
+  headlamps light with a pool on the road ahead.
+- **The town's cars**: the multi storey car park, the rokuchome bays, the
+  yellow kei truck at the crossing. They stand in the same bays at the same
+  size and hit exactly where they did: every town solid is bit for bit what
+  it was. Wrong would be meeting a car where none is drawn or passing
+  through paint, a plate reading backwards, glass that flickers, or a
+  parked car's lamps lit at dusk (they keep their colour, as before; only
+  moving cars light).
+- **The builder** offers 'R32' among a vehicle's and a parked car's styles;
+  its Variant picks one of seven liveries. The 'kei' button now says 'Kei
+  car' (it said 'Kei truck' for the tall wagon).
+- **The budget**: the town's draw calls are unchanged and about 21,000
+  fewer triangles are drawn in every view; on Hibari Yard about nine more
+  draw calls (the parked pair's new glass streak, amber and clear lens, and
+  the moving cars' wheel sets) and about 4,000 fewer triangles.

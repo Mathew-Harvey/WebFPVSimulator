@@ -49766,3 +49766,292 @@ fixed here: it is outside the change asked for.
     input-check on clean 4c1d284   the same two failed, same output
     input-check on 5cdcc71 + this  158 passed, 2 failed (the same two);
                                    section 15's four pass
+
+## 2026-09-26 | game, shell, checks | Stage C: the counter, one combo for tricks, named gaps, close calls, the chase and the STF mark
+
+The owner, having flown Stage E: "can we now implement the full scoring
+system, chasing the car works well as do the named gaps". This is Stage C
+of FREESTYLE-MAPS-PLAN.md, the counter (section 7), with decision 2 (the
+geometry on by default on freestyle maps, trick names behind the Scoring
+switch). Decision 11's katakana belong to the lettering, which another
+agent is building beside this in its own worktree (the score HUD, the
+results page, the share card); nothing here touches src/ui/scorehud.js or
+the results page. No physics, no plant, no module ABI and no build: the
+counter reads the colliders and the craft's state the shell already has,
+and nothing it works out reaches the module. Commits a91d578, e2ad915,
+103d1dd, 99416e8, 2a451fa.
+
+### What was built
+
+- **src/game/gaps.js**, pure. `namedGaps(zones)` turns placeDocument's
+  `zones` (every gap element already through place.js's docToWorld, the one
+  conversion) into world rectangles: the sill's middle, the window's normal
+  (cos yaw, 0, -sin yaw) and across axis through src/props/trig.js, once a
+  map, half width and height. `NamedGapCounter.step(step, x, y, z)` every
+  physics step sweeps the CG's path from the last step across every window:
+  a sign change of the plane distance, and the meeting point inside the
+  rectangle, either way. Swept, so a step of 8 cm across a window counts at
+  any speed; a jump of more than a metre in a step (a set down, a harness
+  place) sweeps nothing, and `cut()` forgets the path.
+- **src/game/closecall.js**, pure given anything with Colliders.gapAt. Fed
+  every 8 ms of the lap clock (CC_EVERY) with the craft's world position and
+  velocity, the ground under it and two flags since the last feed: `hard`
+  (a step whose velocity change was GRAZE_SPEED_MAX or more, the shell's
+  STOP measure) and `crashed`. Four probes made of gapAt walked along rays
+  (sphere tracing, which by construction cannot step past a solid): up,
+  down, and level to either side of the path. In open air a feed is one
+  query. Four close calls, each a small state machine with a grace: SKIM
+  (held, builds per millisecond, "Wall skim" or "Roof skim" by where most
+  of its time was spent), THREAD (both sides close within 64 ms of each
+  other), UNDER (a solid over the craft) and LOW PASS (the ground, no solid
+  under the craft, held and worth less).
+- **src/game/score.js**: FreestyleScore gains the geometry: `gap`,
+  `closeCall`, `chaseEvent`, `egg`, `hold` and `setSkim`, all into the same
+  combo a trick goes into, and view().skim and the summary's geometry
+  fields. None of it reads or writes trickTotal, the streak, the penalties
+  or the obstacle run: a run with no geometry is scored exactly as before
+  (score:selftest's 206 existing lines are identical, below). `Counter` is
+  the pair the shell holds: `run`, the counter, and `board`, the trick only
+  twin (below). The event contract is in score.js's header.
+- **src/game/counterbest.js**: the counter's best scored run per map in
+  localStorage, `webfpv.counter.best.v1`, keyed by the map's STF egg key
+  (the stamps' key), every access in a try, held in memory when storage
+  says no, as src/share/stamps.js does.
+- **src/main.js**: `score` is a Counter. Every physics step on a freestyle
+  map, counterStep: the CG to the gaps, and every 8 ms the close calls with
+  `view.height` for the ground; whatever settles goes into the counter at
+  once, in step order, so which combo a thing lands in is the step
+  stream's, not the frame's. A held skim holds the combo open at its feed,
+  and so does a held tail (chaseToCounter, at the chase's feed, which also
+  hands each paying chase event to chaseBonus there rather than at the
+  frame's drain). eggBonus pays EGG_POINTS once a run. Every crash path
+  bails the counter (counterCrash): the ground's hard hit, the STOP and the
+  staged bail through score.crash() as before, and setDownNearby (a solid
+  crash, a craft left stuck, X) through bailCounter, once a frame at most.
+  resetCraft and __placeCraft cut the gaps' and close calls' paths. A
+  scored run's end keeps the counter's local best and adds counterBest,
+  counterBestBefore and counterImproved to the summary the results page is
+  handed. `window.__counter()` (the view, the summary, the newest events
+  and the close calls' own, lost ones included, the last probe) and
+  `window.__counterLogClear()` for the harness.
+- **src/maps/built/index.js** hands the shell `gaps: namedGaps(placed.zones)`
+  (src/maps/README.md lists it). The town has none.
+- **src/ui/ui.js**, the Scoring setting's text only, plus one visibility
+  rule: the values stay 'off', 'free' and 'scored' (they are in every
+  returning pilot's settings) and read Lines only, Free flight and Scored
+  run. The "unfinished feature" warning is now about trick names and still
+  leads whenever they are on. The score overlay is up on every freestyle
+  map whatever the switch says, because the lines always count
+  (syncScoreVisible); the freestyle lede, the Freestyle card's blurb and
+  the pre takeoff banner say the same. chase.js's header says where its
+  events go now.
+- **scripts/counter-check.js** (`npm run check:counter`, new) and
+  **scripts/lib/counterrun.js**, the shell's feed order in Node, shared with
+  score:selftest.
+
+### The numbers, and why (named constants in closecall.js and score.js)
+
+    CLEARANCE      from the CG to the surface, less CRAFT_WORLD_R (the
+                   sphere a tumbling five inch sweeps), floored at 0: one
+                   number for every direction
+    SPEED FLOOR    6 m/s: taking off beside a wall, hovering under a deck
+                   or landing on a roof earns nothing
+    SPEED FACTOR   v / 10 m/s, at most 3: 0.6 at the floor, 2 at 20 m/s
+    CLOSENESS      2 - clearance / reach: 1 at the reach, 2 touching
+                   (chase.js's shape)
+    SKIM           within 1.0 m (the plan's "about a metre"), held at least
+                   400 ms, 100 points a second at 10 m/s and the reach, so
+                   a second along a facade at 15 m/s and 0.4 m is 240, a
+                   Powerloop; builds for 8 s at most (it still holds)
+    LOW PASS       the ground within 1.0 m, no solid under the craft, 40 a
+                   second: two fifths of a skim, the plan's "worth less";
+                   it does not hold the combo open
+    UNDER          a solid over the craft within 3.0 m, 150 a passage
+                   times speed and closeness: 150 to 300 at 10 m/s
+    THREAD         both sides within 1.25 m, 250 a passage times speed and
+                   closeness: 250 to 500 at 10 m/s. 1.25 so a forty foot
+                   container flown end to end (2.35 m inside) is a thread
+                   from its middle half metre; at 1.0 it was one only dead
+                   centre
+    GRACE          200 ms out of the band forgiven: an alley at 20 m/s
+    RAYS           a fist thick (0.1 m), at most 24 queries a ray: a thin
+                   post passed at speed is abreast for under a feed, and
+                   with the width a feed every 8 ms catches it to 50 m/s
+    CONFIRM        a close call or a gap waits 250 ms clean after it ends,
+                   then chase.js's 120 ms report lag, before it goes into
+                   the combo; a hard contact or a crash inside that loses
+                   it, and after that the combo's own crash rule does
+    NAMED GAP      its tier (100 to 2500), priced by the workbook's own
+                   REPEAT_TRICK per run (1, 0.75, 0.5, 0): a gap is a named
+                   line the way a trick is a named figure, and flying it
+                   again is what the sheet charges for. Re-armed only when
+                   the CG is 2 m from the window, so rocking in it pays once
+    REPEATS        close calls and chase events by REPEAT_TRICK per COMBO
+                   (Tony Hawk's own rule inside a chain): per run would
+                   price every skim after the third at nothing; per combo
+                   it prices bobbing along one kerb to buy multiplier. A
+                   thing worth nothing buys nothing, as with tricks
+    STF MARK       1000 once a run: a gap's 1000 tier, not its top, since
+                   decision 10 made it easy to see
+    CHASE          chase.js's own prices, unchanged
+
+### The board
+
+The public board is a separate repository this session cannot reach, and it
+bounds every posted run against trick only arithmetic (postFreestyleRun,
+inspectRun). The plan keeps the town's board as it is. So the counter is a
+PAIR (score.js Counter): the counter, which the HUD shows, and a second,
+trick only FreestyleScore, the board twin, fed every trick the recogniser
+names whatever the switch says and crashed exactly where the one scorer
+always was. Its total is what a scored run posts; summary().total keeps
+that meaning and summary().counter is the counter's. The run has one clock,
+the counter's: two minutes from the first thing scored, whatever kind, and
+the twin ends with it. Every trick reaches the counter too while tricks
+count, so the counter never starts after the twin's first trick: when a
+trick comes first the two end on the same tick and the posted total is
+exactly what it was before the counter existed; when a gap or a skim came
+first, the twin holds the tricks flown inside the run the pilot was shown.
+A run with geometry and no tricks is still refused ("a run with no tricks
+in it is not a score"). The counter's own total is kept locally, per map.
+
+**One thing the owner should decide.** A solid crash that sets the craft
+down (crashResetTick), a craft set down stuck and X never reached the trick
+scorer: only the ground's hard hit (18 m/s or more) and the STOP did. So a
+10 m/s crash into a wall keeps the trick combo today. The counter bails on
+all of them; the twin, to keep the board computed as it was, is still told
+only where it always was. Telling it too is one line (score.crash() for
+score.bailCounter() in counterCrash) and changes what the town's board
+means, so it is yours.
+
+### Measured
+
+Cost of a close call feed, Node 22, check:counter, 40 repetitions of each
+line's own feeds (the feeds after a path ends are not counted):
+
+    open air, the yard and the town     0.7 to 1.7 us, 1 query a feed
+    along a line (skim, tunnel, under)  1.3 to 5.7 us, 1.3 to 7 queries
+    worst, the second run with a browser check beside it: 5.7 us a feed,
+    0.71 ms a second of flight; the first run's worst was 4.3 us
+
+The town is its fixture (tests/fixtures/town-crash.json, 650 of its 19,515
+solids round the shopfront), so its figure is for that street's density.
+
+### Flown, with the in-page pilot (scripts/lib/pilot.js)
+
+A scratch rig in crash-check.js's style (not committed): the real shell,
+Low, the draw off, Scoring at Lines only unless said, reading
+window.__counter() after each line.
+
+- **Hibari Yard, through two named gaps.** West to east through the
+  container tunnel and on under the billboard, 12 m/s, 1.35 m up (the
+  tracker sagged to 0.9): Low pass 64, CONTAINER TUNNEL 500, Under 275,
+  Roof skim 164 (the container's floor is a solid top under it), Thread
+  350, BILLBOARD GAP 250, Under 194 (the second in the combo, at three
+  quarters), Low pass 57: banked 14,832 at x8. Its first flight ran on
+  into the yard loop's lane (x 40.5) and was hit there, a car by where it
+  happened (the report's kind was not read): the seven things of that
+  combo bailed, 12,635 lost, and the low pass open at the hit was lost to
+  the contact.
+- **Hibari Yard, a skim along the three high container stack.** 12 m/s, 0.5
+  m clear: Wall skim, 1,080 ms, 177, banked 177.
+- **Hibari Yard, the same skim into the stack.** The Wall skim held 960 ms
+  (worth paying) and was lost to the contact; nothing was paid, the counter
+  counted the crash.
+- **The town, a skim along the shopfront** at x 5.6, south at 8 m/s: Wall
+  skim, 424 ms at 0.07 m, 77, banked. Flown north it runs into the building
+  that stands out past the shopfront at z 33, which the tracker could not
+  turn away from in time: the skim was lost to the contact each time.
+- **The town, the same skim into the shopfront.** Wall skim held 616 ms,
+  lost to the crash, nothing paid.
+- **The town, the long wall at z 60.6:** Under 130 and a Wall skim 137 (the
+  tracker rubbed the wall, clearance 0) went into a combo, then the craft
+  hit something at the wall's end: bailed, 534 lost.
+- **A scored run on the yard:** R with Scored run seated (tricks true, timed),
+  the clock started at the first thing scored (111 s left at the end of the
+  tunnel line), __scoreFinish: state over, counter 10,392, the twin's total
+  0 and no tricks, counterDurationMs 8,740, and `built:starter` 10,392 in
+  webfpv.counter.best.v1. With Lines only the overlay is up in flight
+  (score-hud, not is-off) and tricks false.
+
+### Checks, run in this session
+
+    npm run score:selftest       258 passed, 1 FAILED: "the same lap without
+                                 the flip is a Maverick Loop", main's known
+                                 failure. The base (ec33f25, a scratch
+                                 worktree) printed 206 passes and that
+                                 failure; all 207 lines are identical now,
+                                 and 52 new ones pass: the synthetic runs
+                                 past a wall, under a deck, between two
+                                 posts, through a named gap, a low pass
+                                 against a skim, dithering in a gap, a held
+                                 skim keeping the combo open past 3 s, each
+                                 paying run with a crash twin that pays
+                                 nothing and has lost the close call; the
+                                 combo's rules, the board twin, the egg, the
+                                 chase, the scored run's clock
+    npm run trick:sweep          exit 0, "nothing was ever paid more than it
+                                 was worth"; its output identical to the
+                                 base's, line for line
+    npm run check:counter        26 passed, all passed (new)
+    npm run check:chase          all passed
+    npm run check:roads          all passed (3.1 s)
+    npm run check:props          all passed
+    npm run lint:boot            9 of 9 clean
+    npm run lint:memory          PASS, every world lazy and freed; boot 61
+                                 geometries, 5 textures, 127 requests (the
+                                 three new modules)
+    npm run lint:preload         up to date after node scripts/gen-preload.js
+                                 (boot 111, city 73, built 32, 212 served)
+    npm run lint:shell           FAIL, 1 problem, "title: overflow grew from
+                                 0 to 67 px", main's known failure; the
+                                 Freestyle room 0 px
+    npm run lint:input           three runs. On 103d1dd: 2 failed, 158
+                                 passed, "parked and left" (20676 ms) and
+                                 "input.js agrees", main's known pair, the
+                                 same output as recorded for 4c1d284. On the
+                                 final tree with check:counter running
+                                 beside it: 3 failed, 157 passed, that pair
+                                 and "the input layer and the button agree
+                                 with the setting", the stick mode reading
+                                 Stage E's sim agent found flaky (it reads
+                                 the button a frame early). On the final
+                                 tree alone: all 160 passed, 166 s
+    dash scan, new and changed   none
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change, and the task said not to
+
+### What went wrong
+
+- The first rig's polylines turn in one step, and the close calls read
+  every corner as a hard contact: the first skim was lost at its own exit.
+  The rig now flags only the stop in a solid.
+- The first crash twins never reached a skim worth paying (under 400 ms
+  before the contact), so they passed for the wrong reason. They are longer
+  now, and every twin also asserts the close call was seen and lost.
+- The tunnel twin's line stopped 0.27 m short of the wall and never hit it.
+- src/fresh.js was first regenerated before counterbest.js was added to
+  git, and gen-preload lists what git tracks: 2a451fa put it in.
+- The frame's settle paid close calls between feeds, which made when a
+  thing went in depend on where a frame ended by up to 7 ms (99416e8).
+- In the rig, flights ended in the yard loop (a car hit the craft), in the
+  corner of another container stack, and in a town building the fixture
+  does not hold, before clean lines were found.
+
+### For the owner, when flying
+
+- **Look for**: the overlay on a freestyle map with Scoring at its default,
+  Lines only; the container tunnel end to end on Hibari Yard (a gap, an
+  under, a thread and a skim in one line, and the billboard gap after it);
+  a skim building along a facade and keeping a combo alive past three
+  seconds; a crash losing the whole combo.
+- **Wrong would be**: anything paying after a crash into the thing it was
+  flown past; a gap paying twice for rocking in it; the overlay counting
+  on a race track.
+- **Yours to decide**: the board twin and the set down crashes (The board,
+  above); whether a skim over a solid top inside a container should be
+  called a Roof skim; the prices, which are first guesses against the
+  workbook's and the chase's.
+- **For the lettering**: summary().total is the board's number and
+  summary().counter the counter's, so a Scored run with no tricks shows 0
+  in total; the results page wants `counter` and `counterBest`. The chase's
+  own HUD and the score HUD will both announce a tail.

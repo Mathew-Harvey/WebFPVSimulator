@@ -174,6 +174,7 @@ import { ChaseHud, chaseCallText } from './chasehud.js';
 import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
 } from './mangapage.js';
+import { paintTitle } from './lettering.js';
 import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
@@ -1786,6 +1787,144 @@ function wordmark() {
   const h = el('h1', 'wordmark');
   h.append(document.createTextNode('WEB'), el('span', 'fpv', 'FPV'));
   return h;
+}
+
+/*
+ * THE HEADINGS ARE LETTERED (polish item 19). The wordmark and every room's
+ * title are drawn in the lettering's own hand (src/ui/lettering.js
+ * paintTitle): heavy slanted capitals, a thick ink line and a hard drop,
+ * the hand the freestyle callouts and the results page already speak in,
+ * so the menus are the game's own voice and not a developer UI with a
+ * manga layer over it.
+ *
+ * THE TEXT STAYS. The heading keeps its words in the DOM, in its own place
+ * and at its own size, for a screen reader, for find in page and for a
+ * search engine; .is-lettered makes their fill transparent and the
+ * lettering is an aria-hidden canvas laid over them. So the layout is the
+ * text's, to the pixel, and lint:shell's measurements cannot move. With
+ * forced colours on, the canvas goes and the text comes back (index.html).
+ *
+ * THE MENUS USE THE HAND WHATEVER CLEAN FPV SAYS. Clean FPV is about
+ * flight: nothing drawn over the picture while flying. A menu is not
+ * flying, and a title is looked at, not read at 100 km/h.
+ *
+ * PAINTED ONCE. A heading is painted when its screen is shown and again
+ * only if what it says, its colour, its size or its room has changed
+ * (h.letterKey): show() and a settled resize ask, and a screen visited a
+ * second time paints nothing. Never per frame.
+ */
+const LETTER_PROBE = 'lettered-probe';
+const LETTER_ART = 'lettered-art';
+
+/* A heading's words as runs in their own colours: the wordmark is WEB in
+ * cream and FPV in sakura because its CSS says so, a record is mint for the
+ * same reason. */
+function headingRuns(h, cs) {
+  const runs = [];
+  for (const n of h.childNodes) {
+    if (n.nodeType === 3) {
+      runs.push({ text: n.textContent, fill: cs.color });
+    } else if (n.nodeType === 1 && !n.classList.contains(LETTER_PROBE) && !n.classList.contains(LETTER_ART)) {
+      runs.push({ text: n.textContent, fill: getComputedStyle(n).color });
+    }
+  }
+  const out = [];
+  for (const r of runs) {
+    const text = r.text.replace(/\s+/g, ' ');
+    if (text && (text.trim() || out.length)) {
+      out.push({ text, fill: r.fill });
+    }
+  }
+  if (out.length) {
+    out[0].text = out[0].text.replace(/^ /, '');
+    out[out.length - 1].text = out[out.length - 1].text.replace(/ $/, '');
+  }
+  return out.filter((r) => r.text);
+}
+
+/*
+ * Letter one heading, if it is on screen and anything it depends on has
+ * changed. The outline is a fifth of the size at callout sizes and thins
+ * toward a tenth on the wordmark, where a fifth of 104 px is a 21 px line
+ * and the letters close up into a blot.
+ */
+function letterHeading(h) {
+  if (!h || typeof window === 'undefined' || !h.isConnected) {
+    return;
+  }
+  const cs = getComputedStyle(h);
+  const px = parseFloat(cs.fontSize);
+  const box = h.getBoundingClientRect();
+  if (!(px > 0) || !box.width || cs.display === 'none') {
+    return;
+  }
+  const runs = headingRuns(h, cs);
+  if (!runs.length) {
+    h.classList.remove('is-lettered');
+    return;
+  }
+  const parent = h.parentElement;
+  const pcs = getComputedStyle(parent);
+  const pr = parent.getBoundingClientRect();
+  const right = Math.min(pr.right - parseFloat(pcs.paddingRight || '0'), window.innerWidth - 4);
+  const left = Math.max(pr.left + parseFloat(pcs.paddingLeft || '0'), 4);
+  /* Centred when its text is, or when its box is a shrink wrapped one in
+   * the middle of its column, which is how a flex column centres a title:
+   * the lettering is wider than the text, and set from the text's left
+   * edge it would sit right of the middle the text marked. */
+  const mid = (box.left + box.right) / 2;
+  const centred = cs.textAlign === 'center'
+    || (box.width < (right - left) - 2 && Math.abs(mid - (left + right) / 2) < 2);
+  const inkW = Math.min(0.2, Math.max(0.1, 7 / px));
+  const pad = px * (inkW + 0.12);
+  const maxW = Math.floor(centred ? right - left : right - box.left + pad);
+  const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+  const key = `${runs.map((r) => `${r.text}\u0001${r.fill}`).join('\u0002')}|${px}|${maxW}|${centred}|${dpr}`;
+  let art = h.querySelector(`:scope > .${LETTER_ART}`);
+  let probe = h.querySelector(`:scope > .${LETTER_PROBE}`);
+  if (h.letterKey === key && art && probe && h.classList.contains('is-lettered')) {
+    return;
+  }
+  if (!probe) {
+    probe = el('span', LETTER_PROBE);
+    probe.setAttribute('aria-hidden', 'true');
+    h.append(probe);
+  }
+  if (!art) {
+    art = el('canvas', LETTER_ART);
+    art.setAttribute('aria-hidden', 'true');
+    h.append(art);
+  }
+  let m = null;
+  try {
+    m = paintTitle(art, runs, px, { maxW, inkW });
+  } catch (e) {
+    m = null;
+  }
+  if (!m) {
+    /* No 2D context: the text is the heading, as it was. */
+    h.classList.remove('is-lettered');
+    art.remove();
+    return;
+  }
+  h.classList.add('is-lettered');
+  /* On the text's own baseline, or, if the text wrapped to a second line
+   * on a narrow window, across the middle of its box. */
+  const baseline = probe.offsetTop;
+  const top = baseline > px * 1.5 ? h.clientHeight / 2 - (m.base - m.px * 0.36) : baseline - m.base;
+  const x = centred ? (h.clientWidth - m.w) / 2 : -m.left;
+  art.style.left = `${Math.round(x)}px`;
+  art.style.top = `${Math.round(top)}px`;
+  h.letterKey = key;
+}
+
+/* Set a lettered heading's words: textContent takes the lettering with it,
+ * so it is put back at once rather than leaving transparent text behind. */
+function setHeadingText(h, text) {
+  h.textContent = text;
+  h.classList.remove('is-lettered');
+  h.letterKey = '';
+  letterHeading(h);
 }
 
 /*
@@ -10402,6 +10541,7 @@ export class Ui {
     for (const [name, node] of Object.entries(this.screens)) {
       node.style.display = name === screen ? '' : 'none';
     }
+    this.letterScreen(screen);
     /* Paused keeps the flight display up, dimmed: the lap clock and the
      * pack are what the player paused to look at. */
     this.syncFrame();
@@ -11008,15 +11148,15 @@ export class Ui {
 
     this.resultsKicker.textContent = this.resultsCourseName();
     if (!clean.length) {
-      this.resultsHead.textContent = 'Run ended';
+      setHeadingText(this.resultsHead, 'Run ended');
       this.resultsHeroTime.textContent = '';
       this.resultsHeroMeta.textContent = '';
       this.resultsHeroMeta.className = 'results-hero-meta';
       this.resultsBody.append(el('p', 'results-empty', 'No clean lap this run. Hitting the ground or a gate frame costs the time it takes to get going again. Only an out of sequence gate voids the lap and sends you back to the mint ring.'));
     } else {
-      this.resultsHead.textContent = isRecord
+      setHeadingText(this.resultsHead, isRecord
         ? 'New track record'
-        : (matched ? 'Matched the record' : 'Run complete');
+        : (matched ? 'Matched the record' : 'Run complete'));
       /*
        * RACEGOW IS SCORED ON THREE CONSECUTIVE LAPS, so on a micro track
        * that total is the headline and the best single lap moves to the
@@ -11601,6 +11741,32 @@ export class Ui {
     }
   }
 
+  /*
+   * Letter a screen's headings: the wordmark on the title, the room's title
+   * everywhere else, the results' head. See letterHeading, which paints only
+   * what changed. Not ui.manga's: the menus use the hand whatever Clean FPV
+   * says, because Clean FPV is about flight. The first call installs one
+   * resize listener, which letters the screen on show again once the window
+   * has settled, because a heading's size is in vw.
+   */
+  letterScreen(screen) {
+    const node = this.screens && this.screens[screen];
+    if (!node || typeof window === 'undefined') {
+      return;
+    }
+    if (!this.letterResize) {
+      this.letterResize = true;
+      this.letterTimer = 0;
+      window.addEventListener('resize', () => {
+        clearTimeout(this.letterTimer);
+        this.letterTimer = setTimeout(() => this.letterScreen(this.screen), 150);
+      });
+    }
+    for (const h of node.querySelectorAll(':scope > h2, h1.wordmark, h2.results-head')) {
+      letterHeading(h);
+    }
+  }
+
   showScore(on) {
     this.scoreHud.setVisible(on);
   }
@@ -11797,9 +11963,9 @@ export class Ui {
     this.resultsKicker.textContent = summary.timed === false
       ? `${where}, free flight`
       : where;
-    this.resultsHead.textContent = scored
+    setHeadingText(this.resultsHead, scored
       ? (clean ? 'Clean run' : 'Run complete')
-      : 'Run ended';
+      : 'Run ended');
     this.resultsHeroCap.textContent = 'Score';
     this.resultsHeroTime.textContent = formatScore(counter);
     /* A town has no plan drawing, and an empty blueprint plate beside a

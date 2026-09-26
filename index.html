@@ -1669,6 +1669,38 @@
         text-shadow: 3px 3px 0 rgba(20, 28, 20, 0.82), 0 10px 28px rgba(0, 0, 0, 0.32);
       }
       .wordmark .fpv { color: var(--sakura); }
+      /* THE HEADINGS, LETTERED (polish item 19, letterHeading in
+         src/ui/ui.js). The wordmark and the rooms' titles are drawn in the
+         lettering's hand on an aria-hidden canvas laid over their own
+         words. The words stay, in their place and at their size, for a
+         screen reader, find in page and the layout, which is why this
+         hides their fill and not the text: the colour is still what the
+         lettering is painted in, a record's mint included. The probe is a
+         zero sized box on the text's baseline, which is where the
+         lettering's baseline goes. Two selectors, so this outranks the
+         headings' own text shadows, the results head's included, which is
+         two classes deep and later in the sheet. */
+      .screen .is-lettered,
+      .screen-results .results-head.is-lettered {
+        position: relative;
+        -webkit-text-fill-color: transparent;
+        text-shadow: none;
+      }
+      .lettered-art {
+        position: absolute; left: 0; top: 0;
+        display: block; pointer-events: none;
+      }
+      .lettered-probe {
+        display: inline-block; width: 0; height: 0;
+        vertical-align: baseline;
+      }
+      /* Forced colours is a pilot asking for the system's own text, so they
+         get it: the drawing goes and the words come back. */
+      @media (forced-colors: active) {
+        .screen .is-lettered,
+        .screen-results .results-head.is-lettered { -webkit-text-fill-color: currentColor; }
+        .lettered-art { display: none; }
+      }
       .screen h2 {
         margin: 0 0 18px; font-size: clamp(24px, 3.4vw, 40px); font-weight: 700;
         letter-spacing: 0.04em; color: var(--cream);

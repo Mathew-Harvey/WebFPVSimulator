@@ -46,6 +46,14 @@
  * test moves every road point a nanometre in the page only and must see it
  * in every vehicle run's poses.
  *
+ * AND HIBARI YARD'S OWN TRAFFIC (Stage E): two of those runs are the
+ * starter map's road and cars, built by src/maps/built/traffic.js trafficOf
+ * in each engine from the document, so the road's easing, its lanes and the
+ * plan to world conversion are compared too, not only the module: twenty
+ * seconds of the yard's traffic, and its drift car meeting a craft in its
+ * lane. This is the pose trace Stage E's plan asks to be the same in Node
+ * and in Chrome.
+ *
  * NOTHING HERE IS RECORDED. The comparison is live, engine against engine;
  * the golden it is also held to is written by scripts/world-golden.js
  * --write, and that is a reviewed act, with the owner's approval and a

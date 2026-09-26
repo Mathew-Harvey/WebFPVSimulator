@@ -22,10 +22,11 @@
  *           shell's own setMover from a closed form of the step count.
  *
  * And one set that is NOT the golden's, vehicleRuns() at the end: cars that
- * follow a road inside the module (Stage D part 2). goldenRuns() does not
+ * follow a road inside the module (Stage D part 2), and Hibari Yard's own
+ * traffic as the map's document makes it (Stage E). goldenRuns() does not
  * return them, so tests/goldens/world.json neither holds nor misses them;
  * scripts/world-engines.js flies them in both engines, and
- * scripts/world-check.js holds them to their guards.
+ * scripts/world-check.js holds the Stage D ones to their guards.
  *
  * NOTHING HERE REACHES THE PHYSICS THROUGH JS TRIGONOMETRY. The sticks are
  * + - * / and square roots, which IEEE 754 fixes to the bit; a frame's yaw
@@ -64,8 +65,9 @@ import { sincos } from '../../src/props/trig.js';
 import { PROPS, FURNITURE } from '../../src/props/catalog.js';
 import { styleDims } from '../../src/props/types.js';
 import { createTrack, createElement, normalize } from '../../src/trackbuilder/model.js';
-import { placeDocument, groundUnder } from '../../src/maps/built/place.js';
+import { placeDocument, groundUnder, docToWorld } from '../../src/maps/built/place.js';
 import { starterMap } from '../../src/maps/built/starter.js';
+import { trafficOf, uploadTraffic } from '../../src/maps/built/traffic.js';
 
 /* sim_abi.h's state block. */
 const ST = { X: 1, Y: 2, Z: 3, VX: 4, VY: 5, VZ: 6, QW: 7, QX: 8, QY: 9, QZ: 10 };
@@ -1527,6 +1529,85 @@ export function crowdRun(n = 64, ms = 3000, nudge = 0) {
   });
 }
 
+/*
+ * HIBARI YARD'S OWN TRAFFIC (Stage E): the starter map's road and cars,
+ * built by src/maps/built/traffic.js trafficOf in whichever engine runs
+ * this, and handed over by its uploadTraffic after the yard's solids, the
+ * way the shell does it. So what is compared between Node and Chromium is
+ * the whole road the map's author gets: the document read, the bends eased
+ * by src/maps/built/road.js, the lanes laid, the plan taken to the world by
+ * place.js, and the module driving it. `nudge` moves every road point by
+ * that much along x, y and z, in the Three.js frame, after trafficOf.
+ * `at` is where the craft is, [doc x, doc y, height over the paving] (the
+ * spawn when omitted); `lift` how high it climbs from the spawn.
+ */
+function yardRun(o, nudge = 0) {
+  const doc = normalize(starterMap()).doc;
+  const w = builtWorld(doc);
+  const traffic = trafficOf(doc);
+  const roads = nudge
+    ? traffic.roads.map((r) => ({ ...r, points: r.points.map((p) => ({ x: p.x + nudge, y: p.y + nudge, z: p.z + nudge })) }))
+    : traffic.roads;
+  const handed = { ...traffic, roads };
+  const rec = { poses: makeVehiclePoses(), digests: new Uint32Array(0) };
+  const ground = builtGround(w);
+  let pose = [0, 0, 0];
+  if (o.at) {
+    const p3 = docToWorld(doc.field.width, doc.field.depth, o.at[0], o.at[1], o.at[2]);
+    pose = toPlant(w.f, p3.x, p3.y, p3.z);
+  }
+  const z = o.at ? pose[2] : o.lift;
+  return {
+    name: `vehicles: ${o.name}`,
+    group: 'vehicles',
+    airframe: 0,
+    ms: o.ms,
+    rec,
+    frame: w.f,
+    setup(sim, ctx) {
+      const n = uploadWorld(sim, w.colliders);
+      if (n !== w.placed.solids.length) {
+        throw new Error(`uploadWorld: ${n} for ${w.placed.solids.length} solids`);
+      }
+      const sp = w.placed.spawn;
+      setWorldFrame(sim, sp.x, w.y, sp.z, sp.yaw, REST[0]);
+      const up = uploadTraffic(sim, handed);
+      if (traffic.problems.length || up.problems.length || up.vehicles !== traffic.vehicles.length || up.vehicles === 0) {
+        throw new Error(`the yard's traffic: ${[...traffic.problems, ...up.problems].map((q) => q.message).join('; ') || `${up.vehicles} vehicles taken`}`);
+      }
+      setVehicleClock(sim, 0);
+      call(sim, 'sim_set_pose', pose[0], pose[1], pose[2], 1, 0, 0, 0);
+      call(sim, 'sim_rest');
+      readVehicles(sim, rec.poses);
+      ctx.poses = rec.poses;
+      rec.digests = new Uint32Array(o.ms);
+    },
+    sticks: o.at
+      ? (ms, st, ctx) => [0, 0, 0, heightHold(ctx, st, z)]
+      : (ms, st, ctx) => [0, 0, 0, heightHold(ctx, st, Math.min(z, z * (ms / 1000)))],
+    before(sim, ms, st) {
+      readVehicles(sim, rec.poses);
+      rec.digests[ms] = digestPoses(rec.poses);
+      ground(sim, ms, st);
+    },
+    where: (st) => toThree(w.f, [st[ST.X], st[ST.Y], st[ST.Z]]),
+    exercises: (m) => m.contactSteps >= 0,
+    describe: (m) => `${m.contactSteps} steps in contact, ${m.moverSteps} where a car was the hardest contact, ending ${m.endSpeed.toFixed(3)} m/s`,
+  };
+}
+
+/* Twenty seconds of the yard's traffic, every car driven the whole time,
+ * with the craft hovering over the pads well clear of the road. */
+export function yardTrafficRun(nudge = 0) {
+  return yardRun({ name: 'Hibari Yard\'s traffic for 20 s, built by trafficOf', ms: 20000, lift: 1.5 }, nudge);
+}
+
+/* The yard's drift car coming down the lane at speed into a craft hovering
+ * a metre up in its lane, south of the footbridge. */
+export function yardHitRun(nudge = 0) {
+  return yardRun({ name: 'Hibari Yard\'s drift car meets a craft in its lane', ms: 5000, at: [141.5, 70, 1.0] }, nudge);
+}
+
 /* The vehicle runs the engines check flies. `nudge` moves every road point,
  * for its self test. */
 export function vehicleRuns({ nudge = 0 } = {}) {
@@ -1541,5 +1622,7 @@ export function vehicleRuns({ nudge = 0 } = {}) {
     roofRideRun(nudge),
     invarianceRun(37, nudge),
     crowdRun(64, 2000, nudge),
+    yardTrafficRun(nudge),
+    yardHitRun(nudge),
   ];
 }

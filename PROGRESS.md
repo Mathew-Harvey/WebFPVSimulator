@@ -50862,17 +50862,17 @@ High and on Low; Hibari Yard's 552 boxes likewise, da1fb02b.
 Counted from the built geometry in Node (every mesh, wheels in):
 
     kind       vendored   parked   moving body + 4 wheels
-    kei          2,012     1,369     1,003 + 4 x 252
-    keivan       1,940     1,383     1,017 + 4 x 248
-    keitruck       690     1,205       839 + 4 x 248
-    hatch        2,024     1,331       987 + 4 x 243
-    sedan        2,036     1,377     1,021 + 4 x 246
-    wagon        2,024     1,363     1,013 + 4 x 248
-    minivan      2,024     1,401     1,057 + 4 x 243
-    van          1,940     1,381     1,027 + 4 x 248
-    boxtruck     2,144     1,397       985 + 6 x 258
-    minibus      2,048     1,431     1,059 + 4 x 266
-    r32              -     1,835     1,467 + 4 x 258
+    kei          2,012     1,369       753 + 4 x 252
+    keivan       1,940     1,383       783 + 4 x 248
+    keitruck       690     1,205       605 + 4 x 248
+    hatch        2,024     1,331       751 + 4 x 243
+    sedan        2,036     1,377       785 + 4 x 246
+    wagon        2,024     1,363       763 + 4 x 248
+    minivan      2,024     1,401       821 + 4 x 243
+    van          1,940     1,381       781 + 4 x 248
+    boxtruck     2,144     1,397       709 + 6 x 258
+    minibus      2,048     1,431       759 + 4 x 266
+    r32              -     1,835     1,195 + 4 x 258
 
 The vendored car spent 768 of its 2,000 on arch tori and 544 on wheels with
 both faces; the arch is now a cut in the profile, dark inside, with a
@@ -50916,7 +50916,7 @@ On a built map the kit batches by material, so the parked pair brings six
 more batches (the glass streak, the amber, the clear lens, the dark steel,
 and two paints' own deep): 368 to 374 prop batches. The moving cars:
 stats() 37 meshes and 9,308 triangles before, 40 and 6,579 after (43 and
-6,619 at dusk with the glow): three bodies of 11 to 15 meshes, three wheel
+6,619 at dusk with the glow): three bodies of 11 to 14 meshes, three wheel
 sets (one draw call each for all the wheels of a kind, where Stage E drew
 twelve), the smoke. Shown against hidden on the whole plot, the three
 moving cars cost 36 calls before and 39 after.

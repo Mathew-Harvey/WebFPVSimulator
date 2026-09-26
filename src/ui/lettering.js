@@ -367,12 +367,12 @@ function kanaAdvance(ch) {
 }
 
 /* The width a sound effect takes at `px`. */
-export function sfxWidth(text, px) {
+export function sfxWidth(text, px, tight = 1) {
   let w = 0;
   for (const ch of text) {
     w += kanaAdvance(ch);
   }
-  return (w + 0.34) * px;
+  return (w * tight + 0.34) * px;
 }
 
 /*
@@ -380,9 +380,10 @@ export function sfxWidth(text, px) {
  * plus (dx, dy), calling `paint(strokes)` with the context in the cell's
  * unit square. `hand` is how far each kana is turned and stepped off the
  * line: 1 for a sound effect scrawled across a panel, less for a word set
- * in a badge. Shared by both so they are one hand.
+ * in a badge. `tight` scales the advance, 1 for an effect. Shared by both
+ * so they are one hand.
  */
-function eachKana(ctx, text, x, y, px, hand, dx, dy, paint) {
+function eachKana(ctx, text, x, y, px, hand, dx, dy, paint, tight = 1) {
   if (!DAKU_STROKES) {
     DAKU_STROKES = DAKUTEN.map((src) => src.split(/(?=[ML])/).map((cmd) => {
       const nums = cmd.slice(1).trim().split(/\s+/).map(Number);
@@ -416,7 +417,7 @@ function eachKana(ctx, text, x, y, px, hand, dx, dy, paint) {
       paint(strokesOf(base));
       ctx.restore();
     }
-    gx += kanaAdvance(ch) * px;
+    gx += kanaAdvance(ch) * px * tight;
   }
 }
 
@@ -453,10 +454,12 @@ export function drawSfx(ctx, text, x, y, px, fill) {
  * glimpsed. Painted once at `px` a cell; the badge scales it by CSS, so a
  * window changing size never repaints it.
  */
+const BADGE_TIGHT = 0.86;
+
 export function paintKana(canvas, text, px, colour) {
   const ctx = canvas.getContext('2d');
   const dpr = dprNow();
-  const W = Math.ceil(sfxWidth(text, px));
+  const W = Math.ceil(sfxWidth(text, px, BADGE_TIGHT));
   const H = Math.ceil(px * 1.3);
   canvas.width = Math.ceil(W * dpr);
   canvas.height = Math.ceil(H * dpr);
@@ -464,7 +467,7 @@ export function paintKana(canvas, text, px, colour) {
   ctx.clearRect(0, 0, W, H);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  eachKana(ctx, text, 0, px * 0.15, px, 0.4, 0, 0, (s) => inkStrokes(ctx, s, colour || INK, 0.19));
+  eachKana(ctx, text, 0, px * 0.15, px, 0.4, 0, 0, (s) => inkStrokes(ctx, s, colour || INK, 0.19), BADGE_TIGHT);
   return { w: W, h: H };
 }
 

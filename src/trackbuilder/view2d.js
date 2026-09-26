@@ -35,8 +35,10 @@
 
 import {
   ELEMENTS, KIND, FRAME_TUBE_OD, flagLeanSign, flagSideOf, flagSideSigns, trackClassOf, virtualApertureDims,
-  docModeOf,
+  docModeOf, hasMissingSides, unbuiltSidesOf,
 } from './elements.js';
+import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
+import { knotForSeq, markerSquare } from './path.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter, logoForDecal,
 } from './model.js';
@@ -45,7 +47,7 @@ import { figureCue } from './figures.js';
 import { travelDirection, markerPassDir } from './faces.js';
 import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import {
-  add, apertureCorners, clamp, dist, leftOf, normalize, pointSegment, scale, sub, wrapAngle, yawVector,
+  add, apertureCorners, apertureFrame, clamp, dist, leftOf, normalize, pointSegment, scale, sub, wrapAngle, yawVector,
 } from './geometry.js';
 import { startBlockDims } from '../art/startblock.js';
 /* The freestyle assets. Pure layouts, no Three.js: the plan draws the same
@@ -612,7 +614,11 @@ export class View2D {
       return null;
     }
     const gap = HANDLE_GAP_PX / this.cam.scale;
-    return add({ x: el.position.x, y: el.position.y, z: 0 }, scale(yawVector(el.yaw), gap));
+    /* A marker's handle stands where its square is (shownYaw in app.js),
+     * so grabbing it turns the square from where it sits rather than
+     * jumping it to wherever the marker's stored heading happened to point. */
+    const yaw = this.host.shownYaw ? this.host.shownYaw(el) : el.yaw;
+    return add({ x: el.position.x, y: el.position.y, z: 0 }, scale(yawVector(yaw), gap));
   }
 
   /* ---------------- interaction ---------------- */
@@ -1760,6 +1766,8 @@ export class View2D {
       this.hatch(ctx, poly);
     }
 
+    this.drawMissingSides(ctx, el);
+
     /* Every level of a multi level structure gets a tick along the frame, so
      * a ladder is visibly not a gate from the plan alone. */
     const levels = aperturesOf(el);
@@ -1780,6 +1788,67 @@ export class View2D {
     }
     this.drawHeaderFlags(ctx, el, selected);
     this.drawNumbers(ctx, el, numbers, selected);
+  }
+
+  /*
+   * THE SIDES TAKEN AWAY, on the plan (FRAME_SIDES in elements.js). Each
+   * missing pipe is laid where it was and projected onto the ground: an
+   * upright of a standing gate lands on a point and is crossed out, and a
+   * bar lands on a line and is drawn dashed, so the plan says which pipe is
+   * gone for any tilt without a case for each. Red, the exit colour, because
+   * it marks something that is not there.
+   */
+  drawMissingSides(ctx, el) {
+    if (!hasMissingSides(el)) {
+      return;
+    }
+    const levels = aperturesOf(el);
+    if (!levels.length) {
+      return;
+    }
+    const tube = trackClassOf(this.host.doc) === 'micro' ? RACEGOW_PIPE_OD : FRAME_TUBE_OD;
+    const f = apertureFrame(el.yaw, el.pitch);
+    /* Every opening of a stack is centred over the element's own position
+     * and they differ only in height, which the plan does not show, so a
+     * point on the frame lands at the position plus its offset in the
+     * opening's own plane: u across it, v up it. */
+    const at = (u, v) => ({
+      x: el.position.x + f.widthAxis.x * u + f.heightAxis.x * v,
+      y: el.position.y + f.widthAxis.y * u + f.heightAxis.y * v,
+    });
+    const ap = levels[0];
+    const upW = (ap.clearW + tube) / 2;
+    const barW = ap.clearW / 2 + tube;
+    const barH = (ap.clearH + tube) / 2;
+    const ends = {
+      left: [at(-upW, -ap.clearH / 2), at(-upW, ap.clearH / 2)],
+      right: [at(upW, -ap.clearH / 2), at(upW, ap.clearH / 2)],
+      top: [at(-barW, barH), at(barW, barH)],
+      bottom: [at(-barW, -barH), at(barW, -barH)],
+    };
+    ctx.save();
+    ctx.strokeStyle = C.exit;
+    ctx.lineWidth = 2;
+    for (const side of unbuiltSidesOf(el)) {
+      const [a, b] = ends[side].map((q) => this.toScreen(q));
+      if (Math.hypot(b.x - a.x, b.y - a.y) < 3) {
+        const r = 4;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(a.x - r, a.y - r);
+        ctx.lineTo(a.x + r, a.y + r);
+        ctx.moveTo(a.x - r, a.y + r);
+        ctx.lineTo(a.x + r, a.y - r);
+        ctx.stroke();
+      } else {
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   /*
@@ -1961,22 +2030,35 @@ export class View2D {
    * side rather than a heading.
    */
   drawChevron(ctx, el, seq) {
-    const dir = travelDirection(this.host.doc, seq.id);
-    if (!dir) {
-      return;
+    /*
+     * The pass and its square come off the racing line's own knot
+     * (markerSquare in path.js), which is the frame the race field scores
+     * in: a marker turned by hand swings its square round the pole like a
+     * door, facing the knot's tangent, rather than sliding it round with its
+     * heading held. The chain direction is the fallback for a line not
+     * derived yet.
+     */
+    const knot = knotForSeq(this.host.path, seq.id);
+    const square = markerSquare(this.host.doc, knot);
+    let u;
+    let side;
+    if (knot && knot.role === 'marker') {
+      u = normalize({ x: knot.tangent.x, y: knot.tangent.y, z: 0 }, { x: 1, y: 0, z: 0 });
+      side = square ? square.side : markerPassDir(el, seq, u);
+    } else {
+      const dir = travelDirection(this.host.doc, seq.id);
+      if (!dir) {
+        return;
+      }
+      u = normalize({ x: dir.x, y: dir.y, z: 0 }, { x: 1, y: 0, z: 0 });
+      side = markerPassDir(el, seq, u);
     }
-    const u = normalize({ x: dir.x, y: dir.y, z: 0 }, { x: 1, y: 0, z: 0 });
-    /* Which way off the pole the pass is: square to travel on the derived
-     * side, or the marker's own heading once the author has turned it. One
-     * function, shared with path.js and the 3D preview, so the plan cannot
-     * draw the square somewhere the racing line does not go. */
-    const side = markerPassDir(el, seq, u);
     const at = add(el.position, scale(side, seq.clearance ?? 0));
     const p = this.toScreen(at);
     const ang = Math.atan2(-u.y, u.x);
 
     if ((seq.clearance ?? 0) >= 0.05) {
-      const dims = virtualApertureDims(el, seq, trackClassOf(this.host.doc));
+      const dims = square ? square.dims : virtualApertureDims(el, seq, trackClassOf(this.host.doc));
       /* The virtual gate, in plan: a green bar the width of the scoring
        * square, sitting on the pass side. A vertical square collapses to a
        * bar the same way a real gate does. Its centre is `outward` past the
@@ -1984,14 +2066,10 @@ export class View2D {
        * now that the square is wider than the clearance corridor. */
       const hw = dims.clearW / 2;
       const hd = 0.18;
-      /* WHERE it sits follows the pass direction, all the way round a
-       * turned marker. WHICH WAY IT FACES does not: race.js builds every
-       * scoring frame from the heading alone, so the square's width is
-       * always across the direction of travel and its plane always square
-       * to it. Drawing it any other way would draw a hole that is not the
-       * hole being scored. */
-      const left = leftOf(u);
-      const gateAt = add(at, scale(side, dims.outward));
+      const left = square ? square.widthAxis : leftOf(u);
+      const gateAt = square
+        ? { x: square.centre.x, y: square.centre.y, z: 0 }
+        : add(at, scale(side, dims.outward));
       const corners = [
         add(gateAt, add(scale(left, -hw), scale(u, -hd))),
         add(gateAt, add(scale(left, hw), scale(u, -hd))),
@@ -2123,7 +2201,13 @@ export class View2D {
     }
   }
 
-  drawNumbers(ctx, el, numbers, selected) {
+  drawNumbers(ctx, el, all, selected) {
+    /* The Labels button. The sequence list still has the order. */
+    if (this.host.labelsVisible === false) {
+      return;
+    }
+    /* A waypoint has no number: see gateNumbers in sequence.js. */
+    const numbers = all.filter((n) => n.number != null);
     if (!numbers.length) {
       return;
     }

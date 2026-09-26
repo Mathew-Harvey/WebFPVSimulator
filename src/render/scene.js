@@ -997,6 +997,97 @@ function pitchSurface(pitch, course, sponsorMarks) {
   return mesh;
 }
 
+/*
+ * The sponsors' marks painted on a whoop room's floor.
+ *
+ * WHY THIS IS NOT pitchSurface. Outdoors every decal is stamped into the
+ * pitch's canvas, and a micro course has no pitch: the room lays a rubber
+ * mat instead (see the room block in buildFieldScene), so the decals the
+ * course carried were read, handed to a painter that was never built, and
+ * the floor came out bare while the builder's preview showed them. So each
+ * decal is its own plane here, the size of its footprint, lying on the mat.
+ *
+ * One plane per decal rather than one canvas the size of the room, because
+ * a room canvas at the pitch's density would be mostly black mat that the
+ * mat already draws, and a decal's own 512 px is sharper than its share of
+ * a 2048 px floor would be.
+ *
+ * THE SAME FRAME AS THE PITCH'S. PlaneGeometry turned -90 about X puts the
+ * canvas's right along the decal's local x and its down along local z, and
+ * a Y rotation of yaw takes local +x to scene (cos yaw, -sin yaw), which is
+ * exactly where pitchSurface's canvas rotation of minus yaw sends it. So a
+ * logo reads the same way round on the mat as it does on the turf and in
+ * the builder.
+ *
+ * LAYER 1, the no ink layer. The outline prepass draws layer 0 with its own
+ * opaque material, so a plane lying a few millimetres over the mat would be
+ * a solid rectangle there and could ink its own border. depthWrite false
+ * keeps promoteToPrepass (post.js) from putting it in the depth half too:
+ * it is paint, not an occluder. renderOrder stays 0, under the racing
+ * line's 4, so the line is drawn over a logo and not under it.
+ *
+ * Counted into sponsorMarks as each one is actually painted, the same as
+ * the turf's, and none at all on a course that says hideSponsors.
+ */
+function roomDecals(course, y, sponsorMarks) {
+  const group = new THREE.Group();
+  group.name = 'roomDecals';
+  const decals = (course && !course.hideSponsors && Array.isArray(course.decals)) ? course.decals : [];
+  const logos = (course && Array.isArray(course.logos)) ? course.logos : [];
+  /* Each mark is decoded once however many decals wear it. */
+  const bySlot = new Map();
+  for (const dec of decals) {
+    const url = logos[dec.logo];
+    if (typeof url !== 'string' || !url.startsWith('data:image/')) {
+      continue;
+    }
+    const w = Math.max(0.01, dec.w);
+    const d = Math.max(0.01, dec.d);
+    const long = 512;
+    const cw = w >= d ? long : Math.max(8, Math.round((long * w) / d));
+    const ch = w >= d ? Math.max(8, Math.round((long * d) / w)) : long;
+    const cv = document.createElement('canvas');
+    cv.width = cw;
+    cv.height = ch;
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    /* The mat's own rim and spec, so the ink is lit as the rubber is. */
+    const mat = celMaterial({
+      color: 0xffffff, rim: 0.10, spec: 0.05, transparent: true,
+      map: tex, key: `roomDecal:${group.children.length}`,
+    });
+    mat.depthWrite = false;
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = -2;
+    mat.polygonOffsetUnits = -2;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), mat);
+    mesh.position.set(dec.x, y, dec.z);
+    mesh.rotation.y = dec.yaw;
+    mesh.name = 'roomDecal';
+    mesh.layers.set(1);
+    group.add(mesh);
+    if (!bySlot.has(dec.logo)) {
+      bySlot.set(dec.logo, { url, targets: [] });
+    }
+    bySlot.get(dec.logo).targets.push({ cv, tex });
+  }
+  for (const { url, targets } of bySlot.values()) {
+    const img = new Image();
+    img.onload = () => {
+      for (const t of targets) {
+        const g = t.cv.getContext('2d');
+        g.imageSmoothingQuality = 'high';
+        paintGroundLogo(g, t.cv.width, t.cv.height, { logo: img });
+        t.tex.needsUpdate = true;
+        sponsorMarks.painted += 1;
+      }
+    };
+    img.src = url;
+  }
+  return group;
+}
+
 /* Terrain height, shared by the mesh and by anything placed on it. */
 function makeHeightField(samples, pitch, pad, indoor = false) {
   /*
@@ -2520,12 +2611,16 @@ function openingBadge(n, scale = 1) {
  * by finding its own vertical cylinders and a fifth one would change what it
  * measures.
  */
-function cornerFittings(group, sills, clearW, clearH, tubeR) {
+function cornerFittings(group, sills, clearW, clearH, tubeR, postBuilt = null) {
   const mats = sharedObstacleMats();
   const s = tubeR * 2.9;
   for (const sillY of sills) {
     for (const sy of [sillY - tubeR, sillY + clearH + tubeR]) {
       for (const sx of [-1, 1]) {
+        /* A side taken away takes its fittings: see obstacle(). */
+        if (postBuilt && !postBuilt(sx)) {
+          continue;
+        }
         const f = new THREE.Mesh(new THREE.BoxGeometry(s, s, s * 0.92), mats.fitting);
         f.position.set(sx * (clearW * 0.5 + tubeR), sy, 0);
         f.castShadow = true;
@@ -2900,6 +2995,11 @@ function coursePlacements(course) {
            * lights, and no pipe is built for it. See isUnbuilt in
            * src/trackbuilder/elements.js. */
           unbuilt: structure.unbuilt === true,
+          /* Sides taken away one at a time, already in THIS mesh's frame:
+           * xNeg and xPos uprights, top and bottom members. Undefined on
+           * every gate that has all four, which is every gate that has
+           * ever shipped. See meshSidesFor in src/game/trackdoc.js. */
+          sides: structure.meshSides,
         },
         x: st.x,
         z: st.z,
@@ -2995,8 +3095,28 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
 
   const halfW = clearW * 0.5;
   const halfH = clearH * 0.5;
+  /*
+   * The four sides, in this mesh's frame, as obstacle() reads them: the two
+   * rails are the top and the bottom along the pivot's local y, the two
+   * stiles are the xNeg and xPos sides. A stile takes its leg, its pad and
+   * its fittings with it; the top rail takes the header.
+   *
+   * A GAP IN THE LATTICE IS NOW HONOURED HERE TOO. obstacle() has skipped
+   * an unbuilt opening's pipe since the flag existed and this builder never
+   * read it, so a tilted gap would have stood as a full hoop in the world
+   * while the builder's preview drew no pipe at all. No shipped track has
+   * one, which is why it went unseen.
+   */
+  const sides = spec.unbuilt === true
+    ? { xNeg: false, xPos: false, top: false, bottom: false }
+    : (spec.sides || null);
+  const railBuilt = (sy) => !sides || Boolean(sides[sy > 0 ? 'top' : 'bottom']);
+  const stileBuilt = (sx) => !sides || Boolean(sides[sx < 0 ? 'xNeg' : 'xPos']);
   /* Two rails across and two up, their INNER surfaces the clear opening. */
   for (const sy of [-1, 1]) {
+    if (!railBuilt(sy)) {
+      continue;
+    }
     const rail = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, clearW + 4 * tubeR, 8),
       mats.frame,
@@ -3008,6 +3128,9 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
     pivot.add(rail);
   }
   for (const sx of [-1, 1]) {
+    if (!stileBuilt(sx)) {
+      continue;
+    }
     const stile = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, clearH + 4 * tubeR, 8),
       mats.frame,
@@ -3020,7 +3143,7 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   /* The same moulded corners the standing gate has. The pivot's own origin
    * is the opening's centre, so the sill this asks for is minus half the
    * clear height rather than zero. */
-  cornerFittings(pivot, [-halfH], clearW, clearH, tubeR);
+  cornerFittings(pivot, [-halfH], clearW, clearH, tubeR, sides ? stileBuilt : null);
 
   /*
    * Colliders for the tilted frame, in the OBSTACLE's frame rather than the
@@ -3032,11 +3155,17 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   const sp = Math.sin(pitch);
   const at = (x, y) => ({ x, y: centreY + y * cp, z: y * sp });
   for (const sy of [-1, 1]) {
+    if (!railBuilt(sy)) {
+      continue;
+    }
     const a = at(-(halfW + tubeR), sy * (halfH + tubeR));
     const b = at(halfW + tubeR, sy * (halfH + tubeR));
     caps.push({ kind: 'gate', ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, r: tubeR });
   }
   for (const sx of [-1, 1]) {
+    if (!stileBuilt(sx)) {
+      continue;
+    }
     const a = at(sx * (halfW + tubeR), -(halfH + tubeR));
     const b = at(sx * (halfW + tubeR), halfH + tubeR);
     caps.push({ kind: 'gate', ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, r: tubeR });
@@ -3059,6 +3188,9 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   const mastR = tubeR * 1.6;
   const upX = halfW + mastR;
   for (const sx of [-1, 1]) {
+    if (!stileBuilt(sx)) {
+      continue;
+    }
     const foot = at(sx * upX, -(halfH + tubeR));
     const postH = foot.y;
     if (postH > 0.02) {
@@ -3145,7 +3277,7 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
    * MultiGP header was being hung on it because this builder never asked
    * which class it was building for, and the lit target came out at the
    * field's 0.16 m bar on a 0.711 m opening for the same reason. */
-  if (index > 0 && !micro) {
+  if (index > 0 && !micro && railBuilt(1)) {
     const plate = gateBanner(
       index,
       clearW + 4 * tubeR,
@@ -3259,6 +3391,18 @@ function obstacle(spec, index, isStart, opts = {}) {
    * length of PVC that is not on the real track.
    */
   const unbuilt = spec.unbuilt === true;
+  /*
+   * ONE SIDE AT A TIME. The author can take any of the four sides away and
+   * keep the opening, which scores and lights exactly as before: see
+   * FRAME_SIDES in src/trackbuilder/elements.js. The sides arrive in this
+   * mesh's own frame (meshSidesFor in src/game/trackdoc.js), so xNeg is the
+   * -x upright here whichever way the element faces. A missing upright takes
+   * its foot, its fittings and its sleeve with it; a missing top takes the
+   * header board. Null on every gate with all four sides, and then nothing
+   * below does anything it did not do before.
+   */
+  const sides = unbuilt ? null : (spec.sides || null);
+  const postBuilt = (sx) => !sides || Boolean(sides[sx < 0 ? 'xNeg' : 'xPos']);
 
   /* Uprights. Their INNER surfaces are the opening's width, so their
    * centres sit half a tube outboard of the clear span. They run from the
@@ -3267,6 +3411,9 @@ function obstacle(spec, index, isStart, opts = {}) {
   const upX = clearW * 0.5 + tubeR;
   const upTop = topSurface + 2 * tubeR;
   for (const sx of (unbuilt ? [] : [-1, 1])) {
+    if (!postBuilt(sx)) {
+      continue;
+    }
     const post = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, upTop, 8),
       mats.frame,
@@ -3316,7 +3463,15 @@ function obstacle(spec, index, isStart, opts = {}) {
   if (spec.sillH > 0) {
     members.push(spec.sillH - tubeR);
   }
-  for (const my of (unbuilt ? [] : members)) {
+  /* Which of those is the top side and which the bottom: the member over
+   * the top opening, and the one under a raised lowest opening. A member
+   * between two openings holds both up and is not one of the four. */
+  const memberBuilt = (i) => !sides
+    || (i === stack - 1 ? Boolean(sides.top) : (i === stack ? Boolean(sides.bottom) : true));
+  for (const [i, my] of (unbuilt ? [] : members).entries()) {
+    if (!memberBuilt(i)) {
+      continue;
+    }
     const bar = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, memberLen, 8),
       mats.frame,
@@ -3329,9 +3484,11 @@ function obstacle(spec, index, isStart, opts = {}) {
     caps.push({ kind: 'gate', ax: -memberLen * 0.5, ay: my, az: 0, bx: memberLen * 0.5, by: my, bz: 0, r: tubeR });
   }
 
-  /* The moulded corner at every junction of upright and cross member. */
+  /* The moulded corner at every junction of upright and cross member. A
+   * fitting stays with its upright: with the upright gone there is no
+   * junction, and with only the member gone it caps the upright's end. */
   if (!unbuilt) {
-    cornerFittings(g, sills, clearW, clearH, tubeR);
+    cornerFittings(g, sills, clearW, clearH, tubeR, sides ? postBuilt : null);
   }
 
   /*
@@ -3359,6 +3516,9 @@ function obstacle(spec, index, isStart, opts = {}) {
   const panelBottom = sills[0];
   const panelH = topSurface - panelBottom;
   for (const sx of (micro || unbuilt ? [] : [-1, 1])) {
+    if (!postBuilt(sx)) {
+      continue;
+    }
     const cx = sx * (upX + tubeR + panelW * 0.5);
     /* Mirrored on the far leg, so the chequer column runs down the OUTSIDE
      * of the gate on both sides rather than down the outside of one and the
@@ -3388,7 +3548,7 @@ function obstacle(spec, index, isStart, opts = {}) {
   let plateY = upTop + tubeR;
   let plateHalfW = outerW * 0.5;
   let plateR = tubeR;
-  if (!micro && !unbuilt) {
+  if (!micro && !unbuilt && (!sides || sides.top)) {
     const plateGroup = gateBanner(index, outerW, kit.header, substrate);
     plateY = upTop + GATE_BANNER_H * 0.5 + 0.03;
     plateHalfW = plateGroup.userData.halfW;
@@ -4438,6 +4598,9 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
     mat.rotation.x = -Math.PI * 0.5;
     mat.position.set(0, y0 + 0.008 * K, 0);
     scene.add(mat);
+    /* The sponsors' marks, 2 mm up on the mat. The pitch that paints them
+     * outdoors is not built in here. See roomDecals. */
+    scene.add(roomDecals(course, y0 + 0.010 * K, sponsorMarks));
 
     /* Four walls. Each is a box from the floor to the ceiling, drawn from
      * the inside, with a darker band below skirting height because that is

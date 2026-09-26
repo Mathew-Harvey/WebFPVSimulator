@@ -34,17 +34,24 @@ import {
   createTrack, createElement, createSequenceEntry, deserialize, elementById, normalize, isSequenceable,
   roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf, newElementId,
   logoForDecal, dressOrder, LOGO_SLOTS, SCHEMA_VERSION,
-  SCENE_TIMES, SCENE_GROUNDS, SCENE_DEFAULT, sceneOf, deepClone,
+  SCENE_TIMES, SCENE_GROUNDS, SCENE_DEFAULT, sceneOf, deepClone, setSideBuilt,
 } from './model.js';
 import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection } from './faces.js';
-import { addToSequence, addNextLevel, sequenceLabel, faceLabel, removeElement } from './sequence.js';
+import {
+  addToSequence, addNextLevel, sequenceLabel, faceLabel, bendIndexFor, bendLineAt, gateNumbers,
+  neighboursOf, pinFacesAt, sequenceNumbers, removeElement,
+} from './sequence.js';
 import { applyFigure, matchingFigure, defaultFigure, upgradeStackedFigures } from './figures.js';
-import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
+import {
+  buildPath, elevationProfile, sequencedElementCount, knotForSeq, markerSquare, passYawOf,
+} from './path.js';
 import { collectWarnings, freestyleReport, FREESTYLE_SOLIDS_MAX } from './warnings.js';
 import { History } from './history.js';
 import {
   RAD, DEG, wrapAngle, gateSupportFeet, apertureFrame, GATE_POST_R_SCALE,
 } from './geometry.js';
+import { FRAME_SIDES, frameSidesOf, hasMissingSides, unbuiltSidesOf } from './elements.js';
+import { PRESETS } from './presets.js';
 import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight,
   virtualApertureDims, countElementsByType, formatElementCounts,
   GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor, FRAME_TUBE_OD,
@@ -134,6 +141,51 @@ function place(doc, type, x, y, opts = {}) {
   }
   doc.elements.push(el);
   return el;
+}
+
+/*
+ * How many times the drawn line, having left an opening along its tangent,
+ * comes back across that opening's plane inside the clear rectangle.
+ */
+function backThroughOpening(path, el, apertureIndex = 0) {
+  const knot = path.knots.find((k) => k.role === 'aperture' && k.elementId === el.id
+    && (k.seq?.apertureIndex ?? 0) === apertureIndex);
+  if (!knot || path.samples.length < 2) {
+    return 0;
+  }
+  const ap = aperturesOf(el)[apertureIndex] ?? aperturesOf(el)[0];
+  const f = apertureFrame(el.yaw, el.pitch);
+  const c = knot.pos;
+  const fwd = knot.tangent;
+  const dotp = (p, q) => p.x * q.x + p.y * q.y + p.z * q.z;
+  const rel = (p) => ({ x: p.x - c.x, y: p.y - c.y, z: p.z - c.z });
+  let prev = path.samples[0].pos;
+  let prevD = dotp(rel(prev), fwd);
+  let left = prevD > 0.02;
+  let n = 0;
+  for (let i = 1; i < path.samples.length; i += 1) {
+    const p = path.samples[i].pos;
+    const d = dotp(rel(p), fwd);
+    if (d > 0.02) {
+      left = true;
+    }
+    if (left && prevD > 0 && d < 0) {
+      const s = prevD / (prevD - d);
+      const x = {
+        x: prev.x + (p.x - prev.x) * s,
+        y: prev.y + (p.y - prev.y) * s,
+        z: prev.z + (p.z - prev.z) * s,
+      };
+      const u = dotp(rel(x), f.widthAxis);
+      const v = dotp(rel(x), f.heightAxis);
+      if (Math.abs(u) <= ap.clearW / 2 && Math.abs(v) <= ap.clearH / 2) {
+        n += 1;
+      }
+    }
+    prev = p;
+    prevD = d;
+  }
+  return n;
 }
 
 /*
@@ -722,6 +774,94 @@ function suiteSteering() {
   }
 }
 
+/*
+ * ONCE THROUGH A GATE, ON TO THE NEXT ONE.
+ *
+ * Green is the entry face. After the line has left through the gate, the
+ * run to the next gate must not come back through that same opening from
+ * the red side. A face locked pointing away from the next gate is the case
+ * that used to do it: the curve shoots out along the tangent and folds
+ * back through the hole. The fold on a whoop gate is shorter than one
+ * sample step, which is how the first cut of this rule missed it, and a
+ * dead-centre fold is equally near the top and the side, which is how the
+ * same cut sent the knot through the floor.
+ */
+function suiteWrongWay() {
+  console.log('\nonce through a gate, on to the next');
+
+  const locked = (cls, ax, ay, bx, by) => {
+    const doc = createTrack('Wrong way', cls);
+    const a = place(doc, 'gate', ax, ay, { yaw: 0 });
+    const b = place(doc, 'gate', bx, by, { yaw: Math.PI });
+    a.yawOverridden = true;
+    b.yawOverridden = true;
+    for (const el of [a, b]) {
+      const s = createSequenceEntry(doc, el.id, 0);
+      s.entry = 1;
+      s.overridden = true;
+      doc.sequence.push(s);
+    }
+    return { doc, a, b };
+  };
+
+  const steered = (label, cls, ax, ay, bx, by) => {
+    const { doc, a, b } = locked(cls, ax, ay, bx, by);
+    const path = buildPath(doc);
+    const wraps = path.knots.filter((k) => k.role === 'wrap' && k.elementId === null);
+    check(`${label}: the line does not come back through the gate`,
+      path.samples.length > 2 && backThroughOpening(path, a) === 0,
+      `${backThroughOpening(path, a)} returns`);
+    check(`${label}: it goes around the frame instead`,
+      wraps.length >= 1 && wraps.every((k) => Math.abs(k.pos.y - a.position.y) > a.dims.clearW / 2),
+      wraps.map((k) => `${k.pos.y.toFixed(2)}`).join(',') || 'no knot');
+    check(`${label}: and the knot stays above the floor`,
+      path.samples.every((smp) => smp.pos.z >= -1e-6),
+      `lowest ${Math.min(...path.samples.map((smp) => smp.pos.z)).toFixed(3)} m`);
+    check(`${label}: the next gate is still the end of the line`,
+      path.knots[path.knots.length - 1].elementId === b.id);
+  };
+
+  steered('full, next gate behind', 'full', 20, 20, 14, 21);
+  steered('full, next gate dead behind', 'full', 20, 20, 14, 20);
+  steered('whoop, next gate behind', 'micro', 2, 2, 0.4, 2.3);
+  steered('whoop, next gate dead behind', 'micro', 3, 2.5, 0.5, 2.5);
+
+  {
+    const doc = createTrack('Straight', 'full');
+    const a = place(doc, 'gate', 10, 20);
+    const b = place(doc, 'gate', 20, 20);
+    addToSequence(doc, a.id, 0);
+    addToSequence(doc, b.id, 0);
+    const path = buildPath(doc);
+    const wraps = path.knots.filter((k) => k.role === 'wrap');
+    check('a gate that faces the next one grows no steering knot',
+      wraps.length === 0 && backThroughOpening(path, a) === 0,
+      `${wraps.length} knots, ${backThroughOpening(path, a)} returns`);
+  }
+
+  {
+    /* The second pass of this same opening is the next gate. The figure
+     * already wraps beside the frame. This rule must not add another knot
+     * on top of that, and both passes stay stations. */
+    const doc = createTrack('Twice', 'full');
+    const a = place(doc, 'gate', 20, 20, { yaw: 0 });
+    a.yawOverridden = true;
+    const first = createSequenceEntry(doc, a.id, 0);
+    first.entry = 1;
+    first.overridden = true;
+    const second = createSequenceEntry(doc, a.id, 0);
+    second.entry = -1;
+    second.overridden = true;
+    doc.sequence.push(first, second);
+    const path = buildPath(doc);
+    const steering = path.knots.filter((k) => k.role === 'wrap' && k.elementId === null);
+    const passes = path.knots.filter((k) => k.role === 'aperture' && k.elementId === a.id);
+    check('a second pass of the same opening is not steered away',
+      steering.length === 0 && passes.length === 2,
+      `${steering.length} steering knots, ${passes.length} passes`);
+  }
+}
+
 function suiteGuide() {
   console.log('\nground marks');
 
@@ -1188,11 +1328,18 @@ function suiteFigures() {
   addToSequence(skipped, lad.id, 0);
   addToSequence(skipped, b.id, 0);
   addNextLevel(skipped, lad.id);
-  /* Second ladder pass is at the end, not consecutive with the first. */
+  /* Second ladder pass is at the end, not consecutive with the first, so
+   * the figure does not wrap the stack. The gate between them faces away
+   * from that second pass, and the line goes around the gate instead of
+   * coming back through it. */
   const between = buildPath(skipped);
-  check('a stack flown twice with a gate between does not wrap',
-    between.knots.filter((k) => k.role === 'wrap').length === 0,
-    `${between.knots.filter((k) => k.role === 'wrap').length} wraps`);
+  const onStack = between.knots.filter((k) => k.role === 'wrap' && k.elementId === lad.id);
+  const around = between.knots.filter((k) => k.role === 'wrap' && k.elementId === null);
+  check('a stack flown twice with a gate between does not wrap the stack',
+    onStack.length === 0, `${onStack.length} stack wraps`);
+  check('the gate between faces away from the next pass, so the line goes around it',
+    around.length >= 1 && backThroughOpening(between, b) === 0,
+    `${around.length} steering, ${backThroughOpening(between, b)} returns`);
 }
 
 function suiteFlaggedGate() {
@@ -4784,6 +4931,310 @@ function suiteRecoverSpot() {
   setCraftAirframe(airframeById('5inch').dims);
 }
 
+/*
+ * FRAME SIDES, ONE AT A TIME. The document half (a list of missing sides,
+ * written only when there is one), the mutator the inspector and the Delete
+ * key share, and the one piece of arithmetic that can put a pipe back on the
+ * wrong side: turning the element's own left and right into the race
+ * field's mesh frame, which faces the first pass. That turn is checked here
+ * against the rotation scene.js actually applies, group yaw then pivot
+ * pitch then scene to document, for standing, tilted and flat gates flown
+ * both ways through.
+ */
+function suiteFrameSides() {
+  console.log('\nframe sides, one at a time');
+  const doc = createTrack('sides', 'micro');
+  const a = place(doc, 'gate', 4, 5);
+  const b = place(doc, 'gate', 6, 5);
+  addToSequence(doc, a.id, 0);
+  addToSequence(doc, b.id, 0);
+
+  check('a gate starts with all four sides', FRAME_SIDES.every((side) => frameSidesOf(a)[side]));
+  check('and nothing missing', !hasMissingSides(a) && unbuiltSidesOf(a).length === 0);
+  const plain = serialize(doc);
+  check('an ordinary gate writes no unbuiltSides key', !plain.includes('unbuiltSides'));
+
+  check('taking a side away reports a change', setSideBuilt(doc, a.id, 'left', false) === true);
+  setSideBuilt(doc, a.id, 'top', false);
+  check('two taken away are kept in FRAME_SIDES order',
+    JSON.stringify(a.unbuiltSides) === '["top","left"]', JSON.stringify(a.unbuiltSides));
+  check('taking the same side twice changes nothing', setSideBuilt(doc, a.id, 'top', false) === false);
+  const frame = frameSidesOf(a);
+  check('frameSidesOf says which are left',
+    frame.bottom && frame.right && !frame.top && !frame.left, JSON.stringify(frame));
+  const back = deserialize(serialize(doc)).doc;
+  check('they round trip', JSON.stringify(elementById(back, a.id).unbuiltSides) === '["top","left"]');
+  check('byte for byte', roundTripsCleanly(doc));
+
+  setSideBuilt(doc, a.id, 'top', true);
+  setSideBuilt(doc, a.id, 'left', true);
+  check('putting both back removes the key', !('unbuiltSides' in a));
+  check('and the document is the bytes it was', serialize(doc) === plain);
+
+  const raw = JSON.parse(serialize(doc));
+  raw.elements[0].unbuiltSides = ['left', 'sideways', 'left'];
+  raw.elements[1].unbuiltSides = [];
+  const pole = { ...raw.elements[1], id: 'el-90', type: 'pole', unbuiltSides: ['left'] };
+  raw.elements.push(pole);
+  const read = normalize(raw);
+  const ra = read.doc.elements.find((e) => e.id === raw.elements[0].id);
+  const rb = read.doc.elements.find((e) => e.id === raw.elements[1].id);
+  const rp = read.doc.elements.find((e) => e.id === 'el-90');
+  check('a name that is not a side is dropped', JSON.stringify(ra.unbuiltSides) === '["left"]',
+    JSON.stringify(ra.unbuiltSides));
+  check('and the read says so', read.repairs.some((r) => r.includes('frame side')));
+  check('an empty list reads as none at all', !('unbuiltSides' in rb));
+  check('only an aperture keeps the field', rp && !('unbuiltSides' in rp));
+
+  const c = place(doc, 'gate', 8, 5);
+  c.unbuilt = true;
+  check('a gap in the lattice is missing all four', unbuiltSidesOf(c).length === 4 && !hasMissingSides(c));
+  setSideBuilt(doc, c.id, 'bottom', true);
+  check('a side put on a gap leaves a gate missing the other three',
+    c.unbuilt === undefined && JSON.stringify(c.unbuiltSides) === '["top","left","right"]',
+    JSON.stringify(c));
+
+  /* The race field's frame. The reference is scene.js's own chain: a
+   * standing gate is obstacle() rotated by the station's yaw about up; a
+   * tilted one is tiltedGate(), whose pivot is turned by the station's pitch
+   * about its local x first. Local x and local y are then read back in the
+   * document frame and matched to the element's width and height axes. */
+  const refSides = (el, st, sides) => {
+    const psi = st.yaw;
+    const th = Math.abs(st.pitch) > 1e-6 ? st.pitch : 0;
+    const X = { x: Math.cos(psi), y: Math.sin(psi), z: 0 };
+    const Y = th
+      ? { x: Math.sin(th) * Math.sin(psi), y: -Math.sin(th) * Math.cos(psi), z: Math.cos(th) }
+      : { x: 0, y: 0, z: 1 };
+    const f = apertureFrame(el.yaw, el.pitch);
+    const xAlongW = X.x * f.widthAxis.x + X.y * f.widthAxis.y + X.z * f.widthAxis.z > 0;
+    const yAlongH = Y.x * f.heightAxis.x + Y.y * f.heightAxis.y + Y.z * f.heightAxis.z > 0;
+    return {
+      xNeg: xAlongW ? sides.left : sides.right,
+      xPos: xAlongW ? sides.right : sides.left,
+      top: yAlongH ? sides.top : sides.bottom,
+      bottom: yAlongH ? sides.bottom : sides.top,
+    };
+  };
+  const cases = [
+    ['a standing gate flown along its normal', 'gate', 0, false],
+    ['a standing gate flown against it', 'gate', 0, true],
+    ['a tilted gate flown along its normal', 'diveGate', 0.6, false],
+    ['a tilted gate flown against it', 'diveGate', 0.6, true],
+    ['a flat dive gate flown down through it', 'diveGate', Math.PI / 2, false],
+    ['a flat dive gate flown up through it', 'diveGate', Math.PI / 2, true],
+  ];
+  for (const [what, type, pitch, flip] of cases) {
+    for (const missing of [['left'], ['top', 'right'], ['bottom', 'left']]) {
+      const d = createTrack('mesh', 'full');
+      const g0 = place(d, 'gate', 10, 20);
+      const g = place(d, type, 20, 20, { pitch, dims: type === 'diveGate' ? { sillH: 2 } : {} });
+      const g2 = place(d, 'gate', 30, 20);
+      for (const e of [g0, g, g2]) {
+        addToSequence(d, e.id, 0);
+      }
+      setYaw(d, g.id, 0.3);
+      const seq = d.sequence.find((q) => q.elementId === g.id);
+      if (flip) {
+        flipFace(d, seq.id);
+      }
+      applyAutoFaces(d);
+      for (const side of missing) {
+        setSideBuilt(d, g.id, side, false);
+      }
+      const course = courseFromDocument(d);
+      const st = course.stations.find((q) => q.elementId === g.id);
+      const got = st?.structure?.meshSides;
+      const want = st ? refSides(g, st, frameSidesOf(g)) : null;
+      check(`${what}, ${missing.join(' and ')} missing, is built on the side the builder shows`,
+        got && want && JSON.stringify(got) === JSON.stringify(want),
+        `got ${JSON.stringify(got)} want ${JSON.stringify(want)} entry ${seq.entry}`);
+    }
+  }
+
+  /* A gate with every side takes the old path: no sides on its spec. */
+  const whole = createTrack('whole', 'full');
+  const w0 = place(whole, 'gate', 10, 20);
+  const w1 = place(whole, 'gate', 20, 20);
+  addToSequence(whole, w0.id, 0);
+  addToSequence(whole, w1.id, 0);
+  const wc = courseFromDocument(whole);
+  check('a gate with all four sides hands the race field no sides at all',
+    wc.structures.every((st) => st.meshSides === undefined && st.frameSides === undefined));
+
+  /* Taking the pipe away takes nothing else: the openings and the scoring
+   * are the same. */
+  const scored = (d) => JSON.stringify(courseFromDocument(d).stations.map((st) => [
+    st.elementId, st.x, st.z, st.centreY, st.clearW, st.clearH, st.yaw, st.pitch,
+  ]));
+  const before = scored(whole);
+  for (const side of FRAME_SIDES) {
+    setSideBuilt(whole, w0.id, side, false);
+  }
+  check('with all four taken away, every station is where and what it was', scored(whole) === before);
+}
+
+/*
+ * BENDING THE LINE. A grab on a segment drops a waypoint into the flying
+ * order between the two stations that segment joins, the line then runs
+ * through it, the game scores exactly what it scored before, and the gates
+ * either side keep their faces.
+ */
+function suiteBendLine() {
+  console.log('\nbending the line');
+  const doc = createTrack('bend', 'micro');
+  place(doc, 'startPads', 3, 2, { yaw: Math.PI / 2 });
+  const g1 = place(doc, 'gate', 3, 4);
+  const g2 = place(doc, 'gate', 6, 6);
+  const g3 = place(doc, 'gate', 7, 3);
+  for (const g of [g1, g2, g3]) {
+    addToSequence(doc, g.id, 0);
+  }
+  applyAutoFaces(doc);
+  const path = buildPath(doc);
+  const faces = () => doc.elements.filter((e) => e.type === 'gate').map((e) => [e.id, e.yaw]);
+  const stationsBefore = courseFromDocument(doc).stations.length;
+
+  check('segment 0 leaves the first gate, so a bend there goes second', bendIndexFor(doc, path, 0) === 1);
+  const last = path.knots.length - 2;
+  check('the closing leg leaves the last gate, so a bend there goes last',
+    bendIndexFor(doc, path, last) === doc.sequence.length, `${bendIndexFor(doc, path, last)}`);
+  check('a segment that is not there is refused',
+    bendIndexFor(doc, path, path.knots.length - 1) === null && bendIndexFor(doc, path, -1) === null
+    && bendIndexFor(doc, path, 0.5) === null);
+
+  /* A grab halfway along the first leg, pulled out to one side. */
+  const sample = path.samples.find((q) => q.segment === 0 && q.t >= 0.5);
+  const yawsBefore = faces();
+
+  /* Why the neighbours are pinned: the same waypoint put in the order with
+   * no pin, and pulled out, turns the gates either side towards it. */
+  const loose = deepClone(doc);
+  const lw = createElement(loose, 'waypoint', { x: sample.pos.x + 1.2, y: sample.pos.y - 0.4, z: sample.pos.z }, 0);
+  loose.elements.push(lw);
+  addToSequence(loose, lw.id, 0, 1);
+  const turned = loose.elements.filter((e) => e.type === 'gate')
+    .filter((e) => Math.abs(e.yaw - elementById(doc, e.id).yaw) > 1e-3).length;
+  check('unpinned, a bend would turn the gates either side of it', turned >= 1, `${turned} turned`);
+
+  const wp = bendLineAt(doc, path, 0, sample.pos, 0);
+  check('it drops a waypoint', wp && wp.type === 'waypoint');
+  check('second in the flying order', doc.sequence[1].elementId === wp.id);
+  check('the gates either side keep their faces',
+    JSON.stringify(faces()) === JSON.stringify(yawsBefore));
+  check('because they are pinned as a hand turn would pin them', g1.yawOverridden && g2.yawOverridden);
+  check('and the one after is not touched', !g3.yawOverridden);
+
+  wp.position.x += 1.2;
+  wp.position.y -= 0.4;
+  applyAutoFaces(doc);
+  check('dragged out, the gates still keep their faces', JSON.stringify(faces()) === JSON.stringify(yawsBefore));
+  const bent = buildPath(doc);
+  const knot = bent.knots.find((k) => k.elementId === wp.id);
+  check('the line runs through where it was dragged to',
+    knot && Math.hypot(knot.pos.x - wp.position.x, knot.pos.y - wp.position.y) < 1e-9);
+  const course = courseFromDocument(doc);
+  check('the race field scores what it scored before', course.stations.length === stationsBefore,
+    `${course.stations.length} against ${stationsBefore}`);
+
+  /* The numbers a pilot counts skip the waypoint, as the race field does. */
+  const numbers = gateNumbers(doc);
+  check('the waypoint carries no number', numbers.get(doc.sequence[1].id) === null);
+  check('and the gate after it is still gate 2', numbers.get(doc.sequence[2].id) === 2);
+  const shown = sequenceNumbers(doc).get(g2.id);
+  check('which is the number the views draw on it', shown && shown[0].number === 2);
+  check('the neighbours of the waypoint are the two gates round it',
+    JSON.stringify(neighboursOf(doc, wp.id)) === '[0,2]', JSON.stringify(neighboursOf(doc, wp.id)));
+  check('pinning a waypoint pins nothing, it has no face', pinFacesAt(doc, [1]) === 0);
+
+  /* The shipped RaceGOW tracks: their last number is the race field's
+   * station count, now that waypoints are not counted. */
+  for (const preset of PRESETS.filter((p) => p.trackClass === 'micro').slice(0, 3)) {
+    const d = normalize(JSON.parse(JSON.stringify(preset))).doc;
+    const n = [...gateNumbers(d).values()].filter((v) => v != null);
+    const st = courseFromDocument(d).stations.length;
+    check(`${preset.name}: the last gate number is the race field's station count`,
+      n.length && n[n.length - 1] === st, `${n[n.length - 1]} against ${st}`);
+  }
+}
+
+/*
+ * A TURNED MARKER'S SQUARE PIVOTS ON THE POLE. The square both builder views
+ * draw is read off the knot, so it is the race field's own station, and for
+ * a pole turned by hand off square it stands hinged on the pole: its inner
+ * edge on the pole and its plane through it, facing across the pass.
+ */
+function suitePoleSquare() {
+  console.log('\na turned pole swings its square');
+  const doc = createTrack('pole', 'micro');
+  place(doc, 'startPads', 3, 2, { yaw: Math.PI / 2 });
+  const g1 = place(doc, 'gate', 3, 4);
+  const pole = place(doc, 'pole', 5, 6);
+  const g2 = place(doc, 'gate', 7, 4);
+  for (const e of [g1, pole, g2]) {
+    addToSequence(doc, e.id, 0);
+  }
+  applyAutoFaces(doc);
+  const seq = doc.sequence.find((q) => q.elementId === pole.id);
+
+  /* Untouched, the handle starts where the square is. */
+  let path = buildPath(doc);
+  let square = markerSquare(doc, knotForSeq(path, seq.id));
+  const shown = passYawOf(doc, path, pole);
+  check('an untouched pole reports the way its square sits',
+    square && Math.abs(Math.cos(shown) - square.side.x) < 1e-9 && Math.abs(Math.sin(shown) - square.side.y) < 1e-9);
+  const centreBefore = square.centre;
+  setYaw(doc, pole.id, shown);
+  applyAutoFaces(doc);
+  path = buildPath(doc);
+  square = markerSquare(doc, knotForSeq(path, seq.id));
+  check('so turning it from there does not throw the square round the pole',
+    Math.hypot(square.centre.x - centreBefore.x, square.centre.y - centreBefore.y) < 1e-6,
+    `${square.centre.x} ${square.centre.y} against ${centreBefore.x} ${centreBefore.y}`);
+
+  for (const deg of [25, 70, 140, -110]) {
+    setYaw(doc, pole.id, shown + deg * RAD);
+    applyAutoFaces(doc);
+    path = buildPath(doc);
+    const knot = knotForSeq(path, seq.id);
+    const sq = markerSquare(doc, knot);
+    const station = courseFromDocument(doc).stations.find((st) => st.elementId === pole.id);
+    const inner = {
+      x: sq.centre.x - sq.side.x * sq.dims.clearW / 2,
+      y: sq.centre.y - sq.side.y * sq.dims.clearW / 2,
+    };
+    check(`turned ${deg} degrees, the inner edge stays on the pole`,
+      Math.hypot(inner.x - pole.position.x, inner.y - pole.position.y) < 1e-9);
+    check(`turned ${deg} degrees, the square's plane runs through the pole`,
+      Math.abs(sq.normal.x * sq.side.x + sq.normal.y * sq.side.y) < 1e-9,
+      `normal . side ${sq.normal.x * sq.side.x + sq.normal.y * sq.side.y}`);
+    /* The same square the race field scores: its heading and its centre,
+     * scene frame back to document frame. The race field reads the document
+     * as it is written, six decimal places, so the square it is held to is
+     * the written document's; the live one differs by that rounding. */
+    const written = normalize(toPlain(doc)).doc;
+    const ws = markerSquare(written, knotForSeq(buildPath(written), seq.id));
+    const heading = Math.atan2(-ws.normal.x, ws.normal.y);
+    const f = written.field;
+    const cx = station.x / MICRO_SCALE + f.width / 2;
+    const cy = -station.z / MICRO_SCALE + f.depth / 2;
+    /* What both views used to draw it facing: the chain direction. It is
+     * not the scored plane once the pole is turned off square, which is the
+     * owner's report in one number. */
+    const was = travelDirection(doc, seq.id);
+    const wasFlat = Math.hypot(was.x, was.y);
+    const off = Math.acos(Math.min(1, Math.abs((was.x * sq.normal.x + was.y * sq.normal.y) / wasFlat))) * DEG;
+    if (deg === 70) {
+      check('turned 70 degrees, the chain direction the views drew with is not the scored plane',
+        off > 10, `${off.toFixed(1)} degrees apart`);
+    }
+    check(`turned ${deg} degrees, it is the square the race field scores`,
+      Math.abs(Math.atan2(Math.sin(station.yaw - heading), Math.cos(station.yaw - heading))) < 1e-9
+      && Math.hypot(cx - ws.centre.x, cy - ws.centre.y) < 1e-9,
+      `yaw ${station.yaw} against ${heading}, centre ${cx},${cy} against ${ws.centre.x},${ws.centre.y}`);
+  }
+}
+
 async function main() {
   if (process.argv.includes('--emit')) {
     process.stdout.write(serialize(demoTrack()));
@@ -4800,6 +5251,7 @@ async function main() {
   suiteFaces();
   suitePath();
   suiteSteering();
+  suiteWrongWay();
   suiteGuide();
   suiteWarnings();
   suiteHistory();
@@ -4809,6 +5261,9 @@ async function main() {
   suiteFlaggedDoubleStack();
   suiteScoring();
   suiteWaypoint();
+  suiteFrameSides();
+  suiteBendLine();
+  suitePoleSquare();
   suiteSchemaDoc();
   suiteFreestyle();
   suiteBoardPlan();

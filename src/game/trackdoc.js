@@ -56,11 +56,12 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, isUnbuilt, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
+import { ELEMENTS, KIND, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, frameSidesOf, gateFlagHeight, hasMissingSides, isUnbuilt, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
 import {
   normalize, elementById, aperturesOf, startPadsOf, logosOf, logoForDecal, dressOrder,
 } from '../trackbuilder/model.js';
 import { buildPath } from '../trackbuilder/path.js';
+import { apertureFrame } from '../trackbuilder/geometry.js';
 import { wrapBetween, figureCueOf, upgradeStackedFigures } from '../trackbuilder/figures.js';
 import { gateScaleFor, MICRO_SCALE } from './track.js';
 import { startBlockLaneOffset, startBlockDims } from '../art/startblock.js';
@@ -102,6 +103,67 @@ export function headingForTravel(tx, tz) {
     return null;
   }
   return Math.atan2(-tx / n, -tz / n);
+}
+
+/*
+ * AN APERTURE'S FOUR SIDES, IN THE FRAME ITS MESH IS BUILT IN.
+ *
+ * The document names a side in the element's own frame: 'left' is the
+ * -widthAxis upright, 'top' the +heightAxis member (see FRAME_SIDES in
+ * src/trackbuilder/elements.js). The race field does not build a gate in
+ * that frame. It builds it facing the direction of travel through its first
+ * pass (placements in src/render/scene.js), with local -z along the travel
+ * and local +x on the pilot's right, so a gate flown along its own normal is
+ * built mirrored: its local -x upright is the element's RIGHT. Reading a
+ * side name straight into the mesh would take the pipe off the wrong side
+ * of every such gate, and that is most gates, because the auto face rule
+ * points a gate's normal along the course.
+ *
+ * So the names are turned into the mesh's own, here, once: xNeg and xPos
+ * are its two uprights, top and bottom its members along local +y.
+ *
+ *   travel with a horizontal part   the mesh faces along it. Local +x is
+ *                                   the element's +widthAxis when the
+ *                                   travel runs against the normal and
+ *                                   -widthAxis when it runs along it; local
+ *                                   +y is the element's +heightAxis either
+ *                                   way, for a standing gate or a tilted
+ *                                   one.
+ *   straight up or straight down    a flat dive gate: there is no heading,
+ *                                   so the mesh takes the structure's own
+ *                                   yaw, local +x is +widthAxis, and local
+ *                                   +y is the element's +heightAxis flying
+ *                                   down through it and -heightAxis flying
+ *                                   up.
+ *
+ * A written document holds its pitch to six places, so a "flat" dive gate
+ * read back is 1.570796 and its travel keeps a horizontal part of about
+ * 3e-7: it takes the first branch, and so does the mesh, because
+ * headingForTravel draws the same line at the same 1e-9 on the same tangent.
+ *
+ * Checked against the full rotation, group yaw then pivot pitch then scene
+ * to document, over eight thousand yaws, tilts and entry signs, with no
+ * disagreement; every dot product behind it is plus or minus one, so there
+ * is no angle at which it is a coin toss. No trigonometry, so it cannot
+ * differ between engines, and only a sign comes out of it.
+ */
+function meshSidesFor(el, t, sides) {
+  const n = apertureFrame(el.yaw, el.pitch).normal;
+  let flipX;
+  let flipY;
+  if (Math.hypot(t.x, t.y) > 1e-9) {
+    flipX = (t.x * n.x + t.y * n.y) > 0;
+    flipY = false;
+  } else {
+    flipX = false;
+    flipY = (t.x * n.x + t.y * n.y + t.z * n.z) > 0;
+  }
+  return {
+    xNeg: flipX ? sides.right : sides.left,
+    xPos: flipX ? sides.left : sides.right,
+    top: flipY ? sides.bottom : sides.top,
+    bottom: flipY ? sides.top : sides.bottom,
+  };
 }
 
 /* Document yaw to scene yaw. A GATE's document yaw is a plane normal, so
@@ -322,6 +384,12 @@ function buildCourse(raw) {
     if (kind === KIND.APERTURE && isUnbuilt(el)) {
       s.unbuilt = true;
     }
+    /* Sides taken away one at a time, in the element's own frame. They are
+     * turned into the mesh's frame below, once the first pass through the
+     * structure is known, because that pass is what the mesh faces. */
+    if (kind === KIND.APERTURE && hasMissingSides(el)) {
+      s.frameSides = frameSidesOf(el);
+    }
     if (def.flagSide) {
       s.flagSigns = flagSideSigns(flagSideOf(el));
       /*
@@ -490,6 +558,12 @@ function buildCourse(raw) {
      * together here and the station carries one angle.
      */
     const tilt = Math.asin(Math.max(-1, Math.min(1, travel.y)));
+
+    /* The mesh is built facing the FIRST pass through it, so that pass is
+     * the one that says which of its sides is which. */
+    if (structure.frameSides && !structure.meshSides) {
+      structure.meshSides = meshSidesFor(el, knot.tangent, structure.frameSides);
+    }
 
     const pos = toScene(field, { x: el.position.x, y: el.position.y });
     stations.push({

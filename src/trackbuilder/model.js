@@ -39,8 +39,8 @@
  */
 
 import {
-  ELEMENTS, KIND, TUNING, TRACK_CLASSES, TRACK_CLASS_DEFAULT, apertureLevels,
-  defaultDims, defaultPitch, defaultZ, elementHeight, normalizeFlagSide,
+  ELEMENTS, KIND, TUNING, TRACK_CLASSES, TRACK_CLASS_DEFAULT, FRAME_SIDES, apertureLevels,
+  defaultDims, defaultPitch, defaultZ, elementHeight, normalizeFlagSide, normalizeUnbuiltSides,
   trackClassOf, tuningFor, docModeOf, isTrafficType, clampByLimits,
   ROAD_NODES_MAX, ROAD_NODE_REACH,
 } from './elements.js';
@@ -559,6 +559,42 @@ export function createSequenceEntry(doc, elementId, apertureIndex = 0) {
   return entry;
 }
 
+/*
+ * Build or take away one side of an aperture's frame. See FRAME_SIDES in
+ * elements.js. Returns true when the document changed.
+ *
+ * Putting a side back on a gap in the lattice turns the gap into a gate
+ * with the other three sides missing, which is the same opening with one
+ * pipe more: the two spellings mean one thing, and this keeps only the one
+ * that can say it.
+ */
+export function setSideBuilt(doc, elementId, side, built) {
+  const el = elementById(doc, elementId);
+  if (!el || kindOf(el) !== KIND.APERTURE || !FRAME_SIDES.includes(side)) {
+    return false;
+  }
+  if (el.unbuilt === true) {
+    if (!built) {
+      return false;
+    }
+    delete el.unbuilt;
+    el.unbuiltSides = FRAME_SIDES.filter((s) => s !== side);
+    return true;
+  }
+  const missing = normalizeUnbuiltSides(el.unbuiltSides);
+  const has = missing.includes(side);
+  if (has !== Boolean(built)) {
+    return false;
+  }
+  const next = built ? missing.filter((s) => s !== side) : normalizeUnbuiltSides([...missing, side]);
+  if (next.length) {
+    el.unbuiltSides = next;
+  } else {
+    delete el.unbuiltSides;
+  }
+  return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* Accessors                                                           */
 /* ------------------------------------------------------------------ */
@@ -933,6 +969,20 @@ export function normalize(raw) {
     if (def.kind === KIND.APERTURE && rawEl.unbuilt === true) {
       el.unbuilt = true;
     }
+    /* The sides taken away one at a time: see FRAME_SIDES in elements.js.
+     * Kept only on apertures and only when something is missing, so an
+     * ordinary gate reads back the same shape it was written. A name that
+     * is not a side is dropped and said, because it is somebody's edit. */
+    if (def.kind === KIND.APERTURE && rawEl.unbuiltSides !== undefined) {
+      const sides = normalizeUnbuiltSides(rawEl.unbuiltSides);
+      const raw = Array.isArray(rawEl.unbuiltSides) ? rawEl.unbuiltSides : [rawEl.unbuiltSides];
+      if (raw.some((side) => !FRAME_SIDES.includes(side))) {
+        repairs.push(`${id} named a frame side that is not top, bottom, left or right, and it was dropped.`);
+      }
+      if (sides.length) {
+        el.unbuiltSides = sides;
+      }
+    }
     doc.elements.push(el);
   }
 
@@ -1152,6 +1202,12 @@ export function toPlain(doc) {
       }
       if (el.unbuilt === true && def.kind === KIND.APERTURE) {
         out.unbuilt = true;
+      }
+      if (def.kind === KIND.APERTURE) {
+        const sides = normalizeUnbuiltSides(el.unbuiltSides);
+        if (sides.length) {
+          out.unbuiltSides = sides;
+        }
       }
       return out;
     }),

@@ -48,7 +48,7 @@ import {
   POLE_FROM_GATE_MIN, POLE_FROM_POLE_MIN, PIPE_OD, ROOM_HEIGHT, envelopeFor, inches,
 } from './racegow.js';
 import { elementById, elementNormal, kindOf, startPadsOf } from './model.js';
-import { sequenceLabel, unsequencedElements } from './sequence.js';
+import { gateNumberOf, sequenceLabel, unsequencedElements } from './sequence.js';
 import { dist, insideYawedBox, lerp, wrapAngle, yawVector } from './geometry.js';
 /* Roads and vehicles: what the physics will be handed (trafficOf, whose
  * problems are the limits, never restated here), the road's eased line, and
@@ -148,7 +148,7 @@ export function collectWarnings(doc, path) {
       return;
     }
     if (kindOf(el) === KIND.APERTURE && s.entry === 0) {
-      out.push(warn('no-face', `${i + 1}. ${sequenceLabel(doc, s)} has no entry face set, so the line guessed one.`, {
+      out.push(warn('no-face', `${gateNumberOf(doc, s.id) ?? i + 1}. ${sequenceLabel(doc, s)} has no entry face set, so the line guessed one.`, {
         seqId: s.id,
         elementId: el.id,
       }));
@@ -354,7 +354,9 @@ function describe(doc, knot) {
   if (!knot.seq) {
     return 'a knot';
   }
-  return `${knot.index}. ${sequenceLabel(doc, knot.seq)}`;
+  /* The number the flying order shows, which a waypoint does not have. */
+  const number = gateNumberOf(doc, knot.seq.id);
+  return number == null ? sequenceLabel(doc, knot.seq) : `${number}. ${sequenceLabel(doc, knot.seq)}`;
 }
 
 /*

@@ -308,6 +308,77 @@ export function isUnbuilt(el) {
 }
 
 /*
+ * ONE SIDE OF THE FRAME AT A TIME.
+ *
+ * The owner's words: "delete sides of a gate, one pole at a time, this will
+ * allow me to create a virtual gate so the trigger area remains but the
+ * poles are not there. so each gate should have 4 deletable poles". So
+ * `unbuilt` above is the all or nothing case, and this is the finer one:
+ * an aperture can leave any of its four sides without a pipe, and the
+ * opening still scores, still lights and still pins the racing line.
+ *
+ * FOUR SIDES PER STRUCTURE, NOT PER OPENING, because that is how the game
+ * builds one (src/render/scene.js obstacle): two uprights from the ground to
+ * the top rail, a member over the top opening, and a member under the
+ * lowest opening when it is off the ground. 'left' and 'right' are those
+ * two uprights, the whole height of a stack; 'top' is the member over the
+ * top opening and 'bottom' the one under the lowest. A member BETWEEN two
+ * openings of a stack holds both of them up and is not one of the four.
+ *
+ * Left and right are the builder's flag convention, as seen facing the
+ * gate: 'left' is the -widthAxis side and 'right' the +widthAxis side of
+ * apertureFrame, 'top' is +heightAxis and 'bottom' -heightAxis. The game
+ * builds each gate facing its first pass, which mirrors that for a gate
+ * flown along its normal, so src/game/trackdoc.js turns these into the
+ * mesh's own frame once, and nothing downstream reads left or right again.
+ *
+ * Stored as a list of the MISSING sides, in this order, and written only
+ * when it is not empty, so every gate that has all four is the same bytes
+ * it was before this existed. Every renderer reads frameSidesOf, the same
+ * discipline isUnbuilt keeps.
+ */
+export const FRAME_SIDES = ['top', 'bottom', 'left', 'right'];
+
+/* A list of missing sides, cleaned: known names only, each once, in
+ * FRAME_SIDES order. Anything that is not an array reads as none. */
+export function normalizeUnbuiltSides(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return FRAME_SIDES.filter((side) => raw.includes(side));
+}
+
+/* The sides of an aperture that have no pipe. Empty for anything that is
+ * not an aperture, and all four for an opening that is a gap in the
+ * lattice. */
+export function unbuiltSidesOf(el) {
+  if (!el || ELEMENTS[el.type]?.kind !== KIND.APERTURE) {
+    return [];
+  }
+  if (isUnbuilt(el)) {
+    return [...FRAME_SIDES];
+  }
+  return normalizeUnbuiltSides(el.unbuiltSides);
+}
+
+/* Which of the four sides are built, as booleans. */
+export function frameSidesOf(el) {
+  const missing = unbuiltSidesOf(el);
+  return {
+    top: !missing.includes('top'),
+    bottom: !missing.includes('bottom'),
+    left: !missing.includes('left'),
+    right: !missing.includes('right'),
+  };
+}
+
+/* True when some side has been taken away one at a time. A gap in the
+ * lattice answers false: it has its own flag and its own code path. */
+export function hasMissingSides(el) {
+  return !isUnbuilt(el) && unbuiltSidesOf(el).length > 0;
+}
+
+/*
  * How much wider than the clearance corridor a marker's scoring square is,
  * metres, and the narrowest one that may ever be built.
  *

@@ -301,8 +301,11 @@ export async function fetchTrackList(origin = boardOrigin()) {
     designer: String(t.designer || ''),
     series: String(t.series || ''),
     gates: Number(t.gates) || 0,
-    /* `best` is the board's own shape: the fastest lap and who flew it. */
+    /* `best.lapMs` is the time the board ranks. On a RaceGOW room that is
+     * the three lap total, and best.threeMs is set to the same number.
+     * An older board sends the fastest single lap and no threeMs. */
     recordMs: t.best && Number.isFinite(Number(t.best.lapMs)) ? Number(t.best.lapMs) : null,
+    recordThree: t.trackClass === 'micro' && t.best && Number.isFinite(Number(t.best.threeMs)),
     recordBy: t.best ? String(t.best.name || '') : '',
     times: Number(t.times) || 0,
     publishedUtc: t.publishedUtc ? String(t.publishedUtc) : '',
@@ -751,6 +754,9 @@ export async function fetchTrackTimes(trackId, origin = boardOrigin()) {
     id: t.id ? String(t.id) : '',
     name: String(t.name || ''),
     lapMs: Number.isFinite(Number(t.lapMs)) ? Number(t.lapMs) : null,
+    /* The three lap total, which is the ranked time on a RaceGOW room.
+     * Null on a field and on a room post from before the board scored it. */
+    threeMs: Number.isFinite(Number(t.threeMs)) ? Number(t.threeMs) : null,
     hasGhost: Boolean(t.hasGhost),
   })).filter((t) => t.lapMs != null);
 }

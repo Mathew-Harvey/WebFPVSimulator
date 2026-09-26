@@ -31,7 +31,7 @@
  */
 
 import {
-  ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf, countElementsByType,
+  ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, FRAME_SIDES, flagSideOf, frameSidesOf, countElementsByType,
   GATE_PRESETS, MICRO_GATE_PRESETS, gatePresetsFor,
   applyGatePreset, matchingGatePreset, levelPitchFor, apertureLevels,
   elementHeight, TRACK_CLASS_DEFAULT, trackClassOf, docModeOf, paletteGroupOf, clampByLimits,
@@ -40,7 +40,7 @@ import {
   aperturesOf, elementById, kindOf, isSequenceable, logosOf, logoForDecal,
   SCENE_TIMES, SCENE_GROUNDS, sceneOf,
 } from './model.js';
-import { sequenceLabel, faceLabel, unsequencedElements } from './sequence.js';
+import { gateNumbers, gateNumberOf, sequenceLabel, faceLabel, unsequencedElements } from './sequence.js';
 import { figuresFor, matchingFigure, figureBlurb, levelName } from './figures.js';
 import { elevationProfile } from './path.js';
 import { drawProfile } from './profile.js';
@@ -250,6 +250,15 @@ function styleLabel(id) {
  */
 const LIMIT_STEP = { int: 1, m: 0.5, frac: 0.05, x: 0.1 };
 const LIMIT_PLACES = { int: 0, m: 2, frac: 2, x: 2 };
+
+/* The frame toggles' words. Upright rather than pole, because a pole is
+ * RaceGOW's own element, flown round, and this is a side of a gate. */
+const FRAME_SIDE_LABEL = {
+  top: 'Top bar',
+  bottom: 'Bottom bar',
+  left: 'Left upright',
+  right: 'Right upright',
+};
 
 function flagSideIcon(side) {
   const svg = svgEl('svg', { viewBox: '0 0 72 56', 'aria-hidden': 'true' });
@@ -653,6 +662,11 @@ export class Panels {
     host.append(dims);
     if (def.kind === KIND.APERTURE) {
       this.renderApertureReadout(host, def, element);
+      /* Which sides have pipe. A map's gates are furniture with no opening
+       * that scores, so taking a side off one would only be a broken gate. */
+      if (!freestyle) {
+        this.renderFrameSides(host, element);
+      }
     }
 
     if (def.kind === KIND.DECAL) {
@@ -711,7 +725,10 @@ export class Panels {
    */
   appendYawField(host, element) {
     const quarter = turnsOf(element.type) === 'quarter';
-    host.append(this.field(`yaw-${element.id}`, 'Yaw', element.yaw * DEG, (val) => {
+    /* A marker nobody has turned shows the way its square sits, which is
+     * what a typed heading turns it from: see shownYaw in app.js. */
+    const yaw = this.host.shownYaw ? this.host.shownYaw(element) : element.yaw;
+    host.append(this.field(`yaw-${element.id}`, 'Yaw', yaw * DEG, (val) => {
       this.host.setElementYaw(element.id, val * RAD);
     }, { suffix: 'deg', step: quarter ? 90 : 5, places: 1 }));
     if (quarter) {
@@ -1254,6 +1271,46 @@ export class Panels {
     host.append(el('p', 'tb-fig-blurb', `${what} Top of the structure ${show(top, 2)} m.`));
   }
 
+  /*
+   * THE FOUR SIDES OF THE FRAME, each a toggle: lit means there is pipe
+   * there. Taking one away keeps the opening, which still scores, lights and
+   * pins the line (FRAME_SIDES in elements.js); this is also where a side
+   * taken away with Delete in the 3D view is put back. Laid out as the gate
+   * is, top over the two uprights over the bottom.
+   */
+  renderFrameSides(host, element) {
+    const sides = frameSidesOf(element);
+    const levels = aperturesOf(element).length;
+    host.append(el('h3', null, 'Frame'));
+    host.append(el('p', 'tb-help', levels > 1
+      ? 'Each side is its own pipe: the uprights run the full height of the stack, the top bar is over the top opening and the bottom bar under the lowest. Take one away and the openings still score. In the 3D view, click a pipe of the selected gate and press Delete. Left and right are as seen facing the gate, like the header flag.'
+      : 'Each side is its own pipe. Take one away and the opening still scores and lights, with no pipe there to hit. In the 3D view, click a pipe of the selected gate and press Delete. Left and right are as seen facing the gate, like the header flag.'));
+    const grid = el('div', 'tb-frame-grid');
+    for (const side of FRAME_SIDES) {
+      const on = sides[side];
+      const b = el('button', on ? 'tb-frame-side on' : 'tb-frame-side');
+      b.type = 'button';
+      b.dataset.side = side;
+      b.textContent = FRAME_SIDE_LABEL[side];
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.title = on ? `Take the ${FRAME_SIDE_LABEL[side].toLowerCase()} away` : `Put the ${FRAME_SIDE_LABEL[side].toLowerCase()} back`;
+      b.addEventListener('click', () => this.host.setFrameSide(element.id, side, !on));
+      grid.append(b);
+    }
+    host.append(grid);
+    if (FRAME_SIDES.some((side) => !sides[side])) {
+      host.append(button('Put every side back', 'tb-btn', () => {
+        this.host.edit('put the frame back', (d) => {
+          const e2 = elementById(d, element.id);
+          if (e2) {
+            delete e2.unbuiltSides;
+            delete e2.unbuilt;
+          }
+        });
+      }));
+    }
+  }
+
   renderFlagSidePicker(host, element) {
     const current = flagSideOf(element);
     host.append(el('h3', null, 'Header flag'));
@@ -1280,10 +1337,14 @@ export class Panels {
   sequenceCard(doc, element, seq, index, namedFigure = false) {
     const card = el('div', 'tb-card');
     const head = el('div', 'tb-card-head');
+    const number = gateNumberOf(doc, seq.id);
     const title = namedFigure
-      ? `${levelName(element, seq.apertureIndex)}, gate ${index + 1}`
+      ? `${levelName(element, seq.apertureIndex)}, gate ${number ?? index + 1}`
       : sequenceLabel(doc, seq);
-    head.append(el('span', 'tb-num', String(index + 1)), el('span', 'tb-card-title', title));
+    head.append(
+      el('span', number == null ? 'tb-num tb-num-bend' : 'tb-num', number == null ? '\u00b7' : String(number)),
+      el('span', 'tb-card-title', title),
+    );
     if (seq.overridden || element.yawOverridden) {
       head.append(el('span', 'tb-badge', 'overridden'));
     }
@@ -1465,7 +1526,14 @@ export class Panels {
       host.append(el('p', 'tb-help', 'A map has no flying order. Fly it any way you like: the gates on it are furniture, and the named gaps are there to be found.'));
       return;
     }
-    host.append(el('h3', null, `Flying order, ${doc.sequence.length}`));
+    /* Gates and markers are counted, waypoints are said apart: a waypoint
+     * bends the line and is not something anybody flies through. */
+    const numbers = gateNumbers(doc);
+    const passes = [...numbers.values()].filter((n) => n != null).length;
+    const bends = doc.sequence.length - passes;
+    host.append(el('h3', null, bends
+      ? `Flying order, ${passes}, and ${bends} waypoint${bends === 1 ? '' : 's'}`
+      : `Flying order, ${passes}`));
 
     if (!doc.sequence.length) {
       host.append(el('p', 'tb-help', 'Empty. Placing a gate or a stack adds it to the order. A stack is one structure and several gates: pick how it is flown in the inspector.'));
@@ -1480,7 +1548,10 @@ export class Panels {
       if (element && this.host.selection.has(element.id)) {
         li.classList.add('sel');
       }
-      li.append(el('span', 'tb-num', String(i + 1)));
+      /* A waypoint has no number, the same as on the race field: see
+       * gateNumbers in sequence.js. */
+      const number = numbers.get(seq.id);
+      li.append(el('span', number == null ? 'tb-num tb-num-bend' : 'tb-num', number == null ? '\u00b7' : String(number)));
       const body = el('div', 'tb-seq-body');
       body.append(el('span', 'tb-seq-name', sequenceLabel(doc, seq)));
       const face = el('span', 'tb-seq-face', faceLabel(doc, seq));

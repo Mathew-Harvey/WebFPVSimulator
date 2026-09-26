@@ -155,11 +155,14 @@ export const CC_SPEED_CAP = 3;
  * HOW NEAR, in metres of clearance (see the header):
  *
  *   SKIM_NEAR       1.0   the plan's "within about a metre"
- *   CC_THREAD_NEAR  1.0   each side, so a slot up to about 2.35 m wide
+ *   CC_THREAD_NEAR  1.25  each side, so a slot up to about 2.85 m wide
  *                         between its faces is a thread: the town's gap rule
  *                         (GAP_MIN, 1.4 m in src/props/parts.js) is the
- *                         narrowest slot there is, and a pair of posts two
- *                         metres apart is threading, not flying past
+ *                         narrowest slot there is, a pair of posts two
+ *                         metres apart is threading, not flying past, and a
+ *                         forty foot container flown end to end, 2.35 m
+ *                         inside, is a thread from anywhere in its middle
+ *                         half metre (at 1.0 it was one only dead centre)
  *   UNDER_NEAR      3.0   the plan's "within a few metres": a footbridge
  *                         deck over a five inch at head height is about 2 m
  *   LOW_NEAR        1.0   a metre over the ground, the skim's own reach
@@ -169,7 +172,7 @@ export const CC_SPEED_CAP = 3;
  * hurdle, so a skim at 0.2 m is worth 1.8 times one at a metre.
  */
 export const SKIM_NEAR = 1.0;
-export const CC_THREAD_NEAR = 1.0;
+export const CC_THREAD_NEAR = 1.25;
 export const UNDER_NEAR = 3.0;
 export const LOW_NEAR = 1.0;
 
@@ -208,9 +211,11 @@ export const CC_HOLD_CAP_MS = 8000;
  *                             two fifths of a skim at the same speed and
  *                             closeness
  *   UNDER_POINTS        150   a passage, times speed and closeness: 150 to
- *                             900, a small named gap's worth at speed
+ *                             300 at 10 m/s, 90 at the floor and 900 at
+ *                             most, a small named gap's worth at speed
  *   CC_THREAD_POINTS    250   a passage, times speed and closeness: 250 to
- *                             1500, more than an under because both sides
+ *                             500 at 10 m/s, 150 at the floor and 1500 at
+ *                             most, more than an under because both sides
  *                             are close, and a car thread's 300 to 600 at
  *                             ordinary speed
  */

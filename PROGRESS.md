@@ -51077,3 +51077,16 @@ the new room; it was not exercised here.
 counts as wrong: a gate you lose against the dark band or the plaster, walls
 glowing on High, the room reading as dusk, a poster or banner blurred or
 missing, or any difference at all in how a wall tap, a gate or a lap behaves.
+
+### Addendum: to main, the owner flies it
+
+The owner, 2026-09-26: "push to main and i'll fly it". main moved twice while
+this was in review, by the Practice lap count and by the lap calls
+(src/render/voice.js); both were merged into this branch, not rebased and not
+forced, with PROGRESS.md keeping main's entries where main has them. Run on
+the merged tree that went to main: `npm run lint:preload` up to date, boot
+114 and 218 served; `npm run micro:check` 267 pass, 0 fail; `node --check` on
+every module either side touched; and the room captured again, its six
+collider boxes and 28 solids identical to the baseline, 118 draw calls, the
+art up. The push to main is a fast forward. `npm run verify` not run, for
+the reason in the entry above.

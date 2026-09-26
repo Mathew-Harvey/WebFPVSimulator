@@ -24,7 +24,9 @@
  *   stored as its strokes in a unit square and drawn as an ink line with a
  *   coloured core. A manga's sound effects are drawn, not typeset, and this
  *   way they look drawn and read the same on a machine with no Japanese
- *   font installed, where the system stack would draw boxes.
+ *   font installed, where the system stack would draw boxes. Five more kana
+ *   spell the combo tiers' words (src/ui/scorehud.js), drawn as one brush
+ *   line in a badge (paintKana), for the same reason.
  *
  * THE SOUND EFFECTS, the whole set, and what each is for. Decision 11 (the
  * owner, 2026-09-26): "Yes, small". Small in size and small in number, so
@@ -292,11 +294,17 @@ export function drawRuns(ctx, runs, x, y, px, opts = {}) {
  * ------------------------------------------------------------------ */
 
 /*
- * Ten kana as brush strokes in a unit square, y down, in the order a hand
- * writes them. M moves, L draws a straight line, Q a curve through a
+ * Fifteen kana as brush strokes in a unit square, y down, in the order a
+ * hand writes them. M moves, L draws a straight line, Q a curve through a
  * control point. The voiced kana are these with the voicing mark, and the
  * small ones are these made small, which is how the writing system itself
  * builds them.
+ *
+ * The first ten spell the sound effects. イ ネ コ ヤ サ were added with the
+ * combo tiers' words (src/ui/scorehud.js), which were font glyphs and drew
+ * as boxes on a machine with no Japanese font: イイネ, スゴイ, ヤバイ and
+ * サイコー, the katakana a manga letters a shout in, need these five and
+ * ゴ, which is コ voiced.
  */
 const KANA = {
   'ス': ['M.2 .2 L.76 .2 Q.66 .6 .14 .9', 'M.5 .56 Q.7 .68 .88 .9'],
@@ -309,11 +317,16 @@ const KANA = {
   'キ': ['M.16 .36 L.84 .28', 'M.1 .64 L.9 .56', 'M.42 .08 L.56 .96'],
   'フ': ['M.14 .2 L.82 .2 Q.72 .68 .24 .94'],
   'ー': ['M.06 .54 L.94 .48'],
+  'イ': ['M.76 .06 Q.6 .4 .1 .62', 'M.5 .4 L.5 .96'],
+  'ネ': ['M.44 .04 L.54 .17', 'M.16 .3 L.8 .3 Q.56 .6 .1 .8', 'M.5 .54 L.5 .98', 'M.64 .62 L.88 .8'],
+  'コ': ['M.16 .2 L.8 .2 L.8 .82', 'M.14 .82 L.84 .82'],
+  'ヤ': ['M.06 .44 L.9 .3 Q.84 .5 .64 .62', 'M.32 .08 L.54 .96'],
+  'サ': ['M.04 .34 L.96 .34', 'M.28 .1 L.28 .6', 'M.7 .06 L.7 .48 Q.68 .82 .32 .96'],
 };
 /* The voicing mark, two ticks off the top right. */
 const DAKUTEN = ['M.8 .0 L.88 .2', 'M.95 -.04 L1.03 .16'];
 const VOICED = {
-  'ズ': 'ス', 'バ': 'ハ', 'ド': 'ト', 'ギ': 'キ', 'ブ': 'フ',
+  'ズ': 'ス', 'バ': 'ハ', 'ド': 'ト', 'ギ': 'キ', 'ブ': 'フ', 'ゴ': 'コ',
 };
 const SMALL = { 'ッ': 'ツ', 'ュ': 'ユ' };
 
@@ -363,63 +376,96 @@ export function sfxWidth(text, px) {
 }
 
 /*
- * Letter a sound effect, its cells' top left at (x, y) and each cell `px`
- * square. Each kana is turned and stepped by its own amount, the way an SFX
- * is scrawled across a panel rather than set on a line.
+ * Walk a line of kana, each cell `px` square with its top left at (x, y)
+ * plus (dx, dy), calling `paint(strokes)` with the context in the cell's
+ * unit square. `hand` is how far each kana is turned and stepped off the
+ * line: 1 for a sound effect scrawled across a panel, less for a word set
+ * in a badge. Shared by both so they are one hand.
  */
-export function drawSfx(ctx, text, x, y, px, fill) {
-  const chars = Array.from(text);
+function eachKana(ctx, text, x, y, px, hand, dx, dy, paint) {
   if (!DAKU_STROKES) {
     DAKU_STROKES = DAKUTEN.map((src) => src.split(/(?=[ML])/).map((cmd) => {
       const nums = cmd.slice(1).trim().split(/\s+/).map(Number);
       return [cmd[0], ...nums];
     }));
   }
+  const chars = Array.from(text);
+  let gx = x + px * 0.1;
+  for (let i = 0; i < chars.length; i += 1) {
+    const ch = chars[i];
+    const small = SMALL[ch];
+    const base = small || VOICED[ch] || ch;
+    if (KANA[base]) {
+      const rot = (hash(text, i) - 0.5) * 0.28 * hand;
+      const step = (i % 2 ? 0.06 : -0.04) * px * hand;
+      ctx.save();
+      ctx.translate(gx + dx, y + step + dy);
+      ctx.translate(px * 0.5, px * 0.5);
+      ctx.rotate(rot);
+      ctx.transform(1, 0, -SLANT * 0.7, 1, 0, 0);
+      ctx.translate(-px * 0.5, -px * 0.5);
+      ctx.scale(px, px);
+      if (small) {
+        ctx.translate(0.04, 0.36);
+        ctx.scale(0.62, 0.62);
+      } else if (VOICED[ch]) {
+        paint(DAKU_STROKES);
+        ctx.translate(-0.02, 0.07);
+        ctx.scale(0.88, 0.88);
+      }
+      paint(strokesOf(base));
+      ctx.restore();
+    }
+    gx += kanaAdvance(ch) * px;
+  }
+}
+
+/* Strokes in the cell's own units, so one number reads the same at every
+ * size. */
+function inkStrokes(ctx, strokes, colour, w) {
+  tracePath(ctx, strokes);
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = w;
+  ctx.stroke();
+}
+
+/*
+ * Letter a sound effect, its cells' top left at (x, y) and each cell `px`
+ * square. Each kana is turned and stepped by its own amount, the way an SFX
+ * is scrawled across a panel rather than set on a line.
+ */
+export function drawSfx(ctx, text, x, y, px, fill) {
   ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  const each = (dx, dy, paint) => {
-    let gx = x + px * 0.1;
-    for (let i = 0; i < chars.length; i += 1) {
-      const ch = chars[i];
-      const small = SMALL[ch];
-      const base = small || VOICED[ch] || ch;
-      if (KANA[base]) {
-        const rot = (hash(text, i) - 0.5) * 0.28;
-        const step = (i % 2 ? 0.06 : -0.04) * px;
-        ctx.save();
-        ctx.translate(gx + dx, y + step + dy);
-        ctx.translate(px * 0.5, px * 0.5);
-        ctx.rotate(rot);
-        ctx.transform(1, 0, -SLANT * 0.7, 1, 0, 0);
-        ctx.translate(-px * 0.5, -px * 0.5);
-        ctx.scale(px, px);
-        if (small) {
-          ctx.translate(0.04, 0.36);
-          ctx.scale(0.62, 0.62);
-        } else if (VOICED[ch]) {
-          paint(DAKU_STROKES);
-          ctx.translate(-0.02, 0.07);
-          ctx.scale(0.88, 0.88);
-        }
-        paint(strokesOf(base));
-        ctx.restore();
-      }
-      gx += kanaAdvance(ch) * px;
-    }
-  };
-  /* Widths are in the cell's own units, so one number reads the same at
-   * every size: the ink a fifth of a cell, the core a ninth. */
-  const inked = (strokes, colour, w) => {
-    tracePath(ctx, strokes);
-    ctx.strokeStyle = colour;
-    ctx.lineWidth = w;
-    ctx.stroke();
-  };
-  each(px * 0.06, px * 0.08, (s) => inked(s, INK, 0.22));
-  each(0, 0, (s) => inked(s, INK, 0.22));
-  each(0, 0, (s) => inked(s, fill, 0.11));
+  /* The ink a fifth of a cell, the core a ninth. */
+  eachKana(ctx, text, x, y, px, 1, px * 0.06, px * 0.08, (s) => inkStrokes(ctx, s, INK, 0.22));
+  eachKana(ctx, text, x, y, px, 1, 0, 0, (s) => inkStrokes(ctx, s, INK, 0.22));
+  eachKana(ctx, text, x, y, px, 1, 0, 0, (s) => inkStrokes(ctx, s, fill, 0.11));
   ctx.restore();
+}
+
+/*
+ * A kana word as a canvas of its own, one brush line in one colour and no
+ * core: the combo tier's word, set in the tier's badge the way the badge
+ * sets its English word, ink punched out of a solid chip (src/ui/scorehud.js).
+ * The hand is steadier than an effect's, because a badge is read, not
+ * glimpsed. Painted once at `px` a cell; the badge scales it by CSS, so a
+ * window changing size never repaints it.
+ */
+export function paintKana(canvas, text, px, colour) {
+  const ctx = canvas.getContext('2d');
+  const dpr = dprNow();
+  const W = Math.ceil(sfxWidth(text, px));
+  const H = Math.ceil(px * 1.3);
+  canvas.width = Math.ceil(W * dpr);
+  canvas.height = Math.ceil(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  eachKana(ctx, text, 0, px * 0.15, px, 0.4, 0, 0, (s) => inkStrokes(ctx, s, colour || INK, 0.19));
+  return { w: W, h: H };
 }
 
 /* ------------------------------------------------------------------ *

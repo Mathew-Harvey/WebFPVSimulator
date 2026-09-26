@@ -509,6 +509,15 @@
       }
       .score-tier > span { color: #0b1116; }
       .score-tier .score-tier-jp { letter-spacing: 0.05em; opacity: 0.72; }
+      /* The tier's word is drawn with the sound effects' stroke kana
+         (scorehud.js tierKana), painted once at a big cell and set here at
+         the badge's own size, so a machine with no Japanese font gets the
+         word and not a row of boxes. The negative margins keep the badge
+         the height its type made it: the cell is taller than a line. */
+      .score-tier .score-tier-kana {
+        display: inline-block; height: 1.3em; width: auto;
+        margin: -0.2em 0; vertical-align: -0.32em;
+      }
       @keyframes score-tier-in {
         0%   { transform: scale(0.4) rotate(-8deg); opacity: 0; }
         60%  { transform: scale(1.12) rotate(2deg); opacity: 1; }

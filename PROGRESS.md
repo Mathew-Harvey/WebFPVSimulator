@@ -47399,3 +47399,202 @@ What it changes for a pilot today: nothing. No map has a road or a car
 until Stage E, and every existing world, the train included, is bit for
 bit what it was. The verification scale is verify, which ran (17 of 17);
 the owner's fly comes with Stage E, when there is a car to chase.
+
+## 2026-09-26 | game, hud, checks | Stage E: the chase scores, and the Tail meter shows it
+
+Stage E ("Roads, vehicles and the chase", approved by the owner on
+2026-09-25) is being built in pieces. This is the chase scoring: the Tail
+meter and the chase events of FREESTYLE-MAPS-PLAN.md section 7 item 4, the
+HUD that shows them, and the check that pins them. No physics, plant, ABI
+or build change: the scorer reads the poses readVehicles already returns,
+and nothing it works out reaches the module. It is not yet wired into
+main.js: the doc to plant code (src/maps/built/traffic.js), the shell's
+feed and the drawn cars are other pieces of Stage E, so nothing changes for
+a pilot until they land.
+
+### The correction to the plan, for the owner to overturn
+
+Section 7 item 4 has "passing under a moving box truck's clearance" as a
+chase event. It cannot be flown. world.c models a car as one box from its
+clearance up (plantworld.js addVehicle), and an honest box truck's
+clearance is its chassis over the road, a few tens of centimetres: a five
+inch cannot pass under it, and a whoop only just could under the tallest.
+An event nobody can fly is not an event.
+
+**Replaced by the HURDLE:** crossing a moving car's whole footprint, in by
+one side and out by the opposite one, never more than 1.5 m over its roof
+and never below it, at the way in, at every feed across and at the way
+out. Side to side it is called a Hurdle; end to end over the roof (an
+overtake over the car, or head on over it) a Leapfrog. The plan's text in
+section 7 still says UNDER and is left as the owner wrote it; if the owner
+wants UNDER back (for example with a taller clearance on a truck body),
+it is a new event beside this one, not a change to it.
+
+### What was built
+
+- **src/game/chase.js**, pure: no DOM, no Three.js, no clock of its own,
+  no trigonometry (+ - * / and the square root), nothing allocated on a
+  step. `new Chase()`, `setCars([{ slot, length, width, height, clearance,
+  drift, label }])` once a map's cars are placed, then `step(step, craft,
+  poses, touched, crashed)` every CHASE_EVERY (8) steps of the lap clock,
+  with the craft's world position and velocity and readVehicles' poses at
+  that step; `bail(step, 'crash')` for a crash the shell decides at the
+  end of a frame; `view()` and `drainEvents()` once a frame; `reset()` on a
+  new run. Events are `{ kind, name, value, ms, cars, labels, drift, close,
+  step, paidStep }`, kind 'tail', 'thread', 'hurdle' or 'lost' (with `of`
+  and `why`). `view().holding` and `pays(e)` are Stage C's hook: the shell
+  hands every paying event to a chaseBonus(e) in main.js, the way a found
+  mark goes to eggBonus, and Stage C fills it in.
+- **"Behind" is along the car's own trail.** Each car leaves a trail, a
+  point every half metre it drives (64 m kept), and the craft is behind
+  when the trail point nearest it is 0 to 10 m back from the car's rear
+  along the way the car drove. So a bend is followed, a drifting car's
+  nose does not move "behind" sideways, and the rear is the rear along the
+  travel: half the length on the travel plus half the width across it,
+  which is where a sliding box's corner is.
+- **src/ui/chasehud.js**, with `ui.setChaseCars(n)`, `ui.chaseMeter(view)`,
+  `ui.chaseEvents(list)`, `ui.chaseEvent(e)` and `ui.resetChase()` in
+  ui.js, and its CSS in index.html beside the found mark's. Down the right,
+  a little under the middle: TAIL, the car's name, the seconds held big in
+  amber, a bar filling over ten seconds, mint while held, amber and
+  blinking while the grace runs, orange with an x2 chip on the drift car.
+  Callouts stack upward from just over it, lettered in ink with a ray fan,
+  mint for points and the score's sakura for a loss. Up only on a freestyle
+  map the shell says has cars, in flight or paused; not behind the Scoring
+  switch, because the chase is geometry (section 12, decision 2). Stage F
+  restyles it.
+- **scripts/chase-check.js**, `npm run check:chase`: 58 checks. Synthetic
+  runs with scripted cars and craft, every paying run with a crash twin,
+  and one run against the real module (below).
+- src/fresh.js regenerated (two new modules; chase.js is at boot through
+  the HUD, for its one constant).
+
+### The numbers, and why
+
+    TAIL    behind         0 to 10 m back from the rear, along its trail:
+                           half a second behind a car at 20 m/s; a pilot
+                           filming one sits 3 to 8 m off
+            on its line    within half its width + 1.5 m of the trail
+                           (2.4 m for a 1.8 m car): its lane, not the next
+            height         over the road, at most 3 m over its roof
+            its speed      craft ground speed 0.8 to 1.25 times the car's
+                           speed at that point of its trail (16 to 25 m/s
+                           behind a car doing 20), ground track within 30
+                           degrees of the way it drove there
+            floors         car 5 m/s, craft 4 m/s: parked is not chased
+            grace          500 ms out of the band forgiven, not counted
+            banks          1 s or more, when lost past the grace
+            worth          50 points a second (a Flip a second), the
+                           drift car's times 2
+    THREAD  both cars      within 2 m of the craft's centre, plan distance
+                           to the body's side, as it crosses the line
+                           between their centres, between them, outside
+                           both footprints, under the lower roof + 0.3 m
+            both moving    3 m/s
+            window         400 ms clean after the crossing
+            again          the same pair after 1.5 s, so wobbling across
+                           one line pays once
+            worth          300 times (2 - the two gaps over 4 m): 300 to 600
+    HURDLE  footprint      in one side, out the opposite, 0 to 1.5 m over
+                           the roof all the way, car moving 3 m/s
+            window         400 ms clean after the way out
+            worth          250 times (2 - lowest over 1.5 m): 250 to 500
+    ALL     report lag     nothing pays until 120 ms after its window: the
+                           shell calls a crash at the end of a frame, up to
+                           100 steps late, and bail() voids anything whose
+                           window reached within 120 ms of it
+
+The prices are provisional and named: Stage C sets them against the rest
+of the counter.
+
+### Measured
+
+    the real module     an eased closed road, 473 points, 236.0 m (40 m
+                        straights, 20 m radius half turns eased over 15 m),
+                        a drift car (top 22 m/s, lateral 9, drift 0.05)
+                        driven by setVehicleClock for 3.96 laps, 13.4 to
+                        19.9 m/s, sliding to tan(slip / 2) 0.45, about 48
+                        degrees; a craft 6 m behind its road point along
+                        its travel, at its velocity: held at all 7,501
+                        feeds of the minute, 3.52 to 3.75 m behind the
+                        rear, 60,000 ms held, then broken off: one Drift
+                        Tail, 60,000 ms, 6,000 points. Flown twice on fresh
+                        modules: the same meter at every feed.
+    cost                about 5.5 us a feed with 64 cars and the craft on
+                        one's tail (Node 22), a feed every 8 ms: under a
+                        tenth of a percent of the step budget
+
+### For whoever wires the shell
+
+- Feed it every 8 steps of the lap clock inside the step loop, after
+  sim.step(1), with readVehicles read at that step and the craft's world
+  position (poseFromState) and world velocity (the plant velocity through
+  frame.js and qSpawn, as the pose is).
+- `touched`: `sim.e.sim_world_vehicle_contacts(ptr, 0) > 0` after each
+  step, ORed until the next feed. `crashed`, or `chase.bail(simTimeMs,
+  'crash')`, wherever the shell calls score.crash(): the lag above covers
+  it being a frame late.
+- `chase.reset()` where the run resets (reset() in main.js), and
+  `setCars` plus `ui.setChaseCars(n)` when a map's cars are placed; 0 on a
+  race track or a map without roads.
+- `ui.chaseMeter(chase.view())` and `ui.chaseEvents(chase.drainEvents())`
+  once a frame, and a chaseBonus(e) stub beside eggBonus for Stage C.
+- src/fresh.js will conflict with traffic.js's own regeneration: run
+  `node scripts/gen-preload.js` after the merge.
+
+### What went wrong
+
+- The first draft read a car's speed through two helpers and a field that
+  did not exist yet. Caught reading it back, before the first run.
+- The first run failed one check of my own making: "the clock going back
+  is a new run" expected the meter down after the jump, but the new run
+  rightly took a fresh tail from the same inputs. The check now asserts
+  the fresh tail starts at 0 and the old one never pays.
+- A planted fault sweep (a scratch copy of chase.js, the check pointed at
+  it) found the stride check threw instead of failing when a tail went
+  missing; it is guarded now. Of 14 planted faults, 12 are seen, each by
+  the checks it should be: flags ignored (6 fail), no report lag (2), no
+  direction test (1), no speed test (5), no line test (4), no height test
+  (4), a grace too short to forgive (3), the hurdle's opposite side test
+  off (1), the thread's reach doubled (1), its cooldown off (1), the late
+  bail window without the lag (1), stopped cars chased (2). Two are not,
+  and neither is a hole: the hurdle's height at the way in alone is also
+  judged at every feed across and at the way out, which catch it; and
+  "behind the nose" as I planted it changed nothing, because behind is the
+  trail, not the pose's travel vector.
+- The first screenshots read "DRIFT  DRIFT CAR" (the chip said what the
+  label says) and "6.0 S" (the callout line was upper cased). The chip
+  says x2 now, and the line keeps its case.
+
+### RUN LOG
+
+Run this turn on the final code:
+
+    npm run check:chase           58 passed, all passed
+    npm run score:selftest        206 passed, 1 FAILED: "the same lap
+                                  without the flip is a Maverick Loop",
+                                  the known failure on main; the same on
+                                  the untouched tree before this work
+    npm run lint:boot             9 of 9 checks clean
+    npm run lint:shell            FAIL, 1 problem: "title: overflow grew
+                                  from 0 to 23 px", the known failure on
+                                  main; every other screen as recorded
+    npm run lint:memory           PASS, every world lazy and freed; boot
+                                  baseline 62 geometries, 6 textures, 124
+                                  requests, where the run earlier this
+                                  turn (before chase.js was at boot) read
+                                  61, 5 and 123. The request is chase.js;
+                                  neither new file makes a geometry or a
+                                  texture, and the one more of each is
+                                  not explained here
+    npm run lint:preload          up to date, boot 108, city 73, built 28;
+                                  204 served
+    node scripts/shots.js         the real shell at 1600x900 and 844x390,
+                                  the flight screen with the meter and
+                                  callouts fed through window.__ui: the
+                                  drift meter, the grace, a loss, and the
+                                  layer down with no cars. Pictures in the
+                                  session's scratchpad, not committed.
+    dash scan, new and changed    none
+    npm run verify                not run: no physics, plant, ABI or build
+                                  change, and the task said not to

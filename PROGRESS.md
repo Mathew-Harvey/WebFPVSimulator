@@ -51127,3 +51127,12 @@ OSD with the readout gone has been taken.
 **Seen, not touched.** The altitude line has the same seam on a whoop: it is
 metres in the MICRO_SCALE room, so it reads 3.43 times the height the
 picture shows. Not asked for; left as it is.
+
+### Addendum: to main, the owner flies it
+
+The owner, 2026-09-26, asked which verification scale: "push to main and
+i'll fly it". So the check is the pilot's: on the whoop, no km/h line and no
+gap above the mode in the right corner; on the five inch, the readout as
+before; and a change of seat mid session updating the corner on the next
+frame. main had not moved since eb06a87, so the push is a fast forward.
+`node scripts/shots.js` and `npm run verify` not run, for the reasons above.

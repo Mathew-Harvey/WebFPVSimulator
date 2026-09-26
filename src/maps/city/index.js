@@ -2137,7 +2137,7 @@ export async function buildMap(shell, onProgress, options) {
   /* `petals` is the same preset flag the town's own field is gated on: the
    * two places get their own field, over their own ground, for the reason in
    * ./places/blossom.js. */
-  const places = buildPlaces(world, { petals: q.city.petals, hideSponsors: options && options.hideSponsors });
+  const places = buildPlaces(world, { petals: q.city.petals });
   progress(0.87);
   await yieldToPaint();
 

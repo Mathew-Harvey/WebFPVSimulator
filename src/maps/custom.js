@@ -93,16 +93,13 @@ export async function buildMap(shell, onProgress, options) {
   const share = injected ? null : readShareImport();
   const doc = injected ? opts.document : workingDocument();
   const course = doc ? courseFromDocument(doc) : emptyCourse();
-  /* Under clean=1, suppress sponsor content by emptying decals and logos,
-   * and set hideSponsors on the course for future surfaces to check. */
+  /* A clean replay (src/main.js) shows no sponsor art. The course carries
+   * the flag, and every painter that could draw a mark reads it: see
+   * SPONSOR ART in src/render/scene.js. */
   if (opts.hideSponsors) {
-    if (course) {
-      course.decals = [];
-      course.logos = [];
-      course.hideSponsors = true;
-    }
+    course.hideSponsors = true;
   }
-  const map = await buildFieldScene(shell, reporter(progress), course, q, opts.hideSponsors);
+  const map = await buildFieldScene(shell, reporter(progress), course, q);
   map.share = share
     ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }
     : null;

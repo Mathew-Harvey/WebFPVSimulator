@@ -75,8 +75,5 @@
     "trick:sweep": "node scripts/trick-sweep.js",
     "trick:proven": "node scripts/trick-sweep.js --all --write",
     "check:craft": "node scripts/craft-check.js"
-  },
-  "devDependencies": {
-    "pngjs": "^7.0.0"
   }
 }

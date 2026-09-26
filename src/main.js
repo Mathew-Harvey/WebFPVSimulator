@@ -494,6 +494,40 @@ async function loadMap(shell, id, loading, options) {
 export async function boot({ loading, bootStart, mapId }) {
   const BOOT_START = bootStart ?? performance.now();
   /*
+   * Replay mode: ?replay=tm-xxxxxxxx loads a ghost and plays it pilotless
+   * for frame-by-frame capture. Used by the marketing team to record ghost
+   * spotlight videos without depending on internal test hooks. clean=1 on
+   * a replay takes away everything that is not the flight: the UI, the
+   * cursor, the next gate's glow and every sponsor's mark.
+   */
+  let replayMode = false;
+  let replayTimeId = '';
+  let replayCamera = 'chase'; /* chase or fpv */
+  let replayClean = false;
+  let replayState = 'loading'; /* loading, ready, failed */
+  let replayClock = null; /* { startMs, vt } when active */
+  let replayStepMode = false; /* true when using __replayStep */
+  let replayChaseCam = null; /* { pos, look, prevDt } for chase camera smoothing */
+  let replayPresence = 0; /* tracked separately since ghostRig doesn't expose it */
+  const replayScratchPos = new THREE.Vector3();
+  const replayScratchQuat = new THREE.Quaternion();
+  const replayScratchDir = new THREE.Vector3();
+  const replayScratchTilt = new THREE.Quaternion();
+  const replayScratchUp = new THREE.Vector3();
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const replayParam = params.get('replay') || '';
+    if (/^tm-[0-9a-f]{8}$/.test(replayParam)) {
+      replayMode = true;
+      replayTimeId = replayParam;
+      const camParam = (params.get('cam') || 'chase').toLowerCase();
+      replayCamera = camParam === 'fpv' ? 'fpv' : 'chase';
+      replayClean = params.get('clean') === '1';
+    }
+  } catch (e) {
+    /* No URL to read. */
+  }
+  /*
    * FIRST, BEFORE ANYTHING READS THE QUERY.
    *
    * Two things in one call. It takes a sponsor's `utm_source` out of the
@@ -507,12 +541,15 @@ export async function boot({ loading, bootStart, mapId }) {
    * Then one visit, counted once per browser per UTC day across all three
    * pages. It sends nothing at all if the pilot has switched counting off
    * or their browser sends Global Privacy Control, and nothing waits for
-   * it either way. Skip visit ping in replay mode.
+   * it either way.
+   *
+   * A replay (above, read first because it decides this) is a capture, not
+   * a visit: its utm_ parameters come out all the same and nothing is
+   * counted.
    */
-  /* Capture attribution (utm_source) from URL, even in replay mode.
-   * Only skip the visit ping itself for replay. */
-  captureSource();
-  if (!window.location.search.includes('replay=tm-')) {
+  if (replayMode) {
+    captureSource();
+  } else {
     pingVisit('sim');
   }
   const canvas = document.getElementById('view');
@@ -525,41 +562,6 @@ export async function boot({ loading, bootStart, mapId }) {
    * high-performance. A dual-GPU laptop must not pick the battery chip
    * because a debug URL was opened once; this query is not stored. */
   const gpuQuery = new URLSearchParams(window.location.search).get('gpu');
-  /*
-   * Replay mode: ?replay=tm-xxxxxxxx loads a ghost and plays it pilotless
-   * for frame-by-frame capture. Used by the marketing team to record ghost
-   * spotlight videos without depending on internal test hooks.
-   */
-  let replayMode = false;
-  let replayTimeId = '';
-  let replayCamera = 'chase'; /* chase or fpv */
-  let replayClean = false;
-  let cleanMode = false; /* clean=1 hides all sponsor art, independent of replay */
-  let replayState = 'loading'; /* loading, ready, failed */
-  let replayClock = null; /* { startMs, vt } when active */
-  let replayStepMode = false; /* true when using __replayStep */
-  let replayChaseCam = null; /* { pos, look, prevDt } for chase camera smoothing */
-  let replayPresence = 0; /* tracked separately since ghostRig doesn't expose it */
-  const replayScratchPos = new THREE.Vector3();
-  const replayScratchQuat = new THREE.Quaternion();
-  const replayScratchDir = new THREE.Vector3();
-  const replayScratchTilt = new THREE.Quaternion();
-  const replayScratchUp = new THREE.Vector3();
-  try {
-    const params = new URLSearchParams(window.location.search);
-    /* Parse clean=1 independently: hides sponsor art on any map (built, freestyle, custom, share) */
-    cleanMode = params.get('clean') === '1';
-    const replayParam = params.get('replay') || '';
-    if (/^tm-[0-9a-f]{8}$/.test(replayParam)) {
-      replayMode = true;
-      replayTimeId = replayParam;
-      const camParam = (params.get('cam') || 'chase').toLowerCase();
-      replayCamera = camParam === 'fpv' ? 'fpv' : 'chase';
-      replayClean = cleanMode; /* replayClean tracks clean within replay context */
-    }
-  } catch (e) {
-    /* No URL to read. */
-  }
   const shell = buildShell(canvas, {
     desynchronized: true,
     powerPreference: gpuQuery === 'low' ? 'low-power' : 'high-performance',
@@ -570,8 +572,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * See src/input/input.js for what that was costing feedforward.
    */
   input.startPolling(2);
-  /* Hide UI in replay clean mode */
-  if (replayClean && replayMode) {
+  /* Hide UI in replay clean mode. failReplay puts both back. */
+  if (replayClean) {
     uiRoot.style.display = 'none';
     canvas.style.cursor = 'none';
   }
@@ -1148,7 +1150,7 @@ export async function boot({ loading, bootStart, mapId }) {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: ui.settings.graphics,
       renderScale: renderScaleOf(ui.settings),
-      hideSponsors: cleanMode,
+      hideSponsors: replayClean,
       ...worldDocument(ui.settings.map),
     });
   } catch (e) {
@@ -1168,7 +1170,7 @@ export async function boot({ loading, bootStart, mapId }) {
     view = await loadMap(shell, 'custom', loading, {
       quality: ui.settings.graphics,
       renderScale: renderScaleOf(ui.settings),
-      hideSponsors: cleanMode,
+      hideSponsors: replayClean,
     });
     /* The banner, not `notice`: that is declared with the frame loop's own
      * state further down and does not exist yet. This is the same way the
@@ -1636,17 +1638,22 @@ export async function boot({ loading, bootStart, mapId }) {
     return lap;
   }
 
+  /* A replay that cannot start hands the page back to a pilot: flying works,
+   * and a clean replay's UI and cursor come back with it. Nothing else in
+   * the shell writes either inline style, so clearing them is always safe. */
+  function failReplay(text) {
+    replayState = 'failed';
+    replayMode = false;
+    uiRoot.style.display = '';
+    canvas.style.cursor = '';
+    notice = { text, untilMs: performance.now() + 10000 };
+  }
+
   function loadBoardGhost(timeId) {
     const listing = ghostListing();
     if (!listing) {
       if (replayMode) {
-        replayState = 'failed';
-        replayMode = false;
-        if (replayClean) {
-          uiRoot.style.display = '';
-          canvas.style.cursor = '';
-        }
-        notice = { text: 'Replay failed: no track listing found.', untilMs: performance.now() + 10000 };
+        failReplay('Replay failed: no track listing found.');
       }
       return;
     }
@@ -1661,17 +1668,16 @@ export async function boot({ loading, bootStart, mapId }) {
         }
         adoptBoardGhost(payload, timeId);
         armGhost();
-        /* Start replay mode if active */
+        /* Start replay mode if active. The glow is ghostFrame's job. */
         if (replayMode && ghostLap) {
           replayClock = { startMs: simTimeMs, vt: 0 };
           replayState = 'ready';
           mode = 'flight';
           ui.show('flight');
           introMs = -1; /* Skip intro */
-          /* Hide next-gate glow in clean replay */
-          if (replayClean) {
-            view.setNextGate(-1, -1);
-          }
+        } else if (replayMode) {
+          /* resolveGhost gives a freestyle course no ghost at all. */
+          failReplay('Replay failed: this course has no lap for a ghost to fly.');
         }
       } catch (e) {
         if (ghostCourseKey() !== key) {
@@ -1679,14 +1685,10 @@ export async function boot({ loading, bootStart, mapId }) {
         }
         ghostBoardLap = null;
         const msg = `Could not fetch that ghost.\n${e.message ?? e}`;
-        notice = { text: msg, untilMs: performance.now() + (replayMode ? 10000 : 3600) };
         if (replayMode) {
-          replayState = 'failed';
-          replayMode = false;
-          if (replayClean) {
-            uiRoot.style.display = '';
-            canvas.style.cursor = '';
-          }
+          failReplay(msg);
+        } else {
+          notice = { text: msg, untilMs: performance.now() + 3600 };
         }
       } finally {
         if (ghostCourseKey() === key) {
@@ -1862,6 +1864,12 @@ export async function boot({ loading, bootStart, mapId }) {
       ghostRig.setPresence(presence);
       if (presence > 0 && shell.quad.parent && ghostRig.group.parent !== shell.quad.parent) {
         shell.quad.parent.add(ghostRig.group);
+      }
+      /* A clean capture carries no guidance. This runs before every draw, so
+       * anything that lights a target again (reset() on R, a new look) is
+       * put out before a frame can show it. */
+      if (replayClean && view.targetAim && view.targetAim().active) {
+        view.setNextGate(-1, -1);
       }
       return;
     }
@@ -3668,7 +3676,7 @@ export async function boot({ loading, bootStart, mapId }) {
       view = await loadMap(shell, wantId, loading, {
         quality: wantQ,
         renderScale: renderScaleOf(ui.settings),
-        hideSponsors: replayClean && replayMode,
+        hideSponsors: replayClean,
         ...worldDocument(wantId),
       });
       loading.start('frame');
@@ -3695,7 +3703,7 @@ export async function boot({ loading, bootStart, mapId }) {
         view = await loadMap(shell, previous, loading, {
           quality: previousGraphics,
           renderScale: renderScaleOf(ui.settings),
-          hideSponsors: replayClean && replayMode,
+          hideSponsors: replayClean,
           ...worldDocument(previous),
         });
         loading.start('frame');
@@ -7605,7 +7613,10 @@ export async function boot({ loading, bootStart, mapId }) {
      * hardware independent. Two scalars, written not allocated: P8 forbids
      * a new object here. */
     const blockMs = performance.now() - blockStart;
-    /* Pin render scale during replay step capture */
+    /* Never during a replay step capture, where every frame must be drawn at
+     * one scale. No map has applyPace yet (see quality.js), so today this
+     * guard only keeps it that way; tests/replay-test.js checks the drawing
+     * buffer holds still across a capture. */
     if (view && view.post && typeof view.post.applyPace === 'function' && !replayStepMode) {
       pace.observe(dt, renderMs, blockMs, view.post);
       if (pace.state.dirty) {
@@ -8280,7 +8291,6 @@ export async function boot({ loading, bootStart, mapId }) {
     stepMode: replayStepMode,
     clock: replayClock ? { startMs: replayClock.startMs, vt: replayClock.vt } : null,
     ghostLoaded: ghostLap != null,
-    nextGateGlowHidden: replayClean && replayMode,
     cameraPosition: shell.camera ? {
       x: shell.camera.position.x,
       y: shell.camera.position.y,
@@ -8951,7 +8961,6 @@ export async function boot({ loading, bootStart, mapId }) {
     mode: view.mode,
     graphics: view.graphics,
     gates: view.gates.length,
-    sponsorsHidden: view.sponsorsHidden,
     sponsorsPainted: view.sponsorsPainted ?? 0,
     spawn: { x: startX, y: startY, z: startZ, yaw: startYaw },
     ready: mapReady,

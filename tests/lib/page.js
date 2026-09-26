@@ -178,10 +178,8 @@ export async function openPage({
   const proc = spawn(chrome, [
     '--headless=new',
     '--no-sandbox',
-    '--use-gl=angle',
     '--use-angle=swiftshader',
     '--enable-unsafe-swiftshader',
-    '--ignore-gpu-blocklist',
     '--disable-dev-shm-usage',
     '--no-first-run',
     '--no-default-browser-check',

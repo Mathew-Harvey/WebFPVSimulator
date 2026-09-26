@@ -1052,7 +1052,7 @@ function dirtRuts(placed, doc) {
  * Returns the group, what it painted for stats(), and a way to stop a logo
  * still decoding from painting into a map that has gone.
  */
-function buildGround(placed, doc, look, hideSponsors = false) {
+function buildGround(placed, doc, look) {
   const { W, D } = placed;
   const G = look.ground;
   const groundId = look.groundId;
@@ -1234,21 +1234,19 @@ function buildGround(placed, doc, look, hideSponsors = false) {
 
   /* ---- the sponsors' marks, from the document's own logos ---- */
   const logos = [];
-  if (!hideSponsors) {
-    for (const it of placed.items) {
-      if (it.el.type !== 'groundLogo') {
-        continue;
-      }
-      const mark = logoForDecal(doc, it.el);
-      if (!mark || typeof mark.image !== 'string' || !mark.image.startsWith('data:image/')) {
-        continue;
-      }
-      logos.push(groundLogo(it, mark.image));
-      painted.logos += 1;
+  for (const it of placed.items) {
+    if (it.el.type !== 'groundLogo') {
+      continue;
     }
-    for (const l of logos) {
-      group.add(l.mesh);
+    const mark = logoForDecal(doc, it.el);
+    if (!mark || typeof mark.image !== 'string' || !mark.image.startsWith('data:image/')) {
+      continue;
     }
+    logos.push(groundLogo(it, mark.image));
+    painted.logos += 1;
+  }
+  for (const l of logos) {
+    group.add(l.mesh);
   }
   return {
     group,
@@ -1881,13 +1879,10 @@ export async function buildMap(shell, onProgress, options) {
    * flies with no mark on it, and the console says why, rather than not
    * flying at all. */
   let stfSpot = null;
-  /* Skip STF mark under clean=1: treat third-party brand art as sponsor art */
-  if (!opts.hideSponsors) {
-    try {
-      stfSpot = chooseStfSpot(placed, doc, chosen.source);
-    } catch (e) {
-      console.error('stf: no spot for the mark on this map', e);
-    }
+  try {
+    stfSpot = chooseStfSpot(placed, doc, chosen.source);
+  } catch (e) {
+    console.error('stf: no spot for the mark on this map', e);
   }
   /* Its time of day and its ground (./looks.js): golden over concrete for
    * a map that never chose, which is this map as it always was. */
@@ -1968,7 +1963,7 @@ export async function buildMap(shell, onProgress, options) {
   await yieldToPaint();
 
   /* The ground and its paint. */
-  const ground = buildGround(placed, doc, look, opts.hideSponsors);
+  const ground = buildGround(placed, doc, look);
   scene.add(ground.group);
   progress(0.2);
   await yieldToPaint();

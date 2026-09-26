@@ -1,116 +1,184 @@
 /*
- * replay-test.js: headless browser tests for replay mode
+ * replay-test.js: headless browser checks for replay mode.
  *
- * This file is part of WebFPVSimulator - GPLv3
+ * ?map=custom&share=<track>&replay=<time>&cam=chase|fpv&clean=1 plays a
+ * board ghost with no pilot, for recording clips. Every check here drives
+ * the real page in Chromium with the board answered inside the page (see
+ * boardSeed), and reads what a viewer would get: screenshots counted pixel
+ * by pixel, beside the shell's own readbacks. Each clean=1 claim has a
+ * clean=0 control beside it, because a check that cannot fail is not one.
+ *
+ * Run: npm run replay:test. A few minutes in a software rasteriser.
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { PNG } from 'pngjs';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { courseFromDocument } from '../src/game/trackdoc.js';
+import { encodeGhost, ghostToBase64 } from '../src/share/ghostdata.js';
+import { ELEMENTS } from '../src/trackbuilder/elements.js';
 import { openPage } from './lib/page.js';
+import { decodePng, encodePng } from './lib/png.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const ROOT = join(__dirname, '..');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const BOARD = 'http://127.0.0.1:3100';
+/* Small, because every frame is rasterised on the CPU. The thinnest clean=0
+ * margin is the whoop room from the FPV camera, whose best frame measured
+ * 2630 to 2906 magenta pixels at this size across runs: the flags wave on
+ * the wall clock, so a lap is not pixel identical twice. */
+const SHOT = { width: 640, height: 360 };
+const STEP_MS = 500;
+/* One drawn frame after whatever just changed, so a read or a screenshot
+ * sees it. Two callbacks, because the first can run before the shell's. */
+const NEXT_FRAME = 'new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))';
 
-const fixtureGhost = JSON.parse(
-  readFileSync(new URL('./fixtures/ghost-tm-aae280e5.json', import.meta.url), 'utf-8')
-);
-
-const fixtureTrackPayload = {
+/* A one gate course and a ghost the board once served, for the checks that
+ * need a replay running but do not look at it. */
+const PLAIN = {
+  schemaVersion: 1,
   id: 'trk-test0001',
   name: 'Test Track',
-  author: 'test',
-  board: 'http://127.0.0.1:3100',
-  document: {
-    schemaVersion: 1,
-    id: 'trk-test0001',
-    name: 'Test Track',
-    trackClass: 'full',
-    createdUtc: '2026-01-01T00:00:00Z',
-    modifiedUtc: '2026-01-01T00:00:00Z',
-    field: { width: 50, depth: 50, gridSize: 1 },
-    settings: { tangentScale: 0.74, minCurveRadius: 2.5, samplesPerSegment: 48 },
-    branding: { logo: null, logoName: '' },
-    elements: [
-      {
-        id: 'el-1',
-        type: 'gate',
-        name: '0',
-        position: { x: 10, y: 10, z: 0 },
-        yaw: 0,
-        pitch: 0,
-        yawOverridden: false,
-        dims: { levels: 1, sillH: 0, clearW: 1.524, clearH: 1.524, levelPitch: 1.557401 }
-      },
-      {
-        id: 'el-2',
-        type: 'startPads',
-        name: 'Grid',
-        position: { x: 5, y: 5, z: 0 },
-        yaw: 0,
-        pitch: 0,
-        yawOverridden: false,
-        dims: { pads: 2, spacing: 1.5, padSize: 0.6 }
-      }
-    ],
-    sequence: [
-      { id: 'sq-1', elementId: 'el-1', apertureIndex: 0, entry: -1, passSide: null, clearance: null, overridden: false }
-    ]
-  }
+  trackClass: 'full',
+  createdUtc: '2026-01-01T00:00:00Z',
+  modifiedUtc: '2026-01-01T00:00:00Z',
+  field: { width: 50, depth: 50, gridSize: 1 },
+  settings: { tangentScale: 0.74, minCurveRadius: 2.5, samplesPerSegment: 48 },
+  branding: { logo: null, logoName: '' },
+  elements: [
+    {
+      id: 'el-1', type: 'gate', name: '0', position: { x: 10, y: 10, z: 0 }, yaw: 0, pitch: 0,
+      yawOverridden: false, dims: { levels: 1, sillH: 0, clearW: 1.524, clearH: 1.524, levelPitch: 1.557401 },
+    },
+    {
+      id: 'el-2', type: 'startPads', name: 'Grid', position: { x: 5, y: 5, z: 0 }, yaw: 0, pitch: 0,
+      yawOverridden: false, dims: { pads: 2, spacing: 1.5, padSize: 0.6 },
+    },
+  ],
+  sequence: [
+    { id: 'sq-1', elementId: 'el-1', apertureIndex: 0, entry: -1, passSide: null, clearance: null, overridden: false },
+  ],
 };
+const AJAX = JSON.parse(readFileSync(new URL('./fixtures/ghost-tm-aae280e5.json', import.meta.url), 'utf8'));
 
-/* Helper: count magenta pixels (R>200, G<100, B>200) in a PNG buffer */
-function countMagenta(pngBuffer) {
-  const png = PNG.sync.read(pngBuffer);
-  let count = 0;
-  for (let y = 0; y < png.height; y++) {
-    for (let x = 0; x < png.width; x++) {
-      const idx = (png.width * y + x) << 2;
-      const r = png.data[idx];
-      const g = png.data[idx + 1];
-      const b = png.data[idx + 2];
-      if (r > 200 && g < 100 && b > 200) {
-        count++;
+/*
+ * The board, answered inside the page as a seed script: the track's
+ * document, its times and its ghosts, and a 404 for anything else. Every
+ * POST and beacon the page sends to the board is kept in window.__sent with
+ * its body, so a check can say exactly what left the page.
+ */
+function boardSeed({ id, document = null, ghosts = [] }) {
+  const track = document && { id, name: document.name, author: 'replay-test', document };
+  const listing = { id, times: ghosts.map((g) => ({ id: g.id, name: g.name, lapMs: g.lapMs, hasGhost: true })) };
+  return `(() => {
+    const board = ${JSON.stringify(BOARD)};
+    const base = '/api/tracks/' + ${JSON.stringify(id)};
+    const track = ${JSON.stringify(track)};
+    const listing = ${JSON.stringify(listing)};
+    const ghosts = ${JSON.stringify(ghosts)};
+    const sent = [];
+    window.__sent = sent;
+    const answer = (body, status = 200) => Promise.resolve(new Response(JSON.stringify(body), {
+      status, headers: { 'content-type': 'application/json' },
+    }));
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (input, opts = {}) => {
+      const url = String(input && input.url ? input.url : input);
+      if (!url.startsWith(board)) {
+        return realFetch(input, opts);
       }
-    }
-  }
-  return count;
+      const path = url.slice(board.length);
+      if (String(opts.method || 'GET').toUpperCase() !== 'GET') {
+        sent.push({ path, body: String(opts.body || '') });
+        return answer({});
+      }
+      if (track && path === base + '/document') {
+        return answer(track);
+      }
+      if (track && path === base) {
+        return answer(listing);
+      }
+      const ghost = ghosts.find((g) => path === base + '/times/' + g.id + '/ghost');
+      return ghost ? answer(ghost) : answer({ error: 'not found' }, 404);
+    };
+    /* sendEvent hands a beacon a Blob, so the body is read, not stringified. */
+    navigator.sendBeacon = (url, data) => {
+      const entry = { path: String(url).replace(board, ''), body: '' };
+      sent.push(entry);
+      Promise.resolve(data && data.text ? data.text() : String(data)).then((t) => { entry.body = t; });
+      return true;
+    };
+  })();`;
 }
 
-/* Unit test: verify pixel counter works on a known 8x8 magenta PNG */
-async function testPixelCounter() {
-  /* Create an 8x8 magenta PNG */
-  const png = new PNG({ width: 8, height: 8 });
-  for (let y = 0; y < 8; y++) {
-    for (let x = 0; x < 8; x++) {
-      const idx = (8 * y + x) << 2;
-      png.data[idx] = 255;     // R
-      png.data[idx + 1] = 0;   // G
-      png.data[idx + 2] = 255; // B
-      png.data[idx + 3] = 255; // A
+function replayUrl({ id, time, cam = 'chase', clean = false }) {
+  return `/index.html?map=custom&share=${id}&board=${BOARD}&replay=${time}&cam=${cam}${clean ? '&clean=1' : ''}`;
+}
+
+/* Every wait is on a condition. A sleep and a single read is a race. */
+async function untilFlying(page) {
+  await page.until('window.__shellReady === true', 120000);
+  await page.until('window.__replayInfo().state === "ready" && window.__replayInfo().ghostLoaded', 30000);
+  await page.until('window.__mode === "flight"', 10000);
+}
+
+/*
+ * Magenta as this renderer draws it. The logo is pure 255, 0, 255; lit and
+ * tone mapped it comes back near 176, 20, 150 in sun and 112, 20, 120 in
+ * shade, measured on this file's own frames, so the test is the colour's
+ * shape and not its brightness: red and blue both up, green at most half
+ * of either, red and blue within a third of each other. Nothing else on
+ * either course has that shape, which is what the clean=1 runs measure.
+ */
+const MAGENTA = [255, 0, 255];
+function magentaIn(png) {
+  const img = decodePng(png);
+  let n = 0;
+  for (let i = 0; i < img.data.length; i += img.channels) {
+    const r = img.data[i];
+    const g = img.data[i + 1];
+    const b = img.data[i + 2];
+    if (r >= 96 && b >= 96 && g * 2 <= Math.min(r, b) && Math.abs(r - b) * 3 <= Math.max(r, b)) {
+      n += 1;
     }
   }
-  const buffer = PNG.sync.write(png);
-  const count = countMagenta(buffer);
-  if (count !== 64) {
-    throw new Error(`Pixel counter unit test failed: expected 64 magenta pixels in 8x8 PNG, got ${count}`);
+  return n;
+}
+
+async function testMagentaCounter() {
+  const half = magentaIn(encodePng(8, 8, (x, y) => (y < 4 ? MAGENTA : [40, 160, 60])));
+  if (half !== 32) {
+    throw new Error(`expected 32 magenta pixels in a half magenta 8 by 8 PNG, got ${half}`);
   }
-  console.log(' ok   pixel counter unit test: 8x8 magenta PNG = 64 pixels');
+  const shade = magentaIn(encodePng(4, 1, (x) => [[112, 20, 120], [176, 20, 150], [255, 90, 90], [57, 255, 139]][x]));
+  if (shade !== 2) {
+    throw new Error(`expected shaded and sunlit magenta to count and the gate red and glow green not to, got ${shade}`);
+  }
+  console.log(' ok   magenta counter: 32 of a half magenta 8 by 8 PNG; lit magenta counts, gate red and glow green do not');
 }
 
 async function testNormalBoot() {
   const page = await openPage({ root: ROOT });
   try {
     await page.until('window.__shellReady === true', 120000);
-    
-    const info = await page.evaluate('JSON.stringify(window.__replayInfo())');
-    const parsed = JSON.parse(info);
-    if (parsed.active !== false) {
-      throw new Error(`Normal boot should have replay inactive, got active=${parsed.active}`);
+    const info = await page.evaluate('window.__replayInfo()');
+    if (info.active !== false) {
+      throw new Error(`normal boot should have replay inactive, got active=${info.active}`);
     }
-    
     console.log(' ok   normal boot reaches __shellReady with replay inactive');
   } finally {
     await page.close();
@@ -120,457 +188,319 @@ async function testNormalBoot() {
 async function testReplaySuccess() {
   const page = await openPage({
     root: ROOT,
-    url: '/index.html?map=custom&share=trk-test0001&board=http://127.0.0.1:3100&replay=tm-aae280e5&cam=fpv&clean=1',
-    seed: [
-      `(function() {
-        var origFetch = window.fetch;
-        var trackData = '${JSON.stringify(fixtureTrackPayload).replace(/'/g, "\\'")}';
-        var ghostData = '${JSON.stringify(fixtureGhost).replace(/'/g, "\\'")}';
-        window.fetch = function(url, opts) {
-          var urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
-          if (urlStr.includes('/api/tracks/trk-test0001/document')) {
-            return Promise.resolve(new Response(trackData, {
-              status: 200, headers: { 'content-type': 'application/json' }
-            }));
-          }
-          if (urlStr.includes('/api/tracks/trk-test0001/times/tm-aae280e5/ghost')) {
-            return Promise.resolve(new Response(ghostData, {
-              status: 200, headers: { 'content-type': 'application/json' }
-            }));
-          }
-          if (urlStr.includes('/api/tracks/trk-test0001') && !urlStr.includes('/document') && !urlStr.includes('/times/')) {
-            return Promise.resolve(new Response(JSON.stringify({
-              id: 'trk-test0001',
-              times: [{ id: 'tm-aae280e5', name: 'test', lapMs: 5000, hasGhost: true }]
-            }), {
-              status: 200, headers: { 'content-type': 'application/json' }
-            }));
-          }
-          return origFetch.call(this, url, opts);
-        };
-      })();`
-    ],
+    url: replayUrl({ id: PLAIN.id, time: AJAX.id, cam: 'fpv', clean: true }),
+    seed: [boardSeed({ id: PLAIN.id, document: PLAIN, ghosts: [AJAX] })],
   });
   try {
-    await page.until('window.__shellReady === true', 120000);
-    await page.until('window.__replayInfo && window.__replayInfo().state === "ready" && window.__replayInfo().ghostLoaded', 30000);
-    
-    await page.until('window.__mode === "flight"', 10000);
-    
-    const uiHidden = await page.evaluate('document.getElementById("ui") && document.getElementById("ui").style.display === "none"');
-    if (!uiHidden) {
+    await untilFlying(page);
+    if (await page.evaluate('getComputedStyle(document.getElementById("ui")).display') !== 'none') {
       throw new Error('UI should be hidden with clean=1');
     }
-    
-    await page.sleep(200);
-    
-    const result1 = await page.evaluate(`(function() {
+    const at1000 = `(async () => {
       window.__replayStep(0);
       window.__replayStep(1000);
-      return new Promise(function(r) {
-        requestAnimationFrame(function() {
-          var info = window.__replayInfo();
-          if (!info.cameraPosition) throw new Error('Camera position not available');
-          r(JSON.stringify({ vt: info.clock.vt, x: info.cameraPosition.x, y: info.cameraPosition.y, z: info.cameraPosition.z }));
-        });
-      });
-    })()`);
-    
-    const result2 = await page.evaluate(`(function() {
-      window.__replayStep(0);
-      window.__replayStep(1000);
-      return new Promise(function(r) {
-        requestAnimationFrame(function() {
-          var info = window.__replayInfo();
-          r(JSON.stringify({ vt: info.clock.vt, x: info.cameraPosition.x, y: info.cameraPosition.y, z: info.cameraPosition.z }));
-        });
-      });
-    })()`);
-    
-    const r1 = JSON.parse(result1);
-    const r2 = JSON.parse(result2);
-    
+      await ${NEXT_FRAME};
+      const info = window.__replayInfo();
+      return { vt: info.clock.vt, ...info.cameraPosition };
+    })()`;
+    const r1 = await page.evaluate(at1000);
+    const r2 = await page.evaluate(at1000);
     if (r1.vt !== 1000 || r2.vt !== 1000) {
-      throw new Error(`Step should advance to 1000ms, got ${r1.vt} and ${r2.vt}`);
+      throw new Error(`step should advance to 1000 ms, got ${r1.vt} and ${r2.vt}`);
     }
-    
-    const dx = Math.abs(r1.x - r2.x);
-    const dy = Math.abs(r1.y - r2.y);
-    const dz = Math.abs(r1.z - r2.z);
-    if (dx > 0.001 || dy > 0.001 || dz > 0.001) {
-      throw new Error(`Camera not deterministic: delta ${dx.toFixed(4)}, ${dy.toFixed(4)}, ${dz.toFixed(4)}`);
+    if (![r1.x, r1.y, r1.z].every(Number.isFinite)) {
+      throw new Error(`camera position not finite: ${JSON.stringify(r1)}`);
     }
-    
-    if (!Number.isFinite(r1.x) || !Number.isFinite(r1.y) || !Number.isFinite(r1.z)) {
-      throw new Error(`Camera position not finite: ${JSON.stringify(r1)}`);
+    const d = Math.max(Math.abs(r1.x - r2.x), Math.abs(r1.y - r2.y), Math.abs(r1.z - r2.z));
+    if (d > 0.001) {
+      throw new Error(`camera not deterministic: ${d.toFixed(4)} m apart`);
     }
-    
-    const resetTest = await page.evaluate(`(function() {
+    const reset = await page.evaluate(`(() => {
       window.__replayStep(2000);
-      var before = window.__replayInfo().clock.vt;
+      const before = window.__replayInfo().clock.vt;
       window.__replayStep(0);
-      var after = window.__replayInfo().clock.vt;
-      return JSON.stringify({ before: before, after: after });
+      return { before, after: window.__replayInfo().clock.vt };
     })()`);
-    
-    const reset = JSON.parse(resetTest);
     if (reset.before !== 3000 || reset.after !== 0) {
-      throw new Error(`Step(0) should reset vt, got before=${reset.before}, after=${reset.after}`);
+      throw new Error(`step(0) should reset vt, got before=${reset.before}, after=${reset.after}`);
     }
-    
     console.log(' ok   replay starts in flight, UI hidden, stepping is deterministic, step(0) resets');
   } finally {
     await page.close();
   }
 }
 
-async function testMissingListing() {
+/*
+ * Every way a clean replay can fail to start must hand the page back: the
+ * UI, the cursor and a banner that says why.
+ */
+async function testFailuresRestore() {
+  const cases = [
+    {
+      name: 'no track listing',
+      id: 'trk-00000404',
+      seed: boardSeed({ id: 'trk-00000404' }),
+      time: 'tm-00000001',
+      banner: 'no track listing found',
+    },
+    {
+      name: 'ghost fetch fails',
+      id: PLAIN.id,
+      seed: boardSeed({ id: PLAIN.id, document: PLAIN }),
+      time: 'tm-00000002',
+      banner: 'Could not fetch that ghost',
+    },
+    {
+      name: 'course has no lap',
+      id: 'trk-f0000001',
+      seed: boardSeed({ id: 'trk-f0000001', document: { ...PLAIN, id: 'trk-f0000001', sequence: [] }, ghosts: [AJAX] }),
+      time: AJAX.id,
+      banner: 'no lap for a ghost to fly',
+    },
+  ];
+  for (const c of cases) {
+    const page = await openPage({ root: ROOT, url: replayUrl({ id: c.id, time: c.time, clean: true }), seed: [c.seed] });
+    try {
+      await page.until('window.__shellReady === true', 120000);
+      await page.until('window.__replayInfo().state === "failed"', 30000);
+      await page.until(`document.getElementById("ui").textContent.includes(${JSON.stringify(c.banner)})`, 10000);
+      const s = await page.evaluate(`({
+        active: window.__replayInfo().active,
+        ui: getComputedStyle(document.getElementById("ui")).display,
+        cursor: getComputedStyle(document.getElementById("view")).cursor,
+        mode: window.__mode,
+      })`);
+      if (s.active !== false || s.ui === 'none' || s.cursor === 'none' || s.mode !== 'title') {
+        throw new Error(`${c.name}: expected replay off, UI and cursor back, title screen; got ${JSON.stringify(s)}`);
+      }
+    } finally {
+      await page.close();
+    }
+  }
+  console.log(` ok   clean=1 failures restore #ui, cursor and a banner: ${cases.map((c) => c.name).join(', ')}`);
+}
+
+/*
+ * THE SPONSOR CHECK.
+ *
+ * Two courses dressed in three logos, all solid magenta: the full sized
+ * one with its gates (headers, sleeves), flags and three ground logos on
+ * the turf, and the whoop room with three flags. Each is replayed with a
+ * ghost that flies its own racing line, from both cameras, with clean=0
+ * and clean=1, and a screenshot is counted at every step across the lap.
+ */
+const LOGO = `data:image/png;base64,${encodePng(256, 128, () => MAGENTA).toString('base64')}`;
+const LOGOS = ['a', 'b', 'c'].map((k) => ({ id: `logo-${k}`, name: `Magenta ${k}`, image: LOGO }));
+
+function sponsored(file, extra) {
+  const raw = JSON.parse(readFileSync(join(ROOT, file), 'utf8'));
+  const doc = structuredClone(raw.document || raw);
+  doc.branding = { logos: LOGOS };
+  doc.elements.push(...extra(doc));
+  return doc;
+}
+
+/*
+ * A lap along the course's own racing line, so the camera passes every
+ * gate, flag and decal on it. Nose down by the default 30 degree camera
+ * tilt, the way a quad at racing speed flies, so the FPV view is level.
+ */
+function lapAlongLine(course, speed) {
+  const pts = course.line;
+  const along = [0];
+  for (let i = 1; i < pts.length; i += 1) {
+    along.push(along[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y, pts[i].z - pts[i - 1].z));
+  }
+  const length = along[along.length - 1];
+  const durationMs = Math.round((length / speed) * 1000);
+  const rateHz = 30;
+  const count = Math.floor((durationMs * rateHz) / 1000) + 1;
+  const pos = new Float32Array(count * 3);
+  const quat = new Float32Array(count * 4);
+  /* Half angles of the 30 degree nose down pitch, for the quaternion. */
+  const sp = Math.sin(-Math.PI / 12);
+  const cp = Math.cos(-Math.PI / 12);
+  let seg = 0;
+  for (let i = 0; i < count; i += 1) {
+    const s = Math.min(length, (i / rateHz) * speed);
+    while (seg < pts.length - 2 && along[seg + 1] < s) {
+      seg += 1;
+    }
+    const a = pts[seg];
+    const b = pts[seg + 1];
+    const f = (s - along[seg]) / Math.max(1e-9, along[seg + 1] - along[seg]);
+    pos.set([a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, a.z + (b.z - a.z) * f], i * 3);
+    /* Yaw so the craft's -Z runs along the segment, then pitch about its X. */
+    const yaw = Math.atan2(-(b.x - a.x), -(b.z - a.z));
+    const sy = Math.sin(yaw / 2);
+    const cy = Math.cos(yaw / 2);
+    quat.set([cy * sp, sy * cp, -sy * sp, cy * cp], i * 4);
+  }
+  return { rateHz, durationMs, splits: [durationMs], count, pos, quat };
+}
+
+function sponsoredTrack({ name, id, time, file, speed, extra }) {
+  const document = sponsored(file, extra);
+  const lap = lapAlongLine(courseFromDocument(document), speed);
+  const ghost = { id: time, name: 'Magenta', lapMs: lap.durationMs, ghost: ghostToBase64(encodeGhost(lap)) };
+  return { name, id, time, seed: boardSeed({ id, document: { ...document, id }, ghosts: [ghost] }) };
+}
+
+const SPONSORED = [
+  sponsoredTrack({
+    name: 'full',
+    id: 'trk-5b0a5a01',
+    time: 'tm-0000f011',
+    file: 'tracks/json/trk-b17c07d2.json',
+    speed: 17,
+    extra: (doc) => doc.elements.filter((el) => el.type === 'gate').slice(0, 3).map((gate, i) => ({
+      id: `el-logo-${i}`, type: 'groundLogo', name: '', logoId: LOGOS[i].id, position: { ...gate.position },
+      yaw: gate.yaw, pitch: 0, yawOverridden: true, dims: { width: 6, depth: 3 },
+    })),
+  }),
+  sponsoredTrack({
+    name: 'whoop room',
+    id: 'trk-5b0a5a02',
+    time: 'tm-0000f012',
+    file: 'tracks/json/micro-livingroom-1.json',
+    speed: 4,
+    extra: () => [[4.3, 5.4], [5.7, 5.4], [5, 7.2]].map(([x, y], i) => ({
+      id: `el-flag-${i}`, type: 'flag', name: '', position: { x, y, z: 0 }, yaw: 0, pitch: 0,
+      yawOverridden: false, dims: { ...ELEMENTS.flag.microDims },
+    })),
+  }),
+];
+
+/* What a viewer gets besides the picture, read off the page once a frame. */
+const FRAME_STATE = `(() => {
+  const view = document.getElementById('view');
+  const under = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+  const tiers = window.__gateTiers();
+  return {
+    buffer: view.width + ' by ' + view.height,
+    ui: getComputedStyle(document.getElementById('ui')).display,
+    cursor: under === view ? getComputedStyle(view).cursor : 'covered by ' + (under ? under.tagName : 'nothing'),
+    lit: tiers.aim.active || tiers.gates.some((g) => g.tier !== 'dark' || g.glowOn || g.haloOn || g.cueOn),
+  };
+})()`;
+
+/* Replay one lap, a screenshot and a state read at every step. */
+async function captureLap(track, cam, clean) {
   const page = await openPage({
-    root: ROOT,
-    url: '/index.html?map=custom&share=trk-notfound&replay=tm-00000001',
-    seed: [
-      `(function() {
-        var origFetch = window.fetch;
-        window.fetch = function(url, opts) {
-          var urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
-          if (urlStr.includes('/api/tracks/')) {
-            return Promise.resolve(new Response(JSON.stringify({ error: 'Not found' }), {
-              status: 404, headers: { 'content-type': 'application/json' }
-            }));
-          }
-          return origFetch.call(this, url, opts);
-        };
-      })();`
-    ],
+    root: ROOT, url: replayUrl({ id: track.id, time: track.time, cam, clean }), seed: [track.seed], ...SHOT,
   });
   try {
-    await page.until('window.__shellReady === true', 120000);
-    await page.sleep(2000);
-    
-    const info = await page.evaluate('JSON.stringify(window.__replayInfo())');
-    const parsed = JSON.parse(info);
-    if (parsed.state !== 'failed') {
-      throw new Error(`Missing listing should result in state 'failed', got ${parsed.state}`);
+    await untilFlying(page);
+    if (!clean) {
+      /* The marks decode after the world is up. Wait for them, or clean=0
+       * could pass for the wrong reason. */
+      await page.until('window.__map().sponsorsPainted > 0', 10000);
     }
-    
-    if (parsed.active !== false) {
-      throw new Error(`replayMode should be false after failure, got ${parsed.active}`);
+    const frames = [];
+    let relit = null;
+    const { durationMs } = await page.evaluate('window.__replayStep(0)');
+    for (let vt = 0; ;) {
+      await page.evaluate(NEXT_FRAME);
+      const shot = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+      frames.push({ vt, magenta: magentaIn(Buffer.from(shot.data, 'base64')), ...(await page.evaluate(FRAME_STATE)) });
+      if (clean && relit == null && vt >= durationMs / 2) {
+        /* Light a gate the way a reset would, halfway round. The next
+         * frame must be dark again. */
+        relit = await page.evaluate('(() => { window.__setRaceNext(1); return window.__gateTiers().aim.active; })()');
+      }
+      if (vt >= durationMs) {
+        break;
+      }
+      ({ vt } = await page.evaluate(`window.__replayStep(${STEP_MS})`));
     }
-    
-    const canFly = await page.evaluate('window.__mode !== undefined && typeof window.__race === "function"');
-    if (!canFly) {
-      throw new Error('Physics should work after failure');
-    }
-    
-    console.log(' ok   missing listing sets state=failed, replayMode=false, physics works');
+    return { frames, relit, painted: await page.evaluate('window.__map().sponsorsPainted') };
   } finally {
     await page.close();
   }
 }
 
-async function testFailureRestoresUI() {
-  const page = await openPage({
-    root: ROOT,
-    url: '/index.html?map=custom&share=trk-test0002&replay=tm-00000002&clean=1',
-    seed: [
-      `(function() {
-        var origFetch = window.fetch;
-        var trackData = '${JSON.stringify({...fixtureTrackPayload, id: 'trk-test0002', document: {...fixtureTrackPayload.document, id: 'trk-test0002'}}).replace(/'/g, "\\'")}';
-        window.fetch = function(url, opts) {
-          var urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
-          if (urlStr.includes('/api/tracks/trk-test0002/document')) {
-            return Promise.resolve(new Response(trackData, {
-              status: 200, headers: { 'content-type': 'application/json' }
-            }));
-          }
-          if (urlStr.includes('/api/tracks/trk-test0002') && !urlStr.includes('/document') && !urlStr.includes('/times/')) {
-            return Promise.resolve(new Response(JSON.stringify({
-              id: 'trk-test0002',
-              times: [{ id: 'tm-00000002', name: 'test', lapMs: 5000, hasGhost: true }]
-            }), {
-              status: 200, headers: { 'content-type': 'application/json' }
-            }));
-          }
-          if (urlStr.includes('/ghost')) {
-            return Promise.resolve(new Response(JSON.stringify({ error: 'Not found' }), {
-              status: 404, headers: { 'content-type': 'application/json' }
-            }));
-          }
-          return origFetch.call(this, url, opts);
-        };
-      })();`
-    ],
-  });
-  try {
-    await page.until('window.__shellReady === true', 120000);
-    await page.until('window.__replayInfo && window.__replayInfo().state === "failed"', 10000);
-    
-    const uiVisible = await page.evaluate('(function() { var ui = document.getElementById("ui"); return ui && ui.style.display !== "none"; })()');
-    if (!uiVisible) {
-      throw new Error('UI should be restored (visible) after failure with clean=1');
+async function testSponsorsHidden() {
+  for (const track of SPONSORED) {
+    for (const cam of ['chase', 'fpv']) {
+      const label = `${track.name} ${cam}`;
+      const shown = await captureLap(track, cam, false);
+      const most = Math.max(...shown.frames.map((f) => f.magenta));
+      /* The controls: what clean=1 must take away is on screen without it. */
+      if (most < 1000) {
+        throw new Error(`${label} clean=0: most magenta in one frame is ${most}, under 1000, so this lap cannot see the logos`);
+      }
+      if (!(shown.painted > 0)) {
+        throw new Error(`${label} clean=0: sponsorsPainted is ${shown.painted}`);
+      }
+      if (!shown.frames.some((f) => f.lit) || shown.frames.some((f) => f.ui === 'none' || f.cursor === 'none')) {
+        throw new Error(`${label} clean=0: expected a lit gate, the UI and a cursor; ${JSON.stringify(shown.frames[0])}`);
+      }
+
+      /* Every clean=1 check is reported, not just the first to fail, so a
+       * regression says which of them saw it. */
+      const clean = await captureLap(track, cam, true);
+      const { frames } = clean;
+      const buffer = frames[0].buffer;
+      const count = (bad) => frames.filter(bad).length;
+      const problems = [
+        [count((f) => f.magenta > 0), `frames with magenta, ${Math.max(...frames.map((f) => f.magenta))} px at most`],
+        [clean.painted, 'sponsor marks painted'],
+        [clean.relit === true ? 0 : 1, 'gate that could not be lit to test the glow'],
+        [count((f) => f.lit), 'frames with a lit gate'],
+        [count((f) => f.cursor !== 'none'), `frames with a cursor (${frames.map((f) => f.cursor).find((c) => c !== 'none')})`],
+        [count((f) => f.ui !== 'none'), 'frames with #ui shown'],
+        [count((f) => f.buffer !== buffer), `frames not at ${buffer}`],
+        [Math.abs(frames.length - shown.frames.length), 'frames more or fewer than clean=0'],
+      ].filter(([n]) => n !== 0).map(([n, what]) => `${n} ${what}`);
+      if (problems.length) {
+        throw new Error(`${label} clean=1 over ${frames.length} frames: ${problems.join('; ')}`);
+      }
+      console.log(`  [ok] ${label.padEnd(16)} clean=0: most ${String(most).padStart(6)} magenta px in a frame, `
+        + `${shown.painted} marks painted | clean=1: 0 px in all ${clean.frames.length} frames, 0 painted, `
+        + `glow dark (relit halfway), cursor none, #ui none, ${buffer} buffer held`);
     }
-    
-    const hasNotice = await page.evaluate('(function() { var text = document.body.textContent || ""; return text.includes("failed") || text.includes("fetch") || text.includes("ghost"); })()');
-    if (!hasNotice) {
-      throw new Error('Failure banner should be visible after error');
-    }
-    
-    console.log(' ok   clean=1 failure restores #ui and shows visible banner');
-  } finally {
-    await page.close();
   }
+  console.log(' ok   clean=1 hides every sponsor mark (gates, banners, flags, turf, whoop room), the glow and the cursor');
 }
 
-async function testSponsorContentHidden() {
-  /* Test STF logo hiding on built-in "built" freestyle map with clean=1.
-   * Intercept STF canvas texture via data URL and verify pixel-level hiding. */
-  
-  /* Create a 512x256 magenta PNG buffer for texture interception */
-  const magentaPng = (() => {
-    const png = new PNG({ width: 512, height: 256 });
-    for (let y = 0; y < 256; y++) {
-      for (let x = 0; x < 512; x++) {
-        const idx = (512 * y + x) << 2;
-        png.data[idx] = 255;     // R
-        png.data[idx + 1] = 0;   // G
-        png.data[idx + 2] = 255; // B
-        png.data[idx + 3] = 255; // A
-      }
-    }
-    return PNG.sync.write(png);
-  })();
-  const magentaDataUrl = 'data:image/png;base64,' + magentaPng.toString('base64');
-  
-  /* Inject script to replace STF canvas with magenta */
-  const magentaStfSetup = `(function() {
-    /* Override stfCanvas to return magenta canvas */
-    const origImage = Image;
-    window.Image = function() {
-      const img = new origImage();
-      const origSrcSet = Object.getOwnPropertyDescriptor(origImage.prototype, 'src').set;
-      Object.defineProperty(img, 'src', {
-        set: function(val) {
-          /* Intercept any art/* requests and replace with magenta */
-          if (val && val.includes('art/')) {
-            origSrcSet.call(this, '${magentaDataUrl}');
-          } else {
-            origSrcSet.call(this, val);
-          }
-        },
-        get: function() {
-          return this._src || '';
-        }
-      });
-      return img;
-    };
-    window.Image.prototype = origImage.prototype;
-  })();`;
-  
-  /* Log unmasked GPU renderer once */
-  const testPage = await openPage({
-    root: ROOT,
-    url: `/index.html?map=built`,
-    seed: [magentaStfSetup],
-    width: 1080,
-    height: 1920
-  });
-  
-  try {
-    await testPage.until('window.__shellReady === true', 120000);
-    const renderer = await testPage.evaluate(`(() => {
-      const canvas = document.getElementById('view');
-      const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
-      if (!gl) return 'no WebGL context';
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      if (ext) {
-        return gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
-      }
-      return gl.getParameter(gl.RENDERER);
-    })()`);
-    console.log(`  [renderer] ${renderer}`);
-  } finally {
-    await testPage.close();
-  }
-  
-  /* Control: clean=0, STF should be visible with magenta texture */
-  const clean0Page = await openPage({
-    root: ROOT,
-    url: `/index.html?map=built`,
-    seed: [magentaStfSetup],
-    width: 1080,
-    height: 1920
-  });
-  
-  try {
-    await clean0Page.until('window.__shellReady === true', 120000);
-    await clean0Page.sleep(3000);
-    
-    /* Count visible sponsor meshes */
-    const meshCount = await clean0Page.evaluate(`(() => {
-      const scene = window.__mapScene && window.__mapScene();
-      if (!scene) return 0;
-      let count = 0;
-      scene.traverse((obj) => {
-        if (obj.visible && obj.material && obj.material.map) {
-          /* Check if material name or object name suggests sponsor content */
-          if (obj.name && obj.name.toLowerCase().includes('stf')) {
-            count++;
-          }
-        }
-      });
-      return count;
-    })()`);
-    
-    /* Take screenshot and count magenta pixels */
-    const shot = await clean0Page.cdp.send('Page.captureScreenshot', { format: 'png' }, clean0Page.sessionId);
-    const pngBuffer = Buffer.from(shot.data, 'base64');
-    const magentaCount = countMagenta(pngBuffer);
-    
-    console.log(`  [clean=0] meshCount=${meshCount}, magentaPixels=${magentaCount}`);
-    
-    if (meshCount === 0) {
-      console.log('  [skip] No STF meshes found, cannot verify pixel-level hiding');
-    }
-    
-    /* Note: magenta interception may not work if STF is canvas-generated.
-     * We'll verify via mesh count as primary signal. */
-  } finally {
-    await clean0Page.close();
-  }
-  
-  /* Test: clean=1, STF should be hidden */
-  const clean1Page = await openPage({
-    root: ROOT,
-    url: `/index.html?map=built&clean=1`,
-    seed: [magentaStfSetup],
-    width: 1080,
-    height: 1920
-  });
-  
-  try {
-    await clean1Page.until('window.__shellReady === true', 120000);
-    await clean1Page.sleep(3000);
-    
-    /* Count visible sponsor meshes */
-    const meshCount = await clean1Page.evaluate(`(() => {
-      const scene = window.__mapScene && window.__mapScene();
-      if (!scene) return 0;
-      let count = 0;
-      scene.traverse((obj) => {
-        if (obj.visible && obj.material && obj.material.map) {
-          if (obj.name && obj.name.toLowerCase().includes('stf')) {
-            count++;
-          }
-        }
-      });
-      return count;
-    })()`);
-    
-    /* Take screenshot and count magenta pixels */
-    const shot = await clean1Page.cdp.send('Page.captureScreenshot', { format: 'png' }, clean1Page.sessionId);
-    const pngBuffer = Buffer.from(shot.data, 'base64');
-    const magentaCount = countMagenta(pngBuffer);
-    
-    console.log(`  [clean=1] meshCount=${meshCount}, magentaPixels=${magentaCount}`);
-    
-    if (meshCount !== 0) {
-      throw new Error(`Test clean=1: expected 0 sponsor meshes, got ${meshCount}`);
-    }
-    
-    if (magentaCount !== 0) {
-      throw new Error(`Test clean=1: expected 0 magenta pixels, got ${magentaCount}`);
-    }
-  } finally {
-    await clean1Page.close();
-  }
-  
-  console.log(' ok   clean=1 hides all sponsor content (paint-level check, gates, banners, flags, turf, whoop room)');
-}
+/*
+ * A full replay posts nothing and counts nothing. The control first: the
+ * same page and stub without ?replay= does send its visit, so a stub that
+ * could not see one would fail here rather than pass below.
+ */
 async function testReplayGuards() {
-  const stubSetup = `(function() {
-    var origFetch = window.fetch;
-    var origSendBeacon = navigator.sendBeacon;
-    var trackData = ${JSON.stringify(JSON.stringify(fixtureTrackPayload))};
-    var ghostData = ${JSON.stringify(JSON.stringify(fixtureGhost))};
-    var postCalls = [];
-    var sendBeaconCalls = [];
-    window.fetch = function(url, opts) {
-      var urlStr = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
-      if (urlStr.includes('/api/tracks/') && urlStr.includes('/times') && opts && opts.method === 'POST') {
-        postCalls.push({ url: urlStr, time: Date.now() });
-        return Promise.resolve(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
-      }
-      if (urlStr.includes('/api/tracks/trk-test0001/document')) {
-        return Promise.resolve(new Response(trackData, { status: 200, headers: { 'content-type': 'application/json' } }));
-      }
-      if (urlStr.includes('/times/tm-aae280e5/ghost')) {
-        return Promise.resolve(new Response(ghostData, { status: 200, headers: { 'content-type': 'application/json' } }));
-      }
-      if (urlStr.includes('/api/tracks/trk-test0001') && !urlStr.includes('/document') && !urlStr.includes('/times/')) {
-        return Promise.resolve(new Response(JSON.stringify({
-          id: 'trk-test0001',
-          times: [{ id: 'tm-aae280e5', name: 'test', lapMs: 5000, hasGhost: true }]
-        }), { status: 200, headers: { 'content-type': 'application/json' } }));
-      }
-      if (urlStr.includes('127.0.0.1:3100')) {
-        return Promise.resolve(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
-      }
-      return origFetch.call(this, url, opts);
-    };
-    navigator.sendBeacon = function(url, data) {
-      sendBeaconCalls.push({ url: url, data: data, time: Date.now() });
-      return true;
-    };
-    window.__getPostCalls = function() { return postCalls; };
-    window.__getSendBeaconCalls = function() { return sendBeaconCalls; };
-  })();`;
-  
-  const page = await openPage({
-    root: ROOT,
-    url: '/index.html?map=custom&share=trk-test0001&board=http://127.0.0.1:3100&replay=tm-aae280e5&cam=fpv&clean=1',
-    seed: [stubSetup],
-  });
-  
+  const seed = boardSeed({ id: PLAIN.id, document: PLAIN, ghosts: [AJAX] });
+  const isVisit = (e) => e.path === '/api/stats/events' && e.body.includes('"kind":"visit"');
+  const control = await openPage({ root: ROOT, url: `/index.html?map=custom&share=${PLAIN.id}&board=${BOARD}`, seed: [seed] });
   try {
-    await page.until('window.__shellReady === true', 120000);
-    await page.until('window.__replayInfo && window.__replayInfo().state === "ready"', 30000);
-    
-    /* Step through entire lap */
-    for (let t = 0; t <= 5000; t += 500) {
-      await page.evaluate(`window.__replayStep(${t})`);
-      await page.sleep(100);
+    await control.until('window.__shellReady === true', 120000);
+    await control.until('window.__sent.some((e) => e.path === "/api/stats/events" && e.body.includes(\'"kind":"visit"\'))', 10000);
+  } finally {
+    await control.close();
+  }
+
+  const page = await openPage({ root: ROOT, url: replayUrl({ id: PLAIN.id, time: AJAX.id, cam: 'fpv', clean: true }), seed: [seed] });
+  try {
+    await untilFlying(page);
+    const { durationMs } = await page.evaluate('window.__replayStep(0)');
+    for (let vt = 0; vt < durationMs;) {
+      ({ vt } = await page.evaluate(`window.__replayStep(${STEP_MS})`));
+      await page.evaluate(NEXT_FRAME);
     }
-    
-    await page.sleep(1000);
-    
-    /* Check no laps were recorded */
-    const lapsLength = await page.evaluate('window.__race && window.__race().laps && window.__race().laps.length');
-    if (lapsLength !== 0) {
-      throw new Error(`Replay should not record laps, got ${lapsLength} laps`);
+    const laps = await page.evaluate('window.__race().laps.length');
+    if (laps !== 0) {
+      throw new Error(`replay should not record laps, got ${laps}`);
     }
-    
-    /* Check no POST to tracks times endpoint */
-    const postCalls = await page.evaluate('window.__getPostCalls()');
-    if (postCalls.length > 0) {
-      throw new Error(`Replay should not POST times, got ${postCalls.length} POST calls`);
+    const sent = await page.evaluate('window.__sent');
+    const times = sent.filter((e) => /^\/api\/tracks\/[^/]+\/times/.test(e.path));
+    if (times.length) {
+      throw new Error(`replay should not POST times, got ${JSON.stringify(times)}`);
     }
-    
-    /* Check no sendBeacon to stats/events with visit */
-    const beaconCalls = await page.evaluate('window.__getSendBeaconCalls()');
-    const visitBeacons = beaconCalls.filter(c => {
-      if (!c.url.includes('/api/stats/events')) return false;
-      try {
-        const data = JSON.parse(c.data);
-        return data.kind === 'visit' && data.surface === 'sim';
-      } catch (e) {
-        return false;
-      }
-    });
-    if (visitBeacons.length > 0) {
-      throw new Error(`Replay should not send visit beacon, got ${visitBeacons.length} visit beacons`);
+    if (sent.some(isVisit)) {
+      throw new Error('replay should not send a visit beacon');
     }
-    
-    console.log(' ok   replay guards prevent lap recording, time posting, and visit ping');
+    console.log(` ok   a full ${durationMs} ms replay records 0 laps, posts no time and sends no visit `
+      + `(${sent.length} sent to the board in all; the same page without ?replay= sends its visit)`);
   } finally {
     await page.close();
   }
@@ -578,67 +508,20 @@ async function testReplayGuards() {
 
 async function main() {
   console.log('replay-test: headless browser checks for replay mode\n');
-  
-  let pass = 0;
+  const tests = [
+    testMagentaCounter, testNormalBoot, testReplaySuccess, testFailuresRestore,
+    testSponsorsHidden, testReplayGuards,
+  ];
   let fail = 0;
-  
-  try {
-    await testPixelCounter();
-    pass++;
-  } catch (e) {
-    console.log(` FAIL pixel counter unit test: ${e.message}`);
-    fail++;
+  for (const test of tests) {
+    try {
+      await test();
+    } catch (e) {
+      console.log(` FAIL ${test.name}: ${e.message}`);
+      fail += 1;
+    }
   }
-  
-  try {
-    await testNormalBoot();
-    pass++;
-  } catch (e) {
-    console.log(` FAIL normal boot: ${e.message}`);
-    fail++;
-  }
-  
-  try {
-    await testReplaySuccess();
-    pass++;
-  } catch (e) {
-    console.log(` FAIL replay success: ${e.message}`);
-    fail++;
-  }
-  
-  try {
-    await testMissingListing();
-    pass++;
-  } catch (e) {
-    console.log(` FAIL missing listing: ${e.message}`);
-    fail++;
-  }
-  
-  try {
-    await testFailureRestoresUI();
-    pass++;
-  } catch (e) {
-    console.log(` FAIL failure restores UI: ${e.message}`);
-    fail++;
-  }
-  
-  try {
-    await testSponsorContentHidden();
-    pass++;
-  } catch (e) {
-    console.log(` FAIL sponsor content hidden: ${e.message}`);
-    fail++;
-  }
-  
-  try {
-    await testReplayGuards();
-    pass++;
-  } catch (e) {
-    console.log(` FAIL replay guards: ${e.message}`);
-    fail++;
-  }
-  
-  console.log(`\n${pass + fail} tests: ${pass} pass, ${fail} fail`);
+  console.log(`\n${tests.length} tests: ${tests.length - fail} pass, ${fail} fail`);
   process.exit(fail > 0 ? 1 : 0);
 }
 

@@ -50,6 +50,7 @@ import { applyPixelRatio, internalScale, normalizeGraphics, pixelRatioFor, quali
 import { createPace, PACE_COOL } from './render/pace.js';
 import { readGpuInfo } from './render/gpuinfo.js';
 import { makeAttractCamera } from './render/attract.js';
+import { MangaLayer } from './render/manga.js';
 import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE } from './render/frame.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
@@ -1654,6 +1655,81 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     counterBailAt = simTimeMs;
     score.setSkim(false, 0, 0);
+  }
+
+  /*
+   * THE MANGA LAYER'S PICTURE (Stage F, src/render/manga.js).
+   *
+   * Asked of the system once and then read as a live query, so a pilot who
+   * turns reduced motion on in the middle of a session gets it at once. A
+   * pilot who asked for less motion gets still speed lines and no impact
+   * frame: a flash is the one part of this layer that is a photosensitivity
+   * question and not only a style one.
+   */
+  const reduceMotionQuery = typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : null;
+  function reducedMotion() {
+    return Boolean(reduceMotionQuery && reduceMotionQuery.matches);
+  }
+  /* The impact frame answers to three switches: the manga layer (a
+   * freestyle map without Clean FPV), its own row in Settings, and the
+   * system's reduced motion. */
+  function impactFrameOn() {
+    return Boolean(ui.manga && ui.settings.impactFrame) && !reducedMotion();
+  }
+  /*
+   * The screentone is judged by flying it before it is kept (the plan,
+   * section 3.2 item 2). Off by default: see the Stage F entry in
+   * PROGRESS.md for the shimmer this found. `?tone=1` turns it on for a
+   * pilot who wants to fly it, at the High tier only.
+   */
+  let mangaToneWanted = false;
+  try {
+    mangaToneWanted = new URLSearchParams(window.location.search).get('tone') === '1';
+  } catch (e) {
+    /* No location: the default. */
+  }
+  /* A crash, from crashResetTick: start an impact frame holding the pose
+   * the pilot last saw, if the switches allow and none began under two
+   * seconds ago. */
+  function mangaCrash() {
+    if (!impactFrameOn()) {
+      return false;
+    }
+    return manga.impact(shell.camera);
+  }
+  /* Once a frame the world is drawn, just before the post chain: the speed
+   * lines from the craft's velocity turned into the camera's frame, the
+   * impact frame's clock, and the screentone's switch. A race track's chain
+   * has no manga edit and is left alone; a freestyle map's gets zeros when
+   * ui.manga is false. */
+  function mangaFrame(dt) {
+    const on = Boolean(ui.manga) && view.mode === 'freestyle';
+    const fpv = on && mode === 'flight' && introMs < 0 && !replayMode && Boolean(stateCurr);
+    let speed = 0;
+    if (fpv) {
+      /* The plant's velocity is already in the world frame: the axis
+       * permutation and the spawn's yaw are the whole conversion, as
+       * __craftState has it. */
+      simPosToThree(stateCurr[4], stateCurr[5], stateCurr[6], mangaVel);
+      mangaVel.applyQuaternion(qSpawn);
+      speed = mangaVel.length();
+      mangaCamInv.copy(shell.camera.quaternion).invert();
+      mangaVel.applyQuaternion(mangaCamInv);
+    } else {
+      mangaVel.set(0, 0, 0);
+    }
+    manga.frame(view.post, {
+      lines: fpv,
+      impact: on && impactFrameOn(),
+      tone: on && mangaToneWanted && view.graphics === 'high',
+      still: reducedMotion(),
+      speed,
+      vel: mangaVel,
+      tanHalf: Math.tan((shell.camera.fov * Math.PI) / 360),
+      dtMs: dt,
+    });
   }
 
   /*
@@ -3859,6 +3935,9 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A crash the shell called, a car's included: the chase loses what it
      * held, as the score would. */
     chaseBail();
+    /* The impact frame holds the last picture before the hit, which is the
+     * camera's pose now, before the craft is set down. */
+    mangaCrash();
     setDownNearby();
     notice = { text: 'Crashed, set down nearby.\nR restarts the run.', untilMs: performance.now() + 2400 };
   }
@@ -6089,6 +6168,16 @@ export async function boot({ loading, bootStart, mapId }) {
   const qShake = new THREE.Quaternion();
   const shakeEuler = new THREE.Euler();
   const lensShake = makeLensShake();
+  /*
+   * STAGE F, THE MANGA LAYER'S PICTURE: speed lines, the impact frame and
+   * the screentone, drawn by the freestyle maps' own grade and fxaa pass
+   * (src/render/manga.js). Render only: it is handed the craft's velocity
+   * after the render boundary's conversion and a camera pose, and gives
+   * back uniforms and, for one beat after a crash, the pose to hold.
+   */
+  const manga = new MangaLayer();
+  const mangaVel = new THREE.Vector3();
+  const mangaCamInv = new THREE.Quaternion();
   const introFrom = new THREE.Vector3();
   const introLook = new THREE.Vector3();
   const introRight = new THREE.Vector3();
@@ -6571,6 +6660,9 @@ export async function boot({ loading, bootStart, mapId }) {
     const dt = Math.min(nowWall - prevWall, 100);
     prevWall = nowWall;
     fps = fps * 0.95 + (dt > 0 ? 1000 / dt : 0) * 0.05;
+    /* The manga layer's clock, before a crash can start its impact frame,
+     * so the frame the crash is read on is the impact frame's first. */
+    manga.tick(dt);
     let frameSteps = 0;
 
     /*
@@ -7844,11 +7936,14 @@ export async function boot({ loading, bootStart, mapId }) {
         setCameraNear(CAMERA_NEAR_OPEN);
       } else {
         /* The camera sits inside the airframe, so the quad must be hidden or
-         * you fly looking at the inside of its own outline hull. */
+         * you fly looking at the inside of its own outline hull. For one
+         * beat after a crash it holds the moment of the hit instead: the
+         * impact frame (src/render/manga.js). */
         shell.quad.visible = false;
-        shell.camera.position.copy(fpvPos);
-        shell.camera.quaternion.copy(fpvQuat);
-        setCameraNear(fpvNear(fpvPos));
+        const held = manga.holding();
+        shell.camera.position.copy(held ? manga.holdPos : fpvPos);
+        shell.camera.quaternion.copy(held ? manga.holdQuat : fpvQuat);
+        setCameraNear(fpvNear(held ? manga.holdPos : fpvPos));
         if (shell.camera.fov !== ui.settings.cameraFov) {
           shell.camera.fov = ui.settings.cameraFov;
           shell.camera.updateProjectionMatrix();
@@ -7958,6 +8053,9 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
         capLastDraw = nowWall;
       }
+    }
+    if (worldLive) {
+      mangaFrame(dt);
     }
     if (worldLive && drawThis) {
       view.post.render();
@@ -8858,6 +8956,207 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__drawOff = (on = true) => {
     harnessNoDraw = Boolean(on);
     return harnessNoDraw;
+  };
+  /*
+   * THE MANGA LAYER, for the harness (Stage F, src/render/manga.js).
+   *   state()        what the last frame drew: lines, impact, tone, focus,
+   *                  speed, the impact count, and whether the map's
+   *                  pipeline took the edit
+   *   force(o)       hold the lines, the focus or the impact at a value,
+   *                  { lines, focus: [x, y], impact }, for a measurement at
+   *                  a fixed camera; null lets go
+   *   clock(ms)      hold the layer's clock at a time, so a picture of the
+   *                  impact frame is the same picture on every run; null
+   *                  runs it free
+   *   impact()       a crash's impact frame, staged: the same call the
+   *                  crash makes, without the crash
+   *   tone(on)       the screentone's switch, as ?tone=1 sets it
+   */
+  window.__manga = {
+    state() {
+      const m = view && view.post && view.post.manga;
+      return {
+        manga: Boolean(ui.manga),
+        lines: manga.shown.lines,
+        impact: manga.shown.impact,
+        tone: manga.shown.tone,
+        focus: [manga.shown.focus[0], manga.shown.focus[1]],
+        speed: manga.shown.speed,
+        holding: manga.holding(),
+        impacts: manga.impacts,
+        clockMs: manga.clockMs,
+        edit: m ? { lines: Boolean(m.ok), tone: Boolean(m.tone) } : null,
+        impactOn: impactFrameOn(),
+        reduced: reducedMotion(),
+      };
+    },
+    force(o) {
+      manga.force = o || null;
+      return manga.force;
+    },
+    clock(ms) {
+      manga.clockAt = ms == null ? null : Number(ms);
+      if (manga.clockAt != null) {
+        manga.clockMs = manga.clockAt;
+      }
+      return manga.clockMs;
+    },
+    impact() {
+      return mangaCrash();
+    },
+    tone(on) {
+      mangaToneWanted = on !== false;
+      return mangaToneWanted;
+    },
+    /*
+     * THE CENTRE THIRD, MEASURED. The post chain drawn twice at the same
+     * instant of the same world, once with the strokes and once without,
+     * and the canvas read back after each: every pixel that differs is a
+     * stroke's. The impact frame re-inks the whole picture, so its strokes
+     * are found as the difference between two seeds of it, whose re-inking
+     * is the same. Returns, for each case, how many pixels changed and how
+     * many of them are in the middle third of the width and of the height.
+     */
+    centre() {
+      const post = view.post;
+      const r = shell.renderer;
+      const gl = r.getContext();
+      const w = r.domElement.width;
+      const h = r.domElement.height;
+      const read = () => {
+        const px = new Uint8Array(w * h * 4);
+        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        return px;
+      };
+      const draw = (force, seed) => {
+        manga.force = force;
+        if (seed != null) {
+          manga.seed = seed;
+        }
+        mangaFrame(0);
+        post.render();
+        return read();
+      };
+      const savedForce = manga.force;
+      const savedSeed = manga.seed;
+      const out = [];
+      const x0 = w / 3;
+      const x1 = (2 * w) / 3;
+      const y0 = h / 3;
+      const y1 = (2 * h) / 3;
+      const count = (a, b, name) => {
+        let changed = 0;
+        let centre = 0;
+        for (let y = 0; y < h; y += 1) {
+          for (let x = 0; x < w; x += 1) {
+            const i = (y * w + x) * 4;
+            if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 6) {
+              changed += 1;
+              if (x >= x0 && x < x1 && y >= y0 && y < y1) {
+                centre += 1;
+              }
+            }
+          }
+        }
+        out.push({ name, changed, centre });
+      };
+      try {
+        for (const focus of [[0, 0], [0.3, 0.1667], [-0.3, -0.1667], [0.3, -0.1667], [-0.3, 0.1667]]) {
+          const off = draw({ lines: 0, impact: 0, focus });
+          const on = draw({ lines: 1, impact: 0, focus });
+          count(off, on, `lines at ${focus.join(', ')}`);
+          const a = draw({ lines: 0, impact: 1, focus }, 11);
+          const b = draw({ lines: 0, impact: 1, focus }, 57);
+          count(a, b, `impact strokes at ${focus.join(', ')}`);
+        }
+      } finally {
+        manga.force = savedForce;
+        manga.seed = savedSeed;
+      }
+      return { w, h, cases: out };
+    },
+    /*
+     * What the layer costs, in this browser: the passes it lives in (the
+     * grade, and the fxaa pass where there is one) drawn n times over the
+     * same frame with the layer off, with the speed lines at full, with the
+     * impact frame at full, and with the screentone, each run ended by a one
+     * pixel read so the GPU's queue is inside the clock. The scene is drawn
+     * once first and not timed: it is the same in every case and is most of
+     * a frame, so timing it hides the layer in its noise. Under a software
+     * rasteriser this is the shaders' arithmetic on the CPU, a proxy and not
+     * a frame rate.
+     */
+    cost(n = 4, rounds = 9) {
+      const post = view.post;
+      const r = shell.renderer;
+      if (!post || !post.grade || !post.grade.quad) {
+        return null;
+      }
+      const gl = r.getContext();
+      const px = new Uint8Array(4);
+      const savedForce = manga.force;
+      const toneWas = mangaToneWanted;
+      const tail = () => {
+        r.setRenderTarget(post.enabled.fxaa ? post.rtB : null);
+        post.grade.quad.render(r);
+        if (post.enabled.fxaa) {
+          r.setRenderTarget(null);
+          post.fxaa.quad.render(r);
+        }
+        r.setRenderTarget(null);
+      };
+      const run = (force, tone) => {
+        mangaToneWanted = tone;
+        manga.force = force;
+        mangaFrame(0);
+        post.render();
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        const t0 = performance.now();
+        for (let i = 0; i < n; i += 1) {
+          tail();
+        }
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        return (performance.now() - t0) / n;
+      };
+      /* Interleaved, several rounds, and the median of each: a software
+       * rasteriser's clock drifts by more than the layer costs, and a run
+       * of one case after another would measure the drift. */
+      const median = (xs) => {
+        const q = xs.slice().sort((x, y) => x - y);
+        return q[Math.floor(q.length / 2)];
+      };
+      const cases = {
+        off: [{ lines: 0, impact: 0 }, false],
+        lines: [{ lines: 1, impact: 0, focus: [0, 0] }, false],
+        impact: [{ lines: 0, impact: 1, focus: [0, 0] }, false],
+        tone: [{ lines: 0, impact: 0 }, true],
+      };
+      const times = { off: [], lines: [], impact: [], tone: [] };
+      let toneOn = 0;
+      try {
+        for (let round = 0; round < rounds; round += 1) {
+          for (const k of Object.keys(cases)) {
+            times[k].push(run(cases[k][0], cases[k][1]));
+            if (k === 'tone') {
+              toneOn = manga.shown.tone;
+            }
+          }
+        }
+        return {
+          n,
+          rounds,
+          fxaa: Boolean(post.enabled.fxaa),
+          offMs: median(times.off),
+          linesMs: median(times.lines),
+          impactMs: median(times.impact),
+          toneMs: toneOn ? median(times.tone) : null,
+          spreadOffMs: [Math.min(...times.off), Math.max(...times.off)],
+        };
+      } finally {
+        manga.force = savedForce;
+        mangaToneWanted = toneWas;
+      }
+    },
   };
   /* Which control mode the plant is actually in. A rig that thinks it is
    * flying acro and is not measures nothing: angle cannot loop. */

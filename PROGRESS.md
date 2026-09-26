@@ -52224,3 +52224,338 @@ should go by itself within 8 s of air, the slider should fade after
 takeoff and be back on landing and on pause, Air should read 0.00 on the
 pads and hold when landed, and the OSD's small print should read over the
 yard at noon and overcast.
+
+## 2026-09-26 | render, settings | Stage F: speed lines, the impact frame, screentone and Clean FPV
+
+The owner, 2026-09-26: "do the bigger items also starting with map card
+and stage f then manga menus". This is Stage F (FREESTYLE-MAPS-PLAN.md
+section 11), polish item 18: speed lines, the impact frame, screentone,
+the settings and Clean FPV. Render and settings only: no physics, no
+plant, no module ABI, no build; `git diff --stat vendor/betaflight` is
+empty and nothing under src/game/ or src/native/ was touched. Built in a
+worktree on 716562b, four commits in the brief's order: 3443f9e (speed
+lines), 902cff4 (the impact frame), a13f500 (screentone), 16252c8 (the
+settings); then two found by flying the finished tree, 8ca4aa8 (the
+speed lines skip the pixels inside their reach) and 7613638 (impact
+strokes in paper where the panel is ink); then this entry.
+
+### How it is folded in, and why there is no PATCH diff
+
+One new module, src/render/manga.js. The town's pipeline (CityPipeline)
+and a built map's (BuiltPipeline) call mangaPipeline(this) in their
+constructors, and it edits the pipeline's OWN copies of the vendored
+grade and fxaa materials by finding exact lines and adding after them,
+the way BuiltPipeline already edits its ink (INK_LINEAR). So
+src/maps/city/vendored/core/post.js stays byte identical, and there is
+no PATCH-*.diff: nothing under vendored/ changes. If a vendored update
+moves a line it looks for, the edit finds nothing, the map draws as it
+did before Stage F, and stats().manga says { lines: false }.
+
+No new pass, no texture tap, no loop, no render target: the strokes and
+the impact frame are arithmetic in the grade; the screentone's mask
+rides in the alpha of the target the grade already writes, and its dots
+are drawn by the fxaa pass from the fetch it already makes. The race
+field's chain (src/render/post.js) never hears of any of it, so a race
+track is clean by construction as well as by ui.manga.
+
+### What was built
+
+- **Speed lines.** From 20 m/s, full at 40: the share of strokes drawn
+  (0.3 to 0.62 of 120 round a turn), how far in they reach (an
+  elliptical radius of 0.95 down to 0.62) and their ink (0.55 to 0.9)
+  all rise with speed. Each stroke is a wedge 12 px wide at the frame's
+  edge at 1080 lines, tapering to a point, redrawn ten times a second at
+  its own moment the way an animator redraws speed lines, still under
+  reduced motion. They converge on the velocity's vanishing point: the
+  plant's velocity through the render boundary (simPosToThree, the spawn
+  yaw) into the camera's frame, projected, its opposite when flying
+  backwards (the same radial lines), smoothed over 90 ms and held inside
+  the centre third, because a vanishing point out among the strokes
+  draws a knot and not a direction. The map's own ink, so they match the
+  ink pass at every time of day. In flight, the FPV camera only: not the
+  pad shot, not a replay.
+- **The CSS strips are gone** (index.html .score-lines and the score
+  HUD's element and root tier class), as item 18 asked.
+- **The impact frame.** A crash the shell calls, the one that sets the
+  craft down (crashResetTick), holds the last picture before the hit
+  for 67 ms, two frames of an anime cut timed at 30, re-inked, with 90
+  heavy radial strokes round the edge seeded afresh each time (ink on
+  paper, paper on ink, so they show on a dark face), then lets it go over
+  240 ms while the craft is already set down. The camera holds the pose
+  the pilot last saw; render only, the physics has moved on. A hard belly
+  landing that flies on, X and the stuck reset are not crashes and get
+  none.
+- **Photosensitivity, what was done.** Never a white flash: the dark
+  half goes to ink and the light half to the cream paper tone on a
+  curve that only darkens (paper times (L / L_paper)^1.2), so no pixel's
+  luminance rises by more than two percent of white, the strokes' own
+  few pixels apart, and the frame gains contrast while losing a little
+  light. The re-inked picture is mixed in at most 0.8, so the scene
+  shows through. The release is a fade, not a cut back. At most one
+  every two seconds, so at most half a flash a second where WCAG 2.3.1's
+  line is three. Its own Settings row, Clean FPV, and off whenever the
+  system asks for reduced motion (read live, so it takes effect mid
+  session).
+- **Screentone.** A 45 degree dot grid at the canvas's own pixels (6 px
+  pitch at 1080 lines), dots as big as the pixel is deep in the darkest
+  band: the scene's linear luminance under 0.05 to 0.09 before the
+  grade, and not the ink pass's own lines. High only (only High runs the
+  fxaa pass). OFF by default, see the verdict; `?tone=1` turns it on.
+- **Settings.** Clean FPV's note now says what it turns off, and it
+  does: mangaFrame reads ui.manga every frame. A new row under Screen,
+  Impact frame, on by default (DEFAULTS.impactFrame), with its own
+  note. Race tracks: ui.manga is false and their chain has no edit.
+- **Harness**, window.__manga: state(), force(), clock() (hold the
+  layer's clock, so each picture of the impact frame is one moment of
+  it), impact() (the crash's own call without the crash), tone(),
+  centre() and cost(), below.
+
+### The screentone: does it shimmer
+
+Yes, and it is left off. Judged on moving captures at 60 Hz spacing,
+the harness camera stepped a sixtieth of a second at a time: a 25 m/s
+dolly and a 2 rad/s pan, down the town's spawn street at 4 m and across
+Hibari Yard, High, 1280 by 720, each frame looked at and the toned
+regions cropped and zoomed side by side.
+
+- A big dark face well away (the bando's dark underside from 40 m)
+  holds its tone steadily from frame to frame. That part is fine.
+- But the dots stay on the glass while the face slides under them, a
+  shower door, and at FPV speeds everything is sliding.
+- Near faces whose brightness sits at the band's edge gain and lose
+  their tone between consecutive frames as the haze moves them across
+  it: the town's balcony box and a fence rail, 4 m off, went from dotted
+  to plain within two or three frames of the dolly.
+- Before the ink pass's lines were left out of the band, every moving
+  silhouette had a crawling dotted edge. Leaving them out fixed that
+  part; the other two are what a screen space tone with no history and
+  no world position does, and this pass has neither.
+
+So it is off by default, as the plan allows ("judged by flying it
+before it is kept"), and `?tone=1` turns it on at High for the owner to
+fly and decide. It is also subtle at 720 lines: a 4 px pitch of dots
+over faces that are already dark.
+
+### The centre third
+
+No stroke starts inside an elliptical radius of 0.62 (speed lines) or
+0.52 (impact), and the centre third's corner is at 0.471, so none can
+reach it by construction. Measured as well: window.__manga.centre()
+draws the chain twice at one instant of the same world, with and without
+the strokes, reads the canvas back after each and counts the pixels that
+differ (the impact's strokes as the difference of two seeds, whose
+re-inking is identical), at five focus points (the centre and the four
+corners of the focus box):
+
+    Low, yard (1088 by 612 canvas)   lines 36,120 to 40,456 px changed,
+                                     impact strokes 78,325 to 83,940;
+                                     0 in the middle third, all ten cases
+    Low, town                        lines 40,760 to 46,763, impact
+                                     74,217 to 79,211; 0 in the middle
+    High, yard (1280 by 720)         lines 64,381 to 71,793, impact
+                                     113,489 to 122,553; 0 in the middle
+
+Every picture below was looked at for it too; none has a stroke in the
+middle third.
+
+The impact frame's re-inking is a grade of the whole frame and not a
+thing drawn over it: the centre third still shows the scene, in ink.
+
+### The budget
+
+window.__budget at the spawn with a fixed harness camera, 1280 by 720,
+Low as earlier entries measured it (Low's 0.85 gives a 1088 by 612
+canvas), main (716562b, served from a git archive of it in the
+scratchpad) against this tree with the layer off, the speed lines forced
+to full, the impact frame forced to full, and the screentone asked for:
+
+                         calls   triangles  full res  taps  loops  targets MB  attrs MB
+                                            passes                 (at 1080p)
+    yard, Low, main       296     108,635      1        1     0    10.7 (33.2)    6.9
+    yard, Low, Stage F    296     108,635      1        1     0    10.7 (33.2)    6.9
+                          (the same in all four states)
+    town, Low, main       558     900,091      1        1     0    10.7 (33.2)   52.1
+    town, Low, Stage F    558     900,091      1        1     0    10.7 (33.2)   52.1
+    yard, High, main      480     180,671      1        9     0    87.0 (153.8)   6.9
+    yard, High, Stage F   486     182,899      1        9     0    87.0 (153.8)   6.9
+
+No budget number moves. The High yard's six calls are the cars, which
+were somewhere else in main's frame; within one run the four states read
+the same. The High targets, 153.8 MB derived for 1080p against P5's 120,
+are main's, unchanged here. npm run lint:quality is the presets'
+arithmetic and does not see a map: 56 of 56 clean.
+
+Frame cost. No pass, tap, loop or target is added, so the cost is
+fragment arithmetic: on a pixel a stroke can reach, an atan, four
+hashes and a few smoothsteps, about a hundred ALU operations, and none
+inside the stroke's reach (six pixels in ten are skipped at 25 m/s,
+three in ten at full speed); the impact's are there for 300 ms after a
+crash; the tone's are a dozen per canvas pixel at High when asked for.
+Measured with window.__manga.cost(): the grade and the fxaa pass drawn
+over one drawn scene, the layer off, lines at full, impact at full and
+tone, interleaved, the median of nine rounds of three, under SwiftShader:
+
+                      off (spread)            lines    impact   tone
+    yard, Low     114.3 ms (80.1 to 167.6)    125.2    115.9     -
+    town, Low      95.1 ms (58.3 to 109.8)     74.7     64.6     -
+    yard, High    213.4 ms (188.6 to 253.2)   230.7    223.1    226.4
+
+A software rasteriser's spread is wider than any difference, so this
+says the layer is lost in the noise of a CPU drawing the passes and not
+what it costs on a GPU; the steadiest row (High) reads about 8 percent
+of the two passes for the lines, 5 for the impact and 6 for the tone.
+The Low rows were taken before 8ca4aa8, with lines at full, where that
+commit changes nothing.
+
+### Pictures
+
+In the session's scratchpad, not committed. The in-page pilot
+(scripts/lib/pilot.js on the shell's clamped frame clock), Low, 1280 by
+720, the Weight hint dismissed:
+
+- **At rest**: the yard's pads and the lane, no strokes; at 12 to 19.5
+  m/s, none.
+- **Hibari Yard's lane at 26 to 28 m/s** (the approach frames of both
+  crash sequences, x 60 at 5.2 m, the final strokes): short wedges at
+  the edges at 26, more and longer at 28 (lines 0.35 to 0.40), leaning
+  on a point near the top of the centre third, where a pitched forward
+  five inch is going, and swung off to the side in a hard bank. Earlier
+  flights at 25 to 30 m/s through the FOOTBRIDGE gap at 2.6 m (worst
+  tracking error 1.6 m) were on the thinner first strokes and are what
+  showed them reading as wires.
+- **The town's spawn street at 27 to 29 m/s** (0, 4.5 m, from z 44 to
+  -82, worst error 1.8 m): the same, over the town's walls and wires.
+- **A crash, in sequence** (screencast, every frame drawn, on 7613638):
+  the lane at 5.2 m into the footbridge's blue sign at 98 km/h. The frame
+  before, the sign close with speed lines; the impact frame, the same
+  pose, the sign in ink, its lettering and arrows paper, paper strokes
+  over the ink and ink ones over the paper round the edge; the next, the
+  craft already set down under the bridge, the ink fading off it; then
+  clear. Under SwiftShader a frame is about 100 ms, so the hold is one
+  frame here; at 60 Hz it is four, then fourteen of release.
+- **The impact frame staged, clock held**: 0, 33 and 66 ms full, 110 ms
+  at 0.67, 180 at 0.28, 250 at 0.06, 320 clear. A second one 1.5 s later
+  was refused, one 2.1 s later was not; with Clean FPV, and with the
+  Impact frame row off, the same call starts nothing.
+- **Screentone at High**: the town's street and the yard, at rest, a
+  dolly and a pan (the verdict above). Faint 4 px dots at 720 lines on
+  the darkest faces.
+- **Clean FPV on**: the yard's lane at 94 to 104 km/h and the town's
+  street at 97 to 101: no strokes, and ui.manga false.
+- **A race track**: Flags and cones (the board's document, seeded) flown
+  down its first straight at 96 to 105 km/h: no strokes; ui.manga false
+  and the chain has no edit. An empty course with no gates is a
+  freestyle map by src/render/scene.js's rule, and there the shell's
+  state reads manga on, but the race field's chain has nothing to draw
+  it with.
+
+### RUN LOG
+
+Run this turn, with browser profiles in a private temp folder (TMPDIR),
+so no /tmp/sim-page-* was created:
+
+    npm run lint:boot            9 of 9 checks clean, on 3443f9e, 902cff4,
+                                 a13f500 and 7613638
+    npm run lint:preload         up to date after node scripts/gen-preload.js
+                                 (manga.js is a boot module): boot 114
+                                 modules, city 73, built 32; 216 served
+    npm run lint:quality         56 of 56 checks clean
+    npm run lint:memory          PASS, every world lazy and freed; boot
+                                 baseline 61 geometries, 5 textures, 130
+                                 requests
+    npm run lint:responsive      PASS, freestyle 214 frames, worst gap
+                                 436 ms, 0 over 500 ms
+    npm run lint:input           all 160 passed
+    npm run lint:shell           FAIL, 1 problem: "title: overflow grew from
+                                 0 to 67 px", the known one on main; before
+                                 the baseline moved, a second, "pilot:
+                                 overflow grew from 790 to 835 px" (argued
+                                 below)
+    npm run lint:devices         PASS on all five
+    node scripts/shots.js        through the real flow into Hibari Yard,
+                                 with expect steps on __manga.state():
+                                 harness faults 0, console errors 2, both
+                                 "net::ERR_CONNECTION_REFUSED", the board
+                                 not running here; a plain run with no
+                                 steps: 0 errors
+    dash scan                    none in any changed file
+    npm run verify               not run: render only, no physics, plant,
+                                 ABI or build change, and the brief said
+                                 not to
+
+lint:memory, lint:responsive, lint:input, lint:shell and lint:devices ran
+on 16252c8; 8ca4aa8 and 7613638 after it change only a few lines of GLSL
+in src/render/manga.js. The measurements and pictures straddle those two:
+the Low cost rows and the first crash sequence are from before them, the
+High rows, the race track, Clean FPV and the second crash sequence from
+after.
+
+### What went wrong
+
+- The session was stopped by the spend limit in the middle of the
+  flights; the lead resumed it with the work intact and asked for
+  coherent commits as each piece checked out. The four commits were then
+  cut from the finished tree, each stage built by exact removals and
+  booted (lint:boot 9 of 9 at each of the first three).
+- The first strokes, 2.6 then 9 px and at most a third wide at the
+  frame's middle edges (the taper ran past the edge), read at 25 to 30
+  m/s as more of Hibari Yard's power lines. Now they reach full width at
+  the edge and are wedges.
+- The first impact grade was a sepia wash (the light half at its own
+  brightness); the second, with a 1.35 curve, greyed the sky; 1.2 kept
+  the paper light and the darks ink.
+- The first yard flight at 5 m hit the footbridge's deck: the FOOTBRIDGE
+  gap is under it at 2.5 m. That crash became the impact sequence.
+- The first cost proxy timed the whole chain and the scene's own noise
+  hid the layer (the layer on measured cheaper than off). It now times
+  the grade and the fxaa pass over one drawn scene, interleaved, median
+  of nine rounds.
+- High in the town under SwiftShader is about 30 s a frame; the first
+  tone sequence was cut short by its own timeout and the yard was used
+  for the rest.
+- The first crash into the footbridge's sign on the finished tree filled
+  the impact frame with ink (a blue sign, close up) and its ink strokes
+  vanished into it; 7613638 draws them in paper there.
+- lint:shell's Settings overflow moved 790 to 835 px for the new row,
+  argued below.
+
+### The baseline, and the argument
+
+tests/shell-baseline.json: Settings overflow 790 to 835 px, the Impact
+frame row, edited by hand, the same argument as the Clean FPV, Stick
+mode, Check sticks and Keyboard throttle rows: the file is today's
+overflow and not a target, the row is deliberate, and lint:devices
+reaches every row and note on all five devices. Not --record, which
+would also write the title's 67 px, main's known failure.
+
+### For the lead
+
+- Six commits and this entry on the worktree branch, on 716562b, not
+  merged with claude/vibrant-wozniak-v2pg5e. Files: src/render/manga.js
+  (new), src/main.js, src/maps/city/index.js, src/maps/built/index.js,
+  src/ui/ui.js, src/ui/scorehud.js, index.html, src/fresh.js,
+  tests/shell-baseline.json.
+- In src/main.js: one import; reducedMotion, impactFrameOn, the tone
+  flag, mangaCrash and mangaFrame after counterCrash; mangaCrash() in
+  crashResetTick before setDownNearby; the MangaLayer beside the lens
+  shake; manga.tick(dt) after the frame's dt; the FPV camera branch
+  holds the impact pose; mangaFrame(dt) before the draw; window.__manga
+  after window.__drawOff.
+- src/fresh.js regenerated (boot 114 modules, 216 served). If main
+  moved, regenerate after the merge.
+- If the map card or the manga menus change Settings rows, the pilot
+  overflow in tests/shell-baseline.json moves again; it is 835 here.
+
+### For the owner, when flying
+
+Fly Hibari Yard's lane or the town's street past 20 m/s (about 72
+km/h). **Look for**: ink strokes gathering at the edges, more and longer
+as you go faster, leaning in on where you are going (watch them swing
+when you slide or drift); none at a hover; a crash freezing for a beat
+in ink and letting go, never a white flash; Clean FPV and the Impact
+frame row each taking theirs away; race tracks with none. **Wrong would
+be**: a stroke in the middle third, lines that point at the screen's
+centre while you slide, an impact frame on a hard landing you flew out
+of, or two in a row. Screentone: open the sim with `?tone=1`, set
+Graphics to High, and fly past dark faces; if the dots swimming on the
+glass bother you, it stays off.

@@ -51134,3 +51134,193 @@ close. Put to the owner with the pictures.
 The quick wins (items 1, 2, 3, 4, 6, 7, 8, 9, 13, with the slider answer),
 the owner's four decisions (1, 3, 9 and the simulator's side of 2), the
 map card (17) and Stage F (18), each in its own worktree off main.
+
+## 2026-09-26 | art, maps, props | The e82: a compact coupe in blue, chasing the drift car round Hibari Yard
+
+The owner, 2026-09-26: "can we add a series 1 bmw coupe now 135i in blue".
+Built as a new car kind, `e82`, in src/art/cars.js and every table the
+r32 is in. No physics model change, no module ABI, no build: dist/sim.wasm,
+src/native and tests/goldens are untouched. Commits 46eef8e (the model and
+its tables), c44c4e1 (the lead's checkpoint of the yard row, the cornering
+and the self test, pushed mid work) and this entry.
+
+### What it is, and how it is told apart
+
+No badge, roundel, maker's name or model name anywhere: the car is known by
+its shapes, as the r32 is.
+
+- **Sizes** are the real car's: 4.36 m long, 1.75 wide, 1.41 high, a 2.66 m
+  wheelbase (axles at +1.46 and -1.20 from the middle, so the front axle is
+  well forward and the boot is short), 18 inch wheels (0.315 m radius).
+  CAR_KINDS.e82 carries a 1.32 m roof and a bonnet step at 0.83 m, so its
+  parked solid follows the body: a bonnet box, a cabin box, a boot box.
+- **Front**: twin round lamps each side, a bright ring round a clear disc,
+  under a straight body coloured brow, in a dark housing; a split twin
+  grille as two rounded rectangles with bright rims and dark slats; the
+  bonnet's two lines converging on it; a sport bumper with a large central
+  intake (a body bar across it) and dark corner intakes with round fog
+  lamps.
+- **Side**: a tall glasshouse on a two door cabin, the rear side window
+  kinking forward at its foot into the C pillar (the Hofmeister kink, drawn
+  as a V cut in the glass at x = -1.04), dark pillars, a shoulder line
+  rising from the front wheel to the tail over a concave lower line, a deep
+  sill with a bright edge, a door seam and a handle.
+- **Rear**: L shaped tail lamps, the leg on the wing and the arm on the boot
+  lid, wrapping round the corner, with a clear reversing strip, an amber
+  foot and a dark light guide; a short boot with a lip; a dark diffuser
+  band; twin exhaust tips on one side.
+- **Wheels**: double spoke, five pairs.
+- **Colour** by variant (E82_LIVERIES, carLivery): 1 racing blue 0x4675c6,
+  a bright mid metallic blue in the manner of Le Mans Blue drawn in the
+  town's palette, the default; 2 deep blue; 3 grey blue; 4 silver; 5 white.
+
+### Where it is on Hibari Yard, and why there
+
+In the drift car's lane, half a lap behind it: row el-57, appended after
+every other row, so every id and the order above it are unchanged. It is a
+grip car on the drift car's pace, so the pilot can chase it at the drift
+car's speed, and from the pads one of the two is usually in sight.
+
+Three places were weighed, in the brief's order:
+
+1. **Beside the drift car, as an ordinary car at lateral 4.5 m/s/s**: no.
+   Two cars share a lane only if they lap in the same time, and at 4.5 its
+   bends cap it: bisecting its top speed on the module's own poses (the way
+   VAN_SPEED was found) gave a 30.20 s lap at 50 m/s against the drift
+   car's 24.763 s. It cannot keep up at any top speed.
+2. **As a second drift car**: no. scripts/roads-check.js block 3 finds the
+   drift car with findIndex and asserts every other car's slip is 0, so a
+   second slider fails "the ordinary cars never slip". The check is not
+   changed to fit.
+3. **In the other lane with the box truck and the kei van**: clean, but
+   slow. Matched the same way, its top speed would be 7.7722 m/s (28 km/h)
+   for the truck's 38.028 s lap.
+4. **Chosen: the drift car's cornering.** LATERAL.e82 in
+   src/maps/built/traffic.js is 8 m/s/s, DRIFT.lateral, about 0.8 g, within
+   a compact rear drive coupe's road grip, and the yard's e82 has the drift
+   car's 20 m/s top speed. The speed table's key is road, top speed and
+   cornering, so the module drives the two on one table: they lap in the
+   same time to the step and the gap comes round the same every lap (124
+   to 163 m along the lane as they brake and pull away; the offset, 171 m
+   along the centre line, is 178.3 m along the lane, 0.13 m short of half
+   the 303.9 m lap from the drift car's 26.5). It does not slide: `drift`
+   is off, so its slip is 0.
+
+The cost of 4 is that every e82 on any built map is driven hard, where the
+other kinds are driven at a driver's comfort (2.5 to 4.5). It is a new
+kind, so nothing that existed moves. If the owner would rather it drove at
+comfort, the row moves to the other lane at 7.7722 m/s (option 3) and
+LATERAL.e82 goes back to 4.5.
+
+Measured on the module's poses over 30 minutes: the coupe keeps 2.98 m from
+every solid (a utility pole at (134.9, 16.5), where the drift car's own
+nearest is 2.311 m), never comes within 10 m of the drift car, and comes
+1.566 m from the box truck and 1.913 m from the kei van as they pass in the
+other lane. The nearest any two cars come is unchanged, 0.272 m, the drift
+car's tail and the box truck.
+
+src/trackbuilder/selftest.js pinned the starter at "two lanes, three
+vehicles": it now says four, because the owner asked for a fourth, and it
+gains a check that the coupe is on the drift car's lane, top speed and
+cornering, without its slide, so that a later edit to either car's speed
+fails here before it fails as a car driving through another. That is a
+change to what the starter holds, not to a threshold.
+
+### Triangles and the budget
+
+Parked (the prop kit): 1,645 triangles, against the r32's 1,841 and the
+minibus's 1,437. Moving: a 1,045 triangle body in 13 materials, plus four
+248 triangle wheels in one InstancedMesh.
+
+Hibari Yard on Low at 1280 by 720, window.__budget at the scratch rig's
+fixed cameras, before (1875b91) and after:
+
+| view | draw calls | triangles | with the cars hidden |
+|---|---|---|---|
+| verge, golden | 90 to 91 | 46,704 to 47,714 | 67 and 41,273 to 67 and 41,285 |
+| south east aerial, golden | 372 to 386 | 102,596 to 104,667 | 333 to 333 |
+| whole yard, golden | 508 to 522 | 126,068 to 128,139 | 469 to 469 |
+| whole yard, dusk | 513 to 529 | 126,182 to 128,277 | 468 to 468 |
+
+The moving cars' group: 3 cars, 40 meshes, 6,579 triangles before; 4 cars,
+54 meshes, 8,638 after (dusk 43 to 58, with the lamp glow). So the coupe is
+14 draw calls and about 2,060 triangles when it is on screen and nothing
+when it is not. The town is unchanged: no e82 is parked there, and its
+19,515 boxes still hash a118277a53298663; the yard's 552 still hash
+da1fb02b788cf315.
+
+### Pictures, looked at, in the session's scratchpad (not committed)
+
+Under /tmp/claude-0/-home-user-WebFPVSimulator/6ddfd91b-7f5b-543b-a441-691d12014517/scratchpad/pics:
+
+- e82-pair/front-golden.png, rear-golden.png, front-dusk.png, rear-dusk.png:
+  the coupe beside the r32, front and rear three quarter, day and dusk
+  (sheet: sheets/e82pair.png).
+- e82-yard-day2/quarter-0 to 5.png: the coupe driving the loop by day,
+  passing the kei van in quarter-1 (sheet: sheets/e82yard.png).
+- e82-yard-dusk/quarter-0 to 3.png: at dusk, lamps lit, with its own
+  headlamp pools (sheet: sheets/e82yarddusk.png).
+- e1 to e4: the working close ups (nose, side, tail, three quarters).
+
+What they show: the twin rings and the split grille read at 10 m and are
+the first thing seen; the kink reads in the side window; the blue is bright
+by day and still blue at dusk; the L lamps read as one lamp across the
+corner. What is weaker: its side reads more as a generic compact coupe than
+a 1 Series from the flank alone, because the flame surfacing is two lines
+at this polygon count; and the moving body is 13 draw calls, a cost every
+moving kind pays.
+
+### What went wrong
+
+- The kink was invisible at first: the two clip lines cut the glass in the
+  wrong places. Redrawn as a V at the kink point (a foot line forward and
+  down, a top line forward and up), it reads.
+- The central intake's first bottom edge, 0.26 m, fell below a corner of
+  the bumper's chain, and blockOnEnd does not split a block at a chain
+  corner as onEnd does, so part of it hid inside the bumper. Raised to 0.29.
+- The lap match as an ordinary car was impossible (above), which was found
+  only by bisecting to the 50 m/s end.
+- check:clip once gave 875 and 1 after 46eef8e, before the yard row; the
+  failing line was not kept, and five runs after gave 876 and 0. Not
+  explained. After the yard row it failed repeatably on the starter's
+  "three vehicles" pin, which is the one change above.
+
+### Checks, run in this session
+
+On the tree committed as c44c4e1 (check:roads before two edits to comments
+in starter.js and the self test's change):
+
+    npm run check:roads          all passed; el-57 e82 keeps 2.98 m from
+                                 every solid over its 24.764 s lap; no two
+                                 cars overlap in 30 minutes, nearest 0.272 m
+                                 (unchanged, the r32 and the box truck); the
+                                 truck's and the van's laps agree
+    npm run check:props          all passed
+    npm run check:clip           877 passed, 0 failed (875 and 1 on the
+                                 "three vehicles" pin before it said four)
+    npm run check:world          all passed
+    npm run check:world-golden   all passed, tests/goldens/world.json
+                                 untouched
+    npm run check:world-engines  Node and Chromium agree to the bit on every
+                                 run, Hibari Yard's traffic among them
+    npm run check:chase          all passed
+    npm run check:counter        all passed
+    npm run lint:boot            9 of 9 clean
+    npm run lint:memory          PASS, every world lazy and freed
+    npm run lint:quality         56 of 56 clean
+    npm run lint:preload         up to date
+    npm run lint:shell           FAIL, the known "title: overflow grew from
+                                 0 to 67 px" on main, nothing else
+
+Not run: npm run verify (not asked, and not physics, the plant, the ABI or
+the build), shots.js. Dash scan of every commit since 1875b91: none.
+
+### For the owner, when flying
+
+Spawn on Hibari Yard and look along the loop: the blue coupe is half a lap
+behind the red drift car. Chase it down the lane under the footbridge: it
+brakes for the south bends where the drift car slides, and takes the same
+bend without a slide. What would be wrong: it closing on or dropping back
+from the drift car over a few laps (the check says it cannot), it clipping
+the oncoming box truck in the south west bends, or its nose reading as any
+particular maker's badge.

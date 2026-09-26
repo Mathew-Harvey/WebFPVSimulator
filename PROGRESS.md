@@ -49940,3 +49940,11 @@ clip records, or filming the loaded world through the orbit frame as the
 others are, which briefly builds a second copy of it (the town included);
 then CLIP_VERSION goes up so the grey clips already cached are recorded
 again. That is a render path and memory choice, so it is not in this turn.
+
+### To main
+
+Asked which verification pass to run, the owner answered on 2026-09-26:
+"push to main i'll fly it now". Taken as: the pilot flies it, no further
+pass here, and the branch goes to main. main had not moved (origin/main
+42567f4, the merge base), so it is a fast forward of e146bec and this note,
+and the checks in the run log above were run on that tree.

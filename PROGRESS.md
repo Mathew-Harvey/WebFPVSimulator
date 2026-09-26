@@ -50920,3 +50920,75 @@ stats() 37 meshes and 9,308 triangles before, 40 and 6,579 after (43 and
 sets (one draw call each for all the wheels of a kind, where Stage E drew
 twelve), the smoke. Shown against hidden on the whole plot, the three
 moving cars cost 36 calls before and 39 after.
+
+### Pictures, looked at, in the session's scratchpad (not committed)
+
+- **Every kind side by side**, a scratch rig drawing each through the kit
+  (the parked car's own path) in a built map's lights, sky, ink and grade:
+  front three quarter and rear three quarter, golden and dusk, the eleven
+  in two rows at one scale; and each kind alone at 6.5 m front and rear,
+  and the kei, hatch, minivan and sedan at 3.6 m. At 30 m each reads as
+  what it is by its silhouette and its glass: the kei a tall box on corner
+  wheels, the van and kei van one boxes glazed over the cab, the lorry's
+  step from cab to box, the bus's length and band, the sedan's boot, the
+  r32's long bonnet, short glass and wing. At 10 m the lamps, grilles,
+  pillars and wheels' spokes read; at 3 m the shut lines, handles, the
+  arch's dark well, the plate's characters and the streaks on the glass.
+  At dusk the headlamps keep their colour against the dimmed paint and
+  glass, as the kit kept the vendored lamps.
+- **The r32 drifting in Hibari Yard's bends**, the real shell on High, a
+  camera placed off window.__vehicles a quarter second ahead of the drift
+  car: sliding through the south east and chicane bends at 8.6 to 11 m/s,
+  tan(slip / 2) 0.39 to 0.40, the cream smoke trailing off both rear
+  wheels, the wing, the four round lamps, the flares and the bronze wheels
+  on their camber; at dusk the slim headlamps lit with their halos and the
+  warm pool on the road ahead.
+- **The town, before and after from the same six cameras** (the tree at
+  716562b extracted beside this one): the multi storey car park's seven
+  cars, the rokuchome bays with the kei truck and the kei van, the tsuki
+  car park, the coin park on nanachome, and the yellow truck at the
+  crossing. The cars that were boxes with tori for arches are cars with
+  arches, glass and faces, and stand in the same bays at the same size.
+
+### What went wrong
+
+- The first build read both plates mirrored: a plate's u ran toward the
+  viewer's left. Seen in the first close picture of the r32's nose; it runs
+  from the reader's left now, front and back, and on the lorry and the kei
+  truck.
+- A panel laid across two faces of a nose (a bumper and the raked face
+  above it) was one quad between its ends, so most of it sat inside the
+  bumper: the r32's charcoal lower was invisible. onEnd now cuts at every
+  corner of the face's chain.
+- The first noses leaned back 12 to 16 cm from L / 2 at their tops, which
+  would have put the solid's top front edge that far outside the paint. The
+  faces now stand forward so the top of the steepest one is 5 cm in.
+- The first r32 flares were big trapezoid slabs, and the first door
+  mirrors read as cubes floating on a stalk. The flares follow the arch at
+  7 cm now, squared at the top; the mirrors sit on a short arm at the door's
+  top front corner with a rounded housing.
+- The town's collider fit moved with the drawing (94 boxes changed, 46 new,
+  at the car park and the lake layby) before the fit was fed the vendored
+  drawing; found by diffing the page's boxes, not by any check, because the
+  golden's town fixture is round the shopfront where no car stands.
+- The town's kei trucks looked dark in the first town pictures. Not the
+  model: shadows off, they were bright. The new cab roof stood at 1.89 m,
+  under the shadow line of the walls they park beside, where the vendored
+  roof lip had stood in the sun at 1.95; the cab and its lip go to 1.95 now.
+- The drifting pictures: on the software rasteriser a frame is about a
+  second, so a camera set off one pose photographs the car a step later;
+  the rig places it a quarter second of the title's clock ahead.
+- The spend limit stopped this session twice: the lead checkpointed an edit
+  as 6cc2972 and this entry as 552e21f, both left as they are.
+
+### Found, not fixed
+
+- NOTICE said the 59 vendored files were byte identical but for three.
+  Diffed against upstream de01898 (cloned into the scratchpad), 46 differ,
+  almost all of it the thinning and freestyle collider work, which
+  PROGRESS.md records change by change. NOTICE now says so and lists the
+  two new hooks; making a diff file of the rest was not this task.
+- A drift puff the eye comes within 1.5 to 5 m of is drawn as a solid ink
+  blob while it thins (Stage E's smoke shader: the ink rim is a fixed 0.07
+  of density above a cut that is rising toward 1). One chase picture
+  caught it with the camera inside the trail. Not changed here.

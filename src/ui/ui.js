@@ -171,7 +171,7 @@ import { ChaseHud, chaseCallText } from './chasehud.js';
 import { formatScore } from '../game/score.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
-import { patreonAnchor } from '../share/patreon.js';
+import { PATREON_NOTE, openSupport, patreonAnchor } from '../share/patreon.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted } from '../input/touchsticks.js';
@@ -199,7 +199,7 @@ import {
  * appear here renders as a plain action, which is the safe default: it gets no
  * chevron it has not earned.
  */
-const LINK_ACTIONS = new Set(['leaderboard', 'wiki']);
+const LINK_ACTIONS = new Set(['leaderboard', 'wiki', 'support']);
 const SCREEN_ACTIONS = new Set([
   'courses', 'race', 'freestyle', 'pilot', 'quad', 'launch', 'standings', 'rates', 'pids', 'fc',
   'howto', 'tricks', 'credits', 'trackbuilder', 'builder', 'remix', 'editown', 'choosepad',
@@ -5762,6 +5762,7 @@ export class Ui {
           action: 'leaderboard',
           note: 'The public page: every published track with its times, and how the site is doing. Opens in a new tab.',
         },
+        { label: 'Support', action: 'support', note: PATREON_NOTE },
         {
           label: 'Credits',
           action: 'credits',
@@ -6603,6 +6604,7 @@ export class Ui {
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
         { label: 'FPV wiki', action: 'wiki', note: 'The plant, the compiled controller, and every catalog key. Opens the wiki on webfpv.org.' },
+        { label: 'Support', action: 'support', note: PATREON_NOTE },
         { label: 'Credits', action: 'credits', note: 'Who made this, who flew it, and whose work it stands on.' },
         { label: 'Quit to title', action: 'title' },
       ];
@@ -12685,6 +12687,11 @@ export class Ui {
     }
     if (action === 'wiki') {
       openNamedWindow(wikiPageUrl(), WIKI_WINDOW);
+      return;
+    }
+    /* Patreon, which is not one of our sites, so not a named tab. */
+    if (action === 'support') {
+      openSupport();
       return;
     }
     /*

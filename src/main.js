@@ -76,7 +76,7 @@ import {
   fetchTrackDocument, fetchTrackTimes, postFreestyleRun, postTime,
 } from './share/board.js';
 import { findBoardTwin, hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
-import { createFlightStats, pingVisit } from './share/stats.js';
+import { captureSource, createFlightStats, pingVisit } from './share/stats.js';
 import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import { stampFor, writeStamp } from './share/stamps.js';
@@ -495,6 +495,40 @@ async function loadMap(shell, id, loading, options) {
 export async function boot({ loading, bootStart, mapId }) {
   const BOOT_START = bootStart ?? performance.now();
   /*
+   * Replay mode: ?replay=tm-xxxxxxxx loads a ghost and plays it pilotless
+   * for frame-by-frame capture. Used by the marketing team to record ghost
+   * spotlight videos without depending on internal test hooks. clean=1 on
+   * a replay takes away everything that is not the flight: the UI, the
+   * cursor, the next gate's glow and every sponsor's mark.
+   */
+  let replayMode = false;
+  let replayTimeId = '';
+  let replayCamera = 'chase'; /* chase or fpv */
+  let replayClean = false;
+  let replayState = 'loading'; /* loading, ready, failed */
+  let replayClock = null; /* { startMs, vt } when active */
+  let replayStepMode = false; /* true when using __replayStep */
+  let replayChaseCam = null; /* { pos, look, prevDt } for chase camera smoothing */
+  let replayPresence = 0; /* tracked separately since ghostRig doesn't expose it */
+  const replayScratchPos = new THREE.Vector3();
+  const replayScratchQuat = new THREE.Quaternion();
+  const replayScratchDir = new THREE.Vector3();
+  const replayScratchTilt = new THREE.Quaternion();
+  const replayScratchUp = new THREE.Vector3();
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const replayParam = params.get('replay') || '';
+    if (/^tm-[0-9a-f]{8}$/.test(replayParam)) {
+      replayMode = true;
+      replayTimeId = replayParam;
+      const camParam = (params.get('cam') || 'chase').toLowerCase();
+      replayCamera = camParam === 'fpv' ? 'fpv' : 'chase';
+      replayClean = params.get('clean') === '1';
+    }
+  } catch (e) {
+    /* No URL to read. */
+  }
+  /*
    * FIRST, BEFORE ANYTHING READS THE QUERY.
    *
    * Two things in one call. It takes a sponsor's `utm_source` out of the
@@ -509,8 +543,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * pages. It sends nothing at all if the pilot has switched counting off
    * or their browser sends Global Privacy Control, and nothing waits for
    * it either way.
+   *
+   * A replay (above, read first because it decides this) is a capture, not
+   * a visit: its utm_ parameters come out all the same and nothing is
+   * counted.
    */
-  pingVisit('sim');
+  if (replayMode) {
+    captureSource();
+  } else {
+    pingVisit('sim');
+  }
   const canvas = document.getElementById('view');
   /* The flying view wants the shortest path to the glass it can get, and
    * has nothing to read its own frames back for. See shell.js for what the
@@ -531,6 +573,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * See src/input/input.js for what that was costing feedforward.
    */
   input.startPolling(2);
+  /* Hide UI in replay clean mode. failReplay puts both back. */
+  if (replayClean) {
+    uiRoot.style.display = 'none';
+    canvas.style.cursor = 'none';
+  }
   const ui = new Ui(uiRoot);
   /*
    * The thumb sticks, on a device that has thumbs to offer. Mounted after
@@ -1104,6 +1151,7 @@ export async function boot({ loading, bootStart, mapId }) {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: ui.settings.graphics,
       renderScale: renderScaleOf(ui.settings),
+      hideSponsors: replayClean,
       ...worldDocument(ui.settings.map),
     });
   } catch (e) {
@@ -1123,6 +1171,7 @@ export async function boot({ loading, bootStart, mapId }) {
     view = await loadMap(shell, 'custom', loading, {
       quality: ui.settings.graphics,
       renderScale: renderScaleOf(ui.settings),
+      hideSponsors: replayClean,
     });
     /* The banner, not `notice`: that is declared with the frame loop's own
      * state further down and does not exist yet. This is the same way the
@@ -1692,7 +1741,9 @@ export async function boot({ loading, bootStart, mapId }) {
   function armGhost() {
     ghostLap = resolveGhost();
     if (ghostLap) {
-      ghostRig.setLabel(ghostLabelFor(ghostLap));
+      /* Hide label in replay clean mode */
+      const label = (replayClean && replayMode) ? '' : ghostLabelFor(ghostLap);
+      ghostRig.setLabel(label);
     }
   }
 
@@ -1786,9 +1837,23 @@ export async function boot({ loading, bootStart, mapId }) {
     return lap;
   }
 
+  /* A replay that cannot start hands the page back to a pilot: flying works,
+   * and a clean replay's UI and cursor come back with it. Nothing else in
+   * the shell writes either inline style, so clearing them is always safe. */
+  function failReplay(text) {
+    replayState = 'failed';
+    replayMode = false;
+    uiRoot.style.display = '';
+    canvas.style.cursor = '';
+    notice = { text, untilMs: performance.now() + 10000 };
+  }
+
   function loadBoardGhost(timeId) {
     const listing = ghostListing();
     if (!listing) {
+      if (replayMode) {
+        failReplay('Replay failed: no track listing found.');
+      }
       return;
     }
     const key = ghostCourseKey();
@@ -1802,12 +1867,28 @@ export async function boot({ loading, bootStart, mapId }) {
         }
         adoptBoardGhost(payload, timeId);
         armGhost();
+        /* Start replay mode if active. The glow is ghostFrame's job. */
+        if (replayMode && ghostLap) {
+          replayClock = { startMs: simTimeMs, vt: 0 };
+          replayState = 'ready';
+          mode = 'flight';
+          ui.show('flight');
+          introMs = -1; /* Skip intro */
+        } else if (replayMode) {
+          /* resolveGhost gives a freestyle course no ghost at all. */
+          failReplay('Replay failed: this course has no lap for a ghost to fly.');
+        }
       } catch (e) {
         if (ghostCourseKey() !== key) {
           return;
         }
         ghostBoardLap = null;
-        notice = { text: `Could not fetch that ghost.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
+        const msg = `Could not fetch that ghost.\n${e.message ?? e}`;
+        if (replayMode) {
+          failReplay(msg);
+        } else {
+          notice = { text: msg, untilMs: performance.now() + 3600 };
+        }
       } finally {
         if (ghostCourseKey() === key) {
           ghostBoardBusy = false;
@@ -1844,6 +1925,13 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostPrev.valid = false;
     ghostRig.setPresence(0);
     ghostChoice = normalizeGhostChoice(ui.settings.ghost);
+    /* Replay mode: load the specified ghost and start replay. */
+    if (replayMode && replayTimeId) {
+      ghostChoice = `board:${replayTimeId}`;
+      syncGhostRow();
+      loadBoardGhost(replayTimeId);
+      return;
+    }
     syncGhostRow();
     const listing = ghostListing();
     if (!listing || race.freestyle) {
@@ -1950,6 +2038,41 @@ export async function boot({ loading, bootStart, mapId }) {
    * off the line, out past its finish, and down across a recorded crash
    * recovery. Runs every frame; zero presence parks the whole group. */
   function ghostFrame(simNow) {
+    /* Replay mode: driven by replay clock, not race */
+    if (replayMode && ghostLap && replayClock) {
+      let t;
+      if (replayStepMode) {
+        /* Step mode: use virtual time */
+        t = replayClock.vt;
+      } else {
+        /* Real-time mode: advance clock using sim time */
+        replayClock.vt = simNow - replayClock.startMs;
+        t = replayClock.vt;
+        /* Loop at end */
+        if (t > ghostLap.durationMs) {
+          replayClock.startMs = simNow;
+          replayClock.vt = 0;
+          t = 0;
+        }
+      }
+      /* No fade - always full presence as per spec */
+      const presence = ghostSampleInto(t) ? 0.15 : 1;
+      replayPresence = presence;
+      ghostRig.group.position.set(ghostSample.px, ghostSample.py, ghostSample.pz);
+      ghostRig.group.quaternion.set(ghostSample.qx, ghostSample.qy, ghostSample.qz, ghostSample.qw);
+      ghostRig.setPresence(presence);
+      if (presence > 0 && shell.quad.parent && ghostRig.group.parent !== shell.quad.parent) {
+        shell.quad.parent.add(ghostRig.group);
+      }
+      /* A clean capture carries no guidance. This runs before every draw, so
+       * anything that lights a target again (reset() on R, a new look) is
+       * put out before a frame can show it. */
+      if (replayClean && view.targetAim && view.targetAim().active) {
+        view.setNextGate(-1, -1);
+      }
+      return;
+    }
+    /* Normal chase mode */
     const running = ghostLap && !race.freestyle && race.lapStartMs != null
       && (mode === 'flight' || mode === 'paused');
     if (!running) {
@@ -3627,6 +3750,21 @@ export async function boot({ loading, bootStart, mapId }) {
      * inside a cooldown that has already expired. */
     trickTouchAtSimMs = -1e9;
     /*
+     * A real time replay holds one: startMs, the sim time its lap last
+     * started at. Left there after a loop, vt went below zero and the ghost
+     * stood on its first frame for as long as the replay had run up to that
+     * loop.
+     * Back to 0 with the clock, so R, the radio's restart switch and the
+     * pause menu's Restart run all start the ghost again from the top, as R
+     * already did before the first loop. The owner's call, 2026-09-26. Step
+     * mode is left alone: the capture drives vt there through __replayStep,
+     * and startMs is not read.
+     */
+    if (replayMode && replayClock && !replayStepMode) {
+      replayClock.startMs = 0;
+      replayClock.vt = 0;
+    }
+    /*
      * Everything else a reset does to the CRAFT is resetCraft's job, and it
      * used to be a verbatim copy of it, comments and all, which is the kind
      * of duplication that survives until the two drift and a crash recovery
@@ -3792,6 +3930,7 @@ export async function boot({ loading, bootStart, mapId }) {
       view = await loadMap(shell, wantId, loading, {
         quality: wantQ,
         renderScale: renderScaleOf(ui.settings),
+        hideSponsors: replayClean,
         ...worldDocument(wantId),
       });
       loading.start('frame');
@@ -3818,6 +3957,7 @@ export async function boot({ loading, bootStart, mapId }) {
         view = await loadMap(shell, previous, loading, {
           quality: previousGraphics,
           renderScale: renderScaleOf(ui.settings),
+          hideSponsors: replayClean,
           ...worldDocument(previous),
         });
         loading.start('frame');
@@ -4024,7 +4164,8 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function beginLaunchStaging() {
-    if (!(mode === 'flight' && landed)) {
+    /* A replay's craft stays parked: see the takeoff in frameBody. */
+    if (!(mode === 'flight' && landed) || replayMode) {
       return;
     }
     if (stateCurr && plantUpZ(stateCurr) < 0) {
@@ -4544,6 +4685,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   async function submitBoardTime() {
+    if (replayMode) return;
     /* The board is flown on the full model only. An arcade lap is real
      * practice but a different aircraft, and a leaderboard where the two
      * mix is not a leaderboard. */
@@ -6037,15 +6179,19 @@ export async function boot({ loading, bootStart, mapId }) {
      * mid crash; `laps` is the race's own list and the module takes the
      * delta. It cannot reach the integrator: nothing below reads it, and
      * everything it does with the numbers is arithmetic and a beacon.
+     * A replay is a capture, not a flight, and counts nothing, as it sends
+     * no visit.
      */
-    flightStats.tick(nowWall, {
-      started: flownThisRun,
-      /* Airborne, and not on the grass upside down: a minute spent in
-       * crashflip waiting to be righted is not a minute of flying, and the
-       * two turtle flags are already here to say so. */
-      flying: flownThisRun && !landed && !turtleWait && !turtleRecover,
-      laps: race.laps.length,
-    });
+    if (!replayMode) {
+      flightStats.tick(nowWall, {
+        started: flownThisRun,
+        /* Airborne, and not on the grass upside down: a minute spent in
+         * crashflip waiting to be righted is not a minute of flying, and the
+         * two turtle flags are already here to say so. */
+        flying: flownThisRun && !landed && !turtleWait && !turtleRecover,
+        laps: race.laps.length,
+      });
+    }
 
     /* The seated world's note, released on the first frame of a flight and
      * not one frame earlier. See showCourseNotes. */
@@ -6134,7 +6280,16 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.pollPad(padNav());
     }
 
-    if (mode === 'flight' && landed) {
+    /*
+     * A replay has no pilot, so no stick takes its craft off. It never steps
+     * the plant, and unparked, the step branch below rebuilds the lap clock,
+     * the one the ghost is flown on, from the plant's step index, which a
+     * replay leaves at 0; the frame after parks the craft again. A held
+     * throttle sent the ghost back to the start of its lap and held it
+     * there, and counted the capture as a flight. beginLaunchStaging keeps L
+     * out of a replay the same way.
+     */
+    if (mode === 'flight' && landed && !replayMode) {
       const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
       if (landed && thr > TAKEOFF_THROTTLE) {
         if (turtleRecover) {
@@ -6280,7 +6435,16 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       if (steps >= 1) {
         const stood = launchStaging;
-        if (launchStaging) {
+        /*
+         * Replay mode: don't step the physics, just tick time for ghost replay.
+         * The ghost is driven by the replay clock, not the sim. Still advance
+         * simStepIdx and simTimeMs so the frame loop functions normally.
+         */
+        if (replayMode) {
+          simStepIdx += steps;
+          simTimeMs = simStepIdx * MS_PER_STEP;
+          /* Keep stateCurr and statePrev as spawn state for rendering */
+        } else if (launchStaging) {
           sim.e.sim_set_ground(0, 0, 0, 1, 0, 0, 0, 0, 0);
           /* On the stand the module holds the pose and resolves no world
            * contact, so the moving solids only need to be where they end.
@@ -6404,7 +6568,9 @@ export async function boot({ loading, bootStart, mapId }) {
         simTimeMs += steps * MS_PER_STEP;
         simStepIdx += steps;
         frameSteps = steps;
-        if (trafficOn) {
+        /* A replay steps nothing, so its frames read the cars as a frame
+         * that did not step does, in trafficFrame at the replay's clock. */
+        if (trafficOn && !replayMode) {
           /* The stand stepped in one call, so its smoke ticks are fed after
            * it; the loop above fed its own. */
           if (stood) {
@@ -6815,14 +6981,16 @@ export async function boot({ loading, bootStart, mapId }) {
           hits: lastGroundHits,
           heightAt: (x, z, y) => view.height(x, z, y - SURFACE_BIAS, y),
         });
-        const res = race.update(racePrev, pCurr, simNow, nowWall, allowPass);
-        if (res.passed != null) {
-          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-          if (typeof audio.event === 'function') {
-            audio.event('gate');
+        if (!replayMode) {
+          const res = race.update(racePrev, pCurr, simNow, nowWall, allowPass);
+          if (res.passed != null) {
+            view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
+            if (typeof audio.event === 'function') {
+              audio.event('gate');
+            }
           }
+          ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
         }
-        ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
         if (!race.freestyle && race.lap >= runLaps) {
           mode = 'results';
           if (turtleWait || turtleFlip.active) {
@@ -7161,15 +7329,64 @@ export async function boot({ loading, bootStart, mapId }) {
         shell.camera.updateProjectionMatrix();
       }
     } else {
-      /* The camera sits inside the airframe, so the quad must be hidden or
-       * you fly looking at the inside of its own outline hull. */
-      shell.quad.visible = false;
-      shell.camera.position.copy(fpvPos);
-      shell.camera.quaternion.copy(fpvQuat);
-      setCameraNear(fpvNear(fpvPos));
-      if (shell.camera.fov !== ui.settings.cameraFov) {
-        shell.camera.fov = ui.settings.cameraFov;
-        shell.camera.updateProjectionMatrix();
+      /* Replay mode camera overrides */
+      if (replayMode && ghostLap && replayPresence > 0) {
+        shell.quad.visible = false;
+        replayScratchPos.set(ghostSample.px, ghostSample.py, ghostSample.pz);
+        replayScratchQuat.set(ghostSample.qx, ghostSample.qy, ghostSample.qz, ghostSample.qw);
+        if (replayCamera === 'fpv') {
+          /* FPV camera: ghost position and orientation with camera tilt */
+          replayScratchTilt.setFromAxisAngle(AXIS_X, cameraTiltRad(camTilt));
+          shell.camera.position.copy(replayScratchPos);
+          shell.camera.quaternion.copy(replayScratchQuat).multiply(replayScratchTilt);
+          if (shell.camera.fov !== ui.settings.cameraFov) {
+            shell.camera.fov = ui.settings.cameraFov;
+            shell.camera.updateProjectionMatrix();
+          }
+        } else {
+          /* Chase camera: smoothed spring arm behind the ghost */
+          replayScratchDir.set(0, 0, -1).applyQuaternion(replayScratchQuat);
+          const micro = CRAFT_R < 0.15;
+          const BACK = micro ? 0.55 : 1.6;
+          const UP = BACK * 0.35;
+          const AHEAD = BACK * 1.1;
+          const dt = replayStepMode ? (replayClock.vt - (replayChaseCam ? replayChaseCam.prevDt : 0)) : frameSteps * MS_PER_STEP;
+          if (!replayChaseCam) {
+            replayScratchUp.set(0, UP, 0);
+            replayChaseCam = {
+              pos: replayScratchPos.clone().addScaledVector(replayScratchDir, -BACK).add(replayScratchUp),
+              look: replayScratchPos.clone().addScaledVector(replayScratchDir, AHEAD),
+              prevDt: replayClock.vt,
+            };
+          }
+          const k = 5; /* spring constant */
+          const alpha = 1 - Math.exp(-k * dt / 1000);
+          replayScratchUp.set(0, UP, 0);
+          replayScratchPos.addScaledVector(replayScratchDir, -BACK).add(replayScratchUp);
+          replayChaseCam.pos.lerp(replayScratchPos, alpha);
+          replayScratchPos.set(ghostSample.px, ghostSample.py, ghostSample.pz).addScaledVector(replayScratchDir, AHEAD);
+          replayChaseCam.look.lerp(replayScratchPos, alpha);
+          replayChaseCam.prevDt = replayClock.vt;
+          shell.camera.up.set(0, 1, 0);
+          shell.camera.position.copy(replayChaseCam.pos);
+          shell.camera.lookAt(replayChaseCam.look);
+          if (shell.camera.fov !== 70) {
+            shell.camera.fov = 70;
+            shell.camera.updateProjectionMatrix();
+          }
+        }
+        setCameraNear(CAMERA_NEAR_OPEN);
+      } else {
+        /* The camera sits inside the airframe, so the quad must be hidden or
+         * you fly looking at the inside of its own outline hull. */
+        shell.quad.visible = false;
+        shell.camera.position.copy(fpvPos);
+        shell.camera.quaternion.copy(fpvQuat);
+        setCameraNear(fpvNear(fpvPos));
+        if (shell.camera.fov !== ui.settings.cameraFov) {
+          shell.camera.fov = ui.settings.cameraFov;
+          shell.camera.updateProjectionMatrix();
+        }
       }
     }
 
@@ -7722,7 +7939,11 @@ export async function boot({ loading, bootStart, mapId }) {
      * hardware independent. Two scalars, written not allocated: P8 forbids
      * a new object here. */
     const blockMs = performance.now() - blockStart;
-    if (view && view.post && typeof view.post.applyPace === 'function') {
+    /* Never during a replay step capture, where every frame must be drawn at
+     * one scale. No map has applyPace yet (see quality.js), so today this
+     * guard only keeps it that way; tests/replay-test.js checks the drawing
+     * buffer holds still across a capture. */
+    if (view && view.post && typeof view.post.applyPace === 'function' && !replayStepMode) {
       pace.observe(dt, renderMs, blockMs, view.post);
       if (pace.state.dirty) {
         if (view.post.applyPace(pace.state.want)) {
@@ -8357,6 +8578,59 @@ export async function boot({ loading, bootStart, mapId }) {
     const lap = which === 'previous' ? ghostBook.previous(key) : ghostBook.best(key);
     return lap ? ghostToBase64(encodeGhost(lap)) : null;
   };
+  /*
+   * Replay mode: advance the replay clock by a fixed amount for
+   * frame-by-frame capture. When called, switches to step mode and pauses
+   * the real-time clock. Call with ms = 0 to initialize step mode, then
+   * call with positive ms to advance frame by frame.
+   */
+  window.__replayStep = (ms) => {
+    if (!replayMode || !ghostLap) {
+      return { error: 'Replay mode not active or ghost not loaded' };
+    }
+    if (!Number.isFinite(ms) || ms < 0) {
+      return { error: 'Step must be a finite non-negative number' };
+    }
+    if (!replayStepMode) {
+      /* Initialize step mode */
+      replayStepMode = true;
+      replayClock = { startMs: simTimeMs, vt: 0 };
+    }
+    if (ms === 0) {
+      /* Reset to start */
+      replayClock.vt = 0;
+      replayChaseCam = null;
+    } else {
+      replayClock.vt += ms;
+    }
+    /* Cap at ghost duration */
+    if (replayClock.vt > ghostLap.durationMs) {
+      replayClock.vt = ghostLap.durationMs;
+    }
+    return { vt: replayClock.vt, durationMs: ghostLap.durationMs };
+  };
+  window.__replayInfo = () => ({
+    active: replayMode,
+    state: replayState,
+    timeId: replayTimeId,
+    camera: replayCamera,
+    clean: replayClean,
+    stepMode: replayStepMode,
+    clock: replayClock ? { startMs: replayClock.startMs, vt: replayClock.vt } : null,
+    /* The lap clock, which a real time replay is timed on. Every reset()
+     * puts it back to 0, so a check can see that R landed even in step
+     * mode, where vt does not follow it. */
+    simMs: simTimeMs,
+    ghostLoaded: ghostLap != null,
+    cameraPosition: shell.camera ? {
+      x: shell.camera.position.x,
+      y: shell.camera.position.y,
+      z: shell.camera.position.z
+    } : null,
+  });
+  window.__race = () => ({
+    laps: race ? race.laps : [],
+  });
   window.__craftState = () => ({
     mode,
     flownThisRun,
@@ -9039,6 +9313,7 @@ export async function boot({ loading, bootStart, mapId }) {
     mode: view.mode,
     graphics: view.graphics,
     gates: view.gates.length,
+    sponsorsPainted: view.sponsorsPainted ?? 0,
     spawn: { x: startX, y: startY, z: startZ, yaw: startYaw },
     ready: mapReady,
     references: view.references ?? null,

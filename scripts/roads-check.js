@@ -37,9 +37,14 @@
  *   4. yard      over a whole lap of each car, every car's box stays at
  *                least CAR_CLEAR from every solid of the starter's that it
  *                could reach, the drift car's slide included; the road's
- *                6 m keep ROAD_CLEAR from every solid under a car's roof
+ *                width keeps ROAD_CLEAR from every solid under a car's roof
  *                height and PADS_CLEAR from the start pads; the two working
  *                vehicles' laps agree to LAP_MATCH
+ *   5. traffic   over OVERLAP_MS of clock, every millisecond, no two of the
+ *                starter's cars ever overlap in plan (the physics lets one
+ *                car drive through another, so the map has to keep them
+ *                apart), and the same test finds the overlaps the
+ *                starter's first loop had, so it can see one
  *
  * A threshold here is never widened to make a line pass (CLAUDE.md); the
  * argument goes in PROGRESS.md.
@@ -131,6 +136,10 @@ const ROAD_CLEAR = 1.5;
 const PADS_CLEAR = 10;
 /* The box truck's and the kei van's laps, s: the starter promises 5 ms. */
 const LAP_MATCH = 0.005;
+/* How much clock the cars are held apart over, ms: thirty minutes, the
+ * span the foundation measured the first loop's overlaps over, a dozen
+ * meetings of every pair at every point of the loop. */
+const OVERLAP_MS = 30 * 60 * 1000;
 
 let failures = 0;
 function check(name, ok, detail) {
@@ -863,6 +872,137 @@ async function starterBlocks(wasm) {
   }
 }
 
+/* ---- 5. the cars against each other ---- */
+
+/*
+ * The starter's FIRST loop, as it was when Stage E's foundation measured
+ * its drift car driving through the box truck (PROGRESS.md, 2026-09-26):
+ * 6 m wide, a chicane of two square bends, and the kei van's speed matched
+ * to that loop. Block 5 runs its test on this first, to show the test can
+ * see an overlap.
+ */
+const FIRST_LOOP = {
+  position: { x: 140, y: 139 },
+  width: 6,
+  nodes: [[0, 0], [0, -121], [-20, -121], [-20, -67], [-38.5, -67], [-38.5, 0]],
+  vanSpeed: 8.8318,
+  ms: 60000,
+};
+
+/* A car's footprint from its pose: its four corners and its two axes. */
+function footprint(p, v) {
+  const c = [];
+  for (const sl of [-1, 1]) {
+    for (const sw of [-1, 1]) {
+      c.push(p.x + (p.hx * sl * v.length) / 2 - (p.hz * sw * v.width) / 2, p.z + (p.hz * sl * v.length) / 2 + (p.hx * sw * v.width) / 2);
+    }
+  }
+  return c;
+}
+
+/* How far two footprints overlap along the axis that separates them best,
+ * by the separating axes of the two: positive is an overlap that deep, and
+ * minus it is a lower bound on the gap between them. */
+function overlapOf(pa, ca, pb, cb) {
+  const axes = [pa.hx, pa.hz, -pa.hz, pa.hx, pb.hx, pb.hz, -pb.hz, pb.hx];
+  let best = Infinity;
+  for (let k = 0; k < 8; k += 2) {
+    const ux = axes[k];
+    const uz = axes[k + 1];
+    let a0 = Infinity;
+    let a1 = -Infinity;
+    let b0 = Infinity;
+    let b1 = -Infinity;
+    for (let i = 0; i < 8; i += 2) {
+      const da = ca[i] * ux + ca[i + 1] * uz;
+      const db = cb[i] * ux + cb[i + 1] * uz;
+      a0 = Math.min(a0, da);
+      a1 = Math.max(a1, da);
+      b0 = Math.min(b0, db);
+      b1 = Math.max(b1, db);
+    }
+    best = Math.min(best, Math.min(a1, b1) - Math.max(a0, b0));
+  }
+  return best;
+}
+
+/*
+ * Every millisecond of `ms` of clock, every pair of cars whose centres are
+ * within reach of each other: how long any two overlapped, the deepest, and
+ * the nearest two ever came, with where (plan) and which.
+ */
+async function carOverlaps(wasm, doc, ms) {
+  const W = doc.field.width;
+  const D = doc.field.depth;
+  const traffic = trafficOf(doc);
+  const sim = await loadSim(wasm);
+  sim.e.sim_world_clear();
+  sim.e.sim_world_build();
+  uploadTraffic(sim, traffic);
+  const poses = makeVehiclePoses();
+  const cars = traffic.vehicles;
+  const out = { overlapMs: 0, events: 0, deepest: 0, deepAt: '', nearest: Infinity, nearAt: '' };
+  let inside = false;
+  const where = (step, a, b, pa, pb) => {
+    const qa = toPlan(W, D, pa.x, pa.z);
+    const qb = toPlan(W, D, pb.x, pb.z);
+    return `${a.style} at (${r3(qa.x)}, ${r3(qa.y)}) and ${b.style} at (${r3(qb.x)}, ${r3(qb.y)}), step ${step}`;
+  };
+  for (let step = 0; step <= ms; step += 1) {
+    setVehicleClock(sim, step);
+    readVehicles(sim, poses);
+    let any = false;
+    for (let i = 0; i < cars.length; i += 1) {
+      for (let j = i + 1; j < cars.length; j += 1) {
+        const pa = poses[cars[i].slot];
+        const pb = poses[cars[j].slot];
+        const reach = (cars[i].length + cars[j].length) / 2 + 2;
+        const dx = pa.x - pb.x;
+        const dz = pa.z - pb.z;
+        if (dx * dx + dz * dz > reach * reach) {
+          continue;
+        }
+        const d = overlapOf(pa, footprint(pa, cars[i]), pb, footprint(pb, cars[j]));
+        if (-d < out.nearest) {
+          out.nearest = -d;
+          out.nearAt = where(step, cars[i], cars[j], pa, pb);
+        }
+        if (d > 0) {
+          any = true;
+          if (d > out.deepest) {
+            out.deepest = d;
+            out.deepAt = where(step, cars[i], cars[j], pa, pb);
+          }
+        }
+      }
+    }
+    if (any) {
+      out.overlapMs += 1;
+      out.events += inside ? 0 : 1;
+    }
+    inside = any;
+  }
+  return out;
+}
+
+async function trafficBlock(wasm) {
+  console.log(`\n5. traffic: the starter's cars against each other, every millisecond of ${OVERLAP_MS / 60000} minutes of clock`);
+  const first = starterMap();
+  const road = first.elements.find((e) => e.type === 'road');
+  road.position.x = FIRST_LOOP.position.x;
+  road.position.y = FIRST_LOOP.position.y;
+  road.dims.width = FIRST_LOOP.width;
+  road.nodes = FIRST_LOOP.nodes.map(([x, y]) => ({ x, y }));
+  first.elements.find((e) => e.type === 'vehicle' && e.style === 'keivan').dims.speed = FIRST_LOOP.vanSpeed;
+  const seen = await carOverlaps(wasm, normalize(first).doc, FIRST_LOOP.ms);
+  check(`the test sees the first loop's drift car drive through the box truck in its first ${FIRST_LOOP.ms / 1000} s`,
+    seen.overlapMs > 0, `${seen.overlapMs} ms in ${seen.events} meetings, up to ${r3(seen.deepest)} m, ${seen.deepAt}`);
+  const now = await carOverlaps(wasm, normalize(starterMap()).doc, OVERLAP_MS);
+  check('no two of the starter\'s cars ever overlap', now.overlapMs === 0,
+    now.overlapMs ? `${now.overlapMs} ms in ${now.events} meetings, up to ${r3(now.deepest)} m, ${now.deepAt}`
+      : `the nearest two come is ${r3(now.nearest)} m, ${now.nearAt}`);
+}
+
 /* ------------------------------------------------------------------ */
 
 async function main() {
@@ -875,6 +1015,7 @@ async function main() {
   await sourceBlock();
   await mirrorBlock(sim);
   await starterBlocks(wasm);
+  await trafficBlock(wasm);
   console.log(`\nroads-check: ${failures === 0 ? 'all passed' : `${failures} FAILED`} (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
   return failures;
 }

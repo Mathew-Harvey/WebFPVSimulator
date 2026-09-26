@@ -21,7 +21,8 @@
  *                road.js promises, turns well under 30 degrees at every
  *                point, has zero curvature at both ends of every bend and
  *                no step in curvature inside one, and is ACCEPTED by
- *                sim_world_road, which returns an index
+ *                sim_world_road, which returns an index. And road.js and
+ *                traffic.js call no JS trigonometry, pow, exp or hypot
  *   2. mirror    road.js moduleCheck says what the module says, on roads
  *                the module refuses (an uneased corner, a 1 cm segment, a
  *                point past 1e6 m) and on every line of block 1, and the
@@ -463,6 +464,35 @@ async function shapesBlock(sim, shapes, starterRoad) {
   note(`the slowest road to work out: ${r3(worstCost.ms)} ms, ${worstCost.name}`);
 }
 
+/*
+ * ARITHMETIC ONLY: road.js and traffic.js hand the module its road points,
+ * so neither may call a function JavaScript does not specify to the bit.
+ * The source, comments taken out, is searched for Math's transcendental
+ * functions, Math.random, and the ** operator (as loosely specified as
+ * Math.pow). The scan is shown to find each in a planted line.
+ */
+const FORBIDDEN = /Math\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|pow|exp|expm1|log|log1p|log2|log10|hypot|cbrt|random)\b|\*\*/g;
+function arithmeticProblems(src) {
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  return [...new Set((code.match(FORBIDDEN) || []))];
+}
+
+async function sourceBlock() {
+  const found = [];
+  for (const f of ['src/maps/built/road.js', 'src/maps/built/traffic.js']) {
+    const bad = arithmeticProblems(await readFile(join(root, f), 'utf8'));
+    if (bad.length) {
+      found.push(`${f}: ${bad.join(', ')}`);
+    }
+  }
+  check('road.js and traffic.js use + - * / and Math.sqrt: no JS trigonometry, pow, exp, hypot, random or **', found.length === 0,
+    found.join('; ') || 'none found');
+  const planted = arithmeticProblems('/* Math.sin in a comment is fine */\nconst a = Math.atan2(1, 2) + Math.hypot(3, 4) + 2 ** 3;\n');
+  check('and the search finds each in a planted line, and nothing in a comment',
+    planted.includes('Math.atan2') && planted.includes('Math.hypot') && planted.includes('**') && !planted.includes('Math.sin'),
+    planted.join(', '));
+}
+
 async function mirrorBlock(sim) {
   console.log('\n2. mirror: the checks and moduleCheck can see a bad road');
   /* Roads the module refuses, handed over raw, as the physics frame numbers
@@ -842,6 +872,7 @@ async function main() {
   const sim = await loadSim(wasm);
   const starterRoad = normalize(starterMap()).doc.elements.find((e) => e.type === 'road');
   await shapesBlock(sim, hostileShapes(), starterRoad);
+  await sourceBlock();
   await mirrorBlock(sim);
   await starterBlocks(wasm);
   console.log(`\nroads-check: ${failures === 0 ? 'all passed' : `${failures} FAILED`} (${((performance.now() - t0) / 1000).toFixed(1)} s)`);

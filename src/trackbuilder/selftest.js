@@ -31,7 +31,7 @@
  */
 
 import {
-  createTrack, createElement, createSequenceEntry, deserialize, elementById, normalize,
+  createTrack, createElement, createSequenceEntry, deserialize, elementById, normalize, isSequenceable,
   roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf,
   logoForDecal, dressOrder, LOGO_SLOTS, SCHEMA_VERSION,
   SCENE_TIMES, SCENE_GROUNDS, SCENE_DEFAULT, sceneOf, deepClone,
@@ -48,18 +48,21 @@ import {
 import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight,
   virtualApertureDims, countElementsByType, formatElementCounts,
   GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor, FRAME_TUBE_OD,
-  KIND, FREESTYLE_PALETTE_ORDER, PALETTE_EXTRA, paletteItems, docModeOf,
+  KIND, FREESTYLE_PALETTE_ORDER, PALETTE_EXTRA, paletteItems, docModeOf, isTrafficType,
+  TUNING, tuningFor, ROAD_NODES_MAX,
 } from './elements.js';
 import {
   boardPlanOf, planShapeOf, snapYaw, turnsOf,
 } from './view2d.js';
 import { starterMap } from '../maps/built/starter.js';
-import { PROP_TYPES, GAP_POINTS, FURNITURE_PALETTE } from '../props/types.js';
+import { PROP_TYPES, GAP_POINTS, FURNITURE_PALETTE, CAR_STYLES } from '../props/types.js';
 import { partsOf } from '../props/catalog.js';
 import { GAP_MIN } from '../props/parts.js';
 import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
 import { padsLayout } from '../props/course.js';
 import { placeDocument, topUnder, groundUnder, SUPPORT_TIE } from '../maps/built/place.js';
+import { roadOf } from '../maps/built/road.js';
+import { trafficOf, DRIFT } from '../maps/built/traffic.js';
 import { clubhouseSolids } from '../art/clubhouse.js';
 import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
@@ -3262,6 +3265,172 @@ function suiteSchemaProps() {
     md.includes(`Everything below describes \`schemaVersion: ${SCHEMA_VERSION}\``));
 }
 
+/*
+ * ROADS AND VEHICLES IN THE DOCUMENT (Stage E). A road's nodes are relative
+ * to its position and a vehicle's place is its road and offset, so neither
+ * carries a field worked out from another; both round trip byte for byte;
+ * hostile input is repaired and never throws; and a race document is
+ * untouched by any of it: no road or vehicle is ever read or written on
+ * one, and the race palettes and tuning are what they were. The geometry
+ * and the physics are scripts/roads-check.js's.
+ */
+function suiteRoadsAndVehicles() {
+  console.log('\nroads and vehicles');
+  const map = createTrack(undefined, 'full', 'freestyle');
+  const road = createElement(map, 'road', { x: 40, y: 50 });
+  map.elements.push(road);
+  const car = createElement(map, 'vehicle', { x: 70, y: 70 });
+  car.road = road.id;
+  map.elements.push(car);
+  check('a new road is two nodes 20 m apart on the ground, relative to its position',
+    road.nodes.length === 2 && road.nodes[0].x === 0 && road.nodes[1].x === 20 && road.position.x === 40
+    && road.position.z === 0 && road.closed === false);
+  check('a new vehicle has no place of its own, and starts at its style\'s speed',
+    car.position.x === 0 && car.position.y === 0 && car.style === CAR_STYLES[0]
+    && car.dims.speed === 11 && car.reverse === false && car.drift === false);
+  check('neither is a solid of the map nor in its flying order',
+    placeDocument(map).solids.length === 0 && !isSequenceable(road) && !isSequenceable(car));
+  let refused = 0;
+  for (const el of [road, car]) {
+    try {
+      createSequenceEntry(map, el.id);
+    } catch (e) {
+      refused += 1;
+    }
+  }
+  check('and createSequenceEntry refuses both', refused === 2);
+
+  const text = serialize(map);
+  const back = deserialize(text);
+  check('a map with a road and a vehicle reads back with no repairs', back.repairs.length === 0, back.repairs.join('; '));
+  check('and round trips byte for byte', serialize(back.doc) === text);
+  const edited = deserialize(text).doc;
+  const er = edited.elements.find((e) => e.type === 'road');
+  const ev = edited.elements.find((e) => e.type === 'vehicle');
+  er.nodes = [{ x: 0, y: 0 }, { x: 30.25, y: 0 }, { x: 30.25, y: 40 }, { x: -5, y: 40 }];
+  er.closed = true;
+  er.dims = { width: 8.5, lanes: 1, radius: 20 };
+  ev.dims = { offset: 33.3, speed: 18.5, variant: 7 };
+  ev.style = 'boxtruck';
+  ev.reverse = true;
+  ev.drift = true;
+  const text2 = serialize(edited);
+  const read2 = deserialize(text2);
+  const r2 = read2.doc.elements.find((e) => e.type === 'road');
+  const v2 = read2.doc.elements.find((e) => e.type === 'vehicle');
+  check('an edited road and vehicle round trip byte for byte, every field kept',
+    read2.repairs.length === 0 && serialize(read2.doc) === text2
+    && r2.nodes.length === 4 && r2.nodes[3].x === -5 && r2.closed === true && r2.dims.lanes === 1 && r2.dims.width === 8.5
+    && v2.dims.offset === 33.3 && v2.dims.speed === 18.5 && v2.style === 'boxtruck' && v2.reverse === true && v2.drift === true
+    && v2.road === r2.id, read2.repairs.join('; '));
+  /* Dragged about in memory, a vehicle's unused place and a road's height
+   * are still written as the read will keep them. */
+  const moved = deserialize(text).doc;
+  moved.elements.find((e) => e.type === 'vehicle').position = { x: 12, y: 34, z: 5 };
+  moved.elements.find((e) => e.type === 'road').position.z = 3;
+  moved.elements.find((e) => e.type === 'road').yaw = 1.2;
+  check('a vehicle moved or a road raised in memory still round trips cleanly', roundTripsCleanly(moved)
+    && serialize(moved).includes('"x": 40') && !serialize(moved).includes('"y": 34'));
+
+  /* Hostile input: repaired, never thrown about. */
+  let hostile = null;
+  let threw = null;
+  try {
+    hostile = normalize({
+      mode: 'freestyle',
+      elements: [
+        { id: 'el-1', type: 'road', position: { x: 1, y: 2, z: 9 }, yaw: 2, dims: { width: 99, lanes: 7, radius: -1 },
+          nodes: [{ x: 0, y: 0 }, { x: 'a', y: 1 }, { x: 1e300, y: 0 }, null, 7, { x: 5, y: NaN }, { x: 5, y: 5 }], closed: 'yes' },
+        { id: 'el-2', type: 'vehicle', position: { x: 9, y: 9 }, dims: { offset: -5, speed: 1e9, variant: 3.7 },
+          style: 'tank', road: 'el-99', reverse: 1, drift: 'true' },
+        { id: 'el-3', type: 'road', nodes: 'x', dims: { lanes: 0, width: 'wide' } },
+        { id: 'el-4', type: 'vehicle', road: 42, dims: { speed: NaN } },
+        { id: 'el-5', type: 'road', nodes: Array.from({ length: ROAD_NODES_MAX + 10 }, (_, i) => ({ x: i, y: (i % 2) * 3 })) },
+      ],
+    });
+  } catch (e) {
+    threw = e;
+  }
+  check('hostile roads and vehicles never throw', threw === null, threw && threw.message);
+  if (hostile) {
+    const [h1, h2, h3, h4, h5] = hostile.doc.elements;
+    check('bad nodes are dropped, with a note', h1.nodes.length === 2 && h1.nodes[1].x === 5
+      && hostile.repairs.some((r) => r.includes('el-1') && r.includes('5 nodes')), hostile.repairs.join('; '));
+    check('widths, lanes and radii are clamped, a road put on the ground and turned by nothing',
+      h1.dims.width === 20 && h1.dims.lanes === 2 && h1.dims.radius === 2 && h1.position.z === 0 && h1.yaw === 0
+      && h1.closed === false && h3.dims.lanes === 1 && h3.dims.width === ELEMENTS.road.dims.width);
+    check('nodes that are not a list read as none, with a note',
+      h3.nodes.length === 0 && hostile.repairs.some((r) => r.includes('el-3') && r.includes('not a list')));
+    check(`a road keeps ${ROAD_NODES_MAX} nodes and says it dropped the rest`,
+      h5.nodes.length === ROAD_NODES_MAX && hostile.repairs.some((r) => r.includes('el-5') && r.includes('10 nodes')));
+    check('a vehicle whose road is missing is kept, pointing at it', h2.road === 'el-99' && h4.road === '');
+    check('a vehicle\'s speed, offset, variant, style and flags are repaired',
+      h2.dims.speed === 50 && h2.dims.offset === 0 && h2.dims.variant === 4 && h2.style === CAR_STYLES[0]
+      && h2.reverse === false && h2.drift === false && h2.position.x === 0 && h4.dims.speed === ELEMENTS.vehicle.dims.speed);
+    const again = deserialize(serialize(hostile.doc));
+    check('and the repaired document reads back with no repairs, byte for byte',
+      again.repairs.length === 0 && serialize(again.doc) === serialize(hostile.doc), again.repairs.join('; '));
+    const t = trafficOf(hostile.doc);
+    check('trafficOf a hostile map leaves every vehicle parked with a problem, and never throws',
+      t.vehicles.length === 0 && t.problems.filter((p) => p.code === 'tr-no-road').length === 2,
+      t.problems.map((p) => p.code).join(', '));
+  }
+
+  /* A race document is untouched by any of this. */
+  const race = createTrack('Race with a road');
+  race.elements.push(createElement(race, 'gate', { x: 10, y: 10 }));
+  const raceBytes = serialize(race);
+  race.elements.push(createElement(race, 'road', { x: 20, y: 20 }));
+  race.elements.push(createElement(race, 'vehicle', { x: 20, y: 20 }));
+  check('a race track in memory with a road and a vehicle writes the bytes it wrote without them',
+    serialize(race) === raceBytes);
+  const raceRead = normalize({ ...JSON.parse(raceBytes), elements: [...JSON.parse(raceBytes).elements, ...toPlain({ ...map, elements: map.elements }).elements] });
+  check('and reading one drops both, with a note each',
+    raceRead.doc.elements.length === 1 && raceRead.repairs.filter((r) => r.includes('a map\'s only')).length === 2,
+    raceRead.repairs.join('; '));
+  check('trafficOf a race track is empty', trafficOf(race).roads.length === 0 && trafficOf(race).vehicles.length === 0);
+  for (const cls of ['full', 'micro']) {
+    const items = paletteItems(cls, 'race');
+    check(`no road or vehicle is on the ${cls} race palette, and no key arms one`,
+      !items.some((d) => isTrafficType(d.id)) && ![...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'].some((k) => isTrafficType(elementByKey(k, cls, 'race')?.id)));
+  }
+  check('the race tuning is what it was', tuningFor('full', 'race') === TUNING && tuningFor('micro', 'race').minCurveRadius === TUNING.micro.minCurveRadius);
+  check('the inventory counts neither', countElementsByType([road, car]).length === 0);
+
+  /* schema.md's own examples of the two are what this build reads and
+   * writes. */
+  const here = dirname(fileURLToPath(import.meta.url));
+  const md = readFileSync(join(here, 'schema.md'), 'utf8');
+  const examples = [...md.matchAll(/```jsonc\r?\n([\s\S]*?)```/g)].map((m) => {
+    try {
+      return JSON.parse(m[1]);
+    } catch (e) {
+      return null;
+    }
+  }).filter((o) => o && (o.type === 'road' || o.type === 'vehicle'));
+  const exDoc = normalize({ ...toPlain(createTrack(undefined, 'full', 'freestyle')), elements: examples });
+  const plain = toPlain(exDoc.doc).elements;
+  check('schema.md\'s road and vehicle examples read with no repairs and are written back exactly',
+    examples.length === 2 && exDoc.repairs.length === 0
+    && examples.every((ex, i) => JSON.stringify(ex) === JSON.stringify(plain[i])), exDoc.repairs.join('; '));
+
+  /* The starter carries a loop and its traffic, with fixed ids. */
+  const yard = normalize(starterMap());
+  const ids = yard.doc.elements.map((e) => e.id);
+  check('the starter reads with no repairs and its ids run el-1 up in order',
+    yard.repairs.length === 0 && ids.every((id, i) => id === `el-${i + 1}`), yard.repairs.join('; '));
+  const loop = yard.doc.elements.find((e) => e.type === 'road');
+  const rl = roadOf(loop);
+  check('the starter\'s road is a loop whose line has no problems', loop.closed && rl.centre.points.length > 100
+    && rl.problems.length === 0, rl.problems.map((p) => p.message).join('; '));
+  const traffic = trafficOf(yard.doc);
+  const drift = traffic.vehicles.filter((v) => v.drift > 0);
+  check('trafficOf the starter: two lanes, three vehicles, one of them the drift car, no problems',
+    traffic.roads.length === 2 && traffic.vehicles.length === 3 && drift.length === 1 && drift[0].drift === DRIFT.gain
+    && traffic.vehicles.some((v) => v.style === 'boxtruck') && traffic.problems.length === 0,
+    traffic.problems.map((p) => p.message).join('; '));
+}
+
 async function suiteListing() {
   console.log('listing');
   const doc = createTrack('Ladder Loop');
@@ -4357,6 +4526,7 @@ async function main() {
   suiteFreestyle();
   suiteBoardPlan();
   suiteSchemaProps();
+  suiteRoadsAndVehicles();
   await suiteListing();
   suiteBranding();
   suiteFlagShape();

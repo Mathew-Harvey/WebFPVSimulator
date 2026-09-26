@@ -230,7 +230,12 @@ course; that is what `sequence` is for.
 | `yawOverridden` | boolean | `true` when the AUTHOR set the heading, which stops the tool re-deriving it. See **Faces and pass sides**. |
 | `dims` | object | Dimensions, in metres, whose keys depend on `type`. Always complete: a missing key is filled from the default on read. |
 | `text` | string | **Labels only.** The text drawn on the field. |
-| `style` | string | **Freestyle assets that have looks only.** Which look: a building's `flats`, `office`, `warehouse` or `shop`, a container's `40ft`, a tree's `sakura`. One of that type's styles in the table under **Freestyle maps**; an unknown style reads as the type's first. Not a dimension. |
+| `style` | string | **Freestyle assets that have looks, and vehicles.** Which look: a building's `flats`, `office`, `warehouse` or `shop`, a container's `40ft`, a tree's `sakura`, a vehicle's `kei` or `boxtruck`. One of that type's styles in the table under **Freestyle maps**; an unknown style reads as the type's first. Not a dimension. |
+| `nodes` | array | **Roads only.** The road's control points, `{ "x", "y" }` each, metres **relative to `position`**. See **Roads and vehicles**. |
+| `closed` | boolean | **Roads only.** `true` joins the last node back to the first: a loop. |
+| `road` | string | **Vehicles only.** The `id` of the road element it drives. |
+| `reverse` | boolean | **Vehicles only.** `true` drives against the road's node order. |
+| `drift` | boolean | **Vehicles only.** `true` makes it the drift car. |
 | `points` | integer | **Named gaps only.** What flying through it is worth: one of 100, 250, 500, 1000 or 2500, and anything else snaps to the nearest. |
 | `flagSide` | `"left"`, `"right"`, `"both"` or `"top"` | **Flagged gates and flagged doubles only.** Where the pennant stands on the top header, as seen facing the gate. `top` is one mast on the CENTRE of the board, over the opening. Default `left`. Not a dimension; the mast's height is, and it is `dims.flagH`. |
 | `logoId` | string | **Ground logos only.** The `id` of the entry in `branding.logos` this footprint is painted with. Empty means the course's first logo. Not a dimension. |
@@ -265,7 +270,8 @@ are on the whoop's and a map's, not the five inch's, and a key that is not on
 the palette in front of the author does nothing.
 
 A map also holds the freestyle assets, of two more kinds, `structure` and
-`zone`; they are listed under **Freestyle maps**.
+`zone`, and roads and vehicles, of two more, `road` and `vehicle`; they are
+listed under **Freestyle maps**.
 
 A `groundLogo` is **paint**, which is what the `decal` kind means: it has a
 footprint and a heading and nothing else. No height, so `position.z` is ignored
@@ -389,12 +395,14 @@ drops it from a race track, so no race track's bytes changed.
 **It changes no physics.** Time and ground are paint and light. The ground
 is flat at zero whatever it is drawn as, and no solid moves.
 
-### The two kinds a map adds
+### The kinds a map adds
 
 | kind | what it is |
 | --- | --- |
 | `structure` | A freestyle asset: a building, a crane, a tree. Solid, never in `sequence`, drawn and made solid from one list of parts. Only a map's palette offers them. |
 | `zone` | A **named gap**: a scoring window in the air, like a skate game's. Not solid, not drawn in the world, never in `sequence`. |
+| `road` | A **road**: control nodes eased into a curve a car can drive, painted on the ground. Not solid, never in `sequence`. See **Roads and vehicles**. |
+| `vehicle` | A **vehicle** driving a road, moved by the physics itself. Solid, but a mover: never one of the map's static solids, never in `sequence`. See **Roads and vehicles**. |
 
 An element of either kind is an ordinary element: `id`, `type`, `name`,
 `position`, `yaw`, `pitch` (written `0`), `yawOverridden` and `dims`, plus
@@ -504,6 +512,108 @@ A `gap` element is a window in the air. It stands at `position`, its
 `name` is what it is called when it is flown, "UNDER THE BRIDGE". A new gap
 is named `GAP` and worth 250. It has no parts: nothing is solid and nothing
 is drawn in the world.
+
+### Roads and vehicles
+
+Cars drive on maps and nowhere else (`FREESTYLE-MAPS-PLAN.md`, decision 9):
+`normalize` drops a road or a vehicle from a race track with a repair note,
+and `toPlain` never writes one there, so no race track's bytes changed when
+they arrived. Neither is in any palette's hotkeys; the builder's road tool
+places them.
+
+A **road**:
+
+```jsonc
+{
+  "id": "el-53",
+  "type": "road",
+  "name": "Yard loop",
+  "position": { "x": 140, "y": 139, "z": 0 },
+  "yaw": 0,
+  "pitch": 0,
+  "yawOverridden": false,
+  "dims": { "width": 6, "lanes": 2, "radius": 12 },
+  "nodes": [
+    { "x": 0, "y": 0 }, { "x": 0, "y": -121 }, { "x": -20, "y": -121 },
+    { "x": -20, "y": -67 }, { "x": -38.5, "y": -67 }, { "x": -38.5, "y": 0 }
+  ],
+  "closed": true
+}
+```
+
+| field | meaning |
+| --- | --- |
+| `position` | Where the road is: its `nodes` are measured from here, so dragging a road moves `position` and nothing else, and no field is worked out from another. `z` is written `0`: a road lies on the ground, which is flat at zero on a map. Raised roads are not in the plan. |
+| `yaw`, `pitch`, `yawOverridden` | Written `0`, `0` and `false`, never read. A road is turned by moving its nodes. |
+| `nodes` | The control points, `{ "x", "y" }` metres from `position`, in the order the road runs. At most 512; a node that is not two finite numbers within 100 km of `position` is dropped on read with a note. |
+| `closed` | `true` joins the last node back to the first, which is not repeated. Default `false`. |
+| `dims.width` | The road's width, 3 to 20 m, default 6. |
+| `dims.lanes` | 1 or 2, default 2. On a closed road of two lanes a car keeps to its own left, a quarter of the width off the centre line: the built maps are Japanese, and Japan drives on the left. On a road of one lane, and on any open road, cars drive the centre line (below). |
+| `dims.radius` | The radius the road's bends are eased to where its nodes leave room, 2 to 60 m, default 12. Where two nodes are close the bend is tighter; `src/maps/built/road.js` reports the tightest. |
+
+**What a car drives is worked out from the nodes, never stored.**
+`src/maps/built/road.js` turns the nodes into a centre line: straight along
+each leg, and at each node where the road turns, a bend whose curvature
+rises from zero where it leaves the straight, holds, and falls back to zero
+where it meets the next straight, as a road engineer's transition curve
+does, sampled a point every half metre or closer. The physics module turns
+a car's velocity by the road's turn at every point it is handed, and
+refuses a point that turns more than 30 degrees, so a corner drawn as one
+node is never handed over as one point. A node where the road folds back
+on itself, or turns too sharply for its legs to hold a bend of a metre's
+radius (plus the lane's offset, on a two lane loop), is left out of the
+line and named in a problem; so are nodes on top of each other.
+
+**An open road's cars drive its centre line.** The physics turns a car
+round at each end of an open road on the line it came along, so a car kept
+to its left lane on the way out would come back on the wrong side. Until
+the road tool has turning circles, the centre is the honest line.
+
+A **vehicle**:
+
+```jsonc
+{
+  "id": "el-54",
+  "type": "vehicle",
+  "name": "Drift car",
+  "position": { "x": 0, "y": 0, "z": 0 },
+  "yaw": 0,
+  "pitch": 0,
+  "yawOverridden": false,
+  "dims": { "offset": 25, "speed": 20, "variant": 4 },
+  "style": "hatch",
+  "road": "el-53",
+  "reverse": false,
+  "drift": true
+}
+```
+
+| field | meaning |
+| --- | --- |
+| `position`, `yaw`, `pitch`, `yawOverridden` | Written `0` and `false`, never read. **Where a vehicle is comes from its road and its offset and nothing else**: a second copy of where a car is would be a field worked out from another, and could disagree with it. |
+| `road` | The `id` of the road it drives. A vehicle whose road is not in the document is kept: the builder says so, and the simulator leaves it parked with a problem. |
+| `dims.offset` | Where it is at step 0 of the clock: metres along the road's centre line from its first node, 0 to 10,000 (round a loop, and held to an open road's end). A closed road's centre line starts at the middle of its first node's bend. |
+| `dims.speed` | Its top speed on a straight, m/s, 1 to 50. A new vehicle starts at its style's: 10 to 14 m/s, a yard's traffic. It slows for bends by itself (below). |
+| `dims.variant` | Its colour, as a parked car's: a seed, 1 to 99. |
+| `style` | Which of the town's cars: `kei`, `keivan`, `hatch`, `sedan`, `wagon`, `minivan`, `van`, `boxtruck` or `minibus`. |
+| `reverse` | `true` drives against the node order. On a two lane loop that is the other lane. Default `false`. |
+| `drift` | `true` makes it the drift car: it corners twice as hard as traffic does and slides, its nose turned into each bend by up to about 44 degrees at the bend's height and straight again on the straights. Default `false`. The builder offers 20 m/s when drift is switched on. |
+
+**How it moves is the physics' own.** A vehicle's pose is a pure function
+of the simulator's step clock, worked out inside the physics module
+(`src/native/world.c`, section 5) from its road, its offset, its top speed
+and how hard its style corners: the speed each bend allows is worked out
+once from the road's curvature, and the car brakes into it and pulls away
+out of it. So a dropped frame changes nothing, the car drawn is the car
+hit, and the builder's Play and the simulator drive it identically.
+`src/maps/built/traffic.js` `trafficOf` is the one function that turns a
+document into what the physics is handed, and says in its problems what it
+left out: a vehicle with no road, more than 64 vehicles, more than 16 lanes
+of road, more road than the physics' tables hold. A vehicle is solid from
+the road to its roof, the drawn car's own length and width, with nothing
+open under it. It is never ground: a craft cannot land on a moving car.
+Nothing stops one car driving through another, so a faster car should not
+share a lane with a slower one.
 
 ### Map warnings
 
@@ -783,6 +893,13 @@ know, which it drops with a repair note: the best effort reading above.
 that is what a map without it always looked like. A reader that does not
 know it draws the map at golden hour on concrete, which is a picture that
 differs from the author's rather than a map whose meaning changed.
+
+So are **roads and vehicles**: two new element types, a map's only, whose
+fields are all new and all have defaults, and every existing element and
+field means what it did. A reader that does not know them drops them with
+a repair note, the best effort reading above, and flies the map without
+its traffic, which is a map with less in it rather than one whose meaning
+changed.
 
 ---
 

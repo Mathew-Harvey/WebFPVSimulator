@@ -63,7 +63,12 @@
  *   centreLine(nodes, closed, opts)  the eased centre line. opts.radius is
  *                                    the bend radius wanted (RADIUS_DEFAULT),
  *                                    opts.floor the tightest allowed
- *                                    (DRIVE_RADIUS_MIN). Returns a LINE:
+ *                                    (DRIVE_RADIUS_MIN), opts.ramp the share
+ *                                    of a half bend spent easing in (RAMP;
+ *                                    only scripts/roads-check.js asks for
+ *                                    another, 0, a bend with no easing, to
+ *                                    show its checks can see one). Returns a
+ *                                    LINE:
  *                                      { points: [{ x, y }], tangents:
  *                                        [{ x, y }] unit, s: [arc length],
  *                                        length, closed, node: [the node
@@ -134,15 +139,28 @@ const PI = 3.141592653589793;
 /*
  * SAMPLING. On a bend a point every BEND_STEP_MAX or closer, and closer on a
  * tight one: the plateau's radius over BEND_PER_RADIUS, so a point turns by
- * about 2.3 degrees, never under BEND_STEP_MIN. On a straight a point every
+ * about 1.1 degrees, never under BEND_STEP_MIN. On a straight a point every
  * STRAIGHT_STEP, the module's own ROAD_STEP, where it would cut the road
- * into pieces that long itself: finer there buys nothing and spends the
- * module's point tables (16,384 for every road on a map).
+ * into pieces that long itself, except within NEAR_BEND of a bend, where
+ * the straight takes the bend's own spacing.
+ *
+ * Why so fine near a bend. The module measures a road's curvature at each
+ * point across 1.5 m either way and interpolates it linearly between
+ * points, and a drift car's slip follows that curvature, so its yaw rate
+ * follows the curvature's slope, which changes only at points. Where a
+ * bend begins, the measured curvature bends up from zero over those 3 m;
+ * with the straight's points a metre apart it does so in a few big
+ * changes of slope, each a step in the drift car's yaw rate. A point every
+ * bend's step through the window spreads the same change over many small
+ * ones: on the starter the drift car's largest step in a millisecond fell
+ * from 1.3 rad/s to 0.62, and what is left is the module's speed profile,
+ * not the road (scripts/roads-check.js, YAW_STEP_TARGET).
  */
 export const BEND_STEP_MAX = 0.5;
 export const BEND_STEP_MIN = 0.05;
-const BEND_PER_RADIUS = 25;
+const BEND_PER_RADIUS = 50;
 export const STRAIGHT_STEP = 1.0;
+const NEAR_BEND = 3.0;
 
 /* The bend radius a road gets unless it asks for another, m: a car in a
  * yard takes a corner of 12 m at 7 to 10 m/s. */
@@ -180,20 +198,24 @@ const LEG_SHARE = 0.98;
 const JOIN_MIN = 0.02;
 
 /*
- * Turns too small to ease. A node whose turn is under STRAIGHT_COS (0.05
- * degrees) is a point on a straight. One whose bend would be smaller than
- * two points at BEND_STEP_MIN is kept as a plain point if it turns no more
- * than KINK_COS (2 degrees), a lurch nobody sees, and dropped if it turns
- * more. Both are cosines, written to seventeen figures.
+ * Turns too small to ease. Every node that turns at all is eased, a tiny
+ * turn over a bend of at least MIN_STEPS points a half at BEND_STEP_MIN, so
+ * no node is ever handed over as a corner. A node whose legs are too short
+ * for even that is left out: with a note if it turned by no more than
+ * KINK_COS (2 degrees), because the road then passes within a few
+ * centimetres of it, and with a warning if it turned by more. A cosine,
+ * written to seventeen figures.
  */
-const STRAIGHT_COS = 0.99999961923064;
 const KINK_COS = 0.99939082701909576;
 /* A turn past this is a fold back on itself: 179.9 degrees. */
 const FOLD_COS = -0.99999847691328769;
 
 /* The half bend every corner's size is first estimated with, steps. */
 const REF_STEPS = 32;
-/* And the most steps a half bend is ever sampled in. */
+/* The fewest steps a half bend is sampled in: eight, so even the smallest
+ * ramps in over four points, a quarter of its peak at a time, and never
+ * steps from a straight to its full curvature at one point. And the most. */
+const MIN_STEPS = 8;
 const MAX_STEPS = 4096;
 
 /*
@@ -278,10 +300,10 @@ function tipOf(c, n, m) {
  * heading at the apex moves one way as the rate grows and its x says which
  * side of the bisector it is. 64 halvings is past a double's resolution.
  */
-function halfBend(dot, n) {
+function halfBend(dot, n, ramp) {
   const wc = Math.sqrt((1 + dot) / 2);
   const ws = Math.sqrt((1 - dot) / 2);
-  const m = Math.max(1, Math.round(RAMP * n));
+  const m = Math.max(1, Math.round(ramp * n));
   let sum = 0;
   for (let k = 1; k < n; k += 1) {
     sum += share(k, m);
@@ -329,12 +351,13 @@ function halfBend(dot, n) {
  * One pass over the nodes: every leg, and every corner with the bend it
  * would get. A corner is
  *
- *   'straight'  it turns by less than STRAIGHT_COS: a point on a straight
- *   'kink'      too small to ease and turns no more than KINK_COS: a point
+ *   'straight'  exactly in line with its legs: a point on a straight
  *   'bend'      eased, T metres either side, plateau radius R
- *   'bad'       a fold, or no bend at the floor fits its legs
+ *   'bad'       a fold, no bend at the floor fits its legs, or its legs are
+ *               too short for the least bend (`kink` when it turns 2
+ *               degrees or less)
  */
-function planPass(nodes, closed, radius, floor, shapes) {
+function planPass(nodes, closed, radius, floor, shapes, ramp) {
   const n = nodes.length;
   const nleg = closed ? n : n - 1;
   const legs = [];
@@ -354,18 +377,22 @@ function planPass(nodes, closed, radius, floor, shapes) {
     dot = dot > 1 ? 1 : (dot < -1 ? -1 : dot);
     const cross = a.ux * b.uy - a.uy * b.ux;
     const c = { i, dot, left: cross >= 0, kind: 'bend', want: 0, T: 0, R: Infinity, g: 0, lam: 0 };
-    if (dot >= STRAIGHT_COS) {
+    if (cross === 0 && dot > 0) {
+      /* Exactly in line: a point on a straight. */
       c.kind = 'straight';
     } else if (dot <= FOLD_COS) {
       c.kind = 'bad';
       c.R = 0;
       c.fold = true;
     } else {
-      const sh = shapeOf(dot, shapes);
+      const sh = shapeOf(dot, shapes, ramp);
       c.g = sh.g;
       c.lam = sh.lam;
-      c.two = sh.two;
-      c.want = c.g * radius;
+      c.least = sh.least;
+      /* The radius asked for, or the least bend that can be sampled,
+       * whichever is the larger: a turn of a fraction of a degree at 12 m
+       * would be a bend a few centimetres long. */
+      c.want = Math.max(c.g * radius, c.least * BEND_STEP_MIN);
     }
     corners[i] = c;
   }
@@ -386,13 +413,14 @@ function planPass(nodes, closed, radius, floor, shapes) {
     const next = corners[(c.i + 1) % n];
     c.T = Math.min(c.want, avail(c, jin, closed || c.i > 0 ? prev : null), avail(c, jout, next));
     c.R = c.T / c.g;
-    /* The smallest this bend can be sampled: two steps a half, each at
+    /* The smallest this bend can be sampled: MIN_STEPS a half, each at
      * least BEND_STEP_MIN. */
-    const h2 = c.T / c.two;
+    const hmin = c.T / c.least;
     if (!(c.R >= floor)) {
       c.kind = 'bad';
-    } else if (!(h2 >= BEND_STEP_MIN)) {
-      c.kind = c.dot >= KINK_COS ? 'kink' : 'bad';
+    } else if (!(hmin >= BEND_STEP_MIN)) {
+      c.kind = 'bad';
+      c.kink = c.dot >= KINK_COS;
     }
   }
   return { legs, corners };
@@ -400,14 +428,14 @@ function planPass(nodes, closed, radius, floor, shapes) {
 
 /* A turn's shape in a few numbers: g, the tangent length over the
  * plateau's radius; lam, the half bend's length over its tangent length;
- * two, the tangent length of a half bend of two unit steps. The same turn
+ * least, the tangent length of a half bend of MIN_STEPS unit steps. The same turn
  * gives the same numbers, so a plan that goes round again after dropping a
  * node works out only the turns that changed. */
-function shapeOf(dot, shapes) {
+function shapeOf(dot, shapes, ramp) {
   let sh = shapes.get(dot);
   if (!sh) {
-    const ref = halfBend(dot, REF_STEPS);
-    sh = { g: ref.T / ref.R, lam: REF_STEPS / ref.T, two: halfBend(dot, 2).T };
+    const ref = halfBend(dot, REF_STEPS, ramp);
+    sh = { g: ref.T / ref.R, lam: REF_STEPS / ref.T, least: halfBend(dot, MIN_STEPS, ramp).T };
     shapes.set(dot, sh);
   }
   return sh;
@@ -419,7 +447,7 @@ function shapeOf(dot, shapes) {
  * can. Returns { nodes, legs, corners, problems }; nodes may be too few to
  * be a road, which the caller says.
  */
-function plan(input, closed, radius, floor, elementId) {
+function plan(input, closed, radius, floor, elementId, ramp) {
   const problems = [];
   const shapes = new Map();
   let nodes = input.slice();
@@ -427,7 +455,7 @@ function plan(input, closed, radius, floor, elementId) {
     if (nodes.length < (closed ? 3 : 2)) {
       return { nodes, legs: [], corners: [], problems };
     }
-    const p = planPass(nodes, closed, radius, floor, shapes);
+    const p = planPass(nodes, closed, radius, floor, shapes, ramp);
     let worst = null;
     for (const c of p.corners) {
       if (c && c.kind === 'bad' && (!worst || c.R < worst.R)) {
@@ -438,11 +466,17 @@ function plan(input, closed, radius, floor, elementId) {
       return { nodes, legs: p.legs, corners: p.corners, problems };
     }
     const nd = nodes[worst.i];
-    problems.push(problem('warn', worst.fold ? 'rd-fold' : 'rd-tight',
-      worst.fold
-        ? `The road folds back on itself at node ${nd.node + 1}, so no car can turn there. That node was left out: pull it apart into two.`
-        : `The road turns too sharply at node ${nd.node + 1} for its legs: no bend of ${floor.toFixed(1)} m radius or more fits. That node was left out: give it longer legs or a gentler turn.`,
-      elementId, nd.node));
+    if (worst.kink) {
+      problems.push(problem('info', 'rd-kink',
+        `Node ${nd.node + 1} turns by under 2 degrees on legs too short to ease it, so the road runs straight past it.`,
+        elementId, nd.node));
+    } else {
+      problems.push(problem('warn', worst.fold ? 'rd-fold' : 'rd-tight',
+        worst.fold
+          ? `The road folds back on itself at node ${nd.node + 1}, so no car can turn there. That node was left out: pull it apart into two.`
+          : `The road turns too sharply at node ${nd.node + 1} for its legs: no bend of ${floor.toFixed(1)} m radius or more fits. That node was left out: give it longer legs or a gentler turn.`,
+        elementId, nd.node));
+    }
     nodes = nodes.filter((_, k) => k !== worst.i);
     /* Dropping a node can put two nodes on top of each other. */
     nodes = mergeNodes(nodes, closed, problems, elementId);
@@ -486,17 +520,17 @@ function mergeNodes(nodes, closed, problems, elementId) {
 
 /* A bend's points in plan, from its tangent point on the leg in to its
  * tangent point on the leg out: 2 n + 1 of them, the apex at n. */
-function bendPoints(c, node, uin) {
+function bendPoints(c, node, uin, ramp) {
   /* Steps a half: enough that a step is under the spacing the plateau's
    * radius wants, found from the reference shape and checked on the real
    * one. */
   const target = Math.min(BEND_STEP_MAX, Math.max(BEND_STEP_MIN, c.R / BEND_PER_RADIUS));
-  let n = Math.min(MAX_STEPS, Math.max(2, Math.ceil((c.lam * c.T) / target)));
-  let hb = halfBend(c.dot, n);
+  let n = Math.min(MAX_STEPS, Math.max(MIN_STEPS, Math.ceil((c.lam * c.T) / target)));
+  let hb = halfBend(c.dot, n, ramp);
   let h = c.T / hb.T;
   for (let k = 0; k < 4 && h > BEND_STEP_MAX && n < MAX_STEPS; k += 1) {
     n = Math.min(MAX_STEPS, Math.ceil((n * h) / (0.95 * BEND_STEP_MAX)));
-    hb = halfBend(c.dot, n);
+    hb = halfBend(c.dot, n, ramp);
     h = c.T / hb.T;
   }
   /* The second half is the first reflected across the bisector, the line
@@ -524,7 +558,7 @@ function bendPoints(c, node, uin) {
   for (const p of local) {
     out.push({ x: ox + h * (p.x * uin.ux + p.y * lx), y: oy + h * (p.x * uin.uy + p.y * ly) });
   }
-  return { pts: out, apex: n, radius: hb.R * h };
+  return { pts: out, apex: n, radius: hb.R * h, step: h };
 }
 
 /*
@@ -534,6 +568,7 @@ function bendPoints(c, node, uin) {
 export function centreLine(nodesIn, closed, opts = {}) {
   const radius = Number.isFinite(opts.radius) && opts.radius > 0 ? opts.radius : RADIUS_DEFAULT;
   const floor = Number.isFinite(opts.floor) && opts.floor > 0 ? opts.floor : DRIVE_RADIUS_MIN;
+  const ramp = Number.isFinite(opts.ramp) && opts.ramp >= 0 && opts.ramp <= 1 ? opts.ramp : RAMP;
   const elementId = opts.elementId;
   const problems = [];
   const clean = [];
@@ -543,7 +578,7 @@ export function centreLine(nodesIn, closed, opts = {}) {
     }
   });
   const merged = mergeNodes(clean, Boolean(closed), problems, elementId);
-  const pl = plan(merged, Boolean(closed), radius, floor, elementId);
+  const pl = plan(merged, Boolean(closed), radius, floor, elementId, ramp);
   problems.push(...pl.problems);
   const empty = { points: [], tangents: [], s: [], node: [], length: 0, closed: Boolean(closed), corners: [], problems };
   const nodes = pl.nodes;
@@ -572,30 +607,60 @@ export function centreLine(nodesIn, closed, opts = {}) {
     own.push(node);
   };
   /* A straight from the last point kept to `b`, its points between, b left
-   * for whatever comes next. */
-  const straightTo = (b) => {
+   * for whatever comes next. `ha` and `hb` are the steps of the bends at its
+   * two ends, 0 where there is none: within NEAR_BEND of a bend the
+   * straight is sampled at the bend's step, and between at STRAIGHT_STEP. */
+  const straightTo = (b, ha, hb) => {
     const a = pts[pts.length - 1];
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const L = Math.sqrt(dx * dx + dy * dy);
-    const k = Math.ceil(L / STRAIGHT_STEP);
+    const at = [];
+    let lo = 0;
+    let hi = L;
+    if (ha > 0) {
+      const k = Math.floor(Math.min(NEAR_BEND, L / 2) / ha);
+      for (let j = 1; j <= k; j += 1) {
+        at.push(j * ha);
+      }
+      lo = k * ha;
+    }
+    const tail = [];
+    if (hb > 0) {
+      const k = Math.floor(Math.min(NEAR_BEND, L / 2) / hb);
+      for (let j = k; j >= 1; j -= 1) {
+        tail.push(L - j * hb);
+      }
+      hi = k > 0 ? L - k * hb : L;
+    }
+    const mid = hi - lo;
+    const k = Math.ceil(mid / STRAIGHT_STEP);
     for (let j = 1; j < k; j += 1) {
-      push({ x: a.x + dx * (j / k), y: a.y + dy * (j / k) }, -1);
+      at.push(lo + mid * (j / k));
+    }
+    if (hi < L) {
+      at.push(hi);
+    }
+    for (const d of tail.slice(1)) {
+      at.push(d);
+    }
+    for (const d of at) {
+      if (d > 0 && d < L) {
+        push({ x: a.x + dx * (d / L), y: a.y + dy * (d / L) }, -1);
+      }
     }
   };
   const n = nodes.length;
   const nleg = pl.legs.length;
-  /* The points of corner i: a bend's, or the node alone. */
+  /* The points of corner i: a bend's, or the node alone where the road
+   * runs straight through it. */
   const cornerPts = (i) => {
     const c = pl.corners[i];
     const nd = nodes[i];
     if (!c || c.kind !== 'bend') {
-      if (c && c.kind !== 'straight') {
-        corners.push({ node: nd.node, x: nd.x, y: nd.y, radius: 0, turn: 'kink' });
-      }
-      return { pts: [{ x: nd.x, y: nd.y }], apex: 0 };
+      return { pts: [{ x: nd.x, y: nd.y }], apex: 0, step: 0 };
     }
-    const b = bendPoints(c, nd, pl.legs[(i + nleg - 1) % nleg]);
+    const b = bendPoints(c, nd, pl.legs[(i + nleg - 1) % nleg], ramp);
     corners.push({ node: nd.node, x: b.pts[b.apex].x, y: b.pts[b.apex].y, radius: b.radius, turn: c.left ? 'left' : 'right' });
     return b;
   };
@@ -603,30 +668,37 @@ export function centreLine(nodesIn, closed, opts = {}) {
   let start = 0;
   if (!closed) {
     push(nodes[0], nodes[0].node);
+    let last = 0;
     for (let i = 1; i < n - 1; i += 1) {
       const b = cornerPts(i);
-      straightTo(b.pts[0]);
+      straightTo(b.pts[0], last, b.step);
       for (const p of b.pts) {
-        push(p, nodes[i].node);
+        push(p, b.step > 0 ? nodes[i].node : -1);
       }
+      last = b.step;
     }
-    straightTo(nodes[n - 1]);
+    straightTo(nodes[n - 1], last, 0);
     push(nodes[n - 1], nodes[n - 1].node);
   } else {
+    let last = 0;
+    let first = 0;
     for (let i = 0; i < n; i += 1) {
       const b = cornerPts(i);
       if (i > 0) {
-        straightTo(b.pts[0]);
+        straightTo(b.pts[0], last, b.step);
+      } else {
+        first = b.step;
       }
       const at = pts.length;
       for (const p of b.pts) {
-        push(p, nodes[i].node);
+        push(p, b.step > 0 ? nodes[i].node : -1);
       }
       if (i === 0) {
         start = at + b.apex;
       }
+      last = b.step;
     }
-    straightTo(pts[0]);
+    straightTo(pts[0], last, first);
     const a = pts[0];
     const z = pts[pts.length - 1];
     const dx = z.x - a.x;
@@ -850,7 +922,8 @@ export function roadReport(line) {
     const den = Math.sqrt(abx * abx + aby * aby) * Math.sqrt(bcx * bcx + bcy * bcy) * Math.sqrt(acx * acx + acy * acy);
     const cross = abx * bcy - aby * bcx;
     const k = den > 0 ? (2 * (cross < 0 ? -cross : cross)) / den : 0;
-    if (k > kmax) {
+    /* Under a nanometre's worth of bend a metre is a straight's rounding. */
+    if (k > kmax && k > 1e-9) {
       kmax = k;
       out.tightest = { radius: 1 / k, x: b.x, y: b.y, s: line.s[i], node: line.node[i] };
     }

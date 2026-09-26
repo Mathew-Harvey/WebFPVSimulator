@@ -56,10 +56,9 @@
  * lane: nothing in the physics stops one car driving through another, so a
  * faster car must not share a lane with a slower one. The box truck and the
  * kei van come the other way, half a lap apart, the van's top speed set so
- * its lap matches the truck's to within 5 ms, so the two keep their spacing
- * for days. The two parked cars that stood on the lane moved to its east
- * verge when the loop came, clear of it, of the footbridge's stair and of
- * the pylons.
+ * its lap matches the truck's, so the two keep their spacing. The two
+ * parked cars that stood on the lane moved to its east verge when the loop
+ * came, clear of it, of the footbridge's stair and of the pylons.
  *
  * Checked in Node through src/maps/built/place.js, by scripts/props-check.js
  * and by the builder's own warnings: no two elements' solids overlap, no two
@@ -97,14 +96,14 @@ const NORTH_EAST = Math.PI / 4;
 export const STARTER_NAME = 'Hibari Yard';
 
 /* The kei van's top speed, m/s: the one that makes its lap round the yard
- * loop, against the node order, as long as the box truck's at 10 m/s, 40.29
- * s, so the two, half a lap apart, stay half a lap apart. It corners harder
- * than the truck (3 m/s/s against 2.5), so on the same top speed it would
- * gain 0.9 s a lap and drive through it in about ten minutes. At 8.81 the
- * two laps differ by 4 ms, and closing half a lap takes two days. Found by
- * halving on the module's own poses; scripts/roads-check.js holds the two
- * laps together. */
-const VAN_SPEED = 8.81;
+ * loop, against the node order, as long as the box truck's at 10 m/s,
+ * 40.011 s, so the two, half a lap apart, stay half a lap apart. It corners
+ * harder than the truck (3 m/s/s against 2.5), so on the same top speed it
+ * would gain 1.8 s a lap and drive through it in about six minutes. At
+ * 8.8318 the two laps agree to a tenth of a millisecond over ten laps.
+ * Found by halving on the module's own poses; scripts/roads-check.js holds
+ * the two laps together. If the loop's shape changes, find it again. */
+const VAN_SPEED = 8.8318;
 
 /* The starter's own document id, fixed for the reason in the header. */
 export const STARTER_ID = 'trk-1b4a7d00';

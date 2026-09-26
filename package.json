@@ -38,6 +38,7 @@
     "check:world-engines": "node scripts/world-engines.js",
     "check:world-engines:selftest": "node scripts/world-engines.js --selftest",
     "check:props": "node scripts/props-check.js",
+    "check:roads": "node scripts/roads-check.js",
     "check:clip": "node src/trackbuilder/selftest.js",
     "check:orbit": "node scripts/orbit-check.js",
     "check:path": "node scripts/path-check.js",

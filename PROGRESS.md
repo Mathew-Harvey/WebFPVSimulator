@@ -50799,10 +50799,10 @@ speed table (world.c section 5), so the chase car is the lead car a fixed
 time later. roads-check now measures it: over 30 minutes of clock, read
 every millisecond, the chase is 450.171 ms behind and the gap varies by
 3.8e-5 ms, which is the reading's own interpolation. The gap was picked on
-the module's poses: with the chase 10 m behind the nearest the two
-footprints come in a lap is 2.67 m, 9 m 1.31 m, 8 m 0.84 m, 7 m 0.32 m, and
-at 6 m one drives through the other. 8 m, nearest 0.836 m, at the exit of
-the transition.
+the module's poses: with the chase 12 m behind the nearest the two
+footprints come in a lap is 2.67 m, 10 m 1.77 m, 9 m 1.31 m, 8 m 0.84 m,
+7 m 0.32 m, and at 6 m one drives through the other. 8 m, nearest 0.836 m,
+at the exit of the transition.
 
 ### The checks, generalised rather than copied
 

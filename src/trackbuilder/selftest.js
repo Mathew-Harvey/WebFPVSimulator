@@ -80,7 +80,7 @@ import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE, MICRO_SCALE } from '../game/track.js';
-import { Race } from '../game/race.js';
+import { Race, stationLegMin } from '../game/race.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
   GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
@@ -1067,6 +1067,134 @@ function suiteWarnings() {
   check('a track with no start pads says the lap does not close',
     codes(collectWarnings(noStart, buildPath(noStart))).has('no-start'));
   check('warnings never throw on an empty track', collectWarnings(createTrack(), null).length >= 1);
+
+  /*
+   * TWO STATIONS IN A ROW AT ONE POINT, the Orbit course's shape: two flags
+   * on one pole, turned a quarter apart, both passed on the right, one after
+   * the other in the order. Their squares come out as one, one pass can
+   * reach both, and the board holds 10 ms laps of it, so the builder says
+   * so; the race asks for stationLegMin of flying between two credits
+   * (src/game/race.js, the owner, 2026-09-26). Simple Orbits is the same
+   * two flags passed on the left, which is a real orbit with its squares
+   * 4.5 m apart, and is not warned about.
+   */
+  const orbitDoc = (side, cls = 'full', gap = 0) => {
+    const d = createTrack(undefined, cls);
+    place(d, 'startPads', 12, 24);
+    const f1 = place(d, 'flag', 30, 24);
+    const f2 = place(d, 'flag', 30 + gap, 24, { yaw: -Math.PI / 2 });
+    f2.yawOverridden = true;
+    for (const f of [f1, f2]) {
+      const e = addToSequence(d, f.id, 0);
+      e.passSide = side;
+      e.overridden = true;
+    }
+    return d;
+  };
+  const closeWarns = (d) => collectWarnings(d, buildPath(d)).filter((w) => w.code === 'close-stations');
+  const together = closeWarns(orbitDoc('right'));
+  check('two flags in a row whose squares coincide warn that one pass can reach both',
+    together.length === 1 && /0\.00 m apart/.test(together[0].message)
+      && together[0].message.includes(`${stationLegMin('full')} m more flying`),
+    together.map((w) => w.message).join(' | '));
+  check('and the same flags passed on the other side, a real orbit, do not',
+    closeWarns(orbitDoc('left')).length === 0,
+    closeWarns(orbitDoc('left')).map((w) => w.message).join(' | '));
+  check('the distance is the race\'s own, half a metre on the field and 45 mm in a room',
+    stationLegMin('full') === 0.5 && stationLegMin('micro') === 0.045);
+  const splitDoc = createTrack();
+  const splitStack = place(splitDoc, 'doubleStack', 20, 20);
+  addToSequence(splitDoc, splitStack.id, 1);
+  addToSequence(splitDoc, splitStack.id, 0);
+  const splitGate = place(splitDoc, 'gate', 40, 20);
+  addToSequence(splitDoc, splitGate.id, 0);
+  check('a split-S through one stack is two openings a level apart, not a warning',
+    closeWarns(splitDoc).length === 0);
+  const twice = (cls, gap) => {
+    const d = createTrack(undefined, cls);
+    const a = place(d, 'gate', 10, 10);
+    const way = place(d, 'waypoint', 20, 14);
+    const b = place(d, 'gate', 10, 10 + gap);
+    for (const el of [a, way, b]) {
+      addToSequence(d, el.id, 0);
+    }
+    return d;
+  };
+  check('a waypoint between two gates at one point does not part them',
+    closeWarns(twice('full', 0)).length >= 1);
+  check('and 0.3 m apart is close on the field and not in a room',
+    closeWarns(twice('full', 0.3)).length >= 1 && closeWarns(twice('micro', 0.3)).length === 0);
+
+  /*
+   * And the race's side of it, on the Orbit course as it is built: its two
+   * flags score one square, passed one way and then the other. Rocking two
+   * centimetres a frame in that square closed a lap every two frames, 32 ms;
+   * now each lap is twice stationLegMin of flying. A real there and back
+   * through it closes every lap it did.
+   */
+  const orbitGates = [0, Math.PI].map((heading, i) => ({
+    position: { x: 30, y: 0, z: -24 },
+    heading,
+    flyOrder: i,
+    virtual: true,
+    apertures: [{ centreY: 2.25, clearW: 4.5, clearH: 4.5 }],
+  }));
+  const sq = new Race(orbitGates).gates[0];
+  const sqAt = (s) => ({
+    x: sq.x + sq.az.x * s, y: sq.y + sq.apertures[0].centreY, z: sq.z + sq.az.z * s,
+  });
+  const rock = new Race(orbitGates);
+  let rockMs = 0;
+  let rockPrev = sqAt(-0.6);
+  for (let i = 1; i <= 40; i += 1) {
+    const c = sqAt(-0.6 + 0.02 * i);
+    rockMs += 16;
+    rock.update(rockPrev, c, rockMs, rockMs);
+    rockPrev = c;
+  }
+  for (let i = 0; i < 200; i += 1) {
+    const c = sqAt(i % 2 === 0 ? 0.22 : 0.2);
+    rockMs += 16;
+    rock.update(rockPrev, c, rockMs, rockMs);
+    rockPrev = c;
+  }
+  const rockFloor = 16 * ((2 * stationLegMin('full')) / 0.02 - 1);
+  check('rocking in one square no longer closes a lap in two frames',
+    rock.laps.length > 0 && Math.min(...rock.laps) >= rockFloor,
+    `${rock.laps.map((ms) => `${ms} ms`).join(', ')} against ${rockFloor}`);
+  const thereBack = new Race(orbitGates);
+  let tbMs = 0;
+  let tbPrev = sqAt(-2);
+  for (let lap = 0; lap < 3; lap += 1) {
+    for (const at of [-1, 0, 1, 2, 1, 0, -1, -2]) {
+      const c = sqAt(at);
+      tbMs += 16;
+      thereBack.update(tbPrev, c, tbMs, tbMs);
+      tbPrev = c;
+    }
+  }
+  check('and a real there and back through it closes every lap it did',
+    thereBack.laps.length === 2 && thereBack.laps.every((ms) => ms === 128),
+    thereBack.laps.join(', '));
+  /* Two stations standing on one spot facing one way are flown as ONE pass:
+   * RaceGOW6 Track 1 has a pair like that, and its racing line has no length
+   * between them. That pass still credits both, the second at the plane. */
+  const pairGates = [0, 0, -20].map((z, i) => ({
+    position: { x: 0, y: 0, z },
+    heading: 0,
+    flyOrder: i,
+    apertures: [{ centreY: 1, clearW: 1.75, clearH: 1.75 }],
+  }));
+  const pair = new Race(pairGates);
+  let pairPrev = { x: 0, y: 1, z: 2 };
+  for (let i = 1; i <= 40; i += 1) {
+    const c = { x: 0, y: 1, z: 2 - 0.1 * i };
+    pair.update(pairPrev, c, 10 * i, 10 * i);
+    pairPrev = c;
+  }
+  check('one straight pass through two stations at one point still credits both',
+    pair.next === 2 && pair.splits.length === 1 && Math.abs(pair.splits[0] - 50) < 1e-3,
+    `next ${pair.next}, splits ${pair.splits.join(', ')}`);
 }
 
 function suiteHistory() {

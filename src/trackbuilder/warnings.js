@@ -16,7 +16,8 @@
  *
  * Plus the ones a designer finds out about the hard way otherwise: an
  * element placed and never sequenced, a lap that does not close, two knots
- * on top of each other, and a line that goes underground.
+ * on top of each other, two stations in a row one pass can reach, and a
+ * line that goes underground.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -50,6 +51,10 @@ import {
 import { elementById, elementNormal, kindOf, startPadsOf } from './model.js';
 import { gateNumberOf, sequenceLabel, unsequencedElements } from './sequence.js';
 import { dist, insideYawedBox, lerp, wrapAngle, yawVector } from './geometry.js';
+import { markerSquare } from './path.js';
+/* How much flying the race asks for between two stations, which is what
+ * two stations in a row closer than it are warned against. */
+import { stationLegMin } from '../game/race.js';
 /* Roads and vehicles: what the physics will be handed (trafficOf, whose
  * problems are the limits, never restated here), the road's eased line, and
  * the road tool's own tests. */
@@ -217,6 +222,8 @@ export function collectWarnings(doc, path) {
     }
   }
 
+  closeStationWarnings(doc, path, out);
+
   /* -------- curvature -------- */
 
   const limit = doc.settings.minCurveRadius;
@@ -285,6 +292,59 @@ export function collectWarnings(doc, path) {
   }
 
   return out;
+}
+
+/*
+ * TWO STATIONS IN A ROW AT ONE POINT.
+ *
+ * The race credits a pass anywhere in a box round each opening, so two
+ * stations next to each other in the flying order that stand at one point
+ * can both be reached by one pass, without flying anywhere between them.
+ * The Orbit course on the board is two flags on one pole whose squares come
+ * out as one, and the board holds 10 ms laps of it. The race now asks for
+ * stationLegMin of flying between two credits (src/game/race.js), which
+ * ends those, but a lap round two such stations is still only that long,
+ * and the author should hear it: nothing else says so.
+ *
+ * A station is what the race scores, read where the race scores it: an
+ * opening at its centre, and a flag, cone or pole at the centre of its
+ * square on the pass side (markerSquare, the same square src/game/trackdoc.js
+ * builds). Two flags on one pole passed on opposite sides are two squares
+ * apart and are not warned about; the same two turned so their squares
+ * coincide are. A waypoint, or a marker passed at no clearance, scores
+ * nothing, and the stations either side of it are next to each other. The
+ * lap wraps, so the last and the first are a pair too. In the document's
+ * own metres, which on a room are RaceGOW's, as stationLegMin answers.
+ */
+function closeStationWarnings(doc, path, out) {
+  const stations = [];
+  for (const knot of path.knots) {
+    if (!knot.seq || (knot.role !== 'aperture' && knot.role !== 'marker')) {
+      continue;
+    }
+    const at = knot.role === 'aperture' ? knot.pos : markerSquare(doc, knot)?.centre;
+    if (at) {
+      stations.push({ s: knot.seq, at });
+    }
+  }
+  if (stations.length < 2) {
+    return;
+  }
+  const min = stationLegMin(trackClassOf(doc));
+  const pairs = stations.length === 2 ? 1 : stations.length;
+  for (let i = 0; i < pairs; i += 1) {
+    const a = stations[i];
+    const b = stations[(i + 1) % stations.length];
+    const d = Math.hypot(a.at.x - b.at.x, a.at.y - b.at.y, a.at.z - b.at.z);
+    if (d >= min) {
+      continue;
+    }
+    const name = (e) => `${gateNumberOf(doc, e.s.id) ?? doc.sequence.indexOf(e.s) + 1}. ${sequenceLabel(doc, e.s)}`;
+    out.push(warn('close-stations', `${name(a)} and ${name(b)} stand ${d.toFixed(2)} m apart, one after the other in the flying order, so one pass can reach both. The race counts ${name(b)} only after ${min} m more flying. If a lap between them is meant, move one away.`, {
+      seqId: b.s.id,
+      elementId: b.s.elementId,
+    }));
+  }
 }
 
 /*

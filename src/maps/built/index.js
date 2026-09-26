@@ -45,9 +45,13 @@
  * the person who built a map sees it from the pads when they fly it, like
  * everybody else.
  *
- * NOTHING MOVES. Stage A has no vehicles, so updateAnim is a no op and the
- * only per frame work is seating the lights, trailing the sky and switching
- * chunks on and off by distance.
+ * THE CARS MOVE, AND NOTHING ELSE DOES. A map's roads and vehicles
+ * (./traffic.js) are drawn by ./roadmesh.js and ./cars.js, and the physics
+ * module drives the cars: the shell uploads the traffic this file hands it,
+ * reads every car's pose after it steps, and gives them back to poseCars to
+ * draw. So updateAnim is still a no op, and the per frame work is that,
+ * seating the lights, trailing the sky and switching chunks on and off by
+ * distance.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -92,6 +96,9 @@ import { placeDocument, groundUnder, topUnder, PLATFORM_REACH } from './place.js
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost } from './looks.js';
 import { chooseStfSpot } from './egg.js';
+import { trafficOf, uploadTraffic } from './traffic.js';
+import { buildRoadMesh, roadCover } from './roadmesh.js';
+import { buildCars } from './cars.js';
 
 /* The town's far plane, for the town's reason: the sky dome and the ridge
  * lines live out past the fog. See CAMERA_FAR in src/maps/city/index.js.
@@ -668,13 +675,15 @@ function plotGeometry(W, D, groundId, seed) {
 }
 
 /* The lanes buildGround paints under bridges, as world rectangles at their
- * widest, for paint that must not lie on a road. */
-function lanesOf(placed) {
+ * widest, for paint that must not lie on a road. A bridge with one of the
+ * map's roads under it paints no lane (see roadUnder), so it has none here
+ * either: the road's own cover keeps the paint off. */
+function lanesOf(placed, cover) {
   const { W, D } = placed;
   const out = [];
   const S = { s: 0, c: 1 };
   for (const it of placed.items) {
-    if (it.el.type === 'bridge') {
+    if (it.el.type === 'bridge' && !roadUnder(it, cover)) {
       sincos(it.yaw, S);
       const hw = 4;
       out.push(Math.abs(S.s) > 0.5
@@ -686,16 +695,27 @@ function lanesOf(placed) {
 }
 
 /*
+ * WHETHER A ROAD RUNS UNDER A BRIDGE: one of the map's roads (./roadmesh.js
+ * roadCover) within a metre of the middle of its span. The bridge's own
+ * lane is painted through that middle, so a road there is running along
+ * where the lane would be, and the lane is left out rather than drawn under
+ * the road.
+ */
+function roadUnder(it, cover) {
+  return Boolean(cover) && cover(it.x - 1, it.x + 1, it.z - 1, it.z + 1);
+}
+
+/*
  * TARMAC REPAIRS, cut and filled: a few rectangles a shade fresher or
  * older than the rest, laid in the world where the plot's tile cannot
  * repeat them, at quarter turns the way a crew cuts them, seeded by the
  * document so each car park has its own.
  */
-function tarmacRepairs(paint, placed, doc) {
+function tarmacRepairs(paint, placed, doc, cover) {
   const rng = seededRandom(hashString(doc.id) ^ 0x7ea1c0);
   const fresh = cel({ color: 0x625e72, bands: 3, tint: 0x5a5480, cache: false });
   const old = cel({ color: 0x7a768a, bands: 3, tint: 0x5a5480, cache: false });
-  const lanes = lanesOf(placed);
+  const lanes = lanesOf(placed, cover);
   const n = Math.max(4, Math.round((placed.W * placed.D) / 1400));
   let laid = 0;
   for (let i = 0; i < n; i += 1) {
@@ -707,7 +727,7 @@ function tarmacRepairs(paint, placed, doc) {
     const fromFresh = rng.chance(0.6);
     const hx = (turn ? d : w) / 2 + 0.5;
     const hz = (turn ? w : d) / 2 + 0.5;
-    if (!clearOf(lanes, x - hx, x + hx, z - hz, z + hz)) {
+    if (!clearOf(lanes, x - hx, x + hx, z - hz, z + hz) || cover(x - hx, x + hx, z - hz, z + hz)) {
       continue;
     }
     paint.rect(fromFresh ? fresh : old, x, z, w, d, turn ? Math.PI / 2 : 0, 0.003);
@@ -879,15 +899,17 @@ const AISLE = 6;
 const BAY_LINE = 0.1;
 const ARROW_EVERY = 24;
 
-function tarmacMarks(paint, mat, placed, painted) {
+function tarmacMarks(paint, mat, placed, painted, cover) {
   const ex = placed.W / 2 - EDGE_LINE_INSET;
   const ez = placed.D / 2 - EDGE_LINE_INSET;
   /* A bridge's road runs the plot's whole depth under it, and a bay or an
-   * arrow painted across it is a car park laid over a road. */
-  const busy = [
+   * arrow painted across it is a car park laid over a road. The map's own
+   * roads are the same, through `cover`. */
+  const lanes = [
     ...footprints(placed, 0.3),
-    ...lanesOf(placed).map((l) => ({ x0: l.x0 - 0.3, x1: l.x1 + 0.3, z0: l.z0 - 0.3, z1: l.z1 + 0.3 })),
+    ...lanesOf(placed, cover).map((l) => ({ x0: l.x0 - 0.3, x1: l.x1 + 0.3, z0: l.z0 - 0.3, z1: l.z1 + 0.3 })),
   ];
+  const clearOfBusy = (x0, x1, z0, z1) => clearOf(lanes, x0, x1, z0, z1) && !cover(x0, x1, z0, z1);
   /* Each side as a frame: `along` runs the way the aisle's traffic goes
    * (anticlockwise seen from above), `inward` points into the plot, and
    * `e` is how far the edge line is from the middle. */
@@ -914,7 +936,7 @@ function tarmacMarks(paint, mat, placed, painted) {
     const t0 = -(n * BAY_W) / 2;
     const free = [];
     for (let i = 0; i < n; i += 1) {
-      free.push(clearOf(busy, ...rect(t0 + i * BAY_W, t0 + (i + 1) * BAY_W, BAY_GAP, BAY_GAP + BAY_D)));
+      free.push(clearOfBusy(...rect(t0 + i * BAY_W, t0 + (i + 1) * BAY_W, BAY_GAP, BAY_GAP + BAY_D)));
     }
     for (let i = 0; i <= n; i += 1) {
       if (!free[i - 1] && !free[i]) {
@@ -929,7 +951,7 @@ function tarmacMarks(paint, mat, placed, painted) {
      * only: nothing here is solid. */
     const u = BAY_GAP + BAY_D + AISLE / 2;
     for (let t = -s.len + corner + ARROW_EVERY / 2; t < s.len - corner; t += ARROW_EVERY) {
-      if (!clearOf(busy, ...rect(t - 2, t + 2, u - 1.2, u + 1.2))) {
+      if (!clearOfBusy(...rect(t - 2, t + 2, u - 1.2, u + 1.2))) {
         continue;
       }
       const [cx, cz] = at(t, u);
@@ -958,10 +980,10 @@ const RUT_TRACK = 1.8;
 const RUT_W = 0.42;
 const RUT_REPEAT = 1.6;
 
-function dirtRuts(placed, doc) {
+function dirtRuts(placed, doc, cover) {
   const { W, D } = placed;
   const rng = seededRandom(hashString(doc.id) ^ 0x5eed17);
-  const lanes = lanesOf(placed);
+  const lanes = lanesOf(placed, cover);
   const onEdge = (side) => {
     const t = rng.range(-0.4, 0.4);
     return [
@@ -1010,7 +1032,8 @@ function dirtRuts(placed, doc) {
         const nz = tg.x;
         const mx = c.x + nx * off;
         const mz = c.z + nz * off;
-        const inLane = lanes.some((l) => mx > l.x0 && mx < l.x1 && mz > l.z0 && mz < l.z1);
+        const inLane = lanes.some((l) => mx > l.x0 && mx < l.x1 && mz > l.z0 && mz < l.z1)
+          || cover(mx - RUT_W / 2, mx + RUT_W / 2, mz - RUT_W / 2, mz + RUT_W / 2);
         if (inLane || inStart(mx, mz) || Math.abs(mx) > W / 2 - 0.4 || Math.abs(mz) > D / 2 - 0.4) {
           prev = -1;
           continue;
@@ -1049,10 +1072,12 @@ function dirtRuts(placed, doc) {
 
 /*
  * The plot, its kerb, the verge, the terrain, and the paint on the plot.
- * Returns the group, what it painted for stats(), and a way to stop a logo
- * still decoding from painting into a map that has gone.
+ * `cover` is ./roadmesh.js roadCover for the map's roads: no paint of the
+ * yard's goes on a road, and a bridge with a road under it paints no lane
+ * of its own. Returns the group, what it painted for stats(), and a way to
+ * stop a logo still decoding from painting into a map that has gone.
  */
-function buildGround(placed, doc, look) {
+function buildGround(placed, doc, look, cover) {
   const { W, D } = placed;
   const G = look.ground;
   const groundId = look.groundId;
@@ -1152,8 +1177,8 @@ function buildGround(placed, doc, look) {
     paint.outline(yellow, 0, 0, 0, -ex, ex, -ez, ez, LINE_W, 0.008);
   }
   if (groundId === 'tarmac') {
-    painted.repairs = tarmacRepairs(paint, placed, doc);
-    tarmacMarks(paint, white, placed, painted);
+    painted.repairs = tarmacRepairs(paint, placed, doc, cover);
+    tarmacMarks(paint, white, placed, painted, cover);
   }
 
   for (const it of placed.items) {
@@ -1162,9 +1187,13 @@ function buildGround(placed, doc, look) {
      * A BRIDGE MEANS A ROAD UNDER IT. The lane is painted square to the
      * span, through the middle of it, from kerb to kerb, so a footbridge is
      * a footbridge over something. A bridge only ever stands at a quarter
-     * turn (it has boxes), so the lane is always along a world axis.
+     * turn (it has boxes), so the lane is always along a world axis. Where
+     * one of the map's own roads runs under it, that road is the something,
+     * and a second lane painted beneath it would be two roads in one place.
      */
-    if (type === 'bridge') {
+    if (type === 'bridge' && roadUnder(it, cover)) {
+      painted.lanesUnderRoads = (painted.lanesUnderRoads || 0) + 1;
+    } else if (type === 'bridge') {
       const span = it.el.dims.span;
       const foot = it.el.style === 'footbridge';
       const col = foot ? 0.18 : 0.6;
@@ -1225,7 +1254,7 @@ function buildGround(placed, doc, look) {
   }
   paint.finish(group);
   if (groundId === 'dirt') {
-    const ruts = dirtRuts(placed, doc);
+    const ruts = dirtRuts(placed, doc, cover);
     if (ruts) {
       group.add(ruts.mesh);
       painted.ruts = ruts.count;
@@ -1872,6 +1901,12 @@ export async function buildMap(shell, onProgress, options) {
   const chosen = chooseDocument(opts);
   const { doc, repairs } = normalize(chosen.raw);
   const placed = placeDocument(doc);
+  /* Its roads and the cars on them (./traffic.js), worked out once: the
+   * same lanes, offsets and bodies go to the plant (the shell uploads them,
+   * see uploadTraffic below) and to the drawing, so the car drawn is the
+   * car driven. */
+  const traffic = trafficOf(doc);
+  const cover = roadCover(traffic, 0.3);
   /* Where the STF mark goes (./egg.js), chosen once, from what was just
    * placed: the same spot every time this document is flown. Read only;
    * it changes nothing placed. The mark is an easter egg and the map is
@@ -1962,9 +1997,14 @@ export async function buildMap(shell, onProgress, options) {
   progress(0.1);
   await yieldToPaint();
 
-  /* The ground and its paint. */
-  const ground = buildGround(placed, doc, look);
+  /* The ground and its paint, then the roads over it (./roadmesh.js): flat
+   * paint, three batches for every road, and nothing solid. */
+  const ground = buildGround(placed, doc, look, cover);
   scene.add(ground.group);
+  const roads = buildRoadMesh(THREE, look, traffic);
+  if (roads.batches) {
+    scene.add(roads.group);
+  }
   progress(0.2);
   await yieldToPaint();
 
@@ -2005,6 +2045,18 @@ export async function buildMap(shell, onProgress, options) {
   const lampGlow = kit.night ? buildLampGlow(kit.lamps, placed) : null;
   if (lampGlow) {
     scene.add(lampGlow.group);
+  }
+
+  /*
+   * THE MOVING CARS (./cars.js), one Object3D each, outside the chunks and
+   * the static batches because they are posed every frame. Where each one
+   * is comes from the physics module: the shell reads the poses after it
+   * steps and hands them to poseCars. A map with no vehicle has none of
+   * this, and hands the shell no traffic.
+   */
+  const carSet = traffic.vehicles.length ? buildCars(THREE, look, traffic) : null;
+  if (carSet) {
+    scene.add(carSet.group);
   }
 
   /*
@@ -2112,12 +2164,13 @@ export async function buildMap(shell, onProgress, options) {
   const buildMs = Math.round(performance.now() - t0);
   const propTriangles = trianglesOf(props);
   const groundTriangles = trianglesOf(ground.group);
-  let batches = 0;
+  let propBatches = 0;
   props.traverse((o) => {
     if (o.isMesh) {
-      batches += 1;
+      propBatches += 1;
     }
   });
+  const carStats = carSet ? carSet.stats() : { cars: 0, meshes: 0, triangles: 0, puffs: 0 };
 
   return {
     id: 'built',
@@ -2161,9 +2214,47 @@ export async function buildMap(shell, onProgress, options) {
     updateRacingLine() { return null; },
     updateShadowFocus,
     updateWind() {},
-    /* Nothing on a built map moves yet. When vehicles arrive (the plan's
-     * Stage E) this is where they are posed, from the step count. */
+    /* Nothing on a built map is posed from the step count here. Its cars
+     * move, but the physics module drives them (src/native/world.c section
+     * 5) and the shell hands their poses to poseCars below, so render reads
+     * the pose the physics used and never works out its own. */
     updateAnim() {},
+    /*
+     * THE TRAFFIC, for the shell. Null on a map with no vehicle, and then
+     * none of the calls below does anything: a map with no traffic makes no
+     * vehicle call on the plant at all.
+     *
+     *   traffic             trafficOf(doc)'s answer
+     *   uploadTraffic(sim)  hand it to the plant, after uploadWorld: every
+     *                       lane, then every car (./traffic.js)
+     *   chaseCars()         the cars as src/game/chase.js setCars takes them
+     *   poseCars(prev, curr, alpha, now)   every car between two
+     *                       readVehicles arrays one step apart, at the
+     *                       craft's alpha, and the smoke at `now`, ms
+     *   carTick(step, poses)   the smoke's feed, at every 8 steps of the
+     *                       clock, from readVehicles at that step
+     *   clearSmoke()        a new run
+     *   carGap(x, y, z, reach)   the nearest drawn car, for the near plane
+     */
+    traffic: carSet ? traffic : null,
+    uploadTraffic: (sim) => (carSet ? uploadTraffic(sim, traffic) : { roads: 0, vehicles: 0, problems: [] }),
+    chaseCars: () => (carSet ? carSet.chaseCars() : []),
+    poseCars(prev, curr, alpha, now) {
+      if (carSet) {
+        carSet.place(prev, curr, alpha, now);
+      }
+    },
+    carTick(step, poses) {
+      if (carSet) {
+        carSet.emit(step, poses);
+      }
+    },
+    clearSmoke() {
+      if (carSet) {
+        carSet.clearSmoke();
+      }
+    },
+    carGap: (x, y, z, reach) => (carSet ? carSet.gapAt(x, y, z, reach) : reach),
     setCullRadius,
     /* Where the STF mark is painted, for the shell to tell when a pilot has
      * found it: see paintStfMark and `egg` in src/maps/README.md. Paint
@@ -2185,9 +2276,16 @@ export async function buildMap(shell, onProgress, options) {
       colliders: colliders.stats(),
       chunks: cells.length,
       chunksOn: cells.filter((c) => c.on).length,
-      batches,
+      /* Every mesh this map draws of its own: the kit's batches, the roads'
+       * and the cars' (each car's body, wheels and, after dark, its glow,
+       * and the one smoke batch). */
+      batches: propBatches + roads.batches + carStats.meshes,
+      propBatches,
       propTriangles,
-      triangles: propTriangles + groundTriangles + wires.triangles,
+      triangles: propTriangles + groundTriangles + wires.triangles + roads.triangles + carStats.triangles,
+      roads: { roads: roads.roads, lanes: traffic.roads.length, batches: roads.batches, triangles: roads.triangles },
+      cars: carSet ? carSet.stats() : carStats,
+      trafficProblems: traffic.problems.length,
       wireRuns: wires.runs,
       painted: ground.painted,
       kit: { ...kit.counts },
@@ -2218,6 +2316,10 @@ export async function buildMap(shell, onProgress, options) {
     dispose() {
       ground.cancelLogos();
       shell.evictSessionRoots(scene);
+      roads.dispose();
+      if (carSet) {
+        carSet.dispose();
+      }
       pipeline.dispose();
       disposeSceneGraph(scene, SESSION_TEXTURES);
       /* The kit's own textured materials (signs, graffiti, adverts) live in

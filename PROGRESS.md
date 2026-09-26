@@ -47419,3 +47419,19 @@ lint:shell FAILS, title overflow 67 px at 1600x900 against a recorded 0.
 main was already at 23 px in a clean worktree; the row adds 44. Every row
 is still reached by the keys, and pause still fits. Not re-recorded:
 moving a threshold is the owner's call. Not run: verify, shots, a fly.
+
+## 2026-09-26 | git | The Support row goes to main
+
+Asked whether to re-record lint:shell's title baseline or take the row off
+the title, and at what scale to verify, the owner answered on 2026-09-26:
+"Just finish the job and merge with main". Taken as: the row stays on both
+menus as briefed, no further verification pass, and merge. PR #19
+(b5450ea, one commit on 6d8c1a2) goes to main as a merge commit, so main
+only gains commits.
+
+Rerun on the branch head before the merge: lint:boot 9 of 9,
+stats:selftest 79 passed, support:selftest 17 of 17, lint:preload and
+lint:nouns clean. lint:shell stays red on main, title overflow 67 px at
+1600x900 against a recorded 0, where main was already at 23 px. Not
+re-recorded: the answer did not ask for a threshold to move. Making it
+green is a re-record of the title at 67 px, and that is the owner's to say.

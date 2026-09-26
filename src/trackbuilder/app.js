@@ -34,16 +34,16 @@ import { ELEMENTS, KIND, elementByKey, trackClassOf, docModeOf } from './element
 import {
   createTrack, createElement, deepClone, deserialize, duplicateTrack,
   elementById, kindOf, isSequenceable, normalize, startPadsOf, touch,
-  aperturesOf, toPlain, logosOf, brandingBytes, newLogoId, dressOrder,
+  aperturesOf, toPlain, logosOf, brandingBytes, newLogoId, dressOrder, setSideBuilt,
   LOGO_SLOTS, BRANDING_MAX_CHARS,
 } from './model.js';
 import { applyAutoFaces, clearOverride, defaultYawFor, flipFace, setYaw } from './faces.js';
 import {
-  addToSequence, addNextLevel, clampSequenceToApertures, moveInSequence,
-  removeElement, removeFromSequence, setApertureIndex,
+  addToSequence, addNextLevel, bendLineAt, clampSequenceToApertures, moveInSequence,
+  neighboursOf, pinFacesAt, removeElement, removeFromSequence, setApertureIndex,
 } from './sequence.js';
 import { applyFigure, defaultFigure, upgradeStackedFigures } from './figures.js';
-import { buildPath } from './path.js';
+import { buildPath, passYawOf } from './path.js';
 import { collectWarnings, freestyleReport, sortWarnings } from './warnings.js';
 import { History } from './history.js';
 import {
@@ -369,6 +369,16 @@ function localDrift(seated, incoming) {
  */
 const PUBLISH_MAP_TITLE = 'Put this map on the public board, sponsor prints and all';
 
+/* What a picked side is called in a toast. Left and right are left out on
+ * purpose: which is which depends on where the author is standing, and the
+ * pipe they just clicked is lit, so "that upright" is the clearer name. */
+const SIDE_WORDS = {
+  top: 'The top bar',
+  bottom: 'The bottom bar',
+  left: 'That upright',
+  right: 'That upright',
+};
+
 export class App {
   constructor(nodes) {
     /* The builder is the simulator's tab, not a tab of its own: the shell
@@ -379,6 +389,12 @@ export class App {
     this.nodes = nodes;
     this.doc = createTrack(undefined, newTrackClass());
     this.selection = new Set();
+    /* One side of the selected gate, picked in the 3D view to be taken away
+     * with Delete: { id, side } or null. See FRAME_SIDES in elements.js. */
+    this.pickedSide = null;
+    /* Whether the author has been told once what bending the line does to
+     * the gates either side of it. */
+    this.bendSaid = false;
     this.armed = null;
     /* Which of the course's logos an armed ground decal will wear. Set only
      * by armGroundLogo, cleared by everything else that touches `armed`. */
@@ -747,6 +763,7 @@ export class App {
         this.selection.add(id);
       }
     }
+    this.keepPickedSide();
     this.panels.renderAll();
     this.requestDraw();
   }
@@ -757,8 +774,143 @@ export class App {
     } else {
       this.selection.add(id);
     }
+    this.keepPickedSide();
     this.panels.renderAll();
     this.requestDraw();
+  }
+
+  /* ---------------- one side of a gate ---------------- */
+
+  /* A picked side belongs to the one selected gate, and to a side that is
+   * still there to take away. Anything else lets it go. */
+  keepPickedSide() {
+    const p = this.pickedSide;
+    if (!p) {
+      return;
+    }
+    const el = elementById(this.doc, p.id);
+    if (this.selection.size !== 1 || !this.selection.has(p.id) || !el
+      || (el.unbuiltSides ?? []).includes(p.side) || el.unbuilt === true) {
+      this.pickedSide = null;
+      this.view3d.markDirty();
+    }
+  }
+
+  /*
+   * The 3D view's click on a pipe of the gate that is already selected: that
+   * pipe is picked, drawn hot, and Delete takes just it away. The first
+   * click on a gate selects the gate, as it always has, so Delete after one
+   * click still removes the gate.
+   */
+  pickSide(id, side) {
+    this.pickedSide = side ? { id, side } : null;
+    this.view3d.markDirty();
+    this.requestDraw();
+    if (side) {
+      this.toast(`${SIDE_WORDS[side]} picked. Delete takes away just that pipe: the opening still scores and still lights. Esc lets go of it.`);
+    }
+  }
+
+  clearPickedSide() {
+    if (!this.pickedSide) {
+      return false;
+    }
+    this.pickedSide = null;
+    this.view3d.markDirty();
+    this.requestDraw();
+    return true;
+  }
+
+  /* The inspector's Frame toggles and the Delete key both come here. */
+  setFrameSide(id, side, built) {
+    this.edit(built ? 'put a side back' : 'take a side away', (d) => {
+      setSideBuilt(d, id, side, built);
+    });
+    this.keepPickedSide();
+  }
+
+  removePickedSide() {
+    const p = this.pickedSide;
+    this.pickedSide = null;
+    if (!p || !elementById(this.doc, p.id)) {
+      return;
+    }
+    this.setFrameSide(p.id, p.side, false);
+    this.toast(`${SIDE_WORDS[p.side]} taken away. The opening still scores. Put it back under Frame in the inspector, or undo.`);
+  }
+
+  /* ---------------- bending the line, in 3D ---------------- */
+
+  /*
+   * A drag that starts on the racing line drops a waypoint where the line
+   * was grabbed and moves it: see bendLineAt in sequence.js. Called on the
+   * drag's first move, not on the press, so a click on the line that goes
+   * nowhere leaves nothing behind. Returns the new waypoint's id.
+   */
+  beginBend(hit) {
+    if (docModeOf(this.doc) === 'freestyle' || !this.path) {
+      return null;
+    }
+    this.history.begin(this.doc, 'bend the line');
+    const yaw = Math.atan2(hit.tangent.y, hit.tangent.x);
+    const el = bendLineAt(this.doc, this.path, hit.segment, hit.pos, yaw);
+    if (!el) {
+      this.history.cancel();
+      return null;
+    }
+    this.selection = new Set([el.id]);
+    this.pickedSide = null;
+    this.afterBendMove();
+    this.panels.renderAll();
+    if (!this.bendSaid) {
+      this.bendSaid = true;
+      this.toast('That dropped a waypoint on the line, which bends it and scores nothing. The gates either side keep facing the way they face; Re-derive in the inspector hands one back to the automatic rule.');
+    }
+    return el.id;
+  }
+
+  /* A drag on a waypoint that is already there: the same gesture. The
+   * neighbours are pinned on the first move, not here, so a click that does
+   * not move leaves no undo step. */
+  beginWaypointDrag() {
+    this.history.begin(this.doc, 'bend the line');
+  }
+
+  moveWaypoint(id, pos, first = false) {
+    const el = elementById(this.doc, id);
+    if (!el) {
+      return;
+    }
+    if (first) {
+      pinFacesAt(this.doc, neighboursOf(this.doc, id));
+    }
+    el.position.x = pos.x;
+    el.position.y = pos.y;
+    el.position.z = Math.max(0, pos.z);
+    this.afterBendMove();
+  }
+
+  afterBendMove() {
+    applyAutoFaces(this.doc);
+    this.rebuildPath();
+    this.view3d.markDirty();
+    this.requestDraw();
+    this.panels.renderInspector();
+  }
+
+  /* A gesture the browser took away: put the document back as it was when
+   * the gesture began. cancelEdit keeps what the drag did, which suits a
+   * height drag; a bend has added an element, and a cancelled bend that
+   * left one behind would be a waypoint nobody asked for with no undo step
+   * to take it away again. */
+  revertEdit() {
+    const before = this.history.pending?.doc;
+    this.history.cancel();
+    if (before) {
+      this.doc = deepClone(before);
+      this.pruneSelection();
+    }
+    this.refresh();
   }
 
   selectionCentroid() {
@@ -948,11 +1100,23 @@ export class App {
       }
     }
     applyAutoFaces(this.doc);
-    if (this.pathVisible) {
-      this.rebuildPath();
-    }
+    this.rebuildPathForDrag();
     this.requestDraw();
     this.panels.renderInspector();
+  }
+
+  /*
+   * ON EVERY STEP OF A DRAG ON A TRACK, not only while the line is shown: a
+   * marker's square is drawn off the line's own knot (markerSquare in
+   * path.js), so a stale line is a square left behind by the drag. Measured
+   * on the heaviest shipped track, the line and its warnings are 7 ms; a
+   * room is under 2. A map has no line, and its report is a placement of
+   * every solid, so a map keeps the rule it had.
+   */
+  rebuildPathForDrag() {
+    if (this.pathVisible || docModeOf(this.doc) !== 'freestyle') {
+      this.rebuildPath();
+    }
   }
 
   rotateSelected(yaw) {
@@ -963,9 +1127,9 @@ export class App {
       setYaw(this.doc, id, yaw);
       this.rememberYaw(elementById(this.doc, id));
     }
-    if (this.pathVisible) {
-      this.rebuildPath();
-    }
+    /* A turned marker's square swings with the line's knot, so the knot has
+     * to move with the handle: see rebuildPathForDrag. */
+    this.rebuildPathForDrag();
     this.requestDraw();
     this.panels.renderInspector();
   }
@@ -981,9 +1145,7 @@ export class App {
       element.position.z = fine ? wanted : Math.round(wanted * 4) / 4;
     }
     applyAutoFaces(this.doc);
-    if (this.pathVisible) {
-      this.rebuildPath();
-    }
+    this.rebuildPathForDrag();
     this.view3d.markDirty();
     this.requestDraw();
     this.panels.renderInspector();
@@ -1008,6 +1170,24 @@ export class App {
       return;
     }
     this.nodes.readout.textContent = `${world.x.toFixed(2)}, ${world.y.toFixed(2)} m`;
+  }
+
+  /*
+   * THE HEADING A MARKER IS TURNED FROM.
+   *
+   * A flag, cone or pole nobody has turned sits its square on the outside of
+   * the turn, and its own stored yaw is whatever it was placed with, which is
+   * not where the square is. Turning it by hand makes the yaw the pass
+   * direction (markerPassDir in faces.js), so a turn that started from the
+   * stored yaw threw the square round the pole to wherever that yaw happened
+   * to point: the first press of Q, or the first pull on the handle, and the
+   * square jumped a quarter of the way round before it began to follow. So
+   * until it is turned, a marker reports the way its square actually sits,
+   * read off the racing line's knot, and the handle, Q and E and the
+   * inspector all start from there.
+   */
+  shownYaw(el) {
+    return passYawOf(this.doc, this.path, el);
   }
 
   /* ---------------- headings on a map ---------------- */
@@ -1288,6 +1468,7 @@ export class App {
     upgradeStackedFigures(this.doc);
     applyAutoFaces(this.doc);
     this.selection.clear();
+    this.pickedSide = null;
     this.history.reset();
     this.path = null;
     this.warnings = [];
@@ -2301,6 +2482,7 @@ export class App {
         this.selection.delete(id);
       }
     }
+    this.keepPickedSide();
   }
 
   /* ---------------- chrome ---------------- */
@@ -2711,6 +2893,8 @@ export class App {
      */
     this.pathBtn.style.display = map ? 'none' : '';
     document.body.classList.toggle('tb-map', map);
+    /* The status bar's hints for the 3D view's own gestures. */
+    document.body.classList.toggle('tb-in-3d', this.mode === '3d');
     this.flyBtn.textContent = map ? 'Fly this map' : 'Fly this track';
     this.flyBtn.title = map
       ? 'Build this map in the town\u2019s style and fly it on the five inch'
@@ -2959,6 +3143,8 @@ export class App {
           this.closeModal();
         } else if (this.armed) {
           this.disarm();
+        } else if (this.clearPickedSide()) {
+          /* Let go of the picked pipe and keep the gate selected. */
         } else {
           this.setSelection([]);
         }
@@ -2966,7 +3152,12 @@ export class App {
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        this.deleteSelection();
+        /* A picked pipe goes on its own; otherwise the selection goes. */
+        if (this.pickedSide) {
+          this.removePickedSide();
+        } else {
+          this.deleteSelection();
+        }
         return;
       }
       if (e.key === 'x' || e.key === 'X') {
@@ -3011,7 +3202,9 @@ export class App {
           if (turnsOf(element.type) === 'quarter') {
             setYaw(d, id, snapYaw(element.type, snapYaw(element.type, element.yaw) + Math.sign(degrees) * QUARTER_TURN));
           } else {
-            setYaw(d, id, element.yaw + degrees * RAD);
+            /* From where a marker's square sits, not its stored yaw: see
+             * shownYaw. Everything else, shownYaw returns its own yaw. */
+            setYaw(d, id, this.shownYaw(element) + degrees * RAD);
           }
         }
       }

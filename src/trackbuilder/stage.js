@@ -47,7 +47,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, frameSidesOf, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
 import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import { aperturesOf, elementById, apertureCenter } from './model.js';
 import { apertureFrame, apertureCorners, clamp } from './geometry.js';
@@ -636,6 +636,18 @@ export function buildStage(THREE, doc, path, {
       return;
     }
     const base = el.position.z;
+    /*
+     * The four sides, as the builder's preview and the race field read them
+     * (FRAME_SIDES in elements.js). The corners below run c0 low left, c1 low
+     * right, c2 high right, c3 high left, so edge i from ci to c(i+1) is the
+     * bottom, the right, the top and the left in turn. Only the lowest
+     * opening's bottom and the highest's top are sides; the bars between two
+     * openings hold both up. A corner joint, a stack join and a leg belong
+     * to the upright on their side, so they go with it.
+     */
+    const sides = frameSidesOf(el);
+    const last = levels.length - 1;
+    const cornerSide = (i) => ((i === 0 || i === 3) ? sides.left : sides.right);
     let lowerTop = null;
     for (const ap of levels) {
       const centre = apertureCenter(el, ap.index);
@@ -645,16 +657,30 @@ export function buildStage(THREE, doc, path, {
       const c = apertureCorners(
         centre, el.yaw, el.pitch, ap.clearW + tubeOD, ap.clearH + tubeOD,
       );
+      const edgeBuilt = [
+        ap.index === 0 ? sides.bottom : true,
+        sides.right,
+        ap.index === last ? sides.top : true,
+        sides.left,
+      ];
       for (let i = 0; i < 4; i += 1) {
-        pipes.push(pipeGeometry(THREE, c[i], c[(i + 1) % 4], tubeR));
-        pipes.push(ballGeometry(THREE, c[i], jointR));
+        if (edgeBuilt[i]) {
+          pipes.push(pipeGeometry(THREE, c[i], c[(i + 1) % 4], tubeR));
+        }
+        if (cornerSide(i)) {
+          pipes.push(ballGeometry(THREE, c[i], jointR));
+        }
       }
       /* Corners nought and one are the lower edge of the opening, two and
        * three the upper. A stack shares its verticals, so each level is
        * joined to the one below rather than given legs of its own. */
       if (lowerTop) {
-        pipes.push(pipeGeometry(THREE, lowerTop[0], c[0], tubeR));
-        pipes.push(pipeGeometry(THREE, lowerTop[1], c[1], tubeR));
+        if (sides.left) {
+          pipes.push(pipeGeometry(THREE, lowerTop[0], c[0], tubeR));
+        }
+        if (sides.right) {
+          pipes.push(pipeGeometry(THREE, lowerTop[1], c[1], tubeR));
+        }
       } else {
         /*
          * The lowest edge of the lowest opening carries the legs. Which
@@ -666,8 +692,8 @@ export function buildStage(THREE, doc, path, {
         for (const p of c) {
           minZ = Math.min(minZ, p.z);
         }
-        for (const p of c) {
-          if (p.z > minZ + tubeOD) {
+        for (const [i, p] of c.entries()) {
+          if (p.z > minZ + tubeOD || !cornerSide(i)) {
             continue;
           }
           if (p.z - base > GROUND_EPS) {

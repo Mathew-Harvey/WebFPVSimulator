@@ -58,7 +58,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_POLE_R, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_POLE_R, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, frameSidesOf, gateFlagHeight, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
 import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter, logosOf, logoForDecal, dressOrder,
@@ -66,6 +66,7 @@ import {
 import { sequenceNumbers } from './sequence.js';
 import { levelName } from './figures.js';
 import { travelDirection, markerPassDir } from './faces.js';
+import { knotForSeq, markerSquare } from './path.js';
 import { apertureFrame, clamp, gateSupportFeet, leftOf, normalize, scale } from './geometry.js';
 import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 
@@ -94,6 +95,11 @@ const COL = {
   gridMajor: 0x415a70,
   frame: 0xc7d8e6,
   frameSel: 0xffd45c,
+  /* One side of a selected gate, picked to be taken away. Hot, so it
+   * cannot be mistaken for the selection's amber. */
+  sidePicked: 0xff5a36,
+  /* RaceGOW's pole is red on every diagram and red in the world. */
+  pole: 0xc0392b,
   entry: 0x7dffb4,
   exit: 0xff7d7d,
   barrier: bannerHex('vinyl'),
@@ -290,6 +296,10 @@ function assetKey(el) {
  * opening stays open, so the gate behind it can still be picked through it.
  */
 const PICK_R = 0.3;
+/* How close to the racing line, in screen pixels, a press grabs it, and how
+ * far a press has to travel before it bends it rather than being a click. */
+const LINE_GRAB_PX = 9;
+const BEND_START_PX = 4;
 let pickUnit = null;
 let pickMaterial = null;
 
@@ -816,14 +826,166 @@ export class View3D {
     );
   }
 
-  pick(e) {
+  /*
+   * The nearest thing under the pointer, and which side of its frame the
+   * hit landed on when it was a gate's pipe: { id, side, weak, distance },
+   * or null. `side` is null for anything that is not one of the four sides
+   * (a bar between two openings, a leg, a pole). `weak` marks the invisible
+   * pane across an opening with no pipe, which the racing line beats.
+   */
+  pickHit(e) {
     if (!this.camera || !THREE) {
       return null;
     }
     const ray = new THREE.Raycaster();
     ray.setFromCamera(this.ndc(e), this.camera);
     const hits = ray.intersectObjects(this.pickables, false);
-    return hits.length ? hits[0].object.userData.elementId : null;
+    if (!hits.length) {
+      return null;
+    }
+    const o = hits[0].object;
+    return {
+      id: o.userData.elementId,
+      side: o.userData.side ?? null,
+      weak: o.userData.weak === true,
+      distance: hits[0].distance,
+    };
+  }
+
+  pick(e) {
+    return this.pickHit(e)?.id ?? null;
+  }
+
+  /*
+   * WHERE ON THE RACING LINE THE POINTER IS, measured on the screen.
+   *
+   * The line is a one pixel THREE.Line, and a raycast against one needs a
+   * threshold in metres, which is a different number of pixels at every zoom
+   * and at every depth down a course. So the samples are projected and the
+   * nearest point on the drawn polyline is found in pixels, which is what an
+   * author aiming at a line is actually doing. Only while the line is shown
+   * (P), because a line that is not drawn is not there to be grabbed.
+   *
+   * Returns { segment, pos, tangent, distance } in document coordinates:
+   * `segment` is the path segment the point is on, `distance` how far it is
+   * from the camera so a gate in front of it can win.
+   */
+  pathHit(e) {
+    const path = this.host.path;
+    if (!this.host.pathVisible || !path || path.samples.length < 2 || !this.camera || this.builtFreestyle) {
+      return null;
+    }
+    const rect = this.canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const v = new THREE.Vector3();
+    const onScreen = (p) => {
+      v.set(p.x, p.z, -p.y).project(this.camera);
+      if (v.z < -1 || v.z > 1) {
+        return null;
+      }
+      return { x: (v.x + 1) * 0.5 * rect.width, y: (1 - v.y) * 0.5 * rect.height };
+    };
+    let best = null;
+    let a = onScreen(path.samples[0].pos);
+    for (let i = 1; i < path.samples.length; i += 1) {
+      const b = onScreen(path.samples[i].pos);
+      if (a && b) {
+        const ex = b.x - a.x;
+        const ey = b.y - a.y;
+        const len2 = ex * ex + ey * ey;
+        const t = len2 > 1e-9 ? clamp(((px - a.x) * ex + (py - a.y) * ey) / len2, 0, 1) : 0;
+        const d = Math.hypot(a.x + ex * t - px, a.y + ey * t - py);
+        if (!best || d < best.d) {
+          best = { d, i: i - 1, t };
+        }
+      }
+      a = b;
+    }
+    if (!best || best.d > LINE_GRAB_PX) {
+      return null;
+    }
+    const s0 = path.samples[best.i].pos;
+    const s1 = path.samples[best.i + 1].pos;
+    const pos = {
+      x: s0.x + (s1.x - s0.x) * best.t,
+      y: s0.y + (s1.y - s0.y) * best.t,
+      z: s0.z + (s1.z - s0.z) * best.t,
+    };
+    const tangent = normalize({ x: s1.x - s0.x, y: s1.y - s0.y, z: s1.z - s0.z }, { x: 1, y: 0, z: 0 });
+    const cam = this.camera.position;
+    return {
+      segment: path.samples[best.i].segment,
+      pos,
+      tangent,
+      distance: Math.hypot(pos.x - cam.x, pos.z - cam.y, -pos.y - cam.z),
+    };
+  }
+
+  /*
+   * Where the pointer meets the level plane at document height z, in
+   * document coordinates, or null when the ray runs away from it. The one
+   * conversion is the root's, (x, y, z) to Three's (x, z, -y).
+   */
+  levelPoint(clientX, clientY, z) {
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    const o = ray.ray.origin;
+    const d = ray.ray.direction;
+    if (Math.abs(d.y) < 1e-6) {
+      return null;
+    }
+    const t = (z - o.y) / d.y;
+    if (!(t > 0)) {
+      return null;
+    }
+    return { x: o.x + d.x * t, y: -(o.z + d.z * t), z };
+  }
+
+  /* Held within half a field of the field's edge, so a ray skimming the
+   * plane cannot throw a waypoint a kilometre away. */
+  keepNearField(p) {
+    const f = this.host.doc.field;
+    return {
+      x: clamp(p.x, -f.width * 0.5, f.width * 1.5),
+      y: clamp(p.y, -f.depth * 0.5, f.depth * 1.5),
+      z: Math.max(0, p.z),
+    };
+  }
+
+  /*
+   * The knob that says "this is the line, and you can grab it": a dot where
+   * the pointer is nearest it, a constant size on the screen. It lives on
+   * the root rather than in the rebuilt content, so moving it is a redraw
+   * and not a rebuild.
+   */
+  showLineKnob(pos) {
+    if (!this.root) {
+      return;
+    }
+    if (!this.lineKnob) {
+      this.lineKnob = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 14, 10),
+        new THREE.MeshBasicMaterial({ color: COL.path, depthTest: false, transparent: true, opacity: 0.95 }),
+      );
+      this.lineKnob.renderOrder = 10;
+      this.root.add(this.lineKnob);
+    }
+    const shown = Boolean(pos);
+    if (shown) {
+      this.lineKnob.position.set(pos.x, pos.y, pos.z);
+      this.lineKnob.scale.setScalar(this.orbit.radius * 0.006);
+    }
+    if (shown !== this.lineKnob.visible || shown) {
+      this.lineKnob.visible = shown;
+      this.host.requestDraw();
+    }
+    this.canvas.style.cursor = shown ? 'grab' : '';
   }
 
   onDown(e) {
@@ -839,14 +1001,49 @@ export class View3D {
     if (e.button !== 0) {
       return;
     }
-    const id = this.pick(e);
+    const hit = this.pickHit(e);
+    /*
+     * THE LINE WINS WHERE IT IS NEARER THAN WHAT IS HIT, or where what is
+     * hit is only the invisible pane across an opening with no pipe, which
+     * the line runs through the middle of. A gate standing in front of the
+     * line still takes the click.
+     */
+    const line = this.pathHit(e);
+    if (line && (!hit || hit.weak || line.distance < hit.distance)) {
+      this.drag = { kind: 'bend-pending', start: at, last: at, line };
+      return;
+    }
+    const id = hit ? hit.id : null;
     if (id) {
       if (e.shiftKey) {
         this.host.toggleSelection(id);
       } else if (!this.host.selection.has(id)) {
         this.host.setSelection([id]);
+      } else if (hit.side && this.host.selection.size === 1) {
+        /* A second click on a gate, on one of its four sides: pick that
+         * pipe, and Delete takes just it away. See pickSide in app.js. */
+        this.host.pickSide(id, hit.side);
       }
       const el = elementById(this.host.doc, id);
+      /*
+       * A WAYPOINT IS A HANDLE ON THE LINE, so a drag on one moves it across
+       * the level it is at, the same gesture as pulling the line itself, and
+       * Alt moves it up and down. Every other element keeps the height drag.
+       */
+      if (el && el.type === 'waypoint' && !e.shiftKey && docModeOf(this.host.doc) !== 'freestyle') {
+        const g = this.levelPoint(e.clientX, e.clientY, el.position.z);
+        this.host.beginWaypointDrag();
+        this.drag = {
+          kind: 'bend',
+          id,
+          last: at,
+          z: el.position.z,
+          offset: g ? { x: el.position.x - g.x, y: el.position.y - g.y } : { x: 0, y: 0 },
+          moved: false,
+          reanchor: false,
+        };
+        return;
+      }
       this.host.beginEdit('height');
       this.drag = {
         kind: 'height',
@@ -862,11 +1059,73 @@ export class View3D {
 
   onMove(e) {
     if (!this.drag) {
+      /* Hovering: say so when the pointer is on the line. */
+      if (this.enabled && this.renderer) {
+        const line = this.pathHit(e);
+        this.showLineKnob(line ? line.pos : null);
+      }
       return;
     }
     const dx = e.clientX - this.drag.last.x;
     const dy = e.clientY - this.drag.last.y;
     this.drag.last = { x: e.clientX, y: e.clientY };
+
+    if (this.drag.kind === 'bend-pending') {
+      /* A press on the line becomes a bend once it moves, so a click on the
+       * line that goes nowhere drops nothing on it. */
+      const start = this.drag.start;
+      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < BEND_START_PX) {
+        return;
+      }
+      const line = this.drag.line;
+      const id = this.host.beginBend(line);
+      if (!id) {
+        this.drag = { kind: 'orbit', last: this.drag.last };
+        return;
+      }
+      /* Held where it was grabbed: the offset is between the level point
+       * under the press and the point on the line, so the waypoint does not
+       * jump the pixel or two the line was missed by. */
+      const g = this.levelPoint(start.x, start.y, line.pos.z);
+      this.drag = {
+        kind: 'bend',
+        id,
+        last: this.drag.last,
+        z: line.pos.z,
+        offset: g ? { x: line.pos.x - g.x, y: line.pos.y - g.y } : { x: 0, y: 0 },
+        moved: true,
+        reanchor: false,
+      };
+      this.showLineKnob(null);
+      this.canvas.style.cursor = 'grabbing';
+    }
+    if (this.drag.kind === 'bend') {
+      const el = elementById(this.host.doc, this.drag.id);
+      if (!el) {
+        return;
+      }
+      let pos;
+      if (e.altKey) {
+        /* Up and down, screen up is up, scaled with the zoom exactly as the
+         * height drag is. The level is re-found when Alt comes off. */
+        this.drag.z = Math.max(0, this.drag.z - dy * this.orbit.radius * 0.0022);
+        this.drag.reanchor = true;
+        pos = { x: el.position.x, y: el.position.y, z: this.drag.z };
+      } else {
+        const g = this.levelPoint(e.clientX, e.clientY, this.drag.z);
+        if (!g) {
+          return;
+        }
+        if (this.drag.reanchor) {
+          this.drag.offset = { x: el.position.x - g.x, y: el.position.y - g.y };
+          this.drag.reanchor = false;
+        }
+        pos = { x: g.x + this.drag.offset.x, y: g.y + this.drag.offset.y, z: this.drag.z };
+      }
+      this.host.moveWaypoint(this.drag.id, this.keepNearField(pos), !this.drag.moved);
+      this.drag.moved = true;
+      return;
+    }
 
     if (this.drag.kind === 'orbit') {
       this.orbit.theta += dx * 0.006;
@@ -904,6 +1163,11 @@ export class View3D {
     if (this.drag && this.drag.kind === 'height') {
       this.host.cancelEdit();
     }
+    /* A bend the browser took away is put back, waypoint and all. */
+    if (this.drag && this.drag.kind === 'bend') {
+      this.host.revertEdit();
+    }
+    this.canvas.style.cursor = '';
     this.drag = null;
     if (e && this.canvas.hasPointerCapture?.(e.pointerId)) {
       this.canvas.releasePointerCapture(e.pointerId);
@@ -917,6 +1181,14 @@ export class View3D {
     if (this.drag.kind === 'height') {
       this.host.endEdit();
     }
+    if (this.drag.kind === 'bend') {
+      if (this.drag.moved) {
+        this.host.endEdit();
+      } else {
+        this.host.cancelEdit();
+      }
+    }
+    this.canvas.style.cursor = '';
     this.drag = null;
     if (e && this.canvas.hasPointerCapture?.(e.pointerId)) {
       this.canvas.releasePointerCapture(e.pointerId);
@@ -1174,6 +1446,10 @@ export class View3D {
      */
     const k = trackClassOf(this.host.doc) === 'micro' ? 0.30 : 1;
     for (const n of numbers) {
+      /* A waypoint has no number: see gateNumbers in sequence.js. */
+      if (n.number == null) {
+        continue;
+      }
       let label = String(n.number);
       let worldH = 1.1 * k;
       const spritePos = { x: 0, y: 0, z: 1.6 * k };
@@ -1223,36 +1499,58 @@ export class View3D {
       new THREE.Vector3(f.normal.x, f.normal.y, f.normal.z),
     );
     const quat = new THREE.Quaternion().setFromRotationMatrix(basis);
+    /*
+     * The four sides, and the one the author has picked to take away. See
+     * FRAME_SIDES in elements.js: the uprights are the whole height of a
+     * stack, the top is over the top opening and the bottom under the
+     * lowest, and a bar between two openings is none of them.
+     */
+    const sides = frameSidesOf(el);
+    const picked = this.host.pickedSide && this.host.pickedSide.id === el.id
+      ? this.host.pickedSide.side : null;
+    const pickedMat = picked ? new THREE.MeshLambertMaterial({ color: COL.sidePicked }) : null;
+    const last = levels.length - 1;
 
     for (const ap of levels) {
       const frame = new THREE.Group();
       frame.position.set(0, 0, ap.centerH);
       frame.quaternion.copy(quat);
       /* Four tubes around the opening, laid out in the aperture's own plane:
-       * local x across the width, local y across the height. */
+       * local x across the width, local y across the height. Each carries
+       * the side it is, so a click on it can say which one it hit. */
       const bars = [
-        [ap.clearW + tube * 2, tube, 0, (ap.clearH + tube) / 2],
-        [ap.clearW + tube * 2, tube, 0, -(ap.clearH + tube) / 2],
-        [tube, ap.clearH, -(ap.clearW + tube) / 2, 0],
-        [tube, ap.clearH, (ap.clearW + tube) / 2, 0],
+        [ap.clearW + tube * 2, tube, 0, (ap.clearH + tube) / 2, ap.index === last ? 'top' : null],
+        [ap.clearW + tube * 2, tube, 0, -(ap.clearH + tube) / 2, ap.index === 0 ? 'bottom' : null],
+        [tube, ap.clearH, -(ap.clearW + tube) / 2, 0, 'left'],
+        [tube, ap.clearH, (ap.clearW + tube) / 2, 0, 'right'],
       ];
-      for (const [w, h, x, y] of (unbuilt ? [] : bars)) {
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, tube), mat);
+      let drawn = 0;
+      for (const [w, h, x, y, side] of (unbuilt ? [] : bars)) {
+        if (side && !sides[side]) {
+          continue;
+        }
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, tube), side && side === picked ? pickedMat : mat);
         bar.position.set(x, y, 0);
+        bar.userData.side = side;
         this.register(bar, el);
         frame.add(bar);
+        drawn += 1;
       }
       /*
        * A gap in the lattice has no pipe to click on, and an author still
        * has to be able to pick it up. So it gets an invisible pane across
        * the opening, registered for the raycast and drawn by nothing: the
-       * line loop below is what the eye sees.
+       * line loop below is what the eye sees. An opening whose sides have
+       * all been taken away one at a time is the same thing and gets the
+       * same pane. It is WEAK: the racing line runs through the middle of
+       * it, and a grab on the line there is a grab on the line.
        */
-      if (unbuilt) {
+      if (!drawn) {
         const pick = new THREE.Mesh(
           new THREE.PlaneGeometry(ap.clearW, ap.clearH),
           new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }),
         );
+        pick.userData.weak = true;
         this.register(pick, el);
         frame.add(pick);
       }
@@ -1330,6 +1628,10 @@ export class View3D {
       };
       const at = new THREE.Vector3();
       for (const sx of [-1, 1]) {
+        /* A sleeve is sleeved over its upright and goes with it. */
+        if (!sides[sx < 0 ? 'left' : 'right']) {
+          continue;
+        }
         const off = sx * (top.clearW / 2 + tube + sleeveW / 2);
         /* Mirrored on the far leg so the chequer column runs down the
          * outside of the gate on both sides, the same way the world does it,
@@ -1340,7 +1642,10 @@ export class View3D {
       }
       const headerW = 2 * (top.clearW / 2 + tube + sleeveW);
       at.set(0, 0, top.sillH + top.clearH + tube * 2 + BANNER_H / 2 + 0.03);
-      bannerFace(headerW, BANNER_H, kit.header, at);
+      /* The header hangs on the top rail, and goes with it. */
+      if (sides.top) {
+        bannerFace(headerW, BANNER_H, kit.header, at);
+      }
     }
 
     /*
@@ -1378,9 +1683,12 @@ export class View3D {
       el.yaw, el.pitch, bottom.clearW, bottom.clearH, bottom.centerH, tube,
     );
     const legMat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.frame });
-    for (const foot of feet) {
+    for (const [i, foot] of feet.entries()) {
       const h = foot.z;
-      if (h < 0.02) {
+      /* gateSupportFeet gives the -widthAxis leg first. A leg is the foot of
+       * its upright, so it goes when the upright does, as it does in the
+       * world. */
+      if (h < 0.02 || unbuilt || !sides[i === 0 ? 'left' : 'right']) {
         continue;
       }
       const leg = new THREE.Mesh(new THREE.BoxGeometry(tube * 1.4, tube * 1.4, h), legMat);
@@ -1465,9 +1773,28 @@ export class View3D {
       post.position.z = el.dims.height / 2;
       this.register(post, el);
       group.add(post);
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.36, 0.46, 20), mat);
+      /*
+       * The ring is a room's size in a room. It was a field's 0.9 m on every
+       * class, which in a RaceGOW room is wider than the gate beside it, and
+       * a waypoint is now what a bent line is made of, so there can be
+       * several in a space the width of a sofa.
+       */
+      const k = trackClassOf(this.host.doc) === 'micro' ? 0.30 : 1;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.36 * k, 0.46 * k, 20), mat);
       ring.position.z = 0.02;
       group.add(ring);
+      /*
+       * THE HANDLE. A waypoint pins the racing line at its own base, so the
+       * point the line passes through gets a knob: that is where the line is
+       * held and what a drag in this view moves. Solid, so it reads as the
+       * thing to grab rather than as more of the ghost.
+       */
+      const knob = new THREE.Mesh(
+        new THREE.SphereGeometry(0.09 * k, 14, 10),
+        new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.path }),
+      );
+      this.register(knob, el);
+      group.add(knob);
       return;
     }
     if (el.type === 'cone') {
@@ -1481,6 +1808,50 @@ export class View3D {
       cone.position.z = el.dims.height / 2;
       this.register(cone, el);
       group.add(cone);
+      this.buildVirtualGates(group, el, numbers, selected);
+      return;
+    }
+    /*
+     * A POLE IS A POLE. RaceGOW's vertical pole is a bare length of pipe
+     * stood on end, and it fell through to the flag below, so every pole on
+     * a whoop track was previewed as a five inch race flag: a bent mast with
+     * a printed sail on it. The owner's words: "poles or flags are not flags
+     * like in 5 inch, they are just a pole".
+     *
+     * Drawn as the world draws it (courseProps in src/render/scene.js): a red
+     * pipe the author's radius and height, with the same floors that
+     * markerBuild gives it there, on a stub foot four pipes across. The
+     * builder does not import the game, so the numbers are repeated here and
+     * name where they come from.
+     */
+    if (el.type === 'pole') {
+      const r = Math.max(0.004, el.dims.poleRadius ?? 0.02);
+      const h = Math.max(0.1, el.dims.height ?? 1.5);
+      const poleMat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.pole });
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), poleMat);
+      pipe.rotation.x = Math.PI / 2;
+      pipe.position.z = h / 2;
+      this.register(pipe, el);
+      group.add(pipe);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(r * 4, r * 4, r * 1.6), poleMat);
+      foot.position.z = r * 0.8;
+      this.register(foot, el);
+      group.add(foot);
+      /* A 27 mm pipe is two pixels across from where a room is viewed, and
+       * the sail that used to hang off it was what got clicked. So it gets
+       * the same kind of fattened, never drawn stand in a map's thin members
+       * get (pickProxy), sized to a room rather than to a field. */
+      const grab = new THREE.Mesh(
+        new THREE.CylinderGeometry(1, 1, 1, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+      );
+      const grabR = Math.max(r * 2.5, trackClassOf(this.host.doc) === 'micro' ? 0.04 : 0.15);
+      grab.scale.set(grabR, h, grabR);
+      grab.rotation.x = Math.PI / 2;
+      grab.position.z = h / 2;
+      grab.visible = false;
+      this.register(grab, el);
+      group.add(grab);
       this.buildVirtualGates(group, el, numbers, selected);
       return;
     }
@@ -1536,30 +1907,44 @@ export class View3D {
       if (!seq || (seq.clearance ?? 0) < 0.05) {
         continue;
       }
-      const dir = travelDirection(this.host.doc, seq.id);
-      if (!dir) {
-        continue;
+      /*
+       * THE SQUARE THE RACE FIELD SCORES, off the racing line's own knot
+       * (markerSquare in path.js). It faces the knot's tangent, which swings
+       * with a marker the author has turned, so the square pivots round the
+       * pole like a door on a hinge. The chain direction this used to read
+       * does not swing, so a turned pole's square slid round the pole
+       * keeping its heading, and the preview showed a hole nothing scores.
+       * The old reading stays as the fallback for a line not derived yet.
+       */
+      const square = markerSquare(this.host.doc, knotForSeq(this.host.path, seq.id));
+      let dims;
+      let off;
+      let f;
+      if (square) {
+        dims = square.dims;
+        off = { x: square.centre.x - el.position.x, y: square.centre.y - el.position.y };
+        f = {
+          widthAxis: square.widthAxis,
+          heightAxis: { x: 0, y: 0, z: 1 },
+          normal: square.normal,
+        };
+      } else {
+        const dir = travelDirection(this.host.doc, seq.id);
+        if (!dir) {
+          continue;
+        }
+        dims = virtualApertureDims(el, seq, trackClassOf(this.host.doc));
+        const u = normalize({ x: dir.x, y: dir.y, z: 0 }, { x: 1, y: 0, z: 0 });
+        /* Inner edge on the pole: half the square's width out along the
+         * pass side, which is the clearance plus whatever elements.js padded
+         * the width by. */
+        off = scale(markerPassDir(el, seq, u), seq.clearance + dims.outward);
+        f = {
+          widthAxis: leftOf(u),
+          heightAxis: { x: 0, y: 0, z: 1 },
+          normal: { x: u.x, y: u.y, z: 0 },
+        };
       }
-      const dims = virtualApertureDims(el, seq, trackClassOf(this.host.doc));
-      const u = normalize({ x: dir.x, y: dir.y, z: 0 }, { x: 1, y: 0, z: 0 });
-      /* Which way off the pole the pass is, shared with path.js so the
-       * preview and the racing line agree, all the way round a turned
-       * marker. */
-      const side = markerPassDir(el, seq, u);
-      /* Inner edge on the pole: half the square's width out along the pass
-       * side, which is the clearance plus whatever elements.js padded the
-       * width by. Reading `outward` rather than adding the pad again here
-       * is what keeps the preview and the race field the same square. */
-      const off = scale(side, seq.clearance + dims.outward);
-      /* WHERE it sits follows the pass direction; WHICH WAY IT FACES is
-       * always square to travel, because that is the frame race.js scores
-       * in. A basis built from a turned pass direction would not even be
-       * orthonormal, and it would draw a hole nothing scores. */
-      const f = {
-        widthAxis: leftOf(u),
-        heightAxis: { x: 0, y: 0, z: 1 },
-        normal: { x: u.x, y: u.y, z: 0 },
-      };
       const basis = new THREE.Matrix4().makeBasis(
         new THREE.Vector3(f.widthAxis.x, f.widthAxis.y, f.widthAxis.z),
         new THREE.Vector3(f.heightAxis.x, f.heightAxis.y, f.heightAxis.z),

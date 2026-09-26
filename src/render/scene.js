@@ -2611,12 +2611,16 @@ function openingBadge(n, scale = 1) {
  * by finding its own vertical cylinders and a fifth one would change what it
  * measures.
  */
-function cornerFittings(group, sills, clearW, clearH, tubeR) {
+function cornerFittings(group, sills, clearW, clearH, tubeR, postBuilt = null) {
   const mats = sharedObstacleMats();
   const s = tubeR * 2.9;
   for (const sillY of sills) {
     for (const sy of [sillY - tubeR, sillY + clearH + tubeR]) {
       for (const sx of [-1, 1]) {
+        /* A side taken away takes its fittings: see obstacle(). */
+        if (postBuilt && !postBuilt(sx)) {
+          continue;
+        }
         const f = new THREE.Mesh(new THREE.BoxGeometry(s, s, s * 0.92), mats.fitting);
         f.position.set(sx * (clearW * 0.5 + tubeR), sy, 0);
         f.castShadow = true;
@@ -2991,6 +2995,11 @@ function coursePlacements(course) {
            * lights, and no pipe is built for it. See isUnbuilt in
            * src/trackbuilder/elements.js. */
           unbuilt: structure.unbuilt === true,
+          /* Sides taken away one at a time, already in THIS mesh's frame:
+           * xNeg and xPos uprights, top and bottom members. Undefined on
+           * every gate that has all four, which is every gate that has
+           * ever shipped. See meshSidesFor in src/game/trackdoc.js. */
+          sides: structure.meshSides,
         },
         x: st.x,
         z: st.z,
@@ -3086,8 +3095,28 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
 
   const halfW = clearW * 0.5;
   const halfH = clearH * 0.5;
+  /*
+   * The four sides, in this mesh's frame, as obstacle() reads them: the two
+   * rails are the top and the bottom along the pivot's local y, the two
+   * stiles are the xNeg and xPos sides. A stile takes its leg, its pad and
+   * its fittings with it; the top rail takes the header.
+   *
+   * A GAP IN THE LATTICE IS NOW HONOURED HERE TOO. obstacle() has skipped
+   * an unbuilt opening's pipe since the flag existed and this builder never
+   * read it, so a tilted gap would have stood as a full hoop in the world
+   * while the builder's preview drew no pipe at all. No shipped track has
+   * one, which is why it went unseen.
+   */
+  const sides = spec.unbuilt === true
+    ? { xNeg: false, xPos: false, top: false, bottom: false }
+    : (spec.sides || null);
+  const railBuilt = (sy) => !sides || Boolean(sides[sy > 0 ? 'top' : 'bottom']);
+  const stileBuilt = (sx) => !sides || Boolean(sides[sx < 0 ? 'xNeg' : 'xPos']);
   /* Two rails across and two up, their INNER surfaces the clear opening. */
   for (const sy of [-1, 1]) {
+    if (!railBuilt(sy)) {
+      continue;
+    }
     const rail = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, clearW + 4 * tubeR, 8),
       mats.frame,
@@ -3099,6 +3128,9 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
     pivot.add(rail);
   }
   for (const sx of [-1, 1]) {
+    if (!stileBuilt(sx)) {
+      continue;
+    }
     const stile = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, clearH + 4 * tubeR, 8),
       mats.frame,
@@ -3111,7 +3143,7 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   /* The same moulded corners the standing gate has. The pivot's own origin
    * is the opening's centre, so the sill this asks for is minus half the
    * clear height rather than zero. */
-  cornerFittings(pivot, [-halfH], clearW, clearH, tubeR);
+  cornerFittings(pivot, [-halfH], clearW, clearH, tubeR, sides ? stileBuilt : null);
 
   /*
    * Colliders for the tilted frame, in the OBSTACLE's frame rather than the
@@ -3123,11 +3155,17 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   const sp = Math.sin(pitch);
   const at = (x, y) => ({ x, y: centreY + y * cp, z: y * sp });
   for (const sy of [-1, 1]) {
+    if (!railBuilt(sy)) {
+      continue;
+    }
     const a = at(-(halfW + tubeR), sy * (halfH + tubeR));
     const b = at(halfW + tubeR, sy * (halfH + tubeR));
     caps.push({ kind: 'gate', ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, r: tubeR });
   }
   for (const sx of [-1, 1]) {
+    if (!stileBuilt(sx)) {
+      continue;
+    }
     const a = at(sx * (halfW + tubeR), -(halfH + tubeR));
     const b = at(sx * (halfW + tubeR), halfH + tubeR);
     caps.push({ kind: 'gate', ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, r: tubeR });
@@ -3150,6 +3188,9 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   const mastR = tubeR * 1.6;
   const upX = halfW + mastR;
   for (const sx of [-1, 1]) {
+    if (!stileBuilt(sx)) {
+      continue;
+    }
     const foot = at(sx * upX, -(halfH + tubeR));
     const postH = foot.y;
     if (postH > 0.02) {
@@ -3236,7 +3277,7 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
    * MultiGP header was being hung on it because this builder never asked
    * which class it was building for, and the lit target came out at the
    * field's 0.16 m bar on a 0.711 m opening for the same reason. */
-  if (index > 0 && !micro) {
+  if (index > 0 && !micro && railBuilt(1)) {
     const plate = gateBanner(
       index,
       clearW + 4 * tubeR,
@@ -3350,6 +3391,18 @@ function obstacle(spec, index, isStart, opts = {}) {
    * length of PVC that is not on the real track.
    */
   const unbuilt = spec.unbuilt === true;
+  /*
+   * ONE SIDE AT A TIME. The author can take any of the four sides away and
+   * keep the opening, which scores and lights exactly as before: see
+   * FRAME_SIDES in src/trackbuilder/elements.js. The sides arrive in this
+   * mesh's own frame (meshSidesFor in src/game/trackdoc.js), so xNeg is the
+   * -x upright here whichever way the element faces. A missing upright takes
+   * its foot, its fittings and its sleeve with it; a missing top takes the
+   * header board. Null on every gate with all four sides, and then nothing
+   * below does anything it did not do before.
+   */
+  const sides = unbuilt ? null : (spec.sides || null);
+  const postBuilt = (sx) => !sides || Boolean(sides[sx < 0 ? 'xNeg' : 'xPos']);
 
   /* Uprights. Their INNER surfaces are the opening's width, so their
    * centres sit half a tube outboard of the clear span. They run from the
@@ -3358,6 +3411,9 @@ function obstacle(spec, index, isStart, opts = {}) {
   const upX = clearW * 0.5 + tubeR;
   const upTop = topSurface + 2 * tubeR;
   for (const sx of (unbuilt ? [] : [-1, 1])) {
+    if (!postBuilt(sx)) {
+      continue;
+    }
     const post = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, upTop, 8),
       mats.frame,
@@ -3407,7 +3463,15 @@ function obstacle(spec, index, isStart, opts = {}) {
   if (spec.sillH > 0) {
     members.push(spec.sillH - tubeR);
   }
-  for (const my of (unbuilt ? [] : members)) {
+  /* Which of those is the top side and which the bottom: the member over
+   * the top opening, and the one under a raised lowest opening. A member
+   * between two openings holds both up and is not one of the four. */
+  const memberBuilt = (i) => !sides
+    || (i === stack - 1 ? Boolean(sides.top) : (i === stack ? Boolean(sides.bottom) : true));
+  for (const [i, my] of (unbuilt ? [] : members).entries()) {
+    if (!memberBuilt(i)) {
+      continue;
+    }
     const bar = new THREE.Mesh(
       new THREE.CylinderGeometry(tubeR, tubeR, memberLen, 8),
       mats.frame,
@@ -3420,9 +3484,11 @@ function obstacle(spec, index, isStart, opts = {}) {
     caps.push({ kind: 'gate', ax: -memberLen * 0.5, ay: my, az: 0, bx: memberLen * 0.5, by: my, bz: 0, r: tubeR });
   }
 
-  /* The moulded corner at every junction of upright and cross member. */
+  /* The moulded corner at every junction of upright and cross member. A
+   * fitting stays with its upright: with the upright gone there is no
+   * junction, and with only the member gone it caps the upright's end. */
   if (!unbuilt) {
-    cornerFittings(g, sills, clearW, clearH, tubeR);
+    cornerFittings(g, sills, clearW, clearH, tubeR, sides ? postBuilt : null);
   }
 
   /*
@@ -3450,6 +3516,9 @@ function obstacle(spec, index, isStart, opts = {}) {
   const panelBottom = sills[0];
   const panelH = topSurface - panelBottom;
   for (const sx of (micro || unbuilt ? [] : [-1, 1])) {
+    if (!postBuilt(sx)) {
+      continue;
+    }
     const cx = sx * (upX + tubeR + panelW * 0.5);
     /* Mirrored on the far leg, so the chequer column runs down the OUTSIDE
      * of the gate on both sides rather than down the outside of one and the
@@ -3479,7 +3548,7 @@ function obstacle(spec, index, isStart, opts = {}) {
   let plateY = upTop + tubeR;
   let plateHalfW = outerW * 0.5;
   let plateR = tubeR;
-  if (!micro && !unbuilt) {
+  if (!micro && !unbuilt && (!sides || sides.top)) {
     const plateGroup = gateBanner(index, outerW, kit.header, substrate);
     plateY = upTop + GATE_BANNER_H * 0.5 + 0.03;
     plateHalfW = plateGroup.userData.halfW;

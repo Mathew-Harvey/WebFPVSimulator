@@ -689,6 +689,8 @@
       /* A hint for a gesture a map does not have: nothing on a map has a
          face to flip. */
       body.tb-map [data-race-only] { display: none; }
+      /* The 3D view's own gestures, said only while it is the view. */
+      body:not(.tb-in-3d) [data-3d-only] { display: none; }
 
       /* ---------------- palette ---------------- */
 
@@ -898,6 +900,9 @@
         padding: 0 var(--s1);
       }
       .tb-seq-row.sel .tb-num { background: var(--amber); color: var(--deep); }
+      /* A waypoint's chip: no number and no fill, because it is a bend in
+       * the line rather than something flown through. */
+      .tb-num.tb-num-bend { background: transparent; color: var(--dim); }
 
       .tb-badge {
         flex: none;
@@ -967,6 +972,39 @@
         margin: var(--s3) 0 var(--s4);
       }
       .tb-side-grid .tb-fig-card svg { height: 52px; }
+
+      /* A gate's four sides, laid out the way the gate stands: the top bar
+         over the two uprights over the bottom bar, with the hole in the
+         middle. A side that is there is lit like any chosen card; one taken
+         away is drawn dashed, which is how the plan draws it too. */
+      .tb-frame-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-areas: ". top ." "left hole right" ". bottom .";
+        gap: var(--s2);
+        margin: var(--s3) 0 var(--s4);
+      }
+      .tb-frame-side {
+        background: var(--raised);
+        border: 1px dashed var(--edge);
+        border-radius: var(--r-ctl);
+        padding: var(--s2);
+        cursor: pointer;
+        color: var(--dim);
+        font: inherit;
+        font-size: var(--t-small);
+        transition: background var(--quick), border-color var(--quick);
+      }
+      .tb-frame-side:hover { background: var(--lift); }
+      .tb-frame-side.on {
+        border: 1px solid var(--pick-edge);
+        background: var(--pick);
+        color: var(--cream);
+      }
+      .tb-frame-side[data-side="top"] { grid-area: top; }
+      .tb-frame-side[data-side="bottom"] { grid-area: bottom; }
+      .tb-frame-side[data-side="left"] { grid-area: left; }
+      .tb-frame-side[data-side="right"] { grid-area: right; }
 
       /* ---------------------------------------------------------------
          A FREESTYLE ASSET'S INSPECTOR. The style and a gap's points are
@@ -1489,6 +1527,8 @@
               <span><kbd>Q E</kbd>rotate</span>
               <span><kbd>Alt</kbd>off grid</span>
               <span data-race-only><kbd>X</kbd>flip face</span>
+              <span data-race-only data-3d-only><kbd>Drag line</kbd>bend it</span>
+              <span data-race-only data-3d-only><kbd>Click pipe</kbd>pick a side</span>
               <span><kbd>V</kbd>2D and 3D</span>
               <span><kbd>Del</kbd>remove</span>
               <span><kbd>Ctrl Z</kbd>undo</span>

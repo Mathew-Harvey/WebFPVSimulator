@@ -48288,3 +48288,284 @@ the branch as a fast forward: no merge commit, nothing rewritten.
     code                           unchanged since the entry above; only
                                    this entry is new
     checks                         not rerun: nothing they read changed
+
+## 2026-09-26 | builder, render | The whoop builder: sides of a gate, a line you can bend, a pole that is a pole, a square that swings on it
+
+The owner's four, in their words:
+
+1. "in 3d view i should be able to delete sides of a gate, one pole at a
+   time, this will allow me to create a virtual gate so the trigger area
+   remains but the poles are not there. so each gate should have 4
+   deletable poles"
+2. "the flight path in 3d mode - i should be able to clickon any section of
+   the flight path and drag it out to create smoother radius' etc"
+3. "poles or flags are not flags like in 5 inch, they are just a pole"
+4. "when i add a pole, the virtual gate that appears through pivot around
+   the pole, it currently rotates by the actual gate does not rotate around
+   the pole"
+
+No change to the plant, the module ABI or the build. The race field's
+geometry changes only for a gate that has a side taken away, which no
+shipped or published track has, so every existing gate builds exactly what
+it built before.
+
+### 3. A pole is a pole
+
+view3d.js buildMarker had a branch for the waypoint and one for the cone,
+and everything else fell through to the five inch flag: a bent mast and a
+printed sail. RaceGOW's vertical pole took that path, so every pole on a
+whoop track was previewed as a race flag. It now has its own branch drawn
+the way courseProps in scene.js draws it: a red pipe at the author's radius
+and height, with the same floors markerBuild gives it (0.004 and 0.1 m), on
+a stub foot four pipes across. A 27 mm pipe is two pixels wide from where a
+room is viewed, so it also gets an invisible fattened pick stand in, the
+way a map's thin members get pickProxy.
+
+### 4. The square swings on the pole, and it was the builder that was wrong
+
+Measured before touching anything. The racing line through a marker turned
+by hand already runs square to its pass direction (travelPastFixedMarker in
+path.js), so the knot's tangent swings with the marker, and trackdoc.js
+scores the square in the knot's frame: in the game the square was already
+hinged on the pole, inner edge on it, turning with it. Both builder views
+drew it facing travelDirection instead, the chain direction, which does not
+swing: the preview showed the square sliding round the pole with its heading
+held, which is the owner's "it currently rotates but the actual gate does
+not rotate around the pole". At a 70 degree turn the drawn plane and the
+scored plane were more than 10 degrees apart (a check below).
+
+- path.js markerSquare(doc, knot): the square off the knot, the same one
+  trackdoc.js builds and stage.js lights. view3d.js buildVirtualGates and
+  view2d.js drawChevron draw from it, with the old reading kept as the
+  fallback for a line not derived yet.
+- The first turn no longer jumps. An untouched marker's stored yaw is
+  whatever it was placed with, not where its square sits, so the first
+  press of Q, the first pull on the handle, or Enter in the Yaw field threw
+  the square round the pole to the stored heading. path.js passYawOf, read
+  through app.js shownYaw, is the way the square actually sits until the
+  marker is turned; the 2D handle stands there, Q and E turn from there,
+  and the inspector shows it.
+- The squares are drawn off the line, so the line is now rebuilt on every
+  step of a drag on a race track, not only while it is shown. Measured
+  first: the line and its warnings take at most 7 ms on the heaviest
+  shipped track (trk-ca60325f) and under 2 ms on every RaceGOW track. A map
+  keeps the rule it had, because a map's report places every solid.
+
+Every shipped RaceGOW pole is turned by hand, and every one has its pass
+direction at exactly 90 degrees to the line through it, so none of their
+squares or lines moved. No shipped JSON track turns a marker by hand. The
+game's scoring is untouched: it was already right.
+
+### 1. One side of a gate at a time
+
+The document gains one optional field on an aperture, `unbuiltSides`, a
+list of the missing sides out of top, bottom, left and right, written only
+when there is one, so a gate with all four is the same bytes it was.
+schema.md documents it, and why it is not a version bump.
+
+FOUR SIDES PER STRUCTURE, NOT PER OPENING, because that is how the game
+builds a gate: two uprights from the ground to the top rail, a member over
+the top opening, and a member under a raised lowest opening. A stack's
+uprights are one pipe each for its whole height, and the bar between two
+openings holds both up and is not one of the four. Per opening was the
+alternative and it would have split the game's posts into runs, joined
+shared members from two openings' flags, and pulled the leg under a tower
+into it; four per structure is the owner's own count and maps one to one.
+
+Left and right are the builder's flag convention, as seen facing the gate:
+left is the -widthAxis upright. THE RACE FIELD BUILDS EACH GATE FACING ITS
+FIRST PASS (the placements in scene.js), with local -z along the travel and
+local +x on the pilot's right, so a gate flown along its own normal is built
+mirrored: its local -x upright is the element's RIGHT. That is most gates,
+because the auto face rule points a gate's normal along the course.
+Measured, not argued: an entry +1 gate's local -x lands on +widthAxis. So
+trackdoc.js meshSidesFor turns the element's sides into the mesh's own
+(xNeg, xPos, top, bottom) once, off the first pass's tangent, and scene.js
+reads only those. It uses no trigonometry. It was checked against the full
+rotation, group yaw then pivot pitch then scene to document, over 8,000
+yaws, tilts and entry signs with no mismatch (every dot product behind it is
+plus or minus one), again against real three.js r160 in eight cases, and
+the selftest holds 18 cases of it against the same rotation.
+
+Where each side goes:
+
+- scene.js obstacle(): a missing upright takes its post, foot, corner
+  fittings and printed sleeve; a missing top takes the top member and the
+  header board; a missing bottom takes the raised sill member. A ground
+  gate has no bottom member in the world (the ground is its sill), so
+  taking its bottom away changes the preview and not the world.
+  measuredW already falls back to the spec's width with fewer than two
+  posts. Colliders go with the pipe.
+- scene.js tiltedGate(): rails are top and bottom, stiles the uprights,
+  and a stile takes its leg, pad and fittings.
+- view3d.js: each pipe says which side it is. The first click on a gate
+  selects it as always, so Delete after one click still removes the gate;
+  a click on a pipe of the already selected gate picks that side, drawn
+  hot, and Delete takes just that pipe away, Esc lets go. An opening with
+  no pipe left gets the invisible pane a gap in the lattice gets, marked
+  weak so the racing line through it can still be grabbed.
+- The inspector's Frame section has the four as toggles, laid out the way
+  the gate stands, and Put every side back. It is where a side taken away
+  in 3D comes back. Race tracks only: a map's gates are furniture.
+- view2d.js marks what is missing on the plan: an upright of a standing
+  gate is crossed out where it stood, a bar is drawn dashed in the exit
+  red, for any tilt.
+- stage.js, the GIF export, leaves the same pipes out.
+
+The opening itself is untouched: with all four taken away every station's
+place, size, heading and tilt are what they were (a check below).
+
+### 2. Bending the line in 3D
+
+With the line shown (P), a press on it and a drag drops a WAYPOINT where it
+was grabbed, into the flying order between the two stations that segment
+joins, and moves it: across the level it was grabbed at, and up and down
+with Alt. A waypoint is the knot that already exists for exactly this: it
+pins the line, scores nothing, is built nowhere and the game does not
+number it; the RaceGOW reconstructions are shaped by them. A press that
+does not move drops nothing. A drag on a waypoint that is already there is
+the same gesture. A bend is one undo step, and a bend the browser takes
+away (pointercancel) puts the document back, waypoint and all.
+
+- Picking is in screen pixels (9 px), because a raycast threshold in metres
+  is a different number of pixels at every zoom. A gate in front of the
+  line still takes the click. The line shows a knob and a grab cursor where
+  a press would take it.
+- THE GATES EITHER SIDE KEEP THEIR FACES. A gate nobody turned is faced
+  along the line from the station before to the station after, so a
+  waypoint beside it turned it towards the waypoint as the author dragged:
+  measured in the selftest, unpinned, the neighbours turn. So the two
+  neighbours are pinned the way a hand turn pins them (setYaw), and
+  Re-derive hands one back; the first bend says so in a toast.
+- WAYPOINTS NO LONGER TAKE A FLYING ORDER NUMBER. Every bend would have
+  renumbered every gate after it, and the builder already disagreed with
+  the game: the race field numbers only what it scores, so RaceGOW5 Track
+  8's last gate was 36 in the builder and 29 in the air. sequence.js
+  gateNumbers is the one rule; the plan, the preview, the sequence panel
+  (a waypoint row shows a dot) and the warnings read it. The selftest holds
+  the last number of three RaceGOW tracks to the race field's station
+  count.
+- A waypoint's ground ring was the field's 0.9 m in a room, wider than the
+  gate beside it; it takes the room's 0.3 scale now, and gets a knob at the
+  point the line passes through.
+
+### Found in passing, not fixed here
+
+- A FLAGGED GATE'S PENNANT IS ON OPPOSITE SIDES IN THE BUILDER AND THE
+  GAME for a gate whose first pass runs along its normal, which is the
+  usual case. The builder draws "left" at -widthAxis; attachHeaderFlags in
+  scene.js puts it at the mesh's local -x, which for that gate is
+  +widthAxis. The same mirror the frame sides had to be turned through
+  above. Filed as a suggested task.
+- The leaderboard stores a published document verbatim, so `unbuiltSides`
+  survives publishing. Its plan.js thumbnail draws every frame whole, and
+  it never took the `unbuilt` flag either (grep finds none there), so the
+  two plan.js copies already differ. src/share/plan.js here is left alone
+  so the drift does not grow on one side: both copies want the same change
+  in the same turn. Filed as a suggested task.
+- tiltedGate() never read `unbuilt`, so a tilted gap in the lattice would
+  have stood as a full hoop in the world while the preview drew no pipe.
+  No shipped track has one. The side handling reads it now.
+- The preview drew legs under a raised gap in the lattice, which the world
+  never built; they go with the uprights now.
+- src/props/course.js, gates as furniture on a map, ignores
+  `unbuiltSides`; nothing offers it on a map.
+
+### What went wrong
+
+- The first fetch printed `forced update` on main and `git merge-base`
+  came back EMPTY, which is the history alarm this file's Git section
+  describes. It was the container's shallow clone, depth cut at
+  2026-09-13 and 2026-09-24. After `git fetch --unshallow`, one root
+  (45325de, 2026-08-11), the old tip 9ed8b9c an ancestor of the new
+  b166485, 0 commits lost: a fast forward seen through a shallow clone.
+  Worth knowing the next time that alarm goes off: unshallow before
+  concluding anything.
+- The first check that the builder's square is the scored square failed at
+  4e-7 radians. The race field reads the document as written, six decimal
+  places, so the comparison is now against the written document, and holds
+  to 1e-9.
+- Three defects caught reading the diff, before any check saw them: the
+  plan's missing side marks used an opening's world height as an in plane
+  offset; bendIndexFor clamped a segment past the end of the lap to the
+  last one, and the check written for it passed through an OR; and the
+  always rebuilt line would have run a map's whole solids report on every
+  pointer move of a drag on a map.
+
+### RUN LOG
+
+    node src/trackbuilder/selftest.js    771 passed, 0 failed (699 before;
+                                         72 new: frame sides 37, bending
+                                         the line 20, the pole's square 15,
+                                         two of them written to show the
+                                         old code wrong)
+    mutation                             meshSidesFor's sign flipped: 18
+                                         checks red; restored, green
+    node scripts/micro-check.js          267 pass, exit 0, output identical
+                                         to before the change
+    npm run lint:presets                 4 of 4, unaffected (flight presets)
+    node scripts/gen-preload.js --check  up to date: no module added, 202
+                                         served
+    Node smoke, real View3D, three r160  14 of 14: build() on a room with a
+    (scratch, not committed)             missing side, a turned pole and a
+                                         stack, and on a flagged gate and a
+                                         dive gate with dress; three sides
+                                         drawn; the pole a cylinder; the 3D
+                                         square on the scored one; a click
+                                         on an upright reports it; a press
+                                         on the line finds its segment; the
+                                         level point round trips; a picked
+                                         side drawn hot; a bare opening
+                                         keeps one weak pane
+    real three.js rotation               8 of 8, meshSidesFor right
+    trig free mapping vs full rotation   8,000 cases, 0 mismatches
+
+NOT RUN: `npm run verify`, because nothing in the plant, the module ABI or
+the build changed and it was not asked for; `node scripts/shots.js`, because
+the owner chose to fly it ("push to main if we are good i'll test"). So
+nothing here has seen the builder's page in a browser, the pointer gestures
+end to end, the inspector's Frame toggles, or the race field building a gate
+with a side missing. Those are what to look at.
+
+What to look for when flying it, on a whoop track in the builder:
+
+- A pole in 3D is a red pipe. Turn it (Q, E or the plan's handle): the
+  square swings round it like a door, inner edge on the pipe, and does not
+  jump on the first turn. Wrong is a flag, or a square sliding round the
+  pole facing one way.
+- Click a gate, then click one of its pipes: it goes red-orange; Delete
+  takes just that pipe. Fly it: that pipe is gone and solid air, the gate
+  still lights and scores. Check it on a gate flown both ways. Wrong is the
+  pipe on the other side missing in the air, or the gate not scoring.
+- P, then drag the yellow line: a waypoint comes out under the pointer and
+  the line follows; Alt raises it. The gates either side must not turn, and
+  the gate numbers must not change. Undo takes the bend back in one step.
+
+## 2026-09-26 | git | The whoop builder's four go to main, for the owner to fly
+
+The owner, mid turn: "push to main if we are good i'll test". That is the
+approval to put the entry above on main, and it names the verification
+scale too: fly it. So `npm run verify` and `node scripts/shots.js` were not
+run, and the entry above says what that leaves unseen.
+
+main had moved while this was built: b166485, where the branch was cut, to
+5a76605, four commits (R restarts a replay that has looped, and the whoop
+room's floor logos, each with its PROGRESS entry). The branch's one commit,
+never pushed, was rebased onto 5a76605 rather than merged, so main takes it
+as a fast forward: no merge commit, nothing of main's rewritten. Both sides
+touched src/render/scene.js, in different functions (roomDecals and its one
+call against the gate builders), and it merged without a conflict. Both
+appended to PROGRESS.md, which is the one conflict: main's four entries stay
+where they are and this turn's two follow them.
+
+### RUN LOG
+
+    git fetch                      main 5a76605; b166485..5a76605 is four
+                                   commits; merge-base b166485
+    git rebase origin/main         PROGRESS.md conflicted, resolved as
+                                   above; scene.js merged clean
+    rerun on the rebased tree      selftest 771 passed, 0 failed;
+                                   micro-check 267 pass, exit 0;
+                                   gen-preload up to date, 202 served;
+                                   the scratch View3D smoke 14 of 14 and
+                                   the three.js rotation check 8 of 8

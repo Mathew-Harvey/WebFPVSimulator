@@ -235,6 +235,7 @@ course; that is what `sequence` is for.
 | `flagSide` | `"left"`, `"right"`, `"both"` or `"top"` | **Flagged gates and flagged doubles only.** Where the pennant stands on the top header, as seen facing the gate. `top` is one mast on the CENTRE of the board, over the opening. Default `left`. Not a dimension; the mast's height is, and it is `dims.flagH`. |
 | `logoId` | string | **Ground logos only.** The `id` of the entry in `branding.logos` this footprint is painted with. Empty means the course's first logo. Not a dimension. |
 | `unbuilt` | `true`, or absent | **Apertures only.** The opening is a GAP IN THE LATTICE rather than a gate with a frame of its own: it scores, it lights, it carries its number and it pins the racing line, and no pipe is built for it in the world, the export, the preview or the card. The pipe that bounds it belongs to the structures around it. Written only when true, so an ordinary gate's JSON is unchanged. RaceGOW builds this way wherever a leg is carried up past a bar: the opening over the bar has the bar below and a pole beside and nothing else, and drawing a square there puts PVC in mid air. See `isUnbuilt` in `elements.js` and `TRACK-FROM-GIF.md`. |
+| `unbuiltSides` | array of strings, or absent | **Apertures only.** The sides of the frame that have no pipe, taken away one at a time: any of `"top"`, `"bottom"`, `"left"`, `"right"`, each once, written in that order. The opening still scores, lights, carries its number and pins the racing line; only the pipe is gone, along with what belongs to it (an upright's foot, fittings and printed sleeve, the top bar's header board). Four sides per STRUCTURE: `left` and `right` are the two uprights, the whole height of a stack, `top` is the bar over the top opening and `bottom` the bar under the lowest. A bar between two openings of a stack holds both up and is not one of the four. Left and right are as seen facing the gate, the same reading `flagSide` has: `left` is the `-widthAxis` upright and `top` the `+heightAxis` bar. Written only when at least one side is missing, so a gate with all four is the same JSON it was before this existed; a name that is not a side is dropped on read with a repair note. `unbuilt: true` means all four and more (no pipe at all), and wins when both are present. See `FRAME_SIDES` in `elements.js`, and `meshSidesFor` in `src/game/trackdoc.js` for how the race field, which builds each gate facing its first pass, turns these into its own frame. |
 
 ### The element types
 
@@ -770,6 +771,14 @@ nothing that exists changed meaning. The bump is for the other direction: a
 version 2 reader handed a micro document would drop the field it does not know
 and draw a RaceGOW room as a sixty metre field, which is a document whose
 meaning changed, and that is what a version is for.
+
+### Frame sides are not a bump
+
+`unbuiltSides` is an optional field on an aperture, written only when a side
+is missing, with a default, all four built, that is what every gate before it
+was. A reader that does not know it builds the whole frame, which is a
+picture with pipe the author took away rather than a document whose meaning
+changed: the openings, the flying order and the scoring are untouched.
 
 ### Freestyle maps are not a bump
 

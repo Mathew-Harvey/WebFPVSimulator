@@ -537,6 +537,85 @@ export function buildPath(doc, { closeLoop = false } = {}) {
 }
 
 /*
+ * THE SCORING SQUARE OF ONE MARKER PASS, read off the knot that pass made.
+ *
+ * The owner's report: "when i add a pole, the virtual gate that appears
+ * [should] pivot around the pole, it currently rotates but the actual gate
+ * does not rotate around the pole". It is the builder that was wrong, not
+ * the game. The line through a marker the author has turned by hand runs
+ * square to the pass direction (travelPastFixedMarker above), so the knot's
+ * tangent swings with the marker, and the game scores the square in the
+ * knot's frame (the marker station in src/game/trackdoc.js), which is a
+ * square hinged on the pole: it swings round the pole like a door. Both of
+ * the builder's views drew it facing the chain direction instead, next knot
+ * minus previous, so they showed a square sliding round the pole while
+ * keeping its heading, which is not the hole being scored.
+ *
+ * So the views read the square from here and the knot is its one source:
+ * the plane faces the knot's tangent, the width runs across it, and the
+ * centre sits `outward` beyond the knot along the pass direction so the
+ * inner edge stays on the pole. That is exactly the station trackdoc.js
+ * builds and the pane stage.js lights. Null for a waypoint and for any pass
+ * too close to count, which is the same test both of those make.
+ */
+export function markerSquare(doc, knot) {
+  if (!knot || knot.role !== 'marker' || !knot.seq || !knot.markerPos) {
+    return null;
+  }
+  const el = elementById(doc, knot.seq.elementId);
+  const clearance = knot.seq.clearance ?? 0;
+  if (!el || el.type === 'waypoint' || clearance < 0.05) {
+    return null;
+  }
+  const dims = virtualApertureDims(el, knot.seq, trackClassOf(doc));
+  const normal = normalize({ x: knot.tangent.x, y: knot.tangent.y, z: 0 }, { x: 1, y: 0, z: 0 });
+  const off = { x: knot.pos.x - knot.markerPos.x, y: knot.pos.y - knot.markerPos.y, z: 0 };
+  const side = length(off) > 1e-9 ? normalize(off) : leftOf(normal);
+  const reach = clearance + dims.outward;
+  return {
+    el,
+    dims,
+    normal,
+    widthAxis: leftOf(normal),
+    side,
+    centre: {
+      x: knot.markerPos.x + side.x * reach,
+      y: knot.markerPos.y + side.y * reach,
+      z: knot.markerPos.z + dims.centerH,
+    },
+  };
+}
+
+/*
+ * THE HEADING A MARKER IS TURNED FROM: its own yaw once the author has
+ * turned it, and until then the way its square actually sits, pole to knot
+ * of its first pass. See shownYaw in app.js for why the difference matters.
+ * Anything that is not a scored marker answers its own yaw.
+ */
+export function passYawOf(doc, path, el) {
+  if (!el || kindOf(el) !== KIND.MARKER || el.type === 'waypoint' || el.yawOverridden) {
+    return el?.yaw ?? 0;
+  }
+  const seq = doc.sequence.find((s) => s.elementId === el.id);
+  const knot = seq ? knotForSeq(path, seq.id) : null;
+  if (!knot || !knot.markerPos) {
+    return el.yaw;
+  }
+  const dx = knot.pos.x - knot.markerPos.x;
+  const dy = knot.pos.y - knot.markerPos.y;
+  return Math.hypot(dx, dy) > 1e-9 ? Math.atan2(dy, dx) : el.yaw;
+}
+
+/* The knot a sequence entry made, or null. A marker knot, not the closing
+ * copy of it: the finish knot carries the first entry again. */
+export function knotForSeq(path, seqId) {
+  if (!path || !path.knots) {
+    return null;
+  }
+  return path.knots.find((k) => k.seq && k.seq.id === seqId && k.role !== 'finish') ?? null;
+}
+
+/*
  * The elevation profile: height above the ground against distance along the
  * lap. Thinned to at most `maxPoints` so the chart draws a line rather than
  * a smear, keeping the extremes because a profile that loses its highest

@@ -62,6 +62,7 @@
     "input:selftest": "node scripts/input-selftest.js",
     "music:selftest": "node scripts/music-selftest.js",
     "stats:selftest": "node scripts/stats-selftest.js",
+    "support:selftest": "node scripts/support-selftest.js",
     "test:edge": "node edge/selftest.js",
     "lint:nouns": "node scripts/noun-lint.js",
     "lint:devices": "node scripts/device-check.js",

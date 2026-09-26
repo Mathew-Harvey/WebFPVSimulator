@@ -30,10 +30,12 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* The public page. Same address in the landing config and the board app. */
-export const PATREON_URL = 'https://www.patreon.com/c/webfpv';
+import { counting, eventsUrl } from './stats.js';
 
-export const PATREON_NOTE = 'Support WebFPV on Patreon. Keep the lights on, $5. Hosting + runway, $12. Build the sim, $25. USD, plus GST on join.';
+/* The public page. Same address in the landing config and the board app. */
+export const PATREON_URL = 'https://www.patreon.com/cw/webfpv';
+
+export const PATREON_NOTE = 'Support WebFPV on Patreon. Keep the lights on, $3. Hosting + runway, $8. Build the sim, $20. USD a month.';
 
 /* Patreon's symbol. Do not restyle the path. */
 const MARK = 'M15.386.524c-4.764 0-8.64 3.876-8.64 8.64 0 4.75 3.876 8.613 8.64 8.613 4.75 0 8.614-3.864 8.614-8.613C24 4.4 20.136.524 15.386.524M.003 23.537h4.22V.524H.003';
@@ -76,4 +78,28 @@ export function patreonAnchor() {
   a.append(svg, word);
   bindPatreon(a);
   return a;
+}
+
+/*
+ * The menu's Support row, opened from script like the wiki and board rows
+ * but never under a named target (see windows.js): no opener, no referrer.
+ * Then one first-party beacon, after the open so it can never stand in its
+ * way, with no cookie and no ID. Not sendEvent, which would overwrite
+ * `source` with the sponsor slug and add the referrer. Nothing is sent under
+ * Global Privacy Control or with counting switched off, as for every event.
+ */
+export function openSupport() {
+  const tab = window.open(PATREON_URL, '_blank', 'noopener,noreferrer');
+  if (tab) {
+    /* Only a browser that ignored noopener hands the tab back. */
+    tab.opener = null;
+  }
+  try {
+    if (counting()) {
+      const body = JSON.stringify({ v: 1, kind: 'support_click', source: 'sim' });
+      navigator.sendBeacon(eventsUrl(), new Blob([body], { type: 'text/plain;charset=UTF-8' }));
+    }
+  } catch (e) {
+    /* No beacon in this browser, or it refused. The page is already open. */
+  }
 }

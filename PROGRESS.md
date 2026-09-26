@@ -47399,3 +47399,23 @@ What it changes for a pilot today: nothing. No map has a road or a car
 until Stage E, and every existing world, the train included, is bit for
 bit what it was. The verification scale is verify, which ran (17 of 17);
 the owner's fly comes with Stage E, when there is a car to chase.
+
+## 2026-09-26 | shell, stats | A Support row on the title and pause menus
+
+Replaces PR #17 (44 commits, about 1,400 lines of menu CSS and tooling),
+fresh from main at 6d8c1a2. "Support" sits with the rows that open a tab,
+above Credits, a plain `row-link` with no CSS. openSupport in
+src/share/patreon.js, a static import, opens /cw/webfpv with noopener and
+noreferrer, nulls any opener, then sends one support_click beacon to the
+visit ping's endpoint, skipped under Global Privacy Control or with
+counting off. The note now says $3, $8 and $20 USD a month, no GST. Not
+done here: the board must accept support_click, and the landing and board
+repositories keep their own copies of the address and the note.
+
+Checks: lint:boot 9 of 9, stats:selftest 79 passed, support:selftest (new)
+17 of 17 with four planted faults each caught, lint:preload (src/fresh.js
+regenerated for the new import) and lint:nouns clean. What went wrong:
+lint:shell FAILS, title overflow 67 px at 1600x900 against a recorded 0.
+main was already at 23 px in a clean worktree; the row adds 44. Every row
+is still reached by the keys, and pause still fits. Not re-recorded:
+moving a threshold is the owner's call. Not run: verify, shots, a fly.

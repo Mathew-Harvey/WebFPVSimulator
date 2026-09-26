@@ -48178,3 +48178,24 @@ loop at least once, then press R. Right is the ghost starting again from
 the top of its lap at once and flying on. Wrong is the view standing on
 the lap's first frame for about a lap before it moves. R before the first
 loop must restart it the same way, as it always did.
+
+## 2026-09-26 | git | R in a replay goes to main
+
+The owner, on the entry above: "push to main". That is the approval to put
+467e701 on main. No verification scale was named with it: the checks in
+the entry above are the ones that were run, on the very code that goes to
+main, and flying it with cam=fpv stays the suggestion. The chase camera
+found in the entry above stays open, and so does the replay path inside
+the step branch. main had not moved from b166485, the commit the branch
+was cut from, so main goes to the branch as a fast forward: no merge
+commit, nothing rewritten, and the file hashes the entry above cites stay
+true.
+
+### RUN LOG
+
+    git fetch                      main b166485, unchanged since the entry
+                                   above; merge-base b166485, main is an
+                                   ancestor of the branch; not shallow
+    code                           unchanged since the entry above; only
+                                   this entry is new
+    checks                         not rerun: nothing they read changed

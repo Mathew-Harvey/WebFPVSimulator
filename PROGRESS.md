@@ -50716,3 +50716,227 @@ c552782. Flown again end to end with the draw on: a wall skim along
 Hibari Yard's container stack, 0.93 s at 0.35 m, lettered "WALL SKIM 182
 0.9 s" in sky blue down the left while it paid, then banked into the
 total, 182; the posted trick total 0, the counter 182.
+
+## 2026-09-26 | shell, share | The Freestyle room pictures the world you are flying
+
+Item 17 of the polish list (POLISH-PLAN.md on claude/vibrant-wozniak-v2pg5e),
+the first of the bigger items in the owner's order of 2026-09-26: "do the
+bigger items also starting with map card and stage f then manga menus". The
+list left the way to do it, rendering the loaded world under the room or
+filming it through the orbit frame, as a render path and memory choice; the
+brief for this turn was to measure both on the Low tier and take the one
+that costs less, and say why. No physics, plant, ABI or build change.
+
+### What was wrong
+
+The Freestyle room's card for the world already LOADED was filmed from the
+live view (captureCurrentCard), but main.js only drew the world behind a
+room, and only copied it onto a card (paintMapThumbs), on the 'courses'
+screen, where world cards no longer live. On 'freestyle' the canvas is
+hidden, so the recorder took twelve seconds of the grey its canvas was
+filled with and cached it in IndexedDB. Seen again this turn at 716562b
+with a map of the pilot's own seated (My Yard, the starter under a new id):
+the card's canvas measured mean 33, standard deviation 0 over twelve
+seconds, the clip it stored never reached a decodable frame
+(readyState 1), and the card stayed a flat grey rectangle beside "Flying
+now" at 1600 by 900, 844 by 390 and 390 by 844. The town's card was the
+same whenever the town was the world loaded.
+
+### The two ways, measured
+
+The same page, twice per world, the loaded world's card the only one
+missing from the cache (the other card was given a cached clip first, so
+nothing else recorded in the window). 1600 by 900, Low, headless Chromium
+on SwiftShader, the whole window from opening the room to the clip on the
+card. Memory is PSS summed over every Chromium process, sampled every
+150 ms from /proc; the JS heap from Runtime.getHeapUsage.
+
+    Your map loaded           film          orbit frame
+    room to clip              16.0 s        21.1 s
+    long tasks                8, longest    23, longest
+                              819 ms,       1169 ms,
+                              3.5 s total   9.3 s total
+    PSS, peak over before     +33 MB        +261 MB
+    JS heap, peak over        +2.0 MB       +19.9 MB
+
+    Town loaded               film          orbit frame
+    room to clip              16.5 s        56.3 s
+    long tasks                5, longest    12, longest
+                              1688 ms,      9590 ms,
+                              2.1 s total   33.6 s total
+    PSS, peak over before     +21 MB        +1233 MB
+    JS heap, peak over        +0.9 MB       +265 MB
+
+A first pass, at a lower machine load but with a sampler that stalled
+behind the page and missed peaks, read the same way: Your map 13.9 s
+against 21.7 s, longest task 165 ms against 936 ms, +59 MB against
++242 MB; the town's orbit frame 34.4 s with a 4727 ms task. The load
+average ran from 8 to 21 on four cores shared with other agents'
+Chromium, so the times move by two or three times between runs; the
+memory does not, and it is the number the choice rests on.
+
+A key pressed while the film was running, to the second frame painted
+after it: 18, 278, 205 and 277 ms on Your map, 26, 371, 303 and 24 ms on
+the town, and the key ended the film all eight times. The same key on the
+title, where the world is drawn every frame at the window's size: 568, 15,
+632 and 297 ms, and 3866, 2102, 895 and 995 ms. On this machine a frame
+of the town at Low costs about as much at the clip's size as at the
+title's (a film frame every 520 to 650 ms, a title frame 415 to 900 ms).
+
+THE FILM, because it holds no second world. The orbit frame builds the
+map again in a same origin iframe, with its own renderer and its own
+copy of every mesh and texture, while the loaded world is still resident,
+and that is a gigabyte and a quarter of PSS for the town here, which no
+graphics card makes smaller; its build is also one task of up to nine
+and a half seconds that no key can cut short, since the teardown on a
+key only runs between tasks. The film draws a world that is already in
+memory, at the clip's 854 by 480 and ten frames a second, and its
+longest task is one world frame at that size. On a machine with a GPU
+the frame costs shrink; the memory does not.
+
+### What changed
+
+- src/main.js: the film. While ui.reelFilm names the world that is loaded
+  (the same clip key, taken when the world was built, noteWorldClip), the
+  mode is title and the screen is Freestyle, the world is drawn behind the
+  room with the canvas still hidden, the renderer held at 854 by 480 so
+  the frame is the clip's shape on any window (a portrait phone included),
+  on the title camera flown from the start of its line on the clip's own
+  clock (one whole cycle in the clip, as src/share/orbit.js records it),
+  no more than CLIP_FPS times a second, and each drawn frame is copied onto
+  the card in the same task. The window's size is put back the next time
+  the world is drawn for anything else, on the way out of the room, rather
+  than on the key that stopped the film; a resize meanwhile waits for it.
+  ui.loadedWorld says which world is loaded, its key and its camera's
+  period, or null mid swap and for a map from the board.
+- src/ui/ui.js: captureCurrentCard asks for the film, starts the recorder
+  only after three frames have reached the card, and records one camera
+  cycle (clipDurationMs of the period) rather than twelve seconds of
+  whatever the camera was doing. The wait on the card becomes a caption
+  over the film once it is drawing (index.html, .map-reel-wait-film), so
+  the card pictures its world within a second of the room going quiet. A
+  world that draws nothing in ten seconds sends the card to the orbit
+  frame instead, and so does Your map when the seat has changed since the
+  world was built. paintMapThumbs copies the film's frame and nothing
+  else; its 'courses' path had no cards to paint and is gone.
+- src/share/orbitcache.js: CLIP_VERSION 5 to 6, so every grey clip already
+  cached is dropped (the v5 rows are evicted by age as new clips arrive,
+  as at every bump). Your map is keyed on its document's id and a hash of
+  what it holds (docStamp: FNV-1a over the stored document with
+  modifiedUtc blanked, the same "same document" keepDisplaced asks), not
+  on modifiedUtc. Only an edit in the builder touches modifiedUtc; a file
+  opened over the seat keeps the stamp it was saved with and a newer
+  deploy's repairs on read touch nothing, so the map can change under an
+  unchanged stamp. Checked in Node: the stamp alone changed, same key; one
+  piece moved 5 m, a new key; put back, the first key again. 0.78 ms to
+  read the seat and hash it, once per room entry.
+- Found on the way, and fixed because the film depends on it: leaving the
+  Freestyle room never stopped its reels, only leaving the Race room did.
+  whenQuiet asks only that nothing was pressed for 900 ms, so a pilot who
+  left before a capture began got one anyway. At 716562b, out of the room
+  300 ms after opening it: for the next twelve seconds of the title an
+  orbit frame was building the town and the title's own world was hidden
+  (reelFreezeWorld, canvas visibility hidden); a radio pilot who then took
+  off presses no key to end it. With this change: no frame, no freeze, the
+  world visible. And the clips in the room are no longer left paused when
+  a hidden tab comes back (onVis hid everything off 'courses').
+
+### Looked at (pictures in the scratchpad, not committed)
+
+Before, 716562b, My Yard seated: the Your map card grey beside "Flying
+now" at 1600 by 900 after 26 s, at 844 by 390 and 390 by 844 after 20 s.
+After: at 2.5 s the card shows My Yard being filmed with "loading" at its
+foot; from about 15 s its clip plays (sampled frames mean 180 to 210,
+standard deviation 17 to 40, not a flat fill), at all three sizes; in
+portrait the clip is the 16:9 shot, not a crop of the portrait canvas.
+With the town loaded, the town filmed where it stands and Your map through
+the orbit frame, both playing by 36 s and still playing at 105 s. A seat
+edited after the world was built: the film never started and Your map's
+card went to the orbit frame. The board's maps in the room (five on the
+live board, read through a read only proxy that refused every write):
+pictured 5 of 5 in every run, before and after; they are share card
+images and this change does not touch them.
+
+### RUN LOG
+
+On 89ca675's tree (lint:memory, lint:shell, lint:devices and the first
+lint:input and lint:responsive ran before two comments were reworded in
+it, with the code identical):
+
+    npm run lint:preload         up to date, boot 113 modules, city 73,
+                                 built 32; 215 served
+    npm run lint:boot            9 of 9 checks clean
+    npm run lint:memory          PASS, every world is lazy and every world
+                                 is freed (built 61 -> 234 -> 61, city
+                                 61 -> 305 -> 62 geometries)
+    npm run lint:shell           FAIL, 1 problem: "title: overflow grew
+                                 from 0 to 67 px", main's known one;
+                                 freestyle 7 stops, 0 px
+    npm run lint:responsive      at load 20: FAIL twice (97, 112 frames),
+                                 and 716562b failed beside it the same way
+                                 (98, 87 frames); at load 8: PASS, 269
+                                 frames, worst gap 519 ms
+    npm run lint:devices         PASS on all five
+    npm run lint:input           1 failed, 159 passed: "the input layer
+                                 and the button agree with the setting",
+                                 the stick mode reading recorded above as
+                                 reading the button a frame early
+    npm run lint:input, again    on 89ca675 itself, at a lower load: all
+                                 160 passed, 269 s
+    check:orbit                  not run: it checks the orbit trick's
+                                 recogniser, not the orbit page
+    dash scan                    none
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change, and the brief said not to
+
+### What went wrong
+
+- A pkill aimed at a stuck Chromium matched its own shell's command line
+  and killed the shell, as one did in the board maps entry above; nothing
+  was lost, and nothing was killed by pattern after it (the board proxy
+  this turn ran was stopped by its process id, after checking its folder).
+- The rig's first Chromium never answered: its profile sat under the
+  scratchpad's long path, too long for the browser's socket. The profiles
+  went to a short folder of this turn's own in /tmp instead, removed at
+  the end.
+- The first measurement let both cards record, so the orbit frame's
+  window held the town's build as well as Your map's. Redone with the
+  other card cached first. Its memory sampler also waited on the page and
+  missed the build's peak; redone with a sampler that does not.
+- lint:responsive failed at a load average of 20 and passed at 8; the
+  base commit failed beside it at 20, so the failures were the machine.
+- Stopped once by the spend limit with the change uncommitted; the tree
+  was intact and was committed first on resuming.
+
+### Found, not fixed
+
+- No check sees this card. lint:responsive presses a key every 400 ms, so
+  the film never starts in it, and nothing asserts that the loaded world's
+  card is not a flat fill. The scratch rig's test (a card canvas's
+  standard deviation above zero, then a video that decodes) would make
+  one; not added here, because adding a check was not the brief.
+- The orbit frame's capture of the town took 34 to 56 s on this machine,
+  and it still builds a second town for the town's card whenever the town
+  is not the world loaded. Unchanged.
+- clipKeyForMap's 'custom' branch still keys a course on modifiedUtc. No
+  room shows a world card for a course any more, so it was left.
+
+### For the owner, when flying
+
+With a map of your own seated, open Freestyle and let go of the keys: in
+about a second Your map's card shows your map being flown round with
+"loading" at its foot, and after about thirteen seconds it loops. Press a
+key during it and the room answers at once; the card films again after a
+second of quiet. Edit the map in the builder and come back: the card films
+the new layout. Wrong would be a grey card, a hitch on the key, the title
+looking soft or stretched after leaving the room (the renderer's size put
+back), or a card still showing the old layout after an edit. The film is
+at your own graphics tier, so on High your card is sharper than the other
+cards, which the orbit frame records at Low.
+
+### For the lead
+
+One commit, 89ca675, on 716562b: src/main.js (the frame loop's film,
+beside worldLive, the attract camera and the frame cap), src/ui/ui.js (the
+reels and show()), src/share/orbitcache.js and one rule in index.html.
+Nothing else merged into it.

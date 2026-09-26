@@ -86,10 +86,21 @@
  *                   road's line from its first point, as addVehicle takes
  *                   it), topSpeed, lateral, drift, length, width, height,
  *                   clearance, kind, style, variant, seed (seedOf, the
- *                   parked car's colour pick), element: the vehicle's id }
+ *                   parked car's colour pick), element: the vehicle's id,
+ *                   name: the author's name for it, or '' }
  *     problems    [{ level, code, message, elementId }], every road's own
  *                 (road.js) and every vehicle left out and why
- *                 A document that is not a freestyle map has no traffic.
+ *     drawn[j]    { element: the road's id, width, lanes, closed,
+ *                   laneOffset, line: its centre line in the plan (road.js
+ *                   roadOf's, shared: read it, never change it) }, one for
+ *                   EVERY road element with a line, driven or not, for
+ *                   drawing it (./roadmesh.js): a road nobody drives is
+ *                   still a road on the map
+ *     field       { width, depth } of the document's plot, m, which is
+ *                 what place.js docToWorld takes a plan point to the world
+ *                 with; null for a document with no field
+ *                 A document that is not a freestyle map has no traffic,
+ *                 and nothing drawn.
  *   uploadTraffic(sim, t)   uploadRoad for each road then addVehicle for
  *                           each vehicle, after uploadWorld; returns
  *                           { roads, vehicles, problems }, never throws.
@@ -211,12 +222,13 @@ function toWorld(line, W, D) {
  * The document's traffic, as the module takes it. See the header.
  */
 export function trafficOf(doc) {
-  const out = { roads: [], vehicles: [], problems: [] };
-  if (!doc || docModeOf(doc) !== 'freestyle' || !Array.isArray(doc.elements)) {
+  const out = { roads: [], vehicles: [], problems: [], drawn: [], field: null };
+  if (!doc || docModeOf(doc) !== 'freestyle' || !Array.isArray(doc.elements) || !doc.field) {
     return out;
   }
   const W = doc.field.width;
   const D = doc.field.depth;
+  out.field = { width: W, depth: D };
   const byId = new Map();
   const roadInfo = new Map();
   for (const el of doc.elements) {
@@ -225,6 +237,11 @@ export function trafficOf(doc) {
       const r = roadOf(el);
       roadInfo.set(el.id, r);
       out.problems.push(...r.problems);
+      if (r.centre.points.length >= 2) {
+        out.drawn.push({
+          element: el.id, width: r.width, lanes: r.lanes, closed: r.closed, laneOffset: r.laneOffset, line: r.centre,
+        });
+      }
     }
   }
   const lines = new Map();
@@ -320,6 +337,7 @@ export function trafficOf(doc) {
       variant: clampByLimits(ELEMENTS.vehicle, 'variant', el.dims?.variant),
       seed: seedOf(el),
       element: el.id,
+      name: typeof el.name === 'string' ? el.name : '',
     });
   }
   return out;

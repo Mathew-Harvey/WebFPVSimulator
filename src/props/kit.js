@@ -466,7 +466,9 @@ function tintedMaterial(src, c) {
  */
 const CAR_LAMPS = new Set([0xfff2d4, 0xd8564e]);
 const DIMMED_TOWN = new Map();
-function lookedTownMaterial(m, look) {
+/* Exported for src/maps/built/cars.js, which draws the moving cars with the
+ * same builder and has to dim the same glass the same way. */
+export function lookedTownMaterial(m, look) {
   if (!m.isMeshBasicMaterial || CAR_LAMPS.has(m.color.getHex())) {
     return m;
   }

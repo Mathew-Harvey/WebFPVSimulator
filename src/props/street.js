@@ -1667,9 +1667,16 @@ export function carLayout(el) {
   return P.list;
 }
 
+/* The colour a car is painted, as the name of one of the town's CAR
+ * colours: the first pick of its seed's stream (seedOf, its id and its
+ * variant). A moving car (src/maps/built/cars.js) asks the same, so a
+ * vehicle is the colour the parked car of the same element would be. */
+export function carColourOf(seed) {
+  return seededRandom(seed).pick(CAR_COLOURS);
+}
+
 export function carDraw(el, parts, K) {
-  const rng = seededRandom(seedOf(el));
-  K.town('car', { kind: CAR_KINDS[el.style] ? el.style : 'kei', colour: rng.pick(CAR_COLOURS) }, [0, 0, 0], 0);
+  K.town('car', { kind: CAR_KINDS[el.style] ? el.style : 'kei', colour: carColourOf(seedOf(el)) }, [0, 0, 0], 0);
 }
 
 /* ------------------------------------------------------------------ *

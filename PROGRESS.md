@@ -50716,3 +50716,46 @@ c552782. Flown again end to end with the draw on: a wall skim along
 Hibari Yard's container stack, 0.93 s at 0.35 m, lettered "WALL SKIM 182
 0.9 s" in sky blue down the left while it paid, then banked into the
 total, 182; the posted trick total 0, the counter 182.
+
+## 2026-09-26 | plan | The whoop room: a hall in the town
+
+Asked: make the whoop room "much nicer", in the sakura theme, tastefully
+decorate its walls with the slap pack stickers (https://webfpv.org/stickers/),
+and make it match the city and the freestyle builder; plan it and discuss it
+first. Done: a plan, WHOOP-ROOM-PLAN.md. No source file changed.
+
+**What the plan found.** The room cannot match the town by recolouring alone:
+it renders through the race field's kit (celmat.js, ink 0x1a2230, the field's
+grade) while the town and Your map use toon.js, ink 0x39324f and the town's
+grade. The one thing that works, cream PVC against a dark mat and mid dark
+walls, is what a naive pale repaint would break, so the plan keeps a dark mat
+and a tall dark wainscot and puts the pale town plaster above it. The walls
+stand exactly on the builder's micro field edge, so the plan's rule is that
+nothing proud of a wall is more than 30 mm or solid, and anything deeper is
+behind glass or closed: the collider set, the plant, the ABI and the build do
+not move. No check looks at the room's pixels today; the plan's first stage is
+a hall-check that pins the colliders and records a gate contrast baseline.
+
+**Stickers.** 22 pure SVGs, GPLv3, fonts subsetted under the OFL. The landing
+page draws them as DOM SVG, never into a WebGL texture, so that path is
+unproven; the plan proposes baking a sticker atlas in headless Chromium, which
+ships no fonts.
+
+**The fetch that said forced update.** This container's first clone was
+`--depth 50` of main at 9ed8b9c, taken 2026-09-24. `git fetch --deepen=400
+origin main` then printed `+ 9ed8b9c...716562b main -> origin/main (forced
+update)`, and before deepening `git merge-base HEAD origin/main` had come back
+empty: both of the signs the Git section of CLAUDE.md names. It was the
+shallow clone, not a rewrite. After deepening, `git merge-base main
+origin/main` is 9ed8b9c itself, and `git merge-base --is-ancestor` confirms
+9ed8b9c, 14d8e35 and b5e274e are all reachable from 716562b, 210 commits
+along. The graft points in .git/shallow had hidden the ancestry from the fast
+forward test. Nothing merged, nothing pushed to main.
+
+**Run this turn.** `node scripts/shots.js` once, on Living room 1 with the
+whoop seated, four parked cameras, for before pictures (kept out of the
+repository): exit 0, one console error, a refused network request that is not
+the room. `npm run verify` not run: nothing physical, no plant, ABI or build.
+No other check run: no code changed.
+
+**Waiting on the owner:** section 9 of the plan.

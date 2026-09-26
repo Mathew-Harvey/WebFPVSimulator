@@ -62,7 +62,10 @@ import { Race } from './game/race.js';
 import { TrickDetector } from './game/trickdetect.js';
 import { deriveObstacles, OB_BAR, OB_POLE } from './game/obstacles.js';
 import { seesMark } from './game/egg.js';
-import { FreestyleScore, formatScore } from './game/score.js';
+import { Counter, formatScore } from './game/score.js';
+import { NamedGapCounter } from './game/gaps.js';
+import { CloseCalls, CC_EVERY, CC_HARD_DV } from './game/closecall.js';
+import { readCounterBest, writeCounterBest } from './game/counterbest.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
@@ -1334,6 +1337,7 @@ export async function boot({ loading, bootStart, mapId }) {
       cars = trafficOn ? view.chaseCars() : [];
     }
     chase.setCars(cars);
+    chasePaidUpTo = 0;
     ui.setChaseCars(cars.length);
     carTouched = false;
     chaseCrashed = false;
@@ -1398,6 +1402,28 @@ export async function boot({ loading, bootStart, mapId }) {
     chase.step(clock, chaseCraft, carFeed, carTouched, chaseCrashed);
     carTouched = false;
     chaseCrashed = false;
+    chaseToCounter(clock);
+  }
+
+  /*
+   * The chase into the counter, at the feed that settled it: every paying
+   * event the chase queued since the last look goes to chaseBonus in step
+   * order, and a tail held at this feed holds the combo open. The queue
+   * itself is left for the frame's drain (the Tail meter's callouts and the
+   * harness log), which puts chasePaidUpTo back to 0 when it empties it.
+   */
+  let chasePaidUpTo = 0;
+  function chaseToCounter(clock) {
+    const evs = chase.events;
+    for (let k = chasePaidUpTo; k < evs.length; k += 1) {
+      if (pays(evs[k])) {
+        chaseBonus(evs[k]);
+      }
+    }
+    chasePaidUpTo = evs.length;
+    if (chase.view().holding) {
+      score.hold(clock);
+    }
   }
 
   /* After a stretch of stepping: the pose the craft's stateCurr is at. */
@@ -1458,6 +1484,132 @@ export async function boot({ loading, bootStart, mapId }) {
       chase.bail(simTimeMs, 'crash');
       chaseCrashed = true;
     }
+  }
+
+  /*
+   * THE COUNTER'S FEED, after the plant's step to lap clock `clock` with
+   * `st` the state it left and `dv2` that step's squared change of
+   * velocity. Freestyle only (the step loop's `scoring`). Allocates nothing:
+   * the pose and velocity go through the scratch below, and an event is
+   * only made when a gap or a close call settles.
+   *
+   *   every step    the craft's CG to the named gaps, which sweep the path
+   *                 from the last step to this one across every window
+   *   every 8 ms    the close calls, with the ground under the craft (the
+   *                 map's height, asked as every other craft query asks it)
+   *                 and the hard contact and crash flags since the last
+   *                 feed; the held skim holds the combo open and is the
+   *                 counter's meter
+   */
+  const counterPos = new THREE.Vector3();
+  const counterVel = new THREE.Vector3();
+  const counterCraft = {
+    x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
+  };
+  const COUNTER_HARD_DV2 = CC_HARD_DV * CC_HARD_DV;
+  function counterStep(clock, st, dv2) {
+    if (dv2 >= COUNTER_HARD_DV2) {
+      counterHard = true;
+    }
+    poseFromState(st, counterPos);
+    namedGapRun.step(clock, counterPos.x, counterPos.y, counterPos.z);
+    counterTakeGaps();
+    if (clock % CC_EVERY !== 0) {
+      return;
+    }
+    simPosToThree(st[4], st[5], st[6], counterVel);
+    counterVel.applyQuaternion(qSpawn);
+    counterCraft.x = counterPos.x;
+    counterCraft.y = counterPos.y;
+    counterCraft.z = counterPos.z;
+    counterCraft.vx = counterVel.x;
+    counterCraft.vy = counterVel.y;
+    counterCraft.vz = counterVel.z;
+    const groundY = view.height(counterPos.x, counterPos.z, counterPos.y - SURFACE_BIAS, counterPos.y);
+    closeCalls.step(clock, counterCraft, groundY, counterHard, counterCrashed);
+    counterHard = false;
+    counterCrashed = false;
+    counterTakeCloseCalls();
+    if (closeCalls.skimHeld()) {
+      score.hold(clock);
+    }
+    score.setSkim(closeCalls.live.skim, closeCalls.live.holdMs, closeCalls.live.clearance);
+  }
+
+  /* What the gaps settled, into the counter, emptying their queue. */
+  function counterTakeGaps() {
+    const evs = namedGapRun.events;
+    if (evs.length === 0) {
+      return;
+    }
+    for (let k = 0; k < evs.length; k += 1) {
+      const e = evs[k];
+      score.gap(e.name, e.tier, e.paidStep, e.index);
+    }
+    evs.length = 0;
+  }
+
+  /* What the close calls settled, into the counter: the paying ones; the
+   * lost ones only to the harness log. Empties their queue. */
+  function counterTakeCloseCalls() {
+    const evs = closeCalls.events;
+    if (evs.length === 0) {
+      return;
+    }
+    for (let k = 0; k < evs.length; k += 1) {
+      const e = evs[k];
+      if (e.kind !== 'lost' && e.value > 0) {
+        score.closeCall(e);
+      }
+      noteCloseCall(e);
+    }
+    evs.length = 0;
+  }
+
+  /*
+   * Once a frame, before the counter is ticked: anything that waited out its
+   * window while no step came (the craft landed, a turtle wait) pays now,
+   * on the lap clock, so a skim that ended in a perch is not held until the
+   * next takeoff.
+   */
+  function counterFrame() {
+    namedGapRun.settle(simTimeMs);
+    counterTakeGaps();
+    closeCalls.tick(simTimeMs);
+    counterTakeCloseCalls();
+    if (!closeCalls.live.skim) {
+      score.setSkim(false, 0, 0);
+    }
+  }
+
+  /*
+   * A CRASH, TOLD TO THE COUNTER. `board` says whether this is one of the
+   * crashes the trick scorer has always heard (the ground's hard hit, the
+   * STOP, the harness's staged bail): then score.crash() bails the counter
+   * and the board twin together, as it always bailed the one scorer. Every
+   * other crash path (a solid crash that sets the craft down, a craft set
+   * down stuck, X) bails the counter alone, so a crash is never paid for and
+   * the board's number is still computed as it was: see bailCounter in
+   * src/game/score.js. Once a frame at most, so a hard ground hit that also
+   * sets the craft down is one crash and not two. The gaps and the close
+   * calls lose whatever was waiting to pay.
+   */
+  let counterBailAt = -1;
+  function counterCrash(board) {
+    if (!view || view.mode !== 'freestyle') {
+      return;
+    }
+    namedGapRun.bail(simTimeMs);
+    closeCalls.bail(simTimeMs, 'crash');
+    counterTakeCloseCalls();
+    counterCrashed = true;
+    if (board) {
+      score.crash();
+    } else if (counterBailAt !== simTimeMs) {
+      score.bailCounter();
+    }
+    counterBailAt = simTimeMs;
+    score.setSkim(false, 0, 0);
   }
 
   /*
@@ -1588,13 +1740,22 @@ export async function boot({ loading, bootStart, mapId }) {
   /*
    * The run's shape is the pilot's choice, made on the Freestyle screen and
    * re-read every time a run starts: 'scored' is two minutes and a board,
-   * 'free' is neither, and 'off' shows the pilot none of it. See
+   * 'free' is neither, and 'off' names no tricks. See
    * DEFAULTS.freestyleScoring in src/ui/ui.js for why off is the default.
    *
-   * OFF IS A DISPLAY DECISION AND NOTHING ELSE. The recogniser still runs
-   * and the scorer still keeps its total: what off removes is the overlay
-   * and the clock, so the pilot is not shown a number from a system that
-   * is still being built. Keeping the engine running is the cheaper change
+   * THE COUNTER (FREESTYLE-MAPS-PLAN.md section 7, Stage C) is what the
+   * switch now decides a part of. Decision 2 (2026-09-24): the geometry,
+   * named gaps, close calls, the chase and the STF mark, counts on every
+   * freestyle map whatever the switch says, because it cannot misname
+   * anything; trick names stay behind the switch until naming is settled.
+   * So `score` is src/game/score.js's Counter, the counter and its trick
+   * only board twin: scoringWanted() says whether tricks count in the
+   * counter, and the board twin, whose total is what a scored run posts,
+   * hears every trick as the one scorer always did.
+   *
+   * OFF STILL KEEPS THE TRICK ENGINE RUNNING. The recogniser runs and the
+   * board twin keeps its total: what off removes is trick names from the
+   * counter and the clock. Keeping the engine running is the cheaper change
    * by far, it keeps one code path in the air instead of two, and it means
    * the thing being developed goes on being exercised on real flights.
    * Only 'scored' puts a clock on the run, so 'off' and 'free' alike leave
@@ -1602,7 +1763,24 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   const scoredRun = () => ui.settings.freestyleScoring === 'scored';
   const scoringWanted = () => ui.settings.freestyleScoring !== 'off';
-  const score = new FreestyleScore({ timed: scoredRun() });
+  const score = new Counter({ timed: scoredRun(), tricks: scoringWanted() });
+  /*
+   * THE COUNTER'S GEOMETRY. The named gaps (src/game/gaps.js) are fed every
+   * physics step with the craft's CG in the world; the close calls
+   * (src/game/closecall.js) every CC_EVERY steps of the lap clock with its
+   * position, velocity and the ground under it, and whether a step since the
+   * last feed was a hard contact (counterHard, the STOP measure) or the
+   * shell called a crash (counterCrashed). Both read the map's own
+   * colliders and gaps, set with the obstacles when a map is built, and
+   * only on a freestyle map: a race track sets neither and feeds neither.
+   * What either settles goes into the counter at once, in step order, so
+   * which combo a thing lands in is decided by the step stream and not by
+   * where a frame ended. See counterStep.
+   */
+  const namedGapRun = new NamedGapCounter();
+  const closeCalls = new CloseCalls(null);
+  let counterHard = false;
+  let counterCrashed = false;
   /*
    * The things in the world worth flying around, derived from the map's own
    * colliders once when the map is built. Null on a map with none, and the
@@ -1620,6 +1798,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * bottom edge.
    */
   function rebuildObstacles() {
+    /* The counter's world first: a freestyle map's gaps and solids, or
+     * nothing on a race track. */
+    const free = Boolean(view && view.mode === 'freestyle');
+    namedGapRun.setGaps(free && Array.isArray(view.gaps) ? view.gaps : []);
+    closeCalls.setColliders(free ? view.colliders : null);
     if (!view || view.mode !== 'freestyle' || !view.colliders) {
       obstacles = null;
       trickDetector.obstacles = null;
@@ -3256,6 +3439,10 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Wherever it lands, the open air it last flew through is somewhere
      * else now. The next frame in the open records it again. */
     haveRecoverFrom = false;
+    /* And the counter's gaps and close calls start a new path from there:
+     * the jump is not a line through anything. */
+    namedGapRun.cut();
+    closeCalls.cut();
     if (at) {
       startX = at.x;
       startZ = at.z;
@@ -3424,6 +3611,11 @@ export async function boot({ loading, bootStart, mapId }) {
   const restSpot = { x: 0, y: 0, z: 0, surface: 0 };
 
   function setDownNearby() {
+    /* A craft set down is the end of trouble: a crash, a craft left stuck,
+     * or the pilot's own X. The counter loses its open combo and whatever
+     * was waiting to pay, and a skim is never paid for the wall it ended
+     * on. The trick scorer is told only where it always was. */
+    counterCrash(false);
     const from = haveRecoverFrom ? recoverFrom : null;
     /* Around the crash first. If everything there is on the far side of
      * something, around the last open air, which by construction is on the
@@ -3678,30 +3870,28 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
-   * STAGE C'S HOOK: THE EGG BONUS. Section 9 pays a found mark into the
-   * combo when scoring is on, and paying is the counter's business
-   * (section 7, Stage C), so this is the one place the counter will add
-   * it, once a run, from findEgg. Nothing is paid here yet: there is no
-   * counter, and a bonus the trick scorer invented for itself would be a
-   * second opinion on what a run is worth that Stage C would have to take
-   * back out.
+   * THE EGG BONUS. Section 9 pays a found mark into the combo, and paying
+   * is the counter's business (section 7, Stage C): EGG_POINTS into the
+   * open combo, once a run (src/game/score.js egg), on the lap clock. It is
+   * geometry, so it counts on every freestyle map whatever the Scoring
+   * switch says (decision 2). The find itself is asked once every few
+   * frames with the camera, so this is the one input to the counter that
+   * arrives on a frame rather than a step.
    */
   function eggBonus(egg) {
-    /* Stage C: when scoringWanted(), the counter adds the bonus for `egg`
-     * to the combo here. */
+    void egg;
+    score.egg(simTimeMs);
   }
 
   /*
-   * STAGE C'S HOOK: THE CHASE BONUS. Every chase event that pays (a tail
-   * banked, a thread, a hurdle: pays() in src/game/chase.js) is handed here
-   * once, from the frame's drain, the way a found mark goes to eggBonus.
-   * Nothing is paid here yet, for eggBonus's reason; the meter and the
-   * callouts show the numbers meanwhile.
+   * THE CHASE BONUS. Every chase event that pays (a tail banked, a thread,
+   * a hurdle: pays() in src/game/chase.js) is handed here once, from the
+   * feed that settled it (chaseToCounter), and goes into the counter's
+   * combo under chase.js's own name and value (src/game/score.js
+   * chaseEvent). A tail held at a feed holds the combo open there too.
    */
   function chaseBonus(e) {
-    /* Stage C: when scoringWanted(), the counter adds e.value to the combo
-     * here, and keeps its window open while chase.view().holding. */
-    void e;
+    score.chaseEvent(e);
     chaseBonusCount += 1;
   }
   /* For the harness (window.__chase): the chase's events as they were
@@ -3717,6 +3907,29 @@ export async function boot({ loading, bootStart, mapId }) {
     });
     if (chaseLog.length > CHASE_LOG_MAX) {
       chaseLog.shift();
+    }
+  }
+  /* For the harness (window.__counter): the counter's events as the HUD was
+   * handed them, and the close calls' own, lost ones included, the newest
+   * COUNTER_LOG_MAX of each. A few a minute. */
+  const COUNTER_LOG_MAX = 64;
+  const counterLog = [];
+  const closeCallLog = [];
+  function noteCounterEvents(list) {
+    if (!list) {
+      return;
+    }
+    for (const e of list) {
+      counterLog.push(e);
+      if (counterLog.length > COUNTER_LOG_MAX) {
+        counterLog.shift();
+      }
+    }
+  }
+  function noteCloseCall(e) {
+    closeCallLog.push(e);
+    if (closeCallLog.length > COUNTER_LOG_MAX) {
+      closeCallLog.shift();
     }
   }
 
@@ -3783,11 +3996,21 @@ export async function boot({ loading, bootStart, mapId }) {
      * one happened to be stored when the page loaded.
      */
     score.timed = scoredRun();
+    /* And whether tricks count in the counter this run (decision 2): the
+     * geometry counts whatever this says. */
+    score.tricks = scoringWanted();
     score.reset();
     trickDetector.restart();
     ui.resetScore();
+    /* The counter's gaps and close calls from nothing. */
+    namedGapRun.reset();
+    closeCalls.reset();
+    counterHard = false;
+    counterCrashed = false;
+    counterBailAt = -1;
     /* The chase too, and the smoke of the last run's drift car. */
     chase.reset();
+    chasePaidUpTo = 0;
     ui.resetChase();
     carTouched = false;
     chaseCrashed = false;
@@ -4877,7 +5100,27 @@ export async function boot({ loading, bootStart, mapId }) {
     turtleOnSupport = false;
     setTurtleParkMotors(false);
     poseLock = false;
-    ui.showFreestyleResults(score.summary());
+    const summary = score.summary();
+    /*
+     * THE COUNTER'S LOCAL BEST. The board is posted the trick scorer's total
+     * (summary.total); the counter's, summary.counter, is kept as this
+     * browser's best on this map (src/game/counterbest.js), filed under the
+     * map's STF key as its stamp is. A run that used the harness hooks is
+     * not a flown run and sets nothing. The results page reads the three
+     * fields added here.
+     */
+    const bestKey = view.egg && view.egg.key ? view.egg.key : view.id;
+    const before = readCounterBest(bestKey);
+    summary.counterBestBefore = before ? before.points : 0;
+    if (summary.timed && !summary.assisted) {
+      const kept = writeCounterBest(bestKey, summary.counter);
+      summary.counterBest = kept.best;
+      summary.counterImproved = kept.improved;
+    } else {
+      summary.counterBest = summary.counterBestBefore;
+      summary.counterImproved = false;
+    }
+    ui.showFreestyleResults(summary);
   }
 
   async function submitFreestyleRun() {
@@ -6554,6 +6797,11 @@ export async function boot({ loading, bootStart, mapId }) {
               stepStopUpZ = plantUpZ(stNow);
               stepStopSpeed = spdBefore;
             }
+            /* The counter's gaps every step and close calls every 8 ms,
+             * with this step's change of velocity for the hard contact. */
+            if (scoring) {
+              counterStep(simTimeMs + i + 1, stNow, dv2);
+            }
             if (sim.e.sim_ground_contacts() > 0) {
               sawGroundHit = true;
               const inbound = -vzBefore;
@@ -6718,7 +6966,7 @@ export async function boot({ loading, bootStart, mapId }) {
           if (view.mode === 'freestyle') {
             if (hard) {
               trickDetector.reset();
-              score.crash();
+              counterCrash(true);
               chaseBail();
             } else {
               /* NOT TAPPABLE: this is the ground. See TrickDetector.bump. */
@@ -6869,7 +7117,7 @@ export async function boot({ loading, bootStart, mapId }) {
         flightStats.noteCrash();
         if (view.mode === 'freestyle') {
           trickDetector.reset();
-          score.crash();
+          counterCrash(true);
           chaseBail();
         }
       }
@@ -7635,12 +7883,17 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       if (view.mode === 'freestyle') {
         const wasOver = score.over();
+        /* What waited out its window while nothing stepped, then the
+         * clock: see counterFrame. */
+        counterFrame();
         score.tick(simTimeMs);
         const scoreView = score.view();
         scoreState = scoreView.state;
         scoreRemainMs = scoreView.remainMs;
         ui.setScore(scoreView);
-        ui.scoreEvents(score.drainEvents());
+        const counterEvents = score.drainEvents();
+        noteCounterEvents(counterEvents);
+        ui.scoreEvents(counterEvents);
         /*
          * THE HORN.
          *
@@ -7662,15 +7915,14 @@ export async function boot({ loading, bootStart, mapId }) {
           endFreestyleRun();
         }
       }
-      /* The chase's meter and callouts, and every paying event to Stage
-       * C's hook. The HUD is up only on a map with cars, in flight. */
+      /* The chase's meter and callouts. Its paying events went to the
+       * counter from the feed that settled them (chaseToCounter); this is
+       * the HUD's drain. The HUD is up only on a map with cars, in flight. */
       if (trafficOn) {
         const chaseEvents = chase.drainEvents();
+        chasePaidUpTo = 0;
         if (chaseEvents) {
           for (const e of chaseEvents) {
-            if (pays(e)) {
-              chaseBonus(e);
-            }
             noteChaseEvent(e);
           }
         }
@@ -7875,19 +8127,25 @@ export async function boot({ loading, bootStart, mapId }) {
        * the Scoring row was a lie. See DEFAULTS.freestyleScoring in
        * src/ui/ui.js for why off is what a pilot gets without asking.
        *
-       * OFF PROMISES NOTHING, because nothing starts: the line is dropped and
-       * the banner is the takeoff prompt on its own. Free flight has no clock
-       * and no end either, so it says what it does have rather than borrowing
-       * the scored run's sentence. Only a scored run gets the two minutes.
+       * OFF PROMISED NOTHING, because nothing started: the line was dropped
+       * and the banner was the takeoff prompt on its own. Since the counter
+       * it has the lines, and says so, with no clock. Free flight has no
+       * clock and no end either, so it says what it does have rather than
+       * borrowing the scored run's sentence. Only a scored run gets the two
+       * minutes, from the first thing scored, whatever kind it is.
        */
       const start = ui.settings.launchControl
         ? 'L for launch control, or throttle up'
         : 'Throttle up to take off';
       let second = '\nThe green gate starts your lap';
       if (race.freestyle) {
+        /* The counter counts the lines in every position (decision 2), so
+         * even Lines only has something to promise now. */
         second = scoredRun()
-          ? '\nTwo minutes. The clock starts on your first trick.'
-          : (scoringWanted() ? '\nNo clock and no gates. A trick is named as you land it.' : '');
+          ? '\nTwo minutes. The clock starts on the first thing you score.'
+          : (scoringWanted()
+            ? '\nNo clock and no gates. Lines and tricks count as you fly them.'
+            : '\nNo clock and no gates. Gaps and close calls count as you fly them.');
       }
       ui.setBanner(`${start}${second}`);
     } else if (guidedText) {
@@ -8244,6 +8502,30 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   window.__score = () => score.summary();
   /*
+   * THE COUNTER, for the checks and the flown rigs: the live view (the
+   * HUD's, skim meter included), the summary, the newest events the HUD was
+   * handed and the close calls' own (lost ones included), what the last
+   * close call feed measured, and how many named gaps this map has. Harness
+   * only; a copy each call, so a caller cannot reach into the live state.
+   */
+  window.__counter = () => ({
+    view: JSON.parse(JSON.stringify(score.view())),
+    summary: score.summary(),
+    events: counterLog.slice(),
+    closeCalls: closeCallLog.slice(),
+    live: { ...closeCalls.live },
+    probe: { ...closeCalls.probe },
+    gaps: namedGapRun.count(),
+    crossings: namedGapRun.crossings,
+    waiting: { gaps: namedGapRun.waiting(), closeCalls: closeCalls.waiting() },
+    queries: closeCalls.queries,
+    tricks: score.tricks,
+  });
+  window.__counterLogClear = () => {
+    counterLog.length = 0;
+    closeCallLog.length = 0;
+  };
+  /*
    * The recogniser itself, so a probe can watch what it does rather than
    * only what it says. Every "verified" trick in this repo's history was
    * checked against a CONSTRUCTED flight: an exact circle, a constant turn
@@ -8293,7 +8575,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * flight nobody can reproduce. Same path as the real one, no mock. */
   window.__scoreCrash = () => {
     trickDetector.reset();
-    score.crash();
+    counterCrash(true);
     chaseBail();
     return score.summary();
   };
@@ -8877,8 +9159,11 @@ export async function boot({ loading, bootStart, mapId }) {
     mode = 'flight';
     ui.show('flight');
     /* A place is a teleport: the recovery's last open air is somewhere else
-     * now. The plant forgets its own previous points in sim_set_pose. */
+     * now. The plant forgets its own previous points in sim_set_pose, and the
+     * counter's gaps and close calls forget theirs. */
     haveRecoverFrom = false;
+    namedGapRun.cut();
+    closeCalls.cut();
     adoptSimClock();
     acc = 0;
     stateCurr = readState();

@@ -495,44 +495,60 @@ export function gravityScaleFor(weight, airframeId) {
  * WHAT A FREESTYLE FLIGHT IS. Three positions on one row, because they are
  * three answers to the same question and a pilot only ever wants one.
  *
- *   'off'     Nothing is SHOWN. No overlay, no trick names, no run clock
- *             and no board, and the clock slot carries the airtime
- *             instead. THE DEFAULT.
- *   'free'    The overlay is on, with no clock and no board. The run never
- *             ends and nothing is posted, but a trick is named when it
- *             lands.
- *   'scored'  The overlay is on, two minutes on the clock, and the total
- *             goes to the board.
+ * THE COUNTER COUNTS ON EVERY ONE OF THEM (FREESTYLE-MAPS-PLAN.md section 7
+ * and decision 2, Stage C). Named gaps, skims, unders, threads, low passes,
+ * the chase and the STF mark are geometry, so they cannot misname anything,
+ * and every freestyle map counts them into combos on the score overlay
+ * whatever this row says. What the row decides is TRICK NAMES, which are
+ * still being built, and the clock.
  *
- * Off is a DISPLAY decision. The recogniser and the scorer go on running
- * underneath it, because they are the thing being developed and stopping
- * them would stop them being exercised. What off removes is a number on
- * the screen that the pilot has not asked to be judged by.
+ *   'off'     Lines only: the geometry, and no trick names, no run clock
+ *             and no board; the clock slot carries the airtime. THE
+ *             DEFAULT. The value is still called 'off', because it is
+ *             stored in every returning pilot's settings.
+ *   'free'    Tricks too, named and scored as they land, in the same
+ *             combos, with no clock and no board. The run never ends.
+ *   'scored'  Tricks too, two minutes from the first thing scored, the
+ *             tricks' own total to the board and the whole count kept as
+ *             this browser's best on the map (src/game/counterbest.js).
+ *
+ * Off is a decision about what is SHOWN. The recogniser and the trick
+ * scorer go on running underneath it, because they are the thing being
+ * developed and stopping them would stop them being exercised. What off
+ * removes is a trick name on the screen that the pilot has not asked to be
+ * judged by.
  *
  * See DEFAULTS.freestyleScoring for why off is the default.
  */
 export const FREESTYLE_SCORING = ['off', 'free', 'scored'];
-const FREESTYLE_SCORING_LABEL = { off: 'Off', free: 'Free flight', scored: 'Scored run' };
+const FREESTYLE_SCORING_LABEL = { off: 'Lines only', free: 'Free flight', scored: 'Scored run' };
 
 /*
- * THE WARNING, and it comes FIRST when scoring is on, because a row wearing
- * row-warn owes the pilot the reason before it offers them anything. The
- * argument for it is at DEFAULTS.freestyleScoring.
+ * THE WARNING, and it comes FIRST when trick names are on, because a row
+ * wearing row-warn owes the pilot the reason before it offers them
+ * anything. It is about the tricks and only the tricks: the lines are
+ * geometry and are counted in every position. The argument for it is at
+ * DEFAULTS.freestyleScoring.
  */
-const SCORING_WARNING = 'This is an unfinished feature and it is still being built.'
+const SCORING_WARNING = 'Trick names are an unfinished feature and still being built.'
   + ' The recogniser misses tricks it should name and puts the wrong name on some of'
-  + ' the ones it catches, so read it as a work in progress rather than as a verdict'
+  + ' the ones it catches, so read them as a work in progress rather than as a verdict'
   + ' on your flying.';
 
-/* `where` is the world seated, since Off is that world and nothing else:
- * the town, or Your map. */
-const scoringOff = (where) => `Off: no overlay, no names and no run clock, just ${where} and the quad.`;
-const SCORING_FREE_ON = 'Free flight: tricks are named and scored as you land them, with no clock and no'
-  + ' board, and the run never ends.';
-const SCORING_FREE = `${SCORING_FREE_ON} That is the one to learn a Powerloop in.`;
+/* `where` is the world seated: the town, or Your map. */
+const scoringOff = (where) => `Lines only: ${where} counts gaps, skims, unders, threads, low passes, the`
+  + ' chase and the STF mark into combos. No trick names and no clock.';
+const SCORING_FREE_ON = 'Free flight: tricks too, named and scored as you land them in the same combos,'
+  + ' with no clock and no board, and the run never ends.';
+/* What the other two add, said once from Lines only, where a pilot reads
+ * them before choosing. */
+const SCORING_MORE = 'Free flight adds trick names, the one to learn a Powerloop in, and a scored run'
+  + ' adds two minutes and the high score board.';
+const SCORING_MORE_BUILT = 'Free flight adds trick names, the one to learn a Powerloop in, and a scored'
+  + ' run adds two minutes and a best kept for Your map.';
 
-const SCORING_BOARD = 'Scored run: two minutes on the clock, and what you finish with goes to the high'
-  + ' score board.';
+const SCORING_BOARD = 'Scored run: two minutes from the first thing you score. The tricks\' own total'
+  + ' goes to the high score board, and the whole count is kept as your best here.';
 
 /*
  * Your map is a different place for every pilot who has built one, so the
@@ -540,24 +556,25 @@ const SCORING_BOARD = 'Scored run: two minutes on the clock, and what you finish
  * run line says so while it is seated, rather than promising a board the
  * results screen then greys out. The reason is left to the results row.
  */
-const SCORING_BOARD_BUILT = 'Scored run: two minutes on the clock, and on Your map what you'
-  + ' finish with stays off the high score board.';
+const SCORING_BOARD_BUILT = 'Scored run: two minutes from the first thing you score, kept as your'
+  + ' best on Your map, and off the high score board.';
 
 /*
- * Off lists all three, because that is where a pilot reads what the other
- * two are before choosing one. A mode that is on says the warning and its
- * own line and nothing else: at 1280 by 720 the warning and all three ran
- * 125 px under the bottom bar, and the line cut off was the one about the
- * board, which is the line a pilot who has just chosen Scored run needs.
- * Free flight, once chosen, leaves out why to choose it: with it the town's
- * note still ended 14 px under the bar, where it is the longest.
+ * Lines only says what it counts and, in one sentence, what the other two
+ * add, because that is where a pilot reads them before choosing one. A mode
+ * with trick names says the warning and its own line and nothing else: at
+ * 1280 by 720 the warning and all three ran 125 px under the bottom bar,
+ * and the line cut off was the one about the board, which is the line a
+ * pilot who has just chosen Scored run needs. Free flight, once chosen,
+ * leaves out why to choose it: with it the town's note still ended 14 px
+ * under the bar, where it is the longest.
  */
 function scoringNote(mode, mapId) {
-  const board = mapId === 'built' ? SCORING_BOARD_BUILT : SCORING_BOARD;
+  const built = mapId === 'built';
   if (mode === 'off') {
-    return `${scoringOff(mapId === 'built' ? 'Your map' : 'the town')} ${SCORING_FREE} ${board}`;
+    return `${scoringOff(built ? 'Your map' : 'the town')} ${built ? SCORING_MORE_BUILT : SCORING_MORE}`;
   }
-  return `${SCORING_WARNING} ${mode === 'free' ? SCORING_FREE_ON : board}`;
+  return `${SCORING_WARNING} ${mode === 'free' ? SCORING_FREE_ON : (built ? SCORING_BOARD_BUILT : SCORING_BOARD)}`;
 }
 
 /*
@@ -762,6 +779,9 @@ const DEFAULTS = {
    * and is told it was nothing concludes the orbit was bad. Freestyle's
    * job today is flight feel, so what a pilot gets without asking is a town
    * and a quad, and the scorer is a thing you switch on knowing what it is.
+   * Since the counter (Stage C, 2026-09-26) that is still the whole of it:
+   * the lines, gaps, close calls, the chase and the mark, are counted and
+   * shown whatever this says (decision 2), and this decides trick names.
    *
    * The key is deliberately NOT the old 'freestyleRun'. Settings are saved
    * whole, so every returning pilot has that key holding the old default of
@@ -2916,7 +2936,7 @@ const WAYS = [
      * pilot asks for them. See DEFAULTS.freestyleScoring. The aircraft is
      * named because this card seats one: the town is five hundred metres
      * across and it is the five inch's. */
-    blurb: 'The whole town on the five inch, or a map you build yourself. Roofs, alleys and a level crossing, or cranes and bandos wherever you put them. No clock, no gates, and scoring is a switch inside.',
+    blurb: 'The whole town on the five inch, or a map you build yourself. Roofs, alleys and a level crossing, or cranes and bandos wherever you put them. No clock, no gates, and trick names are a switch inside.',
     /* The mode's three, not the machine's, and the machine is on the card
      * anyway: the plan mark over the picture is the five inch's. Three
      * words that fit one line on a landscape phone, where the blurb is
@@ -3718,7 +3738,7 @@ export class Ui {
      * behind the door has to describe the door that is actually open: the
      * town and the quad, with the scoring named as a switch rather than as
      * the point. See DEFAULTS.freestyleScoring. */
-    freestyle.append(el('p', 'rates-lede', 'The whole town, or a map of your own from the track builder, and no gates in either. Fly one, and this is where the machine you fly it on lives. Scoring is the switch below and it starts off, because the part that names what you flew is still being built.'));
+    freestyle.append(el('p', 'rates-lede', 'The whole town, or a map of your own from the track builder, and no gates in either. Fly one, and this is where the machine you fly it on lives. Gaps, skims and the chase are counted from the first flight; trick names are the switch below and start off, because the part that names what you flew is still being built.'));
     this.freestyleCards = el('div', 'map-cards');
     const freestyleBlock = wrapMenu();
     this.freestyleMenu = freestyleBlock.menu;
@@ -10837,12 +10857,16 @@ export class Ui {
     if (!this.scoreHud) {
       return;
     }
-    /* Scoring switched off means there is no overlay at all, not an empty
-     * one: a zero sitting on the screen for a run that is not being scored
-     * is a readout that cannot ever change, which reads as a fault. */
+    /*
+     * UP ON EVERY FREESTYLE MAP, whatever Scoring says. It used to come down
+     * with Scoring off, because a zero for a run nobody was scoring is a
+     * readout that cannot change, which reads as a fault. Since the counter
+     * (FREESTYLE-MAPS-PLAN.md decision 2) the lines are counted in every
+     * position, so the overlay always has something it can count, and the
+     * switch decides trick names, not the overlay.
+     */
     this.scoreHud.setVisible(
       this.osdMode === 'freestyle'
-      && this.settings.freestyleScoring !== 'off'
       && (this.screen === 'flight' || this.screen === 'paused'),
     );
   }

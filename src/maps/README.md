@@ -71,6 +71,8 @@ A MapInstance is:
     dispose()
     stats()       optional, harness only
     egg           optional: where the STF mark is painted, see below
+    gaps          optional: the author's named gaps, src/game/gaps.js
+                  namedGaps(placeDocument(doc).zones); the counter flies them
 
 ### `height(x, z, fromY)` is three arguments, and the third one is the point
 

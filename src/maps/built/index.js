@@ -77,6 +77,7 @@ import { setOutlineResolution } from '../city/vendored/core/outline.js';
 import { cel, flat } from '../city/vendored/core/toon.js';
 import { bake, sagCurve } from '../city/vendored/core/util.js';
 import { Colliders } from '../../game/collide.js';
+import { namedGaps } from '../../game/gaps.js';
 import { disposeSceneGraph } from '../../render/shell.js';
 import { SESSION_TEXTURES } from '../../render/session-textures.js';
 import { yieldToPaint } from '../../ui/loading.js';
@@ -2260,6 +2261,11 @@ export async function buildMap(shell, onProgress, options) {
      * found it: see paintStfMark and `egg` in src/maps/README.md. Paint
      * only; nothing about it is solid. */
     egg,
+    /* The author's named gaps as world rectangles, for the counter
+     * (src/game/gaps.js): placeDocument's zones, placed by the one
+     * conversion everything on this map goes through. Nothing solid and
+     * nothing drawn. */
+    gaps: namedGaps(placed.zones),
     /* Which document this is and where it came from, for the harness and
      * for the shell to say so. */
     documentId: doc.id,

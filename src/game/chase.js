@@ -78,15 +78,17 @@
  * (the lap clock ran on while the craft sat landed) keeps what was earned but
  * sweeps nothing across the gap.
  *
- * STAGE C'S HOOK. The events are the stream the counter will consume (section
- * 7: one combo fed by five kinds of thing). Every event with `value` above
- * zero is paying (pays(e)); the shell hands each one to a chaseBonus(e) in
- * main.js, the way it hands a found mark to eggBonus, and Stage C fills that
- * in to add e.value to the combo. A `lost` event is what the combo's bail
- * would hear. And view().holding says a tail is being held right now, for
- * the counter to keep its window open while it builds, the way the plan's
- * Skim keeps the combo alive like a skate game manual. Until Stage C nothing
- * here reaches the score: the numbers are shown, not banked.
+ * THE COUNTER (Stage C). The events are one of the streams the counter
+ * consumes (section 7: one combo fed by five kinds of thing). Every event
+ * with `value` above zero is paying (pays(e)); the shell hands each one, at
+ * the feed that settled it, to chaseBonus(e) in main.js, which puts it into
+ * the combo as src/game/score.js chaseEvent: 'tail', 'chase-thread' or
+ * 'hurdle', under the names here. A `lost` event pays nothing; the combo's
+ * own bail is told of the crash by the shell. And view().holding says a
+ * tail is being held right now, and the shell holds the counter's combo
+ * open on it while it builds, the way the plan's Skim keeps the combo alive
+ * like a skate game manual. The prices here are Stage E's and the counter
+ * takes them as they are.
  *
  * This file is part of WebFPVSimulator.
  *

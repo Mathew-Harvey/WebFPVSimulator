@@ -48043,3 +48043,261 @@ again on the merged code:
                              src/ui, src/input or main.js, so it came with
                              c01548d or is a flake it made likelier; it was
                              not run on c01548d alone, and is for the lead.
+
+## 2026-09-26 | maps, shell, render, checks | Stage E: the roads and cars drawn, driven by the shell, the chase fed, and Hibari Yard's cars kept apart
+
+Stage E ("Roads, vehicles and the chase", approved by the owner on
+2026-09-25), the simulator's side: the roads and the moving cars drawn on a
+built map, the shell uploading the traffic and reading the poses the
+physics drove, the chase scorer and its HUD fed, and the starter's loop
+changed so no car drives through another. No physics, no module ABI, no
+build: dist/sim.wasm, src/native and tests/goldens are untouched, and
+`git diff --stat vendor/betaflight` is empty. Commits 653b06b (the two
+render modules, first, for the builder's Play), df97e59 (the loop), c01548d
+(the map and the shell).
+
+### What was built
+
+- **src/maps/built/roadmesh.js**, `buildRoadMesh(THREE, look, traffic,
+  opts)`: every road element's asphalt (the eased centre line moved half the
+  width to each side with road.js laneLine), a flush kerb band either side,
+  edge lines and, on two lanes, a dashed centre line whose period is
+  stretched to fit a loop. Three merged batches for every road on the map,
+  lit cel materials (so every time of day lights them as it lights the
+  paving's paint), lifted 12 and 18 mm and polygon offset toward the eye.
+  Not solid, and not raised: a drift car's tail swings past the road's edge
+  in a bend. `roadCover(traffic, pad)` is a pure keep out test for the
+  yard's own paint. A bend tighter than half the width fans instead of
+  folding.
+- **src/maps/built/cars.js**, `buildCars(THREE, look, traffic, opts)`: one
+  Object3D a vehicle, the town's own makeVehicle body in the colour its
+  parked twin would be (street.js now exports carColourOf, which carDraw
+  uses, so parked cars are unchanged), glass and plates dimmed at a time
+  with flats through kit.js's lookedTownMaterial (now exported). Its own
+  wheels: the vendored tyre and rim with five dark windows on each face, one
+  vertex coloured cel batch a wheel, rolled by the pose's distance over the
+  radius, the front pair steered by atan(wheelbase x curvature) less the
+  drift's slip, so the drift car countersteers. The vendored makeVehicle
+  takes `wheels: false` (the arches stay), recorded as
+  src/maps/city/vendored/PATCH-world-vehicles.diff. Tail lamps brighten
+  under braking of 1.5 m/s/s or more; at dusk both lamps are lit and throw an
+  additive pool on the road, ahead and behind. Drift smoke: a capped pool of
+  160 camera facing puffs in one batch, put down from a rear wheel every 16
+  steps of the clock while tan(slip / 2) is past 0.2, each a pure function
+  of the step it was put down at, the pose there and the clock it is drawn
+  at; cream and violet like the town's clouds, inked by a density cut in the
+  shader, growing, rising and dissolving from the edge in, and thinning away
+  as the eye comes within 5 m, so a pilot on the drift car's tail is not
+  flying through an opaque cloud. `place(prev, curr, alpha, now)` poses
+  every car between two readVehicles arrays and draws the smoke; `emit(step,
+  poses)` feeds the smoke; `chaseCars()`, `gapAt()`, `stats()`,
+  `dispose()`. Nothing allocated on a frame.
+- **traffic.js**: trafficOf also returns `drawn` (every road element with a
+  line, driven or not), `field` and each vehicle's `name`. Additive.
+- **src/maps/built/index.js**: trafficOf once; the roads over the ground;
+  the cars; the yard's car park bays, repairs and ruts kept off the roads;
+  the lane painted under a footbridge left out where a road already runs
+  there (the starter's footbridge); the view hands the shell `traffic`,
+  `uploadTraffic(sim)`, `chaseCars()`, `poseCars()`, `carTick()`,
+  `clearSmoke()` and `carGap()`. updateAnim stays a no op, with a comment
+  saying why. stats() counts `batches` as every mesh the map draws of its
+  own (the kit's are `propBatches`), and the roads' and cars' triangles.
+- **src/main.js**:
+  - uploadPlantWorld uploads the traffic after uploadWorld (whose
+    sim_world_clear empties the roads and cars and zeroes their clock) and
+    hands the chase its cars; `trafficOn` guards every vehicle call, so a
+    race track or the town makes none.
+  - Before every stretch of stepping, the launch stand included, the cars'
+    clock is set to simTimeMs. The poses at the steps the craft's statePrev
+    and stateCurr are at are read into two buffers that swap as the states
+    do, and the cars are drawn between them at the craft's alpha. A frame
+    that does not step (landed, a turtle wait, the title at its own clock,
+    results at the finish's) sets the clock and reads there.
+  - Every 8 steps of the lap clock inside the step loop: readVehicles, the
+    smoke's feed, and chase.step with the craft's world position and
+    velocity, `touched` from sim_world_vehicle_contacts ORed over the steps
+    since the last feed, and `crashed`. Every score.crash() and the crash
+    set down call chase.bail(simTimeMs, 'crash'). Once a frame
+    ui.chaseMeter and ui.chaseEvents, and every paying event to a
+    chaseBonus stub beside eggBonus. reset() resets the chase, the HUD and
+    the smoke.
+  - A mover contact on a map with traffic is reported as `car` (lastHitKind,
+    the impact kind, passStats) rather than `train`.
+  - The FPV near plane also shrinks for a car's drawn box, as it does for a
+    collider.
+  - Harness only: window.__vehicles, window.__chase (the meter and a log of
+    the events drained, and how many reached chaseBonus), window.__chaseLogClear.
+
+### The chicane, and the new assertion
+
+Measured every millisecond over 30 minutes of clock, the first loop
+reproduced the foundation's finding exactly (3.803 s of overlap in 59
+meetings, up to 0.232 m, the drift car and the box truck), and showed it is
+not only the chicane: the first overlap is 33 s in, at the south east
+corner. In every bend to its right the drift car's nose, sliding 44
+degrees, crosses the centre line; a long body on a tight bend swings its
+corners out toward the same line. Softening the chicane alone (a scratch
+variant) moved the worst meeting to the south west corner, 0.208 m.
+
+So the loop is **7.5 m wide** (two 3.75 m lanes, the lane lines 0.75 m
+further apart), and the **chicane is a 43 degree jink either way on 12 m
+bends** instead of two right angles on 7 m ones: nodes (140, 139.5), (140,
+18), (120.5, 18), (120.5, 62), (100, 84), (100, 139.5), half a metre off
+the billboard and a metre off the water tower to keep every clearance. The
+kei van's matched speed, found again by halving, is 8.8582 m/s. Over 30
+minutes no two cars overlap, and the nearest two come is 0.403 m (the drift
+car's tail and the truck's corner in the south east bend). Ids and rows
+unchanged; the road's row and the van's speed changed.
+
+**check:roads block 5** (new): every millisecond of 30 minutes, no two of
+the starter's cars overlap in plan (a separating axis test on their boxes),
+and the same test run on the first loop's first minute finds its overlap
+(148 ms, up to 0.168 m), so the test can see one. Every existing assertion
+is unchanged and passes; the drift car's yaw step target went from 0.623 to
+0.511 rad/s. 3.9 s.
+
+### The budget
+
+Low, 1280 by 720, golden and dusk, window.__budget with the cars and the
+roads shown and then hidden, the same camera each pair:
+
+                                     golden               dusk
+    close behind the drift car   240 / 74,717        251 / 75,593
+                     hidden      204 / 57,315        206 / 57,343
+    aerial, south east           408 / 123,777       417 / 124,489
+                     hidden      369 / 105,599       372 / 106,239
+    aerial, the whole plot       432 / 125,695       441 / 126,407
+                     hidden      393 / 107,517       396 / 108,157
+
+About 40 draw calls and 18,000 triangles for the three cars and the loop on
+Low (no shadow pass there), 45 at dusk with the lamps' glow. stats(): the
+roads 3 batches and 9,190 triangles; the cars 37 meshes (three bodies of
+eight, twelve wheels, the smoke) and 9,308 triangles, 40 and 9,344 at dusk.
+npm run lint:quality is the presets' own arithmetic and does not see a map:
+56 of 56 clean.
+
+Allocation, sampled with the heap profiler over 8 s of flight with the cars
+drawn and the chase fed: 10.8 KB attributed to the traffic path, all of it
+inside chase.js's step (tailFit, threadSweep, hurdleSweep: boxed numbers
+before V8 optimises them) and the HUD's text on a change; none in cars.js,
+roadmesh.js or main.js's pose path. lint:memory checks laziness and
+release, not allocation.
+
+### Flown, with the in-page pilot (scripts/lib/pilot.js)
+
+A scratch rig in crash-check.js's style (not committed): Hibari Yard on
+Low, the draw off for the control rate, a follower that flies the drift
+car's own trail 4.5 m behind its rear, recorded in the page from
+window.__vehicles.
+
+- **Tail and bank.** Placed behind the drift car on the lane, 8 s: the meter
+  up in 0.4 s, a flicker forgiven by the grace, then held through the lane
+  and into the south east bend, 1.4 s +138, 2.8 s +276, 5.4 s +541; broken
+  off with a climb: one Drift Tail, 5.85 s, 585 points, paid, and
+  chaseBonus called once. Earlier runs: 6.53 s 653, 4.39 s 439.
+- **Into a car.** Behind the drift car down the lane as the box truck came
+  up it; at 40 m the follower stepped 4.2 m right, into the truck's lane:
+  the truck hit the craft (the world report's kind `car`), the shell's
+  crash set it down, "Drift Tail lost, Crashed" on the screen, 1.97 s held
+  and 0 paid, chaseBonus not called. In another run the contact reached the
+  chase first and the line read "Hit a car" (why: contact). A dive onto the
+  drift car's roof and a ram at its back were tried first: the tracker
+  crashed into the road short of it (lost, 0 paid) or banked the tail
+  before it arrived; neither is a car hit and neither is counted here.
+- On the title screen the cars drive (35 m in 3 s of the title's clock); on
+  going back to a race track, no car, no chase cars.
+
+### Pictures, looked at, in the session's scratchpad
+
+- High, golden: the loop from over the north east corner with all three
+  cars and both parked ones, the footbridge with one lane under it; the
+  drift car sliding into the south east bend from 6.5 m behind, brake lamps
+  lit, cream puffs with violet shade and an ink edge off both rear wheels;
+  the box truck coming up the lane, its shadow, a rim's five windows.
+- High, dusk: the same two, the drift car's tail lamps lit with a red pool
+  behind, the smoke dimmed to the dusk light; the truck's headlamps lit with
+  a warm pool 7 m ahead.
+- Flown, Low: the FPV view behind the drift car on the lane at 78 km/h,
+  "TAIL x2 DRIFT CAR 3.3 s +330"; the frame after the truck hit, "Crashed,
+  set down nearby" and "DRIFT TAIL LOST, Crashed".
+
+### Checks, run in this session
+
+    npm run check:roads          all passed (3.9 s on 11253d9), block 5 new
+    npm run check:chase          58 passed, all passed
+    npm run check:props          all passed
+    npm run check:clip           785 passed, 0 failed (on 11253d9, the
+                                 builder's work merged)
+    npm run check:world          all passed
+    npm run check:world-engines  20 golden and 12 vehicle runs equal to the
+                                 bit in Node and Chromium, Hibari Yard's
+                                 new loop among them
+    npm run lint:boot            9 of 9 clean
+    npm run lint:memory          PASS; built 9 modules, 61 -> 232 -> 61
+                                 geometries, 5 -> 42 -> 5 textures
+    npm run lint:quality         56 of 56 clean
+    npm run lint:preload         up to date after node scripts/gen-preload.js
+                                 (boot 108, city 73, built 32)
+    npm run lint:shell           FAIL, 1 problem, the known "title: overflow
+                                 grew from 0 to 23 px"
+    npm run lint:input           see below
+    dash scan, new and changed   none
+    npm run verify               not run: no physics, plant, ABI or build
+                                 change, and the task said not to
+
+### lint:input's stick mode check, for the lead
+
+"and the input layer and the button agree with the setting" failed on this
+branch in two of three runs on c01548d (and in the builder's two runs after
+merging it) and passed in the third, 156 of 156; on b20e626, the commit
+before any of this work, it passed in three of three, where "parked and
+left" and "input.js agrees" failed in all three (on this branch in one of
+three). The check presses M and reads the button at once. The drawn gimbal's
+caption is repainted in the key's own call (ui.setStickMode, from
+applySettings), which is why the failing reading has the new caption; the
+button is painted only by the frame loop's setCalibration, a frame later.
+Logged in a copy of the check: frames there are 17 ms, sometimes 33, and
+the read lands about 35 ms after the key, so it passes when a frame falls
+between them. Forty more presses in the same session read the button right
+in both trees, 0 of 40 stale. None of this work runs on that screen (the
+field map, no traffic: every call is behind trafficOn), so no cause in it
+was found; the two flaky checks trade places between the trees, which says
+the page's timing moved, not that anything broke. The honest fix is in the
+check, waiting for the paint the way its own R step does
+("until calRevBtn.textContent === ..."), and it was not made here: the
+check is not this work's, and a check changed so it passes is the owner's
+or the lead's to approve.
+
+### What went wrong
+
+- The first tail capture photographed a drift puff filling the whole lens:
+  the follower flies through the smoke. The puffs now thin to their cores
+  and vanish as the eye comes within 5 to 1.5 m.
+- The first GLSL for that used smoothstep with its edges reversed, which
+  GLSL leaves undefined (looks.js says so); caught reading it back.
+- The first chicane fix softened the chicane only; the overlap test moved it
+  to the south west corner. The loop had to widen.
+- The rig's first title check left the screen on flight with the mode on
+  title, a state the shell never draws a world in; the cars were still. With
+  the title shown they drive.
+- Several crash attempts in the rig were the tracker's crashes, not a car's
+  (see Flown).
+
+### For the owner, when flying
+
+- **A craft set down on a road sits in the traffic.** The crash set down
+  looks 3.5 m round the crash for flat ground, and a 7.5 m road is flat, so
+  a crash on the road puts the craft on the road; and a landed craft is not
+  stepped (a perch is rest), so a car drives through it. The flown crash
+  above ended with the camera under the box truck's chassis. Keeping roads
+  out of the set down would send a crash in the middle of a road back to
+  the start line instead; that, or leaving it, is yours.
+- **Look for**: the drift car's smoke from the chase seat (it should thin
+  as you close, never blind you); the wheels turning and the front pair
+  countersteering in a slide; the tail lamps at dusk; the Tail meter
+  building on the drift car's bumper and banking when you peel off; a car
+  hit losing the tail with nothing paid. **Wrong would be**: a car drawn off
+  its lane or a frame late against the craft, a car you hit where none is
+  drawn, smoke across the lens, or two cars through each other on the yard.
+- The loop is wider (7.5 m) and the chicane softer; the drift car's lap is
+  24.8 s, the working pair's 38.0 s.

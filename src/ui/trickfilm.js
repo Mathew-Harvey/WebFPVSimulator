@@ -397,8 +397,10 @@ function drawObstacle(ctx, film, cx, cy, s, ground) {
  * The aircraft: a flat body, four props and a nose chevron, with a hard ink
  * line round all of it. Small enough to read at a glance and asymmetric
  * enough that its ROTATION is unambiguous, which a circle would not be.
+ * Exported for the results page's panels (src/ui/mangapage.js), so the
+ * craft in a gap or on a car's tail is the one the films teach with.
  */
-function drawQuad(ctx, x, y, spin, scale, squash, alpha, inv) {
+export function drawQuad(ctx, x, y, spin, scale, squash, alpha, inv) {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(x, y);

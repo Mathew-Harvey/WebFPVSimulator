@@ -97,7 +97,9 @@ const MARK_SIZE = 96;
 const MARK_X = 52;
 const MARK_BASELINE = 108;
 
-function drawWordmark(ctx) {
+/* Exported for the freestyle run's card (drawRunCard in
+ * src/ui/mangapage.js), which carries the same mark in the same place. */
+export function drawWordmark(ctx) {
   const glyphs = [
     ...[...'WEB'].map((ch) => [ch, CREAM]),
     ...[...'FPV'].map((ch) => [ch, SAKURA]),

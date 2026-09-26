@@ -52422,3 +52422,53 @@ nothing changes: `vNear` is zero past SMOKE_CLEAR's 5 m.
     npm run verify              not run: a shader's colour, no physics
     shots                       not run here: seen on the landing page's
                                 chase, which draws this file's smoke
+
+## 2026-09-26 | maps | main merged in, and the showpiece's tandem is two r32s
+
+### What changed
+
+`origin/main` (45a6af2) merged into this branch (6d66137). Two conflicts,
+both resolved toward main:
+
+- `src/maps/built/cars.js`. Main's 16470b3 fixes the black smoke this
+  branch fixed in the entry above and in b16bdc7, from another session and
+  by another route: the ink rim scales with (1 minus the puff's age squared)
+  and (1 minus nearness), where this branch capped it at a third of what is
+  left above the cut. One bug wants one fix, and main's is on the release
+  line, so main's file is taken whole and this branch's two smoke commits
+  are superseded. The entry above stays as the record of what was found.
+- `PROGRESS.md`. Both sides appended; main's entries first.
+
+`src/maps/built/showpiece.js`: the tandem is the r32 now, as main's r32
+came to the yard loop's drift car. `style: 'r32'` on el-58 and el-59, and
+the variants that pick its livery rather than a seeded paint: 5, white
+with a blue stripe, leads, and 7, mustard, chases. Nothing else about the
+map moved.
+
+### Why
+
+A tandem is two drift cars, and main now has one. Two sedans sliding past
+the yard loop's r32 read as the wrong cars. The front door publishes this
+document on the board and flies it, so it goes up as the cars main draws.
+
+### Checked
+
+The pair's spacing is measured again on the r32, which is longer than the
+sedan: the nearest their footprints come over a lap is 0.754 m (0.836 m as
+sedans), at the transition's exit. The comment's two other figures were
+re-measured the same way, by setting CHASE_AT for one run and putting it
+back: 7 m apart comes to 0.236 m, and 6 m overlaps, 0.39 m deep, which
+check:roads fails as it should. The time gap is unchanged, 450.171 ms,
+varying by 3.8e-5 ms: it is set by the road, the speed and the drift, and
+the style is none of them.
+
+### RUN LOG
+
+    npm run check:roads         all passed (10.0 s), on the merge and after
+    npm run check:props         all passed, on the merge and after
+    npm run check:clip          909 passed, 0 failed, on the merge and after
+    npm run check:fresh         18 passed, 0 failed, on the merge
+    npm run lint:preload        up to date: boot 114, city 74, built 34, 221
+    npm run verify              not run: no physics, plant, ABI or build
+                                changed here; the merge brings main's, which
+                                main's own entries record

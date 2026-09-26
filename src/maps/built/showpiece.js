@@ -48,16 +48,19 @@
  * is set in metres, the chase car 8 m behind the lead along the centre
  * line at step zero, and it closes to about 5.4 m through the bends as
  * the two slow in them, which is what a tandem looks like. Over a lap the
- * nearest their footprints come is 0.84 m, in the transition, where the
+ * nearest their footprints come is 0.75 m, in the transition, where the
  * chase car's nose swings across toward the lead's tail; 7 m apart put it
- * at 0.32 m and 6 m drove one through the other (the physics lets cars
+ * at 0.24 m and 6 m drove one through the other (the physics lets cars
  * pass through each other, so the map has to keep them apart, and
- * scripts/roads-check.js holds that too).
+ * scripts/roads-check.js holds that too). Those three figures are the
+ * r32's, measured when the pair became r32s; as sedans they were 0.84 m,
+ * 0.32 m and the same collision.
  *
- * THE PAINT is seeded from each car's id and variant (carColourOf in
- * src/props/street.js), and the variants are the ones that give a white
- * lead and a mustard chase: the two read apart at any range, and neither is
- * the yard loop's wine red drift car.
+ * BOTH CARS ARE THE R32, the drift coupe the yard loop's own drift car is,
+ * because a tandem is two drift cars. The variant picks the r32's livery
+ * (r32Livery in src/art/cars.js): 5, white with a blue stripe, leads, and
+ * 7, mustard, chases. The two read apart at any range, and neither is the
+ * yard loop's red over charcoal.
  *
  * THE IDS ARE FIXED, and continue the starter's, for the reason the
  * starter gives: every seeded asset takes its seed from its element's id.
@@ -140,11 +143,11 @@ function rows() {
       nodes: [[0, 0], [-122, 0], [-122, Y_LOW - Y_TOP], [-86, Y_LOW - Y_TOP], [-61, Y_LOW - Y_TOP + 28], [-36, Y_LOW - Y_TOP], [0, Y_LOW - Y_TOP]],
     }],
     /* ---- the tandem, in the node order ---- */
-    ['vehicle', 0, 0, EAST, { offset: LEAD_AT, speed: TANDEM_SPEED, variant: 17 }, {
-      name: 'Tandem lead', style: 'sedan', road: 'el-57', drift: true,
+    ['vehicle', 0, 0, EAST, { offset: LEAD_AT, speed: TANDEM_SPEED, variant: 5 }, {
+      name: 'Tandem lead', style: 'r32', road: 'el-57', drift: true,
     }],
-    ['vehicle', 0, 0, EAST, { offset: CHASE_AT, speed: TANDEM_SPEED, variant: 10 }, {
-      name: 'Tandem chase', style: 'sedan', road: 'el-57', drift: true,
+    ['vehicle', 0, 0, EAST, { offset: CHASE_AT, speed: TANDEM_SPEED, variant: 7 }, {
+      name: 'Tandem chase', style: 'r32', road: 'el-57', drift: true,
     }],
 
     /* ---- the overpass, north to south across the main straight ----

@@ -83,6 +83,7 @@ import { captureSource, createFlightStats, pingVisit } from './share/stats.js';
 import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import { stampFor, writeStamp } from './share/stamps.js';
+import { CLIP_FPS, CLIP_H, CLIP_W, clipKeyForMap } from './share/orbitcache.js';
 import {
   clearPendingTime,
   readEditKey,
@@ -895,11 +896,17 @@ export async function boot({ loading, bootStart, mapId }) {
    * most a screen can show anyway.
    */
   let resizeDirty = false;
+  /* True while the renderer is held at the clip's size for the Freestyle
+   * room's film of the loaded world (see `film` in frameBody). A resize that
+   * arrives meanwhile waits: the film's frames have to be the clip's shape,
+   * and the window's size is put back the next time the world is drawn for
+   * anything else. */
+  let filmPinned = false;
   window.addEventListener('resize', () => {
     resizeDirty = true;
   });
   function applyResizeIfDirty() {
-    if (!resizeDirty) {
+    if (!resizeDirty || filmPinned) {
       return;
     }
     resizeDirty = false;
@@ -1191,6 +1198,22 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.setBanner(`${failed} could not be loaded.\nThe track was loaded instead.`, true);
   }
   ui.setShare(view.share || null);
+  /*
+   * THE CLIP KEY OF THE WORLD AS IT WAS BUILT, taken now rather than when a
+   * card asks, because a card's key is read off the seat when the card is
+   * drawn and the seat can change under a built world: an author editing
+   * Your map in another tab. The Freestyle room films the loaded world
+   * where it stands only when the two agree (ui.captureCurrentCard);
+   * otherwise the orbit frame builds the map from the seat as it is now.
+   * A map from the board has no key of its own here, because Your map's
+   * card is keyed by the pilot's seat and filming the board's map in place
+   * would file it under the pilot's.
+   */
+  let worldClipKey = null;
+  const noteWorldClip = () => {
+    worldClipKey = view && !view.shared ? clipKeyForMap(view.id) : null;
+  };
+  noteWorldClip();
   loading.start('frame');
 
   /*
@@ -4057,6 +4080,13 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A new view is a new set of solids, whether or not the place is kept. */
     uploadPlantWorld();
     attractCam = makeAttractCamera(view);
+    noteWorldClip();
+    /* The new world was built at the window's size; the hold a film had on
+     * the old one's renderer size is over. */
+    if (filmPinned) {
+      filmPinned = false;
+      resizeDirty = true;
+    }
     if (!keepPlace) {
       race = new Race(view.gates, view.trackClass ?? 'full');
       race.setRecordKey(recordKey());
@@ -6212,6 +6242,15 @@ export async function boot({ loading, bootStart, mapId }) {
    * know which frame to ask for. Rebuilt on every swap, below.
    */
   let attractCam = makeAttractCamera(view);
+  /*
+   * The world the Freestyle room can film where it stands: which map, the
+   * clip key it was built under (noteWorldClip) and how long its title
+   * camera takes to fly its line once, or null mid swap and for a map from
+   * the board. Asked when the room's reels start; see ui.startReels.
+   */
+  ui.loadedWorld = () => (mapReady && !swapInFlight && view && worldClipKey
+    ? { id: view.id, key: worldClipKey, periodMs: attractCam.periodMs || 0 }
+    : null);
   applySettings(ui.settings);
 
   const bootPick = input.takePadPickQueue();
@@ -6419,6 +6458,8 @@ export async function boot({ loading, bootStart, mapId }) {
   let titleStepMs = 0;
   /* Wall time of the last frame the cap let through. */
   let capLastDraw = -1e9;
+  /* And of the last frame the Freestyle room's film drew. */
+  let filmLastDraw = -1e9;
 
   /*
    * ONE FAULT USED TO FREEZE THE PICTURE AND SAY NOTHING.
@@ -7373,6 +7414,30 @@ export async function boot({ loading, bootStart, mapId }) {
     const attractOn = !freezeWorld && mode === 'title'
       && (ui.screen === 'title' || ui.screen === 'launch');
     const studioOn = ui.screen === 'quad';
+    /*
+     * THE FREESTYLE ROOM'S FILM OF THE LOADED WORLD.
+     *
+     * The room keeps the world hidden, and its card for the world already
+     * loaded used to copy this canvas into its recorder anyway, so it
+     * recorded twelve seconds of the grey the card was filled with and kept
+     * it. While ui.captureCurrentCard asks for it (ui.reelFilm), the world
+     * is drawn again, still hidden behind the room, at the clip's size and
+     * the clip's frame rate, on the title camera run from the start of its
+     * line on the clip's clock, and every drawn frame is copied onto the
+     * card (ui.paintMapThumbs). The world is already built, so the film
+     * costs a 854 by 480 draw ten times a second and a small canvas, where
+     * the orbit frame the other cards use builds a second copy of the world.
+     *
+     * Only the world the card names: the same key, taken when this world
+     * was built (noteWorldClip), so an edit made since is not filmed under
+     * the new key. And only while the pilot is in the room, which the
+     * reels already arrange: the film starts when the room has been quiet
+     * and any key or touch ends it (ui.noteInteraction).
+     */
+    const film = ui.reelFilm && !freezeWorld && mode === 'title' && ui.screen === 'freestyle'
+      && worldClipKey && ui.reelFilm.key === worldClipKey
+      ? ui.reelFilm
+      : null;
     const worldLive = !freezeWorld && (
       Boolean(finishLoadingOnFrame)
       || mode === 'flight'
@@ -7380,11 +7445,30 @@ export async function boot({ loading, bootStart, mapId }) {
       || mode === 'results'
       || ui.screen === 'courses'
       || attractOn
+      || Boolean(film)
       || Boolean(camOverride)
     );
-    const wantVis = worldLive ? 'visible' : 'hidden';
+    /* The film draws behind the room, not in front of it: hidden, which
+     * still draws, and copied out before the frame ends. */
+    const wantVis = worldLive && !film ? 'visible' : 'hidden';
     if (shell.canvas.style.visibility !== wantVis) {
       shell.canvas.style.visibility = wantVis;
+    }
+    if (film && !filmPinned) {
+      filmPinned = true;
+      shell.renderer.setSize(CLIP_W, CLIP_H, false);
+      shell.camera.aspect = CLIP_W / CLIP_H;
+      shell.camera.updateProjectionMatrix();
+      if (view.post && view.post.setSize) {
+        view.post.setSize(CLIP_W, CLIP_H);
+      }
+    } else if (!film && filmPinned && worldLive) {
+      /* Put the window's size back the first time the world is drawn for
+       * something else, which is on the way out of the room, rather than
+       * the moment the film stops, which is a key the pilot just pressed. */
+      filmPinned = false;
+      resizeDirty = true;
+      applyResizeIfDirty();
     }
 
     /* Prop discs spin at a visibly aliased fraction of true RPM, the way
@@ -7497,7 +7581,15 @@ export async function boot({ loading, bootStart, mapId }) {
      * is set in its branch below. See fpvNear. */
     setCameraNear(CAMERA_NEAR_OPEN);
     if (mode === 'title') {
-      if (worldLive && !camOverride) {
+      if (film && !camOverride) {
+        /* The shot the orbit frame records (src/share/orbit.js): the line
+         * from its start, one whole cycle in the clip, no overlay and no
+         * sticks. film.t0 is set when the recorder starts; until then the
+         * camera holds the first pose, so the clip opens on it. */
+        shell.quad.visible = true;
+        const camMs = film.t0 < 0 ? 0 : Math.max(0, nowWall - film.t0) * film.scale;
+        attractCam.update(camMs, shell.camera, { craft: shell.quad });
+      } else if (worldLive && !camOverride) {
         shell.quad.visible = true;
         attractCam.update(nowWall, shell.camera, {
           craft: shell.quad,
@@ -7791,7 +7883,18 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     const capHz = Number(ui.settings.fpsCap) || 0;
     let drawThis = !harnessNoDraw;
-    if (capHz > 0 && worldLive) {
+    if (film) {
+      /* The clip is CLIP_FPS frames a second, so the film draws no more
+       * than that: drawing sixty a second to keep ten throws five draws of
+       * the world in every six away behind a menu. The recorder takes a
+       * frame when the card's canvas changes, which is when one of these
+       * is copied. */
+      if (nowWall - filmLastDraw < 1000 / CLIP_FPS - 1.0) {
+        drawThis = false;
+      } else {
+        filmLastDraw = nowWall;
+      }
+    } else if (capHz > 0 && worldLive) {
       if (nowWall - capLastDraw < 1000 / capHz - 1.0) {
         drawThis = false;
       } else {
@@ -7801,7 +7904,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (worldLive && drawThis) {
       view.post.render();
     }
-    if (ui.screen === 'courses') {
+    /* In the same task as the draw: the canvas keeps no drawing buffer, so
+     * this is the one moment it still holds the frame. */
+    if (film && drawThis) {
       ui.paintMapThumbs(shell.canvas);
     }
     const renderMs = performance.now() - renderStart;

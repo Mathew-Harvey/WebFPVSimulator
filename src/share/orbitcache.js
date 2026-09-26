@@ -33,8 +33,18 @@
 import { activeTrackClass, readShareImport } from './session.js';
 import { readAutosave } from '../trackbuilder/storage.js';
 import { docModeOf } from '../trackbuilder/elements.js';
+import { toPlain } from '../trackbuilder/model.js';
 
 /*
+ * 6: the Freestyle room filmed the world that was LOADED from a view it
+ * never drew. The recorder copied main.js's canvas onto the card only on
+ * the 'courses' screen, where world cards no longer live, so the loaded
+ * world's card recorded twelve seconds of the grey its canvas was filled
+ * with and kept it. Your map, the pilot's own, was the card that looked
+ * broken. The key also changed for Your map (see docStamp), so its grey
+ * clips were unreachable anyway; the town's were not, and this is the line
+ * that reaches those.
+ *
  * 5: the four freestyle worlds were re-cut. Their title cameras used to fly
  * corridors, a chimney flue and, in two of them, the insides of walls, and
  * every clip in every browser that has ever opened Freestyle is a recording
@@ -47,7 +57,7 @@ import { docModeOf } from '../trackbuilder/elements.js';
  * invalidated them. Bumping this is how a change to the SHOT reaches
  * thumbnails that are already in IndexedDB.
  */
-export const CLIP_VERSION = 5;
+export const CLIP_VERSION = 6;
 export const CLIP_W = 854;
 export const CLIP_H = 480;
 export const CLIP_FPS = 10;
@@ -109,17 +119,51 @@ export function clipKeyForSeatedShare(shareId) {
 }
 
 /*
+ * WHAT A DOCUMENT HOLDS, as eight hex digits and its length: FNV-1a over
+ * the document as it is stored, with its modifiedUtc blanked, which is the
+ * same "is this the same document" keepDisplaced asks in
+ * src/trackbuilder/storage.js.
+ *
+ * WHY THE CONTENT AND NOT modifiedUtc, for Your map. The stamp says when a
+ * document was last touched, which is not what it holds. Only an edit in
+ * the builder touches it (settle in src/trackbuilder/app.js): a file opened
+ * over the seat brings the stamp it was saved with, and a newer deploy's
+ * repairs on read touch nothing, so the map can change under a stamp that
+ * does not. What the card shows is what the document holds, so that is
+ * what it is keyed on, and a map put back as it was gets its old clip back.
+ * The id stays in the key beside it, so two maps have to share an id as
+ * well as a hash to share a clip, and a cache of twelve clips per browser
+ * is nowhere near where 32 bits collide.
+ *
+ * Kept here rather than borrowed from src/props/parts.js, which has a
+ * string hash, because this file is read at boot and src/props is not
+ * (npm run lint:memory).
+ */
+export function docStamp(doc) {
+  const text = JSON.stringify({ ...toPlain(doc), modifiedUtc: '' });
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return `${(h >>> 0).toString(16).padStart(8, '0')}${text.length.toString(36)}`;
+}
+
+/*
  * Built in maps are one clip each. A designed course is keyed by the share
  * id if this browser is flying a published one, otherwise by the working
  * document's id and modified stamp, so editing the track records a new
  * shot instead of showing yesterday's layout.
  *
- * Your map is a designed world too, so it is keyed the same way, off the
- * freestyle seat the map itself builds from (chooseDocument in
- * src/maps/built/index.js): the document's id and stamp when the seat holds
- * a freestyle map with something on it, the starter otherwise. A bare
- * 'built' key never changed, so the card went on showing the orbit of a map
- * the author had since rebuilt.
+ * Your map is a designed world too, so it is keyed off the freestyle seat
+ * the map itself builds from (chooseDocument in src/maps/built/index.js):
+ * the document's id and what it holds (docStamp) when the seat holds a
+ * freestyle map with something on it, the starter otherwise. A bare 'built'
+ * key never changed, so the card went on showing the orbit of a map the
+ * author had since rebuilt. The loaded world is filmed where it stands only
+ * when it was built from the document this key names (loadedWorld in
+ * src/main.js), so an edit made in another tab after the world was built
+ * is filmed through the orbit frame, which builds from the seat as it is.
  */
 export function clipKeyForMap(mapId) {
   if (mapId === 'custom') {
@@ -146,7 +190,7 @@ export function clipKeyForMap(mapId) {
       const saved = readAutosave('full', 'freestyle');
       const doc = saved && saved.doc;
       if (doc && doc.id && docModeOf(doc) === 'freestyle' && doc.elements.length > 0) {
-        return `${clipPrefix()}:built:${doc.id}:${doc.modifiedUtc || ''}`;
+        return `${clipPrefix()}:built:${doc.id}:${docStamp(doc)}`;
       }
     } catch (e) {
       /* Private mode, or a corrupt seat: the map flies the starter, and so

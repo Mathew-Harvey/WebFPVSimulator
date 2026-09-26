@@ -48678,3 +48678,27 @@ npm run verify was not run. This does not touch the plant, the module ABI
 or the build. node scripts/shots.js was not run. The lap length of a
 track whose line used to reverse through a gate will change, because
 that line now goes around the frame.
+
+## 2026-09-26 | board | RaceGOW times are three laps
+
+RaceGOW scores the fastest three consecutive laps. The board was ranking
+and printing the single lap, with the three lap total in a side column
+when anybody had one.
+
+A RaceGOW room is now ranked on that total. The card, the sheet, the
+gap and the link preview all use it, and the best single lap of the
+same run sits in the next column. A run that never put three clean laps
+together is stored and is not on the sheet. A field track is still one
+lap. The simulator's standings and the upload notice follow the same
+rule. The results screen's own record line is still the best lap of the
+run.
+
+### RUN LOG
+
+    leaderboard npm test             all passed
+    npm run test:edge                all checks passed
+
+npm run verify was not run. This does not touch the plant, the module ABI
+or the build. node scripts/shots.js was not run. A RaceGOW time posted
+before it carried a three lap total drops off the sheet until a run
+with three clean laps is uploaded. The row is still stored.

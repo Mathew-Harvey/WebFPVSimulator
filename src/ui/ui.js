@@ -6413,12 +6413,14 @@ export class Ui {
       const rows = [];
       const times = this.standingsTimes || [];
       const best = times.length ? times[0] : null;
+      const room = t.trackClass === 'micro';
+      const bestMs = best ? (room ? best.threeMs : best.lapMs) : null;
       rows.push({
         label: 'Fly this track',
         action: 'standings-fly',
         primary: true,
         note: best
-          ? `Loads ${t.name} and takes you to the launch card. The time to beat is ${formatTime(best.lapMs)} by ${best.name || 'an unnamed pilot'}.`
+          ? `Loads ${t.name} and takes you to the launch card. The time to beat is ${formatTime(bestMs)} by ${best.name || 'an unnamed pilot'}${room ? ', three laps.' : '.'}`
           : `Loads ${t.name} and takes you to the launch card. Nobody has posted a time yet, so the first one is yours.`,
       });
       /*
@@ -8636,7 +8638,9 @@ export class Ui {
            * those are two different people. */
           const bits = [byLine(t), `${t.gates} gate${t.gates === 1 ? '' : 's'}`];
           if (t.recordMs != null) {
-            bits.push(`record ${formatTime(t.recordMs)}`);
+            bits.push(t.recordThree
+              ? `three laps ${formatTime(t.recordMs)}`
+              : `record ${formatTime(t.recordMs)}`);
           }
           meta.textContent = bits.filter(Boolean).join('  ');
         } else {
@@ -8986,8 +8990,14 @@ export class Ui {
           return;
         }
         this.standingsLoading = null;
-        /* Fastest first. The board returns them in posting order. */
-        this.standingsTimes = times.slice().sort((a, b) => a.lapMs - b.lapMs);
+        /* Fastest first, on the time the board ranks: three laps on a
+         * RaceGOW room, one lap on the field. A room row with no three lap
+         * total is not a time. */
+        const room = track.trackClass === 'micro';
+        this.standingsTimes = times
+          .filter((row) => !room || Number.isFinite(row.threeMs))
+          .slice()
+          .sort((a, b) => (room ? a.threeMs - b.threeMs : a.lapMs - b.lapMs));
         if (this.screen === 'standings') {
           this.paintStandings();
           this.renderMenu();
@@ -9039,15 +9049,18 @@ export class Ui {
       table.append(el('div', 'standings-note', this.standingsError));
       return;
     }
+    const room = t.trackClass === 'micro';
     if (!this.standingsTimes.length) {
-      table.append(el('div', 'standings-note', 'No times posted on this track yet. The first one is yours.'));
+      table.append(el('div', 'standings-note', room
+        ? 'No three lap time on this track yet. RaceGOW scores three laps in a row, and the first one is yours.'
+        : 'No times posted on this track yet. The first one is yours.'));
       return;
     }
     const me = (readPilotName() || '').trim().toLowerCase();
     const head = el('div', 'standings-row standings-head');
     head.append(el('span', 'standings-rank', ''));
     head.append(el('span', 'standings-pilot', 'Pilot'));
-    head.append(el('span', 'standings-lap', 'Lap'));
+    head.append(el('span', 'standings-lap', room ? 'Three laps' : 'Lap'));
     table.append(head);
     this.standingsTimes.forEach((row, i) => {
       const line = el('div', 'standings-row');
@@ -9065,7 +9078,7 @@ export class Ui {
         who.append(el('span', 'standings-ghost', 'ghost'));
       }
       line.append(who);
-      line.append(el('span', 'standings-lap', formatTime(row.lapMs)));
+      line.append(el('span', 'standings-lap', formatTime(room ? row.threeMs : row.lapMs)));
       table.append(line);
     });
   }
@@ -10288,12 +10301,10 @@ export class Ui {
        * line under it. Everywhere else the best lap keeps the top line,
        * which is what MultiGP's time trial is scored on.
        *
-       * The record machinery stays on the single lap in both cases. A track
-       * record here, on the board, and in the pending time written below is
-       * one lap, and the three lap total has nothing to be compared against
-       * yet, so promoting it to the hero without keeping the lap's record
-       * line would trade a headline for the most useful sentence on the
-       * screen. It does not: the record line moves down with the lap.
+       * The record line on this screen stays the best single lap of the
+       * run, against the record this browser holds. The public board is
+       * the other number: on a RaceGOW room the time it ranks is the three
+       * lap total, and that is what the standings show.
        */
       const three = Number.isFinite(opts.threeMs) ? opts.threeMs : null;
       const threeUp = opts.trackClass === 'micro' && three != null;
@@ -12521,6 +12532,7 @@ export class Ui {
         series: (seat && seat.series) || listing.series || '',
         gates: (seat && seat.gates) || 0,
         board: listing.board || '',
+        trackClass: seat && seat.doc ? trackClassOf(seat.doc) : 'full',
       });
       return;
     }

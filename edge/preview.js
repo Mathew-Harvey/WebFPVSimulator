@@ -199,8 +199,12 @@ export function previewOf(subject, item, { pageUrl, site }) {
   } else {
     const times = Array.isArray(item.times) ? item.times.length : Number(item.times) || 0;
     const lap = item.best ? lapText(item.best.lapMs) : '';
+    /* best.lapMs is the time the board ranks: three laps on a RaceGOW room,
+     * one lap on the field. The words have to say which, or a 15 second
+     * room record reads as one very slow lap. */
+    const metric = item.trackClass === 'micro' ? 'Three lap record' : 'Track record';
     lead = lap && clean(item.best.name)
-      ? `Track record ${lap} by ${clean(item.best.name)}, ${plural(times, 'time', 'times')} posted.`
+      ? `${metric} ${lap} by ${clean(item.best.name)}, ${plural(times, 'time', 'times')} posted.`
       : 'No time posted yet, so the record is open.';
   }
   const description = `${lead} Fly it in your browser on a real Betaflight control loop. No install, no account.`;

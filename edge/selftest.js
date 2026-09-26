@@ -28,6 +28,7 @@
  */
 
 import router from './router.js';
+import { previewOf } from './preview.js';
 import { PREVIEW_WAIT_MS } from './preview.js';
 
 let asked = null;
@@ -289,6 +290,17 @@ check('and so does the twitter title', meta(fb.html, 'twitter:title'), 'Ladder L
 check('the description gives the record',
   meta(fb.html, 'og:description'),
   'Track record 23.46 s by Bo Kite, 2 times posted. Fly it in your browser on a real Betaflight control loop. No install, no account.');
+const roomWords = previewOf(
+  { kind: 'track', id: 'trk-room' },
+  {
+    name: 'RaceGOW6 Track 1', author: 'Mat', trackClass: 'micro', times: 2,
+    best: { name: 'Bo', lapMs: 15400 },
+  },
+  { pageUrl: 'https://webfpv.org/sim/', site: 'https://webfpv.org' },
+);
+check('a RaceGOW link names the three lap record',
+  roomWords.description,
+  'Three lap record 15.40 s by Bo, 2 times posted. Fly it in your browser on a real Betaflight control loop. No install, no account.');
 check('the picture is the track\'s share card, at an address that changes when the card does',
   meta(fb.html, 'og:image'), 'https://webfpv.org/board/api/tracks/trk-1a2b3c4d/card?v=2026-09-25T10%3A00%3A00.000Z');
 check('and twitter is shown the same picture', meta(fb.html, 'twitter:image'), meta(fb.html, 'og:image'));

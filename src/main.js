@@ -4586,10 +4586,16 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       const rank = posted.rank != null ? ` Rank ${posted.rank}.` : '';
       const withGhost = ghost ? ' Ghost attached, ready to be chased.' : '';
-      /* formatTime, the same one the menu row that triggered this upload is
-       * labelled with. A confirmation that spells the time differently from
-       * the button reads as a different number. */
-      notice = { text: `Uploaded ${name}, ${formatTime(fastest)}.${rank}${withGhost}${healed}`, untilMs: performance.now() + 3600 };
+      /* A RaceGOW time on the board is the three lap total. A run that
+       * never put three clean laps together is stored and not ranked, and
+       * the notice says so rather than quoting a lap the sheet will not show. */
+      const roomTime = view.trackClass === 'micro' && Number.isFinite(threeFrom) ? threeFrom : null;
+      notice = {
+        text: view.trackClass === 'micro' && roomTime == null
+          ? `Uploaded ${name}'s lap, ${formatTime(fastest)}. A RaceGOW time on the board is three laps in a row, and this run does not have that yet.${healed}`
+          : `Uploaded ${name}, ${formatTime(roomTime != null ? roomTime : fastest)}.${rank}${withGhost}${healed}`,
+        untilMs: performance.now() + 3600,
+      };
       ui.markTimePosted(posted);
     } catch (e) {
       notice = { text: `Could not upload that time.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };

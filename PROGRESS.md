@@ -50897,3 +50897,13 @@ main" covered practice and not this: "Push to main, I'll fly it". Flying
 it is the verification for this change, so shots.js, lint:shell and verify
 were not run. main had not moved from 5744b85, the parent of 9dc0ea7, so
 it went up as a fast forward.
+
+### Flown
+
+The owner, 2026-09-26, after flying it: "lap call outs are good." That is
+the check the entry above said nobody had made: the voice is heard, at the
+Volume level, over the mix, with no ducking. The two offers left open, a
+level of its own and the music dipping under the call, stay unbuilt unless
+asked for. The report was about the callouts. It said nothing either way
+about practice's own behaviour: no lap limit, no results screen, and the
+Upload row.

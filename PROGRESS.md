@@ -50889,3 +50889,11 @@ module ABI or the build changed.
     node scripts/gen-preload.js --check up to date
     node scripts/boot-check.js          9 of 9 checks clean
     dash scan of the diff               none
+
+### To main
+
+The owner, 2026-09-26, asked before the push because the earlier "push to
+main" covered practice and not this: "Push to main, I'll fly it". Flying
+it is the verification for this change, so shots.js, lint:shell and verify
+were not run. main had not moved from 5744b85, the parent of 9dc0ea7, so
+it went up as a fast forward.

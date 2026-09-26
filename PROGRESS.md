@@ -51068,3 +51068,69 @@ have known failures on main).
   fewer triangles are drawn in every view; on Hibari Yard about nine more
   draw calls (the parked pair's new glass streak, amber and clear lens, and
   the moving cars' wheel sets) and about 4,000 fewer triangles.
+
+## 2026-09-26 | owner, board, polish | The owner's answers on the polish list, and the board's impossible laps removed
+
+The owner asked for a polish list, got one (POLISH-PLAN.md, 845ac1c, a
+survey of main at 716562b by one agent in a read only worktree; the
+fpv-judge-loop workflow was not run, since the request was for a list and
+CLAUDE.md keeps review workflows for when they are asked for), and
+answered its open decisions on 2026-09-26. The answers are written out in
+POLISH-PLAN.md (e7085c2); in short:
+
+1. Scoring: agreed, a low pass pays points and buys no multiplier.
+2. Remove the impossible records from the public board.
+3. A crash on a road sets the craft down on the verge.
+4. The Weight slider fades out in flight, shows when landed and on pause.
+5. **PHYSICS PATH, approved: judge crashes per physics step** (item 16).
+   Under CLAUDE.md its check:crash coverage lands first and the change
+   goes through the verify-flight-model procedure. Not started yet.
+6. The lens, 7. the race field restyle, and 8. the thrust: left as they are.
+9. Maverick Loop: the cheap fix, remove the trick.
+
+Order of work: the map card, Stage F, the manga menus, then the rest.
+
+### The board
+
+The board is Mathew-Harvey/WebFPVSimulator-LeaderBoard, attached to this
+session with push access. The admin password is not here and was not
+sought, so the records were removed through code: 7075761 on that
+repository adds judgeLap (no lap under 250 ms on any course, none faster
+than the course's station to station length at 50 m/s) to every post, and
+a one time, recorded, idempotent purge of the stored laps that fail it,
+run as the service starts. Before it shipped, the rule was applied to the
+live data (GET only) and listed exactly three laps: Flags and cones 200 ms
+(Oliver, 2026-08-27), Orbit (Anticlockwise) 10 ms and 15 ms (AsylumFPV,
+2026-08-31). The owner saw that list and chose "Deploy it"; the board's
+main went 1558b98 to 7075761, a fast forward. The absolute floor is 250 ms
+rather than the two seconds first suggested, because two seconds would
+have removed laps that look real (Simple Orbits 659 ms, Orbit 739 ms, one
+of Power Loops at 1743 ms). Five room rows the API never lists could not be
+seen before the purge; one would go only if it were under its own floor.
+
+Checked after the deploy, GET only, https://webfpv.org/board/api/tracks:
+Flags and cones' best is now 8524 ms (Asylum Fpv) and Orbit's 739 ms
+(Crapshack), as predicted; Simple Orbits keeps its 659 ms. The board
+agent's npm test: 592 pass, 1 skip (the admin hash, which needs its
+password); a scratch Postgres seeded from the live data removed exactly the
+three rows and refused posts under the floor.
+
+### The cars
+
+The car rebuild's own entry is above (16b1655 to 2bf3718, with the two
+lead checkpoints 6cc2972 and 552e21f): one GPLv3 model module,
+src/art/cars.js, for the town, the parked props and the moving cars; the
+R32 as a new kind and Hibari Yard's drift car; every existing kind's
+dimensions kept, so the town's 19,515 boxes and Hibari Yard's 552 hash as
+before and the world golden is untouched; about 21,000 fewer triangles in
+every town view. Looked at by the lead: the R32 reads from the chase seat
+(four round tail lamps, the wing, the stance) and in its three quarter;
+the other kinds are clean and consistent with the town's flat shading but
+simple, and the kei, hatch and minivan fronts are close to one another up
+close. Put to the owner with the pictures.
+
+### Running
+
+The quick wins (items 1, 2, 3, 4, 6, 7, 8, 9, 13, with the slider answer),
+the owner's four decisions (1, 3, 9 and the simulator's side of 2), the
+map card (17) and Stage F (18), each in its own worktree off main.

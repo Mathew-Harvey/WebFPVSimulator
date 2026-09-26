@@ -195,6 +195,58 @@ async function run(label, w, h) {
   }
 }
 
+/*
+ * THE BUILDER'S TOP BAR, ON A LAPTOP. Not a phone defect, and here all the
+ * same, because it is the same defect this file exists for: a control a
+ * person cannot reach. On the race canvas the bar's three zones need about
+ * 1944 px on one row, and until fitTopBar wrapped it, Undo, Redo, 2D, Labels
+ * and Sponsor logos sat clipped under the other two zones at 1440 and 1600,
+ * and Undo and Sponsor logos were still cut at 1920. Every visible control
+ * on the bar is hit tested at its two ends and its middle: the point has to
+ * land on the control, not on a neighbour or on nothing.
+ */
+const BUILDER_WINDOWS = [
+  ['race canvas', 'race', 1440, 900],
+  ['race canvas', 'race', 1600, 900],
+  ['race canvas', 'race', 1920, 1080],
+  ['freestyle canvas', 'freestyle', 1440, 900],
+];
+
+const BAR_PROBE = `(() => {
+  const bar = document.getElementById('tb-topbar');
+  if (!bar) { return JSON.stringify({ bad: ['no top bar'] }); }
+  const bad = [];
+  let seen = 0;
+  for (const c of bar.querySelectorAll('button, a, input')) {
+    const b = c.getBoundingClientRect();
+    if (b.width < 2 || b.height < 2 || getComputedStyle(c).visibility === 'hidden') { continue; }
+    if (c.closest('.tb-more-menu')) { continue; }
+    seen += 1;
+    const y = b.top + b.height / 2;
+    for (const x of [b.left + 3, b.left + b.width / 2, b.right - 3]) {
+      const e = document.elementFromPoint(x, y);
+      if (!(e && (e === c || c.contains(e)))) {
+        bad.push((c.textContent || c.value || c.className).trim().slice(0, 24)
+          + ' is covered at x ' + Math.round(x) + (e ? ' by ' + (e.textContent || e.className).trim().slice(0, 24) : ''));
+        break;
+      }
+    }
+  }
+  if (seen < 10) { bad.push('only ' + seen + ' controls on the bar'); }
+  return JSON.stringify({ bad, seen });
+})()`;
+
+async function runBuilder(label, mode, w, h) {
+  const page = await openPage({ root, width: w, height: h, url: `/src/trackbuilder/index.html?mode=${mode}` });
+  try {
+    await page.until('!!(window.trackBuilder && window.trackBuilder.doc)', 60000);
+    await page.sleep(1200);
+    return JSON.parse(await page.evaluate(BAR_PROBE));
+  } finally {
+    await page.close();
+  }
+}
+
 async function main() {
   const failures = [];
   console.log('device check: every screen, on a phone and a tablet\n');
@@ -213,6 +265,16 @@ async function main() {
     }
   }
 
+  console.log('\nthe track builder\'s top bar, on a laptop\n');
+  for (const [label, mode, w, h] of BUILDER_WINDOWS) {
+    const r = await runBuilder(label, mode, w, h);
+    const where = `builder ${label} ${w}x${h}`;
+    console.log(`  ${where.padEnd(34)} ${r.bad.length ? `${r.bad.length} control(s) covered` : `all ${r.seen} controls clear`}`);
+    for (const problem of r.bad) {
+      failures.push(`${where}: ${problem}`);
+    }
+  }
+
   if (failures.length) {
     console.log(`\nFAIL, ${failures.length} problem(s):`);
     for (const f of failures) {
@@ -220,7 +282,7 @@ async function main() {
     }
     return 1;
   }
-  console.log('\nPASS, every row and every note is reachable on every device');
+  console.log('\nPASS, every row and every note is reachable on every device, and every builder bar control on a laptop');
   return 0;
 }
 

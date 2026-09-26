@@ -51324,3 +51324,242 @@ bend without a slide. What would be wrong: it closing on or dropping back
 from the drift car over a few laps (the check says it cannot), it clipping
 the oncoming box truck in the south west bends, or its nose reading as any
 particular maker's badge.
+
+## 2026-09-26 | art | The cars' second pass: a face of its own for every kind
+
+The owner, 2026-09-26: "second pass on the cars please", with the lead's
+read of the first pass: the r32 right, the others clean but simple, flat
+fronts with two lamp rectangles, the kei, hatch and minivan faces nearly
+the same, the lower front chamfer reading as an odd facet, and budget to
+spend. For every kind but the r32 and the e82. No physics, no module ABI,
+no build; dist/sim.wasm, src/native and tests/goldens untouched. Commits
+e2adacc and aaaed2e (the lead's checkpoints of work in progress) and
+c94238c, then this entry.
+
+### What changed, for every kind
+
+All in src/art/cars.js, gated on the kinds' `p2` rows, so the r32 and the
+e82 are drawn exactly as before: a fingerprint of every buffer of both, in
+three builds each, is the same before and after (scratch geohash.mjs).
+
+- **Bumpers are pieces of their own** (bumperLoft): a section swept along
+  the plan from the arch round a rounded corner across the end and back,
+  standing 5 to 7 cm proud across the end and 2 cm off the flank, its foot
+  tucked, its top rolling back into the body as a lit ledge, easing off
+  toward the arch. The body's profile no longer carries a bumper, so the
+  plan chamfer the lead saw at each lower front corner is gone; the body's
+  end runs down behind the bumper.
+- **Lamps, grilles and intakes in rims** (pod): a rim stands off the face,
+  its inner side goes down to the lens, so the lens sits in a recess whose
+  shadow side reads as depth. Grille bars stand at half the rim's height.
+- **Lips on the arches** (archLipP2), standing 1.2 to 1.4 cm proud. The
+  body's flank stands in by that much (hw is W / 2 less the lip's stand), so
+  lips and bumpers reach the car's width and no further.
+- **Softer forms**: prism's `smooth` gives each ring of a round the normal
+  of a round through it, so the cel bands run along a shoulder as lines;
+  the roof edge is a round in three facets, and the round kinds' roofs and
+  shoulders are larger (kei 0.09, hatch and minivan 0.10, minibus 0.14).
+- **Glass**: the dark tinted base, a paler reflection band across its upper
+  part with a hard edge (a new flat, GLASS_BAND), the glints over it, the
+  dark frames as before.
+- **Wipers** lie on the windscreen as blades (they were bars hidden in its
+  foot); a rear wiper on the kei, kei van, hatch, wagon and minivan.
+- **Mirrors**: a dark foot on the door's corner, a dark arm, a shell in
+  paint, round at its front and narrower at its outer end, the glass on its
+  back.
+- **A tyre's inner face** on a parked wheel, so a wheel seen from the far
+  side or from behind is a tyre and not the thin edge of its tread (the
+  first pass drew that edge as a black blade under every car's far corner).
+- **Plates** stand square and clear of a bumper's roll (the kei's plate
+  first went half inside its bumper).
+
+### Each kind's face (FACES)
+
+    kei       small rounded lamps high on the corners in painted rims, a
+              bright ringed slot between, a big painted bumper with a wide
+              barred intake and two round fog lamps; tall rounded tail
+              lamps, reflectors on the bumper
+    keivan    a black band right across, square lamps at its ends in grey
+              bezels, bars between; a plain black bumper
+    keitruck  lamps in painted rims at the corners, a black barred grille,
+              a bright bumper wrapping the corners, bezelled tail lamps
+    hatch     lamps swept up and back round the corners, a slim slot under
+              the bonnet's edge, a big trapezoid barred mouth with fog lamps
+              in its corners; corner tail lamps wrapping onto the flanks
+    sedan     an upright bright framed grille with six vertical bars, twin
+              lamps in bright rims, amber round the corners, a rubbing
+              strip; wide tail lamps and a bright framed garnish
+    wagon     wedge lamps, a painted barred grille, a plain black bumper
+    minivan   wide lamps with twin projectors joined by a bright barred
+              grille, a deep bumper with a big lower grille and upright fog
+              lamps in bright rims; tall tail lamps, a bright garnish
+    van       lamps sunk in painted rims, a bright framed grille between, a
+              second barred mouth below, a black bumper
+    boxtruck  a big black barred grille panel, lamps in the bright bumper,
+              amber markers high on the cab's corners
+    minibus   twin square lamps each side in black housings, a bright framed
+              barred grille, fog lamps in a black bumper
+
+### Dimensions are physics, and are unchanged
+
+No table moved: SPEC, CAR_KINDS, CAR_H, STYLE_DIMS, VEHICLE_KINDS. The town
+fits its colliders on the vendored drawing, so its 19,515 boxes still hash
+a118277a53298663, and Hibari Yard's 552 still hash da1fb02b788cf315. What
+is drawn stays within the solid as the first pass kept it: the bumpers
+stand past L / 2 as the vendored bumper bar did, the flank is 1.2 to 1.4 cm
+inside W / 2, and the hatch's nose leans back 10 cm at its top (8 before)
+rather than the more a sloped nose would want, because the solid is a box
+to the waist and a steeper nose would leave an invisible wedge in front of
+it.
+
+### Triangles, a car (parked, wheels in)
+
+    kind       vendored   first pass   second pass
+    kei          2,012       1,375        1,897
+    keivan       1,940       1,389        1,815
+    keitruck       690       1,205        1,539
+    hatch        2,024       1,337        1,719
+    sedan        2,036       1,383        1,989
+    wagon        2,024       1,369        1,691
+    minivan      2,024       1,407        1,930
+    van          1,940       1,387        1,837
+    boxtruck     2,144       1,397        1,715
+    minibus      2,048       1,437        1,881
+
+Every kind is still under its vendored count but the kei truck. The first
+draft was over (the kei at 2,285): the fog lamps became flats, the tail
+lamps lost their outer walls, the small pods and the rings round the lamps
+went, the bumper's corner has three facets, the arch lip's inner edge is
+left open behind the wheel. A moving car's body: kei 1,233, keivan 1,167,
+boxtruck 979 (four or six wheels as instances, as before).
+
+### The budget
+
+window.__budget at the scratch rig's fixed cameras, 1280 by 720, calls /
+triangles. Vendored is the tree before the first pass (716562b), first pass
+b5ca53f, second pass c94238c's cars:
+
+    the town, Low           vendored          first pass       second pass
+    spawn                406 / 853,598     404 / 833,029    404 / 852,728
+    street               373 / 890,416     373 / 869,851    373 / 889,550
+    car park             194 / 819,590     194 / 798,793    194 / 818,492
+    rokuchome bays       215 / 826,182     215 / 805,385    215 / 825,084
+    school bays          203 / 855,678     203 / 834,953    203 / 854,652
+    high                 219 / 856,346     220 / 835,877    220 / 855,576
+
+    the town, High
+    spawn                627 / 1,111,865   625 / 1,088,900  627 / 1,116,605
+    street               521 / 1,106,711   521 / 1,083,322  521 / 1,110,897
+    car park             333 / 1,017,834   333 / 985,973    333 / 1,017,308
+    rokuchome bays       299 / 979,827     299 / 952,188    299 / 978,569
+    school bays          326 / 1,033,119   326 / 1,008,840  326 / 1,034,689
+    high                 292 / 977,768     293 / 954,001    293 / 977,912
+
+On Low every view is under the vendored level, by 700 to 1,100. On High two
+views are over it, spawn by 4,740 (0.43 per cent) and street by 4,186, and
+school by 1,570; the car park and rokuchome are under. No new draw call in
+the town (the band glass folds into a look the bake already has; spawn's
+two calls come and go with the cull grid). Attribute memory 52.3 to 53.5
+MB on Low, 63.6 to 65.1 on High. A parked car's distance level of detail
+was not built: the town bakes its cars into its cells by look, so a far
+version is a second bake a cell, and 0.4 per cent on High did not seem to
+earn it. Put to the owner.
+
+    Hibari Yard           first pass          second pass
+    Low, whole plot      522 / 128,139       527 / 129,691
+    Low, verge            91 / 47,714         93 / 48,872
+    High, whole plot     576 / 158,557       581 / 160,135
+    High, verge          239 / 118,158       242 / 120,628
+
+Two more prop batches on a built map (the band glass is one), and the
+moving cars 54 meshes and 8,638 triangles to 57 and 9,286 (58 to 61 at
+dusk): three more draw calls for the four moving cars.
+
+### Pictures, looked at, in the session's scratchpad (not committed)
+
+Under /tmp/claude-0/-home-user-WebFPVSimulator/6ddfd91b-7f5b-543b-a441-691d12014517/scratchpad/pics/p2:
+
+- first/ and final/: every kind, front and rear three quarter, day and
+  dusk (day/, dusk/: front-KIND.png, rear-KIND.png), and the kei, hatch,
+  minivan and sedan fronts close (day/close-KIND.png). The first pass from
+  b5ca53f's sources, the second from c94238c's.
+- sheets/: final-day-front-a, -b, -c and final-day-rear-a, -b, -c (and
+  dusk), every kind side by side; cmp-kei, cmp-hatch, cmp-minivan,
+  cmp-sedan, each first pass beside second; first-front-day and so on for
+  the first pass's own sheets.
+- town-first/ and town-final/: the town's car park from above and at
+  street level on its roof (carpark, roof2, roof4, roof5) and the spawn
+  street; sheets/town-cmp-carpark, -roof2, -roof5, -spawn pair them.
+- yard-van/ and yard-truck/: Hibari Yard's kei van and box truck driving.
+
+What they show: from the front at ten metres the kei (small high lamps, the
+slot, the big painted bumper), the hatch (swept lamps, the mouth), the
+minivan (the wide lamps and the bright bars) and the sedan (the bright
+upright grille) no longer share a face, and the kei van's black band, the
+van's and the minibus's are their own. The bumpers stand off the body at
+three quarters and the lamps sit in their rims; the band makes glass read
+as glass at any distance. At dusk the twin projectors and the rimmed tail
+lamps are what the silhouettes are known by. What is weaker: the rears of
+the tall kinds (kei, kei van, wagon, van, minibus) are still alike, tall
+lamps either side of a plate, which is true of the real cars; the front
+bumper's end meets the arch lip in a small notch seen side on; the kei
+truck is over its vendored count.
+
+### What went wrong
+
+- The kei's plate went half inside its bumper: plate() laid the plate from
+  the face at its foot to the face at its top, and the top was on the
+  bumper's roll, behind its face. Plates now stand square and clear of the
+  most that lies under them.
+- The hatch's lamp wrapped round its corner as a clear lens on the flank
+  and the chamfer, and read as a white flag; taken off. The sedan's amber
+  wrap was the same at twice the size; cut to a sliver.
+- The first draft was 400 to 900 triangles a car over the first pass, over
+  the vendored level (above for what was cut).
+- The dusk town shot is golden: the town has one light and ignores a
+  scene's time, which only a built map reads.
+
+### Found, not fixed
+
+- The r32 and the e82 still draw the parked tyre without its inner face,
+  so their far wheels show the same blade; they were left exactly as they
+  were, as the brief said.
+- Town on High is 0.43 per cent over the vendored level at spawn (above).
+
+### Checks, run in this session
+
+On c94238c's cars (the header comment was the one edit after them):
+
+    npm run check:props          all passed
+    npm run check:roads          all passed
+    npm run check:clip           877 passed, 0 failed
+    npm run check:world          all passed
+    npm run check:world-golden   all passed, tests/goldens/world.json
+                                 untouched
+    npm run check:world-engines  Node and Chromium agree to the bit on
+                                 every step of every run
+    npm run check:chase          all passed
+    npm run check:counter        all passed
+    npm run lint:boot            9 of 9 clean
+    npm run lint:memory          PASS, every world lazy and freed
+    npm run lint:quality         56 of 56 clean
+    npm run lint:preload         up to date
+    npm run lint:shell           FAIL, the known "title: overflow grew from
+                                 0 to 67 px" on main, nothing else
+    collider hashes (scratch)    town 19,515 boxes a118277a53298663, yard
+                                 552 boxes da1fb02b788cf315, as before
+    r32 and e82 fingerprints     unchanged (b37fabe1e4dc6c89,
+                                 1c3e2dbd0c1561da)
+
+Not run: npm run verify (not asked, and not physics, the plant, the ABI or
+the build), shots.js. Dash scan of every change since b5ca53f: none.
+
+### For the owner, when flying
+
+Park on the town's car park roof or the spawn street and come down to three
+metres from a car's nose: its lamps should sit in rims, its bumper should
+stand off the body round the corner, and a kei, a hatch and a minivan side
+by side should have three different faces. What would be wrong: a lamp or
+plate floating off a face or sinking into it, a bumper with a gap between
+it and the body at a corner, a far wheel showing as a black blade, glass
+that reads as paint.

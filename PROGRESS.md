@@ -52472,3 +52472,45 @@ the style is none of them.
     npm run verify              not run: no physics, plant, ABI or build
                                 changed here; the merge brings main's, which
                                 main's own entries record
+
+## 2026-09-26 | board | Hibari Yard Tandem is on the board, under trk-1b4a7d7a
+
+### What changed
+
+Nothing in this repository's code. The showpiece is published on the
+production board (https://webfpv.org/board) under its own fixed id,
+`trk-1b4a7d7a`, author "Mat", the name the owner's other maps there carry,
+which is the id the front door's Fly this map and Open it in the builder
+links name. The owner asked for it to be published once it was done.
+
+### How
+
+Through this builder's own Publish, not a hand made request: the builder
+served from this branch at fbbaab3, the showpiece's document seated as the
+map autosave under its fixed id (the Load list opens a shipped map as a copy
+under a fresh id, which is the right thing for an author and the wrong
+thing here), then Publish, which sent the document with `boardPlanOf`'s
+outline and drew and posted the share card. The headless browser did not
+trust the session proxy's CA, so its requests to the board went through
+Node, which verified TLS against the session's CA bundle; the builder's
+site statistics ping was refused before it left, because a publishing
+script is not a visitor. The same run went against a scratch local board
+first.
+
+### Checked
+
+- `/api/maps/trk-1b4a7d7a`: 75 pieces, 6 gaps, card present.
+- `/api/maps/trk-1b4a7d7a/document` is the document sent, key for key once
+  key order is set aside: production stores it as Postgres jsonb, which
+  reorders an object's keys, where the local file store keeps them.
+- `https://webfpv.org/sim/?map=built&mapshare=trk-1b4a7d7a&board=...&fly=1`,
+  the front door's link, opened read only: the deployed simulator fetched
+  the document from the board (200) and sat the five inch on its pads.
+
+The edit key the board handed back is not in this repository or any other.
+It went to the owner in the conversation; without it the map is changed by
+an admin removing it and a publish putting it back.
+
+### RUN LOG
+
+    npm run verify              not run: no code changed

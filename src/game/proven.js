@@ -48,7 +48,6 @@ export const PROVEN = {
   'Snapback': { runs: 9, landed: 9 },
   'Immelmann Turn': { runs: 9, landed: 9 },
   'Powerloop': { runs: 9, landed: 9 },
-  'Maverick Loop': { runs: 9, landed: 9 },
   'Split-S': { runs: 9, landed: 3 },
   'Matty Flip': { runs: 9, landed: 9 },
   'Orbit x2': { runs: 9, landed: 9 },

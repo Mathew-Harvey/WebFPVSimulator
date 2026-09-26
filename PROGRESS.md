@@ -51554,3 +51554,253 @@ close. Put to the owner with the pictures.
 The quick wins (items 1, 2, 3, 4, 6, 7, 8, 9, 13, with the slider answer),
 the owner's four decisions (1, 3, 9 and the simulator's side of 2), the
 map card (17) and Stage F (18), each in its own worktree off main.
+
+## 2026-09-26 | game, shell, builder, checks | Four of the owner's decisions: a low pass buys nothing, the verge, no Maverick Loop, half a metre between stations
+
+The owner answered the polish survey's open decisions on 2026-09-26
+(POLISH-PLAN.md, "The owner's answers, 2026-09-26", on
+claude/vibrant-wozniak-v2pg5e, whose car rebuild is not merged here). Four
+of them are carried out here, on a worktree branch off 716562b, one commit
+each, for the lead to merge.
+
+### The owner's decisions this covers, 2026-09-26
+
+1. **Scoring (item 15): "agree".** A low pass pays points and buys no
+   multiplier. The list's two other suggestions, each kind buying
+   multiplier once a combo and a tier table for the counter apart from the
+   trick one, were not agreed, and nothing here touches them.
+2. **A crash on a road sets the craft down on the verge (item 10).**
+3. **Maverick Loop (the survey's open decision 12): "make a cheap fix,
+   remove the trick".**
+4. **Impossible laps (item 5).** The board's floor and purge are another
+   agent's, in Mathew-Harvey/WebFPVSimulator-LeaderBoard; the simulator's
+   side, that it stops producing them, is here.
+
+None of the four touches the physics model, the plant, the module ABI or
+the build: nothing under src/native, patches, vendor, configs or dist
+changed, so none needed putting to the owner first, and verify was not run.
+
+### What changed
+
+- **A low pass pays and buys nothing** (dd1e890). In score.js addGeometry
+  a low pass adds its points to the combo, is multiplied by what the rest
+  of it bought and is lost with it on a crash, but is not a point of
+  multiplier and never moves the window: it goes in the way a trick worth
+  nothing does in land(), so one that opens a combo opens it for the usual
+  three seconds and a run of low passes alone banks three seconds after
+  the first. comboMultiplier is 1, not 0, for a combo holding points that
+  bought nothing, which only low passes can make, so a lone low pass still
+  pays. score:selftest has six new lines and every old one is unchanged.
+  The lettering demo's small bank, Split-S and a low pass at x2, is now a
+  shape the rule can make: 320 at x1.
+- **The survey's straight line, replayed.** From its logged points (low
+  pass 22, low pass 20, thread 339, CONTAINER TUNNEL 500, under 227, roof
+  skim 185, thread 224, low pass 24, under 156: 1,697), fed a second apart,
+  which is what one x9 combo needs: it banks **10,182 at x6**, where it
+  banked 15,273 at x9. The times are an assumption; the survey logged no
+  atMs. score:selftest pins it. Flown again in the page with the survey's
+  own rig and line on this tree, the pilot's line came out different, as
+  it does: CONTAINER TUNNEL 500, Under 207, Roof skim 185, Thread 248, then
+  a Low pass 39 that took the combo from 1,140 to 1,179 and left it at x4;
+  banked 4,716 at x4, where the old rule would have made it 5,895 at x5.
+- **The verge** (14c55b3). src/maps/built/traffic.js roadKeepOut(t): a
+  rest spot is refused within a lane's half width, plus the most a car on
+  that road reaches from the line it drives, plus the craft's radius, of
+  the centre line of a road some car drives (road.js nearestOn, in the
+  plan). A car reaches half its width; the drift car, whose body turns
+  across its path in a slide, half its diagonal, the most it reaches at
+  any slip. On Hibari Yard that is 1.875 + 2.195 + 0.174 = 4.24 m from the
+  loop's centre line. A spot on a surface above the tallest car on the
+  road, the footbridge's deck, is not in the traffic. It also offers the
+  verge square off each road from the crash, 0.1 m past that line, so a
+  crash in the middle of the road finds one beyond findRestSpot's 3.5 m
+  rings instead of going back to the start line. findRestSpot takes it as
+  an optional last argument, setDownNearby passes the map's own when cars
+  drive (view.restKeepOut), and every other map passes null and is set
+  down exactly as before. check:clip has six new lines for it.
+- **No Maverick Loop** (6cfbfe2). Its pattern is gone from
+  src/game/trickdetect.js, so the trick list and the trick film, both read
+  off PATTERNS, drop it too. src/game/tricks.js keeps its row, with a note:
+  it is the workbook's transcription and score:selftest holds it to the
+  workbook name for name. score:selftest's red line, "the same lap without
+  the flip is a Maverick Loop", **is removed as an expectation, not
+  changed**, and score:selftest is fully green for the first time since
+  f9b7db4. What the recogniser names that shape now is the lap's own whole
+  roll as a Roll, 50, on 55 of trick:sweep's 105 samples, silent on the
+  rest, nothing over: trick:sweep's 'roll loop' case wants a Roll, and
+  park:fly's roll loop wants Mavvy Roll or Roll. src/game/proven.js loses
+  the one row, 'Maverick Loop'; see "What went wrong" for the nine rows a
+  full regeneration also moves.
+- **Half a metre between stations** (e0f2ef3). After a credit, the race
+  waits for one pass depth of flying before the next station counts: 0.5 m
+  on the field, 0.154 m in a room as built (0.045 m of RaceGOW's). That is
+  what takes a craft from the face of a box, where it is credited, to the
+  opening's own plane. It stays under the box's whole depth on purpose:
+  RaceGOW6 Track 1 has two gates standing on one spot in its order, flown
+  as one pass, and a longer rule would refuse every lap its board holds.
+  Only the travel the race judges counts, and a travel already inside the
+  box when the wait runs out is credited there rather than refused. The
+  builder warns, 'close-stations', when two stations in a row stand closer
+  than that, judged where the race scores them: an opening at its centre, a
+  flag at its square's centre. check:clip has nine new lines for the two.
+
+### No real lap is refused: flown, and from the geometry
+
+Both, on every course in tracks/json (11) and every course on the board
+(41, read with GET from webfpv.org/board/api/tracks/ID/document into the
+scratchpad; nothing was written to the board).
+
+- **Flown.** No committed harness flies whole laps through Race, so a
+  scratch rig did (not committed): every course's racing line from
+  courseFromDocument, lifted 0.3 m (a marker's knot sits on the bottom
+  edge of its square, which a pilot flies over), walked in 5 cm steps for
+  three laps through 716562b's Race and this one, pass for pass. 50 of 52
+  closed laps; the two that did not stalled at the same station in both
+  (Orbit's line has no length, and Vertical Speed Arrest's line peaks
+  0.38 m under its first dive gate). 43 identical to the microsecond. 9
+  differ only where two stations' boxes overlap and the second credit now
+  waits for its half metre: a split up to 35 ms later on 2022 AU
+  Nationals, 2022 MultiGP GQ, WCMRC Round 5 and FAI Turkiye 2024 (each in
+  tracks/ and on the board), with every lap time the same, and RaceGOW6
+  Track 1's first lap 9 ms longer, because the rig starts on its timing
+  plane and its finish gate stands on the same spot as the gate before it;
+  its later laps are the same. No station was refused on any course.
+- **Geometry.** A real lap crosses each opening's plane inside it, and the
+  credit before came at or before that station's own plane, so a lap can
+  only be refused where the flying from one plane to the next is under
+  half a metre. The shortest racing line leg between two different points
+  is 0.28 m, a flag standing just before a gate on WCMRC Round 5 and 2022
+  MultiGP GQ, and the gate's box begins before the flag's plane, so the
+  gate is credited at the flag's plane with 0.78 m of box to spare. The
+  only legs under that are stations at one point: Orbit, 2022 AU Nationals'
+  gate flown twice in a row, and RaceGOW6 Track 1's two pairs, each
+  credited at the face and then at the plane on one straight pass.
+- **The impossible lap.** Orbit's two flags, at one pole, score one square
+  passed one way and then the other. Rocking two centimetres a frame in it
+  closed a lap every two frames, 32 ms, through 716562b's Race; through
+  this one each lap is 416 ms at that rate, a metre of flying. A real there
+  and back through the square, 0.6 m or 2 m either side, closes the same
+  laps in the same times in both.
+
+### Flown, Hibari Yard, with the in-page pilot
+
+The survey's rig (tests/lib/page.js and scripts/lib/pilot.js on the
+shell's frame clock), Low, the draw off for the control rate, on this tree
+and on 716562b extracted into the scratchpad:
+
+    X over the loop's centre line   716562b: set down 0.00 m off the centre
+                                    line, cars passing 0.82 m clear
+                                    now: 4.34 m off it, on the west verge,
+                                    every car 1.45 m clear or more for 40 s
+    a kei van hits the craft        716562b: "Crashed, set down nearby",
+    hovering in its lane            1.95 m off the centre line, in the lane;
+                                    the box truck and the van then drove
+                                    through it (clearance -0.98 and -0.84 m)
+                                    now: "Crashed, set down nearby", 4.34 m
+                                    off it; every car 1.42 m clear or more
+                                    for the next 40 s
+
+Clearance is from the parked hull to each car's footprint, from the car's
+own pose, every frame. Looked at: the craft on the verge beside the lane
+under the footbridge, and after the van, the banner over the verge with
+the road to its left.
+
+### RUN LOG
+
+On the last code (14c55b3's tree; the browser checks ran on the same
+files before they were committed):
+
+    npm run score:selftest   all passed, 264 (716562b: 258 and 1 FAILED,
+                             the Maverick Loop)
+    npm run trick:sweep      exit 0, "nothing was ever paid more than it
+                             was worth"
+    npm run trick:proven     All 46 flown, nothing over (47 before); only
+                             the removed row kept, see below
+    npm run check:counter    all passed, 26
+    npm run check:chase      all passed, 58
+    npm run check:crash      0 guards failed; 68 guard lines passed, 21
+                             targets met, 2 not (measured, not enforced,
+                             and they read the crash reset since 4ecbe75)
+    npm run check:clip       891 passed, 0 failed (716562b: 876)
+    npm run check:path       12 passed, 0 failed
+    node scripts/micro-check.js   exit 0, 267 passed
+    npm run lint:boot        9 of 9 checks clean
+    npm run lint:memory      PASS; built 9 modules, 61 -> 223 -> 61
+                             geometries
+    npm run lint:input       1 failed, 159 passed: "and the input layer and
+                             the button agree with the setting", the known
+                             stick mode read; 716562b in the same session:
+                             the same line, 1 failed, 159 passed
+    npm run lint:preload     up to date, boot 113, city 73, built 32; 215
+    park:fly --only="Roll loop"   0 of 5 on 716562b and 0 of 5 here, the
+                             pilot's path error over 2 m and the craft
+                             bumping, so it says nothing about the names;
+                             a 3 rep run on 716562b once hit 1 of 3
+    dash scan                none in any added line
+    npm run verify           not run: no physics, plant, ABI or build
+                             change, and the brief said not to
+
+### What went wrong
+
+- The warning's first cut judged a flag at its foot, which put Simple
+  Orbits (two flags on one pole passed on the left, a real orbit with its
+  squares 4.5 m apart) and WCMRC Winter 2026 Round 3 in the wrong. It now
+  judges a flag at its square; on the 52 documents it speaks on Orbit,
+  2022 AU Nationals and RaceGOW6 Track 1's two pairs, all true.
+- The race's comment first said no course credited a pass later for the
+  rule. The flights said otherwise (the 35 ms splits) and it was corrected
+  before the commit.
+- The first flown car crash was not one: the craft, placed and held at
+  once, sagged onto the lane in 136 ms, the pilot stopped on "landed", and
+  the drift car drove through a craft that had landed on the road itself.
+  The scenario now settles the hover first and waits for the shell's
+  crash. The verge commit's message first read 4.30 m and 1.90 m off the
+  one decimal readout; it was amended to 4.34 and 1.95 before anything
+  was pushed.
+- trick:proven, run on the removal, moved nine more rows (Blindflip,
+  Mavvelmann, Matty Twister, Half Matty, 540 Half Matty, Stellar Eject
+  Roll, Cinnamon Roll and Side Loop to fewer landed, and Yaw Spin's place).
+  A regeneration of 716562b's own recogniser moves the same nine, so
+  src/game/proven.js is stale on main; only the Maverick Loop row was
+  taken out, and the nine are for the owner.
+- Several one line shell commands were refused by the worktree's guard
+  and had to be split; nothing else came of it.
+- The scratchpad is shared with another agent of this session, which was
+  running browser checks at the same time: the /tmp/sim-page-* profiles
+  were removed by matching them to this work's own runs (41), and the 25
+  made by the other agent's runs were left.
+
+### For the lead
+
+- Four commits on this worktree's branch, dd1e890, 6cfbfe2, e0f2ef3,
+  14c55b3, then this entry. Comments cite POLISH-PLAN.md, which lives on
+  claude/vibrant-wozniak-v2pg5e.
+- The car rebuild will meet the verge. roadKeepOut reads every car's
+  length, width, height and drift from trafficOf, so a new car is kept
+  out by its own size; check:clip's six lines use Hibari Yard's lane at
+  x = 140 in the plan and read the clearance off roadKeepOut, not a
+  number, so they hold unless the loop moves off that line.
+- **Same opening twice in a row** is still one pass. 2022 AU Nationals
+  flies gate 32-36 twice in a row round a loop; one straight pass through
+  it credits both, before this change and after it (face, then plane), so
+  its lap can skip the loop. No distance can tell that from RaceGOW6's two
+  gates on one spot, which ARE one pass; the rule that can is that the
+  same opening, element and hole, is not credited again until the craft
+  has left its box. That changes what a lap is again and is the owner's.
+  The builder's warning now names the pair.
+
+### For the owner, when flying
+
+- **Scoring.** Hug the ground on Hibari Yard: a low pass still pays its
+  points into the combo, but the multiplier in the corner should only
+  climb for gaps, skims, unders, threads and the chase. Wrong would be a
+  low pass taking the x number up, or a lone low pass paying nothing.
+- **The verge.** Crash on the loop, or press X over it: you should be put
+  down beside the road, a little over four metres from its middle, facing
+  the way you were, with the traffic going past you. Wrong would be the
+  camera under a car, or a crash in the middle of the road sending you to
+  the start line.
+- **Tricks.** A plain roll around a rail now scores as a Roll or nothing,
+  never a Maverick Loop, and the trick list no longer offers it.
+- **Laps.** Nothing should feel different on any course. On Orbit, rocking
+  on the flag no longer counts laps.

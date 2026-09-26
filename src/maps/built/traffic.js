@@ -110,6 +110,10 @@
  *                           tx, ty), or null when it has no road to be on.
  *                           For drawing a car where it starts, without the
  *                           module.
+ *   roadKeepOut(t)          where a crashed craft must not be set down, for
+ *                           findRestSpot: { roads, blocks(x, z, y, pad),
+ *                           verges(x, z, pad, visit) } in the world, or
+ *                           null when no car drives. See its own comment.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -135,7 +139,7 @@ import { threePosToSim } from '../../render/frame.js';
 import { uploadRoad, addVehicle, MOVER_SLOTS } from '../../game/plantworld.js';
 import { docToWorld } from './place.js';
 import {
-  roadOf, laneLine, reverseLine, arcOn, pointAt, moduleCheck, MODULE,
+  roadOf, laneLine, reverseLine, arcOn, pointAt, nearestOn, moduleCheck, MODULE,
 } from './road.js';
 
 /* How hard each of the town's cars is driven round a bend, m/s/s: a
@@ -407,5 +411,102 @@ export function vehicleStart(doc, el) {
     ty: back ? -p.ty : p.ty,
     length: kind.length,
     width: kind.width,
+  };
+}
+
+/*
+ * WHERE A CRASHED CRAFT MUST NOT BE SET DOWN: the roads the traffic drives.
+ *
+ * A crash is set down on the nearest flat surface (findRestSpot in
+ * src/game/collide.js), and a road is flat, so a crash on the yard loop was
+ * put on the lane; a landed craft is not stepped, and the next car drove
+ * through it, with the pilot looking at the underside of a lorry (PROGRESS.md,
+ * Stage E). The owner's decision of 2026-09-26: a crash on a road sets the
+ * craft down on the verge.
+ *
+ * So a rest spot is refused when it is within `clear` of the centre line of
+ * a road some car drives, measured with road.js nearestOn in the plan: a
+ * lane's half width, plus the most any car on that road reaches from the
+ * line it drives, plus the caller's `pad` (the parked craft's own radius).
+ * On a two lane loop a lane's half width IS the lane's offset from the
+ * centre, so that is the outer edge of a car in either lane; on a road of
+ * one lane it is the whole road. A car reaches half its width, and the
+ * drift car, whose body turns across its path in a slide, half its
+ * diagonal, the most it can reach at any slip. A spot on a surface above
+ * the tallest car on the road, a footbridge's deck, is not in the traffic.
+ *
+ * And the verge is offered: `verges` hands the caller, for each such road,
+ * the two points square off its centre line from the nearest point to
+ * (x, z), just clear either side, so a crash in the middle of a wide road
+ * is not sent back to the start line for want of a candidate. The caller
+ * judges them like any other spot and takes the nearest that is flat,
+ * clear and reachable.
+ *
+ * World in, world out (Three.js metres, x and z), through the one
+ * conversion place.js makes. Null when no car drives: every map but one
+ * with traffic is set down exactly as before.
+ */
+const VERGE_SLACK = 0.1;
+
+export function roadKeepOut(t) {
+  if (!t || !t.field || !t.vehicles.length) {
+    return null;
+  }
+  const W = t.field.width;
+  const D = t.field.depth;
+  const byRoad = new Map();
+  for (const v of t.vehicles) {
+    const lane = t.roads[v.road];
+    const drawn = lane ? t.drawn.find((d) => d.element === lane.element) : null;
+    if (!drawn) {
+      continue;
+    }
+    const reach = v.drift > 0
+      ? Math.sqrt(v.length * v.length + v.width * v.width) / 2
+      : v.width / 2;
+    const top = v.clearance + v.height;
+    const had = byRoad.get(drawn.element);
+    const laneHalf = drawn.width / (2 * (drawn.lanes > 0 ? drawn.lanes : 1));
+    if (!had) {
+      byRoad.set(drawn.element, { line: drawn.line, clear: laneHalf + reach, top });
+    } else {
+      had.clear = Math.max(had.clear, laneHalf + reach);
+      had.top = Math.max(had.top, top);
+    }
+  }
+  const roads = [...byRoad.values()];
+  if (!roads.length) {
+    return null;
+  }
+  return {
+    roads,
+    /* Is a craft parked at (x, z) on a surface at height y in the traffic? */
+    blocks(x, z, y, pad) {
+      const px = x + W / 2;
+      const py = D / 2 - z;
+      for (const r of roads) {
+        if (y < r.top && nearestOn(r.line, px, py).d < r.clear + pad) {
+          return true;
+        }
+      }
+      return false;
+    },
+    /* The verge either side of each road, square off its centre line from
+     * the nearest point to (x, z): visit(x, z) for each, in the world. */
+    verges(x, z, pad, visit) {
+      const px = x + W / 2;
+      const py = D / 2 - z;
+      for (const r of roads) {
+        const n = nearestOn(r.line, px, py);
+        const at = pointAt(r.line, n.s);
+        /* The line's own left, the tangent turned a quarter. */
+        const lx = -at.ty;
+        const ly = at.tx;
+        const out = r.clear + pad + VERGE_SLACK;
+        for (const side of [1, -1]) {
+          visit(n.x + lx * side * out - W / 2, D / 2 - (n.y + ly * side * out));
+        }
+      }
+    },
   };
 }

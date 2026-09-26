@@ -55,6 +55,7 @@
     "gen:boardcards": "node scripts/boardcards.js",
     "gen:boardpresets": "node scripts/boardpresets.js",
     "gen:gatecards": "node scripts/gatecards.js",
+    "gen:wallart": "node scripts/wallart.js",
     "gif:selftest": "node scripts/gif-selftest.js",
     "ghost:selftest": "node scripts/ghost-selftest.js",
     "contact:selftest": "node scripts/contact-selftest.js",

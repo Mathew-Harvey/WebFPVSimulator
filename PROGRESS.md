@@ -50759,3 +50759,130 @@ the room. `npm run verify` not run: nothing physical, no plant, ABI or build.
 No other check run: no code changed.
 
 **Waiting on the owner:** section 9 of the plan.
+
+## 2026-09-26 | render, art | The whoop room recoloured in the sakura theme, with the slap pack on its walls
+
+**The owner's answers to WHOOP-ROOM-PLAN.md, 2026-09-26.** In their words:
+recolour the basement and decorate it "with larger versions of the stickers
+as well art"; "use the stickers to make posters and or banners, sakura theme
+remember"; on the post chain question, "i don't know what this means, but
+don't break existing tracks at all"; and "its a room, wiht lights, dont make
+it seem like sun set". That covered the concept (the basement, recoloured,
+not the community hall), the art (posters and banners from the stickers),
+the render pipeline (the shared post chain was left alone) and the light
+(neutral, lit, no low warm key). None of it touched the physics model, the
+module ABI or the build, so nothing here needed the advisor's approval
+beyond the answers themselves. They are recorded in the plan's section 10.
+
+**Changed.**
+
+- `src/render/scene.js`, the indoor branch only. New ROOM palette: deep green
+  gate band to 1.2 m, sakura rail, pale sakura plaster, cream ceiling painted
+  as lit, pale beams, twelve unlit light panels, honey boards round a mat in
+  the town's dark. Four neutral white lamps a sixth of the width off the
+  centre line, a bright hemisphere, a near overhead key that casts nothing
+  in a room, pale air from 5.5 to 44 m. The shell is merged per material.
+  The skirting now stands proud on all four walls; it was flush on two, its
+  20 mm added to the length of the east and west walls. `keyDir` replaces
+  `SUN_DIR` in the two places that place the sun, and is `SUN_DIR` on the
+  field.
+- `src/art/wallart.js`, new: hangs twelve pieces on four walls from one atlas,
+  one draw call, layer 1, no collider; banners on bamboo rods. Loaded by
+  dynamic import from the indoor branch only, and never fatal: a module that
+  does not arrive in 6 s, a missing piece or a picture that fails leaves the
+  room bare and the race intact.
+- `scripts/wallart.js`, new, `npm run gen:wallart`: reads the slap pack at
+  webfpv.org/stickers/ (or `--pack=FILE`), composes seven A0 posters, two
+  4.4 m banners, a nobori and a cut vinyl wordmark around sixteen stickers,
+  renders them in headless Chromium with the pack's own fonts and writes
+  `assets/wallart/atlas.webp` (345 KB, 405 px per printed metre) and
+  `src/art/wallart-atlas.js`. No font file ships; NOTICE records the art's
+  origin and the OFL faces its type was set in.
+- `scripts/gatecards.js`: the whoop card's camera through MICRO_SCALE, and
+  its aim lifted from 0.35 to 0.75 m. `assets/gate/whoop.jpg` retaken.
+- `src/fresh.js` regenerated for the two new modules; `package.json`,
+  `NOTICE`, `WHOOP-ROOM-PLAN.md`.
+
+**Why the gate band.** The pipe is 0x9aa2b0. It reads against anything clearly
+darker or clearly paler than itself and against nothing of its own value, so
+there is no mid tone anywhere a gate stands in front of: dark below 1.2 m,
+pale above. Measured as luma across the same upright of Living room 1's
+ladder, old room against new, fixed camera:
+
+    High, band behind      old: core 44 to 100 over a 33 wall
+                           new: core 45 to 52 over an 88 band
+    High, plaster behind   old: core 50 over a 35 wall
+                           new: ink 110 to 120 under a 200 plaster
+    Low, band behind       new: core 65 to 77 over an 85 band
+    Low, plaster behind    new: body 11 to 36 under a 198 plaster, with a
+                                dark terminator edge
+
+The last line is the weak one and it is written down: Low has no ink pass,
+so a tall element's top seen against the plaster reads by a thin dark edge
+and by hue, not by value. Everything below 1.2 m, which is where RaceGOW
+gates are, reads at least as well as it did.
+
+**What went wrong, in order.**
+
+1. The first light pass (hemisphere 0.9, lamps 21, key 0.6) clipped the
+   plaster and the ceiling to white and hid the light panels. Brought down
+   to 0.6, 10 and 0.45, with the ceiling painted as lit rather than lit.
+2. It was tuned on Low, which is what this container picks, and High was
+   different. With shadows on, a near vertical key runs along every upright,
+   so each pipe shadowed itself and went dark in front of the dark band: the
+   one pairing the room exists to avoid. The key casts nothing in a room now,
+   which is also what the old room's 0.16 key amounted to. Bloom (threshold
+   0.78) lit hot patches on the plaster; the plaster went a shade deeper.
+3. Moving the lamps in over the track at 15 each blew the far plaster out
+   into bloom again. Back to 10, kept over the track.
+4. The generator's font check passed a face whose status was "unloaded",
+   because "unloaded" ends in "loaded". Caught on the first run; every face
+   is now loaded and checked by status.
+5. A light streak in the first preview was the preview's compositing, not the
+   atlas: every pixel sampled in it was rgba(0,0,0,0).
+6. shots.js exits 1 on any console error, and every capture here logs one
+   refused board request, including the baseline on unchanged code. My early
+   runs piped through tail and hid that exit code. It is also why
+   `npm run gen:gatecards` cannot finish in this container, so the whoop card
+   was taken by calling shots.js with the generator's own parameters, as on
+   2026-09-09.
+7. The whoop card's camera was written on 2026-09-09 and the room grew by
+   MICRO_SCALE on 2026-09-14 (91c77eb), so its numbers put the lens 1.6 m
+   from the start gate. It now goes through MICRO_SCALE.
+
+**Checks, run this turn, on the committed code unless said.**
+
+    colliders, Living room 1   6 boxes identical to 1e-6, census identical,
+                               28 solids: wall 5, gate 13, obstacle 8, pole 2
+    colliders, 5 inch field    2064 identical
+    field render               100 calls, 389041 triangles, 61 geometries,
+                               5 textures, 26 programs: identical
+    field pixels               before against after, 1101 and 481 pixels
+                               differ, max 9 and 1 levels; the same code
+                               twice, 341 and 205, max 9 and 20: noise
+    room render                134 to 118 calls, 118503 to 118783
+                               triangles, textures 3 to 4, programs 18 to 22
+    npm run micro:check        267 pass, 0 fail
+    npm run lint:preload       up to date, boot 113 unchanged, 217 served
+    gen:wallart                saved pack and live pack: rev cc911c84d03b both
+    node --check               every changed module
+
+The field and collider comparisons were taken before the last edit to
+scene.js (a 6 s wait on the art's modules and a comment); the room's
+colliders and render were re-taken after it and are the same. Pictures at
+Low and High from six cameras are in the scratch directory, not here.
+
+**Not run.** `npm run verify`: nothing physical, no plant, ABI or build, and
+check 16's claim holds by construction (no module under src/maps/city is
+imported; the art modules are imported only inside the indoor branch; the
+boot preload list did not change). `lint:memory`, `lint:shell`,
+`lint:responsive`, `lint:boot`: none of them loads a micro course or has
+anything in it that changed, apart from one picture on the title.
+`gen:gatecards` in full, for the reason in item 6. The board's card renderer
+(src/share/orbit.html) builds rooms through the same buildMap and will show
+the new room; it was not exercised here.
+
+**To fly.** A whoop on Living room 1, on your own machine and preset. What
+counts as wrong: a gate you lose against the dark band or the plaster, walls
+glowing on High, the room reading as dusk, a poster or banner blurred or
+missing, or any difference at all in how a wall tap, a gate or a lap behaves.

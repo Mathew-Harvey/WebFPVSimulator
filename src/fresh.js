@@ -97,6 +97,8 @@
     'src/art/clubhouse.js',
     'src/art/startblock.js',
     'src/art/stf.js',
+    'src/art/wallart-atlas.js',
+    'src/art/wallart.js',
     'src/boot.js',
     'src/fc/catalog-data.js',
     'src/fc/catalog.js',

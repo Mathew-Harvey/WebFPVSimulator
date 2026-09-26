@@ -59,6 +59,22 @@ subclasses or wraps it in our own GPLv3 code under `src/maps/city/` rather
 than editing the vendored copy, so an upstream update is a re-copy plus one
 patch rather than a merge.
 
+## The WebFPV slap pack, as the whoop room's wall art
+
+    Upstream    https://webfpv.org/stickers/, the landing page repository's
+                stickers/index.html, which is the pack's copy of record
+    Licence     GPLv3, this project's own work
+    Generated   assets/wallart/atlas.webp and src/art/wallart-atlas.js,
+                by scripts/wallart.js (npm run gen:wallart)
+
+The atlas is a picture: eleven posters and banners composed around the pack's
+stickers, laid out in headless Chromium and screenshotted. The pack sets its
+type in Zen Kaku Gothic New, Caveat Brush and M PLUS Rounded 1c, which it
+embeds as subsetted faces under the SIL Open Font License 1.1. No font file is
+copied into this repository: the generator uses the pack's own font block to
+lay the art out and keeps only the rendered pixels, and the OFL governs the
+font software, not images made with it.
+
 ## three.js
 
     Upstream    https://github.com/mrdoob/three.js

@@ -326,3 +326,39 @@ decision (section 9, question 2), not part of this plan.
 8. **Later, not here.** The hall could become the whoop's indoor freestyle
    space, which `freestyleOffered` in `src/ui/ui.js` says is the one function
    that would have to change.
+
+## 10. What the owner decided, 26 September 2026, and what was built
+
+The owner's answers, in their words:
+
+1. "recolour the basement and decorate it with larger versions of the
+   stickers as well art". So not the community hall: the basement stays, its
+   walls, joists and mat, recoloured.
+2. and 3. "use the stickers to make posters and or banners, sakura theme
+   remember".
+4. On the post chain question: "i don't know what this means, but don't
+   break existing tracks at all". So the shared post chain was not touched,
+   and nothing a craft can touch moved (see PROGRESS.md for the proof).
+5. "its a room, with lights, dont make it seem like sun set".
+
+Built, with the reasoning in the code:
+
+- **The room**, `src/render/scene.js`, indoor branch only: deep green gate
+  band to 1.2 m under a sakura rail, pale sakura plaster above, a cream
+  ceiling with pale beams and twelve lit panels, honey boards round a mat in
+  the town's own dark, four neutral white lamps over the track, pale air.
+  The key light casts nothing in a room. The shell is merged per material.
+- **The art**, `scripts/wallart.js` (`npm run gen:wallart`): seven A0
+  posters, two 4.4 m banners, a nobori and a cut vinyl wordmark, composed
+  around sixteen of the pack's stickers in its palette and motifs, rendered
+  in headless Chromium into `assets/wallart/atlas.webp`, 345 KB, with the
+  table in `src/art/wallart-atlas.js`.
+- **The hanging**, `src/art/wallart.js`: twelve pieces on four walls, one
+  draw call, paint only, bamboo rods on the banners.
+- **The Whoop card** on the title, `assets/gate/whoop.jpg`, retaken, and its
+  camera in `scripts/gatecards.js` taken through MICRO_SCALE.
+
+Not built, because the answers above chose otherwise: the windows onto the
+town, the lobby behind glass, the stage, the noticeboard, the trophy cabinet,
+the town's cel kit and post chain in the room, and true size stickers.
+Section 4's rule held anyway: nothing proud of a wall is solid.

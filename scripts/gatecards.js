@@ -93,6 +93,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { openPage } from '../tests/lib/page.js';
+/* The factor a micro course is built at, for the whoop card's camera. */
+import { MICRO_SCALE } from '../configs/airframes.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -150,8 +152,21 @@ const SHOTS = [
     /* Behind and to the right of the start gate, which stands at z = 0.6 in
      * a track that runs to z = -1.38. High enough to put the floor under the
      * whole of it and low enough that the wall and the skirting are still in
-     * frame, which is what says room rather than field. */
-    cam: [1.6, 1.15, 2.4, -0.05, 0.35, -0.5],
+     * frame, which is what says room rather than field.
+     *
+     * THROUGH MICRO_SCALE, because those are RaceGOW's metres. The card was
+     * made on 2026-09-09 and on 2026-09-14 the room and every micro course
+     * grew by MICRO_SCALE (91c77eb), so the same six numbers put the lens a
+     * metre and a half from the start gate, which filled the frame. Scaled
+     * the way src/render/scene.js scales the room, the picture is the one
+     * this comment describes whatever the factor becomes.
+     *
+     * The aim is 0.75 m up rather than 0.35 since the room was dressed on
+     * 2026-09-26: the sakura plaster, the rail and the slap pack's banner and
+     * posters are what say which room this is now, and the card darkens its
+     * bottom half under a gradient, so they belong in the top third. The
+     * start gate stays where it was on the card, left of centre. */
+    cam: [1.6, 1.15, 2.4, -0.05, 0.75, -0.5].map((v) => v * MICRO_SCALE),
     anim: null,
   },
   {

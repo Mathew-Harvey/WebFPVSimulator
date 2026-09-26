@@ -53053,3 +53053,18 @@ by side should have three different faces. What would be wrong: a lamp or
 plate floating off a face or sinking into it, a bumper with a gap between
 it and the body at a corner, a far wheel showing as a black blade, glass
 that reads as paint.
+
+## 2026-09-26 | owner | The 135i stays fast, no distance detail for parked cars, and the cars go to main
+
+Asked two questions from the cars' entries above, the owner answered on
+2026-09-26: "keep it fast, skip the LOD, push the cars to main".
+
+1. **The e82 corners at the drift car's 8 m/s/s** (LATERAL.e82), so it
+   keeps half a lap behind the R32 in the drift car's lane on Hibari Yard,
+   gripping where the R32 slides. Every e82 on any built map is driven that
+   hard; the slower alternative (the other lane at 28 km/h) was declined.
+2. **No distance level of detail for parked cars.** The second pass leaves
+   the town at most 0.43% over the vendored triangle count on High (Low is
+   under it), with no new draw calls; a far version would need a second bake
+   per cell, and the owner judged it not worth it.
+3. The R32, the 135i and both passes on every car go to main.

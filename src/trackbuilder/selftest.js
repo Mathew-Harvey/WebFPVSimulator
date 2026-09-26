@@ -80,7 +80,7 @@ import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE, MICRO_SCALE } from '../game/track.js';
-import { Race } from '../game/race.js';
+import { PRACTICE_LAPS, Race, runComplete } from '../game/race.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
   GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
@@ -1940,19 +1940,50 @@ function suiteCrashRule() {
   three.update(airSeg.prev, airSeg.curr, 10, 10);
   three.update(airSeg.prev, airSeg.curr, 20, 20);
   check('lap 1 of 3 is not the finished-track screen',
-    three.lap === 1 && !(three.lap >= runLaps));
+    three.lap === 1 && !runComplete(three.lap, runLaps));
   const midDirt = shouldScorePass(dirtSeg.prev, dirtSeg.curr, {
     upz: -1, clearance: 0.05, hits: 0, heightAt: flat,
   });
   three.update(dirtSeg.prev, dirtSeg.curr, 30, 30, midDirt);
   check('inverted dirt mid run does not steal a lap on a 3-lap race',
-    midDirt === false && three.lap === 1 && !(three.lap >= runLaps));
+    midDirt === false && three.lap === 1 && !runComplete(three.lap, runLaps));
   three.update(airSeg.prev, airSeg.curr, 40, 40);
   check('lap 2 of 3 is still not the results screen',
-    three.lap === 2 && !(three.lap >= runLaps));
+    three.lap === 2 && !runComplete(three.lap, runLaps));
   three.update(airSeg.prev, airSeg.curr, 50, 50);
   check('only the third flown lap would finish a 3-lap run',
-    three.lap === 3 && three.lap >= runLaps);
+    three.lap === 3 && runComplete(three.lap, runLaps));
+  check('and the counted runs end where they always did: 1 of 1, 5 of 5, not 4 of 5',
+    runComplete(1, 1) && runComplete(5, 5) && !runComplete(4, 5) && !runComplete(0, 1));
+
+  /*
+   * PRACTICE, the launch card's fourth lap count: the same laps flown the
+   * same way, and none of them is ever the last one. Twelve is past every
+   * counted run, so a practice that fell back on any of them would show.
+   */
+  const practice = new Race([{
+    position: { x: 0, y: 0, z: 0 },
+    heading: 0,
+    pitch: 0,
+    flyOrder: 0,
+    apertures: [{ centreY: 2.5, clearW: 3.5, clearH: 5.0 }],
+    aperture: { centreY: 2.5, clearW: 3.5, clearH: 5.0 },
+  }]);
+  practice.update(airSeg.prev, airSeg.curr, 10, 10);
+  let practiceOver = false;
+  for (let k = 1; k <= 12; k += 1) {
+    const t = 10 + k * 1000;
+    practice.update(airSeg.prev, airSeg.curr, t, t);
+    practiceOver = practiceOver || runComplete(practice.lap, PRACTICE_LAPS);
+  }
+  check('practice never finishes a run, twelve laps in',
+    practice.lap === 12 && practice.laps.length === 12 && !practiceOver,
+    `lap ${practice.lap}, over ${practiceOver}`);
+  check('and every practice lap is timed and called out like a counted one',
+    practice.lastLapMs === 1000 && practice.flashText(12010) === 'Lap 12   1.00',
+    `${practice.lastLapMs} ${JSON.stringify(practice.flashText(12010))}`);
+  check('practice is never over, whatever has been flown',
+    !runComplete(0, PRACTICE_LAPS) && !runComplete(1, PRACTICE_LAPS) && !runComplete(500, PRACTICE_LAPS));
 
   const free = new Race([]);
   const freeRes = free.update(airSeg.prev, airSeg.curr, 10, 10);

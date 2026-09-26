@@ -58,7 +58,7 @@ import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { mountTouchSticks, touchWanted } from './input/touchsticks.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.js';
-import { Race } from './game/race.js';
+import { PRACTICE_LAPS, Race, runComplete } from './game/race.js';
 import { TrickDetector } from './game/trickdetect.js';
 import { deriveObstacles, OB_BAR, OB_POLE } from './game/obstacles.js';
 import { seesMark } from './game/egg.js';
@@ -2785,7 +2785,9 @@ export async function boot({ loading, bootStart, mapId }) {
   let padPickReturn = 'title';
   /* How many laps THIS run lasts. Settings.laps can change from pause, and
    * reading it live used to end a 5 lap run the moment someone dropped the
-   * setting to 1. */
+   * setting to 1. PRACTICE_LAPS is a run with no end, and it is latched
+   * here for the same reason: whether a lap may go to the board is decided
+   * by the run it was flown in, not by what the menu says afterwards. */
   let runLaps = ui.settings.laps;
   race.setRecordKey(recordKey());
   ui.setBest(race.bestMs, view.mode);
@@ -4977,8 +4979,15 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /* race owns what a record lap is. This used to re-filter and re-min
      * the log beside it, which is the same answer until one of them
-     * changes its mind about a voided lap. */
-    const fromRun = race.bestLapMs();
+     * changes its mind about a voided lap.
+     *
+     * NOTHING FROM A PRACTICE RUN. Practice is laps for the pilot and none
+     * for the board, so a practice run offers no lap here, whatever it
+     * flew. A lap still pending from an earlier counted run on this track
+     * can still go up: it was not flown in practice, and it is the lap the
+     * Upload row names. */
+    const practice = runLaps === PRACTICE_LAPS;
+    const fromRun = practice ? null : race.bestLapMs();
     const pending = readPendingTime();
     const fastest = fromRun != null
       ? fromRun
@@ -4995,7 +5004,12 @@ export async function boot({ loading, bootStart, mapId }) {
         : (pending && pending.trackId === trackId ? pending.threeMs : null))
       : null;
     if (fastest == null) {
-      notice = { text: 'No clean lap to upload.', untilMs: performance.now() + 2800 };
+      notice = practice
+        ? {
+          text: 'Practice laps stay off the public board.\nSet Laps to 1, 3 or 5 and fly it again.',
+          untilMs: performance.now() + 3600,
+        }
+        : { text: 'No clean lap to upload.', untilMs: performance.now() + 2800 };
       return;
     }
     let name = readPilotName();
@@ -7307,7 +7321,7 @@ export async function boot({ loading, bootStart, mapId }) {
           }
           ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
         }
-        if (!race.freestyle && race.lap >= runLaps) {
+        if (!race.freestyle && runComplete(race.lap, runLaps)) {
           mode = 'results';
           if (turtleWait || turtleFlip.active) {
             if (turtleWait && !turtleFlip.active) {
@@ -8199,7 +8213,11 @@ export async function boot({ loading, bootStart, mapId }) {
       const start = ui.settings.launchControl
         ? 'L for launch control, or throttle up'
         : 'Throttle up to take off';
-      let second = '\nThe green gate starts your lap';
+      /* Practice is the one race that does not end, so it says so on the
+       * line that promises what starts. See PRACTICE_LAPS. */
+      let second = runLaps === PRACTICE_LAPS
+        ? '\nPractice: no lap limit. The green gate starts your lap'
+        : '\nThe green gate starts your lap';
       if (race.freestyle) {
         /* The counter counts the lines in every position (decision 2), so
          * even Lines only has something to promise now. */

@@ -145,13 +145,18 @@ const SMOKE_MAX = 160;
  * over its life, m; how much of the car's velocity it carries away. */
 const PUFF_HALF = 0.4;
 const PUFF_GROW = 2.2;
-const PUFF_RISE = 0.9;
+const PUFF_RISE = 0.6;
 const PUFF_CARRY = 0.25;
+/* How near the eye a puff's nearest side may come, m: it starts to thin
+ * at the first and is gone by the second. */
+const SMOKE_CLEAR = [5, 1.5];
 /* The smoke's paint: the lit side, the shade, as the town's clouds. */
 const SMOKE_FILL = 0xf3efe8;
 const SMOKE_SHADE = 0xb9b1cf;
 
 const SMOKE_VERTEX = /* glsl */ `
+  #define SMOKE_CLEAR_FAR ${SMOKE_CLEAR[0].toFixed(2)}
+  #define SMOKE_CLEAR_NEAR ${SMOKE_CLEAR[1].toFixed(2)}
   attribute vec3 centre;
   attribute vec2 corner;
   attribute vec4 puff;
@@ -164,10 +169,14 @@ const SMOKE_VERTEX = /* glsl */ `
     float s = sin( puff.y );
     vec2 q = vec2( c * corner.x - s * corner.y, s * corner.x + c * corner.y ) * puff.x;
     vec4 mvPosition = modelViewMatrix * vec4( centre, 1.0 );
+    /* A puff the eye comes near thins away to its cores and is gone before
+     * the eye reaches it: a pilot on the drift car's tail flies through its
+     * smoke, and a cloud across the whole lens is not something to fly by. */
+    float nearCut = 1.0 - smoothstep( SMOKE_CLEAR_NEAR, SMOKE_CLEAR_FAR, -mvPosition.z - puff.x );
     mvPosition.xy += q;
     gl_Position = projectionMatrix * mvPosition;
     vUv = corner * 0.5 + 0.5;
-    vCut = puff.z;
+    vCut = mix( puff.z, 1.02, nearCut );
     /* The light from the upper left of the picture, in the puff's own
      * turned frame, so every puff is lit from the same side. */
     vec2 L = vec2( -0.7071, 0.7071 );

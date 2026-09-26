@@ -132,5 +132,9 @@ export const MAP_PRELOAD = {
     'maps/built/starter.js',
     'maps/built/looks.js',
     'maps/built/egg.js',
+    'maps/built/traffic.js',
+    'maps/built/road.js',
+    'maps/built/roadmesh.js',
+    'maps/built/cars.js',
   ],
 };

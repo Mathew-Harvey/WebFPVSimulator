@@ -66,7 +66,8 @@ import { FreestyleScore, formatScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf } from './game/plantworld.js';
+import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses } from './game/plantworld.js';
+import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
 import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CRASH_BELLY_UP, solidContactCrash } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor } from './ui/ui.js';
@@ -1217,6 +1218,197 @@ export async function boot({ loading, bootStart, mapId }) {
         setMover(sim, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'train', false);
       }
     }
+    adoptTraffic();
+  }
+
+  /*
+   * THE TRAFFIC (FREESTYLE-MAPS-PLAN.md section 8, Stage E): a built map's
+   * cars, which the physics module drives (src/native/world.c section 5).
+   *
+   * UPLOADED WITH THE WORLD. uploadWorld's sim_world_clear takes every road
+   * and car of the last map away with the rest of its solids and sets the
+   * cars' clock to 0, so a map with no traffic has none, and this uploads a
+   * map's own after it: its lanes, then its cars (view.uploadTraffic, which
+   * is src/maps/built/traffic.js uploadTraffic, so nobody writes that loop
+   * twice). A map with no traffic, every race track and the town, makes no
+   * vehicle call on the plant at all: `trafficOn` guards every one below,
+   * and their runs are the runs they were.
+   *
+   * THE CLOCK IS THE LAP CLOCK. Before every stretch of stepping, on the
+   * launch stand too, the cars' clock is set to simTimeMs; the module then
+   * advances it one a step itself, exactly as pushWorldSolids(simTimeMs + i)
+   * seats the train. A pose is a pure function of that clock, so a reset, a
+   * set down or a seek that puts simTimeMs back puts the cars back with it,
+   * and the same input stream meets the same cars wherever it is flown.
+   *
+   * RENDER READS THE POSE THE PHYSICS USED. The step loop reads every car
+   * after the step the craft's two drawn states are at (carPrev and
+   * carCurr, one step apart, as statePrev and stateCurr are), and the map
+   * draws them between the two at the craft's own alpha. A frame that did
+   * not step (landed, a turtle wait, the title, results) sets the clock to
+   * the screen's own step and reads the poses there: the module seats a car
+   * at any clock.
+   *
+   * THE CHASE (src/game/chase.js) is fed inside the step loop every
+   * CHASE_EVERY steps of the lap clock, from the poses read at that step,
+   * with whether the craft touched any car since the last feed and whether
+   * the shell called a crash. The same poses feed the drift smoke. Nothing
+   * here allocates on a frame.
+   */
+  let trafficOn = false;
+  let carPrev = makeVehiclePoses();
+  let carCurr = makeVehiclePoses();
+  const carFeed = makeVehiclePoses();
+  /* This frame's step loop read carPrev and carCurr itself. */
+  let carStepped = false;
+  /* The clock the last non stepping read was for, and the last 8 step tick
+   * the smoke was fed. */
+  let carClockRead = -1;
+  let carTickLast = -1;
+  /* Since the last feed: the craft touched a car, the shell called a crash. */
+  let carTouched = false;
+  let chaseCrashed = false;
+  const chase = new Chase();
+  const chaseCraft = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+  const chasePos = new THREE.Vector3();
+  const chaseVel = new THREE.Vector3();
+
+  function adoptTraffic() {
+    trafficOn = false;
+    let cars = [];
+    if (view.traffic) {
+      const up = view.uploadTraffic(sim);
+      for (const p of up.problems) {
+        console.warn(`traffic: ${p.message}`);
+      }
+      trafficOn = up.vehicles > 0;
+      cars = trafficOn ? view.chaseCars() : [];
+    }
+    chase.setCars(cars);
+    ui.setChaseCars(cars.length);
+    carTouched = false;
+    chaseCrashed = false;
+    carClockRead = -1;
+    carTickLast = -1;
+    if (trafficOn) {
+      /* Both drawn poses from the new map's cars, so no frame draws a car
+       * between this map and the last. */
+      readVehicles(sim, carPrev);
+      readVehicles(sim, carCurr);
+    }
+  }
+
+  /* What a mover contact was: a road car on a map with traffic, else the
+   * train. The world report numbers mover m as -2 - m. */
+  function moverKind(m) {
+    return trafficOn && carCurr[m] && carCurr[m].on ? 'car' : 'train';
+  }
+
+  /* Before a stretch of stepping: the cars' clock to the lap clock, and the
+   * drawn pair moved on one, as statePrev takes stateCurr. */
+  function trafficBeforeSteps() {
+    setVehicleClock(sim, simTimeMs);
+    const t = carPrev;
+    carPrev = carCurr;
+    carCurr = t;
+  }
+
+  /* After the plant's step to lap clock `clock`, the i'th of `steps` this
+   * frame, with `st` the state it left: the contact flag, the pose the
+   * craft's statePrev is at, and at every CHASE_EVERY steps the chase's and
+   * the smoke's feed. `feed` is false on the launch stand, where the craft
+   * is held and chases nothing. */
+  function trafficStep(clock, st, i, steps, feed) {
+    if (sim.e.sim_world_vehicle_contacts(0, 0) > 0) {
+      carTouched = true;
+    }
+    if (i === steps - 2) {
+      readVehicles(sim, carPrev);
+    }
+    if (clock % CHASE_EVERY !== 0) {
+      return;
+    }
+    readVehicles(sim, carFeed);
+    view.carTick(clock, carFeed);
+    carTickLast = clock;
+    if (!feed) {
+      return;
+    }
+    /* The craft where the chase looks for it: its world position through
+     * poseFromState, and its velocity through frame.js and the spawn's
+     * turn, as the pose is. */
+    poseFromState(st, chasePos);
+    simPosToThree(st[4], st[5], st[6], chaseVel);
+    chaseVel.applyQuaternion(qSpawn);
+    chaseCraft.x = chasePos.x;
+    chaseCraft.y = chasePos.y;
+    chaseCraft.z = chasePos.z;
+    chaseCraft.vx = chaseVel.x;
+    chaseCraft.vy = chaseVel.y;
+    chaseCraft.vz = chaseVel.z;
+    chase.step(clock, chaseCraft, carFeed, carTouched, chaseCrashed);
+    carTouched = false;
+    chaseCrashed = false;
+  }
+
+  /* After a stretch of stepping: the pose the craft's stateCurr is at. */
+  function trafficAfterSteps() {
+    readVehicles(sim, carCurr);
+    carStepped = true;
+    carClockRead = simTimeMs;
+  }
+
+  /* The smoke's feed across a stretch of clock the step loop did not walk
+   * (the stand steps in one call; the title and results do not step), at
+   * most the last SMOKE_CATCH_UP ticks of it, then the clock where the
+   * stretch ends. Harmless to the physics: a pose is a function of the
+   * clock, and the clock is set again before anything steps. */
+  const SMOKE_CATCH_UP = 16;
+  function trafficTicks(to) {
+    if (to < carTickLast) {
+      carTickLast = -1;
+    }
+    const newest = Math.floor(to / CHASE_EVERY) * CHASE_EVERY;
+    let t = Math.max(carTickLast < 0 ? 0 : carTickLast + CHASE_EVERY, newest - (SMOKE_CATCH_UP - 1) * CHASE_EVERY);
+    t = Math.ceil(t / CHASE_EVERY) * CHASE_EVERY;
+    for (; t <= to; t += CHASE_EVERY) {
+      setVehicleClock(sim, t);
+      readVehicles(sim, carFeed);
+      view.carTick(t, carFeed);
+      carTickLast = t;
+    }
+    setVehicleClock(sim, to);
+  }
+
+  /*
+   * Once a drawn frame: the cars at `clock`, the lap clock or the screen's
+   * own, drawn at alpha between clock - 1 and clock, as the craft is. A
+   * frame that stepped already read both poses; one that did not reads them
+   * here, once for each clock it is shown.
+   */
+  function trafficFrame(clock, alpha) {
+    if (!trafficOn) {
+      return;
+    }
+    if (!carStepped && clock !== carClockRead) {
+      trafficTicks(clock);
+      setVehicleClock(sim, clock > 0 ? clock - 1 : 0);
+      readVehicles(sim, carPrev);
+      setVehicleClock(sim, clock);
+      readVehicles(sim, carCurr);
+      carClockRead = clock;
+    }
+    carStepped = false;
+    view.poseCars(carPrev, carCurr, alpha, clock - 1 + alpha);
+  }
+
+  /* A crash the shell called, told to the chase as it is told to the score:
+   * the tail and everything waiting to pay are lost. */
+  function chaseBail() {
+    if (trafficOn) {
+      chase.bail(simTimeMs, 'crash');
+      chaseCrashed = true;
+    }
   }
 
   /*
@@ -1273,6 +1465,13 @@ export async function boot({ loading, bootStart, mapId }) {
   function fpvNear(p) {
     const reach = CAMERA_NEAR_OPEN / CAMERA_NEAR_FRACTION;
     let gap = view.colliders ? view.colliders.gapAt(p.x, p.y, p.z, reach) : Infinity;
+    /* A car is solid too, and not a collider: its drawn box, as last drawn. */
+    if (trafficOn) {
+      const car = view.carGap(p.x, p.y, p.z, reach);
+      if (car < gap) {
+        gap = car;
+      }
+    }
     const floor = p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y);
     if (floor < gap) {
       gap = floor;
@@ -3281,6 +3480,9 @@ export async function boot({ loading, bootStart, mapId }) {
     setCrashflip(false);
     turtleRecover = false;
     turtleWait = false;
+    /* A crash the shell called, a car's included: the chase loses what it
+     * held, as the score would. */
+    chaseBail();
     setDownNearby();
     notice = { text: 'Crashed, set down nearby.\nR restarts the run.', untilMs: performance.now() + 2400 };
   }
@@ -3366,6 +3568,35 @@ export async function boot({ loading, bootStart, mapId }) {
      * to the combo here. */
   }
 
+  /*
+   * STAGE C'S HOOK: THE CHASE BONUS. Every chase event that pays (a tail
+   * banked, a thread, a hurdle: pays() in src/game/chase.js) is handed here
+   * once, from the frame's drain, the way a found mark goes to eggBonus.
+   * Nothing is paid here yet, for eggBonus's reason; the meter and the
+   * callouts show the numbers meanwhile.
+   */
+  function chaseBonus(e) {
+    /* Stage C: when scoringWanted(), the counter adds e.value to the combo
+     * here, and keeps its window open while chase.view().holding. */
+    void e;
+    chaseBonusCount += 1;
+  }
+  /* For the harness (window.__chase): the chase's events as they were
+   * drained, the newest CHASE_LOG_MAX, and how many reached chaseBonus. An
+   * event is a handful of numbers, and there are a few a minute. */
+  const CHASE_LOG_MAX = 64;
+  const chaseLog = [];
+  let chaseBonusCount = 0;
+  function noteChaseEvent(e) {
+    chaseLog.push({
+      kind: e.kind, name: e.name, value: e.value, ms: e.ms, why: e.why ?? null, labels: e.labels ?? null,
+      step: e.step, paid: pays(e),
+    });
+    if (chaseLog.length > CHASE_LOG_MAX) {
+      chaseLog.shift();
+    }
+  }
+
   function reset() {
     /* A reset is the pilot taking the offer the fault banner made, so the
      * next fault is a new one and deserves to be reported in its turn. See
@@ -3417,6 +3648,14 @@ export async function boot({ loading, bootStart, mapId }) {
     score.reset();
     trickDetector.restart();
     ui.resetScore();
+    /* The chase too, and the smoke of the last run's drift car. */
+    chase.reset();
+    ui.resetChase();
+    carTouched = false;
+    chaseCrashed = false;
+    if (view.clearSmoke) {
+      view.clearSmoke();
+    }
     /* A fresh run records from its own first crossing. The session book
      * keeps what earlier runs flew; only the in-flight recording dies. */
     ghostRecorder.abort();
@@ -6040,14 +6279,23 @@ export async function boot({ loading, bootStart, mapId }) {
         rcNextMs = rcLink.nextMs;
       }
       if (steps >= 1) {
+        const stood = launchStaging;
         if (launchStaging) {
           sim.e.sim_set_ground(0, 0, 0, 1, 0, 0, 0, 0, 0);
           /* On the stand the module holds the pose and resolves no world
-           * contact, so the moving solids only need to be where they end. */
+           * contact, so the moving solids only need to be where they end.
+           * The cars' clock is set all the same: the module advances it
+           * on the stand too, and the cars go on driving past it. */
           pushWorldSolids(simTimeMs + steps - 1);
+          if (trafficOn) {
+            trafficBeforeSteps();
+          }
           if (steps > 1) {
             sim.step(steps - 1);
             statePrev = readState();
+            if (trafficOn) {
+              readVehicles(sim, carPrev);
+            }
           } else {
             statePrev = stateCurr;
           }
@@ -6071,6 +6319,9 @@ export async function boot({ loading, bootStart, mapId }) {
           peakGroundSpeed = 0;
           peakGroundUpZ = 1;
           sawGroundHit = false;
+          if (trafficOn) {
+            trafficBeforeSteps();
+          }
           for (let i = 0; i < steps; i += 1) {
             if (i === 0 || (i & 7) === 0 || plantUpZ(stNow) < 0.5) {
               sampleGroundNormalFromState(stNow);
@@ -6086,6 +6337,11 @@ export async function boot({ loading, bootStart, mapId }) {
             pushWorldSolids(simTimeMs + i);
             sim.step(1);
             stNow = readState();
+            /* The cars, at the clock this step left them at: the chase, the
+             * smoke, and the pose statePrev is drawn with. */
+            if (trafficOn) {
+              trafficStep(simTimeMs + i + 1, stNow, i, steps, true);
+            }
             if (scoring) {
               /* Body rates, the two quaternion components the attitude test
                * needs, and speed. Nothing is allocated and nothing is
@@ -6148,6 +6404,14 @@ export async function boot({ loading, bootStart, mapId }) {
         simTimeMs += steps * MS_PER_STEP;
         simStepIdx += steps;
         frameSteps = steps;
+        if (trafficOn) {
+          /* The stand stepped in one call, so its smoke ticks are fed after
+           * it; the loop above fed its own. */
+          if (stood) {
+            trafficTicks(simTimeMs);
+          }
+          trafficAfterSteps();
+        }
         /* Launch stand constraint runs inside sim_step. Ground contact
          * runs after plant_step at 1 kHz when the plane is raised. */
         flightLog.push(stateCurr, rcHeld, FULL_THROTTLE_RPM);
@@ -6283,6 +6547,7 @@ export async function boot({ loading, bootStart, mapId }) {
             if (hard) {
               trickDetector.reset();
               score.crash();
+              chaseBail();
             } else {
               /* NOT TAPPABLE: this is the ground. See TrickDetector.bump. */
               trickDetector.bump(undefined, false);
@@ -6391,7 +6656,9 @@ export async function boot({ loading, bootStart, mapId }) {
       obsClosing = rep[1];
       obsImpulse = rep[2];
       const idx = rep[3];
-      const kind = idx >= 0 ? kindOf(view.colliders, idx) : (idx <= -2 ? 'train' : 'none');
+      /* A mover is the train, or on a map with traffic one of its cars,
+       * which is reported as a car. */
+      const kind = idx >= 0 ? kindOf(view.colliders, idx) : (idx <= -2 ? moverKind(-2 - idx) : 'none');
       obsImpulseKind = kind;
       lastHitKind = kind;
       lastClosing = rep[1];
@@ -6431,6 +6698,7 @@ export async function boot({ loading, bootStart, mapId }) {
         if (view.mode === 'freestyle') {
           trickDetector.reset();
           score.crash();
+          chaseBail();
         }
       }
     }
@@ -6951,6 +7219,18 @@ export async function boot({ loading, bootStart, mapId }) {
           ? titleStepMs
           : (mode === 'results' ? simTimeMs + Math.max(0, finishCamMs) : simTimeMs),
       );
+      /* The cars, at the same clock, drawn at the craft's alpha in flight;
+       * the title's and the finish's own clocks are whole steps, and the
+       * title carries its fraction in titleAcc. */
+      if (trafficOn) {
+        if (mode === 'title') {
+          trafficFrame(titleStepMs, titleAcc);
+        } else if (mode === 'results') {
+          trafficFrame(simTimeMs + Math.floor(Math.max(0, finishCamMs)), 1);
+        } else {
+          trafficFrame(simTimeMs, a);
+        }
+      }
 
       const focus = camOverride
         ? shell.camera.position
@@ -7158,6 +7438,21 @@ export async function boot({ loading, bootStart, mapId }) {
         if (!wasOver && score.over()) {
           endFreestyleRun();
         }
+      }
+      /* The chase's meter and callouts, and every paying event to Stage
+       * C's hook. The HUD is up only on a map with cars, in flight. */
+      if (trafficOn) {
+        const chaseEvents = chase.drainEvents();
+        if (chaseEvents) {
+          for (const e of chaseEvents) {
+            if (pays(e)) {
+              chaseBonus(e);
+            }
+            noteChaseEvent(e);
+          }
+        }
+        ui.chaseMeter(chase.view());
+        ui.chaseEvents(chaseEvents);
       }
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
@@ -7765,6 +8060,7 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__scoreCrash = () => {
     trickDetector.reset();
     score.crash();
+    chaseBail();
     return score.summary();
   };
   /*
@@ -8706,6 +9002,27 @@ export async function boot({ loading, bootStart, mapId }) {
       boxPx: Number.isFinite(maxX - minX) ? { w: maxX - minX, h: maxY - minY, x: minX, y: minY } : null,
       span250mmPx: Number.isFinite(span) ? span : null,
     };
+  };
+  /* Harness: the cars as last drawn from the physics (the pose at the lap
+   * clock), and the chase: its meter, and the events it has sent since the
+   * page loaded, the newest CHASE_LOG_MAX, with whether each paid. Nothing
+   * in the shell reads either. */
+  window.__vehicles = () => (trafficOn
+    ? carCurr.filter((p) => p.on).map((p) => ({
+      slot: carCurr.indexOf(p), x: p.x, y: p.y, z: p.z, hx: p.hx, hz: p.hz, tx: p.tx, tz: p.tz,
+      vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, distance: p.distance, slip: p.slip, curvature: p.curvature,
+    }))
+    : []);
+  window.__chase = () => ({
+    cars: chase.carCount(),
+    meter: { ...chase.view() },
+    log: chaseLog.slice(),
+    bonus: chaseBonusCount,
+  });
+  window.__chaseLogClear = () => {
+    chaseLog.length = 0;
+    chaseBonusCount = 0;
+    return true;
   };
   /* Harness: the STF mark on this map (null where it carries none),
    * whether this run has found it, and this browser's stamp for it. */

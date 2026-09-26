@@ -1146,7 +1146,27 @@ export function restrictCasters(root, { minRadius = 0, minRadiusInstanced = minR
 }
 const casterScale = new THREE.Vector3();
 
-export function bakeCity(world, {
+/* The whole bake in one call, which is what this always was: every step of
+ * bakeCitySteps below, run straight through. */
+export function bakeCity(world, opts) {
+  const steps = bakeCitySteps(world, opts);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) {
+      return r.value;
+    }
+  }
+}
+
+/*
+ * The same bake as a generator, so a page can spread it over frames. It
+ * yields a short label between its passes, every few hundred meshes of the
+ * bucket walk and every few buckets of the merge, and returns what bakeCity
+ * returns. Nothing is reordered: the walk visits the same meshes in the same
+ * order as the traverse it replaces, which is collected first so that the
+ * loop can yield, and the tree is not touched until the merge.
+ */
+export function* bakeCitySteps(world, {
   cell = 40,
   shadowCell = cell,
   cullCell = cell,
@@ -1158,6 +1178,7 @@ export function bakeCity(world, {
 } = {}) {
   const root = world.root;
   const { moving: animated, stillRigs, released } = findAnimated(world, { releaseStillRigs });
+  yield 'animated';
   /* Rigs first, and their output joins the animated set before anything else
    * looks at it. mergeRigs parents its meshes INSIDE the rig, so the town
    * merge below must not then take them: it would bake the rig's transform
@@ -1167,6 +1188,7 @@ export function bakeCity(world, {
   for (const m of rigs.made) {
     animated.add(m);
   }
+  yield 'rigs';
   /* Before anything is bucketed by material identity, make identical
    * materials BE identical, or the bucketing below splits on a distinction
    * that is not one. See shareMaterials above. It needs the animated set, so
@@ -1178,9 +1200,12 @@ export function bakeCity(world, {
    * two meshes cannot merge into a tile they share, and both passes below key
    * on the material it leaves behind. */
   const atlas = atlasTextures(root, animated, { maxSize: atlasSize });
+  yield 'atlas';
   const painted = bakeColourToVertices(root, animated);
+  yield 'colour';
   const shared = shareMaterials(root, animated);
   root.updateMatrixWorld(true);
+  yield 'share';
   /* AFTER mergeRigs and BEFORE the bucketing below, in that order for two
    * reasons. A rig's parts are merged by then, so a vending machine is
    * measured as a machine rather than as its door furniture and keeps its
@@ -1198,6 +1223,7 @@ export function bakeCity(world, {
   const proxies = shadowProxyCell > 0
     ? buildShadowProxies(root, animated, { cell: shadowProxyCell })
     : { group: null, meshes: [], stats: { cells: 0, from: 0, triangles: 0, bytes: 0 } };
+  yield 'casters';
 
   const buckets = new Map();
   const sources = [];
@@ -1206,39 +1232,47 @@ export function bakeCity(world, {
   let skippedAnimated = 0;
   let skippedInstanced = 0;
 
+  const walk = [];
   root.traverse((o) => {
+    walk.push(o);
+  });
+  for (let i = 0; i < walk.length; i += 1) {
+    if (i > 0 && i % 400 === 0) {
+      yield 'buckets';
+    }
+    const o = walk[i];
     if (!o.isMesh || !o.visible) {
-      return;
+      continue;
     }
     /* The proxies are already merged, already in world space, and switched off
      * until the gate turns them on, which the `!o.visible` test above would
      * have skipped them for anyway. Named here so that stops being a
      * coincidence. */
     if (o.userData && o.userData.shadowProxy) {
-      return;
+      continue;
     }
     if (animated.has(o)) {
       skippedAnimated += 1;
-      return;
+      continue;
     }
     if (o.isInstancedMesh) {
       /* Already one draw call for however many copies, and merging one would
        * multiply its geometry by its count. */
       skippedInstanced += 1;
-      return;
+      continue;
     }
     const geo = o.geometry;
     if (!geo || !geo.attributes.position) {
-      return;
+      continue;
     }
     box.setFromObject(o);
     if (box.isEmpty()) {
-      return;
+      continue;
     }
     box.getBoundingSphere(sphere);
     const mat = Array.isArray(o.material) ? o.material[0] : o.material;
     if (!mat) {
-      return;
+      continue;
     }
     /* Both reasons an object still needs to be cullable, smallest wins. See
      * the note above: a shadow caster is culled by the shadow camera, and
@@ -1285,7 +1319,7 @@ export function bakeCity(world, {
     b.geos.push(g);
     b.meshes.push(o);
     sources.push(o);
-  });
+  }
 
   /* Reference counting before anything is freed. A geometry can be shared
    * between a mesh being merged and one that is not, and disposing it because
@@ -1298,7 +1332,12 @@ export function bakeCity(world, {
   });
 
   const merged = [];
+  let mergedBuckets = 0;
   for (const b of buckets.values()) {
+    if (mergedBuckets > 0 && mergedBuckets % 6 === 0) {
+      yield 'merge';
+    }
+    mergedBuckets += 1;
     /* One mesh alone in a bucket is already one draw call; merging it would
      * copy its buffer for nothing. Leave it where it is. */
     if (b.geos.length < 2) {

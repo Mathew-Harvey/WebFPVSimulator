@@ -74,7 +74,22 @@ import {
  * left of centre with the shop stacked against it.
  * ------------------------------------------------------------------ */
 
-export function buildWorld(scene, { bake = true } = {}) {
+/* The world, built all at once: every step of buildWorldSteps below, run
+ * straight through in one call, which is exactly what this function always
+ * did. */
+export function buildWorld(scene, opts) {
+  const steps = buildWorldSteps(scene, opts);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/* The same build as a generator that yields between its builders, so a
+ * caller can spread the work over frames and keep a page moving while the
+ * town goes up.  It yields a short label after each step and returns the
+ * world; the order of every call is the order buildWorld makes them in. */
+export function* buildWorldSteps(scene, { bake = true } = {}) {
   const root = new THREE.Group();
   root.name = 'world';
   scene.add(root);
@@ -138,10 +153,14 @@ export function buildWorld(scene, { bake = true } = {}) {
 
   /* ------------------------------ base layers ------------------------------ */
   const planet = buildPlanet(scene);
+  yield 'planet';
   buildStreet(ctx);
+  yield 'street';
   const crossing = buildRailway(ctx);
   const train = buildTrain(ctx);
+  yield 'railway';
   const shop = buildShop(ctx);
+  yield 'shop';
 
   /* -------------------------------- houses -------------------------------- */
   const houseDefs = [
@@ -239,6 +258,7 @@ export function buildWorld(scene, { bake = true } = {}) {
     ctx.add(h);
     ctx.collide(d.x - d.w / 2, d.z - d.d / 2, d.x + d.w / 2, d.z + d.d / 2,
       y + (h.userData.top ?? 2.72 * d.floors));
+    yield 'house';
   }
 
   /* ---------------------------- outlying districts ----------------------------
@@ -249,7 +269,7 @@ export function buildWorld(scene, { bake = true } = {}) {
    *
    * `buildDistrict` is last because it also dresses the housing above, and it
    * needs the same definitions the house generator was given. */
-  const districts = [
+  const districts = [];
     /* 裏山 first, because it is *ground*: the only module other than `street.js`
      * that produces a walkable surface rather than things standing on one.  The
      * height field itself is a pure function and needs no ordering at all -- it
@@ -258,18 +278,22 @@ export function buildWorld(scene, { bake = true } = {}) {
      * so what this position actually buys is that the file reads in the order the
      * world is made in.  Its planting is handed back like every other
      * district's. */
-    buildHills(ctx),
+  districts.push(buildHills(ctx));
+  yield 'hills';
     /* The tunnel builds the mountain over the railway, which is the one piece of
      * ground `hills.js` deliberately cut out of itself -- so it runs immediately
      * after it, and it reads `hillAt` along the notch's two lattice edges to meet
      * the hillside exactly. */
-    buildTunnel(ctx),
-    buildSchool(ctx),
+  districts.push(buildTunnel(ctx));
+  yield 'tunnel';
+  districts.push(buildSchool(ctx));
+  yield 'school';
     /* 裏山 runs after the school and before everything else it touches: its
      * hill-foot road comes off the 通学路's old dead end (`approach.js` opens it),
      * runs behind the school's new north wall and up its new east side, so both
      * of those have to exist before it measures anything off them. */
-    buildUrayama(ctx),
+  districts.push(buildUrayama(ctx));
+  yield 'urayama';
     /* ひばり湖 runs immediately after 裏山, and the order is load-bearing in one
      * direction: `lakeroad.js`'s road leaves the *top of the school's outer road*,
      * so `urayama.js` has to have laid that surface before this measures the
@@ -280,43 +304,68 @@ export function buildWorld(scene, { bake = true } = {}) {
      * The water goes in before the shores because `kohan.js` reads
      * `SHORE_GAPS` from it: four places the shore barrier is broken, each of which
      * has to have something to step onto.  A gap with nothing at it is a hole. */
-    buildLake(ctx),
-    buildLakeRoad(ctx),
-    buildKohan(ctx),
-    buildApproach(ctx),
-    buildShrine(ctx),
-    buildShotengai(ctx),
-    buildCanal(ctx, train),
-    buildOverbridge(ctx),
-    buildRestCorner(ctx),
-    buildLibrary(ctx),
-    buildNorthBlock(ctx),
-    buildMatsuri(ctx),
-    buildOnsen(ctx),
-    buildAlleys(ctx),
+  districts.push(buildLake(ctx));
+  yield 'lake';
+  districts.push(buildLakeRoad(ctx));
+  yield 'lakeRoad';
+  districts.push(buildKohan(ctx));
+  yield 'kohan';
+  districts.push(buildApproach(ctx));
+  yield 'approach';
+  districts.push(buildShrine(ctx));
+  yield 'shrine';
+  districts.push(buildShotengai(ctx));
+  yield 'shotengai';
+  districts.push(buildCanal(ctx, train));
+  yield 'canal';
+  districts.push(buildOverbridge(ctx));
+  yield 'overbridge';
+  districts.push(buildRestCorner(ctx));
+  yield 'restCorner';
+  districts.push(buildLibrary(ctx));
+  yield 'library';
+  districts.push(buildNorthBlock(ctx));
+  yield 'northBlock';
+  districts.push(buildMatsuri(ctx));
+  yield 'matsuri';
+  districts.push(buildOnsen(ctx));
+  yield 'onsen';
+  districts.push(buildAlleys(ctx));
+  yield 'alleys';
     /* The residential blocks run after every district whose surfaces they sit
      * against -- 一丁目 wants the canal's verge pad to derive its step rises
      * from, 四丁目 arrives off the library's corner pad, 公園前 measures itself
      * off the overbridge -- and before `buildDistrict`, so the housing sweep
      * seats its clutter on the lanes these lay rather than on the bare grade. */
-    buildIchome(ctx),
-    buildNichome(ctx),
-    buildYonchome(ctx),
-    buildKoenmae(ctx),
-    buildTsugakuro(ctx),
-    buildUramachi(ctx),
-    buildGakkomae(ctx),
-    buildKawabata(ctx),
+  districts.push(buildIchome(ctx));
+  yield 'ichome';
+  districts.push(buildNichome(ctx));
+  yield 'nichome';
+  districts.push(buildYonchome(ctx));
+  yield 'yonchome';
+  districts.push(buildKoenmae(ctx));
+  yield 'koenmae';
+  districts.push(buildTsugakuro(ctx));
+  yield 'tsugakuro';
+  districts.push(buildUramachi(ctx));
+  yield 'uramachi';
+  districts.push(buildGakkomae(ctx));
+  yield 'gakkomae';
+  districts.push(buildKawabata(ctx));
+  yield 'kawabata';
     /* ひばり台六丁目 runs after 二丁目 and 三丁目 and it has to: every surface
      * in it is paved to the height of the north T those two lay between them,
      * and it reads that height off `ctx.groundAt` rather than assuming it. */
-    buildRokuchome(ctx),
+  districts.push(buildRokuchome(ctx));
+  yield 'rokuchome';
     /* ひばり台七丁目 runs after 湯の坂 (it builds against the terrace's north
      * retaining wall and puts a flight through the gap in it) and after
      * 桜守裏町 (its footpath east lands on that block's arm), and before
      * `buildDistrict` like every other block. */
-    buildNanachome(ctx),
-    buildDistrict(ctx, { houses: houseDefs }),
+  districts.push(buildNanachome(ctx));
+  yield 'nanachome';
+  districts.push(buildDistrict(ctx, { houses: houseDefs }));
+  yield 'district';
     /* The motor vehicles run after every surface in the world is laid, because
      * a car is seated with `ctx.groundAt` and half of them stand on a lane, an
      * apron or a bay that a district module put down -- and it runs after the
@@ -325,9 +374,10 @@ export function buildWorld(scene, { bake = true } = {}) {
      * on purpose; what has to be right about it is the distribution over the
      * whole map, and a distribution cannot be reviewed thirty lines at a time
      * in twenty-two modules. */
-    buildTraffic(ctx),
-    buildDetails(ctx),
-  ];
+  districts.push(buildTraffic(ctx));
+  yield 'traffic';
+  districts.push(buildDetails(ctx));
+  yield 'details';
   for (const d of districts) if (d.update) ctx.update(d.update);
   const extraSakura = districts.flatMap((d) => d.sakura ?? []);
   const extraShrubs = districts.flatMap((d) => d.shrubs ?? []);
@@ -347,11 +397,14 @@ export function buildWorld(scene, { bake = true } = {}) {
   planting.cedarAfter = cedarKept.length;
   planting.bambooAfter = bambooKept.length;
   buildGrove(ctx, groveKept);
+  yield 'grove';
   /* The 杉林 merges the same way the grove does -- one baked stem mesh and three
    * instanced crowns for every plantation in the world -- so it has to run here
    * and not inside `hills.js`, which is also where its spots come from. */
   buildCedar(ctx, cedarKept);
+  yield 'cedar';
   buildBamboo(ctx, bambooKept);
+  yield 'bamboo';
   /* Fallen blossom, over every patch the districts asked for.  Each tone is
    * one instanced mesh over the whole world, so a couple of dozen scattered
    * drifts is three draw calls however many patches feed it.
@@ -372,6 +425,7 @@ export function buildWorld(scene, { bake = true } = {}) {
       n: p.n ?? Math.max(20, Math.round(28 * (p.r ?? 1))),
     }
   )));
+  yield 'fallen';
 
   /* The distant town, hills and far tree line are gone: on a 160 m planet
    * anything that used to sit 60-330 m away is now over the horizon or on
@@ -545,6 +599,7 @@ export function buildWorld(scene, { bake = true } = {}) {
   const sakuraKept = thinSpots(sakuraSpots, TREE_KEEP, 7);
   planting.sakuraAfter = sakuraKept.length;
   buildSakura(ctx, sakuraKept);
+  yield 'sakura';
 
   /* -------------------------------- shrubbery -------------------------------- */
   const shrubSpots = [
@@ -565,6 +620,7 @@ export function buildWorld(scene, { bake = true } = {}) {
   const shrubKept = thinSpots(shrubSpots, SHRUB_KEEP, 19);
   planting.shrubsAfter = shrubKept.length;
   buildShrubs(ctx, shrubKept);
+  yield 'shrubs';
 
   /* ------------------------------ utility poles ------------------------------ */
   const poleDefs = [
@@ -631,6 +687,7 @@ export function buildWorld(scene, { bake = true } = {}) {
     }
     makeWires(ctx, runs);
   }
+  yield 'wires';
 
   /* ------------------------- the crossing corner cluster ------------------------- */
   const walkY = (z) => groundY(z) + WALK_H;
@@ -679,6 +736,7 @@ export function buildWorld(scene, { bake = true } = {}) {
    * time, and nothing in it is solid.  The graphics preset decides whether it
    * is shown; see src/maps/city/index.js. */
   const petals = buildPetals(ctx);
+  yield 'petals';
 
   /* No outer boundary any more -- the world has no edge to fall off. */
 

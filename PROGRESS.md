@@ -50716,3 +50716,49 @@ c552782. Flown again end to end with the draw on: a wall skim along
 Hibari Yard's container stack, 0.93 s at 0.35 m, lettered "WALL SKIM 182
 0.9 s" in sky blue down the left while it paid, then banked into the
 total, 182; the posted trick total 0, the counter 182.
+
+## 2026-09-26 | city, landing | The town and its bake, buildable in steps
+
+### What changed
+
+`buildWorldSteps` in the vendored `world/index.js`: the same build as a
+generator that yields a label after each of its steps (the planet, the
+street, the railway, the shop, each house, each of the 31 districts, the
+grove, cedar, bamboo, fallen blossom, sakura, shrubs, wires and petals).
+`buildWorld` now drains it in one call, so every caller in this repository
+gets exactly the build it got before. The recorded patch,
+`PATCH-world-index.diff`, is regenerated against the upstream recovered by
+reversing the old patch, and applying the new one to that upstream gives
+the file byte for byte.
+
+`bakeCitySteps` in `src/maps/city/bake.js`, the same for the bake: a yield
+between passes, every 400 meshes of the bucket walk and every 6 buckets of
+the merge. The walk collects the traverse first so the loop can yield,
+which visits the same meshes in the same order. `bakeCity` drains it.
+
+### Why
+
+The landing page flies this town, and until now it built it behind its
+loading screen: measured in the container on SwiftShader, 27.4 s of boot
+screen, of which 9.3 s was the town and its bake in one block and 14.8 s
+the warm pass. The owner asked for the page to show the drone build at once
+and load the rest behind it, which needs the build to stop between
+builders. The simulator's own loading is untouched.
+
+### Checked
+
+In headless Chromium with Math.random seeded before any module ran, the
+town built by the old file, by the new `buildWorld`, and by
+`buildWorldSteps` one step per animation frame all hash to `abff5bee`:
+11,725 meshes, 1,552,549 vertices, 14,600 colliders, every attribute, index,
+instance matrix and collider in the hash. The landing page's town merged by
+the old bake and by the stepped one both hash to `aebeba1c`: 1,233 meshes,
+1,149,179 vertices, 245 textures before the merge and 245 after.
+
+The steps, measured in the container: 68 of them, 6.0 s in all, the longest
+nanachome 567 ms, shotengai 412, school 385, kohan 368, tunnel 293.
+
+### RUN LOG
+
+    npm run lint:preload        up to date, boot 113, city 73, built 32; 215
+    npm run verify              not run: no physics, plant, ABI or build

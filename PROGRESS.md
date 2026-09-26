@@ -50803,3 +50803,12 @@ physics, the plant, the module ABI or the build changed.
     node scripts/gen-preload.js --check up to date, boot 113, city 73,
                                         built 32; 215 served
     dash scan of the diff               none
+
+### To main
+
+The owner, 2026-09-26: "Push to main i'll test it by flying". That is the
+verification chosen for this change: the owner flies it, so shots.js,
+lint:shell and verify were not run. main had not moved: origin/main was
+still 716562b, the parent of add5bdd, so it went up as a fast forward.
+Whether the lap times should also be spoken was asked and not answered,
+so nothing is spoken.

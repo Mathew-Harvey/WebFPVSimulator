@@ -47589,3 +47589,182 @@ lint:nouns clean. lint:shell stays red on main, title overflow 67 px at
 1600x900 against a recorded 0, where main was already at 23 px. Not
 re-recorded: the answer did not ask for a threshold to move. Making it
 green is a re-record of the title at 67 px, and that is the owner's to say.
+
+## 2026-09-26 | shell, render, tests, git | Replay mode (PR #16) finished: rebased, one sponsor flag, a pixel test that can fail
+
+The owner asked for PR #16 to be made mergeable: rebased onto main, four
+checks run, and seven things its earlier entries claimed checked against the
+code, because some were thought not to be true. Several were not. Shell,
+render and tests only: the plant, the module ABI and the build are
+unchanged, and a replay still never steps the plant.
+
+### The rebase
+
+The branch already held main (6d8c1a2) through two merge commits, and was
+rebased anyway, as asked: 26 commits replayed onto 6d8c1a2, the two merges
+dropped. The old head was 54dc7c3 (now d0eecec), and it stays on the PR's
+timeline. Two things came up:
+
+- The first merge, da89f10, was not only a merge. Beside resolving
+  PROGRESS it replaced 6d85bda's sponsor hiding (the turf and the banner
+  kit each reading a hideSponsors argument) with custom.js emptying
+  course.decals and course.logos. Found by recomputing each merge with git
+  merge-tree and diffing it against what was committed. That change was
+  carried into the next commit, 07b14c9 (now 82d8e39), so no commit's code
+  changed meaning.
+- The second, c9270d0, left a `>>>>>>> origin/main` marker and a stray rule
+  at the end of PROGRESS.md. The rebased tree equals 54dc7c3's in every
+  file except those lines, which are gone.
+
+main then moved during the turn, to 2df3020 (#19, the Support row), and the
+branch was rebased again onto that. The code it carries is the same patch
+on either main (git patch-id, 7c19339ec182 both times), its PROGRESS lines
+are the same lines, nothing of main's is lost, and every check below ran
+on the tree rebased onto 2df3020.
+
+### What the seven claims were, at 54dc7c3
+
+1. The pixel sponsor test was not there. testSponsorContentHidden loaded
+   map=built with no replay and swapped `Image` sources under art/ for
+   magenta, which never reached the screen: its own clean=0 line printed
+   magentaPixels=0. It never stepped __replayStep, never required clean=0
+   to show anything and never read sponsorsPainted. Its pass line named
+   gates, banners, flags, turf and the whoop room, and it looked at none of
+   them. Its magenta rule, R > 200, G < 100, B > 200, was also blind to
+   this renderer: lit and tone mapped, a pure magenta logo comes back near
+   176, 20, 150 in sun and 112, 20, 120 in shade, and on the full sized
+   lap with 18 marks painted it counted 0 in every frame.
+2. The glow was put out once, when the ghost arrived, and nothing kept it
+   out: reset() (R, a saved FC edit) and a new look light the target
+   again. __replayInfo().nextGateGlowHidden was `replayClean &&
+   replayMode`, the flag restated, and no test read a gate.
+3. The cursor was hidden at boot and restored on two failure paths. A
+   third, a ghost that resolves to nothing (resolveGhost gives a freestyle
+   course none), left the replay loading for good with the UI and the
+   cursor gone. No test read the cursor.
+4. One test waited for flight with an until. Another read the replay state
+   once after a two second sleep, and the sponsor test slept three.
+5. submitBoardTime's early return and the race.update skip were there.
+   pingVisit was skipped for any address containing `replay=tm-` rather
+   than for a valid replay id, and normal pages called captureSource twice.
+   The guards test's visit check could never match: sendEvent hands
+   sendBeacon a Blob, the stub kept it, JSON.parse of what came back threw,
+   and every beacon read as not a visit. The control that would have shown
+   it was deleted in 9f51b40 (now bcd7643) because "counting() returns false
+   in headless". It does not: counting() is GPC and the opt out, and a
+   fresh profile has neither. The restored control passes.
+6. PROGRESS said "Single course.hideSponsors flag ... All current surfaces
+   route through it". No painter read it. custom.js emptied the arrays, and
+   sponsorsPainted was a formula over the arrays it had just emptied, so
+   under clean=1 it could only read 0. It also skipped any decal wearing
+   the first logo, whose index is 0.
+7. pace.observe was skipped during step capture, but no map implements
+   applyPace (src/render/quality.js says so), so the pacer never runs and
+   the guard is dormant.
+
+Also found: pngjs was added as a dependency with no PROGRESS justification,
+in a repository with no install step, so replay:test failed on a clean
+checkout with ERR_MODULE_NOT_FOUND, while scripts/pixels.js already decoded
+Chromium's screenshots with zlib. Two Chromium flags went into
+tests/lib/page.js, which nineteen scripts share, while chasing (1). And the
+last commit made clean=1 hide sponsors and the STF mark on every map, with
+or without a replay: a feature outside replay mode.
+
+### How sponsor hiding works now
+
+One flag. src/maps/custom.js sets course.hideSponsors for a clean replay,
+which is clean=1 with a valid ?replay=. The two painters that can put a
+sponsor's mark into the field scene both read it: pitchSurface paints no
+turf decals, and the banner kit is dealt no logos, so every gate header,
+sleeve, pennant and flag, the whoop room's flags included, wears the plain
+dress an unbranded course wears. Nothing is emptied and nothing restated.
+Both painters count what they composite, and __map().sponsorsPainted reads
+that count live, so the second check counts paint rather than intentions.
+clean=1 without a valid replay does nothing, and the built and city map
+changes are gone.
+
+### The other fixes
+
+- The replay query is read once, first, so pingVisit is skipped exactly
+  when the replay id is valid. A replay still captures its utm_ source and
+  counts nothing; a normal page does exactly what main does.
+- The glow: on every replay frame, before the draw, a clean replay puts out
+  any lit target. The mid lap relight in the test holds it to that.
+- failReplay: one function for all three failure paths, putting #ui and
+  the cursor back and saying why.
+- The pace guard's comment now says it is dormant and why it stays.
+- pngjs and package-lock.json removed. decodePng moved unchanged to
+  tests/lib/png.js, with an encodePng beside it, and scripts/pixels.js
+  imports it; its output on the same image is identical to before.
+  tests/lib/page.js, the built and city maps and the unused
+  tests/fixtures/test-sponsor-logo.png are back to main.
+
+### The test
+
+tests/replay-test.js, six tests, 3 min 1 s here. The sponsor test dresses
+two committed courses in three solid magenta logos: trk-b17c07d2 with
+three ground logos under its gates (turf, gate headers and sleeves, five
+flags), and the micro living room with three flags in the room. Each is
+replayed with a ghost built in Node from the course's own racing line
+(courseFromDocument, encodeGhost), 30 degrees nose down so the FPV view is
+level, from both cameras, at clean=0 and at clean=1. A 640 by 360
+screenshot is counted at every 500 ms step across the lap, with the page
+read beside it: the glow off the gate materials (__gateTiers), the cursor
+of whatever is under the middle of the view, #ui, and the drawing buffer.
+At clean=1 a gate is lit halfway round, the way a reset would, and every
+later frame must be dark again.
+
+    full chase        clean=0 most 103254 px, 18 painted | clean=1 0 px in 27 of 27
+    full fpv          clean=0 most  52820 px, 18 painted | clean=1 0 px in 27 of 27
+    whoop room chase  clean=0 most   5258 px, 15 painted | clean=1 0 px in 14 of 14
+    whoop room fpv    clean=0 most   2625 px, 15 painted | clean=1 0 px in 14 of 14
+
+Every clean=1 frame also had the glow dark, the cursor none, #ui none and
+the 544 by 306 buffer unchanged, and every clean=0 run had a lit gate, the
+UI and a cursor, so each check has been seen seeing its thing.
+
+Each fix was taken out once to prove its check fails without it, sources
+restored byte for byte after each run:
+
+    turf and kit reads of course.hideSponsors removed
+      FAIL full chase clean=1 over 27 frames: 27 frames with magenta,
+      118020 px at most; 18 sponsor marks painted
+    the glow put out once at the start instead, as at 54dc7c3
+      FAIL full chase clean=1 over 27 frames: 13 frames with a lit gate
+    the cursor line removed
+      FAIL full chase clean=1 over 27 frames: 27 frames with a cursor (auto)
+
+The guards test opens the same page without ?replay= first and waits for
+its visit beacon, then replays a whole 6550 ms lap: 0 laps, no POST to
+/api/tracks/*/times, no visit, and nothing sent to the board at all.
+
+### Checks, run this turn on the final tree (on 2df3020), no node_modules present
+
+    npm run replay:test      6 tests: 6 pass, 0 fail
+    npm run stats:selftest   79 passed, 0 failed
+    npm run lint:boot        9 of 9 checks clean
+    npm run lint:fc          33 of 33 traces clean
+
+npm run verify was not run: nothing here touches physics, the plant, the
+module ABI or the build, and it was not asked for.
+
+### What went wrong on the way
+
+- The first calibration run used the old magenta rule and counted 0 on
+  frames full of logos. The rule is now the colour's shape, set from real
+  frames and unit tested on the measured colours.
+- The first FPV laps flew level under a 30 degree camera and filmed the
+  sky. The ghost now flies nose down.
+
+### Still open
+
+- The laps and time POST checks cannot tell the guards from the fact that
+  the quad never moves in a replay, so no gate is crossed either way. They
+  confirm the outcome; the guards themselves were read in the code.
+- A replay still reads the sticks. Throttle past takeoff sets flownThisRun,
+  and flight stats would then count a replay as flying. Headless capture
+  never touches the sticks; a person at the keyboard could.
+- Flags wave on the wall clock, so two captures of one lap are not pixel
+  identical. It moves the clean=0 counts a little from run to run (the
+  room from the chase camera read 4949, 6407 and 5258 on three runs) and
+  cannot move clean=1 off zero.

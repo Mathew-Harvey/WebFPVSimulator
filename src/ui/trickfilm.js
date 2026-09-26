@@ -393,53 +393,162 @@ function drawObstacle(ctx, film, cx, cy, s, ground) {
   ctx.strokeRect(x, cy - s * 0.06, w, s * 0.12);
 }
 
+/* The craft's own colours, beside the town's: carbon for the frame, a
+ * lighter plate for the stack, steel bells, the pack in two cel bands, and
+ * the camera's black. */
+const CARBON = '#27313b';
+const PLATE = '#3b4a57';
+const BELL = '#c9d3dc';
+const PACK = '#5d6b7a';
+const PACK_SHADE = '#48545f';
+const CAMERA = '#161d24';
+
 /*
- * The aircraft: a flat body, four props and a nose chevron, with a hard ink
- * line round all of it. Small enough to read at a glance and asymmetric
- * enough that its ROTATION is unambiguous, which a circle would not be.
+ * The aircraft, drawn as a manga draws one (polish item 19): a stretched X
+ * of carbon arms, a bell and a hub on each, the stack and the pack strapped
+ * on top, a camera pod at the nose in sakura with its lens, the antenna off
+ * the back, and the props as blurred discs with speed arcs in them, all
+ * under a hard ink line. It was four circles and a box.
+ *
+ * It still does its first job: small enough to read at a glance and
+ * asymmetric enough that its ROTATION is unambiguous. The pod at the nose
+ * is in the one colour nothing else on the craft uses, so which way it
+ * points is never in doubt, and the antenna marks the tail.
+ *
+ * `spin` turns it in the picture, `squash` narrows it across (a roll seen
+ * from behind, or the tilt of a panel's view), `inv` is its underside. The
+ * points are placed by hand rather than under a squashed transform, so the
+ * ink stays one width all the way round however narrow the craft is. Under
+ * about fourteen pixels a side the fine work (hubs, strap, glint, arcs) is
+ * left out: at the trick film's ghost size it would only be noise.
+ *
  * Exported for the results page's panels (src/ui/mangapage.js), so the
  * craft in a gap or on a car's tail is the one the films teach with.
  */
 export function drawQuad(ctx, x, y, spin, scale, squash, alpha, inv) {
+  const r = scale;
+  const sq = Math.max(0.22, Math.abs(squash == null ? 1 : squash));
+  const c = Math.cos(spin);
+  const s = Math.sin(spin);
+  /* Craft space, u forward and v to the right, in units of `scale`. */
+  const X = (u, v) => x + (u * c - v * sq * s) * r;
+  const Y = (u, v) => y + (u * s + v * sq * c) * r;
+  const poly = (pts) => {
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i += 2) {
+      if (i === 0) {
+        ctx.moveTo(X(pts[i], pts[i + 1]), Y(pts[i], pts[i + 1]));
+      } else {
+        ctx.lineTo(X(pts[i], pts[i + 1]), Y(pts[i], pts[i + 1]));
+      }
+    }
+    ctx.closePath();
+  };
+  const disc = (u, v, R, a0 = 0, a1 = TURN) => {
+    ctx.beginPath();
+    ctx.ellipse(X(u, v), Y(u, v), R * r, R * r * sq, spin, a0, a1);
+  };
+  /* Two weights, as an inker uses them: the heavy line round the craft's
+   * outside, a lighter one for what is drawn inside it. */
+  const line = Math.max(1.5, r * 0.07);
+  const inner = Math.max(1, line * 0.55);
+  const fine = r >= 14;
+  const paint = (fill, w = line) => {
+    if (fill) {
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    ink(ctx, w);
+    ctx.stroke();
+  };
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.translate(x, y);
-  ctx.rotate(spin);
-  const sx = Math.max(0.22, Math.abs(squash == null ? 1 : squash));
-  ctx.scale(1, sx);
-  const r = scale;
-  /* Arms and props. */
-  ctx.fillStyle = inv ? SLATE : CREAM;
-  for (const [ax, ay] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    ctx.beginPath();
-    ctx.arc(ax * r * 0.62, ay * r * 0.62, r * 0.3, 0, TURN);
-    ctx.fill();
-    ink(ctx, 2);
-    ctx.stroke();
+  const M = 0.62;
+  const motors = [[M, -M], [M, M], [-M, -M], [-M, M]];
+  /* The arms, tapering from the stack to the motor. */
+  for (const [mu, mv] of motors) {
+    const len = Math.hypot(mu, mv);
+    const nu = -mv / len;
+    const nv = mu / len;
+    poly([
+      nu * 0.12, nv * 0.12, mu + nu * 0.08, mv + nv * 0.08,
+      mu - nu * 0.08, mv - nv * 0.08, -nu * 0.12, -nv * 0.12,
+    ]);
+    paint(inv ? PACK : CARBON);
   }
-  /* Body. */
-  ctx.fillStyle = inv ? '#5d6b7a' : '#3b4a57';
+  /* The stack's plate. */
+  poly([-0.5, -0.21, 0.34, -0.21, 0.42, -0.13, 0.42, 0.13, 0.34, 0.21, -0.5, 0.21]);
+  paint(inv ? PACK : PLATE);
+  /* The bells, each with its shaft. */
+  for (const [mu, mv] of motors) {
+    disc(mu, mv, 0.16);
+    paint(inv ? SLATE : BELL, inner);
+    if (fine) {
+      disc(mu, mv, 0.05);
+      ctx.fillStyle = INK;
+      ctx.fill();
+    }
+  }
+  if (!inv) {
+    /* The pack, in two cel bands with a hard stop, and its strap. */
+    poly([-0.54, 0.05, 0.16, 0.05, 0.16, 0.16, -0.54, 0.16]);
+    ctx.fillStyle = PACK_SHADE;
+    ctx.fill();
+    poly([-0.54, -0.16, 0.16, -0.16, 0.16, 0.05, -0.54, 0.05]);
+    ctx.fillStyle = PACK;
+    ctx.fill();
+    poly([-0.54, -0.16, 0.16, -0.16, 0.16, 0.16, -0.54, 0.16]);
+    paint(null, inner);
+    if (fine) {
+      poly([-0.24, -0.2, -0.13, -0.2, -0.13, 0.2, -0.24, 0.2]);
+      paint(INK, inner);
+    }
+  }
+  /* The camera pod: the mount's side plates in sakura, the camera, and the
+   * lens barrel out in front with a glint on its glass. */
+  poly([0.2, -0.26, 0.62, -0.26, 0.68, -0.19, 0.68, 0.19, 0.62, 0.26, 0.2, 0.26]);
+  paint(SAKURA);
+  poly([0.32, -0.09, 0.62, -0.09, 0.62, 0.09, 0.32, 0.09]);
+  paint(CAMERA, inner);
+  poly([0.62, -0.065, 0.78, -0.065, 0.78, 0.065, 0.62, 0.065]);
+  paint(INK, inner);
+  if (fine) {
+    disc(0.75, -0.025, 0.024);
+    ctx.fillStyle = CREAM;
+    ctx.fill();
+  }
+  /* The antenna off the back, capped in the frame's black, so the only
+   * sakura on the craft is at its nose. */
   ctx.beginPath();
-  ctx.moveTo(-r * 0.5, -r * 0.42);
-  ctx.lineTo(r * 0.5, -r * 0.42);
-  ctx.lineTo(r * 0.62, 0);
-  ctx.lineTo(r * 0.5, r * 0.42);
-  ctx.lineTo(-r * 0.5, r * 0.42);
-  ctx.closePath();
-  ctx.fill();
-  ink(ctx, 2);
+  ctx.moveTo(X(-0.5, 0.06), Y(-0.5, 0.06));
+  ctx.lineTo(X(-0.8, 0.14), Y(-0.8, 0.14));
+  ink(ctx, Math.max(1.5, line * 0.8));
   ctx.stroke();
-  /* The nose, in the one colour nothing else here uses, so which way the
-   * craft is pointing is never in doubt. */
-  ctx.fillStyle = SAKURA;
-  ctx.beginPath();
-  ctx.moveTo(r * 0.18, -r * 0.26);
-  ctx.lineTo(r * 0.86, 0);
-  ctx.lineTo(r * 0.18, r * 0.26);
-  ctx.closePath();
-  ctx.fill();
-  ink(ctx, 2);
-  ctx.stroke();
+  disc(-0.8, 0.14, 0.055);
+  paint(CARBON, Math.max(1, line * 0.6));
+  /* The props last, over everything: a disc of blur, and in it two speed
+   * arcs, the way a manga draws a thing turning too fast to see. */
+  const arcW = Math.max(1, line * 0.5);
+  const P = 0.41;
+  motors.forEach(([mu, mv], k) => {
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.4;
+    disc(mu, mv, P);
+    ctx.fillStyle = inv ? SLATE : CREAM;
+    ctx.fill();
+    ctx.restore();
+    disc(mu, mv, P);
+    ink(ctx, arcW);
+    ctx.stroke();
+    if (fine) {
+      const a = k * 1.7 + 0.4;
+      disc(mu, mv, P * 0.78, a, a + 1.6);
+      ink(ctx, arcW);
+      ctx.stroke();
+      disc(mu, mv, P * 0.57, a + Math.PI, a + Math.PI + 1.2);
+      ctx.stroke();
+    }
+  });
   ctx.restore();
 }
 

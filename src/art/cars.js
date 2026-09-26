@@ -52,6 +52,15 @@
  * dusk. No badge, no maker's name, no model name anywhere: a car in the
  * art style, recognisable from its shapes.
  *
+ * THE SECOND PASS (every kind but the r32 and the e82, whose rows say
+ * p2): each kind its own face (FACES), lamps, grilles and intakes set in
+ * rims so they read as recessed (pod), bumpers that are pieces of their own
+ * wrapping the corners and standing proud (bumperLoft), lips on the arches
+ * (archLipP2), shoulders and roof edges lit as rounds (prism's smooth), a
+ * reflection band across the glass, wipers lying on it, better mirrors, and
+ * a tyre's inner face so a far wheel is a tyre. The flank stands in by the
+ * lip's stand so what is proud of it stays within the car's width.
+ *
  * TWO LEVELS OF DETAIL. 'parked' (every parked car, the town's and a built
  * map's) draws the wheels at 12 sides with their outer faces only and
  * keeps a car within the vendored model's triangle count; 'full' (the
@@ -2118,6 +2127,12 @@ function endP2(M, s, chain, sign, hw, spec, lamps) {
       onEndPoly(M, f.role, chain, sign, poly, f.lift ?? 0.004);
     }
   }
+  /* Round fog lamps, [z, y, r] on the +z side and mirrored. */
+  for (const [z, y, r] of spec.fogs ?? []) {
+    for (const zz of [z, -z]) {
+      endRing(M, 'clear', chain, sign, y, zz, 0, r, 0.008, 8);
+    }
+  }
   /* A lamp that runs round the corner: a strip along the flank from the
    * corner back, tapering. */
   for (const w of spec.wraps ?? []) {
@@ -2186,17 +2201,15 @@ const FACES = {
           poly: [[-0.30, 0.335], [0.30, 0.335], [0.37, 0.47], [-0.37, 0.47]], rim: 0.018, h: 0.014, lens: 0.003,
           rimRole: 'body', lensRole: 'dark', bars: { n: 2, w: 0.008, role: 'briteDark' },
         },
-        {
-          poly: rrect(0.45, 0.375, 0.55, 0.44, 0.025, 1), mirror: true, rim: 0.012, h: 0.012, lens: 0.003,
-          rimRole: 'body', lensRole: 'dark', parts: [{ role: 'clear', disc: [0.50, 0.4075, 0.022, 8] }],
-        },
       ],
+      flats: [{ role: 'dark', poly: rrect(0.45, 0.375, 0.55, 0.44, 0.025, 1), mirror: true, lift: 0.004 }],
+      fogs: [[0.50, 0.4075, 0.022]],
       plate: 0.555,
     },
     rear: {
       pods: [
         {
-          poly: rrect(0.47, 0.64, 0.585, 1.0, 0.035, 1), mirror: true, rim: 0.014, h: 0.018, lens: 0.005,
+          poly: rrect(0.47, 0.64, 0.585, 1.0, 0.035, 1), mirror: true, rim: 0.014, h: 0.016, lens: 0.005,
           rimRole: 'dark', lensRole: 'lampR', lamp: true,
           parts: [{ role: 'clear', poly: rrect(0.49, 0.70, 0.565, 0.76, 0.01, 1) }, { role: 'amber', poly: rrect(0.49, 0.77, 0.565, 0.82, 0.01, 1) }],
         },
@@ -2225,7 +2238,7 @@ const FACES = {
     rear: {
       pods: [
         {
-          poly: rrect(0.50, 0.56, 0.625, 0.88, 0.02, 1), mirror: true, rim: 0.012, h: 0.018, lens: 0.005,
+          poly: rrect(0.50, 0.56, 0.625, 0.88, 0.02, 1), mirror: true, rim: 0.012, h: 0.016, lens: 0.005,
           rimRole: 'dark', lensRole: 'lampR', lamp: true,
           parts: [{ role: 'clear', poly: rrect(0.515, 0.575, 0.61, 0.62, 0.008, 1) }, { role: 'amber', poly: rrect(0.515, 0.63, 0.61, 0.69, 0.008, 1) }],
         },
@@ -2252,18 +2265,16 @@ const FACES = {
           poly: [[-0.36, 0.30], [0.36, 0.30], [0.44, 0.52], [-0.44, 0.52]], rim: 0.02, h: 0.016, lens: 0.004,
           rimRole: 'body', lensRole: 'dark', bars: { n: 3, w: 0.01, role: 'briteDark' },
         },
-        {
-          poly: [[0.50, 0.33], [0.60, 0.33], [0.60, 0.47]], mirror: true, rim: 0.012, h: 0.014, lens: 0.003,
-          rimRole: 'body', lensRole: 'dark', parts: [{ role: 'clear', disc: [0.568, 0.37, 0.02, 8] }],
-        },
       ],
-      flats: [{ role: 'brite', poly: rrect(-0.28, 0.80, 0.28, 0.812, 0.005, 1), lift: 0.005 }],
+      flats: [{ role: 'brite', poly: rrect(-0.28, 0.80, 0.28, 0.812, 0.005, 1), lift: 0.005 },
+        { role: 'dark', poly: [[0.50, 0.33], [0.60, 0.33], [0.60, 0.47]], mirror: true, lift: 0.004 }],
+      fogs: [[0.568, 0.37, 0.02]],
       plate: 0.41,
     },
     rear: {
       pods: [
         {
-          poly: [[0.44, 0.76], [0.66, 0.74], [0.67, 0.95], [0.52, 0.95], [0.44, 0.84]], mirror: true, rim: 0.014, h: 0.018, lens: 0.005,
+          poly: [[0.44, 0.76], [0.66, 0.74], [0.67, 0.95], [0.52, 0.95], [0.44, 0.84]], mirror: true, rim: 0.014, h: 0.016, lens: 0.005,
           rimRole: 'dark', lensRole: 'lampR', lamp: true,
           parts: [{ role: 'clear', poly: [[0.46, 0.775], [0.60, 0.765], [0.60, 0.80], [0.46, 0.81]] },
             { role: 'amber', poly: [[0.61, 0.765], [0.648, 0.762], [0.65, 0.80], [0.61, 0.80]] }],
@@ -2291,9 +2302,10 @@ const FACES = {
           poly: rrect(-0.42, 0.33, 0.42, 0.40, 0.015, 1), rim: 0.012, h: 0.012, lens: 0.003, rimRole: 'body', lensRole: 'dark',
           bars: { n: 1, w: 0.01, role: 'briteDark' },
         },
-        { poly: rrect(0.50, 0.34, 0.62, 0.39, 0.01, 1), mirror: true, rim: 0.01, h: 0.012, lens: 0.004, rimRole: 'dark', lensRole: 'clear' },
       ],
       flats: [
+        { role: 'dark', poly: rrect(0.50, 0.34, 0.62, 0.39, 0.01, 1), mirror: true, lift: 0.004 },
+        { role: 'clear', poly: rrect(0.51, 0.35, 0.61, 0.38, 0.006, 1), mirror: true, lift: 0.008 },
         { role: 'dark', poly: rrect(-0.68, 0.495, 0.68, 0.53, 0.01, 1), lift: 0.006 },
         { role: 'brite', poly: rrect(-0.68, 0.53, 0.68, 0.538, 0.003, 1), lift: 0.007 },
       ],
@@ -2336,7 +2348,7 @@ const FACES = {
     rear: {
       pods: [
         {
-          poly: rrect(0.585, 0.62, 0.705, 0.96, 0.015, 1), mirror: true, rim: 0.012, h: 0.018, lens: 0.005,
+          poly: rrect(0.585, 0.62, 0.705, 0.96, 0.015, 1), mirror: true, rim: 0.012, h: 0.016, lens: 0.005,
           rimRole: 'dark', lensRole: 'lampR', lamp: true,
           parts: [{ role: 'clear', poly: rrect(0.60, 0.635, 0.69, 0.68, 0.006, 1) }, { role: 'amber', poly: rrect(0.60, 0.69, 0.69, 0.74, 0.006, 1) }],
         },
@@ -2364,7 +2376,7 @@ const FACES = {
           rimRole: 'body', lensRole: 'dark', bars: { n: 4, w: 0.01, role: 'briteDark' },
         },
         {
-          poly: rrect(0.54, 0.36, 0.605, 0.60, 0.02, 1), mirror: true, rim: 0.012, h: 0.016, lens: 0.004, rimRole: 'dark', lensRole: 'dark',
+          poly: rrect(0.54, 0.36, 0.605, 0.60, 0.02, 1), mirror: true, rim: 0.012, h: 0.016, lens: 0.004, rimRole: 'brite', lensRole: 'dark',
           parts: [{ role: 'clear', poly: rrect(0.553, 0.38, 0.592, 0.46, 0.01, 1) }],
         },
       ],
@@ -2373,7 +2385,7 @@ const FACES = {
     rear: {
       pods: [
         {
-          poly: rrect(0.54, 0.70, 0.672, 1.06, 0.03, 1), mirror: true, rim: 0.014, h: 0.018, lens: 0.005,
+          poly: rrect(0.54, 0.70, 0.672, 1.06, 0.03, 1), mirror: true, rim: 0.014, h: 0.016, lens: 0.005,
           rimRole: 'dark', lensRole: 'lampR', lamp: true,
           parts: [{ role: 'clear', poly: rrect(0.555, 0.76, 0.657, 0.82, 0.01, 1) }, { role: 'amber', poly: rrect(0.555, 0.83, 0.657, 0.88, 0.01, 1) }],
         },
@@ -2405,7 +2417,7 @@ const FACES = {
     rear: {
       pods: [
         {
-          poly: rrect(0.585, 0.62, 0.72, 0.96, 0.015, 1), mirror: true, rim: 0.012, h: 0.018, lens: 0.005,
+          poly: rrect(0.585, 0.62, 0.72, 0.96, 0.015, 1), mirror: true, rim: 0.012, h: 0.016, lens: 0.005,
           rimRole: 'dark', lensRole: 'lampR', lamp: true,
           parts: [{ role: 'clear', poly: rrect(0.60, 0.64, 0.705, 0.70, 0.006, 1) }, { role: 'amber', poly: rrect(0.60, 0.72, 0.705, 0.77, 0.006, 1) }],
         },
@@ -2446,14 +2458,14 @@ const FACES = {
           poly: rrect(-0.42, 0.85, 0.42, 1.03, 0.02, 1), rim: 0.02, h: 0.022, lens: 0.006, rimRole: 'brite', lensRole: 'dark',
           bars: { n: 4, w: 0.016, role: 'brite' },
         },
-        { poly: rrect(0.55, 0.60, 0.68, 0.68, 0.02, 1), mirror: true, rim: 0.01, h: 0.014, lens: 0.004, rimRole: 'dark', lensRole: 'clear' },
       ],
+      flats: [{ role: 'clear', poly: rrect(0.56, 0.61, 0.67, 0.67, 0.015, 1), mirror: true, lift: 0.006 }],
       plate: 0.635,
     },
     rear: {
       pods: [
         {
-          poly: rrect(0.72, 0.80, 0.855, 1.20, 0.02, 1), mirror: true, rim: 0.014, h: 0.018, lens: 0.005,
+          poly: rrect(0.72, 0.80, 0.855, 1.20, 0.02, 1), mirror: true, rim: 0.014, h: 0.016, lens: 0.005,
           rimRole: 'dark', lensRole: 'lampR', lamp: true,
           parts: [{ role: 'clear', poly: rrect(0.735, 0.82, 0.84, 0.88, 0.008, 1) }, { role: 'amber', poly: rrect(0.735, 0.90, 0.84, 0.96, 0.008, 1) }],
         },
@@ -3070,11 +3082,12 @@ function keiTruckBody(M, s, o, lamps) {
     const z = side * (hw - 0.2);
     M.box('dark', -L2 - 0.02, 0.62, z - 0.13, -L2 + 0.02, 0.76, z + 0.13);
     if (s.p2) {
-      /* In a rim on the housing's face, the tail lamp over the amber. */
-      pod(M, [[-L2 - 0.02, 0.5], [-L2 - 0.02, 0.9]], -1, rrect(z - 0.115, 0.632, z + 0.115, 0.748, 0.012, 1), {
-        rim: 0.012, h: 0.012, lens: 0.004, rimRole: 'briteDark', lensRole: 'lampR',
-        parts: [{ role: 'amber', poly: [[z - 0.1, 0.644], [z + 0.1, 0.644], [z + 0.1, 0.664], [z - 0.1, 0.664]] }],
-      });
+      /* On the housing's face, a bright bezel, the tail lamp over the
+       * amber. */
+      const rc = [[-L2 - 0.02, 0.5], [-L2 - 0.02, 0.9]];
+      onEndPoly(M, 'briteDark', rc, -1, rrect(z - 0.118, 0.63, z + 0.118, 0.75, 0.014, 1), 0.003);
+      onEndPoly(M, 'lampR', rc, -1, rrect(z - 0.104, 0.668, z + 0.104, 0.738, 0.01, 1), 0.006);
+      onEndPoly(M, 'amber', rc, -1, [[z - 0.104, 0.642], [z + 0.104, 0.642], [z + 0.104, 0.66], [z - 0.104, 0.66]], 0.006);
     } else {
       M.face('lampR', [[-L2 - 0.022, 0.66, z + 0.11], [-L2 - 0.022, 0.66, z - 0.11], [-L2 - 0.022, 0.74, z - 0.11], [-L2 - 0.022, 0.74, z + 0.11]], { toward: [-1, 0, 0] });
       M.face('amber', [[-L2 - 0.022, 0.635, z + 0.11], [-L2 - 0.022, 0.635, z - 0.11], [-L2 - 0.022, 0.655, z - 0.11], [-L2 - 0.022, 0.655, z + 0.11]], { toward: [-1, 0, 0] });

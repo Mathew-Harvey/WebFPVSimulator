@@ -47792,3 +47792,185 @@ URL without &clean=1 brings the logos, the glow and the UI back.
     code                           unchanged since the entry above; only
                                    this entry is new
     checks                         not rerun: nothing they read changed
+
+## 2026-09-26 | shell, tests | A replay ignores the sticks and counts nothing
+
+The owner asked for the gap the replay entry above left open: a replay still
+read the sticks. Throttle past takeoff set flownThisRun, and the flight
+counter then treated a capture as a flight. Shell and tests only: the plant,
+the module ABI and the build are unchanged, and a normal flight takes exactly
+the paths it took before, because every change is behind replayMode.
+
+### What the sticks did to a replay, measured
+
+- Throttle past takeoff counted the capture. flownThisRun went true, the
+  flight counter sent a session beacon on the next frame and a flush when
+  the page went away.
+- It also broke the replay itself, which was not in the report. A replay
+  never steps the plant, so the plant's step index stays at 0. The takeoff
+  unparked the craft, and the step branch's replay path rebuilt the lap
+  clock, which is the clock the ghost is flown on, from that index: it set
+  simStepIdx and simTimeMs to it plus the frame's steps, and the common
+  tail after the branch added the steps again, so the clock landed on
+  twice one frame's steps, 200 ms at most with the frame capped at 100 ms.
+  The next frame's step index snap parked the craft, and the one after
+  took off again. Held, the ghost went back to the start of its lap and
+  stayed there. The replay clock (startMs + vt), one frame each, with only
+  the takeoff guard taken out, so the throttle took the path it took before
+  the fix, on a replay that had run 1.4 s: 1282 1382 1399 167 167 199 199
+  198 197 199 199 ... A probe of __stickPath, not committed, the same way
+  on a replay past 1.5 s: moduleMs 0 on every frame; simStepIdx 200 after
+  an unparking frame of 100 ms or more and 32 after one of 17 ms, then 0
+  after the snap; the clock 199, and 32 and 31 around the short frame.
+- L did the same with launch control switched on in Settings.
+  bridge_set_launch_control arms Betaflight's launch state at once, with no
+  step (src/native/bf/bf_glue.c), so the next frame's syncLaunchControl
+  called beginLaunchStaging, which unparks the craft like a takeoff. On the
+  shell before the fix the replay clock sat at 199 ms for as long as the
+  switch was on. Launch control counts nothing here, because its trigger
+  needs a plant step.
+
+### The change, src/main.js
+
+Three guards, each only in replay mode:
+
+- The takeoff branch in frameBody does not run in a replay. This is the
+  one that makes the sticks inert.
+- beginLaunchStaging returns in a replay, so L arms nothing that moves.
+- flightStats.tick is not called in a replay: a capture counts nothing, as
+  it already sends no visit. It is belt and braces. With the other two in
+  place nothing a pilot can press sets flownThisRun in a replay, so taking
+  it out alone leaves the check green (run below). It is what keeps the
+  counting right if a later path does set it: with the takeoff guard taken
+  out, the replay took off on 19 frames and still sent nothing. It is the
+  one line where "a replay counts nothing" is said, beside the skipped
+  visit; if the owner prefers the smaller change, it can go.
+
+### Input paths read and left alone
+
+- Turtle, the scripted one: needs an inverted craft at rest. A replay
+  never steps the plant, so its craft keeps the upright spawn pose.
+- The held crashflip (T), X, stuckTick and crashResetTick all refuse while
+  landed, and with the two guards a replay's craft is always landed.
+- Launch control's own flownThisRun, on the trigger (state 3), needs a
+  plant step.
+- The intro's throttle skip needs introMs >= 0, and a replay sets -1.
+- The OSD throttle readout and the stick overlay are drawn in the OSD,
+  which hangs off #ui, and clean=1 hides #ui. Display only either way. The
+  motor sound needs !landed.
+- M flips and saves the Angle or Acro choice and puts up a notice (hidden
+  under clean=1). It touches neither the replay nor the counters. It is a
+  setting, so it is left alone.
+
+### Found and not changed: R in a replay
+
+R, and the radio's restart switch, which calls the same reset(), zero the
+lap clock. Before the lap's first wrap that restarts the replay from the
+top, because replayClock.startMs is 0. After a wrap, startMs still holds
+the sim time of the wrap, so vt goes negative and the ghost is clamped to
+its first frame for as long as the replay had run up to that wrap.
+Measured with a probe, not committed, after one wrap of the 6550 ms lap:
+vt read -6550 on the frame after R and was still -3033 forty frames (5 s of
+wall clock) later. Nothing is counted either way, and a capture in step
+mode is not touched, because __replayStep drives vt there. R is a restart
+key, not a stick, and what it should mean in a replay is the owner's call.
+Either answer is a line or two: reset() putting replayClock.startMs back
+to 0 in a replay (R restarts it), or the R key and the switch returning in
+a replay (R does nothing).
+
+### The test
+
+tests/replay-test.js gains testReplayIgnoresSticks, the seventh test. The
+control opens the plain course without ?replay=, goes into the race the
+way a pilot does (Fly, Enter on the launch card), presses L with launch
+control on (it must stage), presses L again, then holds the page's own
+throttle key, read from input.throttleKeys, through the DevTools protocol
+until the stick reads the top and for ten frames more (it must take off,
+and the stub must see a session beacon, then a flush after a pagehide).
+The replay gets the same presses and must stay parked on every frame, keep
+flownThisRun false on every frame, advance its clock on every frame, and
+send nothing at all to /api/stats/events, visit, session or flush, a
+pagehide included. The clock is read as startMs + vt, the sim time the
+replay reads, which rises on every frame of a healthy replay, through the
+lap's wrap as well. Both pages are 640 by 360, as the sponsor laps are,
+because at 1600 by 900 a software rasterised frame took about 400 ms.
+
+On the shell before the fix:
+
+    FAIL testReplayIgnoresSticks: replay over 31 frames: 6 frames unparked
+    after L; 11 frames where the replay clock did not advance after L (200
+    199 199 199 199 199 199 199 199 199 199 199); 9 frames unparked under
+    the throttle; 15 frames where the replay clock did not advance under the
+    throttle (299 199 199 199 199 199 199 165 165 199 199 199 199 32 31 65
+    65 199 199); 18 frames with flownThisRun true; 2 events sent to the
+    stats endpoint (session, flush)
+
+Each guard taken out alone, src/main.js restored byte for byte after each
+(sha256 772f1fb608eba5f2 before and after; the committed file differs from
+that one only in the reworded comment over the takeoff guard):
+
+    takeoff guard out
+      FAIL replay over 34 frames: 10 frames unparked under the throttle;
+      17 frames where the replay clock did not advance under the throttle
+      (1282 1382 1399 167 167 199 199 198 197 199 ...); 19 frames with
+      flownThisRun true
+    launch staging guard out
+      FAIL replay over 32 frames: 6 frames unparked after L; 9 frames where
+      the replay clock did not advance after L (167 199 199 199 199 199 199
+      32 31 199 199 32)
+    flight counter guard out
+      ok, as it should be: see above
+
+### Checks, run this turn on the final tree
+
+    npm run replay:test      7 tests: 7 pass, 0 fail, 4 min 43 s
+    npm run stats:selftest   79 passed, 0 failed
+    npm run lint:boot        9 of 9 checks clean
+    npm run lint:fc          33 of 33 traces clean
+
+The new test's line in that run:
+
+    ok   L and the throttle held at the top leave a replay parked for all
+         31 frames, its clock advancing on every one (1650 ms across the
+         throttle), flownThisRun false, 0 stats events after a pagehide;
+         the same keys without ?replay= stage, take off and send visit,
+         session, flush
+
+npm run verify was not run: nothing here touches physics, the plant, the
+module ABI or the build, and it was not asked for.
+
+### What went wrong on the way
+
+- The first version of the check asserted that the replay clock never
+  steps back. On the shell before the fix it caught the parking and the
+  counting and missed the clock: the replay had run only 65 ms when the
+  keys arrived, so the first unparked frame moved the clock forward, to
+  199 ms, and it stuck there. A clock that stands still never steps back.
+  The check is now that it advances on every frame, which the landed branch
+  guarantees whenever wall time passes, and a failure prints the clock
+  frame by frame.
+- Explaining that 199 took a wrong turn first. The comments were first
+  written as "back to the plant's step plus a frame", which cannot give
+  both 199 and 31 when a frame is capped at 100 steps. The replay path adds
+  the frame's steps and the common tail adds them again, and the
+  __stickPath probe above confirmed it before anything was committed. The
+  reading at the start of the turn, back to near zero, had been right.
+- The fetch at the start of the turn printed `forced update` for main, and
+  git merge-base against it came back empty: the two signs CLAUDE.md names
+  from 2026-08-26. Both came from the container's first clone, which was 50
+  commits deep. After git fetch --unshallow, the old tip 9ed8b9c is an
+  ancestor of main's 833b8c7 and merge-base is 833b8c7, so main only moved
+  forward and nothing was rewritten. Written down so the next session that
+  sees it knows the check: unshallow, then merge-base --is-ancestor.
+
+### Still open
+
+- R in a replay, above: the owner's call.
+- The replay path inside the step branch, `if (replayMode) { simStepIdx
+  += steps; ... }`, is now out of reach of anything a pilot presses,
+  because a replay's craft never leaves the ground; only the __placeCraft
+  harness hook can still unpark one. It also counts each frame's steps
+  twice, with the common tail after it. Deleting it is a separate change,
+  and the owner's call.
+- The replay entry's "A replay still reads the sticks" is closed by this
+  one.

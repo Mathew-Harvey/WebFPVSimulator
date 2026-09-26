@@ -3910,7 +3910,8 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function beginLaunchStaging() {
-    if (!(mode === 'flight' && landed)) {
+    /* A replay's craft stays parked: see the takeoff in frameBody. */
+    if (!(mode === 'flight' && landed) || replayMode) {
       return;
     }
     if (stateCurr && plantUpZ(stateCurr) < 0) {
@@ -5924,15 +5925,19 @@ export async function boot({ loading, bootStart, mapId }) {
      * mid crash; `laps` is the race's own list and the module takes the
      * delta. It cannot reach the integrator: nothing below reads it, and
      * everything it does with the numbers is arithmetic and a beacon.
+     * A replay is a capture, not a flight, and counts nothing, as it sends
+     * no visit.
      */
-    flightStats.tick(nowWall, {
-      started: flownThisRun,
-      /* Airborne, and not on the grass upside down: a minute spent in
-       * crashflip waiting to be righted is not a minute of flying, and the
-       * two turtle flags are already here to say so. */
-      flying: flownThisRun && !landed && !turtleWait && !turtleRecover,
-      laps: race.laps.length,
-    });
+    if (!replayMode) {
+      flightStats.tick(nowWall, {
+        started: flownThisRun,
+        /* Airborne, and not on the grass upside down: a minute spent in
+         * crashflip waiting to be righted is not a minute of flying, and the
+         * two turtle flags are already here to say so. */
+        flying: flownThisRun && !landed && !turtleWait && !turtleRecover,
+        laps: race.laps.length,
+      });
+    }
 
     /* The seated world's note, released on the first frame of a flight and
      * not one frame earlier. See showCourseNotes. */
@@ -6021,7 +6026,16 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.pollPad(padNav());
     }
 
-    if (mode === 'flight' && landed) {
+    /*
+     * A replay has no pilot, so no stick takes its craft off. It never steps
+     * the plant, and unparked, the step branch below rebuilds the lap clock,
+     * the one the ghost is flown on, from the plant's step index, which a
+     * replay leaves at 0; the frame after parks the craft again. A held
+     * throttle sent the ghost back to the start of its lap and held it
+     * there, and counted the capture as a flight. beginLaunchStaging keeps L
+     * out of a replay the same way.
+     */
+    if (mode === 'flight' && landed && !replayMode) {
       const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
       if (landed && thr > TAKEOFF_THROTTLE) {
         if (turtleRecover) {

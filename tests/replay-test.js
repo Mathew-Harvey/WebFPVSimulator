@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { courseFromDocument } from '../src/game/trackdoc.js';
 import { encodeGhost, ghostToBase64 } from '../src/share/ghostdata.js';
 import { ELEMENTS } from '../src/trackbuilder/elements.js';
-import { openPage } from './lib/page.js';
+import { keyInfo, openPage } from './lib/page.js';
 import { decodePng, encodePng } from './lib/png.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -506,11 +506,174 @@ async function testReplayGuards() {
   }
 }
 
+const STATS = '/api/stats/events';
+const PAGEHIDE = 'window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })); 0';
+
+/*
+ * Every frame from now on, read after the shell's own frame, until `when`
+ * has held for `frames` of them: the stick, the craft, and the replay's
+ * clock as startMs + vt, the sim time the replay is reading. That rises on
+ * every frame, through the lap's wrap as well, where vt alone drops back
+ * to 0. Thirty seconds of wall clock at most, so a key that never lands
+ * fails rather than hangs.
+ */
+function traceUntil(when, frames) {
+  return `window.__keyTrace = (async () => {
+    const out = [];
+    let held = 0;
+    const t0 = performance.now();
+    while (held < ${frames} && performance.now() - t0 < 30000) {
+      await new Promise((r) => requestAnimationFrame(r));
+      const c = window.__craftState();
+      const clock = window.__replayInfo().clock;
+      out.push({
+        thr: window.__input.channels.throttle, landed: c.landed, flown: c.flownThisRun,
+        clockMs: clock ? clock.startMs + clock.vt : null,
+      });
+      if (held > 0 || (${when})) {
+        held += 1;
+      }
+    }
+    return out;
+  })(); 0`;
+}
+
+/* The page's own throttle key held until the stick reads the top, which is
+ * past any takeoff, and for ten frames more. Held in real wall time,
+ * because that is the keyboard's hold clock: page.tap is a 30 ms press. */
+async function holdThrottle(page) {
+  const key = keyInfo(await page.evaluate('window.__input.throttleKeys.up'));
+  await page.evaluate(traceUntil('window.__input.channels.throttle >= 0.99', 10));
+  await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...key }, page.sessionId);
+  try {
+    return await page.evaluate('window.__keyTrace');
+  } finally {
+    await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...key }, page.sessionId);
+  }
+}
+
+/* L with launch control switched on, and twelve frames after it. Then L
+ * again, so the switch is off and the craft parked before anything else. */
+async function pressLaunch(page) {
+  await page.evaluate('window.__ui.settings.launchControl = true; 0');
+  await page.tap('KeyL');
+  await page.evaluate(traceUntil('true', 12));
+  const trace = await page.evaluate('window.__keyTrace');
+  await page.tap('KeyL');
+  await page.until('window.__craftState().landed', 10000);
+  await page.evaluate('window.__ui.settings.launchControl = false; 0');
+  return trace;
+}
+
+/* The kind of every event that reached the stats endpoint, once each
+ * beacon's body has been read out of its Blob. */
+async function statsKinds(page) {
+  await page.until('window.__sent.every((e) => e.body !== "")', 5000);
+  const sent = await page.evaluate('window.__sent');
+  return sent.filter((e) => e.path === STATS).map((e) => JSON.parse(e.body).kind);
+}
+
+/*
+ * THE STICKS DO NOTHING TO A REPLAY, AND NOTHING IS COUNTED.
+ *
+ * A replay has no pilot, but the page still reads the keyboard and any radio
+ * plugged in, and a person recording at the keys will touch them. Two
+ * presses can unpark the craft: the throttle past takeoff, and L with launch
+ * control on, which stages it on the stand. Held, either one stops the
+ * replay: every other frame unparks the craft and rebuilds the lap clock
+ * from the plant's step index, which a replay leaves at 0, and the frame
+ * between parks it again, so the ghost goes back to the start of its lap
+ * and stays there. A takeoff also counts the capture as a flight: a session
+ * beacon at once, a flush on the way out.
+ *
+ * So both go to a replay, and it must stay parked with its clock advancing
+ * on every frame, flownThisRun false every frame, and nothing at all sent to
+ * the stats endpoint, a pagehide included. The control is the same presses
+ * through the same harness on the same course without ?replay=: there the
+ * throttle takes off and sends its session and its flush, and L stages, so
+ * a key or a stub that never arrived fails there rather than passing here.
+ */
+async function testReplayIgnoresSticks() {
+  const seed = boardSeed({ id: PLAIN.id, document: PLAIN, ghosts: [AJAX] });
+  const control = await openPage({
+    root: ROOT, url: `/index.html?map=custom&share=${PLAIN.id}&board=${BOARD}`, seed: [seed], ...SHOT,
+  });
+  let flew;
+  try {
+    await control.until('window.__shellReady === true', 120000);
+    await control.until("(() => { const m = window.__map(); return m.id === 'custom' && m.ready && m.gates > 0; })()", 60000);
+    /* Into the race the way a pilot goes: past the first run gate, Fly,
+     * and Enter on the launch card. */
+    await control.evaluate(`(() => {
+      const ui = window.__ui;
+      ui.firstRun = false;
+      ui.craftGate = false;
+      if (!ui.mode) {
+        ui.mode = 'race';
+      }
+      ui.act('fly');
+      return 0;
+    })()`);
+    await control.until("window.__ui.screen === 'launch'", 20000);
+    await control.tap('Enter');
+    await control.until("window.__ui.screen === 'flight' && window.__craftState().mode === 'flight'", 60000);
+    const staged = await pressLaunch(control);
+    if (!staged.some((f) => !f.landed)) {
+      throw new Error(`control: L with launch control on should stage the craft, got ${JSON.stringify(staged)}`);
+    }
+    const climb = await holdThrottle(control);
+    if (!climb.some((f) => f.flown && !f.landed)) {
+      throw new Error(`control: the throttle at the top should take off, got ${JSON.stringify(climb.slice(-3))}`);
+    }
+    await control.until(`window.__sent.some((e) => e.path === "${STATS}" && e.body.includes('"kind":"session"'))`, 5000);
+    await control.evaluate(PAGEHIDE);
+    await control.until(`window.__sent.some((e) => e.path === "${STATS}" && e.body.includes('"kind":"flush"'))`, 5000);
+    flew = await statsKinds(control);
+  } finally {
+    await control.close();
+  }
+
+  const page = await openPage({
+    root: ROOT, url: replayUrl({ id: PLAIN.id, time: AJAX.id, cam: 'fpv', clean: true }), seed: [seed], ...SHOT,
+  });
+  try {
+    await untilFlying(page);
+    const staged = await pressLaunch(page);
+    const held = await holdThrottle(page);
+    await page.evaluate(PAGEHIDE);
+    await page.evaluate(NEXT_FRAME);
+    const kinds = await statsKinds(page);
+    const frames = [...staged, ...held];
+    const stood = (trace) => trace.filter((f, i) => i > 0 && !(f.clockMs > trace[i - 1].clockMs)).length;
+    const top = Math.max(...held.map((f) => f.thr));
+    /* Every claim is reported, not just the first to fail. */
+    const problems = [
+      [top >= 0.99 ? 0 : 1, `throttle that never reached the top of the stick, ${top} at most`],
+      [frames.filter((f) => f.clockMs == null).length, 'frames with no replay clock'],
+      [staged.filter((f) => !f.landed).length, 'frames unparked after L'],
+      [stood(staged), `frames where the replay clock did not advance after L (${staged.map((f) => Math.round(f.clockMs)).join(' ')})`],
+      [held.filter((f) => !f.landed).length, 'frames unparked under the throttle'],
+      [stood(held), `frames where the replay clock did not advance under the throttle (${held.map((f) => Math.round(f.clockMs)).join(' ')})`],
+      [frames.filter((f) => f.flown).length, 'frames with flownThisRun true'],
+      [kinds.length, `events sent to the stats endpoint (${kinds.join(', ')})`],
+    ].filter(([n]) => n !== 0).map(([n, what]) => `${n} ${what}`);
+    if (problems.length) {
+      throw new Error(`replay over ${frames.length} frames: ${problems.join('; ')}`);
+    }
+    const ran = held[held.length - 1].clockMs - held[0].clockMs;
+    console.log(` ok   L and the throttle held at the top leave a replay parked for all ${frames.length} frames, its clock `
+      + `advancing on every one (${Math.round(ran)} ms across the throttle), flownThisRun false, 0 stats events after a pagehide; `
+      + `the same keys without ?replay= stage, take off and send ${flew.join(', ')}`);
+  } finally {
+    await page.close();
+  }
+}
+
 async function main() {
   console.log('replay-test: headless browser checks for replay mode\n');
   const tests = [
     testMagentaCounter, testNormalBoot, testReplaySuccess, testFailuresRestore,
-    testSponsorsHidden, testReplayGuards,
+    testSponsorsHidden, testReplayGuards, testReplayIgnoresSticks,
   ];
   let fail = 0;
   for (const test of tests) {

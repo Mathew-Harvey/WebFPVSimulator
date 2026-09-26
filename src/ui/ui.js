@@ -648,6 +648,9 @@ function counterBestSentence(s) {
   return `Your best on this map in this browser: ${formatScore(best)}.`;
 }
 
+/* How many kinds of trick a freestyle result lists before "N more". */
+const RESULT_TRICK_ROWS = 3;
+
 /*
  * The counter's bests as plain results rows, [label, value], for the
  * results screen when there is no manga page to draw them on (Clean FPV).
@@ -11651,14 +11654,16 @@ export class Ui {
       const rows = summary.rows || [];
       const top = rows.length ? rows[0].points : 0;
       /*
-       * TEN, and the container scrolls, so this is a choice rather than a
-       * fit. A run can name twenty five kinds of trick and the tail of that
-       * list is quarter rolls worth three points each: what a pilot reads a
-       * results screen for is what EARNED, and a top ten is the shape that
-       * answers it. The note below says how many are not shown, so nothing
-       * is hidden without saying so.
+       * THREE, and one line for the rest. It was ten in a list that
+       * scrolled, and at 1280 by 720 the Fly again row sat over the third
+       * of them and over the best line under them: the page was taller
+       * than the column. What a pilot reads a results screen for is what
+       * EARNED, and the top three answer it; the manga page beside them
+       * carries the best trick, and the rest are counted, with what they
+       * paid between them, on a line of their own, so nothing is hidden
+       * without saying so.
        */
-      for (const row of rows.slice(0, 10)) {
+      for (const row of rows.slice(0, RESULT_TRICK_ROWS)) {
         const line = el('div', `result-row${row === rows[0] ? ' fastest' : ''}`);
         const main = el('div', 'result-main');
         main.append(el('span', 'result-label', row.count > 1 ? `${row.name} x${row.count}` : row.name));
@@ -11673,11 +11678,16 @@ export class Ui {
         }
         this.resultsBody.append(line);
       }
-      const hidden = rows.length - 10;
-      if (hidden > 0) {
-        notes.push(hidden === 1
-          ? 'And one more kind of trick, further down the list.'
-          : `And ${hidden} more kinds of trick, further down the list.`);
+      const rest = rows.slice(RESULT_TRICK_ROWS);
+      if (rest.length) {
+        const line = el('div', 'result-row result-more');
+        const main = el('div', 'result-main');
+        main.append(
+          el('span', 'result-label', rest.length === 1 ? 'One more kind of trick' : `${rest.length} more kinds of trick`),
+          el('span', 'result-time', formatScore(rest.reduce((sum, r) => sum + (r.points || 0), 0))),
+        );
+        line.append(main);
+        this.resultsBody.append(line);
       }
     }
     /* Which number went to the board, and which stays here. */
@@ -11687,9 +11697,11 @@ export class Ui {
         ? `Post this run sends the board the trick score, ${formatScore(summary.total)}. The board knows tricks and nothing else yet, so the gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here and not there.`
         : `The board takes tricks only, and this run named none, so there is nothing to post. The gaps, close calls and the chase in ${formatScore(summary.counter)} are counted here.`);
     }
+    /* The best line leads the note: it is the sentence the pilot was
+     * waiting for, and the board's small print can follow it. */
     const bestNote = scored ? counterBestSentence(summary) : null;
     if (bestNote) {
-      notes.push(bestNote);
+      notes.unshift(bestNote);
     }
     this.resultsNote.textContent = notes.join(' ');
     this.mangaPanels = this.manga ? mangaPanels(summary) : [];

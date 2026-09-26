@@ -4312,7 +4312,10 @@
         justify-content: stretch;
         width: 100%;
         height: 100%;
-        padding: 4.5vh 4vw 3vh;
+        /* Clear of the two bars: at 4.5vh the kicker sat on RUN COMPLETE
+           at every height under 1070 px, and at 3vh the menu's last row ran
+           under the command bar. */
+        padding: max(4.5vh, calc(var(--bar-top) + 12px)) 4vw max(3vh, calc(var(--bar-bot) + 6px));
         background:
           linear-gradient(90deg, rgba(12, 18, 14, 0.84) 0%, rgba(12, 18, 14, 0.50) 28%, rgba(12, 18, 14, 0.10) 54%, rgba(12, 18, 14, 0.12) 100%),
           linear-gradient(180deg, rgba(12, 18, 14, 0.28) 0%, transparent 22%, transparent 64%, rgba(12, 18, 14, 0.40) 100%);
@@ -4328,7 +4331,26 @@
         z-index: 1;
         align-self: flex-start;
       }
-      .results-top { min-height: 0; }
+      /*
+       * THE COPY SCROLLS ABOVE THE MENU, NEVER UNDER IT. The column is a
+       * flex column that puts the menu at its foot, and the top half was
+       * allowed to shrink below its content and spill: at 1280 by 720 Fly
+       * again was drawn over the third trick row and the best line, and at
+       * 1600 by 900 over the note. It is the one scroller in the column
+       * now, so the rows list inside it is not a second one.
+       */
+      .results-top {
+        flex: 0 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(232, 168, 184, 0.45) rgba(16, 22, 17, 0.55);
+      }
+      .screen-results .results { max-height: none; overflow: visible; }
+      .result-row.result-more { border-bottom: none; }
+      .result-row.result-more .result-label,
+      .result-row.result-more .result-time { color: #93a7ba; font-weight: 400; }
       .results-kicker {
         display: flex; align-items: center; gap: 12px;
         font-size: clamp(13px, 1.4vw, 16px); color: #d8d2c0;
@@ -4467,6 +4489,32 @@
         text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
       }
       .screen-results .menu-help:empty { padding: 0; }
+      /*
+       * THE COPY IS SET CLOSER, so the top three and the best line sit above
+       * the fold of the column rather than below it: the head, the meta, the
+       * rows and the note each give back a few pixels, 40 in all.
+       */
+      .screen-results .results-head { margin-top: 8px; }
+      .screen-results .results-hero-meta { margin-top: 6px; }
+      .screen-results .results { margin-top: 10px; }
+      .screen-results .result-row { padding: 6px 0 7px; }
+      .screen-results .results-note { margin-top: 10px; }
+      /*
+       * AND ON A SHORT WINDOW the menu scrolls at three and a half rows and
+       * the number steps down. The menu carried six rows at 44 px, 290 px
+       * of a 720 px window, and Fly again is also the bar's button at the
+       * foot. Nothing here applies at 900 px and up, which is where
+       * lint:shell measures this screen's menu, nor on a phone, whose
+       * layout below has its own sizes.
+       */
+      @media (max-height: 800px) and (min-width: 861px) {
+        .screen-results .menu {
+          max-height: 160px; overflow-y: auto; overscroll-behavior: contain;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(232, 168, 184, 0.45) rgba(16, 22, 17, 0.55);
+        }
+        .screen-results .results-hero-time { font-size: clamp(44px, min(9vw, 11vh), 112px); }
+      }
       @keyframes results-rise {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: none; }

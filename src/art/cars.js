@@ -391,7 +391,7 @@ function slab(M, role, poly, z0, z1, { ends = true } = {}) {
  * chamfers take `role`. Returns the flank polygon, inset, for whatever is
  * laid on it.
  */
-function prism(M, role, pts, hw, { edgeRole = null, sides = [1, -1] } = {}) {
+function prism(M, role, pts, hw, { edgeRole = null, sides = [1, -1], round = false } = {}) {
   const n = pts.length;
   const P = pts.map((p) => [p.x, p.y]);
   const Q = inset(P, pts.map((p) => p.c ?? 0));
@@ -407,6 +407,15 @@ function prism(M, role, pts, hw, { edgeRole = null, sides = [1, -1] } = {}) {
       M.face(r, [[pi.x, pi.y, -zi], [pj.x, pj.y, -zj], [pj.x, pj.y, zj], [pi.x, pi.y, zi]]);
     }
   }
+  /* The rings the chamfer runs through, from the band to the flank: one
+   * flat bevel, or with `round` a quarter round in two facets, which the
+   * cel ramp turns into two steps of light along a shoulder instead of
+   * one. A ring is [its outline, how much of the depth is left at it]. */
+  const K = round ? [[0, 1], [1 - Math.SQRT1_2, 1 - Math.SQRT1_2], [1, 0]] : [[0, 1], [1, 0]];
+  const rings = K.map(([ci, di]) => [
+    ci === 0 ? P : (ci === 1 ? Q : inset(P, pts.map((p) => (p.c ?? 0) * ci))),
+    di,
+  ]);
   for (const s of sides) {
     for (let i = 0; i < n; i += 1) {
       const j = (i + 1) % n;
@@ -415,15 +424,20 @@ function prism(M, role, pts, hw, { edgeRole = null, sides = [1, -1] } = {}) {
       if (!(pi.c || pi.d || pj.c || pj.d)) {
         continue;
       }
-      const a = [pi.x, pi.y, s * (hw(pi.x, pi.y) - (pi.d ?? 0))];
-      const b = [pj.x, pj.y, s * (hw(pj.x, pj.y) - (pj.d ?? 0))];
-      const c = [Q[j][0], Q[j][1], s * hw(Q[j][0], Q[j][1])];
-      const d = [Q[i][0], Q[i][1], s * hw(Q[i][0], Q[i][1])];
       const r = edgeRole ? edgeRole(i, true) ?? role : role;
-      if (s > 0) {
-        M.face(r, [a, b, c, d]);
-      } else {
-        M.face(r, [d, c, b, a]);
+      for (let k = 0; k + 1 < rings.length; k += 1) {
+        const [A, da] = rings[k];
+        const [B, db] = rings[k + 1];
+        const at = (R, idx, dk, p) => [R[idx][0], R[idx][1], s * (hw(R[idx][0], R[idx][1]) - (p.d ?? 0) * dk)];
+        const a = at(A, i, da, pi);
+        const b = at(A, j, da, pj);
+        const c = at(B, j, db, pj);
+        const d = at(B, i, db, pi);
+        if (s > 0) {
+          M.face(r, [a, b, c, d]);
+        } else {
+          M.face(r, [d, c, b, a]);
+        }
       }
     }
     const cap = Q.map((q) => [q[0], q[1], s * hw(q[0], q[1])]);
@@ -1497,6 +1511,7 @@ function bodyOf(M, s, detail, rimRole) {
   const prof = box ? truckCabProfile(s) : lowerProfile(s);
   const bumperRole = s.bumpers === 'dark' ? 'dark' : (s.bumpers === 'steel' ? 'brite' : 'body');
   const cap = prism(M, 'body', prof, () => hw, {
+    round: true,
     edgeRole: (i, ch) => {
       const e = prof[i].edge;
       if (e === null) {
@@ -1535,7 +1550,7 @@ function bodyOf(M, s, detail, rimRole) {
     { x: rf, y: s.roof, c: rc, d: rc, edge: 'body' },
     { x: rr, y: s.roof, c: rc, d: rc, edge: 'body' },
   ];
-  const ccap = prism(M, 'body', cabPts, (x, y) => hwC(y), { edgeRole: (i, ch) => (ch ? 'body' : cabPts[i].edge) });
+  const ccap = prism(M, 'body', cabPts, (x, y) => hwC(y), { round: true, edgeRole: (i, ch) => (ch ? 'body' : cabPts[i].edge) });
 
   /* ---- glass ---- */
   const chrome = s.glass.pillars === 'chrome';

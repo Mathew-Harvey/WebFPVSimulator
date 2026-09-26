@@ -22,9 +22,9 @@
  * tumblehome, the lamps, the glass, the wheels. The drawn body is built
  * round the solid boxes, not inside them: a flank is on the box's face, a
  * bumper stands out past L / 2 as the vendored bumper bar did, and where a
- * chamfer rounds an edge the solid's corner is at most 3 cm outside the
- * paint (the shoulder, the roof edge and the r32's doors between its
- * flares). The kei truck keeps makeKeiTruck's own sizes, which is what its
+ * chamfer rounds an edge the solid's corner is at most about 3 cm outside
+ * the paint (the shoulder, the roof edge; 5 cm at the top of the steepest
+ * noses). The kei truck keeps makeKeiTruck's own sizes, which is what its
  * collider was written from. The r32 is new, and its numbers are the real
  * coupe's: 4.50 by 1.76 by 1.34 m, a 2.615 m wheelbase.
  *
@@ -788,34 +788,6 @@ function chainX(chain, y) {
  * Laying things on a face.
  * ------------------------------------------------------------------ */
 
-/*
- * A face of the body as a frame to draw on: `o` a corner, `u` and `v` its
- * two edge directions (not normalised: u = 1 is the whole edge), `n` its
- * outward unit normal. at(uu, vv, lift) is the point that far across it,
- * `lift` metres off it.
- */
-function frame(o, u, v, n) {
-  return {
-    at(uu, vv, lift = 0) {
-      return [
-        o[0] + u[0] * uu + v[0] * vv + n[0] * lift,
-        o[1] + u[1] * uu + v[1] * vv + n[1] * lift,
-        o[2] + u[2] * uu + v[2] * vv + n[2] * lift,
-      ];
-    },
-    n,
-  };
-}
-
-/* A plane polygon [uu, vv] of a frame, drawn `lift` off it. */
-function onFrame(M, role, F, poly, lift) {
-  if (poly.length < 3) {
-    return;
-  }
-  const q = area2(poly) >= 0 ? poly : poly.slice().reverse();
-  M.face(role, q.map((p) => F.at(p[0], p[1], lift)), { tris: q.length > 4 ? triangulate(q) : null, toward: F.n });
-}
-
 /* The front face of the lower body at height y, and the rear: where it is
  * in x, and its outward normal in the side view. */
 function faceOf(chain, y, sign) {
@@ -1148,7 +1120,7 @@ function screen(M, a, b, za, zb, out, { frame: fr = 0.05, bottom = 0.05, streaks
  * screens' pillars; pillars stand at the kind's seams; `side` limits it
  * (a van is glazed over its cab only).
  */
-function sideGlass(M, s, cap, hw, bodyRole) {
+function sideGlass(M, s, cap, hw) {
   const g = s.glass;
   let dlo = inset(cap, cap.map(() => g.frame));
   dlo = clip(dlo, 0, 1, -(s.waist + g.belt));
@@ -1203,7 +1175,6 @@ function sideGlass(M, s, cap, hw, bodyRole) {
       glints(glass, 0.9, [[0.3, 0.12]], (gq) => lay('glint', gq, 0.013));
     }
   }
-  void bodyRole;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1314,7 +1285,6 @@ function plate(M, chain, sign, y) {
 
 function rearEnd(M, s, ch, zr, lamps) {
   const r = s.rear;
-  const t = s.tail;
   if (r.lamps === 'bar') {
     return;
   }
@@ -1384,7 +1354,6 @@ function rearEnd(M, s, ch, zr, lamps) {
     blockOnEnd(M, 'dark', ch.rear, -1, ly0 + 0.02, ly1 - 0.01, -g, g, 0.014);
     onEnd(M, 'brite', ch.rear, -1, ly1 - 0.03, ly1 - 0.012, -g + 0.02, g - 0.02, 0.017);
   }
-  void t;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1560,7 +1529,7 @@ function bodyOf(M, s, detail, rimRole) {
   screen(M, [s.cab[0], s.waist], [rr, s.roof], hwC(s.waist) - 0.015, hwC(s.roof) - rc, [-1, 1], {
     frame: s.glass.frame, bottom: s.kind === 'r32' || s.kind === 'sedan' ? 0.05 : 0.08, streaks: [[0.3, 0.14]], chrome,
   });
-  sideGlass(M, s, ccap, hwC, 'body');
+  sideGlass(M, s, ccap, hwC);
   /* Wipers at the screen's foot. */
   for (const z of [0.3, -0.12]) {
     M.bar('dark', s.cab[1] - 0.02, s.waist + 0.035, s.cab[1] - 0.14, s.waist + 0.1, 0.018, z - 0.25, z + 0.2);

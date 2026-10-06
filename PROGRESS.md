@@ -67143,3 +67143,13 @@ that root. `GroksBugFixForClaudeToReview` is contained in main, 0 commits ahead,
 request. Nothing was merged, rewritten or force pushed on the strength of the wrong reading. When a merge-base comes
 back empty here, `git rev-parse --is-shallow-repository` is the first thing to ask, before anything is said about the
 history.
+
+### Checked on the live board afterwards
+
+Read only, against webfpv.org/board, after #40 merged; no visit or time was posted and no counter written. Every track's
+times were read: 468 rows on 44 tracks from 80 distinct pilot names. Exactly one name contains "magn", `Magniff`, one row,
+and the API marks it `patron: true`, so the badge data is live and the spelling matches a real time on the board. That
+settles the two "Not checked" items above except the last step: the heart on the rendered page was not looked at, and
+whether the `BOARD_PATRONS` setting or the built in list is what made it true was not told apart. `/api/stats` lists
+`landing` as a ref tag of its own, 9 visits, beside `reddit` and `other`, so #10 is deployed and `landing` is no longer
+folded into `other`. `itch` has no visits yet, so nothing shows for it and it was not seen on the live board.

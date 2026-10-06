@@ -4940,6 +4940,30 @@
       .screen-credits .menu-stage {
         margin: 6px auto 18px;
       }
+      /* SIX ROWS ON A PHONE ON ITS SIDE, here too. About has six rows since
+         the battery row came (1415c94), and at 844 by 390 the list ran 30 px
+         under the command bar, Back half under it on arrival (lint:shell's
+         fold). The rows keep their 44 px targets and the title keeps its
+         size; what gives is the air around them: the page's top margin, the
+         rule under the title (Paused has none either, and squeezed it sat on
+         the panel's edge), the gap to the panel and the panel's own padding,
+         38 px in all. The owner's choice of 2026-10-06, "Make it fit", over
+         a budget that let the list hang. */
+      @media (max-height: 520px) {
+        .screen-credits { padding-top: 14px; }
+        .screen-credits h2::after { display: none; }
+        .screen-credits .menu-stage { margin-top: 0; }
+        .screen-credits .menu { padding-top: 4px; padding-bottom: 4px; }
+      }
+      /* And a shorter phone on its side, 360 px tall, a common Android
+         size, where the steps above still left Back 15 px under the bar.
+         The title is in the top bar's band there, clear of its crumb on the
+         left. */
+      @media (max-height: 380px) {
+        .screen-credits { padding-top: 6px; }
+        .screen-credits h2 { margin-bottom: 2px; }
+        .screen-credits .menu { padding-top: 2px; padding-bottom: 2px; }
+      }
 
       .screen-modal { background: rgba(12, 18, 14, 0.72); }
 

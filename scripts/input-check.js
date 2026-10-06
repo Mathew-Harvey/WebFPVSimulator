@@ -24,15 +24,18 @@
  * touch emulation on covers the thumb sticks, and a third with no radio at
  * all flies a real race on the keys. A fourth is Safari 27 on a Mac with a
  * radio the browser will not list, which is bug-616cc604, and a fifth is a
- * TX15 flown and paused, which is bug-2d93629e. A sixth is a touchscreen
- * laptop with no radio, flown on its keys and on its glass, which is
- * bug-d1d3f4fb. Two more walk the builder's Fly this map into the air, and a
- * linked map that fails to load, and the last walk the gate's Builder
- * card into the builder and its chooser.
+ * TX15 flown and paused, which is bug-2d93629e. The same TX15 then flies a
+ * whoop race for the stick overlay the owner asked for on 2026-10-06. A
+ * sixth is a touchscreen laptop with no radio, flown on its keys and on its
+ * glass, which is bug-d1d3f4fb. Two more walk the builder's Fly this map
+ * into the air, and a linked map that fails to load, and the last walk the
+ * gate's Builder card into the builder and its chooser.
  *
  * Not part of `npm run verify`: this says nothing about the flight model.
  * Same shape as lint:shell. Run it on a change to src/input, to the
- * calibrate screen, to the Settings room or to the title's trouble rows.
+ * calibrate screen, to the Settings room, to the title's trouble rows or to
+ * the flight overlay's stick boxes and the gate mark that parks clear of
+ * them.
  *
  * Usage:
  *   npm run lint:input
@@ -188,6 +191,65 @@ const KEYBOARD_SEED = `try {
   localStorage.setItem(k, JSON.stringify(s));
   localStorage.setItem('webfpv.trackbuilder.library.v1', ${JSON.stringify(JSON.stringify({ [KEY_TRACK.id]: KEY_TRACK }))});
 } catch (e) { /* Storage refused. The race below then fails to seat, and says so. */ }`;
+
+/*
+ * The stick overlay's radio pilot: the TX15 above with its throttle parked
+ * at idle, on the keyboard pilot's whoop race, because the gate mark that
+ * has to park clear of the overlay only exists where there is a next gate.
+ * Every key it writes is merged, so a reload keeps what the page chose.
+ */
+const RADIO_RACE_SEED = `window.__pad = {
+  index: 0,
+  id: 'RadioMaster TX15 Joystick (Vendor: 1209 Product: 4f54)',
+  connected: true,
+  mapping: '',
+  timestamp: 1,
+  axes: [0, 0, -1, 0, -1, 0, -1, -1],
+  buttons: Array.from({ length: 24 }, () => ({ pressed: false, touched: false, value: 0 })),
+};
+navigator.getGamepads = () => [window.__pad];
+try {
+  localStorage.setItem('webfpv_stick_map_v1', '{}');
+  const k = ${JSON.stringify(SETTINGS_KEY)};
+  const st = JSON.parse(localStorage.getItem(k) || '{}');
+  st.fullscreenFly = false;
+  st.airframe = 'whoop65';
+  localStorage.setItem(k, JSON.stringify(st));
+  localStorage.setItem('webfpv.trackbuilder.library.v1', ${JSON.stringify(JSON.stringify({ [KEY_TRACK.id]: KEY_TRACK }))});
+} catch (e) { /* Storage refused. The race then fails to seat, and says so. */ }`;
+
+/*
+ * The flight overlay's two stick boxes, as a person would find them: not
+ * switched off by class, and actually laid out, which a box inside a hidden
+ * block is not.
+ */
+const GIMBALS = `(() => {
+  const ui = window.__ui;
+  const up = (g) => !g.box.classList.contains('is-off') && g.box.getClientRects().length > 0;
+  return { left: up(ui.osdStickLeft), right: up(ui.osdStickRight) };
+})()`;
+const GIMBALS_UP = `(() => { const g = ${GIMBALS}; return g.left && g.right; })()`;
+const GIMBALS_DOWN = `(() => { const g = ${GIMBALS}; return !g.left && !g.right; })()`;
+
+/*
+ * Where the gate mark is parked and where the stick plates start, in page
+ * pixels. The anchor is the chevron's centre, which its rotation does not
+ * move. plateTop is null while the plates are not laid out.
+ */
+const MARK = `(() => {
+  const ui = window.__ui;
+  const a = ui.lockArrow.getBoundingClientRect();
+  const p = ui.osdStickRight.box.querySelector('.osd-gimbal-plate').getBoundingClientRect();
+  return { edge: ui.lock.classList.contains('is-edge') && !ui.lock.classList.contains('is-off'),
+    y: Math.round(a.top + a.height / 2), x: Math.round(a.left + a.width / 2),
+    plateTop: p.height > 0 ? Math.round(p.top) : null, h: window.innerHeight };
+})()`;
+
+/* The camera parked 200 m over the start line looking level, so the next
+ * gate is far under the frame and the mark is pinned to its bottom edge,
+ * which is where the stick overlay is. */
+const CAM_OVER_START = 'const sp = window.__map().spawn; window.__setCam(sp.x, sp.y + 200, sp.z, sp.x + 100, sp.y + 200, sp.z); return 1;';
+const MARK_PINNED = `(() => { const m = ${MARK}; return m.edge && m.y > m.h - 160; })()`;
 
 /*
  * The freestyle pilot of bug-850375dc: a five inch, a five inch track
@@ -1432,6 +1494,133 @@ async function pausePage(page) {
     direct.hot === false, JSON.stringify(direct));
 }
 
+/*
+ * THE STICK OVERLAY ON A RADIO. The owner, 2026-10-06: "i want to be able to
+ * turn on a stick overlay in the sim. should be toggled on by default, with a
+ * setting to toggle it off", and then, that it is hidden on a touch screen
+ * and up "only if i'm using keyboard ot joystick or radio contorller". The
+ * boxes had been the keyboard's alone, so a radio pilot never saw them, and
+ * the first build of the setting showed them without telling the gate mark,
+ * which went back to parking on them. Both halves are checked here, on a
+ * radio, in a race, because the mark only exists where there is a next gate.
+ * The thumbs' half is in touchLaptopPage and the keys' in keyboardPage.
+ */
+async function overlayRadioPage(page) {
+  const ev = (expr) => page.evaluate(`(() => { const ui = window.__ui; const input = window.__input; ${expr} })()`);
+  const stored = `JSON.parse(localStorage.getItem(${JSON.stringify(SETTINGS_KEY)}) || '{}').stickOverlay`;
+  const nubs = `[ui.osdStickLeft.nub.__wfX, ui.osdStickLeft.nub.__wfY, ui.osdStickRight.nub.__wfX, ui.osdStickRight.nub.__wfY]`;
+  /* On to the start line of the saved race, through the Race room, with the
+   * radio at rest. The launch card is answered when it is asked; after the
+   * reload below the world is already built and Fly goes straight to the
+   * line, as it does for a pilot who reloads on a race. */
+  const race = async () => {
+    await ev(`${PAST_GATE} input.setPadChoice({ kind: 'pad', id: window.__pad.id, index: 0 });
+      ui.mode = 'race'; ui.show('courses'); ui.act('local:${KEY_TRACK.id}'); return 1;`);
+    await page.until("(() => { const m = window.__map(); return m.id === 'custom' && m.ready && m.mode !== 'freestyle' && m.gates > 0; })()", 60000);
+    await ev("ui.act('fly'); return 1;");
+    await page.until("window.__ui.screen === 'launch' || window.__ui.screen === 'flight'", 20000);
+    if (await ev('return ui.screen;') === 'launch') {
+      await page.tap('Enter');
+    }
+    await page.until("window.__ui.screen === 'flight' && window.__craftState().mode === 'flight'", 60000);
+    await page.sleep(500);
+  };
+  /* The row, the way a pilot reaches it mid race: Escape to the pause menu,
+   * then Settings, then Enter on the row, which is the switch's flip. */
+  const flipRow = async (want) => {
+    /* Not over the start's fly in, which is the camera's and not the pilot's. */
+    await page.until('window.__intro().ms < 0', 20000).catch(() => {});
+    await page.tap('Escape');
+    let paused = true;
+    await page.until("window.__ui.screen === 'paused'", 3000).catch(() => { paused = false; });
+    const row = await ev(`ui.show('pilot');
+      const items = ui.items();
+      const i = items.findIndex((it) => it && it.label === 'Stick overlay');
+      if (i >= 0) { ui.setCursor(i); }
+      return JSON.stringify({ paused: ${paused}, i, value: i >= 0 ? items[i].value : null,
+        before: i > 0 ? items[i - 1].label : null });`).then(JSON.parse);
+    if (row.i >= 0) {
+      await page.tap('Enter');
+      await page.until(`window.__ui.settings.stickOverlay === ${want}`, 3000).catch(() => {});
+    }
+    const after = await ev(`return JSON.stringify({ setting: ui.settings.stickOverlay, stored: ${stored},
+      value: (ui.items()[ui.cursor] || {}).value });`).then(JSON.parse);
+    return { row, after };
+  };
+
+  section('stick overlay, on a radio: on by default, the dots follow the radio, and the gate mark parks above it');
+  await race();
+  const fresh = await ev(`return JSON.stringify({ setting: ui.settings.stickOverlay, stored: ${stored}, kb: input.isKeyboardPrimary(),
+    touch: input.isTouchPrimary(), mode: ui.settings.stickMode });`).then(JSON.parse);
+  check('a radio is the stick, and the overlay is on for a pilot who never touched the setting',
+    fresh.kb === false && fresh.touch === false && fresh.setting === true && fresh.stored !== false, JSON.stringify(fresh));
+  let up = true;
+  await page.until(GIMBALS_UP, 3000).catch(() => { up = false; });
+  check('on the start line, both stick boxes are drawn for the radio', up, await page.evaluate(`JSON.stringify(${GIMBALS})`));
+
+  const rest = await ev(`return JSON.stringify(${nubs});`).then(JSON.parse);
+  await page.evaluate('window.__pad.axes[0] = 0.8; window.__pad.axes[3] = -0.8; window.__pad.timestamp += 1; 0');
+  let followed = true;
+  await page.until('window.__ui.osdStickRight.nub.__wfX >= 30 && window.__ui.osdStickLeft.nub.__wfX <= -30', 3000)
+    .catch(() => { followed = false; });
+  const held = await ev(`return JSON.stringify({ nubs: ${nubs}, ch: input.channels });`).then(JSON.parse);
+  await page.evaluate('window.__pad.axes[0] = 0; window.__pad.axes[3] = 0; window.__pad.timestamp += 1; 0');
+  let centred = true;
+  await page.until('window.__ui.osdStickRight.nub.__wfX === 0 && window.__ui.osdStickLeft.nub.__wfX === 0', 3000)
+    .catch(() => { centred = false; });
+  check('at rest in Mode 2 the dots are centred, with the idle throttle at the bottom of the left box',
+    fresh.mode === 2 && rest[0] === 0 && rest[1] === 50 && rest[2] === 0 && rest[3] === 0, JSON.stringify(rest));
+  check('roll right on the radio moves the right dot right, and yaw left moves the left dot left',
+    followed, JSON.stringify(held));
+  check('and let go, both come back to the middle', centred, await ev(`return JSON.stringify(${nubs});`));
+
+  await ev(CAM_OVER_START);
+  let pinned = true;
+  await page.until(MARK_PINNED, 3000).catch(() => { pinned = false; });
+  const markOn = await page.evaluate(`JSON.stringify(${MARK})`).then(JSON.parse);
+  check('with the next gate far under the frame, the gate mark is a chevron pinned to the bottom edge',
+    pinned, JSON.stringify(markOn));
+  check('and it parks above the stick plates rather than on them, as it does for the keyboard',
+    pinned && markOn.plateTop !== null && markOn.y <= markOn.plateTop, JSON.stringify(markOn));
+  await ev('window.__setCam(null); return 1;');
+
+  section('stick overlay, on a radio: the Settings row turns it off, the choice survives a reload, and the mark comes down');
+  const off = await flipRow(false);
+  check('paused mid race, Settings has a Stick overlay row, beside Show FPS, and it reads On',
+    off.row.paused && off.row.i >= 0 && off.row.before === 'Show FPS' && off.row.value === 'On', JSON.stringify(off.row));
+  check('Enter on it is Off, in the row, the settings and storage',
+    off.after.setting === false && off.after.stored === false && off.after.value === 'Off', JSON.stringify(off.after));
+
+  await page.evaluate('window.__beforeReload = true; 0');
+  await page.cdp.send('Page.reload', {}, page.sessionId);
+  await page.until('!window.__beforeReload && window.__shellReady === true', 90000);
+  await page.until('!!window.__ui && !!window.__input', 10000);
+  const reloaded = await ev(`return JSON.stringify({ setting: ui.settings.stickOverlay, stored: ${stored} });`).then(JSON.parse);
+  check('a reload keeps it off', reloaded.setting === false && reloaded.stored === false, JSON.stringify(reloaded));
+
+  await race();
+  let down = true;
+  await page.until(GIMBALS_DOWN, 3000).catch(() => { down = false; });
+  const bits = await ev(`return JSON.stringify({ g: ${GIMBALS}, block: ui.osdSticks.className, air: ui.osdAir.box.className });`).then(JSON.parse);
+  check('off, the radio pilot\'s race has no stick boxes, and the Weight slider between them stays',
+    down && !/is-off/.test(bits.block) && !/is-off/.test(bits.air), JSON.stringify(bits));
+  await ev(CAM_OVER_START);
+  pinned = true;
+  await page.until(MARK_PINNED, 3000).catch(() => { pinned = false; });
+  const markOff = await page.evaluate(`JSON.stringify(${MARK})`).then(JSON.parse);
+  check('and with nothing there the mark parks lower, over the corner instruments\' band, not the boxes\' one',
+    pinned && markOff.y > markOn.y, JSON.stringify({ on: markOn, off: markOff }));
+  await ev('window.__setCam(null); return 1;');
+
+  const on = await flipRow(true);
+  check('Enter on the row again is On, and stored',
+    on.after.setting === true && on.after.stored === true && on.after.value === 'On', JSON.stringify(on.after));
+  await race();
+  up = true;
+  await page.until(GIMBALS_UP, 3000).catch(() => { up = false; });
+  check('and the boxes are back for the radio', up, await page.evaluate(`JSON.stringify(${GIMBALS})`));
+}
+
 async function touchPage(page) {
   const ev = (expr) => page.evaluate(`(() => { const ui = window.__ui; const input = window.__input; ${expr} })()`);
 
@@ -1500,7 +1689,7 @@ async function touchLaptopPage(page) {
   const snap = `return JSON.stringify({ ch: input.channels, source: input.source, hand: input.hand,
     overlay: document.getElementById('ui').classList.contains('touch-fly-on'), touchPrimary: input.isTouchPrimary(),
     keyboardPrimary: input.isKeyboardPrimary(), craft: window.__craftState().mode,
-    landed: window.__craftState().landed, screen: ui.screen });`;
+    landed: window.__craftState().landed, screen: ui.screen, gimbals: ${GIMBALS} });`;
   /* A key held until the page has answered it, and sampled while it is down.
    * Not for a fixed time: the keyboard's hold clock advances at most 40 ms a
    * poll, so on a busy machine 400 ms of wall time is well under 400 ms of
@@ -1538,6 +1727,8 @@ async function touchLaptopPage(page) {
   const start = JSON.parse(await ev(snap));
   check('in flight the thumb plates are up and the thumbs have the sticks, before any key is pressed',
     start.overlay && start.hand === 'thumbs' && start.touchPrimary && start.source === 'the touch sticks', JSON.stringify(start));
+  check('and the flight overlay draws no stick boxes over them: on glass the plates are the sticks',
+    !start.gimbals.left && !start.gimbals.right, JSON.stringify(start.gimbals));
 
   const w = await hold('KeyW', 'input.channels.throttle > 0.25');
   check('W raises the throttle: the keyboard flies, with the plates up when it was pressed',
@@ -1551,6 +1742,8 @@ async function touchLaptopPage(page) {
   const keys = JSON.parse(await ev(snap));
   check('the plates go away and the keyboard is the primary, as on a desktop',
     !keys.overlay && !keys.touchPrimary && keys.keyboardPrimary && keys.hand === 'keys', JSON.stringify(keys));
+  check('and the stick boxes come up for the keys, as on a desktop',
+    keys.gimbals.left && keys.gimbals.right, JSON.stringify(keys.gimbals));
 
   const before = keys.ch.throttle;
   await finger('touchStart', 683, 300);
@@ -1577,6 +1770,18 @@ async function touchLaptopPage(page) {
   const again = await hold('KeyD', 'input.channels.yaw > 0.2');
   check('and a stick key takes the sticks again, the other way',
     again.hand === 'keys' && again.source === 'the keyboard' && again.ch.yaw > 0.2, JSON.stringify(again));
+
+  /* Waited for rather than sampled with the plates: the frame that brings
+   * the plates back decided the boxes a moment before the plates went up. */
+  await finger('touchStart', 683, 300);
+  await page.sleep(300);
+  await finger('touchEnd');
+  await page.until("document.getElementById('ui').classList.contains('touch-fly-on')", 3000).catch(() => {});
+  let boxesGone = true;
+  await page.until(GIMBALS_DOWN, 3000).catch(() => { boxesGone = false; });
+  check('and a finger on the glass takes the stick boxes away again, with the plates back',
+    boxesGone && await ev("return document.getElementById('ui').classList.contains('touch-fly-on');"),
+    await page.evaluate(`JSON.stringify(${GIMBALS})`));
 }
 
 async function keyboardPage(page) {
@@ -1944,6 +2149,37 @@ async function keyboardPage(page) {
   const report = await page.evaluate('JSON.stringify(window.__perfProbe().audio)').then(JSON.parse);
   check('a bug report says what the context is doing, and whether the pilot has sound on',
     report.state === 'running' && report.on === true && report.sound === true && typeof report.volume === 'number', JSON.stringify(report));
+
+  /* --------------------------------------------------------------------
+   * 11. The stick overlay on the keys. They always had the boxes; the
+   *     setting of 2026-10-06 has to be able to take them away here too,
+   *     and the gate mark has to follow it both ways. The radio's half is
+   *     overlayRadioPage.
+   * ------------------------------------------------------------------ */
+  section('stick overlay, on the keys: up by default, Off takes them away here too, and the gate mark follows');
+  let kbUp = true;
+  await page.until(GIMBALS_UP, 3000).catch(() => { kbUp = false; });
+  const kbState = await ev(`return JSON.stringify({ g: ${GIMBALS}, setting: ui.settings.stickOverlay, kb: input.isKeyboardPrimary(),
+    screen: ui.screen });`).then(JSON.parse);
+  check('in the race on the keys, both stick boxes are drawn', kbUp && kbState.setting === true && kbState.kb, JSON.stringify(kbState));
+  await ev(CAM_OVER_START);
+  let kbPinned = true;
+  await page.until(MARK_PINNED, 3000).catch(() => { kbPinned = false; });
+  const kbOn = await page.evaluate(`JSON.stringify(${MARK})`).then(JSON.parse);
+  check('the gate mark, pinned to the bottom edge, parks above the stick plates',
+    kbPinned && kbOn.plateTop !== null && kbOn.y <= kbOn.plateTop, JSON.stringify(kbOn));
+  await ev('ui.settings.stickOverlay = false; ui.writeSettings(); return 1;');
+  let kbDown = true;
+  await page.until(GIMBALS_DOWN, 3000).catch(() => { kbDown = false; });
+  check('Off takes the keyboard\'s boxes away too', kbDown, await page.evaluate(`JSON.stringify(${GIMBALS})`));
+  let kbLower = true;
+  await page.until(`(() => { const m = ${MARK}; return m.edge && m.y > ${kbOn.y}; })()`, 3000).catch(() => { kbLower = false; });
+  check('and the mark comes down to the corner instruments\' band', kbLower,
+    await page.evaluate(`JSON.stringify(${MARK})`));
+  await ev('window.__setCam(null); ui.settings.stickOverlay = true; ui.writeSettings(); return 1;');
+  kbUp = true;
+  await page.until(GIMBALS_UP, 3000).catch(() => { kbUp = false; });
+  check('and On brings them back', kbUp, await page.evaluate(`JSON.stringify(${GIMBALS})`));
 }
 
 async function freestylePage(page) {
@@ -2335,6 +2571,14 @@ async function main() {
     await pausePage(page);
     const uncaughtP = page.errors.filter((e) => e.startsWith('uncaught:'));
     check('no uncaught exception on the pause page', uncaughtP.length === 0, uncaughtP.slice(0, 3).join(' | '));
+    await page.close();
+    page = null;
+
+    console.log('\nbooting the shell with a TX15 on a whoop race, for the stick overlay');
+    page = await bootPage({ seed: [SETTINGS_SEED, RADIO_RACE_SEED] });
+    await overlayRadioPage(page);
+    const uncaughtO = page.errors.filter((e) => e.startsWith('uncaught:'));
+    check('no uncaught exception on the stick overlay page', uncaughtO.length === 0, uncaughtO.slice(0, 3).join(' | '));
     await page.close();
     page = null;
 

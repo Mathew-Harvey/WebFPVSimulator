@@ -66848,3 +66848,225 @@ read by `check:town-patrons` and not seen.
   copy needs no change for this.
 - `PATREON_NOTE` here still lists three tiers and `scripts/support-selftest.js:61` pins that form, while the board now
   lists four. Recorded in the entry for the board's #6 and #8 (this repository's PR #37).
+
+## 2026-10-05 | tests, board | The training park before and after the grip change, and the patron fix live
+
+### The training park
+
+park:fly at three reps, one tree after the other with nothing else running:
+
+    b58d21a   main before 37a7f65, the grip change        10 of 20
+    aafcc38   the grip change and today's fixes in        10 of 20
+
+The same ten cases pass on both and the same ten fail, each 3 of 3 or 0 of 3. The grip change moved nothing here.
+
+The 12 of 20 recorded on 24 September (11ba560), flown again on that commit today, reads 11 of 20. Against today one case
+differs: "1 Trippy Spin (mast)", passing then and 0 of 3 now. Bisected on that case alone, two reps a step: the first
+commit that loses it is b139395 (24 September, "Tumble flat, always", the owner's "yes make it tumble flat always").
+
+It is the rig, not a regression. The case flies one inverted lap of the mast with a fall of 11.4 m/s2 added (__drop),
+from a centre 24 m up, over 2.3 s, so its planned path reaches the grass at 88 percent of the lap and ends 6 m under it.
+Measured with a scratch copy of the case that keeps the lowest point (not committed): on 11ba560 the craft reached
+0.85 m (the grass is at 0.75) at 99 percent of the lap, never landed, and finished the lap skimming on its back; on
+aafcc38 it reached the grass at 90 percent and was landed for 15 of 138 frames, because an inverted craft that is not
+near flat now stands on its corner and goes over, as b139395 intends. The lap ends where its plan goes underground. A
+higher centre or a gentler fall would give the recogniser its lap back. Not changed here: park:fly is a manual driver
+nobody asked to touch, and changing a case so that it passes is the owner's call.
+
+### Live
+
+- The builder's ui.js and the board's app.js and stats.js served from webfpv.org were byte for byte the pushed ones from
+  14:43 UTC.
+- The live board's track sheets carry `patron` on every time now, Postgres included: 447 times on 44 tracks, none marked.
+  So BOARD_PATRONS on the host names nobody who has posted, or is unset, and no heart shows until it does.
+- Served from a scratch file store with one patron (bc7bff5, Chromium): the heart on the card's podium row, in the
+  Lately feed and on the sheet's record, and no page error.
+
+### Looked at, and not a bug
+
+`best`, which a card is first drawn from, carries no `patron` in either store, so a patron's record looked unmarked on
+the cards. A change adding it in both stores was written and served: the card's holder line and podium are drawn again
+from the track's times once they arrive, and those carry the mark, so the change altered nothing a reader sees and left
+the holder line an empty element with a stale has-patron class whenever a podium took its name. Reverted, not committed.
+
+### RUN LOG
+
+    park:fly --reps=3         b58d21a 10 of 20; aafcc38 10 of 20, the same cases, each 3 of 3 or 0 of 3
+    park:fly                  11ba560, one rep: 11 of 20, "1 Trippy Spin (mast)" passing
+    git bisect run            --only="Trippy Spin (mast)" --reps=2 a step, 11ba560 good, b58d21a bad: b139395
+    the board                 the patron probe above; for the reverted change, npm test all passed, and a stand-in pg
+                              driver showed `best.patron` in the list and on the sheet, where bc7bff5 has none
+    not run                   npm run verify: no physics, plant, ABI or build change in this entry
+
+### What went wrong
+
+- The change to `best` was written before reading how a card is painted once its times arrive. A served page showed it
+  was not needed; it cost one probe and was never committed.
+- The 12 of 20 of 24 September is 11 of 20 when its own commit is flown today, so a count recorded in one container is
+  not exact enough to compare with another's by one or two cases. A case by case run on both trees is.
+
+## 2026-10-06 | owner | Flown on the live build: "flys good"
+
+The owner, 2026-10-06 04:15 UTC, in the project thread, after flying the live build (main at e2b8e2a, served from
+webfpv.org since 14:43 UTC on 5 October): "flys good". That build carries the five inch grip change of 4 October
+(37a7f65), the takeoff camera fix (46a58cb), the support prompt fixes (2e34c05, ee5be65) and the builder's pinch
+(aafcc38). It is the pilot's word on a flight, not a check, and which of those changes the flight exercised is not
+recorded.
+
+Still open, put to the owner on a decision card the same morning: the credits room hanging 30 px under the command bar
+on a phone held sideways (lint:shell, 844 by 390), from the battery row of 1415c94. Keeping the row means re-recording
+that budget, which waits on the owner's word; until then lint:shell stays red on that one line.
+
+## 2026-10-06 | shell | About fits a phone on its side again (the owner's "Make it fit")
+
+The owner's choice, 2026-10-06 04:19 UTC, on the decision card "Keep the battery row in Credits, with a short scroll on
+sideways phones?": "Make it fit", whose words were "I tighten Credits on short screens so all six rows fit without
+scrolling, and show you before it goes live". So lint:shell's budget for the About room at 844 by 390 stays at 0, and the
+screen changes instead.
+
+### What changed
+
+index.html, two short screen blocks for .screen-credits (the About room, which lists Partners, Support, Buy Mat a
+battery, FPV wiki, Report a bug and Back):
+
+- max-height 520 px: top padding 14 px (was 5vh), no rule under the title (Paused has none either, and squeezed it sat
+  on the panel's edge), no gap above the panel, and the panel's padding 4 px top and bottom (was 10 and 12). 38 px in
+  all at 844 by 390.
+- max-height 380 px: top padding 6 px, 2 px under the title, the panel's padding 2 px, for phones 360 px tall.
+
+The rows keep their 44 px touch targets and the title keeps its size. Nothing changes above 520 px tall.
+
+### Measured
+
+The panel's bottom against the top of the command bar, on arrival, touch, before (main at e2b8e2a) and after:
+
+    844 x 390   30 px under    0, 8 px clear; the Back row 282 to 326, the bar at 338
+    915 x 412   11 px under    0
+    800 x 360   33 px under    1 px, the panel's own bottom edge; the Back row ends at 307 and the bar is at 308
+    740 x 360                  0
+    667 x 375                  0
+    640 x 360                  0; the Back row ends at 304 and the bar is at 308
+    568 x 320                  8 px; the panel stops at 276 and the list scrolls inside it
+
+568 by 320, the first iPhone SE on its side, cannot fit six 44 px rows: under the title their panel ends at 306 and the
+bar starts at 268. The list scrolls inside its panel there, as it did before. The chip rows rule for windows 640 px wide
+and narrower (`.chip-rows-1 .screen:not(.screen-title)` in index.html) outranks this top padding but never reaches About:
+syncChipRows in src/ui/ui.js counts the bug chip and the music dock, and About shows neither.
+
+On arrival the note for the row under the cursor is now the next thing below the panel, so it starts in the command
+bar's band, dimmed by the bar's fade, where half the Back row was; the page scrolls to it. At 640 px wide it begins under
+the bar's legend. Left as it is, and it shows in the pictures the owner was sent.
+
+### RUN LOG
+
+    lint:shell        PASS; the fold at 844x390 touch reads credits 0 px (main: 30, its one failure); 1600x900 and
+                      1280x720 unchanged
+    lint:responsive   PASS
+    lint:devices      2 problems, the whoop room tablet card at 1024x768 and 1180x820, the same two as main in the
+                      sweep of 5 October
+    pictures          before and after at 844 by 390 and 800 by 360, sent to the owner in the thread, not committed
+    probe             640 by 360 and 568 by 320, after the pictures went, the table's last two lines
+    lint:shell        PASS again after main's #38 (the Quad Configurator sign) was merged in, credits 0 px at 844x390
+    not run           npm run verify: no physics, plant, module ABI or build change
+
+### What went wrong
+
+- The first cut kept the rule under the title with 4 px above it, and squeezed it sat on the panel's top edge. Taken
+  out on short screens instead.
+- The first cut fitted 844 by 390 only and left a 360 px tall phone 15 px under the bar; the second block is for that.
+
+### To main
+
+Not pushed at first: the owner asked to see it before it goes live. The before and after pictures went to the owner in
+the thread at 04:34 UTC, and the owner's word came at 05:46 UTC on 2026-10-06, on the decision card "Push the Credits fit
+for sideways phones to main?": "Push". Its consequence read "It goes live on webfpv.org; open Credits on your phone on
+its side and Back should sit fully above the bottom bar", so the check after it is the owner's own phone. The card's
+context said the push also carries this branch's two progress notes of 5 and 6 October (204385d, 3275779), which are
+text only, and the approval covers those, the fit (ce0238f), the merge of main's #38 (b2dce88) and the measurements
+after it (d08e2a4). Main fast forwarded from ed666ac with this note on top.
+
+## 2026-10-06: Stick overlay setting, on by default
+
+Request: an on-screen stick overlay in the sim, on by default, with a setting to turn it off. Finding: the two gimbals already
+existed (`osd-sticks`, `setStickOverlay`) but main.js drew them only when the keyboard was the primary source, so a pilot on a
+radio or gamepad never saw them. Added `stickOverlay` (boolean, default true, saved with the other settings) and a "Stick overlay"
+row beside Show FPS. main.js now passes `show: ui.settings.stickOverlay !== false && !input.isTouchPrimary()`, so every non-touch
+source gets the boxes and a phone on thumb sticks still does not. The Weight slider between the boxes is not covered by the
+setting. Display only: it reads channels the frame loop already holds, so physics and determinism are untouched.
+
+Checked: `node --check` on both files, `lint:boot` 9 of 9, `lint:nouns` pass. `lint:shell` FAILS with 8 problems, and fails the same
+8 on main without this change; this change adds one row to Pilot's overflow (702 to 747 px). Baseline not re-recorded. Not run:
+`npm run verify` (no physics, ABI or build change), `shots.js`, `lint:input` (timed out at 280 s here). Not seen on screen.
+
+What went wrong. Nothing broke, but a radio's channels are shown as the dots, and I have not seen that against a real radio.
+
+## 2026-10-06: Stick overlay, reviewed, the gate mark fixed, and checks for it
+
+Request, Mat in the thread: "ensure there are tests to cover this new functionality and review sonnets work". The review was
+the owner's ask, so its findings are written here whether or not they were acted on.
+
+Findings.
+1. Fixed. The gate mark still parked for the keyboard alone. `updateTargetLock` sized its bottom band on
+   `input.isKeyboardPrimary() || input.isTouchPrimary()`, which was the old test for "the gimbals are up". The first build moved
+   the drawing to "the setting is on and the thumbs are not flying" and left the band where it was, so for a radio or gamepad
+   pilot the chevron parked in the corner instruments' 108 px band, under the top of the plates. Measured on a TX15 race at 1600
+   by 900: the chevron's centre at y 792 against the plates' top at 776, which is the bug `AIM_MARGIN_BOTTOM`'s note records.
+   Read from the code, the reverse case, keys with the overlay off, parked 22 px higher than anything there needs. Both now read
+   one function, `stickOverlayUp()` in main.js. After: 770 against 776 with the overlay on, 792 with it off.
+2. Fixed. The row's note said "Left is yaw and throttle, right is roll and pitch, in your stick mode", which is Mode 2's layout
+   stated as every mode's. It now says the boxes are laid out by Stick mode, which the captions under them already name, and
+   that they are drawn for a radio, a gamepad and the keys and hidden on the thumb sticks, which is what Mat asked in the thread.
+3. Fixed. `setStickOverlay`'s comment still opened "Keyboard stick ghost".
+4. Declined. A board replay (`?replay=tm-...`) runs in flight mode, so the overlay draws the viewer's own resting sticks under
+   somebody else's lap. The keyboard ghost already did this before the setting; now a viewer with a radio plugged in gets it too.
+   `clean=1` captures hide the whole UI and are unaffected. Not changed because it predates this work for the keys and nothing
+   here can drive a replay without the board. Adding `!replayMode` to `stickOverlayUp` is the fix if the owner wants it. Read from
+   the code, not seen.
+5. Noted, not changed. A Mode 1 radio pilot who has never set Stick mode sees Mode 2's layout, because the page cannot see the
+   radio's own mode. Same convention as the calibrate screen's gimbals; Stick mode is on Settings and on Check sticks.
+6. Noted, not changed. On a touch device the frame that brings the thumb plates back still draws the boxes for that one frame,
+   because the frame loop decides the boxes before it raises the plates. The keyboard ghost did the same at a hand over before the
+   setting. The new check waits for the boxes to go rather than sampling that frame.
+7. The first build's record above is accurate: lint:shell fails the same 8 on main and the row adds 45 px to Pilot. Its
+   `lint:input` was not run then, and is now.
+
+Checks added, 23, all in `scripts/input-check.js` (lint:input).
+- A new page, a TX15 on the keyboard pilot's whoop race, 15: on for a pilot who never set it; both boxes drawn for the radio; at
+  rest in Mode 2 the dots are centred with idle throttle at the bottom; roll right and yaw left move the right and left dots;
+  let go they centre; the chevron, pinned to the bottom edge by parking the camera 200 m over the start, sits above the plates;
+  paused mid race, the row is beside Show FPS and reads On; Enter on it is Off in the row, the settings and storage; a reload
+  keeps it off; off, no boxes and the Weight slider stays; off, the chevron parks lower; Enter again is On and stored; the boxes
+  come back; no uncaught exception.
+- The keyboard page, 5: boxes up on the keys; the chevron above the plates; Off takes the keys' boxes away; the chevron comes
+  down; On brings them back.
+- The touchscreen laptop page, 3: no boxes with the thumb plates up; boxes up when the keys take the sticks; a finger on the
+  glass takes them away again.
+
+Proof they see the change. The radio page alone, run against main (e2b8e2a): 12 of 15 fail. Against the first build (db7f17d):
+2 of 15 fail, the two chevron checks, y 792 against 776. Against this commit: 15 of 15 pass.
+
+Checked: full `lint:input`, 245 passed and 1 failed. The failure is the builder chooser's "a key pressed at the question does
+nothing behind it: no tool armed, no 3D view", which fails the same way on main (e2b8e2a, 222 passed, 1 failed) and on the first
+build (222 and 1), so it predates this. `lint:shell` fails the same 8 problems as on main and on the first build, Pilot at
+747 px with the row, baseline not re-recorded. `lint:boot` 9 of 9, `lint:nouns` pass, `node --check` on the four files. Not run:
+`npm run verify` (no physics, ABI or build change) and `shots.js`. Not seen on a real screen or against a real radio.
+
+What went wrong. The first full run on the fix failed two more checks. One was mine: after the reload the world is already built
+and Fly goes straight to the line, so a race helper that waited for the launch card timed out; it now answers the card only when
+asked. The other was "set down on the floor under it ... parked at 11.737" on the keyboard page, which this work does not touch;
+it passed in the two baseline runs and in the final run. My reading, not proven: `__craftState().worldY` is the rendered position
+and `landed` flips at the recovery, so a trace frame that runs before the shell's own frame can see landed at the old height.
+Also, `ui.act('pause')` sets the shell's mode without showing the pause menu; the first draft of the check used it, and the check
+now presses Escape, as a pilot does.
+
+## 2026-10-06: Stick overlay to main, on the owner's word
+
+The owner's word, 2026-10-06 05:46 UTC, in the project thread: "push to main". It covers PR #39 and nothing else: the Stick
+overlay setting (on by default, a row beside Show FPS, hidden on the thumb sticks), the gate mark's bottom margin read from the
+same `stickOverlayUp()`, and the 23 lint:input checks, as the two entries above describe them. Main was ed666ac at the first
+fetch, which the branch had already merged, but the push was refused because another thread had landed the About fit
+(ad8d3a4) in between. So main was merged into the branch again, the two appends to this file kept in order with nothing
+dropped, and main is fast-forwarded to that merge, with no rewrite. What was run: the full lint:input on 917d0c9, 245 passed
+and 1 failed, the builder chooser check that fails the same way on main; after the second merge, the stick overlay page of
+lint:input on its own and lint:boot, as the reply in the thread says. Nothing here has been seen on a real screen or radio; the
+owner is flying it live.

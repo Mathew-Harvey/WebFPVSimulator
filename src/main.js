@@ -7254,6 +7254,20 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   /*
+   * WHETHER THE STICK GIMBALS ARE UP, asked in one place. The frame loop
+   * draws them on this answer and the target mark parks clear of them on
+   * the same answer, so the two cannot disagree. They did once: the Stick
+   * overlay setting first moved only the drawing from "a keyboard pilot" to
+   * "any pilot not on the thumb sticks", the mark kept parking for the
+   * keyboard alone, and a radio pilot's chevron went back to landing on the
+   * roll and pitch gimbal, which is the bug AIM_MARGIN_BOTTOM above records.
+   * The thumb plates are the sticks, so they never get a second pair.
+   */
+  function stickOverlayUp() {
+    return ui.settings.stickOverlay !== false && !input.isTouchPrimary();
+  }
+
+  /*
    * Put the target mark where the next gate is.
    *
    * The map owns which gate that is and which side of it the pilot is on,
@@ -7315,10 +7329,10 @@ export async function boot({ loading, bootStart, mapId }) {
     const maxX = vw - AIM_MARGIN;
     const minY = AIM_MARGIN_TOP;
     /* Whichever of the two the frame is currently showing. isTouchPrimary
-     * moves the corner blocks to the bottom centre; the keyboard ghost puts
+     * moves the corner blocks to the bottom centre; the stick overlay puts
      * the gimbals there. Either way the bottom band is taller than the
      * corner instruments alone. */
-    const bottomBand = (input.isKeyboardPrimary() || input.isTouchPrimary())
+    const bottomBand = (stickOverlayUp() || input.isTouchPrimary())
       ? AIM_MARGIN_BOTTOM_STICKS
       : AIM_MARGIN_BOTTOM;
     const maxY = vh - bottomBand;
@@ -9356,7 +9370,7 @@ export async function boot({ loading, bootStart, mapId }) {
       const ch = input.channels;
       const vis = turtleAxes(ch.roll, ch.pitch);
       ui.setStickOverlay({
-        show: input.isKeyboardPrimary() && !input.isTouchPrimary(),
+        show: stickOverlayUp(),
         roll: vis[0],
         pitch: vis[1],
         yaw: ch.yaw,

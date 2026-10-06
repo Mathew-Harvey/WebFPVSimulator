@@ -67121,3 +67121,25 @@ The badge on the live page. `BOARD_PATRONS`, when the host sets it, replaces the
 the new name will not show until it is added to it too. And the exact spelling: nothing in the board's public statistics
 names the pilot, so "Magniff" was taken from the pull request and the owner's comment, not from the board's own
 times. A name that differs by a character gets no badge.
+
+### The owner's standing word
+
+At 06:11 UTC the owner added, in the same thread: "as long as the pr's are not buggy and will not break things, please
+merge with main". Read here as: a pull request that has been read through, whose checks pass and which breaks nothing is
+merged without waiting for a second yes, whether it is the Cursor agent's or a documentation one. It does not move what
+CLAUDE.md already reserves to him: a change to the physics model's shape, the module ABI or the build is still put to
+him first, and so is a pull request that turns on a product decision. When this was written, this was the only pull
+request open in either repository, and the board had none.
+
+### A wrong reading of this thread's own, corrected
+
+Earlier in this thread the branch `GroksBugFixForClaudeToReview` was reported as an unrelated history, because
+`git merge-base` came back empty, and it was left alone on the strength of the Git section of CLAUDE.md. That reading
+was wrong. The container's clone was shallow: 104 commits of main, back to 1 October, so a branch based before that had
+no base to find. After `git fetch --unshallow origin main` (1131 commits, one root, 45325deb) every old branch shares
+that root. `GroksBugFixForClaudeToReview` is contained in main, 0 commits ahead, and so is
+`cursor/add-visit-source-attribution-b151`. `cursor/patreon-live-prices-f4f1` is 1 commit ahead, the 25 September
+"Patreon tiers: update to live , , 0 prices", which the board's four tiers have superseded and which has no pull
+request. Nothing was merged, rewritten or force pushed on the strength of the wrong reading. When a merge-base comes
+back empty here, `git rev-parse --is-shallow-repository` is the first thing to ask, before anything is said about the
+history.

@@ -66743,3 +66743,44 @@ tree as the first half, each npm script alone and one after another.
   same undeclared name audit: none. Its support click is sent as source 'landing', which the board takes.
 - The live simulator: index.html, src/main.js, src/share/supportprompt.js, src/fresh.js, src/ui/ui.js and the builder's
   index.html and app.js are byte for byte ee5be65's.
+
+## 2026-10-06 | board | Two board pull requests merged on the owner's word: the Patreon prices and the ref tags
+
+The owner asked in the project thread (2026-10-06 03:05 UTC): "grok has a pr waiting, please review, fix as needed and
+merge with main". The two pull requests that were waiting were the board's #6 and #8, both opened by the Cursor agent at
+03:01 and 03:13 UTC, and both with the owner's own comment asking for a review. This repository had none open, and its
+branch `GroksBugFixForClaudeToReview` has no pull request and no common ancestor with main (`git merge-base` returns
+nothing, 615 commits against 91), so it was left alone, as the Git section says.
+
+### What went to the board's main
+
+- **#6, "Board: update Patreon tier prices"**, squashed as a0c84f9. The note in `public/app.js` and the three Patreon
+  anchors in `public/index.html` now read "$3, $8, $20, Your sign in the sim $25, USD a month", and the link is the
+  `/membership` page. Five lines. Checked against the owner's brief: the note and all three anchors (href, aria-label,
+  title) are equal to the constants, no `$12`, `$5` or GST is left outside the vendored copies, and the diff touches
+  neither the patron badge nor the stats code, so the old badge code does not come back. The owner's comment says it
+  replaces #4, which was closed once it merged.
+- **#8, "Count patreon, bsky and tiktok ref tags"**, squashed as 9d27618. Five new entries in `KNOWN_REFS` in
+  `src/validate.js` and five checks in `src/selftest.js`. Checked against the owner's brief: all 15 old tags and their
+  aliases fold to what they folded to before (read back from `refKey`, not assumed), the new ones fold to `patreon`,
+  `bsky` and `tiktok` in any case, an unknown tag is still `other`, and the diff is additions only.
+
+### Run, in the same turn
+
+The board's `npm test`: all passed on each pull request's head alone, on a local merge of both onto bc7bff5, and on the
+board's main after the merge (9d27618). `lint:licence` (30 files) and `lint:nouns` passed on each head. Not run: the
+server against a scratch database, and a look at the page, so nothing here has seen the real page or a real `?ref=`
+visit.
+
+### Left for the owner
+
+The board now lists four tiers and the simulator's `src/share/patreon.js` and the landing page's `src/config.js` do not.
+The simulator's `PATREON_NOTE` has three ("Build the sim, $20. USD a month."), and the landing page says "Memberships
+start at $3 USD a month." The board's `public/app.js` comment says the strings are meant to agree. The four tiers are
+what the owner asked for in #6, so the board was not changed back. If the fourth tier is real, the simulator's note and
+the landing page need the same line, and the simulator's `scripts/support-selftest.js:61` pins the three tier form.
+Not changed here.
+
+### Review
+
+No review workflow was run. Findings from reading the diffs: none that needed a change.

@@ -120,6 +120,9 @@ partnership to show.
   * `mattsflooring/colour.png` is the Matt's Flooring logo as supplied, a
     499 by 111 PNG. `mattsflooring/mono.png` is made from it by
     scripts/partners.js, every pixel cream and its transparency kept.
+  * `quadconfig/colour.png` is the Quad Configurator logo as supplied by
+    patron Magnus Arge, a 1882 by 400 PNG. `quadconfig/mono.png` is made
+    from it by scripts/partners.js.
 
 The copies in the front door's and the board's repositories are these files,
 copied byte for byte, and this entry covers them there too.

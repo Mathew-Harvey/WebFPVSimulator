@@ -66784,3 +66784,67 @@ Not changed here.
 ### Review
 
 No review workflow was run. Findings from reading the diffs: none that needed a change.
+## 2026-10-06 | partners, tests | The first patron sign, Quad Configurator, and the town check that could not carry one
+
+The owner's word, 2026-10-06 04:21 UTC, in the project thread: "there is another pr up from grok, please review fix as
+needed and merge with main". It covers this pull request (#38, opened by the Cursor agent at 04:20 UTC) and nothing
+else. Its own text says the logo was supplied by the patron on 2026-10-06 and that the owner agreed to it, and that the
+sign is the $25 Patreon tier, "Your sign in the sim".
+
+### What the pull request does
+
+The first real entry in `PATRON_MAP_BRANDS` (src/partners/roster.js, empty until now): `quadconfig`, Quad Configurator,
+no role, links or about, because a patron is not findable. The logo as supplied (assets/partners/quadconfig/colour.png,
+1882 by 400, md5 6da8ca2a4bfd595ca9097ca27f53b24c), a cream mono made by scripts/partners.js with the navy field keyed
+out, and a NOTICE line. The sign's aspect is 3.593, so the town fits it 3.2 by 0.89 m and a built map 6.0 by 1.67 m.
+
+### What the review found, and what was done
+
+1. **The pull request called a failing check pre-existing. It is not.** `check:town-patrons` is 24 passed and 0 failed on
+   main (e2b8e2a) and 23 passed and 1 failed on the pull request, `drawn` on spot 1: "68 of 190 samples are off the face
+   by more than 1 cm". Cause: `drawn` gathers every triangle in the scene and compares the nearest under each sample with
+   the collider face. The check's own header says the paint stands 1.5 cm in front of the face on purpose, and the
+   roster was empty when the check was written, so no mark was ever in the scene to be counted. The first real patron was
+   the first, and the check read the sign's own plate as a band standing proud of its wall. Leaving out only that plate
+   brought all 68 samples back inside 1 cm, so all 68 were under it. It was a defect in the check and not in the town:
+   the wall is plain.
+   Fixed in scripts/town-patron-check.js, in the traversal that gathers the drawn triangles: a mesh named
+   `partnerMarkTrim`, which is what `makePartnerMark` calls every sign's paint, is left out. Anything else in front of
+   the paint is still counted. **No threshold moved**: DRAWN_TOL is still 0.01 m and the 1.5 cm is still what the paint
+   stands off by. After the change spot 1 is 190 of 190 samples within 1 cm (worst 0.000 m), the check is 24 and 0, and
+   the self test is 14 of 14 planted faults caught with a clean baseline, the plinth band 2 cm proud still among them.
+   While this was being written the Cursor agent pushed the same one line (2fd1d56, 04:26 UTC, same mesh name, same
+   place); the two were merged and the longer comment kept.
+2. **A pronoun.** The roster comment said the logo was "supplied by him". Nothing in the repository says the patron's
+   pronouns, so it now says "the patron".
+3. **Read and found nothing:** `quadconfigMono` keys out pixels within 20 units per channel of #323f5d and makes the
+   rest cream at their own alpha. Read as an image the mono is clean: the quad mark's inner gaps are open, the text is
+   whole, and `lint:partners` regenerates it byte for byte (75 passed). No em dash or en dash in the diff. No undeclared
+   name: the built map's patron path (`choosePatronSpots`, `paintPatronMarks`) is old code whose imports are all there,
+   and it ran, below.
+
+### Run, in the same turn
+
+On the pull request with the fix: `check:town-patrons` 24 and 0, `check:town-patrons:selftest` 14 of 14 and baseline
+clean, `lint:partners` 75 of 75, `check:props` all passed, `lint:preload` up to date (254 served), `lint:boot` 9 of 9,
+`lint:memory` pass (every world lazy and freed), `stats:selftest` 79 of 79, `support:selftest` 17 of 17.
+
+A scratch script, not committed, flew the real shell into Your map (Hibari Yard) on this branch and on main. On this
+branch: five marks, the four partners' unchanged and `quadconfig` at (11.78, 3.89, 45.77), 6.0 by 1.67 m, `findable:
+false`. On main: the four partners. The sign's canvas, as `partnerDataUrl` draws it, shows the logo whole on its navy
+field. Both PNGs answer 200. The page's two console errors are the board's two refused fetches, the same two on main
+and the same two `lint:memory` names ("the board is not running here").
+
+### Not run
+
+`npm run verify`, because nothing here touches the physics, the plant, the ABI or the build. `node scripts/shots.js`,
+so nobody has looked at the sign on a wall in a rendered frame, only at its canvas. No flight. The town's live mark was
+read by `check:town-patrons` and not seen.
+
+### Left, not done
+
+- The board's and the front door's copies of src/partners/roster.js are one patron behind this repository until they are
+  next copied with `scripts/vendor.js`. Neither prints patrons, and the board copies only the marks it names, so the
+  copy needs no change for this.
+- `PATREON_NOTE` here still lists three tiers and `scripts/support-selftest.js:61` pins that form, while the board now
+  lists four. Recorded in the entry for the board's #6 and #8 (this repository's PR #37).

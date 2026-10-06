@@ -227,6 +227,34 @@ function creamPng(img) {
 }
 
 /*
+ * Quad Configurator's mark in cream with navy keyed out. The logo has a navy
+ * #323f5d background that needs to be transparent in the mono version, so the
+ * sign is the mark itself (the text and quad icon) rather than a solid block.
+ * Pixels close to navy (within 20 units per channel) go transparent, the rest
+ * become cream and keep their alpha.
+ */
+function quadconfigMono(img) {
+  const px = Buffer.from(img.px);
+  const navy = [0x32, 0x3f, 0x5d];
+  const threshold = 20;
+  for (let i = 0; i < px.length; i += 4) {
+    const rDiff = Math.abs(px[i] - navy[0]);
+    const gDiff = Math.abs(px[i + 1] - navy[1]);
+    const bDiff = Math.abs(px[i + 2] - navy[2]);
+    if (rDiff <= threshold && gDiff <= threshold && bDiff <= threshold) {
+      // Navy background: make transparent
+      px[i + 3] = 0;
+    } else {
+      // Not navy: make cream and keep alpha
+      px[i] = CREAM_RGB[0];
+      px[i + 1] = CREAM_RGB[1];
+      px[i + 2] = CREAM_RGB[2];
+    }
+  }
+  return { w: img.w, h: img.h, px };
+}
+
+/*
  * Mantis FPV's mark in cream. Their 2022 SVG draws a sticker: a black
  * outline round the whole word, a white one inside it, then the letters,
  * black for Mantis and green for FPV, then the registered mark. The one
@@ -490,6 +518,7 @@ const made = [
   { kind: 'svg', rel: 'mantisfpv/mono.svg', body: mantisMono(readFileSync(at('mantisfpv/colour.svg'), 'utf8')) },
   { kind: 'png', rel: 'wcmrc/mono.png', img: creamPng(readPng(readFileSync(at('wcmrc/colour.png')), 'wcmrc/colour.png')) },
   { kind: 'png', rel: 'mattsflooring/mono.png', img: creamPng(readPng(readFileSync(at('mattsflooring/colour.png')), 'mattsflooring/colour.png')) },
+  { kind: 'png', rel: 'quadconfig/mono.png', img: quadconfigMono(readPng(readFileSync(at('quadconfig/colour.png')), 'quadconfig/colour.png')) },
   {
     kind: 'svg',
     rel: '../credits/betaflight-mono.svg',

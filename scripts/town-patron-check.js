@@ -23,7 +23,9 @@
  *             through, and the nearest one under each sample must stand
  *             within DRAWN_TOL of the collider face. A band or a board that
  *             stands proud of the wall covers the paint, and a wall drawn
- *             behind its collider leaves the paint in the air.
+ *             behind its collider leaves the paint in the air. The paint
+ *             itself, a mark the town has already painted on the face, is not
+ *             counted: it stands proud by design.
  *   seen      From a fan of eye positions in front of the sign, those in open
  *             air (EYE_FREE clear of every solid, and above the ground) from
  *             which the real seesMark answers yes number at least MIN_EYES.
@@ -168,6 +170,13 @@ function toolbox() {
     };
     scene.traverse((o) => {
       if (!o.isMesh) return;
+      /* A sign's own paint is the thing the wall is being asked to carry, and
+       * it stands `off` (1.5 cm) in front of the face on purpose, so counting
+       * it would read every live patron as a band proud of its wall. The
+       * roster was empty when this was written, so no mark was ever in the
+       * scene to be counted; the first real patron was the first. Anything
+       * else drawn in front of the paint is still counted. */
+      if (o.name === 'partnerMarkTrim') return;
       const mat = o.material;
       if (mat && (mat.visible === false || mat.colorWrite === false)) return;
       if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();

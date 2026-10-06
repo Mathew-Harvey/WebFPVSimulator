@@ -192,7 +192,16 @@ export const MAP_ONLY_PARTNERS = Object.freeze([
  * findable: their signs do not stamp, count toward achievements, or show the
  * found panel when discovered.
  */
-export const PATRON_MAP_BRANDS = Object.freeze([]);
+export const PATRON_MAP_BRANDS = Object.freeze([
+  // Magnus Arge's $25 Patreon 'Your sign in the sim' logo, supplied by the patron on 2026-10-06, OK'd by the owner.
+  partner({
+    slug: 'quadconfig',
+    name: 'Quad Configurator',
+    short: 'Quad Configurator',
+    logo: { colour: 'quadconfig/colour.png', mono: 'quadconfig/mono.png', aspect: 1882 / 400 },
+    mark: { field: '#323f5d' },
+  }),
+]);
 
 export const PARTNER_SLUGS = Object.freeze(PARTNERS.map((p) => p.slug));
 export const MAP_ONLY_PARTNER_SLUGS = Object.freeze(MAP_ONLY_PARTNERS.map((p) => p.slug));

@@ -67091,3 +67091,33 @@ dropped, and main is fast-forwarded to that merge, with no rewrite. What was run
 and 1 failed, the builder chooser check that fails the same way on main; after the second merge, the stick overlay page of
 lint:input on its own and lint:boot, as the reply in the thread says. Nothing here has been seen on a real screen or radio; the
 owner is flying it live.
+
+## 2026-10-06 | board | Two more board pull requests merged on the owner's word: the patron badge for Magniff and the landing and itch ref tags
+
+The owner's word, 2026-10-06 06:00 UTC, in the project thread: "check for new grok prs", after two earlier asks in the
+same thread to review, fix as needed and merge the Cursor agent's pull requests. He had also commented the review
+request on #9 himself at 05:48. This repository had none open.
+
+### What went to the board's main
+
+- **#9, "Add patron badge for Magniff"**, squashed as 2babb19. One entry, `'Magniff'`, in `BUILT_IN` in `src/patrons.js`,
+  the board's patron list, for the Patreon member on the $25 tier whose sign is this repository's #38. The diff is that
+  one line, in the same form as the existing comment's example, and `isPatron` answers true for "Magniff", "magniff" and
+  "MAGNIFF" and false for "Magnus".
+- **#10, "Accept landing, itch and tt refs"**, squashed as 3a95ea7. `landing` and `itch` in `KNOWN_REFS` in
+  `src/validate.js`, and two checks. Additions only: the ten old and new tags read back from `refKey` fold as before
+  (reddit, yt, hn, x, fb to facebook, ig to instagram, gh to github, discord, bsky, tt to tiktok), `landing` and
+  `itch` fold to themselves in any case, and an unknown tag is still `other`. The title says tt, which #8 had already
+  added, and the diff does not touch it.
+
+### Run, in the same turn
+
+The board's `npm test`: all passed on a local merge of both onto 9d27618 and on the board's main after the merge
+(3a95ea7). `lint:licence` (30 files) and `lint:nouns` passed on both.
+
+### Not checked
+
+The badge on the live page. `BOARD_PATRONS`, when the host sets it, replaces the built in list, so if it is set there
+the new name will not show until it is added to it too. And the exact spelling: nothing in the board's public statistics
+names the pilot, so "Magniff" was taken from the pull request and the owner's comment, not from the board's own
+times. A name that differs by a character gets no badge.

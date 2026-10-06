@@ -66849,6 +66849,27 @@ read by `check:town-patrons` and not seen.
 - `PATREON_NOTE` here still lists three tiers and `scripts/support-selftest.js:61` pins that form, while the board now
   lists four. Recorded in the entry for the board's #6 and #8 (this repository's PR #37).
 
+### Shots, run after the merge
+
+The owner's word, 05:46 UTC: "push to main verfiy with shots". `scripts/shots.js` at 1280 by 720, graphics high, the
+shell's UI hidden, a fixed camera through `window.__setCam`; the eye was searched for in the page as clear of every
+solid with a clear line to the sign. The driver is a scratch script and is not committed, and neither are the pictures
+(.gitignore); they are in the project's files under quadconfig-sign/.
+
+- **Your map, Hibari Yard** (built-front, built-wide, built-oblique): the sign is flush on the side of a teal container at
+  (11.78, 3.89, 45.77), logo whole and unstretched on its navy field, in the same style as the Mantis FPV partner sign
+  two stacks over. What went wrong first: two earlier cameras at this sign were inside geometry, one against a
+  container's side and one under a container's roof, so those frames showed a stencil letter and a flat cream block. They
+  were a bad eye and not a bad sign, and were replaced.
+- **The town, spot 1** (city-front, city-wide), (28.35, 1.45, 82.435) on the purple wall behind the cherry tree: flush,
+  readable, 3.2 by 0.89 m. In city-wide a utility pole and the house hide part of it, which is the view and not a fault.
+- **Console:** three refused fetches to the board in each run, the board not running here, and no harness fault.
+- **Undeclared name audit** (espree and eslint-scope, `/opt/node-tools`) on the four files the pull request touched or
+  reads for its patrons: 0 undeclared names.
+- **Still not done:** a flight past the sign, so nothing says how it reads at speed or on a phone, and the cream mono
+  file is not in any of these frames.
+
+
 ## 2026-10-05 | tests, board | The training park before and after the grip change, and the patron fix live
 
 ### The training park

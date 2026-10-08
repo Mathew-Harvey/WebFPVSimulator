@@ -69064,3 +69064,25 @@ append conflict at the end of this file and nothing else in these files.
 - Not run on the merged tree: `npm run verify` (render only; it passed 17 of 17 at 81000c5) and the rest of the
   targeted checks, which passed at e5c31b3, before a merge that brought only main's partner roster and its marks.
 - If it is wrong live, the way back is a revert on main, never a reset.
+
+## 2026-10-08: a notice that radios do not work on a phone
+
+Owner, 2026-10-08, in the thread: "on android many controllers won't work and iphone complains that controller needs too
+much power, we can't run on everything, so please make a notification to the user they can't use this platform to fly".
+
+Read as: a pilot with a radio on a phone is told so. Touch flying is unchanged, so the notice is about the radio and says
+to use the touch sticks or a computer. Chosen without asking: the notice appears only when a pad is connected, on Android
+only for a pad that arrives as exactly four axes (Chrome's lossy fallback; a gamepad Chrome knows, or a radio under the
+newer extra axes mapping, is not warned), on iOS for any pad.
+
+- `src/ui/ui.js` `padTroubleItem`: a first branch returning a `row-warn` row ("Many radios do not work on a phone", or
+  "Radios may not work on an iPhone or iPad") that opens Stick help, with the reason in its note. It shows where the
+  other pad trouble rows do: the title, and the pause menu. It takes precedence over the later rows for those pads.
+- Evidence behind it: bug-2a9d8037, bug-ad55c25d, bug-d10dab9d (DJI Controller 3 and Radiomaster GX12 on a Pixel 9,
+  Chrome 154): axis 3 flat, no button left rest. The iPhone half is the owner's report, not something checked here.
+
+### Run, in the same turn
+
+- `node --check src/ui/ui.js` pass. `padTroubleItem` extracted and called with stub info: android with four axes and ios
+  return the new row, android without `fourAxes` and windows do not, a keyboard returns null.
+- Not run: `lint:shell`, `lint:input`, `shots`, `verify`. Nothing renders this row in a browser yet.

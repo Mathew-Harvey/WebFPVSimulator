@@ -2736,6 +2736,38 @@ function padTroubleItem(info, platform = 'other') {
   if (!info || !info.count || info.using === 'Keyboard') {
     return null;
   }
+  /*
+   * A PHONE IS NOT A PLACE TO FLY WITH A RADIO, AND THE ROW SAYS SO FIRST.
+   *
+   * The owner's ask of 8 October, after bug-2a9d8037 and the two tickets
+   * that followed it: a DJI Controller 3 and a Radiomaster GX12 on a Pixel 9
+   * both lost yaw, and the readout showed no axis and no button carrying it.
+   * Chrome on Android hands over four axes of a radio and drops the rest, and
+   * an iPhone often refuses a radio outright. The sim cannot run on
+   * everything, so a pilot with a radio on a phone is told before they fly
+   * rather than after. Android is only asked when the pad arrives as exactly
+   * four axes, because a gamepad Chrome knows, or a radio under the newer
+   * extra axes mapping, delivers everything and has nothing to be warned
+   * about. See fourAxisPad in src/input/input.js. An iPhone gets it for any
+   * pad, because the ones that connect there are the exception. The touch
+   * sticks are the way to fly on a phone and the note says so.
+   */
+  if ((platform === 'android' && info.fourAxes) || platform === 'ios') {
+    const ios = platform === 'ios';
+    return {
+      label: ios ? 'Radios may not work on an iPhone or iPad' : 'Many radios do not work on a phone',
+      action: 'stickhelp',
+      rowClass: 'row-warn',
+      note: (ios
+        ? 'An iPhone or iPad often refuses a radio, saying it needs too much power, and Safari'
+          + ' hides many that do connect.'
+        : 'Chrome on Android passes on only four of a radio\'s axes and drops the rest, so a stick,'
+          + ' most often yaw, may never reach the sim. A DJI controller and a Radiomaster GX12 both'
+          + ' lost yaw on a Pixel 9.')
+        + ' Nothing in this page can bring a dropped stick back. On a phone, fly with the touch'
+        + ' sticks. To fly with a radio, use a computer. Stick help shows which sticks arrive.',
+    };
+  }
   if (!info.buttons && !info.hasSelect) {
     return {
       label: 'Your radio has no buttons this browser can see',

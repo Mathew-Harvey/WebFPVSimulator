@@ -88,7 +88,7 @@ export const TUNES = [
 /*
  * THE WHOOP'S STOCK TUNE IS OFFERED AGAIN, AND THE OTHER TWO STAY RETIRED.
  *
- * Since 2026-10-09 the whoop flies its own plant again, an 0802 28,000 kV 1S
+ * Since 2026-10-09 the whoop flies its own plant again, an 0702 28,000 kV 1S
  * machine, and 'whoop-champion' is its default: it was measured on that plant
  * (configs/airframes.js has the numbers). Racing and Freestyle were written
  * for the maker's 30,000 and 25,000 kV variants and were not measured on it,

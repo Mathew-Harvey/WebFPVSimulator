@@ -94,9 +94,10 @@ const BANDS = {
        + 'about 74,700.',
   },
   'W5 punch-sag': {
-    min: 3.00, max: 3.45, unit: 'V a cell',
-    why: 'Real 1S whoop packs fall to 3.1 to 3.2 V under a punch from a fresh '
-       + 'cell. Measured here from 4.20 V rather than the 4.35 V a LiHV charges '
+    min: 3.50, max: 3.80, unit: 'V a cell',
+    why: 'The owner, 2026-10-09: a real whoop sags "to about 3.65v on punch" '
+       + 'from a fresh cell (this band was 3.00 to 3.45 on a published 3.1 to '
+       + '3.2 V figure until then). Measured here from 4.20 V rather than the 4.35 V a LiHV charges '
        + 'to. SUSTAINED, not the minimum, for the same reason W6 is: the plant '
        + 'has no winding inductance and no ESC current ceiling, so the first '
        + 'two or three milliseconds of any punch draw a current that is silly '
@@ -433,7 +434,7 @@ async function main() {
     const atPoint = vperp >= 4.5 && vperp <= 7.0;
     /*
      * NO DUCT TERM SINCE 2026-10-09, and the gate says so rather than
-     * dividing by zero. The 0802 whoop plant carries k_duct 1.0, fade 0 and
+     * dividing by zero. The 0702 whoop plant carries k_duct 1.0, fade 0 and
      * lip 0: the shroud's static gain is inside the bench thrust it was
      * solved against, and the fade and the lip were never measured on a
      * whoop's short ring (src/native/plant.c, the whoop's head note). So this

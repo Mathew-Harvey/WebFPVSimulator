@@ -235,7 +235,7 @@ export const AIRFRAMES = [
      * words (floaty, carries too far, too light even at 120), and it carried
      * a five inch's momentum and throttle (a rocket ship, can't move slowly).
      *
-     * SIM_AIRFRAME_WHOOP65 in src/native/plant.c is a 24 g 1S whoop on 0802
+     * SIM_AIRFRAME_WHOOP65 in src/native/plant.c is a 23 g 1S whoop on 0702
      * 28,000 kV motors, built on the five inch's derivation chain because the
      * five inch is the one the owner says feels right, and it carries
      * len_scale, which is MICRO_SCALE: the plant computes the real machine in
@@ -299,10 +299,10 @@ export const AIRFRAMES = [
      * 'whoop-champion' is the maker's own shipped 1S whoop configuration, and
      * it was this entry's default while SIM_AIRFRAME_WHOOP65 flew before. It
      * was retired when the whoop moved onto the five inch's plant, because a
-     * 1S tune on a 710 g 6S machine is the wrong tune. On the 0802 plant it
+     * 1S tune on a 710 g 6S machine is the wrong tune. On the 0702 plant it
      * is a tight one: a quarter stick roll rises in 17 ms with 4 percent
-     * overshoot, a full yaw snap overshoots 4 percent where the previous
-     * whoop plant overshot 15, and the hover holds roll to 0.12 deg/s RMS.
+     * overshoot, a full yaw snap overshoots 8 percent where the previous
+     * whoop plant overshot 15, and the hover holds roll to 0.10 deg/s RMS.
      */
     defaultTune: 'whoop-champion',
     /*
@@ -310,7 +310,7 @@ export const AIRFRAMES = [
      *
      * The maker's whoop profile is 580 / 580 / 500 with a 65 percent throttle
      * cap, and the cap existed because a 36,000 kV whoop hovered at a third
-     * of the stick. The 0802 28,000 kV plant hovers at 39 percent with 4.4 to
+     * of the stick. The 0702 28,000 kV plant hovers at 36 percent with 5.4 to
      * one, so the whole stick is a whoop's whole range and the cap is not put
      * back. The rates are the five inch's so a pilot moving between the two
      * keeps their hands; one stock profile, not two.

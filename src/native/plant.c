@@ -358,10 +358,11 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
 },
 
 /* ---------------------------------------------------------------------
- * SIM_AIRFRAME_WHOOP65: a 65 mm 1S brushless whoop on 0802 28,000 kV motors,
+ * SIM_AIRFRAME_WHOOP65: a 65 mm 1S brushless whoop on 0702 28,000 kV motors,
  * rebuilt on 2026-10-09 on the owner's ask: "whoops need proper physics, 28k
  * kv motors are about right, the 5 inch model feels ok, the previous whoop
- * model was bad".
+ * model was bad", and then: "Whoop motor should be 0702, sag to about 3.65v
+ * on punch".
  *
  * WHAT THE PREVIOUS ONE WAS. This entry held a 23.4 g 0702 36,000 kV whoop
  * from 2026-09-06, flown at life size until 2026-09-14, when the owner gave up
@@ -383,59 +384,55 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
  * whoop, because a whoop lives in them: ground effect and the stalled disc
  * drag of a descent.
  *
- * THE MACHINE. A 65 mm frame, four 0802 28,000 kV motors at about 1.9 g, 31 mm
- * three blade props, a 1S 300 mAh pack at about 7.5 g: 24 g all up.
+ * THE MACHINE. A 65 mm frame, four 0702 28,000 kV motors, 31 mm three blade
+ * props, a 1S pack: 23 g all up, the previous whoop's frame with the owner's
+ * motor in it.
  *
  * THRUST AND THE ELECTRICAL SET, solved together against what a real 1S
- * whoop does rather than typed. The targets, each from outside this project:
- * thrust to weight 4.0 to 5.4 all up (the maker's 6.3 to one is the dry
- * figure); a punch that sags a fresh cell to 3.0 to 3.45 V and draws 10 to 22
- * A at the pack; and a motor time constant of 15 to 45 ms. scripts/whoop-gates.js
- * holds those bands with their sources. Bench data for the motor: an 0802 at
- * 20,000 kV makes 17.7 to 20 g a motor on 31 mm props (Oscar Liang's 31 mm prop
- * shoot out), and 28,000 kV turns the same prop about a third faster.
+ * whoop does rather than typed. The targets: thrust to weight 4.0 to 5.4 all
+ * up (the maker's 6.3 to one is the dry figure); a punch that draws 10 to 22 A
+ * at the pack; a motor time constant of 15 to 45 ms; and a fresh cell that
+ * sags to about 3.65 V under a punch, which is the owner's figure from the
+ * real thing. scripts/whoop-gates.js holds those bands with their sources.
  *
- * ke IS THE PLATE, 28,000 kV, because that is the motor the owner named. The
- * previous whoop ran its loaded constant 6 percent better than its plate; that
- * argument is a good one and it moves the hover up the stick, so it is left
- * out rather than stacked on a figure nobody measured for this motor.
+ * ke IS THE PLATE, 28,000 kV, because that is the motor the owner named.
+ *
+ * THE SAG IS THE PACK, NOT THE MOTOR. 3.65 V from 4.2 at about 18 A is 30
+ * mOhm from the cell to the board: a good 1S HV pack, a BT2.0 lead and short
+ * wire. The previous whoop used 55 mOhm and sagged to 3.25, which the owner
+ * says a real one does not.
  *
  * kq through the same identity as the five inch, at a figure of merit of
  * 0.305: a 31 mm blade at 70,000 rpm runs at a chord Reynolds number near
  * 10^4, where Harris puts a rotor at 0.30 to 0.40, and real 31 mm whoop props
  * measure 1.6 to 1.8 g a watt, which is the bottom of that band.
  *
- * Then kt and r_motor: a static solve of the plant's own equilibria lands,
- * on a charged 4.2 V cell,
+ * Then kt and r_motor, solved against those bands and then measured on the
+ * built module by scripts/whoop-gates.js, on a charged 4.2 V cell:
  *
- *   full throttle   72,800 rpm, 4.3 A a motor, 17.3 A pack, 3.25 V a cell,
- *                   26 g a motor, 4.74 to one
- *   hover           duty 0.32, 0.91 A a motor
- *   time constant   j R / ke^2 = 21 ms
+ *   full throttle   72,800 rpm, 17.4 A pack, 3.68 V a cell, 5.4 to one
+ *   hover           0.36 of stick
+ *   time constant   22 ms
  *
- * which is a whoop that punches at under five to one and pays for every punch
- * at the pack. The previous whoop made 5.1 at the peak of a punch on a 36,000
- * kV motor.
+ * r_motor 0.24 is a 0702's winding, more than an 0802's for the same kV
+ * on a smaller stator, and j_rotor is the previous whoop's 0702 bell plus a
+ * 31 mm three blade.
  *
- * j_rotor is an 0802 bell, about 6.5e-9, plus a 31 mm three blade at about
- * 1.0e-8: 1.65e-8.
- *
- * INERTIA is the previous whoop's point mass estimate with the 0802s' extra
- * 0.35 g a motor at 23 mm: 6.7e-6, 8.1e-6 and 1.40e-5.
+ * INERTIA is the previous whoop's point mass estimate for this frame.
  * ------------------------------------------------------------------- */
 [SIM_AIRFRAME_WHOOP65] = {
-  .mass_kg = 0.024,
-  .inertia = { 6.7e-6, 8.1e-6, 1.40e-5 },
+  .mass_kg = 0.023,
+  .inertia = { 6.0e-6, 7.4e-6, 1.25e-5 },
   .gravity = 9.80665,
   .arm_x = 0.0229809704566899, /* 0.065 / (2 sqrt 2), a 65 mm wheelbase */
   .arm_y = 0.0229809704566899,
-  .kt = 4.8e-9,
-  .kq = 2.53555e-11, /* figure of merit 0.305 */
+  .kt = 5.2e-9,
+  .kq = 2.85901e-11, /* figure of merit 0.305 */
   .ke = 3.41046e-4,  /* 28,000 kV, the plate: 60 / (2 pi 28000) */
-  .r_motor = 0.150,
-  .j_rotor = 1.65e-8,
+  .r_motor = 0.240,
+  .j_rotor = 1.5e-8,
   .cells = 1.0,
-  .r_cell = 0.055,
+  .r_cell = 0.030,  /* 30 mOhm cell to board, the owner's 3.65 V sag; see above */
   /*
    * Body drag, the solid airframe only: 9.3e-4 m^2 of frontal silhouette at a
    * bluff body Cd near 0.9, and 2.2e-3 m^2 of plan at 1.15. Unchanged from the

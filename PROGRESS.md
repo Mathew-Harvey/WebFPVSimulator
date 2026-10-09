@@ -70057,3 +70057,68 @@ Not on main. No physics, plant, module ABI or build change here, so `npm run ver
 - Still open with the owner, not decided by this push: whether the trail should be only as strict as RaceGOW's Rule 7
   (never backward), and not also refuse an opening out of turn. The check card of 2026-10-08 never got an answer.
 - What went wrong: nothing new.
+
+### The whoop export bundle, 2026-10-08 (draft)
+
+- Asked by the owner (14:08Z in the export thread): each track exportable as files with instructions, the pieces
+  needed and GIFs of the circuit, for a friends' app where a group races a new track each week at its own pace.
+  Built on a draft branch, not pushed to main. Nothing here touches physics, the plant, the module ABI or the build,
+  and the stage change is additive: a lap animation of racegow5-track1 is byte identical before and after (sha256
+  d8c6e4ec, 256 px, 12 frames).
+- What it is: More, Export bundle (whoop only) writes one stored zip made in the browser: `bundle.json` (versioned
+  machine file), `track.json` (the builder's document), `map.svg`, six stills (three corners, with the line and
+  without), `lap.gif`, `instructions.html`. Format in `BUNDLE-FORMAT.md`. Reused: `buildPath(doc, { closeLoop: true })`
+  for the line, `buildSheet` for pieces and parts, `exportTrackGif` for the animation. `buildSheet` gained `origin`.
+  `stage.js` gained `setRoute` (whole lap as one even ribbon, or none) and `look` (camera from a compass bearing).
+  `scripts/trackbundle.js` makes one headless.
+- Weak machines: the pictures are optional in the dialog; the stills are one renderer and six draws; the animation
+  defaults to 384 by 240 and is the existing yielding, abortable exporter; the zip is stored, so packing is a CRC.
+  Not measured on a real weak laptop. In this container (software GL): Track 1 with everything 5.7 s, Track 8
+  (211 frames) 13.5 s, 1.9 MB; without pictures about 1 s.
+- Checks run: `node src/trackbuilder/selftest.js` (2579 passed, 20 new), `lint:nouns`, `lint:preload`, `lint:boot`,
+  `lint:memory`, the dialog driven in headless Chromium (Done, 10 files). Not run: `npm run verify`, `shots.js`.
+- What went wrong: the first map drew a gate as a spike, because the build sheet's footprint polygon is for the
+  sheet; the map now draws the pipe members. Passes on one spot overprinted each other (RaceGOW Track 8 flies a gate
+  five times), so labels group and cap at three numbers.
+- Left for the owner: the friend's app is not touched. CommunityGow hosting is a separate piece, see the thread.
+
+### CommunityGow from the builder, and every round flyable, 2026-10-09 (draft)
+
+- Asked by the owner (05:40Z in the export thread): a full design review of CommunityGow against its goal, a
+  group racing a new whoop track a week at home with video evidence, and built tracks in the game as easily as
+  possible. The board half (draft PR 13 on the board) makes every round's track a board track, so a round is
+  flown from its page with one press; this half lets the organiser make and send the round without touching a
+  file. Same draft branch as the export bundle, main merged in first (3335999).
+- What it is: `src/trackbuilder/community.js` reads the community the portal's Make it in the builder link
+  names (`?community=<slug>&board=...#cgkey=<organiser key>`), keeps it in sessionStorage for the tab, takes it
+  out of the address, and sends a round to the board's `/api/communities/:slug/rounds`. `start.js` takes it
+  before anything else reads the address, and loads the module only on such a visit or a reload of one. The
+  builder shows a mint strip under the bar ("Round 2 for Perth Whoop Club", Send, Not now) that follows the
+  track: Send is off until the track is a whoop race track with a lap. Send makes the bundle with the six views
+  and the small animation (inside the board's 4 MB) and posts it; the dialog ends on Open round N and Copy its
+  link. Export bundle also takes a pasted organiser link. `fresh.js` regenerated: it now also lists
+  `bundle.js`, `bundlemaker.js` and `zip.js`, which the bundle commit had left out.
+- Latency: nothing on the flying path changes. The builder fetches one more module only on a community visit.
+- Checks run: `node src/trackbuilder/selftest.js` 2593 passed, 1 failed (15 new, all pass). The one failure is
+  "a whoop rests on the plant's 45 mm", which fails the same way on untouched main 595ed93 (2558 passed, 1
+  failed): main's belly moved to 33 mm and this check still says 45. Not this change, left for the tune thread,
+  which fixed the check on main as 04cc343. With that merged in, 2594 passed, 0 failed.
+  `lint:preload` (after `gen:preload`), `lint:boot` 9 of 9, `lint:nouns`. End to end in headless Chromium with
+  the simulator on 8000 and a scratch board on 3150: a community made, the builder opened from its link (strip
+  shown, address cleaned, kept across a reload), RaceGOW5 Track 1 sent in 4.8 s, the board's round carrying a
+  board track, and the round's Fly link landing at the starting blocks ("GATE 1 OF 6"); Track 8 sent from a 390
+  by 844 phone layout. Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`.
+- What went wrong: the first strip had no deadline on its read of the community, which `lint:boot`'s rule (every
+  board read has one) would have wanted; it has the board's 8 s now, and a slow board still lets Send work.
+- Test branches: the owner wrote "push this feature to test branch" in the thread at 08:19:54Z on 2026-10-09,
+  while the card asking how to check it before main was still open. It covers putting this feature on `test` in
+  both repositories, not main, and both PRs stay drafts. Board: PR 13's branch merged board main first (1bed022,
+  bringing the tune tickets; npm test passed on the file store and twice on one scratch Postgres, lint:licence
+  and lint:nouns pass) and board `test` was fast-forwarded to it, df8733d to 1bed022. Simulator: this branch
+  merged main twice, 10b2c32 for the flight feel tuning and 6f03780 for the race line, which reached main at 08:24Z
+  while this was under way (check:clip 2594 passed, lint:preload, lint:boot, lint:memory, lint:nouns and
+  check:fresh pass on both), and `test` takes it as a merge on top of `test` as it was (the race line and the
+  flight feel tuning) with main merged in first, pushed as a fast-forward. No force push, main untouched.
+- Latency: unchanged, nothing on the flying path. Where `test` deploys is not written down anywhere in either
+  repository, so which board the test simulator reads, and which simulator the test board's Fly and builder links
+  open, were not checked from here.

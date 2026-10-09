@@ -50,8 +50,17 @@ import {
 } from './path.js';
 import { collectWarnings, freestyleReport, labeller, FREESTYLE_SOLIDS_MAX } from './warnings.js';
 import { History } from './history.js';
+import { presetById } from './presets.js';
 import { docFromQuery, docFromHash, decodeTrack, encodeTrack, trackLink, canCompress } from './sharelink.js';
 import { buildSheet, sheetHtml, sheetSvg, membersOf, mergeMembers, nodesOf, fittingKind, CORNERS, SECTION, FITTING_ALLOWANCE, compass } from './buildsheet.js';
+import {
+  BUNDLE_FORMAT, BUNDLE_VERSION, bundleData, bundleEntries, evenRoute, mapSvg, trackSlug, dataText,
+} from './bundle.js';
+import { crc32, zipStore } from './zip.js';
+import {
+  COMMUNITY_SESSION_KEY, MAX_PACK_BYTES as COMMUNITY_PACK_MAX, communityPageUrl, fetchCommunity, packBase64, parseOrganiserLink,
+  readCommunityLink, sendRound,
+} from './community.js';
 import { importFpvEvents, looksLikeFpvEvents, reportLines } from './importfpv.js';
 import {
   passList, tagsOf, reuseOf, lanesOf, focusFor, aroundPass, stretchOf, flyAgain, apertureAt,
@@ -8347,6 +8356,140 @@ async function suiteShareLink() {
  * small cases are counted from how a gate is built out of pipe: four pipes and four
  * elbows, a shared bar and two tees, a leg and a foot.
  */
+/*
+ * COMMUNITYGOW, the builder's half: reading the community a link names and
+ * sending a round to the board, with the board played by a fake fetch. The
+ * board's own self test holds its half, the route these requests reach.
+ */
+async function suiteCommunity() {
+  console.log('\nthe whoop builder: sending a round to a CommunityGow community');
+  const key = 'Ab3_dEf-GhIjKlMnOpQr';
+  const fromPortal = readCommunityLink(
+    `?class=micro&mode=race&board=${encodeURIComponent('https://webfpv.org/board')}&community=perth-whoop-club`,
+    `#cgkey=${key}`,
+  );
+  check('the portal\'s link names the community, the board and the key',
+    Boolean(fromPortal) && fromPortal.slug === 'perth-whoop-club' && fromPortal.board === 'https://webfpv.org/board' && fromPortal.key === key);
+  check('a link with no key, a bad address or a board that is not a web address names nothing',
+    readCommunityLink('?community=perth-whoop-club', '', 'https://webfpv.org/board') === null
+      && readCommunityLink('?community=..%2Fapi', `#cgkey=${key}`, 'https://webfpv.org/board') === null
+      && readCommunityLink(`?community=perth-whoop-club&board=${encodeURIComponent('javascript:alert(1)')}`, `#cgkey=${key}`) === null);
+  check('a link with no board uses the board this builder talks to',
+    readCommunityLink('?community=perth-whoop-club', `#track=x&cgkey=${key}`, 'http://127.0.0.1:3100/').board === 'http://127.0.0.1:3100');
+
+  const pasted = parseOrganiserLink(`https://webfpv.org/board/CommunityGow/perth-whoop-club#key=${key}`);
+  check('the organiser link, pasted, is read with the board on its mount',
+    Boolean(pasted) && pasted.board === 'https://webfpv.org/board' && pasted.slug === 'perth-whoop-club' && pasted.key === key);
+  check('so is a round\'s page with the key on it, and a board on a host of its own',
+    parseOrganiserLink(`https://webfpv.org/board/CommunityGow/perth-whoop-club/3#key=${key}`).slug === 'perth-whoop-club'
+      && parseOrganiserLink(`http://127.0.0.1:3100/CommunityGow/perth-whoop-club#key=${key}`).board === 'http://127.0.0.1:3100');
+  check('the community\'s page without the key is not an organiser link, and nor is anything else',
+    parseOrganiserLink('https://webfpv.org/board/CommunityGow/perth-whoop-club') === null
+      && parseOrganiserLink('perth-whoop-club') === null
+      && parseOrganiserLink(`ftp://webfpv.org/CommunityGow/perth-whoop-club#key=${key}`) === null);
+  check('a round\'s address is the board\'s', communityPageUrl(pasted, 4) === 'https://webfpv.org/board/CommunityGow/perth-whoop-club/4');
+
+  const bytes = new Uint8Array(70000).map((_, i) => (i * 7) % 256);
+  check('the pack goes as base64 that reads back to the same bytes', Buffer.from(packBase64(bytes), 'base64').equals(Buffer.from(bytes)));
+
+  const asked = [];
+  const board = (status, body) => async (url, opts = {}) => {
+    asked.push({ url, opts });
+    return { ok: status < 400, status, json: async () => body };
+  };
+  const doc = presetById('racegow5-track1');
+  const made = zipStore(bundleEntries(doc, { now: '2026-10-09T06:00:00Z' }).entries);
+  const sent = await sendRound(pasted, {
+    bytes: made,
+    title: 'Week 1',
+    fetchImpl: board(201, { n: 4, track: { id: 'trk-0a1b2c3d', name: 'RaceGOW5 Track1' }, community: { name: 'Perth Whoop Club' } }),
+  });
+  const posted = JSON.parse(asked[0].opts.body);
+  check('a round is posted to the community\'s rounds with the key in the body, never the address',
+    asked[0].url === 'https://webfpv.org/board/api/communities/perth-whoop-club/rounds' && asked[0].opts.method === 'POST'
+      && posted.organiserKey === key && posted.title === 'Week 1' && !asked[0].url.includes(key));
+  check('the pack sent is the bundle, a zip with the track in it',
+    Buffer.from(posted.pack, 'base64').equals(Buffer.from(made)) && Buffer.from(made).includes(Buffer.from('track.json')));
+  check('and the answer is the round, its board track and its page',
+    sent.n === 4 && sent.track.id === 'trk-0a1b2c3d' && sent.url === 'https://webfpv.org/board/CommunityGow/perth-whoop-club/4' && sent.name === 'Perth Whoop Club');
+  let refused = '';
+  try {
+    await sendRound(pasted, { bytes: made, fetchImpl: board(403, { error: 'Only the organiser can add a round.' }) });
+  } catch (e) {
+    refused = e.message;
+  }
+  check('a key the board will not take is said in the builder\'s words', /organiser link/.test(refused), refused);
+  let big = '';
+  const before = asked.length;
+  try {
+    await sendRound(pasted, { bytes: new Uint8Array(COMMUNITY_PACK_MAX + 1), fetchImpl: board(201, {}) });
+  } catch (e) {
+    big = e.message;
+  }
+  check('a bundle over the board\'s limit is refused before it is sent', /small lap animation/.test(big) && asked.length === before, big);
+  const about = await fetchCommunity(pasted, { fetchImpl: board(200, { name: 'Perth Whoop Club', rounds: [{ n: 1 }, { n: 3 }] }) });
+  check('the community\'s name and its next round come from the board', about.name === 'Perth Whoop Club' && about.next === 4 && about.rounds === 2);
+  check('the boot probe in start.js asks for the key this file keeps',
+    readFileSync(fileURLToPath(new URL('./start.js', import.meta.url)), 'utf8').includes(`'${COMMUNITY_SESSION_KEY}'`));
+}
+
+function suiteBundle() {
+  console.log('\nthe whoop builder: the export bundle');
+  const doc = presetById('racegow5-track1');
+  const now = '2026-10-08T14:00:00Z';
+  const path = buildPath(doc, { closeLoop: true });
+  const data = bundleData(doc, { now, path });
+  check('the format and version are named', data.format === BUNDLE_FORMAT && data.formatVersion === BUNDLE_VERSION);
+  check('the lap is the builder\'s own closed line', data.lap.closed && Math.abs(data.lap.lengthM - path.length) < 1e-3, String(data.lap.lengthM));
+  check('one gate row per numbered pass, in order, waypoints left out', data.gates.map((g) => g.number).join() === '1,2,3,4,5,6' && data.lap.gateCount === 6, data.gates.map((g) => g.number).join());
+  check('the passes agree with the build sheet\'s numbers', buildSheet(doc).pieces.flatMap((p) => p.numbers).sort((a, b) => a - b).join() === '1,2,3,4,5,6');
+  const pts = data.route.points;
+  check('the route is evenly spaced and closes on its start', pts.length > 50
+    && Math.hypot(...pts[0].map((v, i) => v - pts[pts.length - 1][i])) < 0.05
+    && Math.abs(Math.hypot(...pts[1].map((v, i) => v - pts[0][i])) - data.route.spacingM) < 0.02);
+  check('evenRoute of nothing is nothing', evenRoute({ samples: [], length: 0 }).length === 0);
+  check('the data survives JSON and the pretty text parses back to the same', JSON.stringify(JSON.parse(dataText(data))) === JSON.stringify(data));
+  check('the slug matches the builder\'s file rule', trackSlug({ name: 'My Track! 2' }) === 'my-track-2' && trackSlug({}) === 'track');
+
+  const svg = mapSvg(doc, { path, data });
+  check('the map is an SVG with a start, a north arrow and every pass number', svg.startsWith('<svg') && svg.includes('START') && svg.includes('>N<') && [...svg.matchAll(/>([0-9][0-9, +]*)<\/text>/g)].map((m) => m[1]).join(',').split(/[, +]+/).filter(Boolean).sort().join() === '1,2,3,4,5,6');
+  const hostile = deepClone(doc);
+  hostile.name = '<img src=x onerror=alert(1)>';
+  const hs = mapSvg(hostile);
+  check('a hostile track name is escaped in the map', !hs.includes('<img') && hs.includes('&lt;img'));
+
+  const images = { 'views/southwest-route.png': new Uint8Array([137, 80, 78, 71]) };
+  const made = bundleEntries(doc, { images, lap: new Uint8Array([71, 73, 70]), now });
+  const names = made.entries.map((e) => e.name);
+  check('bundle.json goes first and the files are the ones asked for', names[0] === 'bundle.json'
+    && ['track.json', 'map.svg', 'instructions.html', 'lap.gif', 'views/southwest-route.png'].every((n) => names.includes(n)), names.join());
+  check('only the views that exist are named', made.data.views.length === 1 && made.data.views[0].obstacles === null);
+  check('every file is listed with its size and CRC', made.data.files.length === names.length - 1
+    && made.data.files.every((f) => {
+      const e = made.entries.find((x) => x.name === f.path);
+      const bytes = typeof e.data === 'string' ? new TextEncoder().encode(e.data) : e.data;
+      return f.bytes === bytes.length && f.crc32 === crc32(bytes).toString(16).padStart(8, '0');
+    }));
+  const html = made.entries.find((e) => e.name === 'instructions.html').data;
+  const page = new TextDecoder().decode(html);
+  check('the page points only at files that are in the bundle', [...page.matchAll(/src="([^"]+)"/g)].every((m) => names.includes(m[1])));
+  check('track.json reads back as the same document', serialize(deserialize(new TextDecoder().decode(made.entries.find((e) => e.name === 'track.json').data)).doc) === serialize(doc));
+  const again = bundleEntries(doc, { images, lap: new Uint8Array([71, 73, 70]), now });
+  const zipA = zipStore(made.entries, { date: new Date(now) });
+  const zipB = zipStore(again.entries, { date: new Date(now) });
+  check('the same track makes the same bytes', zipA.length === zipB.length && zipA.every((b, i) => b === zipB[i]));
+  check('and it is a zip: local header first, end record last, one entry per file', zipA[0] === 0x50 && zipA[1] === 0x4b && new DataView(zipA.buffer).getUint16(zipA.length - 12, true) === names.length);
+  check('crc32 of "123456789" is the standard check value', crc32(new TextEncoder().encode('123456789')) === 0xcbf43926);
+  let refused = '';
+  try { zipStore([{ name: '../x', data: 'a' }]); } catch (e) { refused = e.message; }
+  check('a path that climbs out of the zip is refused', /safe/.test(refused), refused);
+  const lone = createTrack('lone', 'micro');
+  placeOnTrack(lone, 'gate', { x: 5, y: 6 });
+  let none = '';
+  try { bundleEntries(lone, { now }); } catch (e) { none = e.message; }
+  check('a track with no lap is refused with a sentence', /no lap/.test(none), none);
+}
+
 function suiteBuildSheet() {
   console.log('\nthe whoop builder: the build sheet');
   const IN = 0.0254;
@@ -14112,6 +14255,8 @@ async function main() {
   await suiteCube();
   await suiteShareLink();
   suiteBuildSheet();
+  suiteBundle();
+  await suiteCommunity();
   suiteImportFpv();
   suiteFiveInchParts();
   suiteManoeuvres();

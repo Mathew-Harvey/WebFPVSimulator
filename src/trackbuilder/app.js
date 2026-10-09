@@ -78,6 +78,7 @@ import { vehicleStart } from '../maps/built/traffic.js';
 import { History } from './history.js';
 import { docFromQuery, trackLink } from './sharelink.js';
 import { buildSheet, sheetHtml, CORNERS } from './buildsheet.js';
+import { bundleFilename } from './bundle.js';
 import { importFpvEvents, looksLikeFpvEvents, reportLines } from './importfpv.js';
 /* The road tool: every rule about nodes and where a car goes is in here,
  * pure, and this file only applies them as edits. */
@@ -727,6 +728,9 @@ export class App {
     /* Run once when the open dialog closes, however it closes. The chooser
      * uses it to point at the switch in the bar. See closeModal. */
     this.afterModal = null;
+    /* The CommunityGow community this tab is making a round for, if any:
+     * see attachCommunity. Before restore(), which draws the bar. */
+    this.community = null;
     this.restore();
     this.pathVisible = this.buildsIn3D();
     /* The palette is the RESTORED document's class, not the default. Panels
@@ -4327,6 +4331,363 @@ export class App {
   }
 
   /*
+   * THE BUNDLE: a track as one zip, for somebody else's program and somebody
+   * else's living room. bundle.json for a machine, instructions.html for a
+   * person, track.json for the builder and the simulator, a map, six views of
+   * the room (each with the line and without it) and a lap animation. The
+   * format is in BUNDLE-FORMAT.md.
+   *
+   * Everything but the pictures needs no graphics card and is instant, so the
+   * dialog lets the pictures be switched off, and the animation is offered at
+   * the small size by default. Closing the box stops the work at the next
+   * picture, like the animation's own.
+   */
+  async exportBundle() {
+    if (!this.isWhoopRace()) {
+      return;
+    }
+    if (this.nameInput && this.nameInput.value) {
+      this.doc.name = this.nameInput.value.trim() || 'Untitled track';
+    }
+    if (this.doc.sequence.length < 2) {
+      this.toast('A bundle needs a lap: put at least two elements in the flying order.');
+      return;
+    }
+    const body = document.createElement('div');
+    const help = document.createElement('p');
+    help.className = 'tb-help';
+    help.textContent = 'One zip holding this track as a file a program can read, a page to build it from, '
+      + 'a map, views of the room with the racing line and without it, and one lap as an animation. '
+      + 'This tab has to stay open while it is made, and closing this box stops it.';
+    body.append(help);
+
+    const field = (label, id, options, note) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'tb-field';
+      const l = document.createElement('label');
+      l.className = 'tb-field-label';
+      l.textContent = label;
+      const pick = document.createElement('select');
+      pick.id = id;
+      l.htmlFor = id;
+      for (const [value, text] of options) {
+        const o = document.createElement('option');
+        o.value = value;
+        o.textContent = text;
+        pick.append(o);
+      }
+      const n = document.createElement('p');
+      n.className = 'tb-help';
+      n.id = `${id}-note`;
+      n.textContent = note;
+      pick.setAttribute('aria-describedby', n.id);
+      wrap.append(l, pick);
+      body.append(wrap, n);
+      return pick;
+    };
+    const gifPick = field('Lap animation', 'tb-bundle-gif', [
+      ['card', 'Small, 384 by 240'],
+      ['large', 'Larger, 640 by 400'],
+      ['none', 'None'],
+    ], 'Small is a few seconds and a file of a few hundred kilobytes. None is the quickest and is the one to pick on a slow computer: everything else is made at once.');
+    const stillPick = field('Views of the room', 'tb-bundle-stills', [
+      ['yes', 'Six pictures'],
+      ['no', 'None'],
+    ], 'Three corners of the room, each with the racing line and without it. A fraction of a second.');
+
+    const status = document.createElement('p');
+    status.className = 'tb-help';
+    body.append(status);
+    const stop = new AbortController();
+
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'tb-btn tb-primary';
+    go.textContent = 'Make the bundle';
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      gifPick.disabled = true;
+      stillPick.disabled = true;
+      status.textContent = 'Starting.';
+      try {
+        const { makeBundle } = await import('./bundlemaker.js');
+        const made = await makeBundle(this.doc, {
+          gif: gifPick.value,
+          stills: stillPick.value === 'yes',
+          signal: stop.signal,
+          onStatus: (t) => { status.textContent = t; },
+        });
+        const file = bundleFilename(this.doc);
+        downloadBlob(made.bytes, file, 'application/zip');
+        const kb = Math.round(made.bytes.length / 1024);
+        const left = made.skipped.length ? ` Left out, because this computer could not draw it: ${made.skipped.join(', ')}.` : '';
+        status.textContent = `Done. ${made.files} files, ${kb} KB, saved as ${file}.${left}`;
+        go.textContent = 'Make it again';
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          return;
+        }
+        status.textContent = e && e.message ? e.message : String(e);
+      } finally {
+        go.disabled = false;
+        gifPick.disabled = false;
+        stillPick.disabled = false;
+      }
+    });
+    body.append(go);
+    body.append(this.communityOffer(() => stop.abort()));
+    this.modal('Export bundle', body);
+    this.afterModal = () => stop.abort();
+  }
+
+  /*
+   * COMMUNITYGOW, FROM THE EXPORT DIALOG. The same bundle, sent to a club's
+   * page as its next round instead of saved as a file. A tab the community's
+   * page opened already knows which community (attachCommunity); any other
+   * takes the organiser link, pasted, which is the one thing an organiser is
+   * told to keep. Either way the sending is sendToCommunity's.
+   */
+  communityOffer(stopExport) {
+    const wrap = document.createElement('div');
+    wrap.className = 'tb-field';
+    const head = document.createElement('p');
+    head.className = 'tb-help';
+    if (this.community) {
+      head.textContent = `Or send it to ${this.community.name || this.community.slug} as its next round, ready to fly in the simulator.`;
+      const send = document.createElement('button');
+      send.type = 'button';
+      send.className = 'tb-btn';
+      send.textContent = `Send to ${this.community.name || this.community.slug}`;
+      send.addEventListener('click', () => {
+        stopExport();
+        this.sendToCommunity();
+      });
+      wrap.append(head, send);
+      return wrap;
+    }
+    head.textContent = 'Running a CommunityGow community? Paste your organiser link to send this track to it as the next round.';
+    const id = 'tb-bundle-organiser';
+    const label = document.createElement('label');
+    label.className = 'tb-field-label';
+    label.htmlFor = id;
+    label.textContent = 'Organiser link';
+    const input = document.createElement('input');
+    input.id = id;
+    input.type = 'url';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.placeholder = 'https://webfpv.org/board/CommunityGow/...#key=...';
+    const note = document.createElement('p');
+    note.className = 'tb-help';
+    note.setAttribute('aria-live', 'polite');
+    const use = document.createElement('button');
+    use.type = 'button';
+    use.className = 'tb-btn';
+    use.textContent = 'Send to that community';
+    use.addEventListener('click', async () => {
+      const { parseOrganiserLink, rememberCommunity } = await import('./community.js');
+      const found = parseOrganiserLink(input.value);
+      if (!found) {
+        input.setAttribute('aria-invalid', 'true');
+        note.textContent = /CommunityGow/i.test(input.value) && !/#key=/.test(input.value)
+          ? 'That is the community\u2019s page but not the organiser link: the organiser link ends in #key= and something after it.'
+          : 'That is not an organiser link. It looks like https://webfpv.org/board/CommunityGow/your-club#key=...';
+        return;
+      }
+      input.removeAttribute('aria-invalid');
+      stopExport();
+      await this.attachCommunity(rememberCommunity(found));
+      this.sendToCommunity();
+    });
+    wrap.append(head, label, input, use, note);
+    return wrap;
+  }
+
+  /*
+   * A COMMUNITY FOR THIS TAB, from the address the community's page opened it
+   * with (start.js takes it before anything else reads the address) or from a
+   * pasted organiser link. It shows the strip under the bar and asks the
+   * board for the community's name and which round is next, without waiting:
+   * the strip says the address until the board answers.
+   */
+  async attachCommunity(c) {
+    if (!c) {
+      return;
+    }
+    this.community = { ...c, next: 0 };
+    this.drawCommunity();
+    try {
+      const { fetchCommunity } = await import('./community.js');
+      const about = await fetchCommunity(c);
+      if (this.community && this.community.slug === c.slug) {
+        this.community = { ...this.community, name: about.name, next: about.next };
+        this.drawCommunity();
+      }
+    } catch (e) {
+      if (this.community && this.community.slug === c.slug) {
+        this.community.problem = e && e.message ? e.message : String(e);
+        this.drawCommunity();
+      }
+    }
+  }
+
+  detachCommunity() {
+    this.community = null;
+    import('./community.js').then((m) => m.forgetCommunity()).catch(() => {});
+    this.drawCommunity();
+  }
+
+  /* The strip: which round, for whom, and the button. Cheap enough for every
+   * updateTopBar, which is how it follows the track from whoop to not. */
+  drawCommunity(whoop = this.isWhoopRace()) {
+    const node = this.communityNode || (this.communityNode = document.getElementById('tb-community'));
+    if (!node) {
+      return;
+    }
+    const c = this.community;
+    node.hidden = !c;
+    if (!c) {
+      node.textContent = '';
+      return;
+    }
+    const name = c.name || c.slug;
+    const ready = whoop && this.doc.sequence.length >= 2;
+    const said = document.createElement('p');
+    const lead = document.createElement('strong');
+    lead.textContent = c.next ? `Round ${c.next} for ${name}.` : `A round for ${name}.`;
+    const help = document.createElement('span');
+    help.className = 'tb-help';
+    help.textContent = c.problem
+      ? c.problem
+      : !whoop
+        ? 'Community rounds are whoop race tracks. Open one from Load, a RaceGOW track or your own, or start a whoop track.'
+        : !ready
+          ? 'Set a flying order of at least two gates, then send it.'
+          : 'Load a RaceGOW track or build your own. When it is ready, send it: it lands on the community\u2019s page, ready to fly in the simulator.';
+    said.append(lead, ' ', help);
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'tb-btn tb-primary';
+    send.textContent = `Send to ${name}`;
+    send.disabled = !ready;
+    send.addEventListener('click', () => this.sendToCommunity());
+    const leave = document.createElement('button');
+    leave.type = 'button';
+    leave.className = 'tb-btn';
+    leave.textContent = 'Not now';
+    leave.title = 'Stop making a round in this tab. The community\u2019s page can open it again.';
+    leave.addEventListener('click', () => this.detachCommunity());
+    node.replaceChildren(said, send, leave);
+  }
+
+  /*
+   * THE ROUND, MADE AND SENT. The bundle is the one Export bundle makes, at
+   * the settings that suit a page other people open on their phones: the six
+   * views and the small lap animation, which also keeps it inside the
+   * board's 4 MB. The board puts the track up as it takes the round, so the
+   * last line here can say it is ready to fly.
+   */
+  async sendToCommunity() {
+    const c = this.community;
+    if (!c) {
+      return;
+    }
+    if (!this.isWhoopRace()) {
+      this.toast('Community rounds are whoop race tracks. Open one first.');
+      return;
+    }
+    if (this.nameInput && this.nameInput.value) {
+      this.doc.name = this.nameInput.value.trim() || 'Untitled track';
+    }
+    if (this.doc.sequence.length < 2) {
+      this.toast('A round needs a lap: put at least two elements in the flying order.');
+      return;
+    }
+    const name = c.name || c.slug;
+    const body = document.createElement('div');
+    const help = document.createElement('p');
+    help.className = 'tb-help';
+    help.textContent = `${c.next ? `Round ${c.next}` : 'The next round'} of ${name} will be this track. `
+      + 'This tab draws its map, views and lap animation first, which takes a few seconds, then the board '
+      + 'puts it on the community\u2019s page and in the simulator for everyone there.';
+    const wrap = document.createElement('div');
+    wrap.className = 'tb-field';
+    const label = document.createElement('label');
+    label.className = 'tb-field-label';
+    label.htmlFor = 'tb-round-title';
+    label.textContent = 'Round title';
+    const title = document.createElement('input');
+    title.id = 'tb-round-title';
+    title.type = 'text';
+    title.maxLength = 80;
+    title.value = this.doc.name || '';
+    wrap.append(label, title);
+    const status = document.createElement('p');
+    status.className = 'tb-help';
+    status.setAttribute('aria-live', 'polite');
+    body.append(help, wrap, status);
+    const stop = new AbortController();
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'tb-btn tb-primary';
+    go.textContent = c.next ? `Send round ${c.next}` : 'Send the round';
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      title.disabled = true;
+      status.textContent = 'Starting.';
+      try {
+        const [{ makeBundle }, { sendRound }] = await Promise.all([import('./bundlemaker.js'), import('./community.js')]);
+        const made = await makeBundle(this.doc, {
+          gif: 'card',
+          stills: true,
+          signal: stop.signal,
+          onStatus: (t) => { status.textContent = t; },
+        });
+        status.textContent = `Sending ${Math.round(made.bytes.length / 1024)} KB to ${name}.`;
+        const sent = await sendRound(c, { bytes: made.bytes, title: title.value.trim(), signal: stop.signal });
+        this.community = { ...c, name: sent.name, next: sent.n + 1, problem: '' };
+        this.drawCommunity();
+        status.textContent = sent.track
+          ? `Round ${sent.n} is live on ${sent.name}, and in the simulator.`
+          : `Round ${sent.n} is live on ${sent.name}. The board could not put its track in the simulator, so the page has no Fly button for it.`;
+        help.textContent = 'Everyone in the community sees it on its page, where one press flies it in the simulator. Share the round\u2019s link in your group chat.';
+        if (shown && shown.close) {
+          shown.close.textContent = 'Close';
+        }
+        const open = document.createElement('a');
+        open.className = 'tb-btn tb-primary';
+        open.href = sent.url;
+        open.target = 'webfpv-community';
+        open.rel = 'noopener';
+        open.textContent = `Open round ${sent.n}`;
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'tb-btn';
+        copy.textContent = 'Copy its link';
+        copy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(sent.url);
+            copy.textContent = 'Copied';
+          } catch (err) {
+            copy.textContent = sent.url;
+          }
+        });
+        go.replaceWith(open, copy);
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          return;
+        }
+        status.textContent = e && e.message ? e.message : String(e);
+        go.disabled = false;
+        title.disabled = false;
+      }
+    });
+    const shown = this.modal(`Send to ${name}`, body, [], { primary: go });
+    this.afterModal = () => stop.abort();
+    title.focus({ preventScroll: true });
+  }
+
+  /*
    * The card animation, rendered and sent after a room is published. The
    * rendering and the sending are in src/share/cardgif.js, because the
    * simulator's own Publish does the same thing and the two must not
@@ -5944,6 +6305,7 @@ export class App {
       ['sheet', 'Build sheet', () => this.openSheet(), 'A page to print: where every piece stands, measured from a corner, and what pipe and fittings to buy', ''],
       ['picture', 'Picture', () => this.savePicture(), 'Save a picture of the room as it is on the screen, numbers and all', ''],
       ['animation', 'Export animation', () => this.exportAnimation(), 'Write a looping .gif of one lap', ''],
+      ['bundle', 'Export bundle', () => this.exportBundle(), 'A zip for another program and for building from: the track as data, a page of instructions, a map, views of the room and a lap animation', ''],
       ['admin', 'Admin', () => this.openAdmin(), 'Sign in as a board admin, to mark tracks official and to edit the ones that are', ''],
       ['delete', 'Delete', () => this.confirmRemove(), 'Remove this track from this browser', 'tb-danger'],
     ]) {
@@ -6234,6 +6596,9 @@ export class App {
     this.redoBtn.title = this.history.canRedo() ? `Redo ${this.history.redoLabel()}` : 'Nothing to redo';
     const whoop = this.isWhoopRace();
     const map = docModeOf(this.doc) === 'freestyle';
+    if (this.community) {
+      this.drawCommunity(whoop);
+    }
     /* Every canvas is built in the room: 3D first, then 2D, with Top beside Fit. */
     const room = this.buildsIn3D();
     const plan = this.mode === '3d' && this.view3d.isPlan();
@@ -6311,7 +6676,7 @@ export class App {
       /* The share link is a race track's, on either canvas (MENUS-PLAN.md
        * 4.2b); the build sheet and the picture are the room's. */
       this.moreItems.get('link').style.display = map ? 'none' : '';
-      for (const id of ['sheet', 'picture']) {
+      for (const id of ['sheet', 'picture', 'bundle']) {
         this.moreItems.get(id).style.display = whoop ? '' : 'none';
       }
     }

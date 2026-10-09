@@ -1733,16 +1733,25 @@ export function buildStage(THREE, doc, path, {
   );
   /* A document azimuth turns into a Three heading through the same rotation
    * the root group carries: document (x, y, z) is Three (x, z, minus y). */
-  const eye = new THREE.Vector3(
-    Math.cos(azimuth) * Math.cos(ELEVATION),
-    Math.sin(ELEVATION),
-    -Math.sin(azimuth) * Math.cos(ELEVATION),
-  );
-  const dist = Math.max(fitR * 0.5, FIT_MARGIN * fitDistance(
-    THREE, fitPts, aim, eye, FOV_DEG, aspect,
-  ));
-  camera.position.copy(aim).addScaledVector(eye, dist);
-  camera.lookAt(aim);
+  /*
+   * THE CAMERA FROM ONE DIRECTION, framed to hold the whole track. Written as
+   * a function so a still can be shot from further round the track than the
+   * animation's own viewpoint (look, in the return below); the first call is
+   * the viewpoint the animation has always had.
+   */
+  const placeCamera = (az, elev) => {
+    const eye = new THREE.Vector3(
+      Math.cos(az) * Math.cos(elev),
+      Math.sin(elev),
+      -Math.sin(az) * Math.cos(elev),
+    );
+    const dist = Math.max(fitR * 0.5, FIT_MARGIN * fitDistance(
+      THREE, fitPts, aim, eye, FOV_DEG, aspect,
+    ));
+    camera.position.copy(aim).addScaledVector(eye, dist);
+    camera.lookAt(aim);
+  };
+  placeCamera(azimuth, ELEVATION);
   /*
    * A CAMERA THE CALLER SUPPLIES, in document coordinates, overrides the
    * framing above. It exists so an export can be shot from exactly the
@@ -1766,15 +1775,18 @@ export function buildStage(THREE, doc, path, {
    * rather than straight away from the eye. One dim hemisphere so the shaded
    * face is grey rather than black.
    */
-  const keyAz = azimuth + (40 * Math.PI) / 180;
   const keyEl = (60 * Math.PI) / 180;
   const key = new THREE.DirectionalLight(0xffffff, 2.1);
   const keyDist = Math.max(6, fitR * 3);
-  key.position.set(
-    aim.x + Math.cos(keyAz) * Math.cos(keyEl) * keyDist,
-    aim.y + Math.sin(keyEl) * keyDist,
-    aim.z - Math.sin(keyAz) * Math.cos(keyEl) * keyDist,
-  );
+  const throwKey = (az) => {
+    const keyAz = az + (40 * Math.PI) / 180;
+    key.position.set(
+      aim.x + Math.cos(keyAz) * Math.cos(keyEl) * keyDist,
+      aim.y + Math.sin(keyEl) * keyDist,
+      aim.z - Math.sin(keyAz) * Math.cos(keyEl) * keyDist,
+    );
+  };
+  throwKey(azimuth);
   key.target.position.copy(aim);
   key.castShadow = true;
   key.shadow.mapSize.set(sizes.shadowMap, sizes.shadowMap);
@@ -1920,7 +1932,7 @@ export function buildStage(THREE, doc, path, {
     return pts;
   };
 
-  const setTube = (mesh, pts, radius, fadeOut = false) => {
+  const setTube = (mesh, pts, radius, fadeOut = false, { uniform = false, maxSegs = 220 } = {}) => {
     if (mesh.geometry) {
       mesh.geometry.dispose();
     }
@@ -1931,7 +1943,7 @@ export function buildStage(THREE, doc, path, {
     }
     mesh.visible = true;
     const curve = new THREE.CatmullRomCurve3(pts.map((p) => v3(THREE, p)));
-    const segs = Math.max(8, Math.min(220, pts.length * 2));
+    const segs = Math.max(8, Math.min(maxSegs, pts.length * 2));
     const geo = new THREE.TubeGeometry(curve, segs, radius, RIBBON_RADIAL_SEGMENTS, false);
     /*
      * The taper is a vertex colour rather than a shrinking radius. A cone
@@ -1953,7 +1965,7 @@ export function buildStage(THREE, doc, path, {
     for (let i = 0; i < count; i += 1) {
       const ring = Math.min(rings - 1, Math.floor(i / perRing));
       const t = rings > 1 ? ring / (rings - 1) : 1;
-      const f = t * t;
+      const f = uniform ? 1 : t * t;
       colors[i * parts] = fadeOut ? 1 : f;
       colors[i * parts + 1] = fadeOut ? 1 : f;
       colors[i * parts + 2] = fadeOut ? 1 : f;
@@ -2047,10 +2059,44 @@ export function buildStage(THREE, doc, path, {
 
   setFrame(0, 1);
 
+  /*
+   * A STILL OF THE WHOLE LAP, for the export bundle's pictures. `on` draws the
+   * entire racing line as one even ribbon, with no pane and no tapering tail,
+   * and off hides the ribbon and the pane so what is left is the pipe. The
+   * animation never calls it, so a frame of the animation is what it was.
+   * More segments than the animation's tail gets, because the tail is a few
+   * metres of line and this is the whole lap.
+   */
+  const setRoute = (on) => {
+    if (!on) {
+      core.visible = false;
+      shell.visible = false;
+      pane.visible = false;
+      if (shapedPane) { shapedPane.visible = false; }
+      return;
+    }
+    const pts = samples.map((sm) => sm.pos);
+    setTube(core, pts, ribbonR, field, { uniform: true, maxSegs: 1600 });
+    setTube(shell, pts, ribbonR * RIBBON_SHELL_SCALE, false, { uniform: true, maxSegs: 1600 });
+    pane.visible = false;
+    if (shapedPane) { shapedPane.visible = false; }
+  };
+
+  /* The camera from another side, framed to hold the track. Azimuth and
+   * elevation are in the document's frame: azimuth counter clockwise from
+   * east, as the animation's own is. */
+  const look = (az, elev) => {
+    placeCamera(az, elev);
+    throwKey(az);
+  };
+
   return {
     scene,
     camera,
     setFrame,
+    setRoute,
+    look,
+    azimuth,
     bbox: framedBox,
     dispose() {
       for (const t of trash) {

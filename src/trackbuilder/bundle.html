@@ -1,0 +1,87 @@
+<!doctype html>
+<!--
+  bundle.html: a page whose only job is to let scripts/trackbundle.js reach
+  makeBundle in a real WebGL context.
+
+  The builder never loads this. It imports bundlemaker.js directly, because it
+  already has a page, an import map and a Three.js module loaded. This file
+  exists because Node cannot resolve the bare three specifier and cannot run
+  WebGL, so the headless harness needs somewhere to stand.
+
+  The import map is the builder's own, pinned to the same version, because an
+  animation rendered against a different Three than the builder previews with
+  would hold pictures of a different track.
+
+  This file is part of WebFPVSimulator.
+
+  WebFPVSimulator is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or (at
+  your option) any later version.
+
+  WebFPVSimulator is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY, without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>WebFPV, track bundle</title>
+    <style>
+      html, body { margin: 0; background: #000; color: #dcd6ca;
+        font: 14px system-ui, sans-serif; }
+      p { padding: 12px; }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <p id="status">Ready.</p>
+    <script type="module">
+      import { makeBundle } from './bundlemaker.js';
+
+      const status = document.getElementById('status');
+
+      /* Base64, for the same reason animate.html gives: the way back to the
+       * script is a DevTools evaluate that returns a JSON value. */
+      function base64(bytes) {
+        let s = '';
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        }
+        return btoa(s);
+      }
+
+      window.__makeBundle = async (doc, opts) => {
+        try {
+          const made = await makeBundle(doc, {
+            ...(opts || {}),
+            onStatus: (t) => {
+              status.textContent = t;
+              window.__bundleStatus = t;
+            },
+          });
+          status.textContent = `Done, ${made.bytes.length} bytes.`;
+          return {
+            ok: true, base64: base64(made.bytes), bytes: made.bytes.length, skipped: made.skipped,
+          };
+        } catch (e) {
+          status.textContent = `Failed: ${e && e.message ? e.message : e}`;
+          return { ok: false, error: String((e && e.message) || e) };
+        }
+      };
+
+      window.__bundleReady = true;
+    </script>
+  </body>
+</html>

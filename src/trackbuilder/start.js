@@ -27,6 +27,7 @@ import { App, docFromLocation } from './app.js';
 import { docFromHash } from './sharelink.js';
 import { duplicateTrack } from './model.js';
 import { pingVisit } from '../share/stats.js';
+import { boardOrigin } from '../share/board.js';
 
 /*
  * FIRST, BEFORE ANYTHING READS THE QUERY. It takes a sponsor's
@@ -38,6 +39,25 @@ import { pingVisit } from '../share/stats.js';
  * sends Global Privacy Control. Nothing waits for it.
  */
 pingVisit('builder');
+
+/*
+ * A COMMUNITYGOW ROUND, taken before anything else reads the address. The
+ * community's page opens this builder to make its next round with the
+ * community in the query and the organiser key in the fragment, and the #track=
+ * reader below replaces the fragment wholesale. ./community.js is loaded only
+ * on such a visit, or a reload of one (the community is kept for the tab), so
+ * the builder every other visitor opens fetches nothing more.
+ */
+let community = null;
+try {
+  if (new URLSearchParams(window.location.search).has('community')
+    || window.sessionStorage.getItem('webfpv.community.v1')) {
+    community = (await import('./community.js')).takeCommunity(boardOrigin());
+  }
+} catch (e) {
+  /* Storage refused, or the module did not load: the builder opens as it
+     always has, and the community's page can be pasted from Export bundle. */
+}
 
 /* One canvas for the elevation chart, created once and re-appended by
    the results panel on every render. */
@@ -110,5 +130,8 @@ if (!linked && /(^#|&)track=/.test(window.location.hash)) {
 }
 await app.adoptIncomingShare();
 await app.adoptIncomingMap();
+if (community) {
+  app.attachCommunity(community);
+}
 
 window.trackBuilder = app;

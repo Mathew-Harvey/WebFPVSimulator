@@ -925,7 +925,7 @@ int world_select_support(const SimState *s, const double tn[3], double td,
   const int n = world_gather(w[0], w[1], w[0], w[1]);
   /* The CG may sit a little below the top in a hard landing, never by more
    * than half the parked height or it is inside the box, not on it. */
-  const double sink = 0.5 * PLANT.hull_hz_down;
+  const double sink = 0.5 * PLANT_W.hull_hz_down;
   int best = -1;
   double best_top = 0.0;
   for (int k = 0; k < n; k += 1) {
@@ -1666,9 +1666,9 @@ static void q_rot_inv(const double q[4], const double v[3], double out[3]) {
 static void iinv(const double q[4], const double v[3], double out[3]) {
   double b[3];
   q_rot_inv(q, v, b);
-  b[0] /= PLANT.inertia[0];
-  b[1] /= PLANT.inertia[1];
-  b[2] /= PLANT.inertia[2];
+  b[0] /= PLANT_W.inertia[0];
+  b[1] /= PLANT_W.inertia[1];
+  b[2] /= PLANT_W.inertia[2];
   q_rot(q, b, out);
 }
 
@@ -1677,7 +1677,7 @@ static double eff_mass_inv(const double q[4], const double r[3], const double d[
   double ird[3];
   cross3(r, d, rd);
   iinv(q, rd, ird);
-  return 1.0 / PLANT.mass_kg + dot3(rd, ird);
+  return 1.0 / PLANT_W.mass_kg + dot3(rd, ird);
 }
 
 static void tangents(const double n[3], double t1[3], double t2[3]) {
@@ -1704,7 +1704,7 @@ static double rel_vel(const double v[3], const double w[3], const Solve *c, cons
 
 static void apply_j(double v[3], double w[3], const double q[4], const double r[3],
                     const double J[3]) {
-  const double im = 1.0 / PLANT.mass_kg;
+  const double im = 1.0 / PLANT_W.mass_kg;
   v[0] += J[0] * im;
   v[1] += J[1] * im;
   v[2] += J[2] * im;
@@ -1742,7 +1742,7 @@ static void world_solve(SimState *s, int nc, double np_[][3], double rp_[][3],
     sv->cap = 1.0e300;
     if (ct->kind == 2) {
       /* A blade bends before it pushes, and carries at most PROP_F_MAX. */
-      pen = ct->depth - 0.5 * PLANT.prop_r;
+      pen = ct->depth - 0.5 * PLANT_W.prop_r;
       pen = pen < 0.0 ? 0.0 : pen;
       sv->cap = PROP_F_MAX * SIM_DT;
     }
@@ -2732,9 +2732,9 @@ static int props_exposed(void) {
   /* A duct IS the hull: when the hull box already reaches past every disc,
    * the props cannot touch anything the hull does not touch first. */
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    const double ax = absd(PLANT.pos_x[m]) + PLANT.prop_r;
-    const double ay = absd(PLANT.pos_y[m]) + PLANT.prop_r;
-    if (ax > PLANT.hull_hx + 1e-9 || ay > PLANT.hull_hy + 1e-9) {
+    const double ax = absd(PLANT_W.pos_x[m]) + PLANT_W.prop_r;
+    const double ay = absd(PLANT_W.pos_y[m]) + PLANT_W.prop_r;
+    if (ax > PLANT_W.hull_hx + 1e-9 || ay > PLANT_W.hull_hy + 1e-9) {
       return 1;
     }
   }
@@ -2752,25 +2752,25 @@ void world_step(SimState *s, int ground_on, const double gn[3], double gd) {
   plant_to_world_pos(s->pos, cg);
   Obb o;
   body_axes_world(s, o.R);
-  const double hzh = 0.5 * (PLANT.hull_hz_up + PLANT.hull_hz_down);
-  const double hzo = 0.5 * (PLANT.hull_hz_up - PLANT.hull_hz_down);
-  o.h[0] = PLANT.hull_hx;
-  o.h[1] = PLANT.hull_hy;
+  const double hzh = 0.5 * (PLANT_W.hull_hz_up + PLANT_W.hull_hz_down);
+  const double hzo = 0.5 * (PLANT_W.hull_hz_up - PLANT_W.hull_hz_down);
+  o.h[0] = PLANT_W.hull_hx;
+  o.h[1] = PLANT_W.hull_hy;
   o.h[2] = hzh;
   const double off[3] = { 0.0, 0.0, hzo };
   body_to_world_point(cg, o.R, off, o.c);
 
   /* Everything the craft can reach, as one sphere about the CG. */
-  double reach = sim_sqrt(PLANT.hull_hx * PLANT.hull_hx + PLANT.hull_hy * PLANT.hull_hy
-                          + PLANT.hull_hz_down * PLANT.hull_hz_down + PLANT.hull_hz_up * PLANT.hull_hz_up);
+  double reach = sim_sqrt(PLANT_W.hull_hx * PLANT_W.hull_hx + PLANT_W.hull_hy * PLANT_W.hull_hy
+                          + PLANT_W.hull_hz_down * PLANT_W.hull_hz_down + PLANT_W.hull_hz_up * PLANT_W.hull_hz_up);
   const int exposed = props_exposed();
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    const double pr = sim_sqrt(PLANT.pos_x[m] * PLANT.pos_x[m] + PLANT.pos_y[m] * PLANT.pos_y[m]
-                               + PLANT.pos_z[m] * PLANT.pos_z[m]) + PLANT.prop_r;
+    const double pr = sim_sqrt(PLANT_W.pos_x[m] * PLANT_W.pos_x[m] + PLANT_W.pos_y[m] * PLANT_W.pos_y[m]
+                               + PLANT_W.pos_z[m] * PLANT_W.pos_z[m]) + PLANT_W.prop_r;
     reach = pr > reach ? pr : reach;
   }
-  const double lens_r = LENS_R_FRAC * PLANT.hull_hx;
-  const double lens_b[3] = { PLANT.camera_x, PLANT.camera_y, PLANT.camera_z };
+  const double lens_r = LENS_R_FRAC * PLANT_W.hull_hx;
+  const double lens_b[3] = { PLANT_W.camera_x, PLANT_W.camera_y, PLANT_W.camera_z };
   const double lr = sim_sqrt(dot3(lens_b, lens_b)) + lens_r;
   reach = lr > reach ? lr : reach;
   reach += 0.05;
@@ -2783,10 +2783,10 @@ void world_step(SimState *s, int ground_on, const double gn[3], double gd) {
   if (exposed) {
     for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
       for (int k = 0; k <= PROP_RIM; k += 1) {
-        double bp[3] = { PLANT.pos_x[m], PLANT.pos_y[m], PLANT.pos_z[m] };
+        double bp[3] = { PLANT_W.pos_x[m], PLANT_W.pos_y[m], PLANT_W.pos_z[m] };
         if (k < PROP_RIM) {
-          bp[0] += PLANT.prop_r * RIM_C[k];
-          bp[1] += PLANT.prop_r * RIM_S[k];
+          bp[0] += PLANT_W.prop_r * RIM_C[k];
+          bp[1] += PLANT_W.prop_r * RIM_S[k];
         }
         body_to_world_point(cg, o.R, bp, prop_pts[m][k]);
       }

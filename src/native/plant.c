@@ -354,368 +354,157 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .camera_x = 0.104,
   .camera_y = 0.0,
   .camera_z = 0.018,
+  .len_scale = 1.0, /* life size: the field is built in its metres */
 },
 
 /* ---------------------------------------------------------------------
- * SIM_AIRFRAME_WHOOP65: a 65 mm 1S brushless whoop, modelled on the published
- * specification for a 65 mm whoop, which is what a RaceGOW field mostly flies.
+ * SIM_AIRFRAME_WHOOP65: a 65 mm 1S brushless whoop on 0702 28,000 kV motors,
+ * rebuilt on 2026-10-09 on the owner's ask: "whoops need proper physics, 28k
+ * kv motors are about right, the 5 inch model feels ok, the previous whoop
+ * model was bad", and then: "Whoop motor should be 0702, sag to about 3.65v
+ * on punch".
  *
- * EVERY NUMBER HERE IS DERIVED OR CITED, and the two that the marketing copy
- * gets wrong are corrected rather than copied.
+ * WHAT THE PREVIOUS ONE WAS. This entry held a 23.4 g 0702 36,000 kV whoop
+ * from 2026-09-06, flown at life size until 2026-09-14, when the owner gave up
+ * on it ("the whoop flight feel sucks") and the whoop was moved onto the five
+ * inch's plant in a room built 3.43 times life size. That trick cannot scale
+ * gravity, and the room's whoop fell at 0.59 of a g. This entry is the whoop's
+ * own plant again, and len_scale at its foot is how it flies in that room at
+ * one real g. PROGRESS.md 2026-10-09 has the measurements that chose it.
  *
- * MASS. The maker quotes 16.6 g for the stock whoop. That is DRY: the spec table
- * lists no battery and the recommended pack, a 1S 280 mAh pack, is 6.8 g.
- * All up is therefore 23.4 g, and the published "6.3:1 thrust to weight" is
- * the dry figure. Against a flying quad it is 4.7:1 fresh and about 3.8:1 on
- * a tired pack, which is what the thrust budget below actually delivers.
- * A whoop is not an overpowered machine; it is a LIGHT one, and that is a
- * different feeling entirely.
+ * IT IS BUILT THE WAY THE FIVE INCH IS BUILT, because the five inch is the one
+ * the owner says feels right. Same derivation chain (a momentum theory pair
+ * for kt and kq, then the plant's own equilibria solved for the rest), same terms,
+ * and the previous whoop's three duct terms at zero. Those were the duct
+ * counted on top of a bench figure that already contained it, a nose up lip
+ * moment, and thrust that faded as soon as the craft moved. All three are real
+ * effects of a deep shroud; none was measured on a whoop's short ring, and
+ * together they were the "wading" and the drift the owner flew. They come back
+ * at a magnitude somebody can defend, or not at all. Kept from the previous
+ * whoop, because a whoop lives in them: ground effect and the stalled disc
+ * drag of a descent.
  *
- * INERTIA. Estimated, not published, from point masses: four 1.55 g motors
- * with props at 23 mm on each axis, the frame and its four ducts as a ring
- * at 28 mm, the 6.8 g pack as a 43 x 20 x 6 mm slab at the CG, and 5 g of
- * FC, canopy and camera near the middle. That gives Ixx 5.3e-6 and Iyy
- * 6.2e-6; the values below carry a little more for the parts the estimate
- * does not enumerate. Izz is held near Ixx + Iyy, the perpendicular axis
- * result for a near flat body, times the 0.93 the five inch's own tensor
- * shows. The pitch to roll split is much wider than the five inch's 8
- * percent because the pack is a far larger share of a 23 g machine.
+ * THE MACHINE. A 65 mm frame, four 0702 28,000 kV motors, 31 mm three blade
+ * props, a 1S pack: 23 g all up, the previous whoop's frame with the owner's
+ * motor in it.
  *
- * WHY THE WHOOP IS CRISP, and it is not the motors. Roll authority is
- * 2 T_max arm / Ixx = 2 x 0.270 x 0.0230 / 6.0e-6 = 2070 rad/s squared,
- * against the five inch's 2 x 14.7 x 0.0778 / 0.0035 = 653. Three times the
- * angular acceleration on a third of the rate. The rotor time constant goes
- * the OTHER way: j R / ke^2 is 26 ms here against the five inch's 36 ms
- * measured at the same operating point, so the motors are comparable and
- * the frame is what changed.
+ * THRUST AND THE ELECTRICAL SET, solved together against what a real 1S
+ * whoop does rather than typed. The targets: thrust to weight 4.0 to 5.4 all
+ * up (the maker's 6.3 to one is the dry figure); a punch that draws 10 to 22 A
+ * at the pack; a motor time constant of 15 to 45 ms; and a fresh cell that
+ * sags to about 3.65 V under a punch, which is the owner's figure from the
+ * real thing. scripts/whoop-gates.js holds those bands with their sources.
  *
- * kt from the thrust target: 74,750 rpm at full throttle on a fresh cell,
- * 4.7:1 on 23.4 g, is 0.2696 N a rotor at 7828 rad/s, so kt = 4.400e-9.
- * Hover then sits at 3611 rad/s, 34,480 rpm, which is where a 0702 on 1S
- * measures.
+ * ke IS THE PLATE, 28,000 kV, because that is the motor the owner named.
  *
- * kq through the SAME momentum theory identity the five inch uses,
- * kq = kt^1.5 / (FM sqrt(2 rho A)), with FM = 0.330. That is far below the
- * five inch's 0.520 and it is not pessimism: a 31 mm three blade at 34,000
- * rpm runs at a chord Reynolds number near 10,700, where the blade section's
- * lift to drag ratio collapses from 60 to about 20 and profile drag eats the
- * disc. Bohorquez measured 0.42 for the best single rotor he built at Re
- * 27,000 to 43,700, and Harris's low Reynolds compilation puts a rotor at
- * Re 10^4 in the 0.30 to 0.40 band. 0.330 is the middle of that band and it
- * is what makes a whoop's yaw authority feel the way it does, because prop
- * drag is the only currency yaw is paid in.
+ * THE SAG IS THE PACK, NOT THE MOTOR. 3.65 V from 4.2 at about 18 A is 30
+ * mOhm from the cell to the board: a good 1S HV pack, a BT2.0 lead and short
+ * wire. The previous whoop used 55 mOhm and sagged to 3.25, which the owner
+ * says a real one does not.
  *
- * THE ELECTRICAL SET IS SOLVED, not typed, exactly as the five inch's was:
- * two equilibria, full throttle and hover, in the two unknowns ke and
- * r_motor, with r_cell pinned at the 55 mOhm a real 1S 280 mAh whoop pack
- * measures. Hover duty was targeted at 0.30, the middle of the 27 to 36
- * percent a modern 1S brushless whoop shows. It lands:
+ * kq through the same identity as the five inch, at a figure of merit of
+ * 0.305: a 31 mm blade at 70,000 rpm runs at a chord Reynolds number near
+ * 10^4, where Harris puts a rotor at 0.30 to 0.40, and real 31 mm whoop props
+ * measure 1.6 to 1.8 g a watt, which is the bottom of that band.
  *
- *   full throttle   7828 rad/s, 4.42 A a motor, 17.7 A pack, 3.23 V
- *   hover           3611 rad/s, 0.94 A a motor, duty 0.300, 4.14 V
+ * Then kt and r_motor, solved against those bands and then measured on the
+ * built module by scripts/whoop-gates.js, on a charged 4.2 V cell:
  *
- * The sag is the story. 4.2 V open circuit falls to 3.23 V under a punch,
- * a 23 percent collapse, where the five inch's 6S race pack loses 8. That
- * single number is most of why a whoop feels like a whoop: every hard input
- * costs you the top of the throttle, and the tune has to be built around it
- * (see the TPA breakpoint in configs/whoop-*.diff, which the maker drops from
- * 1350 to 1180 for exactly this reason).
+ *   full throttle   72,800 rpm, 17.4 A pack, 3.68 V a cell, 5.4 to one
+ *   hover           0.36 of stick
+ *   time constant   22 ms
  *
- * ke is 2.8515e-4, which is a 33,489 kV motor against a 36,000 kV plate.
- * Same story as the five inch's 1507 against 1900: nameplate kV is measured
- * unloaded and the loaded constant is better. Seven percent here rather than
- * twenty because a 0702 saturates less than a 2207 does.
+ * r_motor 0.24 is a 0702's winding, more than an 0802's for the same kV
+ * on a smaller stator, and j_rotor is the previous whoop's 0702 bell plus a
+ * 31 mm three blade.
  *
- * j_rotor is a 0702 bell plus a 1.5 g moulded three blade, estimated at
- * 1.8e-8 with about 35 percent of uncertainty. It is three orders of
- * magnitude under the five inch's 8e-6, which is what people expect, and it
- * does NOT make the motor three orders quicker, because r_motor is 25 times
- * larger and ke is 22 times smaller. That cancellation is the whole
- * correction to the folklore.
- *
- * DRAG. cda_front and cda_side are the solid airframe only, 9.3e-4 m^2 of
- * frontal silhouette at a bluff body Cd of 0.9, because the ducts' own drag
- * is momentum drag and is charged through k_rotor_drag below. cda_plan is
- * the 2.2e-3 m^2 plan silhouette at Cd 1.15, which is what stops a flat fall
- * at about 10 m/s instead of 40.
- *
- * k_rotor_drag is 0.70 against the five inch's 0.43842, and the gap is the
- * duct. The five inch's figure came from a published TOTAL linear drag fit
- * for an open rotor. A shroud captures the whole stream tube instead of a
- * contracted one, so the momentum drag rho A v_i V_perp is paid in full, and
- * the ducted fan literature puts ram drag at 80 to 95 percent of total drag
- * below ten knots. 1.00 is the momentum coefficient with nothing added, and
- * it is what this airframe flew for its first week. It is not what the
- * whoop's duct is. A ducted fan's shroud is a chord deep and captures a
- * whole stream tube; a whoop's duct is a moulded ring a few millimetres
- * tall round a 31 mm prop, open above and below, and the air it turns is
- * closer to an open rotor's than to a fan's. At 1.00 the plant asked 17
- * degrees of pitch for 3.3 m/s and 35 for 8.3, ninety two percent of the
- * drag budget was this one term, and the owner reported the machine hard
- * to fly and wading. 0.70 is the owner's number, flown, sitting between the
- * open rotor's fit and the full shroud, which is where a short ring belongs
- * and where the plant's own review put it. Still, not the body drag, the
- * reason whoops are slow; just less of the reason.
- *
- * SOURCES. The maker's published pages for the airframe and its 0702 motor (2026) for mass,
- * geometry, ESC and pack; Gemfan for the 1207 3 blade; Pereira 2008
- * (Maryland) for shrouded rotor momentum theory and duct augmentation;
- * Harris NASA/CR-20205001147 and Bohorquez 2007 for low Reynolds figure of
- * merit; Graf/Fleming 2005 and Akturk & Camci for the lip suction moment;
- * He & Leang 2020 for ground effect. Full citations in PROGRESS.md.
+ * INERTIA is the previous whoop's point mass estimate for this frame.
  * ------------------------------------------------------------------- */
 [SIM_AIRFRAME_WHOOP65] = {
-  .mass_kg = 0.0234,
+  .mass_kg = 0.023,
   .inertia = { 6.0e-6, 7.4e-6, 1.25e-5 },
   .gravity = 9.80665,
   .arm_x = 0.0229809704566899, /* 0.065 / (2 sqrt 2), a 65 mm wheelbase */
   .arm_y = 0.0229809704566899,
-  /*
-   * THE DUCT WAS BEING COUNTED TWICE, and these four numbers are the re-solve.
-   *
-   * kt was derived for 4.7 : 1 at 7828 rad/s as a bare rotor constant, and
-   * then k_duct below multiplied every rotor's thrust by 1.10 on top of it,
-   * so the plant made 5.14 : 1 on the bench and 5.31 at the peak of a punch.
-   * The maker's 6.3 : 1 dry, 4.7 all up, is a bench figure of the WHOLE ducted
-   * unit, so the duct is inside it already. kt is now the bare rotor's share
-   * of that figure, 4.400e-9 / 1.10, and kt times k_duct is the 4.400e-9 the
-   * derivation above arrives at: full throttle is still 7828 rad/s and 4.70
-   * to one, and the hover is still 3611 rad/s, both WITH the duct.
-   *
-   * kq follows kt through the same momentum theory identity, at a figure of
-   * merit of 0.310 rather than 0.330, and the reason is the motor rather
-   * than the rotor. At 4.7 to one the rotor makes 13 percent less torque at
-   * the same 7828 rad/s, so the two equilibria below have less current to
-   * absorb the same voltage headroom with, and at 0.330 the solve put it
-   * into winding resistance: r_motor 0.27 ohm, and W7's motor time constant
-   * on the ceiling of its band at 45 ms, a slower motor than the one the
-   * folklore is wrong about. 0.310 is inside the 0.30 to 0.40 Harris puts a
-   * rotor at Re 1e4 in, and it is toward the bottom of it, which is where a
-   * 31 mm three blade at 34,000 rpm actually sits. kt^1.5 / (FM sqrt(2 rho
-   * A)) = 1.8977e-11.
-   *
-   * ke and r_motor are the two equilibria solved again against the plant's
-   * actual torque model, induced part and clamp included, with r_cell held
-   * at 55 mOhm: full throttle at 7828 rad/s and duty 1, hover at 3611 rad/s
-   * and duty 0.30. That lands 4.31 A a motor, 17.2 A pack and 3.25 V under
-   * a punch on the bench, 0.92 A a motor at the hover, and ke a 33,778 kV
-   * motor against the 36,000 kV plate, 6 percent under it, which is the
-   * argument the old set made. The solver is a dozen lines of Python and it
-   * is recorded in PROGRESS.md.
-   */
-  .kt = 4.000e-9,
-  .kq = 1.8977e-11, /* figure of merit 0.310 of the bare rotor, see above */
-  .ke = 2.82708e-4, /* loaded torque constant, 33778 kV */
-  .r_motor = 0.2410,
-  /*
-   * 1.5e-8, down from the 1.8e-8 first estimated "with about 35 percent of
-   * uncertainty", and this is the estimate done again rather than a fit.
-   * The 0702 bell is about 0.8 g of steel and magnets at 3.5 mm of radius,
-   * which is 0.5 m r^2 = 4.9e-9. A GF1207 three blade is 0.3 g, not the
-   * 1.5 g the first note assumed, and most of that is hub: a thin blade of
-   * 15.5 mm would be m R^2 / 3 = 2.4e-8 if the mass were spread along it,
-   * and a hub heavy moulding is well under half of that, about 1.0e-8.
-   * Together, 1.5e-8. It matters because the re-solve for 4.7 to one makes
-   * 13 percent less torque at the same speed and the motor's time constant
-   * went from 26 ms to 41 on the old inertia; this puts it back near where
-   * the folklore correction above says a 0702 sits.
-   */
+  .kt = 5.2e-9,
+  .kq = 2.85901e-11, /* figure of merit 0.305 */
+  .ke = 3.41046e-4,  /* 28,000 kV, the plate: 60 / (2 pi 28000) */
+  .r_motor = 0.240,
   .j_rotor = 1.5e-8,
   .cells = 1.0,
-  .r_cell = 0.055,  /* 55 mOhm: cell 42, BT2.0 connector 8, wire 5 */
+  .r_cell = 0.030,  /* 30 mOhm cell to board, the owner's 3.65 V sag; see above */
+  /*
+   * Body drag, the solid airframe only: 9.3e-4 m^2 of frontal silhouette at a
+   * bluff body Cd near 0.9, and 2.2e-3 m^2 of plan at 1.15. Unchanged from the
+   * previous whoop; the frame is the same frame.
+   */
   .cda_plan = 0.00253,
   .cda_front = 0.00084,
   .cda_side = 0.00092,
-  /*
-   * Cross flow side lift. A whoop has almost no fuselage and almost no pack
-   * silhouette, so the slender body side force that lets a five inch turn on
-   * a breath of rudder is nearly absent here. Scaled from the five inch by
-   * the ratio of side areas, which is about a sixteenth.
-   */
-  .k_body_lift = 0.00065,
+  .k_body_lift = 0.00065, /* the five inch's, by the ratio of side areas */
   .rho = 1.225,
-  /*
-   * Propwash. A whoop makes very little of it: the wake is slow and fat, the
-   * disc loading is a tenth of a five inch's, and the duct keeps the
-   * recirculation tidy rather than letting it flap. Held at a third of the
-   * five inch's amplitude, which is a FEEL constant and the same rule
-   * applies: it moves when a pilot says so, not otherwise.
-   */
+  /* A third of the five inch's 0.15 when this was set; a FEEL constant. */
   .k_propwash = 0.05,
-  .prop_r = 0.0155,  /* 31 mm Gemfan 1207 three blade */
-  .k_rotor_drag = 0.70,  /* was 1.00, see the DRAG block above */
+  .prop_r = 0.0155,
   /*
-   * 1.10, AND IT IS WHY THE WHOOP STOPPED FALLING LIKE A BRICK.
-   *
-   * Measured on the build before this one: chop the throttle and this
-   * aircraft settled at 11.7 m/s of descent, which over a room's ceiling
-   * height is a fifth of a second from the joists to the floor. Reported by
-   * the owner as "it sinks fast", and it was the model rather than the tune.
-   *
-   * The cause is in cda_plan's own derivation above: 2.2e-3 m^2 of PLAN
-   * SILHOUETTE, which counts the four duct throats as holes. Looking down at
-   * a whoop they are holes. Falling through the air they are not: each one
-   * has a three blade rotor in it at a fully stalled angle of attack, inside
-   * a shroud, and a stalled disc is the least hole shaped thing on the
-   * aircraft. The four discs are 3.02e-3 m^2, MORE than the whole solid
-   * silhouette, and they were contributing nothing.
-   *
-   * It cannot go into cda_plan, and that is the reason this is a separate
-   * number rather than a bigger one up there. Body drag is symmetric in the
-   * axial speed, so a cda_plan large enough to fix the descent would take
-   * the same force off every climb, where the ducts are working propulsors
-   * with a fast downward stream through them and are not bluff at all. The
-   * measured cost would have been most of the climb rate. So this term is
-   * DESCENT ONLY by construction and is exactly zero at and above a hover.
-   *
-   * 1.10 on disc area is the middle of the published band for a rotor in the
-   * windmill brake state, where the wake has broken down and the disc acts
-   * as a bluff plate rather than as a propulsor: 1.0 to 1.4 depending on
-   * blade solidity, and a shroud sits at the upper end of its own. The
-   * result is 5.85e-3 m^2 of total plan drag area against 2.53e-3, and a
-   * chopped throttle terminal of 8.0 m/s instead of 11.7.
+   * 0.70, the owner's number on the previous whoop, flown, between the five
+   * inch's open rotor fit and a full shroud's 1.0. This is the whoop's grip
+   * on the air and most of why it stops sooner than a five inch.
+   */
+  .k_rotor_drag = 0.70,
+  /*
+   * The four stalled discs in a descent, as a bluff plate at 1.10 on disc
+   * area, descent only. The plan silhouette counts the duct throats as holes
+   * and a stalled disc in a duct is not one; without this a whoop chopped
+   * settled at 11.7 m/s.
    */
   .k_rotor_axial = 1.10,
   /*
-   * GROUND EFFECT, WHICH A WHOOP LIVES IN.
-   *
-   * plant.c cited He and Leang 2020 for it in the source list above and had
-   * no term for it anywhere, found in the day's review. A five inch is out
-   * of ground effect a second after it leaves the stand; a whoop in a room
-   * skims the mat, crosses a gate's bottom bar at 30 mm and settles onto
-   * the floor a dozen times a flight, and without this term the floor gave
-   * it nothing back. The cushion a whoop pilot feels under a low hover is
-   * this.
-   *
-   * The form is Cheeseman and Bennett's, T / T_oge = 1 / (1 - (R / 4 h)^2),
-   * which is the image rotor of momentum theory and the one every small
-   * multirotor study starts from. R is NOT the 15.5 mm prop: the four discs
-   * of a 65 mm whoop sit 46 mm apart on a machine 72 mm across, their wakes
-   * merge into one before they reach a floor a few centimetres down, and He
-   * and Leang's measurement on small quadrotors is that the effect reaches
-   * further than the single disc form predicts for exactly that reason. So
-   * the discs are taken as one of four times the area, R = 2 r, 31 mm. That
-   * is an assumption, and it is the one number here that is not derived.
-   *
-   * What it does: the rotor disc parks 16 mm off the floor, half of R, for
-   * a factor of 1.33; at 50 mm it is 1.025 and at 80 mm it is one percent.
-   * Clamped at half a radius, where the formula has its pole, so a rotor
-   * pushed into the floor by a contact cannot ask for infinite thrust.
+   * Ground effect, Cheeseman and Bennett on the four discs merged, R = 2 r.
+   * A whoop skims the mat and crosses a gate's bottom bar a few centimetres
+   * up; this is the cushion under it.
    */
   .k_ground = 1.0,
-  /*
-   * Prop pitch radius. The GF1207 is a 0.7 inch pitch prop, 17.78 mm, over
-   * 2 pi. A whoop prop is very low pitch, which is why the thrust falls away
-   * so fast in a climb and why a whoop cannot chase its own wake upward the
-   * way a 4.3 inch pitch five inch can.
-   */
-  .k_inflow = 0.00283,
-  .torque_ind = 0.310, /* the figure of merit above, and the same number */
-  /*
-   * THE DUCT. 1.10 of static augmentation is the low end of the published
-   * range and it is where a real whoop sits: the ideal duct of momentum
-   * theory, with an exit area equal to the disc and no losses, is 2^(1/3) =
-   * 1.26, and every real one gives most of that back to a tip gap. This
-   * duct's is about 3 percent of the throat diameter, which is large.
-   *
-   * duct_fade 1.0 means half the augmentation is gone by the time the
-   * edgewise air speed reaches the rotor's own induced velocity, about
-   * 5.6 m/s in a hover. That is the behaviour whoop pilots describe without
-   * naming: it hangs beautifully and then feels like it is wading as soon as
-   * it is moving. A duct works by suppressing wake contraction and a duct
-   * flying sideways cannot.
-   *
-   * k_duct_lip 0.10 is the suction moment coefficient in M = Cm q A D. At
-   * 10 m/s that is 1.4e-4 N m a rotor, 5.7e-4 across four, which against
-   * Iyy is 77 rad/s squared of nose up: a real trim a pilot holds forward
-   * stick against, and the reason a whoop pitches up and slows when it is
-   * pushed. Measured ducted fan peaks are near 0.13 at ninety degrees of
-   * rotor angle of attack; this is applied scaled by the in plane speed the
-   * rotor actually sees, so it is zero in a hover by construction and the
-   * hover, punch and sag figures cannot move.
-   */
-  .k_duct = 1.10,
-  .duct_fade = 1.0,
-  .k_duct_lip = 0.10,
+  .k_inflow = 0.003234, /* a 0.8 inch pitch prop, 20.3 mm over 2 pi */
+  .torque_ind = 0.305,  /* the figure of merit above */
+  /* The duct: inside the bench thrust, so the identity. See the head note. */
+  .k_duct = 1.0,
+  .duct_fade = 0.0,
+  .k_duct_lip = 0.0,
   .spin = { -1.0, 1.0, 1.0, -1.0 },
   .pos_x = { -0.0229809704566899, 0.0229809704566899,
              -0.0229809704566899, 0.0229809704566899 },
   .pos_y = { -0.0229809704566899, -0.0229809704566899,
              0.0229809704566899, 0.0229809704566899 },
-  /*
-   * The rotor discs sit 6 mm above the CG. A whoop's prop is level with the
-   * top of the duct and the CG is a couple of millimetres under it, held
-   * down by the pack. Small, but it is the same mechanism as the five
-   * inch's 20 mm and it works with the lip moment rather than instead of it.
-   */
-  .pos_z = { 0.006, 0.006, 0.006, 0.006 },
-  /*
-   * Build tolerance. An injection moulded one piece frame holds its motor
-   * mounts far better than a bolted carbon one does, so both sets are a
-   * third of the five inch's, and the radial set is solved the same way to
-   * cancel the tangential set's lateral force at hover: with tangential
-   * (-0.3, 0.47, 0.2, -0.4) the roll column sum is -0.37 and the lateral
-   * pair is (0.37, 0.17) in the same units, so radial (0.47, 0.28, 0.38,
-   * 0.20) removes it. The mechanism is the five inch's and so is the
-   * reasoning; only the magnitudes are a moulded frame's.
-   */
+  .pos_z = { 0.006, 0.006, 0.006, 0.006 }, /* disc 6 mm above the CG */
+  /* A moulded frame's build tolerance, a third of the five inch's, the
+   * radial set solved to cancel the tangential set's side force at hover. */
   .cant_radial_deg = { 0.47, 0.28, 0.38, 0.20 },
   .cant_tangent_deg = { -0.3, 0.47, 0.2, -0.4 },
   /*
-   * The hull. 41 mm of half extent is the 23 mm motor offset plus the
-   * 18.1 mm DUCT, which is what a whoop actually presents to a wall: it
-   * hits duct first, always, which is the whole design. This said 38 for
-   * the whole of the whoop's first week, and 38 minus 23 is the 15.5 mm
-   * BLADE, not the duct: the comment named the right thing and the number
-   * was the wrong one, the same slip src/game/collide.js made and fixed
-   * the same day. Now the JS collider and the plant's corners agree to the
-   * tenth of a millimetre, 41.08 against 41, where before the collider
-   * reported a touch 3 mm outside the hull the plant resolved it against.
-   * 10 mm down is the duct underside it parks on and 18 mm up is the top
-   * of the canopy. The camera glass sits at the front of the Air II canopy,
-   * 24 mm forward and 12 mm up.
-   *
-   * contact_arm_max used to be 0.045, which is SHORT of this hull's own
-   * corner: a one duct hit on the diagonal reaches sqrt(0.0506^2 + 0.018^2)
-   * which is 0.0537, and sim.c rescales any arm past the cap, so the one
-   * hit sim_abi.h says gives a full moment arrived 11 percent short. 0.060
-   * is the five inch's margin, 12 percent over its true maximum, applied
-   * here.
+   * The hull, in the whoop's own metres: 41 mm across is the 23 mm motor
+   * offset plus the 18.1 mm duct, which is what a whoop presents to a wall.
+   * Down is 9.6 mm, the drawn duct floor (src/render/whoopcraft.js), so the
+   * ducts sit on the floor; it was 10. Up is the canopy.
    */
   .hull_hx = 0.041,
   .hull_hy = 0.041,
-  .hull_hz_down = 0.010,
+  .hull_hz_down = 0.0096,
   .hull_hz_up = 0.018,
   .contact_patch_r = 0.0115,
   .contact_arm_max = 0.060,
-  /*
-   * THE GYRO WAS READING A FIVE INCH'S VIBRATION AT A WHOOP'S ROTOR SPEED.
-   *
-   * bf_glue.c scales the vibration it adds to the gyro as (w / w_ref)^2,
-   * because imbalance force goes as rotor speed squared, and w_ref was one
-   * number for every airframe: 2700 rad/s, the five inch's full throttle.
-   * This aircraft hovers at 3611 and punches at 7828, so its gyro carried
-   * 1.8 times the five inch's full throttle vibration in a HOVER and 8.4
-   * times it on the power. Measured on the build before this change, the
-   * filtered roll gyro against the body truth: 3.66 deg/s RMS in the hover
-   * against the five inch's 0.23, and 11.30 at full throttle against 1.36,
-   * with 32 deg/s peaks; the motor command jittered 16 percent of its
-   * hover value where the five inch's jitters under one. The controller
-   * reacts to what its gyro says, so the airframe shook at 1.1 deg/s RMS
-   * in a hover and 3.9 on a punch, which is where a twitchy, nervous whoop
-   * came from. The whoop was never calibrated against that figure; it was
-   * flying the five inch's calibration at three times the rotor speed.
-   *
-   * This is the whoop's own full throttle speed, rounded the way the five
-   * inch's 2723 is rounded to 2700, so at full throttle it reads the same
-   * 2.0 deg/s of hump and 1.0 of line the five inch reads at its own. That
-   * is the level a pilot set as subtle and asked to move only upward, and
-   * the same rule applies here: it moves when a whoop pilot says so.
-   */
-  .vib_ref_w = 7830.0,
+  .vib_ref_w = 7830.0, /* this airframe's own full throttle speed */
   .camera_x = 0.024,
   .camera_y = 0.0,
   .camera_z = 0.012,
+  /*
+   * MICRO_SCALE, the factor the whoop's room is built at, written as the same
+   * expression configs/airframes.js derives it with so the double is the same
+   * double: the five inch's sweep, 0.110 + 0.0635, over the real whoop's,
+   * 0.0325 + 0.0181. whoop:gates W15 drops the module on the shell's floor
+   * and fails if the two ever disagree about where the craft parks.
+   */
+  .len_scale = (0.110 + 0.0635) / (0.0325 + 0.0181),
 },
 };
 
@@ -726,6 +515,65 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
  */
 const PlantParams *PLANT_P = &PLANT_TABLE[SIM_AIRFRAME_5IN];
 static int g_airframe = SIM_AIRFRAME_5IN;
+
+/*
+ * EVERY AIRFRAME IN SCENE METRES, built from the table above in one pass.
+ *
+ * The plant computes the airframe it is: a whoop's rotors, drag and ground
+ * cushion in a whoop's own metres. The world it flies in is in scene metres,
+ * and the whoop's room is built MICRO_SCALE times life size. So the one
+ * conversion between the two happens here and in the last six lines of
+ * plant_step, and nowhere else: a length goes up by len_scale, an inertia by
+ * its square (a contact impulse at a lever len_scale times longer must turn
+ * the craft exactly as much), and gravity by len_scale, because the room's
+ * metre is a fraction of the whoop's and the whoop must fall one real g of
+ * them. Mass, rates, angles, volts and amps do not have a length in them.
+ *
+ * WHY THIS AND NOT THE OLD TRICK. From 2026-09-14 the whoop flew the five
+ * inch's plant in this room, which keeps every frame the same picture and
+ * cannot keep gravity: in the room's own terms it fell at 2.025 / 3.43 of a
+ * g, and pilots reported exactly that, floaty, carries too far, too light
+ * even at 120. Scaling the plant into the room instead of the room around
+ * another plant is the only way the picture AND the fall are both a whoop's.
+ *
+ * Built at first use from the const table, every entry, so the contents do
+ * not depend on which airframe a run touched first. PLANT_W_P starts on the
+ * five inch's own true entry, which is the same doubles its world entry
+ * holds, because 1.0 is exact.
+ */
+static PlantParams PLANT_WORLD[SIM_AIRFRAME_COUNT];
+static int plant_world_ready = 0;
+const PlantParams *PLANT_W_P = &PLANT_TABLE[SIM_AIRFRAME_5IN];
+
+static void plant_build_world(void) {
+  for (int a = 0; a < SIM_AIRFRAME_COUNT; a += 1) {
+    PlantParams w = PLANT_TABLE[a];
+    const double L = w.len_scale;
+    w.gravity *= L;
+    w.arm_x *= L;
+    w.arm_y *= L;
+    w.prop_r *= L;
+    w.inertia[0] *= L * L;
+    w.inertia[1] *= L * L;
+    w.inertia[2] *= L * L;
+    for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+      w.pos_x[m] *= L;
+      w.pos_y[m] *= L;
+      w.pos_z[m] *= L;
+    }
+    w.hull_hx *= L;
+    w.hull_hy *= L;
+    w.hull_hz_down *= L;
+    w.hull_hz_up *= L;
+    w.contact_patch_r *= L;
+    w.contact_arm_max *= L;
+    w.camera_x *= L;
+    w.camera_y *= L;
+    w.camera_z *= L;
+    PLANT_WORLD[a] = w;
+  }
+  plant_world_ready = 1;
+}
 
 /* Betaflight motor order: 0 RR, 1 FR, 2 RL, 3 FL. Body x forward, y left,
  * spin +1 is counter clockwise seen from above. Betaflight props-in
@@ -862,6 +710,10 @@ void plant_set_airframe(int id) {
   }
   g_airframe = id;
   PLANT_P = &PLANT_TABLE[id];
+  if (!plant_world_ready) {
+    plant_build_world();
+  }
+  PLANT_W_P = &PLANT_WORLD[id];
 }
 
 int plant_airframe(void) { return g_airframe; }
@@ -1224,6 +1076,11 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   /* Axial inflow needs the body frame velocity before the motor loop. */
   double v_body[3];
   quat_rotate_inv(s->quat, s->vel, v_body);
+  /* Scene metres to the airframe's own: the air sees the whoop's real speed. */
+  const double len = PLANT.len_scale;
+  v_body[0] = v_body[0] / len;
+  v_body[1] = v_body[1] / len;
+  v_body[2] = v_body[2] / len;
 
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     const double d = duty[m];
@@ -1533,7 +1390,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
         const double off_b[3] = { PLANT_POS_X[m], PLANT_POS_Y[m], PLANT_POS_Z[m] };
         double off_w[3];
         quat_rotate(s->quat, off_b, off_w);
-        const double h = s->ground_h
+        const double h = s->ground_h / len
           + s->ground_n[0] * off_w[0] + s->ground_n[1] * off_w[1] + s->ground_n[2] * off_w[2];
         const double r_eff = 2.0 * PLANT.prop_r;
         /* Half a radius is the pole of the form; a rotor lower than that is
@@ -1941,9 +1798,11 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   double f_world[3];
   quat_rotate(s->quat, f_body, f_world);
   const double inv_m = 1.0 / PLANT.mass_kg;
-  s->vel[0] += f_world[0] * inv_m * SIM_DT;
-  s->vel[1] += f_world[1] * inv_m * SIM_DT;
-  s->vel[2] += (f_world[2] * inv_m - PLANT.gravity * SIM_GRAVITY) * SIM_DT;
+  /* And back: the force is the real machine's, the room is in scene metres,
+   * so its acceleration there is len times larger, gravity included. */
+  s->vel[0] += f_world[0] * inv_m * len * SIM_DT;
+  s->vel[1] += f_world[1] * inv_m * len * SIM_DT;
+  s->vel[2] += (f_world[2] * inv_m * len - PLANT_W.gravity * SIM_GRAVITY) * SIM_DT;
   s->pos[0] += s->vel[0] * SIM_DT;
   s->pos[1] += s->vel[1] * SIM_DT;
   s->pos[2] += s->vel[2] * SIM_DT;

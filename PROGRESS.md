@@ -70129,7 +70129,10 @@ None measurable. No render, input or pacing change. Module step cost, best of fi
 - `check:wall` 77 of 78, the same single failure as main (the 0.194 against 0.20 rebound floor, PR 56's open item).
 - `node scripts/raceline-check.js --fly` all pass, but it flies the FIVE INCH plant at 1 g (it never selects an airframe),
   so it says nothing about whether this whoop can fly the line. Left for a follow up.
-- `npm run verify`: see the PR; a first run was spoiled by a `git stash` taken while it ran.
+- `npm run verify`, run again on the committed tree: 17 of 18. The one failure is check 17, world golden, 34 of 36 runs
+  bit identical; the 2 that differ are whoop runs ("whoop, wall head-on, 5 m/s"), which is this change. Check 10 reads
+  "drift" at -0.10 deg on the five inch, whose arithmetic is unchanged. A first run was spoiled by a `git stash` taken
+  while it ran.
 
 ### What went wrong
 

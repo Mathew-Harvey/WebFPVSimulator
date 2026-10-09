@@ -144,6 +144,15 @@ typedef struct {
   double camera_x;      /* lens glass in the body frame */
   double camera_y;
   double camera_z;
+  /*
+   * HOW MANY SCENE METRES ONE OF THIS AIRFRAME'S METRES IS. 1 on the five
+   * inch, which flies the world at life size. The whoop's room is built
+   * MICRO_SCALE times life size (configs/airframes.js), so the whoop's is
+   * that factor: everything in this table is the real 24 g machine in real
+   * metres, and plant.c converts exactly once, where the rigid body meets
+   * the world. See PLANT_W below and plant_build_world in plant.c.
+   */
+  double len_scale;
 } PlantParams;
 
 /*
@@ -203,6 +212,17 @@ typedef struct {
 extern const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT];
 extern const PlantParams *PLANT_P;
 #define PLANT (*PLANT_P)
+/*
+ * THE SAME AIRFRAME IN SCENE METRES, for everything that meets the world:
+ * the contact solver in sim.c, the obstacle solver in world.c, the hull, the
+ * camera and the launch stand. Lengths times len_scale, inertia times its
+ * square, gravity times it; mass, rates and every aerodynamic constant are
+ * unit free or stay in the plant's own metres and are not read through this.
+ * On the five inch every entry is the PLANT entry times 1.0, which IEEE 754
+ * returns exactly, so the five inch's arithmetic is bit for bit what it was.
+ */
+extern const PlantParams *PLANT_W_P;
+#define PLANT_W (*PLANT_W_P)
 
 /* Select the airframe. Out of range is ignored. Clears the cached thrust
  * axes, which are built from the airframe's own cant table. */

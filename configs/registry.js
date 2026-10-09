@@ -67,9 +67,9 @@ export const TUNES = [
   },
   {
     id: 'whoop-champion',
-    airframe: null,
+    airframe: 'whoop65',
     name: 'Whoop stock',
-    note: 'The factory tune for the 36000 kV racer. Low gains, a narrow D boost band, and the gains coming off a fifth of the way up the stick because 1S sags.',
+    note: 'The maker\u2019s factory 1S whoop tune. Low gains, a narrow D boost band, and the gains coming off a fifth of the way up the stick because 1S sags.',
   },
   {
     id: 'whoop-racing',
@@ -86,7 +86,16 @@ export const TUNES = [
 ];
 
 /*
- * THE THREE WHOOP PRESETS ARE RETIRED, and `airframe: null` above is how.
+ * THE WHOOP'S STOCK TUNE IS OFFERED AGAIN, AND THE OTHER TWO STAY RETIRED.
+ *
+ * Since 2026-10-09 the whoop flies its own plant again, an 0802 28,000 kV 1S
+ * machine, and 'whoop-champion' is its default: it was measured on that plant
+ * (configs/airframes.js has the numbers). Racing and Freestyle were written
+ * for the maker's 30,000 and 25,000 kV variants and were not measured on it,
+ * so they stay at `airframe: null` until somebody does. What follows is the
+ * reason all three came off in the first place, kept because it is still the
+ * rule.
+ *
  *
  * They were the whoop's, and they were right for as long as the whoop was a
  * 23 g 1S machine on its own plant. It flies the five inch's plant now, and a

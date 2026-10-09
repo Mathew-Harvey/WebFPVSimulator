@@ -13,8 +13,8 @@
  * to a PLANT: the Tune row offers the tunes written for the plant the seated
  * airframe selects. Loading a tune onto a plant it was never written for is
  * not a thing a pilot should be able to do by accident, and that rule is why
- * the whoop, on the five inch's plant, gets the five inch's tunes and not
- * the three whoop presets it used to carry.
+ * the whoop, on its own plant again since 2026-10-09, gets a whoop tune and
+ * the five inch gets its own.
  *
  * `id` is what goes in localStorage and into the record key, so changing one
  * orphans a stored choice and every local best flown on it. src/ui/ui.js
@@ -58,8 +58,9 @@
  * TWO THINGS READ THIS. src/render/whoopcraft.js models the ducts, the
  * canopy and the body from it, so the drawn machine keeps a whoop's
  * proportions however large it is drawn. And MICRO_SCALE below is derived
- * from it. Nothing else should: the collider, the plant and the shell all
- * want the airframe's own `dims`, which is the five inch.
+ * from it. Nothing else should: the collider and the shell want the
+ * airframe's own `dims`, which are in the room's metres. The plant has its
+ * own copy of these numbers in src/native/plant.c, in the whoop's metres.
  */
 export const WHOOP_TRUE_DIMS = {
   arm: 0.0325,
@@ -225,47 +226,35 @@ export const AIRFRAMES = [
   {
     id: 'whoop65',
     /*
-     * ZERO, WHICH IS THE FIVE INCH'S PLANT, AND THE WHOLE POINT OF THIS
-     * AIRFRAME NOW.
+     * ONE, THE WHOOP'S OWN PLANT, SINCE 2026-10-09.
      *
-     * It was 1, a 23 g 1S ducted whoop modelled honestly off the published
-     * specification: three times the five inch's angular acceleration, a fifth of
-     * its speed, its own inertia, its own drag, its own 1S sag. It is still
-     * in src/native/plant.c as SIM_AIRFRAME_WHOOP65 and nothing selects it.
+     * From 2026-09-14 this was 0, the five inch's plant, flown in a room built
+     * MICRO_SCALE times life size so a five inch fits. That keeps every frame
+     * the same picture and it cannot keep gravity: in the room's own metres
+     * the whoop fell at 2.025 / 3.43 of a g, which pilots reported in so many
+     * words (floaty, carries too far, too light even at 120), and it carried
+     * a five inch's momentum and throttle (a rocket ship, can't move slowly).
      *
-     * The owner flew every version of it and the verdict never moved: it
-     * does not feel like flying. The five inch does. A real whoop in a real
-     * room flies mostly like a five inch with slightly less momentum,
-     * because a pilot flies to what the picture does and the picture is the
-     * same picture; the dynamic differences the plant was reproducing are
-     * real and are not what the hands feel.
-     *
-     * So this machine flies the five inch's plant, and the room it flies in
-     * is built MICRO_SCALE times life size to give a five inch the space it
-     * needs. Scaling a world and the craft in it by one factor is a change
-     * of units and nothing else, so every frame is the frame it was: the
-     * picture is a whoop threading 28 inch RaceGOW gates and the feel
-     * underneath it is the five inch's. See MICRO_SCALE at the foot of this
-     * file for the derivation and for what the fiction costs.
+     * SIM_AIRFRAME_WHOOP65 in src/native/plant.c is a 24 g 1S whoop on 0802
+     * 28,000 kV motors, built on the five inch's derivation chain because the
+     * five inch is the one the owner says feels right, and it carries
+     * len_scale, which is MICRO_SCALE: the plant computes the real machine in
+     * real metres and converts once, where the rigid body meets the world. So
+     * the room, the gates, the builder and every collision stay exactly as
+     * built, and the whoop in them falls at one real g. The 0702 36,000 kV
+     * plant this entry flew before 2026-09-14 is what that entry replaced.
      */
-    simId: 0,
+    simId: 1,
     name: '65 mm whoop',
     short: 'Whoop',
     blurb: 'A 65 mm ducted whoop indoors. The hall and its gates are built to match it, so what you see is a whoop through 28 inch gates.',
     facts: ['1S', '65 mm', 'Indoors'],
     trackClass: 'micro',
     /*
-     * WHAT THE PACK SAYS, NOT WHAT FLIES IT. A whoop is 1S, and the owner's
-     * word on bug-eb0552d6 ("6S Whoops", an OSD reading 25 volts) was to
-     * make it say 1S and 4.2 V and not to change the physics at all.
-     *
-     * The plant under it is still the five inch's, 6S, and its thrust is
-     * still keyed to 6S pack volts: PLANT.cells in src/native/plant.c,
-     * restated as PLANT_CELLS in src/main.js. Nothing that flies reads this
-     * field. The OSD scales the plant's pack by cells / PLANT_CELLS, so a
-     * whoop reads 4.2 V charged and sags as a 1S pack would, in proportion.
-     * This used to be 6, on the argument that a card saying 1S over a 6S
-     * plant was a seam in the fiction; the pilot asked for the fiction.
+     * 1S, AND SINCE 2026-10-09 THAT IS WHAT FLIES IT: the whoop's own plant
+     * is a single cell (PLANT.cells in src/native/plant.c). It said 1S over a
+     * 6S plant for a fortnight before that, on the owner's word on
+     * bug-eb0552d6, and the OSD scaled the five inch's pack down to suit.
      */
     cells: 1,
     /*
@@ -286,68 +275,45 @@ export const AIRFRAMES = [
     packVoltages: [4.2, 3.8, 3.5],
     packLabels: { 4.2: 'Charged', 3.8: 'Half', 3.5: 'Nearly empty' },
     /*
-     * 2.025, WHICH IS 125 PERCENT OF THE FIVE INCH'S 1.62, AND THE OWNER'S.
+     * 1.0, REAL GRAVITY, because the plant is a real whoop now.
      *
-     * This was 1.62, on the argument that the pilot who set that number flew
-     * the only plant this entry flies. Then a pilot flew the same track back
-     * to back in Vdrone and here and had to take the whoop's Weight slider to
-     * 120 to 130 before it felt right, and the owner made 125 the whoop's
-     * normal. The plant is still the five inch's and the five inch keeps
-     * 1.62, which the owner asked for in the same breath: the report was
-     * about the whoop, and nobody has said the five inch is floaty.
-     *
-     * So Weight 100 on a whoop flies what Weight 125 flew before, 2.025
-     * times 9.80665, and the record key agrees: both round to `.g203`, so a
-     * whoop best set at 125 before this change is still the best at 100
-     * after it. Measured at this base, same bisection and same probe as the
-     * five inch's figures above (the punch is 400 ms at 60 percent stick):
-     * hover 39.9 percent, ten metres of fall in 1.07 s, balloon 0.945 m,
-     * props level descent 31.6 m/s.
+     * It was 2.025, 125 percent of the five inch's 1.62, on a pilot who flew
+     * Vdrone and here back to back and had to take the Weight to 120 to 130
+     * before the whoop felt right. That was the five inch's plant in a room
+     * 3.43 times life size, where 2.025 g of scene metres is 0.59 g of the
+     * room's: the pilot was reaching for real gravity and the slider ran out.
+     * The whoop's plant converts through len_scale, so 1.0 here is one g in
+     * the room's own terms. Measured on the module: a 1.5 m drop from a
+     * hover with the throttle cut takes 0.58 s against free fall's 0.55, and
+     * the previous plant read 0.77.
      */
-    gravityBase: 2.025,
+    gravityBase: 1.0,
     /*
-     * 120, NOT THE FIVE INCH'S 140, because the module refuses a gravity
-     * above 2.5 and 125 of 2.025 is 2.53. 120 is 2.43, the heaviest step
-     * the module will take, and it is already 150 percent of the whoop this
-     * entry used to be. Raising the module's ceiling is a rebuild of
-     * dist/sim.wasm and was not done for this. The floaty end is 60, 1.215,
-     * which is where the old slider's 75 was.
+     * 140, the five inch's: at a base of 1.0 the module's 2.5 ceiling is far
+     * above it, so the whoop gets the whole of the shell's WEIGHT_MAX.
      */
-    weightMax: 120,
+    weightMax: 140,
     /*
-     * THE FIVE INCH'S TUNE, BECAUSE THE PLANT IS THE FIVE INCH'S.
+     * THE WHOOP'S TUNE, BECAUSE THE PLANT IS THE WHOOP'S AGAIN.
      *
-     * This was 'whoop-champion', the maker's own shipped configuration for the
-     * whoop, and it was the right answer for as long as SIM_AIRFRAME_WHOOP65
-     * was what flew. It is the wrong answer now and not by a little: a whoop
-     * preset is a 1S configuration, its P and D are sized against 6e-6 kg m^2
-     * of inertia, its filter cutoffs against a 23 g frame's resonances and its
-     * motor idle and voltage compensation against a cell that sags to 3.0 V
-     * under a punch. Loaded onto a 710 g 6S machine it is an underdamped
-     * sluggish tune, which is exactly the complaint this whole change exists
-     * to answer.
-     *
-     * The three whoop presets stay on disk in configs/ and are retired from
-     * the Tune row by configs/registry.js. They are real published configurations and
-     * cost nothing to keep; what they must not do is be offerable for a plant
-     * they were never written for.
+     * 'whoop-champion' is the maker's own shipped 1S whoop configuration, and
+     * it was this entry's default while SIM_AIRFRAME_WHOOP65 flew before. It
+     * was retired when the whoop moved onto the five inch's plant, because a
+     * 1S tune on a 710 g 6S machine is the wrong tune. On the 0802 plant it
+     * is a tight one: a quarter stick roll rises in 17 ms with 4 percent
+     * overshoot, a full yaw snap overshoots 4 percent where the previous
+     * whoop plant overshot 15, and the hover holds roll to 0.12 deg/s RMS.
      */
-    defaultTune: 'betaflight-default',
+    defaultTune: 'whoop-champion',
     /*
-     * THE FIVE INCH'S RATES, FOR THE SAME REASON AS THE TUNE.
+     * THE FIVE INCH'S RATES, AND THE WHOLE STICK, ON PURPOSE.
      *
-     * These were the maker's own profile for the whoop: ACTUAL, srate
-     * 58 / 58 / 50, which is 580 deg/s on roll and pitch and 500 on yaw, with
-     * a 65 percent SCALE throttle cap. Every one of those numbers was chosen
-     * against a machine with three times this plant's angular acceleration
-     * and 4.7 to one of thrust on 23 grams, and the cap in particular existed
-     * only because that machine put its hover at a third of the stick.
-     *
-     * A five inch does not have that problem. It holds a hover near half
-     * stick on the whole travel, which is what the five inch's own entry says
-     * and why it keeps 100. Carrying the 65 percent cap over would leave this
-     * aircraft with two thirds of the thrust of the plant it is flying, in a
-     * hall built for all of it.
+     * The maker's whoop profile is 580 / 580 / 500 with a 65 percent throttle
+     * cap, and the cap existed because a 36,000 kV whoop hovered at a third
+     * of the stick. The 0802 28,000 kV plant hovers at 39 percent with 4.4 to
+     * one, so the whole stick is a whoop's whole range and the cap is not put
+     * back. The rates are the five inch's so a pilot moving between the two
+     * keeps their hands; one stock profile, not two.
      *
      * Rates are still the pilot's. Three rows on the Rates screen change
      * them, configs/rates.js strips every rate key out of a tune on the way
@@ -387,18 +353,16 @@ export const AIRFRAMES = [
     cameraFov: 95,
     cameraAngle: 25,
     /*
-     * THE FIVE INCH'S, EXACTLY, BECAUSE THIS AIRCRAFT IS ONE.
+     * THE WHOOP IN SCENE METRES, and the sweep is the five inch's.
      *
-     * `dims` is documented above as the airframe AS THE RENDERER DRAWS IT AND
-     * THE COLLIDER SWEEPS IT, and both of those are the five inch now. The
-     * plant is SIM_AIRFRAME_5IN, so its hull extents are the five inch's and
-     * the shell's REST_HEIGHT has to agree with them or the craft spawns
-     * buried or floating. The collider sweeps a five inch because a five inch
-     * is what the physics is resolving contacts for. And the renderer draws
-     * the whoop at five inch size, because the world it is drawn in is built
-     * MICRO_SCALE times life size: a 65 mm model in a hall scaled by 3.43
-     * would be a speck, and scaled up by the same 3.43 it lands on these
-     * numbers to within two percent.
+     * `dims` is the airframe AS THE COLLIDER SWEEPS IT, in the room's metres.
+     * src/game/collide.js sweeps arm plus hull, and for this aircraft that is
+     * the real whoop's 50.6 mm times MICRO_SCALE, which is the five inch's
+     * 173.5 mm by the definition of MICRO_SCALE. So these stay the five
+     * inch's numbers: same sweep, same collider, same room. They were the
+     * five inch's because the whoop flew its plant from 2026-09-14 to
+     * 2026-10-09; they are still right because the whoop's own plant
+     * converts through the same factor (len_scale in src/native/plant.c).
      *
      * THE REAL MACHINE'S GEOMETRY IS NOT LOST. It is WHOOP_TRUE_DIMS below,
      * which is what src/render/whoopcraft.js models the ducts and the canopy
@@ -415,11 +379,12 @@ export const AIRFRAMES = [
        *
        * vHalfDown is where the floor is as far as the shell is concerned:
        * src/main.js seats SPAWN_ALT and REST_HEIGHT from it and the plant
-       * settles the craft at its own hull_hz_down, so this HAS to be the five
-       * inch's 33 mm or the aircraft spawns buried or hovering. It cost a
-       * whoop body 12 mm of ground clearance while that was 45 mm; at 33,
-       * since 2026-10-09, the drawn ducts sit on the floor to a tenth of a
-       * millimetre, and scripts/craft-check.js pins it at that.
+       * settles the craft at its own hull_hz_down, so this has to be the
+       * plant's or the aircraft spawns buried or hovering. The whoop's plant
+       * parks on 9.6 mm of duct floor, which through len_scale is 32.9 mm of
+       * the room; 33 is that to a tenth of a millimetre, inside the contact
+       * model's 2 mm slop, and it is where the drawn ducts sit on the floor
+       * (scripts/craft-check.js pins it).
        *
        * vHalfUp has no such owner. Nothing in the plant rests a craft on its
        * canopy; what reads this is src/game/collide.js, deciding whether the
@@ -448,8 +413,11 @@ export const AIRFRAMES = [
 /*
  * HOW MUCH LARGER THAN LIFE SIZE A MICRO WORLD IS BUILT, as a pure number.
  *
- * The whoop flies the five inch's plant. A five inch cannot fly a 10 by 12 m
- * room, so the room is built bigger, and this is the factor. src/game/track.js
+ * The room was built bigger so the whoop could fly the five inch's plant in
+ * it (2026-09-14 to 2026-10-09), and this is the factor. The whoop has its
+ * own plant again and the room stays as built: the plant carries this same
+ * factor as len_scale and converts at its boundary, so a real whoop flies a
+ * room built 3.43 times life size at one real g. src/game/track.js
  * re-exports it and carries the argument for why the class works this way at
  * all; what belongs here is the derivation, because it is a fact about these
  * two aircraft and nothing else.

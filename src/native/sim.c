@@ -55,7 +55,7 @@ static double g_stand_hinge[3];
  * in the shell so the hinge sits on the foam, not in the air above it.
  * Per airframe since the whoop landed: a 23 mm thick machine does not park
  * 45 mm off the deck. */
-#define STAND_HINGE_Z (-PLANT.hull_hz_down)
+#define STAND_HINGE_Z (-PLANT_W.hull_hz_down)
 
 /*
  * Ground plane, plant frame. Off unless the shell raises it, so a harness
@@ -70,7 +70,7 @@ static double g_stand_hinge[3];
 static int g_ground_on = 0;
 static double g_ground_n[3] = { 0.0, 0.0, 1.0 };
 /* Seeded to the five inch's parked height and re-seated by
- * sim_set_airframe, because a static initialiser cannot read PLANT. A host
+ * sim_set_airframe, because a static initialiser cannot read PLANT_W. A host
  * that raises its own ground plane overwrites this on the first call
  * anyway; it matters only to a host that never does. */
 static double g_ground_d = -0.033;
@@ -89,10 +89,10 @@ static int g_ground_near = 0;
 /* The hull half extents are the airframe's now. The five inch's are the
  * numbers that used to be here; the whoop's are a third of them, which is
  * why they could not stay a #define. */
-#define CONTACT_HX (PLANT.hull_hx)
-#define CONTACT_HY (PLANT.hull_hy)
-#define CONTACT_HZ_DOWN (PLANT.hull_hz_down)
-#define CONTACT_HZ_UP (PLANT.hull_hz_up)
+#define CONTACT_HX (PLANT_W.hull_hx)
+#define CONTACT_HY (PLANT_W.hull_hy)
+#define CONTACT_HZ_DOWN (PLANT_W.hull_hz_down)
+#define CONTACT_HZ_UP (PLANT_W.hull_hz_up)
 #define CONTACT_CORNERS 8
 #define CONTACT_ITERS 4
 #define CONTACT_SLOP 0.002
@@ -156,20 +156,20 @@ static int g_ground_near = 0;
  * drag the whole of that patch. Half the motor offset is the honest
  * lever for a four-arm footprint.
  */
-#define CONTACT_PATCH_R (PLANT.contact_patch_r)
+#define CONTACT_PATCH_R (PLANT_W.contact_patch_r)
 /*
  * Largest impulse arm a caller may hand sim_contact_at, metres. The
  * craft sweeps 0.1735 m to a blade tip, so anything past that is not a
  * point on this airframe and must not become a moment.
  */
-#define CONTACT_ARM_MAX (PLANT.contact_arm_max)
+#define CONTACT_ARM_MAX (PLANT_W.contact_arm_max)
 /* Lens glass, plant body metres. Mount is 0.080 forward and 0.018 up;
  * herocraft.js puts the glass another 0.024 past the mount. The hull
  * OBB stops at 0.094, so a nose-down arrival used to park the lens
  * under the plane. Projection samples this point too. */
-#define CAMERA_BODY_X (PLANT.camera_x)
-#define CAMERA_BODY_Y (PLANT.camera_y)
-#define CAMERA_BODY_Z (PLANT.camera_z)
+#define CAMERA_BODY_X (PLANT_W.camera_x)
+#define CAMERA_BODY_Y (PLANT_W.camera_y)
+#define CAMERA_BODY_Z (PLANT_W.camera_z)
 #define CONTACT_INVERT_UPZ -0.50
 /* Halo invert-stop is props-down only. A roll or flip that is only
  * partly inverted can put a corner in the 8 mm slab with the CG still
@@ -343,9 +343,9 @@ static void contact_rotate_inv(const double v[3], double out[3]) {
 static void contact_iinv(const double v_world[3], double out[3]) {
   double b[3];
   contact_rotate_inv(v_world, b);
-  b[0] /= PLANT.inertia[0];
-  b[1] /= PLANT.inertia[1];
-  b[2] /= PLANT.inertia[2];
+  b[0] /= PLANT_W.inertia[0];
+  b[1] /= PLANT_W.inertia[1];
+  b[2] /= PLANT_W.inertia[2];
   contact_rotate(b, out);
 }
 
@@ -382,7 +382,7 @@ static int contact_impulse(const double n[3], const double r[3], const double vs
   rn[2] = r[0] * n[1] - r[1] * n[0];
   double irn[3];
   contact_iinv(rn, irn);
-  const double kn = 1.0 / PLANT.mass_kg
+  const double kn = 1.0 / PLANT_W.mass_kg
       + (rn[0] * irn[0] + rn[1] * irn[1] + rn[2] * irn[2]);
   if (kn < 1e-12) {
     return 0;
@@ -436,7 +436,7 @@ static int contact_impulse(const double n[3], const double r[3], const double vs
     rt[2] = r[0] * ty - r[1] * tx;
     double irt[3];
     contact_iinv(rt, irt);
-    const double kt = 1.0 / PLANT.mass_kg
+    const double kt = 1.0 / PLANT_W.mass_kg
         + (rt[0] * irt[0] + rt[1] * irt[1] + rt[2] * irt[2]);
     if (kt > 1e-12) {
       double jtm = -vtm / kt;
@@ -457,7 +457,7 @@ static int contact_impulse(const double n[3], const double r[3], const double vs
   const double Jx = jn * n[0] + jt[0];
   const double Jy = jn * n[1] + jt[1];
   const double Jz = jn * n[2] + jt[2];
-  const double invm = 1.0 / PLANT.mass_kg;
+  const double invm = 1.0 / PLANT_W.mass_kg;
   S.vel[0] += Jx * invm;
   S.vel[1] += Jy * invm;
   S.vel[2] += Jz * invm;
@@ -800,7 +800,7 @@ static void ground_settle(double upz, double vn_plant) {
       S.vel[2] = 0.0;
     }
   } else {
-    const double load = PLANT.gravity * SIM_GRAVITY * (nz > 0.0 ? nz : 0.0);
+    const double load = PLANT_W.gravity * SIM_GRAVITY * (nz > 0.0 ? nz : 0.0);
     double dv = g_ground_mu * load * SIM_DT;
     const double vtm = sim_sqrt(vt2);
     if (dv > vtm) {
@@ -839,10 +839,10 @@ static void ground_settle(double upz, double vn_plant) {
       const double ux = S.omega[0] / wm;
       const double uy = S.omega[1] / wm;
       const double uz = S.omega[2] / wm;
-      const double i_eff = ux * ux * PLANT.inertia[0]
-          + uy * uy * PLANT.inertia[1]
-          + uz * uz * PLANT.inertia[2];
-      const double load = PLANT.gravity * SIM_GRAVITY * PLANT.mass_kg * (nz > 0.0 ? nz : 0.0);
+      const double i_eff = ux * ux * PLANT_W.inertia[0]
+          + uy * uy * PLANT_W.inertia[1]
+          + uz * uz * PLANT_W.inertia[2];
+      const double load = PLANT_W.gravity * SIM_GRAVITY * PLANT_W.mass_kg * (nz > 0.0 ? nz : 0.0);
       const double tau = g_ground_mu * load * CONTACT_PATCH_R;
       double dw = (i_eff > 1e-12) ? (tau / i_eff) * SIM_DT : wm;
       if (dw > wm) {
@@ -1258,7 +1258,7 @@ static void stand_apply(void) {
   S.omega[0] = 0.0;
   S.omega[2] = 0.0;
   double hingeb[3];
-  stand_rotate_body(-PLANT.arm_x, 0.0, STAND_HINGE_Z, hingeb);
+  stand_rotate_body(-PLANT_W.arm_x, 0.0, STAND_HINGE_Z, hingeb);
   S.pos[0] = g_stand_hinge[0] - hingeb[0];
   S.pos[1] = g_stand_hinge[1] - hingeb[1];
   S.pos[2] = g_stand_hinge[2] - hingeb[2];
@@ -1266,7 +1266,7 @@ static void stand_apply(void) {
 
 static void stand_capture_hinge(void) {
   double hingeb[3];
-  stand_rotate_body(-PLANT.arm_x, 0.0, STAND_HINGE_Z, hingeb);
+  stand_rotate_body(-PLANT_W.arm_x, 0.0, STAND_HINGE_Z, hingeb);
   g_stand_hinge[0] = S.pos[0] + hingeb[0];
   g_stand_hinge[1] = S.pos[1] + hingeb[1];
   g_stand_hinge[2] = S.pos[2] + hingeb[2];

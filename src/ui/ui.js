@@ -1288,6 +1288,22 @@ const DEFAULTS = {
    * board has nowhere to say which. Weight keeps its own rule.
    */
   feelTuning: false,
+  /*
+   * TEST BRANCH ONLY. Do not merge this to main.
+   *
+   * The owner, 2026-10-09 13:04Z: "Push all the 3 sliders to test for
+   * testing". They were on this branch already, behind the mode above, which
+   * is off by default, so the test build showed Weight alone and looked as if
+   * the other two had not been pushed. This marker is the scoringReset
+   * pattern, read in loadSettings: the key is new, so no stored profile has
+   * it, the first load turns feelTuning on and sets this together with it,
+   * and the first save keeps both. After that the pilot's own choice stands,
+   * so a tester who switches the mode off in the Quad room keeps it off.
+   * DEFAULTS.feelTuning stays false because a changed default would reach
+   * nobody who has already stored false. Undo it by reverting the one commit
+   * that added this key and the block that reads it.
+   */
+  feelTuningTest: false,
   airGrip: AIR_GRIP_STOCK,
   motorKv: MOTOR_KV_STOCK,
   /* Whether the end of a flight flown off stock asks if it felt better than
@@ -1830,6 +1846,12 @@ export function loadSettings() {
   if (!s.scoringReset) {
     s.freestyleScoring = DEFAULTS.freestyleScoring;
     s.scoringReset = true;
+  }
+  /* TEST BRANCH ONLY: the three tuning sliders on for every tester, once.
+   * See DEFAULTS.feelTuningTest for the argument and for how to undo it. */
+  if (!s.feelTuningTest) {
+    s.feelTuning = true;
+    s.feelTuningTest = true;
   }
   /* First run, or an older save from before this key existed: pick Low
    * on a Deck so the page is flyable, High everywhere else so the

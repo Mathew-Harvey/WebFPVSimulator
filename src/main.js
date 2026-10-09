@@ -9677,7 +9677,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * The one-time thumb-rates hand-off, at the first moment touch is
        * actually about to fly. A fresh touch profile was already seeded
        * by loadSettings; this catches the OTHER pilot, an existing
-       * profile still on the stock defaults, whose 670-no-expo is a
+       * profile still on the stock defaults, whose no-expo 600 is a
        * gimbal calibration and reads as "way too fast" on glass, which
        * is the report this answers. A pilot who chose their own rates is
        * respected: the flag still flips so this never asks again, and

@@ -20,7 +20,7 @@
  * bounce back. PROGRESS.md has the entry, under the same date.
  *
  * WHAT IT FLIES. The five inch as a pilot meets it: the shipped default
- * tune, Betaflight's default rates, the airframe's own weight (gravityBase
+ * tune, the shipped default rates, the airframe's own weight (gravityBase
  * in configs/airframes.js, 1.62 g), a charged pack, at the hover stick
  * configs/rates.js quotes. The stick reaches the module the way the shell
  * sends it on the perfect link: each RC slot takes the newest pad sample at
@@ -332,7 +332,7 @@ async function stop(row, pad, axis, amp, arcade) {
 
 const cell = (s, w) => String(s).padStart(w);
 console.log(`stick-response: the five inch at ${GRAVITY} g, ${CELL_V} V a cell, hover stick ${(HOVER * 100).toFixed(1)} percent, `
-  + 'Betaflight default rates, the perfect link');
+  + 'the shipped default rates, the perfect link');
 console.log('\nthe shipped tune against Betaflight 4.5.1, read from the module');
 for (const d of DEPARTURES) {
   console.log(`  ${d.key.padEnd(30)} ${cell(d.ours, 5)}   factory ${d.theirs}`);

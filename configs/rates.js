@@ -111,9 +111,9 @@ function field(label, cliMin, cliMax, scale, decimals, unit, note) {
  *
  * Actual's 70 and 670 are also Betaflight 4.5.1's own firmware defaults, from
  * pgResetFn_controlRateProfiles: rcRates 7, rates 67, rcExpo 0. A freshly
- * flashed quad flies exactly that, which is why it is where this menu starts
- * and why RATE_DEFAULTS below is the Actual profile rather than the first
- * entry in this table.
+ * flashed quad flies exactly that, which is why RATE_DEFAULTS below is an
+ * Actual profile rather than the first entry in this table. It is no longer
+ * exactly that profile: see there.
  */
 const RATE_SYSTEMS = {
   BETAFLIGHT: {
@@ -174,16 +174,35 @@ const RATE_SYSTEMS = {
 };
 
 /*
- * Betaflight 4.5.1's own ACTUAL rate profile defaults. In this file's display
- * units that is 70 deg/s at centre, 670 deg/s at full stick, no expo. Held as
- * the CLI uint8s the firmware stores, which is what everything below moves
- * around; the menu is the only place a display number exists.
+ * The rate profile a pilot starts on: Actual rates, 60 deg/s at centre, 600
+ * deg/s at full stick, no expo, on every axis. Held as the CLI uint8s the
+ * firmware stores, which is what everything below moves around; the menu is
+ * the only place a display number exists.
+ *
+ * A LITTLE UNDER BETAFLIGHT'S OWN, on the owner's word (2026-10-09: "Overall
+ * its twitchy, so im gonna suggest we start with lowering the default rates
+ * just a little"). These were Betaflight 4.5.1's firmware defaults, 70 and
+ * 670, until then. Twitchy and stiff were a third of every flight feel
+ * verdict the board had read, and 670 with no expo is a profile for 40 mm of
+ * sprung gimbal and a wrist. One step down on both columns, the same shape:
+ * still Actual, still linear, so a pilot who knows Betaflight reads it at a
+ * glance. That takes 10 to 14 percent off at every stick position (a quarter
+ * stick is 49 deg/s instead of 55, half stick 165 instead of 185, the stop
+ * 600 instead of 670). The ACTUAL entry in RATE_SYSTEMS above keeps
+ * Configurator's 70 and 670, because that table is what switching type
+ * loads in Configurator and is quoted from it.
+ *
+ * Nothing about this is in the flight loop. It is the same eleven numbers
+ * ratesDiff always writes into the CLI, read by the same Betaflight rate
+ * function in the module, so the path from stick to motor is the same length
+ * at any value. A pilot who set their own rates keeps them; a profile still
+ * holding the old stock exactly is moved once, by SUPERSEDED_RATES below.
  */
 export const RATE_DEFAULTS = Object.freeze({
   type: 'ACTUAL',
-  roll: Object.freeze({ rcRate: 7, srate: 67, expo: 0 }),
-  pitch: Object.freeze({ rcRate: 7, srate: 67, expo: 0 }),
-  yaw: Object.freeze({ rcRate: 7, srate: 67, expo: 0 }),
+  roll: Object.freeze({ rcRate: 6, srate: 60, expo: 0 }),
+  pitch: Object.freeze({ rcRate: 6, srate: 60, expo: 0 }),
+  yaw: Object.freeze({ rcRate: 6, srate: 60, expo: 0 }),
   /* 100 is off, which is what a freshly flashed quad does. */
   throttleCap: 100,
   /* Betaflight's throttle curve, thr_mid and thr_expo, stored as the
@@ -194,6 +213,30 @@ export const RATE_DEFAULTS = Object.freeze({
   thrMid: 50,
   thrExpo: 0,
 });
+
+/*
+ * THE STOCK AXES THAT HAVE BEEN SUPERSEDED, and the generation a profile
+ * carries once it has been moved off them. Every axis exactly 70 / 670 / no
+ * expo on Actual is a profile that never chose its rates: it is what the
+ * shell stored for every pilot who did not open the Rates screen. Such a
+ * profile is moved to RATE_DEFAULTS once (loadSettings in src/ui/ui.js,
+ * marked by stockRates), so the softer default reaches the pilots it was
+ * meant for and not only newcomers. Any other profile, including one a
+ * pilot typed back to 70 and 670 after the move, is theirs and is left.
+ * The throttle limit and curve are not part of this and never move.
+ */
+export const SUPERSEDED_RATES = Object.freeze({
+  GENERATION: 1,
+  type: 'ACTUAL',
+  axis: Object.freeze({ rcRate: 7, srate: 67, expo: 0 }),
+});
+
+export function ratesAreSupersededStock(r) {
+  const a = normaliseRates(r);
+  const old = SUPERSEDED_RATES.axis;
+  return a.type === SUPERSEDED_RATES.type
+    && RATE_AXES.every((axis) => RATE_FIELDS.every((k) => a[axis][k] === old[k]));
+}
 
 /*
  * The throttle curve fields, same shape as an axis field so the same number
@@ -305,7 +348,10 @@ export function normaliseRates(r) {
     throttleCap: given.throttleCap, thrMid: given.thrMid, thrExpo: given.thrExpo,
   };
   const fields = rateFields(type);
-  const fallback = typeDefaults(type);
+  /* A known type fills a missing field from that type's Configurator
+   * default, which is what switching type loads. An unknown one is the
+   * shipped profile whole, RATE_DEFAULTS, which is not Configurator's. */
+  const fallbackFor = (axis) => (known ? typeDefaults(type) : RATE_DEFAULTS[axis]);
   const out = {
     type,
     throttleCap: nearest(THROTTLE_CAP_CHOICES, src.throttleCap ?? RATE_DEFAULTS.throttleCap),
@@ -316,6 +362,7 @@ export function normaliseRates(r) {
   };
   for (const axis of RATE_AXES) {
     const a = src[axis] && typeof src[axis] === 'object' ? src[axis] : {};
+    const fallback = fallbackFor(axis);
     out[axis] = {
       rcRate: clampField(fields.rcRate, a.rcRate, fallback.rcRate),
       srate: clampField(fields.srate, a.srate, fallback.srate),

@@ -123,16 +123,17 @@ export const AIRFRAMES = [
      */
     weightMax: 140,
     /*
-     * Betaflight 4.5.1's own rate defaults, which is what RATE_DEFAULTS in
-     * configs/rates.js already is. Named here as well so the two airframes
-     * are read the same way rather than one of them being the special case
-     * that inherits.
+     * The shipped rate defaults, which is what RATE_DEFAULTS in
+     * configs/rates.js already is: Actual 60 at centre and 600 at the stop,
+     * a step under Betaflight 4.5.1's 70 and 670 since 2026-10-09 (see
+     * there). Named here as well so the two airframes are read the same way
+     * rather than one of them being the special case that inherits.
      */
     rates: {
       type: 'ACTUAL',
-      roll: { rcRate: 7, srate: 67, expo: 0 },
-      pitch: { rcRate: 7, srate: 67, expo: 0 },
-      yaw: { rcRate: 7, srate: 67, expo: 0 },
+      roll: { rcRate: 6, srate: 60, expo: 0 },
+      pitch: { rcRate: 6, srate: 60, expo: 0 },
+      yaw: { rcRate: 6, srate: 60, expo: 0 },
       /*
        * The whole stick, and the whoop gets the whole stick too since it
        * was brought onto the five inch's rates. This comment used to say
@@ -356,9 +357,9 @@ export const AIRFRAMES = [
      */
     rates: {
       type: 'ACTUAL',
-      roll: { rcRate: 7, srate: 67, expo: 0 },
-      pitch: { rcRate: 7, srate: 67, expo: 0 },
-      yaw: { rcRate: 7, srate: 67, expo: 0 },
+      roll: { rcRate: 6, srate: 60, expo: 0 },
+      pitch: { rcRate: 6, srate: 60, expo: 0 },
+      yaw: { rcRate: 6, srate: 60, expo: 0 },
       throttleCap: 100,
     },
     /*

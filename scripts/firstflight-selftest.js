@@ -268,7 +268,7 @@ check('a step past the end says nothing',
             if (!text && !(step === 2 && kind === 'freestyle')) {
               bad.push(`${kind}/${device}/${stickMode}/${step}: empty`);
             }
-            if (/[–—]/.test(text)) {
+            if (/[\u2013\u2014]/.test(text)) {
               bad.push(`${kind}/${device}/${stickMode}/${step}: a dash`);
             }
             if (lines.length > 2) {

@@ -24,11 +24,16 @@
  *   F  ?guide=1 on a profile that has had them all
  *   G  the title's own First flight row, the door that used to be the only
  *      one
+ *   H  a phone held sideways, at the two sizes scripts/device-check.js flies
+ *      the OSD at: every string the guide can put on the banner, measured
+ *      against the centre third, the lap clock and the screen's edges. That
+ *      lint flies a profile that has had its guides, so it has never seen
+ *      one of these words.
  *
  * Usage:
  *   npm run check:firstflight
  *
- * It takes a few minutes, mostly the town. It is not part of verify: it
+ * It takes about two minutes, mostly the town. It is not part of verify: it
  * checks the shell, not the physics. Console noise from a board that is not
  * running is filtered the way scripts/shell-check.js filters it.
  *
@@ -54,7 +59,7 @@ import { fileURLToPath } from 'node:url';
 import { openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
 import { presetsForClass } from '../src/trackbuilder/presets.js';
-import { textOf } from '../src/ui/firstflight.js';
+import { TAKEOFF, textOf } from '../src/ui/firstflight.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -363,6 +368,93 @@ await scenario('G the First flight row', { url: '/index.html', settings: NEWCOME
   check('G: the row arms the guide for the kind it launches, and the banner names the key',
     s0.guided === 'race' && pre.ok, `${s0.guided} ${JSON.stringify(pre.got)}`);
 });
+
+/* ---- H: the words on a phone held sideways ------------------------------ */
+
+/*
+ * Every string the guide can put on the banner for a touch pilot, with the
+ * line of the launch prompt that sits under it, so that the combination
+ * that is new is the one measured. The three second lines are the longest
+ * main.js prints under a guided first line: a race's, a practice run's and
+ * a scored freestyle run's. Both wordings of the freestyle step are here,
+ * because Acro's is the longer.
+ */
+const TOUCH = { device: 'touch', stickMode: 2, angle: true };
+const SECOND_LINES = [
+  'The green gate starts your lap',
+  'Practice: no lap limit. The green gate starts your lap',
+  'No clock and no gates. Lines and tricks count as you fly them.',
+];
+const PHONE_STRINGS = [];
+for (const kind of ['race', 'whoop', 'freestyle']) {
+  for (const second of SECOND_LINES) {
+    PHONE_STRINGS.push([`${kind} take off over "${second.slice(0, 14)}"`, `${textOf(kind, TAKEOFF, TOUCH)}\n${second}`]);
+  }
+  for (const step of [0, 1, 2]) {
+    for (const angle of [true, false]) {
+      const text = textOf(kind, step, { ...TOUCH, angle });
+      if (text && !PHONE_STRINGS.some(([, t]) => t === text)) {
+        PHONE_STRINGS.push([`${kind} step ${step}${kind === 'freestyle' ? (angle ? ', Angle' : ', Acro') : ''}`, text]);
+      }
+    }
+  }
+}
+
+/*
+ * The same measures scripts/device-check.js takes of the banner in flight:
+ * nothing in the middle third of the picture (the gate's cell), nothing
+ * over the lap clock, and the banner's own ends inside the screen. The text
+ * goes in through textContent, which is all Ui.text does, while the quad is
+ * parked, where main.js says the same line every frame and the banner's
+ * memo therefore does not rewrite it.
+ */
+const FIT_PROBE = (strings) => `(() => {
+  const ui = window.__ui;
+  const W = innerWidth;
+  const H = innerHeight;
+  const meets = (a, b) => a.right > b.left + 0.5 && a.left < b.right - 0.5 && a.bottom > b.top + 0.5 && a.top < b.bottom - 0.5;
+  const cell = { left: W / 3, right: (2 * W) / 3, top: H / 3, bottom: (2 * H) / 3 };
+  const clock = document.querySelector('.osd-top').getBoundingClientRect();
+  const original = ui.banner.textContent;
+  const bad = [];
+  let tallest = 0;
+  let widest = 0;
+  for (const [tag, text] of ${JSON.stringify(strings)}) {
+    ui.banner.textContent = text;
+    const r = ui.banner.getBoundingClientRect();
+    /* The glyphs' own extent, not the box's: a box with a maximum width
+     * stays inside the screen while an unbreakable run of text does not. */
+    const ink = document.createRange();
+    ink.selectNodeContents(ui.banner);
+    const t = ink.getBoundingClientRect();
+    tallest = Math.max(tallest, r.height);
+    widest = Math.max(widest, t.width);
+    if (meets(r, cell) || meets(t, cell)) { bad.push(tag + ': in the centre third, down to ' + Math.round(Math.max(r.bottom, t.bottom)) + ' of ' + H); }
+    if (r.top < clock.bottom - 0.5) { bad.push(tag + ': over the lap clock'); }
+    if (Math.min(r.left, t.left) < -0.5 || Math.max(r.right, t.right) > W + 0.5) {
+      bad.push(tag + ': runs off the screen, ' + Math.round(Math.min(r.left, t.left)) + ' to ' + Math.round(Math.max(r.right, t.right)) + ' of ' + W);
+    }
+  }
+  ui.banner.textContent = original;
+  return JSON.stringify({
+    bad, W, H, tallest: Math.round(tallest), widest: Math.round(widest),
+    sticksUp: document.getElementById('ui').classList.contains('touch-fly-on'),
+  });
+})()`;
+
+for (const [w, h] of [[844, 390], [740, 360]]) {
+  await scenario(`H phone ${w}x${h}, every string`, {
+    url: WHOOP_LINK, settings: NEWCOMER, keys: WHOOP_ROOM, touch: true, width: w, height: h,
+  }, async (page) => {
+    await launched(page);
+    await page.until("document.getElementById('ui').classList.contains('touch-fly-on')", 20000).catch(() => {});
+    await page.until(`window.__ui.banner.textContent.startsWith(${JSON.stringify(textOf('whoop', TAKEOFF, TOUCH))})`, 30000).catch(() => {});
+    const r = JSON.parse(await page.evaluate(FIT_PROBE(PHONE_STRINGS)));
+    check(`H: ${w}x${h}: the thumb sticks are up, so this is the layout a phone flies in`, r.sticksUp === true, JSON.stringify(r.sticksUp));
+    check(`H: ${w}x${h}: all ${PHONE_STRINGS.length} strings clear the centre third, the lap clock and the screen's edges`,
+      r.bad.length === 0, r.bad.slice(0, 3).join(' | ') || `tallest ${r.tallest} px, widest ${r.widest} px`);
+  });
+}
 
 /* ---- report ------------------------------------------------------------- */
 

@@ -83,6 +83,7 @@
     "support:selftest": "node scripts/support-selftest.js",
     "tune:selftest": "node scripts/tune-selftest.js",
     "seat:selftest": "node scripts/seat-selftest.js",
+    "firstflight:selftest": "node scripts/firstflight-selftest.js",
     "test:edge": "node edge/selftest.js",
     "lint:nouns": "node scripts/noun-lint.js",
     "lint:devices": "node scripts/device-check.js",
@@ -96,6 +97,7 @@
     "trick:proven": "node scripts/trick-sweep.js --all --write",
     "check:craft": "node scripts/craft-check.js",
     "check:seat": "node scripts/seat-check.js",
+    "check:firstflight": "node scripts/firstflight-check.js",
     "feel:response": "node scripts/stick-response.js",
     "feel:measure": "node scripts/tune-measure.js"
   }

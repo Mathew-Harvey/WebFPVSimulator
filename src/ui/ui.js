@@ -197,6 +197,9 @@ import {
   clampCameraAngle,
 } from '../render/lens.js';
 import { ScoreHud } from './scorehud.js';
+import {
+  GUIDE_KEY, GUIDE_KINDS, guideKind, guidesGiven, lapKindOfKey,
+} from './firstflight.js';
 import { ChaseHud, chaseCallText } from './chasehud.js';
 import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
@@ -1054,6 +1057,23 @@ const DEFAULTS = {
    */
   hasFlown: false,
   /*
+   * WHETHER EACH KIND OF PLACE HAS HAD ITS FIRST FLIGHT GUIDE: a five inch
+   * race track, a whoop room, a freestyle world. See src/ui/firstflight.js.
+   *
+   * Written the first time main.js puts a line of the guide on the glass,
+   * and not when the launch is asked for, so a load that fails, or a reload
+   * between the press and the first frame, does not spend the one guide a
+   * newcomer gets. Never cleared by a menu; ?guide=1 on the address clears
+   * all three, which is how a pilot, or a check, sees the guides again
+   * without losing a profile (see linkedGuide). A blob saved before these
+   * keys existed is read for what it shows by loadSettings, through
+   * guidesGiven, because a guide in front of a veteran is worse than a
+   * newcomer who misses it once.
+   */
+  guidedRace: false,
+  guidedWhoop: false,
+  guidedFreestyle: false,
+  /*
    * How many race results screens this pilot has seen, for the flight feel
    * question, which waits for the second (MENUS-PLAN.md 2.8).
    */
@@ -1553,6 +1573,43 @@ const SUPERSEDED_WHOOP = {
   pidsSeed: { tune: 'whoop-freestyle', sliders: { master: 150 } },
 };
 
+/*
+ * What a loaded profile shows about the places it has flown, for
+ * guidesGiven. `s` is the settings as loadSettings has validated them so
+ * far, and the laps are read off this browser's keys: a best lap is filed
+ * per airframe (recordKey in src/main.js), so the keys say which kind of
+ * place a lap was flown in even when the settings do not. Storage that
+ * cannot be read says nothing, and nothing makes the guide due, which is the
+ * safe way round for a newcomer and the cheap way round for a veteran: one
+ * read-through of a few lines they have already flown.
+ */
+function guideEvidence(s) {
+  const ev = {
+    returning: s.hasFlown === true,
+    fiveInchLap: false,
+    whoopSeen: airframeById(s.airframe).trackClass === 'micro',
+    freestyleSeen: s.freestyleMap !== '' || Boolean(seatedFreestyleMap(s)),
+  };
+  for (const id of Object.keys(hangarOf(s))) {
+    if (airframeById(id).trackClass === 'micro') {
+      ev.whoopSeen = true;
+    }
+  }
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const lap = lapKindOfKey(localStorage.key(i) || '');
+      if (lap === 'race') {
+        ev.fiveInchLap = true;
+      } else if (lap === 'whoop') {
+        ev.whoopSeen = true;
+      }
+    }
+  } catch (e) {
+    /* Private mode cannot tell us. See above. */
+  }
+  return ev;
+}
+
 export function loadSettings() {
   let stored = {};
   try {
@@ -1807,6 +1864,24 @@ export function loadSettings() {
   if (!s.scoringReset) {
     s.freestyleScoring = DEFAULTS.freestyleScoring;
     s.scoringReset = true;
+  }
+  /*
+   * THE FIRST FLIGHT GUIDES A SAVED PROFILE HAS ALREADY HAD.
+   *
+   * A key that is missing belongs to a profile saved before the guide had
+   * kinds, so it is read for what it shows (see guidesGiven) instead of
+   * taking the default: the default is false, and false is "walk this pilot
+   * through it", which a year old profile with two hundred laps on file must
+   * never be told. A key that is there is the answer. Per key, so one lost
+   * to an older tab's save is read again and the others stand.
+   */
+  if (GUIDE_KINDS.some((kind) => typeof stored[GUIDE_KEY[kind]] !== 'boolean')) {
+    const given = guidesGiven(guideEvidence(s));
+    for (const kind of GUIDE_KINDS) {
+      if (typeof stored[GUIDE_KEY[kind]] !== 'boolean') {
+        s[GUIDE_KEY[kind]] = given[kind];
+      }
+    }
   }
   /* First run, or an older save from before this key existed: pick Low
    * on a Deck so the page is flyable, High everywhere else so the
@@ -4299,6 +4374,24 @@ function linkedFly() {
 }
 
 /*
+ * ?guide=1 asks for the first flight guides again, all three kinds, once.
+ *
+ * A profile that has been through them has no other way back to them short
+ * of clearing the site's data, which takes the pilot's tune, their rates and
+ * their records with it. The people who want them again are the owner
+ * checking what a newcomer is told, a friend who is about to be shown the
+ * simulator on a laptop that has flown it, and the checks. Taken out of the
+ * address as soon as it is read, like ?fly=1: see dropLinkParam.
+ */
+function linkedGuide() {
+  try {
+    return new URLSearchParams(window.location.search).get('guide') === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+/*
  * Take one parameter out of the address, keeping every other one and the
  * hash. A link's one-time instruction must not outlive the load it was
  * for: a reload of a ?fly=1 page is a pilot reloading, not a pilot asking
@@ -4654,6 +4747,14 @@ export class Ui {
     if (this.flyOnLoad) {
       dropLinkParam('fly');
     }
+    /* ?guide=1: the first flight guides, once more. See linkedGuide. */
+    if (linkedGuide()) {
+      for (const kind of GUIDE_KINDS) {
+        this.settings[GUIDE_KEY[kind]] = false;
+      }
+      saveSettings(this.settings);
+      dropLinkParam('guide');
+    }
     /* A link that names the whoop has answered the mode question too, so
      * that pair of link parameters is still one press from the air. */
     if (this.syncMode()) {
@@ -4662,7 +4763,9 @@ export class Ui {
     /* Which aircraft the mode was last made legal for. See writeSettings:
      * the answer only changes when the AIRCRAFT changes. */
     this.modeSyncedFor = this.settings.airframe;
-    /* Set while a guided first flight is in the air. main.js reads it. */
+    /* The kind of first flight guide this launch is under ('race', 'whoop'
+     * or 'freestyle'), or false. main.js reads it every frame and puts it
+     * back to false when the guide has said what it has to. See armGuide. */
     this.guided = false;
     this.boardCourses = [];
     /* The pilot's own tracks, read off this browser's library on entry to
@@ -17182,6 +17285,10 @@ export class Ui {
    * offered again on the next load to somebody who has already taken it.
    */
   flown() {
+    /* Before the early return: this is the one place every door to the air
+     * passes through once per launch, and a pilot who has flown before is
+     * exactly who meets a kind of place for the first time here. */
+    this.armGuide();
     if (!this.firstRun && this.settings.hasFlown) {
       return;
     }
@@ -17189,6 +17296,38 @@ export class Ui {
     this.settings.hasFlown = true;
     saveSettings(this.settings);
     this.renderMenu();
+  }
+
+  /*
+   * Arm the first flight guide for the kind of place this launch is in, when
+   * that kind has not had one. See src/ui/firstflight.js for the kinds and
+   * for why it is started here and not by a menu row.
+   *
+   * ARMED IS NOT GIVEN. This says "say it"; the settings flag that says it
+   * was said is written by noteGuideShown, the first time main.js puts a
+   * line of it on the glass. A launch that fails to load, or a reload between
+   * the press and the first frame, therefore does not spend the one guide a
+   * newcomer gets. A kind that has had its guide drops any guide still armed
+   * for another kind, so a whoop room is never told a five inch track's
+   * words; the same kind keeps its guide running across a restart, which is
+   * what a first lap that takes three tries needs.
+   */
+  armGuide() {
+    const kind = guideKind(Boolean(seatedFreestyleMap(this.settings)), this.settings.airframe);
+    if (!this.settings[GUIDE_KEY[kind]]) {
+      this.guided = kind;
+    } else if (this.guided !== kind) {
+      this.guided = false;
+    }
+  }
+
+  /* The first line of the armed guide is on the glass: that kind has had it. */
+  noteGuideShown() {
+    const key = GUIDE_KEY[this.guided];
+    if (key && !this.settings[key]) {
+      this.settings[key] = true;
+      saveSettings(this.settings);
+    }
   }
 
   /* Whether the seat is the kind of place the chosen mode flies in. Race
@@ -17447,8 +17586,10 @@ export class Ui {
      * so it is gone rather than kept as an action with no row.
      */
     if (action === 'firstflight') {
+      /* flown() arms the guide for the kind of track the seat is, which on a
+       * browser that has never flown is a kind that has not had one. The row
+       * used to set the flag itself, before every launch had a guide. */
       this.flown();
-      this.guided = true;
       if (this.onSettings) {
         this.onSettings(this.settings);
       }

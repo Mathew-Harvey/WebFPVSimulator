@@ -70058,7 +70058,7 @@ Not on main. No physics, plant, module ABI or build change here, so `npm run ver
   (never backward), and not also refuse an opening out of turn. The check card of 2026-10-08 never got an answer.
 - What went wrong: nothing new.
 
-## 2026-10-09 | onboarding | A first flight guide for every kind of place, started at launch (draft PR)
+## 2026-10-09 | onboarding | A first flight guide for every kind of place, started at launch (draft PR #59)
 
 The owner, in the flight feel thread, at 08:01:59Z on 2026-10-09: "these are good go to main , but ensure we have an onboarding tutorial when someone tries whoops for the first time." The first half went to main in the entry above. At 08:21:11Z he widened the second half: "also for when someone tries any of the maps not just whoops". This entry is that second half. None of it is on main: it is a branch and a draft PR, waiting for the owner. Nobody has flown it.
 

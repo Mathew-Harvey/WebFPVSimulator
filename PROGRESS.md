@@ -70147,3 +70147,14 @@ None measurable. No render, input or pacing change. Module step cost, best of fi
 
 The module change, re-recording the whoop flights in `check:plant` and `check:world-golden`, and putting it on `test` to
 fly. Whoop records file apart on their own (the tune's text is in the record key and the tune changed).
+
+## 2026-10-09 | physics | The whoop plant's flights re-recorded, and the branch goes to `test` on the owner's word
+
+- Approval: the owner chose "Test branch" at 13:01Z on 2026-10-09 on the card "Put the new whoop physics on the test branch
+  to fly?", whose option read "I re-record the whoop test flights and put PR 58 on test for you to fly; main is untouched."
+  That covers the module change, re-recording the whoop flights and pushing to `test`. It does NOT cover main.
+- Re-recorded with `node scripts/plant-golden.js --write` and `node scripts/world-golden.js --write` on module 1eb18609.
+  Diffed against the previous goldens: in `plant.json` only the 8 "whoop, ..." scenarios and the module hash changed;
+  in `world.json` only "whoop, wall head-on, 5 m/s" and "whoop rides beside a van as it pulls away". Every five inch
+  scenario is the same record. `check:plant` and `check:world-golden` both pass after the write.
+- Latency: unchanged from the entry above (no render, input or pacing change; step cost inside Node's run to run noise).

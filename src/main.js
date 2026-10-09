@@ -4617,9 +4617,46 @@ export async function boot({ loading, bootStart, mapId }) {
   let swapInFlight = false;
   let finishLoadingOnFrame = true;
 
+  /*
+   * THE RACE LINE: a whoop room's trail of crumbs through the next gates
+   * (src/render/raceline.js). The Race line setting, off by default; only a
+   * room has one, so on every other world this does nothing. Nothing is
+   * built or solved while it is off. The notice says what the trail is doing,
+   * so a pilot who turns it on and sees nothing yet knows why: it is being
+   * worked out, or this track has no line.
+   */
+  let raceLineSaid = '';
+  function raceLineNotice(st) {
+    const said = st.wanted ? st.phase : '';
+    if (said === raceLineSaid) {
+      return;
+    }
+    raceLineSaid = said;
+    if (said === 'solving') {
+      notice = { text: 'Working out the race line.', untilMs: performance.now() + 2800 };
+    } else if (said === 'refused') {
+      notice = { text: st.reason, untilMs: performance.now() + 4800 };
+    }
+  }
+  function applyRaceLine(s) {
+    const trail = view && view.raceLine;
+    if (!trail) {
+      return;
+    }
+    if (!trail.heard) {
+      trail.heard = true;
+      /* Never solve inside a flying frame: see step in render/raceline.js. */
+      trail.canSolve = () => !(mode === 'flight' && ui.screen === 'flight');
+      raceLineSaid = '';
+      trail.listen(raceLineNotice);
+    }
+    view.setRaceLine(Boolean(s.raceLine));
+  }
+
   function adoptLoadedView(keepPlace, stayMode, stayScreen) {
     /* A new view is a new set of solids, whether or not the place is kept. */
     uploadPlantWorld();
+    applyRaceLine(ui.settings);
     /* And a new GPU cost: the old world's average says nothing about this
      * one's. See reset in gpugate.js. */
     gpuGate.reset(true);
@@ -5732,6 +5769,7 @@ export async function boot({ loading, bootStart, mapId }) {
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
+    applyRaceLine(s);
     /* Last, after the weight, the aircraft, the pack and the rates above
      * have all settled on what the run is flying. */
     syncKeyHover();
@@ -10186,6 +10224,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * `race` at call time; this one captured the object identity at boot, so
    * after a map swap it answered with the previous map's race. */
   window.__race = () => race;
+  /* The whoop room's race line, for the harness: its state, or null on a
+   * world that has none. */
+  window.__raceLine = () => (view && view.raceLine ? view.raceLine : null);
   /* The support prompt's session clock, read and set. A check cannot fly
    * for twenty minutes to reach the line that faulted every frame on
    * 2026-10-05, so scripts/longflight-check.js sets the clock just short of

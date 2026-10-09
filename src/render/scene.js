@@ -96,6 +96,7 @@ import { GUIDE, guideFromPolyline } from '../game/guide.js';
 /* The gate frame belongs to the scorer, so the mesh and the test agree. */
 import { travelAxis } from '../game/race.js';
 import { buildGuideMesh } from './marks.js';
+import { createRaceLine } from './raceline.js';
 /* The printed vinyl a course is dressed in, shared with the track builder's
  * own preview so an author sees the gates they will fly. See src/art/. */
 import {
@@ -6043,6 +6044,10 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    */
   const FOLLOW_RING = 0.42;
   let nextGateIdx = -1;
+  /* The whoop room's breadcrumb trail, built after the colliders are (see
+   * createRaceLine in raceline.js). Null on every other world, and null until
+   * then, which setNextGate reads. */
+  let raceLine = null;
   /* Where the target is, and which way round the pilot is to it. One
    * object, filled in place, read by the frame loop and by the shell's
    * screen mark, so neither of them allocates per frame. */
@@ -6107,11 +6112,12 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
       dressGate(gt, 'dark');
     }
     nextGateIdx = i;
-    /* follow still arrives from race.js and is deliberately unused: the
-     * owner asked for no markings on anything but the target. The
-     * parameter stays so the callers and the harness readback keep their
-     * shape while the decision is fresh enough to be reversed cheaply. */
-    void follow;
+    /* follow is not drawn on any gate: the owner asked for no markings on
+     * anything but the target. The whoop room's race line, when it is on,
+     * reads it for how far ahead to lay its dots. */
+    if (raceLine) {
+      raceLine.setTarget(i, follow);
+    }
     const target = i >= 0 && i < gates.length ? gates[i] : null;
     if (!target) {
       aim.active = false;
@@ -7011,6 +7017,14 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * broadphase grid. Nothing may be added after this. */
   colliders.build();
 
+  /* A whoop room can show a trail of crumbs through the next gates. Nothing
+   * is built, loaded or solved until the setting asks for it. */
+  if (course && course.trackClass === 'micro') {
+    raceLine = createRaceLine({
+      scene, course, colliders, gates,
+    });
+  }
+
   progress(1);
 
   /*
@@ -7162,6 +7176,16 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
     setRacingLine() {},
     hasRacingLine: false,
     updateRacingLine() { return null; },
+    /* The race line: the whoop room's breadcrumb trail, on or off. A no op in
+     * every world that is not a room. */
+    setRaceLine(on) {
+      if (raceLine) {
+        raceLine.setEnabled(on);
+      }
+    },
+    get raceLine() {
+      return raceLine;
+    },
     /*
      * The contact surface. The third argument is the height the query is made
      * FROM, which the city needs so a quad can fly under the overbridge and
@@ -7228,6 +7252,10 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * them. Present so the shell has one call shape. */
     updateAnim: () => {},
     dispose() {
+      if (raceLine) {
+        raceLine.dispose();
+        raceLine = null;
+      }
       /* The craft and the ghost rig are the session's, not this world's.
        * The shell keeps that register, so this does not have to name them
        * and cannot fall behind an aircraft swap. */

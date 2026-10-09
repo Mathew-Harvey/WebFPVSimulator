@@ -69699,3 +69699,361 @@ The owner, in this thread at 08:01:59Z on 2026-10-09: "these are good go to main
 - Latency: unchanged from the entry above, none that I can measure. The merge adds one test file change and nothing on the flying path.
 - What went wrong: nothing new in this step beyond the PROGRESS.md conflict, which is the same two appends at the tail that every thread that merges main hits.
 - Owed: nobody has flown this on main yet. The Motor power band is still a first guess, and the wall tap band (0.194 against 0.20) is still PR 56's open line.
+
+## 2026-10-08 | racing | Breadcrumb trail on the RaceGOW rooms: an investigation and a prototype
+
+The owner asked whether a trail showing beginners a good line can be built, starting with the RaceGOW tracks. This turn
+changed no sim code: `scripts/breadcrumb-proto.js` is new and reads the plant, the race and the builder's line without
+changing any of them. It is a prototype and an experiment, not a feature, and nothing in the shell loads it.
+
+- What it does: takes the line `courseFromDocument` already derives for a RaceGOW room, resamples it at 5 cm, gives it
+  a speed from a point mass limit (thrust vector at most sqrt(1 + lat_g^2) g, forward and backward passes), then flies
+  that timed path through `dist/sim.wasm` with Betaflight's loop, in Node, using the rig in `scripts/lib/flightrig.js`.
+  It scores the flight with the real `Race`. Four laps; tracking error read on laps 2 to 4 because lap 1 starts from rest.
+- Finding 1, the builder's line is a line through the openings and not a racing line. Three point radius over 0.15 m:
+  tightest 0.09 to 0.45 m on the eight rooms, 25 to 29 percent of each line tighter than 1 m, 68 to 80 percent tighter
+  than 3 m, on a craft 0.35 m across. At 2 g of lateral load a 1 m radius is 4.4 m/s, so the speed profile is held to a
+  mean of 3 to 5 m/s by the line's shape and not by the plant.
+- Finding 2, the plant is not the limit. With a stiff tracker (kp 14, kd 7.5, ka 20; hover throttle 0.28 at 4.0 V) at
+  1 g of lateral load seven of the eight rooms score all four laps (Track 6 scores three) with mean error 0.3 to 0.4 m.
+  At 2 g Tracks 1, 2, 3 and 8 score all four, Tracks 4, 5 and 7 two or three, Track 6 none. At 3 g and above laps are
+  lost on most rooms. The worst error sits at the tightest kinks of the line.
+- What went wrong: the rig's default tracker (kp 3.5, kd 4.5, ka 7) lost the path at 1 g with 2 m of mean error, and
+  its default hover throttle (0.345) sat 0.33 m high at a hover. The first sweep read as "the line is unflyable at any
+  speed" and was the tracker. Raising the gains and bisecting the hover throttle fixed it; the 0.15 g trace showed 0.1 to
+  0.4 m of error, which is how the tracker was ruled in and the line ruled out.
+- Not measured: collisions (the plant world is empty sky), a human's reaction lag, wrong-way and stray crossings of
+  other openings (my crossing test used a guessed plane normal and was thrown away), the drag the plant's quadratic
+  model puts on a long fast run.
+- Verification: `node scripts/breadcrumb-proto.js "Track 1" 1 2 3 4 6` and the other tracks, run this turn. Not run:
+  `npm run verify`, because nothing in the physics, plant, ABI or build changed.
+
+## 2026-10-08 | racing | Race line: a toggleable trail of dots on the whoop rooms (draft PR #48)
+
+The owner's ask, 2026-10-08 12:26Z, in the breadcrumb thread: "lets do it, add a toggleablee feature in whoop tracks for
+race line". That is approval to build the feature on the draft PR and not to push it to main, so none of this is on
+main. No physics, plant, module ABI or build change: the line is arithmetic over the course and the room's solids and
+it feeds nothing back into the flight, so `npm run verify` was not run (see the end).
+
+### What shipped
+
+- `src/game/raceline.js` (new, 1660 lines) is the solver and `src/render/raceline.js` (new, 441 lines) draws the dots.
+  `src/game/trackdoc.js` hands a whoop course its builder knots and the station each one made (a micro course only; any
+  other course is the object it was). `src/render/scene.js`, `src/main.js` and `src/ui/ui.js` wire it, `src/fresh.js`
+  is regenerated for the two modules, `scripts/raceline-check.js` is the check and `package.json` has `check:raceline`.
+- A "Race line" toggle on the Pilot settings screen, beside Stick overlay, off by default. On, in a whoop room, a trail
+  of dots runs from the gate just flown to the one after the next, so the trail is about two gates long and not a whole
+  lap of dots. The dots are dropped at equal intervals of lap time, so close together means slow down. Cream is fast and amber is slow,
+  set over that lap's own 10th to 90th percentile of speed, because a fixed scale put every dot at amber (the laps run
+  at 1 to 3 m/s).
+- Off costs nothing. The solver is a dynamic import and only the small render module is in the preload list, so with
+  the setting off nothing is requested, solved or drawn (Chromium, Track 1: `phase` idle, and the resource list holds
+  the render module and not the solver).
+- On, the solve is sliced at 5 ms a frame and kept for the last four tracks. The line is solved, then flown through the
+  real `Race` for three laps, and only shown when all three are credited and no built opening is crossed out of turn
+  or backward. A track that cannot be given one says so in words: "No race line for this track yet: a clean way
+  through the whole lap was not found."
+
+### How the line is found
+
+The long form is in the header of `src/game/raceline.js`. The builder's knots are the skeleton. Each knot slides
+inside its hole, less the craft's sweep (0.1735 m) and a 0.25 m margin, its heading may lean off the gate's normal and
+its tangent length is free, with cubic Hermite legs between. The cost is lap time from a point mass speed profile under
+a thrust ball (0.35 g sideways, 6 m/s cap) plus walls: 60 s for crossing a built opening out of turn or backward and a
+steep ramp for touching a pipe or a frame. Coordinate descent, then a detour knot round a hard stray, then a second
+strategy if the first is not clean. It is deterministic.
+
+The pace is an effective figure and not a measurement. It was set against the board's best on the five tracks with 18
+or more times posted (2026-10-08): RaceGOW5 Track 1 0.93, RaceGOW5 Track 2 1.06, RaceGOW6 Track 1 1.44, Whoop Triple
+Stack 0.72, Master before buying Mobula8 0.91, a geometric mean of 0.99. The spread is the model's: a point mass has no
+inertia in its attitude, so loop heavy tracks come out slow and tracks of short straights fast.
+
+### Run, in the same turn
+
+- `node scripts/raceline-check.js` (5 s): all eight RaceGOW5 presets pass. A line is found and clean, the real Race
+  credits three laps of it, the built gates are passed in order and no others (found again by the check's own plane
+  test, so a mistake in the solver's crossing count cannot also be the check's), the gaps in the lattice are passed in
+  order, the craft keeps its clearance from every solid (the check's own distance functions), the line beats the
+  builder's through the same openings, the ratio to the board is 0.99 on the two that are presets, no two crumbs are
+  more than 1 m apart, the gate table on the crumbs is in order and a second solve is identical to the last bit.
+- `node scripts/raceline-check.js --fly` (16 s): the line flown through `dist/sim.wasm` with Betaflight's loop, in empty
+  sky, on a follower of the check's own. All eight rooms credit four laps of four, in 1.05 to 1.17 times the line's
+  time (Track 1 1.08, 2 1.13, 3 1.11, 4 1.17, 5 1.09, 6 1.08, 7 1.05, 8 1.10), with a mean error of 0.18 to 0.30 m and a
+  worst of 1.0 to 2.1 m at the sharpest corners. The time allowed, 1.5 times the line's, was fixed before the last run.
+  As a negative control (a scratch copy, not committed) the same rooms asked for 4 g of sideways load make it fail:
+  Tracks 3 and 7 credit two laps of four and Track 1 three, and at 2 g the replay slows to 1.34 to 1.40 times, so the
+  check moves with what the line asks of the craft but is not fine enough to see a small overreach.
+- The 17 tracks on the board, in Node: 14 are clean. Powerloop 1 (4 built openings crossed out of turn) and 3 cubes
+  (13) refuse. Garagetrack, twice, and Whoop Tech Flow report a piece Node does not model (a barrier, a flag), because
+  Node's solids come from the course and the browser's from the real colliders.
+- Chromium through `node scripts/shots.js` at low graphics and 1280x720, in the real shell, with the setting on: Track 1
+  solves in 147 ms of CPU, Whoop Tech Flow 341, RaceGOW6 Track 1 531, Garagetrack 849, Track 8 1003, Whoop Triple Stack
+  104 and Mobula8 130. 3 cubes and Powerloop 1 refuse with the sentence above. The only console error is the board
+  fetch being refused here. At 60 Hz a 5 ms slice a frame makes the wall time about 3.3 times the CPU time (computed
+  from those figures, not measured at 60 Hz): about half a second for Track 1, three and a half for Track 8 and four
+  and a half for 3 cubes, which is the slowest refusal. Headless frames take 120 ms here, so the wall times the harness
+  printed are not those.
+- `lint:preload`, `lint:quality` (71 of 71), `lint:boot`, `lint:nouns`, `lint:frame` (34 of 34), `lint:memory`,
+  `check:fresh`, `micro:check`, `check:room` (71 of 71), `lint:presets` and `lint:partners` pass.
+- `lint:shell` FAILS, and fails on main. On da4e4b7, in a scratch worktree, it reports the same seven findings as here
+  except one number: the Pilot screen is 747 px past its recorded 678 there and 792 px with the toggle row, so the row
+  is 45 px. The other six (rates, pids, fc, tricks, the paused fold and the stickhelp fold) are identical on main and
+  not from this change. I did not re-record the baseline, because that would also bury those six. That is the
+  owner's call.
+
+### What went wrong, and the one judgement call
+
+- The first version refused RaceGOW6 Track 1 in the browser ("the line did not score a lap"). The verify flew a lead in
+  and three rounds, and when the timing gate's crossing fell on the wrap segment the last lap's closing crossing was
+  one point past the end, so two laps of three were credited. It now flies until three are credited, for at most five
+  rounds.
+- The independent check, once written, found two to five crossings of unbuilt openings on Tracks 5 to 8 that the
+  solver's own count could not see, because an unbuilt gap in the lattice had no window in it. The solver has them now.
+  A route that crossed none was contrived on Track 7 (two hard strays were left), so a stray through an unbuilt gap is a
+  price (3 s) and not a wall. THIS IS MY CALL AND NOT THE OWNER'S, and it has not been put to them: Track 7's line
+  crosses two gaps out of turn, which a pilot cannot see because a gap has no pipe. A built opening is still a wall.
+  [Reversed the same day on the owner's ask to follow RaceGOW's rules: a gap is a wall now. See the next entry.]
+- The plant replay misled me for a while. With the rig's own tracker (the one the prototype of this morning used and
+  I trusted) Tracks 3 and 7 credited two laps of four, which read as a line the plant could not follow. It was the
+  tracker. Its throttle trim integrates climb rate, so a trim wound by one moment stayed wound and held the craft
+  0.8 m under the line for a minute, with the proportional term and the trim cancelling to the digit (Track 7). And it
+  rolls the craft over for half a metre of height error with a metre a second of climb behind it (Track 3, the end of
+  the first lap). A sweep of 27 gain sets on those two tracks gave 0 to 4 laps with no trend, which is how it was ruled
+  out. The follower in the check chases a point that waits when the craft falls behind it (the first version chased a
+  stopwatch), caps the line's own feed forward at 5 m/s^2 (a kink 7 cm across in Track 7's line asked for 14 m/s^2 for
+  a tenth of a second), and never asks for thrust under 15 percent of a hover or more than 80 degrees off the
+  vertical. Each came from a cause read in a trace and not from the lap count, and with all three it credits all
+  eight. So the prototype entry above, "seven of the eight at 1 g", was partly luck of that tracker. Its finding that
+  the builder's line is not a racing line stands, because that was geometry. `scripts/lib/flightrig.js` is unchanged:
+  a tilt limit added to it made the replay worse and was reverted.
+- The lines have corners. Every preset has a place where the model slows to 0.2 to 0.35 m/s, and on Tracks 1 and 3 they
+  are turns of 80 to 140 degrees within a metre, near knots, with a few curls a few centimetres across (Track 7 has one).
+  The model makes these cheap, the dots bunch there, which reads as "slow right down", and the plant follows them. By
+  the model's own numbers under 1 percent of any lap (0.0 to 0.7) has the thrust pointing down. Whether a person finds
+  such a corner natural is what this thread cannot measure, and it is the thing to look at when flying it.
+
+### Not measured, not run
+
+- No frame cost on a real GPU or a low end laptop, only the container's rasteriser. The setting is off by default and
+  the draw is one call on the window of the lap's crumbs (about 400 for the whole of the longest lap, Track 8), but that is a
+  reading and not a measurement. While solving, the 5 ms slice is about a third of a 60 Hz frame for the seconds the
+  solve takes, once per track, so on a machine already at its budget it is a stutter for those seconds. The slice is
+  the dial if it shows.
+- A human following the trail. A collision in the plant replay (empty sky). Touch devices.
+- `npm run verify`, because nothing in the physics, plant, ABI or build changed. `lint:input`.
+- `scripts/breadcrumb-proto.js`, the prototype in the entry above, is removed. What it did lives on in the check's
+  `--fly`, and the file is in 53aa025.
+
+## 2026-10-08 | racing | Race line: held to RaceGOW's rules, so a gap in the lattice is a wall (draft PR #48)
+
+The owner, 14:37Z: "re the unbuilt gap crossing, go read the racegow rules here https://www.racegow.com/ make sure we
+adhear to that". That reverses the one judgement call in the entry above, where a pass through an unbuilt gap out of
+turn was a 3 s price and I wrote that it was my call and not the owner's. Still on the draft PR and not on main. No
+physics, plant, module ABI or build change, so `npm run verify` was not run (see the end).
+
+### What the rules say
+
+Read whole, as text, on 2026-10-08: the four documents linked from racegow.com (the Basic Concept and classes, the
+General Rules with the Code of Ethics and the season scoring, the RaceGOW6 micro tiers one, and "Track Building Rules
+and Information", Google doc 1RDksQXnRSFZk1Xtg7ERQPjo_-OQ_DxJzZDR5UEtFjFY, which `src/trackbuilder/racegow.js` already
+quotes). They were fetched with curl and read directly. WebFetch was redirected and its summary paraphrased, so nothing
+was taken from it.
+
+- General Track Rule 5: "Tracks must be built and flown exactly as shown, no modifications allowed. Mirror image
+  builds are not allowed". The Basic Concept says the same of the video: "fly them as shown in the flythrough video".
+- General Track Rule 7: "You cannot intentionally fly through any gates in the opposite direction to shorten your
+  line. For example if you have to go past a gate and then back through it, you cannot just fly through it backward and
+  then spin 180 back through the gate like a "cheese" move that many angle pilots use in place of a split-S or
+  corkscrew type maneuver on Velocidrone."
+- Rule 6 leaves the turn direction free where none is specified. Gate Rule 2: a gate "must be fully enclosed". The
+  score is the best three consecutive laps, the Code of Ethics is an honour system with zero tolerance, and there is no
+  penalty list and no gate miss rule.
+- Nothing about an opening with no pipe round it. So the rules do not forbid a pass through a gap in the lattice, and
+  my 3 s price was not their position on it either way. It was my argument (a pilot cannot see a stray through
+  something with no pipe), made without reading them.
+
+### What the line does now, and why it is stricter than the rules
+
+A framed opening and a gap are alike a wall out of turn and the wrong way. The reasons are ours and not the rules':
+the game scores a gap and lights it as an opening, so a pass through one the way the lap does not is the shortcut rule 7
+names, and a pass of one at a moment the lap does not is a route that is not the one shown (rule 5).
+
+That is stricter than RaceGOW's own flythroughs. TRACK-FROM-GIF.md step 8 records them crossing openings more often
+than the lap scores them (Track 6 five times under its left bar where the lap scores two, Track 3 four where it scores
+two), and Track 7's own builder line, the solver's baseline, crosses five openings out of turn on this reading (five
+walls, a penalty of 300 s). Whether the trail should be this strict or only as strict as rule 7 (never backward) is the
+owner's to say. The looser reading is the old behaviour at 7ccbe63, and putting it back is a change and not a switch.
+
+### What changed
+
+- `src/game/raceline.js`: `PEN_GAP` and the `soft` flag on a window are gone, so a gap's window is a wall like a
+  frame's in `legPenalty`, the tallies and the result (`gaps` is no longer a field of it). The header says what the
+  rules are and why the line is stricter. The detour loop covers gaps, and a detour is kept for what the lap costs once
+  the search has settled round it and not for what it costs the moment it goes in; one that does not pay is taken out
+  again with everything the settling moved. (Judged at the moment it went in, the first detour on Track 7 looks like a
+  loss, because it is the next two that clear the strays.)
+- `scripts/raceline-check.js`: the openings are one list, framed and gap alike, and the line must go through them in the
+  course's order and the right way and through no other, found again from the Race's own frames as before. Built and
+  gap are also checked on their own so that a failure names the kind. The "each gap, in order" test is gone: it was the
+  check agreeing with the price.
+
+### Run, in the same turn
+
+- `node scripts/raceline-check.js` (6 s): 91 checks, all pass, on all eight RaceGOW5 presets. With `--fly` (14 s): 99,
+  all pass, and every room credits four laps of four, at 1.08 to 1.17 times the line's time (Track 1 1.08, 2 1.13,
+  3 1.11, 4 1.17, 5 1.09, 6 1.08, 7 1.12, 8 1.10).
+- Against the committed solver (7ccbe63, run beside it on this machine), the 17 tracks on the board: eleven clean laps
+  are identical to the hundredth of a second, RaceGOW5 Track 7 goes from 36.09 s to 37.13 s, and Powerloop 1 (4 strays)
+  and 3 cubes (13) still refuse, Powerloop with a different refused answer. Garagetrack twice and Whoop Tech Flow,
+  which Node refuses for a barrier and a flag, give the identical line on both solvers with that piece ignored (43.84,
+  27.15 and 43.84 s), so no track without a lattice gap moved.
+- Track 7's line crosses no opening out of turn now (the old one crossed two gaps). It is 63.6 m against 61.9, reaches
+  the same 4.12 m at its highest, and asks the same of a point mass at 10 Hz (3.52 g at worst, in one kink both lines
+  share, and the thrust pointing down for 0.5 percent of the lap against 0.6).
+- Cost: Track 7 solves in about 0.9 s of CPU against 0.4, and Track 6 in 1.75 s against 0.85 for the same 51.57 s line.
+  Strategy "first" now ends unclean on Track 6 (3 strays, 1.4 s) and "always" finds the line in 0.46 s, while Track 3
+  and Track 7 need "first", so trying them the other way round moves the cost from one track to another. At 5 ms a
+  frame, under the "Working out the race line." notice, the wait on Track 6 goes from about three seconds to about six
+  (computed from the CPU time, as before, and not measured at 60 Hz or in a browser).
+- Also pass: `lint:preload`, `check:fresh` (18), `lint:nouns`, `lint:boot` (9 of 9), `lint:quality` (71 of 71),
+  `lint:frame` (34), `lint:memory`, `micro:check`, `check:room` (71), `lint:presets` (4 of 4) and `lint:partners`
+  (88). The changed files hold no em or en dash and keep their GPLv3 headers.
+
+### What went wrong
+
+- The 3 s price was a call made without reading the rules. It left Track 7's line crossing two gaps it should not have,
+  and the check agreed with it because I had written the check to the price.
+- Putting the walls in broke Track 6 before it fixed Track 7. A detour accepted on a loose test cleared Track 7 and
+  slowed Track 6 to 53.58 s, and a strict test refused the first detour on Track 7, which is the right one. The test
+  that works is the settled one above.
+- I guessed that Track 6's extra detours came from the solver's coarse 0.25 m sampling of its legs and tried 0.05 m. It
+  was wrong (Track 6 came out at 53.31 s) and it is reverted. The cost is the unclean first strategy.
+- Track 7's plant replay printed a worst error of 4.55 m, against 1.0 to 2.1 m for every other room, and I took it for
+  something in the line. It is the check's follower: its throttle trim winds up on a height error. In a scratch copy
+  with the trim gain at nothing, a quarter and a half of its value, the same line is flown 4 laps of 4 with a worst error
+  of 1.71, 1.27 and 1.96 m (1.18, 1.08 and 1.13 times the line's time, against 4.55 m and 1.12 at full). The check
+  asserts the laps and not that figure, and the follower's gains were fixed before this line existed, so I did not
+  change them to flatter it. It is still printed, and it is the follower and not a hump in the line.
+
+### Not measured, not run
+
+- Whether the official Track 7 flythrough passes the openings in the lap's order and no other. The sim's own knots, taken
+  from the GIF, do not on this reading, so the trail is the strict reading of the lap and may differ from the route the
+  video shows.
+- No frame cost on a real GPU or a low end laptop, and the longer solve was timed in Node. A human following the trail.
+  A collision in the plant replay (empty sky). Touch devices.
+- `npm run verify`, because nothing in the physics, plant, ABI or build changed. `lint:input`, and `lint:shell`, which
+  fails on main as the entry above says and was not run again. `node scripts/shots.js`: the render did not change, but
+  the line it draws on Track 7 did, so flying it is the check that sees that.
+
+## 2026-10-09 | latency | Race line: the solve no longer runs inside a flying frame
+
+- The owner's project rule of 2026-10-09: latency is the most important thing. Audit of this draft: with the setting off
+  the cost is zero (nothing imported). With it on, the solve ran in 5 ms slices while the pilot flew, 2 to 8 s of
+  frames carrying about +5.5 ms, one knot up to 18 ms (Node, warm JIT, a CPU proxy; a cold browser is worse).
+- Change: `canSolve` in `src/render/raceline.js`, set by the shell, so a slice runs only on a menu, the pause or the
+  loading hold. If the pilot flies before it finishes, the trail waits for the next pause. Cost: that wait.
+- Checked: `node scripts/raceline-check.js` all passed. Not run: a browser, a GPU. Fly it: Race line on, Track 6, look
+  for stutter in the first seconds after the load.
+- Open: precomputing the crumbs per preset would remove the solve; it changes the build, so it goes to the owner first.
+
+## 2026-10-09 | racing | Race line: main merged in, and the latency rule applied to the draft (draft PR #48)
+
+Nothing here is on main, and no physics, plant, module ABI or build change, so `npm run verify` was not run.
+
+- Another session, the latency audit, pushed fbb1600 to this branch at 00:34Z: a solve slice now runs only when the pilot
+  is not in a flying frame (`canSolve`, set by the shell). I read it and changed nothing. `mode` and `ui.screen` are in
+  scope where the closure is made, `later` is `requestAnimationFrame`, so a waiting solve costs one function call a
+  frame, and the last slice, `verifyRaceLine` and the build of the points all run in the one allowed frame, so none of
+  it lands in a flying one. The shell draws the world while paused and on the results screen (`worldLive`), so a trail
+  built there is first drawn there.
+- The PR showed as conflicting because main had moved 12 commits (the performance pass, PR 50, went to main on the
+  owner's word). Main is merged in as 705d27a. Only the tail of PROGRESS.md conflicted, where both sides appended: both
+  are kept, main's first. My breadcrumb prototype section was a bare ### heading under the previous entry, which the
+  merge put under "PR 50 to main", so it is an entry of its own now. `src/fresh.js`, `src/main.js` and
+  `src/render/scene.js` merged without conflict and the preload list is up to date (135 boot modules).
+- Run on the merged tree, this turn: `node scripts/raceline-check.js` (91 checks) and with `--fly` (99, four laps of
+  four in every room), `lint:preload`, `check:fresh` (18), `lint:nouns`, `lint:boot` (9 of 9), `lint:quality` (71 of 71),
+  `lint:frame` (34), `lint:memory`, `micro:check`, `check:room` (71), `lint:presets` (4 of 4) and `lint:partners` (88).
+  The added lines hold no em or en dash.
+- Latency, under the owner's rule of 2026-10-09 (latency is the most important thing, and every PR states its effect).
+  The setting is off by default and then nothing is imported, solved or drawn, so there is no effect. On, no solve slice
+  runs in a flying frame, so what is left of the solve is a wait and not a hitch: a pilot who flies before it ends gets
+  the trail at the next pause or menu (Track 6 is about 1.75 s of CPU in 5 ms slices, so about six seconds of such
+  frames). The trail in flight is one extra draw call of at most two gates' crumbs, a few hundred points, with one
+  uniform set in `onBeforeRender` and no allocation per frame. That draw is the one rise, it is opt in, and the owner
+  asked for the feature; it needs his word as the rule says.
+- Read from the code and not measured: the draw call's cost on a real GPU or a low end laptop, and whether the trail's
+  shader can be first drawn in a flying frame (it is built at load from a cached answer, or when a gated solve ends, and
+  the world is drawn in both places). Precomputing the crumbs for the presets would remove the wait and the solve; it
+  changes the build, so it goes to the owner first, as the audit's entry says.
+- Not run: the merged tree in a browser with the setting on (`node scripts/shots.js`), `npm run verify`, `lint:input`
+  and `lint:shell`, which fails on main as the earlier entry says.
+
+## 2026-10-09 | racing | Race line: on the test branch at the owner's word (draft PR #48)
+
+Not on main. No physics, plant, module ABI or build change here, so `npm run verify` was not run.
+
+- Approval: the owner wrote "push to the test branch" in the thread at 05:40:46Z on 2026-10-09. It covers putting this
+  branch (draft PR #48) on the simulator's `test`. It does not cover main, and the PR stays a draft. The board
+  repository also has a `test` branch, one commit behind its main; this turn did not touch it.
+- What `test` was: c87488d, which is main as of 00:18Z, so 20 commits behind main (595ed93) with no commit of its own.
+  No workflow or deploy file in the repository names it (DEPLOY.md wires the Render sites to `main`), so where it
+  deploys is outside the repository and was not checked.
+- What was pushed: main (595ed93) merged into this branch (faee85b), then `test` fast forwarded from c87488d to the
+  head of this branch, so `test` is main plus the race line and nothing else. No force, no rewrite, main untouched.
+  Conflicts were the tail of PROGRESS.md and the settings defaults in `src/ui/ui.js`, where this branch's `raceLine`
+  and main's `shadowsOff` were added at the same spot: both kept in each, main's entries first. `src/fresh.js`,
+  `src/main.js` and `src/render/scene.js` merged without conflict. The wasm, the goldens and the plant are main's,
+  untouched by this branch.
+- Run on the merged tree, this turn, all passing: `node scripts/raceline-check.js` (91) and with `--fly` (99, four laps
+  of four in all eight rooms), `lint:preload` (up to date, 137 boot modules), `check:fresh` (18), `lint:nouns`,
+  `lint:boot` (9 of 9), `lint:quality` (71 of 71), `lint:frame` (34), `lint:memory`, `micro:check`, `check:room` (71),
+  `lint:presets` (4 of 4), `lint:partners` (88) and `lint:fc` (33 of 33).
+- Not run: `lint:catalog`, which cannot start in this container because `vendor/betaflight` is not checked out (it
+  fails opening `parameter_names.h`) and which nothing here reaches; `npm run verify`; `node scripts/shots.js`, so the
+  merged tree has not been driven in a browser with the setting on; `lint:input`; `lint:shell`, which fails on main
+  here as the earlier entry says.
+- Latency, as in the entry above and unchanged by the merge. Setting off, the default: nothing imported, solved or
+  drawn. On: one extra draw call a frame of at most two gates' crumbs, and no solve slice in a flying frame, so what is
+  left of the solve is a wait at the next pause, not a hitch. The draw call is the one rise, it is opt in, and `test` is
+  where the owner flies it before it goes near main. Its cost on a real GPU or a low end laptop was not measured.
+- To fly it on `test`: Settings, pilot screen, Race line on, then a whoop room (RaceGOW5 Track 6 or 7). Wrong would be a
+  hitch in the first seconds after the load, dots through an opening the wrong way, or a gate the trail skips. The
+  trail waits for a pause if the pilot flies before it is solved (Track 6 is about 1.75 s of CPU).
+- What went wrong: nothing in the code. The harness refused one `rm` in a shell line whose path used an unset-able
+  variable; the line did not need it, because the directory was new, and was rerun without it.
+
+## 2026-10-09 | racing | Race line goes to main on the owner's word (PR #48)
+
+- Approval: the owner wrote "push to main branch" in the thread at 08:20:32Z on 2026-10-09, after the race line had been
+  on `test` since about 05:50Z. It covers PR #48 as it stood on `test`, plus the merge of current main that a fast forward
+  needs. It does not cover anything else on `test`. No flight report had arrived when it was given: the word is the
+  approval, not a flight. The PR was a draft; after this push its commits are on main, so GitHub should show it merged.
+- Latency, under the project rule of 2026-10-09, unchanged from the entries above. With Race line off, the default,
+  nothing is imported, solved or drawn. On, one extra draw call a frame, and no solve slice in a flying frame. That draw
+  is the one rise; the reply of 00:43Z on 2026-10-09 and the PR body both named it as needing the owner's word, and
+  "push to main branch" is taken as that word. Its cost on a real GPU or a low end laptop was never measured and still
+  is not.
+- What was pushed: main (afda081) merged into this branch as 962311b, then main fast forwarded to the head of this
+  branch. No force. Main had moved 8 commits since the `test` push: the flight feel tuning (PR 49, Motor power in the
+  physics module) went to main at about 08:10Z on the owner's word in its own thread. Only the tail of PROGRESS.md
+  conflicted (both sides kept, main's first); `src/ui/ui.js`, `src/main.js`, `src/fresh.js` and `package.json` merged
+  without conflict. The merged tree differs from `test` (ca2f52e, the flight feel thread's integration of the same two
+  branches) in one file, `src/trackbuilder/selftest.js`, which main changed after that merge. So what goes to main is
+  what the owner could fly on `test`, plus that file.
+- Run on the merged tree, this turn, all passing: `node scripts/raceline-check.js` (91) and with `--fly` (99, four laps
+  of four in all eight rooms, through main's new module), `check:plant` (all passed), `lint:preload` (up to date, 138
+  boot modules), `check:fresh` (18), `lint:nouns`, `lint:boot` (9 of 9), `lint:quality` (71 of 71), `lint:frame` (34),
+  `lint:memory`, `micro:check`, `check:room` (71), `lint:presets` (4 of 4), `lint:partners` (88) and `lint:fc` (33 of 33).
+- Not run: `npm run verify` (this branch changes no physics, plant, module ABI or build; PR 49's own physics change is
+  already on main under its own entry), `lint:input`, `lint:shell` (fails on main, baseline not re-recorded),
+  `lint:catalog` (cannot start in this container, `vendor/betaflight` is not checked out), `node scripts/shots.js`, and
+  a browser run of the merged tree with the setting on.
+- If the live build is wrong: the setting is off by default, so a pilot only meets it by turning Race line on, and the
+  first step is to leave it off. To take it out, revert the race line code commits (7ccbe63, 2ff7188 and fbb1600; the
+  others are PROGRESS entries and merges). The shared files they touch are `src/main.js`, `src/ui/ui.js`,
+  `src/render/scene.js`, `src/fresh.js` and `package.json`.
+- Still open with the owner, not decided by this push: whether the trail should be only as strict as RaceGOW's Rule 7
+  (never backward), and not also refuse an opening out of turn. The check card of 2026-10-08 never got an answer.
+- What went wrong: nothing new.

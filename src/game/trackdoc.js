@@ -511,6 +511,9 @@ function buildCourse(raw) {
    */
   const path = buildPath(doc);
   const stations = [];
+  /* Which station each knot of the line made, so the race line (src/game/raceline.js) can tell a knot that is a
+   * hole or a pole to be passed from one that only shapes the curve, without redoing this walk. */
+  const knotStation = new Map();
   /* The structures whose pennants have been put in the mesh's frame. */
   const flagsTurned = new Set();
   for (const knot of path.knots) {
@@ -592,6 +595,7 @@ function buildCourse(raw) {
         ox = 0;
         oz = 0;
       }
+      knotStation.set(knot, stations.length);
       stations.push({
         elementId: el.id,
         structure,
@@ -694,6 +698,7 @@ function buildCourse(raw) {
       x: el.position.x + f.widthAxis.x * across,
       y: el.position.y + f.widthAxis.y * across,
     });
+    knotStation.set(knot, stations.length);
     stations.push({
       elementId: el.id,
       structure,
@@ -875,6 +880,9 @@ function buildCourse(raw) {
     /* Kept so a caller can report on the track without re-reading it. */
     lapLength: path.length,
     closed: path.closed,
+    /* The race line's knots. A RaceGOW room only: the line is offered on the whoop and a course that is not one is
+     * the object it always was. */
+    ...(cls === 'micro' ? { knots: raceKnots(path.knots, field, knotStation) } : {}),
   };
   out.samples = corridorSamples(out);
   return out;
@@ -991,6 +999,47 @@ function sceneKnots(knots, field) {
     }
     return out;
   });
+}
+
+/*
+ * The racing line's knots in the scene frame, for the race line (src/game/raceline.js), which keeps what they say
+ * about the lap (which way round every pole, which hole after which, where the author pinned a loop) and moves
+ * where each one crosses. Everything a knot carries is kept: its place, the way it points, whether it is a hole to
+ * pass, a pole to pass or only a shape for the curve, and for a pole, the pole.
+ *
+ * The closing knot, which repeats the first, is left out: the lap closes by going from the last back to the first.
+ * `station` is the index into course.stations that this knot makes, or -1 for a knot that only shapes the curve
+ * (a waypoint, a wrap round a stack, a steer round a gate the lap was not sent through).
+ *
+ * The tangent goes from the document's frame (up is z, north is y) to the scene's (up is y, north is minus z) the
+ * way a position does, and a direction has no origin or scale to move.
+ */
+function raceKnots(knots, field, knotStation) {
+  const out = [];
+  for (const k of knots) {
+    if (k.role === 'finish') {
+      continue;
+    }
+    const p = toScene(field, k.pos);
+    const t = k.tangent;
+    const q = {
+      role: k.role,
+      x: p.x,
+      y: elev(k.pos.z),
+      z: p.z,
+      tx: t.x,
+      ty: t.z,
+      tz: -t.y,
+      station: knotStation.has(k) ? knotStation.get(k) : -1,
+    };
+    if (k.markerPos) {
+      const m = toScene(field, k.markerPos);
+      q.poleX = m.x;
+      q.poleZ = m.z;
+    }
+    out.push(q);
+  }
+  return out;
 }
 
 /*

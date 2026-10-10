@@ -70210,3 +70210,12 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
   anything cheaper.
 - The shell's own whoop dims in configs/airframes.js (gate scoring, perching, rest spots) are unchanged; the hit a pilot
   feels is the module's.
+
+## 2026-10-10 | physics | The whoop's own plant and the smaller hit box go to main on the owner's word
+
+- Approval: the owner chose "Main" at 01:20Z on 2026-10-10 on the card "Put the smaller whoop hit box on the test branch
+  to fly?", whose option read "The whoop's own plant and the smaller hit box both go live on main." That covers this
+  branch (PR 58): the whoop's own 0702 plant at real gravity through len_scale, the module change, the re-recorded whoop
+  flights, and the smaller hull with the `ducted` and `ground_tip_accel` fields.
+- main had not moved since the branch's base (d49b908), so this is a fast forward. `npm run verify` ran on this exact
+  tree: 18 of 18. The `test` branch is not updated by this push.

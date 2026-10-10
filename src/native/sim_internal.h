@@ -153,6 +153,20 @@ typedef struct {
    * the world. See PLANT_W below and plant_build_world in plant.c.
    */
   double len_scale;
+  /*
+   * How hard a crashed craft lying off flat is tipped onto its belly or its
+   * back, rad/s^2 (sim.c ground_stall, TUMBLE FLAT). The five inch's is the
+   * 200 measured on the drop probe on 2026-09-24. Angular acceleration does
+   * not change with len_scale, so this is the airframe's own number.
+   */
+  double ground_tip_accel;
+  /*
+   * 1 when the props sit inside ducts. A ducted craft's props are never
+   * world contacts (world.c props_exposed), whatever the hull's size: the
+   * duct takes the hit and the blade keeps turning. 0 is an open prop, which
+   * strikes and rubs when it stands outside the hull.
+   */
+  int ducted;
 } PlantParams;
 
 /*

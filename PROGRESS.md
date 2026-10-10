@@ -70179,3 +70179,34 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
   same rebound failure main has (0.194 against the 0.20 floor).
 - Latency: none. Same arithmetic per step, different constants; no render, input or pacing change.
 - Not run: `npm run verify` (run twice earlier today on the same plant shape; only constants changed since).
+
+## 2026-10-10 | physics | The whoop's hit box made much smaller
+
+- The owner, 00:59Z on 2026-10-10: "Fix the 65mm whoop hit box , make much smaller". Taken as the word for this change to
+  the whoop's contact hull and for re-recording the whoop flights it moves. It is NOT a word for `test` or main: the
+  branch waits for that.
+- What it was: since the whoop got its own plant (2026-10-09) its contact hull was a solid box 41 mm out on each side,
+  the motor offset plus the whole duct, which through len_scale is 0.141 m of the room. Its corners stood 7 mm (24 mm of
+  the room) outside the round ducts and the air between the ducts was solid. Before that, flying the five inch's plant,
+  it was the five inch's 0.094 box with soft props reaching the same 0.141 on the axes.
+- What it is (src/native/plant.c, module fe241f21): the body and motor bells only, 0.094 / len_scale = 27.4 mm, the five
+  inch's own 0.094 in the room. Two thirds of the drawn whoop across its sides and its corners. Up and down unchanged.
+  The ducts are not contacts at all: a new PlantParams field `ducted` (whoop 1, five inch 0) makes world.c
+  props_exposed() answer no, so the props never strike or rub; without it the narrower box would have exposed the
+  blades and every wall tap would have cost rotor speed, which a ducted whoop does not do.
+- A second field, `ground_tip_accel`, carries sim.c's TUMBLE FLAT tip (was the constant 200). Five inch 200. Whoop
+  3000: the narrower box sat "whoop, side drop tumbles flat" on its side for good at 200. Drop probe (60 drops, 1.2 and
+  0.3 m, roll 0 to 180 by 20, pitch 0, 40, 80, throttle cut, 6 s on the shell's grass): at 200, 15 did not end flat; at
+  1000, none on a side; at 3000, none on a side and none still moving, against 1 on its side and 2 still moving on the
+  41 mm box this replaces. The probe is a scratch script, not in the tree.
+- Stale whoop hulls in three checks were still the life size 41 mm from before len_scale: `scripts/lib/worldruns.js`
+  HULL and the van ride, `scripts/world-check.js` HULL_BOX, `scripts/props-check.js` HULLS. Now in the room's metres.
+  The van ride holds the craft 10 cm into the van as before, measured from the new hull. No threshold moved.
+- Checks run on this tree: whoop:gates 21 of 21; check:craft 20 of 20; check:takeoff, contact:selftest, check:world,
+  check:props all pass; check:wall 77 of 78, the same rebound failure main has (0.194 against 0.20). check:plant and
+  check:world-golden re-recorded: plant.json moved only 5 "whoop, ..." scenarios, world.json only the two whoop runs;
+  every five inch record is the same. Both pass after the write.
+- Latency: none. No render, input or pacing change; a whoop step now skips the 4 x 13 prop rim points, so it is if
+  anything cheaper.
+- The shell's own whoop dims in configs/airframes.js (gate scoring, perching, rest spots) are unchanged; the hit a pilot
+  feels is the module's.

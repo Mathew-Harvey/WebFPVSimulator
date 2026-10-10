@@ -2729,6 +2729,12 @@ static int vehicle_contacts(int nc, int m, const Obb *o, const double cg[3], dou
 }
 
 static int props_exposed(void) {
+  /* A ducted craft's blades are inside its ducts, so they meet nothing: the
+   * whoop's contact is its hull box alone, since 2026-10-10 (plant.c, the
+   * whoop's hull note). */
+  if (PLANT_W.ducted) {
+    return 0;
+  }
   /* A duct IS the hull: when the hull box already reaches past every disc,
    * the props cannot touch anything the hull does not touch first. */
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {

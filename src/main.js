@@ -10255,8 +10255,44 @@ export async function boot({ loading, bootStart, mapId }) {
    * a parked craft gets takes it down. Coming back, the next frame feeds
    * the live state again and the mix ramps up on the same 30 ms tau.
    */
+  /*
+   * THE SCREEN STAYS AWAKE WHILE THE PAGE IS UP (bug-011db6b9, "the screen
+   * saver kicks in after some time while playing").
+   *
+   * A browser counts a key, a mouse move or a touch as someone being there,
+   * and a radio or a gamepad is none of those: the Gamepad API does not reset
+   * the idle timer. A pilot flying on sticks therefore watched the display
+   * dim or blank mid lap. The Screen Wake Lock API is the browser's own way to
+   * say the page is in use. It is a request, not a promise: a browser without
+   * it, a refusal (battery saver, an insecure page) and a page that is not
+   * visible are all quietly ignored, and the lock is dropped by the browser
+   * whenever the page hides, so it is asked for again each time it comes back.
+   *
+   * Latency: none. Two calls when the page loads or returns to the screen,
+   * nothing in the frame, the input path or the physics.
+   */
+  let wakeLock = null;
+  const keepAwake = () => {
+    if (wakeLock || document.hidden || !navigator.wakeLock) {
+      return;
+    }
+    navigator.wakeLock.request('screen').then((lock) => {
+      wakeLock = lock;
+      lock.addEventListener('release', () => {
+        if (wakeLock === lock) {
+          wakeLock = null;
+        }
+      });
+    }).catch(() => {});
+  };
+  keepAwake();
+  /* A pilot's first tap or key is a gesture some browsers want before they
+   * grant it, so ask again on that, once. */
+  window.addEventListener('pointerdown', keepAwake, { once: true });
+  window.addEventListener('keydown', keepAwake, { once: true });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
+      keepAwake();
       /* A browser may have suspended the sound while the tab was away. See
        * MotorAudio.wake: a no-op when it is running or was never made. */
       if (ui.settings.sound) {

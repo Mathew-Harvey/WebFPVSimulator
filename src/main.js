@@ -4051,6 +4051,27 @@ export async function boot({ loading, bootStart, mapId }) {
   const setDowns = [];
 
   /*
+   * AUTO RESET, bug-918a8c99. When the setting is on, a craft that has gone
+   * down (set down by the crash rule or by stuckTick, or turtled on its back)
+   * is put back on the start line with reset(), exactly what R does, once
+   * autoResetS has run out. The deadline is on the SIM clock, in ms, so a
+   * dropped frame or a paused game moves nothing, and -1 is not armed.
+   * autoResetKind says what to watch for the pilot saving it: 'set' is
+   * cancelled by the craft leaving the ground again, 'turtle' by the craft
+   * no longer being on its back or the flip starting. The frame's cost is
+   * one compare, and only while armed.
+   */
+  let autoResetAtMs = -1;
+  let autoResetKind = '';
+  function armAutoReset(kind) {
+    if (!ui.settings.autoReset) {
+      return;
+    }
+    autoResetAtMs = simTimeMs + ui.settings.autoResetS * 1000;
+    autoResetKind = kind;
+  }
+
+  /*
    * A CRASH IS A RESET, AND A RESET IS NOT A TAKEOFF. The keys and the thumb sticks are put at idle when a craft is
    * set down (resetKeyboardSticks: a recovery that left them high would relaunch the wreck by itself), and a radio's
    * gimbals cannot be put anywhere, because the hand is on them. So a craft set down with the right stick off centre
@@ -4083,6 +4104,11 @@ export async function boot({ loading, bootStart, mapId }) {
      * was waiting to pay, and a skim is never paid for the wall it ended
      * on. The trick scorer is told only where it always was. */
     counterCrash(false);
+    /* The pilot's own X is not a crash. A crash and a stuck craft are. If no
+     * spot is found below, reset() puts the craft on the line and disarms. */
+    if (why !== 'x') {
+      armAutoReset('set');
+    }
     const from = haveRecoverFrom ? recoverFrom : null;
     /* On a map with traffic, never in a car's path: a landed craft is not
      * stepped, and the car would drive through it. The verge instead, the
@@ -4191,6 +4217,31 @@ export async function boot({ loading, bootStart, mapId }) {
     turtleRecover = false;
     setDownNearby('stuck');
     notice = { text: 'Stuck, so you were set down nearby.\nX does this any time.', untilMs: performance.now() + 2800 };
+  }
+
+  /* See autoResetAtMs. Called once a frame, after crashResetTick has had its
+   * chance to arm it and before turtle can take the craft. */
+  function autoResetTick() {
+    if (!ui.settings.autoReset || mode !== 'flight' || ui.screen !== 'flight' || poseLock || launchStaging) {
+      autoResetAtMs = -1;
+      return;
+    }
+    if (autoResetAtMs < 0) {
+      /* A craft turtled by a soft crash was never set down, so nothing armed
+       * it. Arm it as it lands on its back. */
+      if (turtleWait && !turtleFlip.active) {
+        armAutoReset('turtle');
+      }
+      return;
+    }
+    if (autoResetKind === 'set' ? !landed : (!turtleWait || turtleFlip.active)) {
+      autoResetAtMs = -1;
+      return;
+    }
+    if (simTimeMs >= autoResetAtMs) {
+      reset();
+      notice = { text: 'Auto reset.', untilMs: performance.now() + 1600 };
+    }
   }
 
   /*
@@ -4507,6 +4558,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * next fault is a new one and deserves to be reported in its turn. See
      * the frame boundary. */
     frameFault = null;
+    autoResetAtMs = -1;
     /* A new run, so the mark is there to be found again, and the partners'. */
     eggFound = false;
     marksFound.clear();
@@ -6889,6 +6941,17 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
         input.beginRestartCapture();
       }
+    } else if (action === 'autoreset-switch') {
+      if (!input.firstGamepad()) {
+        notice = noRadioBanner('reload');
+      } else if (input.autoCapture) {
+        input.cancelAutoResetCapture();
+      } else {
+        input.beginAutoResetCapture();
+      }
+    } else if (action === 'autoreset-switch-clear') {
+      input.clearAutoResetSwitch();
+      notice = { text: 'Auto reset switch forgotten.\nThe setting stays as it is.', untilMs: performance.now() + 2800 };
     } else if (action === 'restart-switch-clear') {
       input.clearRestartSwitch();
       notice = { text: 'Restart switch forgotten.\nR on the keyboard still restarts.', untilMs: performance.now() + 2800 };
@@ -7525,6 +7588,9 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.setTargetLock(LOCK_OFF);
       return;
     }
+    if (view.setGuidance) {
+      view.setGuidance(ui.settings.nextGateCue !== false);
+    }
     const aim = view.targetAim ? view.targetAim() : null;
     if (!aim || !aim.active) {
       ui.setTargetLock(LOCK_OFF);
@@ -7904,6 +7970,30 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (input.restartCapture && ui.screen !== 'pilot') {
       input.cancelRestartCapture();
+    }
+    if (input.autoCapture && ui.screen !== 'pilot') {
+      input.cancelAutoResetCapture();
+    }
+    /* The Auto reset switch, bug-918a8c99: see noteAutoResetSwitch in
+     * input.js. Taken every frame so a flip in a menu is spent there; it
+     * changes the setting wherever it is made. */
+    {
+      const flipped = input.takeAutoResetSwitch();
+      if (flipped !== null) {
+        const was = Boolean(ui.settings.autoReset);
+        ui.settings.autoReset = flipped === 'toggle' ? !was : Boolean(flipped);
+        if (ui.settings.autoReset !== was) {
+          ui.writeSettings();
+          autoResetAtMs = -1;
+          notice = {
+            text: ui.settings.autoReset ? 'Auto reset on.' : 'Auto reset off.',
+            untilMs: performance.now() + 1800,
+          };
+          if (ui.isModal()) {
+            ui.renderMenu();
+          }
+        }
+      }
     }
     pollManualFlip();
     const launchNow = syncLaunchControl(nowWall);
@@ -8657,6 +8747,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
     /* Before turtle can take it: see CRASH IS A RESET. */
     crashResetTick();
+    autoResetTick();
 
     if (
       mode === 'flight'
@@ -9684,7 +9775,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * The one-time thumb-rates hand-off, at the first moment touch is
        * actually about to fly. A fresh touch profile was already seeded
        * by loadSettings; this catches the OTHER pilot, an existing
-       * profile still on the stock defaults, whose 670-no-expo is a
+       * profile still on the stock defaults, whose no-expo 600 is a
        * gimbal calibration and reads as "way too fast" on glass, which
        * is the report this answers. A pilot who chose their own rates is
        * respected: the flag still flips so this never asks again, and
@@ -9737,6 +9828,12 @@ export async function boot({ loading, bootStart, mapId }) {
       notice = restartSet === 'saved'
         ? { text: `Restart switch: ${padSum.restart}.\nFlip it in flight to go back to the start line.`, untilMs: nowWall + 3600 }
         : { text: `Restart switch: ${padSum.restart}, until you reload.\nThis browser would not keep it.`, untilMs: nowWall + 4800 };
+    }
+    const autoSet = input.takeAutoResetResult();
+    if (autoSet && padSum.autoReset) {
+      notice = autoSet === 'saved'
+        ? { text: `Auto reset switch: ${padSum.autoReset}.\nA switch sets it on or off; a button toggles it.`, untilMs: nowWall + 3600 }
+        : { text: `Auto reset switch: ${padSum.autoReset}, until you reload.\nThis browser would not keep it.`, untilMs: nowWall + 4800 };
     }
     const queuedPick = input.takePadPickQueue();
     if (queuedPick) {

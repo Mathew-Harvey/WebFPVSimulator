@@ -71,6 +71,7 @@ import { AIRFRAMES, AIRFRAME_IDS, airframeById, WHOOP_TRUE_DIMS } from '../../co
 import { docModeOf, trackClassOf } from '../trackbuilder/elements.js';
 import {
   RATE_DEFAULTS,
+  SUPERSEDED_RATES,
   RATE_FIELDS,
   RATE_TYPES,
   TOUCH_RATE_DEFAULTS,
@@ -86,6 +87,7 @@ import {
   profileForType,
   rateField,
   ratesAreDefault,
+  ratesAreSupersededStock,
   ratesFromLegacy,
   ratesShort,
   ratesSummary,
@@ -527,6 +529,10 @@ function cycle(list, value, dir) {
 export const SETTINGS_KEY = 'webfpv.settings.v3';
 
 export const FLIGHT_MODES = ['acro', 'angle'];
+/* Auto reset's wait, in seconds, from the craft going down to the run
+ * restarting. One second is the preselected one. See autoResetTick in
+ * src/main.js. */
+export const AUTO_RESET_DELAYS = [0.5, 1, 2];
 /* The lens, and the derivation behind it, live in src/render/lens.js. It is
  * re-exported here because the settings screen is where a pilot meets it. */
 export {
@@ -1044,6 +1050,13 @@ const DEFAULTS = {
    */
   whoopDefaults: 0,
   /*
+   * Which generation of the shipped RATE defaults this profile has been
+   * moved to, the same one shot as whoopDefaults. See SUPERSEDED_RATES in
+   * configs/rates.js: a profile still on the old stock 70 / 670 is moved to
+   * the softer default once, and a pilot who types 670 back keeps it.
+   */
+  stockRates: 0,
+  /*
    * Whether the flight feel question has been offered. It offers itself
    * exactly once, after the first finished race, and never again: the
    * moment the dialog opens this flips and is saved, whatever the pilot
@@ -1165,6 +1178,17 @@ const DEFAULTS = {
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
   /*
+   * AUTO RESET, bug-918a8c99: "when i crash or clip a gate mid lap i have to
+   * press reset to go again... a setting, off by default". On, a craft that
+   * has crashed (set down by the shell's crash rule, stuck, or turtled on
+   * its back) is put back on the start line and the race restarted, the same
+   * reset as R, once the delay has run out. The delay is there so a pilot
+   * who flips or flies out of it in time is left alone. autoResetS is the
+   * delay in seconds and loadSettings holds it to AUTO_RESET_DELAYS.
+   */
+  autoReset: false,
+  autoResetS: 1,
+  /*
    * Who the ghost drone chases: 'off', 'best' (your best lap this session)
    * or 'previous' (the lap before this one). Best is the default because a
    * pacer you have to discover in a menu is a pacer nobody meets: the first
@@ -1241,6 +1265,15 @@ const DEFAULTS = {
    * loop already holds. A boolean so the typeof gate accepts it.
    */
   stickOverlay: true,
+  /*
+   * NEXT GATE CUE: the green or red colouring on the gate to fly through
+   * next, and the arrow that points at it. On by default, so nothing changes
+   * for a pilot who never opens Settings. Off leaves every gate plain and
+   * draws no arrow, for a pilot who wants to find the line themselves. Only
+   * the picture: the race still counts gates in order. A boolean so the
+   * typeof gate accepts it.
+   */
+  nextGateCue: true,
   /*
    * RACE LINE: in a whoop room, a trail of cream dots through the next gates
    * showing a good line a pilot can fly, the owner's ask of 2026-10-08 on
@@ -1642,6 +1675,7 @@ export function loadSettings() {
     ['link', Object.keys(LINK_PRESETS)],
     ['pacing', PACING_MODES],
     ['cameraFov', CAMERA_FOVS],
+    ['autoResetS', AUTO_RESET_DELAYS],
     ['renderScale', RENDER_SCALES],
     ['fpsCap', FPS_CAPS],
     ['flightStyle', FLIGHT_STYLES],
@@ -1706,6 +1740,20 @@ export function loadSettings() {
     s.touchRatesOffered = true;
   } else {
     s.rates = normaliseRates(legacy || s.rates);
+  }
+  /* The shipped rates moved (2026-10-09, 70 / 670 to 60 / 600). A profile
+   * still holding the old stock on every axis never chose it, so it moves
+   * once with the default; the throttle limit and curve stay as they are. */
+  if (!(s.stockRates >= SUPERSEDED_RATES.GENERATION)) {
+    if (ratesAreSupersededStock(s.rates)) {
+      s.rates = normaliseRates({
+        ...s.rates,
+        roll: { ...RATE_DEFAULTS.roll },
+        pitch: { ...RATE_DEFAULTS.pitch },
+        yaw: { ...RATE_DEFAULTS.yaw },
+      });
+    }
+    s.stockRates = SUPERSEDED_RATES.GENERATION;
   }
   /*
    * THE WHOOP'S SHIPPED DEFAULTS MOVED, and a stored copy of the old ones
@@ -9062,6 +9110,20 @@ export class Ui {
           Boolean(s.launchControl),
           (v) => { s.launchControl = Boolean(v); },
         ),
+        toggle(
+          'Auto reset',
+          'Off by default. When on, a crash puts you back on the start line and restarts the race after the wait below, so the clock begins on your next launch. It does what R does. Flip a crashed quad upright or take off again inside the wait and nothing happens. With a radio you can bind a switch to it in Settings.',
+          Boolean(s.autoReset),
+          (v) => { s.autoReset = Boolean(v); },
+        ),
+        ...(s.autoReset ? [choice(
+          'Auto reset wait',
+          'How long after a crash before you are put back on the start line. A longer wait gives you more time to flip out of a crash you can still save.',
+          AUTO_RESET_DELAYS,
+          s.autoResetS,
+          (n) => `${n} second${n === 1 ? '' : 's'}`,
+          (n) => { s.autoResetS = n; },
+        )] : []),
         /*
          * FLIGHT FEEL TUNING, the mode's switch. On, it adds Air grip and
          * Motor power to the room as rows and to the flight screen as
@@ -9178,6 +9240,24 @@ export class Ui {
           label: 'Forget restart switch',
           action: 'restart-switch-clear',
           note: 'R on the keyboard still restarts.',
+        }] : []),
+        /* AUTO RESET FROM THE RADIO, bug-918a8c99: the Auto reset setting on a
+         * switch, so it can be turned on and off with both hands on the
+         * sticks. A switch sets it to its position; a button toggles it. */
+        ...(this.padInfo && this.padInfo.count > 0 && this.padInfo.using !== 'Keyboard' ? [{
+          label: 'Auto reset switch',
+          value: this.padInfo.autoResetCapturing ? 'Flip it now' : (this.padInfo.autoReset || 'Not set'),
+          action: 'autoreset-switch',
+          note: this.padInfo.autoResetCapturing
+            ? 'Flip the switch or press the button you want for Auto reset. Choose this row again to stop.'
+            : (this.padInfo.autoReset
+              ? 'In flight, the switch turns Auto reset on and off (a button toggles it). Choose this row to pick another.'
+              : 'A switch on your radio that turns Auto reset on and off, so you need not open the menu. Choose this row, then flip it.'),
+        }] : []),
+        ...(this.padInfo && this.padInfo.autoReset && !this.padInfo.autoResetCapturing ? [{
+          label: 'Forget auto reset switch',
+          action: 'autoreset-switch-clear',
+          note: 'The Auto reset setting stays as it is.',
         }] : []),
         /*
          * WHICH STICK CARRIES WHICH CHANNEL, and it sits here because the
@@ -9347,6 +9427,14 @@ export class Ui {
             : 'Off: no stick boxes on the flight picture. Turn it on to see what your sticks are telling the quad.',
           s.stickOverlay,
           (v) => { s.stickOverlay = v; },
+        ),
+        toggle(
+          'Next gate cue',
+          s.nextGateCue
+            ? 'On: the gate to fly through next is lit green, or red when you are on the wrong side of it, and an arrow points at it when it is off screen.'
+            : 'Off: no green or red gate and no arrow. Every gate looks the same and you find the next one yourself. The race still counts gates in order.',
+          s.nextGateCue,
+          (v) => { s.nextGateCue = v; },
         ),
         toggle(
           'Race line',
@@ -10051,8 +10139,8 @@ export class Ui {
           action: 'rates-default',
           disabled: !ratesChanged(s),
           note: ratesChanged(s)
-            ? `Back to what a freshly flashed Betaflight 4.5.1 flies: Actual rates, ${formatRate(rateField('ACTUAL', 'rcRate'), RATE_DEFAULTS.roll.rcRate)} deg/s at centre, ${formatRate(rateField('ACTUAL', 'srate'), RATE_DEFAULTS.roll.srate)} deg/s at the stop on every axis, no expo, no throttle limit.`
-            : 'Already on the Betaflight 4.5.1 defaults.',
+            ? `Back to the shipped rates: Actual, ${formatRate(rateField('ACTUAL', 'rcRate'), RATE_DEFAULTS.roll.rcRate)} deg/s at centre, ${formatRate(rateField('ACTUAL', 'srate'), RATE_DEFAULTS.roll.srate)} deg/s at the stop on every axis, no expo, no throttle limit. A step under a freshly flashed Betaflight's 70 and 670, which are one row each away.`
+            : 'Already on the shipped defaults.',
         },
         { label: 'Back', action: 'back' },
       ];
@@ -16310,6 +16398,8 @@ export class Ui {
     const was = padTroubleItem(this.padInfo, this.stickPlatform);
     const wasRestart = (this.padInfo && this.padInfo.restart) || null;
     const wasCapturing = Boolean(this.padInfo && this.padInfo.restartCapturing);
+    const wasAuto = (this.padInfo && this.padInfo.autoReset) || null;
+    const wasAutoCapturing = Boolean(this.padInfo && this.padInfo.autoResetCapturing);
     this.padInfo = info || { count: 0, using: 'Keyboard' };
     /*
      * A TROUBLE ROW THAT APPEARS MID SESSION HAS TO ASK FOR THE PAINT.
@@ -16342,7 +16432,9 @@ export class Ui {
     /* The same for the restart switch row in Settings, which changes when
      * a flip lands rather than when anything is pressed on the page. */
     if (this.screen === 'pilot' && (wasRestart !== (this.padInfo.restart || null)
-      || wasCapturing !== Boolean(this.padInfo.restartCapturing))) {
+      || wasCapturing !== Boolean(this.padInfo.restartCapturing)
+      || wasAuto !== (this.padInfo.autoReset || null)
+      || wasAutoCapturing !== Boolean(this.padInfo.autoResetCapturing))) {
       this.renderMenu();
     }
   }

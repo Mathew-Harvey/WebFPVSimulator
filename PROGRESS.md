@@ -70271,3 +70271,141 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
 - Latency: none. Menu and board only; the two dialogs load on first open, the flight, input and render paths are untouched.
 - Went wrong: the first draft of the load dialog appended a stray node, and my first smoke clicked Share twice; both
   caught by reading the diff and the run.
+
+## 2026-10-11 | shell | Auto reset after a crash, with a radio switch
+
+- Ask (owner, 06:27Z, board ticket bug-918a8c99 from a whoop pilot on RaceGOW6 Track 2): "a setting, off by default: auto
+  reset. if the quad crashes put me back on the start and restart the race so the clock starts on the next launch", with
+  a delay choice, and "can bind to radio". Draft PR, not pushed to any branch yet.
+- What changed: `autoReset` (off) and `autoResetS` (0.5, 1 or 2, one second preselected) in the settings, two rows under
+  Launch control in the Quad screen (the wait row shows only while the switch is on). `src/main.js`: `autoResetTick`
+  runs once a frame beside `crashResetTick`. It arms from the crash signals the shell already has, `setDownNearby` with
+  a reason other than the pilot's own X (the crash rule and stuckTick), and from `turtleWait` (a quad on its back).
+  When the sim clock reaches the deadline it calls `reset()`, the same call as R and the radio's restart switch, so the
+  craft is on the start line and the race restarts. It cancels if the craft leaves the ground again (set down kind) or is
+  flipped upright or the flip starts (turtle kind), and `reset()`, a menu, a launch or a pose lock disarm it. The deadline
+  is on the sim clock, so a dropped frame or a pause moves nothing.
+- Radio: an "Auto reset switch" row beside "Restart switch" in Settings (radio only), built on the same capture code,
+  which is now one `captureSwitch` shared by both rows. An axis switch sets the setting to its position (up on, down
+  off), a button toggles it; the first read after a page load only learns the position, so a switch left on does not
+  overrule the saved setting. Stored under `webfpv.autoreset.v1`, separate from the restart switch.
+- A hard crash is already set down nearby at once by the existing rule, so the wait counts from that set down: a pilot who
+  takes off inside it is not reset. A bounce too soft to be a crash arms nothing.
+- Latency: none to the input or render path. One boolean read per frame while off, one integer compare while armed, no
+  allocation. Proxy only: no GPU here. `reset()` is the existing R path.
+- Checks run this turn: `node scripts/input-selftest.js` 394 of 394 (new cases for the switch: capture, position, button
+  toggle, forgotten, on at page load); new `npm run check:autoreset` (scripts/autoreset-check.js, headless city, 10 m/s
+  head-on at the shopfront): off stays set down at the wall, on with 1 s ends landed 7.5 m from the wall on the start
+  line, on with 2 s and the pilot flying out ends airborne at 89 m, 0 failed; `lint:nouns` pass. Not run: verify, shots,
+  lint:input, lint:shell (baseline fails here), the physics checks (nothing touches the plant).
+- Not decided, left for the owner: turtle counts as down (a quad on its back is reset after the wait unless it is flipped);
+  say if only crashes should reset.
+
+## 2026-10-09: softer default rates, Actual 60 / 600 (the owner's ask), and the feel tickets read
+
+- Ask: the owner, 2026-10-09 08:02Z: "i want to scrape all the flight feel tickets and make the thing feel better. Overall its twitchy, so im gonna suggest we start with lowering the default rates just a little". On a draft PR, not on main or `test`.
+- The tickets: all 319 of kind `feel` on the board read at 08:15Z (78 open, every one since the 2026-10-03 clean start; 180 wontfix; 61 fixed), per status because the listing caps at 200, then each by id. The themes and a per ticket table without reporter names are in the project folder, `flight-feel-themes/themes.md` and `tickets.json`. What made the rate step the first one: twitchy is the commonest complaint (72, beside about right 79), and on the stock 670 no expo profile 39 percent of verdicts are twitchy or stiff (66 of 170) against 26 percent on the 450 / 400 touch profile and 28 percent on a pilot's own rates. Floppy has fallen since the 2026-09-28 feedforward change (20 to 14 percent); twitchy has not.
+- What changed: `RATE_DEFAULTS` in `configs/rates.js` and both airframes' `rates` in `configs/airframes.js`, Actual 70 / 670 / 0 to 60 / 600 / 0 on every axis. Same type, still linear, so a Betaflight pilot reads it at a glance. Degrees per second, before and after, through `angleRateDeg`: 10 percent stick 13 to 11, a quarter 55 to 49, half 185 to 165, three quarters 390 to 349, the stop 670 to 600. 10 to 14 percent off everywhere. The touch profile (450 / 400, 0.25 expo) is unchanged. RATE_SYSTEMS' ACTUAL entry keeps Configurator's 70 / 670, because it is what switching type loads and is quoted from Configurator.
+- Who gets it: a fresh profile, and once, any profile still holding the old stock exactly on all three axes (`SUPERSEDED_RATES` and `ratesAreSupersededStock` in `configs/rates.js`, the `stockRates` marker in DEFAULTS and the move in `loadSettings`, the same one shot pattern as `whoopDefaults`). That profile never chose its rates; it is what the shell stored for every pilot who did not open the Rates screen. A pilot's own rates are never moved, nor the old stock typed back after the move. The throttle limit and curve never move.
+- A bug the change exposed: `normaliseRates` filled an unknown type's axes from Configurator's ACTUAL defaults, which were the same numbers as RATE_DEFAULTS until now. `lint:fc` F7 "an unknown rates type falls back whole" caught it. An unknown type now takes RATE_DEFAULTS; a known type still fills a missing field from its Configurator default.
+- Copy: the Rates screen's revert row no longer says "what a freshly flashed Betaflight 4.5.1 flies"; it says the shipped rates and that Betaflight's 70 and 670 are a row each away. `lint:fc` F7's two "want 67 from the menu" checks now read the menu's number from RATE_DEFAULTS rather than a typed 67: what they assert, that the menu's rates beat a tune's, is unchanged.
+- Latency: none added. Rates are the eleven numbers `ratesDiff` always writes into the CLI, read by the same Betaflight rate function in the module, so the stick to motor path is the same length at any value. `npm run feel:response`, main against the branch: the flick's 10, 50 and 90 percent times move 0 to 3 ms sooner on every pad (shipped tune, ideal pad, 22 / 38 / 59 to 22 / 37 / 58 ms) and the 2 Hz sine lag 0.1 to 0.2 ms less (6.8 to 6.6), because a smaller target is reached sooner. Proxy only, no flight on real hardware.
+- What a pilot feels besides: less run on past a centred stick (full stick roll carry 8.0 to 6.5 degrees, Expert, ideal pad) and a slightly larger bounce back on a full stick stop (roll 0.36 to 0.54 degrees, pitch 0.53 to 0.62, still under half of factory's 1.3 and 1.6), from the lower rate the I term has to wind against. Yaw stop unchanged.
+- Checks run: `lint:fc` 33 of 33 (after the fallback fix; 32 of 33 before it), `seat:selftest` 30 of 30 with five new checks for the move (fresh, old stock moves and keeps its cap, old stock typed back stays, own rates stay, the whoop moves), `input:selftest` 380 of 380, `lint:presets` 4 of 4, `replay:selftest`, `feel:response` against main. `lint:input` 245 of 246: the one failure is in the track builder ("a key pressed at the question does nothing behind it"), a page this change does not load, and it fails the same way on main 04cc343 in this container (run beside it in a worktree). `lint:catalog` does not run in this container (vendor/betaflight not checked out). Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`, a flight on real hardware.
+- To the test branch: the owner tapped "Test branch" on the card "Push the softer default rates (60/600) to the test branch or main?" at 08:32:01Z on 2026-10-09. It covers this branch on `test` only; main waits on his word. `test` carried CommunityGow, so the branch was merged onto `origin/test` on a local integration branch and pushed as a fast-forward, no force.
+- To main: the owner wrote "push everything to main" in this thread at 06:31:20Z on 2026-10-11. It covers this branch (PR 57), main merged in first (the whoop's own plant, the builder's admin rule). Read as this thread's work; other threads' work on `test` was not moved by it. Checks on the merged tree: `lint:fc` 33 of 33, `input:selftest` 384, `lint:presets` 4 of 4, `lint:preload`, `check:fresh` 18 of 18, `seat:selftest` 29 of 30. The one seat failure, "first time on the whoop: the weight comes down to its top" reading 130, fails the same way on main 256e132 (24 of 25 there) and comes from the whoop's weightMax moving to 140, not from the rates. Not run: `npm run verify` (no physics, plant, ABI or build change here).
+- Approval: the owner wrote "push to main" at 06:37Z on 2026-10-11, in answer to draft PR 62. Main had moved (the softer
+  rates), so main was merged into the branch first (only PROGRESS.md conflicted, both sides kept) and main is a fast
+  forward from it. input-selftest 394 of 394 after the merge. The owner flies it.
+
+
+## 2026-10-11 | settings | Next gate cue setting
+
+- Ask (owner, 06:32Z): a setting to turn off the next gate indicator, both the green / red gate and the arrow.
+- What changed: `nextGateCue` (boolean, default on) in `src/ui/ui.js`, row "Next gate cue" in Settings after Stick overlay.
+  `setGuidance(on)` in `src/render/scene.js` makes `setNextGate` paint no target while off (every gate stays dark and
+  `aim` stays inactive, so the shell's arrow has nothing to point at); the race line still hears the real target. The shell
+  applies it once a frame in `updateTargetLock` (`src/main.js`), a no-op when unchanged. Race scoring is untouched.
+- Checks: `node --check` on the three files only. Not run: lint:input, shots, verify. Nothing seen in a browser.
+- Latency: none added. On path is the existing code plus one boolean compare per frame; off only skips drawing.
+- Approval: the owner wrote "push to main" at 06:37Z on 2026-10-11, in answer to draft PR 61. Fast forward onto main (fetched
+  first; nothing had moved since the merge of main into the branch). No verification pass beyond `node --check`; the owner
+  flies it.
+
+### The whoop export bundle, 2026-10-08 (draft)
+
+- Asked by the owner (14:08Z in the export thread): each track exportable as files with instructions, the pieces
+  needed and GIFs of the circuit, for a friends' app where a group races a new track each week at its own pace.
+  Built on a draft branch, not pushed to main. Nothing here touches physics, the plant, the module ABI or the build,
+  and the stage change is additive: a lap animation of racegow5-track1 is byte identical before and after (sha256
+  d8c6e4ec, 256 px, 12 frames).
+- What it is: More, Export bundle (whoop only) writes one stored zip made in the browser: `bundle.json` (versioned
+  machine file), `track.json` (the builder's document), `map.svg`, six stills (three corners, with the line and
+  without), `lap.gif`, `instructions.html`. Format in `BUNDLE-FORMAT.md`. Reused: `buildPath(doc, { closeLoop: true })`
+  for the line, `buildSheet` for pieces and parts, `exportTrackGif` for the animation. `buildSheet` gained `origin`.
+  `stage.js` gained `setRoute` (whole lap as one even ribbon, or none) and `look` (camera from a compass bearing).
+  `scripts/trackbundle.js` makes one headless.
+- Weak machines: the pictures are optional in the dialog; the stills are one renderer and six draws; the animation
+  defaults to 384 by 240 and is the existing yielding, abortable exporter; the zip is stored, so packing is a CRC.
+  Not measured on a real weak laptop. In this container (software GL): Track 1 with everything 5.7 s, Track 8
+  (211 frames) 13.5 s, 1.9 MB; without pictures about 1 s.
+- Checks run: `node src/trackbuilder/selftest.js` (2579 passed, 20 new), `lint:nouns`, `lint:preload`, `lint:boot`,
+  `lint:memory`, the dialog driven in headless Chromium (Done, 10 files). Not run: `npm run verify`, `shots.js`.
+- What went wrong: the first map drew a gate as a spike, because the build sheet's footprint polygon is for the
+  sheet; the map now draws the pipe members. Passes on one spot overprinted each other (RaceGOW Track 8 flies a gate
+  five times), so labels group and cap at three numbers.
+- Left for the owner: the friend's app is not touched. CommunityGow hosting is a separate piece, see the thread.
+
+### CommunityGow from the builder, and every round flyable, 2026-10-09 (draft)
+
+- Asked by the owner (05:40Z in the export thread): a full design review of CommunityGow against its goal, a
+  group racing a new whoop track a week at home with video evidence, and built tracks in the game as easily as
+  possible. The board half (draft PR 13 on the board) makes every round's track a board track, so a round is
+  flown from its page with one press; this half lets the organiser make and send the round without touching a
+  file. Same draft branch as the export bundle, main merged in first (3335999).
+- What it is: `src/trackbuilder/community.js` reads the community the portal's Make it in the builder link
+  names (`?community=<slug>&board=...#cgkey=<organiser key>`), keeps it in sessionStorage for the tab, takes it
+  out of the address, and sends a round to the board's `/api/communities/:slug/rounds`. `start.js` takes it
+  before anything else reads the address, and loads the module only on such a visit or a reload of one. The
+  builder shows a mint strip under the bar ("Round 2 for Perth Whoop Club", Send, Not now) that follows the
+  track: Send is off until the track is a whoop race track with a lap. Send makes the bundle with the six views
+  and the small animation (inside the board's 4 MB) and posts it; the dialog ends on Open round N and Copy its
+  link. Export bundle also takes a pasted organiser link. `fresh.js` regenerated: it now also lists
+  `bundle.js`, `bundlemaker.js` and `zip.js`, which the bundle commit had left out.
+- Latency: nothing on the flying path changes. The builder fetches one more module only on a community visit.
+- Checks run: `node src/trackbuilder/selftest.js` 2593 passed, 1 failed (15 new, all pass). The one failure is
+  "a whoop rests on the plant's 45 mm", which fails the same way on untouched main 595ed93 (2558 passed, 1
+  failed): main's belly moved to 33 mm and this check still says 45. Not this change, left for the tune thread,
+  which fixed the check on main as 04cc343. With that merged in, 2594 passed, 0 failed.
+  `lint:preload` (after `gen:preload`), `lint:boot` 9 of 9, `lint:nouns`. End to end in headless Chromium with
+  the simulator on 8000 and a scratch board on 3150: a community made, the builder opened from its link (strip
+  shown, address cleaned, kept across a reload), RaceGOW5 Track 1 sent in 4.8 s, the board's round carrying a
+  board track, and the round's Fly link landing at the starting blocks ("GATE 1 OF 6"); Track 8 sent from a 390
+  by 844 phone layout. Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`.
+- What went wrong: the first strip had no deadline on its read of the community, which `lint:boot`'s rule (every
+  board read has one) would have wanted; it has the board's 8 s now, and a slow board still lets Send work.
+- Test branches: the owner wrote "push this feature to test branch" in the thread at 08:19:54Z on 2026-10-09,
+  while the card asking how to check it before main was still open. It covers putting this feature on `test` in
+  both repositories, not main, and both PRs stay drafts. Board: PR 13's branch merged board main first (1bed022,
+  bringing the tune tickets; npm test passed on the file store and twice on one scratch Postgres, lint:licence
+  and lint:nouns pass) and board `test` was fast-forwarded to it, df8733d to 1bed022. Simulator: this branch
+  merged main twice, 10b2c32 for the flight feel tuning and 6f03780 for the race line, which reached main at 08:24Z
+  while this was under way (check:clip 2594 passed, lint:preload, lint:boot, lint:memory, lint:nouns and
+  check:fresh pass on both), and `test` takes it as a merge on top of `test` as it was (the race line and the
+  flight feel tuning) with main merged in first, pushed as a fast-forward. No force push, main untouched.
+- Latency: unchanged, nothing on the flying path. Where `test` deploys is not written down anywhere in either
+  repository, so which board the test simulator reads, and which simulator the test board's Fly and builder links
+  open, were not checked from here.
+- Main: the owner wrote "push everything to main" in the thread at 06:31:27Z on 2026-10-11. In this thread that
+  is both halves of CommunityGow, the board's PR 13 and this PR 52 with the export bundle; other threads' work on
+  `test` is theirs to move. Board first: board main fast-forwarded df8733d to 1bed022 after `npm test` passed on
+  the file store and on a scratch Postgres, with lint:licence and lint:nouns. Other threads were pushing to main
+  at the same time, so this branch merged main three times on its way: 223214f (the whoop's own plant, its
+  smaller hit box, the builder's admin only logos and stickers), f9eacba (the softer rates) and 6a453c0 (the Next
+  gate cue and Auto reset), PROGRESS.md the only conflict each time with every line of both sides kept. Main is
+  fast-forwarded to the result. Checks on each merge: check:clip 2594 passed, 0 failed; lint:preload, lint:boot,
+  lint:memory, lint:nouns and check:fresh pass. The end to end run on 223214f against the board's head made a
+  community, opened the builder from its link, sent RaceGOW5 Track 1 in 3.8 s, and its Fly link landed on the
+  starting blocks, with no console errors in the builder or the simulator. Not run: `npm run verify` (nothing here
+  touches physics, the plant, the ABI or the build; main's whoop plant was verified by its own thread), shots.
+  Latency: unchanged, nothing on the flying path.

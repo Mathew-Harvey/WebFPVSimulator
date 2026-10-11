@@ -592,6 +592,9 @@ export function buildSheet(doc, opts = {}) {
     cornerLabel: way.label,
     opening,
     bounds: { width: box.maxX - box.minX, depth: box.maxY - box.minY },
+    /* Where the south west corner of that rectangle is, in the document's own frame, so a
+     * picture drawn in the document's frame can be laid on this sheet's. */
+    origin: { x: box.minX, y: box.minY },
     pieces,
     parts,
     members: members.length,

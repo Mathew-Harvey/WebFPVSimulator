@@ -16154,7 +16154,12 @@ export class Ui {
      * card flips below the slider on a short screen.
      */
     const raise = touch ? (!ready && airMs > 0) : (ready && !padFlying);
-    if (!this.airHintDone && air.hint.hidden && raise && !dialog && !airHintSeen()) {
+    /* A card seen in an earlier session is remembered here as done, so the
+     * local storage read happens once and not on every frame after it. */
+    if (!this.airHintDone && air.hint.hidden && raise && !dialog && airHintSeen()) {
+      this.airHintDone = true;
+    }
+    if (!this.airHintDone && air.hint.hidden && raise && !dialog) {
       air.hint.hidden = false;
       /* The first raise starts its eight seconds. A raise after a pause
        * keeps the stamp, so the pause does not buy the card more air. */
@@ -16179,8 +16184,13 @@ export class Ui {
           tuneHint.hidden = true;
         }
       } else if (tuneHint.hidden && !ready && !dialog && room && air.hint.hidden && this.settings.feelTuning
-        && !this.tuneHintDone && !tuneHintSeen()) {
-        tuneHint.hidden = false;
+        && !this.tuneHintDone) {
+        /* The same once only read as the Weight card's above. */
+        if (tuneHintSeen()) {
+          this.tuneHintDone = true;
+        } else {
+          tuneHint.hidden = false;
+        }
       }
     }
     Ui.klass(air.box, ready && air.hint.hidden ? 'osd-air is-aloft' : 'osd-air');

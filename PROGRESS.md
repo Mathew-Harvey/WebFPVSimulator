@@ -70367,12 +70367,13 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
 - Main: the owner wrote "push everything to main" in the thread at 06:31:27Z on 2026-10-11. In this thread that
   is both halves of CommunityGow, the board's PR 13 and this PR 52 with the export bundle; other threads' work on
   `test` is theirs to move. Board first: board main fast-forwarded df8733d to 1bed022 after `npm test` passed on
-  the file store and on a scratch Postgres, with lint:licence and lint:nouns. Then this branch merged main again
-  (223214f: the whoop's own plant, its smaller hit box, the builder's admin only logos and stickers; PROGRESS.md was
-  the only conflict), then once more (f9eacba) for the softer rates, which reached main while this was under
-  way, and main is fast-forwarded to it. Checks on both merges: check:clip 2594 passed, 0 failed;
-  lint:preload, lint:boot, lint:memory, lint:nouns and check:fresh pass; the end to end run against the board's
-  head made a community, opened the builder from its link, sent RaceGOW5 Track 1 in 3.8 s, and its Fly link
-  landed on the starting blocks, with no console errors in the builder or the simulator. Not run: `npm run
-  verify` (nothing here touches physics, the plant, the ABI or the build; main's whoop plant was verified by its
-  own thread), shots. Latency: unchanged, nothing on the flying path.
+  the file store and on a scratch Postgres, with lint:licence and lint:nouns. Other threads were pushing to main
+  at the same time, so this branch merged main three times on its way: 223214f (the whoop's own plant, its
+  smaller hit box, the builder's admin only logos and stickers), f9eacba (the softer rates) and 6a453c0 (the Next
+  gate cue and Auto reset), PROGRESS.md the only conflict each time with every line of both sides kept. Main is
+  fast-forwarded to the result. Checks on each merge: check:clip 2594 passed, 0 failed; lint:preload, lint:boot,
+  lint:memory, lint:nouns and check:fresh pass. The end to end run on 223214f against the board's head made a
+  community, opened the builder from its link, sent RaceGOW5 Track 1 in 3.8 s, and its Fly link landed on the
+  starting blocks, with no console errors in the builder or the simulator. Not run: `npm run verify` (nothing here
+  touches physics, the plant, the ABI or the build; main's whoop plant was verified by its own thread), shots.
+  Latency: unchanged, nothing on the flying path.

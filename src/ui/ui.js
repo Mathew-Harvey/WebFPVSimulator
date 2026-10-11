@@ -5036,6 +5036,10 @@ export class Ui {
     this.tuneProbe = null;
     this.tuneCaps = { air: true, kv: true };
     this.tuneBackup = null;
+    /* Set when a loaded tune (or Put mine back) rewrites the stored dump
+     * under the one 'custom' id, which the id alone cannot show: the shell
+     * reads it in applySettings, clears it, and loads the dump again. */
+    this.tuneDumpChanged = false;
     this.resultsTune = null;
     this.tuneAsked = new Set();
     /* The combinations already sent this session, so the Share row can say
@@ -6912,6 +6916,7 @@ export class Ui {
         this.tuneBackup = null;
         return { error: 'This browser would not keep the tune. Storage may be full or blocked.' };
       }
+      this.tuneDumpChanged = true;
     }
     s.tune = x.base;
     const pids = normalisePids(x.pids ? { [x.base]: x.pids } : {});
@@ -6955,6 +6960,7 @@ export class Ui {
       } else {
         writeFcDump(back.airframe, back.dump);
       }
+      this.tuneDumpChanged = true;
     }
     for (const k of Object.keys(this.settings)) {
       delete this.settings[k];

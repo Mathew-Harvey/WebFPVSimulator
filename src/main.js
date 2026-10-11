@@ -5730,6 +5730,14 @@ export async function boot({ loading, bootStart, mapId }) {
      * dump under the one id, so the id stays 'custom' while the dump that
      * should fly changes. See dumpFor.
      */
+    /* Or a tune from the board rewriting Your edits' dump under the same id
+     * and aircraft: forget whose dump is loaded, so it is loaded again. */
+    if (ui.tuneDumpChanged) {
+      ui.tuneDumpChanged = false;
+      if (s.tune === 'custom') {
+        dumpFor = null;
+      }
+    }
     if (s.tune !== menuTune || (s.tune === 'custom' && dumpFor !== s.airframe)) {
       menuTune = s.tune;
       configLoadWait = swapTune(s.tune).catch((e) => {

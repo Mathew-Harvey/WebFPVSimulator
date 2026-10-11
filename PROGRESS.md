@@ -70236,3 +70236,6 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
 - Checks: `node --check`, `node src/trackbuilder/selftest.js` 2559 passed 0 failed (model only, it cannot see the UI).
   Not run: builder-flow-check, shots, verify. Nothing here has been seen in a browser.
 - Latency: none. Builder only, no flight, input or render path touched.
+- Approval: the owner wrote "push to main" at 01:35Z on 2026-10-11, in answer to the draft PR 60. Main was a fast forward
+  (nothing had moved since the branch's base). No verification pass was run beyond the builder self test above; the owner
+  flies it.

@@ -613,7 +613,7 @@ static void ground_project_hull(void) {
  * balanced a five inch on its side with that. At 0.5 it settles under a
  * tenth: stopped, as a disarmed motor is. */
 #define GROUND_STALL_RUB 0.5
-#define GROUND_TIP_ACCEL 200.0
+#define GROUND_TIP_ACCEL (PLANT_W.ground_tip_accel)
 
 /* Is this a crashed craft lying on the ground, as above? Writes body up
  * and its component along the ground normal. ground_settle asks it too:

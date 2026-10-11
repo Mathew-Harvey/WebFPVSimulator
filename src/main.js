@@ -86,6 +86,7 @@ import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
 import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, emptyWorldReport, foldWorldReport } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn } from './ui/ui.js';
+import { TAKEOFF, guideKind, stepOf, textOf } from './ui/firstflight.js';
 import {
   AIR_GRIP_STOCK,
   MOTOR_KV_STOCK,
@@ -4051,6 +4052,27 @@ export async function boot({ loading, bootStart, mapId }) {
   const setDowns = [];
 
   /*
+   * AUTO RESET, bug-918a8c99. When the setting is on, a craft that has gone
+   * down (set down by the crash rule or by stuckTick, or turtled on its back)
+   * is put back on the start line with reset(), exactly what R does, once
+   * autoResetS has run out. The deadline is on the SIM clock, in ms, so a
+   * dropped frame or a paused game moves nothing, and -1 is not armed.
+   * autoResetKind says what to watch for the pilot saving it: 'set' is
+   * cancelled by the craft leaving the ground again, 'turtle' by the craft
+   * no longer being on its back or the flip starting. The frame's cost is
+   * one compare, and only while armed.
+   */
+  let autoResetAtMs = -1;
+  let autoResetKind = '';
+  function armAutoReset(kind) {
+    if (!ui.settings.autoReset) {
+      return;
+    }
+    autoResetAtMs = simTimeMs + ui.settings.autoResetS * 1000;
+    autoResetKind = kind;
+  }
+
+  /*
    * A CRASH IS A RESET, AND A RESET IS NOT A TAKEOFF. The keys and the thumb sticks are put at idle when a craft is
    * set down (resetKeyboardSticks: a recovery that left them high would relaunch the wreck by itself), and a radio's
    * gimbals cannot be put anywhere, because the hand is on them. So a craft set down with the right stick off centre
@@ -4083,6 +4105,11 @@ export async function boot({ loading, bootStart, mapId }) {
      * was waiting to pay, and a skim is never paid for the wall it ended
      * on. The trick scorer is told only where it always was. */
     counterCrash(false);
+    /* The pilot's own X is not a crash. A crash and a stuck craft are. If no
+     * spot is found below, reset() puts the craft on the line and disarms. */
+    if (why !== 'x') {
+      armAutoReset('set');
+    }
     const from = haveRecoverFrom ? recoverFrom : null;
     /* On a map with traffic, never in a car's path: a landed craft is not
      * stepped, and the car would drive through it. The verge instead, the
@@ -4191,6 +4218,31 @@ export async function boot({ loading, bootStart, mapId }) {
     turtleRecover = false;
     setDownNearby('stuck');
     notice = { text: 'Stuck, so you were set down nearby.\nX does this any time.', untilMs: performance.now() + 2800 };
+  }
+
+  /* See autoResetAtMs. Called once a frame, after crashResetTick has had its
+   * chance to arm it and before turtle can take the craft. */
+  function autoResetTick() {
+    if (!ui.settings.autoReset || mode !== 'flight' || ui.screen !== 'flight' || poseLock || launchStaging) {
+      autoResetAtMs = -1;
+      return;
+    }
+    if (autoResetAtMs < 0) {
+      /* A craft turtled by a soft crash was never set down, so nothing armed
+       * it. Arm it as it lands on its back. */
+      if (turtleWait && !turtleFlip.active) {
+        armAutoReset('turtle');
+      }
+      return;
+    }
+    if (autoResetKind === 'set' ? !landed : (!turtleWait || turtleFlip.active)) {
+      autoResetAtMs = -1;
+      return;
+    }
+    if (simTimeMs >= autoResetAtMs) {
+      reset();
+      notice = { text: 'Auto reset.', untilMs: performance.now() + 1600 };
+    }
   }
 
   /*
@@ -4507,6 +4559,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * next fault is a new one and deserves to be reported in its turn. See
      * the frame boundary. */
     frameFault = null;
+    autoResetAtMs = -1;
     /* A new run, so the mark is there to be found again, and the partners'. */
     eggFound = false;
     marksFound.clear();
@@ -6479,62 +6532,93 @@ export async function boot({ loading, bootStart, mapId }) {
   /*
    * The first flight's prompts.
    *
-   * THREE LINES, FIRED BY WHAT THE PILOT DOES, not by a clock. The banner
-   * already carries the launch prompt and the lap splits, and the guide
-   * arrows are already painted on the grass, so a first run needs nothing
-   * new: it needs the three sentences that carry somebody from a hover to a
-   * gate, and then it needs to get out of the way.
+   * A HANDFUL OF LINES PER KIND OF PLACE, FIRED BY WHAT THE PILOT DOES, not
+   * by a clock: a five inch race track, a whoop room and a freestyle world
+   * each get theirs once, at the first launch into that kind, by any door
+   * (see src/ui/firstflight.js for the words and for why it starts at launch
+   * and not on a menu row). The banner already carries the launch prompt and
+   * the lap splits, and the guide arrows are already painted on the grass, so
+   * a first run needs nothing new: it needs the sentences that carry somebody
+   * from a hover to a gate, or from a hover to a flip, and then it needs to
+   * get out of the way.
    *
    * It retires itself. Once a lap is on the board, or three gates are behind
-   * them, the pilot is flying and the lap splits are the more useful message.
-   * Retiring here rather than on a timer means a slow first lap is never cut
-   * off mid prompt and a fast one is never nagged.
+   * them, the pilot is flying and the lap splits are the more useful message;
+   * a freestyle world has no gates, so it retires on airtime. Retiring here
+   * rather than on a timer means a slow first lap is never cut off mid
+   * prompt and a fast one is never nagged.
    */
   /*
    * THE FIRST FLIGHT TOLD EVERY PILOT TO PRESS A KEY THEY MIGHT NOT HAVE.
    *
-   * These three lines are the only instruction this simulator ever gives,
-   * and they named the up arrow, R and Escape to a pilot who could be
-   * holding a radio or a phone. A thumb pilot in landscape has no arrow key
-   * and no Escape, so the one screen meant to teach the controls was
-   * describing somebody else's.
+   * These lines are the only instruction this simulator ever gives, and
+   * they named the up arrow, R and Escape to a pilot who could be holding a
+   * radio or a phone. A thumb pilot in landscape has no arrow key and no
+   * Escape, so the one screen meant to teach the controls was describing
+   * somebody else's.
    *
    * It is the same root as the feel reports that prompted this round: three
    * transducers reach this shell and the shell kept assuming one of them.
-   * Read once per prompt rather than cached, because a radio can be plugged
-   * in between the line that says "arrow" and the line that says "stick".
+   * The device is read every frame the guide is up rather than once, because
+   * a radio can be plugged in between the line that says "arrow" and the
+   * line that says "stick". The words are rebuilt only when the step, the
+   * device, the stick mode or the flight mode changes, which is the last
+   * time the pilot could have seen a different string, so a guided frame
+   * builds no string: it asks the input layer who is flying, as it always
+   * did, and compares five fields.
    */
-  const guidedWords = () => {
-    if (input.isTouchPrimary()) {
-      return {
-        nose: 'Push the right plate up, then throttle on the left',
-        again: 'Pause, then Restart puts you back on the line',
-      };
+  const guideMemo = {
+    kind: '', step: null, device: '', stickMode: 0, angle: false, text: '',
+  };
+  const guideLine = (kind, step) => {
+    const device = input.isTouchPrimary() ? 'touch' : (input.firstGamepad() ? 'pad' : 'keys');
+    const stickMode = ui.settings.stickMode;
+    const m = guideMemo;
+    if (m.kind !== kind || m.step !== step || m.device !== device
+      || m.stickMode !== stickMode || m.angle !== angleModeOn) {
+      m.kind = kind;
+      m.step = step;
+      m.device = device;
+      m.stickMode = stickMode;
+      m.angle = angleModeOn;
+      m.text = textOf(kind, step, { device, stickMode, angle: angleModeOn });
     }
-    if (input.firstGamepad()) {
-      return {
-        nose: 'Ease the right stick forward, then throttle',
-        again: 'R puts you back on the line. Escape pauses',
-      };
-    }
-    return {
-      nose: 'Tip forward with the up arrow, then throttle',
-      again: 'R puts you back on the line. Escape pauses',
-    };
+    return m.text;
+  };
+  /*
+   * The kind the armed guide is for, or '' when none is armed or the run on
+   * screen is not that kind's. A guide armed for a race track must not read
+   * out over a whoop room because the aircraft was changed in the pause menu
+   * and the run restarted, so it says nothing while the two disagree. It is
+   * hidden and not retired: ui.armGuide decides afresh at every launch from
+   * the same two facts this compares, and a frame during a world swap sees
+   * the old world's race for a moment, which must not use the guide up.
+   */
+  const guidedKindNow = (race) => {
+    const kind = ui.guided;
+    return kind && guideKind(race.freestyle, ui.settings.airframe) === kind ? kind : '';
   };
   const guidedPrompt = (race) => {
-    if (race.freestyle || race.lastLapMs != null || race.next >= 3) {
+    const kind = guidedKindNow(race);
+    if (!kind) {
+      return '';
+    }
+    const step = stepOf(kind, {
+      next: race.next,
+      lapDone: race.lastLapMs != null,
+      airMs: airtimeMs,
+    });
+    if (step < 0) {
       ui.guided = false;
       return '';
     }
-    const words = guidedWords();
-    if (race.next === 0) {
-      return `${words.nose}\nThe green gate starts your lap`;
-    }
-    if (race.next === 1) {
-      return 'Through. The next gate turns green\nRed is the same gate, wrong side';
-    }
-    return `Gate by gate. ${words.again}`;
+    return guideLine(kind, step);
+  };
+  /* The line a parked quad gets while a guide is armed, or '' for the usual
+   * prompt. Launch control is the pilot's own switch and keeps its prompt. */
+  const guidedTakeoff = (race) => {
+    const kind = ui.settings.launchControl ? '' : guidedKindNow(race);
+    return kind ? guideLine(kind, TAKEOFF) : '';
   };
   /*
    * A published course chosen from the Courses grid. This is exactly what a
@@ -6889,6 +6973,17 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
         input.beginRestartCapture();
       }
+    } else if (action === 'autoreset-switch') {
+      if (!input.firstGamepad()) {
+        notice = noRadioBanner('reload');
+      } else if (input.autoCapture) {
+        input.cancelAutoResetCapture();
+      } else {
+        input.beginAutoResetCapture();
+      }
+    } else if (action === 'autoreset-switch-clear') {
+      input.clearAutoResetSwitch();
+      notice = { text: 'Auto reset switch forgotten.\nThe setting stays as it is.', untilMs: performance.now() + 2800 };
     } else if (action === 'restart-switch-clear') {
       input.clearRestartSwitch();
       notice = { text: 'Restart switch forgotten.\nR on the keyboard still restarts.', untilMs: performance.now() + 2800 };
@@ -7525,6 +7620,9 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.setTargetLock(LOCK_OFF);
       return;
     }
+    if (view.setGuidance) {
+      view.setGuidance(ui.settings.nextGateCue !== false);
+    }
     const aim = view.targetAim ? view.targetAim() : null;
     if (!aim || !aim.active) {
       ui.setTargetLock(LOCK_OFF);
@@ -7904,6 +8002,30 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (input.restartCapture && ui.screen !== 'pilot') {
       input.cancelRestartCapture();
+    }
+    if (input.autoCapture && ui.screen !== 'pilot') {
+      input.cancelAutoResetCapture();
+    }
+    /* The Auto reset switch, bug-918a8c99: see noteAutoResetSwitch in
+     * input.js. Taken every frame so a flip in a menu is spent there; it
+     * changes the setting wherever it is made. */
+    {
+      const flipped = input.takeAutoResetSwitch();
+      if (flipped !== null) {
+        const was = Boolean(ui.settings.autoReset);
+        ui.settings.autoReset = flipped === 'toggle' ? !was : Boolean(flipped);
+        if (ui.settings.autoReset !== was) {
+          ui.writeSettings();
+          autoResetAtMs = -1;
+          notice = {
+            text: ui.settings.autoReset ? 'Auto reset on.' : 'Auto reset off.',
+            untilMs: performance.now() + 1800,
+          };
+          if (ui.isModal()) {
+            ui.renderMenu();
+          }
+        }
+      }
     }
     pollManualFlip();
     const launchNow = syncLaunchControl(nowWall);
@@ -8657,6 +8779,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
     /* Before turtle can take it: see CRASH IS A RESET. */
     crashResetTick();
+    autoResetTick();
 
     if (
       mode === 'flight'
@@ -9738,6 +9861,12 @@ export async function boot({ loading, bootStart, mapId }) {
         ? { text: `Restart switch: ${padSum.restart}.\nFlip it in flight to go back to the start line.`, untilMs: nowWall + 3600 }
         : { text: `Restart switch: ${padSum.restart}, until you reload.\nThis browser would not keep it.`, untilMs: nowWall + 4800 };
     }
+    const autoSet = input.takeAutoResetResult();
+    if (autoSet && padSum.autoReset) {
+      notice = autoSet === 'saved'
+        ? { text: `Auto reset switch: ${padSum.autoReset}.\nA switch sets it on or off; a button toggles it.`, untilMs: nowWall + 3600 }
+        : { text: `Auto reset switch: ${padSum.autoReset}, until you reload.\nThis browser would not keep it.`, untilMs: nowWall + 4800 };
+    }
     const queuedPick = input.takePadPickQueue();
     if (queuedPick) {
       openPadPick(queuedPick);
@@ -9811,9 +9940,11 @@ export async function boot({ loading, bootStart, mapId }) {
        * borrowing the scored run's sentence. Only a scored run gets the two
        * minutes, from the first thing scored, whatever kind it is.
        */
-      const start = ui.settings.launchControl
+      /* A first flight names the control: see src/ui/firstflight.js. */
+      const guidedStart = guidedTakeoff(race);
+      const start = guidedStart || (ui.settings.launchControl
         ? 'L for launch control, or throttle up'
-        : 'Throttle up to take off';
+        : 'Throttle up to take off');
       /* Practice is the one race that does not end, so it says so on the
        * line that promises what starts. See PRACTICE_LAPS. */
       let second = runLaps === PRACTICE_LAPS
@@ -9836,7 +9967,11 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
       ui.setBanner(`${start}${second}`);
+      if (guidedStart) {
+        ui.noteGuideShown();
+      }
     } else if (guidedText) {
+      ui.noteGuideShown();
       ui.setBanner(guidedText);
     } else if (lapFlash) {
       ui.setBanner(lapFlash);
@@ -9963,6 +10098,7 @@ export async function boot({ loading, bootStart, mapId }) {
       loading.done('frame');
       loading.finish();
       flyIfLinked();
+      ui.adoptLinkedTune();
     }
   }
   /* The course a track card asked flyIfLinked for, beside the map in

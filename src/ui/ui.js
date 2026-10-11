@@ -119,8 +119,13 @@ import {
 } from '../../configs/pids.js';
 import {
   boardPageUrl, fetchMapList, fetchTrackList, fetchTrackTimes, mapCardUrl, partnersPageUrl, pickFeaturedTracks,
-  pickNewestMaps, wikiPageUrl,
+  pickMaps, pickNewestMaps, tuneCodeFrom, wikiPageUrl,
 } from '../share/board.js';
+import { byRating, myStars, ratingShort, ratingWords } from '../share/rating.js';
+/* The three tune and rating dialogs are fetched when a pilot opens one, not at
+ * boot: they are menu only, and a page that never shares a tune should not
+ * pay for the code that does. */
+const tunesDialog = () => import('./tunesdialog.js');
 import { PATTERNS } from '../game/trickdetect.js';
 import { PROVEN } from '../game/proven.js';
 import { trickByName } from '../game/tricks.js';
@@ -199,6 +204,9 @@ import {
   clampCameraAngle,
 } from '../render/lens.js';
 import { ScoreHud } from './scorehud.js';
+import {
+  GUIDE_KEY, GUIDE_KINDS, guideKind, guidesGiven, lapKindOfKey,
+} from './firstflight.js';
 import { ChaseHud, chaseCallText } from './chasehud.js';
 import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
@@ -221,7 +229,7 @@ import {
 import {
   downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip,
 } from './fc.js';
-import { readFcDump } from '../fc/dump.js';
+import { fcDumpKeyFor, readFcDump, writeFcDump } from '../fc/dump.js';
 /*
  * The pilot's own tracks live in this browser, and the Track room lists
  * them now, so the shell reads the same library the builder's Load dialog
@@ -524,6 +532,10 @@ function cycle(list, value, dir) {
 export const SETTINGS_KEY = 'webfpv.settings.v3';
 
 export const FLIGHT_MODES = ['acro', 'angle'];
+/* Auto reset's wait, in seconds, from the craft going down to the run
+ * restarting. One second is the preselected one. See autoResetTick in
+ * src/main.js. */
+export const AUTO_RESET_DELAYS = [0.5, 1, 2];
 /* The lens, and the derivation behind it, live in src/render/lens.js. It is
  * re-exported here because the settings screen is where a pilot meets it. */
 export {
@@ -822,7 +834,9 @@ function counterBestSentence(s) {
  * and wrong with a freestyle map seated. The builder's strip says the same. */
 /* The orders the Tracks room offers for the board's half: the same three
  * the board's own Order menu leads with, in its words. */
-const COURSE_ORDERS = [['flown', 'Most flown'], ['newest', 'Newest'], ['name', 'A to Z']];
+const COURSE_ORDERS = [['flown', 'Most flown'], ['newest', 'Newest'], ['rated', 'Top rated'], ['name', 'A to Z']];
+const MAP_ORDERS = [['newest', 'Newest'], ['rated', 'Top rated']];
+const MAP_ORDER_IDS = MAP_ORDERS.map(([id]) => id);
 const COURSE_ORDER_IDS = COURSE_ORDERS.map(([id]) => id);
 
 const KEEP_NOTE = 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.';
@@ -1063,6 +1077,23 @@ const DEFAULTS = {
    */
   hasFlown: false,
   /*
+   * WHETHER EACH KIND OF PLACE HAS HAD ITS FIRST FLIGHT GUIDE: a five inch
+   * race track, a whoop room, a freestyle world. See src/ui/firstflight.js.
+   *
+   * Written the first time main.js puts a line of the guide on the glass,
+   * and not when the launch is asked for, so a load that fails, or a reload
+   * between the press and the first frame, does not spend the one guide a
+   * newcomer gets. Never cleared by a menu; ?guide=1 on the address clears
+   * all three, which is how a pilot, or a check, sees the guides again
+   * without losing a profile (see linkedGuide). A blob saved before these
+   * keys existed is read for what it shows by loadSettings, through
+   * guidesGiven, because a guide in front of a veteran is worse than a
+   * newcomer who misses it once.
+   */
+  guidedRace: false,
+  guidedWhoop: false,
+  guidedFreestyle: false,
+  /*
    * How many race results screens this pilot has seen, for the flight feel
    * question, which waits for the second (MENUS-PLAN.md 2.8).
    */
@@ -1073,6 +1104,9 @@ const DEFAULTS = {
    * a pilot who looks for new tracks looks for them every visit.
    */
   courseOrder: 'flown',
+  /* The order of the board's maps in the Freestyle room: 'newest' (the board's
+   * own default) or 'rated'. Remembered for the same reason courseOrder is. */
+  mapOrder: 'newest',
   /*
    * Whether the thumb-rates hand-off has happened. A fresh profile on a
    * touch device starts on TOUCH_RATE_DEFAULTS directly; an existing
@@ -1164,6 +1198,17 @@ const DEFAULTS = {
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
   /*
+   * AUTO RESET, bug-918a8c99: "when i crash or clip a gate mid lap i have to
+   * press reset to go again... a setting, off by default". On, a craft that
+   * has crashed (set down by the shell's crash rule, stuck, or turtled on
+   * its back) is put back on the start line and the race restarted, the same
+   * reset as R, once the delay has run out. The delay is there so a pilot
+   * who flips or flies out of it in time is left alone. autoResetS is the
+   * delay in seconds and loadSettings holds it to AUTO_RESET_DELAYS.
+   */
+  autoReset: false,
+  autoResetS: 1,
+  /*
    * Who the ghost drone chases: 'off', 'best' (your best lap this session)
    * or 'previous' (the lap before this one). Best is the default because a
    * pacer you have to discover in a menu is a pacer nobody meets: the first
@@ -1240,6 +1285,15 @@ const DEFAULTS = {
    * loop already holds. A boolean so the typeof gate accepts it.
    */
   stickOverlay: true,
+  /*
+   * NEXT GATE CUE: the green or red colouring on the gate to fly through
+   * next, and the arrow that points at it. On by default, so nothing changes
+   * for a pilot who never opens Settings. Off leaves every gate plain and
+   * draws no arrow, for a pilot who wants to find the line themselves. Only
+   * the picture: the race still counts gates in order. A boolean so the
+   * typeof gate accepts it.
+   */
+  nextGateCue: true,
   /*
    * RACE LINE: in a whoop room, a trail of cream dots through the next gates
    * showing a good line a pilot can fly, the owner's ask of 2026-10-08 on
@@ -1578,6 +1632,43 @@ const SUPERSEDED_WHOOP = {
   pidsSeed: { tune: 'whoop-freestyle', sliders: { master: 150 } },
 };
 
+/*
+ * What a loaded profile shows about the places it has flown, for
+ * guidesGiven. `s` is the settings as loadSettings has validated them so
+ * far, and the laps are read off this browser's keys: a best lap is filed
+ * per airframe (recordKey in src/main.js), so the keys say which kind of
+ * place a lap was flown in even when the settings do not. Storage that
+ * cannot be read says nothing, and nothing makes the guide due, which is the
+ * safe way round for a newcomer and the cheap way round for a veteran: one
+ * read-through of a few lines they have already flown.
+ */
+function guideEvidence(s) {
+  const ev = {
+    returning: s.hasFlown === true,
+    fiveInchLap: false,
+    whoopSeen: airframeById(s.airframe).trackClass === 'micro',
+    freestyleSeen: s.freestyleMap !== '' || Boolean(seatedFreestyleMap(s)),
+  };
+  for (const id of Object.keys(hangarOf(s))) {
+    if (airframeById(id).trackClass === 'micro') {
+      ev.whoopSeen = true;
+    }
+  }
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const lap = lapKindOfKey(localStorage.key(i) || '');
+      if (lap === 'race') {
+        ev.fiveInchLap = true;
+      } else if (lap === 'whoop') {
+        ev.whoopSeen = true;
+      }
+    }
+  } catch (e) {
+    /* Private mode cannot tell us. See above. */
+  }
+  return ev;
+}
+
 export function loadSettings() {
   let stored = {};
   try {
@@ -1611,6 +1702,9 @@ export function loadSettings() {
   }
   if (!COURSE_ORDER_IDS.includes(s.courseOrder)) {
     s.courseOrder = DEFAULTS.courseOrder;
+  }
+  if (!MAP_ORDER_IDS.includes(s.mapOrder)) {
+    s.mapOrder = DEFAULTS.mapOrder;
   }
   s.stickMode = normaliseStickMode(s.stickMode);
   s.keyThrottle = normaliseKeyThrottle(s.keyThrottle);
@@ -1654,6 +1748,7 @@ export function loadSettings() {
     ['link', Object.keys(LINK_PRESETS)],
     ['pacing', PACING_MODES],
     ['cameraFov', CAMERA_FOVS],
+    ['autoResetS', AUTO_RESET_DELAYS],
     ['renderScale', RENDER_SCALES],
     ['fpsCap', FPS_CAPS],
     ['flightStyle', FLIGHT_STYLES],
@@ -1852,6 +1947,24 @@ export function loadSettings() {
   if (!s.feelTuningTest) {
     s.feelTuning = true;
     s.feelTuningTest = true;
+  }
+  /*
+   * THE FIRST FLIGHT GUIDES A SAVED PROFILE HAS ALREADY HAD.
+   *
+   * A key that is missing belongs to a profile saved before the guide had
+   * kinds, so it is read for what it shows (see guidesGiven) instead of
+   * taking the default: the default is false, and false is "walk this pilot
+   * through it", which a year old profile with two hundred laps on file must
+   * never be told. A key that is there is the answer. Per key, so one lost
+   * to an older tab's save is read again and the others stand.
+   */
+  if (GUIDE_KINDS.some((kind) => typeof stored[GUIDE_KEY[kind]] !== 'boolean')) {
+    const given = guidesGiven(guideEvidence(s));
+    for (const kind of GUIDE_KINDS) {
+      if (typeof stored[GUIDE_KEY[kind]] !== 'boolean') {
+        s[GUIDE_KEY[kind]] = given[kind];
+      }
+    }
   }
   /* First run, or an older save from before this key existed: pick Low
    * on a Deck so the page is flyable, High everywhere else so the
@@ -3748,6 +3861,12 @@ function courseCardRows(subject, seatRows = []) {
       note: `Every time posted on ${name}, fastest first, and who flew them. Opens here, not on another site.`,
     });
     rows.push({
+      label: 'Rate this track',
+      value: ratingShort(subject.course.track.rating) || 'Not rated yet',
+      action: 'card-rate',
+      note: `One to five stars for ${name}, one rating each, which you can change or take back. ${ratingWords(subject.course.track.rating)}.`,
+    });
+    rows.push({
       label: 'This track on Tracks and times',
       action: 'card-board',
       note: `${name} on the public board: every time posted on it, who flew them and their ghosts. A link to send somebody. Opens in a new tab.`,
@@ -3793,6 +3912,8 @@ function orderedCourses(list, order) {
   const out = list.slice();
   if (order === 'newest') {
     out.sort((a, b) => String(b.publishedUtc || '').localeCompare(String(a.publishedUtc || '')));
+  } else if (order === 'rated') {
+    out.sort(byRating);
   } else if (order === 'name') {
     out.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
   }
@@ -4344,6 +4465,24 @@ function linkedFly() {
 }
 
 /*
+ * ?guide=1 asks for the first flight guides again, all three kinds, once.
+ *
+ * A profile that has been through them has no other way back to them short
+ * of clearing the site's data, which takes the pilot's tune, their rates and
+ * their records with it. The people who want them again are the owner
+ * checking what a newcomer is told, a friend who is about to be shown the
+ * simulator on a laptop that has flown it, and the checks. Taken out of the
+ * address as soon as it is read, like ?fly=1: see dropLinkParam.
+ */
+function linkedGuide() {
+  try {
+    return new URLSearchParams(window.location.search).get('guide') === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+/*
  * Take one parameter out of the address, keeping every other one and the
  * hash. A link's one-time instruction must not outlive the load it was
  * for: a reload of a ?fly=1 page is a pilot reloading, not a pilot asking
@@ -4699,6 +4838,14 @@ export class Ui {
     if (this.flyOnLoad) {
       dropLinkParam('fly');
     }
+    /* ?guide=1: the first flight guides, once more. See linkedGuide. */
+    if (linkedGuide()) {
+      for (const kind of GUIDE_KINDS) {
+        this.settings[GUIDE_KEY[kind]] = false;
+      }
+      saveSettings(this.settings);
+      dropLinkParam('guide');
+    }
     /* A link that names the whoop has answered the mode question too, so
      * that pair of link parameters is still one press from the air. */
     if (this.syncMode()) {
@@ -4707,7 +4854,9 @@ export class Ui {
     /* Which aircraft the mode was last made legal for. See writeSettings:
      * the answer only changes when the AIRCRAFT changes. */
     this.modeSyncedFor = this.settings.airframe;
-    /* Set while a guided first flight is in the air. main.js reads it. */
+    /* The kind of first flight guide this launch is under ('race', 'whoop'
+     * or 'freestyle'), or false. main.js reads it every frame and puts it
+     * back to false when the guide has said what it has to. See armGuide. */
     this.guided = false;
     this.boardCourses = [];
     /* The pilot's own tracks, read off this browser's library on entry to
@@ -4908,6 +5057,7 @@ export class Ui {
      */
     this.tuneProbe = null;
     this.tuneCaps = { air: true, kv: true };
+    this.tuneBackup = null;
     this.resultsTune = null;
     this.tuneAsked = new Set();
     /* The combinations already sent this session, so the Share row can say
@@ -6670,6 +6820,201 @@ export class Ui {
     this.nameDialog.append(panel);
     keep.focus();
     return true;
+  }
+
+  /*
+   * COMMUNITY TUNES: what a tune holds, and how one is put on and taken off.
+   *
+   * A tune is the settings that change how THIS quad flies, nothing about
+   * the pilot: the tune it starts from (or the pilot's own Betaflight dump),
+   * the PID adjustment on that tune, the rates, weight, Air grip, Motor
+   * power, pack charge, lens and tilt. The board's src/community.js is the
+   * copy of record for what it will accept. Graphics, sticks, radio,
+   * flight mode, lap times and names are not in it, and loading one never
+   * touches them. The dialogs are in ./tunesdialog.js; this is the part
+   * that needs the settings object and the file's own clamps.
+   *
+   * Air grip and Motor power are shared as they are FLOWN (effectiveTune),
+   * so a pilot with the mode off shares stock, not a number that never
+   * reached the quad.
+   */
+  tuneSnapshot() {
+    const s = this.settings;
+    const flown = effectiveTune(s);
+    const setup = {
+      base: s.tune,
+      rates: JSON.parse(JSON.stringify(normaliseRates(s.rates))),
+      weight: clampWeight(s.weight, s.airframe),
+      airGrip: flown.airGrip,
+      motorKv: flown.motorKv,
+      packVoltage: s.packVoltage,
+      cameraFov: Math.round(s.cameraFov),
+      cameraAngle: Math.round(clampCameraAngle(s.cameraAngle)),
+    };
+    if (s.tune === CUSTOM_TUNE.id) {
+      setup.dump = readFcDump(s.airframe) || '';
+    }
+    const entry = pidsEntry(normalisePids(s.pids), s.tune);
+    if (entry) {
+      setup.pids = JSON.parse(JSON.stringify(entry));
+    }
+    return { airframe: s.airframe, setup };
+  }
+
+  airframeName(id) {
+    return AIRFRAME_IDS.includes(id) ? airframeById(id).name : 'an aircraft this build does not have';
+  }
+
+  /* The lines a pilot reads before sharing or loading: the facts, in the
+   * words the rows use. `t` is a snapshot or a fetched tune. */
+  describeTune(t) {
+    const x = t.setup || {};
+    const lines = [];
+    if (x.base === CUSTOM_TUNE.id) {
+      const n = (x.dump || '').split('\n').filter((l) => l.trim().startsWith('set ')).length;
+      lines.push(`Starts from: the author's own Betaflight settings (${n} changed value${n === 1 ? '' : 's'})`);
+    } else {
+      lines.push(`Starts from: ${tuneById(x.base).name}`);
+    }
+    const keyed = x.pids ? { [x.base]: x.pids } : {};
+    const norm = normalisePids(keyed);
+    lines.push(pidsAdjusted(norm, x.base)
+      ? `PIDs: ${pidsSummary(norm, x.base)}`
+      : 'PIDs: as the tune ships');
+    lines.push(`Rates: ${ratesShort(normaliseRates(x.rates))}`);
+    lines.push(`Weight ${x.weight}%, Air grip ${x.airGrip}%, Motor power ${x.motorKv}%`);
+    lines.push(`Pack ${Number(x.packVoltage).toFixed(2)} V per cell, lens ${x.cameraFov} degrees, tilt ${x.cameraAngle}°`);
+    return lines;
+  }
+
+  /* What loading it will do that a pilot might not expect. */
+  tuneEffects(t) {
+    const x = t.setup || {};
+    const out = [];
+    if (t.airframe && t.airframe !== this.settings.airframe) {
+      out.push(`It is for the ${this.airframeName(t.airframe)}, so you are moved to that aircraft and its own track class.`);
+    }
+    if (x.airGrip !== AIR_GRIP_STOCK || x.motorKv !== MOTOR_KV_STOCK) {
+      out.push('It moves Air grip or Motor power, so Flight feel tuning is switched on, and a lap flown on it stays off the public board.');
+    }
+    if (x.base === CUSTOM_TUNE.id) {
+      out.push('Its Betaflight settings take the place of Your edits on that aircraft until you put yours back.');
+    }
+    out.push('Your graphics, sticks, radio and lap times are not touched.');
+    return out;
+  }
+
+  /*
+   * Put a fetched tune on. Everything goes through the same clamps a stored
+   * blob does, because a tune is text from the internet and the board is
+   * allowed to be a little wider than the file. Returns { error } and
+   * changes nothing when it cannot be worn; otherwise remembers the
+   * settings it replaced, for undoCommunityTune.
+   */
+  applyCommunityTune(t) {
+    const x = t && t.setup;
+    if (!x || !AIRFRAME_IDS.includes(t.airframe)) {
+      return { error: 'This build cannot fly that tune. It may be for an aircraft added later.' };
+    }
+    if (x.base !== CUSTOM_TUNE.id && !tunesFor(t.airframe).some((e) => e.id === x.base)) {
+      return { error: 'That tune starts from a Betaflight tune this build does not have.' };
+    }
+    const s = this.settings;
+    this.tuneBackup = {
+      settings: JSON.parse(JSON.stringify(s)),
+      airframe: t.airframe,
+      dump: x.base === CUSTOM_TUNE.id ? readFcDump(t.airframe) : undefined,
+    };
+    if (s.airframe !== t.airframe) {
+      seatAirframe(s, t.airframe);
+      s.airframeAsked = true;
+    }
+    if (x.base === CUSTOM_TUNE.id) {
+      if (!writeFcDump(t.airframe, x.dump || '')) {
+        this.tuneBackup = null;
+        return { error: 'This browser would not keep the tune. Storage may be full or blocked.' };
+      }
+    }
+    s.tune = x.base;
+    const pids = normalisePids(x.pids ? { [x.base]: x.pids } : {});
+    const kept = { ...normalisePids(s.pids) };
+    delete kept[x.base];
+    s.pids = pids[x.base] ? { ...kept, [x.base]: pids[x.base] } : kept;
+    s.rates = normaliseRates(x.rates);
+    s.weight = clampWeight(x.weight, s.airframe);
+    s.airGrip = clampAirGrip(x.airGrip);
+    s.motorKv = clampMotorKv(x.motorKv);
+    if (s.airGrip !== AIR_GRIP_STOCK || s.motorKv !== MOTOR_KV_STOCK) {
+      s.feelTuning = true;
+    }
+    const af = airframeById(s.airframe);
+    s.packVoltage = af.packVoltages.reduce(
+      (best, v) => (Math.abs(v - x.packVoltage) < Math.abs(best - x.packVoltage) ? v : best),
+      af.packVoltages[0],
+    );
+    s.cameraFov = CAMERA_FOVS.reduce(
+      (best, v) => (Math.abs(v - x.cameraFov) < Math.abs(best - x.cameraFov) ? v : best),
+      CAMERA_FOVS[0],
+    );
+    s.cameraAngle = clampCameraAngle(x.cameraAngle);
+    this.afterTuneChange();
+    return {};
+  }
+
+  undoCommunityTune() {
+    const back = this.tuneBackup;
+    if (!back) {
+      return false;
+    }
+    this.tuneBackup = null;
+    if (back.dump !== undefined) {
+      if (back.dump === null) {
+        try {
+          localStorage.removeItem(fcDumpKeyFor(back.airframe));
+        } catch (e) {
+          /* Nothing was written that could be removed. */
+        }
+      } else {
+        writeFcDump(back.airframe, back.dump);
+      }
+    }
+    for (const k of Object.keys(this.settings)) {
+      delete this.settings[k];
+    }
+    Object.assign(this.settings, back.settings);
+    this.afterTuneChange();
+    return true;
+  }
+
+  afterTuneChange() {
+    saveSettings(this.settings);
+    this.renderMenu();
+    if (this.onSettings) {
+      this.onSettings(this.settings);
+    }
+  }
+
+  /* A ?tune= link, from a tune's page on the board: the pilot arrives with a
+   * code in the address, so the load dialog opens on it, once, and the
+   * address stops naming it so a reload does not ask again. Nothing is
+   * loaded until they press Use this tune. */
+  adoptLinkedTune() {
+    let code = '';
+    try {
+      code = tuneCodeFrom(new URLSearchParams(window.location.search).get('tune') || '');
+    } catch (e) {
+      return;
+    }
+    if (!code) {
+      return;
+    }
+    dropLinkParam('tune');
+    tunesDialog().then((m) => m.openTuneLoad(this, { code }));
+  }
+
+  /* The Tracks and Maps rooms' Rate action: one rating dialog for either. */
+  rateItem(kind, item, after) {
+    tunesDialog().then((m) => m.openRate(this, { kind, item, onRated: after }));
   }
 
   closeNameDialog(value) {
@@ -8568,13 +8913,14 @@ export class Ui {
         action: 'trackbuilder-new',
       });
       for (const t of orderedCourses(this.boardCourses || [], s.courseOrder)) {
+        const stars = ratingShort(t.rating);
         cards.push({
           label: t.name,
-          note: t.designer
-            ? `Designed by ${t.designer}${t.series ? ` for ${t.series}` : ''}${t.author ? `, published by ${t.author}` : ''}. ${CARD_PRESS_NOTE}`
+          note: `${t.designer
+            ? `Designed by ${t.designer}${t.series ? ` for ${t.series}` : ''}${t.author ? `, published by ${t.author}` : ''}.`
             : (t.author
-              ? `Published by ${t.author}. ${CARD_PRESS_NOTE}`
-              : `A published track. ${CARD_PRESS_NOTE}`),
+              ? `Published by ${t.author}.`
+              : 'A published track.')}${stars ? ` Rated ${stars}.` : ''} ${CARD_PRESS_NOTE}`,
           course: { kind: 'board', track: t },
           action: `board:${t.id}`,
         });
@@ -8671,13 +9017,31 @@ export class Ui {
        * rows are whatever follows the last card. See loadBoardMaps. */
       const boardCards = (this.boardMaps || []).map((m) => ({
         label: m.name,
-        note: `${[m.author ? `Built by ${m.author}` : 'A published map', ...mapFacts(m)].join(', ')}. Choosing it loads the map from the board and flies it here.`,
+        note: `${[m.author ? `Built by ${m.author}` : 'A published map', ...mapFacts(m)].join(', ')}.${ratingShort(m.rating) ? ` Rated ${ratingShort(m.rating)}.` : ''} Choosing it loads the map from the board and flies it here.`,
         boardMap: m,
         action: `boardmap:${m.id}`,
       }));
+      const seatedBoardMap = this.sharedMap && this.sharedMap.id ? this.sharedMap : null;
       return [
         ...cards,
         ...boardCards,
+        ...(this.boardMapsAll && this.boardMapsAll.length > 1 ? [choice(
+          'Maps from the board',
+          'Newest puts what was published last first. Top rated puts the best loved first, by the stars pilots gave; maps nobody has rated come last.',
+          MAP_ORDER_IDS,
+          s.mapOrder,
+          (id) => MAP_ORDERS.find(([k]) => k === id)[1],
+          (id) => {
+            s.mapOrder = id;
+            this.boardMaps = pickMaps(this.boardMapsAll, id);
+          },
+        )] : []),
+        ...(seatedBoardMap ? [{
+          label: 'Rate this map',
+          value: myStars('map', seatedBoardMap.id) ? `${myStars('map', seatedBoardMap.id)} of 5` : 'Not rated by you',
+          action: 'map-rate',
+          note: `One to five stars for ${seatedBoardMap.name || 'this map'}, one rating each, which you can change or take back.`,
+        }] : []),
         /*
          * FIRST, because it is the only choice on this screen that changes
          * what the next two minutes ARE.
@@ -8816,6 +9180,16 @@ export class Ui {
         craftItem(s, midRun),
         tuneItem(s, midRun),
         {
+          label: 'Share this tune',
+          action: 'tune-share',
+          note: 'Puts the tune you fly on the public board with a short code. It holds the tune, PIDs, rates, weight, pack, lens and tilt, and nothing about you but the pilot name you give.',
+        },
+        {
+          label: 'Load a tune',
+          action: 'tune-load',
+          note: `Paste a share code from the board or from another pilot. You see what is in it first, and you can put your own back.${midRun ? MID_RUN_WARNING : ''}`,
+        },
+        {
           label: 'Firmware bench',
           action: 'fc',
           note: `Every Betaflight 4.5.1 key the module compiles, tab by tab, in Configurator’s own colours. Opens as a tool, in its own frame. Save becomes Your edits and the Tune row above starts naming it; the picker that puts you back on stock is in ${SCREEN_TITLES.pids}. There is no CLI paste.`,
@@ -8861,6 +9235,20 @@ export class Ui {
           Boolean(s.launchControl),
           (v) => { s.launchControl = Boolean(v); },
         ),
+        toggle(
+          'Auto reset',
+          'Off by default. When on, a crash puts you back on the start line and restarts the race after the wait below, so the clock begins on your next launch. It does what R does. Flip a crashed quad upright or take off again inside the wait and nothing happens. With a radio you can bind a switch to it in Settings.',
+          Boolean(s.autoReset),
+          (v) => { s.autoReset = Boolean(v); },
+        ),
+        ...(s.autoReset ? [choice(
+          'Auto reset wait',
+          'How long after a crash before you are put back on the start line. A longer wait gives you more time to flip out of a crash you can still save.',
+          AUTO_RESET_DELAYS,
+          s.autoResetS,
+          (n) => `${n} second${n === 1 ? '' : 's'}`,
+          (n) => { s.autoResetS = n; },
+        )] : []),
         /*
          * FLIGHT FEEL TUNING, the mode's switch. On, it adds Air grip and
          * Motor power to the room as rows and to the flight screen as
@@ -8977,6 +9365,24 @@ export class Ui {
           label: 'Forget restart switch',
           action: 'restart-switch-clear',
           note: 'R on the keyboard still restarts.',
+        }] : []),
+        /* AUTO RESET FROM THE RADIO, bug-918a8c99: the Auto reset setting on a
+         * switch, so it can be turned on and off with both hands on the
+         * sticks. A switch sets it to its position; a button toggles it. */
+        ...(this.padInfo && this.padInfo.count > 0 && this.padInfo.using !== 'Keyboard' ? [{
+          label: 'Auto reset switch',
+          value: this.padInfo.autoResetCapturing ? 'Flip it now' : (this.padInfo.autoReset || 'Not set'),
+          action: 'autoreset-switch',
+          note: this.padInfo.autoResetCapturing
+            ? 'Flip the switch or press the button you want for Auto reset. Choose this row again to stop.'
+            : (this.padInfo.autoReset
+              ? 'In flight, the switch turns Auto reset on and off (a button toggles it). Choose this row to pick another.'
+              : 'A switch on your radio that turns Auto reset on and off, so you need not open the menu. Choose this row, then flip it.'),
+        }] : []),
+        ...(this.padInfo && this.padInfo.autoReset && !this.padInfo.autoResetCapturing ? [{
+          label: 'Forget auto reset switch',
+          action: 'autoreset-switch-clear',
+          note: 'The Auto reset setting stays as it is.',
         }] : []),
         /*
          * WHICH STICK CARRIES WHICH CHANNEL, and it sits here because the
@@ -9146,6 +9552,14 @@ export class Ui {
             : 'Off: no stick boxes on the flight picture. Turn it on to see what your sticks are telling the quad.',
           s.stickOverlay,
           (v) => { s.stickOverlay = v; },
+        ),
+        toggle(
+          'Next gate cue',
+          s.nextGateCue
+            ? 'On: the gate to fly through next is lit green, or red when you are on the wrong side of it, and an arrow points at it when it is off screen.'
+            : 'Off: no green or red gate and no arrow. Every gate looks the same and you find the next one yourself. The race still counts gates in order.',
+          s.nextGateCue,
+          (v) => { s.nextGateCue = v; },
         ),
         toggle(
           'Race line',
@@ -12344,7 +12758,7 @@ export class Ui {
 
   /*
    * The board's freestyle maps, fetched once per visit to the Freestyle
-   * room: the ten newest (pickNewestMaps in src/share/board.js), less the
+   * room: the ten newest or best loved (pickMaps in src/share/board.js), less the
    * one Your map already flies, which would otherwise be two cards for one
    * map with nothing saying which is about to be flown. The Race room drops
    * the seated track's listing for the same reason.
@@ -12366,7 +12780,7 @@ export class Ui {
         this.boardMapNote.textContent = list.length
           ? ''
           : 'No freestyle maps on the board yet. Build one in the builder and publish it.';
-        this.relistBoardMaps(pickNewestMaps(list.filter((m) => m.id !== own)));
+        this.relistBoardMaps(list.filter((m) => m.id !== own));
       })
       .catch(() => {
         this.boardMapsLoading = false;
@@ -12381,8 +12795,10 @@ export class Ui {
    * pilot who had already walked down to Scoring on somebody's map when a
    * slow board answered.
    */
-  relistBoardMaps(maps) {
+  relistBoardMaps(all) {
     const here = this.screen === 'freestyle' ? this.items()[this.cursor] : null;
+    this.boardMapsAll = all;
+    const maps = pickMaps(all, this.settings.mapOrder);
     this.boardMaps = maps;
     if (this.screen !== 'freestyle') {
       return;
@@ -16107,6 +16523,8 @@ export class Ui {
     const was = padTroubleItem(this.padInfo, this.stickPlatform);
     const wasRestart = (this.padInfo && this.padInfo.restart) || null;
     const wasCapturing = Boolean(this.padInfo && this.padInfo.restartCapturing);
+    const wasAuto = (this.padInfo && this.padInfo.autoReset) || null;
+    const wasAutoCapturing = Boolean(this.padInfo && this.padInfo.autoResetCapturing);
     this.padInfo = info || { count: 0, using: 'Keyboard' };
     /*
      * A TROUBLE ROW THAT APPEARS MID SESSION HAS TO ASK FOR THE PAINT.
@@ -16139,7 +16557,9 @@ export class Ui {
     /* The same for the restart switch row in Settings, which changes when
      * a flip lands rather than when anything is pressed on the page. */
     if (this.screen === 'pilot' && (wasRestart !== (this.padInfo.restart || null)
-      || wasCapturing !== Boolean(this.padInfo.restartCapturing))) {
+      || wasCapturing !== Boolean(this.padInfo.restartCapturing)
+      || wasAuto !== (this.padInfo.autoReset || null)
+      || wasAutoCapturing !== Boolean(this.padInfo.autoResetCapturing))) {
       this.renderMenu();
     }
   }
@@ -17227,6 +17647,10 @@ export class Ui {
    * offered again on the next load to somebody who has already taken it.
    */
   flown() {
+    /* Before the early return: this is the one place every door to the air
+     * passes through once per launch, and a pilot who has flown before is
+     * exactly who meets a kind of place for the first time here. */
+    this.armGuide();
     if (!this.firstRun && this.settings.hasFlown) {
       return;
     }
@@ -17234,6 +17658,38 @@ export class Ui {
     this.settings.hasFlown = true;
     saveSettings(this.settings);
     this.renderMenu();
+  }
+
+  /*
+   * Arm the first flight guide for the kind of place this launch is in, when
+   * that kind has not had one. See src/ui/firstflight.js for the kinds and
+   * for why it is started here and not by a menu row.
+   *
+   * ARMED IS NOT GIVEN. This says "say it"; the settings flag that says it
+   * was said is written by noteGuideShown, the first time main.js puts a
+   * line of it on the glass. A launch that fails to load, or a reload between
+   * the press and the first frame, therefore does not spend the one guide a
+   * newcomer gets. A kind that has had its guide drops any guide still armed
+   * for another kind, so a whoop room is never told a five inch track's
+   * words; the same kind keeps its guide running across a restart, which is
+   * what a first lap that takes three tries needs.
+   */
+  armGuide() {
+    const kind = guideKind(Boolean(seatedFreestyleMap(this.settings)), this.settings.airframe);
+    if (!this.settings[GUIDE_KEY[kind]]) {
+      this.guided = kind;
+    } else if (this.guided !== kind) {
+      this.guided = false;
+    }
+  }
+
+  /* The first line of the armed guide is on the glass: that kind has had it. */
+  noteGuideShown() {
+    const key = GUIDE_KEY[this.guided];
+    if (key && !this.settings[key]) {
+      this.settings[key] = true;
+      saveSettings(this.settings);
+    }
   }
 
   /* Whether the seat is the kind of place the chosen mode flies in. Race
@@ -17492,8 +17948,10 @@ export class Ui {
      * so it is gone rather than kept as an action with no row.
      */
     if (action === 'firstflight') {
+      /* flown() arms the guide for the kind of track the seat is, which on a
+       * browser that has never flown is a kind that has not had one. The row
+       * used to set the flag itself, before every launch had a guide. */
       this.flown();
-      this.guided = true;
       if (this.onSettings) {
         this.onSettings(this.settings);
       }
@@ -17537,6 +17995,29 @@ export class Ui {
      * rather than the seat, because the point is to look at a track WITHOUT
      * loading it: the seat is whatever you are flying.
      */
+    if (action === 'card-rate') {
+      const card = this.subjectCard();
+      if (card && card.course && card.course.kind === 'board') {
+        const t = card.course.track;
+        this.rateItem('track', t, (rating) => {
+          t.rating = rating;
+          this.renderMenu();
+        });
+      }
+      return;
+    }
+    if (action === 'map-rate') {
+      const m = this.sharedMap && this.sharedMap.id
+        ? (this.boardMapsAll || []).find((x) => x.id === this.sharedMap.id) || { id: this.sharedMap.id, name: this.sharedMap.name, board: this.sharedMap.board, rating: null }
+        : null;
+      if (m) {
+        this.rateItem('map', m, (rating) => {
+          m.rating = rating;
+          this.relistBoardMaps(this.boardMapsAll || []);
+        });
+      }
+      return;
+    }
     if (action === 'card-standings') {
       const card = this.subjectCard();
       if (card && card.course && card.course.kind === 'board') {
@@ -17946,6 +18427,14 @@ export class Ui {
         this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       }
       this.show('pids');
+      return;
+    }
+    if (action === 'tune-share') {
+      tunesDialog().then((m) => m.openTuneShare(this));
+      return;
+    }
+    if (action === 'tune-load') {
+      tunesDialog().then((m) => m.openTuneLoad(this));
       return;
     }
     if (action === 'fc') {

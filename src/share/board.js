@@ -51,6 +51,7 @@
 
 import { adminAuthHeaders, writeAdminSession } from './admin.js';
 import { readShareImport, writeShareImport } from './session.js';
+import { byRating, cleanRating, raterKey, rememberStars } from './rating.js';
 
 /*
  * Two named hosts, because this page is served from two kinds of place and
@@ -360,6 +361,9 @@ export async function fetchTrackList(origin = boardOrigin()) {
      * so it can say so on the row without another request. A board from
      * before the mark sends none. */
     official: Boolean(t.official),
+    /* Stars from pilots, { count, avg, score }. A board from before ratings
+     * sends none and every track reads as not rated yet. */
+    rating: cleanRating(t.rating),
     board,
   })).filter((t) => t.id);
 }
@@ -867,6 +871,7 @@ export async function fetchMapList(origin = boardOrigin()) {
      * the address, which the board then lets a browser keep for good. */
     hasCard: Boolean(m.hasCard),
     cardUtc: m.cardUtc ? String(m.cardUtc) : '',
+    rating: cleanRating(m.rating),
     board,
   })).filter((m) => m.id);
 }
@@ -890,6 +895,17 @@ function byNewest(a, b) {
 
 export function pickNewestMaps(maps, limit = MAPS_SHOWN) {
   return (maps || []).filter((m) => m && m.id).sort(byNewest).slice(0, limit);
+}
+
+/* The maps the Freestyle room lists, in the order the pilot chose: the ten
+ * newest, or the ten best loved by the board's damped score (byRating) with
+ * the newest breaking a tie. Maps nobody has rated come last either way. */
+export function pickMaps(maps, order = 'newest', limit = MAPS_SHOWN) {
+  const list = (maps || []).filter((m) => m && m.id);
+  if (order === 'rated') {
+    return list.sort((a, b) => byRating(a, b) || byNewest(a, b)).slice(0, limit);
+  }
+  return list.sort(byNewest).slice(0, limit);
 }
 
 /* The address of a listed map's share card, or '' when it has none. */
@@ -994,6 +1010,123 @@ export async function fetchFreestyleRuns(map, origin = boardOrigin()) {
     tricks: Number(r.tricks) || 0,
     signature: String(r.signature || ''),
   })).filter((r) => r.name && r.score > 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared tunes and star ratings                                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A tune is the settings the Quad room edits to change how the quad flies,
+ * sent to the board by a pilot who chose to and loaded by a short code.
+ * The board's src/community.js is the copy of record for what a tune holds
+ * and which values it accepts; ./tunes.js builds the payload. Called a
+ * "setup" on the wire because the board's "tune" already means flight feel
+ * tickets, and "Tunes" to a pilot everywhere they can read it.
+ *
+ *   Share a tune   POST {board}/api/setups  { author, name, notes?,
+ *                  airframe, setup, raterKey } -> { id, code, editKey }
+ *   Load a tune    GET {board}/api/setups/{code}  with or without dashes
+ *   Rate           POST {board}/api/ratings  { kind, id, stars, raterKey }
+ *                  kind is track, map or setup; stars 0 takes it back
+ *
+ * The browser's rater key is sent so the board can refuse a pilot rating
+ * their own tune and overwrite, not add, a second vote. See ./rating.js.
+ */
+const TUNE_CODE_RE = /^[a-hjkmnp-tv-z2-9]{12}$/;
+
+/* The twelve characters a pasted code means, or '' when it is not one. */
+export function tuneCodeFrom(raw) {
+  const id = String(raw ?? '').toLowerCase().replace(/[\s-]+/g, '');
+  return TUNE_CODE_RE.test(id) ? id : '';
+}
+
+/* A code the way it is shown and said aloud: k7mq-2xrt-9vwd. */
+export function tuneCodeShown(code) {
+  const id = tuneCodeFrom(code);
+  return id ? `${id.slice(0, 4)}-${id.slice(4, 8)}-${id.slice(8, 12)}` : '';
+}
+
+export async function fetchTune(code, origin = boardOrigin()) {
+  const id = tuneCodeFrom(code);
+  if (!id) {
+    throw new Error('A share code is twelve letters and numbers, like k7mq-2xrt-9vwd.');
+  }
+  const res = await boardGet(`${trimOrigin(origin)}/api/setups/${id}`);
+  const body = await readJson(res);
+  return {
+    id: String(body.id || id),
+    code: tuneCodeShown(body.id || id),
+    name: String(body.name || 'Untitled tune'),
+    author: String(body.author || ''),
+    airframe: String(body.airframe || ''),
+    notes: String(body.notes || ''),
+    publishedUtc: body.publishedUtc ? String(body.publishedUtc) : '',
+    setup: body.setup && typeof body.setup === 'object' ? body.setup : null,
+    rating: cleanRating(body.rating),
+    board: trimOrigin(origin),
+  };
+}
+
+export async function publishTune({
+  author, name, notes, airframe, setup, origin,
+}) {
+  const board = trimOrigin(origin || boardOrigin());
+  const body = {
+    author, name, airframe, setup, raterKey: raterKey(),
+  };
+  if (notes) {
+    body.notes = notes;
+  }
+  const res = await fetch(`${board}/api/setups`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const made = await readJson(res);
+  return { id: made.id, code: made.code, editKey: made.editKey, board };
+}
+
+/* Give an item 1 to 5 stars, or 0 to take this browser's vote back. The
+ * board answers with the new rating; the stars this browser has given are
+ * remembered beside the key so a card can show them. */
+export async function postRating({
+  kind, id, stars, origin,
+}) {
+  const board = trimOrigin(origin || boardOrigin());
+  const res = await fetch(`${board}/api/ratings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      kind, id, stars, raterKey: raterKey(),
+    }),
+  });
+  const body = await readJson(res);
+  rememberStars(kind, id, stars);
+  return { rating: cleanRating(body.rating), mine: stars };
+}
+
+/* Take a tune this browser shared back down, with the key the publish gave. */
+export async function removeTune({ id, editKey, origin }) {
+  const board = trimOrigin(origin || boardOrigin());
+  const code = tuneCodeFrom(id);
+  if (!code) {
+    throw new Error('A share code is twelve letters and numbers.');
+  }
+  const res = await fetch(`${board}/api/setups/${code}/remove`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ editKey }),
+  });
+  return readJson(res);
+}
+
+/* The board's Tunes tab, for a pilot who wants to look through all of them. */
+export function tunesPageUrl(origin) {
+  const base = usableBoardOrigin(origin)
+    || usableBoardOrigin(boardOrigin())
+    || defaultBoardOrigin();
+  return `${base}/#tunes`;
 }
 
 export async function postTime({

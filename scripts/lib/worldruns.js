@@ -931,8 +931,10 @@ function moverRuns() {
       }
       return { z: 0.5 * van.A * T * T + van.V * (t - T), v: van.V, a: 0 };
     };
-    /* src/native/plant.c hull_hx for the whoop, 41 mm. */
-    const side = van.hx + 0.041 - 0.10;
+    /* src/native/plant.c hull_hx for the whoop in the room's metres, the
+     * five inch's 0.094 since 2026-10-10 (it was 41 mm, written when the
+     * whoop flew life size). The craft is held 10 cm into the van's side. */
+    const side = van.hx + 0.094 - 0.10;
     const ahead = 2.0;
     const y = 1.0;
     const nose = dirToPlant(f, 0, 0, 1);
@@ -944,7 +946,7 @@ function moverRuns() {
         a: dirToPlant(f, 0, 0, k.a),
       };
     };
-    const start = toPlant(f, van.hx + 0.041 + 0.02, y, ahead);
+    const start = toPlant(f, van.hx + 0.094 + 0.02, y, ahead);
     out.push({
       name: 'movers: a whoop rides beside a van as it pulls away',
       group: 'movers',
@@ -1000,8 +1002,8 @@ export function goldenRuns(fixture) {
 
 /* A family hatchback: 4.5 m by 1.8 m by 1.4 m, 15 cm off the road. */
 export const CAR = { length: 4.5, width: 1.8, height: 1.4, clearance: 0.15 };
-/* src/native/plant.c hull_hx, the five inch's and the whoop's. */
-export const HULL = { 0: 0.094, 1: 0.041 };
+/* src/native/plant.c hull_hx in the room's metres, the five inch's and the whoop's (0.0274 times len_scale since 2026-10-10). */
+export const HULL = { 0: 0.094, 1: 0.094 };
 /* The craft a car meets hovers a metre over the road, halfway up its side. */
 const OVER = 1.0;
 

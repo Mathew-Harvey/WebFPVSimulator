@@ -355,6 +355,8 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .camera_y = 0.0,
   .camera_z = 0.018,
   .len_scale = 1.0, /* life size: the field is built in its metres */
+  .ground_tip_accel = 200.0, /* sim.c TUMBLE FLAT, the drop probe's figure */
+  .ducted = 0,
 },
 
 /* ---------------------------------------------------------------------
@@ -482,13 +484,27 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .cant_radial_deg = { 0.47, 0.28, 0.38, 0.20 },
   .cant_tangent_deg = { -0.3, 0.47, 0.2, -0.4 },
   /*
-   * The hull, in the whoop's own metres: 41 mm across is the 23 mm motor
-   * offset plus the 18.1 mm duct, which is what a whoop presents to a wall.
-   * Down is 9.6 mm, the drawn duct floor (src/render/whoopcraft.js), so the
-   * ducts sit on the floor; it was 10. Up is the canopy.
+   * THE HULL, made much smaller on 2026-10-10 on the owner's word: "Fix the
+   * 65mm whoop hit box, make much smaller".
+   *
+   * It was a solid box 41 mm out on each side, the motor offset plus the
+   * whole duct, so its corners stood 8 mm outside the round ducts and the
+   * air between the ducts was carbon. Through len_scale that was 0.141 m of
+   * the room on each side, half again the five inch's 0.094, and its
+   * corners met a pole or a bar 7 mm (24 mm of the room) before the drawn
+   * ducts did.
+   *
+   * Now it is the body and the motor bells only: 0.094 / len_scale = 27.4
+   * mm, which is the five inch's own 0.094 in the room. That is two thirds
+   * of the drawn machine across its sides and of its corner reach, and the
+   * ducts are not contacts at all (.ducted below), so a duct may brush a
+   * gate bar, a pole or a wall by up to 14 mm of the real machine (47 mm of
+   * the room) before anything is felt. The props never strike: they are in
+   * ducts. Down is 9.6 mm, the drawn duct floor (src/render/whoopcraft.js),
+   * so the ducts sit on the floor. Up is the canopy.
    */
-  .hull_hx = 0.041,
-  .hull_hy = 0.041,
+  .hull_hx = 0.094 / ((0.110 + 0.0635) / (0.0325 + 0.0181)),
+  .hull_hy = 0.094 / ((0.110 + 0.0635) / (0.0325 + 0.0181)),
   .hull_hz_down = 0.0096,
   .hull_hz_up = 0.018,
   .contact_patch_r = 0.0115,
@@ -505,6 +521,22 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
    * and fails if the two ever disagree about where the craft parks.
    */
   .len_scale = (0.110 + 0.0635) / (0.0325 + 0.0181),
+  /*
+   * TIPPED FLAT HARDER THAN THE FIVE INCH, because of the smaller hull above.
+   * A craft on its side has to lift its CG over the box's edge to go over,
+   * and that costs more the narrower the box is against its height; on a
+   * 23 g whoop with a 27 mm half width, 200 left scripts/plant-golden.js
+   * "whoop, side drop tumbles flat" lying on its side for good. A real whoop
+   * on its side is on two round ducts and rolls off them. Measured on a drop
+   * probe of 60 (heights 1.2 and 0.3 m, roll 0 to 180 by 20, pitch 0, 40,
+   * 80, throttle cut, 6 s on the shell's grass): at 200, 15 did not end flat;
+   * at 1000 none rested on a side; at 3000 none on a side and none still
+   * moving, against one on its side and two still moving on the 41 mm box
+   * this replaced. It acts only on a stalled crash lying off flat.
+   */
+  .ground_tip_accel = 3000.0,
+  /* Props in ducts: the hull above is the whole of what meets the world. */
+  .ducted = 1,
 },
 };
 

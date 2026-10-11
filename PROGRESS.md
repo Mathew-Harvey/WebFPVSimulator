@@ -70409,3 +70409,13 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
   starting blocks, with no console errors in the builder or the simulator. Not run: `npm run verify` (nothing here
   touches physics, the plant, the ABI or the build; main's whoop plant was verified by its own thread), shots.
   Latency: unchanged, nothing on the flying path.
+
+## 2026-10-11 | menus | Tunes library and ratings go to main on the owner's word
+
+- Approval: the owner wrote "push to main" at 06:52Z on 2026-10-11, in answer to the report on sim PR 63 and board PR 15.
+  That covers both drafts, board first. The board's main had moved (CommunityGow, 1bed022), so its tunes modules were
+  renamed `src/tunes.js` and `public/tunes.js` to sit beside main's `community.js`, main was merged in, and the board
+  self test passed on both stores (file and a scratch Postgres) before the board went to main as bfa7599. The sim is a
+  fast forward of this branch onto main.
+- Verification scale: none was chosen by the owner beyond the push word. What ran is in the entry above. Nothing has
+  been flown; the owner flies it.

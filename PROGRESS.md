@@ -70486,3 +70486,8 @@ Found and not fixed, with the reason:
 - Checks run this turn on the final sim tree: `lint:fc` 33 of 33, `lint:presets` 4 of 4, `lint:preload` up to date, `firstflight:selftest` 67 of 67, `check:community` 8 passed (board part ran), `tune:selftest` 59 of 59, `lint:board` PASS, `check:autoreset` 0 failed (4 flights), `check:tuneload` 0 failed. Board: `npm test` all passed on the file store and on a scratch Postgres. Each new check line was run on main's code and failed there.
 - Not run: `npm run verify` (no physics, plant, ABI or build change; `git diff --stat vendor/betaflight` is empty), `lint:shell`, `lint:input`, `lint:devices`, `node scripts/shots.js`, the builder flow check (none covers Send to community), a flight on a real machine.
 - What went wrong. A `pkill -f` while probing the board pages matched my own shell and killed it, so a probe ran against the old server and reported the old result; it was rerun against the right server. One commit missed a comment edit because the line number was off by one and was amended before pushing.
+
+## 2026-10-11 | sweep | The bug sweep goes to main on the owner's word (sim PR 64, board PR 16)
+
+- Approval: the owner tapped "Push to main" at 09:31:16Z on 2026-10-11 on the card "Push the bug sweep fixes (sim 64, board 16) to main?" in the bug sweep thread. It covers exactly the two draft PRs of the entry above, board first, then the sim.
+- Main had not moved in either repo since the branches were cut (sim 267ebd0, board bfa7599), so both went to main as fast forwards, and the checks of the entry above stand for the trees that landed.

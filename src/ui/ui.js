@@ -71,6 +71,7 @@ import { AIRFRAMES, AIRFRAME_IDS, airframeById, WHOOP_TRUE_DIMS } from '../../co
 import { docModeOf, trackClassOf } from '../trackbuilder/elements.js';
 import {
   RATE_DEFAULTS,
+  SUPERSEDED_RATES,
   RATE_FIELDS,
   RATE_TYPES,
   TOUCH_RATE_DEFAULTS,
@@ -86,6 +87,7 @@ import {
   profileForType,
   rateField,
   ratesAreDefault,
+  ratesAreSupersededStock,
   ratesFromLegacy,
   ratesShort,
   ratesSummary,
@@ -1037,6 +1039,13 @@ const DEFAULTS = {
    */
   whoopDefaults: 0,
   /*
+   * Which generation of the shipped RATE defaults this profile has been
+   * moved to, the same one shot as whoopDefaults. See SUPERSEDED_RATES in
+   * configs/rates.js: a profile still on the old stock 70 / 670 is moved to
+   * the softer default once, and a pilot who types 670 back keeps it.
+   */
+  stockRates: 0,
+  /*
    * Whether the flight feel question has been offered. It offers itself
    * exactly once, after the first finished race, and never again: the
    * moment the dialog opens this flips and is saved, whatever the pilot
@@ -1693,6 +1702,20 @@ export function loadSettings() {
     s.touchRatesOffered = true;
   } else {
     s.rates = normaliseRates(legacy || s.rates);
+  }
+  /* The shipped rates moved (2026-10-09, 70 / 670 to 60 / 600). A profile
+   * still holding the old stock on every axis never chose it, so it moves
+   * once with the default; the throttle limit and curve stay as they are. */
+  if (!(s.stockRates >= SUPERSEDED_RATES.GENERATION)) {
+    if (ratesAreSupersededStock(s.rates)) {
+      s.rates = normaliseRates({
+        ...s.rates,
+        roll: { ...RATE_DEFAULTS.roll },
+        pitch: { ...RATE_DEFAULTS.pitch },
+        yaw: { ...RATE_DEFAULTS.yaw },
+      });
+    }
+    s.stockRates = SUPERSEDED_RATES.GENERATION;
   }
   /*
    * THE WHOOP'S SHIPPED DEFAULTS MOVED, and a stored copy of the old ones
@@ -9805,8 +9828,8 @@ export class Ui {
           action: 'rates-default',
           disabled: !ratesChanged(s),
           note: ratesChanged(s)
-            ? `Back to what a freshly flashed Betaflight 4.5.1 flies: Actual rates, ${formatRate(rateField('ACTUAL', 'rcRate'), RATE_DEFAULTS.roll.rcRate)} deg/s at centre, ${formatRate(rateField('ACTUAL', 'srate'), RATE_DEFAULTS.roll.srate)} deg/s at the stop on every axis, no expo, no throttle limit.`
-            : 'Already on the Betaflight 4.5.1 defaults.',
+            ? `Back to the shipped rates: Actual, ${formatRate(rateField('ACTUAL', 'rcRate'), RATE_DEFAULTS.roll.rcRate)} deg/s at centre, ${formatRate(rateField('ACTUAL', 'srate'), RATE_DEFAULTS.roll.srate)} deg/s at the stop on every axis, no expo, no throttle limit. A step under a freshly flashed Betaflight's 70 and 670, which are one row each away.`
+            : 'Already on the shipped defaults.',
         },
         { label: 'Back', action: 'back' },
       ];

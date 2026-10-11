@@ -91,6 +91,7 @@
     "lint:responsive": "node scripts/responsive-check.js",
     "lint:scale": "node scripts/scale-check.js",
     "lint:board": "node scripts/board-check.js",
+    "check:community": "node scripts/community-selftest.js",
     "lint:attract": "node scripts/attract-check.js",
     "park:fly": "node scripts/park-fly.js",
     "trick:sweep": "node scripts/trick-sweep.js",

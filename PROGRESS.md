@@ -70239,3 +70239,35 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
 - Approval: the owner wrote "push to main" at 01:35Z on 2026-10-11, in answer to the draft PR 60. Main was a fast forward
   (nothing had moved since the branch's base). No verification pass was run beyond the builder self test above; the owner
   flies it.
+
+## 2026-10-11 | menus | Tunes library and star ratings (draft, board PR 15 first)
+
+- Ask (owner, 2026-10-11, from a Discord thread): let pilots export their tunes to a community board on the tracks and
+  times boards, rate them, rate tracks and maps too, and order by rating.
+- What changed: a Tunes library in the Quad room (Share this tune, Load a tune, both dialogs in `src/ui/tunesdialog.js`,
+  fetched on first use so boot does not carry them), one 1 to 5 star rating per browser per item for tunes, tracks and
+  maps (`src/share/rating.js`, `src/share/board.js`), Top rated as a fourth order in the Tracks room, a "Maps from the
+  board" order and a Rate this map row in the Freestyle room, and a `?tune=` link that opens the load dialog on a code.
+  Settings gain one key, `mapOrder`, validated like `courseOrder`; no default of a flight setting moves.
+- A tune holds the tune it starts from (or the pilot's own Betaflight dump), the PID adjustment on it, the rates, weight,
+  Air grip, Motor power (as flown, so mode off shares stock), pack, lens and tilt. It holds no graphics, sticks, radio,
+  flight mode, names or laps. The board's `src/community.js` is the copy of record for what it accepts.
+- Loading a tune goes through the same clamps a stored blob does. A tune off stock on Air grip or Motor power turns
+  Flight feel tuning on and says so, and laps flown on it stay off the public board as they always did. Loading a custom
+  dump replaces the pilot's own saved dump for that aircraft, so the old one is kept and "Put mine back" restores the
+  whole settings blob and the dump.
+- Identity: a rating is tied to a random per browser key the board stores only as a hash. It does not stop someone
+  who clears storage voting again. The board damps the score and an admin can remove a tune or a rating. See the board
+  PR and its README.
+- Checks run: `node scripts/community-selftest.js` 8 passed (codes, rating helpers, orders, the map picker, and a tune
+  built from the defaults against the board's validator); `lint:presets` 4 of 4 clean; `lint:preload` up to date after
+  `gen-preload`. A headless Chromium smoke against a stubbed board: a snapshot of the live settings passes the board's
+  validator, Share returns a code, Look up shows the tune, Rate posts, Use changes weight, grip, lens and tuning,
+  Put mine back restores them, and no console errors.
+- Not run: `lint:catalog` (the vendored Betaflight tree is missing in this container), `lint:shell` (the Quad room gained
+  two rows and shell-check records that screen's overflow, so it may flag it), shots, verify. Nothing was flown.
+- Not covered: the Quad room's new rows on a phone layout, the Tracks room Rate row beyond its code path, and the
+  freestyle order row with a real board.
+- Latency: none. Menu and board only; the two dialogs load on first open, the flight, input and render paths are untouched.
+- Went wrong: the first draft of the load dialog appended a stray node, and my first smoke clicked Share twice; both
+  caught by reading the diff and the run.

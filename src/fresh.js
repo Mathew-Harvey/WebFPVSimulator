@@ -296,6 +296,7 @@
     'src/share/patreon.js',
     'src/share/pilot.js',
     'src/share/plan.js',
+    'src/share/rating.js',
     'src/share/session.js',
     'src/share/stamps.js',
     'src/share/stats.js',
@@ -356,6 +357,7 @@
     'src/ui/scorehud.js',
     'src/ui/stickhelp.js',
     'src/ui/trickfilm.js',
+    'src/ui/tunesdialog.js',
     'src/ui/ui.js',
     'src/units.js',
   ];
@@ -405,6 +407,7 @@
       'src/share/board.js',
       'src/share/admin.js',
       'src/share/session.js',
+      'src/share/rating.js',
       'src/share/flightlog.js',
       'src/game/race.js',
       'src/game/track.js',

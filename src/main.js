@@ -4703,6 +4703,15 @@ export async function boot({ loading, bootStart, mapId }) {
       notice = { text: st.reason, untilMs: performance.now() + 4800 };
     }
   }
+  /* Next gate cue, set on the view when the setting or the world changes,
+   * so a world built with the cue on does not light its gate on the title,
+   * the launch card and the results when the pilot has it off. The flight
+   * frame still sets it too (updateTargetLock), and both are one compare. */
+  function applyGuidance(s) {
+    if (view && view.setGuidance) {
+      view.setGuidance(s.nextGateCue !== false);
+    }
+  }
   function applyRaceLine(s) {
     const trail = view && view.raceLine;
     if (!trail) {
@@ -4722,6 +4731,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A new view is a new set of solids, whether or not the place is kept. */
     uploadPlantWorld();
     applyRaceLine(ui.settings);
+    applyGuidance(ui.settings);
     /* And a new GPU cost: the old world's average says nothing about this
      * one's. See reset in gpugate.js. */
     gpuGate.reset(true);
@@ -5843,6 +5853,7 @@ export async function boot({ loading, bootStart, mapId }) {
     audio.setEnabled(s.sound);
     applyMix(s);
     applyRaceLine(s);
+    applyGuidance(s);
     /* Last, after the weight, the aircraft, the pack and the rates above
      * have all settled on what the run is flying. */
     syncKeyHover();

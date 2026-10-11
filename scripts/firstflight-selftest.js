@@ -221,6 +221,9 @@ const raceSteps = [
   [{ next: 9, lapDone: false }, -1],
   [{ next: 0, lapDone: true }, -1],
   [{ next: 1, lapDone: true }, -1],
+  /* A three gate course: the third pass wraps next to 0 inside the lap. */
+  [{ next: 0, lapRunning: true, lapDone: false }, -1],
+  [{ next: 1, lapRunning: true, lapDone: false }, 1],
 ];
 for (const kind of ['race', 'whoop']) {
   const got = raceSteps.map(([state]) => stepOf(kind, { ...state, airMs: 0 }));

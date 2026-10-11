@@ -206,7 +206,10 @@ export function stepOf(kind, state) {
     }
     return state.airMs >= FREESTYLE_STEP_MS ? 1 : 0;
   }
-  if (state.lapDone || state.next >= RACE_GATES) {
+  /* race.next wraps to 0 after the last gate, so on a course of RACE_GATES
+   * gates or fewer a running lap with next at 0 has been all the way round
+   * and is done, not back at the start. */
+  if (state.lapDone || state.next >= RACE_GATES || (state.lapRunning && state.next === 0)) {
     return -1;
   }
   return state.next < 0 ? 0 : state.next;

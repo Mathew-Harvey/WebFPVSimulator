@@ -290,6 +290,11 @@ export function openTuneShare(ui) {
   dismiss.addEventListener('click', () => { if (!sending) { finish(); } });
 
   const submit = async () => {
+    // Enter in a text box reaches here while the Share button is disabled,
+    // and a second post would be a second tune with a code nobody keeps.
+    if (sending) {
+      return;
+    }
     err.textContent = '';
     const title = name.value.trim().replace(/\s+/g, ' ');
     if (title.length < 3) {
@@ -464,6 +469,9 @@ export function openTuneLoad(ui, { code = '' } = {}) {
   };
 
   const lookup = async () => {
+    if (busy) {
+      return;
+    }
     err.textContent = '';
     const id = tuneCodeFrom(entry.value);
     if (!id) {

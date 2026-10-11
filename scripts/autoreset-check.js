@@ -3,12 +3,14 @@
  * off, on, and on with the pilot flying out of it, and say where the craft
  * is a few seconds later. bug-918a8c99.
  *
- * Three flights, each a 10 m/s head-on at the crash-check shopfront:
+ * Four flights, each a 10 m/s head-on at the crash-check shopfront:
  *   off          the craft is set down nearby, as it always was, and stays.
  *   on, 1 s      after the delay the craft is on the start line and the sim
  *                clock restarted, which is what R does.
  *   on, 2 s,     the pilot takes off straight after the set down; the craft
  *   flown out    is in the air at the deadline and is not reset.
+ *   on, 1 s,     as on, 1 s, with Esc and Resume inside the wait: a pause
+ *   paused       holds the deadline and the craft still goes back.
  *
  * Usage: node scripts/autoreset-check.js
  * Exit code is the number of failed checks.
@@ -57,6 +59,14 @@ function fly(cfg) {
     };
     const path = window.__ramp(V(-2, 2.5, 29.3), V(7.5, 2.5, 29.3), 1.8, 10);
     await window.__fly(path, { heading: ${EAST}, extraMs: 100, watch: () => snap('fly') });
+    if (C.pause) {
+      /* Esc inside the wait, then Resume: the deadline is held, not lost. */
+      ui.onAction('pause', ui.settings);
+      ui.show('paused');
+      await new Promise((r) => setTimeout(r, 300));
+      ui.onAction('resume', ui.settings);
+      await new Promise((r) => setTimeout(r, 50));
+    }
     await new Promise((res) => {
       const t0 = performance.now();
       const tick = () => {
@@ -115,6 +125,7 @@ async function main() {
       ['off', { on: false, delay: 1, after: 0, watchMs: 3500 }],
       ['on, 1 s', { on: true, delay: 1, after: 0, watchMs: 3500 }],
       ['on, 2 s, flown out', { on: true, delay: 2, after: 1, watchMs: 3500 }],
+      ['on, 1 s, paused in the wait', { on: true, delay: 1, after: 0, watchMs: 3500, pause: true }],
     ];
     for (const [name, cfg] of flights) {
       const rows = await ev(fly(cfg));

@@ -4064,6 +4064,8 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let autoResetAtMs = -1;
   let autoResetKind = '';
+  /* The deadline has passed and the reset is taken at the next frame's top. */
+  let autoResetDue = false;
   function armAutoReset(kind) {
     if (!ui.settings.autoReset) {
       return;
@@ -4223,8 +4225,15 @@ export async function boot({ loading, bootStart, mapId }) {
   /* See autoResetAtMs. Called once a frame, after crashResetTick has had its
    * chance to arm it and before turtle can take the craft. */
   function autoResetTick() {
-    if (!ui.settings.autoReset || mode !== 'flight' || ui.screen !== 'flight' || poseLock || launchStaging) {
+    if (!ui.settings.autoReset || poseLock || launchStaging) {
       autoResetAtMs = -1;
+      autoResetDue = false;
+      return;
+    }
+    /* A pause (Esc, a menu, a radio unplugged) holds the deadline rather
+     * than dropping it: the sim clock it is on does not move while paused,
+     * and a dropped deadline never came back for a craft set down. */
+    if (mode !== 'flight' || ui.screen !== 'flight') {
       return;
     }
     if (autoResetAtMs < 0) {
@@ -4240,8 +4249,13 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     if (simTimeMs >= autoResetAtMs) {
-      reset();
-      notice = { text: 'Auto reset.', untilMs: performance.now() + 1600 };
+      /* Taken at the top of the next frame, where R and the restart switch
+       * are, not here: this runs after the frame has already placed the
+       * craft and seeded the race and the ghost from it, so a reset here
+       * left one frame drawn at the crash and the race sweeping from the
+       * crash to the start line. */
+      autoResetAtMs = -1;
+      autoResetDue = true;
     }
   }
 
@@ -4560,6 +4574,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * the frame boundary. */
     frameFault = null;
     autoResetAtMs = -1;
+    autoResetDue = false;
     /* A new run, so the mark is there to be found again, and the partners'. */
     eggFound = false;
     marksFound.clear();
@@ -4697,6 +4712,15 @@ export async function boot({ loading, bootStart, mapId }) {
       notice = { text: st.reason, untilMs: performance.now() + 4800 };
     }
   }
+  /* Next gate cue, set on the view when the setting or the world changes,
+   * so a world built with the cue on does not light its gate on the title,
+   * the launch card and the results when the pilot has it off. The flight
+   * frame still sets it too (updateTargetLock), and both are one compare. */
+  function applyGuidance(s) {
+    if (view && view.setGuidance) {
+      view.setGuidance(s.nextGateCue !== false);
+    }
+  }
   function applyRaceLine(s) {
     const trail = view && view.raceLine;
     if (!trail) {
@@ -4716,6 +4740,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A new view is a new set of solids, whether or not the place is kept. */
     uploadPlantWorld();
     applyRaceLine(ui.settings);
+    applyGuidance(ui.settings);
     /* And a new GPU cost: the old world's average says nothing about this
      * one's. See reset in gpugate.js. */
     gpuGate.reset(true);
@@ -5724,6 +5749,14 @@ export async function boot({ loading, bootStart, mapId }) {
      * dump under the one id, so the id stays 'custom' while the dump that
      * should fly changes. See dumpFor.
      */
+    /* Or a tune from the board rewriting Your edits' dump under the same id
+     * and aircraft: forget whose dump is loaded, so it is loaded again. */
+    if (ui.tuneDumpChanged) {
+      ui.tuneDumpChanged = false;
+      if (s.tune === 'custom') {
+        dumpFor = null;
+      }
+    }
     if (s.tune !== menuTune || (s.tune === 'custom' && dumpFor !== s.airframe)) {
       menuTune = s.tune;
       configLoadWait = swapTune(s.tune).catch((e) => {
@@ -5829,6 +5862,7 @@ export async function boot({ loading, bootStart, mapId }) {
     audio.setEnabled(s.sound);
     applyMix(s);
     applyRaceLine(s);
+    applyGuidance(s);
     /* Last, after the weight, the aircraft, the pack and the rates above
      * have all settled on what the run is flying. */
     syncKeyHover();
@@ -6605,6 +6639,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     const step = stepOf(kind, {
       next: race.next,
+      lapRunning: race.lapStartMs != null,
       lapDone: race.lastLapMs != null,
       airMs: airtimeMs,
     });
@@ -8000,6 +8035,10 @@ export async function boot({ loading, bootStart, mapId }) {
     if (input.takeRestart() && ui.screen === 'flight' && mode === 'flight') {
       reset();
     }
+    if (autoResetDue && ui.screen === 'flight' && mode === 'flight') {
+      reset();
+      notice = { text: 'Auto reset.', untilMs: performance.now() + 1600 };
+    }
     if (input.restartCapture && ui.screen !== 'pilot') {
       input.cancelRestartCapture();
     }
@@ -8017,6 +8056,7 @@ export async function boot({ loading, bootStart, mapId }) {
         if (ui.settings.autoReset !== was) {
           ui.writeSettings();
           autoResetAtMs = -1;
+          autoResetDue = false;
           notice = {
             text: ui.settings.autoReset ? 'Auto reset on.' : 'Auto reset off.',
             untilMs: performance.now() + 1800,

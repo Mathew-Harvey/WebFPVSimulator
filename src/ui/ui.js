@@ -5078,6 +5078,10 @@ export class Ui {
     this.tuneProbe = null;
     this.tuneCaps = { air: true, kv: true };
     this.tuneBackup = null;
+    /* Set when a loaded tune (or Put mine back) rewrites the stored dump
+     * under the one 'custom' id, which the id alone cannot show: the shell
+     * reads it in applySettings, clears it, and loads the dump again. */
+    this.tuneDumpChanged = false;
     this.resultsTune = null;
     this.tuneAsked = new Set();
     /* The combinations already sent this session, so the Share row can say
@@ -6859,7 +6863,7 @@ export class Ui {
    * A tune is the settings that change how THIS quad flies, nothing about
    * the pilot: the tune it starts from (or the pilot's own Betaflight dump),
    * the PID adjustment on that tune, the rates, weight, Air grip, Motor
-   * power, pack charge, lens and tilt. The board's src/community.js is the
+   * power, pack charge, lens and tilt. The board's src/tunes.js is the
    * copy of record for what it will accept. Graphics, sticks, radio,
    * flight mode, lap times and names are not in it, and loading one never
    * touches them. The dialogs are in ./tunesdialog.js; this is the part
@@ -6965,6 +6969,7 @@ export class Ui {
         this.tuneBackup = null;
         return { error: 'This browser would not keep the tune. Storage may be full or blocked.' };
       }
+      this.tuneDumpChanged = true;
     }
     s.tune = x.base;
     const pids = normalisePids(x.pids ? { [x.base]: x.pids } : {});
@@ -7008,6 +7013,7 @@ export class Ui {
       } else {
         writeFcDump(back.airframe, back.dump);
       }
+      this.tuneDumpChanged = true;
     }
     for (const k of Object.keys(this.settings)) {
       delete this.settings[k];
@@ -16373,7 +16379,14 @@ export class Ui {
     const inv = this.invite;
     this.tickInvite(ready, dialog, air);
     const raise = touch ? (!ready && airMs > 0) : (ready && !padFlying);
-    if (!this.airHintDone && air.hint.hidden && raise && !dialog && !inv.up && !airHintSeen()) {
+    /* A card seen in an earlier session is remembered here as done, so the
+     * local storage read happens once and not on every frame after it. Not
+     * while the invitation to tune flight feel is up: one card at a time, and
+     * no read for a card that cannot be raised yet. */
+    if (!this.airHintDone && air.hint.hidden && raise && !dialog && !inv.up && airHintSeen()) {
+      this.airHintDone = true;
+    }
+    if (!this.airHintDone && air.hint.hidden && raise && !dialog && !inv.up) {
       air.hint.hidden = false;
       /* The first raise starts its eight seconds. A raise after a pause
        * keeps the stamp, so the pause does not buy the card more air. */
@@ -16398,8 +16411,13 @@ export class Ui {
           tuneHint.hidden = true;
         }
       } else if (tuneHint.hidden && !ready && !dialog && room && air.hint.hidden && this.settings.feelTuning
-        && !this.tuneHintDone && !inv.up && !tuneHintSeen()) {
-        tuneHint.hidden = false;
+        && !this.tuneHintDone && !inv.up) {
+        /* The same once only read as the Weight card's above. */
+        if (tuneHintSeen()) {
+          this.tuneHintDone = true;
+        } else {
+          tuneHint.hidden = false;
+        }
       }
     }
     Ui.klass(air.box, ready && air.hint.hidden ? 'osd-air is-aloft' : 'osd-air');

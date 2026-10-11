@@ -70262,3 +70262,6 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
   applies it once a frame in `updateTargetLock` (`src/main.js`), a no-op when unchanged. Race scoring is untouched.
 - Checks: `node --check` on the three files only. Not run: lint:input, shots, verify. Nothing seen in a browser.
 - Latency: none added. On path is the existing code plus one boolean compare per frame; off only skips drawing.
+- Approval: the owner wrote "push to main" at 06:37Z on 2026-10-11, in answer to draft PR 61. Fast forward onto main (fetched
+  first; nothing had moved since the merge of main into the branch). No verification pass beyond `node --check`; the owner
+  flies it.

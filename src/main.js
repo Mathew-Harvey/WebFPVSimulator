@@ -4223,8 +4223,14 @@ export async function boot({ loading, bootStart, mapId }) {
   /* See autoResetAtMs. Called once a frame, after crashResetTick has had its
    * chance to arm it and before turtle can take the craft. */
   function autoResetTick() {
-    if (!ui.settings.autoReset || mode !== 'flight' || ui.screen !== 'flight' || poseLock || launchStaging) {
+    if (!ui.settings.autoReset || poseLock || launchStaging) {
       autoResetAtMs = -1;
+      return;
+    }
+    /* A pause (Esc, a menu, a radio unplugged) holds the deadline rather
+     * than dropping it: the sim clock it is on does not move while paused,
+     * and a dropped deadline never came back for a craft set down. */
+    if (mode !== 'flight' || ui.screen !== 'flight') {
       return;
     }
     if (autoResetAtMs < 0) {

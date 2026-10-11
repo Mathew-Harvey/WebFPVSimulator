@@ -4197,9 +4197,9 @@ function motorKvItem(s) {
   );
 }
 
-function tuningItem(s, caps) {
+function tuningItem(s, caps, label = 'Flight feel tuning') {
   return toggle(
-    'Flight feel tuning',
+    label,
     `Off by default. On, ${tuneSliderWords(caps) || 'the tuning sliders'} join Weight between the sticks while the quad is on the ground, and a flight flown on your own sliders ends with a question: did that feel better than the stock quad? Nothing is sent unless you say yes. Off, the quad flies as it ships whatever the sliders say. Switching it mid lap voids the lap if it changes the quad you are flying.`,
     Boolean(s.feelTuning),
     (v) => { s.feelTuning = Boolean(v); },
@@ -9471,6 +9471,23 @@ export class Ui {
           (id) => LINK_PRESETS[id].label,
           (id) => { s.link = id; },
         ),
+        /*
+         * FLIGHT FEEL TUNING'S SWITCH, where a pilot looks for a switch. The
+         * owner asked for it here on 2026-10-11 ("in the setting menu put a
+         * item to turn on advanced flight feel tuning"). Until then the mode
+         * could be turned on only from the Quad room's row and from the door
+         * on the Flight feel form, and a pilot who never opened either had
+         * no way to know it was there. It is the same flag as the Quad
+         * room's row, so flipping it here is flipping it there, and
+         * applySettings repaints the sliders for either. A module with
+         * neither slider has nothing to switch on, so no row, as in the Quad
+         * room. The label is the owner's wording; the Quad room's row keeps
+         * its older one.
+         */
+        ...(this.tuneCaps.air || this.tuneCaps.kv ? [
+          { label: 'Flight feel', section: true },
+          tuningItem(s, this.tuneCaps, 'Advanced flight feel tuning'),
+        ] : []),
         { label: 'Screen', section: true },
         graphicsItem(s, this.autoScaleNow),
         toggle(

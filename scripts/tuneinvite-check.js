@@ -23,6 +23,11 @@
  *   E  a pilot who has not met the Weight card: the two are never up at once
  *   F  Escape with the card up puts it away, and it comes back with the
  *      flight, asked once
+ *   G  the Settings menu's own switch for Advanced flight feel tuning: there,
+ *      under its own heading, off for a pilot who never touched it, a click on
+ *      On turns the mode on in the page and in the saved settings and puts the
+ *      sliders on the glass at the next flight screen, the Quad room's row
+ *      reads the same, and a click on Off takes it all away again
  *   H  the card across desktop windows, from 1920 by 1080 down to 1280 by 400
  *      (under the sheet's short screen line, where the Weight card hangs off
  *      the bottom): inside the screen and over nothing at every size
@@ -643,6 +648,115 @@ await scenario('F a pause with the card up', {
   const s2 = await look(page);
   check('F: resumed, it is back on the ground, and still asked once, not twice',
     back && s2.inviteLive.asked === 1 && s2.inviteStored.asked === 1, JSON.stringify({ back, live: s2.inviteLive, stored: s2.inviteStored.asked }));
+});
+
+/* ---- G: the Settings menu's switch -------------------------------------- */
+
+/* The rows of the screen on show, as the shell lists them, and where the
+ * switch's two segments are on the glass. */
+async function settingsRows(page) {
+  return JSON.parse(await page.evaluate(`JSON.stringify(window.__ui.items().map((i) => ({
+    label: i.label, section: Boolean(i.section), sw: Boolean(i.sw), on: i.on, note: i.note || '',
+  })))`));
+}
+
+async function segmentRect(page, label, seg) {
+  return JSON.parse(await page.evaluate(`JSON.stringify((() => {
+    const row = [...document.querySelectorAll('#ui .row')].find((r) => {
+      const l = r.querySelector('.row-label');
+      return l && l.textContent === ${JSON.stringify(label)};
+    });
+    if (!row) { return null; }
+    row.scrollIntoView({ block: 'center' });
+    const b = [...row.querySelectorAll('.sw-seg')].find((n) => n.textContent === ${JSON.stringify(seg)});
+    if (!b) { return null; }
+    const r = b.getBoundingClientRect();
+    return { l: r.left, t: r.top, r: r.right, b: r.bottom };
+  })())`));
+}
+
+await scenario('G the Settings switch', {
+  url: TRACK_LINK,
+  settings: RETURNING,
+  keys: { ...FIVE_TRACK, ...WEIGHT_SEEN },
+}, async (page) => {
+  await launched(page);
+  const s0 = await look(page);
+  check('G: a pilot who never touched the mode starts with it off and no slider on the glass',
+    !s0.feel && !s0.feelStored && s0.sliders.length === 0, JSON.stringify({ feel: s0.feel, sliders: s0.sliders }));
+
+  await page.tap('Escape');
+  await page.until("window.__ui.screen === 'paused'", 10000);
+  await page.evaluate("window.__ui.act('pilot'); 1");
+  await page.until("window.__ui.screen === 'pilot'", 10000);
+  const rows = await settingsRows(page);
+  const at = rows.findIndex((r) => r.label === 'Advanced flight feel tuning');
+  const row = rows[at];
+  check('G: Settings has the switch, under a heading of its own, once',
+    at > 0 && rows[at - 1].section && rows[at - 1].label === 'Flight feel'
+    && rows.filter((r) => r.label === 'Advanced flight feel tuning').length === 1,
+    JSON.stringify({ at, before: at > 0 ? rows[at - 1].label : null }));
+  check('G: it is a switch, and it reads Off', row && row.sw && row.on === false, JSON.stringify(row && { sw: row.sw, on: row.on }));
+  check('G: its note says what it does and that nothing is sent without a yes',
+    row && /Off by default\./.test(row.note) && /join Weight between the sticks/.test(row.note)
+    && /Nothing is sent unless you say yes\./.test(row.note), row ? row.note.slice(0, 120) : 'no row');
+  check('G: the other rows around it are the ones that were there, so nothing was displaced',
+    rows[at + 1] && rows[at + 1].label === 'Screen' && rows[at + 1].section
+    && rows[at - 2] && rows[at - 2].label === 'Radio link', JSON.stringify([rows[at - 2] && rows[at - 2].label, rows[at + 1] && rows[at + 1].label]));
+  await shot(page, 'G-settings');
+
+  const on = await segmentRect(page, 'Advanced flight feel tuning', 'On');
+  check('G: the On segment is on the glass', Boolean(on), JSON.stringify(on));
+  await tapCentre(page, on, false);
+  await sleep(700);
+  const s1 = await look(page);
+  const rows1 = await settingsRows(page);
+  /* The Quad room's rows, read without going there: the list is built from the
+   * screen and the settings and from nothing else, so asking for it with the
+   * screen swapped for an instant and put back is the same list a pilot gets. */
+  const quad = await page.evaluate(`(() => {
+    const ui = window.__ui;
+    const was = ui.screen;
+    ui.screen = 'quad';
+    let rows = [];
+    try { rows = ui.buildItems(); } finally { ui.screen = was; }
+    return JSON.stringify(rows.filter((i) => /feel tuning/i.test(i.label)).map((i) => ({ label: i.label, on: i.on })));
+  })()`);
+  check('G: a click on On turns the mode on in the page and in the saved settings, and the row reads On',
+    s1.feel === true && s1.feelStored === true && (rows1.find((r) => r.label === 'Advanced flight feel tuning') || {}).on === true,
+    JSON.stringify({ feel: s1.feel, stored: s1.feelStored }));
+  const q = JSON.parse(quad);
+  check('G: the Quad room has its own row for the same flag, and it reads On too',
+    q.length === 1 && q[0].label === 'Flight feel tuning' && q[0].on === true, quad);
+  await shot(page, 'G-quad');
+
+  await page.tap('Escape');
+  await page.until("window.__ui.screen === 'paused'", 10000);
+  await page.tap('Escape');
+  await page.until("window.__ui.screen === 'flight'", 10000);
+  await sleep(2500);
+  const s2 = await look(page);
+  check('G: back on the flight screen, on the ground, Air grip and Motor power are beside Weight at stock',
+    s2.screen === 'flight' && s2.sliders.length === 2 && s2.sliders.every((c) => /100%$/.test(c)),
+    JSON.stringify({ screen: s2.screen, sliders: s2.sliders }));
+  await shot(page, 'G-flight');
+
+  await page.tap('Escape');
+  await page.until("window.__ui.screen === 'paused'", 10000);
+  await page.evaluate("window.__ui.act('pilot'); 1");
+  await page.until("window.__ui.screen === 'pilot'", 10000);
+  const off = await segmentRect(page, 'Advanced flight feel tuning', 'Off');
+  await tapCentre(page, off, false);
+  await sleep(700);
+  await page.tap('Escape');
+  await page.until("window.__ui.screen === 'paused'", 10000);
+  await page.tap('Escape');
+  await page.until("window.__ui.screen === 'flight'", 10000);
+  await sleep(2000);
+  const s3 = await look(page);
+  check('G: a click on Off turns it off again, in the page and the saved settings, and the sliders go',
+    s3.feel === false && s3.feelStored === false && s3.sliders.length === 0,
+    JSON.stringify({ feel: s3.feel, stored: s3.feelStored, sliders: s3.sliders }));
 });
 
 /* ---- H and I: the card across window sizes ------------------------------- */

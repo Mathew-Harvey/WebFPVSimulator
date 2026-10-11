@@ -6605,6 +6605,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     const step = stepOf(kind, {
       next: race.next,
+      lapRunning: race.lapStartMs != null,
       lapDone: race.lastLapMs != null,
       airMs: airtimeMs,
     });

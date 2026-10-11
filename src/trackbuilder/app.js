@@ -4686,9 +4686,17 @@ export class App {
           onStatus: (t) => { status.textContent = t; },
         });
         status.textContent = `Sending ${Math.round(made.bytes.length / 1024)} KB to ${name}.`;
-        const sent = await sendRound(c, { bytes: made.bytes, title: title.value.trim(), signal: stop.signal });
+        /* No signal on the send: closing the box cannot take back a round
+         * the board has already added (the rule src/share/board.js keeps for
+         * every write), so the send finishes and the strip learns the next
+         * round's number either way, and a second Send is a new round on
+         * purpose rather than a duplicate by accident. */
+        const sent = await sendRound(c, { bytes: made.bytes, title: title.value.trim() });
         this.community = { ...c, name: sent.name, next: sent.n + 1, problem: '' };
         this.drawCommunity();
+        if (stop.signal.aborted) {
+          return;
+        }
         status.textContent = sent.track
           ? `Round ${sent.n} is live on ${sent.name}, and in the simulator.`
           : `Round ${sent.n} is live on ${sent.name}. The board could not put its track in the simulator, so the page has no Fly button for it.`;

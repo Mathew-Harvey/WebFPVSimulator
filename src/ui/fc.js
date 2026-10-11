@@ -384,8 +384,9 @@ export class FcSession {
     this.page = 'pid';
   }
 
-  /* Betaflight 4.5.1's own ACTUAL profile, the same numbers the Rates
-   * screen's revert row writes, so the two doors agree about "default". */
+  /* The shipped ACTUAL profile, configs/rates.js RATE_DEFAULTS, the same
+   * numbers the Rates screen's revert row writes, so the two doors agree
+   * about "default". A step under Betaflight 4.5.1's own since 2026-10-09. */
   resetRatesToDefault() {
     const d = RATE_DEFAULTS;
     this.setValue('rates_type', d.type);

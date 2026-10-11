@@ -70239,3 +70239,13 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
 - Approval: the owner wrote "push to main" at 01:35Z on 2026-10-11, in answer to the draft PR 60. Main was a fast forward
   (nothing had moved since the branch's base). No verification pass was run beyond the builder self test above; the owner
   flies it.
+
+## 2026-10-11 | settings | Next gate cue setting
+
+- Ask (owner, 06:32Z): a setting to turn off the next gate indicator, both the green / red gate and the arrow.
+- What changed: `nextGateCue` (boolean, default on) in `src/ui/ui.js`, row "Next gate cue" in Settings after Stick overlay.
+  `setGuidance(on)` in `src/render/scene.js` makes `setNextGate` paint no target while off (every gate stays dark and
+  `aim` stays inactive, so the shell's arrow has nothing to point at); the race line still hears the real target. The shell
+  applies it once a frame in `updateTargetLock` (`src/main.js`), a no-op when unchanged. Race scoring is untouched.
+- Checks: `node --check` on the three files only. Not run: lint:input, shots, verify. Nothing seen in a browser.
+- Latency: none added. On path is the existing code plus one boolean compare per frame; off only skips drawing.

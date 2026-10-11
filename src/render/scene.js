@@ -6107,16 +6107,36 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
       gt.fillMat.uniforms.uOpacity.value = tier === 'target' ? 0.22 : 0.10;
     }
   }
+  /* The pilot's "Next gate cue" setting. Off paints no target at all: every
+   * gate stays dark and the shell's arrow has nothing to point at, because
+   * aim stays inactive. The race line below still hears the real target, so
+   * that feature is its own. Only drawing is skipped, nothing is added. */
+  let guidanceOn = true;
+  let lastNext = -1;
+  let lastFollow = -1;
+  function setGuidance(on) {
+    if (on === guidanceOn) {
+      return;
+    }
+    guidanceOn = on;
+    setNextGate(lastNext, lastFollow);
+  }
   function setNextGate(i, follow) {
     for (const gt of gates) {
       dressGate(gt, 'dark');
     }
+    lastNext = i;
+    lastFollow = follow;
     nextGateIdx = i;
     /* follow is not drawn on any gate: the owner asked for no markings on
      * anything but the target. The whoop room's race line, when it is on,
      * reads it for how far ahead to lay its dots. */
     if (raceLine) {
       raceLine.setTarget(i, follow);
+    }
+    if (!guidanceOn) {
+      i = -1;
+      nextGateIdx = -1;
     }
     const target = i >= 0 && i < gates.length ? gates[i] : null;
     if (!target) {
@@ -7169,7 +7189,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
         real: '2.4 to 2.7, an Australian pavilion verandah at its outer edge',
       },
     },
-    updateShadowFocus, updateWind, setNextGate, targetAim, approachSide,
+    updateShadowFocus, updateWind, setNextGate, setGuidance, targetAim, approachSide,
     graphics: q.id,
     /* Kept as no-ops so the shell has one call shape. The racing line is
      * a planner tool now; the target in the air is the green glow. */

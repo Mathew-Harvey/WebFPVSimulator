@@ -1232,6 +1232,15 @@ const DEFAULTS = {
    */
   stickOverlay: true,
   /*
+   * NEXT GATE CUE: the green or red colouring on the gate to fly through
+   * next, and the arrow that points at it. On by default, so nothing changes
+   * for a pilot who never opens Settings. Off leaves every gate plain and
+   * draws no arrow, for a pilot who wants to find the line themselves. Only
+   * the picture: the race still counts gates in order. A boolean so the
+   * typeof gate accepts it.
+   */
+  nextGateCue: true,
+  /*
    * RACE LINE: in a whoop room, a trail of cream dots through the next gates
    * showing a good line a pilot can fly, the owner's ask of 2026-10-08 on
    * behalf of beginners. Off by default: a trail nobody asked for is a trail
@@ -9101,6 +9110,14 @@ export class Ui {
             : 'Off: no stick boxes on the flight picture. Turn it on to see what your sticks are telling the quad.',
           s.stickOverlay,
           (v) => { s.stickOverlay = v; },
+        ),
+        toggle(
+          'Next gate cue',
+          s.nextGateCue
+            ? 'On: the gate to fly through next is lit green, or red when you are on the wrong side of it, and an arrow points at it when it is off screen.'
+            : 'Off: no green or red gate and no arrow. Every gate looks the same and you find the next one yourself. The race still counts gates in order.',
+          s.nextGateCue,
+          (v) => { s.nextGateCue = v; },
         ),
         toggle(
           'Race line',

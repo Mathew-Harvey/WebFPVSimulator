@@ -7525,6 +7525,9 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.setTargetLock(LOCK_OFF);
       return;
     }
+    if (view.setGuidance) {
+      view.setGuidance(ui.settings.nextGateCue !== false);
+    }
     const aim = view.targetAim ? view.targetAim() : null;
     if (!aim || !aim.active) {
       ui.setTargetLock(LOCK_OFF);

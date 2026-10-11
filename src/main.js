@@ -10098,6 +10098,7 @@ export async function boot({ loading, bootStart, mapId }) {
       loading.done('frame');
       loading.finish();
       flyIfLinked();
+      ui.adoptLinkedTune();
     }
   }
   /* The course a track card asked flyIfLinked for, beside the map in

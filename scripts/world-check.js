@@ -1019,7 +1019,9 @@ function insideBox(l) {
  * keeps pushing sits a face that far into a disc for as long as it pushes,
  * which is the soft prop doing its job. The hull is what must stay out.
  */
-const HULL_BOX = { 0: [0.094, 0.094, 0.033, 0.038], 1: [0.041, 0.041, 0.010, 0.018] };
+/* The whoop's in the room's metres (len_scale, 2026-10-09) and at its body
+ * box since 2026-10-10: 0.0274, 0.0096 and 0.018 of the real machine. */
+const HULL_BOX = { 0: [0.094, 0.094, 0.033, 0.038], 1: [0.094, 0.094, 0.0329, 0.0617] };
 function hullDepth(row, af, h = row.car.h) {
   const [hx, hy, down, up] = HULL_BOX[af];
   const [w, x, y, z] = row.q;

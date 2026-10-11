@@ -980,6 +980,23 @@ export class App {
   }
 
   /*
+   * MAY THIS PILOT ADD LOGOS OR STICKERS. Only a signed in board admin may:
+   * the sponsor logos dialog's Add, Replace and Paint, and the Ground logo
+   * tool, which is the sticker on the field. Reads the remembered admin
+   * session and asks the board nothing, so a button never waits on a request.
+   * The boards that took a logo before this rule keep what they hold: nothing
+   * already placed is stripped, and Remove stays open to everybody.
+   */
+  canBrand() {
+    return !!readAdminSession(boardOrigin());
+  }
+
+  /* The sentence a pilot who may not brand is told, in the toast and the dialog. */
+  brandingClosed() {
+    return 'Only a board admin can add logos or stickers. Sign in under Admin in the menu.';
+  }
+
+  /*
    * IS THIS TAB SIGNED IN AS A BOARD ADMIN, as the board sees it.
    *
    * The board answers, so a token this clock still likes but the board has
@@ -1870,6 +1887,10 @@ export class App {
   }
 
   arm(typeId) {
+    if (ELEMENTS[typeId]?.kind === KIND.DECAL && !this.canBrand()) {
+      this.toast(this.brandingClosed());
+      return;
+    }
     this.armed = this.armed === typeId ? null : typeId;
     /* A road half laid is put away with the tool that was laying it. */
     if (this.armed !== 'road') {
@@ -1918,6 +1939,10 @@ export class App {
    * paint the second one.
    */
   armGroundLogo(logoId) {
+    if (!this.canBrand()) {
+      this.toast(this.brandingClosed());
+      return;
+    }
     this.armed = 'groundLogo';
     this.armedLogoId = typeof logoId === 'string' ? logoId : '';
     this.panels.renderPalette();
@@ -2252,6 +2277,12 @@ export class App {
       return;
     }
     const def = ELEMENTS[type];
+    /* Refused here as well as at arm(), so a tool armed before the admin signed out places nothing. */
+    if (def.kind === KIND.DECAL && !this.canBrand()) {
+      this.disarm();
+      this.toast(this.brandingClosed());
+      return;
+    }
     const freestyle = docModeOf(this.doc) === 'freestyle';
 
     /* Exactly one set of start pads per track. A second press moves the
@@ -2852,7 +2883,18 @@ export class App {
     if (!this.selection.size) {
       return;
     }
-    const ids = [...this.selection];
+    let ids = [...this.selection];
+    /* A copied sticker is an added sticker. */
+    if (!this.canBrand()) {
+      const keep = ids.filter((id) => kindOf(elementById(this.doc, id)) !== KIND.DECAL);
+      if (keep.length !== ids.length) {
+        this.toast(this.brandingClosed());
+      }
+      ids = keep;
+      if (!ids.length) {
+        return;
+      }
+    }
     let made = [];
     /* The room is every canvas's now, so what picks the copy is the document and not the view: a map's is
      * cloneElements', and it puts a car's copy on along its own road. */
@@ -5138,6 +5180,19 @@ export class App {
       ? `Up to five sponsors\u2019 logos, painted on the ${w.ground} wherever you put them: press Paint on the ${w.ground} under one, then click the ${w.place}. They travel inside the map file, so a map you send somebody arrives with its branding on.`
       : `Up to five sponsors\u2019 logos. They are dealt out round the gates in flying order, so each sponsor gets a share of the boards, the upright banners and the flags, spread down the lap rather than bunched at the start. Any of them can also be painted on the ${w.ground}: press Paint on the ${w.ground} under it, then click the ${w.place}. They travel inside the track file, so a track you send somebody arrives with its branding on.`;
     body.append(help);
+    /* Everybody can open the dialog and take a logo off; adding one is the admin's. */
+    const mayBrand = this.canBrand();
+    if (!mayBrand) {
+      const closed = document.createElement('p');
+      closed.className = 'tb-help';
+      closed.textContent = this.brandingClosed();
+      const signIn = document.createElement('button');
+      signIn.type = 'button';
+      signIn.className = 'tb-btn';
+      signIn.textContent = 'Board admin? Sign in';
+      signIn.addEventListener('click', () => this.openAdmin());
+      body.append(closed, signIn);
+    }
 
     const list = document.createElement('div');
     body.append(list);
@@ -5207,7 +5262,7 @@ export class App {
             ? (map ? `Empty. Add a logo here, then paint it on the ${w.ground}.` : 'Empty. Add a logo here and the gates start sharing it.')
             : 'Empty.';
           slot.append(note);
-          if (i === logos.length) {
+          if (i === logos.length && mayBrand) {
             const add = document.createElement('button');
             add.type = 'button';
             add.className = 'tb-btn';
@@ -5281,7 +5336,7 @@ export class App {
           redraw();
           this.toast(`Logo removed. Any ${w.ground} painted with it now shows nothing until you pick another.`);
         });
-        btns.append(swap, paint, drop);
+        btns.append(...(mayBrand ? [swap, paint] : []), drop);
         slot.append(btns);
       }
 
@@ -5315,6 +5370,11 @@ export class App {
     file.addEventListener('change', async () => {
       const chosen = file.files[0];
       const slot = target;
+      if (!this.canBrand()) {
+        file.value = '';
+        target = -1;
+        return;
+      }
       file.value = '';
       target = -1;
       if (!chosen || slot < 0) {
@@ -6303,11 +6363,12 @@ export class App {
       this.moreItems.get('export').title = `Write a .json ${noun} file`;
       this.moreItems.get('delete').title = `Remove this ${noun} from this browser`;
       this.moreItems.get('animation').style.display = map ? 'none' : '';
-      /* Says who is signed in, so an admin can see it from here. Hidden on a
-       * map: the board takes maps without any official mark. */
+      /* Says who is signed in, so an admin can see it from here. Shown on a
+       * map too: a map has no official mark, but logos and stickers are the
+       * admin's on every canvas and this is where the admin signs in. */
       const adminNow = readAdminSession(boardOrigin());
       this.moreItems.get('admin').textContent = adminNow ? `Admin: ${adminNow.email || 'signed in'}` : 'Admin';
-      this.moreItems.get('admin').style.display = map ? 'none' : '';
+      this.moreItems.get('admin').style.display = '';
       /* The share link is a race track's, on either canvas (MENUS-PLAN.md
        * 4.2b); the build sheet and the picture are the room's. */
       this.moreItems.get('link').style.display = map ? 'none' : '';

@@ -45,6 +45,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSim, SIM_OK } from '../tests/lib/simmod.js';
 import { ST } from '../tests/lib/replay.js';
+import { MICRO_SCALE } from '../configs/airframes.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const G = 9.80665;
@@ -53,6 +54,15 @@ const RPM = 60 / (2 * Math.PI);
 
 const AF_5IN = 0;
 const AF_WHOOP = 1;
+/*
+ * THE WHOOP'S METRE, IN THE MODULE'S. Since 2026-10-09 the whoop's plant
+ * carries len_scale, MICRO_SCALE, and reports its position and velocity in
+ * the scene metres of a room built that much larger than life, so a speed
+ * or a distance read off the state is divided by it before it is held to a
+ * band written in a real whoop's metres. Rates, rpm, volts, amps and the
+ * debug taps are the plant's own and are not.
+ */
+const LEN = MICRO_SCALE;
 
 /*
  * Every band, with the source that fixed it. "derived" means the number
@@ -84,9 +94,10 @@ const BANDS = {
        + 'about 74,700.',
   },
   'W5 punch-sag': {
-    min: 3.00, max: 3.45, unit: 'V a cell',
-    why: 'Real 1S whoop packs fall to 3.1 to 3.2 V under a punch from a fresh '
-       + 'cell. Measured here from 4.20 V rather than the 4.35 V a LiHV charges '
+    min: 3.50, max: 3.80, unit: 'V a cell',
+    why: 'The owner, 2026-10-09: a real whoop sags "to about 3.65v on punch" '
+       + 'from a fresh cell (this band was 3.00 to 3.45 on a published 3.1 to '
+       + '3.2 V figure until then). Measured here from 4.20 V rather than the 4.35 V a LiHV charges '
        + 'to. SUSTAINED, not the minimum, for the same reason W6 is: the plant '
        + 'has no winding inductance and no ESC current ceiling, so the first '
        + 'two or three milliseconds of any punch draw a current that is silly '
@@ -351,7 +362,7 @@ async function main() {
   {
     const sim = await fresh(wasm, whoopCfg, AF_WHOOP, 4.2);
     let vz = 0;
-    fly(sim, [{ ms: 12000, thr: 0 }], (t, s) => { vz = s[ST.VZ]; });
+    fly(sim, [{ ms: 12000, thr: 0 }], (t, s) => { vz = s[ST.VZ] / LEN; });
     band('W9 terminal-velocity', Math.abs(vz), (v) => v.toFixed(2));
   }
 
@@ -364,7 +375,7 @@ async function main() {
     sim.setAngleMode(1);
     let speed = 0;
     fly(sim, [{ ms: 14000, pitch: -1.0, thr: 1.0 }], (t, s) => {
-      speed = Math.sqrt(s[ST.VX] * s[ST.VX] + s[ST.VY] * s[ST.VY] + s[ST.VZ] * s[ST.VZ]);
+      speed = Math.sqrt(s[ST.VX] * s[ST.VX] + s[ST.VY] * s[ST.VY] + s[ST.VZ] * s[ST.VZ]) / LEN;
     });
     band('W10 top-speed', speed, (v) => v.toFixed(2));
   }
@@ -408,8 +419,8 @@ async function main() {
     let speed = 0;
     let climb = 0;
     fly(sim, [{ ms: 14000, pitch: -0.58, thr: 0.44 }], (t, s) => {
-      speed = Math.sqrt(s[ST.VX] * s[ST.VX] + s[ST.VY] * s[ST.VY]);
-      climb = s[ST.VZ];
+      speed = Math.sqrt(s[ST.VX] * s[ST.VX] + s[ST.VY] * s[ST.VY]) / LEN;
+      climb = s[ST.VZ] / LEN;
     });
     const duct = sim.e.sim_bf_debug(68);
     const vperp = sim.e.sim_bf_debug(69);
@@ -421,7 +432,20 @@ async function main() {
      * where duct_fade puts the half point.
      */
     const atPoint = vperp >= 4.5 && vperp <= 7.0;
-    band('W11 duct-fade', (duct - 1) / (kDuct - 1), (v) => v.toFixed(3));
+    /*
+     * NO DUCT TERM SINCE 2026-10-09, and the gate says so rather than
+     * dividing by zero. The 0702 whoop plant carries k_duct 1.0, fade 0 and
+     * lip 0: the shroud's static gain is inside the bench thrust it was
+     * solved against, and the fade and the lip were never measured on a
+     * whoop's short ring (src/native/plant.c, the whoop's head note). So this
+     * asserts the duct is the identity at speed. If a duct term comes back,
+     * so does the band above.
+     */
+    if (kDuct === 1) {
+      report('W11 duct-fade', duct === 1, `${duct} applied`, 'no duct term: k_duct is 1.0 and the factor must read exactly 1 at speed');
+    } else {
+      band('W11 duct-fade', (duct - 1) / (kDuct - 1), (v) => v.toFixed(3));
+    }
     report('    edgewise speed', atPoint, `${vperp.toFixed(2)} m/s at the rotor`,
       `window 4.5 to 7.0, ground speed ${speed.toFixed(2)} m/s, climb ${climb.toFixed(2)} m/s`);
 
@@ -454,7 +478,7 @@ async function main() {
       segs.push({ ms: 450, pitch: 0.55, thr: 0.55 });
     }
     fly(sim, segs, (t, s) => {
-      const p = [s[ST.PX], s[ST.PY], s[ST.PZ]];
+      const p = [s[ST.PX] / LEN, s[ST.PY] / LEN, s[ST.PZ] / LEN];
       if (last) {
         dist += Math.hypot(p[0] - last[0], p[1] - last[1], p[2] - last[2]);
       }

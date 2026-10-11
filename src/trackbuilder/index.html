@@ -301,6 +301,30 @@
       #tb-keep[hidden] { display: none; }
 
       /*
+       * THE COMMUNITY STRIP: this tab is making the next round for a club.
+       * Mint, the board's colour for a record, because what it ends in is a
+       * round other people race; and on a phone as well, unlike the keep
+       * strip, because it holds the one button the organiser came here for.
+       */
+      #tb-community {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--s2) var(--s3);
+        padding: var(--s2) var(--s4);
+        background: rgba(125, 255, 180, 0.07);
+        border-bottom: 1px solid rgba(125, 255, 180, 0.35);
+        color: var(--cream);
+        font-size: var(--t-small);
+        line-height: 1.5;
+      }
+      #tb-community[hidden] { display: none; }
+      #tb-community p { margin: 0; flex: 1 1 260px; max-width: 104ch; }
+      #tb-community strong { color: var(--mint); font-weight: 600; }
+      #tb-community .tb-help { display: block; color: var(--dim); }
+      #tb-community .tb-btn { flex: 0 0 auto; }
+
+      /*
        * THE NOTICE, FOLDED: a quiet line beside Save that keeps the strip's
        * sakura dot, so it reads as the same fact and not as a new control.
        * It is a button because a press says the whole sentence, which is the
@@ -2547,6 +2571,10 @@
   <body>
     <div id="tb-app">
       <header id="tb-topbar"></header>
+      <!-- CommunityGow: shown only while this tab is making a round for a
+           community, which arrives in the address from the community's page.
+           app.js (attachCommunity) fills it. -->
+      <div id="tb-community" role="region" aria-label="CommunityGow round" hidden></div>
       <div id="tb-keep">
         <!-- The sentence after the bold is app.js's, in the canvas's own noun
              (placeKeep): a map's notice says maps. -->

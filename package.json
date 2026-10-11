@@ -86,6 +86,7 @@
     "tune:selftest": "node scripts/tune-selftest.js",
     "seat:selftest": "node scripts/seat-selftest.js",
     "firstflight:selftest": "node scripts/firstflight-selftest.js",
+    "tuneinvite:selftest": "node scripts/tuneinvite-selftest.js",
     "test:edge": "node edge/selftest.js",
     "lint:nouns": "node scripts/noun-lint.js",
     "lint:devices": "node scripts/device-check.js",
@@ -101,6 +102,7 @@
     "check:craft": "node scripts/craft-check.js",
     "check:seat": "node scripts/seat-check.js",
     "check:firstflight": "node scripts/firstflight-check.js",
+    "check:tuneinvite": "node scripts/tuneinvite-check.js",
     "feel:response": "node scripts/stick-response.js",
     "feel:measure": "node scripts/tune-measure.js"
   }

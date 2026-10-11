@@ -8506,6 +8506,24 @@ export async function boot({ loading, bootStart, mapId }) {
           groundCueAtWall = nowWall;
           audio.event('land');
         }
+        /*
+         * A CLEAN SET DOWN is the one moment the invitation to help tune
+         * flight feel is weighed (Ui.noteLanding, src/ui/tuneinvite.js). It
+         * is called here and nowhere else, so a crash is never a landing, and
+         * it reads only what the Ui kept: no storage is read, one write is
+         * made. Guarded because it is optional and this is the frame: on
+         * 2026-10-05 a prompt read a name that was not declared, and every
+         * frame after it faulted.
+         */
+        try {
+          ui.noteLanding({
+            course: ghostCourseKey(),
+            freestyle: race.freestyle,
+            airMs: airtimeMs,
+          });
+        } catch (err) {
+          console.error('tune invitation', err);
+        }
       }
       if (crashJudge.hit) {
         /*
@@ -11088,6 +11106,9 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__craftState = () => ({
     mode,
     flownThisRun,
+    /* The run's airtime in sim milliseconds, which the tune invitation counts
+     * (check:tuneinvite): harness only. */
+    airMs: airtimeMs,
     /* The plant's own pack volts, which the OSD scales to the airframe's
      * cells: a check can see the display change and the physics not. */
     packVolts: stateCurr ? stateCurr[18] : null,
@@ -11910,6 +11931,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * only; nothing in the shell reads these. */
   window.__map = () => ({
     id: view.id,
+    /* The key the tune invitation counts this course under: harness only. */
+    course: ghostCourseKey(),
     name: view.name,
     mode: view.mode,
     graphics: view.graphics,

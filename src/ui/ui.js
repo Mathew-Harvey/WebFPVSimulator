@@ -207,6 +207,9 @@ import { ScoreHud } from './scorehud.js';
 import {
   GUIDE_KEY, GUIDE_KINDS, guideKind, guidesGiven, lapKindOfKey,
 } from './firstflight.js';
+import {
+  INVITE_MAX_ASKS, INVITE_SEEN_MS, dueReason, inviteWords, noteAir, noteAnswer, noteAsked, readInvite, writeInvite,
+} from './tuneinvite.js';
 import { ChaseHud, chaseCallText } from './chasehud.js';
 import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
@@ -2370,9 +2373,48 @@ function makeWeightSlider({ min, max, step, value, label }) {
   const cap = el('div', 'osd-air-cap', '');
   box.append(hint, row, cap);
   const tune = makeTuneGroup();
-  box.append(tune.hint, tune.box);
+  const invite = makeInviteCard();
+  box.append(tune.hint, tune.box, invite.card);
   return {
-    box, range, cap, hint, dismiss, tune,
+    box, range, cap, hint, dismiss, tune, invite,
+  };
+}
+
+/* The page's storage, or null where even asking for it throws (a browser
+ * with site data blocked). tuneinvite.js reads and writes through it and
+ * treats null as an empty store. */
+function inviteStorage() {
+  try {
+    return window.localStorage;
+  } catch (e) {
+    return null;
+  }
+}
+
+/*
+ * THE INVITATION TO HELP TUNE FLIGHT FEEL, a card in the Weight card's
+ * place and of its make: see src/ui/tuneinvite.js for who is asked, when and
+ * why. It asks a question, so unlike the two hint cards it has two buttons,
+ * and unlike them it is not remembered as seen when it goes away: the page
+ * counts how often it has been asked and answered (tickInvite and
+ * answerInvite).
+ *
+ * Built once, hidden, with no words. The words are written when it goes up,
+ * because they name how many tracks the pilot has flown and which sliders
+ * this module has. New classes only, on the rule above makeWeightSlider.
+ */
+function makeInviteCard() {
+  const card = el('div', 'osd-air-hint osd-invite-hint');
+  card.hidden = true;
+  const title = el('p', 'osd-air-hint-title', '');
+  const body = el('p', 'osd-air-hint-body', '');
+  const actions = el('div', 'osd-invite-actions');
+  const yes = btn('osd-air-hint-btn osd-invite-yes', '');
+  const no = btn('osd-air-hint-btn osd-invite-no', '');
+  actions.append(yes, no);
+  card.append(title, body, actions);
+  return {
+    card, title, body, yes, no,
   };
 }
 
@@ -5097,6 +5139,17 @@ export class Ui {
     this.airHintDone = false;
     /* The same for flight feel tuning's card: see setAirSlider. */
     this.tuneHintDone = false;
+    /*
+     * THE INVITATION TO HELP TUNE FLIGHT FEEL (src/ui/tuneinvite.js). What
+     * the page has stored is read here, once, and kept: the frame loop never
+     * asks storage. `airMs` is the run airtime already counted, so a landing
+     * adds only what was flown since the last one; `armed` is a landing that
+     * made the pilot due and has not yet found room to put the card up, and
+     * `up` is the card on the glass.
+     */
+    this.invite = {
+      state: readInvite(inviteStorage()), airMs: 0, armed: false, up: false, reason: '', counted: false, shownAt: 0,
+    };
     /* The airtime at which the card first went up, for its eight seconds. */
     this.airHintAtMs = null;
     this.ptrX = null;
@@ -15989,6 +16042,7 @@ export class Ui {
       this.dismissAirHint();
     });
     this.bindTuneSliders();
+    this.bindInvite();
     this.paintAir();
   }
 
@@ -16077,6 +16131,150 @@ export class Ui {
   }
 
   /*
+   * A CLEAN LANDING, the one moment the invitation to help tune flight feel
+   * is weighed. main.js calls this from the perch and nowhere else, so a
+   * crash is never a landing here. `course` is the key the ghosts are filed
+   * under, `freestyle` a world with no gates and `airMs` the run's airtime so
+   * far; what is added is what was flown since the last landing, and a run
+   * that began again since (the airtime went back down) counts from its
+   * start. Storage is written here, once, and only when the table changed.
+   * The card goes up in setAirSlider on the frames after, when the quad is
+   * down and nothing else is on the glass.
+   */
+  noteLanding({ course, freestyle, airMs }) {
+    const inv = this.invite;
+    const state = inv.state;
+    if (state.answer !== '' || state.asked >= INVITE_MAX_ASKS) {
+      /* Finished with: an answered or thrice asked pilot is never counted
+       * again, so a landing costs them nothing, storage included. */
+      return;
+    }
+    const flown = airMs >= inv.airMs ? airMs - inv.airMs : airMs;
+    inv.airMs = airMs;
+    let changed = noteAir(state, { freestyle, course, airMs: flown });
+    if (this.settings.feelTuning && state.answer === '') {
+      /* On already, by the Quad room or the door on the verdict form: not a
+       * pilot to ask, and not one to ask later if they switch it off. */
+      noteAnswer(state, 'self');
+      changed = true;
+    }
+    if (changed) {
+      writeInvite(inviteStorage(), state);
+    }
+    if (this.settings.feelTuning || this.guided || inv.up) {
+      return;
+    }
+    const reason = dueReason(state, freestyle);
+    if (reason && inviteWords(reason, state, this.tuneCaps)) {
+      inv.armed = true;
+      inv.counted = false;
+      inv.reason = reason;
+    }
+  }
+
+  /* The card on the glass. It is counted as asked by tickInvite once it has
+   * been seen (INVITE_SEEN_MS), or by the answer if that comes first, so a
+   * card that is ignored three times stops coming and one that blinked between
+   * a bounce and the landing after it is not held against anyone. */
+  raiseInvite() {
+    const inv = this.invite;
+    const card = this.osdAir && this.osdAir.invite;
+    const words = inviteWords(inv.reason, inv.state, this.tuneCaps);
+    inv.armed = false;
+    if (!card || !words) {
+      return;
+    }
+    card.title.textContent = words.title;
+    card.body.textContent = words.body;
+    card.yes.textContent = words.yes;
+    card.no.textContent = words.no;
+    card.card.hidden = false;
+    inv.up = true;
+    inv.shownAt = performance.now();
+  }
+
+  /*
+   * THE INVITATION'S SHARE OF THE FRAME, from setAirSlider. It goes up on the
+   * ground when no other card is up and nothing is over the glass; it is
+   * counted as asked once it has been seen; it is put away when the quad
+   * leaves the ground, a dialog opens, or the mode came on some other way (the
+   * Settings switch, the Quad room); and a quad that takes off before the card
+   * found room has not been asked. Three booleans a frame, and the clock only
+   * while a card that has not counted is on the glass. The one storage read
+   * was at construction and the writes are at the landing, the count and the
+   * answer. `now` is a parameter so the selftest can give it a clock.
+   */
+  tickInvite(ready, dialog, air, now = performance.now()) {
+    const inv = this.invite;
+    if (inv.up) {
+      if (ready || dialog || this.settings.feelTuning) {
+        this.retireInvite();
+      } else if (!inv.counted && now - inv.shownAt >= INVITE_SEEN_MS) {
+        inv.counted = true;
+        noteAsked(inv.state);
+        writeInvite(inviteStorage(), inv.state);
+      }
+    } else if (inv.armed) {
+      if (ready || this.settings.feelTuning) {
+        inv.armed = false;
+      } else if (!dialog && air.hint.hidden && !(air.tune && !air.tune.hint.hidden)) {
+        this.raiseInvite();
+      }
+    }
+  }
+
+  /* Put away without an answer: the quad left the ground, a dialog opened or
+   * the mode came on some other way. It was asked if it had been seen long
+   * enough to count, and not if it only blinked. */
+  retireInvite() {
+    const card = this.osdAir && this.osdAir.invite;
+    if (card) {
+      card.card.hidden = true;
+    }
+    this.invite.up = false;
+  }
+
+  /* Yes turns Flight feel tuning on, which is all it does: the sliders are
+   * drawn by paintAir, main.js hears the settings, and the card that
+   * explains them goes up by itself on the next frame the quad is down. */
+  answerInvite(yes) {
+    const inv = this.invite;
+    if (!inv.up) {
+      return;
+    }
+    if (!inv.counted) {
+      inv.counted = true;
+      noteAsked(inv.state);
+    }
+    noteAnswer(inv.state, yes ? 'yes' : 'no');
+    writeInvite(inviteStorage(), inv.state);
+    this.retireInvite();
+    if (yes && !this.settings.feelTuning) {
+      this.settings.feelTuning = true;
+      this.paintAir();
+      saveSettings(this.settings);
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
+    }
+  }
+
+  bindInvite() {
+    const card = this.osdAir && this.osdAir.invite;
+    if (!card) {
+      return;
+    }
+    card.yes.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.answerInvite(true);
+    });
+    card.no.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.answerInvite(false);
+    });
+  }
+
+  /*
    * Whether the block is up, and whether the hint is with it. Driven from
    * the frame loop beside setStickOverlay, so the two cannot disagree about
    * what flying means.
@@ -16153,8 +16351,12 @@ export class Ui {
      * collision is a layout problem and it is solved in the sheet, where the
      * card flips below the slider on a short screen.
      */
+    /* The invitation to help tune flight feel, which noteLanding arms at a
+     * clean set down once a pilot has flown enough: see tickInvite. */
+    const inv = this.invite;
+    this.tickInvite(ready, dialog, air);
     const raise = touch ? (!ready && airMs > 0) : (ready && !padFlying);
-    if (!this.airHintDone && air.hint.hidden && raise && !dialog && !airHintSeen()) {
+    if (!this.airHintDone && air.hint.hidden && raise && !dialog && !inv.up && !airHintSeen()) {
       air.hint.hidden = false;
       /* The first raise starts its eight seconds. A raise after a pause
        * keeps the stamp, so the pause does not buy the card more air. */
@@ -16179,7 +16381,7 @@ export class Ui {
           tuneHint.hidden = true;
         }
       } else if (tuneHint.hidden && !ready && !dialog && room && air.hint.hidden && this.settings.feelTuning
-        && !this.tuneHintDone && !tuneHintSeen()) {
+        && !this.tuneHintDone && !inv.up && !tuneHintSeen()) {
         tuneHint.hidden = false;
       }
     }
@@ -16223,6 +16425,17 @@ export class Ui {
     air.hint.hidden = true;
     if (air.tune) {
       air.tune.hint.hidden = true;
+    }
+    /* The invitation is put away like the cards. A pause brings it back with
+     * the flight, and one that had already counted as asked is not counted
+     * again; leaving for any other screen ends the landing it belonged to. */
+    const inv = this.invite;
+    if (air.invite && inv.up) {
+      air.invite.card.hidden = true;
+      inv.up = false;
+      inv.armed = screen === 'paused';
+    } else if (screen !== 'paused') {
+      inv.armed = false;
     }
     if (air.box.__wfClass === 'osd-air is-aloft') {
       Ui.klass(air.box, 'osd-air');

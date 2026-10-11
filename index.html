@@ -1301,6 +1301,49 @@
       }
       .osd-air-hint-btn:focus-visible { outline: 1px solid var(--cream); outline-offset: 2px; }
       /*
+       * THE INVITATION TO HELP TUNE FLIGHT FEEL (src/ui/tuneinvite.js) is the
+       * Weight card's make in the Weight card's place, so everything above
+       * and the short screen rule below apply to it. It has two buttons: the
+       * Yes is the filled pill and the No is outlined, the way the tuning
+       * group's Reset to stock is, so the eye goes to the one that does
+       * something. New classes only.
+       */
+      .osd-invite-actions { display: flex; flex-wrap: wrap; gap: 0 8px; }
+      .osd-air-hint-btn.osd-invite-no {
+        background: transparent; color: var(--amber);
+        box-shadow: inset 0 0 0 1px rgba(255, 212, 92, 0.42);
+      }
+      /*
+       * TWO THINGS THE WEIGHT CARD GETS AWAY WITH AND THIS ONE CANNOT, found by
+       * resizing a window under a card that was up (scripts/tuneinvite-check.js,
+       * scenarios H and I).
+       *
+       * NARROWER. The Weight card's 320 is as wide as the gap between the two
+       * plates on a laptop, and the block is not centred in that gap (the left
+       * plate's caption is the wider), so a card of that width put its edge
+       * over a plate at 1280 wide, and over both at 1024 and 800, where the
+       * slider shrinks and the gap with it. The card is held to the width of
+       * the block it hangs on, which is the gap less the two margins the row
+       * keeps, and never past 300. The 28 is the card's own side padding,
+       * which max-width does not count. The touch rule below is later in the
+       * sheet and equal in weight, so on glass the card is still the wide,
+       * short one.
+       *
+       * ALWAYS ABOVE. The short screen rule below hangs the Weight card under
+       * its slider, which is right for a phone and off the bottom of the
+       * screen on a desktop window under 560 px tall: the card was never seen
+       * and was still counted as asked, three times. Above, the card clears
+       * the clock and the banner on every window measured down to 400 px.
+       */
+      .osd-air-hint.osd-invite-hint {
+        max-width: min(calc(100% - 28px), 300px);
+        top: auto; bottom: calc(100% + 10px);
+      }
+      .osd-air-hint.osd-invite-hint::after {
+        top: auto; bottom: -5px;
+        box-shadow: inset -1px -1px 0 0 rgba(255, 212, 92, 0.42);
+      }
+      /*
        * FLIGHT FEEL TUNING'S GROUP, under the Weight slider in the same
        * block, and only while the mode is on (paintAir sets hidden). The two
        * rows are built from the Weight slider's own classes, so everything

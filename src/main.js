@@ -4064,6 +4064,8 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let autoResetAtMs = -1;
   let autoResetKind = '';
+  /* The deadline has passed and the reset is taken at the next frame's top. */
+  let autoResetDue = false;
   function armAutoReset(kind) {
     if (!ui.settings.autoReset) {
       return;
@@ -4225,6 +4227,7 @@ export async function boot({ loading, bootStart, mapId }) {
   function autoResetTick() {
     if (!ui.settings.autoReset || poseLock || launchStaging) {
       autoResetAtMs = -1;
+      autoResetDue = false;
       return;
     }
     /* A pause (Esc, a menu, a radio unplugged) holds the deadline rather
@@ -4246,8 +4249,13 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     if (simTimeMs >= autoResetAtMs) {
-      reset();
-      notice = { text: 'Auto reset.', untilMs: performance.now() + 1600 };
+      /* Taken at the top of the next frame, where R and the restart switch
+       * are, not here: this runs after the frame has already placed the
+       * craft and seeded the race and the ghost from it, so a reset here
+       * left one frame drawn at the crash and the race sweeping from the
+       * crash to the start line. */
+      autoResetAtMs = -1;
+      autoResetDue = true;
     }
   }
 
@@ -4566,6 +4574,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * the frame boundary. */
     frameFault = null;
     autoResetAtMs = -1;
+    autoResetDue = false;
     /* A new run, so the mark is there to be found again, and the partners'. */
     eggFound = false;
     marksFound.clear();
@@ -8026,6 +8035,10 @@ export async function boot({ loading, bootStart, mapId }) {
     if (input.takeRestart() && ui.screen === 'flight' && mode === 'flight') {
       reset();
     }
+    if (autoResetDue && ui.screen === 'flight' && mode === 'flight') {
+      reset();
+      notice = { text: 'Auto reset.', untilMs: performance.now() + 1600 };
+    }
     if (input.restartCapture && ui.screen !== 'pilot') {
       input.cancelRestartCapture();
     }
@@ -8043,6 +8056,7 @@ export async function boot({ loading, bootStart, mapId }) {
         if (ui.settings.autoReset !== was) {
           ui.writeSettings();
           autoResetAtMs = -1;
+          autoResetDue = false;
           notice = {
             text: ui.settings.autoReset ? 'Auto reset on.' : 'Auto reset off.',
             untilMs: performance.now() + 1800,

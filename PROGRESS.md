@@ -70239,6 +70239,35 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
 - Approval: the owner wrote "push to main" at 01:35Z on 2026-10-11, in answer to the draft PR 60. Main was a fast forward
   (nothing had moved since the branch's base). No verification pass was run beyond the builder self test above; the owner
   flies it.
+
+## 2026-10-11 | shell | Auto reset after a crash, with a radio switch
+
+- Ask (owner, 06:27Z, board ticket bug-918a8c99 from a whoop pilot on RaceGOW6 Track 2): "a setting, off by default: auto
+  reset. if the quad crashes put me back on the start and restart the race so the clock starts on the next launch", with
+  a delay choice, and "can bind to radio". Draft PR, not pushed to any branch yet.
+- What changed: `autoReset` (off) and `autoResetS` (0.5, 1 or 2, one second preselected) in the settings, two rows under
+  Launch control in the Quad screen (the wait row shows only while the switch is on). `src/main.js`: `autoResetTick`
+  runs once a frame beside `crashResetTick`. It arms from the crash signals the shell already has, `setDownNearby` with
+  a reason other than the pilot's own X (the crash rule and stuckTick), and from `turtleWait` (a quad on its back).
+  When the sim clock reaches the deadline it calls `reset()`, the same call as R and the radio's restart switch, so the
+  craft is on the start line and the race restarts. It cancels if the craft leaves the ground again (set down kind) or is
+  flipped upright or the flip starts (turtle kind), and `reset()`, a menu, a launch or a pose lock disarm it. The deadline
+  is on the sim clock, so a dropped frame or a pause moves nothing.
+- Radio: an "Auto reset switch" row beside "Restart switch" in Settings (radio only), built on the same capture code,
+  which is now one `captureSwitch` shared by both rows. An axis switch sets the setting to its position (up on, down
+  off), a button toggles it; the first read after a page load only learns the position, so a switch left on does not
+  overrule the saved setting. Stored under `webfpv.autoreset.v1`, separate from the restart switch.
+- A hard crash is already set down nearby at once by the existing rule, so the wait counts from that set down: a pilot who
+  takes off inside it is not reset. A bounce too soft to be a crash arms nothing.
+- Latency: none to the input or render path. One boolean read per frame while off, one integer compare while armed, no
+  allocation. Proxy only: no GPU here. `reset()` is the existing R path.
+- Checks run this turn: `node scripts/input-selftest.js` 394 of 394 (new cases for the switch: capture, position, button
+  toggle, forgotten, on at page load); new `npm run check:autoreset` (scripts/autoreset-check.js, headless city, 10 m/s
+  head-on at the shopfront): off stays set down at the wall, on with 1 s ends landed 7.5 m from the wall on the start
+  line, on with 2 s and the pilot flying out ends airborne at 89 m, 0 failed; `lint:nouns` pass. Not run: verify, shots,
+  lint:input, lint:shell (baseline fails here), the physics checks (nothing touches the plant).
+- Not decided, left for the owner: turtle counts as down (a quad on its back is reset after the wait unless it is flipped);
+  say if only crashes should reset.
 ## 2026-10-09: softer default rates, Actual 60 / 600 (the owner's ask), and the feel tickets read
 
 - Ask: the owner, 2026-10-09 08:02Z: "i want to scrape all the flight feel tickets and make the thing feel better. Overall its twitchy, so im gonna suggest we start with lowering the default rates just a little". On a draft PR, not on main or `test`.
@@ -70252,6 +70281,10 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
 - Checks run: `lint:fc` 33 of 33 (after the fallback fix; 32 of 33 before it), `seat:selftest` 30 of 30 with five new checks for the move (fresh, old stock moves and keeps its cap, old stock typed back stays, own rates stay, the whoop moves), `input:selftest` 380 of 380, `lint:presets` 4 of 4, `replay:selftest`, `feel:response` against main. `lint:input` 245 of 246: the one failure is in the track builder ("a key pressed at the question does nothing behind it"), a page this change does not load, and it fails the same way on main 04cc343 in this container (run beside it in a worktree). `lint:catalog` does not run in this container (vendor/betaflight not checked out). Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`, a flight on real hardware.
 - To the test branch: the owner tapped "Test branch" on the card "Push the softer default rates (60/600) to the test branch or main?" at 08:32:01Z on 2026-10-09. It covers this branch on `test` only; main waits on his word. `test` carried CommunityGow, so the branch was merged onto `origin/test` on a local integration branch and pushed as a fast-forward, no force.
 - To main: the owner wrote "push everything to main" in this thread at 06:31:20Z on 2026-10-11. It covers this branch (PR 57), main merged in first (the whoop's own plant, the builder's admin rule). Read as this thread's work; other threads' work on `test` was not moved by it. Checks on the merged tree: `lint:fc` 33 of 33, `input:selftest` 384, `lint:presets` 4 of 4, `lint:preload`, `check:fresh` 18 of 18, `seat:selftest` 29 of 30. The one seat failure, "first time on the whoop: the weight comes down to its top" reading 130, fails the same way on main 256e132 (24 of 25 there) and comes from the whoop's weightMax moving to 140, not from the rates. Not run: `npm run verify` (no physics, plant, ABI or build change here).
+- Approval: the owner wrote "push to main" at 06:37Z on 2026-10-11, in answer to draft PR 62. Main had moved (the softer
+  rates), so main was merged into the branch first (only PROGRESS.md conflicted, both sides kept) and main is a fast
+  forward from it. input-selftest 394 of 394 after the merge. The owner flies it.
+
 
 ## 2026-10-11 | settings | Next gate cue setting
 

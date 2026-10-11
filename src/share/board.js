@@ -1019,7 +1019,7 @@ export async function fetchFreestyleRuns(map, origin = boardOrigin()) {
 /*
  * A tune is the settings the Quad room edits to change how the quad flies,
  * sent to the board by a pilot who chose to and loaded by a short code.
- * The board's src/community.js is the copy of record for what a tune holds
+ * The board's src/tunes.js is the copy of record for what a tune holds
  * and which values it accepts; ./tunes.js builds the payload. Called a
  * "setup" on the wire because the board's "tune" already means flight feel
  * tickets, and "Tunes" to a pilot everywhere they can read it.

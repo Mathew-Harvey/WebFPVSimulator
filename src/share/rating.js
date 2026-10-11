@@ -10,7 +10,7 @@
  * the next vote counts as a new voter, which is the whole limit of the
  * scheme (see "Tunes and ratings" in the board's README).
  *
- * THE KEY NAMES MIRROR public/community.js IN THE BOARD'S REPOSITORY. The
+ * THE KEY NAMES MIRROR public/tunes.js IN THE BOARD'S REPOSITORY. The
  * board is a mount on the same origin as the simulator in production, so
  * both pages read one local storage: a pilot who rates here and on the
  * board is one voter, and the stars they have given show on both. Change

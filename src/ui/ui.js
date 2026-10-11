@@ -6806,7 +6806,7 @@ export class Ui {
    * A tune is the settings that change how THIS quad flies, nothing about
    * the pilot: the tune it starts from (or the pilot's own Betaflight dump),
    * the PID adjustment on that tune, the rates, weight, Air grip, Motor
-   * power, pack charge, lens and tilt. The board's src/community.js is the
+   * power, pack charge, lens and tilt. The board's src/tunes.js is the
    * copy of record for what it will accept. Graphics, sticks, radio,
    * flight mode, lap times and names are not in it, and loading one never
    * touches them. The dialogs are in ./tunesdialog.js; this is the part

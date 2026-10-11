@@ -101,7 +101,7 @@ ok('the map picker keeps ten, newest or best loved, newest breaking a tie', () =
 });
 
 const boardRoot = path.resolve(here, '..', '..', 'webfpvsimulator-leaderboard');
-const boardCommunity = path.join(boardRoot, 'src', 'community.js');
+const boardCommunity = path.join(boardRoot, 'src', 'tunes.js');
 if (fs.existsSync(boardCommunity)) {
   const { inspectSetupBody } = await import(pathToFileURL(boardCommunity).href);
   ok('a tune built from the shipped defaults passes the board validator', () => {

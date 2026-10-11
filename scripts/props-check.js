@@ -2526,7 +2526,8 @@ async function spawnScenario(world, f, label) {
  */
 const HULLS = [
   { name: 'five inch', plan: 0.094 * Math.SQRT2, down: 0.033, up: 0.038 },
-  { name: 'whoop', plan: 0.041 * Math.SQRT2, down: 0.010, up: 0.018 },
+  /* In the room's metres: plant.c's whoop hull times len_scale. */
+  { name: 'whoop', plan: 0.094 * Math.SQRT2, down: 0.0329, up: 0.0617 },
 ];
 const REACH_OVER_CG = PLATFORM_REACH - SURFACE_BIAS;
 /* More than a metre a millisecond is not a climb. */

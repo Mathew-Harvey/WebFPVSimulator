@@ -70058,6 +70058,188 @@ Not on main. No physics, plant, module ABI or build change here, so `npm run ver
   (never backward), and not also refuse an opening out of turn. The check card of 2026-10-08 never got an answer.
 - What went wrong: nothing new.
 
+## 2026-10-09 | physics | The whoop gets its own plant again: an 0802 28,000 kV 1S whoop at real gravity in the room as built
+
+- The ask, the owner at 08:32Z: "right now we need a smart model to figure out whoop physics, 28kkv motors are about
+  right, but ... the 5 inch model feels ok, the previous whoop model was bad, figure it out, make a plan and make whoops
+  feel great". Plan: `/mnt/project-files/whoop-physics/plan.md`. Branch `claude/project-thread-056dbn`, draft PR.
+- NOT APPROVED YET. This changes the physics model's shape (a length scale in the plant), the whoop's plant, and the
+  whoop's flights in both goldens. CLAUDE.md says those go to the owner first; the coordinator's brief said build it on a
+  branch and ask for the module and the golden re-record separately. Nothing here is on `test` or `main`.
+
+### What the whoop was, measured off main's module
+
+Both airframes carried `simId: 0` since Round 69 (2026-09-14): the whoop flew the five inch's 710 g 6S plant at gravity
+2.025 in a room built MICRO_SCALE (3.43) times life size. Scaling a world keeps the picture and cannot keep gravity, so in
+the room's own metres the whoop fell at 2.025 / 3.43 = 0.59 of a g. The feel tickets say exactly that ("floaty, carries
+too far", "the gravity feels off, too light even at 120%", "too fast for a whoop, a rocket ship").
+
+Measured with one probe on all three, in a real whoop's metres (the room divided by 3.43), angle mode, charged cell:
+
+| | hover stick | 1.5 m fall, throttle cut | punch 0.5 s | +10 % stick, 1 s | 2/3 forward, speed at 1 s | coast to half |
+|---|---|---|---|---|---|---|
+| free fall | | 0.55 s | | | | |
+| whoop on main (five inch scaled) | 0.40 | 0.77 s | 1.5 m | 0.9 m | 1.8 m/s | 1.7 s |
+| previous whoop plant (0702 36k) | 0.34 | 0.59 s | 2.8 m | 1.9 m | 3.1 m/s | 1.3 s |
+| this plant (0802 28k) | 0.36 | 0.58 s | 3.0 m | 2.0 m | 3.1 m/s | 1.3 s |
+| five inch in its own field | 0.35 | 0.46 s | 5.4 m | 3.0 m | 5.4 m/s | 1.8 s |
+
+### What changed
+
+1. **A length scale at the plant's boundary** (`len_scale` in `PlantParams`, `PLANT_W` in `sim_internal.h`). The plant
+   computes the airframe in its own metres; positions and velocities stay in scene metres. `plant_step` divides the
+   body velocity and the ground height by it on the way in and multiplies the acceleration (gravity included) on the way
+   out. `sim.c` and `world.c` read the airframe through `PLANT_W`, a copy with lengths times the scale, inertia times its
+   square and gravity times it, so contacts, the hull, the camera and the stand are in the room's metres. The five inch's
+   scale is 1.0 and every conversion is a multiply or divide by exactly 1.0, so its arithmetic is unchanged: all 21 five
+   inch flights in `check:plant` reproduce byte for byte, and whoop:gates W14 reads it identical.
+2. **The whoop's plant, rebuilt** (`SIM_AIRFRAME_WHOOP65`): 24 g, four 0802 28,000 kV (ke is the plate, 3.41046e-4),
+   31 mm three blades, 1S at 55 mOhm. kt 4.8e-9, kq 2.53555e-11 (figure of merit 0.305), r_motor 0.150, j_rotor 1.65e-8,
+   inertia 6.7e-6 / 8.1e-6 / 1.40e-5, prop pitch 0.8 inch. Static solve: 72,800 rpm, 4.3 A a motor and 3.25 V under a
+   punch, 4.74 to one, hover duty 0.32, motor time constant 21 ms. The previous whoop's three duct terms are zero
+   (k_duct 1.0, duct_fade 0, k_duct_lip 0): the static gain was already inside the bench thrust it was solved against,
+   and the fade and the lip moment were never measured on a whoop's ring and flew as "wading" and drift. Ground effect
+   and the stalled disc descent drag stay. Hull down 9.6 mm (the drawn duct floor), was 10. `len_scale` is MICRO_SCALE
+   written as the same expression `configs/airframes.js` derives it with.
+3. **Shell**: whoop `simId` 1, `gravityBase` 1.0 (real gravity in the room's terms), `weightMax` 140, default tune
+   `whoop-champion` (offered on the whoop again; Racing and Freestyle stay retired, not measured on this plant). The pack
+   gauge, the OSD volts and the lens shake read a per plant table (`PLANT_FACTS` in `src/main.js`, 6S 25,600 rpm and 1S
+   74,800 rpm) instead of the five inch's constants.
+4. **whoop:gates** reads speed and distance in the whoop's metres (divided by MICRO_SCALE) and W11 asserts the duct is
+   the identity now that there is no duct term. No band moved.
+
+Champion tune on this plant, acro, at the hover: quarter roll rises in 18 ms with 2 percent overshoot; full yaw snap 17
+ms, 4 percent overshoot, 27 deg/s reversal (the previous plant 15 percent and 80); hover roll 0.13 deg/s RMS.
+
+### Latency
+
+None measurable. No render, input or pacing change. Module step cost, best of five 20,000 step runs in Node: five inch
+1.45 to 1.89 us on main and 1.83 to 1.99 us here across three tries (inside the run to run spread), whoop 1.78 us. At
+1 kHz that is under 0.04 ms of a 16 ms frame either way.
+
+### Checks, run this turn
+
+- `npm run build:wasm` reproduced main's module bit for bit (d88ccdc9...) before the change; this module is 1eb18609....
+  `vendor/betaflight` had to be checked out (`git submodule update --init`); `git diff --stat vendor/betaflight` empty.
+- `check:plant`: 21 five inch flights pass byte for byte; the 8 whoop flights differ, as they must. Re-recording them
+  is the owner's call.
+- `whoop:gates` 21 of 21 (W2 hover 0.357 in 0.27 to 0.36, W3 4.99, W5 3.307 V, W6 16.2 A, W7 22 ms, W9 8.1 m/s, W10
+  18.7 m/s, W13 2.40 s). `check:craft` 20 of 20, `check:room` 71, `contact:selftest`, `micro:check`, `lint:presets`
+  4 of 4, `check:takeoff` all pass (one earlier run reported 2 failed and the next two passed; not chased).
+- `check:wall` 77 of 78, the same single failure as main (the 0.194 against 0.20 rebound floor, PR 56's open item).
+- `node scripts/raceline-check.js --fly` all pass, but it flies the FIVE INCH plant at 1 g (it never selects an airframe),
+  so it says nothing about whether this whoop can fly the line. Left for a follow up.
+- `npm run verify`, run again on the committed tree: 17 of 18. The one failure is check 17, world golden, 34 of 36 runs
+  bit identical; the 2 that differ are whoop runs ("whoop, wall head-on, 5 m/s"), which is this change. Check 10 reads
+  "drift" at -0.10 deg on the five inch, whose arithmetic is unchanged. A first run was spoiled by a `git stash` taken
+  while it ran.
+
+### What went wrong
+
+- The first build silently failed: `vendor/betaflight` is a submodule this container had not checked out, and the build
+  printed its error under npm's notices. Caught because the module hash did not move.
+- The first plant set (ke 6 percent better than the plate, hover duty 0.36) hovered at 0.394 of stick and sagged only
+  to 3.49 V, outside whoop:gates' cited bands. Re-solved with the plate's own ke and a hover duty of 0.32, not by moving
+  a band.
+- A `git stash` was taken while `npm run verify` ran in the background, so that run is not evidence.
+
+### Needs the owner
+
+The module change, re-recording the whoop flights in `check:plant` and `check:world-golden`, and putting it on `test` to
+fly. Whoop records file apart on their own (the tune's text is in the record key and the tune changed).
+
+## 2026-10-09 | physics | The whoop plant's flights re-recorded, and the branch goes to `test` on the owner's word
+
+- Approval: the owner chose "Test branch" at 13:01Z on 2026-10-09 on the card "Put the new whoop physics on the test branch
+  to fly?", whose option read "I re-record the whoop test flights and put PR 58 on test for you to fly; main is untouched."
+  That covers the module change, re-recording the whoop flights and pushing to `test`. It does NOT cover main.
+- Re-recorded with `node scripts/plant-golden.js --write` and `node scripts/world-golden.js --write` on module 1eb18609.
+  Diffed against the previous goldens: in `plant.json` only the 8 "whoop, ..." scenarios and the module hash changed;
+  in `world.json` only "whoop, wall head-on, 5 m/s" and "whoop rides beside a van as it pulls away". Every five inch
+  scenario is the same record. `check:plant` and `check:world-golden` both pass after the write.
+- Latency: unchanged from the entry above (no render, input or pacing change; step cost inside Node's run to run noise).
+
+## 2026-10-09 | physics | The whoop's motor is an 0702, and its pack sags to 3.65 V
+
+- The owner, 13:03Z on 2026-10-09, two minutes after choosing "Test branch": "Whoop motor should be 0702, sag to about
+  3.65v on punch". So the plant is re-solved for an 0702 28,000 kV before anything reaches `test`, inside the same
+  approval (the whoop's plant, its re-recorded flights, `test`; not main).
+- SIM_AIRFRAME_WHOOP65 now: 23 g, inertia and j_rotor from the previous whoop's 0702 frame, kt 5.2e-9, kq 2.859e-11
+  (figure of merit 0.305 as before), ke at the 28,000 kV plate, r_motor 0.24 (an 0702's winding), r_cell 0.030 (the
+  sag is the pack: 30 mOhm cell to board takes 4.2 V to about 3.65 at the punch's current).
+- whoop:gates on the built module (08a4b79c): 21 of 21. Hover 0.358 of stick, 5.36 to one, 72,800 rpm, 17.4 A, punch sag
+  3.68 V, time constant 22 ms, roll authority 2315 rad/s^2, terminal 7.9 m/s, top 18.4 m/s. Feel probe (whoop
+  metres): 1.5 m fall 0.59 s, punch 3.2 m in 0.5 s, +10% stick 1.9 m in 1 s, coast to half 1.3 s. Step response on
+  whoop-champion: quarter roll 17 ms, 4 percent overshoot; full yaw 8 percent; hover roll 0.10 deg/s RMS.
+- **W5's band moved, on the owner's word, not to pass.** It read 3.00 to 3.45 V on a published 3.1 to 3.2 V figure; it
+  now reads 3.50 to 3.80 around the owner's 3.65 V from the real machine. The gate's text says so. Under the old band
+  this plant would fail W5; under the new one the previous solve (3.25 V) fails it.
+- Re-recorded both goldens again: plant.json moved only the 8 "whoop, ..." scenarios, world.json only the two whoop runs.
+  Both pass after the write. check:craft 20 of 20, check:takeoff and contact:selftest pass, check:wall 77 of 78 with the
+  same rebound failure main has (0.194 against the 0.20 floor).
+- Latency: none. Same arithmetic per step, different constants; no render, input or pacing change.
+- Not run: `npm run verify` (run twice earlier today on the same plant shape; only constants changed since).
+
+## 2026-10-10 | physics | The whoop's hit box made much smaller
+
+- The owner, 00:59Z on 2026-10-10: "Fix the 65mm whoop hit box , make much smaller". Taken as the word for this change to
+  the whoop's contact hull and for re-recording the whoop flights it moves. It is NOT a word for `test` or main: the
+  branch waits for that.
+- What it was: since the whoop got its own plant (2026-10-09) its contact hull was a solid box 41 mm out on each side,
+  the motor offset plus the whole duct, which through len_scale is 0.141 m of the room. Its corners stood 7 mm (24 mm of
+  the room) outside the round ducts and the air between the ducts was solid. Before that, flying the five inch's plant,
+  it was the five inch's 0.094 box with soft props reaching the same 0.141 on the axes.
+- What it is (src/native/plant.c, module fe241f21): the body and motor bells only, 0.094 / len_scale = 27.4 mm, the five
+  inch's own 0.094 in the room. Two thirds of the drawn whoop across its sides and its corners. Up and down unchanged.
+  The ducts are not contacts at all: a new PlantParams field `ducted` (whoop 1, five inch 0) makes world.c
+  props_exposed() answer no, so the props never strike or rub; without it the narrower box would have exposed the
+  blades and every wall tap would have cost rotor speed, which a ducted whoop does not do.
+- A second field, `ground_tip_accel`, carries sim.c's TUMBLE FLAT tip (was the constant 200). Five inch 200. Whoop
+  3000: the narrower box sat "whoop, side drop tumbles flat" on its side for good at 200. Drop probe (60 drops, 1.2 and
+  0.3 m, roll 0 to 180 by 20, pitch 0, 40, 80, throttle cut, 6 s on the shell's grass): at 200, 15 did not end flat; at
+  1000, none on a side; at 3000, none on a side and none still moving, against 1 on its side and 2 still moving on the
+  41 mm box this replaces. The probe is a scratch script, not in the tree.
+- Stale whoop hulls in three checks were still the life size 41 mm from before len_scale: `scripts/lib/worldruns.js`
+  HULL and the van ride, `scripts/world-check.js` HULL_BOX, `scripts/props-check.js` HULLS. Now in the room's metres.
+  The van ride holds the craft 10 cm into the van as before, measured from the new hull. No threshold moved.
+- Checks run on this tree: whoop:gates 21 of 21; check:craft 20 of 20; check:takeoff, contact:selftest, check:world,
+  check:props all pass; check:wall 77 of 78, the same rebound failure main has (0.194 against 0.20). check:plant and
+  check:world-golden re-recorded: plant.json moved only 5 "whoop, ..." scenarios, world.json only the two whoop runs;
+  every five inch record is the same. Both pass after the write.
+- Latency: none. No render, input or pacing change; a whoop step now skips the 4 x 13 prop rim points, so it is if
+  anything cheaper.
+- The shell's own whoop dims in configs/airframes.js (gate scoring, perching, rest spots) are unchanged; the hit a pilot
+  feels is the module's.
+
+## 2026-10-10 | physics | The whoop's own plant and the smaller hit box go to main on the owner's word
+
+- Approval: the owner chose "Main" at 01:20Z on 2026-10-10 on the card "Put the smaller whoop hit box on the test branch
+  to fly?", whose option read "The whoop's own plant and the smaller hit box both go live on main." That covers this
+  branch (PR 58): the whoop's own 0702 plant at real gravity through len_scale, the module change, the re-recorded whoop
+  flights, and the smaller hull with the `ducted` and `ground_tip_accel` fields.
+- main had not moved since the branch's base (d49b908), so this is a fast forward. `npm run verify` ran on this exact
+  tree: 18 of 18. The `test` branch is not updated by this push.
+
+## 2026-10-11 | builder | Logos and stickers are for board admins only
+
+- Ask (owner, 01:30Z): in the map builder, remove the ability for a non admin to add logos or stickers in game.
+- What changed, all in `src/trackbuilder/app.js`: `canBrand()` is true only with a remembered board admin session
+  (`readAdminSession(boardOrigin())`, the same session the official track rule reads; the board is not asked, so nothing
+  waits). Refused for everybody else: arming the Ground logo tool (palette click or the O key), `armGroundLogo`, a click
+  that would place one (`placeAt`, so a tool armed before a sign out places nothing), copying a selected sticker
+  (`copySelection`), and the Sponsor logos dialog's Add, Replace and Paint buttons plus the file picker's change handler.
+  The dialog still opens for everybody, says why, offers Admin sign in, and keeps Remove. Admin in the More menu was
+  hidden on a map; it is shown on every canvas now, because without it an admin could not sign in on a map.
+- Left alone on purpose: tracks and maps that already carry logos or stickers keep them, and loading, importing and
+  remixing are unchanged. The board stores a document as sent, so this is a builder rule, not a board rule: a hand made
+  publish with logos still goes through. Making the board refuse it is a change in the leaderboard repo, not done.
+- Checks: `node --check`, `node src/trackbuilder/selftest.js` 2559 passed 0 failed (model only, it cannot see the UI).
+  Not run: builder-flow-check, shots, verify. Nothing here has been seen in a browser.
+- Latency: none. Builder only, no flight, input or render path touched.
+- Approval: the owner wrote "push to main" at 01:35Z on 2026-10-11, in answer to the draft PR 60. Main was a fast forward
+  (nothing had moved since the branch's base). No verification pass was run beyond the builder self test above; the owner
+  flies it.
+
 ### The whoop export bundle, 2026-10-08 (draft)
 
 - Asked by the owner (14:08Z in the export thread): each track exportable as files with instructions, the pieces

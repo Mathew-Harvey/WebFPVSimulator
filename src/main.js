@@ -386,18 +386,25 @@ const MS_PER_STEP = 1000 / SIM_HZ;
  */
 const WALL_NEAR_M = 2.0;
 
-/* Pack nominal, for the charge bar: 6S between empty and full. */
-/* The 6 is PLANT.cells in src/native/plant.c, restated here because the ABI
- * does not report it. These are the HUD gauge's ends only: the physics reads
- * its own constant and never these. Change the plant's cell count and this
- * has to follow, or the bar lies while the flight is right. */
-const PLANT_CELLS = 6;
-const PACK_EMPTY_V = PLANT_CELLS * 3.3;
-const PACK_FULL_V = PLANT_CELLS * 4.2;
-/* Full throttle rotor speed on a charged pack, measured off the compiled
- * module at 25,570 RPM. Only the lens shake reads it, to turn motor speed
- * into a 0 to 1 imbalance scale, so a few percent either way is invisible. */
-const FULL_THROTTLE_RPM = 25600;
+/*
+ * WHAT EACH PLANT IS, for the charge bar, the OSD and the lens shake: its
+ * series cells (PLANT.cells in src/native/plant.c) and its full throttle rotor
+ * speed on a charged pack, measured off the compiled module. Restated here
+ * because the ABI does not report them, keyed by the airframe's simId because
+ * that is what selects the plant. The physics reads its own constants and
+ * never these; change a plant and its row has to follow, or the bar lies
+ * while the flight is right.
+ *
+ * Plant 0, the five inch: 6S, 25,570 RPM. Plant 1, the whoop (the shell's
+ * again since 2026-10-09): 1S, 74,800 RPM. Only the lens shake and the
+ * flight log read the speed, to turn motor speed into a 0 to 1 scale, so a
+ * few percent either way is invisible.
+ */
+const PLANT_FACTS = {
+  0: { cells: 6, fullRpm: 25600 },
+  1: { cells: 1, fullRpm: 74800 },
+};
+const plantFacts = (airframeId) => PLANT_FACTS[simIdFor(airframeId)] ?? PLANT_FACTS[0];
 
 const uiRoot = document.getElementById('ui');
 
@@ -8289,7 +8296,7 @@ export async function boot({ loading, bootStart, mapId }) {
         }
         /* Launch stand constraint runs inside sim_step. Ground contact
          * runs after plant_step at 1 kHz when the plane is raised. */
-        flightLog.push(stateCurr, rcHeld, FULL_THROTTLE_RPM);
+        flightLog.push(stateCurr, rcHeld, plantFacts(runAirframe).fullRpm);
       }
       /*
        * Ground is a plane in the plant, not a sphere test after the
@@ -8904,7 +8911,7 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     {
       const rpmMean = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
-      const shake = lensShake.update(dt, rpmMean / FULL_THROTTLE_RPM);
+      const shake = lensShake.update(dt, rpmMean / plantFacts(runAirframe).fullRpm);
       /* Plus whatever the last contact threw the airframe by. The camera
        * is bolted to the frame, so a hit moves the picture; with the hit
        * banners gone this and the sound are the whole of what the pilot is
@@ -9581,13 +9588,13 @@ export async function boot({ loading, bootStart, mapId }) {
         gate: race.next + 1,
         gateCount: race.gates.length,
         gateCue: nextGt && nextGt.cue ? nextGt.cue : '',
-        /* The pack the airframe SAYS it has: the plant's 6S volts scaled to
-         * the airframe's cells, so a whoop reads 1S, 4.2 V charged. Display
-         * only; the physics and the charge bar below read the plant's own.
-         * See `cells` in configs/airframes.js. */
-        volts: st[18] * (airframeById(runAirframe).cells / PLANT_CELLS),
+        /* The pack the airframe SAYS it has: the plant's volts scaled to the
+         * airframe's cells. Both whoop and five inch now say what their plant
+         * is, so the ratio is 1; it stays because `cells` and the plant are
+         * two facts that could part again. Display only. */
+        volts: st[18] * (airframeById(runAirframe).cells / plantFacts(runAirframe).cells),
         lastLapMs: race.lastLapMs,
-        packFrac: (st[18] - PACK_EMPTY_V) / (PACK_FULL_V - PACK_EMPTY_V),
+        packFrac: (st[18] - plantFacts(runAirframe).cells * 3.3) / (plantFacts(runAirframe).cells * (4.2 - 3.3)),
         /* The same biased fromY every contact query in this file uses, and
          * for the same reason: the city's height walker takes any platform
          * within a step of fromY as the floor, so an unbiased query from the

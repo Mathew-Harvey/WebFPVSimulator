@@ -70219,3 +70219,20 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
   flights, and the smaller hull with the `ducted` and `ground_tip_accel` fields.
 - main had not moved since the branch's base (d49b908), so this is a fast forward. `npm run verify` ran on this exact
   tree: 18 of 18. The `test` branch is not updated by this push.
+
+## 2026-10-11 | builder | Logos and stickers are for board admins only
+
+- Ask (owner, 01:30Z): in the map builder, remove the ability for a non admin to add logos or stickers in game.
+- What changed, all in `src/trackbuilder/app.js`: `canBrand()` is true only with a remembered board admin session
+  (`readAdminSession(boardOrigin())`, the same session the official track rule reads; the board is not asked, so nothing
+  waits). Refused for everybody else: arming the Ground logo tool (palette click or the O key), `armGroundLogo`, a click
+  that would place one (`placeAt`, so a tool armed before a sign out places nothing), copying a selected sticker
+  (`copySelection`), and the Sponsor logos dialog's Add, Replace and Paint buttons plus the file picker's change handler.
+  The dialog still opens for everybody, says why, offers Admin sign in, and keeps Remove. Admin in the More menu was
+  hidden on a map; it is shown on every canvas now, because without it an admin could not sign in on a map.
+- Left alone on purpose: tracks and maps that already carry logos or stickers keep them, and loading, importing and
+  remixing are unchanged. The board stores a document as sent, so this is a builder rule, not a board rule: a hand made
+  publish with logos still goes through. Making the board refuse it is a change in the leaderboard repo, not done.
+- Checks: `node --check`, `node src/trackbuilder/selftest.js` 2559 passed 0 failed (model only, it cannot see the UI).
+  Not run: builder-flow-check, shots, verify. Nothing here has been seen in a browser.
+- Latency: none. Builder only, no flight, input or render path touched.

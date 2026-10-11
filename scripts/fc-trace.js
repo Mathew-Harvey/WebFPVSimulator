@@ -183,8 +183,8 @@ record(
   const keepSrate = moduleGet(simKeep, 'roll_srate');
   record(
     'F7 keep-mine roll_srate',
-    keepSrate === '67',
-    `module roll_srate=${keepSrate} (want 67 from menu, not 42 from dump)`,
+    keepSrate === String(RATE_DEFAULTS.roll.srate),
+    `module roll_srate=${keepSrate} (want ${RATE_DEFAULTS.roll.srate} from menu, not 42 from dump)`,
   );
 
   const use = composeConfig(dirty, RATE_DEFAULTS, RATES_DUMP);
@@ -214,8 +214,8 @@ record(
     const shippedSrate = moduleGet(simShipped, 'roll_srate');
     record(
       `F7 ${t.id} keep-mine roll_srate`,
-      shippedSrate === '67',
-      `module roll_srate=${shippedSrate} (want 67; a shipped tune must not steal stick authority)`,
+      shippedSrate === String(RATE_DEFAULTS.roll.srate),
+      `module roll_srate=${shippedSrate} (want ${RATE_DEFAULTS.roll.srate}; a shipped tune must not steal stick authority)`,
     );
   }
 

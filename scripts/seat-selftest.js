@@ -271,6 +271,47 @@ function marked(over) {
     s.tune === 'custom', s.tune);
 }
 
+/*
+ * THE SOFTER DEFAULT RATES (2026-10-09). A profile still on the old stock
+ * 70 / 670 on every axis never chose it, so it moves to the new default
+ * once; anything a pilot set is left, and so is the old stock typed back
+ * after the move. The throttle limit is never part of it.
+ */
+{
+  const OLD = { rcRate: 7, srate: 67, expo: 0 };
+  const oldStock = (extra) => ({
+    type: 'ACTUAL', roll: { ...OLD }, pitch: { ...OLD }, yaw: { ...OLD }, ...extra,
+  });
+  const axes = (r) => ['roll', 'pitch', 'yaw'].map((a) => `${r[a].rcRate}/${r[a].srate}/${r[a].expo}`).join(' ');
+  const isNew = (r) => ['roll', 'pitch', 'yaw'].every((a) => r[a].rcRate === 6 && r[a].srate === 60 && r[a].expo === 0);
+
+  store.clear();
+  let s = loadSettings();
+  check('rates: a fresh profile starts on Actual 60 / 600', isNew(s.rates) && s.stockRates === 1, axes(s.rates));
+
+  store.clear();
+  stored({ airframe: '5inch', airframeAsked: true, seatedFor: '5inch', rates: oldStock({ throttleCap: 80 }) });
+  s = loadSettings();
+  check('rates: an unmarked profile on the old stock moves to 60 / 600 and keeps its cap',
+    isNew(s.rates) && s.rates.throttleCap === 80 && s.stockRates === 1, `${axes(s.rates)} cap ${s.rates.throttleCap}`);
+
+  save({ ...s, rates: oldStock({ throttleCap: 80 }) });
+  s = loadSettings();
+  check('rates: the old stock typed back after the move is the pilot\'s and stays',
+    axes(s.rates) === '7/67/0 7/67/0 7/67/0', axes(s.rates));
+
+  store.clear();
+  stored({ airframe: '5inch', airframeAsked: true, seatedFor: '5inch',
+    rates: { type: 'ACTUAL', roll: { rcRate: 7, srate: 80, expo: 0 }, pitch: { ...OLD }, yaw: { ...OLD } } });
+  s = loadSettings();
+  check('rates: a pilot\'s own rates are not moved', s.rates.roll.srate === 80 && s.rates.pitch.srate === 67, axes(s.rates));
+
+  store.clear();
+  stored({ airframe: 'whoop65', airframeAsked: true, seatedFor: 'whoop65', rates: oldStock({}) });
+  s = loadSettings();
+  check('rates: the whoop on the old stock moves too', isNew(s.rates) && s.airframe === 'whoop65', axes(s.rates));
+}
+
 const w = Math.max(...rows.map((r) => r[0].length));
 console.log('seat-selftest: each aircraft\'s own settings, and its own dump\n');
 for (const [name, status, detail] of rows) {

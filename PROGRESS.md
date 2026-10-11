@@ -70304,3 +70304,14 @@ fly. Whoop records file apart on their own (the tune's text is in the record key
 - Latency: unchanged, nothing on the flying path. Where `test` deploys is not written down anywhere in either
   repository, so which board the test simulator reads, and which simulator the test board's Fly and builder links
   open, were not checked from here.
+- Main: the owner wrote "push everything to main" in the thread at 06:31:27Z on 2026-10-11. In this thread that
+  is both halves of CommunityGow, the board's PR 13 and this PR 52 with the export bundle; other threads' work on
+  `test` is theirs to move. Board first: board main fast-forwarded df8733d to 1bed022 after `npm test` passed on
+  the file store and on a scratch Postgres, with lint:licence and lint:nouns. Then this branch merged main again
+  (223214f: the whoop's own plant, its smaller hit box, the builder's admin only logos and stickers; PROGRESS.md was
+  the only conflict) and main is fast-forwarded to it. Checks on that merge: check:clip 2594 passed, 0 failed;
+  lint:preload, lint:boot, lint:memory, lint:nouns and check:fresh pass; the end to end run against the board's
+  head made a community, opened the builder from its link, sent RaceGOW5 Track 1 in 3.8 s, and its Fly link
+  landed on the starting blocks, with no console errors in the builder or the simulator. Not run: `npm run
+  verify` (nothing here touches physics, the plant, the ABI or the build; main's whoop plant was verified by its
+  own thread), shots. Latency: unchanged, nothing on the flying path.

@@ -215,6 +215,14 @@ export const PATRON_MAP_BRANDS = Object.freeze([
     logo: { colour: 'quadconfig/colour.png', mono: 'quadconfig/mono.png', aspect: 1882 / 400 },
     mark: { field: '#323f5d' },
   }),
+  // Konex Drone's logo, supplied by the owner on 2026-10-12. No site link on record, so it is a patron style sign.
+  partner({
+    slug: 'konexdrone',
+    name: 'Konex Drone',
+    short: 'Konex Drone',
+    logo: { colour: 'konexdrone/colour.png', mono: 'konexdrone/mono.png', aspect: 640 / 226 },
+    mark: { field: '#f3ead4' },
+  }),
 ]);
 
 export const PARTNER_SLUGS = Object.freeze(PARTNERS.map((p) => p.slug));

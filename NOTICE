@@ -125,6 +125,12 @@ partnership to show.
     April 2027) shown on freestyle maps and the landing page, but not
     counted in the partners list. `yourfpv/mono.png` is made from it by
     scripts/partners.js, every pixel cream and its transparency kept.
+  * `konexdrone/colour.png` is the Konex Drone logo as supplied by the
+    owner on 2026-10-12, a 788 by 316 PNG with transparency, cropped to the
+    artwork and scaled to 640 by 226 with its colours reduced to 32, to keep
+    the load small. Konex Drone is shown on freestyle maps as a sign, not
+    counted in the partners list. `konexdrone/mono.png` is made from it by
+    scripts/partners.js, every pixel cream and its transparency kept.
   * `quadconfig/colour.png` is the Quad Configurator logo as supplied by
     patron Magnus Arge, a 1882 by 400 PNG. `quadconfig/mono.png` is made
     from it by scripts/partners.js.

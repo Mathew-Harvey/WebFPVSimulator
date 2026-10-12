@@ -70559,3 +70559,15 @@ The owner, in the flight feel thread, at 07:03:54Z on 2026-10-11, two minutes af
 - Approval: the owner wrote "Push to main" at 07:33:16Z on 2026-10-12 in the bug tickets thread, after the draft PR and the entry above. It covers PR 66 only. Main was fetched first (83bce7e, this branch's base), so the push is a fast forward.
 - Latency, checks and what is not checked: as in the entry above. Nobody has flown it.
 - Tickets bug-46cca9bf and bug-f588efa1 closed on the board after the push.
+
+## 2026-10-12: Konex Drone logo on freestyle maps
+
+The owner asked for the Konex Drone logo to be added to the sponsor logos painted into freestyle maps, and supplied the PNG (788 by 316, transparent).
+
+What changed: `assets/partners/konexdrone/colour.png` (cropped to the artwork, 640 by 226, 32 colours, 36 KB), `konexdrone/mono.png` made by `scripts/partners.js` (22 KB), one `PATRON_MAP_BRANDS` entry in `src/partners/roster.js` on a cream field, one line in the generator, and the provenance in NOTICE. No drawing code touched.
+
+Decision to check: it went in as a patron style sign (like Quad Configurator), not as a map only partner (like YourFPV), because the roster requires a site link for a map only partner and none was given. The patron style is not findable and does not stamp. If Konex should be findable, give a site address and move the entry to `MAP_ONLY_PARTNERS`.
+
+Checked this turn: `npm run lint:partners` 98 passed, 0 failed. `node scripts/shots.js` on Hibari Yard shows the sign on the container wall at the right size. Not run: `npm run verify` (no physics, ABI or build change), the town map check (the town has no patron spots yet).
+
+Latency: a static asset with no per-frame work, plus 58 KB of bytes at load for the two files.

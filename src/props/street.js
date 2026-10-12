@@ -1248,6 +1248,18 @@ function billboardSpec(el) {
   return { W, H, lift, legR, legs, legX, legTop, rails, ups, lamps };
 }
 
+/*
+ * The face of a billboard: where the advert is hung, in the board's own
+ * frame (the face looks along +x, its width runs along z), and how big it
+ * is. billboardDraw hangs the advert here and src/maps/built/logosurface.js
+ * frames a sponsor's mark over it, so both read the same numbers.
+ */
+export function billboardFace(el) {
+  const s = billboardSpec(el);
+  const fw = 0.13;
+  return { x: BB_T + 0.004, y: s.lift + s.H / 2, z: 0, w: s.W - 2 * fw, h: s.H - 2 * fw };
+}
+
 export function billboardLayout(el) {
   const s = billboardSpec(el);
   const P = new Parts();

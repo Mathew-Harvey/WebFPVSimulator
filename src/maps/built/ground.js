@@ -53,6 +53,8 @@ import { planBounds } from '../../props/catalog.js';
 import { sincos } from '../../props/trig.js';
 import { seededRandom, hashString } from '../../props/parts.js';
 import { paintGroundLogo } from '../../art/banners.js';
+import { paintSponsor } from '../../art/sponsorpaint.js';
+import { surfaceFor } from './logosurface.js';
 
 /* The concrete paving's slab, and how many slabs one texture tile holds.
  * Six metres is a sawn joint spacing a yard slab of this kind really has;
@@ -982,7 +984,7 @@ export function buildGround(placed, doc, look, cover) {
     if (!mark || typeof mark.image !== 'string' || !mark.image.startsWith('data:image/')) {
       continue;
     }
-    logos.push(groundLogo(it, mark.image));
+    logos.push(groundLogo(it, mark.image, surfaceFor(placed, it, groundId)));
     painted.logos += 1;
   }
   for (const l of logos) {
@@ -1000,20 +1002,27 @@ export function buildGround(placed, doc, look, cover) {
 }
 
 /*
- * ONE GROUND LOGO: a plane the size of the decal's footprint, carrying a
- * canvas the mark is fitted into once it has decoded.
+ * ONE SPONSOR'S MARK: a plane carrying a canvas the mark is fitted into once
+ * it has decoded. Where the plane lies and how the mark is painted on it
+ * come from logosurface.js: flat on the paving as before, sprayed on grass,
+ * or stood against a billboard, a building or a bando. Either way it is the
+ * one mesh it always was, painted once at load, so nothing here runs in a
+ * frame and the draw count is unchanged.
  *
- * The canvas is the footprint's own shape, and it is laid on the plane the
- * way src/render/scene.js lays its pitch: a PlaneGeometry turned down about
- * X puts canvas right along the decal's local x and canvas down along its
- * local z, and the element's heading then turns the plane exactly as it
- * turns the element. Painted with paintGroundLogo at the same ink the race
- * field uses, so a sponsor's mark on a yard reads as paint, not a sticker.
+ * On the ground the canvas is the footprint's own shape, and it is laid on
+ * the plane the way src/render/scene.js lays its pitch: a PlaneGeometry
+ * turned down about X puts canvas right along the decal's local x and
+ * canvas down along its local z, and the element's heading then turns the
+ * plane exactly as it turns the element. On a wall the plane stands
+ * upright: its +z is the wall's outward normal, canvas right is to the
+ * viewer's right and canvas down is down.
  */
-function groundLogo(it, dataUrl) {
-  const w = Math.max(0.1, it.el.dims.width);
-  const d = Math.max(0.1, it.el.dims.depth);
-  const long = 512;
+function groundLogo(it, dataUrl, target) {
+  const kind = target.kind;
+  const onWall = kind === 'billboard' || kind === 'sign' || kind === 'graffiti';
+  const w = onWall ? target.w : Math.max(0.1, it.el.dims.width);
+  const d = onWall ? target.h : Math.max(0.1, it.el.dims.depth);
+  const long = kind === 'billboard' ? 1024 : 512;
   const cw = w >= d ? long : Math.max(8, Math.round((long * w) / d));
   const ch = w >= d ? Math.max(8, Math.round((long * d) / w)) : long;
   const cv = document.createElement('canvas');
@@ -1024,13 +1033,21 @@ function groundLogo(it, dataUrl) {
   tex.anisotropy = 8;
   const mat = cel({ color: 0xffffff, map: tex, bands: 3, tint: 0x6f6790, transparent: true, depthWrite: false, cache: false });
   mat.polygonOffset = true;
-  mat.polygonOffsetFactor = -2;
-  mat.polygonOffsetUnits = -2;
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), mat);
-  mesh.position.set(it.x, 0.014, it.z);
-  mesh.rotation.y = it.yaw;
-  mesh.receiveShadow = true;
+  mat.polygonOffsetFactor = onWall ? -4 : -2;
+  mat.polygonOffsetUnits = onWall ? -4 : -2;
+  let mesh;
+  if (onWall) {
+    mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+    mesh.position.set(target.x, target.y, target.z);
+    mesh.rotation.y = target.yaw;
+  } else {
+    mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), mat);
+    mesh.position.set(it.x, 0.014, it.z);
+    mesh.rotation.y = it.yaw;
+    mesh.receiveShadow = true;
+  }
   mesh.name = 'groundLogo';
+  mesh.userData.surface = kind;
   let live = true;
   const img = new Image();
   img.onload = () => {
@@ -1039,7 +1056,11 @@ function groundLogo(it, dataUrl) {
     }
     const g = cv.getContext('2d');
     g.imageSmoothingQuality = 'high';
-    paintGroundLogo(g, cw, ch, { logo: img });
+    if (kind === 'ground') {
+      paintGroundLogo(g, cw, ch, { logo: img });
+    } else {
+      paintSponsor(kind, g, cw, ch, { logo: img, seed: hashString(it.el.id) });
+    }
     tex.needsUpdate = true;
   };
   img.src = dataUrl;

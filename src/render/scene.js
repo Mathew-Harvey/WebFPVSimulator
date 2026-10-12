@@ -104,6 +104,7 @@ import {
   paintGateHeader, paintGateSleeve, paintFlagSailPair, paintGroundLogo, GROUND_TURF,
   flagMast, flagSailProfile,
 } from '../art/banners.js';
+import { paintSprayed } from '../art/sponsorpaint.js';
 import {
   assembleStartBlock, startBlockDeck, startBlockDeckHeight, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK,
   START_BLOCK_FOAM, START_BLOCK_LIP,
@@ -962,7 +963,14 @@ function pitchSurface(pitch, course, sponsorMarks) {
       ctx.translate(toPx(dec.x), toPy(dec.z));
       ctx.rotate(-dec.yaw);
       ctx.translate(-bw * 0.5, -bd * 0.5);
-      paintGroundLogo(ctx, bw, bd, { logo: mark });
+      /* Sprayed, as a pitch sponsor is (src/art/sponsorpaint.js). Drawn
+       * into a canvas of its own and stamped here, so the blade speckle is
+       * in the mark's pixels and not the pitch's. Runs at load only. */
+      const spray = document.createElement('canvas');
+      spray.width = Math.max(2, Math.round(bw));
+      spray.height = Math.max(2, Math.round(bd));
+      paintSprayed(spray.getContext('2d', { willReadFrequently: true }), spray.width, spray.height, { logo: mark, seed: seedOfDecal(dec) });
+      ctx.drawImage(spray, 0, 0, bw, bd);
       ctx.restore();
       sponsorMarks.painted += 1;
     }
@@ -1049,6 +1057,12 @@ function pitchSurface(pitch, course, sponsorMarks) {
     img.src = logos[slot];
   }
   return mesh;
+}
+
+/* A decal's own noise seed from where it lies, so two copies of one mark on
+ * one pitch do not break up alike. Integers only. */
+function seedOfDecal(dec) {
+  return (Math.imul(Math.round(dec.x * 100), 73856093) ^ Math.imul(Math.round(dec.z * 100), 19349663)) | 0;
 }
 
 /*

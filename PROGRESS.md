@@ -70571,3 +70571,8 @@ Decision to check: it went in as a patron style sign (like Quad Configurator), n
 Checked this turn: `npm run lint:partners` 98 passed, 0 failed. `node scripts/shots.js` on Hibari Yard shows the sign on the container wall at the right size. Not run: `npm run verify` (no physics, ABI or build change), the town map check (the town has no patron spots yet).
 
 Latency: a static asset with no per-frame work, plus 58 KB of bytes at load for the two files.
+
+## 2026-10-12 | partners | The Konex Drone logo goes to main on the owner's word (PR #67)
+
+- Approval: the owner wrote "push to main" at 09:46:56Z on 2026-10-12 in the Konex Drone logo thread, after the draft PR and the entry above. It covers PR 67 only. Main was fetched first (fast forward, nothing newer on it).
+- Latency, checks and what is not checked: as in the entry above. Nobody has flown it.

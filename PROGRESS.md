@@ -70568,3 +70568,25 @@ The owner, in the flight feel thread, at 07:03:54Z on 2026-10-11, two minutes af
 - Checked: pictures of each surface on main and here (`/mnt/project-files/sponsor-logos/`), `check:props` and `lint:preload` pass (fresh.js and maps/preload.js regenerated for the new modules). Not run: `npm run verify`, `shots.js` beyond my own captures, the builder self test, any review.
 - Known limits, in the owner's words to correct: a graffiti mark is sized to the wall piece it lands on (a bando's piers are about 2 m wide, so a big mark shrinks); an author must put a mark more than the reach away from a building if they want it flat on the paving beside it; the builder's 3D preview still draws every mark flat on the ground; the board's thumbnails use the sim's own renderer so they follow. Only admins can add logos now (PR 60), existing documents with logos load as before.
 - Owed: nobody has flown it.
+
+## 2026-10-12: Konex Drone logo on freestyle maps
+
+The owner asked for the Konex Drone logo to be added to the sponsor logos painted into freestyle maps, and supplied the PNG (788 by 316, transparent).
+
+What changed: `assets/partners/konexdrone/colour.png` (cropped to the artwork, 640 by 226, 32 colours, 36 KB), `konexdrone/mono.png` made by `scripts/partners.js` (22 KB), one `PATRON_MAP_BRANDS` entry in `src/partners/roster.js` on a cream field, one line in the generator, and the provenance in NOTICE. No drawing code touched.
+
+Decision to check: it went in as a patron style sign (like Quad Configurator), not as a map only partner (like YourFPV), because the roster requires a site link for a map only partner and none was given. The patron style is not findable and does not stamp. If Konex should be findable, give a site address and move the entry to `MAP_ONLY_PARTNERS`.
+
+Checked this turn: `npm run lint:partners` 98 passed, 0 failed. `node scripts/shots.js` on Hibari Yard shows the sign on the container wall at the right size. Not run: `npm run verify` (no physics, ABI or build change), the town map check (the town has no patron spots yet).
+
+Latency: a static asset with no per-frame work, plus 58 KB of bytes at load for the two files.
+
+## 2026-10-12 | partners | The Konex Drone logo goes to main on the owner's word (PR #67)
+
+- Approval: the owner wrote "push to main" at 09:46:56Z on 2026-10-12 in the Konex Drone logo thread, after the draft PR and the entry above. It covers PR 67 only. Main was fetched first (fast forward, nothing newer on it).
+- Latency, checks and what is not checked: as in the entry above. Nobody has flown it.
+
+## 2026-10-12 | art | Sponsor logo looks go to main on the owner's word (PR 68)
+
+- Approval: the owner wrote "push to main" at 10:06:37Z on 2026-10-12 in the sponsor logos thread, after the draft PR and the entry above. It covers PR 68 only. Main was fetched first (3b6ac92) and merged into the branch, no force, no rebase; the only conflict was both sides appending to this file.
+- Latency, checks and what is not checked: as in the entry above. Nobody has flown it.

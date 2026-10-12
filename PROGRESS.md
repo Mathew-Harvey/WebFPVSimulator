@@ -70553,3 +70553,9 @@ The owner, in the flight feel thread, at 07:03:54Z on 2026-10-11, two minutes af
 - Latency: none. Nothing in the frame, the input path or physics; one style write when the HUD is shown.
 - Checked: the computed `top` read back in the page for five angle and lens pairs matches the formula (81.5, 61.6, 50, 88.4, 87.6 percent). `lint:boot`, `lint:nouns`, `lint:preload`, `lint:frame` pass; `git diff --stat vendor/betaflight` is empty. Not checked: the mark on a flying screen (my headless flight stayed on the title screen, so no picture), and `lint:shell`, `lint:input`, `shots.js`, `verify`. Nobody has flown it.
 - Open: a camera at 45 degrees on a 105 degree lens puts the mark at 88 percent, near the bottom edge on a short window; it is clamped at 90. The owner may prefer a smaller offset or a "Centre" shape.
+
+## 2026-10-12 | hud | The cross-hair change goes to main on the owner's word (PR #66)
+
+- Approval: the owner wrote "Push to main" at 07:33:16Z on 2026-10-12 in the bug tickets thread, after the draft PR and the entry above. It covers PR 66 only. Main was fetched first (83bce7e, this branch's base), so the push is a fast forward.
+- Latency, checks and what is not checked: as in the entry above. Nobody has flown it.
+- Tickets bug-46cca9bf and bug-f588efa1 closed on the board after the push.

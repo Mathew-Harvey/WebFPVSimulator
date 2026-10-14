@@ -70601,4 +70601,4 @@ Checked this turn: `node src/trackbuilder/selftest.js` 2579 passed, 0 failed. No
 
 Latency: no change. It touches the publish path and the board's plan card, not the flight loop or input.
 
-Approval: pending. The owner has not yet said "push to main".
+Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop and hex gate publish thread, after the draft PRs and the entry above. It covers sim PR 69 and board PR 17 only. Both fetched first and fast forward; the board merges first. Nobody has flown it.

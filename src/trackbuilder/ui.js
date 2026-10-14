@@ -77,7 +77,6 @@ import { DRIFT } from '../maps/built/traffic.js';
 /* What each canvas calls its ground and its documents. */
 import { wordsFor, CANVAS_WORDS } from './words.js';
 /* The parts a track cannot be published with yet, marked on the palette. */
-import { BOARD_UNKNOWN_TYPES } from '../share/board.js';
 
 /* The small mark a chip on the lap strip wears for the piece it is a pass of. */
 const CHIP_KINDS = {
@@ -518,12 +517,8 @@ export class Panels {
   }
 
   /*
-   * ONE TOOL ON THE PALETTE: its key, its name, and on a whoop canvas, for the
-   * parts the board does not know yet, a line saying so (MENUS-PLAN.md 4.3a).
-   * The author learned that a table, a hoop or a cube could not be published
-   * only by pressing Publish with one placed; said here, it is learned before
-   * it is placed. BOARD_UNKNOWN_TYPES in src/share/board.js is the list, and
-   * the line goes when the board learns them and that list is emptied.
+   * ONE TOOL ON THE PALETTE: its key and its name. It used to carry a line for the parts
+   * the board did not know yet (MENUS-PLAN.md 4.3a); the board knows them all now.
    */
   toolButton(id, key, label, note) {
     const b = el('button', 'tb-tool');
@@ -536,14 +531,7 @@ export class Panels {
      * by its name reads; the note stands under it, beside it in the markup. */
     const words = el('span', 'tb-tool-words');
     words.append(el('span', 'tb-tool-label', label));
-    const notOnBoard = BOARD_UNKNOWN_TYPES.includes(id) || id === 'cube';
-    if (notOnBoard) {
-      b.classList.add('tb-tool-local');
-      words.append(el('span', 'tb-tool-note', 'Not on the board yet'));
-      b.title = `${note} Not on the board yet: a track with one flies and shares as a link, and cannot be published until the board learns it.`;
-    } else {
-      b.title = note;
-    }
+    b.title = note;
     b.append(words);
     b.addEventListener('click', () => this.host.pickTool(id));
     this.paletteButtons.set(id, b);

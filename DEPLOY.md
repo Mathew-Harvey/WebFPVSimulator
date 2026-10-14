@@ -79,7 +79,7 @@ A letter is the third. Since 2026-10-04 the five inch builder lays capitals of p
 reads one as a gate: it counts as one of the gates a card shows, as a station the lap floor is measured to and as a mark
 the plan draws, and carries which capital it is on the plan. Its side is `PLAN_APERTURE`, `letterWord` and the plan's
 marks in the board's `src/validate.js`, and the drawing in its `public/plan.js`. The simulator does not hold a track with
-a letter back from Publish (`BOARD_UNKNOWN_TYPES` in `src/share/board.js` does not list it, because the board knows it),
+a letter back from Publish (and, since 2026-10-14, nothing at all: the list of parts the board did not know is gone),
 so a simulator deployed ahead of the board publishes tracks that the old board counts as having one gate fewer for each
 pass through a letter, measures the lap floor to fewer stations (a lower floor, which is the safe way round) and draws
 a letter as nothing. Nothing is refused and nothing says so. Deploy the board first. An invisible gate needs nothing from the board: it is a gate with its frame taken away.
@@ -892,3 +892,5 @@ cd WebFPVSimulator && npm run serve
 ```
 
 Then open `http://127.0.0.1:8000/`.
+
+A hoop, a hex gate, a table, a chair, a banner and a cube are the fourth (2026-10-14). The board counts a hoop and a hex gate as gates, draws them and the furniture on a card, and stores a cube's `group` as sent. The simulator no longer holds any of them back from Publish. Deploy the board first: an old board counts a hoop or a hex gate as no gate, so the track's gate count and its lap floor come out short and the card draws the piece as nothing. The track itself still flies whole from the board.

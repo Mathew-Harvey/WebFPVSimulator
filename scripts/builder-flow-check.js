@@ -2718,7 +2718,7 @@ kase('furniture', async () => {
     })()`);
     check('the plan draws the top of it in the obstacle colour: red in it well above blue', px[0] > px[2] + 40, px.join());
 
-    /* The board does not know them yet, so Publish says so and opens no form. */
+    /* The board knows them, so Publish opens the form and does not turn the author away. */
     await page.evaluate(`(() => {
       const app = window.trackBuilder;
       app.arm('gate');
@@ -2730,11 +2730,10 @@ kase('furniture', async () => {
     await page.sleep(250);
     const said = await json(page, `(() => {
       const m = document.getElementById('tb-modal');
-      return { open: !m.hidden, title: m.querySelector('h2')?.textContent ?? '', text: m.textContent, inputs: m.querySelectorAll('input').length };
+      return { open: !m.hidden, title: m.querySelector('h2')?.textContent ?? '', inputs: m.querySelectorAll('input').length };
     })()`);
-    check('Publish on a track with a table in it says the board does not know them yet, in a dialog, and asks for nothing',
-      said.open && said.title === 'Not on the board yet' && /does not know a table, a chair, a banner, a hoop, a hex gate or a cube/.test(said.text) && /This one has 1 table, 1 chair and 1 banner/.test(said.text) && said.inputs === 0,
-      JSON.stringify(said));
+    check('Publish on a track with a table in it opens the publish form, and does not say the board does not know it',
+      said.open && said.title !== 'Not on the board yet' && said.inputs > 0, JSON.stringify(said));
     await page.evaluate("document.querySelector('#tb-modal .tb-btn').click(), 1");
     await page.sleep(150);
     check('and closes', await page.evaluate("document.getElementById('tb-modal').hidden"));
@@ -3983,8 +3982,8 @@ kase('canvas words', async () => {
     const said = (await toasts(page)).slice(-1)[0] || '';
     check('switching canvas says undo starts again, and which aircraft the simulator will fly', /Undo starts again here, and the simulator will fly the whoop/.test(said), said);
     check('a whoop canvas calls its ground the Room, and its way back is the whoop', f.heading === 'Room' && f.back === '../../index.html?map=custom&craft=whoop65', `${f.heading} ${f.back}`);
-    check('the six parts the board refuses are marked on the palette, and nothing else is',
-      JSON.stringify([...f.notes].sort()) === JSON.stringify(['Banner', 'Chair', 'Cube', 'Hex gate', 'Hoop', 'Table']), f.notes.join(', '));
+    check('no part is marked on the palette as missing from the board, because the board knows them all',
+      f.notes.length === 0, f.notes.join(', '));
 
     at = await centreOf(page, '#tb-topbar .tb-class-btn', 'Freestyle');
     await click(page, at.x, at.y);

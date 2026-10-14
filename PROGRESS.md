@@ -70590,3 +70590,15 @@ Latency: a static asset with no per-frame work, plus 58 KB of bytes at load for 
 
 - Approval: the owner wrote "push to main" at 10:06:37Z on 2026-10-12 in the sponsor logos thread, after the draft PR and the entry above. It covers PR 68 only. Main was fetched first (3b6ac92) and merged into the branch, no force, no rebase; the only conflict was both sides appending to this file.
 - Latency, checks and what is not checked: as in the entry above. Nobody has flown it.
+
+## 2026-10-14 | board | Publish accepts a table, chair, banner, hoop, hex gate and cube (draft PR)
+
+The owner could not publish a whoop track with 3 hoops and 4 hex gates: the builder said "Not on the board yet" and opened no form. Asked in the thread: "we need to fix this i want to publish it". No physics, plant, ABI or build change, so `npm run verify` was not run.
+
+What changed: the board now knows the pieces (companion PR in the leaderboard repo: `PLAN_APERTURE` gains hoop and hex gate, furniture draws as a quarter turned footprint, and a test holds a cube's group in the stored document). Here, `BOARD_UNKNOWN_TYPES`, `partsTheBoardDoesNotKnow`, `unknownPartsSentence`, the Publish dialog, the `publishTrack` refusal and the palette's "Not on the board yet" note are gone, and their tests now check that a track holding all six goes to the board whole. DEPLOY.md says the board deploys first.
+
+Checked this turn: `node src/trackbuilder/selftest.js` 2579 passed, 0 failed. Not run: `scripts/builder-flow-check.js` (edited for the new behaviour, only syntax checked), shots, verify. Not checked: a real publish and reload of the owner's track against a deployed board.
+
+Latency: no change. It touches the publish path and the board's plan card, not the flight loop or input.
+
+Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop and hex gate publish thread, after the draft PRs and the entry above. It covers sim PR 69 and board PR 17 only. Both fetched first and fast forward; the board merges first. Nobody has flown it.

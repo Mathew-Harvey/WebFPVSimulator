@@ -180,7 +180,7 @@ import {
   readBind, readEditKey, writeBind, writeBuilderIntent, writeEditKey, takeBuilderIntent,
 } from '../share/session.js';
 import {
-  publishTrack, partsTheBoardDoesNotKnow, unknownPartsSentence, BOARD_UNKNOWN_TYPES, TRACK_TAGS, tagsForClass,
+  publishTrack, TRACK_TAGS, tagsForClass,
   adminSignIn, adminVerify, fetchTrackOfficial, setTrackOfficial, postTrackGif, postShareCard,
 } from '../share/board.js';
 import { clearAdminSession, readAdminSession, writeAdminSession } from '../share/admin.js';
@@ -9518,118 +9518,35 @@ function suiteRoomParts() {
 }
 
 /*
- * THE BOARD DOES NOT KNOW A TABLE, A CHAIR OR A BANNER, and until it does no track that holds one goes to
- * it. Its validator and its card drawer keep their own list of what a track is made of, so a track with an
- * unknown piece would be counted short and drawn without it, which is the safe direction and still wrong.
- * The refusal is where every publish passes, publishTrack, so the builder's dialog and the game's own
- * menu are both stopped by it, and it costs the author nothing they had: the track still flies.
+ * THE BOARD KNOWS A TABLE, A CHAIR, A BANNER, A HOOP, A HEX GATE AND A CUBE (2026-10-14). Until then publishTrack
+ * refused a track that held one, because the board counted them as nothing. Nothing refuses now: a track that
+ * holds all six reaches the board whole, with the cube's group on its gates.
  */
 async function suiteBoardParts() {
   console.log('\nthe board and the furniture');
-  const doc = createTrack('with furniture', 'micro');
+  const doc = createTrack('with everything', 'micro');
   placeOnTrack(doc, 'gate', { x: 4, y: 5 });
-  placeOnTrack(doc, 'gate', { x: 4, y: 8 });
-  placeOnTrack(doc, 'table', { x: 6, y: 5 });
+  placeOnTrack(doc, 'hoop', { x: 5.5, y: 5 });
+  placeOnTrack(doc, 'hexGate', { x: 7, y: 5 });
   placeOnTrack(doc, 'table', { x: 6, y: 7 });
   placeOnTrack(doc, 'chair', { x: 7, y: 6 });
+  placeOnTrack(doc, 'banner', { x: 8, y: 6 });
+  placeCube(doc, { x: 5.5, y: 8 });
   const plain = toPlain(doc);
-  const list = partsTheBoardDoesNotKnow(plain);
-  check('a track that holds furniture names it, counted, in the palette\'s order',
-    JSON.stringify(list) === '[{"type":"table","count":2},{"type":"chair","count":1}]', JSON.stringify(list));
-  check('the list is the five, and the working document is read as well as the plain one',
-    BOARD_UNKNOWN_TYPES.join() === 'table,chair,banner,hoop,hexGate' && partsTheBoardDoesNotKnow(doc).length === 2);
-  const none = toPlain(createTrack('plain', 'micro'));
-  placeOnTrack(none, 'gate', { x: 4, y: 5 });
-  check('a track without any names nothing, and a document that is not one names nothing and does not throw',
-    partsTheBoardDoesNotKnow(none).length === 0 && partsTheBoardDoesNotKnow(null).length === 0
-    && partsTheBoardDoesNotKnow({}).length === 0 && partsTheBoardDoesNotKnow({ elements: 'x' }).length === 0
-    && partsTheBoardDoesNotKnow({ elements: [null, 5, { type: 'table' }, { type: 'gate' }] }).length === 1);
-  const say = unknownPartsSentence(list);
-  check('the sentence says what the board does not know, what this track has, and what to do',
-    /does not know a table, a chair, a banner, a hoop, a hex gate or a cube/.test(say) && /2 tables and 1 chair/.test(say) && /Take them out/.test(say) && /still flies/.test(say), say);
-  check('and reads for one kind, and for all five, a hex gate in two words and its own plural',
-    /This one has 1 banner\./.test(unknownPartsSentence([{ type: 'banner', count: 1 }]))
-    && /1 table, 2 chairs and 3 banners/.test(unknownPartsSentence([{ type: 'table', count: 1 }, { type: 'chair', count: 2 }, { type: 'banner', count: 3 }]))
-    && /This one has 1 hoop and 2 hex gates\./.test(unknownPartsSentence([{ type: 'hoop', count: 1 }, { type: 'hexGate', count: 2 }]))
-    && /This one has 1 hex gate\./.test(unknownPartsSentence([{ type: 'hexGate', count: 1 }]))
-    && /This one has 1 cube\./.test(unknownPartsSentence([{ type: 'cube', count: 1 }]))
-    && /This one has 1 table and 2 cubes\./.test(unknownPartsSentence([{ type: 'table', count: 1 }, { type: 'cube', count: 2 }])));
-
-  /* A cube is five gates and a group, so it is the group that the board would lose, and it is counted by group. */
-  {
-    const cubes = createTrack('with cubes', 'micro');
-    placeOnTrack(cubes, 'gate', { x: 4, y: 5 });
-    placeCube(cubes, { x: 5.5, y: 5 });
-    placeCube(cubes, { x: 7, y: 5 });
-    placeOnTrack(cubes, 'table', { x: 6, y: 8 });
-    const found = partsTheBoardDoesNotKnow(toPlain(cubes));
-    check('a track with two cubes names them once each, after the parts that have a type of their own, counted by group and not by gate',
-      JSON.stringify(found) === '[{"type":"table","count":1},{"type":"cube","count":2}]', JSON.stringify(found));
-    check('the working document is read as well as the plain one', JSON.stringify(partsTheBoardDoesNotKnow(cubes)) === JSON.stringify(found));
-    check('a gate that is in no group is not a cube, and neither is one whose group is not a name',
-      partsTheBoardDoesNotKnow({ elements: [{ type: 'gate' }, { type: 'gate', group: '' }, { type: 'gate', group: 7 }, { type: 'gate', group: null }] }).length === 0);
-    check('two gates in one group are one cube', JSON.stringify(partsTheBoardDoesNotKnow({ elements: [{ type: 'gate', group: 'a' }, { type: 'gate', group: 'a' }] })) === '[{"type":"cube","count":1}]');
-    const hadFetch2 = globalThis.fetch;
-    let sent = 0;
-    globalThis.fetch = async () => {
-      sent += 1;
-      return { ok: true, status: 200, text: async () => '{}' };
-    };
-    try {
-      let refusedCube = null;
-      try {
-        await publishTrack({ author: 'Ada Rook', document: toPlain(cubes), origin: 'http://board.test' });
-      } catch (e) {
-        refusedCube = e;
-      }
-      check('publishing a track with a cube is refused, with the sentence, and nothing is sent',
-        Boolean(refusedCube) && /1 table and 2 cubes\./.test(refusedCube.message) && sent === 0, String(refusedCube && refusedCube.message));
-    } finally {
-      globalThis.fetch = hadFetch2;
-    }
-  }
-
   const hadFetch = globalThis.fetch;
-  let calls = 0;
-  globalThis.fetch = async () => {
-    calls += 1;
+  const sent = [];
+  globalThis.fetch = async (url, init) => {
+    sent.push(JSON.parse(init.body));
     return { ok: true, status: 200, text: async () => '{}' };
   };
   try {
-    let refused = null;
-    try {
-      await publishTrack({ author: 'Ada Rook', document: plain, origin: 'http://board.test' });
-    } catch (e) {
-      refused = e;
-    }
-    check('publishing a track that holds furniture is refused, with the sentence, and nothing is sent',
-      Boolean(refused) && refused.message === say && calls === 0, `${refused && refused.message}, ${calls} sent`);
-    check('and the refusal carries the list, for a dialog that wants to say more',
-      Boolean(refused) && JSON.stringify(refused.unknownParts) === JSON.stringify(list));
-    await publishTrack({ author: 'Ada Rook', document: none, origin: 'http://board.test' });
-    check('a track without furniture goes as it always did', calls === 1);
-    const shaped = createTrack('shaped', 'micro');
-    placeOnTrack(shaped, 'gate', { x: 4, y: 5 });
-    placeOnTrack(shaped, 'hoop', { x: 5.5, y: 5 });
-    placeOnTrack(shaped, 'hexGate', { x: 7, y: 5 });
-    let refusedShaped = null;
-    try {
-      await publishTrack({ author: 'Ada Rook', document: toPlain(shaped), origin: 'http://board.test' });
-    } catch (e) {
-      refusedShaped = e;
-    }
-    check('a track with a hoop or a hex gate is refused the same way, with the sentence, and nothing is sent',
-      Boolean(refusedShaped) && /1 hoop and 1 hex gate\./.test(refusedShaped.message) && calls === 1
-      && JSON.stringify(refusedShaped.unknownParts) === '[{"type":"hoop","count":1},{"type":"hexGate","count":1}]', String(refusedShaped && refusedShaped.message));
-    const planTable = { ...none, elements: [...none.elements, { ...plain.elements.find((e) => e.type === 'table') }] };
-    let again = null;
-    try {
-      await publishTrack({ author: 'Ada Rook', document: planTable, origin: 'http://board.test', editKey: 'k' });
-    } catch (e) {
-      again = e;
-    }
-    check('an update of a track already on the board is refused the same way, so a board copy is never given a table',
-      Boolean(again) && calls === 1, String(again && again.message));
+    await publishTrack({ author: 'Ada Rook', document: plain, origin: 'http://board.test' });
+    check('a track with a table, chair, banner, hoop, hex gate and cube is sent to the board', sent.length === 1);
+    const types = new Set(sent[0].document.elements.map((e) => e.type));
+    check('and it goes whole: every kind is in the document',
+      ['table', 'chair', 'banner', 'hoop', 'hexGate'].every((t) => types.has(t)), [...types].join());
+    check('with the cube\'s group on its gates, which the board stores as it was sent',
+      sent[0].document.elements.filter((e) => typeof e.group === 'string' && e.group).length >= 5);
   } finally {
     globalThis.fetch = hadFetch;
   }
@@ -11338,12 +11255,6 @@ function suiteLetterPlan() {
     check('a letter\'s lit pane is one box, the primary gap\'s, however many gaps it has, where a stack has one for each',
       isoApertures(marks[1], false).length === 1 && isoApertures({ type: 'doubleStack', levels: 2, clearW: 1.5, clearH: 1.5, x: 0, y: 0 }, false).length === 2);
   }
-  {
-    check('the board is taught a letter, so a track with one is not one the simulator holds back: the list of what it does not know has no letter in it',
-      !BOARD_UNKNOWN_TYPES.includes('letter') && partsTheBoardDoesNotKnow({ elements: [{ type: 'letter', id: 'a' }, { type: 'gate', id: 'b' }], sequence: [] }).length === 0);
-    check('and a track with a letter in it is not refused by the words about a hoop or a hex gate',
-      partsTheBoardDoesNotKnow({ elements: [{ type: 'letter', id: 'a' }, { type: 'hoop', id: 'b' }], sequence: [] }).map((p) => p.type).join() === 'hoop');
-  }
 }
 
 /*
@@ -11911,13 +11822,6 @@ function suiteFiveInchParts() {
     check('the wall round trips, and a group is selected, moved and removed as one piece',
       roundTripsCleanly(heading) && groupMembers(heading, ids[1]).length === 3
       && expandGroups(heading, [ids[0]]).size === 3 && wallBays(heading, ids[2]).map((b) => b.id).join() === ids.slice().reverse().join());
-    check('and a wall whose every gate is flown is not a cube to the board, but one with a bay left out of the order is',
-      partsTheBoardDoesNotKnow(toPlain(heading)).length === 0
-      && (() => {
-        const loose = deserialize(serialize(heading)).doc;
-        loose.sequence = loose.sequence.filter((s) => s.elementId !== ids[1]);
-        return JSON.stringify(partsTheBoardDoesNotKnow(toPlain(loose))) === '[{"type":"cube","count":1}]';
-      })());
 
     /* Built in the world: every bay is a station, plain, and the uprights meet. */
     const course = courseFromDocument(heading);

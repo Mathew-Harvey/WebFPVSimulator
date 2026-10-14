@@ -564,84 +564,18 @@ export function usableTags(list) {
  * and the board's copy is the same course. So a group is counted below only for the pieces of it that
  * no pass goes through, and a wall of gates that are all flown is published.
  *
- * WHAT THE BOARD DOES NOT KNOW YET: a living room's table, chair and banner, a hoop and a hex gate, and a cube.
- *
- * The board keeps its own list of what a track is made of (WebFPVSimulator-
- * LeaderBoard/src/validate.js), for the gate count and the length that decide
- * a lap's floor and for the plan its card draws. A piece it has never heard of
- * is counted as nothing and drawn as nothing, which is the safe direction and
- * still a wrong card, so a track that holds one is not sent until the board
- * has been taught them. THIS LIST IS EMPTIED IN THE SAME CHANGE THAT TEACHES
- * THE BOARD, and the board deploys first. A letter was taught in the change that made it (2026-10-04), so it was never on
- * the list, and the board goes first for it all the same: see DEPLOY.md.
- *
- * A CUBE IS NOT A TYPE. It is five or six ordinary gates that share a `group`,
- * which is a field the board does not read: it would keep the gates, lose the
- * grouping, and its own copy of the track would fly two faces of it. So the
- * cube is counted here by its group, after the parts that have a type of
- * their own, and refused with them.
- *
- * It is the simulator that refuses, not the board, because the author is here
- * and can be told in words, and because a board that refused a document it
- * did not understand would say less. Nothing is lost by it: the track still
- * flies, and it still shares as a link.
+ * THERE IS NO LIST OF PARTS THE BOARD DOES NOT KNOW. Until 2026-10-14 a living room's table, chair and banner, a
+ * hoop, a hex gate and a cube were refused here, because the board's validator and card drawer counted them as
+ * nothing. The board (WebFPVSimulator-LeaderBoard, src/validate.js and public/plan.js) now counts a hoop and a
+ * hex gate as gates and draws all five, and a cube was never a loss: it is ordinary gates that share a `group`,
+ * and the board stores the document as it was sent. The board deploys first, as DEPLOY.md says; a simulator
+ * that sends one of these to a board that predates it gets a track with a short gate count and a plan without
+ * the piece, and the track itself still flies whole.
  */
-export const BOARD_UNKNOWN_TYPES = ['table', 'chair', 'banner', 'hoop', 'hexGate'];
-
-/* What each is called in a sentence. A hex gate is two words, and its plural is on the second. */
-const PART_WORD = {
-  table: 'table', chair: 'chair', banner: 'banner', hoop: 'hoop', hexGate: 'hex gate', cube: 'cube',
-};
-
-/* What in a track the board does not know, as [{ type, count }] in the order of
- * BOARD_UNKNOWN_TYPES and then the cube. A document that is not one holds nothing. */
-export function partsTheBoardDoesNotKnow(doc) {
-  const elements = doc && Array.isArray(doc.elements) ? doc.elements : [];
-  /* The pieces the flying order goes through. A group whose every piece is in it loses nothing when
-   * the board drops the grouping, which is what a wall of gates is; one with a piece no pass goes
-   * through is a cube, whose sides the board's copy would lose. */
-  const flown = new Set((doc && Array.isArray(doc.sequence) ? doc.sequence : []).map((s) => s && s.elementId));
-  const tally = new Map();
-  const groups = new Set();
-  for (const el of elements) {
-    if (!el || typeof el !== 'object') {
-      continue;
-    }
-    if (BOARD_UNKNOWN_TYPES.includes(el.type)) {
-      tally.set(el.type, (tally.get(el.type) ?? 0) + 1);
-    }
-    /* A name and nothing else, the way the reader keeps it. Counted only when this piece is one
-     * the order does not go through: a group in which every piece is flown is a row, and a row is
-     * the same course on the board without its grouping. */
-    if (typeof el.group === 'string' && el.group && !flown.has(el.id)) {
-      groups.add(el.group);
-    }
-  }
-  const found = BOARD_UNKNOWN_TYPES.filter((t) => tally.has(t)).map((type) => ({ type, count: tally.get(type) }));
-  if (groups.size) {
-    found.push({ type: 'cube', count: groups.size });
-  }
-  return found;
-}
-
-/* The refusal, in words: what the board does not know, what this track has, and what
- * to do about it. */
-export function unknownPartsSentence(list) {
-  const have = (list || []).map((p) => `${p.count} ${PART_WORD[p.type] ?? p.type}${p.count === 1 ? '' : 's'}`);
-  const joined = have.length > 1 ? `${have.slice(0, -1).join(', ')} and ${have[have.length - 1]}` : have.join('');
-  return `The board does not know a table, a chair, a banner, a hoop, a hex gate or a cube yet, so a track that has one cannot go on it. This one has ${joined}. Take them out to publish it. It still flies, and it still shares as a link.`;
-}
 
 export async function publishTrack({
   author, document, editKey, origin, tags,
 }) {
-  /* Before anything is sent: see BOARD_UNKNOWN_TYPES. */
-  const unknown = partsTheBoardDoesNotKnow(document);
-  if (unknown.length) {
-    const err = new Error(unknownPartsSentence(unknown));
-    err.unknownParts = unknown;
-    throw err;
-  }
   const board = trimOrigin(origin || boardOrigin());
   const res = await fetch(`${board}/api/tracks`, {
     method: 'POST',

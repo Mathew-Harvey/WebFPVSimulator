@@ -117,7 +117,6 @@ import { RAD, wrapAngle } from './geometry.js';
 import { isRoomType } from '../props/room.js';
 import {
   boardOrigin, boardPageUrl, fetchMapDocument, publishMap, publishTrack,
-  partsTheBoardDoesNotKnow, unknownPartsSentence,
   adoptShareFromLocation, TRACK_TAGS, TRACK_TAGS_MAX, tagLabel, usableTags, tagsForClass,
   fetchTrackList, fetchTrackDocument,
   adminSignIn, adminVerify, fetchTrackOfficial, setTrackOfficial,
@@ -4815,17 +4814,6 @@ export class App {
     }
     if (!this.doc.sequence.length) {
       this.toast('A published track needs at least one gate in the flying order.');
-      return;
-    }
-    /* A table, a chair or a banner is not something the board knows yet. Said here,
-     * in a dialog that stays until it is read, because the sentence is longer than a
-     * toast is up for, and before the author has typed a name for nothing. */
-    const unknown = partsTheBoardDoesNotKnow(this.doc);
-    if (unknown.length) {
-      const say = document.createElement('p');
-      say.className = 'tb-help';
-      say.textContent = unknownPartsSentence(unknown);
-      this.modal('Not on the board yet', say);
       return;
     }
     this.autosaver.flush();

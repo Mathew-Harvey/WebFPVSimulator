@@ -78,7 +78,7 @@ import { scaleOf } from './scale.js';
 import { ELEMENTS, KIND, FRAME_TUBE_OD, LETTER_TUBE_OD, GATE_FLAG_POLE_R, apertureShapeOf, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, frameSidesOf, unbuiltPolesOf, poleBuilt, uprightIntact, gateFlagHeight, isLetterPiece, isPlain, isUnbuilt, trackClassOf, virtualApertureDims } from './elements.js';
 import { PIPE_OD as RACEGOW_PIPE_OD, GATE_OPENING_DEFAULT, envelopeFor } from './racegow.js';
 import {
-  aperturesOf, createElement, elementById, kindOf, apertureCenter, letterLayoutOf, logosOf, logoForDecal, dressOrder, topOf,
+  aperturesOf, createElement, elementById, kindOf, apertureCenter, letterLayoutOf, logosOf, logoForDecal, cropOf, dressOrder, topOf,
 } from './model.js';
 import { sequenceNumbers } from './sequence.js';
 import { aroundPass, arrowLanes, spreadTags, stretchOf, tagsOf } from './passes.js';
@@ -1994,11 +1994,20 @@ export class View3D {
     if (!mat || !img) {
       return;
     }
-    const k = Math.min(w / img.naturalWidth, d / img.naturalHeight);
-    const face = new THREE.Mesh(
-      new THREE.PlaneGeometry(img.naturalWidth * k, img.naturalHeight * k),
-      mat,
-    );
+    /* A sticker wears its piece of the sheet (cropOf), not the sheet. */
+    const crop = cropOf(el);
+    const iw = img.naturalWidth * (crop ? crop.w : 1);
+    const ih = img.naturalHeight * (crop ? crop.h : 1);
+    const k = Math.min(w / iw, d / ih);
+    const geo = new THREE.PlaneGeometry(iw * k, ih * k);
+    if (crop) {
+      const u0 = crop.x;
+      const u1 = crop.x + crop.w;
+      const v1 = 1 - crop.y;
+      const v0 = 1 - crop.y - crop.h;
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute([u0, v1, u1, v1, u0, v0, u1, v0], 2));
+    }
+    const face = new THREE.Mesh(geo, mat);
     face.rotation.z = el.yaw;
     face.position.z = 0.008;
     group.add(face);

@@ -90,6 +90,21 @@ export function stampFor(key) {
   return unstored.get(key) ?? null;
 }
 
+/* Which of these keys this browser has stamped, from one read of the
+ * record: a map with a hundred stickers asks about every one of them when
+ * it is first flown, and stampFor would read and parse it a hundred
+ * times. */
+export function stampedAmong(keys) {
+  const record = readRecord();
+  const out = new Set();
+  for (const key of keys) {
+    if (isKey(key) && (record[key] || unstored.has(key))) {
+      out.add(key);
+    }
+  }
+  return out;
+}
+
 /*
  * Stamp a map as found. Returns true when the stamp is in storage, false
  * when storage refused it and it is only held for this page. A map already

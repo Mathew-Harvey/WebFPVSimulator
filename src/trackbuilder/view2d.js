@@ -40,7 +40,7 @@ import {
 import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import { knotForSeq, markerSquare } from './path.js';
 import {
-  aperturesOf, gateWidthOf, elementById, kindOf, apertureCenter, letterLayoutOf, logoForDecal,
+  aperturesOf, gateWidthOf, elementById, kindOf, apertureCenter, letterLayoutOf, logoForDecal, cropOf,
 } from './model.js';
 import { sequenceNumbers } from './sequence.js';
 import { arrowLanes, stretchOf } from './passes.js';
@@ -2017,11 +2017,15 @@ export class View2D {
        * reason. Get it wrong and every ground logo is mirrored, which
        * nothing else on the plan would show. */
       ctx.rotate(-el.yaw);
-      const k = Math.min(wpx / img.naturalWidth, dpx / img.naturalHeight);
-      const iw = img.naturalWidth * k;
-      const ih = img.naturalHeight * k;
+      /* A sticker wears its piece of the sheet (cropOf), not the sheet. */
+      const crop = cropOf(el) ?? { x: 0, y: 0, w: 1, h: 1 };
+      const sw = img.naturalWidth * crop.w;
+      const sh = img.naturalHeight * crop.h;
+      const k = Math.min(wpx / sw, dpx / sh);
+      const iw = sw * k;
+      const ih = sh * k;
       ctx.globalAlpha = 0.9;
-      ctx.drawImage(img, -iw * 0.5, -ih * 0.5, iw, ih);
+      ctx.drawImage(img, img.naturalWidth * crop.x, img.naturalHeight * crop.y, sw, sh, -iw * 0.5, -ih * 0.5, iw, ih);
       ctx.restore();
       return;
     }

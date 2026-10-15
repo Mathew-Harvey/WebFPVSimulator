@@ -33,7 +33,7 @@
 import {
   createTrack, createElement, createSequenceEntry, deserialize, elementById, normalize, isSequenceable, kindOf,
   roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf, newElementId,
-  logoForDecal, dressOrder, LOGO_SLOTS, SCHEMA_VERSION,
+  logoForDecal, cropOf, achievementOf, ACHIEVEMENT_MAX, dressOrder, LOGO_SLOTS, SCHEMA_VERSION,
   SCENE_TIMES, SCENE_GROUNDS, SCENE_DEFAULT, sceneOf, deepClone, setSideBuilt, setPoleBuilt, setOpeningSize, gateWidthOf,
   groupMembers, expandGroups, elementNormal, apertureCenter, letterLayoutOf, openingNearest, setLetter, topOf,
 } from './model.js';
@@ -5713,6 +5713,32 @@ function suiteBranding() {
   orphan.logoId = 'logo-9';
   check('a decal naming a mark that is gone wears nothing, rather than somebody else\u2019s',
     logoForDecal(painted, orphan) === null);
+
+  /*
+   * A STICKER is a ground logo that wears one piece of a sheet (`crop`, a
+   * rectangle in the image's own 0 to 1 units) and may name the word its
+   * find calls out (`achievement`). Both round trip; a crop that is not a
+   * rectangle inside the image is dropped rather than drawn wrong, so the
+   * decal wears its whole mark as it always did.
+   */
+  const sticker = place(painted, 'groundLogo', 20, 30, { dims: { width: 2, depth: 2 } });
+  sticker.logoId = 'logo-2';
+  sticker.crop = { x: 0.25, y: 0.5, w: 0.125, h: 0.25 };
+  sticker.achievement = '90%er';
+  const back = deserialize(serialize(painted)).doc.elements.find((e) => e.id === sticker.id);
+  check('a sticker keeps its piece of the sheet through a round trip',
+    back && cropOf(back) && cropOf(back).x === 0.25 && cropOf(back).y === 0.5 && cropOf(back).w === 0.125
+      && cropOf(back).h === 0.25, JSON.stringify(back && back.crop));
+  check('and the word its find calls out', back && achievementOf(back) === '90%er');
+  check('a decal with no crop wears its whole mark', cropOf(decal) === null && achievementOf(decal) === '');
+  check('a crop that runs off the image is no crop',
+    cropOf({ crop: { x: 0.9, y: 0, w: 0.2, h: 0.5 } }) === null);
+  check('and neither is one with no size', cropOf({ crop: { x: 0.1, y: 0.1, w: 0, h: 0.5 } }) === null);
+  check('an achievement longer than its limit is cut to it',
+    achievementOf({ achievement: 'x'.repeat(ACHIEVEMENT_MAX + 9) }).length === ACHIEVEMENT_MAX);
+  const plainBack = deserialize(serialize(painted)).doc.elements.find((e) => e.id === decal.id);
+  check('and a plain decal writes neither field', plainBack && !('crop' in plainBack) && !('achievement' in plainBack));
+  painted.elements.splice(painted.elements.indexOf(sticker), 1);
 
   const course = courseFromDocument(painted);
   check('the course carries the marks in order',

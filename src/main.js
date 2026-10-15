@@ -108,7 +108,7 @@ import {
 } from './share/stats.js';
 import { sendCardAnimation } from './share/cardgif.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
-import { stampFor, writeStamp } from './share/stamps.js';
+import { stampFor, stampedAmong, writeStamp } from './share/stamps.js';
 import { CLIP_FPS, CLIP_H, CLIP_W, clipKeyForMap } from './share/orbitcache.js';
 import {
   clearPendingTime,
@@ -4516,6 +4516,72 @@ export async function boot({ loading, bootStart, mapId }) {
     import('./art/partnermark.js')
       .then((m) => ui.partnerFound(partner, m.partnerDataUrl(partner)))
       .catch(() => ui.partnerFound(partner, null));
+  }
+
+  /*
+   * THE STICKERS (`stickers` in src/maps/README.md): decals a map's author
+   * cut from a sticker sheet and gave an achievement, found by the same
+   * seesMark as a partner's mark with the same camera. A sticker is found
+   * once in a browser, not once a run, because finding it is the
+   * achievement: the stamp under its own key (src/share/stamps.js) is the
+   * record, and a sticker this browser has stamped is not asked about
+   * again. Nothing goes to the board: the board's mark words are the
+   * partners', and a sticker is nobody's numbers.
+   *
+   * THE COST, for the latency rule: a map's stickers are asked every third
+   * frame, a frame after the partners' marks, and almost every one stops
+   * at seesMark's range test, three subtractions and a compare. A hundred
+   * of them is a few hundred multiplications a check; the sight line is
+   * walked only for a sticker the pilot is close to and looking at. The
+   * found set is read from storage once per map, and a find writes one
+   * stamp and draws one sticker into a small canvas for the panel.
+   */
+  let stickersView = null;
+  let stickersFound = new Set();
+  function findStickers() {
+    if (stickersView !== view) {
+      stickersView = view;
+      stickersFound = stampedAmong(view.stickers.map((s) => s.key));
+    }
+    if (stickersFound.size >= view.stickers.length) {
+      return;
+    }
+    eggFwd.set(0, 0, -1).applyQuaternion(fpvQuat);
+    for (const s of view.stickers) {
+      if (stickersFound.has(s.key) || !seesMark(fpvPos, eggFwd, s, view.colliders)) {
+        continue;
+      }
+      stickersFound.add(s.key);
+      writeStamp(s.key);
+      ui.stickerFound({
+        word: s.achievement, name: s.name, got: stickersFound.size, total: view.stickers.length,
+        picture: stickerPicture(s),
+      });
+      /* One a check: a second find in the same frame would replace this
+       * one's callout before anybody read it. */
+      return;
+    }
+  }
+  /* The sticker as cut from its sheet, fitted in a square canvas for the
+   * found panel, or null while the sheet has not decoded. */
+  const STICKER_PANEL_PX = 256;
+  function stickerPicture(s) {
+    const img = s.sheet && s.sheet.image;
+    if (!img || !img.naturalWidth) {
+      return null;
+    }
+    const sx = s.crop.x * img.naturalWidth;
+    const sy = s.crop.y * img.naturalHeight;
+    const sw = Math.max(1, s.crop.w * img.naturalWidth);
+    const sh = Math.max(1, s.crop.h * img.naturalHeight);
+    const k = Math.min(STICKER_PANEL_PX / sw, STICKER_PANEL_PX / sh);
+    const cv = document.createElement('canvas');
+    cv.width = STICKER_PANEL_PX;
+    cv.height = STICKER_PANEL_PX;
+    const g = cv.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(img, sx, sy, sw, sh, (STICKER_PANEL_PX - sw * k) / 2, (STICKER_PANEL_PX - sh * k) / 2, sw * k, sh * k);
+    return cv;
   }
 
   /*
@@ -9703,6 +9769,11 @@ export async function boot({ loading, bootStart, mapId }) {
         && frames % EGG_EVERY === 1) {
         findMarks(frames % MARKS_SEEN_EVERY === 1);
       }
+      /* The map's stickers, a frame after the partners' marks: see
+       * findStickers. */
+      if (view.stickers && view.stickers.length && ui.screen === 'flight' && frames % EGG_EVERY === 2) {
+        findStickers();
+      }
       if (view.mode === 'freestyle') {
         const wasOver = score.over();
         /* What waited out its window while nothing stepped, then the
@@ -11991,6 +12062,15 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   /* Harness: the STF mark on this map (null where it carries none),
    * whether this run has found it, and this browser's stamp for it. */
+  /* The map's stickers: where each is, and which this browser has found.
+   * Harness only. */
+  window.__stickers = () => ({
+    stickers: (view.stickers ?? []).map((s) => ({
+      id: s.id, name: s.name, achievement: s.achievement, key: s.key, p: s.p, n: s.n, w: s.w, h: s.h,
+    })),
+    found: [...stickersFound],
+    sheetDecoded: (view.stickers ?? []).every((s) => Boolean(s.sheet && s.sheet.image)),
+  });
   /* The partners' marks, the same way. Harness only. */
   window.__marks = () => ({
     marks: view.marks ?? [],

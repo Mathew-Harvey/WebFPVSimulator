@@ -1544,6 +1544,10 @@ export async function buildMap(shell, onProgress, options) {
      * the slug and findable flag: see paintPartnerMarks, paintPatronMarks and
      * `marks` in src/maps/README.md. */
     marks: allMarks,
+    /* The stickers that can be found, keyed as the partners' marks are,
+     * with '#sticker:' and the decal's id: see stickerSheet in ./ground.js
+     * and `stickers` in src/maps/README.md. Paint only. */
+    stickers: ground.stickers.map((s) => ({ ...s, key: `${stfKey(doc, chosen.source)}#sticker:${s.id}` })),
     /* The author's named gaps as world rectangles, for the counter
      * (src/game/gaps.js): placeDocument's zones, placed by the one
      * conversion everything on this map goes through. Nothing solid and

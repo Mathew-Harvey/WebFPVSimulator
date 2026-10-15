@@ -169,6 +169,30 @@ were first written for are thinner than the paint needs behind it), and
 `npm run check:town-patrons` asks the live town about every one of them,
 point by point, on every run.
 
+### `stickers` is where a built map's findable stickers are stuck
+
+A ground logo can be a sticker: a `crop` that names its piece of the logo
+picture, and an `achievement` that names what finding it is called
+(`cropOf` and `achievementOf` in `src/trackbuilder/model.js`, and the
+document schema in `src/trackbuilder/schema.md`). Every sticker cut from
+one sheet is drawn as one mesh on the sheet itself (`stickerSheet` in
+`built/ground.js`), so a map of a hundred stickers costs two draw calls
+and one texture rather than a hundred of each. Those with an achievement
+are listed:
+
+    stickers = [{ id, name, achievement, key, p, n, up, w, h, sheet, crop }, ...]
+
+    id, name     the decal's own, the name being whose sticker it is
+    achievement  the callout's word
+    key          the found stamp's key: the map's `egg` key, '#sticker:' and the id
+    p, n, up     the `egg` shape, world metres
+    sheet        { image }: the decoded sheet, null until it decodes
+    crop         the piece of the sheet, for the found panel's picture
+
+Found by the same `seesMark` as a partner's mark, once in a browser rather
+than once a run, and nothing goes to the board (`findStickers` in
+`src/main.js`). The town has none and leaves it out.
+
 ### Renderer state belongs to the map
 
 The two maps want different shadow filtering and different clear colours, and

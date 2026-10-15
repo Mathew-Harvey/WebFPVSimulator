@@ -15546,6 +15546,43 @@ export class Ui {
     }, STF_FOUND_MS + 200);
   }
 
+  /*
+   * A STICKER, FOUND (`stickers` in src/maps/README.md): the partner's
+   * moment again, in the same place and clothes. The word is the
+   * achievement the map's author gave the sticker, the line under it whose
+   * sticker it is and how many of the map's this browser has found, and the
+   * panel is the sticker as cut from its sheet (`picture`, a canvas the
+   * shell drew it into, or null).
+   */
+  stickerFound({ word, name, got, total, picture }) {
+    const layer = this.stfLayer;
+    if (!layer || !word) {
+      return;
+    }
+    layer.textContent = '';
+    const call = el('div', 'stf-call');
+    const count = got >= total ? `all ${total} found` : `${got} of ${total}`;
+    call.append(
+      el('div', 'stf-call-burst'),
+      el('span', 'stf-call-word', word),
+      el('div', 'stf-call-line', name ? `${name} · ${count}` : `Sticker · ${count}`),
+    );
+    layer.append(call);
+    if (picture) {
+      const panel = el('div', 'stf-panel');
+      picture.classList.add('stf-panel-mark');
+      picture.setAttribute('role', 'img');
+      picture.setAttribute('aria-label', name ? `${name} sticker` : 'A sticker');
+      panel.append(el('div', 'stf-panel-burst'), picture);
+      layer.append(panel);
+    }
+    this.announce(`${word}. ${name ? `${name} sticker` : 'Sticker'} found, ${count}.`);
+    clearTimeout(this.stfTimer);
+    this.stfTimer = setTimeout(() => {
+      layer.textContent = '';
+    }, STF_FOUND_MS + 200);
+  }
+
   /* The freestyle board's answer, so the results row can say what happened
    * rather than staying on the verb. */
   markRunPosted(posted) {

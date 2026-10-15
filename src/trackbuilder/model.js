@@ -179,6 +179,49 @@ export function logoForDecal(doc, el) {
   return logos.find((l) => l.id === id) ?? null;
 }
 
+/*
+ * A STICKER: a decal that wears one piece of its logo rather than the whole
+ * of it. `crop` is that piece, { x, y, w, h }, as shares of the logo
+ * picture's width and height with y counted down from its top edge, the way
+ * a picture is read. It exists because a map carries at most LOGO_SLOTS
+ * logos and the board holds each to a size, so a sticker bomb of a hundred
+ * stickers is one sheet in one slot and a hundred decals that each say which
+ * piece of it they are. src/maps/built/ground.js draws every sticker cut
+ * from one sheet as one mesh on one texture.
+ *
+ * Returns the piece, or null for a decal that wears its whole logo: no
+ * crop, or one that is not a rectangle inside the picture. A piece narrower
+ * than CROP_MIN of the sheet is not one, because it would be a pixel.
+ */
+export const CROP_MIN = 0.001;
+export function cropOf(el) {
+  const c = el?.crop;
+  if (!c || typeof c !== 'object') {
+    return null;
+  }
+  const x = Number(c.x);
+  const y = Number(c.y);
+  const w = Number(c.w);
+  const h = Number(c.h);
+  if (![x, y, w, h].every(Number.isFinite) || x < 0 || y < 0 || w < CROP_MIN || h < CROP_MIN
+    || x + w > 1 + 1e-9 || y + h > 1 + 1e-9) {
+    return null;
+  }
+  return { x, y, w, h };
+}
+
+/*
+ * WHAT FINDING A DECAL IS CALLED, or '' for one that is only paint. A decal
+ * with an achievement is found the way a partner's mark is (seesMark in
+ * src/game/egg.js): fly up to it and look at it, and the callout says this
+ * word. Short, because it is lettered across the screen.
+ */
+export const ACHIEVEMENT_MAX = 24;
+export function achievementOf(el) {
+  const a = typeof el?.achievement === 'string' ? el.achievement.trim() : '';
+  return a.length <= ACHIEVEMENT_MAX ? a : a.slice(0, ACHIEVEMENT_MAX);
+}
+
 /* Every number in the file is written to this many decimal places. Six is a
  * micrometre on a 60 m field, which is far past any dimension that matters
  * and short enough that a float never prints seventeen digits of noise. */
@@ -1367,6 +1410,16 @@ export function normalize(raw) {
        * so in the builder rather than silently repaint itself with the
        * first sponsor's logo. logoForDecal returns null for it. */
       el.logoId = str(rawEl.logoId, '');
+      /* A sticker's piece of its sheet and what finding it is called (see
+       * cropOf and achievementOf), kept only when they are one. */
+      const crop = cropOf(rawEl);
+      if (crop) {
+        el.crop = crop;
+      }
+      const achievement = achievementOf(rawEl);
+      if (achievement) {
+        el.achievement = achievement;
+      }
     }
     if (def.kind === KIND.ROAD) {
       /* Paint: on the ground, and turned by its nodes. Written 0. */
@@ -1715,6 +1768,16 @@ export function toPlain(doc) {
       }
       if (def.kind === KIND.DECAL) {
         out.logoId = str(el.logoId, '');
+        /* Written only on a sticker, so every other decal is the JSON it
+         * was. */
+        const crop = cropOf(el);
+        if (crop) {
+          out.crop = { x: num(crop.x), y: num(crop.y), w: num(crop.w), h: num(crop.h) };
+        }
+        const achievement = achievementOf(el);
+        if (achievement) {
+          out.achievement = achievement;
+        }
       }
       if (def.flagSide) {
         out.flagSide = normalizeFlagSide(el.flagSide, def.flagSide);

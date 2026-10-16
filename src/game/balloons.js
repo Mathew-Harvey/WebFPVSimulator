@@ -4,11 +4,13 @@
  * streams balloons out of its tail as it goes. The pilot chases it and pops
  * them. A round is ROUND_MS of flying; a gold balloon is worth GOLD_VALUE.
  *
- * PURE, as src/game/chase.js is: no Three.js, no DOM, no clock of its own,
- * no JS trigonometry and nothing allocated on a step. The shell feeds it
- * every BALLOON_EVERY steps of the lap clock, from the step loop, so a
- * dropped frame changes nothing it does and the same seed and the same
- * craft path give the same pops. The plane turns by nudging its heading
+ * PURE, as src/game/chase.js is: no Three.js, no DOM, no JS trigonometry
+ * and nothing allocated on a step. Its clock is its own, BALLOON_EVERY ms a
+ * feed. In flight the shell feeds it every BALLOON_EVERY steps of the lap
+ * clock, from the step loop, so a dropped frame changes nothing it does and
+ * the same seed and the same craft path give the same pops; while the plant
+ * is not stepping (landed, the title) the frame feeds it so the plane flies
+ * on, and those feeds never pop. The plane turns by nudging its heading
  * along its own perpendicular and renormalising, which is a square root
  * (exact in IEEE) rather than a sine.
  *
@@ -42,7 +44,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* Steps of the lap clock between feeds (1 ms each). */
+/* Milliseconds of the game's clock a feed, and steps of the lap clock
+ * between feeds in flight. */
 export const BALLOON_EVERY = 4;
 const DT = BALLOON_EVERY / 1000;
 
@@ -288,12 +291,17 @@ export class BalloonChase {
   }
 
   /*
-   * One feed. clock: the lap clock in steps. flying: the craft is off the
-   * stand and the run is live. craft { x, y, z } and its position at the
-   * last feed in prev { x, y, z }, Three.js metres. Returns nothing; pops go
-   * to this.pops[0 .. popCount).
+   * One feed, BALLOON_EVERY ms of the game's own clock (clockMs), which is
+   * what every time here is measured on. flying: the craft is in the air
+   * and the run is live, so it may pop and the round may start. craft
+   * { x, y, z } and its position at the last feed, prev, or null for no
+   * sweep, Three.js metres. Pops go to this.pops[0 .. popCount).
+   *
+   * The shell feeds it from the step loop while the plant steps, and from
+   * the frame while it does not (landed, the title), so the plane never
+   * stops in the sky; only the flying feeds pop.
    */
-  step(clock, flying, craft, prev) {
+  step(flying, craft, prev) {
     this.snapshot();
     for (let i = 0; i < BALLOON_MAX; i += 1) {
       this.bxPrev[i] = this.bx[i];
@@ -301,6 +309,7 @@ export class BalloonChase {
       this.bzPrev[i] = this.bz[i];
     }
     this.clockMs += BALLOON_EVERY;
+    const clock = this.clockMs;
     this.flyPlane();
     this.release();
     this.driftBalloons();
@@ -504,13 +513,18 @@ export class BalloonChase {
   }
 
   /* Milliseconds left in the round, or the whole round before it starts. */
-  leftMs(clock) {
+  leftMs() {
     if (this.startedMs < 0) {
       return ROUND_MS;
     }
     if (this.over) {
       return 0;
     }
-    return Math.max(0, ROUND_MS - (clock - this.startedMs));
+    return Math.max(0, ROUND_MS - (this.clockMs - this.startedMs));
+  }
+
+  /* Milliseconds the result has stood since the round ran out, or -1. */
+  sinceOverMs() {
+    return this.over ? this.clockMs - this.overAtMs : -1;
   }
 }

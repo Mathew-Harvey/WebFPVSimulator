@@ -64,7 +64,7 @@ function fly(seed) {
   let bank = 0;
   let trace = 0;
   for (let c = BALLOON_EVERY; c <= 120000; c += BALLOON_EVERY) {
-    g.step(c, true, craft, craft);
+    g.step(true, craft, craft);
     maxR = Math.max(maxR, Math.hypot(g.p[0], g.p[2]));
     if (Math.abs(g.p[0]) < 20 && Math.abs(g.p[2]) < 20) {
       overBlock = Math.min(overBlock, g.p[1]);
@@ -104,13 +104,13 @@ console.log('balloons-check: popping');
   const craft = { x: 0, y: 5, z: 0 };
   const prev = { x: 0, y: 5, z: 0 };
   /* On the stand: nothing pops and the round has not begun. */
-  g.step(4, false, craft, prev);
+  g.step(false, craft, prev);
   g.born[0] = g.clockMs;
   g.bx[0] = 0;
   g.by[0] = 5;
   g.bz[0] = 0;
   g.gold[0] = 0;
-  g.step(8, false, craft, prev);
+  g.step(false, craft, prev);
   check(g.popped === 0 && g.startedMs < 0, 'on the stand nothing pops and the round waits');
   /* Clear the sky so only the balloons placed below are in it. */
   const clear = () => {
@@ -118,8 +118,8 @@ console.log('balloons-check: popping');
     g.nextReleaseMs = 1e12;
   };
   clear();
-  g.step(12, true, craft, null);
-  check(g.startedMs === 12, 'the round starts at the first feed flown');
+  g.step(true, craft, null);
+  check(g.startedMs === g.clockMs, 'the round starts at the first feed flown');
   /* One balloon right on the swept path, one a metre and a half off it. */
   g.born[0] = g.clockMs;
   g.bx[0] = 0.5;
@@ -132,11 +132,11 @@ console.log('balloons-check: popping');
   g.bz[1] = 1.5;
   g.gold[1] = 0;
   craft.x = 1;
-  g.step(16, true, craft, prev);
+  g.step(true, craft, prev);
   check(g.popped === 1 && g.score === 1 && g.born[0] < 0 && g.born[1] >= 0, 'on the path pops and pays one, off it does not');
   check(g.popCount === 1 && g.pops[0].gold === false, 'the pop is reported once');
   g.popCount = 0;
-  g.step(20, true, craft, prev);
+  g.step(true, craft, prev);
   check(g.popped === 1, 'a popped balloon cannot pop again');
   /* Gold. */
   clear();
@@ -145,19 +145,25 @@ console.log('balloons-check: popping');
   g.by[2] = 5;
   g.bz[2] = 0;
   g.gold[2] = 1;
-  g.step(24, true, craft, prev);
+  g.step(true, craft, prev);
   check(g.score === 1 + GOLD_VALUE && g.goldPopped === 1, `gold pays ${GOLD_VALUE}`);
   check(g.streak === 2, 'two pops close together are a streak of two');
-  /* The clock. */
-  check(g.leftMs(12 + ROUND_MS / 2) === ROUND_MS / 2, 'leftMs counts down from the start');
-  g.step(12 + ROUND_MS, true, craft, prev);
-  check(g.over && g.leftMs(12 + ROUND_MS) === 0, 'the round is over at ROUND_MS');
+  /* The clock: run it out in flying feeds with the craft far away. */
+  const far = { x: 500, y: 5, z: 500 };
+  while (g.clockMs - g.startedMs < ROUND_MS / 2) {
+    g.step(true, far, far);
+  }
+  check(g.leftMs() === ROUND_MS / 2, 'leftMs counts down from the start');
+  while (g.clockMs - g.startedMs < ROUND_MS) {
+    g.step(true, far, far);
+  }
+  check(g.over && g.leftMs() === 0 && g.sinceOverMs() === 0, 'the round is over at ROUND_MS');
   clear();
   g.born[3] = g.clockMs;
   g.bx[3] = 0.5;
   g.by[3] = 5;
   g.bz[3] = 0;
-  g.step(16 + ROUND_MS, true, craft, prev);
+  g.step(true, craft, prev);
   check(g.born[3] >= 0 && g.score === 1 + GOLD_VALUE, 'nothing pops after the clock has run out');
   g.reset(1);
   check(g.score === 0 && !g.over && g.startedMs < 0 && g.born.every((b) => b < 0), 'a new round starts clean');

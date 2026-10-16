@@ -1695,14 +1695,16 @@ export async function boot({ loading, bootStart, mapId }) {
    *
    * NOTHING IT DRAWS IS SOLID and nothing reaches the plant: the plane is
    * flown through and a balloon pops when the craft's centre, swept between
-   * feeds, passes within reach of it. The game is fed from the step loop
-   * every BALLOON_EVERY steps of the lap clock, so a dropped frame changes
-   * nothing it does; on the title it is fed from the title's own clock so
-   * the plane is still flying behind the menu.
+   * feeds, passes within reach of it. In flight the game is fed from the
+   * step loop every BALLOON_EVERY steps of the lap clock, so a dropped frame
+   * changes nothing it does. While the plant does not step (the title, sat
+   * on the ground, a turtle wait) the frame feeds it instead, so the plane
+   * never stops in the sky; those feeds never pop. Pause freezes it.
    *
-   * A round starts at the first feed with the craft off the stand and runs
-   * ROUND_MS. The result stands RESULT_MS, the best on the map is kept in
-   * this browser, and the next round starts. Restart run starts a new one.
+   * A round starts at the first feed with the craft flying and runs
+   * ROUND_MS of the game's clock. The result stands RESULT_MS, the best on
+   * the map is kept in this browser, and the next round starts. Restart run
+   * starts a new one.
    */
   /* The two modules, fetched the first time the game is switched on, so a
    * pilot who never picks it fetches and parses nothing more at boot. */
@@ -1716,9 +1718,14 @@ export async function boot({ loading, bootStart, mapId }) {
   let balloonBest = 0;
   let balloonSaved = false;
   let balloonNewBest = false;
+  /* The lap clock at the last step loop feed, and the frame's own carry
+   * for the feeds it makes while the plant is not stepping. */
   let balloonFeedAt = 0;
   let balloonHavePrev = false;
-  let balloonTitleAcc = 0;
+  let balloonIdleAcc = 0;
+  /* This frame the plant was not stepped in flight: landed, a turtle wait
+   * or a pose lock. Set by the frame, before the step loop. */
+  let balloonIdle = false;
   const balloonCraft = { x: 0, y: 0, z: 0 };
   const balloonPrev = { x: 0, y: 0, z: 0 };
   const balloonPos = new THREE.Vector3();
@@ -1892,7 +1899,7 @@ export async function boot({ loading, bootStart, mapId }) {
     balloonNewRound();
   }
 
-  /* One feed at lap clock `clock`, with the craft at state `st`. */
+  /* One step loop feed at lap clock `clock`, with the craft at state `st`. */
   function balloonStep(clock, st, flying) {
     poseFromState(st, balloonPos);
     balloonCraft.x = balloonPos.x;
@@ -1909,7 +1916,7 @@ export async function boot({ loading, bootStart, mapId }) {
         prev = balloonPrev;
       }
     }
-    balloonGame.step(clock, flying, balloonCraft, prev);
+    balloonGame.step(flying, balloonCraft, prev);
     balloonPrev.x = balloonCraft.x;
     balloonPrev.y = balloonCraft.y;
     balloonPrev.z = balloonCraft.z;
@@ -1918,9 +1925,9 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /* Once a drawn frame: pops out to the screen and the speaker, the round's
-   * end, and the plane and balloons drawn. `lapClock` is where the craft is
-   * drawn on the lap clock, or -1 off it (the title). */
-  function balloonFrame(lapClock, dtMs, nowMs) {
+   * end, and the plane and balloons drawn. `ahead` is how far past the last
+   * feed this frame is drawn, in ms of the game's clock. */
+  function balloonFrame(ahead, dtMs, nowMs) {
     if (!balloonGame) {
       return;
     }
@@ -1943,15 +1950,14 @@ export async function boot({ loading, bootStart, mapId }) {
         writeBalloonBest(g.score);
       }
     }
-    if (g.over && lapClock >= 0 && lapClock - g.overAtMs >= RESULT_MS) {
+    if (g.over && g.sinceOverMs() >= RESULT_MS) {
       balloonNewRound();
     }
-    const t = lapClock >= 0 ? (lapClock - (balloonFeedAt - BALLOON_EVERY)) / BALLOON_EVERY : 1;
-    balloonView.frame(g, t, dtMs, nowMs);
+    balloonView.frame(g, 1 + ahead / BALLOON_EVERY, dtMs, nowMs);
     ui.balloonHud.setVisible(ui.screen === 'flight' || ui.screen === 'paused');
     const st = balloonStats;
     st.points = g.score;
-    st.leftMs = g.leftMs(Math.max(0, lapClock));
+    st.leftMs = g.leftMs();
     st.best = balloonBest;
     st.streak = g.streak;
     st.over = g.over;
@@ -1959,27 +1965,29 @@ export async function boot({ loading, bootStart, mapId }) {
     st.gold = g.goldPopped;
     st.bestStreak = g.bestStreak;
     st.newBest = balloonNewBest;
-    st.nextMs = g.over ? Math.max(0, RESULT_MS - (lapClock - g.overAtMs)) : 0;
+    st.nextMs = g.over ? Math.max(0, RESULT_MS - g.sinceOverMs()) : 0;
     ui.balloonHud.update(st);
   }
 
-  /* The title has no lap clock: the plane flies on the title's own. */
-  function balloonTitleTick(dtMs) {
-    if (!balloonGame) {
-      return;
-    }
+  /* While the plant does not step: feeds from the frame's own time, which
+   * never pop. Returns how far past the last feed the frame is. */
+  function balloonIdleTick(dtMs) {
     const { BALLOON_EVERY } = balloonMods;
-    balloonTitleAcc += dtMs;
+    balloonIdleAcc += dtMs;
     let n = 0;
-    while (balloonTitleAcc >= BALLOON_EVERY && n < 40) {
-      balloonTitleAcc -= BALLOON_EVERY;
-      balloonGame.step(balloonGame.clockMs, false, balloonCraft, null);
+    while (balloonIdleAcc >= BALLOON_EVERY && n < 40) {
+      balloonIdleAcc -= BALLOON_EVERY;
+      balloonGame.step(false, balloonCraft, null);
       n += 1;
     }
     if (n === 40) {
-      balloonTitleAcc = 0;
+      balloonIdleAcc = 0;
     }
+    /* The craft did not fly through these: no sweep across them. */
+    balloonHavePrev = false;
+    return balloonIdleAcc;
   }
+
 
   /* A crash the shell called, told to the chase as it is told to the score:
    * the tail and everything waiting to pay are lost. */
@@ -8571,6 +8579,7 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
     }
+    balloonIdle = mode === 'flight' && ui.screen === 'flight' && (turtleParkedNow || landed || poseLock);
     if (mode === 'flight' && ui.screen === 'flight' && turtleParkedNow && !poseLock) {
       /* Inverted wait or the scripted flip: do not step the plant.
        * The lap clock still runs. Pause freezes the flip where it is. */
@@ -9839,13 +9848,13 @@ export async function boot({ loading, bootStart, mapId }) {
        * title carries its fraction in titleAcc. */
       syncBalloons();
       if (balloonGame) {
-        if (mode === 'title') {
-          balloonTitleTick(dt);
-          balloonFrame(-1, dt, nowWall);
-        } else if (mode === 'results') {
-          balloonFrame(-1, 0, nowWall);
+        if (mode === 'title' || (mode === 'flight' && balloonIdle)) {
+          balloonFrame(balloonIdleTick(dt), dt, nowWall);
+        } else if (mode === 'flight') {
+          balloonFrame(simTimeMs - 1 + a - balloonFeedAt, dt, nowWall);
         } else {
-          balloonFrame(simTimeMs - 1 + a, mode === 'flight' ? dt : 0, nowWall);
+          /* Paused, results: frozen where it is. */
+          balloonFrame(0, 0, nowWall);
         }
       }
       if (trafficOn) {

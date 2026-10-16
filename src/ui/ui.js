@@ -1125,7 +1125,7 @@ const DEFAULTS = {
    * Keyboard flight does not read this value ON A RACE TRACK, where holding
    * a line matters more than inverting and a key is a bang bang input: it
    * reads keyRaceMode below instead. It does read it in freestyle, where
-   * angle holds the craft to about thirty degrees of bank and puts the whole
+   * angle holds the craft inside a 60 degree limit and puts the whole
    * trick catalogue out of reach: see flightModeSetting in src/main.js. This
    * comment used to say "always", which stopped being true when the town
    * arrived.
@@ -4141,6 +4141,42 @@ function ratesItem(s, midRun) {
   };
 }
 
+/*
+ * ANGLE OR ACRO, AS ONE ROW, for the two rooms a pilot looks in for it.
+ *
+ * The owner, 2026-10-16: "in the menus the option to change between acro
+ * and angle mode has vanished? please put it back". It had not gone from
+ * the code: it was the Flight mode row in Quad. What went, on 2026-10-01
+ * (353c68a, MENUS-PLAN.md 2.2), was the pause menu's Quad door, so mid run
+ * there was no way to it at all, and Settings never had it. A row in Quad
+ * only is a row nobody finds, so this one sits in the pause menu and in
+ * Settings too. It is the same stored choice, not a copy of it.
+ *
+ * `key` is whichever choice is flying right now, from flightModeSetting in
+ * src/main.js: flightMode everywhere but a race on the keyboard, which
+ * keeps its own (keyRaceMode). So this row, like M in flight, changes the
+ * mode the pilot is actually in, and never one that is not flying. The
+ * Quad room keeps both rows, because it is where both can be set at once.
+ *
+ * It is a Betaflight flag, ANGLE_MODE, not a plant change: switching it
+ * neither re-inits the module nor moves the craft or the clock.
+ */
+function flightModeItem(s, key) {
+  const keys = key === 'keyRaceMode';
+  return choice(
+    'Flight mode',
+    keys
+      ? 'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt up to Betaflight\'s 60 degree limit, hands off levels. This race is flown on the keyboard, which keeps a choice of its own (Keyboard races, in Quad); this row changes that one. M in flight switches it too.'
+      : 'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt up to Betaflight\'s 60 degree limit, hands off levels, yaw stays a rate. Flips and rolls need Acro. M in flight switches it too, and keeps it.',
+    FLIGHT_MODES,
+    /* Each falls back to its own default: Acro for flightMode, Angle for
+     * keyRaceMode, as normaliseSettings does. */
+    keys ? (s[key] === 'acro' ? 'acro' : 'angle') : (s[key] === 'angle' ? 'angle' : 'acro'),
+    (id) => (id === 'angle' ? 'Angle' : 'Acro'),
+    (id) => { s[key] = id; },
+  );
+}
+
 /* The way back into the flight feel question, after its one automatic
  * offer. On Results and the pause menu only: those are the two places a
  * pilot has just been flying, which is when a feel report is worth
@@ -5042,6 +5078,10 @@ export class Ui {
     this.onFcOpen = null;    /* (page) => void */
     this.onFcSave = null;    /* (draft, { restart, exit, presetId }) => void */
     this.onFcAngle = null;   /* (on) => void, same sim_set_angle_mode as Settings */
+    /* Which stored choice is flying right now, 'flightMode' or
+     * 'keyRaceMode'. The shell replaces it with flightModeSetting in
+     * src/main.js; see flightModeItem. */
+    this.flightModeKey = () => 'flightMode';
     this.onFcMotor = null;   /* (motor, duty) => void, sim_motor_override */
     this.fc = new FcSession();
     this.fc.getFlightMode = () => (this.settings.flightMode === 'angle' ? 'angle' : 'acro');
@@ -9274,7 +9314,7 @@ export class Ui {
         { label: 'Flight', section: true },
         choice(
           'Flight mode',
-          'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. A radio, a gamepad, thumb sticks and every freestyle flight fly this one, because Angle holds the craft to about thirty degrees of bank and no trick in the book can be flown in it. M in flight switches whichever one you are flying, and keeps it.',
+          'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. A radio, a gamepad, thumb sticks and every freestyle flight fly this one, because Angle holds the craft inside Betaflight\'s 60 degree limit (angle_limit, on the Firmware bench) and no flip or roll can be flown in it. M in flight switches whichever one you are flying, and keeps it.',
           FLIGHT_MODES,
           s.flightMode === 'angle' ? 'angle' : 'acro',
           (id) => (id === 'angle' ? 'Angle' : 'Acro'),
@@ -9497,6 +9537,8 @@ export class Ui {
           (id) => { s.keyThrottle = normaliseKeyThrottle(id); },
         ),
         ratesItem(s, midRun),
+        /* Beside the rates, which are what Acro flies. See flightModeItem. */
+        flightModeItem(s, this.flightModeKey()),
         choice(
           'Radio link',
           s.link === 'perfect'
@@ -9955,6 +9997,8 @@ export class Ui {
         ...(trouble ? [trouble] : []),
         { label: 'Does it feel wrong?', section: true },
         tuneItem(s, true),
+        /* Angle or Acro, one press from the pause. See flightModeItem. */
+        flightModeItem(s, this.flightModeKey()),
         /*
          * RATES, ONE PRESS FROM THE PAUSE MENU, because that is when a pilot
          * knows they want them.
@@ -9991,7 +10035,7 @@ export class Ui {
         ...this.tuneRows(s),
         feelItem(),
         /*
-         * ELSEWHERE IS TWO DOORS AND THE WAY OUT (MENUS-PLAN.md 2.2).
+         * ELSEWHERE IS A DOOR AND THE WAY OUT (MENUS-PLAN.md 2.2).
          *
          * A pause is for the run: resume it, restart it, fix how it feels,
          * or leave. Quad went because the two of its doors a pilot pauses
@@ -10001,6 +10045,14 @@ export class Ui {
          * because a new tab opened mid run is a way to lose the run, and
          * they are one row from the title in About. At 1600x900 the last
          * row, the way out, was cut off by the legend; now it is not.
+         *
+         * HOW TO FLY WENT ON 2026-10-16 to make room for Flight mode above,
+         * and the trade is arithmetic: one row more hung Quit to title 47 px
+         * under the command bar at 1280 by 720, which shell-check's fold
+         * budget refuses. Of the two doors, How to fly is the one a pilot
+         * mid run needs least: it is a page about the keys, one row from the
+         * title, and the thing paused for most often in it, Angle or Acro,
+         * is now a row of its own here.
          */
         { label: 'Elsewhere', section: true },
         {
@@ -10011,7 +10063,6 @@ export class Ui {
            * right. The rows that still restart a run carry it themselves. */
           note: 'Your name, your radio, graphics and sound.',
         },
-        { label: 'How to fly', action: 'howto' },
         { label: 'Quit to title', action: 'title' },
       ];
     }

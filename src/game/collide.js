@@ -2659,14 +2659,13 @@ export function dullBounce(before, nx, ny, nz, out) {
  *
  * A KNOCK KEEPS A SPIN THAT TURNS THE CRAFT OFF THE FACE. A craft held
  * against a face buzzes on it every few milliseconds, and taking the spin
- * off at every buzz takes off the pilot's own pull away with it: measured in
- * autoreset-check.js, a pilot pulling the nose back off a wall at 0.6 stick
- * for 300 ms got nowhere and slid down it. So for a knock (knock true) the
- * spin is kept when it is turning the thrust axis away from the face
- * (turnsOffFace), and only the velocity is written: the same impulse from
- * the velocity the step left, with no sim_rest before it. A spin winding the
- * thrust axis INTO the face is the solver's ratchet, and goes. A crash
- * always loses its spin.
+ * off at every buzz takes off the pilot's own pull away with it, a few
+ * milliseconds of it at a time, while the craft is still touching the face
+ * it is being pulled off. So for a knock (knock true) the spin is kept
+ * when it is turning the thrust axis away from the face (turnsOffFace), and
+ * only the velocity is written: the same impulse from the velocity the step
+ * left, with no sim_rest before it. A spin winding the thrust axis INTO the
+ * face is the solver's ratchet, and goes. A crash always loses its spin.
  */
 export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, out, knock = false) {
   let nx = gx;

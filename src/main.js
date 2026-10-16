@@ -84,7 +84,7 @@ import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './shar
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, solidContactKnock, emptyWorldReport, foldWorldReport } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn } from './ui/ui.js';
 import { TAKEOFF, guideKind, stepOf, textOf } from './ui/firstflight.js';
 import {
@@ -2974,6 +2974,10 @@ export async function boot({ loading, bootStart, mapId }) {
   let lastTiltDeg = 0;
   let lastHitKind = 'none';
   let lastGroundHits = 0;
+  /* The frame's solid contact steps, rep[0] of frameReport: kept past the
+   * frame's obs* reset for autoResetTick, which asks whether a bounced craft
+   * is touching anything. */
+  let lastSolidHits = 0;
   let lastClearance = 1;
   let lastUpz = 1;
   let lastFpvY = 0;
@@ -3921,6 +3925,7 @@ export async function boot({ loading, bootStart, mapId }) {
     turtleOnSupport = false;
     setTurtleParkMotors(false);
     poseLock = false;
+    lastSolidHits = 0;
     obsContact = false;
     obsTouched = false;
     obsClosing = 0;
@@ -4064,8 +4069,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * cancelled by the craft leaving the ground again, 'turtle' by the craft
    * no longer being on its back or the flip starting, and 'bounce', a crash
    * that set nothing down, by the craft being in the air and upright when
-   * the deadline comes, and taken once it is down: landed, on its back or
-   * touching the ground. The frame's cost is
+   * the deadline comes, and taken once it is down: landed, on its back, or
+   * touching the ground or a solid, a wall it is sliding down included. The
+   * frame's cost is
    * one compare, and only while armed.
    */
   let autoResetAtMs = -1;
@@ -4256,11 +4262,11 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     if (simTimeMs >= autoResetAtMs) {
-      if (autoResetKind === 'bounce' && !landed && !turtleWait && !(lastGroundHits > 0)) {
-        /* In the air. Upright is flown out of it, and left alone; falling
-         * or tumbling is waited out a frame at a time until it is down
-         * (landed, on its back, or touching the ground), where this resets
-         * it, or upright. */
+      if (autoResetKind === 'bounce' && !landed && !turtleWait && !(lastGroundHits > 0)
+        && !(lastSolidHits > 0)) {
+        /* In the air, touching nothing. Upright is flown out of it, and left
+         * alone; falling or tumbling is waited out a frame at a time until
+         * it is down, where this resets it, or upright. */
         if (stateCurr && plantUpZ(stateCurr) >= TURTLE_EXIT_UPZ) {
           autoResetAtMs = -1;
         }
@@ -4358,9 +4364,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * strike gave it is taken off, and it leaves the face at a walking pace
    * with part of its speed along it. The attitude is not touched, so the
    * picture never jumps. A slow knock on a solid with the frame, off the
-   * belly, gets the same bounce without being a crash (solidContactKnock),
-   * so a craft that comes back to the face is pushed off it again instead
-   * of winding onto its nose.
+   * belly, gets the same bounce without being a crash (solidContactKnock,
+   * asked through crashJudge.knock), so a craft that comes back to the face
+   * is pushed off it again instead of winding onto its nose; a knock keeps a
+   * spin that is turning the craft off the face, which is the pilot pulling
+   * away.
    *
    * Two recoveries stay, because neither is a crash reset. stuckTick still
    * sets down a craft left still and not upright for STUCK_MS, which is a
@@ -4379,8 +4387,8 @@ export async function boot({ loading, bootStart, mapId }) {
   }
   /* The crash step's bounce, or a knock's: see above and putDullBounce.
    * Returns the state the step now leaves. */
-  function applyDullBounce(kind, before, after, rep) {
-    putDullBounce(sim, kind, before, after, rep, nSim.x, nSim.y, nSim.z, frameTurn.c, frameTurn.s, dullOut);
+  function applyDullBounce(kind, before, after, rep, knock) {
+    putDullBounce(sim, kind, before, after, rep, nSim.x, nSim.y, nSim.z, frameTurn.c, frameTurn.s, dullOut, knock);
     return readState();
   }
   function crashBounceTick() {
@@ -8553,9 +8561,8 @@ export async function boot({ loading, bootStart, mapId }) {
              * the step it happened, and the frame flies on from it.
              */
             const crashed = crashJudge.step(stBefore, stNow, groundHits, stepRep, simTimeMs + i + 1, mayPerch);
-            if (bounces && (crashed || (stepRep[0] > 0 && solidContactKnock(
-              stepRep, stNow[7], stNow[8], stNow[9], stNow[10], frameTurn.c, frameTurn.s)))) {
-              stNow = applyDullBounce(crashed ? crashJudge.stepKind : 'solid', stBefore, stNow, stepRep);
+            if (bounces && (crashed || crashJudge.knock(stepRep, stNow))) {
+              stNow = applyDullBounce(crashed ? crashJudge.stepKind : 'solid', stBefore, stNow, stepRep, !crashed);
               if (i === steps - 2) {
                 statePrev = stNow;
               }
@@ -8844,6 +8851,7 @@ export async function boot({ loading, bootStart, mapId }) {
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
     const rep = foldWorldReport(frameReport, readWorldReport());
+    lastSolidHits = rep[0];
     if (rep[0] > 0) {
       obsContact = true;
       obsTouched = true;

@@ -2504,6 +2504,12 @@ export class CrashJudge {
     this.hardAtMs = -Infinity;
   }
 
+  /* A knock (solidContactKnock) in the step's report rep, with the state
+   * after the step, in the frame seat() was given. */
+  knock(rep, after) {
+    return rep[0] > 0 && solidContactKnock(rep, after[7], after[8], after[9], after[10], this.c, this.s);
+  }
+
   beginFrame() {
     this.hit = false;
     this.hitClosing = 0;
@@ -2650,8 +2656,19 @@ export function dullBounce(before, nx, ny, nz, out) {
  * that leaves the craft moving at that velocity and turns nothing. The
  * position handed back is the one the step left. Returns false and touches
  * nothing for a report with no normal in it.
+ *
+ * A KNOCK KEEPS A SPIN THAT TURNS THE CRAFT OFF THE FACE. A craft held
+ * against a face buzzes on it every few milliseconds, and taking the spin
+ * off at every buzz takes off the pilot's own pull away with it: measured in
+ * autoreset-check.js, a pilot pulling the nose back off a wall at 0.6 stick
+ * for 300 ms got nowhere and slid down it. So for a knock (knock true) the
+ * spin is kept when it is turning the thrust axis away from the face
+ * (turnsOffFace), and only the velocity is written: the same impulse from
+ * the velocity the step left, with no sim_rest before it. A spin winding the
+ * thrust axis INTO the face is the solver's ratchet, and goes. A crash
+ * always loses its spin.
  */
-export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, out) {
+export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, out, knock = false) {
   let nx = gx;
   let ny = gy;
   let nz = gz;
@@ -2669,18 +2686,65 @@ export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, o
     nz *= inv;
   }
   dullBounce(before, nx, ny, nz, out);
-  sim.e.sim_rest();
-  const u = Math.sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+  /* From rest, or from the velocity the step left with its spin kept. */
+  let vx = 0;
+  let vy = 0;
+  let vz = 0;
+  if (knock && turnsOffFace(after, nx, ny, nz)) {
+    vx = after[4];
+    vy = after[5];
+    vz = after[6];
+  } else {
+    sim.e.sim_rest();
+  }
+  const dx = out[0] - vx;
+  const dy = out[1] - vy;
+  const dz = out[2] - vz;
+  const u = Math.sqrt(dx * dx + dy * dy + dz * dz);
   if (u > 1e-9) {
     const k = 1 / u;
     sim.e.sim_contact_at(
-      out[0] * k, out[1] * k, out[2] * k, 0, 0,
+      dx * k, dy * k, dz * k, 0, 0,
       after[1], after[2], after[3],
-      out[0], out[1], out[2],
+      vx + dx, vy + dy, vz + dz,
       0, 0, 0,
     );
   }
   return true;
+}
+
+/*
+ * Whether the state's spin is turning its thrust axis away from a face with
+ * outward normal n (plant frame, unit): the rate of change of up . n, with
+ * up the body z axis in the world and the body rates turned into the world
+ * by the attitude.
+ */
+export function turnsOffFace(st, nx, ny, nz) {
+  const w = st[7];
+  const x = st[8];
+  const y = st[9];
+  const z = st[10];
+  const p = st[11];
+  const q = st[12];
+  const r = st[13];
+  /* Body to world, the attitude's rotation matrix. */
+  const r00 = 1 - 2 * (y * y + z * z);
+  const r01 = 2 * (x * y - w * z);
+  const r02 = 2 * (x * z + w * y);
+  const r10 = 2 * (x * y + w * z);
+  const r11 = 1 - 2 * (x * x + z * z);
+  const r12 = 2 * (y * z - w * x);
+  const r20 = 2 * (x * z - w * y);
+  const r21 = 2 * (y * z + w * x);
+  const r22 = 1 - 2 * (x * x + y * y);
+  const ox = r00 * p + r01 * q + r02 * r;
+  const oy = r10 * p + r11 * q + r12 * r;
+  const oz = r20 * p + r21 * q + r22 * r;
+  /* up is the third column; d(up)/dt = omega x up. */
+  const dux = oy * r22 - oz * r12;
+  const duy = oz * r02 - ox * r22;
+  const duz = ox * r12 - oy * r02;
+  return dux * nx + duy * ny + duz * nz > 0;
 }
 
 /*
@@ -2692,9 +2756,13 @@ export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, o
  * stuckTick has to set it down. So the frame or the lens on a solid, off the
  * belly and not on an underside, is the same dull bounce at any speed. The
  * belly is left alone, so a wall ride, a wall tap and a landing on a roof
- * stay physics, and so is a prop alone, so a clipped gate still only costs
- * rotor speed. The ground is not in this: a craft at rest on its side would
- * hop on the spot for ever, where today it lies still and turtles.
+ * stay physics, and so is a prop alone under a smack's speed, so a clipped
+ * gate still only costs rotor speed. A prop alone at GRAZE_SPEED_MAX or more
+ * is a head on hit that met the front discs first, which the judge does not
+ * call a crash (it wants the frame) and the solver winds onto the nose all
+ * the same: measured at 12 m/s, 5.4 rad/s of pitch in 12 ms, so it bounces.
+ * The ground is not in this: a craft at rest on its side would hop on the
+ * spot for ever, where today it lies still and turtles.
  *
  * KNOCK_CLOSING_MIN is the closing speed it takes: a step that still
  * reports the face the bounce has just left closes at nothing, and a hull
@@ -2702,7 +2770,7 @@ export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, o
  */
 export const KNOCK_CLOSING_MIN = 0.05;
 export function solidContactKnock(rep, qw, qx, qy, qz, c, s) {
-  return rep[8] > 0 && rep[1] >= KNOCK_CLOSING_MIN && rep[6] > CRASH_UNDERSIDE_NZ
+  return (rep[8] > 0 ? rep[1] >= KNOCK_CLOSING_MIN : rep[1] >= GRAZE_SPEED_MAX) && rep[6] > CRASH_UNDERSIDE_NZ
     && bodyUpDotWorld(qw, qx, qy, qz, rep[4], rep[5], rep[6], c, s) < CRASH_BELLY_UP;
 }
 

@@ -16,7 +16,7 @@
  * (flown on to RUN_ON ms past the first contact rather than to the
  * verdict), flown again at every pacing and phase the way src/main.js's
  * step loop flies them now: the judge asked every step, and on a crash
- * step or a knock (solidContactKnock) the bounce put on the module there
+ * step or a knock (CrashJudge.knock) the bounce put on the module there
  * and the loop carried on. A replay ends at the first frame the shell
  * would perch the craft, which is a frame end and so not the same step at
  * every pacing; up to there every step must be the same.
@@ -52,7 +52,7 @@
  */
 
 import {
-  CrashJudge, putDullBounce, solidContactKnock, stateUpZ, canPerch, DULL_OUT_MAX,
+  CrashJudge, putDullBounce, stateUpZ, canPerch, DULL_OUT_MAX,
 } from '../src/game/collide.js';
 import { SCENARIOS, PACINGS, frames, record, newSim } from './crash-pacing.js';
 
@@ -118,10 +118,10 @@ async function fly(sc, stream, pacing, ph) {
       g = sim.e.sim_ground_contacts();
       const rep = readReport();
       const crashed = judge.step(before, st, g, rep, stepIdx, true);
-      if (crashed || (rep[0] > 0 && solidContactKnock(rep, st[7], st[8], st[9], st[10], 1, 0))) {
+      if (crashed || judge.knock(rep, st)) {
         const kind = crashed ? judge.stepKind : 'solid';
         /* The ground plane newSim raises is level grass. */
-        if (putDullBounce(sim, kind, before, st, rep, 0, 0, 1, 1, 0, out)) {
+        if (putDullBounce(sim, kind, before, st, rep, 0, 0, 1, 1, 0, out, !crashed)) {
           st = sim.readState().state;
           bounces.push({ at: stepIdx, kind: crashed ? kind : 'knock' });
         }

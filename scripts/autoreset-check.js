@@ -8,9 +8,13 @@
  *                comes down by the wall, and stays.
  *   on, 1 s      after the delay the craft is on the start line and the sim
  *                clock restarted, which is what R does.
- *   on, 2 s,     the pilot opens the throttle straight after the bounce; the
- *   flown out    craft is in the air at the deadline and is not reset, so it
- *                is still by the wall and not on the start line.
+ *   on, 2 s,     the pilot pulls the nose back until the craft leans away
+ *   flown out    from the wall and opens the throttle straight after the bounce; the craft is in the air
+ *                at the deadline and is not reset: the sim clock never starts
+ *                again. Until the bounce the pilot only opened the throttle,
+ *                because the set down had already put the craft upright, and
+ *                the check passed on height alone, which a reset to the line
+ *                and a climb from there also gives.
  *   on, 1 s,     as on, 1 s, with Esc and Resume inside the wait: a pause
  *   paused       holds the deadline and the craft still goes back.
  *
@@ -73,7 +77,15 @@ function fly(cfg) {
       const t0 = performance.now();
       const tick = () => {
         snap('after');
-        window.__stick(0, 0, 0, C.after);
+        /* A pilot flying out pulls the nose back off the face first: with
+         * no set down, centred sticks hold whatever attitude the bounce left.
+         * The pull holds until the top leans away from the wall, which faces
+         * west here, because a craft stood straight up still leaning a few
+         * degrees into it is pressed onto it by full throttle and slides down
+         * it, which is what the first version of this pilot did. */
+        const up = window.__craftState().up;
+        const pulling = C.pullMs && performance.now() - t0 < C.pullMs && (!up || up.x > -0.1);
+        window.__stick(0, pulling ? 1 : 0, 0, C.after);
         if (performance.now() - t0 >= C.watchMs) { res(); return; }
         requestAnimationFrame(tick);
       };
@@ -126,7 +138,7 @@ async function main() {
     const flights = [
       ['off', { on: false, delay: 1, after: 0, watchMs: 3500 }],
       ['on, 1 s', { on: true, delay: 1, after: 0, watchMs: 3500 }],
-      ['on, 2 s, flown out', { on: true, delay: 2, after: 1, watchMs: 3500 }],
+      ['on, 2 s, flown out', { on: true, delay: 2, after: 1, pullMs: 800, watchMs: 3500 }],
       ['on, 1 s, paused in the wait', { on: true, delay: 1, after: 0, watchMs: 3500, pause: true }],
     ];
     for (const [name, cfg] of flights) {
@@ -143,8 +155,10 @@ async function main() {
         /* A set down nearby is within 3.5 m of the wall; the start line is not. */
         check(`${name}: back on the start line after the delay`, end.landed && wallD > 5, `${wallD.toFixed(1)} m from the wall, landed ${end.landed}`);
       } else if (cfg.on) {
-        check(`${name}: not reset, the pilot flew out in time`, airborne && end.p[1] > 2 && wallD != null && wallD < 5,
-          `height ${end.p[1].toFixed(1)} m, airborne ${airborne}, ${wallD == null ? 'n/a' : wallD.toFixed(1)} m from the wall`);
+        /* Reset is the sim clock starting again, which is what R does. */
+        const restarted = after.some((r, i) => i > 0 && r.ms < after[i - 1].ms);
+        check(`${name}: not reset, the pilot flew out in time`, airborne && end.p[1] > 2 && !restarted,
+          `height ${end.p[1].toFixed(1)} m, airborne ${airborne}, ${restarted ? 'reset' : 'never reset'}`);
       } else {
         check(`${name}: left by the wall, not reset`, wallD != null && wallD < 6, `${wallD == null ? 'n/a' : wallD.toFixed(1)} m from the wall`);
       }

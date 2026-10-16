@@ -3066,9 +3066,9 @@ function recordSentence(s, trackName) {
   return `Your best on ${trackName} is filed under exactly this: ${bits.join(', ')}.`
     + ' Change any part of it and you are on a different board.'
     + (s.laps === PRACTICE_LAPS
-      ? ' Practice laps stay off the public board, so this run will not count there.'
+      ? ' Practice laps post to the public board tagged Practice.'
       : s.flightStyle === 'arcade'
-        ? ' Arcade times stay off the public board, so this run will not count there.'
+        ? ' Arcade times post to the public board tagged Arcade.'
         : weight !== WEIGHT_STOCK
           /* It used to say a time off 100 stays off the public board. The
            * board takes it now and prints the weight beside the name, the
@@ -3660,20 +3660,19 @@ function uploadAction(listing, {
        * the lap they already flew. The same for laps flown on the tuned air
        * or motors: they are on the results screen, and the board will not
        * take them. */
-      note: practice
-        ? 'Practice laps stay off the public board. A run of 1, 3 or 5 laps puts its best lap here when it finishes.'
-        : (tuned
-          ? 'Tuned flight, not posted to the board. Laps flown on Air grip or Motor power off 100 are a different quad from the one everybody else flew. Set both back to 100 and fly it again.'
-          : 'Fly a clean lap on this track and the lap appears here.'),
+      note: 'Fly a clean lap on this track and the lap appears here.',
     };
   }
   const best = readPostedBest(shareId);
   const isNew = best != null && ms < best;
   /* A lap off 100 goes up like any other, and the board prints its weight
    * beside the name, so the row says so before it is pressed. */
-  const marked = weight !== WEIGHT_STOCK
+  const marked = (weight !== WEIGHT_STOCK
     ? ` It goes up marked Weight ${weight}%, the weight it was flown at.`
-    : '';
+    : '')
+    + (held && Array.isArray(held.tags) && held.tags.length
+      ? ` It goes up tagged ${held.tags.map((t) => t[0].toUpperCase() + t.slice(1)).join(', ')}.`
+      : '');
   return {
     label: isNew ? `Post new best, ${formatTime(ms)}` : `Post ${formatTime(ms)}`,
     action: 'posttime',
@@ -4202,7 +4201,7 @@ function tuneSliderItem(label, note, spec, cur, set, step) {
 function airGripItem(s) {
   return tuneSliderItem(
     'Air grip',
-    `How much the air holds the quad back, so how far it carries with the sticks centred. Left and it coasts on and runs faster; right and the air grips it, it stops sooner and tops out slower. ${AIR_GRIP_STOCK} is the quad as it ships. Changing it mid lap voids the lap, and a flight off ${AIR_GRIP_STOCK} stays off the public board.`,
+    `How much the air holds the quad back, so how far it carries with the sticks centred. Left and it coasts on and runs faster; right and the air grips it, it stops sooner and tops out slower. ${AIR_GRIP_STOCK} is the quad as it ships. Changing it mid lap voids the lap, and a lap flown off ${AIR_GRIP_STOCK} posts to the public board tagged Tuned.`,
     {
       cliMin: AIR_GRIP_MIN, cliMax: AIR_GRIP_MAX, scale: 1, decimals: 0, unit: '%',
     },
@@ -4215,7 +4214,7 @@ function airGripItem(s) {
 function motorKvItem(s) {
   return tuneSliderItem(
     'Motor power',
-    `How much speed the motors make for a volt, their KV. Left is softer: a gentler punch and a lower top speed. Right is punchier, and the pack sags more for it, and the quad hovers lower on the stick. ${MOTOR_KV_STOCK} is the quad as it ships. Changing it mid lap voids the lap, and a flight off ${MOTOR_KV_STOCK} stays off the public board.`,
+    `How much speed the motors make for a volt, their KV. Left is softer: a gentler punch and a lower top speed. Right is punchier, and the pack sags more for it, and the quad hovers lower on the stick. ${MOTOR_KV_STOCK} is the quad as it ships. Changing it mid lap voids the lap, and a lap flown off ${MOTOR_KV_STOCK} posts to the public board tagged Tuned.`,
     {
       cliMin: MOTOR_KV_MIN, cliMax: MOTOR_KV_MAX, scale: 1, decimals: 0, unit: '%',
     },
@@ -6960,7 +6959,7 @@ export class Ui {
       out.push(`It is for the ${this.airframeName(t.airframe)}, so you are moved to that aircraft and its own track class.`);
     }
     if (x.airGrip !== AIR_GRIP_STOCK || x.motorKv !== MOTOR_KV_STOCK) {
-      out.push('It moves Air grip or Motor power, so Flight feel tuning is switched on, and a lap flown on it stays off the public board.');
+      out.push('It moves Air grip or Motor power, so Flight feel tuning is switched on, and a lap flown on it posts to the public board tagged Tuned.');
     }
     if (x.base === CUSTOM_TUNE.id) {
       out.push('Its Betaflight settings take the place of Your edits on that aircraft until you put yours back.');
@@ -9013,6 +9012,7 @@ export class Ui {
             },
             ...applicableRows([
               uploadAction(listing, {
+                row: this.liveBoardRow ? this.liveBoardRow() : null,
                 timePosted: this.timePosted,
                 practice: s.laps === PRACTICE_LAPS,
               }),
@@ -9858,7 +9858,7 @@ export class Ui {
         choice(
           'Laps',
           s.laps === PRACTICE_LAPS
-            ? 'Practice has no end: fly as many laps as you like, each one called out with its time as you cross the line, and stop from the pause menu. Nothing flown in practice goes to the public board. Latched when you launch, so changing it mid-run does nothing until the next one.'
+            ? 'Practice has no end: fly as many laps as you like, each one called out with its time as you cross the line, and stop from the pause menu. A practice lap posts to the public board tagged Practice. Latched when you launch, so changing it mid-run does nothing until the next one.'
             : 'How many laps a run lasts before the result screen. Practice has no end and keeps nothing for the board. Latched when you launch, so changing it mid-run does nothing until the next one.',
           LAP_COUNTS,
           s.laps,
@@ -9876,7 +9876,7 @@ export class Ui {
         choice(
           'Flight model',
           s.flightStyle === 'arcade'
-            ? 'Arcade: the ideal quad. No propwash shake, no gyro noise, no build asymmetry, so any tune flies glass smooth. Times flown here stay off the public board.'
+            ? 'Arcade: the ideal quad. No propwash shake, no gyro noise, no build asymmetry, so any tune flies glass smooth. Times flown here post to the public board tagged Arcade.'
             : 'Expert: the full physics, propwash, gyro noise and build tolerance included, which is what every board time is flown on. Arcade turns the imperfections off for a friendlier machine.',
           FLIGHT_STYLES,
           s.flightStyle === 'arcade' ? 'arcade' : 'expert',
@@ -14759,6 +14759,7 @@ export class Ui {
             /* And the weight it was flown at, for the same reason: the
              * slider may be somewhere else by the time it goes up. */
             weight: this.resultsBoard.weight,
+            tags: this.resultsBoard.tags,
           });
         }
       } catch (e) {

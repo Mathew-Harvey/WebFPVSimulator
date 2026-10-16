@@ -380,6 +380,10 @@ export function writePendingTime(payload) {
     lapMs: Math.round(payload.lapMs),
     threeMs: Number.isFinite(three) && three > 0 ? Math.round(three) : null,
     weight: payload.weight != null && Number.isInteger(weight) ? weight : null,
+    /* What kind of lap it was (arcade, practice, tuned), for the same reason
+     * as the weight: the run is gone by the time it goes up. Absent on a
+     * record from before the field, which is a plain lap. */
+    tags: Array.isArray(payload.tags) ? payload.tags.filter((t) => typeof t === 'string') : [],
   });
 }
 

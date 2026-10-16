@@ -281,7 +281,7 @@ export class Race {
      * and for the same reason as the weight. Unlike the weight it is not
      * printed on the board: a lap flown on a quad that grips the air or pulls
      * differently is a lap on another aircraft, and the board has nowhere to
-     * say which, so such a lap is left out of boardRow altogether. The shell
+     * say which, so such a lap was left out of boardRow altogether; it now goes up tagged. The shell
      * keeps it equal to what the module is flying (setTuned, from
      * applySettings in main.js, which voids a lap the change lands in).
      */
@@ -895,11 +895,11 @@ export class Race {
    * wrongly.
    */
   boardRow() {
-    /* A lap flown off the stock air or motors is not on the board's menu:
-     * it is left out here, so it can never be picked, never be one of the
-     * three in a row and never be the lap a weight is read off. A run of
-     * nothing but such laps has no row, and the results screen says why. */
-    const clean = this.log.filter((e) => e.ms != null && e.tuned !== true);
+    /* A lap flown off the stock air or motors is on the menu too, since the
+     * owner's ask of 2026-10-16 ("open up all laps, but give them tags"),
+     * and the row says so: `tuned` is true when the lap, or any of the three
+     * in a row, was flown off stock, and the shell sends it as a tag. */
+    const clean = this.log.filter((e) => e.ms != null);
     if (!clean.length) {
       return null;
     }
@@ -907,7 +907,7 @@ export class Race {
       let best = null;
       let run = [];
       for (const e of this.log) {
-        if (e.ms == null || e.tuned === true) {
+        if (e.ms == null) {
           run = [];
           continue;
         }
@@ -918,13 +918,16 @@ export class Race {
         if (run.length === 3 && run[0].weight === run[2].weight && run[1].weight === run[2].weight) {
           const total = run[0].ms + run[1].ms + run[2].ms;
           if (best == null || total < best.threeMs) {
-            best = { threeMs: total, weight: run[2].weight };
+            best = { threeMs: total, weight: run[2].weight, tuned: run.some((r) => r.tuned === true) };
           }
         }
       }
       if (best) {
         const lapMs = fastestLap(clean.filter((e) => e.weight === best.weight).map((e) => e.ms));
-        return { lapMs, threeMs: best.threeMs, weight: best.weight };
+        return {
+          lapMs, threeMs: best.threeMs, weight: best.weight,
+          tuned: best.tuned || clean.some((e) => e.ms === lapMs && e.weight === best.weight && e.tuned === true),
+        };
       }
     }
     let pick = clean[0];
@@ -933,7 +936,7 @@ export class Race {
         pick = e;
       }
     }
-    return { lapMs: pick.ms, threeMs: null, weight: pick.weight };
+    return { lapMs: pick.ms, threeMs: null, weight: pick.weight, tuned: pick.tuned === true };
   }
 
   /* Scene index of the gate the race wants next, for highlighting. */

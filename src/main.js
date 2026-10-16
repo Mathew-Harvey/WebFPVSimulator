@@ -6025,18 +6025,31 @@ export async function boot({ loading, bootStart, mapId }) {
     reset();
   }
 
+  /* The run's board row with the kinds of lap it was, for the Upload row and
+   * the pending record. Practice never reaches the results screen. */
+  function boardRowTagged(withPractice = false) {
+    const row = race.boardRow();
+    if (!row) {
+      return null;
+    }
+    return {
+      ...row,
+      tags: [
+        ...(runStyle === 'arcade' ? ['arcade'] : []),
+        ...(withPractice && runLaps === PRACTICE_LAPS ? ['practice'] : []),
+        ...(row.tuned ? ['tuned'] : []),
+      ],
+    };
+  }
+
   async function submitBoardTime() {
     if (replayMode) return;
-    /* The board is flown on the full model only. An arcade lap is real
-     * practice but a different aircraft, and a leaderboard where the two
-     * mix is not a leaderboard. */
-    if (runStyle === 'arcade') {
-      notice = {
-        text: 'Arcade laps stay off the public board.\nSwitch Flight model to Expert and fly it again.',
-        untilMs: performance.now() + 3600,
-      };
-      return;
-    }
+    /* EVERY LAP POSTS, TAGGED. An arcade lap, a practice lap and a lap on
+     * tuned Air grip or Motor power used to be refused here, because a
+     * leaderboard where they mix with plain laps is not a leaderboard. The
+     * owner's ask of 2026-10-16 was "open up all laps, but give them tags":
+     * the board keeps them all, ranks on the clock as ever, and prints the
+     * kind beside the pilot (TIME_TAGS in the board's src/validate.js). */
     /*
      * THE WEIGHT IS NOT REFUSED, IT IS SENT. A lap flown off 100 is a lap on
      * a quad that hovers, climbs and drops differently, and it used to be
@@ -6056,7 +6069,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * has nothing to send, and publishing a track for nothing is not what
      * the pilot pressed. A pilot who dismisses the dialog changes nothing.
      */
-    const lapInHand = runLaps !== PRACTICE_LAPS && race.boardRow() != null;
+    const lapInHand = race.boardRow() != null;
     if (listing && !listing.canPostTime && lapInHand
       && (listing.canPublishNew || (listing.canUpdateListing && listing.layoutDrift))) {
       if (!(await submitCoursePublish())) {
@@ -6075,13 +6088,11 @@ export async function boot({ loading, bootStart, mapId }) {
      * the log beside it, which is the same answer until one of them
      * changes its mind about a voided lap.
      *
-     * NOTHING FROM A PRACTICE RUN. Practice is laps for the pilot and none
-     * for the board, so a practice run offers no lap here, whatever it
-     * flew. A lap still pending from an earlier counted run on this track
-     * can still go up: it was not flown in practice, and it is the lap the
-     * Upload row names. */
+     * A practice run offers its best lap like any other, tagged practice
+     * below. A lap still pending from an earlier run on this track can go
+     * up too, with the tags it was flown under. */
     const practice = runLaps === PRACTICE_LAPS;
-    const fromRun = practice ? null : race.boardRow();
+    const fromRun = race.boardRow();
     const pending = readPendingTime();
     const held = pending && pending.trackId === trackId ? pending : null;
     const fastest = fromRun != null ? fromRun.lapMs : (held ? held.lapMs : null);
@@ -6105,20 +6116,17 @@ export async function boot({ loading, bootStart, mapId }) {
     const weight = fromRun != null
       ? clampWeight(fromRun.weight ?? runWeight, null)
       : clampWeight(held && held.weight != null ? held.weight : WEIGHT_STOCK, null);
+    /* What kind of lap it is: from this run when it has one, else what the
+     * pending lap was flown under. */
+    const tags = fromRun != null
+      ? [
+        ...(runStyle === 'arcade' ? ['arcade'] : []),
+        ...(practice ? ['practice'] : []),
+        ...(fromRun.tuned ? ['tuned'] : []),
+      ]
+      : (held && Array.isArray(held.tags) ? held.tags : []);
     if (fastest == null) {
-      notice = practice
-        ? {
-          text: 'Practice laps stay off the public board.\nSet Laps to 1, 3 or 5 and fly it again.',
-          untilMs: performance.now() + 3600,
-        }
-        : (race.hasTunedLaps()
-          /* The laps are there and were left out on purpose: say so rather
-           * than telling a pilot who flew them that there is no clean lap. */
-          ? {
-            text: 'Laps flown on Air grip or Motor power off 100 stay off the public board.\nSet both back to 100 and fly it again.',
-            untilMs: performance.now() + 3800,
-          }
-          : { text: 'No clean lap to post.', untilMs: performance.now() + 2800 });
+      notice = { text: 'No clean lap to post.', untilMs: performance.now() + 2800 };
       return;
     }
     let name = readPilotName();
@@ -6171,6 +6179,7 @@ export async function boot({ loading, bootStart, mapId }) {
       threeMs: threeFrom,
       ghost,
       weight,
+      tags,
       origin: boardNow,
     });
     try {
@@ -6531,6 +6540,7 @@ export async function boot({ loading, bootStart, mapId }) {
           lapMs: ui.resultsBoard.lapMs,
           threeMs: view.trackClass === 'micro' ? ui.resultsBoard.threeMs : null,
           weight: ui.resultsBoard.weight,
+          tags: ui.resultsBoard.tags,
         });
       }
       /*
@@ -7625,6 +7635,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * camera takes to fly its line once, or null mid swap and for a map from
    * the board. Asked when the room's reels start; see ui.startReels.
    */
+  /* The lap the board would be sent from the run in progress, for the pause
+   * menu's Post row: practice has no results screen, so its best lap is read
+   * from the race. */
+  ui.liveBoardRow = () => boardRowTagged(true);
   ui.loadedWorld = () => (mapReady && !swapInFlight && view && worldClipKey
     ? { id: view.id, key: worldClipKey, periodMs: attractCam.periodMs || 0 }
     : null);
@@ -8999,7 +9013,7 @@ export async function boot({ loading, bootStart, mapId }) {
             /* What the Upload row offers and what is kept for a later
              * visit: the lap, the three and the weight they were flown at,
              * all from one weight. See boardRow. */
-            board: race.boardRow(),
+            board: boardRowTagged(),
             /* Whether a lap of this run was left off it for being flown on
              * the tuned air or motors, so the Upload row can say why. */
             offBoard: race.hasTunedLaps(),

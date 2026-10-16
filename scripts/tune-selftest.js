@@ -233,7 +233,7 @@ check('airtime in words', airtimeWords(1) === '1 second' && airtimeWords(45) ===
   `${airtimeWords(1)}, ${airtimeWords(45)}, ${airtimeWords(300)}`);
 
 /* ------------------------------------------------------------------ */
-/* Laps flown off stock stay off the board                             */
+/* Laps flown off stock go to the board, tagged                         */
 /* ------------------------------------------------------------------ */
 
 {
@@ -244,16 +244,18 @@ check('airtime in words', airtimeWords(1) === '1 second' && airtimeWords(45) ===
   race.log.push({ n: 2, ms: 19500, weight: 100, tuned: true });
   race.log.push({ n: 3, ms: 20500, weight: 100 });
   const row = race.boardRow();
-  check('a tuned lap is never the lap the board is sent', Boolean(row) && row.lapMs === 20500, JSON.stringify(row));
+  check('a tuned lap is the lap the board is sent when it is the fastest, and says so',
+    Boolean(row) && row.lapMs === 19500 && row.tuned === true, JSON.stringify(row));
   check('and the race says it had one, for the results row', race.hasTunedLaps() === true);
   const only = new Race([], 'full');
   only.log.push({ n: 1, ms: 19500, weight: 100, tuned: true });
-  check('a run of nothing but tuned laps has no board row', only.boardRow() === null);
+  check('a run of nothing but tuned laps has a board row, tagged tuned',
+    Boolean(only.boardRow()) && only.boardRow().tuned === true);
   check('the race starts stock and follows what the shell says', new Race([], 'full').tuned === false
     && (() => { const r = new Race([], 'full'); r.setTuned(true); return r.tuned === true; })());
   const stock = new Race([], 'full');
   stock.log.push({ n: 1, ms: 21000, weight: 100 });
-  check('a stock run is what it always was', stock.boardRow().lapMs === 21000 && stock.hasTunedLaps() === false
+  check('a stock run is what it always was', stock.boardRow().lapMs === 21000 && stock.boardRow().tuned === false && stock.hasTunedLaps() === false
     && Object.keys(stock.log[0]).join(',') === 'n,ms,weight');
 }
 

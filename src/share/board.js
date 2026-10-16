@@ -1063,8 +1063,11 @@ export function tunesPageUrl(origin) {
   return `${base}/#tunes`;
 }
 
+/* Mirrors TIME_TAGS in the board's src/validate.js. */
+export const TIME_TAGS = ['arcade', 'practice', 'tuned'];
+
 export async function postTime({
-  trackId, name, lapMs, threeMs, ghost, weight, origin,
+  trackId, name, lapMs, threeMs, ghost, weight, tags, origin,
 }) {
   const board = trimOrigin(origin || boardOrigin());
   /*
@@ -1093,6 +1096,18 @@ export async function postTime({
    */
   if (Number.isInteger(weight)) {
     body.weight = weight;
+  }
+  /*
+   * WHAT KIND OF LAP IT IS: arcade, practice, tuned (TIME_TAGS in the board's
+   * src/validate.js, the copy of record). Only when there is one, so a plain
+   * lap is the body it always was. Every lap posts and the board prints the
+   * tags beside the pilot, the owner's ask of 2026-10-16. A board that has
+   * not learned the key ignores it and prints the lap plain, which is why
+   * DEPLOY.md has the board go first.
+   */
+  const kinds = Array.isArray(tags) ? tags.filter((t) => TIME_TAGS.includes(t)) : [];
+  if (kinds.length) {
+    body.tags = kinds;
   }
   const res = await fetch(`${board}/api/tracks/${encodeURIComponent(trackId)}/times`, {
     method: 'POST',

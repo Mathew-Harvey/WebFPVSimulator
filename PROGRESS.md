@@ -70629,3 +70629,12 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Not changed, by design or because it needs the owner: arcade laps (a different aircraft, the board has no style field), practice laps, laps flown on tuned Air grip or Motor power, built in circuits and freestyle maps with no board id. These are listed in the PR for his call.
 - Latency: no change. Results screen and menu text only; nothing in the flight loop or input path.
 - Checked: `node --check` on both files. `npm run lint:shell` ran and fails on lines this change does not touch (untouched main fails it too, per the repo notes). Not run: shots, verify, flying it.
+
+## 2026-10-16 | board | Every lap posts, tagged Arcade, Practice or Tuned (same draft PR, board PR first)
+
+- Ask: the owner wrote at 12:44Z on 2026-10-16 in the "Save times on every track" thread: "open up all laps, but give them tags".
+- Change: the sim no longer refuses an arcade lap, a practice run's best lap or a lap flown on tuned Air grip or Motor power. `race.boardRow()` includes tuned laps and reports `tuned`; `submitBoardTime` builds the tag list (arcade from the flight model, practice from Laps, tuned from the row) and `postTime` sends it as `tags`. The pending record keeps the tags, the pause menu's Post row reads a practice run's best lap through `ui.liveBoardRow`, and the menu sentences that said these laps stay off the board now say they post tagged. The board (companion PR) keeps a closed `tags` list on each time, shows it in the sheet, the card record and the amber tag beside the pilot, and still ranks on the clock.
+- Latency: no change. Results screen, menu text and the post request only; nothing in the flight loop or input path.
+- Deploy order: the board first. A board that has not learned `tags` ignores it and prints the lap plain.
+- Checked: `node scripts/tune-selftest.js` 59 of 59 (three lines rewritten for the new rule: a tuned lap is now the board's lap and says so). Board `npm test` passes on the file store and on a scratch Postgres. Not run: shots, verify, `lint:shell`, flying it.
+- Open for the owner: tagged laps rank with plain ones on the clock, so an arcade lap can top a table. A filter or an "only plain laps" toggle on the board is the next step if that is not wanted.

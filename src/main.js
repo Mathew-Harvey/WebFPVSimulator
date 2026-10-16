@@ -7629,16 +7629,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * know which frame to ask for. Rebuilt on every swap, below.
    */
   let attractCam = makeAttractCamera(view);
+  /* The lap the board would be sent from the run in progress, for the pause
+   * menu's Post row: practice has no results screen, so its best lap is read
+   * from the race. */
+  ui.liveBoardRow = () => boardRowTagged(true);
   /*
    * The world the Freestyle room can film where it stands: which map, the
    * clip key it was built under (noteWorldClip) and how long its title
    * camera takes to fly its line once, or null mid swap and for a map from
    * the board. Asked when the room's reels start; see ui.startReels.
    */
-  /* The lap the board would be sent from the run in progress, for the pause
-   * menu's Post row: practice has no results screen, so its best lap is read
-   * from the race. */
-  ui.liveBoardRow = () => boardRowTagged(true);
   ui.loadedWorld = () => (mapReady && !swapInFlight && view && worldClipKey
     ? { id: view.id, key: worldClipKey, periodMs: attractCam.periodMs || 0 }
     : null);

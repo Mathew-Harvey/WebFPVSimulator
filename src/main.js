@@ -5071,7 +5071,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * ladder, so it can hold a rate the way a radio does and the reason
      * keys force angle does not apply to it. It was landing on the
      * keyboard branch anyway, and ANGLE MODE CANNOT LOOP: the craft is
-     * held to about thirty degrees of bank, so every probe that tried to
+     * held inside a 60 degree limit, so every probe that tried to
      * fly a Powerloop swept eighty three degrees of pitch in three seconds
      * of full back stick and flew away in a climb. That is why no check in
      * this repository had ever flown one of these tricks: every "verified"
@@ -5085,7 +5085,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /*
      * FREESTYLE IS THE TRICK MODE, AND NO TRICK IS POSSIBLE IN ANGLE.
      *
-     * Angle holds the craft to about thirty degrees of bank, so a pilot in
+     * Angle holds the craft inside a 60 degree limit, so a pilot in
      * it cannot fly a Powerloop, a Split-S, a Matty Flip, an Orbit, a roll
      * or a flip: the entire catalogue is out of reach. Forcing it on the
      * keyboard therefore does not make freestyle safer for a key pilot, it
@@ -6621,6 +6621,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     ui.renderMenu();
   };
+  ui.flightModeKey = flightModeSetting;
   ui.onFcAngle = (on) => {
     ui.settings.flightMode = on ? 'angle' : 'acro';
     syncAngleMode();

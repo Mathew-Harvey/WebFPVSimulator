@@ -694,6 +694,7 @@ different wreck, advert or colour.
 | `hollowChimney` | none | Industrial | any |  | `height` 30 m [8, 80], `radius` 3 m [2.4, 7], `door` 2.8 m [1.6, 8] |
 | `pylon` | Y | Industrial | any |  | `height` 28 m [12, 60] |
 | `turbine` | none | Industrial | any |  | `height` 48 m [15, 100], `blade` 28 m [6, 60], `spin` 0 [0, 1] fraction |
+| `windmill` | none | Industrial | quarter |  | `height` 14 m [8, 30], `sail` 10 m [4, 16], `speed` 12 [0, 30] count, `spin` 0 [0, 1] fraction |
 | `containers` | 8 | Industrial | quarter | `40ft` `20ft` `40ft open` | `stack` 2 [1, 5] count, `variant` 1 [1, 99] count |
 | `scaffold` | K | Industrial | quarter | `open` `netted` | `width` 10 m [2.5, 40], `height` 10 m [2, 40], `depth` 1.55 m [1.55, 2.5] |
 | `bridge` | 9 | Street | quarter | `road` `footbridge` | `span` 24 m [6, 80], `width` 8 m [2, 20], `height` 6 m [3, 20], `piers` 1 [0, 6] count |
@@ -791,6 +792,32 @@ has one straight down, 1 is 0 again). `height` is the hub's, and `blade` is
 held to what that leaves it: the lowest blade tip hangs at least 2.5 m over the
 ground. The rotor stands ahead of the tower far enough that a blade hanging
 straight down clears the tower by the gap rule's 1.4 m.
+
+### A windmill whose sails turn
+
+The owner's ask of 16 October 2026, "windmill with rotating blades".
+**`windmill`** is a white tower mill with a dark cap and four sails on two
+stocks, a canvas sail on a red lattice behind each stock and a narrow board
+ahead of it, turning anticlockwise as you face them. The sails face the
+heading. `height` is the hub's; `sail` is a sail's length from the hub, held
+to what the height leaves it so the lowest sail tip hangs at least 2 m over
+the windmill's foot; `speed` is turns a minute, 0 for sails that stand still;
+`spin` is where they stand at the start of the lap clock, as a fraction of
+the quarter turn four sails have. The sails stand off the tower so the lowest
+clears it by more than the gap rule's 1.4 m.
+
+The tower, cap, windshaft and hub are solids like any asset's. The sails are
+NOT parts, because a part does not move: they are drawn as a group the map
+turns (`PropKit.turning` in `src/props/kit.js`, `mountTurning` in
+`src/maps/built/index.js`), and made solid by the shell every step of the
+physics, as the town's train is, from the same angle the drawing reads, a
+pure function of the step count (`src/props/windmill.js`). Clipping a sail is
+a hit like clipping a wall. The layout lists the disc they turn through as a
+part that is neither solid nor drawn (`sweep`), so the plan shows it and the
+`fs-sails` warning sees anything standing in it. A windmill takes the top 32
+of the physics' 64 moving box slots for its sails, so a map with one drives at
+most 32 cars. Its heading is a quarter turn, because the sails' boxes keep to
+the compass.
 
 ### An asset's own frame
 
@@ -944,6 +971,7 @@ through is a trap, not a line.
 | `fs-pads-seat` | warn | the pads' Base is more than 5 cm from what the craft's mat stands on, or the row stands across two heights |
 | `fs-overlap` | warn | two elements' solids run into each other by more than a centimetre |
 | `fs-slot` | warn | a space between two elements' solids wider than 5 cm and narrower than 1.4 m |
+| `fs-sails` | warn | an element's solids stand in the disc a windmill's sails turn through, which `fs-overlap` cannot see because the sails are not solids |
 | `fs-gap-blocked` | warn | a named gap has a solid across its window |
 | `fs-outside` | warn | an element stands outside the plot, or its solids reach more than half a metre past its edge |
 | `fs-buried` | warn | an asset is sunk wholly under the ground (its highest solid top is within 2 cm of the paving or under it), so nothing of it is drawn or solid |

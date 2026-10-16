@@ -74,6 +74,8 @@ A MapInstance is:
     marks         optional: where each partner's mark is painted, see below
     gaps          optional: the author's named gaps, src/game/gaps.js
                   namedGaps(placeDocument(doc).zones); the counter flies them
+    sails         optional: a built map's windmill sails, src/props/windmill.js
+                  sailsOf; the shell seats them every step, see below
 
 ### `height(x, z, fromY)` is three arguments, and the third one is the point
 
@@ -94,6 +96,13 @@ dropped frame changes the trajectory from the scenery side. During a run the
 step count is the physics clock, so a collision is reproducible from a
 recorded input stream. See `city/animation.js` for the worked example: a level
 crossing whose booms were an integrator over raw frame time.
+
+A built map's windmills are the other example. `updateAnim` turns each one's
+sails to `rotorAngle(shape, step)` (`src/props/windmill.js`), and the shell
+seats the sails' solids from the same function before every physics step
+(`pushSails` in `src/main.js`, `sails.seat`), so the sail drawn is the sail
+hit. They take the top `sails.slots` mover slots from `sails.base` up, and a
+contact in one of those is named `boom`, a wall's material.
 
 ### `egg` is where the STF mark is painted, and a map without one has none
 

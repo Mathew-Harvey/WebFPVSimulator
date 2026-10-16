@@ -711,6 +711,8 @@ export class PropKit {
     /* Canopy blobs drawn so far, which hands out their codes: codedLeaf. */
     this.leaves = 0;
     this.clumps = clumps !== false;
+    /* The parts that turn, when the caller turns them: see turning(). */
+    this.turners = null;
   }
 
   /* Where the next element goes: world position and heading. */
@@ -1179,6 +1181,40 @@ export class PropKit {
   }
 
   /* ---- drawing an element ---- */
+
+  /*
+   * A PART THAT TURNS about an axis along the element's +x through `at` (in
+   * the element's frame), drawn by `draw(K)` in a frame of its own: `at` its
+   * origin, +x its axis, and `angle` where it stands now, radians, turned
+   * the way Object3D.rotation.x turns. A windmill's sails (./windmill.js).
+   *
+   * With nobody collecting (`turners` null: the builder's preview, the
+   * gallery) it is drawn where it stands into the element's own batches,
+   * like any paint. A map that turns it sets `turners` to a list first, and
+   * the part is then drawn about its axis by a kit of its own, into a group
+   * of its own, and listed as { group, place, chunk, tag }: `place` the
+   * element's frame moved to `at`, which the map hangs the group from, and
+   * `tag` whatever the asset handed over, so the map can ask the asset how
+   * far it has turned (mountTurning in src/maps/built/index.js).
+   */
+  turning(at, angle, draw, tag = null) {
+    const local = new THREE.Matrix4().makeTranslation(at[0], at[1], at[2]);
+    if (!this.turners) {
+      const saved = this.place.clone();
+      this.place.multiply(local).multiply(new THREE.Matrix4().makeRotationX(angle));
+      try {
+        draw(this);
+      } finally {
+        this.place.copy(saved);
+      }
+      return;
+    }
+    const sub = new PropKit(this.look, { clumps: this.clumps });
+    sub.begin(0, 0, 0, 0);
+    draw(sub);
+    this.counts.decor += sub.counts.decor;
+    this.turners.push({ group: sub.finish(), place: this.place.clone().multiply(local), chunk: this.chunk, tag });
+  }
 
   /* Draw one part the layout marked as drawn. */
   part(p) {

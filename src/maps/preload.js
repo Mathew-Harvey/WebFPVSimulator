@@ -130,6 +130,7 @@ export const MAP_PRELOAD = {
     'props/street.js',
     'props/skate.js',
     'props/course.js',
+    'props/windmill.js',
     'render/clump.js',
     'art/stf.js',
     'art/partnermark.js',

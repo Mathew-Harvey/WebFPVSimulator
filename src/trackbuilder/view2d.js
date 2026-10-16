@@ -1400,7 +1400,10 @@ export class View2D {
       return b;
     };
     for (const p of placedPartsOf(el)) {
-      if (!p.solid && !p.draw) {
+      /* A sweep is the room something turning takes, a windmill's sails:
+       * neither solid nor drawn as it stands, but it is where the sails
+       * will be, so the plan shows it as the thin slab it is. */
+      if (!p.solid && !p.draw && !p.sweep) {
         continue;
       }
       /* Local (x, z) to the canvas frame this is drawn in, which is the

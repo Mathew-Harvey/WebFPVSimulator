@@ -41,6 +41,7 @@ import { ELEMENTS, KIND, TUNING, trackClassOf, tuningFor, docModeOf, apertureSha
  * Three.js, so the checks run in Node too. */
 import { placeDocument, topUnder, OPEN_CLEAR, OPEN_POINT_IN } from '../maps/built/place.js';
 import { placeSolids } from '../props/solids.js';
+import { sailsOf, sweepTouches } from '../props/windmill.js';
 import { isRoomType, roomHitTest } from '../props/room.js';
 import { sincos, turnY } from '../props/trig.js';
 import { GAP_MIN } from '../props/parts.js';
@@ -977,6 +978,9 @@ function label(el) {
  *                          the row stands across two heights, so the mats
  *                          beside the craft's float or are buried
  *   fs-overlap       warn  two elements' solids run into each other
+ *   fs-sails         warn  an element's solids stand where a windmill's
+ *                          sails turn, which fs-overlap cannot see because
+ *                          the sails are not solids (src/props/windmill.js)
  *   fs-slot          warn  a space between two elements narrower than the
  *                          gap rule's 1.4 m but more than a few centimetres:
  *                          a slot a five inch aims at and cannot fit through
@@ -1207,6 +1211,29 @@ export function freestyleReport(doc) {
           clearance: d,
         }));
       }
+    }
+  }
+
+  /* -------- a windmill's sails -------- */
+
+  /*
+   * The sails turn through a disc in front of the cap, and they are seated
+   * in the physics round the craft as it flies rather than kept as solids,
+   * so the overlap test above never meets them. Anything else standing in
+   * that disc would have the sails drawn turning through it, and a pilot
+   * chasing a gap there would find the gap closing on a building.
+   */
+  const sails = sailsOf(placed, 0);
+  for (const m of sails ? sails.mills : []) {
+    for (const b of bodies) {
+      if (b.el === m.el || !b.boxes.some((bx) => sweepTouches(m, bx))) {
+        continue;
+      }
+      const [first, later] = docIndex.get(m.el.id) < docIndex.get(b.el.id) ? [m.el, b.el] : [b.el, m.el];
+      out.push(warn('fs-sails', `${cap(names(m.el))}\u2019s sails would turn through ${names(b.el)}. Move one of them, or turn the windmill.`, {
+        elementId: later.id,
+        otherId: first.id,
+      }));
     }
   }
 

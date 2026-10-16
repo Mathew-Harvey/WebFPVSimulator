@@ -1479,6 +1479,12 @@ export async function boot({ loading, bootStart, mapId }) {
         setMover(sim, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'train', false);
       }
     }
+    /* uploadWorld's clear parked every mover slot, the sails' with them. */
+    sails = view.sails || null;
+    sailsUsed = 0;
+    if (sails && (!sailBoxes || sailBoxes.length < sails.slots * sails.doubles)) {
+      sailBoxes = new Float64Array(sails.slots * sails.doubles);
+    }
     adoptTraffic();
   }
 
@@ -1563,6 +1569,9 @@ export async function boot({ loading, bootStart, mapId }) {
   /* What a mover contact was: a road car on a map with traffic, else the
    * train. The world report numbers mover m as -2 - m. */
   function moverKind(m) {
+    if (sails && m >= sails.base) {
+      return 'boom';
+    }
     return trafficOn && carCurr[m] && carCurr[m].on ? 'car' : 'train';
   }
 
@@ -1940,6 +1949,47 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
+   * THE WINDMILLS' SAILS (src/props/windmill.js sailsOf), seated for one
+   * step of the lap clock as the train is, in the top SAIL_SLOTS mover
+   * slots, where a built map's traffic never reaches (traffic.js caps its
+   * cars below them). Only the strips of sail in a small window round the
+   * craft are seated, so where the craft is goes in too: `st`, the state
+   * the step starts from, taken to the world through the plant's own frame
+   * (setWorldFrame) with the frame's turn as frameTurn has it, so no engine's
+   * cosine reaches the physics. A map with no windmill has `sails` null and
+   * none of this runs. Allocates nothing: the boxes' scratch is made when a
+   * map with a windmill is adopted, so this file does not import the
+   * windmill and a pilot who never meets one never loads it.
+   */
+  let sails = null;
+  let sailsUsed = 0;
+  let sailBoxes = null;
+  const sailCraft = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
+  function pushSails(step, st) {
+    if (!sails) {
+      return;
+    }
+    const px = st[1];
+    const py = st[2];
+    simPosToThree(frameTurn.c * px - frameTurn.s * py, frameTurn.s * px + frameTurn.c * py, st[3] + SPAWN_ALT, sailCraft);
+    const n = sails.seat(step, sailCraft.x + startX, sailCraft.y + startY, sailCraft.z + startZ, sailBoxes);
+    for (let k = 0; k < n; k += 1) {
+      const o = k * sails.doubles;
+      setMover(
+        sim, sails.base + k,
+        sailBoxes[o], sailBoxes[o + 1], sailBoxes[o + 2],
+        sailBoxes[o + 3], sailBoxes[o + 4], sailBoxes[o + 5],
+        sailBoxes[o + 6], sailBoxes[o + 7], sailBoxes[o + 8],
+        'boom', true,
+      );
+    }
+    for (let k = n; k < sailsUsed; k += 1) {
+      setMover(sim, sails.base + k, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'boom', false);
+    }
+    sailsUsed = n;
+  }
+
+  /*
    * THE LENS'S NEAR PLANE FOLLOWS THE LENS.
    *
    * It was a fixed 0.2 m (src/render/shell.js), and the lens sits 8 cm ahead
@@ -1965,6 +2015,13 @@ export async function boot({ loading, bootStart, mapId }) {
       const car = view.carGap(p.x, p.y, p.z, reach);
       if (car < gap) {
         gap = car;
+      }
+    }
+    /* And a windmill's sails, where they are drawn at the lap clock. */
+    if (sails) {
+      const sail = sails.gapAt(p.x, p.y, p.z, reach, simTimeMs);
+      if (sail < gap) {
+        gap = sail;
       }
     }
     const floor = p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y);
@@ -8397,6 +8454,7 @@ export async function boot({ loading, bootStart, mapId }) {
            * The cars' clock is set all the same: the module advances it
            * on the stand too, and the cars go on driving past it. */
           pushWorldSolids(simTimeMs + steps - 1);
+          pushSails(simTimeMs + steps - 1, stateCurr);
           if (trafficOn) {
             trafficBeforeSteps();
           }
@@ -8444,6 +8502,8 @@ export async function boot({ loading, bootStart, mapId }) {
             /* The train and the crossing's booms, where they are at this
              * step of the lap clock. */
             pushWorldSolids(simTimeMs + i);
+            /* And the windmills' sails, round where the craft starts it. */
+            pushSails(simTimeMs + i, stNow);
             sim.step(1);
             stNow = readState();
             /* This step's world report and nothing else, for the crash

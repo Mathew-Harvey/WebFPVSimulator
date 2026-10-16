@@ -9608,7 +9608,7 @@ export class Ui {
         toggle(
           'Manga and scoring',
           s.mangaAndScoring
-            ? 'On: the game\'s manga look and its score. The menus\' titles are lettered in the manga hand, Medium and High draw black outlines round the world, and on a freestyle map the score, its combos and the chase are drawn as you fly them. Clean FPV and the Impact frame below trim parts of it.'
+            ? 'On: the game\'s manga look and its score. The menus\' titles are lettered in the manga hand, Medium and High draw black outlines round the world, and on a freestyle map the score, its combos and the chase are drawn as you fly them. Clean FPV below trims parts of it.'
             : 'Off: no manga look anywhere, and no score while you fly. No black outlines round the world on Medium and High, as on Low, no speed lines, impact frame or lettering, menus in plain type, and no score, combo or chase meter over the picture. The counting goes on underneath, so a scored run still runs its two minutes and ends on its results.',
           s.mangaAndScoring,
           (v) => { s.mangaAndScoring = v; },
@@ -9624,27 +9624,17 @@ export class Ui {
           !s.mangaAndScoring
             ? 'Nothing to do while Manga and scoring is off: every map is already clean. Turn that on and this keeps the score and the chase as plain words and numbers, with no manga look in flight.'
             : (s.cleanFpv
-              ? 'On: freestyle maps look and read the way a race track does. No speed lines and no impact frame; callouts are words and numbers, and the results are a list.'
-              : 'Off: on a freestyle map, ink speed lines gather at the edges of the picture above about 20 m/s, a crash lands as an impact frame, tricks, gaps and combos are hand lettered like a manga with a small katakana sound effect beside the big ones, and the results come back as a page of panels. Race tracks are always clean.'),
+              ? 'On: freestyle maps look and read the way a race track does. No speed lines; callouts are words and numbers, and the results are a list.'
+              : 'Off: on a freestyle map, ink speed lines gather at the edges of the picture above about 20 m/s, tricks, gaps and combos are hand lettered like a manga with a small katakana sound effect beside the big ones, and the results come back as a page of panels. Race tracks are always clean.'),
           s.cleanFpv,
           (v) => { s.cleanFpv = v; },
         ),
         /*
-         * THE IMPACT FRAME'S OWN ROW, beside the switch that also turns it
-         * off: a flash is a photosensitivity question, so it can go without
-         * the rest of the look going with it. The note says what it does,
-         * that it is never a white flash, and what else stops it.
+         * THE IMPACT FRAME'S ROW IS GONE (2026-10-16): a crash is a dull
+         * bounce the pilot flies out of, and a held frame would blind them
+         * for the beat they need to do it. The stored setting is left
+         * alone, read by nothing in flight.
          */
-        toggle(
-          'Impact frame',
-          !s.mangaAndScoring
-            ? 'Nothing to do while Manga and scoring is off: a crash cuts straight to where you are set down. Turn that on and this decides whether a crash holds the moment as an ink panel.'
-            : (s.impactFrame
-              ? 'On: a crash on a freestyle map holds the moment for a beat as a high contrast ink panel with impact lines, then lets go. Never a white flash, at most one every two seconds. Off under Clean FPV, and whenever your system asks for reduced motion.'
-              : 'Off: a crash cuts straight to where you are set down, with no held frame. The rest of the manga look stays.'),
-          s.impactFrame,
-          (v) => { s.impactFrame = v; },
-        ),
         /*
          * THE HUD: what is drawn over the picture in flight. One row for
          * now, the crosshairs, a fixed mark at the centre of the frame.

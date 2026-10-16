@@ -2514,6 +2514,7 @@ export class CrashJudge {
     this.crash = '';
     this.crashAtMs = 0;
     this.stopHard = false;
+    this.stepKind = '';
   }
 
   step(before, after, ground, rep, atMs, mayPerch) {
@@ -2568,6 +2569,7 @@ export class CrashJudge {
         }
       }
     }
+    this.stepKind = kind;
     if (!kind) {
       return false;
     }
@@ -2577,6 +2579,131 @@ export class CrashJudge {
     }
     return true;
   }
+}
+
+/*
+ * A CRASH IS A DULL BOUNCE. The owner, 2026-10-16: "fix crashing to not be
+ * annoying no reset, just dull bounce always". src/main.js, under the same
+ * heading, has where it is applied; this is what it is, pure, so a check in
+ * Node asks the same question with the same numbers.
+ *
+ * On a step the judge calls a crash, the contact solver has already done
+ * its rigid body hit, and for a nose or a top plate first arrival that hit
+ * is a corner strike: up to 46 rad/s of tumble off a 20 m/s wall, nearly
+ * 5 m/s thrown upward, and a craft that slides down the face onto its nose
+ * and waits there for stuckTick. That tumble is the annoying part. So the
+ * step's outcome is replaced by a dead one: the spin goes, the speed along
+ * the face is kept in part, and the craft leaves the face at a walking pace
+ * whatever it arrived at. Its attitude is left exactly where it was, so the
+ * picture never jumps and Betaflight holds it from there.
+ *
+ *   DULL_E           of the speed INTO the face, how much comes back out
+ *   DULL_OUT_MIN     but never less than this, so a craft always leaves the
+ *                    face and is never left resting on it to be crashed again
+ *   DULL_OUT_MAX     and never more: a 20 m/s hit comes back at 1.2 m/s, a
+ *                    thud and not a pinball
+ *   DULL_TANGENT_KEEP of the speed ALONG the face: a glancing hit carries on
+ *                    the way it was going, slower, which is the owner's
+ *                    "keeps 60 to 80 percent" target in crash-check.js
+ *
+ * before is the state block going into the step (the arrival, before the
+ * solver touched it), n the contact's outward normal in the PLANT frame,
+ * unit. out gets the velocity to leave the step with, plant frame, and is
+ * returned. Allocation free: it is called from the step loop.
+ */
+export const DULL_E = 0.15;
+export const DULL_OUT_MIN = 0.3;
+export const DULL_OUT_MAX = 1.2;
+export const DULL_TANGENT_KEEP = 0.75;
+
+export function dullBounce(before, nx, ny, nz, out) {
+  const vx = before[4];
+  const vy = before[5];
+  const vz = before[6];
+  const vn = vx * nx + vy * ny + vz * nz;
+  let back = vn < 0 ? -vn * DULL_E : 0;
+  if (back < DULL_OUT_MIN) {
+    back = DULL_OUT_MIN;
+  } else if (back > DULL_OUT_MAX) {
+    back = DULL_OUT_MAX;
+  }
+  out[0] = (vx - vn * nx) * DULL_TANGENT_KEEP + back * nx;
+  out[1] = (vy - vn * ny) * DULL_TANGENT_KEEP + back * ny;
+  out[2] = (vz - vn * nz) * DULL_TANGENT_KEEP + back * nz;
+  return out;
+}
+
+/*
+ * The bounce put on the module, for the shell's step loop and for
+ * scripts/bounce-check.js alike, so the two cannot drift. kind is the
+ * judge's rule ('solid' for a knock), before and after the state blocks
+ * either side of the step, rep the step's world report, (gx, gy, gz) the
+ * ground plane's normal the plant was handed for the step, plant frame,
+ * and (c, s) the plant frame's turn (see bodyUpDotWorld). out is scratch
+ * for three doubles.
+ *
+ * The solid's normal is the world's and is turned into the plant's by the
+ * yaw, as bodyUpDotWorld does; the ground's, a roof's included, is the
+ * plane's. The spin goes with sim_rest, and the velocity is written with
+ * sim_contact_at: no arm, no restitution and no friction, against a
+ * surface moving at the wanted velocity, which is a pure linear impulse
+ * that leaves the craft moving at that velocity and turns nothing. The
+ * position handed back is the one the step left. Returns false and touches
+ * nothing for a report with no normal in it.
+ */
+export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, out) {
+  let nx = gx;
+  let ny = gy;
+  let nz = gz;
+  if (kind === 'solid') {
+    nx = c * rep[4] + s * rep[5];
+    ny = c * rep[5] - s * rep[4];
+    nz = rep[6];
+    const n2 = nx * nx + ny * ny + nz * nz;
+    if (!(n2 > 1e-12)) {
+      return false;
+    }
+    const inv = 1 / Math.sqrt(n2);
+    nx *= inv;
+    ny *= inv;
+    nz *= inv;
+  }
+  dullBounce(before, nx, ny, nz, out);
+  sim.e.sim_rest();
+  const u = Math.sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+  if (u > 1e-9) {
+    const k = 1 / u;
+    sim.e.sim_contact_at(
+      out[0] * k, out[1] * k, out[2] * k, 0, 0,
+      after[1], after[2], after[3],
+      out[0], out[1], out[2],
+      0, 0, 0,
+    );
+  }
+  return true;
+}
+
+/*
+ * AND A SLOW KNOCK IS ONE TOO, on a solid. Under GRAZE_SPEED_MAX the judge
+ * calls nothing, and a craft that comes back to the face after the bounce
+ * (a pilot still pitched at it) touches at a walking pace, which the solver
+ * answers as a corner strike again: the ratchet PRESS_UP_DOT's note below
+ * measures, winding the nose onto the face until the craft stands on it and
+ * stuckTick has to set it down. So the frame or the lens on a solid, off the
+ * belly and not on an underside, is the same dull bounce at any speed. The
+ * belly is left alone, so a wall ride, a wall tap and a landing on a roof
+ * stay physics, and so is a prop alone, so a clipped gate still only costs
+ * rotor speed. The ground is not in this: a craft at rest on its side would
+ * hop on the spot for ever, where today it lies still and turtles.
+ *
+ * KNOCK_CLOSING_MIN is the closing speed it takes: a step that still
+ * reports the face the bounce has just left closes at nothing, and a hull
+ * resting against a face by a millimetre is the solver's to hold.
+ */
+export const KNOCK_CLOSING_MIN = 0.05;
+export function solidContactKnock(rep, qw, qx, qy, qz, c, s) {
+  return rep[8] > 0 && rep[1] >= KNOCK_CLOSING_MIN && rep[6] > CRASH_UNDERSIDE_NZ
+    && bodyUpDotWorld(qw, qx, qy, qz, rep[4], rep[5], rep[6], c, s) < CRASH_BELLY_UP;
 }
 
 /*

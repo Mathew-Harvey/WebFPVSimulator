@@ -4,11 +4,13 @@
  * is a few seconds later. bug-918a8c99.
  *
  * Four flights, each a 10 m/s head-on at the crash-check shopfront:
- *   off          the craft is set down nearby, as it always was, and stays.
+ *   off          the crash is a dull bounce (2026-10-16) and the craft
+ *                comes down by the wall, and stays.
  *   on, 1 s      after the delay the craft is on the start line and the sim
  *                clock restarted, which is what R does.
- *   on, 2 s,     the pilot takes off straight after the set down; the craft
- *   flown out    is in the air at the deadline and is not reset.
+ *   on, 2 s,     the pilot opens the throttle straight after the bounce; the
+ *   flown out    craft is in the air at the deadline and is not reset, so it
+ *                is still by the wall and not on the start line.
  *   on, 1 s,     as on, 1 s, with Esc and Resume inside the wait: a pause
  *   paused       holds the deadline and the craft still goes back.
  *
@@ -141,9 +143,10 @@ async function main() {
         /* A set down nearby is within 3.5 m of the wall; the start line is not. */
         check(`${name}: back on the start line after the delay`, end.landed && wallD > 5, `${wallD.toFixed(1)} m from the wall, landed ${end.landed}`);
       } else if (cfg.on) {
-        check(`${name}: not reset, the pilot flew out in time`, airborne && end.p[1] > 2, `height ${end.p[1].toFixed(1)} m, airborne ${airborne}`);
+        check(`${name}: not reset, the pilot flew out in time`, airborne && end.p[1] > 2 && wallD != null && wallD < 5,
+          `height ${end.p[1].toFixed(1)} m, airborne ${airborne}, ${wallD == null ? 'n/a' : wallD.toFixed(1)} m from the wall`);
       } else {
-        check(`${name}: set down nearby and left there`, wallD != null && wallD < 6, `${wallD == null ? 'n/a' : wallD.toFixed(1)} m from the wall`);
+        check(`${name}: left by the wall, not reset`, wallD != null && wallD < 6, `${wallD == null ? 'n/a' : wallD.toFixed(1)} m from the wall`);
       }
     }
   } finally {

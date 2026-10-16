@@ -3608,6 +3608,32 @@ function uploadAction(listing, {
       note: `That lap is on the public board.${rank}`,
     };
   }
+  /*
+   * A TRACK THAT IS NOT ON THE BOARD YET, OR WHOSE LAYOUT HAS MOVED ON FROM
+   * THE BOARD'S COPY, STILL TAKES A TIME. This row used to be dead for both
+   * and told the pilot to go and publish first, which is two screens and a
+   * dialog between a lap and its time, and pilots read it as "this track
+   * cannot save times". With a lap in hand the row now names the one-step
+   * path: submitBoardTime asks the publish questions, publishes or updates,
+   * then sends the lap. A run with no lap falls through to the plain
+   * explanations below, because there is nothing to send yet.
+   */
+  const publishFirst = Boolean(listing && !shareId && listing.canPublishNew);
+  const updateFirst = Boolean(listing && shareId && !listing.canPostTime
+    && listing.canUpdateListing && listing.layoutDrift);
+  if ((publishFirst || updateFirst) && ms != null) {
+    return publishFirst
+      ? {
+        label: `Publish and post ${formatTime(ms)}`,
+        action: 'posttime',
+        note: 'This track is not on the public board yet. Publishes it, then sends this lap under your name.',
+      }
+      : {
+        label: `Update the track and post ${formatTime(ms)}`,
+        action: 'posttime',
+        note: 'The layout changed since it was published. Updates the board, which clears the times posted on the old layout, then sends this lap.',
+      };
+  }
   if (!listing || !shareId) {
     return {
       label: 'Post a time',

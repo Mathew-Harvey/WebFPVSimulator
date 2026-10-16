@@ -70620,3 +70620,12 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 
 - Approval: the owner chose "Fly it" on the verification card at 12:42:54Z and wrote "push to main" at 12:44:00Z on 2026-10-15 in the Infinity Loops map thread, after the draft PRs and the entry above. It covers sim PR 70 and board PR 18, and the republish of the board map `trk-e6d139f6` under its own link with the admin token he gave in the thread. Both mains fetched first and fast forward; the board went first (bfb29a2).
 - Latency, checks and what is not checked: as in the entry above. Nobody has flown it; the owner is flying it next.
+
+## 2026-10-16 | board | Post a time on a track that is not on the board yet (draft PR)
+
+- Ask: the owner wrote at 12:26Z on 2026-10-16 that he cannot save times on many tracks and all times should be able to be saved.
+- Finding: the board side is not what stops them. The floor (`judgeLap`) was run over all 64 live tracks and every floor is sane (the longest, 2022 AU Nationals, 9.7 s over 486 m), hoops and hex gates count as stations, and an official track still takes times. What stops a time is the sim: the Post row was dead for a builder track or a copy that is not on the board ("Only a track on the board can hold a time. Publish this one first.") and for an owned track whose layout changed ("Update the track on the board first."). Both read as "this track cannot save times". Local bests were never affected: they are filed per track and setup in this browser whatever the board says.
+- Change: with a clean lap in hand the row now reads "Publish and post 1:02.345" (or "Update the track and post ..."), and pressing it opens the same publish dialog as the Publish row, publishes or updates, then sends the lap. Dismissing the dialog changes nothing. `submitCoursePublish` now returns whether it published.
+- Not changed, by design or because it needs the owner: arcade laps (a different aircraft, the board has no style field), practice laps, laps flown on tuned Air grip or Motor power, built in circuits and freestyle maps with no board id. These are listed in the PR for his call.
+- Latency: no change. Results screen and menu text only; nothing in the flight loop or input path.
+- Checked: `node --check` on both files. `npm run lint:shell` ran and fails on lines this change does not touch (untouched main fails it too, per the repo notes). Not run: shots, verify, flying it.

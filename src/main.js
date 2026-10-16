@@ -6047,7 +6047,23 @@ export async function boot({ loading, bootStart, mapId }) {
      * pilot. The weight is the LAP's, stamped when it was counted, not the
      * slider's as it stands now: see boardRow in src/game/race.js.
      */
-    const listing = inspectCourse();
+    let listing = inspectCourse();
+    /*
+     * A TRACK NOT ON THE BOARD YET (A BUILDER TRACK, A COPY) OR ONE WHOSE
+     * LAYOUT HAS MOVED ON FROM THE BOARD'S COPY IS PUBLISHED OR UPDATED HERE,
+     * with the same dialog the Publish row opens, and the lap goes up right
+     * after. Only with a lap in hand: a practice run or a run of tuned laps
+     * has nothing to send, and publishing a track for nothing is not what
+     * the pilot pressed. A pilot who dismisses the dialog changes nothing.
+     */
+    const lapInHand = runLaps !== PRACTICE_LAPS && race.boardRow() != null;
+    if (listing && !listing.canPostTime && lapInHand
+      && (listing.canPublishNew || (listing.canUpdateListing && listing.layoutDrift))) {
+      if (!(await submitCoursePublish())) {
+        return;
+      }
+      listing = inspectCourse();
+    }
     const trackId = listing && listing.shareId;
     if (!trackId || !listing.canPostTime) {
       notice = { text: listing && listing.layoutDrift
@@ -6423,11 +6439,11 @@ export async function boot({ loading, bootStart, mapId }) {
     const listing = inspectCourse();
     if (!listing || !listing.doc) {
       notice = { text: 'Nothing to publish.', untilMs: performance.now() + 2800 };
-      return;
+      return false;
     }
     if (!listing.canPublishNew && !listing.canUpdateListing) {
       notice = { text: 'This track is already on the public board.', untilMs: performance.now() + 2800 };
-      return;
+      return false;
     }
     const remix = listing.kind === 'remix';
     const updating = listing.canUpdateListing && listing.layoutDrift;
@@ -6463,7 +6479,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ],
     });
     if (!values) {
-      return;
+      return false;
     }
     try {
       const result = await publishCurrentCourse({
@@ -6544,7 +6560,9 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     } catch (e) {
       notice = { text: `Could not publish that track.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
+      return false;
     }
+    return true;
   }
 
   function isRunActive() {

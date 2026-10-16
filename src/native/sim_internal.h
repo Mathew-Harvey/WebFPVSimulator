@@ -253,6 +253,18 @@ int plant_airframe(void);
 extern int SIM_ARCADE;
 
 /*
+ * PROP WASH, set by sim_set_propwash: 1, the default, is the full model; 0
+ * switches off the two terms that make a quad shake in its own wash, the
+ * band limited turbulence application and the per rotor inflow asymmetry,
+ * and nothing else. The ring state thrust loss stays, because that is the
+ * smooth aerodynamics, not the shake. The turbulence field keeps running
+ * either way, so the noise stream a later flight draws from is the same
+ * whichever this was. A mode, same rule as SIM_ARCADE: it survives
+ * sim_reset and sim_init, and the shell owns asserting it.
+ */
+extern int SIM_PROPWASH;
+
+/*
  * AIR, set by sim_set_air: a scale on everything the air does to slow this
  * airframe down. 1.0 is the machine every band in tests/ and gates.config.json
  * was measured against; below 1 the quad carries further, above 1 it washes

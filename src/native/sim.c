@@ -1323,6 +1323,15 @@ SIM_EXPORT int sim_set_flight_style(int arcade) {
   return SIM_OK;
 }
 
+/* Prop wash flag, see sim_internal.h. A mode, same rule as the flight
+ * style. Anything but 0 is the full model. */
+int SIM_PROPWASH = 1;
+
+SIM_EXPORT int sim_set_propwash(int on) {
+  SIM_PROPWASH = on ? 1 : 0;
+  return SIM_OK;
+}
+
 /* Air scale, see sim_internal.h. A mode, same rule as the flight style. */
 double SIM_AIR = 1.0;
 

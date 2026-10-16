@@ -1308,7 +1308,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      * does nothing in normal flight.
      */
     axial += axial_gain;
-    if (axial < 1.0 && !SIM_ARCADE) {
+    if (axial < 1.0 && !SIM_ARCADE && SIM_PROPWASH) {
       const double depth = 1.0 - axial;
       axial += depth * PLANT_INFLOW_ASYM[m];
     }
@@ -1321,7 +1321,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      */
     s->wash_fast[m] += PLANT_WASH_A_FAST * (plant_wash_noise(s) - s->wash_fast[m]);
     s->wash_slow[m] += PLANT_WASH_A_SLOW * (s->wash_fast[m] - s->wash_slow[m]);
-    if (wash_depth > 0.0 && !SIM_ARCADE) {
+    if (wash_depth > 0.0 && !SIM_ARCADE && SIM_PROPWASH) {
       double wash = (s->wash_fast[m] - s->wash_slow[m]) / PLANT_WASH_RMS;
       /* Bounded at 3 sigma. The band passed signal reaches 4.0 sigma, and at
        * the old gain of 0.60 that was a 240 percent thrust excursion on one

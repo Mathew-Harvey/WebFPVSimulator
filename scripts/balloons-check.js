@@ -1,0 +1,168 @@
+/*
+ * balloons-check.js: Balloon chase's game in Node (src/game/balloons.js).
+ * No browser, seconds of wall clock. What it pins:
+ *
+ *   the same seed and the same craft path give the same game, to the bit;
+ *   the plane stays inside its map, keeps its speeds between the limits,
+ *     never banks past what its lateral limit allows, and clears a tall
+ *     block in the middle of the map on every seed tried;
+ *   a balloon on the craft's swept path pops once and pays one, a gold one
+ *     pays GOLD_VALUE, and nothing pops off the path, on the stand, or
+ *     after the round's clock has run out;
+ *   the round runs ROUND_MS from the first feed flown.
+ *
+ * Usage: node scripts/balloons-check.js
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import {
+  BalloonChase, BALLOON_EVERY, BALLOON_MAX, GOLD_VALUE, ROUND_MS,
+} from '../src/game/balloons.js';
+
+let pass = 0;
+let fail = 0;
+function check(ok, what) {
+  if (ok) {
+    pass += 1;
+    console.log(`  pass  ${what}`);
+  } else {
+    fail += 1;
+    console.log(`  FAIL  ${what}`);
+  }
+}
+
+const BLOCK = 25;
+const world = {
+  cx: 0,
+  cz: 0,
+  radius: 90,
+  ceilingAt: (x, z) => (Math.abs(x) < 20 && Math.abs(z) < 20 ? BLOCK : 0),
+};
+
+/* Two minutes of a plane, with a craft sitting still at the far corner. */
+function fly(seed) {
+  const g = new BalloonChase(world, seed);
+  const craft = { x: 200, y: 2, z: 200 };
+  let maxR = 0;
+  let overBlock = Infinity;
+  let vmin = Infinity;
+  let vmax = 0;
+  let bank = 0;
+  let trace = 0;
+  for (let c = BALLOON_EVERY; c <= 120000; c += BALLOON_EVERY) {
+    g.step(c, true, craft, craft);
+    maxR = Math.max(maxR, Math.hypot(g.p[0], g.p[2]));
+    if (Math.abs(g.p[0]) < 20 && Math.abs(g.p[2]) < 20) {
+      overBlock = Math.min(overBlock, g.p[1]);
+    }
+    vmin = Math.min(vmin, g.v);
+    vmax = Math.max(vmax, g.v);
+    bank = Math.max(bank, Math.abs(g.bankTan));
+    trace = (trace * 31 + g.p[0] * 7 + g.p[1] * 11 + g.p[2] * 13) % 1e9;
+  }
+  return { g, maxR, overBlock, vmin, vmax, bank, trace };
+}
+
+console.log('balloons-check: the plane');
+{
+  const a = fly(7);
+  const b = fly(7);
+  check(a.trace === b.trace && a.g.p[0] === b.g.p[0], 'the same seed flies the same path to the bit');
+  check(fly(8).trace !== a.trace, 'another seed flies another path');
+  let worst = null;
+  for (let s = 1; s <= 24; s += 1) {
+    const r = fly(s);
+    if (!worst || r.overBlock < worst.overBlock) {
+      worst = { ...r, s };
+    }
+    if (r.maxR > world.radius + 60 || r.vmin < 10.9 || r.vmax > 25.1 || r.bank > 1.25) {
+      check(false, `seed ${s}: radius ${r.maxR.toFixed(1)}, speed ${r.vmin.toFixed(1)} to ${r.vmax.toFixed(1)}, bank tan ${r.bank.toFixed(2)}`);
+    }
+  }
+  check(fail === 0, '24 seeds: inside the map, 11 to 25 m/s, bank within its limit');
+  check(worst.overBlock > BLOCK, `24 seeds: always over the ${BLOCK} m block (lowest ${worst.overBlock.toFixed(1)} m, seed ${worst.s})`);
+  check(a.g.released > 200, `it streams balloons (${a.g.released} in two minutes)`);
+}
+
+console.log('balloons-check: popping');
+{
+  const g = new BalloonChase(world, 3);
+  const craft = { x: 0, y: 5, z: 0 };
+  const prev = { x: 0, y: 5, z: 0 };
+  /* On the stand: nothing pops and the round has not begun. */
+  g.step(4, false, craft, prev);
+  g.born[0] = g.clockMs;
+  g.bx[0] = 0;
+  g.by[0] = 5;
+  g.bz[0] = 0;
+  g.gold[0] = 0;
+  g.step(8, false, craft, prev);
+  check(g.popped === 0 && g.startedMs < 0, 'on the stand nothing pops and the round waits');
+  /* Clear the sky so only the balloons placed below are in it. */
+  const clear = () => {
+    g.born.fill(-1);
+    g.nextReleaseMs = 1e12;
+  };
+  clear();
+  g.step(12, true, craft, null);
+  check(g.startedMs === 12, 'the round starts at the first feed flown');
+  /* One balloon right on the swept path, one a metre and a half off it. */
+  g.born[0] = g.clockMs;
+  g.bx[0] = 0.5;
+  g.by[0] = 5;
+  g.bz[0] = 0.1;
+  g.gold[0] = 0;
+  g.born[1] = g.clockMs;
+  g.bx[1] = 0.5;
+  g.by[1] = 5;
+  g.bz[1] = 1.5;
+  g.gold[1] = 0;
+  craft.x = 1;
+  g.step(16, true, craft, prev);
+  check(g.popped === 1 && g.score === 1 && g.born[0] < 0 && g.born[1] >= 0, 'on the path pops and pays one, off it does not');
+  check(g.popCount === 1 && g.pops[0].gold === false, 'the pop is reported once');
+  g.popCount = 0;
+  g.step(20, true, craft, prev);
+  check(g.popped === 1, 'a popped balloon cannot pop again');
+  /* Gold. */
+  clear();
+  g.born[2] = g.clockMs;
+  g.bx[2] = 0.5;
+  g.by[2] = 5;
+  g.bz[2] = 0;
+  g.gold[2] = 1;
+  g.step(24, true, craft, prev);
+  check(g.score === 1 + GOLD_VALUE && g.goldPopped === 1, `gold pays ${GOLD_VALUE}`);
+  check(g.streak === 2, 'two pops close together are a streak of two');
+  /* The clock. */
+  check(g.leftMs(12 + ROUND_MS / 2) === ROUND_MS / 2, 'leftMs counts down from the start');
+  g.step(12 + ROUND_MS, true, craft, prev);
+  check(g.over && g.leftMs(12 + ROUND_MS) === 0, 'the round is over at ROUND_MS');
+  clear();
+  g.born[3] = g.clockMs;
+  g.bx[3] = 0.5;
+  g.by[3] = 5;
+  g.bz[3] = 0;
+  g.step(16 + ROUND_MS, true, craft, prev);
+  check(g.born[3] >= 0 && g.score === 1 + GOLD_VALUE, 'nothing pops after the clock has run out');
+  g.reset(1);
+  check(g.score === 0 && !g.over && g.startedMs < 0 && g.born.every((b) => b < 0), 'a new round starts clean');
+  check(g.born.length === BALLOON_MAX, `the pool is ${BALLOON_MAX} and never grows`);
+}
+
+console.log(`\nballoons-check: ${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

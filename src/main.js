@@ -1686,6 +1686,301 @@ export async function boot({ loading, bootStart, mapId }) {
     view.poseCars(carPrev, carCurr, alpha, clock - 1 + alpha);
   }
 
+  /*
+   * BALLOON CHASE (src/game/balloons.js, src/render/balloons.js), Mat's ask
+   * of 2026-10-16: a plane flying clean legs over a freestyle map,
+   * streaming balloons to pop. Picked on the Maps screen's Game row
+   * (settings.freestyleGame) and off by default, and with it off nothing
+   * below runs past one comparison a frame and nothing is in the scene.
+   *
+   * NOTHING IT DRAWS IS SOLID and nothing reaches the plant: the plane is
+   * flown through and a balloon pops when the craft's centre, swept between
+   * feeds, passes within reach of it. The game is fed from the step loop
+   * every BALLOON_EVERY steps of the lap clock, so a dropped frame changes
+   * nothing it does; on the title it is fed from the title's own clock so
+   * the plane is still flying behind the menu.
+   *
+   * A round starts at the first feed with the craft off the stand and runs
+   * ROUND_MS. The result stands RESULT_MS, the best on the map is kept in
+   * this browser, and the next round starts. Restart run starts a new one.
+   */
+  /* The two modules, fetched the first time the game is switched on, so a
+   * pilot who never picks it fetches and parses nothing more at boot. */
+  let balloonMods = null;
+  let balloonLoading = false;
+  let balloonGame = null;
+  let balloonView = null;
+  let balloonFor = null;
+  let balloonKey = '';
+  let balloonRound = 0;
+  let balloonBest = 0;
+  let balloonSaved = false;
+  let balloonNewBest = false;
+  let balloonFeedAt = 0;
+  let balloonHavePrev = false;
+  let balloonTitleAcc = 0;
+  const balloonCraft = { x: 0, y: 0, z: 0 };
+  const balloonPrev = { x: 0, y: 0, z: 0 };
+  const balloonPos = new THREE.Vector3();
+  const balloonStats = {
+    points: 0, leftMs: 0, best: 0, streak: 0, over: false, popped: 0, gold: 0,
+    bestStreak: 0, newBest: false, nextMs: 0,
+  };
+
+  function balloonBestKey() {
+    return `webfpv.balloons.best.${balloonKey}`;
+  }
+
+  function readBalloonBest() {
+    try {
+      const v = Number(localStorage.getItem(balloonBestKey()));
+      return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function writeBalloonBest(v) {
+    try {
+      localStorage.setItem(balloonBestKey(), String(v));
+    } catch (e) {
+      /* Private window or blocked storage: the best lasts the session. */
+    }
+  }
+
+  /* Where the plane may fly: the middle of the map's solids and how far
+   * they reach, or the spawn and eighty metres on a map with none. */
+  function balloonWorld() {
+    const c = view.colliders;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    if (c && c.built && c.fbox) {
+      for (let i = 0; i < c.count; i += 1) {
+        if (!c.fbox[i]) {
+          continue;
+        }
+        x0 = Math.min(x0, c.fax[i]);
+        x1 = Math.max(x1, c.fbx[i]);
+        z0 = Math.min(z0, c.faz[i]);
+        z1 = Math.max(z1, c.fbz[i]);
+      }
+    }
+    const sp = view.spawn || { x: 0, z: 0 };
+    let cx = sp.x;
+    let cz = sp.z;
+    let radius = 80;
+    if (x1 > x0 && z1 > z0) {
+      radius = Math.min(120, Math.max(60, Math.hypot(x1 - x0, z1 - z0) * 0.5));
+      /* The middle of the map, unless the pads are far from it (the town
+       * is far bigger than a round), and then the pads. */
+      const mx = (x0 + x1) * 0.5;
+      const mz = (z0 + z1) * 0.5;
+      if (Math.hypot(mx - sp.x, mz - sp.z) < radius * 0.6) {
+        cx = mx;
+        cz = mz;
+      }
+    }
+    /* What stands where, read once into a grid here, when the game is
+     * switched on, so the plane's look ahead in flight is an array read and
+     * never a walk of the colliders. A cell holds the highest top under it
+     * or its eight neighbours, so nothing between samples is missed. */
+    const CELL = 3;
+    const half = radius + 70;
+    const n = Math.ceil((half * 2) / CELL);
+    const raw = new Float32Array(n * n);
+    for (let i = 0; i < n; i += 1) {
+      for (let j = 0; j < n; j += 1) {
+        const x = cx - half + (i + 0.5) * CELL;
+        const z = cz - half + (j + 0.5) * CELL;
+        const g = view.height(x, z, 0);
+        const top = c && c.built ? c.topAt(x, z, 1e4, 0) : -Infinity;
+        raw[i * n + j] = Math.max(Number.isFinite(g) ? g : 0, top);
+      }
+    }
+    const grid = new Float32Array(n * n);
+    for (let i = 0; i < n; i += 1) {
+      for (let j = 0; j < n; j += 1) {
+        let m = -Infinity;
+        for (let di = -1; di <= 1; di += 1) {
+          for (let dj = -1; dj <= 1; dj += 1) {
+            const ii = i + di;
+            const jj = j + dj;
+            if (ii >= 0 && ii < n && jj >= 0 && jj < n && raw[ii * n + jj] > m) {
+              m = raw[ii * n + jj];
+            }
+          }
+        }
+        grid[i * n + j] = m;
+      }
+    }
+    const x0g = cx - half;
+    const z0g = cz - half;
+    return {
+      cx,
+      cz,
+      radius,
+      ceilingAt(x, z) {
+        const i = Math.floor((x - x0g) / CELL);
+        const j = Math.floor((z - z0g) / CELL);
+        if (i < 0 || j < 0 || i >= n || j >= n) {
+          return 0;
+        }
+        return grid[i * n + j];
+      },
+    };
+  }
+
+  function balloonOff() {
+    if (balloonView) {
+      balloonView.dispose();
+    }
+    balloonView = null;
+    balloonGame = null;
+    balloonFor = null;
+    ui.balloonHud.setVisible(false);
+  }
+
+  function balloonNewRound() {
+    balloonRound += 1;
+    balloonGame.reset(balloonRound);
+    balloonSaved = false;
+    balloonNewBest = false;
+    balloonHavePrev = false;
+  }
+
+  /* Once a frame, before anything reads the game: on, off, or a new map. */
+  function syncBalloons() {
+    const want = ui.settings.freestyleGame === 'balloons'
+      && Boolean(view) && view.mode === 'freestyle' && mapReady && !replayMode;
+    if (!want) {
+      if (balloonGame) {
+        balloonOff();
+      }
+      return;
+    }
+    if (balloonFor === view) {
+      return;
+    }
+    if (!balloonMods) {
+      if (!balloonLoading) {
+        balloonLoading = true;
+        Promise.all([import('./game/balloons.js'), import('./render/balloons.js')])
+          .then(([game, render]) => {
+            balloonMods = { ...game, BalloonView: render.BalloonView };
+          })
+          .catch((e) => {
+            console.warn('balloons: the game did not load', e);
+          })
+          .finally(() => {
+            balloonLoading = false;
+          });
+      }
+      return;
+    }
+    const { BalloonChase, hashKey } = balloonMods;
+    balloonKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}`;
+    balloonGame = new BalloonChase(balloonWorld(), hashKey(balloonKey) ^ (Date.now() >>> 0));
+    if (!balloonView) {
+      balloonView = new balloonMods.BalloonView();
+    }
+    balloonView.attach(view.scene, shell.renderer, shell.camera, view.post && view.post.rtScene);
+    balloonFor = view;
+    balloonBest = readBalloonBest();
+    balloonRound = 0;
+    balloonNewRound();
+  }
+
+  /* One feed at lap clock `clock`, with the craft at state `st`. */
+  function balloonStep(clock, st, flying) {
+    poseFromState(st, balloonPos);
+    balloonCraft.x = balloonPos.x;
+    balloonCraft.y = balloonPos.y;
+    balloonCraft.z = balloonPos.z;
+    /* A set down or a reset moves the craft further than it can fly in a
+     * feed: no sweep across the jump. */
+    let prev = null;
+    if (balloonHavePrev) {
+      const dx = balloonCraft.x - balloonPrev.x;
+      const dy = balloonCraft.y - balloonPrev.y;
+      const dz = balloonCraft.z - balloonPrev.z;
+      if (dx * dx + dy * dy + dz * dz < 4) {
+        prev = balloonPrev;
+      }
+    }
+    balloonGame.step(clock, flying, balloonCraft, prev);
+    balloonPrev.x = balloonCraft.x;
+    balloonPrev.y = balloonCraft.y;
+    balloonPrev.z = balloonCraft.z;
+    balloonHavePrev = true;
+    balloonFeedAt = clock;
+  }
+
+  /* Once a drawn frame: pops out to the screen and the speaker, the round's
+   * end, and the plane and balloons drawn. `lapClock` is where the craft is
+   * drawn on the lap clock, or -1 off it (the title). */
+  function balloonFrame(lapClock, dtMs, nowMs) {
+    if (!balloonGame) {
+      return;
+    }
+    const { BALLOON_EVERY, RESULT_MS, GOLD_VALUE } = balloonMods;
+    const g = balloonGame;
+    for (let k = 0; k < g.popCount; k += 1) {
+      const p = g.pops[k];
+      balloonView.pop(p, nowMs);
+      ui.balloonHud.flash(p.gold, p.gold ? GOLD_VALUE : 1);
+      if (mode === 'flight' && typeof audio.event === 'function') {
+        audio.event('gate');
+      }
+    }
+    g.popCount = 0;
+    if (g.over && !balloonSaved) {
+      balloonSaved = true;
+      if (g.score > balloonBest) {
+        balloonNewBest = balloonBest > 0 || g.score > 0;
+        balloonBest = g.score;
+        writeBalloonBest(g.score);
+      }
+    }
+    if (g.over && lapClock >= 0 && lapClock - g.overAtMs >= RESULT_MS) {
+      balloonNewRound();
+    }
+    const t = lapClock >= 0 ? (lapClock - (balloonFeedAt - BALLOON_EVERY)) / BALLOON_EVERY : 1;
+    balloonView.frame(g, t, dtMs, nowMs);
+    ui.balloonHud.setVisible(ui.screen === 'flight' || ui.screen === 'paused');
+    const st = balloonStats;
+    st.points = g.score;
+    st.leftMs = g.leftMs(Math.max(0, lapClock));
+    st.best = balloonBest;
+    st.streak = g.streak;
+    st.over = g.over;
+    st.popped = g.popped;
+    st.gold = g.goldPopped;
+    st.bestStreak = g.bestStreak;
+    st.newBest = balloonNewBest;
+    st.nextMs = g.over ? Math.max(0, RESULT_MS - (lapClock - g.overAtMs)) : 0;
+    ui.balloonHud.update(st);
+  }
+
+  /* The title has no lap clock: the plane flies on the title's own. */
+  function balloonTitleTick(dtMs) {
+    if (!balloonGame) {
+      return;
+    }
+    const { BALLOON_EVERY } = balloonMods;
+    balloonTitleAcc += dtMs;
+    let n = 0;
+    while (balloonTitleAcc >= BALLOON_EVERY && n < 40) {
+      balloonTitleAcc -= BALLOON_EVERY;
+      balloonGame.step(balloonGame.clockMs, false, balloonCraft, null);
+      n += 1;
+    }
+    if (n === 40) {
+      balloonTitleAcc = 0;
+    }
+  }
+
   /* A crash the shell called, told to the chase as it is told to the score:
    * the tail and everything waiting to pay are lost. */
   function chaseBail() {
@@ -4663,6 +4958,10 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     simTimeMs = 0;
     airtimeMs = 0;
+    /* A fresh run is a fresh balloon round. */
+    if (balloonGame) {
+      balloonNewRound();
+    }
     /* Anything that holds a stamp ON that clock has to go back with it, or a
      * fresh run compares a zeroed clock against last run's stamp and stays
      * inside a cooldown that has already expired. */
@@ -8411,6 +8710,14 @@ export async function boot({ loading, bootStart, mapId }) {
           }
           sim.step(1);
           stateCurr = readState();
+          /* On the stand the plane flies on and the round has not begun. */
+          if (balloonGame) {
+            for (let t = simTimeMs + 1; t <= simTimeMs + steps; t += 1) {
+              if (t % balloonMods.BALLOON_EVERY === 0) {
+                balloonStep(t, stateCurr, false);
+              }
+            }
+          }
           if (plantUpZ(stateCurr) < 0) {
             endLaunchStaging(false);
             takingOff = false;
@@ -8454,6 +8761,9 @@ export async function boot({ loading, bootStart, mapId }) {
              * smoke, and the pose statePrev is drawn with. */
             if (trafficOn) {
               trafficStep(simTimeMs + i + 1, stNow, i, steps, true);
+            }
+            if (balloonGame && (simTimeMs + i + 1) % balloonMods.BALLOON_EVERY === 0) {
+              balloonStep(simTimeMs + i + 1, stNow, true);
             }
             if (scoring) {
               /* Body rates, the two quaternion components the attitude test
@@ -9527,6 +9837,17 @@ export async function boot({ loading, bootStart, mapId }) {
       /* The cars, at the same clock, drawn at the craft's alpha in flight;
        * the title's and the finish's own clocks are whole steps, and the
        * title carries its fraction in titleAcc. */
+      syncBalloons();
+      if (balloonGame) {
+        if (mode === 'title') {
+          balloonTitleTick(dt);
+          balloonFrame(-1, dt, nowWall);
+        } else if (mode === 'results') {
+          balloonFrame(-1, 0, nowWall);
+        } else {
+          balloonFrame(simTimeMs - 1 + a, mode === 'flight' ? dt : 0, nowWall);
+        }
+      }
       if (trafficOn) {
         if (mode === 'title') {
           trafficFrame(titleStepMs, titleAcc);
@@ -10634,6 +10955,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * scoring path and not a mock of it.
    */
   window.__score = () => score.summary();
+  /* Balloon chase, for its checks: the game, or null while it is off. */
+  window.__balloons = () => balloonGame;
+  window.__balloonCraft = () => ({ ...balloonCraft });
   /*
    * THE COUNTER, for the checks and the flown rigs: the live view (the
    * HUD's, skim meter included), the summary, the newest events the HUD was

@@ -912,6 +912,47 @@
          centre third at any width and above the speed corner; the callouts
          stack upward from just over it.
          ------------------------------------------------------------------ */
+      /* BALLOON CHASE (src/ui/balloonhud.js): points, clock, best and
+         streak down the right above the chase meter; a +1 flash under them
+         at each pop; the round's result in the middle. The flash keyframes
+         run 700 ms, FLASH_MS in balloonhud.js: change both. */
+      .balloon-hud { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      .balloon-hud.is-off, .balloon-result.is-off { display: none; }
+      .balloon-box {
+        position: absolute; right: clamp(18px, 3vw, 40px); top: 26%;
+        display: flex; flex-direction: column; align-items: flex-end; line-height: 1;
+      }
+      .balloon-head { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--cream); font-weight: 700; }
+      .balloon-points { font-size: clamp(30px, 3.6vw, 44px); font-weight: 800; font-style: italic; color: var(--mint); margin-top: 2px; }
+      .balloon-clock { font-size: clamp(16px, 1.8vw, 22px); font-weight: 800; color: var(--amber); margin-top: 4px; }
+      .balloon-clock.is-low { color: #ff6f7e; }
+      .balloon-best, .balloon-streak { font-size: 12px; letter-spacing: 0.08em; color: var(--cream); margin-top: 4px; }
+      .balloon-streak { color: var(--amber); font-weight: 700; }
+      .balloon-flashes {
+        position: absolute; right: clamp(18px, 3vw, 40px); top: calc(26% + 120px);
+        display: flex; flex-direction: column; align-items: flex-end;
+      }
+      .balloon-flash {
+        font-size: clamp(18px, 2vw, 26px); font-weight: 800; font-style: italic; color: var(--mint);
+        animation: balloon-flash 700ms ease-out forwards;
+      }
+      .balloon-flash.is-gold { color: #ffd23a; }
+      @keyframes balloon-flash {
+        0% { opacity: 0; transform: translateY(8px) scale(0.8); }
+        15% { opacity: 1; transform: translateY(0) scale(1.15); }
+        30% { transform: scale(1); }
+        100% { opacity: 0; transform: translateY(-14px); }
+      }
+      .balloon-result {
+        position: absolute; left: 50%; top: 30%; transform: translateX(-50%);
+        display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+        padding: 16px 28px; border-radius: 10px; background: rgba(12, 22, 34, 0.55);
+      }
+      .balloon-result-head { font-size: clamp(28px, 4vw, 48px); font-weight: 800; font-style: italic; color: var(--amber); }
+      .balloon-result-points { font-size: clamp(22px, 3vw, 34px); font-weight: 800; color: var(--mint); }
+      .balloon-result-line { font-size: 14px; color: var(--cream); }
+      .balloon-result-next { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cream); opacity: 0.8; }
+      @media (prefers-reduced-motion: reduce) { .balloon-flash { animation: none; } }
       .chase-hud { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
       .chase-hud.is-off { display: none; }
       .chase-meter {

@@ -466,6 +466,7 @@
       'src/ui/firstflight.js',
       'src/ui/tuneinvite.js',
       'src/ui/chasehud.js',
+      'src/ui/balloonhud.js',
       'src/ui/mangapage.js',
       'src/ui/credits.js',
       'src/share/patreon.js',

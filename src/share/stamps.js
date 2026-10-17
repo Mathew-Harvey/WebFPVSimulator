@@ -45,6 +45,7 @@
 
 import { readAutosave } from '../trackbuilder/storage.js';
 import { docModeOf } from '../trackbuilder/elements.js';
+import { HOUSE_DOC_ID } from '../maps/registry.js';
 
 export const STAMPS_KEY = 'webfpv.stf.stamps.v1';
 
@@ -134,8 +135,10 @@ export function writeStamp(key, atUtc = new Date().toISOString()) {
 
 /*
  * The egg key of the world a card would fly, without building it, for the
- * stamp on the Freestyle screen: 'city' for the town, and for Your map the
- * key its map would give it, or null for anything that carries no mark.
+ * stamp on the Freestyle screen: 'city' for the town, Nick Burns' house by
+ * its fixed document's id (the registry's HOUSE_DOC_ID, which is the id
+ * src/maps/house/yard.js gives it), and for Your map the key its map would
+ * give it, or null for anything that carries no mark.
  *
  * Your map flies what chooseDocument in src/maps/built/index.js picks: the
  * freestyle seat when it holds a freestyle map with something on it, the
@@ -149,6 +152,9 @@ export function writeStamp(key, atUtc = new Date().toISOString()) {
 export function stampKeyForMap(mapId) {
   if (mapId === 'city') {
     return 'city';
+  }
+  if (mapId === 'house') {
+    return `built:${HOUSE_DOC_ID}`;
   }
   if (mapId !== 'built') {
     return null;

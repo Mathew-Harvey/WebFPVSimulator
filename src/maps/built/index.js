@@ -97,7 +97,7 @@ import { readAutosave } from '../../trackbuilder/storage.js';
 import { normalize } from '../../trackbuilder/model.js';
 import { docModeOf } from '../../trackbuilder/elements.js';
 import { PropKit, ownedPropMaterials } from '../../props/kit.js';
-import { addSolids } from '../../props/solids.js';
+import { addSolids, placeSolids } from '../../props/solids.js';
 import { rotorAngle, sailsOf } from '../../props/windmill.js';
 import { MOVER_SLOTS } from '../../game/plantworld.js';
 import { bakeSpecial, callsEverySighting, NINETY_SHARE, ninetyOf } from '../specials.js';
@@ -106,7 +106,9 @@ import { sincos } from '../../props/trig.js';
 import { makeStfMark } from '../../art/stf.js';
 import { makePartnerMark, signAspect } from '../../art/partnermark.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
-import { seatDocument, groundUnder, topUnder, PLATFORM_REACH, balloonChaseOf } from './place.js';
+import {
+  seatDocument, groundUnder, topUnder, indexTops, PLATFORM_REACH, balloonChaseOf,
+} from './place.js';
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost, skyLook } from './looks.js';
 import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, stfKey } from './egg.js';
@@ -1159,6 +1161,46 @@ function trianglesOf(root) {
   return Math.round(n);
 }
 
+/*
+ * A STRUCTURE A MAP BRINGS OF ITS OWN, beside its document: Nick Burns'
+ * house (src/maps/house/), which is one building too particular for any
+ * asset in the builder's palette. `extra` is
+ *
+ *   { el, parts, draw(kit) }
+ *
+ *   el      an element-shaped name for it, { id, type }, which no asset
+ *           answers to: the kit draws nothing for it, and ./egg.js can
+ *           still pair its walls with their solids and paint a mark on one
+ *   parts   ./../../props/parts.js parts in the WORLD frame, every box on
+ *           the axes: drawn and solid from the same six numbers, as an
+ *           asset's are
+ *   draw    optional, paint over the parts in the world frame (a roof's
+ *           slopes, which no box can be)
+ *
+ * It goes in as the last item and its solids as the last solids, in part
+ * order, which is the pairing ./egg.js checks. The box tops are indexed
+ * again so a floor upstairs is ground to the shell as it is to the plant,
+ * and the start pads are seated again on those tops, since pads laid on the
+ * structure's floor were seated on the paving under it.
+ */
+const EXTRA_CHUNK = 'extra';
+
+function addExtra(placed, extra) {
+  placeSolids(extra.parts, 0, 0, 0, 0, 'quarter', placed.solids, placed.stats);
+  placed.items.push({
+    el: extra.el, kind: 'structure', x: 0, y: 0, z: 0, yaw: 0, turns: 'quarter', parts: extra.parts,
+  });
+  placed.tops = indexTops(placed.solids);
+  const sp = placed.spawn;
+  if (sp && sp.from === 'pads') {
+    sp.y = topUnder(placed.tops, sp.x, sp.z, sp.base);
+    const pads = placed.items.find((it) => it.el && it.el.type === 'startPads');
+    if (pads) {
+      pads.y = sp.y;
+    }
+  }
+}
+
 export async function buildMap(shell, onProgress, options) {
   const t0 = performance.now();
   const renderer = shell.renderer;
@@ -1184,6 +1226,12 @@ export async function buildMap(shell, onProgress, options) {
     console.error('specials: nothing baked in on this map', e);
   }
   const { placed } = seatDocument(doc);
+  /* A structure the map brings of its own (src/maps/house/), after the
+   * document is seated and before anything reads what was placed. */
+  const extra = opts.extra ?? null;
+  if (extra) {
+    addExtra(placed, extra);
+  }
   /* Its roads and the cars on them (./traffic.js), worked out once: the
    * same lanes, offsets and bodies go to the plant (the shell uploads them,
    * see uploadTraffic below) and to the drawing, so the car drawn is the
@@ -1202,30 +1250,39 @@ export async function buildMap(shell, onProgress, options) {
   } catch (e) {
     console.error('stf: no spot for the mark on this map', e);
   }
+  /* A map that brings a structure of its own may ask for no partner or
+   * patron marks (src/maps/house/: a sign on somebody's real house reads as
+   * that person vouching for it, and the board's counters have no word for
+   * the map). The STF mark is the project's own and stays. */
+  const sponsorMarks = opts.sponsorMarks ?? true;
   /* And the partners', after it and never on its wall (./egg.js, rule 8),
    * for the same reason read only and for the same reason forgiving. Include
    * both PARTNERS and MAP_ONLY_PARTNERS for freestyle map placement. */
   let partnerSpots = [];
-  try {
-    const allPartners = [...PARTNERS, ...MAP_ONLY_PARTNERS];
-    partnerSpots = choosePartnerSpots(placed, doc, chosen.source, stfSpot,
-      allPartners.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
-  } catch (e) {
-    console.error('partners: no spots for the marks on this map', e);
+  if (sponsorMarks) {
+    try {
+      const allPartners = [...PARTNERS, ...MAP_ONLY_PARTNERS];
+      partnerSpots = choosePartnerSpots(placed, doc, chosen.source, stfSpot,
+        allPartners.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
+    } catch (e) {
+      console.error('partners: no spots for the marks on this map', e);
+    }
   }
   /* And the patrons', after partners and never on a partner's or STF's wall
    * (./egg.js, rule 8). At most PATRON_MAX_PER_MAP per map, chosen
    * deterministically by the map's key. */
   let patronSpots = [];
-  try {
-    const mapKey = stfKey(doc, chosen.source);
-    const chosenPatrons = choosePatrons(PATRON_MAP_BRANDS, mapKey);
-    if (chosenPatrons.length > 0) {
-      patronSpots = choosePatronSpots(placed, doc, chosen.source, stfSpot, partnerSpots,
-        chosenPatrons.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
+  if (sponsorMarks) {
+    try {
+      const mapKey = stfKey(doc, chosen.source);
+      const chosenPatrons = choosePatrons(PATRON_MAP_BRANDS, mapKey);
+      if (chosenPatrons.length > 0) {
+        patronSpots = choosePatronSpots(placed, doc, chosen.source, stfSpot, partnerSpots,
+          chosenPatrons.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
+      }
+    } catch (e) {
+      console.error('patrons: no spots for the marks on this map', e);
     }
-  } catch (e) {
-    console.error('patrons: no spots for the marks on this map', e);
   }
   /* Its time of day and its ground (./looks.js): golden over concrete for
    * a map that never chose, which is this map as it always was. */
@@ -1337,6 +1394,17 @@ export async function buildMap(shell, onProgress, options) {
   for (const it of placed.items) {
     kit.begin(it.x, it.y, it.z, it.yaw, chunkKeyOf(it));
     kit.element(it.el);
+  }
+  /* The map's own structure, in a chunk of its own, so it culls as one
+   * cell and bakes to one batch per material. */
+  if (extra) {
+    kit.begin(0, 0, 0, 0, EXTRA_CHUNK);
+    for (const p of extra.parts) {
+      kit.part(p);
+    }
+    if (extra.draw) {
+      extra.draw(kit);
+    }
   }
   progress(0.7);
   await yieldToPaint();

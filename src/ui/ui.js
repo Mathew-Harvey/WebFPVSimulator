@@ -789,8 +789,8 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  * under the bar, where it is the longest.
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
-  const built = mapId === 'built';
-  const where = built ? (fromBoard ? 'this map' : 'Your map') : 'the town';
+  const built = mapId === 'built' || mapId === 'house';
+  const where = mapId === 'house' ? "Nick's house" : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -812,6 +812,11 @@ const BUILT_OFF_BOARD = 'A map you built is a different place for every pilot wh
  * a published map yet, and main.js refuses the post for every built world. */
 const BOARD_MAP_OFF_BOARD = 'The board keeps no runs for a published map yet, so a run flown on one'
   + ' stays here. Fly the town for a run that can go up.';
+
+/* Nick Burns' house is the same place for everybody, like the town, but the
+ * board keeps no table for it, and main.js refuses the post the same way. */
+const HOUSE_OFF_BOARD = "The board keeps no runs for Nick Burns' house, so a run flown there stays here."
+  + ' Fly the town for a run that can go up.';
 
 /*
  * What the results say about this browser's best counter on the map. The
@@ -10109,7 +10114,7 @@ export class Ui {
          * be posted, so telling a pilot to fly a trick first, or to switch
          * to Scored, would send them to fix something that is not the
          * reason. */
-        const built = this.settings.map === 'built';
+        const built = this.settings.map === 'built' || this.settings.map === 'house';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -10134,7 +10139,8 @@ export class Ui {
               disabled: built || nothing || Boolean(run && run.assisted)
                 || (run && run.timed === false) || Boolean(run && run.weightMixed)
                 || Boolean(run && run.tuned),
-              note: built ? (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD) : (nothing
+              note: built ? (this.settings.map === 'house' ? HOUSE_OFF_BOARD
+                : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false
                   ? 'Free flight has no clock, so there is nothing for a board to compare it against. Set Scoring to Scored run in the Maps room and fly it again.'

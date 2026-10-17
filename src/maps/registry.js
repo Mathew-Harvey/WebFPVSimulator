@@ -79,7 +79,27 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.built,
     load: () => import('./built/index.js'),
   },
+  /*
+   * NICK BURNS' HOUSE, on the owner's ask of 17 October 2026, with Nick's
+   * permission: his house, its yard and its end of the street at three times
+   * life size, so a five inch flies it the way a 75 mm whoop flies a real
+   * house (src/maps/house/). A fixed world like the town, built by the
+   * built map's pipeline, and like Your map off the board: the board keeps
+   * no runs for it, so nothing flown here is posted.
+   */
+  {
+    id: 'house',
+    name: "Nick Burns' house",
+    mode: 'freestyle',
+    note: "Nick Burns' house at three times life size, so a five inch flies it like a whoop flies a real one: every room, the stairs, the garage, the pergola, the pool and the street.",
+    buildMs: MAP_BUILD_MS.house,
+    load: () => import('./house/index.js'),
+  },
 ];
+
+/* The house's document id (src/maps/house/yard.js), here so the stamps can
+ * key the map without loading the house to find it (src/share/stamps.js). */
+export const HOUSE_DOC_ID = 'trk-4e0b5e11';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

@@ -39,6 +39,7 @@ import * as STREET from './street.js';
 import * as SKATE from './skate.js';
 import * as COURSE from './course.js';
 import * as WINDMILL from './windmill.js';
+import * as HOMES from './homes.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
   craneLayout, craneDraw, waterLayout, waterDraw, mastLayout, mastDraw, chimneyLayout, chimneyDraw,
@@ -138,7 +139,9 @@ export const FURNITURE = {
  * at once without touching the same line. A name two families both claim is
  * a mistake, and it throws here rather than one silently winning.
  */
-const FAMILIES = { buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL };
+const FAMILIES = {
+  buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES,
+};
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};
 for (const [fname, mod] of Object.entries(FAMILIES)) {

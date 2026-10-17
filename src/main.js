@@ -114,7 +114,6 @@ import {
   clearPendingTime,
   readEditKey,
   readPendingTime,
-  readPostedBest,
   writePendingTime,
   writePostedBest,
   writeShareImport,
@@ -750,14 +749,6 @@ export async function boot({ loading, bootStart, mapId }) {
     }),
   });
   
-  /* Track total session flight time for the support prompt trigger at 20 minutes */
-  let sessionFlightTimeMs = 0;
-  let lastFlightTick = 0;
-  let sessionTimePromptShown = false;
-  /* Set in the air when the clock passes the line, and spent on the next
-   * pause or results screen, which is where the prompt is shown. */
-  let sessionTimePromptDue = false;
-  const SESSION_TIME_PROMPT_MS = 20 * 60 * 1000; /* 20 minutes */
   /*
    * THE PROMPT ON SCREEN, and the screen it was shown on. It goes the
    * moment that screen is left: "never during a run", and a pilot on a
@@ -770,8 +761,9 @@ export async function boot({ loading, bootStart, mapId }) {
   let supportPrompt = null;
   let supportPromptScreen = null;
   const offerSupport = (trigger) => {
-    /* A lap posts while the pilot may already be flying again. */
-    if (ui.settings.supportPrompts === false || ui.screen === 'flight') {
+    /* Never in the air, and never over anything else the pilot is being
+     * asked: see Ui.supportPromptBlocked. */
+    if (ui.settings.supportPrompts === false || ui.screen === 'flight' || ui.supportPromptBlocked()) {
       return;
     }
     try {
@@ -786,6 +778,19 @@ export async function boot({ loading, bootStart, mapId }) {
     } catch (promptError) {
       console.warn('support prompt', promptError);
     }
+  };
+  /* Once per exit from a flight to the title, called by Ui.act after
+   * onAction has run (fullscreen left, the run reset). */
+  ui.onFlightExit = () => offerSupport('exit');
+  /* Escape or pad Back on the title closes the prompt and nothing else. */
+  ui.closeSupportPrompt = () => {
+    if (!supportPrompt) {
+      return false;
+    }
+    supportPrompt.remove();
+    supportPrompt = null;
+    supportPromptScreen = null;
+    return true;
   };
   /*
    * The last flush, sent when the page goes away. pagehide rather than
@@ -6384,15 +6389,7 @@ export async function boot({ loading, bootStart, mapId }) {
           throw e;
         }
       }
-      /* Read before the write replaces it. writePostedBest answers true for
-       * a lap stored AND for one the stored best already beats, so whether
-       * this lap beat the pilot's own posted best is worked out here. Until
-       * 2026-10-05 readPostedBest was not imported, so this line threw with
-       * the lap already on the board and the pilot was told it had not
-       * posted (bug-7f783182). */
-      const prevBest = readPostedBest(trackIdNow);
       writePostedBest(trackIdNow, fastest);
-      const newBest = prevBest != null && Math.round(fastest) < prevBest;
       /* Under the id it was stored against, which is the one the pilot flew
        * it on, and under the live one too when the seat moved: a pending lap
        * left behind a heal would be offered for upload again forever. */
@@ -6414,12 +6411,6 @@ export async function boot({ loading, bootStart, mapId }) {
         untilMs: performance.now() + 3600,
       };
       ui.markTimePosted(posted);
-      /* Show support prompt on new personal best, if enabled. The lap is on
-       * the board by here, so a prompt that fails says nothing (offerSupport):
-       * the catch below would tell the pilot the time had not posted. */
-      if (newBest) {
-        offerSupport('pb');
-      }
     } catch (e) {
       notice = { text: `Could not post that time.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
     }
@@ -8241,37 +8232,9 @@ export async function boot({ loading, bootStart, mapId }) {
         flying: flownThisRun && !landed && !turtleWait && !turtleRecover,
         laps: race.laps.length,
       });
-      
-      /* Track session flight time for support prompt at 20 minutes. In
-       * flight: a pause holds the craft in the air, and was counted. */
-      if (flownThisRun && !landed && !turtleWait && !turtleRecover && ui.screen === 'flight') {
-        const was = lastFlightTick;
-        lastFlightTick = nowWall;
-        if (was > 0 && nowWall > was) {
-          sessionFlightTimeMs += Math.min(nowWall - was, 1000);
-          /* Show support prompt after 20 minutes of flying if not already
-           * shown. This read was a bare `settings` until 2026-10-05, which
-           * is not a name in this scope: every frame in the air after twenty
-           * minutes threw, and the fault came back the moment the craft was
-           * flying again after R (bug-7f783182, bug-551a5c32, bug-03ae2f2a).
-           * scripts/longflight-check.js flies past the line. */
-          if (!sessionTimePromptShown
-              && sessionFlightTimeMs >= SESSION_TIME_PROMPT_MS
-              && ui.settings.supportPrompts !== false
-              && ui.screen === 'flight') {
-            sessionTimePromptShown = true;
-            sessionTimePromptDue = true;
-          }
-        }
-      }
-      /* Shown when the pilot next stops. It used to look once, 100 ms
-       * after the line, when the pilot was still flying, so it never showed. */
-      if (sessionTimePromptDue && (ui.screen === 'paused' || ui.screen === 'results')) {
-        sessionTimePromptDue = false;
-        offerSupport('time');
-      }
     }
-    if (supportPrompt && (ui.screen !== supportPromptScreen || !supportPrompt.isConnected)) {
+    if (supportPrompt && (ui.screen !== supportPromptScreen || !supportPrompt.isConnected
+        || ui.supportPromptBlocked(true))) {
       supportPrompt.remove();
       supportPrompt = null;
       supportPromptScreen = null;
@@ -10685,19 +10648,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The whoop room's race line, for the harness: its state, or null on a
    * world that has none. */
   window.__raceLine = () => (view && view.raceLine ? view.raceLine : null);
-  /* The support prompt's session clock, read and set. A check cannot fly
-   * for twenty minutes to reach the line that faulted every frame on
-   * 2026-10-05, so scripts/longflight-check.js sets the clock just short of
-   * it and flies across. Nothing in the shell calls it. */
-  window.__sessionFlight = (ms) => {
-    if (Number.isFinite(ms)) {
-      sessionFlightTimeMs = ms;
-    }
-    return {
-      ms: sessionFlightTimeMs, shown: sessionTimePromptShown, due: sessionTimePromptDue,
-      thresholdMs: SESSION_TIME_PROMPT_MS, prompt: supportPrompt ? supportPromptScreen : null,
-    };
-  };
+  /* Whether the support prompt is up, and on which screen, for the checks. */
+  window.__supportPrompt = () => ({ shown: Boolean(supportPrompt), screen: supportPrompt ? supportPromptScreen : null });
   /* P12 and P13 are audio budgets, and neither can be read while the audio
    * context is null: update() returns immediately and reports a cost of
    * nothing. A capture run has to click the page to satisfy the browser's

@@ -36,6 +36,10 @@ import { counting, eventsUrl } from './stats.js';
 export const PATREON_URL = 'https://www.patreon.com/cw/webfpv/membership';
 
 /* Stripe tip link for one-off donations */
+/* The US$1 a month "Buy Mat a coffee" tier's join link, which the support
+ * prompt's Patreon button opens (Patreon tier id 29846312). */
+export const COFFEE_TIER_URL = 'https://www.patreon.com/checkout/webfpv?rid=29846312';
+
 export const TIP_URL = 'https://donate.stripe.com/7sY4gzaAC2Eu3aOews8so0g';
 
 export const PATREON_NOTE = 'Support WebFPV on Patreon. Keep the lights on, $3. Hosting + runway, $8. Build the sim, $20. Your sign in the sim, $25. USD a month.';

@@ -1,6 +1,8 @@
 /*
  * support-selftest.js: the Support link against a stub browser: where it
- * goes, how its tab is opened, and the one beacon a press sends.
+ * goes, how its tab is opened, and the one beacon a press sends. And the
+ * support prompt (src/share/supportprompt.js): no weekly gate, trigger
+ * 'exit', both opt-outs respected, one beacon a show and none when off.
  *
  * Usage:
  *   npm run support:selftest
@@ -22,6 +24,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { TIP_URL } from '../src/share/supportprompt.js';
 import { INSTAGRAM_NOTE, INSTAGRAM_URL, PATREON_NOTE, PATREON_URL, bindPatreon, openInstagram, openSupport } from '../src/share/patreon.js';
 
 const PAGE = 'https://www.patreon.com/cw/webfpv/membership';
@@ -104,6 +108,55 @@ nav.sendBeacon = () => {
 };
 press();
 check('a beacon that throws does not stop the link', opened.length === 1, `${opened.length} opened`);
+
+/* The prompt. A store that remembers, and a document that builds nodes. */
+const { showSupportPrompt, canShowPrompt, isPromptDisabled, disablePrompt } = await import('../src/share/supportprompt.js');
+const store = new Map();
+globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
+const node = (tag) => {
+  const n = { tag, children: [], attrs: {}, listeners: {}, removed: false };
+  n.append = (...c) => n.children.push(...c);
+  n.setAttribute = (k, v) => { n.attrs[k] = v; };
+  n.addEventListener = (k, f) => { n.listeners[k] = f; };
+  n.remove = () => { n.removed = true; };
+  return n;
+};
+const docBody = node('body');
+globalThis.document = { body: docBody, createElement: node };
+const textOf = (n) => [n.textContent || '', ...n.children.map(textOf)].join(' ');
+const links = (n) => (n.tag === 'a' ? [n] : []).concat(...n.children.map(links));
+nav.sendBeacon = (url, blob) => beacons.push({ url, blob }) > 0;
+delete nav.globalPrivacyControl;
+beacons.length = 0;
+store.set('webfpv.support.prompt.v1', JSON.stringify({ lastShownMs: Date.now() }));
+check('prompt: a show a moment ago does not gate the next one', canShowPrompt() === true, '');
+const first = showSupportPrompt('exit');
+const second = showSupportPrompt('exit');
+check('prompt: two exits in a row show twice', Boolean(first) && Boolean(second), '');
+const pBeacons = await Promise.all(beacons.map((b) => b.blob.text()));
+check('prompt: one beacon a show, source sim-exit',
+  pBeacons.length === 2 && pBeacons.every((t) => /"kind":"support_prompt_shown","source":"sim-exit"/.test(t)), pBeacons[0]);
+check('prompt: the message is the agreed words',
+  textOf(first).includes('I build WebFPV in my spare time. If you\'re enjoying it, buy me a $1 coffee on Patreon or a one-off battery to help keep it free.'), '');
+const ls = links(first);
+check('prompt: the two buttons', ls.map((l) => l.textContent).join('|') === 'Buy Mat a coffee $1/mo|One-off $5', ls.map((l) => l.textContent).join('|'));
+check('prompt: the coffee button is the coffee tier, tagged',
+  ls[0].href === 'https://www.patreon.com/checkout/webfpv?rid=29846312&utm_source=sim-prompt&ref=sim-prompt', ls[0].href);
+check('prompt: the tip link is the tip URL, tagged exit',
+  ls[1].href.startsWith(TIP_URL) && /client_reference_id=prompt-exit/.test(ls[1].href), ls[1].href);
+check('prompt: new tab, no opener', ls.every((l) => l.target === '_blank' && l.rel === 'noopener noreferrer'), '');
+check('prompt: no early-access, perks or unlock wording', !/early.access|perk|unlock/i.test(textOf(first)), '');
+beacons.length = 0;
+disablePrompt();
+check('prompt: the disabled key is read', isPromptDisabled() === true && canShowPrompt() === false, '');
+check('prompt: disabled shows nothing and sends no beacon', showSupportPrompt('exit') === null && beacons.length === 0, `${beacons.length} sent`);
+store.delete('webfpv.support.disabled.v1');
+store.set('webfpv.settings.v3', JSON.stringify({ supportPrompts: false }));
+check('prompt: Settings Off shows nothing and sends no beacon', showSupportPrompt('exit') === null && beacons.length === 0, `${beacons.length} sent`);
+store.set('webfpv.settings.v3', JSON.stringify({ supportPrompts: true }));
+check('prompt: back On shows again', Boolean(showSupportPrompt('exit')), '');
+const src = readFileSync(new URL('../src/share/supportprompt.js', import.meta.url), 'utf8');
+check('prompt: no weekly gate left in the module', !/ONE_WEEK_MS|readPromptState/.test(src), '');
 
 /* Every file git has or would add, but PROGRESS.md, which records what was
  * true when it was written, and this file, which names what it looks for. */

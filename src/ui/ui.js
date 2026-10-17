@@ -9807,7 +9807,7 @@ export class Ui {
         toggle(
           'Support prompts',
           s.supportPrompts !== false
-            ? 'On: show a small support prompt at good moments (new personal best, after about 20 minutes of flying, or after publishing a map). At most once a week.'
+            ? 'On: show a small support prompt each time you leave a flight.'
             : 'Off: never show support prompts.',
           s.supportPrompts !== false,
           (v) => { s.supportPrompts = v; },
@@ -18077,6 +18077,11 @@ export class Ui {
   }
 
   back() {
+    /* A support prompt on the title is closed by Back before the title's own
+     * Back (the gate) is taken, so one press does one thing. */
+    if (this.screen === 'title' && this.closeSupportPrompt && this.closeSupportPrompt()) {
+      return;
+    }
     if (this.dropEl) {
       this.closeDrop();
       if (this.onUiSound) {
@@ -19057,7 +19062,8 @@ export class Ui {
      * was flown on the tuned sliders before main.js clears it with the run
      * (onAction 'title' resets), and ask once the title is up. From Results
      * the question was asked on arrival and is not asked again. */
-    const leaving = action === 'title' && (this.screen === 'paused' || this.screen === 'flight')
+    const from = this.screen;
+    const leaving = action === 'title' && (from === 'paused' || from === 'flight')
       ? this.takeTuneFlight()
       : null;
     if (action === 'title' || action === 'paused') {
@@ -19075,6 +19081,31 @@ export class Ui {
       this.resultsTune = null;
       this.maybeAskTune(leaving);
     }
+    /* The support prompt, last: after the exit has happened, and after the
+     * tune question is pending so supportPromptBlocked can see it. One call
+     * per exit, from the one place a flight is left for the title. */
+    if (action === 'title' && (from === 'flight' || from === 'paused' || from === 'results')
+        && this.onFlightExit) {
+      this.onFlightExit(from);
+    }
+  }
+
+  /*
+   * WHAT THE SUPPORT PROMPT YIELDS TO. It is the lowest thing on the title:
+   * the tune question (pending, or up), the feel report and the bug and name
+   * dialogs all win, and the invitation card is a flight card. If one is up
+   * or pending when a pilot leaves a flight, this exit simply gets no prompt
+   * (it is not held for later), and one that opens while the prompt is up
+   * takes the prompt away (`up`, polled by the frame loop), so the two are
+   * never on screen together whichever came first.
+   */
+  supportPromptBlocked(up = false) {
+    return Boolean(
+      (!up && this.tuneAskTimer)
+      || this.bugFiling
+      || (this.nameDialog && !this.nameDialog.hidden)
+      || (this.invite && this.invite.up),
+    );
   }
 
   /* Returns true when the key was a menu key and the shell should not

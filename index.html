@@ -2804,22 +2804,29 @@
       .screen-title a.patreon { text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65); }
 
       /* ---- SUPPORT PROMPT ----------------------------------------------
-         Soft support prompt shown at good moments (new PB, 20 min session,
-         map publish). Dismissible, at most once a week. ------------------- */
+         Soft support prompt shown on every exit from a flight to the title.
+         Dismissible. ------------------------------------------------------ */
       /* On the body, never in a screen: a screen is pointer-events none and
          its children inherit it, which made every button on the prompt a
          hole to the page behind (src/share/supportprompt.js). The builder's
          page carries a copy of these rules for its own prompt. */
       .support-prompt {
         position: fixed; z-index: 1000; pointer-events: auto;
-        top: 50%; left: 50%;
-        transform: translate(-50%, -50%);
-        max-width: 420px; width: calc(100% - 40px);
+        /* Up in the band between the wordmark and the title's cards, not
+           centred: centred it sat over the cards at 390 px and at 1280x720,
+           and it is now shown on the title (every exit), where the menu is. */
+        top: 108px; left: 50%;
+        transform: translateX(-50%);
+        box-sizing: border-box;
+        max-width: 420px; width: calc(100% - 32px);
         padding: 24px 48px 24px 24px;
         border-radius: 6px;
         background: rgba(16, 22, 17, 0.95);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(244, 236, 214, 0.2);
         backdrop-filter: blur(8px);
+      }
+      @media (min-width: 900px) {
+        .support-prompt { top: 64px; left: auto; right: 24px; transform: none; max-width: 492px; }
       }
       .support-prompt-message {
         margin: 0 0 20px 0;

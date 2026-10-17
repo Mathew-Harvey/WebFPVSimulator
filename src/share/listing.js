@@ -94,6 +94,66 @@ export function layoutFingerprint(doc) {
   });
 }
 
+/*
+ * THE WHOLE OF A MAP, AS A SHORT STRING TWO COPIES SHARE WHEN NOTHING IN
+ * THEM DIFFERS. For a plain document, as toPlain writes one and as the board
+ * stores and hands one back.
+ *
+ * layoutFingerprint above asks a narrower question, whether a lap could
+ * change, and leaves the paint out on purpose. On a map the paint can be the
+ * point of it. On 2026-10-17 the browser that first published the Infinity
+ * Loops map still held its copy from before an admin put 106 stickers on the
+ * board's, opening the board link left that copy on the canvas because it
+ * had the same id, and Publish put it back over the stickers with nothing
+ * said. Nothing could tell the two apart: a map has no times to clear, so no
+ * fingerprint of it was kept anywhere. This one is, as boardHash in the map's
+ * own listing (writeMapListing in ./session.js): what the board held the last
+ * time this browser and the board agreed about the map.
+ *
+ * Keys are sorted at every depth, because the board's Postgres hands a
+ * document back with its keys in an order of its own, and modifiedUtc is left
+ * out, because a save that changed nothing still moves it. Two 32 bit FNV-1a
+ * lanes and the length: a question about one map, not a signature.
+ */
+export function contentFingerprint(plain) {
+  if (!plain || typeof plain !== 'object') {
+    return '';
+  }
+  const sorted = (v) => {
+    if (Array.isArray(v)) {
+      return v.map(sorted);
+    }
+    if (v && typeof v === 'object') {
+      const out = {};
+      for (const k of Object.keys(v).sort()) {
+        out[k] = sorted(v[k]);
+      }
+      return out;
+    }
+    return v;
+  };
+  const text = JSON.stringify(sorted({ ...plain, modifiedUtc: null }));
+  let a = 0x811c9dc5;
+  let b = 0x2f2b8e3d;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193);
+    b = Math.imul(b ^ c, 0x01000193) ^ (b >>> 15);
+  }
+  return `${text.length.toString(36)}.${(a >>> 0).toString(36)}.${(b >>> 0).toString(36)}`;
+}
+
+/*
+ * The pieces a board copy of a map holds that `plain` does not, by id: the
+ * pieces a Publish of `plain` would take off the board. The count the publish
+ * warning says, and what tells a board copy that is newer than this browser's
+ * from one that is only older, for a map published before boardHash was kept.
+ */
+export function piecesOnlyOnBoard(board, plain) {
+  const here = new Set((plain?.elements ?? []).map((e) => e?.id));
+  return (board?.elements ?? []).filter((e) => e && !here.has(e.id)).length;
+}
+
 
 /*
  * THE SAME TRACK, UNDER WHATEVER ID THE BOARD HOLDS IT AT NOW.

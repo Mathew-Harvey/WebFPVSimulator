@@ -232,6 +232,8 @@
     'src/maps/field.js',
     'src/maps/preload.js',
     'src/maps/registry.js',
+    'src/maps/specials.js',
+    'src/maps/specials/infinityloops.js',
     'src/partners/patrons.js',
     'src/partners/roster.js',
     'src/props/aperture.js',

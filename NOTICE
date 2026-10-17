@@ -138,6 +138,21 @@ partnership to show.
 The copies in the front door's and the board's repositories are these files,
 copied byte for byte, and this entry covers them there too.
 
+## The 90%er sticker sheets
+
+    Files       assets/stickers/infinityloops/sheet-1.webp and sheet-2.webp
+    Licence     NOT GPLv3. Each sticker is its maker's mark, shown as a
+                tribute on one map at the owner's request.
+
+The owner's own 90%ers sticker bomb sheet, photographed and given on
+2026-10-15 for a tribute map to the 90%ers on the board's Infinity Loops map
+(trk-e6d139f6), with the 90% patch and the Infinity Loops logos. The stickers
+were cut out of the photograph and packed onto these two sheets, 2048 px
+wide, as webp. They are the two sticker logos the board's copy of that map
+carries, byte for byte, and are in this repository only so that
+src/maps/specials.js can paint them on that map whatever copy of it is flown.
+The project's GPLv3 grant does not extend to them.
+
 ## three.js
 
     Upstream    https://github.com/mrdoob/three.js

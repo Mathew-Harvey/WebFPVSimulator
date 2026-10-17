@@ -100,6 +100,7 @@ import { PropKit, ownedPropMaterials } from '../../props/kit.js';
 import { addSolids } from '../../props/solids.js';
 import { rotorAngle, sailsOf } from '../../props/windmill.js';
 import { MOVER_SLOTS } from '../../game/plantworld.js';
+import { bakeSpecial, callsEverySighting, NINETY_SHARE, ninetyOf } from '../specials.js';
 import { poleWireAnchors } from '../../props/street.js';
 import { sincos } from '../../props/trig.js';
 import { makeStfMark } from '../../art/stf.js';
@@ -1173,6 +1174,15 @@ export async function buildMap(shell, onProgress, options) {
    * Silent, and what is stored is not touched. */
   const chosen = chooseDocument(opts);
   const { doc, repairs } = normalize(chosen.raw);
+  /* A map with something of its own baked into the simulator (../specials.js,
+   * the Infinity Loops stickers) wears it whatever copy of it this is, so it
+   * goes in before anything is placed. A sheet that cannot be fetched leaves
+   * the map as its document has it, and the console says why. */
+  try {
+    await bakeSpecial(doc);
+  } catch (e) {
+    console.error('specials: nothing baked in on this map', e);
+  }
   const { placed } = seatDocument(doc);
   /* Its roads and the cars on them (./traffic.js), worked out once: the
    * same lanes, offsets and bodies go to the plant (the shell uploads them,
@@ -1638,6 +1648,18 @@ export async function buildMap(shell, onProgress, options) {
      * with '#sticker:' and the decal's id: see stickerSheet in ./ground.js
      * and `stickers` in src/maps/README.md. Paint only. */
     stickers: ground.stickers.map((s) => ({ ...s, key: `${stfKey(doc, chosen.source)}#sticker:${s.id}` })),
+    /* Whether a sticker here is called out every time it is seen again, not
+     * only on its find, and the achievement for finding nine in ten of them:
+     * one map's, see ../specials.js. `need` is how many that is, `key` its
+     * stamp, `picture` the sticker whose picture it shows. */
+    stickersEverySighting: callsEverySighting(doc.id),
+    stickersNinety: ninetyOf(doc.id) && ground.stickers.length
+      ? {
+        ...ninetyOf(doc.id),
+        need: Math.ceil(ground.stickers.length * NINETY_SHARE),
+        key: `${stfKey(doc, chosen.source)}#ninety`,
+      }
+      : null,
     /* The author's named gaps as world rectangles, for the counter
      * (src/game/gaps.js): placeDocument's zones, placed by the one
      * conversion everything on this map goes through. Nothing solid and

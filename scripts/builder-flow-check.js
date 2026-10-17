@@ -5492,6 +5492,138 @@ kase('official tracks', async () => {
 });
 
 /*
+ * A MAP'S BOARD COPY THAT MOVED ON WITHOUT THIS BROWSER IS NOT PUBLISHED OVER
+ * (2026-10-17). An admin put 106 stickers on the board's copy of the Infinity
+ * Loops map; its author's builder still held the copy from before them, under
+ * the same id, so the board link left that copy on the canvas ("already on your
+ * canvas") and Update the board put it back over the stickers. Now the board
+ * link opens the board's copy, or asks when it cannot tell which is newer, and
+ * Update asks before taking pieces off the board that the canvas has not got.
+ * `--root=` on a checkout from before the fix fails the first check.
+ */
+kase('map board copy', async () => {
+  const BOARD = 'https://board.test';
+  const { createTrack, createElement, toPlain } = await import(pathToFileURL(resolve(root, 'src/trackbuilder/model.js')).href);
+  const listing = await import(pathToFileURL(resolve(root, 'src/share/listing.js')).href);
+  const fingerprint = listing.contentFingerprint || (() => '');
+  const base = createTrack('Sticker plot', 'full', 'freestyle');
+  /* One at a time: an element's id is the next one free in the document, so two made before either is pushed share one. */
+  base.elements.push(createElement(base, 'tree', { x: 20, y: 20, z: 0 }));
+  base.elements.push(createElement(base, 'tree', { x: 40, y: 24, z: 0 }));
+  const A = toPlain(base);
+  const stickered = createTrack('Sticker plot', 'full', 'freestyle');
+  stickered.id = base.id;
+  stickered.elements = A.elements.map((e) => ({ ...e }));
+  for (let i = 0; i < 3; i += 1) {
+    const el = createElement(stickered, 'groundLogo', { x: 10 + i * 6, y: 30, z: 0 });
+    stickered.elements.push(el);
+  }
+  const B = toPlain(stickered);
+  B.elements.filter((e) => e.type === 'groundLogo').forEach((e, i) => { e.crop = { x: i * 0.25, y: 0, w: 0.25, h: 0.5 }; e.achievement = '90%er'; });
+  const edited = JSON.parse(JSON.stringify(A));
+  edited.elements[1].position.x += 6;
+  const at = (query = '') => `/src/trackbuilder/index.html?mode=freestyle&board=${BOARD}${query}`;
+  const modal = (page) => page.evaluate("(() => { const m = document.getElementById('tb-modal'); return m.hidden ? '' : m.textContent; })()");
+  const press = (page, label) => page.evaluate(`(() => { const b = [...document.querySelectorAll('#tb-modal button')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (b) b.click(); return Boolean(b); })()`);
+  const toast = (page) => page.evaluate("document.getElementById('tb-toast').textContent");
+  const canvas = (page) => json(page, "(() => { const d = window.trackBuilder.doc; return { id: d.id, pieces: d.elements.length, crops: d.elements.filter((e) => e.crop).length, x: (d.elements[1] || {}).position?.x }; })()");
+  const posts = (page) => page.evaluate("window.__api.filter((c) => c.startsWith('POST') && /\\/api\\/maps$/.test(c)).length");
+  const library = (page) => json(page, "Object.values(JSON.parse(localStorage.getItem('webfpv.trackbuilder.library.v1') || '{}')).map((d) => d.name + '/' + d.elements.length)");
+  const boardHash = (page) => page.evaluate(`(JSON.parse(localStorage.getItem('webfpv.share.maps.v1') || '{}')[${JSON.stringify(A.id)}] || {}).boardHash || ''`);
+  /* What the author's browser held, and what the board holds, before the page's first line. */
+  const held = ({ seat, onBoard, hash = '' }) => `(() => {
+    try {
+      if (sessionStorage.getItem('flow-seeded')) return;
+      sessionStorage.setItem('flow-seeded', '1');
+      localStorage.setItem('webfpv.trackbuilder.autosave.freestyle.v1', ${JSON.stringify(JSON.stringify(seat))});
+      localStorage.setItem('webfpv.share.maps.v1', ${JSON.stringify(JSON.stringify({ [A.id]: { editKey: 'flow-key', board: BOARD, author: 'Mat', nameOnBoard: 'Sticker plot', ...(hash ? { boardHash: hash } : {}) } }))});
+      localStorage.setItem('flow-board:maps:' + ${JSON.stringify(A.id)}, ${JSON.stringify(JSON.stringify({ id: A.id, name: 'Sticker plot', author: 'Mat', document: onBoard }))});
+    } catch (e) {}
+  })()`;
+  const open = async (query, seeds) => {
+    const page = await openPage({ root, width: 1600, height: 900, url: at(query), seed: [BOARD_STUB(), ...seeds] });
+    await page.until('!!(window.trackBuilder && window.trackBuilder.doc)', 60000);
+    return page;
+  };
+  /* Update the board from the publish dialog, with the author's name filled in. */
+  const update = async (page) => {
+    await page.evaluate('window.trackBuilder.openPublish(), 1');
+    await page.until("!!document.querySelector('#tb-modal input[type=\"text\"]')", 10000);
+    await page.evaluate("(() => { const i = [...document.querySelectorAll('#tb-modal input[type=\"text\"]')]; i[1].value = 'Mat'; return 1; })()");
+    await press(page, 'Update the board');
+  };
+
+  /* THE CASE THAT HAPPENED: an old copy on the canvas, a map published before boardHash was kept, the board link. */
+  let page = await open(`&mapshare=${A.id}`, [held({ seat: A, onBoard: B })]);
+  try {
+    await page.until("!document.getElementById('tb-modal').hidden || /canvas/.test(document.getElementById('tb-toast').textContent)", 20000);
+    const said = await modal(page);
+    check('the board link to your own map asks before keeping an older canvas, and says how many pieces the board has that it has not',
+      /Open the board's copy of "Sticker plot"\?/.test(said) && /3 pieces your canvas does not/.test(said), said || await toast(page));
+    await press(page, 'Open the board\'s copy');
+    await page.until(`window.trackBuilder.doc.elements.length === ${B.elements.length}`, 10000);
+    const c = await canvas(page);
+    check('opening it puts the board\'s copy on the canvas, stickers and all', c.id === A.id && c.crops === 3, JSON.stringify(c));
+    check('and the older canvas is kept in Load', (await library(page)).includes(`Sticker plot/${A.elements.length}`), (await library(page)).join(', '));
+    check('and the listing remembers what the board holds', (await boardHash(page)) === fingerprint(B) && fingerprint(B) !== '');
+    await update(page);
+    await page.until("!!document.querySelector('#tb-modal a.tb-btn')", 20000);
+    const sent = await json(page, `JSON.parse(localStorage.getItem('flow-board:maps:${A.id}')).document.elements.filter((e) => e.crop).length`);
+    check('then Update goes straight up, with no question, and the stickers go with it', (await posts(page)) === 1 && sent === 3, `${await posts(page)} posts, ${sent} crops`);
+    check('the page reported no error of its own', ownErrors(page).length === 0, ownErrors(page).join(' | '));
+  } finally {
+    await page.close();
+  }
+
+  /* NO LINK: the builder reopens on the old copy, and Update is pressed. */
+  page = await open('', [held({ seat: A, onBoard: B })]);
+  try {
+    await update(page);
+    await page.until("document.getElementById('tb-modal').textContent.includes('Update anyway')", 20000);
+    const said = await modal(page);
+    check('Update over a board copy with pieces the canvas has not got says so, and sends nothing',
+      /has 3 pieces your canvas does not/.test(said) && (await posts(page)) === 0, said);
+    await press(page, 'Open the board\'s copy');
+    await page.until(`window.trackBuilder.doc.elements.length === ${B.elements.length}`, 10000);
+    check('and it offers the board\'s copy instead', (await canvas(page)).crops === 3);
+  } finally {
+    await page.close();
+  }
+  page = await open('', [held({ seat: A, onBoard: B })]);
+  try {
+    await update(page);
+    await page.until("document.getElementById('tb-modal').textContent.includes('Update anyway')", 20000);
+    await press(page, 'Update anyway');
+    await page.until("!!document.querySelector('#tb-modal a.tb-btn')", 20000);
+    check('a second press, Update anyway, still sends it', (await posts(page)) === 1);
+  } finally {
+    await page.close();
+  }
+
+  /* KNOWN: the board moved and the canvas did not. The board's copy opens with no question. */
+  page = await open(`&mapshare=${A.id}`, [held({ seat: A, onBoard: B, hash: fingerprint(A) })]);
+  try {
+    await page.until(`window.trackBuilder.doc.elements.length === ${B.elements.length} || !document.getElementById('tb-modal').hidden`, 20000);
+    check('a board copy that moved on while the canvas did not opens by itself', (await canvas(page)).crops === 3 && (await modal(page)) === '', await modal(page));
+  } finally {
+    await page.close();
+  }
+
+  /* KNOWN: the canvas moved and the board did not. The canvas stays, and Update asks nothing. */
+  page = await open(`&mapshare=${A.id}`, [held({ seat: edited, onBoard: A, hash: fingerprint(A) })]);
+  try {
+    await page.until("/canvas/.test(document.getElementById('tb-toast').textContent)", 20000);
+    const c = await canvas(page);
+    check('your own newer edits stay on the canvas when the board has not moved', c.x === edited.elements[1].position.x && (await modal(page)) === '', JSON.stringify(c));
+    await update(page);
+    await page.until("!!document.querySelector('#tb-modal a.tb-btn')", 20000);
+    check('and Update sends them with no question', (await posts(page)) === 1);
+  } finally {
+    await page.close();
+  }
+});
+
+/*
  * THE PHONE (MENUS-PLAN.md 4.4). At 390 by 844 the drawing was 0 px wide and
  * nine of the bar's controls were past the right edge. Now Tools and Details
  * open the palette and the inspector as drawers, a tool picked closes the

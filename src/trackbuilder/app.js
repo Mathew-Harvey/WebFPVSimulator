@@ -133,6 +133,7 @@ import {
 import {
   bindOwnedCanvas,
   boardHolding,
+  contentFingerprint,
   courseChip,
   flyCanvasWithoutListing,
   forkDocument,
@@ -140,6 +141,7 @@ import {
   isEmptyCanvas,
   layoutFingerprint,
   officialBlocksOpen,
+  piecesOnlyOnBoard,
   publishedTags,
   rememberPublish,
   suggestRemixName,
@@ -1183,12 +1185,11 @@ export class App {
       return;
     }
     const name = payload.name || incoming.name;
-    const owned = Boolean(readMapListing(incoming.id));
+    const listing = readMapListing(incoming.id);
+    const owned = Boolean(listing);
     const seated = this.seatedFor(incoming);
     if (owned && seated && seated.id === incoming.id) {
-      /* Already on the canvas, perhaps with edits the board has not had.
-       * Replacing it with the board's copy would throw those away. */
-      this.toast(`"${seated.name}" is already on your canvas.`);
+      this.adoptOwnMap(seated, incoming, payload.document || payload, listing, name);
       return;
     }
     const doc = owned ? incoming : duplicateTrack(incoming, suggestRemixName(name));
@@ -1206,6 +1207,77 @@ export class App {
       );
     } else {
       load();
+    }
+  }
+
+  /*
+   * THE AUTHOR'S OWN MAP, OPENED FROM THE BOARD WHILE THEIR CANVAS HOLDS IT.
+   *
+   * This used to keep the canvas, always, because it might hold edits the
+   * board had not had. It might as well be the older of the two, and on
+   * 2026-10-17 it was: an admin had put 106 stickers on the board's copy of
+   * the Infinity Loops map, the author's canvas was from before them, the
+   * board link left it there with a toast, and the next Publish took the
+   * stickers off the board. So the two are compared, and boardHash in the
+   * map's listing (readMapListing) says which of them moved since this
+   * browser and the board last agreed:
+   *
+   *   the same: nothing to do;
+   *   the board has not moved: the canvas holds the author's newer edits,
+   *     and stays, as it always did;
+   *   the board moved and the canvas did not: the board's copy opens;
+   *   both moved, or nobody knows (a map published before boardHash was
+   *     kept, which is every map published until now): the author is asked,
+   *     and told how many pieces the board has that the canvas has not.
+   *
+   * Opening the board's copy goes through openIncoming, which keeps a canvas
+   * with changes the board lacks in Load beside it, so neither copy is lost.
+   */
+  adoptOwnMap(seated, incoming, boardPlain, listing, name) {
+    /* The board's copy as the builder writes it, read before it is opened,
+     * because opening it applies the builder's own rules to it (faces, angles
+     * to six places). A map that was not made in the builder, as the stickers
+     * were not, would otherwise never compare equal to itself on a canvas. */
+    const onBoard = contentFingerprint(toPlain(incoming));
+    const plain = toPlain(seated);
+    const onCanvas = contentFingerprint(plain);
+    if (onBoard === onCanvas) {
+      this.agreeWithBoard(incoming.id, onBoard);
+      this.toast(`"${seated.name}" is already on your canvas.`);
+      return;
+    }
+    if (listing.boardHash === onBoard) {
+      this.toast(`"${seated.name}" is already on your canvas, with changes the board has not had yet. Publish updates it.`);
+      return;
+    }
+    if (listing.boardHash && listing.boardHash === onCanvas) {
+      this.openBoardMap(incoming, onBoard, `The board's copy of "${name}" had changed since you last published it, so that is the one on your canvas now. Publish updates it.`);
+      return;
+    }
+    const only = piecesOnlyOnBoard(boardPlain, plain);
+    const body = document.createElement('p');
+    body.className = 'tb-help';
+    body.textContent = `${only
+      ? `The board's copy has ${only} ${only === 1 ? 'piece' : 'pieces'} your canvas does not.`
+      : 'The board\'s copy is not the same as the one on your canvas.'} It may have been changed on the board since this browser published it, by an admin or from another browser. Opening it puts your canvas's copy in Load first, so nothing is lost. Cancel keeps your canvas, and publishing that would put it over the board's copy.`;
+    this.modal(`Open the board's copy of "${name}"?`, body, [{
+      label: 'Open the board\'s copy',
+      run: () => this.openBoardMap(incoming, onBoard, `Opened the board's copy of "${name}". Publish updates it.`),
+    }]);
+  }
+
+  /* The board's copy of an owned map onto its canvas, and the listing told
+   * that this is what the board holds now. */
+  openBoardMap(incoming, onBoard, message) {
+    if (this.openIncoming(incoming, message)) {
+      this.agreeWithBoard(incoming.id, onBoard);
+    }
+  }
+
+  agreeWithBoard(mapId, onBoard) {
+    const held = readMapListing(mapId);
+    if (held && onBoard) {
+      writeMapListing(mapId, { ...held, boardHash: onBoard });
     }
   }
 
@@ -5383,6 +5455,9 @@ export class App {
     send.type = 'button';
     send.className = 'tb-btn tb-primary';
     send.textContent = owned ? 'Update the board' : 'Publish this map';
+    /* Set once the author has been told the board's copy moved and pressed
+     * again: see boardMovedOn. */
+    let overBoard = false;
     send.addEventListener('click', async () => {
       if (!nameAsk.ok()) {
         return;
@@ -5400,23 +5475,46 @@ export class App {
       }
       const origin = boardOrigin();
       send.disabled = true;
+      if (owned && !overBoard) {
+        status.textContent = 'Checking the board\'s copy first.';
+        const moved = await this.boardMovedOn(this.doc, origin);
+        if (moved) {
+          overBoard = true;
+          status.textContent = moved.said;
+          send.textContent = 'Update anyway';
+          send.disabled = false;
+          const take = document.createElement('button');
+          take.type = 'button';
+          take.className = 'tb-btn';
+          take.textContent = 'Open the board\'s copy';
+          take.addEventListener('click', () => {
+            this.closeModal();
+            this.openBoardMap(moved.incoming, moved.onBoard, `Opened the board's copy of "${moved.incoming.name}". Make your changes on it and Publish again.`);
+          });
+          send.after(take);
+          return;
+        }
+      }
       status.textContent = 'Sending the map, sponsor prints included.';
       const sendDoc = async (doc) => {
         const held = readMapListing(doc.id);
+        const plain = toPlain(doc);
         const posted = await publishMap({
           author,
-          document: toPlain(doc),
+          document: plain,
           plan: boardPlanOf(doc),
           editKey: held ? held.editKey : '',
           origin,
         });
         /* The key comes back on the first publish only, so an update keeps
-         * the one already held. */
+         * the one already held. What was sent is what the board holds now,
+         * which is what boardHash remembers. */
         writeMapListing(doc.id, {
           editKey: posted.editKey || (held && held.editKey) || '',
           board: origin,
           author,
           nameOnBoard: posted.name || doc.name,
+          boardHash: contentFingerprint(plain),
         });
         writeAutosave(doc);
         return posted;
@@ -5472,6 +5570,58 @@ export class App {
     });
     const shown = this.modal(owned ? 'Update this map' : 'Publish this map', body, [], { primary: send });
     nameAsk.start();
+  }
+
+  /*
+   * WHETHER AN UPDATE OF `doc` WOULD PUT IT OVER A BOARD COPY THAT MOVED ON
+   * WITHOUT THIS BROWSER: null when it would not, or when the board cannot
+   * be asked (the update then goes as it always did, and the board answers
+   * it), otherwise what to tell the author and the board's copy to open.
+   *
+   * The second half of what adoptOwnMap does on opening, for the author who
+   * never opened the board link: the builder reopens on its own canvas, and
+   * on 2026-10-17 that canvas was a copy of the Infinity Loops map from
+   * before its stickers. With boardHash kept, a board copy that is not what
+   * this browser last published or opened has moved. Without it, which is
+   * every map published before it was kept, a board copy with pieces the
+   * canvas has not got is the one sign there is, and the only loss that
+   * matters; a canvas that is ahead of the board in every other way is the
+   * author's own work and goes up without a word.
+   */
+  async boardMovedOn(doc, origin) {
+    const held = readMapListing(doc.id);
+    if (!held) {
+      return null;
+    }
+    let payload;
+    try {
+      payload = await fetchMapDocument(doc.id, origin);
+    } catch (e) {
+      return null;
+    }
+    const boardPlain = payload && (payload.document || payload);
+    if (!boardPlain || typeof boardPlain !== 'object' || boardPlain.id !== doc.id) {
+      return null;
+    }
+    const plain = toPlain(doc);
+    /* As the builder would write it, the same as adoptOwnMap. */
+    const incoming = normalize(boardPlain).doc;
+    const onBoard = contentFingerprint(toPlain(incoming));
+    if (onBoard === contentFingerprint(plain) || held.boardHash === onBoard) {
+      return null;
+    }
+    const only = piecesOnlyOnBoard(boardPlain, plain);
+    if (!held.boardHash && !only) {
+      return null;
+    }
+    const pieces = `${only} ${only === 1 ? 'piece' : 'pieces'}`;
+    return {
+      onBoard,
+      incoming,
+      said: `${held.boardHash
+        ? `The board's copy of this map has changed since this browser last published it${only ? `, and has ${pieces} your canvas does not` : ''}. Updating puts your canvas in its place.`
+        : `The board's copy of this map has ${pieces} your canvas does not, so it may be newer. Updating takes ${only === 1 ? 'it' : 'them'} off the board.`} Open the board's copy to work on that instead.`,
+    };
   }
 
   /* ---------------- the sponsors' logos ---------------- */

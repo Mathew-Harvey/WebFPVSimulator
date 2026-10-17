@@ -185,6 +185,22 @@ export function setMover(sim, m, cx, cy, cz, hx, hy, hz, vx, vy, vz, kind, visib
   );
 }
 
+/*
+ * A mover's velocity as setMover takes it, Three.js metres a second, in the
+ * PLANT frame: the one permutation, then the plant frame's yaw taken out
+ * with (c, s), the cosine and sine src/props/trig.js gave the shell's
+ * frameTurn, so no engine's cosine reaches the physics. For the shell's
+ * crash bounce off a face that moves (dullBounce's surf in collide.js).
+ * out is three doubles and is returned. Allocates nothing.
+ */
+export function moverVelocityInPlant(vx, vy, vz, c, s, out) {
+  threeDirToSim(vx, vy, vz, V);
+  out[0] = c * V.x + s * V.y;
+  out[1] = c * V.y - s * V.x;
+  out[2] = V.z;
+  return out;
+}
+
 /* A box's vertical extent, in Three.js metres: the plant's z is Three.js y. */
 export function setBoxHeight(sim, i, y0, y1) {
   threePosToSim(0, y0, 0, A);

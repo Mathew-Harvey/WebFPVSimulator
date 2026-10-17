@@ -90,6 +90,10 @@ export const GAP_MIN = 1.4;
  *   seg     radial segments when drawn. Cel shading wants few.
  *   name    for debugging and the collider audit.
  *   cast    casts a shadow, default true.
+ *   sweep   true on a part that is neither drawn nor solid and marks where
+ *           something that moves passes: a windmill's sails (./windmill.js),
+ *           which the map turns and the shell makes solid near the craft.
+ *           The plan draws it and the pick box holds it; nothing else does.
  */
 export class Parts {
   constructor() {
@@ -113,6 +117,9 @@ export class Parts {
       name: opts.name ?? '',
       cast: opts.cast !== false,
     };
+    if (opts.sweep === true) {
+      part.sweep = true;
+    }
     this.list.push(part);
     return part;
   }

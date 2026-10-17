@@ -42,7 +42,6 @@ import {
   aperturesOf, toPlain, logosOf, brandingBytes, newLogoId, dressOrder, setSideBuilt, setPoleBuilt,
   LOGO_SLOTS, BRANDING_MAX_CHARS, expandGroups, letterLayoutOf, setLetter,
 } from './model.js';
-import { showSupportPrompt } from '../share/supportprompt.js';
 import { applyAutoFaces, clearOverride, flipFace, setYaw } from './faces.js';
 import {
   addToSequence, addNextLevel, bendLineAt, clampSequenceToApertures, moveInSequence,
@@ -5445,20 +5444,6 @@ export class App {
           ? `This id was already on the board, so it went up as a new map, "${posted.name}".`
           : `${verb} as "${posted.name}".`;
         this.toast(`${verb} "${posted.name}" on the board.`);
-        /* Show support prompt after publishing a map (not updating). The
-         * shell's Support prompts switch is read by supportprompt.js itself:
-         * this read this.readSettings and this.openSettings, which the
-         * builder never had, so it ignored the switch. There is no Settings
-         * button here, because there is no settings room to open. */
-        if (!posted.updated) {
-          setTimeout(() => {
-            try {
-              showSupportPrompt('publish');
-            } catch (promptError) {
-              console.warn('support prompt', promptError);
-            }
-          }, 1500); /* Delay to let the toast show first */
-        }
         /* The board drops a map's share card on every republish, because
          * this is the only thing that republishes one, and it draws the
          * new card here. See publishMapUnlocked in the board's store.js. */

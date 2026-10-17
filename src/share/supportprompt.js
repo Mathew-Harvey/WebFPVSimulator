@@ -1,10 +1,13 @@
 /*
- * supportprompt.js: soft support prompts at good moments.
+ * supportprompt.js: the soft support prompt, once on every exit from a flight.
  *
- * A small, dismissible prompt shown after a new personal best, about 20
- * minutes of total flying in a session, or right after publishing a map in
- * the builder. At most once a week per browser (localStorage). Never during
- * a run. Never for existing patrons if the sim can tell.
+ * A small, dismissible prompt shown on the title screen each time a pilot
+ * leaves a flight for the menu (trigger 'exit', from the pause menu's Quit
+ * to title, a results screen's Back to title, or Escape on either). It used
+ * to come at a new personal best, after 20 minutes of flying and after
+ * publishing a map, at most once a week; all four are gone, and nothing
+ * here gates on time any more. The two opt-outs stay: Settings > Advanced >
+ * Support prompts, and the localStorage key below. Never during a run.
  *
  * ON THE PAGE, NOT IN A SCREEN. Until 2026-10-05 the shell put the prompt
  * inside .screen-results or .screen-paused. A screen is pointer-events
@@ -32,10 +35,10 @@
  */
 
 import { counting, eventsUrl } from './stats.js';
+import { COFFEE_TIER_URL } from './patreon.js';
 
 const SUPPORT_PROMPT_KEY = 'webfpv.support.prompt.v1';
 const SUPPORT_DISABLED_KEY = 'webfpv.support.disabled.v1';
-const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /* The shell's settings, where Settings > Advanced > Support prompts is
  * kept: SETTINGS_KEY in src/ui/ui.js, and SHELL_SETTINGS_KEY in
@@ -58,22 +61,8 @@ function tagged(base, params) {
 /* Stripe tip link: one-off, USD $5 suggested, payer can change the amount */
 export const TIP_URL = 'https://donate.stripe.com/7sY4gzaAC2Eu3aOews8so0g';
 
-/* Patreon $3 tier join link */
-export const PATREON_JOIN_URL = 'https://www.patreon.com/checkout/webfpv?rid=29740590';
 
-/* Track the last time the prompt was shown */
-function readPromptState() {
-  try {
-    const raw = localStorage.getItem(SUPPORT_PROMPT_KEY);
-    if (!raw) {
-      return null;
-    }
-    return JSON.parse(raw);
-  } catch (e) {
-    return null;
-  }
-}
-
+/* The last time the prompt was shown. A record only: nothing gates on it. */
 function writePromptState(lastShownMs) {
   try {
     localStorage.setItem(SUPPORT_PROMPT_KEY, JSON.stringify({ lastShownMs }));
@@ -107,17 +96,9 @@ export function disablePrompt() {
   }
 }
 
-/* Check if enough time has passed since the last prompt (at least one week) */
+/* Every exit shows it, unless the pilot has said no. */
 export function canShowPrompt() {
-  if (isPromptDisabled()) {
-    return false;
-  }
-  const state = readPromptState();
-  if (!state || !state.lastShownMs) {
-    return true;
-  }
-  const now = Date.now();
-  return (now - state.lastShownMs) >= ONE_WEEK_MS;
+  return !isPromptDisabled();
 }
 
 /* Record that the prompt was shown and send a tracking beacon */
@@ -150,8 +131,9 @@ function recordPromptClick(trigger, target) {
 }
 
 /*
- * Show the support prompt. `trigger` is one of: 'pb' (personal best),
- * 'time' (20 minutes of flying), or 'publish' (published a map).
+ * Show the support prompt. `trigger` is 'exit' (the pilot left a flight
+ * for the menu), and rides on the beacon's source ('sim-exit') and the tip
+ * link's client_reference_id.
  * `onSettings`, when given, is what the Settings button does, and without
  * it there is no Settings button: the builder has no settings room to
  * open, and a button that only closed the prompt said otherwise. Returns
@@ -171,17 +153,17 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
 
   const message = document.createElement('p');
   message.className = 'support-prompt-message';
-  message.textContent = 'I build WebFPV in my spare time. If you are enjoying it, a $3 Patreon or a one-off battery helps keep it free.';
+  message.textContent = 'I build WebFPV in my spare time. If you\'re enjoying it, buy me a $1 coffee on Patreon or a one-off battery to help keep it free.';
 
   const actions = document.createElement('div');
   actions.className = 'support-prompt-actions';
 
   const patreonBtn = document.createElement('a');
-  patreonBtn.href = tagged(PATREON_JOIN_URL, { utm_source: 'sim-prompt', ref: 'sim-prompt' });
+  patreonBtn.href = tagged(COFFEE_TIER_URL, { utm_source: 'sim-prompt', ref: 'sim-prompt' });
   patreonBtn.target = '_blank';
   patreonBtn.rel = 'noopener noreferrer';
   patreonBtn.className = 'support-prompt-btn support-prompt-btn-primary';
-  patreonBtn.textContent = 'Patreon $3/mo';
+  patreonBtn.textContent = 'Buy Mat a coffee $1/mo';
   patreonBtn.addEventListener('click', () => {
     recordPromptClick(trigger, 'patreon');
   });

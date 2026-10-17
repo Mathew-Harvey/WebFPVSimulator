@@ -326,7 +326,7 @@ export function* frames(pacing, ph) {
  * The module.
  * ------------------------------------------------------------------ */
 
-async function newSim(sc) {
+export async function newSim(sc) {
   const sim = await loadSim(wasm);
   sim.e.sim_set_airframe(0);
   if (sim.init(CONFIG) !== SIM_OK) {

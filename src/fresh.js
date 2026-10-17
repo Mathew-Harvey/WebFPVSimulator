@@ -250,6 +250,7 @@
     'src/props/textures.js',
     'src/props/trig.js',
     'src/props/types.js',
+    'src/props/windmill.js',
     'src/render/attract.js',
     'src/render/audio.js',
     'src/render/autoscale.js',

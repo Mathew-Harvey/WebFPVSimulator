@@ -38,6 +38,7 @@ import * as INDUSTRIAL from './industrial.js';
 import * as STREET from './street.js';
 import * as SKATE from './skate.js';
 import * as COURSE from './course.js';
+import * as WINDMILL from './windmill.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
   craneLayout, craneDraw, waterLayout, waterDraw, mastLayout, mastDraw, chimneyLayout, chimneyDraw,
@@ -48,6 +49,7 @@ import {
   bridgeLayout, bridgeDraw, billboardLayout, billboardDraw, poleLayout, poleDraw, lampLayout, lampDraw,
   vendingLayout, vendingDraw, carLayout, carDraw, treeLayout, treeDraw,
 } from './street.js';
+import { windmillLayout, windmillDraw } from './windmill.js';
 import {
   railLayout, railDraw, ledgeLayout, ledgeDraw, stairsLayout, stairsDraw, pipeLayout, pipeDraw,
 } from './skate.js';
@@ -79,6 +81,7 @@ const CODE = {
   stairs: [stairsLayout, stairsDraw],
   quarterPipe: [pipeLayout, pipeDraw],
   tree: [treeLayout, treeDraw],
+  windmill: [windmillLayout, windmillDraw],
   gap: [gapLayout, null],
 };
 
@@ -133,7 +136,7 @@ export const FURNITURE = {
  * at once without touching the same line. A name two families both claim is
  * a mistake, and it throws here rather than one silently winning.
  */
-const FAMILIES = { buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE };
+const FAMILIES = { buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};
 for (const [fname, mod] of Object.entries(FAMILIES)) {

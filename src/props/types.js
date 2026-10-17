@@ -354,6 +354,20 @@ export const PROP_TYPES = {
     limits: { size: [0.5, 3, X], variant: [1, 99, INT] },
     labels: { size: 'Size', variant: 'Variant' },
   },
+  /* Last of the props, after everything already on a map: the map of one of
+   * everything (scripts/props-check.js, scripts/lib/worldruns.js) lays them
+   * out in this order, and a new asset in the middle moved every one after it
+   * and the world golden's flights with them. */
+  windmill: {
+    label: 'Windmill',
+    key: '',
+    group: 'industrial',
+    turns: 'quarter',
+    note: 'A tower mill whose four sails turn, anticlockwise as you face them. The sails are solid and so is the tower: time a line between two sails, or fly between the sails and the tower. Speed is turns a minute, and 0 holds them still where Rotor puts them. It keeps to the four compass headings, because the sails turn in a plane the physics can follow.',
+    dims: { height: 14, sail: 10, speed: 12, spin: 0 },
+    limits: { height: [8, 30, M], sail: [4, 16, M], speed: [0, 30, INT], spin: [0, 1, FRAC] },
+    labels: { height: 'Hub height', sail: 'Sail length', speed: 'Speed (rpm)', spin: 'Rotor' },
+  },
   gap: {
     label: 'Named gap',
     key: 'J',
@@ -578,6 +592,18 @@ export function approxHeight(type, dims, style, tilt = 0) {
     /* The peak's capsule, 0.25 over the lattice. */
     case 'pylon': return (d.height ?? 28) + 0.3;
     case 'turbine': return turbineTop(d);
+    /*
+     * The sails at their highest, whichever sail is up: the hub's height and
+     * a sail's reach to its trailing tip, which ./windmill.js holds to what
+     * the height leaves it (its far corner never under 2 m), so this counts
+     * the length asked for and its widest canvas, 3 m, and can only be
+     * generous.
+     */
+    case 'windmill': {
+      const H = Math.min(30, Math.max(8, d.height ?? 14));
+      const L = Math.min(16, Math.max(4, d.sail ?? 10), H - 2);
+      return H + Math.sqrt(L * L + 3.15 * 3.15) + 0.05;
+    }
     /* Drawn 5 cm over the pole's height. */
     case 'utilityPole': return (d.height ?? 10) + 0.1;
     /* Drawn 2 cm over the top box. */

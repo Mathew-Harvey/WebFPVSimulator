@@ -81,10 +81,10 @@ import { readCounterBest, writeCounterBest } from './game/counterbest.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses } from './game/plantworld.js';
+import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, emptyWorldReport, foldWorldReport } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn } from './ui/ui.js';
 import { TAKEOFF, guideKind, stepOf, textOf } from './ui/firstflight.js';
 import {
@@ -114,7 +114,6 @@ import {
   clearPendingTime,
   readEditKey,
   readPendingTime,
-  readPostedBest,
   writePendingTime,
   writePostedBest,
   writeShareImport,
@@ -750,14 +749,6 @@ export async function boot({ loading, bootStart, mapId }) {
     }),
   });
   
-  /* Track total session flight time for the support prompt trigger at 20 minutes */
-  let sessionFlightTimeMs = 0;
-  let lastFlightTick = 0;
-  let sessionTimePromptShown = false;
-  /* Set in the air when the clock passes the line, and spent on the next
-   * pause or results screen, which is where the prompt is shown. */
-  let sessionTimePromptDue = false;
-  const SESSION_TIME_PROMPT_MS = 20 * 60 * 1000; /* 20 minutes */
   /*
    * THE PROMPT ON SCREEN, and the screen it was shown on. It goes the
    * moment that screen is left: "never during a run", and a pilot on a
@@ -770,8 +761,9 @@ export async function boot({ loading, bootStart, mapId }) {
   let supportPrompt = null;
   let supportPromptScreen = null;
   const offerSupport = (trigger) => {
-    /* A lap posts while the pilot may already be flying again. */
-    if (ui.settings.supportPrompts === false || ui.screen === 'flight') {
+    /* Never in the air, and never over anything else the pilot is being
+     * asked: see Ui.supportPromptBlocked. */
+    if (ui.settings.supportPrompts === false || ui.screen === 'flight' || ui.supportPromptBlocked()) {
       return;
     }
     try {
@@ -786,6 +778,19 @@ export async function boot({ loading, bootStart, mapId }) {
     } catch (promptError) {
       console.warn('support prompt', promptError);
     }
+  };
+  /* Once per exit from a flight to the title, called by Ui.act after
+   * onAction has run (fullscreen left, the run reset). */
+  ui.onFlightExit = () => offerSupport('exit');
+  /* Escape or pad Back on the title closes the prompt and nothing else. */
+  ui.closeSupportPrompt = () => {
+    if (!supportPrompt) {
+      return false;
+    }
+    supportPrompt.remove();
+    supportPrompt = null;
+    supportPromptScreen = null;
+    return true;
   };
   /*
    * The last flush, sent when the page goes away. pagehide rather than
@@ -1153,6 +1158,9 @@ export async function boot({ loading, bootStart, mapId }) {
   if (typeof sim.e.sim_contact !== 'function') {
     throw new Error('sim.wasm does not export sim_contact');
   }
+  if (typeof sim.e.sim_contact_at !== 'function') {
+    throw new Error('sim.wasm does not export sim_contact_at');
+  }
   if (typeof sim.e.sim_set_ground !== 'function') {
     throw new Error('sim.wasm does not export sim_set_ground');
   }
@@ -1479,6 +1487,12 @@ export async function boot({ loading, bootStart, mapId }) {
         setMover(sim, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'train', false);
       }
     }
+    /* uploadWorld's clear parked every mover slot, the sails' with them. */
+    sails = view.sails || null;
+    sailsUsed = 0;
+    if (sails && (!sailBoxes || sailBoxes.length < sails.slots * sails.doubles)) {
+      sailBoxes = new Float64Array(sails.slots * sails.doubles);
+    }
     adoptTraffic();
   }
 
@@ -1563,6 +1577,9 @@ export async function boot({ loading, bootStart, mapId }) {
   /* What a mover contact was: a road car on a map with traffic, else the
    * train. The world report numbers mover m as -2 - m. */
   function moverKind(m) {
+    if (sails && m >= sails.base) {
+      return 'boom';
+    }
     return trafficOn && carCurr[m] && carCurr[m].on ? 'car' : 'train';
   }
 
@@ -2157,7 +2174,7 @@ export async function boot({ loading, bootStart, mapId }) {
   } catch (e) {
     /* No location: the default. */
   }
-  /* A crash, from crashResetTick: start an impact frame holding the pose
+  /* A crash, from the harness: start an impact frame holding the pose
    * the pilot last saw, if the switches allow and none began under two
    * seconds ago. */
   function mangaCrash() {
@@ -2243,6 +2260,47 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
+   * THE WINDMILLS' SAILS (src/props/windmill.js sailsOf), seated for one
+   * step of the lap clock as the train is, in the top SAIL_SLOTS mover
+   * slots, where a built map's traffic never reaches (traffic.js caps its
+   * cars below them). Only the strips of sail in a small window round the
+   * craft are seated, so where the craft is goes in too: `st`, the state
+   * the step starts from, taken to the world through the plant's own frame
+   * (setWorldFrame) with the frame's turn as frameTurn has it, so no engine's
+   * cosine reaches the physics. A map with no windmill has `sails` null and
+   * none of this runs. Allocates nothing: the boxes' scratch is made when a
+   * map with a windmill is adopted, so this file does not import the
+   * windmill and a pilot who never meets one never loads it.
+   */
+  let sails = null;
+  let sailsUsed = 0;
+  let sailBoxes = null;
+  const sailCraft = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
+  function pushSails(step, st) {
+    if (!sails) {
+      return;
+    }
+    const px = st[1];
+    const py = st[2];
+    simPosToThree(frameTurn.c * px - frameTurn.s * py, frameTurn.s * px + frameTurn.c * py, st[3] + SPAWN_ALT, sailCraft);
+    const n = sails.seat(step, sailCraft.x + startX, sailCraft.y + startY, sailCraft.z + startZ, sailBoxes);
+    for (let k = 0; k < n; k += 1) {
+      const o = k * sails.doubles;
+      setMover(
+        sim, sails.base + k,
+        sailBoxes[o], sailBoxes[o + 1], sailBoxes[o + 2],
+        sailBoxes[o + 3], sailBoxes[o + 4], sailBoxes[o + 5],
+        sailBoxes[o + 6], sailBoxes[o + 7], sailBoxes[o + 8],
+        'boom', true,
+      );
+    }
+    for (let k = n; k < sailsUsed; k += 1) {
+      setMover(sim, sails.base + k, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'boom', false);
+    }
+    sailsUsed = n;
+  }
+
+  /*
    * THE LENS'S NEAR PLANE FOLLOWS THE LENS.
    *
    * It was a fixed 0.2 m (src/render/shell.js), and the lens sits 8 cm ahead
@@ -2268,6 +2326,13 @@ export async function boot({ loading, bootStart, mapId }) {
       const car = view.carGap(p.x, p.y, p.z, reach);
       if (car < gap) {
         gap = car;
+      }
+    }
+    /* And a windmill's sails, where they are drawn at the lap clock. */
+    if (sails) {
+      const sail = sails.gapAt(p.x, p.y, p.z, reach, simTimeMs);
+      if (sail < gap) {
+        gap = sail;
       }
     }
     const floor = p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y);
@@ -2414,7 +2479,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* One trick landed on a quad that grips the air or pulls differently and
      * the run is not the machine the board compares, whatever the rest of it
      * was flown on. */
-    if (offBoardTune(runAirGrip, runMotorKv)) {
+    if (offStock()) {
       trickTuned = true;
     }
   }
@@ -3012,7 +3077,10 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     const airPart = runAirScale === 1 ? '' : `.a${Math.round(runAirScale * 100)}`;
     const kvPart = runKvScale === 1 ? '' : `.k${Math.round(runKvScale * 100)}`;
-    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${gravPart}${airPart}${kvPart}`;
+    /* And prop wash, on the same rule: only when off, so every key that was
+     * ever written stays where it is. */
+    const washPart = runWash ? '' : '.nowash';
+    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${gravPart}${airPart}${kvPart}${washPart}`;
   }
 
   let mode = 'title'; /* title, flight, paused, results */
@@ -3274,6 +3342,10 @@ export async function boot({ loading, bootStart, mapId }) {
   let lastTiltDeg = 0;
   let lastHitKind = 'none';
   let lastGroundHits = 0;
+  /* The frame's solid contact steps, rep[0] of frameReport: kept past the
+   * frame's obs* reset for autoResetTick, which asks whether a bounced craft
+   * is touching anything. */
+  let lastSolidHits = 0;
   let lastClearance = 1;
   let lastUpz = 1;
   let lastFpvY = 0;
@@ -3455,6 +3527,20 @@ export async function boot({ loading, bootStart, mapId }) {
   let runAirScale = 1;
   let runMotorKv = MOTOR_KV_STOCK;
   let runKvScale = 1;
+  /*
+   * PROP WASH, as the module is flying it: true is the full model, which is
+   * what the module starts with and what every record was set on. The owner,
+   * 2026-10-16: "turn off prop wash toggle in menu". Off is a quad that no
+   * longer shakes in its own wash, which is another machine in the same
+   * sense a tuned Air grip is, so a lap flown with it off posts tagged
+   * Tuned and is filed under a record of its own. See offStock.
+   */
+  let runWash = true;
+  /* Whether the machine being flown is off stock in any way the board tags
+   * as Tuned: the two flight feel scales, or prop wash switched off. */
+  function offStock() {
+    return offBoardTune(runAirGrip, runMotorKv) || !runWash;
+  }
   /* How many times either export has been called, for the harness: a stock
    * flight must make none (window.__air). */
   let tuneCalls = 0;
@@ -4221,6 +4307,7 @@ export async function boot({ loading, bootStart, mapId }) {
     turtleOnSupport = false;
     setTurtleParkMotors(false);
     poseLock = false;
+    lastSolidHits = 0;
     obsContact = false;
     obsTouched = false;
     obsClosing = 0;
@@ -4362,7 +4449,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * dropped frame or a paused game moves nothing, and -1 is not armed.
    * autoResetKind says what to watch for the pilot saving it: 'set' is
    * cancelled by the craft leaving the ground again, 'turtle' by the craft
-   * no longer being on its back or the flip starting. The frame's cost is
+   * no longer being on its back or the flip starting, and 'bounce', a crash
+   * that set nothing down, by the craft being in the air and upright when
+   * the deadline comes, and taken once it is down: landed, on its back, or
+   * touching the ground or a solid, a wall it is sliding down included. The
+   * frame's cost is
    * one compare, and only while armed.
    */
   let autoResetAtMs = -1;
@@ -4525,8 +4616,8 @@ export async function boot({ loading, bootStart, mapId }) {
     notice = { text: 'Stuck, so you were set down nearby.\nX does this any time.', untilMs: performance.now() + 2800 };
   }
 
-  /* See autoResetAtMs. Called once a frame, after crashResetTick has had its
-   * chance to arm it and before turtle can take the craft. */
+  /* See autoResetAtMs. Called once a frame, after stuckTick or X may have
+   * armed it and before turtle can take the craft. */
   function autoResetTick() {
     if (!ui.settings.autoReset || poseLock || launchStaging) {
       autoResetAtMs = -1;
@@ -4547,11 +4638,22 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       return;
     }
-    if (autoResetKind === 'set' ? !landed : (!turtleWait || turtleFlip.active)) {
+    if (autoResetKind === 'set' ? !landed
+      : (autoResetKind === 'turtle' && (!turtleWait || turtleFlip.active))) {
       autoResetAtMs = -1;
       return;
     }
     if (simTimeMs >= autoResetAtMs) {
+      if (autoResetKind === 'bounce' && !landed && !turtleWait && !(lastGroundHits > 0)
+        && !(lastSolidHits > 0)) {
+        /* In the air, touching nothing. Upright is flown out of it, and left
+         * alone; falling or tumbling is waited out a frame at a time until
+         * it is down, where this resets it, or upright. */
+        if (stateCurr && plantUpZ(stateCurr) >= TURTLE_EXIT_UPZ) {
+          autoResetAtMs = -1;
+        }
+        return;
+      }
       /* Taken at the top of the next frame, where R and the restart switch
        * are, not here: this runs after the frame has already placed the
        * craft and seeded the race and the ghost from it, so a reset here
@@ -4627,34 +4729,85 @@ export async function boot({ loading, bootStart, mapId }) {
    * that scripts/crash-pacing.js can fly one input stream through them at
    * several frame rates and hold them to one verdict and one reset step.
    */
-  let crashReset = false;
-  /* Whether a crash read now would be taken: the step loop asks it before
-   * it steps, so a crash step ends the loop only when the reset follows. */
-  function crashCanReset() {
+  /*
+   * A CRASH IS A DULL BOUNCE, and no longer a reset. The owner, 2026-10-16:
+   * "fix crashing to not be annoying no reset, just dull bounce always".
+   * Everything above is kept as the record of why a crash used to set the
+   * craft down; what changed is that it does not any more. The judge still
+   * reads every step and a crash still ends the open combo, the chase and
+   * the trick counter exactly as before, because a crash is still a crash
+   * for scoring. What it no longer does is end the step loop, freeze an
+   * impact frame or put the craft anywhere.
+   *
+   * WHAT THE CRAFT DOES INSTEAD is dullBounce in src/game/collide.js, put
+   * on the plant by putDullBounce at the crash step itself, inside the step
+   * loop, so it is on the sim clock and every frame rate flies the same
+   * bounce (scripts/bounce-check.js holds it to that): the spin the corner
+   * strike gave it is taken off, and it leaves the face at a walking pace
+   * with part of its speed along it. The attitude is not touched, so the
+   * picture never jumps. A slow knock on a solid with the frame, off the
+   * belly, gets the same bounce without being a crash (solidContactKnock,
+   * asked through crashJudge.knock), so a craft that comes back to the face
+   * is pushed off it again instead of winding onto its nose; a knock keeps a
+   * spin that is turning the craft off the face, which is the pilot pulling
+   * away.
+   *
+   * Two recoveries stay, because neither is a crash reset. stuckTick still
+   * sets down a craft left still and not upright for STUCK_MS, which is a
+   * craft wedged nose first on a wall or lying on its side, where no stick
+   * does anything. And Auto reset, off by default (bug-918a8c99), still
+   * puts a craft set down or turtled back on the line for a pilot who
+   * turned it on.
+   */
+  let crashSeen = false;
+  const dullOut = new Float64Array(3);
+  /* Whether a crash read now gets the bounce: the step loop asks it once
+   * before it steps. */
+  function crashCanBounce() {
     return mode === 'flight' && ui.screen === 'flight' && !poseLock && !launchStaging && !landed
       && !turtleFlip.active;
   }
-  function crashResetTick() {
-    if (!crashReset) {
+  /* The crash step's bounce, or a knock's: see above and putDullBounce.
+   * Returns the state the step now leaves. */
+  function applyDullBounce(kind, before, after, rep, knock) {
+    putDullBounce(sim, kind, before, after, rep, nSim.x, nSim.y, nSim.z, frameTurn.c, frameTurn.s, dullOut, knock, sailVelocity(rep[3]));
+    return readState();
+  }
+  /*
+   * A windmill's sail is met at its own speed (dullBounce's surf): the
+   * velocity pushSails seated on the mover the report names, -2 - m, in the
+   * plant frame, turned by frameTurn as the normal is. Null for anything
+   * that is not a sail seated this step.
+   */
+  const sailSurf = new Float64Array(3);
+  function sailVelocity(idx) {
+    if (!sails || !(idx <= -2)) {
+      return null;
+    }
+    const k = -2 - idx - sails.base;
+    if (k < 0 || k >= sailsUsed) {
+      return null;
+    }
+    const o = k * sails.doubles;
+    return moverVelocityInPlant(sailBoxes[o + 6], sailBoxes[o + 7], sailBoxes[o + 8], frameTurn.c, frameTurn.s, sailSurf);
+  }
+  function crashBounceTick() {
+    if (!crashSeen) {
       return;
     }
-    crashReset = false;
-    if (!crashCanReset()) {
+    crashSeen = false;
+    if (mode !== 'flight' || ui.screen !== 'flight' || poseLock || launchStaging || landed) {
       return;
     }
-    stuckSinceMs = -1;
-    setManualFlip(false);
-    setCrashflip(false);
-    turtleRecover = false;
-    turtleWait = false;
     /* A crash the shell called, a car's included: the chase loses what it
-     * held, as the score would. */
+     * held and the counter its open combo, as setDownNearby used to do for
+     * them. Nothing about the craft is touched. */
     chaseBail();
-    /* The impact frame holds the last picture before the hit, which is the
-     * camera's pose now, before the craft is set down. */
-    mangaCrash();
-    setDownNearby('crash');
-    notice = { text: 'Crashed, set down nearby.\nR restarts the run.', untilMs: performance.now() + 2400 };
+    counterCrash(false);
+    /* Auto reset, for a pilot who turned it on, hears a crash as it always
+     * did; without a set down the craft may still be in the air, so this
+     * kind is judged at the deadline: see autoResetTick. */
+    armAutoReset('bounce');
   }
 
   /* The craft's heading, flattened onto the ground plane, as a spawn yaw.
@@ -5128,7 +5281,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!keepPlace) {
       race = new Race(view.gates, view.trackClass ?? 'full');
       race.setWeight(runWeight);
-      race.setTuned(offBoardTune(runAirGrip, runMotorKv));
+      race.setTuned(offStock());
       race.setRecordKey(recordKey());
       ui.setBest(race.bestMs, view.mode);
       adoptSpawn();
@@ -6076,6 +6229,25 @@ export async function boot({ loading, bootStart, mapId }) {
           s.motorKv = runMotorKv;
         }
       }
+      /*
+       * PROP WASH, on the sliders' rule rather than the flight style's: it
+       * lands at once, mid run included, because a pilot who has just felt
+       * the shake and switched it off wants to feel the difference now. The
+       * lap it landed in is voided below like a slider's, so no lap is
+       * counted half on one machine. Guarded because an older dist/sim.wasm
+       * predates the export; on such a build the row goes back to On, which
+       * is what that module flies.
+       */
+      const wantWash = s.propwash !== false;
+      if (wantWash !== runWash) {
+        if (typeof sim.e.sim_set_propwash === 'function') {
+          sim.e.sim_set_propwash(wantWash ? 1 : 0);
+          runWash = wantWash;
+          moved = true;
+        } else {
+          s.propwash = runWash;
+        }
+      }
       if (moved) {
         if (race.currentLapMs(simTimeMs) != null) {
           race.voidLap('Feel changed\nLap voided', performance.now());
@@ -6087,7 +6259,7 @@ export async function boot({ loading, bootStart, mapId }) {
       /* Stamped on every lap counted from here on, after the void above, so
        * the lap the change landed in is thrown away and the next is counted
        * under the new machine. */
-      race.setTuned(offBoardTune(runAirGrip, runMotorKv));
+      race.setTuned(offStock());
       /* What the airtime is filed under from here on: the combination the
        * module is flying, and only while the mode is on and something is off
        * stock. Weight counts, because it is one of the three the question is
@@ -6524,15 +6696,7 @@ export async function boot({ loading, bootStart, mapId }) {
           throw e;
         }
       }
-      /* Read before the write replaces it. writePostedBest answers true for
-       * a lap stored AND for one the stored best already beats, so whether
-       * this lap beat the pilot's own posted best is worked out here. Until
-       * 2026-10-05 readPostedBest was not imported, so this line threw with
-       * the lap already on the board and the pilot was told it had not
-       * posted (bug-7f783182). */
-      const prevBest = readPostedBest(trackIdNow);
       writePostedBest(trackIdNow, fastest);
-      const newBest = prevBest != null && Math.round(fastest) < prevBest;
       /* Under the id it was stored against, which is the one the pilot flew
        * it on, and under the live one too when the seat moved: a pending lap
        * left behind a heal would be offered for upload again forever. */
@@ -6554,12 +6718,6 @@ export async function boot({ loading, bootStart, mapId }) {
         untilMs: performance.now() + 3600,
       };
       ui.markTimePosted(posted);
-      /* Show support prompt on new personal best, if enabled. The lap is on
-       * the board by here, so a prompt that fails says nothing (offerSupport):
-       * the catch below would tell the pilot the time had not posted. */
-      if (newBest) {
-        offerSupport('pb');
-      }
     } catch (e) {
       notice = { text: `Could not post that time.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
     }
@@ -8381,37 +8539,9 @@ export async function boot({ loading, bootStart, mapId }) {
         flying: flownThisRun && !landed && !turtleWait && !turtleRecover,
         laps: race.laps.length,
       });
-      
-      /* Track session flight time for support prompt at 20 minutes. In
-       * flight: a pause holds the craft in the air, and was counted. */
-      if (flownThisRun && !landed && !turtleWait && !turtleRecover && ui.screen === 'flight') {
-        const was = lastFlightTick;
-        lastFlightTick = nowWall;
-        if (was > 0 && nowWall > was) {
-          sessionFlightTimeMs += Math.min(nowWall - was, 1000);
-          /* Show support prompt after 20 minutes of flying if not already
-           * shown. This read was a bare `settings` until 2026-10-05, which
-           * is not a name in this scope: every frame in the air after twenty
-           * minutes threw, and the fault came back the moment the craft was
-           * flying again after R (bug-7f783182, bug-551a5c32, bug-03ae2f2a).
-           * scripts/longflight-check.js flies past the line. */
-          if (!sessionTimePromptShown
-              && sessionFlightTimeMs >= SESSION_TIME_PROMPT_MS
-              && ui.settings.supportPrompts !== false
-              && ui.screen === 'flight') {
-            sessionTimePromptShown = true;
-            sessionTimePromptDue = true;
-          }
-        }
-      }
-      /* Shown when the pilot next stops. It used to look once, 100 ms
-       * after the line, when the pilot was still flying, so it never showed. */
-      if (sessionTimePromptDue && (ui.screen === 'paused' || ui.screen === 'results')) {
-        sessionTimePromptDue = false;
-        offerSupport('time');
-      }
     }
-    if (supportPrompt && (ui.screen !== supportPromptScreen || !supportPrompt.isConnected)) {
+    if (supportPrompt && (ui.screen !== supportPromptScreen || !supportPrompt.isConnected
+        || ui.supportPromptBlocked(true))) {
       supportPrompt.remove();
       supportPrompt = null;
       supportPromptScreen = null;
@@ -8608,9 +8738,6 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
       scoring = view.mode === 'freestyle';
       let sawGroundHit = false;
-      /* The step the loop ended on for a crash, or -1: see CRASH IS A
-       * RESET. */
-      let crashStep = -1;
       acc += dt;
       let steps = Math.floor(acc / MS_PER_STEP);
       acc -= steps * MS_PER_STEP;
@@ -8705,6 +8832,7 @@ export async function boot({ loading, bootStart, mapId }) {
            * The cars' clock is set all the same: the module advances it
            * on the stand too, and the cars go on driving past it. */
           pushWorldSolids(simTimeMs + steps - 1);
+          pushSails(simTimeMs + steps - 1, stateCurr);
           if (trafficOn) {
             trafficBeforeSteps();
           }
@@ -8742,12 +8870,12 @@ export async function boot({ loading, bootStart, mapId }) {
            * announced: the bounce finished inside the same batch.
            */
           sawGroundHit = false;
-          /* Taken once, before the steps: a crash ends the loop only when
-           * crashResetTick will set the craft down from it this frame; and
-           * whether the perch below may take a craft at rest, which makes
-           * a ground contact a landing and not a hit (see CrashJudge). */
-          const crashTakes = crashCanReset();
+          /* Taken once, before the steps: whether the perch below may take
+           * a craft at rest, which makes a ground contact a landing and not
+           * a hit (see CrashJudge); and whether a crash step gets the dull
+           * bounce. */
           const mayPerch = !takingOff && !turtleWait;
+          const bounces = crashCanBounce();
           if (trafficOn) {
             trafficBeforeSteps();
           }
@@ -8760,6 +8888,8 @@ export async function boot({ loading, bootStart, mapId }) {
             /* The train and the crossing's booms, where they are at this
              * step of the lap clock. */
             pushWorldSolids(simTimeMs + i);
+            /* And the windmills' sails, round where the craft starts it. */
+            pushSails(simTimeMs + i, stNow);
             sim.step(1);
             stNow = readState();
             /* This step's world report and nothing else, for the crash
@@ -8821,36 +8951,26 @@ export async function boot({ loading, bootStart, mapId }) {
               sawGroundHit = true;
             }
             /*
-             * THE STEP, JUDGED AT ITS OWN ATTITUDE: see CRASH IS A RESET and
-             * CrashJudge. A crash ends the loop on this step, so the craft is
-             * set down from the state this step left, at every frame rate;
-             * the frame's remaining steps are never flown, as the reset
-             * that follows would throw them away. The lap clock still takes
-             * the whole frame below: the craft sits set down for the rest
-             * of it, as it would after the reset.
+             * THE STEP, JUDGED AT ITS OWN ATTITUDE: see CrashJudge. A crash
+             * no longer ends the loop: see A CRASH IS A DULL BOUNCE. The
+             * crash step's outcome is replaced by the dull bounce here, on
+             * the step it happened, and the frame flies on from it.
              */
-            if (crashJudge.step(stBefore, stNow, groundHits, stepRep, simTimeMs + i + 1, mayPerch) && crashTakes) {
-              crashStep = i;
-              break;
+            const crashed = crashJudge.step(stBefore, stNow, groundHits, stepRep, simTimeMs + i + 1, mayPerch);
+            if (bounces && (crashed || crashJudge.knock(stepRep, stNow))) {
+              stNow = applyDullBounce(crashed ? crashJudge.stepKind : 'solid', stBefore, stNow, stepRep, !crashed);
+              if (i === steps - 2) {
+                statePrev = stNow;
+              }
             }
           }
-          if (crashStep >= 0) {
-            /* Drawn at the crash step itself, whatever the accumulator's
-             * fraction, so the set down and the impact frame read the
-             * state the verdict was taken on; the cars with it, which the
-             * loop would have read at its last but one step. */
-            statePrev = stNow;
-            if (trafficOn) {
-              readVehicles(sim, carPrev);
-            }
-          } else if (steps === 1) {
+          if (steps === 1) {
             statePrev = stateCurr;
           }
           stateCurr = stNow;
         }
-        /* The steps the module actually took: all of them, or up to the
-         * crash step. */
-        const flown = crashStep >= 0 ? crashStep + 1 : steps;
+        /* The steps the module actually took: all of them. */
+        const flown = steps;
         simTimeMs += steps * MS_PER_STEP;
         /* Airtime: only steps flown off the stand. See airtimeMs. */
         if (!stood && !replayMode) {
@@ -8936,11 +9056,8 @@ export async function boot({ loading, bootStart, mapId }) {
           }
         }
       }
-      /* Not on a crash step: the crash is set down below, and a perch
-       * would land it where it hit. */
       if (
-        crashStep < 0
-        && !launchStaging
+        !launchStaging
         && !takingOff
         && hits > 0
         && canPerch(tiltDeg, speed, rate)
@@ -9130,6 +9247,7 @@ export async function boot({ loading, bootStart, mapId }) {
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
     const rep = foldWorldReport(frameReport, readWorldReport());
+    lastSolidHits = rep[0];
     if (rep[0] > 0) {
       obsContact = true;
       obsTouched = true;
@@ -9162,7 +9280,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * ground's. The step loop ended on that step.
      */
     if (crashJudge.crash) {
-      crashReset = true;
+      crashSeen = true;
     }
     /*
      * And a stop from BOUNCE_SPEED_MAX or more is the ground's hard hit,
@@ -9253,8 +9371,8 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     }
 
-    /* Before turtle can take it: see CRASH IS A RESET. */
-    crashResetTick();
+    /* Before turtle can take it: see A CRASH IS A DULL BOUNCE. */
+    crashBounceTick();
     autoResetTick();
 
     if (
@@ -9954,7 +10072,7 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     if (worldLive && drawThis && predictCam && ui.settings.predictView !== false
       && mode === 'flight' && ui.screen === 'flight' && !replayMode && !film && !camOverride
-      && !landed && !launchStaging && !turtleWait && !turtleFlip.active && !poseLock && !crashReset) {
+      && !landed && !launchStaging && !turtleWait && !turtleFlip.active && !poseLock) {
       const period = latency.displayPeriodMs();
       const late = renderStart - nowWall;
       let horizon = period * (1 + (late > 0 ? Math.floor(late / period) : 0));
@@ -10860,19 +10978,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The whoop room's race line, for the harness: its state, or null on a
    * world that has none. */
   window.__raceLine = () => (view && view.raceLine ? view.raceLine : null);
-  /* The support prompt's session clock, read and set. A check cannot fly
-   * for twenty minutes to reach the line that faulted every frame on
-   * 2026-10-05, so scripts/longflight-check.js sets the clock just short of
-   * it and flies across. Nothing in the shell calls it. */
-  window.__sessionFlight = (ms) => {
-    if (Number.isFinite(ms)) {
-      sessionFlightTimeMs = ms;
-    }
-    return {
-      ms: sessionFlightTimeMs, shown: sessionTimePromptShown, due: sessionTimePromptDue,
-      thresholdMs: SESSION_TIME_PROMPT_MS, prompt: supportPrompt ? supportPromptScreen : null,
-    };
-  };
+  /* Whether the support prompt is up, and on which screen, for the checks. */
+  window.__supportPrompt = () => ({ shown: Boolean(supportPrompt), screen: supportPrompt ? supportPromptScreen : null });
   /* P12 and P13 are audio budgets, and neither can be read while the audio
    * context is null: update() returns immediately and reports a cost of
    * nothing. A capture run has to click the page to satisfy the browser's
@@ -11296,6 +11403,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Which control mode the plant is actually in. A rig that thinks it is
    * flying acro and is not measures nothing: angle cannot loop. */
   window.__flightMode = () => (angleModeOn ? 'angle' : 'acro');
+  /* Whether the module is flying prop wash, as the shell last told it. */
+  window.__propwash = () => runWash;
   /*
    * The air, READ BACK OUT OF THE MODULE rather than out of the menu, which
    * is the same discipline the PIDs panel keeps: a slider that stopped

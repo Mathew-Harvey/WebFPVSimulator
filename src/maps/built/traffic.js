@@ -135,6 +135,7 @@ import { ELEMENTS, KIND, docModeOf, clampByLimits } from '../../trackbuilder/ele
 import { CAR_STYLES, STYLE_DIMS } from '../../props/types.js';
 import { CAR_KINDS } from '../../props/street.js';
 import { seedOf } from '../../props/parts.js';
+import { sailSlotsFor } from '../../props/windmill.js';
 import { threePosToSim } from '../../render/frame.js';
 import { uploadRoad, addVehicle, MOVER_SLOTS } from '../../game/plantworld.js';
 import { docToWorld } from './place.js';
@@ -259,6 +260,9 @@ export function trafficOf(doc) {
   const tables = new Map();
   let worldPoints = 0;
   let tablePoints = 0;
+  /* A windmill's sails take the top of the mover slots (sailSlotsFor in
+   * src/props/windmill.js), and the cars stay under them. */
+  const carSlots = MOVER_SLOTS - sailSlotsFor(doc);
   for (const el of doc.elements) {
     if (ELEMENTS[el.type]?.kind !== KIND.VEHICLE) {
       continue;
@@ -276,9 +280,11 @@ export function trafficOf(doc) {
         `A vehicle is on road ${r.el.id}, which has no line to drive, so it stays parked.`, el.id));
       continue;
     }
-    if (out.vehicles.length >= MOVER_SLOTS) {
+    if (out.vehicles.length >= carSlots) {
       out.problems.push(problem('warn', 'tr-slots',
-        `The physics drives ${MOVER_SLOTS} vehicles at most, and this map has more: this one stays parked.`, el.id));
+        carSlots < MOVER_SLOTS
+          ? `The physics drives ${carSlots} vehicles at most on a map with a windmill, whose sails take the rest, and this map has more: this one stays parked.`
+          : `The physics drives ${MOVER_SLOTS} vehicles at most, and this map has more: this one stays parked.`, el.id));
       continue;
     }
     const dv = drive(r, el);

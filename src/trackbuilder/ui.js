@@ -70,6 +70,7 @@ import {
 } from '../props/types.js';
 /* What a room's furniture may be sized to, so the fields hold to it. */
 import { isRoomType, clampRoomSize, ROOM_SIZE_MIN, ROOM_SIZE_MAX } from '../props/room.js';
+import { windmillShape } from '../props/windmill.js';
 /* A road's eased line and the drift car's numbers, for the road and vehicle
  * inspectors: the same answers the plan draws and the physics is handed. */
 import { roadOf } from '../maps/built/road.js';
@@ -162,6 +163,19 @@ function show(x, places = 2) {
    * the string and the old expression chewed the trailing zeros off the
    * number itself: a levels count of 40 displayed as 4, and 100 as 1. */
   return s.includes('.') ? (s.replace(/\.?0+$/, '') || '0') : s;
+}
+
+/* A windmill's sails, in the terms a pilot times a line by: how often one
+ * comes past any point of the disc, and how fast the tips go. */
+function millLine(element) {
+  if (element.type !== 'windmill') {
+    return '';
+  }
+  const s = windmillShape(element);
+  if (!(s.rpm > 0)) {
+    return ` Its sails stand still, ${show(s.R, 1)} m long, the lowest corner ${show(s.H - s.reach, 1)} m up.`;
+  }
+  return ` A sail comes past every ${show(15 / s.rpm, 2)} s, the tips at ${show((s.R * 2 * Math.PI * s.rpm) / 60, 0)} m/s, the lowest corner ${show(s.H - s.reach, 1)} m up.`;
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -1344,7 +1358,7 @@ export class Panels {
     const doorway = element.type === 'hollowChimney'
       ? ` Its doorway is ${show(element.dims.door, 1)} m wide and ${show(hollowDoorHeight(element.dims.door, element.dims.height), 1)} m high.`
       : '';
-    host.append(el('p', 'tb-fig-blurb', `About ${show(tall, 1)} m tall, taking ${show(b.x1 - b.x0, 1)} by ${show(b.z1 - b.z0, 1)} m of ground${sunk}.${doorway}`));
+    host.append(el('p', 'tb-fig-blurb', `About ${show(tall, 1)} m tall, taking ${show(b.x1 - b.x0, 1)} by ${show(b.z1 - b.z0, 1)} m of ground${sunk}.${doorway}${millLine(element)}`));
   }
 
   /* A heading and a row of segment buttons, one of them on: the inspector's

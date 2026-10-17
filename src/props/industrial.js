@@ -1949,7 +1949,7 @@ const TURBINE_SHORT = 0.05;
  * the cone stands furthest off it, within `short`. The last stops where its
  * dome meets b, so nothing is solid past the tip.
  */
-function coneChain(P, m, name, a, b, ra, rb, short) {
+export function coneChain(P, m, name, a, b, ra, rb, short) {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
   const dz = b[2] - a[2];

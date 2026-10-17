@@ -48,13 +48,16 @@
  * (choosePartnerSpots), painted by paintPartnerMarks and handed over as
  * `marks`.
  *
- * THE CARS MOVE, AND NOTHING ELSE DOES. A map's roads and vehicles
- * (./traffic.js) are drawn by ./roadmesh.js and ./cars.js, and the physics
- * module drives the cars: the shell uploads the traffic this file hands it,
- * reads every car's pose after it steps, and gives them back to poseCars to
- * draw. So updateAnim is still a no op, and the per frame work is that,
- * seating the lights, trailing the sky and switching chunks on and off by
- * distance.
+ * THE CARS MOVE, AND A WINDMILL'S SAILS TURN; NOTHING ELSE DOES. A map's
+ * roads and vehicles (./traffic.js) are drawn by ./roadmesh.js and
+ * ./cars.js, and the physics module drives the cars: the shell uploads the
+ * traffic this file hands it, reads every car's pose after it steps, and
+ * gives them back to poseCars to draw. A windmill's sails are a group of
+ * their own hung in its chunk (mountTurning), turned by updateAnim to the
+ * angle the step count gives, and seated in the physics by the shell from
+ * the same function (`sails`, src/props/windmill.js sailsOf). The per frame
+ * work is that, one rotation a windmill, seating the lights, trailing the
+ * sky and switching chunks on and off by distance.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -95,6 +98,8 @@ import { normalize } from '../../trackbuilder/model.js';
 import { docModeOf } from '../../trackbuilder/elements.js';
 import { PropKit, ownedPropMaterials } from '../../props/kit.js';
 import { addSolids } from '../../props/solids.js';
+import { rotorAngle, sailsOf } from '../../props/windmill.js';
+import { MOVER_SLOTS } from '../../game/plantworld.js';
 import { poleWireAnchors } from '../../props/street.js';
 import { sincos } from '../../props/trig.js';
 import { makeStfMark } from '../../art/stf.js';
@@ -1000,6 +1005,59 @@ function drawnRelief(chunk, spot, right, share = STF_PROBE_SHARE) {
 }
 
 /*
+ * THE PARTS THAT TURN (PropKit.turning in src/props/kit.js): a windmill's
+ * sails. Each hangs in its element's chunk from a pivot on its axis, so the
+ * chunk's cull switches it with the rest of the windmill, and updateAnim
+ * turns it about the pivot's +x, one rotation a frame. It is drawn by a kit
+ * of its own into a few batches of its own, because a mesh merged into the
+ * chunk's cannot turn; and being one level down it is not a direct child of
+ * the chunk, so proxyCasters leaves it casting its own shadow, which a
+ * proxy baked where the sails stood at load would get wrong.
+ *
+ * Returns [{ turn, tag }], and leaves on each pivot `userData.turning`, the
+ * world box of the whole disc it turns through, for the chunk's cull cell:
+ * the cell is measured from what it draws, and the sails at load are not
+ * all the room they take.
+ */
+function mountTurning(props, turners) {
+  const out = [];
+  const sphere = new THREE.Sphere();
+  for (const t of turners) {
+    const name = `props:${t.chunk}`;
+    let chunk = props.children.find((g) => g.name === name);
+    if (!chunk) {
+      chunk = new THREE.Group();
+      chunk.name = name;
+      props.add(chunk);
+    }
+    /* How far from the axis anything it draws reaches. */
+    let reach = 0;
+    t.group.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.computeBoundingSphere();
+        sphere.copy(o.geometry.boundingSphere);
+        reach = Math.max(reach, sphere.center.length() + sphere.radius);
+      }
+    });
+    const pivot = new THREE.Group();
+    pivot.name = 'turning';
+    pivot.matrixAutoUpdate = false;
+    pivot.matrix.copy(t.place);
+    const turn = new THREE.Group();
+    turn.add(t.group);
+    pivot.add(turn);
+    chunk.add(pivot);
+    const at = new THREE.Vector3().setFromMatrixPosition(t.place);
+    pivot.userData.turning = new THREE.Box3(
+      at.clone().subScalar(reach),
+      at.clone().addScalar(reach),
+    );
+    out.push({ turn, tag: t.tag });
+  }
+  return out;
+}
+
+/*
  * ONE SHADOW CASTER A CHUNK, instead of one a material.
  *
  * The kit merges each 48 m chunk's props into one mesh per material, and every
@@ -1264,6 +1322,8 @@ export async function buildMap(shell, onProgress, options) {
    * batches with it.
    */
   const kit = new PropKit(kitLook(look.timeId), { clumps: q.city.leafClumps !== false });
+  /* The parts that turn are collected rather than baked in: mountTurning. */
+  kit.turners = [];
   for (const it of placed.items) {
     kit.begin(it.x, it.y, it.z, it.yaw, chunkKeyOf(it));
     kit.element(it.el);
@@ -1285,6 +1345,9 @@ export async function buildMap(shell, onProgress, options) {
   const marks = paintPartnerMarks(props, placed, partnerSpots, look);
   const patronMarks = paintPatronMarks(props, placed, patronSpots, look);
   const allMarks = [...marks, ...patronMarks];
+  /* After the marks, so no mark is measured against a sail that happened
+   * to be passing the wall it was painted on. */
+  const turning = mountTurning(props, kit.turners);
   scene.add(props);
   progress(0.8);
 
@@ -1323,6 +1386,10 @@ export async function buildMap(shell, onProgress, options) {
   for (const g of props.children) {
     bb.makeEmpty();
     for (const m of g.children) {
+      if (m.userData.turning) {
+        bb.union(m.userData.turning);
+        continue;
+      }
       if (!m.geometry.boundingBox) {
         m.geometry.computeBoundingBox();
       }
@@ -1490,11 +1557,26 @@ export async function buildMap(shell, onProgress, options) {
     updateRacingLine() { return null; },
     updateShadowFocus,
     updateWind() {},
-    /* Nothing on a built map is posed from the step count here. Its cars
-     * move, but the physics module drives them (src/native/world.c section
-     * 5) and the shell hands their poses to poseCars below, so render reads
-     * the pose the physics used and never works out its own. */
-    updateAnim() {},
+    /* A windmill's sails, turned to where the step count puts them, the
+     * same rotorAngle the shell seats their solids from (`sails` below), so
+     * the sail drawn is the sail hit. One rotation a windmill a frame, and
+     * nothing at all on a map with none. Its cars move too, but the physics
+     * module drives them (src/native/world.c section 5) and the shell hands
+     * their poses to poseCars below, so render reads the pose the physics
+     * used and never works out its own. */
+    updateAnim(step) {
+      for (const t of turning) {
+        t.turn.rotation.x = rotorAngle(t.tag, step);
+      }
+    },
+    /*
+     * THE SAILS, for the shell: null on a map with no windmill, and then the
+     * shell seats nothing. Otherwise src/props/windmill.js sailsOf's answer,
+     * which says which mover slots they take (the top SAIL_SLOTS, above
+     * anything ./traffic.js gives a car), the boxes round the craft at a
+     * step (seat), and the nearest sail for the near plane (gapAt).
+     */
+    sails: turning.length ? sailsOf(placed, MOVER_SLOTS) : null,
     /*
      * THE TRAFFIC, for the shell. Null on a map with no vehicle, and then
      * none of the calls below does anything: a map with no traffic makes no
@@ -1581,6 +1663,8 @@ export async function buildMap(shell, onProgress, options) {
       cars: carSet ? carSet.stats() : carStats,
       trafficProblems: traffic.problems.length,
       wireRuns: wires.runs,
+      /* Windmills whose sails turn: one rotation each a frame. */
+      turning: turning.length,
       painted: ground.painted,
       kit: { ...kit.counts },
       scene: { time: look.timeId, ground: look.groundId },

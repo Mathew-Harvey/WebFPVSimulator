@@ -1216,6 +1216,12 @@ const DEFAULTS = {
    */
   scoringReset: false,
   flightStyle: 'expert',
+  /* PROP WASH, the owner's ask of 2026-10-16: "turn off prop wash toggle in
+   * menu". On is the full model and the default, so nobody's flight changes
+   * until they flip it. Off is sim_set_propwash(0): the shake a quad feels
+   * in its own wash goes, and nothing else does. Read as `!== false`, so a
+   * blob from before it existed is On. See runWash in src/main.js. */
+  propwash: true,
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
@@ -9572,6 +9578,22 @@ export class Ui {
         ratesItem(s, midRun),
         /* Beside the rates, which are what Acro flies. See flightModeItem. */
         flightModeItem(s, this.flightModeKey()),
+        /*
+         * PROP WASH, beside the other two things that decide how the quad
+         * answers the sticks. Settings and not the pause menu, because the
+         * pause menu has no row to spare at 1280 by 720 (see How to fly
+         * there), and Settings is one press from the pause. It lands at once,
+         * mid run too; the lap it lands in is voided. See runWash in
+         * src/main.js.
+         */
+        toggle(
+          'Prop wash',
+          s.propwash !== false
+            ? 'On: the full physics. Drop into your own wash or chop the throttle through a turn and the quad shakes, as a real one does. Turn it off for a smoother ride. Laps flown with it off post to the public board tagged Tuned.'
+            : 'Off: no shake in your own wash, everything else as before. Laps flown with it off post to the public board tagged Tuned, and keep a best lap of their own. Changing it mid lap voids that lap.',
+          s.propwash !== false,
+          (v) => { s.propwash = Boolean(v); },
+        ),
         choice(
           'Radio link',
           s.link === 'perfect'
@@ -9641,7 +9663,7 @@ export class Ui {
         toggle(
           'Manga and scoring',
           s.mangaAndScoring
-            ? 'On: the game\'s manga look and its score. The menus\' titles are lettered in the manga hand, Medium and High draw black outlines round the world, and on a freestyle map the score, its combos and the chase are drawn as you fly them. Clean FPV and the Impact frame below trim parts of it.'
+            ? 'On: the game\'s manga look and its score. The menus\' titles are lettered in the manga hand, Medium and High draw black outlines round the world, and on a freestyle map the score, its combos and the chase are drawn as you fly them. Clean FPV below trims parts of it.'
             : 'Off: no manga look anywhere, and no score while you fly. No black outlines round the world on Medium and High, as on Low, no speed lines, impact frame or lettering, menus in plain type, and no score, combo or chase meter over the picture. The counting goes on underneath, so a scored run still runs its two minutes and ends on its results.',
           s.mangaAndScoring,
           (v) => { s.mangaAndScoring = v; },
@@ -9657,27 +9679,17 @@ export class Ui {
           !s.mangaAndScoring
             ? 'Nothing to do while Manga and scoring is off: every map is already clean. Turn that on and this keeps the score and the chase as plain words and numbers, with no manga look in flight.'
             : (s.cleanFpv
-              ? 'On: freestyle maps look and read the way a race track does. No speed lines and no impact frame; callouts are words and numbers, and the results are a list.'
-              : 'Off: on a freestyle map, ink speed lines gather at the edges of the picture above about 20 m/s, a crash lands as an impact frame, tricks, gaps and combos are hand lettered like a manga with a small katakana sound effect beside the big ones, and the results come back as a page of panels. Race tracks are always clean.'),
+              ? 'On: freestyle maps look and read the way a race track does. No speed lines; callouts are words and numbers, and the results are a list.'
+              : 'Off: on a freestyle map, ink speed lines gather at the edges of the picture above about 20 m/s, tricks, gaps and combos are hand lettered like a manga with a small katakana sound effect beside the big ones, and the results come back as a page of panels. Race tracks are always clean.'),
           s.cleanFpv,
           (v) => { s.cleanFpv = v; },
         ),
         /*
-         * THE IMPACT FRAME'S OWN ROW, beside the switch that also turns it
-         * off: a flash is a photosensitivity question, so it can go without
-         * the rest of the look going with it. The note says what it does,
-         * that it is never a white flash, and what else stops it.
+         * THE IMPACT FRAME'S ROW IS GONE (2026-10-16): a crash is a dull
+         * bounce the pilot flies out of, and a held frame would blind them
+         * for the beat they need to do it. The stored setting is left
+         * alone, read by nothing in flight.
          */
-        toggle(
-          'Impact frame',
-          !s.mangaAndScoring
-            ? 'Nothing to do while Manga and scoring is off: a crash cuts straight to where you are set down. Turn that on and this decides whether a crash holds the moment as an ink panel.'
-            : (s.impactFrame
-              ? 'On: a crash on a freestyle map holds the moment for a beat as a high contrast ink panel with impact lines, then lets go. Never a white flash, at most one every two seconds. Off under Clean FPV, and whenever your system asks for reduced motion.'
-              : 'Off: a crash cuts straight to where you are set down, with no held frame. The rest of the manga look stays.'),
-          s.impactFrame,
-          (v) => { s.impactFrame = v; },
-        ),
         /*
          * THE HUD: what is drawn over the picture in flight. One row for
          * now, the crosshairs, a fixed mark at the centre of the frame.
@@ -9828,7 +9840,7 @@ export class Ui {
         toggle(
           'Support prompts',
           s.supportPrompts !== false
-            ? 'On: show a small support prompt at good moments (new personal best, after about 20 minutes of flying, or after publishing a map). At most once a week.'
+            ? 'On: show a small support prompt each time you leave a flight.'
             : 'Off: never show support prompts.',
           s.supportPrompts !== false,
           (v) => { s.supportPrompts = v; },
@@ -18098,6 +18110,11 @@ export class Ui {
   }
 
   back() {
+    /* A support prompt on the title is closed by Back before the title's own
+     * Back (the gate) is taken, so one press does one thing. */
+    if (this.screen === 'title' && this.closeSupportPrompt && this.closeSupportPrompt()) {
+      return;
+    }
     if (this.dropEl) {
       this.closeDrop();
       if (this.onUiSound) {
@@ -19078,7 +19095,8 @@ export class Ui {
      * was flown on the tuned sliders before main.js clears it with the run
      * (onAction 'title' resets), and ask once the title is up. From Results
      * the question was asked on arrival and is not asked again. */
-    const leaving = action === 'title' && (this.screen === 'paused' || this.screen === 'flight')
+    const from = this.screen;
+    const leaving = action === 'title' && (from === 'paused' || from === 'flight')
       ? this.takeTuneFlight()
       : null;
     if (action === 'title' || action === 'paused') {
@@ -19096,6 +19114,31 @@ export class Ui {
       this.resultsTune = null;
       this.maybeAskTune(leaving);
     }
+    /* The support prompt, last: after the exit has happened, and after the
+     * tune question is pending so supportPromptBlocked can see it. One call
+     * per exit, from the one place a flight is left for the title. */
+    if (action === 'title' && (from === 'flight' || from === 'paused' || from === 'results')
+        && this.onFlightExit) {
+      this.onFlightExit(from);
+    }
+  }
+
+  /*
+   * WHAT THE SUPPORT PROMPT YIELDS TO. It is the lowest thing on the title:
+   * the tune question (pending, or up), the feel report and the bug and name
+   * dialogs all win, and the invitation card is a flight card. If one is up
+   * or pending when a pilot leaves a flight, this exit simply gets no prompt
+   * (it is not held for later), and one that opens while the prompt is up
+   * takes the prompt away (`up`, polled by the frame loop), so the two are
+   * never on screen together whichever came first.
+   */
+  supportPromptBlocked(up = false) {
+    return Boolean(
+      (!up && this.tuneAskTimer)
+      || this.bugFiling
+      || (this.nameDialog && !this.nameDialog.hidden)
+      || (this.invite && this.invite.up),
+    );
   }
 
   /* Returns true when the key was a menu key and the shell should not

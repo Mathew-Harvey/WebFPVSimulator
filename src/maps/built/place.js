@@ -792,6 +792,27 @@ function supportsOf(doc, placed) {
 }
 
 /*
+ * The first Balloon chase piece on a placed map, as the shell's game takes it
+ * (src/main.js balloonWorld), or null. World metres, y up: the plane flies
+ * round (x, z). A second piece is not flown, and the builder says so
+ * (fs-balloons in src/trackbuilder/warnings.js).
+ */
+export function balloonChaseOf(placed) {
+  const it = placed.items.find((t) => t.el.type === 'balloonChase');
+  if (!it) {
+    return null;
+  }
+  const d = it.el.dims || {};
+  return {
+    x: it.x,
+    z: it.z,
+    radius: Number.isFinite(d.radius) ? d.radius : 80,
+    height: Number.isFinite(d.height) ? d.height : 14,
+    speed: Number.isFinite(d.speed) ? d.speed : 1,
+  };
+}
+
+/*
  * WHAT A RAISED THING CAN STAND ON, for a document, as { under(x, y, z, ignore), seatFor(el, z) }: the question
  * seatDocument asks of every element, kept for a caller that has to ask it again and again about points (a
  * pointer moving over the plot) without placing the map each time. Placing is the cost, so the answer is only as

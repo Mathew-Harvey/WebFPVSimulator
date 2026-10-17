@@ -20,7 +20,7 @@
  * physics model is exactly what it was with the game off.
  *
  * THE PLANE'S LINES. A leg is a waypoint at least LEG_MIN away, inside
- * `radius` of the map's centre, and a target speed drawn from SPEED_MIN to
+ * `radius` of the piece's spot, and a target speed drawn from SPEED_MIN to
  * SPEED_MAX. The turn rate eases toward what the heading error asks for
  * (TURN_TAU) and never exceeds what LAT_ACCEL allows at the speed flown, so
  * it rolls into a turn, holds a steady arc and rolls out, and a fast leg
@@ -75,6 +75,8 @@ export const STREAK_MS = 2500;
 /* The plane. */
 const SPEED_MIN = 11;
 const SPEED_MAX = 25;
+/* The most a leg that starts with a hard turn is flown at. */
+const HARD_TURN_SPEED = 17;
 const SPEED_ACCEL = 2.5;
 const LAT_ACCEL = 11;
 const TURN_TAU = 0.45;
@@ -115,12 +117,24 @@ export function hashKey(s) {
 
 export class BalloonChase {
   /*
-   * world: { cx, cz, radius, ceilingAt(x, z) }, Three.js metres, Y up.
+   * world: { cx, cz, radius, ceilingAt(x, z), altMin?, speedScale? },
+   * Three.js metres, Y up: the spot the plane flies round and how far out.
    * ceilingAt is the top of whatever stands at (x, z), the ground included.
+   * altMin and speedScale are the piece's Height and Speed.
    */
   constructor(world, seed) {
     this.world = world;
     this.seed = seed >>> 0;
+    /* The author's Height and Speed, where the map's piece gives them: the
+     * lowest the plane flies, and a scale on every speed it picks. */
+    const scale = Number.isFinite(world.speedScale) ? world.speedScale : 1;
+    this.vMin = SPEED_MIN * scale;
+    this.vMax = SPEED_MAX * scale;
+    this.vHardTurn = HARD_TURN_SPEED * scale;
+    this.altMin = Number.isFinite(world.altMin) ? world.altMin : ALT_MIN;
+    this.altMax = Math.max(ALT_MAX, this.altMin + 24);
+    /* A small sky cannot hold a seventy metre leg. */
+    this.legMin = Math.min(LEG_MIN, world.radius * 1.1);
     /* Plane, now and at the feed before, for the render's interpolation. */
     this.p = new Float64Array(3);
     this.pPrev = new Float64Array(3);
@@ -182,13 +196,13 @@ export class BalloonChase {
     }
     this.p[0] = w.cx + ux * w.radius * 0.8;
     this.p[2] = w.cz + uz * w.radius * 0.8;
-    this.p[1] = Math.max(ALT_MIN, w.ceilingAt(this.p[0], this.p[2]) + CLEAR_ABOVE + 6);
-    if (this.p[1] > ALT_MAX) {
-      this.p[1] = ALT_MAX;
+    this.p[1] = Math.max(this.altMin, w.ceilingAt(this.p[0], this.p[2]) + CLEAR_ABOVE + 6);
+    if (this.p[1] > this.altMax) {
+      this.p[1] = this.altMax;
     }
     this.hx = -ux;
     this.hz = -uz;
-    this.v = SPEED_MIN + (SPEED_MAX - SPEED_MIN) * 0.4;
+    this.v = this.vMin + (this.vMax - this.vMin) * 0.4;
     this.vy = 0;
     this.turn = 0;
     this.bankTan = 0;
@@ -254,18 +268,18 @@ export class BalloonChase {
       const x = w.cx + a * w.radius;
       const z = w.cz + b * w.radius;
       const { top, len } = this.legFloor(x, z);
-      if (len < LEG_MIN) {
+      if (len < this.legMin) {
         continue;
       }
-      let y = Math.max(ALT_MIN, top + CLEAR_ABOVE) + this.rand() * 8;
-      if (y > ALT_MAX) {
-        if (top + CLEAR_ABOVE > ALT_MAX) {
+      let y = Math.max(this.altMin, top + CLEAR_ABOVE) + this.rand() * 8;
+      if (y > this.altMax) {
+        if (top + CLEAR_ABOVE > this.altMax) {
           continue;
         }
-        y = ALT_MAX;
+        y = this.altMax;
       }
       /* A climb the plane can make over the leg at its slowest. */
-      if (y - this.p[1] > CLIMB_MAX * (len / SPEED_MAX) + 4) {
+      if (y - this.p[1] > CLIMB_MAX * (len / this.vMax) + 4) {
         continue;
       }
       /* Prefer a leg that is not straight back where it came from, so the
@@ -277,16 +291,18 @@ export class BalloonChase {
       }
     }
     if (!best) {
-      /* Nowhere clean: back over the centre, high. */
-      best = { x: w.cx, y: ALT_MAX, z: w.cz, dot: 0 };
+      /* Nowhere clean: back over the centre, as low as it may fly there. */
+      const top = this.legFloor(w.cx, w.cz).top;
+      const y = Math.max(this.altMin, top + CLEAR_ABOVE) + 4;
+      best = { x: w.cx, y: y > this.altMax ? this.altMax : y, z: w.cz, dot: 0 };
     }
     this.wx = best.x;
     this.wy = best.y;
     this.wz = best.z;
-    this.vTarget = SPEED_MIN + (SPEED_MAX - SPEED_MIN) * this.rand();
+    this.vTarget = this.vMin + (this.vMax - this.vMin) * this.rand();
     /* A hard turn ahead is flown slower, as a pilot would. */
-    if (best.dot < 0.2 && this.vTarget > 17) {
-      this.vTarget = 17;
+    if (best.dot < 0.2 && this.vTarget > this.vHardTurn) {
+      this.vTarget = this.vHardTurn;
     }
   }
 

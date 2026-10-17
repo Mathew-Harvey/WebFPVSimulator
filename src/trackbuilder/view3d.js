@@ -147,6 +147,9 @@ const COL = {
   /* A named gap's window: a deeper amber than the selection's, so a
    * selected gap still reads as selected. */
   gap: 0xffa726,
+  /* A balloon chase's marker: the plane's balloons' pink, which is in no
+   * other piece the builder draws. */
+  balloon: 0xff7aa8,
   /* The whoop room: the hall dimmed, the RaceGOW envelope lit inside it, the
    * arrow through an opening, and the ring at a selected gate's foot. */
   groundDim: 0x0f1a24,
@@ -1508,8 +1511,9 @@ export class View3D {
       const id = h.object.userData.elementId;
       const el = id && !h.object.userData.ring && !(ignore && ignore.has(id)) ? elementById(doc, id) : null;
       const k = el ? ELEMENTS[el.type]?.kind : null;
-      /* A window, a car, a label and a ring are not things to stand on. */
-      if (el && ![KIND.ZONE, KIND.VEHICLE, KIND.ANNOTATION, KIND.DECAL, KIND.ROAD].includes(k)) {
+      /* A window, a car, a label, a ring and a balloon chase's mast are not
+       * things to stand on. */
+      if (el && el.type !== 'balloonChase' && ![KIND.ZONE, KIND.VEHICLE, KIND.ANNOTATION, KIND.DECAL, KIND.ROAD].includes(k)) {
         t = h.distance;
         break;
       }
@@ -3430,6 +3434,9 @@ export class View3D {
     if (def.kind === KIND.ZONE) {
       return this.buildGap(el, false, true);
     }
+    if (el.type === 'balloonChase') {
+      return this.buildBalloonChase(el, false, true);
+    }
     const asset = FS && def.kind !== KIND.DECAL && def.kind !== KIND.ANNOTATION ? FS.assetOf(el) : null;
     if (!asset) {
       const node = this.buildElement(el, []);
@@ -4562,6 +4569,9 @@ export class View3D {
     if (def.kind === KIND.ZONE) {
       return this.buildGap(el, selected);
     }
+    if (el.type === 'balloonChase') {
+      return this.buildBalloonChase(el, selected);
+    }
     if (def.kind === KIND.ROAD || def.kind === KIND.VEHICLE) {
       /* Drawn all together by buildTraffic, the way the simulator draws
        * them, not one element at a time. */
@@ -4836,6 +4846,53 @@ export class View3D {
     if (this.gapLabels) {
       this.gapLabels.push(label);
     }
+    return holder;
+  }
+
+  /*
+   * A balloon chase. Nothing of it stands in the world: the simulator flies
+   * a plane round it (src/game/balloons.js), so this, like a named gap's
+   * window, is the author's view and is never drawn in the sim. A pad on the
+   * ground and a mast to its Height with a balloon on top, which are what a
+   * click picks, and a dashed ring at its Radius, the sky the plane flies
+   * round. In the document's Z up frame, as the holder is.
+   */
+  buildBalloonChase(el, selected, ghost = false) {
+    const radius = Math.max(1, el.dims.radius || 80);
+    const height = Math.max(1, el.dims.height || 14);
+    const holder = new THREE.Group();
+    holder.position.set(el.position.x, el.position.y, el.position.z);
+    const tone = selected ? COL.frameSel : COL.balloon;
+    const mat = new THREE.MeshBasicMaterial({
+      color: tone, transparent: ghost, opacity: ghost ? 0.55 : 1, depthWrite: !ghost,
+    });
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(3, 24), new THREE.MeshBasicMaterial({
+      color: tone, transparent: true, opacity: selected ? 0.4 : 0.22, depthWrite: false,
+    }));
+    pad.position.z = 0.06;
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, height, 6).rotateX(Math.PI / 2), mat);
+    mast.position.z = height / 2;
+    const balloon = new THREE.Mesh(new THREE.SphereGeometry(1.1, 14, 10), mat);
+    balloon.position.z = height + 1.1;
+    for (const m of [pad, mast, balloon]) {
+      if (!ghost) {
+        this.register(m, el);
+      }
+      holder.add(m);
+    }
+    const N = 120;
+    const ring = [];
+    for (let i = 0; i <= N; i += 1) {
+      const a = (i / N) * Math.PI * 2;
+      ring.push(Math.cos(a) * radius, Math.sin(a) * radius, 0.1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(ring, 3));
+    const line = new THREE.Line(geo, new THREE.LineDashedMaterial({
+      color: tone, dashSize: 4, gapSize: 3, transparent: true, opacity: selected ? 0.95 : 0.6, depthWrite: false,
+    }));
+    line.computeLineDistances();
+    holder.add(line);
     return holder;
   }
 

@@ -1227,6 +1227,17 @@ export function gapLayout() {
   return [];
 }
 
+/*
+ * Balloon chase: nothing drawn and nothing solid, the plane is the shell's
+ * (src/render/balloons.js). One sweep the size of a landing pad, so the plan
+ * marks the spot the plane flies round and a pointer can pick it.
+ */
+export function balloonChaseLayout() {
+  const P = new Parts();
+  P.box('coursePaint', -3, 0, -3, 3, 0.05, 3, { solid: false, draw: false, sweep: true, name: 'balloon chase' });
+  return P.list;
+}
+
 /* Ground paint: nothing solid, drawn by the map from the course's logos. */
 export function decalLayout() {
   return [];

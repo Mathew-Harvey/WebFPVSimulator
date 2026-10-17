@@ -981,6 +981,9 @@ function label(el) {
  *   fs-sails         warn  an element's solids stand where a windmill's
  *                          sails turn, which fs-overlap cannot see because
  *                          the sails are not solids (src/props/windmill.js)
+ *   fs-balloons      warn  a second balloon chase on the map, which is not
+ *                          flown: the map flies the first one it holds
+ *                          (balloonChaseOf in src/maps/built/index.js)
  *   fs-slot          warn  a space between two elements narrower than the
  *                          gap rule's 1.4 m but more than a few centimetres:
  *                          a slot a five inch aims at and cannot fit through
@@ -1235,6 +1238,21 @@ export function freestyleReport(doc) {
         otherId: first.id,
       }));
     }
+  }
+
+  /* -------- balloon chases -------- */
+
+  /*
+   * One plane a map. The map flies the first balloon chase in the document
+   * and nothing of any other, so a second one would sit on the plan doing
+   * nothing while its builder waits for a second plane.
+   */
+  const chases = placed.items.filter((it) => it.el.type === 'balloonChase');
+  for (const it of chases.slice(1)) {
+    out.push(warn('fs-balloons', `${cap(names(it.el))} is not flown: a map flies one balloon chase, ${names(chases[0].el)}. Remove one of them.`, {
+      elementId: it.el.id,
+      otherId: chases[0].el.id,
+    }));
   }
 
   /* -------- named gaps -------- */

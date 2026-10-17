@@ -9,7 +9,10 @@
  *   a balloon on the craft's swept path pops once and pays one, a gold one
  *     pays GOLD_VALUE, and nothing pops off the path, on the stand, or
  *     after the round's clock has run out;
- *   the round runs ROUND_MS from the first feed flown.
+ *   the round runs ROUND_MS from the first feed flown;
+ *   the builder piece: a map document's balloonChase is placed where it
+ *     stands with its dims clamped, adds no solid, a map without one has no
+ *     game, and a second one is named by fs-balloons and not flown.
  *
  * Usage: node scripts/balloons-check.js
  *
@@ -32,6 +35,9 @@
 import {
   BalloonChase, BALLOON_EVERY, BALLOON_MAX, GOLD_VALUE, ROUND_MS,
 } from '../src/game/balloons.js';
+import { createTrack, createElement, normalize } from '../src/trackbuilder/model.js';
+import { placeDocument, balloonChaseOf } from '../src/maps/built/place.js';
+import { freestyleReport } from '../src/trackbuilder/warnings.js';
 
 let pass = 0;
 let fail = 0;
@@ -168,6 +174,35 @@ console.log('balloons-check: popping');
   g.reset(1);
   check(g.score === 0 && !g.over && g.startedMs < 0 && g.born.every((b) => b < 0), 'a new round starts clean');
   check(g.born.length === BALLOON_MAX, `the pool is ${BALLOON_MAX} and never grows`);
+}
+
+console.log('balloons-check: the builder piece');
+{
+  const mapDoc = (chases) => {
+    const doc = createTrack('Balloon check', 'full', 'freestyle');
+    doc.elements.push(createElement(doc, 'startPads', { x: 10, y: 10, z: 0 }, 0));
+    for (const [x, y, dims] of chases) {
+      const el = createElement(doc, 'balloonChase', { x, y, z: 0 }, 0);
+      Object.assign(el.dims, dims);
+      doc.elements.push(el);
+    }
+    return normalize(doc).doc;
+  };
+  const none = placeDocument(mapDoc([]));
+  check(balloonChaseOf(none) === null, 'a map without the piece has no game');
+  const one = placeDocument(mapDoc([[60, 40, { radius: 500, height: 2, speed: 1.2 }]]));
+  const bc = balloonChaseOf(one);
+  const it = one.items.find((t) => t.el.type === 'balloonChase');
+  check(bc && bc.x === it.x && bc.z === it.z, 'the game flies round where the piece stands');
+  check(bc && bc.radius === 200 && bc.height === 8 && bc.speed === 1.2, `its dims are held to their limits (${bc && [bc.radius, bc.height, bc.speed].join(', ')})`);
+  check(one.solids.length === none.solids.length, 'the piece adds no solid');
+  const fs = (doc) => freestyleReport(doc).warnings.filter((w) => w.code === 'fs-balloons');
+  check(fs(mapDoc([[60, 40, {}]])).length === 0, 'one piece draws no fs-balloons');
+  const twoDoc = mapDoc([[60, 40, { radius: 50 }], [120, 90, { radius: 120 }]]);
+  const two = fs(twoDoc);
+  const second = twoDoc.elements.filter((e) => e.type === 'balloonChase')[1];
+  check(two.length === 1 && two[0].elementId === second.id, `a second piece is named (${two.map((w) => w.message).join(' | ')})`);
+  check(balloonChaseOf(placeDocument(twoDoc)).radius === 50, 'and the first is the one flown');
 }
 
 console.log(`\nballoons-check: ${pass} passed, ${fail} failed`);

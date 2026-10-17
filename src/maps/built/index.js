@@ -106,7 +106,7 @@ import { sincos } from '../../props/trig.js';
 import { makeStfMark } from '../../art/stf.js';
 import { makePartnerMark, signAspect } from '../../art/partnermark.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
-import { seatDocument, groundUnder, topUnder, PLATFORM_REACH } from './place.js';
+import { seatDocument, groundUnder, topUnder, PLATFORM_REACH, balloonChaseOf } from './place.js';
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost, skyLook } from './looks.js';
 import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, stfKey } from './egg.js';
@@ -1587,6 +1587,14 @@ export async function buildMap(shell, onProgress, options) {
      * step (seat), and the nearest sail for the near plane (gapAt).
      */
     sails: turning.length ? sailsOf(placed, MOVER_SLOTS) : null,
+    /*
+     * BALLOON CHASE, for the shell: null on a map without the piece, and
+     * then the shell runs nothing of the game. Otherwise the first one
+     * placed (a second is not flown, and the builder says so): the spot the
+     * plane flies round in the world frame, and the author's Radius, Height
+     * and Speed. See src/game/balloons.js.
+     */
+    balloonChase: balloonChaseOf(placed),
     /*
      * THE TRAFFIC, for the shell. Null on a map with no vehicle, and then
      * none of the calls below does anything: a map with no traffic makes no

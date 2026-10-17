@@ -48,7 +48,10 @@ export const MAP_BUILD_MS = {
    * rather than a promise about every map. */
   built: 1353,
   /* Nick Burns' house (src/maps/house/), the built map's pipeline with the
-   * house as one structure of its own. A first figure, written before it
-   * was measured, and replaced by the measurement in the same change. */
-  house: 1600,
+   * house as one structure of its own, measured at 1280 by 720 on High as
+   * the loading screen's world stage: 1616, 1569 and 1824 ms. The starter
+   * yard, loaded between them on the same container, took 3447, 3290 and
+   * 3563, so this container ran slower than the day `built` was measured,
+   * and the house builds in about half the yard's time. */
+  house: 1670,
 };

@@ -959,7 +959,7 @@ async function main() {
      * main.js divides by 10. Rendering at 0.5 put every published loudness
      * figure 1.58 dB below what a player hears. */
     trace: 'flight', seconds: 20, rate: 48000, level: 0.6, blades: 3,
-    scream: '2000,8000', carrier: '', beat: 0, seam: 0, f0: 0, json: '',
+    scream: '2000,8000', carrier: '', beat: 0, seam: 0, f0: 0, json: '', wav: '',
     /*
      * Which stems to render. A1 is a property of the MOTOR model, and A8
      * explicitly requires the bed to occupy bands the motors do not, so the
@@ -1224,6 +1224,24 @@ async function main() {
     console.log(`seam at sample ${s.index}: delta ${s.delta.toExponential(3)}, percentile ${(s.percentile * 100).toFixed(2)}, p50 ${s.p50.toExponential(3)}, p99.9 ${s.p999.toExponential(3)}, max ${s.max.toExponential(3)}`);
   }
 
+  if (opts.wav) {
+    /* A listenable copy of exactly what was measured: 16 bit stereo PCM. */
+    const n = meta.length;
+    const pcm = Buffer.alloc(44 + n * 4);
+    pcm.write('RIFF', 0); pcm.writeUInt32LE(36 + n * 4, 4); pcm.write('WAVEfmt ', 8);
+    pcm.writeUInt32LE(16, 16); pcm.writeUInt16LE(1, 20); pcm.writeUInt16LE(2, 22);
+    pcm.writeUInt32LE(meta.rate, 24); pcm.writeUInt32LE(meta.rate * 4, 28);
+    pcm.writeUInt16LE(4, 32); pcm.writeUInt16LE(16, 34); pcm.write('data', 36);
+    pcm.writeUInt32LE(n * 4, 40);
+    for (let i = 0; i < n; i += 1) {
+      for (let c = 0; c < 2; c += 1) {
+        const v = channels[Math.min(c, channels.length - 1)][i];
+        pcm.writeInt16LE(Math.round(Math.max(-1, Math.min(1, v)) * 32767), 44 + i * 4 + c * 2);
+      }
+    }
+    await writeFile(String(opts.wav), pcm);
+    console.log(`wrote ${opts.wav}`);
+  }
   if (opts.json) {
     const rel = String(opts.json);
     const path = isAbsolute(rel) ? rel : join(root, rel);

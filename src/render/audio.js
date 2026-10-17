@@ -104,9 +104,23 @@ const BLADES = 3;
  * still, and dropping the cap is the honest way to do it because it takes
  * edge off the timbre without touching the pitch the pilot flies on.
  */
-const MOTOR_LP_TRACK = 3.4;
-const MOTOR_LP_CAP = 1000;
-const MOTOR_LP_FLOOR = 220;
+const MOTOR_LP_TRACK = 1.5;
+const MOTOR_LP_CAP = 430;
+const MOTOR_LP_FLOOR = 150;
+/*
+ * THE ACTION CAMERA REGISTER. The owner (2026-10-17) found the motors a
+ * little too high pitched and asked for the sound of old GoPro Session 5
+ * footage with its wind filter on: bassy, muffled, the highs gone. That is
+ * a body shelf and a steep roll off, not a different pitch, so the blade
+ * pass frequency is untouched and still what the pilot flies on. The cap
+ * above drops the per motor corner to 430 Hz, and these two shared nodes
+ * on the motor bus add a low shelf for the thump of the wind screen and a
+ * second pole at 800 Hz so the upper harmonics are muffled rather than
+ * merely quieter. Two nodes on the bus, none per motor, nothing per frame.
+ */
+const CAM_SHELF_HZ = 200;
+const CAM_SHELF_DB = 2.5;
+const CAM_LP_HZ = 800;
 /*
  * Below this the motor stem is silent. A stationary quad was not quiet: with
  * the oscillator floored at 20 Hz and a 0.119 idle gain, the title screen
@@ -470,8 +484,18 @@ export class MotorAudio {
     motorHp.type = 'highpass';
     motorHp.frequency.value = 60;
     motorHp.Q.value = 0.7;
+    const camShelf = keep(ctx.createBiquadFilter());
+    camShelf.type = 'lowshelf';
+    camShelf.frequency.value = CAM_SHELF_HZ;
+    camShelf.gain.value = CAM_SHELF_DB;
+    const camLp = keep(ctx.createBiquadFilter());
+    camLp.type = 'lowpass';
+    camLp.frequency.value = CAM_LP_HZ;
+    camLp.Q.value = 0.5;
     motorBus.connect(motorHp);
-    motorHp.connect(flightDuck);
+    motorHp.connect(camShelf);
+    camShelf.connect(camLp);
+    camLp.connect(flightDuck);
     this.motorBus = motorBus;
     const windBus = keep(ctx.createGain());
     windBus.gain.value = this.mix.wind * FLIGHT_STEM;

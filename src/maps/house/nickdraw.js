@@ -522,7 +522,7 @@ export function makeNick(camera) {
     balloon.position.copy(top);
     balloon.quaternion.copy(camera.quaternion);
     const pop = (0.65 + 0.35 * Math.min(1, pose.lineAge / 160)) * (1 - 0.6 * Math.max(0, (pose.lineAge - pose.lineDur + 150) / 150));
-    const far = Math.min(2.5, Math.max(1, dist / 30));
+    const far = Math.min(3, Math.max(1, dist / 20));
     balloon.scale.setScalar(S * (pose.indoors ? 0.75 : 1) * far * pop);
   }
   /* Posed once whether or not he is in view, so his shadow and his first

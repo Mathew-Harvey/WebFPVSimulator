@@ -24,6 +24,10 @@
  * The trees and the cars go in chunks of their own, so the house's own
  * batch is the house and nothing else, and a tree behind the pilot culls.
  *
+ * Nick himself is added after the pipeline has built the rest: his life
+ * in ./nick.js, his figure and his speech balloon in ./nickdraw.js. He is
+ * drawn and never solid.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify

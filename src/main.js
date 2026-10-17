@@ -81,7 +81,7 @@ import { readCounterBest, writeCounterBest } from './game/counterbest.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses } from './game/plantworld.js';
+import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
 import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
@@ -4445,8 +4445,26 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The crash step's bounce, or a knock's: see above and putDullBounce.
    * Returns the state the step now leaves. */
   function applyDullBounce(kind, before, after, rep, knock) {
-    putDullBounce(sim, kind, before, after, rep, nSim.x, nSim.y, nSim.z, frameTurn.c, frameTurn.s, dullOut, knock);
+    putDullBounce(sim, kind, before, after, rep, nSim.x, nSim.y, nSim.z, frameTurn.c, frameTurn.s, dullOut, knock, sailVelocity(rep[3]));
     return readState();
+  }
+  /*
+   * A windmill's sail is met at its own speed (dullBounce's surf): the
+   * velocity pushSails seated on the mover the report names, -2 - m, in the
+   * plant frame, turned by frameTurn as the normal is. Null for anything
+   * that is not a sail seated this step.
+   */
+  const sailSurf = new Float64Array(3);
+  function sailVelocity(idx) {
+    if (!sails || !(idx <= -2)) {
+      return null;
+    }
+    const k = -2 - idx - sails.base;
+    if (k < 0 || k >= sailsUsed) {
+      return null;
+    }
+    const o = k * sails.doubles;
+    return moverVelocityInPlant(sailBoxes[o + 6], sailBoxes[o + 7], sailBoxes[o + 8], frameTurn.c, frameTurn.s, sailSurf);
   }
   function crashBounceTick() {
     if (!crashSeen) {

@@ -2616,16 +2616,34 @@ export class CrashJudge {
  * solver touched it), n the contact's outward normal in the PLANT frame,
  * unit. out gets the velocity to leave the step with, plant frame, and is
  * returned. Allocation free: it is called from the step loop.
+ *
+ * A FACE THAT MOVES is met at its own speed: surf, when given, is the
+ * face's velocity in the plant frame, and the bounce is worked out on the
+ * craft's velocity relative to it and handed back with the face's added.
+ * Read against still air instead, a windmill's sail coming round at
+ * 7.6 m/s into a craft hovering still sent it off at 0.3 m/s, and the sail
+ * caught it again the next step, and the next: 96 bounces in 100 ms
+ * (scripts/windmill-check.js fails on it), the craft shoved round in front
+ * of the sail with a velocity of 0.3 m/s, and at 30 rpm carried 48 degrees
+ * round and then thrown off at 34 m/s. Against the sail it is a craft hit
+ * at 7.6 m/s, which leaves at the sail's speed and a thud more, once. No
+ * surf (every fixed solid and the ground) is the arithmetic above
+ * unchanged.
  */
 export const DULL_E = 0.15;
 export const DULL_OUT_MIN = 0.3;
 export const DULL_OUT_MAX = 1.2;
 export const DULL_TANGENT_KEEP = 0.75;
 
-export function dullBounce(before, nx, ny, nz, out) {
-  const vx = before[4];
-  const vy = before[5];
-  const vz = before[6];
+export function dullBounce(before, nx, ny, nz, out, surf = null) {
+  let vx = before[4];
+  let vy = before[5];
+  let vz = before[6];
+  if (surf) {
+    vx -= surf[0];
+    vy -= surf[1];
+    vz -= surf[2];
+  }
   const vn = vx * nx + vy * ny + vz * nz;
   let back = vn < 0 ? -vn * DULL_E : 0;
   if (back < DULL_OUT_MIN) {
@@ -2636,6 +2654,11 @@ export function dullBounce(before, nx, ny, nz, out) {
   out[0] = (vx - vn * nx) * DULL_TANGENT_KEEP + back * nx;
   out[1] = (vy - vn * ny) * DULL_TANGENT_KEEP + back * ny;
   out[2] = (vz - vn * nz) * DULL_TANGENT_KEEP + back * nz;
+  if (surf) {
+    out[0] += surf[0];
+    out[1] += surf[1];
+    out[2] += surf[2];
+  }
   return out;
 }
 
@@ -2657,6 +2680,9 @@ export function dullBounce(before, nx, ny, nz, out) {
  * position handed back is the one the step left. Returns false and touches
  * nothing for a report with no normal in it.
  *
+ * surf is dullBounce's: a moving solid's velocity in the plant frame, or
+ * null for one that stands still. Only a 'solid' bounce reads it.
+ *
  * A KNOCK KEEPS A SPIN THAT TURNS THE CRAFT OFF THE FACE. A craft held
  * against a face buzzes on it every few milliseconds, and taking the spin
  * off at every buzz takes off the pilot's own pull away with it, a few
@@ -2667,7 +2693,7 @@ export function dullBounce(before, nx, ny, nz, out) {
  * left, with no sim_rest before it. A spin winding the thrust axis INTO the
  * face is the solver's ratchet, and goes. A crash always loses its spin.
  */
-export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, out, knock = false) {
+export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, out, knock = false, surf = null) {
   let nx = gx;
   let ny = gy;
   let nz = gz;
@@ -2684,7 +2710,7 @@ export function putDullBounce(sim, kind, before, after, rep, gx, gy, gz, c, s, o
     ny *= inv;
     nz *= inv;
   }
-  dullBounce(before, nx, ny, nz, out);
+  dullBounce(before, nx, ny, nz, out, kind === 'solid' ? surf : null);
   /* From rest, or from the velocity the step left with its spin kept. */
   let vx = 0;
   let vy = 0;

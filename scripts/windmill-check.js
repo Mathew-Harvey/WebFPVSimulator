@@ -27,13 +27,17 @@
  *   warning   fs-sails names a building standing in the disc, and nothing
  *             standing clear of it
  *   physics   the module, seated the way src/main.js pushSails seats it, in
- *             a plant frame turned from the map's, at both axis headings: a
- *             craft hovering in the gap between two sails is hit by the one
- *             coming round, at the step the drawn sail reaches it, and thrown
- *             the way that sail goes, the same to the bit twice; the same
- *             hover with the sails stopped, or never seated, touches
- *             nothing; and a craft hovering past the tips, or just in front
- *             of the sails, is never touched while they turn
+ *             a plant frame turned from the map's, at both axis headings,
+ *             with the shell's crash bounce put on it as its step loop puts
+ *             it (CrashJudge, putDullBounce, the sail's own velocity as the
+ *             face's): a craft hovering in the gap between two sails is hit
+ *             by the one coming round, at the step the drawn sail reaches
+ *             it, bounced once, not dragged, and leaves at the sail's speed
+ *             and no more than a thud on top, the way that sail goes, the
+ *             same to the bit twice; the same hover with the sails stopped,
+ *             or never seated, touches nothing; and a craft hovering past the
+ *             tips, or just in front of the sails, is never touched while
+ *             they turn
  *   cost      what seat() and the seating cost a step, far from the sails
  *             and in them, for the latency line in PROGRESS.md. Printed, not
  *             judged: a timing threshold here would be a coin toss
@@ -73,8 +77,8 @@ import {
 } from '../src/props/windmill.js';
 import { addSolids } from '../src/props/solids.js';
 import { sincos } from '../src/props/trig.js';
-import { Colliders, GROUND_MU, GROUND_E } from '../src/game/collide.js';
-import { uploadWorld, setWorldFrame, setMover, MOVER_SLOTS } from '../src/game/plantworld.js';
+import { Colliders, GROUND_MU, GROUND_E, CrashJudge, putDullBounce, DULL_OUT_MAX } from '../src/game/collide.js';
+import { uploadWorld, setWorldFrame, setMover, moverVelocityInPlant, MOVER_SLOTS } from '../src/game/plantworld.js';
 import { threePosToSim, simPosToThree } from '../src/render/frame.js';
 import { createTrack, createElement, normalize } from '../src/trackbuilder/model.js';
 import { placeDocument } from '../src/maps/built/place.js';
@@ -517,6 +521,23 @@ function pushSails(sim, sails, f, step, st, boxes, used) {
   return n;
 }
 
+/*
+ * src/main.js sailVelocity, restated: the velocity pushSails seated on the
+ * mover the report names, in the plant frame, for the crash bounce's surf.
+ */
+const SURF = new Float64Array(3);
+function sailVelocity(sails, f, boxes, used, idx) {
+  if (!(idx <= -2)) {
+    return null;
+  }
+  const k = -2 - idx - sails.base;
+  if (k < 0 || k >= used) {
+    return null;
+  }
+  const o = k * SAIL_BOX_DOUBLES;
+  return moverVelocityInPlant(boxes[o + 6], boxes[o + 7], boxes[o + 8], f.turn.c, f.turn.s, SURF);
+}
+
 /* The craft's world position and velocity from its state, as the shell has
  * them, for the judging below (not for the physics). */
 function craftWorld(f, st) {
@@ -529,10 +550,13 @@ function craftWorld(f, st) {
 
 /*
  * Hover at rotor point (q, h, y) of the map's windmill for `ms`, with the
- * sails seated every step (`seat` false leaves the movers empty). Returns
- * the first contact, its shape, the drawn sail's distance from the CG at
- * every step up to it, the craft's velocity across the sails just after,
- * and a hash of every state block and report.
+ * sails seated every step (`seat` false leaves the movers empty) and the
+ * shell's crash bounce put on every step its judge calls (src/main.js's
+ * step loop: a crash or a knock, then putDullBounce, on a 16 step frame).
+ * Returns the first contact, its shape, the drawn sail's distance from the
+ * CG at every step up to it, the steps that bounced, the craft's speed
+ * along the sail's turn the step after the first contact and 60 ms on,
+ * the sail's own speed there, and a hash of every state block and report.
  */
 async function hover(world, f, rq, ms, seat = true) {
   const { sails, colliders } = world;
@@ -551,10 +575,23 @@ async function hover(world, f, rq, ms, seat = true) {
   const repPtr = sim.e.malloc(11 * 8);
   const boxes = new Float64Array(SAIL_SLOTS * SAIL_BOX_DOUBLES);
   const hash = createHash('sha256');
+  const judge = new CrashJudge();
+  judge.seat(f.turn.c, f.turn.s);
+  const out = new Float64Array(3);
   let used = 0;
   let st = sim.readState().state;
-  const res = { t0: -1, shape: 0, gaps: [], across: null, nearest: Infinity, most: 0, seatMs: 0 };
+  const res = { t0: -1, shape: 0, gaps: [], across: null, off: null, sail: null, bounces: [], nearest: Infinity, most: 0, seatMs: 0 };
+  /* Along the way the sail turns at the craft, anticlockwise: (-y, h) / r. */
+  const along = (lr) => {
+    const v = craftWorld(f, st);
+    const lv = worldToRotor({ X: 0, Y: 0, Z: 0, c: m.c, s: m.s }, v.vx, v.vy, v.vz);
+    const r = Math.hypot(lr[1], lr[2]) || 1;
+    return (lv[1] * -lr[2] + lv[2] * lr[1]) / r;
+  };
   for (let step = 0; step < ms; step += 1) {
+    if (step % 16 === 0) {
+      judge.beginFrame();
+    }
     if (step % 4 === 0) {
       sim.input(step / 1000, 0, 0, 0, heightHold(ctx, st, p[2]));
     }
@@ -571,22 +608,30 @@ async function hover(world, f, rq, ms, seat = true) {
       res.seatMs += performance.now() - t;
       res.most = Math.max(res.most, used);
     }
+    const before = st;
     sim.step(1);
     st = sim.readState().state;
-    hash.update(sim.readStateBytes().bytes);
     call(sim, 'sim_world_report', repPtr);
     rep.set(new Float64Array(sim.e.memory.buffer, repPtr, 11));
+    const crashed = judge.step(before, st, sim.e.sim_ground_contacts(), rep, step + 1, true);
+    if (crashed || judge.knock(rep, st)) {
+      const kind = crashed ? judge.stepKind : 'solid';
+      if (putDullBounce(sim, kind, before, st, rep, 0, 0, 1, f.turn.c, f.turn.s, out, !crashed,
+        sailVelocity(sails, f, boxes, used, rep[3]))) {
+        st = sim.readState().state;
+        res.bounces.push(step);
+      }
+    }
+    hash.update(sim.readStateBytes().bytes);
     hash.update(Buffer.from(rep.buffer));
     if (rep[0] > 0 && res.t0 < 0) {
       res.t0 = step;
       res.shape = rep[3];
+      res.off = along(lr);
+      res.sail = rotorRate(m.shape) * Math.hypot(lr[1], lr[2]);
     }
     if (res.t0 >= 0 && step === res.t0 + 60) {
-      const v = craftWorld(f, st);
-      const lv = worldToRotor({ X: 0, Y: 0, Z: 0, c: m.c, s: m.s }, v.vx, v.vy, v.vz);
-      const r = Math.hypot(lr[1], lr[2]) || 1;
-      /* Along the way the sail turns there, anticlockwise: (-y, h) / r. */
-      res.across = (lv[1] * -lr[2] + lv[2] * lr[1]) / r;
+      res.across = along(lr);
     }
     if (!Number.isFinite(st[1])) {
       throw new Error(`non-finite state at ${step} ms`);
@@ -636,7 +681,13 @@ async function physicsBlock() {
       const clear = hit.gaps.slice(0, hit.t0).every((g) => g > 0);
       check(`${tag}: at the step the drawn sail reaches it`, clear && d <= CRAFT_REACH + STRIP / 2 && d >= 0,
         `the drawn sail ${r3(d)} m from the CG at contact; the craft reaches ${CRAFT_REACH} m, the boxes are within ${STRIP / 2} m of the drawing`);
-      check(`${tag}: and thrown the way the sail goes`, hit.across !== null && hit.across > 0.5, `${r3(hit.across)} m/s along the sail's turn, 60 ms on`);
+      const early = hit.bounces.filter((b) => b >= hit.t0 && b < hit.t0 + 100);
+      check(`${tag}: bounced off it once, not dragged along by it`, early.length >= 1 && early.length <= 2,
+        `${early.length} bounce${early.length === 1 ? '' : 's'} in the 100 ms from the first contact`);
+      check(`${tag}: and off at the sail's speed, a thud more at the most`,
+        hit.off >= hit.sail && hit.off <= hit.sail + DULL_OUT_MAX + 0.05,
+        `${r3(hit.off)} m/s along the sail's turn the step after, the sail ${r3(hit.sail)} m/s there`);
+      check(`${tag}: and still going the way the sail goes`, hit.across !== null && hit.across > 0.5, `${r3(hit.across)} m/s along the sail's turn, 60 ms on`);
     }
     const twice = await hover(world, f, gapPoint, 1500);
     check(`${tag}: the same flight twice is the same to the bit`, twice.hash === hit.hash, `${hit.hash.slice(0, 16)}`);

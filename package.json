@@ -50,6 +50,7 @@
     "check:balloons": "node scripts/balloons-check.js",
     "check:counter": "node scripts/counter-check.js",
     "check:props": "node scripts/props-check.js",
+    "check:house": "node scripts/house-check.js",
     "check:windmill": "node scripts/windmill-check.js",
     "check:room": "node scripts/room-check.js",
     "check:roads": "node scripts/roads-check.js",

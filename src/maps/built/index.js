@@ -97,7 +97,7 @@ import { readAutosave } from '../../trackbuilder/storage.js';
 import { normalize } from '../../trackbuilder/model.js';
 import { docModeOf } from '../../trackbuilder/elements.js';
 import { PropKit, ownedPropMaterials } from '../../props/kit.js';
-import { addSolids } from '../../props/solids.js';
+import { addSolids, placeSolids } from '../../props/solids.js';
 import { rotorAngle, sailsOf } from '../../props/windmill.js';
 import { MOVER_SLOTS } from '../../game/plantworld.js';
 import { bakeSpecial, callsEverySighting, NINETY_SHARE, ninetyOf } from '../specials.js';
@@ -106,7 +106,9 @@ import { sincos } from '../../props/trig.js';
 import { makeStfMark } from '../../art/stf.js';
 import { makePartnerMark, signAspect } from '../../art/partnermark.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
-import { seatDocument, groundUnder, topUnder, PLATFORM_REACH, balloonChaseOf } from './place.js';
+import {
+  seatDocument, groundUnder, topUnder, indexTops, PLATFORM_REACH, balloonChaseOf,
+} from './place.js';
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost, skyLook } from './looks.js';
 import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, stfKey } from './egg.js';
@@ -1159,6 +1161,46 @@ function trianglesOf(root) {
   return Math.round(n);
 }
 
+/*
+ * A STRUCTURE A MAP BRINGS OF ITS OWN, beside its document: Nick Burns'
+ * house (src/maps/house/), which is one building too particular for any
+ * asset in the builder's palette. `extra` is
+ *
+ *   { el, parts, draw(kit) }
+ *
+ *   el      an element-shaped name for it, { id, type }, which no asset
+ *           answers to: the kit draws nothing for it, and ./egg.js can
+ *           still pair its walls with their solids and paint a mark on one
+ *   parts   ./../../props/parts.js parts in the WORLD frame, every box on
+ *           the axes: drawn and solid from the same six numbers, as an
+ *           asset's are
+ *   draw    optional, paint over the parts in the world frame (a roof's
+ *           slopes, which no box can be)
+ *
+ * It goes in as the last item and its solids as the last solids, in part
+ * order, which is the pairing ./egg.js checks. The box tops are indexed
+ * again so a floor upstairs is ground to the shell as it is to the plant,
+ * and the start pads are seated again on those tops, since pads laid on the
+ * structure's floor were seated on the paving under it.
+ */
+const EXTRA_CHUNK = 'extra';
+
+function addExtra(placed, extra) {
+  placeSolids(extra.parts, 0, 0, 0, 0, 'quarter', placed.solids, placed.stats);
+  placed.items.push({
+    el: extra.el, kind: 'structure', x: 0, y: 0, z: 0, yaw: 0, turns: 'quarter', parts: extra.parts,
+  });
+  placed.tops = indexTops(placed.solids);
+  const sp = placed.spawn;
+  if (sp && sp.from === 'pads') {
+    sp.y = topUnder(placed.tops, sp.x, sp.z, sp.base);
+    const pads = placed.items.find((it) => it.el && it.el.type === 'startPads');
+    if (pads) {
+      pads.y = sp.y;
+    }
+  }
+}
+
 export async function buildMap(shell, onProgress, options) {
   const t0 = performance.now();
   const renderer = shell.renderer;
@@ -1184,6 +1226,12 @@ export async function buildMap(shell, onProgress, options) {
     console.error('specials: nothing baked in on this map', e);
   }
   const { placed } = seatDocument(doc);
+  /* A structure the map brings of its own (src/maps/house/), after the
+   * document is seated and before anything reads what was placed. */
+  const extra = opts.extra ?? null;
+  if (extra) {
+    addExtra(placed, extra);
+  }
   /* Its roads and the cars on them (./traffic.js), worked out once: the
    * same lanes, offsets and bodies go to the plant (the shell uploads them,
    * see uploadTraffic below) and to the drawing, so the car drawn is the
@@ -1337,6 +1385,17 @@ export async function buildMap(shell, onProgress, options) {
   for (const it of placed.items) {
     kit.begin(it.x, it.y, it.z, it.yaw, chunkKeyOf(it));
     kit.element(it.el);
+  }
+  /* The map's own structure, in a chunk of its own, so it culls as one
+   * cell and bakes to one batch per material. */
+  if (extra) {
+    kit.begin(0, 0, 0, 0, EXTRA_CHUNK);
+    for (const p of extra.parts) {
+      kit.part(p);
+    }
+    if (extra.draw) {
+      extra.draw(kit);
+    }
   }
   progress(0.7);
   await yieldToPaint();

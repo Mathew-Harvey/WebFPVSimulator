@@ -67,8 +67,14 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  * page has already imported is not fetched again, so visited after the town
  * its borrowing is invisible and the BORROWS check below passes by seeing
  * nothing. The town learns nothing from the order: it imports nothing of
- * Your map's. */
-const HEAVY = ['built', 'city'];
+ * Your map's.
+ *
+ * Nick Burns' house goes LAST. It is Your map's pipeline with a document
+ * and a structure of its own, so after Your map the only thing it can
+ * fetch is its own three files, and what the default run asks of it is
+ * the release. Its borrowing is proved on its own, first in a page of its
+ * own: --map=house. */
+const HEAVY = ['built', 'city', 'house'];
 
 /*
  * WHAT BOOT MAY TAKE FROM THE PROPS LIBRARY, AND WHY IT IS NOT NOTHING.
@@ -176,6 +182,16 @@ const BORROWS = {
     ],
   },
 };
+/* Nick Burns' house is built by Your map's pipeline (src/maps/house/index.js
+ * calls src/maps/built/index.js), so it takes all of Your map and what Your
+ * map takes from the town, and nothing else. */
+BORROWS.house = {
+  built: [
+    'index.js', 'place.js', 'road.js', 'starter.js', 'looks.js', 'egg.js',
+    'traffic.js', 'roadmesh.js', 'cars.js', 'ground.js', 'logosurface.js',
+  ],
+  city: BORROWS.built.city,
+};
 
 /* The URLs under another world that this one is not allowed to have. */
 function bleedOf(urls, id, other) {
@@ -211,7 +227,11 @@ async function main() {
       s.graphics = 'low';
       s.graphicsAuto = false;
       localStorage.setItem(k, JSON.stringify(s));
-    } catch (e) { /* Storage refused. The run still boots. */ }`],
+    } catch (e) { /* Storage refused. The run still boots. */ }`,
+    /* Resource timing keeps 250 entries unless told otherwise and drops
+     * the rest without a word, so a third world visited after a boot, Your
+     * map and the town read as having fetched nothing. */
+    'performance.setResourceTimingBufferSize(100000);'],
   });
 
   const failures = [];

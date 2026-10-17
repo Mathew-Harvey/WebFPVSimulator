@@ -1706,9 +1706,11 @@ export async function boot({ loading, bootStart, mapId }) {
   /*
    * BALLOON CHASE (src/game/balloons.js, src/render/balloons.js), Mat's ask
    * of 2026-10-16: a plane flying clean legs over a freestyle map,
-   * streaming balloons to pop. Picked on the Maps screen's Game row
-   * (settings.freestyleGame) and off by default, and with it off nothing
-   * below runs past one comparison a frame and nothing is in the scene.
+   * streaming balloons to pop. Since his ask of 2026-10-17 it is a piece the
+   * author places in the map builder (`balloonChase`, src/props/types.js),
+   * not a menu choice: a map without one (view.balloonChase null, which is
+   * every race track, the town and every map made before it) runs nothing
+   * below past one comparison a frame and has nothing in the scene.
    *
    * NOTHING IT DRAWS IS SOLID and nothing reaches the plant: the plane is
    * flown through and a balloon pops when the craft's centre, swept between
@@ -1772,46 +1774,19 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
-  /* Where the plane may fly: the middle of the map's solids and how far
-   * they reach, or the spawn and eighty metres on a map with none. */
-  function balloonWorld() {
+  /* Where the plane may fly: round the map's Balloon chase piece, out to
+   * its Radius, never under its Height. */
+  function balloonWorld(bc) {
     const c = view.colliders;
-    let x0 = Infinity;
-    let x1 = -Infinity;
-    let z0 = Infinity;
-    let z1 = -Infinity;
-    if (c && c.built && c.fbox) {
-      for (let i = 0; i < c.count; i += 1) {
-        if (!c.fbox[i]) {
-          continue;
-        }
-        x0 = Math.min(x0, c.fax[i]);
-        x1 = Math.max(x1, c.fbx[i]);
-        z0 = Math.min(z0, c.faz[i]);
-        z1 = Math.max(z1, c.fbz[i]);
-      }
-    }
-    const sp = view.spawn || { x: 0, z: 0 };
-    let cx = sp.x;
-    let cz = sp.z;
-    let radius = 80;
-    if (x1 > x0 && z1 > z0) {
-      radius = Math.min(120, Math.max(60, Math.hypot(x1 - x0, z1 - z0) * 0.5));
-      /* The middle of the map, unless the pads are far from it (the town
-       * is far bigger than a round), and then the pads. */
-      const mx = (x0 + x1) * 0.5;
-      const mz = (z0 + z1) * 0.5;
-      if (Math.hypot(mx - sp.x, mz - sp.z) < radius * 0.6) {
-        cx = mx;
-        cz = mz;
-      }
-    }
+    const cx = bc.x;
+    const cz = bc.z;
+    const radius = bc.radius;
     /* What stands where, read once into a grid here, when the game is
      * switched on, so the plane's look ahead in flight is an array read and
      * never a walk of the colliders. A cell holds the highest top under it
      * or its eight neighbours, so nothing between samples is missed. */
-    const CELL = 3;
     const half = radius + 70;
+    const CELL = Math.max(3, (half * 2) / 160);
     const n = Math.ceil((half * 2) / CELL);
     const raw = new Float32Array(n * n);
     for (let i = 0; i < n; i += 1) {
@@ -1845,6 +1820,8 @@ export async function boot({ loading, bootStart, mapId }) {
       cx,
       cz,
       radius,
+      altMin: bc.height,
+      speedScale: bc.speed,
       ceilingAt(x, z) {
         const i = Math.floor((x - x0g) / CELL);
         const j = Math.floor((z - z0g) / CELL);
@@ -1876,8 +1853,8 @@ export async function boot({ loading, bootStart, mapId }) {
 
   /* Once a frame, before anything reads the game: on, off, or a new map. */
   function syncBalloons() {
-    const want = ui.settings.freestyleGame === 'balloons'
-      && Boolean(view) && view.mode === 'freestyle' && mapReady && !replayMode;
+    const want = Boolean(view) && view.mode === 'freestyle' && Boolean(view.balloonChase)
+      && mapReady && !replayMode;
     if (!want) {
       if (balloonGame) {
         balloonOff();
@@ -1904,8 +1881,9 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     const { BalloonChase, hashKey } = balloonMods;
+    const bc = view.balloonChase;
     balloonKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}`;
-    balloonGame = new BalloonChase(balloonWorld(), hashKey(balloonKey) ^ (Date.now() >>> 0));
+    balloonGame = new BalloonChase(balloonWorld(bc), hashKey(balloonKey) ^ (Date.now() >>> 0));
     if (!balloonView) {
       balloonView = new balloonMods.BalloonView();
     }

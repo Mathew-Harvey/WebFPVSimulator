@@ -56,6 +56,7 @@ import {
 import {
   gateLayout, gateDraw, flagLayout, flagDraw, coneLayout, coneDraw, poleMarkerLayout,
   barrierLayout, barrierDraw, hpoleLayout, padsLayout, padsDraw, gapLayout, decalLayout,
+  balloonChaseLayout,
 } from './course.js';
 
 const CODE = {
@@ -83,6 +84,7 @@ const CODE = {
   tree: [treeLayout, treeDraw],
   windmill: [windmillLayout, windmillDraw],
   gap: [gapLayout, null],
+  balloonChase: [balloonChaseLayout, null],
 };
 
 /* Every prop, its data and its code, keyed by type. */

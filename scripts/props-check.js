@@ -516,7 +516,7 @@ function assetsBlock() {
       const tally = { parts: [] };
       const sets = dimSets(type, style);
       for (const [name, dims] of sets) {
-        checkElement(assetEl(type, style, dims), def.turns, def.zone ? false : true, name, problems, tally);
+        checkElement(assetEl(type, style, dims), def.turns, def.zone || def.ghost ? false : true, name, problems, tally);
         /* An asset that stands on end is checked as it stands too, both
          * ways: the same checks, on the parts as placedPartsOf gives them. */
         if (def.tilt) {

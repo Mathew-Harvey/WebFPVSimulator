@@ -709,6 +709,7 @@ different wreck, advert or colour.
 | `quarterPipe` | I | Skate | quarter |  | `height` 2.4 m [0.8, 5], `width` 6 m [2, 20], `deck` 1.4 m [0.6, 6] |
 | `tree` | T | Nature | any | `sakura` `street` `pine` | `size` 1x [0.5, 3] scale, `variant` 1 [1, 99] count |
 | `gap` | J | Scoring | any |  | `width` 4 m [1, 40], `height` 3 m [1, 40] |
+| `balloonChase` | none | Scoring | any |  | `radius` 80 m [30, 200], `height` 14 m [8, 40], `speed` 1x [0.5, 1.5] scale |
 
 The furniture a map may also hold is the builder's own: `gate`,
 `flaggedGate`, `doubleStack`, `ladder`, `diveGate`, `barrier`,
@@ -818,6 +819,26 @@ part that is neither solid nor drawn (`sweep`), so the plan shows it and the
 of the physics' 64 moving box slots for its sails, so a map with one drives at
 most 32 cars. Its heading is a quarter turn, because the sails' boxes keep to
 the compass.
+
+### A balloon chase
+
+The owner's ask of 17 October 2026, "the balloon chase should be an element i
+can add into a map that i'm building rather than a menu option".
+**`balloonChase`** puts a light plane over the map that flies clean lines and
+streams balloons behind it to pop: ninety second rounds that start at the
+first moment flown, every ninth balloon gold and worth three, and the best
+score kept in the browser per map. The plane flies round the piece's
+`position` out to `radius`, never lower than `height` over the ground and
+higher wherever something stands in its way: it reads the map's solids once
+when the map is flown and keeps 7 m over them. `speed` scales its 11 to 25 m/s.
+
+Nothing of it is solid and nothing of it reaches the physics: the plane, the
+balloons and their pops are drawn and judged by the shell
+(`src/game/balloons.js`, `src/render/balloons.js`). The layout is one part
+that is neither solid nor drawn (`sweep`), a 6 m square, so the plan shows
+where it stands and the pick box holds it. A map flies the first
+`balloonChase` it holds; a second one is not flown and `fs-balloons` says so.
+A map without one loads no part of the game.
 
 ### An asset's own frame
 
@@ -972,6 +993,7 @@ through is a trap, not a line.
 | `fs-overlap` | warn | two elements' solids run into each other by more than a centimetre |
 | `fs-slot` | warn | a space between two elements' solids wider than 5 cm and narrower than 1.4 m |
 | `fs-sails` | warn | an element's solids stand in the disc a windmill's sails turn through, which `fs-overlap` cannot see because the sails are not solids |
+| `fs-balloons` | warn | a second `balloonChase` on the map, which is not flown: a map flies the first one it holds |
 | `fs-gap-blocked` | warn | a named gap has a solid across its window |
 | `fs-outside` | warn | an element stands outside the plot, or its solids reach more than half a metre past its edge |
 | `fs-buried` | warn | an asset is sunk wholly under the ground (its highest solid top is within 2 cm of the paving or under it), so nothing of it is drawn or solid |

@@ -727,22 +727,6 @@ export const FREESTYLE_SCORING = ['off', 'free', 'scored'];
 const FREESTYLE_SCORING_LABEL = { off: 'Lines only', free: 'Free flight', scored: 'Scored run' };
 
 /*
- * THE GAME ON A FREESTYLE MAP, a row of its own beside Scoring, because it
- * is a different question: Scoring decides what the counter names, this
- * decides whether there is anything in the sky to chase.
- *
- *   'none'      Nothing added. THE DEFAULT, so every map is exactly what it
- *               was for a pilot who never opens the row.
- *   'balloons'  Balloon chase (src/game/balloons.js): a plane flies clean
- *               legs over the map streaming balloons, and a round is ninety
- *               seconds of popping them. Local best per map, no board yet.
- *               Nothing it draws is solid; the counter and the chase run
- *               under it as they always do.
- */
-export const FREESTYLE_GAMES = ['none', 'balloons'];
-const FREESTYLE_GAME_LABEL = { none: 'Off', balloons: 'Balloon chase' };
-
-/*
  * THE WARNING, and it comes FIRST when trick names are on, because a row
  * wearing row-warn owes the pilot the reason before it offers them
  * anything. It is about the tricks and only the tricks: the lines are
@@ -1208,8 +1192,6 @@ const DEFAULTS = {
    * `this.freestyleRun` is the last run's SUMMARY, not a mode.
    */
   freestyleScoring: 'off',
-  /* The game in the sky on a freestyle map. See FREESTYLE_GAMES. */
-  freestyleGame: 'none',
   /*
    * WHETHER THE ONE TIME SCORING RESET HAS RUN. See the block in
    * loadSettings that reads it, which is the whole of what it is for.
@@ -1771,7 +1753,6 @@ export function loadSettings() {
     ['musicTrack', musicIds()],
     ['ghost', ['off', 'best', 'previous']],
     ['freestyleScoring', FREESTYLE_SCORING],
-    ['freestyleGame', FREESTYLE_GAMES],
     ['crosshair', CROSSHAIRS],
     ['graphicsAutoRaised', ['', ...GRAPHICS_IDS]],
     ['graphicsAutoCeiling', ['', ...GRAPHICS_IDS]],
@@ -9207,17 +9188,6 @@ export class Ui {
            * unfinished feature on is a pick, not a nudge. See select(). */
           pickOnly: true,
         },
-        /* The game in the sky. See FREESTYLE_GAMES. */
-        choice(
-          'Game',
-          s.freestyleGame === 'balloons'
-            ? 'A plane streams balloons across the map. Chase it and pop them: ninety second rounds, gold is worth three, best kept on this map.'
-            : 'Off: the map as it is. Balloon chase puts a plane in the sky streaming balloons to pop.',
-          FREESTYLE_GAMES,
-          s.freestyleGame,
-          (id) => FREESTYLE_GAME_LABEL[id],
-          (id) => { s.freestyleGame = id; },
-        ),
         /*
          * The Freestyle room's Trick list door, withdrawn with the one on
          * the title until the scoring is settled. See the note there for

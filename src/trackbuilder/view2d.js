@@ -1497,6 +1497,21 @@ export class View2D {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    /* A balloon chase is a 6 m square on the plan, and the plane flies far
+     * past it: the ring is its Radius, so a builder sees the sky it takes. */
+    if (el.type === 'balloonChase' && el.dims && el.dims.radius > 0) {
+      const c = this.toScreen(el.position);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, el.dims.radius * k, 0, Math.PI * 2);
+      ctx.strokeStyle = selected ? C.selected : (hovered ? '#ffffff' : C.structEdge);
+      ctx.globalAlpha = selected || hovered ? 0.9 : 0.45;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([8, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
     if (el.name) {
       this.drawTag(ctx, el.name, poly, selected ? C.selected : C.structName);
     }

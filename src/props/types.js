@@ -25,6 +25,9 @@
  *   styles    optional list of looks; the first is the default
  *   note      one line for the palette's tooltip and the inspector
  *   zone      true for a scoring zone: never solid, never drawn in the air
+ *   ghost     true for a piece the shell plays and the physics never meets:
+ *             nothing of it is solid and nothing is drawn where it stands
+ *             (a balloon chase, whose plane src/main.js flies)
  *   tilt      'quarter' for an asset that may stand on its end: the element's
  *             `pitch` is then 0 (upright) or +-90 degrees (on end), and
  *             tiltOf below says which. A box turned a quarter about a
@@ -379,6 +382,25 @@ export const PROP_TYPES = {
     limits: { width: [1, 40, M], height: [1, 40, M] },
     labels: { width: 'Width', height: 'Height' },
   },
+  /*
+   * BALLOON CHASE, the owner's ask of 2026-10-17: the game is a piece placed
+   * on the map rather than a menu choice. A light plane flies clean legs
+   * round this spot streaming balloons, and a round is ninety seconds of
+   * popping them (src/game/balloons.js). Nothing of it is solid and nothing
+   * stands here: the parts are one sweep, so the plan shows the spot and a
+   * pointer can pick it. After the gap, last, for the reason at windmill.
+   */
+  balloonChase: {
+    label: 'Balloon chase',
+    key: '',
+    group: 'scoring',
+    turns: 'any',
+    ghost: true,
+    note: 'A light plane that flies clean lines over the map streaming balloons to pop: ninety second rounds, gold is worth three, best kept on the map. It flies round this spot out to Radius, never lower than Height and higher where something stands in its way. Speed scales how fast it flies. Nothing of it is solid. One a map; a second one is not flown.',
+    dims: { radius: 80, height: 14, speed: 1 },
+    limits: { radius: [30, 200, M], height: [8, 40, M], speed: [0.5, 1.5, X] },
+    labels: { radius: 'Radius', height: 'Height', speed: 'Speed' },
+  },
 };
 
 /* The builder's own types a freestyle palette also offers, in order. */
@@ -625,6 +647,8 @@ export function approxHeight(type, dims, style, tilt = 0) {
      * 3.5 cm over the height. */
     case 'rail': case 'ledge': case 'quarterPipe': return (d.height ?? 1) + 0.05;
     case 'gap': return d.height ?? 1;
+    /* The spot on the ground the plane flies round: nothing stands on it. */
+    case 'balloonChase': return 0.05;
     /* The hand rail, 0.88 over the top step. */
     case 'stairs': return (d.steps ?? 7) * 0.17 + 0.95;
     case 'tree': return (TREE_H[style] ?? TREE_H.sakura) * (d.size ?? 1);

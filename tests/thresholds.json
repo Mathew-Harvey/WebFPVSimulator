@@ -396,6 +396,21 @@
         "value": 600000,
         "source": "Harness choice. The check takes about 20 s on the container that wrote it; ten minutes is a hung run, not a slow one."
       }
+    },
+    "crash-bounce": {
+      "num": 19,
+      "failed_lines": {
+        "value": 0,
+        "source": "The owner, 2026-10-16: \"no reset, just dull bounce always\". Exact, because every line of scripts/bounce-check.js is a statement that holds or does not: the same flight after the bounce at every pacing, to the bit, and the anchors' bounces."
+      },
+      "scenarios_min": {
+        "value": 8,
+        "source": "scripts/bounce-check.js as written on 2026-10-16, crash-pacing's 8 scenarios. A floor, so a check cut down or emptied cannot pass as green."
+      },
+      "timeout_ms": {
+        "value": 600000,
+        "source": "Harness choice. The check takes about 23 s on the container that wrote it; ten minutes is a hung run, not a slow one."
+      }
     }
   }
 }

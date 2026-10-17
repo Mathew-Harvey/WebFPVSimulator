@@ -39,6 +39,14 @@
  *   7. module     with a build of dist/sim.wasm, the craft lifted off the
  *                 start and held at a metre and a half for two seconds in
  *                 the real module, touching nothing, twice to the bit
+ *   8. nick       Nick at his patio table (src/maps/house/nick.js), every
+ *                 twentieth of a second of his hour: every number finite,
+ *                 no step faster than a walk and no turn faster than a
+ *                 person turns, his lowest sole on the floor under him, the
+ *                 hour wrapping where it started; his chair and the sofa
+ *                 under the seats he sits on; every walk swept with a
+ *                 person's width, clear of every solid but the chair he
+ *                 gets up from; and every line called, none twice running
  *
  * Usage: node scripts/house-check.js
  *
@@ -80,6 +88,10 @@ import { Colliders, CRAFT_WORLD_R, GROUND_MU, GROUND_E } from '../src/game/colli
 import { uploadWorld, setWorldFrame } from '../src/game/plantworld.js';
 import { threePosToSim } from '../src/render/frame.js';
 import { sincos } from '../src/props/trig.js';
+import {
+  nickAt, nickPose, nickBones, BONE as NICK_BONE, SOLE as NICK_SOLE, NICK_PERIOD_MS, NICK_PLACES, NICK_SEAT,
+  NICK_LINES, NICK_CALLS,
+} from '../src/maps/house/nick.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 let failures = 0;
@@ -651,6 +663,118 @@ async function moduleBlock(placed) {
     `${a.touched} steps in contact, up to ${r3(a.top)} m`);
 }
 
+/* ------------------------------------------------------------------ */
+/* 8. Nick                                                             */
+/* ------------------------------------------------------------------ */
+
+/* A walk at 1.25 m/s, with the rounding of a step that straddles two
+ * phases; a person turning on the spot, about a turn in a second. Real
+ * metres and seconds. */
+const NICK_STEP_MS = 20;
+const NICK_SPEED_MAX = 1.3;
+const NICK_TURN_MAX = 6.3;
+/* His lowest sole against the floor under him: a walk lifts one foot, never
+ * both, and a seat holds him a centimetre or so up. */
+const NICK_SOLE_LO = -0.02;
+const NICK_SOLE_HI = 0.03;
+/* A person's half width with an arm's swing, and the heights the sweep
+ * looks at, real metres over his floor: shins to head. */
+const NICK_R = 0.2;
+const NICK_HEIGHTS = [0.35, 0.75, 1.15, 1.55];
+
+function nickBlock(placed, near) {
+  console.log('\n8. nick');
+  const pose = nickPose();
+  const M = new Float64Array(13 * 12);
+  const soleOf = (b) => M[b * 12 + 10] - M[b * 12 + 4] * NICK_SOLE;
+  let bad = 0;
+  let fast = 0;
+  let turn = 0;
+  let soleLo = Infinity;
+  let soleHi = -Infinity;
+  let prev = null;
+  for (let T = 0; T <= NICK_PERIOD_MS; T += NICK_STEP_MS) {
+    nickAt(T, null, pose);
+    nickBones(pose, M);
+    if (![pose.x, pose.y, pose.yaw, pose.pelvisH, ...pose.J, ...M].every(Number.isFinite)) {
+      bad += 1;
+      continue;
+    }
+    if (prev) {
+      fast = Math.max(fast, Math.hypot(pose.x - prev[0], pose.y - prev[1]) / (NICK_STEP_MS / 1000));
+      let d = Math.abs(pose.yaw - prev[2]) % (2 * Math.PI);
+      d = Math.min(d, 2 * Math.PI - d);
+      turn = Math.max(turn, d / (NICK_STEP_MS / 1000));
+    }
+    prev = [pose.x, pose.y, pose.yaw];
+    const lo = Math.min(soleOf(NICK_BONE.footL), soleOf(NICK_BONE.footR)) - pose.floor;
+    soleLo = Math.min(soleLo, lo);
+    soleHi = Math.max(soleHi, lo);
+  }
+  const samples = Math.floor(NICK_PERIOD_MS / NICK_STEP_MS) + 1;
+  check(`every number of every pose is finite, ${samples} poses over his ${r3(NICK_PERIOD_MS / 60000)} minutes`, bad === 0, `${bad} not`);
+  check(`no step faster than ${NICK_SPEED_MAX} m/s`, fast <= NICK_SPEED_MAX, `${r3(fast)} m/s at most`);
+  check(`no turn faster than ${NICK_TURN_MAX} rad/s`, turn <= NICK_TURN_MAX, `${r3(turn)} rad/s at most`);
+  check(`his lowest sole is within ${NICK_SOLE_LO} and ${NICK_SOLE_HI} m of the floor in every pose`,
+    soleLo >= NICK_SOLE_LO && soleHi <= NICK_SOLE_HI, `${r3(soleLo)} to ${r3(soleHi)} m`);
+  const a = nickAt(0, null, nickPose());
+  const b = nickAt(NICK_PERIOD_MS, null, nickPose());
+  check('the hour wraps where it started, in his chair', a.state === 'seated' && b.state === 'seated'
+    && a.x === b.x && a.y === b.y && a.yaw === b.yaw, `${a.state} at ${r3(a.x)}, ${r3(a.y)}`);
+
+  /* The seats: a solid's top under each, at the height he sits on. */
+  for (const [name, seat] of [['his chair', NICK_SEAT], ...NICK_PLACES.filter((p) => p.seat).map((p) => [`the ${p.id}`, p.seat])]) {
+    const [x, , z] = worldAt(seat.at[0], seat.at[1]);
+    let top = 0;
+    for (const s of placed.solids) {
+      const q = s.box;
+      if (q && x > q[0] && x < q[3] && z > q[2] && z < q[5] && q[4] <= S * (seat.top + 0.1)) {
+        top = Math.max(top, q[4]);
+      }
+    }
+    check(`${name}'s seat is under where he sits`, Math.abs(top - S * seat.top) < S * 0.01,
+      `a top at ${r3(top / S)} m, he sits at ${r3(seat.top)} m`);
+  }
+
+  /* The walks, swept. The one solid allowed is the chair he gets up from,
+   * whose seat his legs cross as he steps out from beside it. */
+  const own = (s) => {
+    const q = s.box ?? [Math.min(s.cap[0], s.cap[3]), 0, Math.min(s.cap[2], s.cap[5]), Math.max(s.cap[0], s.cap[3]), 0, Math.max(s.cap[2], s.cap[5])];
+    const [x, , z] = worldAt(NICK_SEAT.at[0], NICK_SEAT.at[1]);
+    return Math.hypot((q[0] + q[3]) / 2 - x, (q[2] + q[5]) / 2 - z) < S * 0.4;
+  };
+  for (const place of NICK_PLACES) {
+    let hit = null;
+    let at = null;
+    const pts = place.route;
+    for (let i = 0; i + 1 < pts.length && !hit; i += 1) {
+      const n = Math.max(1, Math.ceil(Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]) / 0.05));
+      for (let k = 0; k <= n && !hit; k += 1) {
+        const px = pts[i][0] + ((pts[i + 1][0] - pts[i][0]) * k) / n;
+        const py = pts[i][1] + ((pts[i + 1][1] - pts[i][1]) * k) / n;
+        const f = py < 8.4 && px > 0 && px < 14 ? FLOOR0 : 0.03;
+        for (const h of NICK_HEIGHTS) {
+          const p = worldAt(px, py, f + h);
+          const s = hitAt(near(p).filter((q) => !own(q)), p, S * NICK_R);
+          if (s) {
+            hit = s;
+            at = [r3(px), r3(py), r3(h)];
+            break;
+          }
+        }
+      }
+    }
+    check(`his walk to the ${place.id} keeps a person's width clear`, !hit,
+      hit ? `${hit.name || hit.kind} at plan ${JSON.stringify(at)}` : `${pts.length} points`);
+  }
+
+  /* The lines. */
+  const said = new Set(NICK_CALLS.map((c) => c.line));
+  const twice = NICK_CALLS.filter((c, i) => i > 0 && c.line === NICK_CALLS[i - 1].line).length;
+  check(`every one of his ${NICK_LINES.length} lines is called, none twice running`,
+    said.size === NICK_LINES.length && twice === 0, `${said.size} called, ${twice} repeats in ${NICK_CALLS.length}`);
+}
+
 async function main() {
   console.log('house-check: Nick Burns\' house, src/maps/house/');
   const L = layoutBlock();
@@ -660,6 +784,7 @@ async function main() {
   slotsBlock(own);
   roofsBlock(placed, near);
   await moduleBlock(placed);
+  nickBlock(placed, near);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exitCode = failures ? 1 : 0;
 }

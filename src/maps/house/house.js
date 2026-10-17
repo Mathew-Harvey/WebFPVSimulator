@@ -194,8 +194,17 @@ const STREET = { y0: -27, y1: -19 };
 /* Paint on the ground, each a little over the last, so no two tops share a
  * height: the street, its pavements and the patio, then the drives. */
 const G_ASPHALT = 0.025;
-const G_PAVE = 0.03;
+export const G_PAVE = 0.03;
 const G_DRIVE = 0.034;
+
+/* The red umbrella over the patio table: its pole, the canopy's rim height,
+ * radius and rise. Nick's balloon goes over it for a camera above it
+ * (./nickdraw.js). */
+export const UMBRELLA = { x: 7.2, y: 11.0, h0: 2.15, r: 1.25, h: 0.55 };
+/* The pergola's outer posts' line, its west and east ends and the top of its
+ * beam; the rafters lie 0.2 to 0.36 over that. Nick's balloon goes over it
+ * too, for a camera over the rafters. */
+export const PERGOLA = { x0: 2.2, x1: 9.8, y1: 12.7, h: 3.45 };
 
 /* ------------------------------------------------------------------ */
 /* The builder                                                         */
@@ -1467,7 +1476,7 @@ function backYard(H) {
    * which a five inch at this scale threads. It stands just under the
    * upstairs windows, over the bay's own roof.
    */
-  const g = { x0: 2.2, x1: 9.8, y1: 12.7, h: 3.45 };
+  const g = PERGOLA;
   for (const x of [2.4, 4.85, 7.35, 9.6]) {
     H.box('homeWood', x - 0.11, g.y1 - 0.11, 0, x + 0.11, g.y1 + 0.11, g.h, { name: 'pergola post' });
   }
@@ -1481,8 +1490,8 @@ function backYard(H) {
   for (const [x, y, b] of [[6.3, 11.0, 'w'], [8.1, 11.0, 'e'], [7.2, 10.1, 's'], [7.2, 11.85, 'n']]) {
     chair(H, 'homeChair', x, y, b, G_PAVE, { s: 0.24, backH: 0.45 });
   }
-  H.post('homeWhite', 7.2, 11.0, 0.75, 2.6, 0.025, { seg: 6, kind: 'pole' });
-  H.cone('homePlay', 7.2, 11.0, 2.15, 1.25, 0.55);
+  H.post('homeWhite', UMBRELLA.x, UMBRELLA.y, 0.75, 2.6, 0.025, { seg: 6, kind: 'pole' });
+  H.cone('homePlay', UMBRELLA.x, UMBRELLA.y, UMBRELLA.h0, UMBRELLA.r, UMBRELLA.h);
   H.hidden(6.4, 10.2, 2.15, 8.0, 11.8, 2.45, 'obstacle');
   /* A dark wicker loveseat against the wall west of the slider. */
   H.box('homeChair', 0.5, DEP + 0.05, G_PAVE, 2.0, DEP + 0.8, 0.45, { name: 'loveseat' });

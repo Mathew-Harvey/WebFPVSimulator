@@ -41,8 +41,10 @@
  */
 
 import { buildMap as buildBuilt } from '../built/index.js';
+import { warmPrograms } from '../../render/warm.js';
 import { houseLayout, FRAME, worldAt } from './house.js';
 import { houseDocument } from './yard.js';
+import { makeNick } from './nickdraw.js';
 
 const CHUNK = 'extra';
 
@@ -110,5 +112,19 @@ export async function buildMap(shell, onProgress, options) {
    * keeps its marks out of the board's counters, which have no word for it. */
   map.id = 'house';
   map.source = 'house';
+  /* Nick at his patio table (./nick.js, ./nickdraw.js): in the map's scene,
+   * so its dispose frees him, posed at the clock the map is handed, and his
+   * two programs linked now beside the rest, since the map warmed its own
+   * before he was there (render/warm.js). */
+  const nick = makeNick(shell.camera);
+  map.scene.add(nick.group);
+  await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
+  const anim = map.updateAnim;
+  map.updateAnim = (step) => {
+    anim(step);
+    nick.update(step);
+  };
+  const stats = map.stats;
+  map.stats = () => ({ ...stats(), nick: nick.stats() });
   return map;
 }

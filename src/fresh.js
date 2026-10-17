@@ -232,6 +232,8 @@
     'src/maps/field.js',
     'src/maps/house/house.js',
     'src/maps/house/index.js',
+    'src/maps/house/nick.js',
+    'src/maps/house/nickdraw.js',
     'src/maps/house/yard.js',
     'src/maps/preload.js',
     'src/maps/registry.js',

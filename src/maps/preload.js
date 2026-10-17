@@ -191,5 +191,7 @@ export const MAP_PRELOAD = {
     'maps/built/logosurface.js',
     'maps/house/house.js',
     'maps/house/yard.js',
+    'maps/house/nickdraw.js',
+    'maps/house/nick.js',
   ],
 };

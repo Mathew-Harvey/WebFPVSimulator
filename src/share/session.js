@@ -330,6 +330,10 @@ export function readMapListing(mapId) {
     board: String(row.board || ''),
     author: String(row.author || ''),
     nameOnBoard: String(row.nameOnBoard || ''),
+    /* contentFingerprint (./listing.js) of what the board held the last time
+     * this browser published the map or opened the board's copy of it. Empty
+     * for a map published before it was kept, which is read as not known. */
+    boardHash: String(row.boardHash || ''),
   };
 }
 
@@ -342,6 +346,7 @@ export function writeMapListing(mapId, listing) {
     board: String(listing.board || ''),
     author: String(listing.author || ''),
     nameOnBoard: String(listing.nameOnBoard || ''),
+    ...(listing.boardHash ? { boardHash: String(listing.boardHash) } : {}),
   });
 }
 

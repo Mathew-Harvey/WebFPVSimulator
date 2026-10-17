@@ -15675,9 +15675,10 @@ export class Ui {
    * achievement the map's author gave the sticker, the line under it whose
    * sticker it is and how many of the map's this browser has found, and the
    * panel is the sticker as cut from its sheet (`picture`, a canvas the
-   * shell drew it into, or null).
+   * shell drew it into, or null). `said` replaces what a screen reader is
+   * told, for a callout that is not one sticker (the 90% achievement).
    */
-  stickerFound({ word, name, got, total, picture }) {
+  stickerFound({ word, name, got, total, picture, said = '' }) {
     const layer = this.stfLayer;
     if (!layer || !word) {
       return;
@@ -15699,7 +15700,7 @@ export class Ui {
       panel.append(el('div', 'stf-panel-burst'), picture);
       layer.append(panel);
     }
-    this.announce(`${word}. ${name ? `${name} sticker` : 'Sticker'} found, ${count}.`);
+    this.announce(said || `${word}. ${name ? `${name} sticker` : 'Sticker'} found, ${count}.`);
     clearTimeout(this.stfTimer);
     this.stfTimer = setTimeout(() => {
       layer.textContent = '';

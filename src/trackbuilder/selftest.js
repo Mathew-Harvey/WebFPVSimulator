@@ -173,8 +173,8 @@ import {
 } from '../props/letters.js';
 import { AIRFRAMES, airframeById } from '../../configs/airframes.js';
 import {
-  adminEditFor, boardHolding, inspectCourse, layoutFingerprint, officialBlocksOpen, publishCurrentCourse,
-  publishedTags, rememberPublish, suggestRemixName, tagsToSend,
+  adminEditFor, boardHolding, contentFingerprint, inspectCourse, layoutFingerprint, officialBlocksOpen, piecesOnlyOnBoard,
+  publishCurrentCourse, publishedTags, rememberPublish, suggestRemixName, tagsToSend,
 } from '../share/listing.js';
 import {
   readBind, readEditKey, writeBind, writeBuilderIntent, writeEditKey, takeBuilderIntent,
@@ -5309,6 +5309,38 @@ async function suiteListing() {
   doc.sequence.push({ id: 'sq-1', elementId: gate.id, apertureIndex: 0, entry: 1 });
   const renamed = { ...doc, name: 'Renamed Loop' };
   check('layout fingerprint ignores the title', layoutFingerprint(doc) === layoutFingerprint(renamed));
+
+  /*
+   * A MAP'S WHOLE CONTENT, which is what tells a board copy that moved on from
+   * the one this browser last published (2026-10-17, the Infinity Loops map's
+   * stickers). It has to agree across the board's round trip, which reorders
+   * keys, and across a save that changed nothing but the clock, and it has to
+   * see a sticker, which the layout fingerprint leaves out on purpose.
+   */
+  const map = createTrack('Sticker plot', 'full', 'freestyle');
+  const tree = createElement(map, 'tree', { x: 20, y: 20, z: 0 });
+  map.elements.push(tree);
+  const plain = toPlain(map);
+  const shuffled = (v) => (Array.isArray(v) ? v.map(shuffled)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).reverse().map((k) => [k, shuffled(v[k])])) : v);
+  const fp = contentFingerprint(plain);
+  check('a map\u2019s content fingerprint survives the board handing its keys back in another order',
+    fp !== '' && contentFingerprint(shuffled(JSON.parse(JSON.stringify(plain)))) === fp);
+  check('and a save that moved only the clock', contentFingerprint({ ...plain, modifiedUtc: '2031-01-01T00:00:00Z' }) === fp);
+  check('and a load from the board and back', contentFingerprint(toPlain(normalize(JSON.parse(JSON.stringify(plain))).doc)) === fp);
+  const stuck = toPlain(map);
+  const sticker = createElement(map, 'groundLogo', { x: 30, y: 30, z: 0 });
+  stuck.elements.push({ ...toPlain({ ...map, elements: [sticker] }).elements[0], crop: { x: 0, y: 0, w: 0.5, h: 0.5 }, achievement: '90%er' });
+  check('a sticker changes it, though it does not change the layout',
+    contentFingerprint(stuck) !== fp && layoutFingerprint(stuck) === layoutFingerprint(plain));
+  const recut = JSON.parse(JSON.stringify(stuck));
+  recut.elements[recut.elements.length - 1].crop.x = 0.25;
+  check('and so does a sticker cut from another piece of the sheet', contentFingerprint(recut) !== contentFingerprint(stuck));
+  const moved = JSON.parse(JSON.stringify(plain));
+  moved.elements[0].position.x += 1;
+  check('and a piece moved a metre', contentFingerprint(moved) !== fp);
+  check('the pieces a board copy has that a canvas has not are counted by id',
+    piecesOnlyOnBoard(stuck, plain) === 1 && piecesOnlyOnBoard(plain, stuck) === 0 && piecesOnlyOnBoard(moved, plain) === 0);
   check('remix name tags a course', suggestRemixName('Ladder Loop') === 'Ladder Loop remix');
   check('remix name does not double tag', suggestRemixName('Ladder Loop remix') === 'Ladder Loop remix');
   const community = inspectCourse({
@@ -14102,6 +14134,74 @@ async function suiteOfficial() {
  * target and every tag's anchor, and NaN there draws nothing and says nothing.
  * The two board tracks that carry sponsor logos on the grass came up as an
  * empty sky for exactly that reason. */
+/*
+ * THE STICKERS BAKED INTO THE INFINITY LOOPS MAP (src/maps/specials.js): the
+ * owner's "make it so they are part of that map as a special one off", on
+ * 2026-10-17, after a Publish from an older copy took all of them off the
+ * board. The sheets are read off the disk here, as the page fetches them.
+ */
+async function suiteBakedStickers() {
+  console.log('\nbaked stickers: the Infinity Loops map wears its stickers whatever copy is flown');
+  const { bakeSpecial, isSpecialMap } = await import('../maps/specials.js');
+  const { SHEETS, STICKERS } = await import('../maps/specials/infinityloops.js');
+  const loadSheet = async (url) => `data:image/webp;base64,${readFileSync(fileURLToPath(url)).toString('base64')}`;
+  const map = (id) => {
+    const d = createTrack('Sticker hunt', 'full', 'freestyle');
+    d.id = id;
+    d.field = { width: 240, depth: 160, gridSize: 1 };
+    d.elements.push(createElement(d, 'tree', { x: 120, y: 80, z: 0 }));
+    return d;
+  };
+  const bare = map('trk-e6d139f6');
+  const added = await bakeSpecial(bare, { loadSheet });
+  const stickers = bare.elements.filter((e) => e.type === 'groundLogo' && cropOf(e));
+  check('a copy of the map with none of its stickers gets all 106 back', isSpecialMap(bare.id) && added === 106 && stickers.length === 106, `${added} added`);
+  check('100 of them are finds for the 90%er', stickers.filter((e) => achievementOf(e) === '90%er').length === 100);
+  check('each wears its piece of a sheet the document now carries',
+    stickers.every((e) => { const l = logoForDecal(bare, e); return l && l.image.startsWith('data:image/webp;base64,'); })
+      && new Set(stickers.map((e) => logoForDecal(bare, e).id)).size === SHEETS.length);
+  const at = stickers.find((e) => e.id === STICKERS[10][0]);
+  check('and lies where it was baked', at && at.position.x === STICKERS[10][2] && at.position.y === STICKERS[10][3], JSON.stringify(at && at.position));
+
+  /* The board's own copy, stickers and all: nothing is added, nothing is fetched. */
+  const whole = map('trk-e6d139f6');
+  whole.elements.push(...stickers.map((e) => ({ ...e, position: { ...e.position } })));
+  whole.branding.logos = bare.branding.logos.map((l) => ({ ...l }));
+  const moved = whole.elements.find((e) => e.id === STICKERS[0][0]);
+  moved.position.x += 5;
+  let fetched = 0;
+  const counted = async (url) => { fetched += 1; return loadSheet(url); };
+  check('a copy that wears every sticker is left as it is, and nothing is fetched',
+    (await bakeSpecial(whole, { loadSheet: counted })) === 0 && fetched === 0 && whole.elements.length === 1 + 106);
+  check('so a sticker its author moved flies where they moved it', moved.position.x === STICKERS[0][2] + 5);
+
+  /* Half of them, as an edit that deleted some would leave it. */
+  const half = map('trk-e6d139f6');
+  half.elements.push(...stickers.slice(0, 50).map((e) => ({ ...e })));
+  half.branding.logos = bare.branding.logos.map((l) => ({ ...l }));
+  check('a copy with half of them gets the other half, and no sticker twice',
+    (await bakeSpecial(half, { loadSheet })) === 56 && new Set(half.elements.map((e) => e.id)).size === half.elements.length);
+
+  /* Every slot spent on the author's own logos: the sheets still go on. */
+  const full = map('trk-e6d139f6');
+  full.branding.logos = Array.from({ length: LOGO_SLOTS }, (_, i) => ({ id: `logo-${i + 1}`, image: 'data:image/png;base64,iVBORw0KGgo=', name: '' }));
+  check('a copy whose five logo slots are all the author\u2019s still wears every sticker',
+    (await bakeSpecial(full, { loadSheet })) === 106 && full.branding.logos.length === LOGO_SLOTS + SHEETS.length);
+
+  /* An id the document gave to something else keeps it. */
+  const clash = map('trk-e6d139f6');
+  const tree = createElement(clash, 'tree', { x: 30, y: 30, z: 0 });
+  tree.id = STICKERS[20][0];
+  clash.elements.push(tree);
+  await bakeSpecial(clash, { loadSheet });
+  check('a piece that holds a sticker\u2019s id keeps it, and the sticker takes another',
+    clash.elements.find((e) => e.id === STICKERS[20][0]).type === 'tree'
+      && clash.elements.filter((e) => e.type === 'groundLogo').length === 106 && new Set(clash.elements.map((e) => e.id)).size === clash.elements.length);
+
+  const other = map('trk-other');
+  check('any other map is left alone', !isSpecialMap(other.id) && (await bakeSpecial(other, { loadSheet })) === 0 && other.elements.length === 1);
+}
+
 function suiteEveryTopIsFinite() {
   console.log('\nheights: every kind of piece stands some finite height');
   for (const cls of ['full', 'micro']) {
@@ -14199,6 +14299,7 @@ async function main() {
   suiteFiveInchRoom();
   await suiteMenus();
   await suiteOfficial();
+  await suiteBakedStickers();
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;
 }

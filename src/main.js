@@ -4981,7 +4981,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * once in a browser, not once a run, because finding it is the
    * achievement: the stamp under its own key (src/share/stamps.js) is the
    * record, and a sticker this browser has stamped is not asked about
-   * again. Nothing goes to the board: the board's mark words are the
+   * again, except on a map that calls them out every time (below). Nothing
+   * goes to the board: the board's mark words are the
    * partners', and a sticker is nobody's numbers.
    *
    * THE COST, for the latency rule: a map's stickers are asked every third
@@ -4994,29 +4995,121 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let stickersView = null;
   let stickersFound = new Set();
+  /*
+   * EVERY TIME IT IS SEEN, on a map that asks for it (view.stickersEverySighting,
+   * the Infinity Loops map: src/maps/specials.js). The owner, 2026-10-17: "each
+   * sticker should always show the achievment in this map every time you see
+   * it". There a found sticker is still asked about, and called out again when
+   * it comes back into sight after STICKER_GONE_MS out of it. The find is still
+   * stamped once, so the count is still how many this browser has found.
+   *
+   * A callout stays up STICKER_HOLD_MS before another replaces it, so a lawn
+   * of stickers passing under the camera reads one at a time instead of as a
+   * flicker; one that left sight while it waited is called out the next time
+   * it is seen. `stickersSeen` is when each one was last called out or seen
+   * since. The cost is the not yet found cost above, kept for the whole
+   * flight on that map, and its pictures are drawn once and kept.
+   */
+  const STICKER_GONE_MS = 1500;
+  const STICKER_HOLD_MS = 1200;
+  const stickersSeen = new Map();
+  const stickerPictures = new Map();
+  let stickerCalledAt = -Infinity;
+  /* How many callouts have gone up, for the harness (window.__stickers). */
+  let stickerCallouts = 0;
+  /*
+   * NINE IN TEN, on a map that has the achievement (view.stickersNinety, the
+   * Infinity Loops map again). The owner, 2026-10-17: "we want a 90%
+   * acheivement, when you find 90% of the stickers". Once in a browser, under
+   * its own stamp, the first check that the stickers found here reach
+   * `need`, which also catches a browser that had found that many before the
+   * achievement existed. It waits out a sticker's callout like another
+   * sticker would, and goes before the next one.
+   */
+  let ninetyDone = true;
   function findStickers() {
     if (stickersView !== view) {
       stickersView = view;
       stickersFound = stampedAmong(view.stickers.map((s) => s.key));
+      stickersSeen.clear();
+      stickerPictures.clear();
+      ninetyDone = !view.stickersNinety || stampedAmong([view.stickersNinety.key]).size > 0;
     }
-    if (stickersFound.size >= view.stickers.length) {
+    const again = view.stickersEverySighting === true;
+    const now = performance.now();
+    if (!ninetyDone && stickersFound.size >= view.stickersNinety.need) {
+      if (now - stickerCalledAt >= STICKER_HOLD_MS) {
+        callNinety(now);
+      }
+      return;
+    }
+    if (!again && stickersFound.size >= view.stickers.length) {
       return;
     }
     eggFwd.set(0, 0, -1).applyQuaternion(fpvQuat);
+    let pick = null;
     for (const s of view.stickers) {
-      if (stickersFound.has(s.key) || !seesMark(fpvPos, eggFwd, s, view.colliders)) {
+      if ((!again && stickersFound.has(s.key)) || !seesMark(fpvPos, eggFwd, s, view.colliders)) {
         continue;
       }
-      stickersFound.add(s.key);
-      writeStamp(s.key);
-      ui.stickerFound({
-        word: s.achievement, name: s.name, got: stickersFound.size, total: view.stickers.length,
-        picture: stickerPicture(s),
-      });
+      if (again) {
+        const last = stickersSeen.get(s.key);
+        if (last !== undefined && now - last < STICKER_GONE_MS) {
+          stickersSeen.set(s.key, now);
+          continue;
+        }
+      }
       /* One a check: a second find in the same frame would replace this
-       * one's callout before anybody read it. */
+       * one's callout before anybody read it. Every sticker is still looked
+       * at when they come back, so the ones in sight stay seen. */
+      if (!pick) {
+        pick = s;
+        if (!again) {
+          break;
+        }
+      }
+    }
+    if (!pick || (again && now - stickerCalledAt < STICKER_HOLD_MS)) {
       return;
     }
+    if (!stickersFound.has(pick.key)) {
+      stickersFound.add(pick.key);
+      writeStamp(pick.key);
+    }
+    if (again) {
+      stickersSeen.set(pick.key, now);
+    }
+    stickerCalledAt = now;
+    stickerCallouts += 1;
+    ui.stickerFound({
+      word: pick.achievement, name: pick.name, got: stickersFound.size, total: view.stickers.length,
+      picture: keptPicture(pick, again),
+    });
+  }
+  function callNinety(now) {
+    const n = view.stickersNinety;
+    ninetyDone = true;
+    writeStamp(n.key);
+    stickerCalledAt = now;
+    stickerCallouts += 1;
+    const patch = view.stickers.find((s) => s.id === n.picture);
+    ui.stickerFound({
+      word: n.word, name: 'You found 90% of the stickers', got: stickersFound.size, total: view.stickers.length,
+      picture: patch ? keptPicture(patch, true) : null,
+      said: `${n.word}. You found ${stickersFound.size} of the ${view.stickers.length} stickers.`,
+    });
+  }
+  /* A sticker's picture for its callout, drawn once and kept when it will be
+   * called out again. */
+  function keptPicture(s, keep) {
+    let picture = stickerPictures.get(s.key) || null;
+    if (!picture) {
+      picture = stickerPicture(s);
+      if (picture && keep) {
+        stickerPictures.set(s.key, picture);
+      }
+    }
+    return picture;
   }
   /* The sticker as cut from its sheet, fitted in a square canvas for the
    * found panel, or null while the sheet has not decoded. */
@@ -12545,6 +12638,9 @@ export async function boot({ loading, bootStart, mapId }) {
     })),
     found: [...stickersFound],
     sheetDecoded: (view.stickers ?? []).every((s) => Boolean(s.sheet && s.sheet.image)),
+    everySighting: view.stickersEverySighting === true,
+    callouts: stickerCallouts,
+    ninety: view.stickersNinety ? { need: view.stickersNinety.need, done: ninetyDone } : null,
   });
   /* The partners' marks, the same way. Harness only. */
   window.__marks = () => ({

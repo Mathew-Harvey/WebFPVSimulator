@@ -94,6 +94,7 @@
     "lint:nouns": "node scripts/noun-lint.js",
     "lint:devices": "node scripts/device-check.js",
     "lint:arcade": "node scripts/arcade-check.js",
+    "lint:propwash": "node scripts/propwash-check.js",
     "lint:responsive": "node scripts/responsive-check.js",
     "lint:scale": "node scripts/scale-check.js",
     "lint:board": "node scripts/board-check.js",

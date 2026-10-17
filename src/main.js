@@ -2171,7 +2171,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* One trick landed on a quad that grips the air or pulls differently and
      * the run is not the machine the board compares, whatever the rest of it
      * was flown on. */
-    if (offBoardTune(runAirGrip, runMotorKv)) {
+    if (offStock()) {
       trickTuned = true;
     }
   }
@@ -2769,7 +2769,10 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     const airPart = runAirScale === 1 ? '' : `.a${Math.round(runAirScale * 100)}`;
     const kvPart = runKvScale === 1 ? '' : `.k${Math.round(runKvScale * 100)}`;
-    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${gravPart}${airPart}${kvPart}`;
+    /* And prop wash, on the same rule: only when off, so every key that was
+     * ever written stays where it is. */
+    const washPart = runWash ? '' : '.nowash';
+    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${gravPart}${airPart}${kvPart}${washPart}`;
   }
 
   let mode = 'title'; /* title, flight, paused, results */
@@ -3216,6 +3219,20 @@ export async function boot({ loading, bootStart, mapId }) {
   let runAirScale = 1;
   let runMotorKv = MOTOR_KV_STOCK;
   let runKvScale = 1;
+  /*
+   * PROP WASH, as the module is flying it: true is the full model, which is
+   * what the module starts with and what every record was set on. The owner,
+   * 2026-10-16: "turn off prop wash toggle in menu". Off is a quad that no
+   * longer shakes in its own wash, which is another machine in the same
+   * sense a tuned Air grip is, so a lap flown with it off posts tagged
+   * Tuned and is filed under a record of its own. See offStock.
+   */
+  let runWash = true;
+  /* Whether the machine being flown is off stock in any way the board tags
+   * as Tuned: the two flight feel scales, or prop wash switched off. */
+  function offStock() {
+    return offBoardTune(runAirGrip, runMotorKv) || !runWash;
+  }
   /* How many times either export has been called, for the harness: a stock
    * flight must make none (window.__air). */
   let tuneCalls = 0;
@@ -4952,7 +4969,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!keepPlace) {
       race = new Race(view.gates, view.trackClass ?? 'full');
       race.setWeight(runWeight);
-      race.setTuned(offBoardTune(runAirGrip, runMotorKv));
+      race.setTuned(offStock());
       race.setRecordKey(recordKey());
       ui.setBest(race.bestMs, view.mode);
       adoptSpawn();
@@ -5900,6 +5917,25 @@ export async function boot({ loading, bootStart, mapId }) {
           s.motorKv = runMotorKv;
         }
       }
+      /*
+       * PROP WASH, on the sliders' rule rather than the flight style's: it
+       * lands at once, mid run included, because a pilot who has just felt
+       * the shake and switched it off wants to feel the difference now. The
+       * lap it landed in is voided below like a slider's, so no lap is
+       * counted half on one machine. Guarded because an older dist/sim.wasm
+       * predates the export; on such a build the row goes back to On, which
+       * is what that module flies.
+       */
+      const wantWash = s.propwash !== false;
+      if (wantWash !== runWash) {
+        if (typeof sim.e.sim_set_propwash === 'function') {
+          sim.e.sim_set_propwash(wantWash ? 1 : 0);
+          runWash = wantWash;
+          moved = true;
+        } else {
+          s.propwash = runWash;
+        }
+      }
       if (moved) {
         if (race.currentLapMs(simTimeMs) != null) {
           race.voidLap('Feel changed\nLap voided', performance.now());
@@ -5911,7 +5947,7 @@ export async function boot({ loading, bootStart, mapId }) {
       /* Stamped on every lap counted from here on, after the void above, so
        * the lap the change landed in is thrown away and the next is counted
        * under the new machine. */
-      race.setTuned(offBoardTune(runAirGrip, runMotorKv));
+      race.setTuned(offStock());
       /* What the airtime is filed under from here on: the combination the
        * module is flying, and only while the mode is on and something is off
        * stock. Weight counts, because it is one of the three the question is
@@ -11082,6 +11118,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Which control mode the plant is actually in. A rig that thinks it is
    * flying acro and is not measures nothing: angle cannot loop. */
   window.__flightMode = () => (angleModeOn ? 'angle' : 'acro');
+  /* Whether the module is flying prop wash, as the shell last told it. */
+  window.__propwash = () => runWash;
   /*
    * The air, READ BACK OUT OF THE MODULE rather than out of the menu, which
    * is the same discipline the PIDs panel keeps: a slider that stopped

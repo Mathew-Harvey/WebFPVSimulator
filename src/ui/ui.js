@@ -1197,6 +1197,12 @@ const DEFAULTS = {
    */
   scoringReset: false,
   flightStyle: 'expert',
+  /* PROP WASH, the owner's ask of 2026-10-16: "turn off prop wash toggle in
+   * menu". On is the full model and the default, so nobody's flight changes
+   * until they flip it. Off is sim_set_propwash(0): the shake a quad feels
+   * in its own wash goes, and nothing else does. Read as `!== false`, so a
+   * blob from before it existed is On. See runWash in src/main.js. */
+  propwash: true,
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
@@ -9539,6 +9545,22 @@ export class Ui {
         ratesItem(s, midRun),
         /* Beside the rates, which are what Acro flies. See flightModeItem. */
         flightModeItem(s, this.flightModeKey()),
+        /*
+         * PROP WASH, beside the other two things that decide how the quad
+         * answers the sticks. Settings and not the pause menu, because the
+         * pause menu has no row to spare at 1280 by 720 (see How to fly
+         * there), and Settings is one press from the pause. It lands at once,
+         * mid run too; the lap it lands in is voided. See runWash in
+         * src/main.js.
+         */
+        toggle(
+          'Prop wash',
+          s.propwash !== false
+            ? 'On: the full physics. Drop into your own wash or chop the throttle through a turn and the quad shakes, as a real one does. Turn it off for a smoother ride. Laps flown with it off post to the public board tagged Tuned.'
+            : 'Off: no shake in your own wash, everything else as before. Laps flown with it off post to the public board tagged Tuned, and keep a best lap of their own. Changing it mid lap voids that lap.',
+          s.propwash !== false,
+          (v) => { s.propwash = Boolean(v); },
+        ),
         choice(
           'Radio link',
           s.link === 'perfect'

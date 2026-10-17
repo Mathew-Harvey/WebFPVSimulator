@@ -326,6 +326,17 @@ int sim_set_launch_stand(int on, double px, double py, double pz,
 int sim_set_flight_style(int arcade);
 
 /*
+ * Prop wash. 1, the default, is the full model. 0 removes only the shake a
+ * quad feels in its own wash: the propwash turbulence application and the
+ * per rotor ring state asymmetry, the same two terms arcade removes, while
+ * the cant tables, the gyro noise and the smooth ring state thrust loss
+ * stay. Survives sim_reset and sim_init, same as the flight style. Additive
+ * ABI change, version unchanged: a replay that never calls this is
+ * bit-identical to one from before it existed.
+ */
+int sim_set_propwash(int on);
+
+/*
  * Choose the airframe: 0 is the five inch this project was built around and
  * is the default, 1 is a 65 mm 1S brushless whoop. Returns SIM_ERR_BAD_ARG
  * for anything else.

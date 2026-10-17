@@ -1074,6 +1074,58 @@ export function buildChecks() {
         };
       },
     },
+    {
+      num: 19,
+      id: 'crash-bounce',
+      thresholdText: 'one input stream: the same flight after a crash bounce, to the bit, at every frame pacing',
+      /*
+       * THE BOUNCE IS PART OF THE TRAJECTORY. The owner, 2026-10-16: "no
+       * reset, just dull bounce always". A crash no longer ends the flight,
+       * so the steps after it are trajectory and must not depend on the
+       * frame rate either. This runs scripts/bounce-check.js: check 18's
+       * scenarios flown on past the crash, with the shell's own bounce put
+       * on the module at the crash step (putDullBounce, src/game/collide.js),
+       * at every pacing and phase, every line of it a pass. A child process,
+       * as check 18 is.
+       */
+      async run(ctx) {
+        const th = ctx.th.checks['crash-bounce'];
+        const run = spawnSync('node', [join(ctx.root, 'scripts/bounce-check.js')], {
+          cwd: ctx.root,
+          encoding: 'utf8',
+          timeout: th.timeout_ms.value,
+          maxBuffer: 16 * 1024 * 1024,
+        });
+        const out = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+        const head = out.match(/(\d+) scenarios, each flown on \d+ ms past its first contact at (\d+) pacings and phases/);
+        const lines = out.split('\n').filter((l) => /^\s*(pass|FAIL)\s/.test(l));
+        const failed = lines.filter((l) => /^\s*FAIL\s/.test(l));
+        const fails = [];
+        if (run.error) {
+          fails.push(`bounce-check could not run: ${run.error.message}`);
+        }
+        if (!head) {
+          fails.push(`bounce-check printed no scenario count: ${out.trim().split('\n').slice(-2).join(' | ')}`);
+        }
+        const scenarios = head ? Number(head[1]) : 0;
+        if (head && scenarios < th.scenarios_min.value) {
+          fails.push(`${scenarios} scenarios, under the ${th.scenarios_min.value} it was written with`);
+        }
+        if (failed.length > th.failed_lines.value) {
+          fails.push(`${failed.length} line(s) failed, first: ${failed[0].trim().slice(0, 300)}`);
+        }
+        if (run.status !== 0 && fails.length === 0) {
+          fails.push(`bounce-check exited ${run.status}: ${out.trim().split('\n').slice(-1)[0]}`);
+        }
+        return {
+          measured: head
+            ? `${lines.length - failed.length} of ${lines.length} lines pass, ${scenarios} scenarios at ${head[2]} pacings and phases`
+            : 'no result',
+          pass: fails.length === 0,
+          reason: fails.join('; '),
+        };
+      },
+    },
   ];
 }
 

@@ -121,12 +121,11 @@ const SCENARIOS = [
     name: 'wall hit, then full throttle', kind: 'punch', from: [-2, 2.5, 29.3], to: [7.5, 2.5, 29.3],
     secs: 1.8, vEnd: 10, heading: EAST, pushMs: 300, after: 1, afterMs: 2000,
   },
-  /* A CRASH IS A RESET, AND A RESET IS NOT A TAKEOFF (bug-d7247563, "crashed inside and cannot fly out"). The shell
-   * puts the keys and the thumb sticks at idle when it sets a craft down, and cannot do that to a radio's gimbals: the
-   * hand is still on them. A craft set down with the throttle up lifted off on the next frame with the roll, pitch and
-   * yaw it had crashed with, and in a tunnel that is a crash, a set down and a relaunch into the wall again until the
-   * hand lets go: five crashes in 1.8 s, measured. `held` is the sticks kept for `heldMs` after the pilot's path
-   * ends, a hand that has not let go; then the sticks are centred with the throttle still up (`after`). */
+  /* A CRASH IS A DULL BOUNCE (the owner, 2026-10-16: "no reset, just dull bounce always"). Until then a crash set the
+   * craft down, and this scenario held it parked while the hand was still on the sticks (bug-d7247563, "crashed
+   * inside and cannot fly out": five relaunches into the wall in 1.8 s). Now nothing is set down, so the same hand
+   * keeps flying it: `held` is the sticks kept for `heldMs` after the pilot's path ends, then the sticks are centred
+   * with the throttle still up (`after`). */
   {
     name: 'head-on 10 m/s, hand still on the sticks', kind: 'held', from: [-2, 2.5, 29.3], to: [7.5, 2.5, 29.3],
     secs: 1.8, vEnd: 10, heading: EAST, pushMs: 100, held: [0.5, -0.5, 0.3, 0.7], heldMs: 2200, after: 0.7, afterMs: 2500,
@@ -260,7 +259,7 @@ function atTarget(S, r) {
 function measure(S, rows) {
   const m = {
     frames: rows.length, crashes: 0, crashKinds: [], maxInside: 0,
-    worstJump: 0, finite: true, fault: false, setDowns: 0, unframed: 0,
+    worstJump: 0, finite: true, fault: false, setDowns: 0, setDownAt: [], unframed: 0,
   };
   let wasCrashed = false;
   /* The shell frame of the last set down's restart; see FRAMES, NOT READS. */
@@ -314,6 +313,7 @@ function measure(S, rows) {
     const restart = (j) => j > 0 && rows[j].ms < rows[j - 1].ms;
     if (restart(i)) {
       m.setDowns += 1;
+      m.setDownAt.push(i);
       setDownFr = r.fr;
     } else if (i > 0 && r.fr > rows[i - 1].fr && rows[i - 1].fr > setDownFr) {
       const q = rows[i - 1];
@@ -360,6 +360,10 @@ function measure(S, rows) {
     return m;
   }
   const t0 = rows[touch].ms;
+  /* How soon after the touch the first set down came, on the sim clock it
+   * ran on: a crash used to set the craft down on the step it hit. */
+  const firstSet = m.setDownAt.find((j) => j > touch);
+  m.firstSetDownMs = firstSet == null ? null : rows[firstSet - 1].ms - t0;
   const before = rows.slice(0, touch).filter((r) => r.ms >= t0 - 120);
   const win = (a, b) => rows.filter((r) => r.ms >= t0 + a && r.ms <= t0 + b);
   const pre = before.length ? before[0] : rows[touch];
@@ -516,12 +520,14 @@ async function main() {
        * in turtle; half a second on each is frame granularity. */
       guard(m.stuckMs <= 2000 && m.turtleMs <= 5500, 'never left stuck: set down after 1.5 s still and not upright',
         `longest ${m.stuckMs} ms stuck, ${m.turtleMs} ms in turtle, ${m.setDowns} set down${m.setDowns === 1 ? '' : 's'}`);
-      if (S.kind === 'stuck') {
-        guard(m.endUpY > 0.5, 'left alone after the hit, it ends the right way up', `up.y ${m.endUpY}`);
-      }
+      /* A crash is a dull bounce: the only set down left is stuckTick's,
+       * which waits 1.5 s of stillness, so none comes inside a second of
+       * the touch. */
+      guard(m.firstSetDownMs == null || m.firstSetDownMs >= 1000, 'a crash sets nothing down, it bounces',
+        m.firstSetDownMs == null ? 'no set down' : `first set down ${m.firstSetDownMs} ms after the touch`);
       if (S.kind === 'held') {
-        guard(m.heldFrames > 20 && m.heldAirborne === 0,
-          'a crash is not a takeoff: set down with the hand still on the sticks, it stays parked until they let go',
+        guard(m.heldFrames > 20 && m.heldAirborne === m.heldFrames,
+          'a crash is a bounce: with the hand still on the sticks it stays in the air',
           `${m.heldAirborne} of ${m.heldFrames} frames in the air`);
         guard(m.freeLiftMs != null && m.freeLiftMs <= 1200,
           'and with the sticks centred and the throttle still up it takes off',

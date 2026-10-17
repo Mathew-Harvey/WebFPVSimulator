@@ -1250,30 +1250,39 @@ export async function buildMap(shell, onProgress, options) {
   } catch (e) {
     console.error('stf: no spot for the mark on this map', e);
   }
+  /* A map that brings a structure of its own may ask for no partner or
+   * patron marks (src/maps/house/: a sign on somebody's real house reads as
+   * that person vouching for it, and the board's counters have no word for
+   * the map). The STF mark is the project's own and stays. */
+  const sponsorMarks = opts.sponsorMarks ?? true;
   /* And the partners', after it and never on its wall (./egg.js, rule 8),
    * for the same reason read only and for the same reason forgiving. Include
    * both PARTNERS and MAP_ONLY_PARTNERS for freestyle map placement. */
   let partnerSpots = [];
-  try {
-    const allPartners = [...PARTNERS, ...MAP_ONLY_PARTNERS];
-    partnerSpots = choosePartnerSpots(placed, doc, chosen.source, stfSpot,
-      allPartners.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
-  } catch (e) {
-    console.error('partners: no spots for the marks on this map', e);
+  if (sponsorMarks) {
+    try {
+      const allPartners = [...PARTNERS, ...MAP_ONLY_PARTNERS];
+      partnerSpots = choosePartnerSpots(placed, doc, chosen.source, stfSpot,
+        allPartners.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
+    } catch (e) {
+      console.error('partners: no spots for the marks on this map', e);
+    }
   }
   /* And the patrons', after partners and never on a partner's or STF's wall
    * (./egg.js, rule 8). At most PATRON_MAX_PER_MAP per map, chosen
    * deterministically by the map's key. */
   let patronSpots = [];
-  try {
-    const mapKey = stfKey(doc, chosen.source);
-    const chosenPatrons = choosePatrons(PATRON_MAP_BRANDS, mapKey);
-    if (chosenPatrons.length > 0) {
-      patronSpots = choosePatronSpots(placed, doc, chosen.source, stfSpot, partnerSpots,
-        chosenPatrons.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
+  if (sponsorMarks) {
+    try {
+      const mapKey = stfKey(doc, chosen.source);
+      const chosenPatrons = choosePatrons(PATRON_MAP_BRANDS, mapKey);
+      if (chosenPatrons.length > 0) {
+        patronSpots = choosePatronSpots(placed, doc, chosen.source, stfSpot, partnerSpots,
+          chosenPatrons.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
+      }
+    } catch (e) {
+      console.error('patrons: no spots for the marks on this map', e);
     }
-  } catch (e) {
-    console.error('patrons: no spots for the marks on this map', e);
   }
   /* Its time of day and its ground (./looks.js): golden over concrete for
    * a map that never chose, which is this map as it always was. */

@@ -334,6 +334,8 @@ const LINES = [
   ['dining room through its door into the back hall', [[8.95, 0.62, 1.7], [8.95, 4.3, 1.7]]],
   ['back hall into the kitchen', [[8.95, 4.3, 1.7], [11.85, 4.3, 1.7], [11.85, 5.75, 1.7]]],
   ['kitchen past the island into the breakfast room', [[11.85, 5.75, 1.7], [8.0, 5.75, 1.7]]],
+  ['through the LED cube on the island', [[11.8, 5.6, 1.55], [11.8, 7.3, 1.55]]],
+  ['down into the LED cube between the pendants', [[11.8, 6.5, 2.55], [11.8, 6.5, 1.5]]],
   ['breakfast room through the wide opening into the family room', [[8.0, 5.75, 1.7], [6.5, 6.55, 1.7], [2.0, 6.55, 1.7]]],
   ['family room out the slider onto the patio', [[2.0, 6.55, 1.7], [3.5, 7.0, 1.7], [3.5, 9.6, 1.7]]],
   ['family room through its door into the foyer', [[2.0, 6.55, 1.7], [2.0, 3.8, 1.7], [6.0, 3.8, 1.7]]],

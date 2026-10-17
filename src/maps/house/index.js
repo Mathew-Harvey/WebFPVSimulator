@@ -104,7 +104,7 @@ export async function buildMap(shell, onProgress, options) {
     parts: L.parts,
     draw: (kit) => drawHouse(kit, L),
   };
-  const map = await buildBuilt(shell, onProgress, { ...(options || {}), document: houseDocument(), extra });
+  const map = await buildBuilt(shell, onProgress, { ...(options || {}), document: houseDocument(), extra, sponsorMarks: false });
   /* Its own world, not Your map: the shell keys the world, the results and
    * the board's refusal by this id (src/main.js, src/ui/ui.js), and `source`
    * keeps its marks out of the board's counters, which have no word for it. */

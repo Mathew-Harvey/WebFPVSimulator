@@ -933,8 +933,12 @@ function groundFloor(H) {
 }
 
 /* A wall of built in shelves along an east west wall: one solid box from
- * the floor to the ceiling, so there is no slot over it, its boards' dark
- * backs and the books painted on its face. */
+ * the floor to the ceiling, so there is no slot over it, its boards' backs
+ * tan, cupboard doors under them and the books painted on its face. The
+ * backs were the chairs' slate in the first shots and read as a black grid
+ * across the room; a dark wood read the same on a wall facing away from the
+ * sun, which draws in a colour's shade tint. */
+const SPINES = ['homeBook', 'homePlay', 'homePlayBlue', 'homeTeal'];
 function shelves(H, a0, face0, a1, f) {
   const d = 0.38;
   const top = CEIL0;
@@ -945,10 +949,10 @@ function shelves(H, a0, face0, a1, f) {
     const x1 = a0 + ((a1 - a0) * (i + 1)) / bays - 0.04;
     for (let k = 0; k < 4; k += 1) {
       const h0 = f + 0.95 + k * 0.32;
-      H.paint('homeChair', x0, face0 + d, h0, x1, face0 + d + 0.005, h0 + 0.27);
-      H.paint('homeBook', x0 + 0.05, face0 + d + 0.005, h0 + 0.02, x0 + (x1 - x0) * (0.45 + 0.1 * ((i + k) % 3)), face0 + d + 0.01, h0 + 0.23);
+      H.paint('homeCushion', x0, face0 + d, h0, x1, face0 + d + 0.005, h0 + 0.27);
+      H.paint(SPINES[(i + 2 * k) % SPINES.length], x0 + 0.05, face0 + d + 0.005, h0 + 0.02, x0 + (x1 - x0) * (0.45 + 0.1 * ((i + k) % 3)), face0 + d + 0.01, h0 + 0.23);
     }
-    H.paint('homeChair', x0, face0 + d, f + 0.1, x1, face0 + d + 0.005, f + 0.8);
+    H.paint('homeCabinet', x0, face0 + d, f + 0.1, x1, face0 + d + 0.005, f + 0.8);
   }
 }
 
@@ -1025,7 +1029,8 @@ function familyRoom(H) {
   H.box('homeScreen', w + 0.2, 5.2, f + 1.6, w + 0.25, 6.2, f + 2.2, { name: 'television', kind: 'obstacle' });
   H.box('homeStone', w + 0.45, 4.95, f, w + 0.95, 6.45, f + 0.08, { name: 'hearth' });
   /* The cube shelving, floor to ceiling either side, baskets in the low
-   * cubes. */
+   * cubes. The frame stays dark, as it is in the house; the cubes' backs
+   * are wood for the same reason as shelves(). */
   for (const [a, b] of [[3.0 + TI / 2, 4.95], [6.45, DEP - TX]]) {
     H.box('homeShelf', w, a, f, w + 0.42, b, CEIL0, { name: 'built in' });
     const n = Math.max(2, Math.round((b - a) / 0.42));
@@ -1034,9 +1039,9 @@ function familyRoom(H) {
       const y1 = a + ((b - a) * (j + 1)) / n - 0.03;
       for (let k = 0; k < 5; k += 1) {
         const h0 = f + 0.06 + k * 0.46;
-        H.paint(k < 2 ? 'homeWicker' : 'homeChair', w + 0.42, y0, h0, w + 0.426, y1, h0 + 0.38);
+        H.paint(k < 2 ? 'homeWicker' : 'homeWood', w + 0.42, y0, h0, w + 0.426, y1, h0 + 0.38);
         if (k >= 2 && (j + k) % 3 === 0) {
-          H.paint('homeBook', w + 0.426, y0 + 0.04, h0 + 0.02, w + 0.43, y0 + (y1 - y0) * 0.6, h0 + 0.3);
+          H.paint(SPINES[(j + k) % SPINES.length], w + 0.426, y0 + 0.04, h0 + 0.02, w + 0.43, y0 + (y1 - y0) * 0.6, h0 + 0.3);
         }
       }
     }
@@ -1202,8 +1207,17 @@ function kitchen(H) {
     H.post('homeWhite', 10.85, y, f, f + 0.62, 0.025, { seg: 6, kind: 'pole' });
     H.drum('homeWood', 10.85, y, f + 0.62, f + 0.67, 0.12, { seg: 10 });
   }
+  /* An LED cube gate on the island, like the one on the basement table in
+   * Nick's videos (the basement is not built): four posts and a top frame,
+   * a gate to thread over the counter. */
   for (const [x, y] of [[it.x0, it.y0], [it.x1, it.y0], [it.x1, it.y1], [it.x0, it.y1]]) {
     H.post('homeNeon', x, y, top, top + 1.0, 0.025, { seg: 6, kind: 'pole' });
+  }
+  for (const y of [it.y0, it.y1]) {
+    H.box('homeNeon', it.x0, y - 0.025, top + 0.95, it.x1, y + 0.025, top + 1.0, { name: 'led cube', kind: 'pole' });
+  }
+  for (const x of [it.x0, it.x1]) {
+    H.box('homeNeon', x - 0.025, it.y0 + 0.025, top + 0.95, x + 0.025, it.y1 - 0.025, top + 1.0, { name: 'led cube', kind: 'pole' });
   }
   H.paint('homeSteel', 11.2, 6.05, CEIL0 - 0.006, 12.4, 6.95, CEIL0 - 0.001);
   for (const x of [11.5, 12.1]) {

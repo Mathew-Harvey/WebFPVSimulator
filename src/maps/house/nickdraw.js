@@ -9,21 +9,23 @@
  * read his face. A long face with a square jaw and a strong chin under a
  * shadow of grey stubble; a straight, prominent nose; narrowed, friendly
  * blue grey eyes under raised brows, with crow's feet; the clear
- * rectangular glasses he always wears; a wide open grin with smile lines.
- * His hair is short salt and pepper, silver at the temples and darker on
- * top, combed up and back from a quiff at the front. A heather blue crew
- * neck tee, dark jeans, a black watch on his left wrist, and the red shoes
- * with white soles. Drawn the way the house is, in plain shapes and colour
- * under the map's own cel light, comic hatching and ink. The ink draws a
- * line wherever the depth folds, so his rounded parts have segments enough
- * that it draws the outline of an arm and not each facet along it. He is
- * 1.8 m in real metres, so 5.4 m in the house's world, his size next to a
- * door.
+ * rectangular glasses he always wears; a closed smile turned up at the
+ * corners, which opens wide as he calls a line, and smile lines; and he
+ * blinks (faceBones). His hair is short salt and pepper, silver at the
+ * temples and over the ears and darker on top, parted on his left and
+ * swept up and over to his right from a quiff at the front. A heather
+ * blue crew neck tee, dark jeans, a black watch on his left wrist, and the
+ * red shoes with white soles. Drawn the way the house is, in plain shapes
+ * and colour under the map's own cel light, comic hatching and ink. The ink
+ * draws a line wherever the depth folds, so his rounded parts have segments
+ * enough that it draws the outline of an arm and not each facet along it.
+ * He is 1.8 m in real metres, so 5.4 m in the house's world, his size next
+ * to a door.
  *
  * ONE DRAW CALL. Every part of him is one mesh, its colours in the vertices
  * and its material the map's own cel() with vertex colours. A part belongs
  * to one bone, and each frame his vertices are moved by their bone's
- * transform on the CPU (rigid skinning: about 8,300 vertices, about 0.14 ms
+ * transform on the CPU (rigid skinning: about 7,900 vertices, about 0.13 ms
  * in a container that does it slowly), so the ink, the shadow map and the
  * comic layer all see the pose that is drawn without a skinning program of
  * their own. The skinning runs only while he is in front of the camera or
@@ -60,6 +62,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { cel } from '../city/vendored/core/toon.js';
 import { drawWord, wordWidth, INK, PAPER, INKS } from '../../ui/lettering.js';
 import { FRAME, UMBRELLA, PERGOLA, DEP } from './house.js';
@@ -71,9 +74,9 @@ const C = {
   skin: 0xedb99d,
   skinLo: 0xc98e74,
   stubble: 0xcfab99,
-  hair: 0x6c645e,
-  hairHi: 0xd4d0ca,
-  hairTop: 0x968f88,
+  hair: 0x564e48,
+  hairHi: 0xc2bdb7,
+  hairTop: 0x766e67,
   hairLo: 0xc9c4be,
   brow: 0x635a54,
   eye: 0xfbfbf8,
@@ -97,6 +100,54 @@ const C = {
 /* The letters' colour, by line (NICK_LINES' order): the catfish in amber,
  * the rest round the shell's inks. */
 const FILLS = ['#ffd45c', INKS.bail, INKS.mint, INKS.sky];
+
+/*
+ * His face's three bones, after the skeleton's own (./nick.js), all
+ * following the head: MOUTH carries the open grin, SMILE the closed one
+ * and LIDS his eyelids. While he calls a line MOUTH opens and shuts about
+ * its top edge, about four times a second, and SMILE is folded to a point
+ * inside his head; quiet, the other way round. LIDS is folded too, but
+ * for a blink of 140 ms every 3.7 s, and a second one after every third.
+ * A point draws nothing, so one mesh holds every face he makes and still
+ * costs one call, and the faces are read from his clock, so a held clock
+ * holds them.
+ */
+const MOUTH = BONES.length;
+const SMILE = BONES.length + 1;
+const LIDS = BONES.length + 2;
+const FACE_BONES = 3;
+/* His head is drawn HEAD_K times a real one, about a point HEAD_DROP
+ * under the head bone (bodyGeometry). */
+const HEAD_K = 1.4;
+const HEAD_DROP = 0.03;
+/* The open mouth's top edge in the head's frame, and where it is drawn. */
+const MOUTH_TOP = 0.058;
+const MOUTH_TOP_DRAWN = HEAD_K * MOUTH_TOP - HEAD_DROP;
+
+function faceBones(pose, clock, M) {
+  const h = BONE.head * 12;
+  const show = pose.line >= 0 ? MOUTH * 12 : SMILE * 12;
+  const fold = pose.line >= 0 ? SMILE * 12 : MOUTH * 12;
+  const t = clock % 11100;
+  const blink = t % 3700 < 140 || (t >= 300 && t < 440);
+  const lids = LIDS * 12;
+  for (let k = 0; k < 12; k += 1) {
+    M[show + k] = M[h + k];
+    M[fold + k] = k < 9 ? 0 : M[h + k];
+    M[lids + k] = blink || k >= 9 ? M[h + k] : 0;
+  }
+  if (pose.line >= 0) {
+    const phase = (pose.lineAge % 240) / 240;
+    const s = 0.4 + 0.6 * (1 - Math.abs(2 * phase - 1));
+    const by = MOUTH_TOP_DRAWN * (1 - s);
+    M[show + 9] += M[h + 1] * by;
+    M[show + 10] += M[h + 4] * by;
+    M[show + 11] += M[h + 7] * by;
+    M[show + 1] *= s;
+    M[show + 4] *= s;
+    M[show + 7] *= s;
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* His body                                                            */
@@ -220,12 +271,11 @@ function bodyGeometry() {
    * in the head's own frame and then scaled up with the rest.
    */
   const H = BONE.head;
-  const HK = 1.4;
-  const headScale = new THREE.Matrix4().makeTranslation(0, -0.03, 0).multiply(new THREE.Matrix4().makeScale(HK, HK, HK));
-  const addHM = (geo, hex, matrix) => addM(geo, H, hex, matrix.premultiply(headScale));
-  const addH = (geo, hex, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => {
+  const headScale = new THREE.Matrix4().makeTranslation(0, -HEAD_DROP, 0).multiply(new THREE.Matrix4().makeScale(HEAD_K, HEAD_K, HEAD_K));
+  const addHM = (geo, hex, matrix, b = H) => addM(geo, b, hex, matrix.premultiply(headScale));
+  const addH = (geo, hex, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1, b = H) => {
     e.set(rx, ry, rz, 'YXZ');
-    addHM(geo, hex, new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(e), new THREE.Vector3(sx, sy, sz)));
+    addHM(geo, hex, new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(e), new THREE.Vector3(sx, sy, sz)), b);
   };
   /* The skull, the square jaw and a strong chin; the ears; the nose,
    * long and straight: the bridge, the tip and its wings. */
@@ -233,13 +283,13 @@ function bodyGeometry() {
   const skin = new THREE.Color(C.skin);
   const stubble = new THREE.Color(C.stubble);
   const smooth = (a, b, t) => Math.min(1, Math.max(0, (t - a) / (b - a)));
-  addH(blob(3.0, 0.38, 0.16, 30, 22), (out, x, y, z) => {
+  addH(blob(3.0, 0.3, 0.16, 30, 22), (out, x, y, z) => {
     /* Grey stubble over the chin and the jaw, and a shadow of it on the
      * upper lip, fading into the cheeks. */
     const chin = smooth(-0.02, -0.3, y) * smooth(-0.6, -0.1, z);
     const lip = smooth(0.25, 0.05, Math.abs(x)) * smooth(0.6, 0.85, z) * smooth(0.14, 0.0, y);
     out.copy(skin).lerp(stubble, Math.max(chin, lip));
-  }, 0, 0.072, 0.014, 0, 0, 0, 0.073, 0.092, 0.084);
+  }, 0, 0.072, 0.014, 0, 0, 0, 0.077, 0.092, 0.084);
   for (const side of [-1, 1]) {
     addH(ball(10, 8), C.skin, 0.09 * side, 0.118, -0.008, 0, 0, 0, 0.017, 0.03, 0.022);
     addH(ball(8, 6), C.skinLo, 0.097 * side, 0.118, -0.002, 0, 0, 0, 0.009, 0.018, 0.012);
@@ -253,14 +303,16 @@ function bodyGeometry() {
   for (const side of [-1, 1]) {
     const x = 0.038 * side;
     const ry = 0.38 * side;
-    addH(ball(12, 10), C.eye, x, 0.125, 0.086, 0, ry, 0, 0.018, 0.011, 0.006);
-    addH(ball(10, 8), C.iris, x + 0.001 * side, 0.1235, 0.0905, 0, ry, 0, 0.0092, 0.0098, 0.004);
+    addH(ball(10, 8), C.eye, x, 0.125, 0.086, 0, ry, 0, 0.018, 0.0125, 0.006);
+    addH(ball(8, 6), C.iris, x + 0.001 * side, 0.1235, 0.0905, 0, ry, 0, 0.0092, 0.0098, 0.004);
     addH(ball(8, 6), C.pupil, x + 0.001 * side, 0.1235, 0.0935, 0, ry, 0, 0.005, 0.0058, 0.003);
     addH(ball(6, 4), C.eye, x + 0.004, 0.1265, 0.0955, 0, ry, 0, 0.003, 0.003, 0.002);
     addH(box(0.044, 0.007, 0.01), C.lash, x, 0.1335, 0.0875, 0, ry, -0.05 * side);
     addH(box(0.03, 0.003, 0.006), C.skinLo, x + 0.008 * side, 0.11, 0.088, 0, ry, 0.22 * side);
     addH(box(0.012, 0.003, 0.006), C.skinLo, x + 0.03 * side, 0.122, 0.078, 0, ry * 2, 0.5 * side);
     addH(box(0.05, 0.0095, 0.011), C.brow, x + 0.003 * side, 0.153, 0.089, 0, ry, -0.08 * side);
+    addH(ball(10, 6), C.skin, x, 0.125, 0.0868, 0, ry, 0, 0.0195, 0.0135, 0.0118, LIDS);
+    addH(box(0.036, 0.003, 0.004), C.lash, x, 0.1225, 0.0985, 0, ry, 0.06 * side, 1, 1, 1, LIDS);
   }
   /* His glasses: clear rectangular frames, the top a little heavier, the
    * bridge, the arms back to the ears, and a glint on each lens. */
@@ -280,7 +332,12 @@ function bodyGeometry() {
   const lens = rounded(0.047, 0.028, 0.006, new THREE.Path());
   rim.holes.push(new THREE.Path(lens.getPoints(4).map((p) => new THREE.Vector2(p.x, p.y - 0.0015))));
   for (const side of [-1, 1]) {
-    const frame = new THREE.ExtrudeGeometry(rim, { depth: 0.006, bevelEnabled: false, curveSegments: 4 });
+    /* An extrusion comes unindexed, three corners to a triangle; welded,
+     * it is half the vertices to skin. */
+    const extruded = new THREE.ExtrudeGeometry(rim, { depth: 0.006, bevelEnabled: false, curveSegments: 4 });
+    extruded.deleteAttribute('uv');
+    const frame = mergeVertices(extruded);
+    extruded.dispose();
     frame.translate(0, 0, -0.003);
     addH(frame, C.glasses, 0.041 * side, 0.127, 0.104, 0, 0.2 * side, 0);
     addH(box(0.005, 0.005, 0.105), C.glasses, 0.08 * side, 0.135, 0.05, 0, -0.19 * side, 0);
@@ -288,11 +345,25 @@ function bodyGeometry() {
       0.041 * side + 0.016 * side, 0.133, 0.1075 - 0.003, 0, 0.2 * side, 0);
   }
   addH(box(0.022, 0.005, 0.006), C.glasses, 0, 0.134, 0.109);
-  /* The grin: wide and open, the top teeth, the tongue low in it, and the
-   * smile lines from the nose's wings down past its corners. */
-  addH(flatShape([[-0.034, 0], ...arc(0.034, 0.024, 14, Math.PI, 2 * Math.PI)]), C.mouth, 0, 0.058, 0.1035, 0.3);
-  addH(flatShape([[-0.03, 0], [0.03, 0], [0.027, -0.008], [-0.027, -0.008]]), C.teeth, 0, 0.058, 0.1042, 0.3);
-  addH(flatShape(arc(0.014, 0.006, 10, 0, 2 * Math.PI)), C.tongue, 0, 0.042, 0.1008, 0.3);
+  /* The mouth, two of them. Calling a line, a wide open grin, the top
+   * teeth and the tongue low in it, on a bone of its own (MOUTH) that
+   * opens and shuts as he talks. Quiet, a closed smile turned up at the
+   * corners (SMILE). Each is folded away to a point while the other shows
+   * (faceBones). The smile lines run from the nose's wings down past the
+   * corners either way. */
+  addH(flatShape([[-0.034, 0], ...arc(0.034, 0.024, 14, Math.PI, 2 * Math.PI)]), C.mouth, 0, MOUTH_TOP, 0.1035, 0.3, 0, 0, 1, 1, 1, MOUTH);
+  addH(flatShape([[-0.03, 0], [0.03, 0], [0.027, -0.008], [-0.027, -0.008]]), C.teeth, 0, MOUTH_TOP, 0.1042, 0.3, 0, 0, 1, 1, 1, MOUTH);
+  addH(flatShape(arc(0.014, 0.006, 10, 0, 2 * Math.PI)), C.tongue, 0, 0.042, 0.1008, 0.3, 0, 0, 1, 1, 1, MOUTH);
+  const grin = [];
+  for (let k = 0; k <= 12; k += 1) {
+    const u = k / 6 - 1;
+    grin.push([0.032 * u, 0.009 * u * u - 0.005 * (1 - u * u)]);
+  }
+  for (let k = 12; k >= 0; k -= 1) {
+    const u = k / 6 - 1;
+    grin.push([0.032 * u, 0.009 * u * u + 0.001 * (1 - u * u)]);
+  }
+  addH(flatShape(grin), C.mouth, 0, 0.05, 0.1035, 0.3, 0, 0, 1, 1, 1, SMILE);
   for (const side of [-1, 1]) {
     addH(box(0.003, 0.032, 0.004), C.skinLo, 0.029 * side, 0.07, 0.1, 0.25, 0, 0.55 * side);
   }
@@ -304,7 +375,7 @@ function bodyGeometry() {
    * hairline and lies back. Alternate meridians of the cap run front to
    * back over the crown, and pushing every other one out a little combs it
    * into ridges, which the toon bands draw as strands. Salt and pepper:
-   * silver at the temples and over the ears, darker toward the crown, the
+   * silver at the temples and over the ears, darker on top and in front, the
    * ridges lighter than the furrows; and thin sideburns.
    */
   const silver = new THREE.Color(C.hairLo);
@@ -324,17 +395,27 @@ function bodyGeometry() {
       /* 0 at the cap's edge, 1 at its pole, back over the crown. */
       const t = (uv.getY(i) - 1 + SPAN) / SPAN;
       const crown = smooth(0.15, 0.6, d.y) * smooth(0, 0.3, t);
-      const quiff = smooth(0.02, 0.2, t) * smooth(-0.25, 0.55, d.z) * smooth(0.25, 0.75, d.y);
+      /* He parts it on his left (+x) and sweeps it over to his right,
+       * where the quiff stands highest and its front edge comes down
+       * across the forehead. */
+      const sweep = smooth(0.35, -0.55, d.x);
+      const front = smooth(-0.25, 0.55, d.z);
+      const quiff = smooth(0.02, 0.2, t) * front * smooth(0.25, 0.75, d.y) * (0.55 + 0.75 * sweep);
+      const swoop = sweep * smooth(0.2, 0.8, d.z) * (1 - smooth(0, 0.35, t));
+      const part = Math.exp(-(((d.x - 0.4) / 0.08) ** 2)) * smooth(0.2, 0.6, d.y) * front;
       const ridge = (i % (SEG + 1)) % 2 === 0 ? 1 : -1;
-      const push = 1 + 0.09 * crown + 0.36 * quiff + 0.035 * ridge * crown;
+      const push = Math.max(1.03, 1 + 0.07 * crown + 0.28 * quiff + 0.035 * ridge * crown + 0.1 * swoop - 0.05 * part);
+      /* The swoop turns the front edge down over the shell, not into it. */
+      d.y -= 0.32 * swoop;
+      d.normalize();
       a.setXYZ(i, 0.096 * d.x * push, 0.142 + 0.119 * d.y * push, -0.008 + 0.11 * d.z * push);
     }
     cap.computeVertexNormals();
   }
   addHM(cap, (out, x, y, z, i) => {
-    const top = smooth(0.17, 0.255, y);
+    const top = (1 - smooth(0.062, 0.09, Math.abs(x))) * (1 - smooth(0.2, 0.15, y));
     out.copy(silver).lerp(pepper, top);
-    out.lerp((i % (SEG + 1)) % 2 === 0 ? salt : dark, 0.3 * top);
+    out.lerp((i % (SEG + 1)) % 2 === 0 ? salt : dark, 0.2 * top);
   }, new THREE.Matrix4());
   for (const side of [-1, 1]) {
     addH(ball(8, 6), C.hairLo, 0.086 * side, 0.106, 0.026, 0, 0.25 * side, 0, 0.004, 0.017, 0.008);
@@ -513,7 +594,7 @@ export function makeNick(camera) {
   group.add(mesh, balloon);
 
   const pose = nickPose();
-  const M = new Float64Array(BONES.length * 12);
+  const M = new Float64Array((BONES.length + FACE_BONES) * 12);
   const posAttr = body.geometry.attributes.position;
   const norAttr = body.geometry.attributes.normal;
   const n = body.bone.length;
@@ -530,6 +611,7 @@ export function makeNick(camera) {
 
   function skin() {
     nickBones(pose, M);
+    faceBones(pose, clock, M);
     const out = posAttr.array;
     const outN = norAttr.array;
     const rp = body.rest;

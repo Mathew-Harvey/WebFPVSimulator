@@ -958,8 +958,12 @@ function balustrade(H, dir, at, a0, a1, f) {
 /*
  * The doors and openings between the ground floor's rooms. The family
  * room's south wall is open to the dining room but for a short return each
- * end, cased in dark wood (OPEN), the dining room's door at the foot of the
- * stair out into the hall (D1), the stair against the hall's west wall,
+ * end, cased in dark wood (OPEN), the dining room's double opening at the
+ * foot of the stair out into the hall (D1: the owner, 2026-10-18, "open the
+ * door up to be a removed wall on the left side of the front room after
+ * flying from the lamp room, it's a double wide door"; no leaf, cased in
+ * the same dark wood, wide enough that its north half looks over the
+ * stair's first treads), the stair against the hall's west wall,
  * and the hall open at its north end into the breakfast room: the loop the
  * owner's stills of 2026-10-18 fly, from the breakfast room through the
  * family room past its lamps into the dining room, out at the stair's
@@ -975,7 +979,8 @@ function balustrade(H, dir, at, a0, a1, f) {
  * uZuJXjvH1A8-mr2), which is the doorway on the right just past the wall
  * ovens in the kitchen's own still (zX4qS_s0E1o-mr1).
  */
-const D1 = [0.28, 1.02];
+const D1 = [0.24, 1.56];
+const D1_H = 2.2;
 const OPEN = [0.75, 3.95, FLOOR0, FLOOR0 + 2.2];
 const WIDE = [5.1, 7.1, FLOOR0, FLOOR0 + 2.2];
 const PASS = [0.95, 1.95, FLOOR0, FLOOR0 + 2.25];
@@ -1001,9 +1006,9 @@ function groundFloor(H) {
    * the wide cased opening from the breakfast room that every still of the
    * family room is taken through.
    */
-  H.wall('y', BRICK_X1, 0, DEP - TX, f, c, { holes: [[...D1, f, f + DOOR_H], WIDE] });
-  const dark = ['homeShelf', 'homeShelf'];
-  doorway(H, 'y', BRICK_X1, ...D1, f, { casing: dark, leaf: { side: -1, at: 'b0', m: 'homeShelf' } });
+  H.wall('y', BRICK_X1, 0, DEP - TX, f, c, { holes: [[...D1, f, f + D1_H], WIDE] });
+  H.frame('y', BRICK_X1, TI, -1, [...D1, f, f + D1_H], 'homeShelf', { w: 0.1, d: 0.02 });
+  H.frame('y', BRICK_X1, TI, 1, [...D1, f, f + D1_H], 'homeShelf', { w: 0.1, d: 0.02 });
   H.frame('y', BRICK_X1, TI, 1, WIDE, 'homeWhite', { w: 0.1, d: 0.02 });
   H.frame('y', BRICK_X1, TI, -1, WIDE, 'homeWhite', { w: 0.1, d: 0.02 });
   /* py 3.0: dining room | family room, open between its returns. */
@@ -1041,7 +1046,7 @@ function groundFloor(H) {
   const diningHoles = { s: [TALL0], w: [fw(0.7)], n: [OPEN], e: false };
   /* Its east wall is the brick block's own in front of the main block, the
    * hall's west wall behind it. */
-  const diningEast = [[BRICK_X1 - TX, FRONT + TX, 0, []], [BRICK_X1 - TI / 2, 0, 3.0 - TI / 2, [fd(...D1)]]];
+  const diningEast = [[BRICK_X1 - TX, FRONT + TX, 0, []], [BRICK_X1 - TI / 2, 0, 3.0 - TI / 2, [fd(...D1, D1_H)]]];
   const diningBand = (m, h0, h1, proud) => {
     roomFaces(H, m, dining, h0, h1, diningHoles, proud);
     for (const [at, a0, a1, holes] of diningEast) {
@@ -1057,7 +1062,7 @@ function groundFloor(H) {
   roomFaces(H, 'homeWallBlue', family, f, c, familyHoles);
   crown(family, familyHoles);
   roomFaces(H, 'homeWallCream', { x0: STAIR_X0, y0: TX, x1: HALL_X1, y1: 5.0 }, f, c, {
-    s: [FRONT_DOOR], w: [fd(...D1)], e: [PASS], n: false,
+    s: [FRONT_DOOR], w: [fd(...D1, D1_H)], e: [PASS], n: false,
   });
   const frontR = { x0: HALL_X1 + TI, y0: TX, x1: LEN - TX, y1: 3.6 - TI / 2 };
   roomFaces(H, 'homeWallBlue', frontR, f, c, { s: [fw(9.35), fw(12.2)], n: [fd(...DD)], w: [PASS] });
@@ -1305,14 +1310,15 @@ function diningRoom(H) {
   picture(H, 'y', w, 1, -1.3, -0.9, f + 1.35, f + 1.85, 'homePlay', 0.012);
   picture(H, 'y', w, 1, -0.7, -0.3, f + 1.45, f + 1.9, 'homeWallIn', 0.012);
   picture(H, 'y', w, 1, -0.7, -0.4, f + 1.05, f + 1.35, 'homePlay', 0.012);
-  /* The piano on the east wall, north of the door, its keys to the room,
-   * a wall of black frames over it. */
+  /* The piano on the east wall, north of the double opening and right
+   * beside it (the owner's still of 2026-10-18 from the piano room), its
+   * keys to the room, a wall of black frames over it. */
   const pe = BRICK_X1 - TI / 2;
-  H.box('homeShelf', pe - 0.55, 1.45, f, pe, 2.85, f + 1.25, { name: 'piano' });
-  H.box('homeShelf', pe - 0.75, 1.5, f + 0.72, pe - 0.55, 2.8, f + 0.8, { name: 'piano keys' });
-  H.paint('homeWhite', pe - 0.74, 1.55, f + 0.8, pe - 0.56, 2.75, f + 0.81);
+  H.box('homeShelf', pe - 0.55, 1.68, f, pe, 2.92, f + 1.25, { name: 'piano' });
+  H.box('homeShelf', pe - 0.75, 1.72, f + 0.72, pe - 0.55, 2.88, f + 0.8, { name: 'piano keys' });
+  H.paint('homeWhite', pe - 0.74, 1.76, f + 0.8, pe - 0.56, 2.84, f + 0.81);
   for (let i = 0; i < 6; i += 1) {
-    const y = 1.5 + (i % 3) * 0.45;
+    const y = 1.74 + (i % 3) * 0.4;
     const h = f + 1.45 + Math.floor(i / 3) * 0.45;
     picture(H, 'y', pe, -1, y, y + 0.36, h, h + 0.38, i % 2 ? 'homeWallIn' : 'homeWood', 0.012);
   }

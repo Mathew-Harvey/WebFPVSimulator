@@ -378,6 +378,7 @@ const LINES = [
   ['family room through the open wall into the dining room', [[2.0, 6.3, 1.7], [2.0, 4.0, 1.7], [2.35, 2.0, 1.7], [2.35, 0.0, 1.7]]],
   ['dining room out at the stair foot and up the hall to the breakfast room', [[2.35, 0.0, 1.7], [3.4, 0.65, 1.7], [6.0, 0.65, 1.7], [7.2, 2.2, 1.7], [7.2, 5.6, 1.7]]],
   ['dining room out the tall window', [[2.3, 0.5, 1.7], [2.3, -3.0, 1.7]]],
+  ['dining room through the double opening\'s north half over the stair\'s first treads', [[3.2, 1.35, 1.4], [4.2, 1.35, 1.4], [6.4, 1.35, 1.8]]],
   ['up the stairs to the landing', [[5.2, 0.6, 1.0], [5.2, 2.5, 2.05], [5.2, 5.0, 4.2]]],
   ['landing into the back bedroom', [[5.2, 5.0, 4.2], [9.85, 5.0, 4.2], [9.85, 6.6, 4.2]]],
   ['landing into the kids room and out its window over the garage', [[9.0, 5.2, 4.2], [9.9, 3.35, 4.2], [12.5, 3.35, 4.2], [12.5, 4.4, 4.7], [16.0, 4.4, 4.7]]],

@@ -122,37 +122,39 @@ function floorAt(x, y) {
 
 /* His chair: the north one of the four round the patio table in house.js
  * (backYard), its seat 0.45 over the paving, facing south at the house. */
-const PATIO = { at: [7.2, 11.88], top: G_PAVE + 0.45, face: [0, -1] };
+const PATIO = { at: [UMBRELLA.x, 11.88], top: G_PAVE + 0.45, face: [0, -1] };
 
 /* Out from beside his chair, round behind the west chair, across the patio
- * and in through the slider (x 2.7 to 4.3), to just inside it. */
-const OUT = [[7.2, 11.76], [6.5, 12.05], [5.5, 11.9], [4.3, 10.2], [3.55, 9.15], [3.5, 8.6], [3.5, 7.85]];
+ * and in through the slider (x 5.0 to 6.6, into the breakfast room), to
+ * just inside it. */
+const OUT = [[8.25, 11.76], [7.55, 12.05], [6.55, 11.9], [5.8, 10.4], [5.8, 9.15], [5.8, 8.6], [5.8, 7.85]];
 
 /*
  * Then on to one of these. `face` is where he looks when he gets there;
  * `seat` is a seat he sits on, the last point of `path` being where he
  * stands in front of it. The sofa is the long run of the sectional, facing
  * the fireplace and the television, reached round its south end because
- * the return closes its north end, between the console behind it and the
- * open door to the hall; its seat is 0.45 over the floor.
+ * the return closes its north end, in through the wide opening and down
+ * between the console behind it and the wall with the door to the foyer;
+ * its seat is 0.45 over the floor.
  */
 const PLACES = [
   {
     id: 'kitchen',
-    path: [[4.15, 7.15], [5.6, 6.45], [9.8, 6.45], [10.35, 7.22], [12.05, 7.22]],
+    path: [[6.0, 5.6], [9.35, 5.6], [9.6, 7.1], [12.1, 7.1]],
     face: [0, 1],
     dwell: [12000, 26000],
   },
   {
     id: 'sofa',
-    path: [[3.95, 7.35], [3.95, 4.47], [3.47, 4.47], [3.47, 3.75], [1.95, 3.75], [2.0, 5.8]],
+    path: [[5.3, 6.3], [3.95, 6.3], [3.95, 4.47], [3.47, 4.47], [3.47, 3.75], [1.95, 3.75], [2.0, 5.8]],
     seat: { at: [2.62, 5.8], top: FLOOR0 + 0.45 },
     face: [-1, 0],
     dwell: [22000, 42000],
   },
   {
     id: 'bay',
-    path: [[4.15, 7.15], [5.6, 6.45], [8.45, 6.6], [8.5, 8.3], [8.3, 8.7]],
+    path: [[6.0, 5.6], [9.35, 5.6], [9.35, 7.3], [9.05, 8.5], [8.7, 8.75]],
     face: [0, 1],
     dwell: [12000, 24000],
   },

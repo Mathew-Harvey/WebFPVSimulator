@@ -1849,7 +1849,7 @@ function basementMain(H) {
     }
   }
   sectional(H, f);
-  H.box('homePlay', 3.5, 1.4, f, 4.3, 2.0, f + 0.42, { name: 'ottoman' });
+  H.box('homeWood', 3.5, 1.4, f, 4.3, 2.0, f + 0.42, { name: 'ottoman' });
   H.paint('homeWallCream', 2.3, 0.9, f + 0.004, 5.5, 2.6, f + 0.012);
   H.box('homeCounter', 5.65, 1.5, f, 6.5, 2.4, f + 0.45, { name: 'recliner' });
   H.box('homeCounter', 5.65, 2.18, f + 0.45, 6.5, 2.4, f + 1.0, { name: 'recliner back' });

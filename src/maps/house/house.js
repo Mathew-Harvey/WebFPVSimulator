@@ -1596,14 +1596,13 @@ const BEAM = { y0: 3.85, y1: 4.15, h: BF + 2.05 };
 
 function basement(H) {
   const f = BF;
-  /* The slab, the foundation walls, whose inside faces are the white of
-   * every wall down here, and the floor's grey planks. */
+  /* The slab, the foundation walls and the floor's pale grey planks. */
   H.box('homeFoundation', 0, 0, f - B_SLAB, LEN, DEP, f, { name: 'basement slab' });
   const walls = [[0, 0, LEN, TX], [0, DEP - TX, LEN, DEP], [0, TX, TX, DEP - TX], [LEN - TX, TX, LEN, DEP - TX]];
   for (const [a, b, c, d] of walls) {
     H.box('homeWallIn', a, b, f - B_SLAB, c, d, 0, { kind: 'wall', name: 'foundation' });
   }
-  H.floor('homeStone', TX, TX, LEN - TX, DEP - TX, f);
+  H.floor('homeSteel', TX, TX, LEN - TX, DEP - TX, f);
   /* The ceiling, a whisker under the slab: white, but for the workshop's
    * bare joists. */
   for (const [a, b, c, d] of around(HOLE, TX, TX, HALL.x1 + TI / 2, DEP - TX)) {
@@ -1625,9 +1624,12 @@ function basement(H) {
   doorway(H, 'x', HALL.y0 - TI / 2, ...GUEST_DOOR, f, { leaf: { side: -1, at: 'b0' } });
   doorway(H, 'x', HALL.y1 + TI / 2, ...PLAY_DOOR, f, { leaf: { side: 1, at: 'b0' } });
   doorway(H, 'y', HALL.x1 + TI / 2, ...HALL_DOOR, f, { leaf: { side: 1, at: 'b1' } });
-  /* The rooms' colours: greige in the hall and the guest room, yellow in
-   * the playroom, the workshop blue; white baseboards everywhere. */
+  /* The rooms' colours: greige in the main room, the hall and the guest
+   * room, so the white trim, the fireplace and the half wall stand out of
+   * it as they do in the stills, yellow in the playroom, the workshop
+   * blue; white baseboards everywhere. */
   const hallHoles = { s: [door(GUEST_DOOR)], n: [door(PLAY_DOOR)], w: [door(HALL_DOOR)], e: [door(HALL_DOOR)] };
+  roomFaces(H, 'homeWallCream', MAIN, f, 0, { e: { a0: HALF_Y, holes: [door(HALL_DOOR)] } });
   roomFaces(H, 'homeWallCream', HALL, f, 0, hallHoles);
   roomFaces(H, 'homeWallCream', GUEST, f, 0, { n: [door(GUEST_DOOR)] });
   roomFaces(H, 'homeBook', PLAY, f, 0, { s: [door(PLAY_DOOR)] });
@@ -1660,6 +1662,9 @@ function basementStair(H) {
     const top = FLOOR0 - (k + 1) * SB_RISE;
     H.box('homeStone', SB.x0, y0, f, SB.x1, y1, top, { name: 'basement stair' });
     H.paint('homeCounter', SB.x0, y0 - 0.006, top - 0.025, SB.x1, y0, top);
+    /* The nosing's edge on the tread, so the flight reads as steps from
+     * the top of it, where no riser shows. */
+    H.paint('homeCounter', SB.x0, y0, top, SB.x1, y0 + 0.03, top + 0.004);
   }
   H.paint('homeStone', SB.x0, SB.top - 0.006, -0.05, SB.x1, SB.top, FLOOR0);
   H.paint('homeWhite', HOLE.x1 - 0.008, HOLE.y0, -0.01, HOLE.x1, HOLE.y1, FLOOR0);
@@ -1748,16 +1753,16 @@ function basementMain(H) {
     H.paint('homeCounter', x, 7.95, f + 0.47, x + 0.36, 7.98, f + 0.8);
   }
   H.box('homeShelf', 2.05, 7.75, f, 2.5, m.y1, f + 0.62, { name: 'side table' });
-  picture(H, 'x', m.y1, -1, 2.75, 3.3, f + 1.25, f + 1.7, 'homeWood');
-  picture(H, 'x', m.y1, -1, 3.5, 4.05, f + 1.25, f + 1.7, 'homeWallIn');
-  picture(H, 'x', m.y1, -1, 2.1, 2.45, f + 0.95, f + 1.3, 'homeTeal');
+  picture(H, 'x', m.y1, -1, 2.75, 3.3, f + 1.25, f + 1.7, 'homeWood', 0.012);
+  picture(H, 'x', m.y1, -1, 3.5, 4.05, f + 1.25, f + 1.7, 'homeWallIn', 0.012);
+  picture(H, 'x', m.y1, -1, 2.1, 2.45, f + 0.95, f + 1.3, 'homeTeal', 0.012);
   /* The cream cabinet, glass doors over solid ones, the window over it. */
   H.box('homeCabinet', 4.7, 7.75, f, 5.6, m.y1, f + 1.75, { name: 'cabinet' });
   for (const [a, b] of [[4.76, 5.13], [5.17, 5.54]]) {
     H.paint('homeWindow', a, 7.744, f + 0.95, b, 7.75, f + 1.68);
     H.paint('homeShelf', a + 0.02, 7.744, f + 0.85, b - 0.02, 7.75, f + 0.86);
   }
-  H.paint('homeWindow', 4.8, m.y1 - 0.006, f + 1.95, 5.5, m.y1, f + 2.2);
+  H.paint('homeWindow', 4.8, m.y1 - 0.018, f + 1.95, 5.5, m.y1 - 0.012, f + 2.2);
   H.frame('x', DEP - TX / 2, TX, -1, [4.8, 5.5, f + 1.95, f + 2.2], 'homeWhite', { w: 0.06, d: 0.02 });
   /* The fridge, a cupboard over it to the soffit. */
   H.box('homeShutter', SOFF.x0, 7.5, f, m.x1, m.y1, f + 1.8, { name: 'fridge' });
@@ -1827,7 +1832,7 @@ function basementMain(H) {
   }
   H.box('homeChair', 0.3, 2.2, f + 1.2, 1.05, 2.45, f + 1.42, { name: 'treadmill console' });
   H.paint('homeScreen', 0.45, 2.45, f + 1.25, 0.9, 2.455, f + 1.38);
-  picture(H, 'y', m.x0, 1, 2.6, 3.6, f + 1.4, f + 1.95, 'homeTeal');
+  picture(H, 'y', m.x0, 1, 2.6, 3.6, f + 1.4, f + 1.95, 'homeTeal', 0.012);
 
   /* The lounge. */
   H.box('homeScreen', 3.2, m.y0, f + 1.15, 4.4, m.y0 + 0.06, f + 1.85, { name: 'television', kind: 'obstacle' });
@@ -1845,14 +1850,14 @@ function basementMain(H) {
   }
   sectional(H, f);
   H.box('homePlay', 3.5, 1.4, f, 4.3, 2.0, f + 0.42, { name: 'ottoman' });
-  H.paint('homeCarpet', 2.3, 0.9, f + 0.004, 5.5, 2.6, f + 0.012);
+  H.paint('homeWallCream', 2.3, 0.9, f + 0.004, 5.5, 2.6, f + 0.012);
   H.box('homeCounter', 5.65, 1.5, f, 6.5, 2.4, f + 0.45, { name: 'recliner' });
   H.box('homeCounter', 5.65, 2.18, f + 0.45, 6.5, 2.4, f + 1.0, { name: 'recliner back' });
   for (const x of [5.65, 6.35]) {
     H.box('homeCounter', x, 1.5, f + 0.45, x + 0.15, 2.18, f + 0.65, { name: 'recliner arm' });
   }
-  picture(H, 'x', m.y0, 1, 5.0, 5.75, f + 1.3, f + 1.85, 'homePlayBlue');
-  picture(H, 'x', m.y0, 1, 6.0, 6.75, f + 1.3, f + 1.85, 'homePlay');
+  picture(H, 'x', m.y0, 1, 5.0, 5.75, f + 1.3, f + 1.85, 'homePlayBlue', 0.012);
+  picture(H, 'x', m.y0, 1, 6.0, 6.75, f + 1.3, f + 1.85, 'homePlay', 0.012);
 }
 
 /* The sectional: its long run facing the TV, back to the north, arm at the
@@ -1894,7 +1899,7 @@ function basementRooms(H) {
   const g = GUEST;
   bed(H, g.x0, 1.4, 1.4, 2.0, 'w', 'homeWhite', f);
   for (let i = 0; i < 3; i += 1) {
-    H.paint('homePlay', 9.2 + i * 0.36, 1.43, f + 0.55, 9.38 + i * 0.36, 2.77, f + 0.562);
+    H.paint('homeStone', 9.2 + i * 0.36, 1.43, f + 0.55, 9.38 + i * 0.36, 2.77, f + 0.562);
   }
   H.box('homeWhite', 8.9, 2.85, f, 9.9, 3.25, f + 0.45, { name: 'bench' });
   H.box('homeWood', 9.2, g.y0, f, 10.4, 0.7, f + 1.0, { name: 'dresser' });
@@ -2487,6 +2492,11 @@ export function basementFloorAt(x, z) {
   const py = (OZ - z) / S;
   return px > 0 && px < LEN && py > 0 && py < DEP ? S * BF : 0;
 }
+
+/* The basement stair's hole through the slab as a world rectangle. The
+ * field's plane lies at exactly zero over the whole field, so it would
+ * roof the stair over from above; ./index.js cuts this out of it. */
+export const STAIR_HOLE = { x0: OX + S * HOLE.x0, x1: OX + S * HOLE.x1, z0: OZ - S * HOLE.y1, z1: OZ - S * HOLE.y0 };
 
 /* Where the pilot starts: the breakfast room, by the doorway to the back
  * hall, looking west past the table through the wide opening into the

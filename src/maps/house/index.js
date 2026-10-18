@@ -44,9 +44,10 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
-import { houseLayout, basementFloorAt, FRAME, worldAt } from './house.js';
+import { houseLayout, basementFloorAt, STAIR_HOLE, FRAME, worldAt } from './house.js';
 import { houseDocument } from './yard.js';
 import { makeNick } from './nickdraw.js';
 
@@ -103,6 +104,107 @@ function drawHouse(kit, L) {
   drawScaled(kit, L.scaled);
 }
 
+/* A level plane of the ground's (../built/ground.js) with the basement
+ * stair's hole cut out of it, so the stair is open from the foyer. Two of
+ * them lie across it: the field's 'plot' at zero and the 'terrain' five
+ * centimetres under it. Every triangle that reaches into the hole is
+ * clipped by the hole's four sides in turn and keeps what lies outside
+ * each, every attribute interpolated along the cut edges, so the grass,
+ * its tint and its light are exactly what the GPU drew there before. The
+ * ground's own file is the landing page's too and stays as it is; this is
+ * the house's, done once at build. */
+function openGround(scene, name, rect) {
+  const mesh = scene.getObjectByName(name);
+  if (!mesh) {
+    return;
+  }
+  const { x, z } = mesh.position;
+  const hole = { x0: rect.x0 - x, x1: rect.x1 - x, z0: rect.z0 - z, z1: rect.z1 - z };
+  const old = mesh.geometry;
+  const names = Object.keys(old.attributes);
+  const sizes = names.map((n) => old.attributes[n].itemSize);
+  const at = names.indexOf('position');
+  const off = sizes.slice(0, at).reduce((a, b) => a + b, 0);
+  const read = (i) => {
+    const v = [];
+    names.forEach((n, k) => {
+      const a = old.attributes[n].array;
+      for (let c = 0; c < sizes[k]; c += 1) {
+        v.push(a[i * sizes[k] + c]);
+      }
+    });
+    return v;
+  };
+  const count = old.attributes.position.count;
+  const verts = [];
+  for (let i = 0; i < count; i += 1) {
+    verts.push(read(i));
+  }
+  const X = (v) => v[off];
+  const Z = (v) => v[off + 2];
+  const lerp = (p, q, t) => p.map((a, k) => a + (q[k] - a) * t);
+  /* Splits a convex polygon by d(v) >= 0: the side kept, the side left. */
+  const split = (poly, d) => {
+    const keep = [];
+    const rest = [];
+    for (let i = 0; i < poly.length; i += 1) {
+      const p = poly[i];
+      const q = poly[(i + 1) % poly.length];
+      const dp = d(p);
+      const dq = d(q);
+      (dp >= 0 ? keep : rest).push(p);
+      if (dp >= 0 !== dq >= 0) {
+        const v = lerp(p, q, dp / (dp - dq));
+        keep.push(v);
+        rest.push(v);
+      }
+    }
+    return [keep, rest];
+  };
+  const sides = [(v) => hole.x0 - X(v), (v) => X(v) - hole.x1, (v) => hole.z0 - Z(v), (v) => Z(v) - hole.z1];
+  const src = old.index ? old.index.array : Array.from({ length: count }, (_, i) => i);
+  const index = [];
+  for (let t = 0; t < src.length; t += 3) {
+    const tri = [src[t], src[t + 1], src[t + 2]];
+    const xs = tri.map((i) => X(verts[i]));
+    const zs = tri.map((i) => Z(verts[i]));
+    if (Math.max(...xs) <= hole.x0 || Math.min(...xs) >= hole.x1 || Math.max(...zs) <= hole.z0 || Math.min(...zs) >= hole.z1) {
+      index.push(...tri);
+      continue;
+    }
+    let rest = tri.map((i) => verts[i]);
+    for (const d of sides) {
+      const [keep, left] = split(rest, d);
+      for (let k = 1; k + 1 < keep.length; k += 1) {
+        for (const v of [keep[0], keep[k], keep[k + 1]]) {
+          index.push(verts.length);
+          verts.push(v);
+        }
+      }
+      rest = left;
+      if (rest.length < 3) {
+        break;
+      }
+    }
+  }
+  const G = new THREE.BufferGeometry();
+  names.forEach((n, k) => {
+    const start = sizes.slice(0, k).reduce((a, b) => a + b, 0);
+    const a = new Float32Array(verts.length * sizes[k]);
+    verts.forEach((v, i) => {
+      for (let c = 0; c < sizes[k]; c += 1) {
+        a[i * sizes[k] + c] = v[start + c];
+      }
+    });
+    G.setAttribute(n, new THREE.BufferAttribute(a, sizes[k]));
+  });
+  G.setIndex(index);
+  G.computeBoundingBox();
+  G.computeBoundingSphere();
+  old.dispose();
+  mesh.geometry = G;
+}
+
 export async function buildMap(shell, onProgress, options) {
   const L = houseLayout();
   const extra = {
@@ -117,6 +219,8 @@ export async function buildMap(shell, onProgress, options) {
    * keeps its marks out of the board's counters, which have no word for it. */
   map.id = 'house';
   map.source = 'house';
+  openGround(map.scene, 'plot', STAIR_HOLE);
+  openGround(map.scene, 'terrain', STAIR_HOLE);
   /* Nick at his patio table (./nick.js, ./nickdraw.js): in the map's scene,
    * so its dispose frees him, posed at the clock the map is handed, and his
    * two programs linked now beside the rest, since the map warmed its own

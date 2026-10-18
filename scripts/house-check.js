@@ -400,8 +400,9 @@ const LINES = [
   ['down into the LED cube on the basement table', [[3.6, 5.7, -0.2], [3.6, 5.7, -1.4]]],
   ['through the treadmill under its console', [[0.675, 4.25, -1.65], [0.675, 1.5, -1.65]]],
   ['main room into the hall and through to the workshop', [[6.0, 4.68, -1.2], [10.0, 4.68, -1.2], [11.4, 4.68, -1.2], [11.4, 3.0, -1.2]]],
-  ['hall into the guest room', [[9.8, 4.68, -1.2], [9.8, 1.2, -1.2]]],
-  ['hall into the playroom', [[9.0, 4.68, -1.2], [9.0, 7.0, -1.2]]],
+  ['hall into the playroom', [[9.0, 4.68, -1.2], [9.0, 2.6, -1.2]]],
+  ['hall into the guest room', [[8.9, 4.68, -1.2], [8.9, 6.0, -1.2]]],
+  ['from the stair foot along the front hall into the workshop', [[7.75, 0.62, -1.3], [10.9, 0.8, -1.3], [11.65, 1.0, -1.2], [11.65, 3.0, -1.2]]],
   ['down the workshop between the shelving and the bench', [[12.2, 1.5, -1.2], [12.2, 6.4, -1.2]]],
 ];
 

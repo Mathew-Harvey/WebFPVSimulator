@@ -346,13 +346,13 @@ function groundChecks(placed) {
     return groundUnder(placed.tops, x, z, y - 0.4, y, basementFloorAt(x, z));
   };
   const near = (a, b) => Math.abs(a - b) < 1e-9;
-  const lounge = ask(4.95, 1.15, BF + 0.05);
+  const lounge = ask(3.4, 1.15, BF + 0.05);
   check('a craft on the basement floor stands on the floor', near(lounge, S * BF), `${r3(lounge)} m, the floor is ${r3(S * BF)}`);
   const table = ask(3.6, 5.7, BF + 0.81);
   check('on the basement table it stands on the table', near(table, S * (BF + 0.76) - SUPPORT_TIE), `${r3(table)} m`);
-  const foyer = ask(6.0, 2.5, FLOOR0 + 0.05);
-  check('on the ground floor over the basement it stands on the ground floor', near(foyer, S * FLOOR0 - SUPPORT_TIE), `${r3(foyer)} m`);
-  const tread = ask(7.8, 2.5, FLOOR0 + 0.05);
+  const hall = ask(7.0, 2.5, FLOOR0 + 0.05);
+  check('on the ground floor over the basement it stands on the ground floor', near(hall, S * FLOOR0 - SUPPORT_TIE), `${r3(hall)} m`);
+  const tread = ask(5.2, 2.5, FLOOR0 + 0.05);
   check('over the stair down it stands on the tread under it', tread < 0 && tread > S * BF, `${r3(tread)} m`);
   const lawn = ask(-5, 2, 0.05);
   check('beside the house the ground is the lawn', near(lawn, 0), `${r3(lawn)} m`);
@@ -365,9 +365,9 @@ function groundChecks(placed) {
 /* Each line is plan points [px, py, h], real metres, flown straight from
  * one to the next. */
 const LINES = [
-  ['in the front door to the foyer', [[6.1, -3.0, 1.2], [6.1, 1.6, 1.2]]],
-  ['foyer, under the stair foot, into the dining room', [[5.9, 0.62, 1.7], [8.95, 0.62, 1.7]]],
-  ['dining room through its door into the back hall', [[8.95, 0.62, 1.7], [8.95, 4.3, 1.7]]],
+  ['in the front door to the hall', [[6.1, -3.0, 1.2], [6.1, 1.6, 1.2]]],
+  ['hall, past the stair foot, into the front room', [[6.5, 1.45, 1.7], [9.5, 1.45, 1.7]]],
+  ['front room through its door into the back hall', [[9.5, 1.45, 1.7], [8.95, 2.4, 1.7], [8.95, 4.3, 1.7]]],
   ['back hall into the kitchen', [[8.95, 4.3, 1.7], [9.95, 4.3, 1.7], [9.95, 5.6, 1.7]]],
   ['kitchen along the aisle between the island and the sink', [[9.95, 5.6, 1.7], [10.2, 7.1, 1.4], [12.7, 7.1, 1.4]]],
   ['kitchen into the breakfast room', [[9.95, 5.6, 1.7], [8.0, 5.75, 1.7]]],
@@ -375,14 +375,14 @@ const LINES = [
   ['down into the LED cube under the tin panel', [[11.6, 6.2, 2.55], [11.6, 6.2, 1.5]]],
   ['breakfast room through the wide opening into the family room', [[8.0, 5.75, 1.7], [6.5, 6.3, 1.7], [2.0, 6.3, 1.7]]],
   ['breakfast room out the slider onto the patio', [[8.0, 5.75, 1.7], [5.8, 6.6, 1.7], [5.8, 9.6, 1.7]]],
-  ['family room through its door into the foyer', [[2.0, 6.3, 1.7], [2.0, 4.45, 1.7], [6.0, 4.45, 1.7]]],
-  ['foyer into the front room', [[6.0, 1.42, 1.7], [2.4, 1.42, 1.7]]],
-  ['front room out the tall window', [[2.3, 0.5, 1.7], [2.3, -3.0, 1.7]]],
-  ['up the stairs to the landing', [[7.75, 0.6, 1.0], [7.75, 2.5, 2.05], [7.75, 5.2, 4.2]]],
-  ['landing into the back bedroom', [[7.75, 5.2, 4.2], [9.85, 5.2, 4.2], [9.85, 6.6, 4.2]]],
+  ['family room through the open wall into the dining room', [[2.0, 6.3, 1.7], [2.0, 4.0, 1.7], [2.35, 2.0, 1.7], [2.35, 0.0, 1.7]]],
+  ['dining room out at the stair foot and up the hall to the breakfast room', [[2.35, 0.0, 1.7], [3.4, 0.65, 1.7], [6.0, 0.65, 1.7], [7.2, 2.2, 1.7], [7.2, 5.6, 1.7]]],
+  ['dining room out the tall window', [[2.3, 0.5, 1.7], [2.3, -3.0, 1.7]]],
+  ['up the stairs to the landing', [[5.2, 0.6, 1.0], [5.2, 2.5, 2.05], [5.2, 5.0, 4.2]]],
+  ['landing into the back bedroom', [[5.2, 5.0, 4.2], [9.85, 5.0, 4.2], [9.85, 6.6, 4.2]]],
   ['landing into the kids room and out its window over the garage', [[9.0, 5.2, 4.2], [9.9, 3.35, 4.2], [12.5, 3.35, 4.2], [12.5, 4.4, 4.7], [16.0, 4.4, 4.7]]],
-  ['landing into the master', [[7.75, 5.2, 4.2], [5.9, 4.45, 4.2], [2.5, 4.45, 4.2]]],
-  ['landing into the front bedroom and out the tall window', [[5.9, 4.45, 4.2], [5.9, 3.3, 4.2], [2.3, 3.3, 4.2], [2.3, -3.0, 4.2]]],
+  ['landing into the master', [[7.0, 5.0, 4.2], [5.2, 4.9, 4.2], [2.5, 4.9, 4.2]]],
+  ['master into the front bedroom and out the tall window', [[3.55, 4.9, 4.2], [3.55, 2.6, 4.2], [2.3, 2.6, 4.2], [2.3, -3.0, 4.2]]],
   ['landing into the bathroom', [[5.9, 4.9, 4.2], [5.7, 5.2, 4.2], [5.7, 7.0, 4.2]]],
   ['landing into the end bedroom', [[9.0, 5.2, 4.2], [9.9, 5.47, 4.2], [11.6, 5.47, 4.2], [12.2, 7.4, 4.2]]],
   ['in the open garage door and through to the back hall', [[18.75, -6.0, 1.2], [18.75, 3.0, 1.2], [15.0, 4.3, 1.2], [12.0, 4.3, 1.2]]],
@@ -393,16 +393,16 @@ const LINES = [
   ['under the pergola', [[1.0, 12.0, 2.2], [11.0, 12.0, 2.2]]],
   ['down between two of the pergola rafters', [[5.5, 10.0, 5.0], [5.5, 10.0, 2.6]]],
   ['through the swings', [[28.25, 16.0, 1.5], [28.25, 22.0, 1.5]]],
-  ['in the basement door and down the stair to its foot, into the lounge', [[6.2, 4.52, 1.2], [7.8, 4.52, 1.2], [7.8, 4.0, 1.05], [7.8, 1.3, -0.9], [7.8, 0.62, -1.35], [5.0, 0.62, -1.35]]],
-  ['off the stair over the half wall into the main room', [[7.75, 1.6, -0.6], [6.0, 1.6, -0.6]]],
-  ['from the lounge past the column to the settee', [[4.5, 1.0, -1.2], [4.9, 4.0, -1.2], [4.9, 7.0, -1.2]]],
+  ['in the basement door and down the stair to its foot, into the lounge', [[5.2, 5.8, 1.2], [5.2, 4.6, 1.2], [5.2, 4.0, 1.05], [5.2, 1.3, -0.9], [5.2, 0.62, -1.35], [3.0, 0.62, -1.35]]],
+  ['off the stair over the half wall into the lounge', [[5.2, 1.6, -0.6], [3.4, 1.6, -0.6]]],
+  ['from the lounge round the stair head to the settee', [[3.3, 1.1, -1.2], [4.2, 2.3, -1.2], [4.2, 4.5, -1.2], [5.8, 4.5, -1.2], [5.8, 6.8, -1.2], [5.0, 7.0, -1.2]]],
   ['through the LED cube on the basement table', [[3.6, 4.6, -1.2], [3.6, 6.8, -1.2]]],
   ['down into the LED cube on the basement table', [[3.6, 5.7, -0.2], [3.6, 5.7, -1.4]]],
   ['through the treadmill under its console', [[0.675, 4.25, -1.65], [0.675, 1.5, -1.65]]],
   ['main room into the hall and through to the workshop', [[6.0, 4.68, -1.2], [10.0, 4.68, -1.2], [11.4, 4.68, -1.2], [11.4, 3.0, -1.2]]],
   ['hall into the playroom', [[9.0, 4.68, -1.2], [9.0, 2.6, -1.2]]],
   ['hall into the guest room', [[8.9, 4.68, -1.2], [8.9, 6.0, -1.2]]],
-  ['from the stair foot along the front hall into the workshop', [[7.75, 0.62, -1.3], [10.9, 0.8, -1.3], [11.65, 1.0, -1.2], [11.65, 3.0, -1.2]]],
+  ['from the stair foot along the front hall into the workshop', [[5.2, 0.62, -1.3], [10.9, 0.8, -1.3], [11.65, 1.0, -1.2], [11.65, 3.0, -1.2]]],
   ['down the workshop between the shelving and the bench', [[12.2, 1.5, -1.2], [12.2, 6.4, -1.2]]],
 ];
 
@@ -543,7 +543,7 @@ function slotsBlock(own) {
 const PITCH = 7 / 12;
 const frontTop = (py) => 3.15 + PITCH * (py + 1.6);
 const rearTop = (py) => 5.654 + PITCH * (8.4 - py);
-/* The shed dormer over the dining room sits on the front plane, its roof
+/* The shed dormer over the front room sits on the front plane, its roof
  * rising from its lip to the knee wall. */
 const DORMER = { x0: 9.55, x1: 13.45, y0: 0.15, y1: 2.8, h0: frontTop(0.35) + 1.1 };
 const dormerTop = (py) => DORMER.h0 + ((frontTop(DORMER.y1) - 0.02 - DORMER.h0) * (py - DORMER.y0)) / (DORMER.y1 - DORMER.y0);
@@ -570,7 +570,7 @@ function roofsBlock(placed, near) {
   const spans = [
     ['the main roof over the hall and stairs', 5.0, 9.4, -1.9, 8.7, mainTop],
     ['the main roof over the bedrooms at the east end', 12.0, 13.95, 2.0, 8.7, mainTop],
-    ['the dormer over the dining room', 9.6, 13.4, 0.2, 2.75, mainTop],
+    ['the dormer over the front room', 9.6, 13.4, 0.2, 2.75, mainTop],
     ['the brick block\'s roof', -0.3, 4.55, -1.9, 2.5, brickTop],
     ['the garage roof', 14.2, 23.6, -1.9, 5.7, garageTop],
     ['the pavilion\'s roof', 14.65, 21.35, 9.7, 15.2, pavilionTop],
@@ -699,7 +699,7 @@ async function moduleBlock(placed) {
     `${a.touched} steps in contact, up to ${r3(a.top)} m`);
   /* In the basement's lounge, the plant's ground seven metres under the
    * lawn's. */
-  const [bx, by, bz] = worldAt(4.95, 1.15, BF);
+  const [bx, by, bz] = worldAt(3.4, 1.1, BF);
   const down = { x: bx, y: by, z: bz, yaw: 0 };
   const c = await hoverFlight(wasm, config, colliders, placed, 3000, lift, down);
   const d = await hoverFlight(wasm, config, colliders, placed, 3000, lift, down);

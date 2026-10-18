@@ -105,7 +105,7 @@ function drawHouse(kit, L) {
 }
 
 /* A level plane of the ground's (../built/ground.js) with the basement
- * stair's hole cut out of it, so the stair is open from the foyer. Two of
+ * stair's hole cut out of it, so the stair is open from the landing. Two of
  * them lie across it: the field's 'plot' at zero and the 'terrain' five
  * centimetres under it. Every triangle that reaches into the hole is
  * clipped by the hole's four sides in turn and keeps what lies outside

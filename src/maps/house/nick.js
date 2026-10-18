@@ -135,7 +135,7 @@ const OUT = [[8.25, 11.76], [7.55, 12.05], [6.55, 11.9], [5.8, 10.4], [5.8, 9.15
  * stands in front of it. The sofa is the long run of the sectional, facing
  * the fireplace and the television, reached round its south end because
  * the return closes its north end, in through the wide opening and down
- * between the console behind it and the wall with the door to the foyer;
+ * between the console behind it and the wall to the stair;
  * its seat is 0.45 over the floor.
  */
 const PLACES = [

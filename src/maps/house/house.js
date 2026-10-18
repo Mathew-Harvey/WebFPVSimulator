@@ -1831,17 +1831,20 @@ function picture(H, dir, at, side, a0, a1, h0, h1, m, p = 0) {
  * maker, two pairs of black pipe bracket shelves with frames on them), the
  * dark round table on its pedestal with four spindle backed chairs and the
  * LED cube gate on it, the dark dresser and the white fireplace on its
- * raised hearth along the west wall, the treadmill facing the TV
- * (bsmt-hdRR_6chm2M-mr2 is shot from its console). At the front the
- * lounge, between the west wall and the stair: the TV on the front wall
- * over a white console, the white built in in the corner, the sectional
- * facing the TV, a brown ottoman on a pale rug, the wall bare between the
- * TV and the stair's foot (bsmt-j6odZGcoq_0-mr2, bsmt--M3qDT4i7xk-mr2,
- * bsmt-K9uGMfYKJLg-mr2's third view). The sofas have been green, brown and
- * tan over the years; these are the dark ones of the newest stills. With
- * the stair moved west under the main one, the lounge is narrower than
- * his: the recliner and the white column under the beam have no room in
- * it and are left out.
+ * raised hearth along the west wall under a small high window, the
+ * treadmill facing the TV (bsmt-hdRR_6chm2M-mr2 is shot from its
+ * console). At the front the lounge, between the west wall and the stair,
+ * as the owner's six stills of one flight down the stair show it
+ * (2026-10-18, look only): the TV on the front wall over a white console,
+ * the white built in in the corner, a brown sofa facing the TV, a brown
+ * loveseat against the west wall under a wide stadium print and three
+ * small frames, a pine coffee table on a pale rug between them, and two
+ * black leather chairs with their backs to the stair, so that coming down
+ * it the room lies open past them; the white column under the beam at the
+ * lounge's north east corner, and the wall bare between the TV and the
+ * stair's foot (bsmt--M3qDT4i7xk-mr2, bsmt-K9uGMfYKJLg-mr2's third view).
+ * The sofas have been green, brown, tan and dark over the years; these are
+ * the brown ones of the owner's stills, and the fridge is their light one.
  */
 function basementMain(H) {
   const f = BF;
@@ -1882,8 +1885,8 @@ function basementMain(H) {
   H.paint('homeWindow', 4.8, m.y1 - 0.018, f + 1.95, 5.5, m.y1 - 0.012, f + 2.2);
   H.frame('x', DEP - TX / 2, TX, -1, [4.8, 5.5, f + 1.95, f + 2.2], 'homeWhite', { w: 0.06, d: 0.02 });
   /* The fridge, a cupboard over it to the soffit. */
-  H.box('homeShutter', SOFF.x0, 7.5, f, m.x1, m.y1, f + 1.8, { name: 'fridge' });
-  H.paint('homeSteel', SOFF.x0 - 0.005, 7.62, f + 0.95, SOFF.x0, 7.66, f + 1.55);
+  H.box('homeSteel', SOFF.x0, 7.5, f, m.x1, m.y1, f + 1.8, { name: 'fridge' });
+  H.paint('homeShutter', SOFF.x0 - 0.005, 7.62, f + 0.95, SOFF.x0, 7.66, f + 1.55);
   H.box('homeCounter', SOFF.x0, 7.5, f + 1.8, m.x1, m.y1, SOFF.h, { name: 'cupboard' });
   /* The kitchenette. */
   const k0 = 5.35;
@@ -1939,6 +1942,8 @@ function basementMain(H) {
   H.paint('homeShutter', 0.45, 6.05, f + 0.46, 0.454, 7.05, f + 1.2);
   H.paint('homeScreen', 0.454, 6.11, f + 0.52, 0.458, 6.99, f + 1.14);
   H.box('homeWhite', m.x0, 5.75, f + 1.3, 0.55, 7.35, f + 1.38, { name: 'mantel' });
+  H.paint('homeWindow', m.x0 + 0.012, 4.5, f + 1.72, m.x0 + 0.018, 5.25, f + 1.98);
+  H.frame('y', TX / 2, TX, 1, [4.5, 5.25, f + 1.72, f + 1.98], 'homeWhite', { w: 0.06, d: 0.02 });
 
   /* The treadmill, its console to the south, a gate between the uprights. */
   H.box('homeChair', 0.3, 2.2, f, 1.05, 4.0, f + 0.2, { name: 'treadmill' });
@@ -1949,12 +1954,20 @@ function basementMain(H) {
   }
   H.box('homeChair', 0.3, 2.2, f + 1.2, 1.05, 2.45, f + 1.42, { name: 'treadmill console' });
   H.paint('homeScreen', 0.45, 2.45, f + 1.25, 0.9, 2.455, f + 1.38);
-  picture(H, 'y', m.x0, 1, 2.6, 3.6, f + 1.4, f + 1.95, 'homeTeal', 0.012);
+  /* The stadium print, the stands a dark band over the field, and three
+   * small frames under it over the loveseat. */
+  picture(H, 'y', m.x0, 1, 0.65, 2.15, f + 1.4, f + 1.86, 'homeHedge', 0.012);
+  for (const [h0, h1] of [[f + 1.44, f + 1.5], [f + 1.75, f + 1.82]]) {
+    H.paint('homeShutter', m.x0 + 0.022, 0.69, h0, m.x0 + 0.026, 2.11, h1);
+  }
+  for (const y of [0.75, 1.21, 1.67]) {
+    picture(H, 'y', m.x0, 1, y, y + 0.38, f + 1.0, f + 1.3, 'homeWallIn', 0.012);
+  }
 
   /* The lounge, west of the stair. */
-  H.box('homeScreen', 2.6, m.y0, f + 1.15, 3.8, m.y0 + 0.06, f + 1.85, { name: 'television', kind: 'obstacle' });
-  H.box('homeWhite', 2.4, m.y0, f, 4.0, 0.62, f + 0.55, { name: 'console' });
-  for (const x of [2.8, 3.2, 3.6]) {
+  H.box('homeScreen', 1.9, m.y0, f + 1.15, 3.1, m.y0 + 0.06, f + 1.85, { name: 'television', kind: 'obstacle' });
+  H.box('homeWhite', 1.55, m.y0, f, 3.05, 0.62, f + 0.55, { name: 'console' });
+  for (const x of [2.05, 2.55]) {
     H.paint('homeWallIn', x - 0.01, 0.62, f + 0.06, x + 0.01, 0.625, f + 0.5);
   }
   H.box('homeWhite', m.x0, m.y0, f, 1.5, 0.6, 0, { name: 'built in' });
@@ -1965,26 +1978,50 @@ function basementMain(H) {
       H.paint(SPINES[(k + (a > 0.5 ? 1 : 0)) % SPINES.length], a + 0.05, 0.604, h + 0.02, a + 0.3, 0.608, h + 0.26);
     }
   }
-  sectional(H, f);
-  H.box('homeWood', 2.95, 1.45, f, 3.75, 2.05, f + 0.42, { name: 'ottoman' });
-  H.paint('homeWallCream', 1.9, 0.9, f + 0.004, 4.3, 2.6, f + 0.012);
+  H.paint('homeWallCream', 1.3, 0.75, f + 0.004, 3.95, 2.24, f + 0.012);
+  couch(H, 1.55, 2.28, 3.55, 3.18, 's', f, { n: 3 });
+  couch(H, m.x0, 0.66, 1.05, 2.1, 'e', f, { n: 2 });
+  for (const [y0, y1] of [[0.78, 1.46], [1.52, 2.2]]) {
+    couch(H, 3.15, y0, 3.9, y1, 'w', f, { m: 'homeChair', cushion: 'homeShutter', n: 1, back: 0.82, arm: 0.6, a: 0.13 });
+  }
+  /* The pine coffee table, a heavy top over a base set in under it. */
+  H.box('homeFloor', 1.61, 1.21, f, 2.59, 1.64, f + 0.38, { name: 'coffee table' });
+  H.box('homeFloor', 1.55, 1.15, f + 0.38, 2.65, 1.7, f + 0.45, { name: 'coffee table' });
+  /* The white column under the beam, past the sofa's east end. */
+  H.box('homeWhite', 3.7, BEAM.y0, f, 3.95, BEAM.y1, BEAM.h, { name: 'column' });
 }
 
-/* The sectional: its long run facing the TV, back to the north, arm at the
- * east end; its return along the west end facing east, arm at the south. */
-function sectional(H, f) {
-  const m = 'homeCounter';
+/* A sofa or an armchair in the box x0 to x1, y0 to y1, facing `face`
+ * ('n', 's', 'e', 'w'): the seat solid to the floor, the back along the
+ * far side, an arm at each end, `o.n` seat cushions painted on it. */
+function couch(H, x0, y0, x1, y1, face, f, o = {}) {
+  const m = o.m ?? 'homeWood';
   const seat = f + 0.45;
-  const x0 = 1.55;
-  const x1 = 4.0;
-  H.box(m, x0, 2.6, f, x1, 3.5, seat, { name: 'sofa' });
-  H.box(m, x0, 3.25, seat, x1, 3.5, f + 0.9, { name: 'sofa back' });
-  H.box(m, x1 - 0.18, 2.6, seat, x1, 3.25, f + 0.65, { name: 'sofa arm' });
-  H.box(m, x0, 1.2, f, x0 + 0.9, 2.6, seat, { name: 'sofa' });
-  H.box(m, x0, 1.2, seat, x0 + 0.25, 3.25, f + 0.9, { name: 'sofa back' });
-  H.box(m, x0 + 0.25, 1.2, seat, x0 + 0.9, 1.38, f + 0.65, { name: 'sofa arm' });
-  for (const [a0, b0, a1, b1] of [[1.85, 2.65, 2.45, 3.2], [2.5, 2.65, 3.1, 3.2], [3.15, 2.65, 3.77, 3.2], [1.85, 1.43, 2.4, 2.6]]) {
-    H.paint('homeWood', a0, b0, seat, a1, b1, seat + 0.012);
+  const top = f + (o.back ?? 0.88);
+  const arm = f + (o.arm ?? 0.62);
+  const b = 0.22;
+  const a = o.a ?? 0.16;
+  const n = o.n ?? 3;
+  const cushion = o.cushion ?? 'homeCushion';
+  H.box(m, x0, y0, f, x1, y1, seat, { name: 'sofa' });
+  if (face === 'n' || face === 's') {
+    const [c0, c1] = face === 's' ? [y0, y1 - b] : [y0 + b, y1];
+    H.box(m, x0, face === 's' ? c1 : y0, seat, x1, face === 's' ? y1 : c0, top, { name: 'sofa back' });
+    H.box(m, x0, c0, seat, x0 + a, c1, arm, { name: 'sofa arm' });
+    H.box(m, x1 - a, c0, seat, x1, c1, arm, { name: 'sofa arm' });
+    const w = (x1 - x0 - 2 * a) / n;
+    for (let i = 0; i < n; i += 1) {
+      H.paint(cushion, x0 + a + i * w + 0.03, c0 + 0.04, seat, x0 + a + (i + 1) * w - 0.03, c1 - 0.04, seat + 0.012);
+    }
+  } else {
+    const [c0, c1] = face === 'w' ? [x0, x1 - b] : [x0 + b, x1];
+    H.box(m, face === 'w' ? c1 : x0, y0, seat, face === 'w' ? x1 : c0, y1, top, { name: 'sofa back' });
+    H.box(m, c0, y0, seat, c1, y0 + a, arm, { name: 'sofa arm' });
+    H.box(m, c0, y1 - a, seat, c1, y1, arm, { name: 'sofa arm' });
+    const w = (y1 - y0 - 2 * a) / n;
+    for (let i = 0; i < n; i += 1) {
+      H.paint(cushion, c0 + 0.04, y0 + a + i * w + 0.03, seat, c1 - 0.04, y0 + a + (i + 1) * w - 0.03, seat + 0.012);
+    }
   }
 }
 

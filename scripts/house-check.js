@@ -346,7 +346,7 @@ function groundChecks(placed) {
     return groundUnder(placed.tops, x, z, y - 0.4, y, basementFloorAt(x, z));
   };
   const near = (a, b) => Math.abs(a - b) < 1e-9;
-  const lounge = ask(3.4, 1.15, BF + 0.05);
+  const lounge = ask(2.1, 2.0, BF + 0.05);
   check('a craft on the basement floor stands on the floor', near(lounge, S * BF), `${r3(lounge)} m, the floor is ${r3(S * BF)}`);
   const table = ask(3.6, 5.7, BF + 0.81);
   check('on the basement table it stands on the table', near(table, S * (BF + 0.76) - SUPPORT_TIE), `${r3(table)} m`);
@@ -398,7 +398,8 @@ const LINES = [
   ['from the lounge round the stair head to the settee', [[3.3, 1.1, -1.2], [4.2, 2.3, -1.2], [4.2, 4.5, -1.2], [5.8, 4.5, -1.2], [5.8, 6.8, -1.2], [5.0, 7.0, -1.2]]],
   ['through the LED cube on the basement table', [[3.6, 4.6, -1.2], [3.6, 6.8, -1.2]]],
   ['down into the LED cube on the basement table', [[3.6, 5.7, -0.2], [3.6, 5.7, -1.4]]],
-  ['through the treadmill under its console', [[0.675, 4.25, -1.65], [0.675, 1.5, -1.65]]],
+  ['from the stair\'s foot past the chairs and the column, behind the sofa to the treadmill', [[4.25, 0.8, -1.5], [4.25, 3.6, -1.5], [1.3, 3.6, -1.5]]],
+  ['through the treadmill under its console and up over the loveseat', [[0.675, 4.25, -1.65], [0.675, 2.25, -1.65], [0.675, 1.3, -1.1]]],
   ['main room into the hall and through to the workshop', [[6.0, 4.68, -1.2], [10.0, 4.68, -1.2], [11.4, 4.68, -1.2], [11.4, 3.0, -1.2]]],
   ['hall into the playroom', [[9.0, 4.68, -1.2], [9.0, 2.6, -1.2]]],
   ['hall into the guest room', [[8.9, 4.68, -1.2], [8.9, 6.0, -1.2]]],
@@ -699,7 +700,7 @@ async function moduleBlock(placed) {
     `${a.touched} steps in contact, up to ${r3(a.top)} m`);
   /* In the basement's lounge, the plant's ground seven metres under the
    * lawn's. */
-  const [bx, by, bz] = worldAt(3.4, 1.1, BF);
+  const [bx, by, bz] = worldAt(2.1, 2.0, BF);
   const down = { x: bx, y: by, z: bz, yaw: 0 };
   const c = await hoverFlight(wasm, config, colliders, placed, 3000, lift, down);
   const d = await hoverFlight(wasm, config, colliders, placed, 3000, lift, down);

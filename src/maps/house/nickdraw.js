@@ -82,8 +82,8 @@ const C = {
 };
 
 /* The letters' colour, by line (NICK_LINES' order): the catfish in amber,
- * all blue in blue, the rest round the shell's inks. */
-const FILLS = ['#ffd45c', '#5b8cff', INKS.bail, INKS.mint, INKS.drift, INKS.amber, INKS.sky,
+ * the rest round the shell's inks. */
+const FILLS = ['#ffd45c', INKS.bail, INKS.mint, INKS.drift, INKS.amber, INKS.sky,
   INKS.bail, INKS.mint, INKS.drift, INKS.sky, INKS.mint, INKS.bail];
 
 /* ------------------------------------------------------------------ */

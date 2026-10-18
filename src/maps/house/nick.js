@@ -25,11 +25,12 @@
  * the same time is always the same Nick, and it wraps after about an hour
  * at a moment he is in his chair, where it starts.
  *
- * THE LINES. "Holy Catfish!" and "The Best. All Blue!" are his catchphrases:
- * both are designs in his own merch shop (nick-burns.myspreadshop.com), and
- * the Kwadverse podcast opens his episode with "Holy Catfish!". The rest are
- * his, from the titles and descriptions of his own videos. They are said
- * more often in proportion to how much they are his.
+ * THE LINES. "Holy Catfish!" is his catchphrase: a design in his own merch
+ * shop (nick-burns.myspreadshop.com), and the Kwadverse podcast opens his
+ * episode with it. The rest are his, from the titles and descriptions of his
+ * own videos. They are said more often in proportion to how much they are
+ * his. "The Best. All Blue!", the shop's other design, was taken out on the
+ * owner's word of 2026-10-18.
  *
  * Render only. Nothing here reaches the physics or the plant; he is not
  * solid, and the craft flies through him.
@@ -60,7 +61,6 @@ import { G_PAVE, FLOOR0, DEP, LEN, UMBRELLA } from './house.js';
  * and where it is his from. */
 export const NICK_LINES = [
   { text: 'Holy Catfish!', weight: 4, both: true, from: 'merch shop design, and the Kwadverse podcast\'s opening for him' },
-  { text: 'The Best. All Blue!', weight: 3, both: false, from: 'merch shop design' },
   { text: 'Cast off!!', weight: 2, both: true, from: 'video titles, several' },
   { text: 'Dive the pergola!!', weight: 2, both: false, from: 'video title, Betafpv Air75' },
   { text: 'Hide your wallet!!', weight: 1, both: false, from: 'video title, GoPro Labs firmware' },

@@ -25,8 +25,9 @@
  * ONE DRAW CALL. Every part of him is one mesh, its colours in the vertices
  * and its material the map's own cel() with vertex colours. A part belongs
  * to one bone, and each frame his vertices are moved by their bone's
- * transform on the CPU (rigid skinning: about 7,900 vertices, about 0.13 ms
- * in a container that does it slowly), so the ink, the shadow map and the
+ * transform on the CPU (rigid skinning: about 7,000 vertices laid out bone
+ * by bone, and only the bones that moved, about 0.05 ms a frame in a
+ * container that does it slowly), so the ink, the shadow map and the
  * comic layer all see the pose that is drawn without a skinning program of
  * their own. The skinning runs only while he is in front of the camera or
  * near it, and not at all while nothing about him moves; the transform
@@ -115,7 +116,7 @@ const FILLS = ['#ffd45c', INKS.bail, INKS.mint, INKS.sky];
 const MOUTH = BONES.length;
 const SMILE = BONES.length + 1;
 const LIDS = BONES.length + 2;
-const FACE_BONES = 3;
+const ALL_BONES = BONES.length + 3;
 /* His head is drawn HEAD_K times a real one, about a point HEAD_DROP
  * under the head bone (bodyGeometry). */
 const HEAD_K = 1.4;
@@ -450,17 +451,76 @@ function bodyGeometry() {
     add(box(0.044, 0.006, 0.09), ft, C.sole, 0, -0.013, 0.09, 0.25);
   }
 
+  /* Exact copies are one vertex: a sphere's seam and its poles, a tube's
+   * seam, wherever two pieces meet face to face. The same bone, place,
+   * normal and colour (as the GPU will hold them) skin and draw the same,
+   * so this changes no pixel and skins about a ninth fewer vertices. A
+   * triangle left with a corner twice drew nothing and goes too. */
+  const P0 = new Float32Array(pos);
+  const N0 = new Float32Array(nor);
+  const C0 = new Float32Array(col);
+  const first = new Map();
+  const into = new Int32Array(bone.length);
+  const kept = [];
+  for (let i = 0; i < bone.length; i += 1) {
+    const k = i * 3;
+    const key = `${bone[i]} ${P0[k]} ${P0[k + 1]} ${P0[k + 2]} ${N0[k]} ${N0[k + 1]} ${N0[k + 2]} ${C0[k]} ${C0[k + 1]} ${C0[k + 2]}`;
+    const was = first.get(key);
+    if (was === undefined) {
+      first.set(key, kept.length);
+      into[i] = kept.length;
+      kept.push(i);
+    } else {
+      into[i] = was;
+    }
+  }
+
+  /* Then laid out bone by bone (a counting sort, stable), so each bone's
+   * vertices are one run: the skin walks a run with its bone's matrix in
+   * hand, and sends the GPU only the runs whose bone moved. */
+  const n = kept.length;
+  const start = new Int32Array(ALL_BONES + 1);
+  for (const i of kept) {
+    start[bone[i] + 1] += 1;
+  }
+  for (let b = 0; b < ALL_BONES; b += 1) {
+    start[b + 1] += start[b];
+  }
+  const at = start.slice(0, ALL_BONES);
+  const slot = new Int32Array(n);
+  for (let j = 0; j < n; j += 1) {
+    slot[j] = at[bone[kept[j]]];
+    at[bone[kept[j]]] += 1;
+  }
+  const P32 = new Float32Array(n * 3);
+  const N32 = new Float32Array(n * 3);
+  const C32 = new Float32Array(n * 3);
+  for (let j = 0; j < n; j += 1) {
+    const i = kept[j];
+    for (let k = 0; k < 3; k += 1) {
+      P32[slot[j] * 3 + k] = P0[i * 3 + k];
+      N32[slot[j] * 3 + k] = N0[i * 3 + k];
+      C32[slot[j] * 3 + k] = C0[i * 3 + k];
+    }
+  }
+  const tri = [];
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = slot[into[idx[t]]];
+    const b = slot[into[idx[t + 1]]];
+    const c = slot[into[idx[t + 2]]];
+    if (a !== b && b !== c && a !== c) {
+      tri.push(a, b, c);
+    }
+  }
   const g = new THREE.BufferGeometry();
-  const P32 = new Float32Array(pos);
-  const N32 = new Float32Array(nor);
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(P32), 3).setUsage(THREE.DynamicDrawUsage));
   g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(N32), 3).setUsage(THREE.DynamicDrawUsage));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
+  g.setAttribute('color', new THREE.BufferAttribute(C32, 3));
+  g.setIndex(tri);
   /* Fixed, in his frame: his reach from the middle of him, so the frustum
    * test never needs the skinned positions. */
   g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.0, 0), 1.5);
-  return { geometry: g, rest: P32, restN: N32, bone: Uint8Array.from(bone) };
+  return { geometry: g, rest: P32, restN: N32, start };
 }
 
 /* ------------------------------------------------------------------ */
@@ -541,6 +601,29 @@ function paintBalloon(canvas, line) {
   }
 }
 
+/* A folded bone: its 3x3 is zero (faceBones), so its vertices sit on one
+ * point and draw nothing wherever that point is. */
+function folded(m, o) {
+  for (let k = 0; k < 9; k += 1) {
+    if (m[o + k] !== 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function span(attr) {
+  const r = attr.updateRanges;
+  let lo = r[0].start;
+  let hi = r[0].start + r[0].count;
+  for (let i = 1; i < r.length; i += 1) {
+    lo = Math.min(lo, r[i].start);
+    hi = Math.max(hi, r[i].start + r[i].count);
+  }
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(lo, hi - lo);
+}
+
 /* ------------------------------------------------------------------ */
 /* Nick                                                                */
 /* ------------------------------------------------------------------ */
@@ -594,10 +677,13 @@ export function makeNick(camera) {
   group.add(mesh, balloon);
 
   const pose = nickPose();
-  const M = new Float64Array((BONES.length + FACE_BONES) * 12);
+  const M = new Float64Array(ALL_BONES * 12);
+  /* Each bone's matrix as it was last skinned; NaN skins every bone the
+   * first time. */
+  const L = new Float64Array(ALL_BONES * 12).fill(NaN);
   const posAttr = body.geometry.attributes.position;
   const norAttr = body.geometry.attributes.normal;
-  const n = body.bone.length;
+  const n = body.rest.length / 3;
   const eye = { x: 0, y: 0, h: 0 };
   const frustum = new THREE.Frustum();
   const pm = new THREE.Matrix4();
@@ -607,8 +693,13 @@ export function makeNick(camera) {
   let last = null;
   let skinnedAt = null;
   let skins = 0;
+  let lastMoved = 0;
   let shownLine = -1;
 
+  /* Bone by bone, each bone's matrix in locals, and only the bones whose
+   * matrix changed since they were last skinned: seated, his legs and feet
+   * hold still while he breathes, and a folded face bone stays folded. Only
+   * the runs that moved go to the GPU. */
   function skin() {
     nickBones(pose, M);
     faceBones(pose, clock, M);
@@ -616,25 +707,78 @@ export function makeNick(camera) {
     const outN = norAttr.array;
     const rp = body.rest;
     const rn = body.restN;
-    for (let i = 0; i < n; i += 1) {
-      const o = body.bone[i] * 12;
-      const k = i * 3;
-      const x = rp[k];
-      const y = rp[k + 1];
-      const z = rp[k + 2];
-      out[k] = M[o] * x + M[o + 1] * y + M[o + 2] * z + M[o + 9];
-      out[k + 1] = M[o + 3] * x + M[o + 4] * y + M[o + 5] * z + M[o + 10];
-      out[k + 2] = M[o + 6] * x + M[o + 7] * y + M[o + 8] * z + M[o + 11];
-      const a = rn[k];
-      const b = rn[k + 1];
-      const c = rn[k + 2];
-      outN[k] = M[o] * a + M[o + 1] * b + M[o + 2] * c;
-      outN[k + 1] = M[o + 3] * a + M[o + 4] * b + M[o + 5] * c;
-      outN[k + 2] = M[o + 6] * a + M[o + 7] * b + M[o + 8] * c;
+    const run = body.start;
+    let from = -1;
+    let moved = 0;
+    for (let b = 0; b <= ALL_BONES; b += 1) {
+      let dirty = false;
+      if (b < ALL_BONES && run[b + 1] > run[b]) {
+        const o = b * 12;
+        for (let k = 0; k < 12; k += 1) {
+          if (M[o + k] !== L[o + k]) {
+            dirty = true;
+            break;
+          }
+        }
+        if (dirty && folded(M, o) && folded(L, o)) {
+          dirty = false;
+        }
+      }
+      if (dirty) {
+        const o = b * 12;
+        for (let k = 0; k < 12; k += 1) {
+          L[o + k] = M[o + k];
+        }
+        const m0 = M[o];
+        const m1 = M[o + 1];
+        const m2 = M[o + 2];
+        const m3 = M[o + 3];
+        const m4 = M[o + 4];
+        const m5 = M[o + 5];
+        const m6 = M[o + 6];
+        const m7 = M[o + 7];
+        const m8 = M[o + 8];
+        const tx = M[o + 9];
+        const ty = M[o + 10];
+        const tz = M[o + 11];
+        const k1 = run[b + 1] * 3;
+        for (let k = run[b] * 3; k < k1; k += 3) {
+          const x = rp[k];
+          const y = rp[k + 1];
+          const z = rp[k + 2];
+          out[k] = m0 * x + m1 * y + m2 * z + tx;
+          out[k + 1] = m3 * x + m4 * y + m5 * z + ty;
+          out[k + 2] = m6 * x + m7 * y + m8 * z + tz;
+          const a = rn[k];
+          const c = rn[k + 1];
+          const d = rn[k + 2];
+          outN[k] = m0 * a + m1 * c + m2 * d;
+          outN[k + 1] = m3 * a + m4 * c + m5 * d;
+          outN[k + 2] = m6 * a + m7 * c + m8 * d;
+        }
+        moved += run[b + 1] - run[b];
+        if (from < 0) {
+          from = run[b];
+        }
+      } else if (from >= 0 && (b === ALL_BONES || run[b + 1] > run[b])) {
+        /* The end of a run of moved bones (an empty bone does not end one). */
+        posAttr.addUpdateRange(from * 3, (run[b] - from) * 3);
+        norAttr.addUpdateRange(from * 3, (run[b] - from) * 3);
+        from = -1;
+      }
     }
-    posAttr.needsUpdate = true;
-    norAttr.needsUpdate = true;
-    skins += 1;
+    /* Ranges not yet sent (skinned near him but drawn in no pass) would
+     * pile up; past a handful they become the one span that covers them. */
+    if (posAttr.updateRanges.length > 4) {
+      span(posAttr);
+      span(norAttr);
+    }
+    lastMoved = moved;
+    if (moved > 0) {
+      posAttr.needsUpdate = true;
+      norAttr.needsUpdate = true;
+      skins += 1;
+    }
   }
 
   function update(step) {
@@ -720,6 +864,7 @@ export function makeNick(camera) {
       looking: pose.look > 0,
       waving: pose.wave > 0,
       skins,
+      moved: lastMoved,
       vertices: n,
       triangles: body.geometry.index.count / 3,
     }),

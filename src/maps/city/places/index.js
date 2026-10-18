@@ -76,6 +76,7 @@ import { buildPool, POOL_SITE, POOL_LANDMARK } from './pool.js';
 import { buildTraining, TRAINING_SITE, TRAINING_LANDMARK } from './training.js';
 import { buildBlossom } from './blossom.js';
 import { makeStfMark } from '../../../art/stf.js';
+import { STF_PAINTED } from '../../../game/egg.js';
 import { makePartnerMark, signAspect } from '../../../art/partnermark.js';
 import { PARTNERS, PATRON_MAP_BRANDS } from '../../../partners/roster.js';
 import { choosePatrons } from '../../../partners/patrons.js';
@@ -275,6 +276,11 @@ function buildStfMark(ctx) {
     w: STF_SPOT.w,
     h: STF_SPOT.h,
   };
+  /* Unpainted (STF_PAINTED in src/game/egg.js): the descriptor stays, because
+   * the town's best and its stamp are filed under its key. */
+  if (!STF_PAINTED) {
+    return egg;
+  }
   /* In shade: the flank faces -z, and the town's golden sun stands at the
    * south west, so no direct light ever reaches it (see makeStfMark). */
   const mark = makeStfMark(THREE, { width: egg.w, height: egg.h, shade: true });

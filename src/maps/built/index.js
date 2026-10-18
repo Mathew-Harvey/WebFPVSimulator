@@ -111,6 +111,7 @@ import {
 } from './place.js';
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost, skyLook } from './looks.js';
+import { STF_PAINTED } from '../../game/egg.js';
 import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, stfKey } from './egg.js';
 import { choosePatrons } from '../../partners/patrons.js';
 import { trafficOf, uploadTraffic, roadKeepOut } from './traffic.js';
@@ -888,6 +889,12 @@ function chunkKeyOf(item) {
  * shape the town hands the shell.
  */
 function paintStfMark(props, placed, spot, look) {
+  /* Unpainted (STF_PAINTED in src/game/egg.js): the descriptor stays, because
+   * the map's best and its stamp are filed under its key and the partners'
+   * marks are placed round the wall it would have been on. */
+  if (!STF_PAINTED) {
+    return { key: spot.key, p: [...spot.p], n: [...spot.n], up: [...spot.up], w: spot.w, h: spot.h };
+  }
   return paintMark(props, placed, spot, look, (opts) => makeStfMark(THREE, opts));
 }
 

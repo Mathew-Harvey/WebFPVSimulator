@@ -72,6 +72,18 @@
 export const MARK_FINDS = false;
 
 /*
+ * WHETHER THE STF MARK IS PAINTED AT ALL. Off, the owner's call on 2026-10-18:
+ * the mark comes off every map and nothing puts it back automatically. With
+ * this false no plane is made on the town or on a built map. The `egg`
+ * descriptor stays (key, spot, size) because a map's best, its stamp and the
+ * partners' placement round the mark's wall are all keyed off it, and
+ * dropping it would orphan stored bests. The mark art is kept for the found
+ * panel and the manga page, which only draw it for a run that found one.
+ * Turning the paint back on is this one constant.
+ */
+export const STF_PAINTED = false;
+
+/*
  * WHETHER A PARTNER'S MARK IS FOUND. On: the owner's ask of 2026-09-27 was
  * that the partners' marks (src/partners/roster.js, `marks` in
  * src/maps/README.md) be found "like the old STF one", and the machinery

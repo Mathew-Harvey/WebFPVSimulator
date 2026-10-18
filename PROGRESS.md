@@ -70813,3 +70813,12 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Latency: none, a line fewer in a table read when a line changes.
 - Checked: `npm run check:house` all passed (every one of the 12 lines called, none twice running in 300); two views through `node scripts/shots.js` with no console errors, the bay now "Cast off!!" with both hands up. Not run: `npm run verify` (render only). Nobody has flown it.
 - What went wrong: the first shot run printed one console error, a refused connection, because the scratch board stub on port 3100 had stopped; with it restarted the same run printed none.
+
+## 2026-10-18 | maps | Nick says only his four lines (draft PR 81)
+
+- Ask: the owner, 01:44Z on 2026-10-18, after naming "Holy Catfish" (his merch and stickers), his stickers in giveaway boxes as a running bit, "Boom Shakala" ("a funny phrase his wife once said", one of his stickers) and "Motor post to motor post" (how he measures a quad): "Let's go with these 4 only"
+- Done: `NICK_LINES` (src/maps/house/nick.js) is those four: "Holy Catfish!" (weight 4, both hands up), "Boom Shakala!" (2, both hands), "Stickers in the box!" (2, one hand) and "Motor post to motor post!" (2, one hand). The sticker bit had no words of its own in the ask, so "Stickers in the box!" is the wording picked. The catfish is now always the first line, at 4 s, by the code rather than by the seed. `FILLS` (nickdraw.js) is four colours: amber for the catfish, then the shell's bail, mint and sky.
+- Sources: the owner's message for all four; the merch shop and the Kwadverse podcast for "Holy Catfish!", as before.
+- Latency: none, a shorter table.
+- Checked: `npm run check:house` all passed (every one of the 4 lines called, none twice running in 300). Five views through `node scripts/shots.js`, no console errors, one for each line at the patio table and "Boom Shakala!" on the sofa; every balloon reads, the long one on two rows. Not run: `npm run verify` (render only). Nobody has flown it.
+- What went wrong: nothing new; the scratch board stub had stopped again and was restarted before the shots.

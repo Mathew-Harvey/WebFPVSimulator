@@ -25,12 +25,13 @@
  * the same time is always the same Nick, and it wraps after about an hour
  * at a moment he is in his chair, where it starts.
  *
- * THE LINES. "Holy Catfish!" is his catchphrase: a design in his own merch
- * shop (nick-burns.myspreadshop.com), and the Kwadverse podcast opens his
- * episode with it. The rest are his, from the titles and descriptions of his
- * own videos. They are said more often in proportion to how much they are
- * his. "The Best. All Blue!", the shop's other design, was taken out on the
- * owner's word of 2026-10-18.
+ * THE LINES are the four the owner chose on 2026-10-18: "Holy Catfish!",
+ * his catchphrase, on his own merch (nick-burns.myspreadshop.com) and his
+ * stickers, and the Kwadverse podcast opens his episode with it; "Boom
+ * Shakala!", a phrase his wife once said, on another of his stickers; the
+ * stickers he packs in every giveaway box, a running bit he calls a meme
+ * himself; and "motor post to motor post", how he measures a quad. The
+ * catfish is said most, and always first.
  *
  * Render only. Nothing here reaches the physics or the plant; he is not
  * solid, and the craft flies through him.
@@ -60,18 +61,10 @@ import { G_PAVE, FLOOR0, DEP, LEN, UMBRELLA } from './house.js';
 /* text, how often against the others, the gesture (one hand, or both up),
  * and where it is his from. */
 export const NICK_LINES = [
-  { text: 'Holy Catfish!', weight: 4, both: true, from: 'merch shop design, and the Kwadverse podcast\'s opening for him' },
-  { text: 'Cast off!!', weight: 2, both: true, from: 'video titles, several' },
-  { text: 'Dive the pergola!!', weight: 2, both: false, from: 'video title, Betafpv Air75' },
-  { text: 'Hide your wallet!!', weight: 1, both: false, from: 'video title, GoPro Labs firmware' },
-  { text: 'Bazinga!!', weight: 1, both: true, from: 'video title, Meteor65 Pro' },
-  { text: 'Stat means now!!', weight: 1, both: false, from: 'video title, custom 2s whoop' },
-  { text: 'It\'s HERE!!!', weight: 1, both: true, from: 'video title, Tinyhawk Aero' },
-  { text: 'Should we do double naked??', weight: 1, both: false, from: 'video title, FlyTimes 85' },
-  { text: 'Can it handle my crashing?', weight: 1, both: false, from: 'video title, Moblite7 HDZero' },
-  { text: 'It\'s not the settings.', weight: 1, both: false, from: 'video description' },
-  { text: 'Been flying whoops a long long time.', weight: 1, both: false, from: 'video description' },
-  { text: 'Bold move!', weight: 1, both: false, from: 'video description, "Bold move Emax."' },
+  { text: 'Holy Catfish!', weight: 4, both: true, from: 'his merch shop\'s designs, his stickers, and the Kwadverse podcast\'s opening for him' },
+  { text: 'Boom Shakala!', weight: 2, both: true, from: 'one of his stickers, a phrase his wife once said' },
+  { text: 'Stickers in the box!', weight: 2, both: false, from: 'his giveaways, where the stickers he packs are a running bit he calls a meme' },
+  { text: 'Motor post to motor post!', weight: 2, both: false, from: 'how he measures a quad, in podcast descriptions and his viewers\' comments' },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -278,14 +271,14 @@ let CALL_PERIOD = 0;
   }
   PERIOD = t;
 
-  /* The callouts: a line every seven to seventeen seconds, never the same
-   * line twice running, held long enough to read. */
+  /* The callouts: a line every seven to seventeen seconds, the catfish
+   * first, never the same line twice running, held long enough to read. */
   const total = NICK_LINES.reduce((s, l) => s + l.weight, 0);
   const crnd = generator(0xca7f15);
   let c = 4000;
   let prev = -1;
   for (let k = 0; k < 300; k += 1) {
-    let i = prev;
+    let i = k === 0 ? 0 : prev;
     while (i === prev) {
       let w = crnd() * total;
       i = 0;

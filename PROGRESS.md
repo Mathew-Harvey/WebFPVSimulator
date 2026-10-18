@@ -70914,3 +70914,4 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Not touched: `src/maps/house/`, the Infinity Loops stickers (a different thing, pilot made), the found panel and manga art (only drawn for a run that found a mark, and `MARK_FINDS` is already false).
 - Latency: no rise, one fewer mesh per map; nothing in the flight loop or input path. Not measured in a browser.
 - Checked: `node --check` on the three files, `lint:preload`, `lint:partners`, `lint:boot`. Not run: shots, verify, check:house.
+- Approval: the owner wrote "push to main" at 12:26:50Z on 2026-10-18 in this thread, after draft PR 82 and the entry above. It covers this change only. Nobody has flown it yet.

@@ -1898,8 +1898,13 @@ function suiteCrashRule() {
   check('fifty firm contacts, fifty bounces', bounced === 50, `${bounced}`);
 
   /* The ground. Perch, skip, tumble. None of them is a lockout. */
+  /* 0.3 and 0.3, not 1.0 and 1.0, since 2026-10-18: a craft still moving at
+   * 1.4 m/s across the grass is a slide that runs to its own stop now, not a
+   * perch (PERCH_SPEED in src/game/collide.js has the owner's words). */
   check('a gentle arrival perches',
-    groundOutcome(1.0, 1.0, 0) === GROUND_LAND);
+    groundOutcome(0.3, 0.3, 0) === GROUND_LAND);
+  check('and one still crossing the grass at a walk slides first',
+    groundOutcome(1.0, 1.0, 0) === GROUND_SLIDE);
   check('the perch envelope is the slow, upright one',
     groundOutcome(PERCH_SPEED - 0.01, 0, 0) === GROUND_LAND
     && groundOutcome(PERCH_SPEED + 0.01, 0, 0) === GROUND_SLIDE);

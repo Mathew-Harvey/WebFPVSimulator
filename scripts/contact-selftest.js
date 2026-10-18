@@ -19,7 +19,7 @@
  *      floor into checks 2 through 12
  *   6. inverted rest, slam, and full throttle into the dirt leave no
  *      hull corner or camera glass below the plane
- *   7. belly slide is short then sticks; props-down stops at once
+ *   7. a belly slide runs to a friction stop; props-down stops at once
  *   8. a seated punch leaves the pad immediately; settle must not
  *      cancel climb (motors at the stops, hull glued to the slop)
  *   9. an inverted flip or leftover roll in free air must not freeze
@@ -438,11 +438,33 @@ function sameState(a, b) {
   const early = hold(sim, 20, { throttle: 0 });
   check('a belly landing still slides a little at first',
     early[ST.VX] > 0.15, `vx=${early[ST.VX].toFixed(3)} z=${early[ST.Z].toFixed(3)}`);
-  const st = hold(sim, 180, { throttle: 0 });
-  check('then grass dumps the slide instead of skating',
+  /*
+   * A SLIDE RUNS TO ITS OWN STOP, since 2026-10-18. This block used to say
+   * the grass dumped the slide inside 0.2 s and 0.4 m, which was the grab
+   * the owner asked to have taken away (src/game/collide.js, PERCH_SPEED and
+   * GROUND_MU, have his words). What it says now: the slide is still going a
+   * tenth of a second in, it runs further than the old ceiling, no further
+   * than v^2 / (2 mu g) allows, and it stops.
+   *
+   * Further than the old ceiling and not AS FAR AS v^2 / (2 mu g), because
+   * with the motors stopped, as here, a seated belly slows at about 1.8 mu g
+   * and not at mu g: the contact solver's friction cone sees gravity's
+   * millimetre of fall each step and ground_settle's Coulomb term adds the
+   * weight again (src/native/sim.c). With the motors at idle, as a craft in
+   * the shell always is, the measured rate is about 1.1 mu g. That is the
+   * plant's to settle, with the owner, and is written down in PROGRESS.md
+   * on 2026-10-18; this block holds the shell's number to what it gives.
+   */
+  const mid = hold(sim, 80, { throttle: 0 });
+  check('a belly slide is still going a tenth of a second in',
+    mid[ST.VX] > vx0 * 0.4, `vx0=${vx0.toFixed(3)} vx=${mid[ST.VX].toFixed(3)}`);
+  const st = hold(sim, 900, { throttle: 0 });
+  check('then the grass brings it to a stop',
     Math.abs(st[ST.VX]) < 0.15, `vx0=${vx0.toFixed(3)} vx=${st[ST.VX].toFixed(3)}`);
-  check('the belly slide is short',
-    Math.abs(st[ST.X] - x0) < 0.40, `dx=${(st[ST.X] - x0).toFixed(3)}`);
+  const most = (vx0 * vx0) / (2 * GROUND_MU * 9.80665);
+  check('and it slides further than the old 0.4 m grab, and no further than its friction allows',
+    Math.abs(st[ST.X] - x0) > 0.40 && Math.abs(st[ST.X] - x0) < most * 1.2,
+    `dx=${(st[ST.X] - x0).toFixed(3)} at most ${most.toFixed(3)}`);
   check('the sliding hull stays on the plane',
     st[ST.Z] > 0.02 && st[ST.Z] < 0.16, `z=${st[ST.Z].toFixed(3)}`);
 }

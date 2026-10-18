@@ -2491,6 +2491,7 @@ export class CrashJudge {
     this.s = 0;
     this.groundAtMs = -Infinity;
     this.hardAtMs = -Infinity;
+    this.groundLastMs = -Infinity;
     this.beginFrame();
   }
 
@@ -2502,6 +2503,7 @@ export class CrashJudge {
   forget() {
     this.groundAtMs = -Infinity;
     this.hardAtMs = -Infinity;
+    this.groundLastMs = -Infinity;
   }
 
   /* A knock (solidContactKnock) in the step's report rep, with the state
@@ -2534,11 +2536,30 @@ export class CrashJudge {
       Math.sqrt(after[4] * after[4] + after[5] * after[5] + after[6] * after[6]),
       Math.sqrt(after[11] * after[11] + after[12] * after[12] + after[13] * after[13]),
     );
+    /* A SLIDE IS NOT A SMACK, since 2026-10-18 (PERCH_SPEED has the owner's
+     * words). A step whose step before, one millisecond of sim clock back,
+     * was on the ground too is the same contact going on, and while it is on
+     * the belly its speed going in is a slide's and not an arrival's: only a
+     * fresh closing speed can make it a hit. Judged on either, a belly slide
+     * at 12 m/s was a hit every BOUNCE_COOLDOWN_MS until it slowed under
+     * GRAZE_SPEED_MAX: a thump and a combo bump five times along one slide,
+     * and from BOUNCE_SPEED_MAX a crash for the site's count each time. An
+     * arrival, the first step of a contact, is judged as it always was, and
+     * so is a slide that has gone over off the belly, which is a crash and
+     * gets the dull bounce. A slide's steps are not judged at all, so they
+     * neither start nor use up the cooldown: the step it goes over off the
+     * belly is judged on the step it happens, BOUNCE_COOLDOWN_MS after the
+     * arrival, and not on whichever step a cooldown happened to end at. */
+    const closing = -before[6];
+    const sliding = ground > 0 && this.groundLastMs === atMs - 1 && upZ >= CRASH_BELLY_UP
+      && closing < GRAZE_SPEED_MAX;
+    if (ground > 0) {
+      this.groundLastMs = atMs;
+    }
     /* The ground. A clock that went backwards (a restart the shell did not
      * tell forget() about) ends the cooldown rather than stretching it. */
-    if (ground > 0 && !lands && (atMs - this.groundAtMs > BOUNCE_COOLDOWN_MS || atMs < this.groundAtMs)) {
+    if (ground > 0 && !lands && !sliding && (atMs - this.groundAtMs > BOUNCE_COOLDOWN_MS || atMs < this.groundAtMs)) {
       this.groundAtMs = atMs;
-      const closing = -before[6];
       if (closing >= GRAZE_SPEED_MAX || spdBefore >= GRAZE_SPEED_MAX) {
         const hard = closing >= BOUNCE_SPEED_MAX || spdBefore >= BOUNCE_SPEED_MAX;
         if (hard) {
@@ -2926,16 +2947,37 @@ export function thrustIntoFace(nx, ny, nz, ux, uy, uz) {
 export const SURFACE_SPEED_MAX = 60.0;
 
 /* Perch: freeze only when the hull is settled enough that a takeoff from
- * leftover bounce would be a lie. */
-export const PERCH_SPEED = 2.0;   /* m/s, linear */
+ * leftover bounce would be a lie.
+ *
+ * A SLIDE RUNS TO ITS OWN STOP, since 2026-10-18. The owner: "i want to be
+ * able to slide the quad along the ground a bit, like a trick when you hit
+ * the ground, there is some friction, but i can slide to a stop...at the
+ * moment i grab the ground with a smack and stop jaringly". At 2 m/s the
+ * perch was the jar: a belly slide on the grass was frozen dead from a
+ * running pace the frame it dropped under it. At 0.5 the grass has already
+ * done nearly all of the stopping (GROUND_MU below takes 0.5 m/s off in
+ * about 85 ms), so what the perch freezes is a craft that has all but
+ * stopped. A landing straight down still perches within a frame or two,
+ * because the grass has no bounce and takes the descent out on the touch. */
+export const PERCH_SPEED = 0.5;   /* m/s, linear */
 export const PERCH_RATE = 2.5;    /* rad/s */
 
 /* Grass / dirt. Restitution is zero: a real 5 inch on turf is a dead
- * thump, not a bounce. Mu is high enough that a belly landing dumps
- * the slide in a few tens of centimetres; the plant also damps leftover
- * tangent speed once the hull is seated. A props-down arrival is a
- * full stop, not a slide. */
-export const GROUND_MU = 1.40;
+ * thump, not a bounce. A props-down arrival is a full stop, not a slide.
+ *
+ * Mu was 1.40 until 2026-10-18, rubber on a dry road, and the owner's report
+ * (PERCH_SPEED above has his words) was that touching down grabbed the
+ * ground. It did twice over: the touch itself, where the friction cone is
+ * mu times the normal impulse, took 1.4 m/s of run off for every 1 m/s of
+ * descent in a millisecond, and the seated slide behind it stopped at 13.7
+ * m/s^2, so a 12 m/s belly arrival was down to a walk in a fifth of a
+ * second. 0.6 is a plastic and carbon belly on short turf: the touch keeps
+ * most of its run, and the slide stops at 5.9 m/s^2, so 10 m/s runs about
+ * 8.5 m over 1.7 s. It is the one number to move if the slide reads as ice
+ * (higher) or still as glue (lower). The plant reads it for the touch, the
+ * seated slide and the spin on the belly alike (src/native/sim.c), and it
+ * still holds a parked craft on a 30 degree slope. */
+export const GROUND_MU = 0.6;
 export const GROUND_E = 0.0;
 
 /*

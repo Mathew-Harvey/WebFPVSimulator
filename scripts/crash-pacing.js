@@ -193,6 +193,20 @@ function flatBackPilot() {
  * first, first contact at 6.87 m/s; bumps at 2825 and 3009 ms and no crash
  * for the second, first contact at 6.42 m/s (7.07 and 7.10 both crash). The
  * numbers in those two comments are from before this re-aim.
+ *
+ * RE-AIMED AGAIN ON 2026-10-18, on the owner's ask for a slide that runs to
+ * a stop (src/game/collide.js GROUND_MU, 1.40 to 0.6, and the judge's A SLIDE
+ * IS NOT A SMACK). A skim now carries on along the grass instead of being
+ * stopped by it, and a slide on the belly is no longer judged every
+ * cooldown, so the side touch after it is judged on the step the craft goes
+ * over. The first two ground scenarios kept their approach and now read as
+ * their names say again: a bump at 2761 ms then a crash at 2991, and a bump
+ * at 2816 then a crash at 3027. The side touches one was a crash at every
+ * pacing as it stood, and swept on its approach speed alone it found no
+ * flight that was no crash and on an edge, because the slide now reaches
+ * the roll faster than a smack: the roll had to come later as well, 190 to
+ * 350 ms, and the approach is 6.85 m/s. First contact 3052 ms at 5.74 m/s, a
+ * bump, then no crash; 6.90 crashes.
  * ------------------------------------------------------------------ */
 
 const WALL_BOX = [0, -20, -1, 1, 20, 30];
@@ -247,12 +261,13 @@ export const SCENARIOS = [
    * down to 3.99, under a smack. A frame that straddles the end of the
    * cooldown judges the touch on its fastest step instead. Until 2026-10-04
    * the grass stopped it outright, 1.1 m/s by the end of the cooldown; the
-   * drag change took that flight away and this is the nearest one left. */
+   * drag change took that flight away and this is the nearest one left.
+   * These numbers are from before 2026-10-18: see the re-aim note above. */
   {
     name: 'the ground: side touches no one step calls a crash',
     edge: true,
     world: [], pose: [-12, 0, 0.2], ms: 9000, after: 700,
-    pilot: () => skimPilot(7.08, 0.2, 80, 190, 70, 0.15, 0.2),
+    pilot: () => skimPilot(6.85, 0.2, 80, 350, 70, 0.15, 0.2),
   },
   {
     name: 'anchor: a steep nose first hit is a crash',

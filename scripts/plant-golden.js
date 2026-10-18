@@ -102,7 +102,7 @@ const REST = { 0: 0.033, 1: 0.010 };
 /* The shell's grass (src/game/collide.js GROUND_MU and GROUND_E). Written
  * out rather than imported, so that retuning the shell's grass shows up here
  * as a deliberate edit and not as a silent golden failure. */
-const GRASS_MU = 1.40;
+const GRASS_MU = 0.6;
 const GRASS_E = 0.0;
 /* 20 degrees about x, rounded; the module normalises it. */
 const SLOPE_N = [0, 0.34202, 0.93969];

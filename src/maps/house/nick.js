@@ -106,8 +106,9 @@ const PELVIS_STAND = 0.96;
 const SIT_LIFT = 0.12;
 const THIGH = 0.43;
 export const SOLE = 0.08;
-/* The top of his head over the head bone, for the balloon. */
-export const HEAD_TOP = 0.26;
+/* The top of his hair over the head bone, for the balloon: ./nickdraw.js
+ * draws his head at 1.4 times a real one. */
+export const HEAD_TOP = 0.38;
 
 /* ------------------------------------------------------------------ */
 /* Where he goes, plan metres                                          */
@@ -326,10 +327,10 @@ const set = (J, b, x, y, z) => {
 
 /* Standing at ease, arms a little out and a little bent. */
 const STAND = new Float64Array(NB * 3);
-set(STAND, BONE.armL, 0.04, 0, 0.08);
-set(STAND, BONE.armR, 0.04, 0, -0.08);
-set(STAND, BONE.foreL, -0.14, 0, 0);
-set(STAND, BONE.foreR, -0.14, 0, 0);
+set(STAND, BONE.armL, 0.06, 0, 0.12);
+set(STAND, BONE.armR, 0.06, 0, -0.12);
+set(STAND, BONE.foreL, -0.3, 0, 0);
+set(STAND, BONE.foreR, -0.3, 0, 0);
 
 /* Sitting back in a chair: thighs level and a little apart, shins down,
  * one hand on the table or a knee, the other in his lap. */

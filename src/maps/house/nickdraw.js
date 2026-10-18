@@ -1,32 +1,41 @@
 /*
- * nickdraw.js: Nick Burns drawn, an anime figure of him and his speech
- * balloon, posed every frame from ./nick.js.
+ * nickdraw.js: Nick Burns drawn, a cartoon of him and his speech balloon,
+ * posed every frame from ./nick.js.
  *
  * HOW HE LOOKS, from the stills of his own videos the house was built from
- * (/mnt/project-files/nick-burns-house/refs): short salt and pepper grey
- * hair brushed up at the front, big light framed glasses, clean shaven, a
- * big grin, a royal blue tee, dark jeans, a black watch on his left wrist,
- * and the red shoes with white soles. Drawn the way the house is, in plain
- * shapes and flat colour under the map's own cel light, comic hatching and
- * ink; the anime is in the proportions (a head a little big for the body),
- * the eyes (large, a highlight in each), the brushed up spikes and the grin.
- * He is 1.8 m in real metres, so 5.4 m in the house's world, his size next
- * to a door.
+ * and his channel's thumbnails (/mnt/project-files/nick-burns-house/refs,
+ * looked at, none of it shipped). A caricature: what is his, made more so.
+ * His head is drawn at 1.4 times a real one so a quad across the yard can
+ * read his face. A long face with a square jaw and a strong chin under a
+ * shadow of grey stubble; a straight, prominent nose; narrowed, friendly
+ * blue grey eyes under raised brows, with crow's feet; the clear
+ * rectangular glasses he always wears; a wide open grin with smile lines.
+ * His hair is short salt and pepper, silver at the temples and darker on
+ * top, combed up and back from a quiff at the front. A heather blue crew
+ * neck tee, dark jeans, a black watch on his left wrist, and the red shoes
+ * with white soles. Drawn the way the house is, in plain shapes and colour
+ * under the map's own cel light, comic hatching and ink. The ink draws a
+ * line wherever the depth folds, so his rounded parts have segments enough
+ * that it draws the outline of an arm and not each facet along it. He is
+ * 1.8 m in real metres, so 5.4 m in the house's world, his size next to a
+ * door.
  *
  * ONE DRAW CALL. Every part of him is one mesh, its colours in the vertices
  * and its material the map's own cel() with vertex colours. A part belongs
  * to one bone, and each frame his vertices are moved by their bone's
- * transform on the CPU (rigid skinning: about two thousand vertices, a few
- * microseconds), so the ink, the shadow map and the comic layer all see the
- * pose that is drawn without a skinning program of their own. The skinning
- * runs only while he is in front of the camera or near it, and not at all
- * while nothing about him moves; the transform that carries him round the
- * house is the mesh's own. His shadow is his own cast, as a car's is.
+ * transform on the CPU (rigid skinning: about 8,300 vertices, about 0.14 ms
+ * in a container that does it slowly), so the ink, the shadow map and the
+ * comic layer all see the pose that is drawn without a skinning program of
+ * their own. The skinning runs only while he is in front of the camera or
+ * near it, and not at all while nothing about him moves; the transform
+ * that carries him round the house is the mesh's own. His shadow is his
+ * own cast, as a car's is. A tube whose ends are buried in a joint is
+ * built without them.
  *
  * THE BALLOON is a second mesh, drawn only while he is saying something:
  * a card that faces the camera, lettered in the simulator's own hand
  * (src/ui/lettering.js) on a 512 by 256 canvas that is painted again only
- * when the line changes. It grows with distance past thirty metres, so it
+ * when the line changes. It grows with distance past twenty metres, so it
  * can be read across the yard, and goes with him behind a wall, since it is
  * depth tested like anything else. Its alpha is tested, not blended, so its
  * outline is a real silhouette and the map's ink draws round it.
@@ -59,21 +68,25 @@ import {
 } from './nick.js';
 
 const C = {
-  skin: 0xf6cfb2,
-  blush: 0xf29a94,
-  hair: 0xb9b8b6,
-  hairHi: 0xe2e0dc,
-  hairLo: 0x8d8b88,
-  brow: 0x7c7a78,
+  skin: 0xedb99d,
+  skinLo: 0xc98e74,
+  stubble: 0xcfab99,
+  hair: 0x6c645e,
+  hairHi: 0xd4d0ca,
+  hairTop: 0x968f88,
+  hairLo: 0xc9c4be,
+  brow: 0x635a54,
   eye: 0xfbfbf8,
-  iris: 0x6a4a32,
+  iris: 0x5d84a6,
   pupil: 0x1a1414,
-  lash: 0x2a2424,
-  glasses: 0xb4bcc8,
-  mouth: 0x7a2330,
+  lash: 0x3a302c,
+  glasses: 0xd2dde6,
+  glint: 0xffffff,
+  mouth: 0x6e2028,
   teeth: 0xfbfbf8,
   tongue: 0xd8707a,
-  tee: 0x2f5fd8,
+  tee: 0x3d68c8,
+  teeLo: 0x30559f,
   jeans: 0x2e3d63,
   shoe: 0xe4262e,
   sole: 0xf6f4ef,
@@ -108,14 +121,23 @@ function bodyGeometry() {
   const s = new THREE.Vector3();
   const c = new THREE.Color();
   let count = 0;
+  /* `hex` is one colour, or a function of a vertex (where the geometry
+   * was made, before it is placed, and its index) for a part shaded
+   * across its shape. */
   const addM = (geo, b, hex, matrix) => {
+    const shade = typeof hex === 'function' ? geo.attributes.position.clone() : null;
     geo.applyMatrix4(matrix);
-    c.setHex(hex);
+    if (!shade) {
+      c.setHex(hex);
+    }
     const p = geo.attributes.position;
     const n = geo.attributes.normal;
     for (let i = 0; i < p.count; i += 1) {
       pos.push(p.getX(i), p.getY(i), p.getZ(i));
       nor.push(n.getX(i), n.getY(i), n.getZ(i));
+      if (shade) {
+        hex(c, shade.getX(i), shade.getY(i), shade.getZ(i), i);
+      }
       col.push(c.r, c.g, c.b);
       bone.push(b);
     }
@@ -138,9 +160,30 @@ function bodyGeometry() {
     addM(geo, b, hex, m);
   };
   const ball = (w = 10, h = 8) => new THREE.SphereGeometry(1, w, h);
-  const tube = (r0, r1, len, seg = 10) => new THREE.CylinderGeometry(r0, r1, len, seg);
+  /* `open` leaves off the ends of a tube whose ends are buried in a joint
+   * or another part, which no camera sees and every skin would pay for. */
+  const tube = (r0, r1, len, seg = 10, open = false) => new THREE.CylinderGeometry(r0, r1, len, seg, 1, open);
   const box = (x, y, z) => new THREE.BoxGeometry(x, y, z);
   const flatShape = (pts) => new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y))));
+  /* A sphere pushed toward a box below its middle, by an exponent that
+   * grows from 2 at the equator to `p` at the bottom, narrowed toward the
+   * bottom by `taper` and its front pushed out there by `chin`: a square
+   * jaw on a long face. */
+  const blob = (p, taper = 0, chin = 0, w = 18, h = 14) => {
+    const g = new THREE.SphereGeometry(1, w, h);
+    const a = g.attributes.position;
+    for (let i = 0; i < a.count; i += 1) {
+      const x = a.getX(i);
+      const y = a.getY(i);
+      const z = a.getZ(i);
+      const k = 2 + (p - 2) * Math.min(1, Math.max(0, -y * 1.6));
+      const r = Math.pow(Math.abs(x) ** k + Math.abs(y) ** k + Math.abs(z) ** k, 1 / k);
+      const below = Math.max(0, -y / r);
+      a.setXYZ(i, (x / r) * (1 - taper * below), y / r, z / r + chin * below * Math.max(0, z / r));
+    }
+    g.computeVertexNormals();
+    return g;
+  };
   const arc = (rx, ry, n, a0, a1) => {
     const out = [];
     for (let i = 0; i <= n; i += 1) {
@@ -152,107 +195,161 @@ function bodyGeometry() {
 
   /* The pelvis: the jeans' seat. */
   const P = BONE.pelvis;
-  add(tube(0.17, 0.165, 0.2, 12), P, C.jeans, 0, -0.06, 0, 0, 0, 0, 1, 1, 0.68);
+  add(tube(0.17, 0.165, 0.2, 20), P, C.jeans, 0, -0.06, 0, 0, 0, 0, 1, 1, 0.68);
   add(box(0.17, 0.1, 0.16), P, C.jeans, 0, -0.13, 0);
 
-  /* The chest: the tee, rounded over the shoulders, a v of skin at the
-   * neck, the neck. */
+  /* The chest: a heather blue crew neck tee, rounded off over the
+   * shoulders, and a short strong neck. */
   const SP = BONE.spine;
-  add(tube(0.19, 0.165, 0.5, 14), SP, C.tee, 0, 0.16, 0, 0, 0, 0, 1, 1, 0.62);
-  add(ball(14, 8), SP, C.tee, 0, 0.41, 0, 0, 0, 0, 0.185, 0.065, 0.115);
-  for (const x of [-0.2, 0.2]) {
-    add(ball(), SP, C.tee, x, 0.415, 0, 0, 0, 0, 0.08, 0.08, 0.08);
+  add(tube(0.172, 0.155, 0.46, 20), SP, C.tee, 0, 0.15, 0, 0, 0, 0, 1, 1, 0.6);
+  add(ball(20, 10), SP, C.tee, 0, 0.39, 0, 0, 0, 0, 0.175, 0.095, 0.108);
+  for (const x of [-0.18, 0.18]) {
+    add(ball(12, 8), SP, C.tee, x, 0.398, 0, 0, 0, 0, 0.062, 0.06, 0.062);
   }
-  add(tube(0.055, 0.058, 0.12, 10), SP, C.skin, 0, 0.5, 0);
-  add(flatShape([[-0.06, 0], [0.06, 0], [0, -0.11]]), SP, C.skin, 0, 0.458, 0.088, -0.29);
+  add(new THREE.TorusGeometry(0.062, 0.011, 6, 20), SP, C.teeLo, 0, 0.463, 0.006, Math.PI / 2 - 0.15, 0, 0);
+  add(tube(0.058, 0.063, 0.11, 18, true), SP, C.skin, 0, 0.5, 0.004);
 
   /*
-   * The head, round in the anime way: a cranium a touch wider than a real
-   * one, a softer jaw under it, ears, a small nose. Every feature is set on
-   * the face's curve and turned out with it, a few millimetres proud.
+   * The head, a caricature of his: drawn at 1.4 times a real head so it
+   * reads from a quad across the yard, and in his shapes rather than an
+   * anime's: a long face, a square jaw and a strong chin with a shadow of
+   * stubble, a straight prominent nose, friendly narrowed blue grey eyes
+   * under raised brows, the clear rectangular glasses he always wears, a
+   * wide grin with smile lines, and short salt and pepper hair, darker at
+   * the sides, brushed up into a quiff at the front. Every part is placed
+   * in the head's own frame and then scaled up with the rest.
    */
   const H = BONE.head;
-  add(ball(18, 14), H, C.skin, 0, 0.135, 0.005, 0, 0, 0, 0.104, 0.118, 0.11);
-  add(ball(14, 10), H, C.skin, 0, 0.07, 0.02, 0, 0, 0, 0.082, 0.07, 0.085);
+  const HK = 1.4;
+  const headScale = new THREE.Matrix4().makeTranslation(0, -0.03, 0).multiply(new THREE.Matrix4().makeScale(HK, HK, HK));
+  const addHM = (geo, hex, matrix) => addM(geo, H, hex, matrix.premultiply(headScale));
+  const addH = (geo, hex, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => {
+    e.set(rx, ry, rz, 'YXZ');
+    addHM(geo, hex, new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(e), new THREE.Vector3(sx, sy, sz)));
+  };
+  /* The skull, the square jaw and a strong chin; the ears; the nose,
+   * long and straight: the bridge, the tip and its wings. */
+  addH(ball(28, 18), C.skin, 0, 0.14, -0.005, 0, 0, 0, 0.09, 0.112, 0.103);
+  const skin = new THREE.Color(C.skin);
+  const stubble = new THREE.Color(C.stubble);
+  const smooth = (a, b, t) => Math.min(1, Math.max(0, (t - a) / (b - a)));
+  addH(blob(3.0, 0.38, 0.16, 30, 22), (out, x, y, z) => {
+    /* Grey stubble over the chin and the jaw, and a shadow of it on the
+     * upper lip, fading into the cheeks. */
+    const chin = smooth(-0.02, -0.3, y) * smooth(-0.6, -0.1, z);
+    const lip = smooth(0.25, 0.05, Math.abs(x)) * smooth(0.6, 0.85, z) * smooth(0.14, 0.0, y);
+    out.copy(skin).lerp(stubble, Math.max(chin, lip));
+  }, 0, 0.072, 0.014, 0, 0, 0, 0.073, 0.092, 0.084);
   for (const side of [-1, 1]) {
-    add(ball(8, 6), H, C.skin, 0.104 * side, 0.125, -0.005, 0, 0, 0, 0.02, 0.034, 0.024);
+    addH(ball(10, 8), C.skin, 0.09 * side, 0.118, -0.008, 0, 0, 0, 0.017, 0.03, 0.022);
+    addH(ball(8, 6), C.skinLo, 0.097 * side, 0.118, -0.002, 0, 0, 0, 0.009, 0.018, 0.012);
+    addH(ball(8, 6), C.skin, 0.012 * side, 0.08, 0.104, 0, 0, 0, 0.009, 0.008, 0.009);
   }
-  add(box(0.012, 0.02, 0.014), H, C.skin, 0, 0.1, 0.118, -0.35);
-  /* The eyes, anime size: the white, a hazel iris, the pupil, a highlight
-   * (the same side in both, as if lit from one window), a heavy lash line
-   * over each and a raised brow. */
+  addH(tube(0.008, 0.014, 0.064, 10), C.skin, 0, 0.108, 0.1, -0.4, 0, 0);
+  addH(ball(10, 8), C.skin, 0, 0.081, 0.114, 0, 0, 0, 0.015, 0.014, 0.015);
+  /* The eyes, narrowed by the grin: the white, a blue grey iris, the
+   * pupil and a glint, the upper lid's line, a crease under each, and the
+   * brows, raised. */
   for (const side of [-1, 1]) {
-    const x = 0.044 * side;
-    const ry = 0.42 * side;
-    add(ball(12, 10), H, C.eye, x, 0.13, 0.099, 0, ry, 0, 0.031, 0.037, 0.008);
-    add(ball(12, 10), H, C.iris, x + 0.002 * side, 0.126, 0.104, 0, ry, 0, 0.021, 0.029, 0.006);
-    add(ball(8, 6), H, C.pupil, x + 0.003 * side, 0.124, 0.108, 0, ry, 0, 0.011, 0.016, 0.004);
-    add(ball(6, 4), H, C.eye, x + 0.009, 0.137, 0.111, 0, ry, 0, 0.008, 0.008, 0.003);
-    add(box(0.072, 0.01, 0.012), H, C.lash, x, 0.166, 0.099, 0, ry, -0.12 * side);
-    add(box(0.05, 0.01, 0.012), H, C.brow, x + 0.002 * side, 0.196, 0.094, 0, ry, -0.15 * side);
-    add(ball(8, 6), H, C.blush, 0.066 * side, 0.092, 0.083, 0, 0.75 * side, 0, 0.018, 0.009, 0.004);
+    const x = 0.038 * side;
+    const ry = 0.38 * side;
+    addH(ball(12, 10), C.eye, x, 0.125, 0.086, 0, ry, 0, 0.018, 0.011, 0.006);
+    addH(ball(10, 8), C.iris, x + 0.001 * side, 0.1235, 0.0905, 0, ry, 0, 0.0092, 0.0098, 0.004);
+    addH(ball(8, 6), C.pupil, x + 0.001 * side, 0.1235, 0.0935, 0, ry, 0, 0.005, 0.0058, 0.003);
+    addH(ball(6, 4), C.eye, x + 0.004, 0.1265, 0.0955, 0, ry, 0, 0.003, 0.003, 0.002);
+    addH(box(0.044, 0.007, 0.01), C.lash, x, 0.1335, 0.0875, 0, ry, -0.05 * side);
+    addH(box(0.03, 0.003, 0.006), C.skinLo, x + 0.008 * side, 0.11, 0.088, 0, ry, 0.22 * side);
+    addH(box(0.012, 0.003, 0.006), C.skinLo, x + 0.03 * side, 0.122, 0.078, 0, ry * 2, 0.5 * side);
+    addH(box(0.05, 0.0095, 0.011), C.brow, x + 0.003 * side, 0.153, 0.089, 0, ry, -0.08 * side);
   }
-  /* The glasses: big light rims round the eyes, the bridge, the arms back
-   * to the ears. */
+  /* His glasses: clear rectangular frames, the top a little heavier, the
+   * bridge, the arms back to the ears, and a glint on each lens. */
+  const rounded = (w, h, r, path) => {
+    path.moveTo(-w / 2 + r, -h / 2);
+    path.lineTo(w / 2 - r, -h / 2);
+    path.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
+    path.lineTo(w / 2, h / 2 - r);
+    path.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
+    path.lineTo(-w / 2 + r, h / 2);
+    path.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
+    path.lineTo(-w / 2, -h / 2 + r);
+    path.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+    return path;
+  };
+  const rim = rounded(0.06, 0.041, 0.011, new THREE.Shape());
+  const lens = rounded(0.047, 0.028, 0.006, new THREE.Path());
+  rim.holes.push(new THREE.Path(lens.getPoints(4).map((p) => new THREE.Vector2(p.x, p.y - 0.0015))));
   for (const side of [-1, 1]) {
-    add(new THREE.TorusGeometry(0.041, 0.0035, 6, 22), H, C.glasses, 0.045 * side, 0.132, 0.116, 0, 0.3 * side, 0, 1.12, 0.9, 1);
-    add(box(0.006, 0.006, 0.11), H, C.glasses, 0.103 * side, 0.14, 0.04, 0, 0.1 * side, 0);
+    const frame = new THREE.ExtrudeGeometry(rim, { depth: 0.006, bevelEnabled: false, curveSegments: 4 });
+    frame.translate(0, 0, -0.003);
+    addH(frame, C.glasses, 0.041 * side, 0.127, 0.104, 0, 0.2 * side, 0);
+    addH(box(0.005, 0.005, 0.105), C.glasses, 0.08 * side, 0.135, 0.05, 0, -0.19 * side, 0);
+    addH(flatShape([[-0.006, -0.004], [-0.002, -0.004], [0.004, 0.007], [0, 0.007]]), C.glint,
+      0.041 * side + 0.016 * side, 0.133, 0.1075 - 0.003, 0, 0.2 * side, 0);
   }
-  add(box(0.016, 0.005, 0.005), H, C.glasses, 0, 0.14, 0.121);
-  /* The grin: wide and open, teeth along the top, the tongue low in it. */
-  add(flatShape([[-0.037, 0], ...arc(0.037, 0.027, 14, Math.PI, 2 * Math.PI)]), H, C.mouth, 0, 0.072, 0.108, 0.35);
-  add(flatShape([[-0.033, 0], [0.033, 0], [0.03, -0.009], [-0.03, -0.009]]), H, C.teeth, 0, 0.072, 0.1088, 0.35);
-  add(flatShape(arc(0.016, 0.007, 10, 0, 2 * Math.PI)), H, C.tongue, 0, 0.054, 0.1028, 0.35);
+  addH(box(0.022, 0.005, 0.006), C.glasses, 0, 0.134, 0.109);
+  /* The grin: wide and open, the top teeth, the tongue low in it, and the
+   * smile lines from the nose's wings down past its corners. */
+  addH(flatShape([[-0.034, 0], ...arc(0.034, 0.024, 14, Math.PI, 2 * Math.PI)]), C.mouth, 0, 0.058, 0.1035, 0.3);
+  addH(flatShape([[-0.03, 0], [0.03, 0], [0.027, -0.008], [-0.027, -0.008]]), C.teeth, 0, 0.058, 0.1042, 0.3);
+  addH(flatShape(arc(0.014, 0.006, 10, 0, 2 * Math.PI)), C.tongue, 0, 0.042, 0.1008, 0.3);
+  for (const side of [-1, 1]) {
+    addH(box(0.003, 0.032, 0.004), C.skinLo, 0.029 * side, 0.07, 0.1, 0.25, 0, 0.55 * side);
+  }
 
   /*
-   * The hair: a cap tipped back off the forehead, and short spikes set on
-   * its curve in rings, salt and pepper, brushed up at the front and swept
-   * back over the top, the way his is. A spike stands on the cap's normal
-   * bent by its ring's sweep (up, and back), its foot just inside the cap.
+   * The hair, one shell over the skull: a cap whose edge runs high off the
+   * forehead, just over the ears and down to the nape, thickened over the
+   * top and lifted at the front into a short quiff that rises from the
+   * hairline and lies back. Alternate meridians of the cap run front to
+   * back over the crown, and pushing every other one out a little combs it
+   * into ridges, which the toon bands draw as strands. Salt and pepper:
+   * silver at the temples and over the ears, darker toward the crown, the
+   * ridges lighter than the furrows; and thin sideburns.
    */
-  const CAP = { a: 0.116, b: 0.128, c: 0.124, tilt: -0.72, at: new THREE.Vector3(0, 0.145, -0.008) };
-  add(new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), H, C.hair,
-    CAP.at.x, CAP.at.y, CAP.at.z, CAP.tilt, 0, 0, CAP.a, CAP.b, CAP.c);
-  const tipped = new THREE.Matrix4().makeRotationX(CAP.tilt);
-  const upY = new THREE.Vector3(0, 1, 0);
-  const rings = [
-    /* theta from the cap's pole (a fraction of pi), the angles round it
-     * (degrees, 90 is the front), height, up, back */
-    [0.47, [62, 76, 90, 104, 118], 0.068, 1.0, -0.25],
-    [0.3, [30, 62, 90, 118, 150, 200, 250, 290, 340], 0.058, 0.5, 0.7],
-    [0.1, [90, 270], 0.05, 0.3, 1.0],
-    [0.45, [225, 255, 285, 315], 0.046, 0.1, 0.6],
-    [0.5, [5, 175], 0.04, 0.7, 0.2],
-  ];
-  const tones = [C.hair, C.hairHi, C.hairLo];
-  let tone = 0;
-  for (const [th, around, h, up, back] of rings) {
-    for (const deg of around) {
-      const t = th * Math.PI;
-      const f = (deg * Math.PI) / 180;
-      const pt = new THREE.Vector3(CAP.a * Math.sin(t) * Math.cos(f), CAP.b * Math.cos(t), CAP.c * Math.sin(t) * Math.sin(f));
-      const nm = new THREE.Vector3(pt.x / (CAP.a * CAP.a), pt.y / (CAP.b * CAP.b), pt.z / (CAP.c * CAP.c));
-      pt.applyMatrix4(tipped).add(CAP.at);
-      nm.applyMatrix4(tipped).normalize();
-      const axis = nm.clone().add(new THREE.Vector3(0, up, -back)).normalize();
-      const cone = new THREE.ConeGeometry(0.026, h, 6);
-      cone.translate(0, h / 2, 0);
-      q.setFromUnitVectors(upY, axis);
-      m.compose(pt.addScaledVector(nm, -0.004), q, s.set(1, 1, 1));
-      addM(cone, H, tones[tone % 3], m);
-      tone += 1;
+  const silver = new THREE.Color(C.hairLo);
+  const pepper = new THREE.Color(C.hairTop);
+  const salt = new THREE.Color(C.hairHi);
+  const dark = new THREE.Color(C.hair);
+  const SEG = 32;
+  const SPAN = 0.64;
+  const cap = new THREE.SphereGeometry(1, SEG, 15, 0, Math.PI * 2, 0, Math.PI * SPAN);
+  {
+    const a = cap.attributes.position;
+    const uv = cap.attributes.uv;
+    const d = new THREE.Vector3();
+    const tilt = new THREE.Matrix4().makeRotationX(-1.0);
+    for (let i = 0; i < a.count; i += 1) {
+      d.set(a.getX(i), a.getY(i), a.getZ(i)).applyMatrix4(tilt);
+      /* 0 at the cap's edge, 1 at its pole, back over the crown. */
+      const t = (uv.getY(i) - 1 + SPAN) / SPAN;
+      const crown = smooth(0.15, 0.6, d.y) * smooth(0, 0.3, t);
+      const quiff = smooth(0.02, 0.2, t) * smooth(-0.25, 0.55, d.z) * smooth(0.25, 0.75, d.y);
+      const ridge = (i % (SEG + 1)) % 2 === 0 ? 1 : -1;
+      const push = 1 + 0.09 * crown + 0.36 * quiff + 0.035 * ridge * crown;
+      a.setXYZ(i, 0.096 * d.x * push, 0.142 + 0.119 * d.y * push, -0.008 + 0.11 * d.z * push);
     }
+    cap.computeVertexNormals();
+  }
+  addHM(cap, (out, x, y, z, i) => {
+    const top = smooth(0.17, 0.255, y);
+    out.copy(silver).lerp(pepper, top);
+    out.lerp((i % (SEG + 1)) % 2 === 0 ? salt : dark, 0.3 * top);
+  }, new THREE.Matrix4());
+  for (const side of [-1, 1]) {
+    addH(ball(8, 6), C.hairLo, 0.086 * side, 0.106, 0.026, 0, 0.25 * side, 0, 0.004, 0.017, 0.008);
   }
 
   /* The arms: a sleeve, the upper arm, the elbow; the forearm and the hand,
    * thumb forward; the watch on the left wrist, its face on the back of it. */
   for (const [arm, fore, side] of [[BONE.armL, BONE.foreL, 1], [BONE.armR, BONE.foreR, -1]]) {
-    add(tube(0.07, 0.062, 0.16), arm, C.tee, 0, -0.065, 0);
-    add(tube(0.05, 0.045, 0.16, 12), arm, C.skin, 0, -0.2, 0);
-    add(ball(12, 8), arm, C.skin, 0, -0.29, 0, 0, 0, 0, 0.045, 0.045, 0.045);
-    add(tube(0.045, 0.036, 0.24, 12), fore, C.skin, 0, -0.12, 0);
-    add(ball(8, 8), fore, C.skin, 0, -0.29, 0.004, 0, 0, 0, 0.022, 0.05, 0.04);
-    add(ball(6, 6), fore, C.skin, 0, -0.27, 0.038, 0.5, 0, 0, 0.011, 0.026, 0.011);
+    add(ball(16, 8), arm, C.tee, 0, -0.02, 0, 0, 0, 0, 0.06, 0.058, 0.06);
+    add(tube(0.062, 0.057, 0.15, 20), arm, C.tee, 0, -0.07, 0);
+    add(tube(0.05, 0.045, 0.16, 20, true), arm, C.skin, 0, -0.2, 0);
+    add(ball(14, 8), arm, C.skin, 0, -0.29, 0, 0, 0, 0, 0.045, 0.045, 0.045);
+    add(tube(0.045, 0.036, 0.24, 20), fore, C.skin, 0, -0.12, 0);
+    add(ball(14, 10), fore, C.skin, 0, -0.295, 0.004, 0, 0, 0, 0.027, 0.056, 0.045);
+    add(ball(8, 6), fore, C.skin, 0, -0.27, 0.043, 0.5, 0, 0, 0.013, 0.029, 0.013);
     if (side > 0) {
       add(tube(0.04, 0.04, 0.028, 12), fore, C.watch, 0, -0.215, 0);
       add(box(0.008, 0.026, 0.024), fore, C.watchFace, 0.041, -0.215, 0);
@@ -261,9 +358,9 @@ function bodyGeometry() {
 
   /* The legs: jeans to the ankle; the red shoes with white soles and laces. */
   for (const [th, sh, ft] of [[BONE.thighL, BONE.shinL, BONE.footL], [BONE.thighR, BONE.shinR, BONE.footR]]) {
-    add(tube(0.095, 0.074, 0.43), th, C.jeans, 0, -0.215, 0);
-    add(ball(10, 8), th, C.jeans, 0, -0.43, 0, 0, 0, 0, 0.07, 0.07, 0.07);
-    add(tube(0.07, 0.06, 0.4), sh, C.jeans, 0, -0.2, 0);
+    add(tube(0.095, 0.074, 0.43, 16), th, C.jeans, 0, -0.215, 0);
+    add(ball(12, 8), th, C.jeans, 0, -0.43, 0, 0, 0, 0, 0.07, 0.07, 0.07);
+    add(tube(0.07, 0.06, 0.4, 16, true), sh, C.jeans, 0, -0.2, 0);
     add(tube(0.055, 0.06, 0.045, 10), ft, C.shoe, 0, -0.02, 0);
     add(box(0.105, 0.06, 0.24), ft, C.shoe, 0, -0.045, 0.055);
     add(ball(10, 8), ft, C.shoe, 0, -0.047, 0.17, 0, 0, 0, 0.053, 0.034, 0.055);

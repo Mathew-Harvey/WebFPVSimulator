@@ -1,50 +1,49 @@
 /*
- * nickdraw.js: Nick Burns drawn, a cartoon of him and his speech balloon,
- * posed every frame from ./nick.js.
+ * nickdraw.js: Nick Burns drawn, the owner's manga render of him and his
+ * speech balloon, posed every frame from ./nick.js.
  *
- * HOW HE LOOKS, from the stills of his own videos the house was built from
- * and his channel's thumbnails (/mnt/project-files/nick-burns-house/refs,
- * looked at, none of it shipped). A caricature: what is his, made more so.
- * His head is drawn at 1.4 times a real one so a quad across the yard can
- * read his face. A long face with a square jaw and a strong chin under a
- * shadow of grey stubble; a straight, prominent nose; narrowed, friendly
- * blue grey eyes under raised brows, with crow's feet; the clear
- * rectangular glasses he always wears; a closed smile turned up at the
- * corners, which opens wide as he calls a line, and smile lines; and he
- * blinks (faceBones). His hair is short salt and pepper, silver at the
- * temples and over the ears and darker on top, parted on his left and
- * swept up and over to his right from a quiff at the front. A heather
- * blue crew neck tee, dark jeans, a black watch on his left wrist, and the
- * red shoes with white soles. Drawn the way the house is, in plain shapes
- * and colour under the map's own cel light, comic hatching and ink. The ink
- * draws a line wherever the depth folds, so his rounded parts have segments
- * enough that it draws the outline of an arm and not each facet along it.
- * He is 1.8 m in real metres, so 5.4 m in the house's world, his size next
- * to a door.
+ * HOW HE LOOKS. The owner's ask of 2026-10-18: "Attached is manga render of
+ * nick, let's use this rather than the poly character." The render is a
+ * sheet of seven side views of him walking and six of his face, which the
+ * owner made and gave; the grey it was drawn on is keyed out and the frames
+ * packed into one atlas, ../../../assets/house/nick-manga.webp (NOTICE). He
+ * is a card standing upright that turns about its own axis to face the
+ * camera, the way a cut out in a panel does, drawn in the render's own
+ * colour and ink and unlit, so the map's light does not shade him twice.
+ * The frames face left, so the card is mirrored whenever the way he faces
+ * points to the right of the screen. Walking, the frames run through his
+ * stride; standing, he holds the middle one. Seated, at the patio table or
+ * on the sofa, he is the same frame from the hips up with the hips on the
+ * seat, which is what the table, the sofa's back or the chair hides of a
+ * man sitting anyway. He is 1.8 m in real metres, 5.4 m in the house's
+ * world, his size next to a door.
  *
- * ONE DRAW CALL. Every part of him is one mesh, its colours in the vertices
- * and its material the map's own cel() with vertex colours. A part belongs
- * to one bone, and each frame his vertices are moved by their bone's
- * transform on the CPU (rigid skinning: about 7,000 vertices laid out bone
- * by bone, and only the bones that moved, about 0.05 ms a frame in a
- * container that does it slowly), so the ink, the shadow map and the
- * comic layer all see the pose that is drawn without a skinning program of
- * their own. The skinning runs only while he is in front of the camera or
- * near it, and not at all while nothing about him moves; the transform
- * that carries him round the house is the mesh's own. His shadow is his
- * own cast, as a car's is. A tube whose ends are buried in a joint is
- * built without them.
+ * ONE DRAW CALL for him and one for his balloon while it is up, both the
+ * same program (a texture, alpha tested, no fog). No skinning and no
+ * shadow: the card is four vertices whose texture window moves.
  *
- * THE BALLOON is a second mesh, drawn only while he is saying something:
- * a card that faces the camera, lettered in the simulator's own hand
- * (src/ui/lettering.js) on a 512 by 256 canvas that is painted again only
- * when the line changes. It grows with distance past twenty metres, so it
- * can be read across the yard, and goes with him behind a wall, since it is
- * depth tested like anything else. Its alpha is tested, not blended, so its
- * outline is a real silhouette and the map's ink draws round it.
+ * THE BALLOON is a card that faces the camera, lettered in the simulator's
+ * own hand (src/ui/lettering.js) on a 640 by 256 canvas that is painted
+ * again only when what he says changes, with the face that goes with the
+ * line in a round panel at its left, cut from the same atlas. It grows with
+ * distance past twenty metres, so it can be read across the yard, and goes
+ * with him behind a wall, since it is depth tested like anything else. Its
+ * alpha is tested, not blended, so its outline is a real silhouette and the
+ * map's ink draws round it.
+ *
+ * WHAT HE SAYS. His four lines on his own clock (./nick.js), and two the
+ * owner asked for on 2026-10-18 that answer the craft: "When I fly too
+ * close to nick he should exclaim, holy catfish, or if I hit him say I
+ * appreciate your time and thanks for watching". Close is within NEAR_R of
+ * him; a hit is the craft inside his body (HIT_R round his axis, from his
+ * feet to the top of his head). Each goes off once as the craft arrives and
+ * not again until it has gone away (REARM_NEAR, REARM_HIT), and while one
+ * is up it is what the balloon says. He is still not solid: the craft
+ * flies through him, and what he says is all a hit does.
  *
  * Render may read frame time; this file reads only the clock the map is
- * handed and the camera. Nothing here reaches the physics.
+ * handed, the camera and where the drawn craft is. Nothing here reaches the
+ * physics.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -63,486 +62,95 @@
  */
 
 import * as THREE from 'three';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { cel } from '../city/vendored/core/toon.js';
 import { drawWord, wordWidth, INK, PAPER, INKS } from '../../ui/lettering.js';
 import { FRAME, UMBRELLA, PERGOLA, DEP } from './house.js';
-import {
-  BONES, BONE, NICK_LINES, HEAD_TOP, nickAt, nickBones, nickPose,
-} from './nick.js';
-
-const C = {
-  skin: 0xedb99d,
-  skinLo: 0xc98e74,
-  stubble: 0xcfab99,
-  hair: 0x564e48,
-  hairHi: 0xc2bdb7,
-  hairTop: 0x766e67,
-  hairLo: 0xc9c4be,
-  brow: 0x635a54,
-  eye: 0xfbfbf8,
-  iris: 0x5d84a6,
-  pupil: 0x1a1414,
-  lash: 0x3a302c,
-  glasses: 0xd2dde6,
-  glint: 0xffffff,
-  mouth: 0x6e2028,
-  teeth: 0xfbfbf8,
-  tongue: 0xd8707a,
-  tee: 0x3d68c8,
-  teeLo: 0x30559f,
-  jeans: 0x2e3d63,
-  shoe: 0xe4262e,
-  sole: 0xf6f4ef,
-  watch: 0x1c1d22,
-  watchFace: 0x3d4350,
-};
-
-/* The letters' colour, by line (NICK_LINES' order): the catfish in amber,
- * the rest round the shell's inks. */
-const FILLS = ['#ffd45c', INKS.bail, INKS.mint, INKS.sky];
-
-/*
- * His face's three bones, after the skeleton's own (./nick.js), all
- * following the head: MOUTH carries the open grin, SMILE the closed one
- * and LIDS his eyelids. While he calls a line MOUTH opens and shuts about
- * its top edge, about four times a second, and SMILE is folded to a point
- * inside his head; quiet, the other way round. LIDS is folded too, but
- * for a blink of 140 ms every 3.7 s, and a second one after every third.
- * A point draws nothing, so one mesh holds every face he makes and still
- * costs one call, and the faces are read from his clock, so a held clock
- * holds them.
- */
-const MOUTH = BONES.length;
-const SMILE = BONES.length + 1;
-const LIDS = BONES.length + 2;
-const ALL_BONES = BONES.length + 3;
-/* His head is drawn HEAD_K times a real one, about a point HEAD_DROP
- * under the head bone (bodyGeometry). */
-const HEAD_K = 1.4;
-const HEAD_DROP = 0.03;
-/* The open mouth's top edge in the head's frame, and where it is drawn. */
-const MOUTH_TOP = 0.058;
-const MOUTH_TOP_DRAWN = HEAD_K * MOUTH_TOP - HEAD_DROP;
-
-function faceBones(pose, clock, M) {
-  const h = BONE.head * 12;
-  const show = pose.line >= 0 ? MOUTH * 12 : SMILE * 12;
-  const fold = pose.line >= 0 ? SMILE * 12 : MOUTH * 12;
-  const t = clock % 11100;
-  const blink = t % 3700 < 140 || (t >= 300 && t < 440);
-  const lids = LIDS * 12;
-  for (let k = 0; k < 12; k += 1) {
-    M[show + k] = M[h + k];
-    M[fold + k] = k < 9 ? 0 : M[h + k];
-    M[lids + k] = blink || k >= 9 ? M[h + k] : 0;
-  }
-  if (pose.line >= 0) {
-    const phase = (pose.lineAge % 240) / 240;
-    const s = 0.4 + 0.6 * (1 - Math.abs(2 * phase - 1));
-    const by = MOUTH_TOP_DRAWN * (1 - s);
-    M[show + 9] += M[h + 1] * by;
-    M[show + 10] += M[h + 4] * by;
-    M[show + 11] += M[h + 7] * by;
-    M[show + 1] *= s;
-    M[show + 4] *= s;
-    M[show + 7] *= s;
-  }
-}
+import { NICK_LINES, nickAt, nickPose } from './nick.js';
 
 /* ------------------------------------------------------------------ */
-/* His body                                                            */
+/* The atlas                                                           */
 /* ------------------------------------------------------------------ */
 
-/*
- * Every part in its bone's frame, real metres (./nick.js says which way is
- * which): a geometry, its bone, its colour, and where it sits, turned by
- * (rx, ry, rz) in the bones' own order and scaled by (sx, sy, sz), or
- * placed by a matrix of its own (addM).
- */
-function bodyGeometry() {
-  const pos = [];
-  const nor = [];
-  const col = [];
-  const bone = [];
-  const idx = [];
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const e = new THREE.Euler();
-  const v = new THREE.Vector3();
-  const s = new THREE.Vector3();
-  const c = new THREE.Color();
-  let count = 0;
-  /* `hex` is one colour, or a function of a vertex (where the geometry
-   * was made, before it is placed, and its index) for a part shaded
-   * across its shape. */
-  const addM = (geo, b, hex, matrix) => {
-    const shade = typeof hex === 'function' ? geo.attributes.position.clone() : null;
-    geo.applyMatrix4(matrix);
-    if (!shade) {
-      c.setHex(hex);
-    }
-    const p = geo.attributes.position;
-    const n = geo.attributes.normal;
-    for (let i = 0; i < p.count; i += 1) {
-      pos.push(p.getX(i), p.getY(i), p.getZ(i));
-      nor.push(n.getX(i), n.getY(i), n.getZ(i));
-      if (shade) {
-        hex(c, shade.getX(i), shade.getY(i), shade.getZ(i), i);
-      }
-      col.push(c.r, c.g, c.b);
-      bone.push(b);
-    }
-    if (geo.index) {
-      for (let i = 0; i < geo.index.count; i += 1) {
-        idx.push(count + geo.index.getX(i));
-      }
-    } else {
-      for (let i = 0; i < p.count; i += 1) {
-        idx.push(count + i);
-      }
-    }
-    count += p.count;
-    geo.dispose();
-  };
-  const add = (geo, b, hex, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => {
-    e.set(rx, ry, rz, 'YXZ');
-    q.setFromEuler(e);
-    m.compose(v.set(x, y, z), q, s.set(sx, sy, sz));
-    addM(geo, b, hex, m);
-  };
-  const ball = (w = 10, h = 8) => new THREE.SphereGeometry(1, w, h);
-  /* `open` leaves off the ends of a tube whose ends are buried in a joint
-   * or another part, which no camera sees and every skin would pay for. */
-  const tube = (r0, r1, len, seg = 10, open = false) => new THREE.CylinderGeometry(r0, r1, len, seg, 1, open);
-  const box = (x, y, z) => new THREE.BoxGeometry(x, y, z);
-  const flatShape = (pts) => new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y))));
-  /* A sphere pushed toward a box below its middle, by an exponent that
-   * grows from 2 at the equator to `p` at the bottom, narrowed toward the
-   * bottom by `taper` and its front pushed out there by `chin`: a square
-   * jaw on a long face. */
-  const blob = (p, taper = 0, chin = 0, w = 18, h = 14) => {
-    const g = new THREE.SphereGeometry(1, w, h);
-    const a = g.attributes.position;
-    for (let i = 0; i < a.count; i += 1) {
-      const x = a.getX(i);
-      const y = a.getY(i);
-      const z = a.getZ(i);
-      const k = 2 + (p - 2) * Math.min(1, Math.max(0, -y * 1.6));
-      const r = Math.pow(Math.abs(x) ** k + Math.abs(y) ** k + Math.abs(z) ** k, 1 / k);
-      const below = Math.max(0, -y / r);
-      a.setXYZ(i, (x / r) * (1 - taper * below), y / r, z / r + chin * below * Math.max(0, z / r));
-    }
-    g.computeVertexNormals();
-    return g;
-  };
-  const arc = (rx, ry, n, a0, a1) => {
-    const out = [];
-    for (let i = 0; i <= n; i += 1) {
-      const a = a0 + ((a1 - a0) * i) / n;
-      out.push([rx * Math.cos(a), ry * Math.sin(a)]);
-    }
-    return out;
-  };
+const ATLAS_URL = new URL('../../../assets/house/nick-manga.webp', import.meta.url).href;
+const AW = 2048;
+const AH = 1024;
+/* The walk: seven cells side by side, CELL_W px wide, his head over each
+ * cell's middle and his soles on SOLE_Y. The card shows a cell from
+ * CELL_TOP to CELL_BOT. */
+const WALK_FRAMES = 7;
+const CELL_W = 292;
+const CELL_TOP = 24;
+const CELL_BOT = 560;
+const SOLE_Y = 552;
+/* Pixels to a real metre: his 1.8 m are about 515 px of the render. */
+const PX_M = 515 / 1.8;
+/* Seated, the cell is cut SIT_CUT px down, just under his hips, which is
+ * SIT_DROP under the pelvis's height in a standing frame. */
+const SIT_CUT = 300;
+const PELVIS_STAND = 0.96;
+const SIT_DROP = PELVIS_STAND - (SOLE_Y - SIT_CUT) / PX_M;
+/* The frame he stands still in. */
+const STILL = 3;
+/* His faces, [x, y, w, h] px in the atlas: laughing, frowning, crying,
+ * shouting, sad, smiling, in the render's order. */
+const FACES = [
+  [26, 596, 287, 386], [365, 598, 289, 381], [707, 597, 285, 384],
+  [1052, 595, 276, 387], [1389, 596, 282, 386], [1722, 597, 296, 383],
+];
+const FACE = { laugh: 0, frown: 1, cry: 2, shout: 3, sad: 4, smile: 5 };
 
-  /* The pelvis: the jeans' seat. */
-  const P = BONE.pelvis;
-  add(tube(0.17, 0.165, 0.2, 20), P, C.jeans, 0, -0.06, 0, 0, 0, 0, 1, 1, 0.68);
-  add(box(0.17, 0.1, 0.16), P, C.jeans, 0, -0.13, 0);
+/* ------------------------------------------------------------------ */
+/* What he says                                                        */
+/* ------------------------------------------------------------------ */
 
-  /* The chest: a heather blue crew neck tee, rounded off over the
-   * shoulders, and a short strong neck. */
-  const SP = BONE.spine;
-  add(tube(0.172, 0.155, 0.46, 20), SP, C.tee, 0, 0.15, 0, 0, 0, 0, 1, 1, 0.6);
-  add(ball(20, 10), SP, C.tee, 0, 0.39, 0, 0, 0, 0, 0.175, 0.095, 0.108);
-  for (const x of [-0.18, 0.18]) {
-    add(ball(12, 8), SP, C.tee, x, 0.398, 0, 0, 0, 0, 0.062, 0.06, 0.062);
-  }
-  add(new THREE.TorusGeometry(0.062, 0.011, 6, 20), SP, C.teeLo, 0, 0.463, 0.006, Math.PI / 2 - 0.15, 0, 0);
-  add(tube(0.058, 0.063, 0.11, 18, true), SP, C.skin, 0, 0.5, 0.004);
-
-  /*
-   * The head, a caricature of his: drawn at 1.4 times a real head so it
-   * reads from a quad across the yard, and in his shapes rather than an
-   * anime's: a long face, a square jaw and a strong chin with a shadow of
-   * stubble, a straight prominent nose, friendly narrowed blue grey eyes
-   * under raised brows, the clear rectangular glasses he always wears, a
-   * wide grin with smile lines, and short salt and pepper hair, darker at
-   * the sides, brushed up into a quiff at the front. Every part is placed
-   * in the head's own frame and then scaled up with the rest.
-   */
-  const H = BONE.head;
-  const headScale = new THREE.Matrix4().makeTranslation(0, -HEAD_DROP, 0).multiply(new THREE.Matrix4().makeScale(HEAD_K, HEAD_K, HEAD_K));
-  const addHM = (geo, hex, matrix, b = H) => addM(geo, b, hex, matrix.premultiply(headScale));
-  const addH = (geo, hex, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1, b = H) => {
-    e.set(rx, ry, rz, 'YXZ');
-    addHM(geo, hex, new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(e), new THREE.Vector3(sx, sy, sz)), b);
-  };
-  /* The skull, the square jaw and a strong chin; the ears; the nose,
-   * long and straight: the bridge, the tip and its wings. */
-  addH(ball(28, 18), C.skin, 0, 0.14, -0.005, 0, 0, 0, 0.09, 0.112, 0.103);
-  const skin = new THREE.Color(C.skin);
-  const stubble = new THREE.Color(C.stubble);
-  const smooth = (a, b, t) => Math.min(1, Math.max(0, (t - a) / (b - a)));
-  addH(blob(3.0, 0.3, 0.16, 30, 22), (out, x, y, z) => {
-    /* Grey stubble over the chin and the jaw, and a shadow of it on the
-     * upper lip, fading into the cheeks. */
-    const chin = smooth(-0.02, -0.3, y) * smooth(-0.6, -0.1, z);
-    const lip = smooth(0.25, 0.05, Math.abs(x)) * smooth(0.6, 0.85, z) * smooth(0.14, 0.0, y);
-    out.copy(skin).lerp(stubble, Math.max(chin, lip));
-  }, 0, 0.072, 0.014, 0, 0, 0, 0.077, 0.092, 0.084);
-  for (const side of [-1, 1]) {
-    addH(ball(10, 8), C.skin, 0.09 * side, 0.118, -0.008, 0, 0, 0, 0.017, 0.03, 0.022);
-    addH(ball(8, 6), C.skinLo, 0.097 * side, 0.118, -0.002, 0, 0, 0, 0.009, 0.018, 0.012);
-    addH(ball(8, 6), C.skin, 0.012 * side, 0.08, 0.104, 0, 0, 0, 0.009, 0.008, 0.009);
-  }
-  addH(tube(0.008, 0.014, 0.064, 10), C.skin, 0, 0.108, 0.1, -0.4, 0, 0);
-  addH(ball(10, 8), C.skin, 0, 0.081, 0.114, 0, 0, 0, 0.015, 0.014, 0.015);
-  /* The eyes, narrowed by the grin: the white, a blue grey iris, the
-   * pupil and a glint, the upper lid's line, a crease under each, and the
-   * brows, raised. */
-  for (const side of [-1, 1]) {
-    const x = 0.038 * side;
-    const ry = 0.38 * side;
-    addH(ball(10, 8), C.eye, x, 0.125, 0.086, 0, ry, 0, 0.018, 0.0125, 0.006);
-    addH(ball(8, 6), C.iris, x + 0.001 * side, 0.1235, 0.0905, 0, ry, 0, 0.0092, 0.0098, 0.004);
-    addH(ball(8, 6), C.pupil, x + 0.001 * side, 0.1235, 0.0935, 0, ry, 0, 0.005, 0.0058, 0.003);
-    addH(ball(6, 4), C.eye, x + 0.004, 0.1265, 0.0955, 0, ry, 0, 0.003, 0.003, 0.002);
-    addH(box(0.044, 0.007, 0.01), C.lash, x, 0.1335, 0.0875, 0, ry, -0.05 * side);
-    addH(box(0.03, 0.003, 0.006), C.skinLo, x + 0.008 * side, 0.11, 0.088, 0, ry, 0.22 * side);
-    addH(box(0.012, 0.003, 0.006), C.skinLo, x + 0.03 * side, 0.122, 0.078, 0, ry * 2, 0.5 * side);
-    addH(box(0.05, 0.0095, 0.011), C.brow, x + 0.003 * side, 0.153, 0.089, 0, ry, -0.08 * side);
-    addH(ball(10, 6), C.skin, x, 0.125, 0.0868, 0, ry, 0, 0.0195, 0.0135, 0.0118, LIDS);
-    addH(box(0.036, 0.003, 0.004), C.lash, x, 0.1225, 0.0985, 0, ry, 0.06 * side, 1, 1, 1, LIDS);
-  }
-  /* His glasses: clear rectangular frames, the top a little heavier, the
-   * bridge, the arms back to the ears, and a glint on each lens. */
-  const rounded = (w, h, r, path) => {
-    path.moveTo(-w / 2 + r, -h / 2);
-    path.lineTo(w / 2 - r, -h / 2);
-    path.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
-    path.lineTo(w / 2, h / 2 - r);
-    path.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
-    path.lineTo(-w / 2 + r, h / 2);
-    path.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
-    path.lineTo(-w / 2, -h / 2 + r);
-    path.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
-    return path;
-  };
-  const rim = rounded(0.06, 0.041, 0.011, new THREE.Shape());
-  const lens = rounded(0.047, 0.028, 0.006, new THREE.Path());
-  rim.holes.push(new THREE.Path(lens.getPoints(4).map((p) => new THREE.Vector2(p.x, p.y - 0.0015))));
-  for (const side of [-1, 1]) {
-    /* An extrusion comes unindexed, three corners to a triangle; welded,
-     * it is half the vertices to skin. */
-    const extruded = new THREE.ExtrudeGeometry(rim, { depth: 0.006, bevelEnabled: false, curveSegments: 4 });
-    extruded.deleteAttribute('uv');
-    const frame = mergeVertices(extruded);
-    extruded.dispose();
-    frame.translate(0, 0, -0.003);
-    addH(frame, C.glasses, 0.041 * side, 0.127, 0.104, 0, 0.2 * side, 0);
-    addH(box(0.005, 0.005, 0.105), C.glasses, 0.08 * side, 0.135, 0.05, 0, -0.19 * side, 0);
-    addH(flatShape([[-0.006, -0.004], [-0.002, -0.004], [0.004, 0.007], [0, 0.007]]), C.glint,
-      0.041 * side + 0.016 * side, 0.133, 0.1075 - 0.003, 0, 0.2 * side, 0);
-  }
-  addH(box(0.022, 0.005, 0.006), C.glasses, 0, 0.134, 0.109);
-  /* The mouth, two of them. Calling a line, a wide open grin, the top
-   * teeth and the tongue low in it, on a bone of its own (MOUTH) that
-   * opens and shuts as he talks. Quiet, a closed smile turned up at the
-   * corners (SMILE). Each is folded away to a point while the other shows
-   * (faceBones). The smile lines run from the nose's wings down past the
-   * corners either way. */
-  addH(flatShape([[-0.034, 0], ...arc(0.034, 0.024, 14, Math.PI, 2 * Math.PI)]), C.mouth, 0, MOUTH_TOP, 0.1035, 0.3, 0, 0, 1, 1, 1, MOUTH);
-  addH(flatShape([[-0.03, 0], [0.03, 0], [0.027, -0.008], [-0.027, -0.008]]), C.teeth, 0, MOUTH_TOP, 0.1042, 0.3, 0, 0, 1, 1, 1, MOUTH);
-  addH(flatShape(arc(0.014, 0.006, 10, 0, 2 * Math.PI)), C.tongue, 0, 0.042, 0.1008, 0.3, 0, 0, 1, 1, 1, MOUTH);
-  const grin = [];
-  for (let k = 0; k <= 12; k += 1) {
-    const u = k / 6 - 1;
-    grin.push([0.032 * u, 0.009 * u * u - 0.005 * (1 - u * u)]);
-  }
-  for (let k = 12; k >= 0; k -= 1) {
-    const u = k / 6 - 1;
-    grin.push([0.032 * u, 0.009 * u * u + 0.001 * (1 - u * u)]);
-  }
-  addH(flatShape(grin), C.mouth, 0, 0.05, 0.1035, 0.3, 0, 0, 1, 1, 1, SMILE);
-  for (const side of [-1, 1]) {
-    addH(box(0.003, 0.032, 0.004), C.skinLo, 0.029 * side, 0.07, 0.1, 0.25, 0, 0.55 * side);
-  }
-
-  /*
-   * The hair, one shell over the skull: a cap whose edge runs high off the
-   * forehead, just over the ears and down to the nape, thickened over the
-   * top and lifted at the front into a short quiff that rises from the
-   * hairline and lies back. Alternate meridians of the cap run front to
-   * back over the crown, and pushing every other one out a little combs it
-   * into ridges, which the toon bands draw as strands. Salt and pepper:
-   * silver at the temples and over the ears, darker on top and in front, the
-   * ridges lighter than the furrows; and thin sideburns.
-   */
-  const silver = new THREE.Color(C.hairLo);
-  const pepper = new THREE.Color(C.hairTop);
-  const salt = new THREE.Color(C.hairHi);
-  const dark = new THREE.Color(C.hair);
-  const SEG = 32;
-  const SPAN = 0.64;
-  const cap = new THREE.SphereGeometry(1, SEG, 15, 0, Math.PI * 2, 0, Math.PI * SPAN);
-  {
-    const a = cap.attributes.position;
-    const uv = cap.attributes.uv;
-    const d = new THREE.Vector3();
-    const tilt = new THREE.Matrix4().makeRotationX(-1.0);
-    for (let i = 0; i < a.count; i += 1) {
-      d.set(a.getX(i), a.getY(i), a.getZ(i)).applyMatrix4(tilt);
-      /* 0 at the cap's edge, 1 at its pole, back over the crown. */
-      const t = (uv.getY(i) - 1 + SPAN) / SPAN;
-      const crown = smooth(0.15, 0.6, d.y) * smooth(0, 0.3, t);
-      /* He parts it on his left (+x) and sweeps it over to his right,
-       * where the quiff stands highest and its front edge comes down
-       * across the forehead. */
-      const sweep = smooth(0.35, -0.55, d.x);
-      const front = smooth(-0.25, 0.55, d.z);
-      const quiff = smooth(0.02, 0.2, t) * front * smooth(0.25, 0.75, d.y) * (0.55 + 0.75 * sweep);
-      const swoop = sweep * smooth(0.2, 0.8, d.z) * (1 - smooth(0, 0.35, t));
-      const part = Math.exp(-(((d.x - 0.4) / 0.08) ** 2)) * smooth(0.2, 0.6, d.y) * front;
-      const ridge = (i % (SEG + 1)) % 2 === 0 ? 1 : -1;
-      const push = Math.max(1.03, 1 + 0.07 * crown + 0.28 * quiff + 0.035 * ridge * crown + 0.1 * swoop - 0.05 * part);
-      /* The swoop turns the front edge down over the shell, not into it. */
-      d.y -= 0.32 * swoop;
-      d.normalize();
-      a.setXYZ(i, 0.096 * d.x * push, 0.142 + 0.119 * d.y * push, -0.008 + 0.11 * d.z * push);
-    }
-    cap.computeVertexNormals();
-  }
-  addHM(cap, (out, x, y, z, i) => {
-    const top = (1 - smooth(0.062, 0.09, Math.abs(x))) * (1 - smooth(0.2, 0.15, y));
-    out.copy(silver).lerp(pepper, top);
-    out.lerp((i % (SEG + 1)) % 2 === 0 ? salt : dark, 0.2 * top);
-  }, new THREE.Matrix4());
-  for (const side of [-1, 1]) {
-    addH(ball(8, 6), C.hairLo, 0.086 * side, 0.106, 0.026, 0, 0.25 * side, 0, 0.004, 0.017, 0.008);
-  }
-
-  /* The arms: a sleeve, the upper arm, the elbow; the forearm and the hand,
-   * thumb forward; the watch on the left wrist, its face on the back of it. */
-  for (const [arm, fore, side] of [[BONE.armL, BONE.foreL, 1], [BONE.armR, BONE.foreR, -1]]) {
-    add(ball(16, 8), arm, C.tee, 0, -0.02, 0, 0, 0, 0, 0.06, 0.058, 0.06);
-    add(tube(0.062, 0.057, 0.15, 20), arm, C.tee, 0, -0.07, 0);
-    add(tube(0.05, 0.045, 0.16, 20, true), arm, C.skin, 0, -0.2, 0);
-    add(ball(14, 8), arm, C.skin, 0, -0.29, 0, 0, 0, 0, 0.045, 0.045, 0.045);
-    add(tube(0.045, 0.036, 0.24, 20), fore, C.skin, 0, -0.12, 0);
-    add(ball(14, 10), fore, C.skin, 0, -0.295, 0.004, 0, 0, 0, 0.027, 0.056, 0.045);
-    add(ball(8, 6), fore, C.skin, 0, -0.27, 0.043, 0.5, 0, 0, 0.013, 0.029, 0.013);
-    if (side > 0) {
-      add(tube(0.04, 0.04, 0.028, 12), fore, C.watch, 0, -0.215, 0);
-      add(box(0.008, 0.026, 0.024), fore, C.watchFace, 0.041, -0.215, 0);
-    }
-  }
-
-  /* The legs: jeans to the ankle; the red shoes with white soles and laces. */
-  for (const [th, sh, ft] of [[BONE.thighL, BONE.shinL, BONE.footL], [BONE.thighR, BONE.shinR, BONE.footR]]) {
-    add(tube(0.095, 0.074, 0.43, 16), th, C.jeans, 0, -0.215, 0);
-    add(ball(12, 8), th, C.jeans, 0, -0.43, 0, 0, 0, 0, 0.07, 0.07, 0.07);
-    add(tube(0.07, 0.06, 0.4, 16, true), sh, C.jeans, 0, -0.2, 0);
-    add(tube(0.055, 0.06, 0.045, 10), ft, C.shoe, 0, -0.02, 0);
-    add(box(0.105, 0.06, 0.24), ft, C.shoe, 0, -0.045, 0.055);
-    add(ball(10, 8), ft, C.shoe, 0, -0.047, 0.17, 0, 0, 0, 0.053, 0.034, 0.055);
-    add(ball(10, 8), ft, C.shoe, 0, -0.042, -0.055, 0, 0, 0, 0.053, 0.04, 0.04);
-    add(box(0.112, 0.022, 0.295), ft, C.sole, 0, -0.069, 0.055);
-    add(box(0.044, 0.006, 0.09), ft, C.sole, 0, -0.013, 0.09, 0.25);
-  }
-
-  /* Exact copies are one vertex: a sphere's seam and its poles, a tube's
-   * seam, wherever two pieces meet face to face. The same bone, place,
-   * normal and colour (as the GPU will hold them) skin and draw the same,
-   * so this changes no pixel and skins about a ninth fewer vertices. A
-   * triangle left with a corner twice drew nothing and goes too. */
-  const P0 = new Float32Array(pos);
-  const N0 = new Float32Array(nor);
-  const C0 = new Float32Array(col);
-  const first = new Map();
-  const into = new Int32Array(bone.length);
-  const kept = [];
-  for (let i = 0; i < bone.length; i += 1) {
-    const k = i * 3;
-    const key = `${bone[i]} ${P0[k]} ${P0[k + 1]} ${P0[k + 2]} ${N0[k]} ${N0[k + 1]} ${N0[k + 2]} ${C0[k]} ${C0[k + 1]} ${C0[k + 2]}`;
-    const was = first.get(key);
-    if (was === undefined) {
-      first.set(key, kept.length);
-      into[i] = kept.length;
-      kept.push(i);
-    } else {
-      into[i] = was;
-    }
-  }
-
-  /* Then laid out bone by bone (a counting sort, stable), so each bone's
-   * vertices are one run: the skin walks a run with its bone's matrix in
-   * hand, and sends the GPU only the runs whose bone moved. */
-  const n = kept.length;
-  const start = new Int32Array(ALL_BONES + 1);
-  for (const i of kept) {
-    start[bone[i] + 1] += 1;
-  }
-  for (let b = 0; b < ALL_BONES; b += 1) {
-    start[b + 1] += start[b];
-  }
-  const at = start.slice(0, ALL_BONES);
-  const slot = new Int32Array(n);
-  for (let j = 0; j < n; j += 1) {
-    slot[j] = at[bone[kept[j]]];
-    at[bone[kept[j]]] += 1;
-  }
-  const P32 = new Float32Array(n * 3);
-  const N32 = new Float32Array(n * 3);
-  const C32 = new Float32Array(n * 3);
-  for (let j = 0; j < n; j += 1) {
-    const i = kept[j];
-    for (let k = 0; k < 3; k += 1) {
-      P32[slot[j] * 3 + k] = P0[i * 3 + k];
-      N32[slot[j] * 3 + k] = N0[i * 3 + k];
-      C32[slot[j] * 3 + k] = C0[i * 3 + k];
-    }
-  }
-  const tri = [];
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = slot[into[idx[t]]];
-    const b = slot[into[idx[t + 1]]];
-    const c = slot[into[idx[t + 2]]];
-    if (a !== b && b !== c && a !== c) {
-      tri.push(a, b, c);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(P32), 3).setUsage(THREE.DynamicDrawUsage));
-  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(N32), 3).setUsage(THREE.DynamicDrawUsage));
-  g.setAttribute('color', new THREE.BufferAttribute(C32, 3));
-  g.setIndex(tri);
-  /* Fixed, in his frame: his reach from the middle of him, so the frustum
-   * test never needs the skinned positions. */
-  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.0, 0), 1.5);
-  return { geometry: g, rest: P32, restN: N32, start };
-}
+/* His clock's lines, NICK_LINES' order, with the face and the letters'
+ * colour for each: the catfish shouted in amber, the rest round the
+ * shell's inks. */
+const SAYS = [
+  { face: FACE.shout, fill: '#ffd45c' },
+  { face: FACE.laugh, fill: INKS.bail },
+  { face: FACE.smile, fill: INKS.mint },
+  { face: FACE.frown, fill: INKS.sky },
+].map((s, i) => ({ ...s, text: NICK_LINES[i].text }));
+/* The two that answer the craft. */
+const CATFISH = { text: NICK_LINES[0].text, face: FACE.shout, fill: '#ffd45c', ms: 2200 };
+const THANKS = { text: 'I appreciate your time and thanks for watching!', face: FACE.sad, fill: INKS.mint, ms: 3800 };
+/* Real metres: close, a hit, and how far the craft has to go before each
+ * can go off again. HIT_R is his body's half width and the craft's. */
+const NEAR_R = 1.5;
+const HIT_R = 0.32;
+const REARM_NEAR = 2.6;
+const REARM_HIT = 0.9;
+/* Pinned, the balloon is PIN_D in front of the camera (world metres, well
+ * inside anything the near plane keeps), PIN_W of the picture's width,
+ * its tail's tip PIN_UP of the picture's height over the middle. */
+const PIN_D = 0.5;
+const PIN_W = 0.34;
+const PIN_UP = 0.1;
 
 /* ------------------------------------------------------------------ */
 /* The balloon                                                         */
 /* ------------------------------------------------------------------ */
 
-const BW = 512;
+const BW = 640;
 const BH = 256;
 /* The balloon in real metres, and where its tail's tip is on it. */
-const BALLOON_W = 1.3;
+const BALLOON_W = 1.625;
 const BALLOON_H = 0.65;
-const TIP = [172, 250];
+const TIP = [318, 250];
 /* The top of the pergola's rafters, real metres. */
 const RAFTERS = PERGOLA.h + 0.36;
-const TEXT_W = 400;
+/* The face's round panel and the words' box. */
+const FACE_AT = [112, 120, 100];
+const TEXT_X = 412;
+const TEXT_Y = 108;
+const TEXT_W = 350;
 
 function balloonShape(ctx) {
   ctx.beginPath();
-  ctx.ellipse(256, 104, 234, 90, 0, 0, Math.PI * 2);
-  ctx.moveTo(200, 172);
+  ctx.ellipse(400, 108, 226, 96, 0, 0, Math.PI * 2);
+  ctx.moveTo(338, 192);
   ctx.lineTo(TIP[0], TIP[1]);
-  ctx.lineTo(252, 186);
+  ctx.lineTo(392, 200);
   ctx.closePath();
 }
 
@@ -555,27 +163,41 @@ function rowWidth(ctx, row, px) {
   return words.reduce((w, word) => w + wordWidth(ctx, word, px), 0) + GAP * px * (words.length - 1);
 }
 
-/* The rows a line is lettered in, and the size: one row if it will go at a
- * readable size, else two split where they are most even. */
+/* The rows a line is lettered in, and the size: as few rows as will go at
+ * a readable size, split where they are most even, up to three. */
+const ROW_PX = [80, 58, 44];
 function rowsOf(ctx, text) {
-  const one = rowWidth(ctx, text, 80);
-  if ((80 * TEXT_W) / one >= 52) {
-    return { rows: [text], px: Math.min(80, (80 * TEXT_W) / one) };
-  }
   const words = text.split(' ');
   let best = null;
-  for (let k = 1; k < words.length; k += 1) {
-    const a = words.slice(0, k).join(' ');
-    const b = words.slice(k).join(' ');
-    const w = Math.max(rowWidth(ctx, a, 56), rowWidth(ctx, b, 56));
-    if (!best || w < best.w) {
-      best = { rows: [a, b], w };
+  for (let n = 1; n <= Math.min(3, words.length); n += 1) {
+    const px = ROW_PX[n - 1];
+    const cuts = [];
+    const tryCut = (from, left, rows) => {
+      if (left === 1) {
+        cuts.push([...rows, words.slice(from).join(' ')]);
+        return;
+      }
+      for (let k = from + 1; k <= words.length - left + 1; k += 1) {
+        tryCut(k, left - 1, [...rows, words.slice(from, k).join(' ')]);
+      }
+    };
+    tryCut(0, n, []);
+    for (const rows of cuts) {
+      const w = Math.max(...rows.map((r) => rowWidth(ctx, r, px)));
+      const size = Math.min(px, (px * TEXT_W) / w);
+      const pick = { rows, px: size };
+      if (!best || size > best.px * 1.08) {
+        best = pick;
+      }
+    }
+    if (best && best.px >= ROW_PX[n - 1] * 0.8) {
+      break;
     }
   }
-  return { rows: best.rows, px: Math.min(56, (56 * TEXT_W) / best.w) };
+  return best;
 }
 
-function paintBalloon(canvas, line) {
+function paintBalloon(canvas, say, atlas) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, BW, BH);
   ctx.lineJoin = 'round';
@@ -588,40 +210,37 @@ function paintBalloon(canvas, line) {
   balloonShape(ctx);
   ctx.fillStyle = PAPER;
   ctx.fill();
-  const text = NICK_LINES[line].text.toUpperCase();
+  const text = say.text.toUpperCase();
   const { rows, px } = rowsOf(ctx, text);
   const rowH = px * 1.12;
-  let y = 104 - (rowH * rows.length) / 2 + px * 0.86;
+  let y = TEXT_Y - (rowH * rows.length) / 2 + px * 0.86;
   for (const row of rows) {
-    let x = 256 - rowWidth(ctx, row, px) / 2;
+    let x = TEXT_X - rowWidth(ctx, row, px) / 2;
     for (const word of row.split(' ')) {
-      x += drawWord(ctx, word, x, y, px, FILLS[line % FILLS.length], { seed: text }) + GAP * px;
+      x += drawWord(ctx, word, x, y, px, say.fill, { seed: text }) + GAP * px;
     }
     y += rowH;
   }
-}
-
-/* A folded bone: its 3x3 is zero (faceBones), so its vertices sit on one
- * point and draw nothing wherever that point is. */
-function folded(m, o) {
-  for (let k = 0; k < 9; k += 1) {
-    if (m[o + k] !== 0) {
-      return false;
-    }
+  /* His face in a round panel over the balloon's left end, inked round. */
+  const [cx, cy, r] = FACE_AT;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.lineWidth = 14;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.fillStyle = PAPER;
+  ctx.fill();
+  if (atlas) {
+    const [fx, fy, fw, fh] = FACES[say.face];
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 4, 0, Math.PI * 2);
+    ctx.clip();
+    /* The head fills the panel; the panel's middle is about his eyes. */
+    const k = (2.3 * r) / fw;
+    ctx.drawImage(atlas, fx, fy, fw, fh, cx - (fw * k) / 2, cy - fh * k * 0.42, fw * k, fh * k);
+    ctx.restore();
   }
-  return true;
-}
-
-function span(attr) {
-  const r = attr.updateRanges;
-  let lo = r[0].start;
-  let hi = r[0].start + r[0].count;
-  for (let i = 1; i < r.length; i += 1) {
-    lo = Math.min(lo, r[i].start);
-    hi = Math.max(hi, r[i].start + r[i].count);
-  }
-  attr.clearUpdateRanges();
-  attr.addUpdateRange(lo, hi - lo);
 }
 
 /* ------------------------------------------------------------------ */
@@ -630,8 +249,9 @@ function span(attr) {
 
 /*
  * Nick for a map: `group` goes in the map's scene (whose dispose frees it,
- * texture and all), update(step) is called with the clock the map's
- * updateAnim is handed, stats() is for the harness.
+ * textures and all), update(step) is called with the clock the map's
+ * updateAnim is handed, stats() is for the harness. `craftAt` answers
+ * where the drawn craft is, in the world, or null.
  *
  * HIS CLOCK. The clock the shell hands a map is the title's, or the run's
  * (which starts again at every run and stands still on the pads and in the
@@ -639,37 +259,44 @@ function span(attr) {
  * lets a step back or a leap of more than a second go by as nothing, so a
  * new run, the title, a crash's reset or a mode change never moves him: he
  * is where he was, and a pause holds him. A harness can hold him at a time
- * of its own with `group.userData.holdMs` (scripts/ only).
+ * of its own with `group.userData.holdMs` (scripts/ only); what he says to
+ * the craft keeps its own time, so a held Nick still answers it, and
+ * `group.userData.craftAt`, a world { x, y, z }, stands in for the craft.
  */
-export function makeNick(camera) {
+export function makeNick(camera, craftAt = () => null) {
   const { OX, OZ, S } = FRAME;
-  const body = bodyGeometry();
-  const material = cel({ color: 0xffffff, vertexColors: true, bands: 3, tint: 0x8a7c96, cache: false });
-  const mesh = new THREE.Mesh(body.geometry, material);
+  const atlas = new THREE.TextureLoader().load(ATLAS_URL, () => {
+    mesh.visible = true;
+    painted = null;
+  });
+  atlas.colorSpace = THREE.SRGBColorSpace;
+  atlas.anisotropy = 4;
+  const card = new THREE.PlaneGeometry(1, 1);
+  card.translate(0, 0.5, 0);
+  const mesh = new THREE.Mesh(card, new THREE.MeshBasicMaterial({ map: atlas, alphaTest: 0.5, fog: false }));
   mesh.name = 'nick';
-  /* He casts a shadow and takes none: lit like a character in a panel,
-   * under the umbrella or indoors as well, where the house's own shade
-   * turned his face to a dark mask in the first shots. */
-  mesh.castShadow = true;
+  mesh.castShadow = false;
   mesh.receiveShadow = false;
-  mesh.scale.setScalar(S);
+  /* Shown when the atlas has come, so he is never a dark card. */
+  mesh.visible = false;
 
   const canvas = document.createElement('canvas');
   canvas.width = BW;
   canvas.height = BH;
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const card = new THREE.PlaneGeometry(BALLOON_W, BALLOON_H);
-  card.translate(-BALLOON_W * (TIP[0] / BW - 0.5), BALLOON_H * (0.5 - (1 - TIP[1] / BH)), 0);
-  const balloon = new THREE.Mesh(card, new THREE.MeshBasicMaterial({ map: texture, alphaTest: 0.5, fog: false }));
+  const bcard = new THREE.PlaneGeometry(BALLOON_W, BALLOON_H);
+  bcard.translate(-BALLOON_W * (TIP[0] / BW - 0.5), BALLOON_H * (0.5 - (1 - TIP[1] / BH)), 0);
+  const balloon = new THREE.Mesh(bcard, new THREE.MeshBasicMaterial({ map: texture, alphaTest: 0.5, fog: false }));
   balloon.name = 'nick balloon';
   balloon.castShadow = false;
   balloon.receiveShadow = false;
-  /* Painted now, so its texture is whole from the start. Hidden, it is
-   * still warmed: three's compile walks every material in the scene,
-   * shown or not. */
-  let painted = 0;
-  paintBalloon(canvas, painted);
+  /* Painted now, so its texture is whole from the start, and again when
+   * the atlas has come and the face can go in. Hidden, it is still
+   * warmed: three's compile walks every material in the scene, shown or
+   * not. */
+  let painted = SAYS[0];
+  paintBalloon(canvas, painted, null);
   balloon.visible = false;
 
   const group = new THREE.Group();
@@ -677,165 +304,155 @@ export function makeNick(camera) {
   group.add(mesh, balloon);
 
   const pose = nickPose();
-  const M = new Float64Array(ALL_BONES * 12);
-  /* Each bone's matrix as it was last skinned; NaN skins every bone the
-   * first time. */
-  const L = new Float64Array(ALL_BONES * 12).fill(NaN);
-  const posAttr = body.geometry.attributes.position;
-  const norAttr = body.geometry.attributes.normal;
-  const n = body.rest.length / 3;
   const eye = { x: 0, y: 0, h: 0 };
-  const frustum = new THREE.Frustum();
-  const pm = new THREE.Matrix4();
-  const sphere = new THREE.Sphere();
   const top = new THREE.Vector3();
   let clock = 0;
   let last = null;
-  let skinnedAt = null;
-  let skins = 0;
-  let lastMoved = 0;
-  let shownLine = -1;
+  let frame = STILL;
+  let seated = false;
+  let mirrored = false;
+  /* What he is saying to the craft, if anything, and for how long yet. */
+  let react = null;
+  let reactAge = 0;
+  let armNear = true;
+  let armHit = true;
+  let hits = 0;
+  let shouts = 0;
 
-  /* Bone by bone, each bone's matrix in locals, and only the bones whose
-   * matrix changed since they were last skinned: seated, his legs and feet
-   * hold still while he breathes, and a folded face bone stays folded. Only
-   * the runs that moved go to the GPU. */
-  function skin() {
-    nickBones(pose, M);
-    faceBones(pose, clock, M);
-    const out = posAttr.array;
-    const outN = norAttr.array;
-    const rp = body.rest;
-    const rn = body.restN;
-    const run = body.start;
-    let from = -1;
-    let moved = 0;
-    for (let b = 0; b <= ALL_BONES; b += 1) {
-      let dirty = false;
-      if (b < ALL_BONES && run[b + 1] > run[b]) {
-        const o = b * 12;
-        for (let k = 0; k < 12; k += 1) {
-          if (M[o + k] !== L[o + k]) {
-            dirty = true;
-            break;
-          }
-        }
-        if (dirty && folded(M, o) && folded(L, o)) {
-          dirty = false;
-        }
-      }
-      if (dirty) {
-        const o = b * 12;
-        for (let k = 0; k < 12; k += 1) {
-          L[o + k] = M[o + k];
-        }
-        const m0 = M[o];
-        const m1 = M[o + 1];
-        const m2 = M[o + 2];
-        const m3 = M[o + 3];
-        const m4 = M[o + 4];
-        const m5 = M[o + 5];
-        const m6 = M[o + 6];
-        const m7 = M[o + 7];
-        const m8 = M[o + 8];
-        const tx = M[o + 9];
-        const ty = M[o + 10];
-        const tz = M[o + 11];
-        const k1 = run[b + 1] * 3;
-        for (let k = run[b] * 3; k < k1; k += 3) {
-          const x = rp[k];
-          const y = rp[k + 1];
-          const z = rp[k + 2];
-          out[k] = m0 * x + m1 * y + m2 * z + tx;
-          out[k + 1] = m3 * x + m4 * y + m5 * z + ty;
-          out[k + 2] = m6 * x + m7 * y + m8 * z + tz;
-          const a = rn[k];
-          const c = rn[k + 1];
-          const d = rn[k + 2];
-          outN[k] = m0 * a + m1 * c + m2 * d;
-          outN[k + 1] = m3 * a + m4 * c + m5 * d;
-          outN[k + 2] = m6 * a + m7 * c + m8 * d;
-        }
-        moved += run[b + 1] - run[b];
-        if (from < 0) {
-          from = run[b];
-        }
-      } else if (from >= 0 && (b === ALL_BONES || run[b + 1] > run[b])) {
-        /* The end of a run of moved bones (an empty bone does not end one). */
-        posAttr.addUpdateRange(from * 3, (run[b] - from) * 3);
-        norAttr.addUpdateRange(from * 3, (run[b] - from) * 3);
-        from = -1;
+  /* The atlas window the card shows: walk cell `f`, whole or from the hips
+   * up. */
+  function showCell(f, sit) {
+    const y1 = sit ? SIT_CUT : CELL_BOT;
+    atlas.repeat.set(CELL_W / AW, (y1 - CELL_TOP) / AH);
+    atlas.offset.set((f * CELL_W) / AW, 1 - y1 / AH);
+  }
+
+  /* The craft against him, in real metres: a hit, close, or neither, and
+   * the arming of each again once it has gone far enough. */
+  function answer(d) {
+    if (react) {
+      reactAge += d;
+      if (reactAge >= react.ms) {
+        react = null;
       }
     }
-    /* Ranges not yet sent (skinned near him but drawn in no pass) would
-     * pile up; past a handful they become the one span that covers them. */
-    if (posAttr.updateRanges.length > 4) {
-      span(posAttr);
-      span(norAttr);
+    const q = group.userData.craftAt || craftAt();
+    if (!q) {
+      return;
     }
-    lastMoved = moved;
-    if (moved > 0) {
-      posAttr.needsUpdate = true;
-      norAttr.needsUpdate = true;
-      skins += 1;
+    const dx = (q.x - OX) / S - pose.x;
+    const dy = (OZ - q.z) / S - pose.y;
+    const r = Math.hypot(dx, dy);
+    const head = seated ? pose.pelvisH + (1.8 - PELVIS_STAND) : pose.floor + 1.8;
+    const h = q.y / S;
+    const above = Math.max(0, h - head, pose.floor - h);
+    const dist = Math.hypot(r, above);
+    if (r > REARM_HIT || above > 0.3) {
+      armHit = true;
+    }
+    if (dist > REARM_NEAR) {
+      armNear = true;
+    }
+    if (armHit && r < HIT_R && above === 0) {
+      react = THANKS;
+      reactAge = 0;
+      armHit = false;
+      armNear = false;
+      hits += 1;
+    } else if (armNear && dist < NEAR_R && react !== THANKS) {
+      react = CATFISH;
+      reactAge = 0;
+      armNear = false;
+      shouts += 1;
     }
   }
 
   function update(step) {
     const hold = group.userData.holdMs;
-    if (typeof hold === 'number') {
-      clock = hold;
-    } else if (last !== null) {
-      const d = step - last;
-      if (d > 0 && d <= 1000) {
-        clock += d;
+    let d = 0;
+    if (last !== null) {
+      const dd = step - last;
+      if (dd > 0 && dd <= 1000) {
+        d = dd;
       }
     }
     last = step;
+    clock = typeof hold === 'number' ? hold : clock + d;
     const cam = camera.position;
     eye.x = (cam.x - OX) / S;
     eye.y = (OZ - cam.z) / S;
     eye.h = cam.y / S;
     nickAt(clock, eye, pose);
+    seated = pose.sit > 0.5;
+    answer(d);
 
-    mesh.position.set(OX + S * pose.x, 0, OZ - S * pose.y);
-    mesh.rotation.y = pose.yaw;
-    mesh.updateMatrixWorld();
-
-    const dist = cam.distanceTo(mesh.position);
-    pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-    frustum.setFromProjectionMatrix(pm);
-    sphere.center.set(mesh.position.x, mesh.position.y + S * 1.0, mesh.position.z);
-    sphere.radius = S * 1.6;
-    const seen = dist < 40 || frustum.intersectsSphere(sphere);
-    /* A still pose (his clock stopped and the camera too far for him to
-     * look at it) is not moved again. */
-    const still = skinnedAt === clock && pose.look === 0 && pose.wave === 0;
-    if (seen && !still) {
-      skin();
-      skinnedAt = clock;
+    /* The card: stood on his floor, or seated on his hips, turned to the
+     * camera about its own axis, and mirrored when he faces right. */
+    const x = OX + S * pose.x;
+    const z = OZ - S * pose.y;
+    const yaw = Math.atan2(cam.x - x, cam.z - z);
+    const side = Math.sin(pose.yaw) * Math.cos(yaw) - Math.cos(pose.yaw) * Math.sin(yaw);
+    if (Math.abs(side) > 0.15) {
+      mirrored = side > 0;
     }
+    if (pose.walk > 0.05) {
+      const u = pose.stride / (2 * Math.PI);
+      frame = Math.floor((u - Math.floor(u)) * WALK_FRAMES) % WALK_FRAMES;
+    } else {
+      frame = STILL;
+    }
+    showCell(frame, seated);
+    const w = S * (CELL_W / PX_M);
+    if (seated) {
+      mesh.scale.set(mirrored ? -w : w, S * ((SIT_CUT - CELL_TOP) / PX_M), 1);
+      mesh.position.set(x, S * (pose.pelvisH - SIT_DROP), z);
+    } else {
+      const bob = 0.025 * pose.walk * Math.abs(Math.sin(pose.stride));
+      mesh.scale.set(mirrored ? -w : w, S * ((CELL_BOT - CELL_TOP) / PX_M), 1);
+      mesh.position.set(x, S * (pose.floor - (CELL_BOT - SOLE_Y) / PX_M + bob), z);
+    }
+    mesh.rotation.y = yaw;
 
-    if (pose.line < 0 || dist > 150) {
+    const say = react || (pose.line >= 0 ? SAYS[pose.line] : null);
+    const dist = cam.distanceTo(mesh.position);
+    if (!say || dist > 150) {
       balloon.visible = false;
       return;
     }
-    if (pose.line !== shownLine) {
-      if (pose.line !== painted) {
-        paintBalloon(canvas, pose.line);
-        texture.needsUpdate = true;
-        painted = pose.line;
-      }
-      shownLine = pose.line;
+    if (say !== painted) {
+      paintBalloon(canvas, say, atlas.image || null);
+      texture.needsUpdate = true;
+      painted = say;
     }
     balloon.visible = true;
+    const age = react ? reactAge : pose.lineAge;
+    const dur = react ? react.ms : pose.lineDur;
+    const pop = (0.65 + 0.35 * Math.min(1, age / 160)) * (1 - 0.6 * Math.max(0, (age - dur + 150) / 150));
+    const pinned = react !== null;
+    if (balloon.material.depthTest === pinned) {
+      /* It still writes its depth, so the map's ink, which reads depth,
+       * draws round it and not the room's edges across it. */
+      balloon.material.depthTest = !pinned;
+      balloon.renderOrder = pinned ? 10 : 0;
+    }
+    if (pinned) {
+      /* An answer to the craft is pinned in front of the camera, high in
+       * the picture, over whatever is there: the craft that set it off is
+       * in him or beside him, where a balloon over his head is out of
+       * sight above or already behind it. */
+      const h = 2 * PIN_D * Math.tan((camera.fov * Math.PI) / 360);
+      top.set(0, PIN_UP * h, -PIN_D).applyQuaternion(camera.quaternion).add(cam);
+      balloon.position.copy(top);
+      balloon.quaternion.copy(camera.quaternion);
+      balloon.scale.setScalar(((PIN_W * h * camera.aspect) / BALLOON_W) * pop);
+      return;
+    }
     /* Over his head, a little higher outdoors than under a ceiling; and
      * over the umbrella when he is under it and the camera is above it,
      * where the canopy would hide it, and over the rafters when the camera
      * is above those, where the beam would. */
-    const h = M[BONE.head * 12 + 10] + HEAD_TOP + (pose.indoors ? 0.02 : 0.08);
-    top.set(M[BONE.head * 12 + 9], h, M[BONE.head * 12 + 11]);
-    mesh.localToWorld(top);
+    const head = seated ? pose.pelvisH + (1.8 - PELVIS_STAND) : pose.floor + 1.8;
+    top.set(x, S * (head + (pose.indoors ? 0.04 : 0.1)), z);
     if (!pose.indoors && eye.h > RAFTERS && pose.x > PERGOLA.x0 - 0.3 && pose.x < PERGOLA.x1 + 0.3 && pose.y > DEP && pose.y < PERGOLA.y1 + 0.5) {
       top.y = S * (RAFTERS + 0.05);
     } else if (pose.cover && eye.h > UMBRELLA.h0) {
@@ -843,15 +460,10 @@ export function makeNick(camera) {
     }
     balloon.position.copy(top);
     balloon.quaternion.copy(camera.quaternion);
-    const pop = (0.65 + 0.35 * Math.min(1, pose.lineAge / 160)) * (1 - 0.6 * Math.max(0, (pose.lineAge - pose.lineDur + 150) / 150));
     const far = Math.min(3, Math.max(1, dist / 20));
     balloon.scale.setScalar(S * (pose.indoors ? 0.75 : 1) * far * pop);
   }
-  /* Posed once whether or not he is in view, so his shadow and his first
-   * sight are a man and not his parts heaped at his feet. */
   update(0);
-  skin();
-  skinnedAt = clock;
 
   return {
     group,
@@ -860,13 +472,14 @@ export function makeNick(camera) {
       clockMs: clock,
       state: pose.state,
       at: [Math.round(pose.x * 100) / 100, Math.round(pose.y * 100) / 100],
-      line: pose.line >= 0 ? NICK_LINES[pose.line].text : null,
-      looking: pose.look > 0,
-      waving: pose.wave > 0,
-      skins,
-      moved: lastMoved,
-      vertices: n,
-      triangles: body.geometry.index.count / 3,
+      line: react ? react.text : (pose.line >= 0 ? NICK_LINES[pose.line].text : null),
+      answering: react === THANKS ? 'hit' : (react === CATFISH ? 'close' : null),
+      hits,
+      shouts,
+      frame,
+      seated,
+      mirrored,
+      ready: mesh.visible,
     }),
   };
 }

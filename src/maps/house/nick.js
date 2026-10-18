@@ -378,7 +378,7 @@ export function nickPose() {
   return {
     x: 0, y: 0, floor: 0, yaw: 0, pelvisH: 0, headH: 0,
     J: new Float64Array(NB * 3),
-    state: 'seated', indoors: false, cover: false, sit: 1, walk: 0,
+    state: 'seated', indoors: false, cover: false, sit: 1, walk: 0, stride: 0,
     line: -1, lineAge: 0, lineDur: 0,
     look: 0, wave: 0,
   };
@@ -522,6 +522,7 @@ export function nickAt(T, eye, out) {
   out.headH = pelvisH + 0.04 + 0.53 + 0.13;
   out.sit = sit;
   out.walk = walk;
+  out.stride = theta;
   out.state = ph.kind;
   out.indoors = floor > (FLOOR0 + G_PAVE) / 2;
   out.cover = !out.indoors && Math.hypot(out.x - UMBRELLA.x, out.y - UMBRELLA.y) < UMBRELLA.r + 0.2;

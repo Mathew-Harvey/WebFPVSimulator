@@ -225,7 +225,7 @@ export async function buildMap(shell, onProgress, options) {
    * so its dispose frees him, posed at the clock the map is handed, and his
    * two programs linked now beside the rest, since the map warmed its own
    * before he was there (render/warm.js). */
-  const nick = makeNick(shell.camera);
+  const nick = makeNick(shell.camera, () => (shell.quad ? shell.quad.position : null));
   map.scene.add(nick.group);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   const anim = map.updateAnim;

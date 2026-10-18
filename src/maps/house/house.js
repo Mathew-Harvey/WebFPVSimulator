@@ -904,6 +904,15 @@ function stairs(H) {
     }
     H.hidden(rx - 0.03, y0, hTop, rx + 0.03, y0 + STAIR_TREAD, hTop + rail);
   }
+  /* The underside over the stair down, seen through the basement door and
+   * from the flight below it: drawn as one smooth slope under the treads'
+   * stepped boxes, touching each at its back edge, so it reads as the
+   * plastered soffit it would be and not as a white stair going up. It is
+   * drawn only; the boxes over it are the solid. */
+  const soffit = (py) => FLOOR0 - 0.03 - SOFFIT + ((py - STAIR_Y0) * STAIR_RISE) / STAIR_TREAD;
+  const d = STAIR_RISE + 0.005;
+  const [s0, s1] = [HOLE.y0 - 0.005, STAIR_Y1 - 0.005];
+  H.prism('homeWhite', 'x', [[s0, soffit(s0)], [s1, soffit(s1)], [s1, soffit(s1) + d], [s0, soffit(s0) + d]], x0 - 0.005, HOLE.x1 + 0.005);
   const foot = [rx, STAIR_Y0 + 0.1, FLOOR0 + STAIR_RISE + rail];
   const head = [rx, STAIR_Y1, FLOOR1 + rail];
   H.cap('homeShelf', foot, head, 0.035, { seg: 8, solid: false });

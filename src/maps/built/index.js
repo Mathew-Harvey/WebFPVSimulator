@@ -1166,7 +1166,7 @@ function trianglesOf(root) {
  * house (src/maps/house/), which is one building too particular for any
  * asset in the builder's palette. `extra` is
  *
- *   { el, parts, draw(kit) }
+ *   { el, parts, draw(kit), floor(x, z) }
  *
  *   el      an element-shaped name for it, { id, type }, which no asset
  *           answers to: the kit draws nothing for it, and ./egg.js can
@@ -1176,6 +1176,10 @@ function trianglesOf(root) {
  *           asset's are
  *   draw    optional, paint over the parts in the world frame (a roof's
  *           slopes, which no box can be)
+ *   floor   optional, the ground at (x, z) where no top is under the
+ *           craft, world metres: the paving's 0 unless the structure digs
+ *           below it, as the house's basement does (groundUnder in
+ *           ./place.js)
  *
  * It goes in as the last item and its solids as the last solids, in part
  * order, which is the pairing ./egg.js checks. The box tops are indexed
@@ -1615,7 +1619,8 @@ export async function buildMap(shell, onProgress, options) {
     },
     references: {},
     /*
-     * The paving at zero, or a box top within a step of fromY. The plant
+     * The paving at zero (the structure's own floor where it digs below
+     * the paving), or a box top within a step of fromY. The plant
      * lands on box tops itself; this is the same ground for the shell,
      * which asks it for the plane it hands the plant every step, the spawn
      * seat, the OSD altitude, the obstacles' clearance and the set down.
@@ -1626,7 +1631,9 @@ export async function buildMap(shell, onProgress, options) {
      * thin board over the craft is never its ground. The town's height
      * takes no cgY and needs none: its decks are thick.
      */
-    height: (x, z, fromY, cgY) => groundUnder(placed.tops, x, z, fromY, cgY),
+    height: extra && extra.floor
+      ? (x, z, fromY, cgY) => groundUnder(placed.tops, x, z, fromY, cgY, extra.floor(x, z))
+      : (x, z, fromY, cgY) => groundUnder(placed.tops, x, z, fromY, cgY),
     setNextGate() {},
     targetAim: () => AIM,
     approachSide: () => null,

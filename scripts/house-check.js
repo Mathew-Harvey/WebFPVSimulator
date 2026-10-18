@@ -77,13 +77,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
-import { houseLayout, S, FLOOR0, worldAt } from '../src/maps/house/house.js';
+import { houseLayout, basementFloorAt, S, FLOOR0, BF, worldAt } from '../src/maps/house/house.js';
 import { houseDocument } from '../src/maps/house/yard.js';
 import { MATERIALS as HOME_MATERIALS } from '../src/props/homes.js';
 import { GAP_MIN } from '../src/props/parts.js';
 import { placeSolids, addSolids } from '../src/props/solids.js';
 import { normalize } from '../src/trackbuilder/model.js';
-import { seatDocument, indexTops, topUnder, groundUnder } from '../src/maps/built/place.js';
+import { seatDocument, indexTops, topUnder, groundUnder, SUPPORT_TIE } from '../src/maps/built/place.js';
 import { Colliders, CRAFT_WORLD_R, GROUND_MU, GROUND_E } from '../src/game/collide.js';
 import { uploadWorld, setWorldFrame } from '../src/game/plantworld.js';
 import { threePosToSim } from '../src/render/frame.js';
@@ -322,6 +322,7 @@ async function placedBlock(L) {
   check('the start is the pads', sp.from === 'pads', sp.from);
   check('the start is seated on the ground floor', Math.abs(sp.y - S * FLOOR0) < 1e-6, `${r3(sp.y)} m, the floor is ${r3(S * FLOOR0)}`);
   check('nothing inflated', (placed.stats.inflated || 0) === 0, `${placed.stats.inflated || 0}`);
+  groundChecks(placed);
   const near = gridOf(placed.solids);
   const over = [sp.x, sp.y + 0.6, sp.z];
   const hit = hitAt(near(over), over, 0.5);
@@ -332,6 +333,29 @@ async function placedBlock(L) {
   check('the most one step gathers is under world.c\'s WORLD_MAX_CAND', g.worst < lim.cand,
     `${g.worst} at worst over two by two cells of ${g.cell} m, ${g.one} in one, the cap ${lim.cand}`);
   return { doc, placed, near, own };
+}
+
+/*
+ * THE GROUND UNDER THE BASEMENT: the built map's `height` with the house's
+ * floor, asked the way the shell asks for a craft, from 0.4 under its
+ * centre with the centre as cgY (src/main.js raiseGroundFromState).
+ */
+function groundChecks(placed) {
+  const ask = (px, py, h) => {
+    const [x, y, z] = worldAt(px, py, h);
+    return groundUnder(placed.tops, x, z, y - 0.4, y, basementFloorAt(x, z));
+  };
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const lounge = ask(4.95, 1.15, BF + 0.05);
+  check('a craft on the basement floor stands on the floor', near(lounge, S * BF), `${r3(lounge)} m, the floor is ${r3(S * BF)}`);
+  const table = ask(3.6, 5.7, BF + 0.81);
+  check('on the basement table it stands on the table', near(table, S * (BF + 0.76) - SUPPORT_TIE), `${r3(table)} m`);
+  const foyer = ask(6.0, 2.5, FLOOR0 + 0.05);
+  check('on the ground floor over the basement it stands on the ground floor', near(foyer, S * FLOOR0 - SUPPORT_TIE), `${r3(foyer)} m`);
+  const tread = ask(7.8, 2.5, FLOOR0 + 0.05);
+  check('over the stair down it stands on the tread under it', tread < 0 && tread > S * BF, `${r3(tread)} m`);
+  const lawn = ask(-5, 2, 0.05);
+  check('beside the house the ground is the lawn', near(lawn, 0), `${r3(lawn)} m`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -369,6 +393,16 @@ const LINES = [
   ['under the pergola', [[1.0, 12.0, 2.2], [11.0, 12.0, 2.2]]],
   ['down between two of the pergola rafters', [[5.5, 10.0, 5.0], [5.5, 10.0, 2.6]]],
   ['through the swings', [[28.25, 16.0, 1.5], [28.25, 22.0, 1.5]]],
+  ['in the basement door and down the stair to its foot, into the lounge', [[6.2, 4.52, 1.2], [7.8, 4.52, 1.2], [7.8, 4.0, 1.05], [7.8, 1.3, -0.9], [7.8, 0.62, -1.35], [5.0, 0.62, -1.35]]],
+  ['off the stair over the half wall into the main room', [[7.75, 1.6, -0.6], [6.0, 1.6, -0.6]]],
+  ['from the lounge past the column to the settee', [[4.5, 1.0, -1.2], [4.9, 4.0, -1.2], [4.9, 7.0, -1.2]]],
+  ['through the LED cube on the basement table', [[3.6, 4.6, -1.2], [3.6, 6.8, -1.2]]],
+  ['down into the LED cube on the basement table', [[3.6, 5.7, -0.2], [3.6, 5.7, -1.4]]],
+  ['through the treadmill under its console', [[0.675, 4.25, -1.65], [0.675, 1.5, -1.65]]],
+  ['main room into the hall and through to the workshop', [[6.0, 4.68, -1.2], [10.0, 4.68, -1.2], [11.4, 4.68, -1.2], [11.4, 3.0, -1.2]]],
+  ['hall into the guest room', [[9.8, 4.68, -1.2], [9.8, 1.2, -1.2]]],
+  ['hall into the playroom', [[9.0, 4.68, -1.2], [9.0, 7.0, -1.2]]],
+  ['down the workshop between the shelving and the bench', [[12.2, 1.5, -1.2], [12.2, 6.4, -1.2]]],
 ];
 
 function linesBlock(near) {
@@ -427,7 +461,7 @@ function gapsBlock(placed, near) {
  * two solids' names, and on the axis the slot opens along ('up' for a
  * space between a thing and what is over it).
  */
-const FLOORS = new Set(['slab', 'bay slab', 'upper floor', 'porch']);
+const FLOORS = new Set(['slab', 'bay slab', 'upper floor', 'porch', 'basement slab']);
 const ALLOWED = [
   ['under a chair: its seat over the floor, its legs round it, the space a whoop flies under a chair',
     (a, b, axis) => axis === 'up' && ((a === 'chair' && FLOORS.has(b)) || (b === 'chair' && FLOORS.has(a)))],
@@ -604,7 +638,7 @@ function heightHold(ctx, st, z) {
   return clamp((HOVER + 0.15 * e - 0.1 * st[ST.VZ] + ctx.i) / (u > 0.5 ? u : 0.5), 0, 1);
 }
 
-async function hoverFlight(wasm, config, colliders, placed, ms, target) {
+async function hoverFlight(wasm, config, colliders, placed, ms, target, from = null) {
   const sim = await loadSim(wasm);
   call(sim, 'sim_set_airframe', 0);
   if (sim.init(config) !== SIM_OK) {
@@ -613,8 +647,8 @@ async function hoverFlight(wasm, config, colliders, placed, ms, target) {
   sim.reset();
   sim.setCellVoltage(4.2);
   uploadWorld(sim, colliders);
-  const sp = placed.spawn;
-  const y = groundUnder(placed.tops, sp.x, sp.z, sp.y);
+  const sp = from ?? placed.spawn;
+  const y = groundUnder(placed.tops, sp.x, sp.z, sp.y, undefined, basementFloorAt(sp.x, sp.z));
   setWorldFrame(sim, sp.x, y, sp.z, sp.yaw, REST);
   const o = threePosToSim(sp.x, y, sp.z, { x: 0, y: 0, z: 0 });
   call(sim, 'sim_set_pose', 0, 0, 0, 1, 0, 0, 0);
@@ -662,6 +696,15 @@ async function moduleBlock(placed) {
   check('two lift offs agree to the bit', a.hash === b.hash, a.hash.slice(0, 16));
   check('lifting off the start and holding a metre and a half touches nothing', a.touched === 0 && a.top > 1.2,
     `${a.touched} steps in contact, up to ${r3(a.top)} m`);
+  /* In the basement's lounge, the plant's ground seven metres under the
+   * lawn's. */
+  const [bx, by, bz] = worldAt(4.95, 1.15, BF);
+  const down = { x: bx, y: by, z: bz, yaw: 0 };
+  const c = await hoverFlight(wasm, config, colliders, placed, 3000, lift, down);
+  const d = await hoverFlight(wasm, config, colliders, placed, 3000, lift, down);
+  check('two lift offs in the basement agree to the bit', c.hash === d.hash, c.hash.slice(0, 16));
+  check('lifting off the basement floor and holding a metre and a half touches nothing', c.touched === 0 && c.top > 1.2,
+    `${c.touched} steps in contact, up to ${r3(c.top)} m`);
 }
 
 /* ------------------------------------------------------------------ */

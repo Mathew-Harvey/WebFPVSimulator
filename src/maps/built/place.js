@@ -129,14 +129,16 @@ const TOP_CELL = 4;
 /*
  * Build the index once per placement. Returns an object topUnder reads.
  * A box whose plan edges are not finite is a layout bug, which
- * scripts/props-check.js fails, and it is not filed; neither is one whose
- * top is at or under the paving, which can never be the answer.
+ * scripts/props-check.js fails, and it is not filed. A box whose top is at
+ * or under the paving is filed: it is never topUnder's answer unless the
+ * caller asks below the paving (`none`), and a basement's floor and
+ * furniture are only ever under it.
  */
 export function indexTops(solids) {
   const boxes = [];
   for (const s of solids) {
     const b = s.box;
-    if (b && b[4] > 0 && Number.isFinite(b[0]) && Number.isFinite(b[2])
+    if (b && Number.isFinite(b[4]) && Number.isFinite(b[0]) && Number.isFinite(b[2])
       && Number.isFinite(b[3]) && Number.isFinite(b[5]) && b[0] < b[3] && b[2] < b[5]) {
       boxes.push(b);
     }
@@ -213,13 +215,16 @@ export function indexTops(solids) {
  * The query. `src` is an index from indexTops, or a plain list of solids,
  * which is walked whole: the same answer, slowly, and the definition the
  * index is checked against. A box with its bottom over cgY is skipped and
- * the walk goes on to the next top down.
+ * the walk goes on to the next top down. `none` is the answer when no top
+ * is found, and the list's walk takes no top at or under it: 0 by default,
+ * the paving, so a top below the paving is no top; -Infinity from
+ * groundUnder, which decides about those itself.
  */
-export function topUnder(src, x, z, fromY, cgY) {
+export function topUnder(src, x, z, fromY, cgY, none = 0) {
   const reach = fromY === undefined ? Infinity : fromY + PLATFORM_REACH;
   const cg = cgY === undefined ? Infinity : cgY;
   if (Array.isArray(src)) {
-    let best = 0;
+    let best = none;
     for (const s of src) {
       const b = s.box;
       if (b && b[4] > best && b[4] <= reach && !(b[1] > cg)
@@ -231,12 +236,12 @@ export function topUnder(src, x, z, fromY, cgY) {
   }
   const ix = src;
   if (!ix || !ix.n) {
-    return 0;
+    return none;
   }
   const cx = Math.floor((x - ix.ox) / TOP_CELL);
   const cz = Math.floor((z - ix.oz) / TOP_CELL);
   if (!(cx >= 0 && cx < ix.nx && cz >= 0 && cz < ix.nz)) {
-    return 0;
+    return none;
   }
   const c = cx * ix.nz + cz;
   for (let k = ix.start[c]; k < ix.start[c + 1]; k += 1) {
@@ -244,10 +249,11 @@ export function topUnder(src, x, z, fromY, cgY) {
     const top = ix.top[i];
     if (top <= reach && !(ix.bottom[i] > cg)
       && x > ix.x0[i] && x < ix.x1[i] && z > ix.z0[i] && z < ix.z1[i]) {
-      return top;
+      /* Highest first, so every top after this one is lower still. */
+      return top > none ? top : none;
     }
   }
-  return 0;
+  return none;
 }
 
 /*
@@ -272,9 +278,18 @@ export function topUnder(src, x, z, fromY, cgY) {
  */
 export const SUPPORT_TIE = 0.001;
 
-export function groundUnder(src, x, z, fromY, cgY) {
-  const top = topUnder(src, x, z, fromY, cgY);
-  return top > 0 ? top - SUPPORT_TIE : 0;
+/*
+ * `floor` is the ground where no top is found, the paving's 0 unless the
+ * map digs below it. Nick Burns' house has a basement (extra.floor in
+ * ./index.js): inside its foundation walls the ground a craft stands on is
+ * the basement's floor, 7 m under the lawn, and every top down there is
+ * under 0. A top at or under the floor is the floor, so with the paving's
+ * 0 this answers exactly what it answered before there was a floor to ask
+ * about: a top under the paving was never ground.
+ */
+export function groundUnder(src, x, z, fromY, cgY, floor = 0) {
+  const top = topUnder(src, x, z, fromY, cgY, -Infinity);
+  return top > floor ? top - SUPPORT_TIE : floor;
 }
 
 /*

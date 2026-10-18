@@ -46,7 +46,7 @@
 
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
-import { houseLayout, FRAME, worldAt } from './house.js';
+import { houseLayout, basementFloorAt, FRAME, worldAt } from './house.js';
 import { houseDocument } from './yard.js';
 import { makeNick } from './nickdraw.js';
 
@@ -109,6 +109,7 @@ export async function buildMap(shell, onProgress, options) {
     el: { id: 'house', type: 'house' },
     parts: L.parts,
     draw: (kit) => drawHouse(kit, L),
+    floor: basementFloorAt,
   };
   const map = await buildBuilt(shell, onProgress, { ...(options || {}), document: houseDocument(), extra, sponsorMarks: false });
   /* Its own world, not Your map: the shell keys the world, the results and

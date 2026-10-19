@@ -33,7 +33,9 @@ import { mapById } from '../maps/registry.js';
 import { CAMERA_FOV_DEFAULT } from '../render/lens.js';
 import { MICRO_SCALE } from '../game/track.js';
 import { ROOM_WIDTH, ROOM_DEPTH, ROOM_HEIGHT } from '../trackbuilder/racegow.js';
-import { fetchMapDocument, fetchTrackDocument } from './board.js';
+import { fetchGhost, fetchMapDocument, fetchTrackDocument } from './board.js';
+import { decodeGhost, ghostFromBase64 } from './ghostdata.js';
+import { GhostLap } from '../game/ghost.js';
 import {
   CARD_W, CARD_H, THUMB_W, THUMB_H, base64Of, composeCard, composeThumb, encodeCard, encodeThumb,
 } from './card.js';
@@ -83,10 +85,15 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+/* ?ghost= is a time on the board whose recorded lap the sheet flies, so a
+ * track's clip is kept per lap as well as per track. */
+const ghostId = params.get('ghost') || '';
+
 function clipKey() {
   const shareId = params.get('share') || '';
   if (shareId) {
-    return clipKeyForSeatedShare(shareId);
+    const base = clipKeyForSeatedShare(shareId);
+    return ghostId ? `${base}:ghost:${ghostId}` : base;
   }
   const mapShareId = params.get('mapshare') || '';
   if (mapShareId) {
@@ -172,6 +179,87 @@ function loseRenderer(shell) {
   }
 }
 
+/*
+ * A GHOST LAP, the owner's pick of 2026-10-19 for the board's track sheet:
+ * "a fly a ghoast lap here?". With ?ghost= the sheet's clip is not the
+ * title camera going round the layout but one recorded lap off the board,
+ * the airframe flown along it and a camera chasing it, so a reader sees
+ * the line the track is raced on before they fly it.
+ *
+ * THE CAMERA RIDES THE LINE ITSELF, a moment behind the airframe and a
+ * little above it: where the craft was GHOST_LAG_MS ago, lifted by a share
+ * of the distance it has flown since. The flown line is the one path
+ * through the course known to miss every gate, so a camera on it misses
+ * them too, and both the lag and the lift scale with speed, so a whoop in
+ * a room and a five inch on a field are framed alike with no per class
+ * numbers. A floor keeps it off the airframe when the lap hovers and a
+ * reach of GHOST_REACH floors keeps a fast lap from leaving it a speck, and
+ * it is eased so a twitch on the sticks is not a jolt on the screen.
+ *
+ * The clip is the lap at the speed it was flown, up to GHOST_CLIP_MAX_MS;
+ * a longer lap is played faster to fit, as the orbit is.
+ */
+const GHOST_LAG_MS = 340;
+const GHOST_LIFT = 0.42;
+const GHOST_EASE_MS = 90;
+const GHOST_CLIP_MAX_MS = 40000;
+const GHOST_REACH = 1.8;
+
+function makeGhostChase(lap, THREE, floor) {
+  const pose = {};
+  const at = new THREE.Vector3();
+  const from = new THREE.Vector3();
+  const cam = new THREE.Vector3(); // the camera's offset from the airframe
+  const dir = new THREE.Vector3();
+  let primed = false;
+  const lapMs = lap.durationMs;
+  const sampleInto = (t, v) => {
+    const wrapped = ((t % lapMs) + lapMs) % lapMs;
+    lap.sample(wrapped, pose);
+    v.set(pose.px, pose.py, pose.pz);
+    return pose;
+  };
+  return {
+    lapMs,
+    reset() {
+      primed = false;
+    },
+    update(tMs, dtMs, camera, craft) {
+      const p = sampleInto(tMs, at);
+      if (craft) {
+        craft.position.copy(at);
+        craft.quaternion.set(p.qx, p.qy, p.qz, p.qw);
+      }
+      sampleInto(tMs - GHOST_LAG_MS, from);
+      dir.subVectors(at, from);
+      let dist = dir.length();
+      if (dist < 1e-4) {
+        dir.set(0, 0, 1);
+      } else {
+        dir.divideScalar(dist);
+      }
+      if (dist < floor || dist > floor * GHOST_REACH) {
+        dist = Math.min(Math.max(dist, floor), floor * GHOST_REACH);
+        from.copy(at).addScaledVector(dir, -dist);
+      }
+      from.y += dist * GHOST_LIFT;
+      /* The OFFSET is eased, not the position: an eased position trails a
+       * fast lap by its speed times the ease, metres on a five inch, and
+       * the airframe shrinks to a speck however close the reach is. */
+      from.sub(at);
+      if (!primed) {
+        cam.copy(from);
+        primed = true;
+      } else {
+        cam.lerp(from, 1 - Math.exp(-Math.max(0, dtMs) / GHOST_EASE_MS));
+      }
+      camera.up.set(0, 1, 0);
+      camera.position.copy(at).add(cam);
+      camera.lookAt(at);
+    },
+  };
+}
+
 async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
   const THREE = await import('three');
   const { buildShell } = await import('../render/shell.js');
@@ -228,6 +316,30 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
 
   const attract = makeAttractCamera(view);
 
+  /* The recorded lap, when the sheet asked for one. A ghost that cannot be
+   * had is not an error worth an empty box: the orbit flies instead. */
+  let chase = null;
+  if (shareId && ghostId) {
+    try {
+      setStatus('Loading the lap.');
+      const payload = await fetchGhost(shareId, ghostId);
+      const lap = new GhostLap(decodeGhost(ghostFromBase64(payload.ghost)), {
+        name: payload.name || '', source: 'board',
+      });
+      const room = view.trackClass === 'micro';
+      if (room && typeof shell.swapCraft === 'function') {
+        /* A room is flown on the whoop, so the lap is drawn on one. */
+        shell.swapCraft('whoop65');
+      }
+      /* The same floor for both: the whoop is drawn MICRO_SCALE times life
+       * size, which is the five inch's sweep exactly (src/render/craft.js). */
+      chase = makeGhostChase(lap, THREE, 0.6);
+      setStatus('');
+    } catch (e) {
+      console.warn('The recorded lap could not be loaded, so the sheet shows the orbit.', e);
+    }
+  }
+
   let alive = true;
   const onResize = () => {
     if (!alive) {
@@ -237,11 +349,12 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
   };
   window.addEventListener('resize', onResize);
 
-  const periodMs = periodMsOf(attract);
-  const loopMs = clipDurationMs(periodMs);
+  const periodMs = chase ? chase.lapMs : periodMsOf(attract);
+  const loopMs = chase ? Math.min(chase.lapMs, GHOST_CLIP_MAX_MS) : clipDurationMs(periodMs);
   /* One full camera cycle in the clip, sped up if the natural period is
    * longer than CLIP_MS_MAX. Recording a slice of a 57 s orbit and looping
-   * it is a jump, which is what the board thumbnails were doing. */
+   * it is a jump, which is what the board thumbnails were doing. A lap is
+   * one cycle too, start line to start line. */
   const captureScale = (periodMs > 0 ? periodMs : loopMs) / loopMs;
 
   let prevWall = performance.now();
@@ -272,7 +385,11 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
     const dt = Math.min(Math.max(nowWall - prevWall, 0), 100);
     prevWall = nowWall;
     camMs += dt * captureScale;
-    attract.update(camMs, shell.camera, { craft: shell.quad });
+    if (chase) {
+      chase.update(camMs, dt * captureScale, shell.camera, shell.quad);
+    } else {
+      attract.update(camMs, shell.camera, { craft: shell.quad });
+    }
     if (shell.blades) {
       for (let m = 0; m < 4; m += 1) {
         const dir = shell.propSpin ? shell.propSpin[m] : 1;
@@ -317,7 +434,12 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
     titleAcc = 0;
     titleStepMs = 0;
     windT0 = performance.now();
-    attract.update(0, shell.camera, { craft: shell.quad });
+    if (chase) {
+      chase.reset();
+      chase.update(0, 0, shell.camera, shell.quad);
+    } else {
+      attract.update(0, shell.camera, { craft: shell.quad });
+    }
     view.updateAnim(0);
     view.updateWind(0, shell.quad.position, 0.85);
     view.post.render();

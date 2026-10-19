@@ -106,8 +106,8 @@ const PELVIS_STAND = 0.96;
 const SIT_LIFT = 0.12;
 const THIGH = 0.43;
 export const SOLE = 0.08;
-/* The top of his hair over the head bone, for the balloon: ./nickdraw.js
- * draws his head at 1.4 times a real one. */
+/* The top of his hair over the head bone, for the balloon: ./nickmodel.js
+ * draws his head at about 1.3 times a real one. */
 export const HEAD_TOP = 0.38;
 
 /* ------------------------------------------------------------------ */

@@ -1,48 +1,42 @@
 /*
- * nickdraw.js: Nick Burns drawn, the owner's manga render of him and his
- * speech balloon, posed every frame from ./nick.js.
+ * nickdraw.js: Nick Burns drawn, a model of him and his speech balloon,
+ * posed every frame from ./nick.js.
  *
  * HOW HE LOOKS. The owner's ask of 2026-10-18: "Attached is manga render of
- * nick, let's use this rather than the poly character." The render was a
- * sheet of seven side views of him walking and six of his face, which the
- * owner made and gave. The seven walk views turned out to be one pose, so
- * drawn as a flip book he slid along, and seated he was cut off at the
- * hips; the owner, 2026-10-19: "nick no longer walks properly no
- * animation, that should be fixed. also he has no legs or red shoes
- * anymore, fix that." He asked the same day whether the likeness could be
- * better ("can we improve the likeness of nicks face at allk?") and made
- * a second sheet in the same layout, nearer him (salt and pepper hair
- * combed across, clear glasses, a crew neck, his red shoes): "lets use
- * this". Its figures came cut from their grey; they are packed into one
- * atlas, ../../../assets/house/nick-manga.webp (NOTICE).
- * So he is a cut out now, the way a paper puppet is: one view's body from
- * the hips up, and its front leg stood straight and cut at the hip, the
- * knee and the ankle into a thigh, a shin and a shoe, each piece inked
- * round where it was cut, twice (the far leg's a shade darker). The
- * pieces are posed every frame from the skeleton ./nick.js already keeps,
- * so he walks with its stride, sits with its thighs level and shins down,
- * and gets up and sits down through its own blend; outside a walk his feet
- * are kept on the floor by bending the knee. The whole cut out turns about
- * his own axis to face the camera, as a cut out in a panel does, drawn in
- * the render's own colour and ink and unlit, so the map's light does not
- * shade him twice, and mirrored when the way he faces points to the right
- * of the screen. He is 1.83 m in real metres standing, his size next to a
- * door.
+ * nick, let's use this rather than the poly character." He was a paper cut
+ * out of that render for a day, posed by the skeleton; the owner gave a
+ * second sheet on 2026-10-19 nearer him ("lets use this") and, having flown
+ * past the cut out, asked for him in the round: "its timee to go to town to
+ * build nice as a 3d model using the asseets you have as inspriation ...
+ * you got htis go hard". So he is a model again, built from that sheet
+ * when the map is (./nickmodel.js says how): his head shaped to the
+ * render's faces and wearing them, his body in its clothes. He is 1.9 m in
+ * real metres to the top of his hair, his head drawn about 1.3 times a real
+ * one, as the render draws it, so his face reads from across the yard.
  *
- * ONE DRAW CALL for him and one for his balloon while it is up, both the
- * same program (a texture, alpha tested, no fog). No skinning and no
- * shadow: seven quads in one buffer whose 28 corners are written each
- * frame, a few hundred multiplications, and each piece a hair in front of
- * the one it covers so the depth test lays them in order.
+ * HIS FACE is one of the render's six, chosen by what he is doing: smiling
+ * as he goes about, and the face that goes with a line while he says it
+ * (SAYS), the same one the balloon shows. A line said smiling or laughing
+ * flips between the two about three times a second, so he talks.
+ *
+ * ONE DRAW CALL for him, and one for his balloon while it is up. His
+ * material is the map's own cel() over his vertex colours and the atlas
+ * ./nickmodel.js paints from the render, so he is lit and inked as the
+ * house is. Each vertex belongs to one bone and is moved by its bone's
+ * transform on the CPU (about 7,900 of them, only the bones that moved and
+ * only while he is in view or near it), so the ink, the shadow map and the
+ * comic layer see the pose that is drawn without a skinning program of
+ * their own. He casts his own shadow and takes none, lit like a character
+ * in a panel, as the first model was.
  *
  * THE BALLOON is a card that faces the camera, lettered in the simulator's
  * own hand (src/ui/lettering.js) on a 640 by 256 canvas that is painted
  * again only when what he says changes, with the face that goes with the
- * line in a round panel at its left, cut from the same atlas. It grows with
- * distance past twenty metres, so it can be read across the yard, and goes
- * with him behind a wall, since it is depth tested like anything else. Its
- * alpha is tested, not blended, so its outline is a real silhouette and the
- * map's ink draws round it.
+ * line in a round panel at its left, cut from the render's sheet. It grows
+ * with distance past twenty metres, so it can be read across the yard, and
+ * goes with him behind a wall, since it is depth tested like anything
+ * else. Its alpha is tested, not blended, so its outline is a real
+ * silhouette and the map's ink draws round it.
  *
  * WHAT HE SAYS. His four lines on his own clock (./nick.js), and two the
  * owner asked for that answer the craft, the way round he settled on
@@ -56,8 +50,8 @@
  * is what the balloon says. Every balloon comes from him, over his head:
  * the answers were pinned in front of the camera for a day, and the owner
  * asked on 2026-10-19 for "nicks speach bubbles should only come from
- * nick's character". He is still not solid: the craft
- * flies through him, and what he says is all a hit does.
+ * nick's character". He is still not solid: the craft flies through him,
+ * and what he says is all a hit does.
  *
  * Render may read frame time; this file reads only the clock the map is
  * handed, the camera and where the drawn craft is. Nothing here reaches the
@@ -80,54 +74,15 @@
  */
 
 import * as THREE from 'three';
+import { cel } from '../city/vendored/core/toon.js';
 import { drawWord, wordWidth, INK, PAPER, INKS } from '../../ui/lettering.js';
 import { FRAME, UMBRELLA, PERGOLA, DEP } from './house.js';
-import { NICK_LINES, BONE, nickAt, nickPose } from './nick.js';
+import { BONES, BONE, NICK_LINES, HEAD_TOP, nickAt, nickBones, nickPose } from './nick.js';
+import { AW, AH, FACES, FACE, nickModel, paintNickAtlas } from './nickmodel.js';
 
-/* ------------------------------------------------------------------ */
-/* The atlas                                                           */
-/* ------------------------------------------------------------------ */
-
-const ATLAS_URL = new URL('../../../assets/house/nick-manga.webp', import.meta.url).href;
-const AW = 2048;
-const AH = 1024;
-/* Pixels to a real metre: his stride view is laid about 515 px from
- * crown to sole, 1.8 m. */
-const PX_M = 515 / 1.8;
-/*
- * The pieces, [x, y, w, h] px in the atlas, and their joints in the
- * piece's own pixels: the body from the hips up with the hip it turns
- * about, and each leg's thigh (hip to knee), shin (knee to ankle) and
- * shoe (the ankle), drawn standing straight, near and far.
- */
-const TORSO = { rect: [0, 0, 292, 364], hip: [145, 322] };
-const THIGH = [{ rect: [300, 0, 59, 167], at: [29, 30] }, { rect: [526, 0, 59, 167], at: [29, 30] }];
-const SHIN = [{ rect: [367, 0, 52, 128], at: [27, 24] }, { rect: [593, 0, 52, 128], at: [27, 24] }];
-const SHOE = [{ rect: [427, 0, 91, 51], at: [65, 23] }, { rect: [653, 0, 91, 51], at: [65, 23] }];
-/* The leg in real metres, as the render draws it: hip to knee, knee to
- * ankle, ankle to sole. */
-const THIGH_M = 110 / PX_M;
-const SHIN_M = 105 / PX_M;
-const SOLE_M = 26 / PX_M;
-const LEG_M = THIGH_M + SHIN_M + SOLE_M;
-/* The skeleton's hip under its pelvis, and its leg (./nick.js). */
-const HIP_DROP = 0.04;
-const PELVIS_STAND = 0.96;
-/* The draw order, back to front, and the step between layers, real
- * metres: far shoe, shin, thigh, near shoe, shin, thigh, body. */
-const LAYER = 0.004;
-/* A walking shoe tips with its shin by this much, toe down behind him and
- * toe up in front; a stood or seated one is flat. */
-const SHOE_TIP = 0.35;
-/* Seated, the far foot a little behind the near one, so two legs read. */
-const FAR_BACK = 0.05;
-/* His faces, [x, y, w, h] px in the atlas: laughing, frowning, crying,
- * shouting, sad, smiling, packed in that order. */
-const FACES = [
-  [36, 611, 267, 355], [378, 614, 263, 350], [718, 614, 264, 350],
-  [1056, 611, 267, 355], [1396, 612, 268, 354], [1737, 612, 265, 354],
-];
-const FACE = { laugh: 0, frown: 1, cry: 2, shout: 3, sad: 4, smile: 5 };
+/* The render's sheet (NOTICE): his six faces, which his model wears and
+ * his balloon shows. */
+const SHEET_URL = new URL('../../../assets/house/nick-manga.webp', import.meta.url).href;
 
 /* ------------------------------------------------------------------ */
 /* What he says                                                        */
@@ -222,7 +177,7 @@ function rowsOf(ctx, text) {
   return best;
 }
 
-function paintBalloon(canvas, say, atlas) {
+function paintBalloon(canvas, say, sheet) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, BW, BH);
   ctx.lineJoin = 'round';
@@ -255,7 +210,7 @@ function paintBalloon(canvas, say, atlas) {
   ctx.stroke();
   ctx.fillStyle = PAPER;
   ctx.fill();
-  if (atlas) {
+  if (sheet) {
     const [fx, fy, fw, fh] = FACES[say.face];
     ctx.save();
     ctx.beginPath();
@@ -263,90 +218,45 @@ function paintBalloon(canvas, say, atlas) {
     ctx.clip();
     /* The head fills the panel; the panel's middle is about his eyes. */
     const k = (2.3 * r) / fw;
-    ctx.drawImage(atlas, fx, fy, fw, fh, cx - (fw * k) / 2, cy - fh * k * 0.42, fw * k, fh * k);
+    ctx.drawImage(sheet, fx, fy, fw, fh, cx - (fw * k) / 2, cy - fh * k * 0.42, fw * k, fh * k);
     ctx.restore();
   }
 }
 
 /* ------------------------------------------------------------------ */
-/* The cut out                                                         */
-/* ------------------------------------------------------------------ */
-
-/* The seven pieces in draw order, each with its atlas window and the
- * joint (px in the piece) it turns about. */
-const PIECES = [SHOE[1], SHIN[1], THIGH[1], SHOE[0], SHIN[0], THIGH[0], { rect: TORSO.rect, at: TORSO.hip }];
-
-/* Seven quads, four corners each, their texture windows fixed; the
- * corners are written by posePiece every frame. */
-function cutOutGeometry() {
-  const n = PIECES.length;
-  const pos = new Float32Array(n * 4 * 3);
-  const uv = new Float32Array(n * 4 * 2);
-  const index = [];
-  PIECES.forEach((p, i) => {
-    const [x, y, w, h] = p.rect;
-    const u0 = x / AW;
-    const u1 = (x + w) / AW;
-    const v0 = 1 - (y + h) / AH;
-    const v1 = 1 - y / AH;
-    uv.set([u0, v1, u1, v1, u0, v0, u1, v0], i * 8);
-    const k = i * 4;
-    index.push(k, k + 2, k + 1, k + 2, k + 3, k + 1);
-  });
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
-  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  g.setIndex(index);
-  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1.4);
-  return g;
-}
-
-/* Piece i with its joint at (jx, jy), real metres in the cut out's plane
- * (x behind him, y up), turned counterclockwise by `a` as drawn, facing
- * left: a positive `a` swings a piece that hangs down behind him and leans
- * one that stands up forward. */
-function posePiece(pos, i, jx, jy, a) {
-  const [, , w, h] = PIECES[i].rect;
-  const [ax, ay] = PIECES[i].at;
-  const c = Math.cos(a);
-  const sn = Math.sin(a);
-  const x0 = -ax / PX_M;
-  const x1 = (w - ax) / PX_M;
-  const y0 = (ay - h) / PX_M;
-  const y1 = ay / PX_M;
-  const z = i * LAYER;
-  const o = i * 12;
-  const corner = (k, x, y) => {
-    pos[o + k * 3] = jx + x * c - y * sn;
-    pos[o + k * 3 + 1] = jy + x * sn + y * c;
-    pos[o + k * 3 + 2] = z;
-  };
-  corner(0, x0, y1);
-  corner(1, x1, y1);
-  corner(2, x0, y0);
-  corner(3, x1, y0);
-}
-
-/*
- * A leg's thigh and shin angles (radians from hanging straight down,
- * positive behind him) with the ankle at (tx, ty) from the hip, the knee
- * bent forward, into out[0] and out[1].
- */
-function reach(tx, ty, out) {
-  const d = Math.min(Math.hypot(tx, ty), THIGH_M + SHIN_M - 1e-4);
-  const base = Math.atan2(tx, -ty);
-  const cosA = (THIGH_M * THIGH_M + d * d - SHIN_M * SHIN_M) / (2 * THIGH_M * d);
-  const t = base - Math.acos(Math.max(-1, Math.min(1, cosA)));
-  const kx = THIGH_M * Math.sin(t);
-  const ky = -THIGH_M * Math.cos(t);
-  out[0] = t;
-  out[1] = Math.atan2(tx - kx, -(ty - ky));
-  return out;
-}
-
-/* ------------------------------------------------------------------ */
 /* Nick                                                                */
 /* ------------------------------------------------------------------ */
+
+/* A line said smiling or laughing flips between those two faces, his
+ * mouth shut and open, every TALK_MS of the line, and holds its own face
+ * for its last TALK_HOLD. */
+const TALK_MS = 170;
+const TALK_HOLD = 250;
+const FACE_NAMES = Object.fromEntries(Object.entries(FACE).map(([k, v]) => [v, k]));
+
+/* A bone's matrix that has not changed since its run was last moved. */
+function same(M, L, o) {
+  for (let k = 0; k < 12; k += 1) {
+    if (M[o + k] !== L[o + k]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* Ranges not yet sent (moved near him but drawn in no pass) would pile up;
+ * past a handful they become the one span that covers them. */
+function span(attr) {
+  const r = attr.updateRanges;
+  let lo = Infinity;
+  let hi = 0;
+  for (const g of r) {
+    lo = Math.min(lo, g.start);
+    hi = Math.max(hi, g.start + g.count);
+  }
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(lo, hi - lo);
+}
 
 /*
  * Nick for a map: `group` goes in the map's scene (whose dispose frees it,
@@ -366,19 +276,40 @@ function reach(tx, ty, out) {
  */
 export function makeNick(camera, craftAt = () => null) {
   const { OX, OZ, S } = FRAME;
-  const atlas = new THREE.TextureLoader().load(ATLAS_URL, () => {
+  const model = nickModel();
+  const geometry = model.geometry;
+  const posAttr = geometry.attributes.position;
+  const norAttr = geometry.attributes.normal;
+  const uvAttr = geometry.attributes.uv;
+
+  /* His atlas, painted once with his hair and skin and again when the
+   * render's sheet has come with his faces; he is shown from then, so he
+   * is never faceless. */
+  const skinCanvas = document.createElement('canvas');
+  skinCanvas.width = AW;
+  skinCanvas.height = AH;
+  paintNickAtlas(skinCanvas, null);
+  const skinMap = new THREE.CanvasTexture(skinCanvas);
+  skinMap.colorSpace = THREE.SRGBColorSpace;
+  skinMap.anisotropy = 4;
+  let sheet = null;
+  new THREE.ImageLoader().load(SHEET_URL, (img) => {
+    sheet = img;
+    paintNickAtlas(skinCanvas, img);
+    skinMap.needsUpdate = true;
     mesh.visible = true;
     painted = null;
+  }, undefined, () => {
+    /* No sheet: he still walks, a head of hair and skin with no face. */
+    mesh.visible = true;
   });
-  atlas.colorSpace = THREE.SRGBColorSpace;
-  atlas.anisotropy = 4;
-  const cut = cutOutGeometry();
-  const corners = cut.attributes.position;
-  const mesh = new THREE.Mesh(cut, new THREE.MeshBasicMaterial({ map: atlas, alphaTest: 0.5, fog: false }));
+  /* Banded high, so the shade across his face is a step and not a mask. */
+  const material = cel({ color: 0xffffff, map: skinMap, vertexColors: true, bands: 'soft3', tint: 0x8a7c96, cache: false });
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'nick';
-  mesh.castShadow = false;
+  mesh.castShadow = true;
   mesh.receiveShadow = false;
-  /* Shown when the atlas has come, so he is never a dark cut out. */
+  mesh.scale.setScalar(S);
   mesh.visible = false;
 
   const canvas = document.createElement('canvas');
@@ -393,7 +324,7 @@ export function makeNick(camera, craftAt = () => null) {
   balloon.castShadow = false;
   balloon.receiveShadow = false;
   /* Painted now, so its texture is whole from the start, and again when
-   * the atlas has come and the face can go in. Hidden, it is still
+   * the sheet has come and the face can go in. Hidden, it is still
    * warmed: three's compile walks every material in the scene, shown or
    * not. */
   let painted = SAYS[0];
@@ -404,15 +335,24 @@ export function makeNick(camera, craftAt = () => null) {
   group.name = 'nick';
   group.add(mesh, balloon);
 
+  const NB = BONES.length;
   const pose = nickPose();
+  const M = new Float64Array(NB * 12);
+  /* Each bone's matrix as it was last moved; NaN moves every bone the
+   * first time. */
+  const L = new Float64Array(NB * 12).fill(NaN);
   const eye = { x: 0, y: 0, h: 0 };
+  const frustum = new THREE.Frustum();
+  const pm = new THREE.Matrix4();
+  const sphere = new THREE.Sphere();
   const top = new THREE.Vector3();
   let clock = 0;
   let last = null;
-  const legs = [[0, 0], [0, 0]];
-  const ik = [0, 0];
   let seated = false;
-  let mirrored = false;
+  let skinnedAt = null;
+  let skins = 0;
+  let lastMoved = 0;
+  let face = 0;
   /* What he is saying to the craft, if anything, and for how long yet. */
   let react = null;
   let reactAge = 0;
@@ -421,52 +361,93 @@ export function makeNick(camera, craftAt = () => null) {
   let hits = 0;
   let closes = 0;
 
-  /*
-   * The cut out posed: the body on the hip, leaned as the skeleton's spine
-   * is, and each leg from the skeleton's thigh and knee, `near` the leg on
-   * the camera's side. Outside a walk the ankle is brought to the floor
-   * where the skeleton puts it forward, so a seated or rising Nick stands
-   * on the floor with the render's shorter leg; walking, the skeleton's
-   * own stride is drawn as it is.
-   */
-  function poseCutOut(near) {
-    const J = pose.J;
-    const sit = pose.sit;
-    const hipY = pose.pelvisH - HIP_DROP - (PELVIS_STAND - HIP_DROP - LEG_M) * (1 - sit);
-    const plant = 1 - pose.walk;
-    for (let k = 0; k < 2; k += 1) {
-      const b = (k === 0) === near ? BONE.thighL : BONE.thighR;
-      const t = J[b * 3];
-      const s = t + J[(b + 1) * 3];
-      const kx = THIGH_M * Math.sin(t);
-      const ky = -THIGH_M * Math.cos(t);
-      let ax = kx + SHIN_M * Math.sin(s);
-      let ay = ky - SHIN_M * Math.cos(s);
-      if (k === 1) {
-        ax += FAR_BACK * sit;
+  /* Bone by bone, each bone's matrix in locals, and only the bones whose
+   * matrix changed since they were last moved: seated, his legs hold still
+   * while he talks. Only the runs that moved go to the GPU. */
+  function skin() {
+    const out = posAttr.array;
+    const outN = norAttr.array;
+    const rp = model.rest;
+    const rn = model.restN;
+    const run = model.start;
+    let from = -1;
+    let moved = 0;
+    for (let b = 0; b <= NB; b += 1) {
+      const dirty = b < NB && run[b + 1] > run[b] && !same(M, L, b * 12);
+      if (dirty) {
+        const o = b * 12;
+        for (let k = 0; k < 12; k += 1) {
+          L[o + k] = M[o + k];
+        }
+        const m0 = M[o];
+        const m1 = M[o + 1];
+        const m2 = M[o + 2];
+        const m3 = M[o + 3];
+        const m4 = M[o + 4];
+        const m5 = M[o + 5];
+        const m6 = M[o + 6];
+        const m7 = M[o + 7];
+        const m8 = M[o + 8];
+        const tx = M[o + 9];
+        const ty = M[o + 10];
+        const tz = M[o + 11];
+        const k1 = run[b + 1] * 3;
+        for (let k = run[b] * 3; k < k1; k += 3) {
+          const x = rp[k];
+          const y = rp[k + 1];
+          const z = rp[k + 2];
+          out[k] = m0 * x + m1 * y + m2 * z + tx;
+          out[k + 1] = m3 * x + m4 * y + m5 * z + ty;
+          out[k + 2] = m6 * x + m7 * y + m8 * z + tz;
+          const a = rn[k];
+          const c = rn[k + 1];
+          const d = rn[k + 2];
+          outN[k] = m0 * a + m1 * c + m2 * d;
+          outN[k + 1] = m3 * a + m4 * c + m5 * d;
+          outN[k + 2] = m6 * a + m7 * c + m8 * d;
+        }
+        moved += run[b + 1] - run[b];
+        if (from < 0) {
+          from = run[b];
+        }
+      } else if (from >= 0 && (b === NB || run[b + 1] > run[b])) {
+        /* The end of a run of moved bones (an empty bone does not end one). */
+        posAttr.addUpdateRange(from * 3, (run[b] - from) * 3);
+        norAttr.addUpdateRange(from * 3, (run[b] - from) * 3);
+        from = -1;
       }
-      const floor = pose.floor + SOLE_M - hipY;
-      ay += (floor - ay) * plant;
-      reach(ax, ay, ik);
-      legs[k][0] = ik[0];
-      legs[k][1] = ik[1];
     }
-    const pos = corners.array;
-    /* Far, then near: shoe, shin, thigh, at layers 0 to 5. */
-    for (let k = 1; k >= 0; k -= 1) {
-      const [t, s] = legs[k];
-      const kx = THIGH_M * Math.sin(t);
-      const ky = hipY - THIGH_M * Math.cos(t);
-      const ax = kx + SHIN_M * Math.sin(s);
-      const ay = ky - SHIN_M * Math.cos(s);
-      const i = (1 - k) * 3;
-      posePiece(pos, i, ax, ay, SHOE_TIP * s * pose.walk);
-      posePiece(pos, i + 1, kx, ky, s);
-      posePiece(pos, i + 2, 0, hipY, t);
+    if (posAttr.updateRanges.length > 4) {
+      span(posAttr);
+      span(norAttr);
     }
-    posePiece(pos, 6, 0, hipY, J[BONE.spine * 3]);
-    corners.needsUpdate = true;
-    cut.boundingSphere.center.set(0, hipY + 0.2, 0);
+    lastMoved = moved;
+    if (moved > 0) {
+      posAttr.needsUpdate = true;
+      norAttr.needsUpdate = true;
+      skins += 1;
+    }
+  }
+
+  /* His face k: the front of his head reads tile k of the atlas. */
+  function setFace(k) {
+    if (k === face) {
+      return;
+    }
+    const uv = uvAttr.array;
+    const du = k * model.tileU;
+    for (let i = 0; i < model.face.length; i += 1) {
+      uv[model.face[i] * 2] = model.faceU[i] + du;
+    }
+    uvAttr.needsUpdate = true;
+    face = k;
+  }
+
+  /* The top of his hair in the world, into `out`, from the bones. */
+  function headTop(out, over) {
+    const h = BONE.head * 12;
+    out.set(M[h + 9], M[h + 10] + HEAD_TOP + over, M[h + 11]);
+    return mesh.localToWorld(out);
   }
 
   /* The craft against him, in real metres: a hit, close, or neither, and
@@ -485,7 +466,7 @@ export function makeNick(camera, craftAt = () => null) {
     const dx = (q.x - OX) / S - pose.x;
     const dy = (OZ - q.z) / S - pose.y;
     const r = Math.hypot(dx, dy);
-    const head = seated ? pose.pelvisH + (1.8 - PELVIS_STAND) : pose.floor + 1.8;
+    const head = M[BONE.head * 12 + 10] + HEAD_TOP;
     const h = q.y / S;
     const above = Math.max(0, h - head, pose.floor - h);
     const dist = Math.hypot(r, above);
@@ -525,46 +506,58 @@ export function makeNick(camera, craftAt = () => null) {
     eye.y = (OZ - cam.z) / S;
     eye.h = cam.y / S;
     nickAt(clock, eye, pose);
+    nickBones(pose, M);
     seated = pose.sit > 0.5;
     answer(d);
 
-    /* The cut out: posed, stood at his place, turned to the camera about
-     * his own axis, and mirrored when he faces right. Facing left it shows
-     * his left side, so the left leg is the near one. */
-    const x = OX + S * pose.x;
-    const z = OZ - S * pose.y;
-    const yaw = Math.atan2(cam.x - x, cam.z - z);
-    const side = Math.sin(pose.yaw) * Math.cos(yaw) - Math.cos(pose.yaw) * Math.sin(yaw);
-    if (Math.abs(side) > 0.15) {
-      mirrored = side > 0;
-    }
-    poseCutOut(!mirrored);
-    mesh.scale.set(mirrored ? -S : S, S, S);
-    mesh.position.set(x, 0, z);
-    mesh.rotation.y = yaw;
+    mesh.position.set(OX + S * pose.x, 0, OZ - S * pose.y);
+    mesh.rotation.y = pose.yaw;
+    mesh.updateMatrixWorld();
 
+    /* What he says, and the face that goes with it. */
     const say = react || (pose.line >= 0 ? SAYS[pose.line] : null);
-    top.set(x, S * (pose.floor + 1), z);
-    const dist = cam.distanceTo(top);
-    if (!say || dist > 150) {
+    const age = react ? reactAge : pose.lineAge;
+    const dur = react ? react.ms : pose.lineDur;
+    let look = FACE.smile;
+    if (say) {
+      look = say.face;
+      if ((look === FACE.smile || look === FACE.laugh) && age < dur - TALK_HOLD && Math.floor(age / TALK_MS) % 2 === 1) {
+        look = look === FACE.smile ? FACE.laugh : FACE.smile;
+      }
+    }
+    setFace(look);
+
+    const dist = cam.distanceTo(mesh.position);
+    pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    frustum.setFromProjectionMatrix(pm);
+    sphere.center.set(mesh.position.x, mesh.position.y + S * 1.0, mesh.position.z);
+    sphere.radius = S * 1.6;
+    const seen = dist < 40 || frustum.intersectsSphere(sphere);
+    /* A still pose (his clock stopped and the camera too far for him to
+     * look at it) is not moved again. */
+    const still = skinnedAt === clock && pose.look === 0 && pose.wave === 0;
+    if (seen && !still) {
+      skin();
+      skinnedAt = clock;
+    }
+
+    headTop(top, 0);
+    if (!say || cam.distanceTo(top) > 150) {
       balloon.visible = false;
       return;
     }
     if (say !== painted) {
-      paintBalloon(canvas, say, atlas.image || null);
+      paintBalloon(canvas, say, sheet);
       texture.needsUpdate = true;
       painted = say;
     }
     balloon.visible = true;
-    const age = react ? reactAge : pose.lineAge;
-    const dur = react ? react.ms : pose.lineDur;
     const pop = (0.65 + 0.35 * Math.min(1, age / 160)) * (1 - 0.6 * Math.max(0, (age - dur + 150) / 150));
     /* Over his head, a little higher outdoors than under a ceiling; and
      * over the umbrella when he is under it and the camera is above it,
      * where the canopy would hide it, and over the rafters when the camera
      * is above those, where the beam would. */
-    const head = seated ? pose.pelvisH + (1.8 - PELVIS_STAND) : pose.floor + 1.8;
-    top.set(x, S * (head + (pose.indoors ? 0.04 : 0.1)), z);
+    headTop(top, pose.indoors ? 0.02 : 0.08);
     if (!pose.indoors && eye.h > RAFTERS && pose.x > PERGOLA.x0 - 0.3 && pose.x < PERGOLA.x1 + 0.3 && pose.y > DEP && pose.y < PERGOLA.y1 + 0.5) {
       top.y = S * (RAFTERS + 0.05);
     } else if (pose.cover && eye.h > UMBRELLA.h0) {
@@ -572,10 +565,14 @@ export function makeNick(camera, craftAt = () => null) {
     }
     balloon.position.copy(top);
     balloon.quaternion.copy(camera.quaternion);
-    const far = Math.min(3, Math.max(1, dist / 20));
+    const far = Math.min(3, Math.max(1, cam.distanceTo(top) / 20));
     balloon.scale.setScalar(S * (pose.indoors ? 0.75 : 1) * far * pop);
   }
+  /* Posed once whether or not he is in view, so his shadow and his first
+   * sight are a man and not his parts heaped at his feet. */
   update(0);
+  skin();
+  skinnedAt = clock;
 
   return {
     group,
@@ -586,11 +583,16 @@ export function makeNick(camera, craftAt = () => null) {
       at: [Math.round(pose.x * 100) / 100, Math.round(pose.y * 100) / 100],
       line: react ? react.text : (pose.line >= 0 ? NICK_LINES[pose.line].text : null),
       answering: react === CATFISH ? 'hit' : (react === THANKS ? 'close' : null),
+      face: FACE_NAMES[face],
       hits,
       closes,
-      legs: legs.map(([t, sh]) => [Math.round(t * 100) / 100, Math.round(sh * 100) / 100]),
       seated,
-      mirrored,
+      looking: pose.look > 0,
+      waving: pose.wave > 0,
+      skins,
+      moved: lastMoved,
+      vertices: posAttr.count,
+      triangles: geometry.index.count / 3,
       ready: mesh.visible,
     }),
   };

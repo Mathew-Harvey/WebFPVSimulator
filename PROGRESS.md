@@ -70986,3 +70986,11 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Checked: `npm run check:house` all passed, `lint:preload` up to date, and both reactions through the real shell (`node scripts/shots.js` via the thread's react rig): close shows the thanks, a hit shows Holy Catfish, counters close 1 then hit 1. The one console error was the board stub, which was not running (connection refused). Not run: verify (no physics change). Nobody has flown it.
 - What went wrong: the first build read the order of his first message as the order of the reactions; he settled it after flying.
 - Approval: the owner wrote "Push to main" at 02:22:41Z on 2026-10-19 in the Nick Burns' house thread, after draft PR 87 and the entry above, in answer to the reply that said latency does not change and asked whether to push it. It covers PR 87 only: the two reactions swapped and the thanks line's smiling face. Main fetched first (1cbf844, the branch's base), so a fast forward. Nobody has flown it yet.
+
+## 2026-10-19 | menus | Escape goes up one layer everywhere, and leaving the sim asks first (draft PR)
+
+- Ask: the owner, 05:47Z on 2026-10-19: in any and all menus or in game, Escape should always go back or up one layer, except that leaving the sim shows an are you sure pop up before going to the landing page.
+- Audit first: every screen already routes Escape through `back()` (flight opens the pause menu, pause resumes, rooms return to where they were opened from, a dropdown, search, a confirm and a support prompt each close first). The one gap was the gate, the root, where Escape did nothing.
+- Change, `src/ui/ui.js` only: Escape or pad B on the gate calls `confirmLeave()`, which asks "Leave the simulator?" on the existing `askConfirm` dialog (Stay is the default answer, Escape and N stay, Enter and Y leave) and then goes to the landing page via `landingOrigin()`. The gate's key hint now reads Esc, Leave.
+- Latency: no change. Menu code only; the flight Escape path (`handleKey`, flight branch) is untouched.
+- Checked: `lint:preload` up to date, `lint:nouns` pass, `node --check` clean. `lint:shell` reports overflow and fold differences on the screens it measures; the same output appears on origin/main with this change stashed, so it is not from this change. Not run: `verify` (not physics), `shots`.

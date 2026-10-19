@@ -118,7 +118,7 @@ import {
   setPidsExpert,
 } from '../../configs/pids.js';
 import {
-  boardPageUrl, fetchMapList, fetchTrackList, fetchTrackTimes, mapCardUrl, partnersPageUrl, pickFeaturedTracks,
+  boardPageUrl, fetchMapList, fetchTrackList, landingOrigin, fetchTrackTimes, mapCardUrl, partnersPageUrl, pickFeaturedTracks,
   pickMaps, pickNewestMaps, tuneCodeFrom, wikiPageUrl,
 } from '../share/board.js';
 import { byRating, myStars, ratingShort, ratingWords } from '../share/rating.js';
@@ -17571,9 +17571,10 @@ export class Ui {
      */
     if (this.screen !== 'title') {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back', action: 'back' });
-    } else if (!this.onGate()) {
-      /* NOT ON THE GATE. The gate is the root and Escape does nothing
-       * there, so offering the key is a joke. onGate() is the one
+    } else if (this.onGate()) {
+      out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Leave' });
+    } else {
+      /* NOT ON THE GATE. The gate has its own line above (Leave). onGate() is the one
        * definition of "is the gate up", and this asks it rather than
        * reading the two flags itself: `this.mode` alone was the proxy once
        * and it stopped being one the moment a link could answer the mode
@@ -18113,6 +18114,7 @@ export class Ui {
        * gate is open: see the comment there.
        */
       if (this.onGate()) {
+        this.confirmLeave();
         return;
       }
       this.craftGate = true;
@@ -18235,6 +18237,32 @@ export class Ui {
       return;
     }
     this.act(this.returnTo === 'paused' ? 'paused' : 'title');
+  }
+
+  /*
+   * THE GATE IS THE ROOT, AND ONE MORE ESCAPE LEAVES THE SIM.
+   *
+   * Every other screen goes up one layer, so the last layer is the front
+   * page. It asks first: Escape is a key a pilot taps without looking, and
+   * the page they would lose is the one with their seat on it. No is the
+   * default answer (Escape, N, the button), Enter and Y leave.
+   */
+  confirmLeave() {
+    if (this.leaving || (this.nameDialog && !this.nameDialog.hidden)) {
+      return;
+    }
+    this.leaving = true;
+    this.askConfirm({
+      title: 'Leave the simulator?',
+      detail: 'This takes you back to the WebFPV front page.',
+      yes: 'Leave',
+      no: 'Stay',
+    }).then((yes) => {
+      this.leaving = false;
+      if (yes) {
+        window.location.href = `${landingOrigin()}/`;
+      }
+    });
   }
 
   act(action) {

@@ -107,3 +107,20 @@ export const MATERIALS = {
   homeLamp: { f: 0xfff6e2, noCast: true },
   homeNeon: { f: 0xff4fd8, noCast: true },
 };
+
+/*
+ * TWO BANDS INDOORS, a manga page's light and shade with nothing between.
+ * The owner, 2026-10-18: "Let's make the house interior less blocky, less
+ * like Roblox more like a manga comic book with cell shading." Three bands
+ * put a middle grey on every face turned part way from the sun, which is
+ * what made a room of boxes read as a room of plastic blocks; two put each
+ * face in the light or in its tinted shade, and the house's black pen
+ * (src/maps/house/index.js) draws the edge between them. Every colour that
+ * is only seen indoors, which is the set marked noReceive above. It costs
+ * nothing: the same program, a two texel ramp instead of a three.
+ */
+for (const spec of Object.values(MATERIALS)) {
+  if (spec.noReceive && spec.c !== undefined) {
+    spec.bands = 2;
+  }
+}

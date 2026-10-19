@@ -53,6 +53,7 @@ import { makeNick } from './nickdraw.js';
 import { placeStickers, stickerMesh, STICKER_URL, STICKER_WORD } from './stickers.js';
 import { placeSupporters } from './supporters.js';
 import { stfKey } from '../built/egg.js';
+import { INK_COLOR } from '../../render/comic.js';
 
 const CHUNK = 'extra';
 
@@ -208,6 +209,53 @@ function openGround(scene, name, rect) {
   mesh.geometry = G;
 }
 
+/*
+ * THE HOUSE'S PEN, a manga artist's: black, heavier, and drawing every
+ * inside corner as hard as an outside one. The owner, 2026-10-18: "Let's
+ * make the house interior less blocky, less like Roblox more like a manga
+ * comic book with cell shading." A room is all inside corners, where the
+ * wall meets the floor, the ceiling and the next wall, and the town's pen
+ * draws those at a fraction of its weight (uConcaveAmount), which is right
+ * for a street seen from the air and leaves a room as unlined blocks of
+ * colour. Here they are drawn full, in the comic layer's near black
+ * (INK_COLOR) rather than the look's violet, a pen HOUSE_PEN times the
+ * comic layer's, and a grade a little short of the look's saturation, so
+ * the colours sit on paper rather than on plastic. The two band shading is
+ * the other half (src/props/homes.js).
+ *
+ * Uniforms on this world's own copies of the ink and grade (paintPost in
+ * ../built/looks.js), so nothing shared is touched and the cost is
+ * nothing: the same passes, the same taps, the same programs. The convex
+ * threshold goes up with the pen, a tenth keener, as comicPipeline's does,
+ * so a heavier pen does not find new lines in every round thing's facets;
+ * the inside corner's goes up only half as far, which is what draws the
+ * line where a wall meets the floor. Judged on the same nine rooms shot
+ * before and after: at a pen of 1.3 with both thresholds raised in step
+ * the rooms were barely changed. The pilot's Manga switch still takes the
+ * ink off (setInkLines in src/render/quality.js): this only changes how it
+ * draws.
+ */
+const HOUSE_PEN = 1.6;
+const HOUSE_KEEN = 0.9;
+const HOUSE_CORNER_KEEN = 0.5;
+const HOUSE_SATURATION = 0.96;
+function houseInk(post) {
+  const u = post && post.ink && post.ink.mat && post.ink.mat.uniforms;
+  if (!u) {
+    return;
+  }
+  u.uInk.value.setHex(INK_COLOR);
+  u.uConcaveAmount.value = 1;
+  u.uSens.value *= HOUSE_PEN * HOUSE_KEEN;
+  u.uConcave.value *= HOUSE_PEN * HOUSE_CORNER_KEEN;
+  u.uThickness.value *= HOUSE_PEN;
+  post.inkWeight = (post.inkWeight || 1) * HOUSE_PEN;
+  const g = post.grade && post.grade.mat && post.grade.mat.uniforms;
+  if (g && g.uSaturation) {
+    g.uSaturation.value = HOUSE_SATURATION;
+  }
+}
+
 export async function buildMap(shell, onProgress, options) {
   const L = houseLayout();
   const extra = {
@@ -264,6 +312,7 @@ export async function buildMap(shell, onProgress, options) {
     })),
   ];
   map.stickersEverySighting = true;
+  houseInk(map.post);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   const anim = map.updateAnim;
   map.updateAnim = (step) => {

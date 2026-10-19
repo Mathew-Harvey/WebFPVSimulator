@@ -77,7 +77,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
-import { houseLayout, basementFloorAt, S, FLOOR0, BF, worldAt } from '../src/maps/house/house.js';
+import { houseLayout, basementFloorAt, S, FLOOR0, BF, worldAt, FRAME } from '../src/maps/house/house.js';
 import { placeStickers, NB_SPOTS } from '../src/maps/house/stickers.js';
 import { placeSupporters, SUPPORTER_SPOTS } from '../src/maps/house/supporters.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../src/partners/roster.js';
@@ -116,8 +116,8 @@ const HOUSE_COLOURS_MAX = 45;
  * craft's width of air either side of it. */
 const BALL = 2 * CRAFT_WORLD_R;
 /* One band of a roof's solid in the world's metres (BAND in house.js,
- * three times 5 cm), and the rounding the arithmetic is allowed. */
-const BAND_WORLD = 0.15;
+ * 5 real cm, times S), and the rounding the arithmetic is allowed. */
+const BAND_WORLD = S * 0.05;
 /* A roof's slab, real metres (ROOF_T in house.js). */
 const ROOF_T = 0.21;
 const EPS = 1e-6;
@@ -533,7 +533,7 @@ function slotsBlock(own) {
       bad.push(f);
     }
   }
-  const at = (p) => `plan ${JSON.stringify([r3((p[0] + 48) / S), r3((-18 - p[2]) / S), r3(p[1] / S)])}`;
+  const at = (p) => `plan ${JSON.stringify([r3((p[0] - FRAME.OX) / S), r3((FRAME.OZ - p[2]) / S), r3(p[1] / S)])}`;
   check(`no slot between ${r3(2 * CRAFT_WORLD_R)} and ${GAP_MIN} m between two of the house's boxes`, bad.length === 0,
     bad.length ? bad.slice(0, 8).map((f) => `${f.a} and ${f.b}, ${r3(f.w)} m ${f.axis}, ${at(f.mid)}`).join('; ') : `${own.filter((s) => s.box).length} boxes`);
   ALLOWED.forEach(([why], i) => console.log(`        allowed ${allowed[i]}: ${why}`));

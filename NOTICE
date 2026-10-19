@@ -160,13 +160,17 @@ The project's GPLv3 grant does not extend to them.
                 house's map with his permission, as the owner states it.
 
 `nick-manga.webp` is cut from a manga render of Nick Burns that the owner
-made with Grok and gave on 2026-10-18: seven side views of him walking and
-six of his face, the grey they were drawn on keyed out and the frames packed
-into one 2048 by 1024 atlas, the generator's mark left off. `nb-sticker.webp`
-is Nick Burns' NB logo as the owner supplied it on 2026-10-18, a 2048 px
-JPEG on white, cut from the white and set on a die cut white border, 512 px.
-Both are in this repository only so that src/maps/house/ can draw them on
-that one map. The project's GPLv3 grant does not extend to them.
+made with Grok and gave on 2026-10-19, the second of two (the first, given
+on 2026-10-18, was used until then): seven side views of him walking and
+six of his face, which came cut from the grey they were drawn on. One side
+view is cut at the hips, knees and ankles into a body and the pieces of two
+legs (the far leg's shaded darker), so the map can pose him, and packed
+with the six faces into one 2048 by 1024 atlas, the generator's mark left
+off. `nb-sticker.webp` is Nick Burns' NB logo as the owner supplied it on
+2026-10-18, a 2048 px JPEG on white, cut from the white and set on a die
+cut white border, 512 px. Both are in this repository only so that
+src/maps/house/ can draw them on that one map. The project's GPLv3 grant
+does not extend to them.
 
 ## three.js
 

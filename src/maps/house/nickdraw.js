@@ -3,24 +3,37 @@
  * speech balloon, posed every frame from ./nick.js.
  *
  * HOW HE LOOKS. The owner's ask of 2026-10-18: "Attached is manga render of
- * nick, let's use this rather than the poly character." The render is a
+ * nick, let's use this rather than the poly character." The render was a
  * sheet of seven side views of him walking and six of his face, which the
- * owner made and gave; the grey it was drawn on is keyed out and the frames
- * packed into one atlas, ../../../assets/house/nick-manga.webp (NOTICE). He
- * is a card standing upright that turns about its own axis to face the
- * camera, the way a cut out in a panel does, drawn in the render's own
- * colour and ink and unlit, so the map's light does not shade him twice.
- * The frames face left, so the card is mirrored whenever the way he faces
- * points to the right of the screen. Walking, the frames run through his
- * stride; standing, he holds the middle one. Seated, at the patio table or
- * on the sofa, he is the same frame from the hips up with the hips on the
- * seat, which is what the table, the sofa's back or the chair hides of a
- * man sitting anyway. He is 1.8 m in real metres, 5.4 m in the house's
- * world, his size next to a door.
+ * owner made and gave. The seven walk views turned out to be one pose, so
+ * drawn as a flip book he slid along, and seated he was cut off at the
+ * hips; the owner, 2026-10-19: "nick no longer walks properly no
+ * animation, that should be fixed. also he has no legs or red shoes
+ * anymore, fix that." He asked the same day whether the likeness could be
+ * better ("can we improve the likeness of nicks face at allk?") and made
+ * a second sheet in the same layout, nearer him (salt and pepper hair
+ * combed across, clear glasses, a crew neck, his red shoes): "lets use
+ * this". Its figures came cut from their grey; they are packed into one
+ * atlas, ../../../assets/house/nick-manga.webp (NOTICE).
+ * So he is a cut out now, the way a paper puppet is: one view's body from
+ * the hips up, and its front leg stood straight and cut at the hip, the
+ * knee and the ankle into a thigh, a shin and a shoe, each piece inked
+ * round where it was cut, twice (the far leg's a shade darker). The
+ * pieces are posed every frame from the skeleton ./nick.js already keeps,
+ * so he walks with its stride, sits with its thighs level and shins down,
+ * and gets up and sits down through its own blend; outside a walk his feet
+ * are kept on the floor by bending the knee. The whole cut out turns about
+ * his own axis to face the camera, as a cut out in a panel does, drawn in
+ * the render's own colour and ink and unlit, so the map's light does not
+ * shade him twice, and mirrored when the way he faces points to the right
+ * of the screen. He is 1.83 m in real metres standing, his size next to a
+ * door.
  *
  * ONE DRAW CALL for him and one for his balloon while it is up, both the
  * same program (a texture, alpha tested, no fog). No skinning and no
- * shadow: the card is four vertices whose texture window moves.
+ * shadow: seven quads in one buffer whose 28 corners are written each
+ * frame, a few hundred multiplications, and each piece a hair in front of
+ * the one it covers so the depth test lays them in order.
  *
  * THE BALLOON is a card that faces the camera, lettered in the simulator's
  * own hand (src/ui/lettering.js) on a 640 by 256 canvas that is painted
@@ -66,7 +79,7 @@
 import * as THREE from 'three';
 import { drawWord, wordWidth, INK, PAPER, INKS } from '../../ui/lettering.js';
 import { FRAME, UMBRELLA, PERGOLA, DEP } from './house.js';
-import { NICK_LINES, nickAt, nickPose } from './nick.js';
+import { NICK_LINES, BONE, nickAt, nickPose } from './nick.js';
 
 /* ------------------------------------------------------------------ */
 /* The atlas                                                           */
@@ -75,28 +88,41 @@ import { NICK_LINES, nickAt, nickPose } from './nick.js';
 const ATLAS_URL = new URL('../../../assets/house/nick-manga.webp', import.meta.url).href;
 const AW = 2048;
 const AH = 1024;
-/* The walk: seven cells side by side, CELL_W px wide, his head over each
- * cell's middle and his soles on SOLE_Y. The card shows a cell from
- * CELL_TOP to CELL_BOT. */
-const WALK_FRAMES = 7;
-const CELL_W = 292;
-const CELL_TOP = 24;
-const CELL_BOT = 560;
-const SOLE_Y = 552;
-/* Pixels to a real metre: his 1.8 m are about 515 px of the render. */
+/* Pixels to a real metre: his stride view is laid about 515 px from
+ * crown to sole, 1.8 m. */
 const PX_M = 515 / 1.8;
-/* Seated, the cell is cut SIT_CUT px down, just under his hips, which is
- * SIT_DROP under the pelvis's height in a standing frame. */
-const SIT_CUT = 300;
+/*
+ * The pieces, [x, y, w, h] px in the atlas, and their joints in the
+ * piece's own pixels: the body from the hips up with the hip it turns
+ * about, and each leg's thigh (hip to knee), shin (knee to ankle) and
+ * shoe (the ankle), drawn standing straight, near and far.
+ */
+const TORSO = { rect: [0, 0, 292, 364], hip: [145, 322] };
+const THIGH = [{ rect: [300, 0, 59, 167], at: [29, 30] }, { rect: [526, 0, 59, 167], at: [29, 30] }];
+const SHIN = [{ rect: [367, 0, 52, 128], at: [27, 24] }, { rect: [593, 0, 52, 128], at: [27, 24] }];
+const SHOE = [{ rect: [427, 0, 91, 51], at: [65, 23] }, { rect: [653, 0, 91, 51], at: [65, 23] }];
+/* The leg in real metres, as the render draws it: hip to knee, knee to
+ * ankle, ankle to sole. */
+const THIGH_M = 110 / PX_M;
+const SHIN_M = 105 / PX_M;
+const SOLE_M = 26 / PX_M;
+const LEG_M = THIGH_M + SHIN_M + SOLE_M;
+/* The skeleton's hip under its pelvis, and its leg (./nick.js). */
+const HIP_DROP = 0.04;
 const PELVIS_STAND = 0.96;
-const SIT_DROP = PELVIS_STAND - (SOLE_Y - SIT_CUT) / PX_M;
-/* The frame he stands still in. */
-const STILL = 3;
+/* The draw order, back to front, and the step between layers, real
+ * metres: far shoe, shin, thigh, near shoe, shin, thigh, body. */
+const LAYER = 0.004;
+/* A walking shoe tips with its shin by this much, toe down behind him and
+ * toe up in front; a stood or seated one is flat. */
+const SHOE_TIP = 0.35;
+/* Seated, the far foot a little behind the near one, so two legs read. */
+const FAR_BACK = 0.05;
 /* His faces, [x, y, w, h] px in the atlas: laughing, frowning, crying,
- * shouting, sad, smiling, in the render's order. */
+ * shouting, sad, smiling, packed in that order. */
 const FACES = [
-  [26, 596, 287, 386], [365, 598, 289, 381], [707, 597, 285, 384],
-  [1052, 595, 276, 387], [1389, 596, 282, 386], [1722, 597, 296, 383],
+  [36, 611, 267, 355], [378, 614, 263, 350], [718, 614, 264, 350],
+  [1056, 611, 267, 355], [1396, 612, 268, 354], [1737, 612, 265, 354],
 ];
 const FACE = { laugh: 0, frown: 1, cry: 2, shout: 3, sad: 4, smile: 5 };
 
@@ -246,6 +272,82 @@ function paintBalloon(canvas, say, atlas) {
 }
 
 /* ------------------------------------------------------------------ */
+/* The cut out                                                         */
+/* ------------------------------------------------------------------ */
+
+/* The seven pieces in draw order, each with its atlas window and the
+ * joint (px in the piece) it turns about. */
+const PIECES = [SHOE[1], SHIN[1], THIGH[1], SHOE[0], SHIN[0], THIGH[0], { rect: TORSO.rect, at: TORSO.hip }];
+
+/* Seven quads, four corners each, their texture windows fixed; the
+ * corners are written by posePiece every frame. */
+function cutOutGeometry() {
+  const n = PIECES.length;
+  const pos = new Float32Array(n * 4 * 3);
+  const uv = new Float32Array(n * 4 * 2);
+  const index = [];
+  PIECES.forEach((p, i) => {
+    const [x, y, w, h] = p.rect;
+    const u0 = x / AW;
+    const u1 = (x + w) / AW;
+    const v0 = 1 - (y + h) / AH;
+    const v1 = 1 - y / AH;
+    uv.set([u0, v1, u1, v1, u0, v0, u1, v0], i * 8);
+    const k = i * 4;
+    index.push(k, k + 2, k + 1, k + 2, k + 3, k + 1);
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(index);
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1.4);
+  return g;
+}
+
+/* Piece i with its joint at (jx, jy), real metres in the cut out's plane
+ * (x behind him, y up), turned counterclockwise by `a` as drawn, facing
+ * left: a positive `a` swings a piece that hangs down behind him and leans
+ * one that stands up forward. */
+function posePiece(pos, i, jx, jy, a) {
+  const [, , w, h] = PIECES[i].rect;
+  const [ax, ay] = PIECES[i].at;
+  const c = Math.cos(a);
+  const sn = Math.sin(a);
+  const x0 = -ax / PX_M;
+  const x1 = (w - ax) / PX_M;
+  const y0 = (ay - h) / PX_M;
+  const y1 = ay / PX_M;
+  const z = i * LAYER;
+  const o = i * 12;
+  const corner = (k, x, y) => {
+    pos[o + k * 3] = jx + x * c - y * sn;
+    pos[o + k * 3 + 1] = jy + x * sn + y * c;
+    pos[o + k * 3 + 2] = z;
+  };
+  corner(0, x0, y1);
+  corner(1, x1, y1);
+  corner(2, x0, y0);
+  corner(3, x1, y0);
+}
+
+/*
+ * A leg's thigh and shin angles (radians from hanging straight down,
+ * positive behind him) with the ankle at (tx, ty) from the hip, the knee
+ * bent forward, into out[0] and out[1].
+ */
+function reach(tx, ty, out) {
+  const d = Math.min(Math.hypot(tx, ty), THIGH_M + SHIN_M - 1e-4);
+  const base = Math.atan2(tx, -ty);
+  const cosA = (THIGH_M * THIGH_M + d * d - SHIN_M * SHIN_M) / (2 * THIGH_M * d);
+  const t = base - Math.acos(Math.max(-1, Math.min(1, cosA)));
+  const kx = THIGH_M * Math.sin(t);
+  const ky = -THIGH_M * Math.cos(t);
+  out[0] = t;
+  out[1] = Math.atan2(tx - kx, -(ty - ky));
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* Nick                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -273,13 +375,13 @@ export function makeNick(camera, craftAt = () => null) {
   });
   atlas.colorSpace = THREE.SRGBColorSpace;
   atlas.anisotropy = 4;
-  const card = new THREE.PlaneGeometry(1, 1);
-  card.translate(0, 0.5, 0);
-  const mesh = new THREE.Mesh(card, new THREE.MeshBasicMaterial({ map: atlas, alphaTest: 0.5, fog: false }));
+  const cut = cutOutGeometry();
+  const corners = cut.attributes.position;
+  const mesh = new THREE.Mesh(cut, new THREE.MeshBasicMaterial({ map: atlas, alphaTest: 0.5, fog: false }));
   mesh.name = 'nick';
   mesh.castShadow = false;
   mesh.receiveShadow = false;
-  /* Shown when the atlas has come, so he is never a dark card. */
+  /* Shown when the atlas has come, so he is never a dark cut out. */
   mesh.visible = false;
 
   const canvas = document.createElement('canvas');
@@ -310,7 +412,8 @@ export function makeNick(camera, craftAt = () => null) {
   const top = new THREE.Vector3();
   let clock = 0;
   let last = null;
-  let frame = STILL;
+  const legs = [[0, 0], [0, 0]];
+  const ik = [0, 0];
   let seated = false;
   let mirrored = false;
   /* What he is saying to the craft, if anything, and for how long yet. */
@@ -321,12 +424,52 @@ export function makeNick(camera, craftAt = () => null) {
   let hits = 0;
   let closes = 0;
 
-  /* The atlas window the card shows: walk cell `f`, whole or from the hips
-   * up. */
-  function showCell(f, sit) {
-    const y1 = sit ? SIT_CUT : CELL_BOT;
-    atlas.repeat.set(CELL_W / AW, (y1 - CELL_TOP) / AH);
-    atlas.offset.set((f * CELL_W) / AW, 1 - y1 / AH);
+  /*
+   * The cut out posed: the body on the hip, leaned as the skeleton's spine
+   * is, and each leg from the skeleton's thigh and knee, `near` the leg on
+   * the camera's side. Outside a walk the ankle is brought to the floor
+   * where the skeleton puts it forward, so a seated or rising Nick stands
+   * on the floor with the render's shorter leg; walking, the skeleton's
+   * own stride is drawn as it is.
+   */
+  function poseCutOut(near) {
+    const J = pose.J;
+    const sit = pose.sit;
+    const hipY = pose.pelvisH - HIP_DROP - (PELVIS_STAND - HIP_DROP - LEG_M) * (1 - sit);
+    const plant = 1 - pose.walk;
+    for (let k = 0; k < 2; k += 1) {
+      const b = (k === 0) === near ? BONE.thighL : BONE.thighR;
+      const t = J[b * 3];
+      const s = t + J[(b + 1) * 3];
+      const kx = THIGH_M * Math.sin(t);
+      const ky = -THIGH_M * Math.cos(t);
+      let ax = kx + SHIN_M * Math.sin(s);
+      let ay = ky - SHIN_M * Math.cos(s);
+      if (k === 1) {
+        ax += FAR_BACK * sit;
+      }
+      const floor = pose.floor + SOLE_M - hipY;
+      ay += (floor - ay) * plant;
+      reach(ax, ay, ik);
+      legs[k][0] = ik[0];
+      legs[k][1] = ik[1];
+    }
+    const pos = corners.array;
+    /* Far, then near: shoe, shin, thigh, at layers 0 to 5. */
+    for (let k = 1; k >= 0; k -= 1) {
+      const [t, s] = legs[k];
+      const kx = THIGH_M * Math.sin(t);
+      const ky = hipY - THIGH_M * Math.cos(t);
+      const ax = kx + SHIN_M * Math.sin(s);
+      const ay = ky - SHIN_M * Math.cos(s);
+      const i = (1 - k) * 3;
+      posePiece(pos, i, ax, ay, SHOE_TIP * s * pose.walk);
+      posePiece(pos, i + 1, kx, ky, s);
+      posePiece(pos, i + 2, 0, hipY, t);
+    }
+    posePiece(pos, 6, 0, hipY, J[BONE.spine * 3]);
+    corners.needsUpdate = true;
+    cut.boundingSphere.center.set(0, hipY + 0.2, 0);
   }
 
   /* The craft against him, in real metres: a hit, close, or neither, and
@@ -388,8 +531,9 @@ export function makeNick(camera, craftAt = () => null) {
     seated = pose.sit > 0.5;
     answer(d);
 
-    /* The card: stood on his floor, or seated on his hips, turned to the
-     * camera about its own axis, and mirrored when he faces right. */
+    /* The cut out: posed, stood at his place, turned to the camera about
+     * his own axis, and mirrored when he faces right. Facing left it shows
+     * his left side, so the left leg is the near one. */
     const x = OX + S * pose.x;
     const z = OZ - S * pose.y;
     const yaw = Math.atan2(cam.x - x, cam.z - z);
@@ -397,26 +541,14 @@ export function makeNick(camera, craftAt = () => null) {
     if (Math.abs(side) > 0.15) {
       mirrored = side > 0;
     }
-    if (pose.walk > 0.05) {
-      const u = pose.stride / (2 * Math.PI);
-      frame = Math.floor((u - Math.floor(u)) * WALK_FRAMES) % WALK_FRAMES;
-    } else {
-      frame = STILL;
-    }
-    showCell(frame, seated);
-    const w = S * (CELL_W / PX_M);
-    if (seated) {
-      mesh.scale.set(mirrored ? -w : w, S * ((SIT_CUT - CELL_TOP) / PX_M), 1);
-      mesh.position.set(x, S * (pose.pelvisH - SIT_DROP), z);
-    } else {
-      const bob = 0.025 * pose.walk * Math.abs(Math.sin(pose.stride));
-      mesh.scale.set(mirrored ? -w : w, S * ((CELL_BOT - CELL_TOP) / PX_M), 1);
-      mesh.position.set(x, S * (pose.floor - (CELL_BOT - SOLE_Y) / PX_M + bob), z);
-    }
+    poseCutOut(!mirrored);
+    mesh.scale.set(mirrored ? -S : S, S, S);
+    mesh.position.set(x, 0, z);
     mesh.rotation.y = yaw;
 
     const say = react || (pose.line >= 0 ? SAYS[pose.line] : null);
-    const dist = cam.distanceTo(mesh.position);
+    top.set(x, S * (pose.floor + 1), z);
+    const dist = cam.distanceTo(top);
     if (!say || dist > 150) {
       balloon.visible = false;
       return;
@@ -478,7 +610,7 @@ export function makeNick(camera, craftAt = () => null) {
       answering: react === CATFISH ? 'hit' : (react === THANKS ? 'close' : null),
       hits,
       closes,
-      frame,
+      legs: legs.map(([t, sh]) => [Math.round(t * 100) / 100, Math.round(sh * 100) / 100]),
       seated,
       mirrored,
       ready: mesh.visible,

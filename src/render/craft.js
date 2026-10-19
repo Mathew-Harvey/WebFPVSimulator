@@ -104,9 +104,9 @@ export function buildCraft(airframeId = '5inch', modelId = null) {
    *
    * `modelId` DRAWS ANOTHER AIRCRAFT OVER THIS ONE'S PLANT, for a map that
    * asks for it (`craftModel` in src/maps/registry.js): Nick Burns' house,
-   * three times life size, draws the whoop over the five inch, because a
-   * five inch there is what a 75 mm whoop is in a real house, and the
-   * whoop's model at MICRO_SCALE is the five inch's sweep exactly. Only the
+   * three and a half times life size, draws the whoop over the five inch,
+   * because a five inch there is what a 63 mm whoop is in a real house, and
+   * the whoop's model at MICRO_SCALE is the five inch's sweep exactly. Only the
    * picture changes: craftDims still reports the airframe's own numbers,
    * which are what the plant and the collider fly.
    */

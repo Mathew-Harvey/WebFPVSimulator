@@ -81,17 +81,17 @@ export const MAPS = [
   },
   /*
    * NICK BURNS' HOUSE, on the owner's ask of 17 October 2026, with Nick's
-   * permission: his house, its yard and its end of the street at three times
-   * life size, so a five inch flies it the way a 75 mm whoop flies a real
-   * house (src/maps/house/). A fixed world like the town, built by the
-   * built map's pipeline, and like Your map off the board: the board keeps
-   * no runs for it, so nothing flown here is posted.
+   * permission: his house, its yard and its end of the street at three and
+   * a half times life size (S in src/maps/house/house.js), so a five inch
+   * flies it the way a whoop flies a real house. A fixed world like the
+   * town, built by the built map's pipeline, and like Your map off the
+   * board: the board keeps no runs for it, so nothing flown here is posted.
    */
   {
     id: 'house',
     name: "Nick Burns' house",
     mode: 'freestyle',
-    note: "Nick Burns' house at three times life size, so a five inch flies it like a whoop flies a real one, and you fly it as a 75 mm whoop: every room, the stairs, the garage, the pergola, the pool and the street.",
+    note: "Nick Burns' house at three and a half times life size, so a five inch flies it like a whoop flies a real one, and you fly it as a whoop: every room, the stairs, the garage, the pergola, the pool and the street.",
     buildMs: MAP_BUILD_MS.house,
     /* Drawn as the whoop, the five inch's physics under it: the owner's ask
      * of 18 October 2026, "for just this map, lets introduce a new quad.

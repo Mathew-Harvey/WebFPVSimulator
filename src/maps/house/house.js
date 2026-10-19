@@ -26,13 +26,18 @@
  * kitchenette, and off a short hall a guest room, a yellow playroom and
  * the blue workshop his drones live in (basement()).
  *
- * THE SCALE IS THE POINT. Everything is three times life size, so a five
- * inch flies the house the way a 75 mm whoop flies a real one: 220 mm of
- * craft over 75 is 2.9, rounded to 3, the same derivation as MICRO_SCALE in
- * configs/airframes.js. A real door 0.9 m wide is 2.7 m here, a room 4.6 m
- * across is 13.8. The plan below is written in REAL metres, the way a
- * house is measured, and turned into the world's metres once, by S, in the
- * few helpers under it. Nothing else multiplies by three.
+ * THE SCALE IS THE POINT. Everything is three and a half times life size,
+ * so a five inch flies the house the way a 63 mm whoop flies a real one
+ * (220 mm of craft over 3.5). It was three, a 75 mm whoop's 220 over 75
+ * rounded, the derivation of MICRO_SCALE in configs/airframes.js, until
+ * the owner flew it and asked on 2026-10-19 for more room: "The house its
+ * self is a bit tight, i think we need to scale the entire house up a
+ * little bit to make all the flight lines more spacious". A real door 0.9 m
+ * wide is 3.15 m here, a room 4.6 m across is 16.1. The plan below is
+ * written in REAL metres, the way a house is measured, and turned into the
+ * world's metres once, by S, in the few helpers under it. S is the one
+ * number to change: the plot, the trees, Nick and the check follow it, and
+ * the check's slot rule says which furniture gap a new S opens.
  *
  * THE PLAN'S FRAME. px runs east along the front of the house, py north
  * from the main front wall to the back, h up from the ground, all in real
@@ -84,19 +89,19 @@ import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
 /* ------------------------------------------------------------------ */
 
 /* World metres to a real metre. */
-export const S = 3;
+export const S = 3.5;
 
 /* The plot, in the document's metres: x east, y north, from its south west
  * corner. 60 by 76 real metres, the house's lot, the cul de sac and the
  * three houses round it. */
-export const FIELD_W = 180;
-export const FIELD_D = 228;
+export const FIELD_W = 60 * S;
+export const FIELD_D = 76 * S;
 
 /* Where the plan's origin is on the plot, in the document's metres: 14 real
  * metres of side yard to the west, 44 of front yard, cul de sac and
  * neighbours to the south. */
-export const X0 = 42;
-export const Y0 = 132;
+export const X0 = 14 * S;
+export const Y0 = 44 * S;
 
 /* The plot's edges in plan metres. */
 export const PLOT = {
@@ -984,7 +989,7 @@ const D1_H = 2.2;
 const OPEN = [0.75, 3.95, FLOOR0, FLOOR0 + 2.2];
 const WIDE = [5.1, 7.1, FLOOR0, FLOOR0 + 2.2];
 const PASS = [0.95, 1.95, FLOOR0, FLOOR0 + 2.25];
-const DD = [8.5, 9.35];
+const DD = [8.48, 9.33];
 const KIT = [9.5, 10.4, FLOOR0, FLOOR0 + 2.2];
 /* The kitchen's wall ovens, at the breakfast room end of its north run,
  * and its island, long and parallel to that run (kitchen()). */
@@ -1184,10 +1189,10 @@ function frontRoom(H) {
 function familyRoom(H) {
   const f = FLOOR0;
   const w = TX;
-  H.box('homeStone', w, 5.05, f, w + 0.45, 6.35, f + 1.3, { name: 'fireplace' });
+  H.box('homeStone', w, 5.03, f, w + 0.45, 6.37, f + 1.3, { name: 'fireplace' });
   H.paint('homeChair', w + 0.45, 5.4, f + 0.12, w + 0.455, 6.0, f + 0.85);
   H.box('homeShelf', w, 4.95, f + 1.3, w + 0.55, 6.45, f + 1.38, { name: 'mantel' });
-  H.box('homeShelf', w, 5.05, f + 1.38, w + 0.2, 6.35, CEIL0, { name: 'chimney breast' });
+  H.box('homeShelf', w, 5.03, f + 1.38, w + 0.2, 6.37, CEIL0, { name: 'chimney breast' });
   H.paint('homeWallIn', w + 0.2, 5.1, f + 1.5, w + 0.205, 6.3, f + 2.3);
   H.box('homeScreen', w + 0.2, 5.2, f + 1.6, w + 0.25, 6.2, f + 2.2, { name: 'television', kind: 'obstacle' });
   H.box('homeStone', w + 0.45, 4.95, f, w + 0.95, 6.45, f + 0.08, { name: 'hearth' });
@@ -1353,12 +1358,12 @@ function tubChair(H, x, y, back) {
   if (ax) {
     H.box(m, x - s, b < 0 ? y - s : y + s - t, f + 0.46, x + s, b < 0 ? y - s + t : y + s, f + 0.82, { name: 'chair back' });
     for (const side of [-1, 1]) {
-      H.box(m, side < 0 ? x - s : x + s - 0.1, y - s, f + 0.46, side < 0 ? x - s + 0.1 : x + s, y + s, f + 0.66, { name: 'chair arm' });
+      H.box(m, side < 0 ? x - s : x + s - 0.1, y - s, f + 0.46, side < 0 ? x - s + 0.1 : x + s, y + s, f + 0.645, { name: 'chair arm' });
     }
   } else {
     H.box(m, b < 0 ? x - s : x + s - t, y - s, f + 0.46, b < 0 ? x - s + t : x + s, y + s, f + 0.82, { name: 'chair back' });
     for (const side of [-1, 1]) {
-      H.box(m, x - s, side < 0 ? y - s : y + s - 0.1, f + 0.46, x + s, side < 0 ? y - s + 0.1 : y + s, f + 0.66, { name: 'chair arm' });
+      H.box(m, x - s, side < 0 ? y - s : y + s - 0.1, f + 0.46, x + s, side < 0 ? y - s + 0.1 : y + s, f + 0.645, { name: 'chair arm' });
     }
   }
 }
@@ -1878,7 +1883,7 @@ function basementMain(H) {
   for (const x of [2.95, 3.35]) {
     H.paint('homeCounter', x, 7.95, f + 0.47, x + 0.36, 7.98, f + 0.8);
   }
-  H.box('homeShelf', 2.05, 7.75, f, 2.5, m.y1, f + 0.62, { name: 'side table' });
+  H.box('homeShelf', 2.07, 7.75, f, 2.52, m.y1, f + 0.62, { name: 'side table' });
   picture(H, 'x', m.y1, -1, 2.75, 3.3, f + 1.25, f + 1.7, 'homeWood', 0.012);
   picture(H, 'x', m.y1, -1, 3.5, 4.05, f + 1.25, f + 1.7, 'homeWallIn', 0.012);
   picture(H, 'x', m.y1, -1, 2.1, 2.45, f + 0.95, f + 1.3, 'homeTeal', 0.012);
@@ -1909,9 +1914,9 @@ function basementMain(H) {
   }
   H.paint('homeSteel', kx + 0.1, 6.1, f + 0.92, m.x1 - 0.08, 6.6, f + 0.925);
   H.post('homeSteel', m.x1 - 0.06, 6.35, f + 0.92, f + 1.2, 0.015, { seg: 5, solid: false });
-  H.box('homeShutter', m.x1 - 0.32, 7.15, f + 0.92, m.x1 - 0.06, 7.4, f + 1.28, { name: 'coffee maker', kind: 'obstacle' });
+  H.box('homeShutter', m.x1 - 0.32, 7.17, f + 0.92, m.x1 - 0.06, 7.42, f + 1.28, { name: 'coffee maker', kind: 'obstacle' });
   for (const [a, b] of [[5.55, 6.35], [6.55, 7.35]]) {
-    for (const h of [f + 1.35, f + 1.75]) {
+    for (const h of [f + 1.45, f + 1.9]) {
       H.box('homeShelf', m.x1 - 0.2, a, h, m.x1, b, h + 0.04, { name: 'shelf', kind: 'obstacle' });
       for (const y of [a + 0.08, b - 0.08]) {
         H.post('homeChair', m.x1 - 0.1, y, h - 0.12, h, 0.014, { seg: 5, solid: false });
@@ -1952,14 +1957,14 @@ function basementMain(H) {
   H.frame('y', TX / 2, TX, 1, [4.5, 5.25, f + 1.72, f + 1.98], 'homeWhite', { w: 0.06, d: 0.02 });
 
   /* The treadmill, its console to the south, a gate between the uprights. */
-  H.box('homeChair', 0.3, 2.2, f, 1.05, 4.0, f + 0.2, { name: 'treadmill' });
-  H.paint('homeShutter', 0.42, 2.5, f + 0.2, 0.93, 3.95, f + 0.205);
-  for (const x of [0.36, 0.99]) {
-    H.post('homeChair', x, 2.33, f + 0.2, f + 1.25, 0.035, { seg: 6, kind: 'pole' });
-    H.cap('homeChair', [x, 2.33, f + 1.0], [x, 2.85, f + 1.0], 0.02, { seg: 6, kind: 'pole' });
+  H.box('homeChair', 0.28, 2.18, f, 1.03, 3.98, f + 0.2, { name: 'treadmill' });
+  H.paint('homeShutter', 0.4, 2.48, f + 0.2, 0.91, 3.93, f + 0.205);
+  for (const x of [0.34, 0.97]) {
+    H.post('homeChair', x, 2.31, f + 0.2, f + 1.25, 0.035, { seg: 6, kind: 'pole' });
+    H.cap('homeChair', [x, 2.31, f + 1.0], [x, 2.83, f + 1.0], 0.02, { seg: 6, kind: 'pole' });
   }
-  H.box('homeChair', 0.3, 2.2, f + 1.2, 1.05, 2.45, f + 1.42, { name: 'treadmill console' });
-  H.paint('homeScreen', 0.45, 2.45, f + 1.25, 0.9, 2.455, f + 1.38);
+  H.box('homeChair', 0.28, 2.18, f + 1.2, 1.03, 2.43, f + 1.42, { name: 'treadmill console' });
+  H.paint('homeScreen', 0.43, 2.43, f + 1.25, 0.88, 2.435, f + 1.38);
   /* The stadium print, the stands a dark band over the field, and three
    * small frames under it over the loveseat. */
   picture(H, 'y', m.x0, 1, 0.65, 2.15, f + 1.4, f + 1.86, 'homeHedge', 0.012);
@@ -2058,7 +2063,7 @@ function basementRooms(H) {
   for (let i = 0; i < 3; i += 1) {
     H.paint('homeStone', 9.13, 6.45 + i * 0.36, f + 0.55, 10.47, 6.63 + i * 0.36, f + 0.562);
   }
-  H.box('homeWhite', 9.5, 5.75, f, g.x1, 6.1, f + 0.45, { name: 'bench' });
+  H.box('homeWhite', 9.5, 5.75, f, g.x1, 6.12, f + 0.45, { name: 'bench' });
   H.box('homeWood', g.x0, 7.65, f, 8.5, g.y1, f + 1.0, { name: 'dresser' });
   for (let i = 0; i < 3; i += 1) {
     H.paint('homeShelf', g.x0 + 0.05, 7.645, f + 0.31 + i * 0.3, 8.45, 7.65, f + 0.32 + i * 0.3);
@@ -2081,7 +2086,7 @@ function basementRooms(H) {
       H.paint(bins[(i + k) % bins.length], x, p.y0 + 0.4, f + 0.06 + k * 0.42, x + 0.33, p.y0 + 0.406, f + 0.42 + k * 0.42);
     }
   }
-  H.box('homeWhite', 9.8, 2.5, f, p.x1, 3.2, f + 0.5, { name: 'play table' });
+  H.box('homeWhite', 9.8, 2.5, f, p.x1, 3.2, f + 0.47, { name: 'play table' });
   chair(H, 'homePlayBlue', 9.6, 2.85, 'w', f, { s: 0.16, seat: 0.3, backH: 0.3 });
   chair(H, 'homePlay', 10.3, 3.4, 'n', f, { s: 0.16, seat: 0.3, backH: 0.3 });
   H.cap('homePlay', [8.95, 2.6, f + 0.25], [8.95, 2.6, f + 0.25], 0.32, { look: 'capsule', seg: 10, name: 'bean bag' });
@@ -2112,8 +2117,8 @@ function basementRooms(H) {
     H.post('homeChair', x, y, f, f + 0.71, 0.02, { seg: 5, kind: 'pole' });
   }
   for (const [a, b] of [[11.3, 11.95], [12.1, 12.75]]) {
-    H.box('homeScreen', a, 8.06, f + 0.88, b, 8.1, f + 1.26, { name: 'monitor', kind: 'obstacle' });
-    H.post('homeChair', (a + b) / 2, 8.1, f + 0.75, f + 0.9, 0.015, { seg: 5, kind: 'pole' });
+    H.box('homeScreen', a, 8.08, f + 0.88, b, 8.12, f + 1.26, { name: 'monitor', kind: 'obstacle' });
+    H.post('homeChair', (a + b) / 2, 8.12, f + 0.75, f + 0.9, 0.015, { seg: 5, kind: 'pole' });
   }
   chair(H, 'homeChair', 11.9, 7.0, 's', f, { seatM: 'homePlay', backH: 0.6 });
   H.box('homeWood', 11.5, s.y0, f, 13.2, 0.85, f + 0.9, { name: 'workbench' });
@@ -2301,7 +2306,7 @@ function backYard(H) {
   H.box('homeStone', bw - 0.65, 11.0, 0, bw, 13.2, 1.05, { name: 'bar' });
   H.box('homeCounter', 17.3, 13.1, 1.05, bw, 13.95, 1.1, { name: 'bar top' });
   H.box('homeCounter', bw - 0.75, 10.9, 1.05, bw, 13.1, 1.1, { name: 'bar top' });
-  H.box('homeSteel', 18.0, 13.95, 0, 19.4, 14.75, 1.0, { name: 'grill' });
+  H.box('homeSteel', 18.0, 13.93, 0, 19.4, 14.73, 1.0, { name: 'grill' });
   for (let i = 0; i < 4; i += 1) {
     const x = 17.7 + i * 0.62;
     H.post('homeChair', x, 12.8, 0, 0.72, 0.03, { seg: 6, kind: 'pole' });
@@ -2503,11 +2508,14 @@ function neighbour(H, x0, y0, w, d, m, face, shutters) {
 /* Trees and cars: the town's own, at the house's scale                */
 /* ------------------------------------------------------------------ */
 
-/* Where the big trees stand, plan metres, and how big: k times the street
- * tree at its largest (size 3, 21 m of the world's, 7 m of a real tree
- * here), so k 2 is a 14 m tree. Tall and mature round the lot's edges and
- * the street, as in every still and aerial, the big one in the middle of
- * the back lawn, and none over the house, the pool or the drive. */
+/* Where the big trees stand, plan metres, and how big: k times a 7 m real
+ * tree, so k 2 is a 14 m tree. Each is the town's street tree at its
+ * largest (size 3, STREET_TREE metres of the world's) scaled to that. Tall
+ * and mature round the lot's edges and the street, as in every still and
+ * aerial, the big one in the middle of the back lawn, and none over the
+ * house, the pool or the drive. */
+const STREET_TREE = 21;
+const TREE_M = 7;
 const TREES = [
   [-9.5, 21.0, 2.3], [-5.5, 28.0, 2.0], [3.5, 27.5, 2.4], [12.0, 28.5, 1.9], [21.0, 27.0, 2.2],
   [33.0, 28.0, 2.5], [41.0, 20.0, 2.1], [40.5, 11.5, 1.8], [35.0, 13.0, 1.6], [-10.5, 11.0, 1.8],
@@ -2522,7 +2530,7 @@ const MULCHED = new Set([5, 7, 8, 20]);
 function trees(H) {
   TREES.forEach(([px, py, k], i) => {
     const el = { id: `house-tree-${i + 1}`, type: 'tree', style: 'street', dims: { size: 3, variant: 11 + i } };
-    H.asset(el, k, px, py, 0, 0, 'extra:trees');
+    H.asset(el, (S * TREE_M * k) / STREET_TREE, px, py, 0, 0, 'extra:trees');
     if (MULCHED.has(i)) {
       H.discs.push({ m: 'homeMulch', px, py, r: 1.6, h: 0.04 });
     }

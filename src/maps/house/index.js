@@ -16,7 +16,7 @@
  *            round the trees: level discs and rings, drawn only.
  *   cones    the patio umbrella.
  *   scaled   the town's own trees and cars, drawn through a frame k times
- *            their size, so a street tree is a tree over a house three
+ *            their size, so a street tree is a tree over a house S
  *            times life size and a car is a car on its drive. Their solids
  *            are the same parts scaled the same way (scaledParts in
  *            ./house.js), drawn nowhere.

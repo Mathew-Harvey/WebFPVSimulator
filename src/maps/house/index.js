@@ -51,7 +51,7 @@ import { houseLayout, basementFloorAt, STAIR_HOLE, FRAME, worldAt } from './hous
 import { houseDocument } from './yard.js';
 import { makeNick } from './nickdraw.js';
 import { placeStickers, stickerMesh, STICKER_URL, STICKER_WORD } from './stickers.js';
-import { placeSupporters } from './supporters.js';
+import { placeSupporters, seesRoom } from './supporters.js';
 import { stfKey } from '../built/egg.js';
 import { INK_COLOR } from '../../render/comic.js';
 
@@ -313,11 +313,35 @@ export async function buildMap(shell, onProgress, options) {
   ];
   map.stickersEverySighting = true;
   houseInk(map.post);
+  /* The supporters' signs, each drawn only from where its room can be
+   * seen (seesRoom in ./supporters.js), found by the slug the sign's
+   * panel carries (src/art/partnermark.js). The first showSigns runs
+   * after warmPrograms, so every sign's program is linked while it is
+   * still visible. */
+  const roomOf = new Map(markSpots.map((m) => [m.slug, m.room]));
+  const signs = [];
+  map.scene.traverse((o) => {
+    if (o.isMesh && o.userData.partner && roomOf.has(o.userData.partner)) {
+      signs.push({ mesh: o, room: roomOf.get(o.userData.partner) });
+    }
+  });
+  const showSigns = () => {
+    const c = shell.camera.position;
+    const x = (c.x - FRAME.OX) / FRAME.S;
+    const y = (FRAME.OZ - c.z) / FRAME.S;
+    const h = c.y / FRAME.S;
+    const garage = seesRoom('garage', x, y, h);
+    const workshop = seesRoom('workshop', x, y, h);
+    for (const s of signs) {
+      s.mesh.visible = s.room === 'garage' ? garage : workshop;
+    }
+  };
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   const anim = map.updateAnim;
   map.updateAnim = (step) => {
     anim(step);
     nick.update(step);
+    showSigns();
   };
   const stats = map.stats;
   map.stats = () => ({ ...stats(), nick: nick.stats() });

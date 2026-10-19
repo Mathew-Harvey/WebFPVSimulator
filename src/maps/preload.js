@@ -193,5 +193,6 @@ export const MAP_PRELOAD = {
     'maps/house/yard.js',
     'maps/house/nickdraw.js',
     'maps/house/nick.js',
+    'maps/house/stickers.js',
   ],
 };

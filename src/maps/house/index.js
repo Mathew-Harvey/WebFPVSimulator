@@ -50,6 +50,8 @@ import { warmPrograms } from '../../render/warm.js';
 import { houseLayout, basementFloorAt, STAIR_HOLE, FRAME, worldAt } from './house.js';
 import { houseDocument } from './yard.js';
 import { makeNick } from './nickdraw.js';
+import { placeStickers, stickerMesh, STICKER_URL, STICKER_WORD } from './stickers.js';
+import { stfKey } from '../built/egg.js';
 
 const CHUNK = 'extra';
 
@@ -213,7 +215,8 @@ export async function buildMap(shell, onProgress, options) {
     draw: (kit) => drawHouse(kit, L),
     floor: basementFloorAt,
   };
-  const map = await buildBuilt(shell, onProgress, { ...(options || {}), document: houseDocument(), extra, sponsorMarks: false });
+  const doc = houseDocument();
+  const map = await buildBuilt(shell, onProgress, { ...(options || {}), document: doc, extra, sponsorMarks: false });
   /* Its own world, not Your map: the shell keys the world, the results and
    * the board's refusal by this id (src/main.js, src/ui/ui.js), and `source`
    * keeps its marks out of the board's counters, which have no word for it. */
@@ -227,6 +230,34 @@ export async function buildMap(shell, onProgress, options) {
    * before he was there (render/warm.js). */
   const nick = makeNick(shell.camera, () => (shell.quad ? shell.quad.position : null));
   map.scene.add(nick.group);
+  /* Nick's NB sticker round the house (./stickers.js): one mesh, shown
+   * when its texture has come, and each one a sticker the shell looks for
+   * and calls out every time it is framed, under the house's key. */
+  const sheet = new THREE.TextureLoader().load(STICKER_URL, () => {
+    nb.visible = true;
+  });
+  sheet.colorSpace = THREE.SRGBColorSpace;
+  sheet.anisotropy = 4;
+  const placed = placeStickers(L.parts).filter(Boolean);
+  const nb = stickerMesh(THREE, placed, sheet);
+  nb.visible = false;
+  map.scene.add(nb);
+  map.stickers = [
+    ...map.stickers,
+    ...placed.map((s) => ({
+      id: `nb-${s.id}`,
+      key: `${stfKey(doc, 'house')}#sticker:nb-${s.id}`,
+      name: s.name,
+      achievement: STICKER_WORD,
+      crop: { x: 0, y: 0, w: 1, h: 1 },
+      sheet,
+      p: s.p,
+      n: s.n,
+      w: s.w,
+      h: s.w,
+    })),
+  ];
+  map.stickersEverySighting = true;
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   const anim = map.updateAnim;
   map.updateAnim = (step) => {

@@ -234,6 +234,7 @@
     'src/maps/house/index.js',
     'src/maps/house/nick.js',
     'src/maps/house/nickdraw.js',
+    'src/maps/house/nickmodel.js',
     'src/maps/house/stickers.js',
     'src/maps/house/supporters.js',
     'src/maps/house/yard.js',

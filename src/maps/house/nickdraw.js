@@ -24,10 +24,12 @@
  * ./nickmodel.js paints from the render, so he is lit and inked as the
  * house is. Each vertex belongs to one bone and is moved by its bone's
  * transform on the CPU (about 7,900 of them, only the bones that moved and
- * only while he is in view or near it), so the ink, the shadow map and the
- * comic layer see the pose that is drawn without a skinning program of
- * their own. He casts his own shadow and takes none, lit like a character
- * in a panel, as the first model was.
+ * only while he is in view or near it), so the ink and the comic layer see
+ * the pose that is drawn without a skinning program of their own. He casts
+ * no shadow and takes none, lit like a character in a panel, as the cut
+ * out was: the sun's shadow map covers the whole plot, so a shadow would
+ * draw him once more in every view, seen or not, one more draw call
+ * everywhere, and that is the owner's call to make (the latency rule).
  *
  * THE BALLOON is a card that faces the camera, lettered in the simulator's
  * own hand (src/ui/lettering.js) on a 640 by 256 canvas that is painted
@@ -227,6 +229,8 @@ function paintBalloon(canvas, say, sheet) {
 /* Nick                                                                */
 /* ------------------------------------------------------------------ */
 
+/* World metres within which he is moved even out of the view. */
+const NEAR_SKIN = 12;
 /* A line said smiling or laughing flips between those two faces, his
  * mouth shut and open, every TALK_MS of the line, and holds its own face
  * for its last TALK_HOLD. */
@@ -307,7 +311,7 @@ export function makeNick(camera, craftAt = () => null) {
   const material = cel({ color: 0xffffff, map: skinMap, vertexColors: true, bands: 'soft3', tint: 0x8a7c96, cache: false });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'nick';
-  mesh.castShadow = true;
+  mesh.castShadow = false;
   mesh.receiveShadow = false;
   mesh.scale.setScalar(S);
   mesh.visible = false;
@@ -532,7 +536,10 @@ export function makeNick(camera, craftAt = () => null) {
     frustum.setFromProjectionMatrix(pm);
     sphere.center.set(mesh.position.x, mesh.position.y + S * 1.0, mesh.position.z);
     sphere.radius = S * 1.6;
-    const seen = dist < 40 || frustum.intersectsSphere(sphere);
+    /* Moved only when he is in the view, or near enough that a fast turn
+     * could bring him in before the camera's matrix catches up: with no
+     * shadow, nothing else draws him. */
+    const seen = dist < NEAR_SKIN || frustum.intersectsSphere(sphere);
     /* A still pose (his clock stopped and the camera too far for him to
      * look at it) is not moved again. */
     const still = skinnedAt === clock && pose.look === 0 && pose.wave === 0;

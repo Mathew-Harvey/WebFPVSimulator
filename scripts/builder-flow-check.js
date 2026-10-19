@@ -5054,7 +5054,7 @@ kase('load', async () => {
  * Untitled track. Publish keeps its dialog and asks there, with the caret in
  * the name and a line that says why, and sends nothing. The board address is
  * not in front of every author any more. Once it is up, the link is to this
- * track on Tracks and times, not the board's front page. Every request to a
+ * track on Maps and Tracks, not the board's front page. Every request to a
  * board is answered by BOARD_STUB: nothing leaves the machine.
  */
 kase('publish', async () => {
@@ -5103,7 +5103,7 @@ kase('publish', async () => {
         want: new URL(b.boardPageUrl(b.boardOrigin(), '5inch', { track: window.trackBuilder.doc.id }), location.href).href,
         calls: window.__api, close: [...document.querySelectorAll('#tb-modal button')].map((x) => x.textContent),
       };`);
-    check('with a name it goes, and the dialog links this track on Tracks and times', done.text === 'This track on Tracks and times' && done.href === done.want, JSON.stringify({ text: done.text, href: done.href, want: done.want }));
+    check('with a name it goes, and the dialog links this track on Maps and Tracks', done.text === 'This track on Maps and Tracks' && done.href === done.want, JSON.stringify({ text: done.text, href: done.href, want: done.want }));
     check('and its other button says Close', done.close.includes('Close'), done.close.join(', '));
     check('every request went to the board this page points at, answered here', done.calls.length > 0 && done.calls.every((c) => !/webfpv\.org/.test(c)), done.calls.join(' | '));
     await page.evaluate('window.trackBuilder.closeModal(), 1');
@@ -5149,7 +5149,7 @@ kase('publish', async () => {
       const a = document.querySelector('#tb-modal a.tb-btn');
       const b = await import('/src/share/board.js');
       return { text: a.textContent, href: a.href, want: new URL(b.boardPageUrl(b.boardOrigin(), null, { map: window.trackBuilder.doc.id }), location.href).href };`);
-    check('with a name it goes, and links this map on Tracks and times', done.text === 'This map on Tracks and times' && done.href === done.want, JSON.stringify(done));
+    check('with a name it goes, and links this map on Maps and Tracks', done.text === 'This map on Maps and Tracks' && done.href === done.want, JSON.stringify(done));
     check('the page reported no error of its own', ownErrors(map).length === 0, ownErrors(map).join(' | '));
   } finally {
     await map.close();

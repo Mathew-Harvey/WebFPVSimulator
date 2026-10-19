@@ -1079,7 +1079,7 @@ export class App {
     }
     const still = document.createElement('p');
     still.className = 'tb-help';
-    still.textContent = 'Everybody can still fly it and post a time on Tracks and times. To make a track of your own, start a new one.';
+    still.textContent = 'Everybody can still fly it and post a time on Maps and Tracks. To make a track of your own, start a new one.';
     body.append(still);
     const admin = document.createElement('button');
     admin.type = 'button';
@@ -4096,7 +4096,7 @@ export class App {
     const body = document.createElement('div');
     const lede = document.createElement('p');
     lede.className = 'tb-help';
-    lede.textContent = 'Five inch tracks other pilots have put on Tracks and times. Open one and it is your copy: change anything, and publish it under a name of your own. The original stays theirs.';
+    lede.textContent = 'Five inch tracks other pilots have put on Maps and Tracks. Open one and it is your copy: change anything, and publish it under a name of your own. The original stays theirs.';
     const status = document.createElement('p');
     status.className = 'tb-help';
     status.setAttribute('role', 'status');
@@ -5134,7 +5134,7 @@ export class App {
         /* The board's own tab, reused if it is already open. No rel here:
          * noopener would send this to a fresh tab every time. */
         open.target = BOARD_WINDOW;
-        open.textContent = 'This track on Tracks and times';
+        open.textContent = 'This track on Maps and Tracks';
         send.replaceWith(open);
         shown.close.textContent = 'Close';
         open.focus({ preventScroll: true });
@@ -5348,7 +5348,7 @@ export class App {
     input.setAttribute('aria-describedby', line.id);
     const ask = () => {
       line.hidden = false;
-      line.textContent = `Give it a name first. Tracks and times lists every ${noun} by its name, and "Untitled ${noun}" does not say which one this is.`;
+      line.textContent = `Give it a name first. Maps and Tracks lists every ${noun} by its name, and "Untitled ${noun}" does not say which one this is.`;
       input.setAttribute('aria-invalid', 'true');
       input.focus();
       input.select();
@@ -5558,7 +5558,7 @@ export class App {
         /* The board's own tab, reused if it is already open. No rel here:
          * noopener would send this to a fresh tab every time. */
         open.target = BOARD_WINDOW;
-        open.textContent = 'This map on Tracks and times';
+        open.textContent = 'This map on Maps and Tracks';
         send.replaceWith(open);
         shown.close.textContent = 'Close';
         open.focus({ preventScroll: true });

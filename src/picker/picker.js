@@ -1177,6 +1177,18 @@ export function createPicker(host, opts = {}) {
     setEntries(entries) {
       state.entries = entries || [];
       state.loading = '';
+      /* A fresh list is drawn on fresh panels. The panels kept for a search
+       * or a re-sort were being carried over into a new list too, and on the
+       * board, after an admin marked a map official under its sheet, only the
+       * one new panel drew until a reload (the owner's report of 2026-10-19),
+       * and being carried over is the one thing the others had in common. Lettering a panel again costs
+       * under a millisecond, and only as it scrolls into view. */
+      for (const b of built.values()) {
+        if (io) {
+          io.unobserve(b.el);
+        }
+      }
+      built.clear();
       paint();
     },
     setLoading(text) {

@@ -3945,7 +3945,7 @@ function courseCardRows(subject, seatRows = []) {
       note: `One to five stars for ${name}, one rating each, which you can change or take back. ${ratingWords(subject.course.track.rating)}.`,
     });
     rows.push({
-      label: 'This track on Tracks and times',
+      label: 'This track on Maps and Tracks',
       action: 'card-board',
       note: `${name} on the public board: every time posted on it, who flew them and their ghosts. A link to send somebody. Opens in a new tab.`,
     });
@@ -8843,7 +8843,7 @@ export class Ui {
         },
         { label: 'How to fly', action: 'howto', note: 'The sticks, live, and what the keys do.' },
         {
-          label: 'Tracks and times',
+          label: 'Maps and Tracks',
           action: 'leaderboard',
           note: 'Every published track and map, the times flown on them and who flew them. Opens in a new tab.',
         },
@@ -9109,7 +9109,7 @@ export class Ui {
                 note: `Every time posted on ${seat ? seat.name : 'this track'}, fastest first. Opens here.`,
               },
               {
-                label: 'This track on Tracks and times',
+                label: 'This track on Maps and Tracks',
                 action: 'seat-board',
                 note: 'Its page on the public board, opened on this track. A link to send somebody. Opens in a new tab.',
               },
@@ -9920,7 +9920,7 @@ export class Ui {
         });
       }
       rows.push({
-        label: 'This track on Tracks and times',
+        label: 'This track on Maps and Tracks',
         action: 'card-board',
         note: `${t.name} on the public board, opened on its own page. A link to send somebody. Opens in a new tab.`,
       });
@@ -10224,7 +10224,7 @@ export class Ui {
             };
           })(),
           {
-            label: 'Tracks and times',
+            label: 'Maps and Tracks',
             action: 'leaderboard',
             note: 'Every published track and map, and the times flown on them. Opens in a new tab.',
           },
@@ -10262,7 +10262,7 @@ export class Ui {
         ]),
         editAction(listing, activeCourseSummary()),
         ...(onBoard ? [{
-          label: 'This track on Tracks and times',
+          label: 'This track on Maps and Tracks',
           action: 'seat-board',
           note: `${listing.name || 'This track'} on the public board, opened on its own page: every time posted on it and who flew them. Opens in a new tab.`,
         }] : []),

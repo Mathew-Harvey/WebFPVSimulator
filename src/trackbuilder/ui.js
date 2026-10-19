@@ -4040,7 +4040,7 @@ export class Panels {
     box.append(
       el('p', null, first('field')),
       el('p', 'tb-help', 'Or start from a track on the board, and make it yours. Square on the bar keeps new gates on the compass, as a plan is drawn.'),
-      button('Start from a track on the board', 'tb-btn tb-primary', () => this.host.openBoardStarters(), 'The five inch tracks on Tracks and times, each opened as your own copy'),
+      button('Start from a track on the board', 'tb-btn tb-primary', () => this.host.openBoardStarters(), 'The five inch tracks on Maps and Tracks, each opened as your own copy'),
     );
   }
 

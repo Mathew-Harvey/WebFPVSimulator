@@ -1580,7 +1580,7 @@ const ESCAPE = `(() => {
  *
  * The rows that open the board were called Tracks and Statistics, Tracks
  * and Statistics on the web, Open Tracks and Statistics and Open on the
- * web, for one page that calls itself Tracks and times. Every row whose
+ * web, for one page that calls itself Maps and Tracks. Every row whose
  * action opens it says the board's own name now, or is the Published state
  * of the track's own row. The Tracks room's sheets are read too, by
  * choosing the seated card and the first board card, because that is where
@@ -1895,11 +1895,11 @@ async function main() {
       failures.push('board doors: no row that opens the board was found, so the name was not checked');
     }
     for (const d of boardDoors) {
-      if (!/Tracks and times/.test(d.label) && d.label !== 'Published') {
-        failures.push(`board doors: "${d.label}" on ${d.screen} opens the board under another name than Tracks and times`);
+      if (!/Maps and Tracks/.test(d.label) && d.label !== 'Published') {
+        failures.push(`board doors: "${d.label}" on ${d.screen} opens the board under another name than Maps and Tracks`);
       }
     }
-    notes.push(`board doors: ${boardDoors.length} rows open the board, every one as Tracks and times`);
+    notes.push(`board doors: ${boardDoors.length} rows open the board, every one as Maps and Tracks`);
 
     /* The fold pass's three assertions, per window. */
     const foldRows = [];

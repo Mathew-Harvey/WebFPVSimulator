@@ -87,13 +87,15 @@ const WORD = /(?<![A-Za-z0-9_])[Cc]ourses?(?![A-Za-z0-9_])/;
  * row used an old word. Each of these was a live label or a sentence on
  * 2026-10-01. Same rules as the noun above: player visible text only.
  *
- * And ONE DOOR, ONE NAME, BOTH SIDES (5.4): the board calls itself Tracks
- * and times, so any "Tracks and" that goes on to say something else is a
- * door labelled differently from the room it opens.
+ * And ONE DOOR, ONE NAME, BOTH SIDES (5.4): the board calls itself Maps and
+ * Tracks (the owner renamed it from Tracks and times on 2026-10-19), so any
+ * "Tracks and" or "Maps and" that goes on to say something else is a door
+ * labelled differently from the room it opens.
  */
 const RETIRED = [
-  { re: /Tracks and (?!times\b)[A-Za-z]/, use: 'Tracks and times, the board\'s own name for itself' },
-  { re: /\bOpen on the web\b/, use: 'This track on Tracks and times' },
+  { re: /Tracks and [A-Za-z]/, use: 'Maps and Tracks, the board\'s own name for itself' },
+  { re: /Maps and (?!Tracks\b)[A-Za-z]/, use: 'Maps and Tracks, the board\'s own name for itself' },
+  { re: /\bOpen on the web\b/, use: 'This track on Maps and Tracks' },
   { re: /\bUpload (a time|new best)\b/, use: 'Post a time' },
   { re: /\bRace the record\b/, use: 'Chase the record' },
   { re: /\b(Map|Track) builder\b/, use: 'Builder' },
@@ -104,7 +106,7 @@ const RETIRED = [
   { re: /\bEvery setting\b/, use: 'Firmware bench' },
   { re: /\bFlight controller screen\b/, use: 'Firmware bench' },
   { re: /\b[Tt]he three cards\b/, use: 'What to fly' },
-  { re: /\b[Ll]eaderboard\b/, use: 'Tracks and times, or the board' },
+  { re: /\b[Ll]eaderboard\b/, use: 'Maps and Tracks, or the board' },
 ];
 
 /* Every problem with one piece of visible text, the noun and the retired

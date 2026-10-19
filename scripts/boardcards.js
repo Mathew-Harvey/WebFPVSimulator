@@ -70,6 +70,13 @@ function usage() {
   console.log('  --all              redraw every card, including ones already there');
   console.log('  --out <dir>        also write each card here, to look at');
   console.log('  --dry              draw and report, upload nothing');
+  console.log('  --worlds           draw the thumbnails of the worlds the simulator ships');
+  console.log('                     (the town, Hibari Yard, Nick Burns\' house) into');
+  console.log('                     assets/thumbs/, and nothing from the board');
+  console.log('');
+  console.log('  Every page draws the share card and the picker\'s thumbnail together.');
+  console.log('  Anything missing either is drawn; the card is uploaded when it was');
+  console.log('  missing or --all says so, the thumbnail whenever it was drawn.');
   console.log('');
   console.log('  The upload needs BOARD_ADMIN_TOKEN in the environment, set to the same');
   console.log('  value as the board service\'s own. Without it, --dry is the only mode');
@@ -94,7 +101,7 @@ function isAllowedBoard(urlStr) {
 function parseArgs(argv) {
   const opts = {
     board: process.env.BOARD_ORIGIN || 'http://127.0.0.1:3100',
-    only: '', all: false, out: '', dry: false,
+    only: '', all: false, out: '', dry: false, worlds: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -104,6 +111,7 @@ function parseArgs(argv) {
     if (a === '--out') { opts.out = argv[i + 1]; i += 1; continue; }
     if (a === '--all') { opts.all = true; continue; }
     if (a === '--dry') { opts.dry = true; continue; }
+    if (a === '--worlds') { opts.worlds = true; continue; }
     throw new Error(`unknown option ${a}`);
   }
   opts.board = String(opts.board || '').replace(/\/+$/, '');
@@ -129,7 +137,12 @@ function slugOf(name) {
  * answer out of a document that has not been replaced yet. */
 function cardPath(item, board, n) {
   const q = new URLSearchParams();
-  if (item.kind === 'map') {
+  if (item.kind === 'world') {
+    q.set('map', item.id);
+    for (const [k, v] of Object.entries(item.shot || {})) {
+      q.set(k, String(v));
+    }
+  } else if (item.kind === 'map') {
     q.set('map', 'built');
     q.set('mapshare', item.id);
   } else {
@@ -166,6 +179,10 @@ async function main() {
     return;
   }
 
+  if (opts.worlds) {
+    await drawWorlds(opts);
+    return;
+  }
   const token = String(process.env.BOARD_ADMIN_TOKEN || '');
   if (!token && !opts.dry) {
     console.error('boardcards: no BOARD_ADMIN_TOKEN, so nothing could be uploaded. Use --dry to draw anyway.');
@@ -186,11 +203,15 @@ async function main() {
     return;
   }
   const everything = [
-    ...tracks.map((t) => ({ kind: 'track', id: t.id, name: t.name, hasCard: Boolean(t.hasCard) })),
-    ...maps.map((m) => ({ kind: 'map', id: m.id, name: m.name, hasCard: Boolean(m.hasCard) })),
+    ...tracks.map((t) => ({
+      kind: 'track', id: t.id, name: t.name, hasCard: Boolean(t.hasCard), hasThumb: Boolean(t.hasThumb),
+    })),
+    ...maps.map((m) => ({
+      kind: 'map', id: m.id, name: m.name, hasCard: Boolean(m.hasCard), hasThumb: Boolean(m.hasThumb),
+    })),
   ];
   const wanted = everything
-    .filter((x) => (opts.only ? x.id === opts.only : opts.all || !x.hasCard));
+    .filter((x) => (opts.only ? x.id === opts.only : opts.all || !x.hasCard || !x.hasThumb));
   console.log(`  ${tracks.length} tracks and ${maps.length} maps, ${wanted.length} to draw`);
   if (!wanted.length) {
     console.log('  nothing to do');
@@ -229,6 +250,7 @@ async function main() {
         continue;
       }
       const base64 = await page.evaluate('window.__cardBase64');
+      const thumbBase64 = await page.evaluate('window.__thumbBase64 || ""');
       const bytes = Buffer.from(base64, 'base64');
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       const kb = (bytes.length / 1024).toFixed(0);
@@ -237,24 +259,46 @@ async function main() {
       }
       if (opts.out) {
         await writeFile(join(opts.out, `${item.kind}-${slugOf(item.name)}.jpg`), bytes);
+        if (thumbBase64) {
+          await writeFile(join(opts.out, `${item.kind}-${slugOf(item.name)}-thumb.jpg`), Buffer.from(thumbBase64, 'base64'));
+        }
       }
       if (opts.dry) {
         console.log(`  ${label}: ${kb} kB in ${secs} s, not uploaded`);
         continue;
       }
       const route = item.kind === 'map' ? 'maps' : 'tracks';
-      const up = await fetch(`${opts.board}/api/${route}/${encodeURIComponent(item.id)}/card`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ card: base64 }),
-      });
-      const answer = await up.json().catch(() => ({}));
-      if (!up.ok) {
-        console.log(`  ${label}: the board refused it, ${answer.error || up.status}`);
-        failed += 1;
-        continue;
+      const send = async (slot, picture) => {
+        const up = await fetch(`${opts.board}/api/${route}/${encodeURIComponent(item.id)}/${slot}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ card: picture }),
+        });
+        const answer = await up.json().catch(() => ({}));
+        return up.ok ? '' : (answer.error || String(up.status));
+      };
+      const sent = [];
+      if (opts.all || opts.only || !item.hasCard) {
+        const refused = await send('card', base64);
+        if (refused) {
+          console.log(`  ${label}: the board refused the card, ${refused}`);
+          failed += 1;
+          continue;
+        }
+        sent.push(`card ${kb} kB`);
       }
-      console.log(`  ${label}: ${kb} kB in ${secs} s, on the board`);
+      if (thumbBase64) {
+        const refused = await send('thumb', thumbBase64);
+        if (refused) {
+          console.log(`  ${label}: the board refused the thumbnail, ${refused}`);
+          failed += 1;
+          continue;
+        }
+        sent.push(`thumbnail ${(Buffer.from(thumbBase64, 'base64').length / 1024).toFixed(0)} kB`);
+      } else {
+        console.log(`  ${label}: no thumbnail was drawn`);
+      }
+      console.log(`  ${label}: ${sent.join(', ') || 'nothing new'} in ${secs} s, on the board`);
       /* eslint-enable no-await-in-loop */
     }
   } finally {
@@ -263,6 +307,65 @@ async function main() {
 
   if (failed) {
     console.log(`  ${failed} failed`);
+    process.exitCode = 1;
+  }
+}
+
+/*
+ * THE WORLDS THE SIMULATOR SHIPS, which are on no board: the town, Hibari
+ * Yard (the built world with no map of the pilot's own seated) and Nick
+ * Burns' house. Their thumbnails are files in the simulator, drawn by the
+ * same page the board's are, so a shipped world and a published one sit in
+ * the picker's strip looking like one set. Regenerate, do not edit.
+ */
+const WORLDS = [
+  /* The shots were picked by eye from four sides on 19 October 2026: the
+   * yard from the side that has the road and the containers behind the
+   * frame, the house from the street with its front door in the middle. */
+  { id: 'city', file: 'city.jpg', name: 'The town' },
+  { id: 'built', file: 'yard.jpg', name: 'Hibari Yard', shot: { tp: 0.4, tr: 0.75, ta: 1.57 } },
+  { id: 'house', file: 'house.jpg', name: "Nick Burns' house", shot: { tp: 0.6, tr: 1.4, ta: -1.57 } },
+];
+
+async function drawWorlds(opts) {
+  const dir = join(root, 'assets', 'thumbs');
+  await mkdir(dir, { recursive: true });
+  const page = await openPage({
+    root, width: CARD_W, height: CARD_H, url: '/icon.svg',
+  });
+  let failed = 0;
+  try {
+    for (let n = 0; n < WORLDS.length; n += 1) {
+      /* eslint-disable no-await-in-loop */
+      const w = WORLDS[n];
+      if (opts.only && opts.only !== w.id) {
+        continue;
+      }
+      await page.cdp.send('Page.navigate', {
+        url: `${page.origin}${cardPath({ kind: 'world', id: w.id, shot: w.shot }, opts.board, n)}`,
+      }, page.sessionId);
+      try {
+        await page.until(`location.search.includes('n=${n}') && (window.__cardDone || window.__cardError)`, CARD_WAIT_MS);
+      } catch (e) {
+        console.log(`  ${w.name}: no thumbnail after ${CARD_WAIT_MS / 1000} s`);
+        failed += 1;
+        continue;
+      }
+      const thumb = await page.evaluate('window.__cardError ? "" : (window.__thumbBase64 || "")');
+      if (!thumb) {
+        console.log(`  ${w.name}: ${await page.evaluate('window.__cardError || "no thumbnail was drawn"')}`);
+        failed += 1;
+        continue;
+      }
+      const bytes = Buffer.from(thumb, 'base64');
+      await writeFile(join(dir, w.file), bytes);
+      console.log(`  ${w.name}: assets/thumbs/${w.file}, ${(bytes.length / 1024).toFixed(0)} kB`);
+      /* eslint-enable no-await-in-loop */
+    }
+  } finally {
+    await page.close();
+  }
+  if (failed) {
     process.exitCode = 1;
   }
 }

@@ -650,11 +650,14 @@ export async function postTrackGif({ id, gif, editKey, origin }) {
  * nothing else.
  */
 export async function postShareCard({
-  kind, id, card, editKey, origin,
+  kind, id, card, editKey, origin, slot = 'card',
 }) {
   const board = trimOrigin(origin || boardOrigin());
   const route = kind === 'map' ? 'maps' : 'tracks';
-  const res = await fetch(`${board}/api/${route}/${encodeURIComponent(id)}/card`, {
+  /* slot 'thumb' is the picker's thumbnail, the card's twin at 960 by 540
+   * with no wordmark, on the same door. */
+  const tail = slot === 'thumb' ? 'thumb' : 'card';
+  const res = await fetch(`${board}/api/${route}/${encodeURIComponent(id)}/${tail}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...adminAuthHeaders(board) },
     body: JSON.stringify({ card, editKey: editKey || undefined }),

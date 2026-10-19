@@ -4417,7 +4417,15 @@
       /* The map picker (src/picker/picker.js) brings its own look; this
          only places it. While its zones hold the keys the rows' cursor is
          not drawn, so one thing on the screen reads as chosen. */
-      .room-picker { width: min(100%, 1180px); align-self: center; margin: 6px 0 12px; pointer-events: auto; }
+      .room-picker { width: min(100%, 1280px); align-self: center; margin: 6px 0 12px; pointer-events: auto; --wp-cap-bottom: 0px; }
+      /* 0: the room's own bottom padding already clears the command bar, and
+         the picker's caption sticks inside that padding. */
+      /* The picker letters the shelf's own title, so the room's heading and
+         its one line step aside while it is mounted, rather than say Tracks
+         over a page that says Five inch tracks. */
+      .screen-courses:has(> .room-picker) > h2,
+      .screen-courses:has(> .room-picker) > .screen-lede,
+      .screen-courses:has(> .room-picker) > .rates-lede { display: none; }
       .picker-has-keys .row.on { color: inherit; border-left-color: transparent; background: none; }
       .picker-has-keys .row.on .row-label { text-shadow: none; }
       .strip-label {

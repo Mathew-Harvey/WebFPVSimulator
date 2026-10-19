@@ -10,12 +10,19 @@
  * which is how the lettering already travels. So the two pages cannot show
  * two different pickers: they show this one, fed by two hosts.
  *
- * WHAT IT IS, the owner's pick of 19 October 2026 (direction B, "Select
- * screen", modelled on the AAA drone sims): a rail of three shelves, Maps,
- * 5 inch tracks and Whoop tracks; a big panel with the chosen entry's
- * picture, its facts, its record and its buttons; and a strip of every
- * entry on the shelf under it, the official ones first and the ones pilots
- * made after a divider. "Official" is whatever the board has marked
+ * WHAT IT IS, the owner's pick of 19 October 2026: first direction B,
+ * "Select screen", and then, the same morning, mockup A of the second
+ * round, "Magazine page", because "most people will spend time scrolling
+ * maps, however the map scroller is tiny compared to the currently
+ * selected map" and the picker "should feel like a manga magazine, like
+ * the hero in the landing page, like the story so far". So it is a page of
+ * paper and ink: the shelf's title lettered in the simulator's hand over a
+ * chapter kicker, the three shelves (Maps, 5 inch tracks, Whoop tracks) as
+ * chapter panels with a picture each, the official entries in a big tier,
+ * the ones pilots made in a grid of leaning panels under a ruled cut, and
+ * a caption strip held at the foot of the window with the chosen entry's
+ * name, facts and buttons. There is no big hero panel any more: browsing
+ * is most of the page. "Official" is whatever the board has marked
  * official, plus the worlds the simulator ships, which are official by
  * being shipped.
  *
@@ -30,24 +37,30 @@
  * (src/share/orbit.js, THUMB_SHOT), 960 by 540 with no wordmark. An entry
  * published before thumbnails existed falls back to its share card, and
  * one with neither gets a halftone panel with its initial, never a broken
- * image. Only the big panel's picture loads eagerly; the strip's load as
+ * image. Only the caption's picture loads eagerly; the panels' load as
  * they scroll in, so a shelf of seventy costs what the visible ten cost.
  *
  * LATENCY. None in flight: nothing here runs while a pilot is flying, the
  * pictures are files made at publish rather than worlds built at choosing,
- * and there is no WebGL, canvas or timer in the file.
+ * and there is no WebGL or timer in the file. The names are lettered on 2D
+ * canvases by src/ui/lettering.js (copied beside this file on the board, so
+ * the one relative import holds in both), each panel once, when it first
+ * scrolls into view, and kept: typing in the find box re-sorts the panels
+ * already built rather than lettering them again.
  *
- * KEYS, for a host that forwards them (handleKey): Left and Right walk the
- * strip, Up and Down change shelf, Enter presses the big panel's first
- * button. Escape is the host's, because going back is the host's business
+ * KEYS, for a host that forwards them (handleKey): the arrows walk the
+ * panels as they lie on the page, Q and E (or Page Up and Page Down) change
+ * shelf, Enter presses the caption's first button, and a double click on a
+ * panel flies it. Escape is the host's, because going back is the host's business
  * and the simulator has one rule for it on every screen.
  *
  * ZONES, for a host whose Up and Down already mean something (nav): the
  * simulator's menus walk rows with Up and Down, and a radio has nothing
- * else. So there the picker is three rows of its own, the shelves, the
- * strip and the big panel's buttons, Up and Down move between them, Left
- * and Right move within one, and Down off the buttons hands the cursor
- * back to the host's rows.
+ * else. So there the picker is three zones of its own, the shelves, the
+ * panels and the caption's buttons. Left and Right move within a zone; Up
+ * and Down move a row of panels at a time, leave the top row for the
+ * shelves and the bottom row for the buttons, and Down off the buttons
+ * hands the cursor back to the host's rows.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -65,11 +78,24 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* The three shelves, in the order the rail lists them. */
+import { paintTitle, INKS } from '../ui/lettering.js';
+
+/* The three shelves, in the order the rail lists them. `title` is the
+ * page's lettered heading and `tab` the chapter panel's, as runs in the
+ * lettering's inks; `ink` is what an official entry's name is lettered in. */
 export const PICKER_SHELVES = [
-  { id: 'maps', label: 'Maps', note: 'Freestyle: no gates, no clock' },
-  { id: 'five', label: '5 inch tracks', note: 'Race tracks on the sixty metre field' },
-  { id: 'whoop', label: 'Whoop tracks', note: '65 mm whoop rooms' },
+  {
+    id: 'maps', label: 'Maps', note: 'Freestyle: no gates, no clock', word: 'maps', ink: 'sakura',
+    title: [['Freestyle ', 'cream'], ['maps', 'sakura']], tab: [['Maps', 'sakura']],
+  },
+  {
+    id: 'five', label: '5 inch tracks', note: 'Race tracks on the sixty metre field', word: 'tracks', ink: 'mint',
+    title: [['Five inch ', 'mint'], ['tracks', 'cream']], tab: [['Five inch', 'mint']],
+  },
+  {
+    id: 'whoop', label: 'Whoop tracks', note: '65 mm whoop rooms', word: 'tracks', ink: 'cream',
+    title: [['Whoop ', 'cream'], ['tracks', 'sakura']], tab: [['Whoop', 'cream']],
+  },
 ];
 
 /* The orders a shelf can be put in. Most flown means times posted, which
@@ -255,76 +281,155 @@ function starsOf(rating) {
   return `${'★'.repeat(n)}${'☆'.repeat(5 - n)}`;
 }
 
+
+/* A name in at most two lines of about `per` characters, broken between
+ * words where the two come out nearest even, because a lettered name is
+ * shrunk to fit its panel and a long one shrunk onto one line is unreadable.
+ * Anything still too long is cut, and the whole name is the button's label. */
+function nameLines(name, per) {
+  const n = String(name || '').trim();
+  if (n.length <= per) {
+    return [n];
+  }
+  const words = n.split(/\s+/);
+  let best = [n];
+  let worst = Infinity;
+  for (let k = 1; k < words.length; k += 1) {
+    const a = words.slice(0, k).join(' ');
+    const b = words.slice(k).join(' ');
+    const w = Math.max(a.length, b.length);
+    if (w < worst) {
+      worst = w;
+      best = [a, b];
+    }
+  }
+  return best.map((line) => (line.length > per + 6 ? `${line.slice(0, per + 4).trim()}...` : line));
+}
+
 /*
- * THE LOOK, inline, in the palette the simulator and the board share: ink
- * frames, a hard offset shadow, halftone on the pictures, heavy slanted
- * capitals for the names. Every colour reads its page's own token first,
- * so the simulator's and the board's stylesheets keep the last word, and a
- * plain fallback after it so the picker is whole on a page with neither.
- * Injected once per document, as a <style>, because the board's rule is
- * that a page's styles must not depend on a server's MIME table.
+ * THE LOOK, inline: a manga page. Paper and ink, the simulator's ink
+ * (INK) and paper (PAPER) from lettering.js, leaning panels with a hard
+ * offset shadow, a ring of sakura and still focus lines round the chosen
+ * one, and the palette's accents for what they always mean: amber for the
+ * button that flies, mint for a record and a world, sakura for official.
+ * The page is opaque paper on either host's dark ground, the way the
+ * landing page's hero and the story book sit. Injected once per document,
+ * as a <style>, because the board's rule is that a page's styles must not
+ * depend on a server's MIME table.
+ *
+ * A panel's frame is skewed and its contents skewed back, so the gutters
+ * lean and the world in the picture stays upright. The focus lines are two
+ * repeating conic gradients masked to the panel's edge, still, because a
+ * field of stripes that moves on its own is a photosensitivity question
+ * (the landing page's rule for its own focus lines). The caption is sticky
+ * to the foot of whatever scrolls the page, so the page scrolls and not a
+ * box inside it, which is the simulator's rule for its rooms;
+ * --wp-cap-bottom lifts it clear of a host's own bar, and a panel's scroll
+ * margin keeps the chosen one from being scrolled to behind it.
  */
 const STYLE_ID = 'webfpv-picker-style';
 const CSS = `
-.wp{--wp-deep:var(--deep,#141c16);--wp-panel:var(--panel,#1a241c);--wp-panel2:#223027;--wp-ink:var(--ink-line,#0b1116);
+.wp{--wp-ink:#0b1116;--wp-paper:#f7f0dc;--wp-rule:#d9cdab;--wp-quiet:#5d6b78;
 --wp-cream:var(--cream,#f3ead4);--wp-sakura:var(--sakura,#e8a8b8);--wp-amber:var(--amber,#ffd45c);--wp-mint:var(--mint,#7dffb4);--wp-slate:var(--slate,#9db3c8);
---wp-dot:radial-gradient(circle at 50% 50%,rgba(243,234,212,.12) 0 1.1px,transparent 1.6px) 0 0/7px 7px;
-display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);gap:14px;color:var(--wp-cream);font:14px/1.45 var(--ui-font,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif);min-width:0}
+position:relative;display:flex;flex-direction:column;gap:14px;min-width:0;color:var(--wp-ink);
+background:var(--wp-paper) radial-gradient(circle,rgba(11,17,22,.035) 0 1px,transparent 1.4px) 0 0/5px 5px;
+border:4px solid var(--wp-ink);box-shadow:8px 8px 0 rgba(11,17,22,.9);padding:18px clamp(14px,2.4vw,30px) 0;
+font:14px/1.45 var(--ui-font,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif)}
 .wp *{box-sizing:border-box}
-.wp-rail{display:grid;gap:8px;align-content:start;min-width:0}
-.wp-shelf{appearance:none;text-align:left;cursor:pointer;font-family:inherit;font-size:13px;line-height:1.15;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:var(--wp-cream);background:var(--wp-panel);border:3px solid var(--wp-ink);box-shadow:3px 3px 0 var(--wp-ink);padding:11px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
-.wp-shelf i{font-style:normal;color:var(--wp-slate);font-weight:700;font-variant-numeric:tabular-nums}
-.wp-shelf[aria-selected=true]{background:var(--wp-cream);color:var(--wp-ink)}
-.wp-shelf[aria-selected=true] i{color:var(--wp-ink)}
-.wp-stage{display:grid;gap:12px;min-width:0}
-.wp-hero{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);background:var(--wp-panel);border:3px solid var(--wp-ink);box-shadow:6px 6px 0 var(--wp-ink);min-width:0}
-.wp-pic{position:relative;aspect-ratio:16/9;background:var(--wp-ink);overflow:hidden;min-width:0}
+.wp-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wp-lt{display:block;line-height:0}
+.wp-lt canvas{display:block;max-width:100%!important;height:auto!important}
+.wp-lt canvas+canvas{margin-top:-.3em}
+.wp-lt.is-text{line-height:1.05;font-weight:900;font-style:italic;text-transform:uppercase}
+.wp-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 24px}
+.wp-ttl{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;flex:1 1 300px}
+.wp-title.is-text{font-size:40px;color:var(--wp-ink)}
+.wp-kick{display:inline-block;border:2.5px solid var(--wp-ink);background:var(--wp-paper);padding:5px 9px 4px;font-weight:800;font-size:12px;line-height:1;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
+.wp-kick.is-ink{background:var(--wp-ink);color:var(--wp-paper)}
+.wp-rail{display:flex;gap:14px;padding:8px 10px 6px 4px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.wp-rail::-webkit-scrollbar{display:none}
+.wp-shelf{appearance:none;position:relative;flex:0 0 auto;width:clamp(150px,15vw,206px);height:clamp(64px,6.4vw,86px);padding:0;cursor:pointer;
+border:4px solid var(--wp-ink);background:var(--wp-ink);overflow:hidden;transform:skewX(-9deg);font:inherit;color:var(--wp-cream)}
+.wp-shelf .wp-sk{position:absolute;inset:0 -14%;transform:skewX(9deg)}
+.wp-shelf .wp-pic{position:absolute;inset:0;filter:grayscale(1) contrast(.85) brightness(1.1);opacity:.5}
+.wp-shelf .wp-dt{opacity:.5}
+.wp-shelf .wp-lt{position:absolute;left:calc(14% + 8px);bottom:6px;right:calc(14% + 6px)}
+.wp-shelf .wp-lt.is-text{font-size:20px}
+.wp-shelf i{position:absolute;right:calc(14% + 8px);top:7px;font-style:normal;font-weight:800;font-size:12px;line-height:1;color:var(--wp-ink);background:var(--wp-paper);border:2.5px solid var(--wp-ink);padding:4px 6px 3px;font-variant-numeric:tabular-nums}
+.wp-shelf i:empty{display:none}
+.wp-shelf[aria-selected=true]{transform:skewX(-9deg) translateY(-5px);box-shadow:0 0 0 4px var(--wp-sakura),7px 7px 0 4px var(--wp-ink)}
+.wp-shelf[aria-selected=true] .wp-pic{filter:none;opacity:1}
+.wp-shelf[aria-selected=true] .wp-dt{opacity:.2}
+.wp-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.wp-find{flex:1 1 220px;max-width:420px;min-width:0;height:42px;font:inherit;font-size:15px;font-weight:600;background:var(--wp-paper);color:var(--wp-ink);border:3px solid var(--wp-ink);padding:0 12px;border-radius:0}
+.wp-find::placeholder{color:var(--wp-quiet)}
+.wp-chips{display:flex;flex-wrap:wrap;gap:8px}
+.wp-chip{appearance:none;cursor:pointer;font:inherit;font-weight:800;font-size:13px;line-height:1;color:var(--wp-ink);background:var(--wp-paper);border:3px solid var(--wp-ink);height:42px;padding:0 13px}
+.wp-chip[aria-pressed=true]{background:var(--wp-ink);color:var(--wp-paper)}
+.wp-strip{display:flex;flex-direction:column;gap:14px;padding:4px 6px 12px;min-width:0}
+.wp-tier{display:flex;align-items:center;gap:12px;margin:4px 2px 0}
+.wp-tier .wp-kick{transform:skewX(-8deg)}
+.wp-tier hr{flex:1;height:3px;margin:0;border:0;background:var(--wp-ink)}
+.wp-tier span{font-weight:800;font-size:12px;letter-spacing:.12em;color:var(--wp-quiet)}
+.wp-offs,.wp-grid{display:grid;gap:24px 22px;padding:0 8px}
+.wp-offs{grid-template-columns:1.55fr 1fr 1fr;grid-auto-rows:clamp(170px,19vw,240px)}
+.wp-grid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.wp-grid .wp-card{aspect-ratio:16/10}
+.wp-card{--lean:-3.5deg;position:relative;display:block;width:100%;padding:0;margin:0;cursor:pointer;font:inherit;color:var(--wp-cream);text-align:left;
+border:4px solid var(--wp-ink);background:var(--wp-ink);overflow:hidden;transform:skewX(var(--lean));transition:transform .12s ease,box-shadow .12s ease;min-width:0;
+scroll-margin:24px 0 132px}
+.wp-offs .wp-card{--lean:-4deg}
+.wp-sk{position:absolute;inset:0 -16%;transform:skewX(calc(-1 * var(--lean,0deg)))}
+.wp-pic{position:absolute;inset:0;overflow:hidden;background:var(--wp-ink)}
 .wp-pic img{display:block;width:100%;height:100%;object-fit:cover}
-.wp-pic::after{content:"";position:absolute;inset:0;background:var(--wp-dot);mix-blend-mode:soft-light;pointer-events:none}
-.wp-pic .wp-blank{position:absolute;inset:0;display:grid;place-items:center;background:var(--wp-panel2) var(--wp-dot);font-family:inherit;font-weight:900;font-style:italic;font-size:64px;line-height:1;color:var(--wp-slate)}
-.wp-hero .wp-pic{border-right:3px solid var(--wp-ink)}
-.wp-stamp{font-family:inherit;position:absolute;left:8px;top:8px;z-index:2;background:var(--wp-sakura);color:var(--wp-ink);font-weight:900;font-size:11px;line-height:1;letter-spacing:.1em;text-transform:uppercase;padding:5px 8px;border:2px solid var(--wp-ink);transform:rotate(-3deg);box-shadow:2px 2px 0 var(--wp-ink);max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wp-stamp.is-pilot{background:var(--wp-slate)}
-.wp-info{padding:14px 16px;display:grid;gap:10px;align-content:start;min-width:0}
-.wp-kicker{color:var(--wp-slate);font-size:12px;display:flex;flex-wrap:wrap;gap:4px 10px}
-.wp-kicker b{color:var(--wp-cream)}
-.wp-name{margin:0;font-weight:900;font-style:italic;text-transform:uppercase;font-size:clamp(22px,3vw,32px);line-height:1.02;letter-spacing:.01em;text-shadow:2px 2px 0 var(--wp-ink);overflow-wrap:anywhere}
-.wp-note{color:var(--wp-slate);margin:0}
-.wp-rec{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.wp-rec div{background:var(--wp-deep);border:2px solid var(--wp-ink);padding:7px 9px;min-width:0}
-.wp-rec small{display:block;color:var(--wp-slate);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
-.wp-rec b{font-size:17px;font-variant-numeric:tabular-nums;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wp-rec .wp-mint b{color:var(--wp-mint)}
-.wp-rec span{color:var(--wp-slate);font-size:12px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wp-stars{color:var(--wp-amber);letter-spacing:1px}
-.wp-acts{display:flex;flex-wrap:wrap;gap:8px}
-.wp-act{appearance:none;cursor:pointer;font-family:inherit;font-weight:800;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--wp-cream);background:var(--wp-panel2);border:3px solid var(--wp-ink);box-shadow:3px 3px 0 var(--wp-ink);padding:10px 12px;text-decoration:none;display:inline-flex;align-items:center}
-.wp-act.is-primary{flex:1 1 100%;justify-content:center;font-style:italic;font-weight:900;font-size:19px;color:var(--wp-ink);background:var(--wp-amber);box-shadow:4px 4px 0 var(--wp-ink);padding:13px 16px}
-.wp-act:disabled{opacity:.55;cursor:default}
-.wp-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.wp-find{flex:1 1 180px;min-width:0;font-family:inherit;font-size:14px;font-weight:600;background:var(--wp-panel);color:var(--wp-cream);border:3px solid var(--wp-ink);padding:8px 10px}
-.wp-find::placeholder{color:var(--wp-slate)}
-.wp-chip{appearance:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:12px;line-height:1;color:var(--wp-cream);background:var(--wp-panel);border:2px solid var(--wp-ink);box-shadow:2px 2px 0 var(--wp-ink);padding:8px 10px}
-.wp-chip[aria-pressed=true]{background:var(--wp-mint);color:var(--wp-ink)}
-.wp-strip{display:flex;gap:12px;overflow-x:auto;padding:4px 6px 12px 4px;scroll-snap-type:x proximity;scrollbar-color:var(--wp-slate) transparent}
-.wp-card{flex:0 0 190px;scroll-snap-align:start;appearance:none;text-align:left;cursor:pointer;color:inherit;font:inherit;background:var(--wp-panel);border:3px solid var(--wp-ink);box-shadow:4px 4px 0 var(--wp-ink);padding:0;min-width:0}
-.wp-card[aria-current=true]{outline:4px solid var(--wp-amber);outline-offset:1px}
-.wp-card .wp-pic{aspect-ratio:16/10;border-bottom:3px solid var(--wp-ink)}
-.wp-card .wp-stamp{font-size:9px;padding:4px 6px}
-.wp-card .wp-blank{font-size:36px}
-.wp-cbody{padding:7px 9px 9px;display:grid;gap:2px}
-.wp-cname{font-weight:900;font-size:14px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wp-cmeta{font-size:12px;color:var(--wp-slate);display:flex;gap:8px;overflow:hidden;white-space:nowrap}
+.wp-blank{position:absolute;inset:0;display:grid;place-items:center;background:var(--wp-ink) radial-gradient(circle,rgba(243,234,212,.16) 0 1.2px,transparent 1.7px) 0 0/7px 7px;
+font-weight:900;font-style:italic;font-size:56px;line-height:1;color:var(--wp-slate)}
+.wp-dt{position:absolute;inset:0;background:radial-gradient(circle,rgba(11,17,22,.9) 0 1px,transparent 1.5px) 0 0/4px 4px;opacity:.1;pointer-events:none}
+.wp-sh{position:absolute;inset:0;background:linear-gradient(to top,rgba(11,17,22,.74),rgba(11,17,22,0) 42%);pointer-events:none}
+.wp-fl{position:absolute;inset:0;opacity:0;pointer-events:none;
+background:repeating-conic-gradient(from 3deg at 50% 52%,rgba(247,240,220,.95) 0 .45deg,transparent .45deg 3.3deg),repeating-conic-gradient(from 0deg at 50% 52%,rgba(247,240,220,.8) 0 .25deg,transparent .25deg 5.1deg);
+-webkit-mask:radial-gradient(ellipse 72% 70% at 50% 52%,transparent 62%,#000 96%);mask:radial-gradient(ellipse 72% 70% at 50% 52%,transparent 62%,#000 96%)}
+.wp-stamp{position:absolute;left:calc(16% + 10px);top:9px;max-width:62%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+background:var(--wp-paper);color:var(--wp-ink);border:2.5px solid var(--wp-ink);padding:4px 8px 3px;font-weight:800;font-size:11px;line-height:1;letter-spacing:.14em;text-transform:uppercase}
+.wp-stamp.is-official{background:var(--wp-sakura)}
+.wp-stamp.is-world{background:var(--wp-mint)}
+.wp-nm{position:absolute;left:calc(16% + 6px);right:calc(16% + 6px);bottom:24px;pointer-events:none}
+.wp-nm.is-text{font-size:20px;color:var(--wp-cream);text-shadow:2px 2px 0 var(--wp-ink)}
+.wp-cmeta{position:absolute;left:calc(16% + 12px);bottom:7px;display:flex;gap:8px;font-weight:800;font-size:12px;line-height:1;color:var(--wp-cream);text-shadow:1px 1px 0 var(--wp-ink);white-space:nowrap}
+.wp-stars{color:var(--wp-amber);letter-spacing:.08em}
 .wp-cmeta .wp-mint{color:var(--wp-mint)}
-.wp-split{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;writing-mode:vertical-rl;transform:rotate(180deg);font-weight:900;font-style:italic;text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--wp-slate);border-left:4px solid var(--wp-slate);padding:0 4px}
-.wp-empty{color:var(--wp-slate);padding:12px 2px}
-.wp :focus-visible{outline:3px solid var(--wp-mint);outline-offset:2px}
-.wp[data-zone=rail] .wp-shelf[aria-selected=true]{outline:4px solid var(--wp-amber);outline-offset:1px}
-.wp[data-zone=rail] .wp-card[aria-current=true],.wp[data-zone=acts] .wp-card[aria-current=true],.wp[data-zone=away] .wp-card[aria-current=true]{outline-color:var(--wp-slate)}
-.wp-act.is-focus{outline:4px solid var(--wp-mint);outline-offset:2px}
-@media (max-width:760px){.wp{grid-template-columns:1fr}.wp-rail{display:flex;overflow-x:auto;padding-bottom:4px}.wp-shelf{flex:0 0 auto}
-.wp-hero{grid-template-columns:1fr}.wp-hero .wp-pic{border-right:0;border-bottom:3px solid var(--wp-ink)}.wp-card{flex-basis:150px}}
-@media (prefers-reduced-motion:reduce){.wp-strip{scroll-behavior:auto}}
+.wp-card:hover{transform:skewX(var(--lean)) translate(-2px,-2px);box-shadow:5px 5px 0 var(--wp-ink)}
+.wp-card[aria-current=true]{z-index:2;transform:skewX(var(--lean)) translate(-4px,-4px);box-shadow:0 0 0 4px var(--wp-sakura),9px 9px 0 4px var(--wp-ink)}
+.wp-card[aria-current=true] .wp-fl{opacity:1}
+.wp-hero{position:sticky;bottom:var(--wp-cap-bottom,0px);z-index:5;margin:6px 4px 18px;min-height:78px;border:4px solid var(--wp-ink);background:var(--wp-paper);
+box-shadow:7px 7px 0 var(--wp-ink);transform:skewX(-5deg)}
+.wp-cap{display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;padding:10px 20px;transform:skewX(5deg);min-height:70px}
+.wp-cap .wp-pic{position:relative;flex:none;width:118px;height:62px;border:3px solid var(--wp-ink)}
+.wp-who{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 300px}
+.wp-name{margin:0;font-size:inherit;line-height:0}
+.wp-name .wp-lt.is-text{font-size:24px;line-height:1.05}
+.wp-line{font-weight:700;font-size:14px;line-height:1.25;color:var(--wp-quiet);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wp-line b{color:var(--wp-ink)}
+.wp-line .wp-stars{color:#a87c00}
+.wp-acts{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.wp-act{appearance:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;height:46px;padding:0 16px;font:inherit;font-weight:900;font-style:italic;font-size:15px;line-height:1;letter-spacing:.04em;
+text-transform:uppercase;text-decoration:none;color:var(--wp-ink);background:var(--wp-paper);border:4px solid var(--wp-ink);box-shadow:4px 4px 0 var(--wp-ink);transform:skewX(-8deg);white-space:nowrap}
+.wp-act.is-primary{height:52px;padding:0 30px;font-size:21px;background:var(--wp-amber);box-shadow:5px 5px 0 var(--wp-ink)}
+.wp-act:disabled{opacity:.5;cursor:default}
+.wp-empty{color:var(--wp-quiet);font-weight:700;padding:14px 4px;margin:0}
+.wp :focus-visible{outline:3px solid var(--wp-ink);outline-offset:3px}
+.wp-card:focus-visible{outline:none;box-shadow:0 0 0 4px var(--wp-mint),9px 9px 0 4px var(--wp-ink)}
+.wp[data-zone=rail] .wp-shelf[aria-selected=true]{box-shadow:0 0 0 4px var(--wp-amber),7px 7px 0 4px var(--wp-ink)}
+.wp[data-zone=rail] .wp-card[aria-current=true],.wp[data-zone=acts] .wp-card[aria-current=true],.wp[data-zone=away] .wp-card[aria-current=true]{box-shadow:0 0 0 4px var(--wp-rule),9px 9px 0 4px var(--wp-ink)}
+.wp-act.is-focus{outline:4px solid var(--wp-ink);outline-offset:3px;box-shadow:0 0 0 7px var(--wp-mint)}
+@media (max-width:760px){.wp{padding:14px 12px 0;box-shadow:5px 5px 0 rgba(11,17,22,.9)}
+.wp-offs{grid-template-columns:1fr;grid-auto-rows:auto}.wp-offs .wp-card{aspect-ratio:16/9}
+.wp-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px 14px}
+.wp-offs,.wp-grid{padding:0 4px}
+.wp-hero{transform:none;margin:4px 0 12px}.wp-cap{transform:none;padding:10px 12px}.wp-cap .wp-pic{display:none}
+.wp-acts{width:100%}.wp-act.is-primary{flex:1 1 auto}}
+@media (prefers-reduced-motion:reduce){.wp-card,.wp-shelf{transition:none}}
+@media (forced-colors:active){.wp-lt canvas{display:none}.wp-lt .wp-sr{position:static;width:auto;height:auto;clip:auto;white-space:normal}}
 `;
 
 function injectStyle(doc) {
@@ -348,10 +453,38 @@ function make(doc, tag, cls, text) {
   return n;
 }
 
+/*
+ * Letter `lines` (each an array of [text, ink] runs) into `box`, one canvas
+ * a line, the words kept beside them for a screen reader and for forced
+ * colours. A page that cannot draw (no 2D context) keeps the words as heavy
+ * type, which is what the lettering is a drawing of.
+ */
+function letter(doc, box, lines, px, maxW) {
+  box.replaceChildren();
+  box.classList.add('wp-lt');
+  const words = lines.map((l) => l.map((r) => r[0]).join('')).join(' ');
+  try {
+    for (const line of lines) {
+      const c = doc.createElement('canvas');
+      c.setAttribute('aria-hidden', 'true');
+      if (!c.getContext || !c.getContext('2d')) {
+        throw new Error('no 2d');
+      }
+      box.append(c);
+      paintTitle(c, line.map(([text, ink]) => ({ text, fill: INKS[ink] || ink })), px, { maxW: maxW > 0 ? maxW : 0 });
+    }
+    box.append(make(doc, 'span', 'wp-sr', words));
+    box.classList.remove('is-text');
+  } catch (err) {
+    box.replaceChildren(doc.createTextNode(words));
+    box.classList.add('is-text');
+  }
+}
+
 /* The picture, with the card as its fallback and an initial under both. */
 function picture(doc, entry, eager) {
-  const box = make(doc, 'div', 'wp-pic');
-  const blank = make(doc, 'div', 'wp-blank', (entry.name.trim()[0] || '?').toUpperCase());
+  const box = make(doc, 'span', 'wp-pic');
+  const blank = make(doc, 'span', 'wp-blank', (entry.name.trim()[0] || '?').toUpperCase());
   blank.setAttribute('aria-hidden', 'true');
   box.append(blank);
   const sources = [entry.thumb, entry.fallback].filter(Boolean);
@@ -373,10 +506,20 @@ function picture(doc, entry, eager) {
     img.src = sources[0];
     box.append(img);
   }
-  const stamp = make(doc, 'span', `wp-stamp${entry.official ? '' : ' is-pilot'}`,
-    entry.stamp || (entry.official ? 'Official' : (entry.author ? `By ${entry.author}` : 'Pilot made')));
-  box.append(stamp);
   return box;
+}
+
+function stampOf(entry) {
+  if (entry.stamp) {
+    return { text: entry.stamp, cls: entry.official ? 'is-official' : '' };
+  }
+  if (entry.kind === 'world') {
+    return { text: 'World', cls: 'is-world' };
+  }
+  if (entry.official) {
+    return { text: 'Official', cls: 'is-official' };
+  }
+  return { text: entry.author ? `By ${entry.author}` : 'Pilot made', cls: '' };
 }
 
 /*
@@ -387,12 +530,14 @@ function picture(doc, entry, eager) {
  *   order        'rated', 'newest' or 'flown'
  *   selected     an entry's key to open on, when it is on the shelf
  *   actions      (entry) => [{ id, label, href?, primary?, disabled? }], the
- *                big panel's buttons, the first primary one being Enter's
+ *                caption's buttons, the first primary one being Enter's
  *   onAction     (id, entry, event) => void, for a button without an href
  *   onShelf      (shelf) => void, told when the pilot changes shelf
  *   onOrder      (order) => void, told when the pilot changes order
- *   onSelect     (entry) => void, told when the big panel changes
+ *   onSelect     (entry) => void, told when the chosen entry changes
  *   counts       true to print how many entries each shelf holds
+ *   shelfPictures { maps, five, whoop }, a picture's address for each
+ *                shelf's chapter panel, when the host has its own
  *   loading      a sentence for a shelf whose list has not arrived
  *
  * Returns a controller: setEntries, setShelf, setLoading, select, move,
@@ -401,6 +546,7 @@ function picture(doc, entry, eager) {
  */
 export function createPicker(host, opts = {}) {
   const doc = host.ownerDocument || document;
+  const win = doc.defaultView || (typeof window !== 'undefined' ? window : null);
   injectStyle(doc);
   const state = {
     entries: opts.entries || [],
@@ -411,35 +557,115 @@ export function createPicker(host, opts = {}) {
     loading: opts.loading || '',
   };
   const root = make(doc, 'div', 'wp');
+  const head = make(doc, 'div', 'wp-head');
+  const ttl = make(doc, 'div', 'wp-ttl');
+  const kick = make(doc, 'span', 'wp-kick');
+  /* Headings are divs with a heading's role, so a host's own h2 rules
+   * (the simulator rules a line under every one) stay off the page. */
+  const title = make(doc, 'div', 'wp-title');
+  title.setAttribute('role', 'heading');
+  title.setAttribute('aria-level', '2');
+  ttl.append(kick, title);
   const rail = make(doc, 'div', 'wp-rail');
   rail.setAttribute('role', 'tablist');
   rail.setAttribute('aria-label', 'Shelves');
-  const stage = make(doc, 'div', 'wp-stage');
-  const hero = make(doc, 'section', 'wp-hero');
-  hero.setAttribute('aria-live', 'polite');
+  head.append(ttl, rail);
   const bar = make(doc, 'div', 'wp-bar');
   const find = make(doc, 'input', 'wp-find');
   find.type = 'search';
   find.placeholder = 'Find by name or pilot';
   find.setAttribute('aria-label', 'Find by name or pilot');
   find.autocomplete = 'off';
-  const chips = make(doc, 'div', 'wp-bar');
+  const chips = make(doc, 'div', 'wp-chips');
   bar.append(find, chips);
   const strip = make(doc, 'div', 'wp-strip');
   strip.setAttribute('role', 'listbox');
   strip.setAttribute('aria-label', 'Choose');
-  stage.append(hero, bar, strip);
-  root.append(rail, stage);
+  const hero = make(doc, 'section', 'wp-hero');
+  hero.setAttribute('aria-live', 'polite');
+  const cap = make(doc, 'div', 'wp-cap');
+  hero.append(cap);
+  root.append(head, bar, strip, hero);
   host.append(root);
 
   let shown = [];
-  /* Which of the three rows a host's nav is on, '' for none (the board,
-   * which uses handleKey), 'away' while the host's own rows have it. */
+  /* Which zone a host's nav is on, '' for none (the board, which uses
+   * handleKey), 'away' while the host's own rows have it. */
   let zone = '';
   let act = 0;
+  /* Panels built so far, by key, with the facts they were built from, so a
+   * re-sort or a search reuses them, lettering and all. */
+  const built = new Map();
+  let railSig = '';
+  let titleSig = '';
+
+  /* A panel's name is lettered when the panel first comes near the window,
+   * at the width it has then. */
+  const io = win && 'IntersectionObserver' in win
+    ? new win.IntersectionObserver((seen) => {
+      for (const s of seen) {
+        if (s.isIntersecting) {
+          io.unobserve(s.target);
+          letterCard(s.target);
+        }
+      }
+    }, { rootMargin: '300px 0px' })
+    : null;
+
+  function letterCard(card) {
+    const box = card.querySelector('.wp-nm');
+    if (!box || box.dataset.done) {
+      return;
+    }
+    const entry = shown.find((e) => e.key === card.dataset.key) || state.entries.find((e) => e.key === card.dataset.key);
+    if (!entry) {
+      return;
+    }
+    box.dataset.done = '1';
+    const w = card.offsetWidth || 260;
+    const px = Math.max(16, Math.min(34, Math.round(w * 0.072)));
+    const per = Math.max(12, Math.round(w / 15));
+    const ink = entry.official ? shelfOf(entry.shelf).ink : 'cream';
+    letter(doc, box, nameLines(entry.name, per).map((l) => [[l, ink]]), px, w * 0.84);
+  }
+
+  /* How a pilot's panels lean: row by row, one way and then the other, as
+   * a manga page's tiers do. The columns are what the grid's width gives
+   * auto-fill, worked out rather than read back from every panel. */
+  let lastGridW = 0;
+  function leanRows() {
+    const grid = strip.querySelector('.wp-grid');
+    if (!grid) {
+      return;
+    }
+    const w = grid.clientWidth;
+    lastGridW = w;
+    const narrow = win && win.matchMedia && win.matchMedia('(max-width:760px)').matches;
+    const min = narrow ? 150 : 240;
+    const gap = narrow ? 14 : 22;
+    const cols = Math.max(1, Math.floor((w - 16 + gap) / (min + gap)));
+    [...grid.children].forEach((c, i) => {
+      c.style.setProperty('--lean', `${Math.floor(i / cols) % 2 ? 3.5 : -3.5}deg`);
+    });
+  }
+  const ro = win && 'ResizeObserver' in win
+    ? new win.ResizeObserver(() => {
+      const grid = strip.querySelector('.wp-grid');
+      if (grid && grid.clientWidth !== lastGridW) {
+        leanRows();
+      }
+    })
+    : null;
+  if (ro) {
+    ro.observe(strip);
+  }
+
+  function shelfOf(id) {
+    return PICKER_SHELVES.find((s) => s.id === id) || PICKER_SHELVES[0];
+  }
 
   function acts() {
-    return [...hero.querySelectorAll('.wp-act')];
+    return [...cap.querySelectorAll('.wp-act')];
   }
 
   function markActs() {
@@ -449,7 +675,7 @@ export function createPicker(host, opts = {}) {
   }
 
   function setZone(z) {
-    /* No buttons to hold, which is an empty shelf: the strip is next. */
+    /* No buttons to hold, which is an empty shelf: the panels are next. */
     zone = z === 'acts' && !acts().length ? 'strip' : (z || '');
     act = 0;
     if (zone) {
@@ -460,6 +686,8 @@ export function createPicker(host, opts = {}) {
     markActs();
     if (zone === 'strip') {
       markCurrent(true);
+    } else if (zone === 'rail') {
+      rail.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   }
 
@@ -472,21 +700,77 @@ export function createPicker(host, opts = {}) {
     return shown.find((e) => e.key === state.selected) || shown[0] || null;
   }
 
+  function paintTitle_() {
+    const s = shelfOf(state.shelf);
+    const count = state.entries.filter((e) => e.shelf === s.id).length;
+    const n = PICKER_SHELVES.indexOf(s) + 1;
+    kick.textContent = count ? `Chapter 0${n} · ${count} ${s.word}` : `Chapter 0${n}`;
+    const w = root.clientWidth || 1000;
+    const sig = `${s.id}|${w > 760}`;
+    if (sig === titleSig) {
+      return;
+    }
+    titleSig = sig;
+    letter(doc, title, [s.title.map(([t, ink]) => [t.toUpperCase(), ink])], w > 760 ? 50 : 34, w > 760 ? w * 0.48 : w - 40);
+  }
+
+  /*
+   * The shelf's picture: the host's own for it (shelfPictures, which the
+   * simulator gives as its gate's art), else its first official entry with
+   * a picture, else any. A host that feeds one shelf at a time, as the
+   * simulator's rooms do, gets the count and picture each shelf had when
+   * it was last fed, rather than an empty chapter.
+   */
+  const seen = {};
+  function tabEntry(id) {
+    const own = opts.shelfPictures && opts.shelfPictures[id];
+    if (own) {
+      return { key: `shelf:${id}`, name: id, thumb: own, fallback: '' };
+    }
+    const sorted = sortShelf(state.entries, id, 'rated');
+    const found = [...sorted.official, ...sorted.pilots].find((e) => e.thumb || e.fallback);
+    return found || (seen[id] && seen[id].pic) || null;
+  }
+
   function paintRail() {
+    const counts = PICKER_SHELVES.map((s) => {
+      const n = state.entries.filter((e) => e.shelf === s.id).length;
+      if (n) {
+        seen[s.id] = { n, pic: tabEntry(s.id) };
+      }
+      return n || (seen[s.id] ? seen[s.id].n : 0);
+    });
+    const pics = PICKER_SHELVES.map((s) => {
+      const e = tabEntry(s.id);
+      return e ? e.key : '';
+    });
+    const sig = `${state.shelf}|${counts.join(',')}|${pics.join(',')}|${opts.counts !== false}`;
+    if (sig === railSig) {
+      return;
+    }
+    railSig = sig;
     rail.replaceChildren();
-    for (const s of PICKER_SHELVES) {
+    PICKER_SHELVES.forEach((s, k) => {
       const b = make(doc, 'button', 'wp-shelf');
       b.type = 'button';
       b.setAttribute('role', 'tab');
       b.setAttribute('aria-selected', String(s.id === state.shelf));
+      b.setAttribute('aria-label', s.label);
       b.title = s.note;
-      b.append(doc.createTextNode(s.label));
-      if (opts.counts !== false) {
-        b.append(make(doc, 'i', '', String(state.entries.filter((e) => e.shelf === s.id).length || '')));
+      const sk = make(doc, 'span', 'wp-sk');
+      const e = tabEntry(s.id);
+      if (e) {
+        sk.append(picture(doc, { ...e, name: s.label }, true));
       }
+      sk.append(make(doc, 'span', 'wp-dt'));
+      const name = make(doc, 'span');
+      sk.append(name);
+      sk.append(make(doc, 'i', '', opts.counts !== false && counts[k] ? String(counts[k]) : ''));
+      b.append(sk);
       b.addEventListener('click', () => setShelf(s.id, true));
       rail.append(b);
-    }
+      letter(doc, name, [s.tab.map(([t, ink]) => [t.toUpperCase(), ink])], 28, b.offsetWidth ? b.offsetWidth * 0.7 : 140);
+    });
   }
 
   function paintChips() {
@@ -509,53 +793,57 @@ export function createPicker(host, opts = {}) {
     }
   }
 
+  /* The caption: the chosen entry's picture, name, facts and buttons. */
   function paintHero(entry) {
-    hero.replaceChildren();
+    cap.replaceChildren();
+    hero.hidden = !entry;
     if (!entry) {
-      const empty = make(doc, 'p', 'wp-empty', state.loading
-        || (state.needle ? 'Nothing on this shelf matches that.' : 'Nothing on this shelf yet.'));
-      hero.append(empty);
       return;
     }
-    hero.append(picture(doc, entry, true));
-    const info = make(doc, 'div', 'wp-info');
-    const kicker = make(doc, 'div', 'wp-kicker');
+    cap.append(picture(doc, entry, true));
+    const who = make(doc, 'div', 'wp-who');
+    const name = make(doc, 'div', 'wp-name');
+    name.setAttribute('role', 'heading');
+    name.setAttribute('aria-level', '3');
+    const nameBox = make(doc, 'span');
+    name.append(nameBox);
+    who.append(name);
+    const line = make(doc, 'div', 'wp-line');
     const kind = entry.kind === 'track'
       ? (entry.shelf === 'whoop' ? 'Whoop track' : '5 inch track')
       : 'Freestyle map';
-    kicker.append(make(doc, 'b', '', kind));
+    const bits = [];
+    const add = (text, strong) => {
+      if (bits.length) {
+        line.append(doc.createTextNode(' · '));
+      }
+      line.append(strong ? make(doc, 'b', '', text) : doc.createTextNode(text));
+      bits.push(text);
+    };
+    add(kind, true);
+    if (entry.note) {
+      add(entry.note);
+    }
+    if (entry.author && entry.kind !== 'world') {
+      add(`by ${entry.author}`);
+    }
     for (const f of entry.facts) {
-      kicker.append(make(doc, 'span', '', f));
+      add(f);
     }
-    info.append(kicker);
-    info.append(make(doc, 'h2', 'wp-name', entry.name));
-    const by = entry.author && entry.kind !== 'world' ? `Published by ${entry.author}.` : '';
-    const note = [entry.note, by].filter(Boolean).join(' ');
-    if (note) {
-      info.append(make(doc, 'p', 'wp-note', note));
-    }
-    const rec = make(doc, 'div', 'wp-rec');
-    const rated = make(doc, 'div');
-    rated.append(make(doc, 'small', '', 'Rating'));
-    const stars = starsOf(entry.rating);
-    rated.append(make(doc, 'b', stars ? 'wp-stars' : '', stars || 'Not rated'));
-    rated.append(make(doc, 'span', '', entry.rating.count
-      ? `${entry.rating.avg.toFixed(1)} from ${entry.rating.count}` : 'Be the first'));
-    const record = make(doc, 'div', 'wp-mint');
     if (entry.kind === 'track') {
-      record.append(make(doc, 'small', '', entry.best && entry.best.three ? 'Record, 3 laps' : 'Record lap'));
-      record.append(make(doc, 'b', '', entry.best ? formatLap(entry.best.ms) : 'Open'));
-      record.append(make(doc, 'span', '', entry.best
-        ? `${entry.best.name || 'A pilot'}, ${entry.times} time${entry.times === 1 ? '' : 's'}`
-        : 'No times yet'));
-    } else {
-      record.append(make(doc, 'small', '', 'Clock'));
-      record.append(make(doc, 'b', '', 'None'));
-      record.append(make(doc, 'span', '', 'Fly it your way'));
+      add(entry.best
+        ? `${entry.best.three ? 'Record, 3 laps' : 'Record'} ${formatLap(entry.best.ms)}, ${entry.best.name || 'a pilot'}`
+        : 'No times yet');
     }
-    rec.append(rated, record);
-    info.append(rec);
-    const acts = make(doc, 'div', 'wp-acts');
+    const stars = starsOf(entry.rating);
+    if (bits.length) {
+      line.append(doc.createTextNode(' · '));
+    }
+    line.append(make(doc, 'span', 'wp-stars', stars || 'Not rated'));
+    line.title = line.textContent;
+    who.append(line);
+    cap.append(who);
+    const box = make(doc, 'div', 'wp-acts');
     for (const a of (opts.actions ? opts.actions(entry) : [])) {
       const btn = a.href ? make(doc, 'a', 'wp-act') : make(doc, 'button', 'wp-act');
       btn.textContent = a.label;
@@ -573,54 +861,103 @@ export function createPicker(host, opts = {}) {
       }
       btn.dataset.act = a.id;
       btn.addEventListener('click', (ev) => {
-        if (!a.href && opts.onAction) {
-          opts.onAction(a.id, entry, ev);
-        } else if (a.href && opts.onAction) {
+        if (opts.onAction) {
           opts.onAction(a.id, entry, ev);
         }
       });
-      acts.append(btn);
+      box.append(btn);
     }
-    info.append(acts);
-    hero.append(info);
+    /* The primary button last, at the right, where the eye ends. */
+    const primary = box.querySelector('.is-primary');
+    if (primary) {
+      box.append(primary);
+    }
+    cap.append(box);
+    const w = who.offsetWidth || 360;
+    letter(doc, nameBox, nameLines(entry.name, 44).map((l) => [[l, shelfOf(entry.shelf).ink]]), 26, w);
     markActs();
   }
 
   function cardFor(entry) {
+    const stamp = stampOf(entry);
+    const sig = [entry.name, entry.official, entry.thumb, entry.fallback, entry.rating.count, entry.rating.avg,
+      entry.best ? entry.best.ms : '', stamp.text].join('|');
+    const had = built.get(entry.key);
+    if (had && had.sig === sig) {
+      return had.el;
+    }
     const b = make(doc, 'button', 'wp-card');
     b.type = 'button';
     b.setAttribute('role', 'option');
+    b.setAttribute('aria-label', `${entry.name}, ${stamp.text}`);
     b.dataset.key = entry.key;
-    b.append(picture(doc, entry, false));
-    const body = make(doc, 'div', 'wp-cbody');
-    body.append(make(doc, 'div', 'wp-cname', entry.name));
-    const meta = make(doc, 'div', 'wp-cmeta');
+    const sk = make(doc, 'span', 'wp-sk');
+    sk.append(picture(doc, entry, false), make(doc, 'span', 'wp-dt'), make(doc, 'span', 'wp-sh'), make(doc, 'span', 'wp-fl'));
+    sk.append(make(doc, 'span', `wp-stamp ${stamp.cls}`, stamp.text));
+    sk.append(make(doc, 'span', 'wp-nm'));
+    const meta = make(doc, 'span', 'wp-cmeta');
     const stars = starsOf(entry.rating);
     meta.append(make(doc, 'span', 'wp-stars', stars || '☆☆☆☆☆'));
     if (entry.best) {
       meta.append(make(doc, 'span', 'wp-mint', formatLap(entry.best.ms)));
     }
-    body.append(meta);
-    b.append(body);
+    sk.append(meta);
+    b.append(sk);
     b.addEventListener('click', () => select(entry.key, true));
+    b.addEventListener('dblclick', () => {
+      select(entry.key, true);
+      activate();
+    });
+    built.set(entry.key, { sig, el: b });
     return b;
+  }
+
+  function tier(text, count, ink) {
+    const t = make(doc, 'div', 'wp-tier');
+    t.setAttribute('aria-hidden', 'true');
+    t.append(make(doc, 'span', `wp-kick${ink ? ' is-ink' : ''}`, text), make(doc, 'hr'), make(doc, 'span', '', String(count)));
+    return t;
   }
 
   function paintStrip(official, pilots) {
     strip.replaceChildren();
-    for (const e of official) {
-      strip.append(cardFor(e));
+    if (!official.length && !pilots.length) {
+      strip.append(make(doc, 'p', 'wp-empty', state.loading
+        || (state.needle ? 'Nothing on this shelf matches that.' : 'Nothing on this shelf yet.')));
+      return;
     }
-    if (official.length && pilots.length) {
-      const split = make(doc, 'div', 'wp-split', 'Made by pilots');
-      split.setAttribute('aria-hidden', 'true');
-      strip.append(split);
+    const cards = [];
+    if (official.length) {
+      strip.append(tier(state.shelf === 'maps' ? 'Worlds and official' : 'Official', official.length, true));
+      /* Always three columns, the first wide, so one official entry is a
+       * big panel at the head of the page rather than a banner that crops
+       * its picture to a sliver. */
+      const offs = make(doc, 'div', 'wp-offs');
+      for (const e of official) {
+        const c = cardFor(e);
+        c.style.removeProperty('--lean');
+        offs.append(c);
+        cards.push(c);
+      }
+      strip.append(offs);
     }
-    for (const e of pilots) {
-      strip.append(cardFor(e));
+    if (pilots.length) {
+      strip.append(tier('Made by pilots', pilots.length, false));
+      const grid = make(doc, 'div', 'wp-grid');
+      for (const e of pilots) {
+        const c = cardFor(e);
+        grid.append(c);
+        cards.push(c);
+      }
+      strip.append(grid);
     }
-    if (!official.length && !pilots.length && !state.loading) {
-      strip.append(make(doc, 'p', 'wp-empty', state.needle ? 'No matches.' : ''));
+    leanRows();
+    for (const c of cards) {
+      if (io) {
+        io.observe(c);
+      } else {
+        letterCard(c);
+      }
     }
   }
 
@@ -642,6 +979,7 @@ export function createPicker(host, opts = {}) {
     if (!all.some((e) => e.key === state.selected)) {
       state.selected = all[0] ? all[0].key : '';
     }
+    paintTitle_();
     paintRail();
     paintChips();
     paintStrip(official, pilots);
@@ -655,7 +993,9 @@ export function createPicker(host, opts = {}) {
     }
     const changed = key !== state.selected;
     state.selected = key;
-    paintHero(current());
+    if (changed || !cap.firstChild) {
+      paintHero(current());
+    }
     markCurrent(true);
     if (changed && user && opts.onSelect) {
       opts.onSelect(current());
@@ -686,6 +1026,32 @@ export function createPicker(host, opts = {}) {
     select(shown[next].key, true);
   }
 
+  /*
+   * A row up or down, as the panels lie: the panel on the next row whose
+   * middle is nearest this one's, because the official tier and the grid
+   * under it have different columns. False when there is no row that way.
+   */
+  function moveRow(dir) {
+    const cards = [...strip.querySelectorAll('.wp-card')];
+    const here = cards.find((c) => c.dataset.key === state.selected) || cards[0];
+    if (!here) {
+      return false;
+    }
+    const r = here.getBoundingClientRect();
+    const mid = r.left + r.width / 2;
+    const rows = cards
+      .map((c) => ({ c, r: c.getBoundingClientRect() }))
+      .filter((x) => (dir > 0 ? x.r.top > r.top + r.height / 2 : x.r.bottom < r.bottom - r.height / 2));
+    if (!rows.length) {
+      return false;
+    }
+    const edge = dir > 0 ? Math.min(...rows.map((x) => x.r.top)) : Math.max(...rows.map((x) => x.r.top));
+    const row = rows.filter((x) => Math.abs(x.r.top - edge) < 4);
+    row.sort((a, b) => Math.abs(a.r.left + a.r.width / 2 - mid) - Math.abs(b.r.left + b.r.width / 2 - mid));
+    select(row[0].c.dataset.key, true);
+    return true;
+  }
+
   function moveShelf(dir) {
     const i = PICKER_SHELVES.findIndex((s) => s.id === state.shelf);
     const next = PICKER_SHELVES[(i + dir + PICKER_SHELVES.length) % PICKER_SHELVES.length];
@@ -693,7 +1059,7 @@ export function createPicker(host, opts = {}) {
   }
 
   function activate() {
-    const btn = hero.querySelector('.wp-act.is-primary') || hero.querySelector('.wp-act');
+    const btn = cap.querySelector('.wp-act.is-primary') || cap.querySelector('.wp-act');
     if (btn && !btn.disabled) {
       btn.click();
       return true;
@@ -702,7 +1068,7 @@ export function createPicker(host, opts = {}) {
   }
 
   /* A key the host forwards; true when the picker used it. The find box
-   * keeps its own keys, apart from Down, which leaves it for the strip. */
+   * keeps its own keys, apart from Down, which leaves it for the panels. */
   function handleKey(ev) {
     const key = ev.key;
     if (ev.target === find && key !== 'ArrowDown' && key !== 'Enter') {
@@ -713,12 +1079,16 @@ export function createPicker(host, opts = {}) {
     } else if (key === 'ArrowRight') {
       move(1);
     } else if (key === 'ArrowUp') {
-      moveShelf(-1);
+      moveRow(-1);
     } else if (key === 'ArrowDown') {
       if (ev.target === find) {
         find.blur();
         return true;
       }
+      moveRow(1);
+    } else if (key === 'q' || key === 'Q' || key === 'PageUp') {
+      moveShelf(-1);
+    } else if (key === 'e' || key === 'E' || key === 'PageDown') {
       moveShelf(1);
     } else if (key === 'Enter') {
       return activate();
@@ -750,12 +1120,16 @@ export function createPicker(host, opts = {}) {
       if (dir === 'left' || dir === 'right') {
         move(dir === 'left' ? -1 : 1);
       } else if (dir === 'up') {
-        setZone('rail');
-      } else if (dir === 'down') {
-        if (!acts().length) {
-          return 'down';
+        if (!moveRow(-1)) {
+          setZone('rail');
         }
-        setZone('acts');
+      } else if (dir === 'down') {
+        if (!moveRow(1)) {
+          if (!acts().length) {
+            return 'down';
+          }
+          setZone('acts');
+        }
       } else if (dir === 'enter') {
         activate();
       }
@@ -822,6 +1196,12 @@ export function createPicker(host, opts = {}) {
     zone: () => zone,
     refresh: paint,
     destroy() {
+      if (io) {
+        io.disconnect();
+      }
+      if (ro) {
+        ro.disconnect();
+      }
       root.remove();
     },
   };

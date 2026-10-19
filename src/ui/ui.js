@@ -13005,6 +13005,8 @@ export class Ui {
           ? this.settings.courseOrder
           : 'rated',
         loading: 'Reading the board',
+        /* Each shelf's chapter panel wears its way's art from the gate. */
+        shelfPictures: { maps: 'assets/gate/freestyle.jpg', five: 'assets/gate/race.jpg', whoop: 'assets/gate/whoop.jpg' },
         actions: (entry) => this.pickerActions(entry),
         onAction: (id, entry) => this.pickerAction(id, entry),
         onShelf: (shelf) => this.pickerShelfChosen(shelf),

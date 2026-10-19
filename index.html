@@ -4414,6 +4414,12 @@
       }
       .screen-courses > * { flex: 0 0 auto; }
       .card-strip { width: 100%; margin-bottom: 6px; }
+      /* The map picker (src/picker/picker.js) brings its own look; this
+         only places it. While its zones hold the keys the rows' cursor is
+         not drawn, so one thing on the screen reads as chosen. */
+      .room-picker { width: min(100%, 1180px); align-self: center; margin: 6px 0 12px; pointer-events: auto; }
+      .picker-has-keys .row.on { color: inherit; border-left-color: transparent; background: none; }
+      .picker-has-keys .row.on .row-label { text-shadow: none; }
       .strip-label {
         margin: 10px 0 2px;
         font-size: 11px; font-weight: 700;

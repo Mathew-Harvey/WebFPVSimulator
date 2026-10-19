@@ -118,7 +118,8 @@ import {
   setPidsExpert,
 } from '../../configs/pids.js';
 import {
-  boardPageUrl, fetchMapList, fetchTrackList, landingOrigin, fetchTrackTimes, mapCardUrl, partnersPageUrl, pickFeaturedTracks,
+  boardOrigin, boardPageUrl, fetchMapList, fetchTrackList, fetchTrackTimes, landingOrigin, mapCardUrl, partnersPageUrl,
+  pickFeaturedTracks,
   pickMaps, pickNewestMaps, tuneCodeFrom, wikiPageUrl,
 } from '../share/board.js';
 import { byRating, myStars, ratingShort, ratingWords } from '../share/rating.js';
@@ -849,6 +850,24 @@ const MAP_ORDER_IDS = MAP_ORDERS.map(([id]) => id);
 const COURSE_ORDER_IDS = COURSE_ORDERS.map(([id]) => id);
 
 const KEEP_NOTE = 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.';
+
+/* Build a track, as a row under the map picker, where it was a card at the
+ * end of the pilot's own half of the strip the picker replaced. */
+const PICKER_BUILD_ROW = {
+  label: 'Build a track',
+  action: 'trackbuilder-new',
+  note: `Opens the builder on an empty field. Whatever was on its canvas is kept in its Load list. ${KEEP_NOTE}`,
+};
+
+/* The keys the map picker's zones answer, as picker.js names them. */
+const PICKER_KEYS = {
+  ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
+  ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+  Enter: 'enter', Space: 'enter',
+};
+
+/* The picker's shelf for each of the three ways in, and back. */
+const SHELF_WAYS = { five: 'race-5inch', whoop: 'race-whoop65', maps: 'freestyle-5inch' };
 
 /* How many kinds of trick a freestyle result lists before "N more". */
 const RESULT_TRICK_ROWS = 3;
@@ -5862,6 +5881,16 @@ export class Ui {
     this.freestyleHelp = freestyleBlock.help;
     freestyle.append(this.freestyleCards, this.boardMapStrip, freestyleBlock.stage);
     this.screens.freestyle = freestyle;
+    /*
+     * THE MAP PICKER, one for both rooms (src/picker/picker.js), the same
+     * file the board's Tracks and Maps tabs draw. Built on the first visit
+     * to either room and carried between them, because its shelves ARE the
+     * three ways in: Maps is this room, 5 inch and Whoop are the Tracks
+     * room with that aircraft seated. The strips above stay built, hidden,
+     * because the rows and the cursor still read the cards they list.
+     */
+    this.pickerHost = el('div', 'room-picker');
+    this.picker = null;
 
     /*
      * QUAD, and PILOT, which were one screen called Settings.
@@ -9087,7 +9116,18 @@ export class Ui {
             ] : []),
           ]
           : [];
-        return [...cards, ...courseCardRows(chosen, seatRows)];
+        const rows = courseCardRows(chosen, seatRows);
+        if (this.picker) {
+          /* With the picker up a card is always chosen, so the sheet is the
+           * room's own list: its Back leaves the room, and Build a track,
+           * which is a door and not a track, is a row of it. */
+          return [...cards, ...rows.filter((r) => r.action !== 'card-back'),
+            PICKER_BUILD_ROW, { label: 'Back', action: 'back' }];
+        }
+        return [...cards, ...rows];
+      }
+      if (this.picker) {
+        return [...cards, PICKER_BUILD_ROW, { label: 'Back', action: 'back' }];
       }
       return [...cards, { label: 'Back', action: 'back' }];
     }
@@ -9136,7 +9176,9 @@ export class Ui {
       })) : [];
       /* The board's maps, after the worlds and before the rows, because the
        * rows are whatever follows the last card. See loadBoardMaps. */
-      const boardCards = (this.boardMaps || []).map((m) => ({
+      /* Every map with the picker up, which sorts and searches its own
+       * shelf; the strip it replaced showed the top ten. */
+      const boardCards = ((this.picker ? this.boardMapsAll : this.boardMaps) || []).map((m) => ({
         label: m.name,
         note: `${[m.author ? `Built by ${m.author}` : 'A published map', ...mapFacts(m)].join(', ')}.${ratingShort(m.rating) ? ` Rated ${ratingShort(m.rating)}.` : ''} Choosing it loads the map from the board and flies it here.`,
         boardMap: m,
@@ -9146,7 +9188,7 @@ export class Ui {
       return [
         ...cards,
         ...boardCards,
-        ...(this.boardMapsAll && this.boardMapsAll.length > 1 ? [choice(
+        ...(!this.picker && this.boardMapsAll && this.boardMapsAll.length > 1 ? [choice(
           'Maps from the board',
           'Newest puts what was published last first. Top rated puts the best loved first, by the stars pilots gave; maps nobody has rated come last.',
           MAP_ORDER_IDS,
@@ -10593,11 +10635,15 @@ export class Ui {
       this.launchLede.textContent = [name, gates, by].filter(Boolean).join(' \u00b7 ');
     }
     this.closeDrop();
-    if (this.screen === 'courses') {
+    if (this.picker && isCardScreen(this.screen)) {
+      /* The picker draws the choices, so the strips are not built at all:
+       * no plan canvases and no world reels recording behind a hidden
+       * strip. */
+      this.feedPicker();
+    } else if (this.screen === 'courses') {
       this.renderMapCards();
       this.renderCourseCards();
-    }
-    if (this.screen === 'freestyle') {
+    } else if (this.screen === 'freestyle') {
       this.renderMapCards();
       this.renderBoardMapCards();
     }
@@ -12144,7 +12190,7 @@ export class Ui {
     /* Whichever picker is up. Race holds no world cards any more, so on that
      * screen this paints an empty strip and costs nothing. */
     const host = this.screen === 'freestyle' ? this.freestyleCards : this.mapCardHost;
-    if (!host) {
+    if (!host || this.picker) {
       return;
     }
     const items = this.items().filter((it) => it.map);
@@ -12223,7 +12269,7 @@ export class Ui {
    */
   renderBoardMapCards() {
     const host = this.boardMapHost;
-    if (!host) {
+    if (!host || this.picker) {
       return;
     }
     const items = this.items();
@@ -12308,6 +12354,10 @@ export class Ui {
    */
   renderCourseCards() {
     const host = this.courseCardHost;
+    if (this.picker) {
+      this.feedPicker();
+      return;
+    }
     if (!host) {
       return;
     }
@@ -12913,6 +12963,347 @@ export class Ui {
   }
 
   /*
+   * THE MAP PICKER IN THE TWO ROOMS. See where pickerHost is built.
+   *
+   * Mounted on entry to either room, into whichever is showing, and fed
+   * from the room's own card items, so what it lists is exactly what the
+   * strips listed and every choice still goes through the rows and act()
+   * the strips used: Fly this is card-fly in the Tracks room and the
+   * card's own action in the Maps room. Nothing new is fetched for it, and
+   * nothing here runs in flight.
+   */
+  mountPicker() {
+    const room = this.screens[this.screen];
+    if (!room || !isCardScreen(this.screen)) {
+      return;
+    }
+    /* Fetched on the first visit to either room, not at boot: check 16
+     * keeps boot to what the title needs, and a pilot who only ever flies
+     * from a link never opens a picker. The rooms' old strips draw until
+     * it arrives, which on a warm cache is the same frame. */
+    if (!this.pickerLib) {
+      if (!this.pickerLoading) {
+        this.pickerLoading = import('../picker/picker.js').then((lib) => {
+          this.pickerLib = lib;
+          if (isCardScreen(this.screen)) {
+            this.mountPicker();
+            this.setPickerZone(this.pickerKeepZone || 'strip');
+            this.pickerKeepZone = '';
+            this.renderMenu();
+          }
+        }).catch(() => {
+          /* No picker: the strips it stands in for are still there. */
+        });
+      }
+      return;
+    }
+    if (!this.picker) {
+      this.picker = this.pickerLib.createPicker(this.pickerHost, {
+        entries: [],
+        shelf: this.pickerShelf(),
+        order: this.screen === 'courses' && ['rated', 'newest', 'flown'].includes(this.settings.courseOrder)
+          ? this.settings.courseOrder
+          : 'rated',
+        loading: 'Reading the board',
+        actions: (entry) => this.pickerActions(entry),
+        onAction: (id, entry) => this.pickerAction(id, entry),
+        onShelf: (shelf) => this.pickerShelfChosen(shelf),
+        onOrder: (order) => {
+          if (this.screen === 'courses' && order !== this.settings.courseOrder) {
+            this.settings.courseOrder = order;
+            saveSettings(this.settings);
+          }
+        },
+        onSelect: (entry) => this.pickerChosen(entry),
+      });
+      this.pickerFed = '';
+      /* A pointer on the rows takes the keys there, and a pointer on the
+       * picker takes them back (picker.js says which zone). */
+      for (const menu of [this.coursesMenu, this.freestyleMenu]) {
+        menu.addEventListener('pointerdown', () => {
+          if (this.pickerZone) {
+            this.setPickerZone('');
+          }
+        });
+      }
+      this.pickerHost.addEventListener('pointerdown', () => {
+        if (!this.pickerZone) {
+          this.setPickerZone('strip');
+        }
+        this.markPickerKeys();
+      });
+    }
+    /* After the heading and its one line, ahead of the strips it stands in
+     * for. The notes that say the board is reading or not answering come
+     * with it, because their strips are hidden. */
+    const lede = room.querySelector('.screen-lede, .rates-lede');
+    (lede || room.firstElementChild).after(this.pickerHost);
+    const note = this.screen === 'courses' ? this.boardNote : this.boardMapNote;
+    this.pickerHost.after(note);
+    if (this.courseStrip) {
+      this.courseStrip.hidden = true;
+    }
+    this.freestyleCards.hidden = true;
+    this.boardMapStrip.hidden = true;
+    this.picker.setShelf(this.pickerShelf());
+    this.pickerFed = '';
+    this.pickerOpened = false;
+    this.feedPicker();
+  }
+
+  pickerShelf() {
+    if (this.screen === 'freestyle') {
+      return 'maps';
+    }
+    return airframeById(this.settings.airframe).trackClass === 'micro' ? 'whoop' : 'five';
+  }
+
+  /*
+   * The room's cards as picker entries. A board listing goes through the
+   * picker's own entriesFrom, so it reads the same here as on the board;
+   * the pilot's own tracks, which the board has never seen, are made in
+   * the same shape and pinned at the head of the pilots' half.
+   */
+  pickerEntries() {
+    const board = boardOrigin();
+    const shelf = this.pickerShelf();
+    const out = [];
+    for (const it of this.items()) {
+      if (it.course && it.course.kind !== 'new') {
+        const key = courseCardKey(it);
+        if (it.course.kind === 'board') {
+          const [e] = this.pickerLib.entriesFrom({ tracks: [it.course.track], board });
+          out.push({ ...e, key, shelf, item: it });
+          continue;
+        }
+        const local = it.course.kind === 'local';
+        const t = local ? it.course.track : null;
+        const gates = local ? t.gates : (it.course.seat ? it.course.seat.gates : 0);
+        const [e] = this.pickerLib.entriesFrom({
+          tracks: [{
+            id: key, name: it.label, gates, designer: t ? t.designer : '', series: t ? t.series : '',
+          }],
+        });
+        /* The seated track, when it came from the board, is that track's
+         * picture: its listing is left out of the board half so it is not
+         * listed twice. */
+        const listing = local ? null : liveListing('custom');
+        const share = listing && listing.shareId ? encodeURIComponent(listing.shareId) : '';
+        out.push({
+          ...e,
+          key,
+          shelf,
+          note: local ? 'Yours, saved in this browser.' : 'On the builder\'s canvas now.',
+          stamp: local ? 'Yours' : 'Seated',
+          pin: true,
+          thumb: share ? `${board}/api/tracks/${share}/thumb` : '',
+          fallback: share ? `${board}/api/tracks/${share}/card` : '',
+          item: it,
+        });
+      } else if (it.map) {
+        const id = it.map.id;
+        /* Your map is the starter yard until the pilot builds one, and only
+         * the yard has a picture made for it. */
+        const own = id === 'built' && Boolean(ownMapId());
+        const [e] = this.pickerLib.entriesFrom({
+          worlds: [{
+            id, name: it.label, note: it.note, thumb: own ? '' : `assets/thumbs/${id === 'built' ? 'yard' : id}.jpg`,
+          }],
+        });
+        out.push({ ...e, key: it.action, stamp: own ? 'Yours' : '', item: it });
+      } else if (it.boardMap) {
+        const [e] = this.pickerLib.entriesFrom({ maps: [it.boardMap], board });
+        out.push({ ...e, key: it.action, item: it });
+      }
+    }
+    return out;
+  }
+
+  /* Hand the picker the room's entries, when they changed. Runs on every
+   * render of the room, so the test is a string and the repaint is not. */
+  feedPicker() {
+    if (!this.picker) {
+      return;
+    }
+    const entries = this.pickerEntries();
+    const fed = `${this.screen}|${entries.map((e) => `${e.key}:${e.rating.count}:${e.times}:${e.thumb}`).join('|')}`;
+    const loading = this.screen === 'courses' ? this.boardLoading : this.boardMapsLoading;
+    if (fed !== this.pickerFed) {
+      this.pickerFed = fed;
+      if (!entries.length && loading) {
+        this.picker.setLoading('Reading the board');
+      } else {
+        this.picker.setEntries(entries);
+      }
+    }
+    if (!this.pickerOpened && entries.length) {
+      /* Open on what is seated, or on the sheet that is coming back. */
+      this.pickerOpened = true;
+      const seated = this.screen === 'courses'
+        ? (this.cardSubject || (entries.find((e) => e.item.course.kind === 'current') || {}).key)
+        : (this.settings.map === 'built' && this.sharedMap ? `boardmap:${this.sharedMap.id}` : `map:${this.settings.map}`);
+      if (seated) {
+        this.picker.select(seated);
+      }
+      /* The rows are the chosen entry's now, so the cursor starts at their
+       * head rather than at whatever index the last room left it on. */
+      this.cursor = this.firstStop(this.items());
+    }
+    const cur = this.picker.current();
+    if (this.screen === 'courses' && cur && cur.key !== this.cardSubject) {
+      this.pickerChosen(cur);
+    }
+  }
+
+  /* The chosen entry is the Tracks room's chosen card, whose sheet is the
+   * list under the picker. */
+  pickerChosen(entry) {
+    if (this.screen !== 'courses' || !entry) {
+      return;
+    }
+    this.cardSubject = entry.key;
+    this.lastCardKey = entry.key;
+    this.loadPodium();
+    this.renderMenu();
+  }
+
+  pickerActions(entry) {
+    const fly = { id: 'fly', label: 'Fly this', primary: true };
+    if (this.screen !== 'courses' || !entry.item.course) {
+      return [fly];
+    }
+    const kind = entry.item.course.kind;
+    return [
+      { ...fly, id: 'card-fly' },
+      ...(kind === 'current' ? [{ id: 'card-launch', label: 'Before you fly' }] : []),
+      ...(kind === 'board' ? [{ id: 'card-standings', label: 'Standings' }] : []),
+      ...(kind !== 'current' ? [{ id: 'card-builder', label: 'Open in builder' }] : []),
+    ];
+  }
+
+  pickerAction(id, entry) {
+    if (this.onUiSound) {
+      this.onUiSound('select');
+    }
+    if (this.screen === 'courses') {
+      this.cardSubject = entry.key;
+      this.act(id);
+      return;
+    }
+    const action = entry.item.action;
+    const fly = () => {
+      if (this.onFlySeated) {
+        this.onFlySeated();
+      }
+    };
+    if (action.startsWith('boardmap:')) {
+      this.openBoardMap(action.slice('boardmap:'.length), fly);
+      return;
+    }
+    this.act(action);
+    fly();
+  }
+
+  /*
+   * A SHELF IS ONE OF THE THREE WAYS IN, so choosing one is answering the
+   * gate that way (WAYS) and landing in that way's room, as the board's
+   * shelves switch its tabs. The aircraft moves only if it has to, for
+   * the reason the gate gives: seatAirframe takes the camera with it.
+   */
+  pickerShelfChosen(shelf) {
+    const way = WAYS.find((w) => w.id === SHELF_WAYS[shelf]);
+    if (!way) {
+      return;
+    }
+    /* Not in the middle of a run: a different aircraft is a different
+     * plant, and the pause menu's rooms change nothing that big. */
+    if (this.returnTo === 'paused' && way.airframe !== this.settings.airframe) {
+      this.picker.setShelf(this.pickerShelf());
+      const note = this.screen === 'courses' ? this.boardNote : this.boardMapNote;
+      note.textContent = `This run is on the ${airframeById(this.settings.airframe).name.toLowerCase()}. Leave it to change aircraft.`;
+      return;
+    }
+    if (way.airframe !== this.settings.airframe || way.mode !== this.mode) {
+      /* The other class's tracks are not this shelf's, even for the moment
+       * before the board answers. */
+      this.boardCourses = [];
+      this.cardSubject = null;
+    }
+    if (way.airframe !== this.settings.airframe) {
+      seatAirframe(this.settings, way.airframe);
+      this.settings.airframeAsked = true;
+      /* Saves, re-legalises the mode for the new aircraft, and tells the
+       * shell, which swaps the plant and the world behind this page. */
+      this.writeSettings();
+    }
+    this.mode = way.mode;
+    const room = way.mode === 'freestyle' ? 'freestyle' : 'courses';
+    const returnTo = this.returnTo;
+    const roomFrom = this.roomFrom;
+    this.pickerKeepZone = this.pickerZone;
+    this.show(room);
+    this.returnTo = returnTo;
+    this.roomFrom = roomFrom === room ? null : roomFrom;
+  }
+
+  /*
+   * The keys and the sticks, in the picker's zones (nav in picker.js): Up
+   * from the first row goes into the picker's buttons, Down off them comes
+   * back to the rows. True when the picker took it.
+   */
+  pickerNav(dir) {
+    if (!this.picker || !isCardScreen(this.screen)) {
+      return false;
+    }
+    if (!this.pickerZone) {
+      const items = this.items();
+      if (dir === 'up' && this.cursor <= this.firstStop(items)) {
+        this.setPickerZone('acts');
+        return true;
+      }
+      return false;
+    }
+    const focused = typeof document !== 'undefined' ? document.activeElement : null;
+    if (dir === 'enter' && focused && focused !== document.body && this.pickerHost.contains(focused)) {
+      /* A button the pilot tabbed to presses itself on Enter; answering it
+       * here as well would be two flights for one key. */
+      return true;
+    }
+    const used = this.picker.nav(dir);
+    if (used === 'down') {
+      this.setPickerZone('');
+      this.setCursor(this.firstStop(this.items()));
+    }
+    this.markPickerKeys();
+    if (this.onUiSound && dir !== 'enter') {
+      this.onUiSound('move');
+    }
+    return true;
+  }
+
+  /* Which of the picker's rows holds the keys, '' when the room's own rows
+   * do. The picker keeps it, because a pointer changes it there too. */
+  get pickerZone() {
+    const z = this.picker ? this.picker.zone() : '';
+    return z === 'away' ? '' : z;
+  }
+
+  setPickerZone(zone) {
+    if (this.picker) {
+      this.picker.setZone(zone || 'away');
+    }
+    this.markPickerKeys();
+  }
+
+  markPickerKeys() {
+    for (const menu of [this.coursesMenu, this.freestyleMenu]) {
+      if (menu) {
+        menu.classList.toggle('picker-has-keys', Boolean(this.pickerZone));
+      }
+    }
+  }
+
+  /*
    * The board's freestyle maps, fetched once per visit to the Freestyle
    * room: the ten newest or best loved (pickMaps in src/share/board.js), less the
    * one Your map already flies, which would otherwise be two cards for one
@@ -12976,14 +13367,18 @@ export class Ui {
    * backed out while the board woke up has changed their mind, and seating
    * the map anyway would swap the world under whatever they went to do.
    */
-  openBoardMap(id) {
-    const m = (this.boardMaps || []).find((x) => x.id === id);
+  openBoardMap(id, then = null) {
+    const m = (this.boardMaps || []).find((x) => x.id === id)
+      || (this.boardMapsAll || []).find((x) => x.id === id);
     if (!m || this.openingBoardMap) {
       return;
     }
     /* Already the map in the built world: there is nothing to fetch. */
     if (this.settings.map === 'built' && this.sharedMap && this.sharedMap.id === m.id) {
       this.seatMap('built');
+      if (then) {
+        then();
+      }
       return;
     }
     if (!this.onBoardMap) {
@@ -13000,6 +13395,9 @@ export class Ui {
       }
       this.useSharedMap(shared);
       this.seatMap('built');
+      if (then) {
+        then();
+      }
     }).catch((err) => {
       this.openingBoardMap = false;
       this.boardMapNote.textContent = `${m.name} could not be loaded. ${err.message ?? err}`;
@@ -13910,6 +14308,13 @@ export class Ui {
     }
     if (screen === 'freestyle') {
       this.loadBoardMaps();
+    }
+    if (isCardScreen(screen)) {
+      this.mountPicker();
+      if (this.picker) {
+        this.setPickerZone(this.pickerKeepZone || 'strip');
+        this.pickerKeepZone = '';
+      }
     }
     if (screen === 'howto') {
       this.renderHowto();
@@ -17185,7 +17590,10 @@ export class Ui {
   /* A group heading is in the list so it renders in the right place, but it
    * is not somewhere the cursor can land. */
   isStop(it) {
-    return Boolean(it) && !it.section;
+    /* With the map picker up, a card is chosen in the picker, so the rows'
+     * cursor never lands on one. */
+    return Boolean(it) && !it.section
+      && !(this.picker && isCardScreen(this.screen) && (it.course || it.map || it.boardMap));
   }
 
   /*
@@ -18144,7 +18552,7 @@ export class Ui {
       }
       return;
     }
-    if (this.screen === 'courses' && this.cardSubject) {
+    if (this.screen === 'courses' && this.cardSubject && !this.picker) {
       /* Escape backs out of the chosen course first, not off the screen. */
       this.act('card-back');
       return;
@@ -18378,6 +18786,10 @@ export class Ui {
      * The rows a chosen course card offers. `cardSubject` says which course
      * they belong to, so none of them has to guess at the seat.
      */
+    if (action === 'card-back' && this.picker) {
+      this.back();
+      return;
+    }
     if (action === 'card-back') {
       const key = this.cardSubject;
       const before = this.courseCardTop(key);
@@ -19267,6 +19679,9 @@ export class Ui {
       }
     }
     this.lastInput = 'key';
+    if (PICKER_KEYS[code] && this.pickerNav(PICKER_KEYS[code])) {
+      return true;
+    }
     if (code === 'ArrowUp' || code === 'KeyW') {
       this.move(-1);
       return true;
@@ -19598,6 +20013,26 @@ export class Ui {
      * and a segmented row is still reachable from a radio because select
      * cycles it: see the segmented branch in select().
      */
+    /*
+     * THE MAP PICKER'S ZONES TAKE THE STICKS AS THE KEYS DO: pitch moves
+     * between the shelves, the strip and the buttons, roll moves within
+     * one, and select presses. Back stays back. Pitch up off the first row
+     * comes into the picker, through pickerNav, and pitch down off its
+     * buttons goes back to the rows, where the rule below is unchanged.
+     */
+    if (this.picker && isCardScreen(this.screen)) {
+      const edge = (k) => now[k] && !this.padPrev[k];
+      const dir = (edge('up') && 'up') || (edge('down') && 'down')
+        || (this.pickerZone && edge('left') && 'left') || (this.pickerZone && edge('right') && 'right')
+        || (this.pickerZone && edge('select') && 'enter') || '';
+      if (dir && this.pickerNav(dir)) {
+        if (edge('back')) {
+          this.back();
+        }
+        this.padPrev = now;
+        return;
+      }
+    }
     const rollAdjusts = Boolean(it && it.adjust) && !this.cardScreen();
     if (now.up && !this.padPrev.up) {
       this.move(-1);

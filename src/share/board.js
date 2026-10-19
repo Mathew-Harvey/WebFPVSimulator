@@ -319,6 +319,12 @@ async function boardGet(url, ms = BOARD_READ_TIMEOUT_MS) {
  * CORS or simply not running must leave the rest of the screen working, so
  * every caller treats a rejection as "no community courses today".
  */
+/* A time off the wire, or null for one that is missing: Number(null) is 0,
+ * which would read as a record of nothing at all. */
+function msOrNull(v) {
+  return v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
+}
+
 export async function fetchTrackList(origin = boardOrigin()) {
   const board = trimOrigin(origin);
   const res = await boardGet(`${board}/api/tracks`);
@@ -364,6 +370,18 @@ export async function fetchTrackList(origin = boardOrigin()) {
     /* Stars from pilots, { count, avg, score }. A board from before ratings
      * sends none and every track reads as not rated yet. */
     rating: cleanRating(t.rating),
+    /* What the shared map picker (src/picker/picker.js) reads straight off
+     * a board listing: the record as the board sent it, and whether the
+     * track has a picker thumbnail and a share card to show. */
+    best: t.best ? {
+      lapMs: msOrNull(t.best.lapMs),
+      threeMs: msOrNull(t.best.threeMs),
+      name: String(t.best.name || ''),
+    } : null,
+    hasCard: Boolean(t.hasCard),
+    cardUtc: t.cardUtc ? String(t.cardUtc) : '',
+    hasThumb: Boolean(t.hasThumb),
+    thumbUtc: t.thumbUtc ? String(t.thumbUtc) : '',
     board,
   })).filter((t) => t.id);
 }
@@ -650,11 +668,14 @@ export async function postTrackGif({ id, gif, editKey, origin }) {
  * nothing else.
  */
 export async function postShareCard({
-  kind, id, card, editKey, origin,
+  kind, id, card, editKey, origin, slot = 'card',
 }) {
   const board = trimOrigin(origin || boardOrigin());
   const route = kind === 'map' ? 'maps' : 'tracks';
-  const res = await fetch(`${board}/api/${route}/${encodeURIComponent(id)}/card`, {
+  /* slot 'thumb' is the picker's thumbnail, the card's twin at 960 by 540
+   * with no wordmark, on the same door. */
+  const tail = slot === 'thumb' ? 'thumb' : 'card';
+  const res = await fetch(`${board}/api/${route}/${encodeURIComponent(id)}/${tail}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...adminAuthHeaders(board) },
     body: JSON.stringify({ card, editKey: editKey || undefined }),
@@ -805,6 +826,9 @@ export async function fetchMapList(origin = boardOrigin()) {
      * the address, which the board then lets a browser keep for good. */
     hasCard: Boolean(m.hasCard),
     cardUtc: m.cardUtc ? String(m.cardUtc) : '',
+    hasThumb: Boolean(m.hasThumb),
+    thumbUtc: m.thumbUtc ? String(m.thumbUtc) : '',
+    official: Boolean(m.official),
     rating: cleanRating(m.rating),
     board,
   })).filter((m) => m.id);

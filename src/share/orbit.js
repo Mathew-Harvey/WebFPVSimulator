@@ -31,9 +31,11 @@
 
 import { mapById } from '../maps/registry.js';
 import { CAMERA_FOV_DEFAULT } from '../render/lens.js';
+import { MICRO_SCALE } from '../game/track.js';
+import { ROOM_WIDTH, ROOM_DEPTH, ROOM_HEIGHT } from '../trackbuilder/racegow.js';
 import { fetchMapDocument, fetchTrackDocument } from './board.js';
 import {
-  CARD_W, CARD_H, base64Of, composeCard, encodeCard,
+  CARD_W, CARD_H, THUMB_W, THUMB_H, base64Of, composeCard, composeThumb, encodeCard, encodeThumb,
 } from './card.js';
 import {
   CLIP_W,
@@ -402,8 +404,60 @@ const nextTick = () => new Promise((resolve) => { setTimeout(resolve, 0); });
  * room a camera inside four walls can see, and lifting it puts the lens in
  * the joists.
  */
-const CARD_PITCH = 0.58;
-const CARD_BACK = { orbit: 0.8, path: 1.25 };
+const CARD_SHOT = { pitch: 0.58, orbit: 0.8, path: 1.25 };
+
+/*
+ * THE PICKER'S THUMBNAIL, the card's twin. A picker shows a track at a
+ * quarter of a laptop's width and a map in a strip of five, so the picture
+ * has to be the layout and nothing else: no wordmark, no shading laid over
+ * it for type to sit on, and no airframe in the near corner, which at that
+ * size is a smudge over somebody's gates. The camera comes a little closer
+ * and a little lower than the card's, because a thumbnail is cropped to
+ * 16:9 rather than the card's wider frame and loses its edges first.
+ *
+ * DRAWN AT TWICE ITS SIZE AND BROUGHT DOWN, which is the cheapest
+ * antialiasing there is and the difference between a gate and a stair of
+ * pixels at 960 wide. One frame, at publish, in the publisher's browser:
+ * nobody flying pays for it.
+ */
+const THUMB_SHOT = { pitch: 0.5, orbit: 0.7, path: 1.3 };
+
+/* A map is a plot of buildings rather than a field of gates, so its camera
+ * climbs higher to see over them (measured on Chimney Dive Training, Sakura
+ * Desert and Infinity Loops, 19 October 2026). */
+const THUMB_MAP_PITCH = 0.68;
+
+/*
+ * THE CLEAR SIDE. The card's rule takes one side, the side the sheet's clip
+ * starts from, and on a map with a tower near the middle that side can be a
+ * wall of windows (Chimney Dive Training's was). So the thumbnail tries
+ * eight sides and keeps the one whose view of the middle is least blocked:
+ * five rays from the lens, at the middle and a little way out towards each
+ * corner of the frame, each scored by how far it gets before it hits
+ * something, as a share of the way to the ground. Eight positions and forty
+ * rays, once, at publish.
+ */
+const THUMB_SIDES = 8;
+const THUMB_PROBES = [[0, 0], [0.35, 0.3], [-0.35, 0.3], [0.35, -0.3], [-0.35, -0.3]];
+
+/* A shipped world's thumbnail may want its own shot, because a fixed world
+ * has one good side that no rule finds. scripts/boardcards.js --worlds
+ * passes it as tp (pitch), tr (reach, times the rule's) and ta (a turn off
+ * the rule's side, radians). Nothing a pilot opens names these. */
+function thumbShot() {
+  const num = (k, d) => {
+    const v = Number(params.get(k));
+    return params.has(k) && Number.isFinite(v) ? v : d;
+  };
+  const reach = num('tr', 1);
+  return {
+    pitch: num('tp', THUMB_SHOT.pitch),
+    orbit: THUMB_SHOT.orbit * reach,
+    path: THUMB_SHOT.path * reach,
+    turn: num('ta', 0),
+  };
+}
+const THUMB_SCALE = 2;
 
 function cardFraming(view) {
   const spec = view && view.attract;
@@ -428,12 +482,12 @@ function cardFraming(view) {
     const first = spec.path[0];
     const az = Math.atan2(first.x - cx, first.z - cz);
     return {
-      cx, cy: 0, cz, az, reach: r * CARD_BACK.path, aim: 0,
+      cx, cy: 0, cz, az, reach: r, aim: 0, path: true,
     };
   }
   if (Number.isFinite(spec.radius)) {
     return {
-      cx: spec.x, cy: spec.y, cz: spec.z, az: 0, reach: spec.radius * CARD_BACK.orbit, aim: spec.aim || 0,
+      cx: spec.x, cy: spec.y, cz: spec.z, az: 0, reach: spec.radius, aim: spec.aim || 0, path: false,
     };
   }
   return null;
@@ -441,17 +495,19 @@ function cardFraming(view) {
 
 /* Returns the point the camera looks at, which is where the card wants its
  * shadows, or null when the world gave nothing to frame by. */
-function placeCardCamera(view, camera, craft, THREE) {
+function placeCardCamera(view, camera, craft, THREE, shot = CARD_SHOT) {
   const f = cardFraming(view);
   if (!f) {
     return null;
   }
   const target = new THREE.Vector3(f.cx, f.cy + f.aim, f.cz);
-  const flat = f.reach * Math.cos(CARD_PITCH);
+  const reach = f.reach * (f.path ? shot.path : shot.orbit);
+  const flat = reach * Math.cos(shot.pitch);
+  const az = f.az + (shot.turn || 0);
   camera.position.set(
-    f.cx + Math.sin(f.az) * flat,
-    f.cy + f.aim + f.reach * Math.sin(CARD_PITCH),
-    f.cz + Math.cos(f.az) * flat,
+    f.cx + Math.sin(az) * flat,
+    f.cy + f.aim + reach * Math.sin(shot.pitch),
+    f.cz + Math.cos(az) * flat,
   );
   camera.up.set(0, 1, 0);
   camera.lookAt(target);
@@ -474,6 +530,100 @@ function placeCardCamera(view, camera, craft, THREE) {
     craft.rotateZ(-0.35);
   }
   return target;
+}
+
+/*
+ * A ROOM'S THUMBNAIL IS TAKEN FROM A TOP CORNER, the way a photograph of a
+ * hall is: the lens up under the joists and in off both walls, looking down
+ * across the floor at the middle of the layout, a little wider than the
+ * goggles. The sheet's own frame, which the card keeps, is the title
+ * screen's orbit at gate height, and in a picture the size of a stamp that
+ * is one gate and a wall. The corner is whichever of the four sees the
+ * layout least blocked, on THUMB_PROBES' terms. The room is centred on the
+ * origin, as src/render/scene.js builds it, in the flown metres
+ * (MICRO_SCALE times the rulebook's).
+ */
+const ROOM_THUMB_FOV = 68;
+function placeRoomCamera(view, camera, THREE, corner) {
+  const spec = (view && view.attract) || {};
+  const w = ROOM_WIDTH * MICRO_SCALE;
+  const d = ROOM_DEPTH * MICRO_SCALE;
+  const h = ROOM_HEIGHT * MICRO_SCALE;
+  const inset = 0.7 * MICRO_SCALE;
+  const sx = corner & 1 ? 1 : -1;
+  const sz = corner & 2 ? 1 : -1;
+  const target = new THREE.Vector3(
+    Number.isFinite(spec.x) ? spec.x : 0,
+    (Number.isFinite(spec.y) ? spec.y : 0) + 0.45 * MICRO_SCALE,
+    Number.isFinite(spec.z) ? spec.z : 0,
+  );
+  camera.fov = ROOM_THUMB_FOV;
+  camera.updateProjectionMatrix();
+  camera.position.set(sx * (w / 2 - inset), h * 0.82, sz * (d / 2 - inset));
+  camera.up.set(0, 1, 0);
+  camera.lookAt(target);
+  camera.updateMatrixWorld();
+  return target;
+}
+
+/* How much of a view from `cam` towards `target` gets there unblocked. */
+function clearance(scene, cam, target, THREE) {
+  const ray = new THREE.Raycaster();
+  const whole = cam.position.distanceTo(target);
+  let score = 0;
+  for (const [x, y] of THUMB_PROBES) {
+    ray.setFromCamera(new THREE.Vector2(x, y), cam);
+    ray.far = whole * 0.97;
+    const hit = ray.intersectObjects(scene.children, true).find((h) => h.object.visible !== false);
+    score += hit ? hit.distance / whole : 1;
+  }
+  return score;
+}
+
+function clearestCorner(view, shell, THREE) {
+  const scene = view.scene || shell.scene;
+  if (!scene) {
+    return 0;
+  }
+  scene.updateMatrixWorld(true);
+  const cam = shell.camera.clone();
+  let best = 0;
+  let bestScore = -1;
+  for (let corner = 0; corner < 4; corner += 1) {
+    const target = placeRoomCamera(view, cam, THREE, corner);
+    const score = clearance(scene, cam, target, THREE);
+    if (score > bestScore + 1e-3) {
+      bestScore = score;
+      best = corner;
+    }
+  }
+  return best;
+}
+
+/* The turn off the rule's side whose view is least blocked. See THUMB_SIDES. */
+function clearestTurn(view, shell, THREE, shot) {
+  const scene = view.scene || shell.scene;
+  if (!scene) {
+    return 0;
+  }
+  scene.updateMatrixWorld(true);
+  const cam = shell.camera.clone();
+  let best = 0;
+  let bestScore = -1;
+  for (let i = 0; i < THUMB_SIDES; i += 1) {
+    const turn = (i / THUMB_SIDES) * Math.PI * 2;
+    const target = placeCardCamera(view, cam, null, THREE, { ...shot, turn });
+    if (!target) {
+      return 0;
+    }
+    const score = clearance(scene, cam, target, THREE);
+    /* Ties keep the rule's own side, and the sides near it. */
+    if (score > bestScore + 1e-3) {
+      bestScore = score;
+      best = turn;
+    }
+  }
+  return best;
 }
 
 async function drawCard(mapId, shareId, mapShareId) {
@@ -548,7 +698,57 @@ async function drawCard(mapId, shareId, mapShareId) {
     /* No await between the draw above and this read. */
     const card = composeCard(canvas);
     const bytes = await encodeCard(card);
-    return { card, bytes };
+
+    /*
+     * The thumbnail, out of the same built world: the second frame costs a
+     * resize and a few draws, where a second page would cost the whole
+     * world again. A thumbnail that fails leaves the card as it was, and
+     * the picker falls back to the card's picture, so nothing here throws.
+     */
+    let thumb = null;
+    let thumbBytes = null;
+    try {
+      const tw = THUMB_W * THUMB_SCALE;
+      const th = THUMB_H * THUMB_SCALE;
+      shell.renderer.setSize(tw, th, false);
+      shell.camera.aspect = tw / th;
+      shell.camera.updateProjectionMatrix();
+      if (view.post) {
+        view.post.setSize(tw, th);
+      }
+      const shot = thumbShot();
+      const framing = cardFraming(view);
+      if (framing && framing.path && !params.has('tp')) {
+        shot.pitch = THUMB_MAP_PITCH;
+      }
+      if (!room && framing && !params.has('ta')) {
+        shot.turn = clearestTurn(view, shell, THREE, shot);
+      }
+      const corner = room ? clearestCorner(view, shell, THREE) : 0;
+      const drawThumb = () => {
+        attract.update(CARD_AT_MS, shell.camera, { craft: shell.quad });
+        const aim = room
+          ? placeRoomCamera(view, shell.camera, THREE, corner)
+          : placeCardCamera(view, shell.camera, null, THREE, shot);
+        shell.quad.visible = false;
+        view.updateAnim(CARD_AT_MS);
+        view.updateShadowFocus(aim || shell.quad.position);
+        view.updateWind(0, shell.quad.position, 0.85);
+        view.post.render();
+      };
+      for (let i = 0; i < CARD_WARMUP; i += 1) {
+        drawThumb();
+        await nextTick();
+      }
+      drawThumb();
+      thumb = composeThumb(canvas);
+      thumbBytes = await encodeThumb(thumb);
+    } catch (e) {
+      console.warn('The thumbnail could not be drawn.', e);
+    }
+    return {
+      card, bytes, thumb, thumbBytes,
+    };
   } finally {
     try {
       if (view) {
@@ -574,12 +774,20 @@ function showCard(card) {
 }
 
 async function bootCard(mapId, shareId, mapShareId) {
-  const { card, bytes } = await drawCard(mapId, shareId, mapShareId);
-  showCard(card);
+  const {
+    card, bytes, thumb, thumbBytes,
+  } = await drawCard(mapId, shareId, mapShareId);
+  /* ?show=thumb puts the thumbnail up instead, for a person checking it. */
+  showCard(params.get('show') === 'thumb' && thumb ? thumb : card);
   window.__cardBytes = bytes.length;
   window.__cardBase64 = base64Of(bytes);
+  window.__thumbBase64 = thumbBytes ? base64Of(thumbBytes) : '';
   window.__cardDone = true;
-  post('webfpv-card', { buffer: bytes.buffer, bytes: bytes.length });
+  post('webfpv-card', {
+    buffer: bytes.buffer,
+    bytes: bytes.length,
+    thumb: thumbBytes ? thumbBytes.buffer : null,
+  });
 }
 
 async function boot() {

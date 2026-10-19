@@ -62,6 +62,13 @@ import { postShareCard } from './board.js';
 export const CARD_W = 1200;
 export const CARD_H = 630;
 
+/* The picker's thumbnail: the board's THUMB_WIDTH and THUMB_HEIGHT in its
+ * src/validate.js, which refuses any other size. */
+export const THUMB_W = 960;
+export const THUMB_H = 540;
+const THUMB_BYTES_AIM = 160_000;
+const THUMB_QUALITIES = [0.88, 0.82, 0.76, 0.7];
+
 /*
  * UNDER 300 kB, because WhatsApp is reported to drop a preview picture
  * over about that, and it is the one platform where a big card fails
@@ -175,6 +182,26 @@ export function composeCard(frame) {
   return card;
 }
 
+/*
+ * The thumbnail out of a frame drawn at twice its size: brought down in two
+ * halving steps would be finer still, but one step with the browser's high
+ * quality filter is already past what a 960 wide JPEG keeps. No wordmark
+ * and no shading, because the picker's own type sits beside the picture,
+ * never on it.
+ */
+export function composeThumb(frame) {
+  const thumb = document.createElement('canvas');
+  thumb.width = THUMB_W;
+  thumb.height = THUMB_H;
+  const ctx = thumb.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = DEEP;
+  ctx.fillRect(0, 0, THUMB_W, THUMB_H);
+  ctx.drawImage(frame, 0, 0, THUMB_W, THUMB_H);
+  return thumb;
+}
+
 function jpegOf(canvas, quality) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -201,6 +228,21 @@ export async function encodeCard(canvas) {
       throw new Error('This browser does not write JPEG, so it cannot make a share card.');
     }
     if (bytes.length <= CARD_BYTES_AIM) {
+      break;
+    }
+  }
+  return bytes;
+}
+
+/* The thumbnail's encode, on encodeCard's terms with its own aim. */
+export async function encodeThumb(canvas) {
+  let bytes = null;
+  for (const quality of THUMB_QUALITIES) {
+    bytes = await jpegOf(canvas, quality);
+    if (bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+      throw new Error('This browser does not write JPEG, so it cannot make a thumbnail.');
+    }
+    if (bytes.length <= THUMB_BYTES_AIM) {
       break;
     }
   }
@@ -274,7 +316,10 @@ export function renderShareCard({ kind, id, board }) {
       }
       const data = event.data || {};
       if (data.type === 'webfpv-card' && data.buffer) {
-        finish(resolve, new Uint8Array(data.buffer));
+        finish(resolve, {
+          card: new Uint8Array(data.buffer),
+          thumb: data.thumb ? new Uint8Array(data.thumb) : null,
+        });
       } else if (data.type === 'webfpv-card-error') {
         finish(reject, new Error(data.error || 'The share card could not be drawn.'));
       }
@@ -300,11 +345,24 @@ export async function sendShareCard({ kind, id, board, editKey }) {
     return { error: 'There is no published copy to draw.' };
   }
   try {
-    const bytes = await renderShareCard({ kind, id, board });
+    const drawn = await renderShareCard({ kind, id, board });
     await postShareCard({
-      kind, id, card: base64Of(bytes), editKey, origin: board,
+      kind, id, card: base64Of(drawn.card), editKey, origin: board,
     });
-    return { ok: true, bytes: bytes.length };
+    /* The picker's thumbnail rides along. A board older than thumbnails
+     * answers 404 and the card still counts as sent. */
+    let thumb = false;
+    if (drawn.thumb) {
+      try {
+        await postShareCard({
+          kind, id, card: base64Of(drawn.thumb), editKey, origin: board, slot: 'thumb',
+        });
+        thumb = true;
+      } catch (e) {
+        console.warn('The thumbnail was not taken by the board.', e);
+      }
+    }
+    return { ok: true, bytes: drawn.card.length, thumb };
   } catch (e) {
     return { error: e && e.message ? e.message : String(e) };
   }

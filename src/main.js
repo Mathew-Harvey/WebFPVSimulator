@@ -5340,6 +5340,18 @@ export async function boot({ loading, bootStart, mapId }) {
     view.setRaceLine(Boolean(s.raceLine));
   }
 
+  /*
+   * A SHELF OF THE MAP PICKER SWAPS THE WORLD AND THE PILOT STAYS PUT.
+   * Choosing Whoop tracks in the Tracks room seats the whoop and its room,
+   * which is a new world, and a new world used to mean the title. The
+   * picker's rooms are pages drawn over the world, so the swap carries on
+   * behind them and the pilot keeps choosing. Choosing what to fly from
+   * one still lands on the title, because seatMap goes there first.
+   */
+  function pickerRoomOpen() {
+    return ui.screen === 'courses' || ui.screen === 'freestyle';
+  }
+
   function adoptLoadedView(keepPlace, stayMode, stayScreen) {
     /* A new view is a new set of solids, whether or not the place is kept. */
     uploadPlantWorld();
@@ -5367,7 +5379,9 @@ export async function boot({ loading, bootStart, mapId }) {
       reset();
       ghostCourseChanged();
       mode = 'title';
-      ui.show('title');
+      if (!pickerRoomOpen()) {
+        ui.show('title');
+      }
       ui.applyLocationHash();
       showCourseNotes();
     } else {
@@ -5465,7 +5479,9 @@ export async function boot({ loading, bootStart, mapId }) {
     autoForget();
     if (!keepPlace) {
       mode = 'title';
-      ui.show('title');
+      if (!pickerRoomOpen()) {
+        ui.show('title');
+      }
     }
     const entry = mapById(wantId);
     loading.run(planStages(['module', 'world', 'frame'], entry.buildMs));

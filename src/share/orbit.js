@@ -33,7 +33,9 @@ import { mapById } from '../maps/registry.js';
 import { CAMERA_FOV_DEFAULT } from '../render/lens.js';
 import { MICRO_SCALE } from '../game/track.js';
 import { ROOM_WIDTH, ROOM_DEPTH, ROOM_HEIGHT } from '../trackbuilder/racegow.js';
-import { fetchMapDocument, fetchTrackDocument } from './board.js';
+import { fetchGhost, fetchMapDocument, fetchTrackDocument } from './board.js';
+import { decodeGhost, ghostFromBase64 } from './ghostdata.js';
+import { GhostLap } from '../game/ghost.js';
 import {
   CARD_W, CARD_H, THUMB_W, THUMB_H, base64Of, composeCard, composeThumb, encodeCard, encodeThumb,
 } from './card.js';
@@ -83,14 +85,21 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+/* ?ghost= is a time on the board whose recorded lap the sheet flies, so a
+ * track's clip is kept per lap as well as per track. */
+const ghostId = params.get('ghost') || '';
+
 function clipKey() {
   const shareId = params.get('share') || '';
   if (shareId) {
-    return clipKeyForSeatedShare(shareId);
+    const base = clipKeyForSeatedShare(shareId);
+    return ghostId ? `${base}:ghost:${ghostId}` : base;
   }
   const mapShareId = params.get('mapshare') || '';
   if (mapShareId) {
-    return clipKeyForMapShare(mapShareId, params.get('v') || '');
+    /* `:gaps` since the sheet's camera flies a map's named gaps: a clip of
+     * the old orbit kept under the bare key is not the shot any more. */
+    return `${clipKeyForMapShare(mapShareId, params.get('v') || '')}:gaps`;
   }
   const mapId = params.get('map') === 'field' ? 'custom' : (params.get('map') || 'custom');
   return clipKeyForMap(mapId);
@@ -172,6 +181,203 @@ function loseRenderer(shell) {
   }
 }
 
+/*
+ * A GHOST LAP, the owner's pick of 2026-10-19 for the board's track sheet:
+ * "a fly a ghoast lap here?". With ?ghost= the sheet's clip is not the
+ * title camera going round the layout but one recorded lap off the board,
+ * the airframe flown along it and a camera chasing it, so a reader sees
+ * the line the track is raced on before they fly it.
+ *
+ * THE CAMERA RIDES THE LINE ITSELF, a moment behind the airframe and a
+ * little above it: where the craft was GHOST_LAG_MS ago, lifted by a share
+ * of the distance it has flown since. The flown line is the one path
+ * through the course known to miss every gate, so a camera on it misses
+ * them too, and both the lag and the lift scale with speed, so a whoop in
+ * a room and a five inch on a field are framed alike with no per class
+ * numbers. A floor keeps it off the airframe when the lap hovers and a
+ * reach of GHOST_REACH floors keeps a fast lap from leaving it a speck, and
+ * it is eased so a twitch on the sticks is not a jolt on the screen.
+ *
+ * The clip is the lap at the speed it was flown, up to GHOST_CLIP_MAX_MS;
+ * a longer lap is played faster to fit, as the orbit is.
+ */
+const GHOST_LAG_MS = 340;
+const GHOST_LIFT = 0.42;
+const GHOST_EASE_MS = 90;
+const GHOST_CLIP_MAX_MS = 40000;
+const GHOST_REACH = 1.8;
+const GHOST_FLOOR_M = 0.45;
+
+function makeGhostChase(lap, THREE, floor) {
+  const pose = {};
+  const at = new THREE.Vector3();
+  const from = new THREE.Vector3();
+  const cam = new THREE.Vector3(); // the camera's offset from the airframe
+  const dir = new THREE.Vector3();
+  let primed = false;
+  const lapMs = lap.durationMs;
+  const sampleInto = (t, v) => {
+    const wrapped = ((t % lapMs) + lapMs) % lapMs;
+    lap.sample(wrapped, pose);
+    v.set(pose.px, pose.py, pose.pz);
+    return pose;
+  };
+  return {
+    lapMs,
+    reset() {
+      primed = false;
+    },
+    update(tMs, dtMs, camera, craft) {
+      const p = sampleInto(tMs, at);
+      if (craft) {
+        craft.position.copy(at);
+        craft.quaternion.set(p.qx, p.qy, p.qz, p.qw);
+      }
+      sampleInto(tMs - GHOST_LAG_MS, from);
+      dir.subVectors(at, from);
+      let dist = dir.length();
+      if (dist < 1e-4) {
+        dir.set(0, 0, 1);
+      } else {
+        dir.divideScalar(dist);
+      }
+      if (dist < floor || dist > floor * GHOST_REACH) {
+        dist = Math.min(Math.max(dist, floor), floor * GHOST_REACH);
+        from.copy(at).addScaledVector(dir, -dist);
+      }
+      from.y += dist * GHOST_LIFT;
+      /* The OFFSET is eased, not the position: an eased position trails a
+       * fast lap by its speed times the ease, metres on a five inch, and
+       * the airframe shrinks to a speck however close the reach is. */
+      from.sub(at);
+      if (!primed) {
+        cam.copy(from);
+        primed = true;
+      } else {
+        cam.lerp(from, 1 - Math.exp(-Math.max(0, dtMs) / GHOST_EASE_MS));
+      }
+      camera.up.set(0, 1, 0);
+      camera.position.copy(at).add(cam);
+      camera.lookAt(at);
+    },
+  };
+}
+
+/*
+ * A FREESTYLE MAP'S SHEET FLIES ITS NAMED GAPS, the owner's question of
+ * 2026-10-19, "what will we do about freestyle map", after a track's sheet
+ * started replaying its fastest lap. A map has no clock and so no recorded
+ * lap, but its builder named the lines it wants flown, and this flies them:
+ * one smooth closed line through every gap, square through each window and
+ * on to the nearest one not yet flown, and the airframe on it with the
+ * ghost lap's chase camera behind. It answers to makeGhostChase as a lap
+ * does (durationMs and sample), so the camera is the same one.
+ *
+ * THE LINE. Each gap gives two points, GAP_THROUGH_M before and after its
+ * window's middle along the normal, turned so the craft goes through toward
+ * the next gap. The order starts at the first gap the builder placed and
+ * takes the nearest unflown one next, which keeps a tour of a dozen gaps
+ * from crossing the plot back and forth. A centripetal Catmull Rom through
+ * the points, closed, flown at GAP_SPEED; one gap flies out through it and
+ * back round beside it. Nothing checks the line between gaps against the
+ * map's solids: a camera on it can pass through a wall, as the orbit can.
+ *
+ * THE ATTITUDE is drawn, not flown: nose along the line, tipped forward as
+ * a quad at speed is, banked into the turn by how fast the heading turns.
+ */
+const GAP_THROUGH_M = 4;
+const GAP_SPEED = 13;
+const GAP_PITCH = 0.32;
+const GAP_BANK_MAX = 0.9;
+
+function makeGapLine(gaps, THREE) {
+  const list = (gaps || []).filter((g) => g && Number.isFinite(g.x));
+  if (!list.length) {
+    return null;
+  }
+  const mid = (g) => new THREE.Vector3(g.x, g.y + Math.min(g.h / 2, 2.5), g.z);
+  const order = [list[0]];
+  const left = list.slice(1);
+  while (left.length) {
+    const at = mid(order[order.length - 1]);
+    let best = 0;
+    for (let i = 1; i < left.length; i += 1) {
+      if (mid(left[i]).distanceToSquared(at) < mid(left[best]).distanceToSquared(at)) {
+        best = i;
+      }
+    }
+    order.push(left.splice(best, 1)[0]);
+  }
+  const pts = [];
+  const n = new THREE.Vector3();
+  if (order.length === 1) {
+    const g = order[0];
+    const c = mid(g);
+    n.set(g.nx, 0, g.nz);
+    const a = new THREE.Vector3(g.ax, 0, g.az);
+    const d = GAP_THROUGH_M;
+    pts.push(c.clone().addScaledVector(n, -d), c.clone().addScaledVector(n, d),
+      c.clone().addScaledVector(n, d * 2).addScaledVector(a, d * 1.5),
+      c.clone().addScaledVector(a, d * 2.5),
+      c.clone().addScaledVector(n, -d * 2).addScaledVector(a, d * 1.5));
+  } else {
+    for (let i = 0; i < order.length; i += 1) {
+      const g = order[i];
+      const c = mid(g);
+      const prev = mid(order[(i + order.length - 1) % order.length]);
+      const next = mid(order[(i + 1) % order.length]);
+      n.set(g.nx, 0, g.nz);
+      if (n.dot(next.clone().sub(prev)) < 0) {
+        n.negate();
+      }
+      pts.push(c.clone().addScaledVector(n, -GAP_THROUGH_M), c.clone().addScaledVector(n, GAP_THROUGH_M));
+    }
+  }
+  const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
+  const length = curve.getLength();
+  if (!(length > 1)) {
+    return null;
+  }
+  const durationMs = (length / GAP_SPEED) * 1000;
+  const p = new THREE.Vector3();
+  const back = new THREE.Vector3();
+  const ahead = new THREE.Vector3();
+  const body = new THREE.Object3D();
+  const wrap = (u) => ((u % 1) + 1) % 1;
+  return {
+    durationMs,
+    sample(tMs, out) {
+      const u = tMs / durationMs;
+      const du = 3 / length;
+      curve.getPointAt(wrap(u), p);
+      curve.getPointAt(wrap(u - du), back);
+      curve.getPointAt(wrap(u + du), ahead);
+      const h0 = Math.atan2(p.x - back.x, p.z - back.z);
+      const h1 = Math.atan2(ahead.x - p.x, ahead.z - p.z);
+      let turn = h1 - h0;
+      while (turn > Math.PI) {
+        turn -= Math.PI * 2;
+      }
+      while (turn < -Math.PI) {
+        turn += Math.PI * 2;
+      }
+      body.position.copy(p);
+      body.up.set(0, 1, 0);
+      body.lookAt(ahead);
+      body.rotateZ(Math.max(-GAP_BANK_MAX, Math.min(GAP_BANK_MAX, -turn * 2.2)));
+      body.rotateX(GAP_PITCH);
+      out.px = p.x;
+      out.py = p.y;
+      out.pz = p.z;
+      out.qx = body.quaternion.x;
+      out.qy = body.quaternion.y;
+      out.qz = body.quaternion.z;
+      out.qw = body.quaternion.w;
+      return out;
+    },
+  };
+}
+
 async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
   const THREE = await import('three');
   const { buildShell } = await import('../render/shell.js');
@@ -228,6 +434,36 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
 
   const attract = makeAttractCamera(view);
 
+  /* The recorded lap, when the sheet asked for one. A ghost that cannot be
+   * had is not an error worth an empty box: the orbit flies instead. */
+  let chase = null;
+  if (shareId && ghostId) {
+    try {
+      setStatus('Loading the lap.');
+      const payload = await fetchGhost(shareId, ghostId);
+      const lap = new GhostLap(decodeGhost(ghostFromBase64(payload.ghost)), {
+        name: payload.name || '', source: 'board',
+      });
+      const room = view.trackClass === 'micro';
+      if (room && typeof shell.swapCraft === 'function') {
+        /* A room is flown on the whoop, so the lap is drawn on one. */
+        shell.swapCraft('whoop65');
+      }
+      /* The same floor for both: the whoop is drawn MICRO_SCALE times life
+       * size, which is the five inch's sweep exactly (src/render/craft.js). */
+      chase = makeGhostChase(lap, THREE, GHOST_FLOOR_M);
+      setStatus('');
+    } catch (e) {
+      console.warn('The recorded lap could not be loaded, so the sheet shows the orbit.', e);
+    }
+  } else if (mapShareId) {
+    const line = makeGapLine(view.gaps, THREE);
+    if (line) {
+      chase = makeGhostChase(line, THREE, GHOST_FLOOR_M);
+      setStatus('');
+    }
+  }
+
   let alive = true;
   const onResize = () => {
     if (!alive) {
@@ -237,11 +473,12 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
   };
   window.addEventListener('resize', onResize);
 
-  const periodMs = periodMsOf(attract);
-  const loopMs = clipDurationMs(periodMs);
+  const periodMs = chase ? chase.lapMs : periodMsOf(attract);
+  const loopMs = chase ? Math.min(chase.lapMs, GHOST_CLIP_MAX_MS) : clipDurationMs(periodMs);
   /* One full camera cycle in the clip, sped up if the natural period is
    * longer than CLIP_MS_MAX. Recording a slice of a 57 s orbit and looping
-   * it is a jump, which is what the board thumbnails were doing. */
+   * it is a jump, which is what the board thumbnails were doing. A lap is
+   * one cycle too, start line to start line. */
   const captureScale = (periodMs > 0 ? periodMs : loopMs) / loopMs;
 
   let prevWall = performance.now();
@@ -272,7 +509,11 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
     const dt = Math.min(Math.max(nowWall - prevWall, 0), 100);
     prevWall = nowWall;
     camMs += dt * captureScale;
-    attract.update(camMs, shell.camera, { craft: shell.quad });
+    if (chase) {
+      chase.update(camMs, dt * captureScale, shell.camera, shell.quad);
+    } else {
+      attract.update(camMs, shell.camera, { craft: shell.quad });
+    }
     if (shell.blades) {
       for (let m = 0; m < 4; m += 1) {
         const dir = shell.propSpin ? shell.propSpin[m] : 1;
@@ -317,7 +558,12 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
     titleAcc = 0;
     titleStepMs = 0;
     windT0 = performance.now();
-    attract.update(0, shell.camera, { craft: shell.quad });
+    if (chase) {
+      chase.reset();
+      chase.update(0, 0, shell.camera, shell.quad);
+    } else {
+      attract.update(0, shell.camera, { craft: shell.quad });
+    }
     view.updateAnim(0);
     view.updateWind(0, shell.quad.position, 0.85);
     view.post.render();

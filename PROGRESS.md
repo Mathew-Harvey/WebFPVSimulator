@@ -71029,3 +71029,13 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Latency: none in flight. A new list now letters its panels again as they scroll into view, at about 0.8 ms each, in the rooms and on the board only.
 - Checked: `node --check`, `lint:nouns` pass, `lint:preload` up to date. Not run: `lint:shell` and `builder-flow-check` (browser runs; their expected strings were changed with the labels), `npm run verify` (no physics, plant, ABI or build change), `shots`. Nobody has flown it.
 - Approval: the owner wrote "push to main" at 10:30:57Z on 2026-10-19 in the Map picker redesign thread, after draft PRs 24 (board), 91 (sim) and 19 (front door) and the reply that gave their latency (none in flight). It covers all three whole. Each main was fetched first and fast forwarded: board to 05de3af, sim to cea8720, front door to ba6be46. Live on webfpv.org at 10:34Z (board title and front door checked by fetch). Nobody has flown it yet.
+
+## 2026-10-19 | board | Official maps: Baka and Minami D1 in, Hibari Yard out, every panel drawn
+
+- Ask: the owner, 10:31Z on 2026-10-19 (relayed, with a screenshot): "some of the thumbnails are not rendered"; then 11:28Z in the Map picker redesign thread: "remove hibari yard from offical and add Baka and MinamiDI drift track".
+- Thumbnails: not a display bug. No entry on the live board had a picture of the new kind, so `node scripts/boardcards.js --board https://webfpv.org/board` was run against the live board with an admin token the owner pasted in the thread (used inline only, in no file). It finished with no failures, and the board's lists then had a thumbnail on all 68 tracks and 69 maps.
+- Baka (trk-9b58230b) and Minami D1 Drift Track (trk-cbb9a0d0) were marked official through `POST /api/maps/:id/official`, the flag and nothing else.
+- Hibari Yard: board PR 25 takes it out of `pickerWorlds()`, the list of simulator worlds that lead the board's official maps; it stays in the simulator. Nick Burns' house was asked about, since the house is still kept off the board's runs; the owner wrote "keep nicks house on thee offical sorry i miss read" at 11:49:35Z, so it stays in that row.
+- Latency: none. Board only, one entry fewer in a list built once.
+- Checked: board PR 25's CI green; the live `app.js` fetched after the push lists the town and Nick Burns' house and no Hibari Yard. Not run: `npm test` on the board for this one line list change, `npm run verify` (no simulator code changed).
+- Approval: the owner wrote "yes and push to main" at 11:49:11Z on 2026-10-19, then narrowed it at 11:49:35Z to keep the house. Board main fetched first (05de3af, the branch's base) and fast forwarded to 95c678a.

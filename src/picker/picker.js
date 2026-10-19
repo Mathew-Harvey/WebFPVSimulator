@@ -42,6 +42,13 @@
  * button. Escape is the host's, because going back is the host's business
  * and the simulator has one rule for it on every screen.
  *
+ * ZONES, for a host whose Up and Down already mean something (nav): the
+ * simulator's menus walk rows with Up and Down, and a radio has nothing
+ * else. So there the picker is three rows of its own, the shelves, the
+ * strip and the big panel's buttons, Up and Down move between them, Left
+ * and Right move within one, and Down off the buttons hands the cursor
+ * back to the host's rows.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -219,8 +226,12 @@ export function sortShelf(entries, shelf, order = 'rated', needle = '') {
       : (a, b) => byScore(a, b) || byNewest(a, b);
   const worlds = on.filter((e) => e.kind === 'world');
   const official = on.filter((e) => e.official && e.kind !== 'world').sort(cmp);
-  const pilots = on.filter((e) => !e.official).sort(cmp);
-  return { official: [...worlds, ...official], pilots };
+  /* A host's pinned entries, the simulator's own tracks in this browser,
+   * lead the pilots' half in the order given: the one just built is the
+   * one its builder came here to fly. */
+  const pinned = on.filter((e) => !e.official && e.pin);
+  const pilots = on.filter((e) => !e.official && !e.pin).sort(cmp);
+  return { official: [...worlds, ...official], pilots: [...pinned, ...pilots] };
 }
 
 /* A lap as the board prints one: 41.38 or 1:03.40. */
@@ -308,6 +319,9 @@ display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);gap:14px;co
 .wp-split{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;writing-mode:vertical-rl;transform:rotate(180deg);font-weight:900;font-style:italic;text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--wp-slate);border-left:4px solid var(--wp-slate);padding:0 4px}
 .wp-empty{color:var(--wp-slate);padding:12px 2px}
 .wp :focus-visible{outline:3px solid var(--wp-mint);outline-offset:2px}
+.wp[data-zone=rail] .wp-shelf[aria-selected=true]{outline:4px solid var(--wp-amber);outline-offset:1px}
+.wp[data-zone=rail] .wp-card[aria-current=true],.wp[data-zone=acts] .wp-card[aria-current=true],.wp[data-zone=away] .wp-card[aria-current=true]{outline-color:var(--wp-slate)}
+.wp-act.is-focus{outline:4px solid var(--wp-mint);outline-offset:2px}
 @media (max-width:760px){.wp{grid-template-columns:1fr}.wp-rail{display:flex;overflow-x:auto;padding-bottom:4px}.wp-shelf{flex:0 0 auto}
 .wp-hero{grid-template-columns:1fr}.wp-hero .wp-pic{border-right:0;border-bottom:3px solid var(--wp-ink)}.wp-card{flex-basis:150px}}
 @media (prefers-reduced-motion:reduce){.wp-strip{scroll-behavior:auto}}
@@ -360,7 +374,7 @@ function picture(doc, entry, eager) {
     box.append(img);
   }
   const stamp = make(doc, 'span', `wp-stamp${entry.official ? '' : ' is-pilot'}`,
-    entry.official ? 'Official' : (entry.author ? `By ${entry.author}` : 'Pilot made'));
+    entry.stamp || (entry.official ? 'Official' : (entry.author ? `By ${entry.author}` : 'Pilot made')));
   box.append(stamp);
   return box;
 }
@@ -382,7 +396,8 @@ function picture(doc, entry, eager) {
  *   loading      a sentence for a shelf whose list has not arrived
  *
  * Returns a controller: setEntries, setShelf, setLoading, select, move,
- * moveShelf, activate, current, handleKey, refresh and destroy.
+ * moveShelf, activate, current, handleKey, nav, setZone, zone, refresh and
+ * destroy.
  */
 export function createPicker(host, opts = {}) {
   const doc = host.ownerDocument || document;
@@ -418,6 +433,35 @@ export function createPicker(host, opts = {}) {
   host.append(root);
 
   let shown = [];
+  /* Which of the three rows a host's nav is on, '' for none (the board,
+   * which uses handleKey), 'away' while the host's own rows have it. */
+  let zone = '';
+  let act = 0;
+
+  function acts() {
+    return [...hero.querySelectorAll('.wp-act')];
+  }
+
+  function markActs() {
+    const all = acts();
+    act = Math.max(0, Math.min(all.length - 1, act));
+    all.forEach((b, i) => b.classList.toggle('is-focus', zone === 'acts' && i === act));
+  }
+
+  function setZone(z) {
+    /* No buttons to hold, which is an empty shelf: the strip is next. */
+    zone = z === 'acts' && !acts().length ? 'strip' : (z || '');
+    act = 0;
+    if (zone) {
+      root.dataset.zone = zone;
+    } else {
+      delete root.dataset.zone;
+    }
+    markActs();
+    if (zone === 'strip') {
+      markCurrent(true);
+    }
+  }
 
   function lists() {
     const { official, pilots } = sortShelf(state.entries, state.shelf, state.order, state.needle);
@@ -539,6 +583,7 @@ export function createPicker(host, opts = {}) {
     }
     info.append(acts);
     hero.append(info);
+    markActs();
   }
 
   function cardFor(entry) {
@@ -683,6 +728,68 @@ export function createPicker(host, opts = {}) {
     return true;
   }
 
+  /*
+   * A host's arrow, in zones: 'up', 'down', 'left', 'right' or 'enter'.
+   * True when the picker used it, 'down' when Down left the buttons, which
+   * is the host's cue to put its cursor on its own first row, and false
+   * when no zone is held.
+   */
+  function nav(dir) {
+    if (!zone || zone === 'away') {
+      return false;
+    }
+    if (zone === 'rail') {
+      if (dir === 'left' || dir === 'right') {
+        moveShelf(dir === 'left' ? -1 : 1);
+      } else if (dir === 'down' || dir === 'enter') {
+        setZone('strip');
+      }
+      return true;
+    }
+    if (zone === 'strip') {
+      if (dir === 'left' || dir === 'right') {
+        move(dir === 'left' ? -1 : 1);
+      } else if (dir === 'up') {
+        setZone('rail');
+      } else if (dir === 'down') {
+        if (!acts().length) {
+          return 'down';
+        }
+        setZone('acts');
+      } else if (dir === 'enter') {
+        activate();
+      }
+      return true;
+    }
+    const all = acts();
+    if (dir === 'left' || dir === 'right') {
+      act += dir === 'left' ? -1 : 1;
+      markActs();
+    } else if (dir === 'up') {
+      setZone('strip');
+    } else if (dir === 'down') {
+      return 'down';
+    } else if (dir === 'enter' && all[act] && !all[act].disabled) {
+      all[act].click();
+    }
+    return true;
+  }
+
+  /* A pointer says which zone it is in by where it went down. */
+  root.addEventListener('pointerdown', (ev) => {
+    if (!zone) {
+      return;
+    }
+    const t = ev.target;
+    const z = t.closest('.wp-rail') ? 'rail' : (t.closest('.wp-acts') ? 'acts' : 'strip');
+    setZone(z);
+    if (z === 'acts') {
+      const i = acts().indexOf(t.closest('.wp-act'));
+      act = i < 0 ? 0 : i;
+      markActs();
+    }
+  });
+
   find.addEventListener('input', () => {
     state.needle = find.value;
     paint();
@@ -710,6 +817,9 @@ export function createPicker(host, opts = {}) {
     activate,
     current,
     handleKey,
+    nav,
+    setZone,
+    zone: () => zone,
     refresh: paint,
     destroy() {
       root.remove();

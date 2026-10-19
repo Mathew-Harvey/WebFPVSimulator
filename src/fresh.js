@@ -243,6 +243,7 @@
     'src/maps/specials/infinityloops.js',
     'src/partners/patrons.js',
     'src/partners/roster.js',
+    'src/picker/picker.js',
     'src/props/aperture.js',
     'src/props/buildings.js',
     'src/props/catalog.js',

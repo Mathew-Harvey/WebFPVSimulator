@@ -32,13 +32,15 @@
  * map's ink draws round it.
  *
  * WHAT HE SAYS. His four lines on his own clock (./nick.js), and two the
- * owner asked for on 2026-10-18 that answer the craft: "When I fly too
- * close to nick he should exclaim, holy catfish, or if I hit him say I
- * appreciate your time and thanks for watching". Close is within NEAR_R of
- * him; a hit is the craft inside his body (HIT_R round his axis, from his
- * feet to the top of his head). Each goes off once as the craft arrives and
- * not again until it has gone away (REARM_NEAR, REARM_HIT), and while one
- * is up it is what the balloon says. He is still not solid: the craft
+ * owner asked for that answer the craft, the way round he settled on
+ * 2026-10-19 after the first build had them the other way: "If you fly
+ * close say thankyou line, if you hit him exlaim the catfish line". Close
+ * is within NEAR_R of him and he thanks you, smiling; a hit is the craft
+ * inside his body (HIT_R round his axis, from his feet to the top of his
+ * head) and he shouts "Holy Catfish!". Each goes off once as the craft
+ * arrives and not again until it has gone away (REARM_NEAR, REARM_HIT),
+ * a hit's shout is not talked over by the thanks, and while one is up it
+ * is what the balloon says. He is still not solid: the craft
  * flies through him, and what he says is all a hit does.
  *
  * Render may read frame time; this file reads only the clock the map is
@@ -113,7 +115,7 @@ const SAYS = [
 ].map((s, i) => ({ ...s, text: NICK_LINES[i].text }));
 /* The two that answer the craft. */
 const CATFISH = { text: NICK_LINES[0].text, face: FACE.shout, fill: '#ffd45c', ms: 2200 };
-const THANKS = { text: 'I appreciate your time and thanks for watching!', face: FACE.sad, fill: INKS.mint, ms: 3800 };
+const THANKS = { text: 'I appreciate your time and thanks for watching!', face: FACE.smile, fill: INKS.mint, ms: 3800 };
 /* Real metres: close, a hit, and how far the craft has to go before each
  * can go off again. HIT_R is his body's half width and the craft's. */
 const NEAR_R = 1.5;
@@ -317,7 +319,7 @@ export function makeNick(camera, craftAt = () => null) {
   let armNear = true;
   let armHit = true;
   let hits = 0;
-  let shouts = 0;
+  let closes = 0;
 
   /* The atlas window the card shows: walk cell `f`, whole or from the hips
    * up. */
@@ -354,16 +356,16 @@ export function makeNick(camera, craftAt = () => null) {
       armNear = true;
     }
     if (armHit && r < HIT_R && above === 0) {
-      react = THANKS;
+      react = CATFISH;
       reactAge = 0;
       armHit = false;
       armNear = false;
       hits += 1;
-    } else if (armNear && dist < NEAR_R && react !== THANKS) {
-      react = CATFISH;
+    } else if (armNear && dist < NEAR_R && react !== CATFISH) {
+      react = THANKS;
       reactAge = 0;
       armNear = false;
-      shouts += 1;
+      closes += 1;
     }
   }
 
@@ -473,9 +475,9 @@ export function makeNick(camera, craftAt = () => null) {
       state: pose.state,
       at: [Math.round(pose.x * 100) / 100, Math.round(pose.y * 100) / 100],
       line: react ? react.text : (pose.line >= 0 ? NICK_LINES[pose.line].text : null),
-      answering: react === THANKS ? 'hit' : (react === CATFISH ? 'close' : null),
+      answering: react === CATFISH ? 'hit' : (react === THANKS ? 'close' : null),
       hits,
-      shouts,
+      closes,
       frame,
       seated,
       mirrored,

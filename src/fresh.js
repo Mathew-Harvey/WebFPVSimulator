@@ -382,8 +382,6 @@
     'src/ui/tuneinvite.js',
     'src/ui/tunesdialog.js',
     'src/ui/ui.js',
-    'src/ui/ui.js',
-    'src/ui/ui.js',
     'src/units.js',
   ];
   const PRELOAD = {

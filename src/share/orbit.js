@@ -97,7 +97,9 @@ function clipKey() {
   }
   const mapShareId = params.get('mapshare') || '';
   if (mapShareId) {
-    return clipKeyForMapShare(mapShareId, params.get('v') || '');
+    /* `:gaps` since the sheet's camera flies a map's named gaps: a clip of
+     * the old orbit kept under the bare key is not the shot any more. */
+    return `${clipKeyForMapShare(mapShareId, params.get('v') || '')}:gaps`;
   }
   const mapId = params.get('map') === 'field' ? 'custom' : (params.get('map') || 'custom');
   return clipKeyForMap(mapId);
@@ -204,6 +206,7 @@ const GHOST_LIFT = 0.42;
 const GHOST_EASE_MS = 90;
 const GHOST_CLIP_MAX_MS = 40000;
 const GHOST_REACH = 1.8;
+const GHOST_FLOOR_M = 0.45;
 
 function makeGhostChase(lap, THREE, floor) {
   const pose = {};
@@ -256,6 +259,121 @@ function makeGhostChase(lap, THREE, floor) {
       camera.up.set(0, 1, 0);
       camera.position.copy(at).add(cam);
       camera.lookAt(at);
+    },
+  };
+}
+
+/*
+ * A FREESTYLE MAP'S SHEET FLIES ITS NAMED GAPS, the owner's question of
+ * 2026-10-19, "what will we do about freestyle map", after a track's sheet
+ * started replaying its fastest lap. A map has no clock and so no recorded
+ * lap, but its builder named the lines it wants flown, and this flies them:
+ * one smooth closed line through every gap, square through each window and
+ * on to the nearest one not yet flown, and the airframe on it with the
+ * ghost lap's chase camera behind. It answers to makeGhostChase as a lap
+ * does (durationMs and sample), so the camera is the same one.
+ *
+ * THE LINE. Each gap gives two points, GAP_THROUGH_M before and after its
+ * window's middle along the normal, turned so the craft goes through toward
+ * the next gap. The order starts at the first gap the builder placed and
+ * takes the nearest unflown one next, which keeps a tour of a dozen gaps
+ * from crossing the plot back and forth. A centripetal Catmull Rom through
+ * the points, closed, flown at GAP_SPEED; one gap flies out through it and
+ * back round beside it. Nothing checks the line between gaps against the
+ * map's solids: a camera on it can pass through a wall, as the orbit can.
+ *
+ * THE ATTITUDE is drawn, not flown: nose along the line, tipped forward as
+ * a quad at speed is, banked into the turn by how fast the heading turns.
+ */
+const GAP_THROUGH_M = 4;
+const GAP_SPEED = 13;
+const GAP_PITCH = 0.32;
+const GAP_BANK_MAX = 0.9;
+
+function makeGapLine(gaps, THREE) {
+  const list = (gaps || []).filter((g) => g && Number.isFinite(g.x));
+  if (!list.length) {
+    return null;
+  }
+  const mid = (g) => new THREE.Vector3(g.x, g.y + Math.min(g.h / 2, 2.5), g.z);
+  const order = [list[0]];
+  const left = list.slice(1);
+  while (left.length) {
+    const at = mid(order[order.length - 1]);
+    let best = 0;
+    for (let i = 1; i < left.length; i += 1) {
+      if (mid(left[i]).distanceToSquared(at) < mid(left[best]).distanceToSquared(at)) {
+        best = i;
+      }
+    }
+    order.push(left.splice(best, 1)[0]);
+  }
+  const pts = [];
+  const n = new THREE.Vector3();
+  if (order.length === 1) {
+    const g = order[0];
+    const c = mid(g);
+    n.set(g.nx, 0, g.nz);
+    const a = new THREE.Vector3(g.ax, 0, g.az);
+    const d = GAP_THROUGH_M;
+    pts.push(c.clone().addScaledVector(n, -d), c.clone().addScaledVector(n, d),
+      c.clone().addScaledVector(n, d * 2).addScaledVector(a, d * 1.5),
+      c.clone().addScaledVector(a, d * 2.5),
+      c.clone().addScaledVector(n, -d * 2).addScaledVector(a, d * 1.5));
+  } else {
+    for (let i = 0; i < order.length; i += 1) {
+      const g = order[i];
+      const c = mid(g);
+      const prev = mid(order[(i + order.length - 1) % order.length]);
+      const next = mid(order[(i + 1) % order.length]);
+      n.set(g.nx, 0, g.nz);
+      if (n.dot(next.clone().sub(prev)) < 0) {
+        n.negate();
+      }
+      pts.push(c.clone().addScaledVector(n, -GAP_THROUGH_M), c.clone().addScaledVector(n, GAP_THROUGH_M));
+    }
+  }
+  const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
+  const length = curve.getLength();
+  if (!(length > 1)) {
+    return null;
+  }
+  const durationMs = (length / GAP_SPEED) * 1000;
+  const p = new THREE.Vector3();
+  const back = new THREE.Vector3();
+  const ahead = new THREE.Vector3();
+  const body = new THREE.Object3D();
+  const wrap = (u) => ((u % 1) + 1) % 1;
+  return {
+    durationMs,
+    sample(tMs, out) {
+      const u = tMs / durationMs;
+      const du = 3 / length;
+      curve.getPointAt(wrap(u), p);
+      curve.getPointAt(wrap(u - du), back);
+      curve.getPointAt(wrap(u + du), ahead);
+      const h0 = Math.atan2(p.x - back.x, p.z - back.z);
+      const h1 = Math.atan2(ahead.x - p.x, ahead.z - p.z);
+      let turn = h1 - h0;
+      while (turn > Math.PI) {
+        turn -= Math.PI * 2;
+      }
+      while (turn < -Math.PI) {
+        turn += Math.PI * 2;
+      }
+      body.position.copy(p);
+      body.up.set(0, 1, 0);
+      body.lookAt(ahead);
+      body.rotateZ(Math.max(-GAP_BANK_MAX, Math.min(GAP_BANK_MAX, -turn * 2.2)));
+      body.rotateX(GAP_PITCH);
+      out.px = p.x;
+      out.py = p.y;
+      out.pz = p.z;
+      out.qx = body.quaternion.x;
+      out.qy = body.quaternion.y;
+      out.qz = body.quaternion.z;
+      out.qw = body.quaternion.w;
+      return out;
     },
   };
 }
@@ -333,10 +451,16 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
       }
       /* The same floor for both: the whoop is drawn MICRO_SCALE times life
        * size, which is the five inch's sweep exactly (src/render/craft.js). */
-      chase = makeGhostChase(lap, THREE, 0.6);
+      chase = makeGhostChase(lap, THREE, GHOST_FLOOR_M);
       setStatus('');
     } catch (e) {
       console.warn('The recorded lap could not be loaded, so the sheet shows the orbit.', e);
+    }
+  } else if (mapShareId) {
+    const line = makeGapLine(view.gaps, THREE);
+    if (line) {
+      chase = makeGhostChase(line, THREE, GHOST_FLOOR_M);
+      setStatus('');
     }
   }
 

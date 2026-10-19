@@ -68,45 +68,63 @@ const REACH = 6;
 const PROUD = 0.012;
 
 /*
+ * Where a line from `from` (plan x, plan y, height, real metres) the way
+ * `dir` names first meets a box in `boxes`, within REACH: { p, n, hit } in
+ * the world, `p` on the face and `n` the face's normal, back along the
+ * line, with `hit` the box's name. Null for a line that meets nothing.
+ * The supporters' signs are hung the same way (./supporters.js).
+ */
+export function aimAt(boxes, from, dir) {
+  const { OX, OZ, S } = FRAME;
+  const o = [OX + S * from[0], S * from[2], OZ - S * from[1]];
+  const d = DIRS[dir];
+  let best = Infinity;
+  let hit = null;
+  for (const b of boxes) {
+    let t0 = 0;
+    let t1 = S * REACH;
+    for (let k = 0; k < 3; k += 1) {
+      if (d[k] === 0) {
+        if (o[k] < b.lo[k] || o[k] > b.hi[k]) {
+          t0 = Infinity;
+          break;
+        }
+        continue;
+      }
+      const a = (b.lo[k] - o[k]) / d[k];
+      const c = (b.hi[k] - o[k]) / d[k];
+      t0 = Math.max(t0, Math.min(a, c));
+      t1 = Math.min(t1, Math.max(a, c));
+    }
+    if (t0 <= t1 && t0 > 1e-6 && t0 < best) {
+      best = t0;
+      hit = b;
+    }
+  }
+  if (!hit) {
+    return null;
+  }
+  return { p: o.map((v, k) => v + d[k] * best), n: d.map((v) => -v), hit: hit.name || hit.m };
+}
+
+/* The boxes a sticker or a sign can be stuck on: the drawn ones. */
+export const drawnBoxes = (parts) => parts.filter((p) => p.t === 'box' && p.draw);
+
+/*
  * Each spot stuck on the first drawn box its line meets: { id, name, p,
- * n, w, hit } in the world frame, with `w` the sticker's width and `hit`
- * the box's name, or null for a spot whose line meets nothing.
+ * n, w, hit } in the world frame, PROUD of the face, with `w` the
+ * sticker's width and `hit` the box's name, or null for a spot whose line
+ * meets nothing.
  */
 export function placeStickers(parts) {
-  const { OX, OZ, S } = FRAME;
-  const boxes = parts.filter((p) => p.t === 'box' && p.draw);
+  const boxes = drawnBoxes(parts);
   return NB_SPOTS.map((spot, i) => {
-    const o = [OX + S * spot.from[0], S * spot.from[2], OZ - S * spot.from[1]];
-    const d = DIRS[spot.dir];
-    let best = Infinity;
-    let hit = null;
-    for (const b of boxes) {
-      let t0 = 0;
-      let t1 = S * REACH;
-      for (let k = 0; k < 3; k += 1) {
-        if (d[k] === 0) {
-          if (o[k] < b.lo[k] || o[k] > b.hi[k]) {
-            t0 = Infinity;
-            break;
-          }
-          continue;
-        }
-        const a = (b.lo[k] - o[k]) / d[k];
-        const c = (b.hi[k] - o[k]) / d[k];
-        t0 = Math.max(t0, Math.min(a, c));
-        t1 = Math.min(t1, Math.max(a, c));
-      }
-      if (t0 <= t1 && t0 > 1e-6 && t0 < best) {
-        best = t0;
-        hit = b;
-      }
-    }
-    if (!hit) {
+    const at = aimAt(boxes, spot.from, spot.dir);
+    if (!at) {
       return null;
     }
-    const n = d.map((v) => -v);
-    const p = o.map((v, k) => v + d[k] * (best - PROUD));
-    return { id: spot.id, name: spot.name, p, n, w: S * spot.size, hit: hit.name || hit.m, turn: ((i * 7919) % 13) / 13 - 0.5 };
+    const p = at.p.map((v, k) => v + at.n[k] * PROUD);
+    return { id: spot.id, name: spot.name, p, n: at.n, w: FRAME.S * spot.size, hit: at.hit, turn: ((i * 7919) % 13) / 13 - 0.5 };
   });
 }
 

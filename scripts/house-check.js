@@ -78,6 +78,9 @@ import { fileURLToPath } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 import { houseLayout, basementFloorAt, S, FLOOR0, BF, worldAt } from '../src/maps/house/house.js';
+import { placeStickers, NB_SPOTS } from '../src/maps/house/stickers.js';
+import { placeSupporters, SUPPORTER_SPOTS } from '../src/maps/house/supporters.js';
+import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../src/partners/roster.js';
 import { houseDocument } from '../src/maps/house/yard.js';
 import { MATERIALS as HOME_MATERIALS } from '../src/props/homes.js';
 import { GAP_MIN } from '../src/props/parts.js';
@@ -822,6 +825,34 @@ function nickBlock(placed, near) {
     said.size === NICK_LINES.length && twice === 0, `${said.size} called, ${twice} repeats in ${NICK_CALLS.length}`);
 }
 
+/* Nick's NB stickers: each spot's line meets a drawn face, and this says
+ * which, so a wall that moves and takes a sticker somewhere odd shows
+ * here before it shows in a flight. */
+function stickersBlock(L) {
+  console.log('\n9. stickers');
+  const placed = placeStickers(L.parts);
+  placed.forEach((s, i) => {
+    const spot = NB_SPOTS[i];
+    check(`the ${spot.id} sticker lands`, !!s, s ? `on ${s.hit}, ${r3(Math.hypot(...s.p.map((v, k) => v - worldAt(spot.from[0], spot.from[1], spot.from[2])[k])) / S)} m from where it is aimed` : 'its line meets nothing');
+  });
+  const ids = new Set(NB_SPOTS.map((s) => s.id));
+  check(`the ${NB_SPOTS.length} stickers have ${NB_SPOTS.length} ids`, ids.size === NB_SPOTS.length, `${ids.size} distinct`);
+
+  /* And the supporters' signs, every brand the roster has, once each. */
+  console.log('\n10. supporters');
+  const signs = placeSupporters(L.parts, 'extra');
+  signs.forEach((s, i) => {
+    const spot = SUPPORTER_SPOTS[i];
+    check(`${spot.slug}'s sign lands`, !!s, s ? `on ${s.hit}, ${r3(Math.hypot(...s.p.map((v, k) => v - worldAt(spot.from[0], spot.from[1], spot.from[2])[k])) / S)} m from where it is aimed` : 'its line meets nothing');
+  });
+  const brands = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS].map((p) => p.slug);
+  const hung = SUPPORTER_SPOTS.map((s) => s.slug);
+  const missing = brands.filter((b) => !hung.includes(b));
+  const extra = hung.filter((b, i) => !brands.includes(b) || hung.indexOf(b) !== i);
+  check(`every one of the roster's ${brands.length} brands is hung once`, !missing.length && !extra.length,
+    missing.length || extra.length ? `missing ${missing.join(', ') || 'none'}, odd ${extra.join(', ') || 'none'}` : hung.join(', '));
+}
+
 async function main() {
   console.log('house-check: Nick Burns\' house, src/maps/house/');
   const L = layoutBlock();
@@ -832,6 +863,7 @@ async function main() {
   roofsBlock(placed, near);
   await moduleBlock(placed);
   nickBlock(placed, near);
+  stickersBlock(L);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exitCode = failures ? 1 : 0;
 }

@@ -112,7 +112,7 @@ import {
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost, skyLook } from './looks.js';
 import { STF_PAINTED } from '../../game/egg.js';
-import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, stfKey } from './egg.js';
+import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, partnerKey, stfKey } from './egg.js';
 import { choosePatrons } from '../../partners/patrons.js';
 import { trafficOf, uploadTraffic, roadKeepOut } from './traffic.js';
 import { buildRoadMesh, roadCover } from './roadmesh.js';
@@ -963,7 +963,8 @@ function paintMark(props, placed, spot, look, make, share = STF_PROBE_SHARE) {
   const up = new THREE.Vector3(...spot.up);
   const right = new THREE.Vector3().crossVectors(up, n);
   const item = spot.elementId ? placed.items.find((it) => it.el.id === spot.elementId) : null;
-  const name = `props:${chunkKeyOf(item || { x: spot.p[0], z: spot.p[2] })}`;
+  /* A spot by hand names the chunk its structure was drawn in. */
+  const name = `props:${spot.chunk || chunkKeyOf(item || { x: spot.p[0], z: spot.p[2] })}`;
   let chunk = props.children.find((g) => g.name === name);
   const lift = drawnRelief(chunk, spot, right, share) + STF_LIFT;
   const p = spot.p.map((v, k) => v + spot.n[k] * lift);
@@ -1262,9 +1263,8 @@ export async function buildMap(shell, onProgress, options) {
     console.error('stf: no spot for the mark on this map', e);
   }
   /* A map that brings a structure of its own may ask for no partner or
-   * patron marks (src/maps/house/: a sign on somebody's real house reads as
-   * that person vouching for it, and the board's counters have no word for
-   * the map). The STF mark is the project's own and stays. */
+   * patron marks chosen here, and may hang them itself instead (`markSpots`,
+   * below). The STF mark is the project's own and stays. */
   const sponsorMarks = opts.sponsorMarks ?? true;
   /* And the partners', after it and never on its wall (./egg.js, rule 8),
    * for the same reason read only and for the same reason forgiving. Include
@@ -1294,6 +1294,24 @@ export async function buildMap(shell, onProgress, options) {
     } catch (e) {
       console.error('patrons: no spots for the marks on this map', e);
     }
+  }
+  /* THE MARKS BY HAND, from a map that brings a structure the chooser
+   * cannot see (src/maps/house/supporters.js): each { slug, p, n, up, w,
+   * chunk } on a face of that structure, in the world, `p` on the face. Each
+   * gets the key a chosen spot would and the height its sign's artwork
+   * gives (signAspect), and goes to the partners' list or the patrons' by
+   * which roster names it, so it is painted, found or not, exactly as a
+   * chosen one is. A slug no roster names is left out. */
+  for (const m of opts.markSpots || []) {
+    const partner = [...PARTNERS, ...MAP_ONLY_PARTNERS].find((p) => p.slug === m.slug);
+    const brand = partner || PATRON_MAP_BRANDS.find((p) => p.slug === m.slug);
+    if (!brand) {
+      continue;
+    }
+    const spot = {
+      key: partnerKey(doc, chosen.source, m.slug), slug: m.slug, p: [...m.p], n: [...m.n], up: [...m.up], w: m.w, h: m.w / signAspect(brand), chunk: m.chunk,
+    };
+    (partner ? partnerSpots : patronSpots).push(spot);
   }
   /* Its time of day and its ground (./looks.js): golden over concrete for
    * a map that never chose, which is this map as it always was. */

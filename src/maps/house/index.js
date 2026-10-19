@@ -51,6 +51,7 @@ import { houseLayout, basementFloorAt, STAIR_HOLE, FRAME, worldAt } from './hous
 import { houseDocument } from './yard.js';
 import { makeNick } from './nickdraw.js';
 import { placeStickers, stickerMesh, STICKER_URL, STICKER_WORD } from './stickers.js';
+import { placeSupporters } from './supporters.js';
 import { stfKey } from '../built/egg.js';
 
 const CHUNK = 'extra';
@@ -216,7 +217,12 @@ export async function buildMap(shell, onProgress, options) {
     floor: basementFloorAt,
   };
   const doc = houseDocument();
-  const map = await buildBuilt(shell, onProgress, { ...(options || {}), document: doc, extra, sponsorMarks: false });
+  /* The supporters' signs hung by hand (./supporters.js), the chooser's
+   * spots off: it sees the yard and not the house. */
+  const markSpots = placeSupporters(L.parts, CHUNK).filter(Boolean);
+  const map = await buildBuilt(shell, onProgress, {
+    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots,
+  });
   /* Its own world, not Your map: the shell keys the world, the results and
    * the board's refusal by this id (src/main.js, src/ui/ui.js), and `source`
    * keeps its marks out of the board's counters, which have no word for it. */

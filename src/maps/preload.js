@@ -194,5 +194,6 @@ export const MAP_PRELOAD = {
     'maps/house/nickdraw.js',
     'maps/house/nick.js',
     'maps/house/stickers.js',
+    'maps/house/supporters.js',
   ],
 };

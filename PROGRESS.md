@@ -71039,3 +71039,11 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Latency: none. Board only, one entry fewer in a list built once.
 - Checked: board PR 25's CI green; the live `app.js` fetched after the push lists the town and Nick Burns' house and no Hibari Yard. Not run: `npm test` on the board for this one line list change, `npm run verify` (no simulator code changed).
 - Approval: the owner wrote "yes and push to main" at 11:49:11Z on 2026-10-19, then narrowed it at 11:49:35Z to keep the house. Board main fetched first (05de3af, the branch's base) and fast forwarded to 95c678a.
+
+## 2026-10-19 | front door | The last Tracks and Times on the front door becomes Maps and Tracks
+
+- Ask: the owner, 13:04:44Z on 2026-10-19 in the project chat, relayed to the Map picker redesign thread: "on the landing page we need to rename tracks and times, to maps and tracks".
+- Cause: front door PR 19 renamed the card but not the board link in the footer of the film, the patch notes and the wiki, and the patch notes named the board the old way in six more places. Front door PR 20 renames all of them; the partners roster under `src/sim/` is the simulator's copy and keeps its comment.
+- Latency: none, text only.
+- Checked: `lint:page` 32 of 32, `lint:wiki` ok, `lint:nouns` the 7 "course" failures already on main. After the push, the live footer of webfpv.org, /notes/ and /wiki/ fetched as Maps and Tracks.
+- Approval: the owner wrote "push to main" at 13:30:59Z on 2026-10-19. Front door main fetched first (ba6be46, the branch's base) and fast forwarded to d07cbac.

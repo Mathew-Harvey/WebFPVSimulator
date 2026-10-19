@@ -88,7 +88,7 @@ export const CRAFT_DIMS = {
  * name; this is what craftDims reports against in between. */
 let currentCraftId = '5inch';
 
-export function buildCraft(airframeId = '5inch') {
+export function buildCraft(airframeId = '5inch', modelId = null) {
   /*
    * The airframe is MODELLED at its true size and DRAWN at 1/WORLD_SCALE of
    * it, because the world it flies in is WORLD_SCALE times its own scale
@@ -101,9 +101,18 @@ export function buildCraft(airframeId = '5inch') {
    * open discs and what you see is the X; a whoop is a moulded tub with four
    * holes in it. They do not share a silhouette, so they do not share a
    * builder. See src/render/whoopcraft.js.
+   *
+   * `modelId` DRAWS ANOTHER AIRCRAFT OVER THIS ONE'S PLANT, for a map that
+   * asks for it (`craftModel` in src/maps/registry.js): Nick Burns' house,
+   * three times life size, draws the whoop over the five inch, because a
+   * five inch there is what a 75 mm whoop is in a real house, and the
+   * whoop's model at MICRO_SCALE is the five inch's sweep exactly. Only the
+   * picture changes: craftDims still reports the airframe's own numbers,
+   * which are what the plant and the collider fly.
    */
   currentCraftId = airframeById(airframeId).id;
-  const build = currentCraftId === 'whoop65' ? buildWhoopCraft : buildHeroCraft;
+  const drawn = modelId ? airframeById(modelId).id : currentCraftId;
+  const build = drawn === 'whoop65' ? buildWhoopCraft : buildHeroCraft;
   return build({
     name: 'craft',
     fog: true,

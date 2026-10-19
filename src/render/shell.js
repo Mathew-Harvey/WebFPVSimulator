@@ -272,6 +272,10 @@ export function buildShell(canvas, opts) {
   camera.layers.enable(2);
 
   let craft = buildCraft(opts.airframe);
+  /* The airframe the craft flies and, when a map draws another over it,
+   * the model it is drawn as (setCraftModel below). */
+  let craftAirframe = opts.airframe;
+  let craftModel = null;
 
   /*
    * THE CANVAS'S CSS SIZE, AS OF THE LAST RESIZE, so nothing in a frame has
@@ -415,6 +419,7 @@ export function buildShell(canvas, opts) {
     propSpin: craft.propSpin,
     resize,
     swapCraft,
+    setCraftModel,
     keepAcrossMaps,
     evictSessionRoots,
   };
@@ -434,10 +439,12 @@ export function buildShell(canvas, opts) {
    * rule it applies pack charge and flight style: mid lap it would be
    * changing the aircraft under the pilot.
    */
-  function swapCraft(airframeId) {
+  function swapCraft(airframeId, modelId = craftModel) {
     const old = craft;
     const parent = old.group.parent;
-    const next = buildCraft(airframeId);
+    craftAirframe = airframeId;
+    craftModel = modelId || null;
+    const next = buildCraft(airframeId, craftModel);
     next.group.position.copy(old.group.position);
     next.group.quaternion.copy(old.group.quaternion);
     next.group.visible = old.group.visible;
@@ -453,6 +460,20 @@ export function buildShell(canvas, opts) {
     api.cameraMount = next.cameraMount;
     api.propSpin = next.propSpin;
     return next;
+  }
+
+  /*
+   * Draw the craft as `modelId` over the same airframe, or as the airframe
+   * itself for null: a map's `craftModel` (src/maps/registry.js), set by
+   * loadMap in src/main.js before the map is built, so the map's own
+   * warmPrograms links the model it will draw. Nothing when it is already
+   * drawn that way, which is every map change but onto or off the house.
+   */
+  function setCraftModel(modelId) {
+    if ((modelId || null) === craftModel) {
+      return null;
+    }
+    return swapCraft(craftAirframe, modelId || null);
   }
 
   return api;

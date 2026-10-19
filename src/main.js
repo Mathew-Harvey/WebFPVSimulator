@@ -542,6 +542,12 @@ async function loadMap(shell, id, loading, options) {
   loading.detail = '';
   loading.start('world');
   await yieldToPaint();
+  /* The model this world draws the craft as (`craftModel` in
+   * ./maps/registry.js, the house's whoop), before the world is built so
+   * its warmPrograms links it, and the airframe's own on every other. */
+  if (typeof shell.setCraftModel === 'function') {
+    shell.setCraftModel(entry.craftModel || null);
+  }
   const map = await mod.buildMap(shell, (f) => loading.progress('world', f), options);
   map.graphics = normalizeGraphics(options && options.quality);
   /* The Gem look, once a world is built: colours and vertex tones only, nothing per frame (look.js). */

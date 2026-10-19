@@ -53,7 +53,10 @@
  * head) and he shouts "Holy Catfish!". Each goes off once as the craft
  * arrives and not again until it has gone away (REARM_NEAR, REARM_HIT),
  * a hit's shout is not talked over by the thanks, and while one is up it
- * is what the balloon says. He is still not solid: the craft
+ * is what the balloon says. Every balloon comes from him, over his head:
+ * the answers were pinned in front of the camera for a day, and the owner
+ * asked on 2026-10-19 for "nicks speach bubbles should only come from
+ * nick's character". He is still not solid: the craft
  * flies through him, and what he says is all a hit does.
  *
  * Render may read frame time; this file reads only the clock the map is
@@ -148,12 +151,6 @@ const NEAR_R = 1.5;
 const HIT_R = 0.32;
 const REARM_NEAR = 2.6;
 const REARM_HIT = 0.9;
-/* Pinned, the balloon is PIN_D in front of the camera (world metres, well
- * inside anything the near plane keeps), PIN_W of the picture's width,
- * its tail's tip PIN_UP of the picture's height over the middle. */
-const PIN_D = 0.5;
-const PIN_W = 0.34;
-const PIN_UP = 0.1;
 
 /* ------------------------------------------------------------------ */
 /* The balloon                                                         */
@@ -562,25 +559,6 @@ export function makeNick(camera, craftAt = () => null) {
     const age = react ? reactAge : pose.lineAge;
     const dur = react ? react.ms : pose.lineDur;
     const pop = (0.65 + 0.35 * Math.min(1, age / 160)) * (1 - 0.6 * Math.max(0, (age - dur + 150) / 150));
-    const pinned = react !== null;
-    if (balloon.material.depthTest === pinned) {
-      /* It still writes its depth, so the map's ink, which reads depth,
-       * draws round it and not the room's edges across it. */
-      balloon.material.depthTest = !pinned;
-      balloon.renderOrder = pinned ? 10 : 0;
-    }
-    if (pinned) {
-      /* An answer to the craft is pinned in front of the camera, high in
-       * the picture, over whatever is there: the craft that set it off is
-       * in him or beside him, where a balloon over his head is out of
-       * sight above or already behind it. */
-      const h = 2 * PIN_D * Math.tan((camera.fov * Math.PI) / 360);
-      top.set(0, PIN_UP * h, -PIN_D).applyQuaternion(camera.quaternion).add(cam);
-      balloon.position.copy(top);
-      balloon.quaternion.copy(camera.quaternion);
-      balloon.scale.setScalar(((PIN_W * h * camera.aspect) / BALLOON_W) * pop);
-      return;
-    }
     /* Over his head, a little higher outdoors than under a ceiling; and
      * over the umbrella when he is under it and the camera is above it,
      * where the canopy would hide it, and over the rafters when the camera

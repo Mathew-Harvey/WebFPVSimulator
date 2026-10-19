@@ -1131,6 +1131,42 @@ function chair(H, m, x, y, back, f = FLOOR0, o = {}) {
   H.box(m, bx0, by0, seat, bx1, by1, top, { name: 'chair back' });
 }
 
+/*
+ * TUCKED IN. Every chair at a table is pushed in under it, the owner's ask
+ * of 2026-10-19: "push the chairs in everywhere to clear the flight
+ * lines". A chair of half width `s` whose back, `t` thick, is on side
+ * `back` is put with the back's inner face at `face` (TUCK off a square
+ * table's edge, or past a round top's rim), at `along` on that side, and
+ * its centre is returned. A seat under a table top is a slot the gap rule
+ * does not allow, about a quarter of a metre from the seat to the top and
+ * one the craft would wedge in, so the space over the seat from its back
+ * to its far edge and up to the top's underside `under` is solid to the
+ * craft and drawn as nothing: a tucked in chair and its table are one
+ * block. Its height is the chair's own seat `seat`.
+ */
+const TUCK = 0.01;
+function tuck(H, back, face, along, s, t, seat, under) {
+  const k = back === 'w' || back === 's' ? 1 : -1;
+  const c = face + k * (s - t);
+  const a = Math.min(face, c + k * s);
+  const b = Math.max(face, c + k * s);
+  if (back === 'w' || back === 'e') {
+    H.hidden(a, along - s, seat, b, along + s, under, 'obstacle');
+    return [c, along];
+  }
+  H.hidden(along - s, a, seat, along + s, b, under, 'obstacle');
+  return [along, c];
+}
+
+/* The same at a round table of radius `r` at (x, y), the chair on the
+ * side its back is on: its back past the rim, and far enough out that
+ * four seats round it do not meet at their corners. */
+function tuckRound(H, x, y, r, under, back, s, t, seat) {
+  const d = Math.max(r + TUCK, 3 * s - t + 0.01);
+  const face = back === 'w' ? x - d : back === 'e' ? x + d : back === 's' ? y - d : y + d;
+  return tuck(H, back, face, back === 'w' || back === 'e' ? y : x, s, t, seat, under);
+}
+
 /* THE HALL: the front door, the stair up its west side, a dark wood
  * chest of drawers against its east wall north of the way into the front
  * room and the wall of black frames over it (gf-W0j6BxL4qbw-mr1,
@@ -1289,12 +1325,16 @@ function diningRoom(H) {
   H.paint('homeBook', 2.2, t.y0 + 0.1, top, 2.5, t.y1 - 0.1, top + 0.004);
   const windsor = { backH: 0.55, seatM: 'homeWood' };
   const cx = (t.x0 + t.x1) / 2;
-  for (const y of [0.2, 1.3]) {
-    chair(H, 'homeWhite', t.x0 - 0.3, y, 'w', f, windsor);
-    chair(H, 'homeWhite', t.x1 + 0.3, y, 'e', f, windsor);
+  const cy = (t.y0 + t.y1) / 2;
+  /* Tucked in, the side chairs far enough apart that the end chairs' seats
+   * pass between them under the top. */
+  const at = (back, face, along) => tuck(H, back, face, along, 0.22, 0.04, f + 0.45, top - 0.05);
+  for (const y of [cy - 0.48, cy + 0.48]) {
+    chair(H, 'homeWhite', ...at('w', t.x0 - TUCK, y), 'w', f, windsor);
+    chair(H, 'homeWhite', ...at('e', t.x1 + TUCK, y), 'e', f, windsor);
   }
-  chair(H, 'homeWhite', cx, t.y1 + 0.3, 'n', f, windsor);
-  chair(H, 'homeWhite', cx, t.y0 - 0.3, 's', f, windsor);
+  chair(H, 'homeWhite', ...at('n', t.y1 + TUCK, cx), 'n', f, windsor);
+  chair(H, 'homeWhite', ...at('s', t.y0 - TUCK, cx), 's', f, windsor);
   H.paint('homeRug', 1.05, -1.0, f + 0.004, 3.65, 2.55, f + 0.012);
   for (const [x0, y0, x1, y1] of [[1.2, -0.85, 3.5, -0.75], [1.2, 2.3, 3.5, 2.4], [1.2, -0.75, 1.3, 2.3], [3.4, -0.75, 3.5, 2.3]]) {
     H.paint('homeTeal', x0, y0, f + 0.012, x1, y1, f + 0.016);
@@ -1386,10 +1426,11 @@ function breakfast(H) {
   const cx = 7.3;
   const cy = 7.05;
   roundTable(H, 'homeWood', cx, cy, 0.58, f + 0.76, 'homeCabinet');
-  chair(H, 'homeWhite', cx - 0.85, cy, 'w', f, { backH: 0.5 });
-  chair(H, 'homeWhite', cx, cy + 0.85, 'n', f, { backH: 0.5 });
-  tubChair(H, cx + 0.88, cy, 'e');
-  tubChair(H, cx, cy - 0.88, 's');
+  const at = (back, s, t, seat) => tuckRound(H, cx, cy, 0.58, f + 0.72, back, s, t, seat);
+  chair(H, 'homeWhite', ...at('w', 0.22, 0.04, f + 0.45), 'w', f, { backH: 0.5 });
+  chair(H, 'homeWhite', ...at('n', 0.22, 0.04, f + 0.45), 'n', f, { backH: 0.5 });
+  tubChair(H, ...at('e', 0.26, 0.12, f + 0.46), 'e');
+  tubChair(H, ...at('s', 0.26, 0.12, f + 0.46), 's');
   H.post('homeChair', cx, cy, f + 1.8, CEIL0, 0.01, { seg: 4, solid: false });
   H.cap('homeLamp', [cx, cy, f + 1.7], [cx, cy, f + 1.7], 0.15, { look: 'capsule', seg: 10, kind: 'obstacle' });
   const w = BRICK_X1 + TI / 2;
@@ -1478,11 +1519,16 @@ function kitchen(H) {
     H.paint('homeCounter', x + 0.22, it.y1 - 0.055, f + 0.1, x + 0.24, it.y1 - 0.05, base - 0.05);
     H.paint('homeSteel', x + 0.08, it.y1 - 0.055, base - 0.14, x + 0.16, it.y1 - 0.05, base - 0.11);
   }
+  /* The stools pushed in under the top's overhang, against the cabinet,
+   * and the space over each up to the top solid to the craft, as a tucked
+   * in chair's is (tuck()). */
   const sm = ['homeWood', 'homeWhite', 'homeWood'];
   for (let k = 0; k < 3; k += 1) {
     const y = it.y0 + 0.2 + k * 0.25;
-    H.post(sm[k], it.x0 - 0.2, y, f, f + 0.62, 0.025, { seg: 6, kind: 'pole' });
-    H.drum('homeWood', it.x0 - 0.2, y, f + 0.62, f + 0.67, 0.12, { seg: 10 });
+    const x = it.x0 + 0.25 - 0.12 - TUCK;
+    H.post(sm[k], x, y, f, f + 0.62, 0.025, { seg: 6, kind: 'pole' });
+    H.drum('homeWood', x, y, f + 0.62, f + 0.67, 0.12, { seg: 10 });
+    H.hidden(x - 0.096, y - 0.096, f + 0.67, it.x0 + 0.25, y + 0.096, base, 'obstacle');
   }
   /* An LED cube gate on the island, like the one on the basement table in
    * Nick's videos (basementMain()), a gate to thread over the counter. */
@@ -1933,10 +1979,9 @@ function basementMain(H) {
   const ty = 5.7;
   roundTable(H, 'homeShelf', tx, ty, 0.55, f + 0.76, 'homeShelf', f);
   const spindle = { backH: 0.55, seatM: 'homeCounter' };
-  chair(H, 'homeShelf', tx - 0.85, ty, 'w', f, spindle);
-  chair(H, 'homeShelf', tx + 0.85, ty, 'e', f, spindle);
-  chair(H, 'homeShelf', tx, ty + 0.85, 'n', f, spindle);
-  chair(H, 'homeShelf', tx, ty - 0.85, 's', f, spindle);
+  for (const b of ['w', 'e', 'n', 's']) {
+    chair(H, 'homeShelf', ...tuckRound(H, tx, ty, 0.55, f + 0.72, b, 0.22, 0.04, f + 0.45), b, f, spindle);
+  }
   ledCube(H, { x0: tx - 0.4, x1: tx + 0.4, y0: ty - 0.4, y1: ty + 0.4 }, f + 0.76, 0.8);
 
   /* The dresser and the fireplace on the west wall. */
@@ -2120,7 +2165,12 @@ function basementRooms(H) {
     H.box('homeScreen', a, 8.08, f + 0.88, b, 8.12, f + 1.26, { name: 'monitor', kind: 'obstacle' });
     H.post('homeChair', (a + b) / 2, 8.12, f + 0.75, f + 0.9, 0.015, { seg: 5, kind: 'pole' });
   }
-  chair(H, 'homeChair', 11.9, 7.0, 's', f, { seatM: 'homePlay', backH: 0.6 });
+  /* The desk chair tucked in, and the space over its seat solid on to the
+   * wall behind the desk, since what is left between the seat and the wall
+   * is a slot of its own. */
+  const [dx, dy] = tuck(H, 's', 7.55 - TUCK, 11.9, 0.22, 0.04, f + 0.45, f + 0.71);
+  chair(H, 'homeChair', dx, dy, 's', f, { seatM: 'homePlay', backH: 0.6 });
+  H.hidden(dx - 0.22, dy + 0.22, f + 0.45, dx + 0.22, s.y1, f + 0.71, 'obstacle');
   H.box('homeWood', 11.5, s.y0, f, 13.2, 0.85, f + 0.9, { name: 'workbench' });
   H.paint('homeWicker', 11.6, s.y0 + 0.012, f + 1.1, 13.1, s.y0 + 0.018, f + 1.9);
   for (let i = 0; i < 9; i += 1) {
@@ -2263,10 +2313,14 @@ function backYard(H) {
   }
   /* The dining set under it: a black metal table, chairs, the red umbrella. */
   const u = UMBRELLA;
+  /* Three chairs tucked in, and the north one, Nick's (./nick.js PATIO),
+   * left out where he sits in it. */
   roundTable(H, 'homeChair', u.x, u.y, 0.6, 0.75, 'homeChair', G_PAVE);
-  for (const [x, y, b] of [[u.x - 0.9, u.y, 'w'], [u.x + 0.9, u.y, 'e'], [u.x, u.y - 0.9, 's'], [u.x, u.y + 0.85, 'n']]) {
-    chair(H, 'homeChair', x, y, b, G_PAVE, { s: 0.24, backH: 0.45 });
+  const patio = { s: 0.24, backH: 0.45 };
+  for (const b of ['w', 'e', 's']) {
+    chair(H, 'homeChair', ...tuckRound(H, u.x, u.y, 0.6, 0.71, b, 0.24, 0.04, G_PAVE + 0.45), b, G_PAVE, patio);
   }
+  chair(H, 'homeChair', u.x, u.y + 0.85, 'n', G_PAVE, patio);
   H.post('homeWhite', UMBRELLA.x, UMBRELLA.y, 0.75, 2.6, 0.025, { seg: 6, kind: 'pole' });
   H.cone('homePlay', UMBRELLA.x, UMBRELLA.y, UMBRELLA.h0, UMBRELLA.r, UMBRELLA.h);
   H.hidden(u.x - 0.8, u.y - 0.8, 2.15, u.x + 0.8, u.y + 0.8, 2.45, 'obstacle');
@@ -2281,7 +2335,9 @@ function backYard(H) {
   H.cap('homeCoping', [fx, fy, 0], [fx, fy, 0.45], 0.7, { seg: 14, solid: false });
   H.cap('homeChair', [fx, fy, 0.45], [fx, fy, 0.46], 0.5, { seg: 14, solid: false });
   H.hidden(fx - 0.6, fy - 0.6, 0, fx + 0.6, fy + 0.6, 0.45, 'obstacle');
-  for (const [x, y, b] of [[fx - 1.35, fy, 'w'], [fx, fy + 1.35, 'n'], [fx, fy - 1.35, 's'], [fx - 1.0, fy + 1.0, 'w']]) {
+  /* Its chairs drawn in close, a hand from the stone, the one on the
+   * diagonal no nearer than its seat's corner allows. */
+  for (const [x, y, b] of [[fx - 1.06, fy, 'w'], [fx, fy + 1.06, 'n'], [fx, fy - 1.06, 's'], [fx - 0.88, fy + 0.88, 'w']]) {
     chair(H, 'homeChair', x, y, b, G_PAVE, { s: 0.26, backH: 0.5, seat: 0.4 });
   }
 
@@ -2309,8 +2365,8 @@ function backYard(H) {
   H.box('homeSteel', 18.0, 13.93, 0, 19.4, 14.73, 1.0, { name: 'grill' });
   for (let i = 0; i < 4; i += 1) {
     const x = 17.7 + i * 0.62;
-    H.post('homeChair', x, 12.8, 0, 0.72, 0.03, { seg: 6, kind: 'pole' });
-    H.drum('homeChair', x, 12.8, 0.72, 0.78, 0.18, { seg: 10 });
+    H.post('homeChair', x, 13.01, 0, 0.72, 0.03, { seg: 6, kind: 'pole' });
+    H.drum('homeChair', x, 13.01, 0.72, 0.78, 0.18, { seg: 10 });
   }
   H.box('homeShelf', v.x0 - 0.12, v.y0 - 0.12, 2.75, v.x1 + 0.12, v.y1, 2.9, { name: 'pavilion ceiling' });
   H.post('homeChair', 17.5, 12.0, 2.45, 2.75, 0.03, { seg: 4, solid: false });

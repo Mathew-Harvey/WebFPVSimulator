@@ -49,7 +49,14 @@
  * head) and he shouts "Holy Catfish!". Each goes off once as the craft
  * arrives and not again until it has gone away (REARM_NEAR, REARM_HIT),
  * a hit's shout is not talked over by the thanks, and while one is up it
- * is what the balloon says. Every balloon comes from him, over his head:
+ * is what the balloon says. And a third, the owner's of 2026-10-20: land
+ * on his table while he sits at it and he reads out the flight, "3 oh 4 in
+ * the flight time, 3.47 , 46 battery voltage. then wait a sec, new bubble,
+ * ah not 6 7 again." Landed is the craft at rest on the table's top
+ * (PATIO_TABLE) for LAND_MS of the map's clock; the first balloon is up
+ * for its time, none for LAND_GAP, then the second; it goes again once the
+ * craft has left the table, a hit cuts it short, and the thanks does not
+ * talk over it. Every balloon comes from him, over his head:
  * the answers were pinned in front of the camera for a day, and the owner
  * asked on 2026-10-19 for "nicks speach bubbles should only come from
  * nick's character". He is still not solid: the craft flies through him,
@@ -78,7 +85,7 @@
 import * as THREE from 'three';
 import { cel } from '../city/vendored/core/toon.js';
 import { drawWord, wordWidth, INK, PAPER, INKS } from '../../ui/lettering.js';
-import { FRAME, UMBRELLA, PERGOLA, DEP } from './house.js';
+import { FRAME, UMBRELLA, PERGOLA, DEP, PATIO_TABLE } from './house.js';
 import { BONES, BONE, NICK_LINES, HEAD_TOP, nickAt, nickBones, nickPose } from './nick.js';
 import { AW, AH, FACES, FACE, nickModel, paintNickAtlas } from './nickmodel.js';
 
@@ -108,6 +115,20 @@ const NEAR_R = 1.5;
 const HIT_R = 0.32;
 const REARM_NEAR = 2.6;
 const REARM_HIT = 0.9;
+/* Landing on his table: his two balloons, in the owner's words, the gap
+ * between them, ms, and how long the craft must sit still on the top
+ * first, ms of the map's clock. On the top is its middle over the top
+ * (LAND_R of the table's middle) and no higher than LAND_UP over it, real
+ * metres; still is slower than LAND_SPEED, world metres a second. */
+const LANDED = { text: '3 oh 4 in the flight time, 3.47, 46 battery voltage.', face: FACE.smile, fill: INKS.sky, ms: 4200 };
+const SIX_SEVEN = { text: 'Ah, not 6 7 again.', face: FACE.frown, fill: INKS.bail, ms: 2800 };
+const LAND_GAP = 1000;
+const LAND_MS = 600;
+const LAND_R = PATIO_TABLE.r + 0.05;
+const LAND_UP = 0.04;
+const LAND_SPEED = 0.25;
+/* What the harness is told each answer is. */
+const ANSWERS = new Map([[CATFISH, 'hit'], [THANKS, 'close'], [LANDED, 'landed'], [SIX_SEVEN, 'landed, again']]);
 
 /* ------------------------------------------------------------------ */
 /* The balloon                                                         */
@@ -364,6 +385,15 @@ export function makeNick(camera, craftAt = () => null) {
   let armHit = true;
   let hits = 0;
   let closes = 0;
+  /* Landing on his table: armed, how long the craft has sat still on it,
+   * where it was a step ago, the second balloon still to come and how long
+   * till it does. */
+  let armLand = true;
+  let stillMs = 0;
+  let lastQ = null;
+  let next = null;
+  let nextIn = 0;
+  let landings = 0;
 
   /* Bone by bone, each bone's matrix in locals, and only the bones whose
    * matrix changed since they were last moved: seated, his legs hold still
@@ -454,6 +484,42 @@ export function makeNick(camera, craftAt = () => null) {
     return mesh.localToWorld(out);
   }
 
+  /* Whether he is reading out a landing, or about to go on with it. */
+  const landing = () => react === LANDED || react === SIX_SEVEN || next !== null;
+
+  /* The craft on his table while he sits at it: its middle over the top,
+   * just over it, and still, for LAND_MS, and he reads out the flight; it
+   * goes again once the craft has left the table, and not while he is
+   * still on the last one, so the second balloon always follows the
+   * first. A hit's shout is not talked over: the landing waits for it. */
+  function land(q, d) {
+    const tx = (q.x - OX) / S - PATIO_TABLE.x;
+    const ty = (OZ - q.z) / S - PATIO_TABLE.y;
+    const up = q.y / S - PATIO_TABLE.h;
+    const on = Math.hypot(tx, ty) < LAND_R && up > -0.03 && up < LAND_UP;
+    if (!on) {
+      armLand = true;
+      stillMs = 0;
+    } else if (d > 0 && lastQ) {
+      const moved = Math.hypot(q.x - lastQ.x, q.y - lastQ.y, q.z - lastQ.z);
+      stillMs = moved < (LAND_SPEED * d) / 1000 ? stillMs + d : 0;
+    }
+    lastQ = lastQ || { x: 0, y: 0, z: 0 };
+    lastQ.x = q.x;
+    lastQ.y = q.y;
+    lastQ.z = q.z;
+    const atTable = pose.sit > 0.5 && pose.cover;
+    if (armLand && atTable && stillMs >= LAND_MS && react !== CATFISH && !landing()) {
+      react = LANDED;
+      reactAge = 0;
+      next = SIX_SEVEN;
+      nextIn = LAND_GAP;
+      armLand = false;
+      armNear = false;
+      landings += 1;
+    }
+  }
+
   /* The craft against him, in real metres: a hit, close, or neither, and
    * the arming of each again once it has gone far enough. */
   function answer(d) {
@@ -462,11 +528,20 @@ export function makeNick(camera, craftAt = () => null) {
       if (reactAge >= react.ms) {
         react = null;
       }
+    } else if (next) {
+      nextIn -= d;
+      if (nextIn <= 0) {
+        react = next;
+        reactAge = 0;
+        next = null;
+      }
     }
     const q = group.userData.craftAt || craftAt();
     if (!q) {
+      lastQ = null;
       return;
     }
+    land(q, d);
     const dx = (q.x - OX) / S - pose.x;
     const dy = (OZ - q.z) / S - pose.y;
     const r = Math.hypot(dx, dy);
@@ -483,10 +558,11 @@ export function makeNick(camera, craftAt = () => null) {
     if (armHit && r < HIT_R && above === 0) {
       react = CATFISH;
       reactAge = 0;
+      next = null;
       armHit = false;
       armNear = false;
       hits += 1;
-    } else if (armNear && dist < NEAR_R && react !== CATFISH) {
+    } else if (armNear && dist < NEAR_R && react !== CATFISH && !landing()) {
       react = THANKS;
       reactAge = 0;
       armNear = false;
@@ -518,8 +594,9 @@ export function makeNick(camera, craftAt = () => null) {
     mesh.rotation.y = pose.yaw;
     mesh.updateMatrixWorld();
 
-    /* What he says, and the face that goes with it. */
-    const say = react || (pose.line >= 0 ? SAYS[pose.line] : null);
+    /* What he says, and the face that goes with it; between his two
+     * balloons for a landing, nothing: the pause is his. */
+    const say = react || (next ? null : (pose.line >= 0 ? SAYS[pose.line] : null));
     const age = react ? reactAge : pose.lineAge;
     const dur = react ? react.ms : pose.lineDur;
     let look = FACE.smile;
@@ -588,11 +665,12 @@ export function makeNick(camera, craftAt = () => null) {
       clockMs: clock,
       state: pose.state,
       at: [Math.round(pose.x * 100) / 100, Math.round(pose.y * 100) / 100],
-      line: react ? react.text : (pose.line >= 0 ? NICK_LINES[pose.line].text : null),
-      answering: react === CATFISH ? 'hit' : (react === THANKS ? 'close' : null),
+      line: react ? react.text : (next || pose.line < 0 ? null : NICK_LINES[pose.line].text),
+      answering: ANSWERS.get(react) ?? (next ? 'landed, pausing' : null),
       face: FACE_NAMES[face],
       hits,
       closes,
+      landings,
       seated,
       looking: pose.look > 0,
       waving: pose.wave > 0,

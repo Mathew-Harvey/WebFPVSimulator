@@ -254,6 +254,9 @@ const G_DRIVE = 0.034;
  * radius and rise. Nick's balloon goes over it for a camera above it
  * (./nickdraw.js). */
 export const UMBRELLA = { x: 8.25, y: 11.0, h0: 2.15, r: 1.25, h: 0.55 };
+/* The table under it, Nick's: its middle, its top's radius and height. A
+ * craft that lands on it gets an answer (./nickdraw.js). */
+export const PATIO_TABLE = { x: UMBRELLA.x, y: UMBRELLA.y, r: 0.6, h: 0.75 };
 /* The pergola's outer posts' line, its west and east ends and the top of its
  * beam; the rafters lie 0.2 to 0.36 over that. Nick's balloon goes over it
  * too, for a camera over the rafters. */
@@ -2315,7 +2318,7 @@ function backYard(H) {
   const u = UMBRELLA;
   /* Three chairs tucked in, and the north one, Nick's (./nick.js PATIO),
    * left out where he sits in it. */
-  roundTable(H, 'homeChair', u.x, u.y, 0.6, 0.75, 'homeChair', G_PAVE);
+  roundTable(H, 'homeChair', PATIO_TABLE.x, PATIO_TABLE.y, PATIO_TABLE.r, PATIO_TABLE.h, 'homeChair', G_PAVE);
   const patio = { s: 0.24, backH: 0.45 };
   for (const b of ['w', 'e', 's']) {
     chair(H, 'homeChair', ...tuckRound(H, u.x, u.y, 0.6, 0.71, b, 0.24, 0.04, G_PAVE + 0.45), b, G_PAVE, patio);
@@ -2345,34 +2348,41 @@ function backYard(H) {
    * THE PAVILION at the garage end: an open gable on square columns with
    * ledgestone bases, a dark ceiling with a fan, an L shaped bar faced in
    * slate with a granite top, four black stools, the grill, the television
-   * and a white door on its back wall.
+   * and a white door on its back wall. Its back wall is to the house and
+   * its open side to the back fence: it stood the other way round until the
+   * owner, who has stood in it, said on 2026-10-20 "I'm sure that pergola
+   * bbq area is backwards. The open area faces the back fence." So the
+   * wall is on its south side, the east wall's return runs north from it,
+   * everything under it is turned with it (the grill against the wall
+   * behind the bar, the stools in front of the bar, the fan), and the path
+   * from the pool deck meets its open side.
    */
   const v = { x0: 15.0, x1: 21.0, y0: 10.0, y1: 15.0 };
   H.paint('homeDrive', v.x0 - 0.3, v.y0 - 0.3, 0.0, v.x1 + 0.3, v.y1 + 0.3, G_DRIVE);
-  for (const [x, y] of [[v.x0, v.y0], [v.x1, v.y0], [v.x0, 12.5]]) {
+  for (const [x, y] of [[v.x0, v.y1], [v.x1, v.y1], [v.x0, 12.5]]) {
     H.box('homeStone', x - 0.25, y - 0.25, 0, x + 0.25, y + 0.25, 0.9, { name: 'column base' });
     H.box('homeTrim', x - 0.14, y - 0.14, 0.9, x + 0.14, y + 0.14, 2.75, { name: 'column' });
   }
-  H.box('homeSiding', v.x0 - 0.12, v.y1 - 0.2, 0, v.x1 + 0.12, v.y1, 2.75, { name: 'pavilion wall' });
-  H.box('homeSiding', v.x1 - 0.2, 12.4, 0, v.x1 + 0.12, v.y1, 2.75, { name: 'pavilion wall' });
-  H.paint('homeTrim', 15.6, v.y1 - 0.215, 0, 16.5, v.y1 - 0.2, 2.1);
-  H.box('homeScreen', 18.4, v.y1 - 0.25, 1.4, 20.2, v.y1 - 0.2, 2.4, { name: 'pavilion screen', kind: 'obstacle' });
+  H.box('homeSiding', v.x0 - 0.12, v.y0, 0, v.x1 + 0.12, v.y0 + 0.2, 2.75, { name: 'pavilion wall' });
+  H.box('homeSiding', v.x1 - 0.2, v.y0, 0, v.x1 + 0.12, 12.6, 2.75, { name: 'pavilion wall' });
+  H.paint('homeTrim', 15.6, v.y0 + 0.2, 0, 16.5, v.y0 + 0.215, 2.1);
+  H.box('homeScreen', 18.4, v.y0 + 0.2, 1.4, 20.2, v.y0 + 0.25, 2.4, { name: 'pavilion screen', kind: 'obstacle' });
   const bw = v.x1 - 0.2;
-  H.box('homeStone', 17.4, 13.2, 0, bw, 13.85, 1.05, { name: 'bar' });
-  H.box('homeStone', bw - 0.65, 11.0, 0, bw, 13.2, 1.05, { name: 'bar' });
-  H.box('homeCounter', 17.3, 13.1, 1.05, bw, 13.95, 1.1, { name: 'bar top' });
-  H.box('homeCounter', bw - 0.75, 10.9, 1.05, bw, 13.1, 1.1, { name: 'bar top' });
-  H.box('homeSteel', 18.0, 13.93, 0, 19.4, 14.73, 1.0, { name: 'grill' });
+  H.box('homeStone', 17.4, 11.15, 0, bw, 11.8, 1.05, { name: 'bar' });
+  H.box('homeStone', bw - 0.65, 11.8, 0, bw, 14.0, 1.05, { name: 'bar' });
+  H.box('homeCounter', 17.3, 11.05, 1.05, bw, 11.9, 1.1, { name: 'bar top' });
+  H.box('homeCounter', bw - 0.75, 11.9, 1.05, bw, 14.1, 1.1, { name: 'bar top' });
+  H.box('homeSteel', 18.0, 10.27, 0, 19.4, 11.07, 1.0, { name: 'grill' });
   for (let i = 0; i < 4; i += 1) {
     const x = 17.7 + i * 0.62;
-    H.post('homeChair', x, 13.01, 0, 0.72, 0.03, { seg: 6, kind: 'pole' });
-    H.drum('homeChair', x, 13.01, 0.72, 0.78, 0.18, { seg: 10 });
+    H.post('homeChair', x, 11.99, 0, 0.72, 0.03, { seg: 6, kind: 'pole' });
+    H.drum('homeChair', x, 11.99, 0.72, 0.78, 0.18, { seg: 10 });
   }
-  H.box('homeShelf', v.x0 - 0.12, v.y0 - 0.12, 2.75, v.x1 + 0.12, v.y1, 2.9, { name: 'pavilion ceiling' });
-  H.post('homeChair', 17.5, 12.0, 2.45, 2.75, 0.03, { seg: 4, solid: false });
-  H.paint('homeWood', 16.8, 11.93, 2.43, 18.2, 12.07, 2.46);
-  H.paint('homeWood', 17.43, 11.3, 2.43, 17.57, 12.7, 2.46);
-  gableRoof(H, 'y', v.x0 - 0.12, v.x1 + 0.12, v.y0 - 0.12, v.y1, 2.9, 2.9, { over: 0.3, base: 2.75 });
+  H.box('homeShelf', v.x0 - 0.12, v.y0, 2.75, v.x1 + 0.12, v.y1 + 0.12, 2.9, { name: 'pavilion ceiling' });
+  H.post('homeChair', 17.5, 13.0, 2.45, 2.75, 0.03, { seg: 4, solid: false });
+  H.paint('homeWood', 16.8, 12.93, 2.43, 18.2, 13.07, 2.46);
+  H.paint('homeWood', 17.43, 12.3, 2.43, 17.57, 13.7, 2.46);
+  gableRoof(H, 'y', v.x0 - 0.12, v.x1 + 0.12, v.y0, v.y1 + 0.12, 2.9, 2.9, { over: 0.3, base: 2.75 });
 
   /* A swing set out on the lawn: an A frame each end, the top bar, two
    * seats on their chains, and a slide off a little tower. */

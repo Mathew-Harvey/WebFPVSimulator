@@ -578,7 +578,9 @@ function roofsBlock(placed, near) {
     ['the dormer over the front room', 9.6, 13.4, 0.2, 2.75, mainTop],
     ['the brick block\'s roof', -0.3, 4.55, -1.9, 2.5, brickTop],
     ['the garage roof', 14.2, 23.6, -1.9, 5.7, garageTop],
-    ['the pavilion\'s roof', 14.65, 21.35, 9.7, 15.2, pavilionTop],
+    /* The pavilion turned round on 2026-10-20, its open side to the back
+     * fence: its roof is the same span mirrored about the pavilion's middle. */
+    ['the pavilion\'s roof', 14.65, 21.35, 9.8, 15.3, pavilionTop],
   ];
   for (const [name, x0, x1, y0, y1, top] of spans) {
     let worst = 0;

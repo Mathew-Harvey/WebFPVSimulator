@@ -89,6 +89,7 @@ const MAP_ROOTS = {
   city: 'src/maps/city/index.js',
   built: 'src/maps/built/index.js',
   house: 'src/maps/house/index.js',
+  heads: 'src/maps/heads/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

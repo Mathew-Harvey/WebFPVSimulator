@@ -69,12 +69,12 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  * nothing. The town learns nothing from the order: it imports nothing of
  * Your map's.
  *
- * Nick Burns' house goes LAST. It is Your map's pipeline with a document
- * and a structure of its own, so after Your map the only thing it can
- * fetch is its own three files, and what the default run asks of it is
- * the release. Its borrowing is proved on its own, first in a page of its
- * own: --map=house. */
-const HEAVY = ['built', 'city', 'house'];
+ * Nick Burns' house goes LAST, and Heads' house after it. Each is Your
+ * map's pipeline with a document and a structure of its own, so after Your
+ * map the only thing either can fetch is its own three files, and what the
+ * default run asks of it is the release. Their borrowing is proved on its
+ * own, first in a page of its own: --map=house, --map=heads. */
+const HEAVY = ['built', 'city', 'house', 'heads'];
 
 /*
  * WHAT BOOT MAY TAKE FROM THE PROPS LIBRARY, AND WHY IT IS NOT NOTHING.
@@ -192,6 +192,8 @@ BORROWS.house = {
   ],
   city: BORROWS.built.city,
 };
+/* Heads' house the same way (src/maps/heads/index.js). */
+BORROWS.heads = BORROWS.house;
 
 /* The URLs under another world that this one is not allowed to have. */
 function bleedOf(urls, id, other) {

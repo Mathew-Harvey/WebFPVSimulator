@@ -223,8 +223,10 @@ function layoutBlock() {
   check('every colour the house draws is one of src/props/homes.js', unknown.length === 0, unknown.join(', ') || `${colours.size} colours`);
   check(`the house draws at most ${HOUSE_COLOURS_MAX} colours, so its chunk is at most that many draw calls`,
     colours.size <= HOUSE_COLOURS_MAX, `${colours.size}`);
-  const unused = Object.keys(HOME_MATERIALS).filter((m) => !colours.has(m));
-  check('every colour in src/props/homes.js is drawn', unused.length === 0, unused.join(', ') || 'all drawn');
+  /* The table is shared with Heads' house since 2026-10-20: its own six,
+   * named heads*, are checked as drawn by scripts/heads-check.js. */
+  const unused = Object.keys(HOME_MATERIALS).filter((m) => !m.startsWith('heads') && !colours.has(m));
+  check('every colour of the house\'s in src/props/homes.js is drawn', unused.length === 0, unused.join(', ') || 'all drawn');
   const a = hashOf(L);
   const b = hashOf(houseLayout());
   check('two builds are the same to the bit', a === b, a.slice(0, 16));

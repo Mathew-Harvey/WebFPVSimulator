@@ -54,4 +54,8 @@ export const MAP_BUILD_MS = {
    * 3563, so this container ran slower than the day `built` was measured,
    * and the house builds in about half the yard's time. */
   house: 1670,
+  /* Heads' house (src/maps/heads/), the same pipeline, measured on
+   * 2026-10-20 at 1280 by 720 on High as the loading screen's world stage:
+   * 1772 ms, with Nick's house at 1668 on the same container that hour. */
+  heads: 1770,
 };

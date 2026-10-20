@@ -100,11 +100,29 @@ export const MAPS = [
     craftModel: 'whoop65',
     load: () => import('./house/index.js'),
   },
+  /*
+   * HEADS' HOUSE, on the owner's ask of 20 October 2026: the house and yard
+   * of Heads of Infinity Loops, rebuilt from stills of his videos, at Nick
+   * Burns' house's scale and flown the same way, as the whoop. Built by the
+   * same pipeline (src/maps/heads/) and, like the house, off the board.
+   */
+  {
+    id: 'heads',
+    name: "Heads' house",
+    mode: 'freestyle',
+    note: "Heads' house from Infinity Loops, flown on a whoop: the garage, the basement, the stairs, every room, the yard and the corner.",
+    buildMs: MAP_BUILD_MS.heads,
+    craftModel: 'whoop65',
+    load: () => import('./heads/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
  * key the map without loading the house to find it (src/share/stamps.js). */
 export const HOUSE_DOC_ID = 'trk-4e0b5e11';
+
+/* Heads' house's document id (src/maps/heads/yard.js), for the same reason. */
+export const HEADS_DOC_ID = 'trk-4ead5100';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

@@ -1,6 +1,8 @@
 /*
- * homes.js: the colours of a house that is lived in, for the one map that
- * has one (src/maps/house/, Nick Burns' house).
+ * homes.js: the colours of a house that is lived in, for the two maps
+ * that have one (src/maps/house/, Nick Burns' house, and src/maps/heads/,
+ * Heads' house). The second takes the first's colours wherever they read
+ * the same and adds the six of its own at the end.
  *
  * A FAMILY WITH NO ASSETS. The house is not in the builder's palette: it is
  * one particular building, laid out from its owner's videos and from three
@@ -106,6 +108,16 @@ export const MATERIALS = {
   homeScreen: { f: 0x1c1f27, noCast: true },
   homeLamp: { f: 0xfff6e2, noCast: true },
   homeNeon: { f: 0xff4fd8, noCast: true },
+  /* Heads' house (src/maps/heads/), from its stills: the sage siding, the
+   * cream of the wing's back wall, the dark green shutters, the brick red
+   * stamped patio, the red Japanese maple and the dark purple shrubs. Every
+   * other colour it draws is one of the above. */
+  headsSiding: { c: 0x8f9c88, tint: 0x5f6684 },
+  headsCream: { c: 0xe4dfca, tint: 0x8f88a6 },
+  headsShutter: { c: 0x2d4834, tint: 0x283646 },
+  headsPatio: { c: 0xb86a50, tint: 0x6a4a66 },
+  headsMaple: { c: 0x7c2a40, tint: 0x4a2a50 },
+  headsPurple: { c: 0x4c3240, tint: 0x342840 },
 };
 
 /*

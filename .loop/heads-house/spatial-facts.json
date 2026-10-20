@@ -1,0 +1,175 @@
+{
+ "schemaVersion": "0.1.0",
+ "coordinateSystem": {
+  "units": "meters",
+  "handedness": "right",
+  "up": "+Y",
+  "assetForward": "+Z",
+  "axes": "X east, Z south toward Street A, origin at the middle of the intersection"
+ },
+ "supportingReferenceIds": [
+  "img-01",
+  "img-02",
+  "img-03",
+  "img-04",
+  "img-05",
+  "img-06",
+  "img-07",
+  "img-08",
+  "img-09",
+  "img-10",
+  "img-11",
+  "img-12",
+  "yt-BvXv_x23Da8-hq1",
+  "yt-BvXv_x23Da8-hq2",
+  "yt-UvvTN3lLreI-hq3",
+  "yt-8G5ooyFyxs8-hq2"
+ ],
+ "observedFacts": [
+  {
+   "fact": "corner lot: a stop sign and a street name sign on the corner, a curb ramp and a white crosswalk bar",
+   "frames": [
+    "img-01",
+    "img-02",
+    "yt-8G5ooyFyxs8-hq2"
+   ]
+  },
+  {
+   "fact": "side split house: a one storey wing with the front door and a double window with dark shutters, a two storey part with the garage door under the upstairs",
+   "frames": [
+    "img-01",
+    "img-03",
+    "img-05"
+   ]
+  },
+  {
+   "fact": "sage vinyl siding on the front, white trim, dark grey shingle roofs",
+   "frames": [
+    "img-01",
+    "img-03",
+    "img-04",
+    "img-05"
+   ]
+  },
+  {
+   "fact": "the back wall of the main wing is cream siding, with a window over the grill and a white slider two steps above the patio",
+   "frames": [
+    "img-08"
+   ]
+  },
+  {
+   "fact": "the drive is east of the house, wide enough for two cars; a grey blue pickup and a black sedan",
+   "frames": [
+    "img-02",
+    "img-03",
+    "img-05",
+    "yt-BvXv_x23Da8-hq2"
+   ]
+  },
+  {
+   "fact": "the mailbox stands at the drive by the sidewalk",
+   "frames": [
+    "img-02",
+    "img-05"
+   ]
+  },
+  {
+   "fact": "a red Japanese maple at the street end of the drive, a big deciduous tree in the front lawn west of the house",
+   "frames": [
+    "img-01",
+    "img-02",
+    "img-03",
+    "img-04",
+    "img-05"
+   ]
+  },
+  {
+   "fact": "front beds: boxwood hedge, ornamental grasses, blue and white flowers; dark shrubs before the two storey part; a concrete stoop with a black railing; a US flag on a bracket at the corner where the parts meet",
+   "frames": [
+    "img-03",
+    "img-04",
+    "img-05"
+   ]
+  },
+  {
+   "fact": "a curved stamped concrete patio in brick red, a covered grill, an AC unit, a white vinyl privacy fence, lawn",
+   "frames": [
+    "img-08",
+    "img-09"
+   ]
+  },
+  {
+   "fact": "a curb inlet with a red brown grate and a concrete pad with a round lid on the verge; double yellow centre line on the street in front",
+   "frames": [
+    "yt-BvXv_x23Da8-hq2",
+    "img-02"
+   ]
+  },
+  {
+   "fact": "garage: black and white checkerboard tiles, pegboard and bin shelves on one wall, the Infinity Loops banner and clear totes on the other, quads on a white shelf across the ceiling, a round race gate, an inflatable Santa, a trampoline on its side, an orange ceiling panel, a white panel door with a row of windows",
+   "frames": [
+    "img-06",
+    "img-07",
+    "img-10"
+   ]
+  },
+  {
+   "fact": "basement family room: laminate floor, white walls, slim white posts, a stair up with white closet doors on its left, a TV on a white stand right of the stair, a dark dresser, an olive couch, a punching bag, a black cabinet, a counter with wrapped presents, a red Christmas tree, a round gate",
+   "frames": [
+    "img-11",
+    "img-12"
+   ]
+  },
+  {
+   "fact": "a workshop of painted block walls, a sticker covered panel, a wall TV, a WIDE TURNS sign, a bench",
+   "frames": [
+    "yt-BvXv_x23Da8-hq1",
+    "yt-UvvTN3lLreI-hq3"
+   ]
+  },
+  {
+   "fact": "shadows fall toward the street: the sun is behind the house in the spring stills",
+   "frames": [
+    "img-03",
+    "img-05",
+    "img-08"
+   ]
+  }
+ ],
+ "inferredFacts": [
+  {
+   "fact": "sizes from a US suburb: 1.5 m sidewalk squares, 1.5 m verge, 10 m street, a 9 ft single garage door, 24 m lots",
+   "confidence": 0.6
+  },
+  {
+   "fact": "levels from a side split: main floor 0.5 m above grade, upstairs half a flight up, basement half a flight down, garage slab between",
+   "confidence": 0.55
+  },
+  {
+   "fact": "the talking head workshop is the back wall of this garage, from the matching painted block walls",
+   "confidence": 0.5
+  },
+  {
+   "fact": "main floor (living, dining, kitchen, foyer) and upstairs (three bedrooms and a bath) laid out as a side split usually is; no still shows them",
+   "confidence": 0.2
+  },
+  {
+   "fact": "the neighbourhood past the houses in the stills is generated from a fixed seed",
+   "confidence": 0.3
+  }
+ ],
+ "contradictions": [
+  {
+   "note": "the gate and some garage things stand in different places in img-10 and in img-06/07, which come from different videos; the drawing is a composite"
+  },
+  {
+   "note": "the houses across Street A differ between img-04 and yt-8G5ooyFyxs8-hq2; both kinds are placed along that side"
+  }
+ ],
+ "excluded": [
+  "people, including the children in several stills",
+  "a character inflatable in img-11",
+  "the street name, left blank"
+ ],
+ "status": "agent-observed"
+}

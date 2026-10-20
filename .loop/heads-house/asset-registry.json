@@ -1,0 +1,147 @@
+{
+ "schemaVersion": "0.1.0",
+ "assets": [
+  {
+   "assetId": "streets",
+   "kind": "environment",
+   "tier": "standard",
+   "factoryId": "heads-house/index.html#buildStreets",
+   "forward": "+Z",
+   "baseY": 0,
+   "pivot": "world origin, the intersection centre",
+   "nodeIds": [
+    "site"
+   ],
+   "socketIds": [],
+   "status": "final",
+   "specPath": "scene-spec.json"
+  },
+  {
+   "assetId": "lot",
+   "kind": "environment",
+   "tier": "standard",
+   "factoryId": "heads-house/index.html#buildLot",
+   "forward": "+Z",
+   "baseY": 0,
+   "pivot": "world origin, the intersection centre",
+   "nodeIds": [
+    "yard"
+   ],
+   "socketIds": [],
+   "status": "final",
+   "specPath": "scene-spec.json"
+  },
+  {
+   "assetId": "house-shell",
+   "kind": "environment",
+   "tier": "standard",
+   "factoryId": "heads-house/index.html#buildHouse",
+   "forward": "+Z",
+   "baseY": 0,
+   "pivot": "world origin, the intersection centre",
+   "nodeIds": [
+    "house",
+    "houseGlass",
+    "upper",
+    "upperGlass",
+    "roofMain",
+    "roofUp",
+    "garageShut",
+    "garageOpen"
+   ],
+   "socketIds": [],
+   "status": "final",
+   "specPath": "scene-spec.json"
+  },
+  {
+   "assetId": "garage",
+   "kind": "environment",
+   "tier": "standard",
+   "factoryId": "heads-house/index.html#buildGarage",
+   "forward": "+Z",
+   "baseY": 0,
+   "pivot": "world origin, the intersection centre",
+   "nodeIds": [
+    "lowerInt"
+   ],
+   "socketIds": [],
+   "status": "final",
+   "specPath": "scene-spec.json"
+  },
+  {
+   "assetId": "basement",
+   "kind": "environment",
+   "tier": "standard",
+   "factoryId": "heads-house/index.html#buildBasement",
+   "forward": "+Z",
+   "baseY": 0,
+   "pivot": "world origin, the intersection centre",
+   "nodeIds": [
+    "lowerInt"
+   ],
+   "socketIds": [],
+   "status": "final",
+   "specPath": "scene-spec.json"
+  },
+  {
+   "assetId": "main-floor",
+   "kind": "environment",
+   "tier": "standard",
+   "factoryId": "heads-house/index.html#buildMainFloor",
+   "forward": "+Z",
+   "baseY": 0,
+   "pivot": "world origin, the intersection centre",
+   "nodeIds": [
+    "mainInt"
+   ],
+   "socketIds": [],
+   "status": "final",
+   "specPath": "scene-spec.json"
+  },
+  {
+   "assetId": "upstairs",
+   "kind": "environment",
+   "tier": "standard",
+   "factoryId": "heads-house/index.html#buildUpstairs",
+   "forward": "+Z",
+   "baseY": 0,
+   "pivot": "world origin, the intersection centre",
+   "nodeIds": [
+    "upperInt"
+   ],
+   "socketIds": [],
+   "status": "final",
+   "specPath": "scene-spec.json"
+  },
+  {
+   "assetId": "neighbourhood",
+   "kind": "environment",
+   "tier": "standard",
+   "factoryId": "heads-house/index.html#buildNeighbourhood",
+   "forward": "+Z",
+   "baseY": 0,
+   "pivot": "world origin, the intersection centre",
+   "nodeIds": [
+    "site"
+   ],
+   "socketIds": [],
+   "status": "final",
+   "specPath": "scene-spec.json"
+  },
+  {
+   "assetId": "poles-signs",
+   "kind": "environment",
+   "tier": "standard",
+   "factoryId": "heads-house/index.html#buildPoles",
+   "forward": "+Z",
+   "baseY": 0,
+   "pivot": "world origin, the intersection centre",
+   "nodeIds": [
+    "site"
+   ],
+   "socketIds": [],
+   "status": "final",
+   "specPath": "scene-spec.json"
+  }
+ ]
+}

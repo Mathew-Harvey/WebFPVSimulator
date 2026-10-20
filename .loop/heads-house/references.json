@@ -1,0 +1,251 @@
+{
+ "projectId": "infinity-loops-house-yard",
+ "intent": "explorable real-time browser scene: house, front yard and street from Infinity Loops FPV footage",
+ "fidelityTarget": "approximate layout from sixteen stills; videos not downloadable from this environment",
+ "assetPolicy": "procedural-only",
+ "references": [
+  {
+   "id": "yt-BvXv_x23Da8-hq2",
+   "path": "references/yard_summer_sidewalk.jpg",
+   "semantic": "scene",
+   "role": "spatial-layout",
+   "parentVideoId": "BvXv_x23Da8",
+   "confidence": 0.7,
+   "provenance": {
+    "kind": "youtube-public-thumbnail",
+    "url": "https://i.ytimg.com/vi/BvXv_x23Da8/hq2.jpg"
+   },
+   "observedRegions": [
+    "front lawn sloping up to sage-sided house with stoop",
+    "driveway with two cars",
+    "concrete sidewalk 5 ft panels",
+    "grass tree lawn with concrete pad and manhole",
+    "curb inlet storm grate",
+    "asphalt street with double yellow line curving right",
+    "far side parked cars, trees, utility pole"
+   ]
+  },
+  {
+   "id": "yt-8G5ooyFyxs8-hq2",
+   "path": "references/yard_autumn_corner.jpg",
+   "semantic": "scene",
+   "role": "spatial-layout",
+   "parentVideoId": "8G5ooyFyxs8",
+   "confidence": 0.7,
+   "provenance": {
+    "kind": "youtube-public-thumbnail",
+    "url": "https://i.ytimg.com/vi/8G5ooyFyxs8/hq2.jpg"
+   },
+   "observedRegions": [
+    "leaf-covered lawn at a corner lot",
+    "sidewalk with curb ramp and white crosswalk bar",
+    "sign pole at corner",
+    "across street: white two-storey colonial, brick-and-white two-storey house, sloped lawns",
+    "street light",
+    "parked cars"
+   ]
+  },
+  {
+   "id": "yt-BvXv_x23Da8-hq1",
+   "path": "references/garage_shop_a.jpg",
+   "semantic": "scene",
+   "role": "interior",
+   "parentVideoId": "BvXv_x23Da8",
+   "confidence": 0.8,
+   "provenance": {
+    "kind": "youtube-public-thumbnail",
+    "url": "https://i.ytimg.com/vi/BvXv_x23Da8/hq1.jpg"
+   },
+   "observedRegions": [
+    "grey painted cinder block walls",
+    "sticker-covered wall panel",
+    "wall TV",
+    "workbench with parts bins",
+    "paper towel roll"
+   ]
+  },
+  {
+   "id": "yt-UvvTN3lLreI-hq3",
+   "path": "references/garage_shop_b.jpg",
+   "semantic": "scene",
+   "role": "interior",
+   "parentVideoId": "UvvTN3lLreI",
+   "confidence": 0.8,
+   "provenance": {
+    "kind": "youtube-public-thumbnail",
+    "url": "https://i.ytimg.com/vi/UvvTN3lLreI/hq3.jpg"
+   },
+   "observedRegions": [
+    "same workshop, wider: wood bench top, white storage boxes, yellow TURNS sign, wall shelves"
+   ]
+  },
+  {
+   "id": "img-01",
+   "path": "references/img-01.webp",
+   "semantic": "scene",
+   "role": "spatial-layout",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "corner from the street: stop sign, street sign, big tree, the house, drive, neighbour, red maple"
+   ]
+  },
+  {
+   "id": "img-02",
+   "path": "references/img-02.webp",
+   "semantic": "scene",
+   "role": "spatial-layout",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "from the drive end west to the corner: mailbox, sedan, drive, walk, tree, stop sign, houses across"
+   ]
+  },
+  {
+   "id": "img-03",
+   "path": "references/img-03.webp",
+   "semantic": "scene",
+   "role": "spatial-layout",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "front lawn: tree, main wing with door and double window, flag, two storey part, stoop, pickup"
+   ]
+  },
+  {
+   "id": "img-04",
+   "path": "references/img-04.webp",
+   "semantic": "scene",
+   "role": "spatial-layout",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "from the bed by the door east: hedge, grasses, stoop, flag, pickup, maple, street, red SUV"
+   ]
+  },
+  {
+   "id": "img-05",
+   "path": "references/img-05.webp",
+   "semantic": "scene",
+   "role": "spatial-layout",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "two storey part with garage door, dark shrubs, pickup, red maple, mailbox post"
+   ]
+  },
+  {
+   "id": "img-06",
+   "path": "references/img-06.webp",
+   "semantic": "scene",
+   "role": "interior",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "garage from the door: banner, totes, gate, Santa, bench, posters, orange ceiling panel"
+   ]
+  },
+  {
+   "id": "img-07",
+   "path": "references/img-07.webp",
+   "semantic": "scene",
+   "role": "interior",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "garage toward the door: Santa, trampoline, gate, banner"
+   ]
+  },
+  {
+   "id": "img-08",
+   "path": "references/img-08.webp",
+   "semantic": "scene",
+   "role": "spatial-layout",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "back: AC unit, cream wall, window, covered grill, steps, slider, patio, white vinyl fence"
+   ]
+  },
+  {
+   "id": "img-09",
+   "path": "references/img-09.webp",
+   "semantic": "scene",
+   "role": "spatial-layout",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "back yard from above: patio edge, lawn, deck box, fence"
+   ]
+  },
+  {
+   "id": "img-10",
+   "path": "references/img-10.webp",
+   "semantic": "scene",
+   "role": "interior",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "garage toward the door: drone shelf, pegboard, shelves, flag, door, checker floor"
+   ]
+  },
+  {
+   "id": "img-11",
+   "path": "references/img-11.webp",
+   "semantic": "scene",
+   "role": "interior",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "basement: couch, punching bag, black cabinet, counter, presents, post"
+   ]
+  },
+  {
+   "id": "img-12",
+   "path": "references/img-12.webp",
+   "semantic": "scene",
+   "role": "interior",
+   "confidence": 0.85,
+   "provenance": {
+    "kind": "owner-extracted-still",
+    "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+   },
+   "observedRegions": [
+    "basement: stair up, closet doors, post, TV on white stand, dresser, gate, red tree"
+   ]
+  }
+ ]
+}

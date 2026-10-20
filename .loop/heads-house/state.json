@@ -1,0 +1,204 @@
+{
+  "schemaVersion": "0.1.0",
+  "kind": "media2threejs-project-state",
+  "status": "active",
+  "projectId": "infinity-loops-house-yard",
+  "mode": "image-scene",
+  "manifestPath": "project-manifest.json",
+  "manifestHash": "2f8c2a4b3ddc59fb1acece3e641cb05422ed7ef79860fabd86840bcac1c61a76",
+  "referenceHashes": {
+    "yt-BvXv_x23Da8-hq2": "88ec570fe7a09ee786f2768a498f34d96819322a9fe7d5537adbce06a9409add",
+    "yt-8G5ooyFyxs8-hq2": "4e62f762d78db9fdbc1231c3f209b8a0a7f1fcce76d211f67de47cdf6b8328a8",
+    "yt-BvXv_x23Da8-hq1": "6c98372c9f056f88a1897cae696d037af25226149580a0828bb714632d8f329c",
+    "yt-UvvTN3lLreI-hq3": "48027f1a5eeb07e1215425fbc76e6945d0e009bbfe32bf3b11742484b2eab668",
+    "img-01": "fd210b94a87dfc37b89a1fffbcb541433d3ed629a087723e87bdc5282e066d40",
+    "img-02": "5fa8937e57308af58673edb3a6ebda12562148708e0d3a7c3aa2c4bb9d73f73a",
+    "img-03": "84aa18498dd7ec00f99ecc38c51c354b0071177ff0a1bc6351b061b44c1fe55a",
+    "img-04": "ed4d52df05e725cbeb9261843bdaf7d4ee41bc22600142062ee7ea55b38a7166",
+    "img-05": "4dd4c749a63a143cf47df26b8ae0ec6e9c7e92a2d861f107e0f757186a5b790d",
+    "img-06": "4595879fe34d978aca954af8c26e2fb0ade133bbd7e618abfa4471c1a8b5cb7e",
+    "img-07": "872d050fb00aa186a57f65e87b1153e686c731ad489887d5e29dcb76c69a8b89",
+    "img-08": "b30f168ae7966108f83e496adf6f9a403037e8721f92d40b9e0f3dde484af4d0",
+    "img-09": "143e23832b90e202d66159474b5b5fa78a210df0318713f3f0b9d364ad47c25a",
+    "img-10": "d7048b1a1ec1ae63dd13c0d916bcb1a481d1bb709a649699e2a0246f510357c1",
+    "img-11": "25fe0da4044a9000186e310819ec67b3c7b8fae2d8dafeeca23ea5b0566da517",
+    "img-12": "e20dbc050f3807f58f46f0f927ddb2b199874d12a896ac4cd3e6fe03017f9b00"
+  },
+  "steps": {
+    "project/intake": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "evidence/intake.json"
+      ],
+      "inputHashes": {
+        "evidence/intake.json": "deb51e260e243c91dcf2d6000449293ebd8fa7d13007c18e88771f69b867ab3e"
+      }
+    },
+    "project/routing": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "project-manifest.json"
+      ],
+      "inputHashes": {
+        "project-manifest.json": "2f8c2a4b3ddc59fb1acece3e641cb05422ed7ef79860fabd86840bcac1c61a76"
+      }
+    },
+    "project/reference-analysis": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "evidence/reference-analysis.json"
+      ],
+      "inputHashes": {
+        "evidence/reference-analysis.json": "8c55e3c45ceb1e50554afdf867926dcb77789b989b0cf7e06eb3f2e8944cc651"
+      }
+    },
+    "scene/spatial-facts": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "spatial-facts.json"
+      ],
+      "inputHashes": {
+        "spatial-facts.json": "dc8fc6eddf40001f027308fabb692a90d5f1e567da35a17d24437aa758b4e781"
+      }
+    },
+    "scene/coordinate-frame": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "evidence/coordinate-frame.json"
+      ],
+      "inputHashes": {
+        "evidence/coordinate-frame.json": "379e4eda303a1a3fac440cef61c4d732fe3b13f4eae7b036f5bab33e1a6eab00"
+      }
+    },
+    "scene/layout-contract": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "evidence/layout-contract.json"
+      ],
+      "inputHashes": {
+        "evidence/layout-contract.json": "93ffa0df4ad2bf1bb24d7ab6a0c4febc33ee11f56de9144a06ad9610796e879a"
+      }
+    },
+    "scene/camera-solve": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "evidence/camera-solve.json"
+      ],
+      "inputHashes": {
+        "evidence/camera-solve.json": "c25dc8171223754e26f9304a1c5ad83f400adf9dcd9fb4b485e04406a5758d4b"
+      }
+    },
+    "scene/lighting": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "evidence/lighting.json"
+      ],
+      "inputHashes": {
+        "evidence/lighting.json": "0114d3f23666168754946ce16f3d1ad3c804bcab3d032cededcc982457c42e04"
+      }
+    },
+    "scene/scene-blockout": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "evidence/scene-blockout.json"
+      ],
+      "inputHashes": {
+        "evidence/scene-blockout.json": "a9a7526f96e18f95e5a3dfd4af40bd44bd7e97019769387f21ce973c7588c70d"
+      }
+    },
+    "motion/scene-table": {
+      "status": "skipped",
+      "reason": "image-scene route: a still reference does not create a source motion track",
+      "evidence": [],
+      "inputHashes": {}
+    },
+    "motion/paths": {
+      "status": "skipped",
+      "reason": "image-scene route: a still reference does not create a source motion track",
+      "evidence": [],
+      "inputHashes": {}
+    },
+    "motion/poses": {
+      "status": "skipped",
+      "reason": "image-scene route: a still reference does not create a source motion track",
+      "evidence": [],
+      "inputHashes": {}
+    },
+    "motion/transitions": {
+      "status": "skipped",
+      "reason": "image-scene route: a still reference does not create a source motion track",
+      "evidence": [],
+      "inputHashes": {}
+    },
+    "review/scene-frames": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "evidence/review-scene-frames.json"
+      ],
+      "inputHashes": {
+        "evidence/review-scene-frames.json": "ae74d31d68c9ed229f0f79b77b67deff2bf411a7d187984cf1d1adb4b591dccd"
+      }
+    },
+    "review/asset-turntables": {
+      "status": "skipped",
+      "reason": "no hero asset was sculpted; every object is part of the procedural scene",
+      "evidence": [],
+      "inputHashes": {}
+    },
+    "review/motion-scenes": {
+      "status": "skipped",
+      "reason": "no motion",
+      "evidence": [],
+      "inputHashes": {}
+    },
+    "review/integration": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "evidence/integration.json"
+      ],
+      "inputHashes": {
+        "evidence/integration.json": "0893c2bed62f9cdd263b21e93086fa1c673d7e7057dae94aa8bfcb4dc8dddea2"
+      }
+    },
+    "handoff": {
+      "status": "done",
+      "reason": "",
+      "evidence": [
+        "media2threejs-report.json"
+      ],
+      "inputHashes": {
+        "media2threejs-report.json": "cb6c9ea2547d50bdc6d0354d4ba3f00b4748f4bb37f1a7dc265a59fdc92456d1"
+      }
+    }
+  },
+  "reviewActions": [],
+  "proxyReplacements": {},
+  "correctionBudget": {
+    "maxPerStage": 3
+  },
+  "artifacts": {
+    "screenshots": [],
+    "reviews": [
+      "evidence/review-scene-frames.json"
+    ],
+    "specHashes": {
+      "sceneSpecPath": "ad19c8ae4b23cc0ef2e1062031da69fd26e85c77f12afbae703ec8c75720caba",
+      "assetRegistryPath": "d572b6afe98e4000f5d8f26b50c9f592ecd6503b42d0ed36d1c321e3dcc44541",
+      "motionSpecPath": "64da6597d2f5fd09e8c0dbab1e0e71dc9979f329f3057e007077b3bf055acb27",
+      "reviewManifestPath": "c9defaf662627ab7ad09b194bfc8e8269da10e6d57a873882ea076953eddfbb3"
+    }
+  },
+  "stopReason": "",
+  "statePath": ".media2threejs/state.json"
+}

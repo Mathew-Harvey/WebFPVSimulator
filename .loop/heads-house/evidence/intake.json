@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "0.1.0",
+  "status": "passed",
+  "checks": [
+    {
+      "id": "yt-BvXv_x23Da8-hq2",
+      "localPath": "references/yard_summer_sidewalk.jpg",
+      "status": "readable",
+      "sha256": "88ec570fe7a09ee786f2768a498f34d96819322a9fe7d5537adbce06a9409add"
+    },
+    {
+      "id": "yt-8G5ooyFyxs8-hq2",
+      "localPath": "references/yard_autumn_corner.jpg",
+      "status": "readable",
+      "sha256": "4e62f762d78db9fdbc1231c3f209b8a0a7f1fcce76d211f67de47cdf6b8328a8"
+    },
+    {
+      "id": "yt-BvXv_x23Da8-hq1",
+      "localPath": "references/garage_shop_a.jpg",
+      "status": "readable",
+      "sha256": "6c98372c9f056f88a1897cae696d037af25226149580a0828bb714632d8f329c"
+    },
+    {
+      "id": "yt-UvvTN3lLreI-hq3",
+      "localPath": "references/garage_shop_b.jpg",
+      "status": "readable",
+      "sha256": "48027f1a5eeb07e1215425fbc76e6945d0e009bbfe32bf3b11742484b2eab668"
+    },
+    {
+      "id": "img-01",
+      "localPath": "references/img-01.webp",
+      "status": "readable",
+      "sha256": "fd210b94a87dfc37b89a1fffbcb541433d3ed629a087723e87bdc5282e066d40"
+    },
+    {
+      "id": "img-02",
+      "localPath": "references/img-02.webp",
+      "status": "readable",
+      "sha256": "5fa8937e57308af58673edb3a6ebda12562148708e0d3a7c3aa2c4bb9d73f73a"
+    },
+    {
+      "id": "img-03",
+      "localPath": "references/img-03.webp",
+      "status": "readable",
+      "sha256": "84aa18498dd7ec00f99ecc38c51c354b0071177ff0a1bc6351b061b44c1fe55a"
+    },
+    {
+      "id": "img-04",
+      "localPath": "references/img-04.webp",
+      "status": "readable",
+      "sha256": "ed4d52df05e725cbeb9261843bdaf7d4ee41bc22600142062ee7ea55b38a7166"
+    },
+    {
+      "id": "img-05",
+      "localPath": "references/img-05.webp",
+      "status": "readable",
+      "sha256": "4dd4c749a63a143cf47df26b8ae0ec6e9c7e92a2d861f107e0f757186a5b790d"
+    },
+    {
+      "id": "img-06",
+      "localPath": "references/img-06.webp",
+      "status": "readable",
+      "sha256": "4595879fe34d978aca954af8c26e2fb0ade133bbd7e618abfa4471c1a8b5cb7e"
+    },
+    {
+      "id": "img-07",
+      "localPath": "references/img-07.webp",
+      "status": "readable",
+      "sha256": "872d050fb00aa186a57f65e87b1153e686c731ad489887d5e29dcb76c69a8b89"
+    },
+    {
+      "id": "img-08",
+      "localPath": "references/img-08.webp",
+      "status": "readable",
+      "sha256": "b30f168ae7966108f83e496adf6f9a403037e8721f92d40b9e0f3dde484af4d0"
+    },
+    {
+      "id": "img-09",
+      "localPath": "references/img-09.webp",
+      "status": "readable",
+      "sha256": "143e23832b90e202d66159474b5b5fa78a210df0318713f3f0b9d364ad47c25a"
+    },
+    {
+      "id": "img-10",
+      "localPath": "references/img-10.webp",
+      "status": "readable",
+      "sha256": "d7048b1a1ec1ae63dd13c0d916bcb1a481d1bb709a649699e2a0246f510357c1"
+    },
+    {
+      "id": "img-11",
+      "localPath": "references/img-11.webp",
+      "status": "readable",
+      "sha256": "25fe0da4044a9000186e310819ec67b3c7b8fae2d8dafeeca23ea5b0566da517"
+    },
+    {
+      "id": "img-12",
+      "localPath": "references/img-12.webp",
+      "status": "readable",
+      "sha256": "e20dbc050f3807f58f46f0f927ddb2b199874d12a896ac4cd3e6fe03017f9b00"
+    }
+  ],
+  "errors": []
+}

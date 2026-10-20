@@ -1,0 +1,24 @@
+{
+  "projectId": "infinity-loops-house-yard",
+  "mode": "image-scene",
+  "status": "active",
+  "steps": {
+    "done": 11,
+    "pending": 1,
+    "skipped": 6
+  },
+  "corrections": 0,
+  "artifacts": {
+    "screenshots": [],
+    "reviews": [
+      "evidence/review-scene-frames.json"
+    ],
+    "specHashes": {
+      "sceneSpecPath": "ad19c8ae4b23cc0ef2e1062031da69fd26e85c77f12afbae703ec8c75720caba",
+      "assetRegistryPath": "d572b6afe98e4000f5d8f26b50c9f592ecd6503b42d0ed36d1c321e3dcc44541",
+      "motionSpecPath": "64da6597d2f5fd09e8c0dbab1e0e71dc9979f329f3057e007077b3bf055acb27",
+      "reviewManifestPath": "c9defaf662627ab7ad09b194bfc8e8269da10e6d57a873882ea076953eddfbb3"
+    }
+  },
+  "stopReason": ""
+}

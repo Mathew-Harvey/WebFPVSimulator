@@ -1,0 +1,371 @@
+{
+  "schemaVersion": "0.1.0",
+  "projectId": "infinity-loops-house-yard",
+  "mode": "image-scene",
+  "status": "ready",
+  "confidence": 0.7,
+  "intent": "explorable real-time browser scene: house, front yard and street from Infinity Loops FPV footage",
+  "fidelityTarget": "approximate layout from sixteen stills; videos not downloadable from this environment",
+  "assetPolicy": "procedural-only",
+  "coordinateSystem": {
+    "units": "meters",
+    "handedness": "right",
+    "up": "+Y",
+    "assetForward": "+Z"
+  },
+  "references": [
+    {
+      "id": "yt-BvXv_x23Da8-hq2",
+      "type": "image",
+      "role": "spatial-layout",
+      "path": "references/yard_summer_sidewalk.jpg",
+      "localPath": "references/yard_summer_sidewalk.jpg",
+      "sha256": "88ec570fe7a09ee786f2768a498f34d96819322a9fe7d5537adbce06a9409add",
+      "timeRange": null,
+      "parentVideoId": "BvXv_x23Da8",
+      "frameTime": null,
+      "observedRegions": [
+        "front lawn sloping up to sage-sided house with stoop",
+        "driveway with two cars",
+        "concrete sidewalk 5 ft panels",
+        "grass tree lawn with concrete pad and manhole",
+        "curb inlet storm grate",
+        "asphalt street with double yellow line curving right",
+        "far side parked cars, trees, utility pole"
+      ],
+      "confidence": 0.7,
+      "provenance": {
+        "kind": "youtube-public-thumbnail",
+        "url": "https://i.ytimg.com/vi/BvXv_x23Da8/hq2.jpg"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "yt-8G5ooyFyxs8-hq2",
+      "type": "image",
+      "role": "spatial-layout",
+      "path": "references/yard_autumn_corner.jpg",
+      "localPath": "references/yard_autumn_corner.jpg",
+      "sha256": "4e62f762d78db9fdbc1231c3f209b8a0a7f1fcce76d211f67de47cdf6b8328a8",
+      "timeRange": null,
+      "parentVideoId": "8G5ooyFyxs8",
+      "frameTime": null,
+      "observedRegions": [
+        "leaf-covered lawn at a corner lot",
+        "sidewalk with curb ramp and white crosswalk bar",
+        "sign pole at corner",
+        "across street: white two-storey colonial, brick-and-white two-storey house, sloped lawns",
+        "street light",
+        "parked cars"
+      ],
+      "confidence": 0.7,
+      "provenance": {
+        "kind": "youtube-public-thumbnail",
+        "url": "https://i.ytimg.com/vi/8G5ooyFyxs8/hq2.jpg"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "yt-BvXv_x23Da8-hq1",
+      "type": "image",
+      "role": "interior",
+      "path": "references/garage_shop_a.jpg",
+      "localPath": "references/garage_shop_a.jpg",
+      "sha256": "6c98372c9f056f88a1897cae696d037af25226149580a0828bb714632d8f329c",
+      "timeRange": null,
+      "parentVideoId": "BvXv_x23Da8",
+      "frameTime": null,
+      "observedRegions": [
+        "grey painted cinder block walls",
+        "sticker-covered wall panel",
+        "wall TV",
+        "workbench with parts bins",
+        "paper towel roll"
+      ],
+      "confidence": 0.8,
+      "provenance": {
+        "kind": "youtube-public-thumbnail",
+        "url": "https://i.ytimg.com/vi/BvXv_x23Da8/hq1.jpg"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "yt-UvvTN3lLreI-hq3",
+      "type": "image",
+      "role": "interior",
+      "path": "references/garage_shop_b.jpg",
+      "localPath": "references/garage_shop_b.jpg",
+      "sha256": "48027f1a5eeb07e1215425fbc76e6945d0e009bbfe32bf3b11742484b2eab668",
+      "timeRange": null,
+      "parentVideoId": "UvvTN3lLreI",
+      "frameTime": null,
+      "observedRegions": [
+        "same workshop, wider: wood bench top, white storage boxes, yellow TURNS sign, wall shelves"
+      ],
+      "confidence": 0.8,
+      "provenance": {
+        "kind": "youtube-public-thumbnail",
+        "url": "https://i.ytimg.com/vi/UvvTN3lLreI/hq3.jpg"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-01",
+      "type": "image",
+      "role": "spatial-layout",
+      "path": "references/img-01.webp",
+      "localPath": "references/img-01.webp",
+      "sha256": "fd210b94a87dfc37b89a1fffbcb541433d3ed629a087723e87bdc5282e066d40",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "corner from the street: stop sign, street sign, big tree, the house, drive, neighbour, red maple"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-02",
+      "type": "image",
+      "role": "spatial-layout",
+      "path": "references/img-02.webp",
+      "localPath": "references/img-02.webp",
+      "sha256": "5fa8937e57308af58673edb3a6ebda12562148708e0d3a7c3aa2c4bb9d73f73a",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "from the drive end west to the corner: mailbox, sedan, drive, walk, tree, stop sign, houses across"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-03",
+      "type": "image",
+      "role": "spatial-layout",
+      "path": "references/img-03.webp",
+      "localPath": "references/img-03.webp",
+      "sha256": "84aa18498dd7ec00f99ecc38c51c354b0071177ff0a1bc6351b061b44c1fe55a",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "front lawn: tree, main wing with door and double window, flag, two storey part, stoop, pickup"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-04",
+      "type": "image",
+      "role": "spatial-layout",
+      "path": "references/img-04.webp",
+      "localPath": "references/img-04.webp",
+      "sha256": "ed4d52df05e725cbeb9261843bdaf7d4ee41bc22600142062ee7ea55b38a7166",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "from the bed by the door east: hedge, grasses, stoop, flag, pickup, maple, street, red SUV"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-05",
+      "type": "image",
+      "role": "spatial-layout",
+      "path": "references/img-05.webp",
+      "localPath": "references/img-05.webp",
+      "sha256": "4dd4c749a63a143cf47df26b8ae0ec6e9c7e92a2d861f107e0f757186a5b790d",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "two storey part with garage door, dark shrubs, pickup, red maple, mailbox post"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-06",
+      "type": "image",
+      "role": "interior",
+      "path": "references/img-06.webp",
+      "localPath": "references/img-06.webp",
+      "sha256": "4595879fe34d978aca954af8c26e2fb0ade133bbd7e618abfa4471c1a8b5cb7e",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "garage from the door: banner, totes, gate, Santa, bench, posters, orange ceiling panel"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-07",
+      "type": "image",
+      "role": "interior",
+      "path": "references/img-07.webp",
+      "localPath": "references/img-07.webp",
+      "sha256": "872d050fb00aa186a57f65e87b1153e686c731ad489887d5e29dcb76c69a8b89",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "garage toward the door: Santa, trampoline, gate, banner"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-08",
+      "type": "image",
+      "role": "spatial-layout",
+      "path": "references/img-08.webp",
+      "localPath": "references/img-08.webp",
+      "sha256": "b30f168ae7966108f83e496adf6f9a403037e8721f92d40b9e0f3dde484af4d0",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "back: AC unit, cream wall, window, covered grill, steps, slider, patio, white vinyl fence"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-09",
+      "type": "image",
+      "role": "spatial-layout",
+      "path": "references/img-09.webp",
+      "localPath": "references/img-09.webp",
+      "sha256": "143e23832b90e202d66159474b5b5fa78a210df0318713f3f0b9d364ad47c25a",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "back yard from above: patio edge, lawn, deck box, fence"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-10",
+      "type": "image",
+      "role": "interior",
+      "path": "references/img-10.webp",
+      "localPath": "references/img-10.webp",
+      "sha256": "d7048b1a1ec1ae63dd13c0d916bcb1a481d1bb709a649699e2a0246f510357c1",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "garage toward the door: drone shelf, pegboard, shelves, flag, door, checker floor"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-11",
+      "type": "image",
+      "role": "interior",
+      "path": "references/img-11.webp",
+      "localPath": "references/img-11.webp",
+      "sha256": "25fe0da4044a9000186e310819ec67b3c7b8fae2d8dafeeca23ea5b0566da517",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "basement: couch, punching bag, black cabinet, counter, presents, post"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    },
+    {
+      "id": "img-12",
+      "type": "image",
+      "role": "interior",
+      "path": "references/img-12.webp",
+      "localPath": "references/img-12.webp",
+      "sha256": "e20dbc050f3807f58f46f0f927ddb2b199874d12a896ac4cd3e6fe03017f9b00",
+      "timeRange": null,
+      "parentVideoId": null,
+      "frameTime": null,
+      "observedRegions": [
+        "basement: stair up, closet doors, post, TV on white stand, dresser, gate, red tree"
+      ],
+      "confidence": 0.85,
+      "provenance": {
+        "kind": "owner-extracted-still",
+        "source": "Infinity Loops FPV videos, cut by the owner on 2026-10-20"
+      },
+      "semantic": "scene"
+    }
+  ],
+  "assets": [],
+  "requiredPipelines": [
+    "intake",
+    "scene",
+    "review"
+  ],
+  "optionalProfiles": [],
+  "reasoningSummary": [
+    "All image observations identify a scene reconstruction target."
+  ],
+  "blockingAmbiguities": [],
+  "sceneSpecPath": "scene-spec.json",
+  "assetRegistryPath": "asset-registry.json",
+  "motionSpecPath": "motion-spec.json",
+  "reviewManifestPath": "review-manifest.json",
+  "statePath": ".media2threejs/state.json",
+  "outputDirectory": "dist/media2threejs",
+  "nextCommand": "python3 forge/state.py init --manifest project-manifest.json --state .media2threejs/state.json"
+}

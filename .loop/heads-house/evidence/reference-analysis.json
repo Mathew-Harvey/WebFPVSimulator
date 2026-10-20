@@ -1,0 +1,181 @@
+{
+  "schemaVersion": "0.1.0",
+  "observationInferenceSeparated": true,
+  "observations": [
+    {
+      "referenceId": "yt-BvXv_x23Da8-hq2",
+      "semantic": "scene",
+      "observedRegions": [
+        "front lawn sloping up to sage-sided house with stoop",
+        "driveway with two cars",
+        "concrete sidewalk 5 ft panels",
+        "grass tree lawn with concrete pad and manhole",
+        "curb inlet storm grate",
+        "asphalt street with double yellow line curving right",
+        "far side parked cars, trees, utility pole"
+      ],
+      "confidence": 0.7,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "yt-8G5ooyFyxs8-hq2",
+      "semantic": "scene",
+      "observedRegions": [
+        "leaf-covered lawn at a corner lot",
+        "sidewalk with curb ramp and white crosswalk bar",
+        "sign pole at corner",
+        "across street: white two-storey colonial, brick-and-white two-storey house, sloped lawns",
+        "street light",
+        "parked cars"
+      ],
+      "confidence": 0.7,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "yt-BvXv_x23Da8-hq1",
+      "semantic": "scene",
+      "observedRegions": [
+        "grey painted cinder block walls",
+        "sticker-covered wall panel",
+        "wall TV",
+        "workbench with parts bins",
+        "paper towel roll"
+      ],
+      "confidence": 0.8,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "yt-UvvTN3lLreI-hq3",
+      "semantic": "scene",
+      "observedRegions": [
+        "same workshop, wider: wood bench top, white storage boxes, yellow TURNS sign, wall shelves"
+      ],
+      "confidence": 0.8,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-01",
+      "semantic": "scene",
+      "observedRegions": [
+        "corner from the street: stop sign, street sign, big tree, the house, drive, neighbour, red maple"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-02",
+      "semantic": "scene",
+      "observedRegions": [
+        "from the drive end west to the corner: mailbox, sedan, drive, walk, tree, stop sign, houses across"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-03",
+      "semantic": "scene",
+      "observedRegions": [
+        "front lawn: tree, main wing with door and double window, flag, two storey part, stoop, pickup"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-04",
+      "semantic": "scene",
+      "observedRegions": [
+        "from the bed by the door east: hedge, grasses, stoop, flag, pickup, maple, street, red SUV"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-05",
+      "semantic": "scene",
+      "observedRegions": [
+        "two storey part with garage door, dark shrubs, pickup, red maple, mailbox post"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-06",
+      "semantic": "scene",
+      "observedRegions": [
+        "garage from the door: banner, totes, gate, Santa, bench, posters, orange ceiling panel"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-07",
+      "semantic": "scene",
+      "observedRegions": [
+        "garage toward the door: Santa, trampoline, gate, banner"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-08",
+      "semantic": "scene",
+      "observedRegions": [
+        "back: AC unit, cream wall, window, covered grill, steps, slider, patio, white vinyl fence"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-09",
+      "semantic": "scene",
+      "observedRegions": [
+        "back yard from above: patio edge, lawn, deck box, fence"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-10",
+      "semantic": "scene",
+      "observedRegions": [
+        "garage toward the door: drone shelf, pegboard, shelves, flag, door, checker floor"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-11",
+      "semantic": "scene",
+      "observedRegions": [
+        "basement: couch, punching bag, black cabinet, counter, presents, post"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    },
+    {
+      "referenceId": "img-12",
+      "semantic": "scene",
+      "observedRegions": [
+        "basement: stair up, closet doors, post, TV on white stand, dresser, gate, red tree"
+      ],
+      "confidence": 0.85,
+      "inferences": [],
+      "unknownRegions": []
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+ "sun": "directional, behind the house (from -Z, high in the west), because shadows in img-03, img-05 and img-08 fall toward the street and the back wall is sunlit",
+ "sky": "hemisphere light plus a painted sky dome, fog 90 to 430 m",
+ "interiors": "eight point lights without shadows, emissive fixtures"
+}

@@ -1,0 +1,64 @@
+{
+ "aspect": 1.8150887573964498,
+ "y": 0.9,
+ "targetDistance": 8,
+ "search": {
+  "x": [
+   18,
+   34
+  ],
+  "z": [
+   -16.5,
+   -4.5
+  ],
+  "y": [
+   0.9,
+   0.9
+  ],
+  "hfov": [
+   80,
+   90,
+   100,
+   110,
+   120
+  ]
+ },
+ "landmarks": [
+  {
+   "name": "front tree trunk",
+   "x": 12.3,
+   "y": 0.5,
+   "z": -12.9,
+   "horizontalFraction": 0.175
+  },
+  {
+   "name": "main wing west front corner",
+   "x": 15.0,
+   "y": 0.5,
+   "z": -16.8,
+   "horizontalFraction": 0.216
+  },
+  {
+   "name": "front door centre",
+   "x": 22.37,
+   "y": 1.0,
+   "z": -16.8,
+   "horizontalFraction": 0.285
+  },
+  {
+   "name": "flag bracket",
+   "x": 23.6,
+   "y": 2.85,
+   "z": -16.55,
+   "horizontalFraction": 0.324
+  },
+  {
+   "name": "garage door west edge",
+   "x": 29.4,
+   "y": 0.2,
+   "z": -16.8,
+   "horizontalFraction": 0.852
+  }
+ ],
+ "reference": "img-03"
+}

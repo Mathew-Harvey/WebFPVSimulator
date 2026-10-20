@@ -1,0 +1,4 @@
+{
+ "blockout": "heads-house/index.html builds the whole scene procedurally; 144 draw calls, about 528k triangles at the overview",
+ "console": "no errors, no warnings in headless Chromium"
+}

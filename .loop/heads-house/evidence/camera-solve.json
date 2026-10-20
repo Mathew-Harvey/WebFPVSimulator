@@ -1,0 +1,19 @@
+{
+ "reference": "img-03",
+ "solver": "forge/scene/solve_camera.py",
+ "rmsResidual": 0.03918919176142941,
+ "solved": {
+  "x": 29.2,
+  "z": -15.3,
+  "y": 0.9,
+  "pitch": 0.0,
+  "hfov": 120.0,
+  "heading": -2.356194490192345,
+  "headingDegrees": -135.0,
+  "pitchDegrees": 0.0,
+  "vfov": 87.31792045211868
+ },
+ "decision": "rejected",
+ "reason": "the pinhole solve on horizontal fractions alone puts the camera 1.5 m from the garage wall, in the bed; the still is a fisheye FPV frame and shows several metres of lawn in front of the house. The shipped pose was matched by eye on the comparison sheet: (28.5, 0.9, -10.4) toward (15.5, 1.6, -18.5).",
+ "shippedViews": "every named view in heads-house/index.html VIEWS was matched by eye against its still, side by side"
+}

@@ -1,0 +1,54 @@
+{
+ "schemaVersion": "0.1.0",
+ "allowedActions": [
+  "continue",
+  "refine-camera",
+  "refine-scene-spec",
+  "refine-lighting",
+  "stop"
+ ],
+ "sceneReviews": [
+  {
+   "round": 1,
+   "action": "refine-scene-spec",
+   "note": "kerb and lawn faces fought along every kerb; the big tree's branches too thick"
+  },
+  {
+   "round": 2,
+   "action": "refine-scene-spec",
+   "note": "asphalt and block lawn passed through the basement; the basement read as grass; car paint black; several views off"
+  },
+  {
+   "round": 3,
+   "action": "refine-lighting",
+   "note": "the back wall is cream in img-08 and sunlit: the sun moved behind the house; basement and garage things moved to the stills"
+  },
+  {
+   "round": 4,
+   "action": "refine-camera",
+   "note": "mailbox to the east edge of the drive, drone shelf in front of the img-10 camera, corner and driveway views"
+  },
+  {
+   "round": 5,
+   "action": "continue",
+   "note": "13 views side by side with their stills; known misses listed"
+  }
+ ],
+ "assetReviews": [],
+ "integrationReviews": [
+  {
+   "check": "headless Chromium console",
+   "result": "no errors, no warnings"
+  },
+  {
+   "check": "draw calls at the overview",
+   "result": 144
+  }
+ ],
+ "knownMisses": [
+  "Street A is drawn straight; the still from BvXv hq2 shows it curving",
+  "trees are stylised low poly, not the species",
+  "main floor and upstairs are inferred",
+  "people and a character inflatable are left out"
+ ]
+}

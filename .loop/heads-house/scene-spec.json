@@ -1,0 +1,885 @@
+{
+ "schemaVersion": "0.1.0",
+ "world": {
+  "units": "meters",
+  "handedness": "right",
+  "up": "+Y",
+  "assetForward": "+Z"
+ },
+ "deliverable": "heads-house/index.html, one procedural Three.js page",
+ "layout": [
+  {
+   "id": "storm-inlet",
+   "proceduralRecipe": "curb inlet grate in the gutter with a concrete pad and round lid on the verge",
+   "position": [
+    12.7,
+    0,
+    -5.2
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    1.8,
+    0.02,
+    1.3
+   ],
+   "relationship": "in the Street A gutter, east of the corner",
+   "supportingFrameIds": [
+    "yt-BvXv_x23Da8-hq2",
+    "img-02"
+   ],
+   "confidence": 0.75,
+   "approximationNotes": "size from a standard inlet; the drain sits near the stop sign in img-02"
+  },
+  {
+   "id": "corner-ramp",
+   "proceduralRecipe": "kerb return of radius 6 m with a ramp at its apex, tactile pad, crosswalk bars",
+   "position": [
+    6.8,
+    0.1,
+    -7.3
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    1.5,
+    0.15,
+    1.5
+   ],
+   "relationship": "at the corner of Street A and the cross street",
+   "supportingFrameIds": [
+    "img-01",
+    "yt-8G5ooyFyxs8-hq2"
+   ],
+   "confidence": 0.6,
+   "approximationNotes": "radius assumed; all four corners drawn alike"
+  },
+  {
+   "id": "driveway",
+   "proceduralRecipe": "asphalt drive in front of the garage, wide enough for two cars side by side",
+   "position": [
+    31.1,
+    0.18,
+    -12.3
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    5.8,
+    0.18,
+    9
+   ],
+   "relationship": "from the garage door to the sidewalk",
+   "supportingFrameIds": [
+    "img-02",
+    "img-05",
+    "yt-BvXv_x23Da8-hq2"
+   ],
+   "confidence": 0.7,
+   "approximationNotes": "width from two cars parked side by side in yt-BvXv_x23Da8-hq2"
+  },
+  {
+   "id": "stoop",
+   "proceduralRecipe": "concrete stoop with two steps and a black iron railing on its west side",
+   "position": [
+    22.4,
+    0.82,
+    -16.2
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    1.7,
+    0.52,
+    1.55
+   ],
+   "relationship": "at the front door, against the main wing",
+   "supportingFrameIds": [
+    "img-03",
+    "img-04"
+   ],
+   "confidence": 0.7,
+   "approximationNotes": "height from two steps"
+  },
+  {
+   "id": "front-beds",
+   "proceduralRecipe": "mulch beds with a boxwood hedge, ornamental grasses and blue and white flowers, dark purple shrubs before the garage part",
+   "position": [
+    19.5,
+    0.5,
+    -16.2
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    13,
+    1.2,
+    1.2
+   ],
+   "relationship": "along the front wall",
+   "supportingFrameIds": [
+    "img-03",
+    "img-04",
+    "img-05"
+   ],
+   "confidence": 0.6,
+   "approximationNotes": "planting counted roughly"
+  },
+  {
+   "id": "front-tree",
+   "proceduralRecipe": "tall deciduous tree, sparse spring canopy",
+   "position": [
+    12.3,
+    0.5,
+    -12.9
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    8.5,
+    13.5,
+    8.5
+   ],
+   "relationship": "in the front lawn between the house and the corner",
+   "supportingFrameIds": [
+    "img-01",
+    "img-02",
+    "img-03"
+   ],
+   "confidence": 0.65,
+   "approximationNotes": "height from the house: about two and a half times its eave"
+  },
+  {
+   "id": "red-maple",
+   "proceduralRecipe": "Japanese maple, deep red, low and wide",
+   "position": [
+    35.2,
+    0.2,
+    -11.4
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    4.6,
+    4.6,
+    4.6
+   ],
+   "relationship": "past the far side of the drive, toward the street",
+   "supportingFrameIds": [
+    "img-04",
+    "img-05",
+    "img-01"
+   ],
+   "confidence": 0.7,
+   "approximationNotes": "sits on our side of the lot line by assumption"
+  },
+  {
+   "id": "mailbox",
+   "proceduralRecipe": "black mailbox on a post",
+   "position": [
+    34.45,
+    1.2,
+    -8.4
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    0.4,
+    1.3,
+    0.6
+   ],
+   "relationship": "at the east edge of the drive by the sidewalk",
+   "supportingFrameIds": [
+    "img-02",
+    "img-05"
+   ],
+   "confidence": 0.7,
+   "approximationNotes": ""
+  },
+  {
+   "id": "patio",
+   "proceduralRecipe": "stamped concrete patio in a brick red ashlar pattern, curved outer edge, two steps up to the slider",
+   "position": [
+    19,
+    0.56,
+    -27.8
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    7.3,
+    0.06,
+    5.4
+   ],
+   "relationship": "against the back of the main wing",
+   "supportingFrameIds": [
+    "img-08",
+    "img-09"
+   ],
+   "confidence": 0.65,
+   "approximationNotes": "outline traced from img-09 seen from above"
+  },
+  {
+   "id": "grill-ac",
+   "proceduralRecipe": "covered grill east of the slider, AC unit by the two storey part, grey deck box on the lawn",
+   "position": [
+    20.5,
+    0.5,
+    -26
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    4.5,
+    1,
+    1
+   ],
+   "relationship": "on the patio, against the wall",
+   "supportingFrameIds": [
+    "img-08",
+    "img-09"
+   ],
+   "confidence": 0.6,
+   "approximationNotes": ""
+  },
+  {
+   "id": "fence",
+   "proceduralRecipe": "white vinyl privacy fence 1.83 m high, posts every 2.4 m",
+   "position": [
+    22.4,
+    0.5,
+    -31.4
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    27.7,
+    1.95,
+    18.8
+   ],
+   "relationship": "round the back yard, returning to the house sides",
+   "supportingFrameIds": [
+    "img-08",
+    "img-09"
+   ],
+   "confidence": 0.6,
+   "approximationNotes": "line on the cross street side assumed at 1.3 m inside the walk"
+  },
+  {
+   "id": "cars",
+   "proceduralRecipe": "grey blue midsize pickup parked nose out, black sedan parked nose in",
+   "position": [
+    31.2,
+    0.18,
+    -11.4
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    4.5,
+    1.9,
+    5.4
+   ],
+   "relationship": "on the drive",
+   "supportingFrameIds": [
+    "img-02",
+    "img-03",
+    "img-05"
+   ],
+   "confidence": 0.6,
+   "approximationNotes": "makes and models not matched, only size and colour"
+  },
+  {
+   "id": "house-main-wing",
+   "proceduralRecipe": "one storey wing, sage vinyl siding, white trim, dark green shutters, side gable roof of 5 in 12",
+   "position": [
+    19.25,
+    0.4,
+    -21.05
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    8.5,
+    3.2,
+    8.5
+   ],
+   "relationship": "west part of the house, front door at its east end",
+   "supportingFrameIds": [
+    "img-01",
+    "img-03",
+    "img-04"
+   ],
+   "confidence": 0.65,
+   "approximationNotes": "width from the double window, the door and the stoop; depth assumed equal to the two storey part"
+  },
+  {
+   "id": "house-two-storey",
+   "proceduralRecipe": "two storey part over the garage and the basement, upstairs overhangs the front by 0.25 m, side gable roof",
+   "position": [
+    28.25,
+    -0.45,
+    -21
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    9.5,
+    5.45,
+    8.75
+   ],
+   "relationship": "east part of the house, garage door under the upstairs",
+   "supportingFrameIds": [
+    "img-01",
+    "img-03",
+    "img-05",
+    "yt-BvXv_x23Da8-hq2"
+   ],
+   "confidence": 0.65,
+   "approximationNotes": "levels from a side split: upstairs half a flight above the main floor, basement half a flight below"
+  },
+  {
+   "id": "roofs",
+   "proceduralRecipe": "asphalt shingle roofs, dark grey, white fascia and gutters",
+   "position": [
+    24,
+    3.6,
+    -21
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    18.7,
+    3.6,
+    9.5
+   ],
+   "relationship": "over both parts",
+   "supportingFrameIds": [
+    "img-01",
+    "img-05"
+   ],
+   "confidence": 0.6,
+   "approximationNotes": "pitch 5 in 12 assumed from img-01"
+  },
+  {
+   "id": "workshop",
+   "proceduralRecipe": "workbench on white base boxes, sticker bombed panel, wall TV, WIDE TURNS sign",
+   "position": [
+    30.9,
+    0.2,
+    -24.8
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    3.5,
+    2,
+    0.65
+   ],
+   "relationship": "against the back wall of the garage",
+   "supportingFrameIds": [
+    "yt-BvXv_x23Da8-hq1",
+    "yt-UvvTN3lLreI-hq3",
+    "img-06"
+   ],
+   "confidence": 0.5,
+   "approximationNotes": "that the talking head workshop is the back of this garage is inferred: same painted block walls"
+  },
+  {
+   "id": "garage-east-wall",
+   "proceduralRecipe": "pegboard over three shelves of bins, parts and tools",
+   "position": [
+    32.6,
+    0.2,
+    -21
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    0.4,
+    2,
+    7
+   ],
+   "relationship": "east wall of the garage",
+   "supportingFrameIds": [
+    "img-10",
+    "img-06"
+   ],
+   "confidence": 0.6,
+   "approximationNotes": ""
+  },
+  {
+   "id": "garage-west-wall",
+   "proceduralRecipe": "Infinity Loops banner near the door, clear totes under it, a flag on a pole by the house door",
+   "position": [
+    29.2,
+    0.2,
+    -20.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    0.6,
+    2,
+    7
+   ],
+   "relationship": "west wall of the garage",
+   "supportingFrameIds": [
+    "img-06",
+    "img-07",
+    "img-10"
+   ],
+   "confidence": 0.6,
+   "approximationNotes": "banner lettering drawn here, not copied"
+  },
+  {
+   "id": "garage-floor",
+   "proceduralRecipe": "black and white checkerboard tiles, 0.45 m squares, a round race gate, an inflatable Santa, a small trampoline on its side",
+   "position": [
+    30.9,
+    0.2,
+    -21
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    3.85,
+    0,
+    8.1
+   ],
+   "relationship": "garage slab",
+   "supportingFrameIds": [
+    "img-06",
+    "img-07",
+    "img-10"
+   ],
+   "confidence": 0.7,
+   "approximationNotes": "tile size counted across the door width"
+  },
+  {
+   "id": "drone-shelf",
+   "proceduralRecipe": "white shelf hung across the garage with seven quads standing on it",
+   "position": [
+    30.9,
+    1.78,
+    -20.65
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    3.85,
+    0.3,
+    0.5
+   ],
+   "relationship": "across the garage ceiling",
+   "supportingFrameIds": [
+    "img-10"
+   ],
+   "confidence": 0.55,
+   "approximationNotes": "position along the garage inferred"
+  },
+  {
+   "id": "basement",
+   "proceduralRecipe": "family room on laminate, white walls, two slim white posts under a beam, the lower flight with the closet doors on its left, a TV on a white stand to its right",
+   "position": [
+    26.2,
+    -0.45,
+    -21
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    5.05,
+    2.65,
+    8.1
+   ],
+   "relationship": "lower level of the two storey part, west of the garage",
+   "supportingFrameIds": [
+    "img-11",
+    "img-12"
+   ],
+   "confidence": 0.55,
+   "approximationNotes": "room size inferred from the footprint; furniture places from the two stills"
+  },
+  {
+   "id": "basement-things",
+   "proceduralRecipe": "olive sectional, punching bag, dark cabinet, desk with hutch, round gate, red Christmas tree and wrapped presents",
+   "position": [
+    26.5,
+    -0.45,
+    -21.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    4.5,
+    2,
+    7
+   ],
+   "relationship": "in the family room",
+   "supportingFrameIds": [
+    "img-11",
+    "img-12"
+   ],
+   "confidence": 0.5,
+   "approximationNotes": "a character inflatable seen in img-11 is left out"
+  },
+  {
+   "id": "main-floor",
+   "proceduralRecipe": "living room at the front with sofa and TV, dining at the back by the slider, galley kitchen east, foyer by the door with both stair flights off it",
+   "position": [
+    19.25,
+    1,
+    -21.05
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    8.1,
+    2.45,
+    8.1
+   ],
+   "relationship": "main wing",
+   "supportingFrameIds": [],
+   "confidence": 0.25,
+   "approximationNotes": "inferred, no still of the main floor"
+  },
+  {
+   "id": "upstairs",
+   "proceduralRecipe": "three bedrooms and a bath off a hall, the main bedroom across the front over the garage",
+   "position": [
+    28.25,
+    2.45,
+    -21
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    9.1,
+    2.4,
+    8.35
+   ],
+   "relationship": "upper level of the two storey part",
+   "supportingFrameIds": [],
+   "confidence": 0.2,
+   "approximationNotes": "inferred, no still of the upstairs"
+  },
+  {
+   "id": "neighbours",
+   "proceduralRecipe": "two storey colonials, side splits and ranchers on 24 m lots, sidings in whites, creams and beiges, dark shingle roofs",
+   "position": [
+    0,
+    0.15,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    380,
+    9,
+    380
+   ],
+   "relationship": "facing both streets in every direction",
+   "supportingFrameIds": [
+    "img-01",
+    "img-02",
+    "img-04",
+    "yt-8G5ooyFyxs8-hq2"
+   ],
+   "confidence": 0.4,
+   "approximationNotes": "the near ones match the stills by colour and kind; the rest is generated from a fixed seed"
+  },
+  {
+   "id": "corner-signs",
+   "proceduralRecipe": "stop sign facing westbound traffic on Street A, street name sign on its own post",
+   "position": [
+    8.4,
+    2.4,
+    -7.6
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    5,
+    3.1,
+    4
+   ],
+   "relationship": "on our corner, on the verge",
+   "supportingFrameIds": [
+    "img-01",
+    "img-02"
+   ],
+   "confidence": 0.6,
+   "approximationNotes": "the name is left blank on purpose"
+  },
+  {
+   "id": "poles",
+   "proceduralRecipe": "wooden utility poles every 42 m on the far verge of Street A, three wires, a service drop to the house",
+   "position": [
+    30,
+    0,
+    5.8
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    252,
+    9.6,
+    2
+   ],
+   "relationship": "south verge of Street A",
+   "supportingFrameIds": [
+    "yt-BvXv_x23Da8-hq2"
+   ],
+   "confidence": 0.4,
+   "approximationNotes": "spacing assumed"
+  },
+  {
+   "id": "flag",
+   "proceduralRecipe": "US flag on a bracket pole",
+   "position": [
+    23.75,
+    2.85,
+    -16.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "dimensions": [
+    1.5,
+    0.95,
+    0.05
+   ],
+   "relationship": "on the front corner where the two parts meet, above the stoop",
+   "supportingFrameIds": [
+    "img-03",
+    "img-04"
+   ],
+   "confidence": 0.7,
+   "approximationNotes": ""
+  }
+ ]
+}

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "0.1.0",
+  "camera": {
+    "x": 29.2,
+    "z": -15.3,
+    "y": 0.9,
+    "pitch": 0.0,
+    "hfov": 120.0,
+    "heading": -2.356194490192345,
+    "headingDegrees": -135.0,
+    "pitchDegrees": 0.0,
+    "vfov": 87.31792045211868
+  },
+  "target": {
+    "x": 23.54314575050762,
+    "y": 0.9,
+    "z": -20.95685424949238
+  },
+  "rmsResidual": 0.03918919176142941,
+  "residuals": [
+    {
+      "name": "front tree trunk",
+      "horizontal": -0.05923655846068132,
+      "vertical": 0.0,
+      "weightedSquared": 0.0035089698582657157
+    },
+    {
+      "name": "main wing west front corner",
+      "horizontal": 0.05048571914941877,
+      "vertical": 0.0,
+      "weightedSquared": 0.0025488078380339887
+    },
+    {
+      "name": "front door centre",
+      "horizontal": 0.03028949971304279,
+      "vertical": 0.0,
+      "weightedSquared": 0.0009174537928664192
+    },
+    {
+      "name": "flag bracket",
+      "horizontal": -0.007319246056560147,
+      "vertical": 0.0,
+      "weightedSquared": 5.357136283647126e-05
+    },
+    {
+      "name": "garage door west edge",
+      "horizontal": 0.02549825293167829,
+      "vertical": 0.0,
+      "weightedSquared": 0.0006501609025678404
+    }
+  ]
+}

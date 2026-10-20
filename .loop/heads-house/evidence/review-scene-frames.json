@@ -1,0 +1,31 @@
+{
+ "comparisonSheets": [
+  "scratchpad/cap/final/sheet0.jpg",
+  "scratchpad/cap/final/sheet1.jpg",
+  "scratchpad/cap/final/sheet2.jpg",
+  "scratchpad/cap/final/sheet3.jpg",
+  "scratchpad/cap/final/sheet4.jpg"
+ ],
+ "views": 13,
+ "judgement": {
+  "corner": "layout and composition match; trees are stylised",
+  "driveway": "mailbox, drive, walk and corner placed as the still; cars read as silhouettes in shade",
+  "lawn": "tree, main wing, flag and two storey part in the same order and spacing",
+  "door": "bed, stoop, flag, maple, street and red SUV in place",
+  "garageside": "two storey part, garage door, shrubs, pickup, maple in place",
+  "patio": "AC, grill, slider, steps, curved patio and cream wall match",
+  "backyard": "patio edge, lawn, deck box, fence",
+  "garage": "drone shelf, pegboard, banner, flag, door with windows, checker floor match",
+  "garageback": "banner, totes, gate, Santa, bench and sticker wall match",
+  "basement": "stair, closet doors, post, TV stand, dresser, gate match",
+  "lounge": "couch, punching bag, cabinet, presents in the same arrangement",
+  "sidewalk": "walk, verge, inlet, pad, double yellow line; the street in the still curves, here it is straight",
+  "autumncorner": "houses across the street, the sign pole, leaves; the white crosswalk bar is there"
+ },
+ "knownMisses": [
+  "Street A is drawn straight; the still from BvXv hq2 shows it curving",
+  "trees are stylised low poly, not the species",
+  "main floor and upstairs are inferred",
+  "people and a character inflatable are left out"
+ ]
+}

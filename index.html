@@ -2249,7 +2249,6 @@
         --gc-quiet: #5d6b78;
       }
       .gate-card {
-        --gc-accent: var(--mint);
         flex: 1 1 0;
         min-width: 0;
         display: flex;
@@ -2267,9 +2266,6 @@
         margin: 0 -5%;
         transform: skewX(3.5deg);
       }
-      .gate-card-race-5inch, .gate-card-race-whoop65 { --gc-accent: var(--mint); }
-      .gate-card-freestyle-5inch { --gc-accent: var(--sakura); }
-      .gate-card-builder { --gc-accent: var(--amber); }
       .gate-card:hover { transform: skewX(-3.5deg) translate(-2px, -2px); }
       /* The sakura ring and the lift the picker's chosen panel has, so a
          card that is chosen looks chosen in the same way everywhere. */
@@ -2282,7 +2278,9 @@
       .gate-card-art {
         position: relative;
         width: 100%;
-        height: clamp(120px, 24vh, 260px);
+        /* The picture takes what the pills used to: the sentence is the
+           only thing under it. */
+        height: clamp(170px, 36vh, 400px);
         background: #1a241c;
         overflow: hidden;
         border-bottom: 4px solid var(--gc-ink);
@@ -2343,22 +2341,6 @@
         margin: 0;
         color: var(--gc-ink);
         font-size: 13.5px; line-height: 1.5; font-weight: 600;
-      }
-      /* What each mode actually gives you, as the stamps the picker puts on
-         its panels: ink frame, the card's own colour inside. Mint is the
-         colour this product paints a record in, so it is Race's; sakura is
-         Freestyle's and amber the builder's, which is the page it opens. */
-      .gate-card-facts {
-        display: flex; flex-wrap: wrap; gap: 6px 8px;
-        margin-top: auto;
-      }
-      .gate-card-fact {
-        display: inline-block;
-        background: var(--gc-accent); color: var(--gc-ink);
-        border: 2.5px solid var(--gc-ink);
-        padding: 4px 8px 3px;
-        font-size: 11px; font-weight: 800; line-height: 1;
-        letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
       }
       /*
        * The plan drawing over the corner of each photograph.
@@ -4180,13 +4162,14 @@
         }
         .gate-card { flex-direction: column; box-shadow: 5px 5px 0 var(--gc-ink); }
         .gate-card.on { box-shadow: 0 0 0 3px var(--sakura), 7px 7px 0 3px var(--gc-ink); }
-        .gate-card-art { height: clamp(84px, 14vh, 190px); }
+        .gate-card-art { height: clamp(130px, 25vh, 260px); }
         .gate-card-nm { left: 22px; right: 22px; bottom: 6px; }
-        .gate-card-body { gap: 4px; padding: 8px 18px 10px; }
         .gate-card-name { font-size: clamp(16px, 4.4vw, 24px); }
         .gate-card-blurb { display: none; font-size: 12.5px; line-height: 1.5; }
-        .gate-card-facts { gap: 4px 5px; }
-        .gate-card-fact { font-size: 9.5px; letter-spacing: 0.06em; padding: 3px 5px 2px; border-width: 2px; }
+        /* A phone has no sentence, so no paper under the picture: the
+           picture is the card and the name is lettered over its foot. */
+        .gate-card-body { display: none; }
+        .gate-card-art { border-bottom: 0; }
         /* The art is half a phone's width here, so the mark comes down with
            it. Same box on every card that has one, as ever. */
         .gate-card-mark { width: 42px; height: 42px; right: 20px; top: 6px; }
@@ -4227,7 +4210,9 @@
          this (390 by 844, 375 by 667, 360 by 800) and below an upright
          tablet's, 768 by 1024 and up. */
       @media (max-width: 860px) and (min-height: 960px) {
+        .gate-card-body { display: flex; gap: 4px; padding: 8px 18px 10px; }
         .gate-card-blurb { display: block; }
+        .gate-card-art { height: clamp(170px, 24vh, 300px); border-bottom: 4px solid var(--gc-ink); }
       }
       @media (max-height: 520px) {
         .screen-title {
@@ -4269,10 +4254,10 @@
         .gate-card { flex: 1 1 0; flex-direction: column; }
         .gate-card-art {
           flex: 0 0 auto; width: 100%;
-          height: clamp(70px, 24vh, 120px); min-height: 0;
+          height: clamp(110px, 40vh, 200px); min-height: 0;
         }
         .gate-card-nm { left: 22px; right: 22px; bottom: 5px; }
-        .gate-card-body { padding: 7px 18px 9px; gap: 4px; }
+        .gate-card-body { display: none; }
         .gate-card-blurb { display: none; }
         .gate-card-name { font-size: clamp(17px, 4.4vh, 22px); }
         .gate-card-mark { width: 38px; height: 38px; right: 20px; top: 5px; }

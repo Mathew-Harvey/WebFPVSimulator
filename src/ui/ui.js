@@ -4747,7 +4747,6 @@ const WAYS = [
     label: 'Five inch racing',
     art: 'assets/gate/race.jpg',
     blurb: 'A gated track on a sixty metre field, against the clock. A 710 gram 6S quad at forty metres a second, and every lap you finish can go on the public board.',
-    facts: ['6S', '220 mm', 'The board'],
   },
   {
     id: 'race-whoop65',
@@ -4761,7 +4760,6 @@ const WAYS = [
      * promised three times the angular acceleration, which was true of a
      * plant nothing selects now. */
     blurb: 'The same clock, indoors. A 65 mm ducted whoop through a track that fits in a living room, on 28 inch gates.',
-    facts: ['1S', '65 mm', 'Indoors'],
   },
   {
     id: 'freestyle-5inch',
@@ -4774,11 +4772,6 @@ const WAYS = [
      * named because this card seats one: the town is five hundred metres
      * across and it is the five inch's. */
     blurb: 'The whole town on the five inch, or a map you build yourself. Roofs, alleys and a level crossing, or cranes and bandos wherever you put them. No clock, no gates, and trick names are a switch inside.',
-    /* The mode's three, not the machine's, and the machine is on the card
-     * anyway: the plan mark over the picture is the five inch's. Three
-     * words that fit one line on a landscape phone, where the blurb is
-     * hidden and these are the whole of the card. */
-    facts: ['No gates', 'No clock', 'Town, maps'],
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
@@ -4796,14 +4789,13 @@ const WAYS = [
  * The picture is a frame of the builder's own 3D preview on the starter
  * map, written by scripts/gatecards.js like the other three. There is no
  * plan drawing over it, because the drawing is the aircraft to scale and
- * this card seats no aircraft. Its facts are amber, the builder's colour.
+ * this card seats no aircraft.
  */
 const BUILDER_CARD = {
   id: 'builder',
   label: 'Builder',
   art: 'assets/gate/builder.jpg',
   blurb: 'Make your own. A race track for the five inch, a room for the whoop, or a freestyle map of bandos, cranes and named gaps, drawn from above and flown from the same page.',
-  facts: ['Tracks', 'Rooms', 'Maps'],
   action: 'builder',
 };
 
@@ -8636,7 +8628,6 @@ export class Ui {
             art: w.art,
             svg: craftSvg(airframeById(w.airframe)),
             blurb: w.blurb,
-            facts: w.facts,
             action: w.action,
           })),
           /* Last of the cards and before the trouble row, which has to
@@ -8646,7 +8637,6 @@ export class Ui {
             card: BUILDER_CARD.id,
             art: BUILDER_CARD.art,
             blurb: BUILDER_CARD.blurb,
-            facts: BUILDER_CARD.facts,
             action: BUILDER_CARD.action,
           },
           ...(trouble ? [trouble] : []),
@@ -12122,11 +12112,7 @@ export class Ui {
         art.append(nm);
         const body = el('div', 'gate-card-body');
         const blurb = el('p', 'gate-card-blurb', it.blurb);
-        const facts = el('div', 'gate-card-facts');
-        for (const f of it.facts || []) {
-          facts.append(el('span', 'gate-card-fact', f));
-        }
-        body.append(blurb, facts);
+        body.append(blurb);
         const inner = el('div', 'gate-card-in');
         inner.append(art, body);
         card.append(inner);

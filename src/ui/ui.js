@@ -4767,11 +4767,17 @@ const WAYS = [
     mode: 'freestyle',
     label: 'Freestyle',
     art: 'assets/gate/freestyle.jpg',
+    /* More than one place, so more than one picture (the owner, 2026-10-20:
+     * "reflect all the available maps, not just the town"): the town large,
+     * Nick Burns' house and Hibari Yard beside it, panels of one page with
+     * ink between them. The two small ones are the map picker's own
+     * thumbnails, so the browser has them when the picker opens. */
+    arts: ['assets/gate/freestyle.jpg', 'assets/thumbs/house.jpg', 'assets/thumbs/yard.jpg'],
     /* No clock and no score in the line, because neither is on until a
-     * pilot asks for them. See DEFAULTS.freestyleScoring. The aircraft is
-     * named because this card seats one: the town is five hundred metres
-     * across and it is the five inch's. */
-    blurb: 'The whole town on the five inch, or a map you build yourself. Roofs, alleys and a level crossing, or cranes and bandos wherever you put them. No clock, no gates, and trick names are a switch inside.',
+     * pilot asks for them. See DEFAULTS.freestyleScoring. The maps are
+     * named so the card says there is more than the town, and the board's
+     * are counted in so a pilot knows the shelf keeps growing. */
+    blurb: "Every freestyle map: the town, Nick Burns' house, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
@@ -8626,6 +8632,7 @@ export class Ui {
             label: w.label,
             card: w.id,
             art: w.art,
+            arts: w.arts,
             svg: craftSvg(airframeById(w.airframe)),
             blurb: w.blurb,
             action: w.action,
@@ -12075,7 +12082,19 @@ export class Ui {
         card.setAttribute('role', 'button');
         card.setAttribute('aria-label', it.label);
         const art = el('div', 'gate-card-art');
-        if (it.art) {
+        if (it.arts) {
+          /* A page of panels: the first picture large, the rest stacked
+           * beside it. Decoration, like the single picture. */
+          const page = el('div', 'gate-card-collage');
+          for (const src of it.arts) {
+            const img = el('img', 'gate-card-shot');
+            img.src = src;
+            img.alt = '';
+            img.decoding = 'async';
+            page.append(img);
+          }
+          art.append(page);
+        } else if (it.art) {
           const img = el('img', 'gate-card-shot');
           img.src = it.art;
           /* The name is right underneath it, so the picture is decoration to

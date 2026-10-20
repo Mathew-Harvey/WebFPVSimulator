@@ -2208,6 +2208,9 @@
            the page. Auto only ever takes free space, so on a short window
            the gap closes to nothing rather than pushing the cards off. */
         margin: auto 0 0;
+        /* Room for the cards' hard shadow, which falls right of the last one. */
+        padding-right: 8px;
+        box-sizing: border-box;
         pointer-events: auto;
       }
       /* An empty menu still paints its plate and its sakura top line, so
@@ -2224,80 +2227,139 @@
          is what pins the menu to the bottom. Here the cards are that block,
          so the foot gives the space up rather than splitting it. */
       .screen-title.is-gate .title-foot { margin-top: 0; }
+      /*
+       * THE CARDS ARE MANGA PANELS (2026-10-20, the owner: "style this page
+       * to match the rest of the restyling"). The same page as the map
+       * picker (src/picker/picker.js) and the front door's hero: a thick
+       * ink frame with a hard offset shadow and no blur, leaning a few
+       * degrees, the picture upright inside it, the name lettered in the
+       * hand of the wordmark over the picture's foot, and the sentence on
+       * paper under it. The chosen card gets the sakura ring and the still
+       * focus lines the picker's chosen panel gets.
+       *
+       * The frame is skewed and .gate-card-in skews back, so the gutters
+       * lean and the world in the picture stays level. Nothing here moves
+       * on its own and nothing blurs: a hard shadow is the cheapest one
+       * there is, and the live world behind is the only thing drawing per
+       * frame. The lettering is painted once, by letterGateNames.
+       */
+      .gate-cards {
+        --gc-ink: #0b1116;
+        --gc-paper: #f7f0dc;
+        --gc-quiet: #5d6b78;
+      }
       .gate-card {
+        --gc-accent: var(--mint);
         flex: 1 1 0;
         min-width: 0;
         display: flex;
         flex-direction: column;
         cursor: pointer;
-        border-radius: 4px;
         overflow: hidden;
-        background: rgba(16, 22, 17, 0.78);
-        border-top: 2px solid rgba(232, 168, 184, 0.28);
-        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.10);
-        transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+        background: var(--gc-ink);
+        border: 4px solid var(--gc-ink);
+        box-shadow: 7px 7px 0 var(--gc-ink);
+        transform: skewX(-3.5deg);
+        transition: transform 0.12s ease;
       }
-      /* Same lift and the same sakura ring the picker cards use, so a card
-         that is chosen looks chosen in the same way everywhere. */
+      .gate-card-in {
+        display: flex; flex-direction: column; flex: 1 1 auto;
+        margin: 0 -5%;
+        transform: skewX(3.5deg);
+      }
+      .gate-card-race-5inch, .gate-card-race-whoop65 { --gc-accent: var(--mint); }
+      .gate-card-freestyle-5inch { --gc-accent: var(--sakura); }
+      .gate-card-builder { --gc-accent: var(--amber); }
+      .gate-card:hover { transform: skewX(-3.5deg) translate(-2px, -2px); }
+      /* The sakura ring and the lift the picker's chosen panel has, so a
+         card that is chosen looks chosen in the same way everywhere. */
       .gate-card.on {
-        transform: translateY(-4px);
-        border-top-color: var(--sakura);
-        box-shadow: inset 0 0 0 2px var(--sakura), 0 14px 32px rgba(0, 0, 0, 0.5);
+        z-index: 2;
+        transform: skewX(-3.5deg) translate(-4px, -4px);
+        box-shadow: 0 0 0 4px var(--sakura), 9px 9px 0 4px var(--gc-ink);
       }
-      .gate-card:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+      .gate-card:focus-visible { outline: 3px solid var(--mint); outline-offset: 5px; }
       .gate-card-art {
         position: relative;
         width: 100%;
         height: clamp(120px, 24vh, 260px);
         background: #1a241c;
         overflow: hidden;
+        border-bottom: 4px solid var(--gc-ink);
       }
       .gate-card-shot {
         width: 100%; height: 100%;
         display: block; object-fit: cover;
-        /* The type sits under the picture, not on it, but the join is
-           softened so the card reads as one object. */
-        filter: saturate(1.02);
       }
+      /* A shade under the name and the dot tone the page's pictures wear. */
       .gate-card-art::after {
         content: "";
         position: absolute; inset: 0;
-        background: linear-gradient(180deg, rgba(12, 18, 14, 0) 52%, rgba(16, 22, 17, 0.85) 100%);
+        background:
+          radial-gradient(circle, rgba(11, 17, 22, 0.28) 0 1px, transparent 1.5px) 0 0 / 4px 4px,
+          linear-gradient(to top, rgba(11, 17, 22, 0.78), rgba(11, 17, 22, 0) 46%);
+        pointer-events: none;
       }
-      /* Above the gradient the rule before this one lays over the picture,
-         which is the only reason this needs a stacking order at all. */
-      .gate-card-mark { z-index: 1; }
+      /* The focus lines of the picker, still: two conic fans masked to the
+         edge, shown on the chosen card only. */
+      .gate-card-art::before {
+        content: "";
+        position: absolute; inset: 0; z-index: 1;
+        opacity: 0;
+        pointer-events: none;
+        background:
+          repeating-conic-gradient(from 3deg at 50% 52%, rgba(247, 240, 220, 0.95) 0 0.45deg, transparent 0.45deg 3.3deg),
+          repeating-conic-gradient(from 0deg at 50% 52%, rgba(247, 240, 220, 0.8) 0 0.25deg, transparent 0.25deg 5.1deg);
+        -webkit-mask: radial-gradient(ellipse 72% 70% at 50% 52%, transparent 62%, #000 96%);
+        mask: radial-gradient(ellipse 72% 70% at 50% 52%, transparent 62%, #000 96%);
+      }
+      .gate-card.on .gate-card-art::before { opacity: 1; }
+      /* Above the shade. */
+      .gate-card-mark, .gate-card-nm { z-index: 2; }
+      .gate-card-nm {
+        position: absolute;
+        left: 30px; right: 30px; bottom: 9px;
+        pointer-events: none;
+      }
       .gate-card-body {
-        display: flex; flex-direction: column; gap: 7px;
-        padding: 12px 16px 15px;
+        display: flex; flex-direction: column; flex: 1 1 auto; gap: 9px;
+        padding: 12px 30px 15px;
+        background: var(--gc-paper) radial-gradient(circle, rgba(11, 17, 22, 0.035) 0 1px, transparent 1.4px) 0 0 / 5px 5px;
+        color: var(--gc-ink);
       }
+      /* The name keeps its words in the DOM, in cream, and letterHeading
+         paints the hand over them (see letterGateNames). Cream is the fill
+         the lettering takes and the ink outline is its own. */
       .gate-card-name {
+        margin: 0;
         color: var(--cream);
-        font-size: clamp(19px, 1.9vw, 26px);
-        font-weight: 650;
+        font-size: clamp(22px, 2.3vw, 32px);
+        font-weight: 900; font-style: italic; text-transform: uppercase;
         letter-spacing: 0.02em;
-        line-height: 1.1;
+        line-height: 1.05;
+        text-shadow: 2px 2px 0 var(--gc-ink);
       }
-      .gate-card.on .gate-card-name { color: var(--sakura); }
       .gate-card-blurb {
         margin: 0;
-        color: rgba(235, 230, 215, 0.74);
-        font-size: 13.5px; line-height: 1.55; letter-spacing: 0.01em;
+        color: var(--gc-ink);
+        font-size: 13.5px; line-height: 1.5; font-weight: 600;
       }
-      /* What each mode actually gives you, in three words each. Mint is the
-         colour this product paints a record in, so it is Race's; Freestyle's
-         are the cool mist that recedes, which is the point of them. */
+      /* What each mode actually gives you, as the stamps the picker puts on
+         its panels: ink frame, the card's own colour inside. Mint is the
+         colour this product paints a record in, so it is Race's; sakura is
+         Freestyle's and amber the builder's, which is the page it opens. */
       .gate-card-facts {
-        display: flex; flex-wrap: wrap; gap: 4px 14px;
-        margin-top: 2px;
-        font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+        display: flex; flex-wrap: wrap; gap: 6px 8px;
+        margin-top: auto;
       }
-      .gate-card-race-5inch .gate-card-fact,
-      .gate-card-race-whoop65 .gate-card-fact { color: var(--mint); }
-      .gate-card-freestyle-5inch .gate-card-fact { color: var(--slate); }
-      /* The builder's card is in the builder's colour: amber is what that
-         page paints everything armed or chosen in, and its tab icon. */
-      .gate-card-builder .gate-card-fact { color: var(--amber); }
+      .gate-card-fact {
+        display: inline-block;
+        background: var(--gc-accent); color: var(--gc-ink);
+        border: 2.5px solid var(--gc-ink);
+        padding: 4px 8px 3px;
+        font-size: 11px; font-weight: 800; line-height: 1;
+        letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+      }
       /*
        * The plan drawing over the corner of each photograph.
        *
@@ -2306,11 +2368,12 @@
        * the width of it on a bench. The BOX is the same size on all three
        * cards for exactly that reason: scale it to the drawing and the one
        * fact it is here to carry is the fact it throws away. See craftSvg in
-       * src/ui/ui.js.
+       * src/ui/ui.js. It is at the top right now, because the name is
+       * lettered along the foot.
        */
       .gate-card-mark {
         position: absolute;
-        left: 10px; bottom: 8px;
+        right: 26px; top: 8px;
         width: clamp(52px, 5.2vw, 76px);
         height: clamp(52px, 5.2vw, 76px);
         display: grid; place-items: center;
@@ -4115,15 +4178,18 @@
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
-        .gate-card { flex-direction: column; }
+        .gate-card { flex-direction: column; box-shadow: 5px 5px 0 var(--gc-ink); }
+        .gate-card.on { box-shadow: 0 0 0 3px var(--sakura), 7px 7px 0 3px var(--gc-ink); }
         .gate-card-art { height: clamp(84px, 14vh, 190px); }
-        .gate-card-body { gap: 4px; padding: 9px 12px 11px; }
+        .gate-card-nm { left: 22px; right: 22px; bottom: 6px; }
+        .gate-card-body { gap: 4px; padding: 8px 18px 10px; }
         .gate-card-name { font-size: clamp(16px, 4.4vw, 24px); }
         .gate-card-blurb { display: none; font-size: 12.5px; line-height: 1.5; }
-        .gate-card-facts { gap: 2px 10px; font-size: 10.5px; letter-spacing: 0.1em; }
+        .gate-card-facts { gap: 4px 5px; }
+        .gate-card-fact { font-size: 9.5px; letter-spacing: 0.06em; padding: 3px 5px 2px; border-width: 2px; }
         /* The art is half a phone's width here, so the mark comes down with
            it. Same box on every card that has one, as ever. */
-        .gate-card-mark { width: 42px; height: 42px; left: 7px; bottom: 6px; }
+        .gate-card-mark { width: 42px; height: 42px; right: 20px; top: 6px; }
         .screen-maps .menu-stage {
           display: block;
           position: relative;
@@ -4205,13 +4271,11 @@
           flex: 0 0 auto; width: 100%;
           height: clamp(70px, 24vh, 120px); min-height: 0;
         }
-        .gate-card-art::after {
-          background: linear-gradient(180deg, rgba(12, 18, 14, 0) 52%, rgba(16, 22, 17, 0.85) 100%);
-        }
-        .gate-card-body { padding: 8px 12px 10px; gap: 4px; }
+        .gate-card-nm { left: 22px; right: 22px; bottom: 5px; }
+        .gate-card-body { padding: 7px 18px 9px; gap: 4px; }
         .gate-card-blurb { display: none; }
         .gate-card-name { font-size: clamp(17px, 4.4vh, 22px); }
-        .gate-card-mark { width: 38px; height: 38px; left: 6px; bottom: 5px; }
+        .gate-card-mark { width: 38px; height: 38px; right: 20px; top: 5px; }
       }
 
       /* The map screen. One card per world, each playing a short flight

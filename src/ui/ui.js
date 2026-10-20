@@ -12115,15 +12115,21 @@ export class Ui {
           mark.innerHTML = it.svg;
           art.append(mark);
         }
+        /* The name is lettered over the foot of the picture, in the hand of
+         * the wordmark (letterGateNames). Its words stay in the DOM. */
+        const nm = el('div', 'gate-card-nm');
+        nm.append(el('div', 'gate-card-name', it.label));
+        art.append(nm);
         const body = el('div', 'gate-card-body');
-        const name = el('div', 'gate-card-name', it.label);
         const blurb = el('p', 'gate-card-blurb', it.blurb);
         const facts = el('div', 'gate-card-facts');
         for (const f of it.facts || []) {
           facts.append(el('span', 'gate-card-fact', f));
         }
-        body.append(name, blurb, facts);
-        card.append(art, body);
+        body.append(blurb, facts);
+        const inner = el('div', 'gate-card-in');
+        inner.append(art, body);
+        card.append(inner);
         card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
         card.addEventListener('focus', () => {
           if (this.cursor !== i) {
@@ -12139,6 +12145,23 @@ export class Ui {
       });
     }
     this.markCards();
+    this.letterGateNames();
+  }
+
+  /*
+   * The gate cards' names, lettered. Painted when the cards are built and
+   * when the screen is lettered again after a resize, and a name that has
+   * not changed paints nothing (letterHeading's key). Never on a cursor
+   * move: the lettering is one colour on all four, the chosen card is
+   * shown by its ring.
+   */
+  letterGateNames() {
+    if (!this.titleCards || !this.gateCards || !this.gateCards.isConnected) {
+      return;
+    }
+    for (const n of this.gateCards.querySelectorAll('.gate-card-name')) {
+      letterHeading(n);
+    }
   }
 
 
@@ -15867,6 +15890,9 @@ export class Ui {
     }
     for (const h of node.querySelectorAll(':scope > h2, h1.wordmark, h2.results-head')) {
       letterHeading(h);
+    }
+    if (screen === 'title') {
+      this.letterGateNames();
     }
     /* A lettered heading can be a different height from its text, so the
      * list under it is measured again. */

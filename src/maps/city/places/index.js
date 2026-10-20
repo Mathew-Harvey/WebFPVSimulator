@@ -322,6 +322,17 @@ function buildStfMark(ctx) {
  *   buttresses (2.6 m high) and under the coping, a club's banner over the
  *   ground a club flies.
  *
+ *   weBLEEDfpv, the USA micro drone partner (2026-10-20): the same wall's
+ *   back again, in the 3 m of it right of the club's banner, x 59.1 to 61.9
+ *   with the wall ending at 62. The first wall tried was the south face of
+ *   the shop block at z 36, and its pilasters and bands leave only 1.6 m of
+ *   clean wall between them, so a sign did not fit; this stretch is the same
+ *   slab the club's banner stands on, so it passed the patron spots' own
+ *   three checks (npm run check:town-patrons run on this spot, 2026-10-20):
+ *   solid 0.3 m behind and air 0.1 m in front at every point, the drawn
+ *   surface within 1 cm of the collider face, and seen from 39 of 105 eyes.
+ *   Two partners on one wall is why this sign is the smaller of the two.
+ *
  * The slab is solid to its drawn face (skipFit in ./kit.js), so the paint
  * on the tap wall stands `off` in front of the drawn concrete. A partner the
  * roster adds is painted nowhere in the town until a spot is measured for
@@ -331,6 +342,7 @@ const PARTNER_SPOTS = {
   mantisfpv: { x: -13.08, y: 4.8, face: 39.3, n: -1, w: 5.0 },
   gds: { x: 52.1, y: 2.6, face: 152.325, n: -1, w: 3.6 },
   wcmrc: { x: 56.0, y: 5.35, face: 152.875, n: 1, w: 6.0 },
+  webleedfpv: { x: 60.5, y: 5.35, face: 152.875, n: 1, w: 2.8 },
 };
 
 /*

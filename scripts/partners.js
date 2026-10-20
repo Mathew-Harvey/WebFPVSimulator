@@ -431,8 +431,9 @@ function checkFiles(made) {
         check(`${p.slug}: ${rel} is there`, false, e.code || e.message);
         continue;
       }
-      check(`${p.slug}: ${rel} is ${aspect.toFixed(3)} wide to 1 tall, the roster says ${p.logo.aspect.toFixed(3)}`,
-        Math.abs(aspect / p.logo.aspect - 1) <= ASPECT_SLACK);
+      const want = which === 'mono' && p.logo.monoAspect ? p.logo.monoAspect : p.logo.aspect;
+      check(`${p.slug}: ${rel} is ${aspect.toFixed(3)} wide to 1 tall, the roster says ${want.toFixed(3)}`,
+        Math.abs(aspect / want - 1) <= ASPECT_SLACK);
     }
     const mono = p.logo.mono;
     if (mono.endsWith('.svg')) {
@@ -468,8 +469,9 @@ function checkFiles(made) {
         check(`${p.slug}: ${rel} is there`, false, e.code || e.message);
         continue;
       }
-      check(`${p.slug}: ${rel} is ${aspect.toFixed(3)} wide to 1 tall, the roster says ${p.logo.aspect.toFixed(3)}`,
-        Math.abs(aspect / p.logo.aspect - 1) <= ASPECT_SLACK);
+      const want = which === 'mono' && p.logo.monoAspect ? p.logo.monoAspect : p.logo.aspect;
+      check(`${p.slug}: ${rel} is ${aspect.toFixed(3)} wide to 1 tall, the roster says ${want.toFixed(3)}`,
+        Math.abs(aspect / want - 1) <= ASPECT_SLACK);
     }
     const mono = p.logo.mono;
     if (mono.endsWith('.svg')) {

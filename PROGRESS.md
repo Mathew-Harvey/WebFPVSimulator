@@ -71131,3 +71131,4 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Left alone: the Aircraft row in Settings still says a sixty metre field and a living room, and code comments say MICRO_SCALE times life size; neither is the picker.
 - Latency: none, words in a menu.
 - Checked: see the board PR; the picker looked at with `scripts/shots.js`-style headless shots of the Maps shelf. Not run: `npm run verify` (no physics, plant, ABI or build change).
+- Approval: the owner wrote "push to main" at 10:46:04Z on 2026-10-20 in the Map picker redesign thread, after the reply that offered board PR 29 and sim PR 99, board first, latency none. Board main fetched first (46e92fd, the branch's base) and fast forwarded to ab85b5e; sim main fetched first and fast forwarded to this commit.

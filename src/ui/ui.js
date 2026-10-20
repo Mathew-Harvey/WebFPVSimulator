@@ -13036,7 +13036,7 @@ export class Ui {
         /* Each shelf's chapter panel wears its way's art from the gate. */
         shelfPictures: { maps: 'assets/gate/freestyle.jpg', five: 'assets/gate/race.jpg', whoop: 'assets/gate/whoop.jpg' },
         actions: (entry) => this.pickerActions(entry),
-        onAction: (id, entry) => this.pickerAction(id, entry),
+        onAction: (id, entry, ev) => this.pickerAction(id, entry, ev),
         onShelf: (shelf) => this.pickerShelfChosen(shelf),
         onOrder: (order) => {
           if (this.screen === 'courses' && order !== this.settings.courseOrder) {
@@ -13197,10 +13197,39 @@ export class Ui {
     this.renderMenu();
   }
 
+  /*
+   * THE LINK A PILOT PASTES INTO A POST, for the chosen entry, or '' when
+   * there is nothing to share. A track or a map on the board is the board's
+   * own ?track= and ?map= address, because that is the one the edge writes
+   * a name and a share card into for the preview bots (edge/preview.js).
+   * A world the simulator ships is the simulator's own address with the
+   * map named, the same one the board's Fly this opens. A pilot's own track
+   * and their own unpublished map live in one browser and have no address.
+   */
+  pickerShareLink(entry) {
+    const item = entry.item;
+    if (item.boardMap) {
+      return boardPageUrl(boardOrigin(), null, { map: item.boardMap.id });
+    }
+    if (item.course) {
+      const t = item.course.kind === 'board' ? item.course.track : null;
+      return t && t.id ? boardPageUrl(boardOrigin(), null, { track: t.id }) : '';
+    }
+    if (item.map) {
+      if (item.map.id === 'built' && ownMapId()) {
+        return '';
+      }
+      const here = new URL(window.location.href);
+      return `${here.origin}${here.pathname}?map=${encodeURIComponent(item.map.id)}&craft=5inch&fly=1`;
+    }
+    return '';
+  }
+
   pickerActions(entry) {
     const fly = { id: 'fly', label: 'Fly this', primary: true };
+    const copy = this.pickerShareLink(entry) ? [{ id: 'copy-link', label: 'Copy link' }] : [];
     if (this.screen !== 'courses' || !entry.item.course) {
-      return [fly];
+      return [fly, ...copy];
     }
     const kind = entry.item.course.kind;
     return [
@@ -13208,12 +13237,40 @@ export class Ui {
       ...(kind === 'current' ? [{ id: 'card-launch', label: 'Before you fly' }] : []),
       ...(kind === 'board' ? [{ id: 'card-standings', label: 'Standings' }] : []),
       ...(kind !== 'current' ? [{ id: 'card-builder', label: 'Open in builder' }] : []),
+      ...copy,
     ];
   }
 
-  pickerAction(id, entry) {
+  async copyPickerLink(entry, btn) {
+    const url = this.pickerShareLink(entry);
+    if (!url) {
+      return;
+    }
+    const label = btn ? btn.textContent : '';
+    try {
+      await navigator.clipboard.writeText(url);
+      if (btn) {
+        btn.textContent = 'Link copied';
+      }
+    } catch (e) {
+      /* No clipboard permission, or an insecure origin: the link is shown
+       * to be copied by hand rather than lost. */
+      window.prompt('Copy this link', url);
+    }
+    if (btn) {
+      setTimeout(() => {
+        btn.textContent = label;
+      }, 2200);
+    }
+  }
+
+  pickerAction(id, entry, ev) {
     if (this.onUiSound) {
       this.onUiSound('select');
+    }
+    if (id === 'copy-link') {
+      this.copyPickerLink(entry, ev && ev.currentTarget);
+      return;
     }
     if (this.screen === 'courses') {
       this.cardSubject = entry.key;

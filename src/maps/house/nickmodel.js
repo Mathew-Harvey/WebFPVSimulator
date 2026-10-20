@@ -11,26 +11,30 @@
  * figure (October 18, set aside for the cut out) is reused but the way it
  * is moved.
  *
- * THE HEAD is the render's. It is a surface of rings whose outline seen
- * from the front is the faces' own outline, row by row (FACE_ROWS, read off
- * the smiling face with a grid over it, the ears left off), and whose
- * profile is the walk view's: the forehead, the nose, the lips and the
- * chin in front, the hair's depth behind. It wears three pictures, each
- * on the part of it that faces the way the picture was drawn from, as a
- * slide is projected on a screen. The front wears a face, straight on, so
- * from the front it is that face exactly: the glasses, the stubble, the
- * grey at the temples, the expression, all the render's. Each side wears
- * the head of the walk view, drawn larger (SIDE), so in profile it is the
- * render's profile: the ear, the arm of the glasses, the hair swept back.
- * The back wears the back of his head, painted when the map is built
- * (paintBack): his salt and pepper hair down to the nape. Where two
- * pictures meet, each side of the line keeps its own copy of the vertex,
- * so no triangle smears one picture across another, and both copies share
- * one normal, so the shading does not show the line. The nose stands out
- * of the face (NOSE), so it has a profile, and the ears are made, wearing
- * the walk view's ear. His head is drawn about 1.3 times a real one, as
- * the render draws it, so a quad across the yard can read his face; the
- * top of his hair is HEAD_TOP over the head bone, which ./nick.js says.
+ * THE HEAD is the render's, shaped toward the man. It is a surface of
+ * rings whose outline seen from the front is the faces' own outline, row
+ * by row (FACE_ROWS, read off the smiling face with a grid over it, the
+ * ears left off), and whose profile is the walk view's: the forehead, the
+ * nose, the lips and the chin in front, the hair's depth behind. Then, on
+ * the owner's ask of 2026-10-19 for a better likeness, three changes
+ * measured against photographs of him: a longer nose, the sides of his
+ * hair cut in over his ears, and a narrower jaw (WARP, TRIM, JAW). They
+ * move the surface and not the pictures on it. It wears four pictures,
+ * each on the part of it that faces the way the picture was drawn from,
+ * as a slide is projected on a screen. The front wears a face, straight
+ * on, so from the front it is that face exactly: the glasses, the stubble,
+ * the silver at the temples, the expression, all the render's. Each side
+ * wears his side, the back the back of his head and the top his crown,
+ * three pictures painted beside the faces on the sheet from the faces' own
+ * colours and the walk view's ear (SIDE_SHEET, BACK_SHEET, TOP_SHEET), so
+ * every view of him is one head of hair over one skin. Where two pictures
+ * meet, each side of the line keeps its own copy of the vertex, so no
+ * triangle smears one picture across another, and both copies share one
+ * normal, so the shading does not show the line. The nose stands out of
+ * the face (NOSE), so it has a profile, and the ears are made, wearing the
+ * walk view's ear. His head is drawn about 1.3 times a real one, as the
+ * render draws it, so a quad across the yard can read his face; the top of
+ * his hair is HEAD_TOP over the head bone, which ./nick.js says.
  *
  * His faces are the six the render drew, packed into one row of the atlas
  * at one framing. ./nickdraw.js picks one by moving the front's texture
@@ -89,14 +93,32 @@ export const FACES = [
 export const FACE = { laugh: 0, frown: 1, cry: 2, shout: 3, sad: 4, smile: 5 };
 
 /*
- * His side, from the same sheet: the head of the walk view the cut out's
- * body was cut from, [x, y, w, h] px of the sheet, facing left, so his
- * left side as he walks; his right is the same drawing seen through the
- * other way, as a mirror shows it. The crown is at row 39 and the chin's
- * underside at SIDE_CHIN, his nose's tip at column SIDE_NOSE; KS real
- * metres of his drawn head to a pixel.
+ * His side and the back of his head: two pictures painted onto the sheet
+ * beside the faces when it was packed (NOTICE), [x, y, w, h] px of it.
+ * They are short hair over and behind his ears thinning to his skin at
+ * the nape, a sideburn, his skin and stubble in the faces' own colours,
+ * the arm of his glasses, and the walk view's ear; every texel is shaded
+ * from the point of this head it lands on, so the side meets the back
+ * without a seam, and for a band behind where the face ends the side is
+ * the face carried on round, so it meets the face without one. The side
+ * is in the frame of the walk view's head, facing left, so his left side;
+ * his right is the same picture seen the other way round, as a mirror
+ * shows it. That frame: the walk view's px from its corner SIDE_SRC,
+ * SIDE.s of the picture's to one, the chin's underside at row SIDE_CHIN
+ * and the nose's tip at column SIDE_NOSE, KS real metres to a px.
  */
-const SIDE_SRC = [60, 30, 140, 110];
+const SIDE_SHEET = [760, 0, 364, 364];
+const BACK_SHEET = [760, 380, 1000, 144];
+/* And the top of his head, the third picture: his crown seen from over
+ * him, from TOP_Z[0] to TOP_Z[1] metres back to front of the head bone
+ * along its width and TOP_X[0] to TOP_X[1] across along its height, over
+ * the faces' row TOP_ROW, so a quad over him sees hair, not the point
+ * where the other pictures meet. */
+const TOP_SHEET = [1140, 0, 320, 144];
+const TOP_Z = [-0.07, 0.17];
+const TOP_X = [-0.09, 0.09];
+const TOP_ROW = 30;
+const SIDE_SRC = [60, 30];
 const SIDE_CHIN = 133;
 const SIDE_NOSE = 102;
 const KS = 0.3 / 94;
@@ -105,8 +127,8 @@ const NOSE_TIP = 0.181;
 /*
  * The atlas his model wears, painted when the map is built
  * (paintNickAtlas): the six faces in a row of tiles, each on a ground of
- * his hair over his skin; his side drawn larger beside them; the back of
- * his head under them, painted; and a white patch that every part but his
+ * his hair over his skin; his side beside them; the back of his head
+ * and his crown under them; and a white patch that every part but his
  * head reads, so its vertex colour is its colour.
  */
 export const AW = 2048;
@@ -115,6 +137,7 @@ const TILE_W = 280;
 const TILE_H = 360;
 const SIDE = { x: 6 * TILE_W, y: 0, s: 2.6 };
 const BACK = { x: 0, y: 368, w: 1000, h: 144 };
+const TOP = { x: 1320, y: 368, w: 320, h: 144 };
 const WHITE = [1200, 410, 96, 80];
 const WU = (WHITE[0] + WHITE[2] / 2) / AW;
 const WV = 1 - (WHITE[1] + WHITE[3] / 2) / AH;
@@ -136,8 +159,8 @@ const INSET = 7;
 const NECK_ROW = 284;
 /* His hair, px of a face, comes down to this row over the ears. */
 const EAR_ROW = 134;
-/* Where a point of his head is read: on a face, on his side, or on the
- * back of his head, by its height and the way round it is. */
+/* Where a point of his head is read: on a face, on his side, on the back
+ * of his head or on its top, by its height and the way round it is. */
 const faceUV = (x, row, hwPx, xc) => [
   (TILE_W / 2 + xc / K + ((x - xc) / K) * (1 - INSET / Math.max(20, hwPx))) / AW,
   1 - Math.min(TILE_H - 4, Math.max(5, row)) / AH,
@@ -146,99 +169,33 @@ const sideUV = (y, z) => [
   (SIDE.x + (SIDE_NOSE + (NOSE_TIP - z) / KS - SIDE_SRC[0]) * SIDE.s) / AW,
   1 - (SIDE.y + (SIDE_CHIN - (y - CHIN) / KS - SIDE_SRC[1]) * SIDE.s) / AH,
 ];
+const topUV = (x, z) => [
+  (TOP.x + ((TOP_Z[1] - z) / (TOP_Z[1] - TOP_Z[0])) * TOP.w) / AW,
+  1 - (TOP.y + ((x - TOP_X[0]) / (TOP_X[1] - TOP_X[0])) * TOP.h) / AH,
+];
 const backUV = (q, row) => [
   (BACK.x + 3 + q * (BACK.w - 6)) / AW,
   1 - (BACK.y + Math.min(TILE_H - 2, Math.max(2, row)) * (BACK.h / TILE_H)) / AH,
 ];
 
 const RGB = {
-  skin: '#eab291',
-  hair: '#5c4e42',
-  hairSide: '#76685e',
-  hairTop: '#4c4036',
-  salt: 'rgba(196, 190, 184, 0.42)',
-  pepper: 'rgba(44, 36, 30, 0.5)',
-  ink: '#241a16',
+  skin: '#e6ad87',
+  hair: '#706459',
+  hairSide: '#98897a',
 };
 
-/* A small seeded generator, so the painted hair is the same every time. */
-function seeded(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/* The nape's hairline, a face's row, across the back of his head from one
- * side drawing's edge (0) to the other (1): where his side shows it there,
- * and a little lower in the middle. */
-const hairline = (q) => 224 + 22 * Math.sin(Math.PI * q);
-
-/* The back of his head: hair over skin, combed down from the crown in
- * strands of salt and pepper, inked along the hairline. */
-function paintBack(ctx) {
-  const { x: x0, y: y0, w, h } = BACK;
-  const k = h / TILE_H;
-  ctx.fillStyle = RGB.skin;
-  ctx.fillRect(x0, y0, w, h);
-  const line = new Path2D();
-  line.moveTo(x0, y0);
-  for (let i = 0; i <= 64; i += 1) {
-    const q = i / 64;
-    line.lineTo(x0 + q * w, y0 + hairline(q) * k);
-  }
-  line.lineTo(x0 + w, y0);
-  line.closePath();
-  ctx.save();
-  ctx.clip(line);
-  const g = ctx.createLinearGradient(0, y0, 0, y0 + 240 * k);
-  g.addColorStop(0, RGB.hairTop);
-  g.addColorStop(0.55, RGB.hair);
-  g.addColorStop(1, RGB.hairSide);
-  ctx.fillStyle = g;
-  ctx.fillRect(x0, y0, w, h);
-  const rnd = seeded(1955);
-  ctx.lineCap = 'round';
-  for (let i = 0; i < 420; i += 1) {
-    const q = rnd();
-    const v = y0 + rnd() * 150 * k;
-    const len = (60 + rnd() * 120) * k;
-    const drift = (0.5 - q) * 40 + (rnd() - 0.5) * 30;
-    const x = x0 + q * w;
-    ctx.strokeStyle = rnd() < 0.45 ? RGB.salt : RGB.pepper;
-    ctx.lineWidth = 0.8 + rnd() * 1.4;
-    ctx.beginPath();
-    ctx.moveTo(x, v);
-    ctx.quadraticCurveTo(x + drift * 0.3, v + len * 0.5, x + drift, v + len);
-    ctx.stroke();
-  }
-  ctx.restore();
-  ctx.strokeStyle = RGB.ink;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  for (let i = 0; i <= 64; i += 1) {
-    const q = i / 64;
-    if (i === 0) {
-      ctx.moveTo(x0 + q * w, y0 + hairline(q) * k);
-    } else {
-      ctx.lineTo(x0 + q * w, y0 + hairline(q) * k);
-    }
-  }
-  ctx.stroke();
-}
+/* Without the sheet, his side and the back of his head are hair down to
+ * these rows of a face and skin under them, and his crown is hair. */
+const SIDE_HAIR_TO = 134;
+const BACK_HAIR_TO = 220;
 
 /*
- * The atlas, onto `canvas` (AW by AH), from the render's sheet `sheet` (an
- * image, or null while it loads, when the faces and his side are left
- * blank). Each face is laid on its tile's middle with its crown on the top
- * edge, on a ground of hair to EAR_ROW and skin under it, and its rows from
- * NECK_ROW down are painted skin, the neck under the model's own collar.
- * His side is drawn SIDE.s times larger, its collar and shoulder painted
- * over with the neck's skin.
+ * The atlas, onto `canvas` (AW by AH), from the sheet `sheet` (an image,
+ * or null while it loads, when there are no faces and his side and back
+ * are plain hair over skin). Each face is laid on its tile's middle with
+ * its crown on the top edge, on a ground of hair to EAR_ROW and skin under
+ * it, and its rows from NECK_ROW down are painted skin, the neck under the
+ * model's own collar.
  */
 export function paintNickAtlas(canvas, sheet) {
   const ctx = canvas.getContext('2d');
@@ -257,21 +214,20 @@ export function paintNickAtlas(canvas, sheet) {
     ctx.fillStyle = RGB.skin;
     ctx.fillRect(x0, NECK_ROW, TILE_W, TILE_H - NECK_ROW);
   }
-  const [sx, sy, sw, sh] = SIDE_SRC;
-  const at = (x, y) => [SIDE.x + (x - sx) * SIDE.s, SIDE.y + (y - sy) * SIDE.s];
+  const sideW = SIDE_SHEET[2];
+  const sideTo = 1 - sideUV(CHIN + (270 - SIDE_HAIR_TO) * K, 0)[1];
+  ctx.fillStyle = RGB.skin;
+  ctx.fillRect(SIDE.x, SIDE.y, sideW, AH - SIDE.y);
+  ctx.fillRect(BACK.x, BACK.y, BACK.w, BACK.h);
   ctx.fillStyle = RGB.hair;
-  ctx.fillRect(...at(sx, sy), sw * SIDE.s, (117 - sy) * SIDE.s);
-  ctx.fillStyle = RGB.skin;
-  ctx.fillRect(...at(sx, 117), sw * SIDE.s, (sy + sh - 117) * SIDE.s);
+  ctx.fillRect(SIDE.x, SIDE.y, sideW, sideTo * AH - SIDE.y);
+  ctx.fillRect(BACK.x, BACK.y, BACK.w, (BACK_HAIR_TO * BACK.h) / TILE_H);
+  ctx.fillRect(TOP.x, TOP.y, TOP.w, TOP.h);
   if (sheet) {
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(sheet, sx, sy, sw, sh, ...at(sx, sy), sw * SIDE.s, sh * SIDE.s);
+    ctx.drawImage(sheet, ...SIDE_SHEET, SIDE.x, SIDE.y, SIDE_SHEET[2], SIDE_SHEET[3]);
+    ctx.drawImage(sheet, ...BACK_SHEET, BACK.x, BACK.y, BACK.w, BACK.h);
+    ctx.drawImage(sheet, ...TOP_SHEET, TOP.x, TOP.y, TOP.w, TOP.h);
   }
-  ctx.fillStyle = RGB.skin;
-  ctx.fillRect(...at(sx, SIDE_CHIN + 1), sw * SIDE.s, AH);
-  ctx.fillRect(...at(158, 125), (sx + sw - 158) * SIDE.s, AH);
-  ctx.fillRect(...at(170, 113), (sx + sw - 170) * SIDE.s, AH);
-  paintBack(ctx);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(...WHITE);
 }
@@ -304,39 +260,41 @@ const C = {
 
 /*
  * Rows down his head, each [row, half width, middle, front, back, widest,
- * squareness in front, behind]. `row` is the faces' pixel row (crown 0,
- * chin 270), and the half width and the middle are px of the smiling face
- * read off its outline: hair down to the ears, then the face's own edge
- * under them, then the neck. Front, back and where he is widest are real
+ * squareness in front, behind, half width behind his ears]. `row` is the
+ * faces' pixel row (crown 0, chin 270), and the half widths and the middle
+ * are px of the smiling face read off its outline: hair down to the ears,
+ * then the face's own edge under them, then the neck. Front, back and where he is widest are real
  * metres along the way he faces from the head bone, read off the walk
  * view's profile at the same height: the hair's quiff over the forehead,
  * the face behind the nose, the lips, the chin and the throat under it,
  * and the back of the hair. The squareness flattens his face where it is
- * over 2 and narrows his chin where it is under.
+ * over 2 and narrows his chin where it is under. Behind his ears his head
+ * keeps the width his hair has over them a little way down, where his
+ * face's own outline steps in, so the back of his head has no waist.
  */
 const FACE_ROWS = [
-  [4, 32, 133, 0.111, -0.013, 0.05, 2, 2],
-  [10, 40.5, 134.5, 0.127, -0.025, 0.05, 2, 2],
-  [20, 57.5, 128.5, 0.148, -0.043, 0.045, 2, 2],
-  [30, 70, 127, 0.157, -0.057, 0.04, 2, 2],
-  [45, 84.5, 130.5, 0.164, -0.077, 0.035, 2.1, 2],
-  [65, 93.5, 130.75, 0.161, -0.087, 0.03, 2.2, 2],
-  [90, 97.5, 129.5, 0.153, -0.093, 0.03, 2.3, 2],
-  [110, 94.5, 129.5, 0.156, -0.096, 0.03, 2.5, 2],
-  [128, 92, 129.5, 0.158, -0.091, 0.03, 2.6, 2],
-  [136, 78, 132, 0.158, -0.089, 0.025, 2.6, 2],
-  [150, 73, 133, 0.157, -0.084, 0.02, 2.6, 2],
-  [170, 72, 132.5, 0.156, -0.074, 0.02, 2.6, 2],
-  [190, 72, 133, 0.156, -0.061, 0.025, 2.4, 2],
-  [210, 68.5, 130.5, 0.156, -0.049, 0.03, 2.2, 2],
-  [230, 62, 130, 0.152, -0.042, 0.035, 1.9, 2],
-  [250, 61, 130, 0.149, -0.046, 0.03, 1.6, 2],
-  [263, 61, 131, 0.141, -0.054, 0.025, 1.5, 2],
-  [272, 60.5, 131, 0.118, -0.06, 0.02, 1.7, 2],
-  [282, 59.5, 131, 0.088, -0.062, 0.01, 2, 2],
-  [305, 58.5, 131, 0.074, -0.064, 0.005, 2, 2],
-  [337.5, 57.5, 133, 0.066, -0.066, 0, 2, 2],
-  [372, 54, 133, 0.06, -0.06, 0, 2, 2],
+  [4, 32, 133, 0.111, -0.013, 0.05, 2, 2, 32],
+  [10, 40.5, 134.5, 0.127, -0.025, 0.05, 2, 2, 40.5],
+  [20, 57.5, 128.5, 0.148, -0.043, 0.045, 2, 2, 57.5],
+  [30, 70, 127, 0.157, -0.057, 0.04, 2, 2, 70],
+  [45, 84.5, 130.5, 0.164, -0.077, 0.035, 2.1, 2, 84.5],
+  [65, 93.5, 130.75, 0.161, -0.087, 0.03, 2.2, 2, 93.5],
+  [90, 97.5, 129.5, 0.153, -0.093, 0.03, 2.3, 2, 97.5],
+  [110, 94.5, 129.5, 0.156, -0.096, 0.03, 2.5, 2, 94.5],
+  [128, 92, 129.5, 0.158, -0.091, 0.03, 2.6, 2, 92],
+  [136, 78, 132, 0.158, -0.089, 0.025, 2.6, 2, 90],
+  [150, 73, 133, 0.157, -0.084, 0.02, 2.6, 2, 86],
+  [170, 72, 132.5, 0.156, -0.074, 0.02, 2.6, 2, 80],
+  [190, 72, 133, 0.156, -0.061, 0.025, 2.4, 2, 74],
+  [210, 68.5, 130.5, 0.156, -0.049, 0.03, 2.2, 2, 69],
+  [230, 62, 130, 0.152, -0.042, 0.035, 1.9, 2, 62],
+  [250, 61, 130, 0.149, -0.046, 0.03, 1.6, 2, 61],
+  [263, 61, 131, 0.141, -0.054, 0.025, 1.5, 2, 61],
+  [272, 60.5, 131, 0.118, -0.06, 0.02, 1.7, 2, 60.5],
+  [282, 59.5, 131, 0.088, -0.062, 0.01, 2, 2, 59.5],
+  [305, 58.5, 131, 0.074, -0.064, 0.005, 2, 2, 58.5],
+  [337.5, 57.5, 133, 0.066, -0.066, 0, 2, 2, 57.5],
+  [372, 54, 133, 0.06, -0.06, 0, 2, 2, 54],
 ];
 /* Rings between two rows: more over the face, where the nose is. */
 const ROW_STEPS = FACE_ROWS.map(([row]) => (row >= 128 && row < 282 ? 3 : 2));
@@ -391,17 +349,80 @@ function headRow(t) {
   });
 }
 
+/*
+ * Nick beside the render (the owner, 2026-10-19: "do a critical review of
+ * our model Vs the reference photos and iterate the model"). Measured on
+ * photos of him, his face is the render's but for three things, and the
+ * model is shaped to his where the two differ, while it goes on wearing
+ * the render's picture where the render drew it:
+ *
+ * his nose is longer, his eyes to the bottom of his nose about a fifth of
+ * crown to chin where the render's are 0.17, so the rows from the eyes to
+ * the nose stand 1.15 times taller and the rows over and under give it
+ * back, the crown and the chin where they were (WARP: a face's row, then
+ * where the model puts it). Whatever reads the drawing reads it at the
+ * row it was drawn at, so the picture stretches with the shape;
+ *
+ * his hair is cut short at the sides, the head across the temples about
+ * 0.65 of crown to chin where the render's hair is 0.74, so over the ears
+ * the hair outside his face's own width (TRIM_PX either side of its
+ * middle) is drawn TRIM as wide, his face inside it untouched;
+ *
+ * and his jaw narrows to his chin, where the render draws it square: from
+ * the cheeks down to the chin the face outside JAW_PX of its middle is
+ * drawn in, to JAW of its width at the chin, his mouth inside it
+ * untouched, and back out to the neck under it.
+ */
+const WARP = [[0, 0], [137, 133.5], [183, 186.4], [265, 265]];
+const TRIM_PX = 70;
+const TRIM = 0.73;
+const TRIM_ROWS = [120, 140];
+const JAW_PX = 40;
+const JAW = 0.65;
+const JAW_ROWS = [195, 250, 265, 285];
+/* How far his ears turn out from his head, radians: as much as his do in a
+ * photo straight on (0.45 stood out like wings). */
+const EAR_TURN = 0.3;
+function warpRow(row, from = 0, to = 1) {
+  for (let i = 1; i < WARP.length; i += 1) {
+    if (row <= WARP[i][from] || i === WARP.length - 1) {
+      const a = WARP[i - 1];
+      const b = WARP[i];
+      return row <= b[from] ? a[to] + ((row - a[from]) * (b[to] - a[to])) / (b[from] - a[from]) : row;
+    }
+  }
+  return row;
+}
+/* The height over the head bone the model puts a face's row at, and the
+ * height in the drawing a point of the model reads. */
+const shapedY = (row) => (Y0 - warpRow(row)) * K;
+const drawnY = (y) => (Y0 - warpRow(Y0 - y / K, 1, 0)) * K;
+/* A point dx metres across from the face's middle, at a face's row, as
+ * the model has it: the hair over his ears and his jaw drawn in. */
+const ramp = (v, a, b) => Math.min(1, Math.max(0, (v - a) / (b - a)));
+function trimX(dx, row) {
+  const [j0, j1, j2, j3] = JAW_ROWS;
+  const hair = row < TRIM_ROWS[1];
+  const r = hair
+    ? TRIM + (1 - TRIM) * ramp(row, TRIM_ROWS[0], TRIM_ROWS[1])
+    : 1 - (1 - JAW) * ramp(row, j0, j1) * (1 - ramp(row, j2, j3));
+  const c = (hair ? TRIM_PX : JAW_PX) * K;
+  const a = Math.abs(dx);
+  return a <= c ? dx : Math.sign(dx) * (c + (a - c) * r);
+}
+
 const pw = (v, e) => Math.sign(v) * Math.abs(v) ** e;
 
-/* A point of a ring: half width hw about xc, front zf, back zb, widest at
- * zm, at angle a round from the front toward his left. */
-function ringPoint(a, hw, xc, zf, zb, zm, pf, pb) {
+/* A point of a ring: half width hw about xc (hb behind his ears), front
+ * zf, back zb, widest at zm, at angle a round from the front toward his
+ * left. A ring with no hb, the tee's, is as wide behind as at zm. */
+function ringPoint(a, hw, xc, zf, zb, zm, pf, pb, hb = hw) {
   const s = Math.sin(a);
   const c = Math.cos(a);
   if (c >= 0) {
     return [xc + hw * pw(s, 2 / pf), zm + (zf - zm) * c ** (2 / pf)];
   }
-  return [xc + hw * pw(s, 2 / pb), zm - (zm - zb) * (-c) ** (2 / pb)];
+  return [xc + (hw + (hb - hw) * Math.sqrt(-c)) * pw(s, 2 / pb), zm - (zm - zb) * (-c) ** (2 / pb)];
 }
 
 /* ------------------------------------------------------------------ */
@@ -645,37 +666,55 @@ export function nickModel() {
   /* A point of his head read as `r` says. */
   const headUV = (r, g) => {
     if (r === 'front') {
-      return faceUV(g.x, g.row, g.hwPx, g.xc);
+      return faceUV(g.xd, g.row, g.hwPx, g.xc);
     }
     if (r === 'side') {
-      return sideUV(g.y, g.z);
+      return sideUV(g.yd, g.z);
+    }
+    if (r === 'top') {
+      return topUV(g.xd, g.z);
     }
     const a = g.a < 0 ? g.a + 2 * Math.PI : g.a;
     return backUV((a - T2) / (2 * Math.PI - 2 * T2), g.row);
   };
   const grid = ts.map((t) => {
-    const [row, hwPx, xcPx, zf, zb, zm, pf, pb] = headRow(t);
-    const y = (Y0 - row) * K;
+    const [row, hwPx, xcPx, zf, zb, zm, pf, pb, hbPx] = headRow(t);
+    /* yd and xd are where the drawing has the point, y and x where the
+     * model puts it. */
+    const yd = (Y0 - row) * K;
+    const y = shapedY(row);
     const hw = hwPx * K;
     const xc = (xcPx - 133) * K;
-    const nose = lerpRows(NOSE, y);
+    const nose = lerpRows(NOSE, yd);
     return angles.map((a) => {
-      const [x, z] = ringPoint(a, hw, xc, zf, zb, zm, pf, pb);
+      const [xd, z] = ringPoint(a, hw, xc, zf, zb, zm, pf, pb, hbPx * K);
       let dz = 0;
       if (Math.cos(a) > 0) {
-        dz = nose[0] * Math.exp(-0.5 * ((x / nose[1]) ** 2));
+        dz = nose[0] * Math.exp(-0.5 * ((xd / nose[1]) ** 2));
         /* The lips, a little full, at row 210. */
-        dz += 0.004 * Math.exp(-0.5 * ((x / 0.024) ** 2)) * Math.exp(-0.5 * (((y - 0.142) / 0.007) ** 2));
+        dz += 0.004 * Math.exp(-0.5 * ((xd / 0.024) ** 2)) * Math.exp(-0.5 * (((yd - 0.142) / 0.007) ** 2));
       }
-      return { x, y, z: z + dz, a, row, hwPx, xc };
+      return { x: xc + trimX(xd - xc, row), xd, y, yd, z: z + dz, a, row, hwPx, xc };
     });
   });
+  /* The rings over TOP_ROW wear the top of his head, the rest the picture
+   * of their way round. */
+  const topT = FACE_ROWS.findIndex(([row]) => row === TOP_ROW);
+  const bandOf = (r, j) => (ts[r] < topT ? 'top' : region[j]);
   /* Each point once for each picture whose triangles meet at it, so no
    * triangle reads across two; the front's are the ones a face changes. */
-  const ids = grid.map((row) => row.map((g, j) => {
+  const ids = grid.map((row, i) => row.map((g, j) => {
     const own = {};
     const p = [hx0 + g.x, hy0 + g.y, hz0 + g.z];
-    for (const r of new Set([region[j], region[(j + cols - 1) % cols]])) {
+    const meet = new Set();
+    if (ts[i] <= topT) {
+      meet.add('top');
+    }
+    if (ts[i] >= topT) {
+      meet.add(region[j]);
+      meet.add(region[(j + cols - 1) % cols]);
+    }
+    for (const r of meet) {
       own[r] = vert(p, C.white, H, ...headUV(r, g));
       if (r === 'front') {
         faceVerts.push(own[r]);
@@ -692,35 +731,40 @@ export function nickModel() {
     for (let r = 0; r + 1 < grid.length; r += 1) {
       for (let j = 0; j < cols; j += 1) {
         const k = (j + 1) % cols;
-        const q = region[j];
+        const q = bandOf(r, j);
         idx.push(ids[r][j][q], ids[r + 1][j][q], ids[r][k][q], ids[r][k][q], ids[r + 1][j][q], ids[r + 1][k][q]);
       }
     }
-    /* The crown and the bottom of the neck, closed to a point, once for
-     * each picture. */
+    /* The crown and the bottom of the neck, closed to a point, the neck
+     * once for each picture round it. */
     const mid = (row, dy) => {
       let x = 0;
+      let xd = 0;
       let z = 0;
       for (const g of row) {
         x += g.x;
+        xd += g.xd;
         z += g.z;
       }
-      return { x: x / row.length, y: row[0].y + dy, z: z / row.length, a: 0, row: row[0].row, hwPx: 40, xc: 0 };
+      const n = row.length;
+      return { x: x / n, xd: xd / n, y: row[0].y + dy, yd: row[0].yd + dy, z: z / n, a: 0, row: row[0].row, hwPx: 40, xc: 0 };
     };
     const last = grid.length - 1;
     for (const [g, r0, flip] of [[mid(grid[0], 0.005), 0, false], [mid(grid[last], -0.004), last, true]]) {
       const own = {};
-      for (const r of ['front', 'side', 'back']) {
+      for (const r of r0 === 0 ? ['top'] : ['front', 'side', 'back']) {
         const at = { ...g, a: r === 'back' ? Math.PI : 0 };
         own[r] = vert([hx0 + g.x, hy0 + g.y, hz0 + g.z], C.white, H, ...headUV(r, at));
         if (r === 'front') {
           faceVerts.push(own[r]);
         }
       }
-      seams.push(Object.values(own));
+      if (r0 !== 0) {
+        seams.push(Object.values(own));
+      }
       for (let j = 0; j < cols; j += 1) {
         const k = (j + 1) % cols;
-        const q = region[j];
+        const q = bandOf(r0, j);
         if (flip) {
           idx.push(own[q], ids[r0][k][q], ids[r0][j][q]);
         } else {
@@ -732,10 +776,11 @@ export function nickModel() {
   }
 
   /* His ears, standing a little out from the side of his head where his
-   * side drawing has them, and wearing that drawing. */
+   * side drawing has them, and wearing that drawing, turned EAR_TURN
+   * forward from flat to his head. */
   for (const side of [1, -1]) {
     ball(H, [hx0 + 0.092 * side, hy0 + 0.193, hz0 + 0.005], [0.011, 0.038, 0.02], C.white, 8, 12,
-      [0, -0.45 * side, 0.1 * side], (p) => sideUV(p[1] - hy0, p[2] - hz0));
+      [0, -EAR_TURN * side, 0.1 * side], (p) => sideUV(drawnY(p[1] - hy0), p[2] - hz0));
   }
 
   /* -------------------------------------------------------------- */

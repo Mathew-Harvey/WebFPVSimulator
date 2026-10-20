@@ -168,9 +168,14 @@ legs (the far leg's shaded darker), and packed with the six faces into one
 2048 by 1024 atlas, the generator's mark left off. Since the owner asked
 for him in 3D on 2026-10-19, the map builds his model from its own
 geometry and paints the model's texture from this sheet when the map is
-built: the six faces on the front of his head, the head of that side view
-on each side of it, and a face in his speech balloon. The leg pieces are
-no longer drawn. `nb-sticker.webp` is Nick Burns' NB logo as the owner
+built: the six faces on the front of his head and a face in his speech
+balloon. The leg pieces are no longer drawn. Since the owner asked on
+2026-10-19 for a better likeness, the faces' hair is recoloured toward his
+own salt and pepper, silver at the temples, and their brows lightened; and
+three more pictures are painted onto the sheet beside them, the side, the
+back and the top of his head, shaded from the faces' own colours, with the
+ear of that side view, so the model wears them where it wore that side
+view's head. `nb-sticker.webp` is Nick Burns' NB logo as the owner
 supplied it on 2026-10-18, a 2048 px JPEG on white, cut from the white and
 set on a die cut white border, 512 px. Both are in this repository only so that
 src/maps/house/ can draw them on that one map. The project's GPLv3 grant

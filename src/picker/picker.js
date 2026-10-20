@@ -89,11 +89,11 @@ export const PICKER_SHELVES = [
     title: [['Freestyle ', 'cream'], ['maps', 'sakura']], tab: [['Maps', 'sakura']],
   },
   {
-    id: 'five', label: '5 inch tracks', note: 'Race tracks on the sixty metre field', word: 'tracks', ink: 'mint',
+    id: 'five', label: '5 inch tracks', note: 'Race tracks for a 5 inch', word: 'tracks', ink: 'mint',
     title: [['Five inch ', 'mint'], ['tracks', 'cream']], tab: [['Five inch', 'mint']],
   },
   {
-    id: 'whoop', label: 'Whoop tracks', note: '65 mm whoop rooms', word: 'tracks', ink: 'cream',
+    id: 'whoop', label: 'Whoop tracks', note: 'Race tracks for a whoop', word: 'tracks', ink: 'cream',
     title: [['Whoop ', 'cream'], ['tracks', 'sakura']], tab: [['Whoop', 'cream']],
   },
 ];
@@ -157,7 +157,7 @@ export function entriesFrom({
       when: '',
       thumb: w.thumb || '',
       fallback: '',
-      facts: w.facts || ['Ships with the simulator'],
+      facts: w.facts || [],
       item: w,
     });
   }
@@ -180,8 +180,10 @@ export function entriesFrom({
       when: m.publishedUtc || '',
       thumb: m.hasThumb ? pictureUrl(m.board || board, 'maps', m.id, 'thumb', m.thumbUtc) : '',
       fallback: m.hasCard ? pictureUrl(m.board || board, 'maps', m.id, 'card', m.cardUtc) : '',
+      /* What a pilot flies it for, and nothing about how it was built: the
+       * piece count came off on the owner's word of 2026-10-20, "people
+       * don't need to know the dev tricks". */
       facts: [
-        m.pieces ? `${m.pieces} piece${m.pieces === 1 ? '' : 's'}` : '',
         m.gaps ? `${m.gaps} gap${m.gaps === 1 ? '' : 's'}` : '',
       ].filter(Boolean),
       item: m,

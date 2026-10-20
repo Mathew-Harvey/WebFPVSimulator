@@ -71123,3 +71123,11 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Latency: none, a click handler on a menu button; nothing in flight or the input path changes. Checked by reading the diff only.
 - Checked: `node --check src/ui/ui.js`, `lint:nouns` pass. `lint:shell` prints overflow growth lines that this change cannot cause (no layout it touches); not investigated. Not run: shots, `lint:responsive`, `npm run verify`. Four buttons in a phone caption (nowrap, 12 px) is the thing to look at.
 - Approval: the owner wrote "push to main" at 10:28:00Z on 2026-10-20 in the copy link thread, after draft PRs 98 (this repository) and 28 (the board), with their latency (none) and with not having been flown or shot. Pushed fast-forward, board first.
+
+## 2026-10-20 | picker | The map picker stops telling pilots how things were built (draft PR)
+
+- Ask: the owner, 10:37:41Z on 2026-10-20 in the project chat, relayed to the Map picker redesign thread: "remove the stuff in the map picker about the scale, etc, people don't need to know the dev tricks".
+- Removed from the picker (`src/picker/picker.js`, vendored to the board): a map's piece count in its caption ("38 pieces"); "Ships with the simulator" on a shipped world; the shelf tooltips "Race tracks on the sixty metre field" and "65 mm whoop rooms", now "Race tracks for a 5 inch" and "Race tracks for a whoop". Nick Burns' house's note no longer says three and a half times life size and why: "Nick Burns' house, flown on a whoop: every room, the stairs, the garage, the pergola, the pool and the street." (`src/maps/registry.js`, and the board's own copy of the line in `pickerWorlds`). Kept: names, pictures, kind, author, gate and gap counts, the record and the stars, and every button.
+- Left alone: the Aircraft row in Settings still says a sixty metre field and a living room, and code comments say MICRO_SCALE times life size; neither is the picker.
+- Latency: none, words in a menu.
+- Checked: see the board PR; the picker looked at with `scripts/shots.js`-style headless shots of the Maps shelf. Not run: `npm run verify` (no physics, plant, ABI or build change).

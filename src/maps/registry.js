@@ -91,7 +91,7 @@ export const MAPS = [
     id: 'house',
     name: "Nick Burns' house",
     mode: 'freestyle',
-    note: "Nick Burns' house at three and a half times life size, so a five inch flies it like a whoop flies a real one, and you fly it as a whoop: every room, the stairs, the garage, the pergola, the pool and the street.",
+    note: "Nick Burns' house, flown on a whoop: every room, the stairs, the garage, the pergola, the pool and the street.",
     buildMs: MAP_BUILD_MS.house,
     /* Drawn as the whoop, the five inch's physics under it: the owner's ask
      * of 18 October 2026, "for just this map, lets introduce a new quad.

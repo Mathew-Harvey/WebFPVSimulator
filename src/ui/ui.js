@@ -4778,7 +4778,7 @@ const WAYS = [
      * anyway: the plan mark over the picture is the five inch's. Three
      * words that fit one line on a landscape phone, where the blurb is
      * hidden and these are the whole of the card. */
-    facts: ['No gates', 'No clock', 'Build a map'],
+    facts: ['No gates', 'No clock', 'Town, maps'],
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 

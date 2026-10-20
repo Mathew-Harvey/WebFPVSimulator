@@ -153,7 +153,7 @@ copied byte for byte, and this entry covers them there too.
 
     Files       assets/stickers/infinityloops/sheet-1.webp and sheet-2.webp
     Licence     NOT GPLv3. Each sticker is its maker's mark, shown as a
-                tribute on one map at the owner's request.
+                tribute on two maps at the owner's request.
 
 The owner's own 90%ers sticker bomb sheet, photographed and given on
 2026-10-15 for a tribute map to the 90%ers on the board's Infinity Loops map
@@ -161,8 +161,13 @@ The owner's own 90%ers sticker bomb sheet, photographed and given on
 were cut out of the photograph and packed onto these two sheets, 2048 px
 wide, as webp. They are the two sticker logos the board's copy of that map
 carries, byte for byte, and are in this repository only so that
-src/maps/specials.js can paint them on that map whatever copy of it is flown.
-The project's GPLv3 grant does not extend to them.
+src/maps/specials.js can paint them on that map whatever copy of it is flown,
+and so that src/maps/heads/ can paint them on Heads' house, the second map,
+at the owner's ask of 2026-10-20: "make it an official map, ensure the
+sponsors logos are all over it, and also infinity loops and 90%er logos".
+There the Infinity Loops logos and the 90% patch are painted round the house
+and the street, and the 90%ers' own stickers cover the sticker wall in the
+garage. The project's GPLv3 grant does not extend to them.
 
 ## Nick Burns' house: his manga render and his logo
 

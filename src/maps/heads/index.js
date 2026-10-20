@@ -19,11 +19,14 @@
  *            their size; their solids are the same parts scaled the same
  *            way (./heads.js), drawn nowhere.
  *
- * And, on top, the PRINTS: the Infinity Loops banner, the sticker wall,
- * the WIDE TURNS sign and the flag in the garage, painted on one canvas
- * here and laid on their walls as four quads in one mesh. The banner's
- * lettering is drawn here, not copied from Heads' artwork, and the
- * stickers are made up, not his.
+ * And, on top, the LOGOS (./logos.js says where and why): every roster
+ * brand's sign hung once and found as on any freestyle map, the same signs
+ * and the Infinity Loops logos and the 90% patch painted all over the
+ * street, the fence, the walls and the rooms, and ten 90% patches to be
+ * found, the achievement "90%er". With them the garage's four prints: the
+ * Infinity Loops banner, the sticker wall, bombed with the 90%ers' own
+ * stickers, the WIDE TURNS sign and the flag. All of it is painted on one
+ * canvas here, the atlas, and laid as quads in two meshes.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -46,6 +49,13 @@ import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import { headsLayout, basementFloorAt, BASEMENT_HOLE, FRAME, worldAt, PRINTS } from './heads.js';
 import { headsDocument } from './yard.js';
+import {
+  BRANDS, SHEETS, SHEET_PX, ACHIEVEMENT, IL_LOGO, IL_OUTLINE, PATCH, WALL_STICKERS,
+  ATLAS_W, ATLAS_H, CELLS, placeSigns, placeDecals, placePatches,
+} from './logos.js';
+import { partnerSignReady } from '../../art/partnermark.js';
+import { paintMaterial } from '../../art/stf.js';
+import { stfKey } from '../built/egg.js';
 import { INK_COLOR } from '../../render/comic.js';
 
 const CHUNK = 'extra';
@@ -215,17 +225,8 @@ function openGround(scene, name, rect) {
 }
 
 /* ------------------------------------------------------------------ */
-/* The prints                                                          */
+/* The logos and the prints                                            */
 /* ------------------------------------------------------------------ */
-
-/* Where each print is on the canvas, in pixels: x, y (down), w, h. */
-const ATLAS = 1024;
-const CELLS = {
-  banner: [0, 0, 1024, 256],
-  stickers: [0, 256, 1024, 512],
-  sign: [0, 768, 512, 128],
-  flag: [512, 768, 512, 256],
-};
 
 /* A small seeded stream, so the sticker wall is the same every build. */
 function stream(seed) {
@@ -238,15 +239,50 @@ function stream(seed) {
   };
 }
 
-function paintAtlas() {
+/* A sheet as a decoded picture, or null when it does not come: the logos
+ * cut from it are then left out and the rest of the map flies. */
+function loadSheet(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => {
+      console.warn(`heads: ${url} did not load; the logos cut from it are left off`);
+      resolve(null);
+    };
+    img.src = url;
+  });
+}
+
+/*
+ * The atlas (CELLS in ./logos.js) painted: the roster's signs copied from
+ * their own canvases (src/art/partnermark.js), the Infinity Loops logos
+ * and the 90% patch cut from the 90%ers' sheets, and the garage's four
+ * prints. The banner is the Infinity Loops logo on its dark board with
+ * the red and white stripes at its end; the sticker wall is the 90%ers'
+ * own stickers, every one, bombed over the board with two patches and the
+ * logo on top.
+ */
+function paintAtlas(sheets, signs) {
   const c = document.createElement('canvas');
-  c.width = ATLAS;
-  c.height = ATLAS;
+  c.width = ATLAS_W;
+  c.height = ATLAS_H;
   const g = c.getContext('2d');
-  /* The banner: dark, red and white stripes at its end, the name in red
-   * edged white. */
+  g.imageSmoothingQuality = 'high';
+  /* A crop of a sheet into a box, or nothing when its sheet did not come. */
+  const cut = (cr, x, y, w, h) => {
+    const img = sheets[cr.sheet];
+    if (!img) {
+      return false;
+    }
+    const W = img.naturalWidth;
+    const H = img.naturalHeight;
+    g.drawImage(img, cr.x * W, cr.y * H, cr.w * W, cr.h * H, x, y, w, h);
+    return true;
+  };
+  const aspect = (cr) => (cr.w * SHEET_PX[cr.sheet][0]) / (cr.h * SHEET_PX[cr.sheet][1]);
+  /* The banner. */
   {
-    const [x, y, w, h] = CELLS.banner;
+    const { x, y, w, h } = CELLS.banner;
     g.fillStyle = '#141a2e';
     g.fillRect(x, y, w, h);
     g.save();
@@ -262,19 +298,23 @@ function paintAtlas() {
     g.restore();
     g.fillStyle = '#141a2e';
     g.fillRect(x, y, w * 0.78, h);
-    g.font = 'italic bold 104px Georgia, "Times New Roman", serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.lineWidth = 12;
-    g.strokeStyle = '#f4f4f4';
-    g.fillStyle = '#d42a33';
-    g.strokeText('Infinity Loops', x + w * 0.39, y + h * 0.52);
-    g.fillText('Infinity Loops', x + w * 0.39, y + h * 0.52);
+    const lh = h * 0.86;
+    const lw = lh * aspect(IL_LOGO);
+    if (!cut(IL_LOGO, x + (w * 0.78 - lw) / 2, y + (h - lh) / 2, lw, lh)) {
+      g.font = 'italic bold 104px Georgia, "Times New Roman", serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.lineWidth = 12;
+      g.strokeStyle = '#f4f4f4';
+      g.fillStyle = '#d42a33';
+      g.strokeText('Infinity Loops', x + w * 0.39, y + h * 0.52);
+      g.fillText('Infinity Loops', x + w * 0.39, y + h * 0.52);
+    }
   }
-  /* The sticker wall: three hundred stickers, round and square, words
-   * on some. Made up here. */
+  /* The sticker wall: the 90%ers' stickers in a shuffled, jittered grid,
+   * each turned and overlapping the next, then two patches and the logo. */
   {
-    const [x, y, w, h] = CELLS.stickers;
+    const { x, y, w, h } = CELLS.stickers;
     const r = stream(23);
     g.fillStyle = '#2b2d33';
     g.fillRect(x, y, w, h);
@@ -282,56 +322,46 @@ function paintAtlas() {
     g.beginPath();
     g.rect(x, y, w, h);
     g.clip();
-    const cols = ['#e63b2e', '#f2c230', '#2fa4e7', '#38c172', '#9b59d0', '#ff7a1a', '#f5f5f5', '#ff4fa3', '#1d1d1d', '#21c7c7'];
-    const words = ['FPV', 'SEND IT', '90%', 'LOOPS', 'WHOOP', 'RIP', 'AIR', 'TINY', 'GO FLY', 'BIND', 'ARM', 'PROPS ON', 'DVR'];
-    for (let i = 0; i < 320; i += 1) {
+    const order = WALL_STICKERS.map((s) => ({ s, k: r() })).sort((a, b) => a.k - b.k).map((o) => o.s);
+    const cols = 14;
+    const rows = Math.ceil(order.length / cols);
+    const put = (cr, cx, cy, size, turn) => {
+      const a = aspect(cr);
+      const sw = a >= 1 ? size : size * a;
+      const sh = a >= 1 ? size / a : size;
       g.save();
-      g.translate(x + r() * w, y + r() * h);
-      g.rotate((r() - 0.5) * 1.2);
-      const s = 18 + r() * 46;
-      const col = cols[(r() * cols.length) | 0];
-      g.fillStyle = '#ffffff';
-      if (r() < 0.35) {
-        g.beginPath();
-        g.arc(0, 0, s * 0.62, 0, Math.PI * 2);
-        g.fill();
-        g.fillStyle = col;
-        g.beginPath();
-        g.arc(0, 0, s * 0.54, 0, Math.PI * 2);
-        g.fill();
-      } else {
-        g.fillRect(-s * 0.8, -s * 0.42, s * 1.6, s * 0.84);
-        g.fillStyle = col;
-        g.fillRect(-s * 0.74, -s * 0.36, s * 1.48, s * 0.72);
-      }
-      if (r() < 0.6) {
-        g.fillStyle = col === '#f5f5f5' || col === '#f2c230' ? '#1d1d1d' : '#ffffff';
-        g.font = `bold ${(s * 0.32) | 0}px system-ui, sans-serif`;
-        g.textAlign = 'center';
-        g.textBaseline = 'middle';
-        g.fillText(words[(r() * words.length) | 0], 0, 0, s * 1.4);
-      }
+      g.translate(cx, cy);
+      g.rotate(turn);
+      cut(cr, -sw / 2, -sh / 2, sw, sh);
       g.restore();
-    }
+    };
+    order.forEach((s, i) => {
+      const cx = x + ((i % cols) + 0.5 + (r() - 0.5) * 0.5) * (w / cols);
+      const cy = y + (Math.floor(i / cols) + 0.5 + (r() - 0.5) * 0.5) * (h / rows);
+      put(s, cx, cy, 78 + r() * 16, (r() - 0.5) * 0.9);
+    });
+    put(PATCH, x + w * 0.22, y + h * 0.62, 118, -0.2);
+    put(PATCH, x + w * 0.83, y + h * 0.3, 104, 0.25);
+    put(IL_LOGO, x + w * 0.52, y + h * 0.45, 190, -0.08);
     g.restore();
   }
   /* The yellow WIDE TURNS sign. */
   {
-    const [x, y, w, h] = CELLS.sign;
+    const { x, y, w, h } = CELLS.sign;
     g.fillStyle = '#f2c214';
     g.fillRect(x, y, w, h);
-    g.lineWidth = 8;
+    g.lineWidth = 5;
     g.strokeStyle = '#141414';
-    g.strokeRect(x + 8, y + 8, w - 16, h - 16);
+    g.strokeRect(x + 5, y + 5, w - 10, h - 10);
     g.fillStyle = '#141414';
-    g.font = 'bold 64px system-ui, sans-serif';
+    g.font = 'bold 38px system-ui, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('WIDE TURNS', x + w / 2, y + h / 2 + 3);
+    g.fillText('WIDE TURNS', x + w / 2, y + h / 2 + 2);
   }
   /* The flag. */
   {
-    const [x, y, w, h] = CELLS.flag;
+    const { x, y, w, h } = CELLS.flag;
     for (let i = 0; i < 13; i += 1) {
       g.fillStyle = i % 2 ? '#f4f4f4' : '#b22234';
       g.fillRect(x, y + (i * h) / 13, w, h / 13 + 1);
@@ -342,10 +372,20 @@ function paintAtlas() {
     for (let i = 0; i < 9; i += 1) {
       for (let j = 0; j < (i % 2 ? 5 : 6); j += 1) {
         g.beginPath();
-        g.arc(x + 14 + j * 34 + (i % 2) * 17, y + 10 + i * 15, 3.5, 0, Math.PI * 2);
+        g.arc(x + 6 + j * 11.5 + (i % 2) * 5.75, y + 4 + i * 5.6, 1.4, 0, Math.PI * 2);
         g.fill();
       }
     }
+  }
+  /* The roster's signs, each whole in its own cell. */
+  BRANDS.forEach((p, i) => {
+    const { x, y, w, h } = CELLS[p.slug];
+    g.drawImage(signs[i], x, y, w, h);
+  });
+  /* The two Infinity Loops logos and the patch. */
+  for (const [name, cr] of [['il', IL_LOGO], ['ilOutline', IL_OUTLINE], ['patch', PATCH]]) {
+    const { x, y, w, h } = CELLS[name];
+    cut(cr, x, y, w, h);
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -353,36 +393,70 @@ function paintAtlas() {
   return t;
 }
 
-/* The four prints as quads on their walls, one mesh. A wall facing +x is
- * read looking west, so its texture runs toward -z; one facing +z, looking
- * north, runs toward +x. */
-function printMesh(map) {
+/* The garage's four prints (PRINTS in ./heads.js) in the shape a logo
+ * has: a middle, a normal and an up. A wall facing +x is read looking
+ * west, so its picture runs toward -z; one facing +z runs toward +x. */
+function printQuads() {
+  return Object.entries(PRINTS).map(([cell, p]) => {
+    const along = (p.a0 + p.a1) / 2;
+    return {
+      cell,
+      p: p.face === 'x+' ? [p.at, (p.h0 + p.h1) / 2, along] : [along, (p.h0 + p.h1) / 2, p.at],
+      n: p.face === 'x+' ? [1, 0, 0] : [0, 0, 1],
+      up: [0, 1, 0],
+      w: Math.abs(p.a1 - p.a0),
+      h: p.h1 - p.h0,
+    };
+  });
+}
+
+/*
+ * Every logo in `items` as a quad on its cell of the atlas, one mesh:
+ * each { cell, p, n, up, w, h, turn } in the world, `p` its middle and
+ * `turn` how far it is turned in its face, radians. Normals for the lit
+ * one outside, whose paint is black without them.
+ */
+function logoMesh(items, material, name) {
   const pos = [];
+  const nor = [];
   const uv = [];
   const idx = [];
-  for (const [name, p] of Object.entries(PRINTS)) {
-    const [cx, cy, cw, ch] = CELLS[name];
-    const u0 = cx / ATLAS;
-    const u1 = (cx + cw) / ATLAS;
-    const v0 = 1 - (cy + ch) / ATLAS;
-    const v1 = 1 - cy / ATLAS;
+  const n = new THREE.Vector3();
+  const up = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  const r = new THREE.Vector3();
+  const u = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  for (const q of items) {
+    const cell = CELLS[q.cell];
+    const u0 = cell.x / ATLAS_W;
+    const u1 = (cell.x + cell.w) / ATLAS_W;
+    const v0 = 1 - (cell.y + cell.h) / ATLAS_H;
+    const v1 = 1 - cell.y / ATLAS_H;
+    n.fromArray(q.n);
+    up.fromArray(q.up);
+    right.crossVectors(up, n).normalize();
+    up.crossVectors(n, right).normalize();
+    const a = q.turn || 0;
+    r.copy(right).multiplyScalar(Math.cos(a)).addScaledVector(up, Math.sin(a));
+    u.copy(up).multiplyScalar(Math.cos(a)).addScaledVector(right, -Math.sin(a));
     const base = pos.length / 3;
-    const corner = (s, t) => (p.face === 'x+'
-      ? [p.at, p.h0 + t * (p.h1 - p.h0), p.a1 - s * (p.a1 - p.a0)]
-      : [p.a0 + s * (p.a1 - p.a0), p.h0 + t * (p.h1 - p.h0), p.at]);
-    for (const [s, t] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
-      pos.push(...corner(s, t));
-      uv.push(u0 + s * (u1 - u0), v0 + t * (v1 - v0));
+    for (const [sx, sy, tu, tv] of [[-1, -1, 0, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, 1, 0, 1]]) {
+      c.fromArray(q.p).addScaledVector(r, (sx * q.w) / 2).addScaledVector(u, (sy * q.h) / 2);
+      pos.push(c.x, c.y, c.z);
+      nor.push(n.x, n.y, n.z);
+      uv.push(u0 + tu * (u1 - u0), v0 + tv * (v1 - v0));
     }
     idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  g.computeBoundingSphere();
-  const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map, fog: false }));
-  mesh.name = 'heads prints';
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.name = name;
   mesh.castShadow = false;
   mesh.receiveShadow = false;
   return mesh;
@@ -412,6 +486,11 @@ function houseInk(post) {
 }
 
 export async function buildMap(shell, onProgress, options) {
+  /* The pictures the logos are cut from, asked for first so they come
+   * while the world builds: the two sheets and every roster sign's
+   * artwork. */
+  const sheetsCame = Promise.all(SHEETS.map((s) => loadSheet(s.url)));
+  const signsCame = Promise.all(BRANDS.map((p) => partnerSignReady(p)));
   const L = headsLayout();
   const extra = {
     el: { id: 'heads', type: 'heads' },
@@ -420,8 +499,11 @@ export async function buildMap(shell, onProgress, options) {
     floor: basementFloorAt,
   };
   const doc = headsDocument();
+  /* Every roster brand's sign hung by hand (./logos.js), the chooser's
+   * spots off: it sees the yard and not the house. */
+  const markSpots = placeSigns(L.parts, CHUNK).filter(Boolean);
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false,
+    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots,
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id (src/main.js, src/ui/ui.js), and `source` keeps its
@@ -430,7 +512,39 @@ export async function buildMap(shell, onProgress, options) {
   map.source = 'heads';
   openGround(map.scene, 'plot', BASEMENT_HOLE);
   openGround(map.scene, 'terrain', BASEMENT_HOLE);
-  map.scene.add(printMesh(paintAtlas()));
+  /* The logos all over it and the garage's prints, two meshes on one
+   * picture: unlit indoors as the prints always were, lit paint outside
+   * as a partner's sign is (paintMaterial in src/art/stf.js). */
+  const [sheets, signs] = await Promise.all([sheetsCame, signsCame]);
+  const atlas = paintAtlas(sheets, signs);
+  const decals = placeDecals(L.parts).filter(Boolean);
+  const patches = placePatches(L.parts).filter(Boolean).map((s) => ({ ...s, cell: 'patch' }));
+  const indoor = new THREE.MeshBasicMaterial({
+    map: atlas, alphaTest: 0.5, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
+  map.scene.add(logoMesh([...printQuads(), ...decals.filter((d) => d.inside), ...patches.filter((s) => s.inside)], indoor, 'heads prints'));
+  const outdoor = logoMesh([...decals.filter((d) => !d.inside), ...patches.filter((s) => !s.inside)], paintMaterial(THREE, atlas), 'heads logos');
+  outdoor.receiveShadow = true;
+  map.scene.add(outdoor);
+  /* The 90% patches to be found, called out every time each comes back
+   * into sight, under the house's key, as the Infinity Loops map's are. */
+  map.stickers = [
+    ...map.stickers,
+    ...patches.map((s) => ({
+      id: `ninety-${s.id}`,
+      key: `${stfKey(doc, 'heads')}#sticker:ninety-${s.id}`,
+      name: s.name,
+      achievement: ACHIEVEMENT,
+      crop: { x: PATCH.x, y: PATCH.y, w: PATCH.w, h: PATCH.h },
+      sheet: sheets[PATCH.sheet] ? { image: sheets[PATCH.sheet] } : null,
+      p: s.p,
+      n: s.n,
+      up: s.up,
+      w: s.w,
+      h: s.h,
+    })),
+  ];
+  map.stickersEverySighting = true;
   houseInk(map.post);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   return map;

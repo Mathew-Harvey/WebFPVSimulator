@@ -31,6 +31,9 @@
  *                                  texture already made from the canvas.
  *   partnerDataUrl(p) -> string    the same canvas as a PNG data URL, for
  *                                  the found panel in the HUD.
+ *   partnerSignReady(p) -> Promise the canvas, once its artwork has come or
+ *                                  failed to, for a map that copies the sign
+ *                                  into an atlas of its own (Heads' house).
  *   makePartnerMark(THREE, p, { width, height, look, shade }) -> Mesh
  *       Exactly makeStfMark's contract in ./stf.js: a plane `width` by
  *       `height` in its own XY plane facing +Z, lit by the same cel ramp,
@@ -232,12 +235,12 @@ const TYPES = { svg: 'image/svg+xml', png: 'image/png', webp: 'image/webp' };
 
 function loadArtwork(p, entry) {
   if (!p.logo) {
-    return;
+    return Promise.resolve(entry.canvas);
   }
   const file = p.logo.colour;
   const url = new URL(`../../${LOGO_DIR}/${file}`, import.meta.url).href;
   const type = TYPES[String(file).split('.').pop().toLowerCase()] || 'application/octet-stream';
-  fetch(url)
+  return fetch(url)
     .then((res) => {
       if (!res.ok) {
         throw new Error(String(res.status));
@@ -264,8 +267,12 @@ function loadArtwork(p, entry) {
       for (const t of entry.live) {
         t.needsUpdate = true;
       }
+      return entry.canvas;
     })
-    .catch((e) => console.warn(`partnermark: ${file} did not load (${e.message}); the lettered panel stands`));
+    .catch((e) => {
+      console.warn(`partnermark: ${file} did not load (${e.message}); the lettered panel stands`);
+      return entry.canvas;
+    });
 }
 
 function signFor(p) {
@@ -276,17 +283,24 @@ function signFor(p) {
   const canvas = document.createElement('canvas');
   canvas.width = SIGN_W;
   canvas.height = Math.round(SIGN_W / signAspect(p));
-  entry = { canvas, dataUrl: null, live: new Set(), ready: !p.logo };
+  entry = { canvas, dataUrl: null, live: new Set(), ready: !p.logo, loaded: null };
   SIGNS.set(p.slug, entry);
   paintSign(canvas, p, null);
-  if (p.logo) {
-    loadArtwork(p, entry);
-  }
+  entry.loaded = loadArtwork(p, entry);
   return entry;
 }
 
 export function partnerCanvas(p) {
   return signFor(p).canvas;
+}
+
+/* The painted sign once its artwork has arrived, or once it has failed to
+ * and the lettered panel stands: for a map that copies the sign into a
+ * picture of its own rather than making a texture of the canvas, which the
+ * artwork's arrival could not repaint (src/maps/heads/index.js). Never
+ * rejects. */
+export function partnerSignReady(p) {
+  return signFor(p).loaded;
 }
 
 export function partnerDataUrl(p) {

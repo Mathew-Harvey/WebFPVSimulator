@@ -27,6 +27,12 @@
  *   7. module     with a build of dist/sim.wasm, the craft lifted off the
  *                 start and off the basement floor and held at a metre and
  *                 a half for two seconds, touching nothing, twice to the bit
+ *   8. logos      (./src/maps/heads/logos.js, run before 7) the sheets the
+ *                 size the crops say, the atlas's cells in it and apart,
+ *                 every roster brand hung once and each sign on its face
+ *                 all over, every decal and patch landed and flat on what
+ *                 it is on with nothing through it, every brand painted
+ *                 three more times, the Infinity Loops logo six
  *
  * Usage: node scripts/heads-check.js
  *
@@ -556,6 +562,155 @@ function roofsBlock(placed, near) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 8. The logos                                                        */
+/* ------------------------------------------------------------------ */
+
+/* A WebP's size off its header: the extended, lossless or lossy form. */
+function webpSize(b) {
+  const kind = b.toString('latin1', 12, 16);
+  if (kind === 'VP8X') {
+    return [1 + b.readUIntLE(24, 3), 1 + b.readUIntLE(27, 3)];
+  }
+  if (kind === 'VP8L') {
+    const v = b.readUInt32LE(21);
+    return [1 + (v & 0x3fff), 1 + ((v >>> 14) & 0x3fff)];
+  }
+  return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff];
+}
+
+/* How far along the unit axis `d` from `o` (world) the first drawn box
+ * is, or the ground's plane for a line going down, or Infinity. */
+function castDrawn(boxes, o, d) {
+  let best = d[1] < 0 ? o[1] / -d[1] : Infinity;
+  for (const b of boxes) {
+    let t0 = 0;
+    let t1 = Infinity;
+    for (let k = 0; k < 3; k += 1) {
+      if (Math.abs(d[k]) < EPS) {
+        if (o[k] < b.lo[k] || o[k] > b.hi[k]) {
+          t0 = Infinity;
+          break;
+        }
+        continue;
+      }
+      const a = (b.lo[k] - o[k]) / d[k];
+      const c = (b.hi[k] - o[k]) / d[k];
+      t0 = Math.max(t0, Math.min(a, c));
+      t1 = Math.min(t1, Math.max(a, c));
+    }
+    if (t0 <= t1 && t0 > EPS && t0 < best) {
+      best = t0;
+    }
+  }
+  return best;
+}
+
+/*
+ * Whether a logo is on something all over: from BACK real metres in front
+ * of each of nine points across it, the first drawn thing back along its
+ * normal is no nearer than the logo (nothing stands through it) and no
+ * further than `deep` behind it (it is not over a window, a doorway or
+ * the edge of what it is on). The worst point's miss, real metres, or 0.
+ */
+const BACK = 0.2;
+function unbacked(boxes, q, deep, proud = 0) {
+  const n = q.n;
+  const up = q.up;
+  const right = [up[1] * n[2] - up[2] * n[1], up[2] * n[0] - up[0] * n[2], up[0] * n[1] - up[1] * n[0]];
+  const d = n.map((v) => -v);
+  let worst = 0;
+  for (const a of [-0.45, 0, 0.45]) {
+    for (const b of [-0.45, 0, 0.45]) {
+      const o = q.p.map((v, k) => v + right[k] * a * q.w + up[k] * b * q.h + n[k] * S * BACK);
+      const behind = (castDrawn(boxes, o, d) - S * BACK) / S;
+      const miss = behind < -proud ? -proud - behind : (behind > deep ? behind - deep : 0);
+      worst = Math.max(worst, miss);
+    }
+  }
+  return worst;
+}
+
+async function logosBlock(L) {
+  console.log('\n8. logos');
+  const lg = await import('../src/maps/heads/logos.js');
+  const boxes = lg.drawnBoxes(L.parts);
+  /* The two sheets the crops are shares of. */
+  const sizes = await Promise.all([1, 2].map(async (k) => webpSize(await readFile(join(root, `assets/stickers/infinityloops/sheet-${k}.webp`)))));
+  check('the sheets are the size the crops are shares of', sizes.every((z, k) => z[0] === lg.SHEET_PX[k][0] && z[1] === lg.SHEET_PX[k][1]),
+    sizes.map((z) => z.join('x')).join(', '));
+  /* The atlas: every cell inside it and none over another. */
+  const cells = Object.entries(lg.CELLS);
+  const outside = cells.filter(([, c]) => c.x < 0 || c.y < 0 || c.x + c.w > lg.ATLAS_W || c.y + c.h > lg.ATLAS_H).map(([k]) => k);
+  const over = [];
+  for (let i = 0; i < cells.length; i += 1) {
+    for (let j = i + 1; j < cells.length; j += 1) {
+      const [a, A] = cells[i];
+      const [b, B] = cells[j];
+      if (A.x < B.x + B.w && B.x < A.x + A.w && A.y < B.y + B.h && B.y < A.y + A.h) {
+        over.push(`${a}/${b}`);
+      }
+    }
+  }
+  check(`the atlas holds its ${cells.length} cells, none over another`, !outside.length && !over.length, [...outside, ...over].join(', '));
+  check(`the sticker wall carries the 90%ers' ${lg.WALL_STICKERS.length} stickers`, lg.WALL_STICKERS.length >= 90);
+  /* The signs: every roster brand once, each on a face all over. */
+  const slugs = lg.BRANDS.map((p) => p.slug);
+  const hung = lg.SIGN_SPOTS.map((s) => s.slug);
+  const counts = slugs.map((sl) => hung.filter((h) => h === sl).length);
+  check(`every one of the roster's ${slugs.length} brands is hung once`, counts.every((c) => c === 1) && hung.length === slugs.length,
+    slugs.filter((sl, i) => counts[i] !== 1).join(', '));
+  const { signAspect } = await import('../src/art/partnermark.js');
+  const signs = lg.placeSigns(L.parts, 'extra');
+  for (const [i, s] of signs.entries()) {
+    const spot = lg.SIGN_SPOTS[i];
+    if (!s) {
+      check(`${spot.slug}'s sign lands`, false, 'its line meets nothing');
+      continue;
+    }
+    const brand = lg.BRANDS.find((p) => p.slug === s.slug);
+    const miss = unbacked(boxes, { ...s, h: s.w / signAspect(brand) }, 0.25, 0.15);
+    check(`${spot.slug}'s sign is on ${s.hit}, all of it`, miss === 0, miss ? `${r3(miss)} m off` : '');
+  }
+  /* The decals and the patches: each lands, flat on what it is on with
+   * nothing through it, and a ground one over something within five
+   * centimetres. */
+  const decals = lg.placeDecals(L.parts);
+  const lost = decals.map((d, i) => (d ? null : i)).filter((i) => i !== null);
+  check(`every one of the ${decals.length} decals lands`, !lost.length, lost.join(', '));
+  const bad = [];
+  decals.forEach((d, i) => {
+    if (!d) {
+      return;
+    }
+    const miss = unbacked(boxes, d, d.n[1] > 0.5 ? 0.05 : 0.02);
+    if (miss) {
+      bad.push(`${i} ${d.cell} on ${d.hit} ${r3(miss)} m`);
+    }
+  });
+  check('every decal is flat on what it is on, nothing through it', !bad.length, bad.join('; '));
+  const brandsPainted = slugs.filter((sl) => decals.filter((d) => d && d.cell === sl).length >= 3);
+  check('every brand is painted at least three times more', brandsPainted.length === slugs.length,
+    slugs.filter((sl) => !brandsPainted.includes(sl)).join(', '));
+  const il = decals.filter((d) => d && (d.cell === 'il' || d.cell === 'ilOutline')).length;
+  check(`the Infinity Loops logo is painted ${il} times`, il >= 6);
+  const patches = lg.placePatches(L.parts);
+  const badPatch = [];
+  patches.forEach((s, i) => {
+    if (!s) {
+      badPatch.push(`${lg.PATCH_SPOTS[i].id} lands nowhere`);
+      return;
+    }
+    const miss = unbacked(boxes, s, 0.02);
+    if (miss) {
+      badPatch.push(`${s.id} on ${s.hit} ${r3(miss)} m`);
+    }
+  });
+  check(`the ${patches.length} patches to find each sit flat on what they are on`, patches.length >= 10 && !badPatch.length, badPatch.join('; '));
+  const ids = new Set(patches.filter(Boolean).map((s) => s.id));
+  check('each patch has its own id', ids.size === patches.length);
+}
+
+/* ------------------------------------------------------------------ */
 /* 7. The module                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -659,6 +814,7 @@ async function main() {
   gapsBlock(placed, near);
   slotsBlock(own);
   roofsBlock(placed, near);
+  await logosBlock(L);
   await moduleBlock(placed);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exitCode = failures ? 1 : 0;

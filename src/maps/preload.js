@@ -240,5 +240,7 @@ export const MAP_PRELOAD = {
     'maps/built/logosurface.js',
     'maps/heads/heads.js',
     'maps/heads/yard.js',
+    'maps/heads/logos.js',
+    'maps/specials/infinityloops.js',
   ],
 };

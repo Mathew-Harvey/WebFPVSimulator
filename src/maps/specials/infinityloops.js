@@ -1,6 +1,8 @@
 /*
  * infinityloops.js: the 90%er stickers baked into the Infinity Loops map,
- * board map trk-e6d139f6. Data only: ../specials.js reads it.
+ * board map trk-e6d139f6. Data only: ../specials.js reads it, and so does
+ * ../heads/logos.js, which cuts the Infinity Loops logos, the 90% patch and
+ * the sticker wall for Heads' house from the same sheets by these crops.
  *
  * This file is part of WebFPVSimulator.
  *

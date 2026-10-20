@@ -102,7 +102,7 @@ export const MAPS = [
   },
   /*
    * HEADS' HOUSE, on the owner's ask of 20 October 2026: the house and yard
-   * of Heads of Infinity Loops, rebuilt from stills of his videos, at Nick
+   * of Heads of Infinity Loops, rebuilt from stills of their videos, at Nick
    * Burns' house's scale and flown the same way, as the whoop. Built by the
    * same pipeline (src/maps/heads/) and, like the house, off the board.
    */

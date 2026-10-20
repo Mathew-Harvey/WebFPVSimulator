@@ -63,6 +63,8 @@ export const SUPPORTER_SPOTS = [
   { slug: 'mantisfpv', room: 'garage', from: [21.5, 3.6, 1.95], dir: 'e', w: 1.6 },
   /* Over the shut west bay, inside, seen on the way out. */
   { slug: 'wcmrc', room: 'garage', from: [15.75, 2.0, 2.55], dir: 's', w: 1.3 },
+  /* The garage's back wall again, right of GDS: the USA micro drone partner. */
+  { slug: 'webleedfpv', room: 'garage', from: [20.6, 2.0, 1.85], dir: 'n', w: 1.3 },
   /* Over the shelving on its west wall. */
   { slug: 'konexdrone', room: 'garage', from: [16.0, 1.7, 2.35], dir: 'w', w: 1.1 },
   /* The workshop, its floor at BF. Over the desk and its two monitors. */

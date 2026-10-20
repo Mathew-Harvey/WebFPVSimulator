@@ -162,10 +162,11 @@ partner's or patron's slug:
 They are paint like the STF mark, found by the same `seesMark`, and
 finding one is an achievement: a callout with the partner's name, a stamp,
 the combo's bonus once a run, a row on the results and a count on the
-partner's own dashboard on the board. The town's are three constants,
+partner's own dashboard on the board. The town's are four constants,
 `PARTNER_SPOTS` in `city/places/index.js`, measured by hand: Mantis FPV
 over the street the pilot starts in, Global Drone Solutions and the club
-on the practice field's tap wall, front and back. A built map's are chosen
+on the practice field's tap wall, front and back, and weBLEEDfpv beside the
+club's banner on the back. A built map's are chosen
 by `built/egg.js` after the STF mark's, one wall each and never the STF
 mark's, by the same rules with three more (rules 8 to 10 there). A map
 that paints none leaves `marks` out or empty.

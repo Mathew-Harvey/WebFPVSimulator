@@ -1,7 +1,7 @@
 /*
  * roster.js: the partners, and the one list all three repositories read.
  *
- * WHO. Three businesses and a club back WebFPV, each exclusive in its kind:
+ * WHO. Three businesses and a club back WebFPV, and from 2026-10-20 a fourth business, weBLEEDfpv, the USA micro drone partner, each exclusive in its kind:
  * Global Drone Solutions as the official training partner, Mantis FPV as the
  * official retail partner, and the West Coast Multirotor Club as the official
  * club partner. The owner named them on 2026-09-27 and approved the plan that
@@ -43,6 +43,10 @@
  *           LINK_KINDS, because the board counts each link as a closed word.
  *   logo    the files under assets/partners/, as paths from the repository
  *           root (see LOGO FILES), and the artwork's width over its height.
+ *           `monoAspect`, when the one colour file is not the colour file's
+ *           shape: weBLEEDfpv's colour mark is a stacked sticker with a drone
+ *           under the name, and the one colour file is their flat wordmark,
+ *           because a row of marks at one height needs the long one.
  *   mark    how the simulator paints them into a freestyle map: `field` is
  *           the colour of the painted panel the logo sits on, dark for a logo
  *           drawn for dark grounds and cream for one drawn for light ones.
@@ -90,6 +94,7 @@ export const ROLE_TITLES = Object.freeze({
   training: 'Official training partner',
   retail: 'Official retail partner',
   club: 'Official club partner',
+  micro: 'Official USA micro drone partner',
 });
 
 /* What a link on a partner's card can be. A closed list, because the board
@@ -159,6 +164,22 @@ export const PARTNERS = Object.freeze([
       { kind: 'facebook', label: 'Facebook group', href: 'https://www.facebook.com/groups/657768627690432' },
     ],
     logo: { colour: 'wcmrc/colour.png', mono: 'wcmrc/mono.png', aspect: 708 / 252 },
+    mark: { field: '#f3ead4' },
+  }),
+  partner({
+    slug: 'webleedfpv',
+    name: 'weBLEEDfpv',
+    short: 'weBLEEDfpv',
+    role: 'micro',
+    about: 'A community driven FPV drone company based in Syracuse, New York. Whoop kits, parts, LED gates and gear, built for pilots, by pilots.',
+    /* The owner named them on 2026-10-20 as the USA micro drone partner and
+     * gave both marks. The sentence above is a DRAFT in the roster's usual
+     * sense: weBLEEDfpv sign off their own, and it is their own
+     * description from webleedfpv.com, checked 2026-10-20. */
+    links: [
+      { kind: 'site', label: 'Visit weBLEEDfpv', href: 'https://webleedfpv.com/' },
+    ],
+    logo: { colour: 'webleedfpv/colour.png', mono: 'webleedfpv/mono.png', aspect: 1200 / 506, monoAspect: 1200 / 190 },
     mark: { field: '#f3ead4' },
   }),
 ]);

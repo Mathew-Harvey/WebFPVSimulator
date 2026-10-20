@@ -100,8 +100,9 @@ governs the font software, not images made with it.
     Licence     NOT GPLv3. Each mark is its owner's trade mark, used with
                 their permission to show them as a WebFPV partner.
 
-Three partners back WebFPV, agreed with the owner in September 2026: Global
-Drone Solutions, Mantis FPV and the West Coast Multirotor Club. Their marks
+Four partners back WebFPV: Global Drone Solutions, Mantis FPV and the West
+Coast Multirotor Club, agreed with the owner in September 2026, and
+weBLEEDfpv, the USA micro drone partner, added on 2026-10-20. Their marks
 are in the repository so that the simulator can paint them into its maps and
 the front door and the board can show them, and for nothing else. The
 project's GPLv3 grant does not extend to them: nobody may take a partner's
@@ -117,6 +118,16 @@ partnership to show.
   * `wcmrc/colour.png` is the club's logo as supplied, a 708 by 252 PNG.
     `wcmrc/mono.png` is made from it by scripts/partners.js, every pixel
     cream and its transparency kept.
+  * `webleedfpv/colour.png` is the weBLEEDfpv sticker logo (the name over a
+    drone, with "United we Fly, Together"), supplied by the owner on
+    2026-10-20 as an 8000 by 3373 PNG with transparency and scaled to 1200
+    by 506. `webleedfpv/mono.png` is their other mark, the plain black
+    "weBLEEDfpv" wordmark with the drop and ".com", also supplied by the
+    owner, scaled to 1200 wide and turned into cream by its darkness (black
+    is solid, white is clear) once, with a script written for the purpose,
+    not by scripts/partners.js. It is a different shape from the colour mark
+    (roster `monoAspect`) because a row of marks at one height needs the
+    long one.
   * `mattsflooring/colour.png` is the Matt's Flooring logo as supplied, a
     499 by 111 PNG. `mattsflooring/mono.png` is made from it by
     scripts/partners.js, every pixel cream and its transparency kept.

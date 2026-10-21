@@ -101,8 +101,10 @@ export async function buildMap(shell, onProgress, options) {
   }
   const map = await buildFieldScene(shell, reporter(progress), course, q);
   /* Dan, in the corner of a RaceGOW room, judging the pilot. Loaded only for
-   * a RaceGOW track, his picture included: see src/maps/dan/index.js. */
-  if (/^racegow/i.test(course.series || '')) {
+   * a RaceGOW track, his picture included: see src/maps/dan/index.js. A track
+   * is one by its credited series or by its name, because the board's
+   * RaceGOW6 tracks were published with no series. */
+  if (/^racegow/i.test(course.series || '') || /^racegow/i.test(course.name || '')) {
     const { attachDan } = await import('./dan/index.js');
     await attachDan(shell, map);
   }

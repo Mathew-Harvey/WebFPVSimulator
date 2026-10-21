@@ -5138,6 +5138,15 @@ export async function boot({ loading, bootStart, mapId }) {
    * sticker would, and goes before the next one.
    */
   let ninetyDone = true;
+  /*
+   * THE LAST ONE, on any map with stickers: the whole set found, once in a
+   * browser, under its own stamp. The owner's ask of 2026-10-21 ("a brand and
+   * style correct celebration"), his pick A of the mockups: ui.goalComplete,
+   * in place of that last sticker's own callout. Nothing is asked of the
+   * frame beyond the count the check already keeps.
+   */
+  let completeDone = true;
+  let completeKey = '';
   function findStickers() {
     if (stickersView !== view) {
       stickersView = view;
@@ -5145,6 +5154,8 @@ export async function boot({ loading, bootStart, mapId }) {
       stickersSeen.clear();
       stickerPictures.clear();
       ninetyDone = !view.stickersNinety || stampedAmong([view.stickersNinety.key]).size > 0;
+      completeKey = view.stickers.length ? `${view.stickers[0].key.split('#sticker:')[0]}#complete` : '';
+      completeDone = !completeKey || stampedAmong([completeKey]).size > 0;
     }
     const again = view.stickersEverySighting === true;
     const now = performance.now();
@@ -5192,9 +5203,35 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     stickerCalledAt = now;
     stickerCallouts += 1;
+    if (!completeDone && stickersFound.size >= view.stickers.length) {
+      callComplete(pick);
+      return;
+    }
     ui.stickerFound({
       word: pick.achievement, name: pick.name, got: stickersFound.size, total: view.stickers.length,
       picture: keptPicture(pick, again),
+    });
+  }
+  function callComplete(last) {
+    completeDone = true;
+    writeStamp(completeKey);
+    const total = view.stickers.length;
+    const hero = (view.stickersNinety && view.stickers.find((s) => s.id === view.stickersNinety.picture)) || last;
+    const tiles = [];
+    for (const s of view.stickers) {
+      if (tiles.length < 2 && s !== hero && s.key !== last.key && s.name !== hero.name) {
+        const t = stickerPicture(s);
+        if (t) {
+          tiles.push(t);
+        }
+      }
+    }
+    ui.goalComplete({
+      word: `ALL ${total}!`,
+      sub: 'Every sticker found',
+      band: 'Every sticker on the map',
+      picture: keptPicture(hero, false),
+      tiles,
     });
   }
   function callNinety(now) {

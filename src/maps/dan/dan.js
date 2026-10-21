@@ -75,6 +75,10 @@ export const DAN_LINES = {
     { text: 'A lap. Technically.', face: 'smile', move: 'shrug' },
     { text: 'My nan flies it faster. In her sleep.', face: 'laugh', move: 'shrug' },
   ],
+  /* A lap with no hit and no miss in it, the owner's line. */
+  pipe: [
+    { text: 'Right into the pipe.', face: 'laugh', move: 'arms' },
+  ],
   /* A lap that is the best so far, or the first. */
   best: [
     { text: 'Fine. That one was good.', face: 'smile', move: 'arms' },
@@ -102,7 +106,7 @@ export const SAY_MS = 3600;
  * DAN_LINES, or null.
  */
 export function makeJudge() {
-  const next = { exit: 0, crash: 0, miss: 0, lap: 0, best: 0, tidy: 0 };
+  const next = { exit: 0, crash: 0, miss: 0, lap: 0, pipe: 0, best: 0, tidy: 0 };
   const st = {
     spokeMs: -Infinity,
     gateMs: -Infinity,
@@ -126,8 +130,9 @@ export function makeJudge() {
       st.streak = 0;
       st.hitsInLap = 0;
     },
-    /* kind: 'gate', 'miss', 'crash' or 'lap'; info for a lap is
-     * { first, record } as the shell knows them. */
+    /* kind: 'gate', 'miss', 'crash' or 'lap'; info for a gate is
+     * { index } of the gate passed, for a lap { first, record } as the
+     * shell knows them. */
     hear(kind, simMs, info = {}) {
       if (simMs < st.spokeMs || simMs < st.gateMs) {
         this.reset();
@@ -135,6 +140,11 @@ export function makeJudge() {
       const quiet = (ms) => simMs - st.spokeMs >= ms;
       switch (kind) {
         case 'gate': {
+          /* The first gate starts a new go at the lap: what came before it
+           * (a crash, a restart) is not held against this one. */
+          if (info.index === 0) {
+            st.hitsInLap = 0;
+          }
           st.gateMs = simMs;
           st.streak += 1;
           if (st.streak === TIDY_GATES && st.hitsInLap === 0 && quiet(QUIET_MS)) {
@@ -163,13 +173,14 @@ export function makeJudge() {
           return pick(exit ? 'exit' : 'crash');
         }
         case 'lap': {
+          const clean = st.hitsInLap === 0;
           st.streak = 0;
           st.hitsInLap = 0;
           if (!quiet(QUIET_LAP_MS)) {
             return null;
           }
           st.spokeMs = simMs;
-          return pick(info.record || info.first ? 'best' : 'lap');
+          return pick(clean ? 'pipe' : (info.record || info.first ? 'best' : 'lap'));
         }
         default:
           return null;

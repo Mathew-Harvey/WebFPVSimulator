@@ -9717,7 +9717,7 @@ export async function boot({ loading, bootStart, mapId }) {
               view.judge.hear('miss', simNow);
             }
             if (res.passed != null) {
-              view.judge.hear('gate', simNow);
+              view.judge.hear('gate', simNow, { index: res.passed });
             }
             if (race.laps.length > lapsBefore) {
               view.judge.hear('lap', simNow, { record: race.lastLapRecord, first: race.laps.length === 1 });

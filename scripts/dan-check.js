@@ -79,7 +79,7 @@ check('no line says anything about the build', all.every((l) => !/\b(mm|metres?|
 const FACES = ['smile', 'laugh', 'shout', 'talk', 'surprised', 'frown'];
 const MOVES = ['shrug', 'hand', 'arms'];
 check('every face and move a line names exists', all.every((l) => FACES.includes(l.face) && MOVES.includes(l.move)));
-check('every kind has a line', ['exit', 'crash', 'miss', 'lap', 'best', 'tidy'].every((k) => DAN_LINES[k] && DAN_LINES[k].length > 0));
+check('every kind has a line', ['exit', 'crash', 'miss', 'lap', 'pipe', 'best', 'tidy'].every((k) => DAN_LINES[k] && DAN_LINES[k].length > 0));
 
 /* ------------------------------------------------------------------ */
 console.log('\n2. judge');
@@ -103,8 +103,17 @@ console.log('\n2. judge');
 }
 {
   const j = makeJudge();
-  check('the first lap is praised', j.hear('lap', 20000, { first: true, record: true })?.kind === 'best');
-  check('a lap that is not the best is mocked', j.hear('lap', 60000, { first: false, record: false })?.kind === 'lap');
+  check('a lap with no hit in it is the owner\'s line, whatever the lap', j.hear('lap', 20000, { first: true, record: true })?.text === 'Right into the pipe.');
+  j.hear('miss', 30000);
+  check('a lap after a miss that is the first or the best is praised', j.hear('lap', 60000, { first: true, record: true })?.kind === 'best');
+  j.hear('crash', 90000);
+  check('a lap after a hit that is not the best is mocked', j.hear('lap', 120000, { first: false, record: false })?.kind === 'lap');
+  j.hear('crash', 140000);
+  j.hear('gate', 150000, { index: 0 });
+  check('a crash before the first gate is not held against the next go', j.hear('lap', 170000, { first: false, record: false })?.kind === 'pipe');
+  j.hear('gate', 180000, { index: 0 });
+  j.hear('miss', 181000);
+  check('a miss after the first gate is', j.hear('lap', 190000, { first: false, record: false })?.kind === 'lap');
   check('a lap speaks even soon after a line', (() => {
     const k = makeJudge();
     k.hear('crash', 1000);

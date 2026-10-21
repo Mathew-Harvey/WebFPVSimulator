@@ -93,7 +93,7 @@ const NB = BONES.length;
 const PELVIS_STAND = 0.96;
 export const SOLE = 0.08;
 /* The top of his hair over the head bone, for the balloon. */
-export const HEAD_TOP = 0.4;
+export const HEAD_TOP = 0.38;
 
 /* ------------------------------------------------------------------ */
 /* Where he goes, plan metres                                          */

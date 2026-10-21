@@ -2734,7 +2734,7 @@ kase('furniture', async () => {
     })()`);
     check('Publish on a track with a table in it opens the publish form, and does not say the board does not know it',
       said.open && said.title !== 'Not on the board yet' && said.inputs > 0, JSON.stringify(said));
-    await page.evaluate("document.querySelector('#tb-modal .tb-btn').click(), 1");
+    await page.evaluate("[...document.querySelectorAll('#tb-modal .tb-row-btns .tb-btn')].pop().click(), 1");
     await page.sleep(150);
     check('and closes', await page.evaluate("document.getElementById('tb-modal').hidden"));
 
@@ -2901,16 +2901,17 @@ kase('a hoop and a hex gate', async () => {
     await page.evaluate("window.trackBuilder.setMode('3d'), 1");
     await page.sleep(300);
 
-    /* The board does not know them yet, so Publish says so and opens no form. */
+    /* The board has known them since 2026-10-14 (PLAN_APERTURE in the board's
+     * src/validate.js), so Publish opens its form as it does for any track. */
     await page.evaluate('window.trackBuilder.publishBtn.click(), 1');
     await page.sleep(250);
     const said = await json(page, `(() => {
       const m = document.getElementById('tb-modal');
       return { open: !m.hidden, text: m.textContent, inputs: m.querySelectorAll('input').length };
     })()`);
-    check('Publish on a track with a hoop and a hex gate says the board does not know them yet, and asks for nothing',
-      said.open && /This one has 1 hoop and 1 hex gate/.test(said.text) && said.inputs === 0, JSON.stringify(said));
-    await page.evaluate("document.querySelector('#tb-modal .tb-btn').click(), 1");
+    check('Publish on a track with a hoop and a hex gate opens the publish form, as the board takes them',
+      said.open && /Publish this track/.test(said.text) && !/Not on the board yet/.test(said.text) && said.inputs > 0, JSON.stringify(said));
+    await page.evaluate("[...document.querySelectorAll('#tb-modal .tb-row-btns .tb-btn')].pop().click(), 1");
     await page.sleep(150);
 
     /* The build sheet counts the six pipes of the hex gate and lists the hoop as a thing to bring. */
@@ -3100,16 +3101,17 @@ kase('a cube', async () => {
     await page.evaluate("window.trackBuilder.setMode('3d'), 1");
     await page.sleep(300);
 
-    /* THE BOARD DOES NOT KNOW IT */
+    /* THE BOARD TAKES IT: a cube is gates that share a group, stored as sent (the
+     * board's src/validate.js, since 2026-10-14). */
     await page.evaluate('window.trackBuilder.publishBtn.click(), 1');
     await page.sleep(250);
     const said = await json(page, `(() => {
       const m = document.getElementById('tb-modal');
       return { open: !m.hidden, text: m.textContent, inputs: m.querySelectorAll('input').length };
     })()`);
-    check('Publish says the board does not know a cube yet, that this track has 1, and asks for nothing',
-      said.open && /a hex gate or a cube/.test(said.text) && /This one has 1 cube\./.test(said.text) && said.inputs === 0, JSON.stringify(said));
-    await page.evaluate("document.querySelector('#tb-modal .tb-btn').click(), 1");
+    check('Publish on a track with a cube opens the publish form, as the board takes it',
+      said.open && /Publish this track/.test(said.text) && !/Not on the board yet/.test(said.text) && said.inputs > 0, JSON.stringify(said));
+    await page.evaluate("[...document.querySelectorAll('#tb-modal .tb-row-btns .tb-btn')].pop().click(), 1");
     await page.sleep(150);
 
     /* THE SHEET: twelve pipes, eight corners */
@@ -4807,8 +4809,15 @@ kase('map: every tool', async () => {
   const page = await openMap();
   try {
     const app = (expr) => page.evaluate(`(() => { const a = window.trackBuilder; return ${expr}; })()`);
-    const ids = await json(page, "[...document.querySelectorAll('#tb-palette .tb-tool')].map((b) => b.dataset.tool).filter((id) => id !== 'road' && id !== 'vehicle' && id !== 'ruler')");
-    check('the palette has the whole map vocabulary to walk: the assets, the gap, the pads, the paint, the label and the furniture', ids.length >= 30, `${ids.length} tools`);
+    const every = await json(page, "[...document.querySelectorAll('#tb-palette .tb-tool')].map((b) => b.dataset.tool).filter((id) => id !== 'road' && id !== 'vehicle' && id !== 'ruler')");
+    check('the palette has the whole map vocabulary to walk: the assets, the gap, the pads, the paint, the label and the furniture', every.length >= 30, `${every.length} tools`);
+    /* The paint is a board admin's since 2026-10-11 (250b1ef), and this page
+     * is signed in as nobody, so it is asked to refuse rather than to place. */
+    const ids = every.filter((id) => id !== 'groundLogo');
+    if (every.includes('groundLogo')) {
+      await page.evaluate("window.trackBuilder.pickTool('groundLogo'), 1");
+      check('the paint stays out of a hand that is not a board admin\'s', (await app('a.armed')) !== 'groundLogo');
+    }
     const spot = await screenOf(page, 'view3d', 80, 80, 0);
     const bad = [];
     for (const id of ids) {
@@ -4826,6 +4835,12 @@ kase('map: every tool', async () => {
         bad.push(`${id}: ${ghost ? '' : 'no ghost '}${placedOne ? '' : 'not placed'}`);
       }
       await page.evaluate('window.trackBuilder.disarm(), window.trackBuilder.setSelection([]), 1');
+      /* A tool that put nothing down is already in the list, and has no card
+       * to look at: selecting the last element of an empty plot threw, and
+       * the throw ended the walk before it said which tool it was. */
+      if (!made[0]) {
+        continue;
+      }
       /* The card of what was just put down, by selecting it. */
       await page.evaluate(`(() => { const a = window.trackBuilder; const e = a.doc.elements[a.doc.elements.length - 1]; a.setSelection([e.id]); return 1; })()`);
       const card = await page.evaluate("(() => { const c = document.getElementById('tb-card'); return !c.hidden && c.querySelector('strong') && [...c.querySelectorAll('button')].some((b) => b.textContent === 'Remove') && [...c.querySelectorAll('button')].some((b) => b.textContent === 'More'); })()");

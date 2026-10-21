@@ -150,8 +150,10 @@ function marked(over) {
   seatAirframe(s, 'whoop65');
   check('first time on the whoop: its stock camera',
     s.cameraFov === WHOOP.cameraFov && s.cameraAngle === WHOOP.cameraAngle, cam(s));
-  check('first time on the whoop: the weight comes down to its top',
-    s.weight === WHOOP.weightMax, `${s.weight}`);
+  /* Down to the whoop's top only when it is over it. Its top was 120 when
+   * this was written and is 140 now (configs/airframes.js), so 130 stays. */
+  check('first time on the whoop: the weight comes down to its top, and no further',
+    s.weight === Math.min(130, WHOOP.weightMax), `${s.weight}`);
   check('first time on the whoop: the PIDs as they stood',
     s.pids['betaflight-default'] && s.pids['betaflight-default'].sliders.master === 120,
     JSON.stringify(s.pids));

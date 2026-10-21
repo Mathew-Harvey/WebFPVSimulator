@@ -71486,3 +71486,5 @@ The stall ramp (104), music on demand (103), 3D mode's mid run switch and its DS
 - Latency: nothing in the flight loop or input path changes, no new draw call, nothing fetched. The count was already kept. At the moment it fires, about nine DOM nodes for 4.6 s, moved by transforms and fades. Proxy only: not timed on a GPU.
 - Checked: `node --check` on both files, `lint:preload` (up to date), and the new CSS rendered once in headless Chromium mid animation. `lint:shell` reports layout findings (tricks overflow, paused and stickhelp list heights); not compared against main this turn. Not run: `verify`, `shots`, and nobody has completed a hunt with it. The splash was not seen in the real shell.
 - Not built: the hanko seal and the pause page (options B and C), and a partner sign hunt, which does not exist.
+
+- Owner's word, 2026-10-21 23:23Z: "Push to main" (the goal complete splash, PR 118, after the check scales were offered; no further check asked for).

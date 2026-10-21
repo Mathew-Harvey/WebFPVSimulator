@@ -51,6 +51,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { shadowOnly } from '../../render/shadowrate.js';
 
 /*
  * How far into the town's own cycle to look for movement.
@@ -1847,6 +1848,10 @@ export function buildShadowProxies(root, animated, { cell = 24 } = {}) {
      * costs nothing rather than drawing the whole town twice. */
     mesh.visible = false;
     mesh.userData.shadowProxy = true;
+    /* Visible inside the shadow box means visible to the colour pass too,
+     * and the box is around the craft, so most of those cells are in view:
+     * see shadowOnly for why that pass now skips them. */
+    shadowOnly(mesh);
     mesh.userData.cellX = (c.cx + 0.5) * cell;
     mesh.userData.cellZ = (c.cz + 0.5) * cell;
     group.add(mesh);

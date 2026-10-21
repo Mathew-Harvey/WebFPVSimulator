@@ -76,3 +76,37 @@ export function makeShadowRate(renderer, every, half) {
     },
   };
 }
+
+/*
+ * A SHADOW PROXY IS NOT DRAWN IN THE COLOUR PASS.
+ *
+ * Both proxy builders (proxyCasters in ../maps/built/index.js and
+ * buildShadowProxies in ../maps/city/bake.js) turn colour and depth writes
+ * off and take that to mean the colour pass costs nothing. It does not: three
+ * still submits the mesh, runs every vertex through the shader and rasterises
+ * every triangle, only to throw each fragment away. On Heads' house on High
+ * that was about 100,000 triangles a frame, a second copy of the yard's trees
+ * and furniture, drawn for nothing.
+ *
+ * Three cannot be told to leave a mesh out of one pass and keep it in the
+ * other: visibility, layers and the material's own `visible` are all read by
+ * both passes, with the main camera's layers in both (checked in the vendored
+ * r160 source, WebGLShadowMap's renderObject and the renderer's projectObject).
+ * What does differ is the hook: the colour pass calls `onBeforeRender` and the
+ * shadow pass calls `onBeforeShadow` instead. So the colour pass hands the
+ * renderer a negative draw range, which renderBufferDirect returns on before
+ * any draw call, and `onAfterRender` puts the range back for the shadow pass.
+ * Nothing the proxy painted was ever visible, so no pixel changes; the shadow
+ * pass sees the range it always saw.
+ */
+export function shadowOnly(mesh) {
+  const range = mesh.geometry.drawRange;
+  const count = range.count;
+  mesh.onBeforeRender = () => {
+    range.count = -1;
+  };
+  mesh.onAfterRender = () => {
+    range.count = count;
+  };
+  return mesh;
+}

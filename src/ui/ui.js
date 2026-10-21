@@ -15688,7 +15688,9 @@ export class Ui {
       Ui.text(this.osdGate, `Gate ${gate} of ${gateCount}`);
     }
     if (numbersDue) {
-      Ui.text(this.osdPack, `${volts.toFixed(1)} volts`);
+      /* A single cell reads to the hundredth, as a whoop's OSD does: a
+       * tenth of a volt is a quarter of a 1S pack's whole range. */
+      Ui.text(this.osdPack, `${volts.toFixed(volts < 10 ? 2 : 1)} volts`);
       Ui.bar(this.osdPackBar, packFrac);
     }
     Ui.text(this.osdLast, !freestyle && lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '');

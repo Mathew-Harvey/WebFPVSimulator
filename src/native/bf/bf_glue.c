@@ -93,6 +93,10 @@ extern double PLANT_DBG_VPERP;
 extern double PLANT_DBG_PITCH_UP;
 #include "bf_settings.h"
 
+/* Exact in IEEE 754, and no library call on the physics path. Used only
+ * by 3D mode, where a rotor's speed can be negative. */
+static double sim_abs_d(double x) { return x < 0.0 ? -x : x; }
+
 /* Externs Betaflight expects from files we do not compile. gyro itself is
  * no longer here: sensors/gyro.c defines it now, and defines it because
  * this build compiles the real filter chain rather than writing filtered
@@ -108,6 +112,7 @@ extern void pgResetFn_motorConfig(motorConfig_t *motorConfig);
 extern void pgResetFn_mixerConfig(mixerConfig_t *mixerConfig);
 extern void pgResetFn_gyroConfig(gyroConfig_t *gyroConfig);
 extern const pidConfig_t pgResetTemplate_pidConfig;
+extern const flight3DConfig_t pgResetTemplate_flight3DConfig;
 extern const dynNotchConfig_t pgResetTemplate_dynNotchConfig;
 extern const rpmFilterConfig_t pgResetTemplate_rpmFilterConfig;
 
@@ -249,7 +254,9 @@ static void sim_gyro_add_vibration(const SimState *s) {
   static const double TWO_PI = 6.283185307179586;
   double w_sum = 0.0;
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    w_sum += s->motor_omega[m];
+    /* Magnitudes in 3D mode, where a rotor can run backwards: a prop shakes
+     * the frame the same whichever way it turns. */
+    w_sum += SIM_3D ? sim_abs_d(s->motor_omega[m]) : s->motor_omega[m];
   }
   const double w_mean = w_sum * 0.25;
   const double ratio = w_mean / PLANT.vib_ref_w;
@@ -274,7 +281,7 @@ static void sim_gyro_add_vibration(const SimState *s) {
    * has to slide up the spectrum with the throttle for a dynamic notch or an
    * RPM filter to have anything to track. */
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    const double w = s->motor_omega[m];
+    const double w = SIM_3D ? sim_abs_d(s->motor_omega[m]) : s->motor_omega[m];
     double p = g_vib_phase[m] + w * SIM_DT;
     /* A loop, not one conditional subtraction: the five inch advances at
      * most 2.8 rad a step and one wrap was enough, but the whoop advances
@@ -354,7 +361,11 @@ static void sim_update_motor_frequency(const SimState *s) {
   const float two_pi = 6.283185307179586f;
   float lo = 1e30f;
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    const float hz = (float)(s->motor_omega[m]) / two_pi;
+    /* A rotor spinning backwards in 3D mode has a negative speed, and the
+     * ESC reports eRPM as a magnitude. Normal mode never goes below zero, so
+     * there the branch is not taken and the number is the one it was. */
+    const double w = SIM_3D ? sim_abs_d(s->motor_omega[m]) : s->motor_omega[m];
+    const float hz = (float)(w) / two_pi;
     g_motor_hz[m] += g_motor_hz_gain * (hz - g_motor_hz[m]);
     if (g_motor_hz[m] < lo) {
       lo = g_motor_hz[m];
@@ -397,6 +408,22 @@ void motorInitEndpoints(const motorConfig_t *motorConfig, float outputLimit,
                         float *deadbandMotor3DHigh, float *deadbandMotor3DLow) {
   const float outputLimitOffset = DSHOT_RANGE * (1.0f - outputLimit);
   *disarm = DSHOT_CMD_MOTOR_STOP;
+  /*
+   * 3D MODE, copied from dshotInitEndpoints. A DShot 3D ESC splits the
+   * throttle word in two: 48 to 1047 is reverse, slowest to fastest, and 1048
+   * to 2047 is forward. The idle percentage applies to each half on its own,
+   * and the output limit takes half its usual cut from each end. The mixer's
+   * 3D branch (calculateThrottleAndCurrentMotorEndpoints) reads these.
+   */
+  if (featureIsEnabled(FEATURE_3D)) {
+    *outputLow = DSHOT_MIN_THROTTLE + getDigitalIdleOffset(motorConfig)
+      * (DSHOT_3D_FORWARD_MIN_THROTTLE - 1 - DSHOT_MIN_THROTTLE);
+    *outputHigh = DSHOT_MAX_THROTTLE - outputLimitOffset / 2;
+    *deadbandMotor3DHigh = DSHOT_3D_FORWARD_MIN_THROTTLE + getDigitalIdleOffset(motorConfig)
+      * (DSHOT_MAX_THROTTLE - DSHOT_3D_FORWARD_MIN_THROTTLE);
+    *deadbandMotor3DLow = DSHOT_3D_FORWARD_MIN_THROTTLE - 1 - outputLimitOffset / 2;
+    return;
+  }
   *outputLow = DSHOT_MIN_THROTTLE + getDigitalIdleOffset(motorConfig) * DSHOT_RANGE;
   *outputHigh = DSHOT_MAX_THROTTLE - outputLimitOffset;
   *deadbandMotor3DHigh = DSHOT_3D_FORWARD_MIN_THROTTLE;
@@ -425,6 +452,10 @@ void bf_config_begin(void) {
   *dynNotchConfigMutable() = pgResetTemplate_dynNotchConfig;
   *rpmFilterConfigMutable() = pgResetTemplate_rpmFilterConfig;
   *pidConfigMutable() = pgResetTemplate_pidConfig;
+  /* Betaflight's 3D deadbands, read only while FEATURE_3D is on. Without
+   * this the struct is zero, and a zero 3d_deadband_throttle puts the
+   * reversal exactly on mid stick with no dead zone at all. */
+  *flight3DConfigMutable() = pgResetTemplate_flight3DConfig;
   resetPidProfile(pidProfilesMutable(0));
 
   currentPidProfile = pidProfilesMutable(0);
@@ -573,7 +604,30 @@ static void bf_runtime_init(void) {
    * gets aux channels. With no mode activation conditions analysed its loops
    * are empty and it reduces to the airmode line.
    */
+  /*
+   * 3D MODE IS FEATURE_3D, Betaflight's own, and the shell's switch is the
+   * only thing that sets it: a preset's `feature 3D` is ignored like every
+   * other feature this module has no machinery for, so a tune cannot turn
+   * the motors reversible behind the pilot's back.
+   *
+   * The bit goes in before featureInit, and the two pieces that latch it at
+   * init are run again after it when what they latched disagrees, because
+   * this file has always called featureInit last (see the airmode note
+   * above) and they read the mask the PREVIOUS init left. In normal mode
+   * the bit is never set, the two agree, and nothing runs twice.
+   */
+  if (SIM_3D) {
+    featureConfigMutable()->enabledFeatures |= FEATURE_3D;
+  } else {
+    featureConfigMutable()->enabledFeatures &= ~FEATURE_3D;
+  }
   featureInit();
+  if (mixerRuntime.feature3dEnabled != featureIsEnabled(FEATURE_3D)) {
+    initEscEndpoints();
+    mixerInit(mixerConfig()->mixerMode);
+    mixerInitProfile();
+    mixerResetDisarmedMotors();
+  }
   updateActivatedModes();
   pidSetAntiGravityState(featureIsEnabled(FEATURE_ANTI_GRAVITY));
 
@@ -888,6 +942,19 @@ void bridge_reset(void) {
   for (int i = 0; i < 4; i += 1) {
     rcData[i] = (i == THROTTLE) ? 1000.0f : 1500.0f;
   }
+  /* A 3D quad arms with the throttle centred, Betaflight's own rule, and
+   * its bottom stop is full reverse. Warming the receiver up on 1000 left
+   * the rc smoothing to sweep up through the reverse half on the first
+   * frames of every run: measured, a whoop let go at mid stick fell at
+   * three g instead of one. */
+  if (SIM_3D) {
+    rcData[THROTTLE] = 1500.0f;
+  }
+  /* patches/0003: the throttle endpoint statics, which 3D mode's deadband
+   * reads, start over like everything else here. Betaflight's own rule is
+   * that a disarmed craft always arms into the forward direction, and this
+   * is the sim's disarm. Normal mode assigns all four before it reads them. */
+  mixerResetThrottleEndpointState();
   bf_runtime_init();
 
   for (uint32_t ms = BF_WARMUP_FRAME_MS; ms <= BF_WARMUP_MS; ms += BF_WARMUP_FRAME_MS) {
@@ -1033,6 +1100,33 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
   /* Betaflight motor output is in DShot units. The ESC's duty is the
    * fraction of the DShot throttle range, which is what the plant's
    * average applied voltage model wants. */
+  if (SIM_3D) {
+    /*
+     * DShot 3D, as a bidirectional ESC reads it: below 1048 is reverse, from
+     * 48 (slowest) to 1047 (full), and 1048 to 2047 is forward. The sign of
+     * the duty is the direction the ESC drives the motor, and the plant's
+     * rotor equation takes it as a signed voltage. 0, the stop command, is
+     * no drive at all.
+     */
+    const double half = (double)(DSHOT_3D_FORWARD_MIN_THROTTLE - 1 - DSHOT_MIN_THROTTLE);
+    for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+      const double v = (double)motor[m];
+      double d = 0.0;
+      if (v >= (double)DSHOT_3D_FORWARD_MIN_THROTTLE) {
+        d = (v - (double)DSHOT_3D_FORWARD_MIN_THROTTLE) / half;
+      } else if (v >= (double)DSHOT_MIN_THROTTLE) {
+        d = -(v - (double)DSHOT_MIN_THROTTLE) / half;
+      }
+      if (d > 1.0) {
+        d = 1.0;
+      }
+      if (d < -1.0) {
+        d = -1.0;
+      }
+      duty[m] = d;
+    }
+    return;
+  }
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     double d = ((double)motor[m] - (double)DSHOT_MIN_THROTTLE) / (double)DSHOT_RANGE;
     if (d < 0.0) {

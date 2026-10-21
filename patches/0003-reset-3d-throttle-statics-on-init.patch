@@ -1,0 +1,40 @@
+diff --git a/src/main/flight/mixer.c b/src/main/flight/mixer.c
+index 6faed64..6af95c4 100644
+--- a/src/main/flight/mixer.c
++++ b/src/main/flight/mixer.c
+@@ -107,11 +107,20 @@ static FAST_DATA_ZERO_INIT float motorRangeMax;
+ static FAST_DATA_ZERO_INIT float motorOutputRange;
+ static FAST_DATA_ZERO_INIT int8_t motorOutputMixSign;
+ 
++static uint16_t rcThrottlePrevious = 0;   // Store the last throttle direction for deadband transitions
++static timeUs_t reversalTimeUs = 0; // time when motors last reversed in 3D mode
++static float motorRangeMinIncrease = 0;
++
++void mixerResetThrottleEndpointState(void)
++{
++    rcThrottlePrevious = rxConfig()->midrc; // the disarmed value: arming always starts forward
++    reversalTimeUs = 0;
++    motorRangeMinIncrease = 0;
++    motorOutputMixSign = 0;
++}
++
+ static void calculateThrottleAndCurrentMotorEndpoints(timeUs_t currentTimeUs)
+ {
+-    static uint16_t rcThrottlePrevious = 0;   // Store the last throttle direction for deadband transitions
+-    static timeUs_t reversalTimeUs = 0; // time when motors last reversed in 3D mode
+-    static float motorRangeMinIncrease = 0;
+ 
+     float currentThrottleInputRange = 0;
+     if (mixerRuntime.feature3dEnabled) {
+diff --git a/src/main/flight/mixer.h b/src/main/flight/mixer.h
+index 74dd334..e810867 100644
+--- a/src/main/flight/mixer.h
++++ b/src/main/flight/mixer.h
+@@ -132,6 +132,7 @@ void mixerInit(mixerMode_e mixerMode);
+ void mixerInitProfile(void);
+ void mixerResetRpmLimiter(void);
+ void mixerResetDisarmedMotors(void);
++void mixerResetThrottleEndpointState(void);
+ void mixTable(timeUs_t currentTimeUs);
+ void stopMotors(void);
+ void writeMotors(void);

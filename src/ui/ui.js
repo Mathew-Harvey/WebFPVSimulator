@@ -1238,6 +1238,11 @@ const DEFAULTS = {
    * in its own wash goes, and nothing else does. Read as `!== false`, so a
    * blob from before it existed is On. See runWash in src/main.js. */
   propwash: true,
+  /* 3D MODE, the owner's ask of 2026-10-21: reversible motors, Betaflight's
+   * FEATURE_3D. Off is the quad everybody has always flown, and the default,
+   * so nobody's flight changes until they flip it. Read as `=== true`, so a
+   * blob from before it existed is Off. See run3d in src/main.js. */
+  mode3d: false,
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
@@ -9465,6 +9470,23 @@ export class Ui {
       /* Same contract as Quad above. */
       const midRun = this.returnTo === 'paused';
       return [
+        /*
+         * 3D MODE AT THE TOP, where the owner asked for it on 2026-10-21 ("put
+         * it on a toggle on the root level of the settings"). It is not a
+         * stick setting or a screen one, it changes what the quad IS, so it
+         * stands above all of them under a heading of its own. It waits for
+         * the next run or a Restart, because the flight controller takes it
+         * when it arms. See run3d in src/main.js.
+         */
+        { label: 'Flying', section: true },
+        toggle(
+          '3D mode',
+          s.mode3d === true
+            ? 'On: the motors spin both ways. Throttle in the middle is no thrust, below the middle pushes the other way, so you can hang upside down and fly inverted. No turtle, just reverse off the ground. Fitted with 3D props, a little less punch than race props. Laps post to the public board tagged Tuned and keep a best lap of their own. Takes effect when the run restarts.'
+            : 'Off: normal flying, the motors spin one way and the bottom of the throttle is idle. Turn it on for reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down. Takes effect when the run restarts.',
+          s.mode3d === true,
+          (v) => { s.mode3d = Boolean(v); },
+        ),
         { label: 'You', section: true },
         {
           label: 'Your name',

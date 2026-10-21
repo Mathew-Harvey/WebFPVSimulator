@@ -50,9 +50,10 @@ mkdir -p dist build/obj
 
 # Patches in patches/ are applied with git apply against the vendor tree at
 # build time and reverted after object compilation, so the tree stays clean.
-# There are two: 0001 adds the rotor telemetry the plant feeds the RPM
-# filter, and 0002 resets runtime statics on init so a re-init is a real
-# reset rather than a warm start.
+# There are three: 0001 adds the rotor telemetry the plant feeds the RPM
+# filter, 0002 resets runtime statics on init so a re-init is a real
+# reset rather than a warm start, and 0003 does the same for the mixer's
+# throttle endpoint statics, which 3D mode's deadband reads.
 # Strip CR before apply. Windows core.autocrlf checks the patch files out
 # as CRLF, and git apply then fails to match the LF vendor tree. The revert
 # lives in a function so the trap does not re-parse '\r' as the letter r.

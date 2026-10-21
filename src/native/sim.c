@@ -523,6 +523,259 @@ static int ground_hit_at(const double r[3], const double vs[3]) {
 }
 
 /*
+ * THE FOUR LEG TABLE, NORMAL FIRST AND FRICTION AFTER, since 2026-10-21.
+ *
+ * The corners used to go through contact_impulse one at a time, normal and
+ * friction together, and a corner could only ever be given more. So on a
+ * flat landing straight down the first corner took the whole stop, the hull
+ * pitched and rolled about it, the other corners' friction met that made up
+ * spin as a sideways slide and pushed against it, and the hull left the
+ * touch moving sideways: measured, a level drop with no sideways speed at
+ * all came off the touch at 0.47 m/s from 1 m, 1.0 from 5 m and 2.1 from
+ * 30 m, and rolled 0.24, 0.85 and 1.7 m along the grass (check:props, h1).
+ * At mu 1.40 the friction had mostly smothered it; at 0.6, the slide the
+ * owner asked for on 2026-10-18, it showed.
+ *
+ * Now the normal impulses are solved on their own first, each corner's
+ * kept as a running total that can be given back when a later corner
+ * carries what an earlier one took (the accumulated form of sequential
+ * impulses), until the hull stops going into the ground without turning.
+ * A normal impulse is along n, so it cannot push the hull sideways at all.
+ * Then friction, each corner's own total held to mu times that corner's
+ * own normal impulse, against the tangent speed the hull really has: a
+ * belly slide arriving at 10 m/s meets the same Coulomb cone it always
+ * did, and a straight drop meets none, because there is no slide to meet.
+ * Returns the corners that were in the contact band, as a mask.
+ */
+#define CONTACT_TABLE_ITERS 8
+/* An iteration that moves no corner's impulse by more than this, in N s,
+ * has converged, and the rest are skipped. A five inch's weight is about
+ * 0.01 N s a step, so this is a part in ten million of it. */
+#define CONTACT_TABLE_TOL 1e-9
+static int ground_table(const double vs[3]) {
+  const double *n = g_ground_n;
+  const double invm = 1.0 / PLANT_W.mass_kg;
+  /*
+   * COST. This runs every step the craft is upright, airborne or not, so
+   * the airborne case is the corner offsets and one dot product each, as
+   * it was. Once a corner is in the band, what does not change inside one
+   * step is worked out once: the offsets, each corner's normal lever and
+   * its effective mass, and the world frame inverse inertia as a matrix,
+   * and the spin is carried in the world frame until the end. The loops
+   * stop when an iteration has nothing left to move.
+   */
+  double r[CONTACT_CORNERS][3];
+  int hit_mask = 0;
+  for (int c = 0; c < CONTACT_CORNERS; c += 1) {
+    contact_rotate(CONTACT_CORNER[c], r[c]);
+    const double side = n[0] * (S.pos[0] + r[c][0]) + n[1] * (S.pos[1] + r[c][1]) + n[2] * (S.pos[2] + r[c][2]);
+    if (g_ground_d - side > -CONTACT_SLOP) {
+      hit_mask |= (1 << c);
+    }
+  }
+  if (hit_mask == 0) {
+    return 0;
+  }
+
+  double iw[3][3];
+  for (int k = 0; k < 3; k += 1) {
+    const double e[3] = { k == 0 ? 1.0 : 0.0, k == 1 ? 1.0 : 0.0, k == 2 ? 1.0 : 0.0 };
+    double col[3];
+    contact_iinv(e, col);
+    iw[0][k] = col[0];
+    iw[1][k] = col[1];
+    iw[2][k] = col[2];
+  }
+  double w[3];
+  contact_rotate(S.omega, w);
+
+  double rn[CONTACT_CORNERS][3];
+  double irn[CONTACT_CORNERS][3];
+  double kn[CONTACT_CORNERS];
+  double jn_acc[CONTACT_CORNERS];
+  double jt_acc[CONTACT_CORNERS][3];
+  for (int c = 0; c < CONTACT_CORNERS; c += 1) {
+    jn_acc[c] = 0.0;
+    jt_acc[c][0] = 0.0;
+    jt_acc[c][1] = 0.0;
+    jt_acc[c][2] = 0.0;
+    kn[c] = 0.0;
+    if (!(hit_mask & (1 << c))) {
+      continue;
+    }
+    rn[c][0] = r[c][1] * n[2] - r[c][2] * n[1];
+    rn[c][1] = r[c][2] * n[0] - r[c][0] * n[2];
+    rn[c][2] = r[c][0] * n[1] - r[c][1] * n[0];
+    for (int i = 0; i < 3; i += 1) {
+      irn[c][i] = iw[i][0] * rn[c][0] + iw[i][1] * rn[c][1] + iw[i][2] * rn[c][2];
+    }
+    kn[c] = invm + (rn[c][0] * irn[c][0] + rn[c][1] * irn[c][1] + rn[c][2] * irn[c][2]);
+  }
+
+  /* The first CONTACT_ITERS passes also lift the hull out by the old corner
+   * loop's own measure, CONTACT_POS_PUSH of what is in, and every pass reads
+   * the penetration as it now is. If the impulses settle sooner, the passes
+   * left are pushes only, so how fast they settled cannot change how far
+   * the hull is lifted. */
+  int iter = 0;
+  for (; iter < CONTACT_TABLE_ITERS; iter += 1) {
+    double moved = 0.0;
+    for (int c = 0; c < CONTACT_CORNERS; c += 1) {
+      if (!(kn[c] > 1e-12)) {
+        continue;
+      }
+      const double side = n[0] * (S.pos[0] + r[c][0]) + n[1] * (S.pos[1] + r[c][1]) + n[2] * (S.pos[2] + r[c][2]);
+      const double pen_now = g_ground_d - side;
+      const int in_band = pen_now > -CONTACT_SLOP;
+      if (!in_band && !(jn_acc[c] > 0.0)) {
+        continue;
+      }
+      const double vn = n[0] * (S.vel[0] + (w[1] * r[c][2] - w[2] * r[c][1]) - vs[0])
+          + n[1] * (S.vel[1] + (w[2] * r[c][0] - w[0] * r[c][2]) - vs[1])
+          + n[2] * (S.vel[2] + (w[0] * r[c][1] - w[1] * r[c][0]) - vs[2]);
+      /* The target is contact_impulse's: restitution from the closing
+       * speed, the same knee and floor, and Baumgarte on what is in. */
+      double target = 0.0;
+      if (in_band) {
+        const double vin = vn < 0.0 ? -vn : 0.0;
+        double e_used = g_ground_e;
+        if (vin > CONTACT_E_KNEE) {
+          e_used = g_ground_e * CONTACT_E_KNEE / vin;
+        }
+        if (vn > -CONTACT_REST_VN) {
+          const double soft = vin / CONTACT_REST_VN;
+          e_used *= CONTACT_E_FLOOR + (1.0 - CONTACT_E_FLOOR) * (soft > 0.0 ? soft : 0.0);
+        }
+        double bias = 0.0;
+        if (pen_now > CONTACT_SLOP) {
+          bias = CONTACT_BAUMGARTE * (pen_now - CONTACT_SLOP) / SIM_DT;
+          if (bias > CONTACT_BIAS_MAX) {
+            bias = CONTACT_BIAS_MAX;
+          }
+        }
+        target = e_used * vin + bias;
+      }
+      double next = jn_acc[c] + (target - vn) / kn[c];
+      if (next < 0.0) {
+        next = 0.0;
+      }
+      const double dj = next - jn_acc[c];
+      jn_acc[c] = next;
+      if (dj != 0.0) {
+        S.vel[0] += dj * n[0] * invm;
+        S.vel[1] += dj * n[1] * invm;
+        S.vel[2] += dj * n[2] * invm;
+        w[0] += dj * irn[c][0];
+        w[1] += dj * irn[c][1];
+        w[2] += dj * irn[c][2];
+        const double a = dj < 0.0 ? -dj : dj;
+        if (a > moved) {
+          moved = a;
+        }
+      }
+      if (iter < CONTACT_ITERS && pen_now > CONTACT_SLOP) {
+        const double push = (pen_now - CONTACT_SLOP) * CONTACT_POS_PUSH;
+        S.pos[0] += n[0] * push;
+        S.pos[1] += n[1] * push;
+        S.pos[2] += n[2] * push;
+      }
+    }
+    if (!(moved > CONTACT_TABLE_TOL)) {
+      iter += 1;
+      break;
+    }
+  }
+  for (; iter < CONTACT_ITERS; iter += 1) {
+    for (int c = 0; c < CONTACT_CORNERS; c += 1) {
+      if (!(hit_mask & (1 << c))) {
+        continue;
+      }
+      const double side = n[0] * (S.pos[0] + r[c][0]) + n[1] * (S.pos[1] + r[c][1]) + n[2] * (S.pos[2] + r[c][2]);
+      const double p = g_ground_d - side;
+      if (p > CONTACT_SLOP) {
+        const double push = (p - CONTACT_SLOP) * CONTACT_POS_PUSH;
+        S.pos[0] += n[0] * push;
+        S.pos[1] += n[1] * push;
+        S.pos[2] += n[2] * push;
+      }
+    }
+  }
+
+  if (g_ground_mu > 0.0) {
+    for (int iter = 0; iter < CONTACT_ITERS; iter += 1) {
+      double moved = 0.0;
+      for (int c = 0; c < CONTACT_CORNERS; c += 1) {
+        if (!(jn_acc[c] > 0.0)) {
+          continue;
+        }
+        const double vp[3] = {
+          S.vel[0] + (w[1] * r[c][2] - w[2] * r[c][1]) - vs[0],
+          S.vel[1] + (w[2] * r[c][0] - w[0] * r[c][2]) - vs[1],
+          S.vel[2] + (w[0] * r[c][1] - w[1] * r[c][0]) - vs[2],
+        };
+        const double vn = vp[0] * n[0] + vp[1] * n[1] + vp[2] * n[2];
+        const double vt[3] = { vp[0] - vn * n[0], vp[1] - vn * n[1], vp[2] - vn * n[2] };
+        const double vt2 = vt[0] * vt[0] + vt[1] * vt[1] + vt[2] * vt[2];
+        if (!(vt2 > 1e-16)) {
+          continue;
+        }
+        const double vtm = sim_sqrt(vt2);
+        const double t[3] = { vt[0] / vtm, vt[1] / vtm, vt[2] / vtm };
+        double rt[3];
+        rt[0] = r[c][1] * t[2] - r[c][2] * t[1];
+        rt[1] = r[c][2] * t[0] - r[c][0] * t[2];
+        rt[2] = r[c][0] * t[1] - r[c][1] * t[0];
+        double irt[3];
+        for (int i = 0; i < 3; i += 1) {
+          irt[i] = iw[i][0] * rt[0] + iw[i][1] * rt[1] + iw[i][2] * rt[2];
+        }
+        const double kt = invm + (rt[0] * irt[0] + rt[1] * irt[1] + rt[2] * irt[2]);
+        if (!(kt > 1e-12)) {
+          continue;
+        }
+        /* What would stop this corner sliding, added to what it already has,
+         * then held inside its cone as a whole. */
+        const double jtm = -vtm / kt;
+        double next[3] = { jt_acc[c][0] + jtm * t[0], jt_acc[c][1] + jtm * t[1], jt_acc[c][2] + jtm * t[2] };
+        const double mu_use = (vtm < CONTACT_STATIC_VT) ? g_ground_mu * 1.15 : g_ground_mu;
+        const double jmax = mu_use * jn_acc[c];
+        const double nm2 = next[0] * next[0] + next[1] * next[1] + next[2] * next[2];
+        if (nm2 > jmax * jmax) {
+          const double k = jmax / sim_sqrt(nm2);
+          next[0] *= k;
+          next[1] *= k;
+          next[2] *= k;
+        }
+        const double J[3] = { next[0] - jt_acc[c][0], next[1] - jt_acc[c][1], next[2] - jt_acc[c][2] };
+        jt_acc[c][0] = next[0];
+        jt_acc[c][1] = next[1];
+        jt_acc[c][2] = next[2];
+        S.vel[0] += J[0] * invm;
+        S.vel[1] += J[1] * invm;
+        S.vel[2] += J[2] * invm;
+        const double tau[3] = {
+          r[c][1] * J[2] - r[c][2] * J[1],
+          r[c][2] * J[0] - r[c][0] * J[2],
+          r[c][0] * J[1] - r[c][1] * J[0],
+        };
+        for (int i = 0; i < 3; i += 1) {
+          w[i] += iw[i][0] * tau[0] + iw[i][1] * tau[1] + iw[i][2] * tau[2];
+        }
+        const double a = sim_sqrt(J[0] * J[0] + J[1] * J[1] + J[2] * J[2]);
+        if (a > moved) {
+          moved = a;
+        }
+      }
+      if (!(moved > CONTACT_TABLE_TOL)) {
+        break;
+      }
+    }
+  }
+  contact_rotate_inv(w, S.omega);
+  return hit_mask;
+}
+
+/*
  * After the impulses, no hull sample may stay below the plane. A single
  * support (turtle, a roll) leaves the other seven corners free, and
  * those sweep through the dirt as the hull rotates. Motors inverted
@@ -939,21 +1192,7 @@ static void ground_apply(void) {
     return;
   }
 
-  int hit_mask = 0;
-  for (int iter = 0; iter < CONTACT_ITERS; iter += 1) {
-    int nuse = 0;
-    for (int c = 0; c < CONTACT_CORNERS; c += 1) {
-      double r[3];
-      contact_rotate(CONTACT_CORNER[c], r);
-      if (ground_hit_at(r, vs)) {
-        nuse += 1;
-        hit_mask |= (1 << c);
-      }
-    }
-    if (nuse == 0) {
-      break;
-    }
-  }
+  int hit_mask = ground_table(vs);
   int hits = 0;
   int m = hit_mask;
   while (m) {

@@ -148,14 +148,13 @@ async function main() {
       ok(traceOf(fly(sim, NORMAL).out) === never, '3D on at a reset, then off at the next, is bit identical to never');
     }
     {
-      /* And the flight side. A reset in this module was never history
-       * clean in normal mode either: a run, a reset and this flight land
-       * about 10 mm from the same flight in a fresh module on the five inch
-       * and about 43 mm on the whoop, before this change exactly as after it
-       * (PROGRESS.md, 2026-10-21). So a 3D run followed by a normal one is
-       * held to a normal run followed by a normal one, within 10 cm. A mixer
-       * left in its 3D branch reads this flight's 5 percent chop as full
-       * reverse and would be metres out. */
+      /* And the flight side. A 3D run followed by a normal one is held to
+       * a normal run followed by a normal one, bit for bit. A mixer left in
+       * its 3D branch reads this flight's 5 percent chop as full reverse and
+       * would be metres out. This was within 10 cm until patches/0004 made a
+       * reset history clean (scripts/reset-check.js, PROGRESS.md 2026-10-21):
+       * before it a run, a reset and this flight landed about 10 mm from a
+       * fresh module's on the five inch and 43 mm on the whoop. */
       const legs = [{ ms: 400, thr: 0.9 }, { ms: 600, thr: 0.1 }, { ms: 300, thr: 0.5 }];
       const a = await fresh(bytes, diff, af, 1);
       fly(a, legs);
@@ -169,7 +168,7 @@ async function main() {
       b.setCellVoltage(4.2);
       const afterNormal = fly(b, NORMAL).out;
       const gap = maxPosGap(after3d, afterNormal);
-      ok(gap < 0.1, `a 3D run then a normal one flies the normal one to within ${(gap * 1000).toFixed(1)} mm of a normal run then a normal one`);
+      ok(traceOf(after3d) === traceOf(afterNormal), `a 3D run then a normal one flies the normal one bit for bit as a normal run then a normal one${gap > 0 ? `; ${(gap * 1000).toFixed(1)} mm out` : ''}`);
     }
     {
       const sim = await fresh(bytes, diff, af, 1);
@@ -284,8 +283,8 @@ async function main() {
     }
 
     /* DETERMINISTIC: the same sticks in two fresh modules are bit
-     * identical, and after a reset in the same module they agree to the
-     * tolerance a normal run meets (see the leak test above). */
+     * identical, and so is the same flight again after a reset in the same
+     * module (see the leak test above). */
     {
       const legs = [{ ms: 500, thr: 0.9 }, { ms: 500, thr: 0.15, pitch: 0.4 }, { ms: 500, thr: 0.5 }];
       const s1 = await fresh(bytes, diff, af, 1);
@@ -296,7 +295,7 @@ async function main() {
       const other = fly(await fresh(bytes, diff, af, 1), legs).out;
       const gap = maxPosGap(first, again);
       ok(traceOf(first) === traceOf(other), 'a 3D flight is bit identical in a fresh module');
-      ok(gap < 0.1, `and within ${(gap * 1000).toFixed(1)} mm of itself after a reset, the tolerance normal mode meets`);
+      ok(traceOf(first) === traceOf(again), `and bit identical to itself after a reset${gap > 0 ? `; ${(gap * 1000).toFixed(1)} mm out` : ''}`);
     }
 
     /* ON ITS BACK ON THE GRASS, REVERSE TAKES IT OFF. The plane at the

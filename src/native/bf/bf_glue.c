@@ -955,6 +955,24 @@ void bridge_reset(void) {
    * that a disarmed craft always arms into the forward direction, and this
    * is the sim's disarm. Normal mode assigns all four before it reads them. */
   mixerResetThrottleEndpointState();
+  /*
+   * patches/0004, and the battery the controller was last told about: the
+   * rest of what a flight left behind, since 2026-10-21. A reset was never
+   * history clean. A flight, a reset and the same flight again ended 10 mm
+   * from a fresh module's on the five inch and 43 mm on the whoop over 2.2 s,
+   * and one of the leftovers was a feel bug, not a rounding: the dynamic
+   * lowpass remembers when it last moved its cutoffs, the clock goes back to
+   * the warm up at every reset, so after a crash the gyro and D term filters
+   * stayed at whatever cutoff they had until the new flight's clock passed
+   * the old one's, which after two minutes of flying is two minutes of the
+   * wrong filter delay. The others were the D term's last gyro sample, the
+   * angle mode start time, the setpoint the last flight ended on, anti
+   * gravity's throttle derivative, the TPA factor, the PID and mixer outputs
+   * and the motors. Each now starts where a fresh module starts.
+   * `npm run lint:reset` holds it, bit for bit.
+   */
+  mixerResetTransientState();
+  sim_bf_sag_cell_cv = 420;
   bf_runtime_init();
 
   for (uint32_t ms = BF_WARMUP_FRAME_MS; ms <= BF_WARMUP_MS; ms += BF_WARMUP_FRAME_MS) {

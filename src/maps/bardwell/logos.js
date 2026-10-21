@@ -36,7 +36,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { FRAME, BANNERS } from './bardwell.js';
+import { FRAME, BANNERS, LONG_OFF } from './bardwell.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
 import { signAspect } from '../../art/partnermark.js';
 
@@ -160,7 +160,7 @@ export const SIGN_SPOTS = [
   /* Over the barn's big door, seen from the loop. */
   { slug: 'gds', from: [30, 4, 3.55], dir: 'n', w: 1.8 },
   /* The long building's side to the drive, between two windows. */
-  { slug: 'mantisfpv', from: [4.8, -60, 1.5], dir: 'e', w: 2.6 },
+  { slug: 'mantisfpv', from: [4.8 + LONG_OFF.x, -60 + LONG_OFF.y, 1.5], dir: 'e', w: 2.6 },
   /* The brick wall, inside the courtyard. */
   { slug: 'wcmrc', from: [11.5, 17.6, 1.6], dir: 'n', w: 2.0 },
   /* The brick wall's back, to the woods. */
@@ -170,7 +170,7 @@ export const SIGN_SPOTS = [
   /* The barn's east wall. */
   { slug: 'yourfpv', from: [36, 12.5, 2.2], dir: 'w', w: 1.4 },
   /* The long building's north end, over its window. */
-  { slug: 'quadconfig', from: [9, -52, 2.3], dir: 's', w: 2.0 },
+  { slug: 'quadconfig', from: [9 + LONG_OFF.x, -52 + LONG_OFF.y, 2.3], dir: 's', w: 2.0 },
   /* The house's west end, between its windows. */
   { slug: 'konexdrone', from: [-2, 5.0, 2.0], dir: 'e', w: 1.4 },
 ];
@@ -222,7 +222,7 @@ export const DECAL_SPOTS = [
    * end and its front under the porch. */
   { slug: 'mattsflooring', from: [24.5, 8.0, 2.1], dir: 'e', w: 1.6 },
   { slug: 'yourfpv', from: [27.5, 20, 2.2], dir: 's', w: 1.3 },
-  { slug: 'quadconfig', from: [15.5, -60.5, 2.0], dir: 'w', w: 1.6 },
+  { slug: 'quadconfig', from: [15.5 + LONG_OFF.x, -60.5 + LONG_OFF.y, 2.0], dir: 'w', w: 1.6 },
   { slug: 'konexdrone', from: [30, -71, 1.2], dir: 's', w: 1.8 },
   { slug: 'mantisfpv', from: [18, 5, 2.0], dir: 'w', w: 1.6 },
   { slug: 'webleedfpv', from: [9.4, -1.5, 2.05], dir: 'n', w: 1.15 },

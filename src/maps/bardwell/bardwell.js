@@ -145,10 +145,14 @@ const LEAN_POST = 0.075;
 const CAMPER = { x0: 18.5, x1: 21.3, y: 21.6, h: 1.45, r: 0.97 };
 
 /* THE LONG BUILDING down the field by the drive, and its deck. */
-export const LONG = { x0: 6.5, x1: 11.5, y0: -70, y1: -54 };
+/* In the stills it stands at the field's far north east end, by the woods,
+ * a deck on its side to the field; first built down the drive's side of
+ * the field, which the stills do not show. Moved by this much, whole. */
+export const LONG_OFF = { x: 49.5, y: 18 };
+export const LONG = { x0: 6.5 + LONG_OFF.x, x1: 11.5 + LONG_OFF.x, y0: -70 + LONG_OFF.y, y1: -54 + LONG_OFF.y };
 const LONG_EAVE = 2.7;
 const LONG_PITCH = 4 / 12;
-const DECK = { x0: 11.5, x1: 14.5, y0: -68, y1: -56, h: 0.45 };
+const DECK = { x0: 11.5 + LONG_OFF.x, x1: 14.5 + LONG_OFF.x, y0: -68 + LONG_OFF.y, y1: -56 + LONG_OFF.y, h: 0.45 };
 
 /* The blue shed in the field, the white coops by the east fence. */
 const BLUE = { x0: 28.5, x1: 31.5, y0: -76, y1: -73 };
@@ -704,14 +708,15 @@ function firewood(Y) {
 function longBuilding(Y) {
   const l = LONG;
   Y.box('bardwellSiding', l.x0, l.y0, 0, l.x1, l.y1, LONG_EAVE, { name: 'long building' });
+  const oy = LONG_OFF.y;
   for (const y of [-67.5, -62.5, -57.5]) {
-    windowOn(Y, l, 'w', y, y + 1.1, 1.0, 1.9);
+    windowOn(Y, l, 'w', y + oy, y + oy + 1.1, 1.0, 1.9);
   }
   for (const y of [-66.5, -58.5]) {
-    windowOn(Y, l, 'e', y, y + 1.1, 1.1, 1.9);
+    windowOn(Y, l, 'e', y + oy, y + oy + 1.1, 1.1, 1.9);
   }
-  doorOn(Y, l, 'e', -63.0, -62.05, DECK.h, DECK.h + 2.05, 'homeTrim');
-  windowOn(Y, l, 'n', 8.5, 9.5, 1.1, 1.9);
+  doorOn(Y, l, 'e', -63.0 + oy, -62.05 + oy, DECK.h, DECK.h + 2.05, 'homeTrim');
+  windowOn(Y, l, 'n', 8.5 + LONG_OFF.x, 9.5 + LONG_OFF.x, 1.1, 1.9);
   gableRoof(Y, 'y', l.x0, l.x1, l.y0, l.y1, LONG_EAVE, {
     pitch: LONG_PITCH, over: 0.5, roof: 'bardwellOrange', gable: 'bardwellSiding', fascia: 'bardwellOrange',
   });
@@ -722,7 +727,7 @@ function longBuilding(Y) {
     Y.paint('homeCoping', d.x0, y, d.h, d.x1, y + 0.02, d.h + 0.003);
   }
   for (const [x, y, m] of [[12.4, -66, 'homeChair'], [13.4, -64.5, 'homeChair'], [12.6, -59, 'homePlayBlue'], [13.6, -58, 'homeChair']]) {
-    Y.paint(m, x - 0.3, y - 0.3, d.h, x + 0.3, y + 0.3, d.h + 0.8);
+    Y.paint(m, x + LONG_OFF.x - 0.3, y + LONG_OFF.y - 0.3, d.h, x + LONG_OFF.x + 0.3, y + LONG_OFF.y + 0.3, d.h + 0.8);
   }
 }
 
@@ -741,9 +746,9 @@ function sheds(Y) {
   }
 }
 
-/* A board fence along one side, a solid run with its posts and three
- * boards drawn on it, boards on the side `face` names (+1 the larger
- * coordinate). A banner board where `banners` says, along it. */
+/* A split rail fence along one side, a solid run with the rails drawn on
+ * it (`face` is kept for the callers: the rails stand either side of the
+ * line). A banner board where `banners` says, along it. */
 function fence(Y, dir, at, a0, a1, face = 1) {
   const t = 0.08;
   if (dir === 'x') {
@@ -751,23 +756,21 @@ function fence(Y, dir, at, a0, a1, face = 1) {
   } else {
     Y.hidden(at - t, a0, 0, at + t, a1, FENCE_H, 'wall', 'fence');
   }
+  /* Split rail, as the stills show it: panels of three rails 3 m long, each
+   * panel stood a hand off the line, one side then the other, and reaching
+   * a little past its ends so the rails cross where they meet. No posts. */
   const len = a1 - a0;
-  const n = Math.max(1, Math.round(len / 2.44));
-  for (let i = 0; i <= n; i += 1) {
-    const a = a0 + (len * i) / n;
-    if (dir === 'x') {
-      Y.paint('homeFenceWood', a - 0.07, at - 0.07, 0, a + 0.07, at + 0.07, FENCE_H);
-    } else {
-      Y.paint('homeFenceWood', at - 0.07, a - 0.07, 0, at + 0.07, a + 0.07, FENCE_H);
-    }
-  }
-  const f0 = at + face * 0.07;
-  const f1 = f0 + face * 0.04;
-  for (const h of [0.35, 0.75, 1.15]) {
-    if (dir === 'x') {
-      Y.paint('homeFenceWood', a0, Math.min(f0, f1), h - 0.08, a1, Math.max(f0, f1), h + 0.08);
-    } else {
-      Y.paint('homeFenceWood', Math.min(f0, f1), a0, h - 0.08, Math.max(f0, f1), a1, h + 0.08);
+  const n = Math.max(1, Math.round(len / 3.0));
+  for (let i = 0; i < n; i += 1) {
+    const p0 = a0 + (len * i) / n - 0.3;
+    const p1 = a0 + (len * (i + 1)) / n + 0.3;
+    const o = at + (i % 2 ? 0.1 : -0.1);
+    for (const h of [0.3, 0.7, 1.1]) {
+      if (dir === 'x') {
+        Y.paint('homeFenceWood', p0, o - 0.05, h - 0.06, p1, o + 0.05, h + 0.06);
+      } else {
+        Y.paint('homeFenceWood', o - 0.05, p0, h - 0.06, o + 0.05, p1, h + 0.06);
+      }
     }
   }
 }
@@ -792,7 +795,7 @@ export const BANNERS = [
   { dir: 'x', at: FIELD.y0, along: 42, side: -1, w: 2.6 },
   { dir: 'x', at: FIELD.y0, along: 56, side: -1, w: 2.6 },
 ];
-const BANNER = { h0: 0.32, h1: 1.18, d: 0.12, t: 0.02 };
+const BANNER = { h0: 0.32, h1: 1.18, d: 0.2, t: 0.02 };
 
 function banners(Y) {
   for (const b of BANNERS) {
@@ -845,6 +848,11 @@ function drive(Y) {
   /* Gravel up the field's west side to the loop, round the evergreen. */
   Y.paint('bardwellGravel', DRIVE.x0, ROAD.y1, 0, DRIVE.x1, LOOP.y - 3, G_GRAVEL);
   Y.ring('bardwellGravel', LOOP.x, LOOP.y, LOOP.r0, LOOP.r1, G_LOOP);
+  /* The teardrop's throat: the gravel fanning out from the drive's east edge
+   * to meet the loop on its south west, in steps the ground paint can draw. */
+  for (const [y0, y1, x1] of [[-31, -29.5, 4.6], [-29.5, -28, 6.4], [-28, -26.5, 7.9], [-26.5, -25, 5.2]]) {
+    Y.paint('bardwellGravel', DRIVE.x1, y0, 0, x1, y1, G_GRAVEL);
+  }
   /* Its two wheel tracks, a shade darker. */
   for (const x of [DRIVE.x0 + 0.8, DRIVE.x1 - 0.8]) {
     Y.paint('homeStone', x - 0.22, ROAD.y1, G_GRAVEL, x + 0.22, LOOP.y - 5, G_GRAVEL + 0.002);

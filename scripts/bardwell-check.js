@@ -340,8 +340,8 @@ const LINES = [
   ['past the camper to the barn', [[14, 23.2, 2.0], [26, 23.2, 2.0]]],
   ['through the gate into the field', [[22, -20, 1.2], [22, -40, 1.2]]],
   ['over the fence and down between the pines', [[33.3, -24, 2.4], [33.3, -31.5, 1.5], [33.3, -40, 1.5]]],
-  ['down the field past the long building\'s deck', [[16.5, -45, 1.5], [16.5, -80, 1.5]]],
-  ['over the long building', [[2, -62, 4.5], [18, -62, 4.5]]],
+  ['down the field past the long building\'s deck', [[66.5, -30, 1.5], [66.5, -80, 1.5]]],
+  ['over the long building', [[52, -44, 4.5], [68, -44, 4.5]]],
   ['along the road', [[-45, -112, 1.5], [78, -112, 1.5]]],
   ['up the east line past the coops', [[42, -20, 1.5], [42, 28, 1.5]]],
 ];

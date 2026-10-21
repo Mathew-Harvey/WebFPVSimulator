@@ -9474,16 +9474,17 @@ export class Ui {
          * 3D MODE AT THE TOP, where the owner asked for it on 2026-10-21 ("put
          * it on a toggle on the root level of the settings"). It is not a
          * stick setting or a screen one, it changes what the quad IS, so it
-         * stands above all of them under a heading of its own. It waits for
-         * the next run or a Restart, because the flight controller takes it
-         * when it arms. See run3d in src/main.js.
+         * stands above all of them under a heading of its own. The flight
+         * controller takes it when it arms, so switching it during a run
+         * puts the quad back on the start line at once, as a tune does, and
+         * the note says so then. See run3d in src/main.js.
          */
         { label: 'Flying', section: true },
         toggle(
           '3D mode',
           s.mode3d === true
-            ? 'On: the motors spin both ways. Throttle in the middle is no thrust, below the middle pushes the other way, so you can hang upside down and fly inverted. No turtle, just reverse off the ground. Fitted with 3D props, a little less punch than race props. Laps post to the public board tagged Tuned and keep a best lap of their own. Takes effect when the run restarts.'
-            : 'Off: normal flying, the motors spin one way and the bottom of the throttle is idle. Turn it on for reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down. Takes effect when the run restarts.',
+            ? `On: the motors spin both ways. Throttle in the middle is no thrust, below the middle pushes the other way, so you can hang upside down and fly inverted. No turtle, just reverse off the ground. Fitted with 3D props, a little less punch than race props. Laps post to the public board tagged Tuned and keep a best lap of their own.${midRun ? MID_RUN_WARNING : ''}`
+            : `Off: normal flying, the motors spin one way and the bottom of the throttle is idle. Turn it on for reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down.${midRun ? MID_RUN_WARNING : ''}`,
           s.mode3d === true,
           (v) => { s.mode3d = Boolean(v); },
         ),

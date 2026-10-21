@@ -3562,8 +3562,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * bidirectional ESC and 3D props: throttle centre is no thrust and the
    * bottom half of the stick drives the motors backwards. The controller
    * latches it at a reset, so it is applied by reset(), which every new run
-   * and every Restart goes through, and a change made mid run waits for the
-   * next one, as the flight style does. Another machine in the same sense
+   * and every Restart goes through. A change made mid run is that reset at
+   * once, on the tune's rule: see 3D MODE, MID RUN in applySettings.
+   * Another machine in the same sense
    * prop wash off is, so its laps post tagged Tuned and keep a best of
    * their own. false is what the module starts with.
    */
@@ -6458,6 +6459,25 @@ export async function boot({ loading, bootStart, mapId }) {
         tuneLogMeta = null;
       }
       ui.paintAir();
+    }
+    /*
+     * 3D MODE, MID RUN, on the tune's rule rather than the flight style's.
+     * The owner, 2026-10-21: "turning 3d mode off while in a session does not
+     * turn 3d mode off". It waited for the next run or a Restart, so a pilot
+     * who paused, switched it and resumed was still flying the machine they
+     * had switched away from. The controller takes 3D at a reset and only
+     * there, so a change during a run IS that reset: the quad goes back on
+     * the start line, as a tune or a PID change puts it, and the row says
+     * so. On the title nothing is flying and fly's own reset applies it.
+     * Through whenConfigReady for the reason fly and restart are: a tune
+     * swap in flight would sim_init under it.
+     */
+    if ((mode === 'flight' || mode === 'paused') && (s.mode3d === true) !== run3d) {
+      whenConfigReady(() => {
+        if ((mode === 'flight' || mode === 'paused') && (ui.settings.mode3d === true) !== run3d) {
+          reset();
+        }
+      });
     }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);

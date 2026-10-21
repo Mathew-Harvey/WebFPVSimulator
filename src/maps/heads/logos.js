@@ -337,7 +337,8 @@ export const DECAL_SPOTS = [
   { cell: 'gds', from: [12.5, 2.2, FL + 1.45], dir: 'e', w: 1.4, inside: true },
   { cell: 'webleedfpv', from: [12.5, 6.4, FL + 1.45], dir: 'e', w: 1.2, inside: true },
   { cell: 'il', from: [1.0, 3.5, FM + 1.6], dir: 'w', w: 0.9, inside: true },
-  { cell: 'konexdrone', from: [4.0, 1.7, FM + 1.75], dir: 'e', w: 1.3, inside: true },
+  /* Over the TV on the wall across the middle (../heads.js mainFloor). */
+  { cell: 'konexdrone', from: [4.95, 3.0, FM + 1.75], dir: 'n', w: 1.3, inside: true },
   { cell: 'mattsflooring', from: [15.0, 2.5, FU + 1.6], dir: 'n', w: 1.6, inside: true },
   { cell: 'gds', from: [11.8, 6.5, FU + 1.6], dir: 'n', w: 0.8, inside: true },
 ];

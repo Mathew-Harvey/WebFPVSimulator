@@ -1921,7 +1921,7 @@ async function keyboardPage(page) {
   const pack = await ev(`const c = window.__craftState();
     return JSON.stringify({ osd: ui.osdPack.textContent, plant: c.packVolts, landed: c.landed, perCell: ui.settings.packVoltage });`)
     .then(JSON.parse);
-  check('charged, on the start line, the OSD reads 4.2 volts', pack.osd === '4.2 volts' && pack.perCell === 4.2 && pack.landed,
+  check('charged, on the start line, the OSD reads 4.20 volts', pack.osd === '4.20 volts' && pack.perCell === 4.2 && pack.landed,
     JSON.stringify(pack));
   check('and the plant under it still holds its 6S pack, about 25.2 volts: only the display changed',
     Math.abs(pack.plant - 25.2) < 0.1, JSON.stringify(pack));

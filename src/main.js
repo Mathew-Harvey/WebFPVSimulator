@@ -552,6 +552,11 @@ async function loadMap(shell, id, loading, options) {
     shell.setCraftModel(entry.craftModel || null);
   }
   const map = await mod.buildMap(shell, (f) => loading.progress('world', f), options);
+  /* Near first on a world that asks for it (`nearFirst`, the house maps),
+   * three's own order everywhere else: see nearFirstSort. */
+  if (typeof shell.renderer.setOpaqueSort === 'function') {
+    shell.renderer.setOpaqueSort(map.nearFirst ? nearFirstSort : null);
+  }
   map.graphics = normalizeGraphics(options && options.quality);
   /* The Gem look, once a world is built: colours and vertex tones only, nothing per frame (look.js). */
   applyLook(map.scene, shell.quad);
@@ -563,6 +568,36 @@ async function loadMap(shell, id, loading, options) {
   map.shared = (options && options.shared) || null;
   loading.done('world');
   return map;
+}
+
+/*
+ * NEAR FIRST, NOT COLOUR FIRST, in the house maps.
+ *
+ * three draws the opaque list grouped by material and only then near to
+ * far, which keeps program switches down and is right for the town, where
+ * most of the picture is sky and street and little hides anything else.
+ * Indoors it is the wrong way round: every pixel is covered by a wall, a
+ * floor or a ceiling several times over, and a far room drawn first is
+ * shaded in full before the near wall hides it. Counted on 2026-10-21 in
+ * Nick Burns' house at the start and round it (headless, a proxy: the
+ * fragments that pass the depth test, a pixel's average), three's order
+ * shaded 2.1 to 5.5 times a pixel and this one 1.5 to 4.3, the town 2.2 to
+ * 3.0 in its own order. The draws are the same draws: only the order moves.
+ * The cost is more program switches, which is CPU, and PROGRESS.md has
+ * what that measured. groupOrder and renderOrder still come first, so
+ * anything that asked for its place keeps it.
+ */
+function nearFirstSort(a, b) {
+  if (a.groupOrder !== b.groupOrder) {
+    return a.groupOrder - b.groupOrder;
+  }
+  if (a.renderOrder !== b.renderOrder) {
+    return a.renderOrder - b.renderOrder;
+  }
+  if (a.z !== b.z) {
+    return a.z - b.z;
+  }
+  return a.id - b.id;
 }
 
 export async function boot({ loading, bootStart, mapId }) {
@@ -10587,6 +10622,15 @@ export async function boot({ loading, bootStart, mapId }) {
         ui.chaseMeter(chase.view());
         ui.chaseEvents(chaseEvents);
       }
+      /* THE HOUSE MAPS READ AS A 1S WHOOP. Nick's and Heads' house are drawn
+       * as the whoop and built at S times life size (`hudScale` in
+       * ./maps/registry.js), flown on whichever plant is chosen, so the OSD
+       * prints what a 1S whoop in a real house would: one cell's volts
+       * (the pack over the plant's cells, not the airframe's 6S) and the
+       * speed divided by S. Display only, like cells and osdSpeed: nothing
+       * that flies or scores reads either. A whoop airframe keeps its own
+       * HUD (no speed), because its plant is already true size. */
+      const whoopHud = runAirframe === '5inch' ? (mapById(view.id).hudScale || 0) : 0;
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({
@@ -10609,7 +10653,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * airframe's cells. Both whoop and five inch now say what their plant
          * is, so the ratio is 1; it stays because `cells` and the plant are
          * two facts that could part again. Display only. */
-        volts: st[18] * (airframeById(runAirframe).cells / plantFacts(runAirframe).cells),
+        volts: st[18] * (whoopHud ? 1 : airframeById(runAirframe).cells) / plantFacts(runAirframe).cells,
         lastLapMs: race.lastLapMs,
         packFrac: (st[18] - plantFacts(runAirframe).cells * 3.3) / (plantFacts(runAirframe).cells * (4.2 - 3.3)),
         /* The same biased fromY every contact query in this file uses, and
@@ -10621,7 +10665,7 @@ export async function boot({ loading, bootStart, mapId }) {
         altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y),
         /* Null on an airframe whose OSD has no speed, and the readout goes.
          * See osdSpeed in configs/airframes.js. */
-        speedKph: airframeById(runAirframe).osdSpeed ? speed * 3.6 : null,
+        speedKph: whoopHud ? speed * 3.6 / whoopHud : (airframeById(runAirframe).osdSpeed ? speed * 3.6 : null),
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
         /* No damage model, so nothing to count down. How much this run has

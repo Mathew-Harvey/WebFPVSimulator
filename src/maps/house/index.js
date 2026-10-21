@@ -343,6 +343,8 @@ export async function buildMap(shell, onProgress, options) {
     nick.update(step);
     showSigns();
   };
+  /* Drawn near first: see nearFirstSort in src/main.js. */
+  map.nearFirst = true;
   const stats = map.stats;
   map.stats = () => ({ ...stats(), nick: nick.stats() });
   return map;

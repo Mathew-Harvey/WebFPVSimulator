@@ -546,6 +546,8 @@ export async function buildMap(shell, onProgress, options) {
     })),
   ];
   map.stickersEverySighting = true;
+  /* Drawn near first: see nearFirstSort in src/main.js. */
+  map.nearFirst = true;
   houseInk(map.post);
   /* Heads in his garage (./man.js, ./mandraw.js): in the map's scene, so its
    * dispose frees him, and added before the programs are warmed so his is

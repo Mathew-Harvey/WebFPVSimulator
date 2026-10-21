@@ -261,6 +261,7 @@
     'src/props/aperture.js',
     'src/props/buildings.js',
     'src/props/catalog.js',
+    'src/props/coplanar.js',
     'src/props/course.js',
     'src/props/gallery.js',
     'src/props/homes.js',

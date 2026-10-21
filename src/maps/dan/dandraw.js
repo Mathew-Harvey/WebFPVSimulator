@@ -159,8 +159,8 @@ export function danModel() {
    * and sides are its grey. He is stocky, and a belly is the widest part. */
   const chest = (x, y) => uvAt(TEE[0] + TEE_MID + x * 330, TEE[1] + TEE_COLLAR + (0.46 - y) * ((TEE_HEM - TEE_COLLAR) / 0.54));
   B.loft(BONE.spine, [
-    { y: -0.08, rx: 0.18, rz: 0.125, c: tee }, { y: 0.06, rx: 0.191, rz: 0.142, c: tee }, { y: 0.16, rx: 0.191, rz: 0.136, c: tee },
-    { y: 0.26, rx: 0.196, rz: 0.125, c: tee }, { y: 0.35, rx: 0.213, rz: 0.114, c: tee }, { y: 0.44, rx: 0.234, rz: 0.109, c: tee },
+    { y: -0.08, rx: 0.222, rz: 0.125, c: tee }, { y: 0.06, rx: 0.232, rz: 0.142, c: tee }, { y: 0.16, rx: 0.234, rz: 0.136, c: tee },
+    { y: 0.26, rx: 0.234, rz: 0.125, c: tee }, { y: 0.35, rx: 0.234, rz: 0.114, c: tee }, { y: 0.44, rx: 0.234, rz: 0.109, c: tee },
     { y: 0.5, rx: 0.131, rz: 0.087, c: tee },
   ], { n: 16, pick: (nx, ny, nz) => (nz > 0.45 ? chest : null) });
   B.loft(BONE.spine, [{ y: 0.46, rx: 0.076, rz: 0.076, c: skin }, { y: 0.56, rx: 0.071, rz: 0.071, c: skin }]);

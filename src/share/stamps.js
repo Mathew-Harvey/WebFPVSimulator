@@ -45,7 +45,7 @@
 
 import { readAutosave } from '../trackbuilder/storage.js';
 import { docModeOf } from '../trackbuilder/elements.js';
-import { HOUSE_DOC_ID, HEADS_DOC_ID } from '../maps/registry.js';
+import { HOUSE_DOC_ID, HEADS_DOC_ID, BARDWELL_DOC_ID } from '../maps/registry.js';
 
 export const STAMPS_KEY = 'webfpv.stf.stamps.v1';
 
@@ -138,7 +138,8 @@ export function writeStamp(key, atUtc = new Date().toISOString()) {
  * stamp on the Freestyle screen: 'city' for the town, Nick Burns' house by
  * its fixed document's id (the registry's HOUSE_DOC_ID, which is the id
  * src/maps/house/yard.js gives it), Heads' house by its own (HEADS_DOC_ID,
- * src/maps/heads/yard.js), and for Your map the key its map would
+ * src/maps/heads/yard.js), Joshua Bardwell's by its (BARDWELL_DOC_ID,
+ * src/maps/bardwell/yard.js), and for Your map the key its map would
  * give it, or null for anything that carries no mark.
  *
  * Your map flies what chooseDocument in src/maps/built/index.js picks: the
@@ -159,6 +160,9 @@ export function stampKeyForMap(mapId) {
   }
   if (mapId === 'heads') {
     return `built:${HEADS_DOC_ID}`;
+  }
+  if (mapId === 'bardwell') {
+    return `built:${BARDWELL_DOC_ID}`;
   }
   if (mapId !== 'built') {
     return null;

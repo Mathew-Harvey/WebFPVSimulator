@@ -790,9 +790,10 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  * under the bar, where it is the longest.
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
-  const built = mapId === 'built' || mapId === 'house' || mapId === 'heads';
+  const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell';
   const where = mapId === 'house' ? "Nick's house"
-    : mapId === 'heads' ? "Heads' house" : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+    : mapId === 'heads' ? "Heads' house"
+      : mapId === 'bardwell' ? "Joshua's house" : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -822,6 +823,10 @@ const HOUSE_OFF_BOARD = "The board keeps no runs for Nick Burns' house, so a run
 
 /* Heads' house, the same way. */
 const HEADS_OFF_BOARD = "The board keeps no runs for Heads' house, so a run flown there stays here."
+  + ' Fly the town for a run that can go up.';
+
+/* Joshua Bardwell's house, the same way. */
+const BARDWELL_OFF_BOARD = "The board keeps no runs for Joshua Bardwell's house, so a run flown there stays here."
   + ' Fly the town for a run that can go up.';
 
 /*
@@ -4782,7 +4787,7 @@ const WAYS = [
      * pilot asks for them. See DEFAULTS.freestyleScoring. The maps are
      * named so the card says there is more than the town, and the board's
      * are counted in so a pilot knows the shelf keeps growing. */
-    blurb: "Every freestyle map: the town, Nick Burns' house, Heads' house, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
+    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
@@ -10158,7 +10163,8 @@ export class Ui {
          * be posted, so telling a pilot to fly a trick first, or to switch
          * to Scored, would send them to fix something that is not the
          * reason. */
-        const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads';
+        const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
+          || this.settings.map === 'bardwell';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -10185,7 +10191,8 @@ export class Ui {
                 || Boolean(run && run.tuned),
               note: built ? (this.settings.map === 'house' ? HOUSE_OFF_BOARD
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
-                  : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
+                  : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
+                    : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false
                   ? 'Free flight has no clock, so there is nothing for a board to compare it against. Set Scoring to Scored run in the Maps room and fly it again.'

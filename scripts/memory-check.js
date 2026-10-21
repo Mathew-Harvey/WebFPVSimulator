@@ -74,7 +74,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  * map the only thing either can fetch is its own three files, and what the
  * default run asks of it is the release. Their borrowing is proved on its
  * own, first in a page of its own: --map=house, --map=heads. */
-const HEAVY = ['built', 'city', 'house', 'heads'];
+const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell'];
 
 /*
  * WHAT BOOT MAY TAKE FROM THE PROPS LIBRARY, AND WHY IT IS NOT NOTHING.
@@ -194,6 +194,8 @@ BORROWS.house = {
 };
 /* Heads' house the same way (src/maps/heads/index.js). */
 BORROWS.heads = BORROWS.house;
+/* And Joshua Bardwell's house (src/maps/bardwell/index.js). */
+BORROWS.bardwell = BORROWS.house;
 
 /* The URLs under another world that this one is not allowed to have. */
 function bleedOf(urls, id, other) {

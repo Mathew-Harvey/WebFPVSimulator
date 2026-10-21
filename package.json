@@ -52,6 +52,7 @@
     "check:props": "node scripts/props-check.js",
     "check:house": "node scripts/house-check.js",
     "check:heads": "node scripts/heads-check.js",
+    "check:bardwell": "node scripts/bardwell-check.js",
     "check:windmill": "node scripts/windmill-check.js",
     "check:room": "node scripts/room-check.js",
     "check:roads": "node scripts/roads-check.js",

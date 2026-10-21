@@ -71,8 +71,8 @@ function usage() {
   console.log('  --out <dir>        also write each card here, to look at');
   console.log('  --dry              draw and report, upload nothing');
   console.log('  --worlds           draw the thumbnails of the worlds the simulator ships');
-  console.log('                     (the town, Hibari Yard, Nick Burns\' house, Heads\' house)');
-  console.log('                     into');
+  console.log('                     (the town, Hibari Yard, Nick Burns\' house, Heads\' house,');
+  console.log('                     Joshua Bardwell\'s house) into');
   console.log('                     assets/thumbs/, and nothing from the board');
   console.log('');
   console.log('  Every page draws the share card and the picker\'s thumbnail together.');
@@ -315,10 +315,10 @@ async function main() {
 /*
  * THE WORLDS THE SIMULATOR SHIPS, which are on no board: the town, Hibari
  * Yard (the built world with no map of the pilot's own seated), Nick
- * Burns' house and Heads' house. Their thumbnails are files in the
- * simulator, drawn by the same page the board's are, so a shipped world and
- * a published one sit in the picker's strip looking like one set.
- * Regenerate, do not edit.
+ * Burns' house, Heads' house and Joshua Bardwell's. Their thumbnails are
+ * files in the simulator, drawn by the same page the board's are, so a
+ * shipped world and a published one sit in the picker's strip looking like
+ * one set. Regenerate, do not edit.
  */
 const WORLDS = [
   /* The shots were picked by eye from four sides on 19 October 2026: the
@@ -330,6 +330,8 @@ const WORLDS = [
   /* Heads' house, added 20 October 2026 when it became an official map, its
    * shot picked by eye the same way. */
   { id: 'heads', file: 'heads.jpg', name: "Heads' house", shot: { tp: 0.55, tr: 0.8, ta: -1.35 } },
+  /* Joshua Bardwell's house, added 21 October 2026, the same way. */
+  { id: 'bardwell', file: 'bardwell.jpg', name: "Joshua Bardwell's house", shot: { tp: 0.55, tr: 0.6, ta: -1.35 } },
 ];
 
 async function drawWorlds(opts) {

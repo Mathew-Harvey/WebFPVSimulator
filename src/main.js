@@ -550,6 +550,11 @@ async function loadMap(shell, id, loading, options) {
     shell.setCraftModel(entry.craftModel || null);
   }
   const map = await mod.buildMap(shell, (f) => loading.progress('world', f), options);
+  /* Near first on a world that asks for it (`nearFirst`, the house maps),
+   * three's own order everywhere else: see nearFirstSort. */
+  if (typeof shell.renderer.setOpaqueSort === 'function') {
+    shell.renderer.setOpaqueSort(map.nearFirst ? nearFirstSort : null);
+  }
   map.graphics = normalizeGraphics(options && options.quality);
   /* The Gem look, once a world is built: colours and vertex tones only, nothing per frame (look.js). */
   applyLook(map.scene, shell.quad);
@@ -561,6 +566,36 @@ async function loadMap(shell, id, loading, options) {
   map.shared = (options && options.shared) || null;
   loading.done('world');
   return map;
+}
+
+/*
+ * NEAR FIRST, NOT COLOUR FIRST, in the house maps.
+ *
+ * three draws the opaque list grouped by material and only then near to
+ * far, which keeps program switches down and is right for the town, where
+ * most of the picture is sky and street and little hides anything else.
+ * Indoors it is the wrong way round: every pixel is covered by a wall, a
+ * floor or a ceiling several times over, and a far room drawn first is
+ * shaded in full before the near wall hides it. Counted on 2026-10-21 in
+ * Nick Burns' house at the start and round it (headless, a proxy: the
+ * fragments that pass the depth test, a pixel's average), three's order
+ * shaded 2.1 to 5.5 times a pixel and this one 1.5 to 4.3, the town 2.2 to
+ * 3.0 in its own order. The draws are the same draws: only the order moves.
+ * The cost is more program switches, which is CPU, and PROGRESS.md has
+ * what that measured. groupOrder and renderOrder still come first, so
+ * anything that asked for its place keeps it.
+ */
+function nearFirstSort(a, b) {
+  if (a.groupOrder !== b.groupOrder) {
+    return a.groupOrder - b.groupOrder;
+  }
+  if (a.renderOrder !== b.renderOrder) {
+    return a.renderOrder - b.renderOrder;
+  }
+  if (a.z !== b.z) {
+    return a.z - b.z;
+  }
+  return a.id - b.id;
 }
 
 export async function boot({ loading, bootStart, mapId }) {

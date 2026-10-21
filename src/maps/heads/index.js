@@ -545,6 +545,8 @@ export async function buildMap(shell, onProgress, options) {
     })),
   ];
   map.stickersEverySighting = true;
+  /* Drawn near first: see nearFirstSort in src/main.js. */
+  map.nearFirst = true;
   houseInk(map.post);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   return map;

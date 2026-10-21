@@ -91,6 +91,7 @@ import { Colliders, CRAFT_WORLD_R, GROUND_MU, GROUND_E } from '../src/game/colli
 import { uploadWorld, setWorldFrame } from '../src/game/plantworld.js';
 import { threePosToSim } from '../src/render/frame.js';
 import { sincos } from '../src/props/trig.js';
+import { coplanarPairs, separateCoplanar, LIFT } from '../src/props/coplanar.js';
 import {
   nickAt, nickPose, nickBones, BONE as NICK_BONE, SOLE as NICK_SOLE, NICK_PERIOD_MS, NICK_PLACES, NICK_SEAT,
   NICK_LINES, NICK_CALLS,
@@ -230,6 +231,16 @@ function layoutBlock() {
   const a = hashOf(L);
   const b = hashOf(houseLayout());
   check('two builds are the same to the bit', a === b, a.slice(0, 16));
+  /* No two colours drawn in one plane, which the depth buffer shows as a
+   * wall shimmering between them (src/props/coplanar.js). The plan may
+   * have them; what is drawn may not, and the plan itself, which the solids
+   * are placed from, is left as it was. */
+  const flush = coplanarPairs(L.parts).length;
+  const drawn = separateCoplanar(L.parts);
+  const left = coplanarPairs(drawn.parts).length;
+  const planKept = hashOf(L) === a;
+  check('no two colours are drawn in one plane', left === 0 && planKept,
+    `${flush} pairs flush in the plan, ${drawn.moved} faces drawn ${LIFT * 1000} mm out, ${left} left`);
   const solid = L.parts.filter((p) => p.solid).length;
   console.log(`        ${solid} solids, ${L.parts.filter((p) => p.draw).length} drawn parts, ${L.scaled.length} trees and cars`);
   return L;

@@ -2035,16 +2035,19 @@ export function treeDraw(el, parts, K) {
 function loblollySpec(el) {
   const S = dim(el, 'size', 1, 0.5, 3);
   const rng = seededRandom(seedOf(el));
-  const H = 10.6 * S * rng.range(0.92, 1.12);
-  const axis = unit3(leanTip(1, rng.range(0.015, 0.075), rng.range(0, TAU)));
+  /* `el.style` 'broad' is the same build as a rounder, shorter leafy tree, in
+   * the groves' own materials: the stills' broadleaves among the pines. */
+  const broad = el.style === 'broad';
+  const H = 10.6 * S * (broad ? 0.72 : 1) * rng.range(0.92, 1.12);
+  const axis = unit3(leanTip(1, rng.range(0.015, broad ? 0.04 : 0.075), rng.range(0, TAU)));
   const at = (h) => [axis[0] * h, axis[1] * h, axis[2] * h];
-  const trunkR = 0.15 * S * rng.range(0.9, 1.2);
-  const base = H * rng.range(0.52, 0.6);
+  const trunkR = (broad ? 0.2 : 0.15) * S * rng.range(0.9, 1.2);
+  const base = H * (broad ? rng.range(0.34, 0.42) : rng.range(0.52, 0.6));
   const crown = H - base;
-  const crownR = H * 0.06 * rng.range(0.85, 1.2);
+  const crownR = H * (broad ? 0.17 : 0.06) * rng.range(0.85, 1.2);
   const out = {
-    S, H, base,
-    trunk: { a: [0, 0, 0], b: at(H), r: trunkR, rTop: trunkR * 0.28, seg: 6 },
+    S, H, base, broad,
+    trunk: { a: [0, 0, 0], b: at(H), r: trunkR, rTop: trunkR * (broad ? 0.4 : 0.28), seg: 6 },
     flare: { h: 0.5 * S, r: trunkR * 1.7, rTop: trunkR * 0.7, seg: 6 },
     limbs: [], blobs: [],
   };
@@ -2052,12 +2055,13 @@ function loblollySpec(el) {
    * turned against each other so no side is bare. */
   /* A far tree (dims.detail 0) is three whorls: from the field it is the
    * same outline, for half the triangles. */
-  const detailNear = dim(el, 'detail', 1, 0, 1) > 0.5;
-  const layers = detailNear ? 5 : 3;
+  const detail = dim(el, 'detail', 1, 0, 1);
+  const detailNear = detail > 0.5;
+  const layers = broad ? (detailNear ? 3 : 2) : detailNear ? 5 : detail > 0.2 ? 3 : 2;
   let turn = rng.range(0, TAU);
   for (let k = 0; k < layers; k += 1) {
     const u = (k + 0.3) / (layers + 0.4);
-    const pads = detailNear ? 3 : 2 + rng.int(0, 1);
+    const pads = detailNear ? 3 : detail > 0.2 ? 2 + rng.int(0, 1) : 2;
     turn += rng.range(0.5, 1.4);
     for (let q = 0; q < pads; q += 1) {
       const h = base + crown * u * 0.92 + rng.range(-0.04, 0.04) * crown;
@@ -2074,7 +2078,7 @@ function loblollySpec(el) {
       if (rng.chance(0.2)) {
         tone = (tone + 1) % 3;
       }
-      out.blobs.push({ c, r: rb, ry: rb * rng.range(0.5, 0.7), tone, spin: [rng.range(-0.15, 0.15), rng.range(0, 3), rng.range(-0.15, 0.15)] });
+      out.blobs.push({ c, r: rb, ry: rb * (broad ? rng.range(0.7, 0.9) : rng.range(0.5, 0.7)), tone, spin: [rng.range(-0.15, 0.15), rng.range(0, 3), rng.range(-0.15, 0.15)] });
     }
   }
   /* The leader's tuft. */
@@ -2101,12 +2105,13 @@ export function loblollyLayout(el) {
 
 export function loblollyDraw(el, K) {
   const t = loblollySpec(el);
-  const tones = ['stCedar0', 'stCedar1', 'stCedar2'];
+  const tones = t.broad ? ['stGrove0', 'stGrove1', 'stGrove2'] : ['stCedar0', 'stCedar1', 'stCedar2'];
+  const wood = t.broad ? 'stGroveWood' : 'stCedarWood';
   const tr = t.trunk;
-  K.cyl('stCedarWood', tr.a, tr.b, tr.r, tr.seg, tr.rTop);
-  K.cyl('stCedarWood', [0, 0, 0], [0, t.flare.h, 0], t.flare.r, t.flare.seg, t.flare.rTop);
+  K.cyl(wood, tr.a, tr.b, tr.r, tr.seg, tr.rTop);
+  K.cyl(wood, [0, 0, 0], [0, t.flare.h, 0], t.flare.r, t.flare.seg, t.flare.rTop);
   for (const l of t.limbs) {
-    K.cyl('stCedarWood', l.a, l.b, l.r, l.seg, l.rTop);
+    K.cyl(wood, l.a, l.b, l.r, l.seg, l.rTop);
   }
   /* A pad is the twenty faced solid, flat: no ink crease logic to carry, and
    * a fifth of the triangles of the town's eighty faced canopy blob. */

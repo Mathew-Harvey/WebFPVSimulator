@@ -95,7 +95,7 @@ function drawPlace(kit, L) {
     const [x, y, z] = worldAt(a.px, a.py, a.h);
     kit.begin(x, y, z, a.yaw, a.chunk);
     kit.place.multiply(new T.Matrix4().makeScale(a.k, a.k, a.k));
-    if (a.el.style === 'loblolly') {
+    if (a.el.style === 'loblolly' || a.el.style === 'broad') {
       loblollyDraw(a.el, kit);
     } else {
       kit.element(a.el);

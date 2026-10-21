@@ -138,7 +138,7 @@ export const MATERIALS = {
   bardwellOrange: { c: 0xd98c4a, tint: 0x7a5a62 },
   bardwellBlue: { c: 0x6f9fd0, tint: 0x45577a },
   bardwellGravel: { c: 0xa89f90, tint: 0x6a6480 },
-  bardwellDryGrass: { c: 0xa8996a, tint: 0x6a6070 },
+  bardwellDryGrass: { c: 0x86b04e, tint: 0x6a6070 },
 };
 
 /*

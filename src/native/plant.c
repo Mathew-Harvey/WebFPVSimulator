@@ -964,6 +964,26 @@ static double plant_wash_noise(SimState *s) {
 #define PLANT_WASH_RMS 0.16730
 #define PLANT_WASH_CLAMP 3.0
 
+/*
+ * 3D PROPS, which is what a quad flown in 3D mode wears, and they are why it
+ * is a little slower than the race quad it otherwise is.
+ *
+ * A race prop has a cambered blade with one leading edge. Spun backwards it
+ * still pushes, but badly: a bench test of a 7x5 run both ways measured 0.59
+ * kgf reversed against 0.81 forward, with 30 to 50 percent less thrust per
+ * watt. A 3D prop is symmetric, two leading edges and no camber, so it makes
+ * the same thrust whichever way it turns, and it pays for that in both
+ * directions: the hobby figure is up to 30 percent less efficient than a
+ * one way prop. 0.85 of the race prop's thrust at the same shaft speed is
+ * the estimate taken here. The torque is left as it is, so at a given thrust
+ * the motor spins faster and draws more, which puts the efficiency loss at
+ * about 22 percent, inside that band. It is an estimate from two sources and
+ * not a measurement, and it is written down as one.
+ *
+ * Applied only in 3D mode, both directions alike.
+ */
+#define PLANT_3D_PROP_THRUST 0.85
+
 void plant_reset(SimState *s) {
   for (int i = 0; i < 3; i += 1) {
     s->pos[i] = 0.0;
@@ -1017,7 +1037,7 @@ static void quat_rotate_inv(const double q[4], const double v[3], double out[3])
   quat_rotate(qc, v, out);
 }
 
-void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
+static inline __attribute__((always_inline)) void plant_step_body(SimState *s, const double duty_in[SIM_MOTOR_COUNT], const int mode3d) {
   /*
    * 0. The motor as the pilot has wound it. SIM_MOTOR_KV scales kV, so the
    * back EMF constant goes down by that much and the winding resistance by
@@ -1046,10 +1066,15 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   double duty[SIM_MOTOR_COUNT];
   double sumA = 0.0;
   double sumB = 0.0;
+  /* A bidirectional ESC in 3D mode drives either way: the duty is signed,
+   * and a negative one is a reversed voltage on the winding. The solve below
+   * is already right for that, because d^2 and d ke w do not care which way
+   * round the bridge is. */
+  const double d_min = mode3d ? -1.0 : 0.0;
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     double d = duty_in[m];
-    if (d < 0.0) {
-      d = 0.0;
+    if (d < d_min) {
+      d = d_min;
     }
     if (d > 1.0) {
       d = 1.0;
@@ -1099,6 +1124,10 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
    * flipping the style between runs cannot move any other run's trace. */
   const double (*AXIS)[3] = SIM_ARCADE ? PLANT_AXIS_FLAT : PLANT_AXIS[g_airframe];
   double thrust[SIM_MOTOR_COUNT];
+  /* Which way along the motor axis each rotor pushes: +1 always, unless 3D
+   * mode has it spinning backwards. thrust[] stays a magnitude, because the
+   * rotor drag below wants one. */
+  double thrust_dir[SIM_MOTOR_COUNT];
   double stator_torque[3] = { 0.0, 0.0, 0.0 }; /* reaction on the frame */
   double h_prop[3] = { 0.0, 0.0, 0.0 };        /* net prop angular momentum */
   double pack_current = 0.0;
@@ -1116,9 +1145,24 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
 
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     const double d = duty[m];
-    const double w = s->motor_omega[m];
+    /*
+     * 3D MODE: A ROTOR CAN SPIN BACKWARDS, and then everything the air does
+     * to it happens along the other end of its axis. The signed speed drives
+     * the rotor equation, the reaction torques and the gyroscopic term, which
+     * already carry their own signs; the aerodynamics below are written for a
+     * rotor pushing along +z, so they get the speed's magnitude and the axial
+     * inflow measured along the way this rotor is actually pushing. A 3D prop
+     * is symmetric, so that mirror is the whole of it.
+     *
+     * In normal mode the speed is never negative, rotor_dir is 1.0, and a
+     * multiply by 1.0 is the identity in IEEE 754, so every number below is
+     * the one it was.
+     */
+    const double w_signed = s->motor_omega[m];
+    const double rotor_dir = (mode3d && w_signed < 0.0) ? -1.0 : 1.0;
+    const double w = rotor_dir * w_signed;
     /* Prop speed relative to the air about body z, including body yaw. */
-    const double w_rel = PLANT_SPIN[m] * w + r;
+    const double w_rel = PLANT_SPIN[m] * w_signed + r;
     /*
      * Advance ratio: axial air speed through this prop is the craft's
      * body z velocity plus the rotational part from p and q at the motor
@@ -1131,7 +1175,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      * side of the same physics.
      */
     const double v_rot = p * PLANT_POS_Y[m] - q * PLANT_POS_X[m];
-    const double va = v_body[2] + v_rot;
+    const double va = (v_body[2] + v_rot) * rotor_dir;
     const double pitch_speed = (w < 60.0 ? 60.0 : w) * PLANT.k_inflow;
     const double mu = va / pitch_speed;
     double axial;
@@ -1373,6 +1417,12 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
         duct = 1.0 + (PLANT.k_duct - 1.0) / (1.0 + xr * xr);
       }
     }
+    /* A duct is shaped for air going one way through it, lip in front. Run
+     * backwards the lip is at the exit and the gain is gone. Only a 3D whoop
+     * spinning backwards reaches this. */
+    if (rotor_dir < 0.0) {
+      duct = 1.0;
+    }
     axial *= duct;
     /*
      * The thrust factor the TORQUE below is charged for, taken before the
@@ -1416,8 +1466,10 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
       const double up_b[3] = { 0.0, 0.0, 1.0 };
       double up_w[3];
       quat_rotate(s->quat, up_b, up_w);
-      const double facing = s->ground_n[0] * up_w[0] + s->ground_n[1] * up_w[1]
-        + s->ground_n[2] * up_w[2];
+      /* A reversed rotor's wake leaves through the top of the craft, so it is
+       * the top that has to face the floor for the cushion to form. */
+      const double facing = (s->ground_n[0] * up_w[0] + s->ground_n[1] * up_w[1]
+        + s->ground_n[2] * up_w[2]) * rotor_dir;
       if (facing > 0.0) {
         const double off_b[3] = { PLANT_POS_X[m], PLANT_POS_Y[m], PLANT_POS_Z[m] };
         double off_w[3];
@@ -1482,11 +1534,13 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
       }
     }
     const double drag_mag = q_sign * q_mag;
-    const double i = (d * v_load - ke_eff * w) / r_motor_eff;
+    const double i = (d * v_load - ke_eff * w_signed) / r_motor_eff;
     /* Rotor sees the drag torque resisting its own spin direction. */
     const double torque = ke_eff * i - PLANT_SPIN[m] * drag_mag;
-    double w_next = w + (torque / PLANT.j_rotor) * SIM_DT;
-    if (w_next < 0.0) {
+    double w_next = w_signed + (torque / PLANT.j_rotor) * SIM_DT;
+    /* A one way ESC cannot drive a motor backwards, so normal mode stops it
+     * at zero. A 3D ESC brakes it through zero and on the other way. */
+    if (w_next < 0.0 && !mode3d) {
       w_next = 0.0;
     }
     s->motor_omega[m] = w_next;
@@ -1494,7 +1548,11 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     if (t < 0.0) {
       t = 0.0;
     }
+    if (mode3d) {
+      t *= PLANT_3D_PROP_THRUST;
+    }
     thrust[m] = t;
+    thrust_dir[m] = rotor_dir;
     /* Frame feels minus the stator drive torque, about the MOTOR's axis
      * rather than about body z, because the axes are not parallel. */
     const double st = -PLANT_SPIN[m] * ke_eff * i;
@@ -1537,9 +1595,10 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     f_body[1] -= 0.5 * PLANT.rho * PLANT.k_body_lift * v_xy * v_body[1];
   }
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    f_body[0] += thrust[m] * AXIS[m][0];
-    f_body[1] += thrust[m] * AXIS[m][1];
-    f_body[2] += thrust[m] * AXIS[m][2];
+    const double tf = thrust_dir[m] * thrust[m];
+    f_body[0] += tf * AXIS[m][0];
+    f_body[1] += tf * AXIS[m][1];
+    f_body[2] += tf * AXIS[m][2];
   }
 
   /*
@@ -1728,8 +1787,18 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
    * The five inch's k_rotor_axial is 0 and the branch is never entered, so
    * its trace is bit identical. See the note on that field.
    */
-  if (PLANT.k_rotor_axial > 0.0 && v_body[2] < 0.0) {
-    const double sink = -v_body[2];
+  /* A 3D whoop pushing mostly backwards sinks the other way through its
+   * discs, so the brake is measured along the way the thrust is going. */
+  double axial_dir = 1.0;
+  if (mode3d) {
+    const double t_net = thrust_dir[0] * thrust[0] + thrust_dir[1] * thrust[1]
+      + thrust_dir[2] * thrust[2] + thrust_dir[3] * thrust[3];
+    if (t_net < 0.0) {
+      axial_dir = -1.0;
+    }
+  }
+  if (PLANT.k_rotor_axial > 0.0 && v_body[2] * axial_dir < 0.0) {
+    const double sink = -v_body[2] * axial_dir;
     const double disc_all = 4.0 * disc_area;
     const double t_all = thrust[0] + thrust[1] + thrust[2] + thrust[3];
     /* The four discs' induced velocity, from the thrust they are actually
@@ -1751,7 +1820,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
         brake = 1.0;
       }
     }
-    f_body[2] += brake * 0.5 * PLANT.rho * PLANT.k_rotor_axial * air * disc_all * sink * sink;
+    f_body[2] += axial_dir * brake * 0.5 * PLANT.rho * PLANT.k_rotor_axial * air * disc_all * sink * sink;
   }
 
   /* Nose up is a NEGATIVE pitch torque in this frame, so the tap is negated
@@ -1768,9 +1837,10 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
                     stator_torque[1] + rotor_drag_tau[1],
                     stator_torque[2] + rotor_drag_tau[2] };
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    const double fx = thrust[m] * AXIS[m][0];
-    const double fy = thrust[m] * AXIS[m][1];
-    const double fz = thrust[m] * AXIS[m][2];
+    const double tf = thrust_dir[m] * thrust[m];
+    const double fx = tf * AXIS[m][0];
+    const double fy = tf * AXIS[m][1];
+    const double fz = tf * AXIS[m][2];
     /* Full r x F with r = (x, y, z). The z arm contributes nothing for a
      * purely vertical thrust, which is why the hover and punch checks cannot
      * move; it only picks up the small in plane components the motor cant
@@ -1838,4 +1908,21 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   s->pos[0] += s->vel[0] * SIM_DT;
   s->pos[1] += s->vel[1] * SIM_DT;
   s->pos[2] += s->vel[2] * SIM_DT;
+}
+
+/*
+ * THE STEP, IN TWO COPIES. The body above takes 3D mode as a constant, and
+ * each call below hands it a literal, so the compiler builds one step for a
+ * one way motor and one for a reversible one. In the one way copy every 3D
+ * branch is dead and folded away, rotor_dir is the constant 1.0, and a
+ * multiply by 1.0 is folded too, so normal flight runs the instructions it
+ * ran before 3D mode existed rather than paying a test for it on every
+ * rotor of every step. The flag is read once, here.
+ */
+void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
+  if (SIM_3D) {
+    plant_step_body(s, duty_in, 1);
+  } else {
+    plant_step_body(s, duty_in, 0);
+  }
 }

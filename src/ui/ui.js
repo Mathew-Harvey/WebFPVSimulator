@@ -790,9 +790,10 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  * under the bar, where it is the longest.
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
-  const built = mapId === 'built' || mapId === 'house' || mapId === 'heads';
+  const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell';
   const where = mapId === 'house' ? "Nick's house"
-    : mapId === 'heads' ? "Heads' house" : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+    : mapId === 'heads' ? "Heads' house"
+      : mapId === 'bardwell' ? "Joshua's house" : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -822,6 +823,10 @@ const HOUSE_OFF_BOARD = "The board keeps no runs for Nick Burns' house, so a run
 
 /* Heads' house, the same way. */
 const HEADS_OFF_BOARD = "The board keeps no runs for Heads' house, so a run flown there stays here."
+  + ' Fly the town for a run that can go up.';
+
+/* Joshua Bardwell's house, the same way. */
+const BARDWELL_OFF_BOARD = "The board keeps no runs for Joshua Bardwell's house, so a run flown there stays here."
   + ' Fly the town for a run that can go up.';
 
 /*
@@ -1233,6 +1238,11 @@ const DEFAULTS = {
    * in its own wash goes, and nothing else does. Read as `!== false`, so a
    * blob from before it existed is On. See runWash in src/main.js. */
   propwash: true,
+  /* 3D MODE, the owner's ask of 2026-10-21: reversible motors, Betaflight's
+   * FEATURE_3D. Off is the quad everybody has always flown, and the default,
+   * so nobody's flight changes until they flip it. Read as `=== true`, so a
+   * blob from before it existed is Off. See run3d in src/main.js. */
+  mode3d: false,
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
@@ -4782,7 +4792,7 @@ const WAYS = [
      * pilot asks for them. See DEFAULTS.freestyleScoring. The maps are
      * named so the card says there is more than the town, and the board's
      * are counted in so a pilot knows the shelf keeps growing. */
-    blurb: "Every freestyle map: the town, Nick Burns' house, Heads' house, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
+    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
@@ -9460,6 +9470,24 @@ export class Ui {
       /* Same contract as Quad above. */
       const midRun = this.returnTo === 'paused';
       return [
+        /*
+         * 3D MODE AT THE TOP, where the owner asked for it on 2026-10-21 ("put
+         * it on a toggle on the root level of the settings"). It is not a
+         * stick setting or a screen one, it changes what the quad IS, so it
+         * stands above all of them under a heading of its own. The flight
+         * controller takes it when it arms, so switching it during a run
+         * puts the quad back on the start line at once, as a tune does, and
+         * the note says so then. See run3d in src/main.js.
+         */
+        { label: 'Flying', section: true },
+        toggle(
+          '3D mode',
+          s.mode3d === true
+            ? `On: the motors spin both ways. Throttle in the middle is no thrust, below the middle pushes the other way, so you can hang upside down and fly inverted. No turtle, just reverse off the ground. Fitted with 3D props, a little less punch than race props. Laps post to the public board tagged Tuned and keep a best lap of their own.${midRun ? MID_RUN_WARNING : ''}`
+            : `Off: normal flying, the motors spin one way and the bottom of the throttle is idle. Turn it on for reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down.${midRun ? MID_RUN_WARNING : ''}`,
+          s.mode3d === true,
+          (v) => { s.mode3d = Boolean(v); },
+        ),
         { label: 'You', section: true },
         {
           label: 'Your name',
@@ -10158,7 +10186,8 @@ export class Ui {
          * be posted, so telling a pilot to fly a trick first, or to switch
          * to Scored, would send them to fix something that is not the
          * reason. */
-        const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads';
+        const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
+          || this.settings.map === 'bardwell';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -10185,7 +10214,8 @@ export class Ui {
                 || Boolean(run && run.tuned),
               note: built ? (this.settings.map === 'house' ? HOUSE_OFF_BOARD
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
-                  : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
+                  : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
+                    : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false
                   ? 'Free flight has no clock, so there is nothing for a board to compare it against. Set Scoring to Scored run in the Maps room and fly it again.'

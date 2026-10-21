@@ -123,6 +123,21 @@ export const MAPS = [
     hudScale: 3.5,
     load: () => import('./heads/index.js'),
   },
+  /*
+   * JOSHUA BARDWELL'S HOUSE, on the owner's ask of 21 October 2026: the
+   * house and yard of Joshua Bardwell, outside only, rebuilt from stills
+   * of Joshua's videos at life size and flown on the five inch, "no need to
+   * blow it up to make it feel like a whoop map". Built by the same
+   * pipeline (src/maps/bardwell/) and, like the houses, off the board.
+   */
+  {
+    id: 'bardwell',
+    name: "Joshua Bardwell's house",
+    mode: 'freestyle',
+    note: "Joshua Bardwell's house, flown on a five inch: the log house and its porch, the courtyard and gazebo, the barn, the drive, the field and the pines.",
+    buildMs: MAP_BUILD_MS.bardwell,
+    load: () => import('./bardwell/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -131,6 +146,9 @@ export const HOUSE_DOC_ID = 'trk-4e0b5e11';
 
 /* Heads' house's document id (src/maps/heads/yard.js), for the same reason. */
 export const HEADS_DOC_ID = 'trk-4ead5100';
+
+/* Joshua Bardwell's house's (src/maps/bardwell/yard.js), the same way. */
+export const BARDWELL_DOC_ID = 'trk-ba4dbe11';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

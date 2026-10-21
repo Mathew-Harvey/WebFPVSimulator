@@ -265,6 +265,20 @@ extern int SIM_ARCADE;
 extern int SIM_PROPWASH;
 
 /*
+ * 3D MODE, set by sim_set_3d: 0, the default, is the quad every check was
+ * measured on, motors that spin one way. 1 is Betaflight's FEATURE_3D on a
+ * bidirectional DShot ESC: throttle centre is no thrust, the lower half of
+ * the stick drives the motors backwards, and the props are 3D props, which
+ * make the same thrust either way round and less of it than a race prop
+ * (PLANT_3D_PROP_THRUST in plant.c). Read by bf_glue.c when the controller
+ * is initialised, so it takes effect at the next sim_reset or sim_init, and
+ * by the plant every step. A mode, same rule as SIM_ARCADE: it survives
+ * sim_reset and sim_init, and the shell owns asserting it. Every branch it
+ * guards is skipped at 0, which is what keeps normal flight bit identical.
+ */
+extern int SIM_3D;
+
+/*
  * AIR, set by sim_set_air: a scale on everything the air does to slow this
  * airframe down. 1.0 is the machine every band in tests/ and gates.config.json
  * was measured against; below 1 the quad carries further, above 1 it washes

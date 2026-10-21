@@ -3720,7 +3720,7 @@ export class InputManager {
     c.holdMs = 0;
   }
 
-  readGamepad(gp, map = this.map) {
+  readGamepad(gp, map = this.map, fly3d = false) {
     const ax = (i) => (i < gp.axes.length ? gp.axes[i] : 0);
     const dead = (v) => (Math.abs(v) < 0.012 ? 0 : v);
     const clamp = (v) => Math.max(-1, Math.min(1, v));
@@ -3734,7 +3734,12 @@ export class InputManager {
     let throttle = 0;
     if (m.throttle && Number.isInteger(m.throttle.axis)) {
       const t = (ax(m.throttle.axis) - m.throttle.low) / ((m.throttle.high - m.throttle.low) || 1);
-      throttle = Math.max(0, Math.min(1, t));
+      /* A sprung throttle at rest is zero thrust in 3D mode too, but the
+       * centre of the CHANNEL, so its whole travel is used: up is forward,
+       * down past rest is reverse. Off, below rest is idle as it was. */
+      throttle = fly3d && m.throttle.sprung
+        ? Math.max(0, Math.min(1, 0.5 + 0.5 * t))
+        : Math.max(0, Math.min(1, t));
     }
     /*
      * The pilot's own reversals, applied last, over whatever the wizard
@@ -3844,7 +3849,10 @@ export class InputManager {
    * 'hold' does none of this: see holdKeyboardCollective.
    */
   applyKeyboardCollective(dtHold, w, s, springStep) {
-    if (this.keyThrottle === 'hold') {
+    /* 3D mode has no idle at the bottom to spring back to: the bottom is full
+     * reverse. So the keys move a collective that stays put, from the middle,
+     * where 3D's no thrust is, whichever mode the row is on. See set3d. */
+    if (this.keyThrottle === 'hold' || this.mode3d) {
       this.holdKeyboardCollective(dtHold, w, s);
       return;
     }
@@ -3941,6 +3949,29 @@ export class InputManager {
    * settings write, so the weight slider in flight moves it too. Anything
    * that is not a number is ignored rather than trusted.
    */
+  /*
+   * 3D MODE, from main.js's reset(). Three things read it, and only these:
+   * the keyboard's collective, which stays put and starts from the middle
+   * (applyKeyboardCollective, resetKeyboardSticks), the thumb sticks, whose
+   * sticky throttle starts from the middle too, and a gamepad whose throttle
+   * springs back, which flies its whole travel with no thrust at rest instead
+   * of only the top half (readGamepad). A radio's throttle needs nothing: it
+   * already covers the whole range, and Betaflight's 3D mode reads it there.
+   * Off, every one of them is what it was.
+   */
+  set3d(on) {
+    const next = Boolean(on);
+    if (next === Boolean(this.mode3d)) {
+      return next;
+    }
+    this.mode3d = next;
+    this.kb.throttle = next ? 0.5 : 0;
+    if (this.touchSource && typeof this.touchSource.setRestThrottle === 'function') {
+      this.touchSource.setRestThrottle(next ? 0.5 : 0);
+    }
+    return next;
+  }
+
   setKeyHover(frac) {
     const v = Number(frac);
     if (Number.isFinite(v)) {
@@ -3985,7 +4016,7 @@ export class InputManager {
     this.kb.roll = 0;
     this.kb.pitch = 0;
     this.kb.yaw = 0;
-    this.kb.throttle = 0;
+    this.kb.throttle = this.mode3d ? 0.5 : 0;
     this.kbAir = false;
     this.kbThrFromKeys = false;
     this.forcePadRest = false;
@@ -4001,6 +4032,9 @@ export class InputManager {
     this.touchSource = source;
     if (source && typeof source.setStickMode === 'function') {
       source.setStickMode(this.stickMode);
+    }
+    if (this.mode3d && source && typeof source.setRestThrottle === 'function') {
+      source.setRestThrottle(0.5);
     }
   }
 
@@ -4119,6 +4153,10 @@ export class InputManager {
   /* Called once per animation frame. Emits one timestamped sample when
    * anything changed, plus a heartbeat sample every 100 ms. */
   poll(nowWall) {
+    /* When the poll before this one ran: the start of the stretch in which
+     * whatever this poll finds new actually happened. See prevWall on the
+     * sample below. */
+    const prevWall = this.lastWall;
     const dtMs = Math.min(nowWall - this.lastWall, 100);
     this.lastWall = nowWall;
     /* One poll off the flight spoils its rate window. See flightRec. */
@@ -4186,7 +4224,7 @@ export class InputManager {
       next = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
       this.source = 'the calibration wizard';
     } else if (gp) {
-      next = this.readGamepad(gp);
+      next = this.readGamepad(gp, this.map, Boolean(this.mode3d));
       /* The pad's own reading, before the keys below are laid over it: a
        * yaw flown on A and D is not the radio's yaw arriving. */
       if (this.flying) {
@@ -4240,7 +4278,16 @@ export class InputManager {
     if (changed || this.heartbeatMs >= 100) {
       this.heartbeatMs = 0;
       this.channels = next;
-      this.queue.push({ wallT: nowWall, ...next });
+      /*
+       * `prevWall` is when the poll before this one ran, which is not
+       * always 2 ms ago. The timer that polls runs on the main thread, so a
+       * long frame, a garbage collection or a shader compile holds it, and
+       * a stick that moved smoothly through the hold is found here in one
+       * piece. main.js spreads that piece back across the hold (see
+       * THE STICK THROUGH A STALL there) rather than handing the controller
+       * one step.
+       */
+      this.queue.push({ wallT: nowWall, prevWall, ...next });
       this.samplesTaken += 1;
       /* The integrator is frozen while the craft sits landed, so nothing
        * drains then. Bound it: the newest samples are the ones worth keeping. */

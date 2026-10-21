@@ -469,7 +469,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -485,6 +485,7 @@ const MAP_MODULE_PREFIX = {
   built: '/src/maps/built/',
   house: '/src/maps/house/',
   heads: '/src/maps/heads/',
+  bardwell: '/src/maps/bardwell/',
 };
 
 /*
@@ -3101,7 +3102,9 @@ export async function boot({ loading, bootStart, mapId }) {
     /* And prop wash, on the same rule: only when off, so every key that was
      * ever written stays where it is. */
     const washPart = runWash ? '' : '.nowash';
-    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${gravPart}${airPart}${kvPart}${washPart}`;
+    /* And 3D, on the same rule: only when on. */
+    const part3d = run3d ? '.3d' : '';
+    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${gravPart}${airPart}${kvPart}${washPart}${part3d}`;
   }
 
   let mode = 'title'; /* title, flight, paused, results */
@@ -3149,6 +3152,36 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   const rcPending = [];
   let rcHeld = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
+  /*
+   * THE STICK THROUGH A STALL, the owner's report of 2026-10-21: "random
+   * occasional knocking or jumpy movements when under throttle", on Heads'
+   * house and other maps, with prop wash off.
+   *
+   * The sticks are polled on a 2 ms timer, but the timer runs on the main
+   * thread, and nothing polls while a frame is being built, a garbage
+   * collection runs or a shader compiles. A stick that moved smoothly
+   * through such a stretch was found by the next poll all at once, and the
+   * resampler below held the old value up to that sample and then stepped,
+   * so Betaflight was handed one RC frame carrying the whole stretch's
+   * movement. Feedforward is the stick's rate of change and throttle boost
+   * is the throttle's, so that one frame was a kick a real radio never
+   * sends. Measured in the page on the field, a 60 ms stall in the middle
+   * of a smooth 300 ms roll and throttle move: a single frame step of 0.25
+   * roll and 0.12 throttle where the move's own steepest frame is 0.03 and
+   * 0.016, and the roll acceleration's peak doubled. The houses cost more
+   * to draw than the field, so their frames hold the timer longer and more
+   * often, which is why they were where it was felt.
+   *
+   * So every sample says when the poll before it ran (`prevWall`, see
+   * poll() in src/input/input.js), and a slot that falls in a stretch
+   * longer than STALL_GAP_MS gets the straight line across it instead of
+   * the held value. It adds no latency: the sample a slot is drawn from has
+   * always already arrived, the value the stretch ends on lands on the same
+   * slot as before, and the slots before it carry part of the move sooner.
+   * A gap at the timer's own cadence (4 ms is what a browser clamps a 2 ms
+   * interval to) is not a stall and is held exactly as before.
+   */
+  const STALL_GAP_MS = 6;
   /*
    * Re-seat the RC grid on the sim clock and throw away stick samples that
    * belong to a stretch of time the integrator never ran. Called wherever the
@@ -3557,10 +3590,49 @@ export async function boot({ loading, bootStart, mapId }) {
    * Tuned and is filed under a record of its own. See offStock.
    */
   let runWash = true;
+  /*
+   * 3D MODE, as the module is flying it. The owner, 2026-10-21: "we need 3d
+   * mode built ... that should not impact normal mode ... put it on a toggle
+   * on the root level of the settings". Betaflight's own FEATURE_3D, a
+   * bidirectional ESC and 3D props: throttle centre is no thrust and the
+   * bottom half of the stick drives the motors backwards. The controller
+   * latches it at a reset, so it is applied by reset(), which every new run
+   * and every Restart goes through. A change made mid run is that reset at
+   * once, on the tune's rule: see 3D MODE, MID RUN in applySettings.
+   * Another machine in the same sense
+   * prop wash off is, so its laps post tagged Tuned and keep a best of
+   * their own. false is what the module starts with.
+   */
+  let run3d = false;
   /* Whether the machine being flown is off stock in any way the board tags
-   * as Tuned: the two flight feel scales, or prop wash switched off. */
+   * as Tuned: the two flight feel scales, prop wash switched off, or 3D. */
   function offStock() {
-    return offBoardTune(runAirGrip, runMotorKv) || !runWash;
+    return offBoardTune(runAirGrip, runMotorKv) || !runWash || run3d;
+  }
+  /*
+   * How far the stick is asking the craft to climb, for the shell's own
+   * takeoff gates. In normal mode that is the throttle. In 3D the middle is
+   * nothing and the top half is the climb, so the same gates read the top
+   * half's travel and a stick at the bottom, full reverse, is never a
+   * takeoff for a craft sitting on its belly.
+   */
+  function liftThrottle(thr) {
+    return run3d ? (thr - 0.5) * 2 : thr;
+  }
+  /* Set 3D as the settings ask, before the reset that latches it. Guarded
+   * because an older dist/sim.wasm predates the export; on such a build the
+   * row goes back to Off, which is what that module flies. */
+  function apply3d() {
+    const want = ui.settings.mode3d === true;
+    if (want !== run3d) {
+      if (typeof sim.e.sim_set_3d === 'function') {
+        sim.e.sim_set_3d(want ? 1 : 0);
+        run3d = want;
+      } else {
+        ui.settings.mode3d = false;
+      }
+    }
+    input.set3d(run3d);
   }
   /* How many times either export has been called, for the harness: a stock
    * flight must make none (window.__air). */
@@ -4152,7 +4224,9 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function beginTurtleWait(hold) {
-    if (!stateCurr || poseLock || turtleWait || turtleFlip.active) {
+    /* No turtle in 3D mode: a craft on its back flies off on reverse thrust,
+     * which is the whole point of the mode, and the plant carries it. */
+    if (!stateCurr || poseLock || turtleWait || turtleFlip.active || run3d) {
       return;
     }
     if (launchStaging) {
@@ -4197,7 +4271,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function tryEnterTurtle(st, inContact) {
-    if (!st || turtleWait || turtleFlip.active || poseLock) {
+    if (!st || turtleWait || turtleFlip.active || poseLock || run3d) {
       return;
     }
     if (launchStaging) {
@@ -4315,7 +4389,8 @@ export async function boot({ loading, bootStart, mapId }) {
      * reset, and the first frame after it flies on that until a new sample
      * lands at the frame's end: a whoop held against a ceiling at full
      * throttle came out of its crash recovery at 3 m/s upward. */
-    rcHeld = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
+    /* Centred in 3D mode, where the bottom of the stick is full reverse. */
+    rcHeld = { roll: 0, pitch: 0, yaw: 0, throttle: run3d ? 0.5 : 0 };
     adoptSimClock();
     /* The plant's own idea of where it is in the world, which this reset may
      * just have moved. */
@@ -5220,6 +5295,11 @@ export async function boot({ loading, bootStart, mapId }) {
      * compared against another pack's record. */
     runVoltage = ui.settings.packVoltage;
     syncKeyHover();
+    /* 3D mode on the same rule, and it has to come before resetCraft: the
+     * sim_reset in there is what the controller latches it at. The record
+     * key and the Tuned stamp follow it below, after race.reset. */
+    const was3d = run3d;
+    apply3d();
     /* Back to the MAP's own spawn. A crash recovery moves the spawn offset
      * to a point on the course, and a new run must not begin from wherever
      * the last one happened to end. */
@@ -5265,6 +5345,11 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     resetCraft(null);
     race.reset();
+    if (run3d !== was3d) {
+      race.setTuned(offStock());
+      race.setRecordKey(recordKey());
+      ui.setBest(race.bestMs, view.mode);
+    }
     /* A new run starts quiet: last run's final lap is not called over it. */
     lapVoice.stop();
     /* A new run scores from nothing, and the detector's clock goes back to
@@ -6410,6 +6495,25 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       ui.paintAir();
     }
+    /*
+     * 3D MODE, MID RUN, on the tune's rule rather than the flight style's.
+     * The owner, 2026-10-21: "turning 3d mode off while in a session does not
+     * turn 3d mode off". It waited for the next run or a Restart, so a pilot
+     * who paused, switched it and resumed was still flying the machine they
+     * had switched away from. The controller takes 3D at a reset and only
+     * there, so a change during a run IS that reset: the quad goes back on
+     * the start line, as a tune or a PID change puts it, and the row says
+     * so. On the title nothing is flying and fly's own reset applies it.
+     * Through whenConfigReady for the reason fly and restart are: a tune
+     * swap in flight would sim_init under it.
+     */
+    if ((mode === 'flight' || mode === 'paused') && (s.mode3d === true) !== run3d) {
+      whenConfigReady(() => {
+        if ((mode === 'flight' || mode === 'paused') && (ui.settings.mode3d === true) !== run3d) {
+          reset();
+        }
+      });
+    }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
     if (!worldMatchesSettings()) {
@@ -6954,6 +7058,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'heads') {
       notice = {
         text: "The board keeps no runs for Heads' house, so its runs stay here.",
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Joshua Bardwell's house: BARDWELL_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'bardwell') {
+      notice = {
+        text: "The board keeps no runs for Joshua Bardwell's house, so its runs stay here.",
         untilMs: performance.now() + 4200,
       };
       return;
@@ -8821,7 +8933,7 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     if (mode === 'flight' && landed && !replayMode) {
       const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
-      if (landed && thr > TAKEOFF_THROTTLE) {
+      if (landed && liftThrottle(thr) > TAKEOFF_THROTTLE) {
         if (turtleRecover) {
           /* Recover owns the stick. Throttle is not takeoff until they
            * centre, or the leftover punch flies them out of turtle. */
@@ -8911,6 +9023,25 @@ export async function boot({ loading, bootStart, mapId }) {
       const pickAt = (atMs) => {
         while (rcPending.length > 0 && rcPending[0].wallT + wallToSim <= atMs) {
           rcHeld = rcPending.shift();
+        }
+        /* THE STICK THROUGH A STALL: see STALL_GAP_MS. A slot inside a
+         * stretch the poller could not see gets the straight line from the
+         * held sample to the one found after it. Only then is anything
+         * allocated, and the value the stretch ends on lands on the same
+         * slot it always did. */
+        const after = rcPending.length > 0 ? rcPending[0] : null;
+        if (after !== null && after.prevWall !== undefined) {
+          const span = after.wallT - after.prevWall;
+          const from = after.prevWall + wallToSim;
+          if (span > STALL_GAP_MS && atMs > from) {
+            const u = (atMs - from) / span;
+            return {
+              roll: rcHeld.roll + (after.roll - rcHeld.roll) * u,
+              pitch: rcHeld.pitch + (after.pitch - rcHeld.pitch) * u,
+              yaw: rcHeld.yaw + (after.yaw - rcHeld.yaw) * u,
+              throttle: rcHeld.throttle + (after.throttle - rcHeld.throttle) * u,
+            };
+          }
         }
         return rcHeld;
       };
@@ -9198,7 +9329,7 @@ export async function boot({ loading, bootStart, mapId }) {
           /* TAKEOFF_RELEASE, not TAKEOFF_THROTTLE. Coming back down to the
            * same number that sent the craft up is what let one thumb
            * position sit on both sides of the latch. */
-          if (thrNow <= TAKEOFF_RELEASE && hits > 0 && canPerch(tiltDeg, speed, rate)) {
+          if (liftThrottle(thrNow) <= TAKEOFF_RELEASE && hits > 0 && canPerch(tiltDeg, speed, rate)) {
             takingOff = false;
           }
         }
@@ -9774,7 +9905,10 @@ export async function boot({ loading, bootStart, mapId }) {
      * moves the view, never the craft, so no trajectory depends on it.
      */
     {
-      const rpmMean = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
+      /* Magnitudes: in 3D mode a rotor turning backwards reports a negative
+       * speed, and it shakes the frame all the same. */
+      const rpmMean = (Math.abs(stateCurr[14]) + Math.abs(stateCurr[15])
+        + Math.abs(stateCurr[16]) + Math.abs(stateCurr[17])) * 0.25;
       const shake = lensShake.update(dt, rpmMean / plantFacts(runAirframe).fullRpm);
       /* Plus whatever the last contact threw the airframe by. The camera
        * is bolted to the frame, so a hit moves the picture; with the hit
@@ -9886,7 +10020,7 @@ export async function boot({ loading, bootStart, mapId }) {
         /* Punch-out skips the orbit and the approach. TAKEOFF_THROTTLE,
          * not a hair trigger: a resting gamepad axis at 0.08 used to skip
          * the shot entirely. */
-        if (input.channels.throttle > TAKEOFF_THROTTLE && introMs < INTRO_FLY) {
+        if (liftThrottle(input.channels.throttle) > TAKEOFF_THROTTLE && introMs < INTRO_FLY) {
           introMs = INTRO_FLY;
         }
         introMs += dt > INTRO_STEP_MAX ? INTRO_STEP_MAX : dt;
@@ -10138,7 +10272,8 @@ export async function boot({ loading, bootStart, mapId }) {
       view.updateShadowFocus(focus);
       /* Wash used to drive grass propwash. Blades are not drawn. The
        * argument stays on the call so every map has one updateWind shape. */
-      const meanRpm = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
+      const meanRpm = (Math.abs(stateCurr[14]) + Math.abs(stateCurr[15])
+        + Math.abs(stateCurr[16]) + Math.abs(stateCurr[17])) * 0.25;
       const wash = (mode === 'title' || mode === 'results')
         ? 0.85
         : Math.min(1.3, meanRpm / 9000);
@@ -10336,10 +10471,12 @@ export async function boot({ loading, bootStart, mapId }) {
      * the wreck lay still on the ground.
      */
     const motorsTurning = mode === 'flight' && !landed && !isTurtleParked();
-    audioRpm[0] = motorsTurning ? st[14] : 0;
-    audioRpm[1] = motorsTurning ? st[15] : 0;
-    audioRpm[2] = motorsTurning ? st[16] : 0;
-    audioRpm[3] = motorsTurning ? st[17] : 0;
+    /* Magnitudes, for 3D mode's rotors turning backwards: a motor sings at
+     * its speed whichever way round it goes. */
+    audioRpm[0] = motorsTurning ? Math.abs(st[14]) : 0;
+    audioRpm[1] = motorsTurning ? Math.abs(st[15]) : 0;
+    audioRpm[2] = motorsTurning ? Math.abs(st[16]) : 0;
+    audioRpm[3] = motorsTurning ? Math.abs(st[17]) : 0;
     audio.update(audioRpm, motorsTurning ? speed : 0);
     const audioMs = performance.now() - audioStart;
     if (frames > 2 && audioMs > worstAudioMs) {
@@ -11561,6 +11698,11 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__flightMode = () => (angleModeOn ? 'angle' : 'acro');
   /* Whether the module is flying prop wash, as the shell last told it. */
   window.__propwash = () => runWash;
+  /* What 3D mode the module is flying, and what the module says it is. */
+  window.__mode3d = () => ({
+    shell: run3d,
+    module: typeof sim.e.sim_3d === 'function' ? sim.e.sim_3d() === 1 : null,
+  });
   /*
    * The air, READ BACK OUT OF THE MODULE rather than out of the menu, which
    * is the same discipline the PIDs panel keeps: a slider that stopped

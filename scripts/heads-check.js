@@ -74,6 +74,9 @@ import { uploadWorld, setWorldFrame } from '../src/game/plantworld.js';
 import { threePosToSim } from '../src/render/frame.js';
 import { sincos } from '../src/props/trig.js';
 import { coplanarPairs, separateCoplanar, LIFT } from '../src/props/coplanar.js';
+import {
+  headsAt, headsPose, headsBones, BONE as MAN_BONE, SOLE as MAN_SOLE, STOPS, HEADS_PHASES, HEADS_PERIOD_MS, HEADS_LINES,
+} from '../src/maps/heads/man.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 let failures = 0;
@@ -817,6 +820,105 @@ async function moduleBlock(placed) {
     `${c.touched} steps in contact, up to ${r3(c.top)} m`);
 }
 
+
+/* ------------------------------------------------------------------ */
+/* 9. Heads                                                            */
+/* ------------------------------------------------------------------ */
+
+/* The sweep's ball, real metres: a person's half width. His heights are
+ * knee, hip, chest and head, and the shelf across the ceiling is why he
+ * stays south of it. */
+const MAN_R = 0.22;
+const MAN_HEIGHTS = [0.3, 0.8, 1.3, 1.75];
+const MAN_STEP_MS = 20;
+const MAN_SPEED_MAX = 1.3;
+const MAN_TURN_MAX = 6.3;
+const MAN_SOLE_LO = -0.02;
+const MAN_SOLE_HI = 0.03;
+
+function manBlock(placed, near) {
+  console.log('\n9. heads');
+  const pose = headsPose();
+  const M = new Float64Array(13 * 12);
+  const soleOf = (b) => M[b * 12 + 10] - M[b * 12 + 4] * MAN_SOLE;
+  let bad = 0;
+  let fast = 0;
+  let turn = 0;
+  let soleLo = Infinity;
+  let soleHi = -Infinity;
+  let prev = null;
+  for (let T = 0; T <= HEADS_PERIOD_MS; T += MAN_STEP_MS) {
+    headsAt(T, null, 0, false, pose);
+    headsBones(pose, M);
+    if (![pose.x, pose.y, pose.yaw, pose.pelvisH, ...pose.J, ...M].every(Number.isFinite)) {
+      bad += 1;
+      continue;
+    }
+    if (prev) {
+      fast = Math.max(fast, Math.hypot(pose.x - prev[0], pose.y - prev[1]) / (MAN_STEP_MS / 1000));
+      let d = Math.abs(pose.yaw - prev[2]) % (2 * Math.PI);
+      d = Math.min(d, 2 * Math.PI - d);
+      turn = Math.max(turn, d / (MAN_STEP_MS / 1000));
+    }
+    prev = [pose.x, pose.y, pose.yaw];
+    const lo = Math.min(soleOf(MAN_BONE.footL), soleOf(MAN_BONE.footR)) - pose.floor;
+    soleLo = Math.min(soleLo, lo);
+    soleHi = Math.max(soleHi, lo);
+  }
+  const samples = Math.floor(HEADS_PERIOD_MS / MAN_STEP_MS) + 1;
+  check(`every number of every pose is finite, ${samples} poses over ${r3(HEADS_PERIOD_MS / 60000)} minutes`, bad === 0, `${bad} not`);
+  check(`no step faster than ${MAN_SPEED_MAX} m/s`, fast <= MAN_SPEED_MAX, `${r3(fast)} m/s at most`);
+  check(`no turn faster than ${MAN_TURN_MAX} rad/s`, turn <= MAN_TURN_MAX, `${r3(turn)} rad/s at most`);
+  check(`his lowest sole is within ${MAN_SOLE_LO} and ${MAN_SOLE_HI} m of the floor in every pose`,
+    soleLo >= MAN_SOLE_LO && soleHi <= MAN_SOLE_HI, `${r3(soleLo)} to ${r3(soleHi)} m`);
+
+  /* Every stop and every walk between two, swept at his four heights. */
+  const spots = [];
+  for (const ph of HEADS_PHASES) {
+    if (ph.kind === 'walk') {
+      spots.push([ph.from, ph.to]);
+    }
+  }
+  const seen = new Set();
+  let hit = null;
+  let at = null;
+  for (const [a, b] of spots) {
+    const key = `${a}>${b}`;
+    if (seen.has(key) || hit) {
+      continue;
+    }
+    seen.add(key);
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.05));
+    for (let k = 0; k <= n && !hit; k += 1) {
+      const px = a[0] + ((b[0] - a[0]) * k) / n;
+      const py = a[1] + ((b[1] - a[1]) * k) / n;
+      for (const h of MAN_HEIGHTS) {
+        const p = worldAt(px, py, FG + h);
+        const s = hitAt(near(p), p, S * MAN_R);
+        if (s) {
+          hit = s;
+          at = [r3(px), r3(py), r3(h)];
+          break;
+        }
+      }
+    }
+  }
+  check(`his ${seen.size} walks keep a person's width clear of every solid`, !hit,
+    hit ? `${hit.name || hit.kind} at plan ${JSON.stringify(at)}` : `${STOPS.length} stops`);
+  for (const stop of STOPS) {
+    const hits = [];
+    for (const h of MAN_HEIGHTS) {
+      const p = worldAt(stop.at[0], stop.at[1], FG + h);
+      const s = hitAt(near(p), p, S * MAN_R);
+      if (s) {
+        hits.push(s.name || s.kind);
+      }
+    }
+    check(`his ${stop.id} stop has room to stand`, !hits.length, hits.join(', ') || `${stop.at}`);
+  }
+  check('he has lines to shout, none empty', HEADS_LINES.length > 0 && HEADS_LINES.every((l) => l.text.length > 0), `${HEADS_LINES.length}`);
+}
+
 async function main() {
   console.log('heads-check: Heads\' house, src/maps/heads/');
   const L = layoutBlock();
@@ -827,6 +929,7 @@ async function main() {
   roofsBlock(placed, near);
   await logosBlock(L);
   await moduleBlock(placed);
+  manBlock(placed, near);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exitCode = failures ? 1 : 0;
 }

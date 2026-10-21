@@ -197,6 +197,21 @@ set on a die cut white border, 512 px. Both are in this repository only so that
 src/maps/house/ can draw them on that one map. The project's GPLv3 grant
 does not extend to them.
 
+## Heads' house: his manga sheet
+
+    File        assets/heads/heads-manga.webp
+    Licence     NOT GPLv3. Heads' likeness, shown on his house's map with
+                his permission, as the owner states it (2026-10-20).
+
+`heads-manga.webp` is packed from a manga sheet of Heads (Infinity Loops)
+that the owner made with Grok and gave on 2026-10-21, cut into pieces: six
+of his faces, his left side, the back of his head, him standing in the
+Infinity Loops tee and one of his tattooed arms, with a white block, in one
+2048 by 768 atlas, each piece's background filled from its edge. The
+packing script is the thread's, not this repository's. It is in this
+repository only so that src/maps/heads/ can draw him on that one map. The
+project's GPLv3 grant does not extend to it.
+
 ## three.js
 
     Upstream    https://github.com/mrdoob/three.js

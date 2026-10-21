@@ -237,6 +237,8 @@
     'src/maps/heads/heads.js',
     'src/maps/heads/index.js',
     'src/maps/heads/logos.js',
+    'src/maps/heads/man.js',
+    'src/maps/heads/mandraw.js',
     'src/maps/heads/yard.js',
     'src/maps/house/house.js',
     'src/maps/house/index.js',

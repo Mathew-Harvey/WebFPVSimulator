@@ -4808,7 +4808,9 @@ const WAYS = [
      * picture is a whoop's and the hands get the five inch. The old line
      * promised three times the angular acceleration, which was true of a
      * plant nothing selects now. */
-    blurb: 'The same clock, indoors. A 65 mm ducted whoop through a track that fits in a living room, on 28 inch gates.',
+    /* 1S, as the five inch's says 6S: bug-eb0552d6, and the cards' fact
+     * pills that said it went with the pills on 2026-10-20. */
+    blurb: 'The same clock, indoors. A 65 mm 1S ducted whoop through a track that fits in a living room, on 28 inch gates.',
   },
   {
     id: 'freestyle-5inch',
@@ -7977,8 +7979,10 @@ export class Ui {
       const show = issues.has('throttle') && cap >= 100;
       capHint.hidden = !show;
       if (show) {
-        const eased = hoverStickPercent(75, this.settings.airframe);
-        const now = hoverStickPercent(100, this.settings.airframe);
+        /* At the Motor power flown, which is not 100 on a stock whoop. */
+        const kv = effectiveTune(this.settings).motorKv;
+        const eased = hoverStickPercent(75, this.settings.airframe, 100, 4.2, kv);
+        const now = hoverStickPercent(100, this.settings.airframe, 100, 4.2, kv);
         capHint.textContent = `This quad hovers at ${now.toFixed(1)} percent of stick with no throttle limit, so nearly all the travel is above hover. Rates, Throttle limit, 75 percent moves hover to ${eased.toFixed(1)} percent and gives the fine control back without losing any climb you can use indoors. Worth trying before you wait on us.`;
       }
     };
@@ -10358,7 +10362,7 @@ export class Ui {
        */
       const r = s.rates;
       const split = Boolean(s.ratesSplitPitch);
-      const hover = hoverStickPercent(r.throttleCap, this.settings.airframe);
+      const hover = hoverStickPercent(r.throttleCap, this.settings.airframe, 100, 4.2, effectiveTune(this.settings).motorKv);
       const tilt = Math.sin(cameraTiltRad(s.cameraAngle));
       const noteFor = (axis, key) => {
         const spec = rateField(r.type, key);
@@ -11031,7 +11035,7 @@ export class Ui {
     if (this.screen !== 'rates') {
       return;
     }
-    this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe);
+    this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv);
   }
 
   /* The live sticks, from the frame loop. Only while the screen is up: the
@@ -11874,7 +11878,7 @@ export class Ui {
     const before = it.num.cli;
     it.set(next);
     try {
-      this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe);
+      this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv);
     } finally {
       it.set(before);
     }
@@ -13316,7 +13320,12 @@ export class Ui {
     if (!url) {
       return;
     }
-    const label = btn ? btn.textContent : '';
+    /* The button's own word, kept on it the first time: a second press
+     * inside the 2.2 s read "Link copied" here and put that back for good. */
+    if (btn && !btn.dataset.label) {
+      btn.dataset.label = btn.textContent;
+    }
+    const label = btn ? btn.dataset.label : '';
     try {
       await navigator.clipboard.writeText(url);
       if (btn) {

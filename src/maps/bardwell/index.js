@@ -40,6 +40,7 @@
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
+import { loblollyDraw } from '../../props/street.js';
 import { bardwellLayout, FRAME, worldAt } from './bardwell.js';
 import { bardwellDocument } from './yard.js';
 import {
@@ -94,7 +95,11 @@ function drawPlace(kit, L) {
     const [x, y, z] = worldAt(a.px, a.py, a.h);
     kit.begin(x, y, z, a.yaw, a.chunk);
     kit.place.multiply(new T.Matrix4().makeScale(a.k, a.k, a.k));
-    kit.element(a.el);
+    if (a.el.style === 'loblolly') {
+      loblollyDraw(a.el, kit);
+    } else {
+      kit.element(a.el);
+    }
   }
 }
 

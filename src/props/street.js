@@ -162,6 +162,12 @@ function unitGeo(K, key) {
       /* The cedar's whorl: seven sides, base on the origin, as the town's. */
       GEO[key] = new T.ConeGeometry(1, 1, 7, 1);
       GEO[key].translate(0, 0.5, 0);
+    } else if (key === 'tuft') {
+      /* Flat shaded, but indexed (the identity index) so the town's shadow
+       * proxies, which cannot merge indexed with non indexed, keep it in the
+       * bucket the cedar's cones are in: no extra draw call. */
+      GEO[key] = new T.IcosahedronGeometry(1, 0);
+      GEO[key].setIndex(Array.from({ length: GEO[key].attributes.position.count }, (_, i) => i));
     }
   }
   return GEO[key];
@@ -2014,6 +2020,101 @@ export function treeDraw(el, parts, K) {
   /* Fallen petals under a cherry. */
   if (t.style === 'sakura') {
     K.patch('petals', 0, 0.02, 0, 2.4 * t.S, 7);
+  }
+}
+
+/*
+ * THE LOBLOLLY, a tall southern pine as the stills show them (Joshua
+ * Bardwell's yard, src/maps/bardwell): a long bare stem, a lean to it, and
+ * a small ragged crown only in the top third, a few flat pads of needles on
+ * bare limbs and a leader above. Not a style of the builder's list: the
+ * Bardwell map calls these two functions directly, in the cedar's own
+ * materials and tones, so the draw adds no material and no draw call.
+ * `el.dims.size` scales it as the cedar's does (10.6 m a size).
+ */
+function loblollySpec(el) {
+  const S = dim(el, 'size', 1, 0.5, 3);
+  const rng = seededRandom(seedOf(el));
+  const H = 10.6 * S * rng.range(0.92, 1.12);
+  const axis = unit3(leanTip(1, rng.range(0.015, 0.075), rng.range(0, TAU)));
+  const at = (h) => [axis[0] * h, axis[1] * h, axis[2] * h];
+  const trunkR = 0.15 * S * rng.range(0.9, 1.2);
+  const base = H * rng.range(0.52, 0.6);
+  const crown = H - base;
+  const crownR = H * 0.06 * rng.range(0.85, 1.2);
+  const out = {
+    S, H, base,
+    trunk: { a: [0, 0, 0], b: at(H), r: trunkR, rTop: trunkR * 0.28, seg: 6 },
+    flare: { h: 0.5 * S, r: trunkR * 1.7, rTop: trunkR * 0.7, seg: 6 },
+    limbs: [], blobs: [],
+  };
+  /* Five whorls of three pads, each pad on its own limb, the whorls
+   * turned against each other so no side is bare. */
+  /* A far tree (dims.detail 0) is three whorls: from the field it is the
+   * same outline, for half the triangles. */
+  const detailNear = dim(el, 'detail', 1, 0, 1) > 0.5;
+  const layers = detailNear ? 5 : 3;
+  let turn = rng.range(0, TAU);
+  for (let k = 0; k < layers; k += 1) {
+    const u = (k + 0.3) / (layers + 0.4);
+    const pads = detailNear ? 3 : 2 + rng.int(0, 1);
+    turn += rng.range(0.5, 1.4);
+    for (let q = 0; q < pads; q += 1) {
+      const h = base + crown * u * 0.92 + rng.range(-0.04, 0.04) * crown;
+      const rb = crownR * (0.95 - 0.45 * u) * rng.range(0.7, 1.15);
+      const reach = crownR * rng.range(0.4, 1.25) * (1 - 0.3 * u);
+      sincos(turn + (q * TAU) / pads + rng.range(-0.4, 0.4), SC);
+      const a = at(h);
+      const c = [a[0] + SC.c * reach, a[1] + rb * 0.3 + rng.range(0, 0.5) * S, a[2] + SC.s * reach];
+      /* Only a pad out of reach of the stem needs its limb. */
+      if (reach > crownR * 0.8) {
+        out.limbs.push({ a, b: [c[0], c[1] - rb * 0.15, c[2]], r: trunkR * 0.3, rTop: trunkR * 0.15, seg: 4 });
+      }
+      let tone = u > 0.6 ? 0 : u < 0.25 ? 2 : 1;
+      if (rng.chance(0.2)) {
+        tone = (tone + 1) % 3;
+      }
+      out.blobs.push({ c, r: rb, ry: rb * rng.range(0.5, 0.7), tone, spin: [rng.range(-0.15, 0.15), rng.range(0, 3), rng.range(-0.15, 0.15)] });
+    }
+  }
+  /* The leader's tuft. */
+  const t = at(H - 0.45 * S);
+  out.blobs.push({ c: t, r: crownR * 0.5, ry: crownR * 0.5, tone: 0, spin: [0, rng.range(0, 3), 0] });
+  return out;
+}
+
+export function loblollyLayout(el) {
+  const t = loblollySpec(el);
+  const P = new Parts();
+  const tr = t.trunk;
+  const f = t.base / t.H;
+  const neck = [tr.b[0] * f, tr.b[1] * f, tr.b[2] * f];
+  capIn(P, 'stCedarWood', tr.a, neck, tr.r, tr.r + (tr.rTop - tr.r) * f, tr.seg, { name: 'trunk', kind: 'tree' });
+  for (const l of t.limbs) {
+    capIn(P, 'stCedarWood', l.a, l.b, l.r, l.rTop, l.seg, { name: 'limb', kind: 'tree' });
+  }
+  for (const b of t.blobs) {
+    P.cap('stCedar1', b.c, b.c, 0.78 * Math.min(b.r, b.ry), { draw: false, name: 'canopy', kind: 'canopy' });
+  }
+  return P.list;
+}
+
+export function loblollyDraw(el, K) {
+  const t = loblollySpec(el);
+  const tones = ['stCedar0', 'stCedar1', 'stCedar2'];
+  const tr = t.trunk;
+  K.cyl('stCedarWood', tr.a, tr.b, tr.r, tr.seg, tr.rTop);
+  K.cyl('stCedarWood', [0, 0, 0], [0, t.flare.h, 0], t.flare.r, t.flare.seg, t.flare.rTop);
+  for (const l of t.limbs) {
+    K.cyl('stCedarWood', l.a, l.b, l.r, l.seg, l.rTop);
+  }
+  /* A pad is the twenty faced solid, flat: no ink crease logic to carry, and
+   * a fifth of the triangles of the town's eighty faced canopy blob. */
+  const T = K.THREE;
+  for (const b of t.blobs) {
+    const q = new T.Quaternion().setFromEuler(new T.Euler(b.spin[0], b.spin[1], b.spin[2]));
+    const m = new T.Matrix4().compose(new T.Vector3(b.c[0], b.c[1], b.c[2]), q, new T.Vector3(b.r, b.ry, b.r));
+    K.add(tones[b.tone], unitGeo(K, 'tuft'), m);
   }
 }
 

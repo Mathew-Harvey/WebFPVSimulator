@@ -71352,3 +71352,12 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has flown it.
 
 - Approval: the owner wrote "make the changes to the default tune and push to main" at 11:32:15Z on 2026-10-21 in this thread, after the reply with the statistics, the latency line and draft PR 110. Main had moved (Dan in RaceGOW), merged in, not rebased; PROGRESS conflict only.
+
+## 2026-10-21 | maps | Dan's stare, the Luigi look (draft PR)
+
+- Ask: the owner, 11:43Z: put the judgy look Luigi has mastered in Mario Kart 8 on Dan in the RaceGOW rooms ("go all out and make it amazing"). Two stills came with it: head turned to the camera, brows pinched low, eyes open and fixed on the lens, mouth flat.
+- Done: a seventh face, the stare (`FACE.stare`), painted by `/mnt/project-files/dan-judge/scripts/stare.py` over the frown tile at (460, 262) of the atlas: heavy slanted lids over open eyes with small irises looking straight out of the face, thick brows pulled low and in, the glabella lines, the mouth left flat. It is his face whenever the quad is in view, under the balloons' faces. `setFace` now moves the tile in v as well as u. In `dan.js` `danAt` the stare eases in over about 220 ms, drops his chin 0.13 rad while it is on, and holds where the quad was last seen for `STARE_HOLD_MS` (1.6 s) after it goes before he looks about the room again. The head already tracked the quad (140 ms ease, body only past 1 rad).
+- Also: the tee's top row read the tile's black margin above the collar, which showed as a black smear at his neck with the head turned; the chest map now stops at the collar row.
+- Checked: `check:dan` 81 passed (three new: stare on with the quad, held after it goes, off after); `check:heads`, `lint:nouns`, `lint:preload`, `lint:boot` clean. Shots of the head following a quad crossing the room, `/mnt/project-files/dan-judge/shots/stare/` (not committed). Not run: verify (no physics change). Nobody has flown it.
+- Latency: no new draw call and no new triangle. In view still +1 call and 2,808 triangles over the same view with him hidden (measured again: 15 calls, 3,413 triangles against 14 and 605). The stare costs a few multiplies a frame, and one uv write on a face change (now u and v of the same few dozen vertices). Picture 61 kB, down from 68 kB (the atlas was re-encoded at quality 80 with the new tile in it).
+- Not done: the eyes cannot blink or glance, since they are in the picture; the stare is unblinking on purpose.

@@ -47,7 +47,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  DAN_LINES, QUIET_MS, QUIET_LAP_MS, CLEAN_EXIT_MS, TIDY_GATES, makeJudge, danState, danAt,
+  DAN_LINES, STARE_HOLD_MS, QUIET_MS, QUIET_LAP_MS, CLEAN_EXIT_MS, TIDY_GATES, makeJudge, danState, danAt,
 } from '../src/maps/dan/dan.js';
 import { Race } from '../src/game/race.js';
 import { courseFromDocument } from '../src/game/trackdoc.js';
@@ -211,6 +211,23 @@ console.log('\n4. body');
   }
   check('one behind his shoulder turns his body toward it', spin > 0.5, `${spin}`);
   check('and his head stays inside what a neck does', Math.abs(behind.headTurn) <= 1.0 + 1e-9);
+  /* The stare: on while the quad is there, held a beat after it goes, then off. */
+  const gaze = danState(0);
+  const side = { x: 6, y: 1.5, z: 4 };
+  let T = 0;
+  for (; T < 2000; T += 16) {
+    danAt(T, 16, side, 0, '', gaze);
+  }
+  const lockedTurn = gaze.headTurn;
+  check('with the quad in view he stares', gaze.pose.look === 1 && gaze.stare > 0.95, `${gaze.stare}`);
+  for (let t = 0; t < STARE_HOLD_MS - 200; t += 16, T += 16) {
+    danAt(T, 16, null, 0, '', gaze);
+  }
+  check('he holds the stare where it went after the quad is gone', gaze.pose.look === 1 && Math.abs(gaze.headTurn - lockedTurn) < 0.02, `${gaze.headTurn} ${lockedTurn}`);
+  for (let t = 0; t < 2500; t += 16, T += 16) {
+    danAt(T, 16, null, 0, '', gaze);
+  }
+  check('then he looks away', gaze.pose.look === 0 && gaze.stare < 0.05, `${gaze.stare}`);
 }
 
 /* ------------------------------------------------------------------ */

@@ -65,11 +65,15 @@ const SHEET_URL = new URL('../../../assets/dan/dan-manga.webp', import.meta.url)
 const AW = 1536;
 const AH = 512;
 /* Six faces, each a TW wide tile along the top, drawn to one framing: his
- * crown at row FACE_TOP and the middle of his eyes at column FACE_MID. */
+ * crown at row FACE_TOP and the middle of his eyes at column FACE_MID. The
+ * seventh, the stare he watches with, is the frown repainted by stare.py
+ * and sits in the free part of the atlas. */
 const TW = 200;
 export const FACE = {
-  smile: 0, laugh: 1, shout: 2, talk: 3, surprised: 4, frown: 5,
+  smile: 0, laugh: 1, shout: 2, talk: 3, surprised: 4, frown: 5, stare: 6,
 };
+const STARE_AT = [460, 262];
+const faceAt = (k) => (k === FACE.stare ? STARE_AT : [k * TW, 0]);
 const FACE_TOP = 4;
 const FACE_MID = 100;
 /* His left side facing left, its crown at row SIDE_TOP; the column his
@@ -157,7 +161,8 @@ export function danModel() {
   ], { map: hips });
   /* The tee: its front is the sheet's, the logo and the collar; its back
    * and sides are its grey. He is stocky, and a belly is the widest part. */
-  const chest = (x, y) => uvAt(TEE[0] + TEE_MID + x * 330, TEE[1] + TEE_COLLAR + (0.46 - y) * ((TEE_HEM - TEE_COLLAR) / 0.54));
+  /* The shoulders above the collar's row would read the tile's black margin, so the row stops at the collar. */
+  const chest = (x, y) => uvAt(TEE[0] + TEE_MID + x * 330, TEE[1] + TEE_COLLAR + Math.max(1, (0.46 - y) * ((TEE_HEM - TEE_COLLAR) / 0.54)));
   B.loft(BONE.spine, [
     { y: -0.08, rx: 0.222, rz: 0.125, c: tee }, { y: 0.06, rx: 0.232, rz: 0.142, c: tee }, { y: 0.16, rx: 0.234, rz: 0.136, c: tee },
     { y: 0.26, rx: 0.234, rz: 0.125, c: tee }, { y: 0.35, rx: 0.234, rz: 0.114, c: tee }, { y: 0.44, rx: 0.234, rz: 0.109, c: tee },
@@ -243,7 +248,8 @@ export function danModel() {
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.95, 0), 1.5);
   const faceIdx = Uint32Array.from(track);
   const faceU = Float32Array.from(track, (i) => B.uv[i * 2]);
-  return { geometry, rest, restN, bone: Uint8Array.from(B.bone), count, faceIdx, faceU };
+  const faceV = Float32Array.from(track, (i) => B.uv[i * 2 + 1]);
+  return { geometry, rest, restN, bone: Uint8Array.from(B.bone), count, faceIdx, faceU, faceV };
 }
 
 /* ------------------------------------------------------------------ */
@@ -383,10 +389,14 @@ export function makeDan(camera, craftAt, at, scale) {
     }
     face = k;
     const uv = geometry.attributes.uv;
-    const du = (k * TW) / AW;
-    const base = model.faceU;
+    const [ox, oy] = faceAt(k);
+    const du = ox / AW;
+    const dv = -oy / AH;
+    const baseU = model.faceU;
+    const baseV = model.faceV;
     for (let i = 0; i < model.faceIdx.length; i += 1) {
-      uv.array[model.faceIdx[i] * 2] = base[i] + du;
+      uv.array[model.faceIdx[i] * 2] = baseU[i] + du;
+      uv.array[model.faceIdx[i] * 2 + 1] = baseV[i] + dv;
     }
     uv.needsUpdate = true;
   }
@@ -444,7 +454,7 @@ export function makeDan(camera, craftAt, at, scale) {
     mesh.updateMatrixWorld();
 
     /* A line is its face, with his mouth on the move. */
-    let look = FACE.smile;
+    let look = st.pose.look ? FACE.stare : FACE.smile;
     if (say) {
       look = FACE[say.face] ?? FACE.smile;
       if (sayAge < SAY_MS - TALK_HOLD && Math.floor(sayAge / TALK_MS) % 3 === 2) {

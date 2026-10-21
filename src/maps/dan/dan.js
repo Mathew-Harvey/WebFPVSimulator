@@ -209,6 +209,10 @@ set(STAND, BONE.armR, 0.05, 0, -0.16);
 set(STAND, BONE.foreL, -0.34, 0, 0);
 set(STAND, BONE.foreR, -0.34, 0, 0);
 
+/* How long he stares at where the quad was, and how far his chin drops. */
+export const STARE_HOLD_MS = 1600;
+const STARE_CHIN = 0.13;
+
 /* The pelvis over the floor standing, from ./man.js's skeleton. */
 const PELVIS_STAND = 0.96;
 /* The head's pivot over the pelvis: spine, then the head's own offset. */
@@ -220,6 +224,11 @@ export function danState(yaw = 0) {
     yaw,
     headTurn: 0,
     headPitch: 0,
+    /* The last place he saw the quad, and how long he keeps staring there. */
+    seen: { x: 0, y: 0, z: 1 },
+    holdMs: 0,
+    /* 0 to 1: how far into the stare he is, for the chin and the face. */
+    stare: 0,
     /* The pose, for ./dandraw.js to hand to headsBones. */
     pose: {
       x: 0, y: 0, floor: 0, yaw, pelvisH: PELVIS_STAND,
@@ -254,6 +263,19 @@ export function danAt(T, dt, aim, gest, move, st) {
   J[BONE.pelvis * 3 + 2] -= 0.02 * sway;
   let pelvisH = PELVIS_STAND;
 
+  /* The stare outlasts the quad: when it is gone he keeps his eyes on the
+   * place it went for STARE_HOLD_MS, unblinking, before he looks away. */
+  if (aim) {
+    st.seen.x = aim.x;
+    st.seen.y = aim.y;
+    st.seen.z = aim.z;
+    st.holdMs = STARE_HOLD_MS;
+  } else if (st.holdMs > 0) {
+    st.holdMs -= dt;
+    aim = st.seen;
+  }
+  st.stare += ((aim ? 1 : 0) - st.stare) * (1 - Math.exp(-dt / 220));
+
   let turn = 0;
   let pitch = 0;
   if (aim) {
@@ -275,7 +297,8 @@ export function danAt(T, dt, aim, gest, move, st) {
   const rate = 1 - Math.exp(-dt / 420);
   const turned = bodyWant * rate;
   J[BONE.head * 3 + 1] += st.headTurn - spine;
-  J[BONE.head * 3] += -st.headPitch;
+  /* Chin a little down while he stares: he looks at you from under his brows. */
+  J[BONE.head * 3] += -st.headPitch + STARE_CHIN * st.stare;
   J[BONE.spine * 3 + 1] += spine;
 
   if (gest > 0) {
@@ -306,6 +329,6 @@ export function danAt(T, dt, aim, gest, move, st) {
   out.pelvisH = pelvisH;
   out.headH = pelvisH + HEAD_OVER_PELVIS + 0.13;
   out.state = 'stand';
-  out.look = aim ? 1 : 0;
+  out.look = st.stare > 0.5 ? 1 : 0;
   return turned;
 }

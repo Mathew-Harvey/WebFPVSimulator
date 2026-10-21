@@ -221,7 +221,8 @@ project's GPLv3 grant does not extend to it.
 `dan-manga.webp` is packed from a manga sheet of Dan that the owner made with
 Grok and gave on 2026-10-21, cut into pieces: six of his faces, his left side,
 the back of his head, and his grey tee and shorts from the front, in one 1536
-by 512 atlas, each piece's background filled from its edge. The packing script
+by 512 atlas, each piece's background filled from its edge, and a seventh
+face, his stare, painted over a copy of the frown (2026-10-21). The packing script
 is the thread's, not this repository's. It is in this repository only so that
 src/maps/dan/ can draw him in a RaceGOW room. The project's GPLv3 grant does
 not extend to it.

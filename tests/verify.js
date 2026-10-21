@@ -194,6 +194,9 @@ async function main() {
         '--h=300',
         'until:!!window.__boot && window.__boot()',
         'tap:KeyZ',
+        /* The menus are silent until the pilot asks for the bed; this is
+         * the ask, the same call the dock's arrows end in. */
+        "eval:(window.__audio.music.askMenuBed(), 'ok')",
         /* Wait until the media element has started, not a wall clock guess
          * at how long a 5 MB mp3 takes to buffer off localhost. */
         'until:window.__audio && window.__audio.music && window.__audio.music.el && window.__audio.music.el.currentTime > 0.05',

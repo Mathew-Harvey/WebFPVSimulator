@@ -126,7 +126,7 @@ const SIDE_ROWS = [
   [174, 20, 166], [180, 21, 166], [186, 23, 167], [192, 23, 169], [198, 21, 171], [204, 22, 175], [212, 26, 178],
 ];
 
-function lerpRows(table, r) {
+export function lerpRows(table, r) {
   if (r <= table[0][0]) {
     return [table[0][1], table[0][2]];
   }
@@ -159,11 +159,14 @@ const headBack = (x, y) => uvAt(BACK[0] + BACK_MID - x / KS, BACK[1] + BACK_TOP 
 /* The model                                                           */
 /* ------------------------------------------------------------------ */
 
-const rgb = (hex) => [parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255];
+export const rgb = (hex) => [parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255];
 const lin = (c) => c.map((v) => v ** 2.2);
 
-class Build {
-  constructor() {
+export class Build {
+  /* `white` is where the atlas's white block is, for a part that is a colour:
+   * Heads' is his own, and another figure drawn by this class gives its own. */
+  constructor(white = WHITE_UV) {
+    this.white = white;
     this.pos = [];
     this.nor = [];
     this.uv = [];
@@ -175,7 +178,7 @@ class Build {
   vertex(bone, p, n, uv, c) {
     this.pos.push(p[0], p[1], p[2]);
     this.nor.push(n[0], n[1], n[2]);
-    const t = uv || WHITE_UV;
+    const t = uv || this.white;
     this.uv.push(t[0], t[1]);
     const k = uv ? [1, 1, 1] : lin(c);
     this.col.push(k[0], k[1], k[2]);
@@ -387,12 +390,12 @@ export function headsModel() {
 /* The balloon                                                         */
 /* ------------------------------------------------------------------ */
 
-const BW = 640;
-const BH = 256;
+export const BW = 640;
+export const BH = 256;
 /* The balloon in real metres, and where its tail's tip is on it. */
-const BALLOON_W = 1.6;
-const BALLOON_H = 0.64;
-const TIP = [300, 250];
+export const BALLOON_W = 1.6;
+export const BALLOON_H = 0.64;
+export const TIP = [300, 250];
 const TEXT_X = 320;
 const TEXT_Y = 106;
 const TEXT_W = 460;
@@ -443,7 +446,7 @@ function rowsOf(ctx, text) {
   return best;
 }
 
-function paintBalloon(canvas, say) {
+export function paintBalloon(canvas, say) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, BW, BH);
   ctx.lineJoin = 'round';

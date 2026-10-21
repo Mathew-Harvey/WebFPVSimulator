@@ -100,6 +100,12 @@ export async function buildMap(shell, onProgress, options) {
     course.hideSponsors = true;
   }
   const map = await buildFieldScene(shell, reporter(progress), course, q);
+  /* Dan, in the corner of a RaceGOW room, judging the pilot. Loaded only for
+   * a RaceGOW track, his picture included: see src/maps/dan/index.js. */
+  if (/^racegow/i.test(course.series || '')) {
+    const { attachDan } = await import('./dan/index.js');
+    await attachDan(shell, map);
+  }
   map.share = share
     ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }
     : null;

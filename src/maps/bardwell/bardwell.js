@@ -55,6 +55,7 @@
 
 import { Parts } from '../../props/parts.js';
 import { partsOf } from '../../props/catalog.js';
+import { loblollyLayout } from '../../props/street.js';
 import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
 
 /* ------------------------------------------------------------------ */
@@ -879,22 +880,121 @@ function road(Y) {
  * broadleaves among them. The two in the field by the gate stand 4.6 m
  * apart for THE PINES. */
 export const TREES = [
-  [-7, 3, 2.2, 'pine'], [-8, 13, 2.0, 'pine'], [24, -5, 2.3, 'pine'], [2, 27, 2.0, 'pine'],
-  [12, 30, 2.3, 'pine'], [24, 33, 2.0, 'pine'], [36, 27, 2.2, 'pine'], [40, 12, 1.5, 'pine'],
-  [38, -6, 2.1, 'pine'], [LOOP.x, LOOP.y, 1.7, 'pine'],
-  [-6, -32, 2.4, 'pine'], [-7, -47, 2.2, 'pine'], [-6, -62, 2.5, 'pine'], [-7, -80, 2.1, 'pine'], [-6, -95, 2.3, 'pine'],
-  [31, -31.5, 2.2, 'pine'], [35.6, -31.5, 2.3, 'pine'],
-  [-20, -10, 2.2, 'pine'], [-28, 6, 2.4, 'pine'], [-36, -22, 2.0, 'pine'], [-24, -48, 2.3, 'pine'],
-  [-40, -60, 2.1, 'pine'], [-30, -84, 2.2, 'pine'], [-42, 24, 2.3, 'pine'], [-20, 34, 2.0, 'pine'],
-  [-16, -70, 1.7, 'street'], [-34, -40, 1.8, 'street'], [-44, -8, 1.6, 'street'],
-  [56, 8, 2.3, 'pine'], [64, 24, 2.1, 'pine'], [76, 4, 2.4, 'pine'], [78, -40, 2.0, 'street'],
-  [78, -80, 2.2, 'pine'], [54, 40, 2.0, 'pine'], [60, -14, 1.8, 'street'],
-  [-30, -118, 2.0, 'pine'], [20, -119, 2.2, 'pine'], [60, -118, 2.1, 'pine'],
+  [-7, 3, 2.2, 'loblolly'], [-8, 13, 2.0, 'loblolly'], [24, -5, 2.3, 'loblolly'], [2, 27, 2.0, 'loblolly'],
+  [12, 30, 2.3, 'loblolly'], [24, 33, 2.0, 'loblolly'], [36, 27, 2.2, 'loblolly'], [40, 12, 1.5, 'loblolly'],
+  [38, -6, 2.1, 'loblolly'], [LOOP.x, LOOP.y, 2.0, 'loblolly'],
+  /* The island inside the drive's turnaround, which the stills show as a
+   * cluster of trees: pines round a broadleaf, 2.5 to 4.5 m apart. */
+  [LOOP.x - 3.2, LOOP.y + 2.2, 1.7, 'loblolly'], [LOOP.x + 3.4, LOOP.y + 2.6, 1.9, 'loblolly'],
+  [LOOP.x - 3.6, LOOP.y - 2.4, 1.8, 'broad'], [LOOP.x + 3.0, LOOP.y - 3.2, 1.7, 'loblolly'],
+  [LOOP.x + 0.4, LOOP.y + 4.0, 1.6, 'broad'], [LOOP.x + 0.2, LOOP.y - 4.3, 1.8, 'loblolly'],
+  [-6, -32, 2.4, 'loblolly'], [-7, -47, 2.2, 'loblolly'], [-6, -62, 2.5, 'loblolly'], [-7, -80, 2.1, 'loblolly'], [-6, -95, 2.3, 'loblolly'],
+  [31, -31.5, 2.2, 'loblolly'], [35.6, -31.5, 2.3, 'loblolly'],
+  [-20, -10, 2.2, 'loblolly'], [-28, 6, 2.4, 'loblolly'], [-36, -22, 2.0, 'loblolly'], [-24, -48, 2.3, 'loblolly'],
+  [-40, -60, 2.1, 'loblolly'], [-30, -84, 2.2, 'loblolly'], [-42, 24, 2.3, 'loblolly'], [-20, 34, 2.0, 'loblolly'],
+  [-16, -70, 1.7, 'broad'], [-34, -40, 1.8, 'broad'], [-44, -8, 1.6, 'broad'],
+  [56, 8, 2.3, 'loblolly'], [64, 24, 2.1, 'loblolly'], [76, 4, 2.4, 'loblolly'], [78, -40, 2.0, 'broad'],
+  [78, -80, 2.2, 'loblolly'], [54, 40, 2.0, 'loblolly'], [60, -14, 1.8, 'broad'],
+  [-30, -118, 2.0, 'loblolly'], [20, -119, 2.2, 'loblolly'], [60, -118, 2.1, 'loblolly'],
+  /* The tree line closing in, as the stills show the place wooded round and
+   * behind: a belt along the north, the west and the east edges and the road. */
+  [-14, -8, 2.0, 'loblolly'], [-14, 18, 2.1, 'loblolly'],
+  [-44, 40, 2.2, 'loblolly'], [-30, 44, 2.0, 'loblolly'], [-12, 43, 2.3, 'loblolly'], [6, 45, 2.1, 'loblolly'],
+  [22, 44, 2.2, 'loblolly'], [40, 42, 2.0, 'loblolly'], [56, 44, 2.3, 'loblolly'], [70, 40, 2.1, 'loblolly'],
+  [-48, -20, 2.2, 'loblolly'], [-46, -44, 2.0, 'broad'], [-48, -70, 2.3, 'loblolly'], [-44, -96, 2.1, 'loblolly'],
+  [-38, 12, 2.2, 'loblolly'], [-46, 34, 2.0, 'loblolly'],
+  [80, -20, 2.2, 'loblolly'], [80, -60, 2.0, 'loblolly'], [80, -100, 2.3, 'loblolly'], [74, 20, 2.1, 'loblolly'], [72, 36, 2.0, 'loblolly'],
+  [-46, -112, 2.1, 'loblolly'], [-10, -115, 2.2, 'loblolly'], [40, -115, 2.0, 'loblolly'], [74, -121, 2.2, 'loblolly'],
 ];
 
+/* How far from every solid, drawn or not, a wood tree stands, metres in
+ * plan: the stem, a pilot's clearance and the pads' reach. */
+const WOOD_CLEAR = 5;
+/* The wood's grid pitch and the closest two stems stand, metres. */
+const WOOD_PITCH = 8.5;
+const WOOD_APART = 5.5;
+
+/* Whether a plan point is clear of every part and every named place. */
+function woodClear(Y, px, py) {
+  if (px > FIELD.x0 - 4 && px < FIELD.x1 + 4 && py > FIELD.y0 - 4 && py < FIELD.y1 + 4) {
+    return false;
+  }
+  if (py < ROAD.y1 + 4) {
+    return false;
+  }
+  if (py < 10 && px > DRIVE.x0 - 6 && px < DRIVE.x1 + 6) {
+    return false;
+  }
+  if ((px - LOOP.x) * (px - LOOP.x) + (py - LOOP.y) * (py - LOOP.y) < (LOOP.r1 + 6) * (LOOP.r1 + 6)) {
+    return false;
+  }
+  const [x, , z] = worldAt(px, py, 0);
+  for (const p of Y.P.list) {
+    let d;
+    if (p.t === 'box') {
+      const dx = Math.max(p.lo[0] - x, 0, x - p.hi[0]);
+      const dz = Math.max(p.lo[2] - z, 0, z - p.hi[2]);
+      d = Math.sqrt(dx * dx + dz * dz);
+    } else {
+      const ax = p.a[0];
+      const az = p.a[2];
+      const vx = p.b[0] - ax;
+      const vz = p.b[2] - az;
+      const l2 = vx * vx + vz * vz;
+      const t = l2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * vx + (z - az) * vz) / l2)) : 0;
+      d = Math.sqrt((x - ax - t * vx) * (x - ax - t * vx) + (z - az - t * vz) * (z - az - t * vz)) - p.r;
+    }
+    if (d < WOOD_CLEAR) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* The wood: the stills show the place wooded round and behind, so a jittered
+ * grid over the plot, thinned by what stands there. The same every call: a
+ * fixed integer generator, no Math.random. */
+function wood(Y, placed) {
+  let seed = 20261021;
+  const next = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const out = [];
+  for (let gy = PY0 + 3; gy < PY1 - 1; gy += WOOD_PITCH) {
+    for (let gx = PX0 + 2; gx < PX1 - 1; gx += WOOD_PITCH) {
+      const px = gx + (next() - 0.5) * WOOD_PITCH * 0.8;
+      const py = gy + (next() - 0.5) * WOOD_PITCH * 0.8;
+      const size = 1.7 + next() * 0.9;
+      const broad = next() < 0.12;
+      if (!woodClear(Y, px, py)) {
+        continue;
+      }
+      let ok = true;
+      for (const [qx, qy] of placed) {
+        if ((qx - px) * (qx - px) + (qy - py) * (qy - py) < WOOD_APART * WOOD_APART) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) {
+        continue;
+      }
+      placed.push([px, py]);
+      out.push([px, py, size, broad ? 'broad' : 'loblolly']);
+    }
+  }
+  return out;
+}
+
 function trees(Y) {
-  TREES.forEach(([px, py, size, style], i) => {
-    const el = { id: `bardwell-tree-${i + 1}`, type: 'tree', style, dims: { size, variant: 31 + i } };
+  const placed = TREES.map(([px, py]) => [px, py]);
+  const all = TREES.concat(wood(Y, placed));
+  all.forEach(([px, py, size, style], i) => {
+    /* Past 30 m of the porch a loblolly is three whorls, past 70 m two. */
+    const near = Math.hypot(px - 8, py + 5);
+    const detail = near > 70 ? 0 : near > 30 ? 0.4 : 1;
+    const el = { id: `bardwell-tree-${i + 1}`, type: 'tree', style, dims: { size, variant: 31 + i, detail } };
     Y.asset(el, 1, px, py, 0, 0, 'extra:trees');
   });
 }
@@ -922,7 +1022,7 @@ const SCQ = { s: 0, c: 1 };
 function scaledParts(a) {
   const k = a.k;
   const [x, y, z] = worldAt(a.px, a.py, a.h);
-  const parts = partsOf(a.el);
+  const parts = (a.el.style === 'loblolly' || a.el.style === 'broad') ? loblollyLayout(a.el) : partsOf(a.el);
   const out = [];
   if (parts.some((p) => p.t === 'box')) {
     quarterSinCos(quarterTurns(a.yaw), SCQ);

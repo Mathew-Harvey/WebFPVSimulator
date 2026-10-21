@@ -163,6 +163,8 @@ export function mountTouchSticks({ onPause } = {}) {
     right: null, /* { id, x, y } */
   };
   let visible = false;
+  /* See setRestThrottle. */
+  let restThrottle = 0;
 
   /* Full deflection is TRAVEL_FRACTION of the plate's width of thumb
    * travel, measured off the plate actually drawn so the feel follows
@@ -339,11 +341,19 @@ export function mountTouchSticks({ onPause } = {}) {
     /* A fresh craft gets fresh sticks, throttle included: resetCraft
      * zeroes the keyboard for the same reason, and a crash recovery that
      * kept a sticky full throttle would relaunch the wreck by itself. */
+    /* Where the sticky throttle goes back to on reset: 0, the bottom stop,
+     * or 0.5 in 3D mode, where the bottom is full reverse and the middle is
+     * no thrust. Input.set3d sets it and moves the stick there now. */
+    setRestThrottle(v) {
+      restThrottle = clamp(Number(v) || 0, 0, 1);
+      ch.throttle = restThrottle;
+    },
+
     reset() {
       ch.roll = 0;
       ch.pitch = 0;
       ch.yaw = 0;
-      ch.throttle = 0;
+      ch.throttle = restThrottle;
       grip.left = null;
       grip.right = null;
       left.plate.classList.remove('is-held');

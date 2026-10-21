@@ -1037,7 +1037,7 @@ static void quat_rotate_inv(const double q[4], const double v[3], double out[3])
   quat_rotate(qc, v, out);
 }
 
-void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
+static inline __attribute__((always_inline)) void plant_step_body(SimState *s, const double duty_in[SIM_MOTOR_COUNT], const int mode3d) {
   /*
    * 0. The motor as the pilot has wound it. SIM_MOTOR_KV scales kV, so the
    * back EMF constant goes down by that much and the winding resistance by
@@ -1070,7 +1070,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
    * and a negative one is a reversed voltage on the winding. The solve below
    * is already right for that, because d^2 and d ke w do not care which way
    * round the bridge is. */
-  const double d_min = SIM_3D ? -1.0 : 0.0;
+  const double d_min = mode3d ? -1.0 : 0.0;
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     double d = duty_in[m];
     if (d < d_min) {
@@ -1159,7 +1159,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      * the one it was.
      */
     const double w_signed = s->motor_omega[m];
-    const double rotor_dir = (SIM_3D && w_signed < 0.0) ? -1.0 : 1.0;
+    const double rotor_dir = (mode3d && w_signed < 0.0) ? -1.0 : 1.0;
     const double w = rotor_dir * w_signed;
     /* Prop speed relative to the air about body z, including body yaw. */
     const double w_rel = PLANT_SPIN[m] * w_signed + r;
@@ -1540,7 +1540,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     double w_next = w_signed + (torque / PLANT.j_rotor) * SIM_DT;
     /* A one way ESC cannot drive a motor backwards, so normal mode stops it
      * at zero. A 3D ESC brakes it through zero and on the other way. */
-    if (w_next < 0.0 && !SIM_3D) {
+    if (w_next < 0.0 && !mode3d) {
       w_next = 0.0;
     }
     s->motor_omega[m] = w_next;
@@ -1548,7 +1548,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     if (t < 0.0) {
       t = 0.0;
     }
-    if (SIM_3D) {
+    if (mode3d) {
       t *= PLANT_3D_PROP_THRUST;
     }
     thrust[m] = t;
@@ -1790,7 +1790,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   /* A 3D whoop pushing mostly backwards sinks the other way through its
    * discs, so the brake is measured along the way the thrust is going. */
   double axial_dir = 1.0;
-  if (SIM_3D) {
+  if (mode3d) {
     const double t_net = thrust_dir[0] * thrust[0] + thrust_dir[1] * thrust[1]
       + thrust_dir[2] * thrust[2] + thrust_dir[3] * thrust[3];
     if (t_net < 0.0) {
@@ -1908,4 +1908,21 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   s->pos[0] += s->vel[0] * SIM_DT;
   s->pos[1] += s->vel[1] * SIM_DT;
   s->pos[2] += s->vel[2] * SIM_DT;
+}
+
+/*
+ * THE STEP, IN TWO COPIES. The body above takes 3D mode as a constant, and
+ * each call below hands it a literal, so the compiler builds one step for a
+ * one way motor and one for a reversible one. In the one way copy every 3D
+ * branch is dead and folded away, rotor_dir is the constant 1.0, and a
+ * multiply by 1.0 is folded too, so normal flight runs the instructions it
+ * ran before 3D mode existed rather than paying a test for it on every
+ * rotor of every step. The flag is read once, here.
+ */
+void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
+  if (SIM_3D) {
+    plant_step_body(s, duty_in, 1);
+  } else {
+    plant_step_body(s, duty_in, 0);
+  }
 }

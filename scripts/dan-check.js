@@ -114,6 +114,21 @@ console.log('\n2. judge');
   j.hear('gate', 180000, { index: 0 });
   j.hear('miss', 181000);
   check('a miss after the first gate is', j.hear('lap', 190000, { first: false, record: false })?.kind === 'lap');
+  /* In the order the shell tells him (src/main.js): the crossing that ends a
+   * lap is heard as the lap first and then as the timing gate, gate 0. Told
+   * gate 0 first, the lap's hits were forgotten before it was judged and a
+   * lap with a crash in it was "Right into the pipe.". */
+  check('a lap with a crash in it, heard as the shell tells it, is not the pipe line', (() => {
+    const k = makeJudge();
+    k.hear('gate', 1000, { index: 0 });
+    k.hear('gate', 3000, { index: 1 });
+    k.hear('crash', 4000);
+    k.hear('gate', 9000, { index: 2 });
+    const lap = k.hear('lap', 12000, { first: true, record: true });
+    k.hear('gate', 12000, { index: 0 });
+    const next = k.hear('lap', 30000, { first: false, record: false });
+    return lap?.kind === 'best' && next?.kind === 'pipe';
+  })());
   check('a lap speaks even soon after a line', (() => {
     const k = makeJudge();
     k.hear('crash', 1000);

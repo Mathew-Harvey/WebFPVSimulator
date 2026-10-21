@@ -9716,11 +9716,15 @@ export async function boot({ loading, bootStart, mapId }) {
             if (danMissed && res.passed == null) {
               view.judge.hear('miss', simNow);
             }
-            if (res.passed != null) {
-              view.judge.hear('gate', simNow, { index: res.passed });
-            }
+            /* The lap before the gate. The crossing that ends a lap is the
+             * timing gate, and Dan hears the timing gate as the start of a
+             * fresh lap, which forgets its hits: heard gate first, every lap
+             * was clean and every lap was "Right into the pipe.". */
             if (race.laps.length > lapsBefore) {
               view.judge.hear('lap', simNow, { record: race.lastLapRecord, first: race.laps.length === 1 });
+            }
+            if (res.passed != null) {
+              view.judge.hear('gate', simNow, { index: res.passed });
             }
           }
           if (res.passed != null) {

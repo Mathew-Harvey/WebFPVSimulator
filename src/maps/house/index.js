@@ -273,7 +273,8 @@ export async function buildMap(shell, onProgress, options) {
   });
   /* Its own world, not Your map: the shell keys the world, the results and
    * the board's refusal by this id (src/main.js, src/ui/ui.js), and `source`
-   * keeps its marks out of the board's counters, which have no word for it. */
+   * is the word the board counts its partner signs under (MARK_MAP_WORDS in
+   * src/main.js, MARK_MAPS in the board's src/partners.js). */
   map.id = 'house';
   map.source = 'house';
   openGround(map.scene, 'plot', STAIR_HOLE);

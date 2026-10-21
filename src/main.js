@@ -5029,8 +5029,12 @@ export async function boot({ loading, bootStart, mapId }) {
   /* chooseDocument's sources in src/maps/built/index.js, as the board's
    * MARK_MAPS words: the starter is Hibari Yard, an injected document is a
    * map from the board, and the builder's seat is the pilot's own. The town
-   * keys its marks 'city#'. */
-  const MARK_MAP_WORDS = { starter: 'yard', injected: 'board', canvas: 'own' };
+   * keys its marks 'city#'. The three house maps set a source of their own,
+   * which is their own word on the board since 2026-10-21; before that the
+   * board had none, and the signs on them were never counted for anybody. */
+  const MARK_MAP_WORDS = {
+    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell',
+  };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
   }

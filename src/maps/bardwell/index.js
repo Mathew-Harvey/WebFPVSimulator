@@ -187,8 +187,8 @@ export async function buildMap(shell, onProgress, options) {
     ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots,
   });
   /* Its own world: the shell keys the world, the results and the board's
-   * refusal by this id (src/main.js, src/ui/ui.js), and `source` keeps its
-   * marks out of the board's counters. */
+   * refusal by this id (src/main.js, src/ui/ui.js), and `source` is the word
+   * the board counts its partner signs under (MARK_MAP_WORDS in src/main.js). */
   map.id = 'bardwell';
   map.source = 'bardwell';
   const signs = await signsCame;

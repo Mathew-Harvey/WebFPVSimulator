@@ -3115,6 +3115,36 @@ export async function boot({ loading, bootStart, mapId }) {
   const rcPending = [];
   let rcHeld = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
   /*
+   * THE STICK THROUGH A STALL, the owner's report of 2026-10-21: "random
+   * occasional knocking or jumpy movements when under throttle", on Heads'
+   * house and other maps, with prop wash off.
+   *
+   * The sticks are polled on a 2 ms timer, but the timer runs on the main
+   * thread, and nothing polls while a frame is being built, a garbage
+   * collection runs or a shader compiles. A stick that moved smoothly
+   * through such a stretch was found by the next poll all at once, and the
+   * resampler below held the old value up to that sample and then stepped,
+   * so Betaflight was handed one RC frame carrying the whole stretch's
+   * movement. Feedforward is the stick's rate of change and throttle boost
+   * is the throttle's, so that one frame was a kick a real radio never
+   * sends. Measured in the page on the field, a 60 ms stall in the middle
+   * of a smooth 300 ms roll and throttle move: a single frame step of 0.25
+   * roll and 0.12 throttle where the move's own steepest frame is 0.03 and
+   * 0.016, and the roll acceleration's peak doubled. The houses cost more
+   * to draw than the field, so their frames hold the timer longer and more
+   * often, which is why they were where it was felt.
+   *
+   * So every sample says when the poll before it ran (`prevWall`, see
+   * poll() in src/input/input.js), and a slot that falls in a stretch
+   * longer than STALL_GAP_MS gets the straight line across it instead of
+   * the held value. It adds no latency: the sample a slot is drawn from has
+   * always already arrived, the value the stretch ends on lands on the same
+   * slot as before, and the slots before it carry part of the move sooner.
+   * A gap at the timer's own cadence (4 ms is what a browser clamps a 2 ms
+   * interval to) is not a stall and is held exactly as before.
+   */
+  const STALL_GAP_MS = 6;
+  /*
    * Re-seat the RC grid on the sim clock and throw away stick samples that
    * belong to a stretch of time the integrator never ran. Called wherever the
    * grid is pinned: reset, and the moment a parked craft takes off again.
@@ -8876,6 +8906,25 @@ export async function boot({ loading, bootStart, mapId }) {
       const pickAt = (atMs) => {
         while (rcPending.length > 0 && rcPending[0].wallT + wallToSim <= atMs) {
           rcHeld = rcPending.shift();
+        }
+        /* THE STICK THROUGH A STALL: see STALL_GAP_MS. A slot inside a
+         * stretch the poller could not see gets the straight line from the
+         * held sample to the one found after it. Only then is anything
+         * allocated, and the value the stretch ends on lands on the same
+         * slot it always did. */
+        const after = rcPending.length > 0 ? rcPending[0] : null;
+        if (after !== null && after.prevWall !== undefined) {
+          const span = after.wallT - after.prevWall;
+          const from = after.prevWall + wallToSim;
+          if (span > STALL_GAP_MS && atMs > from) {
+            const u = (atMs - from) / span;
+            return {
+              roll: rcHeld.roll + (after.roll - rcHeld.roll) * u,
+              pitch: rcHeld.pitch + (after.pitch - rcHeld.pitch) * u,
+              yaw: rcHeld.yaw + (after.yaw - rcHeld.yaw) * u,
+              throttle: rcHeld.throttle + (after.throttle - rcHeld.throttle) * u,
+            };
+          }
         }
         return rcHeld;
       };

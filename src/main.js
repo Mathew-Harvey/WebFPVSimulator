@@ -9213,6 +9213,9 @@ export async function boot({ loading, bootStart, mapId }) {
              * the step it happened, and the frame flies on from it.
              */
             const crashed = crashJudge.step(stBefore, stNow, groundHits, stepRep, simTimeMs + i + 1, mayPerch);
+            if (crashed && view.judge && mode === 'flight') {
+              view.judge.hear('crash', simTimeMs + i + 1);
+            }
             if (bounces && (crashed || crashJudge.knock(stepRep, stNow))) {
               stNow = applyDullBounce(crashed ? crashJudge.stepKind : 'solid', stBefore, stNow, stepRep, !crashed);
               if (i === steps - 2) {
@@ -9398,6 +9401,9 @@ export async function boot({ loading, bootStart, mapId }) {
          */
         if (hard) {
           flightStats.noteCrash();
+          if (view.judge && mode === 'flight') {
+            view.judge.hear('crash', simTimeMs);
+          }
         }
         if (view.mode === 'freestyle') {
           if (hard) {
@@ -9548,6 +9554,9 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     if (crashJudge.stopHard) {
       flightStats.noteCrash();
+      if (view.judge && mode === 'flight') {
+        view.judge.hear('crash', simTimeMs);
+      }
       if (view.mode === 'freestyle') {
         trickDetector.reset();
         counterCrash(true);
@@ -9665,7 +9674,20 @@ export async function boot({ loading, bootStart, mapId }) {
           heightAt: (x, z, y) => view.height(x, z, y - SURFACE_BIAS, y),
         });
         if (!replayMode) {
+          /* Dan's (src/maps/dan/), read before the race scores the travel. */
+          const danMissed = view.judge && !race.freestyle && race.missedGate(race.next, racePrev, pCurr);
           const res = race.update(racePrev, pCurr, simNow, nowWall, allowPass);
+          if (view.judge && !race.freestyle) {
+            if (danMissed && res.passed == null) {
+              view.judge.hear('miss', simNow);
+            }
+            if (res.passed != null) {
+              view.judge.hear('gate', simNow);
+            }
+            if (race.laps.length > lapsBefore) {
+              view.judge.hear('lap', simNow, { record: race.lastLapRecord, first: race.laps.length === 1 });
+            }
+          }
           if (res.passed != null) {
             view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
             if (typeof audio.event === 'function') {
@@ -12874,6 +12896,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * measure, which is the only way a scale error gets caught by a check
    * rather than by a reviewer's eye. Harness only. */
   window.__mapScene = () => view.scene;
+  /* Dan's ear, on a RaceGOW room (src/maps/dan/), or null. Harness only. */
+  window.__judge = () => view.judge ?? null;
   /* The three.js namespace, so a measurement in the page can build a Box3
    * without importing a second copy of the library. Harness only. */
   window.__three = THREE;

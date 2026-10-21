@@ -153,17 +153,17 @@ export function danModel() {
   /* The hips in shorts, painted with the sheet's from the front. */
   const hips = (x, y) => uvAt(SHORTS[0] + SHORTS_MID + x * 400, SHORTS[1] + SHORTS_WAIST + (0.07 - y) * 170);
   B.loft(BONE.pelvis, [
-    { y: -0.16, rx: 0.15, rz: 0.1, c: shorts }, { y: -0.04, rx: 0.165, rz: 0.11, c: shorts }, { y: 0.07, rx: 0.17, rz: 0.12, c: shorts },
+    { y: -0.16, rx: 0.164, rz: 0.109, c: shorts }, { y: -0.04, rx: 0.18, rz: 0.12, c: shorts }, { y: 0.07, rx: 0.185, rz: 0.131, c: shorts },
   ], { map: hips });
   /* The tee: its front is the sheet's, the logo and the collar; its back
    * and sides are its grey. He is stocky, and a belly is the widest part. */
   const chest = (x, y) => uvAt(TEE[0] + TEE_MID + x * 330, TEE[1] + TEE_COLLAR + (0.46 - y) * ((TEE_HEM - TEE_COLLAR) / 0.54));
   B.loft(BONE.spine, [
-    { y: -0.08, rx: 0.165, rz: 0.115, c: tee }, { y: 0.06, rx: 0.175, rz: 0.13, c: tee }, { y: 0.16, rx: 0.175, rz: 0.125, c: tee },
-    { y: 0.26, rx: 0.18, rz: 0.115, c: tee }, { y: 0.35, rx: 0.195, rz: 0.105, c: tee }, { y: 0.44, rx: 0.215, rz: 0.1, c: tee },
-    { y: 0.5, rx: 0.12, rz: 0.08, c: tee },
+    { y: -0.08, rx: 0.18, rz: 0.125, c: tee }, { y: 0.06, rx: 0.191, rz: 0.142, c: tee }, { y: 0.16, rx: 0.191, rz: 0.136, c: tee },
+    { y: 0.26, rx: 0.196, rz: 0.125, c: tee }, { y: 0.35, rx: 0.213, rz: 0.114, c: tee }, { y: 0.44, rx: 0.234, rz: 0.109, c: tee },
+    { y: 0.5, rx: 0.131, rz: 0.087, c: tee },
   ], { n: 16, pick: (nx, ny, nz) => (nz > 0.45 ? chest : null) });
-  B.loft(BONE.spine, [{ y: 0.46, rx: 0.07, rz: 0.07, c: skin }, { y: 0.56, rx: 0.065, rz: 0.065, c: skin }]);
+  B.loft(BONE.spine, [{ y: 0.46, rx: 0.076, rz: 0.076, c: skin }, { y: 0.56, rx: 0.071, rz: 0.071, c: skin }]);
 
   /* The head, ring by row of the sheet, painted from the front, his side or
    * behind by the way each triangle faces. */
@@ -219,12 +219,12 @@ export function danModel() {
     /* His left is the sheet's right leg. */
     const mid = SHORTS[0] + SHORTS_LEG[s > 0 ? 1 : 0];
     const leg = (x, y) => uvAt(mid + x * 480, SHORTS[1] + 38 - y * ((SHORTS_HEM - 38) / 0.29));
-    B.ellipsoid(thigh, [0, 0, 0], [0.085, 0.085, 0.085], shorts, { lat: 4 });
+    B.ellipsoid(thigh, [0, 0, 0], [0.092, 0.092, 0.092], shorts, { lat: 4 });
     /* The shorts to just above the knee, then his bare leg. */
-    B.loft(thigh, [{ y: -0.3, rx: 0.075, rz: 0.08, c: shorts }, { y: -0.15, rx: 0.083, rz: 0.088, c: shorts }, { y: 0, rx: 0.088, rz: 0.095, c: shorts }], { map: leg });
-    B.loft(thigh, [{ y: -0.44, rx: 0.06, rz: 0.065, c: skin }, { y: -0.3, rx: 0.073, rz: 0.078, c: skin }]);
-    B.ellipsoid(shin, [0, 0, 0], [0.06, 0.06, 0.06], skin, { lat: 4 });
-    B.loft(shin, [{ y: -0.43, rx: 0.045, rz: 0.048, c: skin }, { y: -0.2, rx: 0.055, rz: 0.058, c: skin }, { y: 0, rx: 0.06, rz: 0.064, c: skin }]);
+    B.loft(thigh, [{ y: -0.3, rx: 0.082, rz: 0.087, c: shorts }, { y: -0.15, rx: 0.09, rz: 0.096, c: shorts }, { y: 0, rx: 0.096, rz: 0.104, c: shorts }], { map: leg });
+    B.loft(thigh, [{ y: -0.44, rx: 0.065, rz: 0.071, c: skin }, { y: -0.3, rx: 0.08, rz: 0.085, c: skin }]);
+    B.ellipsoid(shin, [0, 0, 0], [0.065, 0.065, 0.065], skin, { lat: 4 });
+    B.loft(shin, [{ y: -0.43, rx: 0.049, rz: 0.052, c: skin }, { y: -0.2, rx: 0.06, rz: 0.063, c: skin }, { y: 0, rx: 0.065, rz: 0.07, c: skin }]);
     /* Black slides. */
     B.ellipsoid(foot, [0, -0.045, 0.05], [0.056, 0.036, 0.125], slide, { lat: 4 });
     B.ellipsoid(foot, [0, -0.07, 0.055], [0.06, 0.014, 0.135], slide, { lat: 3 });

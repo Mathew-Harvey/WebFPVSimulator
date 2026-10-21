@@ -10,11 +10,13 @@
  * WHAT THE DRAW ADDS, in the world frame, after the kit has drawn every
  * part the place marks as drawn:
  *
- *   prisms    the roofs' slopes, gables and fascias, and the shed roofs.
- *   rings     the loop of the drive round the evergreen.
- *   discs     the glass table's top. cyls: the camper's wheels, the
- *             firewood's ends.
- *   pyramids  the gazebo's two tiers, square cones turned to the axes.
+ *   prisms    the roofs' slopes, gables, fascias and rake boards, the
+ *             porch's and the lean-to's shed roofs.
+ *   discs     the drive's bends and its wet patches. cyls: the firewood's
+ *             cut ends.
+ *   oboxes    flat boxes turned to any heading: the drive and the path
+ *             down their bends, the flags' cloth.
+ *   tori      the two hoops.
  *   scaled    the town's own pines, broadleaves and cars, life size; their
  *             solids are the same parts, drawn nowhere (./bardwell.js).
  *
@@ -70,12 +72,9 @@ function drawPrisms(kit, prisms) {
 
 function drawPlace(kit, L) {
   const { S } = FRAME;
+  const T = kit.THREE;
   drawPrisms(kit, L.prisms);
   kit.begin(0, 0, 0, 0, CHUNK);
-  for (const r of L.rings) {
-    const [x, y, z] = worldAt(r.px, r.py, r.h);
-    kit.ring(r.m, [x, y, z], S * r.r0, S * r.r1, y);
-  }
   for (const d of L.discs) {
     const [x, y0, z] = worldAt(d.px, d.py, d.h0);
     kit.cyl(d.m, [x, y0, z], [x, S * d.h1, z], S * d.r, 24);
@@ -83,13 +82,30 @@ function drawPlace(kit, L) {
   for (const c of L.cyls) {
     kit.cyl(c.m, c.a, c.b, c.r, c.seg);
   }
-  /* A four sided cone has its corners on the axes; turned an eighth it
-   * has its sides along them. */
-  for (const p of L.pyramids) {
-    kit.begin(p.base[0], 0, p.base[2], Math.PI / 4, CHUNK);
-    kit.cone(p.m, [0, p.base[1], 0], p.half * Math.SQRT2, p.h, 4);
+  /* A turned box: its frame's x along the plan's (ux, uy), which is the
+   * world's (ux, 0, -uy), up, and z to its right, so the frame is right
+   * handed and the box's faces wind outward; `b` across to the left is
+   * -z. */
+  const ax = new T.Vector3();
+  const up = new T.Vector3(0, 1, 0);
+  const az = new T.Vector3();
+  for (const o of L.oboxes) {
+    const [x, , z] = worldAt(o.px, o.py, 0);
+    kit.begin(x, 0, z, 0, CHUNK);
+    ax.set(o.ux, 0, -o.uy);
+    az.set(o.uy, 0, o.ux);
+    kit.place.makeBasis(ax, up, az).setPosition(x, 0, z);
+    kit.box(o.m, S * o.a0, S * o.h0, -S * o.b1, S * o.a1, S * o.h1, -S * o.b0);
   }
-  const T = kit.THREE;
+  /* A hoop: the ring in its frame's x y plane, its z the way it is flown. */
+  for (const t of L.tori) {
+    const [x, , z] = worldAt(t.px, t.py, 0);
+    kit.begin(x, 0, z, 0, CHUNK);
+    ax.set(-t.ny, 0, -t.nx);
+    az.set(t.nx, 0, -t.ny);
+    kit.place.makeBasis(ax, up, az).setPosition(x, 0, z);
+    kit.torus(t.m, [0, S * t.h, 0], S * t.R, S * t.t);
+  }
   for (const a of L.scaled) {
     const [x, y, z] = worldAt(a.px, a.py, a.h);
     kit.begin(x, y, z, a.yaw, a.chunk);

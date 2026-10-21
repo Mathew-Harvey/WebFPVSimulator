@@ -15,16 +15,18 @@
  *                 the lawn and a ball the size of a craft is clear over it,
  *                 and the module's broadphase holds the map
  *   3. lines      the lines a pilot flies, swept with a ball twice the
- *                 craft's radius: off the start round the loop and down the
- *                 drive, through the porch, the gazebo, the courtyard and
- *                 the barn's bay, through the gate and between the pines,
- *                 down the field, along the road
+ *                 craft's radius: the whole of the Workshop map's race, gate
+ *                 to gate in its order, off the start and over the ridge;
+ *                 through the porch, the woodshed, the lean-to and under the
+ *                 stand; over the pen; down the drive and along the road;
+ *                 along the path outside the field's curving fence
  *   4. gaps       every named gap's window clear of every solid by the
  *                 craft's radius
  *   5. slots      the gap rule inside the place's own boxes
- *   6. roofs      under every gable and the gazebo's tiers, the solid within
- *                 one band of the drawn surface and never over it; under a
- *                 gable's rake, air
+ *   6. roofs      under every gable, the solid within one band of the drawn
+ *                 surface and never over it; under a gable's rake, air,
+ *                 but for the chimney, which stands up through the house's
+ *                 west rake as the screenshot has it
  *   7. logos      every roster brand hung once and each sign on its face
  *                 all over, every decal landed and flat on what it is on
  *                 with nothing through it, every brand painted three times
@@ -61,7 +63,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
-import { bardwellLayout, S, worldAt, FRAME } from '../src/maps/bardwell/bardwell.js';
+import {
+  bardwellLayout, S, worldAt, FRAME, GATES, OPENINGS, SPAWN, CHIMNEY,
+} from '../src/maps/bardwell/bardwell.js';
 import { bardwellDocument } from '../src/maps/bardwell/yard.js';
 import * as logos from '../src/maps/bardwell/logos.js';
 import { signAspect } from '../src/art/partnermark.js';
@@ -194,7 +198,7 @@ function layoutBlock() {
   check('every part and prism is finite', bad.length + badPrisms.length === 0,
     `${L.parts.length} parts, ${L.prisms.length} prisms, ${bad.length + badPrisms.length} with a non-finite number`);
   const colours = new Set([...L.parts.filter((p) => p.draw).map((p) => p.m), ...L.prisms.map((q) => q.m),
-    ...L.rings.map((r) => r.m), ...L.discs.map((d) => d.m), ...L.cyls.map((c) => c.m), ...L.pyramids.map((c) => c.m)]);
+    ...L.discs.map((d) => d.m), ...L.cyls.map((c) => c.m), ...L.oboxes.map((o) => o.m), ...L.tori.map((t) => t.m)]);
   const unknown = [...colours].filter((m) => !HOME_MATERIALS[m]);
   check('every colour the place draws is one of src/props/homes.js', unknown.length === 0, unknown.join(', ') || `${colours.size} colours`);
   check(`the place draws at most ${HOUSE_COLOURS_MAX} colours, so its chunk is at most that many draw calls`,
@@ -305,8 +309,9 @@ async function placedBlock(L) {
     const [x, y, z] = worldAt(px, py, h);
     return groundUnder(placed.tops, x, z, y - 0.4, y);
   };
-  check('on the porch a craft stands on its deck', Math.abs(ground(3, -1.5, 0.65) - 0.6) < 0.02, `${r3(ground(3, -1.5, 0.65))} m`);
-  check('in the field it stands on the ground', Math.abs(ground(40, -70, 0.05)) < 0.02, `${r3(ground(40, -70, 0.05))} m`);
+  check('on the porch a craft stands on its deck', Math.abs(ground(-3, 9.8, 0.8) - 0.73) < 0.02, `${r3(ground(-3, 9.8, 0.8))} m`);
+  check('in the woodshed it stands on the slab', Math.abs(ground(-5.7, 24, 0.15) - 0.1) < 0.02, `${r3(ground(-5.7, 24, 0.15))} m`);
+  check('in the field it stands on the ground', Math.abs(ground(60, -40, 0.05)) < 0.02, `${r3(ground(60, -40, 0.05))} m`);
   const near = gridOf(placed.solids);
   const over = [sp.x, sp.y + 0.6, sp.z];
   const hit = hitAt(near(over), over, 0.5);
@@ -325,25 +330,46 @@ async function placedBlock(L) {
 
 /* Each line is plan points [px, py, h], metres, flown straight from one to
  * the next. */
-const loop = [];
-for (let i = 0; i <= 16; i += 1) {
-  const sc = sincos((i / 16) * 2 * Math.PI, { s: 0, c: 0 });
-  loop.push([10 + 8.2 * sc.c, -17 + 8.2 * sc.s, 1.5]);
+
+/*
+ * THE RACE, as a line: off the start, then through every gate's opening
+ * at its middle, entering 2.5 m before it and leaving 2.5 m after along
+ * its heading, straight from each gate to the next except where WAY puts
+ * a turn in, as a pilot would, round the cage's corner and down into the
+ * hoops' line. A gate's middle is half way up its clear opening.
+ */
+const WAY = {
+  'THE HIGH FRAME': [[70.0, -73.0, 7.0], [62.3, -73.0, 7.4]],
+  'THE FIRST HOOP': [[62.3, -64.0, 7.0], [61.0, -40.0, 2.0]],
+};
+function raceLine() {
+  const pts = [[SPAWN.px, SPAWN.py, 0.6], [SPAWN.px, SPAWN.py, 2.0]];
+  for (const g of GATES) {
+    const o = OPENINGS[g.name];
+    const sc = sincos(o.deg * Math.PI / 180, { s: 0, c: 0 });
+    const h = (o.h0 + o.h1) / 2;
+    for (const w of WAY[g.name] ?? []) {
+      pts.push(w);
+    }
+    pts.push([o.px - 2.5 * sc.c, o.py - 2.5 * sc.s, h], [o.px + 2.5 * sc.c, o.py + 2.5 * sc.s, h]);
+  }
+  return pts;
 }
+
 const LINES = [
-  ['off the start, across the loop and down the drive to the road', [[8, -5.2, 0.6], [8, -6.5, 1.5], [1.2, -14, 2.0], [1.2, -106, 2.0]]],
-  ['round the loop, round the evergreen', loop],
-  ['in through the porch steps and out over its west railing', [[8, -6, 1.6], [8, -1.4, 1.6], [3.5, -1.4, 1.9], [-1.5, -1.4, 1.9]]],
-  ['through the gazebo, over the table, under the beams', [[2.5, 14.5, 1.55], [13.5, 14.5, 1.55]]],
-  ['down the courtyard and out of its end', [[-2, 12, 1.8], [12, 12, 1.8], [21, 12, 1.8]]],
-  ['into the barn\'s open bay and out of its south end', [[18, 12, 1.4], [24, 12, 1.4], [24, 8, 1.4], [24, 4.5, 1.4]]],
-  ['past the camper to the barn', [[14, 23.2, 2.0], [26, 23.2, 2.0]]],
-  ['through the gate into the field', [[22, -20, 1.2], [22, -40, 1.2]]],
-  ['over the fence and down between the pines', [[33.3, -24, 2.4], [33.3, -31.5, 1.5], [33.3, -40, 1.5]]],
-  ['down the field past the long building\'s deck', [[16.5, -45, 1.5], [16.5, -80, 1.5]]],
-  ['over the long building', [[2, -62, 4.5], [18, -62, 4.5]]],
-  ['along the road', [[-45, -112, 1.5], [78, -112, 1.5]]],
-  ['up the east line past the coops', [[42, -20, 1.5], [42, 28, 1.5]]],
+  ['the race, off the start and through all twenty two gates in order', raceLine()],
+  ['in at the porch\'s west end over its railing and out through its front under a fern', [[-11, 9.9, 2.3], [-3.3, 9.9, 2.3], [-3.3, 9.9, 2.05], [-3.3, 5, 2.05]]],
+  ['through the woodshed\'s open west bay', [[-5.7, 20.6, 1.3], [-5.7, 29, 1.3]]],
+  ['in under the lean-to and out of its west side', [[29.5, -27, 1.2], [29.5, -21, 1.2], [23.5, -21, 1.2]]],
+  ['under the stand\'s deck', [[32.5, -21, 1.1], [32.5, -9, 1.1]]],
+  ['over the pen', [[-9, 0, 1.8], [16, 0, 1.8]]],
+  ['down the drive from the van to the road', [[20.8, 24, 2.4], [21.0, 12.6, 2.4], [20.5, 2.6, 2.4], [20.5, -7.4, 2.4], [21.1, -17.2, 2.4],
+    [23.0, -27.8, 2.4], [26.0, -37.5, 2.4], [27.5, -44.5, 2.4], [31.0, -52.0, 2.4], [32.4, -59.3, 2.4], [34.2, -63.6, 2.4],
+    [35.2, -69.6, 2.4], [36.7, -74.6, 2.4], [37.7, -79.1, 2.4], [38.2, -84.1, 2.4], [39.2, -88.1, 2.4], [39.2, -93.1, 2.4],
+    [39.4, -100, 2.4]]],
+  ['along the road', [[-48, -102.5, 1.5], [110, -102.5, 1.5]]],
+  ['along the path outside the field\'s curving fence', [[39.5, 9.5, 1.6], [42.5, 4.5, 1.6], [45.5, -3, 1.6],
+    [46.0, -10.5, 1.6], [46.5, -19, 1.6], [44.5, -24, 1.6], [43.0, -32, 1.6], [40.5, -38.5, 1.6], [36.5, -47, 1.6]]],
 ];
 
 function linesBlock(near) {
@@ -471,7 +497,7 @@ function slotsBlock(own) {
 /* ------------------------------------------------------------------ */
 
 /*
- * Every gable the layout lists (its `roofs`) and the gazebo's two tiers:
+ * Every gable the layout lists (its `roofs`):
  * at points over each, the highest drawn roof there against the highest
  * solid top. Where two roofs cover one point, the higher is the one seen
  * and the one the solid answers to. Then under each gable's rake past its
@@ -481,8 +507,6 @@ function slotsBlock(own) {
 const UNDER = 0.12;
 function roofsBlock(L, placed, near) {
   console.log('\n6. roofs');
-  const g = { x: 8, y: 14.5 };
-  const tiers = [{ h: 2.48, half: 2.2, rise: 1.2 }, { h: 3.45, half: 0.95, rise: 0.45 }];
   const drawnTop = (px, py) => {
     let best = -Infinity;
     for (const r of L.roofs) {
@@ -491,27 +515,22 @@ function roofsBlock(L, placed, near) {
         best = Math.max(best, r.top(a));
       }
     }
-    for (const t of tiers) {
-      const m = Math.max(Math.abs(px - g.x), Math.abs(py - g.y));
-      if (m <= t.half) {
-        best = Math.max(best, t.h + t.rise * (1 - m / t.half));
-      }
-    }
     return best;
   };
-  const areas = [
-    ['the house\'s roof and its dormers', L.roofs[0]],
-    ...L.roofs.slice(1).map((r, i) => [`roof ${i + 2}`, r]),
-  ];
-  for (const [name, r] of areas) {
+  const names = ['the house\'s roof', 'the woodshed\'s roof', 'the doghouse\'s roof'];
+  for (const [i, r] of L.roofs.entries()) {
     let worst = 0;
     let proud = 0;
     let n = 0;
-    for (let i = 1; i < 30; i += 1) {
+    for (let a = 1; a < 30; a += 1) {
       for (let j = 1; j < 30; j += 1) {
-        const a = r.edge0 + ((r.edge1 - r.edge0) * i) / 30;
+        const u = r.edge0 + ((r.edge1 - r.edge0) * a) / 30;
         const e = r.E0 + ((r.E1 - r.E0) * j) / 30;
-        const [px, py] = r.axis === 'x' ? [e, a] : [a, e];
+        const [px, py] = r.axis === 'x' ? [e, u] : [u, e];
+        /* The chimney stands up through the house's west rake. */
+        if (px > CHIMNEY.x0 && px < CHIMNEY.x1 + 0.05 && py > CHIMNEY.y0 && py < CHIMNEY.y1) {
+          continue;
+        }
         const want = S * drawnTop(px, py);
         const [x, , z] = worldAt(px, py, 0);
         const got = topUnder(placed.tops, x, z, want + 2);
@@ -520,25 +539,8 @@ function roofsBlock(L, placed, near) {
         n += 1;
       }
     }
-    check(`${name}: the solid is within a band under the slope`, worst <= BAND_WORLD + EPS && proud <= EPS,
+    check(`${names[i] ?? `roof ${i + 1}`}: the solid is within a band under the slope`, worst <= BAND_WORLD + EPS && proud <= EPS,
       `${n} points, at most ${r3(worst)} m under and ${r3(proud)} m over`);
-  }
-  {
-    let worst = 0;
-    let proud = 0;
-    for (let i = 1; i < 30; i += 1) {
-      for (let j = 1; j < 30; j += 1) {
-        const px = g.x - 2.2 + (4.4 * i) / 30;
-        const py = g.y - 2.2 + (4.4 * j) / 30;
-        const want = S * drawnTop(px, py);
-        const [x, , z] = worldAt(px, py, 0);
-        const got = topUnder(placed.tops, x, z, want + 2);
-        worst = Math.max(worst, want - got);
-        proud = Math.max(proud, got - want);
-      }
-    }
-    check('the gazebo\'s tiers: the solid is within a band under them', worst <= BAND_WORLD + EPS && proud <= EPS,
-      `at most ${r3(worst)} m under and ${r3(proud)} m over`);
   }
   for (const [i, r] of L.roofs.entries()) {
     for (const [e0, e1] of [[r.E0, r.e0], [r.e1, r.E1]]) {
@@ -557,6 +559,9 @@ function roofsBlock(L, placed, near) {
         const [px, py] = r.axis === 'x' ? [e, a] : [a, e];
         const p = worldAt(px, py, h);
         hit = hitAt(near(p), p, 0);
+        if (hit && hit.name === 'chimney') {
+          hit = null;
+        }
         n += 1;
       }
       check(`roof ${i + 1}, under its rake past ${r3(e0)} to ${r3(e1)}: air under the slab`, !hit, hit ? `${hit.name || hit.kind}` : `${n} points`);

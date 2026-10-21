@@ -10,15 +10,16 @@
  *            as its painted sign, found and stamped as on every freestyle
  *            map, the partners findable and the patrons paint, through the
  *            built map's `markSpots`. Eight, so eight draw calls.
- *   DECALS   the same signs again on the road, on banner boards on the
- *            field's fence, on the barn, the sheds, the long building, the
- *            house and the brick wall: quads of one picture (ATLAS) in one
- *            lit mesh, so thirty logos cost one draw call and one texture.
+ *   DECALS   the same signs again along the road and on the banner stands
+ *            round the course, the lean-to and the timber stand: quads of
+ *            one picture (ATLAS) in one lit mesh, so thirty logos cost one
+ *            draw call and one texture.
  *
- * Each is aimed, as Nick's and Heads' are: a point in the plan, metres,
- * and the way to look; it goes on the first drawn face that line meets.
- * One on the road is aimed down and lies over the highest drawn top under
- * any of it.
+ * The house itself carries none: it is Joshua's, and the race's furniture
+ * is where a race puts its sponsors. Each is aimed, as Nick's and Heads'
+ * are: a point in the plan, metres, and the way to look; it goes on the
+ * first drawn face that line meets. One on the road is aimed down and lies
+ * over the highest drawn top under any of it.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -36,7 +37,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { FRAME, BANNERS } from './bardwell.js';
+import { FRAME, STANDS, ROAD } from './bardwell.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
 import { signAspect } from '../../art/partnermark.js';
 
@@ -154,25 +155,25 @@ function aimLogo(boxes, slug, from, dir, wReal, top = 'n') {
 /* ------------------------------------------------------------------ */
 
 /* Each brand's sign: where it is aimed from (plan x, plan y, height,
- * metres), which way, and how wide. Seven where the yard and the field
- * see them, one on the house. */
+ * metres), which way, and how wide. Six on the banner stands round the
+ * course, one on the lean-to's back to the yard, one on the timber stand's
+ * board. */
 export const SIGN_SPOTS = [
-  /* Over the barn's big door, seen from the loop. */
-  { slug: 'gds', from: [30, 4, 3.55], dir: 'n', w: 1.8 },
-  /* The long building's side to the drive, between two windows. */
-  { slug: 'mantisfpv', from: [4.8, -60, 1.5], dir: 'e', w: 2.6 },
-  /* The brick wall, inside the courtyard. */
-  { slug: 'wcmrc', from: [11.5, 17.6, 1.6], dir: 'n', w: 2.0 },
-  /* The brick wall's back, to the woods. */
-  { slug: 'webleedfpv', from: [4, 21, 1.5], dir: 's', w: 1.9 },
-  /* The blue shed in the field. */
-  { slug: 'mattsflooring', from: [33, -74.5, 1.2], dir: 'w', w: 2.4 },
-  /* The barn's east wall. */
-  { slug: 'yourfpv', from: [36, 12.5, 2.2], dir: 'w', w: 1.4 },
-  /* The long building's north end, over its window. */
-  { slug: 'quadconfig', from: [9, -52, 2.3], dir: 's', w: 2.0 },
-  /* The house's west end, between its windows. */
-  { slug: 'konexdrone', from: [-2, 5.0, 2.0], dir: 'e', w: 1.4 },
+  /* The stand north of the start, to the start. */
+  { slug: 'gds', from: [22.5, 29, 1.15], dir: 'n', w: 2.3 },
+  /* The two stands either side of the run to the cage. */
+  { slug: 'mantisfpv', from: [52, 28, 1.15], dir: 'n', w: 2.6 },
+  { slug: 'wcmrc', from: [52, 21.5, 1.15], dir: 's', w: 2.3 },
+  /* The stand by the hoops, to the line up the field. */
+  { slug: 'webleedfpv', from: [65.5, -10, 1.15], dir: 'e', w: 2.0 },
+  /* The lean-to's plank back, to the yard. */
+  { slug: 'mattsflooring', from: [29.5, -16.5, 1.4], dir: 's', w: 2.2 },
+  /* The timber stand's board, to the yard. */
+  { slug: 'yourfpv', from: [32.5, -11, 4.07], dir: 's', w: 1.3 },
+  /* The stand inside the north fence, to the field. */
+  { slug: 'quadconfig', from: [30, 45, 1.15], dir: 'n', w: 2.6 },
+  /* The stand in the west woods, to the line past the flags. */
+  { slug: 'konexdrone', from: [-26.5, 18, 1.15], dir: 'e', w: 2.3 },
 ];
 
 /* Each sign on the first drawn face its line meets, as `markSpots` wants
@@ -192,45 +193,41 @@ export function placeSigns(parts, chunk) {
 /* The decals                                                          */
 /* ------------------------------------------------------------------ */
 
-/* The road's middle line, in the plan. */
-const ROAD_Y = -112;
-/* A banner's logo: as wide as fits the board's 0.74 m of height, and no
- * wider than 2.4 m. */
-const bannerW = (slug) => Math.min(2.4, 0.74 * signAspect(BY_SLUG.get(slug)));
-const BANNER_ORDER = [
-  'gds', 'mantisfpv', 'wcmrc', 'webleedfpv', 'mattsflooring', 'yourfpv',
-  'quadconfig', 'konexdrone', 'gds', 'mantisfpv', 'wcmrc', 'webleedfpv',
+/* A stand's banner: as wide as fits the board's 1.2 m of height, and no
+ * wider than 2.7 m. */
+const bannerW = (slug) => Math.min(2.7, 1.05 * signAspect(BY_SLUG.get(slug)));
+
+/* Each stand's two faces, from its own side: the face its sign is on, if
+ * it has one, and the other. A stand with no sign gets two decals. */
+function standFaces(s) {
+  const off = 2.5;
+  return s.dir === 'x'
+    ? [{ from: [s.px, s.py - off, 1.15], dir: 'n' }, { from: [s.px, s.py + off, 1.15], dir: 's' }]
+    : [{ from: [s.px - off, s.py, 1.15], dir: 'e' }, { from: [s.px + off, s.py, 1.15], dir: 'w' }];
+}
+/* Which brand each stand face carries, in STANDS order, two a stand; a
+ * null is the face a sign is hung on. */
+const STAND_BRANDS = [
+  [null, 'mattsflooring'], [null, 'yourfpv'], ['quadconfig', null], [null, 'konexdrone'], ['gds', 'mantisfpv'],
+  [null, 'wcmrc'], [null, 'webleedfpv'], ['yourfpv', 'quadconfig'], ['konexdrone', 'gds'], ['mantisfpv', 'wcmrc'],
 ];
 
 /* Each decal: the brand, where it is aimed from, which way, how wide, and
  * the plan way its top faces when it lies flat. */
 export const DECAL_SPOTS = [
-  /* THE ROAD, every brand painted along its middle, reading from the
-   * field, clear of where the drive comes out. */
-  ...[-40, -28, -16, 12, 24, 36, 48, 60].map((x, i) => ({ slug: BRANDS[i].slug, from: [x, ROAD_Y, 3], dir: 'down', w: 4.0, top: 's' })),
-  /* THE FENCE: a banner on each board (BANNERS in ./bardwell.js), looking
-   * at it from the side it faces. */
-  ...BANNERS.map((b, i) => {
-    const slug = BANNER_ORDER[i];
-    const off = b.side * 1.5;
-    const from = b.dir === 'x' ? [b.along, b.at + off, 0.75] : [b.at + off, b.along, 0.75];
-    const dir = b.dir === 'x' ? (b.side > 0 ? 's' : 'n') : (b.side > 0 ? 'w' : 'e');
-    return { slug, from, dir, w: bannerW(slug) };
-  }),
-  /* THE BUILDINGS: in the barn's open bay, the barn's north end, the long
-   * building over its deck, the blue shed's north side, the house's east
-   * end and its front under the porch. */
-  { slug: 'mattsflooring', from: [24.5, 8.0, 2.1], dir: 'e', w: 1.6 },
-  { slug: 'yourfpv', from: [27.5, 20, 2.2], dir: 's', w: 1.3 },
-  { slug: 'quadconfig', from: [15.5, -60.5, 2.0], dir: 'w', w: 1.6 },
-  { slug: 'konexdrone', from: [30, -71, 1.2], dir: 's', w: 1.8 },
-  { slug: 'mantisfpv', from: [18, 5, 2.0], dir: 'w', w: 1.6 },
-  { slug: 'webleedfpv', from: [9.4, -1.5, 2.05], dir: 'n', w: 1.15 },
-  /* THE BRICK WALL, inside over the grills and at the courtyard's end,
-   * and outside. */
-  { slug: 'gds', from: [0.5, 17.6, 1.75], dir: 'n', w: 1.6 },
-  { slug: 'wcmrc', from: [15.2, 17.6, 1.6], dir: 'n', w: 1.6 },
-  { slug: 'yourfpv', from: [12, 21, 1.5], dir: 's', w: 1.3 },
+  /* THE ROAD, every brand painted twice along its middle, reading from
+   * the house, clear of where the drive comes in. */
+  ...[-44, -34, -24, -14, -4, 6, 16, 26, 52, 62, 72, 82, 92, 102, 108, -48].map((x, i) => ({
+    slug: BRANDS[i % BRANDS.length].slug, from: [x, ROAD.y, 3], dir: 'down', w: 3.6, top: 's',
+  })),
+  /* THE STANDS, the faces their signs are not on. */
+  ...STANDS.flatMap((s, i) => standFaces(s).map((f, k) => {
+    const slug = STAND_BRANDS[i][k];
+    return slug ? { slug, ...f, w: bannerW(slug) } : null;
+  })).filter(Boolean),
+  /* Inside the lean-to, and the timber stand's board's back. */
+  { slug: 'webleedfpv', from: [29.5, -20.5, 1.4], dir: 'n', w: 1.4 },
+  { slug: 'wcmrc', from: [32.5, -14.5, 4.07], dir: 'n', w: 1.4 },
 ];
 
 /* Each decal placed: { cell, p, n, up, w, h, hit }, PROUD of its face, or

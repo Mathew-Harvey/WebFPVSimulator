@@ -330,8 +330,10 @@ const WORLDS = [
   /* Heads' house, added 20 October 2026 when it became an official map, its
    * shot picked by eye the same way. */
   { id: 'heads', file: 'heads.jpg', name: "Heads' house", shot: { tp: 0.55, tr: 0.8, ta: -1.35 } },
-  /* Joshua Bardwell's house, added 21 October 2026, the same way. */
-  { id: 'bardwell', file: 'bardwell.jpg', name: "Joshua Bardwell's house", shot: { tp: 0.55, tr: 0.6, ta: -1.35 } },
+  /* Joshua Bardwell's house, added 21 October 2026, the same way, and
+   * taken again from higher and further out when it was rebuilt that day,
+   * so the camera clears the trees and the field is in it. */
+  { id: 'bardwell', file: 'bardwell.jpg', name: "Joshua Bardwell's house", shot: { tp: 0.72, tr: 1.45, ta: -1.1 } },
 ];
 
 async function drawWorlds(opts) {

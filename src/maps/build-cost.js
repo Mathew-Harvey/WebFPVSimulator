@@ -59,6 +59,9 @@ export const MAP_BUILD_MS = {
    * 1772 ms, with Nick's house at 1668 on the same container that hour. */
   heads: 1770,
   /* Joshua Bardwell's house (src/maps/bardwell/), the same pipeline,
-   * measured on 2026-10-21 the same way: 1341 ms in headless Chromium. */
-  bardwell: 1340,
+   * measured on 2026-10-21 the same way: 1341 ms in headless Chromium.
+   * Rebuilt that day from the Workshop layout, with two hundred trees,
+   * and measured again: 1566, 1145 and 1528 ms, Nick's house 907 and 1981
+   * between them in the same session. */
+  bardwell: 1413,
 };

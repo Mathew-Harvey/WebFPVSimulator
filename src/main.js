@@ -469,7 +469,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -485,6 +485,7 @@ const MAP_MODULE_PREFIX = {
   built: '/src/maps/built/',
   house: '/src/maps/house/',
   heads: '/src/maps/heads/',
+  bardwell: '/src/maps/bardwell/',
 };
 
 /*
@@ -6949,6 +6950,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'heads') {
       notice = {
         text: "The board keeps no runs for Heads' house, so its runs stay here.",
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Joshua Bardwell's house: BARDWELL_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'bardwell') {
+      notice = {
+        text: "The board keeps no runs for Joshua Bardwell's house, so its runs stay here.",
         untilMs: performance.now() + 4200,
       };
       return;

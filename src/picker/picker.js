@@ -599,6 +599,9 @@ export function createPicker(host, opts = {}) {
   /* Panels built so far, by key, with the facts they were built from, so a
    * re-sort or a search reuses them, lettering and all. */
   const built = new Map();
+  /* The panel the last first press landed on: only a double click that
+   * began on a panel flies it (see cardFor). */
+  let pressed = '';
   let railSig = '';
   let titleSig = '';
 
@@ -906,8 +909,21 @@ export function createPicker(host, opts = {}) {
     }
     sk.append(meta);
     b.append(sk);
-    b.addEventListener('click', () => select(entry.key, true));
+    /* A quick press on a DIFFERENT panel is a new choice and not the end
+     * of a double click, whatever the browser counts: Android counts two
+     * taps as far as 100 dp apart as one double tap, and two panels are a
+     * gutter apart. So only a double click whose first press was on this
+     * panel flies it, the rule the simulator's old track cards kept. */
+    b.addEventListener('click', (ev) => {
+      if (ev.detail <= 1) {
+        pressed = entry.key;
+      }
+      select(entry.key, true);
+    });
     b.addEventListener('dblclick', () => {
+      if (pressed !== entry.key) {
+        return;
+      }
       select(entry.key, true);
       activate();
     });

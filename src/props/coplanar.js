@@ -8,10 +8,11 @@
  * whichever it happens to finish first, pixel by pixel and frame by frame,
  * and the wall shimmers between two colours as the camera moves. The owner,
  * 2026-10-21: "occasionally we get tareing and flashing in the house maps".
- * Counted on the plans that day: 245 such pairs of different colours in Nick
- * Burns' house (a slab top and a wall top, windows on coping, trim on the
- * siding) and 492 in Heads' house, one of them a 97 square metre painted wall
- * flush with a wicker one.
+ * Counted on the plans that day, faces of two colours in one plane: 1,414 in
+ * Nick Burns' house (a slab top and a wall top, windows on coping, trim on
+ * the siding) and 1,308 in Heads' house, one of them a 97 square metre
+ * painted wall flush with a wicker one. check:house and check:heads print
+ * the count as it stands.
  *
  * THE RULE. Where two boxes of different materials share a face, the same
  * way round and overlapping, the thinner box along that axis is the thing

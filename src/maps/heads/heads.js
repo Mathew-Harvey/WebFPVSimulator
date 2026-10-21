@@ -177,12 +177,11 @@ const UP_EAST = [[1.4, 2.6, FU + 0.85, FU + 2.05], [6.2, 7.4, FU + 0.85, FU + 2.
 /* The door from the garage down into the basement. */
 const SHOP_DOOR = [4.2, 5.1];
 
-/* The round race gates, on the garage floor and in the basement. */
-export const GATE_R = 0.75;
-/* The garage's cube: its side and its tubes, real metres. */
+/* The race gates, on the garage floor and in the basement: cubes, where
+ * the stills show round hoops (the owner, 2026-10-21, "hoops need to be
+ * cube gates"). Their side and their tubes, real metres. */
 const CUBE = 1.3;
 const CUBE_TUBE = 0.045;
-const GATE_TUBE = 0.06;
 const GARAGE_GATE = { x: 15.875, y: 6.4, h: FG };
 const FAMILY_GATE = { x: 11.0, y: 3.6, h: FL };
 
@@ -656,8 +655,9 @@ function quadOn(H, x, y, h, m) {
 
 /* A cube to fly through: twelve tubes on the floor round a cube CUBE on a
  * side, centred on g, black uprights and white rails. Every face is open,
- * so it is flown through from any side; the named gap is the north and
- * south pair (OPENINGS.garageGate). */
+ * so it is flown through from any side; the named gap is one pair of faces
+ * (OPENINGS.garageGate north and south, OPENINGS.basementGate east and
+ * west). */
 function cube(H, g) {
   const a = CUBE / 2;
   const r = CUBE_TUBE;
@@ -675,31 +675,6 @@ function cube(H, g) {
     }
     for (const x of xs) {
       H.cap('homeWhite', [x, ys[0], h], [x, ys[1], h], r, { kind: 'gate', seg: 6, name: 'cube' });
-    }
-  }
-}
-
-/* A round gate: a ring of capsules in a wall's plane, on two feet. `dir`
- * 'x' is a ring facing north and south, 'y' east and west. */
-function gate(H, g, dir) {
-  const n = 16;
-  const c = g.h + 0.18 + GATE_R;
-  const SC = { s: 0, c: 1 };
-  const at = (k) => {
-    sincos((2 * Math.PI * k) / n, SC);
-    const u = GATE_R * SC.c;
-    const v = c + GATE_R * SC.s;
-    return dir === 'x' ? [g.x + u, g.y, v] : [g.x, g.y + u, v];
-  };
-  for (let k = 0; k < n; k += 1) {
-    H.cap(k % 2 ? 'homeWhite' : 'homeShelf', at(k), at(k + 1), GATE_TUBE, { kind: 'gate', seg: 6, name: 'gate' });
-  }
-  for (const s of [-1, 1]) {
-    const u = s * 0.45;
-    if (dir === 'x') {
-      H.box('homeShelf', g.x + u - 0.06, g.y - 0.25, g.h, g.x + u + 0.06, g.y + 0.25, g.h + 0.08, { name: 'gate foot', kind: 'obstacle' });
-    } else {
-      H.box('homeShelf', g.x - 0.25, g.y + u - 0.06, g.h, g.x + 0.25, g.y + u + 0.06, g.h + 0.08, { name: 'gate foot', kind: 'obstacle' });
     }
   }
 }
@@ -832,27 +807,144 @@ function basement(H) {
   H.box('homeWallGreen', f.x0, 5.4, FL + 0.45, f.x0 + 0.25, f.y1, FL + 0.95, { name: 'couch back', kind: 'obstacle' });
   H.box('homeWallGreen', 9.75, 7.2, FL, 10.35, f.y1, FL + 0.45, { name: 'chaise', kind: 'obstacle' });
   H.paint('homePlay', 9.0, 6.3, FL + 0.45, 9.5, 6.75, FL + 0.62);
-  /* North wall: the black cabinet, the counter and its shelves, presents. */
+  /* North wall: the black cabinet, the computer desk under its hutch, a
+   * present either side of the desk's chair. */
   H.box('homeShutter', 10.35, 7.65, FL, 11.25, f.y1, FL + 1.85, { name: 'cabinet', kind: 'obstacle' });
-  H.box('homeShelf', 11.25, 7.7, FL, f.x1, f.y1, FL + 0.86, { name: 'counter', kind: 'obstacle' });
-  H.paint('homeWood', 11.25, 7.68, FL + 0.86, f.x1, f.y1, FL + 0.9);
-  for (const h of [1.3, 1.7]) {
-    H.paint('homeWood', 11.6, 8.0, FL + h, 13.6, f.y1, FL + h + 0.03);
+  desk(H, 11.25, 7.65, f.x1, f.y1);
+  for (const [x0, x1] of [[11.3, 11.7], [13.25, 13.7]]) {
+    H.box('homePlay', x0, 7.15, FL, x1, 7.65, FL + 0.5, { name: 'present', kind: 'obstacle' });
+    H.paint('homeWhite', x0 - 0.01, 7.38, FL, x1 + 0.01, 7.42, FL + 0.51);
+    H.paint('homeWhite', (x0 + x1) / 2 - 0.02, 7.14, FL, (x0 + x1) / 2 + 0.02, 7.66, FL + 0.51);
   }
-  for (const [x, m] of [[11.9, 'homePlayBlue'], [12.4, 'homeBook'], [12.9, 'homeTeal'], [13.3, 'homePlay']]) {
-    H.paint(m, x - 0.15, 8.05, FL + 1.33, x + 0.15, f.y1, FL + 1.55);
-  }
-  H.box('homePlay', 12.8, 7.2, FL, 13.3, 7.7, FL + 0.5, { name: 'present', kind: 'obstacle' });
-  H.paint('homeWhite', 12.79, 7.43, FL, 13.31, 7.47, FL + 0.51);
-  H.paint('homePlay', 13.0, 7.75, FL + 0.9, 13.4, 8.1, FL + 1.2);
-  /* The punching bag hung from the ceiling, the gate, the red Christmas
+  /* The punching bag hung from the ceiling, the cube, the red Christmas
    * tree by the closet doors and its presents. */
   H.post('homeShutter', 10.7, 6.2, FL + 0.55, FL + 1.6, 0.18, { kind: 'obstacle', seg: 10 });
   H.post('homeSteel', 10.7, 6.2, FL + 1.6, CEIL_LOW, 0.01, { solid: false, seg: 4 });
-  gate(H, FAMILY_GATE, 'y');
+  cube(H, FAMILY_GATE);
   H.cone('homePlay', 11.0, 0.75, FL + 0.1, 0.42, 1.55);
   H.post('homePlay', 11.0, 0.75, FL, FL + 1.1, 0.24, { kind: 'tree', solid: true, draw: false });
   H.paint('homePlay', 10.55, 1.0, FL, 10.95, 1.35, FL + 0.32);
+}
+
+/*
+ * The computer desk on the basement's north wall, x0..x1 along it and y0
+ * out from the wall to y1 on it: a desk with a hutch in the stills, the
+ * owner's "the computer desk in the basement needs some detail" of
+ * 2026-10-21. Two pedestals of drawers, the top, the tower in the knee
+ * hole and the black chair tucked in on its star base; on the top a wide
+ * monitor, the keyboard and mouse, a radio and goggles, a mug and the
+ * lamp; the hutch's shelves over it with what was on them and books.
+ *
+ * THE WINDOW behind it (BASEMENT_BACK's second) is a way in, so nothing
+ * stands in it: the monitor, the lamp and the chair are either side, only
+ * the radio, the goggles and the mug sit low in front of it, and the
+ * hutch has no back and its lower shelf is over the window's head.
+ *
+ * SOLID it is one block to the top with the chair's back on its front,
+ * because a tucked in chair and its desk are one block (../house/house.js
+ * says why), and a knee hole left open round a chair is a slot the slot
+ * rule refuses. Everything else is paint, in colours the house already
+ * draws, so it is drawn in batches the house already has: no draw call.
+ */
+function desk(H, x0, y0, x1, y1) {
+  const win = BASEMENT_BACK[1];
+  const top = FL + 0.76;
+  const under = top - 0.04;
+  const knee = [11.85, 13.3];
+  const cx = 12.95;
+  H.hidden(x0, y0, FL, x1, y1, top, 'obstacle', 'desk');
+  H.hidden(cx - 0.23, 7.45, FL, cx + 0.23, y0, FL + 1.06, 'obstacle', 'desk chair');
+
+  /* The pedestals, their drawers' seams and pulls, the knee hole's back. */
+  for (const [a, b] of [[x0, knee[0]], [knee[1], x1]]) {
+    H.paint('homeShelf', a, y0, FL, b, y1, under);
+    H.paint('homeShutter', a, y0 - 0.006, FL, b, y0, FL + 0.05);
+    for (const h of [0.26, 0.48]) {
+      H.paint('homeShutter', a + 0.02, y0 - 0.006, FL + h, b - 0.02, y0, FL + h + 0.012);
+    }
+    for (const h of [0.17, 0.39, 0.61]) {
+      H.paint('homeSteel', (a + b) / 2 - 0.07, y0 - 0.02, FL + h, (a + b) / 2 + 0.07, y0, FL + h + 0.02);
+    }
+  }
+  H.paint('homeShelf', knee[0], y1 - 0.03, FL + 0.3, knee[1], y1, under);
+  H.paint('homeWood', x0, y0 - 0.02, under, x1, y1, top);
+
+  /* The tower against the left pedestal, its fans' glow and its button. */
+  const tw = knee[0] + 0.03;
+  H.paint('homeShutter', tw, y0 + 0.05, FL, tw + 0.2, y1 - 0.05, FL + 0.46);
+  H.paint('homeTeal', tw + 0.05, y0 + 0.045, FL + 0.1, tw + 0.15, y0 + 0.05, FL + 0.38);
+  H.paint('homeLamp', tw + 0.09, y0 + 0.045, FL + 0.41, tw + 0.11, y0 + 0.05, FL + 0.43);
+
+  /* The chair, facing the desk: seat, back and arms, its column and the
+   * five legs of its base. */
+  const cy = 7.75;
+  H.paint('homeShutter', cx - 0.23, 7.52, FL + 0.44, cx + 0.23, 7.98, FL + 0.51);
+  H.paint('homeShutter', cx - 0.22, 7.46, FL + 0.56, cx + 0.22, 7.52, FL + 1.06);
+  H.paint('homeSteel', cx - 0.03, 7.47, FL + 0.48, cx + 0.03, 7.51, FL + 0.56);
+  for (const s of [-1, 1]) {
+    H.paint('homeShutter', cx + s * 0.25 - 0.02, 7.55, FL + 0.66, cx + s * 0.25 + 0.02, 7.85, FL + 0.69);
+    H.paint('homeSteel', cx + s * 0.25 - 0.012, 7.68, FL + 0.51, cx + s * 0.25 + 0.012, 7.71, FL + 0.66);
+  }
+  H.post('homeSteel', cx, cy, FL + 0.07, FL + 0.44, 0.025, { seg: 6, solid: false });
+  const SC = { s: 0, c: 1 };
+  for (let k = 0; k < 5; k += 1) {
+    sincos((2 * Math.PI * k) / 5 + Math.PI / 2, SC);
+    const ex = cx + 0.28 * SC.c;
+    const ey = cy + 0.28 * SC.s;
+    H.cap('homeShutter', [cx, cy, FL + 0.07], [ex, ey, FL + 0.05], 0.018, { seg: 4, solid: false, name: 'chair base' });
+    H.paint('homeShutter', ex - 0.025, ey - 0.025, FL, ex + 0.025, ey + 0.025, FL + 0.04);
+  }
+
+  /* On the top, east of the window: the monitor on its stand, the
+   * keyboard and its keys, the mouse on its mat. */
+  const ma = win[1] + 0.08;
+  const mb = x1 - 0.15;
+  const mid = (ma + mb) / 2;
+  H.paint('homeShutter', mid - 0.12, 8.05, top, mid + 0.12, 8.25, top + 0.012);
+  H.paint('homeShutter', mid - 0.025, 8.17, top, mid + 0.025, 8.2, top + 0.12);
+  H.paint('homeShutter', ma, 8.12, top + 0.1, mb, 8.17, top + 0.48);
+  H.paint('homeScreen', ma + 0.015, 8.114, top + 0.115, mb - 0.015, 8.12, top + 0.465);
+  H.paint('homeShutter', mid - 0.27, 7.76, top, mid + 0.23, 7.92, top + 0.018);
+  H.paint('homeSteel', mid - 0.25, 7.775, top + 0.018, mid + 0.09, 7.905, top + 0.024);
+  H.paint('homeSteel', mid + 0.11, 7.775, top + 0.018, mid + 0.21, 7.905, top + 0.024);
+  H.paint('homeRug', x1 - 0.24, 7.75, top, x1 - 0.04, 7.98, top + 0.004);
+  H.paint('homeWhite', x1 - 0.165, 7.82, top + 0.004, x1 - 0.115, 7.9, top + 0.03);
+  /* Low in front of the window: the radio, its two sticks and its aerial,
+   * the goggles beside it, the mug. */
+  const r = win[0] + 0.1;
+  H.paint('homeShutter', r, 7.74, top, r + 0.24, 7.92, top + 0.06);
+  for (const x of [r + 0.06, r + 0.18]) {
+    H.post('homeSteel', x, 7.83, top + 0.06, top + 0.11, 0.006, { seg: 4, solid: false });
+  }
+  H.post('homeShutter', r + 0.12, 7.9, top + 0.06, top + 0.14, 0.008, { seg: 4, solid: false });
+  H.paint('homeShutter', r + 0.3, 7.98, top, r + 0.56, 8.1, top + 0.08);
+  H.paint('homeSteel', r + 0.3, 8.1, top + 0.02, r + 0.56, 8.18, top + 0.035);
+  H.post('homeWhite', win[1] - 0.18, 7.84, top, top + 0.1, 0.04, { seg: 8, solid: false });
+  /* The lamp on its arm at the west end, west of the window. */
+  const lx = x0 + 0.12;
+  H.paint('homeShutter', lx - 0.07, 8.08, top, lx + 0.07, 8.22, top + 0.02);
+  H.post('homeSteel', lx, 8.15, top + 0.02, top + 0.42, 0.01, { seg: 4, solid: false });
+  H.cap('homeShutter', [lx, 8.15, top + 0.42], [lx, 7.97, top + 0.36], 0.035, { seg: 6, solid: false, name: 'lamp' });
+  H.paint('homeLamp', lx - 0.03, 7.95, top + 0.32, lx + 0.03, 8.0, top + 0.325);
+
+  /* The hutch: its two sides, two shelves over the window's head and a
+   * cap; on the shelves what was there before, and a row of books. */
+  const hutch = FL + 1.85;
+  for (const [a, b] of [[x0, x0 + 0.04], [x1 - 0.04, x1]]) {
+    H.paint('homeShelf', a, 7.98, top, b, y1, hutch);
+  }
+  for (const h of [1.48, 1.7]) {
+    H.paint('homeWood', x0 + 0.04, 7.98, FL + h, x1 - 0.04, y1, FL + h + 0.03);
+  }
+  H.paint('homeWood', x0, 7.96, hutch, x1, y1, hutch + 0.03);
+  for (const [x, m] of [[11.9, 'homePlayBlue'], [12.4, 'homeBook'], [12.9, 'homeTeal'], [13.3, 'homePlay']]) {
+    H.paint(m, x - 0.15, 8.05, FL + 1.51, x + 0.15, y1, FL + 1.66);
+  }
+  const books = ['homeBook', 'homePlayBlue', 'homePlay', 'homeTeal', 'homeWhite', 'homeBook', 'homePlay'];
+  for (let i = 0; i < books.length; i += 1) {
+    const x = 11.45 + i * 0.07;
+    H.paint(books[i], x, 8.04, FL + 1.73, x + 0.055, y1, FL + 1.8 + (i % 3) * 0.015);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -896,7 +988,15 @@ function mainFloor(H) {
   H.box('homeShelf', 4.0, 3.85, FM, 5.9, 4.19, FM + 0.55, { name: 'tv unit', kind: 'obstacle' });
   H.box('homeShelf', 4.2, 4.09, FM + 0.55, 5.7, 4.19, FM + 1.3, { name: 'tv', kind: 'obstacle' });
   H.paint('homeScreen', 4.25, 4.08, FM + 0.6, 5.65, 4.09, FM + 1.25);
-  H.box('homeCushion', 3.6, m.y0, FM, 4.4, 0.95, FM + 0.8, { name: 'armchair', kind: 'obstacle' });
+  /* The armchair: one solid as it was, drawn as a seat, a back to the
+   * window, two arms and four short legs. */
+  H.hidden(3.6, m.y0, FM, 4.4, 0.95, FM + 0.8, 'obstacle', 'armchair');
+  H.paint('homeCushion', 3.6, m.y0, FM + 0.1, 4.4, 0.95, FM + 0.45);
+  H.paint('homeCushion', 3.6, m.y0, FM + 0.45, 4.4, m.y0 + 0.2, FM + 0.8);
+  for (const [a, b] of [[3.6, 3.74], [4.26, 4.4]]) {
+    H.paint('homeCushion', a, m.y0 + 0.2, FM + 0.45, b, 0.95, FM + 0.64);
+  }
+  legs(H, 'homeWood', 3.6, m.y0, 4.4, 0.95, FM, FM + 0.1, 0.05, 0.03);
   /* Dining: the table and its chairs as one block. */
   H.box('homeWood', 1.6, 5.6, FM + 0.7, 3.2, 6.6, FM + 0.75, { name: 'table' });
   H.hidden(1.2, 5.2, FM, 3.6, 7.0, FM + 0.75, 'obstacle', 'table and chairs');
@@ -1687,7 +1787,6 @@ export function headsLayout() {
  * ../house/house.js's: a span along a wall at `y` (an east west wall) or
  * `x` (a north south one) and its sill and head. */
 export const FRAME = { OX, OZ, S };
-const inscribed = (GATE_R - GATE_TUBE) / Math.SQRT2;
 export const OPENINGS = {
   frontDoor: { x0: FRONT_DOOR[0], x1: FRONT_DOOR[1], y: TX / 2, h0: FRONT_DOOR[2], h1: FRONT_DOOR[3] },
   garage: { x0: GARAGE_DOOR[0], x1: GARAGE_DOOR[1], y: TX / 2, h0: GARAGE_DOOR[2], h1: GARAGE_DOOR[3] },
@@ -1704,8 +1803,8 @@ export const OPENINGS = {
     h0: GARAGE_GATE.h + 2 * CUBE_TUBE, h1: GARAGE_GATE.h + CUBE - 2 * CUBE_TUBE,
   },
   basementGate: {
-    y0: FAMILY_GATE.y - inscribed, y1: FAMILY_GATE.y + inscribed, x: FAMILY_GATE.x,
-    h0: FAMILY_GATE.h + 0.18 + GATE_R - inscribed, h1: FAMILY_GATE.h + 0.18 + GATE_R + inscribed,
+    y0: FAMILY_GATE.y - CUBE / 2 + 2 * CUBE_TUBE, y1: FAMILY_GATE.y + CUBE / 2 - 2 * CUBE_TUBE, x: FAMILY_GATE.x,
+    h0: FAMILY_GATE.h + 2 * CUBE_TUBE, h1: FAMILY_GATE.h + CUBE - 2 * CUBE_TUBE,
   },
   sideGate: { x0: -3.6, x1: -2.4, y: 5.2, h0: 0, h1: 1.83 },
 };

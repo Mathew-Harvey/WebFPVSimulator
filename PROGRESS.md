@@ -71284,6 +71284,7 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 - Latency: none in flight. The new test runs in `applySettings`, which runs when a setting changes, never in the frame loop. Checked by reading the diff.
 - Checked: through the real shell with `scripts/shots.js`, keys on the Settings page opened from the pause: 3D on to off (Left on the row) puts shell and module off at once and they stay off after Resume; off to on (Right) the same; a second Right on a switch already on resets nothing; Quit to title, switch off on the title, then fly comes up normal. `node --check` on both files, `lint:nouns` pass, `lint:boot` 9 of 9, `lint:preload` up to date, `check:fresh` 18 passed. Not run: `npm run verify` (shell only, no physics, plant, ABI or build change), `lint:shell` (fails on fold sizes on main already), `lint:input`. No automated check was added for the mid run switch; the browser run above is the evidence. Nobody has flown it.
 - Pushed: the owner wrote "push to main" at 10:31:55Z on 2026-10-21 in the 3D mode thread, after draft PR 107 was posted. Main had not moved past 4cc404d, which this branch already carried, so the push was a fast-forward.
+- Flown: the owner, 10:50:33Z on 2026-10-21 in the 3D mode thread, after flying the mid run switch: "its works close the tread".
 
 ## 2026-10-21 | render | Performance sweep: shadow proxies leave the colour pass (branch only)
 

@@ -54,15 +54,16 @@
  * until play() is called, and play() is only called when the bed is
  * wanted. With music off the cost is zero bytes rather than one track.
  *
- * Three, it warms one track out of spare bandwidth, never out of the
- * bandwidth the thing playing is using, and never at all under
- * Save-Data. In the menus the warm is the FLIGHT track, because the menus
- * are where a flight is about to be started and the element cannot start
- * buffering it before the swap; that warm waits until the menu bed is
- * WARM_MENU_AHEAD_S buffered ahead of itself, which is the connection
- * saying it has room. In flight the warm is the next record in the
- * rotation, inside the last WARM_LEAD_S seconds and only once the current
- * track is buffered to its own end.
+ * Three, nothing is fetched before it is about to be heard. The menus are
+ * SILENT until the pilot asks for the bed (the dock's arrows, or
+ * askMenuBed), because a browser pulls a whole 2.5 MB file the moment a
+ * media element plays, and a visitor who looks at the title screen for ten
+ * seconds and leaves has then cost a track they never chose. The first
+ * flight starts the flight track; the menus never buy it ahead of time. The
+ * only warm left is the next record in the rotation, inside the last
+ * WARM_LEAD_S seconds and only once the current track is buffered to its
+ * own end, and the next menu record near the end of a menu bed the pilot
+ * asked for. Never under Save-Data.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -133,16 +134,6 @@ const MENU_BUS = 0.20;
  */
 const WARM_LEAD_S = 25;
 
-/*
- * How far ahead of itself the menu bed has to be buffered before any of
- * the connection is spent on the flight track. This is the whole gate on
- * a speculative multi megabyte fetch, so it is a real margin and not a
- * readyState glance: twenty seconds of audio in hand says the line is
- * keeping up, and if it is not then the menu bed is what matters, because
- * the menu bed is what is playing.
- */
-const WARM_MENU_AHEAD_S = 20;
-
 /* The fade either side of a crate swap. Down fast enough that the flight
  * bed is gone before the results table is read, up slowly enough that the
  * bed arrives under the screen rather than with it. */
@@ -172,6 +163,10 @@ export class Music {
      */
     this.context = 'menu';
     this.pendingContext = '';
+    /* The menus play only once the pilot has asked for them: see the
+     * header. Set by askMenuBed and by a skip in the menus, kept for the
+     * visit. */
+    this.menuWanted = false;
     this.swapAt = 0;
     /*
      * An index into each crate, kept whether or not that crate is the one
@@ -395,6 +390,18 @@ export class Music {
     }
     this.rememberTime();
     this.context = next;
+    if (next === 'menu' && !this.menuWanted) {
+      /* Nobody asked for the menu bed. Stop the flight record now, while
+       * this.track is still the one on the element, and leave the element
+       * on it: setting a menu src here would be a fetch. */
+      this.wantPlay = false;
+      if (this.el) {
+        this.el.pause();
+      }
+    }
+    if (next === 'flight' && this.enabled) {
+      this.wantPlay = true;
+    }
     if (next === 'menu') {
       /* A fresh roll every time the menus come back, which is what
        * 'played at random in the menus' means when a menu visit is
@@ -407,9 +414,24 @@ export class Music {
     /* Whatever the warm was fetching, it was fetching it for the crate
      * that is no longer on the element. */
     this.dropWarm();
-    this.loadCurrent(false);
+    if (this.context === 'flight' || this.menuWanted) {
+      this.loadCurrent(false);
+    }
     this.raiseSwap();
     this.emitChange();
+  }
+
+  /*
+   * The pilot asked for the menu bed. Until this runs, the menus make no
+   * sound and fetch nothing.
+   */
+  askMenuBed() {
+    this.menuWanted = true;
+    if (this.context !== 'menu' || !this.enabled) {
+      return;
+    }
+    this.wantPlay = true;
+    this.loadCurrent(false);
   }
 
   raiseSwap() {
@@ -494,6 +516,9 @@ export class Music {
    * records and skipping is a toggle, which is the honest behaviour for a
    * button sitting next to the name of the thing it would skip. */
   skip(dir) {
+    if (this.context === 'menu') {
+      this.menuWanted = true;
+    }
     const crate = this.crate();
     const n = crate.length;
     const step = dir < 0 ? -1 : 1;
@@ -597,7 +622,7 @@ export class Music {
   }
 
   resume() {
-    if (!this.enabled) {
+    if (!this.enabled || (this.context === 'menu' && !this.menuWanted)) {
       return;
     }
     this.wantPlay = true;
@@ -654,30 +679,21 @@ export class Music {
    * comfortably ahead of itself, and only for the track that is actually
    * going to be asked for next.
    *
-   * In the menus that is the FLIGHT track, because the menus are where a
-   * flight is about to be started and one element cannot buffer the next
-   * bed and play this one. Without it every first flight of a visit opens
-   * on the download of a 2.5 MB file, which is exactly the contention
-   * this whole file is written to avoid, and it is worse than what it
-   * replaced because the old shell had the flight track playing from the
-   * title screen.
-   *
-   * Near the end of a menu record the next menu record wins instead: it
-   * is needed sooner, and the flight warm's bytes are in the HTTP cache
-   * by then anyway.
+   * In the menus nothing is bought for the flight: the menus used to warm
+   * the flight track so a first flight did not open on a download, and it
+   * cost every visitor who never flew a track they never heard. A first
+   * flight now opens on the download, on purpose. Near the end of a menu
+   * record the next menu record is warmed, which only happens when the
+   * pilot asked for the menu bed.
    */
   warmWanted() {
     const el = this.el;
     const dur = el.duration;
     const buffered = el.buffered.length;
-    const ahead = buffered === 0 ? 0 : el.buffered.end(buffered - 1) - el.currentTime;
     const near = Number.isFinite(dur) && dur > WARM_LEAD_S && dur - el.currentTime <= WARM_LEAD_S;
 
     if (this.context === 'menu') {
-      if (near) {
-        return MENU_TRACKS[(this.menuIndex + 1) % MENU_TRACKS.length].id;
-      }
-      return ahead >= WARM_MENU_AHEAD_S ? TRACKS[this.flightIndex].id : '';
+      return near ? MENU_TRACKS[(this.menuIndex + 1) % MENU_TRACKS.length].id : '';
     }
     /* A pinned track loops, so there is no next. */
     if (this.selection !== 'rotation' || !near) {

@@ -1,8 +1,9 @@
 /*
- * homes.js: the colours of a house that is lived in, for the two maps
- * that have one (src/maps/house/, Nick Burns' house, and src/maps/heads/,
- * Heads' house). The second takes the first's colours wherever they read
- * the same and adds the six of its own at the end.
+ * homes.js: the colours of a house that is lived in, for the three maps
+ * that have one (src/maps/house/, Nick Burns' house, src/maps/heads/,
+ * Heads' house, and src/maps/bardwell/, Joshua Bardwell's house). Each
+ * after the first takes the first's colours wherever they read the same
+ * and adds its own at the end.
  *
  * A FAMILY WITH NO ASSETS. The house is not in the builder's palette: it is
  * one particular building, laid out from its owner's videos and from three
@@ -118,6 +119,26 @@ export const MATERIALS = {
   headsPatio: { c: 0xb86a50, tint: 0x6a4a66 },
   headsMaple: { c: 0x7c2a40, tint: 0x4a2a50 },
   headsPurple: { c: 0x4c3240, tint: 0x342840 },
+  /* Joshua Bardwell's house (src/maps/bardwell/), outside only, from its
+   * stills: the dark stained logs and their pale chinking, the green
+   * shingle roof, the porch's boards, the brick pavers, the gazebo's dark
+   * hardtop and its brown posts, the barn's weathered boards and rusty
+   * roof, the long building's red brown siding and orange roof, the blue
+   * shed roof, the gravel and the field's winter grass. */
+  bardwellLog: { c: 0x5a3f2c, tint: 0x3a2e40 },
+  bardwellChink: { c: 0xcbbfa6, tint: 0x7f7894 },
+  bardwellShingle: { c: 0x52675b, tint: 0x34405a },
+  bardwellPorch: { c: 0x8a6a4a, tint: 0x54485c },
+  bardwellPaver: { c: 0x8c5a4a, tint: 0x5a4462 },
+  bardwellGazebo: { c: 0x3c4650, tint: 0x2c3046 },
+  bardwellPost: { c: 0x5e4433, tint: 0x3c3246 },
+  bardwellBarn: { c: 0x8f8a84, tint: 0x5a5672 },
+  bardwellRust: { c: 0x9a4a32, tint: 0x5a3a4e },
+  bardwellSiding: { c: 0x6e3a2c, tint: 0x46304a },
+  bardwellOrange: { c: 0xd98c4a, tint: 0x7a5a62 },
+  bardwellBlue: { c: 0x6f9fd0, tint: 0x45577a },
+  bardwellGravel: { c: 0xa89f90, tint: 0x6a6480 },
+  bardwellDryGrass: { c: 0xa8996a, tint: 0x6a6070 },
 };
 
 /*

@@ -869,6 +869,9 @@ function buildCourse(raw) {
      * and the guide paint do with a length has to read this.
      */
     trackClass: cls,
+    /* The series the track is credited to, when it has one: the RaceGOW5
+     * set's is what puts Dan in the room (src/maps/dan/). */
+    series: doc.credit && doc.credit.series ? doc.credit.series : '',
     structures,
     stations,
     ...(loose.length ? { loose } : {}),

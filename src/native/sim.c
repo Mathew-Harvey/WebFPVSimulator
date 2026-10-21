@@ -633,7 +633,14 @@ static int ground_stall_wanted(double up[3], double *un_out) {
   if (!(v2 < GROUND_STALL_SPEED * GROUND_STALL_SPEED)) {
     return 0;
   }
-  if (!(un < GROUND_STALL_SIDE) && !(g_current_rc[3] < GROUND_STALL_THROTTLE)) {
+  /* In 3D mode "throttle down" is the middle of the stick, where the motors
+   * make nothing, so the test is on the distance from centre as a fraction
+   * of a half. In normal mode the stick IS that number. */
+  double thr = g_current_rc[3];
+  if (SIM_3D) {
+    thr = 2.0 * (thr < 0.5 ? 0.5 - thr : thr - 0.5);
+  }
+  if (!(un < GROUND_STALL_SIDE) && !(thr < GROUND_STALL_THROTTLE)) {
     return 0;
   }
   return 1;
@@ -756,7 +763,12 @@ static void ground_settle(double upz, double vn_plant) {
     const int seated_halo = g_ground_near
         && upz < CONTACT_INVERT_HALO_UPZ
         && !(vn_plant < -CONTACT_INVERT_DIVE);
-    if (touching || seated_halo) {
+    /* Except a 3D quad on its back with its motors reversed and lifting it
+     * off, which is a takeoff, not a craft in the grass: the props are what
+     * is pushing it away, and the strip above already lets a climb the plant
+     * had stand. A one way motor cannot do this, so normal mode never asks. */
+    const int lifting = SIM_3D && vn_plant > 0.0;
+    if ((touching || seated_halo) && !lifting) {
       S.vel[0] = 0.0;
       S.vel[1] = 0.0;
       S.vel[2] = 0.0;
@@ -1331,6 +1343,18 @@ SIM_EXPORT int sim_set_propwash(int on) {
   SIM_PROPWASH = on ? 1 : 0;
   return SIM_OK;
 }
+
+/* 3D mode, see sim_internal.h. A mode, same rule as the flight style, and
+ * like the airframe it is latched by the controller's init, so the host
+ * follows it with sim_reset for it to fly. */
+int SIM_3D = 0;
+
+SIM_EXPORT int sim_set_3d(int on) {
+  SIM_3D = on ? 1 : 0;
+  return SIM_OK;
+}
+
+SIM_EXPORT int sim_3d(void) { return SIM_3D; }
 
 /* Air scale, see sim_internal.h. A mode, same rule as the flight style. */
 double SIM_AIR = 1.0;

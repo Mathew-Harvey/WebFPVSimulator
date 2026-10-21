@@ -337,6 +337,22 @@ int sim_set_flight_style(int arcade);
 int sim_set_propwash(int on);
 
 /*
+ * 3D mode. 0, the default, is the quad every check was measured on. 1 is
+ * Betaflight's FEATURE_3D with a bidirectional DShot ESC and 3D props: the
+ * throttle channel's middle is no thrust, the top half drives the motors
+ * forward and the bottom half drives them backwards, so the quad can hang
+ * and fly upside down. The controller latches it when it is initialised,
+ * so it takes effect at the next sim_reset or sim_init; the plant reads it
+ * every step. Survives sim_reset and sim_init, same as the flight style.
+ * sim_3d returns what is set. Additive ABI change, version unchanged: a
+ * replay that never calls this is bit identical to one from before it
+ * existed. In 3D mode the motor speeds sim_state reports are signed,
+ * negative for a rotor spinning backwards.
+ */
+int sim_set_3d(int on);
+int sim_3d(void);
+
+/*
  * Choose the airframe: 0 is the five inch this project was built around and
  * is the default, 1 is a 65 mm 1S brushless whoop. Returns SIM_ERR_BAD_ARG
  * for anything else.

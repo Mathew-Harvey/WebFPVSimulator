@@ -143,6 +143,7 @@ import {
   MOTOR_KV_MIN,
   MOTOR_KV_STEP,
   MOTOR_KV_STOCK,
+  SUPERSEDED_TUNE,
   TUNE_MIN_AIR_MS,
   TUNE_VERDICTS,
   airtimeWords,
@@ -151,8 +152,10 @@ import {
   clampMotorKv,
   effectiveTune,
   inputKindFromSource,
+  offBoardTune,
   tuneAskReason,
   tuneCardText,
+  tuneDefaultsFor,
   tuneSliderBlurbs,
   tuneSliderWords,
   tuneValuesLine,
@@ -1098,6 +1101,14 @@ const DEFAULTS = {
    */
   stockRates: 0,
   /*
+   * Which generation of the shipped Air grip and Motor power defaults this
+   * profile has been moved to, the same one shot as stockRates. See
+   * SUPERSEDED_TUNE and TUNE_DEFAULTS in src/share/tune.js: a profile still
+   * on the old 100 and 100 is moved to its aircraft's default once, and a
+   * pilot who sets 100 back keeps it.
+   */
+  stockTune: 0,
+  /*
    * Whether the flight feel question has been offered. It offers itself
    * exactly once, after the first finished race, and never again: the
    * moment the dialog opens this flips and is saved, whatever the pilot
@@ -1383,10 +1394,14 @@ const DEFAULTS = {
    * FLIGHT FEEL TUNING (src/share/tune.js). A mode, off by default, that puts
    * two more sliders beside Weight while the quad is on the ground: Air grip,
    * how far the quad carries, and Motor power, the motors' KV. Both are
-   * percentages of the machine as it ships, 100 is stock, and they are only
+   * percentages of the module's own scale, 100 is its 1.0, and they are only
    * ever APPLIED while the mode is on (effectiveTune), so a pilot who turns
-   * it off flies stock whatever is stored here and finds their tune again
-   * when they turn it back on. Per airframe, like weight: see MACHINE_KEYS.
+   * it off flies the aircraft's default whatever is stored here and finds
+   * their tune again when they turn it back on. Per airframe, like weight:
+   * see MACHINE_KEYS. The 100 and 100 below are only where a blank profile
+   * starts: the stockTune move in loadSettings puts it on its aircraft's
+   * default (TUNE_DEFAULTS in src/share/tune.js), which is not 100 since
+   * 2026-10-21.
    *
    * A flight off stock goes off the public board, because a lap on a quad
    * that grips the air differently is a lap on a different aircraft and the
@@ -1863,6 +1878,26 @@ export function loadSettings() {
     }
     s.stockRates = SUPERSEDED_RATES.GENERATION;
   }
+  /* The shipped Air grip and Motor power moved (2026-10-21, from the tunes
+   * pilots sent). A machine still on the old 100 and 100 never chose them,
+   * so it moves once to its aircraft's default: the seated one, and the one
+   * put away in the hangar. */
+  if (!(s.stockTune >= SUPERSEDED_TUNE.GENERATION)) {
+    const onOld = (m) => m.airGrip === SUPERSEDED_TUNE.airGrip && m.motorKv === SUPERSEDED_TUNE.motorKv;
+    if (onOld(s)) {
+      ({ airGrip: s.airGrip, motorKv: s.motorKv } = tuneDefaultsFor(s.airframe));
+    }
+    const h = s.hangar;
+    if (h && typeof h === 'object' && !Array.isArray(h)) {
+      for (const id of Object.keys(h)) {
+        const m = h[id];
+        if (m && typeof m === 'object' && !Array.isArray(m) && onOld(m)) {
+          h[id] = { ...m, ...tuneDefaultsFor(id) };
+        }
+      }
+    }
+    s.stockTune = SUPERSEDED_TUNE.GENERATION;
+  }
   /*
    * THE WHOOP'S SHIPPED DEFAULTS MOVED, and a stored copy of the old ones
    * has to move with them. See SUPERSEDED_WHOOP for what and why, and the
@@ -2188,12 +2223,11 @@ export function seatAirframe(s, id) {
   } else if (moving) {
     s.cameraFov = to.cameraFov;
     s.cameraAngle = clampCameraAngle(to.cameraAngle);
-    /* A first visit starts both tuning sliders at stock. A tune is a set of
-     * numbers for one machine, and carrying a five inch's Motor power onto a
-     * whoop that has never been flown would be handing it a tune nobody made
-     * for it. */
-    s.airGrip = AIR_GRIP_STOCK;
-    s.motorKv = MOTOR_KV_STOCK;
+    /* A first visit starts both tuning sliders on the aircraft's default. A
+     * tune is a set of numbers for one machine, and carrying a five inch's
+     * Motor power onto a whoop that has never been flown would be handing it
+     * a tune nobody made for it. */
+    ({ airGrip: s.airGrip, motorKv: s.motorKv } = tuneDefaultsFor(to.id));
   }
   if (!tuneChoices(to.id).includes(s.tune)) {
     s.tune = to.defaultTune;
@@ -4283,7 +4317,7 @@ function tuneSliderItem(label, note, spec, cur, set, step) {
 function airGripItem(s) {
   return tuneSliderItem(
     'Air grip',
-    `How much the air holds the quad back, so how far it carries with the sticks centred. Left and it coasts on and runs faster; right and the air grips it, it stops sooner and tops out slower. ${AIR_GRIP_STOCK} is the quad as it ships. Changing it mid lap voids the lap, and a lap flown off ${AIR_GRIP_STOCK} posts to the public board tagged Tuned.`,
+    `How much the air holds the quad back, so how far it carries with the sticks centred. Left and it coasts on and runs faster; right and the air grips it, it stops sooner and tops out slower. ${tuneDefaultsFor(s.airframe).airGrip} is the quad as it ships, set from the tunes pilots sent. Changing it mid lap voids the lap, and a lap flown off ${tuneDefaultsFor(s.airframe).airGrip} posts to the public board tagged Tuned.`,
     {
       cliMin: AIR_GRIP_MIN, cliMax: AIR_GRIP_MAX, scale: 1, decimals: 0, unit: '%',
     },
@@ -4296,7 +4330,7 @@ function airGripItem(s) {
 function motorKvItem(s) {
   return tuneSliderItem(
     'Motor power',
-    `How much speed the motors make for a volt, their KV. Left is softer: a gentler punch and a lower top speed. Right is punchier, and the pack sags more for it, and the quad hovers lower on the stick. ${MOTOR_KV_STOCK} is the quad as it ships. Changing it mid lap voids the lap, and a lap flown off ${MOTOR_KV_STOCK} posts to the public board tagged Tuned.`,
+    `How much speed the motors make for a volt, their KV. Left is softer: a gentler punch and a lower top speed. Right is punchier, and the pack sags more for it, and the quad hovers lower on the stick. ${tuneDefaultsFor(s.airframe).motorKv} is the quad as it ships, set from the tunes pilots sent. Changing it mid lap voids the lap, and a lap flown off ${tuneDefaultsFor(s.airframe).motorKv} posts to the public board tagged Tuned.`,
     {
       cliMin: MOTOR_KV_MIN, cliMax: MOTOR_KV_MAX, scale: 1, decimals: 0, unit: '%',
     },
@@ -7054,7 +7088,7 @@ export class Ui {
     if (t.airframe && t.airframe !== this.settings.airframe) {
       out.push(`It is for the ${this.airframeName(t.airframe)}, so you are moved to that aircraft and its own track class.`);
     }
-    if (x.airGrip !== AIR_GRIP_STOCK || x.motorKv !== MOTOR_KV_STOCK) {
+    if (offBoardTune(x.airGrip, x.motorKv, t.airframe || this.settings.airframe)) {
       out.push('It moves Air grip or Motor power, so Flight feel tuning is switched on, and a lap flown on it posts to the public board tagged Tuned.');
     }
     if (x.base === CUSTOM_TUNE.id) {
@@ -7105,7 +7139,7 @@ export class Ui {
     s.weight = clampWeight(x.weight, s.airframe);
     s.airGrip = clampAirGrip(x.airGrip);
     s.motorKv = clampMotorKv(x.motorKv);
-    if (s.airGrip !== AIR_GRIP_STOCK || s.motorKv !== MOTOR_KV_STOCK) {
+    if (offBoardTune(s.airGrip, s.motorKv, s.airframe)) {
       s.feelTuning = true;
     }
     const af = airframeById(s.airframe);
@@ -16816,12 +16850,13 @@ export class Ui {
    * so a lap is voided once and not three times. */
   resetTune() {
     const s = this.settings;
-    if (s.weight === WEIGHT_STOCK && s.airGrip === AIR_GRIP_STOCK && s.motorKv === MOTOR_KV_STOCK) {
+    const d = tuneDefaultsFor(s.airframe);
+    if (s.weight === WEIGHT_STOCK && s.airGrip === d.airGrip && s.motorKv === d.motorKv) {
       return;
     }
     s.weight = WEIGHT_STOCK;
-    s.airGrip = AIR_GRIP_STOCK;
-    s.motorKv = MOTOR_KV_STOCK;
+    s.airGrip = d.airGrip;
+    s.motorKv = d.motorKv;
     this.paintAir();
     saveSettings(s);
     if (this.onSettings) {
@@ -17222,9 +17257,10 @@ export class Ui {
         tune.box.hidden = !on;
       }
       if (on) {
+        const d = tuneDefaultsFor(this.settings.airframe);
         const rows = [
-          [tune.grip, clampAirGrip(this.settings.airGrip), AIR_GRIP_STOCK, 'Air grip', this.tuneCaps.air],
-          [tune.power, clampMotorKv(this.settings.motorKv), MOTOR_KV_STOCK, 'Motor power', this.tuneCaps.kv],
+          [tune.grip, clampAirGrip(this.settings.airGrip), d.airGrip, 'Air grip', this.tuneCaps.air],
+          [tune.power, clampMotorKv(this.settings.motorKv), d.motorKv, 'Motor power', this.tuneCaps.kv],
         ];
         for (const [row, value, base, name, able] of rows) {
           /* A slider the module cannot answer is not drawn: see setTuneCaps. */
@@ -17240,8 +17276,8 @@ export class Ui {
         /* The way home is offered only when there is somewhere to go back
          * from: at stock the button is a line of height spent on nothing. */
         const stockAll = v === WEIGHT_STOCK
-          && clampAirGrip(this.settings.airGrip) === AIR_GRIP_STOCK
-          && clampMotorKv(this.settings.motorKv) === MOTOR_KV_STOCK;
+          && clampAirGrip(this.settings.airGrip) === d.airGrip
+          && clampMotorKv(this.settings.motorKv) === d.motorKv;
         if (tune.reset.hidden !== stockAll) {
           tune.reset.hidden = stockAll;
         }

@@ -95,6 +95,7 @@ import {
   effectiveTune,
   kvScaleFor,
   offBoardTune,
+  tuneDefaultsFor,
   tuneKey,
 } from './share/tune.js';
 import { lostStickNotice, noRadioNotice } from './ui/stickhelp.js';
@@ -3061,9 +3062,18 @@ export async function boot({ loading, bootStart, mapId }) {
      * written stays exactly where it is: `.a85` is Air grip 85, `.k110` is
      * Motor power 110. Keyed on the multiple the module holds, like the
      * weight, so the key names the machine and not the menu.
+     *
+     * EXCEPT THAT THE BARE KEY FOLLOWS THE AIRCRAFT'S DEFAULT. On 2026-10-21
+     * the defaults moved off 100 (TUNE_DEFAULTS in src/share/tune.js: the
+     * five inch's Air grip to 110, the whoop's Motor power to 90). Keyed on
+     * the multiple, every pilot's best would have moved to `.a110` overnight
+     * and looked lost. The default is the quad as it ships, the public board
+     * files its laps untagged beside the old ones, and a pilot's own best does
+     * the same: the suffix is for a machine the PILOT moved off the default.
      */
-    const airPart = runAirScale === 1 ? '' : `.a${Math.round(runAirScale * 100)}`;
-    const kvPart = runKvScale === 1 ? '' : `.k${Math.round(runKvScale * 100)}`;
+    const dflt = tuneDefaultsFor(runAirframe);
+    const airPart = runAirGrip === dflt.airGrip ? '' : `.a${Math.round(runAirScale * 100)}`;
+    const kvPart = runMotorKv === dflt.motorKv ? '' : `.k${Math.round(runKvScale * 100)}`;
     /* And prop wash, on the same rule: only when off, so every key that was
      * ever written stays where it is. */
     const washPart = runWash ? '' : '.nowash';
@@ -3538,9 +3548,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * arrive, so they apply at once (see the block after the Weight in
    * applySettings) and the cost is paid on the lap. Each is the slider value
    * the module is flying and the multiple it was handed, and both start at
-   * the module's own defaults, 100 and 1.0, which is what a pilot who never
-   * turns the mode on flies forever. Nothing is ever pushed to the module
-   * while they equal what is wanted, so a stock flight makes no call at all.
+   * the module's own defaults, 100 and 1.0, which is what the module holds
+   * before the first applySettings. That pushes the aircraft's default
+   * (TUNE_DEFAULTS), and nothing is pushed again while they equal what is
+   * wanted.
    */
   let runAirGrip = AIR_GRIP_STOCK;
   let runAirScale = 1;
@@ -3572,7 +3583,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Whether the machine being flown is off stock in any way the board tags
    * as Tuned: the two flight feel scales, prop wash switched off, or 3D. */
   function offStock() {
-    return offBoardTune(runAirGrip, runMotorKv) || !runWash || run3d;
+    return offBoardTune(runAirGrip, runMotorKv, runAirframe) || !runWash || run3d;
   }
   /*
    * How far the stick is asking the craft to climb, for the shell's own
@@ -6375,11 +6386,13 @@ export async function boot({ loading, bootStart, mapId }) {
      * interrupted.
      *
      * THE STOCK RULE, which is the whole safety of the feature: what is wanted
-     * is effectiveTune(s), and with the mode off that is 100 and 100 whatever
-     * is stored, so a pilot who never turns it on, or turns it on and touches
-     * nothing, asks for exactly the 1.0 and 1.0 the module already holds. The
-     * test is on the SCALE, so equal means no call at all: stock flight does
-     * not so much as invoke the exports.
+     * is effectiveTune(s), and with the mode off that is the aircraft's
+     * default whatever is stored, so a pilot who never turns it on, or turns
+     * it on and touches nothing, flies the quad that ships. Since 2026-10-21
+     * that default is not 1.0 on every scale (TUNE_DEFAULTS in
+     * src/share/tune.js: the five inch's Air grip is 110, the whoop's Motor
+     * power 90), so it is one call when the aircraft is seated and none after.
+     * The test is on the SCALE, so equal means no call at all.
      *
      * Guarded because an older dist/sim.wasm predates the export. On such a
      * build the slider moves and the plant does not, so the guard also puts
@@ -6445,7 +6458,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * stock. Weight counts, because it is one of the three the question is
        * about, but only inside the mode: a pilot who never turned tuning on
        * is never asked. */
-      if (s.feelTuning && !(runWeight === WEIGHT_STOCK && runAirGrip === AIR_GRIP_STOCK && runMotorKv === MOTOR_KV_STOCK)) {
+      if (s.feelTuning && (runWeight !== WEIGHT_STOCK || offBoardTune(runAirGrip, runMotorKv, runAirframe))) {
         tuneLogKey = tuneKey(runAirframe, runWeight, runAirGrip, runMotorKv);
         tuneLogMeta = {
           airframe: runAirframe,

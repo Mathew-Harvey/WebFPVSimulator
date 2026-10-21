@@ -17,7 +17,8 @@
  *   oboxes    flat boxes turned to any heading: the drive and the path
  *             down their bends, the flags' cloth.
  *   tori      the two hoops.
- *   scaled    the town's own pines, broadleaves and cars, life size; their
+ *   scaled    the loblolly pines and broadleaves (loblollyDraw in
+ *             src/props/street.js) and the town's cars, life size; their
  *             solids are the same parts, drawn nowhere (./bardwell.js).
  *
  * Outside only and life size, so the town's pen draws it as it draws the
@@ -42,6 +43,7 @@
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
+import { loblollyDraw } from '../../props/street.js';
 import { bardwellLayout, FRAME, worldAt } from './bardwell.js';
 import { bardwellDocument } from './yard.js';
 import {
@@ -110,7 +112,11 @@ function drawPlace(kit, L) {
     const [x, y, z] = worldAt(a.px, a.py, a.h);
     kit.begin(x, y, z, a.yaw, a.chunk);
     kit.place.multiply(new T.Matrix4().makeScale(a.k, a.k, a.k));
-    kit.element(a.el);
+    if (a.el.style === 'loblolly' || a.el.style === 'broad') {
+      loblollyDraw(a.el, kit);
+    } else {
+      kit.element(a.el);
+    }
   }
 }
 
@@ -198,8 +204,8 @@ export async function buildMap(shell, onProgress, options) {
     ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots,
   });
   /* Its own world: the shell keys the world, the results and the board's
-   * refusal by this id (src/main.js, src/ui/ui.js), and `source` keeps its
-   * marks out of the board's counters. */
+   * refusal by this id (src/main.js, src/ui/ui.js), and `source` is the word
+   * the board counts its partner signs under (MARK_MAP_WORDS in src/main.js). */
   map.id = 'bardwell';
   map.source = 'bardwell';
   const signs = await signsCame;

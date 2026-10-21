@@ -27,10 +27,10 @@
  * is written out in full in the board's README, under Tunes.
  *
  * THE STOCK RULE, which is the whole safety of this feature. Tuning off is
- * stock, whatever the stored sliders say (effectiveTune), and a slider at 100
- * is exactly the double the module already holds, so a pilot who never turns
- * the mode on, or turns it on and touches nothing, flies the quad that
- * shipped, bit for bit.
+ * the aircraft's default, whatever the stored sliders say (effectiveTune),
+ * so a pilot who never turns the mode on, or turns it on and touches
+ * nothing, flies the quad that ships. Since 2026-10-21 that default is not
+ * 100 on every slider: it is what pilots sent (TUNE_DEFAULTS below).
  *
  * This file is part of WebFPVSimulator.
  *
@@ -136,28 +136,74 @@ export function kvScaleFor(pct) {
 }
 
 /*
- * What the module is flown at, from the stored settings. Tuning off is stock
- * whatever is stored, so a pilot's tune is kept for the next time they turn
- * the mode on and never flies by accident.
+ * THE DEFAULTS, PER AIRCRAFT, FROM WHAT PILOTS SENT. The owner, 2026-10-21:
+ * "review all the tunes and adjust the preset in game to the average or
+ * better tune for each type of quad feel ... make the default match what
+ * people are saying". Read off every tune ticket on the board that morning,
+ * one ticket per pilot, the longest flown of the ones they called better
+ * than stock. PROGRESS.md has the tables; the short of it:
+ *
+ *   five inch, 37 pilots   Air grip: 25 went up, 8 stayed, 4 went down.
+ *                          Median 105, mean 114, so 110. Motor power and
+ *                          Weight split evenly round 100 and stay.
+ *   whoop, 11 pilots       Motor power: 7 went down, 3 stayed, 1 went up,
+ *                          median 85, mean 92, so 90, and the whoop's feel
+ *                          reports agree (twitchy and "throttle is touchy"
+ *                          lead them). Air grip and Weight split and stay.
+ *
+ * These are slider values, on the same scale as the sliders and the tickets,
+ * so 100 still means the module's own 1.0 and every ticket ever sent reads
+ * the same way. What moved is which value a pilot flies when they have not
+ * chosen one: tuning off flies these, the sliders start on them, the stock
+ * notch and the Tuned tag are measured from them, and the "better than
+ * stock?" question compares against them. An aircraft not listed, or no
+ * aircraft at all, gets 100 and 100.
+ */
+export const TUNE_DEFAULTS = Object.freeze({
+  '5inch': Object.freeze({ airGrip: 110, motorKv: 100 }),
+  whoop65: Object.freeze({ airGrip: 100, motorKv: 90 }),
+});
+
+const NEUTRAL = Object.freeze({ airGrip: AIR_GRIP_STOCK, motorKv: MOTOR_KV_STOCK });
+
+export function tuneDefaultsFor(airframe) {
+  return Object.hasOwn(TUNE_DEFAULTS, airframe) ? TUNE_DEFAULTS[airframe] : NEUTRAL;
+}
+
+/*
+ * The defaults before 2026-10-21, which every profile held: 100 and 100 on
+ * both aircraft. A profile still on them exactly never chose them, so it
+ * moves once to the new defaults (src/ui/ui.js, stockTune), the way the
+ * rates moved in SUPERSEDED_RATES. A pilot who sets 100 back keeps it.
+ */
+export const SUPERSEDED_TUNE = Object.freeze({ GENERATION: 1, airGrip: 100, motorKv: 100 });
+
+/*
+ * What the module is flown at, from the stored settings. Tuning off is the
+ * aircraft's default whatever is stored, so a pilot's tune is kept for the
+ * next time they turn the mode on and never flies by accident.
  */
 export function effectiveTune(s) {
   const on = Boolean(s && s.feelTuning);
+  const d = tuneDefaultsFor(s && s.airframe);
   return {
-    airGrip: on ? clampAirGrip(s.airGrip) : AIR_GRIP_STOCK,
-    motorKv: on ? clampMotorKv(s.motorKv) : MOTOR_KV_STOCK,
+    airGrip: on ? clampAirGrip(s.airGrip) : d.airGrip,
+    motorKv: on ? clampMotorKv(s.motorKv) : d.motorKv,
   };
 }
 
-/* The two new sliders are off 100: the flight stays off the public board
- * (Weight keeps the rule it has always had, a lap goes up with its weight
- * beside the name). */
-export function offBoardTune(airGrip, motorKv) {
-  return airGrip !== AIR_GRIP_STOCK || motorKv !== MOTOR_KV_STOCK;
+/* The two new sliders are off the aircraft's default: the lap is tagged
+ * Tuned (Weight keeps the rule it has always had, a lap goes up with its
+ * weight beside the name). */
+export function offBoardTune(airGrip, motorKv, airframe) {
+  const d = tuneDefaultsFor(airframe);
+  return airGrip !== d.airGrip || motorKv !== d.motorKv;
 }
 
-/* Any of the three off stock, which is when a pilot is worth asking. */
+/* All three on the default, which is when a pilot is not worth asking. */
 export function tuneIsStock(t) {
-  return t.weight === WEIGHT_STOCK_PCT && t.airGrip === AIR_GRIP_STOCK && t.motorKv === MOTOR_KV_STOCK;
+  const d = tuneDefaultsFor(t.airframe);
+  return t.weight === WEIGHT_STOCK_PCT && t.airGrip === d.airGrip && t.motorKv === d.motorKv;
 }
 
 /* One flight's combination, as a key. */
@@ -339,7 +385,7 @@ export function tuneCardText(caps) {
   if (c.kv) {
     parts.push('Motor power: left is softer, right is punchier.');
   }
-  parts.push('100 is the quad as it ships. After a flight that felt better than stock you can send your numbers. Nothing is sent unless you say so.');
+  parts.push('Each starts where the quad ships. After a flight that felt better than stock you can send your numbers. Nothing is sent unless you say so.');
   return parts.join(' ');
 }
 
@@ -416,6 +462,9 @@ export function buildTunePayload({
   const lines = [
     `A flight feel tune, ${VERDICT_SENTENCE[verdict] || VERDICT_SENTENCE.better}.`,
     `${tuneValuesLine(t)}, flown for ${t.airtimeS} seconds in the air on the ${airframeShort}, ${t.flightMode === 'angle' ? 'Angle' : 'Acro'}.`,
+    /* Which stock it was compared with, because stock moved on 2026-10-21
+     * (TUNE_DEFAULTS) and a verdict means nothing without its baseline. */
+    `Compared with the default of ${tuneValuesLine({ weight: WEIGHT_STOCK_PCT, ...tuneDefaultsFor(airframe) })}.`,
   ];
   if (t.feel) {
     const word = (FEEL_WORDS.find((f) => f.id === t.feel) || { label: t.feel }).label.toLowerCase();

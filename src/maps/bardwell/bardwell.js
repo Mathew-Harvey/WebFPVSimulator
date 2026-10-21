@@ -67,6 +67,7 @@
 
 import { Parts } from '../../props/parts.js';
 import { partsOf } from '../../props/catalog.js';
+import { loblollyLayout } from '../../props/street.js';
 import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
 
 /* ------------------------------------------------------------------ */
@@ -1106,9 +1107,11 @@ function stands(Y) {
 /* ------------------------------------------------------------------ */
 
 /* [px, py, scale] each, every one the layout has in the plot: its tall
- * pines, the town's pine at 2.15 (about twenty three metres) times the
- * scale; its broadleaves, the town's street tree at 2.2 (about sixteen);
- * its bushes, a ball 0.7 m round times the scale. */
+ * pines, the loblolly (src/props/street.js, a long bare stem under a crown
+ * in its top two fifths, as the screenshots have them) at 2.15, about
+ * twenty three metres, times the scale; its broadleaves, the loblolly's
+ * broad build at 2.1, about sixteen; its bushes, a ball 0.7 m round times
+ * the scale. */
 export const PINES = [
   [-13.3, 61.2, 1], [47.7, 61.2, 1], [39.3, 59.3, 1], [-40.1, 59.2, 1], [20.9, 59.2, 1], [-47.4, 58.2, 1],
   [-30.0, 57.7, 1], [13.6, 57.2, 1], [91.2, 56.2, 1], [31.0, 55.7, 1], [-0.6, 55.3, 1], [57.6, 54.6, 1],
@@ -1230,12 +1233,20 @@ const treeChunk = (px, py) => {
   return `extra:trees:${i},${k}`;
 };
 
+/* How much of a tree is drawn (dims.detail, ../../props/street.js): every
+ * whorl within 40 m of the house or the start, fewer past that, fewest
+ * past 90 m. The outline is the same; the triangles are not. */
+function detailAt(px, py) {
+  const d2 = Math.min((px + 2) * (px + 2) + (py - 15) * (py - 15), (px - SPAWN.px) * (px - SPAWN.px) + (py - SPAWN.py) * (py - SPAWN.py));
+  return d2 > 90 * 90 ? 0 : d2 > 40 * 40 ? 0.4 : 1;
+}
+
 function trees(Y) {
   let i = 0;
   for (const [px, py, k] of PINES) {
     i += 1;
     if (treeClear(px, py)) {
-      const el = { id: `bardwell-pine-${i}`, type: 'tree', style: 'pine', dims: { size: 2.15 * k, variant: 11 + i } };
+      const el = { id: `bardwell-pine-${i}`, type: 'tree', style: 'loblolly', dims: { size: 2.15 * k, variant: 11 + i, detail: detailAt(px, py) } };
       Y.asset(el, 1, px, py, 0, 0, treeChunk(px, py));
     }
   }
@@ -1243,7 +1254,7 @@ function trees(Y) {
   for (const [px, py, k] of BROADLEAVES) {
     i += 1;
     if (treeClear(px, py)) {
-      const el = { id: `bardwell-oak-${i}`, type: 'tree', style: 'street', dims: { size: Math.min(3, 2.2 * k), variant: 7 + i } };
+      const el = { id: `bardwell-oak-${i}`, type: 'tree', style: 'broad', dims: { size: Math.min(3, 2.1 * k), variant: 7 + i, detail: detailAt(px, py) } };
       Y.asset(el, 1, px, py, 0, 0, treeChunk(px, py));
     }
   }
@@ -1277,7 +1288,7 @@ const SCQ = { s: 0, c: 1 };
 function scaledParts(a) {
   const k = a.k;
   const [x, y, z] = worldAt(a.px, a.py, a.h);
-  const parts = partsOf(a.el);
+  const parts = a.el.style === 'loblolly' || a.el.style === 'broad' ? loblollyLayout(a.el) : partsOf(a.el);
   const out = [];
   if (parts.some((p) => p.t === 'box')) {
     quarterSinCos(quarterTurns(a.yaw), SCQ);

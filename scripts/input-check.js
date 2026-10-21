@@ -62,6 +62,7 @@ import { fileURLToPath } from 'node:url';
 import { keyInfo, openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
 import { hoverStickPercent } from '../configs/rates.js';
+import { effectiveTune } from '../src/share/tune.js';
 import { presetsForClass } from '../src/trackbuilder/presets.js';
 import { ROOM_HEIGHT } from '../src/trackbuilder/racegow.js';
 import { MICRO_SCALE } from '../src/game/track.js';
@@ -1809,15 +1810,17 @@ async function keyboardPage(page) {
    *    pilot can choose a throttle that does not spring at all.
    * ------------------------------------------------------------------ */
   /* The front page's whoop card says its pack the way the five inch's
-   * says 6S. See 8b below for the OSD. */
+   * says 6S. See 8b below for the OSD. The cards' fact pills went on
+   * 2026-10-20 (no pills, the picture takes the room), so it is the blurb
+   * that says it now. */
   const whoopCard = await ev(`ui.firstRun = false; ui.craftGate = true; ui.show('title');
     const it = ui.items().find((x) => x && x.card === 'race-whoop65');
     const five = ui.items().find((x) => x && x.card === 'race-5inch');
-    const out = JSON.stringify({ whoop: it && it.facts, five: five && five.facts });
+    const out = JSON.stringify({ whoop: it && it.blurb, five: five && five.blurb });
     ui.craftGate = false;
     return out;`).then(JSON.parse);
-  check('the front page whoop card leads with 1S, as the five inch card leads with 6S',
-    Array.isArray(whoopCard.whoop) && whoopCard.whoop[0] === '1S' && Array.isArray(whoopCard.five) && whoopCard.five[0] === '6S',
+  check('the front page whoop card says 1S, as the five inch card says 6S',
+    /\b1S\b/.test(whoopCard.whoop || '') && !/\b6S\b/.test(whoopCard.whoop || '') && /\b6S\b/.test(whoopCard.five || ''),
     JSON.stringify(whoopCard));
 
   /* A browser that CAN show a radio, with none plugged in, is told what it
@@ -1842,10 +1845,13 @@ async function keyboardPage(page) {
     ${PAST_GATE}
     const s = ui.settings;
     return JSON.stringify({ kb: input.isKeyboardPrimary(), cap: s.rates.throttleCap, af: s.airframe, w: s.weight, v: s.packVoltage,
-      hover: input.kbHover });
+      feelTuning: s.feelTuning, motorKv: s.motorKv, hover: input.kbHover });
   `).then(JSON.parse);
   check('no radio: the keyboard is the stick', hand.kb === true);
-  const want = hoverStickPercent(hand.cap, hand.af, hand.w, hand.v) / 100;
+  /* At the Motor power the run flies, which is the aircraft's default with
+   * the tuning mode off, and since 2026-10-21 the whoop's default is 90. */
+  hand.kv = effectiveTune({ airframe: hand.af, feelTuning: hand.feelTuning, motorKv: hand.motorKv }).motorKv;
+  const want = hoverStickPercent(hand.cap, hand.af, hand.w, hand.v, hand.kv) / 100;
   check(`the keys rest at the measured hover for this cap, aircraft, weight and pack, ${want}`,
     Math.abs(hand.hover - want) < 1e-12, JSON.stringify(hand));
   const heavy = await ev(`
@@ -1857,7 +1863,7 @@ async function keyboardPage(page) {
     return JSON.stringify({ at, back: input.kbHover });
   `).then(JSON.parse);
   check('and the weight slider moves it: heavier hovers higher up the stick',
-    Math.abs(heavy.at - hoverStickPercent(hand.cap, hand.af, 140, hand.v) / 100) < 1e-12 && heavy.at > hand.hover
+    Math.abs(heavy.at - hoverStickPercent(hand.cap, hand.af, 140, hand.v, hand.kv) / 100) < 1e-12 && heavy.at > hand.hover
     && Math.abs(heavy.back - hand.hover) < 1e-12, JSON.stringify(heavy));
 
   const row = await ev(`
@@ -1917,14 +1923,17 @@ async function keyboardPage(page) {
    *     say 1S and 4.2 V, and do not change the physics at all. Read on the
    *     start line, charged and at rest, beside the plant's own number.
    * ------------------------------------------------------------------ */
-  section('keyboard: the whoop says a 1S pack, 4.2 volts charged, over the same 6S plant');
+  section('keyboard: the whoop says a 1S pack, 4.2 volts charged, and flies one');
   const pack = await ev(`const c = window.__craftState();
     return JSON.stringify({ osd: ui.osdPack.textContent, plant: c.packVolts, landed: c.landed, perCell: ui.settings.packVoltage });`)
     .then(JSON.parse);
-  check('charged, on the start line, the OSD reads 4.2 volts', pack.osd === '4.2 volts' && pack.perCell === 4.2 && pack.landed,
+  check('charged, on the start line, the OSD reads 4.20 volts', pack.osd === '4.20 volts' && pack.perCell === 4.2 && pack.landed,
     JSON.stringify(pack));
-  check('and the plant under it still holds its 6S pack, about 25.2 volts: only the display changed',
-    Math.abs(pack.plant - 25.2) < 0.1, JSON.stringify(pack));
+  /* The whoop has flown its own 1S plant since 2026-10-09 (PLANT.cells in
+   * src/native/plant.c, cells in configs/airframes.js), so the OSD and the
+   * plant say the same pack: one cell, charged. */
+  check('and the plant under it is the whoop\'s own 1S pack, charged, as the OSD says',
+    Math.abs(pack.plant - 4.2) < 0.05, JSON.stringify(pack));
 
   /* --------------------------------------------------------------------
    * 9. Angle or Acro from the keyboard. bug-92007f3e, "Using m+k
@@ -2453,11 +2462,17 @@ async function builderChooserPages() {
         && asked.imgs.every((w) => w > 0), JSON.stringify(asked));
     check('the cursor opens on the canvas behind it, the five inch field for a five inch pilot',
       asked.canvas === 'full' && asked.focus === 'full', JSON.stringify(asked));
+    /* The canvas behind opens in the room once three.js is in (syncViewToCanvas
+     * in src/trackbuilder/app.js, since 2026-10-02), so the view is read once
+     * that has arrived (or failed to), and V is a leak if it flips it either way. */
+    await page.until("!!window.trackBuilder && window.trackBuilder.mode === '3d'", 20000).catch(() => {});
+    await page.until('!window.trackBuilder.roomPending', 5000).catch(() => {});
+    const before = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
     await page.tap('KeyG');
     await page.tap('KeyV');
     const held = await page.evaluate(CHOOSER_STATE).then(JSON.parse);
-    check('a key pressed at the question does nothing behind it: no tool armed, no 3D view',
-      held.choosing && held.armed === null && held.view === '2d', JSON.stringify(held));
+    check('a key pressed at the question does nothing behind it: no tool armed, the view not flipped',
+      held.choosing && held.armed === null && held.view === before.view, JSON.stringify({ before: before.view, held }));
     await page.tap('ArrowRight');
     await page.tap('ArrowRight');
     await page.tap('ArrowRight');

@@ -72,6 +72,7 @@ import { openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
 import { hoverStickPercent } from '../configs/rates.js';
 import { INVITE_FREESTYLE_MS, INVITE_KEY, INVITE_TRACK_AIR_MS, courseKeyOf } from '../src/ui/tuneinvite.js';
+import { tuneDefaultsFor } from '../src/share/tune.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -197,6 +198,7 @@ async function look(page) {
       sliders: items,
       weightUp: vis(document.querySelector('.osd-air .osd-air-hint:not(.osd-tune-hint):not(.osd-invite-hint)')),
       feel: Boolean(ui.settings.feelTuning),
+      airframe: ui.settings.airframe,
       feelStored: Boolean(stored.feelTuning),
       guided: ui.guided,
       inviteStored: invite,
@@ -235,6 +237,12 @@ async function look(page) {
  * flight of 33 s of airtime holds 3.00 m to a centimetre and lands at 0.14.
  */
 const HOVER0 = hoverStickPercent(100, '5inch') / 100;
+/* Stock is the aircraft's own default since 2026-10-21 (PR 110): the five
+ * inch's Air grip is 110, the whoop's Motor power 90, the rest 100. */
+const atStock = (seen) => {
+  const d = tuneDefaultsFor(seen.airframe);
+  return seen.sliders.length === 2 && seen.sliders[0] === `Air grip ${d.airGrip}%` && seen.sliders[1] === `Motor power ${d.motorKv}%`;
+};
 const fly = ({ airMs, height = 3, capS = 120 }) => `(async () => {
   const C = ${JSON.stringify({ airMs, height, capS, hover0: HOVER0 })};
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -497,7 +505,7 @@ await scenario('A tracks, a real flight', {
   check('A: the answer is kept, so it is never asked again', s3.inviteStored.answer === 'yes' && s3.inviteLive.answer === 'yes',
     JSON.stringify(s3.inviteStored));
   check('A: the two sliders are on the glass at stock, and the tune card that explains them comes up on its own',
-    s3.sliders.length === 2 && s3.sliders.every((c) => /100%$/.test(c)) && s3.tuneHintUp,
+    atStock(s3) && s3.tuneHintUp,
     JSON.stringify({ sliders: s3.sliders, tuneHintUp: s3.tuneHintUp }));
   await shot(page, 'A-after-yes');
 
@@ -737,7 +745,7 @@ await scenario('G the Settings switch', {
   await sleep(2500);
   const s2 = await look(page);
   check('G: back on the flight screen, on the ground, Air grip and Motor power are beside Weight at stock',
-    s2.screen === 'flight' && s2.sliders.length === 2 && s2.sliders.every((c) => /100%$/.test(c)),
+    s2.screen === 'flight' && atStock(s2),
     JSON.stringify({ screen: s2.screen, sliders: s2.sliders }));
   await shot(page, 'G-flight');
 

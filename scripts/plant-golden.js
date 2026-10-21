@@ -106,6 +106,9 @@ const GRASS_MU = 0.6;
 const GRASS_E = 0.0;
 /* 20 degrees about x, rounded; the module normalises it. */
 const SLOPE_N = [0, 0.34202, 0.93969];
+/* 35 degrees about x, rounded: steeper than atan 0.6, 31 degrees, so a
+ * landing's own downhill share carries it on. */
+const STEEP_N = [0, 0.573576, 0.819152];
 /* The shell's 28 degree launch block: a pitch-only half-angle quaternion. */
 const STAND_Q = [0.970296, 0, 0.241922, 0];
 
@@ -232,11 +235,14 @@ const KNIFE_Q = [0.707107, 0.707107, 0, 0];
 /*
  * The scenarios. `ground` is the plane: absent for free air, 'grass' for the
  * level plane at the airframe's rest height, 'slope' for the 20 degree one,
+ * 'steep' for the 35 degree one,
  * or a function of ms returning [nx, ny, nz, pz] for a plane the shell moves
  * under the craft. `sticks` is keyframes or a function (ms, state, ctx).
  * `events` are entry point calls at a given ms; ms 0 runs before the first
  * step. `exercises` must hold on the run's summary, or the scenario has
- * stopped testing what its name says.
+ * stopped testing what its name says. `holds` marks a grounded run that
+ * never slides on the ground, which the self test's friction nudge cannot
+ * reach.
  */
 const SCENARIOS = [
   {
@@ -264,11 +270,13 @@ const SCENARIOS = [
   },
   {
     name: 'grass, takeoff hover and land', ms: 7000, ground: 'grass',
+    holds: true,
     sticks: takeoffLand,
     exercises: (s) => s.maxZ > 1.2 && s.lastContactMs > 4000 && s.endSpeed < 0.2 && s.endUpZ > 0.95,
   },
   {
     name: 'grass, hard drop from height', ms: 4000, ground: 'grass',
+    holds: true,
     events: [{ ms: 0, pose: { z: 6, q: LEVEL } }],
     sticks: seq(hold(0, 4000, 0, 0, 0, 0)),
     exercises: (s) => s.firstContactSpeed > 8 && s.endSpeed < 0.5,
@@ -305,8 +313,32 @@ const SCENARIOS = [
      * on its belly, which is the decision, not a hollow run. */
     exercises: (s) => s.arrivalSpeed > 4 && Math.abs(s.endUpZ) >= 0.96,
   },
+  /*
+   * TWO SLOPES, since 2026-10-21. There was one, at 20 degrees, named "land
+   * and slide", and it slid 0.76 m down the hill. A drop straight down meets
+   * a hill with v sin(a) of it along the hill, and the stop's own friction
+   * can take mu v cos(a) of that, so on grass at mu 0.6 the hull sticks
+   * where it lands below atan 0.6, 31 degrees, and carries on above it. The
+   * 0.76 m was the old corner by corner solver's made up sideways kick (THE
+   * FOUR LEG TABLE in src/native/sim.c), the same kick that rolled a
+   * straight drop along the level. With the table solved normal first, the
+   * 20 degree landing holds, and the slide is pinned at 35 degrees, where
+   * it runs about a metre down the hill and stops.
+   *
+   * The hold still creeps downhill by about 3 mm a second. That is older
+   * than the table and is the step order: the plant moves the hull by its
+   * velocity before the contact sees it, gravity's millisecond of fall goes
+   * in vertically, and the push back out is along the normal, which leaves
+   * the downhill share of it. g dt squared sin 20 degrees is 3.4 um a step.
+   */
   {
-    name: 'slope, land and slide', ms: 4000, ground: 'slope',
+    name: 'slope, land and hold', ms: 4000, ground: 'slope',
+    events: [{ ms: 0, pose: { z: 0.6, q: LEVEL } }],
+    sticks: seq(hold(0, 4000, 0, 0, 0, 0)),
+    exercises: (s) => s.contactSteps > 200 && s.minZ > -0.05 && s.endSpeed < 0.05,
+  },
+  {
+    name: 'steep slope, land and slide', ms: 4000, ground: 'steep',
     events: [{ ms: 0, pose: { z: 0.6, q: LEVEL } }],
     sticks: seq(hold(0, 4000, 0, 0, 0, 0)),
     exercises: (s) => s.contactSteps > 200 && s.minZ < -0.3,
@@ -357,11 +389,13 @@ const SCENARIOS = [
   },
   {
     name: 'whoop, takeoff hover and land', ms: 7000, airframe: 1, ground: 'grass',
+    holds: true,
     sticks: takeoffLand,
     exercises: (s) => s.maxZ > 1.2 && s.lastContactMs > 4000 && s.endSpeed < 0.2,
   },
   {
     name: 'whoop, hard drop', ms: 4000, airframe: 1, ground: 'grass',
+    holds: true,
     events: [{ ms: 0, pose: { z: 4, q: LEVEL } }],
     sticks: seq(hold(0, 4000, 0, 0, 0, 0)),
     exercises: (s) => s.firstContactSpeed > 4,
@@ -437,6 +471,7 @@ const SCENARIOS = [
   },
   {
     name: 'grass, takeoff hover and land, motor power 1.1', ms: 7000, kv: 1.1, ground: 'grass',
+    holds: true,
     sticks: takeoffLand,
     exercises: (s) => s.maxZ > 1.2 && s.lastContactMs > 4000 && s.endSpeed < 0.2 && s.endUpZ > 0.95,
   },
@@ -485,9 +520,10 @@ function planeFor(sc, ms) {
   if (sc.ground === 'grass') {
     return [0, 0, 1, -REST[af]];
   }
-  if (sc.ground === 'slope') {
+  if (sc.ground === 'slope' || sc.ground === 'steep') {
     /* Through the point under the parked craft, so it starts seated. */
-    return [SLOPE_N[0], SLOPE_N[1], SLOPE_N[2], -REST[af]];
+    const sn = sc.ground === 'slope' ? SLOPE_N : STEEP_N;
+    return [sn[0], sn[1], sn[2], -REST[af]];
   }
   if (typeof sc.ground === 'function') {
     return sc.ground(ms);
@@ -854,7 +890,17 @@ async function runAll({ write, only, quiet }) {
 async function selftest() {
   let bad = 0;
   const golden = existsSync(GOLDEN) ? JSON.parse(await readFile(GOLDEN, 'utf8')) : null;
-  const grounded = SCENARIOS.filter((sc) => sc.ground || sc.stand).map((sc) => sc.name);
+  /*
+   * The friction nudge reaches every grounded run that slides, and only
+   * those, since 2026-10-21. A contact that holds takes whatever friction
+   * stops it, inside the cone, and mu is only the size of the cone, so a
+   * landing straight down on the level that never slides cannot see it.
+   * Before THE FOUR LEG TABLE (src/native/sim.c) every grounded run saw it,
+   * because the old solver made up a slide on every landing and the cone
+   * was always full. The runs marked `holds` are those, and they are held
+   * to it both ways: one that went red here would be named as extra.
+   */
+  const grounded = SCENARIOS.filter((sc) => (sc.ground || sc.stand) && !sc.holds).map((sc) => sc.name);
   const clean = await runAll({ quiet: true });
   console.log(`  ${clean.failures === 0 ? 'pass' : 'FAIL'}  unmutated, every scenario matches the golden (${clean.failures} differ)`);
   bad += clean.failures === 0 ? 0 : 1;
@@ -865,7 +911,7 @@ async function selftest() {
   const muMissed = grounded.filter((n) => !mu.failed.has(n));
   const muExtra = [...mu.failed].filter((n) => !grounded.includes(n));
   const muOk = muMissed.length === 0 && muExtra.length === 0;
-  console.log(`  ${muOk ? 'pass' : 'FAIL'}  grass friction +1e-7 turns exactly the ${grounded.length} grounded scenarios red`
+  console.log(`  ${muOk ? 'pass' : 'FAIL'}  grass friction +1e-7 turns exactly the ${grounded.length} grounded scenarios that slide red`
     + `${muMissed.length ? `; missed: ${muMissed.join(', ')}` : ''}${muExtra.length ? `; also: ${muExtra.join(', ')}` : ''}`);
   bad += muOk ? 0 : 1;
 

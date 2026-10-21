@@ -133,9 +133,12 @@ async function main() {
     check('a Save on the five inch flies its edits', s.loaded === 'custom' && s.pRoll === 55, say(s));
 
     await seat(page, 'whoop65');
-    s = await settled(page, 'whoop65', 'betaflight-default', 45);
+    /* The whoop's stock is its own since 2026-10-09 (configs/airframes.js,
+     * defaultTune), the maker's 1S tune, whose p_roll is 33
+     * (configs/whoop-champion.diff), not the five inch's 45. */
+    s = await settled(page, 'whoop65', 'whoop-champion', 33);
     check('the whoop has no edits of its own yet, so it flies the stock tune',
-      s.tune === 'betaflight-default' && s.loaded === 'betaflight-default' && s.pRoll === 45, say(s));
+      s.tune === 'whoop-champion' && s.loaded === 'whoop-champion' && s.pRoll === 33, say(s));
 
     await saveDump(page, 77);
     s = await settled(page, 'whoop65', 'custom', 77);

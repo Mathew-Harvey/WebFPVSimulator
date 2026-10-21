@@ -198,6 +198,9 @@ const DEFAULT_KEY = 'webfpv.bestLapMs';
  * src/main.js will not send a lap flown in practice.
  */
 export const PRACTICE_LAPS = 0;
+/* How far outside a hole, in its half sizes, a crossing of the gate's plane
+ * is still a miss of it and not a flight past it: see missedGate. */
+const MISS_REACH = 2.2;
 
 /*
  * Is a run of `runLaps` over once `lapsDone` clean laps are in?
@@ -558,6 +561,43 @@ export class Race {
       y: dx * g.ay.x + dy * g.ay.y + dz * g.ay.z,
       z: dx * g.az.x + dy * g.az.y + dz * g.az.z,
     };
+  }
+
+  /*
+   * Did the travel from `prev` to `curr` go through the plane of gate `idx`,
+   * the way it is flown, outside every one of its holes but within
+   * MISS_REACH times a hole's half size of one? That is a missed gate as a
+   * pilot means it, and Dan says so (src/maps/dan/). Read BEFORE update()
+   * scores the travel, with the target as it stood then, so a pass that
+   * counts is never one: a travel through a hole is not a miss whatever the
+   * race made of it (flown on the ground, or through a hole still held).
+   * Reads nothing and changes nothing.
+   */
+  missedGate(idx, prev, curr) {
+    const g = this.gates[idx];
+    if (!g) {
+      return false;
+    }
+    let crossed = false;
+    for (const ap of g.apertures) {
+      const a = this.local(g, ap.centreY, prev.x, prev.y, prev.z);
+      const b = this.local(g, ap.centreY, curr.x, curr.y, curr.z);
+      if (!(a.z < 0 && b.z >= 0)) {
+        continue;
+      }
+      const t = a.z / (a.z - b.z);
+      const x = Math.abs(a.x + (b.x - a.x) * t);
+      const y = Math.abs(a.y + (b.y - a.y) * t);
+      const halfW = ap.clearW * 0.5;
+      const halfH = ap.clearH * 0.5;
+      if (x <= halfW && y <= halfH) {
+        return false;
+      }
+      if (x <= halfW * MISS_REACH && y <= halfH * MISS_REACH) {
+        crossed = true;
+      }
+    }
+    return crossed;
   }
 
   /*

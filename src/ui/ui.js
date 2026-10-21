@@ -143,6 +143,7 @@ import {
   MOTOR_KV_MIN,
   MOTOR_KV_STEP,
   MOTOR_KV_STOCK,
+  SUPERSEDED_TUNE,
   TUNE_MIN_AIR_MS,
   TUNE_VERDICTS,
   airtimeWords,
@@ -151,8 +152,10 @@ import {
   clampMotorKv,
   effectiveTune,
   inputKindFromSource,
+  offBoardTune,
   tuneAskReason,
   tuneCardText,
+  tuneDefaultsFor,
   tuneSliderBlurbs,
   tuneSliderWords,
   tuneValuesLine,
@@ -1098,6 +1101,14 @@ const DEFAULTS = {
    */
   stockRates: 0,
   /*
+   * Which generation of the shipped Air grip and Motor power defaults this
+   * profile has been moved to, the same one shot as stockRates. See
+   * SUPERSEDED_TUNE and TUNE_DEFAULTS in src/share/tune.js: a profile still
+   * on the old 100 and 100 is moved to its aircraft's default once, and a
+   * pilot who sets 100 back keeps it.
+   */
+  stockTune: 0,
+  /*
    * Whether the flight feel question has been offered. It offers itself
    * exactly once, after the first finished race, and never again: the
    * moment the dialog opens this flips and is saved, whatever the pilot
@@ -1383,10 +1394,14 @@ const DEFAULTS = {
    * FLIGHT FEEL TUNING (src/share/tune.js). A mode, off by default, that puts
    * two more sliders beside Weight while the quad is on the ground: Air grip,
    * how far the quad carries, and Motor power, the motors' KV. Both are
-   * percentages of the machine as it ships, 100 is stock, and they are only
+   * percentages of the module's own scale, 100 is its 1.0, and they are only
    * ever APPLIED while the mode is on (effectiveTune), so a pilot who turns
-   * it off flies stock whatever is stored here and finds their tune again
-   * when they turn it back on. Per airframe, like weight: see MACHINE_KEYS.
+   * it off flies the aircraft's default whatever is stored here and finds
+   * their tune again when they turn it back on. Per airframe, like weight:
+   * see MACHINE_KEYS. The 100 and 100 below are only where a blank profile
+   * starts: the stockTune move in loadSettings puts it on its aircraft's
+   * default (TUNE_DEFAULTS in src/share/tune.js), which is not 100 since
+   * 2026-10-21.
    *
    * A flight off stock goes off the public board, because a lap on a quad
    * that grips the air differently is a lap on a different aircraft and the
@@ -1863,6 +1878,26 @@ export function loadSettings() {
     }
     s.stockRates = SUPERSEDED_RATES.GENERATION;
   }
+  /* The shipped Air grip and Motor power moved (2026-10-21, from the tunes
+   * pilots sent). A machine still on the old 100 and 100 never chose them,
+   * so it moves once to its aircraft's default: the seated one, and the one
+   * put away in the hangar. */
+  if (!(s.stockTune >= SUPERSEDED_TUNE.GENERATION)) {
+    const onOld = (m) => m.airGrip === SUPERSEDED_TUNE.airGrip && m.motorKv === SUPERSEDED_TUNE.motorKv;
+    if (onOld(s)) {
+      ({ airGrip: s.airGrip, motorKv: s.motorKv } = tuneDefaultsFor(s.airframe));
+    }
+    const h = s.hangar;
+    if (h && typeof h === 'object' && !Array.isArray(h)) {
+      for (const id of Object.keys(h)) {
+        const m = h[id];
+        if (m && typeof m === 'object' && !Array.isArray(m) && onOld(m)) {
+          h[id] = { ...m, ...tuneDefaultsFor(id) };
+        }
+      }
+    }
+    s.stockTune = SUPERSEDED_TUNE.GENERATION;
+  }
   /*
    * THE WHOOP'S SHIPPED DEFAULTS MOVED, and a stored copy of the old ones
    * has to move with them. See SUPERSEDED_WHOOP for what and why, and the
@@ -2188,12 +2223,11 @@ export function seatAirframe(s, id) {
   } else if (moving) {
     s.cameraFov = to.cameraFov;
     s.cameraAngle = clampCameraAngle(to.cameraAngle);
-    /* A first visit starts both tuning sliders at stock. A tune is a set of
-     * numbers for one machine, and carrying a five inch's Motor power onto a
-     * whoop that has never been flown would be handing it a tune nobody made
-     * for it. */
-    s.airGrip = AIR_GRIP_STOCK;
-    s.motorKv = MOTOR_KV_STOCK;
+    /* A first visit starts both tuning sliders on the aircraft's default. A
+     * tune is a set of numbers for one machine, and carrying a five inch's
+     * Motor power onto a whoop that has never been flown would be handing it
+     * a tune nobody made for it. */
+    ({ airGrip: s.airGrip, motorKv: s.motorKv } = tuneDefaultsFor(to.id));
   }
   if (!tuneChoices(to.id).includes(s.tune)) {
     s.tune = to.defaultTune;
@@ -3867,6 +3901,8 @@ function stfLettering(cls) {
 /* How long the found moment is up, callout and panel together, in ms. The
  * stf- keyframes in index.html run this long: change both. */
 const STF_FOUND_MS = 3000;
+/* The goal splash is up this long: the goal- keyframes in index.html run the same, change both. */
+const GOAL_SPLASH_MS = 4600;
 
 /*
  * A course card's identity, stable across the rebuilds items() does on every
@@ -4283,7 +4319,7 @@ function tuneSliderItem(label, note, spec, cur, set, step) {
 function airGripItem(s) {
   return tuneSliderItem(
     'Air grip',
-    `How much the air holds the quad back, so how far it carries with the sticks centred. Left and it coasts on and runs faster; right and the air grips it, it stops sooner and tops out slower. ${AIR_GRIP_STOCK} is the quad as it ships. Changing it mid lap voids the lap, and a lap flown off ${AIR_GRIP_STOCK} posts to the public board tagged Tuned.`,
+    `How much the air holds the quad back, so how far it carries with the sticks centred. Left and it coasts on and runs faster; right and the air grips it, it stops sooner and tops out slower. ${tuneDefaultsFor(s.airframe).airGrip} is the quad as it ships, set from the tunes pilots sent. Changing it mid lap voids the lap, and a lap flown off ${tuneDefaultsFor(s.airframe).airGrip} posts to the public board tagged Tuned.`,
     {
       cliMin: AIR_GRIP_MIN, cliMax: AIR_GRIP_MAX, scale: 1, decimals: 0, unit: '%',
     },
@@ -4296,7 +4332,7 @@ function airGripItem(s) {
 function motorKvItem(s) {
   return tuneSliderItem(
     'Motor power',
-    `How much speed the motors make for a volt, their KV. Left is softer: a gentler punch and a lower top speed. Right is punchier, and the pack sags more for it, and the quad hovers lower on the stick. ${MOTOR_KV_STOCK} is the quad as it ships. Changing it mid lap voids the lap, and a lap flown off ${MOTOR_KV_STOCK} posts to the public board tagged Tuned.`,
+    `How much speed the motors make for a volt, their KV. Left is softer: a gentler punch and a lower top speed. Right is punchier, and the pack sags more for it, and the quad hovers lower on the stick. ${tuneDefaultsFor(s.airframe).motorKv} is the quad as it ships, set from the tunes pilots sent. Changing it mid lap voids the lap, and a lap flown off ${tuneDefaultsFor(s.airframe).motorKv} posts to the public board tagged Tuned.`,
     {
       cliMin: MOTOR_KV_MIN, cliMax: MOTOR_KV_MAX, scale: 1, decimals: 0, unit: '%',
     },
@@ -4774,7 +4810,9 @@ const WAYS = [
      * picture is a whoop's and the hands get the five inch. The old line
      * promised three times the angular acceleration, which was true of a
      * plant nothing selects now. */
-    blurb: 'The same clock, indoors. A 65 mm ducted whoop through a track that fits in a living room, on 28 inch gates.',
+    /* 1S, as the five inch's says 6S: bug-eb0552d6, and the cards' fact
+     * pills that said it went with the pills on 2026-10-20. */
+    blurb: 'The same clock, indoors. A 65 mm 1S ducted whoop through a track that fits in a living room, on 28 inch gates.',
   },
   {
     id: 'freestyle-5inch',
@@ -7054,7 +7092,7 @@ export class Ui {
     if (t.airframe && t.airframe !== this.settings.airframe) {
       out.push(`It is for the ${this.airframeName(t.airframe)}, so you are moved to that aircraft and its own track class.`);
     }
-    if (x.airGrip !== AIR_GRIP_STOCK || x.motorKv !== MOTOR_KV_STOCK) {
+    if (offBoardTune(x.airGrip, x.motorKv, t.airframe || this.settings.airframe)) {
       out.push('It moves Air grip or Motor power, so Flight feel tuning is switched on, and a lap flown on it posts to the public board tagged Tuned.');
     }
     if (x.base === CUSTOM_TUNE.id) {
@@ -7105,7 +7143,7 @@ export class Ui {
     s.weight = clampWeight(x.weight, s.airframe);
     s.airGrip = clampAirGrip(x.airGrip);
     s.motorKv = clampMotorKv(x.motorKv);
-    if (s.airGrip !== AIR_GRIP_STOCK || s.motorKv !== MOTOR_KV_STOCK) {
+    if (offBoardTune(s.airGrip, s.motorKv, s.airframe)) {
       s.feelTuning = true;
     }
     const af = airframeById(s.airframe);
@@ -7943,8 +7981,10 @@ export class Ui {
       const show = issues.has('throttle') && cap >= 100;
       capHint.hidden = !show;
       if (show) {
-        const eased = hoverStickPercent(75, this.settings.airframe);
-        const now = hoverStickPercent(100, this.settings.airframe);
+        /* At the Motor power flown, which is not 100 on a stock whoop. */
+        const kv = effectiveTune(this.settings).motorKv;
+        const eased = hoverStickPercent(75, this.settings.airframe, 100, 4.2, kv);
+        const now = hoverStickPercent(100, this.settings.airframe, 100, 4.2, kv);
         capHint.textContent = `This quad hovers at ${now.toFixed(1)} percent of stick with no throttle limit, so nearly all the travel is above hover. Rates, Throttle limit, 75 percent moves hover to ${eased.toFixed(1)} percent and gives the fine control back without losing any climb you can use indoors. Worth trying before you wait on us.`;
       }
     };
@@ -9474,16 +9514,17 @@ export class Ui {
          * 3D MODE AT THE TOP, where the owner asked for it on 2026-10-21 ("put
          * it on a toggle on the root level of the settings"). It is not a
          * stick setting or a screen one, it changes what the quad IS, so it
-         * stands above all of them under a heading of its own. It waits for
-         * the next run or a Restart, because the flight controller takes it
-         * when it arms. See run3d in src/main.js.
+         * stands above all of them under a heading of its own. The flight
+         * controller takes it when it arms, so switching it during a run
+         * puts the quad back on the start line at once, as a tune does, and
+         * the note says so then. See run3d in src/main.js.
          */
         { label: 'Flying', section: true },
         toggle(
           '3D mode',
           s.mode3d === true
-            ? 'On: the motors spin both ways. Throttle in the middle is no thrust, below the middle pushes the other way, so you can hang upside down and fly inverted. No turtle, just reverse off the ground. Fitted with 3D props, a little less punch than race props. Laps post to the public board tagged Tuned and keep a best lap of their own. Takes effect when the run restarts.'
-            : 'Off: normal flying, the motors spin one way and the bottom of the throttle is idle. Turn it on for reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down. Takes effect when the run restarts.',
+            ? `On: the motors spin both ways. Throttle in the middle is no thrust, below the middle pushes the other way, so you can hang upside down and fly inverted. No turtle, just reverse off the ground. Fitted with 3D props, a little less punch than race props. Laps post to the public board tagged Tuned and keep a best lap of their own.${midRun ? MID_RUN_WARNING : ''}`
+            : `Off: normal flying, the motors spin one way and the bottom of the throttle is idle. Turn it on for reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down.${midRun ? MID_RUN_WARNING : ''}`,
           s.mode3d === true,
           (v) => { s.mode3d = Boolean(v); },
         ),
@@ -10323,7 +10364,7 @@ export class Ui {
        */
       const r = s.rates;
       const split = Boolean(s.ratesSplitPitch);
-      const hover = hoverStickPercent(r.throttleCap, this.settings.airframe);
+      const hover = hoverStickPercent(r.throttleCap, this.settings.airframe, 100, 4.2, effectiveTune(this.settings).motorKv);
       const tilt = Math.sin(cameraTiltRad(s.cameraAngle));
       const noteFor = (axis, key) => {
         const spec = rateField(r.type, key);
@@ -10996,7 +11037,7 @@ export class Ui {
     if (this.screen !== 'rates') {
       return;
     }
-    this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe);
+    this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv);
   }
 
   /* The live sticks, from the frame loop. Only while the screen is up: the
@@ -11839,7 +11880,7 @@ export class Ui {
     const before = it.num.cli;
     it.set(next);
     try {
-      this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe);
+      this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv);
     } finally {
       it.set(before);
     }
@@ -13281,7 +13322,12 @@ export class Ui {
     if (!url) {
       return;
     }
-    const label = btn ? btn.textContent : '';
+    /* The button's own word, kept on it the first time: a second press
+     * inside the 2.2 s read "Link copied" here and put that back for good. */
+    if (btn && !btn.dataset.label) {
+      btn.dataset.label = btn.textContent;
+    }
+    const label = btn ? btn.dataset.label : '';
     try {
       await navigator.clipboard.writeText(url);
       if (btn) {
@@ -15717,7 +15763,9 @@ export class Ui {
       Ui.text(this.osdGate, `Gate ${gate} of ${gateCount}`);
     }
     if (numbersDue) {
-      Ui.text(this.osdPack, `${volts.toFixed(1)} volts`);
+      /* A single cell reads to the hundredth, as a whoop's OSD does: a
+       * tenth of a volt is a quarter of a 1S pack's whole range. */
+      Ui.text(this.osdPack, `${volts.toFixed(volts < 10 ? 2 : 1)} volts`);
       Ui.bar(this.osdPackBar, packFrac);
     }
     Ui.text(this.osdLast, !freestyle && lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '');
@@ -16211,6 +16259,57 @@ export class Ui {
     this.stfTimer = setTimeout(() => {
       layer.textContent = '';
     }, STF_FOUND_MS + 200);
+  }
+
+  /*
+   * A GOAL, COMPLETE: the last sticker of a map's set found. The owner's
+   * pick (option A of the 2026-10-21 mockups): the found callout's own
+   * clothes made big. A heavy lettered word and a sound effect on the right,
+   * the sticker's panel under it with two more of the finds tipped beside
+   * it, a black strip along the foot, speed lines down both edges, 4.6
+   * seconds, gone. Everything stays out of the middle third.
+   *
+   * THE COST, for the latency rule: nothing until it is called, and then
+   * about nine HTML nodes for 4.6 s, moved by transforms and fades alone, on
+   * the layer the found callout already uses. No canvas of its own: the
+   * pictures are the ones the shell cut for the callout. Nothing is fetched.
+   * A second call replaces a splash that is up, as a found callout does.
+   */
+  goalComplete({ word, sub, band, picture, tiles = [] }) {
+    const layer = this.stfLayer;
+    if (!layer || !word) {
+      return;
+    }
+    layer.textContent = '';
+    const root = el('div', 'goal');
+    const framed = (node, cls) => {
+      const panel = el('div', cls);
+      if (node) {
+        node.classList.add('goal-pic');
+        node.setAttribute('role', 'presentation');
+        panel.append(el('div', 'goal-ray'), node);
+      }
+      return panel;
+    };
+    root.append(
+      el('div', 'goal-edge goal-edge-l'),
+      el('div', 'goal-edge goal-edge-r'),
+      el('div', 'goal-burst'),
+      el('div', 'goal-sfx', '\u30c9\u30f3!'),
+    );
+    const group = el('div', 'goal-group');
+    group.append(el('span', 'goal-word', word), el('span', 'goal-sub', sub));
+    root.append(group, framed(picture, 'goal-panel'));
+    tiles.slice(0, 2).forEach((t, i) => {
+      root.append(framed(t, `goal-tile goal-tile-${i}`));
+    });
+    root.append(el('div', 'goal-band', band));
+    layer.append(root);
+    this.announce(`${word} ${band}.`);
+    clearTimeout(this.stfTimer);
+    this.stfTimer = setTimeout(() => {
+      layer.textContent = '';
+    }, GOAL_SPLASH_MS + 200);
   }
 
   /* The freestyle board's answer, so the results row can say what happened
@@ -16815,12 +16914,13 @@ export class Ui {
    * so a lap is voided once and not three times. */
   resetTune() {
     const s = this.settings;
-    if (s.weight === WEIGHT_STOCK && s.airGrip === AIR_GRIP_STOCK && s.motorKv === MOTOR_KV_STOCK) {
+    const d = tuneDefaultsFor(s.airframe);
+    if (s.weight === WEIGHT_STOCK && s.airGrip === d.airGrip && s.motorKv === d.motorKv) {
       return;
     }
     s.weight = WEIGHT_STOCK;
-    s.airGrip = AIR_GRIP_STOCK;
-    s.motorKv = MOTOR_KV_STOCK;
+    s.airGrip = d.airGrip;
+    s.motorKv = d.motorKv;
     this.paintAir();
     saveSettings(s);
     if (this.onSettings) {
@@ -17221,9 +17321,10 @@ export class Ui {
         tune.box.hidden = !on;
       }
       if (on) {
+        const d = tuneDefaultsFor(this.settings.airframe);
         const rows = [
-          [tune.grip, clampAirGrip(this.settings.airGrip), AIR_GRIP_STOCK, 'Air grip', this.tuneCaps.air],
-          [tune.power, clampMotorKv(this.settings.motorKv), MOTOR_KV_STOCK, 'Motor power', this.tuneCaps.kv],
+          [tune.grip, clampAirGrip(this.settings.airGrip), d.airGrip, 'Air grip', this.tuneCaps.air],
+          [tune.power, clampMotorKv(this.settings.motorKv), d.motorKv, 'Motor power', this.tuneCaps.kv],
         ];
         for (const [row, value, base, name, able] of rows) {
           /* A slider the module cannot answer is not drawn: see setTuneCaps. */
@@ -17239,8 +17340,8 @@ export class Ui {
         /* The way home is offered only when there is somewhere to go back
          * from: at stock the button is a line of height spent on nothing. */
         const stockAll = v === WEIGHT_STOCK
-          && clampAirGrip(this.settings.airGrip) === AIR_GRIP_STOCK
-          && clampMotorKv(this.settings.motorKv) === MOTOR_KV_STOCK;
+          && clampAirGrip(this.settings.airGrip) === d.airGrip
+          && clampMotorKv(this.settings.motorKv) === d.motorKv;
         if (tune.reset.hidden !== stockAll) {
           tune.reset.hidden = stockAll;
         }

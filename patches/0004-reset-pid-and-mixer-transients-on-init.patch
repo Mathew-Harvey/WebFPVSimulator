@@ -1,0 +1,133 @@
+--- a/src/main/flight/pid.c
++++ b/src/main/flight/pid.c
+@@ -81,11 +81,29 @@
+ 
+ static float previousThrottle = 0.0f;
+ static bool isTpaLowFaded = false;
++static float previousGyroRateDterm[XYZ_AXIS_COUNT];
++static float previousRawGyroRateDterm[XYZ_AXIS_COUNT];
++#if defined(USE_ACC)
++static timeUs_t levelModeStartTimeUs = 0;
++static bool gpsRescuePreviousState = false;
++#endif
+ 
+ void pidResetTransientState(void)
+ {
+     previousThrottle = 0.0f;
+     isTpaLowFaded = false;
++    memset(previousGyroRateDterm, 0, sizeof(previousGyroRateDterm));
++    memset(previousRawGyroRateDterm, 0, sizeof(previousRawGyroRateDterm));
++#if defined(USE_ACC)
++    levelModeStartTimeUs = 0;
++    gpsRescuePreviousState = false;
++#endif
++    memset(pidData, 0, sizeof(pidData));
++    for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
++        pidRuntime.previousPidSetpoint[axis] = 0.0f;
++    }
++    pidRuntime.antiGravityThrottleD = 0.0f;
++    pidRuntime.tpaFactor = 0.0f;
+ }
+ 
+ #if defined(USE_ABSOLUTE_CONTROL)
+@@ -795,9 +813,6 @@
+ // Based on 2DOF reference design (matlab)
+ void FAST_CODE pidController(const pidProfile_t *pidProfile, timeUs_t currentTimeUs)
+ {
+-    static float previousGyroRateDterm[XYZ_AXIS_COUNT];
+-    static float previousRawGyroRateDterm[XYZ_AXIS_COUNT];
+-
+ #ifdef USE_TPA_MODE
+     const float tpaFactorKp = (pidProfile->tpa_mode == TPA_MODE_PD) ? pidRuntime.tpaFactor : 1.0f;
+ #else
+@@ -811,8 +826,6 @@
+     const bool launchControlActive = isLaunchControlActive();
+ 
+ #if defined(USE_ACC)
+-    static timeUs_t levelModeStartTimeUs = 0;
+-    static bool gpsRescuePreviousState = false;
+     const rollAndPitchTrims_t *angleTrim = &accelerometerConfig()->accelerometerTrims;
+     float horizonLevelStrength = 0.0f;
+ 
+--- a/src/main/flight/mixer.c
++++ b/src/main/flight/mixer.c
+@@ -110,6 +110,34 @@
+ static uint16_t rcThrottlePrevious = 0;   // Store the last throttle direction for deadband transitions
+ static timeUs_t reversalTimeUs = 0; // time when motors last reversed in 3D mode
+ static float motorRangeMinIncrease = 0;
++#ifdef USE_DYN_LPF
++static timeUs_t lastDynLpfUpdateUs = 0;
++static int dynLpfPreviousQuantizedThrottle = -1;  // to allow an initial zero throttle to set the filter cutoff
++#endif
++#ifdef USE_RPM_LIMIT
++static float rpmLimiterPrevError = 0.0f;
++#endif
++
++void mixerResetTransientState(void)
++{
++#ifdef USE_DYN_LPF
++    lastDynLpfUpdateUs = 0;
++    dynLpfPreviousQuantizedThrottle = -1;
++#endif
++#ifdef USE_RPM_LIMIT
++    rpmLimiterPrevError = 0.0f;
++#endif
++    motorMixRange = 0.0f;
++    throttle = 0.0f;
++    mixerThrottle = 0.0f;
++    motorOutputMin = 0.0f;
++    motorRangeMin = 0.0f;
++    motorRangeMax = 0.0f;
++    motorOutputRange = 0.0f;
++    for (int i = 0; i < MAX_SUPPORTED_MOTORS; i++) {
++        motor[i] = 0.0f;
++    }
++}
+ 
+ void mixerResetThrottleEndpointState(void)
+ {
+@@ -358,14 +386,13 @@
+ #define STICK_HIGH_DEADBAND 5    // deadband to make sure throttle cap can raise, even with maxcheck set around 2000
+ static void applyRpmLimiter(mixerRuntime_t *mixer)
+ {
+-    static float prevError = 0.0f;
+     const float unsmoothedAverageRpm = getDshotRpmAverage();
+     const float averageRpm = pt1FilterApply(&mixer->rpmLimiterAverageRpmFilter, unsmoothedAverageRpm);
+     const float error = averageRpm - mixer->rpmLimiterRpmLimit;
+ 
+     // PID
+     const float p = error * mixer->rpmLimiterPGain;
+-    const float d = (error - prevError) * mixer->rpmLimiterDGain; // rpmLimiterDGain already adjusted for looprate (see mixer_init.c)
++    const float d = (error - rpmLimiterPrevError) * mixer->rpmLimiterDGain; // rpmLimiterDGain already adjusted for looprate (see mixer_init.c)
+     mixer->rpmLimiterI += error * mixer->rpmLimiterIGain;         // rpmLimiterIGain already adjusted for looprate (see mixer_init.c)
+     mixer->rpmLimiterI = MAX(0.0f, mixer->rpmLimiterI);
+     float pidOutput = p + mixer->rpmLimiterI + d;
+@@ -384,7 +411,7 @@
+     // Output
+     pidOutput = MAX(0.0f, pidOutput);
+     throttle = constrainf(throttle - pidOutput, 0.0f, 1.0f);
+-    prevError = error;
++    rpmLimiterPrevError = error;
+ 
+     DEBUG_SET(DEBUG_RPM_LIMIT, 0, lrintf(averageRpm));
+     DEBUG_SET(DEBUG_RPM_LIMIT, 1, lrintf(rpmLimiterThrottleScaleOffset * 100.0f));
+@@ -461,9 +488,6 @@
+ #ifdef USE_DYN_LPF
+ static void updateDynLpfCutoffs(timeUs_t currentTimeUs, float throttle)
+ {
+-    static timeUs_t lastDynLpfUpdateUs = 0;
+-    static int dynLpfPreviousQuantizedThrottle = -1;  // to allow an initial zero throttle to set the filter cutoff
+-
+     if (cmpTimeUs(currentTimeUs, lastDynLpfUpdateUs) >= DYN_LPF_THROTTLE_UPDATE_DELAY_US) {
+         const int quantizedThrottle = lrintf(throttle * DYN_LPF_THROTTLE_STEPS); // quantize the throttle reduce the number of filter updates
+         if (quantizedThrottle != dynLpfPreviousQuantizedThrottle) {
+--- a/src/main/flight/mixer.h
++++ b/src/main/flight/mixer.h
+@@ -133,6 +133,7 @@
+ void mixerResetRpmLimiter(void);
+ void mixerResetDisarmedMotors(void);
+ void mixerResetThrottleEndpointState(void);
++void mixerResetTransientState(void);
+ void mixTable(timeUs_t currentTimeUs);
+ void stopMotors(void);
+ void writeMotors(void);

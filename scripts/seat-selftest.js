@@ -150,8 +150,10 @@ function marked(over) {
   seatAirframe(s, 'whoop65');
   check('first time on the whoop: its stock camera',
     s.cameraFov === WHOOP.cameraFov && s.cameraAngle === WHOOP.cameraAngle, cam(s));
-  check('first time on the whoop: the weight comes down to its top',
-    s.weight === WHOOP.weightMax, `${s.weight}`);
+  /* Down to the whoop's top only when it is over it. Its top was 120 when
+   * this was written and is 140 now (configs/airframes.js), so 130 stays. */
+  check('first time on the whoop: the weight comes down to its top, and no further',
+    s.weight === Math.min(130, WHOOP.weightMax), `${s.weight}`);
   check('first time on the whoop: the PIDs as they stood',
     s.pids['betaflight-default'] && s.pids['betaflight-default'].sliders.master === 120,
     JSON.stringify(s.pids));
@@ -310,6 +312,37 @@ function marked(over) {
   stored({ airframe: 'whoop65', airframeAsked: true, seatedFor: 'whoop65', rates: oldStock({}) });
   s = loadSettings();
   check('rates: the whoop on the old stock moves too', isNew(s.rates) && s.airframe === 'whoop65', axes(s.rates));
+}
+
+/*
+ * THE TUNING DEFAULTS MOVED (2026-10-21): the five inch ships on Air grip
+ * 110 and the whoop on Motor power 90. A machine still on the old 100 and
+ * 100, seated or in the hangar, moves once; a pilot's own numbers and 100
+ * typed back after the move are theirs.
+ */
+{
+  const gm = (m) => `${m.airGrip}/${m.motorKv}`;
+  store.clear();
+  let s = loadSettings();
+  check('tune: a blank profile starts on the five inch\'s default', gm(s) === '110/100' && s.stockTune === 1, gm(s));
+  seatAirframe(s, 'whoop65');
+  check('tune: the whoop\'s first visit starts on the whoop\'s default', gm(s) === '100/90', gm(s));
+
+  store.clear();
+  stored({ airframe: '5inch', airframeAsked: true, seatedFor: '5inch', airGrip: 100, motorKv: 100,
+    hangar: { whoop65: { weight: 100, airGrip: 100, motorKv: 100 } } });
+  s = loadSettings();
+  check('tune: an unmarked profile on the old 100 and 100 moves, seated and in the hangar',
+    gm(s) === '110/100' && gm(s.hangar.whoop65) === '100/90', `${gm(s)}, hangar ${gm(s.hangar.whoop65)}`);
+  s.airGrip = 100;
+  save(s);
+  s = loadSettings();
+  check('tune: 100 set back after the move is the pilot\'s and stays', gm(s) === '100/100', gm(s));
+
+  store.clear();
+  stored({ airframe: 'whoop65', airframeAsked: true, seatedFor: 'whoop65', airGrip: 125, motorKv: 100 });
+  s = loadSettings();
+  check('tune: a pilot\'s own numbers are not moved', gm(s) === '125/100', gm(s));
 }
 
 const w = Math.max(...rows.map((r) => r[0].length));

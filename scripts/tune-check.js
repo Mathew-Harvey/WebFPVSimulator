@@ -13,11 +13,14 @@
  *
  * Five pages, because the situations must not share a profile:
  *
- *   STOCK       default settings. The module must never be called, the
- *               record key must carry no suffix, the group must not be
- *               drawn, and the page must be what it was.
- *   ON, UNTOUCHED  the mode on and every slider at 100. Still stock, to the
- *               call: the group is drawn and the exports are not invoked.
+ *   STOCK       default settings. The module is called once, to seat the
+ *               five inch's default Air grip of 110 (TUNE_DEFAULTS in
+ *               src/share/tune.js, since 2026-10-21) and never again, the
+ *               record key carries no suffix, the group is not drawn, and
+ *               the page is what it was.
+ *   ON, UNTOUCHED  the mode on and every slider on its default. Still
+ *               stock, to the call: the group is drawn and the exports are
+ *               not invoked beyond that one seating call.
  *               On a screen with room its card is raised once and retired
  *               at takeoff, and never beside the Weight card.
  *   TUNED       the mode on, Air grip 85. The module reads back 0.85, the
@@ -328,8 +331,9 @@ const LAYOUT = `
     view: { w: innerWidth, h: innerHeight },
   };`;
 
-/* Stock, to the call. */
-const isStock = (a) => a.airScale === 1 && a.kvScale === 1 && a.calls === 0 && a.tuned === false
+/* Stock, to the call: the five inch's defaults, Air grip 110 and Motor power
+ * 100, seated with the one call that takes the module off its own 1.0. */
+const isStock = (a) => a.airScale === 1.1 && a.kvScale === 1 && a.calls === 1 && a.tuned === false
   && a.flown === null && !/\.[ak]\d+$/.test(a.key);
 
 /* ------------------------------------------------------------------ */
@@ -342,17 +346,17 @@ async function stockPage() {
   try {
     const a = await ev(AIR);
     check(a.tuning === false, 'tuning is off by default', String(a.tuning));
-    check(isStock(a), 'on the ground the page holds stock and has not called the module', JSON.stringify({
+    check(isStock(a), 'on the ground the page holds stock and called the module once, to seat Air grip 110', JSON.stringify({
       airScale: a.airScale, kvScale: a.kvScale, calls: a.calls, key: a.key.slice(-14),
     }));
-    check(a.moduleAir === null || a.moduleAir === 1, 'the module holds air 1.0', String(a.moduleAir));
+    check(a.moduleAir === 1.1, 'the module holds air 1.1', String(a.moduleAir));
     const g = await ev(GROUP);
     check(g.drawn === false && g.hintUp === false, 'the tuning group is not drawn and its card is not up', JSON.stringify({ drawn: g.drawn, hint: g.hintUp }));
     const up = await ev(hold('t > 3', 30));
     check(!up.faulted && up.maxAbove > 1, 'took off and flew three seconds', `${up.maxAbove.toFixed(1)} m up`);
     const b = await ev(AIR);
-    check(isStock(b), 'in the air it is still stock and the module was never called', JSON.stringify({ calls: b.calls, flown: b.flown }));
-    check(b.moduleAir === null || b.moduleAir === 1, 'the module still holds air 1.0', String(b.moduleAir));
+    check(isStock(b), 'in the air it is still stock and the module was not called again', JSON.stringify({ calls: b.calls, flown: b.flown }));
+    check(b.moduleAir === 1.1, 'the module still holds air 1.1', String(b.moduleAir));
     await shot('stock-flight');
     const late = await ev('return window.__frameFault ? window.__frameFault.message : null');
     const uncaught = page.errors.filter((e) => e.startsWith('uncaught:'));
@@ -368,18 +372,18 @@ async function stockPage() {
 /* ------------------------------------------------------------------ */
 
 async function untouchedPage() {
-  note('ON, UNTOUCHED: the mode on, every slider at 100, on a screen with room');
+  note('ON, UNTOUCHED: the mode on, every slider on its default, on a screen with room');
   const {
     page, ev, resize, shot,
   } = await openFlight({ patch: { feelTuning: true }, width: 1280, height: 720, seenAirHint: false });
   try {
     const a = await ev(AIR);
-    check(a.tuning === true && isStock(a), 'the mode on and nothing moved is stock and has not called the module', JSON.stringify({
+    check(a.tuning === true && isStock(a), 'the mode on and nothing moved is stock, one seating call and no more', JSON.stringify({
       calls: a.calls, airScale: a.airScale, key: a.key.slice(-14),
     }));
     const g = await ev(GROUP);
     const asked = g.caps.join(' | ');
-    check(g.drawn && g.caps.length >= 1 && g.caps.every((c) => /100%$/.test(c)), 'on the ground the group is drawn, every slider at 100', asked);
+    check(g.drawn && g.caps.length >= 1 && g.caps.every((c) => /^(Air grip 110|Motor power 100)%$/.test(c)), 'on the ground the group is drawn, Air grip at 110 and Motor power at 100', asked);
     check(g.hintUp, 'and its card is up, once, on this first flight', String(g.hintUp));
     check(g.resetUp === false, 'Reset to stock is not offered at stock', String(g.resetUp));
     for (const [w, h, label] of [[1600, 900, 'desktop'], [1280, 720, 'laptop'], [960, 540, 'short desktop window']]) {
@@ -400,7 +404,7 @@ async function untouchedPage() {
     check(!up.faulted && up.maxAbove > 1, 'took off', `${up.maxAbove.toFixed(1)} m up`);
     check(up.bothCards === false, 'the two cards are never up together', String(up.bothCards));
     const b = await ev(AIR);
-    check(b.tuning === true && isStock(b), 'in the air with the mode on and nothing moved it is still stock, no export called', JSON.stringify({ calls: b.calls, flown: b.flown }));
+    check(b.tuning === true && isStock(b), 'in the air with the mode on and nothing moved it is still stock, no export called again', JSON.stringify({ calls: b.calls, flown: b.flown }));
     const seen = await ev('return localStorage.getItem("webfpv.tunehint.v1")');
     check(seen === '1', 'the card was retired and remembered at takeoff', String(seen));
     const late = await ev('return window.__frameFault ? window.__frameFault.message : null');
@@ -519,7 +523,7 @@ async function tunedPage(inspect) {
     await ev(clickText('Reset to stock', 'document.querySelector(".osd-tune")'));
     await sleep(300);
     const c = await ev(AIR);
-    check(c.airGrip === 100 && c.airScale === 1 && c.moduleAir === 1, 'Reset to stock sends the module back to 1.0', JSON.stringify({ airScale: c.airScale, moduleAir: c.moduleAir }));
+    check(c.airGrip === 110 && c.airScale === 1.1 && c.moduleAir === 1.1, 'Reset to stock sends the module back to the default, 1.1', JSON.stringify({ airScale: c.airScale, moduleAir: c.moduleAir }));
     check(!/\.[ak]\d+$/.test(c.key) && c.tuned === false, 'and the key and the race are stock again', c.key.slice(-12));
     const gg = await ev(GROUP);
     check(gg.resetUp === false, 'Reset to stock puts itself away', String(gg.resetUp));
@@ -647,7 +651,7 @@ async function tunedPage(inspect) {
       ui.tuneAsked.clear();
       ui.resultsTune = null;
       ui.show('title');
-      ui.setTuneProbe(() => ({ key: '5inch:100:110:100', airframe: '5inch', weight: 100, airGrip: 110, motorKv: 100, gravityScale: 1, airtimeS: 41 }));
+      ui.setTuneProbe(() => ({ key: '5inch:100:115:100', airframe: '5inch', weight: 100, airGrip: 115, motorKv: 100, gravityScale: 1, airtimeS: 41 }));
       ui.maybeAskTune(ui.takeTuneFlight());
       return 1;`);
     const again = await dialogUp(ev, 6000);
@@ -703,19 +707,19 @@ const SPRING = `
   return { cap: s.rates.throttleCap, af: s.airframe, w: s.weight, v: s.packVoltage, at: window.__input.kbHover };`;
 
 async function motorPage(inspect) {
-  note('MOTOR POWER: the mode on, Motor power 110');
-  const { page, ev, shot } = await openFlight({ patch: { feelTuning: true, motorKv: 110 } });
+  note('MOTOR POWER: the mode on, Motor power 110, Air grip on its default');
+  const { page, ev, shot } = await openFlight({ patch: { feelTuning: true, motorKv: 110, airGrip: 110 } });
   try {
     const caps = await ev('return window.__ui.tuneCaps');
     check(caps.kv === true && caps.air === true, 'this build has both exports, so both rows are drawn', JSON.stringify(caps));
     const a = await ev(AIR);
     check(a.motorKv === 110 && a.kvScale === 1.1 && a.moduleKv === 1.1, 'the page holds Motor power 110 as a scale of 1.1 and the module says it has 1.1',
       JSON.stringify({ motorKv: a.motorKv, kvScale: a.kvScale, moduleKv: a.moduleKv }));
-    check(a.calls === 1 && a.airScale === 1 && a.moduleAir === 1, 'with exactly one call, for the one slider that moved, and Air grip never reached the module',
+    check(a.calls === 2 && a.airScale === 1.1 && a.moduleAir === 1.1, 'with two calls, one for Motor power and one seating the default Air grip of 1.1',
       JSON.stringify({ calls: a.calls, airScale: a.airScale, moduleAir: a.moduleAir }));
     check(/\.k110$/.test(a.key) && !/\.a\d+/.test(a.key) && a.tuned === true, 'the record key names it and the race knows laps are off the public board', a.key.slice(-12));
     const g = await ev(GROUP);
-    check(g.drawn && g.caps.includes('Motor power 110%') && g.caps.includes('Air grip 100%'), 'both rows are drawn, Motor power at 110% and Air grip at 100%', g.caps.join(' | '));
+    check(g.drawn && g.caps.includes('Motor power 110%') && g.caps.includes('Air grip 110%'), 'both rows are drawn, Motor power at 110% and Air grip at 110%', g.caps.join(' | '));
     check(g.resetUp, 'Reset to stock is offered', String(g.resetUp));
     await shot('landed-motor-power');
 
@@ -729,7 +733,7 @@ async function motorPage(inspect) {
     /* A slider moved on the ground arrives, and the spring follows it. */
     await ev(moveSlider('Motor power', 90));
     const b = await ev(AIR);
-    check(b.motorKv === 90 && b.kvScale === 0.9 && b.moduleKv === 0.9 && b.calls === 2, 'Motor power moved to 90 reaches the module as 0.9, one more call',
+    check(b.motorKv === 90 && b.kvScale === 0.9 && b.moduleKv === 0.9 && b.calls === 3, 'Motor power moved to 90 reaches the module as 0.9, one more call',
       JSON.stringify({ kvScale: b.kvScale, moduleKv: b.moduleKv, calls: b.calls }));
     check(/\.k90$/.test(b.key), 'and the key follows', b.key.slice(-12));
     const sp90 = await ev(SPRING);
@@ -742,7 +746,7 @@ async function motorPage(inspect) {
     await ev(clickText('Reset to stock', 'document.querySelector(".osd-tune")'));
     await sleep(300);
     const d = await ev(AIR);
-    check(d.moduleKv === 1 && d.moduleAir === 1 && !/\.[ak]\d+$/.test(d.key) && d.tuned === false, 'Reset to stock sends both back to 1.0 and the key and the race are stock again',
+    check(d.moduleKv === 1 && d.moduleAir === 1.1 && !/\.[ak]\d+$/.test(d.key) && d.tuned === false, 'Reset to stock sends both back to the defaults, 1.0 and 1.1, and the key and the race are stock again',
       JSON.stringify({ moduleKv: d.moduleKv, moduleAir: d.moduleAir, key: d.key.slice(-12) }));
     const sp100 = await ev(SPRING);
     check(Math.abs(sp100.at - stock) < 1e-12, 'and the keyboard spring is back at the stock hover, to the last bit', `${sp100.at}`);

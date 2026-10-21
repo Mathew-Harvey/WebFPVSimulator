@@ -95,6 +95,7 @@ import {
   effectiveTune,
   kvScaleFor,
   offBoardTune,
+  tuneDefaultsFor,
   tuneKey,
 } from './share/tune.js';
 import { lostStickNotice, noRadioNotice } from './ui/stickhelp.js';
@@ -551,6 +552,11 @@ async function loadMap(shell, id, loading, options) {
     shell.setCraftModel(entry.craftModel || null);
   }
   const map = await mod.buildMap(shell, (f) => loading.progress('world', f), options);
+  /* Near first on a world that asks for it (`nearFirst`, the house maps),
+   * three's own order everywhere else: see nearFirstSort. */
+  if (typeof shell.renderer.setOpaqueSort === 'function') {
+    shell.renderer.setOpaqueSort(map.nearFirst ? nearFirstSort : null);
+  }
   map.graphics = normalizeGraphics(options && options.quality);
   /* The Gem look, once a world is built: colours and vertex tones only, nothing per frame (look.js). */
   applyLook(map.scene, shell.quad);
@@ -562,6 +568,36 @@ async function loadMap(shell, id, loading, options) {
   map.shared = (options && options.shared) || null;
   loading.done('world');
   return map;
+}
+
+/*
+ * NEAR FIRST, NOT COLOUR FIRST, in the house maps.
+ *
+ * three draws the opaque list grouped by material and only then near to
+ * far, which keeps program switches down and is right for the town, where
+ * most of the picture is sky and street and little hides anything else.
+ * Indoors it is the wrong way round: every pixel is covered by a wall, a
+ * floor or a ceiling several times over, and a far room drawn first is
+ * shaded in full before the near wall hides it. Counted on 2026-10-21 in
+ * Nick Burns' house at the start and round it (headless, a proxy: the
+ * fragments that pass the depth test, a pixel's average), three's order
+ * shaded 2.1 to 5.5 times a pixel and this one 1.5 to 4.3, the town 2.2 to
+ * 3.0 in its own order. The draws are the same draws: only the order moves.
+ * The cost is more program switches, which is CPU, and PROGRESS.md has
+ * what that measured. groupOrder and renderOrder still come first, so
+ * anything that asked for its place keeps it.
+ */
+function nearFirstSort(a, b) {
+  if (a.groupOrder !== b.groupOrder) {
+    return a.groupOrder - b.groupOrder;
+  }
+  if (a.renderOrder !== b.renderOrder) {
+    return a.renderOrder - b.renderOrder;
+  }
+  if (a.z !== b.z) {
+    return a.z - b.z;
+  }
+  return a.id - b.id;
 }
 
 export async function boot({ loading, bootStart, mapId }) {
@@ -3061,9 +3097,18 @@ export async function boot({ loading, bootStart, mapId }) {
      * written stays exactly where it is: `.a85` is Air grip 85, `.k110` is
      * Motor power 110. Keyed on the multiple the module holds, like the
      * weight, so the key names the machine and not the menu.
+     *
+     * EXCEPT THAT THE BARE KEY FOLLOWS THE AIRCRAFT'S DEFAULT. On 2026-10-21
+     * the defaults moved off 100 (TUNE_DEFAULTS in src/share/tune.js: the
+     * five inch's Air grip to 110, the whoop's Motor power to 90). Keyed on
+     * the multiple, every pilot's best would have moved to `.a110` overnight
+     * and looked lost. The default is the quad as it ships, the public board
+     * files its laps untagged beside the old ones, and a pilot's own best does
+     * the same: the suffix is for a machine the PILOT moved off the default.
      */
-    const airPart = runAirScale === 1 ? '' : `.a${Math.round(runAirScale * 100)}`;
-    const kvPart = runKvScale === 1 ? '' : `.k${Math.round(runKvScale * 100)}`;
+    const dflt = tuneDefaultsFor(runAirframe);
+    const airPart = runAirGrip === dflt.airGrip ? '' : `.a${Math.round(runAirScale * 100)}`;
+    const kvPart = runMotorKv === dflt.motorKv ? '' : `.k${Math.round(runKvScale * 100)}`;
     /* And prop wash, on the same rule: only when off, so every key that was
      * ever written stays where it is. */
     const washPart = runWash ? '' : '.nowash';
@@ -3538,9 +3583,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * arrive, so they apply at once (see the block after the Weight in
    * applySettings) and the cost is paid on the lap. Each is the slider value
    * the module is flying and the multiple it was handed, and both start at
-   * the module's own defaults, 100 and 1.0, which is what a pilot who never
-   * turns the mode on flies forever. Nothing is ever pushed to the module
-   * while they equal what is wanted, so a stock flight makes no call at all.
+   * the module's own defaults, 100 and 1.0, which is what the module holds
+   * before the first applySettings. That pushes the aircraft's default
+   * (TUNE_DEFAULTS), and nothing is pushed again while they equal what is
+   * wanted.
    */
   let runAirGrip = AIR_GRIP_STOCK;
   let runAirScale = 1;
@@ -3562,8 +3608,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * bidirectional ESC and 3D props: throttle centre is no thrust and the
    * bottom half of the stick drives the motors backwards. The controller
    * latches it at a reset, so it is applied by reset(), which every new run
-   * and every Restart goes through, and a change made mid run waits for the
-   * next one, as the flight style does. Another machine in the same sense
+   * and every Restart goes through. A change made mid run is that reset at
+   * once, on the tune's rule: see 3D MODE, MID RUN in applySettings.
+   * Another machine in the same sense
    * prop wash off is, so its laps post tagged Tuned and keep a best of
    * their own. false is what the module starts with.
    */
@@ -3571,7 +3618,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Whether the machine being flown is off stock in any way the board tags
    * as Tuned: the two flight feel scales, prop wash switched off, or 3D. */
   function offStock() {
-    return offBoardTune(runAirGrip, runMotorKv) || !runWash || run3d;
+    return offBoardTune(runAirGrip, runMotorKv, runAirframe) || !runWash || run3d;
   }
   /*
    * How far the stick is asking the craft to climb, for the shell's own
@@ -4982,8 +5029,12 @@ export async function boot({ loading, bootStart, mapId }) {
   /* chooseDocument's sources in src/maps/built/index.js, as the board's
    * MARK_MAPS words: the starter is Hibari Yard, an injected document is a
    * map from the board, and the builder's seat is the pilot's own. The town
-   * keys its marks 'city#'. */
-  const MARK_MAP_WORDS = { starter: 'yard', injected: 'board', canvas: 'own' };
+   * keys its marks 'city#'. The three house maps set a source of their own,
+   * which is their own word on the board since 2026-10-21; before that the
+   * board had none, and the signs on them were never counted for anybody. */
+  const MARK_MAP_WORDS = {
+    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell',
+  };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
   }
@@ -5087,6 +5138,15 @@ export async function boot({ loading, bootStart, mapId }) {
    * sticker would, and goes before the next one.
    */
   let ninetyDone = true;
+  /*
+   * THE LAST ONE, on any map with stickers: the whole set found, once in a
+   * browser, under its own stamp. The owner's ask of 2026-10-21 ("a brand and
+   * style correct celebration"), his pick A of the mockups: ui.goalComplete,
+   * in place of that last sticker's own callout. Nothing is asked of the
+   * frame beyond the count the check already keeps.
+   */
+  let completeDone = true;
+  let completeKey = '';
   function findStickers() {
     if (stickersView !== view) {
       stickersView = view;
@@ -5094,6 +5154,8 @@ export async function boot({ loading, bootStart, mapId }) {
       stickersSeen.clear();
       stickerPictures.clear();
       ninetyDone = !view.stickersNinety || stampedAmong([view.stickersNinety.key]).size > 0;
+      completeKey = view.stickers.length ? `${view.stickers[0].key.split('#sticker:')[0]}#complete` : '';
+      completeDone = !completeKey || stampedAmong([completeKey]).size > 0;
     }
     const again = view.stickersEverySighting === true;
     const now = performance.now();
@@ -5141,9 +5203,35 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     stickerCalledAt = now;
     stickerCallouts += 1;
+    if (!completeDone && stickersFound.size >= view.stickers.length) {
+      callComplete(pick);
+      return;
+    }
     ui.stickerFound({
       word: pick.achievement, name: pick.name, got: stickersFound.size, total: view.stickers.length,
       picture: keptPicture(pick, again),
+    });
+  }
+  function callComplete(last) {
+    completeDone = true;
+    writeStamp(completeKey);
+    const total = view.stickers.length;
+    const hero = (view.stickersNinety && view.stickers.find((s) => s.id === view.stickersNinety.picture)) || last;
+    const tiles = [];
+    for (const s of view.stickers) {
+      if (tiles.length < 2 && s !== hero && s.key !== last.key && s.name !== hero.name) {
+        const t = stickerPicture(s);
+        if (t) {
+          tiles.push(t);
+        }
+      }
+    }
+    ui.goalComplete({
+      word: `ALL ${total}!`,
+      sub: 'Every sticker found',
+      band: 'Every sticker on the map',
+      picture: keptPicture(hero, false),
+      tiles,
     });
   }
   function callNinety(now) {
@@ -6374,11 +6462,13 @@ export async function boot({ loading, bootStart, mapId }) {
      * interrupted.
      *
      * THE STOCK RULE, which is the whole safety of the feature: what is wanted
-     * is effectiveTune(s), and with the mode off that is 100 and 100 whatever
-     * is stored, so a pilot who never turns it on, or turns it on and touches
-     * nothing, asks for exactly the 1.0 and 1.0 the module already holds. The
-     * test is on the SCALE, so equal means no call at all: stock flight does
-     * not so much as invoke the exports.
+     * is effectiveTune(s), and with the mode off that is the aircraft's
+     * default whatever is stored, so a pilot who never turns it on, or turns
+     * it on and touches nothing, flies the quad that ships. Since 2026-10-21
+     * that default is not 1.0 on every scale (TUNE_DEFAULTS in
+     * src/share/tune.js: the five inch's Air grip is 110, the whoop's Motor
+     * power 90), so it is one call when the aircraft is seated and none after.
+     * The test is on the SCALE, so equal means no call at all.
      *
      * Guarded because an older dist/sim.wasm predates the export. On such a
      * build the slider moves and the plant does not, so the guard also puts
@@ -6444,7 +6534,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * stock. Weight counts, because it is one of the three the question is
        * about, but only inside the mode: a pilot who never turned tuning on
        * is never asked. */
-      if (s.feelTuning && !(runWeight === WEIGHT_STOCK && runAirGrip === AIR_GRIP_STOCK && runMotorKv === MOTOR_KV_STOCK)) {
+      if (s.feelTuning && (runWeight !== WEIGHT_STOCK || offBoardTune(runAirGrip, runMotorKv, runAirframe))) {
         tuneLogKey = tuneKey(runAirframe, runWeight, runAirGrip, runMotorKv);
         tuneLogMeta = {
           airframe: runAirframe,
@@ -6458,6 +6548,25 @@ export async function boot({ loading, bootStart, mapId }) {
         tuneLogMeta = null;
       }
       ui.paintAir();
+    }
+    /*
+     * 3D MODE, MID RUN, on the tune's rule rather than the flight style's.
+     * The owner, 2026-10-21: "turning 3d mode off while in a session does not
+     * turn 3d mode off". It waited for the next run or a Restart, so a pilot
+     * who paused, switched it and resumed was still flying the machine they
+     * had switched away from. The controller takes 3D at a reset and only
+     * there, so a change during a run IS that reset: the quad goes back on
+     * the start line, as a tune or a PID change puts it, and the row says
+     * so. On the title nothing is flying and fly's own reset applies it.
+     * Through whenConfigReady for the reason fly and restart are: a tune
+     * swap in flight would sim_init under it.
+     */
+    if ((mode === 'flight' || mode === 'paused') && (s.mode3d === true) !== run3d) {
+      whenConfigReady(() => {
+        if ((mode === 'flight' || mode === 'paused') && (ui.settings.mode3d === true) !== run3d) {
+          reset();
+        }
+      });
     }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
@@ -9180,6 +9289,9 @@ export async function boot({ loading, bootStart, mapId }) {
              * the step it happened, and the frame flies on from it.
              */
             const crashed = crashJudge.step(stBefore, stNow, groundHits, stepRep, simTimeMs + i + 1, mayPerch);
+            if (crashed && view.judge && mode === 'flight') {
+              view.judge.hear('crash', simTimeMs + i + 1);
+            }
             if (bounces && (crashed || crashJudge.knock(stepRep, stNow))) {
               stNow = applyDullBounce(crashed ? crashJudge.stepKind : 'solid', stBefore, stNow, stepRep, !crashed);
               if (i === steps - 2) {
@@ -9365,6 +9477,9 @@ export async function boot({ loading, bootStart, mapId }) {
          */
         if (hard) {
           flightStats.noteCrash();
+          if (view.judge && mode === 'flight') {
+            view.judge.hear('crash', simTimeMs);
+          }
         }
         if (view.mode === 'freestyle') {
           if (hard) {
@@ -9515,6 +9630,9 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     if (crashJudge.stopHard) {
       flightStats.noteCrash();
+      if (view.judge && mode === 'flight') {
+        view.judge.hear('crash', simTimeMs);
+      }
       if (view.mode === 'freestyle') {
         trickDetector.reset();
         counterCrash(true);
@@ -9632,7 +9750,24 @@ export async function boot({ loading, bootStart, mapId }) {
           heightAt: (x, z, y) => view.height(x, z, y - SURFACE_BIAS, y),
         });
         if (!replayMode) {
+          /* Dan's (src/maps/dan/), read before the race scores the travel. */
+          const danMissed = view.judge && !race.freestyle && race.missedGate(race.next, racePrev, pCurr);
           const res = race.update(racePrev, pCurr, simNow, nowWall, allowPass);
+          if (view.judge && !race.freestyle) {
+            if (danMissed && res.passed == null) {
+              view.judge.hear('miss', simNow);
+            }
+            /* The lap before the gate. The crossing that ends a lap is the
+             * timing gate, and Dan hears the timing gate as the start of a
+             * fresh lap, which forgets its hits: heard gate first, every lap
+             * was clean and every lap was "Right into the pipe.". */
+            if (race.laps.length > lapsBefore) {
+              view.judge.hear('lap', simNow, { record: race.lastLapRecord, first: race.laps.length === 1 });
+            }
+            if (res.passed != null) {
+              view.judge.hear('gate', simNow, { index: res.passed });
+            }
+          }
           if (res.passed != null) {
             view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
             if (typeof audio.event === 'function') {
@@ -10532,6 +10667,15 @@ export async function boot({ loading, bootStart, mapId }) {
         ui.chaseMeter(chase.view());
         ui.chaseEvents(chaseEvents);
       }
+      /* THE HOUSE MAPS READ AS A 1S WHOOP. Nick's and Heads' house are drawn
+       * as the whoop and built at S times life size (`hudScale` in
+       * ./maps/registry.js), flown on whichever plant is chosen, so the OSD
+       * prints what a 1S whoop in a real house would: one cell's volts
+       * (the pack over the plant's cells, not the airframe's 6S) and the
+       * speed divided by S. Display only, like cells and osdSpeed: nothing
+       * that flies or scores reads either. A whoop airframe keeps its own
+       * HUD (no speed), because its plant is already true size. */
+      const whoopHud = runAirframe === '5inch' ? (mapById(view.id).hudScale || 0) : 0;
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({
@@ -10554,7 +10698,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * airframe's cells. Both whoop and five inch now say what their plant
          * is, so the ratio is 1; it stays because `cells` and the plant are
          * two facts that could part again. Display only. */
-        volts: st[18] * (airframeById(runAirframe).cells / plantFacts(runAirframe).cells),
+        volts: st[18] * (whoopHud ? 1 : airframeById(runAirframe).cells) / plantFacts(runAirframe).cells,
         lastLapMs: race.lastLapMs,
         packFrac: (st[18] - plantFacts(runAirframe).cells * 3.3) / (plantFacts(runAirframe).cells * (4.2 - 3.3)),
         /* The same biased fromY every contact query in this file uses, and
@@ -10566,7 +10710,7 @@ export async function boot({ loading, bootStart, mapId }) {
         altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y),
         /* Null on an airframe whose OSD has no speed, and the readout goes.
          * See osdSpeed in configs/airframes.js. */
-        speedKph: airframeById(runAirframe).osdSpeed ? speed * 3.6 : null,
+        speedKph: whoopHud ? speed * 3.6 / whoopHud : (airframeById(runAirframe).osdSpeed ? speed * 3.6 : null),
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
         /* No damage model, so nothing to count down. How much this run has
@@ -12841,6 +12985,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * measure, which is the only way a scale error gets caught by a check
    * rather than by a reviewer's eye. Harness only. */
   window.__mapScene = () => view.scene;
+  /* Dan's ear, on a RaceGOW room (src/maps/dan/), or null. Harness only. */
+  window.__judge = () => view.judge ?? null;
   /* The three.js namespace, so a measurement in the page can build a Box3
    * without importing a second copy of the library. Harness only. */
   window.__three = THREE;

@@ -50,17 +50,26 @@ mkdir -p dist build/obj
 
 # Patches in patches/ are applied with git apply against the vendor tree at
 # build time and reverted after object compilation, so the tree stays clean.
-# There are three: 0001 adds the rotor telemetry the plant feeds the RPM
+# There are four: 0001 adds the rotor telemetry the plant feeds the RPM
 # filter, 0002 resets runtime statics on init so a re-init is a real
-# reset rather than a warm start, and 0003 does the same for the mixer's
-# throttle endpoint statics, which 3D mode's deadband reads.
+# reset rather than a warm start, 0003 does the same for the mixer's
+# throttle endpoint statics, which 3D mode's deadband reads, and 0004 for
+# the rest of what a flight left in the PID controller and the mixer
+# (scripts/reset-check.js).
 # Strip CR before apply. Windows core.autocrlf checks the patch files out
 # as CRLF, and git apply then fails to match the LF vendor tree. The revert
 # lives in a function so the trap does not re-parse '\r' as the letter r.
+# The revert goes last patch first: 0004 is written on top of 0002 and 0003,
+# and taking 0002 off under it fails, which the `|| true` would hide and
+# leave the vendor tree dirty.
 apply_vendor_patches() {
   local reverse="${1:-}"
   local p
-  for p in $PATCHES; do
+  local list="$PATCHES"
+  if [ -n "$reverse" ]; then
+    list=$(printf '%s\n' $PATCHES | sort -r)
+  fi
+  for p in $list; do
     if [ -n "$reverse" ]; then
       tr -d $'\r' < "$p" | git -C vendor/betaflight apply $reverse || true
     else

@@ -77,6 +77,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { separateCoplanar } from '../../props/coplanar.js';
 import { PAL } from '../city/vendored/core/palette.js';
 import { Pipeline } from '../city/vendored/core/post.js';
 import { mangaPipeline } from '../../render/manga.js';
@@ -92,7 +93,7 @@ import { disposeSceneGraph } from '../../render/shell.js';
 import { SESSION_TEXTURES } from '../../render/session-textures.js';
 import { yieldToPaint } from '../../ui/loading.js';
 import { qualityFor } from '../../render/quality.js';
-import { makeShadowRate } from '../../render/shadowrate.js';
+import { makeShadowRate, shadowOnly } from '../../render/shadowrate.js';
 import { readAutosave } from '../../trackbuilder/storage.js';
 import { normalize } from '../../trackbuilder/model.js';
 import { docModeOf } from '../../trackbuilder/elements.js';
@@ -1142,6 +1143,8 @@ function proxyCasters(props, materials) {
       proxy.userData.shadowProxy = true;
       /* Never a pick target: it is not drawn, so nothing it stands for is under it. */
       proxy.raycast = () => {};
+      /* And never drawn in the colour pass either: see shadowOnly. */
+      shadowOnly(proxy);
       chunk.add(proxy);
       for (const m of b.meshes) {
         m.castShadow = false;
@@ -1428,7 +1431,10 @@ export async function buildMap(shell, onProgress, options) {
    * cell and bakes to one batch per material. */
   if (extra) {
     kit.begin(0, 0, 0, 0, EXTRA_CHUNK);
-    for (const p of extra.parts) {
+    /* Drawn with no two colours in one plane, so no wall shimmers between
+     * them (../../props/coplanar.js). The solids were placed from the plan's
+     * own parts in addExtra, and this moves only what is drawn. */
+    for (const p of separateCoplanar(extra.parts).parts) {
       kit.part(p);
     }
     if (extra.draw) {

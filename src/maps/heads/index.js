@@ -49,6 +49,7 @@ import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import { headsLayout, basementFloorAt, BASEMENT_HOLE, FRAME, worldAt, PRINTS } from './heads.js';
 import { headsDocument } from './yard.js';
+import { makeMan } from './mandraw.js';
 import {
   BRANDS, SHEETS, SHEET_PX, ACHIEVEMENT, IL_LOGO, IL_OUTLINE, PATCH, WALL_STICKERS,
   ATLAS_W, ATLAS_H, CELLS, placeSigns, placeDecals, placePatches,
@@ -506,8 +507,8 @@ export async function buildMap(shell, onProgress, options) {
     ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots,
   });
   /* Its own world: the shell keys the world, the results and the board's
-   * refusal by this id (src/main.js, src/ui/ui.js), and `source` keeps its
-   * marks out of the board's counters. */
+   * refusal by this id (src/main.js, src/ui/ui.js), and `source` is the word
+   * the board counts its partner signs under (MARK_MAP_WORDS in src/main.js). */
   map.id = 'heads';
   map.source = 'heads';
   openGround(map.scene, 'plot', BASEMENT_HOLE);
@@ -545,7 +546,21 @@ export async function buildMap(shell, onProgress, options) {
     })),
   ];
   map.stickersEverySighting = true;
+  /* Drawn near first: see nearFirstSort in src/main.js. */
+  map.nearFirst = true;
   houseInk(map.post);
+  /* Heads in his garage (./man.js, ./mandraw.js): in the map's scene, so its
+   * dispose frees him, and added before the programs are warmed so his is
+   * linked with the rest. */
+  const man = makeMan(shell.camera, () => (shell.quad ? shell.quad.position : null));
+  map.scene.add(man.group);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
+  const anim = map.updateAnim;
+  map.updateAnim = (step) => {
+    anim(step);
+    man.update(step);
+  };
+  const stats = map.stats;
+  map.stats = () => ({ ...stats(), heads: man.stats() });
   return map;
 }

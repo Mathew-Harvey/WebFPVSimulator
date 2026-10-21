@@ -109,6 +109,7 @@ export const MAP_PRELOAD = {
   ],
   built: [
     'maps/built/index.js',
+    'props/coplanar.js',
     'maps/city/vendored/core/palette.js',
     'maps/city/vendored/core/post.js',
     'maps/city/vendored/core/sky.js',
@@ -151,6 +152,7 @@ export const MAP_PRELOAD = {
   house: [
     'maps/house/index.js',
     'maps/built/index.js',
+    'props/coplanar.js',
     'maps/city/vendored/core/palette.js',
     'maps/city/vendored/core/post.js',
     'maps/city/vendored/core/sky.js',
@@ -200,6 +202,7 @@ export const MAP_PRELOAD = {
   heads: [
     'maps/heads/index.js',
     'maps/built/index.js',
+    'props/coplanar.js',
     'maps/city/vendored/core/palette.js',
     'maps/city/vendored/core/post.js',
     'maps/city/vendored/core/sky.js',
@@ -240,12 +243,15 @@ export const MAP_PRELOAD = {
     'maps/built/logosurface.js',
     'maps/heads/heads.js',
     'maps/heads/yard.js',
+    'maps/heads/mandraw.js',
+    'maps/heads/man.js',
     'maps/heads/logos.js',
     'maps/specials/infinityloops.js',
   ],
   bardwell: [
     'maps/bardwell/index.js',
     'maps/built/index.js',
+    'props/coplanar.js',
     'maps/city/vendored/core/palette.js',
     'maps/city/vendored/core/post.js',
     'maps/city/vendored/core/sky.js',

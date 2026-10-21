@@ -71477,3 +71477,32 @@ The stall ramp (104), music on demand (103), 3D mode's mid run switch and its DS
 - `npm run verify` 19 of 19, check 1 rebuilding the module byte for byte with emsdk 3.1.61 and the vendor diff empty.
 - `check:plant` and its self test, `check:world-golden` and its self test, `check:world-town`, `check:world-engines`, `check:world`, `contact:selftest`, `check:bounce`, `check:props` (all passed: it failed on main), `check:crash`, `check:crash-pacing`, `check:takeoff`, `check:longflight`, `check:tune`, `check:stall`, `check:motorkv`, `check:tuneload`, `check:craft`, `lint:fc` 33 of 33, `lint:3d`, `lint:propwash`, `lint:arcade`, `check:house`, `check:heads`, `check:bardwell`, `check:dan`, `check:chase`, `check:counter`, `replay:selftest`, `check:seat`, `lint:reset` 8 of 8, `lint:partners` 110 of 110, `lint:catalog`, `lint:presets`: all pass. `replay:test` passed on the module before the reset patch, which does not touch a fresh run. Red: `check:wall` (the known band) and `check:autoreset` in the batch, as above.
 - Not checked: nobody has flown it. What to look for: a drop from height straight down onto grass stops where it lands; a belly slide still slides as far as it did; after a crash and reset the quad feels the same as the first flight of the session, which it now is.
+
+## 2026-10-22 | share | Shared links show their own map, and the default card is the manga look (draft PR)
+
+Mat: "When a share a map or track on social media etc, the thumb nail should be of that map, also the default thumb nail style needs to be updated to the current style."
+
+### What was already true
+
+Links to board tracks and maps already unfurl with their own card: `edge/preview.js` rewrites the og: and twitter: tags for preview bots only. Checked live with a Twitterbot user agent against a board map: its own title and its own `card` image came back. 70 of the 75 board maps and all 69 tracks have a card.
+
+### What this turn changes
+
+- **Default card.** `og.png` (the race field under a plain wordmark, 465 kB) is replaced by `og.jpg` (about 115 kB), drawn by `scripts/og.html` with `src/ui/lettering.js` over three pictures the shell ships (race track, the town, the whoop room). Paper, ink panels, lettered wordmark and captions, no dev text. `scripts/og.js` photographs the page; the board's copy carries the board's line. Tags in `index.html`, `src/trackbuilder/index.html` and the board's `public/index.html` point at `og.jpg` as `image/jpeg`.
+- **Built in maps.** `/sim/?map=city|house|heads|bardwell|built` (what the picker's Copy link writes for the town, Nick's house, Heads' house, Joshua's house and the starter yard) were not described at all, so they showed the site card. The edge now names them and shows the picker's own thumbnail, with no call to the board (`WORLDS` in `edge/preview.js`).
+- **Thumbnail fallback.** A board map with a thumbnail and no card shows the thumbnail at 960 by 540 instead of the site card.
+- **No piece counts** in a map's description ("A freestyle map with 5 named gaps to find."), by the rule that player text carries no dev numbers.
+
+### Latency
+
+None in flight: a static image, and edge code that only runs for preview bots. A person's browser gets the same pages; the smaller default card is only fetched by crawlers.
+
+### Checked
+
+`node edge/selftest.js` passes with the new cases (thumbnail fallback, built in maps, a person left alone). `scripts/noun-lint.js` passes. The board's `npm test` passes. `npm run verify` not run: nothing touches physics, the plant, the ABI or the build.
+
+### Not done, and why
+
+- 5 board maps (industrial freestyle, a tu rollo, New flyer Map, Training land, Sakura Desert) have neither a card nor a thumbnail, so their links still show the default card until their owner republishes or an admin runs `scripts/boardcards.js`, which needs the admin token.
+- The per map card still has the older wordmark over a plain frame; only the default was restyled.
+- The Cloudflare Worker must be redeployed (wrangler) for the edge change; Render deploys `og.jpg`. Facebook and X keep what they scraped until their debugger is asked again.

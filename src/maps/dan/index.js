@@ -7,7 +7,7 @@
  * is served).
  *
  * WHERE HE STANDS. In a corner of the room, off the mat on the honey
- * boards, a body's width from each wall: the corner is the room's, and the
+ * boards, two metres from each wall, close enough to be seen well: the corner is the room's, and the
  * room is the same ten by twelve metres for every RaceGOW track, so he is
  * in the same place on all of them. He faces the middle of the room until
  * there is a quad to watch.
@@ -33,7 +33,7 @@ import { ROOM_WIDTH, ROOM_DEPTH } from '../../trackbuilder/racegow.js';
 import { makeDan } from './dandraw.js';
 
 /* True metres in from each wall, then the world's. */
-const IN_FROM_WALL = 1.1;
+const IN_FROM_WALL = 2;
 export function danStands() {
   return {
     x: (ROOM_WIDTH / 2 - IN_FROM_WALL) * MICRO_SCALE,

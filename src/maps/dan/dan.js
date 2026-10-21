@@ -202,16 +202,12 @@ function toward(J, b, k, x, y, z) {
   J[i + 2] += (z - J[i + 2]) * k;
 }
 
-/* Standing at ease, feet a little apart, arms a little out and bent. */
+/* Standing at ease, feet together, arms a little out and bent. */
 const STAND = new Float64Array(NB * 3);
 set(STAND, BONE.armL, 0.05, 0, 0.16);
 set(STAND, BONE.armR, 0.05, 0, -0.16);
 set(STAND, BONE.foreL, -0.34, 0, 0);
 set(STAND, BONE.foreR, -0.34, 0, 0);
-set(STAND, BONE.thighL, 0, 0, -0.05);
-set(STAND, BONE.thighR, 0, 0, 0.05);
-set(STAND, BONE.footL, 0, 0, 0.05);
-set(STAND, BONE.footR, 0, 0, -0.05);
 
 /* The pelvis over the floor standing, from ./man.js's skeleton. */
 const PELVIS_STAND = 0.96;
@@ -256,8 +252,6 @@ export function danAt(T, dt, aim, gest, move, st) {
   J[BONE.spine * 3] += 0.012 * Math.sin(T / 650);
   J[BONE.spine * 3 + 2] += 0.012 * sway;
   J[BONE.pelvis * 3 + 2] -= 0.02 * sway;
-  J[BONE.thighL * 3 + 2] += 0.02 * sway;
-  J[BONE.thighR * 3 + 2] += 0.02 * sway;
   let pelvisH = PELVIS_STAND;
 
   let turn = 0;

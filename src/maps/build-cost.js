@@ -58,4 +58,7 @@ export const MAP_BUILD_MS = {
    * 2026-10-20 at 1280 by 720 on High as the loading screen's world stage:
    * 1772 ms, with Nick's house at 1668 on the same container that hour. */
   heads: 1770,
+  /* Joshua Bardwell's house (src/maps/bardwell/), the same pipeline,
+   * measured on 2026-10-21 the same way: 1341 ms in headless Chromium. */
+  bardwell: 1340,
 };

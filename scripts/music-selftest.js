@@ -220,6 +220,9 @@ const settle = () => new Promise((r) => { setTimeout(r, 0); });
 const nodes = [];
 const ctx = new FakeCtx();
 const m = new Music();
+/* Every assertion below is about a bed that is playing, so the pilot has
+ * asked for it. The silent default has its own section at the end. */
+m.menuWanted = true;
 m.setEnabled(true);
 m.setLevel(0.5);
 m.attach(ctx, new FakeNode('dest'), (n) => {
@@ -247,30 +250,25 @@ check('preload is still none', el.preload === 'none');
 check('status names the crate', m.status().context === 'menu');
 const openedOn = idOf(el.src);
 
-console.log('\nthe menus buy the flight track');
+console.log('\nthe menus buy nothing for the flight');
 el.arrive(240);
 el.currentTime = 61.5;
 el.bufferedEnd = 95;
 await settle();
 m.tick(ctx.currentTime);
-check('the warm is the flight track, not the next menu one',
-  m.warmId === TRACKS[m.flightIndex].id, m.warmId || 'nothing');
-const warmEl = FakeAudio.made[FakeAudio.made.length - 1];
-check('the warm element asks for that file',
-  warmEl.src === trackUrl(TRACKS[m.flightIndex].id, m.ext));
-check('the warm is muted and preloads', warmEl.muted === true && warmEl.preload === 'auto');
-m.dropWarm();
-el.bufferedEnd = 66;
+check('a well buffered menu bed warms nothing', m.warmId === '', m.warmId || 'nothing');
+el.currentTime = 225;
 await settle();
 m.tick(ctx.currentTime);
-check('nothing is warmed while the menu bed is only 4.5 s ahead of itself',
-  m.warmId === '', m.warmId || 'nothing');
-el.bufferedEnd = 95;
+check('near its end it warms the next menu record, not a flight one',
+  isMenu(trackUrl(m.warmId, m.ext)) && m.warmId !== idOf(el.src), m.warmId || 'nothing');
+m.dropWarm();
 conn.saveData = true;
 await settle();
 m.tick(ctx.currentTime);
 check('nothing is warmed at all under Save-Data', m.warmId === '', m.warmId || 'nothing');
 conn.saveData = false;
+el.currentTime = 61.5;
 
 console.log('\nthe swap into flight');
 const leftAt = el.currentTime;
@@ -496,6 +494,39 @@ console.log('\nthe sound context: a browser that takes it away is asked to give 
     JSON.stringify([rig('suspended').a.report(), new MotorAudio().report()]));
 
   process.off('unhandledRejection', onUnhandled);
+}
+
+
+console.log('\nthe default visit is silent and fetches nothing');
+{
+  FakeAudio.made.length = 0;
+  const q = new Music();
+  q.setEnabled(true);
+  q.setLevel(0.5);
+  q.attach(new FakeCtx(), new FakeNode('dest'), (n) => n);
+  const qe = q.el;
+  await settle();
+  q.tick(0);
+  check('the menus do not play', qe.paused === true && q.wantPlay === false);
+  check('and make no second element', FakeAudio.made.length === 1, `${FakeAudio.made.length}`);
+  q.askMenuBed();
+  await settle();
+  check('asking for the menu bed plays it', qe.paused === false && isMenu(qe.src), idOf(qe.src));
+  q.menuWanted = false;
+  q.pause();
+  q.setContext('flight');
+  await settle();
+  check('the first flight starts the flight track', qe.paused === false && isFlight(qe.src), idOf(qe.src));
+  q.setContext('menu');
+  q.tick(1);
+  q.tick(1);
+  check('back in the menus it stops and does not touch the menu file',
+    qe.paused === true && isFlight(qe.src), idOf(qe.src));
+  q.setContext('flight');
+  q.tick(2);
+  q.tick(2);
+  await settle();
+  check('and the next flight resumes it', qe.paused === false);
 }
 
 console.log(fails.length ? `\n${fails.length} failed` : '\nall passed');

@@ -882,7 +882,12 @@ function road(Y) {
 export const TREES = [
   [-7, 3, 2.2, 'loblolly'], [-8, 13, 2.0, 'loblolly'], [24, -5, 2.3, 'loblolly'], [2, 27, 2.0, 'loblolly'],
   [12, 30, 2.3, 'loblolly'], [24, 33, 2.0, 'loblolly'], [36, 27, 2.2, 'loblolly'], [40, 12, 1.5, 'loblolly'],
-  [38, -6, 2.1, 'loblolly'], [LOOP.x, LOOP.y, 1.7, 'loblolly'],
+  [38, -6, 2.1, 'loblolly'], [LOOP.x, LOOP.y, 2.0, 'loblolly'],
+  /* The island inside the drive's turnaround, which the stills show as a
+   * cluster of trees: pines round a broadleaf, 2.5 to 4.5 m apart. */
+  [LOOP.x - 3.2, LOOP.y + 2.2, 1.7, 'loblolly'], [LOOP.x + 3.4, LOOP.y + 2.6, 1.9, 'loblolly'],
+  [LOOP.x - 3.6, LOOP.y - 2.4, 1.8, 'broad'], [LOOP.x + 3.0, LOOP.y - 3.2, 1.7, 'loblolly'],
+  [LOOP.x + 0.4, LOOP.y + 4.0, 1.6, 'broad'], [LOOP.x + 0.2, LOOP.y - 4.3, 1.8, 'loblolly'],
   [-6, -32, 2.4, 'loblolly'], [-7, -47, 2.2, 'loblolly'], [-6, -62, 2.5, 'loblolly'], [-7, -80, 2.1, 'loblolly'], [-6, -95, 2.3, 'loblolly'],
   [31, -31.5, 2.2, 'loblolly'], [35.6, -31.5, 2.3, 'loblolly'],
   [-20, -10, 2.2, 'loblolly'], [-28, 6, 2.4, 'loblolly'], [-36, -22, 2.0, 'loblolly'], [-24, -48, 2.3, 'loblolly'],

@@ -10415,6 +10415,15 @@ export async function boot({ loading, bootStart, mapId }) {
         ui.chaseMeter(chase.view());
         ui.chaseEvents(chaseEvents);
       }
+      /* THE HOUSE MAPS READ AS A 1S WHOOP. Nick's and Heads' house are drawn
+       * as the whoop and built at S times life size (`hudScale` in
+       * ./maps/registry.js), flown on whichever plant is chosen, so the OSD
+       * prints what a 1S whoop in a real house would: one cell's volts
+       * (the pack over the plant's cells, not the airframe's 6S) and the
+       * speed divided by S. Display only, like cells and osdSpeed: nothing
+       * that flies or scores reads either. A whoop airframe keeps its own
+       * HUD (no speed), because its plant is already true size. */
+      const whoopHud = runAirframe === '5inch' ? (mapById(view.id).hudScale || 0) : 0;
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({
@@ -10437,7 +10446,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * airframe's cells. Both whoop and five inch now say what their plant
          * is, so the ratio is 1; it stays because `cells` and the plant are
          * two facts that could part again. Display only. */
-        volts: st[18] * (airframeById(runAirframe).cells / plantFacts(runAirframe).cells),
+        volts: st[18] * (whoopHud ? 1 : airframeById(runAirframe).cells) / plantFacts(runAirframe).cells,
         lastLapMs: race.lastLapMs,
         packFrac: (st[18] - plantFacts(runAirframe).cells * 3.3) / (plantFacts(runAirframe).cells * (4.2 - 3.3)),
         /* The same biased fromY every contact query in this file uses, and
@@ -10449,7 +10458,7 @@ export async function boot({ loading, bootStart, mapId }) {
         altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y),
         /* Null on an airframe whose OSD has no speed, and the readout goes.
          * See osdSpeed in configs/airframes.js. */
-        speedKph: airframeById(runAirframe).osdSpeed ? speed * 3.6 : null,
+        speedKph: whoopHud ? speed * 3.6 / whoopHud : (airframeById(runAirframe).osdSpeed ? speed * 3.6 : null),
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
         /* No damage model, so nothing to count down. How much this run has

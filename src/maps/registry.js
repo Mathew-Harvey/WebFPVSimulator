@@ -96,8 +96,15 @@ export const MAPS = [
     /* Drawn as the whoop, the five inch's physics under it: the owner's ask
      * of 18 October 2026, "for just this map, lets introduce a new quad.
      * 75mm whoop, the flight physics don't change, but the pre launch
-     * cinematic does". See buildCraft in src/render/craft.js. */
+     * cinematic does". See buildCraft in src/render/craft.js.
+     *
+     * `hudScale` is the house's S (house.js), and it is what the OSD reads
+     * so the flight display reads as the whoop in a real house: the owner,
+     * 2026-10-21, "in the house maps the ui needs to reflect a 1s 75mm
+     * whoop, so speed and battery stats need editing, the flight feel is
+     * good though". Display only: see whoopHud in src/main.js. */
     craftModel: 'whoop65',
+    hudScale: 3.5,
     load: () => import('./house/index.js'),
   },
   /*
@@ -113,6 +120,7 @@ export const MAPS = [
     note: "Heads' house from Infinity Loops, flown on a whoop: the garage, the basement, the stairs, every room, the yard and the corner.",
     buildMs: MAP_BUILD_MS.heads,
     craftModel: 'whoop65',
+    hudScale: 3.5,
     load: () => import('./heads/index.js'),
   },
 ];

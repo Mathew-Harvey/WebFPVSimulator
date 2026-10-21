@@ -4153,6 +4153,10 @@ export class InputManager {
   /* Called once per animation frame. Emits one timestamped sample when
    * anything changed, plus a heartbeat sample every 100 ms. */
   poll(nowWall) {
+    /* When the poll before this one ran: the start of the stretch in which
+     * whatever this poll finds new actually happened. See prevWall on the
+     * sample below. */
+    const prevWall = this.lastWall;
     const dtMs = Math.min(nowWall - this.lastWall, 100);
     this.lastWall = nowWall;
     /* One poll off the flight spoils its rate window. See flightRec. */
@@ -4274,7 +4278,16 @@ export class InputManager {
     if (changed || this.heartbeatMs >= 100) {
       this.heartbeatMs = 0;
       this.channels = next;
-      this.queue.push({ wallT: nowWall, ...next });
+      /*
+       * `prevWall` is when the poll before this one ran, which is not
+       * always 2 ms ago. The timer that polls runs on the main thread, so a
+       * long frame, a garbage collection or a shader compile holds it, and
+       * a stick that moved smoothly through the hold is found here in one
+       * piece. main.js spreads that piece back across the hold (see
+       * THE STICK THROUGH A STALL there) rather than handing the controller
+       * one step.
+       */
+      this.queue.push({ wallT: nowWall, prevWall, ...next });
       this.samplesTaken += 1;
       /* The integrator is frozen while the craft sits landed, so nothing
        * drains then. Bound it: the newest samples are the ones worth keeping. */

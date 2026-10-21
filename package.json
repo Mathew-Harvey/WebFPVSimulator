@@ -37,6 +37,7 @@
     "check:tuneload": "node scripts/tuneload-check.js",
     "check:crash-pacing": "node scripts/crash-pacing.js",
     "check:bounce": "node scripts/bounce-check.js",
+    "check:stall": "node scripts/stall-check.js",
     "check:takeoff": "node scripts/takeoff-check.js",
     "check:longflight": "node scripts/longflight-check.js",
     "check:tune": "node scripts/tune-check.js",

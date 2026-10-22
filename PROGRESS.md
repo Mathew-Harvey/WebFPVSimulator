@@ -71508,3 +71508,11 @@ The stall ramp (104), music on demand (103), 3D mode's mid run switch and its DS
 - Checked after the merge, in this turn: `check:bardwell` all passed, `check:heads` and `check:house` all passed, `lint:preload` up to date (bardwell 44 modules, 304 served), `lint:partners` 110 passed, `check:fresh` 18 passed, `lint:nouns` pass, `lint:frame` 34 passed, `node --check` on the changed files; the map loads in the real shell with all eight marks, no console errors but the board's refused fetch. Not run: `npm run verify` (nothing of this branch is in the physics, the plant, the ABI or the build; main's own plant change came with its own checks).
 - Approval: the owner wrote "Push to main" on 2026-10-21 in this thread after the reply that gave the latency (then 51 to 208 draw calls and 619k to 1.39M triangles, about the town's cost) and that nobody had flown it, and chose "The Uncrashed rebuild" when the conflict with main's log house was put to the owner. It covers this entry's commits and the board's.
 
+
+## 2026-10-22 | picker | Map list jumps back up on a phone (branch only)
+
+- Ask: the owner, 2026-10-22: "When I look at maps on my mobile phone there is a scrolling bug where the maps will auto scroll back up a few maps".
+- Cause, from reading the code and not yet seen on a phone: the picker's `pointerdown` handler calls `setZone('strip')`, and `setZone` scrolled the chosen panel into view every time the strip zone was set. A touch swipe begins with a `pointerdown`, so each swipe first pulled the list back to the chosen panel, a few maps up once the pilot had scrolled past it.
+- Fix: `setZone` takes a `fromPointer` flag and the pointer path passes it, so only the keys bring the chosen panel back. Tapping a panel still scrolls it into view through `select`.
+- Latency: no change, nothing in the flight loop or input path, no added work (one skipped scroll call per touch).
+- Checked: `node --check` on picker.js, `lint:preload`. Not tested on a phone or in a browser. The board's vendored copy is refreshed by `scripts/vendor.js` in a paired PR.

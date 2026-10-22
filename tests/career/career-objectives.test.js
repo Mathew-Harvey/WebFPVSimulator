@@ -194,6 +194,71 @@ test('tricks: direction and turns from the recogniser parts', () => {
   assert.equal(run.status().phase, 'complete');
 });
 
+/* Halves of a roll as the recogniser reports them (tests/rig prints the real
+ * ones): kind, axis, direction, turns and when each started and ended. */
+const half = (dir, startMs, endMs) => ({ kind: 'rot', axis: 'roll', dir, turns: 0.5, startMs, endMs });
+const named = (name, ...parts) => ({ name, axis: 'roll', turns: parts.length * 0.5, startMs: parts[0].startMs, parts });
+
+function segmentedRun(lessonId) {
+  const run = createRun(lessonById(lessonId), { W, D });
+  /* High enough for the take off and the lesson's minimum height. */
+  const t = hover(run, 0, 400, [80, 60, 8], { height: 8 });
+  return { run, t };
+}
+
+test('segmented: half, a stop, then the other half (two separate tricks) is a segmented roll', () => {
+  const { run, t } = segmentedRun('6-3');
+  run.trick(named('1/2 Roll', half(1, 9022, 9399)));
+  run.trick(named('1/2 Roll', half(1, 10038, 10402)));
+  hover(run, t, 50, [80, 60, 8], { height: 8 });
+  assert.equal(run.status().phase, 'complete');
+});
+
+test('segmented: the second half rolled out of, as the recogniser reports it, still counts', () => {
+  /* What a pilot flies: half, a stop, half, then the roll back to level. The
+   * recogniser calls the first "1/2 Roll" and pairs the second with the roll
+   * out, "Invert Rewind". These are the rig's real numbers for lesson 6-3. */
+  const { run, t } = segmentedRun('6-3');
+  run.trick(named('1/2 Roll', half(1, 9022, 9399)));
+  run.trick(named('Invert Rewind', half(1, 10038, 10402), half(-1, 10879, 10990)));
+  hover(run, t, 50, [80, 60, 8], { height: 8 });
+  assert.equal(run.status().phase, 'complete');
+});
+
+test('segmented: the recogniser\'s own pair, the same way round', () => {
+  const { run, t } = segmentedRun('6-3');
+  run.trick(named('Segmented Flips/Rolls', half(1, 9022, 9399), half(1, 10038, 10402)));
+  hover(run, t, 50, [80, 60, 8], { height: 8 });
+  assert.equal(run.status().phase, 'complete');
+});
+
+test('segmented: a half back the way it came is not a segmented roll', () => {
+  const { run, t } = segmentedRun('6-3');
+  run.trick(named('1/2 Roll', half(1, 9022, 9399)));
+  run.trick(named('1/2 Roll', half(-1, 10038, 10402)));
+  hover(run, t, 50, [80, 60, 8], { height: 8 });
+  assert.equal(run.status().phase, 'flying');
+});
+
+test('segmented: no stop between the halves is not a segmented roll', () => {
+  const { run, t } = segmentedRun('6-3');
+  run.trick(named('1/2 Roll', half(1, 9022, 9399)));
+  run.trick(named('1/2 Roll', half(1, 9450, 9800)));
+  hover(run, t, 50, [80, 60, 8], { height: 8 });
+  assert.equal(run.status().phase, 'flying');
+});
+
+test('segmented: an invert rewind is the second half back the way it came', () => {
+  const { run, t } = segmentedRun('6-5');
+  run.trick(named('Invert Rewind', half(1, 9022, 9399), half(-1, 10038, 10400)));
+  hover(run, t, 50, [80, 60, 8], { height: 8 });
+  assert.equal(run.status().phase, 'complete');
+  const same = segmentedRun('6-5');
+  same.run.trick(named('Segmented Flips/Rolls', half(1, 9022, 9399), half(1, 10038, 10400)));
+  hover(same.run, same.t, 50, [80, 60, 8], { height: 8 });
+  assert.equal(same.run.status().phase, 'flying');
+});
+
 test('orbit: two turns inside the band, not outside it', () => {
   const run = createRun(lessonById('3-4'), { W, D });
   const c = [80, 86];

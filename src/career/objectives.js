@@ -416,17 +416,38 @@ const JUDGES = {
         return stop >= stopMin && stop <= stopMax && ((o.mode ?? 'same') === 'same' ? same : !same);
       };
       const high = (p) => o.minHeight == null || !ctx.heightAt || ctx.heightAt(p.startMs ?? t.startMs) >= o.minHeight;
-      if (halves.length >= 2) {
-        /* The recogniser put the pair together itself: its own stall rule
-         * already decided the stop, so only the direction is asked. */
-        const a = halves[0];
-        const b = halves[1];
+      /*
+       * THE HALVES IN ORDER: the one kept from the last trick, then this
+       * trick's own. The recogniser decides what a trick is by its own
+       * stall rule, so a pilot who flies half a roll, a clear stop, the
+       * other half and then rolls out gets "1/2 Roll" and then a trick
+       * made of the second half and the roll out, with the pair split
+       * across the two. Any two neighbours in the sequence that fit are a
+       * segmented roll. Two halves inside one trick are the recogniser's
+       * own pair (its stall rule already decided the stop, so only the
+       * direction is asked); a half from the last trick is checked for its
+       * stop here.
+       */
+      const kept = s.half ? [s.half] : [];
+      const seq = [...kept, ...halves];
+      const wantSame = (o.mode ?? 'same') === 'same';
+      for (let i = 0; i + 1 < seq.length; i += 1) {
+        const a = seq[i];
+        const b = seq[i + 1];
+        const joined = i >= kept.length;
         const same = Math.sign(a.dir) === Math.sign(b.dir);
-        if (((o.mode ?? 'same') === 'same' ? same : !same) && high(a)) {
+        if ((joined ? wantSame === same : fits(a, b)) && high(a)) {
           s.done = true;
           s.detail = '';
           return true;
         }
+      }
+      if (halves.length >= 2) {
+        /* A pair that was not the right way round: start again from this
+         * trick's last half, so the next one can pair with it. */
+        s.half = halves[halves.length - 1];
+        s.detail = '';
+        return true;
       }
       if (halves.length === 1 && Array.isArray(t.parts) && t.parts.length === 1) {
         const h = halves[0];

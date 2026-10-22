@@ -125,16 +125,18 @@ export const MAPS = [
   },
   /*
    * JOSHUA BARDWELL'S HOUSE, on the owner's ask of 21 October 2026: the
-   * house and yard of Joshua Bardwell, outside only, rebuilt from stills
-   * of Joshua's videos at life size and flown on the five inch, "no need to
-   * blow it up to make it feel like a whoop map". Built by the same
-   * pipeline (src/maps/bardwell/) and, like the houses, off the board.
+   * house and yard of Joshua Bardwell, outside only, at life size and
+   * flown on the five inch, "no need to blow it up to make it feel like a
+   * whoop map". Rebuilt the same day from the layout of the Uncrashed
+   * Workshop map of it the owner sent, when the first build from stills
+   * was wrong. Built by the same pipeline (src/maps/bardwell/) and, like
+   * the houses, off the board.
    */
   {
     id: 'bardwell',
     name: "Joshua Bardwell's house",
     mode: 'freestyle',
-    note: "Joshua Bardwell's house, flown on a five inch: the log house and its porch, the courtyard and gazebo, the barn, the drive, the field and the pines.",
+    note: "Joshua Bardwell's house, flown on a five inch: the brick house and its porch, the woodshed, the pen, the drive, the field's cages and the race's gates through all of it, over the ridge and back.",
     buildMs: MAP_BUILD_MS.bardwell,
     load: () => import('./bardwell/index.js'),
   },

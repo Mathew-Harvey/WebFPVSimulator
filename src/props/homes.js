@@ -119,26 +119,31 @@ export const MATERIALS = {
   headsPatio: { c: 0xb86a50, tint: 0x6a4a66 },
   headsMaple: { c: 0x7c2a40, tint: 0x4a2a50 },
   headsPurple: { c: 0x4c3240, tint: 0x342840 },
-  /* Joshua Bardwell's house (src/maps/bardwell/), outside only, from its
-   * stills: the dark stained logs and their pale chinking, the green
-   * shingle roof, the porch's boards, the brick pavers, the gazebo's dark
-   * hardtop and its brown posts, the barn's weathered boards and rusty
-   * roof, the long building's red brown siding and orange roof, the blue
-   * shed roof, the gravel and the field's winter grass. */
-  bardwellLog: { c: 0x5a3f2c, tint: 0x3a2e40 },
-  bardwellChink: { c: 0xcbbfa6, tint: 0x7f7894 },
-  bardwellShingle: { c: 0x52675b, tint: 0x34405a },
-  bardwellPorch: { c: 0x8a6a4a, tint: 0x54485c },
-  bardwellPaver: { c: 0x8c5a4a, tint: 0x5a4462 },
-  bardwellGazebo: { c: 0x3c4650, tint: 0x2c3046 },
-  bardwellPost: { c: 0x5e4433, tint: 0x3c3246 },
-  bardwellBarn: { c: 0x8f8a84, tint: 0x5a5672 },
-  bardwellRust: { c: 0x9a4a32, tint: 0x5a3a4e },
-  bardwellSiding: { c: 0x6e3a2c, tint: 0x46304a },
-  bardwellOrange: { c: 0xd98c4a, tint: 0x7a5a62 },
-  bardwellBlue: { c: 0x6f9fd0, tint: 0x45577a },
-  bardwellGravel: { c: 0xa89f90, tint: 0x6a6480 },
-  bardwellDryGrass: { c: 0x86b04e, tint: 0x6a6070 },
+  /* Joshua Bardwell's house (src/maps/bardwell/), outside only, from the
+   * Uncrashed Workshop map of it and its screenshots: the cream brick and
+   * its mortar, the orange shingle roof and its courses, the dark split
+   * rails, the gravel and the dirt, the woodshed's weathered planks and its
+   * timber frame, the firewood and its cut ends, the lean-to's tin, the
+   * practice cages' black steel, the race's pink gates and yellow
+   * inflatables, the bright bushes and the terracotta pots. Every other
+   * colour it draws is one of the above. */
+  bardwellBrick: { c: 0xe2d2a6, tint: 0x8f88a6 },
+  bardwellMortar: { c: 0xc8b88c, tint: 0x7f7894 },
+  bardwellShingle: { c: 0xd9963c, tint: 0x7a5a62 },
+  bardwellCourse: { c: 0xb2732c, tint: 0x6a4a5a },
+  bardwellFence: { c: 0x5a3e2a, tint: 0x3a2e40 },
+  bardwellGravel: { c: 0xaaa394, tint: 0x6a6480 },
+  bardwellDirt: { c: 0x8c7c62, tint: 0x56506a },
+  bardwellPlank: { c: 0x7f7b75, tint: 0x4f4c64 },
+  bardwellTimber: { c: 0x6a5846, tint: 0x40364c },
+  bardwellFirewood: { c: 0x8a6544, tint: 0x4f3e4c },
+  bardwellLogEnd: { c: 0xc9a777, tint: 0x7a6878 },
+  bardwellTin: { c: 0xb2ada4, tint: 0x6a6680 },
+  bardwellCube: { c: 0x2b2f36, tint: 0x22242f },
+  bardwellGate: { c: 0xe0479e, tint: 0x7a3a6e },
+  bardwellYellow: { c: 0xf2c230, tint: 0x8a7050 },
+  bardwellBush: { c: 0x6c9e45, tint: 0x3f5a5a },
+  bardwellPot: { c: 0xb3613f, tint: 0x6a4a5a },
 };
 
 /*

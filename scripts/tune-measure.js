@@ -7,7 +7,7 @@
  * Usage, from the simulator root:
  *   node scripts/tune-measure.js [--airframe=5inch|whoop65] [--sweep=air|kv]
  *
- *   --sweep=air   Air grip, 50 to 150 percent, through sim_set_air.
+ *   --sweep=air   Air grip, 50 to 175 percent, through sim_set_air.
  *   --sweep=kv    Motor power, 80 to 120 percent, through sim_set_motor_kv.
  *                 Reports "not in this build" on a module without it.
  *
@@ -260,7 +260,7 @@ async function punch(air, kv, hover) {
 }
 
 const pcts = SWEEP === 'air'
-  ? [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150]
+  ? [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 175]
   : [80, 85, 90, 95, 100, 105, 110, 115, 120];
 
 console.log(`\n${SWEEP === 'air' ? 'AIR GRIP' : 'MOTOR POWER'} on the ${af.short}, gravity ${GRAVITY}, off dist/sim.wasm\n`);

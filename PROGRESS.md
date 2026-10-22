@@ -71643,6 +71643,15 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-22 13:15Z: "Push to main" (Bardwell's roaming goats, PR 125). Fast forward onto main from c4d24f6, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
 
+## 2026-10-22 | shell | Air grip reaches 175 (draft PR)
+
+- Ask: the owner, 13:54:21Z on 2026-10-22: "adjust the gripyness slider, so that i have access to more grippyness basically, increase default 15% to allow for more grip at the far end". Asked on a card whether the five inch default should rise too; at 13:58:08Z he chose "Top end only, default stays 110".
+- Changed: `AIR_GRIP_MAX` 150 to 175 in src/share/tune.js (about 15 percent more at the top, on the slider's steps of five). sim_set_air takes up to 2.0, so the module, its ABI and the build are untouched. Defaults unchanged (five inch 110, whoop 100). The board's band moves with it in the same change (board PR, deploys first): a tune sent at 155 to 175 is refused until it does.
+- Measured by `node scripts/tune-measure.js --sweep=air` (now 160 and 175 in the sweep), five inch: at 150 it coasts 20 to 10 m/s over 18.0 m, flat out 113 km/h; at 175 over 15.5 m, flat out 99 km/h. Hover unchanged at 0.350 of stick.
+- Latency: none. A constant in a slider's range; no new call, no frame work, the plant's arithmetic is the same at any scale.
+- Checked: `tune:selftest` 67 of 67 (the band check and the board refusal now read 175 and AIR_GRIP_MAX + 5); `seat:selftest` 35 of 35; `check:tune --no-flight` all pass on the real page. Not run: `npm run verify`, no physics, ABI or build change. Nobody has flown it.
+- Pushed: the owner wrote "push to main" at 14:05:58Z on 2026-10-22 in this thread. Board main fast-forwarded to 9efd34a first, then this.
+
 ## 2026-10-22 | map | Fly under the parked cars in Heads' yard, and a 90% hidden under one (branch only)
 
 - The ask, 13:38Z, relayed: "you need to be able to fly under the parked cars in Heads' yard... good spot to hide a 90% too".
@@ -71656,4 +71665,4 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: draw calls flat (163 meshes on both, mesh by mesh, headless); triangles +2 (the patch, in the existing `heads logos` mesh). Physics: 3,258 to 3,356 shapes (+14 a car), the worst step anywhere still gathers 186; a step under Heads' car gathers 62 where it gathered 48. Hovering beside the car in Node, 9.4 to 10.6 us a step against 8.7 to 11.0 on main, three runs each: inside the noise.
 - Also: `lint:preload` was stale on main 8b754bc (`src/maps/bardwell/goats.js` missing from `src/fresh.js`); regenerated here.
 - Run: `check:heads` (all passed), `check:house`, `check:props`, `check:world-golden`, `check:world-town`, `check:bardwell`, `check:dan`, `check:fresh`, `lint:boot`, `lint:preload`, `lint:nouns`, `lint:scale`, `lint:3d`; shots before and after (`/mnt/project-files/heads-cars/`). Not run: `npm run verify`. Not flown by a pilot.
-- What went wrong: my first plant flight went north along the gap, not east under the car, and passed on main too; the sim's axes are not the plan's (sim x is south to north here). Caught because main also passed, and the flight was turned to a roll before it was believed.
+- What went wrong: my first plant flight went north along the gap, not east under the car, and passed on main too; the sim's axes are not the plan's (sim x is south to north here). Caught because main also passed, and the flight was turned to a roll before it was believed. Merging main's Air grip 175 in, a script that failed on a second marker line still let the merge commit go with PROGRESS.md's conflict markers in it; caught before the push and the merge commit amended.

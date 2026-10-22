@@ -71630,3 +71630,13 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Run: `bardwell-check` (all passed), `check:house`, `lint:nouns`, coplanar scan (the sticker pair is gone). Not run: `npm run verify`, `shots.js`. Not flown.
 
 - Owner's word, 2026-10-22 12:58Z: "push to main" (Bardwell's white flashes: the lean-to sticker off the weBLEEDfpv decal, sticker polygonOffset, overlap guard; PR 124). Fast forward onto main from 0038953, nothing had landed since. Not flown, verify and shots not run.
+
+## 2026-10-22 | map | Roaming goats on Bardwell's field (branch only)
+
+- The ask, 12:50Z: "in the bardwell map add roaming goats that run from you so you can chase them, if you get them you get a boom shakla sound".
+- What: five goats (`src/maps/bardwell/goats.js`), one InstancedMesh with the map's cel toon, pelts by instance colour. They graze in the field's pasture (plan x 52 to 86, y -46 to 34, round the two cages), run at 7.5 m/s directly away when the craft is within 24 m with a zigzag and a push in from the fence and cages, and calm at 42 m. The craft within 1.3 m of one, under 2.4 m up, catches it: it hops and vanishes, and comes back 4 s later 25 m or more from the craft. A catch cues `goat`, which plays Nick Burns' Boom Shakala (`assets/voices/nb/boom.mp3`, reached by `nb/boom` in the jb set's cues). Nothing is solid: render only, no plant or collider change.
+- Moved by the clock the map is handed (not frame time); the clock going back resets them. Seeded streams, so the wandering is the same every run.
+- Clip: fetched (about 10 kB) the first time a goat runs from the craft, so a pilot who never goes to the field fetches nothing. `ClipVoice.warmCue` and a `warm:` cue prefix, `goat` rank 2 and a 1.5 s cooldown; a sticker find still cuts it.
+- Latency: draw calls +1 (85 to 86, 81 to 82, 104 to 105, 103 to 104 in four views), triangles +840 (5 x 168), no shadow pass cost (castShadow off), five small steps and five matrix writes a frame. Headless SwiftShader proxies, not a GPU. Preload lists regenerated (`gen-preload`, one more module).
+- Run: a browser chase simulation (craft at 15 m/s after a goat: first catch at 3 s, goats stay in the pasture, the cue fires), `clips-check` (extended for cross set names), `check:house`, `check:fresh`, `lint:preload`, `lint:nouns`, `bardwell-check`, a shell shot showing the goats. Not run: `npm run verify`. Not flown.
+- Not done: the goats have no ink outline in the shot (they read plainer than the trees), no shadow, and the catch is a pass through, not a touch. Bleats not recorded.

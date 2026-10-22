@@ -296,5 +296,6 @@ export const MAP_PRELOAD = {
     'maps/bardwell/logos.js',
     'maps/bardwell/stickers.js',
     'maps/stickermesh.js',
+    'maps/bardwell/goats.js',
   ],
 };

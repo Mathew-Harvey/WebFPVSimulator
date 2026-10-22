@@ -48,11 +48,15 @@ const BASE = new URL('../../assets/voices/', import.meta.url).href;
 export const CLIP_SETS = {
   /* Joshua Bardwell: every find. */
   jb: {
+    /* A goat caught on the field: Nick Burns' Boom Shakala (a name with a
+     * slash is another set's file), fetched when a goat first runs. */
+    cues: { goat: 'nb/boom' },
     sticker: [
       'almost-fit', 'chonky', 'controlled-load', 'evil-laugh', 'fake-laugh', 'great-package',
       'just-a-meme', 'sally', 'spam-in-chat', 'that-would-be-great', 'uwu',
     ],
     says: {
+      'nb/boom': 'Boom Shakala!',
       'almost-fit': 'It had just fit in there two years ago.',
       chonky: 'Chonky boy.',
       'controlled-load': 'A very controlled load.',
@@ -97,11 +101,11 @@ export const CLIP_SETS = {
  * whatever is playing; a cue that answers the craft cuts a line he was
  * saying on his own clock, and is not cut by one.
  */
-const PRIORITY = { sticker: 3, crash: 2, hit: 2, landed: 2, near: 1 };
+const PRIORITY = { sticker: 3, goat: 2, crash: 2, hit: 2, landed: 2, near: 1 };
 
 /* Quiet, per cue, ms: a crash laugh runs seven seconds, and an auto reset
  * after a crash can crash again in two. */
-const COOLDOWN_MS = { crash: 20000, hit: 4000, landed: 4000, near: 2500 };
+const COOLDOWN_MS = { goat: 1500, crash: 20000, hit: 4000, landed: 4000, near: 2500 };
 
 export class ClipVoice {
   /* `make` builds an audio element from a url; the node selftest hands in a
@@ -157,7 +161,7 @@ export class ClipVoice {
     let el = this.els.get(key);
     if (!el && this.make) {
       try {
-        el = this.make(`${BASE}${set}/${name}.mp3`);
+        el = this.make(name.includes('/') ? `${BASE}${name}.mp3` : `${BASE}${set}/${name}.mp3`);
         el.preload = 'auto';
         this.els.set(key, el);
       } catch (e) {
@@ -179,6 +183,15 @@ export class ClipVoice {
     }
   }
 
+  /* Ahead of a cue: fetch its clip now (a few kilobytes), play nothing. */
+  warmCue(set, cue) {
+    const def = CLIP_SETS[set];
+    const name = this.usable && def && def.cues ? def.cues[cue] : null;
+    if (name) {
+      this.element(set, name);
+    }
+  }
+
   /*
    * Play a cue from a set at `volume` from 0 to 1: 'sticker' for a find, or
    * one of the set's named cues. Returns the clip name when one started.
@@ -186,6 +199,10 @@ export class ClipVoice {
   play(set, cue, volume) {
     const def = CLIP_SETS[set];
     if (!this.usable || !def || !(volume > 0)) {
+      return null;
+    }
+    if (cue.startsWith('warm:')) {
+      this.warmCue(set, cue.slice(5));
       return null;
     }
     const nav = globalThis.navigator;

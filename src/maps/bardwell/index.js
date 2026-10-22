@@ -51,6 +51,7 @@ import {
 } from './logos.js';
 import { placeStickers, paintSticker, STICKER_WORD } from './stickers.js';
 import { stickerMesh } from '../stickermesh.js';
+import { makeGoats } from './goats.js';
 import { partnerSignReady } from '../../art/partnermark.js';
 import { paintMaterial } from '../../art/stf.js';
 import { stfKey } from '../built/egg.js';
@@ -236,6 +237,25 @@ export async function buildMap(shell, onProgress, options) {
     })),
   ];
   map.clips = 'jb';
+  /* The goats in the field (./goats.js): one instanced mesh, moved on the
+   * clock the map is handed, and a catch cues Nick's "Boom Shakala!" through
+   * the map's onCue, which the shell sets once the map is live. */
+  const goats = makeGoats(
+    () => (shell.quad ? shell.quad.position : null),
+    (name) => {
+      if (typeof map.onCue === 'function') {
+        map.onCue(name);
+      }
+    },
+  );
+  map.scene.add(goats.group);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
+  const anim = map.updateAnim;
+  map.updateAnim = (step) => {
+    anim(step);
+    goats.update(step);
+  };
+  const stats = map.stats;
+  map.stats = () => ({ ...stats(), goats: goats.stats() });
   return map;
 }

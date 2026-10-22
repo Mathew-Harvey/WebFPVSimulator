@@ -71640,3 +71640,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: draw calls +1 (85 to 86, 81 to 82, 104 to 105, 103 to 104 in four views), triangles +840 (5 x 168), no shadow pass cost (castShadow off), five small steps and five matrix writes a frame. Headless SwiftShader proxies, not a GPU. Preload lists regenerated (`gen-preload`, one more module).
 - Run: a browser chase simulation (craft at 15 m/s after a goat: first catch at 3 s, goats stay in the pasture, the cue fires), `clips-check` (extended for cross set names), `check:house`, `check:fresh`, `lint:preload`, `lint:nouns`, `bardwell-check`, a shell shot showing the goats. Not run: `npm run verify`. Not flown.
 - Not done: the goats have no ink outline in the shot (they read plainer than the trees), no shadow, and the catch is a pass through, not a touch. Bleats not recorded.
+
+- Owner's word, 2026-10-22 13:15Z: "Push to main" (Bardwell's roaming goats, PR 125). Fast forward onto main from c4d24f6, nothing had landed since. Not flown, verify not run; the owner chose to fly it.

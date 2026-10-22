@@ -127,12 +127,10 @@ const LAND_MS = 600;
 const LAND_R = PATIO_TABLE.r + 0.05;
 const LAND_UP = 0.04;
 const LAND_SPEED = 0.25;
-/* How near the camera has to be for his own clock's lines to be heard,
- * real metres. */
-const HEAR_R = 12;
-/* Which cue each of his clock's lines is (NICK_LINES' order); none for the
- * two without a recording. */
-const LINE_CUES = ['catfish', 'boom', null, null];
+/* Within this of him, real metres, the craft gets one of his other
+ * recorded lines at random; it is armed again beyond FAR_R. */
+const CLOSE_R = 1;
+const FAR_R = 2;
 /* What the harness is told each answer is. */
 const ANSWERS = new Map([[CATFISH, 'hit'], [THANKS, 'close'], [LANDED, 'landed'], [SIX_SEVEN, 'landed, again']]);
 
@@ -307,12 +305,11 @@ function span(attr) {
  *
  * HIS VOICE, the owner's recordings of 2026-10-22 (src/render/clips.js).
  * `cue(name)` is how the shell hears of them, and it is all he does about
- * sound: a hit says 'hit' (Holy catfish, what's going on?), a landing on his
- * table 'landed' (Get it just right), and his own clock's "Holy Catfish!"
- * and "Boom Shakala!" say 'catfish' and 'boom' when the camera is within
- * HEAR_R of him. The crash laugh is the shell's, off a hard impact anywhere
- * on the map. The recordings with no moment of their own are the sticker
- * hunt's. His other two lines have no recording and stay silent.
+ * sound: a hit says 'hit' (Holy catfish, what's going on?, and only then),
+ * a landing on his table 'landed' (Get it just right), and the craft within
+ * CLOSE_R of him says 'near', one of his other lines at random. His own
+ * clock's lines are balloons only. The crash laugh is the shell's, off a
+ * hard impact anywhere on the map, and a sticker find is always "Stickers".
  */
 export function makeNick(camera, craftAt = () => null, cue = () => {}) {
   const { OX, OZ, S } = FRAME;
@@ -409,8 +406,7 @@ export function makeNick(camera, craftAt = () => null, cue = () => {}) {
   let next = null;
   let nextIn = 0;
   let landings = 0;
-  /* When his clock's current line began, for the line's cue. */
-  let lineStart = Number.NaN;
+  let armClose = true;
 
   /* Bone by bone, each bone's matrix in locals, and only the bones whose
    * matrix changed since they were last moved: seated, his legs hold still
@@ -573,6 +569,9 @@ export function makeNick(camera, craftAt = () => null, cue = () => {}) {
     if (dist > REARM_NEAR) {
       armNear = true;
     }
+    if (dist > FAR_R) {
+      armClose = true;
+    }
     if (armHit && r < HIT_R && above === 0) {
       react = CATFISH;
       reactAge = 0;
@@ -580,12 +579,19 @@ export function makeNick(camera, craftAt = () => null, cue = () => {}) {
       armHit = false;
       armNear = false;
       hits += 1;
+      armClose = false;
       cue('hit');
     } else if (armNear && dist < NEAR_R && react !== CATFISH && !landing()) {
       react = THANKS;
       reactAge = 0;
       armNear = false;
       closes += 1;
+    }
+    /* One of his other recorded lines, when the craft passes within a metre
+     * (src/render/clips.js picks which, at random). */
+    if (armClose && dist < CLOSE_R && react !== CATFISH) {
+      armClose = false;
+      cue('near');
     }
   }
 
@@ -628,15 +634,6 @@ export function makeNick(camera, craftAt = () => null, cue = () => {}) {
     setFace(look);
 
     const dist = cam.distanceTo(mesh.position);
-    if (pose.line >= 0) {
-      const began = clock - pose.lineAge;
-      if (!(Math.abs(began - lineStart) < 100)) {
-        lineStart = began;
-        if (LINE_CUES[pose.line] && !react && !next && dist < S * HEAR_R) {
-          cue(LINE_CUES[pose.line]);
-        }
-      }
-    }
     pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(pm);
     sphere.center.set(mesh.position.x, mesh.position.y + S * 1.0, mesh.position.z);

@@ -71611,3 +71611,9 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-22 12:04Z: "both josh and nick are happy with this". NOTICE updated to say so. Latency for the stickers: +1 draw call and 12 quads (48 vertices, 24 triangles) on Bardwell's house only, the same cost as Nick's; checked by the diff and a headless load (12 stickers, voice jb, one clip warmed), not on a GPU. Not run this turn after the change: `npm run verify`, `shots.js` pictures beyond one frame that showed a sticker on the porch wall. Not flown.
 
 - Owner's word, 2026-10-22 12:10Z: "push to main" (the voice clips and Bardwell's twelve stickers, PR 123). Fast forward onto main from ed6ed69, nothing had landed since. Not flown, verify and shots not run; the owner chose to fly it.
+
+## 2026-10-22 | audio | Nick's clips reassigned (branch only, after the first push to main)
+
+- The owner, 12:24Z: "in the nick burns map, when i get a sticker achievement, stay stiiickers, only say holy catfish line if i hit nick, then other lines randomly when i fly within 1 meter of him". Read as: a sticker find on his map always plays "Stickers"; "Holy catfish" only when the craft hits him (his own clock's catfish and Boom Shakala lines are balloons only now); within 1 m of him (and not a hit) one of his other lines plays at random: Boom, Beefy and thicc, Larger than calipers, Red shoes, Very robust, a shuffled bag, rearmed beyond 2 m. The crash laugh and "Get it just right" on his table are unchanged.
+- Code: `near` pool and cue in `src/render/clips.js` (`pickFrom`), `CLOSE_R` and `FAR_R` in `nickdraw.js` replacing the clock line cues. `check:clips` updated (all pass), `check:house` passes. Real shell, headless: the craft 0.6 m from him played "boom" with no hit counted.
+- Latency: no change, one compare per frame in place of the clock line one. Not flown, not run: `npm run verify`.

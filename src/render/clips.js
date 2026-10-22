@@ -68,12 +68,14 @@ export const CLIP_SETS = {
   },
   /* Nick Burns: the cues of his house, and the finds of its sticker hunt. */
   nb: {
-    sticker: ['stickers', 'beefy-thicc', 'calipers', 'red-shoes', 'robust'],
+    /* The owner, 2026-10-22: a sticker is always "Stickers"; Holy catfish
+     * only when he is hit; the other lines at random when the craft is
+     * within a metre of him. */
+    sticker: ['stickers'],
+    near: ['boom', 'beefy-thicc', 'calipers', 'red-shoes', 'robust'],
     cues: {
       crash: 'crash',
       hit: 'holy-catfish',
-      catfish: 'holy-catfish',
-      boom: 'boom',
       landed: 'just-right',
     },
     says: {
@@ -95,11 +97,11 @@ export const CLIP_SETS = {
  * whatever is playing; a cue that answers the craft cuts a line he was
  * saying on his own clock, and is not cut by one.
  */
-const PRIORITY = { sticker: 3, crash: 2, hit: 2, catfish: 1, landed: 2, boom: 1 };
+const PRIORITY = { sticker: 3, crash: 2, hit: 2, landed: 2, near: 1 };
 
 /* Quiet, per cue, ms: a crash laugh runs seven seconds, and an auto reset
  * after a crash can crash again in two. */
-const COOLDOWN_MS = { crash: 20000, hit: 4000, catfish: 6000, boom: 6000, landed: 4000 };
+const COOLDOWN_MS = { crash: 20000, hit: 4000, landed: 4000, near: 2500 };
 
 export class ClipVoice {
   /* `make` builds an audio element from a url; the node selftest hands in a
@@ -120,24 +122,32 @@ export class ClipVoice {
   /* The next clip of a set's sticker pool: a shuffled bag, refilled when
    * empty, and never the clip just played twice running. */
   pickSticker(set) {
-    const pool = CLIP_SETS[set] && CLIP_SETS[set].sticker;
+    return this.pickFrom(set, 'sticker');
+  }
+
+  /* The same shuffled bag for any of a set's pools ('sticker', 'near'). */
+  pickFrom(set, key) {
+    const pool = CLIP_SETS[set] && CLIP_SETS[set][key];
     if (!pool || !pool.length) {
       return null;
     }
-    let bag = this.bags.get(set);
+    const slot = `${set}:${key}`;
+    let bag = this.bags.get(slot);
     if (!bag || !bag.length) {
       bag = pool.slice();
       for (let i = bag.length - 1; i > 0; i -= 1) {
         const j = Math.floor(Math.random() * (i + 1));
         [bag[i], bag[j]] = [bag[j], bag[i]];
       }
-      const lastOne = this.upNext.get(`${set}:last`);
+      const lastOne = this.upNext.get(`${slot}:last`);
       if (bag.length > 1 && bag[bag.length - 1] === lastOne) {
         [bag[0], bag[bag.length - 1]] = [bag[bag.length - 1], bag[0]];
       }
-      this.bags.set(set, bag);
+      this.bags.set(slot, bag);
     }
-    return bag.pop();
+    const name = bag.pop();
+    this.upNext.set(`${slot}:last`, name);
+    return name;
   }
 
   /* The element for a clip, made on first ask. preload 'auto' is what
@@ -197,7 +207,8 @@ export class ClipVoice {
     if (cue === 'sticker') {
       name = this.upNext.get(set) || this.pickSticker(set);
       this.upNext.delete(set);
-      this.upNext.set(`${set}:last`, name);
+    } else if (cue === 'near') {
+      name = this.pickFrom(set, 'near');
     } else {
       name = def.cues ? def.cues[cue] : null;
     }

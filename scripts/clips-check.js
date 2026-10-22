@@ -47,7 +47,7 @@ function ok(cond, what) {
 /* 1. files */
 let total = 0;
 for (const [set, def] of Object.entries(CLIP_SETS)) {
-  const named = new Set([...def.sticker, ...Object.values(def.cues || {})]);
+  const named = new Set([...def.sticker, ...(def.near || []), ...Object.values(def.cues || {})]);
   const onDisk = new Set(fs.readdirSync(path.join(root, set)).map((f) => f.replace(/\.mp3$/, '')));
   ok([...named].every((n) => onDisk.has(n)), `${set}: every named clip is a file`);
   ok([...onDisk].every((n) => named.has(n)), `${set}: every file is named by a cue or the sticker pool`);
@@ -107,12 +107,14 @@ const base = globalThis.navigator;
   tick(20000);
   v.playing.el.paused = true;
   ok(v.play('nb', 'hit', 1) === 'holy-catfish', 'a hit plays Holy catfish');
-  ok(v.play('nb', 'boom', 1) === null, 'his own clock\'s line does not cut a hit');
+  ok(v.play('nb', 'near', 1) === null, 'a passing line does not cut a hit');
   ok(typeof v.play('nb', 'sticker', 1) === 'string' && CLIP_SETS.nb.sticker.includes(v.playing.name), 'a find cuts a cue and plays from the sticker pool');
   v.playing.el.paused = true;
   ok(v.play('nb', 'landed', 1) === 'just-right', 'a landing plays Get it just right');
   v.playing.el.paused = true;
-  ok(v.play('nb', 'boom', 1) === 'boom', 'his Boom Shakala line plays when nothing else is');
+  const near = v.play('nb', 'near', 1);
+  ok(CLIP_SETS.nb.near.includes(near), 'within a metre of him plays one of his other lines');
+  ok(v.play('nb', 'sticker', 1) === 'stickers', 'a sticker find on his map is always Stickers');
   ok(v.play('nb', 'nonsense', 1) === null, 'an unknown cue plays nothing');
 }
 

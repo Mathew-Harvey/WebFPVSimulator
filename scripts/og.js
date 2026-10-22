@@ -1,35 +1,32 @@
 /*
- * og.js: the share card, drawn by the thing it advertises.
+ * og.js: the share card, drawn in the simulator's own manga hand.
  *
  * Every link to webfpv.org posted anywhere renders a 1200 by 630 image, and
- * a made-up one would drift out of date the first time the world changed.
- * This one cannot: it is a frame of the real shell, rendered by the real
- * renderer, through scripts/shots.js, which is the same harness every
- * rendering bug in this project was found with.
+ * until 2026-10-22 the one the simulator and the board used was a frame of
+ * the race field under a plain wordmark, the look the product had before its
+ * menus became manga pages. This draws the card the product looks like now:
+ * paper, ink panels, and the wordmark and the panel captions lettered by
+ * src/ui/lettering.js, the very code the shell letters its titles with, so
+ * the card cannot drift from the hand.
  *
- * WHAT THE FRAME IS. The title screen on the race field, with the menu, the
- * chips and the body copy hidden so that only the wordmark and its subtitle
- * are left over the world. The camera is parked by hand at the numbers
- * below, off to the right of the course and low, so the lit start gate sits
- * centre with the parked quad in the near left and the flags and markers
- * running away behind it. Those numbers are the whole design: change them
- * and the card changes, so they live here rather than in somebody's shell
- * history.
+ * No dev text on it, by the owner's rule for anything a player reads.
  *
- * WHY THE MENU GOES AND THE WORDMARK STAYS. A share card is read at about
- * 500 px wide in a feed, next to a headline. The menu is six rows of text
- * that turn to mush at that size, and the paragraph about browser storage is
- * a sentence nobody reads twice. The wordmark survives the shrink, and it is
- * the one thing on the page that says which product this is.
+ * WHAT IT IS MADE OF. scripts/og.html draws it on a canvas from three
+ * pictures the shell already ships (assets/gate/race.jpg, assets/thumbs/city.jpg,
+ * assets/gate/whoop.jpg). This script serves the repo, opens that page in
+ * headless Chromium, and photographs the canvas as a JPEG: a JPEG because a
+ * card of flat ink and three pictures is about 150 kB that way and several
+ * times that as a PNG, and WhatsApp is reported to drop a preview over about
+ * 300 kB. The data a visitor's link costs somebody is the whole reason.
  *
  * REGENERATE, DO NOT EDIT, the same rule as the icons:
  *
- *     npm run gen:og                                  # this repo
+ *     npm run gen:og                                  # this repo, og.jpg
  *     node scripts/og.js . ../WebFPVSimulator-LeaderBoard/public
  *
- * Not the front door. Its card is its own first screen, drawn by its own
- * scripts/og.js since 2026-09-27, and a copy of this one over it would put
- * back the card its owner replaced.
+ * A directory named on the command line gets og.jpg, and the board's copy
+ * carries the board's own line under the wordmark. Not the front door: its
+ * card is its own first screen, drawn by its own scripts/og.js.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -47,80 +44,51 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { spawnSync } from 'node:child_process';
-import { mkdtemp, rm, copyFile, mkdir } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { openPage } from '../tests/lib/page.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /* Facebook, X and LinkedIn all read 1.91:1 and all crop anything else. */
 const W = 1200;
 const H = 630;
+const QUALITY = 84;
 
-/*
- * Everything in the overlay that is not the wordmark. `.brand-best` is the
- * lap chip, which says "No lap recorded yet" on a fresh browser and would
- * put that sentence on every share of the site.
- *
- * And everything the title has grown since this list was written, which is
- * scripts/gatecards.js's list without `.brand`: the gate's four cards
- * (2026-09-09), which a regeneration on 2026-10-07 photographed over the
- * whole field, the Patreon chip beside the beta chip, and the frame bars,
- * the music dock and the notes under the cards.
- */
-const HIDE = [
-  '.menu-stage', '.hint', '.lede', '.title-foot',
-  '.bug-chip', '.brand-best', '.keep-note', '.first-note', '.beta-note',
-  '.brand-patreon', '.gate-cards', '.gate-note', '.wiki-teaser', '.craft-showcase',
-  '.frame-top', '.frame-bot', '.music-dock',
-];
-
-/* Camera, then the point it looks at. Metres, world frame. */
-const CAM = [108.5, 1.4, 11, 104.6, 1.4, -6];
-
-const hide = `${JSON.stringify(HIDE)}.forEach((s) => document.querySelectorAll(s)`
-  + `.forEach((n) => { n.style.display = 'none'; }));`
-  + `const k = document.querySelector('.music-skip');`
-  + `if (k && k.parentElement) { k.parentElement.style.display = 'none'; }`
-  + `'hidden'`;
+/* The board's copy says what the board is for, in its own words. */
+const BOARD_LINE = 'Maps and Tracks, and the times flown on them.';
 
 const targets = (process.argv.slice(2).length ? process.argv.slice(2) : ['.'])
   .map((d) => resolve(root, d));
 
-const out = await mkdtemp(join(tmpdir(), 'webfpv-og-'));
-try {
-  const run = spawnSync('node', [
-    join(root, 'scripts/shots.js'),
-    `--out=${out}`,
-    `--w=${W}`,
-    `--h=${H}`,
-    /* Headless Chromium rasterises on the CPU, so boot would otherwise
-     * detect a slow machine and drop the preset, and the card would come out
-     * at a different quality depending on who regenerated it. */
-    '--graphics=high',
-    'until:!!window.__boot && window.__boot().frames > 2',
-    `eval:(() => { ${hide} })()`,
-    'wait:400',
-    `eval:JSON.stringify((() => { window.__setCam(${CAM.join(',')});`
-      + ' window.__ogFrame = window.__boot().frames; return "camera"; })())',
-    /* Frames, not milliseconds. __setCam takes effect on the next animation
-     * frame, and a wall clock wait would sometimes capture the frame before
-     * the camera moved. */
-    'until:window.__boot().frames > window.__ogFrame + 4',
-    'shot:og',
-  ], { cwd: root, stdio: 'inherit' });
-
-  if (run.status !== 0) {
-    throw new Error(`shots.js exited ${run.status}`);
+async function draw(query) {
+  const page = await openPage({
+    root, width: W, height: H, url: `/scripts/og.html${query}`,
+  });
+  try {
+    await page.until('window.__done === true', 30000);
+    if (page.errors.length) {
+      throw new Error(page.errors.join('\n'));
+    }
+    const shot = await page.cdp.send('Page.captureScreenshot', {
+      format: 'jpeg',
+      quality: QUALITY,
+      clip: {
+        x: 0, y: 0, width: W, height: H, scale: 1,
+      },
+    }, page.sessionId);
+    return Buffer.from(shot.data, 'base64');
+  } finally {
+    await page.close();
   }
+}
 
-  for (const dir of targets) {
-    await mkdir(dir, { recursive: true });
-    await copyFile(join(out, 'og.png'), join(dir, 'og.png'));
-    console.log(`og.png -> ${join(dir, 'og.png')}`);
-  }
-} finally {
-  await rm(out, { recursive: true, force: true });
+for (const dir of targets) {
+  const board = /LeaderBoard/i.test(dir);
+  const bytes = await draw(board ? `?line=${encodeURIComponent(BOARD_LINE)}&sub=${encodeURIComponent('Pick one, fly it, and see where you land.')}` : '');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'og.jpg'), bytes);
+  console.log(`og.jpg (${bytes.length} bytes) -> ${join(dir, 'og.jpg')}`);
 }

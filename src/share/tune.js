@@ -55,9 +55,11 @@ import { fullStickDeg, normaliseRates, ratesSummary } from '../../configs/rates.
  * the board holds the same four numbers for each (the Tunes section of its
  * src/validate.js). Widen one here and it widens there first.
  *
- * Air grip is 50 to 150 because sim_set_air accepts 0.5 to 2.0 and refuses
- * anything outside it, and a symmetric band round 100 is the one a pilot
- * reads without a manual. Motor power is 80 to 120 because the winding scale
+ * Air grip is 50 to 175. sim_set_air accepts 0.5 to 2.0 and refuses
+ * anything outside it. It was a symmetric 50 to 150 until 2026-10-22, when
+ * the owner asked for "more grippyness ... at the far end": 8 of the 37 five
+ * inch pilots who sent a better tune had it pinned at 150 (see TUNE_DEFAULTS
+ * below), so the top end moved out by 25, still inside the module's 2.0. Motor power is 80 to 120 because the winding scale
  * is a power law: at 120 the motors make 44 percent more power from the same
  * pack, which is already a different quad, and the module refuses anything
  * outside 0.8 to 1.2 (sim_set_motor_kv).
@@ -69,9 +71,9 @@ import { fullStickDeg, normaliseRates, ratesSummary } from '../../configs/rates.
  * level speed. Hover does not move at all, which is why the slider is safe to
  * leave on a pilot's memorised throttle.
  *
- *                        50       100      150
- *   five inch carry      54.8 m   26.9 m   18.0 m   (20 m/s to 10 m/s)
- *   five inch flat out   221      152      113 km/h
+ *                        50       100      150      175
+ *   five inch carry      54.8 m   26.9 m   18.0 m   15.5 m   (20 m/s to 10 m/s)
+ *   five inch flat out   221      152      113      99 km/h
  *   whoop carry          18.8 m   9.4 m    6.4 m    (12 m/s to 6 m/s)
  *   whoop flat out       115      81       61 km/h
  *
@@ -81,7 +83,7 @@ import { fullStickDeg, normaliseRates, ratesSummary } from '../../configs/rates.
  * vertically, and the vertical axis is gravity's, not the air's.
  */
 export const AIR_GRIP_MIN = 50;
-export const AIR_GRIP_MAX = 150;
+export const AIR_GRIP_MAX = 175;
 export const AIR_GRIP_STEP = 5;
 export const AIR_GRIP_STOCK = 100;
 export const MOTOR_KV_MIN = 80;

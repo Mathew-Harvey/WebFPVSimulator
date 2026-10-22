@@ -100,13 +100,13 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 /* The bands                                                           */
 /* ------------------------------------------------------------------ */
 
-check('air grip band is 50 to 150 in fives, stock 100',
-  AIR_GRIP_MIN === 50 && AIR_GRIP_MAX === 150 && AIR_GRIP_STEP === 5 && AIR_GRIP_STOCK === 100);
+check('air grip band is 50 to 175 in fives, stock 100',
+  AIR_GRIP_MIN === 50 && AIR_GRIP_MAX === 175 && AIR_GRIP_STEP === 5 && AIR_GRIP_STOCK === 100);
 check('motor power band is 80 to 120 in fives, stock 100',
   MOTOR_KV_MIN === 80 && MOTOR_KV_MAX === 120 && MOTOR_KV_STEP === 5 && MOTOR_KV_STOCK === 100);
 
 check('clamp snaps to the step and holds the ends',
-  clampAirGrip(47) === 50 && clampAirGrip(52) === 50 && clampAirGrip(53) === 55 && clampAirGrip(999) === 150
+  clampAirGrip(47) === 50 && clampAirGrip(52) === 50 && clampAirGrip(53) === 55 && clampAirGrip(999) === 175
   && clampMotorKv(79) === 80 && clampMotorKv(103) === 105 && clampMotorKv(-5) === 80,
   'air 47,52,53,999 and kv 79,103,-5');
 check('clamp turns anything that is not a number into stock, a null included',
@@ -440,7 +440,7 @@ if (!board) {
     check('the board refuses a tune that does not name its aircraft', Boolean(none.error), none.error || 'accepted');
     const noSim = board.inspect({ ...wire(ticket()), sim: undefined });
     check('the board refuses a tune that does not name its physics', Boolean(noSim.error), noSim.error || 'accepted');
-    const outside = board.inspect(wire(ticket({ airGrip: 155 })));
+    const outside = board.inspect(wire(ticket({ airGrip: AIR_GRIP_MAX + AIR_GRIP_STEP })));
     check('the board refuses a slider outside its band, so the clamp here and there agree', Boolean(outside.error), outside.error || 'accepted');
   }
 }

@@ -71642,3 +71642,11 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Not done: the goats have no ink outline in the shot (they read plainer than the trees), no shadow, and the catch is a pass through, not a touch. Bleats not recorded.
 
 - Owner's word, 2026-10-22 13:15Z: "Push to main" (Bardwell's roaming goats, PR 125). Fast forward onto main from c4d24f6, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
+
+## 2026-10-22 | shell | Air grip reaches 175 (draft PR)
+
+- Ask: the owner, 13:54:21Z on 2026-10-22: "adjust the gripyness slider, so that i have access to more grippyness basically, increase default 15% to allow for more grip at the far end". Asked on a card whether the five inch default should rise too; at 13:58:08Z he chose "Top end only, default stays 110".
+- Changed: `AIR_GRIP_MAX` 150 to 175 in src/share/tune.js (about 15 percent more at the top, on the slider's steps of five). sim_set_air takes up to 2.0, so the module, its ABI and the build are untouched. Defaults unchanged (five inch 110, whoop 100). The board's band moves with it in the same change (board PR, deploys first): a tune sent at 155 to 175 is refused until it does.
+- Measured by `node scripts/tune-measure.js --sweep=air` (now 160 and 175 in the sweep), five inch: at 150 it coasts 20 to 10 m/s over 18.0 m, flat out 113 km/h; at 175 over 15.5 m, flat out 99 km/h. Hover unchanged at 0.350 of stick.
+- Latency: none. A constant in a slider's range; no new call, no frame work, the plant's arithmetic is the same at any scale.
+- Checked: `tune:selftest` 67 of 67 (the band check and the board refusal now read 175 and AIR_GRIP_MAX + 5); `seat:selftest` 35 of 35; `check:tune --no-flight` all pass on the real page. Not run: `npm run verify`, no physics, ABI or build change. Nobody has flown it.

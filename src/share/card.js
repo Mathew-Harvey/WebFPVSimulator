@@ -5,7 +5,7 @@
  * WHAT IT IS. One 1200 by 630 frame of the thing, in the real renderer,
  * built by src/share/orbit.html from the board's own copy and seen from
  * above and to one side of its middle, with the WebFPV wordmark over the
- * top left exactly as og.png has it over the race field. So a pasted link
+ * top left the way the default card (og.jpg) lays it out. So a pasted link
  * to somebody's track shows their whole track, and says whose product it
  * is in the same letters the title screen says it in. A RaceGOW room is
  * seen from inside, the way the board's sheet sees it.
@@ -94,7 +94,7 @@ const UI_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
  * weight, 0.08em of letter spacing, WEB in cream and FPV in sakura, a hard
  * dark shadow three pixels down and right and a soft one ten pixels under.
  * 96 px is what the title's clamp comes to at 1200 wide, which is what it
- * was when scripts/og.js took og.png, so the two cards carry one mark at
+ * was when scripts/og.js took the old og.png, so the two cards carry one mark at
  * one size in one place.
  *
  * One glyph at a time rather than with ctx.letterSpacing, which Safari only

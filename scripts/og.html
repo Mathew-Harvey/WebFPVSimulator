@@ -1,0 +1,147 @@
+<!doctype html>
+<!--
+  og.html: the share card's page, drawn by scripts/og.js and photographed.
+
+  This file is part of WebFPVSimulator.
+
+  WebFPVSimulator is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or (at
+  your option) any later version.
+
+  WebFPVSimulator is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY, without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+-->
+<meta charset="utf-8" />
+<title>WebFPV card</title>
+<style>html, body { margin: 0; background: #f7f0dc; } canvas { display: block; }</style>
+<canvas id="c" width="1200" height="630"></canvas>
+<script type="module">
+import { INK, PAPER, INKS, drawRuns, drawWord, wordWidth } from '../src/ui/lettering.js';
+
+/* ?line= is the sentence under the wordmark, so the simulator's card and the
+ * board's differ by one line and nothing else. */
+const q = new URLSearchParams(location.search);
+const LINE = q.get('line') || 'Free FPV racing in your browser.';
+const SUB = q.get('sub') || 'Real Betaflight. No install.';
+
+const W = 1200;
+const H = 630;
+const ctx = document.getElementById('c').getContext('2d');
+
+const load = (src) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = () => reject(new Error(`no ${src}`));
+  img.src = src;
+});
+const [race, city, whoop] = await Promise.all([
+  load('../assets/gate/race.jpg'),
+  load('../assets/thumbs/city.jpg'),
+  load('../assets/gate/whoop.jpg'),
+]);
+
+/* Paper, with a dot tone down the right edge the way the manga pages tone
+ * a page, in ink at a low alpha so it reads as a tint and not as noise. */
+ctx.fillStyle = PAPER;
+ctx.fillRect(0, 0, W, H);
+ctx.fillStyle = 'rgba(11, 17, 22, 0.13)';
+for (let y = 0; y < H; y += 9) {
+  for (let x = 0; x < W; x += 9) {
+    const fade = Math.max(0, (x - 640) / 560) * Math.max(0, 1 - y / 400);
+    const r = 3.4 * fade;
+    if (r > 0.4) {
+      ctx.beginPath();
+      ctx.arc(x + (Math.floor(y / 9) % 2 ? 4.5 : 0), y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+const quad = (pts) => {
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+};
+
+/* The hero panel: a hard ink frame and speed lines running to the lower
+ * left, the landing page's first panel without its furniture. */
+ctx.save();
+quad([[24, 24], [1176, 24], [1176, 372], [24, 372]]);
+ctx.fillStyle = PAPER;
+ctx.fill();
+ctx.clip();
+ctx.strokeStyle = INK;
+ctx.lineCap = 'round';
+[[0.0, 1], [0.1, 0.8], [0.22, 0.65], [0.34, 0.5], [0.5, 0.38]].forEach(([t, a]) => {
+  ctx.globalAlpha = 0.85 * a;
+  ctx.lineWidth = 2 + 4 * (1 - t);
+  ctx.beginPath();
+  ctx.moveTo(1176 - 20 - 90 * t, 372);
+  ctx.lineTo(1176 - 20 - 90 * t - 300, 372 - 80 - 60 * (1 - t));
+  ctx.stroke();
+});
+ctx.globalAlpha = 1;
+ctx.restore();
+quad([[24, 24], [1176, 24], [1176, 372], [24, 372]]);
+ctx.lineWidth = 8;
+ctx.lineJoin = 'miter';
+ctx.strokeStyle = INK;
+ctx.stroke();
+
+/* The wordmark, in the simulator's own hand: WEB in cream, FPV in sakura. */
+const runs = [
+  { text: 'WEB', fill: INKS.cream },
+  { text: 'FPV', fill: INKS.sakura },
+];
+let px = 176;
+while (wordWidth(ctx, 'WEBFPV', px) > 1040) {
+  px -= 4;
+}
+drawRuns(ctx, runs, 70, 200, px, { inkW: 0.14 });
+
+ctx.fillStyle = INK;
+ctx.textBaseline = 'alphabetic';
+ctx.font = '800 38px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+ctx.fillText(LINE, 76, 276);
+ctx.font = '600 28px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+ctx.fillText(SUB, 76, 326);
+
+/* Three panels along the bottom, each a little off square, each with its
+ * word lettered over the foot of the picture. */
+const panels = [
+  { img: race, word: 'THE TRACK', pts: [[24, 400], [404, 392], [396, 606], [24, 606]] },
+  { img: city, word: 'THE MAP', pts: [[422, 392], [790, 400], [780, 606], [414, 606]] },
+  { img: whoop, word: 'THE ROOM', pts: [[808, 400], [1176, 392], [1176, 606], [798, 606]] },
+];
+panels.forEach(({ img, word, pts }) => {
+  const xs = pts.map((p) => p[0]);
+  const x0 = Math.min(...xs);
+  const x1 = Math.max(...xs);
+  const w = x1 - x0;
+  const h = 214;
+  const k = Math.max(w / img.width, h / img.height);
+  ctx.save();
+  quad(pts);
+  ctx.clip();
+  ctx.drawImage(img, x0 + (w - img.width * k) / 2, 392 + (h - img.height * k) / 2, img.width * k, img.height * k);
+  const g = ctx.createLinearGradient(0, 520, 0, 606);
+  g.addColorStop(0, 'rgba(11, 17, 22, 0)');
+  g.addColorStop(1, 'rgba(11, 17, 22, 0.7)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x0, 392, w, 220);
+  ctx.restore();
+  quad(pts);
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  drawWord(ctx, word, x0 + 26, 590, 46, INKS.cream, { inkW: 0.16 });
+});
+
+window.__done = true;
+</script>

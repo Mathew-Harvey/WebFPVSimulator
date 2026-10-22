@@ -200,22 +200,22 @@ const PAGE = [
   '<html lang="en">',
   '  <head>',
   '    <title>WebFPV, a browser FPV racing simulator</title>',
-  '    <!-- og.png is a frame of the real shell. -->',
+  '    <!-- og.jpg is the manga card. -->',
   '    <link rel="canonical" href="https://webfpv.org/sim/" />',
   '    <meta property="og:type" content="website" />',
   '    <meta property="og:site_name" content="WebFPV" />',
   '    <meta property="og:url" content="https://webfpv.org/sim/" />',
   '    <meta property="og:title" content="WebFPV, fly a quad in your browser" />',
   '    <meta property="og:description" content="A real Betaflight control loop." />',
-  '    <meta property="og:image" content="https://webfpv.org/sim/og.png" />',
-  '    <meta property="og:image:type" content="image/png" />',
+  '    <meta property="og:image" content="https://webfpv.org/sim/og.jpg" />',
+  '    <meta property="og:image:type" content="image/jpeg" />',
   '    <meta property="og:image:width" content="1200" />',
   '    <meta property="og:image:height" content="630" />',
   '    <meta property="og:image:alt" content="The race field." />',
   '    <meta name="twitter:card" content="summary_large_image" />',
   '    <meta name="twitter:title" content="WebFPV, fly a quad in your browser" />',
   '    <meta name="twitter:description" content="A real Betaflight control loop." />',
-  '    <meta name="twitter:image" content="https://webfpv.org/sim/og.png" />',
+  '    <meta name="twitter:image" content="https://webfpv.org/sim/og.jpg" />',
   '    <meta name="twitter:image:alt" content="The race field." />',
   '  </head>',
   '  <body><p>The shell, which a crawler never runs.</p></body>',
@@ -354,9 +354,9 @@ const bare = await preview('/sim/?map=custom&share=trk-1a2b3c4d');
 check('a track with no time says the record is open',
   meta(bare.html, 'og:description'),
   'No time posted yet, so the record is open. Fly it in your browser on a real Betaflight control loop. No install, no account.');
-check('a track with no card of its own keeps the site\'s card', meta(bare.html, 'og:image'), 'https://webfpv.org/sim/og.png');
+check('a track with no card of its own keeps the site\'s card', meta(bare.html, 'og:image'), 'https://webfpv.org/sim/og.jpg');
 check('and its type and size, which are the site card\'s',
-  `${meta(bare.html, 'og:image:type')} ${meta(bare.html, 'og:image:width')}`, 'image/png 1200');
+  `${meta(bare.html, 'og:image:type')} ${meta(bare.html, 'og:image:width')}`, 'image/jpeg 1200');
 check('but still carries its own name', meta(bare.html, 'og:title'), 'Ladder Loop, a WebFPV track by Ada Rook');
 
 /* A minute and more. */
@@ -377,11 +377,41 @@ const map = await preview('/sim/?map=built&mapshare=trk-5eed0010&board=https%3A%
 check('a crawler on a map link asks the board about the map',
   listed.map((l) => l.url).join(), 'https://webfpv-board.onrender.com/api/maps/trk-5eed0010');
 check('and the title calls it a map', meta(map.html, 'og:title'), 'Hibari Yard, a WebFPV freestyle map by Mat');
-check('the description counts its pieces and its gaps',
+check('the description names its gaps and not its piece count',
   meta(map.html, 'og:description'),
-  'A freestyle map of 51 pieces with 5 named gaps. Fly it in your browser on a real Betaflight control loop. No install, no account.');
+  'A freestyle map with 5 named gaps to find. Fly it in your browser on a real Betaflight control loop. No install, no account.');
 check('and the picture is the map\'s card',
   meta(map.html, 'og:image'), 'https://webfpv.org/board/api/maps/trk-5eed0010/card?v=2026-09-25T11%3A00%3A00.000Z');
+
+/* A map published before cards existed has a thumbnail and no card: that is
+ * what its link shows, at the thumbnail's own size. */
+listingReply = json({
+  ...MAP, hasCard: false, cardUtc: null, hasThumb: true, thumbUtc: '2026-10-19T08:00:00.000Z',
+});
+const thumbOnly = await preview('/sim/?map=built&mapshare=trk-5eed0010');
+check('a map with no card shows its thumbnail',
+  meta(thumbOnly.html, 'og:image'), 'https://webfpv.org/board/api/maps/trk-5eed0010/thumb?v=2026-10-19T08%3A00%3A00.000Z');
+check('at the thumbnail\'s size',
+  `${meta(thumbOnly.html, 'og:image:width')}x${meta(thumbOnly.html, 'og:image:height')}`, '960x540');
+listingReply = json({ ...MAP, hasCard: false, cardUtc: null });
+const pictureless = await preview('/sim/?map=built&mapshare=trk-5eed0010');
+check('a map with neither keeps the site\'s card', meta(pictureless.html, 'og:image'), 'https://webfpv.org/sim/og.jpg');
+
+/* The maps that ship in the simulator are not on the board: nothing is asked
+ * of it, and the picker's own picture is the card. */
+listed = [];
+const town = await preview('/sim/?map=city&craft=5inch&fly=1');
+check('a built in map asks the board nothing', String(listed.length), '0');
+check('and is named', meta(town.html, 'og:title'), 'The town, a WebFPV freestyle map');
+check('with the picker\'s picture', meta(town.html, 'og:image'), 'https://webfpv.org/sim/assets/thumbs/city.jpg');
+check('at its size', `${meta(town.html, 'og:image:width')}x${meta(town.html, 'og:image:height')}`, '960x540');
+check('and no dev text', meta(town.html, 'og:description'),
+  'Fly The town on a five inch quad. Fly it in your browser on a real Betaflight control loop. No install, no account.');
+const yard = await preview('/sim/?map=built&craft=5inch&fly=1');
+check('the starter yard shows the yard', meta(yard.html, 'og:image'), 'https://webfpv.org/sim/assets/thumbs/yard.jpg');
+const person2 = await preview('/sim/?map=city&craft=5inch&fly=1', PERSON);
+check('a person on a built in map link is left alone', person2.html, PAGE);
+listingReply = json(MAP);
 
 /* A track wins when a hand made link names both, the rule in boot.js. */
 listingReply = json(TRACK);

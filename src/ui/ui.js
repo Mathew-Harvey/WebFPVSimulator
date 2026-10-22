@@ -3901,6 +3901,8 @@ function stfLettering(cls) {
 /* How long the found moment is up, callout and panel together, in ms. The
  * stf- keyframes in index.html run this long: change both. */
 const STF_FOUND_MS = 3000;
+/* The goal splash is up this long: the goal- keyframes in index.html run the same, change both. */
+const GOAL_SPLASH_MS = 4600;
 
 /*
  * A course card's identity, stable across the rebuilds items() does on every
@@ -16257,6 +16259,57 @@ export class Ui {
     this.stfTimer = setTimeout(() => {
       layer.textContent = '';
     }, STF_FOUND_MS + 200);
+  }
+
+  /*
+   * A GOAL, COMPLETE: the last sticker of a map's set found. The owner's
+   * pick (option A of the 2026-10-21 mockups): the found callout's own
+   * clothes made big. A heavy lettered word and a sound effect on the right,
+   * the sticker's panel under it with two more of the finds tipped beside
+   * it, a black strip along the foot, speed lines down both edges, 4.6
+   * seconds, gone. Everything stays out of the middle third.
+   *
+   * THE COST, for the latency rule: nothing until it is called, and then
+   * about nine HTML nodes for 4.6 s, moved by transforms and fades alone, on
+   * the layer the found callout already uses. No canvas of its own: the
+   * pictures are the ones the shell cut for the callout. Nothing is fetched.
+   * A second call replaces a splash that is up, as a found callout does.
+   */
+  goalComplete({ word, sub, band, picture, tiles = [] }) {
+    const layer = this.stfLayer;
+    if (!layer || !word) {
+      return;
+    }
+    layer.textContent = '';
+    const root = el('div', 'goal');
+    const framed = (node, cls) => {
+      const panel = el('div', cls);
+      if (node) {
+        node.classList.add('goal-pic');
+        node.setAttribute('role', 'presentation');
+        panel.append(el('div', 'goal-ray'), node);
+      }
+      return panel;
+    };
+    root.append(
+      el('div', 'goal-edge goal-edge-l'),
+      el('div', 'goal-edge goal-edge-r'),
+      el('div', 'goal-burst'),
+      el('div', 'goal-sfx', '\u30c9\u30f3!'),
+    );
+    const group = el('div', 'goal-group');
+    group.append(el('span', 'goal-word', word), el('span', 'goal-sub', sub));
+    root.append(group, framed(picture, 'goal-panel'));
+    tiles.slice(0, 2).forEach((t, i) => {
+      root.append(framed(t, `goal-tile goal-tile-${i}`));
+    });
+    root.append(el('div', 'goal-band', band));
+    layer.append(root);
+    this.announce(`${word} ${band}.`);
+    clearTimeout(this.stfTimer);
+    this.stfTimer = setTimeout(() => {
+      layer.textContent = '';
+    }, GOAL_SPLASH_MS + 200);
   }
 
   /* The freestyle board's answer, so the results row can say what happened

@@ -79,6 +79,27 @@ const ID_RE = /^trk-[0-9a-f]{8}$/;
 const CARD_W = 1200;
 const CARD_H = 630;
 
+/* The picker's thumbnail, which the board holds every thumbnail to. It is
+ * what a link shows for a map that was published before cards existed. */
+const THUMB_W = 960;
+const THUMB_H = 540;
+
+/*
+ * The maps that ship inside the simulator, by the id the picker's Copy link
+ * puts after ?map=, with the name the picker shows and the picture it shows
+ * beside it (assets/thumbs, the same files). They are not on the board, so
+ * there is nothing to ask: a link to one is described from this table. The
+ * ids and names are src/maps/registry.js's, and `built` is the starter yard
+ * whose picture is the yard's. A link to any other ?map= is the site's own.
+ */
+const WORLDS = {
+  city: { name: 'The town', thumb: 'city' },
+  house: { name: "Nick Burns' house", thumb: 'house' },
+  heads: { name: "Heads' house", thumb: 'heads' },
+  bardwell: { name: "Joshua Bardwell's house", thumb: 'bardwell' },
+  built: { name: 'Hibari Yard', thumb: 'yard' },
+};
+
 function trim(value) {
   return String(value || '').trim().replace(/\/+$/, '');
 }
@@ -114,6 +135,8 @@ export function subjectOf(prefix, rest, params, boards) {
     } else if (params.get('mapshare')) {
       kind = 'map';
       id = params.get('mapshare');
+    } else if (Object.hasOwn(WORLDS, params.get('map') || '')) {
+      return { kind: 'world', id: params.get('map') };
     }
   } else if (prefix === '/board') {
     if (params.get('track')) {
@@ -136,6 +159,9 @@ export function subjectOf(prefix, rest, params, boards) {
  * is how the router gives up on it.
  */
 export async function fetchSubject(subject, boardUpstream, signal) {
+  if (subject.kind === 'world') {
+    return { id: subject.id, ...WORLDS[subject.id] };
+  }
   const route = subject.kind === 'map' ? 'maps' : 'tracks';
   try {
     const res = await fetch(`${boardUpstream}/api/${route}/${subject.id}`, {
@@ -183,19 +209,23 @@ function plural(n, one, many) {
  * the words the simulator's own og:description uses.
  */
 export function previewOf(subject, item, { pageUrl, site }) {
-  const map = subject.kind === 'map';
+  const world = subject.kind === 'world';
+  const map = world || subject.kind === 'map';
   const name = clean(item.name) || (map ? 'Untitled map' : 'Untitled track');
-  const by = clean(item.designer) || clean(item.author);
+  const by = world ? '' : clean(item.designer) || clean(item.author);
   const what = map ? 'freestyle map' : 'track';
   const title = by ? `${name}, a WebFPV ${what} by ${by}` : `${name}, a WebFPV ${what}`;
 
+  /* What a player reads says what there is to do and no more: a map's piece
+   * count is a builder's number, not a reason to click. */
   let lead;
-  if (map) {
-    const pieces = Number(item.pieces) || 0;
+  if (world) {
+    lead = `Fly ${name} on a five inch quad.`;
+  } else if (map) {
     const gaps = Number(item.gaps) || 0;
     lead = gaps
-      ? `A freestyle map of ${plural(pieces, 'piece', 'pieces')} with ${plural(gaps, 'named gap', 'named gaps')}.`
-      : `A freestyle map of ${plural(pieces, 'piece', 'pieces')}.`;
+      ? `A freestyle map with ${plural(gaps, 'named gap', 'named gaps')} to find.`
+      : 'A freestyle map to fly and trick on.';
   } else {
     const times = Array.isArray(item.times) ? item.times.length : Number(item.times) || 0;
     const lap = item.best ? lapText(item.best.lapMs) : '';
@@ -210,12 +240,28 @@ export function previewOf(subject, item, { pageUrl, site }) {
   const description = `${lead} Fly it in your browser on a real Betaflight control loop. No install, no account.`;
 
   const route = map ? 'maps' : 'tracks';
-  const image = item.hasCard && item.cardUtc
-    ? `${site}/board/api/${route}/${subject.id}/card?v=${encodeURIComponent(item.cardUtc)}`
-    : null;
-  const imageAlt = `${name}, as it looks in the WebFPV simulator, with the WebFPV wordmark over it.`;
+  /* The picture, best first: the share card the publishing browser drew, then
+   * the picker's thumbnail (maps published before cards existed have one
+   * and no card), then nothing, which leaves the site's own card. */
+  let image = null;
+  let width = CARD_W;
+  let height = CARD_H;
+  if (world) {
+    image = `${site}/sim/assets/thumbs/${item.thumb}.jpg`;
+    width = THUMB_W;
+    height = THUMB_H;
+  } else if (item.hasCard && item.cardUtc) {
+    image = `${site}/board/api/${route}/${subject.id}/card?v=${encodeURIComponent(item.cardUtc)}`;
+  } else if (item.hasThumb && item.thumbUtc) {
+    image = `${site}/board/api/${route}/${subject.id}/thumb?v=${encodeURIComponent(item.thumbUtc)}`;
+    width = THUMB_W;
+    height = THUMB_H;
+  }
+  const imageAlt = world
+    ? `${name}, as it looks in the WebFPV simulator.`
+    : `${name}, as it looks in the WebFPV simulator, with the WebFPV wordmark over it.`;
   return {
-    url: pageUrl, title, description, image, imageAlt,
+    url: pageUrl, title, description, image, imageAlt, width, height,
   };
 }
 
@@ -252,8 +298,8 @@ export function withPreview(html, p) {
   if (p.image) {
     want.set('og:image', ['property', p.image]);
     want.set('og:image:type', ['property', 'image/jpeg']);
-    want.set('og:image:width', ['property', String(CARD_W)]);
-    want.set('og:image:height', ['property', String(CARD_H)]);
+    want.set('og:image:width', ['property', String(p.width || CARD_W)]);
+    want.set('og:image:height', ['property', String(p.height || CARD_H)]);
     want.set('og:image:alt', ['property', p.imageAlt]);
     want.set('twitter:image', ['name', p.image]);
     want.set('twitter:image:alt', ['name', p.imageAlt]);

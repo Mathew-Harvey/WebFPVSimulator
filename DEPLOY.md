@@ -709,13 +709,14 @@ LinkedIn, WhatsApp or iMessage renders a 1200 by 630 card. Before this there
 were no Open Graph tags at all on any of the three, so a shared link was a bare
 URL with no picture.
 
-`og.png` is that card for the simulator and the board, and it is a frame of
-the real shell rather than a drawing of one: `scripts/og.js` drives
-`scripts/shots.js`, which drives the actual page in headless Chromium, so the
-card cannot disagree with the product. It is the title screen on the race field
-with the menu, the chips and the body copy hidden, leaving the wordmark over
-the world, a camera parked low and to the right of the course, and the lit
-start gate centre with the parked quad in the near left.
+`og.jpg` is that card for the simulator and the board. Since 2026-10-22 it is
+drawn in the product's manga look, not photographed: `scripts/og.html` letters
+the wordmark and the three panel captions (THE TRACK, THE MAP, THE ROOM) with
+`src/ui/lettering.js`, the code the shell letters its titles with, over three
+pictures the shell already ships, and `scripts/og.js` photographs that page as a
+JPEG. It carries no dev text. It is about 115 kB where the race field frame it
+replaced was 465 kB, which matters on every link ever shared. The board's copy
+has the board's own line under the wordmark.
 
 **The front door's card is its own.** Since 2026-09-27 it is the landing
 page's first screen, the manga page with the quad built, drawn from that page
@@ -729,20 +730,20 @@ Regenerate, do not edit, the same rule as the icons:
 # This repo.
 npm run gen:og
 
-# This repo and the board, from a checkout of the board beside this one.
+# This repo and the board, from a checkout of the board beside this one. A
+# directory with LeaderBoard in its name gets the board's line.
 node scripts/og.js . ../WebFPVSimulator-LeaderBoard/public
 
 # The front door, from its own checkout.
 node scripts/og.js
 ```
 
-The camera is six numbers at the top of `scripts/og.js`. Change them and the
-card changes, which is why they live in a file rather than in somebody's shell
-history.
+The layout is in `scripts/og.html` and the lines under the wordmark are
+`?line=` and `?sub=` on it, so changing the card is changing a file.
 
 **Every `og:image` is an absolute URL.** A crawler does not resolve a relative
 one against the page it found it on, so each page names its own card in full:
-`https://webfpv.org/sim/og.png` and `https://webfpv.org/board/og.png`, a copy
+`https://webfpv.org/sim/og.jpg` and `https://webfpv.org/board/og.jpg`, a copy
 each of this one, exactly as each service carries its own icon set, and the
 front door's `https://webfpv.org/og.jpg`, under a `?v=` that moves with every
 redraw.
@@ -761,7 +762,7 @@ Sharing Debugger and X's Card Validator, one URL at a time.
 
 A link to one track or one map shows that track or map, not the race field:
 a 1200 by 630 frame of it in the real renderer, from above and to one side
-of its middle, with the WebFPV wordmark over the top left where `og.png` has
+of its middle, with the WebFPV wordmark over the top left where the default card has
 it. The title under it is the track's name and who made it, and the line
 under that is its record. Three pieces make that happen, one per repository
 that has a server side or a browser in it:
@@ -771,6 +772,19 @@ that has a server side or a browser in it:
 | The card | `src/share/card.js`, `orbit.html?card=1` | The browser that publishes draws it and uploads it with the edit key |
 | The storage | the board's `/api/tracks/:id/card` and `/api/maps/:id/card` | Keeps one JPEG per track and per map, serves it to crawlers |
 | The preview | `edge/preview.js`, called by `edge/router.js` | Writes the name, the record and the card into a shared page's head |
+
+Three more things the edge settles, all in `edge/preview.js`:
+
+- A map published before cards existed has a thumbnail and no card. Its link
+  shows the thumbnail (960 by 540, the size the tags then say) rather than the
+  site's card. A map with neither keeps the site's card.
+- The maps that ship in the simulator (the town, Nick Burns' house, Heads'
+  house, Joshua Bardwell's house, the starter yard) are not on the board, so
+  there is nothing to ask. A crawler on `/sim/?map=city` and its kin is told the
+  map's name and shown the picker's own picture from `assets/thumbs`, with no
+  round trip to the board. The table is `WORLDS` in `edge/preview.js`, and it
+  follows `src/maps/registry.js`.
+- The words carry no piece counts, scales or other builder's numbers.
 
 The edge does the writing because nothing else can. A crawler runs no
 script, the simulator is a static site, and a link like

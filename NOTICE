@@ -201,14 +201,13 @@ does not extend to them.
 
     Files       assets/voices/jb/*.mp3 and assets/voices/nb/*.mp3
     Licence     NOT GPLv3. Recordings of Joshua Bardwell and of Nick Burns,
-                supplied by the owner on 2026-10-22. The owner has not yet
-                said in writing that either has agreed to their use here;
-                that is for the owner to confirm before this ships.
+                supplied by the owner on 2026-10-22, who states that both
+                are happy for them to be used here (2026-10-22).
 
 Eleven short clips of Joshua Bardwell and nine of Nick Burns, given by the
 owner as WAV files and re-encoded here as mono mp3 (the silence trimmed from
-each end, the level evened out). They play on a sticker found, and, on Nick
-Burns' house, on a crash, a hit on him, a landing on his table and his own
+each end, the level evened out). They play on a sticker found on Bardwell's house
+and on Nick Burns' house, and, on Nick's, on a crash, a hit on him, a landing on his table and his own
 lines (src/render/clips.js). The project's GPLv3 grant does not extend to
 them.
 

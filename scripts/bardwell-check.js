@@ -68,6 +68,7 @@ import {
 } from '../src/maps/bardwell/bardwell.js';
 import { bardwellDocument } from '../src/maps/bardwell/yard.js';
 import * as logos from '../src/maps/bardwell/logos.js';
+import { JB_SPOTS, placeStickers } from '../src/maps/bardwell/stickers.js';
 import { signAspect } from '../src/art/partnermark.js';
 import { MATERIALS as HOME_MATERIALS } from '../src/props/homes.js';
 import { GAP_MIN } from '../src/props/parts.js';
@@ -658,6 +659,16 @@ function logosBlock(L) {
     const miss = unbacked(boxes, { ...s, h: s.w / signAspect(brand) }, 0.25, 0.15);
     check(`${spot.slug}'s sign is on ${s.hit}, all of it`, miss === 0, miss ? `${r3(miss)} m off` : '');
   }
+  /* The stickers to find (../src/maps/bardwell/stickers.js): each lands,
+   * on a face that holds all of it. */
+  placeStickers(L.parts).forEach((st, i) => {
+    if (!st) {
+      check(`the ${JB_SPOTS[i].id} sticker lands`, false, 'its line meets nothing');
+      return;
+    }
+    const miss = unbacked(boxes, { ...st, up: [0, 1, 0], h: st.w }, 0.25, 0.15);
+    check(`the ${JB_SPOTS[i].id} sticker is on ${st.hit}, all of it`, miss === 0, miss ? `${r3(miss)} m off` : '');
+  });
   const decals = lg.placeDecals(L.parts);
   const lost = decals.map((d, i) => (d ? null : i)).filter((i) => i !== null);
   check(`every one of the ${decals.length} decals lands`, !lost.length, lost.join(', '));

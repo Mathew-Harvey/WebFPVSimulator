@@ -197,6 +197,7 @@ export const MAP_PRELOAD = {
     'maps/house/nick.js',
     'maps/house/nickmodel.js',
     'maps/house/stickers.js',
+    'maps/stickermesh.js',
     'maps/house/supporters.js',
   ],
   heads: [
@@ -293,5 +294,7 @@ export const MAP_PRELOAD = {
     'maps/bardwell/bardwell.js',
     'maps/bardwell/yard.js',
     'maps/bardwell/logos.js',
+    'maps/bardwell/stickers.js',
+    'maps/stickermesh.js',
   ],
 };

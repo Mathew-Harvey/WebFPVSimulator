@@ -1155,7 +1155,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * Plain audio elements, off the main thread and out of the motor graph,
    * on the same Sound switch and Volume; a clip is fetched only when it is
    * the next to play. `view.clips` names the voice a map speaks in ('jb' on
-   * a map that does not say, 'nb' on Nick's house) and a map's own code
+   * Bardwell's house, 'nb' on Nick's; a map that names none is silent) and a map's own code
    * reaches playCue through view.onCue.
    */
   const clipVoice = new ClipVoice();
@@ -1163,7 +1163,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!ui.settings.sound || ui.screen !== 'flight' || !view) {
       return null;
     }
-    return clipVoice.play(view.clips || 'jb', cue, ui.settings.volume / 10);
+    return view.clips ? clipVoice.play(view.clips, cue, ui.settings.volume / 10) : null;
   }
   audio.music.onChange = (st) => {
     ui.setMusicNow(st);
@@ -5225,8 +5225,8 @@ export async function boot({ loading, bootStart, mapId }) {
     if (stickersView !== view) {
       stickersView = view;
       clipVoice.reset();
-      if (ui.settings.sound) {
-        clipVoice.warm(view.clips || 'jb');
+      if (ui.settings.sound && view.clips) {
+        clipVoice.warm(view.clips);
       }
       stickersFound = stampedAmong(view.stickers.map((s) => s.key));
       stickersSeen.clear();
@@ -13091,7 +13091,7 @@ export async function boot({ loading, bootStart, mapId }) {
     played: clipVoice.played,
     playing: clipVoice.playing ? clipVoice.playing.name : null,
     fetched: [...clipVoice.els.keys()],
-    voice: (view && view.clips) || 'jb',
+    voice: (view && view.clips) || null,
   });
   window.__stickers = () => ({
     stickers: (view.stickers ?? []).map((s) => ({

@@ -49,8 +49,11 @@ import { bardwellDocument } from './yard.js';
 import {
   BRANDS, ATLAS_W, ATLAS_H, CELLS, placeSigns, placeDecals,
 } from './logos.js';
+import { placeStickers, paintSticker, STICKER_WORD } from './stickers.js';
+import { stickerMesh } from '../stickermesh.js';
 import { partnerSignReady } from '../../art/partnermark.js';
 import { paintMaterial } from '../../art/stf.js';
+import { stfKey } from '../built/egg.js';
 
 const CHUNK = 'extra';
 
@@ -211,6 +214,28 @@ export async function buildMap(shell, onProgress, options) {
   const signs = await signsCame;
   const decals = placeDecals(L.parts).filter(Boolean);
   map.scene.add(logoMesh(decals, paintMaterial(THREE, paintAtlas(signs))));
+  /* Stickers to find (./stickers.js), one mesh and one draw call, each an
+   * achievement that plays one of Joshua Bardwell's clips (src/render/clips.js):
+   * his voice is this map's alone. */
+  const sheet = paintSticker(THREE);
+  const stuck = placeStickers(L.parts).filter(Boolean);
+  map.scene.add(stickerMesh(THREE, stuck, sheet, 'jb stickers'));
+  map.stickers = [
+    ...(map.stickers || []),
+    ...stuck.map((s) => ({
+      id: `jb-${s.id}`,
+      key: `${stfKey(doc, 'bardwell')}#sticker:jb-${s.id}`,
+      name: s.name,
+      achievement: STICKER_WORD,
+      crop: { x: 0, y: 0, w: 1, h: 1 },
+      sheet,
+      p: s.p,
+      n: s.n,
+      w: s.w,
+      h: s.w,
+    })),
+  ];
+  map.clips = 'jb';
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   return map;
 }

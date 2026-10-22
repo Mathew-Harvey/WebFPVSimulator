@@ -50,7 +50,7 @@ export const JB_SPOTS = [
   { id: 'woodshed', name: 'On the woodshed', from: [-4, 17.5, 2.0], dir: 'n', size: 0.17 },
   { id: 'firewood', name: 'On the firewood', from: [-2.5, 20, 0.7], dir: 'n', size: 0.3 },
   { id: 'doghouse', name: 'On the doghouse', from: [35.2, -23, 0.55], dir: 'n', size: 0.25 },
-  { id: 'lean-to', name: 'In the lean-to', from: [29.5, -22, 1.4], dir: 'n', size: 0.3 },
+  { id: 'lean-to', name: 'In the lean-to', from: [28.4, -22, 1.0], dir: 'n', size: 0.3 },
   { id: 'barrow', name: 'On the wheelbarrow', from: [27.2, -25, 0.5], dir: 'n', size: 0.2 },
   { id: 'mailbox', name: 'On the mailbox', from: [35.6, -95, 1.17], dir: 's', size: 0.2 },
 ];

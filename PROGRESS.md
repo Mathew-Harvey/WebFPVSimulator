@@ -71619,3 +71619,12 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: no change, one compare per frame in place of the clock line one. Not flown, not run: `npm run verify`.
 
 - Owner's word, 2026-10-22 12:34Z: "push to main" (Nick's clips reassigned: Stickers on every find, catfish only on a hit, other lines within a metre). Fast forward onto main from 0a07b10, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
+
+## 2026-10-22 | render | Bardwell's white flashes (branch only)
+
+- The ask, 12:50Z: "flying bardwells map i get white flashes from time to time, can you find the root cause and fix?"
+- Found: the lean-to's JB sticker (`lean-to`, `stickers.js`) sat exactly on the weBLEEDfpv decal inside the lean-to (`logos.js` `DECAL_SPOTS`): same plane, same 12 mm offset, same centre. The sticker is unlit white with a die-cut border, so the two fought for the depth test and the white won in flickers. The coplanar scan (`cop.mjs`) listed this pair and no other sticker pair.
+- Fix: the sticker moved to x 28.4 on the same back plank, clear of the decal. `stickermesh.js` material now has polygonOffset (-1, -1), weaker than the logos' paint material (-2, -2), so a decal wins over a sticker and both win over their wall at any range, where a fixed 12 mm lift loses resolution with distance. New guard in `bardwell-check.js`: no sticker over a decal or a sign (fails on the old position, passes now).
+- Not proven: forcing the near plane from 0.2 to 0.03 changed 0 pixels on SwiftShader, so a distance z fight on a real GPU is a hypothesis the polygonOffset covers, not something I saw.
+- Latency: no new draw call or triangle, a state flag on a material that already existed. Checked by the diff and `__budget` on the earlier build, not on a GPU.
+- Run: `bardwell-check` (all passed), `check:house`, `lint:nouns`, coplanar scan (the sticker pair is gone). Not run: `npm run verify`, `shots.js`. Not flown.

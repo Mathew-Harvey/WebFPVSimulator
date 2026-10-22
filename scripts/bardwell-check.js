@@ -670,6 +670,21 @@ function logosBlock(L) {
     check(`the ${JB_SPOTS[i].id} sticker is on ${st.hit}, all of it`, miss === 0, miss ? `${r3(miss)} m off` : '');
   });
   const decals = lg.placeDecals(L.parts);
+  /* A sticker over a decal or a sign is two faces 12 mm off one plane: the
+   * white flicker the pilot saw. Measured as circles on the shared plane. */
+  const stuck = placeStickers(L.parts).filter(Boolean);
+  const others = [...decals, ...signs].filter(Boolean);
+  const stacked = [];
+  for (const st of stuck) {
+    for (const o of others) {
+      const flat = st.n[0] * o.n[0] + st.n[1] * o.n[1] + st.n[2] * o.n[2] > 0.99;
+      const d = Math.hypot(st.p[0] - o.p[0], st.p[1] - o.p[1], st.p[2] - o.p[2]);
+      if (flat && d < (st.w + o.w) / 2 * 1.2) {
+        stacked.push(`${st.hit} ${o.cell || o.slug} ${r3(d)} m`);
+      }
+    }
+  }
+  check('no sticker sits over a decal or a sign', !stacked.length, stacked.join('; '));
   const lost = decals.map((d, i) => (d ? null : i)).filter((i) => i !== null);
   check(`every one of the ${decals.length} decals lands`, !lost.length, lost.join(', '));
   const bad = [];

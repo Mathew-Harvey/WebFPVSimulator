@@ -58,7 +58,9 @@ export function stickerMesh(THREE, placed, map, name = 'nb stickers') {
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeBoundingSphere();
-  const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map, alphaTest: 0.5, fog: false }));
+  const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    map, alphaTest: 0.5, fog: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+  }));
   mesh.name = name;
   mesh.castShadow = false;
   mesh.receiveShadow = false;

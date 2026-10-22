@@ -51,6 +51,11 @@ const DT = BALLOON_EVERY / 1000;
 
 /* The round. */
 export const ROUND_MS = 90000;
+/* The plane's whole load for a round, the owner's ask of 2026-10-22: it
+ * drops this many once the round has begun and then the round is over the
+ * moment none is left in the air, popped or drifted off. ROUND_MS stays as
+ * the ceiling for a pilot who leaves some. */
+export const SUPPLY = 60;
 /* How long the result stands before the next round is armed. */
 export const RESULT_MS = 6000;
 
@@ -214,6 +219,9 @@ export class BalloonChase {
     this.snapshot();
     this.born.fill(-1);
     this.released = 0;
+    this.supplied = 0;
+    this.cleared = false;
+    this.endMs = 0;
     this.nextReleaseMs = 400;
     this.clockMs = 0;
     /* The round's own clock starts at the first feed with the craft flying. */
@@ -331,10 +339,21 @@ export class BalloonChase {
     this.driftBalloons();
     if (flying && this.startedMs < 0 && !this.over) {
       this.startedMs = clock;
+      /* Whatever the plane streamed on the stand is not part of the round. */
+      this.born.fill(-1);
+      this.nextReleaseMs = clock;
     }
-    if (this.startedMs >= 0 && !this.over && clock - this.startedMs >= ROUND_MS) {
-      this.over = true;
-      this.overAtMs = clock;
+    if (this.startedMs >= 0 && !this.over) {
+      if (clock - this.startedMs >= ROUND_MS) {
+        this.over = true;
+        this.overAtMs = clock;
+        this.endMs = ROUND_MS;
+      } else if (this.supplied >= SUPPLY && this.airborne() === 0) {
+        this.over = true;
+        this.cleared = true;
+        this.overAtMs = clock;
+        this.endMs = clock - this.startedMs;
+      }
     }
     if (flying && this.startedMs >= 0 && !this.over && prev) {
       this.sweep(clock, prev, craft);
@@ -434,6 +453,14 @@ export class BalloonChase {
     if (this.clockMs < this.nextReleaseMs) {
       return;
     }
+    /* Once the round runs, the load is finite. Before it, the plane streams
+     * for show and none of it counts. */
+    if (this.startedMs >= 0) {
+      if (this.supplied >= SUPPLY) {
+        return;
+      }
+      this.supplied += 1;
+    }
     this.nextReleaseMs = this.clockMs + RELEASE_MS;
     /* The oldest slot, or a free one. */
     let slot = -1;
@@ -526,6 +553,17 @@ export class BalloonChase {
         this.popCount += 1;
       }
     }
+  }
+
+  /* Balloons still in the air. */
+  airborne() {
+    let n = 0;
+    for (let i = 0; i < BALLOON_MAX; i += 1) {
+      if (this.born[i] >= 0) {
+        n += 1;
+      }
+    }
+    return n;
   }
 
   /* Milliseconds left in the round, or the whole round before it starts. */

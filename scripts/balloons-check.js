@@ -33,7 +33,7 @@
  */
 
 import {
-  BalloonChase, BALLOON_EVERY, BALLOON_MAX, GOLD_VALUE, ROUND_MS,
+  BalloonChase, BALLOON_EVERY, BALLOON_MAX, GOLD_VALUE, ROUND_MS, SUPPLY,
 } from '../src/game/balloons.js';
 import { createTrack, createElement, normalize } from '../src/trackbuilder/model.js';
 import { placeDocument, balloonChaseOf } from '../src/maps/built/place.js';
@@ -101,7 +101,7 @@ console.log('balloons-check: the plane');
   }
   check(fail === 0, '24 seeds: inside the map, 11 to 25 m/s, bank within its limit');
   check(worst.overBlock > BLOCK, `24 seeds: always over the ${BLOCK} m block (lowest ${worst.overBlock.toFixed(1)} m, seed ${worst.s})`);
-  check(a.g.released > 200, `it streams balloons (${a.g.released} in two minutes)`);
+  check(a.g.released > 0 && a.g.supplied === SUPPLY, `it drops its load and no more (${a.g.supplied} of ${SUPPLY} once the round ran)`);
 }
 
 console.log('balloons-check: popping');
@@ -174,6 +174,45 @@ console.log('balloons-check: popping');
   g.reset(1);
   check(g.score === 0 && !g.over && g.startedMs < 0 && g.born.every((b) => b < 0), 'a new round starts clean');
   check(g.born.length === BALLOON_MAX, `the pool is ${BALLOON_MAX} and never grows`);
+}
+
+console.log('balloons-check: a cleared round');
+{
+  const g = new BalloonChase(world, 5);
+  const far = { x: 500, y: 5, z: 500 };
+  /* Ten seconds on the stand: it streams for show, and none of it counts. */
+  for (let i = 0; i < 2500; i += 1) {
+    g.step(false, far, null);
+  }
+  check(g.supplied === 0 && g.released > 10, 'the stand streams for show and spends none of the load');
+  g.step(true, far, null);
+  check(g.airborne() === 0, 'the round begins with an empty sky');
+  let cutAt = -1;
+  while (!g.over && g.clockMs - g.startedMs <= ROUND_MS) {
+    g.step(true, far, far);
+    if (cutAt < 0 && g.supplied === SUPPLY) {
+      cutAt = g.clockMs;
+    }
+  }
+  check(g.over && g.cleared && g.endMs < ROUND_MS && g.endMs > 0, `the round ends when the sky is empty, not at ROUND_MS (${g.endMs} ms)`);
+  check(g.supplied === SUPPLY && g.released >= SUPPLY, 'exactly the load was dropped');
+  check(g.leftMs() === 0 && g.airborne() === 0, 'nothing is left in the air');
+  /* Popped ones clear it as well: pop all of the last load as it drops. */
+  const h = new BalloonChase(world, 6);
+  h.step(true, far, null);
+  let pops = 0;
+  while (!h.over && h.clockMs - h.startedMs <= ROUND_MS) {
+    for (let i = 0; i < BALLOON_MAX; i += 1) {
+      if (h.born[i] >= 0) {
+        const near = { x: h.bx[i], y: h.by[i], z: h.bz[i] };
+        h.step(true, near, near);
+        break;
+      }
+    }
+    h.step(true, far, null);
+    pops = h.popped;
+  }
+  check(h.over && h.cleared && h.endMs < 40000 && pops > 0, `popping them as they drop ends it early (${pops} popped, ${h.endMs} ms)`);
 }
 
 console.log('balloons-check: the builder piece');

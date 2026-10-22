@@ -2029,6 +2029,8 @@ export async function boot({ loading, bootStart, mapId }) {
     st.gold = g.goldPopped;
     st.bestStreak = g.bestStreak;
     st.newBest = balloonNewBest;
+    st.cleared = g.cleared;
+    st.timeMs = g.endMs;
     st.nextMs = g.over ? Math.max(0, RESULT_MS - g.sinceOverMs()) : 0;
     ui.balloonHud.update(st);
   }

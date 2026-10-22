@@ -74,7 +74,8 @@ export class BalloonHud {
 
   /*
    * s: { points, leftMs, best, streak, over, popped, gold, bestStreak,
-   * newBest, nextMs }. Cheap to call every frame.
+   * newBest, cleared, timeMs, nextMs }. A cleared round stops its clock on
+   * the time it took. Cheap to call every frame.
    */
   update(s) {
     if (!this.visible) {
@@ -85,11 +86,12 @@ export class BalloonHud {
       L.points = s.points;
       this.points.textContent = String(s.points);
     }
-    const sec = Math.ceil(s.leftMs / 1000);
+    const shown = s.cleared ? s.timeMs : s.leftMs;
+    const sec = Math.ceil(shown / 1000) + (s.cleared ? 1000000 : 0);
     if (sec !== L.sec) {
       L.sec = sec;
-      this.clock.textContent = clockText(s.leftMs);
-      this.clock.classList.toggle('is-low', s.leftMs > 0 && s.leftMs <= 10000);
+      this.clock.textContent = clockText(shown);
+      this.clock.classList.toggle('is-low', !s.cleared && s.leftMs > 0 && s.leftMs <= 10000);
     }
     if (s.best !== L.best) {
       L.best = s.best;
@@ -106,12 +108,13 @@ export class BalloonHud {
       this.result.classList.toggle('is-off', !s.over);
       if (s.over) {
         this.result.replaceChildren(
-          el('div', 'balloon-result-head', s.newBest ? 'New best!' : 'Time!'),
+          el('div', 'balloon-result-head', s.newBest ? 'New best!' : (s.cleared ? 'Cleared!' : 'Time!')),
           el('div', 'balloon-result-points', `${s.points} points`),
+          el('div', 'balloon-result-line', s.cleared ? `All gone in ${clockText(s.timeMs)}` : ''),
           el('div', 'balloon-result-line',
             `${s.popped} popped, ${s.gold} gold, best streak ${s.bestStreak}`),
           el('div', 'balloon-result-line', s.best > 0 ? `Best on this map ${s.best}` : ''),
-          el('div', 'balloon-result-next', next > 0 ? `Next round in ${next}` : ''),
+          el('div', 'balloon-result-next', next > 0 ? `Next round in ${next}, or reset to go now` : ''),
         );
       }
     }

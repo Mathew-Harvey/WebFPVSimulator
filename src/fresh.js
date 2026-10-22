@@ -155,6 +155,7 @@
     'src/input/touchsticks.js',
     'src/main.js',
     'src/maps/bardwell/bardwell.js',
+    'src/maps/bardwell/goats.js',
     'src/maps/bardwell/index.js',
     'src/maps/bardwell/logos.js',
     'src/maps/bardwell/stickers.js',

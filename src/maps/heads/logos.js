@@ -360,9 +360,13 @@ export function placeDecals(parts) {
 /* The patches                                                         */
 /* ------------------------------------------------------------------ */
 
-/* The ten 90% patches to be found: an id, what the callout calls it, where
- * it is aimed from, which way, how wide (real metres), and indoors or
- * out. */
+/* The eleven 90% patches to be found: an id, what the callout calls it,
+ * where it is aimed from, which way, how wide (real metres), indoors or
+ * out, and for one laid flat the plan way its top faces. The last is on
+ * the drive under Heads' car, top to the east so it reads from the gap
+ * between the two cars, where a pilot low enough sees it under the sill,
+ * and from the line in under the car from that side (the owner,
+ * 2026-10-22: "good spot to hide a 90% too"). */
 export const PATCH_SPOTS = [
   { id: 'front-door', name: 'By the front door', from: [5.9, -1.5, 2.0], dir: 'n', w: 0.45 },
   { id: 'garage', name: 'In the garage', from: [15.0, 0.95, 1.4], dir: 'w', w: 0.4, inside: true },
@@ -374,6 +378,7 @@ export const PATCH_SPOTS = [
   { id: 'grill', name: 'On the grill', from: [4.3, 10.5, 0.6], dir: 's', w: 0.35 },
   { id: 'deck-box', name: 'On the deck box', from: [8.1, 14.65, 1.5], dir: 'down', w: 0.4 },
   { id: 'mailbox', name: 'On the mailbox', from: [18.5, -8.6, 1.17], dir: 'e', w: 0.22 },
+  { id: 'under-car', name: 'Under the car on the drive', from: [16.95, -3.15, 0.1], dir: 'down', w: 0.3, top: 'e' },
 ];
 
 /* Each patch placed: { id, name, p, n, up, w, h, inside, hit, turn }, or
@@ -381,7 +386,7 @@ export const PATCH_SPOTS = [
 export function placePatches(parts) {
   const boxes = drawnBoxes(parts);
   return PATCH_SPOTS.map((s, i) => {
-    const at = aimLogo(boxes, 'patch', s.from, s.dir, s.w);
+    const at = aimLogo(boxes, 'patch', s.from, s.dir, s.w, s.top);
     if (!at) {
       return null;
     }

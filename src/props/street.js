@@ -1651,16 +1651,42 @@ export function vendingDraw(el, parts, K) {
  * do and a solid at W - 0.14 would stand out of it; and `bonnet`, where
  * the low bonnet begins in x and how high it is, so the body's solid steps
  * down to it rather than filling the air over the nose to the waist.
+ *
+ * R, axle and dam are for carOpenLayout below, on the seven kinds drawn on
+ * one profile: the tyre's radius and the two axles' x from the SPEC table,
+ * and each end's dam, the foot of its bumper, nose then tail, from the
+ * STYLE table in src/art/cars.js.
  * ------------------------------------------------------------------ */
 
 export const CAR_KINDS = {
-  kei: { L: 3.40, W: 1.475, H: 1.70, sill: 0.38, waist: 1.00, roof: 1.70, cab: [-1.60, 1.15], rakeF: 0.42, rakeR: 0.14 },
-  keivan: { L: 3.40, W: 1.475, H: 1.88, sill: 0.38, waist: 1.02, roof: 1.88, cab: [-1.66, 1.55], rakeF: 0.28, rakeR: 0.06 },
-  hatch: { L: 4.05, W: 1.695, H: 1.52, sill: 0.36, waist: 0.98, roof: 1.52, cab: [-1.72, 0.88], rakeF: 0.62, rakeR: 0.52 },
-  sedan: { L: 4.42, W: 1.695, H: 1.44, sill: 0.36, waist: 0.97, roof: 1.44, cab: [-1.55, 0.95], rakeF: 0.68, rakeR: 0.62 },
-  wagon: { L: 4.25, W: 1.690, H: 1.54, sill: 0.36, waist: 0.97, roof: 1.54, cab: [-1.92, 0.93], rakeF: 0.60, rakeR: 0.16 },
-  minivan: { L: 4.34, W: 1.695, H: 1.80, sill: 0.38, waist: 1.06, roof: 1.80, cab: [-2.00, 1.32], rakeF: 0.58, rakeR: 0.14 },
-  van: { L: 4.44, W: 1.695, H: 1.98, sill: 0.40, waist: 1.12, roof: 1.98, cab: [-2.14, 2.02], rakeF: 0.32, rakeR: 0.06 },
+  kei: {
+    L: 3.40, W: 1.475, H: 1.70, sill: 0.38, waist: 1.00, roof: 1.70, cab: [-1.60, 1.15], rakeF: 0.42, rakeR: 0.14,
+    R: 0.275, axle: [1.16, -1.19], dam: [0.30, 0.36],
+  },
+  keivan: {
+    L: 3.40, W: 1.475, H: 1.88, sill: 0.38, waist: 1.02, roof: 1.88, cab: [-1.66, 1.55], rakeF: 0.28, rakeR: 0.06,
+    R: 0.275, axle: [1.18, -1.16], dam: [0.32, 0.36],
+  },
+  hatch: {
+    L: 4.05, W: 1.695, H: 1.52, sill: 0.36, waist: 0.98, roof: 1.52, cab: [-1.72, 0.88], rakeF: 0.62, rakeR: 0.52,
+    R: 0.30, axle: [1.32, -1.22], dam: [0.27, 0.32],
+  },
+  sedan: {
+    L: 4.42, W: 1.695, H: 1.44, sill: 0.36, waist: 0.97, roof: 1.44, cab: [-1.55, 0.95], rakeF: 0.68, rakeR: 0.62,
+    R: 0.31, axle: [1.36, -1.28], dam: [0.28, 0.32],
+  },
+  wagon: {
+    L: 4.25, W: 1.690, H: 1.54, sill: 0.36, waist: 0.97, roof: 1.54, cab: [-1.92, 0.93], rakeF: 0.60, rakeR: 0.16,
+    R: 0.30, axle: [1.32, -1.20], dam: [0.28, 0.34],
+  },
+  minivan: {
+    L: 4.34, W: 1.695, H: 1.80, sill: 0.38, waist: 1.06, roof: 1.80, cab: [-2.00, 1.32], rakeF: 0.58, rakeR: 0.14,
+    R: 0.30, axle: [1.42, -1.20], dam: [0.28, 0.36],
+  },
+  van: {
+    L: 4.44, W: 1.695, H: 1.98, sill: 0.40, waist: 1.12, roof: 1.98, cab: [-2.14, 2.02], rakeF: 0.32, rakeR: 0.06,
+    R: 0.31, axle: [1.48, -1.28], dam: [0.34, 0.38],
+  },
   boxtruck: {
     L: 4.80, W: 1.755, H: 2.46, sill: 0.46, waist: 1.20, roof: 1.98, cab: [0.42, 2.16], rakeF: 0.28, rakeR: 0.10,
     box: { x0: -2.40, x1: 0.28, y0: 1.06, y1: 2.46 },
@@ -1708,6 +1734,69 @@ export function carLayout(el) {
     P.box('carBody', b.x1, k.waist, -cw, (k.cab[0] + rr) / 2, k.roof, cw, { ...o, name: 'cabGap' });
   }
   return P.list;
+}
+
+/* ------------------------------------------------------------------ *
+ * THE PARKED CAR OPEN UNDERNEATH, for a map flown small. At the town's
+ * own scale the 0.13 m under a car's floor is the slot `under` closes, but
+ * Heads' house is drawn 3.5 times life size round a 75 mm whoop, and there
+ * it is 0.455 m of air over a hull 0.071 m tall: a line, and the owner's
+ * (2026-10-22, "you need to be able to fly under the parked cars in Heads'
+ * yard"). So `under` gives way to what src/art/cars.js draws below the
+ * sill:
+ *
+ *   floor    the dark underside between the wheels, CAR_FLOOR up to the
+ *            sill, as long as the drawn one (0.6 R short of each axle) and
+ *            at least as wide (CAR_FLOOR_IN in from the widest flank).
+ *   nose,    past each arch to the bumper's foot, from that end's dam to
+ *   tail     the sill.
+ *   tyre     each of the four as three boxes standing in its circle up to
+ *            the sill, a plus with its corners filled, so a craft that
+ *            touches the rubber stops within a few centimetres of it. The
+ *            middle one stands on the ground, where a tyre is flat.
+ *
+ * From the sill up it is carLayout's, so the car is the same solid there. A
+ * kind with no `dam` (the box lorry and the minibus, on profiles of their
+ * own, and the two coupes, whose floors are lofted) is carLayout's, closed.
+ * ------------------------------------------------------------------ */
+const CAR_FLOOR = 0.13;
+const CAR_FLOOR_IN = 0.092;
+/* The arch's radius over the tyre's, the seven kinds' `arch.gap`. */
+const CAR_ARCH_GAP = 0.05;
+/* Each tyre box as shares of R: its half length in x and its foot over the
+ * ground, its two lower corners on the circle (0.4 and 0.917, 0.7 and
+ * 0.714, 0.917 and 0.4 from the hub). */
+const TYRE_BOXES = [[0.4, 0], [0.7, 0.3], [0.917, 0.6]];
+
+export function carOpenLayout(el) {
+  const kind = CAR_KINDS[el.style] ? el.style : 'kei';
+  const k = CAR_KINDS[kind];
+  const above = carLayout(el);
+  if (!k.dam) {
+    return above;
+  }
+  const P = new Parts();
+  const o = { draw: false, kind: 'obstacle' };
+  const R = k.R;
+  const [xf, xr] = k.axle;
+  const fw = k.W / 2 - CAR_FLOOR_IN;
+  P.box('carBody', xr + 0.6 * R, CAR_FLOOR, -fw, xf - 0.6 * R, k.sill, fw, { ...o, name: 'floor' });
+  const end = (k.L - 0.16) / 2;
+  const uw = (k.W - 0.07) / 2;
+  P.box('carBody', xf + R + CAR_ARCH_GAP, k.dam[0], -uw, end, k.sill, uw, { ...o, name: 'nose' });
+  P.box('carBody', -end, k.dam[1], -uw, xr - R - CAR_ARCH_GAP, k.sill, uw, { ...o, name: 'tail' });
+  /* The tyre's width and where its middle stands across the car, as
+   * tyreWidth and wheelZ in src/art/cars.js put them. */
+  const tw = R < 0.3 ? 0.165 : 0.195;
+  const wz = k.W / 2 - tw / 2 - 0.015;
+  for (const ax of k.axle) {
+    for (const side of [1, -1]) {
+      for (const [hx, foot] of TYRE_BOXES) {
+        P.box('carBody', ax - hx * R, foot * R, side * wz - tw / 2, ax + hx * R, k.sill, side * wz + tw / 2, { ...o, name: 'tyre' });
+      }
+    }
+  }
+  return [...P.list, ...above.filter((p) => p.name !== 'under')];
 }
 
 /* The colour a car is painted, as the name of one of the town's CAR

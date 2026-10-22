@@ -69,6 +69,7 @@
 
 import { Parts } from '../../props/parts.js';
 import { partsOf } from '../../props/catalog.js';
+import { carOpenLayout } from '../../props/street.js';
 import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
 
 /* ------------------------------------------------------------------ */
@@ -1696,21 +1697,24 @@ function trees(H) {
 
 /* Cars, by quarter turns: our pickup's stand in nose out and the black
  * sedan nose in on the drive (img-02, img-05), the red one parked across
- * the street (img-04), the neighbours'. The variant picks the colour. */
+ * the street (img-04), the neighbours'. The variant picks the colour. Each
+ * stands on the paint it is parked on, a drive's or the street's, so its
+ * tyres are on the asphalt rather than in it and the air under its floor
+ * is the whole 0.13 m, which scaledParts leaves open to fly through. */
 function cars(H) {
   const N = Math.PI / 2;
   const list = [
-    ['wagon', 17.4, -3.1, -N, 5],
-    ['sedan', 14.8, -5.7, N, 26],
-    ['minivan', 15.5, -20.6, 0, 20],
-    ['hatch', 42.0, -4.0, N, 3],
-    ['sedan', -26.0, -12.8, Math.PI, 20],
-    ['wagon', 11.6, -30.0, -N, 5],
-    ['sedan', -27.3, 9.8, 0, 1],
+    ['wagon', 17.4, -3.1, -N, 5, G_DRIVE],
+    ['sedan', 14.8, -5.7, N, 26, G_DRIVE],
+    ['minivan', 15.5, -20.6, 0, 20, G_ASPHALT],
+    ['hatch', 42.0, -4.0, N, 3, G_DRIVE],
+    ['sedan', -26.0, -12.8, Math.PI, 20, G_ASPHALT],
+    ['wagon', 11.6, -30.0, -N, 5, G_DRIVE],
+    ['sedan', -27.3, 9.8, 0, 1, G_DRIVE],
   ];
-  list.forEach(([style, px, py, yaw, variant], i) => {
+  list.forEach(([style, px, py, yaw, variant, h], i) => {
     const el = { id: `heads-car-${i + 1}`, type: 'car', style, dims: { variant } };
-    H.asset(el, S, px, py, 0, yaw, 'extra:street');
+    H.asset(el, S, px, py, h, yaw, 'extra:street');
   });
 }
 
@@ -1719,12 +1723,14 @@ function cars(H) {
 /* ------------------------------------------------------------------ */
 
 /* The scaled assets' parts in the world frame, solid and never drawn
- * (../house/house.js scaledParts). */
+ * (../house/house.js scaledParts). A car's are open underneath
+ * (carOpenLayout in src/props/street.js): at this scale the gap under its
+ * floor is a line. */
 const SCQ = { s: 0, c: 1 };
 function scaledParts(a) {
   const k = a.k;
   const [x, y, z] = worldAt(a.px, a.py, a.h);
-  const parts = partsOf(a.el);
+  const parts = a.el.type === 'car' ? carOpenLayout(a.el) : partsOf(a.el);
   const out = [];
   if (parts.some((p) => p.t === 'box')) {
     quarterSinCos(quarterTurns(a.yaw), SCQ);

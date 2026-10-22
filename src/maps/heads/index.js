@@ -22,7 +22,7 @@
  * And, on top, the LOGOS (./logos.js says where and why): every roster
  * brand's sign hung once and found as on any freestyle map, the same signs
  * and the Infinity Loops logos and the 90% patch painted all over the
- * street, the fence, the walls and the rooms, and ten 90% patches to be
+ * street, the fence, the walls and the rooms, and eleven 90% patches to be
  * found, the achievement "90%er". With them the garage's four prints: the
  * Infinity Loops banner, the sticker wall, bombed with the 90%ers' own
  * stickers, the WIDE TURNS sign and the flag. All of it is painted on one

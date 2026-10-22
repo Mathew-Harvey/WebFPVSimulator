@@ -32,7 +32,9 @@
  *                 every roster brand hung once and each sign on its face
  *                 all over, every decal and patch landed and flat on what
  *                 it is on with nothing through it, every brand painted
- *                 three more times, the Infinity Loops logo six
+ *                 three more times, the Infinity Loops logo six, and the
+ *                 patch under Heads' car found by the game's own test
+ *                 flying in under it and from nowhere a pilot stands
  *
  * Usage: node scripts/heads-check.js
  *
@@ -73,6 +75,7 @@ import { Colliders, CRAFT_WORLD_R, GROUND_MU, GROUND_E } from '../src/game/colli
 import { uploadWorld, setWorldFrame } from '../src/game/plantworld.js';
 import { threePosToSim } from '../src/render/frame.js';
 import { sincos } from '../src/props/trig.js';
+import { seesMark } from '../src/game/egg.js';
 import { coplanarPairs, separateCoplanar, LIFT } from '../src/props/coplanar.js';
 import {
   headsAt, headsPose, headsBones, BONE as MAN_BONE, SOLE as MAN_SOLE, STOPS, HEADS_PHASES, HEADS_PERIOD_MS, HEADS_LINES,
@@ -388,6 +391,13 @@ const LINES = [
   ['round the back yard and out the side gate', [[19.0, 12.0, 1.5], [6.0, 18.0, 1.5], [-3.0, 10.0, 1.2], [-3.0, 3.0, 0.9]]],
   ['along the front walk, past the stoop and the drive', [[-3.0, -9.65, 1.0], [24.0, -9.65, 1.0]]],
   ['along the front of the house over the beds', [[-1.5, -3.0, 1.3], [12.5, -3.0, 1.3]]],
+  /* Under Heads' car on the drive, across between its axles from the gap
+   * by the sedan, and along it from the street between its wheels, over
+   * the 90% patch: level, the hull 0.06 m up, so the ball has its whole
+   * radius of air under the car's floor (carOpenLayout in
+   * src/props/street.js). */
+  ['under Heads\' car, across from the gap by the sedan', [[16.0, -3.15, 0.06], [18.9, -3.15, 0.06]]],
+  ['under Heads\' car, along it from the street', [[17.4, -6.0, 0.06], [17.4, -0.6, 0.06]]],
   ['down Street A through the intersection', [[40.0, -14.5, 1.5], [-38.0, -14.5, 1.5]]],
   ['up the cross street', [[-15.0, -40.0, 1.5], [-15.0, 30.0, 1.5]]],
 ];
@@ -644,7 +654,7 @@ function unbacked(boxes, q, deep, proud = 0) {
   return worst;
 }
 
-async function logosBlock(L) {
+async function logosBlock(L, placed) {
   console.log('\n8. logos');
   const lg = await import('../src/maps/heads/logos.js');
   const boxes = lg.drawnBoxes(L.parts);
@@ -722,6 +732,57 @@ async function logosBlock(L) {
   check(`the ${patches.length} patches to find each sit flat on what they are on`, patches.length >= 10 && !badPatch.length, badPatch.join('; '));
   const ids = new Set(patches.filter(Boolean).map((s) => s.id));
   check('each patch has its own id', ids.size === patches.length);
+  underCarBlock(patches.find((s) => s && s.id === 'under-car'), placed);
+}
+
+/*
+ * The patch hidden under Heads' car: found by the game's own test
+ * (seesMark in src/game/egg.js) flying in under the car from the gap by
+ * the sedan, the hull half way up the air under the floor and the camera
+ * a little down, and found from nowhere a pilot stands at round the car,
+ * half a metre to a metre and a half up, looking straight at it. That
+ * second half is what makes it hidden.
+ */
+function underCarBlock(patch, placed) {
+  if (!patch) {
+    check('the patch under the car lands', false, 'no under-car patch');
+    return;
+  }
+  const colliders = new Colliders();
+  addSolids(colliders, placed.solids);
+  colliders.build();
+  const eye = (px, py, h) => {
+    const [x, y, z] = worldAt(px, py, h);
+    return { x, y, z };
+  };
+  /* East and 10 degrees down. */
+  const across = { x: 0.984807753012208, y: -0.17364817766693033, z: 0 };
+  let found = null;
+  for (let px = 15.9; px <= 18.0 && !found; px += 0.05) {
+    if (seesMark(eye(px, -3.15, 0.12), across, patch, colliders)) {
+      found = px;
+    }
+  }
+  check('the patch under the car is found flying in under it from the gap by the sedan', found !== null,
+    found !== null ? `at plan x ${r3(found)}, 0.12 m up` : 'never');
+  let seen = 0;
+  let tried = 0;
+  for (let px = 13.0; px <= 21.0; px += 0.25) {
+    for (let py = -9.0; py <= 1.0; py += 0.25) {
+      for (const h of [0.5, 1.0, 1.5]) {
+        const e = eye(px, py, h);
+        const dx = patch.p[0] - e.x;
+        const dy = patch.p[1] - e.y;
+        const dz = patch.p[2] - e.z;
+        const l = Math.hypot(dx, dy, dz);
+        tried += 1;
+        if (seesMark(e, { x: dx / l, y: dy / l, z: dz / l }, patch, colliders)) {
+          seen += 1;
+        }
+      }
+    }
+  }
+  check('and from nowhere 0.5 to 1.5 m up round the car', seen === 0, `${seen} of ${tried} points`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -927,7 +988,7 @@ async function main() {
   gapsBlock(placed, near);
   slotsBlock(own);
   roofsBlock(placed, near);
-  await logosBlock(L);
+  await logosBlock(L, placed);
   await moduleBlock(placed);
   manBlock(placed, near);
   console.log(failures ? `\n${failures} failed` : '\nall passed');

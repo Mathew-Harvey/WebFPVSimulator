@@ -99,6 +99,12 @@ import {
   tuneKey,
 } from './share/tune.js';
 import { lostStickNotice, noRadioNotice } from './ui/stickhelp.js';
+/* Career: the lessons run through src/career/controller.js, which this file
+ * hands a small object of its own (careerShell, near the end of boot) and
+ * calls from a handful of one line hooks, each marked "Steam edition:
+ * career" (the Steam edition's copy of this file carries the same hooks).
+ * The career reads state; it never writes to the physics. It is fetched
+ * when a pilot opens it, not at boot (loadCareer). */
 import {
   adoptMapFromLocation, adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost,
   fetchMapDocument, fetchTrackDocument, fetchTrackTimes, postFreestyleRun, postTime,
@@ -1372,9 +1378,21 @@ export async function boot({ loading, bootStart, mapId }) {
    * the Freestyle room, for the built world and nothing else. See sharedMap
    * above, and ui.onBoardMap. `shared` rides along so the world remembers
    * which map it is (loadMap). */
-  const worldDocument = (id) => (id === 'built' && sharedMap
-    ? { document: sharedMap.document, shared: sharedMap }
-    : {});
+  /* Steam edition: career. While a lesson's world is wanted, its document
+   * is what that world is built from, ahead of a map from the board or the
+   * seated track. careerWorld is { map, doc, key } or null. */
+  let careerWorld = null;
+  /* The key of the last lesson world that would not build, for the career
+   * to tell its pilot rather than wait for ever. */
+  let careerFailed = '';
+  const worldDocument = (id) => {
+    if (careerWorld && careerWorld.map === id) {
+      return { document: careerWorld.doc };
+    }
+    return id === 'built' && sharedMap
+      ? { document: sharedMap.document, shared: sharedMap }
+      : {};
+  };
   try {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: qualityOf(ui.settings),
@@ -2098,6 +2116,10 @@ export async function boot({ loading, bootStart, mapId }) {
       const e = evs[k];
       score.gap(e.name, e.tier, e.paidStep, e.index);
     }
+    /* Steam edition: career. The gaps that paid, as the counter took them. */
+    if (career) {
+      career.gaps(evs);
+    }
     evs.length = 0;
   }
 
@@ -2460,8 +2482,23 @@ export async function boot({ loading, bootStart, mapId }) {
    * Only 'scored' puts a clock on the run, so 'off' and 'free' alike leave
    * score.timed false and the run never ends.
    */
-  const scoredRun = () => ui.settings.freestyleScoring === 'scored';
-  const scoringWanted = () => ui.settings.freestyleScoring !== 'off';
+  /* Steam edition: career. The career, once boot has made it (careerShell
+   * near the end). Declared here so the hooks above it can ask it. A
+   * lesson's run is never a timed freestyle run, because the clock ending a
+   * lesson would be the game deciding for the lesson, and tricks always
+   * count in it, because the freestyle chapter scores them. */
+  let career = null;
+  /* What a lesson holds while it flies: 'angle' or 'acro' (wantAngleMode),
+   * and 'chase' or 'fpv' for the camera (the frame loop). Null is the
+   * pilot's own. */
+  let careerFlightMode = null;
+  let careerCamera = null;
+  /* The gate this frame passed and the lap it finished, read off the race
+   * by the frame loop for careerFrame. */
+  let careerGateNow = null;
+  let careerLapNow = null;
+  const scoredRun = () => ui.settings.freestyleScoring === 'scored' && !(career && career.owns());
+  const scoringWanted = () => ui.settings.freestyleScoring !== 'off' || Boolean(career && career.owns());
   const score = new Counter({ timed: scoredRun(), tricks: scoringWanted() });
   /*
    * THE COUNTER'S GEOMETRY. The named gaps (src/game/gaps.js) are fed every
@@ -2487,6 +2524,11 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let obstacles = null;
   const trickDetector = new TrickDetector((trick) => {
+    /* Steam edition: career. Every trick the recogniser names, kept by the
+     * score or not: the lesson judges it on its own terms. */
+    if (career) {
+      career.trick(trick);
+    }
     /* Only a trick the run kept, so one landing after the clock stopped
      * does not mark a run mixed that was flown at one weight. */
     if (score.land(trick)) {
@@ -4915,6 +4957,10 @@ export async function boot({ loading, bootStart, mapId }) {
      * did; without a set down the craft may still be in the air, so this
      * kind is judged at the deadline: see autoResetTick. */
     armAutoReset('bounce');
+    /* Steam edition: career. */
+    if (career) {
+      career.crash();
+    }
   }
 
   /* The craft's heading, flattened onto the ground plane, as a spawn yaw.
@@ -5449,6 +5495,10 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostRig.setPresence(0);
     runLaps = ui.settings.laps;
     view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
+    /* Steam edition: career. A new run of the lesson under way, if any. */
+    if (career) {
+      career.reset();
+    }
   }
 
   /*
@@ -5588,6 +5638,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * matched and did nothing, and so was choosing Your map after either.
    */
   function wantedCourseKey(mapId) {
+    /* Steam edition: career. A lesson's world is keyed by its own document,
+     * stamped on the view by syncWorld when it loads (careerKey). */
+    if (careerWorld && careerWorld.map === mapId) {
+      return careerWorld.key;
+    }
     if (mapId === 'built') {
       return sharedMap ? `mapshare:${sharedMap.id}` : '';
     }
@@ -5595,6 +5650,10 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function loadedCourseKey(map) {
+    /* Steam edition: career. */
+    if (map && map.careerKey) {
+      return map.careerKey;
+    }
     if (map && map.id === 'built') {
       return map.shared ? `mapshare:${map.shared.id}` : '';
     }
@@ -5688,6 +5747,8 @@ export async function boot({ loading, bootStart, mapId }) {
         hideSponsors: replayClean,
         ...worldDocument(wantId),
       });
+      /* Steam edition: career. Which lesson world this is, if one. */
+      view.careerKey = careerWorld && careerWorld.map === wantId ? careerWorld.key : '';
       loading.start('frame');
       adoptLoadedView(keepPlace, stayMode, stayScreen);
     } catch (e) {
@@ -5712,12 +5773,21 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.setSharedMap(sharedMap);
       try {
         applyPixelRatio(shell, previousGraphics, renderScaleOf(ui.settings));
+        /* Steam edition: career. A lesson world that would not build gives
+         * the career its answer through careerKey, and the world being left
+         * is rebuilt from its own document, never from the lesson's. */
+        const failedCareer = careerWorld;
+        careerWorld = null;
         view = await loadMap(shell, previous, loading, {
           quality: qualityOf(ui.settings),
           renderScale: renderScaleOf(ui.settings),
           hideSponsors: replayClean,
           ...worldDocument(previous),
         });
+        view.careerKey = '';
+        if (failedCareer) {
+          careerFailed = failedCareer.key;
+        }
         loading.start('frame');
         adoptLoadedView(keepPlace, stayMode, stayScreen);
         /* A freestyle world failed under a pilot still in freestyle, and
@@ -5847,6 +5917,13 @@ export async function boot({ loading, bootStart, mapId }) {
     if (lcAcroUntil === Infinity || (lcAcroUntil > 0 && performance.now() < lcAcroUntil)) {
       return false;
     }
+    /* Steam edition: career. A lesson holds its own mode, Angle for the
+     * first chapters and Acro after, whatever the pilot's setting says.
+     * Turtle, crash flip and a launch above still win, as they do over the
+     * setting. */
+    if (careerFlightMode) {
+      return careerFlightMode === 'angle';
+    }
     return ui.settings[flightModeSetting()] === 'angle';
   }
 
@@ -5866,6 +5943,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * always the live one, is what says so.
    */
   function flipFlightMode() {
+    /* Steam edition: career. M does not undo what a lesson is teaching. */
+    if (careerFlightMode) {
+      notice = {
+        text: careerFlightMode === 'angle'
+          ? 'This lesson is flown in Angle.\nAcro comes in chapter three.'
+          : 'This lesson is flown in Acro.',
+        untilMs: performance.now() + 2400,
+      };
+      return;
+    }
     const key = flightModeSetting();
     const next = ui.settings[key] === 'angle' ? 'acro' : 'angle';
     ui.settings[key] = next;
@@ -7809,6 +7896,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (action === 'pause') {
       mode = 'paused';
+    } else if (action === 'title' && career && career.active()) {
+      /* Steam edition: career. Out of a lesson to the title is out of the
+       * career, with the pilot's own world back. */
+      career.leave();
     } else if (action === 'title') {
       mode = 'title';
       reset();
@@ -8053,6 +8144,10 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Here and on pointerdown, never inside wakeAudio, which a link's
      * timer also calls: the voice is opened by a gesture or not at all. */
     lapVoice.prime();
+    /* Steam edition: career. Its screens take the keys while they are up. */
+    if (career && career.handleKey(code, repeat)) {
+      return;
+    }
     if (ui.handleKey(code, repeat)) {
       return;
     }
@@ -8972,7 +9067,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (rcPending.length > 1024) {
       rcPending.splice(0, rcPending.length - 256);
     }
-    if (ui.isModal()) {
+    /* Steam edition: career. Its display follows the screen it is over, and
+     * its screens own the pad while they are up. */
+    if (career) {
+      career.tick(nowWall);
+    }
+    if (career && career.wantsPad()) {
+      career.pollPad(padNav(), nowWall);
+    } else if (ui.isModal()) {
       ui.pollPad(padNav());
     }
 
@@ -9477,6 +9579,10 @@ export async function boot({ loading, bootStart, mapId }) {
          */
         if (hard) {
           flightStats.noteCrash();
+          /* Steam edition: career and achievements. */
+          if (career) {
+            career.crash();
+          }
           if (view.judge && mode === 'flight') {
             view.judge.hear('crash', simTimeMs);
           }
@@ -9630,6 +9736,10 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     if (crashJudge.stopHard) {
       flightStats.noteCrash();
+      /* Steam edition: career and achievements. */
+      if (career) {
+        career.crash();
+      }
       if (view.judge && mode === 'flight') {
         view.judge.hear('crash', simTimeMs);
       }
@@ -9737,6 +9847,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * travel, so speed cannot tunnel a gate. */
     const simNow = simTimeMs > 0 ? simTimeMs - 1 + a : 0;
     if (mode === 'flight' && !launchStaging) {
+      /* Steam edition: career. What this frame's travel scored, if anything. */
+      careerGateNow = null;
+      careerLapNow = null;
       if (raceHasPrev) {
         /* The race's state from before this frame's travel is scored, so
          * the ghost bookkeeping can see a lap boundary without the race
@@ -9753,6 +9866,9 @@ export async function boot({ loading, bootStart, mapId }) {
           /* Dan's (src/maps/dan/), read before the race scores the travel. */
           const danMissed = view.judge && !race.freestyle && race.missedGate(race.next, racePrev, pCurr);
           const res = race.update(racePrev, pCurr, simNow, nowWall, allowPass);
+          /* Steam edition: career. */
+          careerGateNow = res.passed;
+          careerLapNow = race.laps.length > lapsBefore ? race.lastLapMs : null;
           if (view.judge && !race.freestyle) {
             if (danMissed && res.passed == null) {
               view.judge.hear('miss', simNow);
@@ -9786,7 +9902,8 @@ export async function boot({ loading, bootStart, mapId }) {
             );
           }
         }
-        if (!race.freestyle && runComplete(race.lap, runLaps)) {
+        /* Steam edition: career. A lesson judges its own laps. */
+        if (!race.freestyle && !(career && career.owns()) && runComplete(race.lap, runLaps)) {
           mode = 'results';
           if (turtleWait || turtleFlip.active) {
             if (turtleWait && !turtleFlip.active) {
@@ -9815,6 +9932,11 @@ export async function boot({ loading, bootStart, mapId }) {
             offBoard: race.hasTunedLaps(),
           });
         }
+      }
+      /* Steam edition: career. The lesson's frame, on the same rendered
+       * position and sim clock the race scores on. */
+      if (career && career.owns()) {
+        careerFrame(simNow, raceHasPrev ? racePrev : pCurr);
       }
       racePrev.copy(pCurr);
       raceHasPrev = true;
@@ -10256,6 +10378,9 @@ export async function boot({ loading, bootStart, mapId }) {
           }
         }
         setCameraNear(CAMERA_NEAR_OPEN);
+      } else if (careerCamera === 'chase' && (mode === 'flight' || mode === 'paused')) {
+        /* Steam edition: career. See careerChase. */
+        careerChase(nowWall);
       } else {
         /* The camera sits inside the airframe, so the quad must be hidden or
          * you fly looking at the inside of its own outline hull. For one
@@ -10820,6 +10945,8 @@ export async function boot({ loading, bootStart, mapId }) {
      * so calling it in a condition and again in the body would consume it. */
     const guidedText = (
       ui.guided
+      /* Steam edition: career. A lesson has its own coach. */
+      && !(career && career.owns())
       && !crashflipOn
       && !turtleRecover
       && lastUpz >= 0
@@ -10902,6 +11029,11 @@ export async function boot({ loading, bootStart, mapId }) {
           ? `LAUNCH ${deg}\nPunch throttle`
           : `LAUNCH ${deg}\nCentre the stick, then punch`)
         : 'LAUNCH CONTROL\nPitch forward, then centre the stick');
+    } else if (career && career.owns() && !flownThisRun) {
+      /* Steam edition: career. Before the first takeoff the lesson's coach
+       * says what to do; the game's own promise about clocks and gates is
+       * about a different kind of run. */
+      ui.setBanner('');
     } else if (!flownThisRun) {
       /*
        * THE SECOND LINE IS A PROMISE ABOUT WHAT STARTS, and in freestyle it
@@ -13133,6 +13265,387 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     return { map: view.id, kind: probe.kind, periodMs: period, samples: out };
   };
+  /*
+   * Steam edition: career. THE CAREER'S HANDLE ON THE GAME: everything
+   * src/career/controller.js may ask of this file, and nothing else. It
+   * seats a lesson's world and aircraft, starts and stops a run, holds the
+   * lesson's flight mode and camera, and gives the pilot's own world back
+   * when they leave. The controller never touches `mode`, the plant or the
+   * settings itself, so the rules this file keeps about them stay kept here.
+   *
+   * THE PILOT'S OWN, KEPT. A lesson seats the five inch and the lesson's
+   * world through the same settings every other door uses, so the swap and
+   * the airframe change take the same paths and the same guards. What was
+   * seated before is kept in careerSaved and put back by careerLeaveWorld,
+   * the first time a lesson is entered and not again, so a run of lessons
+   * still returns the pilot to the world they came from.
+   */
+  let careerSaved = null;
+
+  /* A lesson's world is keyed by what is in it, its id and name aside, so
+   * two lessons on the same field share one build. */
+  function careerKeyOf(doc) {
+    const text = JSON.stringify({ ...doc, id: '', name: '' });
+    let h = 5381;
+    for (let i = 0; i < text.length; i += 1) {
+      h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+    }
+    return `career:${h.toString(36)}.${text.length.toString(36)}`;
+  }
+
+  /* Wait for the world a lesson asked for, or say it will not come. The
+   * swap is started by applySettings and may queue behind one in flight, so
+   * this nudges syncWorld once the way is clear, as the swap's own tail
+   * does. */
+  function careerWaitWorld(key, timeoutMs = 90000) {
+    const t0 = performance.now();
+    return new Promise((resolve, reject) => {
+      const tick = () => {
+        if (careerFailed === key) {
+          reject(new Error('This lesson\'s world could not be built.'));
+          return;
+        }
+        if (mapReady && !swapInFlight) {
+          if (loadedCourseKey(view) === key) {
+            resolve(view);
+            return;
+          }
+          if (!worldMatchesSettings()) {
+            syncWorld();
+          }
+        }
+        if (performance.now() - t0 > timeoutMs) {
+          reject(new Error('This lesson\'s world took too long to build.'));
+          return;
+        }
+        setTimeout(tick, 40);
+      };
+      tick();
+    });
+  }
+
+  /* To the title, quietly: the career's screens are over it. */
+  function careerToTitle() {
+    ui.setCareerLesson(null);
+    if (mode !== 'title') {
+      mode = 'title';
+      reset();
+    }
+    if (ui.screen !== 'title') {
+      ui.show('title');
+    }
+  }
+
+  async function careerEnterWorld(w) {
+    if (!careerSaved) {
+      careerSaved = { map: ui.settings.map, airframe: ui.settings.airframe };
+    }
+    const key = careerKeyOf(w.doc);
+    careerFailed = '';
+    careerWorld = { map: w.map, doc: w.doc, key };
+    careerToTitle();
+    ui.settings.map = w.map;
+    ui.settings.airframe = airframeById(w.airframe || '5inch').id;
+    /* The airframe and the world, on the between runs rules every other
+     * door takes. See applySettings. */
+    applySettings(ui.settings);
+    await careerWaitWorld(key);
+    return view;
+  }
+
+  async function careerLeaveWorld() {
+    careerWorld = null;
+    careerFlightMode = null;
+    careerCamera = null;
+    careerToTitle();
+    const saved = careerSaved;
+    careerSaved = null;
+    if (saved) {
+      ui.settings.map = saved.map;
+      ui.settings.airframe = saved.airframe;
+    }
+    applySettings(ui.settings);
+    ui.renderMenu();
+  }
+
+  /* A fresh run of the lesson, straight in: no pad shot, because the
+   * briefing was the introduction. `then` runs once the run is live. */
+  function careerFly(then) {
+    whenConfigReady(() => {
+      reset();
+      mode = 'flight';
+      ui.show('flight');
+      introMs = -1;
+      careerChaseCam.atMs = -1;
+      if (career) {
+        ui.setCareerLesson(career.lesson());
+      }
+      if (then) {
+        then();
+      }
+    });
+  }
+
+  /* Hold the world still under a career screen: the results, or a briefing
+   * opened from the pause menu. The pause screen is underneath and hidden.
+   * A lesson's results take the race's finish camera, which pulls off the
+   * lens onto the quad where it finished. */
+  function careerFreeze(kind) {
+    if (mode === 'flight') {
+      mode = kind === 'results' ? 'results' : 'paused';
+    }
+    if (ui.screen !== 'paused') {
+      ui.show('paused');
+    }
+  }
+
+  /*
+   * THE CHASE CAMERA the first lessons fly with: behind and above the quad,
+   * turning with its heading and never with its bank, so a first hover is
+   * watched the way a model is flown from the field. Smoothed on the wall
+   * clock, which is the render's own business: nothing here reaches the
+   * physics, and the FPV mount is where every other lesson flies from.
+   */
+  const careerChaseCam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), atMs: -1 };
+  const careerChaseFwd = new THREE.Vector3();
+  const careerChaseWant = new THREE.Vector3();
+  const careerChaseLook = new THREE.Vector3();
+  const CAREER_CHASE_BACK = 2.5;
+  const CAREER_CHASE_UP = 1.05;
+  const CAREER_CHASE_AHEAD = 3.5;
+  const CAREER_CHASE_TAU_MS = 220;
+  function careerChase(nowWall) {
+    shell.quad.visible = true;
+    predictCam = false;
+    careerChaseFwd.set(0, 0, -1).applyQuaternion(qPrev);
+    careerChaseFwd.y = 0;
+    if (careerChaseFwd.lengthSq() < 1e-6) {
+      careerChaseFwd.set(0, 0, -1);
+    }
+    careerChaseFwd.normalize();
+    careerChaseWant.copy(pCurr).addScaledVector(careerChaseFwd, -CAREER_CHASE_BACK);
+    careerChaseWant.y += CAREER_CHASE_UP;
+    const floor = view.height(careerChaseWant.x, careerChaseWant.z, careerChaseWant.y, careerChaseWant.y) + 0.35;
+    if (careerChaseWant.y < floor) {
+      careerChaseWant.y = floor;
+    }
+    careerChaseLook.copy(pCurr).addScaledVector(careerChaseFwd, CAREER_CHASE_AHEAD);
+    careerChaseLook.y = pCurr.y + 0.2;
+    const dt = careerChaseCam.atMs < 0 ? Infinity : Math.max(0, nowWall - careerChaseCam.atMs);
+    careerChaseCam.atMs = nowWall;
+    if (!Number.isFinite(dt) || dt > 400 || careerChaseCam.pos.distanceToSquared(careerChaseWant) > 400) {
+      careerChaseCam.pos.copy(careerChaseWant);
+      careerChaseCam.look.copy(careerChaseLook);
+    } else {
+      const k = 1 - Math.exp(-dt / CAREER_CHASE_TAU_MS);
+      careerChaseCam.pos.lerp(careerChaseWant, k);
+      careerChaseCam.look.lerp(careerChaseLook, k);
+    }
+    shell.camera.up.set(0, 1, 0);
+    shell.camera.position.copy(careerChaseCam.pos);
+    shell.camera.lookAt(careerChaseCam.look);
+    if (shell.camera.fov !== 70) {
+      shell.camera.fov = 70;
+      shell.camera.updateProjectionMatrix();
+    }
+    setCameraNear(CAMERA_NEAR_OPEN);
+  }
+
+  /*
+   * THE FRAME RECORD a lesson is judged on (src/career/objectives.js), in
+   * the world frame, filled in place: the frame loop allocates nothing for
+   * it. Read on the rendered position and the sim clock the race uses.
+   */
+  const careerRec = {
+    simMs: 0,
+    prev: { x: 0, y: 0, z: 0 },
+    pos: { x: 0, y: 0, z: 0 },
+    vel: { x: 0, y: 0, z: 0 },
+    fwd: { x: 0, y: 0, z: -1 },
+    up: { x: 0, y: 1, z: 0 },
+    speed: 0,
+    height: 0,
+    landed: true,
+    gate: null,
+    lap: null,
+    score: 0,
+    dtMs: 16,
+  };
+  const careerLap = { ms: 0 };
+  const careerVec = new THREE.Vector3();
+  let careerLastSim = -1;
+  function careerFrame(simNow, prev) {
+    const r = careerRec;
+    r.dtMs = careerLastSim < 0 ? 16 : Math.max(0, simNow - careerLastSim);
+    careerLastSim = simNow;
+    r.simMs = simNow;
+    r.prev.x = prev.x;
+    r.prev.y = prev.y;
+    r.prev.z = prev.z;
+    r.pos.x = pCurr.x;
+    r.pos.y = pCurr.y;
+    r.pos.z = pCurr.z;
+    simPosToThree(stateCurr[4], stateCurr[5], stateCurr[6], careerVec);
+    careerVec.applyQuaternion(qSpawn);
+    r.vel.x = landed ? 0 : careerVec.x;
+    r.vel.y = landed ? 0 : careerVec.y;
+    r.vel.z = landed ? 0 : careerVec.z;
+    careerVec.set(0, 0, -1).applyQuaternion(qPrev);
+    r.fwd.x = careerVec.x;
+    r.fwd.y = careerVec.y;
+    r.fwd.z = careerVec.z;
+    careerVec.set(0, 1, 0).applyQuaternion(qPrev);
+    r.up.x = careerVec.x;
+    r.up.y = careerVec.y;
+    r.up.z = careerVec.z;
+    r.landed = landed;
+    r.speed = landed ? 0 : speedNow;
+    r.height = landed ? 0 : Math.max(0, pCurr.y - view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS, pCurr.y));
+    r.gate = careerGateNow;
+    if (careerLapNow != null) {
+      careerLap.ms = careerLapNow;
+      r.lap = careerLap;
+    } else {
+      r.lap = null;
+    }
+    r.score = score.total();
+    career.frame(r);
+  }
+
+  /* The named gaps of the world flying, as the career draws and points at
+   * them: the sill's middle, the width and height, and the turn about +Y
+   * that lays a frame's width along the gap. Once a world. */
+  let careerGapsOf = null;
+  let careerGapList = [];
+  function careerGapZones() {
+    if (careerGapsOf !== view) {
+      careerGapsOf = view;
+      careerGapList = (view && Array.isArray(view.gaps) ? view.gaps : []).map((g) => ({
+        name: g.name,
+        x: g.x,
+        y: g.y,
+        z: g.z,
+        w: g.hw * 2,
+        h: g.h,
+        yaw: Math.atan2(-g.az, g.ax),
+      }));
+    }
+    return careerGapList;
+  }
+
+  function careerSound(name) {
+    if (!ui.settings.sound || !audio.ctx || typeof audio.event !== 'function') {
+      return;
+    }
+    if (name === 'record') {
+      audio.event('gate');
+      audio.event('gate', audio.ctx.currentTime + 0.14);
+      return;
+    }
+    audio.event(name === 'select' ? 'select' : 'gate');
+  }
+
+  const careerShell = {
+    enterWorld: careerEnterWorld,
+    leaveWorld: careerLeaveWorld,
+    fly: careerFly,
+    freeze: careerFreeze,
+    idle: careerToTitle,
+    setFlightMode(m) {
+      careerFlightMode = m === 'angle' || m === 'acro' ? m : null;
+      syncAngleMode();
+    },
+    setCamera(c) {
+      careerCamera = c === 'chase' ? 'chase' : null;
+      careerChaseCam.atMs = -1;
+    },
+    get camera() {
+      return shell.camera;
+    },
+    get canvas() {
+      return shell.canvas;
+    },
+    scene: () => shell.quad.parent || null,
+    gatesPerLap: () => (race && race.gates ? race.gates.length : 0),
+    gapZones: careerGapZones,
+    groundAt: (x, z) => (view && view.height ? view.height(x, z, 1, 1) : 0),
+    stickMode: () => ui.settings.stickMode,
+    /* No radio or pad chosen: the briefing names the keys. */
+    flyingOnKeys: () => !input.firstGamepad(),
+    uiScreen: () => ui.screen,
+    /* The Steam edition reports presence and results to Steam; here there
+     * is no platform to tell, and the controller is the same file, so these
+     * are the two calls it makes that this edition answers with nothing.
+     * `achievements` is left out on purpose: the hub shows no button for it. */
+    presence: () => {},
+    onResult: () => {},
+    sound: careerSound,
+  };
+  /*
+   * The career is fetched when a pilot first opens it, not at boot: it is
+   * menu and lesson code, about 250 kB, and a page that never starts a
+   * lesson should not pay for it. Every hook above asks `career` and finds
+   * null until then, which is the same as not being in the career.
+   */
+  let careerLoading = null;
+  function loadCareer() {
+    if (!careerLoading) {
+      careerLoading = import('./career/controller.js').then((m) => {
+        career = m.createCareer(careerShell);
+        return career;
+      }).catch((e) => {
+        careerLoading = null;
+        throw e;
+      });
+    }
+    return careerLoading;
+  }
+  ui.onCareer = (action) => {
+    if (action === 'career') {
+      loadCareer().then((c) => c.openHub());
+    } else if (career && action === 'career-briefing') {
+      career.briefing();
+    } else if (career && action === 'career-hub') {
+      career.backToHub();
+    } else if (career && action === 'career-title') {
+      career.leave();
+    }
+  };
+  /* For the shots and smoke tests: open the career, a lesson's briefing, or
+   * fly it, without a hand on the keys. Harness only. */
+  window.__career = {
+    hub: () => loadCareer().then((c) => c.openHub()),
+    open: (id) => loadCareer().then((c) => c.openLessonById(id)),
+    fly: () => career.fly(),
+    state: () => (career ? career.state() : null),
+    status: () => (career ? career.status() : null),
+    leave: () => career.leave(),
+    /* The keycaps in a pad player's hands or a keyboard player's. */
+    hands: (h) => loadCareer().then((c) => c.hands(h)),
+    /* The chase branch draws the airframe, which a parked harness camera
+     * (__setCam) otherwise hides with the lens's own rule. The career card
+     * (scripts/career-card.js) needs the quad in the picture. */
+    chase: (on) => {
+      careerCamera = on ? 'chase' : null;
+      return careerCamera;
+    },
+    /* Stops the plant where it is, as the pause menu does, so a capture's
+     * camera can be set from where the quad will still be when it draws. */
+    pause: () => {
+      careerFreeze('pause');
+      return mode;
+    },
+    camera: () => ({
+      cam: shell.camera.position.toArray().map((v) => +v.toFixed(2)),
+      quad: shell.quad.position.toArray().map((v) => +v.toFixed(2)),
+      visible: shell.quad.visible,
+      parent: shell.quad.parent ? shell.quad.parent.type : null,
+      chase: careerCamera,
+      mode,
+      fov: shell.camera.fov,
+    }),
+  };
+
   window.__budget = (name) => measureBudget(shell, view, { view: name });
   /* Which loop paces the frames now, for the probes that check the Frame
    * pacing setting and the URL force against the loop actually running. */

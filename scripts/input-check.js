@@ -2447,8 +2447,8 @@ async function builderChooserPages() {
         at: items.findIndex((it) => it.action === 'builder') }); })()`).then(JSON.parse);
     /* Builder, its one name since MENUS-PLAN.md 4.1: this card said Map
      * builder and the builder's own bar said Track builder. */
-    check('the gate carries a fourth card, Builder, after the three ways in',
-      gate.cards.join() === 'Five inch racing,Whoop racing,Freestyle,Builder' && gate.at === 3, JSON.stringify(gate));
+    check('the gate carries a last card, Builder, after the career and the three ways in',
+      gate.cards.join() === 'Career,Five inch racing,Whoop racing,Freestyle,Builder' && gate.at === 4, JSON.stringify(gate));
     await page.evaluate(`(() => { window.__ui.setCursor(${gate.at}); return 1; })()`);
     await page.tap('Enter');
     await page.until("location.pathname.endsWith('/src/trackbuilder/index.html') && !!window.trackBuilder", 60000).catch(() => {});

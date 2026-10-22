@@ -4481,6 +4481,21 @@ export class TrickDetector {
       execution,
       primitives: used.length,
       /*
+       * Steam edition: each rotation's axis, direction and turns, which the
+       * career's trick lessons read (src/career/objectives.js matchesNeed)
+       * to tell a back flip from a front flip and a left roll from a right
+       * one. Read off the primitives already in hand; nothing upstream of
+       * this line changes, so every name and grade is the same as before.
+       */
+      parts: used.map((u) => ({
+        kind: u.kind,
+        axis: u.kind === 'path' ? u.obstacle : AXIS_NAME[u.axis],
+        dir: u.dir ?? 0,
+        turns: u.turns,
+        startMs: u.startMs,
+        endMs: u.endMs,
+      })),
+      /*
        * WHICH THING IT WAS FLOWN AROUND, or null for open air, which is
        * what the workbook's two obstacle tables have been waiting for. It
        * was computed in closePath and thrown away here, one function short

@@ -71537,18 +71537,16 @@ None in flight: a static image, and edge code that only runs for preview bots. A
 - Approval: the owner wrote "Push to main" on 2026-10-21 in this thread after the reply that gave the latency (then 51 to 208 draw calls and 619k to 1.39M triangles, about the town's cost) and that nobody had flown it, and chose "The Uncrashed rebuild" when the conflict with main's log house was put to the owner. It covers this entry's commits and the board's.
 
 
-<<<<<<< HEAD
-## 2026-10-22 | picker | Map list jumps back up on a phone (branch only)
+### Owner's word, 2026-10-22 01:42Z
+
+Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga default card, built in maps and thumbnails in the edge). Board merged first, as the order requires. Not flown or shared live yet: after the Worker redeploy, post a built in map link and a board map link and look at the unfurl.
+
+## 2026-10-22 | picker | Map list jumps back up on a phone 
 
 - Ask: the owner, 2026-10-22: "When I look at maps on my mobile phone there is a scrolling bug where the maps will auto scroll back up a few maps".
 - Cause, from reading the code and not yet seen on a phone: the picker's `pointerdown` handler calls `setZone('strip')`, and `setZone` scrolled the chosen panel into view every time the strip zone was set. A touch swipe begins with a `pointerdown`, so each swipe first pulled the list back to the chosen panel, a few maps up once the pilot had scrolled past it.
 - Fix: `setZone` takes a `fromPointer` flag and the pointer path passes it, so only the keys bring the chosen panel back. Tapping a panel still scrolls it into view through `select`.
 - Latency: no change, nothing in the flight loop or input path, no added work (one skipped scroll call per touch).
 - Checked: `node --check` on picker.js, `lint:preload`. Not tested on a phone or in a browser. The board's vendored copy is refreshed by `scripts/vendor.js` in a paired PR.
-=======
-### Owner's word, 2026-10-22 01:42Z
-
-Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga default card, built in maps and thumbnails in the edge). Board merged first, as the order requires. Not flown or shared live yet: after the Worker redeploy, post a built in map link and a board map link and look at the unfurl.
->>>>>>> origin/main
 
 - Owner's word, 2026-10-22 02:11Z: "Push to main" (picker scroll fix, PR 120, after the check scales were offered; no further check asked for).

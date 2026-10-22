@@ -71595,3 +71595,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Check: `npm run check:balloons` 30 of 30. One old line changed meaning: "it streams more than 200 balloons in two minutes" now reads "it drops its load and no more". That is the change in the game, not a threshold moved to pass. New lines cover the stand spending none of the load, a cleared round by expiry and by popping.
 - Not looked at: the case where the Balloon chase piece is deleted from a map in the builder. Reading `syncBalloons` the HUD goes with the piece; not flown. Not flown at all.
 - Latency: no change to the input, physics or render path; the game feed does less (no new balloons after the load is out). Checked by reading the diff and the Node check, not on a GPU.
+
+- Owner's word, 2026-10-22 09:48Z: "Push to main" (the balloon chase fixed load, PR 122). Fast forward onto main 2a61e63, nothing had landed since. Not flown, verify and shots not run; the owner chose to fly it.

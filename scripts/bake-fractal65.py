@@ -75,6 +75,9 @@ def zcyl(cx, cy, cz, r, h, seg=10):
     v = np.c_[m.vertices[:, 0], m.vertices[:, 1], m.vertices[:, 2]]
     # cylinder axis is z already
     v = v + np.array([cx, cy, cz]); return fix(v, m.faces)
+# the 1S pack under the plate: the model's two straps (thin loops that ink badly) stand
+# in for it, and it is the lowest thing, which is where the plant parks the craft
+body.append(part(*box(0, 3.7, -2.0, 17.0, 7.4, 26.0), 'strap'))
 CAMPLATE_B = world('3D Prints_1').bounds
 cb = CAMPLATE_B; plate_c = (cb[0]+cb[1])/2; plate_e = cb[1]-cb[0]
 body.append(part(*box(*plate_c, *plate_e), 'camplate'))

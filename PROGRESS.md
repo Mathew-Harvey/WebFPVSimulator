@@ -71650,3 +71650,4 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Measured by `node scripts/tune-measure.js --sweep=air` (now 160 and 175 in the sweep), five inch: at 150 it coasts 20 to 10 m/s over 18.0 m, flat out 113 km/h; at 175 over 15.5 m, flat out 99 km/h. Hover unchanged at 0.350 of stick.
 - Latency: none. A constant in a slider's range; no new call, no frame work, the plant's arithmetic is the same at any scale.
 - Checked: `tune:selftest` 67 of 67 (the band check and the board refusal now read 175 and AIR_GRIP_MAX + 5); `seat:selftest` 35 of 35; `check:tune --no-flight` all pass on the real page. Not run: `npm run verify`, no physics, ABI or build change. Nobody has flown it.
+- Pushed: the owner wrote "push to main" at 14:05:58Z on 2026-10-22 in this thread. Board main fast-forwarded to 9efd34a first, then this.

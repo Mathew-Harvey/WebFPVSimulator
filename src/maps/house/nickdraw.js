@@ -127,6 +127,12 @@ const LAND_MS = 600;
 const LAND_R = PATIO_TABLE.r + 0.05;
 const LAND_UP = 0.04;
 const LAND_SPEED = 0.25;
+/* How near the camera has to be for his own clock's lines to be heard,
+ * real metres. */
+const HEAR_R = 12;
+/* Which cue each of his clock's lines is (NICK_LINES' order); none for the
+ * two without a recording. */
+const LINE_CUES = ['catfish', 'boom', null, null];
 /* What the harness is told each answer is. */
 const ANSWERS = new Map([[CATFISH, 'hit'], [THANKS, 'close'], [LANDED, 'landed'], [SIX_SEVEN, 'landed, again']]);
 
@@ -298,8 +304,17 @@ function span(attr) {
  * of its own with `group.userData.holdMs` (scripts/ only); what he says to
  * the craft keeps its own time, so a held Nick still answers it, and
  * `group.userData.craftAt`, a world { x, y, z }, stands in for the craft.
+ *
+ * HIS VOICE, the owner's recordings of 2026-10-22 (src/render/clips.js).
+ * `cue(name)` is how the shell hears of them, and it is all he does about
+ * sound: a hit says 'hit' (Holy catfish, what's going on?), a landing on his
+ * table 'landed' (Get it just right), and his own clock's "Holy Catfish!"
+ * and "Boom Shakala!" say 'catfish' and 'boom' when the camera is within
+ * HEAR_R of him. The crash laugh is the shell's, off a hard impact anywhere
+ * on the map. The recordings with no moment of their own are the sticker
+ * hunt's. His other two lines have no recording and stay silent.
  */
-export function makeNick(camera, craftAt = () => null) {
+export function makeNick(camera, craftAt = () => null, cue = () => {}) {
   const { OX, OZ, S } = FRAME;
   const model = nickModel();
   const geometry = model.geometry;
@@ -394,6 +409,8 @@ export function makeNick(camera, craftAt = () => null) {
   let next = null;
   let nextIn = 0;
   let landings = 0;
+  /* When his clock's current line began, for the line's cue. */
+  let lineStart = Number.NaN;
 
   /* Bone by bone, each bone's matrix in locals, and only the bones whose
    * matrix changed since they were last moved: seated, his legs hold still
@@ -514,6 +531,7 @@ export function makeNick(camera, craftAt = () => null) {
       reactAge = 0;
       next = SIX_SEVEN;
       nextIn = LAND_GAP;
+      cue('landed');
       armLand = false;
       armNear = false;
       landings += 1;
@@ -562,6 +580,7 @@ export function makeNick(camera, craftAt = () => null) {
       armHit = false;
       armNear = false;
       hits += 1;
+      cue('hit');
     } else if (armNear && dist < NEAR_R && react !== CATFISH && !landing()) {
       react = THANKS;
       reactAge = 0;
@@ -609,6 +628,15 @@ export function makeNick(camera, craftAt = () => null) {
     setFace(look);
 
     const dist = cam.distanceTo(mesh.position);
+    if (pose.line >= 0) {
+      const began = clock - pose.lineAge;
+      if (!(Math.abs(began - lineStart) < 100)) {
+        lineStart = began;
+        if (LINE_CUES[pose.line] && !react && !next && dist < S * HEAR_R) {
+          cue(LINE_CUES[pose.line]);
+        }
+      }
+    }
     pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(pm);
     sphere.center.set(mesh.position.x, mesh.position.y + S * 1.0, mesh.position.z);

@@ -283,7 +283,17 @@ export async function buildMap(shell, onProgress, options) {
    * so its dispose frees him, posed at the clock the map is handed, and his
    * two programs linked now beside the rest, since the map warmed its own
    * before he was there (render/warm.js). */
-  const nick = makeNick(shell.camera, () => (shell.quad ? shell.quad.position : null));
+  /* What he says aloud goes to the shell by the map's onCue (src/main.js),
+   * which is set once the map is live; until then a cue is dropped. */
+  const nick = makeNick(
+    shell.camera,
+    () => (shell.quad ? shell.quad.position : null),
+    (name) => {
+      if (typeof map.onCue === 'function') {
+        map.onCue(name);
+      }
+    },
+  );
   map.scene.add(nick.group);
   /* Nick's NB sticker round the house (./stickers.js): one mesh, shown
    * when its texture has come, and each one a sticker the shell looks for
@@ -313,6 +323,9 @@ export async function buildMap(shell, onProgress, options) {
     })),
   ];
   map.stickersEverySighting = true;
+  /* His voice: the recordings of Nick Burns (src/render/clips.js), for the sticker hunt
+   * as well as his cues. */
+  map.clips = 'nb';
   houseInk(map.post);
   /* The supporters' signs, each drawn only from where its room can be
    * seen (seesRoom in ./supporters.js), found by the slug the sign's

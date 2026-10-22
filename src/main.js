@@ -61,6 +61,7 @@ import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirTo
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { LapVoice, lapCall } from './render/voice.js';
+import { ClipVoice } from './render/clips.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { PAD_CALM } from './input/padgate.js';
 import { mountTouchSticks, touchWanted } from './input/touchsticks.js';
@@ -1148,6 +1149,22 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The lap time said out loud. Beside the audio because it answers to the
    * same Sound switch and Volume, but not in its graph: see voice.js. */
   const lapVoice = new LapVoice();
+  /*
+   * Recorded voice clips on a map's cues (src/render/clips.js): the sticker
+   * finds of every map, and Nick Burns' house's crash, hit and landing.
+   * Plain audio elements, off the main thread and out of the motor graph,
+   * on the same Sound switch and Volume; a clip is fetched only when it is
+   * the next to play. `view.clips` names the voice a map speaks in ('jb' on
+   * a map that does not say, 'nb' on Nick's house) and a map's own code
+   * reaches playCue through view.onCue.
+   */
+  const clipVoice = new ClipVoice();
+  function playCue(cue) {
+    if (!ui.settings.sound || ui.screen !== 'flight' || !view) {
+      return null;
+    }
+    return clipVoice.play(view.clips || 'jb', cue, ui.settings.volume / 10);
+  }
   audio.music.onChange = (st) => {
     ui.setMusicNow(st);
   };
@@ -4059,6 +4076,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (u > 1) {
       u = 1;
     }
+    if (u > 0.45) {
+      playCue('crash');
+    }
     if (typeof audio.event === 'function') {
       /* Still two cues, because there are two samples, but the level and
        * the choice now come off the impulse rather than off a speed the
@@ -5204,6 +5224,10 @@ export async function boot({ loading, bootStart, mapId }) {
   function findStickers() {
     if (stickersView !== view) {
       stickersView = view;
+      clipVoice.reset();
+      if (ui.settings.sound) {
+        clipVoice.warm(view.clips || 'jb');
+      }
       stickersFound = stampedAmong(view.stickers.map((s) => s.key));
       stickersSeen.clear();
       stickerPictures.clear();
@@ -5251,6 +5275,8 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!stickersFound.has(pick.key)) {
       stickersFound.add(pick.key);
       writeStamp(pick.key);
+      /* A new find is celebrated aloud; a sighting again is not. */
+      playCue('sticker');
     }
     if (again) {
       stickersSeen.set(pick.key, now);
@@ -5295,6 +5321,7 @@ export async function boot({ loading, bootStart, mapId }) {
     stickerCalledAt = now;
     stickerCallouts += 1;
     const patch = view.stickers.find((s) => s.id === n.picture);
+    playCue('sticker');
     ui.stickerFound({
       word: n.word, name: 'You found 90% of the stickers', got: stickersFound.size, total: view.stickers.length,
       picture: patch ? keptPicture(patch, true) : null,
@@ -10450,6 +10477,9 @@ export async function boot({ loading, bootStart, mapId }) {
       titleStepMs += ts > 100 ? 100 : ts;
     }
     if (worldLive) {
+      if (view.onCue !== playCue) {
+        view.onCue = playCue;
+      }
       view.updateAnim(
         mode === 'title'
           ? titleStepMs
@@ -13057,6 +13087,12 @@ export async function boot({ loading, bootStart, mapId }) {
    * whether this run has found it, and this browser's stamp for it. */
   /* The map's stickers: where each is, and which this browser has found.
    * Harness only. */
+  window.__clips = () => ({
+    played: clipVoice.played,
+    playing: clipVoice.playing ? clipVoice.playing.name : null,
+    fetched: [...clipVoice.els.keys()],
+    voice: (view && view.clips) || 'jb',
+  });
   window.__stickers = () => ({
     stickers: (view.stickers ?? []).map((s) => ({
       id: s.id, name: s.name, achievement: s.achievement, key: s.key, p: s.p, n: s.n, w: s.w, h: s.h,

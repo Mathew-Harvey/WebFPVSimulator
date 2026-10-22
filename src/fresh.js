@@ -449,6 +449,7 @@
       'src/render/music.js',
       'src/render/tracks.js',
       'src/render/voice.js',
+      'src/render/clips.js',
       'src/input/input.js',
       'src/input/stickmode.js',
       'configs/rates.js',

@@ -123,6 +123,13 @@ import {
   pickMaps, pickNewestMaps, tuneCodeFrom, wikiPageUrl,
 } from '../share/board.js';
 import { byRating, myStars, ratingShort, ratingWords } from '../share/rating.js';
+/* Career: the gate's first card counts the lessons and opens on the career
+ * for a pilot who has not started it. Only the storage key and the count are
+ * needed here, so the lessons themselves (src/career/curriculum.js, 1.5k lines
+ * and the maps they build) stay unfetched until the career is opened. */
+const CAREER_PROGRESS_KEY = 'webfpv.career.v1';
+/* tests/career-words.test.js holds this to the curriculum's own count. */
+const CAREER_LESSONS = 50;
 /* The three tune and rating dialogs are fetched when a pilot opens one, not at
  * boot: they are menu only, and a page that never shares a tune should not
  * pay for the code that does. */
@@ -4858,6 +4865,33 @@ const BUILDER_CARD = {
   action: 'builder',
 };
 
+/*
+ * Career. THE FIRST CARD ON THE GATE, because it is where
+ * somebody who has never held a radio should start, and the gate is the
+ * first thing they see. It seats nothing: the career seats its own aircraft
+ * and world for each lesson and gives the pilot's own back when they leave
+ * (src/career/controller.js). The picture is a frame of a lesson, written
+ * by the Steam repack's scripts/career-card.js.
+ */
+const CAREER_CARD = {
+  id: 'career',
+  label: 'Career',
+  art: 'assets/gate/career.jpg',
+  blurb: 'From your first hover to a pro licence. One skill a lesson, with a briefing, a coach in your ear and a medal to chase. Start here if you have never flown.',
+  facts: [`${CAREER_LESSONS} lessons`, 'Angle to Acro', 'Medals'],
+  action: 'career',
+};
+
+/* Whether this browser has flown a lesson. A pilot who has not is shown the
+ * career first on the gate. */
+function careerStarted() {
+  try {
+    return Boolean(globalThis.localStorage && globalThis.localStorage.getItem(CAREER_PROGRESS_KEY));
+  } catch (e) {
+    return true;
+  }
+}
+
 /* The way that is seated right now, which is what the gate's cursor opens
  * on and what a menu that has been backed out of returns to. The mode is
  * only set once the gate has been answered, so before that the racing card
@@ -5069,7 +5103,10 @@ export class Ui {
      */
     if (this.craftGate || !this.mode) {
       const at = WAYS.findIndex((w) => w.id === seatedWay(this.settings, this.mode).id);
-      this.cursor = at >= 0 ? at : 0;
+      /* Career. The career card is first, so the ways are
+       * one further along, and a pilot who has not started the career opens
+       * on it. */
+      this.cursor = !careerStarted() ? 0 : (at >= 0 ? at + 1 : 0);
     }
     /* Which course card the player has chosen, by courseCardKey, and the
      * last one they were on. The first says whose list is showing; the
@@ -8683,6 +8720,15 @@ export class Ui {
        */
       if (this.onGate()) {
         return [
+          /* Career. First, see CAREER_CARD. */
+          {
+            label: CAREER_CARD.label,
+            card: CAREER_CARD.id,
+            art: CAREER_CARD.art,
+            blurb: CAREER_CARD.blurb,
+            facts: CAREER_CARD.facts,
+            action: CAREER_CARD.action,
+          },
           ...WAYS.map((w) => ({
             label: w.label,
             card: w.id,
@@ -10081,6 +10127,34 @@ export class Ui {
       ];
     }
 
+    if (this.screen === 'paused' && this.careerLesson) {
+      /*
+       * Career. A lesson's pause is the lesson's: restart it,
+       * read its briefing again, or go back to the career. Rates stay one
+       * row away for the same reason they are on the pilot's own pause, and
+       * Quit to title leaves the career on the way out. main.js sets
+       * careerLesson while a lesson flies (setCareerLesson).
+       */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart lesson', action: 'restart', note: 'From the pad, with a fresh clock.' },
+        { label: 'Briefing', action: 'career-briefing', note: `What ${this.careerLesson.title} asks for, and the sticks it uses.` },
+        { label: 'Back to the career', action: 'career-hub', note: 'The chapters and your medals.' },
+        { label: 'Does it feel wrong?', section: true },
+        {
+          label: 'Rates',
+          /* Steam edition: a lesson's pilot reads Stock or Your own, not
+           * "Actual 600/600/600"; the numbers are one press away. */
+          value: ratesMatch(s.rates, airframeById(s.airframe).rates) ? 'Stock' : 'Your own',
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'How to fly', action: 'howto' },
+        { label: 'Quit to title', action: 'career-title' },
+      ];
+    }
     if (this.screen === 'paused') {
       /* Resume is the button. The conditional Edit a copy that used to
        * appear here belongs on the Courses screen. Report a bug is the
@@ -15060,6 +15134,13 @@ export class Ui {
    */
   titleStop() {
     const items = this.items();
+    /* Career. See CAREER_CARD. */
+    if (this.onGate() && !careerStarted()) {
+      const career = items.findIndex((it) => it.action === CAREER_CARD.action);
+      if (career >= 0) {
+        return career;
+      }
+    }
     if (this.onGate()) {
       const at = items.findIndex(
         (it) => it.action === seatedWay(this.settings, this.mode).action,
@@ -18662,6 +18743,15 @@ export class Ui {
    * its first signal, so without the write the guided flight would be
    * offered again on the next load to somebody who has already taken it.
    */
+  /* Career. The lesson under way, or null, for the pause
+   * menu's rows. */
+  setCareerLesson(lesson) {
+    this.careerLesson = lesson || null;
+    if (this.screen === 'paused') {
+      this.renderMenu();
+    }
+  }
+
   flown() {
     /* Before the early return: this is the one place every door to the air
      * passes through once per launch, and a pilot who has flown before is
@@ -18900,6 +18990,12 @@ export class Ui {
   }
 
   act(action) {
+    /* Career. Its card on the gate and its rows in a lesson's
+     * pause belong to the career, which main.js routes (onCareer). */
+    if (typeof action === 'string' && action.startsWith('career') && this.onCareer) {
+      this.onCareer(action);
+      return;
+    }
     /* The track builder is a separate page, so this is a navigation rather
      * than a screen. It has to be here and not in main.js's action handler
      * because leaving the page tears the simulator down, which is the whole

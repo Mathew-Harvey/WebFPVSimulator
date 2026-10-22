@@ -1501,19 +1501,21 @@ const BEHAVIOUR = `(() => {
        * drawing, then the builder's card with a photograph and no drawing,
        * and not a row among them: the whole point of the screen is that it
        * is not a menu. */
-      asksFour: gate.length === 4
-        /* The fourth card is the builder, under its one name since
-         * MENUS-PLAN.md 4.1: it was Map builder on this card and Track
-         * builder in the builder's own title. */
-        && gate.join() === 'Five inch racing,Whoop racing,Freestyle,Builder'
+      asksFour: gate.length === 5
+        /* The Career card leads (src/ui/ui.js CAREER_CARD, since the career
+         * came over from the Steam edition). The last card is the builder,
+         * under its one name since MENUS-PLAN.md 4.1: it was Map builder on
+         * this card and Track builder in the builder's own title. */
+        && gate.join() === 'Career,Five inch racing,Whoop racing,Freestyle,Builder'
         && gateItems.filter((it) => !it.card).length === 0,
-      asCards: cards.length === 4 && cards.slice(0, 3).every((c) => c.shot && c.drawn)
-        && Boolean(cards[3].shot) && !cards[3].drawn,
+      asCards: cards.length === 5 && cards.slice(1, 4).every((c) => c.shot && c.drawn)
+        && Boolean(cards[0].shot) && !cards[0].drawn
+        && Boolean(cards[4].shot) && !cards[4].drawn,
       builderAction,
       modeSetGate,
       /* Four cards, laid out and visible, and the menu's own copy off the
        * screen, when the mode is answered and the aircraft is not. */
-      gateWithMode: modeSetGate.isGate && modeSetGate.cards.length === 4
+      gateWithMode: modeSetGate.isGate && modeSetGate.cards.length === 5
         && modeSetGate.cards.every((c) => c.wide) && modeSetGate.keepNote === 0,
       /* One press: the whoop is seated, the mode is race, the seat is a
        * track rather than a world, the gate is gone and no Freestyle row
@@ -2114,7 +2116,7 @@ async function main() {
     } else {
       const g = b.modeGate;
       if (!g.asksFour) {
-        failures.push(`the gate opens on ${g.gate.join(', ') || 'nothing'}, not on the three ways in and the builder`);
+        failures.push(`the gate opens on ${g.gate.join(', ') || 'nothing'}, not on the career, the three ways in and the builder`);
       }
       if (!g.asCards) {
         failures.push(

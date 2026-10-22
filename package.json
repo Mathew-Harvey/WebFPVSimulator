@@ -54,6 +54,8 @@
     "check:house": "node scripts/house-check.js",
     "check:heads": "node scripts/heads-check.js",
     "check:dan": "node scripts/dan-check.js",
+    "check:career": "node --test tests/career/career-laps.test.js tests/career/career-maps.test.js tests/career/career-objectives.test.js tests/career/career-words.test.js tests/career/career-progress.test.js tests/career/career-wiring.test.js",
+    "check:career:rig": "node --test tests/career/rig.test.js",
     "check:bardwell": "node scripts/bardwell-check.js",
     "check:windmill": "node scripts/windmill-check.js",
     "check:room": "node scripts/room-check.js",

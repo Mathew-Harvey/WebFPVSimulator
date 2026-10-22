@@ -680,7 +680,7 @@ export function createPicker(host, opts = {}) {
     all.forEach((b, i) => b.classList.toggle('is-focus', zone === 'acts' && i === act));
   }
 
-  function setZone(z) {
+  function setZone(z, fromPointer) {
     /* No buttons to hold, which is an empty shelf: the panels are next. */
     zone = z === 'acts' && !acts().length ? 'strip' : (z || '');
     act = 0;
@@ -690,8 +690,14 @@ export function createPicker(host, opts = {}) {
       delete root.dataset.zone;
     }
     markActs();
+    /* A finger or mouse that went down in the strip is scrolling it, or
+     * choosing a panel (which scrolls itself in select). Pulling the chosen
+     * panel back into view here threw a phone's list back up to it at the
+     * start of every swipe. Only the keys bring the chosen panel back. */
     if (zone === 'strip') {
-      markCurrent(true);
+      if (!fromPointer) {
+        markCurrent(true);
+      }
     } else if (zone === 'rail') {
       rail.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
@@ -1175,7 +1181,7 @@ export function createPicker(host, opts = {}) {
     }
     const t = ev.target;
     const z = t.closest('.wp-rail') ? 'rail' : (t.closest('.wp-acts') ? 'acts' : 'strip');
-    setZone(z);
+    setZone(z, true);
     if (z === 'acts') {
       const i = acts().indexOf(t.closest('.wp-act'));
       act = i < 0 ? 0 : i;

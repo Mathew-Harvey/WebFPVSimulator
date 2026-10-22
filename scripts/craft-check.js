@@ -65,8 +65,12 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  *
  *   5inch     a 220 mm class quad: 110 mm arms, 5 inch blades, so the disc
  *             the aircraft sweeps is 173.5 mm and the body is 155 mm long.
- *   whoop65   a 65 mm whoop: 65 mm motor to motor across the
- *             diagonal, 82.6 mm square over the ducts, 23.4 g.
+ *   whoop65   a Fractal65: 65 mm motor to motor across the diagonal, motors
+ *             50 mm by 41.6 mm apart, 86.2 mm over the ducts across the wider
+ *             way (2 x (25 + the 18.1 mm hull)), 23.4 g. It was 82.6 for the
+ *             old hand built whoop, whose motors sat on a 46 mm square; the
+ *             supplied model's frame is not square, so the figure follows
+ *             the model's own measurements.
  *
  * `spanMm` is the AXIS ALIGNED width, two ducts about two motors, which is
  * the figure a manufacturer prints; `sweepMm` is the diagonal reach, which
@@ -75,7 +79,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  */
 const REAL = {
   '5inch': { spanMm: 282.6, sweepMm: 347.0, tolMm: 6 },
-  whoop65: { spanMm: 82.6, sweepMm: 101.2, tolMm: 3 },
+  whoop65: { spanMm: 86.2, sweepMm: 101.2, tolMm: 3 },
 };
 
 /* Measure the drawn model, in the craft's own frame, from its vertices. */

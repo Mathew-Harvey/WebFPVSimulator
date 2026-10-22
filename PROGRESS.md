@@ -71628,3 +71628,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Not proven: forcing the near plane from 0.2 to 0.03 changed 0 pixels on SwiftShader, so a distance z fight on a real GPU is a hypothesis the polygonOffset covers, not something I saw.
 - Latency: no new draw call or triangle, a state flag on a material that already existed. Checked by the diff and `__budget` on the earlier build, not on a GPU.
 - Run: `bardwell-check` (all passed), `check:house`, `lint:nouns`, coplanar scan (the sticker pair is gone). Not run: `npm run verify`, `shots.js`. Not flown.
+
+- Owner's word, 2026-10-22 12:58Z: "push to main" (Bardwell's white flashes: the lean-to sticker off the weBLEEDfpv decal, sticker polygonOffset, overlap guard; PR 124). Fast forward onto main from 0038953, nothing had landed since. Not flown, verify and shots not run.

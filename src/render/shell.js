@@ -420,6 +420,9 @@ export function buildShell(canvas, opts) {
     resize,
     swapCraft,
     setCraftModel,
+    /* Resolves once the aircraft on screen has its model in: the whoop's is
+     * a file fetched on demand (src/render/whoopcraft.js). */
+    craftReady: () => craft.ready || null,
     keepAcrossMaps,
     evictSessionRoots,
   };

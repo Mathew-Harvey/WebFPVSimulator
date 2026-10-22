@@ -551,6 +551,12 @@ async function loadMap(shell, id, loading, options) {
   if (typeof shell.setCraftModel === 'function') {
     shell.setCraftModel(entry.craftModel || null);
   }
+  /* A whoop's model is a small file fetched on demand; have it on the craft
+   * before the world's programs are linked, so they are not built later. */
+  const modelIn = typeof shell.craftReady === 'function' ? shell.craftReady() : null;
+  if (modelIn) {
+    await modelIn;
+  }
   const map = await mod.buildMap(shell, (f) => loading.progress('world', f), options);
   /* Near first on a world that asks for it (`nearFirst`, the house maps),
    * three's own order everywhere else: see nearFirstSort. */

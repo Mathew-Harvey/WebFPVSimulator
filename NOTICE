@@ -288,3 +288,15 @@ from. Whichever it is, the answer belongs here:
 
 Recorded rather than quietly left, because a silent gap in a licence file is
 the kind of thing that is discovered by somebody else.
+
+## Fractal65 whoop model
+
+    File        assets/whoop/fractal65.bin
+    Source      Fractal65.glb, a 3D model of a 65 mm whoop supplied by the project owner
+    Made by     scripts/bake-fractal65.py (the source file is not in this repository)
+    Licence     the model's author and licence are not recorded yet: to be confirmed by the owner
+
+`fractal65.bin` is a reduction of that model to about 3,000 flat coloured
+triangles, 15 kB. Its shapes follow the source's measurements and nothing of
+its textures is kept. Until the source's licence is known it should be treated
+as the owner's own supply and not as GPLv3 grant material.

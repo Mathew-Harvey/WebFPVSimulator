@@ -71799,3 +71799,13 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Run: `node --check`, `lint:boot` 9 of 9, headless shots in the town freestyle on the ground: the row draws under Weight, and dragging it to 70 set the setting and the stored copy to 70 (`/mnt/project-files/camera-angle/air-fly-70.png`). Not run: `tune-check`, `device-check`, `npm run verify` (no physics, plant, ABI or build change). Not flown.
 
 - Owner's word, 2026-10-23 23:38Z: "push to main" (camera angle on the landed sliders, PR 136). Main had not moved since the branch. Not flown, verify not run.
+
+## 2026-10-24 | scoring | JSL freestyle combo
+
+- The ask, 23:54Z, Mat: add JSL (Juicy Flick, Slingshot, Laser Flip or Power Loop, back to back) as a trick.
+- Two `JSL` patterns in `PATTERNS` (`src/game/trickdetect.js`): flip forward to inverted and roll out, a half flip back, then either a whole inverted yaw spin (the Laser Flip) or a Powerloop round a rail. The existing step gap rule keeps them "back to back"; longest match wins, so JSL beats the Juicy Flick it starts with, and stopping after the Slingshot is not paid as JSL.
+- Price 650, Master, in a new `EXTRA_TRICKS` list in `src/game/tricks.js`, because the catalogue is held to the workbook row for row and the workbook has no JSL. The 650 is my pick (level with Inverted 360 Powerloop), the owner's to change.
+- Listed in the trick list through `src/game/proven.js` (one line added by hand: a full `--write` regeneration also flipped Blindflip and Mavvelmann to 0 landed, which is older drift and not this change's to carry).
+- The yaw spin ending is swept and lands 9 of 9. The Powerloop ending is NOT swept (the sweep dedups by name and the planner cannot fly a path step after rotations), so it is unproven.
+- Latency: no change. Patterns are matched only when a rotation run closes, as the other 90 are; one more pattern in a table of about 100.
+- Run: `score:selftest` (all passed, three new cases), `trick-sweep --all` (nothing overpaid), `lint:nouns`. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.

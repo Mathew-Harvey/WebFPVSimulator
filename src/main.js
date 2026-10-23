@@ -137,7 +137,8 @@ import { buildWhoopCraft } from './render/whoopcraft.js';
 import { hoverStickPercent, normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
 import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
 import { cliMap, composeConfig, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, readFcDump, tuneBody, writeFcDump } from './fc/dump.js';
-import { GATE_SCALE } from './game/track.js';
+import { GATE_SCALE, MICRO_SCALE } from './game/track.js';
+import { setLifeScale } from './ui/scorehud.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK, SIM_ERR_BAD_ARG } from '../tests/lib/simmod.js';
 
@@ -8743,7 +8744,9 @@ export async function boot({ loading, bootStart, mapId }) {
     lockArg.show = true;
     lockArg.edge = edge;
     lockArg.wrong = !aim.correct;
-    lockArg.distance = aim.distance;
+    /* In the whoop's metres in a room built MICRO_SCALE times life size,
+     * like the OSD's speed and altitude (see whoopHud). */
+    lockArg.distance = aim.distance / (view.trackClass === 'micro' ? MICRO_SCALE : 1);
     lockArg.size = Math.max(34, Math.min(vh * 0.62, raw));
     lockArg.x = Math.min(maxX, Math.max(minX, sx));
     lockArg.y = Math.min(maxY, Math.max(minY, sy));
@@ -10839,8 +10842,16 @@ export async function boot({ loading, bootStart, mapId }) {
        * that flies or scores reads either. Since 2026-10-23 the houses seat
        * the whoop and the whoop flies the five inch's plant, so this is read
        * whatever is seated: it is the HUD the houses had when the owner
-       * said their feel was good. */
-      const whoopHud = mapById(view.id).hudScale || 0;
+       * said their feel was good.
+       *
+       * AND A WHOOP ROOM THE SAME WAY, on the owner's word of 2026-10-23,
+       * "ensure all ui's are accurate to the craft displayed at the starting
+       * intro scene": a micro track is built MICRO_SCALE times life size
+       * for the same reason the houses are, so its speed, altitude, gate
+       * distance and the freestyle HUD's metres are divided by that. The
+       * whoop's speed comes back on the OSD with it, as a whoop's speed. */
+      const whoopHud = mapById(view.id).hudScale || (view.trackClass === 'micro' ? MICRO_SCALE : 0);
+      setLifeScale(whoopHud);
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({
@@ -10872,7 +10883,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * craft's own height finds the deck the quad is UNDER rather than
          * the road it is over, and the readout prints a negative altitude
          * under the overbridge. See SURFACE_BIAS. */
-        altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y),
+        altitude: (p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y)) / (whoopHud || 1),
         /* Null on an airframe whose OSD has no speed, and the readout goes.
          * See osdSpeed in configs/airframes.js. */
         speedKph: whoopHud ? speed * 3.6 / whoopHud : (airframeById(runAirframe).osdSpeed ? speed * 3.6 : null),

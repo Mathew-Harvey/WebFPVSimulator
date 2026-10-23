@@ -1164,7 +1164,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!ui.settings.sound || ui.screen !== 'flight' || !view) {
       return null;
     }
-    return view.clips ? clipVoice.play(view.clips, cue, ui.settings.volume / 10) : null;
+    return view.clips ? clipVoice.play(view.clips, cue, (ui.settings.volume / 10) * (ui.settings.calloutLevel / 10)) : null;
   }
   audio.music.onChange = (st) => {
     ui.setMusicNow(st);
@@ -8135,6 +8135,7 @@ export async function boot({ loading, bootStart, mapId }) {
       mixArg.wind = s.windLevel / 10;
       mixArg.music = s.musicLevel / 10;
       mixArg.focus = 1;
+      mixArg.effects = s.effectsLevel / 10;
       mixArg.ambience = 0;
       audio.setMix(mixArg);
     }
@@ -9936,7 +9937,7 @@ export async function boot({ loading, bootStart, mapId }) {
           if (race.laps.length > lapsBefore && ui.settings.sound) {
             lapVoice.say(
               lapCall(race.log.length, race.lastLapMs, race.lastLapRecord),
-              ui.settings.volume / 10,
+              (ui.settings.volume / 10) * (ui.settings.calloutLevel / 10),
             );
           }
         }

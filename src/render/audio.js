@@ -227,7 +227,7 @@ export class MotorAudio {
     /* Per stem, each 0 to 1, driven by their own settings rows. These
      * mirror the DEFAULTS in src/ui/ui.js divided by ten, and the probe
      * measures at exactly these values when no mix argument is given. */
-    this.mix = { motors: 0.5, wind: 0.5, music: 0.5, focus: 1, ambience: 0 };
+    this.mix = { motors: 0.5, wind: 0.5, music: 0.5, focus: 1, ambience: 0, effects: 1 };
     this.focusOn = false;
     this.music = new Music();
     /* Every AudioNode this instance owns, for P12. A node created and
@@ -280,6 +280,11 @@ export class MotorAudio {
     }
     if (typeof m.focus === 'number') {
       this.mix.focus = Math.max(0, Math.min(1, m.focus));
+    }
+    if (typeof m.effects === 'number') {
+      /* The cues (crash, gate, graze, landing, takeoff, menu taps). Read when
+       * a cue fires and by nothing else: no node, no per frame work. */
+      this.mix.effects = Math.max(0, Math.min(1, m.effects));
     }
     if (typeof m.ambience === 'number') {
       /* Kept so the probe can still name the stem. Always silent. */
@@ -689,6 +694,10 @@ export class MotorAudio {
     if (!this.ctx || !this.cueGain) {
       return;
     }
+    const fx = this.mix.effects;
+    if (!(fx > 0)) {
+      return;
+    }
     const t = atTime == null ? this.ctx.currentTime : atTime;
     /*
      * `level` is how hard the thing that caused this cue actually was, 0
@@ -720,7 +729,7 @@ export class MotorAudio {
        * level itself. The soft clip and MASTER_CEILING bound what this can do
        * to the true peak.
        */
-      g.exponentialRampToValueAtTime(2.6 * lv, t + 0.006);
+      g.exponentialRampToValueAtTime(2.6 * lv * fx, t + 0.006);
       g.exponentialRampToValueAtTime(0.0001, t + 0.42);
       const f = this.crashLp.frequency;
       f.cancelScheduledValues(t);
@@ -762,7 +771,7 @@ export class MotorAudio {
       const ng = this.crashGain.gain;
       ng.cancelScheduledValues(t);
       ng.setValueAtTime(0.0001, t);
-      ng.exponentialRampToValueAtTime((gate ? 1.35 : 1.1) * (gate ? 1 : lv), t + 0.002);
+      ng.exponentialRampToValueAtTime((gate ? 1.35 : 1.1) * (gate ? 1 : lv) * fx, t + 0.002);
       ng.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.045 : 0.11));
       const f = this.cueOsc.frequency;
       f.cancelScheduledValues(t);
@@ -771,7 +780,7 @@ export class MotorAudio {
       const g = this.cueGain.gain;
       g.cancelScheduledValues(t);
       g.setValueAtTime(0.0001, t);
-      g.exponentialRampToValueAtTime((gate ? 0.75 : 0.6) * (gate ? 1 : lv), t + 0.003);
+      g.exponentialRampToValueAtTime((gate ? 0.75 : 0.6) * (gate ? 1 : lv) * fx, t + 0.003);
       g.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.075 : 0.12));
       this.duckFlight(t, gate ? 0.55 : 0.5, gate ? 0.22 : 0.3);
       this.music.duckNow(t, gate ? 0.5 : 0.45, gate ? 0.25 : 0.3);
@@ -793,7 +802,7 @@ export class MotorAudio {
     const g = this.cueGain.gain;
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(0.62, t + 0.004);
+    g.exponentialRampToValueAtTime(0.62 * fx, t + 0.004);
     g.exponentialRampToValueAtTime(0.0001, t + dur);
     this.duckFlight(t, 0.66, 0.26);
     this.music.duckNow(t, 0.6, 0.3);
@@ -807,7 +816,8 @@ export class MotorAudio {
    * under the pointer is the loudest thing a menu should ever say.
    */
   ui(kind) {
-    if (!this.ctx || !this.cueGain || !this.enabled) {
+    const fx = this.mix.effects;
+    if (!this.ctx || !this.cueGain || !this.enabled || !(fx > 0)) {
       return;
     }
     const t = this.ctx.currentTime;
@@ -848,7 +858,7 @@ export class MotorAudio {
     const ng = this.crashGain.gain;
     ng.cancelScheduledValues(t);
     ng.setValueAtTime(0.0001, t);
-    ng.exponentialRampToValueAtTime(nPeak, t + 0.0015);
+    ng.exponentialRampToValueAtTime(nPeak * fx, t + 0.0015);
     ng.exponentialRampToValueAtTime(0.0001, t + nDur);
     const f = this.cueOsc.frequency;
     f.cancelScheduledValues(t);
@@ -859,7 +869,7 @@ export class MotorAudio {
     const g = this.cueGain.gain;
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(oscPeak, t + 0.002);
+    g.exponentialRampToValueAtTime(oscPeak * fx, t + 0.002);
     g.exponentialRampToValueAtTime(0.0001, t + oscDur);
   }
 

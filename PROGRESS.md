@@ -71807,3 +71807,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: none, and 30 kB less to fetch if it is played. Not flown, `npm run verify` not run.
 
 - Owner's word, 2026-10-23 23:56Z: "push to main" (Nick's crash call: one time in four, "Poor thing" only, PR 138). Fast forward onto main from 59156b2's parent, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
+
+- The owner, 2026-10-23 23:58Z: "cut to 15%". `CHANCE.crash` 0.25 to 0.15 in `src/render/clips.js`, `check:clips` band moved to match (a count of 450 to 750 in 4000, which is the new rate, not a loosened one). Latency none. Not flown.

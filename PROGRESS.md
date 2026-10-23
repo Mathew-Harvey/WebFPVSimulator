@@ -71799,3 +71799,9 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Run: `node --check`, `lint:boot` 9 of 9, headless shots in the town freestyle on the ground: the row draws under Weight, and dragging it to 70 set the setting and the stored copy to 70 (`/mnt/project-files/camera-angle/air-fly-70.png`). Not run: `tune-check`, `device-check`, `npm run verify` (no physics, plant, ABI or build change). Not flown.
 
 - Owner's word, 2026-10-23 23:38Z: "push to main" (camera angle on the landed sliders, PR 136). Main had not moved since the branch. Not flown, verify not run.
+
+## 2026-10-23 | audio | Nick's crash call: a chance, and only "Poor thing" (branch only)
+
+- The owner, 2026-10-23 23:44Z: "in the nick map, crash is a random chance of the meme call out not often. and shorten it to 'poor thing'". `assets/voices/nb/crash.mp3` is now only the last words of the original seven second clip (5.7 s to the end), 1.2 s, 6 kB instead of 36 kB, with a 30 ms fade in. A hard crash plays it one time in four (`CHANCE` in `src/render/clips.js`, `rand` injectable for the check), and a miss starts no cooldown; the cooldown after a play went from 20 s to 8 s because the clip is short. "Not often" read as 25 percent: say if it should be rarer.
+- Checks: `check:clips` all pass, with new lines for a miss, a hit straight after a miss, and about one in four over 4000 crashes. A short re-transcription heard the clip as "for the thing" because the cut has so little lead in; the full clip's own transcription put "poor thing" at 5.82 to 6.72 s, so it needs a listen.
+- Latency: none, and 30 kB less to fetch if it is played. Not flown, `npm run verify` not run.

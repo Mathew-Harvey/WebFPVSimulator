@@ -83,7 +83,7 @@ export const CLIP_SETS = {
       landed: 'just-right',
     },
     says: {
-      crash: '(laughing) ... fourth bang.',
+      crash: 'Poor thing.',
       'holy-catfish': 'Holy catfish, what\'s going on?',
       boom: 'Boom Shakala!',
       'just-right': 'Get it just right.',
@@ -103,14 +103,19 @@ export const CLIP_SETS = {
  */
 const PRIORITY = { sticker: 3, goat: 2, crash: 2, hit: 2, landed: 2, near: 1 };
 
-/* Quiet, per cue, ms: a crash laugh runs seven seconds, and an auto reset
- * after a crash can crash again in two. */
-const COOLDOWN_MS = { goat: 1500, crash: 20000, hit: 4000, landed: 4000, near: 2500 };
+/* A cue that plays only some of the time, 0 to 1. The owner, 2026-10-23:
+ * "a random chance of the meme call out, not often". A miss starts no
+ * cooldown. */
+const CHANCE = { crash: 0.25 };
+
+/* Quiet, per cue, ms: an auto reset after a crash can crash again in two. */
+const COOLDOWN_MS = { goat: 1500, crash: 8000, hit: 4000, landed: 4000, near: 2500 };
 
 export class ClipVoice {
   /* `make` builds an audio element from a url; the node selftest hands in a
    * stand-in, which is the only way to check this without a sound card. */
-  constructor({ make = null, now = () => globalThis.performance.now() } = {}) {
+  constructor({ make = null, now = () => globalThis.performance.now(), rand = Math.random } = {}) {
+    this.rand = rand;
     const native = typeof globalThis.Audio === 'function';
     this.make = make || (native ? (url) => new globalThis.Audio(url) : null);
     this.now = now;
@@ -212,6 +217,9 @@ export class ClipVoice {
     const t = this.now();
     const rank = PRIORITY[cue] ?? 1;
     if (COOLDOWN_MS[cue] && t - (this.last.get(cue) ?? -Infinity) < COOLDOWN_MS[cue]) {
+      return null;
+    }
+    if (CHANCE[cue] !== undefined && !(this.rand() < CHANCE[cue])) {
       return null;
     }
     if (this.playing && !this.playing.el.paused && !this.playing.el.ended) {

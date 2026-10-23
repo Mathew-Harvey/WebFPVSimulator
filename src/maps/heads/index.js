@@ -20,9 +20,9 @@
  *            way (./heads.js), drawn nowhere.
  *
  * And, on top, the LOGOS (./logos.js says where and why): every roster
- * brand's sign hung once and found as on any freestyle map, the same signs
- * and the Infinity Loops logos and the 90% patch painted all over the
- * street, the fence, the walls and the rooms, and eleven 90% patches to be
+ * brand's sign hung once, and only once, and found as on any freestyle
+ * map, the Infinity Loops logos and the 90% patch painted on the street,
+ * the fence, the walls and the rooms, and eleven 90% patches to be
  * found, the achievement "90%er". With them the garage's four prints: the
  * Infinity Loops banner, the sticker wall, bombed with the 90%ers' own
  * stickers, the WIDE TURNS sign and the flag. All of it is painted on one
@@ -51,10 +51,9 @@ import { headsLayout, basementFloorAt, BASEMENT_HOLE, FRAME, worldAt, PRINTS } f
 import { headsDocument } from './yard.js';
 import { makeMan } from './mandraw.js';
 import {
-  BRANDS, SHEETS, SHEET_PX, ACHIEVEMENT, IL_LOGO, IL_OUTLINE, PATCH, WALL_STICKERS,
+  SHEETS, SHEET_PX, ACHIEVEMENT, IL_LOGO, IL_OUTLINE, PATCH, WALL_STICKERS,
   ATLAS_W, ATLAS_H, CELLS, placeSigns, placeDecals, placePatches,
 } from './logos.js';
-import { partnerSignReady } from '../../art/partnermark.js';
 import { paintMaterial } from '../../art/stf.js';
 import { stfKey } from '../built/egg.js';
 import { INK_COLOR } from '../../render/comic.js';
@@ -255,15 +254,14 @@ function loadSheet(url) {
 }
 
 /*
- * The atlas (CELLS in ./logos.js) painted: the roster's signs copied from
- * their own canvases (src/art/partnermark.js), the Infinity Loops logos
- * and the 90% patch cut from the 90%ers' sheets, and the garage's four
+ * The atlas (CELLS in ./logos.js) painted: the Infinity Loops logos and
+ * the 90% patch cut from the 90%ers' sheets, and the garage's four
  * prints. The banner is the Infinity Loops logo on its dark board with
  * the red and white stripes at its end; the sticker wall is the 90%ers'
  * own stickers, every one, bombed over the board with two patches and the
  * logo on top.
  */
-function paintAtlas(sheets, signs) {
+function paintAtlas(sheets) {
   const c = document.createElement('canvas');
   c.width = ATLAS_W;
   c.height = ATLAS_H;
@@ -378,11 +376,6 @@ function paintAtlas(sheets, signs) {
       }
     }
   }
-  /* The roster's signs, each whole in its own cell. */
-  BRANDS.forEach((p, i) => {
-    const { x, y, w, h } = CELLS[p.slug];
-    g.drawImage(signs[i], x, y, w, h);
-  });
   /* The two Infinity Loops logos and the patch. */
   for (const [name, cr] of [['il', IL_LOGO], ['ilOutline', IL_OUTLINE], ['patch', PATCH]]) {
     const { x, y, w, h } = CELLS[name];
@@ -488,10 +481,9 @@ function houseInk(post) {
 
 export async function buildMap(shell, onProgress, options) {
   /* The pictures the logos are cut from, asked for first so they come
-   * while the world builds: the two sheets and every roster sign's
-   * artwork. */
+   * while the world builds: the two sheets. The roster's signs are hung
+   * by the built map (`markSpots`), which draws their own artwork. */
   const sheetsCame = Promise.all(SHEETS.map((s) => loadSheet(s.url)));
-  const signsCame = Promise.all(BRANDS.map((p) => partnerSignReady(p)));
   const L = headsLayout();
   const extra = {
     el: { id: 'heads', type: 'heads' },
@@ -516,8 +508,8 @@ export async function buildMap(shell, onProgress, options) {
   /* The logos all over it and the garage's prints, two meshes on one
    * picture: unlit indoors as the prints always were, lit paint outside
    * as a partner's sign is (paintMaterial in src/art/stf.js). */
-  const [sheets, signs] = await Promise.all([sheetsCame, signsCame]);
-  const atlas = paintAtlas(sheets, signs);
+  const sheets = await sheetsCame;
+  const atlas = paintAtlas(sheets);
   const decals = placeDecals(L.parts).filter(Boolean);
   const patches = placePatches(L.parts).filter(Boolean).map((s) => ({ ...s, cell: 'patch' }));
   const indoor = new THREE.MeshBasicMaterial({

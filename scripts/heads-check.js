@@ -31,8 +31,8 @@
  *                 size the crops say, the atlas's cells in it and apart,
  *                 every roster brand hung once and each sign on its face
  *                 all over, every decal and patch landed and flat on what
- *                 it is on with nothing through it, every brand painted
- *                 three more times, the Infinity Loops logo six, and the
+ *                 it is on with nothing through it, no brand painted
+ *                 again, the Infinity Loops logo six, and the
  *                 patch under Heads' car found by the game's own test
  *                 flying in under it and from nowhere a pilot stands
  *
@@ -654,6 +654,9 @@ function unbacked(boxes, q, deep, proud = 0) {
   return worst;
 }
 
+/* Every cell a decal spot names, landed or not. */
+const DECAL_CELLS = (lg) => lg.DECAL_SPOTS.map((d) => d.cell);
+
 async function logosBlock(L, placed) {
   console.log('\n8. logos');
   const lg = await import('../src/maps/heads/logos.js');
@@ -712,9 +715,12 @@ async function logosBlock(L, placed) {
     }
   });
   check('every decal is flat on what it is on, nothing through it', !bad.length, bad.join('; '));
-  const brandsPainted = slugs.filter((sl) => decals.filter((d) => d && d.cell === sl).length >= 3);
-  check('every brand is painted at least three times more', brandsPainted.length === slugs.length,
-    slugs.filter((sl) => !brandsPainted.includes(sl)).join(', '));
+  /* Each brand once, its sign, and painted nowhere else (the owner,
+   * 2026-10-23, "only once"; until then this asked for three more). */
+  const brandsPainted = slugs.filter((sl) => DECAL_CELLS(lg).includes(sl));
+  check('no brand is painted again: each is on the map once, as its sign', !brandsPainted.length, brandsPainted.join(', '));
+  check(`the signs are drawn ${lg.SIGN_SCALE} of the width they were hung at`, signs.every((s, i) => !s || Math.abs(s.w - S * lg.SIGN_SCALE * lg.SIGN_SPOTS[i].w) < 1e-9),
+    lg.SIGN_SPOTS.map((sp) => `${sp.slug} ${r3(lg.SIGN_SCALE * sp.w)} m`).join(', '));
   const il = decals.filter((d) => d && (d.cell === 'il' || d.cell === 'ilOutline')).length;
   check(`the Infinity Loops logo is painted ${il} times`, il >= 6);
   const patches = lg.placePatches(L.parts);

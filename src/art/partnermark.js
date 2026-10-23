@@ -33,7 +33,8 @@
  *                                  the found panel in the HUD.
  *   partnerSignReady(p) -> Promise the canvas, once its artwork has come or
  *                                  failed to, for a map that copies the sign
- *                                  into an atlas of its own (Heads' house).
+ *                                  into an atlas of its own (Bardwell's
+ *                                  house).
  *   makePartnerMark(THREE, p, { width, height, look, shade }) -> Mesh
  *       Exactly makeStfMark's contract in ./stf.js: a plane `width` by
  *       `height` in its own XY plane facing +Z, lit by the same cel ramp,

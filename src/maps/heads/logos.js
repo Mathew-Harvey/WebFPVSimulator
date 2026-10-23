@@ -15,13 +15,18 @@
  *             the map's chooser cannot see a structure of the map's own,
  *             and painted by the built map as a chosen one is (`markSpots`).
  *             Eight, so eight draw calls, the count any freestyle map pays.
- *   DECALS    the same signs again, and the Infinity Loops logos and the
- *             90% patch, painted on the street, the fence, the house's
- *             walls and the rooms: the "all over it". Every one is a quad
- *             in one of two meshes on one picture (ATLAS below), lit paint
- *             outside and unlit inside, the way the garage's prints were
- *             already drawn, so forty logos cost two draw calls and one
- *             texture rather than forty of each.
+ *             Each brand is on the map once, its sign, and the signs are
+ *             SIGN_SCALE of the width their spots were hung at: the owner,
+ *             2026-10-23, "make the sponsors logos a bit smaller, and only
+ *             once, it's a bit full on". Until then every brand was painted
+ *             three or four times more, on the street, the fence, the
+ *             house's walls and the rooms.
+ *   DECALS    the Infinity Loops logos and the 90% patch, painted on the
+ *             street, the fence, the house's walls and the rooms. Every
+ *             one is a quad in one of two meshes on one picture (ATLAS
+ *             below), lit paint outside and unlit inside, the way the
+ *             garage's prints were already drawn, so a dozen logos cost
+ *             two draw calls and one texture rather than a dozen of each.
  *   PATCHES   the 90% patch stuck round the house and the yard to be found,
  *             each a sticker whose find is the achievement "90%er", called
  *             out every time it comes back into sight, as the Infinity
@@ -57,7 +62,6 @@
 
 import { FRAME, FL, FM, FU } from './heads.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
-import { signAspect } from '../../art/partnermark.js';
 import { SHEETS, STICKERS, ACHIEVEMENT } from '../specials/infinityloops.js';
 
 export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS];
@@ -89,9 +93,10 @@ const cropAspect = (c) => (c.w * SHEET_PX[c.sheet][0]) / (c.h * SHEET_PX[c.sheet
 /*
  * One picture, ATLAS_W by ATLAS_H, every logo a cell of it: { x, y, w, h }
  * in pixels, y down. The garage's four prints keep their shapes across the
- * top; under them a column packer stands the roster's signs, the two
- * Infinity Loops logos and the patch in columns, each its own aspect and
- * PAD apart, so a mip level does not bleed one into the next.
+ * top; under them a column packer stands the two Infinity Loops logos
+ * and the patch in columns, each its own aspect and PAD apart, so a mip
+ * level does not bleed one into the next. The roster's signs are not in
+ * it: each is on the map once, as its own sign.
  */
 export const ATLAS_W = 2048;
 export const ATLAS_H = 1024;
@@ -107,7 +112,6 @@ function packAtlas() {
     flag: { x: 1476, y: 337, w: 172, h: 96 },
   };
   const items = [
-    ...BRANDS.map((p) => ({ name: p.slug, w: SIGN_PX, a: signAspect(p) })),
     { name: 'il', w: SIGN_PX, a: cropAspect(IL_LOGO) },
     { name: 'patch', w: 256, a: cropAspect(PATCH) },
     { name: 'ilOutline', w: 491, a: cropAspect(IL_OUTLINE) },
@@ -239,9 +243,15 @@ function aimLogo(boxes, cell, from, dir, wReal, top = 'n') {
 /* The signs                                                           */
 /* ------------------------------------------------------------------ */
 
+/* How wide each sign is drawn, a share of the width its spot names: a
+ * quarter narrower than they were hung (the owner, 2026-10-23, "make the
+ * sponsors logos a bit smaller"). One number, so smaller still is one
+ * edit. */
+export const SIGN_SCALE = 0.75;
+
 /* Each brand's sign: where it is aimed from (plan x, plan y, height, real
- * metres), which way, and how wide it is in real metres. Its height is its
- * artwork's. Seven outside where the street, the drive and the yard see
+ * metres), which way, and how wide it was hung in real metres, before
+ * SIGN_SCALE. Its height is its artwork's. Seven outside where the street, the drive and the yard see
  * them, one in the garage the pilot starts in. */
 export const SIGN_SPOTS = [
   /* The two storey part's east wall, upstairs between its windows, over
@@ -273,7 +283,7 @@ export function placeSigns(parts, chunk) {
     if (!at) {
       return null;
     }
-    return { slug: spot.slug, p: at.p, n: at.n, up: [0, 1, 0], w: FRAME.S * spot.w, chunk, hit: at.hit };
+    return { slug: spot.slug, p: at.p, n: at.n, up: [0, 1, 0], w: FRAME.S * SIGN_SCALE * spot.w, chunk, hit: at.hit };
   });
 }
 
@@ -288,59 +298,30 @@ const STREET_B = -15.0;
 /* Each decal: its cell, where it is aimed from, which way, how wide in
  * real metres, the plan way its top faces when it lies flat, and whether
  * it is indoors (drawn unlit, as the garage's prints are). */
-const SLUGS = BRANDS.map((p) => p.slug);
 export const DECAL_SPOTS = [
-  /* THE STREET, painted the way a race paints its sponsors on the road:
-   * every brand along Street A, reading from the house's side, the 90%
-   * patch in front of the house, and the Infinity Loops logo over the
-   * crossing. Clear of the parked cars and of the kerb returns. */
-  ...[-39, -32, -1, 15, 22, 29, 36, 43].map((x, i) => ({ cell: SLUGS[i], from: [x, STREET_A, 3], dir: 'down', w: 3.2, top: 's' })),
+  /* THE STREET: the 90% patch in front of the house and the Infinity
+   * Loops logo over the crossing, reading from the house's side. Every
+   * brand was painted along both streets too until the owner's "only
+   * once" of 2026-10-23; each is its sign now. */
   { cell: 'patch', from: [7, STREET_A, 3], dir: 'down', w: 3.0, top: 's' },
   { cell: 'il', from: [STREET_B, STREET_A, 3], dir: 'down', w: 6.0, top: 's' },
-  /* The cross street, reading from the house's side, north of the
-   * crossing and south of it. */
-  ...[[2, 'yourfpv'], [10, 'quadconfig'], [18, 'mantisfpv'], [26, 'mattsflooring'], [-34, 'konexdrone'], [-42, 'wcmrc']]
-    .map(([y, cell]) => ({ cell, from: [STREET_B, y, 3], dir: 'down', w: 3.0, top: 'w' })),
   /* THE BACK LAWN: the big outlined Infinity Loops logo, reading from
    * the house, between the deck box and the tree. */
   { cell: 'ilOutline', from: [12.5, 19.0, 3], dir: 'down', w: 6.0, top: 'n' },
-  /* THE FENCE, a banner a panel, the way a race hangs them, each in the
-   * middle of the bay between two posts so no post stands through it: the
-   * back fence inside, the west fence both sides, the east fence inside,
-   * the front runs outside. */
-  { cell: 'mantisfpv', from: [-2.62, 22.5, 1.0], dir: 'n', w: 2.2 },
-  { cell: 'gds', from: [2.41, 22.5, 1.0], dir: 'n', w: 1.9 },
+  /* THE FENCE, a banner in the middle of a bay between two posts so no
+   * post stands through it: the back fence inside, the west fence
+   * outside. */
   { cell: 'il', from: [9.97, 22.5, 1.0], dir: 'n', w: 1.9 },
-  { cell: 'wcmrc', from: [15.0, 22.5, 1.0], dir: 'n', w: 1.9 },
-  { cell: 'yourfpv', from: [20.04, 22.5, 1.0], dir: 'n', w: 1.2 },
-  { cell: 'gds', from: [-8.0, 8.725, 1.0], dir: 'e', w: 2.0 },
   { cell: 'il', from: [-8.0, 20.475, 1.0], dir: 'e', w: 1.9 },
-  { cell: 'quadconfig', from: [-5.0, 11.075, 1.0], dir: 'w', w: 2.1 },
-  { cell: 'konexdrone', from: [-5.0, 18.125, 1.0], dir: 'w', w: 1.9 },
-  { cell: 'webleedfpv', from: [19.5, 8.725, 1.0], dir: 'e', w: 1.8 },
-  { cell: 'mantisfpv', from: [19.5, 20.475, 1.0], dir: 'e', w: 2.2 },
-  { cell: 'webleedfpv', from: [-5.0, 3.5, 1.0], dir: 'n', w: 1.6 },
-  { cell: 'mattsflooring', from: [19.65, 3.5, 1.0], dir: 'n', w: 2.0 },
   /* THE HOUSE, outside: the upstairs front between its windows, the
-   * basement's front, the wing's back wall over the grill, the upstairs
-   * back, the garage's east wall. */
+   * wing's back wall over the grill. */
   { cell: 'il', from: [11.3, -1.5, 3.8], dir: 'n', w: 2.0 },
-  { cell: 'webleedfpv', from: [14.7, -1.5, 3.8], dir: 'n', w: 1.5 },
-  { cell: 'wcmrc', from: [9.75, -1.5, 1.65], dir: 'n', w: 1.4 },
   { cell: 'il', from: [4.3, 10.0, 2.2], dir: 's', w: 1.8 },
-  { cell: 'konexdrone', from: [14.55, 10.0, 3.8], dir: 's', w: 1.6 },
-  { cell: 'mantisfpv', from: [19.5, 4.2, 1.0], dir: 'w', w: 2.8 },
-  /* INSIDE: the open garage door's underside, the basement's walls, the
-   * living room, the bedrooms. */
+  /* INSIDE: the open garage door's underside, the basement's wall, the
+   * living room. */
   { cell: 'il', from: [15.9, 1.2, 1.5], dir: 'up', w: 2.2, top: 'n', inside: true },
   { cell: 'il', from: [9.5, 6.9, FL + 1.55], dir: 'w', w: 1.3, inside: true },
-  { cell: 'gds', from: [12.5, 2.2, FL + 1.45], dir: 'e', w: 1.4, inside: true },
-  { cell: 'webleedfpv', from: [12.5, 6.4, FL + 1.45], dir: 'e', w: 1.2, inside: true },
   { cell: 'il', from: [1.0, 3.5, FM + 1.6], dir: 'w', w: 0.9, inside: true },
-  /* Over the TV on the wall across the middle (../heads.js mainFloor). */
-  { cell: 'konexdrone', from: [4.95, 3.0, FM + 1.75], dir: 'n', w: 1.3, inside: true },
-  { cell: 'mattsflooring', from: [15.0, 2.5, FU + 1.6], dir: 'n', w: 1.6, inside: true },
-  { cell: 'gds', from: [11.8, 6.5, FU + 1.6], dir: 'n', w: 0.8, inside: true },
 ];
 
 /* Each decal placed: { cell, p, n, up, w, h, inside, hit }, PROUD of its

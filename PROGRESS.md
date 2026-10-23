@@ -71724,3 +71724,14 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-23 10:12Z: "reproduice, fix root cause and push to main". Fetched; main had moved (crosshair, Nick's slide), rebased onto it, no force.
 
 - Owner's word, 2026-10-23 10:38Z: "Ensure all changes are pushed to main" (the houses are the whoop's alone; PR 130). Main had moved (the slide fix and the bridge lane); merged in, PROGRESS was the only conflict, kept both sides. Not flown; verify not run.
+
+## 2026-10-23 | map | Sponsor logos smaller and only once on the house maps (draft PR)
+
+- The ask, 10:53Z, Mat: "Also the house maps, make the sponsors logos a bit smaller , and only once , it's a bit full on".
+- Heads' house had each roster brand's sign once (SIGN_SPOTS, the partner finds) and then the same brand painted 34 more times between them (DECAL_SPOTS: along both streets, banners on the fence, the house's outside walls and the rooms), three to five times a brand. Those 34 brand decals are gone. Kept: the eight signs (every partner and Konex once, found and counted as before), the Infinity Loops logos (9) and the 90% patch decal on the street, the 90% patches to find, the garage's prints. The brands' cells are out of the logo atlas too, so the atlas no longer waits on the eight signs' artwork (the hung signs load it themselves, as before).
+- Nick's house already had each brand once (`src/maps/house/supporters.js`), so there only the size changes.
+- Smaller: `SIGN_SCALE = 0.75` in `src/maps/heads/logos.js` and `src/maps/house/supporters.js`, every sign a quarter narrower (about 56% of the area). One number each, so "smaller still" is one edit. Heads' signs were far bigger than Nick's (Mantis 3.4 m real, 11.9 m of the world); now 2.55 m real.
+- `check:heads`: "every brand is painted at least three times more" is now "no brand is painted again: each is on the map once, as its sign", the owner's word replacing the old requirement, plus a line that prints each sign's drawn width.
+- Latency: draw calls flat on both (163 and 161 meshes, mesh by mesh, headless). Triangles: Heads' house -68 (the outdoor logo mesh 82 to 24, the indoor 36 to 26); Nick's unchanged. Eight fewer pictures painted into Heads' atlas at load.
+- Run: `check:heads`, `check:house`, `check:bardwell`, `lint:partners`, `lint:preload`, `check:fresh`, `lint:boot`, `lint:nouns`, all passed; shots before and after (`/mnt/project-files/house-logos/`). Not run: `npm run verify`. Not flown.
+- Not touched: Bardwell's house, which paints brands round its yard the same way; it is its own thread.

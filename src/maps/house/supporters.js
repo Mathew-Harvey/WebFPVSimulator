@@ -52,9 +52,16 @@
 import { FRAME, BF, FRONT } from './house.js';
 import { aimAt, drawnBoxes } from './stickers.js';
 
+/* How wide each sign is drawn, a share of the width its spot names: a
+ * quarter narrower than they were hung (the owner, 2026-10-23, "make the
+ * sponsors logos a bit smaller, and only once"; each brand was already
+ * here once). One number, so smaller still is one edit. Heads' house has
+ * its own (SIGN_SCALE in ../heads/logos.js). */
+export const SIGN_SCALE = 0.75;
+
 /* Each sign: the brand's slug, where it is aimed from (plan x, plan y,
- * height, real metres), which way, and how wide it is in real metres. Its
- * height is its artwork's. */
+ * height, real metres), which way, and how wide it was hung in real
+ * metres, before SIGN_SCALE. Its height is its artwork's. */
 export const SUPPORTER_SPOTS = [
   /* The garage, its floor at 0. Straight ahead through the open bay, over
    * the workbench. */
@@ -107,6 +114,6 @@ export function placeSupporters(parts, chunk) {
     if (!at) {
       return null;
     }
-    return { slug: spot.slug, room: spot.room, p: at.p, n: at.n, up: [0, 1, 0], w: FRAME.S * spot.w, chunk, hit: at.hit };
+    return { slug: spot.slug, room: spot.room, p: at.p, n: at.n, up: [0, 1, 0], w: FRAME.S * SIGN_SCALE * spot.w, chunk, hit: at.hit };
   });
 }

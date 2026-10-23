@@ -71809,3 +71809,12 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - The yaw spin ending is swept and lands 9 of 9. The Powerloop ending is NOT swept (the sweep dedups by name and the planner cannot fly a path step after rotations), so it is unproven.
 - Latency: no change. Patterns are matched only when a rotation run closes, as the other 90 are; one more pattern in a table of about 100.
 - Run: `score:selftest` (all passed, three new cases), `trick-sweep --all` (nothing overpaid), `lint:nouns`. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+## 2026-10-23 | audio | Nick's crash call: a chance, and only "Poor thing" (branch only)
+
+- The owner, 2026-10-23 23:44Z: "in the nick map, crash is a random chance of the meme call out not often. and shorten it to 'poor thing'". `assets/voices/nb/crash.mp3` is now only the last words of the original seven second clip (5.7 s to the end), 1.2 s, 6 kB instead of 36 kB, with a 30 ms fade in. A hard crash plays it one time in four (`CHANCE` in `src/render/clips.js`, `rand` injectable for the check), and a miss starts no cooldown; the cooldown after a play went from 20 s to 8 s because the clip is short. "Not often" read as 25 percent: say if it should be rarer.
+- Checks: `check:clips` all pass, with new lines for a miss, a hit straight after a miss, and about one in four over 4000 crashes. A short re-transcription heard the clip as "for the thing" because the cut has so little lead in; the full clip's own transcription put "poor thing" at 5.82 to 6.72 s, so it needs a listen.
+- Latency: none, and 30 kB less to fetch if it is played. Not flown, `npm run verify` not run.
+
+- Owner's word, 2026-10-23 23:56Z: "push to main" (Nick's crash call: one time in four, "Poor thing" only, PR 138). Fast forward onto main from 59156b2's parent, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
+
+- Owner's word, 2026-10-23 23:58Z: "push to main" (JSL freestyle combo, PR 139). Main had moved (Nick's crash call), merged in, no code conflict. Not flown, verify not run.

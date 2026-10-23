@@ -60,7 +60,7 @@ for (const [set, def] of Object.entries(CLIP_SETS)) {
 }
 ok(total < 400000, `all clips together ${total} bytes, under 400000`);
 
-function rig() {
+function rig(rand = () => 0) {
   const made = [];
   let t = 0;
   const v = new ClipVoice({
@@ -74,6 +74,7 @@ function rig() {
       return el;
     },
     now: () => t,
+    rand,
   });
   return { v, made, tick: (ms) => { t += ms; } };
 }
@@ -101,7 +102,7 @@ const base = globalThis.navigator;
 /* 3. cues */
 {
   const { v, tick } = rig();
-  ok(v.play('nb', 'crash', 1) === 'crash', 'a crash plays the crash laugh');
+  ok(v.play('nb', 'crash', 1) === 'crash', 'a crash plays Poor thing when the chance comes up');
   tick(5000);
   ok(v.play('nb', 'crash', 1) === null, 'a second crash inside the cooldown is quiet');
   tick(20000);
@@ -116,6 +117,25 @@ const base = globalThis.navigator;
   ok(CLIP_SETS.nb.near.includes(near), 'within a metre of him plays one of his other lines');
   ok(v.play('nb', 'sticker', 1) === 'stickers', 'a sticker find on his map is always Stickers');
   ok(v.play('nb', 'nonsense', 1) === null, 'an unknown cue plays nothing');
+}
+
+/* A crash is a chance, and a miss costs nothing. */
+{
+  let r = 0.9;
+  const { v } = rig(() => r);
+  ok(v.play('nb', 'crash', 1) === null, 'a crash that misses the chance plays nothing');
+  r = 0.1;
+  ok(v.play('nb', 'crash', 1) === 'crash', 'the next one that hits it plays at once, a miss starts no cooldown');
+  let n = 0;
+  const g = rig(Math.random);
+  for (let i = 0; i < 4000; i += 1) {
+    g.tick(60000);
+    if (g.v.play('nb', 'crash', 1)) {
+      n += 1;
+      g.v.playing.el.paused = true;
+    }
+  }
+  ok(n > 800 && n < 1200, `about one crash in four plays (${n} of 4000)`);
 }
 
 /* 4. quiet */

@@ -71679,6 +71679,20 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-23 06:33Z: "push to main" (camera angle slider to 60; PR 128). Fast forward onto main from 9191b8d, nothing had landed since. Not flown; seat-selftest 35 of 35 was the only check.
 
+## 2026-10-23 | hud | The cross-hair is back at the centre of the picture (draft, not on main)
+
+- Ask: the owner forwarded a ticket from 2026-10-20 (whoop, 3440 by 1440 fullscreen, pixel ratio 0.65, camera angle 30, lens 95): "the crosshair is offcenter, down in my monitor". The owner's words: "ensure it is correctly centered no matter the cam angle". No approval to push to main yet.
+- Cause: not a regression in the OSD box, which is `inset: 0` over the whole window. It is the 2026-10-12 change (PR 66, above) that moved the mark to the nose line: `50 + 50 * tan(tilt) / tan(vfov / 2)` percent. At 30 degrees on a 95 degree lens that is 76.4 percent, so the mark sat well below the middle, and a pilot who had the Crosshairs row on saw it "down". It would be the same at any window shape or pixel ratio, because the number is a share of the OSD height.
+- Change: `syncCrosshair` no longer writes `top`; `.osd-cross` stays at 50 percent by `left: 50%; top: 50%`, so the mark is the middle of the picture at any camera angle, lens, aspect and pixel ratio. The four notes on the Crosshairs row and the two comments say "centre". The 2026-10-12 reading ("where the nose points") is withdrawn at the owner's word.
+- Latency: none, and slightly less: one style write less when the HUD is shown. Nothing in the frame, input path or physics. Checked by reading the diff.
+- Checked: `node --check`, `lint:boot` 9 of 9, `lint:nouns` PASS, `lint:frame` 34 passed, `git diff --stat vendor/betaflight` empty. Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`, `lint:shell`. The mark was not seen on a flying screen. Nobody has flown it.
+- Open: the ticket does not say the Crosshairs row was on. If the pilot meant some other mark, that is not this one; the default is Off.
+
+## 2026-10-23 | hud | The cross-hair centring goes to main on the owner's word (PR #129)
+
+- Approval: the owner wrote "push to main" at 10:15:30Z on 2026-10-23 in the Off-centre crosshair thread, after the draft PR and the entry above. It covers PR 129 only. Main was fetched first (37e4a15, this branch's base), so the push is a fast forward.
+- Latency, checks and what is not checked: as in the entry above. Nobody has flown it.
+
 ## 2026-10-23 | map | Nick's house: fly under the slide
 
 - The ask, 10:10Z, Mat in project chat, a player's bug report bug-0f4308dd pasted: "on the nick burns house map, you can't fly through the slide looking thingy next to the swing set in the garden ... I would be able to fly through the gap, as a tinywhoop is easily small enough for it", and "fix this bug ticket on nicks map and push to main".

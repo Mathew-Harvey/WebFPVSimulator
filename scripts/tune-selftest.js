@@ -184,23 +184,23 @@ check('tuneIsStock reads all three',
 check('the defaults are on the sliders\' own steps and inside their bands',
   Object.values(TUNE_DEFAULTS).every((d) => clampAirGrip(d.airGrip) === d.airGrip && clampMotorKv(d.motorKv) === d.motorKv),
   JSON.stringify(TUNE_DEFAULTS));
-check('the five inch ships on Air grip 110, the whoop on Motor power 90',
-  same(tuneDefaultsFor('5inch'), { airGrip: 110, motorKv: 100 }) && same(tuneDefaultsFor('whoop65'), { airGrip: 100, motorKv: 90 }));
+check('the five inch ships on Air grip 110, and the whoop on the same since it flies the five inch\'s plant',
+  same(tuneDefaultsFor('5inch'), { airGrip: 110, motorKv: 100 }) && same(tuneDefaultsFor('whoop65'), { airGrip: 110, motorKv: 100 }));
 check('an aircraft nobody listed, or none, is 100 and 100',
   same(tuneDefaultsFor('nope'), { airGrip: 100, motorKv: 100 }) && same(tuneDefaultsFor(undefined), { airGrip: 100, motorKv: 100 })
   && same(tuneDefaultsFor('__proto__'), { airGrip: 100, motorKv: 100 }));
 check('mode off flies the aircraft\'s default, whatever the sliders say',
   same(effectiveTune({ airframe: '5inch', feelTuning: false, airGrip: 70, motorKv: 115 }), { airGrip: 110, motorKv: 100 })
-  && same(effectiveTune({ airframe: 'whoop65', feelTuning: false, airGrip: 70, motorKv: 115 }), { airGrip: 100, motorKv: 90 }));
+  && same(effectiveTune({ airframe: 'whoop65', feelTuning: false, airGrip: 70, motorKv: 115 }), { airGrip: 110, motorKv: 100 }));
 check('mode on still flies the sliders as set, 100 included',
   same(effectiveTune({ airframe: '5inch', feelTuning: true, airGrip: 100, motorKv: 100 }), { airGrip: 100, motorKv: 100 }));
 check('the Tuned tag is measured from the aircraft\'s default',
   !offBoardTune(110, 100, '5inch') && offBoardTune(100, 100, '5inch')
-  && !offBoardTune(100, 90, 'whoop65') && offBoardTune(100, 100, 'whoop65'));
+  && !offBoardTune(110, 100, 'whoop65') && offBoardTune(100, 90, 'whoop65'));
 check('and so is the question',
   tuneIsStock({ airframe: '5inch', weight: 100, airGrip: 110, motorKv: 100 })
   && !tuneIsStock({ airframe: '5inch', weight: 100, airGrip: 100, motorKv: 100 })
-  && tuneIsStock({ airframe: 'whoop65', weight: 100, airGrip: 100, motorKv: 90 }));
+  && tuneIsStock({ airframe: 'whoop65', weight: 100, airGrip: 110, motorKv: 100 }));
 check('the old stock is what moves once',
   SUPERSEDED_TUNE.GENERATION >= 1 && SUPERSEDED_TUNE.airGrip === 100 && SUPERSEDED_TUNE.motorKv === 100);
 

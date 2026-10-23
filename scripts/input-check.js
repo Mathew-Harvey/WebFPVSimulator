@@ -1929,11 +1929,11 @@ async function keyboardPage(page) {
     .then(JSON.parse);
   check('charged, on the start line, the OSD reads 4.20 volts', pack.osd === '4.20 volts' && pack.perCell === 4.2 && pack.landed,
     JSON.stringify(pack));
-  /* The whoop has flown its own 1S plant since 2026-10-09 (PLANT.cells in
-   * src/native/plant.c, cells in configs/airframes.js), so the OSD and the
-   * plant say the same pack: one cell, charged. */
-  check('and the plant under it is the whoop\'s own 1S pack, charged, as the OSD says',
-    Math.abs(pack.plant - 4.2) < 0.05, JSON.stringify(pack));
+  /* The whoop flies the five inch's 6S plant again since 2026-10-23 (simId
+   * in configs/airframes.js), and the OSD prints one cell of it: the plant's
+   * pack over its six cells is the 4.20 the OSD says. */
+  check('and the plant under it is charged, six cells of the 4.20 the OSD says',
+    Math.abs(pack.plant - 6 * 4.2) < 0.3, JSON.stringify(pack));
 
   /* --------------------------------------------------------------------
    * 9. Angle or Acro from the keyboard. bug-92007f3e, "Using m+k

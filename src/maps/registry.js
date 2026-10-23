@@ -104,6 +104,14 @@ export const MAPS = [
      * whoop, so speed and battery stats need editing, the flight feel is
      * good though". Display only: see whoopHud in src/main.js. */
     craftModel: 'whoop65',
+    /* Flown on the whoop and nothing else, the owner's call on bug-3261ce67
+     * (2026-10-23): a five inch seated here was drawn as a whoop and flew a
+     * five inch's plant, "it sounds like a 5 inch, but i think it might be
+     * whoop sized". The aircraft this world is for is `craft`: choosing the
+     * map seats it, and a five inch is moved off the map. See keepOffForcedMaps
+     * in src/ui/ui.js. `hudScale` is now only read on a five inch, which
+     * cannot be here; it stays so the OSD arithmetic is not touched. */
+    craft: 'whoop65',
     hudScale: 3.5,
     load: () => import('./house/index.js'),
   },
@@ -120,6 +128,7 @@ export const MAPS = [
     note: "Heads' house from Infinity Loops, flown on a whoop: the garage, the basement, the stairs, every room, the yard and the corner.",
     buildMs: MAP_BUILD_MS.heads,
     craftModel: 'whoop65',
+    craft: 'whoop65',
     hudScale: 3.5,
     load: () => import('./heads/index.js'),
   },

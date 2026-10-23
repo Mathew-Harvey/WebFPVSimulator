@@ -446,6 +446,33 @@ function seatedFreestyleMap(s) {
 }
 
 /*
+ * The one aircraft a map is flown on, or null when any will do (`craft` in
+ * src/maps/registry.js: Nick Burns' house and Heads', the whoop's).
+ */
+function craftForMap(id) {
+  const m = MAPS.find((x) => x.id === id);
+  return (m && m.craft) || null;
+}
+
+/*
+ * A map that belongs to another aircraft is not this one's to sit on. Called
+ * wherever the aircraft is seated, so a five inch that arrives from a stored
+ * profile, the gate or a shelf is put back in the town rather than flown in
+ * a house it is not for (bug-3261ce67). The town is the world any aircraft
+ * that offers freestyle can be put in.
+ */
+function keepOffForcedMaps(s) {
+  const here = craftForMap(s.map);
+  if (here && here !== s.airframe) {
+    s.map = 'city';
+  }
+  const mine = craftForMap(s.freestyleMap);
+  if (mine && mine !== s.airframe) {
+    s.freestyleMap = '';
+  }
+}
+
+/*
  * The world to seat when the pilot has said freestyle and none is seated:
  * the one they last flew, or the only one there is. Null only when there is
  * a real choice and nothing remembered, which is the one case the Freestyle
@@ -1986,6 +2013,8 @@ export function loadSettings() {
   } else if (wanted !== s.airframe) {
     seatAirframe(s, wanted);
   }
+  /* A stored seat from before a house was the whoop's alone. */
+  keepOffForcedMaps(s);
   /* A profile whose pitch differs from its roll has to show three axes,
    * whatever the stored menu shape says, or the rows would be editing a
    * pitch the pilot cannot see. */
@@ -2202,6 +2231,7 @@ export function seatAirframe(s, id) {
   s.hangar = hangar;
   s.airframe = to.id;
   s.seatedFor = to.id;
+  keepOffForcedMaps(s);
   if (back) {
     /* Each value through the same gate the loader puts it through, against
      * this aircraft: the tune, pack and weight lines below, the lens list
@@ -4562,8 +4592,8 @@ function locationHashScreen() {
  * straight back to the aircraft. When there is an indoor freestyle space to
  * fly, this is the one function that has to change.
  */
-function freestyleOffered(airframeId) {
-  return airframeById(airframeId).trackClass !== 'micro';
+function freestyleOffered(airframeId, mapId) {
+  return airframeById(airframeId).trackClass !== 'micro' || craftForMap(mapId) === airframeId;
 }
 
 /*
@@ -4996,7 +5026,19 @@ export class Ui {
      * remembered is that the question was asked: the gate is the root of the
      * menu and it opens every visit. See craftGate below.
      */
-    const linkedAf = linkedCraft();
+    /* A map that is one aircraft's alone names it whatever ?craft= says, so
+     * an old ?map=house&craft=5inch link lands on the whoop. */
+    let linkedMapId = null;
+    try {
+      linkedMapId = new URLSearchParams(window.location.search).get('map');
+    } catch (e) {
+      /* No URL to read. */
+    }
+    const linkedAf = craftForMap(linkedMapId) || linkedCraft();
+    if (craftForMap(linkedMapId)) {
+      this.settings.map = linkedMapId;
+      this.settings.freestyleMap = linkedMapId;
+    }
     if (linkedAf) {
       /*
        * seatAirframe alone, and NOT an assignment to settings.airframe first.
@@ -13370,7 +13412,7 @@ export class Ui {
         return '';
       }
       const here = new URL(window.location.href);
-      return `${here.origin}${here.pathname}?map=${encodeURIComponent(item.map.id)}&craft=5inch&fly=1`;
+      return `${here.origin}${here.pathname}?map=${encodeURIComponent(item.map.id)}&craft=${craftForMap(item.map.id) || '5inch'}&fly=1`;
     }
     return '';
   }
@@ -15083,7 +15125,7 @@ export class Ui {
    * store the settings themselves and one of them stores them once.
    */
   syncMode() {
-    if (this.craftGate || freestyleOffered(this.settings.airframe)) {
+    if (this.craftGate || freestyleOffered(this.settings.airframe, this.settings.map)) {
       return false;
     }
     let moved = false;
@@ -18725,6 +18767,15 @@ export class Ui {
        * first in the registry, and so the gate can tell a pilot who has
        * chosen a world from one who never has. */
       this.settings.freestyleMap = id;
+      /* The aircraft the world is for: the whoop's houses seat the whoop,
+       * and a whoop leaving one for another world is a five inch again,
+       * because the whoop has no other freestyle (freestyleOffered). */
+      const want = m.craft || (freestyleOffered(this.settings.airframe, id) ? null : '5inch');
+      if (want && want !== this.settings.airframe) {
+        seatAirframe(this.settings, want);
+        this.settings.airframeAsked = true;
+        this.settings.freestyleMap = id;
+      }
     }
     this.settings.map = id;
     saveSettings(this.settings);

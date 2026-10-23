@@ -71678,3 +71678,12 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Run: `node scripts/seat-selftest.js` (35 of 35 clean). Not run: `npm run verify`, `shots` (no layout change).
 
 - Owner's word, 2026-10-23 06:33Z: "push to main" (camera angle slider to 60; PR 128). Fast forward onto main from 9191b8d, nothing had landed since. Not flown; seat-selftest 35 of 35 was the only check.
+
+## 2026-10-23 | shell | Nick's and Heads' houses are the whoop's alone (draft PR)
+
+- The ask, via bug-3261ce67 ("when i choose 5 inch from the menu and fly in nick burns house, it shows a whoop in the 3rd person camera") and the owner's call: a five inch should not be choosable on those two maps.
+- Cause: the houses drew the whoop (`craftModel`) over whatever plant was seated, so a five inch pilot got a whoop's picture with a five inch's plant and a 6S-looking sound.
+- What: `craft: 'whoop65'` on both registry entries. In `src/ui/ui.js`, `keepOffForcedMaps` runs from `seatAirframe` and `loadSettings`, so a five inch (from a stored profile, the gate or a shelf) is moved to the town; `seatMap` seats the whoop when a house is chosen and a five inch again when a whoop leaves for another world; `freestyleOffered` takes the map, so the whoop keeps freestyle mode on a house and nowhere else; a `?map=house` link names the whoop whatever `?craft=` says, and Copy link writes `craft=whoop65` for them.
+- What changes in the air: the houses now fly the whoop's own plant (len_scale 3.43, real gravity, 1S) instead of the five inch plant under a whoop skin. The owner said on 2026-10-21 the old feel was good, so this is the thing to fly. The 1S OSD follows from the whoop airframe (4.20 V, no speed); `hudScale` is dead code on a five inch and is left alone.
+- Latency: no change to the flight loop or input path; shell seat logic only, run on a choice and at load. Checked by reading the diff and the page below, headless, so a proxy only.
+- Run: the real page headless (`shots.js`): `?map=house&craft=5inch&fly=1` lands on whoop65 / house / freestyle in flight; from the town, `act('map:house')` seats whoop65 and `act('map:city')` returns to 5inch. `lint:boot` 9 of 9, `seat-selftest` as printed in the PR. Not run: `npm run verify` (no physics, ABI or build change), a stored five inch profile on the house (the load path is `keepOffForcedMaps`, read but not driven), the pause-menu route (a map picked mid run).

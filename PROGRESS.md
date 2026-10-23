@@ -71687,3 +71687,8 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: none, and slightly less: one style write less when the HUD is shown. Nothing in the frame, input path or physics. Checked by reading the diff.
 - Checked: `node --check`, `lint:boot` 9 of 9, `lint:nouns` PASS, `lint:frame` 34 passed, `git diff --stat vendor/betaflight` empty. Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`, `lint:shell`. The mark was not seen on a flying screen. Nobody has flown it.
 - Open: the ticket does not say the Crosshairs row was on. If the pilot meant some other mark, that is not this one; the default is Off.
+
+## 2026-10-23 | hud | The cross-hair centring goes to main on the owner's word (PR #129)
+
+- Approval: the owner wrote "push to main" at 10:15:30Z on 2026-10-23 in the Off-centre crosshair thread, after the draft PR and the entry above. It covers PR 129 only. Main was fetched first (37e4a15, this branch's base), so the push is a fast forward.
+- Latency, checks and what is not checked: as in the entry above. Nobody has flown it.

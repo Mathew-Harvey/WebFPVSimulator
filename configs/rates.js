@@ -1052,10 +1052,14 @@ const HOVER_STICK_PERCENT = {
     cells: HOVER_5IN,
     kv: { 80: HOVER_5IN_KV80, 120: HOVER_5IN_KV120 },
   },
+  /* The five inch's since 2026-10-23, because the whoop flies the five
+   * inch's plant at the five inch's weight again (simId and gravityBase in
+   * configs/airframes.js). HOVER_WHOOP and its two Motor power tables above
+   * are the whoop's own 1S plant, kept for the day it flies that again. */
   whoop65: {
-    weights: [60, 100, 120],
-    cells: HOVER_WHOOP,
-    kv: { 80: HOVER_WHOOP_KV80, 120: HOVER_WHOOP_KV120 },
+    weights: [60, 100, 140],
+    cells: HOVER_5IN,
+    kv: { 80: HOVER_5IN_KV80, 120: HOVER_5IN_KV120 },
   },
 };
 

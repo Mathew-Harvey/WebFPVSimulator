@@ -10836,9 +10836,11 @@ export async function boot({ loading, bootStart, mapId }) {
        * prints what a 1S whoop in a real house would: one cell's volts
        * (the pack over the plant's cells, not the airframe's 6S) and the
        * speed divided by S. Display only, like cells and osdSpeed: nothing
-       * that flies or scores reads either. A whoop airframe keeps its own
-       * HUD (no speed), because its plant is already true size. */
-      const whoopHud = runAirframe === '5inch' ? (mapById(view.id).hudScale || 0) : 0;
+       * that flies or scores reads either. Since 2026-10-23 the houses seat
+       * the whoop and the whoop flies the five inch's plant, so this is read
+       * whatever is seated: it is the HUD the houses had when the owner
+       * said their feel was good. */
+      const whoopHud = mapById(view.id).hudScale || 0;
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({

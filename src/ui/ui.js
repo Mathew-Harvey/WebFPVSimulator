@@ -151,6 +151,7 @@ import {
   MOTOR_KV_STEP,
   MOTOR_KV_STOCK,
   SUPERSEDED_TUNE,
+  SUPERSEDED_WHOOP_TUNE,
   TUNE_MIN_AIR_MS,
   TUNE_VERDICTS,
   airtimeWords,
@@ -717,7 +718,9 @@ export function clampWeight(v, airframeId) {
  */
 const WEIGHT_FEEL = {
   '5inch': { fall: ['1.20', '1.01'], balloon: ['1.6', '0.7'], hover: ['35.0', '42.7'] },
-  whoop65: { fall: ['1.07', '0.98'], balloon: ['0.9', '0.5'], hover: ['39.9', '44.6'] },
+  /* The five inch's row since 2026-10-23: the whoop flies its plant and
+   * weight (configs/airframes.js). */
+  whoop65: { fall: ['1.20', '1.01'], balloon: ['1.6', '0.7'], hover: ['35.0', '42.7'] },
 };
 
 /*
@@ -1930,6 +1933,23 @@ export function loadSettings() {
       }
     }
     s.stockTune = SUPERSEDED_TUNE.GENERATION;
+  }
+  /* And the whoop's moved again on 2026-10-23, when it went back onto the
+   * five inch's plant: a whoop still on the 1S plant's 100 and 90 moves once. */
+  if (!(s.stockTune >= SUPERSEDED_WHOOP_TUNE.GENERATION)) {
+    const W = SUPERSEDED_WHOOP_TUNE;
+    const onOld = (m) => m.airGrip === W.airGrip && m.motorKv === W.motorKv;
+    if (s.airframe === WHOOP_ID && onOld(s)) {
+      ({ airGrip: s.airGrip, motorKv: s.motorKv } = tuneDefaultsFor(WHOOP_ID));
+    }
+    const h = s.hangar;
+    if (h && typeof h === 'object' && !Array.isArray(h)) {
+      const m = h[WHOOP_ID];
+      if (m && typeof m === 'object' && !Array.isArray(m) && onOld(m)) {
+        h[WHOOP_ID] = { ...m, ...tuneDefaultsFor(WHOOP_ID) };
+      }
+    }
+    s.stockTune = W.GENERATION;
   }
   /*
    * THE WHOOP'S SHIPPED DEFAULTS MOVED, and a stored copy of the old ones

@@ -324,16 +324,16 @@ function marked(over) {
   const gm = (m) => `${m.airGrip}/${m.motorKv}`;
   store.clear();
   let s = loadSettings();
-  check('tune: a blank profile starts on the five inch\'s default', gm(s) === '110/100' && s.stockTune === 1, gm(s));
+  check('tune: a blank profile starts on the five inch\'s default', gm(s) === '110/100' && s.stockTune === 2, gm(s));
   seatAirframe(s, 'whoop65');
-  check('tune: the whoop\'s first visit starts on the whoop\'s default', gm(s) === '100/90', gm(s));
+  check('tune: the whoop\'s first visit starts on the whoop\'s default', gm(s) === '110/100', gm(s));
 
   store.clear();
   stored({ airframe: '5inch', airframeAsked: true, seatedFor: '5inch', airGrip: 100, motorKv: 100,
     hangar: { whoop65: { weight: 100, airGrip: 100, motorKv: 100 } } });
   s = loadSettings();
   check('tune: an unmarked profile on the old 100 and 100 moves, seated and in the hangar',
-    gm(s) === '110/100' && gm(s.hangar.whoop65) === '100/90', `${gm(s)}, hangar ${gm(s.hangar.whoop65)}`);
+    gm(s) === '110/100' && gm(s.hangar.whoop65) === '110/100', `${gm(s)}, hangar ${gm(s.hangar.whoop65)}`);
   s.airGrip = 100;
   save(s);
   s = loadSettings();
@@ -343,6 +343,12 @@ function marked(over) {
   stored({ airframe: 'whoop65', airframeAsked: true, seatedFor: 'whoop65', airGrip: 125, motorKv: 100 });
   s = loadSettings();
   check('tune: a pilot\'s own numbers are not moved', gm(s) === '125/100', gm(s));
+
+  store.clear();
+  stored({ airframe: 'whoop65', airframeAsked: true, seatedFor: 'whoop65', airGrip: 100, motorKv: 90, stockTune: 1 });
+  s = loadSettings();
+  check('tune: a whoop on the 1S plant\'s 100 and 90 moves once to the five inch plant\'s default',
+    gm(s) === '110/100' && s.stockTune === 2, gm(s));
 }
 
 const w = Math.max(...rows.map((r) => r[0].length));

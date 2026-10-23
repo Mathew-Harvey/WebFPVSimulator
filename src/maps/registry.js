@@ -109,8 +109,9 @@ export const MAPS = [
      * five inch's plant, "it sounds like a 5 inch, but i think it might be
      * whoop sized". The aircraft this world is for is `craft`: choosing the
      * map seats it, and a five inch is moved off the map. See keepOffForcedMaps
-     * in src/ui/ui.js. `hudScale` is now only read on a five inch, which
-     * cannot be here; it stays so the OSD arithmetic is not touched. */
+     * in src/ui/ui.js. The whoop flies the five inch's plant, tune and
+     * weight (simId in configs/airframes.js), so the flight is the one the
+     * owner liked here, and `hudScale` still sets the OSD. */
     craft: 'whoop65',
     hudScale: 3.5,
     load: () => import('./house/index.js'),

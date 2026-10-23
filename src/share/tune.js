@@ -163,7 +163,11 @@ export function kvScaleFor(pct) {
  */
 export const TUNE_DEFAULTS = Object.freeze({
   '5inch': Object.freeze({ airGrip: 110, motorKv: 100 }),
-  whoop65: Object.freeze({ airGrip: 100, motorKv: 90 }),
+  /* The five inch's since 2026-10-23, because the whoop flies the five
+   * inch's plant again (simId in configs/airframes.js) and the houses it is
+   * now matched to were flown on these. The 11 pilot reading above was of
+   * the whoop's own 1S plant and does not carry over. */
+  whoop65: Object.freeze({ airGrip: 110, motorKv: 100 }),
 });
 
 const NEUTRAL = Object.freeze({ airGrip: AIR_GRIP_STOCK, motorKv: MOTOR_KV_STOCK });
@@ -179,6 +183,13 @@ export function tuneDefaultsFor(airframe) {
  * rates moved in SUPERSEDED_RATES. A pilot who sets 100 back keeps it.
  */
 export const SUPERSEDED_TUNE = Object.freeze({ GENERATION: 1, airGrip: 100, motorKv: 100 });
+
+/*
+ * The whoop's defaults from 2026-10-21 to 2026-10-23, the 1S plant's. A whoop
+ * profile still on them exactly moves once to the whoop's new defaults, the
+ * five inch's, the same way as above.
+ */
+export const SUPERSEDED_WHOOP_TUNE = Object.freeze({ GENERATION: 2, airGrip: 100, motorKv: 90 });
 
 /*
  * What the module is flown at, from the stored settings. Tuning off is the

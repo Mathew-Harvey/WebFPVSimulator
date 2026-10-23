@@ -71676,3 +71676,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - The board's tune validator allows up to 70 (`ANGLE_MAX` in the board's `src/tunes.js`), so a shared tune at 60 is accepted and no board change is needed.
 - Latency: no change, a clamp bound only; nothing in the flight loop or input path moves. At 60 degrees sin(tilt) is 0.87, so yaw rolls the horizon a little more than at 55 (0.82); the existing yaw tip covers it.
 - Run: `node scripts/seat-selftest.js` (35 of 35 clean). Not run: `npm run verify`, `shots` (no layout change).
+
+- Owner's word, 2026-10-23 06:33Z: "push to main" (camera angle slider to 60; PR 128). Fast forward onto main from 9191b8d, nothing had landed since. Not flown; seat-selftest 35 of 35 was the only check.

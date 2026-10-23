@@ -71752,3 +71752,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Looked at, headless: Living room 1 on the whoop climbing reads `1 km/h`, `3.9 m above the ground`, `4.18 volts`, lock `4 m`; Nick's house on the whoop reads `0 km/h`, `0.0 m`, `4.20 volts` on the pad and `2.6 m` after a climb.
 - Latency: no change. One division per readout per frame and a module variable write; no new DOM, no new draw.
 - Run: `lint:boot` 9/9, `lint:frame` 34/34, `seat-selftest` 36/36, the shots above. Not run: `npm run verify`, `lint:input` (no input or seat change). Not flown.
+
+- Owner's word, 2026-10-23 12:23Z: "push to main, but merge carefully" (PR 132, the whoop HUD readouts). Fetched right before the push.

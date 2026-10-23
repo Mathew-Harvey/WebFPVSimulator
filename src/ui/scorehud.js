@@ -163,6 +163,19 @@ export const SKIM_SFX_MS = 1500;
 export const SKIM_BAR_M = 1;
 
 /*
+ * HOW MANY TIMES LIFE SIZE THE WORLD IS BUILT, for the metres this HUD
+ * prints and nothing else. A house is built 3.5 times life size and a whoop
+ * room MICRO_SCALE times, so a clearance the scorer measures in the world's
+ * metres is printed over this to read as the whoop drawn in it (the owner,
+ * 2026-10-23: "ensure all ui's are accurate to the craft displayed at the
+ * starting intro scene"). 1 everywhere else. Set by src/main.js each frame.
+ */
+let lifeScale = 1;
+export function setLifeScale(k) {
+  lifeScale = k > 0 ? k : 1;
+}
+
+/*
  * THE COMBO TIERS, and what each one is called.
  *
  * A multiplier is a number and a number is not a feeling. Tony Hawk never
@@ -260,7 +273,7 @@ export function stackCall(e) {
   const before = typeof e.repeat === 'number' ? e.repeat : (e.repeat ? 1 : 0);
   const again = before > 0 ? `x${before + 1}` : '';
   const tagOf = (...bits) => bits.filter(Boolean).join(' ') || null;
-  const metres = (m) => (m > 0 ? `${m.toFixed(1)} m` : '');
+  const metres = (m) => (m > 0 ? `${(m / lifeScale).toFixed(1)} m` : '');
   switch (e.kind) {
     case 'trick': {
       const ex = e.execution || 'CLEAN';
@@ -658,7 +671,7 @@ export class ScoreHud {
       this.skimTime.textContent = (tenths / 10).toFixed(1);
     }
     const gap = s.clearance > 0 ? s.clearance : 0;
-    const cm = Math.round(gap * 100);
+    const cm = Math.round((gap / lifeScale) * 100);
     if (cm !== this.shownSkimCm) {
       this.shownSkimCm = cm;
       this.skimGap.textContent = `${(cm / 100).toFixed(2)} m`;

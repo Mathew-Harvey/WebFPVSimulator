@@ -718,9 +718,11 @@ export function clampWeight(v, airframeId) {
  */
 const WEIGHT_FEEL = {
   '5inch': { fall: ['1.20', '1.01'], balloon: ['1.6', '0.7'], hover: ['35.0', '42.7'] },
-  /* The five inch's row since 2026-10-23: the whoop flies its plant and
-   * weight (configs/airframes.js). */
-  whoop65: { fall: ['1.20', '1.01'], balloon: ['1.6', '0.7'], hover: ['35.0', '42.7'] },
+  /* The five inch's row since 2026-10-23, because the whoop flies its plant
+   * and weight (configs/airframes.js), in the whoop's own metres: a room is
+   * built MICRO_SCALE, 3.43, times life size, so the five inch's ten metres
+   * of fall is 2.9 of the room's and its balloons are a 3.43rd. */
+  whoop65: { drop: '2.9', fall: ['1.20', '1.01'], balloon: ['0.5', '0.2'], hover: ['35.0', '42.7'] },
 };
 
 /*
@@ -8068,7 +8070,7 @@ export class Ui {
       airHint.hidden = !show;
       if (show) {
         const f = WEIGHT_FEEL[af] ?? WEIGHT_FEEL['5inch'];
-        airHint.textContent = `The Weight slider between the sticks on the flight screen is this exact complaint: it scales the weight the quad carries, so it drops when you chop the throttle instead of hanging. Yours is at ${weight} percent. From a hover with the throttle cut, the stock quad falls 10 metres in ${f.fall[0]} s and balloons ${f.balloon[0]} m after a short punch; at ${top} percent that is ${f.fall[1]} s and ${f.balloon[1]} m. Hover moves up the stick with it, ${f.hover[0]} percent at stock to ${f.hover[1]} at ${top}. Worth dragging before you wait on us, and a lap flown on it goes on the public board with its weight beside your name.`;
+        airHint.textContent = `The Weight slider between the sticks on the flight screen is this exact complaint: it scales the weight the quad carries, so it drops when you chop the throttle instead of hanging. Yours is at ${weight} percent. From a hover with the throttle cut, the stock quad falls ${f.drop || '10'} metres in ${f.fall[0]} s and balloons ${f.balloon[0]} m after a short punch; at ${top} percent that is ${f.fall[1]} s and ${f.balloon[1]} m. Hover moves up the stick with it, ${f.hover[0]} percent at stock to ${f.hover[1]} at ${top}. Worth dragging before you wait on us, and a lap flown on it goes on the public board with its weight beside your name.`;
       }
     };
     const refreshCapHint = () => {

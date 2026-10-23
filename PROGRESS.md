@@ -71744,3 +71744,11 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: no change. Same module, a different plant index chosen at seat time; nothing in the input path or the frame loop. Checked by reading the diff.
 - Run: `check:plant`, `check:world-golden`, `whoop:gates` 21/21, `check:tune`, `check:tuneload`, `check:craft` 20/20, `check:seat` 10/10, `seat-selftest` 36/36, `tune-selftest` 67/67, `lint:input` 246/246, `lint:boot` 9/9, `check:raceline`, `room-check` 71/71, takeoff-check, motor-kv-check. Expectations that named the 1S plant were moved with it (seat-selftest whoop defaults, tune-selftest, seat-check's whoop stock tune, input-check's plant volts); no threshold moved. Not run: `npm run verify`. Not flown.
 - Owner's word: "So reverse yes and fix ui" (10:43Z), taken as the go to main for the houses; the RaceGOW half is his 10:39Z ask.
+
+## 2026-10-23 | hud | Every readout reads as the whoop drawn (draft)
+
+- The ask, Mat 11:18Z, after being told a whoop room is built 3.43 times life size like the houses' 3.5 and that only the houses' OSD divided by it: "Yeah ensure all ui's are accurate to the craft displayed at the starting intro scene".
+- What: one number per run in `src/main.js`, `whoopHud`, the house's `hudScale` or MICRO_SCALE on a micro track, 0 elsewhere. The OSD speed (back on the whoop, in a whoop's km/h), the altitude, the volts (one cell), the next gate distance under the lock bracket, and the freestyle HUD's clearance and skim metres (`setLifeScale` in `src/ui/scorehud.js`) are divided by it. The Weight hint quotes the whoop's fall and balloon in the room's metres (`WEIGHT_FEEL.whoop65`, 2.9 m of fall, the five inch's 10 over 3.43). Display only; nothing that flies or scores reads any of it.
+- Looked at, headless: Living room 1 on the whoop climbing reads `1 km/h`, `3.9 m above the ground`, `4.18 volts`, lock `4 m`; Nick's house on the whoop reads `0 km/h`, `0.0 m`, `4.20 volts` on the pad and `2.6 m` after a climb.
+- Latency: no change. One division per readout per frame and a module variable write; no new DOM, no new draw.
+- Run: `lint:boot` 9/9, `lint:frame` 34/34, `seat-selftest` 36/36, the shots above. Not run: `npm run verify`, `lint:input` (no input or seat change). Not flown.

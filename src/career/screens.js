@@ -387,7 +387,7 @@ export class CareerScreens {
       const glyph = el('div', 'cr-card-glyph');
       glyph.innerHTML = lessonGlyph(l);
       const name = el('div', 'cr-card-name', l.title);
-      const body = el('div');
+      const body = el('div', 'cr-card-body');
       body.append(glyph, name);
       const foot = el('div', 'cr-card-foot');
       const best = bestOf(l, rec);
@@ -399,7 +399,7 @@ export class CareerScreens {
       if (!unlocked) {
         const lk = el('div', 'cr-card-lockmark');
         lk.innerHTML = lockSvg();
-        card.append(lk);
+        body.append(lk);
       }
       card.addEventListener('mouseenter', () => {
         this.lessonAt = i;

@@ -50,7 +50,7 @@ import { warmPrograms } from '../../render/warm.js';
 import { houseLayout, basementFloorAt, STAIR_HOLE, FRAME, worldAt } from './house.js';
 import { houseDocument } from './yard.js';
 import { makeNick } from './nickdraw.js';
-import { placeStickers, stickerMesh, STICKER_URL, STICKER_WORD } from './stickers.js';
+import { placeStickers, placeHallPicture, stickerMesh, STICKER_URL, STICKER_CROP, STICKER_WORD } from './stickers.js';
 import { placeSupporters, seesRoom } from './supporters.js';
 import { stfKey } from '../built/egg.js';
 import { INK_COLOR } from '../../render/comic.js';
@@ -297,14 +297,16 @@ export async function buildMap(shell, onProgress, options) {
   map.scene.add(nick.group);
   /* Nick's NB sticker round the house (./stickers.js): one mesh, shown
    * when its texture has come, and each one a sticker the shell looks for
-   * and calls out every time it is framed, under the house's key. */
+   * and calls out every time it is framed, under the house's key. The
+   * picture in the upstairs hall is one more quad in the same mesh, off
+   * the same sheet, and is not a sticker to find. */
   const sheet = new THREE.TextureLoader().load(STICKER_URL, () => {
     nb.visible = true;
   });
   sheet.colorSpace = THREE.SRGBColorSpace;
   sheet.anisotropy = 4;
   const placed = placeStickers(L.parts).filter(Boolean);
-  const nb = stickerMesh(THREE, placed, sheet);
+  const nb = stickerMesh(THREE, [...placed, placeHallPicture(L.parts)].filter(Boolean), sheet);
   nb.visible = false;
   map.scene.add(nb);
   map.stickers = [
@@ -314,7 +316,7 @@ export async function buildMap(shell, onProgress, options) {
       key: `${stfKey(doc, 'house')}#sticker:nb-${s.id}`,
       name: s.name,
       achievement: STICKER_WORD,
-      crop: { x: 0, y: 0, w: 1, h: 1 },
+      crop: STICKER_CROP,
       sheet,
       p: s.p,
       n: s.n,

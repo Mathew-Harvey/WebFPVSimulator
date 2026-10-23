@@ -77,8 +77,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
-import { houseLayout, basementFloorAt, S, FLOOR0, BF, worldAt, FRAME } from '../src/maps/house/house.js';
-import { placeStickers, NB_SPOTS } from '../src/maps/house/stickers.js';
+import { houseLayout, basementFloorAt, S, FLOOR0, FLOOR1, CEIL1, BF, worldAt, FRAME, HALL_PICTURE } from '../src/maps/house/house.js';
+import { placeStickers, placeHallPicture, aimAt, drawnBoxes, NB_SPOTS, SHEET, STICKER_URL } from '../src/maps/house/stickers.js';
 import { placeSupporters, SUPPORTER_SPOTS } from '../src/maps/house/supporters.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../src/partners/roster.js';
 import { houseDocument } from '../src/maps/house/yard.js';
@@ -859,8 +859,51 @@ function stickersBlock(L) {
   });
   const ids = new Set(NB_SPOTS.map((s) => s.id));
   check(`the ${NB_SPOTS.length} stickers have ${NB_SPOTS.length} ids`, ids.size === NB_SPOTS.length, `${ids.size} distinct`);
+}
 
-  /* And the supporters' signs, every brand the roster has, once each. */
+/* The picture in the upstairs hall (HALL_PICTURE in house.js): on its
+ * mount, the mount on the hall's wall, the frame inside the hall, and its
+ * piece of the stickers' sheet the picture's own size, read from the
+ * sheet itself, so a sheet exported again at another size fails here
+ * rather than hanging a stretched picture. */
+async function hallPictureBlock(L) {
+  console.log('\n9b. the hall picture');
+  const P = HALL_PICTURE;
+  const pic = placeHallPicture(L.parts);
+  check('the hall picture hangs on its mount', !!pic && pic.hit === 'hall picture mount', pic ? `on ${pic.hit}` : 'its line meets nothing');
+  const bare = drawnBoxes(L.parts).filter((p) => !/^hall picture/.test(p.name || ''));
+  const wall = aimAt(bare, [P.x, P.from, P.h], 's');
+  const wallY = wall ? (FRAME.OZ - wall.p[2]) / S : NaN;
+  check('behind it is the hall\'s wall', !!wall && Math.abs(wallY - P.at) < 0.01,
+    wall ? `${wall.hit} at plan y ${r3(wallY)}, the picture's wall at ${r3(P.at)}` : 'nothing behind it');
+  const frame = L.parts.filter((p) => p.name === 'hall picture frame');
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (const b of frame) {
+    for (let k = 0; k < 3; k += 1) {
+      lo[k] = Math.min(lo[k], b.lo[k]);
+      hi[k] = Math.max(hi[k], b.hi[k]);
+    }
+  }
+  const x0 = (lo[0] - FRAME.OX) / S;
+  const x1 = (hi[0] - FRAME.OX) / S;
+  check('its frame is four bars inside the upstairs hall, clear of the stairwell and the end wall',
+    frame.length === 4 && x0 > 5.8 && x1 < 10.3 && lo[1] / S > FLOOR1 + 0.5 && hi[1] / S < CEIL1 - 0.3,
+    `${frame.length} bars, plan x ${r3(x0)} to ${r3(x1)}, ${r3(lo[1] / S - FLOOR1)} to ${r3(hi[1] / S - FLOOR1)} m over the floor`);
+  const webp = await readFile(fileURLToPath(STICKER_URL));
+  const vp8x = webp.toString('latin1', 12, 16) === 'VP8X';
+  const sw = vp8x ? 1 + webp.readUIntLE(24, 3) : 0;
+  const sh = vp8x ? 1 + webp.readUIntLE(27, 3) : 0;
+  const [u0, v0, u1, v1] = SHEET.picture;
+  const px = [Math.round((u1 - u0) * sw), Math.round((v1 - v0) * sh)];
+  check('its piece of the sheet is the picture\'s 447 by 65 pixels, and drawn at that shape',
+    sw === 512 && sh === 640 && px[0] === 447 && px[1] === 65 && !!pic && Math.abs(pic.h / pic.w - 65 / 447) < 1e-9,
+    `sheet ${sw} by ${sh}, piece ${px[0]} by ${px[1]}, ${pic ? r3(pic.w / S) : '?'} by ${pic ? r3(pic.h / S) : '?'} m`);
+
+}
+
+/* The supporters' signs, every brand the roster has, once each. */
+function supportersBlock(L) {
   console.log('\n10. supporters');
   const signs = placeSupporters(L.parts, 'extra');
   signs.forEach((s, i) => {
@@ -886,6 +929,8 @@ async function main() {
   await moduleBlock(placed);
   nickBlock(placed, near);
   stickersBlock(L);
+  await hallPictureBlock(L);
+  supportersBlock(L);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exitCode = failures ? 1 : 0;
 }

@@ -1570,6 +1570,49 @@ function backHall(H) {
 /* ------------------------------------------------------------------ */
 
 /*
+ * THE PICTURE IN THE UPSTAIRS HALL, the owner's ask of 2026-10-23: "put a
+ * picture frame on this and hang it in the upstairs hall way". Hung on the
+ * knee wall, the hall's long blank south wall, in the middle of the hall
+ * east of the stairwell, so it is on the right flying east from the top of
+ * the stair, on the left flying back, and straight ahead out of bedroom 4.
+ * `at` is the wall's face, `x` the picture's middle along it, `h` its
+ * middle's height, `w` its width and `ht` its height, the picture's own
+ * 447 by 65 pixels, all real metres; `from` is where along the hall
+ * ./stickers.js aims it from. A black frame round a white mount is drawn
+ * here with the house; the picture itself is a quad on the mount in the
+ * NB stickers' one mesh (placeHallPicture in ./stickers.js), off its own
+ * piece of their sheet, so it is no draw call of its own.
+ */
+export const HALL_PICTURE = { at: KNEE + TI / 2, x: 8.8, h: FLOOR1 + 1.5, w: 1.9, ht: 1.9 * 65 / 447, from: 4.4 };
+/* The mount's white margin round the picture, the frame's width, and how
+ * far each stands off the wall, real metres: off the face as picture()
+ * hangs one, the mount's back a whisker in front of the frame's so no two
+ * faces share a plane, and the frame proud of the mount. */
+const MOUNT = 0.06;
+const FRAME_W = 0.045;
+const FRAME_D = [0.012, 0.04];
+const MOUNT_D = [0.014, 0.03];
+
+/* The frame's four bars, black, and the white mount behind them, its edges
+ * tucked a centimetre under the bars. Paint: drawn, not solid. */
+function hallPicture(H) {
+  const P = HALL_PICTURE;
+  const a = P.at;
+  const x0 = P.x - P.w / 2 - MOUNT;
+  const x1 = P.x + P.w / 2 + MOUNT;
+  const h0 = P.h - P.ht / 2 - MOUNT;
+  const h1 = P.h + P.ht / 2 + MOUNT;
+  const f = { solid: false, cast: false, name: 'hall picture frame' };
+  H.box('homeShutter', x0 - FRAME_W, a + FRAME_D[0], h1, x1 + FRAME_W, a + FRAME_D[1], h1 + FRAME_W, f);
+  H.box('homeShutter', x0 - FRAME_W, a + FRAME_D[0], h0 - FRAME_W, x1 + FRAME_W, a + FRAME_D[1], h0, f);
+  H.box('homeShutter', x0 - FRAME_W, a + FRAME_D[0], h0, x0, a + FRAME_D[1], h1, f);
+  H.box('homeShutter', x1, a + FRAME_D[0], h0, x1 + FRAME_W, a + FRAME_D[1], h1, f);
+  H.box('homeWhite', x0 - 0.01, a + MOUNT_D[0], h0 - 0.01, x1 + 0.01, a + MOUNT_D[1], h1 + 0.01, {
+    solid: false, cast: false, name: 'hall picture mount',
+  });
+}
+
+/*
  * No still shows the upper floor, so this is a plausible plan and no more:
  * the bedroom over the front room in the brick block, the master behind
  * it, a landing round the stairwell, a bathroom, two back bedrooms and a
@@ -1659,6 +1702,7 @@ function upperFloor(H) {
   H.paint('homeSteel', 7.2 - TI / 2 - 0.02, bs + 0.15, f + 1.1, 7.2 - TI / 2 - 0.005, bs + 1.05, f + 1.9);
   H.box('homeWhite', BRICK_X1 + TI / 2, 5.95, f, 5.15, 6.4, f + 0.42, { name: 'toilet' });
   H.box('homeWhite', BRICK_X1 + TI / 2, 6.0, f + 0.42, 4.85, 6.35, f + 0.8, { name: 'cistern' });
+  hallPicture(H);
 }
 
 /* A bed against a wall: (x, y) its plan corner, w its width along the head

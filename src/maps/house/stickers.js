@@ -4,7 +4,7 @@
  * The owner's ask of 2026-10-18: "put nick burns logo in the map when you
  * frame it, achievement is, 'stickers'". The logo is the NB mark the owner
  * gave the same evening, cut from its white and set on a die cut border
- * (../../../assets/house/nb-sticker.webp, NOTICE). It is stuck in ten
+ * (the top of ../../../assets/house/nb-sheet.webp, NOTICE). It is stuck in ten
  * places, a room each, and framing one, which is the shell's own test for
  * a sticker (seesMark in src/game/egg.js: near enough, in front of it, in
  * the middle of the picture and nothing in between), calls out "Stickers"
@@ -20,7 +20,9 @@
  * its sticker with it, and check:house says where each one landed.
  *
  * ONE DRAW CALL for all ten, the same program as Nick's card (a texture,
- * alpha tested, no fog). Paint only; nothing here is solid.
+ * alpha tested, no fog). Paint only; nothing here is solid. The picture
+ * in the upstairs hall (HALL_PICTURE in ./house.js) is drawn in the same
+ * mesh off the same sheet, so it costs two triangles and no call.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -38,9 +40,17 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { FRAME, FLOOR0, FLOOR1, BF } from './house.js';
+import { FRAME, FLOOR0, FLOOR1, BF, HALL_PICTURE } from './house.js';
 
-export const STICKER_URL = new URL('../../../assets/house/nb-sticker.webp', import.meta.url).href;
+/* One sheet, 512 by 640: the sticker in the top 512 by 512, and under it,
+ * past 32 rows of nothing, the hall's picture at (8, 552), 447 by 65, its
+ * edge pixels carried out round it so its smaller mip levels keep their
+ * edges. Each piece as [u0, v0, u1, v1], v up from the sheet's foot as
+ * the texture is drawn, and the sticker's piece as the shell's callout
+ * crops it (findStickers in src/main.js), shares from the top left. */
+export const STICKER_URL = new URL('../../../assets/house/nb-sheet.webp', import.meta.url).href;
+export const SHEET = { sticker: [0, 0.2, 1, 1], picture: [8 / 512, 1 - 617 / 640, 455 / 512, 1 - 552 / 640] };
+export const STICKER_CROP = { x: 0, y: 0, w: 1, h: 0.8 };
 export const STICKER_WORD = 'Stickers';
 
 /* Which way to look from a spot: east, west, north (to the back), south
@@ -124,8 +134,26 @@ export function placeStickers(parts) {
       return null;
     }
     const p = at.p.map((v, k) => v + at.n[k] * PROUD);
-    return { id: spot.id, name: spot.name, p, n: at.n, w: FRAME.S * spot.size, hit: at.hit, turn: ((i * 7919) % 13) / 13 - 0.5 };
+    return {
+      id: spot.id, name: spot.name, p, n: at.n, w: FRAME.S * spot.size, hit: at.hit, turn: ((i * 7919) % 13) / 13 - 0.5, uv: SHEET.sticker,
+    };
   });
+}
+
+/*
+ * The hall's picture on its frame's mount: aimed as a sticker is, from the
+ * hall at the picture's middle, PROUD of the first face its line meets,
+ * which is the mount, upright and square to the wall. { p, n, w, h, uv,
+ * hit } in the world frame, or null if the line meets nothing.
+ */
+export function placeHallPicture(parts) {
+  const P = HALL_PICTURE;
+  const at = aimAt(drawnBoxes(parts), [P.x, P.from, P.h], 's');
+  if (!at) {
+    return null;
+  }
+  const p = at.p.map((v, k) => v + at.n[k] * PROUD);
+  return { id: 'hall-picture', p, n: at.n, w: FRAME.S * P.w, h: FRAME.S * P.ht, uv: SHEET.picture, turn: 0, hit: at.hit };
 }
 
 export { stickerMesh } from '../stickermesh.js';

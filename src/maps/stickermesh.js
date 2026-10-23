@@ -22,7 +22,11 @@
 /*
  * The stickers drawn: one mesh, a quad each, in `THREE`'s terms, on the
  * texture `map`. A sticker on a wall stands upright; one on a floor or a
- * top has its top to the north. Each is turned up to TURN either way.
+ * top has its top to the north. Each is turned up to TURN either way. A
+ * quad is `w` square unless it gives its height `h`, and wears the whole
+ * texture unless it names its piece, `uv` as [u0, v0, u1, v1], so one
+ * sheet can carry more than one picture (Nick's house hangs a picture in
+ * its hall this way, ./house/stickers.js).
  */
 const TURN = 0.35;
 export function stickerMesh(THREE, placed, map, name = 'nb stickers') {
@@ -44,12 +48,14 @@ export function stickerMesh(THREE, placed, map, name = 'nb stickers') {
     const a = s.turn * TURN;
     const r = right.clone().multiplyScalar(Math.cos(a)).addScaledVector(up, Math.sin(a));
     const u = up.clone().multiplyScalar(Math.cos(a)).addScaledVector(right, -Math.sin(a));
-    const h = s.w / 2;
+    const hw = s.w / 2;
+    const hh = (s.h ?? s.w) / 2;
+    const [u0, v0, u1, v1] = s.uv ?? [0, 0, 1, 1];
     const base = pos.length / 3;
-    for (const [sx, sy, tu, tv] of [[-1, -1, 0, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, 1, 0, 1]]) {
-      c.fromArray(s.p).addScaledVector(r, sx * h).addScaledVector(u, sy * h);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      c.fromArray(s.p).addScaledVector(r, sx * hw).addScaledVector(u, sy * hh);
       pos.push(c.x, c.y, c.z);
-      uv.push(tu, tv);
+      uv.push(sx < 0 ? u0 : u1, sy < 0 ? v0 : v1);
     }
     idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }

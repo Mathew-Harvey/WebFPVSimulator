@@ -1327,10 +1327,9 @@ const DEFAULTS = {
    */
   impactFrame: true,
   /*
-   * CROSSHAIRS: a fixed mark on the picture where the airframe's nose line
-   * lands, which is below the centre by the camera's tilt (see
-   * syncCrosshair), so it sits on the horizon in level flight at any camera
-   * angle, the way a pilot sets a Betaflight OSD crosshair. Off by
+   * CROSSHAIRS: a fixed mark at the centre of the picture whatever the
+   * camera angle, lens angle, window shape or pixel ratio, the way a
+   * Betaflight OSD crosshair is always the middle of the screen. Off by
    * default, because a mark nobody asked for is a mark in the way of the
    * gate. Only the picture: the flight never sees it. A string so the
    * typeof gate accepts it, and loadSettings holds it to CROSSHAIRS.
@@ -5456,14 +5455,12 @@ export class Ui {
     sticks.append(this.osdStickLeft.box, this.osdAir.box, this.osdStickRight.box);
     this.osdSticks = sticks;
     this.bindAirSlider();
-    /* The crosshairs, pinned where the nose line lands (see syncCrosshair),
-     * level with the centre of the canvas before that sets it. Four arms and a dot, and the shape class says which of them
-     * draw, and where it sits comes from the camera tilt and lens: see
-     * syncCrosshair and .osd-cross in index.html. */
+    /* The crosshairs, pinned at the centre of the OSD by .osd-cross in
+     * index.html and never moved from there. Four arms and a dot, and the
+     * shape class says which of them draw: see syncCrosshair. */
     this.osdCross = el('div', 'osd-cross is-off');
     this.osdCross.append(el('i', 'xh-l'), el('i', 'xh-r'), el('i', 'xh-t'), el('i', 'xh-b'), el('i', 'xh-dot'));
     this.osdCrossShape = 'off';
-    this.osdCrossDown = 0;
     /* The FPS readout, counted in setOsd and shown by syncFps. */
     this.osdFps = el('div', 'osd-fps');
     this.osdFps.hidden = true;
@@ -9831,10 +9828,10 @@ export class Ui {
         choice(
           'Crosshairs',
           {
-            off: 'A mark where the nose of the quad points, which sits lower on the picture the more the camera is tilted up. Off: nothing is drawn there.',
-            wings: 'Wings: a short line either side of a centre dot, the flat mark a Betaflight OSD draws, placed where the nose points so it sits on the horizon in level flight.',
-            cross: 'Cross: four short arms round an open centre, placed where the nose points so it sits on the horizon in level flight.',
-            dot: 'Dot: one small dot where the nose points, on the horizon in level flight. The least in the way.',
+            off: 'A fixed mark at the exact centre of the picture, whatever the camera angle. Off: nothing is drawn there.',
+            wings: 'Wings: a short line either side of a centre dot, the flat mark a Betaflight OSD draws, at the centre of the picture.',
+            cross: 'Cross: four short arms round an open centre, at the centre of the picture.',
+            dot: 'Dot: one small dot at the centre of the picture. The least in the way.',
           }[s.crosshair] || '',
           CROSSHAIRS,
           s.crosshair,
@@ -16067,20 +16064,6 @@ export class Ui {
     if (shape !== this.osdCrossShape) {
       this.osdCrossShape = shape;
       this.osdCross.className = `osd-cross is-${shape}`;
-    }
-    /* The nose line is the camera's axis tilted DOWN by the camera angle, so
-     * it lands below the centre of the picture by tan(tilt) over tan(half the
-     * vertical lens angle), as a share of the half height. At 30 degrees on
-     * the 85 degree lens that is 63 percent of the half height: the horizon
-     * of a level hover, where a real OSD crosshair is set. The lens angle is
-     * three.js's vertical one, the same number main.js hands the camera.
-     * Written only when the number changes, and only from show(). */
-    const tilt = Math.tan(cameraTiltRad(clampCameraAngle(this.settings.cameraAngle)));
-    const half = Math.tan((this.settings.cameraFov * Math.PI) / 360);
-    const down = half > 0 ? Math.min(90, Math.round((tilt / half) * 50 * 10) / 10) : 0;
-    if (down !== this.osdCrossDown) {
-      this.osdCrossDown = down;
-      this.osdCross.style.top = `${50 + down}%`;
     }
   }
 

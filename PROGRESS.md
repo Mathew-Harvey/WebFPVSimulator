@@ -71779,3 +71779,12 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Run: `check:house`, `check:bardwell`, `lint:preload`, `check:fresh`, `lint:boot`, `lint:nouns`, all passed; shots `/mnt/project-files/nick-burns-house/hall-picture/`. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
 
 - Owner's word, 2026-10-23 13:27Z: "push to main" (the framed picture in Nick's upstairs hall, PR 134). Main had not moved since the branch. Not flown, verify not run.
+
+## 2026-10-23 | ui | Camera angle: top raised to 70, a number box beside the slider
+
+- The ask, 23:14Z, Mat: "Make it easier to change camera angle , a slider and a text input please and increase max to 70 degrees", then "Return a image once done".
+- `CAMERA_ANGLE_MAX` 60 to 70 in `src/render/lens.js`; everything that clamps (settings load, tunes, the stepper, main.js) reads that one constant. The seat self test's bound moved with it.
+- `cameraAngleRow` in `src/ui/ui.js` is now the Weight row's make: a drag track with a typed number and the degree sign beside it, in both the Quad room and the Rates screen. Drag lands on release, the number repaints live while dragging, arrows step one degree, typing clamps (99 becomes 70). The yaw tip still fires once on the way up past `YAW_TIP_TILT`.
+- Latency: no change. Settings UI only, nothing runs per frame and the flight loop and input path are untouched. Checked by reading the diff; a 70 degree camera is the same quaternion path as 60.
+- Run: `seat-selftest` (36 of 36), `shell-check`, and a headless shot of the Quad room at 30 and after typing 99 (slider and field both read 70). `input-check` was started and hit my timeout, so it did not finish; not counted as a pass. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+- Not changed: the help text still says "45 to 70 is race", the Rates screen row comes from the same function.

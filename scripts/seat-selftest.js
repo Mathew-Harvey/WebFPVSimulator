@@ -223,7 +223,7 @@ function marked(over) {
   s.hangar = { whoop65: { tune: 'no-such-tune', cameraFov: 5, cameraAngle: 900, weight: 1e6, packVoltage: 9, pids: 'x' } };
   seatAirframe(s, 'whoop65');
   check('a hand edited hangar comes back inside every list and range',
-    s.tune === WHOOP.defaultTune && s.cameraFov === WHOOP.cameraFov && s.cameraAngle <= 60
+    s.tune === WHOOP.defaultTune && s.cameraFov === WHOOP.cameraFov && s.cameraAngle <= 70
     && s.weight === WHOOP.weightMax && WHOOP.packVoltages.includes(s.packVoltage)
     && JSON.stringify(s.pids) === '{}',
   `${s.tune} ${cam(s)} weight ${s.weight} pack ${s.packVoltage} pids ${JSON.stringify(s.pids)}`);

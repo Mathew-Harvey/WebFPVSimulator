@@ -85,7 +85,7 @@ export const CAMERA_FOV_DEFAULT = 85;
  *
  * This is the TPU mount angle, not a look-at. Zero is flat: the lens looks
  * along the craft's nose, horizon in the middle of a level hover. 30 is a
- * typical cruise. 45 to 60 is race. The list used to stop at 40 because it
+ * typical cruise. 45 to 70 is race. The list used to stop at 40 because it
  * was a six-step menu, not because the airframe ran out of room, and a
  * ticket on 2026-08-18 reported exactly that cap.
  *
@@ -96,7 +96,7 @@ export const CAMERA_FOV_DEFAULT = 85;
  * 60, and a range change is not a reason to move the nodal point.
  */
 export const CAMERA_ANGLE_MIN = 0;
-export const CAMERA_ANGLE_MAX = 60;
+export const CAMERA_ANGLE_MAX = 70;
 export const CAMERA_ANGLE_DEFAULT = 30;
 
 export function clampCameraAngle(value) {

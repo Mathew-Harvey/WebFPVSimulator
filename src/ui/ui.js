@@ -6956,33 +6956,37 @@ export class Ui {
    * machine's setting) and the Rates screen (where the yaw it rolls into the
    * picture is tuned). One definition, so the two cannot drift. */
   cameraAngleRow(s) {
-    return stepper(
+    /* A drag track with the number beside it, the Weight row's make: drag,
+     * arrow keys or type, all landing on one setter and one clamp. */
+    const spec = {
+      cliMin: CAMERA_ANGLE_MIN, cliMax: CAMERA_ANGLE_MAX, scale: 1, decimals: 0, unit: '°',
+    };
+    const set = (v) => {
+      const before = s.cameraAngle;
+      s.cameraAngle = clampCameraAngle(v);
+      /* On the way UP across the threshold only, and only if the yaw
+       * rate is above what would be offered. Stepping back down and up
+       * again inside one session does not ask twice. */
+      if (before < YAW_TIP_TILT
+        && s.cameraAngle >= YAW_TIP_TILT
+        && fullStickDeg(s.rates, 'yaw') > YAW_TIP_RATE
+        && yawTipFixable(s.rates)
+        && !this.yawTipAsked) {
+        this.offerYawTip();
+      }
+    };
+    const it = number(
       'Camera angle',
-      /*
-       * The yaw sentence is not a caveat, it is the main thing a pilot
-       * needs to know before they crank this up, and the menu never said
-       * it. A camera tilted up by t sees a pure yaw as sin(t) of image
-       * roll and cos(t) of image yaw, which is geometry and is exactly
-       * what a real tilted camera does. At 30 that is half. At 40 it is
-       * nearly two thirds, which is the tilt a pilot wrote in about.
-       */
+      /* The yaw sentence is the main thing a pilot needs to know before
+       * they crank this up: a camera tilted up by t sees a pure yaw as
+       * sin(t) of image roll and cos(t) of image yaw. */
       `How far the camera tilts up from the airframe. ${CAMERA_ANGLE_MIN} is flat, looking along the nose. ${CAMERA_ANGLE_DEFAULT} is a typical cruise. 45 to ${CAMERA_ANGLE_MAX} is race. Above about 30, yaw starts to roll the horizon: at ${s.cameraAngle} degrees, ${Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100)} percent of a yaw shows up as roll in the picture. That is what a real tilted camera does. Lower Yaw max rate on the Rates screen to tame it.`,
-      `${s.cameraAngle}°`,
-      (d) => {
-        const before = s.cameraAngle;
-        s.cameraAngle = clampCameraAngle(before + d);
-        /* On the way UP across the threshold only, and only if the yaw
-         * rate is above what would be offered. Stepping back down and up
-         * again inside one session does not ask twice. */
-        if (before < YAW_TIP_TILT
-          && s.cameraAngle >= YAW_TIP_TILT
-          && fullStickDeg(s.rates, 'yaw') > YAW_TIP_RATE
-          && yawTipFixable(s.rates)
-          && !this.yawTipAsked) {
-          this.offerYawTip();
-        }
-      },
+      spec,
+      clampCameraAngle(s.cameraAngle),
+      set,
     );
+    it.range = { min: CAMERA_ANGLE_MIN, max: CAMERA_ANGLE_MAX, step: 1 };
+    return it;
   }
 
   /*

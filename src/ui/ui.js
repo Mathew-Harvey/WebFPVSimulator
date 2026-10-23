@@ -2512,11 +2512,23 @@ function makeWeightSlider({ min, max, step, value, label }) {
 
   const cap = el('div', 'osd-air-cap', '');
   box.append(hint, row, cap);
+  /* The camera angle, under Weight and not behind the tuning mode: it is a
+   * view setting a pilot reaches for on the ground, so it is always here.
+   * Built from the tune rows' parts, so it takes their whole life (the fade
+   * in the air, the dim under the pause) and adds no class. */
+  const camera = makeTuneRow({
+    min: CAMERA_ANGLE_MIN,
+    max: CAMERA_ANGLE_MAX,
+    step: 1,
+    left: 'Flat',
+    right: 'Steep',
+    label: 'Camera angle, how far the camera tilts up',
+  });
   const tune = makeTuneGroup();
   const invite = makeInviteCard();
-  box.append(tune.hint, tune.box, invite.card);
+  box.append(camera.box, tune.hint, tune.box, invite.card);
   return {
-    box, range, cap, hint, dismiss, tune, invite,
+    box, range, cap, hint, dismiss, tune, invite, camera,
   };
 }
 
@@ -16980,9 +16992,47 @@ export class Ui {
       e.stopPropagation();
       this.dismissAirHint();
     });
+    this.bindCameraSlider();
     this.bindTuneSliders();
     this.bindInvite();
     this.paintAir();
+  }
+
+  /* The camera angle slider, bound the way the Weight slider is and for the
+   * same reasons (see bindAirSlider: it never keeps focus). A drag is live,
+   * applySettings turns the camera at once, and the menu's Camera angle row
+   * reads the same setting. The yaw tip is the menu's to offer, not the
+   * flight overlay's. */
+  bindCameraSlider() {
+    const cam = this.osdAir && this.osdAir.camera;
+    if (!cam) {
+      return;
+    }
+    const range = cam.range;
+    range.addEventListener('input', () => {
+      const v = clampCameraAngle(Number(range.value));
+      if (v === this.settings.cameraAngle) {
+        this.paintAir();
+        return;
+      }
+      this.settings.cameraAngle = v;
+      this.paintAir();
+      saveSettings(this.settings);
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
+    });
+    range.addEventListener('pointerdown', (e) => e.stopPropagation());
+    range.addEventListener('click', (e) => e.stopPropagation());
+    range.tabIndex = -1;
+    const release = () => {
+      if (document.activeElement === range) {
+        range.blur();
+      }
+    };
+    range.addEventListener('pointerup', release);
+    range.addEventListener('pointercancel', release);
+    range.addEventListener('change', release);
   }
 
   /*
@@ -17441,6 +17491,15 @@ export class Ui {
     const stock = v === WEIGHT_STOCK;
     air.cap.textContent = `Weight ${v}%`;
     Ui.klass(air.cap, stock ? 'osd-air-cap is-stock' : 'osd-air-cap');
+    const cam = air.camera;
+    if (cam) {
+      const a = clampCameraAngle(this.settings.cameraAngle);
+      if (Number(cam.range.value) !== a) {
+        cam.range.value = String(a);
+      }
+      cam.cap.textContent = `Camera angle ${a}°`;
+      Ui.klass(cam.cap, a === CAMERA_ANGLE_DEFAULT ? 'osd-air-cap is-stock' : 'osd-air-cap');
+    }
     /*
      * And the two tuning sliders, when the mode is on. Hidden is the whole
      * of "off": the group takes no space and no pointer, and nothing below

@@ -71790,3 +71790,10 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Not changed: the help text still says "45 to 70 is race", the Rates screen row comes from the same function.
 
 - Owner's word, 2026-10-23 23:28Z: "push to main" (camera angle to 70 with a number box, PR 135). Main had not moved since the branch. Not flown, verify not run.
+
+## 2026-10-23 | ui | Camera angle on the landed sliders
+
+- The ask, 23:31Z, Mat: "add camera angle to sliders when you land".
+- A Camera angle slider (Flat to Steep, 0 to 70, one degree a notch) under Weight in the flight overlay's block that shows on the ground (`makeWeightSlider`, `bindCameraSlider`, `paintAir` in `src/ui/ui.js`). Always shown, not behind Flight feel tuning, because it is a view setting. Built from `makeTuneRow`, so it reuses the rows' classes and takes their fade in the air and dim under the pause; no new class, no CSS change. A drag is live: it writes `cameraAngle`, saves, and `applySettings` turns the camera at once. The caption is slate at 30 and amber off it, like Weight. Reset to stock leaves it alone. The yaw tip stays the menu's.
+- Latency: no change to the flight loop or input path. The slider is DOM that exists already hidden; `paintAir` runs on settings changes only (14 call sites, none per frame), and the new work in it compares before it writes. Checked by reading the callers.
+- Run: `node --check`, `lint:boot` 9 of 9, headless shots in the town freestyle on the ground: the row draws under Weight, and dragging it to 70 set the setting and the stored copy to 70 (`/mnt/project-files/camera-angle/air-fly-70.png`). Not run: `tune-check`, `device-check`, `npm run verify` (no physics, plant, ABI or build change). Not flown.

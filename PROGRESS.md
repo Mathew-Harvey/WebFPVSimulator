@@ -71702,3 +71702,14 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: shapes 2,856 to 2,858; the worst step still gathers 338. No draw change: the slide is drawn as it was.
 - Run: `check:house` (all passed), `check:props`, `check:world-golden`, `check:fresh`, `lint:preload`, `lint:nouns`. Not run: `npm run verify`. Not flown by a pilot.
 - Owner's word: "fix this bug ticket on nicks map and push to main" (2026-10-23 10:10Z), so this goes to main without a draft.
+
+## 2026-10-23 | map | A bridge no longer paints a road across the whole map
+
+- The report (anonymous, 3:40 board time, five inch, `?map=built`): "I created a map, and some roads are being generated automatically on their own. My map is an infinite world." The board's `infinite world` by matteo (trk-f17f81ef, 170 by 173 m, 7 bridges, 2 road elements) is that map.
+- Cause: `buildGround` in `src/maps/built/ground.js` painted a lane under every bridge with no road of the map's own under it, kerb to kerb across the plot's whole width or depth, with edge lines and a dashed centre line. Seven bridges gave seven roads nobody drew, and the tarmac car park bays and arrows steered round them too (`lanesOf`).
+- Fix: the lane is the paving under the bridge and 2 m past the deck each side (`LANE_RUNOUT`, `laneOf`), centred on the bridge, and `lanesOf` keeps the same rectangle so the car park paint avoids exactly what is painted. A bridge over one of the map's own roads still paints nothing.
+- Looked at: before and after shots of the real document on this container (headless, Low, camera over the plot): the seven full depth stripes are gone, the roads the author drew remain. Not flown.
+- Latency: none that can be measured here. Paint only, nothing in the flight loop or the input path; the lane rectangles are smaller, so the same or fewer paint quads, and no new draw call.
+- Run: `check:roads` all passed, `lint:preload`, `lint:nouns`. Not run: `npm run verify` (no physics, ABI or build change), `lint:shell` and the rest.
+- Side effect to know: any map with a bridge over bare ground (the board's Baka and InfinityLoops among them) now shows a short lane under the bridge and not a road across the map.
+- Owner's word, 2026-10-23 10:12Z: "reproduice, fix root cause and push to main". Fetched; main had moved (crosshair, Nick's slide), rebased onto it, no force.

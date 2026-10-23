@@ -71678,3 +71678,13 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Run: `node scripts/seat-selftest.js` (35 of 35 clean). Not run: `npm run verify`, `shots` (no layout change).
 
 - Owner's word, 2026-10-23 06:33Z: "push to main" (camera angle slider to 60; PR 128). Fast forward onto main from 9191b8d, nothing had landed since. Not flown; seat-selftest 35 of 35 was the only check.
+
+## 2026-10-23 | map | Nick's house: fly under the slide
+
+- The ask, 10:10Z, Mat in project chat, a player's bug report bug-0f4308dd pasted: "on the nick burns house map, you can't fly through the slide looking thingy next to the swing set in the garden ... I would be able to fly through the gap, as a tinywhoop is easily small enough for it", and "fix this bug ticket on nicks map and push to main".
+- Found: the slide off the swing set's tower (`backYard` in `src/maps/house/house.js`) is drawn as a 5 cm chute in the air, but its solid was six hidden boxes from the ground up to the chute, so the whole wedge under the chute was an invisible wall. The report's craft was resting at plan x 33.3, y 20.3, just east of it.
+- Fix: the chute's solid is eight capsules of 3 cm laid down its slope side by side (`SLIDE_RUNS`, `SLIDE_R`), on its middle line from the tower to the foot. The air under it is open; the chute itself is solid from above and below. The slots between capsules are 6 cm of the world, under the craft's 7 cm edge on, and on the chute's middle surface the most room to a solid is 0.030 m against the craft's half thickness 0.033 (on main it was 0.158 m: the old boxes stopped at each sixth's middle height, so a craft could sink into the drawn chute).
+- Checks: two lines in `check:house` under the slide (low across the chute past the A frame's leg, and high by the tower); both fail on main at the hidden boxes and pass now. The real plant in Node (scratch script): hovering 0.45 m up east of the slide and rolled west, it flies under the chute and out past the swing frame with no contact; on main the same flight hits at plan x 31.84, the slide's east edge, and goes down. Taking off under the chute it meets the chute's underside at the drawn height.
+- Latency: shapes 2,856 to 2,858; the worst step still gathers 338. No draw change: the slide is drawn as it was.
+- Run: `check:house` (all passed), `check:props`, `check:world-golden`, `check:fresh`, `lint:preload`, `lint:nouns`. Not run: `npm run verify`. Not flown by a pilot.
+- Owner's word: "fix this bug ticket on nicks map and push to main" (2026-10-23 10:10Z), so this goes to main without a draft.

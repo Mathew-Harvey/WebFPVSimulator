@@ -501,6 +501,8 @@ function recompileTree(root) {
  * build. A boot that never swaps aircraft never calls this.
  */
 function disposeTree(root) {
+  /* Read by a whoop's model fill that lands after this (whoopcraft.js). */
+  root.userData.disposed = true;
   root.traverse((o) => {
     if (o.geometry) {
       o.geometry.dispose();

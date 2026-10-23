@@ -389,7 +389,7 @@ export function buildWhoopCraft(opts = {}) {
   };
 
   const fill = (model) => {
-    if (disposed) {
+    if (group.userData.disposed) {
       return;
     }
     const [bodySec, ductSec, motorSec, postSec, camSec, bladeSec] = model.sections;
@@ -451,10 +451,17 @@ export function buildWhoopCraft(opts = {}) {
       led.visible = true;
     }
   };
-  let disposed = false;
-  group.addEventListener('removed', () => {
-    disposed = true;
-  });
+  /*
+   * NOT ON 'removed'. This listened for the group leaving its parent and
+   * gave up on the model then, which is right for a craft swapped out and
+   * wrong for the session's craft, which leaves one map's scene for the
+   * next on every map load (keepAcrossMaps in src/render/shell.js). A first
+   * visit that seats the whoop between maps starts the fetch, the map
+   * changes before it lands, and the whoop stayed an empty group for the
+   * whole session: the owner's empty start pad of 2026-10-23, seen in a
+   * private window because only a cold cache is slow enough. The shell's
+   * disposeTree marks a craft it has released, and that is what is read.
+   */
   const ready = whoopModelReady().then(fill, (e) => {
     console.warn(`whoopcraft: the model did not load: ${e && e.message}`);
     fallbackBody();

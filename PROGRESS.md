@@ -71768,3 +71768,12 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-23 12:23Z: "push to main" (sponsor logos smaller and only once on the house maps, PR 131). Main d2eb0fa and then 07d1baf merged in first, PROGRESS.md the only conflict each time. Not flown, verify not run.
 
+
+## 2026-10-23 | render | The whoop is on the start pad on a first visit (draft)
+
+- The report, Mat 12:32Z: "when i start a race gow map i don't see the quad on the start pad, i should see a fractal 65 whoop", then 12:54Z with a picture of two empty pads: "icoignito window and you'll see it".
+- Cause: `buildWhoopCraft` (src/render/whoopcraft.js, PR 121) gave up filling the Fractal65 model in once the group fired 'removed'. The session's craft leaves one map's scene for the next on every map load, so on a first visit (cold cache, the model still downloading) a whoop seated between maps was built, moved to the new map before the 15 kB model landed, and stayed an empty group all session. Warm caches never saw it, which is why only a private window did. Not from today's plant change.
+- Reproduced headless: a fresh profile on the five inch, the model's fetch held 6 s, the whoop seated and a RaceGOW5 Track 3 run started: 0 craft meshes visible 9 s on. With the fix: 17, the whole model.
+- Fix: the fill reads `group.userData.disposed`, which `disposeTree` in src/render/shell.js sets on a craft it has released, instead of listening for 'removed'.
+- Latency: no change on a warm cache. On a cold one the model's programs now compile when it lands (once), where before nothing was drawn at all.
+- Run: `check:craft` 20/20, `lint:boot` 9/9, `lint:frame` 34/34, the slowed fetch repro above. Not run: `npm run verify`. Not flown.

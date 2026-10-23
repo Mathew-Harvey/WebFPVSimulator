@@ -71768,7 +71768,7 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-23 12:23Z: "push to main" (sponsor logos smaller and only once on the house maps, PR 131). Main d2eb0fa and then 07d1baf merged in first, PROGRESS.md the only conflict each time. Not flown, verify not run.
 
-## 2026-10-23 | map | A framed picture in the upstairs hall of Nick's house (draft PR)
+## 2026-10-23 | map | A framed picture in the upstairs hall of Nick's house
 
 - The ask, 13:12Z, Mat, with a picture: "in nicks house put a picture frame on this and hang in in the upstairs hall way , and send me a photo once done". The picture is a 447 by 65 px strip of seven copies of one photograph of a face.
 - Where: the knee wall, the long blank south wall of the upstairs hall east of the stairwell, its middle at plan x 8.8, 1.5 m up (`HALL_PICTURE` in `src/maps/house/house.js`). On the right flying east from the top of the stair, on the left flying back, straight ahead out of bedroom 4. The picture 1.9 by 0.28 m real, a white mount 6 cm round it, a black frame 4.5 cm wide standing 4 cm off the wall. Paint, not solid; the hall's free flight is unchanged.
@@ -71777,3 +71777,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - `check:house` has a new block, "the hall picture": on its mount, the hall's wall behind it, four bars inside the hall, and its piece of the sheet the picture's own 447 by 65 px read from the webp itself, so a re-exported sheet that would stretch it fails.
 - NOTICE: the Nick Burns' house entry names `nb-sheet.webp` and the picture.
 - Run: `check:house`, `check:bardwell`, `lint:preload`, `check:fresh`, `lint:boot`, `lint:nouns`, all passed; shots `/mnt/project-files/nick-burns-house/hall-picture/`. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+
+- Owner's word, 2026-10-23 13:27Z: "push to main" (the framed picture in Nick's upstairs hall, PR 134). Main had not moved since the branch. Not flown, verify not run.

@@ -174,7 +174,9 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career .cr-card .cr-card-best { color: var(--c-slate); font-size: clamp(13px, 1vw, 15px); }
 #career .cr-card .cr-card-medal { width: clamp(32px, 2.6vw, 44px); height: clamp(32px, 2.6vw, 44px); }
 #career .cr-card.is-locked { filter: saturate(0.2) brightness(0.65); cursor: default; }
-#career .cr-card.is-locked .cr-card-lockmark { position: absolute; right: 12px; top: 40%; width: 40px; height: 40px; opacity: 0.9; }
+/* The padlock lives in the glyph row of the body, never beside the name, so a title cannot slide under it at any width. */
+#career .cr-card .cr-card-body { position: relative; min-width: 0; }
+#career .cr-card.is-locked .cr-card-lockmark { position: absolute; right: 0; top: 0; width: 40px; height: 40px; opacity: 0.9; }
 #career .cr-card.is-on { transform: translate(-3px, -3px); box-shadow: 7px 7px 0 var(--c-ink); border-color: var(--c-sakura); }
 #career .cr-card.is-on::after {
   content: ""; position: absolute; inset: -3px; border-radius: 14px; pointer-events: none;

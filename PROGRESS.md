@@ -71724,3 +71724,14 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-23 10:12Z: "reproduice, fix root cause and push to main". Fetched; main had moved (crosshair, Nick's slide), rebased onto it, no force.
 
 - Owner's word, 2026-10-23 10:38Z: "Ensure all changes are pushed to main" (the houses are the whoop's alone; PR 130). Main had moved (the slide fix and the bridge lane); merged in, PROGRESS was the only conflict, kept both sides. Not flown; verify not run.
+
+## 2026-10-23 | career | The lesson padlock no longer sits on the card title
+
+- The report: at about 880 px wide on the Career chapter page, chapter 1's card 1.4 "Forward and Stop" read "Forward and Ston", the padlock covering the last letter.
+- Cause: `.cr-card-lockmark` was absolutely placed at `right: 12px; top: 40%` of the whole card, which is the title's row once a card is narrow enough for the title to reach the right edge.
+- Fix: the padlock is now a child of the card body and pinned to the top right of the body, the glyph's row, where the title never goes (`src/career/screens.js`, `src/career/style.js`). Card sizes untouched.
+- Looked at: headless shots of chapter 1 on a fresh profile at 360, 880, 1280 and 1920 wide; every title reads whole and the padlock sits beside the glyph. Not flown.
+- Latency: none. Menu CSS and one node's parent, nothing in the flight loop or the input path.
+- Run: `check:career` 128 of 128. Not run: `npm run verify` (no physics, ABI or build change), `lint:shell` and the rest.
+
+- Owner's word, 2026-10-23 10:57Z: "Push to main" (the padlock fix above).

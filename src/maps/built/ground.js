@@ -409,21 +409,40 @@ function plotGeometry(W, D, groundId, seed) {
   return geo;
 }
 
+/* How far a bridge's lane runs out past the deck on each side, in metres.
+ * It is the paving under the bridge, with a little beyond so the deck does
+ * not hang over a bare edge. It is NOT a road across the plot: it used to
+ * run kerb to kerb, so a pilot who dropped seven bridges in a big map got
+ * seven roads they never made (the board's "infinite world", 2026-10-23).
+ * A road is the road tool's. */
+const LANE_RUNOUT = 2;
+
+/* The lane under a bridge, in the world: the middle, its width and its
+ * length, the lane running along the bridge's local z (a bridge only ever
+ * stands at a quarter turn). `alongX` says it lies along world x. */
+function laneOf(it) {
+  const S = { s: 0, c: 1 };
+  sincos(it.yaw, S);
+  const alongX = Math.abs(S.s) > 0.5;
+  const b = planBounds(it.parts);
+  const deck = Math.max(b.z1 - b.z0, it.el.dims.width || 0);
+  const len = deck + 2 * LANE_RUNOUT;
+  return { alongX, len };
+}
+
 /* The lanes buildGround paints under bridges, as world rectangles at their
  * widest, for paint that must not lie on a road. A bridge with one of the
  * map's roads under it paints no lane (see roadUnder), so it has none here
  * either: the road's own cover keeps the paint off. */
 function lanesOf(placed, cover) {
-  const { W, D } = placed;
   const out = [];
-  const S = { s: 0, c: 1 };
   for (const it of placed.items) {
     if (it.el.type === 'bridge' && !roadUnder(it, cover)) {
-      sincos(it.yaw, S);
       const hw = 4;
-      out.push(Math.abs(S.s) > 0.5
-        ? { x0: -W / 2, x1: W / 2, z0: it.z - hw, z1: it.z + hw }
-        : { x0: it.x - hw, x1: it.x + hw, z0: -D / 2, z1: D / 2 });
+      const { alongX, len } = laneOf(it);
+      out.push(alongX
+        ? { x0: it.x - len / 2, x1: it.x + len / 2, z0: it.z - hw, z1: it.z + hw }
+        : { x0: it.x - hw, x1: it.x + hw, z0: it.z - len / 2, z1: it.z + len / 2 });
     }
   }
   return out;
@@ -618,7 +637,7 @@ const ARROW_EVERY = 24;
 function tarmacMarks(paint, mat, placed, painted, cover) {
   const ex = placed.W / 2 - EDGE_LINE_INSET;
   const ez = placed.D / 2 - EDGE_LINE_INSET;
-  /* A bridge's road runs the plot's whole depth under it, and a bay or an
+  /* A bridge's lane runs under it, and a bay or an
    * arrow painted across it is a car park laid over a road. The map's own
    * roads are the same, through `cover`. */
   const lanes = [
@@ -901,7 +920,7 @@ export function buildGround(placed, doc, look, cover) {
     const type = it.el.type;
     /*
      * A BRIDGE MEANS A ROAD UNDER IT. The lane is painted square to the
-     * span, through the middle of it, from kerb to kerb, so a footbridge is
+     * span, through the middle of it and a little past the deck, so a footbridge is
      * a footbridge over something. A bridge only ever stands at a quarter
      * turn (it has boxes), so the lane is always along a world axis. Where
      * one of the map's own roads runs under it, that road is the something,
@@ -914,13 +933,11 @@ export function buildGround(placed, doc, look, cover) {
       const foot = it.el.style === 'footbridge';
       const col = foot ? 0.18 : 0.6;
       const laneW = Math.max(3, Math.min(7, span - 2 * (0.8 + col + 0.6)));
-      const S = { s: 0, c: 1 };
-      sincos(it.yaw, S);
-      /* The lane runs along the bridge's local z. */
-      const alongX = Math.abs(S.s) > 0.5;
-      const len = alongX ? W : D;
-      const cx = alongX ? 0 : it.x;
-      const cz = alongX ? it.z : 0;
+      const { alongX, len } = laneOf(it);
+      /* The lane runs along the bridge's local z, under the deck and a
+       * little past it, centred on the bridge (see LANE_RUNOUT). */
+      const cx = it.x;
+      const cz = it.z;
       const lw = alongX ? len : laneW;
       const ld = alongX ? laneW : len;
       paint.rect(asphalt, cx, cz, lw, ld, 0, 0.004);
@@ -928,12 +945,13 @@ export function buildGround(placed, doc, look, cover) {
       const off = laneW / 2 - 0.3;
       for (const s of [-1, 1]) {
         if (alongX) {
-          paint.rect(white, 0, it.z + s * off, len, 0.12, 0, 0.01);
+          paint.rect(white, cx, it.z + s * off, len, 0.12, 0, 0.01);
         } else {
-          paint.rect(white, it.x + s * off, 0, 0.12, len, 0, 0.01);
+          paint.rect(white, it.x + s * off, cz, 0.12, len, 0, 0.01);
         }
       }
-      for (let a = -len / 2 + 1.5; a < len / 2 - 3; a += 6) {
+      const mid = alongX ? cx : cz;
+      for (let a = mid - len / 2 + 1.5; a < mid + len / 2 - 3; a += 6) {
         if (alongX) {
           paint.rect(white, a + 1.5, it.z, 3, 0.12, 0, 0.01);
         } else {

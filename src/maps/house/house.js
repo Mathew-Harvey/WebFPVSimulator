@@ -2272,6 +2272,13 @@ function quad(H, x, y, h) {
 /* The back yard                                                       */
 /* ------------------------------------------------------------------ */
 
+/* The slide's solid: eight capsules of 3 cm down the chute's 0.6 m, which
+ * leaves 17 mm between them, 6 cm of the world, under the craft's 7 cm
+ * edge on; the chute is 4.2 cm thick across its slope, so they stand 9 mm
+ * proud of it. */
+const SLIDE_RUNS = 8;
+const SLIDE_R = 0.03;
+
 function backYard(H) {
   /* The stamped patio from the back wall to the pool, round the fire pit,
    * and the pool's light concrete deck all round it, out to the pavilion. */
@@ -2406,10 +2413,19 @@ function backYard(H) {
   const s0 = sy + 0.5;
   const s1 = sy + 2.6;
   H.prism('homePlay', 'x', [[s0 - 0.15, 1.45], [s0 - 0.15, 1.5], [s1, 0.1], [s1, 0.05]], tx0 + 0.3, tx1 - 0.3);
-  for (let k = 0; k < 6; k += 1) {
-    const a = s0 + ((s1 - s0) * k) / 6;
-    const b = s0 + ((s1 - s0) * (k + 1)) / 6;
-    H.hidden(tx0 + 0.3, a, 0, tx1 - 0.3, b, 1.5 - (1.4 * (k + 0.5)) / 6, 'obstacle');
+  /* The chute's solid is the chute, with the air under it open: a pilot
+   * flies under a slide, and its solid once filled that wedge to the
+   * ground (a player's report, 2026-10-23, "you can't fly through the
+   * slide looking thingy next to the swing set"). SLIDE_RUNS capsules
+   * down the slope side by side, each on the chute's middle line and a
+   * little fatter than its 5 cm, so the solid stands within a centimetre
+   * of the drawn faces and the slots between them are narrower than the
+   * craft is thick even on its edge. */
+  const cx0 = tx0 + 0.3 + SLIDE_R;
+  const cx1 = tx1 - 0.3 - SLIDE_R;
+  for (let k = 0; k < SLIDE_RUNS; k += 1) {
+    const x = cx0 + ((cx1 - cx0) * k) / (SLIDE_RUNS - 1);
+    H.cap('homePlay', [x, s0 - 0.15, 1.475], [x, s1, 0.075], SLIDE_R, { draw: false, kind: 'obstacle', name: 'slide' });
   }
 
   /* A shed in the back west corner. */

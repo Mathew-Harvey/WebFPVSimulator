@@ -412,6 +412,11 @@ const LINES = [
   ['under the pergola', [[1.0, 12.0, 2.2], [11.0, 12.0, 2.2]]],
   ['down between two of the pergola rafters', [[5.5, 10.0, 5.0], [5.5, 10.0, 2.6]]],
   ['through the swings', [[28.25, 16.0, 1.5], [28.25, 22.0, 1.5]]],
+  /* Under the slide off the swing set's tower, across the chute: low down
+   * the slope from the lawn on its east past the A frame's leg, and high
+   * by the tower (a player's report, 2026-10-23). */
+  ['under the slide, low', [[33.3, 20.2, 0.45], [29.0, 20.2, 0.45]]],
+  ['under the slide, by the tower', [[33.0, 19.75, 0.8], [30.9, 19.75, 0.8]]],
   ['in the basement door and down the stair to its foot, into the lounge', [[5.2, 5.8, 1.2], [5.2, 4.6, 1.2], [5.2, 4.0, 1.05], [5.2, 1.3, -0.9], [5.2, 0.62, -1.35], [3.0, 0.62, -1.35]]],
   ['off the stair over the half wall into the lounge', [[5.2, 1.6, -0.6], [3.4, 1.6, -0.6]]],
   ['from the lounge round the stair head to the settee', [[3.3, 1.1, -1.2], [4.2, 2.3, -1.2], [4.2, 4.5, -1.2], [5.8, 4.5, -1.2], [5.8, 6.8, -1.2], [5.0, 7.0, -1.2]]],

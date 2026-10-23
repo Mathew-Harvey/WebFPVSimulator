@@ -71687,3 +71687,40 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - What changes in the air: the houses now fly the whoop's own plant (len_scale 3.43, real gravity, 1S) instead of the five inch plant under a whoop skin. The owner said on 2026-10-21 the old feel was good, so this is the thing to fly. The 1S OSD follows from the whoop airframe (4.20 V, no speed); `hudScale` is dead code on a five inch and is left alone.
 - Latency: no change to the flight loop or input path; shell seat logic only, run on a choice and at load. Checked by reading the diff and the page below, headless, so a proxy only.
 - Run: the real page headless (`shots.js`): `?map=house&craft=5inch&fly=1` lands on whoop65 / house / freestyle in flight; from the town, `act('map:house')` seats whoop65 and `act('map:city')` returns to 5inch. `lint:boot` 9 of 9, `seat-selftest` as printed in the PR. Not run: `npm run verify` (no physics, ABI or build change), a stored five inch profile on the house (the load path is `keepOffForcedMaps`, read but not driven), the pause-menu route (a map picked mid run).
+
+## 2026-10-23 | hud | The cross-hair is back at the centre of the picture (draft, not on main)
+
+- Ask: the owner forwarded a ticket from 2026-10-20 (whoop, 3440 by 1440 fullscreen, pixel ratio 0.65, camera angle 30, lens 95): "the crosshair is offcenter, down in my monitor". The owner's words: "ensure it is correctly centered no matter the cam angle". No approval to push to main yet.
+- Cause: not a regression in the OSD box, which is `inset: 0` over the whole window. It is the 2026-10-12 change (PR 66, above) that moved the mark to the nose line: `50 + 50 * tan(tilt) / tan(vfov / 2)` percent. At 30 degrees on a 95 degree lens that is 76.4 percent, so the mark sat well below the middle, and a pilot who had the Crosshairs row on saw it "down". It would be the same at any window shape or pixel ratio, because the number is a share of the OSD height.
+- Change: `syncCrosshair` no longer writes `top`; `.osd-cross` stays at 50 percent by `left: 50%; top: 50%`, so the mark is the middle of the picture at any camera angle, lens, aspect and pixel ratio. The four notes on the Crosshairs row and the two comments say "centre". The 2026-10-12 reading ("where the nose points") is withdrawn at the owner's word.
+- Latency: none, and slightly less: one style write less when the HUD is shown. Nothing in the frame, input path or physics. Checked by reading the diff.
+- Checked: `node --check`, `lint:boot` 9 of 9, `lint:nouns` PASS, `lint:frame` 34 passed, `git diff --stat vendor/betaflight` empty. Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`, `lint:shell`. The mark was not seen on a flying screen. Nobody has flown it.
+- Open: the ticket does not say the Crosshairs row was on. If the pilot meant some other mark, that is not this one; the default is Off.
+
+## 2026-10-23 | hud | The cross-hair centring goes to main on the owner's word (PR #129)
+
+- Approval: the owner wrote "push to main" at 10:15:30Z on 2026-10-23 in the Off-centre crosshair thread, after the draft PR and the entry above. It covers PR 129 only. Main was fetched first (37e4a15, this branch's base), so the push is a fast forward.
+- Latency, checks and what is not checked: as in the entry above. Nobody has flown it.
+
+## 2026-10-23 | map | Nick's house: fly under the slide
+
+- The ask, 10:10Z, Mat in project chat, a player's bug report bug-0f4308dd pasted: "on the nick burns house map, you can't fly through the slide looking thingy next to the swing set in the garden ... I would be able to fly through the gap, as a tinywhoop is easily small enough for it", and "fix this bug ticket on nicks map and push to main".
+- Found: the slide off the swing set's tower (`backYard` in `src/maps/house/house.js`) is drawn as a 5 cm chute in the air, but its solid was six hidden boxes from the ground up to the chute, so the whole wedge under the chute was an invisible wall. The report's craft was resting at plan x 33.3, y 20.3, just east of it.
+- Fix: the chute's solid is eight capsules of 3 cm laid down its slope side by side (`SLIDE_RUNS`, `SLIDE_R`), on its middle line from the tower to the foot. The air under it is open; the chute itself is solid from above and below. The slots between capsules are 6 cm of the world, under the craft's 7 cm edge on, and on the chute's middle surface the most room to a solid is 0.030 m against the craft's half thickness 0.033 (on main it was 0.158 m: the old boxes stopped at each sixth's middle height, so a craft could sink into the drawn chute).
+- Checks: two lines in `check:house` under the slide (low across the chute past the A frame's leg, and high by the tower); both fail on main at the hidden boxes and pass now. The real plant in Node (scratch script): hovering 0.45 m up east of the slide and rolled west, it flies under the chute and out past the swing frame with no contact; on main the same flight hits at plan x 31.84, the slide's east edge, and goes down. Taking off under the chute it meets the chute's underside at the drawn height.
+- Latency: shapes 2,856 to 2,858; the worst step still gathers 338. No draw change: the slide is drawn as it was.
+- Run: `check:house` (all passed), `check:props`, `check:world-golden`, `check:fresh`, `lint:preload`, `lint:nouns`. Not run: `npm run verify`. Not flown by a pilot.
+- Owner's word: "fix this bug ticket on nicks map and push to main" (2026-10-23 10:10Z), so this goes to main without a draft.
+
+## 2026-10-23 | map | A bridge no longer paints a road across the whole map
+
+- The report (anonymous, 3:40 board time, five inch, `?map=built`): "I created a map, and some roads are being generated automatically on their own. My map is an infinite world." The board's `infinite world` by matteo (trk-f17f81ef, 170 by 173 m, 7 bridges, 2 road elements) is that map.
+- Cause: `buildGround` in `src/maps/built/ground.js` painted a lane under every bridge with no road of the map's own under it, kerb to kerb across the plot's whole width or depth, with edge lines and a dashed centre line. Seven bridges gave seven roads nobody drew, and the tarmac car park bays and arrows steered round them too (`lanesOf`).
+- Fix: the lane is the paving under the bridge and 2 m past the deck each side (`LANE_RUNOUT`, `laneOf`), centred on the bridge, and `lanesOf` keeps the same rectangle so the car park paint avoids exactly what is painted. A bridge over one of the map's own roads still paints nothing.
+- Looked at: before and after shots of the real document on this container (headless, Low, camera over the plot): the seven full depth stripes are gone, the roads the author drew remain. Not flown.
+- Latency: none that can be measured here. Paint only, nothing in the flight loop or the input path; the lane rectangles are smaller, so the same or fewer paint quads, and no new draw call.
+- Run: `check:roads` all passed, `lint:preload`, `lint:nouns`. Not run: `npm run verify` (no physics, ABI or build change), `lint:shell` and the rest.
+- Side effect to know: any map with a bridge over bare ground (the board's Baka and InfinityLoops among them) now shows a short lane under the bridge and not a road across the map.
+- Owner's word, 2026-10-23 10:12Z: "reproduice, fix root cause and push to main". Fetched; main had moved (crosshair, Nick's slide), rebased onto it, no force.
+
+- Owner's word, 2026-10-23 10:38Z: "Ensure all changes are pushed to main" (the houses are the whoop's alone; PR 130). Main had moved (the slide fix and the bridge lane); merged in, PROGRESS was the only conflict, kept both sides. Not flown; verify not run.

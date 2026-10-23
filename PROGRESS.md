@@ -71668,3 +71668,11 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - What went wrong: my first plant flight went north along the gap, not east under the car, and passed on main too; the sim's axes are not the plan's (sim x is south to north here). Caught because main also passed, and the flight was turned to a roll before it was believed. Merging main's Air grip 175 in, a script that failed on a second marker line still let the merge commit go with PROGRESS.md's conflict markers in it; caught before the push and the merge commit amended.
 
 - Owner's word, 2026-10-22 14:08Z: "push to main" (fly under Heads' parked cars, the eleventh 90% under his car; PR 127). Fast forward onto main from 7e03b08, nothing had landed since the merge. Not flown, verify not run; the owner chose to fly it.
+
+## 2026-10-23 Camera angle slider reaches 60
+
+- The ask, 06:07Z: "Make it so a 60degree cam angle is possible on the slider".
+- What: `CAMERA_ANGLE_MAX` in `src/render/lens.js` from 55 to 60. It is the one constant behind the Settings stepper, the clamp on load and on tune import, and the five inch and whoop alike, so both craft get it. The default stays 30. The settings help text reads the constant, so it now says 45 to 60 is race with no edit.
+- The board's tune validator allows up to 70 (`ANGLE_MAX` in the board's `src/tunes.js`), so a shared tune at 60 is accepted and no board change is needed.
+- Latency: no change, a clamp bound only; nothing in the flight loop or input path moves. At 60 degrees sin(tilt) is 0.87, so yaw rolls the horizon a little more than at 55 (0.82); the existing yaw tip covers it.
+- Run: `node scripts/seat-selftest.js` (35 of 35 clean). Not run: `npm run verify`, `shots` (no layout change).

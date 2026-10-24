@@ -71845,3 +71845,11 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-24 00:20Z: "push to main" (the twelfth sticker on a goat, PR 140). Main had moved (Nick's crash call at 15 percent, the JSL combo); merged it in, no conflict beyond this file, `bardwell-check`, `clips-check` and `lint:preload` pass after the merge. Not flown, verify not run; the owner chose to fly it.
 
 - Owner's word, 2026-10-24 00:33Z: "push to main" (Effects and Callouts levels, sound levels as sliders in Settings, PR 137). Not heard on speakers, verify not run.
+
+## 2026-10-24 | art | weBLEEDfpv's sign on the whoop room's east wall (branch only)
+
+- The ask, 02:30Z, Mat: "we need webleed logo in the whoop room on the wall". Read as the whoop room (MICRO_SCALE, the indoor racing room), not the freestyle houses, which already carry the sign.
+- Now: a 1.5 m cream board with the deep frame and a sakura inner line, carrying the partner's colour mark (`assets/partners/webleedfpv/colour.png`, the same file the map signs use), hangs on the east wall between the middle poster and the last, at the posters' height of 2.3 m, well above the 1.26 m rail. Cream because the mark's tagline is black. It is a new piece, `partnerWebleed`, in `scripts/wallart.js` (`partnerSign`) and one line in `HANGING`, so it rides the room's single wall art draw. `gen:wallart` rerun from the live pack: every other piece kept its place in the atlas, only the new one and the hash changed.
+- Not done: the front door copies `wallart-hang.js` and the atlas for its whoop act (see 2026-09-26); it shows the old room until it copies these two files and the atlas again.
+- Latency: no new draw call (the quad joins the art's one mesh), +2 triangles, no collider, no flight loop or input path touched. The atlas fetch grows from 361 KB to 383 KB (+22 KB, once, whoop rooms only, late loaded and never fatal). Checked by `micro:check`, `lint:preload` and a headless shot, proxies only.
+- Run: `node --check`, `micro:check`, `lint:preload`, `gen:wallart --pack=` (live pack), shots `/mnt/project-files/webleed-whoop-room/`. Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.

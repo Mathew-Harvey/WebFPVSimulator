@@ -26,12 +26,13 @@
 
 export const WALLART = {
   url: 'assets/wallart/atlas.webp',
-  rev: 'a38d67f8b8bf',
+  rev: 'f57b2b9ea07a',
   size: 2048,
   pieces: {
     bannerVisor: { x: 12, y: 1363, w: 1782, h: 327, printW: 4.4, printH: 0.807 },
     bannerWave: { x: 12, y: 1000, w: 1782, h: 351, printW: 4.4, printH: 0.866 },
     nobori: { x: 12, y: 12, w: 267, h: 588, printW: 0.66, printH: 1.452 },
+    partnerWebleed: { x: 1239, y: 1702, w: 608, h: 308, printW: 1.5, printH: 0.76 },
     posterBubble: { x: 644, y: 12, w: 341, h: 482, printW: 0.841, printH: 1.189 },
     posterChibi: { x: 291, y: 12, w: 341, h: 482, printW: 0.841, printH: 1.189 },
     posterCity: { x: 997, y: 12, w: 341, h: 482, printW: 0.841, printH: 1.189 },

@@ -6532,27 +6532,6 @@ export async function boot({ loading, bootStart, mapId }) {
     return timerLoop && !replayMode && !replayStepMode && !filmNow;
   }
 
-  /*
-   * A SETTING THAT VOIDS THE LAP MOVES THE TARGET BACK TO THE TIMING GATE,
-   * AND THE LIT GATE HAS TO FOLLOW.
-   *
-   * race.voidLap sends the order to gate 0, but the glow on the course is
-   * painted by view.setNextGate and nothing here called it. A pilot who
-   * landed mid lap, nudged Air grip and flew on went through the gate still
-   * lit and nothing counted, because the race was waiting for the timing
-   * gate, until a restart put both back in step (2026-10-24, the owner:
-   * "the next gate I go through doesn't register until I restart the race").
-   * The wall clock flash that says "Lap voided" is gone by the time the
-   * pause is closed, so the lit gate was the only thing telling the pilot
-   * what to fly.
-   */
-  function voidLapFromSettings(reason) {
-    race.voidLap(reason, performance.now());
-    if (!race.freestyle) {
-      view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-    }
-  }
-
   function applySettings(s) {
     /* Which clock draws the frames, from the Frame pacing row and the
      * graphics preset together (pacingTimerOn in ui.js), unless the ?loop=
@@ -6723,7 +6702,7 @@ export async function boot({ loading, bootStart, mapId }) {
           runWeight = wantWeight;
           runGravityScale = wantScale;
           if (midLap) {
-            voidLapFromSettings('Weight changed\nLap voided');
+            race.noteChange();
           }
         } else {
           ui.settings.weight = runWeight;
@@ -6807,7 +6786,7 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       if (moved) {
         if (race.currentLapMs(simTimeMs) != null) {
-          voidLapFromSettings('Feel changed\nLap voided');
+          race.noteChange();
         }
         /* Motor power moves where hover sits on the stick, and the keyboard's
          * throttle springs back to it: see syncKeyHover. */
@@ -12484,6 +12463,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * fly the course (scripts/gate-settings-check.js): harness only. */
     next: race && !race.freestyle ? race.next : -1,
     lapStartMs: race ? race.lapStartMs : null,
+    mixed: race ? race.mixed : false,
     gates: race && !race.freestyle
       ? race.gates.map((g) => ({ x: g.x, y: g.y, z: g.z, az: g.az })) : [],
   });

@@ -71955,3 +71955,8 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: none. The change runs once per settings change that voids a lap, in the menu, never in the flight frame.
 - Run: `check:gatesettings` 4 passed. Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.
 - Open question for the owner: should a Feel change void a lap that is only landed, not flying? Left as is.
+
+- Owner's ask, 2026-10-24 23:53Z: "Change the rule that changing a setting does not void the lap, they will never go fast cause they had to stop to change the setting, it's just annoying not being able to keep going." Read as: changing a setting must not void the lap.
+- Done on the same branch. Weight and Feel changes no longer call `voidLap`; they call `race.noteChange()`, which marks a running lap `mixed`. A mixed lap still counts and the pilot flies on, but it is filed `tuned: true` so it goes up the way a tuned lap does and does not pass as a stock record on one machine. `voidLapFromSettings` from this PR's first commit is gone, since nothing voids now. Cleared when the next lap starts.
+- `check:gatesettings` now asserts the order does not move, the lit gate agrees, and Air grip marks the lap mixed while camera angle does not: 6 passed. Not run: `npm run verify`. Not flown.
+- Latency: none, a flag set in a menu change.

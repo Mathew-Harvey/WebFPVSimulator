@@ -4,10 +4,12 @@
  * real shell, land, pause, turn Feel tuning on and move Air grip, resume, and
  * compare the gate the course lights with the gate the race scores.
  *
- * Before 2026-10-24 voidLap sent the race to the timing gate and the glow
- * stayed on the third, so the pilot flew the lit gate and nothing counted.
- * Camera angle alone voids nothing, so it is the control: the order must
- * not move at all.
+ * Before 2026-10-24 a Feel change voided the lap, voidLap sent the race to
+ * the timing gate and the glow stayed on the third, so the pilot flew the lit
+ * gate and nothing counted. The owner then ruled that a change voids nothing:
+ * the order stays put, the lit gate agrees with it, and a change inside a
+ * running lap marks the lap mixed so it is filed Tuned. Camera angle is the
+ * control: it must not mark anything.
  *
  * Usage: node scripts/gate-settings-check.js
  * Exit code is the number of failed checks.
@@ -69,6 +71,7 @@ const settle = (change) => `
   const t = window.__gateTiers();
   return JSON.stringify({
     next: window.__race().next,
+    mixed: window.__race().mixed,
     lit: t.gates.filter((g) => g.tier === 'target').map((g) => g.flyOrder),
   });`;
 
@@ -108,8 +111,8 @@ async function main() {
         await ev(through(k));
       }
       const got = JSON.parse(await ev(settle(change)));
-      const want = voids ? 0 : 3;
-      check(`${name}: the race waits for gate ${want}`, got.next === want, `race.next ${got.next}`);
+      check(`${name}: the race still waits for gate 3`, got.next === 3, `race.next ${got.next}`);
+      check(`${name}: the lap is ${voids ? '' : 'not '}marked mixed`, got.mixed === voids, `mixed ${got.mixed}`);
       check(`${name}: the lit gate is the one the race waits for`, got.lit.length === 1 && got.lit[0] === got.next, `lit ${JSON.stringify(got.lit)}`);
     }
   } finally {

@@ -55,6 +55,9 @@ const CAGE_CIRCLES = [
 /* Where they begin, plan metres. */
 const START = [[58, 4], [64, -6], [70, 10], [60, -14], [68, -2]];
 
+/* The goat that wears the twelfth sticker (./stickers.js GOAT_STICKER). */
+export const STICKER_GOAT = 2;
+
 /* Their pelts: tints on a cream body (white, tan, brown, grey, pied). */
 const PELTS = [0xfaf6ee, 0xd9b98a, 0x8a6a4a, 0xb4b4b0, 0xe8dcc8];
 
@@ -326,5 +329,8 @@ export function makeGoats(craftAt = () => null, cue = () => {}) {
     mesh.instanceMatrix.needsUpdate = true;
   }
 
-  return { group: mesh, update, stats: () => ({ goats: goats.length, caught }) };
+  /* Where goat i is, which way it faces, and whether it is on the field. */
+  const pose = (i) => ({ x: goats[i].x, z: goats[i].z, hd: goats[i].hd, shown: goats[i].mode !== 'caught' });
+
+  return { group: mesh, update, pose, stats: () => ({ goats: goats.length, caught }) };
 }

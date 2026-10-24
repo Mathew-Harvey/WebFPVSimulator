@@ -71825,11 +71825,26 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-23 23:56Z: "push to main" (Nick's crash call: one time in four, "Poor thing" only, PR 138). Fast forward onto main from 59156b2's parent, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
 
+- The owner, 2026-10-23 23:58Z: "cut to 15%". `CHANCE.crash` 0.25 to 0.15 in `src/render/clips.js`, `check:clips` band moved to match (a count of 450 to 750 in 4000, which is the new rate, not a loosened one). Latency none. Not flown.
 - Owner's word, 2026-10-23 23:58Z: "push to main" (JSL freestyle combo, PR 139). Main had moved (Nick's crash call), merged in, no code conflict. Not flown, verify not run.
 
+<<<<<<< HEAD
 ## 2026-10-24 | ui | Sound levels as sliders in Settings, off the landed overlay
 
 - The ask, 00:20Z, Mat: "put th esliders in the menu system where the current sound option are not on thee landed sliders".
 - Reverted the landed overlay's Motors, Effects and Callouts rows (`AIR_SOUND_ROWS`, `bindSoundSliders` and their `paintAir` lines are gone). In Settings, Sound, the Volume, Motors, Wind, Music, Effects and Callouts rows are now drag tracks with the number beside them, the Camera angle row's make (`soundRow` in `src/ui/ui.js`): drag, arrows or type, zero to ten. Settings, defaults and audio wiring are as in the entry above.
 - Latency: no change, settings UI only. Merged main into the branch (PROGRESS.md conflict kept both sides).
 - Run: `node --check`, headless shots of Settings, Sound (`/mnt/project-files/sound-sliders/menu-sound-sliders.png`); the landed overlay is back to Weight and Camera angle. Not run: `npm run verify`. Not heard or flown.
+=======
+## 2026-10-23 | map | The last sticker rides a goat (branch only)
+
+- The ask, 23:59Z: "in the bardwell map, we can't find the last sticker, where ever it is, remove it and put it on a goat". Read as the twelfth and last of the JB list, which was on the mailbox at the road (plan 35.6, -95, 1.17 up, 0.2 m, facing south, 95 m from the yard). No find counts are kept per sticker (the board holds counters only), so that is a reading, not a measurement; the one line to change is `GOAT_STICKER` in `stickers.js`.
+- Now: the sticker is taken off the mailbox and sits on the flank of the brown goat (goat 2, `STICKER_GOAT` in `goats.js`), 0.3 m, on whichever side faces the camera, its quad the last in the existing `jb stickers` mesh and its four corners written each frame, so no new draw call. Its entry in `map.stickers` keeps `p` and `n` moving in place, which `findStickers` reads live. It keeps the id `jb-mailbox`, so a pilot who found it on the mailbox still has it counted; the callout says "On a goat". It goes while the goat is caught and is back with it.
+- Latency: no new draw call, +2 triangles, 12 floats written a frame and the sticker mesh no longer frustum culled (13 quads). Headless proxies (69 and 67 calls in two views), not a GPU.
+- Run: `bardwell-check`, `check:house`, `clips-check`, `lint:preload`, `lint:nouns`, a shell shot with the sticker on the goat's flank. Not run: `npm run verify`, a real find by flying up to the goat. Not flown.
+- Owner's word, 2026-10-24 00:20Z: "push to main" (Nick's crash call at 15 percent). Main had moved (the JSL freestyle combo), so main was merged into this branch first, PROGRESS.md kept from both sides; `check:clips` and `lint:preload` pass after the merge. Not flown, verify not run.
+
+- Owner's word, 2026-10-24 00:20Z: "push to main" (the twelfth sticker on a goat, PR 140). Main had moved (Nick's crash call at 15 percent, the JSL combo); merged it in, no conflict beyond this file, `bardwell-check`, `clips-check` and `lint:preload` pass after the merge. Not flown, verify not run; the owner chose to fly it.
+>>>>>>> origin/main
+
+- Owner's word, 2026-10-24 00:33Z: "push to main" (Effects and Callouts levels, sound levels as sliders in Settings, PR 137). Not heard on speakers, verify not run.

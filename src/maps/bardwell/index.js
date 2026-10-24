@@ -49,9 +49,9 @@ import { bardwellDocument } from './yard.js';
 import {
   BRANDS, ATLAS_W, ATLAS_H, CELLS, placeSigns, placeDecals,
 } from './logos.js';
-import { placeStickers, paintSticker, STICKER_WORD } from './stickers.js';
+import { placeStickers, paintSticker, STICKER_WORD, GOAT_STICKER } from './stickers.js';
 import { stickerMesh } from '../stickermesh.js';
-import { makeGoats } from './goats.js';
+import { makeGoats, STICKER_GOAT } from './goats.js';
 import { partnerSignReady } from '../../art/partnermark.js';
 import { paintMaterial } from '../../art/stf.js';
 import { stfKey } from '../built/egg.js';
@@ -220,7 +220,17 @@ export async function buildMap(shell, onProgress, options) {
    * his voice is this map's alone. */
   const sheet = paintSticker(THREE);
   const stuck = placeStickers(L.parts).filter(Boolean);
-  map.scene.add(stickerMesh(THREE, stuck, sheet, 'jb stickers'));
+  /* The twelfth rides a goat: its quad is the last in the same mesh, no draw
+   * call of its own, and its four corners are written each frame from the
+   * goat (below). `p` and `n` of its entry are what the shell looks at, and
+   * are moved in place. */
+  const riding = { p: [0, -50, 0], n: [0, 0, 1], w: FRAME.S * GOAT_STICKER.size, turn: 0 };
+  const jbStickers = stickerMesh(THREE, [...stuck, riding], sheet, 'jb stickers');
+  jbStickers.frustumCulled = false;
+  const ridePos = jbStickers.geometry.attributes.position;
+  ridePos.setUsage(THREE.DynamicDrawUsage);
+  const rideBase = stuck.length * 4;
+  map.scene.add(jbStickers);
   map.stickers = [
     ...(map.stickers || []),
     ...stuck.map((s) => ({
@@ -235,6 +245,18 @@ export async function buildMap(shell, onProgress, options) {
       w: s.w,
       h: s.w,
     })),
+    {
+      id: `jb-${GOAT_STICKER.id}`,
+      key: `${stfKey(doc, 'bardwell')}#sticker:jb-${GOAT_STICKER.id}`,
+      name: GOAT_STICKER.name,
+      achievement: STICKER_WORD,
+      crop: { x: 0, y: 0, w: 1, h: 1 },
+      sheet,
+      p: riding.p,
+      n: riding.n,
+      w: riding.w,
+      h: riding.w,
+    },
   ];
   map.clips = 'jb';
   /* The goats in the field (./goats.js): one instanced mesh, moved on the
@@ -251,9 +273,40 @@ export async function buildMap(shell, onProgress, options) {
   map.scene.add(goats.group);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   const anim = map.updateAnim;
+  const flank = new THREE.Vector3();
+  const right = new THREE.Vector3();
   map.updateAnim = (step) => {
     anim(step);
     goats.update(step);
+    /* The sticker on the goat's flank that faces the camera, 0.17 m out from
+     * its middle, and gone while the goat is. */
+    const g = goats.pose(STICKER_GOAT);
+    const h = riding.w / 2;
+    let cx = 0;
+    let cy = -50;
+    let cz = 0;
+    if (g.shown) {
+      const sx = Math.sin(g.hd);
+      const sz = Math.cos(g.hd);
+      const side = sx * (shell.camera.position.x - g.x) + sz * (shell.camera.position.z - g.z) < 0 ? -1 : 1;
+      riding.n[0] = sx * side;
+      riding.n[1] = 0;
+      riding.n[2] = sz * side;
+      cx = g.x + riding.n[0] * 0.172;
+      cy = 0.62;
+      cz = g.z + riding.n[2] * 0.172;
+    }
+    riding.p[0] = cx;
+    riding.p[1] = cy;
+    riding.p[2] = cz;
+    flank.fromArray(riding.n);
+    right.set(0, 1, 0).cross(flank).normalize();
+    for (let k = 0; k < 4; k += 1) {
+      const sx = k === 0 || k === 3 ? -1 : 1;
+      const sy = k < 2 ? -1 : 1;
+      ridePos.setXYZ(rideBase + k, cx + right.x * sx * h, cy + sy * h, cz + right.z * sx * h);
+    }
+    ridePos.needsUpdate = true;
   };
   const stats = map.stats;
   map.stats = () => ({ ...stats(), goats: goats.stats() });

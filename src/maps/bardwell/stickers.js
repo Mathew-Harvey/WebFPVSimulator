@@ -52,8 +52,13 @@ export const JB_SPOTS = [
   { id: 'doghouse', name: 'On the doghouse', from: [35.2, -23, 0.55], dir: 'n', size: 0.25 },
   { id: 'lean-to', name: 'In the lean-to', from: [28.4, -22, 1.0], dir: 'n', size: 0.3 },
   { id: 'barrow', name: 'On the wheelbarrow', from: [27.2, -25, 0.5], dir: 'n', size: 0.2 },
-  { id: 'mailbox', name: 'On the mailbox', from: [35.6, -95, 1.17], dir: 's', size: 0.2 },
 ];
+
+/* The twelfth sticker rides a goat (./goats.js), the owner's ask of
+ * 2026-10-23: nobody found it on the mailbox at the road, "wherever it is,
+ * remove it and put it on a goat". Its id stays 'mailbox' so the stamp a
+ * pilot who did find it kept still counts. */
+export const GOAT_STICKER = { id: 'mailbox', name: 'On a goat', size: 0.3 };
 
 const PROUD = 0.012;
 

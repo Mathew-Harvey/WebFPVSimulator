@@ -71817,6 +71817,7 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-23 23:56Z: "push to main" (Nick's crash call: one time in four, "Poor thing" only, PR 138). Fast forward onto main from 59156b2's parent, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
 
+- The owner, 2026-10-23 23:58Z: "cut to 15%". `CHANCE.crash` 0.25 to 0.15 in `src/render/clips.js`, `check:clips` band moved to match (a count of 450 to 750 in 4000, which is the new rate, not a loosened one). Latency none. Not flown.
 - Owner's word, 2026-10-23 23:58Z: "push to main" (JSL freestyle combo, PR 139). Main had moved (Nick's crash call), merged in, no code conflict. Not flown, verify not run.
 
 ## 2026-10-23 | map | The last sticker rides a goat (branch only)
@@ -71825,3 +71826,6 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Now: the sticker is taken off the mailbox and sits on the flank of the brown goat (goat 2, `STICKER_GOAT` in `goats.js`), 0.3 m, on whichever side faces the camera, its quad the last in the existing `jb stickers` mesh and its four corners written each frame, so no new draw call. Its entry in `map.stickers` keeps `p` and `n` moving in place, which `findStickers` reads live. It keeps the id `jb-mailbox`, so a pilot who found it on the mailbox still has it counted; the callout says "On a goat". It goes while the goat is caught and is back with it.
 - Latency: no new draw call, +2 triangles, 12 floats written a frame and the sticker mesh no longer frustum culled (13 quads). Headless proxies (69 and 67 calls in two views), not a GPU.
 - Run: `bardwell-check`, `check:house`, `clips-check`, `lint:preload`, `lint:nouns`, a shell shot with the sticker on the goat's flank. Not run: `npm run verify`, a real find by flying up to the goat. Not flown.
+- Owner's word, 2026-10-24 00:20Z: "push to main" (Nick's crash call at 15 percent). Main had moved (the JSL freestyle combo), so main was merged into this branch first, PROGRESS.md kept from both sides; `check:clips` and `lint:preload` pass after the merge. Not flown, verify not run.
+
+- Owner's word, 2026-10-24 00:20Z: "push to main" (the twelfth sticker on a goat, PR 140). Main had moved (Nick's crash call at 15 percent, the JSL combo); merged it in, no conflict beyond this file, `bardwell-check`, `clips-check` and `lint:preload` pass after the merge. Not flown, verify not run; the owner chose to fly it.

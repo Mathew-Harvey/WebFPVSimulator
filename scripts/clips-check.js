@@ -135,7 +135,7 @@ const base = globalThis.navigator;
       g.v.playing.el.paused = true;
     }
   }
-  ok(n > 800 && n < 1200, `about one crash in four plays (${n} of 4000)`);
+  ok(n > 450 && n < 750, `about 15 crashes in 100 play (${n} of 4000)`);
 }
 
 /* 4. quiet */

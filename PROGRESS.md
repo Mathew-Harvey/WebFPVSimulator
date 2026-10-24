@@ -71845,3 +71845,10 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-24 00:20Z: "push to main" (the twelfth sticker on a goat, PR 140). Main had moved (Nick's crash call at 15 percent, the JSL combo); merged it in, no conflict beyond this file, `bardwell-check`, `clips-check` and `lint:preload` pass after the merge. Not flown, verify not run; the owner chose to fly it.
 
 - Owner's word, 2026-10-24 00:33Z: "push to main" (Effects and Callouts levels, sound levels as sliders in Settings, PR 137). Not heard on speakers, verify not run.
+
+## 2026-10-24 | map | Goats tire (branch only)
+
+- The ask, 00:39Z: "the goat needs to stop running after you've chased it for a bit otherwise i can't frame the sticker".
+- Now: a goat that has run from the craft for 6 s stops where it is, facing the way it ran, and stands still for 14 s, the craft close or not, then grazes and can run again. A tired goat can still be caught. `TIRE_S` and `TIRED_S` in `goats.js`. Browser simulation, a craft at 15 m/s keeping 3 m behind goat 0 for 40 s: it ran about 6 m/s for 6 s, stood still for 13 s, ran again for 6 s, stood again.
+- Latency: none, a mode in the same per goat step (one compare, one add). No draw call or triangle.
+- Run: that simulation, `bardwell-check`, `clips-check`, `lint:preload`, `lint:nouns`. Not run: verify. Not flown.

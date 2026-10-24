@@ -729,18 +729,29 @@ export class MotorAudio {
        * level itself. The soft clip and MASTER_CEILING bound what this can do
        * to the true peak.
        */
-      g.exponentialRampToValueAtTime(2.6 * lv * fx, t + 0.006);
-      g.exponentialRampToValueAtTime(0.0001, t + 0.42);
+      g.exponentialRampToValueAtTime(3.0 * lv * fx, t + 0.012);
+      g.exponentialRampToValueAtTime(0.0001, t + 0.45);
       const f = this.crashLp.frequency;
       f.cancelScheduledValues(t);
-      /* A harder hit is brighter as well as louder, and it rings longer.
-       * Level alone reads as a volume knob rather than as a bigger event. */
-      f.setValueAtTime(900 + 900 * lv, t);
-      f.exponentialRampToValueAtTime(220, t + 0.4);
+      /* A thud, not a smack: the noise starts under 600 Hz and falls to 70, so
+       * nothing above the motors' own band reaches the ear, and a harder hit
+       * still opens the filter further and rings longer. The body is the
+       * pooled cue oscillator dropped from 110 to 45 Hz, which is the weight. */
+      f.setValueAtTime(320 + 280 * lv, t);
+      f.exponentialRampToValueAtTime(70, t + 0.4);
+      const bf = this.cueOsc.frequency;
+      bf.cancelScheduledValues(t);
+      bf.setValueAtTime(110, t);
+      bf.exponentialRampToValueAtTime(45, t + 0.22);
+      const bg = this.cueGain.gain;
+      bg.cancelScheduledValues(t);
+      bg.setValueAtTime(0.0001, t);
+      bg.exponentialRampToValueAtTime(1.1 * lv * fx, t + 0.008);
+      bg.exponentialRampToValueAtTime(0.0001, t + 0.34);
       /* The click cues lean on this filter's Q, so a crash states its own
        * rather than inheriting whatever the last click left. */
       this.crashLp.Q.cancelScheduledValues(t);
-      this.crashLp.Q.setValueAtTime(1.1, t);
+      this.crashLp.Q.setValueAtTime(0.7, t);
       /* Duck the MOTORS and the WIND, which are what mask a crash, and duck
        * them hard: a crash is the one moment the player must not miss. */
       this.duckFlight(t, 0.28, 0.5);

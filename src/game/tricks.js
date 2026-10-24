@@ -223,6 +223,20 @@ export const BUILDING_BLOCKS = [
   { name: '1/2 Jump Rope', points: 50 },];
 
 /*
+ * Tricks the workbook does not list. The catalogue above is a transcription
+ * and a check holds it to the workbook row for row, so a trick the community
+ * flies that the sheet never priced goes here instead, with a price that is
+ * ours and not the judge's. JSL is the first: a Juicy Flick, a Slingshot and
+ * a Laser Flip or a Power Loop strung together, which scored separately is a
+ * Juicy Flick and whatever the rest reads as. 650 puts it level with the
+ * Inverted 360 Powerloop, the dearest thing a pilot can chain in one motion
+ * without a rail, and above the three parts flown apart.
+ */
+export const EXTRA_TRICKS = [
+  { name: 'JSL', category: 'Open Air Tricks', difficulty: 'Master', points: 650 },
+];
+
+/*
  * How a trick was flown, and what that costs. Sheet "Info Tables", columns
  * AG and AH, and the same table restated on the Landing Page.
  *
@@ -318,6 +332,9 @@ export const STREAK_DIVISOR = 10000;
 const BY_NAME = new Map();
 for (const t of TRICKS) {
   BY_NAME.set(t.name, t);
+}
+for (const x of EXTRA_TRICKS) {
+  BY_NAME.set(x.name, x);
 }
 for (const b of BUILDING_BLOCKS) {
   /* A block is only reachable by name if the catalogue has not already

@@ -71800,6 +71800,15 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-23 23:38Z: "push to main" (camera angle on the landed sliders, PR 136). Main had not moved since the branch. Not flown, verify not run.
 
+## 2026-10-24 | scoring | JSL freestyle combo
+
+- The ask, 23:54Z, Mat: add JSL (Juicy Flick, Slingshot, Laser Flip or Power Loop, back to back) as a trick.
+- Two `JSL` patterns in `PATTERNS` (`src/game/trickdetect.js`): flip forward to inverted and roll out, a half flip back, then either a whole inverted yaw spin (the Laser Flip) or a Powerloop round a rail. The existing step gap rule keeps them "back to back"; longest match wins, so JSL beats the Juicy Flick it starts with, and stopping after the Slingshot is not paid as JSL.
+- Price 650, Master, in a new `EXTRA_TRICKS` list in `src/game/tricks.js`, because the catalogue is held to the workbook row for row and the workbook has no JSL. The 650 is my pick (level with Inverted 360 Powerloop), the owner's to change.
+- Listed in the trick list through `src/game/proven.js` (one line added by hand: a full `--write` regeneration also flipped Blindflip and Mavvelmann to 0 landed, which is older drift and not this change's to carry).
+- The yaw spin ending is swept and lands 9 of 9. The Powerloop ending is NOT swept (the sweep dedups by name and the planner cannot fly a path step after rotations), so it is unproven.
+- Latency: no change. Patterns are matched only when a rotation run closes, as the other 90 are; one more pattern in a table of about 100.
+- Run: `score:selftest` (all passed, three new cases), `trick-sweep --all` (nothing overpaid), `lint:nouns`. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
 ## 2026-10-23 | audio | Nick's crash call: a chance, and only "Poor thing" (branch only)
 
 - The owner, 2026-10-23 23:44Z: "in the nick map, crash is a random chance of the meme call out not often. and shorten it to 'poor thing'". `assets/voices/nb/crash.mp3` is now only the last words of the original seven second clip (5.7 s to the end), 1.2 s, 6 kB instead of 36 kB, with a 30 ms fade in. A hard crash plays it one time in four (`CHANCE` in `src/render/clips.js`, `rand` injectable for the check), and a miss starts no cooldown; the cooldown after a play went from 20 s to 8 s because the clip is short. "Not often" read as 25 percent: say if it should be rarer.
@@ -71809,3 +71818,6 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-23 23:56Z: "push to main" (Nick's crash call: one time in four, "Poor thing" only, PR 138). Fast forward onto main from 59156b2's parent, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
 
 - The owner, 2026-10-23 23:58Z: "cut to 15%". `CHANCE.crash` 0.25 to 0.15 in `src/render/clips.js`, `check:clips` band moved to match (a count of 450 to 750 in 4000, which is the new rate, not a loosened one). Latency none. Not flown.
+- Owner's word, 2026-10-23 23:58Z: "push to main" (JSL freestyle combo, PR 139). Main had moved (Nick's crash call), merged in, no code conflict. Not flown, verify not run.
+
+- Owner's word, 2026-10-24 00:20Z: "push to main" (Nick's crash call at 15 percent). Main had moved (the JSL freestyle combo), so main was merged into this branch first, PROGRESS.md kept from both sides; `check:clips` and `lint:preload` pass after the merge. Not flown, verify not run.

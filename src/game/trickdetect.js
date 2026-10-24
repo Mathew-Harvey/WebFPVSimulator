@@ -647,6 +647,34 @@ const SLOPPY_GAP_MS = 600;
  * scoring pattern wins, which is decided by the catalogue at match time.
  */
 export const PATTERNS = [
+  /*
+   * JSL: a Juicy Flick, a Slingshot, then a Laser Flip, flown back to back.
+   * The Juicy is pitch forward to inverted and roll out. The Slingshot is
+   * the whip back: a half flip the other way, nose pulled up. The Laser
+   * Flip is the fast yaw spin that follows, inverted, flown as a whole turn.
+   * Longest match wins, so a pilot who stops after the Slingshot is still
+   * paid for what they flew. The loop ending is the next pattern down.
+   */
+  {
+    name: 'JSL',
+    steps: [
+      { axis: 'pitch', turns: 0.5, dir: 1 },
+      { axis: 'roll', turns: 0.5 },
+      { axis: 'pitch', turns: 0.5, dir: -1 },
+      { axis: 'yaw', turns: 1, inverted: true },
+    ],
+  },
+  {
+    /* The same, ending in the Powerloop round a rail instead of the spin. */
+    name: 'JSL',
+    steps: [
+      { axis: 'pitch', turns: 0.5, dir: 1 },
+      { axis: 'roll', turns: 0.5 },
+      { axis: 'pitch', turns: 0.5, dir: -1 },
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 1 } },
+    ],
+  },
+
   /* Three step patterns. These have to be tried before their own prefixes,
    * and the matcher does that by length, not by position in this list. */
   {

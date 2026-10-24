@@ -71,6 +71,7 @@ import { Parts } from '../../props/parts.js';
 import { partsOf } from '../../props/catalog.js';
 import { carOpenLayout } from '../../props/street.js';
 import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
+import { yardTrackOn } from '../yardtrack/yardtrack.js';
 
 /* ------------------------------------------------------------------ */
 /* The frame                                                           */
@@ -1762,6 +1763,20 @@ function scaledParts(a) {
 }
 
 /*
+ * THE YARD TRACK on the front lawn (../yardtrack/), the owner's ask of
+ * 2026-10-24: RaceGOW6 Track 3 between the stoop and the drive, its start
+ * gate at the street end so a run is flown in toward the house, at the
+ * house's own S, so a 28 inch gate is a 28 inch gate against the front
+ * door. Clear of the stoop, the beds, the drive and the cars on it, the
+ * sidewalk and the big tree by the corner (scripts/yardtrack-check.js).
+ * White pipe, the start gate red: two colours the house already draws.
+ */
+export const YARD_AT = { px: 11.0, py: -5.9, q: 0 };
+export function headsYardTrack() {
+  return yardTrackOn(worldAt, YARD_AT, { id: 'heads', scale: S, pipe: 'homeWhite', start: 'homePlay' });
+}
+
+/*
  * The house, its yard and its streets: { parts, prisms, flats, discs,
  * cyls, cones, scaled }, every part in the world frame. The same every
  * call.
@@ -1786,6 +1801,7 @@ export function headsLayout() {
   for (const a of H.scaled) {
     parts.push(...scaledParts(a));
   }
+  parts.push(...headsYardTrack().parts);
   return { parts, prisms: H.prisms, flats: H.flats, discs: H.discs, cyls: H.cyls, cones: H.cones, scaled: H.scaled };
 }
 

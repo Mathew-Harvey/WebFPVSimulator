@@ -148,6 +148,11 @@ export const MAPS = [
     mode: 'freestyle',
     note: "Joshua Bardwell's house, flown on a five inch: the brick house and its porch, the woodshed, the pen, the drive, the field's cages and the race's gates through all of it, over the ridge and back.",
     buildMs: MAP_BUILD_MS.bardwell,
+    /* The yard track out the back (src/maps/yardtrack/) is the whoop's, so
+     * the whoop may be flown here too: a five inch that lands in its zone
+     * is offered the swap (src/main.js), the owner's ask of 2026-10-24.
+     * Choosing the map still seats the five inch. */
+    whoopYard: true,
     load: () => import('./bardwell/index.js'),
   },
 ];

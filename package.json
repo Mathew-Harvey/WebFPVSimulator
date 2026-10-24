@@ -58,6 +58,7 @@
     "check:career": "node --test tests/career/career-laps.test.js tests/career/career-maps.test.js tests/career/career-objectives.test.js tests/career/career-words.test.js tests/career/career-progress.test.js tests/career/career-wiring.test.js",
     "check:career:rig": "node --test tests/career/rig.test.js",
     "check:bardwell": "node scripts/bardwell-check.js",
+    "check:yard": "node scripts/yardtrack-check.js",
     "check:windmill": "node scripts/windmill-check.js",
     "check:room": "node scripts/room-check.js",
     "check:roads": "node scripts/roads-check.js",

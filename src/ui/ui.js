@@ -224,6 +224,7 @@ import {
 } from './tuneinvite.js';
 import { ChaseHud, chaseCallText } from './chasehud.js';
 import { BalloonHud } from './balloonhud.js';
+import { YardHud } from './yardhud.js';
 import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
 } from './mangapage.js';
@@ -5586,6 +5587,9 @@ export class Ui {
     this.chaseCarsOn = false;
     /* Balloon chase (src/ui/balloonhud.js). main.js says when it is up. */
     this.balloonHud = new BalloonHud(r);
+    /* The yard track on a house map (src/ui/yardhud.js). main.js says when
+     * it is up. */
+    this.yardHud = new YardHud(r);
 
     /*
      * THE STF MARK, FOUND: a layer of its own beside the score, for the
@@ -15174,6 +15178,16 @@ export class Ui {
     if (this.craftGate || freestyleOffered(this.settings.airframe, this.settings.map)) {
       return false;
     }
+    /* A whoop swapped in on Bardwell's yard track stays there: see
+     * `whoopYard` in src/maps/registry.js and seatWhoopForYard below. */
+    const here = MAPS.find((x) => x.id === this.settings.map);
+    if (here && here.whoopYard) {
+      if (this.mode !== 'freestyle') {
+        this.mode = 'freestyle';
+        return true;
+      }
+      return false;
+    }
     let moved = false;
     if (this.mode !== 'race') {
       this.mode = 'race';
@@ -18839,6 +18853,22 @@ export class Ui {
    * from. The gate and both pickers go through here so none of them can
    * leave the seat and the row that names it disagreeing.
    */
+  /*
+   * THE WHOOP, SEATED WHERE THE PILOT IS: the yes on Bardwell's swap card
+   * (src/ui/yardhud.js), the owner's ask of 2026-10-24. The aircraft is
+   * seated as every other change of aircraft seats it (seatAirframe), the
+   * map is left alone, and the shell, which asked, swaps the plant and puts
+   * the craft on the track's start.
+   */
+  seatWhoopForYard() {
+    if (this.settings.airframe === 'whoop65') {
+      return;
+    }
+    seatAirframe(this.settings, 'whoop65');
+    this.settings.airframeAsked = true;
+    saveSettings(this.settings);
+  }
+
   seatMap(id) {
     const m = MAPS.find((x) => x.id === id);
     if (m && m.mode === 'freestyle') {

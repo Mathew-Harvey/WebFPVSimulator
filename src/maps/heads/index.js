@@ -47,7 +47,9 @@
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
-import { headsLayout, basementFloorAt, BASEMENT_HOLE, FRAME, worldAt, PRINTS } from './heads.js';
+import { headsLayout, headsYardTrack, basementFloorAt, BASEMENT_HOLE, FRAME, worldAt, PRINTS } from './heads.js';
+import { floorQuads, FLOOR_BRANDS } from '../yardtrack/yardtrack.js';
+import { partnerCanvas, partnerSignReady } from '../../art/partnermark.js';
 import { headsDocument } from './yard.js';
 import { makeMan } from './mandraw.js';
 import {
@@ -381,6 +383,11 @@ function paintAtlas(sheets) {
     const { x, y, w, h } = CELLS[name];
     cut(cr, x, y, w, h);
   }
+  /* The yard track's floor logos, each brand's own painted sign. */
+  for (const p of FLOOR_BRANDS) {
+    const { x, y, w, h } = CELLS[p.slug];
+    g.drawImage(partnerCanvas(p), x, y, w, h);
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
@@ -484,6 +491,7 @@ export async function buildMap(shell, onProgress, options) {
    * while the world builds: the two sheets. The roster's signs are hung
    * by the built map (`markSpots`), which draws their own artwork. */
   const sheetsCame = Promise.all(SHEETS.map((s) => loadSheet(s.url)));
+  const floorCame = Promise.all(FLOOR_BRANDS.map((p) => partnerSignReady(p)));
   const L = headsLayout();
   const extra = {
     el: { id: 'heads', type: 'heads' },
@@ -503,12 +511,15 @@ export async function buildMap(shell, onProgress, options) {
    * the board counts its partner signs under (MARK_MAP_WORDS in src/main.js). */
   map.id = 'heads';
   map.source = 'heads';
+  /* The yard track (../yardtrack/), which the shell times. */
+  map.yardTrack = headsYardTrack();
   openGround(map.scene, 'plot', BASEMENT_HOLE);
   openGround(map.scene, 'terrain', BASEMENT_HOLE);
   /* The logos all over it and the garage's prints, two meshes on one
    * picture: unlit indoors as the prints always were, lit paint outside
    * as a partner's sign is (paintMaterial in src/art/stf.js). */
   const sheets = await sheetsCame;
+  await floorCame;
   const atlas = paintAtlas(sheets);
   const decals = placeDecals(L.parts).filter(Boolean);
   const patches = placePatches(L.parts).filter(Boolean).map((s) => ({ ...s, cell: 'patch' }));
@@ -516,7 +527,9 @@ export async function buildMap(shell, onProgress, options) {
     map: atlas, alphaTest: 0.5, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   map.scene.add(logoMesh([...printQuads(), ...decals.filter((d) => d.inside), ...patches.filter((s) => s.inside)], indoor, 'heads prints'));
-  const outdoor = logoMesh([...decals.filter((d) => !d.inside), ...patches.filter((s) => !s.inside)], paintMaterial(THREE, atlas), 'heads logos');
+  /* The yard track's floor logos ride the outdoor mesh, for nothing. */
+  const floor = floorQuads(headsYardTrack(), L.parts);
+  const outdoor = logoMesh([...decals.filter((d) => !d.inside), ...patches.filter((s) => !s.inside), ...floor], paintMaterial(THREE, atlas), 'heads logos');
   outdoor.receiveShadow = true;
   map.scene.add(outdoor);
   /* The 90% patches to be found, called out every time each comes back

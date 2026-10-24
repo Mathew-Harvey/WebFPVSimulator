@@ -138,6 +138,7 @@ import { hoverStickPercent, normaliseRates, ratesAreDefault, ratesDiff, ratesSum
 import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
 import { cliMap, composeConfig, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, readFcDump, tuneBody, writeFcDump } from './fc/dump.js';
 import { GATE_SCALE, MICRO_SCALE } from './game/track.js';
+import { YardRace, inAskZone } from './game/yardrace.js';
 import { setLifeScale } from './ui/scorehud.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK, SIM_ERR_BAD_ARG } from '../tests/lib/simmod.js';
@@ -2458,6 +2459,16 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The race: gate order, lap clock, best lap. On a freestyle map it is a
    * real object with no gates in it and it scores nothing. */
   let race = new Race(view.gates, view.trackClass ?? 'full');
+  /*
+   * THE YARD TRACK, a RaceGOW track standing in a house map's yard
+   * (src/maps/yardtrack/, src/game/yardrace.js), timed beside the run and
+   * never instead of it: the map stays a freestyle map, the run's clock and
+   * score go on, and this race only scores while the craft is near its
+   * track. Null on a map without one. `yardAsked` is whether Bardwell's
+   * swap card has had its answer for this landing.
+   */
+  let yard = view.yardTrack ? new YardRace(view.yardTrack) : null;
+  let yardAsked = false;
   /*
    * THE FREESTYLE SCORE, and it only ever runs on a freestyle map.
    *
@@ -5413,6 +5424,113 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  /*
+   * THE YARD TRACK'S RUN (see `yard` above). A fresh run starts it at the
+   * start gate again, filed under the run's own record key, and armed
+   * unless the map times the whoop only and a five inch is flying it.
+   */
+  function yardReset() {
+    yardAsked = false;
+    ui.yardHud.setAsking(false);
+    if (!yard) {
+      return;
+    }
+    yard.reset();
+    yard.armed = !view.yardWhoopOnly || runAirframe === 'whoop65';
+    yard.setRecordKey(recordKey());
+    yard.setWeight(runWeight);
+    yard.setTuned(offStock());
+  }
+
+  /* One frame's travel, scored as the race above scores its own: a beep
+   * at a gate and the lap called out loud. */
+  function yardStep(prev, curr, simNow, nowWall, allow) {
+    if (!yard) {
+      return;
+    }
+    const r = yard.step(prev, curr, simNow, nowWall, allow);
+    if (r.passed != null && typeof audio.event === 'function') {
+      audio.event('gate');
+    }
+    if (r.lap && ui.settings.sound) {
+      const yr = yard.race;
+      lapVoice.say(
+        lapCall(yr.log.length, yr.lastLapMs, yr.lastLapRecord),
+        (ui.settings.volume / 10) * (ui.settings.calloutLevel / 10),
+      );
+    }
+  }
+
+  /* A clean set down: on a whoop only track with a five inch, inside the
+   * painted zone, the swap is offered, once a landing. */
+  function yardLanded() {
+    if (!yard || !view.yardWhoopOnly || runAirframe === 'whoop65' || yardAsked || replayMode) {
+      return;
+    }
+    const p = shell.quad.position;
+    if (inAskZone(yard.track, p.x, p.z)) {
+      yardAsked = true;
+      ui.yardHud.setAsking(true);
+    }
+  }
+
+  /*
+   * The answer. No leaves the five inch where it is, and the track does not
+   * time it. Yes seats the whoop, swaps the plant as a change of aircraft
+   * between runs does (applySettings, under the title's mode for the one
+   * call), and puts the whoop on the track's start, nose to the start gate.
+   */
+  ui.yardHud.onAnswer = (yes) => {
+    ui.yardHud.setAsking(false);
+    if (!yes || !yard) {
+      return;
+    }
+    const t = yard.track;
+    ui.seatWhoopForYard();
+    const was = mode;
+    mode = 'title';
+    applySettings(ui.settings);
+    mode = was;
+    whenConfigReady(() => {
+      reset();
+      resetCraft({ x: t.start.x, z: t.start.z, yaw: t.start.yaw });
+      mode = 'flight';
+      ui.show('flight');
+      introMs = -1;
+    });
+  };
+
+  /* Once a frame: the HUD up near the track in flight, off everywhere
+   * else, and the swap card down the moment the quad is in the air. Not
+   * before the run's first takeoff, where the launch banner is in its
+   * place. */
+  function yardFrame(nowWall) {
+    const hud = ui.yardHud;
+    const on = Boolean(yard) && yard.near && !replayMode && airtimeMs > 0
+      && (mode === 'flight' || mode === 'paused') && (ui.screen === 'flight' || ui.screen === 'paused');
+    if (hud.asking && (!landed || mode !== 'flight' || ui.screen !== 'flight')) {
+      hud.setAsking(false);
+    }
+    hud.setVisible(on || hud.asking);
+    if (!yard || !(on || hud.asking)) {
+      return;
+    }
+    const yr = yard.race;
+    hud.update({
+      name: yard.track.name,
+      near: yard.near,
+      armed: yard.armed,
+      started: yard.started,
+      lapMs: yr.currentLapMs(simTimeMs),
+      next: yr.next,
+      gates: yr.gates.length,
+      lastMs: yr.lastLapMs,
+      bestMs: yr.bestMs,
+      record: yr.lastLapRecord,
+      flash: yr.flashText(nowWall),
+    });
+  }
+
   function reset() {
     /* A reset is the pilot taking the offer the fault banner made, so the
      * next fault is a new one and deserves to be reported in its turn. See
@@ -5479,6 +5597,7 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     resetCraft(null);
     race.reset();
+    yardReset();
     if (run3d !== was3d) {
       race.setTuned(offStock());
       race.setRecordKey(recordKey());
@@ -5629,6 +5748,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (!keepPlace) {
       race = new Race(view.gates, view.trackClass ?? 'full');
+      yard = view.yardTrack ? new YardRace(view.yardTrack) : null;
       race.setWeight(runWeight);
       race.setTuned(offStock());
       race.setRecordKey(recordKey());
@@ -9566,6 +9686,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * 2026-10-05 a prompt read a name that was not declared, and every
          * frame after it faulted.
          */
+        yardLanded();
         try {
           ui.noteLanding({
             course: ghostCourseKey(),
@@ -9930,6 +10051,7 @@ export async function boot({ loading, bootStart, mapId }) {
             }
           }
           ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
+          yardStep(racePrev, pCurr, simNow, nowWall, allowPass);
           /* A lap counted this frame is called out loud, in every run and
            * on the last lap of one too, which the results screen covers but
            * the ear still hears. Read off the entry the flash was written
@@ -10480,6 +10602,7 @@ export async function boot({ loading, bootStart, mapId }) {
       titleAcc -= ts;
       titleStepMs += ts > 100 ? 100 : ts;
     }
+    yardFrame(nowWall);
     if (worldLive) {
       if (view.onCue !== playCue) {
         view.onCue = playCue;
@@ -10851,7 +10974,10 @@ export async function boot({ loading, bootStart, mapId }) {
        * for the same reason the houses are, so its speed, altitude, gate
        * distance and the freestyle HUD's metres are divided by that. The
        * whoop's speed comes back on the OSD with it, as a whoop's speed. */
-      const whoopHud = mapById(view.id).hudScale || (view.trackClass === 'micro' ? MICRO_SCALE : 0);
+      /* And the whoop on Bardwell's yard track, which is built at a whoop
+       * room's size for the whoop drawn there. */
+      const whoopHud = mapById(view.id).hudScale || (view.trackClass === 'micro' ? MICRO_SCALE : 0)
+        || (view.yardWhoopOnly && runAirframe === 'whoop65' ? MICRO_SCALE : 0);
       setLifeScale(whoopHud);
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
@@ -11532,6 +11658,21 @@ export async function boot({ loading, bootStart, mapId }) {
    * `race` at call time; this one captured the object identity at boot, so
    * after a map swap it answered with the previous map's race. */
   window.__race = () => race;
+  /* The yard track's race and where it stands, for the harness. */
+  window.__yard = () => (yard ? {
+    id: yard.track.id,
+    near: yard.near,
+    armed: yard.armed,
+    started: yard.started,
+    next: yard.race.next,
+    laps: yard.race.laps.slice(),
+    asking: ui.yardHud.asking,
+    start: { ...yard.track.start },
+    centre: { ...yard.track.centre },
+    y: yard.track.y,
+    scale: yard.track.scale,
+    gates: yard.track.gates.map((g) => ({ ...g.position, heading: g.heading, virtual: g.virtual, centreY: g.aperture.centreY })),
+  } : null);
   /* The whoop room's race line, for the harness: its state, or null on a
    * world that has none. */
   window.__raceLine = () => (view && view.raceLine ? view.raceLine : null);

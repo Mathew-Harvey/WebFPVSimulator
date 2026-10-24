@@ -44,7 +44,8 @@ import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import { loblollyDraw } from '../../props/street.js';
-import { bardwellLayout, FRAME, worldAt } from './bardwell.js';
+import { bardwellLayout, bardwellYardTrack, FRAME, worldAt } from './bardwell.js';
+import { floorQuads } from '../yardtrack/yardtrack.js';
 import { bardwellDocument } from './yard.js';
 import {
   BRANDS, ATLAS_W, ATLAS_H, CELLS, placeSigns, placeDecals,
@@ -212,8 +213,14 @@ export async function buildMap(shell, onProgress, options) {
    * the board counts its partner signs under (MARK_MAP_WORDS in src/main.js). */
   map.id = 'bardwell';
   map.source = 'bardwell';
+  /* The yard track (../yardtrack/), which the shell times. */
+  map.yardTrack = bardwellYardTrack();
+  /* Timed on the whoop only: a five inch is offered the swap. */
+  map.yardWhoopOnly = true;
   const signs = await signsCame;
-  const decals = placeDecals(L.parts).filter(Boolean);
+  /* The yard track's floor logos (../yardtrack/) are the same picture's
+   * cells, quads in the same mesh, so they cost nothing. */
+  const decals = [...placeDecals(L.parts).filter(Boolean), ...floorQuads(bardwellYardTrack(), L.parts)];
   map.scene.add(logoMesh(decals, paintMaterial(THREE, paintAtlas(signs))));
   /* Stickers to find (./stickers.js), one mesh and one draw call, each an
    * achievement that plays one of Joshua Bardwell's clips (src/render/clips.js):

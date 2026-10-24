@@ -47,7 +47,9 @@
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
-import { houseLayout, basementFloorAt, STAIR_HOLE, FRAME, worldAt } from './house.js';
+import { houseLayout, houseYardTrack, basementFloorAt, STAIR_HOLE, FRAME, worldAt } from './house.js';
+import { floorQuads } from '../yardtrack/yardtrack.js';
+import { floorMesh } from '../yardtrack/floor.js';
 import { houseDocument } from './yard.js';
 import { makeNick } from './nickdraw.js';
 import { placeStickers, placeHallPicture, stickerMesh, STICKER_URL, STICKER_CROP, STICKER_WORD } from './stickers.js';
@@ -277,6 +279,8 @@ export async function buildMap(shell, onProgress, options) {
    * src/main.js, MARK_MAPS in the board's src/partners.js). */
   map.id = 'house';
   map.source = 'house';
+  /* The yard track (../yardtrack/), which the shell times. */
+  map.yardTrack = houseYardTrack();
   openGround(map.scene, 'plot', STAIR_HOLE);
   openGround(map.scene, 'terrain', STAIR_HOLE);
   /* Nick at his patio table (./nick.js, ./nickdraw.js): in the map's scene,
@@ -309,6 +313,10 @@ export async function buildMap(shell, onProgress, options) {
   const nb = stickerMesh(THREE, [...placed, placeHallPicture(L.parts)].filter(Boolean), sheet);
   nb.visible = false;
   map.scene.add(nb);
+  /* The yard track's floor logos on the back lawn (../yardtrack/floor.js):
+   * this house has no picture to cut them from, so their own small one,
+   * one draw call while the lawn is in view. */
+  map.scene.add(await floorMesh(THREE, floorQuads(houseYardTrack(), L.parts)));
   map.stickers = [
     ...map.stickers,
     ...placed.map((s) => ({

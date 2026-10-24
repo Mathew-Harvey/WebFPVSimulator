@@ -71845,3 +71845,11 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-24 00:20Z: "push to main" (the twelfth sticker on a goat, PR 140). Main had moved (Nick's crash call at 15 percent, the JSL combo); merged it in, no conflict beyond this file, `bardwell-check`, `clips-check` and `lint:preload` pass after the merge. Not flown, verify not run; the owner chose to fly it.
 
 - Owner's word, 2026-10-24 00:33Z: "push to main" (Effects and Callouts levels, sound levels as sliders in Settings, PR 137). Not heard on speakers, verify not run.
+
+## 2026-10-24 | picker | Course previews show the pipe gates, not the scorer's markings (branch only)
+
+- The ask, 02:37Z, Mat: "when i view a track in the track / map picker, i should not see all the invisable gates / green red overlays, i should just see the pvc pipe or physical parts".
+- Cause: `src/share/orbit.js` builds the course and never says which gate is next, so every gate kept the lit outline, halo and glow the race draws on its target. The picker, the board's cards and sheets, and the publish thumbnail are all that one page, so one fix covers them; the board's picker copy has no preview code of its own.
+- Now: `putOutGuidance` calls `view.setNextGate(-1, -1)` after the build, in the clip path and the share card and thumbnail path, the same call a clean replay makes in `main.js`. The green and red pane was already hidden until a gate is next. `CLIP_VERSION` 6 to 7 so clips already stored in browsers are recorded again. Thumbnails already stored on the board keep their old picture until the course is republished or backfilled.
+- Latency: no change in flight, the flight loop is untouched. In a preview it hides meshes that were being drawn, so slightly fewer draw calls. Not measured on a GPU.
+- Run: headless shot of board track trk-4e80980c before and after (`/mnt/project-files/track-preview-overlays/`). Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.

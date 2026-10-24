@@ -143,6 +143,21 @@ function showClip(blob) {
   host.append(made.node);
 }
 
+/*
+ * A PICTURE OF A COURSE SHOWS THE COURSE, NOT THE SCORER. A freshly built
+ * track has every gate's lit outline, halo and glow switched on, which is
+ * the race's own marking and means nothing in a thumbnail: it reads as
+ * yellow bars standing in the field where a pipe gate is. Naming no gate as
+ * next puts all of it out (the same call main.js makes for a clean replay),
+ * and the pipe, the sleeves and the props are untouched. Costs nothing per
+ * frame: it hides meshes that were being drawn.
+ */
+function putOutGuidance(view) {
+  if (view && typeof view.setNextGate === 'function') {
+    view.setNextGate(-1, -1);
+  }
+}
+
 function pinThumb(shell, view, THREE) {
   shell.renderer.setPixelRatio(1);
   shell.renderer.setSize(CLIP_W, CLIP_H, false);
@@ -426,6 +441,7 @@ async function renderAndCapture(mapId, shareId, key, mapShareId = '') {
   const view = await mod.buildMap(shell, (f) => {
     setStatus(`Building ${called}, ${Math.round(f * 100)} percent.`);
   }, { ...(options || {}), quality: 'low' });
+  putOutGuidance(view);
   pinThumb(shell, view, THREE);
   if (view.post) {
     view.post.setSize(CLIP_W, CLIP_H);
@@ -909,6 +925,7 @@ async function drawCard(mapId, shareId, mapShareId) {
     view = await mod.buildMap(shell, (f) => {
       setStatus(`Building ${called}, ${Math.round(f * 100)} percent.`);
     }, { ...options, quality: CARD_QUALITY });
+    putOutGuidance(view);
     shell.resize();
     if (view.post) {
       view.post.setSize(CARD_W, CARD_H);

@@ -59,6 +59,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -332,6 +333,29 @@ function alone(pack, spec) {
   return { svg: place(sticker, 0, 0, W, H), vw: W, vh: H, printW: W / 1000, printH: H / 1000 };
 }
 
+/*
+ * A PARTNER'S SIGN: the partner's own colour mark on a cream board with a
+ * thin deep frame and a sakura hem, printed at 1.5 m. The mark is read from
+ * the same file the map signs use, assets/partners, so there is one copy of
+ * it. Cream, because its tagline is black and would vanish on the deep
+ * poster grounds. Cut into the atlas, so it is no extra draw.
+ */
+function partnerSign(spec) {
+  const png = readFileSync(join(root, spec.file));
+  const [lw, lh] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+  const W = spec.widthMm;
+  const pad = 110;
+  const mw = W - pad * 2;
+  const mh = (mw * lh) / lw;
+  const H = mh + pad * 2;
+  const frame = 14;
+  let s = `<rect width="${W}" height="${f(H)}" fill="${DEEP}"/>`;
+  s += `<rect x="${frame}" y="${frame}" width="${W - frame * 2}" height="${f(H - frame * 2)}" fill="${CREAM}"/>`;
+  s += `<rect x="${frame * 2.5}" y="${frame * 2.5}" width="${W - frame * 5}" height="${f(H - frame * 5)}" fill="none" stroke="${SAKURA_DEEP}" stroke-width="6"/>`;
+  s += `<image x="${pad}" y="${pad}" width="${mw}" height="${f(mh)}" href="data:image/png;base64,${png.toString('base64')}"/>`;
+  return { svg: s, vw: W, vh: H, printW: W / 1000, printH: H / 1000 };
+}
+
 /* The cut vinyl wordmark, which the pack prints in one colour, cut in
  * another for a pale wall: the pack's cream would vanish on sakura plaster. */
 function vinyl(pack, spec) {
@@ -399,6 +423,7 @@ function pieces(pack) {
       id: 'bw', sticker: 'p05_5d_wave_strip', seed: 22, lengthMm: 4400, fill: 0.78, pad: 90, ground: SAKURA, petals: 30,
     }),
     nobori: alone(pack, { sticker: 'p02_2e', widthMm: 660 }),
+    partnerWebleed: partnerSign({ file: 'assets/partners/webleedfpv/colour.png', widthMm: 1500 }),
     wordmark: vinyl(pack, { sticker: 'p06_6a', widthMm: 3000, colour: HINOMARU }),
   };
 }

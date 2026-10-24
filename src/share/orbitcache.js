@@ -56,8 +56,12 @@ import { toPlain } from '../trackbuilder/model.js';
  * the only thing that changed, so nothing else in the key would have
  * invalidated them. Bumping this is how a change to the SHOT reaches
  * thumbnails that are already in IndexedDB.
+ *
+ * 7: a course's clip stopped showing the race's lit gate outlines, so every
+ * clip recorded before that has yellow and mint bars standing where a pipe
+ * gate is.
  */
-export const CLIP_VERSION = 6;
+export const CLIP_VERSION = 7;
 export const CLIP_W = 854;
 export const CLIP_H = 480;
 export const CLIP_FPS = 10;

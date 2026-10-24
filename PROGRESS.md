@@ -71856,3 +71856,32 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Run: `gif:selftest` 81 passed, `check:clip` 2604 passed, `lint:preload`, `lint:nouns`, and real renders of two board tracks with floor logos plus RaceGOW5 Tracks 1, 3, 5 and 6 (samples in `/mnt/project-files/track-gif-room/`). Not run: `npm run verify` (no physics, plant, ABI or build change), a browser button click in the builder. Not flown.
 
 - Owner's ask, 2026-10-24 02:43Z: "zoom into the track more plese". `ROOM_FIT_MARGIN` 1.18 to 1.1, the far wall is held only when it costs the track 1.2 times (was 1.5), and ground logos more than 1.3 track radii from the centre no longer widen the frame. Samples redrawn; 512 square files now 0.46 and 0.49 MB. Latency unchanged (export only).
+## 2026-10-24 | picker | Course previews show the pipe gates, not the scorer's markings (branch only)
+
+- The ask, 02:37Z, Mat: "when i view a track in the track / map picker, i should not see all the invisable gates / green red overlays, i should just see the pvc pipe or physical parts".
+- Cause: `src/share/orbit.js` builds the course and never says which gate is next, so every gate kept the lit outline, halo and glow the race draws on its target. The picker, the board's cards and sheets, and the publish thumbnail are all that one page, so one fix covers them; the board's picker copy has no preview code of its own.
+- Now: `putOutGuidance` calls `view.setNextGate(-1, -1)` after the build, in the clip path and the share card and thumbnail path, the same call a clean replay makes in `main.js`. The green and red pane was already hidden until a gate is next. `CLIP_VERSION` 6 to 7 so clips already stored in browsers are recorded again. Thumbnails already stored on the board keep their old picture until the course is republished or backfilled.
+- Latency: no change in flight, the flight loop is untouched. In a preview it hides meshes that were being drawn, so slightly fewer draw calls. Not measured on a GPU.
+- Run: headless shot of board track trk-4e80980c before and after (`/mnt/project-files/track-preview-overlays/`). Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+## 2026-10-24 | audio | Crash is a bass thud, not a smack (branch only)
+
+- The ask, 00:39Z, Mat: "the crash sound needs less harshness, more bass like a thud not a smack".
+- `event('crash')` in `src/render/audio.js`: noise lowpass now opens at 320 to 600 Hz (was 900 to 1800) and falls to 70 Hz (was 220), Q 0.7 (was 1.1), attack 12 ms (was 6), noise gain 3.0 (was 2.6). The pooled cue oscillator adds a body dropping 110 to 45 Hz over 0.22 s, gain 1.1 times level, gone by 0.34 s. No new nodes, no new file.
+- Risk: under 100 Hz is inaudible on laptop speakers, so the 320 to 600 Hz noise start and 110 Hz body carry it there; if it reads too quiet the noise gain is the knob. Ducking unchanged.
+- Latency: no change, same pooled voices, a few more scheduled automation points per crash. Not heard on speakers. `npm run verify` not run (no physics, ABI or build change).
+
+## 2026-10-24 | art | weBLEEDfpv's sign on the whoop room's east wall (branch only)
+
+- The ask, 02:30Z, Mat: "we need webleed logo in the whoop room on the wall". Read as the whoop room (MICRO_SCALE, the indoor racing room), not the freestyle houses, which already carry the sign.
+- Now: a 1.5 m cream board with the deep frame and a sakura inner line, carrying the partner's colour mark (`assets/partners/webleedfpv/colour.png`, the same file the map signs use), hangs on the east wall between the middle poster and the last, at the posters' height of 2.3 m, well above the 1.26 m rail. Cream because the mark's tagline is black. It is a new piece, `partnerWebleed`, in `scripts/wallart.js` (`partnerSign`) and one line in `HANGING`, so it rides the room's single wall art draw. `gen:wallart` rerun from the live pack: every other piece kept its place in the atlas, only the new one and the hash changed.
+- Not done: the front door copies `wallart-hang.js` and the atlas for its whoop act (see 2026-09-26); it shows the old room until it copies these two files and the atlas again.
+- Latency: no new draw call (the quad joins the art's one mesh), +2 triangles, no collider, no flight loop or input path touched. The atlas fetch grows from 361 KB to 383 KB (+22 KB, once, whoop rooms only, late loaded and never fatal). Checked by `micro:check`, `lint:preload` and a headless shot, proxies only.
+- Run: `node --check`, `micro:check`, `lint:preload`, `gen:wallart --pack=` (live pack), shots `/mnt/project-files/webleed-whoop-room/`. Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.
+
+- Owner's word, 2026-10-24 02:39Z: "push to main" (weBLEEDfpv's sign on the whoop room wall, PR 144). Main had not moved since the branch point (4e348cf), fast forward. Not flown, verify not run.
+
+- Owner's word, 2026-10-24 02:40Z: "push to main" (the crash thud, PR 142). Main had moved (wall art), merged in, only PROGRESS.md conflicted and both sides were kept. Not heard on speakers, verify not run.
+
+- Owner's word, 2026-10-24 02:45Z: "push to main" (course previews show the pipe gates, PR 146). Main had moved (crash thud, whoop room sign); merged in, no conflict. Not flown, verify not run.
+
+- Owner's word, 2026-10-24 02:48Z: "push to main" (whoop track GIFs in their room, PR 145). Main had moved (crash thud, weBLEEDfpv room sign, course preview markings); merged in, only PROGRESS.md conflicted, kept both sides, no conflict markers left. `gif:selftest`, `lint:preload` pass and a whoop export still renders after the merge. Not flown, verify not run.

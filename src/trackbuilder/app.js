@@ -4337,7 +4337,7 @@ export class App {
      * THE SETTING: the black stage the animation has always been shot on, or
      * the track on a race field, striped grass with the course's sponsors
      * painted on it as they are in the game. For a five inch track only: a
-     * whoop track is flown in a room, which this does not draw, so there is
+     * whoop track is drawn in its room whatever is chosen here, so there is
      * nothing to choose and the control is not there.
      *
      * The field is what the bigger sizes are for, so choosing High or Very high

@@ -391,6 +391,7 @@
     'src/trackbuilder/sharelink.js',
     'src/trackbuilder/snap.js',
     'src/trackbuilder/stage.js',
+    'src/trackbuilder/stageroom.js',
     'src/trackbuilder/start.js',
     'src/trackbuilder/storage.js',
     'src/trackbuilder/ui.js',

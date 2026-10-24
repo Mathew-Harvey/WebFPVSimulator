@@ -149,6 +149,31 @@ function loadLogos(doc) {
 }
 
 /*
+ * THE WALL ART A WHOOP ROOM IS HUNG WITH, decoded: the sim's poster atlas, its table of where each piece is, and the
+ * function that lays them on the walls. Imported and fetched here, only when a whoop track is being drawn in its room,
+ * so a five inch export and a page that never exports pay for none of it. A failure costs the posters and nothing
+ * else: the room goes up bare, as the sim's does, and says so on the console.
+ */
+async function loadRoomArt() {
+  try {
+    const [{ WALLART }, { wallArtGeometry }] = await Promise.all([
+      import('../art/wallart-atlas.js'),
+      import('../art/wallart-hang.js'),
+    ]);
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('the atlas did not decode'));
+      img.src = new URL(`../../${WALLART.url}?v=${WALLART.rev}`, import.meta.url).href;
+    });
+    return { table: WALLART, image, geometry: wallArtGeometry };
+  } catch (e) {
+    console.warn(`animate: the whoop room goes up without its posters: ${e && e.message}`);
+    return null;
+  }
+}
+
+/*
  * doc is a track document. The returned bytes are a complete .gif.
  *
  * onProgress(done, total) is called after every rendered frame of both
@@ -174,8 +199,11 @@ function loadLogos(doc) {
  * encoder's tables rather than anything that grows with the length of the lap.
  *
  * field, when true, sets the track on a race field with its sponsors' logos on
- * the grass in place of the black stage, and leaves the name off it. It is for a five inch track: a whoop
- * track is flown in a room, which this does not draw.
+ * the grass in place of the black stage, and leaves the name off it. It is for a five inch track.
+ *
+ * room is for a whoop track, which is flown in a room: it is on by default and draws the room, with the sim's
+ * posters on the walls and the course's ground logos on the mat, as a cutaway looked down into. room: false is the
+ * black stage a whoop export used to be shot on. A five inch track has no room, so it does nothing there.
  *
  * signal is an AbortSignal. Aborting it stops the render at the next frame,
  * frees the card, and rejects with an error named AbortError, which a caller
@@ -186,7 +214,7 @@ function loadLogos(doc) {
 export async function exportTrackGif(doc, {
   size = 512, width = size, height = size,
   frames = null, delayCs = 4, onProgress = null, camera = null, nameplate = true,
-  signal = null, field = false,
+  signal = null, field = false, room = true,
 } = {}) {
   if (!Number.isInteger(width) || !Number.isInteger(height)
     || Math.min(width, height) < MIN_EDGE || Math.max(width, height) > MAX_EDGE) {
@@ -204,7 +232,9 @@ export async function exportTrackGif(doc, {
   };
   stopIfAsked();
   const THREE = await import('three');
-  const logos = field ? await loadLogos(doc) : null;
+  const inRoom = room && !field && trackClassOf(doc) === 'micro';
+  const logos = field || inRoom ? await loadLogos(doc) : null;
+  const roomArt = inRoom ? await loadRoomArt() : null;
   stopIfAsked();
 
   /*
@@ -289,7 +319,7 @@ export async function exportTrackGif(doc, {
        * camera then frames the track alone, so it is bigger in the picture. */
       nameplate: nameplate && !field,
       detail: detailOf(width, height, renderer.capabilities.maxTextureSize),
-      field, logos,
+      field, logos, room: inRoom, roomArt,
     });
 
     const raw = new Uint8Array(width * height * 4);

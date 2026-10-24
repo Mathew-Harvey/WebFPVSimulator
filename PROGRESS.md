@@ -71818,3 +71818,9 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-23 23:56Z: "push to main" (Nick's crash call: one time in four, "Poor thing" only, PR 138). Fast forward onto main from 59156b2's parent, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
 
 - Owner's word, 2026-10-23 23:58Z: "push to main" (JSL freestyle combo, PR 139). Main had moved (Nick's crash call), merged in, no code conflict. Not flown, verify not run.
+
+## 2026-10-24 | tooling | Node floor raised to the 21 October security release
+
+- The ask, 00:04Z, Mat: check we are on the latest Node.js after the 21 October 2026 security release (TLS hostname bypass, Brotli out-of-bounds write, eMudhra CA removal). Patched lines: 22.23.4, 24.22.1, 26.12.1; 20 and 25 get no fix.
+- `engines.node` in `package.json` went from `>=22` to `>=22.23.4`. The simulator is a static site on Render and runs no Node in production, so this only covers the dev and check tooling. This container's own Node is 22.22.0, unpatched; the sim's checks make no untrusted TLS or Brotli calls, so nothing here is exposed, but update the local Node before the next long session.
+- Latency: none, nothing on the flight or input path. Not run: `npm run verify` (no physics, plant, ABI or build change). Nothing to fly.

@@ -39,6 +39,7 @@
  */
 
 export const PROVEN = {
+  'JSL': { runs: 9, landed: 9 },
   'Rubik\'s Cube': { runs: 9, landed: 9 },
   'Cubik\'s Rube': { runs: 9, landed: 9 },
   'Vanny Roll': { runs: 9, landed: 9 },

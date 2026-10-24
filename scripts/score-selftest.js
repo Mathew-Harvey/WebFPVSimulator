@@ -372,6 +372,18 @@ console.log('\nthe recogniser, on flown traces');
     names(fly([{ axis: R, turns: 0.5 }])) === '1/2 Roll');
   check('and a whole yaw spin still is',
     names(fly([{ axis: Y, turns: 1 }])) === 'Yaw Spin');
+  /* JSL: juicy flick, slingshot, laser flip. Back to back is one trick. */
+  check('juicy flick, slingshot and a yaw spin inverted is a JSL',
+    names(fly([
+      { axis: P, turns: 0.5 }, { axis: R, turns: 0.5 },
+      { axis: P, turns: -0.5 }, { axis: Y, turns: 1 },
+    ])) === 'JSL');
+  check('stop after the slingshot and the JSL is not paid',
+    !names(fly([
+      { axis: P, turns: 0.5 }, { axis: R, turns: 0.5 }, { axis: P, turns: -0.5 },
+    ])).includes('JSL'));
+  check('a juicy flick alone is still a Juicy Flick',
+    names(fly([{ axis: P, turns: 0.5 }, { axis: R, turns: 0.5 }])) === 'Juicy Flick');
   check('a 540 roll is a Roll and then the leftover half',
     names(fly([{ axis: R, turns: 1.5 }])) === 'Roll + 1/2 Roll');
 

@@ -71852,3 +71852,15 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - `event('crash')` in `src/render/audio.js`: noise lowpass now opens at 320 to 600 Hz (was 900 to 1800) and falls to 70 Hz (was 220), Q 0.7 (was 1.1), attack 12 ms (was 6), noise gain 3.0 (was 2.6). The pooled cue oscillator adds a body dropping 110 to 45 Hz over 0.22 s, gain 1.1 times level, gone by 0.34 s. No new nodes, no new file.
 - Risk: under 100 Hz is inaudible on laptop speakers, so the 320 to 600 Hz noise start and 110 Hz body carry it there; if it reads too quiet the noise gain is the knob. Ducking unchanged.
 - Latency: no change, same pooled voices, a few more scheduled automation points per crash. Not heard on speakers. `npm run verify` not run (no physics, ABI or build change).
+
+## 2026-10-24 | art | weBLEEDfpv's sign on the whoop room's east wall (branch only)
+
+- The ask, 02:30Z, Mat: "we need webleed logo in the whoop room on the wall". Read as the whoop room (MICRO_SCALE, the indoor racing room), not the freestyle houses, which already carry the sign.
+- Now: a 1.5 m cream board with the deep frame and a sakura inner line, carrying the partner's colour mark (`assets/partners/webleedfpv/colour.png`, the same file the map signs use), hangs on the east wall between the middle poster and the last, at the posters' height of 2.3 m, well above the 1.26 m rail. Cream because the mark's tagline is black. It is a new piece, `partnerWebleed`, in `scripts/wallart.js` (`partnerSign`) and one line in `HANGING`, so it rides the room's single wall art draw. `gen:wallart` rerun from the live pack: every other piece kept its place in the atlas, only the new one and the hash changed.
+- Not done: the front door copies `wallart-hang.js` and the atlas for its whoop act (see 2026-09-26); it shows the old room until it copies these two files and the atlas again.
+- Latency: no new draw call (the quad joins the art's one mesh), +2 triangles, no collider, no flight loop or input path touched. The atlas fetch grows from 361 KB to 383 KB (+22 KB, once, whoop rooms only, late loaded and never fatal). Checked by `micro:check`, `lint:preload` and a headless shot, proxies only.
+- Run: `node --check`, `micro:check`, `lint:preload`, `gen:wallart --pack=` (live pack), shots `/mnt/project-files/webleed-whoop-room/`. Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.
+
+- Owner's word, 2026-10-24 02:39Z: "push to main" (weBLEEDfpv's sign on the whoop room wall, PR 144). Main had not moved since the branch point (4e348cf), fast forward. Not flown, verify not run.
+
+- Owner's word, 2026-10-24 02:40Z: "push to main" (the crash thud, PR 142). Main had moved (wall art), merged in, only PROGRESS.md conflicted and both sides were kept. Not heard on speakers, verify not run.

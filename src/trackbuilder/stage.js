@@ -151,8 +151,8 @@ const ELEVATION = 40 * (Math.PI / 180);
  * picture is the track on the mat, which is still the room.
  */
 const ROOM_ELEVATION = 28 * (Math.PI / 180);
-const ROOM_WALL_SHRINK = 1.5;
-const ROOM_FIT_MARGIN = 1.18;
+const ROOM_WALL_SHRINK = 1.2;
+const ROOM_FIT_MARGIN = 1.1;
 const ROOM_WALL_SHOWN = 2.7;
 const FOV_DEG = 30;
 const FIT_MARGIN = 1.06;
@@ -1768,6 +1768,10 @@ export function buildStage(THREE, doc, path, {
     for (const el of doc.elements) {
       const mark = ELEMENTS[el.type]?.kind === KIND.DECAL ? logoForDecal(doc, el) : null;
       if (!mark || !logos.get(mark.id)) {
+        continue;
+      }
+      /* A mark well out from the track is left to the edge of the picture, or the track would shrink to hold it. */
+      if (Math.hypot(el.position.x - centre.x, -el.position.y - centre.z) > 1.3 * radius) {
         continue;
       }
       const hw = Math.max(0.1, el.dims.width) / 2;

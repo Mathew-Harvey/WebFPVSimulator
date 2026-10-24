@@ -1003,8 +1003,24 @@ export async function boot({ loading, bootStart, mapId }) {
    * will go looking for the wrong problem.
    */
   loading.start('board');
+  /*
+   * A TRACK FROM TINYLAPS arrives in the fragment, from the Open in WebFPV button on their
+   * editor (src/share/tinylaps.js). It is read here, before the board is asked anything,
+   * and it asks the board nothing: the whole track is in the address. When it carries one
+   * the board's fetch below is skipped.
+   */
+  let fromTinyLaps = null;
   try {
-    const fromUrl = await adoptShareFromLocation();
+    /* Fetched only by a link that carries one, so no other load downloads the reader. */
+    if (/(^|[#&])tinylaps=/.test(window.location.hash)) {
+      const { adoptTinyLapsFromLocation } = await import('./share/tinylaps.js');
+      fromTinyLaps = await adoptTinyLapsFromLocation();
+    }
+  } catch (e) {
+    ui.setBanner(`Could not open that TinyLaps track.\n${e.message ?? e}`, true);
+  }
+  try {
+    const fromUrl = fromTinyLaps || await adoptShareFromLocation();
     if (fromUrl) {
       /*
        * THE AIRCRAFT THE LINKED TRACK IS FOR, before anything reads a seat.

@@ -79,6 +79,7 @@ import { docFromQuery, trackLink } from './sharelink.js';
 import { buildSheet, sheetHtml, CORNERS } from './buildsheet.js';
 import { bundleFilename } from './bundle.js';
 import { importFpvEvents, looksLikeFpvEvents, reportLines } from './importfpv.js';
+import { importTinyLaps, looksLikeTinyLaps } from './importtinylaps.js';
 /* The road tool: every rule about nodes and where a car goes is in here,
  * pure, and this file only applies them as edits. */
 import {
@@ -5916,7 +5917,8 @@ export class App {
 
   /*
    * IMPORT, from a file or from text pasted in. A track from this builder is
-   * read by the reader every file is; one saved by the FPV Events designer is
+   * read by the reader every file is; one exported by TinyLaps names its format
+   * and is mapped by importtinylaps.js; one saved by the FPV Events designer is
    * recognised by its shape (an arena and a list of gates) and mapped by
    * importfpv.js, and what came across, what was changed and what was left out is
    * said in a dialog after it opens, because a converted track that silently lost
@@ -5925,6 +5927,19 @@ export class App {
   async importText(text) {
     if (!text || !String(text).trim()) {
       this.toast('There is nothing there to import.');
+      return;
+    }
+    /* A TinyLaps file names its own format, so it is asked first. Its id is new every
+     * time, as an FPV Events import's is: nothing about it is on the board yet. */
+    if (looksLikeTinyLaps(text)) {
+      const got = importTinyLaps(text);
+      if (got.error) {
+        this.toast(got.error);
+        return;
+      }
+      if (this.openIncoming(got.doc, `Imported "${got.doc.name}".`)) {
+        this.showImportReport(got.report);
+      }
       return;
     }
     if (looksLikeFpvEvents(text)) {
@@ -5960,7 +5975,7 @@ export class App {
     const body = document.createElement('div');
     const help = document.createElement('p');
     help.className = 'tb-help';
-    help.textContent = 'A .json track from this builder, or one from the FPV Events designer. Choose a file, or paste the text of one below.';
+    help.textContent = 'A .json track from this builder, from TinyLaps or from the FPV Events designer. Choose a file, or paste the text of one below.';
     const choose = document.createElement('button');
     choose.type = 'button';
     choose.className = 'tb-btn';

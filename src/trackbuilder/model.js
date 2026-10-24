@@ -41,7 +41,7 @@
 import {
   ELEMENTS, KIND, TUNING, TRACK_CLASSES, TRACK_CLASS_DEFAULT, FRAME_SIDES, apertureLevels, apertureShapeOf, openingSizesOf,
   defaultDims, defaultPitch, defaultZ, elementHeight, normalizeFlagSide, normalizeUnbuiltSides,
-  trackClassOf, tuningFor, docModeOf, POLE_SIDES, poleKey, unbuiltPolesOf, isTrafficType, clampByLimits, FLAG_SIDES, GATE_FLAG_H, GATE_STYLES,
+  trackClassOf, tuningFor, docModeOf, POLE_SIDES, PVC_TYPES, isPvcPipe, poleKey, unbuiltPolesOf, isTrafficType, clampByLimits, FLAG_SIDES, GATE_FLAG_H, GATE_STYLES,
   ROAD_NODES_MAX, ROAD_NODE_REACH, SINK_MAX, LETTER_TUBE_OD, isLetterPiece, letterDimsFor, letterOfPiece,
 } from './elements.js';
 import { apertureFrame, wrapAngle } from './geometry.js';
@@ -1474,6 +1474,10 @@ export function normalize(raw) {
     if (def.kind === KIND.APERTURE && rawEl.unbuilt === true) {
       el.unbuilt = true;
     }
+    /* A length of frame pipe rather than a race piece: see isPvcPipe in elements.js. */
+    if (PVC_TYPES.includes(el.type) && rawEl.pvc === true) {
+      el.pvc = true;
+    }
     /* The sides taken away one at a time: see FRAME_SIDES in elements.js.
      * Kept only on apertures and only when something is missing, so an
      * ordinary gate reads back the same shape it was written. A name that
@@ -1788,6 +1792,9 @@ export function toPlain(doc) {
       }
       if (el.unbuilt === true && def.kind === KIND.APERTURE) {
         out.unbuilt = true;
+      }
+      if (isPvcPipe(el)) {
+        out.pvc = true;
       }
       if (def.kind === KIND.APERTURE) {
         const sides = normalizeUnbuiltSides(el.unbuiltSides);

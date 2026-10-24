@@ -462,6 +462,24 @@ export function frameSidesOf(el) {
   };
 }
 
+/*
+ * A LENGTH OF FRAME PIPE, NOT A RACE PIECE.
+ *
+ * A pole is red because it is flown round, and a horizontal pole stands on two legs of its
+ * own because it is a hurdle. A track drawn in TinyLaps (src/trackbuilder/importtinylaps.js)
+ * is a frame of PVC whose uprights and bars hold the openings up, so its pipe is neither: an
+ * upright there is white and is not passed on a side, and a bar there rests on the uprights
+ * already under it, where legs of its own would stand in the middle of the arches. So a pole
+ * or a horizontal pole can say `pvc: true`, and is then drawn in the frame's white and built
+ * with no legs, by every renderer through this one function. Written only when true, so
+ * every pole and hurdle that exists is the JSON it was.
+ */
+export const PVC_TYPES = ['pole', 'horizontalPole'];
+
+export function isPvcPipe(el) {
+  return Boolean(el) && el.pvc === true && PVC_TYPES.includes(el.type);
+}
+
 /* True when some side has been taken away one at a time, or one opening's stretch of an upright
  * has. A gap in the lattice answers false: it has its own flag and its own code path. */
 export function hasMissingSides(el) {

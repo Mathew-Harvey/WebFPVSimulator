@@ -361,7 +361,8 @@ export function solidsOf(course) {
         b: [s.x + cx * half, s.baseY, s.z + cz * half],
         r: rb,
       });
-      if (s.baseY > rb + 0.05) {
+      /* A length of frame pipe stands on the frame's uprights and has no legs (isPvcPipe). */
+      if (s.baseY > rb + 0.05 && !s.pvc) {
         const legR = Math.max(0.012, Math.min(0.02, rb * 0.5));
         const lx = Math.max(0, w / 2 - Math.min(0.14, w * 0.1));
         for (const sg of [-1, 1]) {

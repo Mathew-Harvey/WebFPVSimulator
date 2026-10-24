@@ -70,6 +70,12 @@ const RUN_V = 7.5;
 const ACCEL = 14;
 const TURN = 6;
 const GONE_S = 4;
+/* A goat runs this long, then stands blowing for this long wherever it is,
+ * the craft close or not, so the sticker on one can be framed (the owner,
+ * 2026-10-24: "the goat needs to stop running after you've chased it for a
+ * bit otherwise i can't frame the sticker"). */
+const TIRE_S = 6;
+const TIRED_S = 14;
 
 /* One goat, facing +x, standing on y 0: vertices with a colour each. */
 function goatGeometry() {
@@ -162,7 +168,7 @@ export function makeGoats(craftAt = () => null, cue = () => {}) {
   mesh.instanceColor.needsUpdate = true;
 
   const goats = START.map(([px, py], i) => ({
-    i, x: toX(px), z: toZ(py), hd: 0, v: 0, mode: 'graze', t: 0, tx: 0, tz: 0, jit: 0, jitT: 0,
+    i, x: toX(px), z: toZ(py), hd: 0, v: 0, mode: 'graze', t: 0, run: 0, tx: 0, tz: 0, jit: 0, jitT: 0,
     phase: i * 0.37, rnd: stream(0x9e3779b1 + i * 7919), home: [toX(px), toZ(py)],
   }));
   const dummy = new THREE.Object3D();
@@ -178,6 +184,7 @@ export function makeGoats(craftAt = () => null, cue = () => {}) {
       g.v = 0;
       g.mode = 'graze';
       g.t = 0;
+      g.run = 0;
     }
   };
   reset();
@@ -216,6 +223,7 @@ export function makeGoats(craftAt = () => null, cue = () => {}) {
         g.mode = 'graze';
         g.v = 0;
         g.t = 0;
+        g.run = 0;
       }
       return;
     }
@@ -236,8 +244,14 @@ export function makeGoats(craftAt = () => null, cue = () => {}) {
     } else if (g.mode === 'flee' && dist > CALM) {
       g.mode = 'graze';
       g.t = 0;
+      g.run = 0;
     }
     if (g.mode === 'flee') {
+      g.run += dt;
+      if (g.run > TIRE_S) {
+        g.mode = 'tired';
+        g.t = TIRED_S;
+      }
       g.jitT -= dt;
       if (g.jitT <= 0) {
         g.jit = (g.rnd() - 0.5) * 1.8;
@@ -267,6 +281,15 @@ export function makeGoats(craftAt = () => null, cue = () => {}) {
       }
       turnTo(g, Math.atan2(-az, ax) + g.jit, dt);
       g.v = Math.min(RUN_V, g.v + ACCEL * dt);
+    } else if (g.mode === 'tired') {
+      /* Slows to a stop where it is, facing the way it ran. */
+      g.t -= dt;
+      g.v = Math.max(0, g.v - 10 * dt);
+      if (g.t <= 0) {
+        g.mode = 'graze';
+        g.t = 0;
+        g.run = 0;
+      }
     } else {
       g.t -= dt;
       if (g.t <= 0) {

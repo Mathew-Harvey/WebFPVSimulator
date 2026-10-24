@@ -71846,7 +71846,6 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-24 00:33Z: "push to main" (Effects and Callouts levels, sound levels as sliders in Settings, PR 137). Not heard on speakers, verify not run.
 
-<<<<<<< HEAD
 ## 2026-10-24 | picker | Course previews show the pipe gates, not the scorer's markings (branch only)
 
 - The ask, 02:37Z, Mat: "when i view a track in the track / map picker, i should not see all the invisable gates / green red overlays, i should just see the pvc pipe or physical parts".
@@ -71854,7 +71853,6 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Now: `putOutGuidance` calls `view.setNextGate(-1, -1)` after the build, in the clip path and the share card and thumbnail path, the same call a clean replay makes in `main.js`. The green and red pane was already hidden until a gate is next. `CLIP_VERSION` 6 to 7 so clips already stored in browsers are recorded again. Thumbnails already stored on the board keep their old picture until the course is republished or backfilled.
 - Latency: no change in flight, the flight loop is untouched. In a preview it hides meshes that were being drawn, so slightly fewer draw calls. Not measured on a GPU.
 - Run: headless shot of board track trk-4e80980c before and after (`/mnt/project-files/track-preview-overlays/`). Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
-=======
 ## 2026-10-24 | audio | Crash is a bass thud, not a smack (branch only)
 
 - The ask, 00:39Z, Mat: "the crash sound needs less harshness, more bass like a thud not a smack".
@@ -71873,6 +71871,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-24 02:39Z: "push to main" (weBLEEDfpv's sign on the whoop room wall, PR 144). Main had not moved since the branch point (4e348cf), fast forward. Not flown, verify not run.
 
 - Owner's word, 2026-10-24 02:40Z: "push to main" (the crash thud, PR 142). Main had moved (wall art), merged in, only PROGRESS.md conflicted and both sides were kept. Not heard on speakers, verify not run.
->>>>>>> origin/main
 
 - Owner's word, 2026-10-24 02:45Z: "push to main" (course previews show the pipe gates, PR 146). Main had moved (crash thud, whoop room sign); merged in, no conflict. Not flown, verify not run.

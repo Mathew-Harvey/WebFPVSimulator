@@ -2531,20 +2531,11 @@ function makeWeightSlider({ min, max, step, value, label }) {
     right: 'Steep',
     label: 'Camera angle, how far the camera tilts up',
   });
-  /* The sound levels, under the camera: the same settings the Sound screen
-   * holds, one row each, so a pilot on the ground can turn the crashes or the
-   * voices down without leaving the flight. */
-  const sound = {};
-  for (const [key, , left, right, label] of AIR_SOUND_ROWS) {
-    sound[key] = makeTuneRow({
-      min: 0, max: 10, step: 1, left, right, label,
-    });
-  }
   const tune = makeTuneGroup();
   const invite = makeInviteCard();
-  box.append(camera.box, ...Object.values(sound).map((r) => r.box), tune.hint, tune.box, invite.card);
+  box.append(camera.box, tune.hint, tune.box, invite.card);
   return {
-    box, range, cap, hint, dismiss, tune, invite, camera, sound,
+    box, range, cap, hint, dismiss, tune, invite, camera,
   };
 }
 
@@ -2604,14 +2595,6 @@ function makeInviteCard() {
  * names it: left, the air lets go and the quad coasts; right, it holds on.
  * MOTOR POWER runs Softer to Punchier for the same reason.
  */
-/* [setting, caption, left end, right end, aria label] for each sound slider
- * on the ground. The settings are zero to ten, as the Sound screen has them. */
-const AIR_SOUND_ROWS = [
-  ['motorLevel', 'Motors', 'Quiet', 'Loud', 'Motors, how loud the blade pass is'],
-  ['effectsLevel', 'Effects', 'Off', 'Loud', 'Effects, how loud crashes and clicks are'],
-  ['calloutLevel', 'Callouts', 'Off', 'Loud', 'Callouts, how loud the voices are'],
-];
-
 function makeTuneRow({
   min, max, step, left, right, label,
 }) {
@@ -3654,6 +3637,19 @@ function number(label, note, spec, cli, set) {
     },
     set,
   };
+}
+
+/* A sound level as a drag track with its number beside it, the Camera angle
+ * row's make: drag, arrow keys or type, one clamp, zero to ten. */
+function soundRow(label, note, s, key) {
+  const spec = {
+    cliMin: 0, cliMax: 10, scale: 1, decimals: 0, unit: '',
+  };
+  const it = number(label, note, spec, s[key], (v) => {
+    s[key] = Math.max(0, Math.min(10, Math.round(v)));
+  });
+  it.range = { min: 0, max: 10, step: 1 };
+  return it;
 }
 
 function stepper(label, note, value, adjust) {
@@ -9976,33 +9972,12 @@ export class Ui {
         ),
         { label: 'Sound', section: true },
         toggle('Sound', 'All sound: motors, wind, music, cues and every lap time called out loud.', s.sound, (v) => { s.sound = v; }),
-        stepper('Volume', 'Overall level, the lap call included. Zero to ten.', `${s.volume}`, (d) => {
-          s.volume = Math.max(0, Math.min(10, s.volume + d));
-        }),
-        stepper('Motors', 'The blade pass tone. You fly on its pitch, so keep some of it.', `${s.motorLevel}`, (d) => {
-          s.motorLevel = Math.max(0, Math.min(10, s.motorLevel + d));
-        }),
-        stepper('Wind', 'Air over the airframe. Rises with speed.', `${s.windLevel}`, (d) => {
-          s.windLevel = Math.max(0, Math.min(10, s.windLevel + d));
-        }),
-        stepper(
-          'Music',
-          'Recorded tracks in flight, and a quieter bed in the menus. One level for both. The skip buttons on screen jump a track.',
-          s.musicLevel > 0 ? `${s.musicLevel}` : 'Off',
-          (d) => { s.musicLevel = Math.max(0, Math.min(10, s.musicLevel + d)); },
-        ),
-        stepper(
-          'Effects',
-          'Crashes, gate clicks, grazes, landings and the menu taps. Zero silences them.',
-          s.effectsLevel > 0 ? `${s.effectsLevel}` : 'Off',
-          (d) => { s.effectsLevel = Math.max(0, Math.min(10, s.effectsLevel + d)); },
-        ),
-        stepper(
-          'Callouts',
-          'Every voice: the lap time said aloud, and the recorded lines on the maps. Zero silences them.',
-          s.calloutLevel > 0 ? `${s.calloutLevel}` : 'Off',
-          (d) => { s.calloutLevel = Math.max(0, Math.min(10, s.calloutLevel + d)); },
-        ),
+        soundRow('Volume', 'Overall level, the lap call included. Zero to ten.', s, 'volume'),
+        soundRow('Motors', 'The blade pass tone. You fly on its pitch, so keep some of it.', s, 'motorLevel'),
+        soundRow('Wind', 'Air over the airframe. Rises with speed.', s, 'windLevel'),
+        soundRow('Music', 'Recorded tracks in flight, and a quieter bed in the menus. One level for both. The skip buttons on screen jump a track.', s, 'musicLevel'),
+        soundRow('Effects', 'Crashes, gate clicks, grazes, landings and the menu taps. Zero silences them.', s, 'effectsLevel'),
+        soundRow('Callouts', 'Every voice: the lap time said aloud, and the recorded lines on the maps. Zero silences them.', s, 'calloutLevel'),
         choice(
           'Music track',
           s.musicTrack === 'rotation'
@@ -17029,7 +17004,6 @@ export class Ui {
       this.dismissAirHint();
     });
     this.bindCameraSlider();
-    this.bindSoundSliders();
     this.bindTuneSliders();
     this.bindInvite();
     this.paintAir();
@@ -17070,42 +17044,6 @@ export class Ui {
     range.addEventListener('pointerup', release);
     range.addEventListener('pointercancel', release);
     range.addEventListener('change', release);
-  }
-
-  /* The sound sliders on the ground, bound like the camera slider. A drag is
-   * live and writes the same setting the Sound screen's steppers write;
-   * applySettings carries it to the audio graph through applyMix. */
-  bindSoundSliders() {
-    const rows = this.osdAir && this.osdAir.sound;
-    if (!rows) {
-      return;
-    }
-    for (const [key] of AIR_SOUND_ROWS) {
-      const { range } = rows[key];
-      range.addEventListener('input', () => {
-        const v = Math.max(0, Math.min(10, Math.round(Number(range.value))));
-        if (v === this.settings[key]) {
-          return;
-        }
-        this.settings[key] = v;
-        this.paintAir();
-        saveSettings(this.settings);
-        if (this.onSettings) {
-          this.onSettings(this.settings);
-        }
-      });
-      range.addEventListener('pointerdown', (e) => e.stopPropagation());
-      range.addEventListener('click', (e) => e.stopPropagation());
-      range.tabIndex = -1;
-      const release = () => {
-        if (document.activeElement === range) {
-          range.blur();
-        }
-      };
-      range.addEventListener('pointerup', release);
-      range.addEventListener('pointercancel', release);
-      range.addEventListener('change', release);
-    }
   }
 
   /*
@@ -17572,16 +17510,6 @@ export class Ui {
       }
       cam.cap.textContent = `Camera angle ${a}°`;
       Ui.klass(cam.cap, a === CAMERA_ANGLE_DEFAULT ? 'osd-air-cap is-stock' : 'osd-air-cap');
-    }
-    for (const [key, name] of AIR_SOUND_ROWS) {
-      const row = air.sound && air.sound[key];
-      if (row) {
-        const lv = Math.max(0, Math.min(10, Math.round(Number(this.settings[key]))));
-        if (Number(row.range.value) !== lv) {
-          row.range.value = String(lv);
-        }
-        row.cap.textContent = `${name} ${lv > 0 ? lv : 'Off'}`;
-      }
     }
     /*
      * And the two tuning sliders, when the mode is on. Hidden is the whole

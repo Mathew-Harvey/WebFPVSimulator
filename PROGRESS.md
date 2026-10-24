@@ -71826,3 +71826,10 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-23 23:56Z: "push to main" (Nick's crash call: one time in four, "Poor thing" only, PR 138). Fast forward onto main from 59156b2's parent, nothing had landed since. Not flown, verify not run; the owner chose to fly it.
 
 - Owner's word, 2026-10-23 23:58Z: "push to main" (JSL freestyle combo, PR 139). Main had moved (Nick's crash call), merged in, no code conflict. Not flown, verify not run.
+
+## 2026-10-24 | ui | Sound levels as sliders in Settings, off the landed overlay
+
+- The ask, 00:20Z, Mat: "put th esliders in the menu system where the current sound option are not on thee landed sliders".
+- Reverted the landed overlay's Motors, Effects and Callouts rows (`AIR_SOUND_ROWS`, `bindSoundSliders` and their `paintAir` lines are gone). In Settings, Sound, the Volume, Motors, Wind, Music, Effects and Callouts rows are now drag tracks with the number beside them, the Camera angle row's make (`soundRow` in `src/ui/ui.js`): drag, arrows or type, zero to ten. Settings, defaults and audio wiring are as in the entry above.
+- Latency: no change, settings UI only. Merged main into the branch (PROGRESS.md conflict kept both sides).
+- Run: `node --check`, headless shots of Settings, Sound (`/mnt/project-files/sound-sliders/menu-sound-sliders.png`); the landed overlay is back to Weight and Camera angle. Not run: `npm run verify`. Not heard or flown.

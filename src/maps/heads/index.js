@@ -48,8 +48,7 @@ import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import { headsLayout, headsYardTrack, basementFloorAt, BASEMENT_HOLE, FRAME, worldAt, PRINTS } from './heads.js';
-import { floorQuads, FLOOR_BRANDS } from '../yardtrack/yardtrack.js';
-import { partnerCanvas, partnerSignReady } from '../../art/partnermark.js';
+import { floorQuads, loadFloorMarks, FLOOR_MARKS } from '../yardtrack/yardtrack.js';
 import { headsDocument } from './yard.js';
 import { makeMan } from './mandraw.js';
 import {
@@ -263,7 +262,7 @@ function loadSheet(url) {
  * own stickers, every one, bombed over the board with two patches and the
  * logo on top.
  */
-function paintAtlas(sheets) {
+function paintAtlas(sheets, marks) {
   const c = document.createElement('canvas');
   c.width = ATLAS_W;
   c.height = ATLAS_H;
@@ -383,10 +382,12 @@ function paintAtlas(sheets) {
     const { x, y, w, h } = CELLS[name];
     cut(cr, x, y, w, h);
   }
-  /* The yard track's floor logos, each brand's own painted sign. */
-  for (const p of FLOOR_BRANDS) {
-    const { x, y, w, h } = CELLS[p.slug];
-    g.drawImage(partnerCanvas(p), x, y, w, h);
+  /* The yard track's two floor pictures, those that came. */
+  for (const m of FLOOR_MARKS) {
+    const { x, y, w, h } = CELLS[m.key];
+    if (marks[m.key]) {
+      g.drawImage(marks[m.key], x, y, w, h);
+    }
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -491,7 +492,7 @@ export async function buildMap(shell, onProgress, options) {
    * while the world builds: the two sheets. The roster's signs are hung
    * by the built map (`markSpots`), which draws their own artwork. */
   const sheetsCame = Promise.all(SHEETS.map((s) => loadSheet(s.url)));
-  const floorCame = Promise.all(FLOOR_BRANDS.map((p) => partnerSignReady(p)));
+  const floorCame = loadFloorMarks();
   const L = headsLayout();
   const extra = {
     el: { id: 'heads', type: 'heads' },
@@ -519,8 +520,7 @@ export async function buildMap(shell, onProgress, options) {
    * picture: unlit indoors as the prints always were, lit paint outside
    * as a partner's sign is (paintMaterial in src/art/stf.js). */
   const sheets = await sheetsCame;
-  await floorCame;
-  const atlas = paintAtlas(sheets);
+  const atlas = paintAtlas(sheets, await floorCame);
   const decals = placeDecals(L.parts).filter(Boolean);
   const patches = placePatches(L.parts).filter(Boolean).map((s) => ({ ...s, cell: 'patch' }));
   const indoor = new THREE.MeshBasicMaterial({

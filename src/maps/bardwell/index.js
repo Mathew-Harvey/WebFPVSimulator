@@ -45,7 +45,7 @@ import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import { loblollyDraw } from '../../props/street.js';
 import { bardwellLayout, bardwellYardTrack, FRAME, worldAt } from './bardwell.js';
-import { floorQuads } from '../yardtrack/yardtrack.js';
+import { floorQuads, loadFloorMarks, FLOOR_MARKS } from '../yardtrack/yardtrack.js';
 import { bardwellDocument } from './yard.js';
 import {
   BRANDS, ATLAS_W, ATLAS_H, CELLS, placeSigns, placeDecals,
@@ -132,7 +132,7 @@ function drawPlace(kit, L) {
 /* The atlas (CELLS in ./logos.js) painted: each roster sign copied whole
  * from its own canvas (src/art/partnermark.js), once its artwork has
  * come. */
-function paintAtlas(signs) {
+function paintAtlas(signs, marks) {
   const c = document.createElement('canvas');
   c.width = ATLAS_W;
   c.height = ATLAS_H;
@@ -142,6 +142,13 @@ function paintAtlas(signs) {
     const { x, y, w, h } = CELLS[p.slug];
     g.drawImage(signs[i], x, y, w, h);
   });
+  /* The yard track's two floor pictures, those that came. */
+  for (const m of FLOOR_MARKS) {
+    const { x, y, w, h } = CELLS[m.key];
+    if (marks[m.key]) {
+      g.drawImage(marks[m.key], x, y, w, h);
+    }
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
@@ -195,6 +202,7 @@ export async function buildMap(shell, onProgress, options) {
   /* Every roster sign's artwork, asked for first so it comes while the
    * world builds. */
   const signsCame = Promise.all(BRANDS.map((p) => partnerSignReady(p)));
+  const marksCame = loadFloorMarks();
   const L = bardwellLayout();
   const extra = {
     el: { id: 'bardwell', type: 'bardwell' },
@@ -221,7 +229,7 @@ export async function buildMap(shell, onProgress, options) {
   /* The yard track's floor logos (../yardtrack/) are the same picture's
    * cells, quads in the same mesh, so they cost nothing. */
   const decals = [...placeDecals(L.parts).filter(Boolean), ...floorQuads(bardwellYardTrack(), L.parts)];
-  map.scene.add(logoMesh(decals, paintMaterial(THREE, paintAtlas(signs))));
+  map.scene.add(logoMesh(decals, paintMaterial(THREE, paintAtlas(signs, await marksCame))));
   /* Stickers to find (./stickers.js), one mesh and one draw call, each an
    * achievement that plays one of Joshua Bardwell's clips (src/render/clips.js):
    * his voice is this map's alone. */

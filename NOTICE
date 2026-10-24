@@ -93,6 +93,18 @@ font file is copied into this repository: the generator uses the pack's own
 font block to lay the art out and keeps only the rendered pixels, and the OFL
 governs the font software, not images made with it.
 
+## The yard track's floor marks
+
+    Files       assets/yardtrack/minifigs.webp, assets/yardtrack/racegow6.webp
+    Licence     NOT GPLv3. MiniFigs.me's logo and the RaceGOW6 logo are their
+                owners' marks.
+
+The two pictures painted on the floor of RaceGOW6 Track 3 where it stands in
+the house maps' yards (src/maps/yardtrack/). They are the two ground logos the
+track's author published with it on the board (trk-85c74ecc), decoded from
+that document and saved as WebP, unchanged but for the format, and are here to
+paint that track as published and for nothing else.
+
 ## The partners' marks
 
     Files       assets/partners/, two per partner, named in

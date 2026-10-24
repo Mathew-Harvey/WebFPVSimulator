@@ -65,8 +65,6 @@ import { PIPE_OD } from '../../trackbuilder/racegow.js';
 import { Parts } from '../../props/parts.js';
 import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
 import { courseDocument, GROUND_LOGOS, COURSE_ID, COURSE_NAME } from './course.js';
-import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
-import { signAspect } from '../../art/partnermark.js';
 
 export { COURSE_ID, COURSE_NAME };
 
@@ -351,48 +349,47 @@ function askZone(x0, x1, z0, z1, sx, sz, logos, pad) {
 export { leftTrack, inAskZone } from '../../game/yardrace.js';
 
 /*
- * THE SPONSORS ON THE FLOOR: the four partners in the big ground logo
- * piece, one after another down its length, and Konex Drone, the sponsor,
- * in the small one. Each { slug, cx, cz, yaw, w, h }: its middle in the
- * world, the heading its top faces (the course's north, so it reads from
- * the start), and its size, from `aspect(slug)`, the sign's own width over
- * height (src/art/partnermark.js signAspect). The yard says how high.
+ * THE TRACK'S OWN FLOOR LOGOS, the two its author published with it on the
+ * board: MiniFigs.me on the big ground logo piece and RaceGOW6 on the small
+ * one (the owner, 2026-10-24: "when i said the sponsors i meant minifig.me
+ * and racegow only, the other logos as before"). The pictures are the
+ * board's own, saved as WebP (assets/yardtrack/, NOTICE), fetched only by
+ * the three maps that stand the track.
+ *
+ * The board stretches each picture over its piece. These are fitted inside
+ * instead, at their own shape, because the big piece is long and MiniFigs
+ * is wide: it lies down the piece's length, reading from the course's east
+ * side with its top to the west, which is how it fills the piece, and
+ * RaceGOW6 lies across the small one with its top to the course's north.
+ * The small piece lies over the big one's north end, so MiniFigs keeps to
+ * what of the big one shows.
  */
-export const FLOOR_PARTNERS = ['gds', 'mantisfpv', 'wcmrc', 'webleedfpv'];
-export const FLOOR_SPONSOR = 'konexdrone';
+export const FLOOR_MARKS = [
+  {
+    key: 'minifigs', url: new URL('../../../assets/yardtrack/minifigs.webp', import.meta.url).href, aspect: 624 / 400, piece: 0, along: true,
+  },
+  {
+    key: 'racegow6', url: new URL('../../../assets/yardtrack/racegow6.webp', import.meta.url).href, aspect: 287 / 180, piece: 1, along: false,
+  },
+];
 
-export function floorLogos(t, aspect) {
-  const out = [];
-  /* The pieces of `rect` along its length from `lo` to `hi`, metres from
-   * its middle, the first nearest the start, which is the course's south:
-   * +z before the turn. */
-  const lay = (rect, slugs, lo, hi) => {
-    const along = (hi - lo) / slugs.length;
-    const q = quarterSinCos(quarterTurns(rect.yaw));
-    slugs.forEach((slug, i) => {
-      const a = aspect(slug);
-      let w = rect.w * 0.9;
-      let h = w / a;
-      if (h > along * 0.86) {
-        h = along * 0.86;
-        w = h * a;
-      }
-      const off = hi - along * (i + 0.5);
-      out.push({
-        slug,
-        cx: rect.x + off * q.s,
-        cz: rect.z + off * q.c,
-        yaw: rect.yaw,
-        w,
-        h,
-      });
-    });
-  };
-  /* The author laid the small piece over one end of the big one, so the
-   * partners go down what of the big one it leaves showing. */
+/* How much of its piece's room a picture may fill. */
+const FLOOR_FILL = 0.94;
+
+/*
+ * Each floor mark as { key, cx, cz, up, w, h }: its middle in the world, the
+ * world way its top faces, and its width and height. The yard says how high
+ * (floorQuad).
+ */
+export function floorLogos(t) {
   const [big, small] = t.logos;
   const q = quarterSinCos(quarterTurns(big.yaw));
-  const at = (small.x - big.x) * q.s + (small.z - big.z) * q.c;
+  /* The course's north and west in the world: -z and -x turned. */
+  const north = [-q.s, 0, -q.c];
+  const west = [-q.c, 0, q.s];
+  /* What of the big piece shows: from lo to hi along its length (north
+   * positive), metres from its middle. */
+  const at = (small.x - big.x) * north[0] + (small.z - big.z) * north[2];
   let lo = -big.d / 2;
   let hi = big.d / 2;
   if (at < 0) {
@@ -400,25 +397,41 @@ export function floorLogos(t, aspect) {
   } else {
     hi = Math.min(hi, at - small.d / 2);
   }
-  lay(big, FLOOR_PARTNERS, lo, hi);
-  lay(small, [FLOOR_SPONSOR], -small.d / 2, small.d / 2);
-  return out;
+  return FLOOR_MARKS.map((m) => {
+    const rect = m.piece === 0 ? big : small;
+    const mid = m.piece === 0 ? (lo + hi) / 2 : 0;
+    const len = m.piece === 0 ? hi - lo : rect.d;
+    /* The room across the picture and up it. */
+    const across = (m.along ? len : rect.w) * FLOOR_FILL;
+    const upward = (m.along ? rect.w : len) * FLOOR_FILL;
+    let w = across;
+    let h = w / m.aspect;
+    if (h > upward) {
+      h = upward;
+      w = h * m.aspect;
+    }
+    return {
+      key: m.key,
+      cx: rect.x + mid * north[0],
+      cz: rect.z + mid * north[2],
+      up: m.along ? west : north,
+      w,
+      h,
+    };
+  });
 }
 
 /*
- * A floor logo as the quad a logo mesh takes ({ p, n, up, w, h }), lying
- * over the highest drawn top under any of it below `below`, PROUD over it:
- * the way the houses' own ground logos are aimed down (aimLogo in
+ * A floor logo as the quad a logo mesh takes ({ cell, p, n, up, w, h }),
+ * lying over the highest drawn top under any of it below `below`, PROUD
+ * over it: the way the houses' own ground logos are aimed down (aimLogo in
  * ../heads/logos.js), so it never shares a plane with the paint it lies on.
  */
 const PROUD = 0.012;
 export function floorQuad(parts, f, below) {
-  const q = quarterSinCos(quarterTurns(f.yaw));
-  /* The picture's top faces the course's north, -z turned by the yaw. */
-  const up = [-q.s, 0, -q.c];
-  const across = Math.abs(up[0]) > 0.5;
-  const hx = across ? f.h / 2 : f.w / 2;
-  const hz = across ? f.w / 2 : f.h / 2;
+  const sideways = Math.abs(f.up[0]) > 0.5;
+  const hx = sideways ? f.h / 2 : f.w / 2;
+  const hz = sideways ? f.w / 2 : f.h / 2;
   let y = 0;
   for (const b of parts) {
     if (b.t !== 'box' || !b.draw) {
@@ -429,19 +442,29 @@ export function floorQuad(parts, f, below) {
     }
   }
   return {
-    cell: f.slug, slug: f.slug, p: [f.cx, y + PROUD, f.cz], n: [0, 1, 0], up, w: f.w, h: f.h,
+    cell: f.key, p: [f.cx, y + PROUD, f.cz], n: [0, 1, 0], up: f.up, w: f.w, h: f.h,
   };
 }
 
-/* The roster's entry for each floor brand, in the order they are laid. */
-const ROSTER = new Map([...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS].map((p) => [p.slug, p]));
-export const FLOOR_BRANDS = [...FLOOR_PARTNERS, FLOOR_SPONSOR].map((slug) => ROSTER.get(slug));
-
 /* Every floor logo of `t` as a logo mesh's quad, on whatever `parts` draw
- * under it, its `cell` the brand's slug. */
+ * under it, its `cell` the mark's key. */
 export function floorQuads(t, parts) {
-  const aspect = (slug) => signAspect(ROSTER.get(slug));
-  return floorLogos(t, aspect).map((f) => floorQuad(parts, f, t.y + 0.05));
+  return floorLogos(t).map((f) => floorQuad(parts, f, t.y + 0.05));
+}
+
+/*
+ * The floor marks' pictures, loaded, as { key: image }: an image that did
+ * not come is left out, and its quad is drawn from a blank cell. Never
+ * rejects. Browser only.
+ */
+export function loadFloorMarks() {
+  return Promise.all(FLOOR_MARKS.map((m) => new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => resolve([m.key, img]);
+    img.onerror = () => resolve([m.key, null]);
+    img.src = m.url;
+  }))).then((pairs) => Object.fromEntries(pairs.filter(([, img]) => img)));
 }
 
 /*

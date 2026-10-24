@@ -11,8 +11,8 @@
  *                through the race: every station in order, three laps
  *   3. leave     flying out of reach resets the race; a disarmed race (a
  *                five inch at Bardwell's) scores nothing
- *   4. floor     the five floor logos inside the board's two ground logo
- *                pieces, apart, flat on the grass
+ *   4. floor     MiniFigs.me and RaceGOW6 inside the board's two ground
+ *                logo pieces, apart, flat on the grass, at their own shape
  *   5. zone      Bardwell's landing zone holds the track and not the
  *                map's own start
  *
@@ -37,7 +37,7 @@
 import { headsLayout, headsYardTrack } from '../src/maps/heads/heads.js';
 import { houseLayout, houseYardTrack } from '../src/maps/house/house.js';
 import { bardwellLayout, bardwellYardTrack, worldAt as bardwellAt, SPAWN } from '../src/maps/bardwell/bardwell.js';
-import { floorQuads, inAskZone } from '../src/maps/yardtrack/yardtrack.js';
+import { floorQuads, inAskZone, FLOOR_MARKS } from '../src/maps/yardtrack/yardtrack.js';
 import { YardRace } from '../src/game/yardrace.js';
 
 /* The race keeps its best lap in the browser's storage. */
@@ -180,7 +180,8 @@ for (const M of MAPS) {
   });
   const inside = (f, g) => f[0] >= g[0] - 1e-6 && f[1] >= g[1] - 1e-6 && f[2] <= g[2] + 1e-6 && f[3] <= g[3] + 1e-6;
   const feet = quads.map(foot);
-  check('five floor logos', quads.length === 5, quads.map((q) => q.slug).join(', '));
+  check('two floor logos, the track\'s own', quads.map((q) => q.cell).join() === FLOOR_MARKS.map((m) => m.key).join(), quads.map((q) => q.cell).join(', '));
+  check('each at its picture\'s shape', quads.every((q, i) => Math.abs(q.w / q.h - FLOOR_MARKS[i].aspect) < 1e-9));
   check('each inside a ground logo piece', feet.every((f) => rects.some((g) => inside(f, g))));
   let apart = true;
   for (let i = 0; i < feet.length; i += 1) {

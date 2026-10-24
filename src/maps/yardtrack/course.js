@@ -8,12 +8,13 @@
  * A copy and not a fetch, for two reasons. The house maps are built with no
  * network in the loop, so a board that is down cannot take the track out of
  * the yard; and the owner pays for what is served, so the track's two logo
- * pictures (380 kB of PNG in the board's copy) are left out. Only the
- * pieces and the flying order are kept, in the document's own RaceGOW
- * metres, exactly as published. The two ground logo pieces are kept as
- * rectangles and nothing more: they are where the yard lays its sponsors'
- * logos on the floor (./yardtrack.js). A later change to the board's copy
- * does not reach here until this file is copied again.
+ * pictures (380 kB of PNG in the board's copy) are not carried in the
+ * document but saved beside it as WebP (assets/yardtrack/, 44 kB). Only
+ * the pieces and the flying order are kept, in the document's own RaceGOW
+ * metres, exactly as published, and the two ground logo pieces as
+ * rectangles, where the yard lays those pictures (./yardtrack.js). A later
+ * change to the board's copy does not reach here until this file is copied
+ * again.
  *
  * This file is part of WebFPVSimulator.
  *

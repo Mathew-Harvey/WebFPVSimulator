@@ -148,6 +148,7 @@
     'src/game/trackdoc.js',
     'src/game/trickdetect.js',
     'src/game/tricks.js',
+    'src/game/yardrace.js',
     'src/input/input.js',
     'src/input/link.js',
     'src/input/padgate.js',
@@ -271,6 +272,9 @@
     'src/maps/specials.js',
     'src/maps/specials/infinityloops.js',
     'src/maps/stickermesh.js',
+    'src/maps/yardtrack/course.js',
+    'src/maps/yardtrack/floor.js',
+    'src/maps/yardtrack/yardtrack.js',
     'src/partners/patrons.js',
     'src/partners/roster.js',
     'src/picker/picker.js',
@@ -417,6 +421,7 @@
     'src/ui/tuneinvite.js',
     'src/ui/tunesdialog.js',
     'src/ui/ui.js',
+    'src/ui/yardhud.js',
     'src/units.js',
   ];
   const PRELOAD = {

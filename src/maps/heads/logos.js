@@ -63,8 +63,7 @@
 import { FRAME, FL, FM, FU } from './heads.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
 import { SHEETS, STICKERS, ACHIEVEMENT } from '../specials/infinityloops.js';
-import { FLOOR_BRANDS } from '../yardtrack/yardtrack.js';
-import { signAspect } from '../../art/partnermark.js';
+import { FLOOR_MARKS } from '../yardtrack/yardtrack.js';
 
 export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS];
 export { SHEETS, ACHIEVEMENT };
@@ -98,8 +97,8 @@ const cropAspect = (c) => (c.w * SHEET_PX[c.sheet][0]) / (c.h * SHEET_PX[c.sheet
  * top; under them a column packer stands the two Infinity Loops logos
  * and the patch in columns, each its own aspect and PAD apart, so a mip
  * level does not bleed one into the next. The roster's signs are not in
- * it, each is on the map once as its own sign, but for the five the yard
- * track lies on the lawn (../yardtrack/), cells named by their slugs.
+ * it, each is on the map once as its own sign. The yard track's two floor
+ * pictures are (../yardtrack/), cells named by their keys.
  */
 export const ATLAS_W = 2048;
 export const ATLAS_H = 1024;
@@ -118,7 +117,7 @@ function packAtlas() {
     { name: 'il', w: SIGN_PX, a: cropAspect(IL_LOGO) },
     { name: 'patch', w: 256, a: cropAspect(PATCH) },
     { name: 'ilOutline', w: 491, a: cropAspect(IL_OUTLINE) },
-    ...FLOOR_BRANDS.map((p) => ({ name: p.slug, w: SIGN_PX, a: signAspect(p) })),
+    ...FLOOR_MARKS.map((m) => ({ name: m.key, w: SIGN_PX, a: m.aspect })),
   ];
   const top = 436;
   let x = 0;

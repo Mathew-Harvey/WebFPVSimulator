@@ -40,6 +40,7 @@
 import { FRAME, STANDS, ROAD } from './bardwell.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
 import { signAspect } from '../../art/partnermark.js';
+import { FLOOR_MARKS } from '../yardtrack/yardtrack.js';
 
 export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS];
 const BY_SLUG = new Map(BRANDS.map((p) => [p.slug, p]));
@@ -52,7 +53,7 @@ const BY_SLUG = new Map(BRANDS.map((p) => [p.slug, p]));
  * apart so a mip level does not bleed one into the next: { x, y, w, h }
  * in pixels, y down. */
 export const ATLAS_W = 1024;
-export const ATLAS_H = 512;
+export const ATLAS_H = 768;
 const PAD = 4;
 const SIGN_PX = 320;
 
@@ -60,16 +61,22 @@ function packAtlas() {
   const cells = {};
   let x = 0;
   let y = 0;
-  for (const p of BRANDS) {
-    const h = Math.round(SIGN_PX / signAspect(p));
+  /* The roster's signs, and the yard track's two floor pictures
+   * (../yardtrack/), each cell named by the slug or the key. */
+  const items = [
+    ...BRANDS.map((p) => ({ name: p.slug, a: signAspect(p) })),
+    ...FLOOR_MARKS.map((m) => ({ name: m.key, a: m.aspect })),
+  ];
+  for (const it of items) {
+    const h = Math.round(SIGN_PX / it.a);
     if (y + h > ATLAS_H) {
       x += SIGN_PX + PAD;
       y = 0;
     }
     if (x + SIGN_PX > ATLAS_W || y + h > ATLAS_H) {
-      throw new Error(`bardwell logos: ${p.slug} does not fit in the atlas`);
+      throw new Error(`bardwell logos: ${it.name} does not fit in the atlas`);
     }
-    cells[p.slug] = { x, y, w: SIGN_PX, h };
+    cells[it.name] = { x, y, w: SIGN_PX, h };
     y += h + PAD;
   }
   return cells;

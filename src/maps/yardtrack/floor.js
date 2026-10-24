@@ -1,10 +1,10 @@
 /*
- * floor.js: the yard track's floor logos for a map with no picture of its
- * own to put them in (Nick Burns' house, whose one sheet is his stickers).
- * One small atlas of the five floor brands' signs and one lit mesh of
- * their quads, so one draw call, and only while it is in view: the mesh
- * is a few metres across and the renderer leaves it out when the camera
- * is not looking at the lawn. Heads' and Bardwell's places cut these
+ * floor.js: the yard track's floor logos, MiniFigs.me and RaceGOW6, for a
+ * map with no picture of its own to put them in (Nick Burns' house, whose
+ * one sheet is his stickers). One small atlas of the two pictures and one
+ * lit mesh of their quads, so one draw call, and only while it is in view:
+ * the mesh is a few metres across and the renderer leaves it out when the
+ * camera is not looking at the lawn. Heads' and Bardwell's places cut these
  * logos from the atlas they already draw, for nothing.
  *
  * This file is part of WebFPVSimulator.
@@ -23,38 +23,39 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { FLOOR_BRANDS } from './yardtrack.js';
-import { signAspect, partnerCanvas, partnerSignReady } from '../../art/partnermark.js';
+import { FLOOR_MARKS, loadFloorMarks } from './yardtrack.js';
 import { paintMaterial } from '../../art/stf.js';
 
 const W = 512;
 const PAD = 4;
 
-/* The five signs stacked in one column, each its own aspect. */
+/* The two pictures stacked in one column, each its own aspect. */
 function cells() {
   const out = {};
   let y = 0;
-  for (const p of FLOOR_BRANDS) {
-    const h = Math.round(W / signAspect(p));
-    out[p.slug] = { x: 0, y, w: W, h };
+  for (const m of FLOOR_MARKS) {
+    const h = Math.round(W / m.aspect);
+    out[m.key] = { x: 0, y, w: W, h };
     y += h + PAD;
   }
   return { out, H: y };
 }
 
 /* The floor logos `quads` (floorQuads in ./yardtrack.js) as one mesh,
- * once every sign's artwork has come. */
+ * once the pictures have come. */
 export async function floorMesh(THREE, quads) {
-  await Promise.all(FLOOR_BRANDS.map((p) => partnerSignReady(p)));
+  const marks = await loadFloorMarks();
   const { out: CELLS, H } = cells();
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
   const g = c.getContext('2d');
   g.imageSmoothingQuality = 'high';
-  for (const p of FLOOR_BRANDS) {
-    const { x, y, w, h } = CELLS[p.slug];
-    g.drawImage(partnerCanvas(p), x, y, w, h);
+  for (const m of FLOOR_MARKS) {
+    const { x, y, w, h } = CELLS[m.key];
+    if (marks[m.key]) {
+      g.drawImage(marks[m.key], x, y, w, h);
+    }
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;

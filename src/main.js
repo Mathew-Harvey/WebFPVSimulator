@@ -1003,6 +1003,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * will go looking for the wrong problem.
    */
   loading.start('board');
+  /* The pictures a TinyLaps track this tab just published still has to draw. */
+  let tinyLapsPictures = null;
   /*
    * A TRACK FROM TINYLAPS arrives in the fragment, from the Open in WebFPV button on their
    * editor (src/share/tinylaps.js). The whole track is in the address; it is published to
@@ -1017,6 +1019,7 @@ export async function boot({ loading, bootStart, mapId }) {
       const { adoptTinyLapsFromLocation } = await import('./share/tinylaps.js');
       const got = await adoptTinyLapsFromLocation();
       fromTinyLaps = got ? got.share : null;
+      tinyLapsPictures = got ? got.pictures : null;
       if (got && got.offline) {
         ui.setBanner(`Flying the TinyLaps track here only: it could not be saved to the board.\n${got.offline}`, true);
       }
@@ -9118,6 +9121,14 @@ export async function boot({ loading, bootStart, mapId }) {
      * A replay is a capture, not a flight, and counts nothing, as it sends
      * no visit.
      */
+    /* A TinyLaps track this tab just published draws its pictures while the craft is
+     * parked, and never in flight: see picturesFor in src/share/tinylaps.js. */
+    if (tinyLapsPictures) {
+      tinyLapsPictures.tick(landed || mode !== 'flight', nowWall);
+      if (tinyLapsPictures.done) {
+        tinyLapsPictures = null;
+      }
+    }
     if (!replayMode) {
       flightStats.tick(nowWall, {
         started: flownThisRun,

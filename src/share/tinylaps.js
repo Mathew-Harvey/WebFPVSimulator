@@ -164,8 +164,16 @@ export async function publishTinyLaps(made, { origin = boardOrigin(), board = nu
   }
   const document = heldDoc ? { ...doc, id: `trk-${randomHex()}` } : doc;
   const got = await within(api.publishTrack({ author, document, origin, tags: ['race'] }), BOARD_WAIT_MS);
+  const id = got.id || document.id;
   return {
-    id: got.id || document.id, name: got.name || document.name, author: got.author || author, board: origin, document,
+    id,
+    name: got.name || document.name,
+    author: got.author || author,
+    board: origin,
+    document,
+    /* The key, held in memory only and only for the pictures (picturesFor, below): it is
+     * never written down, so nobody owns the track once this tab is gone. */
+    pictures: got.editKey ? { id, board: origin, editKey: String(got.editKey) } : null,
   };
 }
 
@@ -202,8 +210,12 @@ export async function adoptTinyLapsFromLocation() {
   }
   let share = made.share;
   let offline = '';
+  let pictures = null;
   try {
-    share = await publishTinyLaps(made);
+    const put = await publishTinyLaps(made);
+    pictures = put.pictures;
+    share = { ...put };
+    delete share.pictures;
   } catch (e) {
     offline = e && e.message ? e.message : String(e);
   }
@@ -211,7 +223,83 @@ export async function adoptTinyLapsFromLocation() {
     throw new Error('This browser would not store that track, so it cannot be flown here.');
   }
   forgetTinyLapsLink();
-  return { share, offline };
+  return { share, offline, pictures: pictures ? picturesFor(pictures) : null };
+}
+
+/*
+ * THE TRACK'S PICTURES: the share card and the picker's thumbnail, which every other track
+ * gets from the browser that publishes it (sendShareCard in ./card.js). Without them a
+ * TinyLaps track was a letter on a dark card in the Tracks and Maps pickers, among tracks
+ * with pictures. They are drawn here, by the tab that just published it, with the key the
+ * board handed back, because the key is what the board asks for and it is kept nowhere.
+ *
+ * ONLY WHILE NOBODY IS FLYING. Drawing a card builds the room a second time in a hidden
+ * frame, which is seconds of the main thread, and the project's rule is that nothing costs
+ * a frame in flight. So tick() is told every frame whether the craft is parked (on the pad,
+ * landed, paused or in a menu): after a moment parked the drawing starts, a takeoff stops
+ * it and takes the frame away, and the next time the craft is parked it starts again. Three
+ * failures that were not a takeoff and it gives up; the track still flies, with a letter.
+ */
+const PARKED_BEFORE_MS = 1500;
+const PICTURE_TRIES = 3;
+
+export function picturesFor({ id, board, editKey }) {
+  let parkedSince = -1;
+  let running = null;
+  let failures = 0;
+  let done = false;
+  const start = () => {
+    const controller = new AbortController();
+    running = controller;
+    import('./card.js')
+      .then(({ sendShareCard }) => sendShareCard({
+        kind: 'track', id, board, editKey, signal: controller.signal,
+      }))
+      .then((r) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (r && r.ok) {
+          done = true;
+        } else {
+          failures += 1;
+          console.warn('The TinyLaps track\'s picture was not drawn.', r && r.error);
+        }
+      }, (e) => {
+        failures += controller.signal.aborted ? 0 : 1;
+        console.warn('The TinyLaps track\'s picture was not drawn.', e);
+      })
+      .finally(() => {
+        if (running === controller) {
+          running = null;
+        }
+      });
+  };
+  return {
+    get done() {
+      return done || failures >= PICTURE_TRIES;
+    },
+    /* Once a frame: nothing allocated unless a drawing starts or stops. */
+    tick(parked, nowMs) {
+      if (done || failures >= PICTURE_TRIES) {
+        return;
+      }
+      if (!parked) {
+        parkedSince = -1;
+        if (running) {
+          running.abort();
+          running = null;
+        }
+        return;
+      }
+      if (parkedSince < 0) {
+        parkedSince = nowMs;
+      }
+      if (!running && nowMs - parkedSince >= PARKED_BEFORE_MS) {
+        start();
+      }
+    },
+  };
 }
 
 /*

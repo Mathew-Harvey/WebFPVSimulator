@@ -71931,3 +71931,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Found on the way and fixed: the #tinylaps= fragment stayed in the address, so every load of that tab read it again. A reload after picking another track from the menu put the TinyLaps track back over it and asked the board about it again. `forgetTinyLapsLink` in `src/share/tinylaps.js` takes it out once the seat is written; a reload flies the seat, as for any track picked in the menu. Shot: link, pick Dives from the menu, reload, the launch card says Dives.
 - Latency: none. One replaceState at boot on a TinyLaps link.
 - Run: `check:clip`, `lint:preload`, headless shots against the board's server on a scratch store seeded with the live board's three documents. Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.
+
+- Owner's word, 2026-10-24 09:42Z: "push to main" (TinyLaps link leaves the address once it is seated, PR 149). Main had not moved since the branch point (b041723), fast forward. Not flown, verify not run. The original report (TinyLaps tracks not flying from the Tracks menu) is still not reproduced and Mat has not said what he sees.

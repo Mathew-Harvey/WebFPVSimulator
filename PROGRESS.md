@@ -71845,3 +71845,10 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Owner's word, 2026-10-24 00:20Z: "push to main" (the twelfth sticker on a goat, PR 140). Main had moved (Nick's crash call at 15 percent, the JSL combo); merged it in, no conflict beyond this file, `bardwell-check`, `clips-check` and `lint:preload` pass after the merge. Not flown, verify not run; the owner chose to fly it.
 
 - Owner's word, 2026-10-24 00:33Z: "push to main" (Effects and Callouts levels, sound levels as sliders in Settings, PR 137). Not heard on speakers, verify not run.
+
+## 2026-10-24 | audio | Crash is a bass thud, not a smack (branch only)
+
+- The ask, 00:39Z, Mat: "the crash sound needs less harshness, more bass like a thud not a smack".
+- `event('crash')` in `src/render/audio.js`: noise lowpass now opens at 320 to 600 Hz (was 900 to 1800) and falls to 70 Hz (was 220), Q 0.7 (was 1.1), attack 12 ms (was 6), noise gain 3.0 (was 2.6). The pooled cue oscillator adds a body dropping 110 to 45 Hz over 0.22 s, gain 1.1 times level, gone by 0.34 s. No new nodes, no new file.
+- Risk: under 100 Hz is inaudible on laptop speakers, so the 320 to 600 Hz noise start and 110 Hz body carry it there; if it reads too quiet the noise gain is the knob. Ducking unchanged.
+- Latency: no change, same pooled voices, a few more scheduled automation points per crash. Not heard on speakers. `npm run verify` not run (no physics, ABI or build change).

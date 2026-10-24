@@ -63,7 +63,7 @@ import {
 } from './community.js';
 import { importFpvEvents, looksLikeFpvEvents, reportLines } from './importfpv.js';
 import { importTinyLaps, looksLikeTinyLaps } from './importtinylaps.js';
-import { tinyLapsFromHash, shareFromTinyLapsText } from '../share/tinylaps.js';
+import { tinyLapsFromHash, shareFromTinyLapsText, publishTinyLaps } from '../share/tinylaps.js';
 import {
   passList, tagsOf, reuseOf, lanesOf, focusFor, aroundPass, stretchOf, flyAgain, apertureAt,
   removeLastPass, MAX_PASSES, spreadTags, arrowLanes,
@@ -8838,6 +8838,42 @@ async function suiteImportTinyLaps() {
   check('the same file is the same seat, so its local best carries over', again.share.id === seat.share.id);
   check('a fragment with no track is nothing, and a damaged payload is nothing', tinyLapsFromHash('#track=z.abc') === null
     && (await decodeText('z.!!!')) === null);
+
+  /* Straight to the board (the owner's rule of 2026-10-24), against a board made here. */
+  const fakeBoard = (heldDoc) => {
+    const calls = [];
+    return {
+      calls,
+      fetchTrackDocument: async (id) => {
+        calls.push(['get', id]);
+        if (!heldDoc) {
+          const err = new Error('That track is not on the board.');
+          err.status = 404;
+          throw err;
+        }
+        return { id, name: heldDoc.name, author: 'kwayzu', document: heldDoc };
+      },
+      publishTrack: async ({ author, document, tags }) => {
+        calls.push(['post', document.id, author, tags.join()]);
+        return { id: document.id, name: document.name, author, editKey: 'not kept' };
+      },
+    };
+  };
+  const fresh = fakeBoard(null);
+  const put = await publishTinyLaps(seat, { origin: 'https://board.test', board: fresh });
+  check('a track the board has not seen is published under its own id, the designer as author, tagged race, and seated as a board track',
+    fresh.calls.length === 2 && fresh.calls[1][1] === seat.share.document.id && fresh.calls[1][2] === 'kwayzu' && fresh.calls[1][3] === 'race'
+    && put.id === seat.share.document.id && put.board === 'https://board.test' && !put.stock && !('editKey' in put), JSON.stringify(fresh.calls));
+  const known = fakeBoard(seat.share.document);
+  const met = await publishTinyLaps(seat, { origin: 'https://board.test', board: known });
+  check('the same file sent again is found at its id and not published twice', known.calls.length === 1 && met.id === seat.share.document.id);
+  const other = fakeBoard({ ...seat.share.document, sequence: seat.share.document.sequence.slice(0, 1) });
+  const moved = await publishTinyLaps(seat, { origin: 'https://board.test', board: other });
+  check('a different track that happens to hold that id is left alone, and this one gets an id of its own', other.calls.length === 2
+    && /^trk-[0-9a-f]{8}$/.test(moved.id) && moved.id !== seat.share.document.id);
+  const nameless = fakeBoard(null);
+  await publishTinyLaps(shareFromTinyLapsText(text, 'k'), { board: nameless, origin: 'https://board.test' });
+  check('a designer name the board would refuse is published as TinyLaps', nameless.calls[1][2] === 'TinyLaps');
 }
 
 function suiteImportFpv() {

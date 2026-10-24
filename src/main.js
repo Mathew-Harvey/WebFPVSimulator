@@ -1005,16 +1005,21 @@ export async function boot({ loading, bootStart, mapId }) {
   loading.start('board');
   /*
    * A TRACK FROM TINYLAPS arrives in the fragment, from the Open in WebFPV button on their
-   * editor (src/share/tinylaps.js). It is read here, before the board is asked anything,
-   * and it asks the board nothing: the whole track is in the address. When it carries one
-   * the board's fetch below is skipped.
+   * editor (src/share/tinylaps.js). The whole track is in the address; it is published to
+   * the board (or found there, when the same file was sent before) and seated as that board
+   * track, so the ?share= fetch below is skipped. A board that does not answer leaves it
+   * seated here only, and the banner says so.
    */
   let fromTinyLaps = null;
   try {
     /* Fetched only by a link that carries one, so no other load downloads the reader. */
     if (/(^|[#&])tinylaps=/.test(window.location.hash)) {
       const { adoptTinyLapsFromLocation } = await import('./share/tinylaps.js');
-      fromTinyLaps = await adoptTinyLapsFromLocation();
+      const got = await adoptTinyLapsFromLocation();
+      fromTinyLaps = got ? got.share : null;
+      if (got && got.offline) {
+        ui.setBanner(`Flying the TinyLaps track here only: it could not be saved to the board.\n${got.offline}`, true);
+      }
     }
   } catch (e) {
     ui.setBanner(`Could not open that TinyLaps track.\n${e.message ?? e}`, true);

@@ -2,7 +2,7 @@
 
 A button for [TinyLaps](https://tinylaps.kwayzu.com/) that opens the track being drawn in
 the [WebFPV](https://webfpv.org) simulator. One press and the pilot is on the start pad of
-that track with a whoop, ready to throttle up. No account, no upload, no second step.
+that track with a whoop, ready to throttle up. No account, no key, no second step.
 
 ## What is in here
 
@@ -89,10 +89,26 @@ own `CompressionStream('deflate-raw')`) and written in base64url. A browser with
 works the same. `&by=` is optional. A typical track is a link of one or two thousand
 characters.
 
-The part after `#` is never sent to any server, by the browser or by anything in between.
-So nothing is uploaded and nothing is stored, on TinyLaps' side or on WebFPV's. The track
-goes from the editor to the simulator inside the pilot's own browser, and it is not
-published anywhere unless the pilot publishes it from WebFPV's track builder later.
+The part after `#` is never sent to any server, by the browser or by anything in between,
+so TinyLaps uploads nothing and needs no API key: the track goes from the editor to the
+simulator inside the pilot's own browser.
+
+## On WebFPV's board
+
+The simulator then publishes the track to WebFPV's public board
+(<https://webfpv.org/board/>), before the pilot takes off, so every track sent from TinyLaps
+is kept and listed there:
+
+- Pilots post times on it, and it shows in the board's list of tracks like any other.
+- It is credited to the `author` name when one is given and the board accepts it (2 to 24
+  letters, digits, spaces, dots, dashes or underscores), and to TinyLaps otherwise.
+- The same file sent again is the same board track, with its times. A changed track is a
+  new one.
+- Anybody can pick it on the board and press Edit to open it in WebFPV's track builder.
+  Nobody owns it, not even the first pilot to press the button, so an edit is published as
+  that pilot's own copy; WebFPV's admins can change the track itself.
+- If the board does not answer, the pilot still flies at once, and a line on screen says
+  the track could not be saved to the board this time.
 
 Anything that can build that link can use it: the script is a convenience, not a
 requirement, and the link format is the contract.
@@ -114,9 +130,7 @@ The simulator reads the export with its own importer and builds a whoop track in
 - The build is centred in the hall. Anything that would stand outside it is left out.
 - It is credited as from TinyLaps, with the designer's name when `author` is given.
 
-The pilot can open it in WebFPV's track builder from the simulator's menu, where the same
-JSON can also be imported by hand (More, Import), and from there publish it to WebFPV's
-board to post times on it.
+The same JSON can also be imported by hand in WebFPV's track builder (More, Import).
 
 Limits are TinyLaps' own: 2,000 pipes, 256 race points and 2 MB of text. A file over them,
 or one with no checkpoint to fly through, opens the simulator with a sentence saying why.
@@ -130,6 +144,7 @@ simulator, for testing against one; leave it out in production.
 
 ## Licence
 
-`webfpv-button.js` and `demo.html` are part of WebFPVSimulator and are free software under
-the GNU General Public License, version 3 or later. WebFPV and the WebFPV marks belong to
-the WebFPV project.
+`webfpv-button.js` and `demo.html` are released under the MIT licence (the notice is at the
+top of `webfpv-button.js`), so they can go into TinyLaps whatever its own licence is. The
+simulator they open is GPLv3, which MIT is compatible with. WebFPV and the WebFPV marks
+belong to the WebFPV project.

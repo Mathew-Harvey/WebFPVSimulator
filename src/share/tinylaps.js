@@ -11,17 +11,16 @@
  * of the text, or `j.` and the text itself, base64url either way. The button script that
  * writes it is ours too, handed to TinyLaps with its instructions (TINYLAPS.md).
  *
- * WHY THE FRAGMENT AND NOT THE BOARD. A browser never sends the fragment to a server, so
- * the track needs no account, no upload and no storage, nothing is published that the
- * pilot did not choose to publish, and not one byte of it is served by anything of ours.
- * The board sleeps between visits and waking it takes seconds, and the press has to land
- * in the air. ?fly=1 and ?map=custom do the rest, as the builder's Fly this track does.
+ * WHY THE FRAGMENT. A browser never sends the fragment to a server, so the link needs no
+ * API key and no upload endpoint of TinyLaps' own, and TinyLaps' page does nothing but
+ * deflate a text and open a tab. ?fly=1 and ?map=custom do the rest, as the builder's Fly
+ * this track does.
  *
- * WHAT IT BECOMES. importtinylaps.js turns the file into a whoop track, and it is seated
- * the way a track that ships with the simulator is (`stock` in session.js): nothing on the
- * board, no time posted against it, and the builder opens it as a copy, which the pilot can
- * publish from there. Its id is a hash of the file, so the same track opened again is the
- * same seat and keeps its local best, and a changed track is a new one.
+ * WHAT IT BECOMES. importtinylaps.js turns the file into a whoop track, and this page
+ * publishes it to the board before flying it (publishTinyLaps, below), so it is a board
+ * track like any other: times post against it, it is listed, and anyone can open it in the
+ * builder. Its id is a hash of the file, so the same track sent again is the same board
+ * track, and a changed track is a new one.
  *
  * READING ONE IS HOSTILE INPUT. decodeText caps what inflates, the importer never throws
  * and caps what it reads, and anything that is not a TinyLaps track is said on the banner.
@@ -45,6 +44,9 @@
 import { decodeText } from '../trackbuilder/sharelink.js';
 import { importTinyLaps } from '../trackbuilder/importtinylaps.js';
 import { writeShareImport } from './session.js';
+import { boardOrigin, fetchTrackDocument, publishTrack } from './board.js';
+import { layoutFingerprint } from './listing.js';
+import { normaliseName } from './pilot.js';
 
 export const TINYLAPS_KEY = 'tinylaps';
 
@@ -102,10 +104,83 @@ export function shareFromTinyLapsText(text, by = '') {
   };
 }
 
+/* A name the board takes for an author (its NAME_RE, mirrored in ./pilot.js), or the
+ * editor's own name when the link gives none or one it would refuse. */
+function boardAuthor(by) {
+  return normaliseName(by) || 'TinyLaps';
+}
+
+/* A promise that gives up after `ms`, so a board that is asleep costs the pilot a bounded
+ * wait and never the flight. */
+function within(promise, ms) {
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('The board took too long to answer.')), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+const BOARD_WAIT_MS = 20000;
+
 /*
- * A TinyLaps track in this page's address becomes the course it will fly. Returns the
- * seat that was written, null when the address carries none, and throws with a sentence
- * for the banner when it carries one that cannot be flown.
+ * ON THE BOARD, EVERY TIME. The owner's rule of 2026-10-24: "imports go straight to the
+ * board, so we capture all tracks kwayzu sends us", and anyone can open one in the builder
+ * from the board like any other track. So the track is published before it is flown, under
+ * the designer's name when the link carries one the board takes and TinyLaps otherwise.
+ *
+ * ONCE PER FILE. The document's id is the hash of the file, so the same track sent twice is
+ * found at its id and flown there, its times with it, and the board holds it once. A track at
+ * that id that is not this layout (two files whose hashes agree, which is rare and not
+ * impossible) is left alone and this one is published under a fresh id.
+ *
+ * NOBODY OWNS IT. The edit key the board hands back is not kept, so the pilot who happened to
+ * press the button first cannot overwrite what TinyLaps sent; a change is made the way any
+ * other track on the board is changed by somebody who did not publish it, as a copy from the
+ * builder. An admin can mark it official to change it in place.
+ *
+ * A BOARD THAT DOES NOT ANSWER does not cost the flight: the track is seated as one that is
+ * not on the board, flown at once, and the caller is told so it can say it.
+ */
+export async function publishTinyLaps(made, { origin = boardOrigin(), board = null } = {}) {
+  const api = board || { fetchTrackDocument, publishTrack };
+  const doc = made.share.document;
+  const want = layoutFingerprint(doc);
+  const author = boardAuthor(made.share.author);
+  let held = null;
+  try {
+    held = await within(api.fetchTrackDocument(doc.id, origin), BOARD_WAIT_MS);
+  } catch (e) {
+    if (e && e.status !== 404) {
+      throw e;
+    }
+  }
+  const heldDoc = held && (held.document || held);
+  if (heldDoc && layoutFingerprint(heldDoc) === want) {
+    return {
+      id: held.id || doc.id, name: held.name || doc.name, author: held.author || author, board: origin, document: heldDoc,
+    };
+  }
+  const document = heldDoc ? { ...doc, id: `trk-${randomHex()}` } : doc;
+  const got = await within(api.publishTrack({ author, document, origin, tags: ['race'] }), BOARD_WAIT_MS);
+  return {
+    id: got.id || document.id, name: got.name || document.name, author: got.author || author, board: origin, document,
+  };
+}
+
+function randomHex() {
+  const bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/*
+ * A TinyLaps track in this page's address becomes the course it will fly, published to the
+ * board first (publishTinyLaps). Returns { share, offline } with the seat that was written,
+ * null when the address carries none, and throws with a sentence for the banner when it
+ * carries one that cannot be flown. `offline` is the board's refusal or silence, when the
+ * track had to be flown without it.
  */
 export async function adoptTinyLapsFromLocation() {
   let found = null;
@@ -125,8 +200,15 @@ export async function adoptTinyLapsFromLocation() {
   if (made.error) {
     throw new Error(made.error);
   }
-  if (!writeShareImport(made.share)) {
+  let share = made.share;
+  let offline = '';
+  try {
+    share = await publishTinyLaps(made);
+  } catch (e) {
+    offline = e && e.message ? e.message : String(e);
+  }
+  if (!writeShareImport(share)) {
     throw new Error('This browser would not store that track, so it cannot be flown here.');
   }
-  return made.share;
+  return { share, offline };
 }

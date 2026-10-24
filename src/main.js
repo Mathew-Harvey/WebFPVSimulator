@@ -6702,7 +6702,7 @@ export async function boot({ loading, bootStart, mapId }) {
           runWeight = wantWeight;
           runGravityScale = wantScale;
           if (midLap) {
-            race.voidLap('Weight changed\nLap voided', performance.now());
+            race.noteChange();
           }
         } else {
           ui.settings.weight = runWeight;
@@ -6786,7 +6786,7 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       if (moved) {
         if (race.currentLapMs(simTimeMs) != null) {
-          race.voidLap('Feel changed\nLap voided', performance.now());
+          race.noteChange();
         }
         /* Motor power moves where hover sits on the stick, and the keyboard's
          * throttle springs back to it: see syncKeyHover. */
@@ -12459,6 +12459,13 @@ export async function boot({ loading, bootStart, mapId }) {
   });
   window.__race = () => ({
     laps: race ? race.laps : [],
+    /* Where the order stands and where each station is, for the checks that
+     * fly the course (scripts/gate-settings-check.js): harness only. */
+    next: race && !race.freestyle ? race.next : -1,
+    lapStartMs: race ? race.lapStartMs : null,
+    mixed: race ? race.mixed : false,
+    gates: race && !race.freestyle
+      ? race.gates.map((g) => ({ x: g.x, y: g.y, z: g.z, az: g.az })) : [],
   });
   window.__craftState = () => ({
     mode,

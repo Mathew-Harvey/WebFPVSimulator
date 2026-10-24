@@ -71945,3 +71945,18 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-24 12:21Z: "push to main" (TinyLaps tracks draw their thumbnail while parked, PR 150). Main had not moved since the branch point (79f0561), fast forward. Not flown, verify not run. The three tracks already on the board still need `scripts/boardcards.js` with the admin token; the normal window report is still not reproduced.
 - 12:22Z: with the board admin token Mat pasted (used inline once, written nowhere), the three TinyLaps tracks on the live board got their pictures: drawn by `scripts/boardcards.js --dry --out` against a scratch board holding their documents (the harness's Chromium cannot reach the live board), then the card and thumbnail POSTed to webfpv.org/board. The listing now says hasThumb and hasCard for trk-2c24e092, trk-da5777c1 and trk-a9ff7eea. The builds are small in a 10 by 12 m room, so the thumbnail is mostly room; that is their real size.
+
+## 2026-10-24 | race | a setting that voids the lap left the old gate lit (branch only)
+
+- The ask, Mat, 15:29Z: in a five inch race, fly a gate or two, land, change the settings and the camera angle, and "the next gate i go through doesn't register until i restart the race".
+- Found: `race.voidLap` sends the order back to the timing gate, and the two settings that call it (a Weight change and a Feel change: Air grip, Motor power, prop wash) never repainted the course's glow. The pilot flew the lit gate while the race waited for gate 0. The "Lap voided" flash is on the wall clock and is gone by the time the pause panel closes, so nothing said so. Reproduced headless on the reference course: after Air grip moved, `race.next` 0 and the lit gate 3. Camera angle on its own voids nothing and was not the cause; I take it that an Air grip or Feel change went with it.
+- Fixed: `voidLapFromSettings` in `src/main.js` voids and then calls `view.setNextGate`, so the glow goes to the timing gate. The rule that a change voids the lap is untouched. Other modes: freestyle has no order; the yard race has its own and calls neither void.
+- Added `scripts/gate-settings-check.js` (`npm run check:gatesettings`), which flies three gates, lands, pauses, changes camera angle then Air grip, resumes, and compares the lit gate with `race.next`. `window.__race` gained `next`, `lapStartMs` and `gates` for it.
+- Latency: none. The change runs once per settings change that voids a lap, in the menu, never in the flight frame.
+- Run: `check:gatesettings` 4 passed. Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.
+- Open question for the owner: should a Feel change void a lap that is only landed, not flying? Left as is.
+
+- Owner's ask, 2026-10-24 23:53Z: "Change the rule that changing a setting does not void the lap, they will never go fast cause they had to stop to change the setting, it's just annoying not being able to keep going." Read as: changing a setting must not void the lap.
+- Done on the same branch. Weight and Feel changes no longer call `voidLap`; they call `race.noteChange()`, which marks a running lap `mixed`. A mixed lap still counts and the pilot flies on, but it is filed `tuned: true` so it goes up the way a tuned lap does and does not pass as a stock record on one machine. `voidLapFromSettings` from this PR's first commit is gone, since nothing voids now. Cleared when the next lap starts.
+- `check:gatesettings` now asserts the order does not move, the lit gate agrees, and Air grip marks the lap mixed while camera angle does not: 6 passed. Not run: `npm run verify`. Not flown.
+- Latency: none, a flag set in a menu change.

@@ -273,8 +273,7 @@ export class Race {
      * every clean lap in the log so the board is told the weight of the lap
      * it is sent (boardRow below). The shell keeps it equal to the weight
      * the module is flying (setWeight, from applySettings in main.js, which
-     * also voids a lap the change lands in), so a lap in the log was flown
-     * at its stamp from its first gate to its last. Null until the shell
+     * a lap the change lands in carries on and is filed Tuned, see this.mixed). Null until the shell
      * says, and the shell says before anything can be flown.
      */
     this.weight = null;
@@ -289,6 +288,14 @@ export class Race {
      * applySettings in main.js, which voids a lap the change lands in).
      */
     this.tuned = false;
+    /*
+     * A SETTING CHANGED INSIDE THE RUNNING LAP. It used to void the lap; the
+     * owner overruled that on 2026-10-24 ("they will never go fast cause they
+     * had to stop to change the setting"). The lap carries on and counts, but
+     * it was flown on two machines, so it is filed as Tuned and goes up the
+     * way a tuned lap does. Cleared when the next lap starts.
+     */
+    this.mixed = false;
     /*
      * THROUGH THE ROOM'S FACTOR, BECAUSE BOTH MICRO FIGURES ARE DERIVED FROM
      * RACEGOW'S REAL PIPE AND THE PIPE IS NOT BUILT AT THAT SIZE.
@@ -438,6 +445,13 @@ export class Race {
     this.weight = weight;
   }
 
+  /* A setting moved while a lap was running: see this.mixed. */
+  noteChange() {
+    if (this.lapStartMs != null) {
+      this.mixed = true;
+    }
+  }
+
   /* Whether the next lap is flown off the stock air or motors. See this.tuned. */
   setTuned(tuned) {
     this.tuned = Boolean(tuned);
@@ -469,6 +483,7 @@ export class Race {
     this.held = [];
     this.lap = 0;
     this.lapStartMs = null; /* sim clock */
+    this.mixed = false;
     this.lastLapMs = null;
     this.lastLapRecord = false; /* whether lastLapMs set the record */
     this.prevSimMs = null;
@@ -535,6 +550,7 @@ export class Race {
       this.log.push({ n: this.lapNumber(), ms: null, reason });
     }
     this.lapStartMs = null;
+    this.mixed = false;
     this.splits = [];
     this.next = 0;
     this.flownM = Infinity;
@@ -814,7 +830,7 @@ export class Race {
         this.laps.push(this.lastLapMs);
         /* `tuned` only when it is, so a stock lap's entry is the shape it
          * always was. */
-        this.log.push(this.tuned
+        this.log.push(this.tuned || this.mixed
           ? { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight, tuned: true }
           : { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight });
         let msgText = `Lap ${this.log.length}   ${fmt(this.lastLapMs)}`;
@@ -844,6 +860,7 @@ export class Race {
         this.flash = { text: msgText, untilMs: wallMs + 2600 };
       }
       this.lapStartMs = crossMs;
+      this.mixed = false;
       this.splits = [];
     }
     return passed;

@@ -210,5 +210,24 @@ export async function adoptTinyLapsFromLocation() {
   if (!writeShareImport(share)) {
     throw new Error('This browser would not store that track, so it cannot be flown here.');
   }
+  forgetTinyLapsLink();
   return { share, offline };
+}
+
+/*
+ * THE LINK IS SPENT ONCE IT IS SEATED. Left in the address, the fragment is read again
+ * at every load of this tab: a reload, or the reload a failed world load asks for, put
+ * the TinyLaps track back over whatever the pilot had picked from the Tracks menu since,
+ * and asked the board about it again. So it comes out of the address. The seat it wrote
+ * is what a reload flies, as it is for every track picked in the menu. ?fly=1 is dropped
+ * by ui.js as for any link.
+ */
+function forgetTinyLapsLink() {
+  try {
+    const url = new URL(window.location.href);
+    url.hash = '';
+    history.replaceState(history.state, '', url);
+  } catch (e) {
+    /* No history to write. The seat is written; a reload reads the link again. */
+  }
 }

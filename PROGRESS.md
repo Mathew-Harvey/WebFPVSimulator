@@ -71922,3 +71922,12 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - What went wrong on the way: the button's header and the README said nothing is published, which was true of the first round and stopped being true with this one; both were rewritten.
 
 - Owner's word, 2026-10-24 06:41Z: "push to main" (Open TinyLaps tracks in WebFPV, straight to the board, PR 148). Main had not moved since the branch point (8a0d502), fast forward. Not flown, verify not run, not run against the live board.
+
+## 2026-10-24 | import | TinyLaps tracks from the Tracks menu (branch only)
+
+- The ask, Mat, 08:18Z: "there are 2 tracks on th ebaord presumably from tinylaps, but whene go to fly theem from the tracks menu it doesn't work, find th ebug and fix", and 08:18Z "make it robust from our end".
+- On the board: three TinyLaps tracks, trk-da5777c1 "TinyLaps Track" (one gate, 07:24Z), trk-2c24e092 "Dives, Flips & Orbits" by Kwayzu (21 gates, 08:11Z) and trk-a9ff7eea "RaceGow-6.3" (17 gates, 08:19Z). The last has the id the button's compacted text hashes to here, so the same file sent again is found.
+- Not reproduced. Headless Chromium on the live site, fresh profile, mode answered: all three fly from the board's Whoop shelf (card, Fly this) and from the simulator's Tracks menu (Whoop tab from the five inch, card, Fly this), to the start pad with the right gate count. The documents solve a racing line (`raceline-check` on the two first, from a temporary copy that read them from files; the one gate track has too few knots for a line, which only means no guide trail). A fresh profile that never answered the title's mode question lands on the title instead of the grid after Fly this, for an official whoop track too: that is the gate, not this. Mat asked what he sees.
+- Found on the way and fixed: the #tinylaps= fragment stayed in the address, so every load of that tab read it again. A reload after picking another track from the menu put the TinyLaps track back over it and asked the board about it again. `forgetTinyLapsLink` in `src/share/tinylaps.js` takes it out once the seat is written; a reload flies the seat, as for any track picked in the menu. Shot: link, pick Dives from the menu, reload, the launch card says Dives.
+- Latency: none. One replaceState at boot on a TinyLaps link.
+- Run: `check:clip`, `lint:preload`, headless shots against the board's server on a scratch store seeded with the live board's three documents. Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.

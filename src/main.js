@@ -3116,6 +3116,234 @@ export async function boot({ loading, bootStart, mapId }) {
     return ghostSample.cut;
   }
 
+  /*
+   * FLYING TOGETHER, stage 2 of the multiplayer plan the owner approved on
+   * 25 October 2026, and only behind ?mp=1 until launch.
+   *
+   * With ?mp=1 the page opens a private room on the board for the world it
+   * is flying and writes the room into the address bar, so the address IS
+   * the invite: send it to a friend and their page boots into the same
+   * world and joins (?mp=1&room=CODE&i=INVITE). Stage 3 replaces this with
+   * Fly together in the map picker and the Rooms shelf; this is the least
+   * that lets two people fly it.
+   *
+   * Everything here is downstream of the render: it reads the same
+   * interpolated pose the hero craft is drawn at, never the plant, and
+   * nothing it hears is ever written back to the physics. Without ?mp=1
+   * none of src/net/ or src/render/roomcraft.js is even fetched, so a solo
+   * flight costs nothing at all: no bytes, no draw calls, no frame time.
+   */
+  const mpOn = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('mp') === '1';
+    } catch (e) {
+      return false;
+    }
+  })();
+  let mpSession = null;
+  let mpCraft = null;
+  let mpStarting = false;
+  let mpResets = 0;
+  let mpAway = null;
+  let mpWorldWarned = '';
+  /* The world, worked out once per loaded world rather than once a frame:
+   * the frame loop does not allocate (budget P8). */
+  let mpWorldOf = null;
+  let mpWorldIs = null;
+  const mpDraw = (id, pose, pilot) => mpCraft.add(id, pose, pilot);
+
+  /* The world being flown, as the room names it and as a link opens it. */
+  function mpWorld() {
+    if (!view) {
+      return null;
+    }
+    if (view.id === 'custom') {
+      const listing = ghostListing();
+      return listing
+        ? { map: listing.shareId, name: listing.name || 'A track', link: { map: 'custom', share: listing.shareId } }
+        : { map: 'custom', name: 'A track of your own', link: { map: 'custom' } };
+    }
+    if (view.id === 'built') {
+      return view.shared
+        ? { map: view.shared.id, name: view.shared.name || 'A map', link: { map: 'built', mapshare: view.shared.id } }
+        : { map: 'built', name: 'Your map', link: { map: 'built' } };
+    }
+    return { map: view.id, name: mapById(view.id).name, link: { map: view.id } };
+  }
+
+  function mpWorldNow() {
+    if (mpWorldOf !== view) {
+      mpWorldOf = view;
+      mpWorldIs = mpWorld();
+    }
+    return mpWorldIs;
+  }
+
+  function mpSay(text, ms = 3600) {
+    notice = { text, untilMs: performance.now() + ms };
+  }
+
+  /* The room in the address bar, so copying the address is the invite. */
+  function mpWriteLink() {
+    const room = mpSession && mpSession.room;
+    const world = mpWorld();
+    if (!room || !world) {
+      return;
+    }
+    try {
+      const url = new URL(window.location.href);
+      for (const k of ['map', 'share', 'mapshare', 'room', 'i']) {
+        url.searchParams.delete(k);
+      }
+      for (const [k, v] of Object.entries(world.link)) {
+        url.searchParams.set(k, v);
+      }
+      url.searchParams.set('mp', '1');
+      url.searchParams.set('room', room.code);
+      if (mpSession.invite) {
+        url.searchParams.set('i', mpSession.invite);
+      }
+      window.history.replaceState(window.history.state, '', url.href);
+    } catch (e) {
+      /* An address that cannot be rewritten leaves the code in the notice. */
+    }
+  }
+
+  const MP_REFUSED = {
+    notFound: 'That room has closed.',
+    password: 'That room needs its password.',
+    full: 'That room is full.',
+    banned: 'The host has banned you from that room.',
+    kicked: 'The host removed you from that room a moment ago.',
+    version: 'That room needs a newer version of the sim.\nReload the page.',
+    tooMany: 'Too many tries from here. Wait a few minutes.',
+    busy: 'The rooms are full right now. Try again soon.',
+    expired: 'That room has closed.',
+  };
+
+  function mpHeard(name, data) {
+    const room = mpSession.room;
+    if (name === 'welcome') {
+      mpWorldOf = null;
+      mpWriteLink();
+      const others = mpSession.link.pilots.size - 1;
+      if (mpSession.you === mpSession.link.hostId && others === 0) {
+        mpSay(`Room ${room.code} is open.\nSend this page's address to a friend to fly together.`, 10000);
+      } else {
+        mpSay(`You are in room ${room.code}.\n${others} other ${others === 1 ? 'pilot' : 'pilots'} here.`, 5000);
+      }
+    } else if (name === 'joined') {
+      mpSay(`${data.handle} joined.`);
+    } else if (name === 'left') {
+      if (mpCraft) {
+        mpCraft.forget(data.id);
+      }
+    } else if (name === 'room') {
+      mpWriteLink();
+    } else if (name === 'removed') {
+      mpSay('The host removed you from the room.', 6000);
+    } else if (name === 'refused') {
+      mpSay(MP_REFUSED[data.why] || 'The board would not open that room.', 6000);
+    } else if (name === 'lost') {
+      mpSay('The room closed while you were away.', 6000);
+    } else if (name === 'retrying' && data.tries === 2) {
+      mpSay('Reconnecting to the room.');
+    }
+  }
+
+  async function mpStart() {
+    mpStarting = true;
+    try {
+      const [{ RoomSession }, { roomsUrl }, { buildRoomCraft }, { boardOrigin }, { raterKey }] = await Promise.all([
+        import('./net/room.js'),
+        import('./net/link.js'),
+        import('./render/roomcraft.js'),
+        import('./share/board.js'),
+        import('./share/rating.js'),
+      ]);
+      const params = new URLSearchParams(window.location.search);
+      const world = mpWorld();
+      const whoop = ui.settings.airframe === 'whoop65';
+      const key = raterKey();
+      mpCraft = buildRoomCraft({ whoop });
+      shell.keepAcrossMaps(mpCraft.group);
+      mpSession = new RoomSession({
+        url: roomsUrl(boardOrigin(), params.get('rooms') || ''),
+        key,
+        handle: readPilotName() || '',
+        /* Until the avatar editor (stage 3), a livery of this browser's
+         * own, from its key, so it is the same every time. */
+        avatar: { livery: 1 + (parseInt(key.slice(0, 2), 16) % 12) },
+        onEvent: (name, data) => mpHeard(name, data),
+      });
+      const code = (params.get('room') || '').toUpperCase();
+      if (code) {
+        mpSession.join(code, { invite: params.get('i') || '' });
+      } else {
+        mpSession.host({
+          name: 'Fly together',
+          way: whoop ? 'whoop' : (mapById(view.id).mode === 'freestyle' ? 'freestyle' : '5inch'),
+          map: world.map,
+          mapName: world.name.slice(0, 48),
+          /* Pose units: 2 cm over 655 m for the open worlds, 1 cm over 327
+           * m for a whoop's house, which is all the house there is. */
+          scale: whoop ? 100 : 50,
+        });
+      }
+    } catch (e) {
+      mpSay(`Could not open a room.\n${e.message ?? e}`, 6000);
+    }
+  }
+
+  /*
+   * Once a frame, after the hero craft is posed: send this pilot's pose and
+   * draw everyone else's. Away is anything but flight in the room's world,
+   * which dims this pilot's tag for the others and sends no poses.
+   */
+  function mpFrame() {
+    if (!mpOn) {
+      return;
+    }
+    if (!mpSession) {
+      if (!mpStarting && mapReady && view) {
+        mpStart();
+      }
+      return;
+    }
+    const room = mpSession.room;
+    const world = mpWorldNow();
+    const same = Boolean(room && world && world.map === room.map);
+    if (room && world && !same && mpWorldWarned !== world.map) {
+      mpWorldWarned = world.map;
+      mpSay(`Your room flies ${room.mapName}.\nThe others show only there.`, 6000);
+    }
+    const flying = same && mode === 'flight';
+    if (mpSession.inRoom && !flying !== mpAway) {
+      /* Said once a change, and not said at all for a pilot who arrives
+       * flying, which is what the board assumes. */
+      if (mpAway !== null || !flying) {
+        mpSession.away(!flying);
+      }
+      mpAway = !flying;
+    }
+    if (flying) {
+      const q = shell.quad.quaternion;
+      const p = shell.quad.position;
+      /* Motor RPM, signed in 3D mode (src/native/sim_abi.h). */
+      const spinning = Boolean(stateCurr) && Math.abs(stateCurr[14]) + Math.abs(stateCurr[15])
+        + Math.abs(stateCurr[16]) + Math.abs(stateCurr[17]) > 400;
+      mpSession.uplink(p.x, p.y, p.z, q.x, q.y, q.z, q.w, spinning, mpResets);
+    }
+    mpCraft.begin();
+    if (same) {
+      mpSession.eachRemote(mpDraw);
+    }
+    mpCraft.end();
+    if (mpCraft.group.visible && shell.quad.parent && mpCraft.group.parent !== shell.quad.parent) {
+      shell.quad.parent.add(mpCraft.group);
+    }
+  }
+
   /* One sentence for the results screen when a ghost was being chased:
    * whether the run's best lap beat it, and by how much. ghostChased, not
    * ghostLap: by the time results show, the finish line has re-armed the
@@ -4470,6 +4698,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * parks the craft on the surface it found, at.surface, facing at.yaw.
    */
   function resetCraft(at) {
+    /* A room's other pilots are told the craft was put somewhere it did not
+     * fly to, so they cut to it rather than sweep it through the scenery. */
+    mpResets += 1;
     /* Wherever it lands, the open air it last flew through is somewhere
      * else now. The next frame in the open records it again. */
     haveRecoverFrom = false;
@@ -10145,6 +10376,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ghostPrev.qw = qPrev.w;
     }
     ghostFrame(simNow);
+    mpFrame();
 
     /*
      * The world is the title picture, the flight picture, the pause

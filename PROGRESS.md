@@ -71960,3 +71960,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Done on the same branch. Weight and Feel changes no longer call `voidLap`; they call `race.noteChange()`, which marks a running lap `mixed`. A mixed lap still counts and the pilot flies on, but it is filed `tuned: true` so it goes up the way a tuned lap does and does not pass as a stock record on one machine. `voidLapFromSettings` from this PR's first commit is gone, since nothing voids now. Cleared when the next lap starts.
 - `check:gatesettings` now asserts the order does not move, the lit gate agrees, and Air grip marks the lap mixed while camera angle does not: 6 passed. Not run: `npm run verify`. Not flown.
 - Latency: none, a flag set in a menu change.
+
+- Owner's word, 2026-10-25 00:09Z: "Push to main" (a setting change no longer voids the lap, PR 151). Main had not moved since the branch point (4d99dca), fast forward. Not flown, verify not run, as above.

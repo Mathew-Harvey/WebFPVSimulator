@@ -71963,7 +71963,7 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 
 - Owner's word, 2026-10-25 00:09Z: "Push to main" (a setting change no longer voids the lap, PR 151). Main had not moved since the branch point (4d99dca), fast forward. Not flown, verify not run, as above.
 
-## 2026-10-25 | map | The stop sign at Heads' house is solid (draft PR)
+## 2026-10-25 | map | The stop sign at Heads' house is solid
 
 - The ask, 00:09Z, Mat: "The stop sign out the front of heads house should be solid so I can wall tap it, currently I fly straight through it".
 - Cause: its octagon is drawn as a short cylinder (`H.cyl`), which the kit only draws; only its post was solid.
@@ -71972,3 +71972,5 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - `check:heads` has a new stop sign block: 16 lines into its face from both sides meet it (all 16 go through on main, checked by running the new block against main), and 5 lines past its 45 degree corners and over its top stay open.
 - Latency: nothing drawn, so draw calls and triangles are unchanged. Colliders 3390 to 3393 shapes; the worst gather a step is unchanged (186). Nothing runs per frame beyond the plant's own contact test on three more boxes when the craft is near them.
 - Run: `check:heads`, `check:fresh`, `lint:boot`, `lint:preload`, all passed. Not run: `npm run verify` (map collision only, no change to the plant, the ABI or the build). Not flown.
+
+- Owner's word, 2026-10-25 00:27Z: "Push to main" (the solid stop sign at Heads' house, PR 152). Main had not moved since the branch. Not flown, verify not run.

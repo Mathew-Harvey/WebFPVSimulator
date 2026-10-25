@@ -71962,3 +71962,13 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: none, a flag set in a menu change.
 
 - Owner's word, 2026-10-25 00:09Z: "Push to main" (a setting change no longer voids the lap, PR 151). Main had not moved since the branch point (4d99dca), fast forward. Not flown, verify not run, as above.
+
+## 2026-10-25 | map | The stop sign at Heads' house is solid (draft PR)
+
+- The ask, 00:09Z, Mat: "The stop sign out the front of heads house should be solid so I can wall tap it, currently I fly straight through it".
+- Cause: its octagon is drawn as a short cylinder (`H.cyl`), which the kit only draws; only its post was solid.
+- Fix: `stopSignSolid` in `src/maps/heads/heads.js` makes the plate solid as three hidden boxes as thin as it is (3 cm real): a square to the octagon's 45 degree corners and two bars to its corners at top, bottom and sides (this octagon stands on a corner). They miss or overhang its edge by at most about 6 cm real, about the craft's radius. Kind `wall`, as a town sign's plate is. Not drawn, so the look is unchanged.
+- Evidence: a plant flight along Street A at the plate's height, 0.2 m off the post, flies straight through on main (no contact) and stops against the plate on the branch, from the street side at plan x -4.01 and from behind at -4.12 (scratch probe, the car probe's rig).
+- `check:heads` has a new stop sign block: 16 lines into its face from both sides meet it (all 16 go through on main, checked by running the new block against main), and 5 lines past its 45 degree corners and over its top stay open.
+- Latency: nothing drawn, so draw calls and triangles are unchanged. Colliders 3390 to 3393 shapes; the worst gather a step is unchanged (186). Nothing runs per frame beyond the plant's own contact test on three more boxes when the craft is near them.
+- Run: `check:heads`, `check:fresh`, `lint:boot`, `lint:preload`, all passed. Not run: `npm run verify` (map collision only, no change to the plant, the ABI or the build). Not flown.

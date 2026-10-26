@@ -156,6 +156,14 @@ export class RoomSession {
     return this.link.report(id, why);
   }
 
+  claim(stop) {
+    return this.link.claim(stop);
+  }
+
+  unname(id) {
+    return this.link.unname(id);
+  }
+
   heard(name, data) {
     if (name === 'welcome' || name === 'room') {
       const units = data.room && data.room.scale;

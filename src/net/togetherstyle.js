@@ -249,6 +249,9 @@ export const TOGETHER_CSS = `
   width: clamp(40px, 4.6vw, 64px); height: clamp(52px, 5.8vw, 78px); display: grid; place-items: center; border: 4px solid var(--ink); background: var(--white);
   font: 900 clamp(28px, 3.2vw, 44px)/1 ui-monospace, Menlo, monospace; color: var(--ink); box-shadow: 4px 4px 0 var(--ink);
 }
+/* "!fly" before a stream name code: one wide box, the word in lower case
+ * as it is typed. */
+#tg .code-big span.word { width: auto; padding: 0 14px; font-size: clamp(22px, 2.4vw, 34px); background: var(--amber); }
 #tg .copyrow { display: flex; align-items: stretch; }
 #tg .copyrow .input { font-size: 14px; font-family: ui-monospace, Menlo, monospace; min-width: 0; }
 #tg .copyrow .btn { transform: none; box-shadow: none; white-space: nowrap; }

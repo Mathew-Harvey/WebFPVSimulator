@@ -66,6 +66,8 @@
  */
 
 import { spawn } from 'node:child_process';
+import http from 'node:http';
+import net from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -123,6 +125,64 @@ const roomSecret = randomBytes(24).toString('hex');
 let board = null;
 
 /*
+ * Twitch's chat and YouTube's live chat, as stand ins on this machine, so
+ * a streamer room's names are proved here the way they are live, and no
+ * board this script starts ever reaches the real ones.
+ */
+const irc = { socks: new Set(), joined: new Set() };
+const ircServer = net.createServer((sock) => {
+  irc.socks.add(sock);
+  sock.setEncoding('utf8');
+  let buf = '';
+  sock.on('data', (c) => {
+    buf += c;
+    for (let at = buf.indexOf('\r\n'); at >= 0; at = buf.indexOf('\r\n')) {
+      const line = buf.slice(0, at);
+      buf = buf.slice(at + 2);
+      if (line.startsWith('NICK ')) sock.write(':tmi.twitch.tv 001 justinfan :Welcome, GLHF!\r\n');
+      const j = /^(JOIN|PART) #(\S+)/.exec(line);
+      if (j && j[1] === 'JOIN') irc.joined.add(j[2]);
+      if (j && j[1] === 'PART') irc.joined.delete(j[2]);
+    }
+  });
+  sock.on('error', () => {});
+  sock.on('close', () => {
+    irc.socks.delete(sock);
+    if (!irc.socks.size) irc.joined.clear();
+  });
+});
+await new Promise((r) => { ircServer.listen(0, '127.0.0.1', r); });
+ircServer.unref();
+function ircSay(channel, uid, name, text) {
+  const login = name.toLowerCase();
+  for (const sock of irc.socks) {
+    sock.write(`@display-name=${name};user-id=${uid} :${login}!${login}@${login}.tmi.twitch.tv PRIVMSG #${channel} :${text}\r\n`);
+  }
+}
+const yt = { live: new Set(['LIVEvideo01']), said: [], reads: 0 };
+const ytServer = http.createServer((req, res) => {
+  const u = new URL(req.url, 'http://x');
+  res.setHeader('content-type', 'application/json');
+  if (u.pathname.endsWith('/videos')) {
+    const id = u.searchParams.get('id');
+    res.end(JSON.stringify({ items: [{ liveStreamingDetails: yt.live.has(id) ? { activeLiveChatId: `chat-${id}` } : {} }] }));
+  } else if (u.pathname.endsWith('/liveChat/messages')) {
+    yt.reads += 1;
+    res.end(JSON.stringify({ pollingIntervalMillis: 1000, nextPageToken: `p${yt.reads}`, items: yt.said.splice(0) }));
+  } else {
+    res.statusCode = 404;
+    res.end('{}');
+  }
+});
+await new Promise((r) => { ytServer.listen(0, '127.0.0.1', r); });
+ytServer.unref();
+const standIns = {
+  BOARD_TWITCH_IRC: `127.0.0.1:${ircServer.address().port}`,
+  BOARD_YOUTUBE_KEY: 'shots-stand-in',
+  BOARD_YOUTUBE_API: `http://127.0.0.1:${ytServer.address().port}/youtube/v3`,
+};
+
+/*
  * A board of the scene's own. The board allows six rooms hosted from one
  * address in ten minutes, and every pilot here is 127.0.0.1, so the whole
  * run hosts more than one board would let it; a new board for each scene
@@ -133,7 +193,7 @@ async function freshBoard({ secret = roomSecret } = {}) {
   board = spawn(process.execPath, [join(boardDir, 'src', 'server.js')], {
     cwd: boardDir,
     env: {
-      ...process.env, PORT: String(port), BOARD_FILE: join(scratch, 'board.json'), DATABASE_URL: '', BOARD_ROOM_SECRET: secret,
+      ...process.env, PORT: String(port), BOARD_FILE: join(scratch, 'board.json'), DATABASE_URL: '', BOARD_ROOM_SECRET: secret, ...standIns,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -1794,6 +1854,170 @@ async function sceneStream() {
   }
 }
 
+/*
+ * Stream names: a streamer gives the room their stream, a viewer types a
+ * code in its chat and flies under their name, the host takes one back,
+ * and YouTube does the same. Twitch and YouTube are this script's stand
+ * ins, so this is the board reading a chat for real, end to end.
+ */
+async function sceneNames() {
+  console.log('\nnames: Twitch and YouTube names in a streamer room');
+  const page = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`, seedFor({ met: true, name: 'Stream Host' }));
+  const shot = shooter(page, 'names');
+  const viewers = [];
+  try {
+    await page.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await page.until("document.querySelector('.wp-rooms') !== null", 30000);
+    await page.evaluate("(() => { window.__ui.picker.select('map:bardwell'); return 1; })()");
+    await wait(200);
+    await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
+    await sheetIs(page, 'host');
+    await pressKey(page, 'streamer');
+    await pressKey(page, 'open');
+    await sheetIs(page, 'share');
+    check('the invite page asks a streamer for their stream', await page.evaluate("document.querySelector('#tg-st') !== null"));
+    const typeStream = (sel, text) => page.evaluate(`(() => { const i = document.querySelector(${JSON.stringify(sel)}); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input')); return 1; })()`);
+    await typeStream('#tg-st', 'https://www.youtube.com/@AndAgainFPV');
+    await pressKey(page, 'stream-go');
+    await page.until("document.querySelector('#tg-st.bad') !== null", 5000).catch(() => {});
+    check('a YouTube channel page is refused, saying why', await page.evaluate(SEES('A channel page does not say which stream')));
+    await typeStream('#tg-st', 'twitch.tv/AndAgainFPV');
+    await pressKey(page, 'stream-go');
+    await page.until(`${T} && window.__together().stream === 'twitch:andagainfpv'`, 5000).catch(() => {});
+    const t1 = await toastText(page);
+    check('a Twitch page is taken, and the host told', /fly as their Twitch name/.test(t1), t1);
+    await wait(300);
+    check('the invite page says where viewers type the code', await page.evaluate(SEES('the chat on twitch.tv/andagainfpv')));
+    if (opts.w >= 1280 && opts.h >= 720) {
+      const off = await offSheet(page);
+      check('at 1280 by 720 the invite page shows every control without scrolling', !off, off);
+    }
+    await shot('invite-stream');
+    const st = await state(page);
+    await pressKey(page, 'fly');
+    await page.until("window.__mode === 'flight'", 30000);
+    await page.until(`${T} && window.__together().sheet === ''`, 10000);
+
+    const card = await (await fetch(`${boardOrigin}/api/rooms/${st.code}`)).json();
+    check('the room\'s card says a viewer can fly as their Twitch name', card.streamVia === 'twitch', JSON.stringify(card));
+
+    /* A viewer proves their name. */
+    const v = bot('Viewer', 901);
+    viewers.push(v);
+    await joinRoom(v, st.code);
+    const madeUp = v.s.link.pilots.get(v.s.you).handle;
+    v.s.claim();
+    await until(() => v.heard.some((x) => x.name === 'claim' && x.data.state === 'waiting'), 5000);
+    const asked = v.heard.find((x) => x.name === 'claim' && x.data.state === 'waiting').data;
+    await until(() => irc.joined.has('andagainfpv'), 5000);
+    check('asking for a name has the board read the channel\'s chat, and only then', irc.joined.has('andagainfpv'));
+    ircSay('andagainfpv', '4242', 'SkittlesFPV', `!fly ${asked.code}`);
+    await until(() => v.heard.some((x) => x.name === 'claim' && x.data.state === 'done'), 5000);
+    check('the code typed in chat names the viewer', v.s.link.pilots.get(v.s.you).handle === 'SkittlesFPV', v.s.link.pilots.get(v.s.you).handle);
+    await until(() => !irc.joined.has('andagainfpv'), 5000);
+    check('and the board stops reading the chat', !irc.joined.has('andagainfpv'));
+    await page.until(`${T} && window.__together().pilots >= 2`, 5000).catch(() => {});
+    const t0 = performance.now();
+    const fly = setInterval(() => {
+      const t = (performance.now() - t0) / 1000;
+      v.s.uplink(2 + Math.sin(t) * 0.2, 1.4, -4, 0, 0, 0, 1, true, 0);
+    }, 1000 / 30);
+    try {
+      await page.until("window.__roomCraft && window.__roomCraft() && window.__roomCraft().drawn === 1", 10000).catch(() => {});
+      await page.tap('Tab');
+      await wait(400);
+      check('the in flight list shows the Twitch name', await page.evaluate(SEES('SkittlesFPV', '#tg .roster')));
+      await shot('flying-named');
+      await page.tap('Tab');
+    } finally {
+      clearInterval(fly);
+    }
+
+    /* The host proves theirs, on the page. */
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    check('the room\'s page has the Twitch name button and tag', await page.evaluate("document.querySelector('#tg [data-k=\"claim\"]') !== null")
+      && await page.evaluate(SEES('Twitch names')));
+    check('and says which pilot flies under their Twitch name', await page.evaluate(SEES('Twitch name', '#tg .pane')));
+    await pressKey(page, 'claim');
+    await sheetIs(page, 'claim');
+    await page.until("document.querySelector('#tg .code-big.claim') !== null", 5000);
+    const code = await page.evaluate("document.querySelector('#tg .code-big.claim').getAttribute('aria-label').replace('!fly ', '')");
+    check('the page shows the code to type, and where', /^[A-HJ-NP-Z2-9]{5}$/.test(code) && await page.evaluate(SEES('the chat on twitch.tv/andagainfpv')), code);
+    if (opts.w >= 1280 && opts.h >= 720) {
+      const off = await offSheet(page);
+      check('at 1280 by 720 the code page shows every control', !off, off);
+    }
+    await shot('claim-waiting');
+    await until(() => irc.joined.has('andagainfpv'), 5000);
+    ircSay('andagainfpv', '1001', 'AndAgainFPV', `gg !fly ${code}`);
+    await page.until(`document.querySelector('#tg') && ${SEES("THAT'S YOU")}`, 5000).catch(() => {});
+    check('once it lands, the page says so', await page.evaluate(SEES('You are flying as AndAgainFPV')));
+    await shot('claim-done');
+    await pressKey(page, 'back');
+    await sheetIs(page, 'room');
+
+    /* The host gives the viewer their made up name back. */
+    await pressKey(page, `pilot-${v.s.you}`);
+    await pressKey(page, `un-${v.s.you}`);
+    await sheetIs(page, 'confirm');
+    await shot('confirm-unname');
+    await pressKey(page, 'yes');
+    await until(() => v.s.link.pilots.get(v.s.you).handle === madeUp, 5000);
+    check('the host puts the viewer\'s made up name back', v.s.link.pilots.get(v.s.you).handle === madeUp, v.s.link.pilots.get(v.s.you).handle);
+    check('and the viewer is told', v.heard.some((x) => x.name === 'claim' && x.data.state === 'dropped'));
+
+    /* Room settings: a YouTube stream instead. */
+    await pressKey(page, 'settings');
+    await sheetIs(page, 'roomSettings');
+    check('Room settings has the stream too', await page.evaluate("document.querySelector('#tg-st2').value") === 'twitch.tv/andagainfpv');
+    await typeStream('#tg-st2', 'https://youtu.be/LIVEvideo01');
+    if (opts.w >= 1280 && opts.h >= 720) {
+      const off = await offSheet(page);
+      check('at 1280 by 720 Room settings shows every control', !off, off);
+    }
+    await shot('settings-youtube');
+    await pressKey(page, 'save');
+    await sheetIs(page, 'room');
+    await page.until(SEES('YouTube names'), 5000).catch(() => {});
+    check('saving it makes them YouTube names, and takes the Twitch ones off', await page.evaluate(SEES('YouTube names'))
+      && !(await page.evaluate(SEES('AndAgainFPV', '#tg .pane'))));
+    const w = bot('Second Viewer', 902);
+    viewers.push(w);
+    await joinRoom(w, st.code);
+    w.s.claim();
+    await until(() => w.heard.some((x) => x.name === 'claim' && x.data.state === 'waiting'), 5000);
+    const wc = w.heard.find((x) => x.name === 'claim' && x.data.state === 'waiting').data;
+    yt.said.push({ snippet: { displayMessage: `!fly ${wc.code}` }, authorDetails: { channelId: 'UCdan', displayName: '@DanJudge' } });
+    await until(() => w.heard.some((x) => x.name === 'claim' && x.data.state === 'done'), 15000);
+    check('a viewer proves their YouTube name in its live chat', w.s.link.pilots.get(w.s.you).handle === 'DanJudge' && w.s.link.pilots.get(w.s.you).via === 'youtube',
+      JSON.stringify(w.s.link.pilots.get(w.s.you)));
+
+    /* A stream that is not live. */
+    await pressKey(page, 'settings');
+    await sheetIs(page, 'roomSettings');
+    await typeStream('#tg-st2', 'https://youtu.be/DEADvideo01');
+    await pressKey(page, 'save');
+    await sheetIs(page, 'room');
+    await wait(300);
+    await pressKey(page, 'claim');
+    await sheetIs(page, 'claim');
+    await page.until(SEES('NOT LIVE?') + ' || ' + SEES('This works while the stream is live'), 8000).catch(() => {});
+    check('a stream that is not live says so, with Try again', await page.evaluate(SEES('This works while the stream is live'))
+      && await page.evaluate("document.querySelector('#tg [data-k=\"again\"]') !== null"));
+    await shot('claim-not-live');
+    await pressKey(page, 'back');
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    for (const b of viewers) b.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -1807,6 +2031,7 @@ try {
   if (wanted('late')) { await freshBoard(); await sceneLate(); }
   if (wanted('tabs')) { await freshBoard(); await sceneTabs(); }
   if (wanted('stream')) { await freshBoard(); await sceneStream(); }
+  if (wanted('names')) { await freshBoard(); await sceneNames(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

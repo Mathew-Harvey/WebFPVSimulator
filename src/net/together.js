@@ -145,7 +145,41 @@ const SETTINGS_FIELDS = {
   name: 'That name has a word the board does not allow, or is too short. Try another.',
   password: 'A password is 4 to 64 characters.',
   max: 'Never fewer than the pilots already in.',
+  stream: 'Paste your twitch.tv page, or the link to your YouTube live video. A channel page does not say which stream.',
 };
+
+/* Where a streamer room's viewers can prove their name (the board's
+ * VIAS), as a pilot reads them. */
+const VIA_NAMES = { twitch: 'Twitch', youtube: 'YouTube' };
+/* What the board said to a viewer asking for their stream name, as a card:
+ * title, face, words, and whether trying again could help. */
+const CLAIM_SAYS = {
+  expired: ['NOT SEEN', 'oops', 'Nothing came through in two minutes. Try again, and type it just as it is shown.', true],
+  off: ['NOT TODAY', 'calm', "This room is not reading a stream's chat right now.", false],
+  slow: ['ONE MOMENT', 'calm', 'Give it a few seconds, then try again.', true],
+  busy: ['BUSY', 'oops', 'A lot of streams are being read right now. Try again in a minute.', true],
+  notLive: ['NOT LIVE?', 'oops', "The stream's chat could not be read. This works while the stream is live.", true],
+  resting: ['TOMORROW', 'calm', 'YouTube names have had their fill for today. Try again tomorrow.', false],
+  trouble: ['NO ANSWER', 'oops', 'The chat did not answer. Try again in a minute.', true],
+  name: ['KEEP YOURS', 'oops', 'Your name has letters the room cannot show, so you keep your made up one.', false],
+  dropped: ['MADE UP NAME', 'calm', 'The host gave you the made up name back, and it stays for this room.', false],
+};
+
+/* A streamer room's stream as a link a host would recognise. */
+function streamLink(st) {
+  if (!st) return '';
+  return st.via === 'youtube' ? `youtu.be/${st.id}` : `twitch.tv/${st.id}`;
+}
+
+/* Where a viewer types their code. */
+function streamWhere(st) {
+  return st.via === 'youtube' ? "the stream's YouTube live chat" : `the chat on twitch.tv/${st.id}`;
+}
+
+/* The platform a viewer in this room can fly under the name of, or ''. */
+function namesHere(r) {
+  return r && r.stream && Array.isArray(r.streamNames) && r.streamNames.includes(r.stream.via) ? r.stream.via : '';
+}
 
 const INKS = {
   cream: '#f3ead4', sakura: '#e8a8b8', mint: '#7dffb4', amber: '#ffd45c', sky: '#8fe0ff', bail: '#ff7d96',
@@ -394,6 +428,12 @@ export function createTogether(shell) {
   /* Pilots muted for this visit: the board never knows. */
   const muted = new Set();
   const reported = new Set();
+  /* The board's last word on this pilot's stream name ('claim'), and the
+   * stream link the host is typing on the invite page. */
+  let claimNow = null;
+  let streamDraft = null;
+  let streamSaving = false;
+  let streamBad = false;
   const helloed = new Set();
   const helloTimes = [];
   const helloQueue = [];
@@ -793,6 +833,10 @@ export function createTogether(shell) {
     race = null;
     pending = null;
     welcomedOnce = false;
+    claimNow = null;
+    streamDraft = null;
+    streamSaving = false;
+    streamBad = false;
     clearOverlays();
     dropRoomSheets();
     shell.roomInfo(null);
@@ -805,7 +849,7 @@ export function createTogether(shell) {
    * takes them with it, wherever they were in the stack, so neither Back
    * nor a press can reach one that would talk to a room that is not there.
    */
-  const ROOM_SHEETS = new Set(['room', 'roomSettings', 'scene', 'race', 'confirm', 'report', 'share']);
+  const ROOM_SHEETS = new Set(['room', 'roomSettings', 'scene', 'race', 'confirm', 'report', 'share', 'claim']);
 
   function dropRoomSheets() {
     const top = stack[stack.length - 1];
@@ -1196,6 +1240,13 @@ export function createTogether(shell) {
         paintChip();
         infoForShell();
         writeAddress();
+        if (streamSaving) {
+          streamSaving = false;
+          streamDraft = null;
+          streamBad = false;
+          const via = namesHere(data.room);
+          toast(via ? `Viewers can fly as their ${VIA_NAMES[via]} name` : 'Stream names off');
+        }
         if (topName() === 'roomSettings' && settingsSaving) {
           settingsSaving = false;
           toast('Saved');
@@ -1281,9 +1332,45 @@ export function createTogether(shell) {
         refresh('report');
         break;
       case 'settingsRefused':
+        if (streamSaving) {
+          streamSaving = false;
+          streamBad = (data.fields || []).includes('stream');
+          refresh('share');
+          break;
+        }
         settingsSaving = false;
         settingsBad = new Set(data.fields || []);
         refresh('roomSettings');
+        break;
+      case 'claim':
+        claimNow = data.state === 'stopped' ? null : data;
+        if (topName() !== 'claim') {
+          if (data.state === 'done') {
+            toast(`You are flying as ${data.handle}`);
+          } else if (data.state === 'dropped') {
+            banner(store.avatar, 'calm', 'Your made up name is back', 'The host chose it for this room.');
+          } else if (data.state === 'expired') {
+            toast('Your code ran out. Pause, then Room, to try again.', 'warn');
+          }
+        }
+        if (data.state === 'done') {
+          sound('select');
+        }
+        refresh('claim');
+        refresh('room');
+        break;
+      case 'named':
+        /* A stream name proved, or a made up one put back: everywhere a
+         * name is drawn. The name tags over the craft follow by
+         * themselves, because they are painted again when a name
+         * changes. */
+        paintChip();
+        refresh('room');
+        refresh('share');
+        refresh('scene');
+        refresh('claim');
+        if (rosterOn) paintRoster();
+        raceChanged();
         break;
       case 'pong':
         if (race) race.pong(data, now);
@@ -1319,7 +1406,14 @@ export function createTogether(shell) {
         toastBox.replaceChildren();
         dropToastUp = false;
       }
-      for (const name of ['room', 'share', 'scene', 'race', 'roomSettings']) {
+      /* A code handed out before the drop died with the old socket. */
+      if (claimNow && (claimNow.state === 'waiting' || claimNow.state === 'asking')) {
+        claimNow = null;
+        if (topName() === 'claim') {
+          askClaim();
+        }
+      }
+      for (const name of ['room', 'share', 'scene', 'race', 'roomSettings', 'claim']) {
         refresh(name);
       }
       banner(hostPilot() ? hostPilot().avatar : me().avatar, 'hello', 'Back in', 'The room is just as you left it.', 'mint');
@@ -1339,8 +1433,9 @@ export function createTogether(shell) {
     const n = session.link.pilots.size;
     const others = n - 1;
     const who = others > 0 ? `${others} ${others === 1 ? 'pilot' : 'pilots'} here` : 'Nobody else here yet';
+    const via = namesHere(r);
     banner(hp ? hp.avatar : null, 'hello', `Welcome to ${r.name}`,
-      `${hp && hp.id !== session.you ? `${hp.handle} is hosting. ` : ''}${who}. ${r.typedChat ? 'Say hi with 1 to 6, or Enter to type.' : 'Say hi with 1 to 6, or Q for the lines.'}`);
+      `${hp && hp.id !== session.you ? `${hp.handle} is hosting. ` : ''}${who}. ${r.typedChat ? 'Say hi with 1 to 6, or Enter to type.' : 'Say hi with 1 to 6, or Q for the lines.'}${via ? ` Your ${VIA_NAMES[via]} name: pause, then Room.` : ''}`);
   }
 
   function refused(data) {
@@ -1882,7 +1977,8 @@ export function createTogether(shell) {
             h('div.field', null, h('span.lab', { text: 'Room link' }), h('div.copyrow', null, linkIn, btn('Copy', 'small', () => copyText(link, linkIn), { 'data-k': 'copy' }))),
             r.lock && invite ? h('div.field', null, h('span.lab', { text: 'Invite link, skips the password' }),
               h('div.copyrow', null, invIn, btn('Copy', 'small', () => copyText(invite, invIn), { 'data-k': 'copy-inv' })),
-              h('span.help', { text: 'If it spreads further than you meant, change the password in Room settings and the old one stops working.' })) : null),
+              h('span.help', { text: 'If it spreads further than you meant, change the password in Room settings and the old one stops working.' })) : null,
+            r.streamer && isHost() ? streamField(r) : null),
           h('div.stack', null,
             h('div.mapcard', null, h('div.pic', { style: { backgroundImage: pic ? `url("${pic}")` : '' } }),
               h('div', { style: { flex: '1', minWidth: '0' } }, h('small', { text: isHost() ? 'You are hosting' : 'You are in' }), h('b', { text: r.mapName }),
@@ -1895,6 +1991,117 @@ export function createTogether(shell) {
         h('div.footer-row', null, first ? btn('Start flying', 'amber', flyNow, { 'data-k': 'fly', 'data-autofocus': true }) : btn('Back to the room', '', () => back(), { 'data-k': 'back', 'data-autofocus': true }),
           first ? h('span.note', { text: 'You can come back to this any time: pause, then Room.' }) : null)));
     }, { back: first ? flyNow : null });
+  }
+
+  /*
+   * A streamer room's stream, which its viewers prove their names in. On
+   * the invite page it saves on its own, so a streamer who has just opened
+   * the room can set it before flying; in Room settings it is one more
+   * field, f being the settings being edited.
+   */
+  function streamField(r, f = null) {
+    const bad = f ? settingsBad.has('stream') : streamBad;
+    const value = f ? f.stream : (streamDraft ?? streamLink(r.stream));
+    const id = f ? 'tg-st2' : 'tg-st';
+    const input = h('input.input', {
+      id, value, maxLength: 200, placeholder: 'twitch.tv/yourname', autocomplete: 'off', spellcheck: 'false', 'data-k': 'stream', 'data-osk': 'name',
+      'data-enter': f ? null : 'stream-go', class: bad ? 'bad' : null,
+    });
+    input.addEventListener('input', () => {
+      if (f) f.stream = input.value; else streamDraft = input.value;
+    });
+    const typed = (f ? f.stream : value) || '';
+    const via = namesHere(r);
+    let help = 'Your twitch.tv page or your YouTube live link. Viewers who type a code in its chat fly under their own name.';
+    if (bad) {
+      help = /youtu/i.test(typed) && !(r.streamNames || []).includes('youtube')
+        ? 'YouTube names are not switched on here yet. A Twitch page works.' : SETTINGS_FIELDS.stream;
+    } else if (via && !f) {
+      help = `Viewers type a code in ${streamWhere(r.stream)} to fly as their ${VIA_NAMES[via]} name. Empty it to stop.`;
+    }
+    const go = () => {
+      streamSaving = true;
+      streamBad = false;
+      session.link.settings({ stream: (streamDraft ?? streamLink(r.stream)).trim() });
+      refresh('share');
+    };
+    return h('div.field', null, h('label', { for: id, text: 'Your stream' }),
+      f ? input : h('div.copyrow', null, input, btn(streamSaving ? 'Saving' : 'Use', 'small', go, { 'data-k': 'stream-go', disabled: streamSaving })),
+      h(`span.help${bad ? '.bad' : ''}`, { text: help }));
+  }
+
+  function askClaim() {
+    claimNow = { state: 'asking' };
+    session.claim();
+    refresh('claim');
+  }
+
+  /*
+   * Flying as your Twitch or YouTube name: a code to type in the stream's
+   * chat, and the board puts the name on the quad when it reads it there.
+   * Made up names stay the default; this page is the only way to the
+   * other.
+   */
+  function sheetClaim() {
+    const r = roomToOpen();
+    const via = namesHere(r);
+    if (!r || !via) {
+      return;
+    }
+    const mine = pilot(session.you);
+    if (!(mine && mine.via) && !(claimNow && claimNow.state === 'waiting')) {
+      askClaim();
+    }
+    /* The page's Back, and every way off it: a code still waiting is
+     * given up, so the board stops reading the chat for it. */
+    const stopWaiting = () => {
+      if (session && claimNow && (claimNow.state === 'waiting' || claimNow.state === 'asking')) {
+        session.claim(true);
+        claimNow = null;
+      }
+      pop();
+    };
+    open('claim', () => {
+      const rr = heldRoom();
+      if (!rr || !namesHere(rr)) {
+        return scrimmed(h('div.card-mid.sheet.halftone', null, h('p', { text: "This room is not reading a stream's chat right now." }), btn('Back', 'ghost', () => back(), { 'data-k': 'back' })));
+      }
+      const st = rr.stream;
+      const p = pilot(session.you);
+      const c = claimNow;
+      const kicker = h('span.kicker', { text: `${VIA_NAMES[st.via]} name` });
+      if (p && p.via && (!c || c.state === 'done' || c.state === 'asking')) {
+        return scrimmed(h('div.card-mid.sheet.halftone', null, kicker,
+          lettered("THAT'S YOU", [INKS.cream, INKS.mint], 46, 520),
+          h('div.state-row', null, h('div.who', null, bust(store.avatar, 'laugh')),
+            h('div.say', { text: `You are flying as ${p.handle}, your ${VIA_NAMES[p.via]} name. Everybody in the room sees it over your quad.` })),
+          h('div.btnrow', null,
+            btn('Back to the room', '', () => back(), { 'data-k': 'back', 'data-autofocus': true }),
+            btn('Use my made up name', 'ghost', () => { session.unname(); claimNow = null; back(); }, { 'data-k': 'unname' }))));
+      }
+      if (!c || c.state === 'asking') {
+        return scrimmed(h('div.card-mid.sheet.halftone', null, kicker,
+          lettered('ONE MOMENT', [INKS.cream, INKS.sky], 46, 520),
+          h('p.help', { style: { color: 'var(--ink)', fontWeight: '700' }, text: 'Getting your code.' }),
+          h('div.btnrow', null, btn('Cancel', 'ghost', stopWaiting, { 'data-k': 'cancel', 'data-autofocus': true }))));
+      }
+      if (c.state === 'waiting') {
+        return scrimmed(h('div.card-mid.sheet.halftone', null, kicker,
+          lettered(`FLY AS YOUR ${VIA_NAMES[st.via].toUpperCase()} NAME`, [INKS.cream, INKS.sky], 42, 760),
+          h('div.field', null, h('span.lab', { text: `Type this in ${streamWhere(st)}` }),
+            h('div.code-big.claim', { 'aria-label': `!fly ${c.code}` }, h('span.word', { text: '!fly' }), c.code.split('').map((ch) => h('span', { text: ch })))),
+          h('div.state-row', null, h('div.who', null, bust(store.avatar, 'hello')),
+            h('div.say', { text: 'Type it just as it is shown. Your quad takes your name the moment it lands, and the code works for two minutes.' })),
+          h('div.btnrow', null, btn('Cancel', 'ghost', stopWaiting, { 'data-k': 'cancel', 'data-autofocus': true }))));
+      }
+      const says = CLAIM_SAYS[c.state] || CLAIM_SAYS.trouble;
+      return scrimmed(h('div.card-mid.sheet.halftone', null, kicker,
+        lettered(says[0], [INKS.cream, INKS.amber], 46, 560),
+        h('div.state-row', null, h('div.who', null, bust(store.avatar, says[1])), h('div.say', { text: says[2] })),
+        h('div.btnrow', null,
+          says[3] ? btn('Try again', '', askClaim, { 'data-k': 'again', 'data-autofocus': true }) : null,
+          btn('Back', says[3] ? 'ghost' : '', () => back(), { 'data-k': 'back', 'data-autofocus': says[3] ? null : true }))));
+    }, { back: stopWaiting });
   }
 
   /* ---- joining ---- */
@@ -1917,7 +2124,7 @@ export function createTogether(shell) {
             r.streamer ? tag('Streamer room', 'amber') : null,
             r.typedChat ? tag('Typed chat on') : tag('Preset chat'), r.schoolSafe ? tag('School safe', 'mint') : null, r.lock && !invite ? tag('Password', 'amber') : null))),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--ink)', fontWeight: '700', flexWrap: 'wrap' } },
-        "You'll fly as", face(store.avatar, 'hello', 40), madeUp ? h('span', { text: 'a made up name, chosen by the room' }) : h('b', { text: readPilotName() || 'a made up name' }),
+        "You'll fly as", face(store.avatar, 'hello', 40), madeUp ? h('span', { text: r.streamVia && VIA_NAMES[r.streamVia] ? `a made up name, or your ${VIA_NAMES[r.streamVia]} name once you are in` : 'a made up name, chosen by the room' }) : h('b', { text: readPilotName() || 'a made up name' }),
         h('button.link', { type: 'button', 'data-k': 'change', on: { click: () => sheetEditor(() => refresh('join')) } }, 'Change look')),
       ofWorld ? null : h('p.help', { text: `Joining loads ${r.mapName}.` }),
       h('div.btnrow', null,
@@ -2071,6 +2278,7 @@ export function createTogether(shell) {
     if (mine) status.push('You');
     else if (p.away) status.push('In the menus');
     else status.push('Flying');
+    if (p.via && VIA_NAMES[p.via]) status.push(`${VIA_NAMES[p.via]} name`);
     if (muted.has(p.id)) status.push('muted');
     if (reported.has(p.id)) status.push('reported');
     /* In the room's page a row is a button that opens what can be done
@@ -2099,6 +2307,7 @@ export function createTogether(shell) {
       }, { 'data-k': `mute-${p.id}` }),
       btn(reported.has(p.id) ? 'Reported' : 'Report', 'small ghost', () => sheetReport(p), { 'data-k': `report-${p.id}`, disabled: reported.has(p.id) }),
       isHost() ? [
+        p.via ? btn('Made up name', 'small ghost', () => sheetConfirm('unname', p), { 'data-k': `un-${p.id}` }) : null,
         btn('Make host', 'small amber', () => sheetConfirm('makeHost', p), { 'data-k': `mh-${p.id}` }),
         btn('Kick', 'small danger', () => sheetConfirm('kick', p), { 'data-k': `kick-${p.id}` }),
         btn('Ban', 'small danger', () => sheetConfirm('ban', p), { 'data-k': `ban-${p.id}` }),
@@ -2118,7 +2327,8 @@ export function createTogether(shell) {
       tag(r.streamer ? 'Streamer room' : r.listed ? 'Listed' : 'Link only', r.streamer ? 'amber' : 'paper'),
       tag(r.typedChat ? 'Typed chat on' : 'Preset chat', 'paper'),
       r.lock ? tag('Password', 'paper') : null,
-      r.schoolSafe ? tag('School safe', 'mint') : null);
+      r.schoolSafe ? tag('School safe', 'mint') : null,
+      namesHere(r) ? tag(`${VIA_NAMES[namesHere(r)]} names`, 'paper') : null);
   }
 
   /* The room's page, from the pause menu's Room row. */
@@ -2156,6 +2366,7 @@ export function createTogether(shell) {
             btn('Invite pilots', 'ghost', () => sheetShare(), { 'data-k': 'invite' }),
             isHost() ? btn('Room settings', 'ghost', () => sheetSettings(), { 'data-k': 'settings' }) : null,
             btn('Your look', 'ghost', () => sheetEditor(() => refresh('room')), { 'data-k': 'look' }),
+            namesHere(r) ? btn(`${VIA_NAMES[namesHere(r)]} name`, 'ghost', () => sheetClaim(), { 'data-k': 'claim' }) : null,
             btn('Leave room', 'danger', () => sheetConfirm('leave'), { 'data-k': 'leave' })),
           h('div.pane', null, h('span.lab-h', { text: 'Pilots' }),
             pilots.map((p) => pilotRow(p)),
@@ -2170,6 +2381,7 @@ export function createTogether(shell) {
       kick: [`KICK ${p ? p.handle.toUpperCase() : ''}?`, 'They leave the room now and can come back in five minutes.', 'Kick', 'danger'],
       ban: [`BAN ${p ? p.handle.toUpperCase() : ''}?`, 'They leave now, and this browser cannot join again until the room closes.', 'Ban', 'danger'],
       makeHost: [`MAKE ${p ? p.handle.toUpperCase() : ''} HOST?`, 'They get the host tools and you become a pilot. They can hand it back.', 'Make host', 'amber'],
+      unname: [`GIVE ${p ? p.handle.toUpperCase() : ''} A MADE UP NAME?`, 'Their quad shows the room\'s made up name instead, and that account cannot use its name in this room again.', 'Made up name', 'danger'],
       leave: ['LEAVE THE ROOM?', 'You carry on flying solo where you are. The room carries on without you.', 'Leave', 'danger'],
     }[what];
     aboutId = p ? p.id : 0;
@@ -2237,6 +2449,7 @@ export function createTogether(shell) {
     }
     const f = {
       name: r.name, max: r.max, listed: r.listed, schoolSafe: r.schoolSafe, typedChat: r.typedChat, hide: r.hide, tags: [...(r.tags || [])], password: '', dropPassword: false,
+      stream: streamLink(r.stream),
     };
     settingsBad = new Set();
     settingsSaving = false;
@@ -2261,6 +2474,9 @@ export function createTogether(shell) {
         } else if (f.dropPassword) {
           msg.password = '';
         }
+        if (r.streamer) {
+          msg.stream = f.stream.trim();
+        }
         settingsSaving = true;
         settingsBad = new Set();
         session.link.settings(msg);
@@ -2282,7 +2498,8 @@ export function createTogether(shell) {
               h('button', { type: 'button', 'aria-label': 'Fewer', 'data-k': 'fewer', on: { click: () => { f.max = Math.max(Math.max(2, n), f.max - 1); again(); } } }, '−'),
               h('output', { text: String(f.max) }),
               h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(r.streamer ? STREAM_MAX : ROOM_MAX, f.max + 1); again(); } } }, '+')),
-            h(`span.help${settingsBad.has('max') ? '.bad' : ''}`, { text: `Never below the ${n} ${n === 1 ? 'pilot' : 'pilots'} already in.` }))),
+            h(`span.help${settingsBad.has('max') ? '.bad' : ''}`, { text: `Never below the ${n} ${n === 1 ? 'pilot' : 'pilots'} already in.` })),
+            r.streamer ? streamField(r, f) : null),
           h('div.stack', null,
             switchRow('sw-listed', 'Listed under Rooms', 'Turning this off takes the room off the Rooms shelf. Everyone stays.', !r.streamer && f.listed, () => { f.listed = !f.listed; again(); },
               { locked: r.streamer, why: r.streamer ? 'A streamer room is joined by the code on the stream.' : '' }),
@@ -3296,6 +3513,7 @@ export function createTogether(shell) {
         sheet: topName(),
         inRoom: Boolean(room()),
         code: room() ? room().code : '',
+        stream: room() && room().stream ? `${room().stream.via}:${room().stream.id}` : '',
         you: session ? session.you : 0,
         host: session ? session.link.hostId : 0,
         link: session ? session.link.state : '',

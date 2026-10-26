@@ -27,6 +27,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import net from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -532,11 +533,48 @@ async function until(cond, ms = 5000) {
   return cond();
 }
 
+/*
+ * Twitch's chat, as a stand in on this machine, so a streamer room's names
+ * are proved here the way they are live and the board never reaches the
+ * real one. YouTube is left unset, so the board offers Twitch alone.
+ */
+const irc = { socks: new Set(), joined: new Set() };
+const ircServer = net.createServer((sock) => {
+  irc.socks.add(sock);
+  sock.setEncoding('utf8');
+  let buf = '';
+  sock.on('data', (c) => {
+    buf += c;
+    for (let at = buf.indexOf('\r\n'); at >= 0; at = buf.indexOf('\r\n')) {
+      const line = buf.slice(0, at);
+      buf = buf.slice(at + 2);
+      if (line.startsWith('NICK ')) sock.write(':tmi.twitch.tv 001 justinfan :Welcome, GLHF!\r\n');
+      const j = /^(JOIN|PART) #(\S+)/.exec(line);
+      if (j && j[1] === 'JOIN') irc.joined.add(j[2]);
+      if (j && j[1] === 'PART') irc.joined.delete(j[2]);
+    }
+  });
+  sock.on('error', () => {});
+  sock.on('close', () => {
+    irc.socks.delete(sock);
+    if (!irc.socks.size) irc.joined.clear();
+  });
+});
+await new Promise((r) => { ircServer.listen(0, '127.0.0.1', r); });
+ircServer.unref();
+function ircSay(channel, uid, name, text) {
+  const login = name.toLowerCase();
+  for (const sock of irc.socks) {
+    sock.write(`@display-name=${name};user-id=${uid} :${login}!${login}@${login}.tmi.twitch.tv PRIVMSG #${channel} :${text}\r\n`);
+  }
+}
+
 function startBoard(dir, port, file, secret) {
   const child = spawn(process.execPath, [join(dir, 'src', 'server.js')], {
     cwd: dir,
     env: {
       ...process.env, PORT: String(port), BOARD_FILE: file, DATABASE_URL: '', BOARD_ROOM_SECRET: secret,
+      BOARD_TWITCH_IRC: `127.0.0.1:${ircServer.address().port}`, BOARD_YOUTUBE_KEY: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -756,6 +794,85 @@ async function talkScene(url) {
 }
 
 /*
+ * A streamer room's viewer proves their Twitch name by typing a code in
+ * the stream's chat, as the room's page wires it: the code, the name on
+ * everybody's list, the ticket that carries it through a drop, the host
+ * putting the made up name back, and that account refused after.
+ */
+async function namesScene(url, deploy) {
+  console.log('stream names through the board');
+  const heard = { a: [], b: [] };
+  const pilot = (handle, into) => new RoomSession({
+    url,
+    key: randomBytes(16).toString('hex'),
+    handle,
+    avatar: rollAvatar(rnd),
+    onEvent: (name, data) => {
+      if (name === 'claim' || name === 'named') into.push({ name, ...data });
+    },
+  });
+  const a = pilot('Streamer', heard.a);
+  const b = pilot('Viewer', heard.b);
+  const lastClaim = (list) => [...list].reverse().find((m) => m.name === 'claim') || {};
+  try {
+    a.host({
+      name: 'Stream night', way: 'freestyle', map: 'city', mapName: 'The town', scale: 100, streamer: true, stream: 'https://www.twitch.tv/AndAgainFPV',
+    });
+    check('a streamer room opens with its Twitch channel', await until(() => a.inRoom));
+    check('which the board keeps as a channel, in lower case, and offers Twitch names alone',
+      a.room.stream && a.room.stream.via === 'twitch' && a.room.stream.id === 'andagainfpv' && a.room.streamNames.join() === 'twitch');
+    b.join(a.room.code);
+    check('a viewer joins under a made up name', await until(() => b.inRoom && a.link.pilots.size === 2)
+      && a.link.pilots.get(b.you).handle !== 'Viewer' && !a.link.pilots.get(b.you).via);
+    check('and nobody reads the chat while nobody is waiting', irc.joined.size === 0);
+    b.claim();
+    check('asking gives a five character code, and where to type it', await until(() => lastClaim(heard.b).state === 'waiting')
+      && /^[A-Z0-9]{5}$/.test(lastClaim(heard.b).code) && lastClaim(heard.b).at === 'andagainfpv');
+    check('and the board joins the channel while it waits', await until(() => irc.joined.has('andagainfpv')));
+    const { code } = lastClaim(heard.b);
+    ircSay('andagainfpv', '4401', 'Lurker', `!fly ${code.replace(/./, (c) => (c === 'A' ? 'B' : 'A'))}`);
+    ircSay('andagainfpv', '4402', 'SkittlesFPV', `gg !fly ${code.toLowerCase()} lets go`);
+    check('the code typed in chat, in any case, names the viewer for everybody', await until(() => a.link.pilots.get(b.you).handle === 'SkittlesFPV'
+      && a.link.pilots.get(b.you).via === 'twitch' && b.link.pilots.get(b.you).handle === 'SkittlesFPV'));
+    check('and a wrong code from somebody else named nobody', ![...a.link.pilots.values()].some((p) => p.handle === 'Lurker'));
+    check('the viewer is told it is done', lastClaim(heard.b).state === 'done' && lastClaim(heard.b).handle === 'SkittlesFPV');
+    check('and the board lets the channel go once nobody is waiting', await until(() => !irc.joined.has('andagainfpv')));
+    check('the account\'s id is in no message a pilot was sent', !JSON.stringify([heard.a, heard.b, a.room, [...a.link.pilots.values()]]).includes('4402'));
+
+    await deploy();
+    check('a deploy, and back in from the tickets, keeps the name', await until(() => a.inRoom && b.inRoom && a.link.pilots.size === 2
+      && a.link.pilots.get(b.you) && a.link.pilots.get(b.you).handle === 'SkittlesFPV' && a.link.pilots.get(b.you).via === 'twitch', 15000));
+
+    a.unname(b.you);
+    check('the host puts the made up name back, for everybody', await until(() => a.link.pilots.get(b.you).handle !== 'SkittlesFPV'
+      && !a.link.pilots.get(b.you).via && !b.link.pilots.get(b.you).via));
+    check('and the viewer is told why', await until(() => lastClaim(heard.b).state === 'dropped'));
+    await deploy();
+    check('and after another deploy', await until(() => a.inRoom && b.inRoom && a.link.pilots.size === 2, 15000));
+    heard.b.length = 0;
+    b.claim();
+    check('the viewer may ask again', await until(() => lastClaim(heard.b).state === 'waiting'));
+    ircSay('andagainfpv', '4402', 'SkittlesFPV', `!fly ${lastClaim(heard.b).code}`);
+    check('but that account is refused in this room, the deploy notwithstanding', await until(() => lastClaim(heard.b).state === 'dropped')
+      && a.link.pilots.get(b.you).handle !== 'SkittlesFPV');
+    heard.b.length = 0;
+    b.claim();
+    await until(() => lastClaim(heard.b).state === 'slow' || lastClaim(heard.b).state === 'waiting');
+    check('asking twice inside five seconds is turned down as too quick', lastClaim(heard.b).state === 'slow');
+
+    a.link.settings({ stream: '' });
+    check('the host can take the stream off', await until(() => !b.room.stream));
+    await wait(5100);
+    heard.b.length = 0;
+    b.claim();
+    check('and then asking is turned down', await until(() => lastClaim(heard.b).state === 'off'));
+  } finally {
+    a.leave();
+    b.leave();
+  }
+}
+
+/*
  * The room's styles and the shell's, kept apart. Every room banner was
  * drawn at opacity 0 for a day because it wore .banner, the shell's own
  * launch line, which index.html starts invisible. Every check of it read
@@ -929,6 +1046,12 @@ if (!boardDir || typeof WebSocket === 'undefined') {
 
     await raceScene(url);
     await talkScene(url);
+    await namesScene(url, async () => {
+      board.kill('SIGTERM');
+      await new Promise((r) => { board.once('exit', r); });
+      board = startBoard(boardDir, port, file, secret);
+      check('the new board started', await boardUp(port));
+    });
   } finally {
     board.kill('SIGKILL');
     rmSync(scratch, { recursive: true, force: true });

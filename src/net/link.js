@@ -313,6 +313,16 @@ export class RoomLink {
         this.onEvent('look', m);
         break;
       }
+      case 'named': {
+        /* A stream name proved, or the made up one put back. */
+        const p = this.pilots.get(m.id);
+        if (p && typeof m.handle === 'string') {
+          p.handle = m.handle;
+          p.via = m.via || null;
+        }
+        this.onEvent('named', m);
+        break;
+      }
       case 'removed':
         this.ticket = '';
         this.onEvent('removed', m);
@@ -323,6 +333,7 @@ export class RoomLink {
       case 'reported':
       case 'reportFailed':
       case 'settingsRefused':
+      case 'claim':
       case 'peers':
       case 'signal':
       case 'pong':
@@ -448,6 +459,17 @@ export class RoomLink {
 
   chat(text, face) {
     return this.sendJson({ t: 'chat', text, face });
+  }
+
+  /* A streamer room: ask for a code to type in the stream's chat, or stop
+   * waiting for it; and go back to a made up name, or, for the host, put
+   * another pilot's back. */
+  claim(stop = false) {
+    return this.sendJson(stop ? { t: 'claim', stop: true } : { t: 'claim' });
+  }
+
+  unname(id = 0) {
+    return this.sendJson(id ? { t: 'unname', id } : { t: 'unname' });
   }
 
   report(id, why) {

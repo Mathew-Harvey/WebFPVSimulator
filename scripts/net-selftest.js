@@ -6,10 +6,14 @@
  * grain; a remote pilot is fed a synthetic flight at the board's two relay
  * rates with jitter, and what it draws is compared with where the flight
  * really was; teleports, clock wraps, late poses and silences are put
- * through it. Then, when a checkout of the leaderboard sits beside this
- * one (or NET_BOARD names one), two sessions fly through a real board, the
- * board is stopped the way Render stops it, a new one is started with the
- * same secret, and both pilots are expected back in the same room.
+ * through it. A room's address, a pilot's face, the board's clock and one
+ * page's part in a race are each held to what they promise, with no board.
+ * Then, when a checkout of the leaderboard sits beside this one (or
+ * NET_BOARD names one), the board's lists are held to this client's, two
+ * sessions fly through a real board, the board is stopped the way Render
+ * stops it, a new one is started with the same secret, and both pilots are
+ * expected back in the same room; two pilots race a track through it, and
+ * four talk in a listed room and a private one.
  *
  * Run: node scripts/net-selftest.js   (npm run net:selftest)
  * Exit code is the failure count, like the other selftests.
@@ -27,13 +31,24 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   POSE_ENTRY_BYTES, POSE_UP_BYTES, SCALES, decodeFrame, decodePoseAt, encodePose, poseFlags,
 } from '../src/net/pose.js';
 import { RemotePilot } from '../src/net/remote.js';
-import { roomsUrl } from '../src/net/link.js';
+import { PROTOCOL, REFUSALS, roomsUrl } from '../src/net/link.js';
 import { RoomSession } from '../src/net/room.js';
+import {
+  CODE_RE, JOIN_TOKEN_MS, addressInRoom, addressOutOfRoom, craftForRoom, isBuiltInWorld, normaliseCode,
+  readRoomAddress, roomUrl, takeJoinToken, worldParamsOf, writeJoinToken,
+} from '../src/net/roomlinks.js';
+import {
+  AVATAR_FIELDS, EXPRESSIONS, FIELD_COUNTS, LIVERIES, cleanAvatar, liveryIndex, rollAvatar,
+} from '../src/net/avatar.js';
+import {
+  BoardClock, RACE_LAPS_MAX, RACE_WAYS, RoomRace,
+} from '../src/net/roomrace.js';
+import { QUICK, WAVE } from '../src/net/together.js';
 
 let failures = 0;
 
@@ -282,6 +297,197 @@ console.log('the rooms address');
   check('?rooms= wins', roomsUrl('https://webfpv.org/board', 'https://rooms.webfpv.org/') === 'wss://rooms.webfpv.org/api/rooms/socket');
 }
 
+console.log('room links');
+{
+  check('a code is read as somebody typed it', normaliseCode(' k7q-x2m ') === 'K7QX2M' && normaliseCode('k7 qx 2m') === 'K7QX2M');
+  check('and is not a code with an O, a 0, an I or a 1 in it, or the wrong length',
+    ['K7QX2O', 'K7QX20', 'K7QX2I', 'K7QX21', 'K7QX2', 'K7QX2MM', '', null].every((x) => normaliseCode(x) === ''));
+  check('the worlds the sim ships are its own, the pilot\'s own map and a track are not',
+    isBuiltInWorld('city') && isBuiltInWorld('house') && !isBuiltInWorld('built') && !isBuiltInWorld('custom') && !isBuiltInWorld('a-board-map'));
+
+  check('a whoop room is flown on a whoop and a five inch room on a five inch',
+    craftForRoom({ way: 'whoop', map: 'city' }) === 'whoop65' && craftForRoom({ way: '5inch', map: 'house' }) === '5inch');
+  check('freestyle on a house is a whoop\'s, because the house is',
+    craftForRoom({ way: 'freestyle', map: 'house', scale: 50 }) === 'whoop65');
+  check('freestyle on a board map follows the host\'s pose unit',
+    craftForRoom({ way: 'freestyle', map: 'a-board-map', scale: 100 }) === 'whoop65'
+    && craftForRoom({ way: 'freestyle', map: 'a-board-map', scale: 50 }) === '5inch');
+  check('no room is a five inch', craftForRoom(null) === '5inch');
+
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  check('a world the sim ships opens by name', same(worldParamsOf({ way: 'freestyle', map: 'city' }), { map: 'city' }));
+  check('a board map opens as a map share', same(worldParamsOf({ way: 'freestyle', map: 'pines-1' }), { map: 'built', mapshare: 'pines-1' }));
+  check('a track opens as a track share', same(worldParamsOf({ way: '5inch', map: 'gates-2' }), { map: 'custom', share: 'gates-2' }));
+
+  const room = {
+    code: 'K7QX2M', way: '5inch', map: 'gates-2', scale: 50,
+  };
+  const invite = 'abcdEFGH1234_-xy';
+  const base = 'https://webfpv.org/sim/?map=city&craft=whoop65&fly=1&mapshare=old&gfx=low#start';
+  const href = roomUrl(base, room, { invite });
+  const u = new URL(href);
+  check('a room\'s address names its world, its craft and its code', u.searchParams.get('map') === 'custom'
+    && u.searchParams.get('share') === 'gates-2' && u.searchParams.get('craft') === '5inch' && u.searchParams.get('room') === 'K7QX2M');
+  check('drops the world it was on and keeps what is not a world', !u.searchParams.has('mapshare') && !u.searchParams.has('fly') && u.searchParams.get('gfx') === 'low');
+  check('carries the invite after the #, where a server never sees it', u.hash === `#i=${invite}` && !u.search.includes(invite));
+  check('keeps ?mp=1 until rooms are launched, and not after', u.searchParams.get('mp') === '1'
+    && !new URL(roomUrl(base, room, { invite, mp: false })).searchParams.has('mp'));
+  check('a malformed invite is left off', new URL(roomUrl(base, room, { invite: 'short' })).hash === '');
+
+  const read = readRoomAddress(u.search, u.hash);
+  check('the address reads back as its code and invite', read.code === 'K7QX2M' && read.invite === invite);
+  check('an older address with the invite in the query still reads', readRoomAddress(`?room=k7qx2m&i=${invite}`, '').invite === invite);
+  check('an invite with no room is no invite', same(readRoomAddress('?map=city', `#i=${invite}`), { code: '', invite: '' }));
+
+  const inRoom = addressInRoom('https://webfpv.org/sim/?map=city&craft=whoop65&room=AAAAAA&mp=1#i=abcdEFGH1234_-xy', { map: 'built', mapshare: 'pines-1' }, 'K7QX2M');
+  const v = new URL(inRoom);
+  check('in a room the address bar names the world and the room, and keeps the craft being flown',
+    v.searchParams.get('map') === 'built' && v.searchParams.get('mapshare') === 'pines-1' && v.searchParams.get('room') === 'K7QX2M' && v.searchParams.get('craft') === 'whoop65');
+  check('and drops the invite, so a copied address is not one', v.hash === '');
+  check('an address already right is not written again', addressInRoom(inRoom, { map: 'built', mapshare: 'pines-1' }, 'K7QX2M') === '');
+  const out = new URL(addressOutOfRoom(`${inRoom}#i=${invite}`));
+  check('leaving takes the room and the invite off and nothing else', !out.searchParams.has('room') && out.hash === '' && out.searchParams.get('mapshare') === 'pines-1');
+  check('and is nothing to write when there was no room', addressOutOfRoom('https://webfpv.org/sim/?map=city') === '');
+
+  const memory = () => {
+    const m = new Map();
+    return {
+      getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, x) => m.set(k, String(x)), removeItem: (k) => m.delete(k),
+    };
+  };
+  const store = memory();
+  writeJoinToken(store, { code: 'K7QX2M', invite }, 1000);
+  check('a press carries across the reload it causes', same(takeJoinToken(store, 'K7QX2M', 1500), { code: 'K7QX2M', invite }));
+  check('once', takeJoinToken(store, 'K7QX2M', 1600) === null);
+  writeJoinToken(store, { code: 'K7QX2M', invite }, 1000);
+  check('and only for its own room', takeJoinToken(store, 'AAAAAA', 1500) === null && takeJoinToken(store, 'K7QX2M', 1500) === null);
+  writeJoinToken(store, { code: 'K7QX2M', invite }, 1000);
+  check('and only while it is fresh', takeJoinToken(store, 'K7QX2M', 1000 + JOIN_TOKEN_MS + 1) === null);
+  writeJoinToken(store, { code: 'K7QX2M', invite }, 5000);
+  check('and never from the future', takeJoinToken(store, 'K7QX2M', 4000) === null);
+  writeJoinToken(store, { code: 'K7QX2M', invite: '<script>' }, 1000);
+  check('a stored invite that is not one is dropped', same(takeJoinToken(store, 'K7QX2M', 1200), { code: 'K7QX2M', invite: '' }));
+  const broken = { getItem: () => { throw new Error('no'); }, setItem: () => { throw new Error('no'); }, removeItem: () => {} };
+  check('storage that throws is no press, not a crash', writeJoinToken(broken, { code: 'K7QX2M' }, 1) === false && takeJoinToken(broken, 'K7QX2M', 1) === null);
+}
+
+console.log('avatars');
+{
+  const inRange = (a) => AVATAR_FIELDS.every((k) => Number.isInteger(a[k]) && a[k] >= 0 && a[k] < FIELD_COUNTS[k]);
+  check('nothing, or anything, cleans to a face in range',
+    [null, undefined, 7, 'x', [], {
+      face: 99, hair: -1, eyes: 2.5, acc: '3', skin: NaN, livery: 1e9,
+    }].every((x) => inRange(cleanAvatar(x))));
+  check('a face in range is kept as it is', JSON.stringify(cleanAvatar({
+    face: 3, hair: 7, eyes: 5, acc: 8, skin: 5, hairColour: 8, eyeColour: 5, livery: 12,
+  })) === JSON.stringify({
+    face: 3, hair: 7, eyes: 5, acc: 8, skin: 5, hairColour: 8, eyeColour: 5, livery: 12,
+  }));
+  let allIn = true;
+  let bare = 0;
+  let noLivery = 0;
+  const seen = Object.fromEntries(AVATAR_FIELDS.map((k) => [k, new Set()]));
+  for (let i = 0; i < 5000; i += 1) {
+    const a = rollAvatar(rnd);
+    if (!inRange(a)) allIn = false;
+    if (a.acc === 0) bare += 1;
+    if (a.livery === 0) noLivery += 1;
+    for (const k of AVATAR_FIELDS) seen[k].add(a[k]);
+  }
+  check('5,000 rolled faces are all in range', allIn);
+  check('and between them use every part', AVATAR_FIELDS.every((k) => seen[k].size === FIELD_COUNTS[k] - (k === 'livery' ? 1 : 0)));
+  check(`one in four wears nothing (${(bare / 50).toFixed(1)}%)`, bare > 1000 && bare < 1500);
+  check('a rolled pilot always has a livery of their own', noLivery === 0);
+  check('a rand that returns 1 is still in range', inRange(rollAvatar(() => 1)));
+  check('a pilot with no livery takes one from their id', liveryIndex({ livery: 0 }, 3) === 3 && liveryIndex(null, LIVERIES.length + 2) === 2);
+  check('a chosen livery wins over the id', liveryIndex({ livery: 5 }, 3) === 4);
+}
+
+console.log('the board clock');
+{
+  const c = new BoardClock();
+  check('a new clock knows nothing and changes nothing', !c.known && c.toLocal(1234) === 1234);
+  c.coarse(90000, 1000);
+  check('the welcome\'s time is believed for now', c.known && c.coarseOnly && c.toBoard(1000) === 90000 && c.toLocal(90000) === 1000);
+  check('a ping answered in no time at all is believed', c.heard(2000, 2000 + 89000 + 3, 2006));
+  check('as the board\'s time at the middle of the round trip', c.offset === 89000 && !c.coarseOnly && c.rtt === 6);
+  c.coarse(0, 0);
+  check('after which a welcome\'s time is not', c.offset === 89000);
+  check('an answer that arrived before it was asked says nothing', c.heard(3000, 92000, 2990) === false);
+  check('nor one that took more than five seconds', c.heard(3000, 92000, 8001) === false);
+  check('nor one with no time in it', c.heard(3000, NaN, 3010) === false);
+  /* Slower answers, with the board's clock half way through each, do not
+   * beat the quick one; once the quick one is eight answers old, the best
+   * of the eight since is used. */
+  for (let i = 0; i < 7; i += 1) c.heard(4000 + i * 100, 4000 + i * 100 + 20 + 89010, 4000 + i * 100 + 40);
+  check('the quickest of the last eight answers is the one believed', c.offset === 89000 && c.rtt === 6);
+  c.heard(5000, 5000 + 20 + 89010, 5040);
+  check('and an old quick answer gives way to the newer ones', c.offset === 89010 && c.rtt === 40);
+  check('toLocal and toBoard undo each other', c.toLocal(c.toBoard(123456.5)) === 123456.5);
+}
+
+console.log('a race on one page');
+{
+  let t = 1000;
+  const sent = [];
+  const B = 50000;
+  const rr = new RoomRace({ send: (m) => { sent.push(m); return true; }, you: () => 2, now: () => t });
+  const pit = {
+    phase: 'pit', laps: 2, ready: [], racers: [], goAt: 0, n: 0, votes: [], rows: [],
+  };
+  rr.welcome({ now: t + B, race: pit }, t);
+  check('a room\'s race, in the pit, asks nothing of the page', rr.frame() === '' && !rr.racing() && rr.goAt() === 0 && rr.phase === 'pit');
+  for (; t < 4000; t += 50) rr.frame();
+  const burst = sent.filter((m) => m.t === 'ping').length;
+  for (; t < 14000; t += 50) rr.frame();
+  check(`six quick pings after a welcome (${burst}), then one every fifteen seconds`, burst === 6 && sent.filter((m) => m.t === 'ping').length === 6);
+  rr.pong({ c: 14000, s: 14000 + 5 + B + 7 }, 14010);
+  check('a pong sets the clock', rr.clock.offset === B + 7 && rr.clock.rtt === 10);
+
+  const goLocal = t + 5000;
+  const rows = [{
+    id: 1, laps: 0, total: 0, best: 0, done: false, dnf: false,
+  }, {
+    id: 2, laps: 0, total: 0, best: 0, done: false, dnf: false,
+  }];
+  const count = {
+    ...pit, phase: 'count', n: 1, racers: [1, 2], goAt: goLocal + B + 7, rows,
+  };
+  rr.heard(count);
+  check('a countdown this pilot is in puts the craft on the grid', rr.racing() && rr.frame() === 'grid');
+  check('once', rr.frame() === '' && rr.holding());
+  check('and counts down to GO on this page\'s clock', rr.goAt() === goLocal && rr.toGo() === 5000);
+  check('a lap before GO is not sent', rr.lap(t + 100) === null);
+  t = goLocal - 1;
+  check('nothing a millisecond before GO', rr.frame() === '');
+  t = goLocal;
+  check('GO at GO', rr.frame() === 'go' && !rr.holding());
+  t += 5;
+  check('once', rr.frame() === '');
+  check('a lap before the board says live is not sent', rr.lap(goLocal + 1600) === null);
+  rr.heard({ ...count, phase: 'live' });
+  const l1 = rr.lap(goLocal + 1600.4);
+  const l2 = rr.lap(goLocal + 3300.4);
+  check('the first lap is the time since GO, the next since the last', l1.n === 1 && l1.ms === 1600 && l2.n === 2 && l2.ms === 1700);
+  check('a lap of no time is not a lap', rr.lap(goLocal + 3300.4) === null && rr.lapsSent === 2);
+  check('the laps went to the board', sent.filter((m) => m.t === 'lap').length === 2);
+  t = goLocal + 4000;
+  check('the race clock runs from GO', rr.elapsed() === 4000);
+  rr.heard({ ...count, phase: 'live', rows: [rows[0], { ...rows[1], laps: 2, done: true }] });
+  check('a pilot home sends no more laps', rr.lap(goLocal + 6000) === null && rr.myRow().done);
+
+  const watcher = new RoomRace({ send: () => true, you: () => 3, now: () => t });
+  watcher.heard(count);
+  check('a pilot who is not in the race is not put on the grid', watcher.frame() === '' && watcher.lap(t) === null && !watcher.holding());
+
+  rr.heard({
+    ...count, n: 2, goAt: t + 5000 + B + 7, rows,
+  });
+  check('race two puts the craft on the grid again', rr.frame() === 'grid' && rr.lapsSent === 0);
+  check('and the race clock waits for its GO', rr.elapsed() === 0);
+  check('a track is raced by a five inch or a whoop, and freestyle is not', RoomRace.racing('5inch') && RoomRace.racing('whoop') && !RoomRace.racing('freestyle'));
+}
+
 /* A board checkout beside this one, if there is one. */
 function findBoard() {
   const here = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -329,8 +535,224 @@ async function boardUp(port) {
   return false;
 }
 
-console.log('two pilots through a real board');
+/* A pilot with a race, wired as together.js wires one: the welcome, the
+ * pongs and the race reach the page's RoomRace, and what is said and
+ * refused is kept to look at. */
+function racer(url, handle) {
+  const p = { races: [], said: [], refused: [] };
+  p.s = new RoomSession({
+    url,
+    key: randomBytes(16).toString('hex'),
+    handle,
+    avatar: rollAvatar(rnd),
+    onEvent: (name, data) => {
+      const now = performance.now();
+      if (name === 'welcome') {
+        p.race.welcome(data, now);
+      } else if (name === 'pong') {
+        p.race.pong(data, now);
+      } else if (name === 'race') {
+        p.race.heard(data.race);
+        p.races.push(data.race);
+      } else if (name === 'say' || name === 'chat') {
+        p.said.push(data);
+      } else if (name === 'chatRefused') {
+        p.refused.push(data.why);
+      }
+    },
+  });
+  p.race = new RoomRace({ send: (m) => p.s.link.raceSend(m), you: () => p.s.you });
+  return p;
+}
+
+const raceOn = (p) => p.race.race || {};
+const rowOf = (p, id) => (p.race.race && p.race.race.rows ? p.race.race.rows.find((r) => r.id === id) : null);
+
+/*
+ * Two pilots race two laps on a track through the board, on this
+ * process's clock and the board's Date.now, so GO can be held to the
+ * board's own time. The laps are made up, as the sim's own race would
+ * report them; the board is expected to believe the possible ones and
+ * nothing else.
+ */
+async function raceScene(url) {
+  console.log('a race through the board');
+  const a = racer(url, 'Racer A');
+  const b = racer(url, 'Racer B');
+  const did = { a: [], b: [] };
+  const ticker = setInterval(() => {
+    for (const [k, p] of [['a', a], ['b', b]]) {
+      const f = p.race.frame();
+      if (f) {
+        did[k].push({
+          f, at: performance.now(), wall: Date.now(), n: raceOn(p).n,
+        });
+      }
+    }
+  }, 1000 / 60);
+  try {
+    a.s.host({
+      name: 'Race test', way: '5inch', map: 'selftest-gates', mapName: 'Self test gates', scale: 50,
+    });
+    check('the host is in a five inch room', await until(() => a.s.inRoom));
+    b.s.join(a.s.room.code, { invite: a.s.invite });
+    check('and a second racer joins it', await until(() => b.s.inRoom && a.s.link.pilots.size === 2));
+    check('a racing room starts in the pit, with no race until somebody asks for one', RoomRace.racing(a.s.room.way) && a.race.phase === 'pit' && a.race.race === null);
+    check('both pages learn the board\'s clock from pings', await until(() => !a.race.clock.coarseOnly && !b.race.clock.coarseOnly, 2000));
+    const spread = Math.abs(a.race.clock.offset - b.race.clock.offset);
+    const truthOffset = Date.now() - performance.now();
+    const error = Math.abs(a.race.clock.offset - truthOffset);
+    check(`and agree on it to a few ms (${spread.toFixed(2)} ms apart, ${error.toFixed(2)} ms from the truth)`, spread < 5 && error < 5);
+
+    b.s.link.raceSend({ t: 'laps', n: 7 });
+    a.s.link.raceSend({ t: 'laps', n: 2 });
+    check('the host sets the laps, and only the host', await until(() => raceOn(a).laps === 2 && raceOn(b).laps === 2)
+      && !b.races.some((r) => r.laps === 7));
+    a.s.link.raceSend({ t: 'ready', on: true });
+    check('one pilot ready is not a race', await until(() => raceOn(a).ready.length === 1) && a.race.phase === 'pit');
+    b.s.link.raceSend({ t: 'ready', on: true });
+    check('both ready starts the countdown with no press from the host', await until(() => a.race.phase === 'count' && b.race.phase === 'count'));
+    const first = a.race.race;
+    check('both race, in id order', first.racers.length === 2 && first.racers[0] < first.racers[1] && a.race.racing() && b.race.racing());
+    check('each page puts its craft on the grid, once', await until(() => did.a.length === 1 && did.b.length === 1)
+      && did.a[0].f === 'grid' && did.b[0].f === 'grid');
+    const toGo = a.race.toGo();
+    check(`and counts about five seconds down (${Math.round(toGo)} ms to go)`, toGo > 4500 && toGo <= 5050 && a.race.holding());
+    check('no lap is sent before GO', a.race.lap(performance.now()) === null);
+    check('GO comes once on each page', await until(() => did.a.length === 2 && did.b.length === 2, 7000)
+      && did.a[1].f === 'go' && did.b[1].f === 'go');
+    const late = [did.a[1].wall - first.goAt, did.b[1].wall - first.goAt];
+    check(`at the board's GO, within a frame (${late.map((x) => x.toFixed(0)).join(' and ')} ms after it)`, late.every((x) => x > -5 && x < 45));
+    check('the board goes live', await until(() => a.race.phase === 'live' && b.race.phase === 'live', 2000));
+
+    /* Laps the board must not believe: shorter than any track, longer than
+     * the race has been running, and out of order. */
+    b.s.link.raceSend({ t: 'lap', n: 1, ms: 1000 });
+    b.s.link.raceSend({ t: 'lap', n: 1, ms: 30000 });
+    b.s.link.raceSend({ t: 'lap', n: 2, ms: 2000 });
+    const goA = a.race.goLocal;
+    const goB = b.race.goLocal;
+    const l1 = a.race.lap(goA + 1600);
+    check('A\'s first lap goes as the time since GO', l1 && l1.n === 1 && l1.ms === 1600);
+    check('and the board takes it', await until(() => (rowOf(a, a.s.you) || {}).laps === 1));
+    await until(() => performance.now() > goA + 1400, 3000);
+    const l2 = a.race.lap(goA + 3300);
+    check('A\'s second lap goes as the time since the first', l2 && l2.n === 2 && l2.ms === 1700);
+    check('A is home', await until(() => (rowOf(b, a.s.you) || {}).done === true));
+    check('and sends nothing after', a.race.lap(goA + 9000) === null);
+    await until(() => performance.now() > goB + 1800, 3000);
+    b.race.lap(goB + 1800);
+    b.race.lap(goB + 3700);
+    check('everybody home is the results', await until(() => a.race.phase === 'results' && b.race.phase === 'results'));
+    const rows = raceOn(a).rows;
+    check('A first on 3.3 s with a best of 1.6 s', rows[0].id === a.s.you && rows[0].total === 3300 && rows[0].best === 1600 && rows[0].done);
+    check('B second on 3.7 s: none of the impossible laps counted', rows[1].id === b.s.you && rows[1].total === 3700 && rows[1].laps === 2);
+
+    a.s.link.raceSend({ t: 'again' });
+    check('one vote of two for another is not a majority', await until(() => raceOn(a).votes.length === 1) && a.race.phase === 'results');
+    b.s.link.raceSend({ t: 'again' });
+    check('two of two is race two', await until(() => a.race.phase === 'count' && raceOn(a).n === 2 && raceOn(b).n === 2));
+    check('and both are on the grid again', await until(() => did.a.length === 3 && did.b.length === 3) && did.a[2].f === 'grid' && did.b[2].f === 'grid');
+    b.s.link.raceSend({ t: 'dnf' });
+    check('a pilot can retire in the countdown', await until(() => (rowOf(a, b.s.you) || {}).dnf === true));
+    a.s.link.raceSend({ t: 'pit' });
+    check('the host calls it off and the room is back in the pit', await until(() => a.race.phase === 'pit' && b.race.phase === 'pit')
+      && raceOn(a).racers.length === 0 && !a.race.racing());
+    await wait(200);
+    check('and race two never said GO', !did.a.some((d) => d.n === 2 && d.f === 'go') && !did.b.some((d) => d.n === 2 && d.f === 'go'));
+  } finally {
+    clearInterval(ticker);
+    a.s.leave();
+    b.s.leave();
+  }
+}
+
+/*
+ * Talk, as the owner's rules have it: a listed room shows made up handles
+ * and has quick chat only; a private room whose host turns typed chat on
+ * has typed chat, through the board's filters.
+ */
+async function talkScene(url) {
+  console.log('talk through the board');
+  const a = racer(url, 'Talker A');
+  const b = racer(url, 'Talker B');
+  const c = racer(url, 'Talker C');
+  const d = racer(url, 'Talker D');
+  try {
+    a.s.host({
+      name: 'Listed talk', way: 'freestyle', map: 'city', mapName: 'The town', scale: 100, listed: true, typedChat: true,
+    });
+    check('a listed room opens', await until(() => a.s.inRoom));
+    b.s.join(a.s.room.code, { invite: a.s.invite });
+    check('and a second pilot joins', await until(() => b.s.inRoom && a.s.link.pilots.size === 2 && b.s.link.pilots.size === 2));
+    check('with typed chat off, whatever the host asked for', a.s.room.typedChat === false);
+    const seenA = b.s.link.pilots.get(a.s.you);
+    const seenB = a.s.link.pilots.get(b.s.you);
+    check(`and made up handles, never the typed ones (${seenA.handle}, ${seenB.handle})`, seenA.handle !== 'Talker A' && seenB.handle !== 'Talker B'
+      && !/Talker/.test(JSON.stringify([...a.s.link.pilots.values(), ...b.s.link.pilots.values()])));
+
+    a.s.say('hi');
+    check('a quick line reaches the other pilot, by id', await until(() => b.said.some((m) => m.t === 'say' && m.line === 'hi' && m.id === a.s.you)));
+    a.s.say('sell');
+    a.s.chat('hello there', 'calm');
+    check('typed chat in a listed room is refused', await until(() => a.refused.includes('off')));
+    for (let i = 0; i < 3; i += 1) a.s.say('gg');
+    check('a fourth line inside two seconds is refused as too quick', await until(() => a.refused.includes('slow')));
+    await wait(150);
+    check('the two before it went, and a line that is not a quick line did not', b.said.filter((m) => m.line === 'gg').length === 2
+      && !b.said.some((m) => m.line === 'sell'));
+    check('nobody hears their own quick line back', !a.said.some((m) => m.t === 'say'));
+
+    c.s.host({
+      name: 'Private talk', way: 'freestyle', map: 'city', mapName: 'The town', scale: 100, typedChat: true,
+    });
+    check('a private room opens', await until(() => c.s.inRoom));
+    d.s.join(c.s.room.code, { invite: c.s.invite });
+    check('and a second pilot joins with the invite', await until(() => d.s.inRoom && c.s.link.pilots.size === 2));
+    check('with typed chat on and the handles the pilots typed', c.s.room.typedChat === true && d.s.link.pilots.get(c.s.you).handle === 'Talker C');
+    c.s.chat('Nice line through the gate', 'smug');
+    check('a typed line goes to everybody, the one who typed it too', await until(() => [c, d].every((p) => p.said.some((m) => m.t === 'chat'
+      && m.text === 'Nice line through the gate' && m.face === 'smug' && m.id === c.s.you))));
+    c.s.chat('ring me on 0412 345 678', 'calm');
+    c.s.chat('come to www.example.com', 'calm');
+    d.s.chat('x'.repeat(200), 'calm');
+    d.s.chat('ok then', 'grin');
+    check('a phone number and an address are refused', await until(() => c.refused.filter((w) => w === 'links').length === 2));
+    check('a line too long is refused', await until(() => d.refused.includes('long')));
+    check('a face that is not one is said calm', await until(() => c.said.some((m) => m.text === 'ok then' && m.face === 'calm')));
+    check('and nothing refused reached anybody', ![c, d].some((p) => p.said.some((m) => /0412|example|xxxx/.test(m.text || ''))));
+  } finally {
+    for (const p of [a, b, c, d]) p.s.leave();
+  }
+}
+
+console.log('the board and this client agree');
 const boardDir = findBoard();
+if (!boardDir) {
+  console.log('  skip  no checkout of the board beside this one (set NET_BOARD to one)');
+} else {
+  const board = await import(pathToFileURL(join(boardDir, 'src', 'rooms.js')).href);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  check('the same protocol', board.PROTOCOL === PROTOCOL);
+  check('the same room codes', board.CODE_RE.source === CODE_RE.source);
+  check('the refusals in the order of their close codes',
+    same(Object.entries(board.REFUSALS).sort((x, y) => x[1] - y[1]).map(([k]) => k), REFUSALS)
+    && Object.values(board.REFUSALS).every((code, i, all) => i === 0 || code === all[i - 1] + 1));
+  check('the same pose units and sizes', same(board.SCALES, SCALES) && board.POSE_UP_BYTES === POSE_UP_BYTES && board.POSE_ENTRY_BYTES === POSE_ENTRY_BYTES);
+  check('the same race ways and lap limit', same(board.RACE_WAYS, RACE_WAYS) && board.RACE_LAPS_MAX === RACE_LAPS_MAX);
+  check('the same quick lines, in the same words', [...QUICK, WAVE].every((q) => board.QUICK_LINES[q.line] === q.text)
+    && Object.keys(board.QUICK_LINES).length === QUICK.length + 1);
+  check('the same faces', same(board.FACES, EXPRESSIONS));
+  check('the same avatar fields', same(board.AVATAR_FIELDS, AVATAR_FIELDS));
+  let kept = true;
+  for (let i = 0; i < 500; i += 1) {
+    const a = rollAvatar(rnd);
+    if (!same(board.normaliseAvatar(a), a)) kept = false;
+  }
+  check('every face this client can roll, the board keeps as it is', kept);
+}
+
+console.log('two pilots through a real board');
 if (!boardDir || typeof WebSocket === 'undefined') {
   console.log(`  skip  ${boardDir ? 'this Node has no WebSocket' : 'no checkout of the board beside this one (set NET_BOARD to one)'}`);
 } else {
@@ -426,6 +848,9 @@ if (!boardDir || typeof WebSocket === 'undefined') {
     a.leave();
     check('neither pilot tries again after leaving', a.link.state === 'idle' && b.link.state === 'idle'
       && !events.a.includes('lost') && !events.b.includes('lost'));
+
+    await raceScene(url);
+    await talkScene(url);
   } finally {
     board.kill('SIGKILL');
     rmSync(scratch, { recursive: true, force: true });

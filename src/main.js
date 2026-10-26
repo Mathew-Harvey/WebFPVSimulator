@@ -3747,6 +3747,7 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     }
     input.set3d(run3d);
+    crashJudge.threeD(run3d);
   }
   /* How many times either export has been called, for the harness: a stock
    * flight must make none (window.__air). */
@@ -4790,6 +4791,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * A turtle the pilot may want to fly out of gets STUCK_TURTLE_MS instead.
    * This is the shell's recovery, not physics: the plant is never touched
    * until the moment X would touch it.
+   *
+   * In 3D a craft flat on its back is not stuck, it is sitting on its other
+   * base and flies off it on reverse thrust (onBase in src/game/collide.js
+   * has the owner's words), so within 60 degrees of flat on its back it is
+   * left where it is, as one on its belly is.
    */
   const STUCK_MS = 1500;
   const STUCK_TURTLE_MS = 5000;
@@ -4807,6 +4813,7 @@ export async function boot({ loading, bootStart, mapId }) {
       && !turtleRecover
       && st
       && plantUpZ(st) < TURTLE_EXIT_UPZ
+      && !(run3d && plantUpZ(st) <= -TURTLE_EXIT_UPZ)
       && plantSpeed(st) < STUCK_SPEED
       && plantRateMag(st) < STUCK_RATE;
     if (!still) {

@@ -97,7 +97,9 @@ export class RoomLink {
    * board). handle and avatar: what the other pilots are told. onEvent
    * (name, data) hears everything: 'welcome', 'joined', 'left', 'host',
    * 'room', 'pilots', 'away', 'removed', 'refused', 'retrying', 'lost',
-   * 'closed'. onPoses(bytes) hears the binary frames.
+   * 'closed', and from stages 4 to 6 'say', 'chat', 'chatRefused',
+   * 'reported', 'reportFailed', 'settingsRefused', 'peers', 'signal',
+   * 'ice', 'pong' and 'race'. onPoses(bytes) hears the binary frames.
    */
   constructor({
     url, key, handle = '', avatar = {}, onEvent = () => {}, onPoses = () => {},
@@ -122,6 +124,10 @@ export class RoomLink {
     this.hostId = 0;
     this.room = null;
     this.invite = '';
+    /* What to open direct links through, from the welcome (stage 5), and
+     * the room's race as the board last sent it (stage 6). */
+    this.ice = null;
+    this.race = null;
     this.pilots = new Map();
     this.retries = 0;
     this.retryTimer = null;
@@ -251,6 +257,8 @@ export class RoomLink {
         this.hostId = m.host;
         this.room = m.room;
         this.invite = m.invite || '';
+        this.ice = m.ice || null;
+        this.race = m.race || null;
         this.takeTicket(m.ticket);
         this.pilots.clear();
         for (const p of m.pilots || []) {
@@ -295,6 +303,27 @@ export class RoomLink {
       case 'removed':
         this.ticket = '';
         this.onEvent('removed', m);
+        break;
+      case 'say':
+      case 'chat':
+      case 'chatRefused':
+      case 'reported':
+      case 'reportFailed':
+      case 'settingsRefused':
+      case 'peers':
+      case 'signal':
+      case 'pong':
+        /* Stages 4 to 6: said, refused, linked and timed. The link only
+         * passes them on; the session and the shell decide what they mean. */
+        this.onEvent(m.t, m);
+        break;
+      case 'ice':
+        this.ice = m.ice || null;
+        this.onEvent('ice', m);
+        break;
+      case 'race':
+        this.race = m.race || null;
+        this.onEvent('race', m);
         break;
       case 'refused':
         /* A resume the board cannot honour is the end of this room for
@@ -389,6 +418,44 @@ export class RoomLink {
 
   hostAction(t, id) {
     this.sendJson({ t, id });
+  }
+
+  /* Stage 4. A quick chat word (the board's QUICK_LINES), a typed line
+   * with the face it is said with, and a report. */
+  say(line) {
+    return this.sendJson({ t: 'say', line });
+  }
+
+  chat(text, face) {
+    return this.sendJson({ t: 'chat', text, face });
+  }
+
+  report(id, why) {
+    return this.sendJson({ t: 'report', id, why });
+  }
+
+  /* Stage 5. This client can link directly; an offer or an answer for one
+   * pilot; and whether the link to one pilot is up. */
+  p2p(on) {
+    return this.sendJson({ t: 'p2p', on: Boolean(on) });
+  }
+
+  signal(to, data) {
+    return this.sendJson({ t: 'signal', to, data });
+  }
+
+  direct(id, on) {
+    return this.sendJson({ t: 'direct', id, on: Boolean(on) });
+  }
+
+  /* Stage 6. A ping for the board's clock, and the race's own words:
+   * ready, laps, start, lap, dnf, again and pit. */
+  ping(c) {
+    return this.sendJson({ t: 'ping', c });
+  }
+
+  raceSend(msg) {
+    return this.sendJson(msg);
   }
 
   /* Gone on purpose: no retry, and the others are told 'left'. */

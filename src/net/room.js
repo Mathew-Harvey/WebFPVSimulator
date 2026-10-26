@@ -20,6 +20,13 @@
  * runs on, sent as its low sixteen bits; remote.js learns each sender's
  * clock from their poses, so no clocks are ever set or compared.
  *
+ * DIRECT LINKS (stage 5, src/net/peers.js) sit beside the board, not in
+ * place of it: every pose still goes up to the board, which needs it to
+ * choose who is near and to relay it to the far pilots, and the same 16
+ * bytes go to each pilot this one is linked to. A pose that comes both ways
+ * while a link comes up or goes down is dropped the second time by its
+ * sender clock, so the remote pilot never sees it twice.
+ *
  * No three.js here either, so scripts/net-selftest.js can put a session
  * through a real board in Node.
  *
@@ -40,8 +47,9 @@
  */
 
 import { RoomLink } from './link.js';
+import { Peers } from './peers.js';
 import {
-  POSE_UP_BYTES, SCALES, decodeFrame, encodePose, poseFlags,
+  KIND_POSE, POSE_UP_BYTES, SCALES, decodeFrame, decodePoseAt, encodePose, poseFlags,
 } from './pose.js';
 import { RemotePilot } from './remote.js';
 
@@ -53,6 +61,8 @@ const POSE_SLACK_MS = 4;
  * them, and one minus the cosine of half a hundredth of a degree is about
  * 3.8e-9. */
 const SAME_TURN_DOT = 1 - 3.8e-9;
+/* How often the links are looked at for a retry. */
+const PEER_TICK_MS = 1000;
 
 export class RoomSession {
   /*
@@ -61,6 +71,7 @@ export class RoomSession {
    */
   constructor({
     url, key, handle, avatar, onEvent = () => {}, now = () => performance.now(), WebSocketImpl,
+    RTC = globalThis.RTCPeerConnection || null,
   }) {
     this.now = now;
     this.onEvent = onEvent;
@@ -85,6 +96,13 @@ export class RoomSession {
       onEvent: (name, data) => this.heard(name, data),
       onPoses: (bytes) => this.poses(bytes),
     });
+    this.peers = new Peers({
+      link: this.link,
+      RTC,
+      onPose: (id, bytes) => this.peerPose(id, bytes),
+    });
+    this.peerTickAt = 0;
+    this.peerPoses = 0;
   }
 
   get inRoom() {
@@ -116,8 +134,22 @@ export class RoomSession {
   }
 
   leave() {
+    this.peers.reset();
     this.link.leave();
     this.remotes.clear();
+  }
+
+  /* Stage 4: a quick chat word, a typed line, a report. */
+  say(line) {
+    return this.link.say(line);
+  }
+
+  chat(text, face) {
+    return this.link.chat(text, face);
+  }
+
+  report(id, why) {
+    return this.link.report(id, why);
   }
 
   heard(name, data) {
@@ -128,14 +160,43 @@ export class RoomSession {
       }
       if (name === 'welcome') {
         /* A resume after a deploy can come back with other ids; the poses
-         * held for the old ones would be drawn at the wrong pilots. */
+         * held for the old ones would be drawn at the wrong pilots, and the
+         * links are to the old ids too. */
         this.remotes.clear();
         this.last.flags = -1;
+        this.peers.reset();
+        this.peers.setIce(data.ice, data.you);
       }
     } else if (name === 'left') {
       this.remotes.delete(data.id);
+      this.peers.drop(data.id, false);
+    } else if (name === 'ice') {
+      this.peers.setIce(data.ice, this.link.you);
+      this.peers.tick();
+    } else if (name === 'peers') {
+      this.peers.want(data.ids);
+    } else if (name === 'signal') {
+      this.peers.signal(data.from, data.data);
     }
     this.onEvent(name, data);
+  }
+
+  /* A pose that came over a direct link: the 16 bytes the pilot sent. */
+  peerPose(id, bytes) {
+    if (!this.link.pilots.has(id) || bytes.length !== POSE_UP_BYTES || bytes[0] !== KIND_POSE) {
+      return;
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const pose = decodePoseAt(view, 1, this.units, this.peerScratch || (this.peerScratch = {}));
+    let r = this.remotes.get(id);
+    if (!r) {
+      r = new RemotePilot(id);
+      this.remotes.set(id, r);
+    }
+    if (r.push(pose, this.now())) {
+      this.posesHeard += 1;
+      this.peerPoses += 1;
+    }
   }
 
   poses(bytes) {
@@ -163,7 +224,9 @@ export class RoomSession {
    * that calls it allocates nothing.
    */
   uplink(px, py, pz, qx, qy, qz, qw, spinning = false, resets = 0) {
-    if (!this.link.inRoom) {
+    /* While the board is being reconnected, the direct links carry on:
+     * the nearest pilots are still here. */
+    if (!this.link.inRoom && !this.peers.links.size) {
       return false;
     }
     const t = this.now();
@@ -184,7 +247,13 @@ export class RoomSession {
       return false;
     }
     encodePose(this.up, this.units, Math.round(t), flags, px, py, pz, qx, qy, qz, qw);
-    if (!this.link.sendPose(this.up)) {
+    const viaBoard = this.link.sendPose(this.up);
+    const viaLinks = this.peers.send(this.up);
+    if (t - this.peerTickAt > PEER_TICK_MS) {
+      this.peerTickAt = t;
+      this.peers.tick();
+    }
+    if (!viaBoard && !viaLinks) {
       return false;
     }
     this.lastSentAt = t;

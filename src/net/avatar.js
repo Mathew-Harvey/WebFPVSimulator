@@ -372,6 +372,137 @@ function layer(side) {
 }
 
 /*
+ * HAIR UNDER A HAT. A hat hides the hair under and above it, column by
+ * column, so spikes and buns do not poke through the crown: inside the
+ * hat's columns the hair stops a lip above the hat's bottom edge, where the
+ * hat covers the cut.
+ *
+ * Beyond the hat's sides there is nothing to cover a cut, and that is where
+ * the first version showed. It carried the brim on level, so a bob or long
+ * hair under a beanie came out as a square block with a flat top and a
+ * corner (the owner, 2026-10-26: "the hat and the hair don't work together
+ * due to the overlays being square"). Now the hair comes out from under the
+ * rim and falls away in a rounded shoulder: a quarter ellipse from the rim
+ * at the hat's edge down to the hair's outer edge, as hair pushed down by a
+ * hat does. The new edge gets an ink line, the width of the parts' own, so
+ * it reads as drawn rather than cut. Twin tails come out at the sides above
+ * the brim, so their sides are left alone.
+ *
+ * Once per portrait, kept with it, never in flight.
+ */
+const HAT_INK = [24, 19, 22];
+function tuckUnderHat(hg, worn, side, H, tails) {
+  const hat = worn.getContext('2d').getImageData(0, 0, side, side).data;
+  const bottom = new Float32Array(side).fill(-1);
+  let left = side;
+  let right = -1;
+  for (let x = 0; x < side; x += 1) {
+    for (let y = side - 1; y >= 0; y -= 1) {
+      if (hat[(y * side + x) * 4 + 3] > 128) {
+        bottom[x] = y;
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+        break;
+      }
+    }
+  }
+  if (right < 0) {
+    return;
+  }
+  const img = hg.getImageData(0, 0, side, side);
+  const hd = img.data;
+  const lip = HAT_LIP * H;
+  const cut = new Float32Array(side).fill(-1);
+  for (let x = left; x <= right; x += 1) {
+    cut[x] = bottom[x] >= 0 ? bottom[x] - lip : -1;
+  }
+  if (!tails) {
+    const rimL = bottom[Math.min(right, left + 8)] - lip;
+    const rimR = bottom[Math.max(left, right - 8)] - lip;
+    /* How far the hair reaches past each side, read in the band just
+     * under the rim, so long hair splaying at the shoulders does not
+     * flatten the curve at the top. */
+    let minX = left;
+    let maxX = right;
+    const y0 = Math.max(0, Math.floor(Math.min(rimL, rimR)));
+    const y1 = Math.min(side - 1, Math.ceil(Math.max(rimL, rimR) + 0.45 * H));
+    for (let y = y0; y <= y1; y += 1) {
+      for (let x = 0; x < side; x += 1) {
+        if (hd[(y * side + x) * 4 + 3] > 64) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+        }
+      }
+    }
+    const wl = Math.max(1, left - minX);
+    const wr = Math.max(1, maxX - right);
+    for (let x = 0; x < left; x += 1) {
+      const t = Math.min(1, (left - x) / wl);
+      cut[x] = rimL + 0.9 * wl * (1 - Math.sqrt(1 - t * t));
+    }
+    for (let x = right + 1; x < side; x += 1) {
+      const t = Math.min(1, (x - right) / wr);
+      cut[x] = rimR + 0.9 * wr * (1 - Math.sqrt(1 - t * t));
+    }
+  }
+  /* Take the hair away above the line, keeping a fraction of the pixel the
+   * line crosses so the edge is not stepped, and note what went. */
+  const gone = new Uint8Array(side * side);
+  for (let x = 0; x < side; x += 1) {
+    const c = cut[x];
+    if (c < 0) {
+      continue;
+    }
+    for (let y = 0; y < side && y < c; y += 1) {
+      const o = (y * side + x) * 4;
+      if (hd[o + 3] === 0) {
+        continue;
+      }
+      if (c - y < 1) {
+        hd[o + 3] *= 1 - (c - y);
+      } else {
+        hd[o + 3] = 0;
+      }
+      gone[y * side + x] = 1;
+    }
+  }
+  /* The ink line: every hair pixel left within reach of one taken away.
+   * Inside the hat's columns it is under the hat; outside, it is the
+   * outline the shoulder needs. */
+  const r = 2.6;
+  const rr = r * r;
+  const span = Math.ceil(r);
+  for (let y = 0; y < side; y += 1) {
+    for (let x = 0; x < side; x += 1) {
+      const o = (y * side + x) * 4;
+      if (hd[o + 3] < 40 || gone[y * side + x]) {
+        continue;
+      }
+      let near = Infinity;
+      for (let dy = -span; dy <= span && near > 0; dy += 1) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= side) continue;
+        for (let dx = -span; dx <= span; dx += 1) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= side || !gone[yy * side + xx]) continue;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < near) near = d2;
+        }
+      }
+      if (near <= rr) {
+        /* Full ink inside the line, eased over its last pixel. */
+        const k = Math.min(1, Math.max(0, r + 0.5 - Math.sqrt(near)));
+        hd[o] += (HAT_INK[0] - hd[o]) * k;
+        hd[o + 1] += (HAT_INK[1] - hd[o + 1]) * k;
+        hd[o + 2] += (HAT_INK[2] - hd[o + 2]) * k;
+        hd[o + 3] = Math.max(hd[o + 3], 255 * k);
+      }
+    }
+  }
+  hg.putImageData(img, 0, 0);
+}
+
+/*
  * A head and shoulders, square: the bust the dialogue stands on a speech
  * box and the editor shows large. `open` is the talking mouth. Returns a
  * canvas, kept, so the same face asked for twice is drawn once.
@@ -444,44 +575,7 @@ export function avatarBust(raw, expr = 'calm', open = false) {
   const hg = hair.getContext('2d');
   fit(hg, hairName, [[HAIR, HAIR_COLOURS[av.hairColour], null]]);
   if (HATS.has(wear)) {
-    /* A hat hides the hair under and above it, column by column, so
-     * spikes and buns do not poke through the crown. Beyond the hat's
-     * sides the brim carries on level, except over twin tails, which come
-     * out at the sides above the brim. */
-    const hat = worn.getContext('2d').getImageData(0, 0, side, side).data;
-    const bottom = new Float32Array(side).fill(-1);
-    let left = side;
-    let right = -1;
-    for (let x = 0; x < side; x += 1) {
-      for (let y = side - 1; y >= 0; y -= 1) {
-        if (hat[(y * side + x) * 4 + 3] > 128) {
-          bottom[x] = y;
-          left = Math.min(left, x);
-          right = Math.max(right, x);
-          break;
-        }
-      }
-    }
-    if (right >= 0 && !TAILS.has(HAIRS[av.hair])) {
-      const l = bottom[Math.min(right, left + 8)];
-      const r = bottom[Math.max(left, right - 8)];
-      for (let x = 0; x < left; x += 1) {
-        bottom[x] = l;
-      }
-      for (let x = right + 1; x < side; x += 1) {
-        bottom[x] = r;
-      }
-    }
-    const img = hg.getImageData(0, 0, side, side);
-    const hd = img.data;
-    const lip = HAT_LIP * H;
-    for (let x = 0; x < side; x += 1) {
-      const cut = bottom[x] - lip;
-      for (let y = 0; y < side && y < cut; y += 1) {
-        hd[(y * side + x) * 4 + 3] = 0;
-      }
-    }
-    hg.putImageData(img, 0, 0);
+    tuckUnderHat(hg, worn, side, H, TAILS.has(HAIRS[av.hair]));
   }
   g.drawImage(hair, 0, 0);
   if (worn) {
@@ -501,8 +595,9 @@ export function avatarBust(raw, expr = 'calm', open = false) {
 
 /*
  * A portrait onto a canvas of the caller's, `size` CSS pixels square, at
- * the screen's pixel ratio. `crop` is 'bust' for head and shoulders or
- * 'face' for the round chip a list or a tag wears. Draws nothing until the
+ * the screen's pixel ratio. `crop` is 'bust' for head and shoulders,
+ * 'face' for the round chip a list or a tag wears, or 'eyes' for the
+ * editor's eye tiles. Draws nothing until the
  * atlas is in; the caller draws again when loadAvatarAtlas resolves.
  */
 export function paintAvatar(target, raw, { expr = 'calm', open = false, crop = 'bust', size = 64 } = {}) {
@@ -526,6 +621,13 @@ export function paintAvatar(target, raw, { expr = 'calm', open = false, crop = '
      * above the skull, across the face's middle. */
     const s = 1.2 * H;
     const y = 0.3 * H - 0.12 * H;
+    const x = bust.width / 2 - s / 2;
+    g.drawImage(bust, x, y, s, s, 0, 0, px, px);
+  } else if (crop === 'eyes') {
+    /* The eyes and the brows, for the editor's eye tiles: a square two
+     * thirds of a face across, on the line the eyes are drawn on. */
+    const s = 0.66 * H;
+    const y = 0.3 * H + 0.545 * H - s * 0.48;
     const x = bust.width / 2 - s / 2;
     g.drawImage(bust, x, y, s, s, 0, 0, px, px);
   } else {

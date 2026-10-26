@@ -2377,17 +2377,16 @@
       }
       .screen-title.is-gate .gate-cards {
         display: flex;
-        align-items: stretch;
-        gap: clamp(12px, 1.6vw, 24px);
+        flex-direction: column;
+        gap: clamp(6px, 1.2vh, 12px);
         width: 100%;
-        /* Pushed to the bottom of the column, which is where the menu is
-           on every other state of this screen: answering the gate then
-           swaps one block for another in the same place instead of moving
-           the page. Auto only ever takes free space, so on a short window
-           the gap closes to nothing rather than pushing the cards off. */
-        margin: auto 0 0;
-        /* Room for the cards' hard shadow, which falls right of the last one. */
-        padding-right: 8px;
+        /* The pages take the height under the masthead: a magazine page is
+           the size of the magazine, not the size of its pictures. */
+        flex: 1 1 auto;
+        min-height: 0;
+        margin: clamp(6px, 1.6vh, 16px) 0 0;
+        /* Room for the panels' hard shadow, which falls right of the last one. */
+        padding-right: 10px;
         box-sizing: border-box;
         pointer-events: auto;
       }
@@ -2406,64 +2405,173 @@
          so the foot gives the space up rather than splitting it. */
       .screen-title.is-gate .title-foot { margin-top: 0; }
       /*
-       * THE CARDS ARE MANGA PANELS (2026-10-20, the owner: "style this page
-       * to match the rest of the restyling"). The same page as the map
-       * picker (src/picker/picker.js) and the front door's hero: a thick
-       * ink frame with a hard offset shadow and no blur, leaning a few
-       * degrees, the picture upright inside it, the name lettered in the
-       * hand of the wordmark over the picture's foot, and the sentence on
-       * paper under it. The chosen card gets the sakura ring and the still
-       * focus lines the picker's chosen panel gets.
+       * THE GATE IS A MANGA MAGAZINE (2026-10-26, the owner: "design it like
+       * a manga magazine ... a series of comic book scenes to select ...
+       * like turning the pages of a magazine"). Each page is a grid of
+       * panels of different sizes, as a manga page is drawn: a thick ink
+       * frame with a hard offset shadow and no blur, leaning a few degrees,
+       * the picture upright inside it and the panel's own drawings over it
+       * (src/ui/gatepages.js), the name lettered in the hand of the wordmark
+       * at its foot with a narration box under it, and a kicker in its top
+       * corner. The chosen panel gets the sakura ring and the still focus
+       * lines the picker's chosen panel gets.
        *
-       * The frame is skewed and .gate-card-in skews back, so the gutters
-       * lean and the world in the picture stays level. Nothing here moves
-       * on its own and nothing blurs: a hard shadow is the cheapest one
-       * there is, and the live world behind is the only thing drawing per
-       * frame. The lettering is painted once, by letterGateNames.
+       * Three pages: the cover (solo or multiplayer, while rooms are on),
+       * the solo page and the multiplayer page, each with a head that names
+       * it and prints its folio. A page turns in about its spine when it is
+       * opened, a third of a second, and only then.
+       *
+       * Nothing here moves on its own and nothing blurs: a hard shadow is
+       * the cheapest one there is, the drawings are static SVG, and the live
+       * world behind is the only thing drawing per frame. The lettering is
+       * painted once, by letterGateNames.
        */
       .gate-cards {
         --gc-ink: #0b1116;
         --gc-paper: #f7f0dc;
         --gc-quiet: #5d6b78;
+        --gc-bleed: 16px;
       }
-      .gate-card {
-        flex: 1 1 0;
-        min-width: 0;
+      .gate-head {
         display: flex;
-        flex-direction: column;
+        align-items: center;
+        gap: clamp(10px, 1.4vw, 18px);
+        flex: none;
+        min-width: 0;
+      }
+      .gate-back {
+        flex: none;
+        display: inline-flex; align-items: center; gap: 9px;
+        padding: 7px 16px 7px 12px;
+        border: 3px solid var(--gc-ink);
+        background: var(--sakura);
+        color: var(--gc-ink);
+        font: inherit; font-size: 14px; font-weight: 900; font-style: italic;
+        letter-spacing: 0.05em; text-transform: uppercase;
+        box-shadow: 4px 4px 0 var(--gc-ink);
+        transform: skewX(-8deg);
+        cursor: pointer;
+        pointer-events: auto;
+      }
+      .gate-back::before {
+        content: "";
+        border-style: solid;
+        border-width: 6px 9px 6px 0;
+        border-color: transparent var(--gc-ink) transparent transparent;
+      }
+      .gate-back:hover, .gate-back:focus-visible { transform: skewX(-8deg) translate(-2px, -2px); box-shadow: 6px 6px 0 var(--gc-ink); }
+      .gate-back:focus-visible { outline: 3px solid var(--mint); outline-offset: 3px; }
+      .gate-head-ttl {
+        display: flex; align-items: center; gap: 12px;
+        flex: 1 1 auto; min-width: 0;
+      }
+      .gate-head-kick {
+        flex: none;
+        padding: 3px 9px;
+        background: var(--gc-ink); color: var(--cream);
+        font-size: 11px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase;
+      }
+      .gate-head-title {
+        margin: 0; min-width: 0;
+        color: var(--cream);
+        font-size: clamp(20px, 2.3vw, 30px);
+        font-weight: 900; font-style: italic; text-transform: uppercase;
+        letter-spacing: 0.02em; line-height: 1.05;
+        text-shadow: 2px 2px 0 var(--gc-ink);
+      }
+      /* The page number a magazine prints, set like one. */
+      .gate-folio {
+        flex: none; margin-left: auto;
+        padding: 4px 10px;
+        border: 2px solid rgba(243, 234, 212, 0.7);
+        color: var(--cream);
+        font-size: 12px; font-weight: 900; font-style: italic; letter-spacing: 0.14em;
+        text-shadow: 1px 1px 0 var(--gc-ink);
+      }
+      .gate-grid {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: grid;
+        gap: clamp(10px, 1.4vw, 18px);
+      }
+      .gate-page-cover .gate-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+        grid-template-rows: minmax(0, 1fr);
+      }
+      .gate-page-solo .gate-grid {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+          "career career career career five five five five whoop whoop whoop whoop"
+          "career career career career free free free free free build build build";
+      }
+      .gate-page-together .gate-grid {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+          "host host host host host host find find find find find find"
+          "host host host host host host code code code pilot pilot pilot";
+      }
+      .gate-card-career { grid-area: career; }
+      .gate-card-race-5inch { grid-area: five; }
+      .gate-card-race-whoop65 { grid-area: whoop; }
+      .gate-card-freestyle-5inch { grid-area: free; }
+      .gate-card-builder { grid-area: build; }
+      .gate-card-mp-host { grid-area: host; }
+      .gate-card-mp-find { grid-area: find; }
+      .gate-card-mp-code { grid-area: code; }
+      .gate-card-mp-pilot { grid-area: pilot; }
+      .gate-card {
+        position: relative;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
         cursor: pointer;
         overflow: hidden;
         background: var(--gc-ink);
         border: 4px solid var(--gc-ink);
         box-shadow: 7px 7px 0 var(--gc-ink);
-        transform: skewX(-3.5deg);
+        transform: skewX(-2.5deg);
         transition: transform 0.12s ease;
       }
+      /* The frame is skewed and this skews back, so the gutters lean and
+         the world in the picture stays level. It reaches past the frame by
+         --gc-bleed each side, enough to fill the corners of a panel 700 px
+         tall at this lean, so everything placed in it sits that far in. */
       .gate-card-in {
-        display: flex; flex-direction: column; flex: 1 1 auto;
-        margin: 0 -5%;
-        transform: skewX(3.5deg);
+        display: flex; flex: 1 1 auto; min-height: 0;
+        margin: 0 calc(-1 * var(--gc-bleed));
+        transform: skewX(2.5deg);
       }
-      .gate-card:hover { transform: skewX(-3.5deg) translate(-2px, -2px); }
+      .gate-card:hover { transform: skewX(-2.5deg) translate(-2px, -2px); }
       /* The sakura ring and the lift the picker's chosen panel has, so a
          card that is chosen looks chosen in the same way everywhere. */
       .gate-card.on {
         z-index: 2;
-        transform: skewX(-3.5deg) translate(-4px, -4px);
+        transform: skewX(-2.5deg) translate(-4px, -4px);
         box-shadow: 0 0 0 4px var(--sakura), 9px 9px 0 4px var(--gc-ink);
       }
       .gate-card:focus-visible { outline: 3px solid var(--mint); outline-offset: 5px; }
       .gate-card-art {
         position: relative;
+        flex: 1 1 auto;
+        min-height: 0;
         width: 100%;
-        /* The picture takes what the pills used to: the sentence is the
-           only thing under it. */
-        height: clamp(170px, 36vh, 400px);
         background: #1a241c;
         overflow: hidden;
-        border-bottom: 4px solid var(--gc-ink);
       }
+      /* A panel with no photograph is a burst of its colour, as a manga
+         page shouts a moment: the multiplayer page's code, list and pilot. */
+      .gate-card-art.is-burst {
+        background:
+          repeating-conic-gradient(from 0deg at 50% 44%, rgba(255, 250, 240, 0.5) 0 5deg, transparent 5deg 12deg),
+          var(--burst, var(--sakura));
+      }
+      .burst-sakura { --burst: var(--sakura); }
+      .burst-amber { --burst: var(--amber); }
+      .burst-mint { --burst: var(--mint); }
       .gate-card-shot {
+        position: absolute; inset: 0;
         width: 100%; height: 100%;
         display: block; object-fit: cover;
       }
@@ -2477,49 +2585,108 @@
         gap: 4px;
         background: var(--gc-ink);
       }
-      .gate-card-collage .gate-card-shot { min-height: 0; }
+      .gate-card-collage .gate-card-shot { position: static; min-height: 0; }
       .gate-card-collage .gate-card-shot:first-child { grid-row: 1 / 3; }
       /* The small panels crop to the top of their frames, where the house
          and the yard's buildings are, not the street in front. */
       .gate-card-collage .gate-card-shot:not(:first-child) { object-position: 50% 15%; }
       /* The plan mark goes over the town, the big panel, so it is not
          laid across a gutter and a second map. */
-      .gate-card-collage ~ .gate-card-mark { right: auto; left: 26px; }
+      .gate-card-collage ~ .gate-card-mark { right: auto; left: calc(var(--gc-bleed) + 10px); top: 40px; }
       /* A shade under the name and the dot tone the page's pictures wear. */
       .gate-card-art::after {
         content: "";
         position: absolute; inset: 0;
         background:
           radial-gradient(circle, rgba(11, 17, 22, 0.28) 0 1px, transparent 1.5px) 0 0 / 4px 4px,
-          linear-gradient(to top, rgba(11, 17, 22, 0.78), rgba(11, 17, 22, 0) 46%);
+          linear-gradient(to top, rgba(11, 17, 22, 0.8), rgba(11, 17, 22, 0) 48%);
         pointer-events: none;
+      }
+      .gate-card-art.is-burst::after {
+        background:
+          radial-gradient(circle, rgba(11, 17, 22, 0.2) 0 1px, transparent 1.5px) 0 0 / 4px 4px,
+          linear-gradient(to top, rgba(11, 17, 22, 0.72), rgba(11, 17, 22, 0) 40%);
       }
       /* The focus lines of the picker, still: two conic fans masked to the
          edge, shown on the chosen card only. */
       .gate-card-art::before {
         content: "";
-        position: absolute; inset: 0; z-index: 1;
+        position: absolute; inset: 0; z-index: 3;
         opacity: 0;
         pointer-events: none;
         background:
           repeating-conic-gradient(from 3deg at 50% 52%, rgba(247, 240, 220, 0.95) 0 0.45deg, transparent 0.45deg 3.3deg),
           repeating-conic-gradient(from 0deg at 50% 52%, rgba(247, 240, 220, 0.8) 0 0.25deg, transparent 0.25deg 5.1deg);
-        -webkit-mask: radial-gradient(ellipse 72% 70% at 50% 52%, transparent 62%, #000 96%);
-        mask: radial-gradient(ellipse 72% 70% at 50% 52%, transparent 62%, #000 96%);
+        -webkit-mask: radial-gradient(ellipse 72% 70% at 50% 52%, transparent 66%, #000 98%);
+        mask: radial-gradient(ellipse 72% 70% at 50% 52%, transparent 66%, #000 98%);
       }
       .gate-card.on .gate-card-art::before { opacity: 1; }
-      /* Above the shade. */
-      .gate-card-mark, .gate-card-nm { z-index: 2; }
-      .gate-card-nm {
-        position: absolute;
-        left: 30px; right: 30px; bottom: 9px;
+      /* The panel's drawings, over the shade and under the words. Each
+         piece keeps to its own corner of the panel (gatepages.js). */
+      .gate-card-scene { position: absolute; inset: 0 var(--gc-bleed); z-index: 2; pointer-events: none; }
+      .gp-piece { position: absolute; }
+      .gp-piece .gp-svg { display: block; width: 100%; height: auto; overflow: visible; }
+      .gp-solo-quad { left: 34%; top: 10%; width: 56%; }
+      .gp-solo-sfx { left: 5%; top: 18%; width: 34%; }
+      .gp-team { left: 18%; top: 14%; width: 66%; }
+      .gp-bub-a { left: 4%; top: 6%; width: 25%; max-width: 210px; }
+      .gp-bub-b { right: 5%; top: 44%; width: 15%; max-width: 130px; }
+      .gp-sticker { right: 3%; top: 3%; width: 16%; max-width: 140px; }
+      .gp-career-bub { right: 5%; top: 9%; width: 44%; max-width: 200px; }
+      .gp-medal { left: 6%; top: 32%; width: 18%; max-width: 84px; }
+      .gp-watch { left: 5%; top: 21%; width: 12%; max-width: 64px; }
+      .gp-whoop { left: 8%; top: 18%; width: 44%; max-width: 230px; }
+      .gp-free-sfx { left: 30%; top: 14%; width: 30%; max-width: 210px; }
+      .gp-pencil { right: 7%; top: 12%; width: 32%; max-width: 130px; }
+      .gp-build-bub { left: 6%; top: 28%; width: 52%; max-width: 190px; }
+      .gp-sign { left: 50%; top: 0; width: 44%; max-width: 300px; transform: translateX(-50%); }
+      .gp-arrivals { left: 50%; top: 34%; width: 76%; max-width: 480px; transform: translateX(-50%); }
+      /* Sized by height, because the panel is a wide strip. */
+      .gp-rooms { left: 60%; top: 4%; height: 76%; transform: translateX(-50%); }
+      .gp-ticket { left: 50%; top: 14%; height: 40%; transform: translateX(-50%); }
+      .gp-rooms .gp-svg, .gp-ticket .gp-svg { width: auto; height: 100%; }
+      .gp-code-quad { right: 2%; top: 2%; width: 38%; max-width: 150px; }
+      /* The pilot's own portrait, standing in the panel like a cover star,
+         or a stranger's shape with a question for one who has not made a
+         face yet. */
+      .gate-card-mp-pilot .gate-card-scene { --gp-livery: var(--mint); }
+      .gp-portrait {
+        position: absolute; left: 50%; bottom: 0;
+        height: 100%; aspect-ratio: 1;
+        transform: translateX(-50%);
+      }
+      .gp-portrait canvas { display: block; width: 100% !important; height: 100% !important; }
+      .gp-portrait.is-new { height: 78%; bottom: 12%; }
+      .gp-portrait .gp-svg { width: 100%; height: 100%; }
+      .gp-pilot-bub { right: 4%; top: 6%; width: 48%; max-width: 180px; }
+      .gp-plate {
+        position: absolute; right: 8px; top: 10px;
+        padding: 3px 12px;
+        background: var(--gp-livery, var(--mint));
+        border: 3px solid var(--gc-ink);
+        box-shadow: 3px 3px 0 var(--gc-ink);
+        color: var(--gc-ink);
+        font-size: 14px; font-weight: 900; font-style: italic;
+        transform: skewX(-8deg);
+        max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      /* A kicker in the panel's top corner, the way a magazine flags a
+         story. The chosen panel's turns sakura. */
+      .gate-card-kicker {
+        position: absolute; left: calc(var(--gc-bleed) + 12px); top: 12px; z-index: 4;
+        padding: 3px 9px;
+        background: var(--gc-ink); color: var(--cream);
+        font-size: 11px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase;
+        box-shadow: 3px 3px 0 rgba(11, 17, 22, 0.5);
         pointer-events: none;
       }
-      .gate-card-body {
-        display: flex; flex-direction: column; flex: 1 1 auto; gap: 9px;
-        padding: 12px 30px 15px;
-        background: var(--gc-paper) radial-gradient(circle, rgba(11, 17, 22, 0.035) 0 1px, transparent 1.4px) 0 0 / 5px 5px;
-        color: var(--gc-ink);
+      .gate-card.on .gate-card-kicker { background: var(--sakura); color: var(--gc-ink); box-shadow: 3px 3px 0 var(--gc-ink); }
+      .gate-card-mark, .gate-card-nm { z-index: 4; }
+      .gate-card-nm {
+        position: absolute;
+        left: calc(var(--gc-bleed) + 14px); right: calc(var(--gc-bleed) + 14px); bottom: 10px;
+        display: grid; justify-items: start; gap: 6px;
+        pointer-events: none;
       }
       /* The name keeps its words in the DOM, in cream, and letterHeading
          paints the hand over them (see letterGateNames). Cream is the fill
@@ -2527,17 +2694,27 @@
       .gate-card-name {
         margin: 0;
         color: var(--cream);
-        font-size: clamp(22px, 2.3vw, 32px);
+        font-size: clamp(20px, 2.1vw, 30px);
         font-weight: 900; font-style: italic; text-transform: uppercase;
         letter-spacing: 0.02em;
         line-height: 1.05;
         text-shadow: 2px 2px 0 var(--gc-ink);
       }
+      /* The narration box: paper, an ink rule round it, a hard shadow. */
       .gate-card-blurb {
         margin: 0;
+        max-width: 30em;
+        padding: 5px 10px;
+        background: var(--gc-paper);
+        border: 2.5px solid var(--gc-ink);
+        box-shadow: 3px 3px 0 var(--gc-ink);
         color: var(--gc-ink);
-        font-size: 13.5px; line-height: 1.5; font-weight: 600;
+        font-size: 12.5px; line-height: 1.35; font-weight: 700;
       }
+      .gate-page-cover .gate-card-name { font-size: clamp(30px, 4.2vw, 60px); }
+      .gate-page-cover .gate-card-blurb { font-size: clamp(13px, 1.2vw, 16px); padding: 7px 12px; }
+      .gate-page-cover .gate-card-kicker { font-size: 12.5px; padding: 4px 11px; }
+      .gate-card-mp-host .gate-card-name, .gate-card-career .gate-card-name { font-size: clamp(26px, 3vw, 42px); }
       /*
        * The plan drawing over the corner of each photograph.
        *
@@ -2551,9 +2728,9 @@
        */
       .gate-card-mark {
         position: absolute;
-        right: 26px; top: 8px;
-        width: clamp(52px, 5.2vw, 76px);
-        height: clamp(52px, 5.2vw, 76px);
+        right: calc(var(--gc-bleed) + 10px); top: 8px;
+        width: clamp(46px, 4.4vw, 68px);
+        height: clamp(46px, 4.4vw, 68px);
         display: grid; place-items: center;
         pointer-events: none;
         /* Over a lit field and over a dark room, so it carries its own
@@ -2563,6 +2740,92 @@
       }
       .craft-plan { width: 100%; height: 100%; color: var(--cream); }
       .gate-card-race-whoop65 .craft-plan { color: var(--mint); }
+      /* THE PAGE TURN: the new page swings in about its spine from the side
+         the reader is going, and settles. */
+      @keyframes gate-turn-fwd {
+        from { transform: perspective(1600px) rotateY(-26deg) translateX(7%); opacity: 0; }
+        60% { opacity: 1; }
+        to { transform: none; opacity: 1; }
+      }
+      @keyframes gate-turn-back {
+        from { transform: perspective(1600px) rotateY(26deg) translateX(-7%); opacity: 0; }
+        60% { opacity: 1; }
+        to { transform: none; opacity: 1; }
+      }
+      .gate-grid.turn-fwd { transform-origin: 0 50%; animation: gate-turn-fwd 0.34s cubic-bezier(0.2, 0.9, 0.25, 1) both; }
+      .gate-grid.turn-back { transform-origin: 100% 50%; animation: gate-turn-back 0.34s cubic-bezier(0.2, 0.9, 0.25, 1) both; }
+      @media (prefers-reduced-motion: reduce) {
+        .gate-grid.turn-fwd, .gate-grid.turn-back { animation: none; }
+        .gate-card, .gate-back { transition: none; }
+      }
+      /*
+       * THE BAND OVER THE PICKER WHILE A ROOM IS BEING HOSTED (ui.js
+       * paintHostPick): what the page is for now, in the amber a manga
+       * page shouts in, and the way out of it.
+       */
+      /* It takes the place of the picker's own title, a row of the
+         picker's head, so the shelves stay under it to choose from. */
+      .room-picker.is-hosting .wp-ttl { display: none; }
+      .host-band {
+        flex: 1 1 100%;
+        box-sizing: border-box;
+        display: flex; align-items: center; gap: 16px;
+        margin: 0 8px 0 2px;
+        padding: 8px 14px 8px 16px;
+        background: var(--amber);
+        border: 4px solid #0b1116;
+        box-shadow: 6px 6px 0 #0b1116;
+        color: #0b1116;
+        transform: skewX(-4deg);
+        pointer-events: auto;
+      }
+      .host-band[hidden] { display: none; }
+      .host-band > * { transform: skewX(4deg); }
+      .host-band-words {
+        flex: 1 1 auto; min-width: 0;
+        display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 12px; row-gap: 2px;
+      }
+      .host-band-line { grid-column: 1 / -1; }
+      .host-band-kick {
+        justify-self: start;
+        padding: 2px 8px;
+        background: #0b1116; color: var(--cream);
+        font-size: 11px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase;
+      }
+      .host-band-title {
+        color: var(--cream);
+        font-size: clamp(19px, 2vw, 26px);
+        font-weight: 900; font-style: italic; text-transform: uppercase;
+        line-height: 1.1;
+        text-shadow: 2px 2px 0 #0b1116;
+      }
+      .host-band-line { font-size: 13.5px; font-weight: 800; }
+      .host-band-cancel {
+        flex: none;
+        padding: 8px 16px;
+        border: 3px solid #0b1116;
+        background: var(--gc-paper, #f7f0dc);
+        color: #0b1116;
+        font: inherit; font-size: 13px; font-weight: 900; font-style: italic; text-transform: uppercase;
+        box-shadow: 3px 3px 0 #0b1116;
+        cursor: pointer;
+      }
+      .host-band-cancel:hover, .host-band-cancel:focus-visible { transform: skewX(4deg) translate(-2px, -2px); }
+      /* The same words as a tab on the chosen map's panel, which is
+         pinned to the bottom of the page and holds Host a room here. */
+      .host-tab {
+        position: absolute; left: 26px; top: -15px; z-index: 1;
+        padding: 3px 12px 4px;
+        background: var(--amber);
+        border: 3px solid #0b1116;
+        box-shadow: 3px 3px 0 #0b1116;
+        color: #0b1116;
+        font-size: 12px; font-weight: 900; font-style: italic; letter-spacing: 0.12em; text-transform: uppercase;
+        line-height: 1;
+        pointer-events: none;
+      }
+      .host-tab[hidden] { display: none; }
+      .room-picker.is-hosting .wp-hero { margin-top: 20px; }
 
       .wiki-teaser {
         display: inline-flex; align-items: center; gap: 10px;
@@ -4351,24 +4614,37 @@
            bottom of the column: the last 52 px would be under the bar. */
         .screen-title.is-gate { padding-bottom: calc(2vh + var(--bar-bot)); }
         .screen-title.is-gate .title-copy { width: 100%; }
-        .screen-title.is-gate .gate-cards {
-          display: grid;
+        /* A phone's pages are two columns of panels, the first panel of the
+           solo page across both, and the narration boxes go: the name and
+           the picture are the part that has to survive. The speech bubbles
+           and sound effects go with them, because at half a phone's width
+           their words would be too small to read; the quads, the stickers
+           and the props stay. */
+        .gate-grid,
+        .gate-page-solo .gate-grid,
+        .gate-page-together .gate-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-rows: none;
+          grid-auto-rows: minmax(0, 1fr);
+          grid-template-areas: none;
           gap: 10px;
         }
-        .gate-card { flex-direction: column; box-shadow: 5px 5px 0 var(--gc-ink); }
+        .gate-page-cover .gate-grid { grid-template-columns: minmax(0, 1fr); }
+        .gate-card { grid-area: auto; box-shadow: 5px 5px 0 var(--gc-ink); }
+        .gate-card-career { grid-column: 1 / -1; }
         .gate-card.on { box-shadow: 0 0 0 3px var(--sakura), 7px 7px 0 3px var(--gc-ink); }
-        .gate-card-art { height: clamp(130px, 25vh, 260px); }
-        .gate-card-nm { left: 22px; right: 22px; bottom: 6px; }
-        .gate-card-name { font-size: clamp(16px, 4.4vw, 24px); }
-        .gate-card-blurb { display: none; font-size: 12.5px; line-height: 1.5; }
-        /* A phone has no sentence, so no paper under the picture: the
-           picture is the card and the name is lettered over its foot. */
-        .gate-card-body { display: none; }
-        .gate-card-art { border-bottom: 0; }
+        .gate-cards { --gc-bleed: 12px; }
+        .gate-card-nm { left: calc(var(--gc-bleed) + 8px); right: calc(var(--gc-bleed) + 8px); bottom: 6px; }
+        .gate-card-name, .gate-card-mp-host .gate-card-name { font-size: clamp(16px, 4.4vw, 24px); }
+        .gate-page-cover .gate-card-name { font-size: clamp(26px, 8vw, 40px); }
+        .gate-card-blurb { display: none; }
+        .gate-page-cover .gate-card-blurb { display: block; font-size: 12.5px; }
+        .gate-card-kicker { left: calc(var(--gc-bleed) + 8px); top: 8px; font-size: 10px; }
+        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub { display: none; }
+        .gate-folio { display: none; }
         /* The art is half a phone's width here, so the mark comes down with
            it. Same box on every card that has one, as ever. */
-        .gate-card-mark { width: 42px; height: 42px; right: 20px; top: 6px; }
+        .gate-card-mark { width: 42px; height: 42px; right: calc(var(--gc-bleed) + 6px); top: 6px; }
         .screen-maps .menu-stage {
           display: block;
           position: relative;
@@ -4406,9 +4682,7 @@
          this (390 by 844, 375 by 667, 360 by 800) and below an upright
          tablet's, 768 by 1024 and up. */
       @media (max-width: 860px) and (min-height: 960px) {
-        .gate-card-body { display: flex; gap: 4px; padding: 8px 18px 10px; }
         .gate-card-blurb { display: block; }
-        .gate-card-art { height: clamp(170px, 24vh, 300px); border-bottom: 4px solid var(--gc-ink); }
       }
       @media (max-height: 520px) {
         .screen-title {
@@ -4441,22 +4715,28 @@
            is later in the sheet than that one, which is what makes it win,
            and `display: flex` is the half of it that matters, because
            flex-direction says nothing to a grid. */
-        .screen-title.is-gate .gate-cards {
-          display: flex;
-          flex-direction: row;
+        /* One row of panels, the only way a page fits that height, names
+           only. This block is later in the sheet than the narrow one, which
+           is what makes it win on a landscape phone that matches both. */
+        .gate-grid,
+        .gate-page-cover .gate-grid,
+        .gate-page-solo .gate-grid,
+        .gate-page-together .gate-grid {
+          grid-template-columns: none;
+          grid-template-rows: minmax(0, 1fr);
+          grid-template-areas: none;
+          grid-auto-flow: column;
+          grid-auto-columns: minmax(0, 1fr);
           gap: 10px;
         }
-        /* Back to a row, so back to sharing the width evenly. */
-        .gate-card { flex: 1 1 0; flex-direction: column; }
-        .gate-card-art {
-          flex: 0 0 auto; width: 100%;
-          height: clamp(110px, 40vh, 200px); min-height: 0;
-        }
-        .gate-card-nm { left: 22px; right: 22px; bottom: 5px; }
-        .gate-card-body { display: none; }
-        .gate-card-blurb { display: none; }
-        .gate-card-name { font-size: clamp(17px, 4.4vh, 22px); }
-        .gate-card-mark { width: 38px; height: 38px; right: 20px; top: 5px; }
+        .gate-card, .gate-card-career { grid-area: auto; grid-column: auto; }
+        .gate-head-title { font-size: 18px; }
+        .gate-card-nm { left: calc(var(--gc-bleed) + 6px); right: calc(var(--gc-bleed) + 6px); bottom: 5px; }
+        .gate-card-blurb, .gate-page-cover .gate-card-blurb { display: none; }
+        .gate-card-name, .gate-card-mp-host .gate-card-name { font-size: clamp(15px, 4.4vh, 20px); }
+        .gate-page-cover .gate-card-name { font-size: clamp(22px, 7vh, 32px); }
+        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub, .gp-medal, .gp-watch, .gp-pencil { display: none; }
+        .gate-card-mark { width: 38px; height: 38px; right: calc(var(--gc-bleed) + 6px); top: 5px; }
       }
 
       /* The map screen. One card per world, each playing a short flight

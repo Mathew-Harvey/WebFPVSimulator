@@ -53,6 +53,11 @@
  *   teach   what a first-timer is told: Fly together on the title, Host a
  *           room on a shelf with rooms, the room's controls once (keys, a
  *           pad and a phone), and the room card opening the room's page
+ *   gate    the front screen as a magazine: the cover asks solo or
+ *           multiplayer, each turns to its page and Escape turns back; Host
+ *           a room meets the pilot, opens the maps hosting, and a double
+ *           click hosts that map; Find a room, Join with a code and Your
+ *           pilot each open their own page
  *
  * The race scene also has the host leave in the countdown.
  *
@@ -2198,9 +2203,11 @@ async function sceneKeys() {
     /* The look editor's colours and quad, a face, and a new roll. */
     await pressKey(page, 'look');
     await sheetIs(page, 'editor');
-    await pressKey(page, 'tab-Colours');
+    await pressKey(page, 'tab-Face');
     await pressKey(page, 'skin-2');
+    await pressKey(page, 'tab-Hair');
     await pressKey(page, 'hairColour-3');
+    await pressKey(page, 'tab-Eyes');
     await pressKey(page, 'eyeColour-1');
     await pressKey(page, 'tab-Quad');
     await pressKey(page, 'livery-4');
@@ -2824,6 +2831,127 @@ async function sceneTrack() {
  * rooms, the shelf no way to host once a room was listed, the keys were
  * one line for four seconds, and a phone had no way to the room in flight.
  */
+async function sceneGate() {
+  console.log('\ngate: the front screen as a magazine, and hosting from it');
+  const hostBot = bot('Gate Keeper', 171);
+  const page = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}`, seedFor({ met: false, name: 'Cover Pilot' }));
+  const shot = shooter(page, 'gate');
+  const cards = "[...document.querySelectorAll('.screen-title .gate-card')].map((c) => c.querySelector('.gate-card-name').textContent).join()";
+  const onPage = (n) => page.until(`document.querySelectorAll('.screen-title .gate-card').length === ${n}`, 8000);
+  try {
+    await page.until("window.__ui.screen === 'title' && window.__ui.onGate()", 20000);
+    await wait(800);
+    check('with rooms on, the front screen asks solo or multiplayer first', (await page.evaluate(cards)) === 'Fly solo,Multiplayer', await page.evaluate(cards));
+    check('and the multiplayer panel wears its NEW sticker', await page.evaluate("Boolean(document.querySelector('.gate-card-together .gp-sticker svg'))"));
+    await shot('cover');
+    await page.tap('ArrowRight');
+    await wait(150);
+    await page.tap('Enter');
+    await onPage(4);
+    check('Multiplayer turns to host, find, a code and your pilot', (await page.evaluate(cards)) === 'Host a room,Find a room,Join with a code,Your pilot', await page.evaluate(cards));
+    check('a pilot with no face yet is asked who they are', await page.evaluate("Boolean(document.querySelector('.gate-card-mp-pilot .gp-stranger'))"));
+    await wait(500);
+    await shot('multiplayer');
+    await page.tap('Escape');
+    await onPage(2);
+    check('Escape turns back to the cover', true);
+    await page.evaluate("(() => { window.__ui.act('gate-solo'); return 1; })()");
+    await onPage(5);
+    check('Fly solo turns to the five ways in', (await page.evaluate(cards)) === 'Career,Five inch racing,Whoop racing,Freestyle,Builder', await page.evaluate(cards));
+    await wait(500);
+    await shot('solo');
+    await page.tap('Escape');
+    await onPage(2);
+    await page.evaluate("(() => { window.__ui.act('gate-together'); return 1; })()");
+    await onPage(4);
+
+    /* Host a room: meet, then the maps hosting, then a double click. */
+    await page.evaluate("(() => { window.__ui.act('mp-host'); return 1; })()");
+    check('Host a room meets the pilot first', await sheetIs(page, 'meet').then(() => true, () => false));
+    await pressKey(page, 'keep');
+    const hosting = await page.until("window.__ui.screen === 'freestyle' && document.querySelector('.room-picker.is-hosting')", 15000).then(() => true, () => false);
+    await page.until(SEES('Pick the map for your room', '.host-band'), 8000).catch(() => {});
+    check('then the maps, hosting, with a band that says so', hosting && await page.evaluate(SEES('Pick the map for your room', '.host-band')),
+      await page.evaluate("JSON.stringify(document.querySelector('.host-band').getBoundingClientRect())"));
+    await shot('hosting-top');
+    await page.until("document.querySelector('.wp-card')", 10000);
+    await page.evaluate("(() => { window.__ui.picker.select('map:bardwell'); return 1; })()");
+    await wait(300);
+    check('and the map\'s one button is Host a room here', await page.evaluate("[...document.querySelectorAll('.wp-act')].map((b) => b.textContent).join() === 'Host a room here'"),
+      await page.evaluate("[...document.querySelectorAll('.wp-act')].map((b) => b.textContent).join()"));
+    check('the hint says a double click hosts', await page.evaluate(SEES('Host here', '.ui-root, body')));
+    check('and the chosen map\'s panel, which never scrolls away, says Hosting a room', await page.evaluate(SEES('Hosting a room', '.wp-hero')));
+    await wait(300);
+    await shot('hosting');
+    const own = await page.evaluate("(() => { const c = [...document.querySelectorAll('.wp-card')].find((b) => /Your map/.test(b.getAttribute('aria-label') || '')); if (!c) return 'none'; c.click(); return [...document.querySelectorAll('.wp-act')].map((b) => `${b.textContent}:${b.disabled}`).join(); })()");
+    check('a map only this computer has cannot be hosted, and says why', own === 'none' || own === 'Only on this computer:true', own);
+    await page.evaluate(`(() => {
+      const c = [...document.querySelectorAll('.wp-card')].find((b) => /Bardwell/.test(b.getAttribute('aria-label') || ''));
+      c.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+      c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      return 1;
+    })()`);
+    const named = await sheetIs(page, 'host').then(() => page.evaluate("document.querySelector('#tg .kicker').textContent"), () => '');
+    check('a double click hosts that map: the room sheet names it', /Bardwell/.test(named), named);
+    await wait(300);
+    await shot('host-sheet');
+    await pressKey(page, 'cancel');
+    await page.until(`${T} && window.__together().sheet === ''`, 5000);
+    check('Back to the maps is the maps, still hosting', await page.evaluate("Boolean(document.querySelector('.room-picker.is-hosting'))"));
+    await page.tap('Escape');
+    const back = await page.until("window.__ui.screen === 'title' && window.__ui.onGate() && window.__ui.gatePageNow() === 'together'", 8000).then(() => true, () => false);
+    check('and Escape from the maps is the multiplayer page again', back, await page.evaluate("`${window.__ui.screen} ${window.__ui.gatePageNow()}`"));
+    await page.until("document.querySelector('.gate-card-mp-pilot .gp-portrait canvas')", 8000).catch(() => {});
+    check('where Your pilot shows the pilot they just met', await page.evaluate("Boolean(document.querySelector('.gate-card-mp-pilot .gp-portrait canvas')) && !document.querySelector('.gate-card-mp-pilot .gp-stranger')"));
+    await wait(600);
+    await shot('multiplayer-met');
+
+    /* Your pilot: the look editor, and a colour in its own tab. */
+    await page.evaluate("(() => { window.__ui.act('mp-pilot'); return 1; })()");
+    await sheetIs(page, 'editor');
+    await pressKey(page, 'tab-Eyes');
+    await pressKey(page, 'eyeColour-2');
+    check('Your pilot opens the look editor, with the eye colours under the eyes', await page.evaluate("JSON.parse(localStorage.getItem('webfpv.together.v1')).avatar.eyeColour === 2"));
+    await wait(300);
+    await shot('editor-eyes');
+    await pressKey(page, 'tab-Quad');
+    await wait(200);
+    await shot('editor-quad');
+    await pressKey(page, 'done');
+    await page.until(`${T} && window.__together().sheet === ''`, 5000);
+
+    /* Find a room: the Rooms shelf. */
+    await page.evaluate("(() => { window.__ui.act('mp-find'); return 1; })()");
+    check('Find a room opens the Rooms shelf', await sheetIs(page, 'lobby').then(() => true, () => false));
+    await pressKey(page, 'back');
+    await page.until(`${T} && window.__together().sheet === ''`, 5000);
+
+    /* Join with a code: a wrong one is marked, the right one joins. */
+    const room = await hostRoom(hostBot, {
+      name: 'Cover story', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+    });
+    await page.evaluate("(() => { window.__ui.act('mp-code'); return 1; })()");
+    await sheetIs(page, 'code');
+    await wait(300);
+    await shot('code');
+    await page.evaluate("(() => { const i = document.querySelector('#tg-code-only'); i.value = 'AB'; i.dispatchEvent(new Event('input')); return 1; })()");
+    await pressKey(page, 'code-go');
+    check('a code that is not six letters is marked', await page.evaluate("document.querySelector('#tg-code-only').classList.contains('bad')"));
+    await page.evaluate(`(() => { const i = document.querySelector('#tg-code-only'); i.value = ${JSON.stringify(room.code)}; i.dispatchEvent(new Event('input')); return 1; })()`);
+    await pressKey(page, 'code-go');
+    const joined = await page.until(`${T} && window.__together().inRoom`, 20000).then(() => true, () => false);
+    check('and the room\'s code joins it', joined, JSON.stringify(await state(page)));
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    hostBot.s.leave();
+    await page.close();
+  }
+}
+
 async function sceneTeach() {
   console.log('\nteach: what a first-timer is told');
   const hostBot = bot('Tutor Hawk', 151);
@@ -2850,8 +2978,10 @@ async function sceneTeach() {
     await shot('shelf-host');
     await pressKey(page, 'host-pick');
     const picked = await page.until("window.__ui.screen === 'freestyle'", 8000).then(() => true, () => false);
-    check('Host a room goes to the maps, and says what is next', picked && (await state(page)).sheet === '' && /Fly together/.test(await toastText(page)),
-      `${await page.evaluate('window.__ui.screen')} ${await toastText(page)}`);
+    await page.until(SEES('Pick the map for your room', '.host-band'), 8000).catch(() => {});
+    check('Host a room goes to the maps, and says what is next', picked && (await state(page)).sheet === '' && await page.evaluate(SEES('Pick the map for your room', '.host-band')),
+      `${await page.evaluate('window.__ui.screen')} ${await page.evaluate("document.querySelector('.host-band') ? document.querySelector('.host-band').textContent : 'no band'")}`);
+    check('and the map\'s one button is Host a room here', await page.evaluate("(document.querySelector('.wp-act.is-primary') || {}).textContent === 'Host a room here'"));
 
     /* The first room: its controls, once, then the flight. */
     await joinByCode(page, room.code);
@@ -2966,6 +3096,7 @@ try {
   if (wanted('shelf')) { await freshBoard(); await sceneShelf(); }
   if (wanted('track')) { await freshBoard(); await sceneTrack(); }
   if (wanted('teach')) { await freshBoard(); await sceneTeach(); }
+  if (wanted('gate')) { await freshBoard(); await sceneGate(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

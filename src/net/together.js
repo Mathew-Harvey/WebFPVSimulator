@@ -69,6 +69,7 @@ import {
   avatarCanvas, cleanAvatar, liveryCss, paintAvatar, rollAvatar,
 } from './avatar.js';
 import { paintTitle } from '../ui/lettering.js';
+import { quadMark } from '../ui/gatepages.js';
 import { nameRules, normaliseName, readPilotName, writePilotName } from '../share/pilot.js';
 import { boardOrigin, fetchMapList, fetchTrackList } from '../share/board.js';
 import { raterKey } from '../share/rating.js';
@@ -420,6 +421,10 @@ export function createTogether(shell) {
       localStorage.setItem(STORE_KEY, JSON.stringify(store));
     } catch (e) {
       /* Kept for the visit. */
+    }
+    /* The front screen's pilot panel shows the look as it is kept. */
+    if (shell.pilotChanged) {
+      shell.pilotChanged();
     }
   }
 
@@ -1736,56 +1741,88 @@ export function createTogether(shell) {
     }
   }
 
-  const EDITOR_TABS = ['Face', 'Hair', 'Eyes', 'Extras', 'Colours', 'Quad'];
+  /*
+   * THE LOOK EDITOR, a pilot's card on the left and the parts on the right.
+   *
+   * The owner, 2026-10-26: "the character builder needs LOTS of polish".
+   * So the portrait is a trading card now, in the pilot's livery: their
+   * name across its foot, their quad drawn in its colours in the corner,
+   * and a line in a speech bubble for whichever face they are trying on.
+   * Every tab holds its own colours under its parts (skin with the face,
+   * hair colour with the hair, eye colour with the eyes), which is where a
+   * pilot looks for them, rather than on a tab of colours apart from the
+   * thing they colour. The tiles crop to the part they choose: the eyes
+   * are shown as eyes, the hair as a whole head of it. Gear is what used to
+   * be Extras, because it is goggles, cans and hats.
+   */
+  const EDITOR_TABS = ['Face', 'Hair', 'Eyes', 'Gear', 'Quad'];
+  const EXPR_LINES = {
+    calm: 'Ready when you are.', hello: 'Hi!', laugh: 'Ha ha ha!', wow: 'Whoa!', smug: 'Too easy.', oops: 'Oops...', fierce: "Let's go!", crash: 'Ouch!',
+  };
 
   function sheetEditor(after) {
     let tab = 'Face';
-    let expr = 'calm';
+    let expr = 'hello';
     const was = cleanAvatar(store.avatar);
     const setPart = (k, v) => {
       store.avatar = { ...store.avatar, [k]: v };
       save();
       refresh('editor');
     };
+    const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
     open('editor', () => {
       const av = store.avatar;
-      const key = { Face: 'face', Hair: 'hair', Eyes: 'eyes', Extras: 'acc' }[tab];
-      let grid;
-      if (key) {
-        /* Rows as even as the count allows: eight is two fours, nine is a
-         * five and a four, never a row of seven and one left over. */
+      const tiles = (key, crop) => {
         const names = PART_NAMES[key];
         const cols = Math.ceil(names.length / Math.ceil(names.length / 5));
-        grid = h('div.parts', { style: { '--cols': String(cols) } }, names.map((label, i) => h('button.part', {
+        return h('div.parts', { style: { '--cols': String(cols) } }, names.map((label, i) => h(`button.part.crop-${crop}`, {
           type: 'button', 'aria-pressed': String(av[key] === i), 'data-k': `${key}-${i}`, on: { click: () => setPart(key, i) },
-        }, face({ ...av, [key]: i }, 'calm', 72), h('small', { text: label }))));
-      } else if (tab === 'Colours') {
-        const sw = (k, label, list) => h('div.field', { style: { marginTop: '12px' } }, h('span.lab', { text: label }),
-          h('div.swatches', null, list.map((c, i) => h('button.swatch', {
-            type: 'button', style: { background: c }, 'aria-label': `${label} ${i + 1}`, 'aria-pressed': String(av[k] === i), 'data-k': `${k}-${i}`, on: { click: () => setPart(k, i) },
-          }))));
-        grid = h('div', null, sw('skin', 'Skin', SKINS), sw('hairColour', 'Hair', HAIR_COLOURS), sw('eyeColour', 'Eyes', EYE_COLOURS));
+        }, h('span.part-pic', null, avatarCanvas({ ...av, [key]: i }, { crop, size: 84, expr: 'calm' })), h('small', { text: label }))));
+      };
+      const swatches = (k, label, list) => h('div.field.sw-field', null, h('span.lab', { text: label }),
+        h('div.swatches', null, list.map((c, i) => h('button.swatch', {
+          type: 'button', style: { '--sw': c }, 'aria-label': `${label} ${i + 1}`, 'aria-pressed': String(av[k] === i), 'data-k': `${k}-${i}`, on: { click: () => setPart(k, i) },
+        }))));
+      let panel;
+      if (tab === 'Face') {
+        panel = [tiles('face', 'bust'), swatches('skin', 'Skin', SKINS)];
+      } else if (tab === 'Hair') {
+        panel = [tiles('hair', 'bust'), swatches('hairColour', 'Hair colour', HAIR_COLOURS)];
+      } else if (tab === 'Eyes') {
+        panel = [tiles('eyes', 'eyes'), swatches('eyeColour', 'Eye colour', EYE_COLOURS)];
+      } else if (tab === 'Gear') {
+        panel = [tiles('acc', 'bust')];
       } else {
-        grid = h('div', null, h('div.field', { style: { marginTop: '12px' } }, h('span.lab', { text: 'Livery: your jacket and your quad' }),
-          h('div.swatches', null, LIVERIES.map((c, i) => h('button.swatch', {
-            type: 'button', style: { background: `#${c.toString(16).padStart(6, '0')}` }, 'aria-label': `Livery ${i + 1}`, 'aria-pressed': String(av.livery === i + 1), 'data-k': `livery-${i}`, on: { click: () => setPart('livery', i + 1) },
-          })))),
-        h('p.help', { style: { color: 'var(--ink)', fontWeight: '700', maxWidth: '340px' }, text: 'Other pilots see your quad in this colour with an ink outline, and your name above it.' }));
+        const liv = h('div.parts.liveries', { style: { '--cols': '6' } }, LIVERIES.map((c, i) => {
+          const b = h('button.part.liv', {
+            type: 'button', style: { '--sw': hex(c) }, 'aria-label': `Livery ${i + 1}`, 'aria-pressed': String(av.livery === i + 1), 'data-k': `livery-${i}`, on: { click: () => setPart('livery', i + 1) },
+          });
+          b.innerHTML = quadMark(hex(c), 18 + (i % 3) * 14);
+          return b;
+        }));
+        panel = [liv, h('p.help.ink', { text: 'Your jacket and your quad. Other pilots see your quad in this colour, with your name over it.' })];
       }
-      return scrimmed(h('div.page.fit.sheet.halftone', null,
-        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Your avatar' }), lettered('CHANGE YOUR LOOK', [INKS.cream, INKS.amber], 46, 640))),
+      const livery = liveryCss(av, 0);
+      const card = h('div.av-card', { style: { '--liv': livery } },
+        h('div.av-card-top', null, h('span', { text: 'WebFPV pilot' }), h('span.av-card-face', { text: FACE_NAMES[expr] })),
+        h('div.av-card-pic', null, bust(av, expr), h('div.av-say', { text: EXPR_LINES[expr] || '' })),
+        h('div.av-card-foot', null, h('b', { text: readPilotName() || 'You' })));
+      const badge = h('span.av-card-quad');
+      badge.innerHTML = quadMark(livery, 28);
+      card.append(badge);
+      return scrimmed(h('div.page.fit.sheet.halftone.editor', null,
+        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Your pilot' }), lettered('MAKE YOUR PILOT', [INKS.cream, INKS.amber], 46, 640))),
         h('div.rule'),
         h('div.page-body', null, h('div.av-stage', null,
-          h('div.av-portrait', null, bust(av, expr), h('span.plate', { style: { '--liv': liveryCss(av, 0) } }, h('span', { text: readPilotName() || 'You' }))),
-          h('div', { style: { minWidth: '0', display: 'flex', flexDirection: 'column' } },
+          h('div.av-left', null, card,
+            h('div.exprs.grid', { role: 'group', 'aria-label': 'Try a face' }, EXPRESSIONS.map((e) => h('button', {
+              type: 'button', 'aria-pressed': String(expr === e), 'data-k': `ex-${e}`, title: FACE_NAMES[e], on: { click: () => { expr = e; refresh('editor'); } },
+            }, face(av, e, 44), h('small', { text: FACE_NAMES[e] }))))),
+          h('div.av-right', null,
             h('div.tabs', { role: 'tablist' }, EDITOR_TABS.map((t) => h('button', {
               type: 'button', role: 'tab', 'aria-selected': String(t === tab), 'data-k': `tab-${t}`, 'data-autofocus': t === tab ? true : null, on: { click: () => { tab = t; refresh('editor'); } },
             }, t))),
-            grid,
-            h('div.field', { style: { marginTop: '14px' } }, h('span.lab', { text: 'Try a face' }),
-              h('div.exprs', { role: 'group', 'aria-label': 'Try a face' }, EXPRESSIONS.map((e) => h('button', {
-                type: 'button', 'aria-pressed': String(expr === e), 'data-k': `ex-${e}`, on: { click: () => { expr = e; refresh('editor'); } },
-              }, face(av, e, 36), h('small', { text: FACE_NAMES[e] }))))),
+            h('div.av-panel', null, ...panel),
             session && session.inRoom ? h('p.help', { text: 'The room sees your new look when you press Done.' }) : null))),
         h('div.footer-row', null,
           btn('Done', '', () => back(), { 'data-k': 'done' }),
@@ -1905,7 +1942,66 @@ export function createTogether(shell) {
     if (shell.pickWorld) {
       shell.pickWorld(lobbyWay);
     }
-    toast('Pick a map, then press Fly together.');
+  }
+
+  /*
+   * THE FRONT SCREEN'S MULTIPLAYER PAGE (src/ui/gatepages.js GATE_ROOMS),
+   * one door each. Hosting meets the pilot first, as everything here does
+   * (gate), and then opens the map picker in its hosting state, whose one
+   * button and double click host the map. Your pilot needs nothing online,
+   * so it asks nothing first but the meeting itself.
+   */
+  function fromGate(kind) {
+    if (kind === 'host') {
+      gate(() => {
+        if (shell.pickWorld) {
+          shell.pickWorld(lobbyWay);
+        }
+      });
+    } else if (kind === 'find') {
+      openLobby(lobbyWay);
+    } else if (kind === 'code') {
+      gate(() => sheetCode());
+    } else if (kind === 'pilot') {
+      if (store.met) {
+        sheetEditor();
+      } else {
+        sheetMeet(() => {});
+      }
+    }
+  }
+
+  /* A code from a friend, on its own page: the lobby's box, large. */
+  function sheetCode() {
+    open('code', () => {
+      const input = h('input.input', {
+        id: 'tg-code-only', value: lobbyCode, placeholder: 'CODE', maxLength: 7, 'aria-label': 'Room code', autocomplete: 'off',
+        'data-k': 'code', 'data-osk': 'code', 'data-enter': 'code-go', 'data-autofocus': true,
+      });
+      input.addEventListener('input', () => {
+        input.value = input.value.toUpperCase();
+        input.classList.remove('bad');
+        lobbyCode = input.value;
+      });
+      const go = () => {
+        const c = normaliseCode(input.value);
+        if (!c) {
+          input.classList.add('bad');
+          toast('A code is six letters and numbers.', 'warn');
+          return;
+        }
+        lobbyCode = '';
+        joinFlow(c, '', { pressed: true });
+      };
+      return scrimmed(h('div.card-mid.sheet.amber-edge.halftone', null,
+        h('span.kicker', { text: 'Join with a code' }),
+        lettered('GOT A CODE?', [INKS.cream, INKS.amber], 50, 600),
+        h('div.state-row', null, h('div.who', null, bust(store.avatar, 'hello')),
+          h('div.say', { text: 'Type the six letters and numbers your friend sent. A room link works too: open it and it brings you straight here.' })),
+        h('div.codebox.big', null, input, btn('Join', '', go, { 'data-k': 'code-go' })),
+        h('div.btnrow', null, btn('Back', 'ghost', () => back(), { 'data-k': 'back' }),
+          h('button.link', { type: 'button', 'data-k': 'privacy', on: { click: () => sheetPrivacy() } }, 'How rooms keep you safe'))));
+    });
   }
 
   function sheetLobby() {
@@ -1943,7 +2039,7 @@ export function createTogether(shell) {
       } else if (!lobby.rooms.length) {
         body = h('div.empty', null, h('div', null, h('div.who', { style: { width: '160px', margin: '0 auto' } }, bust(store.avatar, 'wow')),
           lettered('NOBODY IS HOSTING', [INKS.cream, INKS.amber], 36, 600),
-          h('p', { text: `No listed ${WAY_NAMES[lobbyWay].toLowerCase()} rooms right now. Pick a map and press Fly together, then send the link to a friend.` }),
+          h('p', { text: `No listed ${WAY_NAMES[lobbyWay].toLowerCase()} rooms right now. Host one: pick a map, open the room, and send the code to a friend.` }),
           h('div.btnrow', { style: { justifyContent: 'center' } }, btn('Pick a map', 'sakura', hostFromShelf, { 'data-k': 'pick' }))));
       } else {
         body = h('div.rooms', null, lobby.rooms.map(roomCard));
@@ -2049,8 +2145,8 @@ export function createTogether(shell) {
         });
       };
       return scrimmed(h('div.page.fit.sheet.halftone', null,
-        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Host a room' }), lettered('FLY TOGETHER', [INKS.cream, INKS.sakura], 50, 560)),
-          btn('Cancel', 'small ghost', () => back(), { 'data-k': 'cancel' })),
+        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: `Host a room on ${entry.name}` }), lettered('OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
+          btn('Back to the maps', 'small ghost', () => back(), { 'data-k': 'cancel' })),
         h('div.rule'),
         h('div.page-body', null, h('div.tg-cols', null,
           h('div.stack', null,
@@ -2122,6 +2218,12 @@ export function createTogether(shell) {
       } else if (!shell.flying()) {
         shell.fly();
       }
+      /* The host's own first moment in their room says so, and says how
+       * the others get in: nothing else on screen would. */
+      if (first && r) {
+        banner(me().avatar, 'hello', `${r.name} is open`,
+          `You are hosting on ${r.mapName}. Room code ${r.code}. ${hands() === 'touch' ? 'Tap the room card' : 'Pause, then Room'} to invite more.`, 'mint');
+      }
     };
     open('share', () => {
       const r = heldRoom();
@@ -2135,8 +2237,9 @@ export function createTogether(shell) {
       const pilots = pilotsList().sort((a, b) => a.id - b.id);
       const pic = (entry && entry.thumb) || thumbOf(r);
       return scrimmed(h('div.page.fit.sheet.halftone', null,
-        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: first ? 'Room open' : r.name }), lettered('INVITE PILOTS', [INKS.cream, INKS.mint], 50, 560)),
-          first ? null : btn('Back', 'small ghost', () => back(), { 'data-k': 'back-top' })),
+        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: first ? `${r.name} on ${r.mapName}` : r.name }),
+          lettered(first ? 'YOUR ROOM IS OPEN!' : 'INVITE PILOTS', [INKS.cream, INKS.mint], 50, 640)),
+          first ? h('span.open-stamp', { 'aria-hidden': 'true', text: 'OPEN' }) : btn('Back', 'small ghost', () => back(), { 'data-k': 'back-top' })),
         h('div.rule'),
         h('div.page-body', null, h('div.tg-cols', null,
           h('div.stack', null,
@@ -2931,7 +3034,7 @@ export function createTogether(shell) {
     const hp = hostPilot();
     fill(chip,
       hp ? face(hp.avatar, 'calm', 30) : null,
-      h('div', { style: { minWidth: '0' } }, h('b', { text: r.name }), h('small', { text: lastLink === 'low' ? 'Getting back in' : `${r.mapName} · ${r.code}` })),
+      h('div', { style: { minWidth: '0' } }, h('b', { text: r.name }), h('small', { text: lastLink === 'low' ? 'Getting back in' : `${isHost() ? 'You host · ' : ''}${r.mapName} · ${r.code}` })),
       h('span.n', { text: `${n}/${r.max}` }),
       h(`span.bars${lastLink === 'good' ? '' : lastLink === 'mid' ? '.mid' : '.low'}`, { 'aria-label': lastLink === 'good' ? 'Connected' : 'Reconnecting' }, h('i'), h('i'), h('i'), h('i')),
     );
@@ -3700,6 +3803,7 @@ export function createTogether(shell) {
     },
     openLobby,
     openHost,
+    fromGate,
     startFromAddress,
     act,
     frame,

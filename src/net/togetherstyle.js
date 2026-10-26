@@ -307,32 +307,119 @@ export const TOGETHER_CSS = `
   40%, 80% { transform: translate(calc(-50% + 8px), -50%); }
 }
 
-/* The avatar */
-#tg .av-stage { display: grid; grid-template-columns: minmax(200px, 330px) 1fr; gap: 26px; align-items: start; }
+/* The avatar: the look editor's card and its parts. The card is a
+ * trading card in the pilot's livery, tilted a degree like a card laid on
+ * a desk, with their quad drawn in its corner; the tiles are panels that
+ * crop to the part they choose, and the colours are swatches of paint. */
+#tg .av-stage { display: grid; grid-template-columns: minmax(220px, 310px) minmax(0, 1fr); gap: clamp(18px, 2.4vw, 32px); align-items: start; }
+#tg .av-left { display: grid; gap: 16px; min-width: 0; }
+#tg .av-right { display: flex; flex-direction: column; min-width: 0; }
 #tg .av-portrait {
   position: relative; border: 4px solid var(--ink); overflow: hidden;
   background: repeating-conic-gradient(from 0deg at 50% 60%, rgba(11, 17, 22, 0.06) 0 4deg, transparent 4deg 12deg), var(--white);
 }
 #tg .av-portrait .plate { position: absolute; left: 12px; top: 12px; }
+#tg .av-card {
+  position: relative; padding: 8px 8px 0; border: 4px solid var(--ink); background: var(--liv, var(--mint));
+  box-shadow: 8px 8px 0 var(--ink); transform: rotate(-1.2deg); margin: 0 14px 10px 0;
+}
+#tg .av-card::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle at 1px 1px, rgba(11, 17, 22, 0.16) 1px, transparent 1.4px) 0 0 / 5px 5px;
+}
+#tg .av-card-top {
+  position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 2px 7px;
+  color: var(--ink); font: 900 11px/1 var(--ui); letter-spacing: 0.16em; text-transform: uppercase;
+}
+#tg .av-card-face { padding: 3px 8px; background: var(--ink); color: var(--cream); letter-spacing: 0.1em; }
+#tg .av-card-pic {
+  position: relative; overflow: hidden; border: 3px solid var(--ink);
+  background:
+    repeating-conic-gradient(from 0deg at 50% 64%, rgba(255, 255, 255, 0.5) 0 5deg, transparent 5deg 13deg),
+    color-mix(in srgb, var(--liv, var(--mint)) 42%, var(--white));
+}
+#tg .av-card-pic canvas { display: block; width: 100%; height: auto; }
+#tg .av-say {
+  position: absolute; right: 8px; top: 10px; max-width: 62%; padding: 7px 13px; background: #fff; color: var(--ink);
+  border: 3px solid var(--ink); border-radius: 50% / 46%; text-align: center;
+  font: 900 italic clamp(13px, 1.25vw, 16px)/1.15 var(--ui);
+}
+#tg .av-say::after {
+  content: ""; position: absolute; left: 16%; bottom: -14px; width: 18px; height: 16px; background: var(--ink);
+  clip-path: polygon(0 0, 100% 0, 10% 100%);
+}
+#tg .av-say::before {
+  content: ""; position: absolute; left: calc(16% + 3px); bottom: -9px; width: 12px; height: 11px; background: #fff; z-index: 1;
+  clip-path: polygon(0 0, 100% 0, 10% 100%);
+}
+#tg .av-card-foot { position: relative; display: flex; align-items: center; min-height: 50px; padding: 6px 78px 9px 4px; }
+#tg .av-card-foot b {
+  color: var(--ink); font: 900 italic clamp(18px, 1.8vw, 24px)/1.05 var(--ui); text-transform: uppercase; overflow-wrap: anywhere;
+}
+#tg .av-card-quad { position: absolute; right: -16px; bottom: -18px; width: 96px; pointer-events: none; }
+#tg .av-card-quad svg, #tg .part.liv svg { display: block; width: 100%; height: auto; }
 #tg .exprs { display: flex; flex-wrap: wrap; gap: 8px; }
-#tg .exprs button { padding: 2px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); }
+#tg .exprs.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+#tg .exprs button { padding: 3px 2px 2px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); }
 #tg .exprs canvas { margin: 0 auto; display: block; }
-#tg .exprs button[aria-pressed="true"] { background: var(--amber); }
-#tg .exprs small { display: block; font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 0 3px; }
+#tg .exprs button[aria-pressed="true"] { background: var(--amber); box-shadow: 3px 3px 0 var(--ink); }
+#tg .exprs small { display: block; font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 2px 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #tg .tabs { display: flex; flex-wrap: wrap; border-bottom: 4px solid var(--ink); }
 #tg .tabs button {
   padding: 8px 14px; border: 3px solid var(--ink); border-bottom: 0; margin-right: -3px; background: var(--paper-2);
   color: var(--ink); font-weight: 900; text-transform: uppercase; font-size: 13px; letter-spacing: 0.05em;
 }
-#tg .tabs button[aria-selected="true"] { background: var(--ink); color: var(--cream); }
+#tg .tabs button[aria-selected="true"] { background: var(--ink); color: var(--cream); box-shadow: inset 0 -5px 0 var(--sakura); }
+#tg .editor .tabs button { padding: 9px 18px; font-size: 14px; font-style: italic; }
+#tg .av-panel { display: grid; gap: 4px; align-content: start; }
 #tg .parts { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 10px; padding-top: 12px; max-width: 640px; }
+#tg .editor .parts { grid-template-columns: repeat(var(--cols, 4), minmax(0, 112px)); gap: 12px; padding-top: 14px; }
 #tg .part { padding: 4px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); text-align: center; }
 #tg .part canvas { margin: 0 auto; }
 #tg .part small { display: block; font-weight: 900; font-size: 11px; text-transform: uppercase; }
 #tg .part[aria-pressed="true"] { background: var(--amber); box-shadow: 4px 4px 0 var(--ink); }
-#tg .swatches { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 6px; }
-#tg .swatch { width: 42px; height: 42px; border: 3px solid var(--ink); }
+#tg .editor .part { position: relative; display: flex; flex-direction: column; padding: 0; overflow: hidden; box-shadow: 3px 3px 0 var(--ink); }
+#tg .editor .part-pic {
+  display: block; aspect-ratio: 1;
+  background: radial-gradient(circle at 1px 1px, rgba(11, 17, 22, 0.1) 1px, transparent 1.3px) 0 0 / 5px 5px, var(--white);
+}
+#tg .editor .part .part-pic canvas { display: block; width: 100% !important; height: 100% !important; }
+#tg .editor .part small { padding: 4px 3px; background: var(--ink); color: var(--cream); font-size: 10.5px; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tg .editor .part[aria-pressed="true"] { background: var(--amber); box-shadow: 0 0 0 3px var(--amber), 6px 6px 0 3px var(--ink); transform: translate(-2px, -2px); z-index: 1; }
+#tg .editor .part[aria-pressed="true"] .part-pic { background-color: #fff3c4; }
+#tg .editor .part[aria-pressed="true"] small { background: var(--amber); color: var(--ink); }
+#tg .editor .part[aria-pressed="true"]::after {
+  content: "\\2713"; position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--mint); border: 2.5px solid var(--ink); color: var(--ink); font: 900 13px/17px var(--ui); text-align: center;
+}
+#tg .editor .part.liv { padding: 6px 4px; background: color-mix(in srgb, var(--sw) 28%, var(--white)); }
+#tg .editor .parts.liveries { grid-template-columns: repeat(6, minmax(0, 96px)); }
+#tg .help.ink { color: var(--ink); font-weight: 700; max-width: 420px; margin: 12px 0 0; }
+#tg .sw-field { margin-top: 14px; }
+#tg .swatches { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 6px; }
+#tg .swatch {
+  position: relative; width: 42px; height: 42px; border: 3px solid var(--ink); border-radius: 50%;
+  background: var(--sw, var(--paper)); box-shadow: 2px 3px 0 var(--ink);
+}
+#tg .swatch::before {
+  content: ""; position: absolute; left: 7px; top: 6px; width: 11px; height: 7px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6); transform: rotate(-28deg);
+}
 #tg .swatch[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--paper), 0 0 0 6px var(--ink); }
+#tg .swatch[aria-pressed="true"]::after {
+  content: "\\2713"; position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%;
+  background: var(--white); border: 2px solid var(--ink); color: var(--ink); font: 900 12px/16px var(--ui); text-align: center;
+}
+
+/* A code on its own page, and a room that has just opened. */
+#tg .sheet.amber-edge { box-shadow: 8px 8px 0 var(--amber), 12px 12px 0 var(--ink); }
+#tg .codebox.big .input { width: min(320px, 56vw); padding: 10px 16px; font-size: clamp(26px, 3vw, 38px); letter-spacing: 0.32em; }
+#tg .codebox.big .btn { padding: 0 30px; font-size: clamp(17px, 1.6vw, 21px); }
+#tg .open-stamp {
+  align-self: center; padding: 6px 18px; background: var(--mint); color: var(--ink); border: 4px solid var(--ink);
+  box-shadow: 5px 5px 0 var(--ink); font: 900 italic clamp(24px, 2.6vw, 34px)/1 var(--ui); letter-spacing: 0.08em;
+  transform: rotate(-8deg);
+}
 
 /* Name plates, in the pilot's livery */
 #tg .plate {
@@ -614,6 +701,10 @@ export const TOGETHER_CSS = `
 
 @media (max-width: 760px) {
   #tg .tg-cols, #tg .av-stage, #tg .roomsheet, #tg .resgrid { grid-template-columns: minmax(0, 1fr); }
+  #tg .av-left { grid-template-columns: minmax(0, 200px) minmax(0, 1fr); align-items: start; }
+  #tg .exprs.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #tg .editor .parts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #tg .editor .parts.liveries { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   #tg .state-row { grid-template-columns: 90px 1fr; gap: 14px; }
   #tg .radios { grid-template-columns: 1fr; }
   #tg .talk { width: calc(100% - 28px); height: 150px; bottom: 96px; }

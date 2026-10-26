@@ -3259,6 +3259,8 @@ export async function boot({ loading, bootStart, mapId }) {
     },
     roomInfo: (info) => ui.setRoomInfo(info),
     pickWorld: (way) => ui.pickRoomWorld(way),
+    /* The look editor closed: the front screen's pilot panel shows it. */
+    pilotChanged: () => ui.paintGatePilot(),
     forget: (id) => {
       if (mpCraft) {
         mpCraft.forget(id);
@@ -3293,6 +3295,10 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.onRooms = (way) => {
       loadTogether().then((t) => t && t.openLobby(way));
     };
+    /* The front screen's multiplayer page: host, find, code, pilot. */
+    ui.onRoomsGate = (kind) => {
+      loadTogether().then((t) => t && t.fromGate(kind));
+    };
     ui.onRoom = (action) => {
       if (together) {
         together.act(action);
@@ -3301,6 +3307,11 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A room's address: the room is asked about once the world is up. */
     if (new URLSearchParams(window.location.search).get('room')) {
       loadTogether().then((t) => t && t.startFromAddress());
+    }
+    /* The gate opens on its cover now rooms are on: draw it again if it
+     * was drawn before this line ran. */
+    if (ui.screen === 'title') {
+      ui.renderMenu();
     }
   }
 

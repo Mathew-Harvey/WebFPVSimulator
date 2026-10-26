@@ -229,6 +229,9 @@ import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
 } from './mangapage.js';
 import { paintTitle } from './lettering.js';
+import {
+  GATE_HEADS, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
+} from './gatepages.js';
 import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
@@ -5236,6 +5239,28 @@ export class Ui {
     this.roomsOn = false;
     this.onFlyTogether = null;
     this.onRooms = null;
+    /* The multiplayer page's four doors (gatepages.js GATE_ROOMS), which
+     * main.js hands to together.js: 'host', 'find', 'code' or 'pilot'. */
+    this.onRoomsGate = null;
+    /*
+     * THE GATE'S PAGES. null is the gate's first page: the cover, which
+     * asks solo or multiplayer, while rooms are on, and the solo page
+     * while they are not. 'solo' and 'together' are the pages each answer
+     * turns to. Kept only for this visit, like the mode.
+     */
+    this.gatePage = null;
+    this.gateTurn = '';
+    this.gateSide = '';
+    /*
+     * HOSTING, BETWEEN "HOST A ROOM" AND THE ROOM. A room is hosted on a
+     * map, so Host a room opens the map picker, and while it does the
+     * picker's one button is Host a room here: Enter and a double click
+     * host the map rather than flying it solo, which is what they did
+     * before (the owner, 2026-10-26: "if i double click on a map at this
+     * point currently it is not multi player, even though i've clicked
+     * host a room"). { way } while it lasts, null otherwise.
+     */
+    this.hostPick = null;
     this.onRoom = null;
     this.roomInfo = null;
     this.roomCounts = null;
@@ -8835,6 +8860,25 @@ export class Ui {
        * says which of the three it belongs to.
        */
       if (this.onGate()) {
+        const page = this.gatePageNow();
+        const tail = trouble ? [trouble] : [];
+        /* The cover and the multiplayer page: see gatepages.js. */
+        if (page === 'cover' || page === 'together') {
+          return [
+            ...(page === 'cover' ? GATE_SIDES : GATE_ROOMS).map((c) => ({
+              label: c.label,
+              card: c.id,
+              art: c.art,
+              burst: c.burst,
+              kicker: c.kicker,
+              caption: c.caption,
+              sticker: c.sticker,
+              action: c.action,
+            })),
+            ...tail,
+          ];
+        }
+        const panel = (id) => SOLO_PANELS[id] || {};
         return [
           /* Career. First, see CAREER_CARD. */
           {
@@ -8842,6 +8886,8 @@ export class Ui {
             card: CAREER_CARD.id,
             art: CAREER_CARD.art,
             blurb: CAREER_CARD.blurb,
+            kicker: panel(CAREER_CARD.id).kicker,
+            caption: panel(CAREER_CARD.id).caption,
             facts: CAREER_CARD.facts,
             action: CAREER_CARD.action,
           },
@@ -8852,6 +8898,8 @@ export class Ui {
             arts: w.arts,
             svg: craftSvg(airframeById(w.airframe)),
             blurb: w.blurb,
+            kicker: panel(w.id).kicker,
+            caption: panel(w.id).caption,
             action: w.action,
           })),
           /* Last of the cards and before the trouble row, which has to
@@ -8861,9 +8909,11 @@ export class Ui {
             card: BUILDER_CARD.id,
             art: BUILDER_CARD.art,
             blurb: BUILDER_CARD.blurb,
+            kicker: panel(BUILDER_CARD.id).kicker,
+            caption: panel(BUILDER_CARD.id).caption,
             action: BUILDER_CARD.action,
           },
-          ...(trouble ? [trouble] : []),
+          ...tail,
         ];
       }
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
@@ -12385,27 +12435,31 @@ export class Ui {
       return;
     }
     const items = this.items().filter((it) => it.card);
-    const key = items.map((it) => it.card).join('|');
+    const page = this.onGate() ? this.gatePageNow() : 'solo';
+    const key = `${page}:${items.map((it) => it.card).join('|')}`;
     if (!this.titleCards || this.titleCardKey !== key) {
       this.titleCardKey = key;
       host.textContent = '';
+      host.className = `gate-cards gate-page-${page}`;
+      host.append(this.gateHead(page));
+      const grid = el('div', 'gate-grid');
       this.titleCards = items.map((it, i) => {
         const card = el('div', `gate-card gate-card-${it.card}`);
         card.setAttribute('role', 'button');
-        card.setAttribute('aria-label', it.label);
-        const art = el('div', 'gate-card-art');
+        card.setAttribute('aria-label', it.caption ? `${it.label}. ${it.caption}` : it.label);
+        const art = el('div', `gate-card-art${it.burst ? ` is-burst burst-${it.burst}` : ''}`);
         if (it.arts) {
           /* A page of panels: the first picture large, the rest stacked
            * beside it. Decoration, like the single picture. */
-          const page = el('div', 'gate-card-collage');
+          const collage = el('div', 'gate-card-collage');
           for (const src of it.arts) {
             const img = el('img', 'gate-card-shot');
             img.src = src;
             img.alt = '';
             img.decoding = 'async';
-            page.append(img);
+            collage.append(img);
           }
-          art.append(page);
+          art.append(collage);
         } else if (it.art) {
           const img = el('img', 'gate-card-shot');
           img.src = it.art;
@@ -12415,6 +12469,16 @@ export class Ui {
           img.decoding = 'async';
           art.append(img);
         }
+        /* The panel's own drawings (gatepages.js), over the picture and
+         * under the words. The pilot's panel is their portrait instead. */
+        const scene = el('div', 'gate-card-scene');
+        if (it.card === 'mp-pilot') {
+          this.gatePilot = scene;
+          paintGatePilot(scene, readPilotName());
+        } else {
+          scene.append(...sceneFor(it.card));
+        }
+        art.append(scene);
         if (it.svg) {
           /*
            * A DRAWING OVER THE PHOTOGRAPH, and the two say different things.
@@ -12436,16 +12500,20 @@ export class Ui {
           mark.innerHTML = it.svg;
           art.append(mark);
         }
+        if (it.kicker) {
+          art.append(el('span', 'gate-card-kicker', it.kicker));
+        }
         /* The name is lettered over the foot of the picture, in the hand of
-         * the wordmark (letterGateNames). Its words stay in the DOM. */
+         * the wordmark (letterGateNames), with the caption's narration box
+         * under it, as a manga panel sets them. Its words stay in the DOM. */
         const nm = el('div', 'gate-card-nm');
         nm.append(el('div', 'gate-card-name', it.label));
+        if (it.caption) {
+          nm.append(el('p', 'gate-card-blurb', it.caption));
+        }
         art.append(nm);
-        const body = el('div', 'gate-card-body');
-        const blurb = el('p', 'gate-card-blurb', it.blurb);
-        body.append(blurb);
         const inner = el('div', 'gate-card-in');
-        inner.append(art, body);
+        inner.append(art);
         card.append(inner);
         card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
         card.addEventListener('focus', () => {
@@ -12457,12 +12525,89 @@ export class Ui {
           this.cursor = i;
           this.select();
         });
-        host.append(card);
+        grid.append(card);
         return { card };
       });
+      host.append(grid);
+      /*
+       * THE PAGE TURN. The new page swings in from the side the reader is
+       * going, about its spine, as a magazine page does, and the old one is
+       * already gone under it. Transform and opacity only, a third of a
+       * second, and only on a turn: nothing on this screen moves otherwise.
+       * Reduced motion keeps the page still (index.html).
+       */
+      if (this.gateTurn) {
+        const cls = `turn-${this.gateTurn}`;
+        this.gateTurn = '';
+        grid.classList.add(cls);
+        grid.addEventListener('animationend', () => grid.classList.remove(cls), { once: true });
+      }
     }
     this.markCards();
     this.letterGateNames();
+  }
+
+  /*
+   * A page's head: the way back to the cover on the two inside pages, the
+   * page's title lettered in the wordmark's hand, and the folio a magazine
+   * prints in its corner. The cover's head asks its one question.
+   */
+  gateHead(page) {
+    const info = GATE_HEADS[page] || GATE_HEADS.solo;
+    const head = el('div', 'gate-head');
+    if (page !== this.gateRoot()) {
+      const back = btn('gate-back', 'Back');
+      back.setAttribute('aria-label', 'Back to the cover');
+      back.addEventListener('click', () => this.back());
+      head.append(back);
+    }
+    const ttl = el('div', 'gate-head-ttl');
+    ttl.append(el('span', 'gate-head-kick', info.kicker));
+    const title = el('div', 'gate-head-title', info.title);
+    title.setAttribute('role', 'heading');
+    title.setAttribute('aria-level', '2');
+    ttl.append(title);
+    head.append(ttl, el('span', 'gate-folio', `P. ${info.folio}`));
+    return head;
+  }
+
+  /* The gate's first page: the cover while rooms are on, the solo page
+   * while they are not. */
+  gateRoot() {
+    return this.roomsOn ? 'cover' : 'solo';
+  }
+
+  gatePageNow() {
+    return this.roomsOn ? (this.gatePage || 'cover') : 'solo';
+  }
+
+  /* Turn to a page of the gate: the cursor lands where that page starts,
+   * and the page swings in from the side it is on. */
+  turnGate(page) {
+    const order = { cover: 0, solo: 1, together: 2 };
+    const was = this.gatePageNow();
+    if (page === was) {
+      return;
+    }
+    if (page === 'solo' || page === 'together') {
+      this.gateSide = page;
+    }
+    this.gateTurn = order[page] > order[was] ? 'fwd' : 'back';
+    this.gatePage = page;
+    if (this.onUiSound) {
+      this.onUiSound(this.gateTurn === 'fwd' ? 'select' : 'back');
+    }
+    this.cursor = 0;
+    this.renderMenu();
+    this.setCursor(this.titleStop());
+  }
+
+  /* The pilot's portrait on the multiplayer page, painted again when the
+   * look editor closes (main.js, togetherShell.pilotChanged). */
+  paintGatePilot() {
+    if (this.gatePilot && this.gatePilot.isConnected) {
+      paintGatePilot(this.gatePilot, readPilotName());
+    }
   }
 
   /*
@@ -12476,7 +12621,7 @@ export class Ui {
     if (!this.titleCards || !this.gateCards || !this.gateCards.isConnected) {
       return;
     }
-    for (const n of this.gateCards.querySelectorAll('.gate-card-name')) {
+    for (const n of this.gateCards.querySelectorAll('.gate-card-name, .gate-head-title')) {
       letterHeading(n);
     }
   }
@@ -13401,6 +13546,9 @@ export class Ui {
     this.pickerOpened = false;
     this.feedPicker();
     this.loadRoomCounts();
+    if (this.hostPick) {
+      this.paintHostPick();
+    }
   }
 
   /*
@@ -13622,6 +13770,14 @@ export class Ui {
   }
 
   pickerActions(entry) {
+    /* Hosting: the one button is the room, so Enter and a double click
+     * host this map. A map that lives only in this browser cannot be a
+     * room's, and says so rather than flying solo instead. */
+    if (this.hostPick) {
+      return this.roomWorldOf(entry)
+        ? [{ id: 'fly-together', label: 'Host a room here', primary: true }]
+        : [{ id: 'host-cant', label: 'Only on this computer', primary: true, disabled: true }];
+    }
     const fly = { id: 'fly', label: 'Fly this', primary: true };
     const copy = this.pickerShareLink(entry) ? [{ id: 'copy-link', label: 'Copy link' }] : [];
     if (this.roomsOn && this.roomWorldOf(entry)) {
@@ -13715,11 +13871,91 @@ export class Ui {
    */
   pickRoomWorld(way) {
     const shelf = { freestyle: 'maps', '5inch': 'five', whoop: 'whoop' }[way] || 'maps';
-    if (!isCardScreen(this.screen)) {
-      this.act(this.mode === 'freestyle' ? 'freestyle' : 'courses');
+    this.hostPick = { way, from: this.onGate() ? 'gate' : this.screen };
+    if (isCardScreen(this.screen) && this.pickerShelf() === shelf) {
+      this.paintHostPick();
+      return;
     }
-    if (this.pickerShelf() !== shelf) {
-      this.pickerShelfChosen(shelf);
+    /* From the gate this answers it as the shelf's own way does, so what
+     * is behind the picker is that way's room. */
+    if (this.onGate()) {
+      this.craftGate = false;
+      this.settings.airframeAsked = true;
+    }
+    this.pickerShelfChosen(shelf);
+    this.paintHostPick();
+  }
+
+  /*
+   * The band over the picker while a room is being hosted: what this page
+   * is for now, and the way out of it. Built once, shown and hidden.
+   */
+  paintHostPick() {
+    const on = Boolean(this.hostPick) && isCardScreen(this.screen) && Boolean(this.pickerHost && this.pickerHost.isConnected);
+    if (!this.hostBand) {
+      this.hostBand = el('div', 'host-band');
+      this.hostBand.setAttribute('role', 'status');
+      const words = el('div', 'host-band-words');
+      words.append(el('span', 'host-band-kick', 'Host a room'), el('div', 'host-band-title', 'Pick the map for your room'),
+        el('span', 'host-band-line', 'Double click a map, or choose it and press Host a room here.'));
+      const cancel = btn('host-band-cancel', 'Cancel');
+      cancel.addEventListener('click', () => this.back());
+      this.hostBand.append(words, cancel);
+      /* The band scrolls away with the page once a map low down is
+       * chosen, so the chosen map's own panel, which never does, wears a
+       * tab saying the same thing beside its one button. */
+      this.hostTab = el('div', 'host-tab', 'Hosting a room');
+      this.hostTab.setAttribute('aria-hidden', 'true');
+    }
+    const head = this.pickerHost ? this.pickerHost.querySelector('.wp-head') : null;
+    const hero = this.pickerHost ? this.pickerHost.querySelector('.wp-hero') : null;
+    if (on && head) {
+      const fresh = this.hostBand.hidden || !this.hostBand.isConnected;
+      head.prepend(this.hostBand);
+      if (hero) {
+        hero.append(this.hostTab);
+      }
+      this.pickerHost.classList.add('is-hosting');
+      this.hostBand.hidden = false;
+      this.hostTab.hidden = false;
+      letterHeading(this.hostBand.querySelector('.host-band-title'));
+      /* The first sight of the page is what it is for: the picker has
+       * scrolled to the last map flown, so the band comes back into view
+       * once that has settled. */
+      if (fresh) {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (!this.hostBand.hidden && this.hostBand.isConnected) {
+            this.hostBand.scrollIntoView({ block: 'nearest' });
+          }
+        }));
+      }
+    } else {
+      this.hostBand.hidden = true;
+      this.hostTab.hidden = true;
+      if (this.pickerHost) {
+        this.pickerHost.classList.remove('is-hosting');
+      }
+    }
+    if (this.picker) {
+      this.picker.refresh();
+    }
+  }
+
+  /* Hosting is over: the room opened, or the pilot went elsewhere. */
+  endHostPick() {
+    if (!this.hostPick) {
+      return;
+    }
+    this.hostPick = null;
+    if (this.hostBand) {
+      this.hostBand.hidden = true;
+      this.hostTab.hidden = true;
+    }
+    if (this.pickerHost) {
+      this.pickerHost.classList.remove('is-hosting');
+    }
+    if (this.picker) {
+      this.picker.refresh();
     }
   }
 
@@ -14608,6 +14844,9 @@ export class Ui {
 
   show(screen) {
     this.closeDrop();
+    if (this.hostPick && !isCardScreen(screen)) {
+      this.endHostPick();
+    }
     /* In the air by any path, a card's double click and a ?fly=1 link
      * included, is having flown: see hasFlown. */
     if (screen === 'flight') {
@@ -15415,6 +15654,13 @@ export class Ui {
    */
   titleStop() {
     const items = this.items();
+    /* The cover lands on the side this visit last took, solo the first
+     * time; the multiplayer page on Host a room, its first door. */
+    if (this.onGate() && this.gatePageNow() !== 'solo') {
+      const want = this.gatePageNow() === 'cover' ? (this.gateSide || 'solo') : 'mp-host';
+      const at = items.findIndex((it) => it.card === want);
+      return at >= 0 ? at : this.firstStop(items);
+    }
     /* Career. See CAREER_CARD. */
     if (this.onGate() && !careerStarted()) {
       const career = items.findIndex((it) => it.action === CAREER_CARD.action);
@@ -18588,7 +18834,9 @@ export class Ui {
      * rather than a key: a double click on a track flies it (flyCard). Not
      * in the radio's voice, which has no pointer to double click with, nor
      * the phone's, where a double tap is the browser's to interpret. */
-    if (this.screen === 'courses' && !pad) {
+    if (this.hostPick && isCardScreen(this.screen) && !pad) {
+      out.push({ keys: ['Double click'], text: 'Host here' });
+    } else if (this.screen === 'courses' && !pad) {
       out.push({ keys: ['Double click'], text: 'Fly' });
     }
     /*
@@ -18601,7 +18849,11 @@ export class Ui {
     if (this.screen !== 'title') {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back', action: 'back' });
     } else if (this.onGate()) {
-      out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Leave' });
+      if (this.gatePageNow() !== this.gateRoot()) {
+        out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back', action: 'back' });
+      } else {
+        out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Leave' });
+      }
     } else {
       /* NOT ON THE GATE. The gate has its own line above (Leave). onGate() is the one
        * definition of "is the gate up", and this asks it rather than
@@ -19094,6 +19346,10 @@ export class Ui {
   /* The room the pilot is in, for the pause menu's rows: { code, name, n,
    * host, race }, or null out of one. */
   setRoomInfo(info) {
+    /* A room that has just opened ends picking a map for one. */
+    if (info && (!this.roomInfo || this.roomInfo.code !== info.code)) {
+      this.endHostPick();
+    }
     this.roomInfo = info || null;
     if (this.screen === 'paused') {
       this.renderMenu();
@@ -19172,6 +19428,26 @@ export class Ui {
       }
       return;
     }
+    /* Back out of picking a map for a room: to the multiplayer page when
+     * that is where Host a room was pressed, otherwise to the picker as it
+     * is for flying, which is where the pilot was. */
+    if (this.hostPick && isCardScreen(this.screen)) {
+      const fromGate = this.hostPick.from === 'gate';
+      this.endHostPick();
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
+      if (fromGate && this.roomsOn) {
+        this.mode = null;
+        this.craftGate = true;
+        this.gatePage = 'together';
+        this.gateTurn = 'back';
+        this.show('title');
+        this.setCursor(this.titleStop());
+        this.renderMenu();
+      }
+      return;
+    }
     if (this.screen === 'title') {
       /*
        * TWO LEVELS, AND ESCAPE WALKS BOTH.
@@ -19186,6 +19462,11 @@ export class Ui {
        * gate is open: see the comment there.
        */
       if (this.onGate()) {
+        /* An inside page of the gate turns back to the cover first. */
+        if (this.gatePageNow() !== this.gateRoot()) {
+          this.turnGate(this.gateRoot());
+          return;
+        }
         this.confirmLeave();
         return;
       }
@@ -19409,6 +19690,21 @@ export class Ui {
      * goes back to that same tab rather than collecting a row of them.
      * share.board is the board origin when a published course is loaded,
      * otherwise the default board. */
+    /* The gate's cover, and the multiplayer page's four doors, which are
+     * together.js's (main.js routes them). */
+    if (action === 'gate-solo' || action === 'gate-together') {
+      this.turnGate(action === 'gate-solo' ? 'solo' : 'together');
+      return;
+    }
+    if (action.startsWith('mp-')) {
+      if (this.onUiSound) {
+        this.onUiSound('select');
+      }
+      if (this.onRoomsGate) {
+        this.onRoomsGate(action.slice(3));
+      }
+      return;
+    }
     if (action === 'rooms') {
       if (this.onRooms) {
         this.onRooms(this.mode === 'freestyle' ? 'freestyle' : (this.settings.airframe === WHOOP_ID ? 'whoop' : '5inch'));

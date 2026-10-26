@@ -10267,12 +10267,13 @@ export class Ui {
        * IN A ROOM, the pause is the pilot's own and never anybody else's:
        * the others keep flying, and this pilot's tag dims for them. Resume
        * and Restart run stay where muscle memory has them; the room's own
-       * page (its pilots, talking, settings, the race) is one row; and the
-       * way out of the room is said apart from the way out to the title,
-       * which leaves the room too. The tuning rows a pilot pauses for stay,
-       * and the builder and ghost rows go: neither is a thing to do with
-       * others waiting. Twelve rows, inside the fold budget shell-check
-       * keeps for this list.
+       * page (its pilots, talking, inviting, settings, the race) is one
+       * row; and the way out of the room is said apart from the way out to
+       * the title, which leaves the room too. The tuning rows a pilot
+       * pauses for stay, and the builder and ghost rows go: neither is a
+       * thing to do with others waiting. Inviting is the room page's
+       * second button rather than a row here, because with it Quit to
+       * title fell below the fold at 1280 by 720.
        */
       const r = this.roomInfo;
       return [
@@ -10282,9 +10283,8 @@ export class Ui {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
           action: 'room-sheet',
-          note: r.race ? 'The pilots, talking, the race and the room\'s settings.' : 'The pilots, talking and the room\'s settings.',
+          note: r.race ? 'The race, the pilots, talking, inviting and the room\'s settings.' : 'The pilots, talking, inviting and the room\'s settings.',
         },
-        { label: 'Invite pilots', action: 'room-invite', note: 'The room\'s code and link, to send to a friend.' },
         { label: 'Does it feel wrong?', section: true },
         tuneItem(s, true),
         flightModeItem(s, this.flightModeKey()),

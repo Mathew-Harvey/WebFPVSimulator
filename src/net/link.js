@@ -270,10 +270,14 @@ export class RoomLink {
         this.pilots.set(m.pilot.id, m.pilot);
         this.onEvent('joined', m.pilot);
         break;
-      case 'left':
+      case 'left': {
+        /* Who it was goes with the word, because the list no longer
+         * holds them once it is said. */
+        const gone = this.pilots.get(m.id) || null;
         this.pilots.delete(m.id);
-        this.onEvent('left', m);
+        this.onEvent('left', { ...m, pilot: gone });
         break;
+      }
       case 'host':
         this.hostId = m.id;
         this.onEvent('host', m);

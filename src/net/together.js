@@ -207,19 +207,53 @@ function btn(label, cls, onClick, extra = {}) {
   return h(`button.btn${cls ? `.${cls.split(' ').join('.')}` : ''}`, { type: 'button', on: { click: onClick }, ...extra }, h('span', { text: label }));
 }
 
-/* A title in the game's lettering, the words kept for a reader. Words take
- * the fills in turn, as the mockup's titles do. */
+/*
+ * A title in the game's lettering, the words kept for a reader. Words take
+ * the fills in turn, as the mockup's titles do.
+ *
+ * Lettering is the most expensive thing a sheet draws, and a sheet is drawn
+ * again on every change to it (a switch, a pilot pausing), so each title is
+ * lettered once and copied after: a copy is one drawImage. The pilots list
+ * is redrawn in flight, and this is what keeps that cheap.
+ */
+const titles = new Map();
+const TITLES_KEPT = 64;
+
+function letteredCanvas(text, fills, size, maxW) {
+  /* A short window (a laptop at 720, a Deck at 800) gets titles a shade
+   * smaller, so a sheet's fields stay above its buttons. */
+  const tall = typeof window !== 'undefined' ? window.innerHeight : 900;
+  const px = Math.round(size * Math.min(1, Math.max(0.75, tall / 820)));
+  const room = typeof window !== 'undefined' ? window.innerWidth - 90 : maxW;
+  const w = Math.max(160, Math.min(maxW, room));
+  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  const key = `${text}|${fills.join(',')}|${px}|${w}|${dpr}`;
+  let src = titles.get(key);
+  if (!src) {
+    const words = String(text).split(' ');
+    const runs = words.map((wd, i) => ({ text: i < words.length - 1 ? `${wd} ` : wd, fill: fills[i % fills.length] }));
+    src = document.createElement('canvas');
+    paintTitle(src, runs, px, { maxW: w });
+    if (titles.size >= TITLES_KEPT) {
+      titles.delete(titles.keys().next().value);
+    }
+    titles.set(key, src);
+  }
+  const c = document.createElement('canvas');
+  c.className = 'lettered';
+  c.setAttribute('aria-hidden', 'true');
+  c.width = src.width;
+  c.height = src.height;
+  c.style.width = src.style.width;
+  c.style.height = src.style.height;
+  c.getContext('2d').drawImage(src, 0, 0);
+  return c;
+}
+
 function lettered(text, fills, px, maxW, cls = 'tg-title') {
   const box = h(`div.${cls}`, { role: 'heading', 'aria-level': '2' });
-  const words = String(text).split(' ');
-  const runs = words.map((w, i) => ({ text: i < words.length - 1 ? `${w} ` : w, fill: fills[i % fills.length] }));
   try {
-    const c = document.createElement('canvas');
-    c.className = 'lettered';
-    c.setAttribute('aria-hidden', 'true');
-    const room = typeof window !== 'undefined' ? window.innerWidth - 90 : maxW;
-    paintTitle(c, runs, px, { maxW: Math.max(160, Math.min(maxW, room)) });
-    box.append(c, h('span.tg-sr', { text }));
+    box.append(letteredCanvas(text, fills, px, maxW), h('span.tg-sr', { text }));
   } catch (e) {
     box.textContent = text;
     box.style.font = `900 italic ${Math.round(px * 0.7)}px var(--ui)`;
@@ -239,8 +273,8 @@ function bust(avatar, expr = 'calm', size = 220) {
   return c;
 }
 
-function plate(handle, avatar, id, extra = '') {
-  return h('span.plate', { style: { '--liv': liveryCss(avatar, id) } }, h('span', { text: `${handle}${extra}` }));
+function plate(handle, avatar, id, extra = '', cls = '') {
+  return h(`span.plate${cls ? `.${cls}` : ''}`, { style: { '--liv': liveryCss(avatar, id) } }, h('span', { text: `${handle}${extra}` }));
 }
 
 function tag(text, ink = 'paper') {
@@ -405,6 +439,8 @@ export function createTogether(shell) {
   let stack = [];
   let pausedByUs = false;
   let focusKey = '';
+  /* A sheet drops in when it opens, and not when it is drawn again. */
+  let entering = false;
 
   function topName() {
     return stack.length ? stack[stack.length - 1].name : '';
@@ -423,6 +459,7 @@ export function createTogether(shell) {
     }
     stack.push({ name, render, back: opts.back || null });
     focusKey = opts.focus || '';
+    entering = true;
     paint();
   }
 
@@ -433,6 +470,10 @@ export function createTogether(shell) {
     }
     closeOsk();
     const node = top.render();
+    if (entering) {
+      node.classList.add('tg-enter');
+      entering = false;
+    }
     modal.replaceChildren(node);
     modal.hidden = false;
     root.classList.add('has-modal');
@@ -445,6 +486,15 @@ export function createTogether(shell) {
     const first = want || front.querySelector('[data-autofocus]') || focusables()[0];
     if (first) {
       first.focus({ preventScroll: false });
+      /* A field drawn again keeps its words; the caret goes after them,
+       * where the pilot was typing. */
+      if (first.tagName === 'INPUT' && first.type !== 'checkbox' && typeof first.setSelectionRange === 'function') {
+        try {
+          first.setSelectionRange(first.value.length, first.value.length);
+        } catch (e) {
+          /* A field that has no caret. */
+        }
+      }
     }
   }
 
@@ -561,9 +611,24 @@ export function createTogether(shell) {
       }
       return;
     }
-    sound('select');
     t.click();
   }
+
+  /* Every press makes the menus' click, whether a pointer, a key or a pad
+   * made it: they all arrive here as a click. */
+  /* Before the button's own handler, so a sheet it repaints keeps the
+   * focus on the button pressed. Safari and Firefox on a Mac leave the
+   * focus where it was when a button is clicked, and a refresh would put
+   * it back there: on the Face tab while Hair is the one showing. */
+  modal.addEventListener('click', (e) => {
+    const b = e.target && e.target.closest ? e.target.closest('button') : null;
+    if (b && !b.disabled && b.getAttribute('aria-disabled') !== 'true') {
+      if (document.activeElement !== b) {
+        b.focus({ preventScroll: true });
+      }
+      sound('select');
+    }
+  }, true);
 
   /* Keys inside a sheet, before the window hears them: so Enter on a
    * button is one press and not the browser's click and the shell's too,
@@ -579,6 +644,15 @@ export function createTogether(shell) {
     let used = true;
     if (d && !(typing && d[0] !== 0)) {
       moveFocus(d[0], d[1]);
+    } else if (e.key === 'Tab') {
+      /* Tab goes round the sheet and never out of it: the shell's menu
+       * behind is not this sheet's to reach. */
+      const list = focusables(oskOpen() ? oskEl : null);
+      if (list.length) {
+        const at = list.indexOf(document.activeElement);
+        const next = e.shiftKey ? (at <= 0 ? list.length - 1 : at - 1) : (at + 1) % list.length;
+        list[next].focus();
+      }
     } else if (e.key === 'Enter' || (e.key === ' ' && !typing)) {
       press(t);
     } else if (e.key === 'Escape') {
@@ -980,28 +1054,46 @@ export function createTogether(shell) {
         welcomed(data, now);
         break;
       case 'joined':
-        logLine(null, `${data.handle} joined.`);
+        logLine(data.id, 'joined the room', 'hello');
+        sound('move');
         paintChip();
         infoForShell();
         refresh('room');
+        refresh('share');
         break;
       case 'left': {
         if (shell.forget) shell.forget(data.id);
+        if (data.pilot && !muted.has(data.id)) {
+          logLine(data.id, data.why === 'kicked' || data.why === 'banned' ? 'was taken out of the room' : 'left', 'calm', data.pilot);
+        }
+        if (openRow === data.id) openRow = 0;
         paintChip();
         infoForShell();
         refresh('room');
+        refresh('share');
+        /* A card about a pilot who has gone has nothing left to act on. */
+        if ((topName() === 'confirm' || topName() === 'report') && aboutId === data.id) {
+          pop();
+        }
         break;
       }
       case 'host': {
         const p = pilot(data.id);
         if (data.id === session.you) {
-          banner(me().avatar, 'laugh', "You're the host now", 'Host tools are in the pause menu, under Room.');
+          banner(me().avatar, 'laugh', "You're the host now", 'Pause, then Room, for the host tools.');
         } else if (p) {
           banner(p.avatar, 'laugh', `${p.handle} is the host now`, 'The room carries on.');
         }
         infoForShell();
         paintChip();
+        /* Host tools open on a page that is no longer the host's would
+         * send words the board refuses: they close. */
+        if (!isHost() && (topName() === 'roomSettings' || (topName() === 'confirm' && aboutHostTool))) {
+          pop();
+          toast('You are not the host now.', 'warn');
+        }
         refresh('room');
+        refresh('race');
         break;
       }
       case 'room':
@@ -1023,10 +1115,12 @@ export function createTogether(shell) {
         refresh('room');
         if (rosterOn) paintRoster();
         break;
-      case 'removed':
-        sheetCant(data.why === 'replaced' ? 'replaced' : data.why === 'banned' ? 'banned' : 'kicked', { room: session.room });
+      case 'removed': {
+        const hp = hostPilot();
+        sheetCant(data.why === 'replaced' ? 'replaced' : data.why === 'banned' ? 'banned' : 'kicked', { room: session.room, hostAvatar: hp ? hp.avatar : null });
         dropSessionQuiet();
         break;
+      }
       case 'refused':
         refused(data);
         break;
@@ -1067,7 +1161,7 @@ export function createTogether(shell) {
         spoken(name, data);
         break;
       case 'chatRefused':
-        toast(CHAT_REFUSED[data.why] || 'That line was not said.');
+        toast(CHAT_REFUSED[data.why] || 'That line was not said.', 'warn');
         break;
       case 'reported':
         reported.add(data.id);
@@ -1077,7 +1171,7 @@ export function createTogether(shell) {
         break;
       case 'reportFailed':
         reportBusy = false;
-        toast('The report did not go. Try again in a moment.');
+        toast('The report did not go. Try again in a moment.', 'bad');
         refresh('report');
         break;
       case 'settingsRefused':
@@ -1140,8 +1234,10 @@ export function createTogether(shell) {
     }
     const hp = hostPilot();
     const n = session.link.pilots.size;
+    const others = n - 1;
+    const who = others > 0 ? `${others} ${others === 1 ? 'pilot' : 'pilots'} here` : 'Nobody else here yet';
     banner(hp ? hp.avatar : null, 'hello', `Welcome to ${r.name}`,
-      `${hp ? `${hp.handle} is hosting. ` : ''}${n} ${n === 1 ? 'pilot' : 'pilots'}.${r.typedChat ? ' Typed chat is on when you pause.' : ' Say hi with 1 to 6.'}`);
+      `${hp && hp.id !== session.you ? `${hp.handle} is hosting. ` : ''}${who}. ${r.typedChat ? 'Say hi with 1 to 6, or Enter to type.' : 'Say hi with 1 to 6, or Q for the lines.'}`);
   }
 
   function refused(data) {
@@ -1169,6 +1265,32 @@ export function createTogether(shell) {
     return h('div', null, h('div.tg-scrim'), h('div.tg-checker'), ...kids);
   }
 
+  /* A switch row. A locked one is shown fixed where the room's rules keep
+   * it, says why, and does nothing when pressed. */
+  function switchRow(k, label, small, on, toggle, { locked = false, why = '' } = {}) {
+    return h('button.switch', {
+      type: 'button', role: 'switch', 'aria-checked': String(Boolean(on)), 'aria-disabled': locked ? 'true' : null, 'data-k': k,
+      on: { click: () => { if (!locked) toggle(); } },
+    }, h('span', null, h('b', { text: label }), h('small', { text: small }), why ? h('span.why', { text: why }) : null), h('span.knob'));
+  }
+
+  /* The room's tags, up to three, for the host sheet and room settings. */
+  function tagPicker(f, again) {
+    return h('div.field', null, h('span.lab', { text: 'Tags' }), h('div.btnrow', { style: { gap: '8px' } }, TAGS.map((t) => h(`button.tag.${f.tags.includes(t.id) ? t.ink : 'paper'}`, {
+      type: 'button', 'aria-pressed': String(f.tags.includes(t.id)), 'data-k': `tag-${t.id}`, style: { padding: '6px 10px', cursor: 'pointer' },
+      on: {
+        click: () => {
+          f.tags = f.tags.includes(t.id) ? f.tags.filter((x) => x !== t.id) : [...f.tags, t.id].slice(-3);
+          again();
+        },
+      },
+    }, t.label))));
+  }
+
+  /* The same words for the address switch wherever a host meets it. */
+  const HIDE_LABEL = "Hide pilots' addresses";
+  const HIDE_SMALL = "Pilots connect through a relay, so nobody can see another pilot's internet address.";
+
   function sheetConsent(next) {
     open('consent', () => scrimmed(h('div.card-mid.sheet.sakura.halftone', null,
       h('span.kicker', { text: 'Steam edition' }),
@@ -1191,37 +1313,41 @@ export function createTogether(shell) {
 
   /* ---- you ---- */
 
-  function nameField(onChange) {
+  /* The pilot's name. `draft` holds what is typed until it is kept, so a
+   * sheet drawn again (a face picked, the look rolled) keeps it. */
+  function nameField(draft) {
     const input = h('input.input', {
-      id: 'tg-handle', value: readPilotName() || '', maxLength: 24, autocomplete: 'off', 'data-k': 'handle', 'data-osk': 'name', placeholder: 'Your pilot name',
+      id: 'tg-handle', value: draft.name, maxLength: 24, autocomplete: 'off', 'data-k': 'handle', 'data-osk': 'name', placeholder: 'Your pilot name',
     });
+    const okNow = () => !input.value.trim() || Boolean(normaliseName(input.value));
     const help = h('span.help', { text: `The name your lap times use. ${nameRules()} In listed and school safe rooms you get a made up one instead.` });
+    const mark = () => {
+      input.classList.toggle('bad', !okNow());
+      help.classList.toggle('bad', !okNow());
+    };
     input.addEventListener('input', () => {
-      const ok = !input.value.trim() || normaliseName(input.value);
-      input.classList.toggle('bad', !ok);
-      help.classList.toggle('bad', !ok);
-      if (onChange) onChange(input.value);
+      draft.name = input.value;
+      mark();
     });
     input.addEventListener('change', () => {
       const n = normaliseName(input.value);
       if (n) writePilotName(n);
     });
+    mark();
     return h('div.field', null, h('label', { for: 'tg-handle', text: 'Your name' }), input, help);
   }
 
-  function keepName() {
-    const input = modal.querySelector('#tg-handle');
-    if (input) {
-      const n = normaliseName(input.value);
-      if (n) writePilotName(n);
-    }
+  function keepName(draft) {
+    const n = normaliseName(draft.name);
+    if (n) writePilotName(n);
   }
 
   function sheetMeet(next) {
     let expr = 'hello';
+    const draft = { name: readPilotName() || '' };
     open('meet', () => {
-      const portrait = h('div.av-portrait', null, bust(store.avatar, expr), h('span.plate', { style: { '--liv': liveryCss(store.avatar, 0) } }, h('span', { text: readPilotName() || 'You' })));
-      return scrimmed(h('div.page.sheet.halftone', null,
+      const portrait = h('div.av-portrait', null, bust(store.avatar, expr), h('span.plate', { style: { '--liv': liveryCss(store.avatar, 0) } }, h('span', { text: draft.name.trim() || 'You' })));
+      return scrimmed(h('div.page.fit.narrow.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Fly together' }), lettered('THIS IS YOU', [INKS.cream, INKS.mint], 50, 600))),
         h('div.rule'),
         h('div.page-body', null, h('div.av-stage', null, portrait,
@@ -1230,23 +1356,23 @@ export function createTogether(shell) {
             h('div.exprs', null, ['calm', 'hello', 'laugh'].map((e) => h('button', {
               type: 'button', 'aria-pressed': String(expr === e), 'data-k': `expr-${e}`, on: { click: () => { expr = e; refresh('meet'); } },
             }, face(store.avatar, e, 48), h('small', { text: FACE_NAMES[e] })))),
-            nameField(),
+            nameField(draft),
             h('div.btnrow', null,
               btn('Keep', '', () => {
-                keepName();
+                keepName(draft);
                 store.met = true;
                 save();
                 pop();
                 next();
               }, { 'data-autofocus': true, 'data-k': 'keep' }),
               btn('Roll again', 'amber', () => {
-                keepName();
+                keepName(draft);
                 store.avatar = rollAvatar();
                 save();
                 refresh('meet');
               }, { 'data-k': 'roll' }),
               btn('Change look', 'ghost', () => {
-                keepName();
+                keepName(draft);
                 sheetEditor(() => refresh('meet'));
               }, { 'data-k': 'look' })))))));
     });
@@ -1267,7 +1393,11 @@ export function createTogether(shell) {
       const key = { Face: 'face', Hair: 'hair', Eyes: 'eyes', Extras: 'acc' }[tab];
       let grid;
       if (key) {
-        grid = h('div.parts', null, PART_NAMES[key].map((label, i) => h('button.part', {
+        /* Rows as even as the count allows: eight is two fours, nine is a
+         * five and a four, never a row of seven and one left over. */
+        const names = PART_NAMES[key];
+        const cols = Math.ceil(names.length / Math.ceil(names.length / 5));
+        grid = h('div.parts', { style: { '--cols': String(cols) } }, names.map((label, i) => h('button.part', {
           type: 'button', 'aria-pressed': String(av[key] === i), 'data-k': `${key}-${i}`, on: { click: () => setPart(key, i) },
         }, face({ ...av, [key]: i }, 'calm', 72), h('small', { text: label }))));
       } else if (tab === 'Colours') {
@@ -1283,29 +1413,29 @@ export function createTogether(shell) {
           })))),
         h('p.help', { style: { color: 'var(--ink)', fontWeight: '700', maxWidth: '340px' }, text: 'Other pilots see your quad in this colour with an ink outline, and your name above it.' }));
       }
-      return scrimmed(h('div.page.sheet.halftone', null,
-        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Your avatar' }), lettered('CHANGE YOUR LOOK', [INKS.cream, INKS.amber], 46, 640)),
-          btn('Done', 'small ghost', () => back(), { 'data-k': 'done-top' })),
+      return scrimmed(h('div.page.fit.sheet.halftone', null,
+        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Your avatar' }), lettered('CHANGE YOUR LOOK', [INKS.cream, INKS.amber], 46, 640))),
         h('div.rule'),
         h('div.page-body', null, h('div.av-stage', null,
-          h('div.stack', null,
-            h('div.av-portrait', null, bust(av, expr), h('span.plate', { style: { '--liv': liveryCss(av, 0) } }, h('span', { text: readPilotName() || 'You' }))),
-            h('div.exprs', null, EXPRESSIONS.map((e) => h('button', {
-              type: 'button', 'aria-pressed': String(expr === e), 'aria-label': FACE_NAMES[e], 'data-k': `ex-${e}`, on: { click: () => { expr = e; refresh('editor'); } },
-            }, face(av, e, 36))))),
+          h('div.av-portrait', null, bust(av, expr), h('span.plate', { style: { '--liv': liveryCss(av, 0) } }, h('span', { text: readPilotName() || 'You' }))),
           h('div', { style: { minWidth: '0', display: 'flex', flexDirection: 'column' } },
             h('div.tabs', { role: 'tablist' }, EDITOR_TABS.map((t) => h('button', {
-              type: 'button', role: 'tab', 'aria-selected': String(t === tab), 'data-k': `tab-${t}`, on: { click: () => { tab = t; refresh('editor'); } },
+              type: 'button', role: 'tab', 'aria-selected': String(t === tab), 'data-k': `tab-${t}`, 'data-autofocus': t === tab ? true : null, on: { click: () => { tab = t; refresh('editor'); } },
             }, t))),
             grid,
-            session && session.inRoom ? h('p.help', { text: 'The others see your new look the next time you join a room.' }) : null,
-            h('div.btnrow', { style: { marginTop: '12px' } },
-              btn('Done', '', () => back(), { 'data-k': 'done' }),
-              btn('Roll again', 'amber small', () => {
-                store.avatar = rollAvatar();
-                save();
-                refresh('editor');
-              }, { 'data-k': 'reroll' })))))));
+            h('div.field', { style: { marginTop: '14px' } }, h('span.lab', { text: 'Try a face' }),
+              h('div.exprs', { role: 'group', 'aria-label': 'Try a face' }, EXPRESSIONS.map((e) => h('button', {
+                type: 'button', 'aria-pressed': String(expr === e), 'data-k': `ex-${e}`, on: { click: () => { expr = e; refresh('editor'); } },
+              }, face(av, e, 36), h('small', { text: FACE_NAMES[e] }))))),
+            session && session.inRoom ? h('p.help', { text: 'The others see your new look the next time you join a room.' }) : null))),
+        h('div.footer-row', null,
+          btn('Done', '', () => back(), { 'data-k': 'done' }),
+          btn('Roll again', 'amber', () => {
+            store.avatar = rollAvatar();
+            save();
+            refresh('editor');
+          }, { 'data-k': 'reroll' }),
+          h('span.note', { text: 'Every change is kept as you make it.' }))));
     }, {
       back: () => {
         pop();
@@ -1319,6 +1449,8 @@ export function createTogether(shell) {
   let lobbyWay = 'freestyle';
   let lobby = { state: 'loading', rooms: [], counts: null };
   let lobbyTimer = null;
+  /* What is typed in the code box, kept across the shelf's refreshes. */
+  let lobbyCode = '';
 
   function stopLobby() {
     if (lobbyTimer) {
@@ -1328,7 +1460,12 @@ export function createTogether(shell) {
   }
 
   async function loadLobby() {
-    const [got] = await Promise.all([fetchJson(`/api/rooms?way=${encodeURIComponent(lobbyWay)}`), hasWorld(null)]);
+    const way = lobbyWay;
+    const [got] = await Promise.all([fetchJson(`/api/rooms?way=${encodeURIComponent(way)}`), hasWorld(null)]);
+    /* A tab changed while this was in the air: its own fetch answers it. */
+    if (way !== lobbyWay) {
+      return;
+    }
     if (got.ok && got.body && Array.isArray(got.body.rooms)) {
       lobby = { state: 'ok', rooms: got.body.rooms, counts: got.body.counts || null };
     } else {
@@ -1363,7 +1500,7 @@ export function createTogether(shell) {
       on: {
         click: () => {
           if (missing) {
-            toast('This room flies a map your copy does not have.');
+            toast('This room flies a map your copy does not have.', 'warn');
             return;
           }
           if (full) {
@@ -1377,7 +1514,7 @@ export function createTogether(shell) {
     h('div.pic', { style: { backgroundImage: pic ? `url("${pic}")` : '' } },
       r.lock ? h('span.tg-lock', { text: 'Password' }) : null,
       h('span.faces', null, (r.faces || []).slice(0, 3).map((a) => face(a, 'calm', 32))),
-      h(`span.count${full ? '.full' : ''}`, { text: `${r.n}/${r.max}` })),
+      h(`span.count${full ? '.full' : ''}`, { text: full ? 'Full' : `${r.n}/${r.max}` })),
     h('div.body', null,
       h('h4', { text: r.name }),
       h('span.map', { text: `${r.mapName}${r.host ? ` · ${r.host} hosting` : ''}` }),
@@ -1395,18 +1532,21 @@ export function createTogether(shell) {
       const counts = lobby.counts && lobby.counts[lobbyWay];
       const kicker = counts ? `Chapter 04 · ${counts.rooms} open · ${counts.pilots} flying` : 'Chapter 04';
       const codeInput = h('input.input', {
-        id: 'tg-code', placeholder: 'CODE', maxLength: 7, 'aria-label': 'Room code', autocomplete: 'off', 'data-k': 'code', 'data-osk': 'code', 'data-enter': 'code-go',
+        id: 'tg-code', value: lobbyCode, placeholder: 'CODE', maxLength: 7, 'aria-label': 'Room code', autocomplete: 'off', 'data-k': 'code', 'data-osk': 'code', 'data-enter': 'code-go',
       });
       codeInput.addEventListener('input', () => {
         codeInput.value = codeInput.value.toUpperCase();
+        codeInput.classList.remove('bad');
+        lobbyCode = codeInput.value;
       });
       const goCode = () => {
         const c = normaliseCode(codeInput.value);
         if (!c) {
           codeInput.classList.add('bad');
-          toast('A code is six letters and numbers.');
+          toast('A code is six letters and numbers.', 'warn');
           return;
         }
+        lobbyCode = '';
         joinFlow(c, '', { pressed: true });
       };
       let body;
@@ -1430,23 +1570,24 @@ export function createTogether(shell) {
       return scrimmed(h('div.page.sheet.halftone', null,
         h('div.page-head', null,
           h('div.grow', null, h('span.kicker', { text: kicker }), lettered('OPEN ROOMS', [INKS.cream, INKS.sakura], 50, 520)),
-          h('div.btnrow', { role: 'tablist', 'aria-label': 'Kind of room' }, Object.entries(WAY_NAMES).map(([w, label]) => h(`button.btn.small${w === lobbyWay ? '' : '.ghost'}`, {
+          btn('Back', 'small ghost', () => back(), { 'data-k': 'back' })),
+        h('div.tools', null,
+          h('div.seg', { role: 'tablist', 'aria-label': 'Kind of room' }, Object.entries(WAY_NAMES).map(([w, label]) => h(`button.btn.small${w === lobbyWay ? '' : '.ghost'}`, {
             type: 'button', role: 'tab', 'aria-selected': String(w === lobbyWay), 'data-k': `way-${w}`,
             on: {
               click: () => {
+                if (w === lobbyWay) return;
                 lobbyWay = w;
                 lobby = { state: 'loading', rooms: [], counts: lobby.counts };
                 refresh('lobby');
                 loadLobby();
               },
             },
-          }, h('span', { text: label }))))),
-        h('div.tools', null,
+          }, h('span', { text: label })))),
           h('div.codebox', null, codeInput, btn('Join', 'small', goCode, { 'data-k': 'code-go' })),
           h('button.mapcard.me-chip', { type: 'button', 'data-k': 'me', on: { click: () => sheetEditor(() => refresh('lobby')) } },
             face(store.avatar, 'hello', 38), h('span', null, h('b', { text: readPilotName() || 'You' }), h('small', { text: 'Change look' }))),
-          h('button.link', { type: 'button', 'data-k': 'privacy', on: { click: () => sheetPrivacy() } }, 'How rooms keep you safe'),
-          btn('Back', 'small ghost', () => back(), { 'data-k': 'back' })),
+          h('button.link', { type: 'button', 'data-k': 'privacy', on: { click: () => sheetPrivacy() } }, 'How rooms keep you safe')),
         h('div.page-body', null, body),
         h('div.footer-row', null, h('span.note', { text: 'Only rooms whose host listed them appear here. Private rooms are joined by link or code.' }),
           STEAM_EDITION ? h('button.link', { type: 'button', 'data-k': 'offline', on: { click: () => goOffline() } }, 'Turn online off') : null)));
@@ -1479,16 +1620,7 @@ export function createTogether(shell) {
     const bad = (was && was.bad) || new Set();
     open('host', () => {
       const strict = f.listed || f.schoolSafe;
-      const sw = (key, label, small, why, locked) => h('button.switch', {
-        type: 'button', role: 'switch', 'aria-checked': String(locked ? true : f[key]), 'aria-disabled': locked ? 'true' : null, 'data-k': `sw-${key}`,
-        on: {
-          click: () => {
-            if (locked) return;
-            f[key] = !f[key];
-            refresh('host');
-          },
-        },
-      }, h('span', null, h('b', { text: label }), h('small', { text: small }), why ? h('span.why', { text: why }) : null), h('span.knob'));
+      const again = () => refresh('host');
       const nameIn = h('input.input', {
         id: 'tg-rname', value: f.name, maxLength: 32, autocomplete: 'off', 'data-k': 'rname', 'data-osk': 'name', class: bad.has('name') ? 'bad' : null,
       });
@@ -1517,7 +1649,7 @@ export function createTogether(shell) {
           tags: f.tags,
         });
       };
-      return scrimmed(h('div.page.sheet.halftone', null,
+      return scrimmed(h('div.page.fit.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Host a room' }), lettered('FLY TOGETHER', [INKS.cream, INKS.sakura], 50, 560)),
           btn('Cancel', 'small ghost', () => back(), { 'data-k': 'cancel' })),
         h('div.rule'),
@@ -1526,67 +1658,60 @@ export function createTogether(shell) {
             h('div.mapcard', null, h('div.pic', { style: { backgroundImage: entry.thumb ? `url("${entry.thumb}")` : '' } }),
               h('div', { style: { flex: '1' } }, h('small', { text: 'Map' }), h('b', { text: entry.name }), h('small', { text: WAY_NAMES[entry.way] || '' }))),
             h('div.field', null, h('label', { for: 'tg-rname', text: 'Room name' }), nameIn,
-              bad.has('name') ? h('span.help.bad', { text: SETTINGS_FIELDS.name }) : h('span.help', { text: f.listed ? 'Listed rooms are named after your made up name if you leave this empty.' : 'Leave it empty and the room is named after you.' })),
+              bad.has('name') ? h('span.help.bad', { text: SETTINGS_FIELDS.name }) : h('span.help.spare', { text: f.listed ? 'Leave it empty and the room takes your made up name.' : 'Leave it empty and the room is named after you.' })),
             h('div.field', null, h('span.lab', { text: 'Who can find it' }), h('div.radios', { role: 'radiogroup' },
               h('button.radio', {
-                type: 'button', role: 'radio', 'aria-checked': String(!f.listed), 'data-k': 'private', on: { click: () => { f.listed = false; refresh('host'); } },
+                type: 'button', role: 'radio', 'aria-checked': String(!f.listed), 'data-k': 'private', on: { click: () => { f.listed = false; again(); } },
               }, h('b', { text: 'Link only' }), h('small', { text: 'Friends join with the link or code.' })),
               h('button.radio', {
-                type: 'button', role: 'radio', 'aria-checked': String(f.listed), 'data-k': 'listed', on: { click: () => { f.listed = true; refresh('host'); } },
+                type: 'button', role: 'radio', 'aria-checked': String(f.listed), 'data-k': 'listed', on: { click: () => { f.listed = true; again(); } },
               }, h('b', { text: 'Listed under Rooms' }), h('small', { text: 'Anyone can find it and join.' })))),
             h('div.field', null, h('label', { for: 'tg-pw' }, 'Password ', h('span', { style: { fontWeight: '600', textTransform: 'none', letterSpacing: '0' }, text: '(optional)' })), pwIn,
               h(`span.help${bad.has('password') ? '.bad' : ''}`, { text: bad.has('password') ? SETTINGS_FIELDS.password : 'Your invite link skips it, so you never have to say it out loud.' }))),
           h('div.stack', null,
             h('div.field', null, h('span.lab', { text: 'Pilots' }), h('div.stepper', null,
-              h('button', { type: 'button', 'aria-label': 'Fewer', 'data-k': 'fewer', on: { click: () => { f.max = Math.max(2, f.max - 1); refresh('host'); } } }, '−'),
+              h('button', { type: 'button', 'aria-label': 'Fewer', 'data-k': 'fewer', on: { click: () => { f.max = Math.max(2, f.max - 1); again(); } } }, '−'),
               h('output', { text: String(f.max) }),
-              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(30, f.max + 1); refresh('host'); } } }, '+')),
-            h('span.help', { text: 'Up to 30. Big rooms are busier on slow connections.' })),
-            sw('typedChat', 'Typed chat', 'Pilots can type when they are paused. Preset lines are always on.',
-              strict ? (f.listed ? 'Listed rooms always use preset chat.' : 'School safe rooms always use preset chat.') : '', false),
-            sw('schoolSafe', 'School safe', 'Made up names, preset chat, addresses hidden.', '', false),
-            sw('hide', "Hide pilots' addresses", "Links go through Cloudflare, so no pilot sees another's address.", strict ? 'Always on in listed and school safe rooms.' : '', strict),
-            h('div.field', null, h('span.lab', { text: 'Tags' }), h('div.btnrow', { style: { gap: '8px' } }, TAGS.map((t) => h(`button.tag.${f.tags.includes(t.id) ? t.ink : 'paper'}`, {
-              type: 'button', 'aria-pressed': String(f.tags.includes(t.id)), 'data-k': `tag-${t.id}`, style: { padding: '6px 10px', cursor: 'pointer' },
-              on: {
-                click: () => {
-                  f.tags = f.tags.includes(t.id) ? f.tags.filter((x) => x !== t.id) : [...f.tags, t.id].slice(-3);
-                  refresh('host');
-                },
-              },
-            }, t.label))))))),
+              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(30, f.max + 1); again(); } } }, '+')),
+            h('span.help.spare', { text: 'Up to 30. Big rooms are busier on slow connections.' })),
+            switchRow('sw-typedChat', 'Typed chat', 'Pilots can type when they are paused. Preset lines are always on.',
+              !strict && f.typedChat, () => { f.typedChat = !f.typedChat; again(); },
+              { locked: strict, why: strict ? (f.listed ? 'Listed rooms always use preset lines.' : 'School safe rooms always use preset lines.') : '' }),
+            switchRow('sw-schoolSafe', 'School safe', 'Made up names, preset lines only, addresses hidden.', f.schoolSafe, () => { f.schoolSafe = !f.schoolSafe; again(); }),
+            switchRow('sw-hide', HIDE_LABEL, HIDE_SMALL, strict || f.hide, () => { f.hide = !f.hide; again(); },
+              { locked: strict, why: strict ? 'Always on in listed and school safe rooms.' : '' }),
+            tagPicker(f, again)))),
         h('div.footer-row', null, btn('Open room', '', openRoom, { 'data-k': 'open', 'data-autofocus': true }),
           h('span.note', { text: `Nobody can come in until you send the link${f.listed ? ' or they find it under Rooms' : ''}.` }))));
     }, { replace: opts.replace });
-    // The disabled-looking typed chat switch in a strict room is shown as off.
-    if (f.listed || f.schoolSafe) {
-      const s = modal.querySelector('[data-k="sw-typedChat"]');
-      if (s) {
-        s.setAttribute('aria-checked', 'false');
-        s.setAttribute('aria-disabled', 'true');
-      }
-    }
   }
 
   function copyText(text, input) {
     const done = () => toast('Link copied');
-    try {
-      navigator.clipboard.writeText(text).then(done, () => {
-        if (input) {
-          input.focus();
-          input.select();
-        }
-        toast('Select the link and copy it');
-      });
-    } catch (e) {
+    const select = () => {
       if (input) {
         input.focus();
         input.select();
       }
+      toast('Select the link and copy it', 'warn');
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done, select);
+    } catch (e) {
+      select();
     }
   }
 
   function sheetShare({ first = false, entry = null } = {}) {
+    const flyNow = () => {
+      closeAll();
+      const r = room();
+      if (entry && entry.fly && !sameWorld(r)) {
+        entry.fly();
+      } else if (!shell.flying()) {
+        shell.fly();
+      }
+    };
     open('share', () => {
       const r = room();
       if (!r) {
@@ -1596,16 +1721,9 @@ export function createTogether(shell) {
       const invite = session.invite ? roomUrl(window.location.href, r, { invite: session.invite, mp: shell.mp }) : '';
       const linkIn = h('input.input', { readOnly: true, value: link, 'aria-label': 'Room link', tabindex: '-1' });
       const invIn = h('input.input', { readOnly: true, value: invite, 'aria-label': 'Invite link', tabindex: '-1' });
-      const n = session.link.pilots.size;
-      const flyNow = () => {
-        closeAll();
-        if (entry && entry.fly && !sameWorld(r)) {
-          entry.fly();
-        } else if (!shell.flying()) {
-          shell.fly();
-        }
-      };
-      return scrimmed(h('div.page.sheet.halftone', null,
+      const pilots = pilotsList().sort((a, b) => a.id - b.id);
+      const pic = (entry && entry.thumb) || thumbOf(r);
+      return scrimmed(h('div.page.fit.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: first ? 'Room open' : r.name }), lettered('INVITE PILOTS', [INKS.cream, INKS.mint], 50, 560)),
           first ? null : btn('Back', 'small ghost', () => back(), { 'data-k': 'back-top' })),
         h('div.rule'),
@@ -1617,19 +1735,29 @@ export function createTogether(shell) {
             r.lock && invite ? h('div.field', null, h('span.lab', { text: 'Invite link, skips the password' }),
               h('div.copyrow', null, invIn, btn('Copy', 'small', () => copyText(invite, invIn), { 'data-k': 'copy-inv' })),
               h('span.help', { text: 'If it spreads further than you meant, change the password in Room settings and the old one stops working.' })) : null),
-          h('div.stack', { style: { justifyItems: 'start' } },
-            h('div.mapcard', { style: { maxWidth: '440px' } }, face(store.avatar, 'hello', 54),
-              h('div', null, h('b', { text: `${isHost() ? 'Hosting' : 'In'}: ${r.mapName}` }),
-                h('small', { text: `${r.listed ? 'Listed' : 'Link only'} · ${n} of ${r.max}${r.typedChat ? ' · typed chat on' : ''}${r.schoolSafe ? ' · school safe' : ''}` }))),
-            h('p.help', { style: { color: 'var(--ink)', fontWeight: '700', maxWidth: '420px' }, text: 'A link never pulls anybody in: it shows them the room and asks first.' })))),
-        h('div.footer-row', null, first ? btn('Fly', 'amber', flyNow, { 'data-k': 'fly', 'data-autofocus': true }) : btn('Back to flying', '', () => back(), { 'data-k': 'back', 'data-autofocus': true }))));
-    });
+          h('div.stack', null,
+            h('div.mapcard', null, h('div.pic', { style: { backgroundImage: pic ? `url("${pic}")` : '' } }),
+              h('div', { style: { flex: '1', minWidth: '0' } }, h('small', { text: isHost() ? 'You are hosting' : 'You are in' }), h('b', { text: r.mapName }),
+                h('small', { text: `${r.listed ? 'Listed' : 'Link only'} · ${pilots.length} of ${r.max}${r.typedChat ? ' · typed chat on' : ''}${r.schoolSafe ? ' · school safe' : ''}` }))),
+            h('div.field', null, h('span.lab', { text: 'In the room' }),
+              h('div.pane', { style: { border: '3px solid var(--ink)', background: 'var(--white)', padding: '4px 10px', maxHeight: '220px', overflow: 'auto' } },
+                pilots.map((p) => pilotRow(p, { actions: false })),
+                pilots.length < 2 ? h('p.help', { style: { margin: '6px 0' }, text: 'Just you so far. Pilots appear here as they arrive.' }) : null)),
+            h('p.help', { style: { color: 'var(--ink)', fontWeight: '700' }, text: 'A link never pulls anybody in: it shows them the room and asks first.' })))),
+        h('div.footer-row', null, first ? btn('Start flying', 'amber', flyNow, { 'data-k': 'fly', 'data-autofocus': true }) : btn('Back to the room', '', () => back(), { 'data-k': 'back', 'data-autofocus': true }),
+          first ? h('span.note', { text: 'You can come back to this any time: pause, then Room.' }) : null)));
+    }, { back: first ? flyNow : null });
   }
 
   /* ---- joining ---- */
 
   function sheetJoin(r, invite) {
     const ofWorld = sameWorld(r);
+    /* A listed or school safe room names everybody for them, and a card
+     * that promised the pilot's own name would be wrong on arrival. The
+     * board says which (ownNames on the room's card); an older board's card
+     * does not, and then only school safe is known to. */
+    const madeUp = r.ownNames === false || (r.ownNames == null && r.schoolSafe);
     open('join', () => scrimmed(h('div.card-mid.sheet.sakura.halftone', null,
       h('span.kicker', { text: 'Room invite' }),
       lettered(r.host ? `JOIN ${r.host.toUpperCase()}'S ROOM?` : 'JOIN THIS ROOM?', [INKS.cream, INKS.sakura], 42, 680),
@@ -1638,10 +1766,10 @@ export function createTogether(shell) {
           h('small', { text: `${WAY_NAMES[r.way] || ''} on ${r.mapName} · ${r.n} of ${r.max} pilots` }),
           h('div.pilots-mini', null, (r.faces || []).map((a) => face(a, 'calm', 34)), r.n > (r.faces || []).length ? tag(`+${r.n - (r.faces || []).length}`) : null),
           h('div.tags', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } }, tag(WAY_NAMES[r.way] || 'Room', 'sakura'),
-            r.typedChat ? tag('Typed chat on') : tag('Preset chat'), r.lock && !invite ? tag('Password', 'amber') : null))),
+            r.typedChat ? tag('Typed chat on') : tag('Preset chat'), r.schoolSafe ? tag('School safe', 'mint') : null, r.lock && !invite ? tag('Password', 'amber') : null))),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--ink)', fontWeight: '700', flexWrap: 'wrap' } },
-        "You'll fly as", face(store.avatar, 'hello', 40), h('b', { text: readPilotName() || 'a made up name' }),
-        h('button.link', { type: 'button', 'data-k': 'change', on: { click: () => sheetEditor(() => refresh('join')) } }, 'Change')),
+        "You'll fly as", face(store.avatar, 'hello', 40), madeUp ? h('span', { text: 'a made up name, chosen by the room' }) : h('b', { text: readPilotName() || 'a made up name' }),
+        h('button.link', { type: 'button', 'data-k': 'change', on: { click: () => sheetEditor(() => refresh('join')) } }, 'Change look')),
       ofWorld ? null : h('p.help', { text: `Joining loads ${r.mapName}.` }),
       h('div.btnrow', null,
         btn('Join', '', () => joinNow(r, invite), { 'data-autofocus': true, 'data-k': 'join' }),
@@ -1653,6 +1781,8 @@ export function createTogether(shell) {
       const pw = h('input.input', {
         id: 'tg-pw2', type: 'password', placeholder: 'Password', maxLength: 64, autocomplete: 'off', 'data-k': 'pw', 'data-osk': 'name', 'data-enter': 'pw-go', 'data-autofocus': true, class: wrong ? 'bad' : null,
       });
+      const help = h(`span.help${wrong ? '.bad' : ''}`, { text: wrong ? 'That is not it. After eight misses there is a ten minute wait.' : 'Got an invite link? It skips this.' });
+      pw.addEventListener('input', () => pw.classList.remove('bad'));
       const card = h('div.card-mid.sheet.halftone', null,
         h('span.kicker', { text: r.name }),
         lettered('PASSWORD, PLEASE', [INKS.cream, INKS.amber], 42, 640),
@@ -1660,11 +1790,13 @@ export function createTogether(shell) {
           h('div.copyrow', null, pw, btn('Join', 'small', () => {
             if (pw.value.length < 4) {
               pw.classList.add('bad');
+              help.classList.add('bad');
+              help.textContent = 'A password is at least four characters.';
               return;
             }
             connect(r, { invite, password: pw.value });
           }, { 'data-k': 'pw-go' })),
-          h(`span.help${wrong ? '.bad' : ''}`, { text: wrong ? 'That is not it. After eight misses there is a ten minute wait.' : 'Got an invite link? It skips this.' })),
+          help),
         h('div.btnrow', null, btn('Back', 'ghost small', () => back(), { 'data-k': 'back' })));
       if (wrong) {
         card.classList.add('shake');
@@ -1736,7 +1868,7 @@ export function createTogether(shell) {
 
   function sheetPrivacy() {
     const blk = (head, text) => h('div.blk', null, h('b', { text: head }), h('p', { text }));
-    open('privacy', () => scrimmed(h('div.page.sheet.halftone', null,
+    open('privacy', () => scrimmed(h('div.page.fit.sheet.halftone', null,
       h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Fly together' }), lettered('HOW ROOMS KEEP YOU SAFE', [INKS.cream, INKS.mint], 44, 760)),
         btn('Back', 'small ghost', () => back(), { 'data-k': 'back', 'data-autofocus': true })),
       h('div.rule'),
@@ -1756,6 +1888,10 @@ export function createTogether(shell) {
   /* ---------------------------------------------------------------- */
 
   let openRow = 0;
+  /* Which pilot the card on top is about (a confirm, a report), and
+   * whether it is a host tool, so either can close when that changes. */
+  let aboutId = 0;
+  let aboutHostTool = false;
 
   function pilotRow(p, { actions = true } = {}) {
     const mine = p.id === session.you;
@@ -1766,19 +1902,23 @@ export function createTogether(shell) {
     else if (p.away) status.push('In the menus');
     else status.push('Flying');
     if (muted.has(p.id)) status.push('muted');
+    if (reported.has(p.id)) status.push('reported');
     /* In the room's page a row is a button that opens what can be done
      * about that pilot; in the in-flight list it is only a line. */
-    const row = h(`${actions ? 'button' : 'div'}.pilot${mine ? '.me' : ''}${p.away && !mine ? '.away' : ''}${isOpen ? '.open' : ''}`, {
-      type: actions ? 'button' : null,
+    const opens = actions && !mine;
+    const row = h(`${opens ? 'button' : 'div'}.pilot${mine ? '.me' : ''}${p.away && !mine ? '.away' : ''}${isOpen ? '.open' : ''}`, {
+      type: opens ? 'button' : null,
       'data-k': actions ? `pilot-${p.id}` : null,
+      'aria-expanded': opens ? String(isOpen) : null,
       on: {
         click: () => {
-          if (!actions || mine) return;
+          if (!opens) return;
           openRow = openRow === p.id ? 0 : p.id;
           refresh('room');
         },
       },
-    }, face(p.avatar, mine ? 'hello' : 'calm', 38), h('div', null, h('b', null, p.handle, host ? crown() : null), h('small', { text: status.join(' · ') })), h('span'), h('span'));
+    }, face(p.avatar, mine ? 'hello' : 'calm', 38), h('div', null, h('b', null, p.handle, host ? crown() : null), h('small', { text: status.join(' · ') })), h('span'),
+    opens ? h('span.chev', { 'aria-hidden': 'true', text: '›' }) : h('span'));
     if (!isOpen) {
       return row;
     }
@@ -1796,6 +1936,20 @@ export function createTogether(shell) {
     return [row, acts];
   }
 
+  /* The room's own words, as tags: where, how many, who hosts, and the
+   * rules the host chose. */
+  function roomTags(r, n) {
+    const hp = hostPilot();
+    return h('div.infotags', null,
+      tag(r.mapName, 'paper'),
+      tag(`${n} of ${r.max} pilots`, 'paper'),
+      tag(isHost() ? 'You are host' : `Host: ${hp ? hp.handle : 'nobody yet'}`, isHost() ? 'amber' : 'paper'),
+      tag(r.listed ? 'Listed' : 'Link only', 'paper'),
+      tag(r.typedChat ? 'Typed chat on' : 'Preset chat', 'paper'),
+      r.lock ? tag('Password', 'paper') : null,
+      r.schoolSafe ? tag('School safe', 'mint') : null);
+  }
+
   /* The room's page, from the pause menu's Room row. */
   function sheetRoom() {
     if (!room()) {
@@ -1806,28 +1960,31 @@ export function createTogether(shell) {
       if (!r) {
         return scrimmed(h('div.card-mid.sheet.halftone', null, h('p', { text: 'The room has closed.' }), btn('Back', 'ghost', () => back())));
       }
-      const hp = hostPilot();
       const racing = RoomRace.racing(r.way);
+      const rc = race && race.race;
+      const phase = rc ? rc.phase : 'pit';
+      const raceNote = { pit: 'Pit', count: 'Starting', live: 'Racing', results: 'Results' }[phase] || '';
       const pilots = pilotsList().sort((a, b) => (b.id === session.you) - (a.id === session.you) || a.id - b.id);
-      return scrimmed(h('div.page.sheet.halftone', null,
+      return scrimmed(h('div.page.fit.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null,
-          h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' } },
-            h('span.kicker', { text: r.name }), tag(`Code ${r.code}`), tag(`${pilots.length} of ${r.max}`),
-            tag(isHost() ? 'You are host' : `Host: ${hp ? hp.handle : 'nobody yet'}`), r.schoolSafe ? tag('School safe', 'mint') : null),
-          lettered('ROOM', [INKS.cream, INKS.sakura], 50, 320)),
+          h('span.kicker', { text: `Room · Code ${r.code}` }),
+          lettered(r.name.toUpperCase(), [INKS.cream, INKS.sakura], 46, 760),
+          roomTags(r, pilots.length)),
         btn('Back', 'small ghost', () => back(), { 'data-k': 'back' })),
         h('div.rule'),
         h('div.roomsheet', null,
           h('div.tg-menu', null,
-            btn('Talk', '', () => sheetScene(), { 'data-k': 'talk', 'data-autofocus': true }),
+            racing ? h('button.btn.ghost', {
+              type: 'button', 'data-k': 'race', 'data-autofocus': true, on: { click: () => sheetRace() },
+            }, h('span', { text: 'Race' }), h('small', { text: raceNote })) : null,
+            btn('Talk', 'ghost', () => sheetScene(), { 'data-k': 'talk', 'data-autofocus': racing ? null : true }),
             btn('Invite pilots', 'ghost', () => sheetShare(), { 'data-k': 'invite' }),
-            racing ? btn('Race', 'ghost', () => sheetRace(), { 'data-k': 'race' }) : null,
             isHost() ? btn('Room settings', 'ghost', () => sheetSettings(), { 'data-k': 'settings' }) : null,
             btn('Your look', 'ghost', () => sheetEditor(() => refresh('room')), { 'data-k': 'look' }),
             btn('Leave room', 'danger', () => sheetConfirm('leave'), { 'data-k': 'leave' })),
-          h('div.pane', null, h('span.lab', { style: { fontWeight: '900', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '.1em' }, text: 'Pilots' }),
+          h('div.pane', null, h('span.lab-h', { text: 'Pilots' }),
             pilots.map((p) => pilotRow(p)),
-            h('p.help', { text: 'Mute is only for you, and the board never knows. Pausing never pauses anybody else.' })))));
+            h('p.help', { text: pilots.length > 1 ? 'Pick a pilot to mute or report them. Mute is only for you, and the board never knows.' : 'Nobody else is here yet. Invite pilots sends them the link.' })))));
     });
   }
 
@@ -1838,6 +1995,8 @@ export function createTogether(shell) {
       makeHost: [`MAKE ${p ? p.handle.toUpperCase() : ''} HOST?`, 'They get the host tools and you become a pilot. They can hand it back.', 'Make host', 'amber'],
       leave: ['LEAVE THE ROOM?', 'You carry on flying solo where you are. The room carries on without you.', 'Leave', 'danger'],
     }[what];
+    aboutId = p ? p.id : 0;
+    aboutHostTool = what !== 'leave';
     const under = stack.length ? stack[stack.length - 1].render : null;
     open('confirm', () => h('div', null, under ? under() : null, h('div.modal-back', null, h('div.modal.sheet.sakura.halftone', null,
       lettered(words[0], [INKS.cream, what === 'makeHost' ? INKS.amber : INKS.bail], 38, 500),
@@ -1863,14 +2022,16 @@ export function createTogether(shell) {
   function sheetReport(p) {
     let why = 'words';
     reportBusy = false;
+    aboutId = p.id;
+    aboutHostTool = false;
     open('report', () => {
       const sent = reported.has(p.id);
       const under = stack.length > 1 ? stack[stack.length - 2].render : null;
       const card = sent
         ? h('div.modal.sheet.halftone', null, lettered('THANKS', [INKS.cream, INKS.mint], 40, 400),
-          h('div.state-row', null, h('div.who', { style: { width: '120px' } }, bust(store.avatar, 'fierce')),
+          h('div.state-row', null, h('div.who', null, bust(store.avatar, 'calm')),
             h('div.say', { style: { fontSize: '17px' }, text: `Sent. ${p.handle} is muted for you. The WebFPV admin reads every report.` })),
-          h('div.btnrow', null, btn('Back', '', () => back(), { 'data-k': 'back', 'data-autofocus': true })))
+          h('div.btnrow', { style: { justifyContent: 'flex-end' } }, btn('Back', '', () => back(), { 'data-k': 'back', 'data-autofocus': true })))
         : h('div.modal.sheet.halftone', null, lettered(`REPORT ${p.handle.toUpperCase()}`, [INKS.cream, INKS.bail], 38, 500),
           h('div.radios', { role: 'radiogroup' }, REPORT_WHYS.map((w) => h('button.radio', {
             type: 'button', role: 'radio', 'aria-checked': String(why === w.id), 'data-k': `why-${w.id}`, on: { click: () => { why = w.id; refresh('report'); } },
@@ -1904,11 +2065,8 @@ export function createTogether(shell) {
     settingsSaving = false;
     open('roomSettings', () => {
       const strict = f.listed || f.schoolSafe;
+      const again = () => refresh('roomSettings');
       const n = session.link.pilots.size;
-      const sw = (key, label, small, locked) => h('button.switch', {
-        type: 'button', role: 'switch', 'aria-checked': String(locked ? key === 'hide' : f[key]), 'aria-disabled': locked ? 'true' : null, 'data-k': `sw-${key}`,
-        on: { click: () => { if (!locked) { f[key] = !f[key]; refresh('roomSettings'); } } },
-      }, h('span', null, h('b', { text: label }), h('small', { text: small })), h('span.knob'));
       const nameIn = h('input.input', {
         id: 'tg-rn2', value: f.name, maxLength: 32, autocomplete: 'off', 'data-k': 'rname', 'data-osk': 'name', class: settingsBad.has('name') ? 'bad' : null,
       });
@@ -1929,8 +2087,10 @@ export function createTogether(shell) {
         settingsSaving = true;
         settingsBad = new Set();
         session.link.settings(msg);
+        again();
       };
-      return scrimmed(h('div.page.sheet.halftone', null,
+      const renames = (f.listed || f.schoolSafe) !== (r.listed || r.schoolSafe);
+      return scrimmed(h('div.page.fit.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: r.name }), lettered('ROOM SETTINGS', [INKS.cream, INKS.amber], 46, 600)),
           btn('Cancel', 'small ghost', () => back(), { 'data-k': 'cancel' })),
         h('div.rule'),
@@ -1939,27 +2099,31 @@ export function createTogether(shell) {
             h('div.field', null, h('label', { for: 'tg-rn2', text: 'Room name' }), nameIn, settingsBad.has('name') ? h('span.help.bad', { text: SETTINGS_FIELDS.name }) : null),
             h('div.field', null, h('label', { for: 'tg-pw3', text: 'Password' }), pwIn,
               h(`span.help${settingsBad.has('password') ? '.bad' : ''}`, { text: settingsBad.has('password') ? SETTINGS_FIELDS.password : 'A new one does not remove anyone already here, and retires the old invite link.' }),
-              r.lock ? h('button.switch', {
-                type: 'button', role: 'switch', 'aria-checked': String(f.dropPassword), 'data-k': 'sw-drop', on: { click: () => { f.dropPassword = !f.dropPassword; refresh('roomSettings'); } },
-              }, h('span', null, h('b', { text: 'Remove the password' }), h('small', { text: 'Anybody with the code can join.' })), h('span.knob')) : null),
+              r.lock ? switchRow('sw-drop', 'Remove the password', 'Anybody with the code can join.', f.dropPassword, () => { f.dropPassword = !f.dropPassword; again(); }) : null),
             h('div.field', null, h('span.lab', { text: 'Pilots' }), h('div.stepper', null,
-              h('button', { type: 'button', 'aria-label': 'Fewer', 'data-k': 'fewer', on: { click: () => { f.max = Math.max(Math.max(2, n), f.max - 1); refresh('roomSettings'); } } }, '−'),
+              h('button', { type: 'button', 'aria-label': 'Fewer', 'data-k': 'fewer', on: { click: () => { f.max = Math.max(Math.max(2, n), f.max - 1); again(); } } }, '−'),
               h('output', { text: String(f.max) }),
-              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(30, f.max + 1); refresh('roomSettings'); } } }, '+')),
+              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(30, f.max + 1); again(); } } }, '+')),
             h(`span.help${settingsBad.has('max') ? '.bad' : ''}`, { text: `Never below the ${n} ${n === 1 ? 'pilot' : 'pilots'} already in.` }))),
           h('div.stack', null,
-            sw('listed', 'Listed under Rooms', 'Turning this off takes the room off the Rooms shelf. Everyone stays.', false),
-            sw('typedChat', 'Typed chat', strict ? 'Never in a listed or school safe room.' : 'Pilots can type when they are paused.', strict),
-            sw('schoolSafe', 'School safe', 'Made up names, preset chat, addresses hidden.', false),
-            sw('hide', "Hide pilots' addresses", strict ? 'Always on in listed and school safe rooms.' : 'Links go through Cloudflare.', strict)))),
+            switchRow('sw-listed', 'Listed under Rooms', 'Turning this off takes the room off the Rooms shelf. Everyone stays.', f.listed, () => { f.listed = !f.listed; again(); }),
+            switchRow('sw-typedChat', 'Typed chat', 'Pilots can type when they are paused.', !strict && f.typedChat, () => { f.typedChat = !f.typedChat; again(); },
+              { locked: strict, why: strict ? 'Never in a listed or school safe room.' : '' }),
+            switchRow('sw-schoolSafe', 'School safe', 'Made up names, preset lines only, addresses hidden.', f.schoolSafe, () => { f.schoolSafe = !f.schoolSafe; again(); }),
+            switchRow('sw-hide', HIDE_LABEL, HIDE_SMALL, strict || f.hide, () => { f.hide = !f.hide; again(); },
+              { locked: strict, why: strict ? 'Always on in listed and school safe rooms.' : '' }),
+            tagPicker(f, again)))),
         h('div.footer-row', null, btn(settingsSaving ? 'Saving' : 'Save', '', saveIt, { 'data-k': 'save', 'data-autofocus': true, disabled: settingsSaving }),
-          h('span.note', { text: 'Changing the names rule renames everybody in the room.' }))));
+          renames ? h('span.note', { style: { color: 'var(--red)' }, text: f.listed || f.schoolSafe ? 'Saving gives everybody in the room a made up name.' : 'Saving gives everybody their own name back.' }) : null)));
     });
   }
 
   /* ---- talking, parked ---- */
 
   let sceneFace = 'calm';
+  /* A line half typed, kept while the scene is drawn again for somebody
+   * else's line, and while the pilot steps away to the room's page. */
+  let sceneDraft = '';
 
   function sheetScene() {
     if (!room()) {
@@ -1967,40 +2131,74 @@ export function createTogether(shell) {
     }
     open('scene', () => {
       const r = room();
-      const last = [...log].reverse().find((l) => l.id != null);
-      const speaker = last ? (last.id === session.you ? me() : pilot(last.id)) : null;
-      const left = h('div.pl', null, bust(speaker ? speaker.avatar : store.avatar, last ? last.face : 'calm'));
-      const right = h('div.pr.dim', null, bust(store.avatar, sceneFace));
+      const said = log.filter((l) => l.said && !muted.has(l.id));
+      const last = said[said.length - 1] || null;
+      const mine = (l) => l.id === session.you;
+      /* The pilot spoken with: whoever spoke last who is not this pilot,
+       * or else the host, or anybody, so the scene is a conversation from
+       * the start. Alone, there is nobody on the left. */
+      const lastOther = [...said].reverse().find((l) => !mine(l)) || null;
+      let other = lastOther ? { avatar: lastOther.avatar, handle: lastOther.handle, id: lastOther.id } : null;
+      if (!other) {
+        const hp = hostPilot();
+        other = (hp && hp.id !== session.you ? hp : null) || pilotsList().find((p) => p.id !== session.you) || null;
+      }
+      const meLast = Boolean(last && mine(last));
+      const left = other ? h(`div.pl${meLast || !last ? '.dim' : ''}`, null, bust(other.avatar, lastOther ? lastOther.face : 'calm'),
+        plate(other.handle, other.avatar, other.id, '', 'who-tag')) : null;
+      const right = h(`div.pr${meLast ? '' : '.dim'}`, null, bust(store.avatar, sceneFace));
+      const before = said.slice(-8, -1).map((l) => h(`div.line${mine(l) ? '.mine' : ''}`, null, l.avatar ? face(l.avatar, l.face, 26) : null, h('b', { text: l.handle }), h('span', { text: l.text })));
       const box = h('div.bigbox', null,
-        speaker ? plate(speaker.handle, speaker.avatar, speaker.id, speaker.id === session.link.hostId ? ' ♛' : '') : null,
-        h('div.scroll', null, last ? last.text : (r.typedChat ? 'Nobody has said anything yet. Say hi.' : 'Pick a line to say it.')));
+        last ? plate(last.handle, last.avatar, last.id, last.id === session.link.hostId ? ' ♛' : '') : null,
+        h('div.scroll', null, last ? last.text : 'Nobody has said anything yet.',
+          last ? null : h('span.hint', { text: r.typedChat ? 'Type below, or pick a line. Everybody in the room sees it.' : 'Pick a line below. Everybody in the room sees it.' })));
+      const quick = h('div.quickrow', null,
+        QUICK.map((q, i) => btn(q.text, 'small ghost', () => sayQuick(i), { 'data-k': `q-${i}`, 'data-autofocus': !r.typedChat && i === 0 ? true : null })),
+        btn('Wave', 'small ghost', () => sayQuick(6), { 'data-k': 'wave' }),
+        btn('Done', 'small sakura', () => back(), { 'data-k': 'done' }));
       let bar;
-      if (r && r.typedChat) {
+      if (r.typedChat) {
         const input = h('input.input', {
-          id: 'tg-say', maxLength: 80, placeholder: 'Say something', 'aria-label': 'Say something', autocomplete: 'off', 'data-k': 'say', 'data-osk': 'name', 'data-enter': 'say-go', 'data-autofocus': true,
+          id: 'tg-say', value: sceneDraft, maxLength: 80, placeholder: 'Say something', 'aria-label': 'Say something', autocomplete: 'off', 'data-k': 'say', 'data-osk': 'name', 'data-enter': 'say-go', 'data-autofocus': true,
         });
+        input.addEventListener('input', () => { sceneDraft = input.value; });
         const say = () => {
           const text = input.value.trim();
           if (!text) return;
           if (session.chat(text, sceneFace)) {
+            sceneDraft = '';
             input.value = '';
           }
         };
         bar = h('div.saybar', null, h('div.sheet.halftone.typebox', null,
           TALK_FACES.map((e) => h('button.facebtn', {
-            type: 'button', 'aria-pressed': String(sceneFace === e), 'aria-label': FACE_NAMES[e], 'data-k': `face-${e}`, on: { click: () => { sceneFace = e; refresh('scene'); } },
-          }, face(store.avatar, e, 40))),
+            type: 'button', 'aria-pressed': String(sceneFace === e), 'data-k': `face-${e}`, on: { click: () => { sceneFace = e; refresh('scene'); } },
+          }, face(store.avatar, e, 36), h('small', { text: FACE_NAMES[e] }))),
           input, btn('Say', 'small', say, { 'data-k': 'say-go' })),
-        h('div.btnrow', null, QUICK.map((q, i) => btn(q.text, 'small ghost', () => sayQuick(i), { 'data-k': `q-${i}` })), btn('Done', 'small', () => back(), { 'data-k': 'done' })));
+        quick);
       } else {
-        bar = h('div.saybar', null, QUICK.map((q, i) => btn(q.text, i === 0 ? 'small amber' : 'small ghost', () => sayQuick(i), { 'data-k': `q-${i}`, 'data-autofocus': i === 0 ? true : null })),
-          btn('Wave', 'small ghost', () => sayQuick(6), { 'data-k': 'wave' }), btn('Done', 'small', () => back(), { 'data-k': 'done' }));
+        bar = h('div.saybar', null, quick);
       }
-      return h('div.scene', null, h('div.shade'), left, right, bar, box);
+      return h('div.scene', null, h('div.shade'), left, right, h('div.transcript', { 'aria-live': 'polite' }, before), box, bar);
     });
   }
 
   /* ---- racing ---- */
+
+  function podium(rc) {
+    const rows = (rc.rows || []).slice(0, 3);
+    const pod = (row, place) => {
+      if (!row) {
+        return h('div.pod.empty');
+      }
+      const p = pilot(row.id);
+      const art = h('div.art', null, p ? avatarCanvas(cleanAvatar(p.avatar), { crop: 'bust', size: place === 1 ? 168 : 132, expr: place === 1 ? 'laugh' : row.dnf ? 'oops' : 'smug' }) : null,
+        h('span.place', { text: String(place) }));
+      return h(`div.pod${place === 1 ? '.first' : ''}`, null, art,
+        h('div.cap', null, h('span', { text: p ? p.handle : 'Gone' }), h('span', { text: row.dnf ? 'Out' : fmtMs(row.total) })));
+    };
+    return h('div.podium', null, pod(rows[1], 2), pod(rows[0], 1), pod(rows[2], 3));
+  }
 
   function sheetRace() {
     open('race', () => {
@@ -2010,45 +2208,61 @@ export function createTogether(shell) {
       const ready = rc ? rc.ready.includes(session.you) : false;
       const laps = rc ? rc.laps : 3;
       const host = isHost();
+      const n = session.link.pilots.size;
       const rows = [];
+      let note = '';
       if (phase === 'pit') {
-        rows.push(btn(ready ? 'Not ready' : 'Ready', ready ? 'ghost' : 'mint', () => { session.link.raceSend({ t: 'ready', on: !ready }); pop(); }, { 'data-k': 'ready', 'data-autofocus': true }));
+        rows.push(h('div.btnrow', null,
+          btn(ready ? 'Not ready' : 'Ready', ready ? 'ghost' : 'mint', () => { session.link.raceSend({ t: 'ready', on: !ready }); closeAll(); }, { 'data-k': 'ready', 'data-autofocus': true }),
+          host ? btn('Start the race', 'amber', () => { session.link.raceSend({ t: 'start' }); closeAll(); }, { 'data-k': 'start' }) : null));
         if (host) {
-          rows.push(h('div.stepper', { style: { width: '170px' } },
+          rows.push(h('div.field', null, h('span.lab', { text: 'Laps' }), h('div.stepper', { style: { width: '190px' } },
             h('button', { type: 'button', 'aria-label': 'Fewer laps', 'data-k': 'lfewer', on: { click: () => session.link.raceSend({ t: 'laps', n: Math.max(1, laps - 1) }) } }, '−'),
             h('output', { text: `${laps} ${laps === 1 ? 'lap' : 'laps'}` }),
-            h('button', { type: 'button', 'aria-label': 'More laps', 'data-k': 'lmore', on: { click: () => session.link.raceSend({ t: 'laps', n: Math.min(RACE_LAPS_MAX, laps + 1) }) } }, '+')));
-          rows.push(btn('Start the race', 'amber', () => { session.link.raceSend({ t: 'start' }); closeAll(); }, { 'data-k': 'start' }));
+            h('button', { type: 'button', 'aria-label': 'More laps', 'data-k': 'lmore', on: { click: () => session.link.raceSend({ t: 'laps', n: Math.min(RACE_LAPS_MAX, laps + 1) }) } }, '+'))));
         }
+        note = host ? 'It starts by itself when everyone flying is ready, or when you press Start. Ready takes you back to the start line.' : 'Press Ready, or G while you fly. The host can start any time, and the countdown puts you on the start line.';
       } else if (phase === 'results') {
-        rows.push(btn('One more', 'amber', () => { session.link.raceSend({ t: 'again' }); closeAll(); }, { 'data-k': 'again', 'data-autofocus': true }));
-        if (host) rows.push(btn('Back to the pit', 'ghost', () => { session.link.raceSend({ t: 'pit' }); pop(); }, { 'data-k': 'pit' }));
+        const voted = (rc.votes || []).includes(session.you);
+        rows.push(h('div.btnrow', null,
+          btn(voted ? 'Voted' : 'One more', 'amber', () => { session.link.raceSend({ t: 'again' }); closeAll(); }, { 'data-k': 'again', 'data-autofocus': voted ? null : true, disabled: voted }),
+          host ? btn('Back to the pit', 'ghost', () => { session.link.raceSend({ t: 'pit' }); pop(); }, { 'data-k': 'pit' }) : null,
+          voted ? btn('Back', 'ghost', () => back(), { 'data-k': 'back-low', 'data-autofocus': true }) : null));
+        note = `${(rc.votes || []).length} of ${n} want one more. More than half and the countdown starts.`;
       } else if (race && race.racing()) {
-        rows.push(btn('Retire from this race', 'danger', () => { session.link.raceSend({ t: 'dnf' }); closeAll(); }, { 'data-k': 'dnf', 'data-autofocus': true }));
+        /* Back to the race is first and has the focus: retiring is never
+         * one stray press away. */
+        rows.push(h('div.btnrow', null,
+          btn('Back to the race', '', () => back(), { 'data-k': 'back-race', 'data-autofocus': true }),
+          btn('Retire', 'danger', () => { session.link.raceSend({ t: 'dnf' }); closeAll(); }, { 'data-k': 'dnf' }),
+          host ? btn('Call it off', 'ghost', () => { session.link.raceSend({ t: 'pit' }); pop(); }, { 'data-k': 'pit' }) : null));
+        note = 'Every lap is timed on your own screen from GO, so a slow connection never costs you time.';
+      } else {
+        rows.push(h('div.btnrow', null,
+          btn('Back to flying', '', () => back(), { 'data-k': 'back-fly', 'data-autofocus': true }),
+          host ? btn('Call it off', 'ghost', () => { session.link.raceSend({ t: 'pit' }); pop(); }, { 'data-k': 'pit' }) : null));
+        note = 'This race started without you. You are in the next one: it starts from the pit when this one ends.';
       }
-      if (host && phase !== 'pit' && phase !== 'results') {
-        rows.push(btn('Call it off', 'ghost', () => { session.link.raceSend({ t: 'pit' }); pop(); }, { 'data-k': 'pit' }));
-      }
-      return scrimmed(h('div.page.sheet.halftone', null,
+      const title = { pit: 'THE PIT', count: 'RACE', live: 'RACE', results: 'RESULTS' }[phase] || 'RACE';
+      return scrimmed(h('div.page.fit.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: `${r ? r.name : ''} · ${r ? r.mapName : ''} · ${laps} ${laps === 1 ? 'lap' : 'laps'}` }),
-          lettered(phase === 'results' ? 'RESULTS' : 'RACE', [INKS.cream, phase === 'results' ? INKS.mint : INKS.amber], 50, 400)),
+          lettered(title, [INKS.cream, phase === 'results' ? INKS.mint : INKS.amber], 50, 460)),
         btn('Back', 'small ghost', () => back(), { 'data-k': 'back' })),
         h('div.rule'),
-        h('div.page-body', null, h('div.resgrid', null,
-          h('div.stack', null, rows, h('p.help', {
-            text: phase === 'pit'
-              ? (host ? 'The race starts by itself when everyone flying is ready, or when you press Start.' : 'Press Ready, or G while you fly. The host can start any time.')
-              : 'Each pilot is timed from GO by their own sim, and the board orders the finish.',
-          })),
-          standingsTable(rc)))));
+        h('div.page-body', null,
+          phase === 'results' && rc && rc.rows && rc.rows.length ? podium(rc) : null,
+          h('div.resgrid', null,
+            h('div.stack', null, rows, h('p.help', { text: note })),
+            standingsTable(rc)))));
     });
   }
 
   function standingsTable(rc) {
     if (!rc || !rc.rows || !rc.rows.length) {
-      const list = pilotsList();
-      return h('div.pane', null, list.map((p) => h('div.pilot', null, face(p.avatar, 'calm', 34),
-        h('div', null, h('b', { text: p.handle }), h('small', { text: rc && rc.ready.includes(p.id) ? 'Ready' : 'Not ready yet' })),
+      const list = pilotsList().sort((a, b) => a.id - b.id);
+      return h('div.pane', { style: { border: '3px solid var(--ink)', background: 'var(--white)', padding: '4px 10px' } }, list.map((p) => h('div.pilot', null, face(p.avatar, 'calm', 34),
+        h('div', null, h('b', null, p.handle, p.id === session.link.hostId ? crown() : null), h('small', { text: rc && rc.ready.includes(p.id) ? 'Ready' : (p.away ? 'In the menus' : 'Not ready yet') })),
+        h('span'),
         h(`span.hanko${rc && rc.ready.includes(p.id) ? '' : '.wait'}`, { text: rc && rc.ready.includes(p.id) ? 'READY' : '...' }))));
     }
     return h('table.restable', null, h('thead', null, h('tr', null, ['#', 'Pilot', 'Best lap', 'Total'].map((t) => h('th', { text: t })))),
@@ -2056,8 +2270,8 @@ export function createTogether(shell) {
         const p = pilot(row.id);
         let total = fmtMs(row.total);
         if (row.dnf) total = row.laps ? `Out, lap ${row.laps + 1}` : 'Out';
-        else if (!row.done) total = `Lap ${row.laps + 1}`;
-        return h('tr', null, h('td.num', { text: String(i + 1) }),
+        else if (!row.done) total = `Lap ${Math.min(rc.laps, row.laps + 1)}`;
+        return h(`tr${row.id === session.you ? '.me' : ''}`, null, h('td.num', { text: String(i + 1) }),
           h('td', null, h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } }, p ? face(p.avatar, 'calm', 26) : null, p ? p.handle : 'Gone')),
           h('td.num', { text: fmtMs(row.best) || '-' }), h('td.num', { text: total }));
       })));
@@ -2086,7 +2300,7 @@ export function createTogether(shell) {
   posBox.hidden = true;
   const standBox = h('div.standings');
   standBox.hidden = true;
-  const toastBox = h('div');
+  const toastBox = h('div.tg-toasts');
   layer.append(chip, pit, standBox, posBox, roster, logBox, talk, helloBox, qbar, bannerBox, countBox, toastBox);
 
   let rosterOn = false;
@@ -2102,7 +2316,9 @@ export function createTogether(shell) {
 
   function paintChip() {
     const r = room();
-    chip.hidden = !r;
+    /* Over the flight, the pause menu and the results, never the title or
+     * the picker: frame() says which screen is up. */
+    chip.hidden = !r || lastScreen === 'other';
     if (!r) {
       return;
     }
@@ -2123,19 +2339,27 @@ export function createTogether(shell) {
     bannerTimer = setTimeout(() => bannerBox.replaceChildren(), BANNER_MS);
   }
 
-  function toast(text) {
+  /* tone: '' for done (mint), 'warn' for "not that" (amber), 'bad' for
+   * something that went wrong (the bail pink). */
+  function toast(text, tone = '') {
     clearTimeout(toastTimer);
-    toastBox.replaceChildren(h('div.toast', { role: 'status', text }));
-    toastTimer = setTimeout(() => toastBox.replaceChildren(), TOAST_MS);
+    toastBox.replaceChildren(h(`div.toast${tone ? `.${tone}` : ''}`, { role: 'status', text }));
+    toastTimer = setTimeout(() => toastBox.replaceChildren(), TOAST_MS + Math.min(2400, text.length * 25));
   }
 
-  function logLine(id, text, faceName = 'calm') {
-    log.push({ id, text, face: faceName, at: performance.now() });
+  /* `who` is the pilot when the room's list no longer has them, as for a
+   * pilot who has just left. A line keeps its speaker's name and face, so
+   * the talk scene can still show it after they go. Joins and leaves are
+   * kept apart from what was said, as `event`. */
+  function logLine(id, text, faceName = 'calm', who = null, said = false) {
+    const p = id == null ? null : (id === (session && session.you) ? me() : pilot(id) || who);
+    log.push({
+      id, text, face: faceName, at: performance.now(), handle: p ? p.handle : '', avatar: p ? p.avatar : null, said,
+    });
     if (log.length > LOG_KEPT) {
       log.splice(0, log.length - LOG_KEPT);
     }
-    const p = id == null ? null : (id === (session && session.you) ? me() : pilot(id));
-    const line = h('div.line', null, p ? face(p.avatar, faceName, 26) : null, p ? h('b', { text: p.handle }) : null, h('span', { text }));
+    const line = h(`div.line${said ? '' : '.event'}`, null, p ? face(p.avatar, faceName, 26) : null, p ? h('b', { text: p.handle }) : null, h('span', { text }));
     logBox.append(line);
     while (logBox.childElementCount > 3) {
       logBox.firstElementChild.remove();
@@ -2178,7 +2402,7 @@ export function createTogether(shell) {
     /* The big box only over the flight: on the pause menu it would sit on
      * the rows, and in a race on the track. The log line always. */
     if (racingNow() || !shell.flying()) {
-      logLine(id, text, expr);
+      logLine(id, text, expr, null, true);
       return;
     }
     for (const t of talkTimers) clearTimeout(t);
@@ -2211,7 +2435,7 @@ export function createTogether(shell) {
       talk.hidden = true;
       talk.classList.remove('fade');
     }, TALK_SHOW_MS + 1200));
-    logLine(id, text, expr);
+    logLine(id, text, expr, null, true);
   }
 
   function sayQuick(i) {
@@ -2363,7 +2587,7 @@ export function createTogether(shell) {
       const top = (rc.rows || []).slice(0, 3);
       fill(pit,
         h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } }, h('span.kicker', { text: 'Results' }), tag(`${rc.laps} ${rc.laps === 1 ? 'lap' : 'laps'}`, 'amber'),
-          tag(`${(rc.votes || []).length} want one more`)),
+          tag(`One more: ${(rc.votes || []).length} of ${session.link.pilots.size}`)),
         lettered('RESULTS', [INKS.cream, INKS.mint], 34, 220),
         top.map((row, i) => {
           const p = pilot(row.id);
@@ -2373,7 +2597,7 @@ export function createTogether(shell) {
         h('div.btnrow', { style: { marginTop: '10px' } },
           btn(voted ? 'Voted' : 'One more', 'amber small', () => session.link.raceSend({ t: 'again' }), { disabled: voted }),
           host ? btn('Back to the pit', 'ghost small', () => session.link.raceSend({ t: 'pit' })) : null),
-        h('span.help', { text: voted ? 'Waiting for the others.' : 'G for one more. More than half say yes and the countdown starts.' }));
+        h('span.help', { text: voted ? 'Waiting for the others. More than half and the countdown starts.' : 'G for one more. More than half say yes and the countdown starts.' }));
       return;
     }
     fill(pit,
@@ -2386,13 +2610,14 @@ export function createTogether(shell) {
       h('div.btnrow', { style: { marginTop: '10px' } },
         btn(ready ? 'Not ready' : 'Ready', ready ? 'ghost small' : 'mint small', () => session.link.raceSend({ t: 'ready', on: !ready })),
         host ? btn('Start', 'amber small', () => session.link.raceSend({ t: 'start' })) : null),
-      h('span.help', { text: host ? 'G to ready up. Starts when everyone is ready, or press Start.' : 'Land on the start pad and press G, or Ready.' }));
+      h('span.help', { text: host ? 'G to ready up. It starts when everyone is ready, or press Start.' : 'G to ready up. The countdown puts you on the start line.' }));
   }
 
   function paintStandings(rc) {
     const live = rc.phase === 'count' || rc.phase === 'live';
-    standBox.hidden = !live || !rc.rows || !rc.rows.length;
-    posBox.hidden = !live || !race.racing();
+    const here = panelScreen();
+    standBox.hidden = !live || !here || !rc.rows || !rc.rows.length;
+    posBox.hidden = !live || !here || !race.racing();
     if (!live) {
       return;
     }
@@ -2441,7 +2666,9 @@ export function createTogether(shell) {
       return;
     }
     const c = document.createElement('canvas');
-    c.className = 'lettered';
+    /* The numbers each have a second and go out with it; READY has two,
+     * and comes in and stays until the 3 replaces it. */
+    c.className = word === 'READY' ? 'lettered hold' : 'lettered';
     c.setAttribute('aria-hidden', 'true');
     try {
       paintTitle(c, [{ text: word, fill: word === 'GO!' ? INKS.mint : INKS.cream }], word === 'READY' ? 120 : 190, { maxW: Math.min(700, window.innerWidth - 40) });
@@ -2498,7 +2725,7 @@ export function createTogether(shell) {
     if (race.holding() && shell.airborne() && now - falseStartAt > 1000) {
       falseStartAt = now;
       shell.grid();
-      toast('False start! Back on the grid. Wait for GO.');
+      toast('False start! Back on the grid. Wait for GO.', 'bad');
     }
     if (race.holding() || countShown) {
       paintCount();
@@ -2573,8 +2800,17 @@ export function createTogether(shell) {
   /* Tab moves the browser's focus unless it is stopped, and in flight in a
    * room it is the pilots list. */
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Tab' && modal.hidden && session && session.inRoom && shell.flying()) {
+    if (e.code !== 'Tab') {
+      return;
+    }
+    if (modal.hidden && session && session.inRoom && shell.flying()) {
       e.preventDefault();
+    } else if (!modal.hidden && !modal.contains(e.target)) {
+      /* A sheet is up and the focus is somewhere behind it, after a click
+       * on the scrim: Tab brings it back to the sheet. */
+      e.preventDefault();
+      const first = focusables()[0];
+      if (first) first.focus();
     }
   }, true);
 
@@ -2702,6 +2938,12 @@ export function createTogether(shell) {
      * results screen out of the way, as it does for a career lesson. */
     ownsRun() {
       return racingNow();
+    },
+    /* Whether this pilot is in a race room, where the room's panel says
+     * what starts and the map's own promise of no clock would be wrong. */
+    raceRoom() {
+      const r = room();
+      return Boolean(r && race && RoomRace.racing(r.way));
     },
     inRoom() {
       return Boolean(room());

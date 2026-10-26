@@ -53,6 +53,10 @@ const SAMPLES_KEPT = 8;
 const PING_BURST = 6;
 const PING_BURST_MS = 350;
 const PING_EVERY_MS = 15000;
+/* A lap the board has not taken this long after it was sent was refused:
+ * its answer comes back in one round trip, and no track is lapped faster
+ * than the board's floor of a second and a half. */
+const LAP_ANSWER_MS = 1000;
 
 /*
  * The board's clock, from pings. `offset` is board time minus this page's
@@ -137,6 +141,7 @@ export class RoomRace {
     this.goLocal = 0;
     this.lastFinish = 0;
     this.lapsSent = 0;
+    this.lapSentAt = 0;
     this.pings = 0;
     this.nextPingAt = 0;
   }
@@ -247,12 +252,23 @@ export class RoomRace {
     if (row && (row.done || row.dnf)) {
       return null;
     }
+    /* A lap the board refused would leave every later one numbered past
+     * its count, and refused too, for the rest of the race. So once the
+     * board has had time to answer and has fewer laps than were sent, the
+     * count and the last finish are taken from what it holds: the refused
+     * lap's time goes into this one, and the laps still add up to the time
+     * since GO, which is the board's own test. */
+    if (row && row.laps < this.lapsSent && this.now() - this.lapSentAt >= LAP_ANSWER_MS) {
+      this.lapsSent = row.laps;
+      this.lastFinish = this.goLocal + row.total;
+    }
     const ms = Math.round(crossLocal - this.lastFinish);
     if (!(ms > 0)) {
       return null;
     }
     this.lastFinish = crossLocal;
     this.lapsSent += 1;
+    this.lapSentAt = this.now();
     const msg = { t: 'lap', n: this.lapsSent, ms };
     this.send(msg);
     return msg;

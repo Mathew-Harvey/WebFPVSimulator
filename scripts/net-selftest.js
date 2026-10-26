@@ -476,6 +476,17 @@ console.log('a race on one page');
   rr.heard({ ...count, phase: 'live', rows: [rows[0], { ...rows[1], laps: 2, done: true }] });
   check('a pilot home sends no more laps', rr.lap(goLocal + 6000) === null && rr.myRow().done);
 
+  /* A lap the board refused, in a three lap race: it took the first and
+   * never the second. */
+  const three = { ...count, laps: 3, phase: 'live' };
+  rr.heard({ ...three, rows: [rows[0], { ...rows[1], laps: 1, total: 1600, best: 1600 }] });
+  t = goLocal + 7000;
+  const healed = rr.lap(goLocal + 7000.2);
+  check('once it has had time to answer, the next lap is numbered and timed from what the board holds',
+    healed.n === 2 && healed.ms === 5400);
+  const quick = rr.lap(goLocal + 8600.2);
+  check('and a lap sent before the board can have answered the last is numbered on from it', quick.n === 3 && quick.ms === 1600);
+
   const watcher = new RoomRace({ send: () => true, you: () => 3, now: () => t });
   watcher.heard(count);
   check('a pilot who is not in the race is not put on the grid', watcher.frame() === '' && watcher.lap(t) === null && !watcher.holding());

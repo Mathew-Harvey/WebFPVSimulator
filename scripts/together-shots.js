@@ -180,10 +180,11 @@ async function joinRoom(b, code, invite) {
 
 /*
  * The shell's instruments a room's own panels must keep off: the clock,
- * the score, the music, Report bug and Pause. Returns the ones the panels
- * named by `sel` sit on, '' when none, with the boxes for the log.
+ * the score, the music, Report bug and Pause, the speed corner and the
+ * stick overlay. Returns the ones the panels named by `sel` sit on, ''
+ * when none, with the boxes for the log.
  */
-const CLEAR_OF = ['.osd-clock', '.music-dock', '.score-total', '.bug-chip'];
+const CLEAR_OF = ['.osd-clock', '.music-dock', '.score-total', '.bug-chip', '.osd-right', '.osd-sticks'];
 function overlaps(page, sel) {
   return page.evaluate(`(() => {
     const box = (e) => {
@@ -411,6 +412,8 @@ async function sceneHost() {
     check('a quick line arrives as dialogue, with the speaker\'s portrait', talk);
     await wait(500);
     await shot('talk-quick');
+    const talkOn = await overlaps(page, '#tg .talk');
+    check('a line said covers none of the shell\'s instruments, the sticks and the pack included', !talkOn, talkOn);
     await wait(1800);
     bots[1].s.chat('Nice to fly with you', 'laugh');
     const typed = await page.until("(() => { const t = document.querySelector('#tg .talk'); return t && !t.hidden && t.textContent.includes('Nice to fly with you'); })()", 5000).then(() => true, () => false);
@@ -434,6 +437,8 @@ async function sceneHost() {
     await wait(400);
     check('Tab shows the pilots', await page.evaluate("!document.querySelector('#tg .roster').hidden"));
     await shot('pilots-list');
+    const rosterOn = await overlaps(page, '#tg .roster');
+    check('the pilots list covers none of the shell\'s instruments', !rosterOn, rosterOn);
     await page.tap('Tab');
     check('and the browser did not move its focus', await page.evaluate("document.activeElement === document.body || document.activeElement === null || document.activeElement.tagName === 'CANVAS'"));
 
@@ -441,7 +446,14 @@ async function sceneHost() {
     await page.until("window.__ui.screen === 'paused'", 10000);
     await wait(300);
     const rows = await page.evaluate("window.__ui.items().map((r) => r.label)");
-    check('the pause menu is the room\'s', rows.includes('Room') && rows.includes('Leave room') && rows.includes('Invite pilots'), rows.join(', '));
+    check('the pause menu is the room\'s', rows.includes('Room') && rows.includes('Leave room') && rows.includes('Quit to title'), rows.join(', '));
+    const quitShown = await page.evaluate(`(() => {
+      const q = [...document.querySelectorAll('button, [role="button"], li, .row')].find((e) => e.textContent.trim().startsWith('Quit to title'));
+      if (!q) return 'no Quit to title row';
+      const b = q.getBoundingClientRect();
+      return b.bottom <= window.innerHeight - 40 ? '' : 'Quit to title ends at ' + Math.round(b.bottom) + ' of ' + window.innerHeight;
+    })()`);
+    check('every room row is above the fold, Quit to title included', !quitShown, quitShown);
     await shot('pause');
     await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
     await sheetIs(page, 'room');
@@ -661,6 +673,8 @@ async function sceneRace() {
     await wait(500);
     await shot('pit');
     check('a race room shows the pit', true);
+    const pitOn = await overlaps(page, '#tg .pit');
+    check('the pit covers none of the shell\'s instruments', !pitOn, pitOn);
     bots[0].s.link.raceSend({ t: 'laps', n: 2 });
     bots[0].s.link.raceSend({ t: 'ready', on: true });
     bots[1].s.link.raceSend({ t: 'ready', on: true });
@@ -669,6 +683,20 @@ async function sceneRace() {
     const counting = await page.until(`${T} && window.__together().race === 'count'`, 8000).then(() => true, () => false);
     check('G readies the page, and everybody ready starts the countdown', counting);
     await page.until("!document.querySelector('#tg .count-big').hidden", 5000).catch(() => {});
+    /* READY has two seconds and must be up for both. It once faded with
+     * the numbers' one second animation and left the sky empty for the
+     * next; its animation is moved to 1.9 s in and read, so a slow page
+     * cannot make this pass or fail. */
+    const readyHeld = await page.until(`(() => { const s = document.querySelector('#tg .count-big .tg-sr'); return Boolean(s && s.textContent === 'READY'); })()`, 3000)
+      .then(() => page.evaluate(`(() => {
+        const c = document.querySelector('#tg .count-big canvas');
+        const a = c && c.getAnimations()[0];
+        if (!a) return 'no animation on READY';
+        a.currentTime = 1900;
+        const op = Number(getComputedStyle(c).opacity);
+        return op > 0.95 ? '' : 'READY is at opacity ' + op + ' 1.9 s in';
+      })()`), () => 'READY was never on screen');
+    check('READY stays up for its two seconds', !readyHeld, readyHeld);
     await wait(300);
     await shot('countdown');
     const goes = await page.until(`${T} && window.__together().race === 'live'`, 9000).then(() => true, () => false);

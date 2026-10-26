@@ -11573,6 +11573,11 @@ export async function boot({ loading, bootStart, mapId }) {
             : '\nNo clock and no gates. Gaps and close calls count as you fly them.';
         }
       }
+      /* A room's race says what starts in its own panel and countdown, and
+       * the map's promise of no clock is not true of it. */
+      if (together && together.raceRoom()) {
+        second = '';
+      }
       ui.setBanner(`${start}${second}`);
       if (guidedStart) {
         ui.noteGuideShown();

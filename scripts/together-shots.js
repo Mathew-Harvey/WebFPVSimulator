@@ -27,6 +27,10 @@
  *           results and one more
  *   direct  two browsers in one room, near each other: their direct link
  *           comes up and poses cross it
+ *   steam   the Steam edition (?edition=steam): nothing reaches the board
+ *           before the pilot's yes, the yes opens the rooms routes and no
+ *           others, a room on a map this copy lacks is greyed, and Turn
+ *           online off asks again next time
  *
  * Usage:
  *   node scripts/together-shots.js [--out=DIR] [--w=1280] [--h=720] [--only=host,race]
@@ -702,12 +706,97 @@ async function sceneDirect() {
   }
 }
 
+async function sceneSteam() {
+  console.log('\nsteam: the Steam edition asks first');
+  const bots = [bot('Deck Pilot', 83), bot('Shelf Rider', 89)];
+  await hostRoom(bots[0], {
+    name: 'Pines on Steam', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, listed: true, tags: ['chill'],
+  });
+  await hostRoom(bots[1], {
+    name: 'Board only room', way: 'freestyle', map: 'nowhere-map-1', mapName: 'A board map', scale: 50, listed: true, tags: [],
+  });
+  /* The Steam repository's main.js imports src/steam/edition.js at boot,
+   * which puts the network guard in before anything reaches for the board;
+   * this checkout's shell does not, so the scene does it as early. */
+  const page = await open(`/index.html?mp=1&edition=steam&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`,
+    `${seedFor({ met: true, name: 'Steam Pilot' })}\nimport('/src/steam/edition.js');`);
+  const shot = shooter(page, 'steam');
+  /* Every request the page makes to the board from here on, and every
+   * socket it opens. */
+  const seen = [];
+  page.cdp.onEvent((msg) => {
+    if (msg.sessionId !== page.sessionId) return;
+    if (msg.method === 'Network.requestWillBeSent' && msg.params.request.url.startsWith(boardOrigin)) {
+      seen.push(msg.params.request.url.slice(boardOrigin.length));
+    } else if (msg.method === 'Network.webSocketCreated') {
+      seen.push(`socket ${msg.params.url}`);
+    }
+  });
+  await page.cdp.send('Network.enable', {}, page.sessionId);
+  try {
+    await page.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await page.until("document.querySelector('.wp-rooms') !== null", 30000);
+    await wait(1500);
+    check('nothing reaches the board before the yes, the Rooms count included', seen.length === 0, seen.join(', '));
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'consent');
+    await wait(500);
+    await shot('consent');
+    check('Fly together asks before going online', seen.length === 0, seen.join(', '));
+    await press(page, 'Turn on and continue');
+    await sheetIs(page, 'lobby');
+    await page.until("document.querySelectorAll('#tg .room h4').length >= 2", 10000);
+    await wait(800);
+    await shot('lobby');
+    const cards = await page.evaluate("[...document.querySelectorAll('#tg .room')].map((c) => ({ name: c.querySelector('h4').textContent, grey: c.classList.contains('is-full') }))");
+    const onSteam = cards.find((c) => c.name === 'Pines on Steam');
+    const boardOnly = cards.find((c) => c.name === 'Board only room');
+    check('a room on a world this copy ships is open', onSteam && !onSteam.grey, JSON.stringify(cards));
+    check('a room on a map this copy lacks is greyed', boardOnly && boardOnly.grey, JSON.stringify(cards));
+    const offRoutes = seen.filter((u) => !u.startsWith('/api/rooms') && !u.startsWith('socket'));
+    check('the yes reached the rooms routes and no others', seen.some((u) => u.startsWith('/api/rooms')) && offRoutes.length === 0, seen.join(', '));
+    await pressKey(page, `room-${bots[1].s.room.code}`);
+    await wait(300);
+    check('pressing the greyed card does not join', !(await state(page)).inRoom);
+    await pressKey(page, `room-${bots[0].s.room.code}`);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    check('a room on a shipped world joins', true);
+    await page.until("window.__mode === 'flight'", 30000);
+    await wait(600);
+    await shot('joined');
+    check('the socket went to the rooms address', seen.some((u) => u === `socket ${wsUrl}`), seen.filter((u) => u.startsWith('socket')).join(', '));
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'lobby');
+    await pressKey(page, 'offline');
+    await page.until(`${T} && !window.__together().inRoom && !window.__together().sheet`, 5000);
+    await wait(400);
+    await shot('offline');
+    check('Turn online off leaves the room and closes the page', true);
+    const before = seen.length;
+    const counts = await page.evaluate(`fetch(${JSON.stringify(`${boardOrigin}/api/rooms/counts`)}).then(() => 'reached', (e) => String(e.message || e))`);
+    check('and the board is answered offline again', /Offline/.test(counts) && seen.length === before, counts);
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'consent');
+    check('the next Fly together asks again', true);
+    const errors = errorsOf(page).filter((e) => !/Offline: the Steam edition/.test(e));
+    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    for (const b of bots) b.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) await sceneHost();
   if (wanted('lobby')) await sceneLobby();
   if (wanted('link')) await sceneLink();
   if (wanted('race')) await sceneRace();
   if (wanted('direct')) await sceneDirect();
+  if (wanted('steam')) await sceneSteam();
 } finally {
   board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

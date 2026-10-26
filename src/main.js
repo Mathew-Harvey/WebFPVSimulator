@@ -3202,7 +3202,6 @@ export async function boot({ loading, bootStart, mapId }) {
   /* What together.js may ask of the game, and nothing else. */
   const togetherShell = {
     mp: !ROOMS_LAUNCHED,
-    steam: typeof window !== 'undefined' && Boolean(window.webfpvDesktop),
     world: () => mpWorldNow(),
     ready: () => mapReady && !swapInFlight && Boolean(view),
     flying: () => mode === 'flight' && ui.screen === 'flight',

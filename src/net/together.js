@@ -70,8 +70,9 @@ import {
 } from './avatar.js';
 import { paintTitle } from '../ui/lettering.js';
 import { nameRules, normaliseName, readPilotName, writePilotName } from '../share/pilot.js';
-import { boardOrigin } from '../share/board.js';
+import { boardOrigin, fetchMapList, fetchTrackList } from '../share/board.js';
 import { raterKey } from '../share/rating.js';
+import { DESKTOP, STEAM_EDITION, allowReach } from '../steam/edition.js';
 
 const STORE_KEY = 'webfpv.together.v1';
 /* The board's close code for a pilot whose browser joined the same room
@@ -258,6 +259,12 @@ function thumbOf(room) {
   if (isBuiltInWorld(room.map)) {
     return `assets/thumbs/${room.map === 'city' ? 'city' : room.map}.jpg`;
   }
+  /* The Steam edition carries the board's maps and tracks as a shelf, with
+   * their pictures (src/steam/shelf.js shelfThumb, in the Steam
+   * repository), and reaches no picture on the board. */
+  if (STEAM_EDITION) {
+    return /^[A-Za-z0-9_-]+$/.test(room.map) ? new URL(`../steam/shelf/thumbs/${room.map}.jpg`, import.meta.url).href : '';
+  }
   return room.way === 'freestyle'
     ? `${board}/api/maps/${encodeURIComponent(room.map)}/thumb`
     : `${board}/api/tracks/${encodeURIComponent(room.map)}/thumb`;
@@ -309,9 +316,11 @@ function loadStore() {
  *   roomInfo(info) the pause menu's rows: { code, name, n, host } or null
  *   forget(id)     a pilot who left, for the craft's name tags
  *   sound(name)    the menus' own click
- *   steam          true in the Steam edition, where going online is asked
- *                  for first (stage 7)
  *   mp             keep ?mp=1 on the links this writes
+ *
+ * The Steam edition is read from src/steam/edition.js, not from the shell:
+ * whether to ask before going online, the desktop's switch, Steam's
+ * keyboard and the shelf's pictures.
  */
 export function createTogether(shell) {
   if (!document.getElementById('tg-style')) {
@@ -543,7 +552,7 @@ export function createTogether(shell) {
     }
     if (t.tagName === 'INPUT') {
       if (padHands && t.type !== 'checkbox') {
-        openOsk(t);
+        keyboardFor(t);
         return;
       }
       if (t.dataset.enter) {
@@ -593,6 +602,34 @@ export function createTogether(shell) {
 
   function oskOpen() {
     return Boolean(oskEl);
+  }
+
+  /*
+   * A pad's way to type: in the desktop game, Steam's own keyboard, which
+   * knows the Deck and the player's language; the game's own anywhere
+   * else, when Steam is not running, and for a password, which Steam's
+   * keyboard would print in the clear.
+   */
+  async function keyboardFor(input) {
+    const steam = DESKTOP && DESKTOP.steam && typeof DESKTOP.steam.keyboard === 'function' ? DESKTOP.steam : null;
+    if (steam && input.type !== 'password') {
+      const max = input.maxLength > 0 ? input.maxLength : 64;
+      let r = null;
+      try {
+        r = await steam.keyboard({ description: input.getAttribute('aria-label') || input.placeholder || 'Name', max, text: input.value.slice(0, max) });
+      } catch (e) {
+        r = null;
+      }
+      if (r && r.ok) {
+        if (typeof r.text === 'string' && document.contains(input)) {
+          input.value = r.text.slice(0, max);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.focus();
+        }
+        return;
+      }
+    }
+    openOsk(input);
   }
 
   function openOsk(input) {
@@ -717,10 +754,82 @@ export function createTogether(shell) {
     });
   }
 
+  /*
+   * THE STEAM EDITION IS OFFLINE until the pilot says yes, and then online
+   * for rooms only (PLAN.md B7 in the Steam repository, and the owner's
+   * yes of 2026-10-25 to Steam pilots joining the same rooms). The yes is
+   * kept; going online is asked of the desktop once per run, the first
+   * time Fly together is used, so a run that never opens it makes no
+   * request. The desktop opens the rooms' addresses and nothing else, and
+   * the page's guard lets the same addresses through.
+   */
+  let online = !STEAM_EDITION;
+
+  async function goOnline(on = true) {
+    let ok = true;
+    if (DESKTOP) {
+      try {
+        ok = Boolean(DESKTOP.app && typeof DESKTOP.app.community === 'function' && await DESKTOP.app.community(on));
+      } catch (e) {
+        ok = false;
+      }
+    }
+    allowReach(`${boardOrigin()}/api/rooms`, on && ok);
+    online = on && ok;
+    return online;
+  }
+
+  /* The pilot's no, from the rooms page: offline again, and the yes
+   * forgotten, so the next Fly together asks. */
+  function goOffline() {
+    store.consent = false;
+    save();
+    if (session) {
+      dropSession();
+    }
+    goOnline(false);
+    closeAll();
+    toast('Online is off. Nothing in the game goes online now.');
+  }
+
+  /*
+   * WHICH ROOMS THIS COPY CAN FLY. The web flies every map and track on
+   * the board. The Steam edition flies the worlds it ships and the board's
+   * maps and tracks it carries as a shelf (src/steam/shelf.js in the Steam
+   * repository answers the board's lists from it), and shows a room on any
+   * other greyed (the owner, 2026-10-25).
+   */
+  let shipped = null;
+  let shippedLoading = null;
+
+  function hasWorldNow(r) {
+    if (!STEAM_EDITION || !r || isBuiltInWorld(r.map)) {
+      return true;
+    }
+    return Boolean(shipped && shipped.has(r.map));
+  }
+
+  async function hasWorld(r) {
+    if (STEAM_EDITION && !shipped) {
+      if (!shippedLoading) {
+        shippedLoading = Promise.all([fetchMapList().catch(() => []), fetchTrackList().catch(() => [])])
+          .then(([maps, tracks]) => {
+            shipped = new Set([...maps, ...tracks].map((x) => x.id));
+          });
+      }
+      await shippedLoading;
+    }
+    return hasWorldNow(r);
+  }
+
   /* Consent (Steam), then the avatar, then whatever the pilot asked for. */
   function gate(next) {
-    if (shell.steam && !store.consent) {
+    if (STEAM_EDITION && !store.consent) {
       sheetConsent(() => gate(next));
+      return;
+    }
+    if (!online) {
+      goOnline().then((ok) => (ok ? gate(next) : sheetCant('noOnline')));
       return;
     }
     if (!store.met) {
@@ -758,6 +867,10 @@ export function createTogether(shell) {
       sheetCant('notFound', { code });
       return;
     }
+    if (!online) {
+      gate(() => joinFlow(c, invite, { pressed }));
+      return;
+    }
     sheetConnecting({ code: c, step: 0 });
     const got = await fetchJson(`/api/rooms/${c}${invite ? `?i=${encodeURIComponent(invite)}` : ''}`);
     if (!got.ok) {
@@ -765,6 +878,10 @@ export function createTogether(shell) {
       return;
     }
     const r = { ...got.body, code: c };
+    if (!(await hasWorld(r))) {
+      sheetCant('noWorld', { code: c, room: r });
+      return;
+    }
     if (r.n >= r.max) {
       sheetCant('full', { code: c, room: r, invite });
       return;
@@ -1058,14 +1175,13 @@ export function createTogether(shell) {
       lettered('FLY TOGETHER GOES ONLINE', [INKS.cream, INKS.sakura], 44, 680),
       h('div.state-row', null, h('div.who', null, bust(store.avatar, 'hello')),
         h('div.stack', { style: { color: 'var(--ink)', fontSize: '16px', fontWeight: '600' } },
-          h('div', null, 'To fly with others, WebFPV connects to ', h('b', { text: 'webfpv.org' }), ' for rooms and chat, and to the pilots you fly near.'),
+          h('div', null, 'To fly with others, WebFPV connects to ', h('b', { text: 'the WebFPV board' }), ' for rooms and chat, and to the pilots you fly near.'),
           h('div', { text: 'In listed rooms other pilots never see your address. Nothing else in the game goes online.' }),
-          h('div', { text: 'You can turn this off any time in Settings, under Online.' }))),
+          h('div', { text: 'You can turn it off again at the foot of the rooms page.' }))),
       h('div.btnrow', null,
         btn('Turn on and continue', '', () => {
           store.consent = true;
           save();
-          if (shell.consented) shell.consented();
           pop();
           next();
         }, { 'data-autofocus': true }),
@@ -1212,7 +1328,7 @@ export function createTogether(shell) {
   }
 
   async function loadLobby() {
-    const got = await fetchJson(`/api/rooms?way=${encodeURIComponent(lobbyWay)}`);
+    const [got] = await Promise.all([fetchJson(`/api/rooms?way=${encodeURIComponent(lobbyWay)}`), hasWorld(null)]);
     if (got.ok && got.body && Array.isArray(got.body.rooms)) {
       lobby = { state: 'ok', rooms: got.body.rooms, counts: got.body.counts || null };
     } else {
@@ -1238,8 +1354,9 @@ export function createTogether(shell) {
 
   function roomCard(r) {
     const full = r.n >= r.max;
-    const missing = shell.hasWorld && !shell.hasWorld(r);
-    const pic = thumbOf(r);
+    const missing = !hasWorldNow(r);
+    /* A map this copy lacks has no picture in it either. */
+    const pic = missing ? '' : thumbOf(r);
     return h(`button.room${full || missing ? '.is-full' : ''}`, {
       type: 'button',
       'data-k': `room-${r.code}`,
@@ -1331,7 +1448,8 @@ export function createTogether(shell) {
           h('button.link', { type: 'button', 'data-k': 'privacy', on: { click: () => sheetPrivacy() } }, 'How rooms keep you safe'),
           btn('Back', 'small ghost', () => back(), { 'data-k': 'back' })),
         h('div.page-body', null, body),
-        h('div.footer-row', null, h('span.note', { text: 'Only rooms whose host listed them appear here. Private rooms are joined by link or code.' }))));
+        h('div.footer-row', null, h('span.note', { text: 'Only rooms whose host listed them appear here. Private rooms are joined by link or code.' }),
+          STEAM_EDITION ? h('button.link', { type: 'button', 'data-k': 'offline', on: { click: () => goOffline() } }, 'Turn online off') : null)));
     });
   }
 
@@ -1593,6 +1711,8 @@ export function createTogether(shell) {
     tooMany: ['TAKE A BREAK', 'smug', () => 'Too many tries from here. Wait ten minutes, or ask the host for an invite link, which skips the password.', 'lobby'],
     busy: ['ROOMS ARE FULL', 'wow', () => 'Every room the board can hold is open right now. Try again soon.', 'solo'],
     offline: ["CAN'T REACH THE BOARD", 'oops', () => 'Rooms need the internet. Your flight is fine: fly solo, and try again when you are back online.', 'retry'],
+    noWorld: ['NOT IN YOUR GAME', 'wow', (c) => `${c.room ? c.room.name : 'That room'} flies ${c.room && c.room.mapName ? c.room.mapName : 'a map'} that this copy of WebFPV does not have. Rooms on the maps and tracks in your game will work.`, 'lobby'],
+    noOnline: ['ROOMS ARE OFF', 'calm', () => 'This copy of WebFPV cannot go online, so rooms are off. Everything else works as it did.', 'solo'],
   };
 
   function sheetCant(why, ctx = {}) {

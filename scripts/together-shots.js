@@ -557,6 +557,10 @@ async function sceneHost() {
     check('then the host sheet', await sheetIs(page, 'host').then(() => true, () => false));
     await wait(300);
     await shot('host-sheet');
+    const chatAtFirst = await page.evaluate(`document.querySelector('#tg [data-k="sw-typedChat"]').getAttribute('aria-checked')`);
+    check('typed chat starts off in a private room, until the host turns it on', chatAtFirst === 'false', chatAtFirst);
+    await pressKey(page, 'sw-typedChat');
+    check('and one press turns it on', (await page.evaluate(`document.querySelector('#tg [data-k="sw-typedChat"]').getAttribute('aria-checked')`)) === 'true');
     await pressKey(page, 'open');
     check('Open room makes the room and shows the invite', await sheetIs(page, 'share').then(() => true, () => false));
     const st = await state(page);

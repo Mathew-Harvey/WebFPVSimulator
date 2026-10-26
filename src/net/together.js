@@ -1994,7 +1994,10 @@ export function createTogether(shell) {
       listed: false,
       password: '',
       max: 16,
-      typedChat: true,
+      /* Off until the host turns it on, the owner's pick of 2026-10-26:
+       * a host opening a room for friends has not yet thought about who
+       * may type, and the switch is one press away for one who has. */
+      typedChat: false,
       schoolSafe: false,
       streamer: false,
       hide: false,

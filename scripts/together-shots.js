@@ -2087,6 +2087,352 @@ async function sceneNames() {
   }
 }
 
+/*
+ * Where the keyboard's focus is: the data-k of the control, '' for one
+ * without, and whether it is inside the room's layer and its keyboard.
+ */
+const focusOf = (page) => page.evaluate(`(() => {
+  const a = document.activeElement;
+  const tg = document.querySelector('#tg');
+  return {
+    k: a && a.dataset ? (a.dataset.k || a.id || a.textContent.trim().slice(0, 12)) : '',
+    inTg: Boolean(a && tg && tg.contains(a) && a !== tg),
+    inOsk: Boolean(a && a.closest && a.closest('#tg .osk')),
+    tag: a ? a.tagName : '',
+  };
+})()`);
+/* A key with the focus nowhere, as after a click on the scrim: the window
+ * hears it, not the sheet. */
+async function tapLoose(page, code) {
+  await page.evaluate('(() => { if (document.activeElement) document.activeElement.blur(); return 1; })()');
+  await page.tap(code);
+  await wait(150);
+}
+/* A pad the page can read, with every button up, put in after boot so the
+ * flight never meets it. */
+const PAD_ON = `(() => {
+  window.__pad = {
+    index: 0, id: 'Shots pad (Vendor: 045e Product: 028e)', connected: true, mapping: 'standard', timestamp: 1,
+    axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+  };
+  navigator.getGamepads = () => [window.__pad, null, null, null];
+  return 1;
+})()`;
+const PAD_OFF = '(() => { navigator.getGamepads = () => [null, null, null, null]; return 1; })()';
+/* Held until what it should do is done, as a thumb is: on this machine's
+ * software renderer a frame can take a fifth of a second, longer than a
+ * quick press, and a press no frame saw was never made. */
+async function padPress(page, button, done) {
+  await page.evaluate(`(() => { const b = window.__pad.buttons[${button}]; b.pressed = true; b.value = 1; window.__pad.timestamp += 1; return 1; })()`);
+  await page.until(done, 3000).catch(() => {});
+  await page.evaluate(`(() => { const b = window.__pad.buttons[${button}]; b.pressed = false; b.value = 0; window.__pad.timestamp += 1; return 1; })()`);
+  await wait(400);
+}
+const avatarOf = (page) => page.evaluate("(() => { try { return JSON.parse(localStorage.getItem('webfpv.together.v1')).avatar; } catch (e) { return null; } })()");
+
+/*
+ * The sheets without a mouse: the arrows, Tab that stays in the sheet,
+ * Enter, Space and Escape, the keys a window hears when the focus is
+ * nowhere, a pad's buttons, the game's own keyboard for a pad in a text
+ * field, and Steam's keyboard in the desktop game. Then the sheets no
+ * other scene opens: meeting your avatar properly, the look editor's
+ * colours, the tags, how rooms keep you safe, Copy, the pause menu's room
+ * rows, and the picker's Rooms tab by the keys.
+ */
+async function sceneKeys() {
+  console.log('\nkeys: the sheets by keyboard and pad');
+  const page = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`, seedFor({ name: 'Keys Pilot' }));
+  const shot = shooter(page, 'keys');
+  try {
+    await page.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await page.until("document.querySelector('.wp-rooms') !== null", 30000);
+    await page.evaluate("(() => { window.__ui.picker.select('map:bardwell'); return 1; })()");
+    await wait(200);
+    await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
+    await sheetIs(page, 'meet');
+    await wait(300);
+
+    /* Meeting your avatar: a new one, a face, a name. */
+    const first = await avatarOf(page);
+    await pressKey(page, 'roll');
+    const rolled = await avatarOf(page);
+    check('Roll again gives a new avatar, kept as it is made', rolled && JSON.stringify(rolled) !== JSON.stringify(first), JSON.stringify(rolled));
+    await pressKey(page, 'expr-laugh');
+    check('a face is tried on', await page.evaluate("document.querySelector('#tg [data-k=\"expr-laugh\"]').getAttribute('aria-pressed') === 'true'"));
+    await page.evaluate("(() => { const i = document.querySelector('#tg-handle'); i.value = 'Keyboard Kid'; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); return 1; })()");
+    check('the name typed on the card is the pilot\'s name', (await page.evaluate("localStorage.getItem('webfpv.pilot.name')")) === 'Keyboard Kid');
+    await page.evaluate("(() => { const i = document.querySelector('#tg-handle'); i.value = '!!'; i.dispatchEvent(new Event('input')); return 1; })()");
+    check('one it cannot use is marked, and kept from the pilot', await page.evaluate("document.querySelector('#tg-handle').classList.contains('bad')")
+      && (await page.evaluate("localStorage.getItem('webfpv.pilot.name')")) === 'Keyboard Kid');
+    await page.evaluate("(() => { const i = document.querySelector('#tg-handle'); i.value = 'Keyboard Kid'; i.dispatchEvent(new Event('input')); return 1; })()");
+    await shot('meet');
+
+    /* The look editor's colours and quad, a face, and a new roll. */
+    await pressKey(page, 'look');
+    await sheetIs(page, 'editor');
+    await pressKey(page, 'tab-Colours');
+    await pressKey(page, 'skin-2');
+    await pressKey(page, 'hairColour-3');
+    await pressKey(page, 'eyeColour-1');
+    await pressKey(page, 'tab-Quad');
+    await pressKey(page, 'livery-4');
+    await pressKey(page, 'ex-wow');
+    const dressed = await avatarOf(page);
+    check('skin, hair, eyes and livery are picked from their swatches', dressed && dressed.skin === 2 && dressed.hairColour === 3
+      && dressed.eyeColour === 1 && dressed.livery === 5, JSON.stringify(dressed));
+    await shot('editor-quad');
+    await pressKey(page, 'reroll');
+    check('and Roll again in the editor starts over', JSON.stringify(await avatarOf(page)) !== JSON.stringify(dressed));
+    await pressKey(page, 'done');
+    await sheetIs(page, 'meet');
+
+    /* The keys inside a sheet. */
+    await page.evaluate("(() => { document.querySelector('#tg [data-k=\"keep\"]').focus(); return 1; })()");
+    await page.tap('ArrowRight');
+    await wait(150);
+    const right = await focusOf(page);
+    check('Right moves the focus to the control beside it', right.inTg && right.k === 'roll', JSON.stringify(right));
+    await page.tap('ArrowLeft');
+    await wait(150);
+    check('and Left back', (await focusOf(page)).k === 'keep');
+    await page.tap('ArrowUp');
+    await wait(150);
+    check('Up leaves the row for the one above it', (await focusOf(page)).k !== 'keep' && (await focusOf(page)).inTg, JSON.stringify(await focusOf(page)));
+    const stops = await page.evaluate("[...document.querySelector('#tg .tg-modal').querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex=\"0\"]')].filter((e) => e.offsetParent !== null).length");
+    let strayed = '';
+    for (let i = 0; i < stops + 3; i += 1) {
+      await page.tap('Tab');
+      await wait(60);
+      const f = await focusOf(page);
+      if (!f.inTg) strayed = JSON.stringify(f);
+    }
+    check(`Tab goes round the sheet's ${stops} controls and never out of it`, stops > 4 && !strayed, strayed);
+    await page.evaluate("(() => { document.querySelector('#tg [data-k=\"keep\"]').focus(); return 1; })()");
+    const shiftTab = { key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 };
+    await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...shiftTab }, page.sessionId);
+    await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...shiftTab }, page.sessionId);
+    await wait(100);
+    check('and Shift Tab goes the other way', (await focusOf(page)).inTg && (await focusOf(page)).k !== 'keep');
+    await page.evaluate("(() => { document.querySelector('#tg [data-k=\"expr-calm\"]').focus(); return 1; })()");
+    await page.tap('Space');
+    await wait(150);
+    check('Space presses the button with the focus', await page.evaluate("document.querySelector('#tg [data-k=\"expr-calm\"]').getAttribute('aria-pressed') === 'true'"));
+    await page.evaluate("(() => { document.querySelector('#tg [data-k=\"keep\"]').focus(); return 1; })()");
+    await page.tap('Enter');
+    check('Enter on Keep goes on to the host sheet', await sheetIs(page, 'host', 5000).then(() => true, () => false));
+
+    /* Tags: three at most, the newest kept. */
+    for (const t of ['chill', 'club', 'beginners', 'racing']) await pressKey(page, `tag-${t}`);
+    const tags = await page.evaluate("[...document.querySelectorAll('#tg [data-k^=\"tag-\"]')].filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.k)");
+    check('a room takes three tags at most, the oldest going', tags.length === 3 && !tags.includes('tag-chill'), tags.join());
+    await pressKey(page, 'tag-racing');
+    check('and a pressed tag comes off again', !(await page.evaluate("document.querySelector('#tg [data-k=\"tag-racing\"]').getAttribute('aria-pressed') === 'true'")));
+    await shot('host-tags');
+    await page.evaluate("(() => { document.querySelector('#tg [data-k=\"open\"]').focus(); return 1; })()");
+    await page.tap('Escape');
+    check('Escape takes the sheet down', await sheetIs(page, '', 5000).then(() => true, () => false));
+
+    /* The window's keys, with the focus on nothing: the scrim was clicked. */
+    await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
+    await sheetIs(page, 'host');
+    await tapLoose(page, 'ArrowDown');
+    check('with the focus lost, an arrow puts it back on the sheet', (await focusOf(page)).inTg, JSON.stringify(await focusOf(page)));
+    await tapLoose(page, 'KeyS');
+    check('and so does S, the arrows\' other hand', (await focusOf(page)).inTg);
+    await tapLoose(page, 'Tab');
+    check('and Tab, which never reaches the page behind', (await focusOf(page)).inTg);
+    await tapLoose(page, 'Enter');
+    await wait(300);
+    check('Enter with nothing chosen chooses the first control and presses nothing', (await focusOf(page)).inTg && (await state(page)).sheet === 'host',
+      `${JSON.stringify(await focusOf(page))} ${(await state(page)).sheet}`);
+    await tapLoose(page, 'Escape');
+    check('and Escape still goes back', await sheetIs(page, '', 5000).then(() => true, () => false));
+
+    /* A pad: its select on a text field opens the game's own keyboard. */
+    await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
+    await sheetIs(page, 'host');
+    await page.evaluate(PAD_ON);
+    await wait(400);
+    await page.evaluate("(() => { const i = document.querySelector('#tg-rname'); i.value = ''; i.dispatchEvent(new Event('input')); i.focus(); return 1; })()");
+    await padPress(page, 0, "document.querySelector('#tg .osk') !== null");
+    const osk = await page.until("document.querySelector('#tg .osk') !== null", 3000).then(() => true, () => false);
+    check('a pad\'s select on a text field opens the game\'s own keyboard', osk && (await focusOf(page)).inOsk, JSON.stringify(await focusOf(page)));
+    await shot('osk');
+    await padPress(page, 0, "document.querySelector('#tg-rname').value === '1'");
+    const typed = await page.evaluate("document.querySelector('#tg-rname').value");
+    check('and select on a key types it', typed === '1', typed);
+    await page.evaluate("(() => { [...document.querySelectorAll('#tg .osk button')].find((b) => b.textContent === 'W').focus(); return 1; })()");
+    await padPress(page, 0, "document.querySelector('#tg-rname').value.length === 2");
+    check('a letter goes in as a small one for a name', (await page.evaluate("document.querySelector('#tg-rname').value")) === '1w');
+    let oskStray = '';
+    for (let i = 0; i < 4; i += 1) {
+      await page.tap('Tab');
+      await wait(60);
+      const f = await focusOf(page);
+      if (!f.inOsk) oskStray = JSON.stringify(f);
+    }
+    check('Tab stays on the keyboard while it is up', !oskStray, oskStray);
+    await page.evaluate("(() => { [...document.querySelectorAll('#tg .osk button')].find((b) => b.textContent === 'Delete').click(); return 1; })()");
+    check('Delete takes the last letter off', (await page.evaluate("document.querySelector('#tg-rname').value")) === '1');
+    await page.evaluate("(() => { [...document.querySelectorAll('#tg .osk button')].find((b) => b.textContent === 'Done').click(); return 1; })()");
+    await wait(150);
+    check('Done puts the keyboard away and the focus back in the field', !(await page.evaluate("document.querySelector('#tg .osk') !== null"))
+      && (await focusOf(page)).k === 'rname', JSON.stringify(await focusOf(page)));
+    await page.evaluate("(() => { document.querySelector('#tg [data-k=\"fewer\"]').focus(); return 1; })()");
+    const was = await page.evaluate("document.querySelector('#tg .stepper output').textContent");
+    await padPress(page, 0, `document.querySelector('#tg .stepper output').textContent !== '${was}'`);
+    check('select on a button presses it', (await page.evaluate("document.querySelector('#tg .stepper output').textContent")) === String(Number(was) - 1));
+    const behind = await page.evaluate('window.__ui.screen');
+    await padPress(page, 1, `${T} && window.__together().sheet === ''`);
+    check('and the pad\'s back takes the sheet down', await sheetIs(page, '', 5000).then(() => true, () => false));
+    check('and only the sheet: the menu behind it stays where it was', (await page.evaluate('window.__ui.screen')) === behind,
+      `${behind} became ${await page.evaluate('window.__ui.screen')}`);
+    await page.evaluate(PAD_OFF);
+
+    /* A key after the pad gives typing back to the keyboard: Enter in the
+     * code field is the Join beside it, not the game's keyboard. */
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'lobby');
+    check('the pad had the hands', (await state(page)).hands === 'pad', JSON.stringify(await state(page)));
+    await tapLoose(page, 'ArrowDown');
+    check('and a key takes them back', (await state(page)).hands === 'keys', JSON.stringify(await state(page)));
+    await page.evaluate("(() => { const i = document.querySelector('#tg-code'); i.value = 'AB'; i.dispatchEvent(new Event('input')); i.focus(); return 1; })()");
+    check('and keeps them', (await state(page)).hands === 'keys', JSON.stringify(await state(page)));
+    await page.tap('Enter');
+    await page.until(SEES('A code is six letters and numbers', '#tg .tg-toasts'), 3000).catch(() => {});
+    const codeBad = await page.evaluate("document.querySelector('#tg-code').classList.contains('bad')");
+    const oskUp = await page.evaluate("document.querySelector('#tg .osk') !== null");
+    check('Enter in the code field joins, and a code that is not one says so', await page.evaluate(SEES('A code is six letters and numbers', '#tg .tg-toasts'))
+      && codeBad && !oskUp, `${await toastText(page)} bad ${codeBad} keyboard ${oskUp}`);
+    await pressKey(page, 'privacy');
+    check('How rooms keep you safe opens from the shelf', await sheetIs(page, 'privacy', 5000).then(() => true, () => false)
+      && await page.evaluate(SEES('Nobody joins you uninvited')) && await page.evaluate(SEES('That is the only chat ever stored')));
+    await shot('privacy');
+    const privacyOff = await offSheet(page);
+    check('with all of it on screen', !privacyOff, privacyOff);
+    await page.tap('Escape');
+    check('and goes back to the shelf', await sheetIs(page, 'lobby', 5000).then(() => true, () => false));
+    await page.tap('Escape');
+    await sheetIs(page, '', 5000);
+
+    /* Copy, when the browser lets the page write the clipboard and when
+     * it does not. */
+    await page.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await page.until("document.querySelector('.wp-rooms') !== null", 30000);
+    await page.evaluate("(() => { window.__ui.picker.select('map:bardwell'); return 1; })()");
+    await wait(200);
+    await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
+    await sheetIs(page, 'host');
+    await pressKey(page, 'open');
+    await sheetIs(page, 'share');
+    await page.evaluate("(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } } }); return 1; })()");
+    await pressKey(page, 'copy');
+    await wait(200);
+    const link = await page.evaluate("document.querySelector('#tg input[aria-label=\"Room link\"]').value");
+    check('Copy puts the room link on the clipboard and says so', (await page.evaluate('window.__copied')) === link
+      && await page.evaluate(SEES('Link copied', '#tg .tg-toasts')), await toastText(page));
+    await page.evaluate("(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('denied')); return 1; })()");
+    await pressKey(page, 'copy');
+    await wait(200);
+    const sel = await page.evaluate(`(() => {
+      const a = document.activeElement;
+      return a && a.tagName === 'INPUT' ? { from: a.selectionStart, to: a.selectionEnd, n: a.value.length } : null;
+    })()`);
+    check('refused, it selects the words for the pilot to copy, and says so', sel && sel.from === 0 && sel.to === sel.n && sel.n > 0
+      && await page.evaluate(SEES('Select the link and copy it', '#tg .tg-toasts')), JSON.stringify(sel));
+    await shot('copy-refused');
+    await page.evaluate("(() => { navigator.clipboard.writeText = () => { throw new Error('no clipboard here'); }; return 1; })()");
+    await pressKey(page, 'copy');
+    await wait(200);
+    check('and a clipboard that throws is the same, not a crash', (await focusOf(page)).tag === 'INPUT');
+    await pressKey(page, 'fly');
+    await page.until("window.__mode === 'flight'", 30000);
+    await page.until(`${T} && window.__together().sheet === ''`, 10000);
+
+    /* The pause menu's room rows the other scenes do not press. */
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-invite'); return 1; })()");
+    check('Invite on the pause menu is the invite sheet, with a way back', await sheetIs(page, 'share', 5000).then(() => true, () => false)
+      && await page.evaluate("document.querySelector('#tg [data-k=\"back\"]') !== null"));
+    await page.tap('Escape');
+    await sheetIs(page, '', 5000);
+    await page.evaluate("(() => { window.__ui.act('room-talk'); return 1; })()");
+    check('Talk is the talk scene', await sheetIs(page, 'scene', 5000).then(() => true, () => false));
+    await page.tap('Escape');
+    await sheetIs(page, '', 5000);
+    const code = (await state(page)).code;
+    await page.evaluate("(() => { window.__ui.act('room-quit'); return 1; })()");
+    await page.until(`${T} && !window.__together().inRoom`, 5000).catch(() => {});
+    const gone = await (await fetch(`${boardOrigin}/api/rooms/${code}`)).status;
+    check('Quit to title leaves the room, and the address with it', !(await state(page)).inRoom
+      && !(await page.evaluate('location.href')).includes('room='), JSON.stringify(await state(page)));
+    check('which the board knows', gone === 404 || gone === 200, String(gone));
+
+    /* The picker's Rooms tab by the keys alone: up to the shelves, right
+     * past the last one, and Enter. */
+    await page.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await page.until("document.querySelector('.wp-rooms') !== null", 30000);
+    await wait(300);
+    for (let i = 0; i < 4; i += 1) { await page.tap('ArrowUp'); await wait(120); }
+    for (let i = 0; i < 6; i += 1) { await page.tap('ArrowRight'); await wait(120); }
+    await shot('picker-rooms-key');
+    check('Right past the last shelf is the Rooms tab', await page.evaluate("document.querySelector('.wp-rooms').classList.contains('is-focus')"));
+    await page.tap('Enter');
+    await wait(600);
+    check('and Enter on it opens the shelf, and presses nothing on it', await sheetIs(page, 'lobby', 6000).then(() => true, () => false),
+      `${JSON.stringify(await state(page))} ${await page.evaluate('window.__ui.screen')}`);
+    await page.tap('Escape');
+    await sheetIs(page, '', 5000);
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    await page.close();
+  }
+
+  /* The desktop game: Steam's keyboard for a pad in a name, never for a
+   * password, and the game's own when Steam's says no. */
+  const deck = await open(`/index.html?mp=1&edition=web&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`, `${seedFor({ name: 'Deck Pilot', met: true })}
+window.__kbAsked = [];
+window.__kbAnswer = { ok: true, text: 'Deck room' };
+window.webfpvDesktop = { steam: { keyboard: async (o) => { window.__kbAsked.push(o); return window.__kbAnswer; } } };`);
+  const deckShot = shooter(deck, 'keys');
+  try {
+    await deck.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await deck.until("document.querySelector('.wp-rooms') !== null", 30000);
+    await deck.evaluate("(() => { window.__ui.picker.select('map:bardwell'); [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
+    await sheetIs(deck, 'host');
+    await deck.evaluate(PAD_ON);
+    await wait(400);
+    await deck.evaluate("(() => { document.querySelector('#tg-rname').focus(); return 1; })()");
+    await padPress(deck, 0, "window.__kbAsked.length === 1");
+    await deck.until("document.querySelector('#tg-rname').value === 'Deck room'", 3000).catch(() => {});
+    const asked = await deck.evaluate('window.__kbAsked');
+    check('in the desktop game a pad in a name opens Steam\'s keyboard, and its words land in the field', asked.length === 1 && asked[0].max === 32
+      && (await deck.evaluate("document.querySelector('#tg-rname').value")) === 'Deck room' && !(await deck.evaluate("document.querySelector('#tg .osk') !== null")), JSON.stringify(asked));
+    await deck.evaluate("(() => { document.querySelector('#tg-pw').focus(); return 1; })()");
+    await padPress(deck, 0, "document.querySelector('#tg .osk') !== null");
+    await deck.until("document.querySelector('#tg .osk') !== null", 3000).catch(() => {});
+    check('a password never goes to Steam\'s keyboard, which shows what is typed: the game\'s own opens', (await deck.evaluate('window.__kbAsked.length')) === 1
+      && await deck.evaluate("document.querySelector('#tg .osk') !== null"), `${JSON.stringify(await deck.evaluate('window.__kbAsked'))} ${JSON.stringify(await focusOf(deck))}`);
+    await deckShot('osk-password');
+    await deck.evaluate("(() => { [...document.querySelectorAll('#tg .osk button')].find((b) => b.textContent === 'Done').click(); return 1; })()");
+    await deck.evaluate("(() => { window.__kbAnswer = { ok: false }; document.querySelector('#tg-rname').focus(); return 1; })()");
+    await padPress(deck, 0, "document.querySelector('#tg .osk') !== null");
+    check('and when Steam\'s keyboard cannot open, the game\'s own does', (await deck.evaluate('window.__kbAsked.length')) === 2
+      && await deck.until("document.querySelector('#tg .osk') !== null", 3000).then(() => true, () => false));
+    await deck.evaluate(PAD_OFF);
+    endChecks(deck);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await deckShot('failed').catch(() => {});
+  } finally {
+    await deck.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -2101,6 +2447,7 @@ try {
   if (wanted('tabs')) { await freshBoard(); await sceneTabs(); }
   if (wanted('stream')) { await freshBoard(); await sceneStream(); }
   if (wanted('names')) { await freshBoard(); await sceneNames(); }
+  if (wanted('keys')) { await freshBoard(); await sceneKeys(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

@@ -686,6 +686,19 @@ export function createTogether(shell) {
     }
   }, true);
 
+  /* An Enter whose keydown was not the sheet's: the press that opened the
+   * sheet (Enter on the picker's Rooms tab) or that put the focus back on
+   * it (Enter with the focus lost). The browser clicks a button on the
+   * keypress after, wherever the focus is by then, so that one press also
+   * pressed the control it landed on, the shelf's Back or the host
+   * sheet's Cancel. The keydown below takes every Enter the sheet does
+   * see, so a keypress reaching here is never one to act on. */
+  modal.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+    }
+  }, true);
+
   /* Keys inside a sheet, before the window hears them: so Enter on a
    * button is one press and not the browser's click and the shell's too,
    * and the arrows in a field leave it up and down but move the caret
@@ -3398,9 +3411,14 @@ export function createTogether(shell) {
   const padHeld = { at: 0, dir: '' };
   let padPrev = {};
   let padWait = true;
+  /* The press that took the last sheet down, still held. The menu behind
+   * would read it as a press of its own the moment it had the pad again,
+   * so one B closed the host sheet and backed the picker out to the title
+   * as well. The pad stays here until it comes up. */
+  let padHolding = false;
 
   function wantsPad() {
-    return !modal.hidden;
+    return !modal.hidden || padHolding;
   }
 
   /* Called only while wantsPad(); open() sets padWait for each sheet that
@@ -3408,6 +3426,11 @@ export function createTogether(shell) {
   function pollPad(nav, nowMs) {
     if (!nav) {
       return false;
+    }
+    if (modal.hidden) {
+      padHolding = Boolean(nav.select || nav.back || nav.up || nav.down || nav.left || nav.right);
+      padPrev = { ...nav };
+      return true;
     }
     /* A sheet that has just opened waits for the sticks to rest and the
      * buttons to come up before it listens (src/input/padgate.js). */
@@ -3426,6 +3449,11 @@ export function createTogether(shell) {
       press();
     } else if (nav.back && !padPrev.back) {
       back();
+    }
+    if (modal.hidden) {
+      padHolding = true;
+      padPrev = { ...nav };
+      return true;
     }
     const dir = ['up', 'down', 'left', 'right'].find((d) => nav[d]) || '';
     const step = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -3553,6 +3581,7 @@ export function createTogether(shell) {
         racing: racingNow(),
         direct: session ? session.peers.openCount() : 0,
         peerPoses: session ? session.peerPoses : 0,
+        hands: padHands ? 'pad' : 'keys',
       };
     },
     leave,

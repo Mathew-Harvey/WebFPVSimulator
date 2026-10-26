@@ -179,7 +179,7 @@ export const TOGETHER_CSS = `
 #tg .page-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 #tg .page-head .grow { flex: 1; min-width: 0; }
 #tg .page-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px 10px 2px; }
-#tg .cols { display: grid; grid-template-columns: 1.05fr 1fr; gap: 26px; align-content: start; }
+#tg .tg-cols { display: grid; grid-template-columns: 1.05fr 1fr; gap: 26px; align-content: start; }
 #tg .stack { display: grid; gap: 10px; align-content: start; min-width: 0; }
 #tg .btnrow { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
 #tg .footer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 14px; }
@@ -209,7 +209,7 @@ export const TOGETHER_CSS = `
 }
 #tg .room .count { position: absolute; right: 8px; bottom: 8px; z-index: 1; padding: 3px 9px; background: var(--ink); color: var(--cream); font-weight: 900; font-size: 13px; }
 #tg .room .count.full { background: var(--bail); color: var(--ink); }
-#tg .room .lock { position: absolute; left: 8px; top: 8px; z-index: 1; padding: 2px 8px; background: var(--amber); border: 3px solid var(--ink); font-weight: 900; font-size: 11px; text-transform: uppercase; }
+#tg .room .tg-lock { position: absolute; left: 8px; top: 8px; z-index: 1; padding: 2px 8px; background: var(--amber); border: 3px solid var(--ink); font-weight: 900; font-size: 11px; text-transform: uppercase; }
 #tg .room .faces { position: absolute; left: 8px; bottom: 6px; z-index: 1; display: flex; }
 #tg .room .faces .tg-face { margin-right: -9px; }
 #tg .room .body { padding: 10px 12px 12px; display: grid; gap: 6px; }
@@ -266,11 +266,11 @@ export const TOGETHER_CSS = `
 }
 #tg .pilots-mini { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 #tg .steps { display: grid; gap: 8px; margin: 4px 0; }
-#tg .step { display: flex; align-items: center; gap: 12px; font-weight: 800; color: var(--ink); font-size: 16px; }
-#tg .step i { width: 30px; height: 30px; flex: none; border: 3px solid var(--ink); display: grid; place-items: center; background: var(--white); font-style: normal; font-weight: 900; }
-#tg .step.done i { background: var(--mint); }
-#tg .step.now i { background: var(--amber); animation: tg-spin 1s linear infinite; }
-#tg .step.todo { opacity: 0.45; }
+#tg .tg-step { display: flex; align-items: center; gap: 12px; font-weight: 800; color: var(--ink); font-size: 16px; }
+#tg .tg-step i { width: 30px; height: 30px; flex: none; border: 3px solid var(--ink); display: grid; place-items: center; background: var(--white); font-style: normal; font-weight: 900; }
+#tg .tg-step.done i { background: var(--mint); }
+#tg .tg-step.now i { background: var(--amber); animation: tg-spin 1s linear infinite; }
+#tg .tg-step.todo { opacity: 0.45; }
 @keyframes tg-spin { to { transform: rotate(360deg); } }
 #tg .shake { animation: tg-shake 0.4s; }
 @keyframes tg-shake {
@@ -341,7 +341,9 @@ export const TOGETHER_CSS = `
 /* The comic dialogue: a portrait stands on a speech box, as in a visual
  * novel, so a quick line reads as a character speaking. Bottom left, clear
  * of the centre third. */
-#tg .talk { position: absolute; left: 14px; bottom: 14px; width: min(470px, 46vw); height: 200px; }
+/* Above the pack's volts, which the flight's own HUD keeps in the bottom
+ * left corner: a line said must never hide the battery. */
+#tg .talk { position: absolute; left: 14px; bottom: 96px; width: min(470px, 46vw); height: 200px; }
 #tg .talk .portrait { position: absolute; left: -4px; bottom: 0; width: min(170px, 17vw); z-index: 1; transform-origin: 50% 100%; }
 #tg .talk .portrait canvas { filter: drop-shadow(4px 0 0 var(--ink)); }
 #tg .talk .portrait.in { animation: tg-slidein 0.28s cubic-bezier(.2,1.4,.4,1); }
@@ -355,7 +357,7 @@ export const TOGETHER_CSS = `
 #tg .talk .plate { position: absolute; left: min(176px, 17.5vw); top: -18px; font-size: 15px; }
 #tg .talk.fade { animation: tg-fadeout 1.2s forwards; }
 @keyframes tg-fadeout { to { opacity: 0; } }
-#tg .log { position: absolute; left: 14px; bottom: 228px; display: grid; gap: 6px; }
+#tg .log { position: absolute; left: 14px; bottom: 310px; display: grid; gap: 6px; }
 #tg .log .line {
   display: flex; align-items: center; gap: 8px; padding: 3px 12px 3px 3px; border-radius: 22px; width: max-content;
   max-width: min(440px, 44vw); background: rgba(247, 240, 220, 0.92); border: 2.5px solid var(--ink); color: var(--ink);
@@ -365,7 +367,7 @@ export const TOGETHER_CSS = `
 @keyframes tg-fadeline { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
 
 /* The proximity hello: a burst over the dialogue. */
-#tg .hello { position: absolute; left: min(290px, 30vw); bottom: 210px; width: 230px; height: 140px; animation: tg-burst 0.35s cubic-bezier(.2,1.6,.4,1); }
+#tg .hello { position: absolute; left: min(290px, 30vw); bottom: 292px; width: 230px; height: 140px; animation: tg-burst 0.35s cubic-bezier(.2,1.6,.4,1); }
 #tg .hello .burst, #tg .hello .burst-ink {
   position: absolute; inset: 0;
   clip-path: polygon(50% 0, 58% 22%, 78% 6%, 74% 30%, 100% 26%, 82% 46%, 100% 64%, 76% 66%, 84% 92%, 60% 76%, 50% 100%, 40% 76%, 16% 92%, 24% 66%, 0 64%, 18% 46%, 0 26%, 26% 30%, 22% 6%, 42% 22%);
@@ -379,7 +381,10 @@ export const TOGETHER_CSS = `
 @keyframes tg-burst { from { transform: scale(0.2) rotate(-14deg); opacity: 0; } }
 
 /* Quick chat, a strip of lines */
-#tg .qbar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; pointer-events: auto; max-width: calc(100% - 24px); }
+/* Across the bottom, not centred on a point: a box hung from left: 50% may
+ * only be half the screen wide, and seven lines wrapped to two rows. */
+#tg .qbar { position: absolute; left: 12px; right: 12px; bottom: 16px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; pointer-events: none; }
+#tg .qbar button { pointer-events: auto; }
 #tg .qbar button {
   position: relative; width: 92px; padding: 4px 4px 6px; background: var(--paper); border: 3.5px solid var(--ink);
   color: var(--ink); box-shadow: 4px 4px 0 var(--ink); text-align: center;
@@ -405,14 +410,15 @@ export const TOGETHER_CSS = `
 
 /* The room page from the pause menu: the room's own rows and its pilots */
 #tg .roomsheet { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 24px; min-height: 0; flex: 1; }
-#tg .roomsheet .menu { display: grid; gap: 12px; align-content: start; }
-#tg .roomsheet .menu .btn { justify-content: flex-start; width: 100%; }
+#tg .roomsheet .tg-menu { display: grid; gap: 12px; align-content: start; }
+#tg .roomsheet .tg-menu .btn { justify-content: flex-start; width: 100%; }
 #tg .roomsheet .pane { min-height: 0; overflow: auto; border: 3px solid var(--ink); background: var(--white); padding: 8px 12px; }
 #tg .roomsheet .quick { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* The conversation, parked */
 #tg .scene { position: absolute; inset: 0; pointer-events: auto; }
-#tg .scene .shade { position: absolute; inset: 0; background: linear-gradient(to top, rgba(11,17,22,.8), rgba(11,17,22,.15) 60%); }
+/* Dark enough at the top that the pause menu behind is only a shape. */
+#tg .scene .shade { position: absolute; inset: 0; background: linear-gradient(to top, rgba(11,17,22,.9), rgba(11,17,22,.62) 70%); }
 #tg .scene .pl, #tg .scene .pr { position: absolute; bottom: 190px; width: min(330px, 28vw); transition: filter 0.2s, transform 0.2s; }
 #tg .scene .pl { left: 4vw; }
 #tg .scene .pr { right: 4vw; }
@@ -494,14 +500,14 @@ export const TOGETHER_CSS = `
 #tg .osk button.go { background: var(--mint); }
 
 @media (max-width: 760px) {
-  #tg .cols, #tg .av-stage, #tg .roomsheet, #tg .resgrid { grid-template-columns: minmax(0, 1fr); }
+  #tg .tg-cols, #tg .av-stage, #tg .roomsheet, #tg .resgrid { grid-template-columns: minmax(0, 1fr); }
   #tg .state-row { grid-template-columns: 90px 1fr; gap: 14px; }
   #tg .radios { grid-template-columns: 1fr; }
   #tg .talk { width: calc(100% - 28px); height: 150px; }
   #tg .talk .portrait { width: 110px; }
   #tg .talk .box { left: 40px; padding-left: 84px; }
   #tg .talk .plate { left: 112px; }
-  #tg .log { bottom: 176px; }
+  #tg .log { bottom: 258px; }
   #tg .hello { left: auto; right: 10px; bottom: 170px; transform: scale(0.8); }
   #tg .roster, #tg .pit, #tg .standings { width: calc(100% - 28px); }
   #tg .scene .pl, #tg .scene .pr { width: 34vw; bottom: 210px; }

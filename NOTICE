@@ -259,6 +259,23 @@ is the thread's, not this repository's. It is in this repository only so that
 src/maps/dan/ can draw him in a RaceGOW room. The project's GPLv3 grant does
 not extend to it.
 
+## Pilot avatars
+
+    File        assets/avatar/parts.png
+    Placed by   src/net/avatarparts.js (generated with the atlas)
+    Licence     the owner's own supply, like the owner's other Grok art: to
+                be confirmed by the owner before it is treated as GPLv3
+                grant material.
+
+`parts.png` is packed from six part sheets the owner made with Grok and gave on
+2026-10-25 for flying together: heads, hair, eyes, two of mouths, and clothes
+and extras, drawn as made up people and no real person's likeness. Each part
+was cut from its sheet, scaled to one head width and packed into a single 1024
+by 1957 palette image. The cutting and packing script is the thread's, kept with
+the sheets in the project's files (multiplayer/avatar-sheets), not in this
+repository. src/net/avatar.js builds a pilot's portrait from these parts and
+the numbers a pilot picks, which are all the board ever stores of it.
+
 ## three.js
 
     Upstream    https://github.com/mrdoob/three.js

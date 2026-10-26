@@ -171,6 +171,9 @@ export async function openPage({
   /* Make every request for the CDN fail, as a network that cannot reach it
    * does, so a page that has to work without Three.js can be shown to. */
   block = false,
+  /* Extra Chromium switches, for a check that needs one: the direct links
+   * of scripts/together-shots.js need the local addresses mDNS hides. */
+  args = [],
 } = {}) {
   const chrome = findChrome();
   if (!chrome) {
@@ -191,6 +194,7 @@ export async function openPage({
     `--window-size=${width},${height}`,
     '--remote-debugging-port=0',
     `--user-data-dir=${userDataDir}`,
+    ...args,
     'about:blank',
   ]);
 

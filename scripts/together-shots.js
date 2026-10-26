@@ -1,23 +1,35 @@
 /*
- * together-shots.js: fly the real shell in a room with synthetic pilots,
+ * together-shots.js: fly the real shell with other pilots, every way in,
  * and take pictures of what it draws.
  *
  * Multiplayer can only be looked at with somebody else in the room, and the
  * only somebody a container has is a program. So this starts a board from
- * the leaderboard checkout beside this one (or NET_BOARD), has a few pilots
- * in Node open a room on Your map and fly round in it, boots the shell in
- * headless Chromium with that room's link (?mp=1&room=CODE&i=INVITE), puts
- * it in the air, and photographs the other pilots from the hero's camera:
- * their comic airframes in livery, their discs, their name tags. The pilots
- * in Node use src/net/room.js, the same client the shell runs, so the bytes
- * on the wire are the real ones in both directions.
+ * the leaderboard checkout beside this one (or NET_BOARD), has pilots in
+ * Node open rooms and fly and talk in them, and boots the shell in headless
+ * Chromium the ways a pilot gets in: Fly together on a map, the Rooms tab,
+ * a room's link with and without its invite, and a race room. The pilots
+ * in Node use src/net/room.js, the same client the shell runs, so the
+ * bytes on the wire are the real ones in both directions. The direct links
+ * of stage 5 need two real browsers, so that scene opens two.
  *
- * What it asserts, beyond the pictures: the shell joins the room, its own
- * pose reaches the other pilots, the other pilots are drawn, and the whole
- * room costs three draw calls, measured in the same view a frame apart.
+ * Scenes, each its own browser and its own storage (--only=a,b runs some):
+ *
+ *   host    Fly together from the picker: meet your avatar, the host sheet,
+ *           the invite sheet, the chip; pilots join and fly near (the hello,
+ *           and three craft for three draw calls); quick chat both ways,
+ *           typed chat, the pilots list, the room's pause rows, the room's
+ *           page, a report, room settings, handing the host on, leaving
+ *   lobby   the Rooms shelf with listed rooms, a card on this world, and a
+ *           card on another world, which reloads into it and joins
+ *   link    a room link: "Join this room?", Join, and the invite out of the
+ *           address bar; then a password room without the invite
+ *   race    a race room: the pit, ready with G, the countdown, standings,
+ *           results and one more
+ *   direct  two browsers in one room, near each other: their direct link
+ *           comes up and poses cross it
  *
  * Usage:
- *   node scripts/together-shots.js [--out=DIR] [--w=1280] [--h=720]
+ *   node scripts/together-shots.js [--out=DIR] [--w=1280] [--h=720] [--only=host,race]
  * DIR defaults to .loop/together, whose pictures git ignores.
  *
  * This file is part of WebFPVSimulator.
@@ -26,6 +38,14 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or (at
  * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
 import { spawn } from 'node:child_process';
@@ -39,26 +59,42 @@ import { openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
 import { roomsUrl } from '../src/net/link.js';
 import { RoomSession } from '../src/net/room.js';
+import { roomUrl } from '../src/net/roomlinks.js';
+import { rollAvatar } from '../src/net/avatar.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const opts = { out: '.loop/together', w: 1280, h: 720 };
+const opts = {
+  out: '.loop/together', w: 1280, h: 720, only: '',
+};
 for (const a of process.argv.slice(2)) {
   const m = a.match(/^--([a-z]+)=(.*)$/);
   if (m) opts[m[1]] = /^\d+$/.test(m[2]) ? Number(m[2]) : m[2];
 }
 const outDir = isAbsolute(String(opts.out)) ? String(opts.out) : join(root, opts.out);
 const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
+const only = new Set(String(opts.only || '').split(',').filter(Boolean));
+const wanted = (name) => !only.size || only.has(name);
 
 let failures = 0;
 function check(name, cond, detail = '') {
   console.log(`  ${cond ? 'pass' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}`);
   if (!cond) failures += 1;
+  return Boolean(cond);
+}
+
+async function until(fn, ms = 10000, step = 50) {
+  const end = Date.now() + ms;
+  for (;;) {
+    if (await fn()) return true;
+    if (Date.now() > end) return false;
+    await wait(step);
+  }
 }
 
 const boardDir = [process.env.NET_BOARD, join(root, '..', 'WebFPVSimulator-LeaderBoard'), join(root, '..', 'webfpvsimulator-leaderboard')]
   .filter(Boolean).find((p) => existsSync(join(p, 'src', 'rooms.js')));
 if (!boardDir) {
-  console.log('together-shots: no checkout of the board's repository beside this one; set NET_BOARD to one');
+  console.log('together-shots: no checkout of the board\'s repository beside this one; set NET_BOARD to one');
   process.exit(1);
 }
 
@@ -82,157 +118,588 @@ for (let i = 0; i < 200; i += 1) {
   }
   await wait(25);
 }
+const wsUrl = roomsUrl(boardOrigin);
+await mkdir(outDir, { recursive: true });
 
-/* Three pilots in Node: a host, and two who join. */
-const url = roomsUrl(boardOrigin);
-const bots = [
-  { handle: 'Sakura Wing', livery: 1 },
-  { handle: 'Amber Hornet', livery: 2 },
-  { handle: 'Slate Kite', livery: 3 },
-].map((b) => ({
-  ...b,
-  s: new RoomSession({
-    url, key: randomBytes(16).toString('hex'), handle: b.handle, avatar: { livery: b.livery },
-  }),
-}));
-const host = bots[0].s;
-host.host({
-  name: 'Together shots', way: 'freestyle', map: 'built', mapName: 'Your map', scale: 50,
-});
-for (let i = 0; i < 100 && !host.inRoom; i += 1) await wait(50);
-const code = host.room.code;
-for (const b of bots.slice(1)) b.s.join(code, { invite: host.invite });
-for (let i = 0; i < 100 && !bots.every((b) => b.s.inRoom); i += 1) await wait(50);
-console.log(`together-shots: room ${code} on ${url}, ${bots.length} pilots in Node`);
+/* A pilot in Node, with a made up avatar and what it heard. */
+function bot(handle, seed) {
+  let n = seed;
+  const rand = () => {
+    n = (n * 16807) % 2147483647;
+    return (n - 1) / 2147483646;
+  };
+  const b = { handle, heard: [] };
+  b.s = new RoomSession({
+    url: wsUrl,
+    key: randomBytes(16).toString('hex'),
+    handle,
+    avatar: rollAvatar(rand),
+    onEvent: (name, data) => b.heard.push({ name, data }),
+  });
+  return b;
+}
 
-const seated = `try {
+async function hostRoom(b, room) {
+  b.s.host(room);
+  await until(() => b.s.inRoom, 5000);
+  return b.s.room;
+}
+
+async function joinRoom(b, code, invite) {
+  b.s.join(code, { invite });
+  return until(() => b.s.inRoom, 5000);
+}
+
+/* The pilot's name and settings, through the doors a pilot uses. */
+function seedFor({ map = 'bardwell', airframe = '5inch', name = 'Shell Pilot', met = false }) {
+  return `try {
   const k = ${JSON.stringify(SETTINGS_KEY)};
   const s = JSON.parse(localStorage.getItem(k) || '{}');
   s.airframeAsked = true;
   s.graphics = 'low';
   s.graphicsAuto = false;
-  s.map = 'built';
+  s.map = ${JSON.stringify(map)};
+  s.airframe = ${JSON.stringify(airframe)};
   localStorage.setItem(k, JSON.stringify(s));
-  localStorage.setItem('webfpv.pilot.name', 'Shell Pilot');
+  localStorage.setItem('webfpv.pilot.name', ${JSON.stringify(name)});
+  ${met ? `localStorage.setItem('webfpv.together.v1', JSON.stringify({ avatar: ${JSON.stringify(rollAvatar(() => 0.37))}, met: true }));` : ''}
 } catch (e) { /* Storage refused; the run boots on the defaults. */ }`;
-const query = `?mp=1&board=${encodeURIComponent(boardOrigin)}&map=built&room=${code}&i=${host.invite}`;
-const page = await openPage({
-  root, width: opts.w, height: opts.h, url: `/index.html${query}`, seed: [seated],
-});
-await mkdir(outDir, { recursive: true });
-async function shot(name) {
-  const { data } = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
-  await writeFile(join(outDir, `${name}.png`), Buffer.from(data, 'base64'));
-  console.log(`  shot  ${join(opts.out, `${name}.png`)}`);
 }
 
-let flying = null;
-try {
+async function open(path, seed, extra = {}) {
+  const page = await openPage({
+    root, width: opts.w, height: opts.h, url: path, seed: [seed], ...extra,
+  });
   await page.until('window.__shellReady === true', 120000);
-  await page.evaluate("(() => { const ui = window.__ui; ui.settings.map = 'built'; ui.onAction('fly', ui.settings); return 1; })()");
-  await page.until("window.__mode === 'flight' && window.__map && window.__map().ready", 120000);
-  await page.until("location.search.includes('room=')", 30000).catch(() => {});
-  const there = await page.evaluate('location.search');
-  check('the shell joined the room and kept it in its address', there.includes(`room=${code}`), there);
-  for (let i = 0; i < 100 && host.link.pilots.size < 4; i += 1) await wait(100);
-  check('the other pilots see the shell arrive', host.link.pilots.size === 4, `${host.link.pilots.size} pilots`);
+  await page.until('window.__map && window.__map().ready', 120000);
+  return page;
+}
 
-  /* Where the shell's craft is, from its own pose on the wire. */
-  let centre = null;
-  for (let i = 0; i < 100 && !centre; i += 1) {
-    host.eachRemote((id, pose, pilot) => {
-      if (pilot.handle === 'Shell Pilot' || !centre) centre = { ...pose };
-    });
-    if (!centre) await wait(100);
+function shooter(page, scene) {
+  return async (name) => {
+    const { data } = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+    const file = `${scene}-${name}.png`;
+    await writeFile(join(outDir, file), Buffer.from(data, 'base64'));
+    console.log(`  shot  ${join(opts.out, file)}`);
+  };
+}
+
+const T = 'window.__together && window.__together()';
+const sheetIs = (page, name, ms = 20000) => page.until(`${T} && window.__together().sheet === ${JSON.stringify(name)}`, ms);
+const state = (page) => page.evaluate(`${T}`);
+
+/* Press a button in the room's layer by the words on it. */
+async function press(page, words, scope = '#tg') {
+  const ok = await page.evaluate(`(() => {
+    const want = ${JSON.stringify(words)};
+    const box = document.querySelector(${JSON.stringify(scope)});
+    if (!box) return false;
+    const all = [...box.querySelectorAll('button')].filter((b) => !b.disabled && b.offsetParent !== null);
+    const hit = all.find((b) => b.textContent.trim() === want) || all.find((b) => b.textContent.trim().startsWith(want));
+    if (!hit) return false;
+    hit.click();
+    return true;
+  })()`);
+  if (!ok) {
+    throw new Error(`no button "${words}" in ${scope}`);
   }
-  check('the shell\'s pose reaches the other pilots', Boolean(centre), centre ? `${centre.px.toFixed(1)}, ${centre.py.toFixed(1)}, ${centre.pz.toFixed(1)}` : 'none');
-  /* Ahead of it: the craft's own forward, minus z turned by its attitude,
-   * which is where the camera on its nose looks. */
+  await wait(120);
+}
+
+async function pressKey(page, data) {
+  await page.evaluate(`(() => { const b = document.querySelector('#tg [data-k=${JSON.stringify(data)}]'); if (!b) throw new Error('no ${data}'); b.click(); return 1; })()`);
+  await wait(120);
+}
+
+function errorsOf(page) {
+  return page.errors.filter((e) => !/favicon|ERR_CONNECTION_REFUSED|stun\.cloudflare|net::ERR/.test(String(e)));
+}
+
+/* Where the page's craft is, as a bot hears it, and its forward. */
+async function poseOf(b, handle) {
+  let centre = null;
+  await until(() => {
+    b.s.eachRemote((id, pose, pilot) => {
+      if (pilot.handle === handle) centre = { ...pose };
+    });
+    return Boolean(centre);
+  }, 10000, 100);
+  if (!centre) return null;
   const q = centre;
   let fx = -2 * (q.qx * q.qz + q.qw * q.qy);
   let fz = -(1 - 2 * (q.qx * q.qx + q.qy * q.qy));
   const fl = Math.hypot(fx, fz) || 1;
   fx /= fl;
   fz /= fl;
-  const base = { x: centre.px, y: centre.py, z: centre.pz };
+  return { ...centre, fx, fz };
+}
 
-  /* Fly: the host circles four metres ahead, the others sit beside it. */
-  const t0 = performance.now();
-  flying = setInterval(() => {
-    const t = (performance.now() - t0) / 1000;
-    const cx = base.x + fx * 6;
-    const cz = base.z + fz * 6;
-    const y = base.y + 0.6;
-    bots.forEach((b, k) => {
-      const a = k === 0 ? t * 0.9 : (k === 1 ? -0.9 : 0.9);
-      const r = k === 0 ? 2.2 : 1.6;
-      const px = cx + Math.cos(a) * r - (k === 2 ? fx * 3 : 0);
-      const pz = cz + Math.sin(a) * r - (k === 2 ? fz * 3 : 0);
-      /* Facing along the circle, banked a little into it. */
-      const yaw = -a + (k === 0 ? Math.PI : 0);
-      const h = yaw / 2;
-      const bank = k === 0 ? 0.35 : 0;
-      b.s.uplink(px, y + (k === 1 ? 0.5 : 0), pz,
-        Math.sin(bank / 2) * Math.cos(h), Math.sin(h) * Math.cos(bank / 2), -Math.sin(bank / 2) * Math.sin(h), Math.cos(h) * Math.cos(bank / 2),
-        k !== 2, 0);
-    });
-  }, 1000 / 60);
-  await wait(2500);
-  const drawn = await page.evaluate(`(() => {
-    const s = window.__mapScene ? window.__mapScene() : null;
-    let g = null;
-    if (s) s.traverse((o) => { if (o.name === 'room-craft') g = o; });
-    return g ? { visible: g.visible, counts: g.children.map((c) => c.name + ':' + c.count) } : null;
-  })()`);
-  check('the other three pilots are drawn', Boolean(drawn && drawn.visible && drawn.counts.includes('room-craft-bodies:3')), JSON.stringify(drawn));
-  /*
-   * The cost: how many times the room's meshes are drawn a frame, counted
-   * at each draw over ten frames. The world's own total moves by a few
-   * calls from frame to frame (traffic, culling), so a difference of two
-   * totals cannot see three; counting the room's own draws can.
-   */
-  const cost = await page.evaluate(`(async () => {
-    const s = window.__mapScene();
-    let g = null;
-    s.traverse((o) => { if (o.name === 'room-craft') g = o; });
-    let draws = 0;
-    const kept = g.children.map((c) => c.onBeforeRender);
-    g.children.forEach((c, i) => { c.onBeforeRender = function (...a) { draws += 1; return kept[i].apply(this, a); }; });
-    /* Counted against the scene's own renders, which is what a draw call
-     * is made inside: the shell does not render on every animation frame
-     * here, and a post chain could render the scene more than once. */
-    let renders = 0;
-    const sceneKept = s.onBeforeRender;
-    s.onBeforeRender = function (...a) { renders += 1; return sceneKept.apply(this, a); };
-    let ticks = 0;
-    await new Promise((r) => { const tick = () => { ticks += 1; if (renders >= 12 || ticks > 600) r(); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
-    s.onBeforeRender = sceneKept;
-    g.children.forEach((c, i) => { c.onBeforeRender = kept[i]; });
-    return { perRender: renders ? draws / renders : -1, renders, meshes: g.children.length };
-  })()`);
-  check(`three pilots cost three draw calls each time the scene is drawn (${cost.perRender.toFixed(2)} over ${cost.renders} renders, ${cost.meshes} meshes)`,
-    cost.perRender === 3 && cost.meshes === 3);
-  await shot('room-ahead');
-  await wait(1200);
-  await shot('room-ahead-later');
-  /* Pull the host close, to see the ink and the livery. */
-  clearInterval(flying);
-  flying = setInterval(() => {
-    const t = (performance.now() - t0) / 1000;
-    const h = (t * 0.6) / 2;
-    host.uplink(base.x + fx * 2.2, base.y + 1.1, base.z + fz * 2.2, 0, Math.sin(h), 0, Math.cos(h), true, 0);
-  }, 1000 / 60);
-  await wait(1500);
-  await shot('room-close');
-  const errors = page.errors.filter((e) => !/favicon|ERR_CONNECTION_REFUSED/.test(String(e)));
-  check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-} catch (e) {
-  failures += 1;
-  console.log(`  FAIL  ${e.message}`);
+/* ------------------------------------------------------------------ */
+
+async function sceneHost() {
+  console.log('\nhost: Fly together from the picker');
+  const bots = [bot('Sakura Wing', 11), bot('Amber Hornet', 23), bot('Slate Kite', 37)];
+  const page = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`, seedFor({}));
+  const shot = shooter(page, 'host');
+  let flying = null;
+  try {
+    await page.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await page.until("document.querySelector('.wp-rooms') !== null", 30000);
+    await wait(600);
+    await shot('picker-rooms-tab');
+    check('the picker has a Rooms tab', true);
+    await page.evaluate("(() => { window.__ui.picker.select('map:bardwell'); return 1; })()");
+    await wait(200);
+    const hasFt = await page.evaluate("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Fly together')");
+    check('the chosen map offers Fly together', hasFt);
+    await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
+    check('the first time, the pilot meets their avatar', await sheetIs(page, 'meet').then(() => true, () => false));
+    await wait(400);
+    await shot('meet');
+    await pressKey(page, 'look');
+    await sheetIs(page, 'editor');
+    await pressKey(page, 'tab-Hair');
+    await pressKey(page, 'hair-3');
+    await wait(300);
+    await shot('editor');
+    await pressKey(page, 'done');
+    await sheetIs(page, 'meet');
+    await pressKey(page, 'keep');
+    check('then the host sheet', await sheetIs(page, 'host').then(() => true, () => false));
+    await wait(300);
+    await shot('host-sheet');
+    await pressKey(page, 'open');
+    check('Open room makes the room and shows the invite', await sheetIs(page, 'share').then(() => true, () => false));
+    const st = await state(page);
+    check('the page is in a room with a code', st && st.inRoom && /^[A-Z2-9]{6}$/.test(st.code), JSON.stringify(st));
+    await wait(300);
+    await shot('invite');
+    const link = await page.evaluate("document.querySelector('#tg input[aria-label=\"Room link\"]').value");
+    check('the room link names the world, the room and nothing secret', /map=bardwell/.test(link) && link.includes(`room=${st.code}`) && !link.includes('#i='), link);
+    await pressKey(page, 'fly');
+    await page.until("window.__mode === 'flight'", 30000);
+    await page.until(`${T} && window.__together().sheet === ''`, 10000);
+    const addr = await page.evaluate('location.href');
+    check('flying, with the room in the address bar', addr.includes(`room=${st.code}`) && !addr.includes('i='), addr);
+    await wait(500);
+    await shot('flying-chip');
+
+    for (const b of bots) {
+      await joinRoom(b, st.code, '');
+    }
+    check('three pilots join by the code', bots.every((b) => b.s.inRoom));
+    await page.until(`${T} && window.__together().pilots === 4`, 10000);
+    check('the page sees four pilots', (await state(page)).pilots === 4);
+
+    const c = await poseOf(bots[0], 'Shell Pilot');
+    check('the page\'s pose reaches the other pilots', Boolean(c));
+    const t0 = performance.now();
+    flying = setInterval(() => {
+      const t = (performance.now() - t0) / 1000;
+      const cx = c.px + c.fx * 5;
+      const cz = c.pz + c.fz * 5;
+      bots.forEach((b, k) => {
+        const a = k === 0 ? t * 0.9 : (k === 1 ? -0.9 : 0.9);
+        const r = k === 0 ? 2.2 : 1.6;
+        const near = k === 2 && t < 6;
+        const px = near ? c.px + c.fx * 1.6 : cx + Math.cos(a) * r;
+        const pz = near ? c.pz + c.fz * 1.6 : cz + Math.sin(a) * r;
+        const yaw = -a + (k === 0 ? Math.PI : 0);
+        const h = yaw / 2;
+        const bank = k === 0 ? 0.35 : 0;
+        b.s.uplink(px, c.py + 0.6 + (k === 1 ? 0.5 : 0), pz,
+          Math.sin(bank / 2) * Math.cos(h), Math.sin(h) * Math.cos(bank / 2), -Math.sin(bank / 2) * Math.sin(h), Math.cos(h) * Math.cos(bank / 2),
+          k !== 2, 0);
+      });
+    }, 1000 / 60);
+    const hello = await page.until("document.querySelector('#tg .hello') !== null", 8000).then(() => true, () => false);
+    check('a pilot flying close gets the hello', hello);
+    await shot('hello');
+    await wait(2600);
+    const drawn = await page.evaluate(`(() => {
+      const s = window.__mapScene ? window.__mapScene() : null;
+      let g = null;
+      if (s) s.traverse((o) => { if (o.name === 'room-craft') g = o; });
+      return g ? { visible: g.visible, counts: g.children.map((c) => c.name + ':' + c.count) } : null;
+    })()`);
+    check('the other three pilots are drawn', Boolean(drawn && drawn.visible && drawn.counts.includes('room-craft-bodies:3')), JSON.stringify(drawn));
+    const cost = await page.evaluate(`(async () => {
+      const s = window.__mapScene();
+      let g = null;
+      s.traverse((o) => { if (o.name === 'room-craft') g = o; });
+      let draws = 0;
+      const kept = g.children.map((c) => c.onBeforeRender);
+      g.children.forEach((c, i) => { c.onBeforeRender = function (...a) { draws += 1; return kept[i].apply(this, a); }; });
+      let renders = 0;
+      const sceneKept = s.onBeforeRender;
+      s.onBeforeRender = function (...a) { renders += 1; return sceneKept.apply(this, a); };
+      let ticks = 0;
+      await new Promise((r) => { const tick = () => { ticks += 1; if (renders >= 12 || ticks > 600) r(); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
+      s.onBeforeRender = sceneKept;
+      g.children.forEach((c, i) => { c.onBeforeRender = kept[i]; });
+      return { perRender: renders ? draws / renders : -1, renders, meshes: g.children.length };
+    })()`);
+    check(`three pilots cost three draw calls each time the scene is drawn (${cost.perRender.toFixed(2)} over ${cost.renders} renders)`,
+      cost.perRender === 3 && cost.meshes === 3);
+    await shot('three-pilots');
+
+    bots[0].s.say('gg');
+    const talk = await page.until("(() => { const t = document.querySelector('#tg .talk'); return t && !t.hidden && t.textContent.includes('GG!'); })()", 5000).then(() => true, () => false);
+    check('a quick line arrives as dialogue, with the speaker\'s portrait', talk);
+    await wait(500);
+    await shot('talk-quick');
+    await wait(1800);
+    bots[1].s.chat('Nice to fly with you', 'laugh');
+    const typed = await page.until("(() => { const t = document.querySelector('#tg .talk'); return t && !t.hidden && t.textContent.includes('Nice to fly with you'); })()", 5000).then(() => true, () => false);
+    check('a typed line arrives in a private room with typed chat on', typed);
+    await wait(1400);
+    await shot('talk-typed');
+    bots[1].s.chat('find me at www.example.com', 'calm');
+    await until(() => bots[1].heard.some((e) => e.name === 'chatRefused'), 3000);
+    check('the board refuses a link in chat, and says why to the one who typed it', bots[1].heard.some((e) => e.name === 'chatRefused' && e.data.why === 'links'));
+
+    const before = bots[0].heard.filter((e) => e.name === 'say').length;
+    await page.tap('Digit1');
+    await until(() => bots[0].heard.filter((e) => e.name === 'say').length > before, 3000);
+    const said = bots[0].heard.filter((e) => e.name === 'say').pop();
+    check('1 says Hi! to the room', said && said.data.line === 'hi', JSON.stringify(said && said.data));
+    await page.tap('KeyQ');
+    await wait(400);
+    await shot('quick-strip');
+    await page.tap('KeyQ');
+    await page.tap('Tab');
+    await wait(400);
+    check('Tab shows the pilots', await page.evaluate("!document.querySelector('#tg .roster').hidden"));
+    await shot('pilots-list');
+    await page.tap('Tab');
+    check('and the browser did not move its focus', await page.evaluate("document.activeElement === document.body || document.activeElement === null || document.activeElement.tagName === 'CANVAS'"));
+
+    await page.tap('Escape');
+    await page.until("window.__ui.screen === 'paused'", 10000);
+    await wait(300);
+    const rows = await page.evaluate("window.__ui.items().map((r) => r.label)");
+    check('the pause menu is the room\'s', rows.includes('Room') && rows.includes('Leave room') && rows.includes('Invite pilots'), rows.join(', '));
+    await shot('pause');
+    await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await wait(300);
+    await shot('room-page');
+    const otherId = bots[1].s.you;
+    await pressKey(page, `pilot-${otherId}`);
+    await wait(200);
+    await shot('room-pilot-open');
+    await pressKey(page, `report-${otherId}`);
+    await sheetIs(page, 'report');
+    await pressKey(page, 'why-spam');
+    await wait(200);
+    await shot('report');
+    await pressKey(page, 'send');
+    const thanks = await page.until("document.querySelector('#tg').textContent.includes('Sent.')", 5000).then(() => true, () => false);
+    check('a report is sent and thanked', thanks);
+    await shot('report-sent');
+    await pressKey(page, 'back');
+    await sheetIs(page, 'room');
+    await pressKey(page, 'talk');
+    await sheetIs(page, 'scene');
+    await wait(400);
+    await shot('talk-scene');
+    await page.evaluate("(() => { const i = document.querySelector('#tg-say'); i.value = 'Hello from the shell'; i.dispatchEvent(new Event('input')); return 1; })()");
+    const heardBefore = bots[0].heard.filter((e) => e.name === 'chat').length;
+    await pressKey(page, 'say-go');
+    await until(() => bots[0].heard.filter((e) => e.name === 'chat').length > heardBefore, 3000);
+    const line = bots[0].heard.filter((e) => e.name === 'chat').pop();
+    check('the talk scene says a typed line to the room', line && line.data.text === 'Hello from the shell', JSON.stringify(line && line.data));
+    await pressKey(page, 'done');
+    await sheetIs(page, 'room');
+    await pressKey(page, 'settings');
+    await sheetIs(page, 'roomSettings');
+    await page.evaluate("(() => { const i = document.querySelector('#tg-rn2'); i.value = 'Evening laps'; i.dispatchEvent(new Event('input')); return 1; })()");
+    await wait(200);
+    await shot('room-settings');
+    await pressKey(page, 'save');
+    await until(() => bots[0].s.room && bots[0].s.room.name === 'Evening laps', 4000);
+    check('room settings reach the other pilots', bots[0].s.room.name === 'Evening laps', bots[0].s.room.name);
+    await sheetIs(page, 'room');
+    const hostId = bots[0].s.you;
+    await pressKey(page, `pilot-${hostId}`);
+    await pressKey(page, `mh-${hostId}`);
+    await sheetIs(page, 'confirm');
+    await wait(200);
+    await shot('confirm-host');
+    check('Cancel has the focus on a host action', await page.evaluate("document.activeElement && document.activeElement.dataset.k === 'no'"));
+    await pressKey(page, 'yes');
+    await until(() => bots[0].s.link.hostId === hostId, 4000);
+    check('make host hands the room on', bots[0].s.link.hostId === hostId);
+    await pressKey(page, 'leave');
+    await sheetIs(page, 'confirm');
+    await pressKey(page, 'yes');
+    await until(() => bots[0].s.link.pilots.size === 3, 4000);
+    check('leave takes the page out, and the others see it go', bots[0].s.link.pilots.size === 3);
+    const after = await page.evaluate('location.href');
+    check('and the room is gone from the address bar', !after.includes('room='), after);
+    const errors = errorsOf(page);
+    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (flying) clearInterval(flying);
+    for (const b of bots) b.s.leave();
+    await page.close();
+  }
+}
+
+async function sceneLobby() {
+  console.log('\nlobby: the Rooms shelf');
+  const bots = [bot('Mint Ranger', 41), bot('Sky Darter', 53), bot('Rose Comet', 67)];
+  await hostRoom(bots[0], {
+    name: 'Pines at dusk', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, listed: true, tags: ['chill'],
+  });
+  await hostRoom(bots[1], {
+    name: 'Lounge whoops', way: 'freestyle', map: 'house', mapName: "Nick Burns' house", scale: 100, listed: true, tags: ['beginners'],
+  });
+  await joinRoom(bots[2], bots[0].s.room.code, '');
+  const page = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`, seedFor({ met: true, name: 'Lobby Pilot' }));
+  const shot = shooter(page, 'lobby');
+  try {
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'lobby');
+    await page.until("document.querySelectorAll('#tg .room h4').length >= 2", 10000);
+    await wait(800);
+    await shot('shelf');
+    const names = await page.evaluate("[...document.querySelectorAll('#tg .room h4')].map((h) => h.textContent)");
+    check('the shelf lists the listed rooms', names.includes('Pines at dusk') && names.includes('Lounge whoops'), names.join(', '));
+    await pressKey(page, `room-${bots[0].s.room.code}`);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    check('a card on this world joins it at once', true);
+    await page.until("window.__mode === 'flight'", 30000);
+    await wait(600);
+    await shot('joined');
+    const welcome = await page.evaluate("document.querySelector('#tg').textContent.includes('Welcome to')");
+    check('with a welcome', welcome);
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    await page.evaluate("(() => { window.__ui.act('room-leave'); return 1; })()");
+    await sheetIs(page, 'confirm');
+    await pressKey(page, 'yes');
+    await page.until(`${T} && !window.__together().inRoom`, 5000);
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'lobby');
+    await page.until(`document.querySelector('#tg [data-k="room-${bots[1].s.room.code}"]') !== null`, 10000);
+    await pressKey(page, `room-${bots[1].s.room.code}`);
+    /* Another world: the page reloads into it, and the press goes with it. */
+    await wait(1500);
+    await page.until('window.__shellReady === true', 120000);
+    await page.until("location.search.includes('map=house')", 60000);
+    await page.until(`${T} && window.__together().inRoom`, 60000);
+    check('a card on another world reloads into it and joins, without asking twice', true);
+    await page.until("window.__mode === 'flight'", 30000);
+    await wait(800);
+    await shot('joined-other-world');
+    const craft = await page.evaluate('window.__ui.settings.airframe');
+    check('on the room\'s aircraft', craft === 'whoop65', craft);
+    const errors = errorsOf(page);
+    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    for (const b of bots) b.s.leave();
+    await page.close();
+  }
+}
+
+async function sceneLink() {
+  console.log('\nlink: a room link');
+  const hostBot = bot('Kite Runner', 71);
+  const room = await hostRoom(hostBot, {
+    name: "Kite's room", way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, password: 'pines4ever',
+  });
+  const base = 'http://127.0.0.1/index.html';
+  const withInvite = roomUrl(base, room, { invite: hostBot.s.invite });
+  const path = (u) => {
+    const x = new URL(u);
+    x.searchParams.set('board', boardOrigin);
+    return `${x.pathname}${x.search}${x.hash}`;
+  };
+  let page = await open(path(withInvite), seedFor({ name: 'Link Pilot' }));
+  let shot = shooter(page, 'link');
+  try {
+    check('a link shows "Join this room?" and nothing more', await sheetIs(page, 'join').then(() => true, () => false));
+    const st = await state(page);
+    check('and has not joined', !st.inRoom);
+    const addr = await page.evaluate('location.href');
+    check('the invite is out of the address bar at once', !addr.includes('i='), addr);
+    await wait(500);
+    await shot('join-card');
+    await pressKey(page, 'join');
+    await sheetIs(page, 'meet');
+    await pressKey(page, 'keep');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    check('Join, then the avatar, then in: the invite skipped the password', true);
+    await page.until("window.__mode === 'flight'", 30000);
+    await wait(500);
+    await shot('in');
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    await page.close();
+  }
+  const plain = roomUrl(base, room, {});
+  page = await open(path(plain), seedFor({ name: 'Door Pilot', met: true }));
+  shot = shooter(page, 'link');
+  try {
+    await sheetIs(page, 'join');
+    await pressKey(page, 'join');
+    check('without the invite, the password', await sheetIs(page, 'password').then(() => true, () => false));
+    await page.evaluate("(() => { const i = document.querySelector('#tg-pw2'); i.value = 'wrong one'; i.dispatchEvent(new Event('input')); return 1; })()");
+    await pressKey(page, 'pw-go');
+    await page.until("document.querySelector('#tg .help.bad') !== null", 10000);
+    check('a wrong password says so, and stays on the card', (await state(page)).sheet === 'password');
+    await wait(300);
+    await shot('password-wrong');
+    await page.evaluate("(() => { const i = document.querySelector('#tg-pw2'); i.value = 'pines4ever'; i.dispatchEvent(new Event('input')); return 1; })()");
+    await pressKey(page, 'pw-go');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    check('the right one lets the pilot in', true);
+    const errors = errorsOf(page);
+    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    hostBot.s.leave();
+    await page.close();
+  }
+}
+
+async function sceneRace() {
+  console.log('\nrace: a race room');
+  const bots = [bot('Pit Boss', 83), bot('Gate Ghost', 97)];
+  const room = await hostRoom(bots[0], {
+    name: 'Friday night race', way: '5inch', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  await joinRoom(bots[1], room.code, bots[0].s.invite);
+  const link = roomUrl('http://127.0.0.1/index.html', room, { invite: bots[0].s.invite });
+  const u = new URL(link);
+  u.searchParams.set('board', boardOrigin);
+  const page = await open(`${u.pathname}${u.search}${u.hash}`, seedFor({ name: 'Race Pilot', met: true }));
+  const shot = shooter(page, 'race');
+  try {
+    await sheetIs(page, 'join');
+    await pressKey(page, 'join');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight'", 30000);
+    await page.until("!document.querySelector('#tg .pit').hidden", 10000);
+    await wait(500);
+    await shot('pit');
+    check('a race room shows the pit', true);
+    bots[0].s.link.raceSend({ t: 'laps', n: 2 });
+    bots[0].s.link.raceSend({ t: 'ready', on: true });
+    bots[1].s.link.raceSend({ t: 'ready', on: true });
+    await wait(400);
+    await page.tap('KeyG');
+    const counting = await page.until(`${T} && window.__together().race === 'count'`, 8000).then(() => true, () => false);
+    check('G readies the page, and everybody ready starts the countdown', counting);
+    await page.until("!document.querySelector('#tg .count-big').hidden", 5000).catch(() => {});
+    await wait(300);
+    await shot('countdown');
+    const goes = await page.until(`${T} && window.__together().race === 'live'`, 9000).then(() => true, () => false);
+    check('GO, on the board\'s clock', goes);
+    const gridded = await page.evaluate('window.__mode');
+    check('the page is flying the race', gridded === 'flight', gridded);
+    bots[0].s.link.raceSend({ t: 'lap', n: 1, ms: 21500 });
+    bots[1].s.link.raceSend({ t: 'lap', n: 1, ms: 23800 });
+    await wait(800);
+    await shot('standings');
+    check('the standings show while racing', await page.evaluate("!document.querySelector('#tg .standings').hidden"));
+    bots[0].s.link.raceSend({ t: 'lap', n: 2, ms: 20100 });
+    bots[1].s.link.raceSend({ t: 'lap', n: 2, ms: 22400 });
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, 'race');
+    await sheetIs(page, 'race');
+    await wait(300);
+    await shot('race-page');
+    await pressKey(page, 'dnf');
+    const results = await page.until(`${T} && window.__together().race === 'results'`, 8000).then(() => true, () => false);
+    check('retiring ends the race for the page, and results follow', results);
+    await page.until("window.__mode === 'flight'", 10000).catch(() => {});
+    await wait(500);
+    await shot('results');
+    bots[0].s.link.raceSend({ t: 'again' });
+    await page.tap('KeyG');
+    const again = await page.until(`${T} && window.__together().race === 'count'`, 8000).then(() => true, () => false);
+    check('G for one more, and a majority starts the next', again);
+    const errors = errorsOf(page);
+    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    for (const b of bots) b.s.leave();
+    await page.close();
+  }
+}
+
+async function sceneDirect() {
+  console.log('\ndirect: two browsers, one direct link');
+  const hostBot = bot('Link Keeper', 101);
+  const room = await hostRoom(hostBot, {
+    name: 'Direct test', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  const link = roomUrl('http://127.0.0.1/index.html', room, { invite: hostBot.s.invite });
+  const u = new URL(link);
+  u.searchParams.set('board', boardOrigin);
+  const path = `${u.pathname}${u.search}${u.hash}`;
+  /* Two browsers on one machine find each other by their local
+   * addresses, which Chromium otherwise hides behind mDNS names that a
+   * container cannot resolve. */
+  const args = ['--disable-features=WebRtcHideLocalIpsWithMdns'];
+  const a = await open(path, seedFor({ name: 'Left Pilot', met: true }), { args });
+  const b = await open(path, seedFor({ name: 'Right Pilot', met: true }), { args });
+  try {
+    for (const p of [a, b]) {
+      await sheetIs(p, 'join');
+      await pressKey(p, 'join');
+      await p.until(`${T} && window.__together().inRoom`, 15000);
+      await p.until("window.__mode === 'flight'", 30000);
+    }
+    const linked = await until(async () => (await state(a)).direct >= 1 && (await state(b)).direct >= 1, 40000, 500);
+    check('the two browsers open a direct link', linked, JSON.stringify([await state(a), await state(b)]));
+    /* Lift one craft a little so its pose changes and is sent again. */
+    await a.evaluate("(() => { window.__input && window.__input.keys && window.__input.keys.add('KeyW'); return 1; })()");
+    const crossed = await until(async () => (await state(b)).peerPoses > 0, 10000, 300);
+    check('and poses cross it', crossed, JSON.stringify(await state(b)));
+    await a.evaluate("(() => { window.__input && window.__input.keys && window.__input.keys.delete('KeyW'); return 1; })()");
+    await shooter(b, 'direct')('right-sees-left');
+    for (const p of [a, b]) {
+      const errors = errorsOf(p);
+      check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    }
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+  } finally {
+    hostBot.s.leave();
+    await a.close();
+    await b.close();
+  }
+}
+
+try {
+  if (wanted('host')) await sceneHost();
+  if (wanted('lobby')) await sceneLobby();
+  if (wanted('link')) await sceneLink();
+  if (wanted('race')) await sceneRace();
+  if (wanted('direct')) await sceneDirect();
 } finally {
-  if (flying) clearInterval(flying);
-  for (const b of bots) b.s.leave();
-  await page.close();
   board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });
 }

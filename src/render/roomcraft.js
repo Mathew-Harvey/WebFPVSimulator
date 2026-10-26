@@ -57,6 +57,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { LIVERIES, liveryIndex } from '../net/avatar.js';
 
 /* The five inch's own numbers (configs/airframes.js), not the collider's
  * live ones, which follow whatever this pilot is flying. */
@@ -73,20 +74,14 @@ const SHELL = 0xf6f2ea;
 const DARK = 0x1c1f24;
 
 /*
- * Liveries, by the avatar's livery number. The product's own colours
- * first, then the brighter ones a pilot picks so their friends can find
- * them. Kept apart from mint, which this product paints a record in.
+ * Liveries, by the avatar's livery number: the avatar's own list
+ * (src/net/avatar.js), so a pilot's jacket in the dialogue and their quad
+ * in the air are one colour.
  */
-export const LIVERIES = Object.freeze([
-  0xe8a8b8, 0xffd45c, 0x9db3c8, 0xf3ead4, 0xff7a59, 0x5ab0ff,
-  0xb07cff, 0xff5c8a, 0x3fd0c9, 0xc9e265, 0xff9e3d, 0xe0e4ea,
-]);
+export { LIVERIES };
 
 export function liveryColour(avatar, id) {
-  const n = avatar && Number.isInteger(avatar.livery) && avatar.livery > 0
-    ? avatar.livery - 1
-    : id;
-  return LIVERIES[((n % LIVERIES.length) + LIVERIES.length) % LIVERIES.length];
+  return LIVERIES[liveryIndex(avatar, id)];
 }
 
 const TAG_COLS = 2;

@@ -424,6 +424,8 @@ text-transform:uppercase;text-decoration:none;color:var(--wp-ink);background:var
 .wp[data-zone=rail] .wp-shelf[aria-selected=true]{box-shadow:0 0 0 4px var(--wp-amber),7px 7px 0 4px var(--wp-ink)}
 .wp[data-zone=rail] .wp-card[aria-current=true],.wp[data-zone=acts] .wp-card[aria-current=true],.wp[data-zone=away] .wp-card[aria-current=true]{box-shadow:0 0 0 4px var(--wp-rule),9px 9px 0 4px var(--wp-ink)}
 .wp-act.is-focus{outline:4px solid var(--wp-ink);outline-offset:3px;box-shadow:0 0 0 7px var(--wp-mint)}
+.wp-rooms .wp-pic{filter:none;opacity:.75}
+.wp-rooms.is-focus{transform:skewX(-9deg) translateY(-5px);box-shadow:0 0 0 4px var(--wp-amber),7px 7px 0 4px var(--wp-ink)}
 @media (max-width:760px){.wp{padding:14px 12px 0;box-shadow:5px 5px 0 rgba(11,17,22,.9)}
 .wp-offs{grid-template-columns:1fr;grid-auto-rows:auto}.wp-offs .wp-card{aspect-ratio:16/9}
 .wp-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px 14px}
@@ -542,10 +544,16 @@ function stampOf(entry) {
  *   shelfPictures { maps, five, whoop }, a picture's address for each
  *                shelf's chapter panel, when the host has its own
  *   loading      a sentence for a shelf whose list has not arrived
+ *   onRooms      () => void: a fourth tab, Rooms, after the three shelves.
+ *                It is not a shelf: pressing it is the host's (the
+ *                simulator opens its lobby of flying rooms), and the board,
+ *                which has no rooms to fly, leaves it out
+ *   rooms        the Rooms tab's count, '' for none, and setRooms later
+ *   roomsPicture the Rooms tab's picture
  *
- * Returns a controller: setEntries, setShelf, setLoading, select, move,
- * moveShelf, activate, current, handleKey, nav, setZone, zone, refresh and
- * destroy.
+ * Returns a controller: setEntries, setShelf, setLoading, setRooms, select,
+ * move, moveShelf, activate, current, handleKey, nav, setZone, zone, refresh
+ * and destroy.
  */
 export function createPicker(host, opts = {}) {
   const doc = host.ownerDocument || document;
@@ -558,6 +566,7 @@ export function createPicker(host, opts = {}) {
     needle: '',
     selected: opts.selected || '',
     loading: opts.loading || '',
+    rooms: opts.rooms || '',
   };
   const root = make(doc, 'div', 'wp');
   const head = make(doc, 'div', 'wp-head');
@@ -596,6 +605,9 @@ export function createPicker(host, opts = {}) {
    * handleKey), 'away' while the host's own rows have it. */
   let zone = '';
   let act = 0;
+  /* In the rail zone, whether the cursor is on the Rooms tab rather than on
+   * the chosen shelf. */
+  let onRoomsTab = false;
   /* Panels built so far, by key, with the facts they were built from, so a
    * re-sort or a search reuses them, lettering and all. */
   const built = new Map();
@@ -684,6 +696,10 @@ export function createPicker(host, opts = {}) {
     /* No buttons to hold, which is an empty shelf: the panels are next. */
     zone = z === 'acts' && !acts().length ? 'strip' : (z || '');
     act = 0;
+    if (zone !== 'rail' && onRoomsTab) {
+      onRoomsTab = false;
+      paintRail();
+    }
     if (zone) {
       root.dataset.zone = zone;
     } else {
@@ -756,7 +772,7 @@ export function createPicker(host, opts = {}) {
       const e = tabEntry(s.id);
       return e ? e.key : '';
     });
-    const sig = `${state.shelf}|${counts.join(',')}|${pics.join(',')}|${opts.counts !== false}`;
+    const sig = `${state.shelf}|${counts.join(',')}|${pics.join(',')}|${opts.counts !== false}|${state.rooms}|${zone === 'rail' && onRoomsTab}`;
     if (sig === railSig) {
       return;
     }
@@ -783,6 +799,25 @@ export function createPicker(host, opts = {}) {
       rail.append(b);
       letter(doc, name, [s.tab.map(([t, ink]) => [t.toUpperCase(), ink])], 28, b.offsetWidth ? b.offsetWidth * 0.7 : 140);
     });
+    if (opts.onRooms) {
+      const b = make(doc, 'button', 'wp-shelf wp-rooms');
+      b.type = 'button';
+      b.setAttribute('aria-label', 'Rooms');
+      b.title = 'Fly with other pilots';
+      b.classList.toggle('is-focus', zone === 'rail' && onRoomsTab);
+      const sk = make(doc, 'span', 'wp-sk');
+      if (opts.roomsPicture) {
+        sk.append(picture(doc, { key: 'shelf:rooms', name: 'Rooms', thumb: opts.roomsPicture }, true));
+      }
+      sk.append(make(doc, 'span', 'wp-dt'));
+      const name = make(doc, 'span');
+      sk.append(name);
+      sk.append(make(doc, 'i', '', state.rooms));
+      b.append(sk);
+      b.addEventListener('click', () => opts.onRooms());
+      rail.append(b);
+      letter(doc, name, [[['ROOMS', 'amber']]], 28, b.offsetWidth ? b.offsetWidth * 0.7 : 140);
+    }
   }
 
   function paintChips() {
@@ -1134,7 +1169,27 @@ export function createPicker(host, opts = {}) {
       return false;
     }
     if (zone === 'rail') {
-      if (dir === 'left' || dir === 'right') {
+      /* Right off the last shelf is the Rooms tab, and Left off it is the
+       * last shelf again: the tab is the end of the rail, not a shelf the
+       * shelves wrap through. */
+      const last = PICKER_SHELVES.length - 1;
+      const at = PICKER_SHELVES.findIndex((s) => s.id === state.shelf);
+      if (onRoomsTab) {
+        if (dir === 'left') {
+          onRoomsTab = false;
+          paintRail();
+        } else if (dir === 'enter') {
+          opts.onRooms();
+        } else if (dir === 'down') {
+          onRoomsTab = false;
+          setZone('strip');
+        }
+        return true;
+      }
+      if (dir === 'right' && opts.onRooms && at === last) {
+        onRoomsTab = true;
+        paintRail();
+      } else if (dir === 'left' || dir === 'right') {
         moveShelf(dir === 'left' ? -1 : 1);
       } else if (dir === 'down' || dir === 'enter') {
         setZone('strip');
@@ -1220,6 +1275,13 @@ export function createPicker(host, opts = {}) {
       paint();
     },
     setShelf: (id) => setShelf(id, false),
+    setRooms(text) {
+      const t = text ? String(text) : '';
+      if (t !== state.rooms) {
+        state.rooms = t;
+        paintRail();
+      }
+    },
     shelf: () => state.shelf,
     order: () => state.order,
     select: (key) => select(key, false),

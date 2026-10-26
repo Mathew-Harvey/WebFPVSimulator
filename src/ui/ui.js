@@ -5225,6 +5225,21 @@ export class Ui {
      * its world is on screen and after the load if one is building. main.js
      * owns the world, so only it can tell which. See flyCard. */
     this.onFlySeated = null;
+    /*
+     * FLYING TOGETHER (src/net/together.js), set by main.js only while rooms
+     * are on (?mp=1 until stage 8). roomsOn shows Fly together on a map and
+     * the Rooms tab; onFlyTogether(world) hosts a room on a picked map,
+     * onRooms(way) opens the Rooms shelf, onRoom(action) takes the room's
+     * pause rows, and roomInfo is the room the pilot is in, or null, which
+     * main.js keeps with setRoomInfo.
+     */
+    this.roomsOn = false;
+    this.onFlyTogether = null;
+    this.onRooms = null;
+    this.onRoom = null;
+    this.roomInfo = null;
+    this.roomCounts = null;
+    this.roomCountsAt = 0;
     this.onMusicSkip = null; /* (dir) => void, -1 previous, +1 next */
     /* (screen) => void, fired by show(). The shell hangs the music
      * context off this: the flight crate plays on a flight, the menu bed
@@ -10247,6 +10262,44 @@ export class Ui {
         { label: 'Quit to title', action: 'career-title' },
       ];
     }
+    if (this.screen === 'paused' && this.roomInfo) {
+      /*
+       * IN A ROOM, the pause is the pilot's own and never anybody else's:
+       * the others keep flying, and this pilot's tag dims for them. Resume
+       * and Restart run stay where muscle memory has them; the room's own
+       * page (its pilots, talking, settings, the race) is one row; and the
+       * way out of the room is said apart from the way out to the title,
+       * which leaves the room too. The tuning rows a pilot pauses for stay,
+       * and the builder and ghost rows go: neither is a thing to do with
+       * others waiting. Twelve rows, inside the fold budget shell-check
+       * keeps for this list.
+       */
+      const r = this.roomInfo;
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart run', action: 'restart' },
+        {
+          label: 'Room',
+          value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
+          action: 'room-sheet',
+          note: r.race ? 'The pilots, talking, the race and the room\'s settings.' : 'The pilots, talking and the room\'s settings.',
+        },
+        { label: 'Invite pilots', action: 'room-invite', note: 'The room\'s code and link, to send to a friend.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave room', action: 'room-leave', note: 'Fly on here, solo.' },
+        { label: 'Quit to title', action: 'room-title', note: 'Leaves the room too.' },
+      ];
+    }
     if (this.screen === 'paused') {
       /* Resume is the button. The conditional Edit a copy that used to
        * appear here belongs on the Courses screen. Report a bug is the
@@ -13287,6 +13340,15 @@ export class Ui {
           }
         },
         onSelect: (entry) => this.pickerChosen(entry),
+        /* Flying together's Rooms tab, after the three shelves, only
+         * while rooms are on. Its count comes from the board after. */
+        onRooms: this.roomsOn ? () => {
+          if (this.onRooms) {
+            this.onRooms({ maps: 'freestyle', five: '5inch', whoop: 'whoop' }[this.pickerShelf()] || 'freestyle');
+          }
+        } : null,
+        rooms: '',
+        roomsPicture: this.roomsOn ? 'assets/gate/freestyle.jpg' : '',
       });
       this.pickerFed = '';
       /* A pointer on the rows takes the keys there, and a pointer on the
@@ -13321,6 +13383,47 @@ export class Ui {
     this.pickerFed = '';
     this.pickerOpened = false;
     this.feedPicker();
+    this.loadRoomCounts();
+  }
+
+  /*
+   * The Rooms tab's count: how many listed rooms are open on the shelf's
+   * way and how many pilots are in them, from the board's one small count
+   * (GET /api/rooms/counts), asked at most once every thirty seconds and
+   * only while a picker is showing. Nothing when rooms are off.
+   */
+  loadRoomCounts() {
+    if (!this.roomsOn || !this.picker || typeof fetch !== 'function') {
+      return;
+    }
+    const paint = () => {
+      const way = { maps: 'freestyle', five: '5inch', whoop: 'whoop' }[this.pickerShelf()] || 'freestyle';
+      const c = this.roomCounts && this.roomCounts[way];
+      let text = '';
+      if (c) {
+        text = c.rooms ? `${c.rooms} open · ${c.pilots} flying` : 'Host one';
+      }
+      if (this.picker && this.picker.setRooms) {
+        this.picker.setRooms(text);
+      }
+    };
+    paint();
+    const now = Date.now();
+    if (now - this.roomCountsAt < 30000) {
+      return;
+    }
+    this.roomCountsAt = now;
+    fetch(`${boardOrigin()}/api/rooms/counts`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (body && body.counts) {
+          this.roomCounts = body.counts;
+          paint();
+        }
+      })
+      .catch(() => {
+        /* No board: the tab says nothing, and a press still opens it. */
+      });
   }
 
   pickerShelf() {
@@ -13467,9 +13570,46 @@ export class Ui {
     return '';
   }
 
+  /*
+   * The world a room on this entry would fly, as src/net/together.js hosts
+   * it, or null when it cannot have one: a room needs a world every pilot
+   * can open, so a pilot's own track and their own unpublished map, which
+   * live in one browser, cannot. Same rule as the share link above.
+   */
+  roomWorldOf(entry) {
+    if (!entry || !this.pickerShareLink(entry)) {
+      return null;
+    }
+    const item = entry.item;
+    const way = { maps: 'freestyle', five: '5inch', whoop: 'whoop' }[this.pickerShelf()] || 'freestyle';
+    const flyIt = () => this.pickerAction(this.screen === 'courses' ? 'card-fly' : 'fly', entry);
+    const base = { thumb: entry.thumb || '', fly: flyIt };
+    if (item.boardMap) {
+      return {
+        ...base, map: item.boardMap.id, name: item.boardMap.name || entry.name, way: 'freestyle', whoop: this.settings.airframe === 'whoop65',
+      };
+    }
+    if (item.course) {
+      const t = item.course.kind === 'board' ? item.course.track : null;
+      return t && t.id ? {
+        ...base, map: t.id, name: t.name || entry.name, way, whoop: way === 'whoop',
+      } : null;
+    }
+    if (item.map && item.map.id !== 'built' && item.map.id !== 'custom') {
+      const craft = craftForMap(item.map.id) || this.settings.airframe;
+      return {
+        ...base, map: item.map.id, name: item.label || entry.name, way: 'freestyle', whoop: craft === 'whoop65',
+      };
+    }
+    return null;
+  }
+
   pickerActions(entry) {
     const fly = { id: 'fly', label: 'Fly this', primary: true };
     const copy = this.pickerShareLink(entry) ? [{ id: 'copy-link', label: 'Copy link' }] : [];
+    if (this.roomsOn && this.roomWorldOf(entry)) {
+      copy.unshift({ id: 'fly-together', label: 'Fly together' });
+    }
     if (this.screen !== 'courses' || !entry.item.course) {
       return [fly, ...copy];
     }
@@ -13517,6 +13657,13 @@ export class Ui {
     }
     if (id === 'copy-link') {
       this.copyPickerLink(entry, ev && ev.currentTarget);
+      return;
+    }
+    if (id === 'fly-together') {
+      const world = this.roomWorldOf(entry);
+      if (world && this.onFlyTogether) {
+        this.onFlyTogether(world);
+      }
       return;
     }
     if (this.screen === 'courses') {
@@ -18912,6 +19059,15 @@ export class Ui {
     }
   }
 
+  /* The room the pilot is in, for the pause menu's rows: { code, name, n,
+   * host, race }, or null out of one. */
+  setRoomInfo(info) {
+    this.roomInfo = info || null;
+    if (this.screen === 'paused') {
+      this.renderMenu();
+    }
+  }
+
   flown() {
     /* Before the early return: this is the one place every door to the air
      * passes through once per launch, and a pilot who has flown before is
@@ -19154,6 +19310,21 @@ export class Ui {
      * pause belong to the career, which main.js routes (onCareer). */
     if (typeof action === 'string' && action.startsWith('career') && this.onCareer) {
       this.onCareer(action);
+      return;
+    }
+    /* A room's pause rows belong to the room (src/net/together.js). Quit to
+     * title from a room leaves the room and then quits as Quit does. */
+    if (typeof action === 'string' && action.startsWith('room-')) {
+      if (action === 'room-title') {
+        if (this.onRoom) {
+          this.onRoom('room-quit');
+        }
+        this.act('title');
+        return;
+      }
+      if (this.onRoom) {
+        this.onRoom(action);
+      }
       return;
     }
     /* The track builder is a separate page, so this is a navigation rather

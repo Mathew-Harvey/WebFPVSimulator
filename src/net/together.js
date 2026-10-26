@@ -1797,9 +1797,9 @@ export function createTogether(shell) {
     if (life) {
       clearTimeout(life.timer);
     }
-    const me = { pic, av: cleanAvatar(av), base: cleanAvatar(av), expr, size, shut: false, open: false, timer: 0 };
+    const me = { pic, av: cleanAvatar(av), base: cleanAvatar(av), expr, said: expr, size, shut: false, open: false, timer: 0 };
     life = me;
-    me.paint = () => paintAvatar(pic, me.av, { crop: 'card', size, expr, shut: me.shut, open: me.open });
+    me.paint = () => paintAvatar(pic, me.av, { crop: 'card', size, expr: me.expr, shut: me.shut, open: me.open });
     if (stillPlease()) {
       return me;
     }
@@ -1809,9 +1809,9 @@ export function createTogether(shell) {
     }
     const blinks = () => {
       const twice = Math.random() < 0.22;
-      steps.push([false, false, 2400 + Math.random() * 2800], [false, expr !== 'laugh', 105]);
+      steps.push([false, false, 2400 + Math.random() * 2800], [false, me.expr !== 'laugh', 105]);
       if (twice) {
-        steps.push([false, false, 130], [false, expr !== 'laugh', 95]);
+        steps.push([false, false, 130], [false, me.expr !== 'laugh', 95]);
       }
     };
     const next = () => {
@@ -1892,6 +1892,10 @@ export function createTogether(shell) {
     let expr = 'hello';
     let line = EXPR_LINES.hello;
     let popNext = false;
+    /* The card is dealt onto the page once, when the editor opens, and the
+     * panel slides in when its tab changes, not on every pick. */
+    let dealt = false;
+    let shownTab = '';
     let reactAt = 0;
     const was = cleanAvatar(store.avatar);
     const history = [];
@@ -1948,6 +1952,19 @@ export function createTogether(shell) {
         if (life && life.pic.isConnected) {
           life.av = next ? cleanAvatar(next) : life.base;
           life.paint();
+        }
+      };
+      /* A face looked at is worn by the card until the pointer leaves it,
+       * the same as a part, and its name is on the card's corner. */
+      const lookFace = (e) => {
+        if (life && life.pic.isConnected) {
+          life.expr = e || life.said;
+          life.paint();
+          const held = life.pic.closest('.av-card');
+          const name = held && held.querySelector('.av-card-face');
+          const say = held && held.querySelector('.av-say');
+          if (name) name.textContent = FACE_NAMES[life.expr] || '';
+          if (say) say.textContent = e ? EXPR_LINES[e] : line;
         }
       };
       const peek = (next, click) => ({
@@ -2020,6 +2037,12 @@ export function createTogether(shell) {
       const pop = popNext;
       popNext = false;
       const card = pilotCard(av, { expr, name: nameIn, line, pop, size: 236 });
+      if (!dealt) {
+        card.classList.add('is-dealt');
+        dealt = true;
+      }
+      const freshTab = shownTab !== tab;
+      shownTab = tab;
       /* The prompts along the foot, as a console game prints them, for the
        * hands in use; a touch or a mouse gets the reassurance instead. */
       const by = hands();
@@ -2041,15 +2064,22 @@ export function createTogether(shell) {
               tool('reroll', 'Random', reroll),
               tool('undo', 'Undo', undo, !history.length),
               tool('reset', 'Reset', reset, JSON.stringify(av) === JSON.stringify(was))),
+            h('div.cr-faces-lab', { 'aria-hidden': 'true', text: 'Try a face' }),
             h('div.cr-faces', { role: 'group', 'aria-label': 'Try a face' }, EXPRESSIONS.map((e) => h('button', {
               type: 'button', 'aria-pressed': String(expr === e), 'data-k': `ex-${e}`, title: FACE_NAMES[e], 'aria-label': FACE_NAMES[e],
-              on: { click: () => { expr = e; line = EXPR_LINES[e]; refresh('editor'); } },
-            }, face(av, e, 40))))),
+              on: {
+                click: () => { expr = e; line = EXPR_LINES[e]; refresh('editor'); },
+                pointerenter: (ev) => { if (ev.pointerType === 'mouse') lookFace(e); },
+                pointerleave: () => lookFace(null),
+                focus: () => lookFace(e),
+                blur: () => lookFace(null),
+              },
+            }, avatarCanvas(av, { crop: 'mug', size: 50, expr: e }))))),
           h('div.cr-right', null,
             h('div.cr-tabs', { role: 'tablist' }, EDITOR_TABS.map((t) => h('button', {
               type: 'button', role: 'tab', 'aria-selected': String(t === tab), 'data-k': `tab-${t}`, 'data-autofocus': t === tab ? true : null, on: { click: () => { tab = t; refresh('editor'); } },
             }, tabIcon(t), h('span', { text: t })))),
-            h('div.cr-panel', { role: 'tabpanel', 'aria-label': tab }, ...panel),
+            h(`div.cr-panel${freshTab ? '.is-new' : ''}`, { role: 'tabpanel', 'aria-label': tab }, ...panel),
             session && session.inRoom ? h('p.help', { text: 'The room sees your new look when you press Done.' }) : null)),
         h('div.cr-foot', null,
           h('div.cr-keys', { 'aria-hidden': by === 'touch' ? null : 'true' }, ...hint),

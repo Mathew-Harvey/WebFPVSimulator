@@ -2656,11 +2656,15 @@
         transform: translateX(-50%);
       }
       .gp-portrait canvas { display: block; width: 100% !important; height: 100% !important; }
+      /* A pilot's own face stands right of centre and high, so the caption
+         along the foot covers their shoulders and never their mouth; their
+         name hangs on the left like a tag. */
+      .gp-portrait:not(.is-new) { left: 64%; top: 2%; bottom: auto; height: 88%; }
       .gp-portrait.is-new { height: 78%; bottom: 12%; }
       .gp-portrait .gp-svg { width: 100%; height: 100%; }
       .gp-pilot-bub { right: 4%; top: 6%; width: 48%; max-width: 180px; }
       .gp-plate {
-        position: absolute; right: 8px; top: 10px;
+        position: absolute; left: 12px; top: 38%;
         padding: 3px 12px;
         background: var(--gp-livery, var(--mint));
         border: 3px solid var(--gc-ink);
@@ -2668,7 +2672,7 @@
         color: var(--gc-ink);
         font-size: 14px; font-weight: 900; font-style: italic;
         transform: skewX(-8deg);
-        max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        max-width: 44%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       }
       /* A kicker in the panel's top corner, the way a magazine flags a
          story. The chosen panel's turns sakura. */

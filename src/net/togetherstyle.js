@@ -325,6 +325,13 @@ export const TOGETHER_CSS = `
   background: radial-gradient(circle at 1px 1px, rgba(11, 17, 22, 0.16) 1px, transparent 1.4px) 0 0 / 5px 5px;
 }
 #tg .av-card.is-pop { animation: av-pop 0.42s cubic-bezier(0.3, 1.7, 0.5, 1); }
+/* Dealt: the card spins in face down and turns over, as a card game deals. */
+#tg .av-card.is-dealt { animation: av-deal 0.62s cubic-bezier(0.2, 1.1, 0.4, 1) both; }
+@keyframes av-deal {
+  0% { transform: perspective(900px) translate(-40px, 30px) rotate(-14deg) rotateY(88deg); opacity: 0; }
+  55% { transform: perspective(900px) translate(4px, -4px) rotate(1deg) rotateY(-8deg); opacity: 1; }
+  100% { transform: perspective(900px) rotate(-1.2deg) rotateY(0deg); }
+}
 @keyframes av-pop {
   0% { transform: rotate(-1.2deg) scale(1); }
   35% { transform: rotate(-2.6deg) scale(1.045); }
@@ -378,9 +385,9 @@ export const TOGETHER_CSS = `
   100% { transform: scale(0.6) rotate(20deg); opacity: 0; }
 }
 #tg .av-say {
-  position: absolute; right: 8px; top: 10px; max-width: 64%; padding: 7px 13px; background: #fff; color: var(--ink);
+  position: absolute; right: 8px; top: 10px; max-width: 70%; padding: 0.45em 0.85em; background: #fff; color: var(--ink);
   border: 3px solid var(--ink); border-radius: 50% / 46%; text-align: center; z-index: 2;
-  font: 900 italic clamp(13px, 1.2vw, 16px)/1.15 var(--ui);
+  font: 900 italic clamp(11px, 6.4cqw, 16px)/1.15 var(--ui);
 }
 #tg .av-card.is-pop .av-say { animation: av-say 0.3s cubic-bezier(0.3, 1.6, 0.5, 1); }
 @keyframes av-say { from { transform: scale(0.6); } to { transform: scale(1); } }
@@ -392,9 +399,9 @@ export const TOGETHER_CSS = `
   content: ""; position: absolute; left: calc(16% + 3px); bottom: -9px; width: 12px; height: 11px; background: #fff; z-index: 1;
   clip-path: polygon(0 0, 100% 0, 10% 100%);
 }
-#tg .av-card-foot { position: relative; display: flex; align-items: center; min-height: 50px; padding: 6px 25% 8px 2px; }
+#tg .av-card-foot { position: relative; display: flex; align-items: center; min-height: clamp(34px, 21cqw, 50px); padding: 6px 25% 8px 2px; }
 #tg .av-card-foot b, #tg .av-name {
-  color: var(--ink); font: 900 italic clamp(11px, 8cqw, 26px)/1.05 var(--ui); text-transform: uppercase; overflow-wrap: anywhere;
+  color: var(--ink); font: 900 italic clamp(9px, 8cqw, 26px)/1.05 var(--ui); text-transform: uppercase; overflow-wrap: anywhere;
 }
 #tg .av-name {
   width: 100%; min-width: 0; padding: 4px 6px; border: 0; border-bottom: 3px dashed rgba(11, 17, 22, 0.45);
@@ -403,6 +410,15 @@ export const TOGETHER_CSS = `
 #tg .av-name::placeholder { color: rgba(11, 17, 22, 0.45); }
 #tg .av-name:focus { background: rgba(255, 250, 240, 0.85); border-bottom: 3px solid var(--ink); }
 #tg .av-name.bad { border-bottom: 3px solid var(--red); color: var(--red); }
+/* A card dealt small (a phone held sideways) keeps its face's name and
+ * drops the line it would push off the corner, and its name has the
+ * foot's width. After the card's own rules, which it overrides. */
+@container (max-width: 110px) {
+  #tg .av-card-top > span:first-child { display: none; }
+  #tg .av-card-top { justify-content: flex-end; }
+  #tg .av-card-foot { padding-right: 6%; }
+  #tg .av-name { padding-left: 1px; padding-right: 1px; letter-spacing: -0.02em; }
+}
 #tg .cr-name-help { margin: -4px 0 0; color: var(--red); font: 800 12px/1.3 var(--ui); }
 #tg .cr-name-help[hidden] { display: none; }
 #tg .av-card-quad { position: absolute; right: -6%; bottom: -16px; width: 38%; pointer-events: none; }
@@ -434,7 +450,7 @@ export const TOGETHER_CSS = `
   grid-template-columns: clamp(220px, calc((100vh - 372px) * 0.72), 430px) minmax(0, 1fr); gap: clamp(20px, 2.6vw, 38px);
 }
 #tg .cr-left {
-  --cw: min(100cqw - 16px, (100cqh - 140px) * 0.72);
+  --cw: min(100cqw - 16px, (100cqh - 156px) * 0.72);
   container-type: size; display: flex; flex-direction: column; align-items: flex-start; gap: 11px; min-width: 0; min-height: 0; padding-top: 4px;
 }
 #tg .cr-left .av-card { width: var(--cw); flex: none; }
@@ -460,7 +476,7 @@ export const TOGETHER_CSS = `
   aspect-ratio: 1; padding: 0; overflow: hidden; border: 2.5px solid var(--ink); border-radius: 50%;
   background: var(--white); transition: transform 0.08s;
 }
-#tg .cr-faces button canvas { display: block; width: 100% !important; height: 100% !important; }
+#tg .cr-faces button canvas { display: block; width: 100% !important; height: 100% !important; border: 0; border-radius: 0; }
 #tg .cr-faces button:hover { transform: translateY(-2px); }
 #tg .cr-faces button[aria-pressed="true"] { background: var(--amber); box-shadow: 0 0 0 3px var(--amber), 0 0 0 5.5px var(--ink); }
 #tg .cr-tabs { display: flex; gap: 4px; padding: 0 4px; border-bottom: 4px solid var(--ink); flex: none; }
@@ -475,6 +491,11 @@ export const TOGETHER_CSS = `
 #tg .cr-tabs button[aria-selected="true"] .tab-ico { color: var(--amber); }
 #tg .tab-ico svg { width: 24px; height: 24px; }
 #tg .cr-panel { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 14px 10px 10px 4px; }
+#tg .cr-panel.is-new > * { animation: cr-in 0.24s cubic-bezier(0.2, 1, 0.4, 1) both; }
+#tg .cr-panel.is-new > *:nth-child(2) { animation-delay: 0.04s; }
+#tg .cr-panel.is-new > *:nth-child(3) { animation-delay: 0.08s; }
+@keyframes cr-in { from { transform: translateX(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+#tg .cr-faces-lab { margin: 2px 0 -5px; color: var(--quiet); font: 900 10.5px/1 var(--ui); letter-spacing: 0.16em; text-transform: uppercase; }
 #tg .cr-lab {
   display: flex; align-items: center; gap: 10px; margin: 0 0 9px;
   color: var(--ink); font: 900 12px/1 var(--ui); letter-spacing: 0.16em; text-transform: uppercase;
@@ -535,9 +556,38 @@ export const TOGETHER_CSS = `
 #tg .cr-key span { margin-left: 3px; }
 #tg .cr-keys kbd { min-width: 28px; padding: 4px 7px; border: 2.5px solid var(--ink); border-radius: 0; background: var(--white); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); font: 900 12px/1.2 var(--ui); text-align: center; }
 #tg .cr-keys .note { font-size: 13px; color: var(--quiet); font-weight: 700; text-transform: none; letter-spacing: 0; }
-/* A column too narrow for Random's name keeps its dice. */
-@container (max-width: 210px) {
+/* Tools too narrow for Random's name keep its dice. */
+#tg .cr-tools { container-type: inline-size; }
+@container (max-width: 214px) {
   #tg .cr-tool.cr-reroll > span:not(.tool-ico) { display: none; }
+}
+/* On a laptop or a desktop the faces run down the card's side, the strip
+ * of a pilot's expressions that a manga character sheet draws, so each is
+ * big enough to read at any height. Under the card, eight across, they
+ * were dots on a 1280 by 720 screen. Track sizes are content sized because
+ * the card's width is in the column's own container units, which the
+ * column itself cannot use. */
+@media (min-width: 641px) and (min-height: 521px) and (min-aspect-ratio: 801/1000) {
+  #tg .cr-body { grid-template-columns: clamp(250px, calc((100vh - 300px) * 0.72), 500px) minmax(0, 1fr); }
+  #tg .cr-left {
+    --fs: clamp(28px, (100cqh - 106px) / 8 - 6px, 50px);
+    --cw: min(100cqw - 26px - var(--fs), (100cqh - 64px) * 0.633);
+    display: grid; grid-template-columns: max-content max-content; align-content: start; align-items: start; gap: 11px 10px;
+  }
+  #tg .cr-left .av-card { grid-area: 1 / 1; }
+  #tg .cr-left .cr-faces { grid-area: 1 / 2; align-self: stretch; width: auto; display: flex; flex-direction: column; justify-content: space-between; gap: 4px; }
+  #tg .cr-left .cr-faces button { width: var(--fs); flex: none; }
+  #tg .cr-left .cr-tools, #tg .cr-left .cr-name-help { grid-column: 1 / -1; width: auto; }
+  #tg .cr-left .cr-faces-lab { display: none; }
+}
+/* A short laptop screen draws the face shapes smaller so the face marks
+ * under them are on the page and not below the fold. */
+@media (max-height: 640px) and (min-width: 641px) {
+  #tg .creator .parts.shapes { --most: 92px; }
+  #tg .creator .parts.small { --most: 84px; }
+  #tg .cr-head { margin-bottom: 10px; }
+  #tg .cr-head canvas.lettered { height: 34px !important; width: auto !important; }
+  #tg .cr-panel { gap: 10px; padding-top: 10px; }
 }
 #tg .cr-tabs { overflow-x: auto; scrollbar-width: none; }
 #tg .cr-tabs::-webkit-scrollbar { display: none; }
@@ -546,10 +596,10 @@ export const TOGETHER_CSS = `
  * for the faces, so both go and the card has the height. */
 @media (max-height: 520px) and (min-width: 600px) {
   #tg .creator { padding-top: 8px; padding-bottom: 8px; }
-  #tg .creator .cr-head, #tg .creator .cr-faces { display: none; }
+  #tg .creator .cr-head, #tg .creator .cr-faces, #tg .creator .cr-faces-lab { display: none; }
   #tg .cr-body { grid-template-columns: clamp(140px, calc((100vh - 150px) * 0.62), 260px) minmax(0, 1fr); gap: 18px; }
   #tg .cr-left { --cw: min(100cqw - 16px, (100cqh - 122px) * 0.78); gap: 9px; }
-  #tg .cr-tools { grid-template-columns: minmax(0, 1fr) 38px 38px; }
+  #tg .cr-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   #tg .cr-tool { height: 36px; }
   #tg .creator .parts { --most: 100px; }
   #tg .cr-tabs button { padding: 6px 11px 7px; font-size: 12.5px; }
@@ -558,23 +608,25 @@ export const TOGETHER_CSS = `
   #tg .cr-foot { margin-top: 6px; padding-top: 6px; border-top-width: 3px; }
   #tg .cr-foot .btn { min-height: 0; padding-top: 7px; padding-bottom: 7px; }
 }
-/* A phone held upright: the card small at the top, Random and the faces
- * beside it, and the tabs and their parts below, scrolling. */
-@media (max-width: 640px) {
+/* A phone held upright, or a tablet: the card at the top, Random and the
+ * faces beside it, and the tabs and their parts below, scrolling. A
+ * screen taller than it is wide has no room for the card beside the parts. */
+@media (max-width: 640px), (max-aspect-ratio: 4/5) {
   #tg .creator { padding-left: 12px; padding-right: 12px; }
   #tg .cr-head { margin-bottom: 12px; }
-  #tg .cr-head canvas.lettered { height: 30px; width: auto; }
+  #tg .cr-head canvas.lettered { height: 30px !important; width: auto !important; }
   #tg .cr-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; }
   #tg .cr-left {
-    --cw: min(150px, 40vw); container-type: normal; display: grid; grid-template-columns: calc(var(--cw) + 14px) minmax(0, 1fr);
-    grid-template-rows: auto auto 1fr; gap: 10px 10px; align-items: start;
+    --cw: min(max(150px, 30vw), 40vw, 300px); container-type: normal; display: grid; grid-template-columns: calc(var(--cw) + 14px) minmax(0, 1fr);
+    grid-template-rows: auto auto auto 1fr; gap: 10px 10px; align-items: start;
   }
-  #tg .cr-left .av-card { grid-row: 1 / 4; }
-  #tg .cr-left .cr-tools, #tg .cr-left .cr-faces, #tg .cr-left .cr-name-help { width: auto; grid-column: 2; }
+  #tg .cr-left .av-card { grid-row: 1 / 5; }
+  #tg .cr-left .cr-tools, #tg .cr-left .cr-faces, #tg .cr-left .cr-faces-lab, #tg .cr-left .cr-name-help { width: auto; max-width: 340px; grid-column: 2; }
   #tg .cr-tools { grid-template-columns: 1fr 1fr; }
   #tg .cr-tool.cr-reroll { grid-column: 1 / 3; }
+  #tg .cr-tool.cr-reroll > span:not(.tool-ico) { display: inline; }
   #tg .cr-faces { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-  #tg .av-card-top { font-size: 9px; letter-spacing: 0.1em; }
+  #tg .av-card-top { font-size: clamp(9px, 4.6cqw, 11px); letter-spacing: 0.1em; }
   #tg .cr-tabs { gap: 2px; padding: 0; }
   #tg .cr-tabs button { flex-direction: column; gap: 3px; padding: 6px 8px 6px; font-size: 10.5px; flex: 1 0 auto; }
   #tg .tab-ico svg { width: 20px; height: 20px; }
@@ -583,9 +635,13 @@ export const TOGETHER_CSS = `
   #tg .creator .parts.small { --tile: 62px; }
   #tg .cr-foot { margin-top: 8px; padding-top: 8px; }
   #tg .cr-foot .btn { min-width: 120px; }
+  /* Three rows of key prompts would push the parts off a narrow window,
+   * and the keys are the same keys a wide one prints. */
+  #tg .cr-key { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #tg .av-card-burst, #tg .av-card-fig, #tg .av-card-sheen, #tg .av-card.is-pop, #tg .av-card-spark path, #tg .av-say { animation: none !important; }
+  #tg .av-card-burst, #tg .av-card-fig, #tg .av-card-sheen, #tg .av-card.is-pop, #tg .av-card.is-dealt, #tg .av-card-spark path, #tg .av-say,
+  #tg .cr-panel.is-new > * { animation: none !important; }
   #tg .av-card-spark { display: none; }
 }
 

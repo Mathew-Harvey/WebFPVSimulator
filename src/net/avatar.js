@@ -1411,6 +1411,9 @@ const CROPS = {
   eyes: [0.66, 0.3 + 0.545 - 0.66 * 0.48],
   /* The cheeks, nose and mouth, where a face mark goes. */
   cheek: [0.72, 0.3 + 0.7 - 0.36],
+  /* The eyes and the mouth and nothing over them, for an expression drawn
+   * small enough that a hat would be all of it. */
+  mug: [0.9, 0.3 + 0.66 - 0.45],
 };
 export function paintAvatar(target, raw, { expr = 'calm', open = false, crop = 'bust', size = 64, shut = false } = {}) {
   const dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
@@ -1439,11 +1442,12 @@ export function paintAvatar(target, raw, { expr = 'calm', open = false, crop = '
     const s = share * H;
     g.drawImage(bust, bust.width / 2 - s / 2, top * H, s, s, 0, 0, px, px);
   } else if (crop === 'card') {
-    /* An eighth closer, taken a little more from the shoulders than from
-     * over the hair, so the tallest spikes stay on the card. */
+    /* An eighth closer, taken almost all from the shoulders, so the
+     * tallest spikes and the marks over a head (a gasp's lines, a dizzy
+     * swirl) stay on the card. */
     const sw = bust.width / CARD_ZOOM;
     const sh = bust.height / CARD_ZOOM;
-    g.drawImage(bust, (bust.width - sw) / 2, (bust.height - sh) * 0.32, sw, sh, 0, 0, px, pxTall);
+    g.drawImage(bust, (bust.width - sw) / 2, (bust.height - sh) * 0.14, sw, sh, 0, 0, px, pxTall);
   } else {
     g.drawImage(bust, 0, 0, bust.width, bust.width, 0, 0, px, px);
   }

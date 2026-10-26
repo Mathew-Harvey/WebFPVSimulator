@@ -107,7 +107,7 @@ export class RoomLink {
   constructor({
     url, key, handle = '', avatar = {}, onEvent = () => {}, onPoses = () => {},
     WebSocketImpl = globalThis.WebSocket, now = () => Date.now(),
-    random = Math.random,
+    random = Math.random, connectMs = CONNECT_MS,
   }) {
     this.url = url;
     this.key = key;
@@ -118,6 +118,7 @@ export class RoomLink {
     this.WebSocketImpl = WebSocketImpl;
     this.now = now;
     this.random = random;
+    this.connectMs = connectMs;
     this.ws = null;
     this.state = 'idle';
     this.hello = null;
@@ -227,7 +228,7 @@ export class RoomLink {
       if (this.ws !== ws || this.state === 'in') return;
       this.dropSocket();
       this.closed(1006, 'timed out');
-    }, CONNECT_MS);
+    }, this.connectMs);
   }
 
   /* Forget the socket, closing it if it is still there to close. */
@@ -490,12 +491,8 @@ export class RoomLink {
     return this.sendJson({ t: 'direct', id, on: Boolean(on) });
   }
 
-  /* Stage 6. A ping for the board's clock, and the race's own words:
-   * ready, laps, start, lap, dnf, again and pit. */
-  ping(c) {
-    return this.sendJson({ t: 'ping', c });
-  }
-
+  /* Stage 6. The race's own words: ready, laps, start, lap, dnf, again
+   * and pit, and the ping for the board's clock, which RoomRace sends. */
   raceSend(msg) {
     return this.sendJson(msg);
   }

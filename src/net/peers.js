@@ -65,16 +65,19 @@ export class Peers {
    * link: the RoomLink, for signal, direct and p2p. onPose(id, bytes): a
    * pose that came over a link, the 16 bytes as sent. RTC: the
    * RTCPeerConnection constructor, or null where there is none. now: a
-   * clock for the retries.
+   * clock for the retries. openMs: how long a link has to open, which a
+   * test shortens.
    */
   constructor({
     link, onPose, RTC = globalThis.RTCPeerConnection || null, now = () => Date.now(), log = () => {},
+    openMs = OPEN_MS,
   }) {
     this.link = link;
     this.onPose = onPose;
     this.RTC = RTC;
     this.now = now;
     this.log = log;
+    this.openMs = openMs;
     this.ice = null;
     /* id -> { pc, channel, open, timer, offered } */
     this.links = new Map();
@@ -162,7 +165,7 @@ export class Peers {
       if (this.links.get(id) === l && !l.open) {
         this.fail(id, 'never opened');
       }
-    }, OPEN_MS);
+    }, this.openMs);
     pc.onconnectionstatechange = () => {
       if (this.links.get(id) !== l) return;
       const s = pc.connectionState;

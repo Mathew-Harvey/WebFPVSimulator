@@ -37,7 +37,10 @@ import {
   POSE_ENTRY_BYTES, POSE_UP_BYTES, SCALES, decodeFrame, decodePoseAt, encodePose, poseFlags,
 } from '../src/net/pose.js';
 import { RemotePilot } from '../src/net/remote.js';
-import { PROTOCOL, REFUSALS, ROOM_MAX, STREAM_MAX, roomsUrl } from '../src/net/link.js';
+import {
+  PROTOCOL, REFUSALS, ROOM_MAX, STREAM_MAX, RoomLink, roomsUrl,
+} from '../src/net/link.js';
+import { Peers } from '../src/net/peers.js';
 import { RoomSession } from '../src/net/room.js';
 import {
   CODE_RE, JOIN_TOKEN_MS, addressInRoom, addressOutOfRoom, craftForRoom, isBuiltInWorld, normaliseCode,
@@ -917,6 +920,236 @@ console.log('the room\'s styles and the shell\'s');
     reaching.length ? reaching.slice(0, 6).join(' | ') : `${ours.size} class names`);
   const outside = selectors(roomCss).filter((s) => !s.startsWith('#tg') && !/^(from|to|\d+%)/.test(s));
   check('and no style of the room reaches outside #tg', outside.length === 0, outside.slice(0, 6).join(' | '));
+}
+
+/*
+ * The paths no board run takes on purpose: a socket that neither opens nor
+ * fails, direct links that go wrong in every way WebRTC lets them, a pose
+ * over a direct link, and an attitude that is no attitude.
+ */
+console.log('when things go wrong');
+{
+  /* A connection that hangs, as behind a captive portal. */
+  class Hanging {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 0;
+      Hanging.made += 1;
+    }
+
+    send() {}
+
+    close() { this.readyState = 3; }
+  }
+  Hanging.made = 0;
+  const events = [];
+  const hung = new RoomLink({
+    url: 'ws://hangs.invalid/', key: 'a'.repeat(32), WebSocketImpl: Hanging, connectMs: 40, random: () => 0, onEvent: (n, d) => events.push([n, d]),
+  });
+  hung.join('K7QX2M');
+  await until(() => events.some(([n]) => n === 'retrying'), 2000);
+  const retry = events.find(([n]) => n === 'retrying');
+  check('a socket that neither opens nor fails is given up on and tried again', retry && retry[1].code === 1006
+    && retry[1].reason === 'timed out' && retry[1].tries === 1, JSON.stringify(events));
+  await until(() => Hanging.made >= 2, 2000);
+  check('with the same knock on the door', Hanging.made >= 2 && hung.hello.code === 'K7QX2M');
+  hung.leave();
+  const after = Hanging.made;
+  await wait(400);
+  check('and leaving stops the knocking', Hanging.made === after && hung.state !== 'connecting', `${Hanging.made} ${hung.state}`);
+
+  /* A remote pilot told an attitude of zeros draws level, never NaN. */
+  const flat = new RemotePilot(9);
+  for (let i = 0; i < 6; i += 1) {
+    flat.push({
+      spinning: false, resets: 0, clock: i * 50, px: i, py: 1, pz: 0, qx: 0, qy: 0, qz: 0, qw: 0,
+    }, 1000 + i * 50);
+  }
+  const o = {};
+  let between = 0;
+  let level = 0;
+  for (let t = 1100; t <= 1500; t += 10) {
+    flat.sample(t, o);
+    if (o.px > 0.01 && o.px < 4.99 && Math.abs(o.px - Math.round(o.px)) > 0.01) {
+      between += 1;
+      if (o.qw === 1 && o.qx === 0 && o.qy === 0 && o.qz === 0) level += 1;
+    }
+  }
+  check('an attitude of zeros is drawn level between poses, never as NaN', between > 5 && level === between, `${level} of ${between}`);
+
+  /* Direct links, against a stand in for WebRTC that does what it is told. */
+  class Channel {
+    constructor() {
+      this.readyState = 'connecting';
+      this.bufferedAmount = 0;
+      this.sent = 0;
+      this.breaks = false;
+    }
+
+    send() {
+      if (this.breaks) throw new Error('closing');
+      this.sent += 1;
+    }
+
+    close() { this.readyState = 'closed'; }
+  }
+  class PC {
+    constructor(config) {
+      this.config = config;
+      this.connectionState = 'new';
+      this.iceGatheringState = 'complete';
+      this.localDescription = null;
+      this.closed = false;
+      PC.made.push(this);
+    }
+
+    createDataChannel() {
+      this.channel = new Channel();
+      return this.channel;
+    }
+
+    async createOffer() {
+      if (PC.offerBreaks) throw new Error('no offer');
+      return { type: 'offer', sdp: 'v=0 offer' };
+    }
+
+    async createAnswer() { return { type: 'answer', sdp: 'v=0 answer' }; }
+
+    async setLocalDescription(d) { this.localDescription = d; }
+
+    async setRemoteDescription(d) {
+      if (d.sdp === 'garbled') throw new Error('bad description');
+      this.remote = d;
+    }
+
+    close() { this.closed = true; }
+  }
+  PC.made = [];
+  PC.offerBreaks = false;
+  const said = [];
+  const link = {
+    p2p: (on) => { said.push(['p2p', on]); return true; },
+    direct: (id, on) => said.push(['direct', id, on]),
+    signal: (to, d) => said.push(['signal', to, d.type]),
+  };
+  const heardFrom = [];
+  let clock = 0;
+  const peers = new Peers({
+    link, RTC: PC, now: () => clock, openMs: 60, onPose: (id, bytes) => heardFrom.push([id, bytes.length]),
+  });
+  const settle = () => wait(5);
+  const saidLast = (kind) => [...said].reverse().find((x) => x[0] === kind);
+
+  peers.setIce({ servers: [] }, 2);
+  check('a room with no servers to link through links nobody, and says nothing', !peers.able && said.length === 0);
+  const none = new Peers({ link, RTC: null, onPose: () => {} });
+  none.setIce({ servers: [{ urls: 'stun:x' }] }, 2);
+  check('nor does a page with no WebRTC', !none.able && said.length === 0);
+  peers.setIce({ servers: [{ urls: 'turn:x' }], relay: true }, 2);
+  check('a room with servers says this page can link, once', peers.able && said.length === 1 && said[0][1] === true);
+  peers.setIce({ servers: [{ urls: 'turn:x' }], relay: true }, 2);
+  check('and does not say it twice', said.length === 1);
+
+  peers.want([1, 3]);
+  await settle();
+  check('the lower id offers: this page offers to 3 and waits for 1', PC.made.length === 1 && peers.links.has(3) && !peers.links.has(1));
+  check('through the relay alone when the room hides addresses', PC.made[0].config.iceTransportPolicy === 'relay');
+  check('the offer goes to the board for 3', JSON.stringify(saidLast('signal')) === '["signal",3,"offer"]');
+  const to3 = peers.links.get(3);
+  to3.channel.readyState = 'open';
+  to3.channel.onopen();
+  check('an open channel tells the board the link is up', JSON.stringify(saidLast('direct')) === '["direct",3,true]'
+    && peers.isDirect(3) && peers.openCount() === 1);
+  check('a pose goes down every open link', peers.send(new Uint8Array(16)) === 1 && to3.channel.sent === 1);
+  to3.channel.bufferedAmount = 1 << 20;
+  check('but not down one that is behind', peers.send(new Uint8Array(16)) === 0);
+  to3.channel.bufferedAmount = 0;
+  to3.channel.breaks = true;
+  check('and a channel that throws as it closes is skipped, not a crash', peers.send(new Uint8Array(16)) === 0);
+  to3.channel.breaks = false;
+  to3.channel.onmessage({ data: new Uint8Array(16).buffer });
+  to3.channel.onmessage({ data: 'text' });
+  check('a pose that arrives is handed on with who sent it, and text is not a pose', heardFrom.length === 1 && heardFrom[0][0] === 3 && heardFrom[0][1] === 16);
+
+  to3.channel.onclose();
+  check('a channel that closes puts the pair back on the relay', JSON.stringify(saidLast('direct')) === '["direct",3,false]'
+    && !peers.isDirect(3) && !peers.links.has(3) && to3.pc.closed);
+  peers.tick();
+  await settle();
+  check('and is not tried again at once', PC.made.length === 1);
+  clock += 16000;
+  peers.tick();
+  await settle();
+  check('but is after fifteen seconds', PC.made.length === 2 && peers.links.has(3));
+
+  const again = peers.links.get(3);
+  again.pc.connectionState = 'failed';
+  again.pc.onconnectionstatechange();
+  check('a connection that fails is dropped and cooled', !peers.links.has(3) && peers.cooldown.get(3) > clock);
+  clock += 16000;
+  peers.tick();
+  await settle();
+  const slow = peers.links.get(3);
+  await wait(120);
+  check('a link that never opens is given up on', !peers.links.has(3) && slow.pc.closed, String(peers.links.has(3)));
+
+  clock += 16000;
+  PC.offerBreaks = true;
+  const before = said.filter((x) => x[0] === 'signal').length;
+  peers.tick();
+  await settle();
+  check('an offer WebRTC cannot make is a failure, with nothing sent', !peers.links.has(3)
+    && said.filter((x) => x[0] === 'signal').length === before && peers.cooldown.get(3) > clock);
+  PC.offerBreaks = false;
+
+  await peers.signal(1, { type: 'offer', sdp: 'v=0 from 1' });
+  check('an offer from the lower id is answered', peers.links.has(1) && JSON.stringify(saidLast('signal')) === '["signal",1,"answer"]');
+  const first = peers.links.get(1);
+  first.pc.ondatachannel({ channel: new Channel() });
+  check('and the channel it opens is this page\'s link to 1', first.channel && first.channel.binaryType === 'arraybuffer');
+  await peers.signal(1, { type: 'offer', sdp: 'v=0 from 1 again' });
+  check('a fresh offer from the same pilot replaces the old link', peers.links.get(1) !== first && first.pc.closed);
+  await peers.signal(1, { type: 'offer', sdp: 'garbled' });
+  check('an offer that cannot be read is a failure', !peers.links.has(1) && peers.cooldown.has(1));
+  clock += 16000;
+  peers.want([4]);
+  await settle();
+  const to4 = peers.links.get(4);
+  peers.want([6]);
+  await settle();
+  check('a pilot taken off the list loses their link', to4 && !peers.links.has(4) && to4.pc.closed && peers.links.has(6));
+  await peers.signal(6, { type: 'answer', sdp: 'garbled' });
+  check('an answer that cannot be read is a failure', !peers.links.has(6) && peers.cooldown.has(6));
+  const count = PC.made.length;
+  await peers.signal(7, { type: 'answer', sdp: 'v=0' });
+  await peers.signal(7, { type: 'pranswer', sdp: 'v=0' });
+  await peers.signal(7, { type: 'offer', sdp: 5 });
+  await peers.signal(7, null);
+  check('an answer nobody asked for, and anything that is not an offer or an answer, is ignored', PC.made.length === count && !peers.links.has(7));
+
+  peers.want([5]);
+  await settle();
+  const to5 = peers.links.get(5);
+  peers.reset();
+  check('a fresh room closes every link and forgets every wait', peers.links.size === 0 && peers.cooldown.size === 0 && to5.pc.closed);
+  peers.setIce(null, 2);
+  check('a room that stops allowing links says so', JSON.stringify(said[said.length - 1]) === '["p2p",false]' || !peers.announced);
+
+  /* A pose over a direct link reaches the room's remote pilots. */
+  const s = new RoomSession({
+    url: 'ws://never.invalid/', key: 'b'.repeat(32), handle: 'Skittles', WebSocketImpl: Hanging, RTC: null, now: () => 5000,
+  });
+  s.link.pilots.set(7, { id: 7, handle: 'Heads' });
+  const up = encodePose(new Uint8Array(POSE_UP_BYTES), s.units, 100, poseFlags(true, 0), 3, 2, 1, 0, 0, 0, 1);
+  s.peerPose(7, up);
+  check('a pose over a direct link makes a remote pilot of whoever sent it', s.remotes.has(7) && s.peerPoses === 1);
+  s.peerPose(8, up);
+  s.peerPose(7, up.subarray(0, 12));
+  const wrongKind = Uint8Array.from(up);
+  wrongKind[0] = 9;
+  s.peerPose(7, wrongKind);
+  check('one from somebody not in the room, cut short or of another kind is dropped', !s.remotes.has(8) && s.peerPoses === 1);
+  s.link.leave();
 }
 
 console.log('the board and this client agree');

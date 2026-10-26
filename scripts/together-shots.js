@@ -178,6 +178,35 @@ async function joinRoom(b, code, invite) {
   return until(() => b.s.inRoom, 5000);
 }
 
+/*
+ * The shell's instruments a room's own panels must keep off: the clock,
+ * the score, the music, Report bug and Pause. Returns the ones the panels
+ * named by `sel` sit on, '' when none, with the boxes for the log.
+ */
+const CLEAR_OF = ['.osd-clock', '.music-dock', '.score-total', '.bug-chip'];
+function overlaps(page, sel) {
+  return page.evaluate(`(() => {
+    const box = (e) => {
+      const r = e.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden' && getComputedStyle(e).opacity !== '0' ? r : null;
+    };
+    const mine = [...document.querySelectorAll(${JSON.stringify(sel)})].map(box).filter(Boolean);
+    const out = [];
+    for (const s of ${JSON.stringify(CLEAR_OF)}) {
+      for (const e of document.querySelectorAll(s)) {
+        const r = box(e);
+        if (!r) continue;
+        for (const m of mine) {
+          if (m.left < r.right && r.left < m.right && m.top < r.bottom && r.top < m.bottom) {
+            out.push(s + ' ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join(',') + ' under ' + [m.left, m.top, m.right, m.bottom].map(Math.round).join(','));
+          }
+        }
+      }
+    }
+    return out.join('; ');
+  })()`);
+}
+
 /* The pilot's name and settings, through the doors a pilot uses. */
 function seedFor({ map = 'bardwell', airframe = '5inch', name = 'Shell Pilot', met = false }) {
   return `try {
@@ -315,6 +344,8 @@ async function sceneHost() {
     check('flying, with the room in the address bar', addr.includes(`room=${st.code}`) && !addr.includes('i='), addr);
     await wait(500);
     await shot('flying-chip');
+    const chipOn = await overlaps(page, '#tg .roomchip');
+    check('the room chip covers none of the shell\'s instruments', !chipOn, chipOn);
 
     for (const b of bots) {
       await joinRoom(b, st.code, '');
@@ -652,6 +683,8 @@ async function sceneRace() {
     await wait(800);
     await shot('standings');
     check('the standings show while racing', await page.evaluate("!document.querySelector('#tg .standings').hidden"));
+    const raceOn = await overlaps(page, '#tg .roomchip, #tg .standings');
+    check('the chip and the standings cover none of the shell\'s instruments', !raceOn, raceOn);
     await wait(1400);
     bots[0].s.link.raceSend({ t: 'lap', n: 2, ms: 1600 });
     bots[1].s.link.raceSend({ t: 'lap', n: 2, ms: 1650 });

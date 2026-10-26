@@ -312,11 +312,15 @@ export const TOGETHER_CSS = `
 }
 #tg .plate > * { transform: skewX(8deg); }
 
-/* In flight: the room chip, banners, the dialogue */
+/* In flight: the room chip, banners, the dialogue. The room keeps to the
+ * right hand column, under the shell's Report bug and Pause: the chip, and
+ * under it the pilots, the pit and the standings. The top centre is the
+ * shell's clock and the top left its music and score, and a chip at the
+ * top centre sat on the lap time. */
 #tg .roomchip {
-  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  position: absolute; right: 14px; top: 92px; display: flex; align-items: center; gap: 8px;
   padding: 4px 10px 4px 4px; background: var(--paper); color: var(--ink); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
-  max-width: min(520px, 60vw);
+  max-width: min(360px, 40vw);
 }
 #tg .roomchip b { font-style: italic; font-size: 14px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #tg .roomchip small { display: block; font-size: 11px; font-weight: 800; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -396,7 +400,7 @@ export const TOGETHER_CSS = `
 
 /* The pilots list, a glance */
 #tg .roster {
-  position: absolute; right: 14px; top: 96px; width: min(360px, 40vw); max-height: calc(100% - 170px); overflow: auto; padding: 12px;
+  position: absolute; right: 14px; top: 154px; width: min(360px, 40vw); max-height: calc(100% - 228px); overflow: auto; padding: 12px;
   background: var(--paper); border: 4px solid var(--ink); box-shadow: 8px 8px 0 var(--ink); color: var(--ink);
 }
 #tg .roster h5 { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
@@ -440,7 +444,7 @@ export const TOGETHER_CSS = `
 
 /* Racing */
 /* The right hand panels sit under the flight's own Pause button, never on it. */
-#tg .pit { position: absolute; right: 14px; top: 96px; width: min(400px, 44vw); padding: 14px; color: var(--ink); pointer-events: auto; max-height: calc(100% - 200px); overflow: auto; }
+#tg .pit { position: absolute; right: 14px; top: 154px; width: min(400px, 44vw); padding: 14px; color: var(--ink); pointer-events: auto; max-height: calc(100% - 258px); overflow: auto; }
 #tg .pit .pilot { grid-template-columns: 38px 1fr auto; }
 #tg .hanko {
   display: inline-grid; place-items: center; width: 50px; height: 50px; border-radius: 50%; border: 3px solid var(--red);
@@ -460,7 +464,7 @@ export const TOGETHER_CSS = `
 #tg .pos .big { font: 900 italic 50px/0.9 var(--ui); color: var(--amber); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
 #tg .pos .big small { font-size: 22px; }
 #tg .split { padding: 4px 10px; border: 3px solid var(--ink); font: 900 15px var(--ui); color: var(--ink); background: var(--mint); width: max-content; }
-#tg .standings { position: absolute; right: 14px; top: 96px; width: min(260px, 30vw); display: grid; gap: 4px; }
+#tg .standings { position: absolute; right: 14px; top: 154px; width: min(260px, 30vw); display: grid; gap: 4px; }
 #tg .standings .r {
   display: grid; grid-template-columns: 22px 28px 1fr auto; align-items: center; gap: 6px; padding: 3px 8px 3px 4px;
   background: rgba(247,240,220,.92); border: 2.5px solid var(--ink); color: var(--ink); font-weight: 900; font-size: 13px;

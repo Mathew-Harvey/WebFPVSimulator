@@ -61,7 +61,7 @@ import { ROOM_MAX, STREAM_MAX, roomsUrl } from './link.js';
 import { RoomRace, RACE_LAPS_MAX } from './roomrace.js';
 import { TOGETHER_CSS } from './togetherstyle.js';
 import {
-  CODE_RE, addressInRoom, addressOutOfRoom, isBuiltInWorld, normaliseCode, readRoomAddress,
+  CODE_RE, addressInRoom, addressOutOfRoom, craftForRoom, isBuiltInWorld, normaliseCode, readRoomAddress,
   roomUrl, takeJoinToken, writeJoinToken,
 } from './roomlinks.js';
 import {
@@ -912,6 +912,15 @@ export function createTogether(shell) {
     return Boolean(r && w && shell.ready() && w.map === r.map);
   }
 
+  /* A room that flies whoops is flown on a whoop, and a five inch room on
+   * a five inch: the aircraft its link names (craftForRoom). A pilot on
+   * the other one goes to it the way they would go to another map, by its
+   * link, because a five inch among whoops is a different race and is
+   * drawn to the others as one of theirs. */
+  function sameCraft(r) {
+    return Boolean(r) && shell.whoop() === (craftForRoom(r) === 'whoop65');
+  }
+
   function writeAddress() {
     const r = room();
     const w = shell.world();
@@ -1110,7 +1119,7 @@ export function createTogether(shell) {
       return;
     }
     leaveFirst(`Joining ${r.name} takes you out of this room. The others carry on without you.`, () => gate(() => {
-      if (!sameWorld(r)) {
+      if (!sameWorld(r) || !sameCraft(r)) {
         travel(r, invite);
         return;
       }
@@ -2168,7 +2177,7 @@ export function createTogether(shell) {
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--ink)', fontWeight: '700', flexWrap: 'wrap' } },
         "You'll fly as", face(store.avatar, 'hello', 40), madeUp ? h('span', { text: r.streamVia && VIA_NAMES[r.streamVia] ? `a made up name, or your ${VIA_NAMES[r.streamVia]} name once you are in` : 'a made up name, chosen by the room' }) : h('b', { text: readPilotName() || 'a made up name' }),
         h('button.link', { type: 'button', 'data-k': 'change', on: { click: () => sheetEditor(() => refresh('join')) } }, 'Change look')),
-      ofWorld ? null : h('p.help', { text: `Joining loads ${r.mapName}.` }),
+      ofWorld && sameCraft(r) ? null : h('p.help', { text: ofWorld ? `This room flies ${craftForRoom(r) === 'whoop65' ? 'whoops' : 'five inch quads'}, so joining swaps your quad.` : `Joining loads ${r.mapName}.` }),
       h('div.btnrow', null,
         btn('Join', '', () => joinNow(r, invite), { 'data-autofocus': true, 'data-k': 'join' }),
         btn('Fly solo instead', 'ghost', () => { writeAddressOut(); closeAll(); }, { 'data-k': 'solo' })))));

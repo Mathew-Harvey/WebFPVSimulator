@@ -81,6 +81,7 @@ import { RoomSession } from '../src/net/room.js';
 import { roomUrl } from '../src/net/roomlinks.js';
 import { rollAvatar } from '../src/net/avatar.js';
 import { QUICK } from '../src/net/together.js';
+import { starterMap } from '../src/maps/built/starter.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const opts = {
@@ -2433,6 +2434,219 @@ window.webfpvDesktop = { steam: { keyboard: async (o) => { window.__kbAsked.push
   }
 }
 
+/* ------------------------------------------------------------------ */
+
+/*
+ * A freestyle map and a race track on the scene's board, published the way
+ * the builders publish them, so a room can fly the board's own worlds and
+ * its card can show their pictures. The board's file outlives a board, so
+ * a world already there is left as it is.
+ */
+const BOARD_MAP = { id: 'trk-5eed2001', name: 'Shots yard' };
+const BOARD_TRACK = { id: 'trk-0dd5a001', name: 'Shots loop' };
+async function publishWorlds() {
+  const gates = [0, 1, 2].map((i) => ({
+    id: `el-${i + 1}`,
+    type: 'gate',
+    name: `Gate ${i + 1}`,
+    position: { x: 5 + (i * 4), y: 8 + (i * 3), z: 0 },
+    yaw: 0,
+    pitch: 0,
+    yawOverridden: false,
+    dims: {
+      clearW: 1.524, clearH: 1.524, sillH: 0, levels: 1,
+    },
+  }));
+  const track = {
+    schemaVersion: 1,
+    id: BOARD_TRACK.id,
+    name: BOARD_TRACK.name,
+    createdUtc: '2026-01-01T00:00:00Z',
+    modifiedUtc: '2026-01-01T00:00:00Z',
+    field: { width: 60, depth: 40, gridSize: 1 },
+    settings: { tangentScale: 0.4, minCurveRadius: 2, samplesPerSegment: 24 },
+    branding: { logo: null, logoName: '' },
+    elements: gates,
+    sequence: gates.map((g, i) => ({ id: `sq-${i + 1}`, elementId: g.id })),
+  };
+  const worlds = [
+    ['tracks', BOARD_TRACK.id, { author: 'Shots', document: track }],
+    ['maps', BOARD_MAP.id, { author: 'Shots', document: { ...starterMap(), ...BOARD_MAP }, plan: null }],
+  ];
+  for (const [kind, id, body] of worlds) {
+    if ((await fetch(`${boardOrigin}/api/${kind}/${id}`)).ok) continue;
+    const res = await fetch(`${boardOrigin}/api/${kind}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(`publishing ${id}: ${await res.text()}`);
+  }
+}
+
+const ROOM_CRAFT_GROUPS = "(() => { let n = 0; window.__mapScene().traverse((o) => { if (o.name === 'room-craft') n += 1; }); return n; })()";
+
+/* Into a room by its code, from the shelf's code box. */
+async function joinByCode(page, code) {
+  await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+  await sheetIs(page, 'lobby');
+  await page.evaluate(`(() => { const i = document.querySelector('#tg-code'); i.value = ${JSON.stringify(code)}; i.dispatchEvent(new Event('input')); return 1; })()`);
+  await pressKey(page, 'code-go');
+}
+
+/* A pilot in Node hovering beside whoever else is in its room, so the
+ * page has somebody to draw. */
+function hoverNear(b) {
+  return setInterval(() => {
+    let c = null;
+    b.s.eachRemote((id, pose) => { c = c || pose; });
+    if (c) b.s.uplink(c.px + 2, c.py + 0.8, c.pz + 2, 0, 0, 0, 1, true, 0);
+  }, 1000 / 30);
+}
+
+async function leaveRoom(page) {
+  await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-leave'); return 1; })()");
+  await sheetIs(page, 'confirm');
+  await pressKey(page, 'yes');
+  await page.until(`${T} && !window.__together().inRoom`, 5000);
+  await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+}
+
+/* What the shelf says and shows: an empty shelf on each tab, the counts,
+ * the board's own worlds with their pictures, a full room, the shelf
+ * finding a new room by itself, the board gone and back, and the room's
+ * own aircraft when a room on this map flies another. */
+async function sceneShelf() {
+  console.log('\nshelf: the Rooms shelf, empty, full, offline, and the room\'s aircraft');
+  await publishWorlds();
+  const page = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`, seedFor({ met: true, name: 'Shelf Pilot' }));
+  const shot = shooter(page, 'shelf');
+  let bots = [];
+  try {
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'lobby');
+    check('an empty shelf says nobody is hosting, and how to', await page.until(SEES('No listed freestyle rooms right now'), 10000).then(() => true, () => false));
+    await wait(400);
+    await shot('empty');
+    await pressKey(page, 'way-whoop');
+    check('and says it of the tab it is on', await page.until(SEES('No listed whoop rooms right now'), 10000).then(() => true, () => false)
+      && await page.evaluate("document.querySelector('#tg [data-k=\"way-whoop\"]').getAttribute('aria-selected') === 'true'"));
+    bots = [bot('Yard Hand', 401), bot('Loop Racer', 409), bot('Two Up', 419), bot('Fourth Wheel', 421), bot('Late Comer', 431)];
+    const onMap = await hostRoom(bots[0], {
+      name: 'Board yard jam', way: 'freestyle', map: BOARD_MAP.id, mapName: BOARD_MAP.name, scale: 50, listed: true,
+    });
+    const onTrack = await hostRoom(bots[1], {
+      name: 'Loop night', way: '5inch', map: BOARD_TRACK.id, mapName: BOARD_TRACK.name, scale: 50, listed: true,
+    });
+    const full = await hostRoom(bots[2], {
+      name: 'Just two', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, listed: true, max: 2,
+    });
+    await joinRoom(bots[3], full.code, '');
+    await pressKey(page, 'way-freestyle');
+    await page.until(`document.querySelector('#tg [data-k="room-${full.code}"]') !== null`, 10000);
+    await wait(500);
+    await shot('cards');
+    const pic = (code) => page.evaluate(`(() => { const p = document.querySelector('#tg [data-k="room-${code}"] .pic'); return p ? p.style.backgroundImage : ''; })()`);
+    const mapPic = await pic(onMap.code);
+    check('a room on a board map shows the map\'s picture from the board', mapPic.includes(`${boardOrigin}/api/maps/${BOARD_MAP.id}/thumb`), mapPic);
+    const kicker = await page.evaluate("document.querySelector('#tg .page-head .kicker').textContent");
+    check('the shelf counts the tab\'s listed rooms and who is in them', kicker.includes('2 open · 3 flying'), kicker);
+    check('a full room says so on its card', (await page.evaluate(`document.querySelector('#tg [data-k="room-${full.code}"] .count').textContent`)) === 'Full');
+    await pressKey(page, `room-${full.code}`);
+    await sheetIs(page, 'cant');
+    check('and its card says why it cannot be joined, with the count', await page.evaluate(SEES('is full: 2 of 2')));
+    await wait(300);
+    await shot('full');
+    await pressKey(page, 'lobby');
+    check('Back to rooms is the shelf again', await sheetIs(page, 'lobby').then(() => true, () => false)
+      && await page.until(`document.querySelector('#tg [data-k="room-${full.code}"]') !== null`, 10000).then(() => true, () => false));
+    check('and nothing joined', !(await state(page)).inRoom);
+    await pressKey(page, 'way-5inch');
+    await page.until(`document.querySelector('#tg [data-k="room-${onTrack.code}"]') !== null`, 10000);
+    const trackPic = await pic(onTrack.code);
+    check('a race room on a board track shows the track\'s picture from the board', trackPic.includes(`${boardOrigin}/api/tracks/${BOARD_TRACK.id}/thumb`), trackPic);
+    /* Left open, the shelf asks the board again by itself. */
+    const later = await hostRoom(bots[4], {
+      name: 'Turned up', way: '5inch', map: 'bardwell', mapName: "Bardwell's house", scale: 50, listed: true,
+    });
+    const found = await page.until(`document.querySelector('#tg [data-k="room-${later.code}"]') !== null`, 20000).then(() => true, () => false);
+    check('a room listed while the shelf is open appears on it without a press', found);
+    for (const b of bots) b.s.leave();
+    bots = [];
+    await killBoard();
+    await pressKey(page, 'way-freestyle');
+    check('the board gone, the shelf says rooms need the internet and the flight is fine', await page.until(SEES('Rooms need the internet'), 10000).then(() => true, () => false));
+    await wait(300);
+    await shot('offline');
+    await freshBoard();
+    await pressKey(page, 'retry');
+    check('and Try again, once it is back, is the shelf again', await page.until(SEES('No listed freestyle rooms right now'), 10000).then(() => true, () => false)
+      && !(await page.evaluate(SEES('Rooms need the internet'))));
+    await pressKey(page, 'back');
+    await page.until(`${T} && window.__together().sheet === ''`, 5000).catch(() => {});
+
+    /* The room's own aircraft. A room on this map is joined where the
+     * pilot is, but a room that flies whoops is flown on a whoop: the
+     * page goes to it the way it goes to another map. And the other
+     * pilots' craft are built again, once, for a room of another size. */
+    bots = [bot('Same Map', 433), bot('Big Crowd', 439), bot('Tiny Quad', 443)];
+    const near = await hostRoom(bots[0], {
+      name: 'Pines by code', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+    });
+    await page.evaluate("(() => { window.__notReloaded = true; return 1; })()");
+    await joinByCode(page, near.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    let hover = hoverNear(bots[0]);
+    const first = await page.until('window.__roomCraft() && window.__roomCraft().size === 30 && window.__roomCraft().drawn === 1', 10000).then(() => true, () => false);
+    clearInterval(hover);
+    check('a room on this map, on this aircraft, is joined where the pilot is', first && await page.evaluate('window.__notReloaded === true'), JSON.stringify(await page.evaluate('window.__roomCraft()')));
+    await leaveRoom(page);
+    const crowd = await hostRoom(bots[1], {
+      name: 'Big crowd', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, streamer: true,
+    });
+    await joinByCode(page, crowd.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    hover = hoverNear(bots[1]);
+    const rebuilt = await page.until('window.__roomCraft() && window.__roomCraft().size === 64 && window.__roomCraft().drawn === 1', 10000).then(() => true, () => false);
+    clearInterval(hover);
+    const groups = await page.evaluate(ROOM_CRAFT_GROUPS);
+    check('a streamer room builds the others\' craft again for 64, and the old ones are gone', rebuilt && groups === 1, `${JSON.stringify(await page.evaluate('window.__roomCraft()'))}, ${groups} in the scene`);
+    check('still without a reload', await page.evaluate('window.__notReloaded === true'));
+    await leaveRoom(page);
+    const tiny = await hostRoom(bots[2], {
+      name: 'Tiny quads', way: 'whoop', map: 'bardwell', mapName: "Bardwell's house", scale: 100,
+    });
+    /* By a link that names the room and not the aircraft, as a code
+     * typed into the address would: the card says the quad changes, and
+     * Join goes to the room's link. */
+    await page.evaluate(`(() => { location.assign('/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&room=${tiny.code}'); return 1; })()`);
+    await wait(1500);
+    await page.until('window.__shellReady === true', 120000);
+    await sheetIs(page, 'join');
+    const swaps = await page.evaluate(SEES('This room flies whoops, so joining swaps your quad.'));
+    check('a whoop room on this map, opened on a five inch, says joining swaps the quad', swaps && !(await page.evaluate(SEES('Joining loads'))));
+    await shot('swap-card');
+    await page.evaluate("(() => { window.__notReloaded = true; return 1; })()");
+    await pressKey(page, 'join');
+    await wait(1500);
+    await page.until('window.__shellReady === true', 120000);
+    await page.until(`${T} && window.__together().inRoom && window.__together().code === ${JSON.stringify(tiny.code)}`, 60000);
+    await page.until("window.__mode === 'flight'", 30000).catch(() => {});
+    const craft = await page.evaluate('window.__ui.settings.airframe');
+    check('and Join goes to it on a whoop', craft === 'whoop65' && !(await page.evaluate('window.__notReloaded === true')), craft);
+    hover = hoverNear(bots[2]);
+    const drawn = await page.until('window.__roomCraft() && window.__roomCraft().size === 30 && window.__roomCraft().drawn === 1', 10000).then(() => true, () => false);
+    clearInterval(hover);
+    check('and the other pilot is drawn, in a room of 30', drawn && (await page.evaluate(ROOM_CRAFT_GROUPS)) === 1, JSON.stringify(await page.evaluate('window.__roomCraft()')));
+    await wait(500);
+    await shot('whoop-room');
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    for (const b of bots) b.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -2448,6 +2662,7 @@ try {
   if (wanted('stream')) { await freshBoard(); await sceneStream(); }
   if (wanted('names')) { await freshBoard(); await sceneNames(); }
   if (wanted('keys')) { await freshBoard(); await sceneKeys(); }
+  if (wanted('shelf')) { await freshBoard(); await sceneShelf(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

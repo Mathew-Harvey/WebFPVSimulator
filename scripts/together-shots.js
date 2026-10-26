@@ -31,6 +31,15 @@
  *           before the pilot's yes, the yes opens the rooms routes and no
  *           others, a room on a map this copy lacks is greyed, and Turn
  *           online off asks again next time
+ *   door    every way in that says no: a wrong code, a full room, Cancel
+ *           while the board is slow, a kick over the room's own pages and
+ *           the kick said again at the door, and Open room with the board
+ *           down, then Try again once it is back
+ *   drop    the board gone mid flight: the chip and a banner while the
+ *           page tries again, back in from the ticket when it returns, and
+ *           a board that cannot read the ticket ending the room
+ *
+ * The race scene also has the host leave in the countdown.
  *
  * Usage:
  *   node scripts/together-shots.js [--out=DIR] [--w=1280] [--h=720] [--only=host,race] [--launched=1]
@@ -118,16 +127,12 @@ let board = null;
  * run hosts more than one board would let it; a new board for each scene
  * keeps the limit as it is and each scene as it would be on its own.
  */
-async function freshBoard() {
-  if (board) {
-    const was = board;
-    was.kill('SIGKILL');
-    await new Promise((r) => { if (was.exitCode !== null || was.signalCode) r(); else was.once('exit', r); });
-  }
+async function freshBoard({ secret = roomSecret } = {}) {
+  await killBoard();
   board = spawn(process.execPath, [join(boardDir, 'src', 'server.js')], {
     cwd: boardDir,
     env: {
-      ...process.env, PORT: String(port), BOARD_FILE: join(scratch, 'board.json'), DATABASE_URL: '', BOARD_ROOM_SECRET: roomSecret,
+      ...process.env, PORT: String(port), BOARD_FILE: join(scratch, 'board.json'), DATABASE_URL: '', BOARD_ROOM_SECRET: secret,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -142,6 +147,19 @@ async function freshBoard() {
     await wait(25);
   }
   throw new Error('the board did not start');
+}
+
+/* The board gone without a word, as a crash or a lost route looks to a
+ * pilot: no close frame, so every socket drops with 1006. */
+async function killBoard() {
+  if (!board) {
+    return;
+  }
+  const was = board;
+  board = null;
+  was.kill('SIGCONT');
+  was.kill('SIGKILL');
+  await new Promise((r) => { if (was.exitCode !== null || was.signalCode) r(); else was.once('exit', r); });
 }
 const wsUrl = roomsUrl(boardOrigin);
 await mkdir(outDir, { recursive: true });
@@ -738,6 +756,37 @@ async function sceneRace() {
     await page.tap('KeyG');
     const again = await page.until(`${T} && window.__together().race === 'count'`, 8000).then(() => true, () => false);
     check('G for one more, and a majority starts the next', again);
+    /* The host leaves in the countdown: the room is handed on, and the
+     * race goes at GO all the same. */
+    const oldHost = bots[0].s.you;
+    bots[0].s.leave();
+    const handed = await page.until(`${T} && window.__together().host !== ${oldHost} && window.__together().host !== 0`, 6000).then(() => true, () => false);
+    check('the host leaving in the countdown hands the room on', handed, JSON.stringify(await state(page)));
+    const stillGoes = await page.until(`${T} && window.__together().race === 'live'`, 9000).then(() => true, () => false);
+    check('and the race still goes at GO', stillGoes, JSON.stringify(await state(page)));
+    /* One more from the race's page, reached from the pause menu, is the
+     * pilot going racing: back to the flight, where the pit is. */
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, 'race');
+    await sheetIs(page, 'race');
+    await pressKey(page, 'dnf');
+    await page.until(`${T} && window.__together().race === 'results'`, 8000);
+    await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, 'race');
+    await sheetIs(page, 'race');
+    const me = (await state(page)).you;
+    await pressKey(page, 'again');
+    /* Counted: still in the votes, or, with the page in the menus and the
+     * other pilot the only one flying, already the majority that started
+     * the next countdown. */
+    const voted = await until(() => {
+      const rc = bots[1].s.link.race;
+      return Boolean(rc && ((rc.votes || []).includes(me) || (rc.phase === 'count' && rc.racers.includes(me))));
+    }, 4000);
+    const screen = await page.until("window.__ui.screen === 'flight'", 4000).then(() => 'flight', () => page.evaluate('window.__ui.screen'));
+    check('One more on the race page counts the vote and goes back to flying', voted && screen === 'flight', screen);
     const errors = errorsOf(page);
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   } catch (e) {
@@ -879,6 +928,264 @@ async function sceneSteam() {
   }
 }
 
+/* The words on the card on top, for the cards that say why. */
+const says = (page) => page.evaluate("(() => { const s = document.querySelector('#tg .tg-modal .say'); return s ? s.textContent : ''; })()");
+const pauseRows = (page) => page.evaluate('window.__ui.items().map((r) => r.label)');
+
+async function sceneDoor() {
+  console.log('\ndoor: every way a room says no, and Cancel');
+  const keeper = bot('Door Keeper', 131);
+  const filler = bot('Seat Taker', 137);
+  const room = await hostRoom(keeper, {
+    name: 'Two seats', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, listed: true, max: 2,
+  });
+  await joinRoom(filler, room.code, '');
+  const page = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`, seedFor({ met: true, name: 'Door Pilot' }));
+  const shot = shooter(page, 'door');
+  const typeCode = (code) => page.evaluate(`(() => { const i = document.querySelector('#tg-code'); i.value = ${JSON.stringify(code)}; i.dispatchEvent(new Event('input')); return 1; })()`);
+  try {
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'lobby');
+    await typeCode('ZZZZZ2');
+    await pressKey(page, 'code-go');
+    await sheetIs(page, 'cant', 10000);
+    const nobody = await says(page);
+    check('a code that is nobody\'s says so', nobody.includes('No room has the code ZZZZZ2'), nobody);
+    await wait(300);
+    await shot('no-such-room');
+    await page.tap('Escape');
+    check('and Back is the Rooms shelf again', await sheetIs(page, 'lobby', 3000).then(() => true, () => false), (await state(page)).sheet);
+
+    await typeCode(room.code);
+    await pressKey(page, 'code-go');
+    await sheetIs(page, 'cant', 10000);
+    const full = await says(page);
+    check('a full room says so, and how full', full.includes('is full: 2 of 2'), full);
+    await wait(300);
+    await shot('full');
+
+    filler.s.leave();
+    await until(() => keeper.s.link.pilots.size === 1, 4000);
+    /* The board stopped, so the room's card is still on its way when the
+     * pilot changes their mind. */
+    board.kill('SIGSTOP');
+    await pressKey(page, 'retry');
+    await sheetIs(page, 'connecting', 5000);
+    await wait(300);
+    await shot('finding');
+    await pressKey(page, 'cancel');
+    const backTo = (await state(page)).sheet;
+    board.kill('SIGCONT');
+    await wait(2500);
+    const after = await state(page);
+    check('Cancel while the board is slow goes back to the Rooms shelf', backTo === 'lobby', backTo);
+    check('and nothing joins when the board answers after', !after.inRoom && after.sheet === 'lobby' && keeper.s.link.pilots.size === 1, JSON.stringify(after));
+
+    await typeCode(room.code);
+    await pressKey(page, 'code-go');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight'", 30000);
+    check('the code joins once there is a seat', true);
+    const pageId = (await state(page)).you;
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, `pilot-${keeper.s.you}`);
+    await pressKey(page, `report-${keeper.s.you}`);
+    await sheetIs(page, 'report');
+    keeper.s.link.hostAction('kick', pageId);
+    await sheetIs(page, 'cant', 8000);
+    const kicked = await says(page);
+    check('a kick says who and for how long, over whatever was open', kicked.includes('took you out of Two seats') && kicked.includes('five minutes'), kicked);
+    await wait(300);
+    await shot('kicked');
+    await page.tap('Escape');
+    await wait(300);
+    const gone = await state(page);
+    check('and Back closes it: the room\'s own pages went with the room', gone.sheet === '', JSON.stringify(gone));
+    const rows = await pauseRows(page);
+    check('the pause menu is a solo one again', !rows.includes('Room') && !rows.includes('Leave room'), rows.join(', '));
+
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'lobby');
+    await typeCode(room.code);
+    await pressKey(page, 'code-go');
+    await sheetIs(page, 'cant', 10000);
+    const again = await says(page);
+    check('back at the door within five minutes, the kick is said again', again.includes('five minutes') && !(await state(page)).inRoom, again);
+    await page.tap('Escape');
+    await sheetIs(page, 'lobby', 3000);
+    await page.tap('Escape');
+    await page.until(`${T} && window.__together().sheet === ''`, 3000);
+
+    await killBoard();
+    await page.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await page.until("document.querySelector('.wp-rooms') !== null", 30000);
+    await page.evaluate("(() => { window.__ui.picker.select('map:bardwell'); return 1; })()");
+    await wait(200);
+    await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
+    await sheetIs(page, 'host');
+    await pressKey(page, 'open');
+    await sheetIs(page, 'cant', 15000);
+    const down = await says(page);
+    check('with the board down, Open room says it cannot reach it', down.includes('Rooms need the internet'), down);
+    check('and offers to try again', await page.evaluate("Boolean(document.querySelector('#tg [data-k=\"retry\"]'))"));
+    await wait(300);
+    await shot('board-down');
+    await freshBoard();
+    await pressKey(page, 'retry');
+    const opened = await sheetIs(page, 'share', 15000).then(() => true, () => false);
+    check('Try again opens the room once the board is back', opened && (await state(page)).inRoom, JSON.stringify(await state(page)));
+    /* In a room of its own, the page asks before another room takes it
+     * out of this one. */
+    const own = (await state(page)).code;
+    await pressKey(page, 'fly');
+    await page.until(`${T} && window.__together().sheet === ''`, 10000);
+    await until(() => keeper.s.inRoom, 10000);
+    await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
+    await sheetIs(page, 'lobby');
+    await page.until(`document.querySelector('#tg [data-k="room-${room.code}"]') !== null`, 10000);
+    await pressKey(page, `room-${room.code}`);
+    await sheetIs(page, 'switch', 5000);
+    const asks = await says(page);
+    check('another room\'s card in a room asks before leaving it', asks.includes('takes you out of this room') && (await state(page)).inRoom, asks);
+    check('with Stay under the focus', await page.evaluate("document.activeElement && document.activeElement.dataset.k === 'switch-stay'"));
+    await wait(300);
+    await shot('switch');
+    await pressKey(page, 'switch-stay');
+    const stayed = await state(page);
+    check('Stay keeps the pilot in their room, on the shelf', stayed.sheet === 'lobby' && stayed.inRoom && stayed.code === own, JSON.stringify(stayed));
+    await pressKey(page, `room-${room.code}`);
+    await sheetIs(page, 'switch', 5000);
+    await pressKey(page, 'switch-go');
+    await sheetIs(page, 'cant', 10000);
+    const left = await state(page);
+    check('Leave and go leaves it for the other room, here still a kick away', !left.inRoom && (await says(page)).includes('five minutes'), JSON.stringify(left));
+    /* The board's 404 for the made up code is the answer asked for. */
+    const errors = errorsOf(page).filter((e) => !/status of 404 .*\/api\/rooms\/ZZZZZ2\)$/.test(e));
+    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (board) board.kill('SIGCONT');
+    keeper.s.leave();
+    filler.s.leave();
+    await page.close();
+  }
+}
+
+async function sceneDrop() {
+  console.log('\ndrop: the board lost and found, and a room lost while away');
+  const keeper = bot('Night Owl', 151);
+  const room = await hostRoom(keeper, {
+    name: 'Late session', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  const u = new URL(roomUrl('http://127.0.0.1/index.html', room, { invite: keeper.s.invite }));
+  u.searchParams.set('board', boardOrigin);
+  const page = await open(`${u.pathname}${u.search}${u.hash}`, seedFor({ name: 'Drop Pilot', met: true }));
+  const shot = shooter(page, 'drop');
+  try {
+    await sheetIs(page, 'join');
+    await pressKey(page, 'join');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight'", 30000);
+    const pageId = (await state(page)).you;
+    /* A new look from the room's page reaches the room. */
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, 'look');
+    await sheetIs(page, 'editor');
+    await pressKey(page, 'tab-Hair');
+    const hair = await page.evaluate("JSON.parse(localStorage.getItem('webfpv.together.v1')).avatar.hair === 2 ? 3 : 2");
+    await pressKey(page, `hair-${hair}`);
+    await pressKey(page, 'done');
+    await sheetIs(page, 'room');
+    const seen = await until(() => {
+      const p = keeper.s.link.pilots.get(pageId);
+      return Boolean(p && p.avatar.hair === hair);
+    }, 4000);
+    check('a new look from the room\'s page reaches the other pilots', seen);
+    await page.tap('Escape');
+    await page.until(`${T} && window.__together().sheet === ''`, 3000);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 10000);
+    await wait(800);
+
+    await killBoard();
+    await page.until(`${T} && ['retrying', 'connecting'].includes(window.__together().link)`, 5000);
+    await wait(150);
+    const chip = await page.evaluate("(() => { const c = document.querySelector('#tg .roomchip'); return c && !c.hidden ? (c.querySelector('.bars.low') ? 'low' : 'shown') : 'hidden'; })()");
+    check('while the board is gone the chip stays, its bars low', chip === 'low', chip);
+    const lostSaid = await page.until("document.querySelector('#tg').textContent.includes('Lost the board for a moment')", 5000).then(() => true, () => false);
+    check('and a banner says it is trying again', lostSaid);
+    await page.tap('Digit1');
+    await wait(150);
+    const notSaid = await page.evaluate("document.querySelector('#tg .tg-toasts').textContent");
+    check('a quick line meanwhile says it was not said, rather than nothing', /Not said/.test(notSaid), notSaid);
+    await shot('reconnecting');
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await wait(200);
+    const meanwhile = await page.evaluate("document.querySelector('#tg .tg-toasts').textContent");
+    check('the room\'s page asked for meanwhile says to wait a moment', /One moment/.test(meanwhile), meanwhile);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+
+    await freshBoard();
+    const back = await page.until(`${T} && window.__together().inRoom`, 15000).then(() => true, () => false);
+    check('the board back: the page is back in from its ticket', back && (await state(page)).code === room.code, JSON.stringify(await state(page)));
+    check('with a banner that says so', await page.evaluate("document.querySelector('#tg').textContent.includes('Back in')"));
+    await until(() => keeper.s.inRoom, 10000);
+    await page.until(`${T} && window.__together().pilots === 2`, 10000).catch(() => {});
+    check('and the other pilot is back beside it', (await state(page)).pilots === 2, JSON.stringify(await state(page)));
+    const bars = await page.evaluate("Boolean(document.querySelector('#tg .roomchip .bars') && !document.querySelector('#tg .roomchip .bars.low'))");
+    check('the bars full again', bars);
+    await wait(300);
+    await shot('back-in');
+
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    /* A drop with the room's page open: the page stays, says so, and
+     * its buttons wait for the board rather than doing nothing. */
+    await killBoard();
+    await page.until(`${T} && ['retrying', 'connecting'].includes(window.__together().link)`, 5000);
+    const tagged = await page.until("document.querySelector('#tg .tg-modal').textContent.includes('Getting back in')", 4000).then(() => true, () => false);
+    check('a drop with the room\'s page open keeps the page, and its tags say so', tagged && (await state(page)).sheet === 'room', JSON.stringify(await state(page)));
+    await pressKey(page, 'talk');
+    const waits = await page.evaluate("document.querySelector('#tg .tg-toasts').textContent");
+    check('and Talk says to wait a moment', /One moment/.test(waits) && (await state(page)).sheet === 'room', waits);
+    await wait(200);
+    await shot('page-in-drop');
+    await freshBoard();
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await wait(300);
+    const untagged = await page.evaluate("!document.querySelector('#tg .tg-modal').textContent.includes('Getting back in')");
+    check('back in, the page is drawn again without it', untagged && (await state(page)).sheet === 'room');
+    /* A board with another secret cannot read the room's tickets: to the
+     * page it is a room that closed while it was away. */
+    await freshBoard({ secret: randomBytes(24).toString('hex') });
+    const lost = await page.until(`${T} && !window.__together().inRoom && window.__together().link === ''`, 15000).then(() => true, () => false);
+    check('a ticket the board cannot honour ends the room for the page', lost);
+    check('it says so', await page.evaluate("document.querySelector('#tg').textContent.includes('The room closed while you were away')"));
+    await wait(300);
+    const st = await state(page);
+    check('and the room\'s page closed with it', st.sheet === '', JSON.stringify(st));
+    const rows = await pauseRows(page);
+    check('the pause menu is a solo one again', !rows.includes('Room'), rows.join(', '));
+    await shot('lost');
+    const errors = errorsOf(page);
+    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    keeper.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -886,6 +1193,8 @@ try {
   if (wanted('race')) { await freshBoard(); await sceneRace(); }
   if (wanted('direct')) { await freshBoard(); await sceneDirect(); }
   if (wanted('steam')) { await freshBoard(); await sceneSteam(); }
+  if (wanted('door')) { await freshBoard(); await sceneDoor(); }
+  if (wanted('drop')) { await freshBoard(); await sceneDrop(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

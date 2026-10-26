@@ -732,6 +732,11 @@ async function talkScene(url) {
     check('a line too long is refused', await until(() => d.refused.includes('long')));
     check('a face that is not one is said calm', await until(() => c.said.some((m) => m.text === 'ok then' && m.face === 'calm')));
     check('and nothing refused reached anybody', ![c, d].some((p) => p.said.some((m) => /0412|example|xxxx/.test(m.text || ''))));
+    const newLook = { ...d.s.link.avatar, hair: (d.s.link.avatar.hair + 1) % 4 };
+    d.s.look(newLook);
+    check('a new look from the room\'s page reaches the others', await until(() => c.s.link.pilots.get(d.s.you).avatar.hair === newLook.hair));
+    check('and the pilot\'s own entry, which the room\'s page draws', d.s.link.pilots.get(d.s.you).avatar.hair === newLook.hair);
+    check('and a hello after a drop carries it', d.s.link.avatar.hair === newLook.hair);
   } finally {
     for (const p of [a, b, c, d]) p.s.leave();
   }

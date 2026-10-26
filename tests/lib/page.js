@@ -243,7 +243,9 @@ export async function openPage({
     } else if (msg.method === 'Log.entryAdded') {
       const e = msg.params.entry;
       if (e.level === 'error') {
-        errors.push(`${e.source}: ${e.text}`);
+        /* A failed load names what failed, so a check can tell the 404 it
+         * asked for from one it did not. */
+        errors.push(`${e.source}: ${e.text}${e.source === 'network' && e.url ? ` (${e.url})` : ''}`);
       } else if (e.level === 'warning') {
         warnings.push(`${e.source}: ${e.text}`);
       }

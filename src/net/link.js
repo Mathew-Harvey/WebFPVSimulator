@@ -96,7 +96,7 @@ export class RoomLink {
    * rating key, src/share/rating.js, so one browser is one key on the
    * board). handle and avatar: what the other pilots are told. onEvent
    * (name, data) hears everything: 'welcome', 'joined', 'left', 'host',
-   * 'room', 'pilots', 'away', 'removed', 'refused', 'retrying', 'lost',
+   * 'room', 'pilots', 'away', 'look', 'removed', 'refused', 'retrying', 'lost',
    * 'closed', and from stages 4 to 6 'say', 'chat', 'chatRefused',
    * 'reported', 'reportFailed', 'settingsRefused', 'peers', 'signal',
    * 'ice', 'pong' and 'race'. onPoses(bytes) hears the binary frames.
@@ -304,6 +304,12 @@ export class RoomLink {
         this.onEvent('away', m);
         break;
       }
+      case 'look': {
+        const p = this.pilots.get(m.id);
+        if (p && m.avatar && typeof m.avatar === 'object') p.avatar = m.avatar;
+        this.onEvent('look', m);
+        break;
+      }
       case 'removed':
         this.ticket = '';
         this.onEvent('removed', m);
@@ -414,6 +420,13 @@ export class RoomLink {
   away(on) {
     this.awayOn = Boolean(on);
     this.sendJson({ t: 'away', on: this.awayOn });
+  }
+
+  /* A new look from the room's page. Kept for the hello too, so a pilot
+   * who drops and comes back comes back as they now look. */
+  look(avatar) {
+    this.avatar = avatar;
+    return this.sendJson({ t: 'look', avatar });
   }
 
   settings(room) {

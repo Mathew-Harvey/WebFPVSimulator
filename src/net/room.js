@@ -133,6 +133,10 @@ export class RoomSession {
     this.link.away(on);
   }
 
+  look(avatar) {
+    return this.link.look(avatar);
+  }
+
   leave() {
     this.peers.reset();
     this.link.leave();

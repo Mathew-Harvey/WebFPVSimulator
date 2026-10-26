@@ -387,6 +387,7 @@ export function createTogether(shell) {
   /* What the pilot asked for and has not got yet: { kind: 'host', entry }
    * or { kind: 'join', code, room }. */
   let pending = null;
+  let flowSeq = 0;
   let boot = null;
   /* Pilots muted for this visit: the board never knows. */
   const muted = new Set();
@@ -453,6 +454,12 @@ export function createTogether(shell) {
         shell.pause();
         pausedByUs = true;
       }
+    }
+    /* The spinner is never a sheet to come back to: whatever follows it
+     * (the join card, the password, the avatar, the card that says why)
+     * takes its place, so Back from that is where the pilot asked from. */
+    if (topName() === 'connecting' && name !== 'connecting') {
+      stack.pop();
     }
     if (opts.replace && stack.length) {
       stack.pop();
@@ -772,6 +779,8 @@ export function createTogether(shell) {
     return session;
   }
 
+  /* Out of the room, however that came about. The card that says why, if
+   * there is one, is the caller's. */
   function dropSession() {
     if (session) {
       session.leave();
@@ -781,8 +790,55 @@ export function createTogether(shell) {
     pending = null;
     welcomedOnce = false;
     clearOverlays();
+    dropRoomSheets();
     shell.roomInfo(null);
     writeAddressOut();
+  }
+
+  /*
+   * The sheets that are about the room: its page, its settings, the talk
+   * scene, the race, invite, and the cards over them. A room that has gone
+   * takes them with it, wherever they were in the stack, so neither Back
+   * nor a press can reach one that would talk to a room that is not there.
+   */
+  const ROOM_SHEETS = new Set(['room', 'roomSettings', 'scene', 'race', 'confirm', 'report', 'share']);
+
+  function dropRoomSheets() {
+    const top = stack[stack.length - 1];
+    const kept = stack.filter((s) => !ROOM_SHEETS.has(s.name));
+    if (kept.length === stack.length) {
+      return;
+    }
+    stack = kept;
+    if (!stack.length) {
+      closeAll();
+    } else if (stack[stack.length - 1] !== top) {
+      paint();
+    }
+  }
+
+  /*
+   * The room as the chip and the frame loop see it: the room while in it,
+   * and still the room while the page is getting back into it after a
+   * drop, so the chip can say so and the others stay drawn. Nothing that
+   * sends to the board reads this one.
+   */
+  function heldRoom() {
+    if (!session) {
+      return null;
+    }
+    const state = session.link.state;
+    return session.inRoom || (welcomedOnce && (state === 'retrying' || state === 'connecting')) ? session.room : null;
+  }
+
+  /* The room, for a page of it about to open; in a drop, a word that the
+   * page waits for the board, and no page. */
+  function roomToOpen() {
+    const r = room();
+    if (!r && heldRoom()) {
+      toast('Getting back into the room. One moment.', 'warn');
+    }
+    return r;
   }
 
   function sameWorld(r) {
@@ -933,7 +989,9 @@ export function createTogether(shell) {
    * it, then on this world the password if it needs one and the room, or
    * on another world a reload into that world. `pressed` is a pilot's own
    * press (a Rooms card, a typed code, a press carried across a reload),
-   * which skips the "Join?" card a link shows.
+   * which skips the "Join?" card a link shows. Each walk to the door has
+   * a number (flowSeq), so one the pilot cancelled, or left for another,
+   * is not finished for them when the board's answer lands.
    */
   async function joinFlow(code, invite = '', { pressed = false } = {}) {
     const c = normaliseCode(code);
@@ -946,13 +1004,23 @@ export function createTogether(shell) {
       return;
     }
     sheetConnecting({ code: c, step: 0 });
+    flowSeq += 1;
+    const mine = flowSeq;
+    const dropped = () => mine !== flowSeq || topName() !== 'connecting';
     const got = await fetchJson(`/api/rooms/${c}${invite ? `?i=${encodeURIComponent(invite)}` : ''}`);
+    if (dropped()) {
+      return;
+    }
     if (!got.ok) {
       sheetCant(got.status === 404 ? 'notFound' : (got.body && got.body.why) || 'offline', { code: c });
       return;
     }
     const r = { ...got.body, code: c };
-    if (!(await hasWorld(r))) {
+    const flies = await hasWorld(r);
+    if (dropped()) {
+      return;
+    }
+    if (!flies) {
       sheetCant('noWorld', { code: c, room: r });
       return;
     }
@@ -969,7 +1037,13 @@ export function createTogether(shell) {
 
   /* After the pilot has said yes to this room. */
   function joinNow(r, invite) {
-    gate(() => {
+    const here = heldRoom();
+    if (here && here.code === r.code) {
+      closeAll();
+      toast('You are in this room already.');
+      return;
+    }
+    leaveFirst(`Joining ${r.name} takes you out of this room. The others carry on without you.`, () => gate(() => {
       if (!sameWorld(r)) {
         travel(r, invite);
         return;
@@ -979,7 +1053,25 @@ export function createTogether(shell) {
         return;
       }
       connect(r, { invite });
-    });
+    }));
+  }
+
+  /* A pilot in a room who asks for another room is asked first, because
+   * the way into another room is out of this one. */
+  function leaveFirst(words, next) {
+    const r = heldRoom();
+    if (!r) {
+      next();
+      return;
+    }
+    open('switch', () => scrimmed(h('div.card-mid.sheet.sakura.halftone', null,
+      h('span.kicker', { text: 'You are in a room' }),
+      lettered(`LEAVE ${r.name.toUpperCase()}?`, [INKS.cream, INKS.bail], 42, 640),
+      h('div.state-row', null, h('div.who', null, bust(store.avatar, 'wow')), h('div.say', { text: words })),
+      h('div.btnrow', null,
+        btn('Leave and go', 'danger', () => { pop(); next(); }, { 'data-k': 'switch-go' }),
+        /* Stay has the focus: leaving is never one stray press away. */
+        btn('Stay', 'ghost', () => back(), { 'data-k': 'switch-stay', 'data-autofocus': true })))));
   }
 
   /* Into the room's world: the page reloads on its address, carrying the
@@ -1115,10 +1207,19 @@ export function createTogether(shell) {
         refresh('room');
         if (rosterOn) paintRoster();
         break;
+      case 'look':
+        /* Everywhere a face is drawn from the room's list. */
+        paintChip();
+        refresh('room');
+        refresh('share');
+        refresh('scene');
+        if (rosterOn) paintRoster();
+        raceChanged();
+        break;
       case 'removed': {
         const hp = hostPilot();
         sheetCant(data.why === 'replaced' ? 'replaced' : data.why === 'banned' ? 'banned' : 'kicked', { room: session.room, hostAvatar: hp ? hp.avatar : null });
-        dropSessionQuiet();
+        dropSession();
         break;
       }
       case 'refused':
@@ -1132,6 +1233,7 @@ export function createTogether(shell) {
         if (welcomedOnce) {
           lastLink = 'low';
           paintChip();
+          refresh('room');
           if (data.tries === 2) {
             banner(null, '', 'Lost the board for a moment', 'Pilots near you are still here. Trying again.');
           }
@@ -1139,21 +1241,21 @@ export function createTogether(shell) {
           /* Never got in, and the board is not answering: say so rather
            * than spin. */
           const was = pending;
-          dropSessionQuiet();
-          sheetCant('offline', { code: was.code || '', room: was.room || null, invite: was.invite || '' });
+          dropSession();
+          sheetCant('offline', notIn(was));
         }
         break;
       case 'closed':
         if (data.code === CLOSE_REPLACED) {
           sheetCant('replaced', { room: session.room });
-          dropSessionQuiet();
+          dropSession();
         } else if (!data.wasIn && pending) {
           const was = pending;
-          dropSessionQuiet();
-          sheetCant(data.code === 1000 ? 'gone' : 'offline', { code: was.code || '' });
+          dropSession();
+          sheetCant(data.code === 1000 ? 'gone' : 'offline', notIn(was));
         } else if (data.wasIn) {
           banner(hostPilot() ? hostPilot().avatar : me().avatar, 'oops', 'The room has closed', 'Flying solo.');
-          dropSessionQuiet();
+          dropSession();
         }
         break;
       case 'say':
@@ -1191,21 +1293,6 @@ export function createTogether(shell) {
     }
   }
 
-  /* Gone without the card that a leave shows: the card that says why is
-   * already up. */
-  function dropSessionQuiet() {
-    if (session) {
-      session.leave();
-    }
-    session = null;
-    race = null;
-    pending = null;
-    welcomedOnce = false;
-    clearOverlays();
-    shell.roomInfo(null);
-    writeAddressOut();
-  }
-
   function welcomed(data, now) {
     const was = pending;
     pending = null;
@@ -1218,7 +1305,14 @@ export function createTogether(shell) {
     writeAddress();
     raceChanged();
     if (welcomedOnce) {
-      /* A deploy, or a drop, and back in from the ticket. */
+      /* A deploy, or a drop, and back in from the ticket: whatever page
+       * of the room is open is drawn again from the board's word, and a
+       * save or a report lost in the drop can be pressed again. */
+      settingsSaving = false;
+      reportBusy = false;
+      for (const name of ['room', 'share', 'scene', 'race', 'roomSettings']) {
+        refresh(name);
+      }
       banner(hostPilot() ? hostPilot().avatar : me().avatar, 'hello', 'Back in', 'The room is just as you left it.', 'mint');
       return;
     }
@@ -1244,17 +1338,29 @@ export function createTogether(shell) {
     const was = pending;
     const why = data.why;
     if (why === 'fields' && was && was.kind === 'host') {
-      dropSessionQuiet();
+      dropSession();
       sheetHost(was.entry, { ...was.settings, bad: new Set(data.fields || []) }, { replace: true });
       return;
     }
     if (why === 'password' && was && was.kind === 'join') {
-      dropSessionQuiet();
+      dropSession();
       sheetPassword({ ...was.room, needsPassword: true }, was.invite, { wrong: true, replace: true });
       return;
     }
-    dropSessionQuiet();
-    sheetCant(why, { code: was ? was.code || '' : '', room: was ? was.room : null, invite: was ? was.invite : '' });
+    dropSession();
+    sheetCant(why, notIn(was));
+  }
+
+  /* What a card that says why needs from what the pilot asked for: the
+   * room to try again, or for a room of their own, the same again. */
+  function notIn(was) {
+    if (!was) {
+      return {};
+    }
+    if (was.kind === 'host') {
+      return { again: () => host(was.entry, was.settings) };
+    }
+    return { code: was.code || '', room: was.room || null, invite: was.invite || '' };
   }
 
   /* ---------------------------------------------------------------- */
@@ -1383,6 +1489,7 @@ export function createTogether(shell) {
   function sheetEditor(after) {
     let tab = 'Face';
     let expr = 'calm';
+    const was = cleanAvatar(store.avatar);
     const setPart = (k, v) => {
       store.avatar = { ...store.avatar, [k]: v };
       save();
@@ -1427,7 +1534,7 @@ export function createTogether(shell) {
               h('div.exprs', { role: 'group', 'aria-label': 'Try a face' }, EXPRESSIONS.map((e) => h('button', {
                 type: 'button', 'aria-pressed': String(expr === e), 'data-k': `ex-${e}`, on: { click: () => { expr = e; refresh('editor'); } },
               }, face(av, e, 36), h('small', { text: FACE_NAMES[e] }))))),
-            session && session.inRoom ? h('p.help', { text: 'The others see your new look the next time you join a room.' }) : null))),
+            session && session.inRoom ? h('p.help', { text: 'The room sees your new look when you press Done.' }) : null))),
         h('div.footer-row', null,
           btn('Done', '', () => back(), { 'data-k': 'done' }),
           btn('Roll again', 'amber', () => {
@@ -1439,6 +1546,12 @@ export function createTogether(shell) {
     }, {
       back: () => {
         pop();
+        /* In a room, the others see it too: the board tells everybody,
+         * this page included, and the room's list is drawn from that. */
+        const now = cleanAvatar(store.avatar);
+        if (session && session.inRoom && JSON.stringify(now) !== JSON.stringify(was)) {
+          session.look(now);
+        }
         if (after) after();
       },
     });
@@ -1601,7 +1714,7 @@ export function createTogether(shell) {
    * map, name, way, thumb, whoop, fly() }. Fly together from the picker.
    */
   function openHost(entry) {
-    gate(() => sheetHost(entry, null));
+    leaveFirst('Opening a room of your own takes you out of this one. The others carry on without you.', () => gate(() => sheetHost(entry, null)));
   }
 
   function sheetHost(entry, was, opts = {}) {
@@ -1703,6 +1816,9 @@ export function createTogether(shell) {
   }
 
   function sheetShare({ first = false, entry = null } = {}) {
+    if (!roomToOpen()) {
+      return;
+    }
     const flyNow = () => {
       closeAll();
       const r = room();
@@ -1713,7 +1829,7 @@ export function createTogether(shell) {
       }
     };
     open('share', () => {
-      const r = room();
+      const r = heldRoom();
       if (!r) {
         return scrimmed(h('div.card-mid.sheet.halftone', null, h('p', { text: 'The room has closed.' }), btn('Back', 'ghost', () => back())));
       }
@@ -1810,7 +1926,7 @@ export function createTogether(shell) {
   function sheetConnecting({ code = '', room: r = null, hosting = null, step = 0 }) {
     const steps = hosting
       ? ['Opening a room on the board', `Choosing ${hosting.name}`, 'Writing your invite']
-      : ['Found the room', 'Checked your invite', `Loading ${r ? r.mapName : 'the map'}`, 'Meeting the pilots'];
+      : ['Finding the room', 'Checking the way in', `Loading ${r ? r.mapName : 'the map'}`, 'Meeting the pilots'];
     const at = hosting ? 1 : step;
     const render = () => scrimmed(h('div.card-mid.sheet.halftone', null,
       h('span.kicker', { text: hosting ? 'Fly together' : (r ? r.name : `Room ${code}`) }),
@@ -1822,12 +1938,24 @@ export function createTogether(shell) {
           else if (i === at) cls = 'now';
           return h(`div.tg-step.${cls}`, null, h('i', { text: cls === 'done' ? '✓' : cls === 'now' ? '↻' : '' }), s);
         }))),
-      h('div.btnrow', null, btn('Cancel', 'ghost small', () => { dropSessionQuiet(); closeAll(); }, { 'data-k': 'cancel', 'data-autofocus': true }))));
+      h('div.btnrow', null, btn('Cancel', 'ghost small', cancelConnecting, { 'data-k': 'cancel', 'data-autofocus': true }))));
     if (topName() === 'connecting') {
       stack[stack.length - 1].render = render;
       paint();
     } else {
-      open('connecting', render, { back: () => { dropSessionQuiet(); closeAll(); } });
+      open('connecting', render, { back: cancelConnecting });
+    }
+  }
+
+  /* Cancel on the spinner: what was asked for is dropped, an answer still
+   * on its way is ignored when it lands, and the pilot is back on the
+   * sheet they asked from (the shelf, the host sheet, the join card), or
+   * flying when there was none. */
+  function cancelConnecting() {
+    flowSeq += 1;
+    dropSession();
+    if (topName() === 'connecting') {
+      pop();
     }
   }
 
@@ -1850,20 +1978,29 @@ export function createTogether(shell) {
   function sheetCant(why, ctx = {}) {
     const [head, expr, say, next] = CANT[why] || ['COULD NOT JOIN', 'oops', () => 'The board would not open that room. Try again in a moment.', 'solo'];
     const actions = [];
-    if (next === 'retry' && ctx.code) {
-      actions.push(btn('Try again', '', () => { pop(); joinFlow(ctx.code, ctx.invite || '', { pressed: true }); }, { 'data-k': 'retry', 'data-autofocus': true }));
+    if (next === 'retry' && (ctx.code || ctx.again)) {
+      actions.push(btn('Try again', '', () => {
+        pop();
+        if (ctx.again) {
+          ctx.again();
+        } else {
+          joinFlow(ctx.code, ctx.invite || '', { pressed: true });
+        }
+      }, { 'data-k': 'retry', 'data-autofocus': true }));
     }
     if (next === 'reload') {
       actions.push(btn('Reload', '', () => window.location.reload(), { 'data-k': 'reload', 'data-autofocus': true }));
     }
-    if (next === 'lobby' || next === 'retry') {
+    /* A room of the pilot's own that would not open has no shelf to go
+     * back to: the map they picked is under this card. */
+    if (next === 'lobby' || (next === 'retry' && !ctx.again)) {
       actions.push(btn('Back to rooms', actions.length ? 'ghost' : '', () => { closeAll(); openLobby(lobbyWay); }, { 'data-k': 'lobby' }));
     }
     actions.push(btn('Fly solo', 'ghost', () => closeAll(), { 'data-k': 'solo' }));
     open('cant', () => scrimmed(h('div.card-mid.sheet.halftone', null,
       lettered(head, [INKS.cream, why === 'banned' || why === 'kicked' ? INKS.bail : INKS.amber], 44, 640),
       h('div.state-row', null, h('div.who', null, bust(why === 'kicked' || why === 'banned' ? (ctx.hostAvatar || store.avatar) : store.avatar, expr)), h('div.say', { text: say(ctx) })),
-      h('div.btnrow', null, actions))), { replace: topName() === 'connecting' || topName() === 'cant' });
+      h('div.btnrow', null, actions))), { replace: topName() === 'cant' });
   }
 
   function sheetPrivacy() {
@@ -1943,6 +2080,7 @@ export function createTogether(shell) {
     return h('div.infotags', null,
       tag(r.mapName, 'paper'),
       tag(`${n} of ${r.max} pilots`, 'paper'),
+      lastLink === 'low' ? tag('Getting back in', 'amber') : null,
       tag(isHost() ? 'You are host' : `Host: ${hp ? hp.handle : 'nobody yet'}`, isHost() ? 'amber' : 'paper'),
       tag(r.listed ? 'Listed' : 'Link only', 'paper'),
       tag(r.typedChat ? 'Typed chat on' : 'Preset chat', 'paper'),
@@ -1952,11 +2090,12 @@ export function createTogether(shell) {
 
   /* The room's page, from the pause menu's Room row. */
   function sheetRoom() {
-    if (!room()) {
+    if (!roomToOpen()) {
       return;
     }
     open('room', () => {
-      const r = room();
+      /* Drawn through a drop too, its tags saying so. */
+      const r = heldRoom();
       if (!r) {
         return scrimmed(h('div.card-mid.sheet.halftone', null, h('p', { text: 'The room has closed.' }), btn('Back', 'ghost', () => back())));
       }
@@ -2054,7 +2193,7 @@ export function createTogether(shell) {
   let settingsSaving = false;
 
   function sheetSettings() {
-    const r = room();
+    const r = roomToOpen();
     if (!r || !isHost()) {
       return;
     }
@@ -2126,11 +2265,11 @@ export function createTogether(shell) {
   let sceneDraft = '';
 
   function sheetScene() {
-    if (!room()) {
+    if (!roomToOpen()) {
       return;
     }
     open('scene', () => {
-      const r = room();
+      const r = heldRoom() || { typedChat: false };
       const said = log.filter((l) => l.said && !muted.has(l.id));
       const last = said[said.length - 1] || null;
       const mine = (l) => l.id === session.you;
@@ -2168,6 +2307,9 @@ export function createTogether(shell) {
           if (session.chat(text, sceneFace)) {
             sceneDraft = '';
             input.value = '';
+          } else {
+            /* Kept in the box, to say again once the room is back. */
+            toast('Not said yet: getting back into the room.', 'warn');
           }
         };
         bar = h('div.saybar', null, h('div.sheet.halftone.typebox', null,
@@ -2200,7 +2342,20 @@ export function createTogether(shell) {
     return h('div.podium', null, pod(rows[1], 2), pod(rows[0], 1), pod(rows[2], 3));
   }
 
+  /* A race word said from the race's page is a pilot going racing: the
+   * sheets close and, if they came from the pause menu, the flight goes
+   * on, where the pit and the countdown are. */
+  function toFlight() {
+    closeAll();
+    if (shell.paused()) {
+      shell.resume();
+    }
+  }
+
   function sheetRace() {
+    if (!roomToOpen()) {
+      return;
+    }
     open('race', () => {
       const r = room();
       const rc = race && race.race;
@@ -2213,8 +2368,8 @@ export function createTogether(shell) {
       let note = '';
       if (phase === 'pit') {
         rows.push(h('div.btnrow', null,
-          btn(ready ? 'Not ready' : 'Ready', ready ? 'ghost' : 'mint', () => { session.link.raceSend({ t: 'ready', on: !ready }); closeAll(); }, { 'data-k': 'ready', 'data-autofocus': true }),
-          host ? btn('Start the race', 'amber', () => { session.link.raceSend({ t: 'start' }); closeAll(); }, { 'data-k': 'start' }) : null));
+          btn(ready ? 'Not ready' : 'Ready', ready ? 'ghost' : 'mint', () => { session.link.raceSend({ t: 'ready', on: !ready }); toFlight(); }, { 'data-k': 'ready', 'data-autofocus': true }),
+          host ? btn('Start the race', 'amber', () => { session.link.raceSend({ t: 'start' }); toFlight(); }, { 'data-k': 'start' }) : null));
         if (host) {
           rows.push(h('div.field', null, h('span.lab', { text: 'Laps' }), h('div.stepper', { style: { width: '190px' } },
             h('button', { type: 'button', 'aria-label': 'Fewer laps', 'data-k': 'lfewer', on: { click: () => session.link.raceSend({ t: 'laps', n: Math.max(1, laps - 1) }) } }, '−'),
@@ -2225,7 +2380,7 @@ export function createTogether(shell) {
       } else if (phase === 'results') {
         const voted = (rc.votes || []).includes(session.you);
         rows.push(h('div.btnrow', null,
-          btn(voted ? 'Voted' : 'One more', 'amber', () => { session.link.raceSend({ t: 'again' }); closeAll(); }, { 'data-k': 'again', 'data-autofocus': voted ? null : true, disabled: voted }),
+          btn(voted ? 'Voted' : 'One more', 'amber', () => { session.link.raceSend({ t: 'again' }); toFlight(); }, { 'data-k': 'again', 'data-autofocus': voted ? null : true, disabled: voted }),
           host ? btn('Back to the pit', 'ghost', () => { session.link.raceSend({ t: 'pit' }); pop(); }, { 'data-k': 'pit' }) : null,
           voted ? btn('Back', 'ghost', () => back(), { 'data-k': 'back-low', 'data-autofocus': true }) : null));
         note = `${(rc.votes || []).length} of ${n} want one more. More than half and the countdown starts.`;
@@ -2315,9 +2470,10 @@ export function createTogether(shell) {
   }
 
   function paintChip() {
-    const r = room();
+    const r = heldRoom();
     /* Over the flight, the pause menu and the results, never the title or
-     * the picker: frame() says which screen is up. */
+     * the picker: frame() says which screen is up. Kept while the page is
+     * getting back into the room, when its bars say so. */
     chip.hidden = !r || lastScreen === 'other';
     if (!r) {
       return;
@@ -2326,7 +2482,7 @@ export function createTogether(shell) {
     const hp = hostPilot();
     fill(chip,
       hp ? face(hp.avatar, 'calm', 30) : null,
-      h('div', { style: { minWidth: '0' } }, h('b', { text: r.name }), h('small', { text: `${r.mapName} · ${r.code}` })),
+      h('div', { style: { minWidth: '0' } }, h('b', { text: r.name }), h('small', { text: lastLink === 'low' ? 'Getting back in' : `${r.mapName} · ${r.code}` })),
       h('span.n', { text: `${n}/${r.max}` }),
       h(`span.bars${lastLink === 'good' ? '' : lastLink === 'mid' ? '.mid' : '.low'}`, { 'aria-label': lastLink === 'good' ? 'Connected' : 'Reconnecting' }, h('i'), h('i'), h('i'), h('i')),
     );
@@ -2440,7 +2596,13 @@ export function createTogether(shell) {
 
   function sayQuick(i) {
     const q = i === 6 ? WAVE : QUICK[i];
-    if (!q || !session || !session.inRoom) {
+    if (!q || !session) {
+      return;
+    }
+    if (!session.inRoom) {
+      if (heldRoom()) {
+        toast('Not said: getting back into the room.', 'warn');
+      }
       return;
     }
     if (session.say(q.line)) {
@@ -2701,7 +2863,7 @@ export function createTogether(shell) {
     if (screen !== lastScreen) {
       lastScreen = screen;
       const r = room();
-      chip.hidden = !r || screen === 'other';
+      chip.hidden = !heldRoom() || screen === 'other';
       if (screen !== 'flight') {
         qbar.hidden = true;
         roster.hidden = true;
@@ -2717,12 +2879,15 @@ export function createTogether(shell) {
     if (!r || !race || !RoomRace.racing(r.way)) {
       return;
     }
+    /* The grid and a false start are the room's track's: a pilot who has
+     * wandered to another world is not put on that world's start line. */
+    const here = sameWorld(r);
     const what = race.frame();
-    if (what === 'grid') {
+    if (what === 'grid' && here) {
       shell.grid();
       toast('On the grid. Wait for GO.');
     }
-    if (race.holding() && shell.airborne() && now - falseStartAt > 1000) {
+    if (here && race.holding() && shell.airborne() && now - falseStartAt > 1000) {
       falseStartAt = now;
       shell.grid();
       toast('False start! Back on the grid. Wait for GO.', 'bad');
@@ -2735,7 +2900,9 @@ export function createTogether(shell) {
   /* A lap the sim's own race counted, its finish crossing at crossLocal on
    * the frame clock. */
   function lap(crossLocal) {
-    if (race && race.racing()) {
+    /* Laps of the room's own track only: the sim counts laps on whatever
+     * it is flying, and another track's are not this race's. */
+    if (race && race.racing() && sameWorld(room())) {
       race.lap(crossLocal);
     }
   }
@@ -2759,7 +2926,15 @@ export function createTogether(shell) {
       }
       return true;
     }
-    if (!session || !session.inRoom || repeat) {
+    if (!heldRoom() || repeat) {
+      return false;
+    }
+    if (!session.inRoom) {
+      /* A drop: the keys that talk to the room say why nothing happens. */
+      if (shell.flying() && (/^Digit[1-7]$/.test(code) || code === 'Enter')) {
+        toast('Not said: getting back into the room.', 'warn');
+        return true;
+      }
       return false;
     }
     /* G answers the race's panel, which also sits beside the results. */
@@ -2904,6 +3079,8 @@ export function createTogether(shell) {
   /* ---------------------------------------------------------------- */
 
   function act(action) {
+    /* The pause rows stay through a drop, so Leave and Quit still work;
+     * the room's own pages say they wait for the board (roomToOpen). */
     if (action === 'room-sheet') {
       sheetRoom();
     } else if (action === 'room-invite') {
@@ -2918,8 +3095,10 @@ export function createTogether(shell) {
   }
 
   return {
+    /* For the frame loop: the session while in a room or getting back
+     * into one, never one still knocking, which has no room to draw. */
     get session() {
-      return session && (session.inRoom || session.link.state === 'retrying') ? session : null;
+      return heldRoom() ? session : null;
     },
     get anySession() {
       return session;
@@ -2958,6 +3137,8 @@ export function createTogether(shell) {
         inRoom: Boolean(room()),
         code: room() ? room().code : '',
         you: session ? session.you : 0,
+        host: session ? session.link.hostId : 0,
+        link: session ? session.link.state : '',
         pilots: pilotsList().length,
         race: race && race.race ? race.race.phase : '',
         racing: racingNow(),

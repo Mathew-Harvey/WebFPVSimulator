@@ -612,13 +612,20 @@ async function sceneRace() {
     check('GO, on the board\'s clock', goes);
     const gridded = await page.evaluate('window.__mode');
     check('the page is flying the race', gridded === 'flight', gridded);
-    bots[0].s.link.raceSend({ t: 'lap', n: 1, ms: 21500 });
-    bots[1].s.link.raceSend({ t: 'lap', n: 1, ms: 23800 });
+    /* Laps the board will believe: never more time than has passed since
+     * GO (src/rooms.js refuses those), so these are short ones. */
+    await wait(2200);
+    bots[0].s.link.raceSend({ t: 'lap', n: 1, ms: 1700 });
+    bots[1].s.link.raceSend({ t: 'lap', n: 1, ms: 1900 });
     await wait(800);
     await shot('standings');
     check('the standings show while racing', await page.evaluate("!document.querySelector('#tg .standings').hidden"));
-    bots[0].s.link.raceSend({ t: 'lap', n: 2, ms: 20100 });
-    bots[1].s.link.raceSend({ t: 'lap', n: 2, ms: 22400 });
+    await wait(1400);
+    bots[0].s.link.raceSend({ t: 'lap', n: 2, ms: 1600 });
+    bots[1].s.link.raceSend({ t: 'lap', n: 2, ms: 1650 });
+    await until(() => bots[0].s.link.race && bots[0].s.link.race.rows.filter((r) => r.done).length === 2, 4000);
+    check('the board takes the other pilots\' laps and sees them home', bots[0].s.link.race.rows.filter((r) => r.done).length === 2,
+      JSON.stringify(bots[0].s.link.race.rows));
     await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
     await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
     await sheetIs(page, 'room');
@@ -629,7 +636,9 @@ async function sceneRace() {
     await pressKey(page, 'dnf');
     const results = await page.until(`${T} && window.__together().race === 'results'`, 8000).then(() => true, () => false);
     check('retiring ends the race for the page, and results follow', results);
-    await page.until("window.__mode === 'flight'", 10000).catch(() => {});
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 10000).catch(() => {});
+    await page.until("!document.querySelector('#tg .pit').hidden", 5000).catch(() => {});
     await wait(500);
     await shot('results');
     bots[0].s.link.raceSend({ t: 'again' });

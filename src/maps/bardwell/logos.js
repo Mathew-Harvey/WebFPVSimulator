@@ -220,22 +220,25 @@ const STAND_BRANDS = [
 ];
 
 /* Each decal: the brand, where it is aimed from, which way, how wide, and
- * the plan way its top faces when it lies flat. */
+ * the plan way its top faces when it lies flat. Only a brand the roster
+ * carries: the Steam edition's roster holds only the partners its content
+ * profile names, which is none today (src/partners/roster.js), and a decal
+ * for a brand with no cell in the atlas stopped the whole house loading. */
 export const DECAL_SPOTS = [
   /* THE ROAD, every brand painted twice along its middle, reading from
    * the house, clear of where the drive comes in. */
-  ...[-44, -34, -24, -14, -4, 6, 16, 26, 52, 62, 72, 82, 92, 102, 108, -48].map((x, i) => ({
+  ...(BRANDS.length ? [-44, -34, -24, -14, -4, 6, 16, 26, 52, 62, 72, 82, 92, 102, 108, -48] : []).map((x, i) => ({
     slug: BRANDS[i % BRANDS.length].slug, from: [x, ROAD.y, 3], dir: 'down', w: 3.6, top: 's',
   })),
   /* THE STANDS, the faces their signs are not on. */
   ...STANDS.flatMap((s, i) => standFaces(s).map((f, k) => {
     const slug = STAND_BRANDS[i][k];
-    return slug ? { slug, ...f, w: bannerW(slug) } : null;
+    return slug && BY_SLUG.has(slug) ? { slug, ...f, w: bannerW(slug) } : null;
   })).filter(Boolean),
   /* Inside the lean-to, and the timber stand's board's back. */
   { slug: 'webleedfpv', from: [29.5, -20.5, 1.4], dir: 'n', w: 1.4 },
   { slug: 'wcmrc', from: [32.5, -14.5, 4.07], dir: 'n', w: 1.4 },
-];
+].filter((d) => BY_SLUG.has(d.slug));
 
 /* Each decal placed: { cell, p, n, up, w, h, hit }, PROUD of its face, or
  * null for a line that meets nothing. */

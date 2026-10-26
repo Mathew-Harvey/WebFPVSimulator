@@ -83,16 +83,23 @@ in its palette, which is a footprint on the field wearing whichever mark you
 pick. Paint is not layout, so adding a sponsor to a course people have
 already flown does not clear its times.
 
-Flying together is being built, and until it launches it is behind
-`?mp=1`. Open the simulator with `?mp=1` and it opens a private room on
-the board for the world you are flying and puts the room in the address
-bar; send that address to a friend and their page boots into the same
-world and joins. The rooms are the board's (its README, "Multiplayer
-rooms"). Locally the socket is the board's own address; in production it
-goes straight to the board's Render address, `PRODUCTION_ROOMS_ORIGIN` in
-`src/net/link.js`, because the Worker on webfpv.org does not carry
-sockets. `npm run net:selftest` and `node scripts/together-shots.js` both
-need a checkout of the board beside this one.
+Flying together is built, and stays behind `?mp=1` until the owner
+switches it on for everybody: `ROOMS_LAUNCHED` in `src/main.js` is the
+one switch, and with it on the links the page writes stop carrying
+`?mp=1` (`node scripts/together-shots.js --launched=1` checks exactly
+that). With `?mp=1` the map picker offers **Fly together** beside Fly
+this, and a **Rooms** tab lists the rooms their hosts listed; a room's
+link only ever asks "Join this room?" first, and nothing of it is even
+fetched for a solo flight. The rooms are the board's (its README,
+"Multiplayer rooms"). Locally the socket is the board's own address; in
+production it goes straight to the board's Render address,
+`PRODUCTION_ROOMS_ORIGIN` in `src/net/link.js`, because the Worker on
+webfpv.org does not carry sockets. The Steam edition asks the pilot
+before it goes online, and then reaches the rooms and nothing else
+(`allowReach` in `src/steam/edition.js`, and the Steam repository's
+`desktop/community.cjs`). `npm run net:selftest` and
+`node scripts/together-shots.js` both need a checkout of the board
+beside this one.
 
 ## Host it
 

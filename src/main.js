@@ -3118,8 +3118,10 @@ export async function boot({ loading, bootStart, mapId }) {
 
   /*
    * FLYING TOGETHER, the multiplayer plan the owner approved on 25 October
-   * 2026, behind ?mp=1 until stage 8 turns it on for everybody
-   * (ROOMS_LAUNCHED, which stays false until the owner says so).
+   * 2026, behind ?mp=1 until it is turned on for everybody. ROOMS_LAUNCHED
+   * is the one switch, and it stays false until the owner says so; with it
+   * on, the links a room writes stop carrying ?mp=1, which
+   * `node scripts/together-shots.js --launched=1` checks.
    *
    * NOTHING HAPPENS UNTIL THE PILOT ASKS: Fly together on a map in the
    * picker, the Rooms tab beside the shelves, or a room's link, which only

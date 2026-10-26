@@ -33,8 +33,12 @@
  *           online off asks again next time
  *
  * Usage:
- *   node scripts/together-shots.js [--out=DIR] [--w=1280] [--h=720] [--only=host,race]
+ *   node scripts/together-shots.js [--out=DIR] [--w=1280] [--h=720] [--only=host,race] [--launched=1]
  * DIR defaults to .loop/together, whose pictures git ignores.
+ *
+ * --launched=1 is for the day ROOMS_LAUNCHED in src/main.js is turned on:
+ * every page opens without ?mp=1, and the links the page writes must not
+ * carry it either. Without the switch on it fails, which is the point.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -171,6 +175,9 @@ function seedFor({ map = 'bardwell', airframe = '5inch', name = 'Shell Pilot', m
 }
 
 async function open(path, seed, extra = {}) {
+  if (opts.launched) {
+    path = path.replace(/([?&])mp=1(&|$)/, (m, a, b) => (b ? a : ''));
+  }
   const page = await openPage({
     root, width: opts.w, height: opts.h, url: path, seed: [seed], ...extra,
   });
@@ -280,6 +287,7 @@ async function sceneHost() {
     await shot('invite');
     const link = await page.evaluate("document.querySelector('#tg input[aria-label=\"Room link\"]').value");
     check('the room link names the world, the room and nothing secret', /map=bardwell/.test(link) && link.includes(`room=${st.code}`) && !link.includes('#i='), link);
+    check(opts.launched ? 'and no ?mp=1, now rooms are on for everybody' : 'and ?mp=1, until rooms launch', /[?&]mp=1/.test(link) === !opts.launched, link);
     await pressKey(page, 'fly');
     await page.until("window.__mode === 'flight'", 30000);
     await page.until(`${T} && window.__together().sheet === ''`, 10000);
@@ -521,7 +529,7 @@ async function sceneLink() {
     name: "Kite's room", way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, password: 'pines4ever',
   });
   const base = 'http://127.0.0.1/index.html';
-  const withInvite = roomUrl(base, room, { invite: hostBot.s.invite });
+  const withInvite = roomUrl(base, room, { invite: hostBot.s.invite, mp: !opts.launched });
   const path = (u) => {
     const x = new URL(u);
     x.searchParams.set('board', boardOrigin);
@@ -552,7 +560,7 @@ async function sceneLink() {
   } finally {
     await page.close();
   }
-  const plain = roomUrl(base, room, {});
+  const plain = roomUrl(base, room, { mp: !opts.launched });
   page = await open(path(plain), seedFor({ name: 'Door Pilot', met: true }));
   shot = shooter(page, 'link');
   try {

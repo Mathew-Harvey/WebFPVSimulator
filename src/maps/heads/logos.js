@@ -61,11 +61,11 @@
  */
 
 import { FRAME, FL, FM, FU } from './heads.js';
-import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
+import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../partners/roster.js';
 import { SHEETS, STICKERS, ACHIEVEMENT } from '../specials/infinityloops.js';
 import { FLOOR_MARKS } from '../yardtrack/yardtrack.js';
 
-export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS];
+export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS].filter((p) => shownOn(p, 'heads'));
 export { SHEETS, ACHIEVEMENT };
 
 /* The two sheets' sizes in pixels, which the crops are shares of.
@@ -274,6 +274,8 @@ export const SIGN_SPOTS = [
   { slug: 'quadconfig', from: [19.5, 15.775, 1.0], dir: 'e', w: 2.2 },
   /* The fence between the side gate and the house, to the front. */
   { slug: 'konexdrone', from: [-1.2, 3.5, 1.0], dir: 'n', w: 1.6 },
+  /* The east fence, outside, to the street. */
+  { slug: 'dronefactory', from: [21.5, 8.725, 1.0], dir: 'w', w: 1.6 },
 ];
 
 /* Each sign on the first drawn face its line meets, as `markSpots` wants

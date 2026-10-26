@@ -244,7 +244,29 @@ export const PATRON_MAP_BRANDS = Object.freeze([
     logo: { colour: 'konexdrone/colour.png', mono: 'konexdrone/mono.png', aspect: 640 / 226 },
     mark: { field: '#f3ead4' },
   }),
+  /* Drone Factory's logo, supplied by the owner on 2026-10-26, who asked for it on a few maps and not every one,
+   * small, to go with their link https://webfpv.org/?ref=dronefactory. `maps` is the allow list (see shownOn):
+   * Heads' house, Bardwell's house and Nick's. Hibari Yard is out: its walls are all taken, and the chooser's last resort is a big ground logo. Black artwork, so it sits on the cream field. */
+  partner({
+    slug: 'dronefactory',
+    name: 'Drone Factory',
+    short: 'Drone Factory',
+    logo: { colour: 'dronefactory/colour.png', mono: 'dronefactory/mono.png', aspect: 456 / 175 },
+    mark: { field: '#f3ead4' },
+    maps: ['heads', 'bardwell', 'house'],
+  }),
 ]);
+
+/*
+ * Whether a patron is shown on a map. A patron with no `maps` list is on every
+ * map that shows patrons. One with a list is on those maps only: 'starter'
+ * (Hibari Yard, the built map the sim opens on), 'city' (the town), 'house'
+ * (Nick's), 'heads', 'bardwell', and 'built:<id>' for a board map. A brand
+ * the owner wants on a few maps and not all of them is what this is for.
+ */
+export function shownOn(p, mapId) {
+  return !p.maps || p.maps.includes(mapId);
+}
 
 export const PARTNER_SLUGS = Object.freeze(PARTNERS.map((p) => p.slug));
 export const MAP_ONLY_PARTNER_SLUGS = Object.freeze(MAP_ONLY_PARTNERS.map((p) => p.slug));

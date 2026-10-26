@@ -154,6 +154,13 @@ partnership to show.
     the load small. Konex Drone is shown on freestyle maps as a sign, not
     counted in the partners list. `konexdrone/mono.png` is made from it by
     scripts/partners.js, every pixel cream and its transparency kept.
+  * `dronefactory/colour.png` is the Drone Factory logo as supplied by the
+    owner on 2026-10-26, a 484 by 211 image on white, cropped to the
+    artwork (456 by 175) and turned into black ink on transparency, so it
+    sits on the cream field. Drone Factory is shown on three freestyle
+    maps as a sign, not counted in the partners list.
+    `dronefactory/mono.png` is made from it by scripts/partners.js, every
+    pixel cream and its transparency kept.
   * `quadconfig/colour.png` is the Quad Configurator logo as supplied by
     patron Magnus Arge, a 1882 by 400 PNG. `quadconfig/mono.png` is made
     from it by scripts/partners.js.

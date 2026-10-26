@@ -106,7 +106,7 @@ import { poleWireAnchors } from '../../props/street.js';
 import { sincos } from '../../props/trig.js';
 import { makeStfMark } from '../../art/stf.js';
 import { makePartnerMark, signAspect } from '../../art/partnermark.js';
-import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
+import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../partners/roster.js';
 import {
   seatDocument, groundUnder, topUnder, indexTops, PLATFORM_REACH, balloonChaseOf,
 } from './place.js';
@@ -1289,7 +1289,7 @@ export async function buildMap(shell, onProgress, options) {
   if (sponsorMarks) {
     try {
       const mapKey = stfKey(doc, chosen.source);
-      const chosenPatrons = choosePatrons(PATRON_MAP_BRANDS, mapKey);
+      const chosenPatrons = choosePatrons(PATRON_MAP_BRANDS.filter((p) => shownOn(p, mapKey.replace(/^built:(?=starter$)/, ''))), mapKey);
       if (chosenPatrons.length > 0) {
         patronSpots = choosePatronSpots(placed, doc, chosen.source, stfSpot, partnerSpots,
           chosenPatrons.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));

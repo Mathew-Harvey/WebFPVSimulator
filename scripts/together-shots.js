@@ -38,6 +38,18 @@
  *   drop    the board gone mid flight: the chip and a banner while the
  *           page tries again, back in from the ticket when it returns, and
  *           a board that cannot read the ticket ending the room
+ *   tools   the host's tools in the page's hands
+ *   late    joining a room whose race is on
+ *   tabs    a resized window, and a second tab
+ *   stream  a streamer room and its crowd
+ *   names   Twitch and YouTube names in a streamer room
+ *   keys    the sheets by keyboard and pad, and the Steam keyboard
+ *   shelf   the Rooms shelf empty, full, gone offline and back, the
+ *           board's own map and track with their pictures, and a room on
+ *           this map that flies the other aircraft
+ *   track   the host's race on a board track: the laps, Start, the page's
+ *           own lap through the gates reaching the room, the podium, Back
+ *           to the pit, Call it off, and G too late to join
  *
  * The race scene also has the host leave in the countdown.
  *
@@ -2647,6 +2659,147 @@ async function sceneShelf() {
   }
 }
 
+/*
+ * Through the race's next gate, as the sim's own race sees it: the craft
+ * is put a little short of the gate and then a little past it, so the
+ * frame's travel crosses it. The gate's opening is above its base, at a
+ * height this reads by trying, and a gate this cannot cross says which
+ * heights it tried.
+ */
+const CROSS = `(async () => {
+  const r0 = window.__race();
+  const k = r0.next;
+  const g = r0.gates[k];
+  const laps = r0.laps.length;
+  const s = window.__gateScale ? window.__gateScale() : 1;
+  const tried = [];
+  for (const h of [0.762 * s, 0.762, 1.2, 0.5, 2]) {
+    const d = 1.2;
+    window.__placeCraft(g.x + g.az.x * d, g.y + h + g.az.y * d, g.z + g.az.z * d, g.x - g.az.x * d, g.y + h - g.az.y * d, g.z - g.az.z * d);
+    const t = performance.now();
+    while (performance.now() - t < 1500) {
+      await new Promise((res) => { setTimeout(res, 40); });
+      const r = window.__race();
+      if (r.next !== k || r.laps.length !== laps) return { k, h, next: r.next, laps: r.laps.length };
+    }
+    tried.push(h);
+  }
+  return { k, tried };
+})()`;
+
+/* A room's race on a track from the board, in the host's hands: the laps,
+ * Start, the page's own lap reaching the room from the sim's race, the
+ * podium, Back to the pit, Call it off, and G too late to join. */
+async function sceneTrack() {
+  console.log('\ntrack: the host\'s race on a board track, and the page\'s own lap');
+  await publishWorlds();
+  const bots = [bot('Track Owner', 449), bot('Wing Mate', 457)];
+  const room = await hostRoom(bots[0], {
+    name: 'Loop racing', way: '5inch', map: BOARD_TRACK.id, mapName: BOARD_TRACK.name, scale: 50,
+  });
+  await joinRoom(bots[1], room.code, bots[0].s.invite);
+  const u = new URL(roomUrl('http://127.0.0.1/index.html', room, { invite: bots[0].s.invite }));
+  u.searchParams.set('board', boardOrigin);
+  const page = await open(`${u.pathname}${u.search}${u.hash}`, seedFor({ name: 'Track Pilot', met: true }));
+  const shot = shooter(page, 'track');
+  const raceOf = () => bots[1].s.link.race;
+  const racePage = async () => {
+    await page.evaluate("(() => { if (window.__ui.screen === 'flight') { window.__ui.act('pause'); window.__ui.show('paused'); } window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, 'race');
+    await sheetIs(page, 'race');
+  };
+  try {
+    await sheetIs(page, 'join');
+    await pressKey(page, 'join');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight'", 30000);
+    const world = await page.evaluate('window.__race().gates.length');
+    check('the room\'s link flies the board\'s track', world === 3, `${world} gates`);
+    const me = (await state(page)).you;
+    bots[0].s.link.hostAction('makeHost', me);
+    check('the host hands the room to the page', await page.until(`${T} && window.__together().host === ${me}`, 5000).then(() => true, () => false));
+
+    await racePage();
+    check('the race page gives the host the laps and Start', await page.evaluate("['lmore', 'lfewer', 'start'].every((k) => document.querySelector('#tg [data-k=\"' + k + '\"]'))"));
+    await pressKey(page, 'lmore');
+    check('more laps reaches the room', await until(() => raceOf() && raceOf().laps === 4, 4000), JSON.stringify(raceOf() && raceOf().laps));
+    for (let i = 0; i < 4; i += 1) {
+      await pressKey(page, 'lfewer');
+      await wait(250);
+    }
+    check('and fewer, never under one', await until(() => raceOf() && raceOf().laps === 1, 4000), JSON.stringify(raceOf() && raceOf().laps));
+    check('the race page says so', await page.until(SEES('Loop racing · Shots loop · 1 lap'), 4000).then(() => true, () => false));
+    await wait(300);
+    await shot('race-page-host');
+    bots[1].s.link.raceSend({ t: 'ready', on: true });
+    await until(() => raceOf() && raceOf().ready.includes(bots[1].s.you), 4000);
+    await pressKey(page, 'start');
+    const counting = await until(() => raceOf() && raceOf().phase === 'count', 4000);
+    check('Start begins the countdown, with the page and the pilot who was ready', counting && raceOf().racers.includes(me) && raceOf().racers.includes(bots[1].s.you),
+      JSON.stringify(raceOf() && raceOf().racers));
+    check('and takes the page back to its flight', await page.until("window.__ui.screen === 'flight'", 4000).then(() => true, () => false));
+    await page.until(`${T} && window.__together().race === 'live'`, 9000);
+    /* The board takes no lap shorter than a second and a half, timed from
+     * GO, so the gates are flown once that has passed. */
+    await wait(1700);
+    const flown = [];
+    for (let i = 0; i < 8 && !(raceOf().rows || []).some((r) => r.id === me && r.laps >= 1); i += 1) {
+      flown.push(await page.evaluate(CROSS));
+      await until(() => (raceOf().rows || []).some((r) => r.id === me && r.laps >= 1), 600);
+    }
+    const mine = (raceOf().rows || []).find((r) => r.id === me);
+    check('the page\'s own lap, flown through the gates, reaches the room\'s race', Boolean(mine && mine.laps === 1 && mine.done && mine.total >= 1500),
+      `${JSON.stringify(mine)} after ${JSON.stringify(flown)}`);
+    await shot('lap');
+    bots[1].s.link.raceSend({ t: 'lap', n: 1, ms: 1600 });
+    const results = await page.until(`${T} && window.__together().race === 'results'`, 8000).then(() => true, () => false);
+    check('and with everybody home, results', results, JSON.stringify(raceOf()));
+    await racePage();
+    const pods = await page.evaluate("document.querySelectorAll('#tg .pod:not(.empty)').length");
+    check('the results page has the podium, both pilots on it', pods === 2, `${pods} on it`);
+    await wait(300);
+    await shot('podium');
+    await pressKey(page, 'pit');
+    check('Back to the pit is the host\'s, and the room goes back', await until(() => raceOf().phase === 'pit', 4000), raceOf().phase);
+    await racePage();
+    await pressKey(page, 'start');
+    await page.until(`${T} && window.__together().race === 'live'`, 9000);
+    await racePage();
+    check('while racing the host can call it off', await page.evaluate(SEES('Call it off')));
+    await pressKey(page, 'pit');
+    check('which puts the room back in the pit', await until(() => raceOf().phase === 'pit', 4000), raceOf().phase);
+
+    /* A countdown the others start while the page is in the menus, and G
+     * pressed once it is too late to be put on its grid. */
+    await pressKey(page, 'back');
+    await page.until(`${T} && window.__together().sheet === ''`, 3000);
+    await page.evaluate("(() => { if (window.__ui.screen !== 'paused') { window.__ui.act('pause'); window.__ui.show('paused'); } return 1; })()");
+    await until(() => Boolean(bots[1].s.link.pilots.get(me) && bots[1].s.link.pilots.get(me).away), 4000);
+    for (const b of bots) b.s.link.raceSend({ t: 'ready', on: true });
+    await until(() => raceOf().phase === 'count', 4000);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    const watching = await page.until(SEES('Watching this one', '#tg .standings'), 6000).then(() => true, () => false);
+    await page.tap('KeyG');
+    const late = await page.until(SEES('Too late for this one', '#tg .tg-toasts'), 2000).then(() => true, () => false);
+    check('G once the countdown is too far gone says too late, and how to be in the next', watching && late, `${await toastText(page)} ${JSON.stringify(await state(page))}`);
+    await wait(200);
+    await shot('too-late');
+    check('and leaves the page out of it', !(await state(page)).racing && !raceOf().racers.includes(me), JSON.stringify(raceOf().racers));
+    await until(() => raceOf().phase === 'live', 6000);
+    for (const b of bots) b.s.link.raceSend({ t: 'dnf' });
+    await page.until(`${T} && window.__together().race === 'results'`, 8000).catch(() => {});
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    for (const b of bots) b.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -2663,6 +2816,7 @@ try {
   if (wanted('names')) { await freshBoard(); await sceneNames(); }
   if (wanted('keys')) { await freshBoard(); await sceneKeys(); }
   if (wanted('shelf')) { await freshBoard(); await sceneShelf(); }
+  if (wanted('track')) { await freshBoard(); await sceneTrack(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

@@ -2216,6 +2216,24 @@ async function sceneKeys() {
     check('skin, hair, eyes and livery are picked from their swatches', dressed && dressed.skin === 2 && dressed.hairColour === 3
       && dressed.eyeColour === 1 && dressed.livery === 5, JSON.stringify(dressed));
     await shot('editor-quad');
+    /* The legends' parts, among the others: facial hair rides in the
+     * eyes' number, so a beard keeps the eyes it is drawn under and other
+     * eyes keep the beard. */
+    await pressKey(page, 'tab-Eyes');
+    await pressKey(page, 'eyes-4');
+    await pressKey(page, 'tab-Face');
+    await pressKey(page, 'beard-3');
+    await pressKey(page, 'tab-Hair');
+    await pressKey(page, 'hair-10');
+    await pressKey(page, 'tab-Gear');
+    await pressKey(page, 'acc-18');
+    const legend = await avatarOf(page);
+    check('a full beard keeps the eyes, and slicked back hair and thick specs are parts like any other',
+      legend && legend.eyes === 4 + 6 * 3 && legend.hair === 10 && legend.acc === 18, JSON.stringify(legend));
+    await pressKey(page, 'tab-Eyes');
+    await pressKey(page, 'eyes-1');
+    check('and other eyes keep the beard', (await avatarOf(page)).eyes === 1 + 6 * 3);
+    await shot('editor-legend');
     await pressKey(page, 'reroll');
     check('and Roll again in the editor starts over', JSON.stringify(await avatarOf(page)) !== JSON.stringify(dressed));
     await pressKey(page, 'done');

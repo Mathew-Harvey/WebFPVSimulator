@@ -52,16 +52,38 @@ const ATLAS_URL = new URL('../../assets/avatar/parts.png', import.meta.url).href
 export const AVATAR_FIELDS = ['face', 'hair', 'eyes', 'acc', 'skin', 'hairColour', 'eyeColour', 'livery'];
 
 export const HEADS = ['oval', 'round', 'sharp', 'square'];
-export const HAIRS = ['spiky', 'bob', 'long', 'ponytail', 'buzz', 'messy', 'buns', 'twintails'];
+/* The styles after the twin tails are drawn here rather than cut from the
+ * atlas (see drawHair): the short cuts the owner's four legends wear, a
+ * quiff, a side parting, slicked back and shaved (the owner, 2026-10-26:
+ * "Add Joshua bardwell, nick burns, heads and botgrinder characterisation
+ * to the avatar picker / builder", and then "Just inter mingle the
+ * characters, don't make a legends tab"). */
+export const HAIRS = ['spiky', 'bob', 'long', 'ponytail', 'buzz', 'messy', 'buns', 'twintails',
+  'quiff', 'sidepart', 'slick', 'shaved'];
+/* The editor's order: the short cuts beside the buzz, then the long ones. */
+export const HAIR_STYLE_ORDER = [4, 11, 10, 9, 8, 0, 5, 1, 6, 3, 2, 7];
 /* Wear: 0 is nothing. The ones after the scarf are drawn here rather than
- * cut from the atlas (see drawWear). */
+ * cut from the atlas (see drawWear). The last three are the legends'
+ * glasses: thin dark specs, clear frames and thick black frames. */
 export const WEARS = ['', 'goggles', 'fpv', 'headphones', 'cap', 'glasses', 'beanie', 'headband', 'scarf',
-  'cat', 'bow', 'flower', 'stars', 'prop', 'shades', 'halo'];
+  'cat', 'bow', 'flower', 'stars', 'prop', 'shades', 'halo', 'specs', 'clear', 'frames'];
 /* The editor's order: kit, then hats, then what is pinned in the hair. */
-export const ACC_ORDER = [0, 2, 1, 3, 5, 14, 4, 6, 13, 7, 9, 10, 11, 12, 15, 8];
+export const ACC_ORDER = [0, 2, 1, 3, 5, 16, 17, 18, 14, 4, 6, 13, 7, 9, 10, 11, 12, 15, 8];
 /* An eye style is the pair a pilot's calm face wears; the other faces take
  * their eyes from the same family, bright or sleepy. */
 export const EYE_STYLES = ['bright-calm', 'bright-calm2', 'bright-calm3', 'sleepy-calm', 'sleepy-calm2', 'sleepy-calm3'];
+/*
+ * FACIAL HAIR, drawn here: stubble, a short beard, a full one and a
+ * moustache. It rides in the eyes' number, a style and a beard each:
+ * eyes = style + 6 * beard, so the board's eight numbers stay eight and
+ * every one stays under 32, as the face marks ride in the face's. An older
+ * build reads a number past its six styles as the first style and no beard,
+ * which is a pilot without a beard, not a broken one.
+ */
+export const BEARDS = ['', 'stubble', 'short', 'full', 'moustache'];
+export const eyeStyleOf = (av) => (av.eyes || 0) % EYE_STYLES.length;
+export const beardOf = (av) => Math.floor((av.eyes || 0) / EYE_STYLES.length) % BEARDS.length;
+export const eyesOf = (style, beard) => style + EYE_STYLES.length * beard;
 /*
  * Colours, by number. A number is what a pilot's look stores and the board
  * passes on, so a colour is only ever added at the end of its list; the
@@ -77,8 +99,10 @@ export const SKIN_ORDER = [6, 0, 1, 2, 3, 4, 5, 7];
 export const HAIR_COLOURS = [
   '#2b2b33', '#6b4226', '#e8c66a', '#c2452d', '#3a6fd8', '#f28ab8', '#3faf6b', '#ededed', '#7b52c9',
   '#f08a2e', '#25b8b8', '#9aa1ad', '#f4e3ad', '#99203a', '#27346a', '#c9a6ec', '#79c4ff', '#93e2c2',
+  '#8b8378',
 ];
-export const HAIR_ORDER = [0, 14, 1, 13, 3, 9, 2, 12, 7, 11, 5, 15, 8, 4, 16, 10, 6, 17];
+/* The last is salt and pepper, a warm grey, for a pilot going grey. */
+export const HAIR_ORDER = [0, 14, 1, 13, 3, 9, 2, 12, 7, 18, 11, 5, 15, 8, 4, 16, 10, 6, 17];
 export const EYE_COLOURS = [
   '#7a4a2a', '#3b82f6', '#2e9e5b', '#e0a030', '#9b59d0', '#d02f7c',
   '#d93636', '#159d9d', '#7d8896', '#e8c030', '#53c6ff', '#3a2b2b',
@@ -106,22 +130,26 @@ export const faceOf = (head, mark) => head + HEADS.length * mark;
 export const LIVERIES = Object.freeze([
   0xe8a8b8, 0xffd45c, 0x9db3c8, 0xf3ead4, 0xff7a59, 0x5ab0ff,
   0xb07cff, 0xff5c8a, 0x3fd0c9, 0xc9e265, 0xff9e3d, 0xe0e4ea,
+  /* A royal blue and a charcoal, the tees two of the legends wear. */
+  0x2f62c8, 0x3c4048,
 ]);
 
 /* Names for the editor's buttons. */
 export const PART_NAMES = {
   face: ['Oval', 'Round', 'Sharp', 'Square'],
   mark: ['Nothing', 'Plaster', 'Nose plaster', 'Freckles', 'Star', 'Heart', 'Whiskers', 'Beauty spot'],
-  hair: ['Spiky', 'Bob', 'Long', 'Ponytail', 'Buzz', 'Messy', 'Buns', 'Twin tails'],
+  hair: ['Spiky', 'Bob', 'Long', 'Ponytail', 'Buzz', 'Messy', 'Buns', 'Twin tails',
+    'Quiff', 'Side part', 'Slicked back', 'Shaved'],
   eyes: ['Bright', 'Sparkly', 'Keen', 'Sleepy', 'Dreamy', 'Gentle'],
-  acc: ['Nothing', 'Goggles', 'FPV goggles', 'Headphones', 'Cap', 'Glasses', 'Beanie', 'Headband', 'Scarf',
-    'Cat ears', 'Bow', 'Sakura', 'Star clips', 'Prop beanie', 'Shades', 'Halo'],
+  beard: ['None', 'Stubble', 'Short beard', 'Full beard', 'Moustache'],
+  acc: ['Nothing', 'Goggles', 'FPV goggles', 'Headphones', 'Cap', 'Round glasses', 'Beanie', 'Headband', 'Scarf',
+    'Cat ears', 'Bow', 'Sakura', 'Star clips', 'Prop beanie', 'Shades', 'Halo', 'Thin specs', 'Clear specs', 'Thick specs'],
 };
 /* How many of each field there are, for the editor and for a roll. */
 export const FIELD_COUNTS = {
   face: HEADS.length * FACE_MARKS.length,
   hair: HAIRS.length,
-  eyes: EYE_STYLES.length,
+  eyes: EYE_STYLES.length * BEARDS.length,
   acc: WEARS.length,
   skin: SKINS.length,
   hairColour: HAIR_COLOURS.length,
@@ -162,7 +190,8 @@ export function rollAvatar(rand = Math.random) {
     /* Most faces have no mark, so a mark is a pilot's own. */
     face: faceOf(pick(HEADS.length), rand() < 0.6 ? 0 : 1 + pick(FACE_MARKS.length - 1)),
     hair: pick(HAIRS.length),
-    eyes: pick(EYE_STYLES.length),
+    /* One in six has facial hair. */
+    eyes: eyesOf(pick(EYE_STYLES.length), rand() < 5 / 6 ? 0 : 1 + pick(BEARDS.length - 1)),
     /* One in four wear nothing, so a room is not all goggles. */
     acc: rand() < 0.25 ? 0 : 1 + pick(WEARS.length - 1),
     skin: pick(SKINS.length),
@@ -515,7 +544,8 @@ function partCanvas(name, jobs, half = 0) {
 
 const HATS = new Set(['cap', 'beanie', 'prop']);
 /* Wear drawn in code, and wear that is an atlas part with more drawn on. */
-const DRAWN = new Set(['cat', 'bow', 'flower', 'stars', 'shades', 'halo']);
+const DRAWN = new Set(['cat', 'bow', 'flower', 'stars', 'shades', 'halo', 'specs', 'clear', 'frames']);
+const DRAWN_HAIR = new Set(['quiff', 'sidepart', 'slick', 'shaved']);
 const WEAR_PART = { prop: 'beanie' };
 const TAILS = new Set(['twintails']);
 const HAT_LIP = 0.05;
@@ -1129,6 +1159,72 @@ function drawWear(g, kind, q) {
       g.lineTo(ax, ay);
       g.stroke();
     }
+  } else if (kind === 'specs' || kind === 'clear' || kind === 'frames') {
+    /* Rectangular glasses round the eyes, each the weight of the pair a
+     * legend wears: thin dark metal, clear plastic with an ink edge, and
+     * thick black. The glass is a faint tint and one streak of light, so
+     * the eyes behind it are the eyes. */
+    const w = 0.37 * W;
+    const ht = 0.27 * W;
+    const cy = q.eyeY - 0.015;
+    const [lx, ly] = p(-0.215, cy);
+    const [rx] = p(0.215, cy);
+    const lens = (x) => {
+      g.beginPath();
+      g.roundRect(x - w / 2, ly - ht / 2, w, ht, [0.05 * W, 0.05 * W, 0.1 * W, 0.1 * W]);
+    };
+    for (const x of [lx, rx]) {
+      lens(x);
+      g.fillStyle = 'rgba(214, 232, 250, 0.16)';
+      g.fill();
+      g.save();
+      g.clip();
+      g.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      g.beginPath();
+      g.moveTo(x + w * 0.12, ly - ht * 0.6);
+      g.lineTo(x + w * 0.3, ly - ht * 0.6);
+      g.lineTo(x + w * 0.02, ly + ht * 0.6);
+      g.lineTo(x - w * 0.16, ly + ht * 0.6);
+      g.closePath();
+      g.fill();
+      g.restore();
+    }
+    /* The arms run from each lens's outer edge to the face's edge. */
+    const [ex, ey] = p(0.5, cy - 0.04);
+    const [elx] = p(-0.5, cy - 0.04);
+    const frame = () => {
+      for (const x of [lx, rx]) {
+        lens(x);
+        g.stroke();
+      }
+      g.beginPath();
+      g.moveTo(lx + w / 2, ly - ht * 0.18);
+      g.quadraticCurveTo((lx + rx) / 2, ly - ht * 0.36, rx - w / 2, ly - ht * 0.18);
+      g.moveTo(lx - w / 2, ly - ht * 0.3);
+      g.lineTo(elx, ey);
+      g.moveTo(rx + w / 2, ly - ht * 0.3);
+      g.lineTo(ex, ey);
+      g.stroke();
+    };
+    const weights = { specs: [0.02, 0.008, '#6c7484'], clear: [0.05, 0.03, 'rgba(232, 240, 246, 0.95)'], frames: [0.058, 0.036, '#2a2d34'] };
+    const [outer, inner, body] = weights[kind];
+    g.lineWidth = outer * W;
+    g.strokeStyle = WEAR_INK;
+    frame();
+    g.lineWidth = inner * W;
+    g.strokeStyle = body;
+    frame();
+    if (kind !== 'specs') {
+      /* A glint on each frame's top corner. */
+      g.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      g.lineWidth = 0.012 * W;
+      for (const x of [lx, rx]) {
+        g.beginPath();
+        g.moveTo(x - w * 0.36, ly - ht / 2);
+        g.lineTo(x - w * 0.12, ly - ht / 2);
+        g.stroke();
+      }
+    }
   } else if (kind === 'halo') {
     /* Over the hair, but never off the card's top: through the tips of
      * tall spikes instead. */
@@ -1177,6 +1273,459 @@ function drawWear(g, kind, q) {
     ink('#4f7dff');
   }
   g.restore();
+}
+
+/*
+ * THE HEADS' OWN LINES, measured off the atlas's four heads, as shares of
+ * the face (across from its middle, down from the skull's top): the skull's
+ * half width at each of SKULL_AT, which drawn hair has to reach past to
+ * cover the skull's ink line, and the jaw's line at every twentieth across
+ * from the middle out to 0.45, which a beard follows and hangs past.
+ */
+const SKULL_AT = [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5];
+const SKULLS = {
+  oval: [0.14, 0.3, 0.38, 0.47, 0.51, 0.516, 0.52],
+  round: [0.127, 0.287, 0.368, 0.458, 0.502, 0.515, 0.52],
+  sharp: [0.142, 0.305, 0.385, 0.474, 0.51, 0.514, 0.52],
+  square: [0.207, 0.427, 0.475, 0.522, 0.529, 0.525, 0.53],
+};
+const JAWS = {
+  oval: [1.004, 1.0, 0.987, 0.965, 0.939, 0.908, 0.873, 0.833, 0.77, 0.66],
+  round: [1.037, 1.035, 1.027, 1.013, 0.993, 0.968, 0.937, 0.899, 0.845, 0.73],
+  sharp: [1.004, 0.999, 0.981, 0.956, 0.928, 0.897, 0.864, 0.824, 0.752, 0.64],
+  square: [1.003, 1.003, 1.002, 0.999, 0.977, 0.951, 0.924, 0.895, 0.866, 0.742],
+};
+function skullAt(head, fy) {
+  const w = SKULLS[head];
+  if (fy <= 0) return w[0];
+  for (let i = 1; i < SKULL_AT.length; i += 1) {
+    if (fy <= SKULL_AT[i]) {
+      const t = (fy - SKULL_AT[i - 1]) / (SKULL_AT[i] - SKULL_AT[i - 1]);
+      return w[i - 1] + (w[i] - w[i - 1]) * t;
+    }
+  }
+  return w[w.length - 1];
+}
+function jawAt(head, fx) {
+  const j = JAWS[head];
+  const u = Math.min(j.length - 1, Math.abs(fx) / 0.05);
+  const i = Math.min(j.length - 2, Math.floor(u));
+  return j[i] + (j[i + 1] - j[i]) * (u - i);
+}
+
+/* A smooth line through points already in pixels, as an inker's French
+ * curve draws one (Catmull-Rom, as Bezier), from wherever the path is. */
+function through(g, pts, move = false) {
+  const n = pts.length;
+  const at = (i) => pts[Math.max(0, Math.min(n - 1, i))];
+  if (move) g.moveTo(pts[0][0], pts[0][1]);
+  else g.lineTo(pts[0][0], pts[0][1]);
+  for (let i = 0; i < n - 1; i += 1) {
+    const a = at(i - 1);
+    const b = at(i);
+    const c = at(i + 1);
+    const d = at(i + 2);
+    g.bezierCurveTo(b[0] + (c[0] - a[0]) / 6, b[1] + (c[1] - a[1]) / 6, c[0] - (d[0] - b[0]) / 6, c[1] - (d[1] - b[1]) / 6, c[0], c[1]);
+  }
+}
+
+/* A number from a seed, the same every time, so stubble is drawn in the
+ * same place on every portrait and in every room. */
+function grain(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+/*
+ * A run of points, smoothed and sampled about every two pixels, for an
+ * outline that has corners (where one run ends and the next begins) and
+ * teeth: `teeth` is a tooth's length, every `step` along, pointing toward
+ * the point `into`, as the atlas's buzz cut has along its hairline.
+ */
+function run(pts, teeth = 0, step = 1, into = null) {
+  const n = pts.length;
+  const at = (i) => pts[Math.max(0, Math.min(n - 1, i))];
+  const out = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    const a = at(i - 1);
+    const b = at(i);
+    const c = at(i + 1);
+    const d = at(i + 2);
+    const c1 = [b[0] + (c[0] - a[0]) / 6, b[1] + (c[1] - a[1]) / 6];
+    const c2 = [c[0] - (d[0] - b[0]) / 6, c[1] - (d[1] - b[1]) / 6];
+    const k = Math.max(2, Math.ceil(Math.hypot(c[0] - b[0], c[1] - b[1]) / 2));
+    for (let j = i ? 1 : 0; j <= k; j += 1) {
+      const t = j / k;
+      const u = 1 - t;
+      const w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+      out.push([w[0] * b[0] + w[1] * c1[0] + w[2] * c2[0] + w[3] * c[0], w[0] * b[1] + w[1] * c1[1] + w[2] * c2[1] + w[3] * c[1]]);
+    }
+  }
+  if (!teeth || out.length < 3) {
+    return out;
+  }
+  const s = [0];
+  for (let i = 1; i < out.length; i += 1) {
+    s.push(s[i - 1] + Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1]));
+  }
+  const total = s[s.length - 1];
+  const base = step * 0.7;
+  const res = [];
+  let next = step * 0.8;
+  for (let i = 0; i < out.length; i += 1) {
+    if (next < total - step * 0.5 && s[i] >= next - base / 2) {
+      /* The tooth: its tip off the line, leaning a little along it. */
+      let j = i;
+      while (j < out.length - 1 && s[j] < next) j += 1;
+      const p0 = out[Math.max(0, j - 1)];
+      const p1 = out[Math.min(out.length - 1, j + 1)];
+      const dx = p1[0] - p0[0];
+      const dy = p1[1] - p0[1];
+      const l = Math.hypot(dx, dy) || 1;
+      let nx = -dy / l;
+      let ny = dx / l;
+      if (into && (into[0] - out[j][0]) * nx + (into[1] - out[j][1]) * ny < 0) {
+        nx = -nx;
+        ny = -ny;
+      }
+      res.push(out[i]);
+      res.push([out[j][0] + nx * teeth + (dx / l) * teeth * 0.3, out[j][1] + ny * teeth + (dy / l) * teeth * 0.3]);
+      while (i < out.length - 1 && s[i] < next + base / 2) i += 1;
+      res.push(out[i]);
+      next += step;
+    } else {
+      res.push(out[i]);
+    }
+  }
+  return res;
+}
+
+/*
+ * HAIR DRAWN HERE, for the legends' short cuts, in the atlas hair's own
+ * hand: one flat fill in the hair's colour, the short sides a shade darker,
+ * a few ink strands and a few lighter ones, a hairline with teeth and an
+ * ink outline as thick as the heads' own. Each style is an outline round
+ * the skull, reaching past the head's own line (skullAt) so the skull
+ * never shows at a corner. `q.p` places a point in the face's measure, as
+ * for wear. Drawn onto the hair layer, so a hat cuts it, the shine rings it
+ * and it throws its shadow on the face as the atlas's hair does; returns
+ * the flat fill alone, which the shine is drawn through.
+ */
+const HAIR_INK = '#18131a';
+function drawHair(hg, kind, q, colour) {
+  const { W } = q;
+  const P = ([x, y]) => q.p(x, y);
+  const sx = (fy) => skullAt(q.head, fy);
+  const face = q.p(0, 0.6);
+  if (kind === 'shaved') {
+    /* No outline, only the shadow a shaved head's stubble makes: faint on
+     * the crown, deeper on the sides and round the back, kept to the
+     * head. */
+    const [r, gg, b] = rgbOf(colour);
+    hg.save();
+    const [cx, cy] = q.p(0, 0.3);
+    const grad = hg.createRadialGradient(cx, cy, 0.05 * W, cx, cy, 0.62 * W);
+    grad.addColorStop(0, `rgba(${r}, ${gg}, ${b}, 0.08)`);
+    grad.addColorStop(0.72, `rgba(${r}, ${gg}, ${b}, 0.2)`);
+    grad.addColorStop(1, `rgba(${r}, ${gg}, ${b}, 0.42)`);
+    hg.fillStyle = grad;
+    hg.beginPath();
+    const line = run([[-0.47, 0.55], [-0.47, 0.42], [-0.44, 0.3], [-0.36, 0.22], [-0.18, 0.18], [0, 0.17], [0.18, 0.18], [0.36, 0.22], [0.44, 0.3], [0.47, 0.42], [0.47, 0.55]].map(P), 0.014 * W, 0.045 * W, face);
+    line.forEach(([x, y], i) => (i ? hg.lineTo(x, y) : hg.moveTo(x, y)));
+    for (const pt of [[0.62, 0.55], [0.62, -0.12], [-0.62, -0.12], [-0.62, 0.55]]) hg.lineTo(...P(pt));
+    hg.closePath();
+    hg.fill();
+    hg.globalCompositeOperation = 'destination-in';
+    hg.drawImage(q.skin, 0, 0);
+    hg.restore();
+    return null;
+  }
+  /* Each style: runs round the outside from the left sideburn's foot over
+   * the top to the right one's, then the hairline back. A run is
+   * [points, tooth, step], in the face's measure. */
+  const S = (pts, tooth = 0, step = 0.06) => [pts, tooth, step];
+  let runs;
+  let strands;
+  let lights;
+  let under = null;
+  let sides = 0.38;
+  let darker = -0.24;
+  if (kind === 'quiff') {
+    const front = [[0.37, 0.235], [0.26, 0.19], [0.12, 0.15], [0, 0.138], [-0.14, 0.152], [-0.27, 0.19], [-0.37, 0.235]];
+    runs = [
+      S([[-0.495, 0.53], [-0.53, 0.4], [-sx(0.25) - 0.032, 0.25], [-sx(0.1) - 0.052, 0.09], [-0.43, -0.02], [-0.36, -0.1]]),
+      S([[-0.36, -0.1], [-0.31, -0.085]]),
+      S([[-0.31, -0.085], [-0.22, -0.155], [-0.1, -0.19], [0.02, -0.195]]),
+      S([[0.02, -0.195], [0.07, -0.15]]),
+      S([[0.07, -0.15], [0.17, -0.165], [0.26, -0.15]]),
+      S([[0.26, -0.15], [0.28, -0.105]]),
+      S([[0.28, -0.105], [0.38, -0.075], [sx(0.02) + 0.075, -0.0], [sx(0.12) + 0.05, 0.12], [sx(0.25) + 0.032, 0.25], [0.53, 0.4], [0.495, 0.53]]),
+      S([[0.458, 0.53], [0.462, 0.4], [0.44, 0.3], [0.37, 0.235]]),
+      S(front, 0.026, 0.12),
+      S([[-0.37, 0.235], [-0.44, 0.3], [-0.462, 0.4], [-0.458, 0.53]]),
+    ];
+    under = front;
+    strands = [
+      [[-0.22, 0.17], [-0.15, 0.02], [-0.06, -0.11], [0.02, -0.17]],
+      [[-0.04, 0.14], [0.04, 0.02], [0.14, -0.09], [0.2, -0.14]],
+      [[0.15, 0.16], [0.24, 0.06], [0.36, -0.03]],
+      [[-0.36, 0.22], [-0.35, 0.07], [-0.3, -0.04]],
+    ];
+    lights = [[[-0.17, 0.07], [-0.09, -0.06], [0.0, -0.14]], [[0.07, 0.07], [0.15, -0.02], [0.23, -0.09]]];
+  } else if (kind === 'sidepart') {
+    runs = [
+      S([[-0.495, 0.52], [-0.53, 0.38], [-sx(0.2) - 0.045, 0.2], [-sx(0.06) - 0.06, 0.04], [-0.38, -0.07], [-0.2, -0.125], [0.0, -0.14], [0.14, -0.13], [0.22, -0.155]]),
+      S([[0.22, -0.155], [0.25, -0.1]]),
+      S([[0.25, -0.1], [sx(0.02) + 0.058, -0.01], [sx(0.15) + 0.045, 0.15], [0.53, 0.38], [0.495, 0.52]]),
+      S([[0.458, 0.52], [0.462, 0.38], [0.435, 0.27], [0.36, 0.215]]),
+      S([[0.36, 0.215], [0.26, 0.185], [0.12, 0.18], [-0.02, 0.19], [-0.14, 0.21], [-0.22, 0.235], [-0.28, 0.285]], 0.024, 0.13),
+      S([[-0.28, 0.285], [-0.31, 0.245]]),
+      S([[-0.31, 0.245], [-0.37, 0.265], [-0.41, 0.32]]),
+      S([[-0.41, 0.32], [-0.44, 0.3]]),
+      S([[-0.44, 0.31], [-0.462, 0.4], [-0.458, 0.52]]),
+    ];
+    strands = [
+      [[0.25, 0.19], [0.23, 0.06], [0.19, -0.1]],
+      [[0.18, 0.0], [0.0, -0.04], [-0.18, 0.04], [-0.3, 0.2]],
+      [[0.15, 0.11], [-0.02, 0.1], [-0.16, 0.15], [-0.26, 0.26]],
+      [[0.05, -0.12], [-0.2, -0.08], [-0.38, 0.04]],
+      [[0.3, 0.02], [0.38, 0.1], [0.43, 0.2]],
+    ];
+    lights = [[[0.1, -0.07], [-0.1, -0.06], [-0.28, 0.04]], [[-0.485, 0.22], [-0.495, 0.36]], [[0.485, 0.22], [0.495, 0.36]]];
+    darker = -0.16;
+  } else {
+    /* Slicked back: a smooth dome, combed straight back from the brow,
+     * the sides faded to the skin. */
+    runs = [
+      S([[-0.495, 0.5], [-0.528, 0.38], [-sx(0.2) - 0.032, 0.2], [-sx(0.05) - 0.05, 0.02], [-0.22, -0.085], [0, -0.105], [0.22, -0.085], [sx(0.05) + 0.05, 0.02], [sx(0.2) + 0.032, 0.2], [0.528, 0.38], [0.495, 0.5]]),
+      S([[0.458, 0.5], [0.462, 0.38], [0.435, 0.27], [0.36, 0.2]]),
+      S([[0.36, 0.2], [0.2, 0.162], [0, 0.158], [-0.2, 0.162], [-0.36, 0.2]]),
+      S([[-0.36, 0.2], [-0.435, 0.27], [-0.462, 0.38], [-0.458, 0.5]]),
+    ];
+    strands = [-0.27, -0.13, 0.02, 0.16, 0.29].map((x) => [[x, 0.165], [x * 1.1, 0.06], [x * 1.2, -0.03]]);
+    lights = [[[-0.13, 0.12], [-0.145, 0.02], [-0.165, -0.06]], [[0.13, 0.12], [0.145, 0.02], [0.165, -0.06]]];
+    sides = 0.36;
+    darker = -0.12;
+  }
+  const outline = [];
+  for (const [pts, tooth, step] of runs) {
+    outline.push(...run(pts.map(P), tooth * W, step * W, face));
+  }
+  const shape = (onto) => {
+    onto.beginPath();
+    outline.forEach(([x, y], i) => (i ? onto.lineTo(x, y) : onto.moveTo(x, y)));
+    onto.closePath();
+  };
+  const fill = layer(hg.canvas.width, hg.canvas.height);
+  shape(fill.g);
+  fill.g.fillStyle = colour;
+  fill.g.fill();
+  hg.save();
+  shape(hg);
+  hg.fillStyle = colour;
+  hg.fill();
+  hg.save();
+  hg.clip();
+  /* The short sides, a shade darker, below a line that rises toward the
+   * back, as a barber's taper does; and the shade under a quiff's front. */
+  hg.fillStyle = tint(colour, darker);
+  for (const s of [-1, 1]) {
+    hg.beginPath();
+    through(hg, [[s * sides, 0.7], [s * sides, 0.3], [s * (sides + 0.06), 0.12], [s * 0.7, 0.04]].map(P), true);
+    hg.lineTo(...P([s * 0.7, 0.7]));
+    hg.closePath();
+    hg.fill();
+  }
+  if (under) {
+    hg.fillStyle = tint(colour, -0.3);
+    hg.beginPath();
+    through(hg, under.map(P), true);
+    through(hg, under.slice().reverse().map(([x, y]) => P([x * 0.9, y - 0.045 - 0.03 * (1 - Math.abs(x) / 0.37)])));
+    hg.closePath();
+    hg.fill();
+  }
+  /* The ink strands, thin, and the lighter ones beside them. */
+  hg.lineCap = 'round';
+  hg.lineJoin = 'round';
+  hg.strokeStyle = 'rgba(24, 19, 26, 0.75)';
+  hg.lineWidth = 0.008 * W;
+  for (const s of strands) {
+    hg.beginPath();
+    through(hg, s.map(P), true);
+    hg.stroke();
+  }
+  hg.strokeStyle = tint(colour, 0.38);
+  hg.lineWidth = 0.011 * W;
+  for (const s of lights) {
+    hg.beginPath();
+    through(hg, s.map(P), true);
+    hg.stroke();
+  }
+  hg.restore();
+  shape(hg);
+  hg.strokeStyle = HAIR_INK;
+  hg.lineWidth = 0.014 * W;
+  hg.lineJoin = 'round';
+  hg.stroke();
+  if (kind === 'slick') {
+    /* The fade: the sides thin to the skin from the temple down. */
+    for (const s of [-1, 1]) {
+      const [x0, y0] = q.p(s * 0.3, 0.2);
+      const [, y1] = q.p(s * 0.3, 0.5);
+      const grad = hg.createLinearGradient(x0, y0, x0, y1);
+      grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0.62)');
+      hg.globalCompositeOperation = 'destination-out';
+      hg.fillStyle = grad;
+      hg.beginPath();
+      through(hg, [[s * 0.36, 0.6], [s * 0.36, 0.3], [s * 0.42, 0.16], [s * 0.7, 0.1]].map(P), true);
+      hg.lineTo(...P([s * 0.7, 0.6]));
+      hg.closePath();
+      hg.fill();
+    }
+  }
+  hg.restore();
+  return fill;
+}
+
+/* The highlight a shaved head catches: a crescent high on the crown and a
+ * fleck beside it, white, kept to the skin. */
+function drawScalpShine(g, q) {
+  const { W } = q;
+  const s = layer(g.canvas.width, g.canvas.height);
+  const sg = s.g;
+  const [x, y] = q.p(-0.17, 0.075);
+  sg.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  sg.beginPath();
+  sg.ellipse(x, y, 0.15 * W, 0.04 * W, -0.42, 0, Math.PI * 2);
+  sg.fill();
+  const [x2, y2] = q.p(-0.33, 0.17);
+  sg.beginPath();
+  sg.ellipse(x2, y2, 0.035 * W, 0.018 * W, -0.9, 0, Math.PI * 2);
+  sg.fill();
+  sg.globalCompositeOperation = 'destination-in';
+  sg.drawImage(q.skin, 0, 0);
+  g.drawImage(s, 0, 0);
+}
+
+/*
+ * FACIAL HAIR, in the hair's colour: from a cheek line down past the jaw's
+ * own line (jawAt), so the beard's edge is the face's new outline. The lips
+ * are kept clear, or a dark beard swallows a closed mouth's one line; an
+ * open mouth is drawn over the beard as it is over the face. Stubble is a
+ * tint and a scatter of dots, no outline, as a manga face draws a day's
+ * growth.
+ */
+function drawBeard(g, kind, q, colour) {
+  const { W } = q;
+  const P = ([x, y]) => q.p(x, y);
+  const b = layer(g.canvas.width, g.canvas.height);
+  const bg = b.g;
+  bg.lineJoin = 'round';
+  bg.lineCap = 'round';
+  let lipsRx = 0.12;
+  if (kind === 'moustache') {
+    const m = [[-0.23, 0.852], [-0.18, 0.8], [-0.09, 0.78], [0, 0.79], [0.09, 0.78], [0.18, 0.8], [0.23, 0.852]];
+    const under = [[0.2, 0.838], [0.14, 0.818], [0.05, 0.815], [0, 0.822], [-0.05, 0.815], [-0.14, 0.818], [-0.2, 0.838]];
+    bg.beginPath();
+    through(bg, m.map(P), true);
+    through(bg, under.map(P));
+    bg.closePath();
+    bg.fillStyle = colour;
+    bg.fill();
+    bg.lineWidth = 0.012 * W;
+    bg.strokeStyle = HAIR_INK;
+    bg.stroke();
+    g.drawImage(b, 0, 0);
+    return;
+  }
+  /* The cheek line, from the left sideburn down under the nose and back
+   * up to the right one; a full beard starts higher on the cheek. */
+  const full = kind === 'full';
+  const cheek = full
+    ? [[-0.49, 0.5], [-0.46, 0.62], [-0.34, 0.71], [-0.22, 0.765], [-0.1, 0.772], [0, 0.778], [0.1, 0.772], [0.22, 0.765], [0.34, 0.71], [0.46, 0.62], [0.49, 0.5]]
+    : [[-0.485, 0.52], [-0.445, 0.64], [-0.3, 0.75], [-0.19, 0.79], [-0.09, 0.785], [0, 0.792], [0.09, 0.785], [0.19, 0.79], [0.3, 0.75], [0.445, 0.64], [0.485, 0.52]];
+  /* Past the jaw: a short beard by a little, a full one by a lot at the
+   * chin, its foot ragged. */
+  const hang = (fx) => (full ? 0.07 + 0.105 * (1 - Math.abs(fx) / 0.45) : 0.035 + 0.015 * (1 - Math.abs(fx) / 0.45));
+  const foot = [];
+  for (let i = 9; i >= -9; i -= 1) {
+    const fx = i * 0.05;
+    foot.push([fx, jawAt(q.head, fx) + hang(fx) * (full && i % 2 ? 0.84 : 1)]);
+  }
+  const outline = () => {
+    bg.beginPath();
+    through(bg, cheek.map(P), true);
+    bg.lineTo(...P(foot[0]));
+    through(bg, foot.map(P));
+    bg.closePath();
+  };
+  if (kind === 'stubble') {
+    const [r, gg, bb] = rgbOf(colour);
+    bg.save();
+    outline();
+    bg.clip();
+    bg.fillStyle = `rgba(${r}, ${gg}, ${bb}, 0.2)`;
+    bg.fillRect(0, 0, b.width, b.height);
+    /* The dots on a jittered grid, so they are even, as a screen tone is,
+     * and never in clumps. */
+    bg.fillStyle = `rgba(${Math.round(r * 0.7)}, ${Math.round(gg * 0.7)}, ${Math.round(bb * 0.7)}, 0.7)`;
+    const rnd = grain(7);
+    const [ax, ay] = q.p(-0.52, 0.55);
+    const [cx, cy] = q.p(0.52, 1.1);
+    const cell = 0.026 * W;
+    const dot = 0.0058 * W;
+    bg.beginPath();
+    for (let y = ay, row = 0; y < cy; y += cell * 0.87, row += 1) {
+      for (let x = ax + (row % 2) * cell * 0.5; x < cx; x += cell) {
+        const dx = x + (rnd() - 0.5) * cell * 0.6;
+        const dy = y + (rnd() - 0.5) * cell * 0.6;
+        bg.moveTo(dx + dot, dy);
+        bg.arc(dx, dy, dot, 0, Math.PI * 2);
+      }
+    }
+    bg.fill();
+    bg.restore();
+    bg.globalCompositeOperation = 'destination-in';
+    bg.drawImage(q.skin, 0, 0);
+    lipsRx = 0.11;
+  } else {
+    outline();
+    bg.fillStyle = colour;
+    bg.fill();
+    bg.save();
+    bg.clip();
+    /* The shade along the jaw, then strands. */
+    bg.fillStyle = tint(colour, -0.3);
+    bg.beginPath();
+    through(bg, foot.map(([x, y]) => P([x * 0.94, y - (full ? 0.06 : 0.03)])), true);
+    through(bg, foot.slice().reverse().map(([x, y]) => P([x, y + 0.02])));
+    bg.closePath();
+    bg.fill();
+    bg.strokeStyle = 'rgba(24, 19, 26, 0.6)';
+    bg.lineWidth = 0.007 * W;
+    for (const fx of [-0.38, -0.28, -0.16, -0.05, 0.05, 0.16, 0.28, 0.38]) {
+      bg.beginPath();
+      bg.moveTo(...P([fx * 0.96, Math.max(0.87, jawAt(q.head, fx) - 0.1)]));
+      bg.lineTo(...P([fx, jawAt(q.head, fx) + hang(fx) * 0.7]));
+      bg.stroke();
+    }
+    bg.restore();
+    bg.lineWidth = 0.012 * W;
+    bg.strokeStyle = HAIR_INK;
+    outline();
+    bg.stroke();
+  }
+  /* The lips clear, so the mouth drawn after reads on any beard. */
+  bg.globalCompositeOperation = 'destination-out';
+  const [lx, ly] = q.p(0, 0.838);
+  bg.beginPath();
+  bg.ellipse(lx, ly + 0.012 * W, lipsRx * W, 0.03 * W, 0, 0, Math.PI * 2);
+  bg.fill();
+  g.drawImage(b, 0, 0);
 }
 
 /*
@@ -1230,6 +1779,31 @@ export function avatarBust(raw, expr = 'calm', open = false, half = 0, shut = fa
    * UNIT pixels wide, and at half that in the half size atlas. */
   const unit = W / (half ? UNIT / 2 : UNIT);
   const px = W / 150;
+  const headJobs = [[SKIN, SKINS[av.skin], 255], [CLOTH, livery, 158]];
+  const headPart = partCanvas(head, headJobs, half);
+  /* The head on a layer of its own, where a shaved head's shadow, its
+   * shine and stubble look for the skin they may lie on; made only for
+   * those. */
+  let skin = null;
+  const share = (y) => (y < 0 ? 0.05 : y / H - 0.3);
+  /* Drawn hair, beards and wear, in the face's measure (see drawWear). */
+  const q = {
+    W,
+    head: HEADS[headOf(av)],
+    get skin() {
+      if (!skin) {
+        skin = layer(side, tall);
+        draw(skin.g, headPart, 0, 0);
+      }
+      return skin;
+    },
+    p: (fx, fy) => at(hf.cx + fx * W, hf.top + fy * H),
+    top: () => 0.05,
+    hat: 0,
+    eyeY: 0.545,
+    hair: HAIR_COLOURS[av.hairColour],
+    livery,
+  };
 
   /* What is worn and the hair first, because the face is shaded by them. */
   const wear = WEARS[av.acc];
@@ -1240,11 +1814,18 @@ export function avatarBust(raw, expr = 'calm', open = false, half = 0, shut = fa
     worn = layer(side, tall);
     fit(worn.g, wearName, wearJobs);
   }
-  const hairName = `hair-${HAIRS[av.hair]}`;
+  const hairKind = HAIRS[av.hair];
+  const hairName = `hair-${hairKind}`;
   const hairJobs = [[HAIR, HAIR_COLOURS[av.hairColour], null]];
   const hair = layer(side, tall);
   const hg = hair.g;
-  fit(hg, hairName, hairJobs);
+  const drawnHair = DRAWN_HAIR.has(hairKind);
+  const hairFill = drawnHair ? drawHair(hg, hairKind, q, HAIR_COLOURS[av.hairColour]) : null;
+  if (!drawnHair) {
+    fit(hg, hairName, hairJobs);
+  }
+  q.top = (fx) => share(hairTopAt(hg, hf.cx + fx * W - ox, side));
+  q.hat = worn ? share(hairTopAt(worn.g, hf.cx - ox, side)) : 0;
   const hatted = HATS.has(wear);
   let skull = null;
   if (hatted) {
@@ -1263,14 +1844,17 @@ export function avatarBust(raw, expr = 'calm', open = false, half = 0, shut = fa
         const rx = Math.min(0.62 * W, ((r - l) / 2) * 0.92);
         drawShine(lg, side / 2, ringY + 0.42 * H, rx, 0.42 * H, H, shineColour(HAIR_COLOURS[av.hairColour]));
         lg.globalCompositeOperation = 'destination-in';
-        fit(lg, hairName, hairJobs, true);
+        if (hairFill) {
+          lg.drawImage(hairFill, 0, 0);
+        } else {
+          fit(lg, hairName, hairJobs, true);
+        }
         hg.drawImage(lit, 0, 0);
       }
     }
   }
 
-  const headJobs = [[SKIN, SKINS[av.skin], 255], [CLOTH, livery, 158]];
-  draw(g, partCanvas(head, headJobs, half), 0, 0);
+  draw(g, headPart, 0, 0);
   if (skull) {
     g.save();
     g.globalCompositeOperation = 'destination-out';
@@ -1297,7 +1881,7 @@ export function avatarBust(raw, expr = 'calm', open = false, half = 0, shut = fa
   sg.fillStyle = '#d9b9cc';
   sg.fillRect(0, 0, side, tall);
   sg.globalCompositeOperation = 'destination-in';
-  draw(sg, partCanvas(head, headJobs, half).fill, 0, 0);
+  draw(sg, headPart.fill, 0, 0);
   g.save();
   g.globalCompositeOperation = 'multiply';
   g.drawImage(shade, 0, 0);
@@ -1342,9 +1926,13 @@ export function avatarBust(raw, expr = 'calm', open = false, half = 0, shut = fa
   }
   /* Eyes on the line the glasses sit on, as far apart as their lenses. */
   /* A blink is the laugh's closed lids, shown for a tenth of a second. */
-  const en = `eyes-${shut ? 'bright-laugh' : eyesFor(EYE_STYLES[av.eyes], expr)}`;
+  const en = `eyes-${shut ? 'bright-laugh' : eyesFor(EYE_STYLES[eyeStyleOf(av)], expr)}`;
   const ea = anchorOf(en, half);
   draw(g, partCanvas(en, [[IRIS, EYE_COLOURS[av.eyeColour], null]], half), hf.cx - ea[0] * unit, hf.top + 0.545 * H - ea[1] * unit, unit);
+  const beard = BEARDS[beardOf(av)];
+  if (beard) {
+    drawBeard(g, beard, q, HAIR_COLOURS[av.hairColour]);
+  }
   const mn = mouthFor(expr, open);
   const ma = anchorOf(mn, half);
   draw(g, partCanvas(mn, [], half), hf.cx - ma[0] * unit, hf.top + 0.835 * H - ma[1] * unit, unit);
@@ -1356,21 +1944,13 @@ export function avatarBust(raw, expr = 'calm', open = false, half = 0, shut = fa
   if (wear === 'scarf') {
     fit(g, wearName, wearJobs);
   }
-  /* Drawn wear, in the face's measure (see drawWear). */
-  const share = (y) => (y < 0 ? 0.05 : y / H - 0.3);
-  const q = {
-    W,
-    p: (fx, fy) => at(hf.cx + fx * W, hf.top + fy * H),
-    top: (fx) => share(hairTopAt(hg, hf.cx + fx * W - ox, side)),
-    hat: worn ? share(hairTopAt(worn.g, hf.cx - ox, side)) : 0,
-    eyeY: 0.545,
-    hair: HAIR_COLOURS[av.hairColour],
-    livery,
-  };
   if (wear === 'cat') {
     drawWear(g, wear, q);
   }
   g.drawImage(hair, 0, 0);
+  if (hairKind === 'shaved' && !hatted) {
+    drawScalpShine(g, q);
+  }
   if (worn) {
     g.drawImage(worn, 0, 0);
   }

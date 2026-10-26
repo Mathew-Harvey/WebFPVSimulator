@@ -582,9 +582,10 @@ export const TOGETHER_CSS = `
 }
 /* A tall screen (a 1080p desktop and up) has the height for larger
  * panels in even rows: four across, three for the eyes, each as large as
- * four rows allow, so Gear's sixteen are a square and no row is left with
- * one panel in it. Packed as many as fit, the right column at 1080p ran
- * seven, seven and two, with half the sheet empty under them. */
+ * four rows allow, and no row is left with one panel in it. Packed as many
+ * as fit, the right column at 1080p ran seven, seven and two, with half
+ * the sheet empty under them. Gear's nineteen are five across, so they
+ * are four rows too, and the fourteen liveries two rows of seven. */
 @media (min-height: 960px) and (min-width: 641px) and (min-aspect-ratio: 801/1000) {
   #tg .creator .parts {
     --cols: 4; --fit: calc((100vh - 528px) / 4);
@@ -592,6 +593,9 @@ export const TOGETHER_CSS = `
   }
   #tg .creator .parts:has(.crop-eyes) { --cols: 3; --fit: calc((100vh - 528px) / 2); }
   #tg .creator .parts.shapes, #tg .creator .parts.liveries { --most: 150px; }
+  /* Five kinds of facial hair are one row of five, not four and one. */
+  #tg .creator .parts.beards, #tg .creator .parts.gear { --cols: 5; }
+  #tg .creator .parts.liveries { --cols: 7; }
 }
 /* A big screen (1440p at full size) has the sheet wider, the card and
  * its faces larger and the panels drawn larger, where every size above

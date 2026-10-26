@@ -65,8 +65,8 @@ import {
   roomUrl, takeJoinToken, writeJoinToken,
 } from './roomlinks.js';
 import {
-  ACC_ORDER, EXPRESSIONS, EYE_COLOURS, EYE_ORDER, HAIR_COLOURS, HAIR_ORDER, LIVERIES, PART_NAMES, SKINS, SKIN_ORDER, WEARS,
-  avatarCanvas, cleanAvatar, faceOf, headOf, liveryCss, markOf, paintAvatar, rollAvatar,
+  ACC_ORDER, EXPRESSIONS, EYE_COLOURS, EYE_ORDER, HAIR_COLOURS, HAIR_ORDER, HAIR_STYLE_ORDER, LIVERIES, PART_NAMES, SKINS, SKIN_ORDER, WEARS,
+  avatarCanvas, beardOf, cleanAvatar, eyeStyleOf, eyesOf, faceOf, headOf, liveryCss, markOf, paintAvatar, rollAvatar,
 } from './avatar.js';
 import { paintTitle } from '../ui/lettering.js';
 import { quadMark } from '../ui/gatepages.js';
@@ -1945,6 +1945,8 @@ export function createTogether(shell) {
       const av = cleanAvatar(store.avatar);
       const head = headOf(av);
       const mark = markOf(av);
+      const eyeStyle = eyeStyleOf(av);
+      const beard = beardOf(av);
       /* A part or a colour under the pointer, or under the focus of the
        * keys or a pad, is tried on the card before it is chosen, as a
        * character maker in a game does; leaving it puts the card back. */
@@ -1995,20 +1997,22 @@ export function createTogether(shell) {
         panel = [
           section('Skin', swatches('skin', 'Skin', SKINS, SKIN_ORDER)),
           section('Face shape', tiles('face', PART_NAMES.face, (i) => ({ ...av, face: faceOf(i, mark) }), (i) => head === i, 'bust', '.shapes')),
+          /* In the hair's colour, which the Hair tab chooses. */
+          section('Facial hair', tiles('beard', PART_NAMES.beard, (j) => ({ ...av, eyes: eyesOf(eyeStyle, j) }), (j) => beard === j, 'cheek', '.small.beards')),
           section('Face marks', tiles('mark', PART_NAMES.mark, (j) => ({ ...av, face: faceOf(head, j) }), (j) => mark === j, 'cheek', '.small')),
         ];
       } else if (tab === 'Hair') {
         panel = [
-          section('Hairstyle', tiles('hair', PART_NAMES.hair, (i) => bare({ ...av, hair: i }), (i) => av.hair === i, 'bust')),
+          section('Hairstyle', tiles('hair', PART_NAMES.hair, (i) => bare({ ...av, hair: i }), (i) => av.hair === i, 'bust', '', HAIR_STYLE_ORDER)),
           section('Hair colour', swatches('hairColour', 'Hair colour', HAIR_COLOURS, HAIR_ORDER)),
         ];
       } else if (tab === 'Eyes') {
         panel = [
-          section('Eyes', tiles('eyes', PART_NAMES.eyes, (i) => ({ ...av, eyes: i }), (i) => av.eyes === i, 'eyes')),
+          section('Eyes', tiles('eyes', PART_NAMES.eyes, (i) => ({ ...av, eyes: eyesOf(i, beard) }), (i) => eyeStyle === i, 'eyes')),
           section('Eye colour', swatches('eyeColour', 'Eye colour', EYE_COLOURS, EYE_ORDER)),
         ];
       } else if (tab === 'Gear') {
-        panel = [section('On your head', tiles('acc', PART_NAMES.acc, (i) => ({ ...av, acc: i }), (i) => av.acc === i, 'bust', '', ACC_ORDER))];
+        panel = [section('On your head', tiles('acc', PART_NAMES.acc, (i) => ({ ...av, acc: i }), (i) => av.acc === i, 'bust', '.gear', ACC_ORDER))];
       } else {
         /* Two even rows, not a full row and a short one. */
         const liv = h('div.parts.liveries', { style: { '--n': String(Math.ceil(LIVERIES.length / 2)) } }, LIVERIES.map((c, i) => {

@@ -163,6 +163,8 @@ const CLAIM_SAYS = {
   trouble: ['NO ANSWER', 'oops', 'The chat did not answer. Try again in a minute.', true],
   name: ['KEEP YOURS', 'oops', 'Your name has letters the room cannot show, so you keep your made up one.', false],
   dropped: ['MADE UP NAME', 'calm', 'The host gave you the made up name back, and it stays for this room.', false],
+  noChannel: ['NO SUCH CHANNEL', 'oops', 'Twitch does not know the channel this room reads. The streamer can fix the link in Room settings.', false],
+  moved: ['NEW STREAM', 'calm', 'The host changed the stream, so names start again. Try again to use yours in the new chat.', true],
 };
 
 /* A streamer room's stream as a link a host would recognise. */
@@ -1351,6 +1353,12 @@ export function createTogether(shell) {
             banner(store.avatar, 'calm', 'Your made up name is back', 'The host chose it for this room.');
           } else if (data.state === 'expired') {
             toast('Your code ran out. Pause, then Room, to try again.', 'warn');
+          } else if (data.state === 'moved') {
+            banner(store.avatar, 'calm', 'Your made up name is back', 'The stream changed. Pause, then Room, to use your name again.');
+          } else if (data.state === 'noChannel' && isHost() && room() && room().stream) {
+            /* Only the host can fix a link Twitch does not know, so the
+             * host hears it whoever was asking. */
+            toast(`Twitch does not know twitch.tv/${room().stream.id}. Check Your stream on Invite pilots.`, 'bad');
           }
         }
         if (data.state === 'done') {
@@ -2094,7 +2102,9 @@ export function createTogether(shell) {
             h('div.say', { text: 'Type it just as it is shown. Your quad takes your name the moment it lands, and the code works for two minutes.' })),
           h('div.btnrow', null, btn('Cancel', 'ghost', stopWaiting, { 'data-k': 'cancel', 'data-autofocus': true }))));
       }
-      const says = CLAIM_SAYS[c.state] || CLAIM_SAYS.trouble;
+      const says = c.state === 'noChannel' && isHost()
+        ? ['NO SUCH CHANNEL', 'oops', `Twitch does not know twitch.tv/${st.id}. Check Your stream on Invite pilots, then try again.`, false]
+        : CLAIM_SAYS[c.state] || CLAIM_SAYS.trouble;
       return scrimmed(h('div.card-mid.sheet.halftone', null, kicker,
         lettered(says[0], [INKS.cream, INKS.amber], 46, 560),
         h('div.state-row', null, h('div.who', null, bust(store.avatar, says[1])), h('div.say', { text: says[2] })),
@@ -3514,6 +3524,8 @@ export function createTogether(shell) {
         inRoom: Boolean(room()),
         code: room() ? room().code : '',
         stream: room() && room().stream ? `${room().stream.via}:${room().stream.id}` : '',
+        max: room() ? room().max : 0,
+        claim: claimNow ? claimNow.state : '',
         you: session ? session.you : 0,
         host: session ? session.link.hostId : 0,
         link: session ? session.link.state : '',

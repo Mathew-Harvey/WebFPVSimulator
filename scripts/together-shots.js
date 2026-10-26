@@ -143,6 +143,11 @@ const ircServer = net.createServer((sock) => {
       const j = /^(JOIN|PART) #(\S+)/.exec(line);
       if (j && j[1] === 'JOIN') irc.joined.add(j[2]);
       if (j && j[1] === 'PART') irc.joined.delete(j[2]);
+      /* What Twitch answers an anonymous JOIN of a channel it does not
+       * know. */
+      if (j && j[1] === 'JOIN' && j[2] === 'nosuchchannel') {
+        sock.write('@msg-id=msg_channel_suspended :tmi.twitch.tv NOTICE #nosuchchannel :This channel does not exist or has been suspended.\r\n');
+      }
     }
   });
   sock.on('error', () => {});
@@ -1873,6 +1878,9 @@ async function sceneNames() {
     await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
     await sheetIs(page, 'host');
     await pressKey(page, 'streamer');
+    /* A small streamer room: its craft is still built for 64, so a host
+     * who raises the size later does not rebuild everybody's craft. */
+    await page.evaluate("(() => { for (let i = 0; i < 54; i += 1) document.querySelector('#tg [data-k=\"fewer\"]').click(); return 1; })()");
     await pressKey(page, 'open');
     await sheetIs(page, 'share');
     check('the invite page asks a streamer for their stream', await page.evaluate("document.querySelector('#tg-st') !== null"));
@@ -1897,6 +1905,10 @@ async function sceneNames() {
     await pressKey(page, 'fly');
     await page.until("window.__mode === 'flight'", 30000);
     await page.until(`${T} && window.__together().sheet === ''`, 10000);
+
+    await page.until('window.__roomCraft && window.__roomCraft()', 10000).catch(() => {});
+    const craft1 = await page.evaluate('window.__roomCraft && window.__roomCraft()');
+    check('a streamer room of 10 builds its craft for 64 all the same', st.max === 10 && craft1 && craft1.size === 64, `${st.max} ${JSON.stringify(craft1)}`);
 
     const card = await (await fetch(`${boardOrigin}/api/rooms/${st.code}`)).json();
     check('the room\'s card says a viewer can fly as their Twitch name', card.streamVia === 'twitch', JSON.stringify(card));
@@ -1972,6 +1984,7 @@ async function sceneNames() {
     await sheetIs(page, 'roomSettings');
     check('Room settings has the stream too', await page.evaluate("document.querySelector('#tg-st2').value") === 'twitch.tv/andagainfpv');
     await typeStream('#tg-st2', 'https://youtu.be/LIVEvideo01');
+    await page.evaluate("(() => { for (let i = 0; i < 30; i += 1) document.querySelector('#tg [data-k=\"more\"]').click(); return 1; })()");
     if (opts.w >= 1280 && opts.h >= 720) {
       const off = await offSheet(page);
       check('at 1280 by 720 Room settings shows every control', !off, off);
@@ -1982,6 +1995,10 @@ async function sceneNames() {
     await page.until(SEES('YouTube names'), 5000).catch(() => {});
     check('saving it makes them YouTube names, and takes the Twitch ones off', await page.evaluate(SEES('YouTube names'))
       && !(await page.evaluate(SEES('AndAgainFPV', '#tg .pane'))));
+    await page.until(`${T} && window.__together().claim === 'moved'`, 5000).catch(() => {});
+    check('and the host, whose own Twitch name went with it, is told why', (await state(page)).claim === 'moved', JSON.stringify(await state(page)));
+    const craft2 = await page.evaluate('window.__roomCraft()');
+    check('raising the room to 40 keeps the craft it had', (await state(page)).max === 40 && craft2.size === 64, `${(await state(page)).max} ${JSON.stringify(craft2)}`);
     const w = bot('Second Viewer', 902);
     viewers.push(w);
     await joinRoom(w, st.code);
@@ -2007,6 +2024,27 @@ async function sceneNames() {
       && await page.evaluate("document.querySelector('#tg [data-k=\"again\"]') !== null"));
     await shot('claim-not-live');
     await pressKey(page, 'back');
+
+    /* A Twitch link with a typo: the viewer who asks is told, and so is
+     * the host, who is the one who can fix it. */
+    await sheetIs(page, 'room');
+    await pressKey(page, 'settings');
+    await sheetIs(page, 'roomSettings');
+    await typeStream('#tg-st2', 'twitch.tv/nosuchchannel');
+    await pressKey(page, 'save');
+    await sheetIs(page, 'room');
+    await wait(300);
+    await pressKey(page, 'back');
+    await wait(300);
+    w.heard.length = 0;
+    await wait(5100);
+    w.s.claim();
+    await until(() => w.heard.some((x) => x.name === 'claim' && x.data.state !== 'waiting'), 8000);
+    check('a channel Twitch does not know tells the viewer who asked', w.heard.some((x) => x.name === 'claim' && x.data.state === 'noChannel'),
+      JSON.stringify(w.heard.filter((x) => x.name === 'claim').map((x) => x.data.state)));
+    await page.until(SEES('Twitch does not know twitch.tv/nosuchchannel'), 5000).catch(() => {});
+    check('and the host, who can fix the link', await page.evaluate(SEES('Twitch does not know twitch.tv/nosuchchannel')));
+    await shot('host-no-channel');
     endChecks(page);
   } catch (e) {
     failures += 1;

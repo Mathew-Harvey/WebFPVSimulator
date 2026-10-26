@@ -3342,8 +3342,10 @@ export async function boot({ loading, bootStart, mapId }) {
     const whoop = room.scale >= 100;
     /* Built for 30 pilots, or for a streamer room's 64 (ROOM_MAX and
      * STREAM_MAX in src/net/link.js, which is not loaded until a room is
-     * wanted), so a host changing the size never rebuilds it. */
-    const size = room.max > 30 ? 64 : 30;
+     * wanted), so a host changing the size never rebuilds it. Which room
+     * it is, not its size: a streamer room set to 20 and raised to 40
+     * rebuilt every craft in it when this read the size. */
+    const size = room.streamer ? 64 : 30;
     if (!mpCraft || mpCraftWhoop !== whoop || mpCraftSize !== size) {
       mpEnsureCraft(whoop, size);
       return;

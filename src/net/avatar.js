@@ -171,6 +171,13 @@ export function liveryCss(avatar, id) {
   return `#${LIVERIES[liveryIndex(avatar, id)].toString(16).padStart(6, '0')}`;
 }
 
+/* The colour a name takes on its livery: ink, or cream on the dark ones
+ * (the royal blue and the charcoal), where ink could not be read. */
+export function liveryInk(avatar, id) {
+  const n = LIVERIES[liveryIndex(avatar, id)];
+  return 0.3 * ((n >> 16) & 255) + 0.59 * ((n >> 8) & 255) + 0.11 * (n & 255) < 110 ? '#f3ead4' : '#0b1116';
+}
+
 /* Every field in range, whatever came in: a pilot from an older build, a
  * board that sent nothing, a value someone typed into storage. */
 export function cleanAvatar(raw) {

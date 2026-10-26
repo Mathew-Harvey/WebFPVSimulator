@@ -513,11 +513,12 @@ export function paintGatePilot(box, name) {
     box.append(plate);
   }
   const at = box.querySelector('.gp-portrait');
-  import('../net/avatar.js').then(({ avatarCanvas, liveryCss }) => {
+  import('../net/avatar.js').then(({ avatarCanvas, liveryCss, liveryInk }) => {
     if (!at.isConnected) {
       return;
     }
     box.style.setProperty('--gp-livery', liveryCss(av, 0));
+    box.style.setProperty('--gp-livery-ink', liveryInk(av, 0));
     at.replaceChildren(avatarCanvas(av, { expr: 'hello', size: 220 }));
   }).catch(() => {});
 }

@@ -66,7 +66,7 @@ import {
 } from './roomlinks.js';
 import {
   ACC_ORDER, EXPRESSIONS, EYE_COLOURS, EYE_ORDER, HAIR_COLOURS, HAIR_ORDER, HAIR_STYLE_ORDER, LIVERIES, PART_NAMES, SKINS, SKIN_ORDER, WEARS,
-  avatarCanvas, beardOf, cleanAvatar, eyeStyleOf, eyesOf, faceOf, headOf, liveryCss, markOf, paintAvatar, rollAvatar,
+  avatarCanvas, beardOf, cleanAvatar, eyeStyleOf, eyesOf, faceOf, headOf, liveryCss, liveryInk, markOf, paintAvatar, rollAvatar,
 } from './avatar.js';
 import { paintTitle } from '../ui/lettering.js';
 import { quadMark } from '../ui/gatepages.js';
@@ -317,7 +317,7 @@ function bust(avatar, expr = 'calm', size = 220) {
 }
 
 function plate(handle, avatar, id, extra = '', cls = '') {
-  return h(`span.plate${cls ? `.${cls}` : ''}`, { style: { '--liv': liveryCss(avatar, id) } }, h('span', { text: `${handle}${extra}` }));
+  return h(`span.plate${cls ? `.${cls}` : ''}`, { style: { '--liv': liveryCss(avatar, id), '--liv-ink': liveryInk(avatar, id) } }, h('span', { text: `${handle}${extra}` }));
 }
 
 function tag(text, ink = 'paper') {
@@ -1767,7 +1767,7 @@ export function createTogether(shell) {
     pic.style.width = '100%';
     pic.style.height = 'auto';
     liven(pic, av, { expr, size, talk: Boolean(line) && pop });
-    const card = h(`div.av-card${pop ? '.is-pop' : ''}`, { style: { '--liv': livery } },
+    const card = h(`div.av-card${pop ? '.is-pop' : ''}`, { style: { '--liv': livery, '--liv-ink': liveryInk(av, 0) } },
       h('div.av-card-top', null, h('span', { text: 'WebFPV pilot' }), h('span.av-card-face', { text: FACE_NAMES[expr] || '' })),
       h('div.av-card-pic', null, h('div.av-card-burst'), h('div.av-card-fig', null, pic),
         line ? h('div.av-say', { text: line }) : null,

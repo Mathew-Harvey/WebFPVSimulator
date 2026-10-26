@@ -339,7 +339,7 @@ export const TOGETHER_CSS = `
 }
 #tg .av-card-top {
   position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 2px 7px;
-  color: var(--ink); font: 900 clamp(8px, 4.6cqw, 11px)/1 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
+  color: var(--liv-ink, var(--ink)); font: 900 clamp(8px, 4.6cqw, 11px)/1 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
 }
 #tg .av-card-face { padding: 3px 8px; background: var(--ink); color: var(--cream); letter-spacing: 0.1em; }
 #tg .av-card-pic {
@@ -401,14 +401,14 @@ export const TOGETHER_CSS = `
 }
 #tg .av-card-foot { position: relative; display: flex; align-items: center; min-height: clamp(34px, 21cqw, 50px); padding: 6px 25% 8px 2px; }
 #tg .av-card-foot b, #tg .av-name {
-  color: var(--ink); font: 900 italic clamp(9px, 8cqw, 26px)/1.05 var(--ui); text-transform: uppercase; overflow-wrap: anywhere;
+  color: var(--liv-ink, var(--ink)); font: 900 italic clamp(9px, 8cqw, 26px)/1.05 var(--ui); text-transform: uppercase; overflow-wrap: anywhere;
 }
 #tg .av-name {
-  width: 100%; min-width: 0; padding: 4px 6px; border: 0; border-bottom: 3px dashed rgba(11, 17, 22, 0.45);
+  width: 100%; min-width: 0; padding: 4px 6px; border: 0; border-bottom: 3px dashed color-mix(in srgb, var(--liv-ink, var(--ink)) 45%, transparent);
   background: transparent; outline: none; border-radius: 0;
 }
-#tg .av-name::placeholder { color: rgba(11, 17, 22, 0.45); }
-#tg .av-name:focus { background: rgba(255, 250, 240, 0.85); border-bottom: 3px solid var(--ink); }
+#tg .av-name::placeholder { color: color-mix(in srgb, var(--liv-ink, var(--ink)) 45%, transparent); }
+#tg .av-name:focus { background: rgba(255, 250, 240, 0.85); border-bottom: 3px solid var(--ink); color: var(--ink); }
 #tg .av-name.bad { border-bottom: 3px solid var(--red); color: var(--red); }
 /* A card dealt small (a phone held sideways) keeps its face's name and
  * drops the line it would push off the corner, and its name has the
@@ -687,7 +687,7 @@ export const TOGETHER_CSS = `
 /* Name plates, in the pilot's livery */
 #tg .plate {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px 4px 12px; background: var(--liv, var(--mint));
-  border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); color: var(--ink); font: 900 italic 16px/1.1 var(--ui);
+  border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); color: var(--liv-ink, var(--ink)); font: 900 italic 16px/1.1 var(--ui);
   transform: skewX(-8deg); white-space: nowrap;
 }
 #tg .plate > * { transform: skewX(8deg); }

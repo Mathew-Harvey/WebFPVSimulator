@@ -28,7 +28,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -36,7 +36,7 @@ import {
   POSE_ENTRY_BYTES, POSE_UP_BYTES, SCALES, decodeFrame, decodePoseAt, encodePose, poseFlags,
 } from '../src/net/pose.js';
 import { RemotePilot } from '../src/net/remote.js';
-import { PROTOCOL, REFUSALS, roomsUrl } from '../src/net/link.js';
+import { PROTOCOL, REFUSALS, ROOM_MAX, STREAM_MAX, roomsUrl } from '../src/net/link.js';
 import { RoomSession } from '../src/net/room.js';
 import {
   CODE_RE, JOIN_TOKEN_MS, addressInRoom, addressOutOfRoom, craftForRoom, isBuiltInWorld, normaliseCode,
@@ -46,7 +46,7 @@ import {
   AVATAR_FIELDS, EXPRESSIONS, FIELD_COUNTS, LIVERIES, cleanAvatar, liveryIndex, rollAvatar,
 } from '../src/net/avatar.js';
 import {
-  BoardClock, RACE_LAPS_MAX, RACE_WAYS, RoomRace,
+  BoardClock, COUNT_JOIN_MS, RACE_LAPS_MAX, RACE_WAYS, RoomRace,
 } from '../src/net/roomrace.js';
 import { QUICK, WAVE } from '../src/net/together.js';
 
@@ -490,6 +490,17 @@ console.log('a race on one page');
   const watcher = new RoomRace({ send: () => true, you: () => 3, now: () => t });
   watcher.heard(count);
   check('a pilot who is not in the race is not put on the grid', watcher.frame() === '' && watcher.lap(t) === null && !watcher.holding());
+  /* The board lets a pilot onto a countdown's grid until COUNT_JOIN_MS
+   * before GO, so a page offers it while there is that much and a little
+   * over for the word to arrive. */
+  watcher.welcome({ now: t + B + 7, race: { ...count, goAt: t + 4000 + B + 7 } }, t);
+  check('a pilot not in a countdown is offered it with time to spare', watcher.canJoin());
+  t += 4000 - COUNT_JOIN_MS - 100;
+  check('and not once there is too little left', !watcher.canJoin());
+  t -= 4000 - COUNT_JOIN_MS - 100;
+  check('nor to a pilot already in it', !rr.canJoin() && !new RoomRace({ send: () => true, you: () => 1, now: () => t }).canJoin());
+  watcher.heard({ ...count, phase: 'live' });
+  check('nor once the race is live', !watcher.canJoin());
 
   rr.heard({
     ...count, n: 2, goAt: t + 5000 + B + 7, rows,
@@ -712,7 +723,9 @@ async function talkScene(url) {
     await wait(150);
     check('the two before it went, and a line that is not a quick line did not', b.said.filter((m) => m.line === 'gg').length === 2
       && !b.said.some((m) => m.line === 'sell'));
-    check('nobody hears their own quick line back', !a.said.some((m) => m.t === 'say'));
+    check('a pilot hears their own quick lines back, which is when their screen shows them',
+      a.said.filter((m) => m.t === 'say' && m.id === a.s.you).map((m) => m.line).join() === 'hi,gg,gg');
+    check('and never one the board refused as too quick', a.said.filter((m) => m.t === 'say' && m.line === 'gg').length === 2);
 
     c.s.host({
       name: 'Private talk', way: 'freestyle', map: 'city', mapName: 'The town', scale: 100, typedChat: true,
@@ -742,6 +755,53 @@ async function talkScene(url) {
   }
 }
 
+/*
+ * The room's styles and the shell's, kept apart. Every room banner was
+ * drawn at opacity 0 for a day because it wore .banner, the shell's own
+ * launch line, which index.html starts invisible. Every check of it read
+ * its words, which were there. So: no rule of the shell may land on the
+ * room's elements by their class names alone, and no rule of the room may
+ * reach outside #tg.
+ */
+console.log('the room\'s styles and the shell\'s');
+{
+  const here = dirname(fileURLToPath(import.meta.url));
+  const read = (p) => readFileSync(join(here, '..', p), 'utf8');
+  const uncomment = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const shellCss = uncomment([...read('index.html').matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n'));
+  const { TOGETHER_CSS } = await import('../src/net/togetherstyle.js');
+  const roomCss = uncomment(TOGETHER_CSS);
+  const togetherJs = read('src/net/together.js');
+  const ours = new Set();
+  for (const m of togetherJs.matchAll(/\bh\(\s*[`'"][a-z0-9]*((?:\.[a-zA-Z][\w-]*)+)/g)) {
+    for (const c of m[1].split('.').filter(Boolean)) ours.add(c);
+  }
+  for (const m of togetherJs.matchAll(/\bclassList\.(?:add|toggle)\(\s*'([\w-]+)'/g)) ours.add(m[1]);
+  for (const m of roomCss.matchAll(/\.([a-zA-Z][\w-]*)/g)) ours.add(m[1]);
+  /* Selectors of a sheet's plain rules, @media blocks opened up and
+   * @keyframes left out. */
+  const selectors = (css) => {
+    const out = [];
+    const flat = css.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
+    for (const m of flat.matchAll(/([^{}]+)\{[^{}]*\}/g)) {
+      const sel = m[1].replace(/@media[^{]*\{/g, '').trim();
+      if (sel && !sel.startsWith('@')) out.push(...sel.split(',').map((s) => s.trim()).filter(Boolean));
+    }
+    return out;
+  };
+  const reaching = [];
+  for (const sel of selectors(shellCss)) {
+    const last = sel.split(/\s*[\s>+~]\s*/).pop().replace(/::?[\w-]+(\([^)]*\))?/g, '');
+    if (!last.startsWith('.') || /[#[]/.test(last)) continue;
+    const classes = last.split('.').filter(Boolean);
+    if (classes.length && classes.every((c) => ours.has(c))) reaching.push(sel);
+  }
+  check('no style of the shell lands on the room\'s elements by a class name alone', ours.size > 50 && reaching.length === 0,
+    reaching.length ? reaching.slice(0, 6).join(' | ') : `${ours.size} class names`);
+  const outside = selectors(roomCss).filter((s) => !s.startsWith('#tg') && !/^(from|to|\d+%)/.test(s));
+  check('and no style of the room reaches outside #tg', outside.length === 0, outside.slice(0, 6).join(' | '));
+}
+
 console.log('the board and this client agree');
 const boardDir = findBoard();
 if (!boardDir) {
@@ -756,6 +816,8 @@ if (!boardDir) {
     && Object.values(board.REFUSALS).every((code, i, all) => i === 0 || code === all[i - 1] + 1));
   check('the same pose units and sizes', same(board.SCALES, SCALES) && board.POSE_UP_BYTES === POSE_UP_BYTES && board.POSE_ENTRY_BYTES === POSE_ENTRY_BYTES);
   check('the same race ways and lap limit', same(board.RACE_WAYS, RACE_WAYS) && board.RACE_LAPS_MAX === RACE_LAPS_MAX);
+  check('the same last moment to join a countdown', board.COUNT_JOIN_MS === COUNT_JOIN_MS);
+  check('the same room sizes, a streamer room\'s included', board.ROOM_MAX === ROOM_MAX && board.STREAM_MAX === STREAM_MAX);
   check('the same quick lines, in the same words', [...QUICK, WAVE].every((q) => board.QUICK_LINES[q.line] === q.text)
     && Object.keys(board.QUICK_LINES).length === QUICK.length + 1);
   check('the same faces', same(board.FACES, EXPRESSIONS));

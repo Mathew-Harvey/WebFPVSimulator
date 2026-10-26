@@ -78,6 +78,7 @@ import { roomsUrl } from '../src/net/link.js';
 import { RoomSession } from '../src/net/room.js';
 import { roomUrl } from '../src/net/roomlinks.js';
 import { rollAvatar } from '../src/net/avatar.js';
+import { QUICK } from '../src/net/together.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const opts = {
@@ -287,8 +288,61 @@ async function open(path, seed, extra = {}) {
   return page;
 }
 
+/*
+ * Whatever of the room's has words or a picture and a size, but is drawn
+ * at opacity 0 with nothing animating it there. That is how every room
+ * banner was invisible for a day: a style of the shell's set it, and the
+ * checks read the words, which were there. A fade that is running, or one
+ * that has finished and holds (a spoken line leaving), is meant.
+ */
+function invisibles(page) {
+  return page.evaluate(`(() => {
+    const out = [];
+    const root = document.querySelector('#tg');
+    if (!root) return out;
+    for (const e of root.querySelectorAll('*')) {
+      if (!e.textContent.trim() && !e.matches('canvas, img')) continue;
+      const r = e.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) continue;
+      if (getComputedStyle(e).opacity !== '0' || e.getAnimations().length) continue;
+      if (out.some((o) => o.el.contains(e))) continue;
+      out.push({ el: e, what: (e.className && e.className.baseVal === undefined ? '.' + String(e.className).split(' ').join('.') : e.tagName) + ' "' + e.textContent.trim().slice(0, 30) + '"' });
+    }
+    return out.map((o) => o.what);
+  })()`);
+}
+
+/*
+ * Every button of the sheet on top in the window, without scrolling, or ''
+ * when they are. At 1280 by 720 a sheet must show everything it has: a
+ * control below the fold is one a pilot does not know is there.
+ */
+function offSheet(page) {
+  return page.evaluate(`(() => {
+    const top = [...document.querySelectorAll('#tg .sheet')].filter((e) => e.getBoundingClientRect().width > 0).pop();
+    if (!top) return 'no sheet';
+    const out = [];
+    for (const b of top.querySelectorAll('button, input')) {
+      const r = b.getBoundingClientRect();
+      if (!(r.width > 0)) continue;
+      let clip = null;
+      for (let p = b.parentElement; p && p !== document.body; p = p.parentElement) {
+        const o = getComputedStyle(p).overflowY;
+        if (o === 'auto' || o === 'scroll' || o === 'hidden') { clip = p.getBoundingClientRect(); break; }
+      }
+      const bottom = Math.min(innerHeight, clip ? clip.bottom : innerHeight);
+      if (r.bottom > bottom + 1 || r.top < (clip ? clip.top : 0) - 1) out.push((b.dataset.k || b.textContent.trim()).slice(0, 24));
+    }
+    return out.join(', ');
+  })()`);
+}
+
 function shooter(page, scene) {
+  page.invisible = page.invisible || [];
   return async (name) => {
+    for (const what of await invisibles(page)) {
+      page.invisible.push(`${name}: ${what}`);
+    }
     const { data } = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
     const file = `${scene}-${name}.png`;
     await writeFile(join(outDir, file), Buffer.from(data, 'base64'));
@@ -297,6 +351,37 @@ function shooter(page, scene) {
 }
 
 const T = 'window.__together && window.__together()';
+
+/*
+ * An expression, for evaluate or until, that is true when a pilot can see
+ * `words` inside `scope`: some text holding them, with a size, on screen,
+ * and nothing above it hidden or drawn at opacity 0. A fade that is still
+ * running counts as seen, because it is on its way in. The checks used to
+ * ask only whether the words were in the page, and that is how a day's
+ * worth of invisible banners passed them.
+ */
+const SEES = (words, scope = '#tg') => `(() => {
+  const want = ${JSON.stringify(words)};
+  const box = document.querySelector(${JSON.stringify(scope)});
+  if (!box) return false;
+  const walk = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (!n.data.includes(want)) continue;
+    let ok = true;
+    for (let p = n.parentElement; p && ok; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.display === 'none' || cs.visibility === 'hidden') ok = false;
+      else if (cs.opacity === '0' && !p.getAnimations().some((a) => a.playState === 'running')) ok = false;
+    }
+    if (!ok) continue;
+    const range = document.createRange();
+    range.selectNodeContents(n);
+    const r = range.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth) return true;
+  }
+  return false;
+})()`;
+const toastText = (page) => page.evaluate("(() => { const t = document.querySelector('#tg .tg-toasts'); return t ? t.textContent : ''; })()");
 const sheetIs = (page, name, ms = 20000) => page.until(`${T} && window.__together().sheet === ${JSON.stringify(name)}`, ms);
 const state = (page) => page.evaluate(`${T}`);
 
@@ -325,6 +410,16 @@ async function pressKey(page, data) {
 
 function errorsOf(page) {
   return page.errors.filter((e) => !/favicon|ERR_CONNECTION_REFUSED|stun\.cloudflare|net::ERR/.test(String(e)));
+}
+
+/* The two checks every scene ends with: the page said nothing it should
+ * not have, and no picture of it had anything of the room's drawn
+ * invisible. `allow` names the console lines a scene asked for. */
+function endChecks(page, allow = null) {
+  const errors = errorsOf(page).filter((e) => !allow || !allow.test(e));
+  check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  const gone = page.invisible || [];
+  check('nothing of the room\'s drawn invisible in any picture', gone.length === 0, gone.slice(0, 4).join(' | '));
 }
 
 /* Where the page's craft is, as a bot hears it, and its forward. */
@@ -459,7 +554,7 @@ async function sceneHost() {
     await shot('three-pilots');
 
     bots[0].s.say('gg');
-    const talk = await page.until("(() => { const t = document.querySelector('#tg .talk'); return t && !t.hidden && t.textContent.includes('GG!'); })()", 5000).then(() => true, () => false);
+    const talk = await page.until(SEES('GG!', '#tg .talk'), 5000).then(() => true, () => false);
     check('a quick line arrives as dialogue, with the speaker\'s portrait', talk);
     await wait(500);
     await shot('talk-quick');
@@ -467,7 +562,7 @@ async function sceneHost() {
     check('a line said covers none of the shell\'s instruments, the sticks and the pack included', !talkOn, talkOn);
     await wait(1800);
     bots[1].s.chat('Nice to fly with you', 'laugh');
-    const typed = await page.until("(() => { const t = document.querySelector('#tg .talk'); return t && !t.hidden && t.textContent.includes('Nice to fly with you'); })()", 5000).then(() => true, () => false);
+    const typed = await page.until(SEES('Nice to fly with you', '#tg .talk'), 5000).then(() => true, () => false);
     check('a typed line arrives in a private room with typed chat on', typed);
     await wait(1400);
     await shot('talk-typed');
@@ -520,7 +615,7 @@ async function sceneHost() {
     await wait(200);
     await shot('report');
     await pressKey(page, 'send');
-    const thanks = await page.until("document.querySelector('#tg').textContent.includes('Sent.')", 5000).then(() => true, () => false);
+    const thanks = await page.until(SEES('Sent.'), 5000).then(() => true, () => false);
     check('a report is sent and thanked', thanks);
     await shot('report-sent');
     await pressKey(page, 'back');
@@ -563,8 +658,7 @@ async function sceneHost() {
     check('leave takes the page out, and the others see it go', bots[0].s.link.pilots.size === 3);
     const after = await page.evaluate('location.href');
     check('and the room is gone from the address bar', !after.includes('room='), after);
-    const errors = errorsOf(page);
-    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    endChecks(page);
   } catch (e) {
     failures += 1;
     console.log(`  FAIL  ${e.message}`);
@@ -602,7 +696,7 @@ async function sceneLobby() {
     await page.until("window.__mode === 'flight'", 30000);
     await wait(600);
     await shot('joined');
-    const welcome = await page.evaluate("document.querySelector('#tg').textContent.includes('Welcome to')");
+    const welcome = await page.until(SEES('Welcome to'), 3000).then(() => true, () => false);
     check('with a welcome', welcome);
     await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
     await page.evaluate("(() => { window.__ui.act('room-leave'); return 1; })()");
@@ -624,8 +718,7 @@ async function sceneLobby() {
     await shot('joined-other-world');
     const craft = await page.evaluate('window.__ui.settings.airframe');
     check('on the room\'s aircraft', craft === 'whoop65', craft);
-    const errors = errorsOf(page);
-    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    endChecks(page);
   } catch (e) {
     failures += 1;
     console.log(`  FAIL  ${e.message}`);
@@ -691,8 +784,7 @@ async function sceneLink() {
     await pressKey(page, 'pw-go');
     await page.until(`${T} && window.__together().inRoom`, 15000);
     check('the right one lets the pilot in', true);
-    const errors = errorsOf(page);
-    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    endChecks(page);
   } catch (e) {
     failures += 1;
     console.log(`  FAIL  ${e.message}`);
@@ -822,8 +914,7 @@ async function sceneRace() {
     }, 4000);
     const screen = await page.until("window.__ui.screen === 'flight'", 4000).then(() => 'flight', () => page.evaluate('window.__ui.screen'));
     check('One more on the race page counts the vote and goes back to flying', voted && screen === 'flight', screen);
-    const errors = errorsOf(page);
-    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    endChecks(page);
   } catch (e) {
     failures += 1;
     console.log(`  FAIL  ${e.message}`);
@@ -866,8 +957,7 @@ async function sceneDirect() {
     await a.evaluate("(() => { window.__input && window.__input.keys && window.__input.keys.delete('KeyW'); return 1; })()");
     await shooter(b, 'direct')('right-sees-left');
     for (const p of [a, b]) {
-      const errors = errorsOf(p);
-      check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+      endChecks(p);
     }
   } catch (e) {
     failures += 1;
@@ -951,8 +1041,7 @@ async function sceneSteam() {
     await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
     await sheetIs(page, 'consent');
     check('the next Fly together asks again', true);
-    const errors = errorsOf(page).filter((e) => !/Offline: the Steam edition/.test(e));
-    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    endChecks(page, /Offline: the Steam edition/);
   } catch (e) {
     failures += 1;
     console.log(`  FAIL  ${e.message}`);
@@ -964,7 +1053,16 @@ async function sceneSteam() {
 }
 
 /* The words on the card on top, for the cards that say why. */
-const says = (page) => page.evaluate("(() => { const s = document.querySelector('#tg .tg-modal .say'); return s ? s.textContent : ''; })()");
+/* What the open card's character says, and only if a pilot can see it. */
+const says = (page) => page.evaluate(`(() => {
+  const s = document.querySelector('#tg .tg-modal .say');
+  if (!s) return '';
+  for (let p = s; p; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || (cs.opacity === '0' && !p.getAnimations().some((a) => a.playState === 'running'))) return '';
+  }
+  return s.textContent;
+})()`);
 const pauseRows = (page) => page.evaluate('window.__ui.items().map((r) => r.label)');
 
 async function sceneDoor() {
@@ -1097,8 +1195,7 @@ async function sceneDoor() {
     const left = await state(page);
     check('Leave and go leaves it for the other room, here still a kick away', !left.inRoom && (await says(page)).includes('five minutes'), JSON.stringify(left));
     /* The board's 404 for the made up code is the answer asked for. */
-    const errors = errorsOf(page).filter((e) => !/status of 404 .*\/api\/rooms\/ZZZZZ2\)$/.test(e));
-    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    endChecks(page, /status of 404 .*\/api\/rooms\/ZZZZZ2\)$/);
   } catch (e) {
     failures += 1;
     console.log(`  FAIL  ${e.message}`);
@@ -1158,32 +1255,30 @@ async function sceneDrop() {
     await wait(150);
     const chip = await page.evaluate("(() => { const c = document.querySelector('#tg .roomchip'); return c && !c.hidden ? (c.querySelector('.bars.low') ? 'low' : 'shown') : 'hidden'; })()");
     check('while the board is gone the chip stays, its bars low', chip === 'low', chip);
-    const lostSaid = await page.until("document.querySelector('#tg').textContent.includes('Lost the board for a moment')", 5000).then(() => true, () => false);
+    const lostSaid = await page.until(SEES('Lost the board for a moment'), 5000).then(() => true, () => false);
     check('and a banner says it is trying again', lostSaid);
     await settled(page, '#tg .tg-banner');
     const lostSeen = await unseen(page, '#tg .tg-banner');
     check('which the pilot can see', lostSeen === '', lostSeen);
     await page.tap('Digit1');
     await wait(150);
-    const notSaid = await page.evaluate("document.querySelector('#tg .tg-toasts').textContent");
-    check('a quick line meanwhile says it was not said, rather than nothing', /Not said/.test(notSaid), notSaid);
+    check('a quick line meanwhile says it was not said, rather than nothing', await page.evaluate(SEES('Not said', '#tg .tg-toasts')), await toastText(page));
     await shot('reconnecting');
     await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
     await wait(200);
-    const meanwhile = await page.evaluate("document.querySelector('#tg .tg-toasts').textContent");
-    check('the room\'s page asked for meanwhile says to wait a moment', /One moment/.test(meanwhile), meanwhile);
+    check('the room\'s page asked for meanwhile says to wait a moment', await page.evaluate(SEES('One moment', '#tg .tg-toasts')), await toastText(page));
     await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
 
     await freshBoard();
     const back = await page.until(`${T} && window.__together().inRoom`, 15000).then(() => true, () => false);
     check('the board back: the page is back in from its ticket', back && (await state(page)).code === room.code, JSON.stringify(await state(page)));
-    check('with a banner that says so', await page.evaluate("document.querySelector('#tg').textContent.includes('Back in')"));
+    check('with a banner that says so', await page.until(SEES('Back in'), 3000).then(() => true, () => false));
     await settled(page, '#tg .tg-banner');
     const backSeen = await unseen(page, '#tg .tg-banner');
     check('which the pilot can see', backSeen === '', backSeen);
     const backOn = await overlaps(page, '#tg .tg-banner', BANNER_CLEAR_OF);
     check('and which covers nothing', !backOn, backOn);
-    const stale = await page.evaluate("document.querySelector('#tg .tg-toasts').textContent");
+    const stale = await toastText(page);
     check('and the toasts that said to wait are gone', !/getting back/i.test(stale), stale);
     await until(() => keeper.s.inRoom, 10000);
     await page.until(`${T} && window.__together().pilots === 2`, 10000).catch(() => {});
@@ -1200,11 +1295,10 @@ async function sceneDrop() {
      * its buttons wait for the board rather than doing nothing. */
     await killBoard();
     await page.until(`${T} && ['retrying', 'connecting'].includes(window.__together().link)`, 5000);
-    const tagged = await page.until("document.querySelector('#tg .tg-modal').textContent.includes('Getting back in')", 4000).then(() => true, () => false);
+    const tagged = await page.until(SEES('Getting back in', '#tg .tg-modal'), 4000).then(() => true, () => false);
     check('a drop with the room\'s page open keeps the page, and its tags say so', tagged && (await state(page)).sheet === 'room', JSON.stringify(await state(page)));
     await pressKey(page, 'talk');
-    const waits = await page.evaluate("document.querySelector('#tg .tg-toasts').textContent");
-    check('and Talk says to wait a moment', /One moment/.test(waits) && (await state(page)).sheet === 'room', waits);
+    check('and Talk says to wait a moment', await page.evaluate(SEES('One moment', '#tg .tg-toasts')) && (await state(page)).sheet === 'room', await toastText(page));
     await wait(200);
     await shot('page-in-drop');
     await freshBoard();
@@ -1217,21 +1311,485 @@ async function sceneDrop() {
     await freshBoard({ secret: randomBytes(24).toString('hex') });
     const lost = await page.until(`${T} && !window.__together().inRoom && window.__together().link === ''`, 15000).then(() => true, () => false);
     check('a ticket the board cannot honour ends the room for the page', lost);
-    check('it says so', await page.evaluate("document.querySelector('#tg').textContent.includes('The room closed while you were away')"));
+    check('it says so', await page.until(SEES('The room closed while you were away'), 3000).then(() => true, () => false));
     await wait(300);
     const st = await state(page);
     check('and the room\'s page closed with it', st.sheet === '', JSON.stringify(st));
     const rows = await pauseRows(page);
     check('the pause menu is a solo one again', !rows.includes('Room'), rows.join(', '));
     await shot('lost');
-    const errors = errorsOf(page);
-    check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    endChecks(page);
   } catch (e) {
     failures += 1;
     console.log(`  FAIL  ${e.message}`);
     await shot('failed').catch(() => {});
   } finally {
     keeper.s.leave();
+    await page.close();
+  }
+}
+
+/*
+ * The host's tools in the page's own hands, which no other scene puts
+ * there: the room handed to the page, then a kick, a ban, a mute and an
+ * unmute, quick lines faster than the board allows, and the room's size
+ * from the settings.
+ */
+async function sceneTools() {
+  console.log('\ntools: the host\'s tools in the page\'s hands');
+  const first = bot('Kite Host', 211);
+  const ann = bot('Rotor Ann', 223);
+  const ben = bot('Prop Ben', 227);
+  const room = await hostRoom(first, {
+    name: 'Tool shed', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, typedChat: true, max: 6,
+  });
+  await joinRoom(ann, room.code, first.s.invite);
+  await joinRoom(ben, room.code, first.s.invite);
+  const u = new URL(roomUrl('http://127.0.0.1/index.html', room, { invite: first.s.invite }));
+  u.searchParams.set('board', boardOrigin);
+  const page = await open(`${u.pathname}${u.search}${u.hash}`, seedFor({ name: 'Tool Pilot', met: true }));
+  const shot = shooter(page, 'tools');
+  const roomPage = async () => {
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+  };
+  const toFlight = async () => {
+    for (let i = 0; i < 4 && (await state(page)).sheet; i += 1) {
+      await page.tap('Escape');
+      await wait(150);
+    }
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 10000);
+  };
+  try {
+    await sheetIs(page, 'join');
+    await pressKey(page, 'join');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight'", 30000);
+    await page.until(`${T} && window.__together().pilots === 4`, 8000).catch(() => {});
+    const pageId = (await state(page)).you;
+    await wait(4600);
+
+    first.s.link.hostAction('makeHost', pageId);
+    const made = await page.until(`${T} && window.__together().host === window.__together().you`, 5000).then(() => true, () => false);
+    check('handed the room, the page is the host', made);
+    check('and is told so, in words it can see', await page.until(SEES("You're the host now"), 3000).then(() => true, () => false));
+    await settled(page, '#tg .tg-banner');
+    const hostOn = await overlaps(page, '#tg .tg-banner', BANNER_CLEAR_OF);
+    check('which cover nothing', !hostOn, hostOn);
+    await shot('host-now');
+
+    await roomPage();
+    const annId = ann.s.you;
+    const benId = ben.s.you;
+    await pressKey(page, `pilot-${annId}`);
+    await pressKey(page, `kick-${annId}`);
+    await sheetIs(page, 'confirm');
+    await shot('kick-confirm');
+    await pressKey(page, 'yes');
+    const annOut = await until(() => !ann.s.inRoom, 5000);
+    check('Kick takes the pilot out', annOut, JSON.stringify(ann.heard.slice(-2).map((x) => x.name)));
+    check('and the room page is the room again, three pilots', await page.until(`${T} && window.__together().sheet === 'room' && window.__together().pilots === 3`, 4000).then(() => true, () => false), JSON.stringify(await state(page)));
+    check('and the pilots list on it says three', await page.until(SEES('3 of 6', '#tg .tg-modal'), 3000).then(() => true, () => false));
+
+    await pressKey(page, `pilot-${benId}`);
+    await pressKey(page, `ban-${benId}`);
+    await sheetIs(page, 'confirm');
+    await pressKey(page, 'yes');
+    check('Ban takes the pilot out', await until(() => !ben.s.inRoom, 5000));
+    ben.heard.length = 0;
+    ben.s.join(room.code, { invite: first.s.invite });
+    await until(() => ben.heard.some((x) => x.name === 'refused' || x.name === 'closed'), 5000);
+    const refusal = ben.heard.find((x) => x.name === 'refused' || x.name === 'closed');
+    check('and the banned browser is refused at the door, invite or not', !ben.s.inRoom && Boolean(refusal), JSON.stringify(refusal && refusal.data));
+
+    await pressKey(page, `pilot-${first.s.you}`);
+    await pressKey(page, `mute-${first.s.you}`);
+    await toFlight();
+    first.s.say('gg');
+    await wait(900);
+    check('a muted pilot\'s line is not shown', !(await page.evaluate(SEES('GG!'))));
+    await roomPage();
+    await pressKey(page, `pilot-${first.s.you}`);
+    await pressKey(page, `mute-${first.s.you}`);
+    await toFlight();
+    first.s.say('nice');
+    check('unmuted, the next one is', await page.until(SEES('Nice line!'), 4000).then(() => true, () => false));
+
+    /* Faster than the board allows: three lines, then one every two
+     * seconds. A line the board refused was never said, so the page must
+     * not show it as said. */
+    await wait(2600);
+    for (const k of ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5']) {
+      await page.tap(k);
+      await wait(60);
+    }
+    await wait(1200);
+    const toast = await toastText(page);
+    check('quick lines faster than the board allows are told to slow down', await page.evaluate(SEES('one line every two seconds', '#tg .tg-toasts')), toast);
+    const heard = first.heard.filter((x) => x.name === 'say' && x.data.id === pageId).map((x) => x.data.line);
+    const last = QUICK.find((q) => q.line === heard[heard.length - 1]);
+    const box = await page.evaluate("(() => { const t = document.querySelector('#tg .talk'); return t && !t.hidden ? t.textContent : ''; })()");
+    check('and the page\'s own last line is the last the room heard, not one it refused', heard.length > 0 && heard.length < 5 && last && box.includes(last.text) && !box.includes(QUICK[4].text),
+      `room heard ${heard.join(', ')}; the page says "${box}"`);
+    await shot('slow');
+
+    await roomPage();
+    await pressKey(page, 'settings');
+    await sheetIs(page, 'roomSettings');
+    for (let i = 0; i < 10; i += 1) await pressKey(page, 'fewer');
+    const max = await page.evaluate("document.querySelector('#tg .stepper output').textContent");
+    check('the room cannot be made smaller than the pilots in it', max === '2', max);
+    await pressKey(page, 'save');
+    check('and the smaller room reaches the others', await until(() => first.s.room && first.s.room.max === 2, 4000), String(first.s.room && first.s.room.max));
+    await shot('settings');
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    for (const b of [first, ann, ben]) b.s.leave();
+    await page.close();
+  }
+}
+
+/*
+ * A pilot who arrives while a race is on: not on the grid, not counted,
+ * not false started, told what is happening, and in the next one.
+ */
+async function sceneLate() {
+  console.log('\nlate: joining a room whose race is on');
+  const bots = [bot('Early Bird', 307), bot('Slip Stream', 311)];
+  const room = await hostRoom(bots[0], {
+    name: 'Already going', way: '5inch', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  await joinRoom(bots[1], room.code, bots[0].s.invite);
+  bots[0].s.link.raceSend({ t: 'laps', n: 2 });
+  for (const b of bots) b.s.link.raceSend({ t: 'ready', on: true });
+  const live = await until(() => bots[0].s.link.race && bots[0].s.link.race.phase === 'live', 12000);
+  const u = new URL(roomUrl('http://127.0.0.1/index.html', room, { invite: bots[0].s.invite }));
+  u.searchParams.set('board', boardOrigin);
+  const page = await open(`${u.pathname}${u.search}${u.hash}`, seedFor({ name: 'Late Pilot', met: true }));
+  const shot = shooter(page, 'late');
+  try {
+    check('the room\'s race is on before the page arrives', live, JSON.stringify(bots[0].s.link.race && bots[0].s.link.race.phase));
+    await sheetIs(page, 'join');
+    await shot('join-card');
+    await pressKey(page, 'join');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight'", 30000);
+    await wait(1500);
+    const st = await state(page);
+    check('the page knows the race is on, and is not in it', st.race === 'live' && !st.racing, JSON.stringify(st));
+    await shot('arrived');
+    const pitShown = await page.evaluate("!document.querySelector('#tg .pit').hidden");
+    const standShown = await page.evaluate("!document.querySelector('#tg .standings').hidden");
+    check('it sees the race, not a pit for it', standShown && !pitShown, `pit ${pitShown}, standings ${standShown}`);
+    check('and is told it is watching, and how to be in the next', await page.evaluate(SEES('One more to join next', '#tg .standings')));
+    const panelsOn = await overlaps(page, '#tg .roomchip, #tg .standings, #tg .pit, #tg .tg-banner');
+    check('and nothing of the room\'s covers the shell\'s instruments', !panelsOn, panelsOn);
+    /* Flying about while the others race is not a false start. */
+    const w = { code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87 };
+    await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...w }, page.sessionId);
+    await wait(900);
+    await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...w }, page.sessionId);
+    await wait(400);
+    const after = await page.evaluate('window.__mode');
+    check('flying meanwhile is not a false start', after === 'flight' && !(await page.evaluate(SEES('False start', '#tg .tg-toasts'))), await toastText(page));
+    await wait(1800);
+    for (const b of bots) b.s.link.raceSend({ t: 'lap', n: 1, ms: 1800 });
+    await wait(1700);
+    for (const b of bots) b.s.link.raceSend({ t: 'lap', n: 2, ms: 1700 });
+    const results = await page.until(`${T} && window.__together().race === 'results'`, 8000).then(() => true, () => false);
+    check('the page sees the results', results, JSON.stringify(await state(page)));
+    await wait(600);
+    await shot('results');
+    /* Two of three is a majority, so the countdown starts on the bots'
+     * votes and the page's comes a moment after: it must still count. */
+    for (const b of bots) b.s.link.raceSend({ t: 'again' });
+    await page.until(`${T} && window.__together().race === 'count'`, 8000).catch(() => {});
+    check('the others\' votes start the next without the page', !(await state(page)).racing, JSON.stringify(await state(page)));
+    check('which is offered it, under the standings', await page.evaluate(SEES('G to join before GO', '#tg .standings')));
+    await shot('offered');
+    await page.tap('KeyG');
+    const next = await page.until(`${T} && window.__together().racing`, 3000).then(() => true, () => false);
+    check('and G a moment after the majority still puts it in the next race', next, JSON.stringify(await state(page)));
+    check('on the grid', await page.evaluate(SEES('On the grid', '#tg .tg-toasts')), await toastText(page));
+    await shot('next');
+    /* A countdown somebody starts with Start, the page not ready: the race
+     * page offers Join the race while there is time. */
+    await page.until(`${T} && window.__together().race === 'live'`, 8000).catch(() => {});
+    for (const b of bots) b.s.link.raceSend({ t: 'dnf' });
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, 'race');
+    await sheetIs(page, 'race');
+    await pressKey(page, 'dnf');
+    await page.until(`${T} && window.__together().race === 'results'`, 8000).catch(() => {});
+    bots[0].s.link.raceSend({ t: 'pit' });
+    await page.until(`${T} && window.__together().race === 'pit'`, 8000).catch(() => {});
+    bots[0].s.link.raceSend({ t: 'start' });
+    await page.until(`${T} && window.__together().race === 'count'`, 8000).catch(() => {});
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, 'race');
+    await sheetIs(page, 'race');
+    const offered = await page.evaluate(SEES('Join the race'));
+    check('a countdown started without the page offers Join the race on its page', offered);
+    await shot('join-race');
+    await pressKey(page, 'join-race');
+    const joined = await page.until(`${T} && window.__together().racing && window.__ui.screen === 'flight'`, 4000).then(() => true, () => false);
+    check('which puts it on the grid and back in the flight', joined, JSON.stringify(await state(page)));
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    for (const b of bots) b.s.leave();
+    await page.close();
+  }
+}
+
+/*
+ * The window changing size under a room, and the same pilot opening the
+ * room again in a second tab: the browser key is the same, so the board
+ * takes the new tab and closes the old one, which must say why and must
+ * not take the room back by itself.
+ */
+async function sceneTabs() {
+  console.log('\ntabs: a resized window, and a second tab');
+  const hostBot = bot('Tab Host', 401);
+  const room = await hostRoom(hostBot, {
+    name: 'Two windows', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  const u = new URL(roomUrl('http://127.0.0.1/index.html', room, { invite: hostBot.s.invite }));
+  u.searchParams.set('board', boardOrigin);
+  const page = await open(`${u.pathname}${u.search}${u.hash}`, seedFor({ name: 'Tab Pilot', met: true }));
+  const shot = shooter(page, 'tabs');
+  const size = (w, hgt) => page.cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: w, height: hgt, deviceScaleFactor: 1, mobile: false,
+  }, page.sessionId);
+  let twin = null;
+  try {
+    await sheetIs(page, 'join');
+    await pressKey(page, 'join');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight'", 30000);
+    for (const [w, hgt] of [[1024, 600], [800, 520], [1600, 900]]) {
+      await size(w, hgt);
+      await wait(700);
+      const on = await overlaps(page, '#tg .roomchip, #tg .roster, #tg .tg-banner');
+      check(`at ${w} by ${hgt}, nothing of the room's covers the shell's instruments`, !on, on);
+      /* The welcome is up for the first two sizes and may have gone by the
+       * last: wide enough to read, not a word a line. It was 104 px wide at
+       * 800 by 520, squeezed between two copies of the right hand column. */
+      const bw = await page.evaluate("(() => { const b = document.querySelector('#tg .tg-banner'); return b ? Math.round(b.getBoundingClientRect().width) : 0; })()");
+      check(`and the welcome is wide enough to read (${bw} px)`, bw >= 300 || (bw === 0 && w === 1600), String(bw));
+      const bannerOn = await overlaps(page, '#tg .tg-banner', BANNER_CLEAR_OF);
+      check('and keeps off the room\'s own panels', !bannerOn, bannerOn);
+      await shot(`flight-${w}x${hgt}`);
+    }
+    await size(800, 520);
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await wait(500);
+    const fits = await page.evaluate(`(() => {
+      const top = [...document.querySelectorAll('#tg .sheet')].filter((e) => e.getBoundingClientRect().width > 0).pop();
+      if (!top) return 'no sheet';
+      const bad = [...top.querySelectorAll('button')].filter((b) => {
+        const r = b.getBoundingClientRect();
+        return r.width > 0 && (r.bottom > innerHeight || r.right > innerWidth || r.left < 0);
+      });
+      if (!bad.length) return '';
+      let p = bad[0].parentElement;
+      for (; p && p !== document.body; p = p.parentElement) {
+        const o = getComputedStyle(p).overflowY;
+        if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return '';
+      }
+      return bad.map((b) => b.textContent.trim()).join(', ') + ' off the window, with nothing to scroll';
+    })()`);
+    check('at 800 by 520 the room\'s page fits, or scrolls to what does not', !fits, fits);
+    await shot('room-800x520');
+    await size(opts.w, opts.h);
+    await page.tap('Escape');
+    await wait(200);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 10000).catch(() => {});
+
+    const key = await page.evaluate("localStorage.getItem('webfpv.rater.v1')");
+    check('the page has its browser key', /^[a-f0-9]{32}$/.test(key || ''), key);
+    twin = { handle: 'Tab Pilot', heard: [] };
+    twin.s = new RoomSession({
+      url: wsUrl, key, handle: 'Tab Pilot', avatar: {}, onEvent: (name, data) => twin.heard.push({ name, data }),
+    });
+    await joinRoom(twin, room.code, hostBot.s.invite);
+    const out = await page.until(`${T} && !window.__together().inRoom`, 6000).then(() => true, () => false);
+    check('the same pilot in a second tab takes this one out of the room', out, JSON.stringify(await state(page)));
+    check('which says why, in words it can see', await page.until(SEES('from another tab or window'), 3000).then(() => true, () => false));
+    await wait(400);
+    await shot('replaced');
+    check('the host sees one of them, not two', hostBot.s.link.pilots.size === 2, String(hostBot.s.link.pilots.size));
+    await wait(3500);
+    check('and this tab does not take the room back by itself', twin.s.inRoom && !(await state(page)).inRoom);
+    await pressKey(page, 'solo');
+    await page.until(`${T} && window.__together().sheet === ''`, 4000).catch(() => {});
+    const chip = await page.evaluate("document.querySelector('#tg .roomchip').hidden");
+    check('Fly solo leaves no room chip behind', chip);
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (twin) twin.s.leave();
+    hostBot.s.leave();
+    await page.close();
+  }
+}
+
+/*
+ * A streamer room: the page hosts one from the host sheet, and a crowd of
+ * viewers comes in by the code and flies in front of it. Bigger than any
+ * other room, so the craft and the name tags must be built for it.
+ */
+async function sceneStream() {
+  console.log('\nstream: a streamer room and its crowd');
+  const page = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`, seedFor({ met: true, name: 'Stream Host' }));
+  const shot = shooter(page, 'stream');
+  const crowd = [];
+  let flying = null;
+  const N = 47;
+  try {
+    await page.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await page.until("document.querySelector('.wp-rooms') !== null", 30000);
+    await page.evaluate("(() => { window.__ui.picker.select('map:bardwell'); return 1; })()");
+    await wait(200);
+    await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
+    await sheetIs(page, 'host');
+    await pressKey(page, 'streamer');
+    await wait(200);
+    const form = () => page.evaluate(`(() => ({
+      max: document.querySelector('#tg .stepper output').textContent,
+      listed: document.querySelector('#tg [data-k="listed"]').getAttribute('aria-checked'),
+      chat: document.querySelector('#tg [data-k="sw-typedChat"]').getAttribute('aria-checked'),
+      chatLocked: document.querySelector('#tg [data-k="sw-typedChat"]').getAttribute('aria-disabled'),
+    }))()`);
+    const f1 = await form();
+    check('Streamer room makes the room 64, off the shelf, preset lines only',
+      f1.max === '64' && f1.listed === 'false' && f1.chat === 'false' && f1.chatLocked === 'true', JSON.stringify(f1));
+    const nameNow = () => page.evaluate("document.querySelector('#tg-rname').value");
+    check('and takes the pilot\'s own name out of the room\'s, where everybody has a made up one', await nameNow() === '', await nameNow());
+    await pressKey(page, 'more');
+    check('and no bigger', (await form()).max === '64');
+    if (opts.w >= 1280 && opts.h >= 720) {
+      const off = await offSheet(page);
+      check('at 1280 by 720 the host sheet shows every control without scrolling', !off, off);
+    }
+    await shot('host-sheet');
+    await pressKey(page, 'listed');
+    const f2 = await form();
+    check('Listed under Rooms turns it back into an ordinary room of at most 30', f2.max === '30' && f2.listed === 'true', JSON.stringify(f2));
+    const one = await page.evaluate("[...document.querySelectorAll('#tg [role=radiogroup] [aria-checked=true]')].length");
+    check('one of the three at a time', one === 1, String(one));
+    check('as a listed room does', await nameNow() === '', await nameNow());
+    await pressKey(page, 'private');
+    check('which comes back in an ordinary room', await nameNow() === "Stream Host's room", await nameNow());
+    await pressKey(page, 'streamer');
+    check('and Streamer room back again', (await form()).max === '64' && await nameNow() === '');
+    await pressKey(page, 'open');
+    await sheetIs(page, 'share');
+    const st = await state(page);
+    await pressKey(page, 'fly');
+    await page.until("window.__mode === 'flight'", 30000);
+    await page.until(`${T} && window.__together().sheet === ''`, 10000);
+
+    for (let i = 0; i < N; i += 1) {
+      const b = bot(`Viewer ${i + 1}`, 500 + i * 7);
+      crowd.push(b);
+      b.s.join(st.code, {});
+    }
+    await until(() => crowd.every((b) => b.s.inRoom), 30000, 100);
+    check(`${N} viewers join by the code`, crowd.every((b) => b.s.inRoom), String(crowd.filter((b) => b.s.inRoom).length));
+    const room = crowd[0].s.room;
+    check('a streamer room of 64, off the shelf, with made up names and preset lines',
+      room.streamer === true && room.max === 64 && !room.listed && !room.ownNames && !room.typedChat && room.hide, JSON.stringify(room));
+    check('named after the host\'s made up name, not their own', !room.name.includes('Stream Host'), room.name);
+    await page.until(`${T} && window.__together().pilots === ${N + 1}`, 15000).catch(() => {});
+    check(`the page sees all ${N + 1} pilots`, (await state(page)).pilots === N + 1, JSON.stringify(await state(page)));
+
+    const me = (await state(page)).you;
+    let c = null;
+    await until(() => {
+      crowd[0].s.eachRemote((id, pose) => { if (id === me) c = { ...pose }; });
+      return Boolean(c);
+    }, 10000, 100);
+    check('the host\'s pose reaches the viewers', Boolean(c));
+    let fx = -2 * (c.qx * c.qz + c.qw * c.qy);
+    let fz = -(1 - 2 * (c.qx * c.qx + c.qy * c.qy));
+    const fl = Math.hypot(fx, fz) || 1;
+    fx /= fl;
+    fz /= fl;
+    const t0 = performance.now();
+    let huddle = false;
+    /* A grandstand of viewers in front of the host, rows going back. In a
+     * huddle, the first ten crowd round the host, as a room starts. */
+    flying = setInterval(() => {
+      const t = (performance.now() - t0) / 1000;
+      crowd.forEach((b, k) => {
+        if (huddle && k < 10) {
+          const a = (k / 10) * Math.PI * 2;
+          b.s.uplink(c.px + Math.cos(a) * 1.4, c.py + 0.5, c.pz + Math.sin(a) * 1.4, 0, 0, 0, 1, true, 0);
+          return;
+        }
+        const row = Math.floor(k / 12);
+        const side = (k % 12) - 5.5;
+        const d = 5 + row * 2.5;
+        const px = c.px + fx * d - fz * side * 0.9;
+        const pz = c.pz + fz * d + fx * side * 0.9;
+        b.s.uplink(px, c.py + 0.8 + row * 0.6 + Math.sin(t * 2 + k) * 0.08, pz, 0, 0, 0, 1, true, 0);
+      });
+    }, 1000 / 30);
+    const drawn = await page.until(`window.__roomCraft && window.__roomCraft() && window.__roomCraft().drawn === ${N}`, 15000).then(() => true, () => false);
+    const rc = await page.evaluate('window.__roomCraft && window.__roomCraft()');
+    check(`the page draws all ${N} of them, on craft built for 64`, drawn && rc.size === 64, JSON.stringify(rc));
+    await wait(800);
+    await shot('crowd');
+    const rc2 = await page.evaluate('window.__roomCraft()');
+    check(`name tags on the nearest ${rc2.most}, not all ${N}`, rc2.most > 0 && rc2.tagged === rc2.most, JSON.stringify(rc2));
+    huddle = true;
+    const hi = await page.until("document.querySelector('#tg .hello') !== null", 6000).then(() => true, () => false);
+    check('ten pilots round the host: a hello', hi);
+    await wait(1200);
+    huddle = false;
+    await page.until("document.querySelector('#tg .hello') === null", 5000).catch(() => {});
+    await wait(1500);
+    const stale = await page.evaluate("(() => { const e = document.querySelector('#tg .hello .plate'); return e ? e.textContent : ''; })()");
+    check('and once they have flown off, none for the rest of the queue', !stale, stale);
+    await page.tap('Tab');
+    await wait(500);
+    const rosterOn = await overlaps(page, '#tg .roomchip, #tg .roster');
+    check('the pilots list of 48 covers none of the shell\'s instruments', !rosterOn, rosterOn);
+    const scrolls = await page.evaluate("(() => { const r = document.querySelector('#tg .roster'); return r.scrollHeight > r.clientHeight && getComputedStyle(r).overflowY === 'auto'; })()");
+    check('and scrolls', scrolls);
+    await shot('roster');
+    await page.tap('Tab');
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await wait(400);
+    check('the room\'s page says Streamer room', await page.evaluate(SEES('Streamer room')));
+    await shot('room-page');
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    clearInterval(flying);
+    for (const b of crowd) b.s.leave();
     await page.close();
   }
 }
@@ -1245,6 +1803,10 @@ try {
   if (wanted('steam')) { await freshBoard(); await sceneSteam(); }
   if (wanted('door')) { await freshBoard(); await sceneDoor(); }
   if (wanted('drop')) { await freshBoard(); await sceneDrop(); }
+  if (wanted('tools')) { await freshBoard(); await sceneTools(); }
+  if (wanted('late')) { await freshBoard(); await sceneLate(); }
+  if (wanted('tabs')) { await freshBoard(); await sceneTabs(); }
+  if (wanted('stream')) { await freshBoard(); await sceneStream(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

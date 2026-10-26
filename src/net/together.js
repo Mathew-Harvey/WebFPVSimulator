@@ -57,7 +57,7 @@
  */
 
 import { RoomSession } from './room.js';
-import { roomsUrl } from './link.js';
+import { ROOM_MAX, STREAM_MAX, roomsUrl } from './link.js';
 import { RoomRace, RACE_LAPS_MAX } from './roomrace.js';
 import { TOGETHER_CSS } from './togetherstyle.js';
 import {
@@ -90,6 +90,8 @@ const LOG_KEPT = 30;
 const HELLO_RANGE_M2 = 9;
 const HELLO_SHOW_MS = 2400;
 const HELLOS_PER_MINUTE = 4;
+/* Near within this long ago still counts as near, for a queued hello. */
+const HELLO_FRESH_MS = 1000;
 const BANNER_MS = 4200;
 const TOAST_MS = 2400;
 const QBAR_MS = 5000;
@@ -395,6 +397,8 @@ export function createTogether(shell) {
   const helloed = new Set();
   const helloTimes = [];
   const helloQueue = [];
+  /* When each pilot was last near enough for a hello. */
+  const nearAt = new Map();
   const log = [];
   let lastLink = 'good';
   let welcomedOnce = false;
@@ -1638,6 +1642,7 @@ export function createTogether(shell) {
       h('span.map', { text: `${r.mapName}${r.host ? ` · ${r.host} hosting` : ''}` }),
       h('div.tags', null,
         missing ? tag('Not in your copy', 'slate') : null,
+        r.streamer ? tag('Streamer room', 'amber') : null,
         r.schoolSafe ? tag('School safe', 'mint') : null,
         (r.tags || []).map((t) => {
           const known = TAGS.find((x) => x.id === t);
@@ -1724,20 +1729,33 @@ export function createTogether(shell) {
 
   function sheetHost(entry, was, opts = {}) {
     const handle = readPilotName();
+    const suggested = handle ? `${handle}'s room`.slice(0, 32) : '';
     const f = {
-      name: handle ? `${handle}'s room`.slice(0, 32) : '',
+      name: suggested,
       listed: false,
       password: '',
       max: 16,
       typedChat: true,
       schoolSafe: false,
+      streamer: false,
       hide: false,
       tags: entry.way === 'freestyle' ? [] : ['racing'],
       ...(was || {}),
     };
     const bad = (was && was.bad) || new Set();
     open('host', () => {
-      const strict = f.listed || f.schoolSafe;
+      const strict = f.listed || f.schoolSafe || f.streamer;
+      const most = f.streamer ? STREAM_MAX : ROOM_MAX;
+      /* A room that gives everybody a made up name must not show the
+       * host's own through its title: the suggestion made from it goes, and
+       * comes back if the room is made ordinary again with nothing typed. */
+      if (strict && suggested && f.name === suggested) {
+        f.name = '';
+        f.dropped = true;
+      } else if (!strict && f.dropped) {
+        f.name = f.name || suggested;
+        f.dropped = false;
+      }
       const again = () => refresh('host');
       const nameIn = h('input.input', {
         id: 'tg-rname', value: f.name, maxLength: 32, autocomplete: 'off', 'data-k': 'rname', 'data-osk': 'name', class: bad.has('name') ? 'bad' : null,
@@ -1760,6 +1778,7 @@ export function createTogether(shell) {
           name,
           listed: f.listed,
           schoolSafe: f.schoolSafe,
+          streamer: f.streamer,
           typedChat: !strict && f.typedChat,
           hide: strict || f.hide,
           password: f.password || undefined,
@@ -1776,31 +1795,39 @@ export function createTogether(shell) {
             h('div.mapcard', null, h('div.pic', { style: { backgroundImage: entry.thumb ? `url("${entry.thumb}")` : '' } }),
               h('div', { style: { flex: '1' } }, h('small', { text: 'Map' }), h('b', { text: entry.name }), h('small', { text: WAY_NAMES[entry.way] || '' }))),
             h('div.field', null, h('label', { for: 'tg-rname', text: 'Room name' }), nameIn,
-              bad.has('name') ? h('span.help.bad', { text: SETTINGS_FIELDS.name }) : h('span.help.spare', { text: f.listed ? 'Leave it empty and the room takes your made up name.' : 'Leave it empty and the room is named after you.' })),
-            h('div.field', null, h('span.lab', { text: 'Who can find it' }), h('div.radios', { role: 'radiogroup' },
+              bad.has('name') ? h('span.help.bad', { text: SETTINGS_FIELDS.name }) : h('span.help.spare', { text: strict ? 'Leave it empty and the room takes your made up name.' : 'Leave it empty and the room is named after you.' })),
+            /* Who can find it decides the size too: a streamer room is for a
+             * stream's viewers, who may be eight, so it is never on the
+             * shelf and is as safe as a listed room. The board holds it to
+             * that. */
+            h('div.field', null, h('span.lab', { text: 'Who can find it' }), h('div.radios.three', { role: 'radiogroup' },
               h('button.radio', {
-                type: 'button', role: 'radio', 'aria-checked': String(!f.listed), 'data-k': 'private', on: { click: () => { f.listed = false; again(); } },
+                type: 'button', role: 'radio', 'aria-checked': String(!f.listed && !f.streamer), 'data-k': 'private', on: { click: () => { f.listed = false; f.streamer = false; f.max = Math.min(f.max, ROOM_MAX); again(); } },
               }, h('b', { text: 'Link only' }), h('small', { text: 'Friends join with the link or code.' })),
               h('button.radio', {
-                type: 'button', role: 'radio', 'aria-checked': String(f.listed), 'data-k': 'listed', on: { click: () => { f.listed = true; again(); } },
-              }, h('b', { text: 'Listed under Rooms' }), h('small', { text: 'Anyone can find it and join.' })))),
+                type: 'button', role: 'radio', 'aria-checked': String(f.listed), 'data-k': 'listed', on: { click: () => { f.listed = true; f.streamer = false; f.max = Math.min(f.max, ROOM_MAX); again(); } },
+              }, h('b', { text: 'Listed under Rooms' }), h('small', { text: 'Anyone can find it and join.' })),
+              h('button.radio', {
+                type: 'button', role: 'radio', 'aria-checked': String(f.streamer), 'data-k': 'streamer', on: { click: () => { f.listed = false; f.streamer = true; f.max = STREAM_MAX; again(); } },
+              }, h('b', { text: 'Streamer room' }), h('small', { text: `Up to ${STREAM_MAX} viewers, by the code on your stream.` })))),
             h('div.field', null, h('label', { for: 'tg-pw' }, 'Password ', h('span', { style: { fontWeight: '600', textTransform: 'none', letterSpacing: '0' }, text: '(optional)' })), pwIn,
               h(`span.help${bad.has('password') ? '.bad' : ''}`, { text: bad.has('password') ? SETTINGS_FIELDS.password : 'Your invite link skips it, so you never have to say it out loud.' }))),
           h('div.stack', null,
             h('div.field', null, h('span.lab', { text: 'Pilots' }), h('div.stepper', null,
               h('button', { type: 'button', 'aria-label': 'Fewer', 'data-k': 'fewer', on: { click: () => { f.max = Math.max(2, f.max - 1); again(); } } }, '−'),
               h('output', { text: String(f.max) }),
-              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(30, f.max + 1); again(); } } }, '+')),
-            h('span.help.spare', { text: 'Up to 30. Big rooms are busier on slow connections.' })),
+              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(most, f.max + 1); again(); } } }, '+')),
+            h('span.help.spare', { text: `Up to ${most}. Big rooms are busier on slow connections.` })),
             switchRow('sw-typedChat', 'Typed chat', 'Pilots can type when they are paused. Preset lines are always on.',
               !strict && f.typedChat, () => { f.typedChat = !f.typedChat; again(); },
-              { locked: strict, why: strict ? (f.listed ? 'Listed rooms always use preset lines.' : 'School safe rooms always use preset lines.') : '' }),
+              { locked: strict, why: strict ? `${f.streamer ? 'Streamer' : f.listed ? 'Listed' : 'School safe'} rooms always use preset lines.` : '' }),
             switchRow('sw-schoolSafe', 'School safe', 'Made up names, preset lines only, addresses hidden.', f.schoolSafe, () => { f.schoolSafe = !f.schoolSafe; again(); }),
             switchRow('sw-hide', HIDE_LABEL, HIDE_SMALL, strict || f.hide, () => { f.hide = !f.hide; again(); },
-              { locked: strict, why: strict ? 'Always on in listed and school safe rooms.' : '' }),
+              { locked: strict, why: strict ? 'Always on in listed, school safe and streamer rooms.' : '' }),
             tagPicker(f, again)))),
         h('div.footer-row', null, btn('Open room', '', openRoom, { 'data-k': 'open', 'data-autofocus': true }),
-          h('span.note', { text: `Nobody can come in until you send the link${f.listed ? ' or they find it under Rooms' : ''}.` }))));
+          h('span.note', { text: f.streamer ? 'Nobody can come in until you show the code on your stream or send the link.'
+            : `Nobody can come in until you send the link${f.listed ? ' or they find it under Rooms' : ''}.` }))));
     }, { replace: opts.replace });
   }
 
@@ -1859,7 +1886,7 @@ export function createTogether(shell) {
           h('div.stack', null,
             h('div.mapcard', null, h('div.pic', { style: { backgroundImage: pic ? `url("${pic}")` : '' } }),
               h('div', { style: { flex: '1', minWidth: '0' } }, h('small', { text: isHost() ? 'You are hosting' : 'You are in' }), h('b', { text: r.mapName }),
-                h('small', { text: `${r.listed ? 'Listed' : 'Link only'} · ${pilots.length} of ${r.max}${r.typedChat ? ' · typed chat on' : ''}${r.schoolSafe ? ' · school safe' : ''}` }))),
+                h('small', { text: `${r.streamer ? 'Streamer room' : r.listed ? 'Listed' : 'Link only'} · ${pilots.length} of ${r.max}${r.typedChat ? ' · typed chat on' : ''}${r.schoolSafe ? ' · school safe' : ''}` }))),
             h('div.field', null, h('span.lab', { text: 'In the room' }),
               h('div.pane', { style: { border: '3px solid var(--ink)', background: 'var(--white)', padding: '4px 10px', maxHeight: '220px', overflow: 'auto' } },
                 pilots.map((p) => pilotRow(p, { actions: false })),
@@ -1887,6 +1914,7 @@ export function createTogether(shell) {
           h('small', { text: `${WAY_NAMES[r.way] || ''} on ${r.mapName} · ${r.n} of ${r.max} pilots` }),
           h('div.pilots-mini', null, (r.faces || []).map((a) => face(a, 'calm', 34)), r.n > (r.faces || []).length ? tag(`+${r.n - (r.faces || []).length}`) : null),
           h('div.tags', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } }, tag(WAY_NAMES[r.way] || 'Room', 'sakura'),
+            r.streamer ? tag('Streamer room', 'amber') : null,
             r.typedChat ? tag('Typed chat on') : tag('Preset chat'), r.schoolSafe ? tag('School safe', 'mint') : null, r.lock && !invite ? tag('Password', 'amber') : null))),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--ink)', fontWeight: '700', flexWrap: 'wrap' } },
         "You'll fly as", face(store.avatar, 'hello', 40), madeUp ? h('span', { text: 'a made up name, chosen by the room' }) : h('b', { text: readPilotName() || 'a made up name' }),
@@ -2087,7 +2115,7 @@ export function createTogether(shell) {
       tag(`${n} of ${r.max} pilots`, 'paper'),
       lastLink === 'low' ? tag('Getting back in', 'amber') : null,
       tag(isHost() ? 'You are host' : `Host: ${hp ? hp.handle : 'nobody yet'}`, isHost() ? 'amber' : 'paper'),
-      tag(r.listed ? 'Listed' : 'Link only', 'paper'),
+      tag(r.streamer ? 'Streamer room' : r.listed ? 'Listed' : 'Link only', r.streamer ? 'amber' : 'paper'),
       tag(r.typedChat ? 'Typed chat on' : 'Preset chat', 'paper'),
       r.lock ? tag('Password', 'paper') : null,
       r.schoolSafe ? tag('School safe', 'mint') : null);
@@ -2098,6 +2126,9 @@ export function createTogether(shell) {
     if (!roomToOpen()) {
       return;
     }
+    /* Every visit opens with each pilot's tools folded: a row left open
+     * last time, pressed now, would fold rather than open. */
+    openRow = 0;
     open('room', () => {
       /* Drawn through a drop too, its tags saying so. */
       const r = heldRoom();
@@ -2128,7 +2159,9 @@ export function createTogether(shell) {
             btn('Leave room', 'danger', () => sheetConfirm('leave'), { 'data-k': 'leave' })),
           h('div.pane', null, h('span.lab-h', { text: 'Pilots' }),
             pilots.map((p) => pilotRow(p)),
-            h('p.help', { text: pilots.length > 1 ? 'Pick a pilot to mute or report them. Mute is only for you, and the board never knows.' : 'Nobody else is here yet. Invite pilots sends them the link.' })))));
+            h('p.help', { text: pilots.length < 2 ? 'Nobody else is here yet. Invite pilots sends them the link.'
+              : isHost() ? 'Pick a pilot to mute, report, kick or ban them, or to hand them the room. Mute is only for you, and the board never knows.'
+                : 'Pick a pilot to mute or report them. Mute is only for you, and the board never knows.' })))));
     });
   }
 
@@ -2208,7 +2241,7 @@ export function createTogether(shell) {
     settingsBad = new Set();
     settingsSaving = false;
     open('roomSettings', () => {
-      const strict = f.listed || f.schoolSafe;
+      const strict = f.listed || f.schoolSafe || r.streamer;
       const again = () => refresh('roomSettings');
       const n = session.link.pilots.size;
       const nameIn = h('input.input', {
@@ -2233,7 +2266,8 @@ export function createTogether(shell) {
         session.link.settings(msg);
         again();
       };
-      const renames = (f.listed || f.schoolSafe) !== (r.listed || r.schoolSafe);
+      /* A streamer room names everybody for them whatever is switched. */
+      const renames = !r.streamer && (f.listed || f.schoolSafe) !== (r.listed || r.schoolSafe);
       return scrimmed(h('div.page.fit.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: r.name }), lettered('ROOM SETTINGS', [INKS.cream, INKS.amber], 46, 600)),
           btn('Cancel', 'small ghost', () => back(), { 'data-k': 'cancel' })),
@@ -2247,15 +2281,16 @@ export function createTogether(shell) {
             h('div.field', null, h('span.lab', { text: 'Pilots' }), h('div.stepper', null,
               h('button', { type: 'button', 'aria-label': 'Fewer', 'data-k': 'fewer', on: { click: () => { f.max = Math.max(Math.max(2, n), f.max - 1); again(); } } }, '−'),
               h('output', { text: String(f.max) }),
-              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(30, f.max + 1); again(); } } }, '+')),
+              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(r.streamer ? STREAM_MAX : ROOM_MAX, f.max + 1); again(); } } }, '+')),
             h(`span.help${settingsBad.has('max') ? '.bad' : ''}`, { text: `Never below the ${n} ${n === 1 ? 'pilot' : 'pilots'} already in.` }))),
           h('div.stack', null,
-            switchRow('sw-listed', 'Listed under Rooms', 'Turning this off takes the room off the Rooms shelf. Everyone stays.', f.listed, () => { f.listed = !f.listed; again(); }),
+            switchRow('sw-listed', 'Listed under Rooms', 'Turning this off takes the room off the Rooms shelf. Everyone stays.', !r.streamer && f.listed, () => { f.listed = !f.listed; again(); },
+              { locked: r.streamer, why: r.streamer ? 'A streamer room is joined by the code on the stream.' : '' }),
             switchRow('sw-typedChat', 'Typed chat', 'Pilots can type when they are paused.', !strict && f.typedChat, () => { f.typedChat = !f.typedChat; again(); },
-              { locked: strict, why: strict ? 'Never in a listed or school safe room.' : '' }),
+              { locked: strict, why: strict ? 'Never in a listed, school safe or streamer room.' : '' }),
             switchRow('sw-schoolSafe', 'School safe', 'Made up names, preset lines only, addresses hidden.', f.schoolSafe, () => { f.schoolSafe = !f.schoolSafe; again(); }),
             switchRow('sw-hide', HIDE_LABEL, HIDE_SMALL, strict || f.hide, () => { f.hide = !f.hide; again(); },
-              { locked: strict, why: strict ? 'Always on in listed and school safe rooms.' : '' }),
+              { locked: strict, why: strict ? 'Always on in listed, school safe and streamer rooms.' : '' }),
             tagPicker(f, again)))),
         h('div.footer-row', null, btn(settingsSaving ? 'Saving' : 'Save', '', saveIt, { 'data-k': 'save', 'data-autofocus': true, disabled: settingsSaving }),
           renames ? h('span.note', { style: { color: 'var(--red)' }, text: f.listed || f.schoolSafe ? 'Saving gives everybody in the room a made up name.' : 'Saving gives everybody their own name back.' }) : null)));
@@ -2397,11 +2432,17 @@ export function createTogether(shell) {
           btn('Retire', 'danger', () => { session.link.raceSend({ t: 'dnf' }); closeAll(); }, { 'data-k': 'dnf' }),
           host ? btn('Call it off', 'ghost', () => { session.link.raceSend({ t: 'pit' }); pop(); }, { 'data-k': 'pit' }) : null));
         note = 'Every lap is timed on your own screen from GO, so a slow connection never costs you time.';
+      } else if (race && race.canJoin()) {
+        rows.push(h('div.btnrow', null,
+          btn('Join the race', 'mint', () => { joinCount(); toFlight(); }, { 'data-k': 'join-race', 'data-autofocus': true }),
+          btn('Back to flying', 'ghost', () => back(), { 'data-k': 'back-fly' }),
+          host ? btn('Call it off', 'ghost', () => { session.link.raceSend({ t: 'pit' }); pop(); }, { 'data-k': 'pit' }) : null));
+        note = 'The countdown has started without you. There is still time: join and you go on the start line.';
       } else {
         rows.push(h('div.btnrow', null,
           btn('Back to flying', '', () => back(), { 'data-k': 'back-fly', 'data-autofocus': true }),
           host ? btn('Call it off', 'ghost', () => { session.link.raceSend({ t: 'pit' }); pop(); }, { 'data-k': 'pit' }) : null));
-        note = 'This race started without you. You are in the next one: it starts from the pit when this one ends.';
+        note = 'This race started without you. When it ends, press One more to be in the next.';
       }
       const title = { pit: 'THE PIT', count: 'RACE', live: 'RACE', results: 'RESULTS' }[phase] || 'RACE';
       return scrimmed(h('div.page.fit.sheet.halftone', null,
@@ -2672,9 +2713,9 @@ export function createTogether(shell) {
       }
       return;
     }
-    if (session.say(q.line)) {
-      showLine(me(), session.you, q.text, q.face);
-    }
+    /* Shown when the board says it back, as a typed line is: a line it
+     * refuses as too quick was never said, and must not look said. */
+    session.say(q.line);
     if (!qbar.hidden) {
       qbar.querySelectorAll('button').forEach((b, k) => b.classList.toggle('on', k === i));
       clearTimeout(qbarTimer);
@@ -2719,7 +2760,11 @@ export function createTogether(shell) {
    * rest queued. Worked out from what this page already draws, so it sends
    * nothing. */
   function near(id, d2) {
-    if (d2 > HELLO_RANGE_M2 || helloed.has(id) || muted.has(id) || racingNow() || !session || id === session.you) {
+    if (d2 > HELLO_RANGE_M2) {
+      return;
+    }
+    nearAt.set(id, performance.now());
+    if (helloed.has(id) || muted.has(id) || racingNow() || !session || id === session.you) {
       return;
     }
     helloed.add(id);
@@ -2739,10 +2784,21 @@ export function createTogether(shell) {
       setTimeout(pumpHello, 60000 - (now - helloTimes[0]) + 50);
       return;
     }
-    const id = helloQueue.shift();
-    const p = pilot(id);
+    /* A hello is for a pilot near now. Four a minute is the most, so a
+     * crowd on the start pad, which is how a big room begins, queues dozens
+     * that would otherwise greet pilots a field away for a quarter of an
+     * hour. One gone by is greeted the next time they are near. */
+    let id = 0;
+    while (helloQueue.length && !id) {
+      const next = helloQueue.shift();
+      if (pilot(next) && now - (nearAt.get(next) || -Infinity) < HELLO_FRESH_MS) {
+        id = next;
+      } else {
+        helloed.delete(next);
+      }
+    }
+    const p = id ? pilot(id) : null;
     if (!p) {
-      pumpHello();
       return;
     }
     helloTimes.push(now);
@@ -2777,6 +2833,7 @@ export function createTogether(shell) {
     logBox.replaceChildren();
     helloBox.replaceChildren();
     helloQueue.length = 0;
+    nearAt.clear();
     log.length = 0;
     countShown = '';
   }
@@ -2852,6 +2909,8 @@ export function createTogether(shell) {
     }
     const rows = rc.rows || [];
     const leader = rows[0];
+    const watch = watchLine();
+    watchShown = watch;
     standBox.replaceChildren(...rows.slice(0, 8).map((row, i) => {
       const p = pilot(row.id);
       let right = '';
@@ -2860,7 +2919,7 @@ export function createTogether(shell) {
       else right = `Lap ${Math.min(rc.laps, row.laps + 1)}`;
       return h(`div.r${row.id === session.you ? '.me' : ''}`, null, h('span', { text: String(i + 1) }), p ? face(p.avatar, 'calm', 24) : h('span'),
         h('span', { text: p ? p.handle : 'Gone' }), h('i', { text: right }));
-    }));
+    }), ...(watch ? [h('div.watch', { text: watch })] : []));
     const mine = rows.findIndex((x) => x.id === session.you);
     if (mine >= 0) {
       const row = rows[mine];
@@ -2869,6 +2928,29 @@ export function createTogether(shell) {
       fill(posBox, h('div.big', null, `P${mine + 1}`, h('small', { text: `/${rows.length}` })),
         row.done ? h('div.split', { text: `Home in ${fmtMs(row.total)}` })
           : ahead && ahead.laps === row.laps && ap ? h('div.split', { text: `Chasing ${ap.handle}` }) : null);
+    }
+  }
+
+  /* What a pilot the race on now has left out can do about it, under its
+   * standings, and what that said when last painted. */
+  let watchShown = '';
+  function watchLine() {
+    if (!race || race.racing()) {
+      return '';
+    }
+    if (race.phase === 'count') {
+      return race.canJoin() ? 'G to join before GO' : 'Watching this one';
+    }
+    return race.phase === 'live' ? 'Watching. One more to join next' : '';
+  }
+
+  /* Into a countdown that began without this pilot, while the board can
+   * still put them on its grid. Too late says so, rather than nothing. */
+  function joinCount() {
+    if (race && race.canJoin()) {
+      session.link.raceSend({ t: 'ready', on: true });
+    } else {
+      toast('Too late for this one. One more at the end puts you in the next.');
     }
   }
 
@@ -2953,6 +3035,10 @@ export function createTogether(shell) {
      * wandered to another world is not put on that world's start line. */
     const here = sameWorld(r);
     const what = race.frame();
+    /* The last moment to join passes with no word from the board. */
+    if (race.phase === 'count' && !standBox.hidden && watchLine() !== watchShown) {
+      paintStandings(race.race);
+    }
     if (what === 'grid' && here) {
       shell.grid();
       toast('On the grid. Wait for GO.');
@@ -3016,6 +3102,10 @@ export function createTogether(shell) {
       }
       if (rc.phase === 'results') {
         session.link.raceSend({ t: 'again' });
+        return true;
+      }
+      if (rc.phase === 'count' && !race.racing()) {
+        joinCount();
         return true;
       }
     }

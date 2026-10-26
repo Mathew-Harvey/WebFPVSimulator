@@ -52,6 +52,9 @@
 /* The board's protocol version, src/rooms.js PROTOCOL. */
 export const PROTOCOL = 1;
 export const SOCKET_PATH = '/api/rooms/socket';
+/* The most pilots in a room, and in a streamer room (src/rooms.js). */
+export const ROOM_MAX = 30;
+export const STREAM_MAX = 64;
 
 /* The board's close codes, in the order of its REFUSALS list. */
 export const REFUSALS = Object.freeze([

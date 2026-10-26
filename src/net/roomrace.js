@@ -45,6 +45,9 @@
 /* The board's own lists (src/rooms.js RACE_WAYS, RACE_LAPS_MAX). */
 export const RACE_WAYS = Object.freeze(['5inch', 'whoop']);
 export const RACE_LAPS_MAX = 10;
+/* The board lets a pilot onto a countdown's grid until this long before
+ * GO (src/rooms.js COUNT_JOIN_MS). */
+export const COUNT_JOIN_MS = 1500;
 /* A round trip slower than this says nothing useful about the clock. */
 const RTT_LIMIT_MS = 5000;
 const SAMPLES_KEPT = 8;
@@ -223,6 +226,18 @@ export class RoomRace {
       return 'go';
     }
     return '';
+  }
+
+  /* A countdown this pilot is not in, with time enough left for the board
+   * to put them on its grid: its last moment, and one round trip more for
+   * the ask to reach it. */
+  canJoin() {
+    const r = this.race;
+    if (!r || r.phase !== 'count' || this.racing()) {
+      return false;
+    }
+    const left = this.toGo();
+    return left !== null && left > COUNT_JOIN_MS + Math.min(this.clock.rtt || 250, 1000);
   }
 
   /* Before GO, in a countdown this pilot is in. */

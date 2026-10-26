@@ -164,6 +164,7 @@ export const TOGETHER_CSS = `
 #tg .stepper output { flex: 1; text-align: center; font-size: 20px; font-weight: 900; }
 
 #tg .radios { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+#tg .radios.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #tg .radio { padding: 10px 12px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); text-align: left; }
 #tg .radio b { display: block; font-size: 15px; }
 #tg .radio small { color: var(--quiet); font-weight: 600; font-size: 12.5px; }
@@ -365,6 +366,13 @@ export const TOGETHER_CSS = `
    * the standings or the pilots) on both sides, since it is centred. */
   width: max-content; max-width: min(760px, calc(100% - 2 * (min(360px, 40vw) + 28px)));
 }
+/* Centred on the page, it keeps a column's width clear on the left as well
+ * as the right, which leaves a 1024 wide window 248 px for the words and an
+ * 800 wide one 104. Below 1280 it is centred in the room left of the
+ * column instead, which is all of the page it can use. */
+@media (min-width: 761px) and (max-width: 1279px) {
+  #tg .tg-banner { left: calc((100% - min(360px, 40vw) - 12px) / 2); max-width: min(760px, calc(100% - min(360px, 40vw) - 54px)); }
+}
 #tg .tg-banner > div { min-width: 0; }
 #tg .tg-banner.mint { background: var(--mint); }
 #tg .tg-banner b { font: 900 italic 18px var(--ui); display: block; }
@@ -535,6 +543,7 @@ export const TOGETHER_CSS = `
 #tg .standings .r.me { background: var(--amber); }
 #tg .standings .r > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #tg .standings i { font-style: normal; font-variant-numeric: tabular-nums; }
+#tg .standings .watch { padding: 3px 8px; background: var(--ink); border: 2.5px solid var(--ink); color: var(--cream); font: 900 12px var(--ui); text-align: right; }
 #tg .resgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 24px; min-height: 0; align-items: start; }
 #tg .resgrid .btnrow .btn { flex: none; }
 #tg .podium { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 14px; align-items: end; min-height: 0; max-width: 720px; margin: 0 auto 6px; width: 100%; }

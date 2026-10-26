@@ -3147,6 +3147,7 @@ export async function boot({ loading, bootStart, mapId }) {
   let togetherLoading = null;
   let mpCraft = null;
   let mpCraftWhoop = null;
+  let mpCraftSize = 0;
   let mpCraftLoading = false;
   let mpResets = 0;
   let mpAway = null;
@@ -3159,12 +3160,15 @@ export async function boot({ loading, bootStart, mapId }) {
   let mpHx = 0;
   let mpHy = 0;
   let mpHz = 0;
+  let mpHostId = 0;
   const mpDraw = (id, pose, pilot) => {
-    mpCraft.add(id, pose, pilot);
     const dx = pose.px - mpHx;
     const dy = pose.py - mpHy;
     const dz = pose.pz - mpHz;
     const d2 = dx * dx + dy * dy + dz * dz;
+    /* The host's tag stays up however far: in a streamer room, the one the
+     * viewers came to find. */
+    mpCraft.add(id, pose, pilot, d2, id === mpHostId);
     if (d2 < 9) {
       together.near(id, d2);
     }
@@ -3293,9 +3297,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
-  /* The craft the others are drawn as, sized for the room's aircraft. */
-  async function mpEnsureCraft(whoop) {
-    if ((mpCraft && mpCraftWhoop === whoop) || mpCraftLoading) {
+  /* The craft the others are drawn as, sized for the room's aircraft and
+   * for as many pilots as it holds. */
+  async function mpEnsureCraft(whoop, size) {
+    if ((mpCraft && mpCraftWhoop === whoop && mpCraftSize === size) || mpCraftLoading) {
       return;
     }
     mpCraftLoading = true;
@@ -3305,8 +3310,9 @@ export async function boot({ loading, bootStart, mapId }) {
         mpCraft.group.removeFromParent();
         mpCraft.dispose();
       }
-      mpCraft = buildRoomCraft({ whoop });
+      mpCraft = buildRoomCraft({ whoop, capacity: size });
       mpCraftWhoop = whoop;
+      mpCraftSize = size;
       shell.keepAcrossMaps(mpCraft.group);
     } finally {
       mpCraftLoading = false;
@@ -3334,8 +3340,12 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     const room = session.room;
     const whoop = room.scale >= 100;
-    if (!mpCraft || mpCraftWhoop !== whoop) {
-      mpEnsureCraft(whoop);
+    /* Built for 30 pilots, or for a streamer room's 64 (ROOM_MAX and
+     * STREAM_MAX in src/net/link.js, which is not loaded until a room is
+     * wanted), so a host changing the size never rebuilds it. */
+    const size = room.max > 30 ? 64 : 30;
+    if (!mpCraft || mpCraftWhoop !== whoop || mpCraftSize !== size) {
+      mpEnsureCraft(whoop, size);
       return;
     }
     const world = mpWorldNow();
@@ -3366,6 +3376,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     mpCraft.begin();
     if (same) {
+      mpHostId = session.link.hostId;
       session.eachRemote(mpDraw);
     }
     mpCraft.end();
@@ -11983,6 +11994,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Flying together, for scripts/together-shots.js: what is on screen and
    * the room it is in, or null before anything asked for a room. */
   window.__together = () => (together ? together.debugState() : null);
+  /* The other pilots' craft: how many it is built for and drew last frame. */
+  window.__roomCraft = () => (mpCraft ? { size: mpCraftSize, drawn: mpCraft.group.getObjectByName('room-craft-bodies').count, tagged: mpCraft.tagged(), most: mpCraft.tagMost } : null);
   /* The yard track's race and where it stands, for the harness. */
   window.__yard = () => (yard ? {
     id: yard.track.id,

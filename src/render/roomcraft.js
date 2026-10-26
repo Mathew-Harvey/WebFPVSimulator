@@ -85,7 +85,10 @@ export function liveryColour(avatar, id) {
 }
 
 const TAG_COLS = 2;
-const TAG_ROWS = 16;
+/* Name tags on the nearest this many, and on the host. A crowd on one
+ * start pad, which is where a room begins, is otherwise a wall of names
+ * over the sky, the same size near and far. The pilots list has them all. */
+export const TAG_MOST = 12;
 const TAG_W = 512;
 const TAG_H = 64;
 
@@ -212,6 +215,7 @@ attribute vec2 aTag;
 uniform vec2 uViewport;
 uniform float uTagPx;
 uniform float uLift;
+uniform float uRows;
 varying vec2 vUv;
 varying float vAlpha;
 void main() {
@@ -228,7 +232,7 @@ void main() {
   float slot = floor(aTag.x + 0.5);
   float col = mod(slot, ${TAG_COLS}.0);
   float row = floor(slot / ${TAG_COLS}.0);
-  vUv = vec2((col + uv.x) / ${TAG_COLS}.0, 1.0 - (row + 1.0 - uv.y) / ${TAG_ROWS}.0);
+  vUv = vec2((col + uv.x) / ${TAG_COLS}.0, 1.0 - (row + 1.0 - uv.y) / uRows);
   vAlpha = aTag.y;
 }
 `;
@@ -247,7 +251,8 @@ void main() {
 `;
 
 /*
- * capacity: the most pilots drawn at once, the board's room limit.
+ * capacity: the most pilots drawn at once, the room's size: 30 for any
+ * room but a streamer room's 64 (src/net/link.js).
  * Returns { group, begin, add, end, forget, dispose }: begin() a frame,
  * add() each pilot to draw, end() to hand the frame to the GPU.
  */
@@ -266,10 +271,14 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
   discs.name = 'room-craft-discs';
   discs.renderOrder = 2;
 
-  /* The atlas: TAG_COLS by TAG_ROWS rows of TAG_W by TAG_H. */
+  /* The atlas: TAG_COLS by rows of TAG_W by TAG_H, a slot for every pilot
+   * and a power of two tall: 1024 by 1024 for a room of 30, twice as tall
+   * for a streamer room of 64. */
+  let rows = 1;
+  while (rows * TAG_COLS < capacity) rows *= 2;
   const canvas = document.createElement('canvas');
   canvas.width = TAG_W * TAG_COLS;
-  canvas.height = TAG_H * TAG_ROWS;
+  canvas.height = TAG_H * rows;
   const atlas = new THREE.CanvasTexture(canvas);
   atlas.colorSpace = THREE.SRGBColorSpace;
   /* Drawn at a third of its size or less, so it is mipmapped; the canvas
@@ -286,6 +295,7 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
        * screen at any other. */
       uTagPx: tagPx,
       uLift: { value: 0.09 },
+      uRows: { value: rows },
     },
     vertexShader: TAG_VERTEX,
     fragmentShader: TAG_FRAGMENT,
@@ -332,10 +342,10 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
 
   /* Atlas rows, by pilot id. */
   const rowOf = new Map();
-  const rowHandle = new Array(TAG_COLS * TAG_ROWS).fill(null);
-  const rowLivery = new Array(TAG_COLS * TAG_ROWS).fill(-1);
+  const rowHandle = new Array(TAG_COLS * rows).fill(null);
+  const rowLivery = new Array(TAG_COLS * rows).fill(-1);
   const freeRows = [];
-  for (let i = TAG_COLS * TAG_ROWS - 1; i >= 0; i -= 1) freeRows.push(i);
+  for (let i = TAG_COLS * rows - 1; i >= 0; i -= 1) freeRows.push(i);
 
   const panel = (ctx, x, y, w, h, r) => {
     ctx.beginPath();
@@ -368,6 +378,11 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
     atlas.needsUpdate = true;
   }
 
+  /* This frame's distances and pins, by instance, for the nearest tags. */
+  const dist = new Float32Array(capacity);
+  const pinned = new Uint8Array(capacity);
+  const nearest = new Float32Array(TAG_MOST);
+  let tagged = 0;
   const m4 = new THREE.Matrix4();
   const p = new THREE.Vector3();
   const q = new THREE.Quaternion();
@@ -384,10 +399,11 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
   /*
    * One pilot this frame. pose: { px, py, pz, qx, qy, qz, qw, cut,
    * spinning }, scene world. pilot: the board's { id, handle, avatar,
-   * away }. A pilot inside a teleport is not drawn for the moment it
-   * lasts, which is a fifth of a second at most.
+   * away }. d2: their distance from this pilot, squared. pin: keep their
+   * tag however far, for the host. A pilot inside a teleport is not drawn
+   * for the moment it lasts, which is a fifth of a second at most.
    */
-  function add(id, pose, pilot) {
+  function add(id, pose, pilot, d2 = 0, pin = false) {
     if (n >= capacity || pose.cut) {
       return;
     }
@@ -415,10 +431,58 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
     m4.makeTranslation(pose.px, pose.py, pose.pz);
     tags.setMatrixAt(n, m4);
     tagAttr.setXY(n, row, pilot.away ? 0.45 : 1);
+    dist[n] = d2;
+    pinned[n] = pin ? 1 : 0;
     n += 1;
   }
 
+  /* All but the nearest TAG_MOST tags and the pinned go to nothing, which
+   * the tag's fragment discards. Kept in a fixed array, so a frame
+   * allocates nothing. */
+  function thinTags() {
+    tagged = n;
+    if (n <= TAG_MOST) {
+      return;
+    }
+    let k = 0;
+    for (let i = 0; i < n; i += 1) {
+      const d = dist[i];
+      if (k < TAG_MOST) {
+        let j = k;
+        while (j > 0 && nearest[j - 1] > d) {
+          nearest[j] = nearest[j - 1];
+          j -= 1;
+        }
+        nearest[j] = d;
+        k += 1;
+      } else if (d < nearest[TAG_MOST - 1]) {
+        let j = TAG_MOST - 1;
+        while (j > 0 && nearest[j - 1] > d) {
+          nearest[j] = nearest[j - 1];
+          j -= 1;
+        }
+        nearest[j] = d;
+      }
+    }
+    /* Ties at the edge are cut once TAG_MOST are shown. The host's tag is
+     * on top of those. */
+    const edge = nearest[TAG_MOST - 1];
+    let shown = 0;
+    tagged = 0;
+    for (let i = 0; i < n; i += 1) {
+      if (pinned[i]) {
+        tagged += 1;
+      } else if (dist[i] <= edge && shown < TAG_MOST) {
+        shown += 1;
+        tagged += 1;
+      } else {
+        tagAttr.setY(i, 0);
+      }
+    }
+  }
+
   function end() {
+    thinTags();
     body.count = n;
     discs.count = nd;
     tags.count = n;
@@ -457,5 +521,8 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
 
   return {
     group, begin, add, end, forget, dispose,
+    /* How many tags the last frame drew, and the most, for the checks. */
+    tagged: () => tagged,
+    tagMost: TAG_MOST,
   };
 }

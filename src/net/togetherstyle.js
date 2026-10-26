@@ -580,6 +580,31 @@ export const TOGETHER_CSS = `
   #tg .cr-left .cr-tools, #tg .cr-left .cr-name-help { grid-column: 1 / -1; width: auto; }
   #tg .cr-left .cr-faces-lab { display: none; }
 }
+/* A tall screen (a 1080p desktop and up) has the height for larger
+ * panels in even rows: four across, three for the eyes, each as large as
+ * four rows allow, so Gear's sixteen are a square and no row is left with
+ * one panel in it. Packed as many as fit, the right column at 1080p ran
+ * seven, seven and two, with half the sheet empty under them. */
+@media (min-height: 960px) and (min-width: 641px) and (min-aspect-ratio: 801/1000) {
+  #tg .creator .parts {
+    --cols: 4; --fit: calc((100vh - 528px) / 4);
+    grid-template-columns: repeat(var(--cols), min(var(--most), var(--fit), (100% - (var(--cols) - 1) * var(--gap)) / var(--cols)));
+  }
+  #tg .creator .parts:has(.crop-eyes) { --cols: 3; --fit: calc((100vh - 528px) / 2); }
+  #tg .creator .parts.shapes, #tg .creator .parts.liveries { --most: 150px; }
+}
+/* A big screen (1440p at full size) has the sheet wider, the card and
+ * its faces larger and the panels drawn larger, where every size above
+ * stops growing and the sheet was a small page in the middle of it. */
+@media (min-height: 1200px) and (min-width: 1600px) {
+  #tg .creator { max-width: 1760px; }
+  #tg .cr-body { grid-template-columns: clamp(250px, calc((100vh - 300px) * 0.72), 660px) minmax(0, 1fr); }
+  #tg .cr-left { --fs: clamp(28px, (100cqh - 106px) / 8 - 6px, 66px); }
+  #tg .creator .parts, #tg .creator .parts.shapes, #tg .creator .parts.liveries { --most: 200px; }
+  #tg .creator .parts:has(.crop-eyes) { --most: 240px; }
+  #tg .creator .parts.small { --most: 140px; }
+  #tg .swatches { --sws: 48px; }
+}
 /* A short laptop screen draws the face shapes smaller so the face marks
  * under them are on the page and not below the fold. */
 @media (max-height: 640px) and (min-width: 641px) {

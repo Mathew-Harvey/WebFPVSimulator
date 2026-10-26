@@ -1975,10 +1975,13 @@ export function createTogether(shell) {
         blur: () => look(null),
       });
       /* A panel of parts: `pick(i)` is the look with part i, `on(i)` says
-       * whether it is the one worn, `crop` how the panel frames it. */
+       * whether it is the one worn, `crop` how the panel frames it. A tall
+       * or a big screen draws the panels larger (the stylesheet's tall and
+       * big screen rules), so their pictures are drawn larger to stay sharp. */
+      const grown = innerHeight >= 1200 && innerWidth >= 1600 ? 1.9 : (innerHeight >= 960 ? 1.4 : 1);
       const tiles = (key, names, pick, on, crop, cls = '', order = names.map((_, i) => i)) => h(`div.parts${cls}`, { style: { '--n': String(names.length) } }, order.map((i) => h(`button.part.crop-${crop}`, {
         type: 'button', 'aria-pressed': String(on(i)), 'data-k': `${key}-${i}`, title: names[i], on: peek(() => pick(i), () => commit(pick(i))),
-      }, h('span.part-pic', null, avatarCanvas(pick(i), { crop, size: crop === 'cheek' ? 76 : 104, expr: 'calm' })), h('small', { text: names[i] }))));
+      }, h('span.part-pic', null, avatarCanvas(pick(i), { crop, size: Math.round((crop === 'cheek' ? 76 : 104) * grown), expr: 'calm' })), h('small', { text: names[i] }))));
       const swatches = (k, label, list, order) => h('div.swatches', { role: 'group', 'aria-label': label }, order.map((i) => h('button.swatch', {
         type: 'button', style: { '--sw': list[i] }, 'aria-label': `${label} ${order.indexOf(i) + 1}`, 'aria-pressed': String(av[k] === i), 'data-k': `${k}-${i}`,
         on: peek(() => ({ ...av, [k]: i }), () => setPart(k, i)),

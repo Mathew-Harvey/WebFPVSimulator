@@ -284,6 +284,15 @@ export const TOGETHER_CSS = `
   content: ""; position: absolute; left: -15px; top: 29px; width: 17px; height: 12px; background: #fff;
   clip-path: polygon(100% 0, 0 60%, 100% 100%);
 }
+/* In a room: the room's controls, a key or a way in on the left and what
+ * it does on the right, one ruled line each like a page of a manual. */
+#tg .teach { display: grid; border-top: 2px dashed rgba(11, 17, 22, 0.3); }
+#tg .teach .tline {
+  display: grid; grid-template-columns: minmax(150px, 38%) 1fr; gap: 14px; align-items: center;
+  padding: 5px 2px; border-bottom: 2px dashed rgba(11, 17, 22, 0.3); color: var(--ink); font-weight: 700; font-size: 14.5px;
+}
+#tg .teach .k { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-weight: 900; }
+#tg .teach kbd { font-size: 13px; min-width: 2em; background: var(--cream); border-color: var(--ink); }
 #tg .pilots-mini { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 #tg .steps { display: grid; gap: 8px; margin: 4px 0; }
 #tg .tg-step { display: flex; align-items: center; gap: 12px; font-weight: 800; color: var(--ink); font-size: 16px; }
@@ -344,6 +353,10 @@ export const TOGETHER_CSS = `
   padding: 4px 10px 4px 4px; background: var(--paper); color: var(--ink); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
   max-width: min(360px, 40vw);
 }
+/* The chip is the room's door in flight for a mouse or a thumb: a click
+ * opens the room's page, where talk, the pilots and the race are. */
+#tg .roomchip { pointer-events: auto; cursor: pointer; }
+#tg .roomchip:hover { box-shadow: 4px 4px 0 var(--sakura); }
 #tg .roomchip b { font-style: italic; font-size: 14px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #tg .roomchip small { display: block; font-size: 11px; font-weight: 800; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #tg .roomchip .n { padding: 2px 7px; background: var(--ink); color: var(--cream); font-weight: 900; font-size: 13px; white-space: nowrap; }
@@ -507,6 +520,7 @@ export const TOGETHER_CSS = `
 #tg .scene .quickrow { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 #tg .scene .typebox { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; align-items: center; padding: 6px 10px; box-shadow: 6px 6px 0 var(--sakura); }
 #tg .scene .typebox .input { width: min(380px, 50vw); }
+#tg .scene .typebox .facelab { font: 900 10px/1.2 var(--ui); text-transform: uppercase; letter-spacing: 0.06em; color: var(--quiet); width: 4.6em; }
 #tg .scene .typebox .facebtn { padding: 2px 2px 1px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); }
 #tg .scene .typebox .facebtn small { display: block; font: 900 9px/1.1 var(--ui); text-transform: uppercase; text-align: center; }
 #tg .scene .typebox .facebtn canvas { display: block; margin: 0 auto; }

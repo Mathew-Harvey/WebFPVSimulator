@@ -360,12 +360,13 @@ function loadStore() {
         avatar: raw.avatar ? cleanAvatar(raw.avatar) : null,
         met: raw.met === true,
         consent: raw.consent === true,
+        taught: raw.taught === true,
       };
     }
   } catch (e) {
     /* A private window: the avatar lasts the visit. */
   }
-  return { avatar: null, met: false, consent: false };
+  return { avatar: null, met: false, consent: false, taught: false };
 }
 
 /* ------------------------------------------------------------------ *
@@ -385,6 +386,8 @@ function loadStore() {
  *   grid()         onto the start line for a race, the run fresh
  *   airborne()     off the ground, for a false start
  *   whoop()        whether the seated aircraft is the whoop
+ *   hands()        what the pilot flies with: 'pad', 'touch' or 'keys'
+ *   pickWorld(way) the picker, on the shelf for a room of that way
  *   roomInfo(info) the pause menu's rows: { code, name, n, host } or null
  *   forget(id)     a pilot who left, for the craft's name tags
  *   sound(name)    the menus' own click
@@ -742,6 +745,25 @@ export function createTogether(shell) {
   let oskEl = null;
   let oskTarget = null;
   let padHands = false;
+
+  /*
+   * What the pilot has to press with, for every line that names a control.
+   * "G to ready up" was the pit's whole instruction, and a pilot on a radio
+   * or a phone has no G. The flight's own input says what flies; before
+   * takeoff a phone still reads as the keyboard there, so a coarse pointer
+   * says touch, and a pad that drove the last sheet says pad.
+   */
+  function hands() {
+    const flies = shell.hands ? shell.hands() : 'keys';
+    if (flies !== 'keys') {
+      return flies;
+    }
+    if (padHands) {
+      return 'pad';
+    }
+    const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    return coarse && (navigator.maxTouchPoints || 0) > 0 ? 'touch' : 'keys';
+  }
 
   function oskOpen() {
     return Boolean(oskEl);
@@ -1475,16 +1497,23 @@ export function createTogether(shell) {
       return;
     }
     closeAll();
-    if (!shell.flying()) {
-      shell.fly();
-    }
-    const hp = hostPilot();
-    const n = session.link.pilots.size;
-    const others = n - 1;
-    const who = others > 0 ? `${others} ${others === 1 ? 'pilot' : 'pilots'} here` : 'Nobody else here yet';
-    const via = namesHere(r);
-    banner(hp ? hp.avatar : null, 'hello', `Welcome to ${r.name}`,
-      `${hp && hp.id !== session.you ? `${hp.handle} is hosting. ` : ''}${who}. ${r.typedChat ? 'Say hi with 1 to 6, or Enter to type.' : 'Say hi with 1 to 6, or Q for the lines.'}${via ? ` Your ${VIA_NAMES[via]} name: pause, then Room.` : ''}`);
+    taughtFirst(r, () => {
+      if (!shell.flying()) {
+        shell.fly();
+      }
+      const hp = hostPilot();
+      const n = session.link.pilots.size;
+      const others = n - 1;
+      const who = others > 0 ? `${others} ${others === 1 ? 'pilot' : 'pilots'} here` : 'Nobody else here yet';
+      const via = namesHere(r);
+      /* Say hi in the pilot's own controls: a radio or a phone has no 1. */
+      const by = hands();
+      let hi = r.typedChat ? 'Say hi with 1 to 6, or Enter to type.' : 'Say hi with 1 to 6, or Q for the lines.';
+      if (by === 'touch') hi = 'Say hi: tap the room card, then Talk.';
+      else if (by === 'pad') hi = 'Say hi: pause, then Room, then Talk.';
+      banner(hp ? hp.avatar : null, 'hello', `Welcome to ${r.name}`,
+        `${hp && hp.id !== session.you ? `${hp.handle} is hosting. ` : ''}${who}. ${hi}${via ? ` Your ${VIA_NAMES[via]} name: pause, then Room.` : ''}`);
+    });
   }
 
   function refused(data) {
@@ -1612,9 +1641,10 @@ export function createTogether(shell) {
         h('div.page-body', null, h('div.av-stage', null, portrait,
           h('div.stack', { style: { gap: '14px' } },
             h('div.say', { text: "Hi! I'm your pilot. Keep me, roll a new one, or change my look." }),
-            h('div.exprs', null, ['calm', 'hello', 'laugh'].map((e) => h('button', {
-              type: 'button', 'aria-pressed': String(expr === e), 'data-k': `expr-${e}`, on: { click: () => { expr = e; refresh('meet'); } },
-            }, face(store.avatar, e, 48), h('small', { text: FACE_NAMES[e] })))),
+            h('div.field', null, h('span.lab', { text: 'Try a face' }),
+              h('div.exprs', { role: 'group', 'aria-label': 'Try a face' }, ['calm', 'hello', 'laugh'].map((e) => h('button', {
+                type: 'button', 'aria-pressed': String(expr === e), 'data-k': `expr-${e}`, on: { click: () => { expr = e; refresh('meet'); } },
+              }, face(store.avatar, e, 48), h('small', { text: FACE_NAMES[e] }))))),
             nameField(draft),
             h('div.btnrow', null,
               btn('Keep', '', () => {
@@ -1635,6 +1665,75 @@ export function createTogether(shell) {
                 sheetEditor(() => refresh('meet'));
               }, { 'data-k': 'look' })))))));
     });
+  }
+
+  /*
+   * THE ROOM'S CONTROLS, ONCE, before the first flight in a room.
+   *
+   * The welcome banner said "Say hi with 1 to 6, or Q for the lines" for
+   * four seconds, and that was all a pilot was ever told: nothing said Tab
+   * was who is here, Enter was talk or G was ready, and a pilot on a radio
+   * or a phone had none of those keys anyway. Their way to every one of
+   * them is the room's page, by pause then Room, or by a tap on the room's
+   * card. So the first time a pilot is about to fly in a room this card
+   * says what they have, in their own controls (hands()), and Got it, or
+   * Back, carries on to the flight. Kept beside the avatar: once per
+   * browser, and never again after.
+   */
+  function sheetInRoom(r, then) {
+    const done = () => {
+      store.taught = true;
+      save();
+      closeAll();
+      then();
+    };
+    const racing = Boolean(r && RoomRace.racing(r.way));
+    const typed = Boolean(r && r.typedChat);
+    const k = (...keys) => keys.map((x) => (typeof x === 'string' && x.startsWith('#') ? h('kbd', { text: x.slice(1) }) : h('span', { text: x })));
+    /* The card is the thing to read: a toast left from the shelf would sit
+     * across its list. */
+    clearTimeout(toastTimer);
+    toastBox.replaceChildren();
+    open('inroom', () => {
+      const by = hands();
+      let rows;
+      if (by === 'keys') {
+        rows = [
+          [k('#1', ' to ', '#6'), 'Say a line to everybody'],
+          [k('#7'), 'Wave'],
+          [k('#Q'), 'Show the lines and their keys'],
+          [k('#Tab'), 'See who is here'],
+          [k('#Enter'), typed ? 'Talk, or type your own line' : 'Talk'],
+          racing ? [k('#G'), 'Ready up for the next race'] : null,
+          [k('#Esc', ' then Room'), 'Invite friends, change your look, or leave'],
+        ];
+      } else {
+        const way = by === 'touch' ? 'Tap the room card, top right' : 'Pause, then Room';
+        rows = [
+          [k(way), 'Talk, see who is here, invite friends, or leave'],
+          racing ? [k(by === 'touch' ? 'Tap Ready in the pit' : 'Pause, then Room, then Race'), 'Ready up for the next race'] : null,
+          by === 'pad' ? [k('#1', ' to ', '#6'), 'Say a line, from a keyboard'] : null,
+        ];
+      }
+      return scrimmed(h('div.card-mid.sheet.halftone', null,
+        h('span.kicker', { text: 'Fly together' }),
+        lettered('IN A ROOM', [INKS.cream, INKS.mint], 44, 640),
+        /* A smaller face than a door card's, so the list and Got it fit a
+         * 600 high window without a scroll. */
+        h('div.state-row', { style: { gridTemplateColumns: '120px 1fr' } }, h('div.who', null, bust(store.avatar, 'hello', 160)),
+          h('div.say', { text: 'Everybody here sees your quad, and you see theirs. This is how you talk to them.' })),
+        h('div.teach', null, rows.filter(Boolean).map(([keys, what]) => h('div.tline', null, h('span.k', null, ...keys), h('span', { text: what })))),
+        h('div.btnrow', null, btn('Got it', '', done, { 'data-k': 'taught', 'data-autofocus': true }))));
+    }, { back: done });
+  }
+
+  /* The room's controls first, the one time, and then on. */
+  function taughtFirst(r, then) {
+    if (store.taught) {
+      then();
+    } else {
+      sheetInRoom(r, then);
+    }
   }
 
   const EDITOR_TABS = ['Face', 'Hair', 'Eyes', 'Extras', 'Colours', 'Quad'];
@@ -1794,6 +1893,21 @@ export function createTogether(shell) {
         }))));
   }
 
+  /*
+   * HOSTING FROM THE SHELF. A room is hosted on a map, so it starts in the
+   * picker, and the shelf used to say so only when it was empty: a pilot
+   * looking at three rooms that were not theirs had no button for their
+   * own. Both buttons take them to the picker on the shelf of the kind of
+   * room they were looking at, from the title too, and say what is next.
+   */
+  function hostFromShelf() {
+    closeAll();
+    if (shell.pickWorld) {
+      shell.pickWorld(lobbyWay);
+    }
+    toast('Pick a map, then press Fly together.');
+  }
+
   function sheetLobby() {
     open('lobby', () => {
       const counts = lobby.counts && lobby.counts[lobbyWay];
@@ -1830,7 +1944,7 @@ export function createTogether(shell) {
         body = h('div.empty', null, h('div', null, h('div.who', { style: { width: '160px', margin: '0 auto' } }, bust(store.avatar, 'wow')),
           lettered('NOBODY IS HOSTING', [INKS.cream, INKS.amber], 36, 600),
           h('p', { text: `No listed ${WAY_NAMES[lobbyWay].toLowerCase()} rooms right now. Pick a map and press Fly together, then send the link to a friend.` }),
-          h('div.btnrow', { style: { justifyContent: 'center' } }, btn('Pick a map', 'sakura', () => closeAll(), { 'data-k': 'pick' }))));
+          h('div.btnrow', { style: { justifyContent: 'center' } }, btn('Pick a map', 'sakura', hostFromShelf, { 'data-k': 'pick' }))));
       } else {
         body = h('div.rooms', null, lobby.rooms.map(roomCard));
       }
@@ -1852,6 +1966,7 @@ export function createTogether(shell) {
             },
           }, h('span', { text: label })))),
           h('div.codebox', null, codeInput, btn('Join', 'small', goCode, { 'data-k': 'code-go' })),
+          btn('Host a room', 'small sakura', hostFromShelf, { 'data-k': 'host-pick' }),
           h('button.mapcard.me-chip', { type: 'button', 'data-k': 'me', on: { click: () => sheetEditor(() => refresh('lobby')) } },
             face(store.avatar, 'hello', 38), h('span', null, h('b', { text: readPilotName() || 'You' }), h('small', { text: 'Change look' }))),
           h('button.link', { type: 'button', 'data-k': 'privacy', on: { click: () => sheetPrivacy() } }, 'How rooms keep you safe')),
@@ -1968,21 +2083,22 @@ export function createTogether(shell) {
             switchRow('sw-schoolSafe', 'School safe', 'Made up names, preset lines only, addresses hidden.', f.schoolSafe, () => { f.schoolSafe = !f.schoolSafe; again(); }),
             switchRow('sw-hide', HIDE_LABEL, HIDE_SMALL, strict || f.hide, () => { f.hide = !f.hide; again(); },
               { locked: strict, why: strict ? 'Always on in listed, school safe and streamer rooms.' : '' }),
-            tagPicker(f, again)))),
+            /* Tags are read on the Rooms shelf and nowhere else. */
+            f.listed && !f.streamer ? tagPicker(f, again) : null))),
         h('div.footer-row', null, btn('Open room', '', openRoom, { 'data-k': 'open', 'data-autofocus': true }),
           h('span.note', { text: f.streamer ? 'Nobody can come in until you show the code on your stream or send the link.'
             : `Nobody can come in until you send the link${f.listed ? ' or they find it under Rooms' : ''}.` }))));
     }, { replace: opts.replace });
   }
 
-  function copyText(text, input) {
-    const done = () => toast('Link copied');
+  function copyText(text, input, said = { done: 'Link copied', fail: 'Select the link and copy it' }) {
+    const done = () => toast(said.done);
     const select = () => {
       if (input) {
         input.focus();
         input.select();
       }
-      toast('Select the link and copy it', 'warn');
+      toast(said.fail, 'warn');
     };
     try {
       navigator.clipboard.writeText(text).then(done, select);
@@ -2022,7 +2138,7 @@ export function createTogether(shell) {
         h('div.page-body', null, h('div.tg-cols', null,
           h('div.stack', null,
             h('div.field', null, h('span.lab', { text: 'Room code' }), h('div.code-big', { 'aria-label': r.code }, r.code.split('').map((c) => h('span', { text: c }))),
-              h('span.help', { text: 'Typed into Join under Rooms, on any copy of WebFPV.' })),
+              h('span.help', { text: 'Typed into Join under Rooms, on the web or on Steam.' })),
             h('div.field', null, h('span.lab', { text: 'Room link' }), h('div.copyrow', null, linkIn, btn('Copy', 'small', () => copyText(link, linkIn), { 'data-k': 'copy' }))),
             r.lock && invite ? h('div.field', null, h('span.lab', { text: 'Invite link, skips the password' }),
               h('div.copyrow', null, invIn, btn('Copy', 'small', () => copyText(invite, invIn), { 'data-k': 'copy-inv' })),
@@ -2037,7 +2153,7 @@ export function createTogether(shell) {
                 pilots.map((p) => pilotRow(p, { actions: false })),
                 pilots.length < 2 ? h('p.help', { style: { margin: '6px 0' }, text: 'Just you so far. Pilots appear here as they arrive.' }) : null)),
             h('p.help', { style: { color: 'var(--ink)', fontWeight: '700' }, text: 'A link never pulls anybody in: it shows them the room and asks first.' })))),
-        h('div.footer-row', null, first ? btn('Start flying', 'amber', flyNow, { 'data-k': 'fly', 'data-autofocus': true }) : btn('Back to the room', '', () => back(), { 'data-k': 'back', 'data-autofocus': true }),
+        h('div.footer-row', null, first ? btn('Start flying', 'amber', () => taughtFirst(room(), flyNow), { 'data-k': 'fly', 'data-autofocus': true }) : btn('Back to the room', '', () => back(), { 'data-k': 'back', 'data-autofocus': true }),
           first ? h('span.note', { text: 'You can come back to this any time: pause, then Room.' }) : null)));
     }, { back: first ? flyNow : null });
   }
@@ -2140,8 +2256,11 @@ export function createTogether(shell) {
           h('div.field', null, h('span.lab', { text: `Type this in ${streamWhere(st)}` }),
             h('div.code-big.claim', { 'aria-label': `!fly ${c.code}` }, h('span.word', { text: '!fly' }), c.code.split('').map((ch) => h('span', { text: ch })))),
           h('div.state-row', null, h('div.who', null, bust(store.avatar, 'hello')),
-            h('div.say', { text: 'Type it just as it is shown. Your quad takes your name the moment it lands, and the code works for two minutes.' })),
-          h('div.btnrow', null, btn('Cancel', 'ghost', stopWaiting, { 'data-k': 'cancel', 'data-autofocus': true }))));
+            h('div.say', { text: 'Type it in the chat, or press Copy and paste it there. Your quad takes your name the moment it lands, and the code works for two minutes.' })),
+          h('div.btnrow', null,
+            /* The boxes are for reading it out; Copy is the line as chat wants it. */
+            btn('Copy', '', () => copyText(`!fly ${c.code}`, null, { done: 'Copied. Paste it in the chat.', fail: 'Type it in the chat as shown' }), { 'data-k': 'claim-copy' }),
+            btn('Cancel', 'ghost', stopWaiting, { 'data-k': 'cancel', 'data-autofocus': true }))));
       }
       const says = c.state === 'noChannel' && isHost()
         ? ['NO SUCH CHANNEL', 'oops', `Twitch does not know twitch.tv/${st.id}. Check Your stream on Invite pilots, then try again.`, false]
@@ -2559,7 +2678,7 @@ export function createTogether(shell) {
             switchRow('sw-schoolSafe', 'School safe', 'Made up names, preset lines only, addresses hidden.', f.schoolSafe, () => { f.schoolSafe = !f.schoolSafe; again(); }),
             switchRow('sw-hide', HIDE_LABEL, HIDE_SMALL, strict || f.hide, () => { f.hide = !f.hide; again(); },
               { locked: strict, why: strict ? 'Always on in listed, school safe and streamer rooms.' : '' }),
-            tagPicker(f, again)))),
+            f.listed && !r.streamer ? tagPicker(f, again) : null))),
         h('div.footer-row', null, btn(settingsSaving ? 'Saving' : 'Save', '', saveIt, { 'data-k': 'save', 'data-autofocus': true, disabled: settingsSaving }),
           renames ? h('span.note', { style: { color: 'var(--red)' }, text: f.listed || f.schoolSafe ? 'Saving gives everybody in the room a made up name.' : 'Saving gives everybody their own name back.' }) : null)));
     });
@@ -2621,6 +2740,9 @@ export function createTogether(shell) {
           }
         };
         bar = h('div.saybar', null, h('div.sheet.halftone.typebox', null,
+          /* The faces had no word over them, so they read as pilots or as
+           * stickers rather than the face this line is said with. */
+          h('span.facelab', { text: 'Say it with' }),
           TALK_FACES.map((e) => h('button.facebtn', {
             type: 'button', 'aria-pressed': String(sceneFace === e), 'data-k': `face-${e}`, on: { click: () => { sceneFace = e; refresh('scene'); } },
           }, face(store.avatar, e, 36), h('small', { text: FACE_NAMES[e] }))),
@@ -2730,9 +2852,9 @@ export function createTogether(shell) {
     if (!rc || !rc.rows || !rc.rows.length) {
       const list = pilotsList().sort((a, b) => a.id - b.id);
       return h('div.pane', { style: { border: '3px solid var(--ink)', background: 'var(--white)', padding: '4px 10px' } }, list.map((p) => h('div.pilot', null, face(p.avatar, 'calm', 34),
-        h('div', null, h('b', null, p.handle, p.id === session.link.hostId ? crown() : null), h('small', { text: rc && rc.ready.includes(p.id) ? 'Ready' : (p.away ? 'In the menus' : 'Not ready yet') })),
+        h('div', null, h('b', null, p.handle, p.id === session.link.hostId ? crown() : null), h('small', { text: rc && rc.ready.includes(p.id) ? 'Ready' : (p.away ? 'Not ready, in the menus' : 'Not ready yet') })),
         h('span'),
-        h(`span.hanko${rc && rc.ready.includes(p.id) ? '' : '.wait'}`, { text: rc && rc.ready.includes(p.id) ? 'READY' : '...' }))));
+        h(`span.hanko${rc && rc.ready.includes(p.id) ? '' : '.wait'}`, { text: rc && rc.ready.includes(p.id) ? 'READY' : '' }))));
     }
     return h('table.restable', null, h('thead', null, h('tr', null, ['#', 'Pilot', 'Best lap', 'Total'].map((t) => h('th', { text: t })))),
       h('tbody', null, rc.rows.map((row, i) => {
@@ -2750,8 +2872,17 @@ export function createTogether(shell) {
   /* In flight: the chip, banners, the dialogue                        */
   /* ---------------------------------------------------------------- */
 
-  const chip = h('div.roomchip');
+  const chip = h('div.roomchip', { title: 'The room: talk, pilots, invite' });
   chip.hidden = true;
+  /* The room's page from flight in one click or tap, which is the only way
+   * a phone had to it without the pause menu (sheetInRoom). The page
+   * pauses the flight and Back resumes it, as every sheet does. */
+  chip.addEventListener('click', () => {
+    if (heldRoom() && modal.hidden) {
+      sound('select');
+      sheetRoom();
+    }
+  });
   const bannerBox = h('div');
   const talk = h('div.talk');
   talk.hidden = true;
@@ -3128,6 +3259,15 @@ export function createTogether(shell) {
     refresh('race');
   }
 
+  /* How this pilot readies up, in what they fly with. The pit's Ready
+   * takes a click or a tap; a radio's way is through the room's page. */
+  function readyHow() {
+    const by = hands();
+    if (by === 'touch') return 'Tap Ready when you are.';
+    if (by === 'pad') return 'Ready up: pause, then Room, then Race, or G on a keyboard.';
+    return 'G to ready up.';
+  }
+
   function paintPit(rc) {
     const show = rc.phase === 'pit' || rc.phase === 'results';
     pit.hidden = !show || !panelScreen();
@@ -3151,7 +3291,7 @@ export function createTogether(shell) {
         h('div.btnrow', { style: { marginTop: '10px' } },
           btn(voted ? 'Voted' : 'One more', 'amber small', () => session.link.raceSend({ t: 'again' }), { disabled: voted }),
           host ? btn('Back to the pit', 'ghost small', () => session.link.raceSend({ t: 'pit' })) : null),
-        h('span.help', { text: voted ? 'Waiting for the others. More than half and the countdown starts.' : 'G for one more. More than half say yes and the countdown starts.' }));
+        h('span.help', { text: voted ? 'Waiting for the others. More than half and the countdown starts.' : `${hands() === 'keys' ? 'G for one more.' : 'One more?'} More than half say yes and the countdown starts.` }));
       return;
     }
     fill(pit,
@@ -3159,19 +3299,21 @@ export function createTogether(shell) {
         tag(`${rc.laps} ${rc.laps === 1 ? 'lap' : 'laps'}`, 'amber'), tag(`${rc.ready.length} of ${session.link.pilots.size} ready`)),
       lettered('PIT', [INKS.cream, INKS.amber], 34, 200),
       pilotsList().sort((a, b) => a.id - b.id).slice(0, 8).map((p) => h('div.pilot', null, face(p.avatar, 'calm', 34),
-        h('div', null, h('b', null, p.handle, p.id === session.link.hostId ? crown() : null), h('small', { text: rc.ready.includes(p.id) ? 'Ready' : (p.away ? 'In the menus' : 'Still flying') })),
-        h(`span.hanko${rc.ready.includes(p.id) ? '' : '.wait'}`, { text: rc.ready.includes(p.id) ? 'READY' : '...' }))),
+        h('div', null, h('b', null, p.handle, p.id === session.link.hostId ? crown() : null), h('small', { text: rc.ready.includes(p.id) ? 'Ready' : (p.away ? 'Not ready, in the menus' : 'Not ready yet') })),
+        h(`span.hanko${rc.ready.includes(p.id) ? '' : '.wait'}`, { text: rc.ready.includes(p.id) ? 'READY' : '' }))),
       h('div.btnrow', { style: { marginTop: '10px' } },
         btn(ready ? 'Not ready' : 'Ready', ready ? 'ghost small' : 'mint small', () => session.link.raceSend({ t: 'ready', on: !ready })),
         host ? btn('Start', 'amber small', () => session.link.raceSend({ t: 'start' })) : null),
-      h('span.help', { text: host ? 'G to ready up. It starts when everyone is ready, or press Start.' : 'G to ready up. The countdown puts you on the start line.' }));
+      h('span.help', { text: `${readyHow()} ${host ? 'It starts when everyone is ready, or press Start.' : 'The countdown puts you on the start line.'}` }));
   }
 
   function paintStandings(rc) {
     const live = rc.phase === 'count' || rc.phase === 'live';
     const here = panelScreen();
     standBox.hidden = !live || !here || !rc.rows || !rc.rows.length;
-    posBox.hidden = !live || !here || !race.racing();
+    /* Nobody has a place before GO: "P3, chasing" on the grid read as a
+     * position the pilot had already lost. */
+    posBox.hidden = !live || !here || !race.racing() || race.holding();
     if (!live) {
       return;
     }
@@ -3207,7 +3349,10 @@ export function createTogether(shell) {
       return '';
     }
     if (race.phase === 'count') {
-      return race.canJoin() ? 'G to join before GO' : 'Watching this one';
+      if (!race.canJoin()) {
+        return 'Watching this one';
+      }
+      return hands() === 'keys' ? 'G to join before GO' : 'Join before GO: pause, then Room, then Race';
     }
     return race.phase === 'live' ? 'Watching. One more to join next' : '';
   }
@@ -3263,6 +3408,7 @@ export function createTogether(shell) {
 
   let lastScreen = '';
   let falseStartAt = 0;
+  let heldShown = false;
 
   function frame(now) {
     if (boot && shell.ready()) {
@@ -3303,9 +3449,12 @@ export function createTogether(shell) {
      * wandered to another world is not put on that world's start line. */
     const here = sameWorld(r);
     const what = race.frame();
-    /* The last moment to join passes with no word from the board. */
-    if (race.phase === 'count' && !standBox.hidden && watchLine() !== watchShown) {
-      paintStandings(race.race);
+    /* The last moment to join passes with no word from the board, and so
+     * does GO on this page's clock, which shows the pilot's place. */
+    const held = race.holding();
+    if ((race.phase === 'count' && !standBox.hidden && watchLine() !== watchShown) || held !== heldShown) {
+      heldShown = held;
+      paintStandings(race.race || { phase: 'pit' });
     }
     if (what === 'grid' && here) {
       shell.grid();
@@ -3566,6 +3715,12 @@ export function createTogether(shell) {
     raceRoom() {
       const r = room();
       return Boolean(r && race && RoomRace.racing(r.way));
+    },
+    /* Whether the room holds this pilot on its grid, waiting for GO: the
+     * shell's takeoff line says so instead of "Throttle up", which a new
+     * pilot obeyed and was sent back for as a false start. */
+    onGrid() {
+      return Boolean(race && race.holding() && sameWorld(room()));
     },
     inRoom() {
       return Boolean(room());

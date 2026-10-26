@@ -3251,7 +3251,14 @@ export async function boot({ loading, bootStart, mapId }) {
     },
     airborne: () => mode === 'flight' && !landed && !launchStaging,
     whoop: () => ui.settings.airframe === 'whoop65',
+    /* What the pilot flies with, so a room's lines name a control they
+     * have: G means nothing on a radio or a phone. */
+    hands: () => {
+      if (input.source.startsWith('a radio')) return 'pad';
+      return input.source === 'the touch sticks' ? 'touch' : 'keys';
+    },
     roomInfo: (info) => ui.setRoomInfo(info),
+    pickWorld: (way) => ui.pickRoomWorld(way),
     forget: (id) => {
       if (mpCraft) {
         mpCraft.forget(id);
@@ -11565,9 +11572,12 @@ export async function boot({ loading, bootStart, mapId }) {
        */
       /* A first flight names the control: see src/ui/firstflight.js. */
       const guidedStart = guidedTakeoff(race);
-      const start = guidedStart || (ui.settings.launchControl
+      /* A room's race holds its grid until GO, and a throttle before it is
+       * a false start, so the line says wait rather than throttle up. */
+      const onGrid = Boolean(together && together.onGrid());
+      const start = onGrid ? 'Wait for GO' : (guidedStart || (ui.settings.launchControl
         ? 'L for launch control, or throttle up'
-        : 'Throttle up to take off');
+        : 'Throttle up to take off'));
       /* Practice is the one race that does not end, so it says so on the
        * line that promises what starts. See PRACTICE_LAPS. */
       let second = runLaps === PRACTICE_LAPS
@@ -11595,7 +11605,7 @@ export async function boot({ loading, bootStart, mapId }) {
         second = '';
       }
       ui.setBanner(`${start}${second}`);
-      if (guidedStart) {
+      if (guidedStart && !onGrid) {
         ui.noteGuideShown();
       }
     } else if (guidedText) {

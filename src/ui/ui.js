@@ -8988,9 +8988,26 @@ export class Ui {
               : 'Before you fly first: the laps, the pack and what this run counts as, then the grid. Once per track each visit.')
             : undefined,
         };
+      /*
+       * FLYING TOGETHER HAS A ROW OF ITS OWN, under Fly, while rooms are on.
+       * Its only ways in were the Rooms tab at the end of the Map picker and
+       * Fly together on a picked map's card, so a pilot told "it has
+       * multiplayer now" read this column and found no word for it. The
+       * row opens the Rooms shelf on the shelf this pilot is already
+       * flying: a whoop pilot sees whoop rooms first. It is text until
+       * pressed, and src/net/ is still fetched only on the press.
+       */
+      const roomsRow = this.roomsOn && this.onRooms
+        ? [{
+          label: 'Fly together',
+          action: 'rooms',
+          note: 'Fly with friends. Join a room on the Rooms shelf, type a code, or pick a map and send the link.',
+        }]
+        : [];
       return [
         ...(trouble ? [trouble] : []),
         flyRow,
+        ...roomsRow,
         modeRow,
         /*
          * THE TRICK LIST IS WITHDRAWN UNTIL THE SCORING IS SETTLED.
@@ -13691,6 +13708,21 @@ export class Ui {
    * shelves switch its tabs. The aircraft moves only if it has to, for
    * the reason the gate gives: seatAirframe takes the camera with it.
    */
+  /*
+   * Flying together's Host a room, from the Rooms shelf: a room is hosted
+   * on a map, so the picker, on the shelf of the kind of room the pilot was
+   * looking at. From the title as well as from the picker's own Rooms tab.
+   */
+  pickRoomWorld(way) {
+    const shelf = { freestyle: 'maps', '5inch': 'five', whoop: 'whoop' }[way] || 'maps';
+    if (!isCardScreen(this.screen)) {
+      this.act(this.mode === 'freestyle' ? 'freestyle' : 'courses');
+    }
+    if (this.pickerShelf() !== shelf) {
+      this.pickerShelfChosen(shelf);
+    }
+  }
+
   pickerShelfChosen(shelf) {
     const way = WAYS.find((w) => w.id === SHELF_WAYS[shelf]);
     if (!way) {
@@ -19377,6 +19409,12 @@ export class Ui {
      * goes back to that same tab rather than collecting a row of them.
      * share.board is the board origin when a published course is loaded,
      * otherwise the default board. */
+    if (action === 'rooms') {
+      if (this.onRooms) {
+        this.onRooms(this.mode === 'freestyle' ? 'freestyle' : (this.settings.airframe === WHOOP_ID ? 'whoop' : '5inch'));
+      }
+      return;
+    }
     if (action === 'leaderboard') {
       openNamedWindow(boardPageUrl(this.share && this.share.board, this.settings.airframe), BOARD_WINDOW);
       return;

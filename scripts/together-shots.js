@@ -50,6 +50,9 @@
  *   track   the host's race on a board track: the laps, Start, the page's
  *           own lap through the gates reaching the room, the podium, Back
  *           to the pit, Call it off, and G too late to join
+ *   teach   what a first-timer is told: Fly together on the title, Host a
+ *           room on a shelf with rooms, the room's controls once (keys, a
+ *           pad and a phone), and the room card opening the room's page
  *
  * The race scene also has the host leave in the countdown.
  *
@@ -339,7 +342,7 @@ function unseen(page, sel) {
 }
 
 /* The pilot's name and settings, through the doors a pilot uses. */
-function seedFor({ map = 'bardwell', airframe = '5inch', name = 'Shell Pilot', met = false }) {
+function seedFor({ map = 'bardwell', airframe = '5inch', name = 'Shell Pilot', met = false, taught = true }) {
   return `try {
   const k = ${JSON.stringify(SETTINGS_KEY)};
   const s = JSON.parse(localStorage.getItem(k) || '{}');
@@ -350,7 +353,8 @@ function seedFor({ map = 'bardwell', airframe = '5inch', name = 'Shell Pilot', m
   s.airframe = ${JSON.stringify(airframe)};
   localStorage.setItem(k, JSON.stringify(s));
   localStorage.setItem('webfpv.pilot.name', ${JSON.stringify(name)});
-  ${met ? `localStorage.setItem('webfpv.together.v1', JSON.stringify({ avatar: ${JSON.stringify(rollAvatar(() => 0.37))}, met: true }));` : ''}
+  ${met ? `localStorage.setItem('webfpv.together.v1', JSON.stringify({ avatar: ${JSON.stringify(rollAvatar(() => 0.37))}, met: true, taught: ${taught} }));`
+    : `localStorage.setItem('webfpv.together.v1', JSON.stringify({ met: false, taught: ${taught} }));`}
 } catch (e) { /* Storage refused; the run boots on the defaults. */ }`;
 }
 
@@ -920,10 +924,17 @@ async function sceneRace() {
         return op > 0.95 ? '' : 'READY is at opacity ' + op + ' 1.9 s in';
       })()`), () => 'READY was never on screen');
     check('READY stays up for its two seconds', !readyHeld, readyHeld);
+    /* A new pilot obeyed "Throttle up to take off" here and was sent back
+     * for a false start. */
+    const gridLine = await page.evaluate("(window.__ui.banner && window.__ui.banner.textContent) || ''");
+    check('on the grid the shell\'s line says wait for GO, not throttle up', /Wait for GO/.test(gridLine) && !/Throttle up/.test(gridLine), gridLine);
+    check('and nobody has a place before GO', await page.evaluate("document.querySelector('#tg .pos').hidden"));
     await wait(300);
     await shot('countdown');
     const goes = await page.until(`${T} && window.__together().race === 'live'`, 9000).then(() => true, () => false);
     check('GO, on the board\'s clock', goes);
+    const placed = await page.until("!document.querySelector('#tg .pos').hidden", 3000).then(() => true, () => false);
+    check('and GO shows the pilot their place', placed);
     const gridded = await page.evaluate('window.__mode');
     check('the page is flying the race', gridded === 'flight', gridded);
     /* Laps the board will believe: never more time than has passed since
@@ -2234,6 +2245,9 @@ async function sceneKeys() {
     await page.tap('Enter');
     check('Enter on Keep goes on to the host sheet', await sheetIs(page, 'host', 5000).then(() => true, () => false));
 
+    /* Tags are read on the Rooms shelf, so only a listed room has them. */
+    check('a link only room has no tags to pick', !(await page.evaluate("Boolean(document.querySelector('#tg [data-k=\"tag-chill\"]'))")));
+    await pressKey(page, 'listed');
     /* Tags: three at most, the newest kept. */
     for (const t of ['chill', 'club', 'beginners', 'racing']) await pressKey(page, `tag-${t}`);
     const tags = await page.evaluate("[...document.querySelectorAll('#tg [data-k^=\"tag-\"]')].filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.k)");
@@ -2800,6 +2814,136 @@ async function sceneTrack() {
   }
 }
 
+/*
+ * What a first-timer is told, found missing by a walk through every room
+ * picture as somebody who had never seen one: the title had no word for
+ * rooms, the shelf no way to host once a room was listed, the keys were
+ * one line for four seconds, and a phone had no way to the room in flight.
+ */
+async function sceneTeach() {
+  console.log('\nteach: what a first-timer is told');
+  const hostBot = bot('Tutor Hawk', 151);
+  const room = await hostRoom(hostBot, {
+    name: 'First lesson', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, listed: true,
+  });
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`;
+  let page = await open(at, seedFor({ met: true, name: 'New Pilot', taught: false }));
+  let shot = shooter(page, 'teach');
+  try {
+    await page.until("window.__ui.screen === 'title'", 20000);
+    const rows = await page.evaluate('window.__ui.items().map((r) => r.label)');
+    check('the title has Fly together, under Fly', rows[0] === 'Fly' && rows[1] === 'Fly together', rows.join(' | '));
+    await page.tap('ArrowDown');
+    await wait(400);
+    await shot('title-row');
+    await page.tap('Enter');
+    await sheetIs(page, 'lobby');
+    const way = await page.evaluate("document.querySelector('#tg [data-k=\"way-freestyle\"]').getAttribute('aria-selected')");
+    check('which opens the Rooms shelf on the pilot\'s own kind of room', way === 'true', way);
+    await page.until(SEES('First lesson'), 10000);
+    check('a shelf with a room on it still has Host a room', await page.evaluate(SEES('Host a room')));
+    await wait(300);
+    await shot('shelf-host');
+    await pressKey(page, 'host-pick');
+    const picked = await page.until("window.__ui.screen === 'freestyle'", 8000).then(() => true, () => false);
+    check('Host a room goes to the maps, and says what is next', picked && (await state(page)).sheet === '' && /Fly together/.test(await toastText(page)),
+      `${await page.evaluate('window.__ui.screen')} ${await toastText(page)}`);
+
+    /* The first room: its controls, once, then the flight. */
+    await joinByCode(page, room.code);
+    await sheetIs(page, 'inroom', 15000);
+    const card = await page.evaluate("document.querySelector('#tg .teach').textContent");
+    check('the first room shows its controls before the flight', ['Say a line', 'Wave', 'See who is here', 'Talk', 'Invite friends'].every((w) => card.includes(w))
+      && ['Tab', 'Enter', 'Q', '7'].every((k) => card.includes(k)), card);
+    check('in the keys this pilot has', !card.includes('Tap the room card'), card);
+    await wait(300);
+    await shot('in-a-room');
+    await pressKey(page, 'taught');
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    const hello = await page.until(SEES('Welcome to First lesson', '#tg .tg-banner'), 5000).then(() => true, () => false);
+    check('Got it flies, and the welcome follows', hello && (await state(page)).sheet === '');
+    check('and the card is kept as seen', await page.evaluate("JSON.parse(localStorage.getItem('webfpv.together.v1')).taught === true"));
+
+    /* The room's card is a door: a real click on it, where a pilot's
+     * pointer lands, opens the room's page and pauses the flight. */
+    await page.until("!document.querySelector('#tg .roomchip').hidden", 5000);
+    /* The card moves under the shell's line while that shows and back up
+     * when it goes, so it is clicked where it has come to rest. */
+    const where = `(() => {
+      const r = document.querySelector('#tg .roomchip').getBoundingClientRect();
+      const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2);
+      const hit = document.elementFromPoint(x, y);
+      return { x, y, top: Boolean(hit && hit.closest('#tg .roomchip')) };
+    })()`;
+    let spot = await page.evaluate(where);
+    for (let i = 0; i < 20; i += 1) {
+      await wait(300);
+      const again = await page.evaluate(where);
+      if (again.x === spot.x && again.y === spot.y) break;
+      spot = again;
+    }
+    check('nothing sits over the room card', spot.top, JSON.stringify(spot));
+    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+      await page.cdp.send('Input.dispatchMouseEvent', { type, x: spot.x, y: spot.y, button: 'left', clickCount: 1 }, page.sessionId);
+    }
+    const opened = await sheetIs(page, 'room', 5000).then(() => true, () => false);
+    check('a click on the room card opens the room\'s page, the flight paused', opened && await page.evaluate("window.__ui.screen === 'paused'"),
+      `${(await state(page)).sheet} ${await page.evaluate('window.__ui.screen')}`);
+    await wait(300);
+    await shot('chip-opens-room');
+    await pressKey(page, 'back');
+    const flyingAgain = await page.until("window.__ui.screen === 'flight'", 5000).then(() => true, () => false);
+    check('and Back is the flight again', flyingAgain, await page.evaluate('window.__ui.screen'));
+
+    /* Once is once: the next room goes straight to the flight, and a pad
+     * in the hands gets the pad's way to say hi. */
+    await leaveRoom(page);
+    await page.evaluate(PAD_ON);
+    await wait(400);
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until(SEES('Welcome to First lesson', '#tg .tg-banner'), 8000).catch(() => {});
+    check('the second room shows no card', (await state(page)).sheet === '', JSON.stringify(await state(page)));
+    const padHi = await page.evaluate("document.querySelector('#tg .tg-banner') ? document.querySelector('#tg .tg-banner').textContent : ''");
+    check('and with a pad, hello says the pad\'s way to talk', /pause, then Room, then Talk/.test(padHi) && !/1 to 6/.test(padHi), padHi);
+    await page.evaluate(PAD_OFF);
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    await page.close();
+  }
+
+  /* A phone: the card names a tap, not a key. Touch emulation gives the
+   * points and the thumb sticks; the coarse pointer is a phone's. */
+  const coarse = `(() => { const mm = window.matchMedia.bind(window);
+    window.matchMedia = (q) => (q === '(pointer: coarse)' ? { matches: true, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return false; } } : mm(q)); })();`;
+  page = await open(at, `${seedFor({ met: true, name: 'Phone Pilot', taught: false })}\n${coarse}`, { touch: true });
+  shot = shooter(page, 'teach');
+  try {
+    await joinByCode(page, room.code);
+    await sheetIs(page, 'inroom', 15000);
+    const card = await page.evaluate("document.querySelector('#tg .teach').textContent");
+    check('on a phone the card says tap the room card, and names no keys', card.includes('Tap the room card') && !card.includes('Tab') && !card.includes('Enter'), card);
+    await wait(300);
+    await shot('in-a-room-touch');
+    await pressKey(page, 'taught');
+    await page.until(SEES('Welcome to First lesson', '#tg .tg-banner'), 20000).catch(() => {});
+    const hi = await page.evaluate("document.querySelector('#tg .tg-banner') ? document.querySelector('#tg .tg-banner').textContent : ''");
+    check('and hello says to tap the room card', /tap the room card/.test(hi), hi);
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    hostBot.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -2817,6 +2961,7 @@ try {
   if (wanted('keys')) { await freshBoard(); await sceneKeys(); }
   if (wanted('shelf')) { await freshBoard(); await sceneShelf(); }
   if (wanted('track')) { await freshBoard(); await sceneTrack(); }
+  if (wanted('teach')) { await freshBoard(); await sceneTeach(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

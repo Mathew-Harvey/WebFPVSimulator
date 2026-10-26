@@ -38,11 +38,11 @@
  */
 
 import { FRAME, STANDS, ROAD } from './bardwell.js';
-import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
+import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../partners/roster.js';
 import { signAspect } from '../../art/partnermark.js';
 import { FLOOR_MARKS } from '../yardtrack/yardtrack.js';
 
-export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS];
+export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS].filter((p) => shownOn(p, 'bardwell'));
 const BY_SLUG = new Map(BRANDS.map((p) => [p.slug, p]));
 
 /* ------------------------------------------------------------------ */
@@ -181,6 +181,8 @@ export const SIGN_SPOTS = [
   { slug: 'quadconfig', from: [30, 45, 1.15], dir: 'n', w: 2.6 },
   /* The stand in the west woods, to the line past the flags. */
   { slug: 'konexdrone', from: [-26.5, 18, 1.15], dir: 'e', w: 2.3 },
+  /* The far stand in the south east, to the line back up the field. */
+  { slug: 'dronefactory', from: [67.5, -60, 1.15], dir: 'e', w: 2.0 },
 ];
 
 /* Each sign on the first drawn face its line meets, as `markSpots` wants
@@ -216,7 +218,7 @@ function standFaces(s) {
  * null is the face a sign is hung on. */
 const STAND_BRANDS = [
   [null, 'mattsflooring'], [null, 'yourfpv'], ['quadconfig', null], [null, 'konexdrone'], ['gds', 'mantisfpv'],
-  [null, 'wcmrc'], [null, 'webleedfpv'], ['yourfpv', 'quadconfig'], ['konexdrone', 'gds'], ['mantisfpv', 'wcmrc'],
+  [null, 'dronefactory'], [null, 'webleedfpv'], ['yourfpv', 'quadconfig'], ['konexdrone', 'gds'], [null, 'dronefactory'],
 ];
 
 /* Each decal: the brand, where it is aimed from, which way, how wide, and

@@ -78,7 +78,7 @@ import { buildBlossom } from './blossom.js';
 import { makeStfMark } from '../../../art/stf.js';
 import { STF_PAINTED } from '../../../game/egg.js';
 import { makePartnerMark, signAspect } from '../../../art/partnermark.js';
-import { PARTNERS, PATRON_MAP_BRANDS } from '../../../partners/roster.js';
+import { PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../../partners/roster.js';
 import { choosePatrons } from '../../../partners/patrons.js';
 
 /**
@@ -488,7 +488,7 @@ export function patronMark(spot, patron) {
  * their own while the real one is empty.
  */
 export function buildPatronMarks(ctx, patrons = PATRON_MAP_BRANDS) {
-  const chosen = choosePatrons(patrons, 'city');
+  const chosen = choosePatrons(patrons.filter((p) => shownOn(p, 'city')), 'city');
   const out = [];
   for (let i = 0; i < chosen.length && i < PATRON_SPOTS.length; i += 1) {
     const mark = patronMark(PATRON_SPOTS[i], chosen[i]);

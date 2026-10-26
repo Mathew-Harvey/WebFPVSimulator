@@ -436,6 +436,9 @@ export function createTogether(shell) {
   let streamDraft = null;
   let streamSaving = false;
   let streamBad = false;
+  /* Why a host's own stream name went, held for the toast that answers
+   * their save, which would otherwise cover it a moment later. */
+  let nameNote = '';
   const helloed = new Set();
   const helloTimes = [];
   const helloQueue = [];
@@ -1247,15 +1250,21 @@ export function createTogether(shell) {
           streamDraft = null;
           streamBad = false;
           const via = namesHere(data.room);
-          toast(via ? `Viewers can fly as their ${VIA_NAMES[via]} name` : 'Stream names off');
+          toast(`${via ? `Viewers can fly as their ${VIA_NAMES[via]} name` : 'Stream names off'}${nameNote ? `. ${nameNote}` : ''}`);
+          nameNote = '';
         }
         if (topName() === 'roomSettings' && settingsSaving) {
           settingsSaving = false;
-          toast('Saved');
+          toast(nameNote ? `Saved. ${nameNote}` : 'Saved');
+          nameNote = '';
           pop();
         } else {
           refresh('room');
           refresh('share');
+        }
+        if (nameNote) {
+          toast(nameNote);
+          nameNote = '';
         }
         break;
       case 'pilots':
@@ -1349,12 +1358,22 @@ export function createTogether(shell) {
         if (topName() !== 'claim') {
           if (data.state === 'done') {
             toast(`You are flying as ${data.handle}`);
-          } else if (data.state === 'dropped') {
-            banner(store.avatar, 'calm', 'Your made up name is back', 'The host chose it for this room.');
+          } else if (data.state === 'dropped' || data.state === 'moved') {
+            /* A banner is hidden under an open sheet, and the host who
+             * changed the stream is on one, so there it is a toast. */
+            const why = data.state === 'dropped' ? 'The host chose it for this room.'
+              : !data.again ? 'This room reads no stream now.'
+                : topName() ? 'The stream changed, so prove yours again in the new chat.'
+                  : 'The stream changed. Pause, then Room, to prove yours again.';
+            if (topName() && (settingsSaving || streamSaving)) {
+              nameNote = `Your made up name is back. ${why}`;
+            } else if (topName()) {
+              toast(`Your made up name is back. ${why}`);
+            } else {
+              banner(store.avatar, 'calm', 'Your made up name is back', why);
+            }
           } else if (data.state === 'expired') {
             toast('Your code ran out. Pause, then Room, to try again.', 'warn');
-          } else if (data.state === 'moved') {
-            banner(store.avatar, 'calm', 'Your made up name is back', 'The stream changed. Pause, then Room, to use your name again.');
           } else if (data.state === 'noChannel' && isHost() && room() && room().stream) {
             /* Only the host can fix a link Twitch does not know, so the
              * host hears it whoever was asking. */

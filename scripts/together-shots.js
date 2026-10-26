@@ -1997,6 +1997,7 @@ async function sceneNames() {
       && !(await page.evaluate(SEES('AndAgainFPV', '#tg .pane'))));
     await page.until(`${T} && window.__together().claim === 'moved'`, 5000).catch(() => {});
     check('and the host, whose own Twitch name went with it, is told why', (await state(page)).claim === 'moved', JSON.stringify(await state(page)));
+    check('in words the host can see on the room\'s page, that say it can be proved again in the new chat', await page.evaluate(SEES('prove yours again in the new chat')));
     const craft2 = await page.evaluate('window.__roomCraft()');
     check('raising the room to 40 keeps the craft it had', (await state(page)).max === 40 && craft2.size === 64, `${(await state(page)).max} ${JSON.stringify(craft2)}`);
     const w = bot('Second Viewer', 902);
@@ -2045,6 +2046,36 @@ async function sceneNames() {
     await page.until(SEES('Twitch does not know twitch.tv/nosuchchannel'), 5000).catch(() => {});
     check('and the host, who can fix the link', await page.evaluate(SEES('Twitch does not know twitch.tv/nosuchchannel')));
     await shot('host-no-channel');
+
+    /* The stream taken away altogether: a proved name goes, and the
+     * words do not send anybody looking for a chat that is not there. */
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, 'settings');
+    await sheetIs(page, 'roomSettings');
+    await typeStream('#tg-st2', 'twitch.tv/andagainfpv');
+    await pressKey(page, 'save');
+    await sheetIs(page, 'room');
+    await wait(5100);
+    await pressKey(page, 'claim');
+    await sheetIs(page, 'claim');
+    await page.until("document.querySelector('#tg .code-big.claim') !== null", 5000);
+    const code2 = await page.evaluate("document.querySelector('#tg .code-big.claim').getAttribute('aria-label').replace('!fly ', '')");
+    await until(() => irc.joined.has('andagainfpv'), 5000);
+    ircSay('andagainfpv', '1001', 'AndAgainFPV', `!fly ${code2}`);
+    await page.until(SEES('You are flying as AndAgainFPV'), 5000).catch(() => {});
+    await pressKey(page, 'back');
+    await sheetIs(page, 'room');
+    await pressKey(page, 'settings');
+    await sheetIs(page, 'roomSettings');
+    await typeStream('#tg-st2', '');
+    await pressKey(page, 'save');
+    await sheetIs(page, 'room');
+    await page.until(`${T} && window.__together().claim === 'moved'`, 5000).catch(() => {});
+    check('a stream taken away puts the host\'s made up name back and says the room reads no stream now',
+      (await state(page)).claim === 'moved' && await page.evaluate(SEES('This room reads no stream now'))
+      && !(await page.evaluate(SEES('prove yours again'))), JSON.stringify(await state(page)));
+    await shot('stream-taken-away');
     endChecks(page);
   } catch (e) {
     failures += 1;

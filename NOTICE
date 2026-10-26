@@ -277,11 +277,17 @@ not extend to it.
 `parts.png` is packed from six part sheets the owner made with Grok and gave on
 2026-10-25 for flying together: heads, hair, eyes, two of mouths, and clothes
 and extras, drawn as made up people and no real person's likeness. Each part
-was cut from its sheet, scaled to one head width and packed into a single 1024
-by 1957 palette image. The cutting and packing script is the thread's, kept with
-the sheets in the project's files (multiplayer/avatar-sheets), not in this
-repository. src/net/avatar.js builds a pilot's portrait from these parts and
-the numbers a pilot picks, which are all the board ever stores of it.
+was cut from its sheet, scaled to one head width of 300 pixels, its flat fills
+snapped to one colour each so a recoloured part has no grain, and packed into a
+single 2048 by 3913 palette image. The cutting and packing scripts (pack.py,
+and pack2x.py for this scale) are the thread's, kept with the sheets in the
+project's files (multiplayer/avatar-sheets/tools), not in this repository.
+src/net/avatar.js builds a pilot's portrait from these parts and the numbers a
+pilot picks, which are all the board ever stores of it. The shading over them
+(the hair's shine, the fringe's shadow, the flush, the face marks) and the
+wear after the scarf (cat ears, bow, sakura, star clips, the prop beanie's
+propeller, shades and halo) are drawn in code in src/net/avatar.js, and are
+this repository's own, under its licence.
 
 ## three.js
 

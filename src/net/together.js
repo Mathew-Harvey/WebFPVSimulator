@@ -65,8 +65,8 @@ import {
   roomUrl, takeJoinToken, writeJoinToken,
 } from './roomlinks.js';
 import {
-  EXPRESSIONS, EYE_COLOURS, FIELD_COUNTS, HAIR_COLOURS, LIVERIES, PART_NAMES, SKINS,
-  avatarCanvas, cleanAvatar, liveryCss, paintAvatar, rollAvatar,
+  ACC_ORDER, EXPRESSIONS, EYE_COLOURS, EYE_ORDER, HAIR_COLOURS, HAIR_ORDER, LIVERIES, PART_NAMES, SKINS, SKIN_ORDER, WEARS,
+  avatarCanvas, cleanAvatar, faceOf, headOf, liveryCss, markOf, paintAvatar, rollAvatar,
 } from './avatar.js';
 import { paintTitle } from '../ui/lettering.js';
 import { quadMark } from '../ui/gatepages.js';
@@ -119,6 +119,10 @@ const TALK_FACES = ['calm', 'hello', 'laugh', 'smug', 'oops', 'fierce'];
 const FACE_NAMES = {
   calm: 'Calm', hello: 'Hi', laugh: 'Laugh', wow: 'Surprised', smug: 'Smug', oops: 'Oops', fierce: 'Determined', crash: 'Crashed',
 };
+
+/* The things worn that hide the hair's top: the hair panels are drawn
+ * without them. */
+const HAT_WEAR = new Set(WEARS.map((w, i) => (w === 'cap' || w === 'beanie' || w === 'prop' ? i : -1)).filter((i) => i >= 0));
 
 /* The board's tags (src/rooms.js TAGS), as a card prints them. */
 const TAGS = [
@@ -521,7 +525,9 @@ export function createTogether(shell) {
     if (opts.replace && stack.length) {
       stack.pop();
     }
-    stack.push({ name, render, back: opts.back || null });
+    stack.push({
+      name, render, back: opts.back || null, keys: opts.keys || null,
+    });
     focusKey = opts.focus || '';
     entering = true;
     paint();
@@ -735,7 +741,10 @@ export function createTogether(shell) {
     } else if (e.key === 'Escape') {
       back();
     } else {
-      used = false;
+      /* A sheet's own keys (the look editor's tabs, roll and undo), never
+       * while a field is being typed in or with a modifier held. */
+      const top = stack[stack.length - 1];
+      used = Boolean(top && top.keys && !typing && !oskOpen() && !e.ctrlKey && !e.metaKey && !e.altKey && top.keys(e.code));
     }
     if (used) {
       e.preventDefault();
@@ -1639,7 +1648,7 @@ export function createTogether(shell) {
     let expr = 'hello';
     const draft = { name: readPilotName() || '' };
     open('meet', () => {
-      const portrait = h('div.av-portrait', null, bust(store.avatar, expr), h('span.plate', { style: { '--liv': liveryCss(store.avatar, 0) } }, h('span', { text: draft.name.trim() || 'You' })));
+      const portrait = pilotCard(store.avatar, { expr, name: draft.name.trim() || 'You', size: 220 });
       return scrimmed(h('div.page.fit.narrow.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Fly together' }), lettered('THIS IS YOU', [INKS.cream, INKS.mint], 50, 600))),
         h('div.rule'),
@@ -1742,98 +1751,312 @@ export function createTogether(shell) {
   }
 
   /*
-   * THE LOOK EDITOR, a pilot's card on the left and the parts on the right.
+   * THE PILOT'S CARD: the portrait as a trading card in the pilot's livery,
+   * the whole bust down to the shirt, on a burst of speed lines in their
+   * colour, their name across its foot and their quad in the corner. The
+   * look editor deals it large and the first meeting deals it too, so the
+   * pilot a player makes is the same card everywhere they see it.
    *
-   * The owner, 2026-10-26: "the character builder needs LOTS of polish".
-   * So the portrait is a trading card now, in the pilot's livery: their
-   * name across its foot, their quad drawn in its colours in the corner,
-   * and a line in a speech bubble for whichever face they are trying on.
-   * Every tab holds its own colours under its parts (skin with the face,
-   * hair colour with the hair, eye colour with the eyes), which is where a
-   * pilot looks for them, rather than on a tab of colours apart from the
-   * thing they colour. The tiles crop to the part they choose: the eyes
-   * are shown as eyes, the hair as a whole head of it. Gear is what used to
-   * be Extras, because it is goggles, cans and hats.
+   * `name` is a string, or an input for the editor, where the name is
+   * typed on the card itself. `line` is what the speech bubble says, and
+   * `pop` plays the card's little jump when a part was just chosen.
+   */
+  function pilotCard(av, { expr = 'hello', name = '', line = '', pop = false, size = 250 } = {}) {
+    const livery = liveryCss(av, 0);
+    const pic = avatarCanvas(cleanAvatar(av), { crop: 'card', size, expr });
+    pic.style.width = '100%';
+    pic.style.height = 'auto';
+    liven(pic, av, { expr, size, talk: Boolean(line) && pop });
+    const card = h(`div.av-card${pop ? '.is-pop' : ''}`, { style: { '--liv': livery } },
+      h('div.av-card-top', null, h('span', { text: 'WebFPV pilot' }), h('span.av-card-face', { text: FACE_NAMES[expr] || '' })),
+      h('div.av-card-pic', null, h('div.av-card-burst'), h('div.av-card-fig', null, pic),
+        line ? h('div.av-say', { text: line }) : null,
+        pop ? h('div.av-card-spark', { 'aria-hidden': 'true' }) : null,
+        h('div.av-card-sheen', { 'aria-hidden': 'true' })),
+      h('div.av-card-foot', null, typeof name === 'string' ? h('b', { text: name || 'You' }) : name));
+    const badge = h('span.av-card-quad');
+    badge.innerHTML = quadMark(livery, 28);
+    card.append(badge);
+    if (pop) {
+      card.querySelector('.av-card-spark').innerHTML = SPARKS;
+    }
+    return card;
+  }
+
+  /*
+   * The card's life: it blinks every few seconds, now and then twice, and
+   * when it has just been given a line its mouth moves for as long as the
+   * line takes to say. One timer, for the one card on screen, which stops
+   * by itself when that card is gone, and nothing at all for a pilot who
+   * asked for less motion. `life.av` is what the card shows, so a part
+   * looked at before it is chosen (see the editor's preview) blinks too.
+   */
+  let life = null;
+  const stillPlease = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function liven(pic, av, { expr, size, talk }) {
+    if (life) {
+      clearTimeout(life.timer);
+    }
+    const me = { pic, av: cleanAvatar(av), base: cleanAvatar(av), expr, size, shut: false, open: false, timer: 0 };
+    life = me;
+    me.paint = () => paintAvatar(pic, me.av, { crop: 'card', size, expr, shut: me.shut, open: me.open });
+    if (stillPlease()) {
+      return me;
+    }
+    const steps = [];
+    for (let i = 0; talk && i < 7; i++) {
+      steps.push([i % 2 === 0, false, i === 0 ? 150 : 115]);
+    }
+    const blinks = () => {
+      const twice = Math.random() < 0.22;
+      steps.push([false, false, 2400 + Math.random() * 2800], [false, expr !== 'laugh', 105]);
+      if (twice) {
+        steps.push([false, false, 130], [false, expr !== 'laugh', 95]);
+      }
+    };
+    const next = () => {
+      if (life !== me || !pic.isConnected) {
+        if (life === me) life = null;
+        return;
+      }
+      if (!steps.length) {
+        blinks();
+        steps.push([false, false, 0]);
+      }
+      const [open, shut, wait] = steps.shift();
+      if (open !== me.open || shut !== me.shut) {
+        me.open = open;
+        me.shut = shut;
+        me.paint();
+      }
+      me.timer = setTimeout(next, wait);
+    };
+    me.timer = setTimeout(next, talk ? 60 : 1800);
+    return me;
+  }
+
+  /* The burst a chosen part sets off round the card: four sparkles and a
+   * few speed ticks, drawn once here and played by the card's CSS. */
+  const SPARKS = '<svg viewBox="0 0 200 250" preserveAspectRatio="none">'
+    + [[30, 40, 1], [172, 58, 0.8], [24, 168, 0.7], [178, 190, 1]].map(([x, y, k]) => `<path d="M${x} ${y - 16 * k}L${x + 4 * k} ${y - 4 * k}L${x + 16 * k} ${y}L${x + 4 * k} ${y + 4 * k}L${x} ${y + 16 * k}L${x - 4 * k} ${y + 4 * k}L${x - 16 * k} ${y}L${x - 4 * k} ${y - 4 * k}Z" fill="#fff" stroke="#0b1116" stroke-width="3" stroke-linejoin="round"/>`).join('')
+    + '</svg>';
+
+  /*
+   * THE LOOK EDITOR, laid out the way anime character makers are, because
+   * that is what a player reaching for one already knows (the owner,
+   * 2026-10-26: "an amazing anime manga experience ... familiar", and keep
+   * going until it is perfect): the card large on the left, alive (it
+   * breathes, and jumps with a sparkle and a line when a part is chosen);
+   * under it Random, Undo and Reset, and the faces to try it in; on the
+   * right a row of tabs with a drawn icon each, and in each tab its parts
+   * as large panels with their colours under them, in sections with their
+   * own headings. The name is typed on the card's own name plate.
+   *
+   * Every change is kept as it is made, so Done and Escape both keep it;
+   * Undo steps back one change at a time, and Reset puts back the look the
+   * editor opened on. Q and E (a pad's bumpers) go from tab to tab, R rolls
+   * a new pilot, and Z undoes.
    */
   const EDITOR_TABS = ['Face', 'Hair', 'Eyes', 'Gear', 'Quad'];
   const EXPR_LINES = {
     calm: 'Ready when you are.', hello: 'Hi!', laugh: 'Ha ha ha!', wow: 'Whoa!', smug: 'Too easy.', oops: 'Oops...', fierce: "Let's go!", crash: 'Ouch!',
   };
+  const REACT_LINES = ['Nice!', 'Ooh, yes!', 'Looking good!', 'Love it!', 'So cool!', 'Fresh!', 'Perfect!', 'Ha, I like it!'];
+  /* The tabs' icons, inked like the pages: a face, a lock of hair, an eye,
+   * a pair of goggles and a quad, each in a 32 square. */
+  const TAB_ICONS = {
+    Face: '<path d="M16 4c-6.5 0-10 4.6-10 11 0 7.2 4.6 13 10 13s10-5.8 10-13C26 8.6 22.5 4 16 4z"/><circle cx="12" cy="15.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="15.5" r="1.6" fill="currentColor" stroke="none"/><path d="M12.5 21.5c2 1.6 5 1.6 7 0"/>',
+    Hair: '<path d="M5 22c-1-9 4.5-17 12-17 6 0 10.5 4.5 10 12-2-4-5-5.5-8-5.5 1 2 1 4-.5 6-1-3-3.5-5-6.5-5.5.5 2-.2 4.2-2 6-1-1.6-2.4-2.6-4-3"/>',
+    Eyes: '<path d="M3 17c3.5-6 8-8.5 13-8.5S25.5 11 29 17c-3.5 5-8 7.5-13 7.5S6.5 22 3 17z"/><circle cx="16" cy="16.5" r="5"/><circle cx="14.2" cy="14.6" r="1.6" fill="currentColor" stroke="none"/><path d="M6 8.5l2.5 2.5M26 8.5L23.5 11"/>',
+    Gear: '<rect x="3" y="11" width="11.5" height="10" rx="4"/><rect x="17.5" y="11" width="11.5" height="10" rx="4"/><path d="M14.5 15.5h3M3 14H1.5M29 14h1.5"/><path d="M6.5 14.5l2.5-1.5" />',
+    Quad: '<circle cx="8" cy="8" r="5"/><circle cx="24" cy="8" r="5"/><circle cx="8" cy="24" r="5"/><circle cx="24" cy="24" r="5"/><path d="M11.5 11.5l9 9M20.5 11.5l-9 9"/><rect x="13" y="13" width="6" height="6" rx="1.5" fill="currentColor" stroke="none"/>',
+  };
+  const tabIcon = (t) => {
+    const i = h('span.tab-ico', { 'aria-hidden': 'true' });
+    i.innerHTML = `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${TAB_ICONS[t]}</svg>`;
+    return i;
+  };
+  const TOOL_ICONS = {
+    reroll: '<rect x="5" y="5" width="22" height="22" rx="5"/><circle cx="11" cy="11" r="1.8" fill="currentColor" stroke="none"/><circle cx="21" cy="11" r="1.8" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.8" fill="currentColor" stroke="none"/><circle cx="11" cy="21" r="1.8" fill="currentColor" stroke="none"/><circle cx="21" cy="21" r="1.8" fill="currentColor" stroke="none"/>',
+    undo: '<path d="M11 8L5 14l6 6"/><path d="M5 14h13a8 8 0 0 1 0 16h-4"/>',
+    reset: '<path d="M6 16a10 10 0 1 0 3-7.1"/><path d="M6 4v6h6"/>',
+  };
+  const toolIcon = (k) => {
+    const i = h('span.tool-ico', { 'aria-hidden': 'true' });
+    i.innerHTML = `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">${TOOL_ICONS[k]}</svg>`;
+    return i;
+  };
 
   function sheetEditor(after) {
     let tab = 'Face';
     let expr = 'hello';
+    let line = EXPR_LINES.hello;
+    let popNext = false;
+    let reactAt = 0;
     const was = cleanAvatar(store.avatar);
-    const setPart = (k, v) => {
-      store.avatar = { ...store.avatar, [k]: v };
+    const history = [];
+    const draft = { name: readPilotName() || '' };
+    const commit = (next) => {
+      const now = cleanAvatar(store.avatar);
+      if (JSON.stringify(now) === JSON.stringify(cleanAvatar(next))) {
+        return;
+      }
+      history.push(now);
+      if (history.length > 40) {
+        history.shift();
+      }
+      store.avatar = cleanAvatar(next);
       save();
+      popNext = true;
+      reactAt = (reactAt + 1 + Math.floor(Math.random() * 3)) % REACT_LINES.length;
+      line = REACT_LINES[reactAt];
       refresh('editor');
+    };
+    const setPart = (k, v) => commit({ ...store.avatar, [k]: v });
+    const undo = () => {
+      if (!history.length) {
+        return;
+      }
+      store.avatar = history.pop();
+      save();
+      popNext = true;
+      line = 'Back as I was!';
+      refresh('editor');
+    };
+    const reroll = () => {
+      commit(rollAvatar());
+      line = 'A whole new me!';
+    };
+    const reset = () => commit(was);
+    const goTab = (step) => {
+      const i = (EDITOR_TABS.indexOf(tab) + step + EDITOR_TABS.length) % EDITOR_TABS.length;
+      tab = EDITOR_TABS[i];
+      sound('move');
+      refresh('editor');
+      const t = modal.querySelector(`[data-k="tab-${tab}"]`);
+      if (t) t.focus();
     };
     const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
     open('editor', () => {
-      const av = store.avatar;
-      const tiles = (key, crop) => {
-        const names = PART_NAMES[key];
-        const cols = Math.ceil(names.length / Math.ceil(names.length / 5));
-        return h('div.parts', { style: { '--cols': String(cols) } }, names.map((label, i) => h(`button.part.crop-${crop}`, {
-          type: 'button', 'aria-pressed': String(av[key] === i), 'data-k': `${key}-${i}`, on: { click: () => setPart(key, i) },
-        }, h('span.part-pic', null, avatarCanvas({ ...av, [key]: i }, { crop, size: 84, expr: 'calm' })), h('small', { text: label }))));
+      const av = cleanAvatar(store.avatar);
+      const head = headOf(av);
+      const mark = markOf(av);
+      /* A part or a colour under the pointer, or under the focus of the
+       * keys or a pad, is tried on the card before it is chosen, as a
+       * character maker in a game does; leaving it puts the card back. */
+      const look = (next) => {
+        if (life && life.pic.isConnected) {
+          life.av = next ? cleanAvatar(next) : life.base;
+          life.paint();
+        }
       };
-      const swatches = (k, label, list) => h('div.field.sw-field', null, h('span.lab', { text: label }),
-        h('div.swatches', null, list.map((c, i) => h('button.swatch', {
-          type: 'button', style: { '--sw': c }, 'aria-label': `${label} ${i + 1}`, 'aria-pressed': String(av[k] === i), 'data-k': `${k}-${i}`, on: { click: () => setPart(k, i) },
-        }))));
+      const peek = (next, click) => ({
+        click,
+        pointerenter: (e) => { if (e.pointerType === 'mouse') look(next()); },
+        pointerleave: () => look(null),
+        focus: () => look(next()),
+        blur: () => look(null),
+      });
+      /* A panel of parts: `pick(i)` is the look with part i, `on(i)` says
+       * whether it is the one worn, `crop` how the panel frames it. */
+      const tiles = (key, names, pick, on, crop, cls = '', order = names.map((_, i) => i)) => h(`div.parts${cls}`, { style: { '--n': String(names.length) } }, order.map((i) => h(`button.part.crop-${crop}`, {
+        type: 'button', 'aria-pressed': String(on(i)), 'data-k': `${key}-${i}`, title: names[i], on: peek(() => pick(i), () => commit(pick(i))),
+      }, h('span.part-pic', null, avatarCanvas(pick(i), { crop, size: crop === 'cheek' ? 76 : 104, expr: 'calm' })), h('small', { text: names[i] }))));
+      const swatches = (k, label, list, order) => h('div.swatches', { role: 'group', 'aria-label': label }, order.map((i) => h('button.swatch', {
+        type: 'button', style: { '--sw': list[i] }, 'aria-label': `${label} ${order.indexOf(i) + 1}`, 'aria-pressed': String(av[k] === i), 'data-k': `${k}-${i}`,
+        on: peek(() => ({ ...av, [k]: i }), () => setPart(k, i)),
+      })));
+      const section = (title, ...kids) => h('section.cr-sec', null, h('div.cr-lab', { role: 'heading', 'aria-level': '3', text: title }), ...kids);
+      /* Hair is chosen bare headed, or every style under a beanie is the
+       * same beanie. */
+      const bare = (a) => (HAT_WEAR.has(a.acc) ? { ...a, acc: 0 } : a);
       let panel;
       if (tab === 'Face') {
-        panel = [tiles('face', 'bust'), swatches('skin', 'Skin', SKINS)];
+        panel = [
+          section('Skin', swatches('skin', 'Skin', SKINS, SKIN_ORDER)),
+          section('Face shape', tiles('face', PART_NAMES.face, (i) => ({ ...av, face: faceOf(i, mark) }), (i) => head === i, 'bust', '.shapes')),
+          section('Face marks', tiles('mark', PART_NAMES.mark, (j) => ({ ...av, face: faceOf(head, j) }), (j) => mark === j, 'cheek', '.small')),
+        ];
       } else if (tab === 'Hair') {
-        panel = [tiles('hair', 'bust'), swatches('hairColour', 'Hair colour', HAIR_COLOURS)];
+        panel = [
+          section('Hairstyle', tiles('hair', PART_NAMES.hair, (i) => bare({ ...av, hair: i }), (i) => av.hair === i, 'bust')),
+          section('Hair colour', swatches('hairColour', 'Hair colour', HAIR_COLOURS, HAIR_ORDER)),
+        ];
       } else if (tab === 'Eyes') {
-        panel = [tiles('eyes', 'eyes'), swatches('eyeColour', 'Eye colour', EYE_COLOURS)];
+        panel = [
+          section('Eyes', tiles('eyes', PART_NAMES.eyes, (i) => ({ ...av, eyes: i }), (i) => av.eyes === i, 'eyes')),
+          section('Eye colour', swatches('eyeColour', 'Eye colour', EYE_COLOURS, EYE_ORDER)),
+        ];
       } else if (tab === 'Gear') {
-        panel = [tiles('acc', 'bust')];
+        panel = [section('On your head', tiles('acc', PART_NAMES.acc, (i) => ({ ...av, acc: i }), (i) => av.acc === i, 'bust', '', ACC_ORDER))];
       } else {
-        const liv = h('div.parts.liveries', { style: { '--cols': '6' } }, LIVERIES.map((c, i) => {
+        /* Two even rows, not a full row and a short one. */
+        const liv = h('div.parts.liveries', { style: { '--n': String(Math.ceil(LIVERIES.length / 2)) } }, LIVERIES.map((c, i) => {
           const b = h('button.part.liv', {
-            type: 'button', style: { '--sw': hex(c) }, 'aria-label': `Livery ${i + 1}`, 'aria-pressed': String(av.livery === i + 1), 'data-k': `livery-${i}`, on: { click: () => setPart('livery', i + 1) },
+            type: 'button', style: { '--sw': hex(c) }, 'aria-label': `Livery ${i + 1}`, 'aria-pressed': String(av.livery === i + 1), 'data-k': `livery-${i}`,
+            on: peek(() => ({ ...av, livery: i + 1 }), () => setPart('livery', i + 1)),
           });
           b.innerHTML = quadMark(hex(c), 18 + (i % 3) * 14);
           return b;
         }));
-        panel = [liv, h('p.help.ink', { text: 'Your jacket and your quad. Other pilots see your quad in this colour, with your name over it.' })];
+        panel = [section('Quad and jacket', liv, h('p.help.ink', { text: 'Other pilots see your quad in this colour, with your name over it. Your jacket matches.' }))];
       }
-      const livery = liveryCss(av, 0);
-      const card = h('div.av-card', { style: { '--liv': livery } },
-        h('div.av-card-top', null, h('span', { text: 'WebFPV pilot' }), h('span.av-card-face', { text: FACE_NAMES[expr] })),
-        h('div.av-card-pic', null, bust(av, expr), h('div.av-say', { text: EXPR_LINES[expr] || '' })),
-        h('div.av-card-foot', null, h('b', { text: readPilotName() || 'You' })));
-      const badge = h('span.av-card-quad');
-      badge.innerHTML = quadMark(livery, 28);
-      card.append(badge);
-      return scrimmed(h('div.page.fit.sheet.halftone.editor', null,
-        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: 'Your pilot' }), lettered('MAKE YOUR PILOT', [INKS.cream, INKS.amber], 46, 640))),
-        h('div.rule'),
-        h('div.page-body', null, h('div.av-stage', null,
-          h('div.av-left', null, card,
-            h('div.exprs.grid', { role: 'group', 'aria-label': 'Try a face' }, EXPRESSIONS.map((e) => h('button', {
-              type: 'button', 'aria-pressed': String(expr === e), 'data-k': `ex-${e}`, title: FACE_NAMES[e], on: { click: () => { expr = e; refresh('editor'); } },
-            }, face(av, e, 44), h('small', { text: FACE_NAMES[e] }))))),
-          h('div.av-right', null,
-            h('div.tabs', { role: 'tablist' }, EDITOR_TABS.map((t) => h('button', {
+      /* The name, typed on the card. */
+      const nameIn = h('input.av-name', {
+        id: 'tg-handle', value: draft.name, maxLength: 24, autocomplete: 'off', 'data-k': 'name', 'data-osk': 'name', placeholder: 'Your name', 'aria-label': 'Your pilot name',
+      });
+      const nameOk = () => !nameIn.value.trim() || Boolean(normaliseName(nameIn.value));
+      const nameHelp = h('p.cr-name-help', { text: nameRules() });
+      const markName = () => {
+        nameIn.classList.toggle('bad', !nameOk());
+        nameHelp.hidden = nameOk();
+      };
+      nameIn.addEventListener('input', () => {
+        draft.name = nameIn.value;
+        markName();
+      });
+      nameIn.addEventListener('change', () => keepName(draft));
+      markName();
+      const pop = popNext;
+      popNext = false;
+      const card = pilotCard(av, { expr, name: nameIn, line, pop, size: 236 });
+      /* The prompts along the foot, as a console game prints them, for the
+       * hands in use; a touch or a mouse gets the reassurance instead. */
+      const by = hands();
+      const key = (k, what) => h('span.cr-key', null, ...[].concat(k).map((t) => h('kbd', { text: t })), h('span', { text: what }));
+      const hint = by === 'keys'
+        ? [key(['Q', 'E'], 'Tabs'), key('R', 'Random'), key('Z', 'Undo'), key('Esc', 'Done')]
+        : (by === 'pad' ? [key(['LB', 'RB'], 'Tabs')] : [h('span.note', { text: 'Every change is kept as you make it.' })]);
+      /* Random is a wide button with its name on it, because it is the
+       * one a player presses again and again; Undo and Reset are the
+       * arrows every editor draws. */
+      const tool = (k, label, fn, off = false) => h(`button.cr-tool.cr-${k}`, {
+        type: 'button', 'data-k': k, 'aria-label': label, title: label, disabled: off, on: { click: fn },
+      }, toolIcon(k), k === 'reroll' ? h('span', { text: label }) : null);
+      return scrimmed(h('div.page.sheet.halftone.editor.creator', null,
+        h('div.cr-head', null, lettered('MAKE YOUR PILOT', [INKS.cream, INKS.amber], 38, 560)),
+        h('div.cr-body', null,
+          h('div.cr-left', null, card, nameHelp,
+            h('div.cr-tools', null,
+              tool('reroll', 'Random', reroll),
+              tool('undo', 'Undo', undo, !history.length),
+              tool('reset', 'Reset', reset, JSON.stringify(av) === JSON.stringify(was))),
+            h('div.cr-faces', { role: 'group', 'aria-label': 'Try a face' }, EXPRESSIONS.map((e) => h('button', {
+              type: 'button', 'aria-pressed': String(expr === e), 'data-k': `ex-${e}`, title: FACE_NAMES[e], 'aria-label': FACE_NAMES[e],
+              on: { click: () => { expr = e; line = EXPR_LINES[e]; refresh('editor'); } },
+            }, face(av, e, 40))))),
+          h('div.cr-right', null,
+            h('div.cr-tabs', { role: 'tablist' }, EDITOR_TABS.map((t) => h('button', {
               type: 'button', role: 'tab', 'aria-selected': String(t === tab), 'data-k': `tab-${t}`, 'data-autofocus': t === tab ? true : null, on: { click: () => { tab = t; refresh('editor'); } },
-            }, t))),
-            h('div.av-panel', null, ...panel),
-            session && session.inRoom ? h('p.help', { text: 'The room sees your new look when you press Done.' }) : null))),
-        h('div.footer-row', null,
-          btn('Done', '', () => back(), { 'data-k': 'done' }),
-          btn('Roll again', 'amber', () => {
-            store.avatar = rollAvatar();
-            save();
-            refresh('editor');
-          }, { 'data-k': 'reroll' }),
-          h('span.note', { text: 'Every change is kept as you make it.' }))));
+            }, tabIcon(t), h('span', { text: t })))),
+            h('div.cr-panel', { role: 'tabpanel', 'aria-label': tab }, ...panel),
+            session && session.inRoom ? h('p.help', { text: 'The room sees your new look when you press Done.' }) : null)),
+        h('div.cr-foot', null,
+          h('div.cr-keys', { 'aria-hidden': by === 'touch' ? null : 'true' }, ...hint),
+          btn('Done', '', () => back(), { 'data-k': 'done' }))));
     }, {
       back: () => {
+        keepName(draft);
         pop();
         /* In a room, the others see it too: the board tells everybody,
          * this page included, and the room's list is drawn from that. */
@@ -1842,6 +2065,20 @@ export function createTogether(shell) {
           session.look(now);
         }
         if (after) after();
+      },
+      keys: (code) => {
+        if (code === 'KeyQ' || code === 'PageUp' || code === 'BracketLeft' || code === 'PadLB') {
+          goTab(-1);
+        } else if (code === 'KeyE' || code === 'PageDown' || code === 'BracketRight' || code === 'PadRB') {
+          goTab(1);
+        } else if (code === 'KeyR') {
+          reroll();
+        } else if (code === 'KeyZ') {
+          undo();
+        } else {
+          return false;
+        }
+        return true;
       },
     });
   }
@@ -3713,6 +3950,14 @@ export function createTogether(shell) {
       press();
     } else if (nav.back && !padPrev.back) {
       back();
+    } else if ((nav.lb && !padPrev.lb) || (nav.rb && !padPrev.rb)) {
+      /* The bumpers are a sheet's own, where it has any: the look
+       * editor's tabs. */
+      const top = stack[stack.length - 1];
+      if (top && top.keys && !oskOpen()) {
+        padHands = true;
+        top.keys(nav.lb ? 'PadLB' : 'PadRB');
+      }
     }
     if (modal.hidden) {
       padHolding = true;

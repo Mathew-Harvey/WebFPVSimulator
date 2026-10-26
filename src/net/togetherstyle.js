@@ -307,43 +307,83 @@ export const TOGETHER_CSS = `
   40%, 80% { transform: translate(calc(-50% + 8px), -50%); }
 }
 
-/* The avatar: the look editor's card and its parts. The card is a
- * trading card in the pilot's livery, tilted a degree like a card laid on
- * a desk, with their quad drawn in its corner; the tiles are panels that
- * crop to the part they choose, and the colours are swatches of paint. */
-#tg .av-stage { display: grid; grid-template-columns: minmax(220px, 310px) minmax(0, 1fr); gap: clamp(18px, 2.4vw, 32px); align-items: start; }
-#tg .av-left { display: grid; gap: 16px; min-width: 0; }
-#tg .av-right { display: flex; flex-direction: column; min-width: 0; }
-#tg .av-portrait {
-  position: relative; border: 4px solid var(--ink); overflow: hidden;
-  background: repeating-conic-gradient(from 0deg at 50% 60%, rgba(11, 17, 22, 0.06) 0 4deg, transparent 4deg 12deg), var(--white);
-}
-#tg .av-portrait .plate { position: absolute; left: 12px; top: 12px; }
+/* The avatar: the pilot's card, the first meeting's page and the look
+ * editor. The card is a trading card in the pilot's livery, tilted a
+ * degree like a card laid on a desk, on a burst of speed lines that turns
+ * slowly, with a sheen that crosses it now and then and the pilot drawn
+ * as a cut out, an ink line round them, breathing. A chosen part makes it
+ * jump and sparkle. The editor around it is laid out as anime character
+ * makers are: tabs with drawn icons, sections of large panels, and the
+ * colours as swatches of paint under the parts they colour. */
+#tg .av-stage { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: clamp(18px, 2.4vw, 32px); align-items: start; }
 #tg .av-card {
-  position: relative; padding: 8px 8px 0; border: 4px solid var(--ink); background: var(--liv, var(--mint));
-  box-shadow: 8px 8px 0 var(--ink); transform: rotate(-1.2deg); margin: 0 14px 10px 0;
+  container-type: inline-size; position: relative; padding: 8px 8px 0; border: 4px solid var(--ink); background: var(--liv, var(--mint));
+  box-shadow: 8px 8px 0 var(--ink); transform: rotate(-1.2deg); margin: 0 14px 8px 0;
 }
 #tg .av-card::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(circle at 1px 1px, rgba(11, 17, 22, 0.16) 1px, transparent 1.4px) 0 0 / 5px 5px;
 }
+#tg .av-card.is-pop { animation: av-pop 0.42s cubic-bezier(0.3, 1.7, 0.5, 1); }
+@keyframes av-pop {
+  0% { transform: rotate(-1.2deg) scale(1); }
+  35% { transform: rotate(-2.6deg) scale(1.045); }
+  100% { transform: rotate(-1.2deg) scale(1); }
+}
 #tg .av-card-top {
   position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 2px 7px;
-  color: var(--ink); font: 900 11px/1 var(--ui); letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink); font: 900 clamp(8px, 4.6cqw, 11px)/1 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
 }
 #tg .av-card-face { padding: 3px 8px; background: var(--ink); color: var(--cream); letter-spacing: 0.1em; }
 #tg .av-card-pic {
-  position: relative; overflow: hidden; border: 3px solid var(--ink);
-  background:
-    repeating-conic-gradient(from 0deg at 50% 64%, rgba(255, 255, 255, 0.5) 0 5deg, transparent 5deg 13deg),
-    color-mix(in srgb, var(--liv, var(--mint)) 42%, var(--white));
+  position: relative; overflow: hidden; border: 3px solid var(--ink); aspect-ratio: 4 / 5;
+  background: radial-gradient(ellipse at 50% 38%, #fffdf6 0, color-mix(in srgb, var(--liv, var(--mint)) 34%, #fffdf6) 46%, color-mix(in srgb, var(--liv, var(--mint)) 78%, #fffdf6) 100%);
 }
-#tg .av-card-pic canvas { display: block; width: 100%; height: auto; }
+#tg .av-card-burst {
+  position: absolute; left: -50%; top: -45%; width: 200%; height: 200%; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 255, 255, 0.6) 0 3.5deg, transparent 3.5deg 10deg);
+  animation: av-spin 90s linear infinite;
+}
+@keyframes av-spin { to { transform: rotate(360deg); } }
+#tg .av-card-fig {
+  position: absolute; left: 0; right: 0; bottom: 0; transform-origin: 50% 100%;
+  animation: av-breathe 3.8s ease-in-out infinite;
+}
+@keyframes av-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1.5%) scale(1.012); }
+}
+#tg .av-card-fig canvas {
+  display: block; width: 100%; height: auto;
+  filter: drop-shadow(2.5px 0 0 #fff) drop-shadow(-2.5px 0 0 #fff) drop-shadow(0 -2.5px 0 #fff) drop-shadow(3px 4px 0 rgba(11, 17, 22, 0.85));
+}
+#tg .av-card-sheen {
+  position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light;
+  background: linear-gradient(112deg, transparent 38%, rgba(255, 255, 255, 0.85) 48%, transparent 58%) 0 0 / 260% 100% no-repeat;
+  animation: av-sheen 7s ease-in-out infinite;
+}
+@keyframes av-sheen {
+  0%, 62% { background-position: 130% 0; }
+  100% { background-position: -40% 0; }
+}
+#tg .av-card-spark { position: absolute; inset: 0; pointer-events: none; }
+#tg .av-card-spark svg { width: 100%; height: 100%; display: block; }
+#tg .av-card-spark path { transform-box: fill-box; transform-origin: center; animation: av-spark 0.62s ease-out both; }
+#tg .av-card-spark path:nth-child(2) { animation-delay: 0.06s; }
+#tg .av-card-spark path:nth-child(3) { animation-delay: 0.12s; }
+#tg .av-card-spark path:nth-child(4) { animation-delay: 0.03s; }
+@keyframes av-spark {
+  0% { transform: scale(0) rotate(-30deg); opacity: 0; }
+  40% { transform: scale(1.15) rotate(0deg); opacity: 1; }
+  100% { transform: scale(0.6) rotate(20deg); opacity: 0; }
+}
 #tg .av-say {
-  position: absolute; right: 8px; top: 10px; max-width: 62%; padding: 7px 13px; background: #fff; color: var(--ink);
-  border: 3px solid var(--ink); border-radius: 50% / 46%; text-align: center;
-  font: 900 italic clamp(13px, 1.25vw, 16px)/1.15 var(--ui);
+  position: absolute; right: 8px; top: 10px; max-width: 64%; padding: 7px 13px; background: #fff; color: var(--ink);
+  border: 3px solid var(--ink); border-radius: 50% / 46%; text-align: center; z-index: 2;
+  font: 900 italic clamp(13px, 1.2vw, 16px)/1.15 var(--ui);
 }
+#tg .av-card.is-pop .av-say { animation: av-say 0.3s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes av-say { from { transform: scale(0.6); } to { transform: scale(1); } }
 #tg .av-say::after {
   content: ""; position: absolute; left: 16%; bottom: -14px; width: 18px; height: 16px; background: var(--ink);
   clip-path: polygon(0 0, 100% 0, 10% 100%);
@@ -352,14 +392,22 @@ export const TOGETHER_CSS = `
   content: ""; position: absolute; left: calc(16% + 3px); bottom: -9px; width: 12px; height: 11px; background: #fff; z-index: 1;
   clip-path: polygon(0 0, 100% 0, 10% 100%);
 }
-#tg .av-card-foot { position: relative; display: flex; align-items: center; min-height: 50px; padding: 6px 78px 9px 4px; }
-#tg .av-card-foot b {
-  color: var(--ink); font: 900 italic clamp(18px, 1.8vw, 24px)/1.05 var(--ui); text-transform: uppercase; overflow-wrap: anywhere;
+#tg .av-card-foot { position: relative; display: flex; align-items: center; min-height: 50px; padding: 6px 25% 8px 2px; }
+#tg .av-card-foot b, #tg .av-name {
+  color: var(--ink); font: 900 italic clamp(11px, 8cqw, 26px)/1.05 var(--ui); text-transform: uppercase; overflow-wrap: anywhere;
 }
-#tg .av-card-quad { position: absolute; right: -16px; bottom: -18px; width: 96px; pointer-events: none; }
+#tg .av-name {
+  width: 100%; min-width: 0; padding: 4px 6px; border: 0; border-bottom: 3px dashed rgba(11, 17, 22, 0.45);
+  background: transparent; outline: none; border-radius: 0;
+}
+#tg .av-name::placeholder { color: rgba(11, 17, 22, 0.45); }
+#tg .av-name:focus { background: rgba(255, 250, 240, 0.85); border-bottom: 3px solid var(--ink); }
+#tg .av-name.bad { border-bottom: 3px solid var(--red); color: var(--red); }
+#tg .cr-name-help { margin: -4px 0 0; color: var(--red); font: 800 12px/1.3 var(--ui); }
+#tg .cr-name-help[hidden] { display: none; }
+#tg .av-card-quad { position: absolute; right: -6%; bottom: -16px; width: 38%; pointer-events: none; }
 #tg .av-card-quad svg, #tg .part.liv svg { display: block; width: 100%; height: auto; }
 #tg .exprs { display: flex; flex-wrap: wrap; gap: 8px; }
-#tg .exprs.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 #tg .exprs button { padding: 3px 2px 2px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); }
 #tg .exprs canvas { margin: 0 auto; display: block; }
 #tg .exprs button[aria-pressed="true"] { background: var(--amber); box-shadow: 3px 3px 0 var(--ink); }
@@ -370,45 +418,175 @@ export const TOGETHER_CSS = `
   color: var(--ink); font-weight: 900; text-transform: uppercase; font-size: 13px; letter-spacing: 0.05em;
 }
 #tg .tabs button[aria-selected="true"] { background: var(--ink); color: var(--cream); box-shadow: inset 0 -5px 0 var(--sakura); }
-#tg .editor .tabs button { padding: 9px 18px; font-size: 14px; font-style: italic; }
-#tg .av-panel { display: grid; gap: 4px; align-content: start; }
-#tg .parts { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 10px; padding-top: 12px; max-width: 640px; }
-#tg .editor .parts { grid-template-columns: repeat(var(--cols, 4), minmax(0, 112px)); gap: 12px; padding-top: 14px; }
-#tg .part { padding: 4px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); text-align: center; }
-#tg .part canvas { margin: 0 auto; }
-#tg .part small { display: block; font-weight: 900; font-size: 11px; text-transform: uppercase; }
-#tg .part[aria-pressed="true"] { background: var(--amber); box-shadow: 4px 4px 0 var(--ink); }
+
+/* The editor's own page. */
+#tg .creator { gap: 0; max-width: 1320px; }
+#tg .cr-head { position: relative; flex: none; padding-bottom: 6px; border-bottom: 4px solid var(--ink); margin-bottom: 16px; }
+#tg .cr-head::after {
+  content: ""; position: absolute; left: 0; bottom: -12px; width: 170px; height: 8px; background: var(--sakura);
+  border: 3px solid var(--ink); transform: skewX(-24deg); transform-origin: 0 0;
+}
+/* The card is as large as the height allows: the left column is a size
+ * container, and the card, its tools and its faces are all as wide as the
+ * card can be when they are stacked in it. */
+#tg .cr-body {
+  flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: clamp(220px, calc((100vh - 372px) * 0.72), 430px) minmax(0, 1fr); gap: clamp(20px, 2.6vw, 38px);
+}
+#tg .cr-left {
+  --cw: min(100cqw - 16px, (100cqh - 140px) * 0.72);
+  container-type: size; display: flex; flex-direction: column; align-items: flex-start; gap: 11px; min-width: 0; min-height: 0; padding-top: 4px;
+}
+#tg .cr-left .av-card { width: var(--cw); flex: none; }
+#tg .cr-left .cr-tools, #tg .cr-left .cr-faces, #tg .cr-left .cr-name-help { width: calc(var(--cw) + 8px); }
+#tg .cr-right { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+#tg .cr-tools { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 8px; }
+#tg .cr-tool {
+  display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; padding: 0 6px;
+  border: 3px solid var(--ink); background: var(--white); color: var(--ink); box-shadow: 3px 3px 0 var(--ink);
+  font: 900 italic 13px/1 var(--ui); text-transform: uppercase; letter-spacing: 0.03em; transition: transform 0.08s;
+}
+#tg .cr-tool:not(:disabled):hover { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 var(--ink); }
+#tg .cr-tool:not(:disabled):active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--ink); }
+#tg .cr-tool:disabled { opacity: 0.42; box-shadow: none; }
+#tg .cr-tool.cr-reroll { background: var(--amber); }
+#tg .tool-ico, #tg .tab-ico { display: inline-flex; flex: none; }
+#tg .tool-ico svg { width: 22px; height: 22px; }
+#tg .cr-tool.cr-reroll { font-size: 15px; letter-spacing: 0.06em; }
+#tg .cr-tool.cr-reroll:not(:disabled):hover .tool-ico { animation: cr-roll 0.5s cubic-bezier(0.3, 1.5, 0.5, 1); }
+@keyframes cr-roll { from { transform: rotate(-120deg) scale(0.8); } to { transform: none; } }
+#tg .cr-faces { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+#tg .cr-faces button {
+  aspect-ratio: 1; padding: 0; overflow: hidden; border: 2.5px solid var(--ink); border-radius: 50%;
+  background: var(--white); transition: transform 0.08s;
+}
+#tg .cr-faces button canvas { display: block; width: 100% !important; height: 100% !important; }
+#tg .cr-faces button:hover { transform: translateY(-2px); }
+#tg .cr-faces button[aria-pressed="true"] { background: var(--amber); box-shadow: 0 0 0 3px var(--amber), 0 0 0 5.5px var(--ink); }
+#tg .cr-tabs { display: flex; gap: 4px; padding: 0 4px; border-bottom: 4px solid var(--ink); flex: none; }
+#tg .cr-tabs button {
+  display: flex; align-items: center; gap: 8px; padding: 7px 15px 8px; border: 3px solid var(--ink); border-bottom: 0;
+  background: var(--paper-2); color: var(--ink); font: 900 italic 14.5px/1 var(--ui); text-transform: uppercase; letter-spacing: 0.04em;
+  transform: skewX(-7deg); transform-origin: 50% 100%; transition: transform 0.08s, background 0.08s;
+}
+#tg .cr-tabs button > * { transform: skewX(7deg); }
+#tg .cr-tabs button:hover { background: var(--white); transform: skewX(-7deg) translateY(-2px); }
+#tg .cr-tabs button[aria-selected="true"] { background: var(--ink); color: var(--cream); box-shadow: inset 0 -5px 0 var(--sakura); transform: skewX(-7deg) translateY(-3px); }
+#tg .cr-tabs button[aria-selected="true"] .tab-ico { color: var(--amber); }
+#tg .tab-ico svg { width: 24px; height: 24px; }
+#tg .cr-panel { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 14px 10px 10px 4px; }
+#tg .cr-lab {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 9px;
+  color: var(--ink); font: 900 12px/1 var(--ui); letter-spacing: 0.16em; text-transform: uppercase;
+}
+#tg .cr-lab::before { content: ""; width: 10px; height: 10px; background: var(--sakura); border: 2.5px solid var(--ink); transform: rotate(45deg); flex: none; }
+#tg .cr-lab::after { content: ""; flex: 1; height: 3px; background: rgba(11, 17, 22, 0.14); }
+/* A section's panels are all in one row when the panel is wide enough
+ * for them at their smallest, each as wide as a row of them can be up to
+ * the largest a panel is drawn, and wrap into more rows when it is not.
+ * Never wider than the largest, so four face shapes are not four posters. */
+#tg .creator .parts {
+  --gap: 12px; display: grid; gap: var(--gap); padding: 0 0 4px; max-width: none;
+  grid-template-columns: repeat(auto-fill, max(var(--tile), min(var(--most), (100% - (var(--n) - 1) * var(--gap)) / var(--n))));
+  --tile: 80px; --most: 136px;
+}
+#tg .creator .parts:has(.crop-eyes) { --tile: 110px; --most: 160px; }
+#tg .creator .parts.shapes { --most: 118px; }
+#tg .creator .parts.small { --tile: 70px; --most: 96px; --gap: 10px; }
+#tg .creator .parts.liveries { --tile: 92px; --most: 132px; }
 #tg .editor .part { position: relative; display: flex; flex-direction: column; padding: 0; overflow: hidden; box-shadow: 3px 3px 0 var(--ink); }
 #tg .editor .part-pic {
   display: block; aspect-ratio: 1;
-  background: radial-gradient(circle at 1px 1px, rgba(11, 17, 22, 0.1) 1px, transparent 1.3px) 0 0 / 5px 5px, var(--white);
+  background: radial-gradient(circle at 1px 1px, rgba(11, 17, 22, 0.1) 1px, transparent 1.3px) 0 0 / 5px 5px,
+    radial-gradient(ellipse at 50% 40%, #fffdf6 0, #f1e8d0 100%);
 }
 #tg .editor .part .part-pic canvas { display: block; width: 100% !important; height: 100% !important; }
 #tg .editor .part small { padding: 4px 3px; background: var(--ink); color: var(--cream); font-size: 10.5px; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tg .editor .parts.small .part small { font-size: 9.5px; padding: 3px 2px; }
+#tg .editor .part { transition: transform 0.08s, box-shadow 0.08s; }
+#tg .editor .part:not([aria-pressed="true"]):hover, #tg .editor .part:not([aria-pressed="true"]):focus-visible { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 var(--ink); }
+#tg .editor .part:not([aria-pressed="true"]):hover small { background: var(--sakura); color: var(--ink); }
 #tg .editor .part[aria-pressed="true"] { background: var(--amber); box-shadow: 0 0 0 3px var(--amber), 6px 6px 0 3px var(--ink); transform: translate(-2px, -2px); z-index: 1; }
-#tg .editor .part[aria-pressed="true"] .part-pic { background-color: #fff3c4; }
+#tg .editor .part[aria-pressed="true"] .part-pic { background-color: #fff3c4; background-image: radial-gradient(circle at 1px 1px, rgba(11, 17, 22, 0.12) 1px, transparent 1.3px), radial-gradient(ellipse at 50% 40%, #fffbe6 0, #ffe7a0 100%); background-size: 5px 5px, auto; }
 #tg .editor .part[aria-pressed="true"] small { background: var(--amber); color: var(--ink); }
 #tg .editor .part[aria-pressed="true"]::after {
   content: "\\2713"; position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; border-radius: 50%;
   background: var(--mint); border: 2.5px solid var(--ink); color: var(--ink); font: 900 13px/17px var(--ui); text-align: center;
 }
+#tg .editor .parts.small .part[aria-pressed="true"]::after { width: 18px; height: 18px; font-size: 11px; line-height: 13px; right: 3px; top: 3px; }
 #tg .editor .part.liv { padding: 6px 4px; background: color-mix(in srgb, var(--sw) 28%, var(--white)); }
-#tg .editor .parts.liveries { grid-template-columns: repeat(6, minmax(0, 96px)); }
-#tg .help.ink { color: var(--ink); font-weight: 700; max-width: 420px; margin: 12px 0 0; }
-#tg .sw-field { margin-top: 14px; }
-#tg .swatches { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 6px; }
+#tg .help.ink { color: var(--ink); font-weight: 700; max-width: 460px; margin: 12px 0 0; }
+#tg .swatches { --sws: clamp(30px, 2.7vw, 40px); display: flex; flex-wrap: wrap; gap: 9px; padding: 4px 4px 6px; }
 #tg .swatch {
-  position: relative; width: 42px; height: 42px; border: 3px solid var(--ink); border-radius: 50%;
-  background: var(--sw, var(--paper)); box-shadow: 2px 3px 0 var(--ink);
+  position: relative; width: var(--sws); height: var(--sws); border: 3px solid var(--ink); border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.55) 0 18%, transparent 19%), var(--sw, var(--paper));
+  box-shadow: 2px 3px 0 var(--ink); transition: transform 0.08s;
 }
-#tg .swatch::before {
-  content: ""; position: absolute; left: 7px; top: 6px; width: 11px; height: 7px; border-radius: 50%;
-  background: rgba(255, 255, 255, 0.6); transform: rotate(-28deg);
-}
-#tg .swatch[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--paper), 0 0 0 6px var(--ink); }
+#tg .swatch:hover { transform: translateY(-2px) scale(1.06); }
+#tg .swatch[aria-pressed="true"] { transform: scale(1.12); box-shadow: 0 0 0 3px var(--paper), 0 0 0 6px var(--ink); }
 #tg .swatch[aria-pressed="true"]::after {
   content: "\\2713"; position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%;
   background: var(--white); border: 2px solid var(--ink); color: var(--ink); font: 900 12px/16px var(--ui); text-align: center;
+}
+#tg .cr-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: none; margin-top: 12px; padding-top: 12px; border-top: 4px solid var(--ink); }
+#tg .cr-foot .btn { min-width: 170px; }
+#tg .cr-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; min-width: 0; color: var(--ink); font: 900 12px var(--ui); letter-spacing: 0.08em; text-transform: uppercase; }
+#tg .cr-key { display: inline-flex; align-items: center; gap: 5px; }
+#tg .cr-key span { margin-left: 3px; }
+#tg .cr-keys kbd { min-width: 28px; padding: 4px 7px; border: 2.5px solid var(--ink); border-radius: 0; background: var(--white); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); font: 900 12px/1.2 var(--ui); text-align: center; }
+#tg .cr-keys .note { font-size: 13px; color: var(--quiet); font-weight: 700; text-transform: none; letter-spacing: 0; }
+/* A column too narrow for Random's name keeps its dice. */
+@container (max-width: 210px) {
+  #tg .cr-tool.cr-reroll > span:not(.tool-ico) { display: none; }
+}
+#tg .cr-tabs { overflow-x: auto; scrollbar-width: none; }
+#tg .cr-tabs::-webkit-scrollbar { display: none; }
+#tg .cr-tabs button { flex: none; }
+/* A phone held sideways: no room over the card for the title or under it
+ * for the faces, so both go and the card has the height. */
+@media (max-height: 520px) and (min-width: 600px) {
+  #tg .creator { padding-top: 8px; padding-bottom: 8px; }
+  #tg .creator .cr-head, #tg .creator .cr-faces { display: none; }
+  #tg .cr-body { grid-template-columns: clamp(140px, calc((100vh - 150px) * 0.62), 260px) minmax(0, 1fr); gap: 18px; }
+  #tg .cr-left { --cw: min(100cqw - 16px, (100cqh - 122px) * 0.78); gap: 9px; }
+  #tg .cr-tools { grid-template-columns: minmax(0, 1fr) 38px 38px; }
+  #tg .cr-tool { height: 36px; }
+  #tg .creator .parts { --most: 100px; }
+  #tg .cr-tabs button { padding: 6px 11px 7px; font-size: 12.5px; }
+  #tg .tab-ico svg { width: 19px; height: 19px; }
+  #tg .cr-panel { padding-top: 10px; gap: 10px; }
+  #tg .cr-foot { margin-top: 6px; padding-top: 6px; border-top-width: 3px; }
+  #tg .cr-foot .btn { min-height: 0; padding-top: 7px; padding-bottom: 7px; }
+}
+/* A phone held upright: the card small at the top, Random and the faces
+ * beside it, and the tabs and their parts below, scrolling. */
+@media (max-width: 640px) {
+  #tg .creator { padding-left: 12px; padding-right: 12px; }
+  #tg .cr-head { margin-bottom: 12px; }
+  #tg .cr-head canvas.lettered { height: 30px; width: auto; }
+  #tg .cr-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; }
+  #tg .cr-left {
+    --cw: min(150px, 40vw); container-type: normal; display: grid; grid-template-columns: calc(var(--cw) + 14px) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr; gap: 10px 10px; align-items: start;
+  }
+  #tg .cr-left .av-card { grid-row: 1 / 4; }
+  #tg .cr-left .cr-tools, #tg .cr-left .cr-faces, #tg .cr-left .cr-name-help { width: auto; grid-column: 2; }
+  #tg .cr-tools { grid-template-columns: 1fr 1fr; }
+  #tg .cr-tool.cr-reroll { grid-column: 1 / 3; }
+  #tg .cr-faces { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  #tg .av-card-top { font-size: 9px; letter-spacing: 0.1em; }
+  #tg .cr-tabs { gap: 2px; padding: 0; }
+  #tg .cr-tabs button { flex-direction: column; gap: 3px; padding: 6px 8px 6px; font-size: 10.5px; flex: 1 0 auto; }
+  #tg .tab-ico svg { width: 20px; height: 20px; }
+  #tg .cr-panel { padding: 10px 4px 8px 2px; gap: 12px; }
+  #tg .creator .parts { --tile: 70px; --gap: 9px; }
+  #tg .creator .parts.small { --tile: 62px; }
+  #tg .cr-foot { margin-top: 8px; padding-top: 8px; }
+  #tg .cr-foot .btn { min-width: 120px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #tg .av-card-burst, #tg .av-card-fig, #tg .av-card-sheen, #tg .av-card.is-pop, #tg .av-card-spark path, #tg .av-say { animation: none !important; }
+  #tg .av-card-spark { display: none; }
 }
 
 /* A code on its own page, and a room that has just opened. */
@@ -701,10 +879,6 @@ export const TOGETHER_CSS = `
 
 @media (max-width: 760px) {
   #tg .tg-cols, #tg .av-stage, #tg .roomsheet, #tg .resgrid { grid-template-columns: minmax(0, 1fr); }
-  #tg .av-left { grid-template-columns: minmax(0, 200px) minmax(0, 1fr); align-items: start; }
-  #tg .exprs.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #tg .editor .parts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  #tg .editor .parts.liveries { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   #tg .state-row { grid-template-columns: 90px 1fr; gap: 14px; }
   #tg .radios { grid-template-columns: 1fr; }
   #tg .talk { width: calc(100% - 28px); height: 150px; bottom: 96px; }

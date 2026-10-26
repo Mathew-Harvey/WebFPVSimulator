@@ -12,7 +12,7 @@
  * bytes on the wire are the real ones in both directions. The direct links
  * of stage 5 need two real browsers, so that scene opens two.
  *
- * Scenes, each its own browser and its own storage (--only=a,b runs some):
+ * Scenes, each its own browser, its own storage and its own board (--only=a,b runs some):
  *
  *   host    Fly together from the picker: meet your avatar, the host sheet,
  *           the invite sheet, the chip; pilots join and fly near (the hello,
@@ -108,23 +108,40 @@ if (!boardDir) {
 
 const scratch = mkdtempSync(join(tmpdir(), 'webfpv-together-'));
 const port = 4700 + Math.floor(Math.random() * 200);
-const board = spawn(process.execPath, [join(boardDir, 'src', 'server.js')], {
-  cwd: boardDir,
-  env: {
-    ...process.env, PORT: String(port), BOARD_FILE: join(scratch, 'board.json'), DATABASE_URL: '', BOARD_ROOM_SECRET: randomBytes(24).toString('hex'),
-  },
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
-board.stdout.resume();
-board.stderr.resume();
 const boardOrigin = `http://127.0.0.1:${port}`;
-for (let i = 0; i < 200; i += 1) {
-  try {
-    if ((await fetch(`${boardOrigin}/api/rooms/counts`)).ok) break;
-  } catch (e) {
-    /* Not listening yet. */
+const roomSecret = randomBytes(24).toString('hex');
+let board = null;
+
+/*
+ * A board of the scene's own. The board allows six rooms hosted from one
+ * address in ten minutes, and every pilot here is 127.0.0.1, so the whole
+ * run hosts more than one board would let it; a new board for each scene
+ * keeps the limit as it is and each scene as it would be on its own.
+ */
+async function freshBoard() {
+  if (board) {
+    const was = board;
+    was.kill('SIGKILL');
+    await new Promise((r) => { if (was.exitCode !== null || was.signalCode) r(); else was.once('exit', r); });
   }
-  await wait(25);
+  board = spawn(process.execPath, [join(boardDir, 'src', 'server.js')], {
+    cwd: boardDir,
+    env: {
+      ...process.env, PORT: String(port), BOARD_FILE: join(scratch, 'board.json'), DATABASE_URL: '', BOARD_ROOM_SECRET: roomSecret,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  board.stdout.resume();
+  board.stderr.resume();
+  for (let i = 0; i < 200; i += 1) {
+    try {
+      if ((await fetch(`${boardOrigin}/api/rooms/counts`)).ok) return;
+    } catch (e) {
+      /* Not listening yet. */
+    }
+    await wait(25);
+  }
+  throw new Error('the board did not start');
 }
 const wsUrl = roomsUrl(boardOrigin);
 await mkdir(outDir, { recursive: true });
@@ -149,7 +166,10 @@ function bot(handle, seed) {
 
 async function hostRoom(b, room) {
   b.s.host(room);
-  await until(() => b.s.inRoom, 5000);
+  if (!(await until(() => b.s.inRoom, 5000))) {
+    const no = b.heard.find((x) => x.name === 'refused' || x.name === 'closed');
+    throw new Error(`${b.handle} could not host ${room.name}${no ? ` (${no.data.why || no.data.reason || no.data.code})` : ''}`);
+  }
   return b.s.room;
 }
 
@@ -799,14 +819,14 @@ async function sceneSteam() {
 }
 
 try {
-  if (wanted('host')) await sceneHost();
-  if (wanted('lobby')) await sceneLobby();
-  if (wanted('link')) await sceneLink();
-  if (wanted('race')) await sceneRace();
-  if (wanted('direct')) await sceneDirect();
-  if (wanted('steam')) await sceneSteam();
+  if (wanted('host')) { await freshBoard(); await sceneHost(); }
+  if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
+  if (wanted('link')) { await freshBoard(); await sceneLink(); }
+  if (wanted('race')) { await freshBoard(); await sceneRace(); }
+  if (wanted('direct')) { await freshBoard(); await sceneDirect(); }
+  if (wanted('steam')) { await freshBoard(); await sceneSteam(); }
 } finally {
-  board.kill('SIGKILL');
+  if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });
 }
 console.log(failures === 0 ? '\nall passed' : `\n${failures} FAILED`);

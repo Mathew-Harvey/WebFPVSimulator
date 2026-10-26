@@ -3209,6 +3209,9 @@ export async function boot({ loading, bootStart, mapId }) {
     flying: () => mode === 'flight' && ui.screen === 'flight',
     paused: () => ui.screen === 'paused',
     results: () => ui.screen === 'results',
+    /* The flight's own line across the heading while it shows words, so a
+     * room banner can sit under it rather than on it. */
+    line: () => (ui.banner && ui.banner.__wfOpacity === '1' ? ui.banner : null),
     pause: () => {
       if (mode === 'flight' && ui.screen === 'flight') {
         ui.act('pause');

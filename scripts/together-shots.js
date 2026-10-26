@@ -198,12 +198,17 @@ async function joinRoom(b, code, invite) {
 
 /*
  * The shell's instruments a room's own panels must keep off: the clock,
- * the score, the music, Report bug and Pause, the speed corner and the
- * stick overlay. Returns the ones the panels named by `sel` sit on, ''
- * when none, with the boxes for the log.
+ * the score, the music, Report bug and Pause, the speed corner, the
+ * stick overlay and the flight's line across the heading ("Throttle up
+ * to take off"). That line is .banner, fades to nothing when it is empty,
+ * and is as wide as half the page whatever its words, so it is held to
+ * the boxes of its words, line by line, not its own. Returns the ones the
+ * panels named by `sel` sit on, '' when none, with the boxes for the log.
  */
-const CLEAR_OF = ['.osd-clock', '.music-dock', '.score-total', '.bug-chip', '.osd-right', '.osd-sticks'];
-function overlaps(page, sel) {
+const CLEAR_OF = ['.osd-clock', '.music-dock', '.score-total', '.bug-chip', '.osd-right', '.osd-sticks', '.banner'];
+/* And a room banner keeps off the room's own panels as well. */
+const BANNER_CLEAR_OF = [...CLEAR_OF, '#tg .roomchip', '#tg .pit', '#tg .standings', '#tg .roster', '#tg .pos'];
+function overlaps(page, sel, clearOf = CLEAR_OF) {
   return page.evaluate(`(() => {
     const box = (e) => {
       const r = e.getBoundingClientRect();
@@ -211,11 +216,15 @@ function overlaps(page, sel) {
     };
     const mine = [...document.querySelectorAll(${JSON.stringify(sel)})].map(box).filter(Boolean);
     const out = [];
-    for (const s of ${JSON.stringify(CLEAR_OF)}) {
+    const words = (e) => {
+      const range = document.createRange();
+      range.selectNodeContents(e);
+      return [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0);
+    };
+    for (const s of ${JSON.stringify(clearOf)}) {
       for (const e of document.querySelectorAll(s)) {
-        const r = box(e);
-        if (!r) continue;
-        for (const m of mine) {
+        if (!box(e)) continue;
+        for (const r of s === '.banner' ? words(e) : [box(e)]) for (const m of mine) {
           if (m.left < r.right && r.left < m.right && m.top < r.bottom && r.top < m.bottom) {
             out.push(s + ' ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join(',') + ' under ' + [m.left, m.top, m.right, m.bottom].map(Math.round).join(','));
           }
@@ -223,6 +232,30 @@ function overlaps(page, sel) {
       }
     }
     return out.join('; ');
+  })()`);
+}
+
+/*
+ * Whether the pilot can see the element `sel` names: in the DOM is not
+ * enough, because a panel can be there and drawn invisible, as every room
+ * banner was by the shell's own .banner rule. '' when it is seen, else
+ * what is wrong with it. Not a hit test: the room's layer takes no
+ * pointer, so the page's hit test sees straight through it.
+ */
+async function settled(page, sel) {
+  await page.until(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); return Boolean(e) && e.getAnimations().length === 0; })()`, 5000).catch(() => {});
+}
+function unseen(page, sel) {
+  return page.evaluate(`(() => {
+    const e = document.querySelector(${JSON.stringify(sel)});
+    if (!e) return 'not there';
+    const r = e.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return 'no size';
+    for (let p = e; p; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.visibility === 'hidden' || cs.display === 'none' || cs.opacity === '0') return 'hidden by ' + (p.id ? '#' + p.id : p.className || p.tagName) + ' (' + [cs.visibility, cs.display, 'opacity ' + cs.opacity].join(' ') + ')';
+    }
+    return r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth ? 'off screen' : '';
   })()`);
 }
 
@@ -693,6 +726,8 @@ async function sceneRace() {
     check('a race room shows the pit', true);
     const pitOn = await overlaps(page, '#tg .pit');
     check('the pit covers none of the shell\'s instruments', !pitOn, pitOn);
+    const welcomeOn = await overlaps(page, '#tg .tg-banner', BANNER_CLEAR_OF);
+    check('nor does the welcome banner, the pit included', !welcomeOn, welcomeOn);
     bots[0].s.link.raceSend({ t: 'laps', n: 2 });
     bots[0].s.link.raceSend({ t: 'ready', on: true });
     bots[1].s.link.raceSend({ t: 'ready', on: true });
@@ -1091,6 +1126,11 @@ async function sceneDrop() {
     await pressKey(page, 'join');
     await page.until(`${T} && window.__together().inRoom`, 15000);
     await page.until("window.__mode === 'flight'", 30000);
+    await settled(page, '#tg .tg-banner');
+    const hello = await unseen(page, '#tg .tg-banner');
+    check('the welcome banner is one the pilot can see', hello === '', hello);
+    const helloOn = await overlaps(page, '#tg .tg-banner', BANNER_CLEAR_OF);
+    check('and it covers no instrument, the flight\'s line included', !helloOn, helloOn);
     const pageId = (await state(page)).you;
     /* A new look from the room's page reaches the room. */
     await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
@@ -1120,6 +1160,9 @@ async function sceneDrop() {
     check('while the board is gone the chip stays, its bars low', chip === 'low', chip);
     const lostSaid = await page.until("document.querySelector('#tg').textContent.includes('Lost the board for a moment')", 5000).then(() => true, () => false);
     check('and a banner says it is trying again', lostSaid);
+    await settled(page, '#tg .tg-banner');
+    const lostSeen = await unseen(page, '#tg .tg-banner');
+    check('which the pilot can see', lostSeen === '', lostSeen);
     await page.tap('Digit1');
     await wait(150);
     const notSaid = await page.evaluate("document.querySelector('#tg .tg-toasts').textContent");
@@ -1135,6 +1178,13 @@ async function sceneDrop() {
     const back = await page.until(`${T} && window.__together().inRoom`, 15000).then(() => true, () => false);
     check('the board back: the page is back in from its ticket', back && (await state(page)).code === room.code, JSON.stringify(await state(page)));
     check('with a banner that says so', await page.evaluate("document.querySelector('#tg').textContent.includes('Back in')"));
+    await settled(page, '#tg .tg-banner');
+    const backSeen = await unseen(page, '#tg .tg-banner');
+    check('which the pilot can see', backSeen === '', backSeen);
+    const backOn = await overlaps(page, '#tg .tg-banner', BANNER_CLEAR_OF);
+    check('and which covers nothing', !backOn, backOn);
+    const stale = await page.evaluate("document.querySelector('#tg .tg-toasts').textContent");
+    check('and the toasts that said to wait are gone', !/getting back/i.test(stale), stale);
     await until(() => keeper.s.inRoom, 10000);
     await page.until(`${T} && window.__together().pilots === 2`, 10000).catch(() => {});
     check('and the other pilot is back beside it', (await state(page)).pilots === 2, JSON.stringify(await state(page)));

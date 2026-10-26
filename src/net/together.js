@@ -836,7 +836,7 @@ export function createTogether(shell) {
   function roomToOpen() {
     const r = room();
     if (!r && heldRoom()) {
-      toast('Getting back into the room. One moment.', 'warn');
+      waitToast('Getting back into the room. One moment.');
     }
     return r;
   }
@@ -1310,6 +1310,11 @@ export function createTogether(shell) {
        * save or a report lost in the drop can be pressed again. */
       settingsSaving = false;
       reportBusy = false;
+      if (dropToastUp) {
+        clearTimeout(toastTimer);
+        toastBox.replaceChildren();
+        dropToastUp = false;
+      }
       for (const name of ['room', 'share', 'scene', 'race', 'roomSettings']) {
         refresh(name);
       }
@@ -2309,7 +2314,7 @@ export function createTogether(shell) {
             input.value = '';
           } else {
             /* Kept in the box, to say again once the room is back. */
-            toast('Not said yet: getting back into the room.', 'warn');
+            waitToast('Not said yet: getting back into the room.');
           }
         };
         bar = h('div.saybar', null, h('div.sheet.halftone.typebox', null,
@@ -2462,6 +2467,7 @@ export function createTogether(shell) {
   let qbarTimer = null;
   let bannerTimer = null;
   let toastTimer = null;
+  let dropToastUp = false;
 
   /* Where the race's own panel may sit: over the flight, and beside the
    * sim's results screen when a room race ends a run, never over a menu. */
@@ -2490,17 +2496,78 @@ export function createTogether(shell) {
 
   function banner(avatar, expr, head, small, tone = '') {
     clearTimeout(bannerTimer);
-    bannerBox.replaceChildren(h(`div.banner${tone ? `.${tone}` : ''}`, null, avatar ? face(avatar, expr || 'calm', 56) : null,
+    bannerBox.replaceChildren(h(`div.tg-banner${tone ? `.${tone}` : ''}`, null, avatar ? face(avatar, expr || 'calm', 56) : null,
       h('div', null, h('b', { text: head }), small ? h('small', { text: small }) : null)));
     bannerTimer = setTimeout(() => bannerBox.replaceChildren(), BANNER_MS);
+    measureLine();
+    placeBanner();
+  }
+
+  /*
+   * The shell's line across the heading ("Throttle up to take off") and
+   * where it ends. Measured only when its words or the window change, so
+   * the frame loop reads no layout otherwise. A long line, or any line on
+   * a small screen, reaches into the room's right hand column, and then
+   * the whole column (the chip, and under it the pilots, the pit or the
+   * standings) starts under it rather than on its words. At takeoff the
+   * line goes and the column goes back up.
+   */
+  let lineKey = '';
+  let lineBottom = 0;
+  function measureLine() {
+    const line = shell.line ? shell.line() : null;
+    const words = line ? line.textContent : '';
+    const key = `${words}|${innerWidth}x${innerHeight}`;
+    if (key === lineKey) {
+      return false;
+    }
+    lineKey = key;
+    lineBottom = 0;
+    let intoColumn = false;
+    if (words) {
+      const at = layer.getBoundingClientRect();
+      const column = at.right - 14 - Math.min(360, at.width * 0.4) - 12;
+      const range = document.createRange();
+      range.selectNodeContents(line);
+      for (const r of range.getClientRects()) {
+        lineBottom = Math.max(lineBottom, r.bottom - at.top);
+        intoColumn = intoColumn || r.right > column;
+      }
+    }
+    const chipTop = Math.round(Math.max(92, lineBottom + 12));
+    layer.style.setProperty('--tg-chip-top', intoColumn ? `${chipTop}px` : '');
+    layer.style.setProperty('--tg-col-top', intoColumn ? `${chipTop + 62}px` : '');
+    return true;
+  }
+
+  /* A banner goes under the line, never over it: at a join the two arrive
+   * together. Only ever moved down, so it does not jump back up under the
+   * pilot's eye when the line goes. */
+  function placeBanner() {
+    const b = bannerBox.firstElementChild;
+    if (!b || !lineBottom) {
+      return;
+    }
+    const top = Math.round(lineBottom + 14);
+    if (top > (parseFloat(b.style.top) || b.offsetTop)) {
+      b.style.top = `${top}px`;
+    }
   }
 
   /* tone: '' for done (mint), 'warn' for "not that" (amber), 'bad' for
    * something that went wrong (the bail pink). */
   function toast(text, tone = '') {
+    dropToastUp = false;
     clearTimeout(toastTimer);
     toastBox.replaceChildren(h(`div.toast${tone ? `.${tone}` : ''}`, { role: 'status', text }));
     toastTimer = setTimeout(() => toastBox.replaceChildren(), TOAST_MS + Math.min(2400, text.length * 25));
+  }
+
+  /* A toast that says to wait for the board. Back in, it goes at once,
+   * rather than sit under "Back in" saying the opposite. */
+  function waitToast(text) {
+    toast(text, 'warn');
+    dropToastUp = true;
   }
 
   /* `who` is the pilot when the room's list no longer has them, as for a
@@ -2601,7 +2668,7 @@ export function createTogether(shell) {
     }
     if (!session.inRoom) {
       if (heldRoom()) {
-        toast('Not said: getting back into the room.', 'warn');
+        waitToast('Not said: getting back into the room.');
       }
       return;
     }
@@ -2853,6 +2920,9 @@ export function createTogether(shell) {
       boot = null;
       bootJoin(b);
     }
+    if (measureLine()) {
+      placeBanner();
+    }
     if (!session) {
       return;
     }
@@ -2932,7 +3002,7 @@ export function createTogether(shell) {
     if (!session.inRoom) {
       /* A drop: the keys that talk to the room say why nothing happens. */
       if (shell.flying() && (/^Digit[1-7]$/.test(code) || code === 'Enter')) {
-        toast('Not said: getting back into the room.', 'warn');
+        waitToast('Not said: getting back into the room.');
         return true;
       }
       return false;

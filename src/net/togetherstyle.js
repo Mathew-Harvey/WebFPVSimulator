@@ -333,9 +333,10 @@ export const TOGETHER_CSS = `
  * right hand column, under the shell's Report bug and Pause: the chip, and
  * under it the pilots, the pit and the standings. The top centre is the
  * shell's clock and the top left its music and score, and a chip at the
- * top centre sat on the lap time. */
+ * top centre sat on the lap time. While the shell's line before takeoff
+ * reaches into the column, the column starts under it (measureLine). */
 #tg .roomchip {
-  position: absolute; right: 14px; top: 92px; display: flex; align-items: center; gap: 8px;
+  position: absolute; right: 14px; top: var(--tg-chip-top, 92px); transition: top 0.18s ease; display: flex; align-items: center; gap: 8px;
   padding: 4px 10px 4px 4px; background: var(--paper); color: var(--ink); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
   max-width: min(360px, 40vw);
 }
@@ -353,15 +354,21 @@ export const TOGETHER_CSS = `
 #tg.has-modal .tg-layer > :not(.tg-toasts) { visibility: hidden; }
 
 /* Under the shell's clock, never on it: the lap time is the one number a
- * pilot reads while a banner is up. */
-#tg .banner {
+ * pilot reads while a banner is up. Not .banner: that is the shell's
+ * own launch line, which index.html starts at opacity 0 and fades in by
+ * hand, and a room banner wearing the name was drawn invisible. */
+#tg .tg-banner {
   position: absolute; left: 50%; top: 104px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px;
   padding: 10px 18px 10px 10px; background: var(--paper); border: 4px solid var(--ink); box-shadow: 7px 7px 0 var(--ink);
-  color: var(--ink); max-width: min(760px, calc(100% - 32px)); animation: tg-drop 0.3s cubic-bezier(.2,1.4,.4,1);
+  color: var(--ink); animation: tg-drop 0.3s cubic-bezier(.2,1.4,.4,1); transition: top 0.18s ease;
+  /* Clear of the room's right hand column (the chip, and under it the pit,
+   * the standings or the pilots) on both sides, since it is centred. */
+  width: max-content; max-width: min(760px, calc(100% - 2 * (min(360px, 40vw) + 28px)));
 }
-#tg .banner.mint { background: var(--mint); }
-#tg .banner b { font: 900 italic 18px var(--ui); display: block; }
-#tg .banner small { font-size: 14px; font-weight: 700; color: var(--quiet); }
+#tg .tg-banner > div { min-width: 0; }
+#tg .tg-banner.mint { background: var(--mint); }
+#tg .tg-banner b { font: 900 italic 18px var(--ui); display: block; }
+#tg .tg-banner small { font-size: 14px; font-weight: 700; color: var(--quiet); }
 @keyframes tg-drop { from { transform: translate(-50%, -30px); opacity: 0; } }
 
 /* The comic dialogue: a portrait stands on a speech box, as in a visual
@@ -427,7 +434,7 @@ export const TOGETHER_CSS = `
 
 /* The pilots list, a glance */
 #tg .roster {
-  position: absolute; right: 14px; top: 154px; width: min(360px, 40vw); max-height: calc(100% - 290px); overflow: auto; padding: 12px;
+  position: absolute; right: 14px; top: var(--tg-col-top, 154px); transition: top 0.18s ease; width: min(360px, 40vw); max-height: calc(100% - 136px - var(--tg-col-top, 154px)); overflow: auto; padding: 12px;
   background: var(--paper); border: 4px solid var(--ink); box-shadow: 8px 8px 0 var(--ink); color: var(--ink);
 }
 #tg .roster h5 { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
@@ -498,7 +505,7 @@ export const TOGETHER_CSS = `
 /* The right hand panels sit under the flight's own Pause button, never on it. */
 /* Both stop short of the speed and the stick overlay, a little over a
  * hundred pixels up from the bottom. */
-#tg .pit { position: absolute; right: 14px; top: 154px; width: min(340px, 40vw); padding: 14px; color: var(--ink); pointer-events: auto; max-height: calc(100% - 290px); overflow: auto; }
+#tg .pit { position: absolute; right: 14px; top: var(--tg-col-top, 154px); transition: top 0.18s ease; width: min(340px, 40vw); padding: 14px; color: var(--ink); pointer-events: auto; max-height: calc(100% - 136px - var(--tg-col-top, 154px)); overflow: auto; }
 #tg .pit .pilot { grid-template-columns: 38px 1fr auto; }
 #tg .hanko {
   display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: 3px solid var(--red);
@@ -520,7 +527,7 @@ export const TOGETHER_CSS = `
 #tg .pos .big { font: 900 italic 50px/0.9 var(--ui); color: var(--amber); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
 #tg .pos .big small { font-size: 22px; }
 #tg .split { padding: 4px 10px; border: 3px solid var(--ink); font: 900 15px var(--ui); color: var(--ink); background: var(--mint); width: max-content; }
-#tg .standings { position: absolute; right: 14px; top: 154px; width: min(260px, 30vw); display: grid; gap: 4px; }
+#tg .standings { position: absolute; right: 14px; top: var(--tg-col-top, 154px); transition: top 0.18s ease; width: min(260px, 30vw); display: grid; gap: 4px; }
 #tg .standings .r {
   display: grid; grid-template-columns: 22px 28px 1fr auto; align-items: center; gap: 6px; padding: 3px 8px 3px 4px;
   background: rgba(247,240,220,.92); border: 2.5px solid var(--ink); color: var(--ink); font-weight: 900; font-size: 13px;
@@ -590,6 +597,9 @@ export const TOGETHER_CSS = `
   #tg .log { bottom: 258px; }
   #tg .hello { left: auto; right: 10px; bottom: 170px; transform: scale(0.8); }
   #tg .roster, #tg .pit, #tg .standings { width: calc(100% - 28px); }
+  /* The column is the whole width here, so the banner takes it too, under
+   * the chip. */
+  #tg .tg-banner { max-width: calc(100% - 28px); top: 150px; }
   #tg .scene .pl, #tg .scene .pr { width: 30vw; bottom: 250px; }
   #tg .scene .transcript { left: 4vw; right: 4vw; bottom: 330px; }
   #tg .podium { gap: 8px; }
@@ -599,9 +609,10 @@ export const TOGETHER_CSS = `
 /* Less motion: the arrivals, the spinner, the shake and the hover lift go.
  * The fades that time a line out stay, because they are how a line leaves. */
 @media (prefers-reduced-motion: reduce) {
-  #tg .tg-enter > *, #tg .tg-enter .modal, #tg .tg-enter .scene *, #tg .toast, #tg .banner, #tg .hello, #tg .talk .portrait.in,
+  #tg .tg-enter > *, #tg .tg-enter .modal, #tg .tg-enter .scene *, #tg .toast, #tg .tg-banner, #tg .hello, #tg .talk .portrait.in,
   #tg .tg-step.now i, #tg .shake, #tg .skeleton, #tg .count-big canvas { animation: none !important; }
-  #tg .btn, #tg .room, #tg .part, #tg .radio, #tg .switch, #tg .mapcard, #tg .pilot .chev { transition: none !important; }
+  #tg .btn, #tg .room, #tg .part, #tg .radio, #tg .switch, #tg .mapcard, #tg .pilot .chev, #tg .tg-banner,
+  #tg .roomchip, #tg .roster, #tg .pit, #tg .standings { transition: none !important; }
 }
 @media (max-height: 800px) {
   #tg .page { padding-top: 12px; padding-bottom: 12px; }

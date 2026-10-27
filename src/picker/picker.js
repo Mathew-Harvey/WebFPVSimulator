@@ -430,6 +430,8 @@ text-transform:uppercase;text-decoration:none;color:var(--wp-ink);background:var
 .wp-rail{gap:8px;padding-right:14px}.wp-shelf{width:25vw}.wp-shelf .wp-lt{left:calc(14% + 4px);right:calc(14% + 2px)}
 .wp-offs{grid-template-columns:1fr;grid-auto-rows:auto}.wp-offs .wp-card{aspect-ratio:16/9}
 .wp-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px 14px}
+/* Two column cards are narrow enough to set a title on two lines, which rose into the author stamp at 16 by 10. */
+.wp-grid .wp-card{aspect-ratio:5/4}
 .wp-offs,.wp-grid{padding:0 4px}
 .wp-hero{transform:none;margin:4px 0 12px}.wp-cap{transform:none;padding:10px 12px}.wp-cap .wp-pic{display:none}
 .wp-acts{width:100%;flex-wrap:nowrap;gap:10px}.wp-act{height:40px;padding:0 10px;font-size:12px;box-shadow:3px 3px 0 var(--wp-ink)}

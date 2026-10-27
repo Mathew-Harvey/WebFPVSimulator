@@ -2230,6 +2230,13 @@ async function sceneKeys() {
     const legend = await avatarOf(page);
     check('a full beard keeps the eyes, and slicked back hair and thick specs are parts like any other',
       legend && legend.eyes === 4 + 6 * 3 && legend.hair === 10 && legend.acc === 18, JSON.stringify(legend));
+    /* Tattoos and a ring ride in the skin's number the same way. */
+    await pressKey(page, 'tab-Marks');
+    await pressKey(page, 'ink-3');
+    check('tattoos and a ring keep the skin they are drawn on', (await avatarOf(page)).skin === 2 + 8 * 3, JSON.stringify(await avatarOf(page)));
+    await pressKey(page, 'tab-Face');
+    await pressKey(page, 'skin-4');
+    check('and another skin keeps them', (await avatarOf(page)).skin === 4 + 8 * 3, JSON.stringify(await avatarOf(page)));
     await pressKey(page, 'tab-Eyes');
     await pressKey(page, 'eyes-1');
     check('and other eyes keep the beard', (await avatarOf(page)).eyes === 1 + 6 * 3);

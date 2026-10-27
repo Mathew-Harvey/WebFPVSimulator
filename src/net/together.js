@@ -66,7 +66,7 @@ import {
 } from './roomlinks.js';
 import {
   ACC_ORDER, EXPRESSIONS, EYE_COLOURS, EYE_ORDER, HAIR_COLOURS, HAIR_ORDER, HAIR_STYLE_ORDER, LIVERIES, PART_NAMES, SKINS, SKIN_ORDER, WEARS,
-  avatarCanvas, beardOf, cleanAvatar, eyeStyleOf, eyesOf, faceOf, headOf, liveryCss, liveryInk, markOf, paintAvatar, rollAvatar,
+  avatarCanvas, beardOf, cleanAvatar, eyeStyleOf, eyesOf, faceOf, headOf, inkOf, liveryCss, liveryInk, markOf, paintAvatar, rollAvatar, skinOf, toneOf,
 } from './avatar.js';
 import { paintTitle } from '../ui/lettering.js';
 import { quadMark } from '../ui/gatepages.js';
@@ -1857,17 +1857,18 @@ export function createTogether(shell) {
    * editor opened on. Q and E (a pad's bumpers) go from tab to tab, R rolls
    * a new pilot, and Z undoes.
    */
-  const EDITOR_TABS = ['Face', 'Hair', 'Eyes', 'Gear', 'Quad'];
+  const EDITOR_TABS = ['Face', 'Hair', 'Eyes', 'Marks', 'Gear', 'Quad'];
   const EXPR_LINES = {
     calm: 'Ready when you are.', hello: 'Hi!', laugh: 'Ha ha ha!', wow: 'Whoa!', smug: 'Too easy.', oops: 'Oops...', fierce: "Let's go!", crash: 'Ouch!',
   };
   const REACT_LINES = ['Nice!', 'Ooh, yes!', 'Looking good!', 'Love it!', 'So cool!', 'Fresh!', 'Perfect!', 'Ha, I like it!'];
   /* The tabs' icons, inked like the pages: a face, a lock of hair, an eye,
-   * a pair of goggles and a quad, each in a 32 square. */
+   * a star sticker, a pair of goggles and a quad, each in a 32 square. */
   const TAB_ICONS = {
     Face: '<path d="M16 4c-6.5 0-10 4.6-10 11 0 7.2 4.6 13 10 13s10-5.8 10-13C26 8.6 22.5 4 16 4z"/><circle cx="12" cy="15.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="15.5" r="1.6" fill="currentColor" stroke="none"/><path d="M12.5 21.5c2 1.6 5 1.6 7 0"/>',
     Hair: '<path d="M5 22c-1-9 4.5-17 12-17 6 0 10.5 4.5 10 12-2-4-5-5.5-8-5.5 1 2 1 4-.5 6-1-3-3.5-5-6.5-5.5.5 2-.2 4.2-2 6-1-1.6-2.4-2.6-4-3"/>',
     Eyes: '<path d="M3 17c3.5-6 8-8.5 13-8.5S25.5 11 29 17c-3.5 5-8 7.5-13 7.5S6.5 22 3 17z"/><circle cx="16" cy="16.5" r="5"/><circle cx="14.2" cy="14.6" r="1.6" fill="currentColor" stroke="none"/><path d="M6 8.5l2.5 2.5M26 8.5L23.5 11"/>',
+    Marks: '<path d="M16 4.5l3.3 7.2 7.9.9-5.9 5.3 1.7 7.8L16 21.8l-7 3.9 1.7-7.8-5.9-5.3 7.9-.9z"/>',
     Gear: '<rect x="3" y="11" width="11.5" height="10" rx="4"/><rect x="17.5" y="11" width="11.5" height="10" rx="4"/><path d="M14.5 15.5h3M3 14H1.5M29 14h1.5"/><path d="M6.5 14.5l2.5-1.5" />',
     Quad: '<circle cx="8" cy="8" r="5"/><circle cx="24" cy="8" r="5"/><circle cx="8" cy="24" r="5"/><circle cx="24" cy="24" r="5"/><path d="M11.5 11.5l9 9M20.5 11.5l-9 9"/><rect x="13" y="13" width="6" height="6" rx="1.5" fill="currentColor" stroke="none"/>',
   };
@@ -1945,6 +1946,8 @@ export function createTogether(shell) {
       const av = cleanAvatar(store.avatar);
       const head = headOf(av);
       const mark = markOf(av);
+      const tone = toneOf(av);
+      const ink = inkOf(av);
       const eyeStyle = eyeStyleOf(av);
       const beard = beardOf(av);
       /* A part or a colour under the pointer, or under the focus of the
@@ -1984,9 +1987,11 @@ export function createTogether(shell) {
       const tiles = (key, names, pick, on, crop, cls = '', order = names.map((_, i) => i)) => h(`div.parts${cls}`, { style: { '--n': String(names.length) } }, order.map((i) => h(`button.part.crop-${crop}`, {
         type: 'button', 'aria-pressed': String(on(i)), 'data-k': `${key}-${i}`, title: names[i], on: peek(() => pick(i), () => commit(pick(i))),
       }, h('span.part-pic', null, avatarCanvas(pick(i), { crop, size: Math.round((crop === 'cheek' ? 76 : 104) * grown), expr: 'calm' })), h('small', { text: names[i] }))));
-      const swatches = (k, label, list, order) => h('div.swatches', { role: 'group', 'aria-label': label }, order.map((i) => h('button.swatch', {
-        type: 'button', style: { '--sw': list[i] }, 'aria-label': `${label} ${order.indexOf(i) + 1}`, 'aria-pressed': String(av[k] === i), 'data-k': `${k}-${i}`,
-        on: peek(() => ({ ...av, [k]: i }), () => setPart(k, i)),
+      /* `put(i)` is the look with colour i, for a colour that shares its
+       * number with something else (the skin's tone, with its ink). */
+      const swatches = (k, label, list, order, worn = av[k], put = (i) => ({ ...av, [k]: i })) => h('div.swatches', { role: 'group', 'aria-label': label }, order.map((i) => h('button.swatch', {
+        type: 'button', style: { '--sw': list[i] }, 'aria-label': `${label} ${order.indexOf(i) + 1}`, 'aria-pressed': String(worn === i), 'data-k': `${k}-${i}`,
+        on: peek(() => put(i), () => commit(put(i))),
       })));
       const section = (title, ...kids) => h('section.cr-sec', null, h('div.cr-lab', { role: 'heading', 'aria-level': '3', text: title }), ...kids);
       /* Hair is chosen bare headed, or every style under a beanie is the
@@ -1995,11 +2000,17 @@ export function createTogether(shell) {
       let panel;
       if (tab === 'Face') {
         panel = [
-          section('Skin', swatches('skin', 'Skin', SKINS, SKIN_ORDER)),
+          section('Skin', swatches('skin', 'Skin', SKINS, SKIN_ORDER, tone, (i) => ({ ...av, skin: skinOf(i, ink) }))),
           section('Face shape', tiles('face', PART_NAMES.face, (i) => ({ ...av, face: faceOf(i, mark) }), (i) => head === i, 'bust', '.shapes')),
           /* In the hair's colour, which the Hair tab chooses. */
           section('Facial hair', tiles('beard', PART_NAMES.beard, (j) => ({ ...av, eyes: eyesOf(eyeStyle, j) }), (j) => beard === j, 'cheek', '.small.beards')),
+        ];
+      } else if (tab === 'Marks') {
+        /* What is drawn on a face: stickers and plasters, and tattoos and a
+         * ring, which share the skin's number (see SKIN_INKS). */
+        panel = [
           section('Face marks', tiles('mark', PART_NAMES.mark, (j) => ({ ...av, face: faceOf(head, j) }), (j) => mark === j, 'cheek', '.small')),
+          section('Tattoos and piercings', tiles('ink', PART_NAMES.ink, (j) => ({ ...av, skin: skinOf(tone, j) }), (j) => ink === j, 'bust', '.small.inks')),
         ];
       } else if (tab === 'Hair') {
         panel = [

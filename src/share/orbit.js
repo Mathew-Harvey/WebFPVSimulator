@@ -756,21 +756,33 @@ function cardFraming(view) {
 }
 
 /* Returns the point the camera looks at, which is where the card wants its
- * shadows, or null when the world gave nothing to frame by. */
+ * shadows, or null when the world gave nothing to frame by.
+ *
+ * A WORLD WITH A ROOF names its own lens, view.cardLens, { eye, at } in
+ * world metres, and the card and the thumbnail are both taken from it:
+ * from any side, at any reach, a shot from outside a closed hall is a
+ * picture of its roof. Thomas More's Shop is the one that does. */
 function placeCardCamera(view, camera, craft, THREE, shot = CARD_SHOT) {
-  const f = cardFraming(view);
-  if (!f) {
+  const lens = view && view.cardLens;
+  const f = lens ? null : cardFraming(view);
+  if (!lens && !f) {
     return null;
   }
-  const target = new THREE.Vector3(f.cx, f.cy + f.aim, f.cz);
-  const reach = f.reach * (f.path ? shot.path : shot.orbit);
-  const flat = reach * Math.cos(shot.pitch);
-  const az = f.az + (shot.turn || 0);
-  camera.position.set(
-    f.cx + Math.sin(az) * flat,
-    f.cy + f.aim + reach * Math.sin(shot.pitch),
-    f.cz + Math.cos(az) * flat,
-  );
+  let target;
+  if (lens) {
+    target = new THREE.Vector3(lens.at[0], lens.at[1], lens.at[2]);
+    camera.position.set(lens.eye[0], lens.eye[1], lens.eye[2]);
+  } else {
+    target = new THREE.Vector3(f.cx, f.cy + f.aim, f.cz);
+    const reach = f.reach * (f.path ? shot.path : shot.orbit);
+    const flat = reach * Math.cos(shot.pitch);
+    const az = f.az + (shot.turn || 0);
+    camera.position.set(
+      f.cx + Math.sin(az) * flat,
+      f.cy + f.aim + reach * Math.sin(shot.pitch),
+      f.cz + Math.cos(az) * flat,
+    );
+  }
   camera.up.set(0, 1, 0);
   camera.lookAt(target);
   camera.updateMatrixWorld();
@@ -984,7 +996,7 @@ async function drawCard(mapId, shareId, mapShareId) {
       if (framing && framing.path && !params.has('tp')) {
         shot.pitch = THUMB_MAP_PITCH;
       }
-      if (!room && framing && !params.has('ta')) {
+      if (!room && framing && !view.cardLens && !params.has('ta')) {
         shot.turn = clearestTurn(view, shell, THREE, shot);
       }
       const corner = room ? clearestCorner(view, shell, THREE) : 0;

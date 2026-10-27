@@ -334,6 +334,11 @@ const WORLDS = [
    * taken again from higher and further out when it was rebuilt that day,
    * so the camera clears the trees and the field is in it. */
   { id: 'bardwell', file: 'bardwell.jpg', name: "Joshua Bardwell's house", shot: { tp: 0.72, tr: 1.45, ta: -1.1 } },
+  /* Thomas More's warehouse, added 27 October 2026. It has a roof, so no
+   * shot from outside shows anything but the roof: the hall names its own
+   * lens instead, inside under the joists (CARD_LENS in
+   * src/maps/warehouse/warehouse.js), and the orbit page uses that. */
+  { id: 'warehouse', file: 'warehouse.jpg', name: "Thomas More's warehouse" },
 ];
 
 async function drawWorlds(opts) {

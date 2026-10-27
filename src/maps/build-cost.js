@@ -64,4 +64,9 @@ export const MAP_BUILD_MS = {
    * and broad trees, and measured again: 2947, 1138 and 2481 ms, Nick's
    * house 1092 and 1121 between them in the same session. */
   bardwell: 2189,
+  /* Thomas More's warehouse (src/maps/warehouse/), the same pipeline. An
+   * estimate from Heads' house, which has the same call count and a quarter
+   * more parts; measured by node scripts/shots.js when it is next run on a
+   * quiet container. */
+  warehouse: 1700,
 };

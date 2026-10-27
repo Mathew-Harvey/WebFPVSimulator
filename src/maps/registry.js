@@ -155,6 +155,24 @@ export const MAPS = [
     whoopYard: true,
     load: () => import('./bardwell/index.js'),
   },
+  /*
+   * THOMAS MORE'S WAREHOUSE, on the owner's ask of 27 October 2026: the
+   * exhibit builders' shop and store Thomas More flies, rebuilt from the
+   * stills he sent, at the houses' scale and flown the same way, as the
+   * whoop. Built by the same pipeline (src/maps/warehouse/) and, like the
+   * houses, off the board.
+   */
+  {
+    id: 'warehouse',
+    name: "Thomas More's warehouse",
+    mode: 'freestyle',
+    note: "Thomas More's warehouse, flown on a whoop: the crate aisle, the dock and its trailer, the woodshop, the racking, the red corridor and the spray booth.",
+    buildMs: MAP_BUILD_MS.warehouse,
+    craftModel: 'whoop65',
+    craft: 'whoop65',
+    hudScale: 3.5,
+    load: () => import('./warehouse/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -166,6 +184,9 @@ export const HEADS_DOC_ID = 'trk-4ead5100';
 
 /* Joshua Bardwell's house's (src/maps/bardwell/yard.js), the same way. */
 export const BARDWELL_DOC_ID = 'trk-ba4dbe11';
+
+/* Thomas More's warehouse's (src/maps/warehouse/yard.js), the same way. */
+export const WAREHOUSE_DOC_ID = 'trk-7a3e0f27';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

@@ -72349,3 +72349,4 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: none. CSS only, on menus and the footer; nothing in the flight loop, the input path or the frame. Checked by reading the diff: no script runs per frame, no new draw call.
 - What went wrong: a first picker fix used flex-basis 0 and the tabs collapsed to slivers (the rail is content sized); caught in the first picture and replaced by a viewport width.
 - Checks run: `lint:preload`, `lint:partners`, `lint:boot` here; board `npm test`, all passed; landing `lint:page`, 32 of 32. Not run: `npm run verify`, `shots.js` end to end (the pictures above were taken with it for the changed screens).
+- The owner, 2026-10-27 08:27Z: "Push to main", for this entry (the sim, the board's picker copy and the landing page's phone footer). Main fast-forwarded from d277c6d. Not flown by the owner yet.

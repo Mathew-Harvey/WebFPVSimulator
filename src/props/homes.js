@@ -145,7 +145,7 @@ export const MATERIALS = {
   bardwellBush: { c: 0x6c9e45, tint: 0x3f5a5a },
   bardwellPot: { c: 0xb3613f, tint: 0x6a4a5a },
 
-  /* Thomas More's warehouse (src/maps/warehouse/): eighteen colours, fewer
+  /* Thomas More's Shop (src/maps/warehouse/): eighteen colours, fewer
    * than any house, read off his stills. Every one but the apron's is two
    * band and takes no shadow, because inside the hall everything is under
    * the roof's, and a crate in the roof's shadow reads lavender. */

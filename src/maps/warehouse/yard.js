@@ -1,5 +1,5 @@
 /*
- * yard.js: the document Thomas More's warehouse flies in, as ../heads/yard.js
+ * yard.js: the document Thomas More's Shop flies in, as ../heads/yard.js
  * is Heads' house's. Everything the hall is comes from ./warehouse.js as
  * one structure of its own; this is what the built map's document format
  * already says well: the plot, the time of day and the ground, where the
@@ -36,7 +36,7 @@ import { S, FIELD_W, FIELD_D, docAt, OPENINGS, SPAWN } from './warehouse.js';
 const EAST = 0;
 const NORTH = Math.PI / 2;
 
-export const WAREHOUSE_NAME = "Thomas More's warehouse";
+export const WAREHOUSE_NAME = "Thomas More's Shop";
 
 /* How far inside its opening a gap's rectangle stands, real metres, each
  * side and over the sill. */

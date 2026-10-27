@@ -164,9 +164,9 @@ export const MAPS = [
    */
   {
     id: 'warehouse',
-    name: "Thomas More's warehouse",
+    name: "Thomas More's Shop",
     mode: 'freestyle',
-    note: "Thomas More's warehouse, flown on a whoop: the crate aisle, the dock and its trailer, the woodshop, the racking, the red corridor and the spray booth.",
+    note: "Thomas More's Shop, flown on a whoop: the crate aisle, the dock and its trailer, the woodshop, the racking, the red corridor and the spray booth.",
     buildMs: MAP_BUILD_MS.warehouse,
     craftModel: 'whoop65',
     craft: 'whoop65',
@@ -185,7 +185,7 @@ export const HEADS_DOC_ID = 'trk-4ead5100';
 /* Joshua Bardwell's house's (src/maps/bardwell/yard.js), the same way. */
 export const BARDWELL_DOC_ID = 'trk-ba4dbe11';
 
-/* Thomas More's warehouse's (src/maps/warehouse/yard.js), the same way. */
+/* Thomas More's Shop's (src/maps/warehouse/yard.js), the same way. */
 export const WAREHOUSE_DOC_ID = 'trk-7a3e0f27';
 
 export function mapById(id) {

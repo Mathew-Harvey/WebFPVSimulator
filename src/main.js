@@ -5490,7 +5490,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * keys its marks 'city#'. The three house maps set a source of their own,
    * which is their own word on the board since 2026-10-21; before that the
    * board had none, and the signs on them were never counted for anybody.
-   * Thomas More's warehouse has its own since 2026-10-27, and the board's
+   * Thomas More's Shop has its own since 2026-10-27, and the board's
    * word went out before this one. */
   const MARK_MAP_WORDS = {
     starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse',
@@ -7741,10 +7741,10 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
-    /* Nor for Thomas More's warehouse: WAREHOUSE_OFF_BOARD in src/ui/ui.js. */
+    /* Nor for Thomas More's Shop: WAREHOUSE_OFF_BOARD in src/ui/ui.js. */
     if (view.id === 'warehouse') {
       notice = {
-        text: "The board keeps no runs for Thomas More's warehouse, so its runs stay here.",
+        text: "The board keeps no runs for Thomas More's Shop, so its runs stay here.",
         untilMs: performance.now() + 4200,
       };
       return;

@@ -1,5 +1,5 @@
 /*
- * warehouse-check.js: Thomas More's warehouse (src/maps/warehouse/), proved
+ * warehouse-check.js: Thomas More's Shop (src/maps/warehouse/), proved
  * buildable, flyable and cheap in plain Node, the way scripts/house-check.js
  * proves Nick Burns' house. In these blocks:
  *

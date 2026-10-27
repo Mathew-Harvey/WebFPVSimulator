@@ -1,5 +1,5 @@
 /*
- * index.js: Thomas More's warehouse as a map, built the way the houses are
+ * index.js: Thomas More's Shop as a map, built the way the houses are
  * (../heads/index.js): the built map's pipeline (../built/index.js) does
  * all of it, the sky, the ground, the ink, the shadows, the colliders, the
  * cull, the named gaps, the marks. This file hands it the hall's document

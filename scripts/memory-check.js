@@ -196,7 +196,7 @@ BORROWS.house = {
 BORROWS.heads = BORROWS.house;
 /* And Joshua Bardwell's house (src/maps/bardwell/index.js). */
 BORROWS.bardwell = BORROWS.house;
-/* And Thomas More's warehouse (src/maps/warehouse/index.js). */
+/* And Thomas More's Shop (src/maps/warehouse/index.js). */
 BORROWS.warehouse = BORROWS.house;
 
 /* The URLs under another world that this one is not allowed to have. */

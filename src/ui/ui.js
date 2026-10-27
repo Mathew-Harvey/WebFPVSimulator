@@ -840,7 +840,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
-        : mapId === 'warehouse' ? "Thomas's warehouse" : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+        : mapId === 'warehouse' ? "Thomas's shop" : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -876,8 +876,8 @@ const HEADS_OFF_BOARD = "The board keeps no runs for Heads' house, so a run flow
 const BARDWELL_OFF_BOARD = "The board keeps no runs for Joshua Bardwell's house, so a run flown there stays here."
   + ' Fly the town for a run that can go up.';
 
-/* Thomas More's warehouse, the same way. */
-const WAREHOUSE_OFF_BOARD = "The board keeps no runs for Thomas More's warehouse, so a run flown there stays here."
+/* Thomas More's Shop, the same way. */
+const WAREHOUSE_OFF_BOARD = "The board keeps no runs for Thomas More's Shop, so a run flown there stays here."
   + ' Fly the town for a run that can go up.';
 
 /*
@@ -4929,7 +4929,7 @@ const WAYS = [
      * pilot asks for them. See DEFAULTS.freestyleScoring. The maps are
      * named so the card says there is more than the town, and the board's
      * are counted in so a pilot knows the shelf keeps growing. */
-    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's warehouse, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
+    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's Shop, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 

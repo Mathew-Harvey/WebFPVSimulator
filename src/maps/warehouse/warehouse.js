@@ -1,5 +1,5 @@
 /*
- * warehouse.js: Thomas More's warehouse, an exhibit builder's shop and
+ * warehouse.js: Thomas More's Shop, an exhibit builder's shop and
  * store, as the parts a built map holds. Pure data and arithmetic, no
  * Three.js, no JS trigonometry, so the solids can be built and checked in
  * plain Node.

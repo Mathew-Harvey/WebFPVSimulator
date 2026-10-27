@@ -761,7 +761,7 @@ function cardFraming(view) {
  * A WORLD WITH A ROOF names its own lens, view.cardLens, { eye, at } in
  * world metres, and the card and the thumbnail are both taken from it:
  * from any side, at any reach, a shot from outside a closed hall is a
- * picture of its roof. Thomas More's warehouse is the one that does. */
+ * picture of its roof. Thomas More's Shop is the one that does. */
 function placeCardCamera(view, camera, craft, THREE, shot = CARD_SHOT) {
   const lens = view && view.cardLens;
   const f = lens ? null : cardFraming(view);

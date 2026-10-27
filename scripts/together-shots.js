@@ -3577,7 +3577,9 @@ async function sceneVote() {
     await shot('tally');
     const code = room.code;
     fern.s.link.answerVote(true);
-    check('everybody going moves the whole room: the page loads the town', await page.until("window.__map && window.__map().ready && location.search.includes('room=')", 60000).then(() => true, () => false));
+    /* The address already names the room before the move, so what is
+     * waited for is the town itself, on the page after its reload. */
+    check('everybody going moves the whole room: the page loads the town', await page.until(`window.__map && window.__map().ready && location.search.includes('map=city') && ${T} && window.__together().map === 'city'`, 60000).then(() => true, () => false));
     check('and comes back into the same room, as its host', await page.until(`${T} && window.__together().inRoom && window.__together().code === ${JSON.stringify(code)} && window.__together().host === window.__together().you`, 60000).then(() => true, () => false));
     check('on the town', (await state(page)).map === 'city');
     await joinRoom(fern, code, fern.s.link.moved ? fern.s.link.moved.invite : '');

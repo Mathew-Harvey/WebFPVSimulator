@@ -57,17 +57,18 @@ function across(o, name, points) {
 function rows() {
   const pad = docAt(SPAWN.px, SPAWN.py);
   return [
-    /* The start: one mat on the slab at the front of the hall, facing up the
-     * crate aisle. */
+    /* The start: one mat on the slab at the south end of the workshop,
+     * facing north up it. */
     ['startPads', pad.x, pad.y, NORTH, { pads: 1, spacing: 1.5, padSize: 0.9 }, { z: S * SPAWN.h }],
-    across(OPENINGS.glassDoor, 'GLASS DOOR', 100),
-    across(OPENINGS.driveIn, 'DRIVE IN DOOR', 100),
-    across(OPENINGS.officeDoor, 'OFFICE DOOR', 250),
-    across(OPENINGS.blackDoor, 'THE BLACK WALL', 250),
-    across(OPENINGS.dockOne, 'DOCK ONE', 250),
-    across(OPENINGS.boothDoor, 'THE SPRAY BOOTH', 500),
-    across(OPENINGS.corridorWindow, 'RED CORRIDOR', 500),
-    across(OPENINGS.digitalDoor, 'THE LAST DOOR', 1000),
+    across(OPENINGS.woodDoor, 'THE WOOD DOOR', 100),
+    across(OPENINGS.backDoor, 'BACK DOOR', 100),
+    across(OPENINGS.frontOffice, 'FRONT OFFICE', 250),
+    across(OPENINGS.frenchDoor, 'FRENCH DOOR', 250),
+    across(OPENINGS.slidingDoor, 'SLIDING DOOR', 250),
+    across(OPENINGS.officeWindow, 'OFFICE WINDOW', 500),
+    across(OPENINGS.sprayDoor, 'PAINT SHOP', 500),
+    /* Thomas's favourite, the wide opening into the machine room. */
+    across(OPENINGS.barani, 'BARANI DOORWAY', 1000),
   ];
 }
 

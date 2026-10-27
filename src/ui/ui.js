@@ -7033,6 +7033,20 @@ export class Ui {
     });
   }
 
+  /* The lens row, shared by the Quad room, Settings and the Rates screen so
+   * the three cannot drift: the same setting, the same note, one definition.
+   * The camera applies it at once (applySettings in src/main.js). */
+  cameraFovRow(s) {
+    return choice(
+      'Field of view',
+      'Wider sees more, narrower magnifies. 75 matches what an FPV lens does to the middle of the frame; 85 gives some of that back for width; 115 is the widest this projection can honestly offer, about 145 degrees corner to corner, and the gates will look smaller for it.',
+      CAMERA_FOVS,
+      s.cameraFov,
+      (n) => `${n} degrees vertical`,
+      (n) => { s.cameraFov = n; },
+    );
+  }
+
   /* The camera tilt stepper, shared by the Quad room (where it is the
    * machine's setting) and the Rates screen (where the yaw it rolls into the
    * picture is tuned). One definition, so the two cannot drift. */
@@ -9645,14 +9659,7 @@ export class Ui {
         },
         { label: 'Camera', section: true },
         this.cameraAngleRow(s),
-        choice(
-          'Field of view',
-          'Wider sees more, narrower magnifies. 75 matches what an FPV lens does to the middle of the frame; 85 gives some of that back for width; 115 is the widest this projection can honestly offer, about 145 degrees corner to corner, and the gates will look smaller for it.',
-          CAMERA_FOVS,
-          s.cameraFov,
-          (n) => `${n} degrees vertical`,
-          (n) => { s.cameraFov = n; },
-        ),
+        this.cameraFovRow(s),
         { label: 'Flight', section: true },
         choice(
           'Flight mode',
@@ -9762,6 +9769,9 @@ export class Ui {
           s.mode3d === true,
           (v) => { s.mode3d = Boolean(v); },
         ),
+        { label: 'Camera', section: true },
+        this.cameraAngleRow(s),
+        this.cameraFovRow(s),
         { label: 'You', section: true },
         {
           label: 'Your name',
@@ -10761,6 +10771,7 @@ export class Ui {
         { label: 'Yaw', section: true },
         ...axisRows('yaw'),
         this.cameraAngleRow(s),
+        this.cameraFovRow(s),
         { label: 'Throttle', section: true },
         choice(
           'Throttle limit',

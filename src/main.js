@@ -3119,9 +3119,9 @@ export async function boot({ loading, bootStart, mapId }) {
 
   /*
    * FLYING TOGETHER, the multiplayer plan the owner approved on 25 October
-   * 2026, behind ?mp=1 until it is turned on for everybody. ROOMS_LAUNCHED
-   * is the one switch, and it stays false until the owner says so; with it
-   * on, the links a room writes stop carrying ?mp=1, which
+   * 2026, on for everybody since the owner's word of 27 October ("ok lets make
+   * it live for everyone now", "swithc it on"). ROOMS_LAUNCHED
+   * is the one switch; on, the links a room writes stop carrying ?mp=1, which
    * `node scripts/together-shots.js --launched=1` checks.
    *
    * NOTHING HAPPENS UNTIL THE PILOT ASKS: Fly together on a map in the
@@ -3136,7 +3136,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * ask of the flight is what a menu press may: pause, resume, fly, and in
    * a room's race the start line, through reset(), the R key's own path.
    */
-  const ROOMS_LAUNCHED = false;
+  const ROOMS_LAUNCHED = true;
   const mpOn = ROOMS_LAUNCHED || (() => {
     try {
       return new URLSearchParams(window.location.search).get('mp') === '1';

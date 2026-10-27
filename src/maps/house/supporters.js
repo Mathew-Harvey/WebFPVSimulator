@@ -78,6 +78,9 @@ export const SUPPORTER_SPOTS = [
   { slug: 'dronefactory', room: 'garage', from: [21.5, 4.7, 1.5], dir: 'e', w: 0.9 },
   /* The workshop, its floor at BF. Over the desk and its two monitors. */
   { slug: 'yourfpv', room: 'workshop', from: [12.05, 6.5, BF + 1.75], dir: 'n', w: 0.85 },
+  /* MOCK-UP: the radio sponsor's sign over the desk's east end, above the
+   * radio standing on it (src/maps/house/house.js). */
+  { slug: 'helloradiosky', room: 'workshop', from: [12.95, 6.5, BF + 1.75], dir: 'n', w: 1.0 },
   /* Over the pegboard and the bench. */
   { slug: 'mattsflooring', room: 'workshop', from: [12.35, 3.0, BF + 2.05], dir: 's', w: 1.2 },
   /* Between its two doors. */

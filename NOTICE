@@ -148,6 +148,12 @@ partnership to show.
     April 2027) shown on freestyle maps and the landing page, but not
     counted in the partners list. `yourfpv/mono.png` is made from it by
     scripts/partners.js, every pixel cream and its transparency kept.
+  * `helloradiosky/colour.png` and `helloradiosky/mono.png` are a text
+    PLACEHOLDER for HelloRadioSky, drawn by WebFPV for a mock-up on branch
+    mockup/helloradiosky, 640 by 160. They are not HelloRadioSky's artwork
+    and are replaced by their logo when they supply it.
+    `helloradiosky/v12-placeholder.svg` is a plain grey box standing in for a
+    photo of the Hello Radio V12.
   * `konexdrone/colour.png` is the Konex Drone logo as supplied by the
     owner on 2026-10-12, a 788 by 316 PNG with transparency, cropped to the
     artwork and scaled to 640 by 226 with its colours reduced to 32, to keep

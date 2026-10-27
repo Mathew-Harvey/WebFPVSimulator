@@ -2213,6 +2213,16 @@ function basementRooms(H) {
     H.box('homeScreen', a, 8.08, f + 0.88, b, 8.12, f + 1.26, { name: 'monitor', kind: 'obstacle' });
     H.post('homeChair', (a + b) / 2, 8.12, f + 0.75, f + 0.9, 0.015, { seg: 5, kind: 'pole' });
   }
+  /* MOCK-UP (mockup/helloradiosky): a radio on the desk, at its east end
+   * under the radio sponsor's sign (src/maps/house/supporters.js). A body,
+   * two gimbals and an antenna, in materials this room already draws, so it
+   * is more triangles in a chunk that exists and no new draw call. Only the
+   * body is solid, as the monitors are. */
+  H.box('homeScreen', 12.8, 7.72, f + 0.75, 13.04, 7.86, f + 0.8, { name: 'radio', kind: 'obstacle' });
+  for (const x of [12.85, 12.97]) {
+    H.paint('homeChair', x, 7.76, f + 0.8, x + 0.03, 7.79, f + 0.84);
+  }
+  H.paint('homeChair', 12.92, 7.84, f + 0.8, 12.93, 7.85, f + 0.93);
   /* The desk chair tucked in, and the space over its seat solid on to the
    * wall behind the desk, since what is left between the seat and the wall
    * is a slot of its own. */

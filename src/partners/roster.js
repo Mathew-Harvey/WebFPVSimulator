@@ -99,7 +99,7 @@ export const ROLE_TITLES = Object.freeze({
 
 /* What a link on a partner's card can be. A closed list, because the board
  * counts clicks per link and a stranger must not be able to invent a word. */
-export const LINK_KINDS = Object.freeze(['site', 'youtube', 'facebook']);
+export const LINK_KINDS = Object.freeze(['site', 'youtube', 'facebook', 'buy']);
 
 /* Where the logo files live, from the repository root. */
 export const LOGO_DIR = 'assets/partners';
@@ -205,6 +205,28 @@ export const MAP_ONLY_PARTNERS = Object.freeze([
     logo: { colour: 'mattsflooring/colour.png', mono: 'mattsflooring/mono.png', aspect: 499 / 111 },
     mark: { field: '#f3ead4' },
   }),
+  /* HelloRadioSky, the radio sponsor (MOCK-UP, branch mockup/helloradiosky, nothing here is agreed or live).
+   * A maps-only supporter like YourFPV, so every roster consumer that reads
+   * PARTNERS is untouched and the board does not list them as a partner.
+   * The logo is a text PLACEHOLDER until their file arrives, and the buy
+   * link is example.com until the owner has the retailer's address.
+   * `about` says only that they make the radio and sponsor WebFPV: no claim
+   * about how it flies, and none about latency. */
+  partner({
+    slug: 'helloradiosky',
+    name: 'HelloRadioSky',
+    short: 'HelloRadioSky',
+    about: 'Maker of the Hello Radio V12, and the radio sponsor of WebFPV.',
+    links: [
+      { kind: 'site', label: 'Visit HelloRadioSky', href: 'https://helloradiorc.com/' },
+      { kind: 'buy', label: 'Buy the Hello Radio V12', href: 'https://example.com/buy-v12' },
+    ],
+    logo: { colour: 'helloradiosky/colour.png', mono: 'helloradiosky/mono.png', aspect: 640 / 160 },
+    mark: { field: '#f3ead4' },
+    /* Hand hung where it has a place (Nick's workshop) and chosen on built
+     * maps; kept off the town, Heads' and Bardwell's, whose signs are placed by hand. */
+    maps: ['starter', 'house'],
+  }),
   partner({
     slug: 'yourfpv',
     name: 'YourFPV',
@@ -217,6 +239,22 @@ export const MAP_ONLY_PARTNERS = Object.freeze([
     mark: { field: '#f3ead4' },
   }),
 ]);
+
+/*
+ * The radio sponsor's spot (MOCK-UP). One object so the sim's settings row,
+ * the front door's panel and the board's panel say the same thing. What it
+ * says is what is true: HelloRadioSky sponsors WebFPV and makes this radio.
+ * Nothing about performance or latency, because nobody here has measured it.
+ */
+export const RADIO_SPONSOR = Object.freeze({
+  slug: 'helloradiosky',
+  radio: 'Hello Radio V12',
+  heading: 'Our radio sponsor',
+  line: 'HelloRadioSky makes the Hello Radio V12.',
+  buyLabel: 'Buy the V12',
+  buyHref: 'https://example.com/buy-v12',
+  image: 'helloradiosky/v12-placeholder.svg',
+});
 
 /*
  * Patron map brands: Patreon supporter tier. Each patron's logo, or a name

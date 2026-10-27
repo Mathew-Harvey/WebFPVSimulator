@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300" role="img" aria-label="Hello Radio V12 picture goes here">
+  <title>V12 PLACEHOLDER: the Hello Radio V12 photo goes here</title>
+  <rect width="400" height="300" fill="#8a8f98"/>
+  <rect x="12" y="12" width="376" height="276" fill="none" stroke="#d6d9de" stroke-width="3" stroke-dasharray="10 8"/>
+  <text x="200" y="150" text-anchor="middle" font-family="Liberation Sans, Arial, sans-serif" font-size="44" font-weight="700" fill="#f3f4f6">V12</text>
+  <text x="200" y="190" text-anchor="middle" font-family="Liberation Sans, Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="4" fill="#f3f4f6">PLACEHOLDER</text>
+</svg>

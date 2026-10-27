@@ -171,7 +171,8 @@ import {
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import { stampFor, stampKeyForMap } from '../share/stamps.js';
 import { MARK_FINDS } from '../game/egg.js';
-import { PARTNERS, roleTitle } from '../partners/roster.js';
+import { PARTNERS, RADIO_SPONSOR, roleTitle } from '../partners/roster.js';
+import { RADIO_ROW_NOTE, openRadioShop } from '../share/radiosponsor.js';
 import { courseChip, hasFlyableTrack, inspectCourse, isEmptyCanvas } from '../share/listing.js';
 import { isoLapMs, drawIso, drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
 import { activeCourseSummary } from '../share/summary.js';
@@ -272,7 +273,7 @@ import {
  */
 /* card-board opens the board's page for one track in the board's tab, so it
  * wears the link arrow the leaderboard row wears (MENUS-PLAN.md 1.38). */
-const LINK_ACTIONS = new Set(['leaderboard', 'seat-board', 'wiki', 'support', 'partners', 'card-board']);
+const LINK_ACTIONS = new Set(['leaderboard', 'seat-board', 'wiki', 'support', 'partners', 'card-board', 'radio-shop']);
 /* mapbuilder is the builder's freestyle door, and it opens the same page
  * trackbuilder does, so it wears the same chevron: the pause menu's Back to
  * the track builder is one or the other depending on what is being flown,
@@ -9804,6 +9805,16 @@ export class Ui {
           action: 'stickhelp',
           note: 'A stick that does nothing? Move it here and watch every axis your radio sends.'
             + ' That tells the sim, the browser and the radio apart, and says what fixes each.',
+        },
+        /*
+         * MOCK-UP (mockup/helloradiosky): the radio sponsor's shop, last of
+         * the stick rows and a link row like Support, so it wears the
+         * link arrow. It opens a new tab on a press and does nothing else.
+         */
+        {
+          label: RADIO_SPONSOR.radio,
+          action: 'radio-shop',
+          note: RADIO_ROW_NOTE,
         },
         /*
          * RESTART FROM THE RADIO, bug-a25bc2dd: "As people start to grind
@@ -19962,6 +19973,11 @@ export class Ui {
     /* Patreon, which is not one of our sites, so not a named tab. */
     if (action === 'support') {
       openSupport();
+      return;
+    }
+    /* The radio sponsor's shop, a new tab on a press (MOCK-UP). */
+    if (action === 'radio-shop') {
+      openRadioShop();
       return;
     }
     /* Stripe tip link for one-off battery donation */

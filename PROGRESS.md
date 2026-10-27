@@ -72337,3 +72337,14 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - And `node scripts/together-shots.js`, every scene, after the last change, because mutes and leaving a room changed under scenes other than watching: 449 of 449.
 - Pictures: `/mnt/project-files/multiplayer/watch-mode/sweep/`.
 - The owner, 2026-10-27 03:57Z: "Push to main", for this entry. Main fast-forwarded from 1cda068 to this branch. No board change, so nothing to deploy first. Still behind `?mp=1` with `ROOMS_LAUNCHED` off, and the Cloudflare Worker is still to be redeployed by hand for the link previews. Not flown yet.
+
+## 2026-10-27 | polish | Design polish pass over the public game: phone menus, the picker, the board and the front door (branch)
+
+- Asked: the owner, 07:41Z: "Do a full design polish, an adversarial review of each page and each uiux system and improve". Multiplayer screens are left to their own thread.
+- How: every menu room of the sim (How to fly, Tricks, About, Maps, Tracks, Freestyle, Quad, Tune, Rates, Settings, Advanced, Stick help, Standings, Betaflight bench) at 1440x900 and 390x844 with touch, the board's Maps page and partners at both sizes, and the front door's scroll at both sizes. Looked at, not only measured.
+- Found and fixed: the picker's shelf tabs scroll sideways with no scroll bar, so on a phone the Whoop tab was off screen with no hint (now three tabs fit, `src/picker/picker.js`, copied to the board); Advanced's Render scale lost its last option (55 percent) on a phone because its own label squeezed it (`.row-switch` no longer shrinks); How to fly's tabs were cut off at both ends on a phone (they wrap); the Builder card's caption ended on the lone word "it." (`text-wrap: pretty`); on the front door the phone footer's partners and captions sat on the film's bright ceiling and could not be read (a scrim, phone only).
+- Seen and left: the Betaflight bench on a phone (a homage to the configurator, clipped sliders are its own); an empty Standings is a lone box (honest, the room is meant to be reached from a track); the multiplayer screens.
+- Board: `node scripts/vendor.js ../WebFPVSimulator` also brought in the Drone Factory roster entry the board had not yet copied. Nothing else changed there.
+- Latency: none. CSS only, on menus and the footer; nothing in the flight loop, the input path or the frame. Checked by reading the diff: no script runs per frame, no new draw call.
+- What went wrong: a first picker fix used flex-basis 0 and the tabs collapsed to slivers (the rail is content sized); caught in the first picture and replaced by a viewport width.
+- Checks run: `lint:preload`, `lint:partners`, `lint:boot` here; board `npm test`, all passed; landing `lint:page`, 32 of 32. Not run: `npm run verify`, `shots.js` end to end (the pictures above were taken with it for the changed screens).

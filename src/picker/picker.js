@@ -427,6 +427,7 @@ text-transform:uppercase;text-decoration:none;color:var(--wp-ink);background:var
 .wp-rooms .wp-pic{filter:none;opacity:.75}
 .wp-rooms.is-focus{transform:skewX(-9deg) translateY(-5px);box-shadow:0 0 0 4px var(--wp-amber),7px 7px 0 4px var(--wp-ink)}
 @media (max-width:760px){.wp{padding:14px 12px 0;box-shadow:5px 5px 0 rgba(11,17,22,.9)}
+.wp-rail{gap:8px;padding-right:14px}.wp-shelf{width:25vw}.wp-shelf .wp-lt{left:calc(14% + 4px);right:calc(14% + 2px)}
 .wp-offs{grid-template-columns:1fr;grid-auto-rows:auto}.wp-offs .wp-card{aspect-ratio:16/9}
 .wp-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px 14px}
 .wp-offs,.wp-grid{padding:0 4px}

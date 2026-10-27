@@ -72391,6 +72391,7 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Changed (`src/ui/ui.js` only): one `cameraFovRow(s)` shared by three rooms, so they cannot drift: the Quad room (unchanged place, same note), the Settings room (new `Camera` heading with Camera angle and Field of view, above `You`), and the Rates screen (under Camera angle). Same setting, so a change in one reads in the others. Not added to the pause menu: its list has no room and shell-check holds its fold, and a door to Rates and Quad is not there either now; asked the owner.
 - Latency: none. Menu rows only; the camera already applied `cameraFov` at once (`applySettings`, `src/main.js`). Nothing per frame, boot unchanged.
 - Checks: `node --check src/ui/ui.js` clean. Not run: `shell-check`/`shots`, which would see the new Settings rows and the room's overflow; not run `npm run verify`, nothing in physics. Not seen on screen.
+- The owner, 2026-10-27 15:19Z: "push to main", for this entry. Merged origin/main (56f7c4d) into the branch first, a PROGRESS.md append conflict only, both entries kept; `node --check` clean after the merge. Not flown.
 
 ## 2026-10-27 | maps | Thomas More's Shop rebuilt from his own flight
 

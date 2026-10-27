@@ -3159,6 +3159,333 @@ async function sceneTeach() {
 }
 
 /*
+ * Two pilots in Node flying circles near the page's quad, whose pose c is:
+ * Kite 14 m ahead of it at 7 m/s, two metres up; Moss a wider, slower
+ * circle 40 m off to the side. Both bank into the turn and face along it,
+ * as a quad flying a circle does. `on` stops and starts each.
+ */
+function circling(c, kite, moss) {
+  const t0 = performance.now();
+  const posed = (b, cx, cy, cz, r, w, phase, t) => {
+    const a = phase + w * t;
+    const px = cx + Math.cos(a) * r;
+    const pz = cz + Math.sin(a) * r;
+    /* The nose, Three's -z, yawed to face along the circle, then rolled
+     * about it into the turn. */
+    const hy = (w > 0 ? Math.PI - a : -a) / 2;
+    const hb = (0.4 * Math.sign(w)) / 2;
+    b.s.uplink(px, cy, pz,
+      Math.sin(hy) * Math.sin(hb), Math.sin(hy) * Math.cos(hb), Math.cos(hy) * Math.sin(hb), Math.cos(hy) * Math.cos(hb),
+      true, 0);
+  };
+  const kc = { x: c.px + c.fx * 14, y: c.py + 2, z: c.pz + c.fz * 14 };
+  const mc = { x: c.px + c.fz * 40, y: c.py + 3, z: c.pz - c.fx * 40 };
+  const on = { kite: true, moss: true };
+  const timer = setInterval(() => {
+    const t = (performance.now() - t0) / 1000;
+    if (on.kite && kite.s.inRoom) posed(kite, kc.x, kc.y, kc.z, 6, 7 / 6, 0, t);
+    if (on.moss && moss.s.inRoom) posed(moss, mc.x, mc.y, mc.z, 10, -5 / 10, 1, t);
+  }, 1000 / 30);
+  return { on, stop: () => clearInterval(timer) };
+}
+
+/* Whether the watching bar is over the quad watched, with a quad's width
+ * of margin: '' when it is clear. */
+async function barOverQuad(page) {
+  return page.evaluate(`(() => {
+    const w = window.__watch();
+    const r = document.querySelector('#tg .watchbar').getBoundingClientRect();
+    if (!w.onScreen) return 'no quad on screen';
+    const [x, y] = w.onScreen;
+    const m = 30;
+    return x > r.left - m && x < r.right + m && y > r.top - m && y < r.bottom + m
+      ? 'the quad at ' + x.toFixed(0) + ',' + y.toFixed(0) + ' is under the bar ' + r.left.toFixed(0) + '-' + r.right.toFixed(0) + ' x ' + r.top.toFixed(0) + '-' + r.bottom.toFixed(0) : '';
+  })()`);
+}
+
+/* Whether a watching camera w (window.__watch()) rides behind and above
+ * the quad it watches, looking at it. */
+function behindOf(w) {
+  if (!w.target) return { ok: false };
+  const d = [w.target[0] - w.cam[0], w.target[1] - w.cam[1], w.target[2] - w.cam[2]];
+  const dist = Math.hypot(...d);
+  const along = (d[0] * w.look[0] + d[1] * w.look[1] + d[2] * w.look[2]) / dist;
+  return { ok: dist > 0.8 && dist < 2.2 && along > 0.85 && w.cam[1] > w.target[1], dist: dist.toFixed(2), along: along.toFixed(3) };
+}
+
+/*
+ * A tap on the element where it is on screen, as a thumb makes it: the
+ * point's own touch, so an element under something else is not tapped.
+ */
+async function tapAt(page, sel) {
+  const at = await page.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  if (!at) throw new Error(`no ${sel} to tap`);
+  await page.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at.x, y: at.y }] }, page.sessionId);
+  await page.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }, page.sessionId);
+  await wait(200);
+}
+
+/*
+ * Watching at its edges, the bug sweep of 2026-10-27. The board lost and
+ * rebuilt under a page that is watching, with the pilot watched the last
+ * one back, so every number in the room changes hands: the camera waits
+ * for that pilot and never follows whoever has their old number, and a
+ * mute stays on the pilot it was meant for. A sheet opened while the
+ * camera flies home, and a pilot watched who leaves while a sheet is up:
+ * the flight never resumes behind a sheet. A racer watching from the pit
+ * when the countdown starts is put home on the grid. Kicked on the
+ * way home: the card that says why, over a flight that waits. And a phone,
+ * where the bar is pressed with a thumb.
+ */
+async function sceneWatchEdges() {
+  console.log('\nwatchedge: watching through a deploy, under sheets, into a race, kicked, on a phone');
+  const kite = bot('Kite Runner', 211);
+  const moss = bot('Moss Comet', 223);
+  const room = await hostRoom(kite, {
+    name: 'Spotters', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  await joinRoom(moss, room.code, room.invite || '');
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`;
+  let page = await open(at, seedFor({ met: true, name: 'Edge Pilot' }));
+  let shot = shooter(page, 'watchedge');
+  let fly = null;
+  const W = 'window.__watch()';
+  const watchNow = () => page.evaluate(W);
+  const flyingAgain = () => page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 5000).then(() => true, () => false);
+  const riding = () => page.until(`${W}.phase === 'riding'`, 5000).then(() => true, () => false);
+  try {
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    const c = await poseOf(kite, 'Edge Pilot');
+    fly = circling(c, kite, moss);
+    await page.until(`${T} && window.__together().pilots === 3`, 10000);
+    const kiteWas = kite.s.you;
+    const mossWas = moss.s.you;
+
+    /* Moss muted, Kite watched, from their rows. */
+    await page.evaluate("(() => { document.querySelector('#tg .roomchip').click(); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, `pilot-${mossWas}`);
+    await pressKey(page, `mute-${mossWas}`);
+    await pressKey(page, `pilot-${kiteWas}`);
+    await pressKey(page, `watch-${kiteWas}`);
+    check('watching Kite, Moss muted', (await state(page)).watching === kiteWas && (await state(page)).muted.join() === String(mossWas),
+      JSON.stringify((await state(page)).muted));
+    await riding();
+
+    /* THE BOARD LOST AND BACK, Kite the last one in. */
+    await killBoard();
+    await until(() => kite.s.link.state === 'retrying', 5000);
+    kite.s.link.clearRetry();
+    await page.until(`${T} && ['retrying', 'connecting'].includes(window.__together().link)`, 5000);
+    await page.until(SEES('Getting back in', '#tg .watchbar'), 3000).catch(() => {});
+    check('while the board is gone the bar says so, and the camera holds behind the quad', await page.evaluate(SEES('Getting back in', '#tg .watchbar'))
+      && (await watchNow()).phase === 'riding', await page.evaluate("document.querySelector('#tg .watchbar').textContent"));
+    await freshBoard();
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await until(() => moss.s.inRoom, 10000);
+    await wait(600);
+    const waiting = await state(page);
+    const waitingCam = await watchNow();
+    check('back in without Kite: the camera waits for Kite, following nobody else meanwhile', waiting.watching === -1 && waitingCam.id === -1
+      && waitingCam.phase === 'riding' && await page.evaluate(SEES('Kite Runner', '#tg .watchbar')) && await page.evaluate(SEES('Getting back in', '#tg .watchbar')),
+    JSON.stringify({ watching: waiting.watching, cam: waitingCam.id, phase: waitingCam.phase }));
+    const said = await toastText(page);
+    check('and says nobody left', !/ left\./.test(said), said);
+    check(`the mute is on Moss under Moss's new number (${mossWas} then ${moss.s.you}), and nobody else`, waiting.muted.join() === String(moss.s.you),
+      `${JSON.stringify(waiting.muted)} moss ${moss.s.you} page ${waiting.you}`);
+    await shot('waiting-for-kite');
+    kite.s.link.open({ t: 'resume', ticket: kite.s.link.ticket });
+    await until(() => kite.s.inRoom, 10000);
+    const found = await page.until(`${T} && window.__together().watching === ${kite.s.you}`, 6000).then(() => true, () => false);
+    check(`Kite back under number ${kite.s.you} (was ${kiteWas}): the camera follows Kite again`, found && (await watchNow()).id === kite.s.you,
+      JSON.stringify(await state(page).then((st) => st.watching)));
+    await wait(1200);
+    const b = behindOf(await watchNow());
+    check(`and rides behind Kite (${b.dist} m)`, b.ok, JSON.stringify(b));
+    await shot('kite-again');
+
+    /* A SHEET ON THE WAY HOME: a tap on the room card while the camera
+     * flies back. */
+    await tapLoose(page, 'KeyV');
+    check('V starts home', (await watchNow()).phase === 'leaving');
+    await page.evaluate("(() => { document.querySelector('#tg .roomchip').click(); return 1; })()");
+    await sheetIs(page, 'room');
+    const under = await page.evaluate(`({ phase: ${W}.phase, classOn: ${W}.classOn, mode: window.__mode, screen: window.__ui.screen })`);
+    check('a sheet opened on the way home puts the camera back at once, the flight paused under it', under.phase === '' && !under.classOn
+      && under.mode === 'paused' && under.screen === 'paused', JSON.stringify(under));
+    await wait(2600);
+    check('and the flight is still paused when the camera would have landed', await page.evaluate("window.__mode === 'paused' && window.__together().sheet === 'room'"));
+    await page.tap('Escape');
+    check('closing the sheet flies on', await flyingAgain());
+
+    /* A PILOT WATCHED WHO LEAVES WHILE A SHEET IS UP, nobody else in the
+     * air: home at once under the sheet, and the sheet gives the flight
+     * back. */
+    moss.s.away(true);
+    fly.on.moss = false;
+    await wait(300);
+    await tapLoose(page, 'KeyV');
+    check('V watches the one pilot flying', (await state(page)).watching === kite.s.you);
+    await riding();
+    await tapLoose(page, 'Enter');
+    await sheetIs(page, 'scene');
+    fly.on.kite = false;
+    kite.s.leave();
+    await page.until(`${T} && window.__together().watching === 0`, 5000).catch(() => {});
+    const gone = await page.evaluate(`({ phase: ${W}.phase, mode: window.__mode, sheet: window.__together().sheet })`);
+    check('the pilot watched leaving under a sheet puts the camera home at once, the flight paused under the sheet', gone.phase === '' && gone.mode === 'paused'
+      && gone.sheet === 'scene', JSON.stringify(gone));
+    await wait(2600);
+    check('still paused a while later', await page.evaluate("window.__mode === 'paused'"));
+    await page.tap('Escape');
+    check('closing it flies on', await flyingAgain());
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (fly) fly.stop();
+    kite.s.leave();
+    moss.s.leave();
+    await page.close();
+  }
+
+  /* A RACE: the page readied in the pit, watching the one pilot not yet
+   * ready; that pilot readies, the countdown starts, and the page is home
+   * on the grid. */
+  const boss = bot('Pit Boss', 83);
+  const ghost = bot('Gate Ghost', 97);
+  const race = await hostRoom(boss, {
+    name: 'Spotter race', way: '5inch', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  await joinRoom(ghost, race.code, boss.s.invite);
+  const raceAt = new URL(roomUrl('http://127.0.0.1/index.html', race, { invite: boss.s.invite }));
+  raceAt.searchParams.set('board', boardOrigin);
+  page = await open(`${raceAt.pathname}${raceAt.search}${raceAt.hash}`, seedFor({ met: true, name: 'Race Watcher' }));
+  shot = shooter(page, 'watchedge');
+  try {
+    await sheetIs(page, 'join');
+    await pressKey(page, 'join');
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    const c = await poseOf(boss, 'Race Watcher');
+    fly = circling(c, boss, ghost);
+    await page.until(`${T} && window.__together().pilots === 3`, 10000);
+    boss.s.link.raceSend({ t: 'laps', n: 2 });
+    boss.s.link.raceSend({ t: 'ready', on: true });
+    await wait(300);
+    await tapLoose(page, 'KeyG');
+    await page.until(`${T} && window.__together().race === 'pit'`, 3000).catch(() => {});
+    await page.evaluate("(() => { document.querySelector('#tg .roomchip').click(); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, `pilot-${ghost.s.you}`);
+    await pressKey(page, `watch-${ghost.s.you}`);
+    check('readied in the pit, the page watches the pilot not yet ready', (await state(page)).watching === ghost.s.you);
+    await riding();
+    ghost.s.link.raceSend({ t: 'ready', on: true });
+    const counted = await page.until(`${T} && window.__together().race === 'count'`, 8000).then(() => true, () => false);
+    await page.until(`${T} && window.__together().watching === 0`, 3000).catch(() => {});
+    const homeFor = await toastText(page);
+    check('the countdown puts the racer home on the grid', counted && (await state(page)).watching === 0 && !(await watchNow()).classOn
+      && homeFor.includes('On the grid'), homeFor);
+    await shot('race-home');
+    const raced = await page.until(`${T} && window.__together().race === 'live'`, 12000).then(() => true, () => false);
+    check('and the page flies the race from the grid', raced && await page.evaluate("window.__mode === 'flight' && window.__ui.screen === 'flight' && !window.__watch().classOn"),
+      await page.evaluate('window.__mode'));
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (fly) fly.stop();
+    boss.s.leave();
+    ghost.s.leave();
+    await page.close();
+  }
+
+  /* KICKED ON THE WAY HOME, and a phone. */
+  const keeper = bot('Kite Runner', 211);
+  const other = bot('Moss Comet', 223);
+  const third = await hostRoom(keeper, {
+    name: 'Thumbs', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  await joinRoom(other, third.code, third.invite || '');
+  const coarse = `(() => { const mm = window.matchMedia.bind(window);
+    window.matchMedia = (q) => (q === '(pointer: coarse)' ? { matches: true, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return false; } } : mm(q)); })();`;
+  page = await open(at, `${seedFor({ met: true, name: 'Thumb Pilot' })}\n${coarse}`, { touch: true, width: 844, height: 390 });
+  shot = shooter(page, 'watchedge');
+  try {
+    await joinByCode(page, third.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    const c = await poseOf(keeper, 'Thumb Pilot');
+    fly = circling(c, keeper, other);
+    await page.until(`${T} && window.__together().pilots === 3`, 10000);
+    await tapAt(page, '#tg .roomchip');
+    await sheetIs(page, 'room');
+    await wait(300);
+    await shot('phone-room-page');
+    await tapAt(page, '#tg [data-k="watch"]');
+    check('on a phone, a thumb on Watch a pilot watches', (await state(page)).watching !== 0, JSON.stringify((await state(page)).watching));
+    await riding();
+    await wait(400);
+    await shot('phone-riding');
+    const layout = await page.evaluate(`(() => {
+      const r = document.querySelector('#tg .watchbar').getBoundingClientRect();
+      const sticks = document.querySelector('.touch-fly');
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, w: innerWidth, h: innerHeight,
+        sticks: Boolean(sticks && !sticks.hidden && getComputedStyle(sticks).visibility !== 'hidden' && getComputedStyle(sticks).display !== 'none'),
+        hint: (document.querySelector('#tg .watchbar .whint') || {}).textContent || '' };
+    })()`);
+    check('the bar fits the phone\'s screen, and names no keys', layout.left >= 0 && layout.right <= layout.w && layout.top >= 0 && layout.bottom <= layout.h && !layout.hint,
+      JSON.stringify(layout));
+    check('and the thumb sticks are put away', !layout.sticks, JSON.stringify(layout));
+    const barOn = await overlaps(page, '#tg .watchbar', ['.music-dock', '.bug-chip', '.banner', '#tg .roomchip']);
+    check('the bar covers nothing that stays on screen', !barOn, barOn);
+    const overQuad = await barOverQuad(page);
+    check('nor the quad watched', !overQuad, overQuad);
+    const was = (await state(page)).watching;
+    await tapAt(page, '#tg [data-k="watch-next"]');
+    check('a thumb on ▶ goes to the other pilot', (await state(page)).watching !== was && (await state(page)).watching !== 0);
+    await riding();
+    await tapAt(page, '#tg [data-k="watch-stop"]');
+    check('and on Back to my quad goes home', (await watchNow()).phase === 'leaving');
+    check('and flies on', await flyingAgain());
+
+    /* Kicked while the camera flies home. */
+    await tapAt(page, '#tg .roomchip');
+    await sheetIs(page, 'room');
+    await tapAt(page, '#tg [data-k="watch"]');
+    await riding();
+    await tapAt(page, '#tg [data-k="watch-stop"]');
+    const pageId = (await state(page)).you;
+    keeper.s.link.hostAction('kick', pageId);
+    await page.until(`${T} && !window.__together().inRoom`, 5000).catch(() => {});
+    await wait(2800);
+    const kicked = await page.evaluate(`({ phase: ${W}.phase, mode: window.__mode, sheet: window.__together().sheet, classOn: ${W}.classOn })`);
+    check('kicked on the way home: the card that says why, over a flight that waits for it', kicked.mode === 'paused' && kicked.sheet !== '' && kicked.phase === ''
+      && !kicked.classOn, JSON.stringify(kicked));
+    await shot('phone-kicked');
+    await page.tap('Escape');
+    check('and closing the card flies on, solo', await flyingAgain());
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (fly) fly.stop();
+    keeper.s.leave();
+    other.s.leave();
+    await page.close();
+  }
+}
+
+/*
  * Watching another pilot. Two pilots in Node fly circles near the page, one
  * close and one across the field; the page is shown that they can be
  * watched, rides behind each in turn, follows one round its circle, is
@@ -3177,7 +3504,7 @@ async function sceneWatch() {
   const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`;
   const page = await open(at, seedFor({ met: true, name: 'Watch Pilot', watched: false }));
   const shot = shooter(page, 'watch');
-  let flying = null;
+  let fly = null;
   const W = 'window.__watch()';
   const watchNow = () => page.evaluate(W);
   const ids = {};
@@ -3187,31 +3514,7 @@ async function sceneWatch() {
     await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
     const c = await poseOf(kite, 'Watch Pilot');
     check('the page flies in the room', Boolean(c));
-    /* Kite circles 14 m ahead of the page at 7 m/s, two metres up; Moss a
-     * wider, slower circle 40 m off to the side. Both bank into the turn
-     * and face along it, as a quad flying a circle does. */
-    const t0 = performance.now();
-    const posed = (b, cx, cy, cz, r, w, phase, t) => {
-      const a = phase + w * t;
-      const px = cx + Math.cos(a) * r;
-      const pz = cz + Math.sin(a) * r;
-      /* The nose, Three's -z, yawed to face along the circle, then rolled
-       * about it into the turn. */
-      const hy = (w > 0 ? Math.PI - a : -a) / 2;
-      const hb = (0.4 * Math.sign(w)) / 2;
-      b.s.uplink(px, cy, pz,
-        Math.sin(hy) * Math.sin(hb), Math.sin(hy) * Math.cos(hb), Math.cos(hy) * Math.sin(hb), Math.cos(hy) * Math.cos(hb),
-        true, 0);
-    };
-    const kc = { x: c.px + c.fx * 14, y: c.py + 2, z: c.pz + c.fz * 14 };
-    const mc = { x: c.px + c.fz * 40, y: c.py + 3, z: c.pz - c.fx * 40 };
-    let kiteOn = true;
-    let mossOn = true;
-    flying = setInterval(() => {
-      const t = (performance.now() - t0) / 1000;
-      if (kiteOn) posed(kite, kc.x, kc.y, kc.z, 6, 7 / 6, 0, t);
-      if (mossOn) posed(moss, mc.x, mc.y, mc.z, 10, -5 / 10, 1, t);
-    }, 1000 / 30);
+    fly = circling(c, kite, moss);
     await page.until(`${T} && window.__together().pilots === 3`, 10000);
     ids.kite = kite.s.you;
     ids.moss = moss.s.you;
@@ -3245,13 +3548,7 @@ async function sceneWatch() {
     const rode = await page.until(`${W}.phase === 'riding'`, 4000).then(() => true, () => false);
     const ride = await watchNow();
     check('and lands behind their quad within the flight\'s time', rode, JSON.stringify(ride));
-    const behind = (w) => {
-      if (!w.target) return { ok: false };
-      const d = [w.target[0] - w.cam[0], w.target[1] - w.cam[1], w.target[2] - w.cam[2]];
-      const dist = Math.hypot(...d);
-      const along = (d[0] * w.look[0] + d[1] * w.look[1] + d[2] * w.look[2]) / dist;
-      return { ok: dist > 0.8 && dist < 2.2 && along > 0.85 && w.cam[1] > w.target[1], dist: dist.toFixed(2), along: along.toFixed(3) };
-    };
+    const behind = behindOf;
     const b1 = behind(ride);
     check(`the camera rides behind and above the quad, looking at it (${b1.dist} m, ${b1.along})`, b1.ok, JSON.stringify(ride));
     await wait(300);
@@ -3260,6 +3557,8 @@ async function sceneWatch() {
       && await page.evaluate(SEES('V or Esc', '#tg .watchbar')) && await page.evaluate(SEES('Back to my quad', '#tg .watchbar')));
     const barOn = await overlaps(page, '#tg .watchbar', ['.music-dock', '.bug-chip', '.banner']);
     check('the bar covers none of what stays on screen', !barOn, barOn);
+    const overQuad = await barOverQuad(page);
+    check('nor the quad watched', !overQuad, overQuad);
 
     /* Following: a second later the camera has gone round with them, and
      * is still behind. */
@@ -3299,11 +3598,11 @@ async function sceneWatch() {
      * moves on to somebody who is flying. */
     const stopper = first === ids.kite ? kite : moss;
     stopper.s.away(true);
-    if (stopper === kite) kiteOn = false; else mossOn = false;
+    fly.on[stopper === kite ? 'kite' : 'moss'] = false;
     const movedOn = await page.until(`${T} && window.__together().watching === ${other}`, 8000).then(() => true, () => false);
     check('a pilot watched who goes to the menus is left for one who is flying', movedOn, await toastText(page));
     stopper.s.away(false);
-    if (stopper === kite) kiteOn = true; else mossOn = true;
+    fly.on[stopper === kite ? 'kite' : 'moss'] = true;
     await page.until(`${W}.phase === 'riding'`, 4000).catch(() => {});
 
     /* V: home into the goggles, and the flight carries on. */
@@ -3360,7 +3659,7 @@ async function sceneWatch() {
     const watched = (await state(page)).watching;
     const leaver = watched === ids.kite ? kite : moss;
     const stayer = watched === ids.kite ? ids.moss : ids.kite;
-    if (leaver === kite) kiteOn = false; else mossOn = false;
+    fly.on[leaver === kite ? 'kite' : 'moss'] = false;
     leaver.s.leave();
     const onTo = await page.until(`${T} && window.__together().watching === ${stayer}`, 6000).then(() => true, () => false);
     const said = await toastText(page);
@@ -3381,7 +3680,7 @@ async function sceneWatch() {
     console.log(`  FAIL  ${e.message}`);
     await shot('failed').catch(() => {});
   } finally {
-    if (flying) clearInterval(flying);
+    if (fly) fly.stop();
     kite.s.leave();
     moss.s.leave();
     await page.close();
@@ -3408,6 +3707,7 @@ try {
   if (wanted('teach')) { await freshBoard(); await sceneTeach(); }
   if (wanted('gate')) { await freshBoard(); await sceneGate(); }
   if (wanted('watch')) { await freshBoard(); await sceneWatch(); }
+  if (wanted('watchedge')) { await freshBoard(); await sceneWatchEdges(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

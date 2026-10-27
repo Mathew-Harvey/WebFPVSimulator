@@ -3297,8 +3297,10 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Watching another pilot: the flight paused with its menu hidden and
      * the camera flown over to ride behind them. Asked again with another
      * pilot, it flies across to them. False when there is no flight to
-     * pause. */
-    watch: (id) => watchStart(id),
+     * pause. `same` is the same quad under another number, as a room
+     * rebuilt after a deploy gives out: the camera stays where it is and
+     * follows the new number, -1 for a pilot not back yet. */
+    watch: (id, same = false) => watchStart(id, same),
     /* Back to the goggles: the camera flies home and the flight resumes
      * when it lands. `now` puts it back at once and leaves the flight
      * paused, for something that takes over, such as the room's grid. */
@@ -11038,7 +11040,10 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
 
-      const focus = camOverride
+      /* Watching another pilot, the shadows and the grass's wind go with
+       * the camera riding behind them: at the parked quad they would end
+       * in a hard edge a field away from the quad on screen. */
+      const focus = camOverride || (watchCam && watchCam.on)
         ? shell.camera.position
         : (mode === 'title' ? shell.quad.position : pCurr);
       view.updateShadowFocus(focus);
@@ -12083,6 +12088,11 @@ export async function boot({ loading, bootStart, mapId }) {
     quadVisible: shell.quad.visible,
     craft: pCurr.toArray(),
     target: watchSeen ? [watchPose.px, watchPose.py, watchPose.pz] : null,
+    /* Where on screen the quad watched is, in CSS pixels. */
+    onScreen: watchSeen ? (() => {
+      const v = new THREE.Vector3(watchPose.px, watchPose.py, watchPose.pz).project(shell.camera);
+      return [((v.x + 1) / 2) * innerWidth, ((1 - v.y) / 2) * innerHeight];
+    })() : null,
     classOn: document.documentElement.classList.contains('tg-watching'),
   });
   window.__watchBench = async (n = 2000) => {
@@ -14127,7 +14137,15 @@ export async function boot({ loading, bootStart, mapId }) {
     return watchCamLoading;
   }
 
-  function watchStart(id) {
+  function watchStart(id, same = false) {
+    if (same) {
+      if (!watchId) {
+        return false;
+      }
+      watchId = id;
+      watchSeen = false;
+      return true;
+    }
     if (!id || camOverride) {
       return false;
     }

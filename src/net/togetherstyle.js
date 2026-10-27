@@ -753,7 +753,7 @@ export const TOGETHER_CSS = `
  * its own instruments and the hidden pause menu away while it is up
  * (.tg-watching in index.html). */
 #tg .watchbar {
-  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: grid; justify-items: center; gap: 10px;
+  position: absolute; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: grid; justify-items: center; gap: 10px;
   width: max-content; max-width: calc(100% - 24px); pointer-events: auto; animation: tg-rise 0.3s cubic-bezier(.2,1.4,.4,1);
 }
 #tg .watchbar .wpanel {
@@ -769,6 +769,18 @@ export const TOGETHER_CSS = `
   padding: 4px 12px; border-radius: 14px; background: rgba(11, 17, 22, 0.82); color: var(--cream); font: 700 13px/1.3 var(--ui);
 }
 @keyframes tg-rise { from { transform: translate(-50%, 30px); opacity: 0; } }
+/* A phone on its side: the bar in one line along the foot, the face a size
+ * down and the words that say what it is gone, because the quad watched
+ * rides a little under the middle of the picture and the two-line bar,
+ * 150 px of a 390 px screen, was over it. The keys' hint goes too: the
+ * first ride's banner says them. */
+@media (max-height: 520px) {
+  #tg .watchbar { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); grid-auto-flow: column; align-items: center; gap: 10px; }
+  #tg .watchbar .wpanel { gap: 8px; padding: 4px 6px; border-width: 3px; box-shadow: 4px 4px 0 var(--ink); }
+  #tg .watchbar .wface canvas { width: 40px !important; height: 40px !important; border-width: 2px; }
+  #tg .watchbar .wtext { gap: 2px; }
+  #tg .watchbar .wtext .kicker, #tg .watchbar .whint { display: none; }
+}
 
 /* The comic dialogue: a portrait stands on a speech box, as in a visual
  * novel, so a quick line reads as a character speaking. Bottom left, clear

@@ -158,15 +158,15 @@ export const MAPS = [
   /*
    * THOMAS MORE'S WAREHOUSE, on the owner's ask of 27 October 2026: the
    * exhibit builders' shop and store Thomas More flies, rebuilt from the
-   * stills he sent, at the houses' scale and flown the same way, as the
-   * whoop. Built by the same pipeline (src/maps/warehouse/) and, like the
-   * houses, off the board.
+   * frames of his own whoop flight through it, at the houses' scale and
+   * flown the same way, as the whoop. Built by the same pipeline
+   * (src/maps/warehouse/) and, like the houses, off the board.
    */
   {
     id: 'warehouse',
     name: "Thomas More's Shop",
     mode: 'freestyle',
-    note: "Thomas More's Shop, flown on a whoop: the crate aisle, the dock and its trailer, the woodshop, the racking, the red corridor and the spray booth.",
+    note: "Thomas More's Shop, flown on a whoop: the dock wall, the crate aisle to the white office, the workshop, the wide doorway into the machine room, and the spray room.",
     buildMs: MAP_BUILD_MS.warehouse,
     craftModel: 'whoop65',
     craft: 'whoop65',

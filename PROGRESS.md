@@ -72350,3 +72350,11 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - What went wrong: a first picker fix used flex-basis 0 and the tabs collapsed to slivers (the rail is content sized); caught in the first picture and replaced by a viewport width.
 - Checks run: `lint:preload`, `lint:partners`, `lint:boot` here; board `npm test`, all passed; landing `lint:page`, 32 of 32. Not run: `npm run verify`, `shots.js` end to end (the pictures above were taken with it for the changed screens).
 - The owner, 2026-10-27 08:27Z: "Push to main", for this entry (the sim, the board's picker copy and the landing page's phone footer). Main fast-forwarded from d277c6d. Not flown by the owner yet.
+
+## 2026-10-27 | multiplayer | Rooms on for everybody
+
+- Asked: the owner, in the design polish thread, 12:16Z: "ok lets make it live for everyone now", 12:22Z: "swithc it on", and 12:25Z: "yes make multi player for everyone".
+- `ROOMS_LAUNCHED` in `src/main.js` is now true: Fly together, the Rooms tab and room links no longer need `?mp=1`, and the links a room writes stop carrying it. The board needed nothing: its rooms routes and socket have been live since 2026-10-26.
+- Latency: none solo. Nothing of `src/net/` is fetched until a pilot asks for a room, as before; the switch only shows the doors.
+- Checks: `node scripts/together-shots.js --launched=1`, every scene, 449 of 449 (room links without `?mp=1`, the doors shown with no flag). Not run: `npm run verify`, nothing in physics, the plant, the ABI or the build changed.
+- The owner's word above is the push: main fast-forwarded to this commit. Not yet flown by two real people.

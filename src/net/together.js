@@ -94,6 +94,9 @@ const HELLOS_PER_MINUTE = 4;
 /* Near within this long ago still counts as near, for a queued hello. */
 const HELLO_FRESH_MS = 1000;
 const BANNER_MS = 4200;
+/* How long a pilot being watched may sit in the menus before the camera
+ * goes to somebody who is flying, when anybody is. */
+const WATCH_AWAY_MS = 3000;
 const TOAST_MS = 2400;
 /* How long after a room's picture falls due before it is drawn: the sheet
  * that has just opened draws first. See oweCard. */
@@ -369,12 +372,18 @@ function loadStore() {
         met: raw.met === true,
         consent: raw.consent === true,
         taught: raw.taught === true,
+        /* Shown that a pilot can be watched, and shown what to do while
+         * watching one: each once, ever. */
+        watchTaught: raw.watchTaught === true,
+        watchRode: raw.watchRode === true,
       };
     }
   } catch (e) {
     /* A private window: the avatar lasts the visit. */
   }
-  return { avatar: null, met: false, consent: false, taught: false };
+  return {
+    avatar: null, met: false, consent: false, taught: false, watchTaught: false, watchRode: false,
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -471,6 +480,16 @@ export function createTogether(shell) {
   /* The map the last one owed was of, so a 'room' that says there is no
    * picture asks for one only when the board took it off for a new map. */
   let cardMap = '';
+  /* WATCHING: the pilot this one is riding behind (the shell flies the
+   * camera, src/render/watchcam.js), 0 for nobody; since when they have
+   * been in the menus; whether the pad has to come to rest before it
+   * steers; and since when the flight has been on screen, and when the
+   * callout that says watching exists last looked for somebody to name. */
+  let watching = 0;
+  let watchAwayAt = 0;
+  let watchPadWait = false;
+  let flightSince = 0;
+  let offerLookedAt = 0;
 
   function me() {
     return {
@@ -892,6 +911,10 @@ export function createTogether(shell) {
   /* Out of the room, however that came about. The card that says why, if
    * there is one, is the caller's. */
   function dropSession() {
+    /* The camera comes home at once and the pause menu is there, with
+     * whatever card says why: a flight resumed behind it would be flown
+     * by nobody. */
+    stopWatch(true);
     if (session) {
       session.leave();
     }
@@ -1349,6 +1372,9 @@ export function createTogether(shell) {
         break;
       case 'left': {
         if (shell.forget) shell.forget(data.id);
+        if (data.id === watching) {
+          watchGone(data.pilot, true);
+        }
         if (data.pilot && !muted.has(data.id)) {
           logLine(data.id, data.why === 'kicked' || data.why === 'banned' ? 'was taken out of the room' : 'left', 'calm', data.pilot);
         }
@@ -1807,6 +1833,7 @@ export function createTogether(shell) {
           [k('#7'), 'Wave'],
           [k('#Q'), 'Show the lines and their keys'],
           [k('#Tab'), 'See who is here'],
+          [k('#V'), 'Watch another pilot fly, from behind their quad'],
           [k('#Enter'), typed ? 'Talk, or type your own line' : 'Talk'],
           racing ? [k('#G'), 'Ready up for the next race'] : null,
           [k('#Esc', ' then Room'), 'Invite friends, change your look, or leave'],
@@ -1814,7 +1841,7 @@ export function createTogether(shell) {
       } else {
         const way = by === 'touch' ? 'Tap the room card, top right' : 'Pause, then Room';
         rows = [
-          [k(way), 'Talk, see who is here, invite friends, or leave'],
+          [k(way), 'Talk, see who is here, watch a pilot fly, invite friends, or leave'],
           racing ? [k(by === 'touch' ? 'Tap Ready in the pit' : 'Pause, then Room, then Race'), 'Ready up for the next race'] : null,
           by === 'pad' ? [k('#1', ' to ', '#6'), 'Say a line, from a keyboard'] : null,
         ];
@@ -2953,6 +2980,7 @@ export function createTogether(shell) {
       return row;
     }
     const acts = h('div.actions', null,
+      canWatch(p) ? btn('Watch', 'small mint', () => startWatch(p.id), { 'data-k': `watch-${p.id}` }) : null,
       btn(muted.has(p.id) ? 'Unmute' : 'Mute', 'small ghost', () => {
         if (muted.has(p.id)) muted.delete(p.id); else muted.add(p.id);
         refresh('room');
@@ -3015,6 +3043,9 @@ export function createTogether(shell) {
               type: 'button', 'data-k': 'race', 'data-autofocus': true, on: { click: () => sheetRace() },
             }, h('span', { text: 'Race' }), h('small', { text: raceNote })) : null,
             btn('Talk', 'ghost', () => sheetScene(), { 'data-k': 'talk', 'data-autofocus': racing ? null : true }),
+            watchList().length && !racingNow() ? h('button.btn.ghost', {
+              type: 'button', 'data-k': 'watch', on: { click: () => startWatch(firstToWatch()) },
+            }, h('span', { text: 'Watch a pilot' }), h('small', { text: `${watchList().length} flying` })) : null,
             btn('Invite pilots', 'ghost', () => sheetShare(), { 'data-k': 'invite' }),
             isHost() ? btn('Room settings', 'ghost', () => sheetSettings(), { 'data-k': 'settings' }) : null,
             btn('Your look', 'ghost', () => sheetEditor(() => refresh('room')), { 'data-k': 'look' }),
@@ -3023,8 +3054,8 @@ export function createTogether(shell) {
           h('div.pane', null, h('span.lab-h', { text: 'Pilots' }),
             pilots.map((p) => pilotRow(p)),
             h('p.help', { text: pilots.length < 2 ? 'Nobody else is here yet. Invite pilots sends them the link.'
-              : isHost() ? 'Pick a pilot to mute, report, kick or ban them, or to hand them the room. Mute is only for you, and the board never knows.'
-                : 'Pick a pilot to mute or report them. Mute is only for you, and the board never knows.' })))));
+              : isHost() ? 'Pick a pilot to watch them fly, mute, report, kick or ban them, or hand them the room. Mute is only for you, and the board never knows.'
+                : 'Pick a pilot to watch them fly, mute or report them. Mute is only for you, and the board never knows.' })))));
     });
   }
 
@@ -3383,7 +3414,10 @@ export function createTogether(shell) {
   const standBox = h('div.standings');
   standBox.hidden = true;
   const toastBox = h('div.tg-toasts');
-  layer.append(chip, pit, standBox, posBox, roster, logBox, talk, helloBox, qbar, bannerBox, countBox, toastBox);
+  /* Who is being watched, and the way to another pilot and back. */
+  const watchBox = h('div.watchbar');
+  watchBox.hidden = true;
+  layer.append(chip, pit, standBox, posBox, roster, logBox, talk, helloBox, qbar, bannerBox, countBox, watchBox, toastBox);
 
   let rosterOn = false;
   let qbarTimer = null;
@@ -3416,11 +3450,13 @@ export function createTogether(shell) {
     );
   }
 
-  function banner(avatar, expr, head, small, tone = '') {
+  /* extra: buttons after the words, for a banner that offers something;
+   * ms: how long it stays. */
+  function banner(avatar, expr, head, small, tone = '', { extra = null, ms = BANNER_MS } = {}) {
     clearTimeout(bannerTimer);
-    bannerBox.replaceChildren(h(`div.tg-banner${tone ? `.${tone}` : ''}`, null, avatar ? face(avatar, expr || 'calm', 56) : null,
-      h('div', null, h('b', { text: head }), small ? h('small', { text: small }) : null)));
-    bannerTimer = setTimeout(() => bannerBox.replaceChildren(), BANNER_MS);
+    bannerBox.replaceChildren(h(`div.tg-banner${tone ? `.${tone}` : ''}${extra ? '.offers' : ''}`, null, avatar ? face(avatar, expr || 'calm', 56) : null,
+      h('div', null, h('b', { text: head }), small ? h('small', { text: small }) : null), extra));
+    bannerTimer = setTimeout(() => bannerBox.replaceChildren(), ms);
     measureLine();
     placeBanner();
   }
@@ -3437,7 +3473,8 @@ export function createTogether(shell) {
   let lineKey = '';
   let lineBottom = 0;
   function measureLine() {
-    const line = shell.line ? shell.line() : null;
+    /* While watching, the line is the paused flight's, put away with it. */
+    const line = shell.line && !watching ? shell.line() : null;
     const words = line ? line.textContent : '';
     const key = `${words}|${innerWidth}x${innerHeight}`;
     if (key === lineKey) {
@@ -3720,6 +3757,260 @@ export function createTogether(shell) {
   }
 
   /* ---------------------------------------------------------------- */
+  /* Watching another pilot                                            */
+  /* ---------------------------------------------------------------- */
+
+  /*
+   * WATCHING is riding behind somebody else's quad. This pilot's flight
+   * pauses where it is, the pause menu hides, and the shell flies the
+   * camera out of the goggles to sit behind the other quad and follow it
+   * (src/render/watchcam.js). Left and right fly it across to another
+   * pilot; Back to my quad flies it home, and the flight carries on.
+   * Nothing is sent: the board already has every pose this page draws, and
+   * the others see this pilot as in the menus, which they are.
+   *
+   * Only pilots who are flying, in the room's world, whose quad this page
+   * has a pose for, can be watched, and never while this pilot races.
+   */
+  function watchList() {
+    if (!session || !session.inRoom || !sameWorld(room())) {
+      return [];
+    }
+    return pilotsList().filter((p) => p.id !== session.you && !p.away && session.remotes.has(p.id)).sort((a, b) => a.id - b.id);
+  }
+
+  function canWatch(p) {
+    return Boolean(p) && p.id !== watching && !racingNow() && watchList().some((q) => q.id === p.id);
+  }
+
+  /* Who V watches: the pilot this one was last near, or the host, or the
+   * first flying. */
+  function firstToWatch() {
+    const list = watchList();
+    if (!list.length) {
+      return 0;
+    }
+    let best = null;
+    let at = -Infinity;
+    for (const p of list) {
+      const t = nearAt.get(p.id);
+      if (t != null && t > at) {
+        at = t;
+        best = p;
+      }
+    }
+    const host = list.find((p) => p.id === session.link.hostId);
+    return (best || host || list[0]).id;
+  }
+
+  function startWatch(id) {
+    if (!id || !session || !session.inRoom) {
+      return false;
+    }
+    if (racingNow()) {
+      toast('Not while you race. Watch from the pit.', 'warn');
+      return false;
+    }
+    const p = pilot(id);
+    if (!p || !watchList().some((q) => q.id === id)) {
+      toast(p ? `${p.handle} is not flying right now.` : 'Nobody else is flying right now.', 'warn');
+      return false;
+    }
+    /* Out of any sheet without the resume that closing one would do: the
+     * flight stays paused under the camera. */
+    pausedByUs = false;
+    if (!modal.hidden) {
+      closeAll();
+    }
+    if (!shell.watch || !shell.watch(id)) {
+      toast('Back in the air first, then you can watch.', 'warn');
+      return false;
+    }
+    const first = !watching;
+    watching = id;
+    watchAwayAt = 0;
+    watchPadWait = true;
+    talk.hidden = true;
+    qbar.hidden = true;
+    if (!store.watchTaught) {
+      store.watchTaught = true;
+      save();
+    }
+    bannerBox.replaceChildren();
+    sound(first ? 'select' : 'move');
+    paintWatch();
+    if (first && !store.watchRode) {
+      teachWatch();
+    }
+    return true;
+  }
+
+  /* Home to the goggles, the flight resuming when the camera lands; `now`
+   * puts the camera back at once and leaves the flight paused. */
+  function stopWatch(now = false) {
+    if (!watching) {
+      return;
+    }
+    watching = 0;
+    paintWatch();
+    if (!now) {
+      sound('back');
+    }
+    if (shell.unwatch) {
+      shell.unwatch(now);
+    }
+  }
+
+  function switchWatch(dir) {
+    const list = watchList();
+    if (!list.length || (list.length === 1 && list[0].id === watching)) {
+      toast('Nobody else is flying right now.', 'warn');
+      return;
+    }
+    const i = list.findIndex((p) => p.id === watching);
+    const next = list[i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length];
+    startWatch(next.id);
+  }
+
+  /* The pilot watched left, or has sat in the menus a while: on to
+   * whoever else is flying, or home when nobody is. */
+  function watchGone(who, left = false) {
+    const list = watchList().filter((p) => p.id !== watching);
+    const said = `${who && who.handle ? who.handle : 'They'} ${left ? 'left' : 'stopped flying'}.`;
+    if (list.length) {
+      const next = list.find((p) => p.id > watching) || list[0];
+      toast(`${said} Watching ${next.handle}.`);
+      startWatch(next.id);
+    } else {
+      toast(`${said} Back to your quad.`);
+      stopWatch();
+    }
+  }
+
+  /* The keys for watching, in what this pilot holds. */
+  function watchHint() {
+    const by = hands();
+    if (by === 'keys') return '← → another pilot · V or Esc: back to your quad';
+    if (by === 'pad') return 'Roll left or right: another pilot · any switch: back to your quad';
+    return '';
+  }
+
+  let watchPainted = '';
+  let watchPaintAt = 0;
+  const WATCH_PAINT_MS = 250;
+  function paintWatch() {
+    const p = watching ? pilot(watching) : null;
+    if (!p) {
+      watchBox.hidden = true;
+      watchBox.replaceChildren();
+      watchPainted = '';
+      return;
+    }
+    const list = watchList();
+    const at = list.findIndex((q) => q.id === p.id);
+    let status = 'Flying';
+    if (p.away) status = 'In the menus. Their quad waits where they left it.';
+    else if (list.length > 1 && at >= 0) status = `Flying · ${at + 1} of ${list.length}`;
+    const hint = watchHint();
+    const key = `${p.id}|${p.handle}|${status}|${hint}|${list.length}`;
+    if (key === watchPainted) {
+      return;
+    }
+    watchPainted = key;
+    const more = list.length > 1 || (list.length === 1 && list[0].id !== p.id);
+    fill(watchBox,
+      h('div.wpanel.halftone', null,
+        btn('◀', 'small ghost', () => switchWatch(-1), { 'aria-label': 'Watch the pilot before', 'data-k': 'watch-prev', disabled: !more }),
+        h('div.wface', null, face(p.avatar, p.away ? 'calm' : 'laugh', 64)),
+        h('div.wtext', null, h('span.kicker', { text: 'Watching' }), plate(p.handle, p.avatar, p.id), h('small', { text: status })),
+        btn('▶', 'small ghost', () => switchWatch(1), { 'aria-label': 'Watch the next pilot', 'data-k': 'watch-next', disabled: !more })),
+      h('div.wrow', null,
+        hint ? h('span.whint', { text: hint }) : null,
+        btn('Back to my quad', 'small mint', () => stopWatch(), { 'data-k': 'watch-stop' })));
+    watchBox.hidden = false;
+  }
+
+  /* What watching is, the first time this pilot does it: a banner for a
+   * few seconds, and never again. */
+  function teachWatch() {
+    store.watchRode = true;
+    save();
+    const by = hands();
+    const switchHow = by === 'keys' ? '← and →' : by === 'pad' ? 'Rolling left or right' : 'The arrows';
+    const homeHow = by === 'keys' ? 'V or Esc' : by === 'pad' ? 'Any switch' : 'Back to my quad';
+    banner(store.avatar, 'hello', 'Riding along', `Your quad waits where you left it. ${switchHow} flies you to another pilot, and ${homeHow} brings you home to fly on.`, 'mint', { ms: 9000 });
+  }
+
+  /*
+   * THE CALLOUT: the first time this pilot is flying in a room with
+   * somebody else in the air, a banner says that they can be watched, how,
+   * and offers the one press for a mouse or a thumb. Once, ever, and not
+   * in a race, nor over another banner, nor in the first seconds of a
+   * flight, when the room's own welcome is still being read.
+   */
+  const CALLOUT_AFTER_MS = 6000;
+  const CALLOUT_MS = 11000;
+  const CALLOUT_LOOK_MS = 500;
+  function offerWatch(now) {
+    if (store.watchTaught || !flightSince || now - flightSince < CALLOUT_AFTER_MS || racingNow()
+      || bannerBox.firstElementChild || !modal.hidden || now - offerLookedAt < CALLOUT_LOOK_MS) {
+      return;
+    }
+    /* Looked for twice a second, not every frame: the list is built. */
+    offerLookedAt = now;
+    const id = firstToWatch();
+    const p = id ? pilot(id) : null;
+    if (!p) {
+      return;
+    }
+    store.watchTaught = true;
+    save();
+    const by = hands();
+    const how = by === 'keys' ? 'Press V to ride behind their quad and watch them fly. ← → changes pilot, V brings you back.'
+      : by === 'pad' ? 'Pause, then Room, then Watch a pilot, to ride behind their quad and watch them fly.'
+        : 'Ride behind their quad and watch them fly, then come back to yours.';
+    banner(p.avatar, 'laugh', `Watch ${p.handle} fly`, how, '', {
+      ms: CALLOUT_MS,
+      extra: by === 'pad' ? null : btn('Watch', 'small mint', () => startWatch(p.id), { 'data-k': 'watch-offer' }),
+    });
+  }
+
+  /* Once a frame while watching: the shell may have put the camera back
+   * itself (a menu or the room's grid took the screen), and the pilot
+   * watched may have gone to the menus. */
+  function watchTick(now) {
+    if (!watching) {
+      return;
+    }
+    if (!shell.watching || shell.watching() !== watching) {
+      watching = 0;
+      paintWatch();
+      return;
+    }
+    const p = pilot(watching);
+    if (!p) {
+      watchGone(null, true);
+      return;
+    }
+    if (p.away) {
+      if (!watchAwayAt) {
+        watchAwayAt = now;
+      } else if (now - watchAwayAt > WATCH_AWAY_MS && watchList().some((q) => q.id !== watching)) {
+        watchGone(p);
+        return;
+      }
+    } else {
+      watchAwayAt = 0;
+    }
+    /* The bar's words (flying or not, one of how many) four times a
+     * second: the list behind them is built, and a frame builds nothing. */
+    if (now - watchPaintAt > WATCH_PAINT_MS) {
+      watchPaintAt = now;
+      paintWatch();
+    }
+  }
+
+  /* ---------------------------------------------------------------- */
   /* Racing on screen                                                  */
   /* ---------------------------------------------------------------- */
 
@@ -3904,14 +4195,18 @@ export function createTogether(shell) {
     if (!session) {
       return;
     }
-    if (cardOwed && !cardBusy && now >= cardAt && !shell.flying()) {
+    /* Not while watching either: the picture is a beat of work, and the
+     * camera is in flight. */
+    if (cardOwed && !cardBusy && now >= cardAt && !shell.flying() && !watching) {
       payCard();
     }
+    watchTick(now);
     let screen = 'other';
     if (shell.flying()) screen = 'flight';
     else if (shell.paused()) screen = 'paused';
     else if (shell.results && shell.results()) screen = 'results';
     if (screen !== lastScreen) {
+      flightSince = screen === 'flight' ? now : 0;
       lastScreen = screen;
       const r = room();
       chip.hidden = !heldRoom() || screen === 'other';
@@ -3925,6 +4220,9 @@ export function createTogether(shell) {
       if (r && race) {
         raceChanged();
       }
+    }
+    if (screen === 'flight' && !store.watchTaught && session.inRoom) {
+      offerWatch(now);
     }
     const r = room();
     if (!r || !race || !RoomRace.racing(r.way)) {
@@ -3942,6 +4240,7 @@ export function createTogether(shell) {
       paintStandings(race.race || { phase: 'pit' });
     }
     if (what === 'grid' && here) {
+      stopWatch(true);
       shell.grid();
       toast('On the grid. Wait for GO.');
     }
@@ -3983,6 +4282,13 @@ export function createTogether(shell) {
         back();
       }
       return true;
+    }
+    if (watching) {
+      return watchKey(code, repeat);
+    }
+    /* On the way home the pause menu is still under the camera, hidden. */
+    if (shell.watchBusy && shell.watchBusy()) {
+      return !/^F\d+$/.test(code);
     }
     if (!heldRoom() || repeat) {
       return false;
@@ -4031,7 +4337,44 @@ export function createTogether(shell) {
       sheetScene();
       return true;
     }
+    if (code === 'KeyV') {
+      const id = firstToWatch();
+      if (id) {
+        startWatch(id);
+      } else {
+        toast(racingNow() ? 'Not while you race.' : 'Nobody else is flying right now.', 'warn');
+      }
+      return true;
+    }
     return false;
+  }
+
+  /*
+   * The keys while watching. The pause menu is under the camera, hidden,
+   * and would take any key let past to it (Enter on a row the pilot cannot
+   * see), so every key stops here but the function keys: the shell's own
+   * F8 report and the browser's.
+   */
+  function watchKey(code, repeat) {
+    if (/^F\d+$/.test(code)) {
+      return false;
+    }
+    if (repeat) {
+      return true;
+    }
+    const digit = /^Digit([1-7])$/.exec(code);
+    if (code === 'ArrowLeft' || code === 'KeyA') {
+      switchWatch(-1);
+    } else if (code === 'ArrowRight' || code === 'KeyD') {
+      switchWatch(1);
+    } else if (code === 'KeyV' || code === 'Escape' || code === 'Backspace') {
+      stopWatch();
+    } else if (digit && session && session.inRoom) {
+      sayQuick(Number(digit[1]) - 1);
+    } else if (code === 'Enter' && session && session.inRoom) {
+      sheetScene();
+    }
+    return true;
   }
 
   /* Tab moves the browser's focus unless it is stopped, and in flight in a
@@ -4061,7 +4404,30 @@ export function createTogether(shell) {
   let padHolding = false;
 
   function wantsPad() {
-    return !modal.hidden || padHolding;
+    return !modal.hidden || padHolding || Boolean(watching) || Boolean(shell.watchBusy && shell.watchBusy());
+  }
+
+  /* The pad while watching: the stick across for another pilot, any
+   * button home. It waits for the press that started it to come up. */
+  function watchPad(nav) {
+    const any = nav.select || nav.back || nav.up || nav.down || nav.left || nav.right;
+    if (watchPadWait) {
+      if ((nav.calm !== false) && !any) {
+        watchPadWait = false;
+      }
+    } else if ((nav.select && !padPrev.select) || (nav.back && !padPrev.back)) {
+      padHands = true;
+      stopWatch();
+      /* Held until it comes up, so the flight does not get it. */
+      padHolding = true;
+    } else if ((nav.left && !padPrev.left) || (nav.up && !padPrev.up)) {
+      padHands = true;
+      switchWatch(-1);
+    } else if ((nav.right && !padPrev.right) || (nav.down && !padPrev.down)) {
+      padHands = true;
+      switchWatch(1);
+    }
+    padPrev = { ...nav };
   }
 
   /* Called only while wantsPad(); open() sets padWait for each sheet that
@@ -4069,6 +4435,10 @@ export function createTogether(shell) {
   function pollPad(nav, nowMs) {
     if (!nav) {
       return false;
+    }
+    if (modal.hidden && watching) {
+      watchPad(nav);
+      return true;
     }
     if (modal.hidden) {
       padHolding = Boolean(nav.select || nav.back || nav.up || nav.down || nav.left || nav.right);
@@ -4240,6 +4610,9 @@ export function createTogether(shell) {
         direct: session ? session.peers.openCount() : 0,
         peerPoses: session ? session.peerPoses : 0,
         hands: padHands ? 'pad' : 'keys',
+        watching,
+        watchTaught: store.watchTaught,
+        watchRode: store.watchRode,
       };
     },
     leave,

@@ -3161,15 +3161,42 @@ export async function boot({ loading, bootStart, mapId }) {
   let mpHy = 0;
   let mpHz = 0;
   let mpHostId = 0;
+  /*
+   * WATCHING ANOTHER PILOT (src/render/watchcam.js, src/net/together.js).
+   * This pilot's own flight is paused as the pause menu pauses it, with the
+   * menu hidden, and the camera rides behind the pilot watchId. Their pose
+   * is caught here as they are drawn, so the camera follows the same
+   * interpolated pose their craft is drawn at, in the same frame.
+   */
+  let watchCam = null;
+  let watchCamLoading = null;
+  let watchId = 0;
+  let watchSeen = false;
+  const watchPose = {
+    px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false,
+  };
   const mpDraw = (id, pose, pilot) => {
     const dx = pose.px - mpHx;
     const dy = pose.py - mpHy;
     const dz = pose.pz - mpHz;
     const d2 = dx * dx + dy * dy + dz * dz;
     /* The host's tag stays up however far: in a streamer room, the one the
-     * viewers came to find. */
-    mpCraft.add(id, pose, pilot, d2, id === mpHostId);
-    if (d2 < 9) {
+     * viewers came to find. So does the tag of the pilot being watched. */
+    mpCraft.add(id, pose, pilot, d2, id === mpHostId || id === watchId);
+    if (id === watchId) {
+      watchSeen = true;
+      watchPose.px = pose.px;
+      watchPose.py = pose.py;
+      watchPose.pz = pose.pz;
+      watchPose.qx = pose.qx;
+      watchPose.qy = pose.qy;
+      watchPose.qz = pose.qz;
+      watchPose.qw = pose.qw;
+      watchPose.cut = Boolean(pose.cut);
+    }
+    /* No hello while watching: the pilot's own quad is parked, and the
+     * camera passing a pilot is not meeting them. */
+    if (d2 < 9 && !watchId) {
       together.near(id, d2);
     }
   };
@@ -3267,6 +3294,21 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     },
     sound: (kind) => ui.onUiSound(kind),
+    /* Watching another pilot: the flight paused with its menu hidden and
+     * the camera flown over to ride behind them. Asked again with another
+     * pilot, it flies across to them. False when there is no flight to
+     * pause. */
+    watch: (id) => watchStart(id),
+    /* Back to the goggles: the camera flies home and the flight resumes
+     * when it lands. `now` puts it back at once and leaves the flight
+     * paused, for something that takes over, such as the room's grid. */
+    unwatch: (now = false) => watchStop(now),
+    /* Who is being watched, 0 for nobody, which it is again from the
+     * moment the camera starts home. */
+    watching: () => watchId,
+    /* Whether the camera is still away from the goggles: watching, or on
+     * its way home, when the hidden pause menu must not get a key. */
+    watchBusy: () => Boolean(watchCam && watchCam.on),
   };
 
   /* together.js, fetched the first time it is wanted and never before. */
@@ -3384,9 +3426,12 @@ export async function boot({ loading, bootStart, mapId }) {
       mpAway = !flying;
     }
     const p = shell.quad.position;
-    mpHx = p.x;
-    mpHy = p.y;
-    mpHz = p.z;
+    /* Nearness for the name tags is from the eye, which is the camera
+     * while watching and the quad otherwise. */
+    const eye = watchId ? shell.camera.position : p;
+    mpHx = eye.x;
+    mpHy = eye.y;
+    mpHz = eye.z;
     if (flying) {
       const q = shell.quad.quaternion;
       /* Motor RPM, signed in 3D mode (src/native/sim_abi.h). */
@@ -3395,6 +3440,7 @@ export async function boot({ loading, bootStart, mapId }) {
       session.uplink(p.x, p.y, p.z, q.x, q.y, q.z, q.w, spinning, mpResets);
     }
     mpCraft.begin();
+    watchSeen = false;
     if (same) {
       mpHostId = session.link.hostId;
       session.eachRemote(mpDraw);
@@ -10667,6 +10713,12 @@ export async function boot({ loading, bootStart, mapId }) {
       introMs = -1;
     }
 
+    /* Watching ends with the pause it rides on: anything that takes the
+     * screen (the room's grid, a menu, the title) puts the camera back. */
+    if (watchCam && watchCam.on && (mode !== 'paused' || ui.screen !== 'paused')) {
+      watchStop(true);
+    }
+
     /* Every camera but the lens keeps the boot near plane; the lens's own
      * is set in its branch below. See fpvNear. */
     setCameraNear(CAMERA_NEAR_OPEN);
@@ -10726,6 +10778,8 @@ export async function boot({ loading, bootStart, mapId }) {
         shell.camera.fov = fov;
         shell.camera.updateProjectionMatrix();
       }
+    } else if (watchCam && watchCam.on && !camOverride) {
+      watchFrame(nowWall);
     } else if (introMs >= 0 && (mode === 'flight' || mode === 'paused') && !camOverride) {
       if (mode === 'flight') {
         /* Punch-out skips the orbit and the approach. TAKEOFF_THROTTLE,
@@ -12017,6 +12071,34 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Flying together, for scripts/together-shots.js: what is on screen and
    * the room it is in, or null before anything asked for a room. */
   window.__together = () => (together ? together.debugState() : null);
+  /* For scripts/together-shots.js: the watching camera as it is now, and
+   * what one of its frames costs, timed riding behind the pilot watched on
+   * the real map's colliders with a camera of its own. Harness only. */
+  window.__watch = () => ({
+    id: watchId,
+    phase: watchCam ? watchCam.phase : '',
+    cam: shell.camera.position.toArray(),
+    look: new THREE.Vector3(0, 0, -1).applyQuaternion(shell.camera.quaternion).toArray(),
+    fov: shell.camera.fov,
+    quadVisible: shell.quad.visible,
+    craft: pCurr.toArray(),
+    target: watchSeen ? [watchPose.px, watchPose.py, watchPose.pz] : null,
+    classOn: document.documentElement.classList.contains('tg-watching'),
+  });
+  window.__watchBench = async (n = 2000) => {
+    const { WatchCam } = await import('./render/watchcam.js');
+    const cam = new WatchCam();
+    const eye = new THREE.PerspectiveCamera(85, 16 / 9, 0.2, 1000);
+    const pose = { ...watchPose, cut: false };
+    cam.go(eye, 0);
+    cam.phase = 'riding';
+    const t0 = performance.now();
+    for (let i = 0; i < n; i += 1) {
+      pose.px += 0.13;
+      cam.frame(eye, pose, i * 16.7, watchWorld, watchHome);
+    }
+    return (performance.now() - t0) / n;
+  };
   /* The other pilots' craft: how many it is built for and drew last frame. */
   window.__roomCraft = () => (mpCraft ? { size: mpCraftSize, drawn: mpCraft.group.getObjectByName('room-craft-bodies').count, tagged: mpCraft.tagged(), most: mpCraft.tagMost } : null);
   /* The yard track's race and where it stands, for the harness. */
@@ -14016,6 +14098,106 @@ export async function boot({ loading, bootStart, mapId }) {
       shell.camera.updateProjectionMatrix();
     }
     setCameraNear(CAMERA_NEAR_OPEN);
+  }
+
+  /* What the watching camera asks of the map: the ground under a point,
+   * and how far a point is from the nearest solid. Made once, not once a
+   * frame; `view` is read when they are called, so a new map needs none. */
+  const watchWorld = {
+    floor: (x, z, y) => view.height(x, z, y, y),
+    gap: (x, y, z) => (view.colliders ? view.colliders.gapAt(x, y, z, 0.4) : Infinity),
+  };
+  /* Where the camera lands on the way back: the goggles, as this frame
+   * worked them out, and the pilot's own lens. */
+  const watchHome = { pos: fpvPos, quat: fpvQuat, fov: 85 };
+
+  function watchCamReady() {
+    if (watchCam) {
+      return Promise.resolve(watchCam);
+    }
+    if (!watchCamLoading) {
+      watchCamLoading = import('./render/watchcam.js').then(({ WatchCam }) => {
+        watchCam = new WatchCam();
+        return watchCam;
+      }).catch((e) => {
+        watchCamLoading = null;
+        throw e;
+      });
+    }
+    return watchCamLoading;
+  }
+
+  function watchStart(id) {
+    if (!id || camOverride) {
+      return false;
+    }
+    if (mode === 'flight' && ui.screen === 'flight') {
+      ui.act('pause');
+      ui.show('paused');
+    }
+    if (mode !== 'paused' || ui.screen !== 'paused') {
+      return false;
+    }
+    /* The pad shot is over: the pilot has already seen their quad, and
+     * coming home into the middle of it would cut the camera away again. */
+    introMs = -1;
+    watchId = id;
+    watchSeen = false;
+    document.documentElement.classList.add('tg-watching');
+    /* The pause menu is hidden, not gone: nothing on it keeps the focus,
+     * or Enter would press a row the pilot cannot see. */
+    if (document.activeElement && document.activeElement !== document.body
+        && !document.activeElement.closest('#tg')) {
+      document.activeElement.blur();
+    }
+    watchCamReady().then((cam) => {
+      if (watchId === id) {
+        cam.go(shell.camera, performance.now());
+      }
+    }).catch((e) => {
+      watchStop(true);
+      mpSay(`Could not watch.\n${e.message ?? e}`, 5000);
+    });
+    return true;
+  }
+
+  function watchStop(now) {
+    const flying = Boolean(watchCam && watchCam.on);
+    if (!watchId && !flying) {
+      return;
+    }
+    watchId = 0;
+    watchSeen = false;
+    if (now || !flying || mode !== 'paused') {
+      if (watchCam) {
+        watchCam.stop();
+      }
+      document.documentElement.classList.remove('tg-watching');
+      /* Asked home before the camera had left the goggles (its file still
+       * on its way): it is home already, so the flight carries on. */
+      if (!now && !flying && mode === 'paused' && ui.screen === 'paused') {
+        ui.act('resume');
+      }
+      return;
+    }
+    watchCam.leave(shell.camera, performance.now());
+  }
+
+  function watchFrame(nowWall) {
+    watchHome.fov = ui.settings.cameraFov;
+    const phase = watchCam.frame(shell.camera, watchId && watchSeen ? watchPose : null, nowWall, watchWorld, watchHome);
+    shell.camera.up.set(0, 1, 0);
+    /* The pilot's own quad waits where it was left, and is in the picture
+     * whenever the camera is not inside it. */
+    shell.quad.visible = shell.camera.position.distanceToSquared(pCurr) > 0.09;
+    setCameraNear(fpvNear(shell.camera.position));
+    if (phase === 'home') {
+      document.documentElement.classList.remove('tg-watching');
+      shell.quad.visible = false;
+      if (ui.screen === 'paused') {
+        ui.act('resume');
+      }
+    }
   }
 
   /*

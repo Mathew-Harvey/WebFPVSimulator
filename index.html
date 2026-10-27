@@ -200,6 +200,14 @@
          reads over any background. */
       .osd { position: absolute; inset: 0; }
       .osd.dim { opacity: 0.4; }
+      /* Watching another pilot in a room (src/render/watchcam.js): the
+         flight is paused under a camera riding behind somebody else's
+         quad, so the pause menu, its crumb and its legend, and this
+         pilot's own instruments are put away while the room's panels say
+         who is being watched. Hidden, not taken out, so nothing moves when
+         the camera comes home and the menu is back. */
+      .tg-watching .screen-paused, .tg-watching .osd, .tg-watching .score-hud,
+      .tg-watching .crumb, .tg-watching .frame-bot { visibility: hidden !important; }
       /* Paused on a short window, the PAUSED lettering and the lap clock want
          the same pixels, and the clock was printed through the heading
          (MENUS-PLAN.md 1.9). The corners stay: the pack is what a pilot

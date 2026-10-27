@@ -58,6 +58,12 @@
  *           a room meets the pilot, opens the maps hosting, and a double
  *           click hosts that map; Find a room, Join with a code and Your
  *           pilot each open their own page
+ *   watch   watching another pilot: the callout the first time somebody
+ *           else is flying, its Watch button, the camera's flight out of
+ *           the goggles to ride behind them, following them round, the
+ *           arrows to the next pilot, a pilot who stops or leaves, V home
+ *           into the goggles with the flight carrying on, the room page's
+ *           Watch a pilot and a pilot's own Watch, and a pad's button home
  *
  * The race scene also has the host leave in the countdown.
  *
@@ -379,7 +385,10 @@ function unseen(page, sel) {
 }
 
 /* The pilot's name and settings, through the doors a pilot uses. */
-function seedFor({ map = 'bardwell', airframe = '5inch', name = 'Shell Pilot', met = false, taught = true }) {
+/* watched: the pilot has been shown that another pilot can be watched,
+ * and has ridden along once, so no scene but the watch scene gets the
+ * callout over what it is looking at. */
+function seedFor({ map = 'bardwell', airframe = '5inch', name = 'Shell Pilot', met = false, taught = true, watched = true }) {
   return `try {
   const k = ${JSON.stringify(SETTINGS_KEY)};
   const s = JSON.parse(localStorage.getItem(k) || '{}');
@@ -390,8 +399,8 @@ function seedFor({ map = 'bardwell', airframe = '5inch', name = 'Shell Pilot', m
   s.airframe = ${JSON.stringify(airframe)};
   localStorage.setItem(k, JSON.stringify(s));
   localStorage.setItem('webfpv.pilot.name', ${JSON.stringify(name)});
-  ${met ? `localStorage.setItem('webfpv.together.v1', JSON.stringify({ avatar: ${JSON.stringify(rollAvatar(() => 0.37))}, met: true, taught: ${taught} }));`
-    : `localStorage.setItem('webfpv.together.v1', JSON.stringify({ met: false, taught: ${taught} }));`}
+  ${met ? `localStorage.setItem('webfpv.together.v1', JSON.stringify({ avatar: ${JSON.stringify(rollAvatar(() => 0.37))}, met: true, taught: ${taught}, watchTaught: ${watched}, watchRode: ${watched} }));`
+    : `localStorage.setItem('webfpv.together.v1', JSON.stringify({ met: false, taught: ${taught}, watchTaught: ${watched}, watchRode: ${watched} }));`}
 } catch (e) { /* Storage refused; the run boots on the defaults. */ }`;
 }
 
@@ -3149,6 +3158,236 @@ async function sceneTeach() {
   }
 }
 
+/*
+ * Watching another pilot. Two pilots in Node fly circles near the page, one
+ * close and one across the field; the page is shown that they can be
+ * watched, rides behind each in turn, follows one round its circle, is
+ * moved on when one stops flying and when one leaves, and goes home into
+ * its own goggles with its flight carrying on, by V, by the bar's button,
+ * by Escape and by a pad.
+ */
+async function sceneWatch() {
+  console.log('\nwatch: riding behind another pilot');
+  const kite = bot('Kite Runner', 211);
+  const moss = bot('Moss Comet', 223);
+  const room = await hostRoom(kite, {
+    name: 'Spotters', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  await joinRoom(moss, room.code, room.invite || '');
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`;
+  const page = await open(at, seedFor({ met: true, name: 'Watch Pilot', watched: false }));
+  const shot = shooter(page, 'watch');
+  let flying = null;
+  const W = 'window.__watch()';
+  const watchNow = () => page.evaluate(W);
+  const ids = {};
+  try {
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    const c = await poseOf(kite, 'Watch Pilot');
+    check('the page flies in the room', Boolean(c));
+    /* Kite circles 14 m ahead of the page at 7 m/s, two metres up; Moss a
+     * wider, slower circle 40 m off to the side. Both bank into the turn
+     * and face along it, as a quad flying a circle does. */
+    const t0 = performance.now();
+    const posed = (b, cx, cy, cz, r, w, phase, t) => {
+      const a = phase + w * t;
+      const px = cx + Math.cos(a) * r;
+      const pz = cz + Math.sin(a) * r;
+      /* The nose, Three's -z, yawed to face along the circle, then rolled
+       * about it into the turn. */
+      const hy = (w > 0 ? Math.PI - a : -a) / 2;
+      const hb = (0.4 * Math.sign(w)) / 2;
+      b.s.uplink(px, cy, pz,
+        Math.sin(hy) * Math.sin(hb), Math.sin(hy) * Math.cos(hb), Math.cos(hy) * Math.sin(hb), Math.cos(hy) * Math.cos(hb),
+        true, 0);
+    };
+    const kc = { x: c.px + c.fx * 14, y: c.py + 2, z: c.pz + c.fz * 14 };
+    const mc = { x: c.px + c.fz * 40, y: c.py + 3, z: c.pz - c.fx * 40 };
+    let kiteOn = true;
+    let mossOn = true;
+    flying = setInterval(() => {
+      const t = (performance.now() - t0) / 1000;
+      if (kiteOn) posed(kite, kc.x, kc.y, kc.z, 6, 7 / 6, 0, t);
+      if (mossOn) posed(moss, mc.x, mc.y, mc.z, 10, -5 / 10, 1, t);
+    }, 1000 / 30);
+    await page.until(`${T} && window.__together().pilots === 3`, 10000);
+    ids.kite = kite.s.you;
+    ids.moss = moss.s.you;
+
+    /* The callout: once somebody else is flying, a few seconds into the
+     * flight, with the one press for a mouse. */
+    const offered = await page.until(SEES('fly', '#tg .tg-banner.offers'), 15000).then(() => true, () => false);
+    const words = await page.evaluate("(document.querySelector('#tg .tg-banner') || {}).textContent || ''");
+    check('the first flight with another pilot in the air says they can be watched, and how', offered && /Watch (Kite Runner|Moss Comet) fly/.test(words) && words.includes('Press V'), words);
+    check('and it is kept as said, so it is said once', await page.evaluate("JSON.parse(localStorage.getItem('webfpv.together.v1')).watchTaught === true"));
+    await shot('callout');
+    const bannerOn = await overlaps(page, '#tg .tg-banner', CLEAR_OF);
+    check('the callout covers none of the shell\'s instruments', !bannerOn, bannerOn);
+    const craftBefore = (await watchNow()).craft;
+
+    /* Its Watch button: out of the goggles and over to them. */
+    await pressKey(page, 'watch-offer');
+    const st = await state(page);
+    check('Watch starts watching the pilot it named', st.watching === ids.kite || st.watching === ids.moss, JSON.stringify(st.watching));
+    const first = st.watching;
+    await wait(250);
+    const early = await watchNow();
+    await shot('going-early');
+    await wait(450);
+    await shot('going-mid');
+    check('the camera is flying from the goggles to them', early.phase === 'going' && early.classOn && early.quadVisible, JSON.stringify(early));
+    const hidden = await page.evaluate("(() => { const p = document.querySelector('.screen-paused'); return { menu: p ? getComputedStyle(p).visibility : 'none', osd: getComputedStyle(document.querySelector('.osd')).visibility, mode: window.__mode, screen: window.__ui.screen }; })()");
+    check('the flight is paused under it, with the pause menu and the pilot\'s own instruments put away', hidden.mode === 'paused' && hidden.screen === 'paused'
+      && hidden.menu === 'hidden' && hidden.osd === 'hidden', JSON.stringify(hidden));
+    check('the first ride says what can be done while watching', await page.evaluate(SEES('Riding along', '#tg .tg-banner')));
+    const rode = await page.until(`${W}.phase === 'riding'`, 4000).then(() => true, () => false);
+    const ride = await watchNow();
+    check('and lands behind their quad within the flight\'s time', rode, JSON.stringify(ride));
+    const behind = (w) => {
+      if (!w.target) return { ok: false };
+      const d = [w.target[0] - w.cam[0], w.target[1] - w.cam[1], w.target[2] - w.cam[2]];
+      const dist = Math.hypot(...d);
+      const along = (d[0] * w.look[0] + d[1] * w.look[1] + d[2] * w.look[2]) / dist;
+      return { ok: dist > 0.8 && dist < 2.2 && along > 0.85 && w.cam[1] > w.target[1], dist: dist.toFixed(2), along: along.toFixed(3) };
+    };
+    const b1 = behind(ride);
+    check(`the camera rides behind and above the quad, looking at it (${b1.dist} m, ${b1.along})`, b1.ok, JSON.stringify(ride));
+    await wait(300);
+    await shot('riding');
+    check('the bar says who is watched, in the pilot\'s own keys', await page.evaluate(SEES('Watching', '#tg .watchbar'))
+      && await page.evaluate(SEES('V or Esc', '#tg .watchbar')) && await page.evaluate(SEES('Back to my quad', '#tg .watchbar')));
+    const barOn = await overlaps(page, '#tg .watchbar', ['.music-dock', '.bug-chip', '.banner']);
+    check('the bar covers none of what stays on screen', !barOn, barOn);
+
+    /* Following: a second later the camera has gone round with them, and
+     * is still behind. */
+    await wait(1200);
+    const later = await watchNow();
+    const moved = Math.hypot(later.cam[0] - ride.cam[0], later.cam[2] - ride.cam[2]);
+    const b2 = behind(later);
+    check(`it follows them round their line (${moved.toFixed(1)} m on, ${b2.dist} m behind)`, moved > 3 && b2.ok, JSON.stringify(later));
+    await shot('following');
+    const craftNow = (await watchNow()).craft;
+    check('the pilot\'s own quad waits where it was left', Math.hypot(craftNow[0] - craftBefore[0], craftNow[1] - craftBefore[1], craftNow[2] - craftBefore[2]) < 0.05,
+      `${craftBefore} -> ${craftNow}`);
+    const away = await until(() => {
+      const me = [...kite.s.link.pilots.values()].find((p) => p.handle === 'Watch Pilot');
+      return me && me.away;
+    }, 3000);
+    check('the others see this pilot as in the menus, and get no poses from it', away);
+    const ms = await page.evaluate('window.__watchBench(4000)');
+    check(`a frame of the camera costs ${(ms * 1000).toFixed(1)} microseconds on this machine`, ms < 0.2, String(ms));
+
+    /* The arrows: to the other pilot, across the field, and back. */
+    await tapLoose(page, 'ArrowRight');
+    const other = first === ids.kite ? ids.moss : ids.kite;
+    check('→ flies the camera to the next pilot', (await state(page)).watching === other && (await watchNow()).phase === 'going');
+    await wait(500);
+    await shot('switching');
+    await page.until(`${W}.phase === 'riding'`, 4000).catch(() => {});
+    const b3 = behind(await watchNow());
+    check('and rides behind them', b3.ok, JSON.stringify(b3));
+    check('the bar counts them', await page.evaluate(SEES('of 2', '#tg .watchbar')));
+    await shot('switched');
+    await tapLoose(page, 'ArrowLeft');
+    check('← goes back', (await state(page)).watching === first);
+    await page.until(`${W}.phase === 'riding'`, 4000).catch(() => {});
+
+    /* A pilot who stops flying: after a few seconds in the menus the camera
+     * moves on to somebody who is flying. */
+    const stopper = first === ids.kite ? kite : moss;
+    stopper.s.away(true);
+    if (stopper === kite) kiteOn = false; else mossOn = false;
+    const movedOn = await page.until(`${T} && window.__together().watching === ${other}`, 8000).then(() => true, () => false);
+    check('a pilot watched who goes to the menus is left for one who is flying', movedOn, await toastText(page));
+    stopper.s.away(false);
+    if (stopper === kite) kiteOn = true; else mossOn = true;
+    await page.until(`${W}.phase === 'riding'`, 4000).catch(() => {});
+
+    /* V: home into the goggles, and the flight carries on. */
+    await tapLoose(page, 'KeyV');
+    const leaving = await watchNow();
+    check('V flies the camera home', leaving.phase === 'leaving' && (await state(page)).watching === 0, JSON.stringify(leaving));
+    /* The pause menu is still under the camera, hidden, on the way: a key
+     * then must not press a row nobody can see. */
+    await tapLoose(page, 'ArrowDown');
+    await tapLoose(page, 'Enter');
+    const onWay = await page.evaluate(`({ phase: ${W}.phase, screen: window.__ui.screen, sheet: window.__together().sheet })`);
+    check('a key on the way home presses nothing hidden', onWay.phase === 'leaving' && onWay.screen === 'paused' && onWay.sheet === '', JSON.stringify(onWay));
+    await wait(200);
+    await shot('going-home');
+    const home = await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 4000).then(() => true, () => false);
+    const back = await watchNow();
+    const fromCraft = Math.hypot(back.cam[0] - back.craft[0], back.cam[1] - back.craft[1], back.cam[2] - back.craft[2]);
+    check(`and lands in the goggles, the flight running again (${fromCraft.toFixed(2)} m from the quad)`, home && back.phase === '' && !back.classOn && !back.quadVisible
+      && fromCraft < 0.4, JSON.stringify(back));
+    check('with the bar gone', await page.evaluate("document.querySelector('#tg .watchbar').hidden"));
+    await wait(300);
+    await shot('home');
+
+    /* The room's page: Watch a pilot, and the bar's own button home. */
+    await page.evaluate("(() => { document.querySelector('#tg .roomchip').click(); return 1; })()");
+    await sheetIs(page, 'room');
+    check('the room\'s page has Watch a pilot, with how many are flying', await page.evaluate(SEES('Watch a pilot', '#tg')) && await page.evaluate(SEES('2 flying', '#tg')));
+    await shot('room-page');
+    await pressKey(page, 'watch');
+    const fromPage = await state(page);
+    check('which closes the page and watches, the flight staying paused', fromPage.sheet === '' && fromPage.watching !== 0
+      && await page.evaluate("window.__mode === 'paused'"), JSON.stringify({ sheet: fromPage.sheet, watching: fromPage.watching }));
+    await page.until(`${W}.phase === 'riding'`, 4000).catch(() => {});
+    await pressKey(page, 'watch-stop');
+    check('Back to my quad flies home and flies on', await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 4000).then(() => true, () => false));
+
+    /* A pilot's own Watch, on their row, and Escape home. */
+    await page.evaluate("(() => { document.querySelector('#tg .roomchip').click(); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, `pilot-${ids.moss}`);
+    await wait(200);
+    await shot('pilot-row');
+    await pressKey(page, `watch-${ids.moss}`);
+    check('a pilot\'s row watches that pilot', (await state(page)).watching === ids.moss);
+    await page.until(`${W}.phase === 'riding'`, 5000).catch(() => {});
+    await tapLoose(page, 'Escape');
+    check('Escape goes home too', (await state(page)).watching === 0
+      && await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 4000).then(() => true, () => false));
+
+    /* A pilot who leaves the room: the camera moves on to who is left, and
+     * home when nobody is. */
+    await tapLoose(page, 'KeyV');
+    await page.until(`${T} && window.__together().watching !== 0`, 3000);
+    const watched = (await state(page)).watching;
+    const leaver = watched === ids.kite ? kite : moss;
+    const stayer = watched === ids.kite ? ids.moss : ids.kite;
+    if (leaver === kite) kiteOn = false; else mossOn = false;
+    leaver.s.leave();
+    const onTo = await page.until(`${T} && window.__together().watching === ${stayer}`, 6000).then(() => true, () => false);
+    const said = await toastText(page);
+    check('a pilot watched who leaves is left for who is still flying, and the toast says they left', onTo && said.includes(' left.'), said);
+    await page.until(`${W}.phase === 'riding'`, 4000).catch(() => {});
+
+    /* A pad: any button home, once the press that is held has come up. */
+    await page.evaluate(PAD_ON);
+    await wait(300);
+    await padPress(page, 0, `${T} && window.__together().watching === 0`);
+    check('a pad\'s button goes home', (await state(page)).watching === 0
+      && await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 4000).then(() => true, () => false));
+    await page.evaluate(PAD_OFF);
+    check('and the callout never came back', await page.evaluate("document.querySelector('#tg .tg-banner.offers') === null"));
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (flying) clearInterval(flying);
+    kite.s.leave();
+    moss.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -3168,6 +3407,7 @@ try {
   if (wanted('track')) { await freshBoard(); await sceneTrack(); }
   if (wanted('teach')) { await freshBoard(); await sceneTeach(); }
   if (wanted('gate')) { await freshBoard(); await sceneGate(); }
+  if (wanted('watch')) { await freshBoard(); await sceneWatch(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

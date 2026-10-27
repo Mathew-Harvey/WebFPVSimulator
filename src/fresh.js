@@ -347,6 +347,7 @@
     'src/render/tracks.js',
     'src/render/voice.js',
     'src/render/warm.js',
+    'src/render/watchcam.js',
     'src/render/whoopcraft.js',
     'src/share/admin.js',
     'src/share/board.js',

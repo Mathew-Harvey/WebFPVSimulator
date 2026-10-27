@@ -744,6 +744,31 @@ export const TOGETHER_CSS = `
 #tg .tg-banner b { font: 900 italic 18px var(--ui); display: block; }
 #tg .tg-banner small { font-size: 14px; font-weight: 700; color: var(--quiet); }
 @keyframes tg-drop { from { transform: translate(-50%, -30px); opacity: 0; } }
+/* A banner that offers something takes a press: the callout's Watch. */
+#tg .tg-banner.offers { pointer-events: auto; }
+#tg .tg-banner.offers .btn { flex: none; }
+
+/* Watching another pilot: who, and the way to another and back, across
+ * the bottom middle, where the stick overlay is in flight. The shell puts
+ * its own instruments and the hidden pause menu away while it is up
+ * (.tg-watching in index.html). */
+#tg .watchbar {
+  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: grid; justify-items: center; gap: 10px;
+  width: max-content; max-width: calc(100% - 24px); pointer-events: auto; animation: tg-rise 0.3s cubic-bezier(.2,1.4,.4,1);
+}
+#tg .watchbar .wpanel {
+  display: flex; align-items: center; gap: 12px; padding: 8px 10px; color: var(--ink);
+  border: 4px solid var(--ink); box-shadow: 7px 7px 0 var(--ink);
+}
+#tg .watchbar .wface canvas { display: block; border: 3px solid var(--ink); background: var(--white); }
+#tg .watchbar .wtext { display: grid; justify-items: start; gap: 5px; min-width: 0; max-width: min(300px, 50vw); }
+#tg .watchbar .wtext .plate { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+#tg .watchbar .wtext small { font: 800 12px/1.25 var(--ui); color: var(--quiet); }
+#tg .watchbar .wrow { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 14px; }
+#tg .watchbar .whint {
+  padding: 4px 12px; border-radius: 14px; background: rgba(11, 17, 22, 0.82); color: var(--cream); font: 700 13px/1.3 var(--ui);
+}
+@keyframes tg-rise { from { transform: translate(-50%, 30px); opacity: 0; } }
 
 /* The comic dialogue: a portrait stands on a speech box, as in a visual
  * novel, so a quick line reads as a character speaking. Bottom left, clear

@@ -251,6 +251,38 @@ async function killBoard() {
 const wsUrl = roomsUrl(boardOrigin);
 await mkdir(outDir, { recursive: true });
 
+/*
+ * The picture the board holds for a room link (src/net/roomcard.js), once
+ * the page has sent it: its listing and its bytes, written beside the
+ * shots so it can be looked at, or null if none came within `ms`.
+ */
+async function roomCardOf(code, file, ms = 8000) {
+  let listing = null;
+  const came = await until(async () => {
+    listing = await (await fetch(`${boardOrigin}/api/rooms/${code}`)).json();
+    return listing.hasCard;
+  }, ms, 200);
+  if (!came) {
+    return null;
+  }
+  const res = await fetch(`${boardOrigin}/api/rooms/${code}/card?v=${encodeURIComponent(listing.cardUtc)}`);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  await writeFile(join(outDir, file), bytes);
+  /* The frame size out of the JPEG, the way the board's inspectCard reads it. */
+  let size = '';
+  for (let i = 2; i + 9 < bytes.length && bytes[i] === 0xff;) {
+    const marker = bytes[i + 1];
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      size = `${bytes.readUInt16BE(i + 7)}x${bytes.readUInt16BE(i + 5)}`;
+      break;
+    }
+    i += 2 + bytes.readUInt16BE(i + 2);
+  }
+  return {
+    listing, bytes: bytes.length, size, type: res.headers.get('content-type'),
+  };
+}
+
 /* A pilot in Node, with a made up avatar and what it heard. */
 function bot(handle, seed) {
   let n = seed;
@@ -572,6 +604,11 @@ async function sceneHost() {
     check('the page is in a room with a code', st && st.inRoom && /^[A-Z2-9]{6}$/.test(st.code), JSON.stringify(st));
     await wait(300);
     await shot('invite');
+    /* The picture a posted room link shows: drawn by the page while the
+     * invite is up, the host's pilot over the map, and kept by the board. */
+    const card = await roomCardOf(st.code, 'host-room-card.jpg');
+    check('while the invite is up, the host\'s page gives the room its link picture', card && card.type === 'image/jpeg' && card.size === '1200x630'
+      && card.bytes > 20000 && card.bytes <= 300000, JSON.stringify(card && { ...card, listing: undefined }));
     const link = await page.evaluate("document.querySelector('#tg input[aria-label=\"Room link\"]').value");
     check('the room link names the world, the room and nothing secret', /map=bardwell/.test(link) && link.includes(`room=${st.code}`) && !link.includes('#i='), link);
     check(opts.launched ? 'and no ?mp=1, now rooms are on for everybody' : 'and ?mp=1, until rooms launch', /[?&]mp=1/.test(link) === !opts.launched, link);
@@ -2769,8 +2806,17 @@ async function sceneTrack() {
     const me = (await state(page)).you;
     bots[0].s.link.hostAction('makeHost', me);
     check('the host hands the room to the page', await page.until(`${T} && window.__together().host === ${me}`, 5000).then(() => true, () => false));
+    /* The new host owes the room a picture of their own, and draws it at
+     * the first moment off the sticks, never in flight. */
+    await wait(1600);
+    const inFlight = await (await fetch(`${boardOrigin}/api/rooms/${room.code}`)).json();
+    check('made host in flight, the page draws no link picture while it flies', inFlight.hasCard === false && (await state(page)).inRoom,
+      JSON.stringify(inFlight.hasCard));
 
     await racePage();
+    const card = await roomCardOf(room.code, 'track-room-card.jpg');
+    check('and draws it once paused', card && card.size === '1200x630' && card.bytes > 20000,
+      JSON.stringify(card && { ...card, listing: undefined }));
     check('the race page gives the host the laps and Start', await page.evaluate("['lmore', 'lfewer', 'start'].every((k) => document.querySelector('#tg [data-k=\"' + k + '\"]'))"));
     await pressKey(page, 'lmore');
     check('more laps reaches the room', await until(() => raceOf() && raceOf().laps === 4, 4000), JSON.stringify(raceOf() && raceOf().laps));

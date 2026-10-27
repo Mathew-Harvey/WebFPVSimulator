@@ -413,6 +413,69 @@ const person2 = await preview('/sim/?map=city&craft=5inch&fly=1', PERSON);
 check('a person on a built in map link is left alone', person2.html, PAGE);
 listingReply = json(MAP);
 
+/*
+ * A ROOM LINK, as the room's share sheet writes it (roomUrl in
+ * src/net/roomlinks.js): the world, the aircraft, ?mp=1, the room's code,
+ * and an invite in the fragment, which never leaves the browser. The room
+ * is asked about first; the host's picture is the card; no name is said.
+ */
+const ROOM = {
+  code: 'K7QX2M', name: "Ada's room", way: 'freestyle', map: 'city', mapName: 'The town', n: 3, max: 16, host: 'Ada Rook',
+  hasCard: true, cardUtc: '2026-10-27T02:00:00.000Z',
+};
+const answers = (byUrl) => (u) => {
+  const hit = Object.entries(byUrl).find(([tail]) => u.endsWith(tail));
+  return hit ? json(hit[1])() : new Response('{"error":"That room is not open.","why":"notFound"}', { status: 404 });
+};
+listingReply = answers({ '/api/rooms/K7QX2M': ROOM });
+const roomLink = await preview('/sim/?map=city&craft=5inch&mp=1&room=K7QX2M');
+check('a room link asks the board about the room, and only the room, when it has a picture',
+  listed.map((l) => l.url).join(), 'https://webfpv-board.onrender.com/api/rooms/K7QX2M');
+check('its title says what it is and where', meta(roomLink.html, 'og:title'), 'Fly together on The town in WebFPV');
+check('its picture is the host\'s, at an address that changes when the picture does',
+  meta(roomLink.html, 'og:image'), 'https://webfpv.org/board/api/rooms/K7QX2M/card?v=2026-10-27T02%3A00%3A00.000Z');
+check('a share card\'s size', `${meta(roomLink.html, 'og:image:width')}x${meta(roomLink.html, 'og:image:height')}`, '1200x630');
+check('no pilot\'s name and no room\'s name in any of it',
+  ['og:title', 'og:description', 'og:image:alt', 'twitter:title', 'twitter:description'].some((k) => /Ada/.test(meta(roomLink.html, k) || '')) ? 'named' : 'none', 'none');
+check('the description says the kind of room', meta(roomLink.html, 'og:description'),
+  'A freestyle room, open now. Follow the link to join it and fly in your browser on a real Betaflight control loop. No install, no account.');
+const person3 = await preview('/sim/?map=city&craft=5inch&mp=1&room=K7QX2M', PERSON);
+check('a person on a room link is left alone', `${listed.length} ${person3.html === PAGE}`, '0 true');
+
+/* A race room on a board track whose host has sent no picture yet: the
+ * track's own card, so the link still shows where the room flies. */
+listingReply = answers({
+  '/api/rooms/K7QX2M': {
+    ...ROOM, way: '5inch', map: TRACK.id, mapName: TRACK.name, hasCard: false, cardUtc: null,
+  },
+  [`/api/tracks/${TRACK.id}`]: TRACK,
+});
+const noPicture = await preview(`/sim/?map=custom&share=${TRACK.id}&craft=5inch&mp=1&room=K7QX2M`);
+check('a room with no picture asks about its track too', listed.map((l) => l.url.replace('https://webfpv-board.onrender.com', '')).join(),
+  `/api/rooms/K7QX2M,/api/tracks/${TRACK.id}`);
+check('and shows the track\'s card', meta(noPicture.html, 'og:image'), meta(fb.html, 'og:image'));
+check('under the room\'s words', `${meta(noPicture.html, 'og:title')} | ${meta(noPicture.html, 'og:description').slice(0, 30)}`,
+  'Fly together on Ladder Loop in WebFPV | A five inch racing room, open ');
+
+/* A room that has closed is the map it was on, which is what its link
+ * opens now. */
+listingReply = answers({ [`/api/maps/${MAP.id}`]: MAP });
+const closed = await preview(`/sim/?map=built&mapshare=${MAP.id}&craft=5inch&mp=1&room=K7QX2M#i=AbCdEfGhIjKlMnOp`);
+check('a closed room\'s link is described as its map', meta(closed.html, 'og:title'), 'Hibari Yard, a WebFPV freestyle map by Mat');
+check('with the map\'s card', meta(closed.html, 'og:image'), `https://webfpv.org/board/api/maps/${MAP.id}/card?v=2026-09-25T11%3A00%3A00.000Z`);
+listingReply = answers({});
+const closedTown = await preview('/sim/?map=city&craft=5inch&mp=1&room=K7QX2M');
+check('and on a built in map, as that map, from the table', meta(closedTown.html, 'og:title'), 'The town, a WebFPV freestyle map');
+for (const bad of ['k7qx2m', 'K7QX2', 'K7QX2MM', 'K7QX1M', 'K7QX%2FM']) {
+  listed = [];
+  await preview(`/sim/?map=city&mp=1&room=${bad}`);
+  check(`a room code that is no code (${bad}) is never asked about`, listed.map((l) => l.url).join(), '');
+}
+listed = [];
+await preview('/sim/?map=city&mp=1&room=K7QX2M&board=https%3A%2F%2Felsewhere.example');
+check('nor is a room on some other board', String(listed.length), '0');
+listingReply = json(MAP);
+
 /* A track wins when a hand made link names both, the rule in boot.js. */
 listingReply = json(TRACK);
 await preview('/sim/?share=trk-1a2b3c4d&mapshare=trk-5eed0010');

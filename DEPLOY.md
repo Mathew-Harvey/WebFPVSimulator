@@ -785,6 +785,14 @@ Three more things the edge settles, all in `edge/preview.js`:
   round trip to the board. The table is `WORLDS` in `edge/preview.js`, and it
   follows `src/maps/registry.js`.
 - The words carry no piece counts, scales or other builder's numbers.
+- A multiplayer room link (`?room=` with the world it flies) shows the
+  room's own picture: the host's pilot in a manga panel over the map,
+  drawn by the host's browser (`src/net/roomcard.js`) and held by the board
+  with the room, in memory (`/api/rooms/:code/card`). The title is "Fly
+  together on" the map; no pilot's or room's name is ever written, because a
+  private room's names are a pilot's own words and the youngest pilots are
+  eight. A room with no picture yet shows its map's, and a room that has
+  closed is described as the map it was on.
 
 The edge does the writing because nothing else can. A crawler runs no
 script, the simulator is a static site, and a link like

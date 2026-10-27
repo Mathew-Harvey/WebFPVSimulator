@@ -282,6 +282,7 @@
     'src/net/pose.js',
     'src/net/remote.js',
     'src/net/room.js',
+    'src/net/roomcard.js',
     'src/net/roomlinks.js',
     'src/net/roomrace.js',
     'src/net/together.js',

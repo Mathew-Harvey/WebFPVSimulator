@@ -95,6 +95,9 @@ const HELLOS_PER_MINUTE = 4;
 const HELLO_FRESH_MS = 1000;
 const BANNER_MS = 4200;
 const TOAST_MS = 2400;
+/* How long after a room's picture falls due before it is drawn: the sheet
+ * that has just opened draws first. See oweCard. */
+const CARD_WAIT_MS = 800;
 const QBAR_MS = 5000;
 /* The pad's repeat, as the career's (src/career/controller.js). */
 const PAD_REPEAT_FIRST_MS = 380;
@@ -459,6 +462,15 @@ export function createTogether(shell) {
   const log = [];
   let lastLink = 'good';
   let welcomedOnce = false;
+  /* The picture a link to the room shows (./roomcard.js): the code of the
+   * room this host owes one, when it may be drawn, and whether one is
+   * being drawn or sent now. */
+  let cardOwed = '';
+  let cardAt = 0;
+  let cardBusy = false;
+  /* The map the last one owed was of, so a 'room' that says there is no
+   * picture asks for one only when the board took it off for a new map. */
+  let cardMap = '';
 
   function me() {
     return {
@@ -887,6 +899,8 @@ export function createTogether(shell) {
     race = null;
     pending = null;
     welcomedOnce = false;
+    cardOwed = '';
+    cardMap = '';
     claimNow = null;
     streamDraft = null;
     streamSaving = false;
@@ -1243,6 +1257,75 @@ export function createTogether(shell) {
     toast('You left the room. Flying solo.');
   }
 
+  /*
+   * THE PICTURE A ROOM LINK SHOWS: the host's pilot over the map, which
+   * the edge puts on a room link posted anywhere that draws a preview
+   * (edge/preview.js). Owed when the board welcomes a host into a room
+   * that has none (a new room, or one rebuilt after a deploy), when the
+   * room moves to another map, when this pilot is made host, and when the
+   * host presses Done on a new look. Paid by frame() at the first moment
+   * this pilot is not flying, CARD_WAIT_MS on, so it never costs a frame in
+   * the air and the sheet that has just opened draws first. A failure is
+   * not tried again: a link without the picture shows the map's own, which
+   * is what every room link showed before. Not in the Steam edition, whose
+   * room links open nothing on the web and which reaches the board only
+   * for the room.
+   */
+  function oweCard() {
+    const r = room();
+    if (STEAM_EDITION || !r || !isHost()) {
+      return;
+    }
+    cardOwed = r.code;
+    cardMap = r.map;
+    cardAt = performance.now() + CARD_WAIT_MS;
+  }
+
+  function payCard() {
+    const r = room();
+    const code = cardOwed;
+    cardOwed = '';
+    if (!r || r.code !== code || !isHost()) {
+      return;
+    }
+    const board = boardOrigin();
+    const key = session.link.key;
+    cardBusy = true;
+    Promise.all([import('./roomcard.js'), isBuiltInWorld(r.map) ? [thumbOf(r)] : boardPictures(r, board)])
+      .then(([{ sendRoomCard }, pictures]) => sendRoomCard({
+        board, code, key, avatar: cleanAvatar(store.avatar), mapName: r.mapName, pictures,
+      }))
+      .catch(() => {})
+      .finally(() => {
+        cardBusy = false;
+      });
+  }
+
+  /*
+   * A board map's or track's picture for the room's card: the thumbnail at
+   * the address the share sheet has just shown it from, or the share card
+   * of one published before thumbnails, which carries the wordmark in the
+   * same place the room's card puts it. Its listing is asked first, so a
+   * picture it does not have is never fetched.
+   */
+  async function boardPictures(r, board) {
+    const route = r.way === 'freestyle' ? 'maps' : 'tracks';
+    const at = `${board}/api/${route}/${encodeURIComponent(r.map)}`;
+    try {
+      const res = await fetch(at);
+      const item = res.ok ? await res.json() : null;
+      if (item && item.hasThumb) {
+        return [thumbOf(r)];
+      }
+      if (item && item.hasCard) {
+        return [`${at}/card`];
+      }
+    } catch (e) {
+      /* No picture: the card is drawn on its own dot tone. */
+    }
+    return [];
+  }
+
   /* ---------------------------------------------------------------- */
   /* What the board says                                               */
   /* ---------------------------------------------------------------- */
@@ -1283,6 +1366,7 @@ export function createTogether(shell) {
       case 'host': {
         const p = pilot(data.id);
         if (data.id === session.you) {
+          oweCard();
           banner(me().avatar, 'laugh', "You're the host now", 'Pause, then Room, for the host tools.');
         } else if (p) {
           banner(p.avatar, 'laugh', `${p.handle} is the host now`, 'The room carries on.');
@@ -1303,6 +1387,9 @@ export function createTogether(shell) {
         paintChip();
         infoForShell();
         writeAddress();
+        if (!data.room.card && data.room.map !== cardMap) {
+          oweCard();
+        }
         if (streamSaving) {
           streamSaving = false;
           streamDraft = null;
@@ -1480,6 +1567,9 @@ export function createTogether(shell) {
     infoForShell();
     writeAddress();
     raceChanged();
+    if (!data.room.card) {
+      oweCard();
+    }
     if (welcomedOnce) {
       /* A deploy, or a drop, and back in from the ticket: whatever page
        * of the room is open is drawn again from the board's word, and a
@@ -2111,6 +2201,7 @@ export function createTogether(shell) {
         const now = cleanAvatar(store.avatar);
         if (session && session.inRoom && JSON.stringify(now) !== JSON.stringify(was)) {
           session.look(now);
+          oweCard();
         }
         if (after) after();
       },
@@ -3812,6 +3903,9 @@ export function createTogether(shell) {
     }
     if (!session) {
       return;
+    }
+    if (cardOwed && !cardBusy && now >= cardAt && !shell.flying()) {
+      payCard();
     }
     let screen = 'other';
     if (shell.flying()) screen = 'flight';

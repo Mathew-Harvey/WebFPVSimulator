@@ -3285,7 +3285,8 @@ export async function boot({ loading, bootStart, mapId }) {
       return input.source === 'the touch sticks' ? 'touch' : 'keys';
     },
     roomInfo: (info) => ui.setRoomInfo(info),
-    pickWorld: (way) => ui.pickRoomWorld(way),
+    pickWorld: (way, opts) => ui.pickRoomWorld(way, opts),
+    pickDone: () => ui.endMovePick(),
     /* The look editor closed: the front screen's pilot panel shows it. */
     pilotChanged: () => ui.paintGatePilot(),
     forget: (id) => {

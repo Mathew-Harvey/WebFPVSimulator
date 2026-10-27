@@ -103,6 +103,22 @@ const WATCH_AWAY_MS = 3000;
  * to come back. */
 const WATCH_BACK_MS = 10000;
 const TOAST_MS = 2400;
+/* How long the room has to answer the host's move to a new map (the
+ * board's VOTE_MS in src/rooms.js). */
+const VOTE_MS = 20000;
+const VOTE_REFUSED = {
+  busy: 'The room is already voting.',
+  racing: 'Not while a race is on.',
+  slow: 'A vote just ended. Try again in a moment.',
+  same: 'The room is on that map already.',
+  fields: 'That map cannot be a room\'s.',
+};
+const VOTE_ENDS = {
+  cancelled: 'The host called off the move.',
+  host: 'The move is off: the host has gone.',
+  racing: 'The move is off: a race is starting.',
+  busy: 'The move is off: the board is full just now.',
+};
 /* How long after a room's picture falls due before it is drawn: the sheet
  * that has just opened draws first. See oweCard. */
 const CARD_WAIT_MS = 800;
@@ -409,7 +425,10 @@ function loadStore() {
  *   airborne()     off the ground, for a false start
  *   whoop()        whether the seated aircraft is the whoop
  *   hands()        what the pilot flies with: 'pad', 'touch' or 'keys'
- *   pickWorld(way) the picker, on the shelf for a room of that way
+ *   pickWorld(way, { move }) the picker, on the shelf for a room of that
+ *                  way; move: for the room's host, changing its map
+ *   pickDone()     a move's map is picked: the picker goes, and the pause
+ *                  menu the host came from is back
  *   roomInfo(info) the pause menu's rows: { code, name, n, host } or null
  *   forget(id)     a pilot who left, for the craft's name tags
  *   sound(name)    the menus' own click
@@ -456,6 +475,12 @@ export function createTogether(shell) {
   let pending = null;
   let flowSeq = 0;
   let boot = null;
+  /* The host's vote on a new map: which one this page has shown, when it
+   * ends on this page's clock, and the last one heard, for its words when
+   * it is over. */
+  let voteKey = '';
+  let voteEnds = 0;
+  let lastVote = null;
   /* Pilots muted for this visit: the board never knows. */
   const muted = new Set();
   const reported = new Set();
@@ -952,6 +977,8 @@ export function createTogether(shell) {
     cardOwed = '';
     cardMap = '';
     claimNow = null;
+    voteKey = '';
+    lastVote = null;
     streamDraft = null;
     streamSaving = false;
     streamBad = false;
@@ -1445,7 +1472,7 @@ export function createTogether(shell) {
         if (data.id === session.you) {
           oweCard();
           banner(me().avatar, 'laugh', "You're the host now", 'Pause, then Room, for the host tools.');
-        } else if (p) {
+        } else if (p && data.was) {
           banner(p.avatar, 'laugh', `${p.handle} is the host now`, 'The room carries on.');
         }
         infoForShell();
@@ -1567,6 +1594,15 @@ export function createTogether(shell) {
         toast('The report did not go. Try again in a moment.', 'bad');
         refresh('report');
         break;
+      case 'vote':
+        voteHeard(data, now);
+        break;
+      case 'voteRefused':
+        toast(VOTE_REFUSED[data.why] || 'The room cannot move just now.', 'warn');
+        break;
+      case 'moved':
+        moved(data);
+        break;
       case 'settingsRefused':
         if (streamSaving) {
           streamSaving = false;
@@ -1639,6 +1675,10 @@ export function createTogether(shell) {
   function welcomed(data, now) {
     const was = pending;
     pending = null;
+    voteKey = '';
+    if (data.vote) {
+      setTimeout(() => voteHeard({ vote: data.vote, now: data.now }, performance.now()), BANNER_MS);
+    }
     if (race) {
       race.welcome(data, now);
     }
@@ -2544,6 +2584,10 @@ export function createTogether(shell) {
    * map, name, way, thumb, whoop, fly() }. Fly together from the picker.
    */
   function openHost(entry) {
+    if (entry && entry.move) {
+      proposeMove(entry);
+      return;
+    }
     leaveFirst('Opening a room of your own takes you out of this one. The others carry on without you.', () => gate(() => sheetHost(entry, null)));
   }
 
@@ -3110,6 +3154,7 @@ export function createTogether(shell) {
             }, h('span', { text: 'Watch a pilot' }), h('small', { text: `${watchList().length} flying` })) : null,
             btn('Invite pilots', 'ghost', () => sheetShare(), { 'data-k': 'invite' }),
             isHost() ? btn('Room settings', 'ghost', () => sheetSettings(), { 'data-k': 'settings' }) : null,
+            voteRows(),
             btn('Your look', 'ghost', () => sheetEditor(() => refresh('room')), { 'data-k': 'look' }),
             namesHere(r) ? btn(`${VIA_NAMES[namesHere(r)]} name`, 'ghost', () => sheetClaim(), { 'data-k': 'claim' }) : null,
             btn('Leave room', 'danger', () => sheetConfirm('leave'), { 'data-k': 'leave' })),
@@ -3257,6 +3302,168 @@ export function createTogether(shell) {
         h('div.footer-row', null, btn(settingsSaving ? 'Saving' : 'Save', '', saveIt, { 'data-k': 'save', 'data-autofocus': true, disabled: settingsSaving }),
           renames ? h('span.note', { style: { color: 'var(--red)' }, text: f.listed || f.schoolSafe ? 'Saving gives everybody in the room a made up name.' : 'Saving gives everybody their own name back.' }) : null)));
     });
+  }
+
+  /* ---- a new map, by vote ---- */
+
+  /*
+   * The owner's ask of 2026-10-27: the host changes the map, everybody
+   * else votes, the ones who say go come with the host, and the ones who
+   * stay keep the room with a host picked at random from among them. The
+   * board counts it (src/rooms.js startVote) and sends each pilot who goes
+   * a 'moved' with the room to come back into, on the new map. Saying
+   * nothing is staying: nobody is moved who did not ask to be.
+   *
+   * It is asked on a banner, never a sheet, because a sheet pauses the
+   * flight and a vote must not drop twenty quads out of the air: Y and N on
+   * a keyboard, Go and Stay on the banner for a mouse or a finger, and the
+   * room's page for a radio, which has no keys for it.
+   */
+  function currentVote() {
+    return session && session.inRoom ? session.link.vote : null;
+  }
+
+  function myAnswer(v) {
+    if (v.go.includes(session.you)) return true;
+    return v.stay.includes(session.you) ? false : null;
+  }
+
+  function voteLeftMs() {
+    return Math.max(0, voteEnds - performance.now());
+  }
+
+  /* Change map, from the room's page: the picker on the room's own shelf,
+   * with the flight left paused under it, and the map picked comes back to
+   * openHost with move set. */
+  function pickMove() {
+    const r = room();
+    if (!r || !isHost() || !shell.pickWorld) {
+      return;
+    }
+    pausedByUs = false;
+    closeAll();
+    shell.pickWorld(r.way, { move: true });
+  }
+
+  function proposeMove(entry) {
+    /* Back from the picker and into the air: the vote takes twenty
+     * seconds, and the tally is a banner over the flight. */
+    if (shell.pickDone) {
+      shell.pickDone();
+    }
+    if (shell.paused()) {
+      shell.resume();
+    }
+    const r = room();
+    if (!r || !isHost()) {
+      toast('Only the host can move the room.', 'warn');
+      return;
+    }
+    if (entry.map === r.map) {
+      toast(VOTE_REFUSED.same);
+      return;
+    }
+    session.link.mapVote(entry.map, String(entry.name || 'A map').slice(0, 48), entry.whoop ? 100 : 50);
+  }
+
+  function answerVote(go) {
+    const v = currentVote();
+    if (!v || isHost()) {
+      return;
+    }
+    session.link.answerVote(go);
+    sound('select');
+    banner(me().avatar, go ? 'hello' : 'calm', go ? `You're going to ${v.mapName}` : 'You are staying here',
+      go ? 'When the vote ends, the new map loads.' : 'The others who stay keep flying with you.', go ? 'mint' : '', { ms: 2600 });
+  }
+
+  function voteHeard(data, now) {
+    const v = data.vote;
+    if (!v) {
+      voteOver(data);
+      return;
+    }
+    lastVote = v;
+    const key = `${v.map}|${v.until}`;
+    if (key !== voteKey) {
+      voteKey = key;
+      const left = Number.isFinite(data.now) ? v.until - data.now : VOTE_MS;
+      voteEnds = now + Math.max(0, Math.min(VOTE_MS, left));
+    }
+    refresh('room');
+    const ms = voteLeftMs();
+    if (ms < 500) {
+      return;
+    }
+    const host = pilot(v.host);
+    const by = hands();
+    if (isHost()) {
+      const coming = v.go.filter((id) => id !== session.you).length;
+      const yet = pilotsList().length - 1 - coming - v.stay.length;
+      banner(me().avatar, 'smug', `Moving the room to ${v.mapName}`,
+        `${coming} coming, ${v.stay.length} staying${yet > 0 ? `, ${yet} yet to say` : ''}. Anyone who stays keeps this map.`, 'amber',
+        { ms, extra: by === 'pad' ? null : btn('Call it off', 'small ghost', () => session.link.cancelVote(), { 'data-k': 'vote-off' }) });
+      return;
+    }
+    if (myAnswer(v) !== null) {
+      return;
+    }
+    const ask = {
+      keys: 'Y to go with them, N to stay. Say nothing and you stay.',
+      touch: 'Go with them, or stay here. Say nothing and you stay.',
+      pad: 'Pause, then Room, to go with them. Say nothing and you stay.',
+    }[by] || 'Go with them, or stay here. Say nothing and you stay.';
+    banner(host ? host.avatar : null, 'wow', `${host ? host.handle : 'The host'} is moving to ${v.mapName}`, ask, 'amber', {
+      ms,
+      extra: by === 'pad' ? null : [
+        btn('Go', 'small mint', () => answerVote(true), { 'data-k': 'vote-go' }),
+        btn('Stay', 'small ghost', () => answerVote(false), { 'data-k': 'vote-stay' })],
+    });
+    sound('move');
+  }
+
+  function voteOver(data) {
+    const was = lastVote;
+    lastVote = null;
+    voteKey = '';
+    refresh('room');
+    if (data.end === 'split') {
+      const n = data.went || 0;
+      toast(`${n === 1 ? 'One pilot' : `${n} pilots`} went to ${was ? was.mapName : 'the new map'}. This room carries on here.`);
+    } else if (VOTE_ENDS[data.end]) {
+      toast(VOTE_ENDS[data.end], 'warn');
+    }
+  }
+
+  /* This pilot goes: the board has closed the socket, and the page loads
+   * the new map and comes back into the room it names. */
+  function moved(data) {
+    const r = data.room;
+    const invite = data.invite || '';
+    if (!r || !r.code) {
+      dropSession();
+      return;
+    }
+    dropSession();
+    travel(r, invite);
+  }
+
+  /* The room's page while a vote runs, and the host's way to start one. */
+  function voteRows() {
+    const v = currentVote();
+    if (!v) {
+      return isHost() && !racingNow() ? h('button.btn.ghost', {
+        type: 'button', 'data-k': 'move', on: { click: () => pickMove() },
+      }, h('span', { text: 'Change map' }), h('small', { text: 'Everyone votes' })) : null;
+    }
+    if (isHost()) {
+      return btn(`Call off the move to ${v.mapName}`, 'ghost', () => session.link.cancelVote(), { 'data-k': 'vote-off' });
+    }
+    const mine = myAnswer(v);
+    return [
+      btn(mine === true ? `Going to ${v.mapName}` : `Go to ${v.mapName}`, mine === true ? 'mint' : 'ghost', () => answerVote(true), { 'data-k': 'vote-go' }),
+      btn(mine === false ? 'Staying here' : 'Stay here', mine === false ? 'sakura' : 'ghost', () => answerVote(false), { 'data-k': 'vote-stay' }),
+    ];
   }
 
   /* ---- talking, parked ---- */
@@ -4445,6 +4652,10 @@ export function createTogether(shell) {
         return true;
       }
     }
+    if ((code === 'KeyY' || code === 'KeyN') && currentVote() && !isHost() && (shell.flying() || shell.paused())) {
+      answerVote(code === 'KeyY');
+      return true;
+    }
     if (!shell.flying()) {
       return false;
     }
@@ -4746,6 +4957,8 @@ export function createTogether(shell) {
         muted: [...muted],
         watchTaught: store.watchTaught,
         watchRode: store.watchRode,
+        map: room() ? room().map : '',
+        vote: currentVote(),
       };
     },
     leave,

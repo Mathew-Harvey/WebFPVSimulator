@@ -64,6 +64,9 @@
  *           arrows to the next pilot, a pilot who stops or leaves, V home
  *           into the goggles with the flight carrying on, the room page's
  *           Watch a pilot and a pilot's own Watch, and a pad's button home
+ *   vote    the host moving the room to another map: the banner that
+ *           asks, N to stay and the room left to the page; then Change
+ *           map, the picker, the tally, and the whole room moving
  *
  * The race scene also has the host leave in the countdown.
  *
@@ -3493,6 +3496,106 @@ async function sceneWatchEdges() {
  * its own goggles with its flight carrying on, by V, by the bar's button,
  * by Escape and by a pad.
  */
+/*
+ * The host moves the room by vote, the owner's ask of 27 October 2026.
+ * First the page is a pilot asked: the banner, N to stay, the host and a
+ * pilot who said go leaving, and the room left to the page as its host.
+ * Then the page is that host: Change map on the room's page, the picker
+ * saying what it is for, Move the room here, the tally while a pilot
+ * answers, and everybody going, so the page reloads onto the new map and
+ * comes back into the same room by its code.
+ */
+async function sceneVote() {
+  console.log('\nvote: moving the room to another map');
+  const kite = bot('Kite Runner', 311);
+  const moss = bot('Moss Comet', 313);
+  const room = await hostRoom(kite, {
+    name: 'Movers', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  await joinRoom(moss, room.code, kite.s.invite);
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`;
+  const page = await open(at, seedFor({ met: true, name: 'Vote Pilot' }));
+  const shot = shooter(page, 'vote');
+  const fern = bot('Fern Glider', 317);
+  try {
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    await page.until(`${T} && window.__together().pilots === 3`, 10000);
+    await wait(5000);
+
+    kite.s.link.mapVote('city', 'The town', 50);
+    const asked = await page.until(SEES('Kite Runner is moving to The town', '#tg .tg-banner'), 10000).then(() => true, () => false);
+    const words = await page.evaluate("(document.querySelector('#tg .tg-banner') || {}).textContent || ''");
+    check('a pilot is asked on a banner, with the host and the map named, and the keys', asked && words.includes('Y to go with them, N to stay'), words);
+    check('the banner has Go and Stay for a mouse', await page.evaluate("Boolean(document.querySelector('#tg [data-k=\"vote-go\"]') && document.querySelector('#tg [data-k=\"vote-stay\"]'))"));
+    check('and the flight carries on under it', await page.evaluate("window.__ui.screen === 'flight'"));
+    await settled(page, '#tg .tg-banner');
+    const bannerOn = await overlaps(page, '#tg .tg-banner', CLEAR_OF);
+    check('the banner covers none of the shell\'s instruments', !bannerOn, bannerOn);
+    await shot('asked');
+    await tapLoose(page, 'KeyN');
+    check('N says stay', await page.until(SEES('You are staying here', '#tg .tg-banner'), 5000).then(() => true, () => false));
+    check('and the room hears it', await until(() => kite.s.link.vote && kite.s.link.vote.stay.includes(kite.s.link.pilots.size && [...kite.s.link.pilots.values()].find((p) => p.handle === 'Vote Pilot').id), 5000));
+    moss.s.link.answerVote(true);
+    check('everybody has answered, so the host and the one who said go are sent on', await until(() => kite.s.link.moved && moss.s.link.moved, 5000));
+    const told = await page.until(SEES('2 pilots went to The town', '#tg'), 5000).then(() => true, () => false);
+    check('the page is told how many went', told);
+    check('and that it is the host now', await page.until(SEES("You're the host now", '#tg .tg-banner'), 5000).then(() => true, () => false));
+    check('it stays in the room, its host, alone', await page.until(`${T} && window.__together().inRoom && window.__together().host === window.__together().you && window.__together().pilots === 1`, 10000).then(() => true, () => false));
+    await shot('stayed');
+    check('still on Bardwell\'s house', (await state(page)).map === 'bardwell');
+    /* The board takes no new vote for ten seconds after the last. */
+    await wait(10000);
+
+    /* Now the page is the host: a pilot comes in, and the page moves the room. */
+    await joinRoom(fern, room.code, '');
+    await page.until(`${T} && window.__together().pilots === 2`, 10000);
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    check('the host\'s room page has Change map', await page.evaluate(SEES('Change map', '#tg .tg-menu')));
+    await shot('room-page');
+    await pressKey(page, 'move');
+    const hosting = await page.until("document.querySelector('.room-picker.is-hosting')", 15000).then(() => true, () => false);
+    check('Change map opens the maps, saying what it is for', hosting && await page.evaluate("(document.querySelector('.host-band') || {}).textContent.includes('Pick the room\\'s next map')"));
+    await page.until("document.querySelector('.wp-card')", 10000);
+    await page.evaluate("(() => { window.__ui.picker.select('map:city'); return 1; })()");
+    await wait(300);
+    check('the map\'s one button is Move the room here', await page.evaluate("[...document.querySelectorAll('.wp-act')].map((b) => b.textContent).join() === 'Move the room here'"),
+      await page.evaluate("[...document.querySelectorAll('.wp-act')].map((b) => b.textContent).join()"));
+    await shot('picker');
+    await page.evaluate("(() => { [...document.querySelectorAll('.wp-act')].find((b) => b.textContent === 'Move the room here').click(); return 1; })()");
+    check('the vote is asked and the picker gives way to the flight', await page.until(`${T} && window.__together().vote && window.__ui.screen === 'flight'`, 10000).then(() => true, () => false));
+    check('the pilot in the room hears it', await until(() => fern.s.link.vote && fern.s.link.vote.mapName === 'The town', 5000));
+    check('the host sees the tally', await page.until(SEES('Moving the room to The town', '#tg .tg-banner'), 5000).then(() => true, () => false));
+    /* The flight's line fades back in under it: the banner moves down
+     * out of its way once it is there. */
+    await wait(1500);
+    await settled(page, '#tg .tg-banner');
+    const tallyOn = await overlaps(page, '#tg .tg-banner', CLEAR_OF);
+    check('the tally covers none of the shell\'s instruments', !tallyOn, tallyOn);
+    await shot('tally');
+    const code = room.code;
+    fern.s.link.answerVote(true);
+    check('everybody going moves the whole room: the page loads the town', await page.until("window.__map && window.__map().ready && location.search.includes('room=')", 60000).then(() => true, () => false));
+    check('and comes back into the same room, as its host', await page.until(`${T} && window.__together().inRoom && window.__together().code === ${JSON.stringify(code)} && window.__together().host === window.__together().you`, 60000).then(() => true, () => false));
+    check('on the town', (await state(page)).map === 'city');
+    await joinRoom(fern, code, fern.s.link.moved ? fern.s.link.moved.invite : '');
+    check('the pilot who went comes in too', await page.until(`${T} && window.__together().pilots === 2`, 10000).then(() => true, () => false));
+    await page.until("window.__mode === 'flight'", 30000).catch(() => {});
+    await wait(500);
+    await shot('moved');
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    for (const b of [kite, moss, fern]) b.s.leave();
+    await page.close();
+  }
+}
+
 async function sceneWatch() {
   console.log('\nwatch: riding behind another pilot');
   const kite = bot('Kite Runner', 211);
@@ -3708,6 +3811,7 @@ try {
   if (wanted('gate')) { await freshBoard(); await sceneGate(); }
   if (wanted('watch')) { await freshBoard(); await sceneWatch(); }
   if (wanted('watchedge')) { await freshBoard(); await sceneWatchEdges(); }
+  if (wanted('vote')) { await freshBoard(); await sceneVote(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

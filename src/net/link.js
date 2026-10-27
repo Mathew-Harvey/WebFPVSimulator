@@ -102,7 +102,7 @@ export class RoomLink {
    * 'room', 'pilots', 'away', 'look', 'removed', 'refused', 'retrying', 'lost',
    * 'closed', and from stages 4 to 6 'say', 'chat', 'chatRefused',
    * 'reported', 'reportFailed', 'settingsRefused', 'peers', 'signal',
-   * 'ice', 'pong' and 'race'. onPoses(bytes) hears the binary frames.
+   * 'ice', 'pong' and 'race', and 'vote', 'voteRefused' and 'moved'. onPoses(bytes) hears the binary frames.
    */
   constructor({
     url, key, handle = '', avatar = {}, onEvent = () => {}, onPoses = () => {},
@@ -132,6 +132,10 @@ export class RoomLink {
      * the room's race as the board last sent it (stage 6). */
     this.ice = null;
     this.race = null;
+    /* The host's vote on a new map while one runs, as the board last sent
+     * it, and the room this pilot was sent to when it ended. */
+    this.vote = null;
+    this.moved = null;
     this.pilots = new Map();
     this.retries = 0;
     this.retryTimer = null;
@@ -263,6 +267,7 @@ export class RoomLink {
         this.invite = m.invite || '';
         this.ice = m.ice || null;
         this.race = m.race || null;
+        this.vote = m.vote || null;
         this.takeTicket(m.ticket);
         this.pilots.clear();
         for (const p of m.pilots || []) {
@@ -282,10 +287,14 @@ export class RoomLink {
         this.onEvent('left', { ...m, pilot: gone });
         break;
       }
-      case 'host':
+      case 'host': {
+        /* was: 0 when the room had no host here, which is the host coming
+         * back into a room the others reached first, not a new one. */
+        const was = this.hostId;
         this.hostId = m.id;
-        this.onEvent('host', m);
+        this.onEvent('host', { ...m, was });
         break;
+      }
       case 'room':
         this.room = m.room;
         if (m.invite != null) this.invite = m.invite;
@@ -328,12 +337,28 @@ export class RoomLink {
         this.ticket = '';
         this.onEvent('removed', m);
         break;
+      case 'vote':
+        this.vote = m.vote || null;
+        this.onEvent('vote', m);
+        break;
+      case 'moved':
+        /* Off to the new map: the board closes this socket, and the page
+         * comes back into the room by its code, so nothing here tries to
+         * resume the old one. */
+        this.ticket = '';
+        this.hello = null;
+        this.moved = m;
+        this.dropSocket();
+        this.state = 'idle';
+        this.onEvent('moved', m);
+        break;
       case 'say':
       case 'chat':
       case 'chatRefused':
       case 'reported':
       case 'reportFailed':
       case 'settingsRefused':
+      case 'voteRefused':
       case 'claim':
       case 'peers':
       case 'signal':
@@ -450,6 +475,22 @@ export class RoomLink {
 
   hostAction(t, id) {
     this.sendJson({ t, id });
+  }
+
+  /* The host: go to another map and ask the room who comes, or call the
+   * vote off. Everybody else: go with the host, or stay. */
+  mapVote(map, mapName, scale) {
+    return this.sendJson({
+      t: 'mapVote', map, mapName, scale,
+    });
+  }
+
+  cancelVote() {
+    return this.sendJson({ t: 'mapVote', cancel: true });
+  }
+
+  answerVote(go) {
+    return this.sendJson({ t: 'vote', go: Boolean(go) });
   }
 
   /* Stage 4. A quick chat word (the board's QUICK_LINES), a typed line

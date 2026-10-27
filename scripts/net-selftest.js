@@ -735,6 +735,71 @@ async function raceScene(url) {
  * and has quick chat only; a private room whose host turns typed chat on
  * has typed chat, through the board's filters.
  */
+/*
+ * The host moves the room to another map by vote, the owner's ask of 27
+ * October 2026: one pilot goes with them, one stays and is left the old
+ * room as its host, and the two who went come back in on the new map by
+ * the code and invite the board sent, as a page does after its reload.
+ */
+async function voteScene(url) {
+  console.log('a vote on a new map through the board');
+  const pilots = ['Mover', 'Follower', 'Stayer'].map((n) => {
+    const p = { votes: [], moved: null, refused: [] };
+    p.key = randomBytes(16).toString('hex');
+    p.s = new RoomSession({
+      url,
+      key: p.key,
+      handle: n,
+      avatar: rollAvatar(rnd),
+      onEvent: (name, data) => {
+        if (name === 'vote') p.votes.push(data);
+        else if (name === 'moved') p.moved = data;
+        else if (name === 'voteRefused') p.refused.push(data.why);
+      },
+    });
+    return p;
+  });
+  const [a, b, c] = pilots;
+  try {
+    a.s.host({
+      name: 'Vote test', way: 'freestyle', map: 'city', mapName: 'The town', scale: 100,
+    });
+    check('a room opens on the town', await until(() => a.s.inRoom));
+    const code = a.s.room.code;
+    b.s.join(code, { invite: a.s.invite });
+    c.s.join(code, { invite: a.s.invite });
+    check('two pilots join', await until(() => a.s.link.pilots.size === 3 && b.s.inRoom && c.s.inRoom));
+    b.s.link.mapVote('selftest-gates', 'Self test gates', 50);
+    a.s.link.mapVote('city', 'The town', 100);
+    check('only the host may move the room, and not to where it is', await until(() => a.refused.includes('same')) && !b.votes.length);
+    a.s.link.mapVote('selftest-gates', 'Self test gates', 50);
+    check('every pilot hears the vote, with the map named', await until(() => c.s.link.vote && c.s.link.vote.mapName === 'Self test gates' && b.s.link.vote));
+    b.s.link.answerVote(true);
+    c.s.link.answerVote(false);
+    check('when all have answered, the host and the one who said go are sent on', await until(() => a.moved && b.moved));
+    check('to one new room on the new map, with an invite',
+      a.moved.room.code === b.moved.room.code && a.moved.room.code !== code && a.moved.room.map === 'selftest-gates' && a.moved.invite === b.moved.invite);
+    check('and their links stand down, with nothing to resume', a.s.link.state === 'idle' && !a.s.link.ticket && b.s.link.state === 'idle');
+    check('the one who stayed is still in the old room, as its host now',
+      await until(() => c.s.inRoom && c.s.room.code === code && c.s.link.hostId === c.s.you && c.s.link.pilots.size === 1));
+    check('and is told the vote is over and how many went', c.votes.some((v) => v.vote === null && v.end === 'split' && v.went === 2));
+    await wait(300);
+    check('nobody on the old room tries to come back into it', c.s.link.pilots.size === 1);
+
+    /* After the reload: back in by the code and the invite the board sent. */
+    const next = a.moved.room.code;
+    const invite = a.moved.invite;
+    b.s.join(next, { invite });
+    check('the one who went comes into the new room before the host', await until(() => b.s.inRoom && b.s.room.code === next));
+    check('without taking the host\'s place', b.s.link.hostId === 0);
+    a.s.join(next, { invite });
+    check('the host comes back as its host', await until(() => a.s.inRoom && a.s.link.hostId === a.s.you && b.s.link.hostId === a.s.you));
+    check('on the new map', a.s.room.map === 'selftest-gates' && b.s.room.map === 'selftest-gates');
+  } finally {
+    for (const p of pilots) p.s.leave();
+  }
+}
+
 async function talkScene(url) {
   console.log('talk through the board');
   const a = racer(url, 'Talker A');
@@ -1279,6 +1344,7 @@ if (!boardDir || typeof WebSocket === 'undefined') {
 
     await raceScene(url);
     await talkScene(url);
+    await voteScene(url);
     await namesScene(url, async () => {
       board.kill('SIGTERM');
       await new Promise((r) => { board.once('exit', r); });

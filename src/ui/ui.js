@@ -13775,7 +13775,7 @@ export class Ui {
      * room's, and says so rather than flying solo instead. */
     if (this.hostPick) {
       return this.roomWorldOf(entry)
-        ? [{ id: 'fly-together', label: 'Host a room here', primary: true }]
+        ? [{ id: 'fly-together', label: this.hostPick.move ? 'Move the room here' : 'Host a room here', primary: true }]
         : [{ id: 'host-cant', label: 'Only on this computer', primary: true, disabled: true }];
     }
     const fly = { id: 'fly', label: 'Fly this', primary: true };
@@ -13835,7 +13835,7 @@ export class Ui {
     if (id === 'fly-together') {
       const world = this.roomWorldOf(entry);
       if (world && this.onFlyTogether) {
-        this.onFlyTogether(world);
+        this.onFlyTogether(this.hostPick && this.hostPick.move ? { ...world, move: true } : world);
       }
       return;
     }
@@ -13869,9 +13869,11 @@ export class Ui {
    * on a map, so the picker, on the shelf of the kind of room the pilot was
    * looking at. From the title as well as from the picker's own Rooms tab.
    */
-  pickRoomWorld(way) {
+  pickRoomWorld(way, { move = false } = {}) {
     const shelf = { freestyle: 'maps', '5inch': 'five', whoop: 'whoop' }[way] || 'maps';
-    this.hostPick = { way, from: this.onGate() ? 'gate' : this.screen };
+    /* move: the host of a room taking it to another map, from the pause
+     * menu, which is where the pilot goes back to. */
+    this.hostPick = { way, move, from: this.onGate() ? 'gate' : this.screen };
     if (isCardScreen(this.screen) && this.pickerShelf() === shelf) {
       this.paintHostPick();
       return;
@@ -13896,8 +13898,7 @@ export class Ui {
       this.hostBand = el('div', 'host-band');
       this.hostBand.setAttribute('role', 'status');
       const words = el('div', 'host-band-words');
-      words.append(el('span', 'host-band-kick', 'Host a room'), el('div', 'host-band-title', 'Pick the map for your room'),
-        el('span', 'host-band-line', 'Double click a map, or choose it and press Host a room here.'));
+      words.append(el('span', 'host-band-kick', ''), el('div', 'host-band-title', ''), el('span', 'host-band-line', ''));
       const cancel = btn('host-band-cancel', 'Cancel');
       cancel.addEventListener('click', () => this.back());
       this.hostBand.append(words, cancel);
@@ -13909,6 +13910,20 @@ export class Ui {
     }
     const head = this.pickerHost ? this.pickerHost.querySelector('.wp-head') : null;
     const hero = this.pickerHost ? this.pickerHost.querySelector('.wp-hero') : null;
+    if (on) {
+      const move = this.hostPick.move;
+      const [kick, title, line, tab] = move
+        ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
+        : ['Host a room', 'Pick the map for your room', 'Double click a map, or choose it and press Host a room here.', 'Hosting a room'];
+      const titleEl = this.hostBand.querySelector('.host-band-title');
+      if (titleEl.dataset.words !== title) {
+        titleEl.dataset.words = title;
+        setHeadingText(titleEl, title);
+      }
+      this.hostBand.querySelector('.host-band-kick').textContent = kick;
+      this.hostBand.querySelector('.host-band-line').textContent = line;
+      this.hostTab.textContent = tab;
+    }
     if (on && head) {
       const fresh = this.hostBand.hidden || !this.hostBand.isConnected;
       head.prepend(this.hostBand);
@@ -13938,6 +13953,18 @@ export class Ui {
     }
     if (this.picker) {
       this.picker.refresh();
+    }
+  }
+
+  /* A room's move picked, or backed out of: the picker goes and the pause
+   * menu the host came from is back. */
+  endMovePick() {
+    if (!this.hostPick || !this.hostPick.move) {
+      return;
+    }
+    this.endHostPick();
+    if (isCardScreen(this.screen)) {
+      this.act('paused');
     }
   }
 
@@ -18835,7 +18862,7 @@ export class Ui {
      * in the radio's voice, which has no pointer to double click with, nor
      * the phone's, where a double tap is the browser's to interpret. */
     if (this.hostPick && isCardScreen(this.screen) && !pad) {
-      out.push({ keys: ['Double click'], text: 'Host here' });
+      out.push({ keys: ['Double click'], text: this.hostPick.move ? 'Move here' : 'Host here' });
     } else if (this.screen === 'courses' && !pad) {
       out.push({ keys: ['Double click'], text: 'Fly' });
     }
@@ -19431,6 +19458,13 @@ export class Ui {
     /* Back out of picking a map for a room: to the multiplayer page when
      * that is where Host a room was pressed, otherwise to the picker as it
      * is for flying, which is where the pilot was. */
+    if (this.hostPick && this.hostPick.move && isCardScreen(this.screen)) {
+      this.endMovePick();
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
+      return;
+    }
     if (this.hostPick && isCardScreen(this.screen)) {
       const fromGate = this.hostPick.from === 'gate';
       this.endHostPick();

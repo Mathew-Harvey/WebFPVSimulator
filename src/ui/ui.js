@@ -638,6 +638,8 @@ export function pacingTimerOn(s) {
  * Each is one class on .osd-cross in index.html; see syncCrosshair.
  */
 export const CROSSHAIRS = ['off', 'wings', 'cross', 'dot'];
+/* What the FPV lens shows of the quad itself: see inView in DEFAULTS. */
+export const IN_VIEW = ['both', 'props', 'shadow', 'off'];
 const CROSSHAIR_LABEL = { off: 'Off', wings: 'Wings', cross: 'Cross', dot: 'Dot' };
 
 /*
@@ -1329,6 +1331,16 @@ const DEFAULTS = {
   ghost: 'best',
   cameraAngle: CAMERA_ANGLE_DEFAULT,
   cameraFov: CAMERA_FOV_DEFAULT,
+  /*
+   * PROPS IN VIEW and THE CRAFT'S SHADOW (the owner, 2026-10-27: "props in
+   * view of the camera, just a little bit ... casting a shadow as physics
+   * permits, there should also be an option to turn off props in view").
+   * Both are drawn only on the FPV lens, one small mesh each. One row for
+   * the two, not two rows, because scripts/shell-check.js holds the Quad
+   * screen to its height and a row is what it has room to give: 'both',
+   * 'props', 'shadow' or 'off'. See src/render/propview.js.
+   */
+  inView: 'both',
   renderScale: 100,
   fpsCap: 0,
   /*
@@ -1862,6 +1874,7 @@ export function loadSettings() {
     ['ghost', ['off', 'best', 'previous']],
     ['freestyleScoring', FREESTYLE_SCORING],
     ['crosshair', CROSSHAIRS],
+    ['inView', IN_VIEW],
     ['graphicsAutoRaised', ['', ...GRAPHICS_IDS]],
     ['graphicsAutoCeiling', ['', ...GRAPHICS_IDS]],
   ]) {
@@ -9652,6 +9665,14 @@ export class Ui {
           s.cameraFov,
           (n) => `${n} degrees vertical`,
           (n) => { s.cameraFov = n; },
+        ),
+        choice(
+          'Props and shadow',
+          'Props: the front prop tips at the sides of the picture, as a real camera catches them. Shadow: your quad\'s shadow on the ground, cast by the sun, so you can read how low you are. It fades as you climb, and with the sun ahead it falls behind you, as a real one does.',
+          IN_VIEW,
+          s.inView,
+          (id) => ({ both: 'Both', props: 'Props only', shadow: 'Shadow only', off: 'Neither' }[id]),
+          (id) => { s.inView = id; },
         ),
         { label: 'Flight', section: true },
         choice(

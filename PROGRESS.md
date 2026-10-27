@@ -72284,3 +72284,4 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Latency: none solo and none in flight, as before. The ink is a few paths on a portrait composed once and kept; `fringeAt` reads one column of two layers.
 - Checks: `npm run net:selftest`, all passed, and `node scripts/together-shots.js --only=keys,gate,teach`, 100 of 100; after the last change (Nick's side part) the self test again, all passed, and the keys scene again, 58 of 58; the keys scene now picks Both on the Marks tab, checks the skin number, picks another skin and checks the ink stays. Not run: `npm run verify`, nothing in physics, the plant, the ABI or the build changed. Not seen: a real phone, a real mouse's hover.
 - Pictures: `/mnt/project-files/pilot-legends/shots/`.
+- The owner, 2026-10-27 01:25Z: "Push to main". Main fast-forwarded from 63902d6 to this branch (the legends' parts, the cream names, BotGrinder's ink and the Marks tab). Not flown yet.

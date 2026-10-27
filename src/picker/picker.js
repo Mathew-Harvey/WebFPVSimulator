@@ -434,8 +434,8 @@ text-transform:uppercase;text-decoration:none;color:var(--wp-ink);background:var
 .wp-grid .wp-card{aspect-ratio:5/4}
 .wp-offs,.wp-grid{padding:0 4px}
 .wp-hero{transform:none;margin:4px 0 12px}.wp-cap{transform:none;padding:10px 12px}.wp-cap .wp-pic{display:none}
-.wp-acts{width:100%;flex-wrap:nowrap;gap:10px}.wp-act{height:40px;padding:0 10px;font-size:12px;box-shadow:3px 3px 0 var(--wp-ink)}
-.wp-act.is-primary{flex:1 1 auto;height:46px;font-size:18px;padding:0 14px}.wp-name .wp-lt canvas{max-height:30px;width:auto!important}}
+.wp-acts{width:100%;flex-wrap:wrap;gap:10px}.wp-act{height:40px;padding:0 10px;font-size:12px;box-shadow:3px 3px 0 var(--wp-ink)}
+.wp-act.is-primary{flex:1 1 100%;height:46px;font-size:18px;padding:0 14px}.wp-name .wp-lt canvas{max-height:30px;width:auto!important}}
 @media (prefers-reduced-motion:reduce){.wp-card,.wp-shelf{transition:none}}
 @media (forced-colors:active){.wp-lt canvas{display:none}.wp-lt .wp-sr{position:static;width:auto;height:auto;clip:auto;white-space:normal}}
 `;

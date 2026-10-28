@@ -74,7 +74,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  * map the only thing either can fetch is its own three files, and what the
  * default run asks of it is the release. Their borrowing is proved on its
  * own, first in a page of its own: --map=house, --map=heads. */
-const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse'];
+const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse', 'goats', 'sunny'];
 
 /*
  * WHAT BOOT MAY TAKE FROM THE PROPS LIBRARY, AND WHY IT IS NOT NOTHING.
@@ -198,6 +198,14 @@ BORROWS.heads = BORROWS.house;
 BORROWS.bardwell = BORROWS.house;
 /* And Thomas More's Shop (src/maps/warehouse/index.js). */
 BORROWS.warehouse = BORROWS.house;
+/* And the goat map (src/maps/goats/index.js), which is built by Heads'
+ * house's own builder. */
+BORROWS.goats = {
+  ...BORROWS.house,
+  heads: ['index.js', 'heads.js', 'logos.js', 'man.js', 'mandraw.js', 'yard.js'],
+};
+/* And Sunnyfield (src/maps/sunny/index.js). */
+BORROWS.sunny = BORROWS.house;
 
 /* The URLs under another world that this one is not allowed to have. */
 function bleedOf(urls, id, other) {

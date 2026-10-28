@@ -174,6 +174,40 @@ export const MAPS = [
     load: () => import('./warehouse/index.js'),
   },
   /*
+   * 90%ER GOAT HERDING, on the owner's ask of 28 October 2026: Heads' house,
+   * exactly as Heads' house has it, in a whole neighbourhood made up round
+   * it, and a goat for every 90%er's sticker roaming it, to be herded into
+   * Heads' open garage. Built by Heads' house's pipeline (src/maps/goats/)
+   * and flown the same way, as the whoop; off the board like the houses.
+   */
+  {
+    id: 'goats',
+    name: '90%er goat herding',
+    mode: 'freestyle',
+    note: "Heads' whole neighbourhood, flown on a whoop, with a goat for every 90%er roaming it. Fly low to herd them, and get every goat into Heads' open garage.",
+    buildMs: MAP_BUILD_MS.goats,
+    craftModel: 'whoop65',
+    craft: 'whoop65',
+    hudScale: 3.5,
+    load: () => import('./goats/index.js'),
+  },
+  /*
+   * SUNNYFIELD, on the owner's ask of 28 October 2026 ("make a springfield
+   * map", then "build it, it should be of the same detail and polish as
+   * the japanese town"): a sunny cartoon American town of our own, life
+   * size and flown on the five inch, with the gags a town like that has
+   * and nobody's characters, names or pictures (src/maps/sunny/). Built by
+   * the same pipeline and, like the houses, off the board.
+   */
+  {
+    id: 'sunny',
+    name: 'Sunnyfield',
+    mode: 'freestyle',
+    note: 'Sunnyfield, flown on a five inch: Main Street, the giant donut, the clock tower, the gorge, the power plant and its cooling towers, the hill with the big house, the dump, the water tower and the skate park.',
+    buildMs: MAP_BUILD_MS.sunny,
+    load: () => import('./sunny/index.js'),
+  },
+  /*
    * DRIFT MATSURI, on the owner's ask of 28 October 2026: a drift circuit
    * at a spring festival under the cherry blossom, after Ebisu's Minami
    * course, with drift cars battling round it in tandem, and a mini game
@@ -203,6 +237,11 @@ export const BARDWELL_DOC_ID = 'trk-ba4dbe11';
 
 /* Thomas More's Shop's (src/maps/warehouse/yard.js), the same way. */
 export const WAREHOUSE_DOC_ID = 'trk-7a3e0f27';
+
+/* The 90%er goat herding map's (src/maps/goats/yard.js), the same way. */
+export const GOATS_DOC_ID = 'trk-90a7c0a7';
+/* Sunnyfield's (src/maps/sunny/yard.js), the same way. */
+export const SUNNY_DOC_ID = 'trk-5a77f1e1';
 
 /* Drift Matsuri's (src/maps/drift/yard.js), the same way. */
 export const DRIFT_DOC_ID = 'trk-d81f7a75';

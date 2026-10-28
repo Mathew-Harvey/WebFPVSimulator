@@ -170,6 +170,14 @@ export const MATERIALS = {
   whLamp: { f: 0xfff6e2, noCast: true },
   whAsphalt: { c: 0x50535a, tint: 0x3a3850 },
 
+  /* The neighbourhood round Heads' house on the goat map (src/maps/goats/):
+   * the made up houses' siding, sage, blue, yellow and clay, and the
+   * porches' pumpkins. Every other colour it draws is one of the above. */
+  goatSage: { c: 0xa7b59a, tint: 0x6a7088 },
+  goatBlue: { c: 0x8fa6bf, tint: 0x5f6a90 },
+  goatYellow: { c: 0xe2cf8e, tint: 0x8f8296 },
+  goatClay: { c: 0xc28a6a, tint: 0x6f5470 },
+  goatPumpkin: { c: 0xe8822a, tint: 0x80482e },
   /* Drift Matsuri (src/maps/drift/): the torii's vermilion and its black
    * cap, the indigo of a festival happi coat and a nobori, a nobori's red,
    * and tyre rubber. Every other colour it draws is one of the town's. */

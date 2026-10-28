@@ -1724,11 +1724,16 @@ function trees(H) {
  * stands on the paint it is parked on, a drive's or the street's, so its
  * tyres are on the asphalt rather than in it and the air under its floor
  * is the whole 0.13 m, which scaledParts leaves open to fly through. */
-function cars(H) {
+function cars(H, clearDrive = false) {
   const N = Math.PI / 2;
+  /* With the drive clear (the goat map, ../goats/), the two on the drive
+   * are parked at the kerb in front instead, so the open garage door can
+   * be reached from the street. */
+  const ours = clearDrive
+    ? [['wagon', 9.0, -13.0, 0, 5, G_ASPHALT], ['sedan', 23.5, -13.0, Math.PI, 26, G_ASPHALT]]
+    : [['wagon', 17.4, -3.1, -N, 5, G_DRIVE], ['sedan', 14.8, -5.7, N, 26, G_DRIVE]];
   const list = [
-    ['wagon', 17.4, -3.1, -N, 5, G_DRIVE],
-    ['sedan', 14.8, -5.7, N, 26, G_DRIVE],
+    ...ours,
     ['minivan', 15.5, -20.6, 0, 20, G_ASPHALT],
     ['hatch', 42.0, -4.0, N, 3, G_DRIVE],
     ['sedan', -26.0, -12.8, Math.PI, 20, G_ASPHALT],
@@ -1803,7 +1808,10 @@ export function headsYardTrack() {
  * cyls, cones, scaled }, every part in the world frame. The same every
  * call.
  */
-export function headsLayout() {
+export function headsLayout(o = {}) {
+  /* The goat map (../goats/) asks for the house without the yard track on
+   * its lawn and with its drive clear; Heads' house asks for neither. */
+  const withTrack = o.yardTrack !== false;
   const H = new House();
   shell(H);
   stairs(H);
@@ -1818,12 +1826,14 @@ export function headsLayout() {
   streets(H);
   neighbours(H);
   trees(H);
-  cars(H);
+  cars(H, o.clearDrive === true);
   const parts = H.P.list.slice();
   for (const a of H.scaled) {
     parts.push(...scaledParts(a));
   }
-  parts.push(...headsYardTrack().parts);
+  if (withTrack) {
+    parts.push(...headsYardTrack().parts);
+  }
   return { parts, prisms: H.prisms, flats: H.flats, discs: H.discs, cyls: H.cyls, cones: H.cones, scaled: H.scaled };
 }
 
@@ -1881,4 +1891,13 @@ export const PRINTS = {
   stickers: { face: 'z+', at: wz(GARAGE.y1 - 0.012), a0: wx(14.3), a1: wx(16.5), h0: wy(1.02), h1: wy(1.94) },
   sign: { face: 'z+', at: wz(GARAGE.y1 - 0.06), a0: wx(14.35), a1: wx(15.25), h0: wy(1.95), h1: wy(2.07) },
   flag: { face: 'x+', at: wx(GARAGE.x0 + 0.012), a0: wz(6.4), a1: wz(5.5), h0: wy(1.1), h1: wy(1.6) },
+};
+
+/* The plan builder and the pieces of it the goat map's neighbourhood
+ * (../goats/hood.js) builds its houses with, so its roofs, fences and
+ * streets are drawn and solid the way this house's are. */
+export {
+  House, gableRoof, fence, onFace, scaledParts, cornerPoint,
+  STREET_A, STREET_B, HALF_A, HALF_B, KERB_W, KERB_H, VERGE, WALK, CORNER_R,
+  G_ASPHALT, G_PAVE, G_DRIVE, G_LINE, STREET_TREE, TREE_M, GARAGE, GARAGE_DOOR, PART_G,
 };

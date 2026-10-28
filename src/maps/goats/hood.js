@@ -66,13 +66,14 @@ import {
 export const BOUNDS = { x0: -122, x1: 130, y0: -132, y1: 102 };
 
 /* The streets, each a middle line and a half width between kerbs. Street A
- * and the cross street are Heads' house's, carried on past its plot. */
-const EW = [
+ * and the cross street are Heads' house's, carried on past its plot. The
+ * cars drive them (./traffic.js). */
+export const EW = [
   { id: 'A', c: STREET_A, h: HALF_A, yellow: true },
   { id: 'C', c: 64, h: 4.5 },
   { id: 'D', c: -94, h: 4.5 },
 ];
-const NS = [
+export const NS = [
   { id: 'B', c: STREET_B, h: HALF_B },
   { id: 'W', c: -84, h: 4.5 },
   { id: 'E', c: 94, h: 4.5 },

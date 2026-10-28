@@ -61,7 +61,7 @@
 import * as THREE from 'three';
 import { buildHeadsWorld, drawHouse } from '../heads/index.js';
 import { qualityFor } from '../../render/quality.js';
-import { worldAt, FRAME, S } from '../heads/heads.js';
+import { worldAt, FRAME, S, G_ASPHALT } from '../heads/heads.js';
 import { WALL_STICKERS } from '../heads/logos.js';
 import { stfKey } from '../built/egg.js';
 import { hoodLayout, BOUNDS, PARK } from './hood.js';
@@ -69,6 +69,9 @@ import { goatsDocument } from './yard.js';
 import { makeGrid, makeHerd, HOME } from './herd.js';
 import { makeGoatDraw, logoPose } from './goatdraw.js';
 import { cellShadows } from './shadows.js';
+import { goatTraffic } from './traffic.js';
+import { makeCarDraw } from './cardraw.js';
+import { uploadTraffic } from '../built/traffic.js';
 
 const CHUNK = 'extra';
 
@@ -174,6 +177,27 @@ export async function buildMap(shell, onProgress, options) {
       const herd = makeHerd(crops.map((c) => c.name), grid, { parks: [PARK] });
       const draw = makeGoatDraw(herd, crops, sheets, worldAt, S, !dressed);
       map.scene.add(draw.group);
+      /*
+       * THE TRAFFIC (./traffic.js, the owner's ask of 28 October: "Let's
+       * put moving cars"), for the shell in the shape a built map hands it
+       * (../built/index.js, "THE TRAFFIC"): the physics drives the cars
+       * and the shell reads their poses back each step, so they are solid
+       * to the whoop and the same on every run; this draws them
+       * (./cardraw.js) and hands the goats where they are. A crash is not
+       * set down in a car's lane. No chase meter here: the game on this
+       * map is the goats.
+       */
+      const { traffic, keepOut } = goatTraffic();
+      const cars = makeCarDraw(traffic, S, S * G_ASPHALT, toPlan);
+      map.scene.add(cars.group);
+      map.traffic = traffic.vehicles.length ? traffic : null;
+      map.restKeepOut = keepOut;
+      map.uploadTraffic = (sim) => uploadTraffic(sim, traffic);
+      map.chaseCars = () => [];
+      map.poseCars = (prev, curr, alpha) => cars.place(prev, curr, alpha);
+      map.carTick = () => {};
+      map.clearSmoke = () => {};
+      map.carGap = (x, y, z, reach) => cars.gapAt(x, y, z, reach);
       /* Every goat's logo is a sticker to find, moved with its goat. */
       const key = stfKey(doc, 'goats');
       const goatStickers = crops.map((c) => ({
@@ -272,7 +296,7 @@ export async function buildMap(shell, onProgress, options) {
         }
         while (dt > 1e-6) {
           const h = Math.min(dt, SUBSTEP);
-          herd.step(h, q ? craft : null);
+          herd.step(h, q ? craft : null, cars.feed, cars.count);
           dt -= h;
         }
         draw.update(frame);
@@ -283,7 +307,7 @@ export async function buildMap(shell, onProgress, options) {
       update(0);
       return {
         update,
-        stats: () => ({ goats: { count: herd.count, home: herd.homeCount(), hood: hood.stats, shade: shade.stats } }),
+        stats: () => ({ goats: { count: herd.count, home: herd.homeCount(), hood: hood.stats, shade: shade.stats, cars: cars.stats() } }),
       };
     },
   };

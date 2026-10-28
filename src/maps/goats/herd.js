@@ -37,8 +37,10 @@
  * FOR THE LATENCY RULE. Render only: nothing here reaches the physics, the
  * plant or the colliders, and a goat is never solid. Per frame: one bucket
  * pass over the goats for their neighbours, and for each goat a handful of
- * reads of a byte grid, no allocation. The grid (the solids at a goat's
- * height, a cell every CELL metres) is made once when the map is built.
+ * reads of a byte grid, and for a goat in reach of one of the eight cars
+ * (marked from the buckets round each car) a test against each, no
+ * allocation. The grid (the solids at a goat's height, a cell every CELL
+ * metres) is made once when the map is built.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -101,6 +103,28 @@ const GARAGE_PEN = { x0: 14.5, x1: 17.25, y0: 1.2, y1: 7.2 };
 
 /* No goat starts nearer the garage than this. */
 const START_FAR = 28;
+
+/*
+ * THE CARS (./traffic.js), which do not stop: the physics drives them on
+ * the lap clock and a goat is not in the physics. So a goat gets out of
+ * their way. One in a car's lane ahead of it, inside CAR_AHEAD seconds of
+ * its driving and CAR_SIDE of its side, steps off the lane to the side it
+ * is on (the other when that is shut), quicker the nearer the car. One a
+ * car is about to touch anyway, inside CAR_LEAP seconds of its bumper or
+ * beside it, leaps clear: LEAP_T seconds through the air, LEAP_H high, to
+ * LEAP_CLEAR past the car's side, which is what goats do. Each car comes
+ * as CAR_STRIDE numbers (./cardraw.js): plan x, y, heading x, y, speed,
+ * half length, half width, and 1 if it is on the street.
+ */
+const CAR_STRIDE = 8;
+const CAR_AHEAD = 1.8;
+const CAR_SIDE = 0.9;
+const CAR_LEAP = 0.4;
+const LEAP_T = 0.3;
+const LEAP_H = 0.55;
+const LEAP_CLEAR = 0.5;
+/* A goat's half length, for its nose and tail against a bumper. */
+const GOAT_HALF = 0.5;
 
 /* Math.hypot is a varargs call and costs ten times this in V8. */
 const len = (x, y) => Math.sqrt(x * x + y * y);
@@ -216,6 +240,7 @@ export const HOME = 2;
  * The herd: `names` one per goat, `grid` from makeGrid, `seed` for where
  * they start and how they wander, `parks` plan rectangles a third of the
  * groups start in. `craft` to step() is { x, y, h } in plan metres or
+ * null, and `cars` the first `nCars` cars' numbers (THE CARS, above) or
  * null.
  *
  * THE STATE IS FLAT ARRAYS, one number of every goat in each, and not an
@@ -266,6 +291,11 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
   const TY = new Float64Array(N);
   const PHASE = new Float64Array(N);
   const HOP = new Float64Array(N);
+  /* A leap from a car: the time left in it and its way, plan metres a
+   * second. */
+  const LEAP = new Float64Array(N);
+  const LVX = new Float64Array(N);
+  const LVY = new Float64Array(N);
   const HOME_AT = new Float64Array(N).fill(-1);
   const MODE = new Uint8Array(N);
   /* Each goat's own stream, its state kept here. */
@@ -437,6 +467,134 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
     return Math.max(threat, 1e-3);
   }
 
+  /* Which side of a car's lane goat i goes to, s = 1 its left: the side it
+   * is on, unless there is no room there at `along` and there is on the
+   * other. b is the car's first number in `cars`. */
+  function sideOf(i, cars, b, along, across, clear) {
+    const hx = cars[b + 2];
+    const hy = cars[b + 3];
+    const ox = cars[b] + hx * along;
+    const oy = cars[b + 1] + hy * along;
+    const s = across >= 0 ? 1 : -1;
+    const room = (k) => free(ox - hy * k * clear, oy + hx * k * clear);
+    return !room(s) && room(-s) ? -s : s;
+  }
+
+  /* A car coming down the goat's lane: the threat, 0 to 1, and the way off
+   * the lane into WANT. No fear, so no goat follows it and the box at the
+   * side does not name it: a car scattering goats is not your herding. */
+  function thinkCars(i, cars, n) {
+    let best = 0;
+    for (let c = 0; c < n; c += 1) {
+      const b = c * CAR_STRIDE;
+      if (cars[b + 7] === 0) {
+        continue;
+      }
+      const hx = cars[b + 2];
+      const hy = cars[b + 3];
+      const dx = X[i] - cars[b];
+      const dy = Y[i] - cars[b + 1];
+      const along = dx * hx + dy * hy;
+      const across = dy * hx - dx * hy;
+      const halfL = cars[b + 5];
+      const halfW = cars[b + 6];
+      const front = halfL + GOAT_HALF;
+      const reach = front + cars[b + 4] * CAR_AHEAD;
+      if (along < -halfL || along > reach || across > halfW + CAR_SIDE || across < -halfW - CAR_SIDE) {
+        continue;
+      }
+      const threat = along <= front ? 1 : 1 - (along - front) / (reach - front);
+      if (threat <= best) {
+        continue;
+      }
+      best = threat;
+      const s = sideOf(i, cars, b, along, across, halfW + LEAP_CLEAR);
+      WANT[0] = -hy * s;
+      WANT[1] = hx * s;
+      WANT[2] = TROT_V + (BOLT_V - TROT_V) * threat;
+    }
+    if (best > 0) {
+      MODE[i] = FLEE;
+      T[i] = Math.max(T[i], 0.6);
+    }
+    return best;
+  }
+
+  /* The goats near enough a car to look at it, marked from the buckets
+   * round each car, so a goat far from every car pays nothing for them:
+   * inside a car's reach ahead and its side, or its back bumper, at most r
+   * from its middle. */
+  const NEAR = new Uint8Array(N);
+  function markNear(cars, n) {
+    NEAR.fill(0);
+    for (let c = 0; c < n; c += 1) {
+      const b = c * CAR_STRIDE;
+      if (cars[b + 7] === 0) {
+        continue;
+      }
+      const r = cars[b + 5] + GOAT_HALF + cars[b + 4] * CAR_AHEAD + cars[b + 6] + CAR_SIDE;
+      for (let j = bj(cars[b + 1] - r); j <= bj(cars[b + 1] + r); j += 1) {
+        for (let k = bi(cars[b] - r); k <= bi(cars[b] + r); k += 1) {
+          for (let i = head[j * BW + k]; i >= 0; i = next[i]) {
+            NEAR[i] = 1;
+          }
+        }
+      }
+    }
+  }
+
+  /* A goat a car is about to touch leaps clear of it, and one that is
+   * leaping goes on through the air until it lands. */
+  function leapFromCars(i, cars, n) {
+    for (let c = 0; c < n; c += 1) {
+      const b = c * CAR_STRIDE;
+      if (cars[b + 7] === 0) {
+        continue;
+      }
+      const hx = cars[b + 2];
+      const hy = cars[b + 3];
+      const dx = X[i] - cars[b];
+      const dy = Y[i] - cars[b + 1];
+      const along = dx * hx + dy * hy;
+      const across = dy * hx - dx * hy;
+      const halfL = cars[b + 5];
+      const halfW = cars[b + 6];
+      const side = halfW + 0.3;
+      if (along < -halfL - GOAT_HALF || along > halfL + GOAT_HALF + cars[b + 4] * CAR_LEAP || across > side || across < -side) {
+        continue;
+      }
+      const clear = halfW + LEAP_CLEAR;
+      const s = sideOf(i, cars, b, along, across, clear);
+      const go = (clear - across * s) / LEAP_T;
+      LEAP[i] = LEAP_T;
+      LVX[i] = -hy * s * go;
+      LVY[i] = hx * s * go;
+      MODE[i] = FLEE;
+      T[i] = 0.8;
+      return true;
+    }
+    return false;
+  }
+
+  function stepLeap(i, dt) {
+    const t = Math.min(dt, LEAP[i]);
+    X[i] += LVX[i] * t;
+    Y[i] += LVY[i] * t;
+    VX[i] = LVX[i] * 0.3;
+    VY[i] = LVY[i] * 0.3;
+    const sp = len(LVX[i], LVY[i]);
+    if (sp > 1e-3) {
+      face(i, LVX[i] / sp, LVY[i] / sp, dt);
+    }
+    LEAP[i] -= dt;
+    const u = Math.max(0, Math.min(1, 1 - LEAP[i] / LEAP_T));
+    HOP[i] = LEAP_H * 4 * u * (1 - u);
+    if (LEAP[i] <= 0) {
+      LEAP[i] = 0;
+      HOP[i] = 0;
+    }
+  }
+
   /* Goats near a bolting goat go with it. */
   function thinkFollow(i) {
     let sx = 0;
@@ -550,15 +708,24 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
     PUSH[1] = py;
   }
 
-  function stepGoat(i, dt, hasCraft, cx, cy, ch) {
+  function stepGoat(i, dt, hasCraft, cx, cy, ch, cars, nCars) {
+    if (LEAP[i] > 0) {
+      stepLeap(i, dt);
+      return;
+    }
+    if (nCars && MODE[i] !== HOME && leapFromCars(i, cars, nCars)) {
+      stepLeap(i, dt);
+      return;
+    }
     WANT[0] = 0;
     WANT[1] = 0;
     WANT[2] = 0;
     if (MODE[i] === HOME) {
       thinkHome(i, dt);
     } else {
-      const threat = hasCraft ? thinkCraft(i, cx, cy, ch) : 0;
-      if (!threat) {
+      const fromCar = nCars ? thinkCars(i, cars, nCars) : 0;
+      const threat = !fromCar && hasCraft ? thinkCraft(i, cx, cy, ch) : 0;
+      if (!threat && !fromCar) {
         if (MODE[i] === FLEE) {
           thinkCalm(i, dt);
         }
@@ -611,7 +778,7 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
     HOP[i] = sp > 0.15 ? f * Math.min(0.22, 0.03 + sp * 0.04) : 0;
   }
 
-  function step(dt, craft) {
+  function step(dt, craft, cars = null, nCars = 0) {
     if (!(dt > 0)) {
       return;
     }
@@ -626,8 +793,12 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
     const cx = has ? craft.x : 0;
     const cy = has ? craft.y : 0;
     const ch = has ? craft.h : 0;
+    const nc = cars ? nCars : 0;
+    if (nc) {
+      markNear(cars, nc);
+    }
     for (let i = 0; i < N; i += 1) {
-      stepGoat(i, dt, has, cx, cy, ch);
+      stepGoat(i, dt, has, cx, cy, ch, cars, nc && NEAR[i] ? nc : 0);
     }
   }
 

@@ -43,7 +43,7 @@
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openPage } from '../tests/lib/page.js';
+import { answerQuadPicker, openPage } from '../tests/lib/page.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /* A five inch in Nick's house: the house is 3.5 times life size. */
@@ -153,6 +153,9 @@ async function main() {
     if (!ready) {
       throw new Error('the town never became ready');
     }
+    /* A fly link to a freestyle map asks which quad first: the five inch
+     * the town recommends. */
+    await answerQuadPicker(page, 60000).catch(() => {});
     await ev("window.__ui.settings.inView = 'both'; return 1;");
     await sleep(2000);
 

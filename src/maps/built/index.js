@@ -1191,6 +1191,9 @@ function trianglesOf(root) {
  *           craft, world metres: the paving's 0 unless the structure digs
  *           below it, as the house's basement does (groundUnder in
  *           ./place.js)
+ *   chunkOf optional, (x, z) world metres to the name of the cull chunk
+ *           a thing there is filed under, for the parts and the
+ *           document's assets alike: Sunnyfield's six (src/maps/sunny/)
  *
  * It goes in as the last item and its solids as the last solids, in part
  * order, which is the pairing ./egg.js checks. The box tops are indexed
@@ -1423,8 +1426,14 @@ export async function buildMap(shell, onProgress, options) {
   const kit = new PropKit(kitLook(look.timeId), { clumps: q.city.leafClumps !== false });
   /* The parts that turn are collected rather than baked in: mountTurning. */
   kit.turners = [];
+  /* A structure as big as a town may cut the map into chunks of its own
+   * (extra.chunkOf, world x and z to a chunk's name): the document's
+   * assets and the structure's parts are then filed by it, so a map
+   * hundreds of metres across is a few big cull cells and a few batches a
+   * colour, not a 48 m grid of them. Without it, as before. */
+  const cut = extra && typeof extra.chunkOf === 'function' ? extra.chunkOf : null;
   for (const it of placed.items) {
-    kit.begin(it.x, it.y, it.z, it.yaw, chunkKeyOf(it));
+    kit.begin(it.x, it.y, it.z, it.yaw, cut ? cut(it.x, it.z) : chunkKeyOf(it));
     kit.element(it.el);
   }
   /* The map's own structure, in a chunk of its own, so it culls as one
@@ -1435,6 +1444,11 @@ export async function buildMap(shell, onProgress, options) {
      * them (../../props/coplanar.js). The solids were placed from the plan's
      * own parts in addExtra, and this moves only what is drawn. */
     for (const p of separateCoplanar(extra.parts).parts) {
+      if (cut) {
+        kit.chunk = p.t === 'box'
+          ? cut((p.lo[0] + p.hi[0]) / 2, (p.lo[2] + p.hi[2]) / 2)
+          : cut((p.a[0] + p.b[0]) / 2, (p.a[2] + p.b[2]) / 2);
+      }
       kit.part(p);
     }
     if (extra.draw) {

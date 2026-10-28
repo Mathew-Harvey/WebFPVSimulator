@@ -93,6 +93,7 @@ const MAP_ROOTS = {
   bardwell: 'src/maps/bardwell/index.js',
   warehouse: 'src/maps/warehouse/index.js',
   goats: 'src/maps/goats/index.js',
+  sunny: 'src/maps/sunny/index.js',
   drift: 'src/maps/drift/index.js',
 };
 

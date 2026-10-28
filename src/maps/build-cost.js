@@ -72,6 +72,13 @@ export const MAP_BUILD_MS = {
   /* The 90%er goat herding map (src/maps/goats/): Heads' house and the
    * neighbourhood round it. An estimate until it is measured, below. */
   goats: 3800,
+  /* Sunnyfield (src/maps/sunny/), the same pipeline, measured on
+   * 2026-10-28 at 1280 by 720 on High as the loading screen's world stage:
+   * 4054, 3899 and 4067 ms, with Bardwell's house at 3920 between them on
+   * the same container, so it builds in about Bardwell's time. Scaled to
+   * Bardwell's figure here, as this container ran slower than the day that
+   * was measured. */
+  sunny: 2240,
   /* Drift Matsuri (src/maps/drift/): a plot of trees and a festival round a
    * drift course. An estimate until it is measured. */
   drift: 2600,

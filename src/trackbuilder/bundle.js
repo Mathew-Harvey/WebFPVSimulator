@@ -560,7 +560,7 @@ ${credit}<p class="meta">A whoop track for a room. Made with WebFPVSimulator. Th
 <div><b>${esc(lap.lengthM.toFixed(1))} m</b><span>lap length</span></div>
 <div><b>${esc(inches(b.boundsM.width))} by ${esc(inches(b.boundsM.depth))}</b><span>floor space the track fills</span></div>
 <div><b>${esc(inches(b.gateOpeningM))}</b><span>gate opening</span></div>
-${lap.lapsCounted ? `<div><b>${lap.lapsCounted} laps</b><span>fastest ${lap.lapsCounted} in a row counts</span></div>` : ''}
+${lap.lapsCounted ? `<div><b>${lap.lapsCounted} lap${lap.lapsCounted === 1 ? '' : 's'}</b><span>${lap.lapsCounted === 1 ? 'the fastest lap counts' : `fastest ${lap.lapsCounted} in a row counts`}</span></div>` : ''}
 </div>
 <h2>How to build it</h2>
 <ol>

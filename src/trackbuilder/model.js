@@ -1239,7 +1239,10 @@ export function normalize(raw) {
   let startSeen = false;
   for (const rawEl of Array.isArray(src.elements) ? src.elements : []) {
     const type = str(rawEl?.type);
-    const def = ELEMENTS[type];
+    /* Own keys only: a type of "constructor" or "__proto__" in a shared link
+     * or a published file read Object's own members as a piece, and the
+     * dims loop below threw, so the file would not open at all. */
+    const def = Object.hasOwn(ELEMENTS, type) ? ELEMENTS[type] : null;
     if (!def) {
       repairs.push(`dropped an element of unknown type "${type}".`);
       continue;

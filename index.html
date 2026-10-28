@@ -6328,48 +6328,178 @@
       }
       .name-dialog-btn:disabled { opacity: 0.45; cursor: default; }
       /*
-       * THE QUAD PICKER (askQuad in src/ui/ui.js): two manga panels on the
-       * dialog's surface, paper under ink like the menus, each a picture of
-       * the real model facing the reader, a stamp, a name and two lines. The
-       * recommended panel wears the mint a record wears; the one the cursor
-       * is on is outlined in sakura, so "chosen" and "suggested" never look
-       * like the same thing.
+       * THE QUAD PICKER (askQuad in src/ui/ui.js), a manga page: paper in an
+       * ink frame with a hard drop, the map's name lettered on an ink band,
+       * and the two quads as panels side by side, each with a stamp, a
+       * lettered name, the real model in speed lines, a speech balloon, a
+       * Will it fit? drawing and what it flies like. The owner's mockup of
+       * 2026-10-28 (/mnt/project-files/quad-picker/mockup), and his report
+       * that the plain box shipped first was not it. The chosen panel is
+       * ringed in amber; the stamp says which one the map recommends, so
+       * "chosen" and "suggested" never look like the same thing. Nothing
+       * here downloads but the two pictures, 42 KB together, and only when
+       * the page opens; the balloon is the system's own comic hand.
        */
-      .name-dialog-box.quad-pick { width: min(640px, 94vw); }
-      .quad-pick-row {
-        display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-        margin: 6px 0 14px;
+      .name-dialog-box.qp-page {
+        --qp-paper: #f7f0dc; --qp-paper-2: #efe5c9; --qp-quiet: #5d6b78; --qp-red: #c8423a;
+        position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+        width: min(1180px, calc(100vw - 32px)); height: min(680px, calc(100vh - 32px));
+        padding: 0; overflow: hidden; color: var(--ink-line);
+        background: var(--qp-paper); border: 4px solid var(--ink-line); border-radius: 0;
+        box-shadow: 10px 10px 0 var(--ink-line);
       }
-      @media (max-width: 520px) { .quad-pick-row { grid-template-columns: 1fr; } }
-      .quad-pick-card {
-        position: relative; appearance: none; cursor: pointer; text-align: left;
-        display: flex; flex-direction: column; gap: 4px;
-        padding: 10px 12px 12px; font: inherit; color: var(--ink-line);
-        background: var(--cream); border: 3px solid var(--ink-line); border-radius: 2px;
-        box-shadow: 4px 4px 0 var(--ink-line);
+      .qp-page::before {
+        content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.09;
+        background-image: radial-gradient(var(--ink-line) 1px, transparent 1.2px); background-size: 6px 6px;
+      }
+      .qp-head {
+        position: relative; padding: 10px 22px 8px; background: var(--ink-line); color: var(--cream);
+        border-bottom: 4px solid var(--ink-line);
+      }
+      .qp-kicker {
+        font: 800 12px/1 var(--ui-font); letter-spacing: 0.16em; text-transform: uppercase;
+        color: var(--sakura); margin-bottom: 6px;
+      }
+      .qp-page .qp-title {
+        margin: 0; font-size: clamp(24px, 3.6vw, 36px); font-weight: 800; line-height: 1.1;
+        letter-spacing: 0.04em; text-transform: uppercase; color: var(--cream);
+      }
+      .qp-title .qp-alt { color: var(--sakura); }
+      .qp-panels {
+        position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 22px;
+        padding: 14px 18px 12px; min-height: 0;
+      }
+      .qp-panel {
+        position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+        min-height: 0; overflow: hidden; cursor: pointer; text-align: left;
+        background: #fff; border: 4px solid var(--ink-line);
         transition: transform 0.08s ease-out;
       }
-      .quad-pick-card:hover { transform: translate(-1px, -1px); }
-      .quad-pick-card:focus { outline: none; }
-      .quad-pick-card:focus-visible, .quad-pick-card:focus {
-        box-shadow: 4px 4px 0 var(--ink-line), 0 0 0 3px var(--sakura);
+      .qp-panel:hover { transform: translate(-1px, -1px); }
+      .qp-panel:focus { outline: none; }
+      .qp-panel.is-chosen { box-shadow: 0 0 0 5px var(--amber), 8px 8px 0 5px var(--ink-line); }
+      .qp-panel:not(.is-chosen) .qp-art { filter: grayscale(0.6) opacity(0.75); }
+      .qp-panel:focus-visible { box-shadow: 0 0 0 5px var(--amber), 0 0 0 9px var(--ink-line); }
+      .qp-page .qp-name {
+        justify-self: start; margin: 0; padding: 10px 14px 2px; text-align: left;
+        font-size: clamp(22px, 2.8vw, 34px); font-weight: 800;
+        line-height: 1.1; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sakura);
       }
-      .quad-pick-art {
-        display: block; width: 100%; aspect-ratio: 440 / 280; object-fit: contain;
-        background: #fffaf0; border: 2px solid var(--ink-line);
+      .qp-name .qp-alt { color: var(--qp-red); }
+      .qp-page .qp-name.is-five { color: var(--amber); }
+      .qp-pic {
+        position: relative; display: flex; align-items: center; justify-content: center;
+        min-height: 0; overflow: hidden;
+        background: radial-gradient(ellipse at 50% 62%, #fff 0 40%, var(--qp-paper-2) 75%);
       }
-      .quad-pick-stamp {
-        position: absolute; top: 16px; right: 16px; transform: rotate(-6deg);
-        padding: 3px 8px; font-weight: 800; font-size: 13px; letter-spacing: 0.06em;
-        text-transform: uppercase; color: var(--ink-line); background: var(--amber);
-        border: 2px solid var(--ink-line);
+      .qp-speed {
+        position: absolute; inset: 0; opacity: 0; transition: opacity 0.12s;
+        background: repeating-conic-gradient(from 0deg at 50% 55%, var(--ink-line) 0 1.2deg, transparent 1.2deg 9deg);
+        -webkit-mask: radial-gradient(circle at 50% 55%, transparent 34%, #000 70%);
+        mask: radial-gradient(circle at 50% 55%, transparent 34%, #000 70%);
       }
-      .quad-pick-card.is-rec .quad-pick-stamp { background: var(--mint); }
-      .quad-pick-name { font-size: 20px; font-weight: 800; margin-top: 4px; }
-      .quad-pick-line { font-size: 13px; line-height: 1.4; }
-      .quad-pick-note { font-size: 13px; line-height: 1.4; font-weight: 700; }
-      @media (prefers-reduced-motion: reduce) { .quad-pick-card { transition: none; } }
-      @media (forced-colors: active) { .quad-pick-card:focus { outline: 3px solid Highlight; } }
+      .qp-panel.is-chosen .qp-speed { opacity: 0.14; }
+      .qp-art {
+        position: relative; width: 70%; height: 100%; object-fit: contain;
+        filter: drop-shadow(6px 8px 0 rgba(11, 17, 22, 0.18));
+      }
+      .qp-balloon {
+        position: absolute; left: 14px; bottom: 12px; max-width: 56%; padding: 8px 14px;
+        background: #fff; border: 3px solid var(--ink-line); border-radius: 22px;
+        font: 700 16px/1.2 "Comic Sans MS", "Chalkboard SE", "Comic Neue", var(--ui-font);
+      }
+      .qp-balloon::after {
+        content: ""; position: absolute; right: 28px; top: -14px;
+        border: 9px solid transparent; border-bottom: 14px solid var(--ink-line); border-top: 0;
+      }
+      .qp-fit {
+        position: absolute; right: 12px; bottom: 10px; width: 150px; padding: 6px 6px 4px;
+        background: var(--qp-paper); border: 3px solid var(--ink-line);
+      }
+      .qp-fit b {
+        display: block; margin-bottom: 4px; font: 900 11px/1 var(--ui-font);
+        letter-spacing: 0.12em; text-transform: uppercase;
+      }
+      .qp-fit svg { display: block; width: 100%; height: auto; }
+      .qp-foot {
+        display: flex; align-items: center; gap: 14px; padding: 10px 14px 12px;
+        background: var(--qp-paper); border-top: 3px solid var(--ink-line);
+      }
+      .qp-chip { display: flex; align-items: center; gap: 6px; font: 800 13px/1 var(--ui-font); }
+      .qp-chip svg { width: 26px; height: 26px; flex: none; }
+      .qp-tune { margin-left: auto; font: 700 12px/1.25 var(--ui-font); color: var(--qp-quiet); text-align: right; }
+      .qp-tune u { color: var(--ink-line); text-decoration-thickness: 2px; }
+      .qp-stamp {
+        position: absolute; top: 12px; right: 12px; z-index: 2; transform: rotate(8deg);
+        padding: 6px 12px 5px; font: 900 15px/1 var(--ui-font); letter-spacing: 0.14em; text-transform: uppercase;
+        color: var(--qp-paper); background: var(--qp-red); border: 3px solid var(--ink-line);
+        box-shadow: 4px 4px 0 var(--ink-line);
+      }
+      .qp-stamp.is-other { color: var(--ink-line); background: var(--amber); }
+      .qp-caption {
+        position: relative; display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+        background: var(--qp-paper-2); border-top: 4px solid var(--ink-line);
+      }
+      .qp-btn {
+        appearance: none; cursor: pointer; padding: 12px 22px; font: 900 16px/1 var(--ui-font);
+        letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; color: var(--ink-line);
+        background: var(--qp-paper); border: 3px solid var(--ink-line); border-radius: 0;
+        box-shadow: 4px 4px 0 var(--ink-line);
+      }
+      .qp-btn:focus-visible { outline: 3px solid var(--sakura); outline-offset: 2px; }
+      .qp-btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--ink-line); }
+      .qp-btn.qp-fly { padding: 13px 40px; font-size: 22px; background: var(--amber); }
+      .qp-check { display: flex; align-items: center; gap: 8px; cursor: pointer; font: 700 13px/1.2 var(--ui-font); }
+      .qp-check input {
+        appearance: none; flex: none; width: 20px; height: 20px; margin: 0; cursor: pointer;
+        background: #fff; border: 3px solid var(--ink-line);
+      }
+      .qp-check input:checked { background: var(--mint) linear-gradient(var(--ink-line), var(--ink-line)) center / 8px 8px no-repeat; }
+      .qp-check input:focus-visible { outline: 3px solid var(--sakura); outline-offset: 2px; }
+      .qp-keys { margin-left: auto; font: 700 12px/1.4 var(--ui-font); color: var(--qp-quiet); text-align: right; }
+      .qp-keys kbd {
+        padding: 0 5px; font: 800 11px var(--ui-font); color: var(--ink-line); background: #fff;
+        border: 2px solid var(--ink-line); border-bottom-width: 4px;
+      }
+      /* The page's lettered titles, as the rooms' are (.screen .is-lettered):
+         the dialog is not inside a .screen. */
+      .qp-page .is-lettered { position: relative; -webkit-text-fill-color: transparent; text-shadow: none; }
+      @media (forced-colors: active) {
+        .qp-page .is-lettered { -webkit-text-fill-color: currentColor; }
+        .qp-panel.is-chosen, .qp-panel:focus-visible { outline: 4px solid Highlight; }
+      }
+      @media (max-width: 1100px) {
+        .qp-keys { display: none; }
+        .qp-btn { padding: 10px 16px; }
+        .qp-btn.qp-fly { padding: 12px 30px; }
+      }
+      @media (max-width: 1100px), (max-height: 640px) {
+        .qp-balloon { font-size: 14px; max-width: 60%; padding: 6px 12px; }
+        .qp-fit { width: 112px; }
+      }
+      @media (max-width: 860px) {
+        .qp-tune { display: none; }
+      }
+      @media (max-width: 640px) {
+        .name-dialog-box.qp-page {
+          width: calc(100vw - 24px); height: min(820px, calc(100vh - 24px));
+          box-shadow: 6px 6px 0 var(--ink-line);
+        }
+        .qp-panels { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; gap: 14px; padding: 12px; }
+        .qp-caption { flex-wrap: wrap; gap: 10px; padding: 10px 12px; }
+        .qp-btn.qp-fly { flex: 1; text-align: center; }
+        .qp-btn { padding: 10px 12px; font-size: 14px; }
+        .qp-check { order: 5; flex: 1 1 100%; }
+        .qp-stamp { font-size: 12px; padding: 4px 8px; }
+        .qp-fit { display: none; }
+        .qp-balloon { font-size: 13px; max-width: 72%; left: 10px; bottom: 8px; }
+        .qp-chip:nth-child(n+2) { display: none; }
+      }
+      @media (max-height: 520px) {
+        .qp-fit, .qp-foot { display: none; }
+        .qp-kicker { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) { .qp-panel, .qp-speed { transition: none; } }
       /* Discard, on the unsaved guard. The only button in this product
          that throws work away, so it is the only one wearing a warning
          colour: quiet until the pointer is on it, and never the default. */

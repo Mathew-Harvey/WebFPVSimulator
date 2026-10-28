@@ -53,6 +53,19 @@ const VK = {
   F1: 112, F2: 113, F3: 114, F8: 119,
 };
 
+/*
+ * THE QUAD PICKER, answered as a pilot answers it. Since 2026-10-28 it is in
+ * front of every freestyle map a ?fly=1 link names (askQuadOnFly in
+ * src/ui/ui.js), so a check that flies one by link waits for the page, lets
+ * its deaf period pass, and presses Enter, which flies the quad it opened
+ * on: the one the map recommends, on a fresh profile.
+ */
+export async function answerQuadPicker(page, timeoutMs = 120000) {
+  await page.until("(() => { const d = document.querySelector('.name-dialog'); return Boolean(d && !d.hidden && document.querySelector('.qp-page')); })()", timeoutMs);
+  await page.sleep(450);
+  await page.tap('Enter');
+}
+
 export function keyInfo(code) {
   if (/^Key[A-Z]$/.test(code)) {
     const ch = code.slice(3);

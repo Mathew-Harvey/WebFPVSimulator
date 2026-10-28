@@ -64,6 +64,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { openPage } from '../tests/lib/page.js';
+import { SETTINGS_KEY } from '../src/ui/ui.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -436,7 +437,17 @@ async function main() {
   const only = arg('only') ? arg('only').split(',') : null;
   const scale = arg('scale');
   const jsonOut = arg('json');
-  const page = await openPage({ root: ROOT, width: 480, height: 270, url: `/index.html?map=${map}&craft=${craft}&fly=1` });
+  /* The quad picker asks at every map a ?fly=1 link names (2026-10-28) and
+   * opens on the pilot's own pick or the map's, never the link's. The rig
+   * measures the craft it was told to, so it ticks Always for this map, as
+   * a pilot would, and the picker stays down with that craft seated. */
+  const quadSeed = `try {
+    const k = ${JSON.stringify(SETTINGS_KEY)};
+    const s = JSON.parse(localStorage.getItem(k) || '{}');
+    s.quadAlways = ${JSON.stringify(`${map}:${craft}`)};
+    localStorage.setItem(k, JSON.stringify(s));
+  } catch (e) { /* Storage refused: the picker comes up and the map never reports ready to fly. */ }`;
+  const page = await openPage({ root: ROOT, width: 480, height: 270, url: `/index.html?map=${map}&craft=${craft}&fly=1`, seed: [quadSeed] });
   const { cdp, sessionId } = page;
   const ev = async (expr) => {
     const r = await cdp.send('Runtime.evaluate', {

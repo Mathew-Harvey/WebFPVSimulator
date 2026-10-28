@@ -59,7 +59,7 @@
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { keyInfo, openPage } from '../tests/lib/page.js';
+import { answerQuadPicker, keyInfo, openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
 import { hoverStickPercent } from '../configs/rates.js';
 import { effectiveTune } from '../src/share/tune.js';
@@ -2333,7 +2333,7 @@ async function flyMapPages() {
   /* ----------------------------------------------------------------------
    * 13. Fly this map, from the builder to the air in the one press.
    * -------------------------------------------------------------------- */
-  section('fly this map: the builder\'s button puts the pilot in the air on that map, with no menu between');
+  section('fly this map: the builder\'s button puts the pilot in the air on that map, with only the quad picker between');
   let page = await openPage({ root, width: 1280, height: 720, url: '/src/trackbuilder/index.html?mode=freestyle', seed: [SETTINGS_SEED, FLY_MAP_SEED] });
   try {
     await page.until('!!window.trackBuilder', 60000).catch(() => {});
@@ -2342,11 +2342,15 @@ async function flyMapPages() {
     check('the builder opens the seeded map, and its button says Fly this map',
       builder.mode === 'freestyle' && builder.name === FLY_MAP.name && builder.fly === 'Fly this map', JSON.stringify(builder));
     await page.evaluate('(() => { window.trackBuilder.flyBtn.click(); return 1; })()');
+    /* Every map asks which quad since 2026-10-28, the builder's own too, so
+     * the one press between is Enter on the picker, on the five inch the
+     * map recommends. */
+    await answerQuadPicker(page, 120000).catch(() => {});
     await page.until("window.__shellReady === true && window.__mode === 'flight'", 120000).catch(() => {});
     const air = await page.evaluate(`(() => { const ui = window.__ui; const m = window.__map ? window.__map() : null;
       return JSON.stringify({ shell: window.__mode || null, screen: ui && ui.screen, world: m && m.id, source: m && m.source,
         name: m && m.name, airframe: ui && ui.settings.airframe, search: location.search }); })()`).then(JSON.parse);
-    check('it lands in the air on the map it was pressed on, with no press between, on the five inch',
+    check('it lands in the air on the map it was pressed on, with only Enter on the picker between, on the five inch',
       air.shell === 'flight' && air.screen === 'flight' && air.world === 'built' && air.source === 'canvas'
         && air.name === FLY_MAP.name && air.airframe === '5inch', JSON.stringify(air));
     check('the one time fly=1 is gone from the address, and the map and the aircraft stay',

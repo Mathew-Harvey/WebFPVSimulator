@@ -59,6 +59,24 @@ export function chunkOf(x, z) {
   return `sf${c}${r}`;
 }
 
+/* The near cell a piece of set dressing is filed under, eight across and
+ * six up: fifty metres by forty seven, so ./index.js can switch the
+ * dressing off by range while the chunk it stands in stays on. Each cell
+ * is one draw (./palette.js folds it to one batch), so this is a trade:
+ * at four by three a view of the yards drew about three cells and 113k
+ * triangles of dressing, at eight by six about four and 46k. The town's
+ * chunks themselves are too big to cull anything by, since from any one of
+ * them the others are all within a long stone's throw. */
+const NEAR_COLS = 8;
+const NEAR_ROWS = 6;
+export function nearOf(x, z) {
+  const px = x + W / 2;
+  const py = D / 2 - z;
+  const c = Math.min(NEAR_COLS - 1, Math.max(0, Math.floor((px / W) * NEAR_COLS)));
+  const r = Math.min(NEAR_ROWS - 1, Math.max(0, Math.floor((py / D) * NEAR_ROWS)));
+  return `sn${c}${r}`;
+}
+
 /*
  * A SEEDED RANDOM, integer arithmetic only (Math.imul is exact), so every
  * house rolls the same on every engine: mulberry32.
@@ -103,6 +121,17 @@ export function rng(seed) {
  *
  * `fine` on anything drawn marks detail the Low preset leaves out; a solid is
  * never fine, so the physics is the same on every preset.
+ *
+ * SET DRESSING is whatever is drawn and not solid inside `dress(fn)`: the
+ * clutter of yards, roofs and pavements that makes the town a place. It is
+ * fine, so Low leaves it out, and `near`, so ./index.js draws it in cells of
+ * its own that it switches off past NEAR_R from the camera: from across the
+ * town it is a pixel or two, and drawing it there would be all cost. Inside
+ * `dress` a box or a capsule is not solid unless it says so, so a garden
+ * chair is a thing a quad brushes through and the flight is the same on
+ * every preset. What a dressing does make solid is drawn as any other part,
+ * on every preset and at every range, so a pilot never meets a wall that is
+ * not drawn.
  */
 export class Town {
   constructor() {
@@ -118,14 +147,65 @@ export class Town {
     this.scaled = [];
     this.frusta = [];
     this.wires = [];
+    /* Each shop's frame and measures, and the street furniture's plan
+     * circles, for the set dressing to keep clear of (./dress.js). */
+    this.shops = [];
+    this.taken = [];
+    this.dressing = false;
+    this.widening = false;
+  }
+
+  /* A plan circle the set dressing keeps clear of: a lamp, a hydrant, a
+   * bench. Kept as ./dress.js clearOf reads a circle, u for px, v for py. */
+  take(px, py, r) {
+    this.taken.push({ u: px, v: py, r });
+  }
+
+  /* Everything drawn and not solid that fn writes is set dressing. */
+  dress(fn) {
+    const was = this.dressing;
+    this.dressing = true;
+    try {
+      fn();
+    } finally {
+      this.dressing = was;
+    }
+  }
+
+  /* Inside `dress`, set dressing that is fine and NOT near: drawn at every
+   * range on High and Medium. Paint on the ground and what is fixed to a
+   * wall, because a car park's lines or a window's mullions that appear as
+   * the quad closes on them are seen appearing, where a bench is not. */
+  wide(fn) {
+    const was = this.widening;
+    this.widening = true;
+    try {
+      fn();
+    } finally {
+      this.widening = was;
+    }
+  }
+
+  /* A drawn part's flags: fine if asked, and fine and near if it is set
+   * dressing (and not `wide`). */
+  mark(p, fine) {
+    if (p && (fine || (this.dressing && !p.solid))) {
+      p.fine = true;
+    }
+    if (p && this.dressing && !this.widening && !p.solid && p.draw) {
+      p.near = true;
+    }
+    return p;
+  }
+
+  /* Inside `dress`, drawn and not solid unless the caller says solid. */
+  soft(opts) {
+    return this.dressing && opts.solid === undefined && opts.draw !== false ? { ...opts, solid: false } : opts;
   }
 
   box(m, px0, py0, h0, px1, py1, h1, opts = {}) {
-    const p = this.P.box(m, wx(px0), h0, wz(py0), wx(px1), h1, wz(py1), opts);
-    if (p && opts.fine) {
-      p.fine = true;
-    }
-    return p;
+    const o = this.soft(opts);
+    return this.mark(this.P.box(m, wx(px0), h0, wz(py0), wx(px1), h1, wz(py1), o), o.fine);
   }
 
   /* Drawn, not solid, and casting no shadow: paint, a line, a flat. */
@@ -145,11 +225,8 @@ export class Town {
   }
 
   cap(m, a, b, r, opts = {}) {
-    const p = this.P.cap(m, worldAt(a[0], a[1], a[2]), worldAt(b[0], b[1], b[2]), r, opts);
-    if (p && opts.fine) {
-      p.fine = true;
-    }
-    return p;
+    const o = this.soft(opts);
+    return this.mark(this.P.cap(m, worldAt(a[0], a[1], a[2]), worldAt(b[0], b[1], b[2]), r, o), o.fine);
   }
 
   post(m, px, py, h0, h1, r, opts = {}) {
@@ -160,15 +237,15 @@ export class Town {
    * a is py and it runs from px e0 to e1; along 'y' its a is px and it runs
    * from py e0 to e1. */
   prism(m, axis, profile, e0, e1, fine = false) {
-    this.prisms.push({ m, axis, profile, e0, e1, fine });
+    this.prisms.push({ m, axis, profile, e0, e1, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   cyl(m, a, b, r, seg = 8, rTop = null, fine = false) {
-    this.cyls.push({ m, a: worldAt(a[0], a[1], a[2]), b: worldAt(b[0], b[1], b[2]), r, seg, rTop, fine });
+    this.cyls.push({ m, a: worldAt(a[0], a[1], a[2]), b: worldAt(b[0], b[1], b[2]), r, seg, rTop, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   disc(m, px, py, r, h0, h1, seg = 24, fine = false) {
-    this.discs.push({ m, px, py, r, h0, h1, seg, fine });
+    this.discs.push({ m, px, py, r, h0, h1, seg, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   /* An open tube round (px, py) from y0, r0 round, to y1, r1 round; inward
@@ -181,15 +258,21 @@ export class Town {
   /* A ring standing on edge, its middle h up, its axis along the plan's
    * (nx, ny); tube t, `seg` round the tube and `round` round the ring. */
   torus(m, px, py, h, R, t, nx, ny, seg = 10, round = 32, scale = null) {
-    this.tori.push({ m, px, py, h, R, t, nx, ny, seg, round, scale });
+    this.tori.push({ m, px, py, h, R, t, nx, ny, seg, round, scale, fine: this.dressing, near: this.dressing && !this.widening });
   }
 
   cone(m, px, py, h, r, height, seg = 10, fine = false) {
-    this.cones.push({ m, px, py, h, r, height, seg, fine });
+    this.cones.push({ m, px, py, h, r, height, seg, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   ball(m, px, py, h, r, fine = false) {
-    this.balls.push({ m, px, py, h, r, fine });
+    this.balls.push({ m, px, py, h, r, fine: fine || this.dressing, near: this.dressing && !this.widening });
+  }
+
+  /* A ball of twenty faces rather than eighty, for what is small and many:
+   * a flower, a tomato, a duck's head. */
+  bead(m, px, py, h, r) {
+    this.balls.push({ m, px, py, h, r, bead: true, fine: true, near: this.dressing && !this.widening });
   }
 
   /* A sign from the atlas on a plan face: 'n' faces north (+py), 's'
@@ -214,13 +297,14 @@ export class Town {
 
   asset(el, k, px, py, h, yaw) {
     this.scaled.push({ el, k, px, py, h, yaw });
+    this.take(px, py, el.type === 'car' ? 2.6 : 1.0);
   }
 
   /* A bank or a hipped roof: a closed solid from the plan rectangle `o`
    * ({ x0, y0, x1, y1 }) at h0 up to the rectangle `i` at h1, its four
    * faces sloped, its top flat. Drawn only: its solid is the caller's. */
   frustum(m, o, h0, i, h1, fine = false) {
-    this.frusta.push({ m, o, h0, i, h1, fine });
+    this.frusta.push({ m, o, h0, i, h1, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   /* The solid under a frustum, as n stacked boxes each inside the slope:
@@ -304,6 +388,21 @@ export function lotFrame(T, lot) {
     ball(m, u, v, h, r, fine) {
       const [px, py] = at(u, v);
       T.ball(m, px, py, h, r, fine);
+    },
+    bead(m, u, v, h, r) {
+      const [px, py] = at(u, v);
+      T.bead(m, px, py, h, r);
+    },
+    /* A ring whose axis is the local direction (du, dv), or lying flat with
+     * its axis up when both are 0. */
+    ring(m, u, v, h, R, t, du, dv, seg, round) {
+      const [px, py] = at(u, v);
+      if (du === 0 && dv === 0) {
+        T.torus(m, px, py, h, R, t, 0, 0, seg, round);
+        return;
+      }
+      const [qx, qy] = at(u + du, v + dv);
+      T.torus(m, px, py, h, R, t, qx - px, qy - py, seg, round);
     },
     cone(m, u, v, h, r, height, seg, fine) {
       const [px, py] = at(u, v);

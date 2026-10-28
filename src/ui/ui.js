@@ -496,26 +496,143 @@ function rememberQuadPick(s, map, craft) {
 }
 
 /*
- * What the picker says about each aircraft on a map: the stamp over its
- * picture and the one line under its name. The recommended one is what the
- * map was built for. The other is honest about what it is: a five inch in a
- * room built for a whoop is tight, and a whoop in a world built for a five
- * inch makes everything huge. No sizes and no numbers: a pilot needs to know
- * what it will feel like, not how it is done.
+ * "ALWAYS FLY THE WHOOP HERE": the maps the pilot ticked that box on, the
+ * same "map:craft" pairs as quadPicks and read through it, so the same
+ * hand edited blob is refused the same way. A map in here is never asked
+ * about again; its quad is seated and the pilot flies. The Quad screen's
+ * Quad picker row (quadAskRow) is the way back.
+ */
+function quadAlways(s) {
+  return quadPicks({ quadPicks: s && s.quadAlways });
+}
+
+function rememberQuadAlways(s, map, craft) {
+  const always = quadAlways(s);
+  if (craft) {
+    always[map] = craft;
+  } else {
+    delete always[map];
+  }
+  s.quadAlways = Object.entries(always).map(([m, c]) => `${m}:${c}`).join(',');
+}
+
+/*
+ * THE PICKER'S KEY FOR A MAP: the registry's id for a world, and the
+ * board's id for a published map, which all fly in the one built world and
+ * are not one map. A board id is letters, digits, _ and -, so it cannot
+ * break the pairs' : and , apart; anything else is the built world's.
+ */
+function quadKeyFor(mapId, boardId) {
+  if (mapId === 'built' && boardId && /^[A-Za-z0-9_-]{1,64}$/.test(boardId)) {
+    return `board.${boardId}`;
+  }
+  return mapId || 'built';
+}
+
+/*
+ * WHAT THE PICKER SAYS ABOUT EACH QUAD ON A MAP: the stamp, the speech
+ * balloon, the Will it fit? drawing and the two chips under the picture,
+ * from the owner's mockup of 2026-10-28. The recommended one is what the
+ * map was built for. The other is honest about what it is: a five inch in
+ * a house built for a whoop is a real five inch in a real house, tight, and
+ * a whoop in a town built for a five inch is a real whoop in a real town,
+ * tiny. Never "a giant house": the owner objected to it, because at its
+ * own scale the five inch sees the house life size. No sizes and no
+ * numbers: a pilot needs to know what it will feel like, not how it is
+ * done. The fit drawings are true proportions, which says the same thing
+ * without a number in it.
  */
 const QUAD_PICK_CRAFT = [
-  { id: '5inch', name: 'Five inch', art: 'assets/quads/5inch.webp', line: 'A 6S race quad. Fast, heavy, and flies on its props.' },
-  { id: 'whoop65', name: 'Whoop', art: 'assets/quads/whoop.webp', line: 'A 65 mm ducted whoop. Small enough to bump off walls and keep going.' },
+  { id: 'whoop65', name: ['Whoop'], art: 'assets/quads/whoop.webp', word: 'whoop' },
+  { id: '5inch', name: ['Five', 'inch'], art: 'assets/quads/5inch.webp', word: 'five inch' },
 ];
 
-function quadPickStamp(craftId, rec, mapScale) {
+function quadPickCopy(craftId, rec, mapScale, mapId) {
+  const town = mapId === 'city';
+  const fit = mapScale > 1 ? 'door' : (town ? 'car' : null);
+  const fitLabel = fit === 'car' ? 'Your size' : 'Will it fit?';
   if (craftId === rec) {
-    return { stamp: 'Recommended', note: 'What this map was built for.' };
+    if (craftId === 'whoop65') {
+      return {
+        stamp: 'Recommended', rec: true, fit, fitLabel,
+        says: 'Built for this map. Every gap is yours.',
+        chips: [['calm', 'Floaty and forgiving'], ['room', 'Bumps off walls']],
+      };
+    }
+    return {
+      stamp: 'Recommended', rec: true, fit, fitLabel,
+      says: town ? 'Rooftops, alleys and the old factory. Open it up.' : 'Built for this map. Open it up.',
+      chips: [['outdoor', 'Room to open up'], ['fast', 'Fast']],
+    };
   }
-  if (craftId === '5inch' && mapScale > 1) {
-    return { stamp: 'Tight!', note: 'Built for a whoop. Every doorway is a gap.' };
+  if (craftId === '5inch') {
+    const place = { house: 'house', heads: 'house', warehouse: 'shop' }[mapId];
+    return {
+      stamp: 'Tight!', rec: false, fit, fitLabel,
+      says: place ? `A real five inch in a real ${place}. Loud, fast and tight.` : 'A real five inch in here. Loud, fast and tight.',
+      chips: [['fast', 'Fast'], ['tight', 'Some gaps too small']],
+    };
   }
-  return { stamp: 'Giant world', note: 'Built for a five inch. Everything is huge.' };
+  return {
+    stamp: 'Tiny!', rec: false, fit, fitLabel,
+    says: town ? 'A real whoop in a real town. Fly under the cars.' : 'A real whoop out here. Everything is big.',
+    chips: [['huge', 'Everything is big'], ['calm', 'Floaty']],
+  };
+}
+
+/*
+ * WILL IT FIT, drawn to true proportions: a doorway 0.82 by 2.04 m, a
+ * hatchback 1.8 long and 1.5 tall, the five inch 0.35 across its props and
+ * the whoop 0.083. The mockup's drawing, as an SVG string, because it is
+ * static ink and a string is the least code that draws it.
+ */
+function quadFitSvg(kind, craftId) {
+  const span = craftId === 'whoop65' ? 0.083 : 0.35;
+  const o = kind === 'car' ? { w: 1.8, h: 1.5 } : { w: 0.82, h: 2.04 };
+  const k = 90 / Math.max(o.w, o.h);
+  const W = 140;
+  const H = 100;
+  const ox = (W - o.w * k) / 2;
+  const oy = H - 6 - o.h * k;
+  const f = (v) => Math.round(v * 10) / 10;
+  let ref;
+  if (kind === 'car') {
+    ref = `<path d="M${f(ox)} ${H - 18} h${f(o.w * k)} v-${f(o.h * k * 0.45)} l-${f(o.w * k * 0.22)} -${f(o.h * k * 0.4)} h-${f(o.w * k * 0.5)} l-${f(o.w * k * 0.18)} ${f(o.h * k * 0.4)} z" fill="#fff" stroke="#0b1116" stroke-width="3"/>`
+      + `<circle cx="${f(ox + o.w * k * 0.22)}" cy="${H - 14}" r="9" fill="#0b1116"/><circle cx="${f(ox + o.w * k * 0.78)}" cy="${H - 14}" r="9" fill="#0b1116"/>`;
+  } else {
+    ref = `<rect x="${f(ox)}" y="${f(oy)}" width="${f(o.w * k)}" height="${f(o.h * k)}" fill="#fff" stroke="#0b1116" stroke-width="3"/>`;
+  }
+  const sp = span * k;
+  const cx = W / 2;
+  const cy = kind === 'car' ? 22 : oy + o.h * k * 0.42;
+  const quad = craftId === 'whoop65'
+    ? `<circle cx="${cx}" cy="${f(cy)}" r="${f(Math.max(sp / 2, 2.2))}" fill="#e8a8b8" stroke="#0b1116" stroke-width="1.5"/>`
+    : `<g stroke="#0b1116" stroke-width="2"><line x1="${f(cx - sp / 2.6)}" y1="${f(cy)}" x2="${f(cx + sp / 2.6)}" y2="${f(cy)}" stroke-width="3"/>`
+      + `<ellipse cx="${f(cx - sp / 2.6)}" cy="${f(cy)}" rx="${f(sp / 4.2)}" ry="${f(sp / 14)}" fill="#e8a8b8"/>`
+      + `<ellipse cx="${f(cx + sp / 2.6)}" cy="${f(cy)}" rx="${f(sp / 4.2)}" ry="${f(sp / 14)}" fill="#e8a8b8"/></g>`;
+  return `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true">${ref}${quad}<line x1="4" y1="${H - 5}" x2="${W - 4}" y2="${H - 5}" stroke="#0b1116" stroke-width="2"/></svg>`;
+}
+
+/* The chips' little drawings, the mockup's, in the page's own ink. */
+const QUAD_CHIP_ICON = {
+  fast: '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M3 18 L13 4 L11 12 L23 8 L12 22 L14 14 Z" fill="#ffd45c" stroke="#0b1116" stroke-width="2" stroke-linejoin="round"/></svg>',
+  calm: '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M3 15 q5 -7 10 0 t10 0" fill="none" stroke="#0b1116" stroke-width="3" stroke-linecap="round"/></svg>',
+  tight: '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M3 3 v20 M23 3 v20" stroke="#0b1116" stroke-width="3"/><path d="M8 13 h10 M8 13 l3 -3 M8 13 l3 3 M18 13 l-3 -3 M18 13 l-3 3" stroke="#c8423a" stroke-width="2.4" fill="none"/></svg>',
+  room: '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M3 23 V10 L13 3 L23 10 V23 Z" fill="#fff" stroke="#0b1116" stroke-width="2.5" stroke-linejoin="round"/><rect x="10" y="14" width="6" height="9" fill="#e8a8b8" stroke="#0b1116" stroke-width="2"/></svg>',
+  huge: '<svg viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="6" width="7" height="17" fill="#fff" stroke="#0b1116" stroke-width="2"/><rect x="11" y="2" width="8" height="21" fill="#fff" stroke="#0b1116" stroke-width="2"/><circle cx="22" cy="20" r="2" fill="#e8a8b8" stroke="#0b1116" stroke-width="1.5"/></svg>',
+  outdoor: '<svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="18" cy="8" r="4.5" fill="#ffd45c" stroke="#0b1116" stroke-width="2"/><path d="M2 22 l7 -9 l5 6 l4 -4 l6 7 Z" fill="#fff" stroke="#0b1116" stroke-width="2" stroke-linejoin="round"/></svg>',
+};
+
+/* The quad's tune and camera as the pilot left them, for the panel's
+ * corner: the seated aircraft's from the settings, the other's from the
+ * hangar seatAirframe keeps it in, or its stock ones if it has never been
+ * flown. */
+function quadTuneLine(s, craftId, word) {
+  const af = airframeById(craftId);
+  const kept = craftId === s.airframe ? s : (hangarOf(s)[craftId] || {});
+  const tune = tuneChoices(craftId).includes(kept.tune) ? kept.tune : af.defaultTune;
+  const angle = clampCameraAngle(typeof kept.cameraAngle === 'number' ? kept.cameraAngle : af.cameraAngle);
+  return { tune: tuneById(tune).name, text: `Your ${word} tune`, camera: `Camera ${angle}\u00b0` };
 }
 
 /*
@@ -910,6 +1027,19 @@ const BUILT_OFF_BOARD = 'A map you built is a different place for every pilot wh
 const BOARD_MAP_OFF_BOARD = 'The board keeps no runs for a published map yet, so a run flown on one'
   + ' stays here. Fly the town for a run that can go up.';
 
+/*
+ * A run flown on the other quad from the one the map was built for, which
+ * the quad picker allows (the owner, 2026-10-28). The board prints no
+ * aircraft beside a run, so it would sit among the others looking like one
+ * of them: the tuned row's reason. main.js refuses the post as well.
+ */
+function otherQuadOffBoard(flownOn) {
+  const flown = flownOn === 'whoop65' ? 'whoop' : 'five inch';
+  const home = flownOn === 'whoop65' ? 'five inch' : 'whoop';
+  return `Flown on the ${flown}, and this board is for the ${home} the map was built for, so the run stays here.`
+    + ` Fly the ${home} for a run that can go up.`;
+}
+
 /* Nick Burns' house is the same place for everybody, like the town, but the
  * board keeps no table for it, and main.js refuses the post the same way. */
 const HOUSE_OFF_BOARD = "The board keeps no runs for Nick Burns' house, so a run flown there stays here."
@@ -1100,6 +1230,8 @@ const DEFAULTS = {
   freestyleMap: '',
   /* The quad picker's answer per map, "map:craft" pairs: see quadPicks. */
   quadPicks: '',
+  /* The maps it is never asked on again, the same pairs: see quadAlways. */
+  quadAlways: '',
   /* Which Betaflight diff the module is initialised from. A string for the
    * same reason map is: loadSettings only accepts a stored key whose typeof
    * matches the default, and an unknown id falls back to the first tune in
@@ -4382,6 +4514,30 @@ function roomCraftItem(s, info) {
 }
 
 /*
+ * THE WAY BACK FROM "ALWAYS FLY THE WHOOP HERE", which only exists once
+ * the box has been ticked somewhere: a row that names the maps that skip
+ * the picker and, pressed, has it ask at every map again. Not in a room,
+ * where the quad is the room's.
+ */
+function quadAskRow(s, room) {
+  const always = Object.entries(quadAlways(s));
+  if (room || !always.length) {
+    return [];
+  }
+  const named = always.map(([key, craft]) => {
+    const m = MAPS.find((x) => x.id === key);
+    const where = m ? m.name : (key.startsWith('board.') ? 'a board map' : 'your map');
+    return `${where} on the ${craft === 'whoop65' ? 'whoop' : 'five inch'}`;
+  });
+  return [{
+    label: 'Quad picker',
+    value: always.length === 1 ? 'Skips one map' : `Skips ${always.length} maps`,
+    note: `You ticked Always fly here for ${named.join(', ')}. Press to have the picker ask at every map again.`,
+    action: 'quad-ask-again',
+  }];
+}
+
+/*
  * Where the camera tilt starts costing enough yaw to be worth a word, and
  * what to offer instead. 40 is where sin(t) passes 0.64, so nearly two
  * thirds of a yaw becomes picture roll; 500 puts a 40 degree mount back to
@@ -5201,12 +5357,40 @@ export class Ui {
      * one the map recommends when it names none. Until the quad picker a
      * house named the whoop whatever ?craft= said. */
     let linkedMapId = null;
+    let linkedBoardMap = null;
+    let roomLink = false;
     try {
-      linkedMapId = new URLSearchParams(window.location.search).get('map');
+      const q = new URLSearchParams(window.location.search);
+      linkedMapId = q.get('map');
+      linkedBoardMap = q.get('mapshare');
+      roomLink = Boolean(q.get('room'));
     } catch (e) {
       /* No URL to read. */
     }
-    const linkedAf = linkedCraft() || craftForMap(linkedMapId);
+    let linkedAf = linkedCraft() || craftForMap(linkedMapId);
+    /*
+     * A FREESTYLE MAP BY LINK IS ASKED ABOUT, whatever ?craft= says. The
+     * board's map links and the builder's Fly this map all said
+     * craft=5inch, so a pilot sent to Nick's house from the board got the
+     * five inch and no picker (the owner's report of 2026-10-28, "I was
+     * just given a 5 inch"). With ?fly=1 the picker opens before the
+     * flight (askQuadOnFly), and the quad seated under it is the one it
+     * opens on: the one this pilot ticked Always for here, else the one
+     * they last picked here, else the map's own, never the link's. A link
+     * that only lands on the title still seats what it names, as before,
+     * when the pilot has no answer of their own for the map. A room's link
+     * is the room's quad and is not asked. Race tracks never are: a track
+     * is its class's.
+     */
+    let quadAskKey = null;
+    if (!roomLink && MAPS.some((x) => x.id === linkedMapId && x.mode === 'freestyle')) {
+      const key = quadKeyFor(linkedMapId, linkedBoardMap);
+      const always = quadAlways(this.settings)[key];
+      const own = always || quadPicks(this.settings)[key];
+      const rec = craftForMap(linkedMapId) || '5inch';
+      linkedAf = own || (linkedFly() ? rec : (linkedAf || rec));
+      quadAskKey = always ? null : key;
+    }
     if (craftForMap(linkedMapId)) {
       this.settings.map = linkedMapId;
       this.settings.freestyleMap = linkedMapId;
@@ -5251,6 +5435,9 @@ export class Ui {
     if (this.flyOnLoad) {
       dropLinkParam('fly');
     }
+    /* The map a ?fly=1 link's flight asks the quad picker about first, or
+     * null. See askQuadOnFly. */
+    this.quadAskOnFly = this.flyOnLoad ? quadAskKey : null;
     /* ?guide=1: the first flight guides, once more. See linkedGuide. */
     if (linkedGuide()) {
       for (const kind of GUIDE_KINDS) {
@@ -7169,81 +7356,182 @@ export class Ui {
   }
 
   /*
-   * THE QUAD PICKER: two pictures, the five inch and the whoop, each with a
-   * stamp that says what it is on this map and one line under its name. On
-   * the same overlay askConfirm uses, for the same reasons, and with the
-   * same deaf period, because it opens under the click that chose the map.
-   * The cursor starts on the aircraft this pilot last picked here, else the
-   * one the map recommends, so Enter flies what they flew last time.
-   * Arrows move between the two, Enter or a click picks, Escape is Back.
-   * A radio pilot gets the same three through the pad (see pollPad).
-   * Resolves the aircraft id, or null for Back.
+   * THE QUAD PICKER, a manga page (the owner's mockup of 2026-10-28, and
+   * his report that the plain box shipped first was not it): the map's name
+   * lettered across the top, the two quads as panels with the recommended
+   * one first, FLY, Tune this quad, "Always fly the whoop here", and Back.
+   * On the overlay askConfirm uses, for the same reasons, and with the same
+   * deaf period, because it opens under the click or the link that chose
+   * the map. The cursor starts on the quad this pilot last picked here,
+   * else the one the map recommends, so Enter flies what they flew last
+   * time. Arrows or a click choose a panel, Enter, FLY or a double click
+   * flies it, Escape is Back. A radio pilot gets the same through the pad
+   * (see pollPad): left and right, the menu switch, back.
+   *
+   * Resolves { craft, always, tune } or null for Back. `always` is the box,
+   * `tune` says Tune this quad was pressed rather than FLY.
    */
-  askQuad(world, mapName) {
+  askQuad(world, mapName, key) {
     const rec = (world && world.craft) || '5inch';
     const scale = (world && world.mapScale) || 1;
-    const start = quadPicks(this.settings)[world ? world.id : 'built'] || rec;
+    const start = quadPicks(this.settings)[key] || rec;
     return new Promise((resolve) => {
       this.nameWait = resolve;
       this.quadDialog = true;
-      const box = el('div', 'name-dialog-box quad-pick');
-      box.append(el('h2', null, 'Pick your quad'));
-      box.append(el('p', 'lede', mapName));
-      const row = el('div', 'quad-pick-row');
-      const cards = QUAD_PICK_CRAFT.map((c) => {
-        const tag = quadPickStamp(c.id, rec, scale);
-        const card = btn(`quad-pick-card${c.id === rec ? ' is-rec' : ''}`);
-        const img = el('img', 'quad-pick-art');
+      const box = el('div', 'name-dialog-box qp-page');
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-label', `Pick your quad for ${mapName}`);
+      const head = el('div', 'qp-head');
+      const title = el('h2', 'qp-title');
+      const words = String(mapName || 'This map').trim().split(/\s+/);
+      const last = words.length > 1 ? words.pop() : null;
+      title.append(document.createTextNode(words.join(' ')));
+      if (last) {
+        title.append(document.createTextNode(' '), el('span', 'qp-alt', last));
+      }
+      head.append(el('div', 'qp-kicker', 'Pick your quad'), title);
+      const panels = el('div', 'qp-panels');
+      panels.setAttribute('role', 'radiogroup');
+      panels.setAttribute('aria-label', 'Quad');
+      const order = QUAD_PICK_CRAFT.slice().sort((x, y) => (y.id === rec) - (x.id === rec));
+      const names = [title];
+      const cards = order.map((c) => {
+        const copy = quadPickCopy(c.id, rec, scale, world && world.id);
+        const card = el('div', 'qp-panel');
+        card.tabIndex = -1;
+        card.setAttribute('role', 'radio');
+        card.dataset.craft = c.id;
+        card.setAttribute('aria-label', `${c.name.join(' ')}, ${copy.stamp}. ${copy.says}`);
+        const name = el('h3', `qp-name${c.id === '5inch' ? ' is-five' : ''}`);
+        name.append(document.createTextNode(c.name[0]));
+        if (c.name[1]) {
+          name.append(document.createTextNode(' '), el('span', 'qp-alt', c.name[1]));
+        }
+        names.push(name);
+        const pic = el('div', 'qp-pic');
+        const img = el('img', 'qp-art');
         img.src = c.art;
         img.alt = '';
         img.decoding = 'async';
-        card.append(img, el('span', 'quad-pick-stamp', tag.stamp), el('strong', 'quad-pick-name', c.name),
-          el('span', 'quad-pick-line', c.line), el('span', 'quad-pick-note', tag.note));
-        card.setAttribute('aria-label', `${c.name}, ${tag.stamp}. ${tag.note}`);
-        card.dataset.craft = c.id;
-        row.append(card);
+        pic.append(el('span', 'qp-speed'), img, el('span', 'qp-balloon', copy.says));
+        if (copy.fit) {
+          const fit = el('span', 'qp-fit');
+          fit.append(el('b', null, copy.fitLabel));
+          fit.insertAdjacentHTML('beforeend', quadFitSvg(copy.fit, c.id));
+          pic.append(fit);
+        }
+        const foot = el('div', 'qp-foot');
+        for (const [icon, words2] of copy.chips) {
+          const chip = el('span', 'qp-chip');
+          chip.insertAdjacentHTML('beforeend', QUAD_CHIP_ICON[icon]);
+          chip.append(document.createTextNode(words2));
+          foot.append(chip);
+        }
+        const tl = quadTuneLine(this.settings, c.id, c.word);
+        const tune = el('span', 'qp-tune');
+        tune.append(document.createTextNode(`${tl.text}: `), el('u', null, tl.tune), el('br'), document.createTextNode(tl.camera));
+        foot.append(tune);
+        card.append(el('span', `qp-stamp${copy.rec ? '' : ' is-other'}`, copy.stamp), name, pic, foot);
+        panels.append(card);
         return card;
       });
-      box.append(row);
-      const foot = el('div', 'name-dialog-row');
-      const back = btn('name-dialog-btn', 'Back');
-      foot.append(back);
-      box.append(foot);
+      const caption = el('div', 'qp-caption');
+      const fly = btn('qp-btn qp-fly', 'Fly');
+      const tuneBtn = btn('qp-btn', 'Tune this quad');
+      const check = el('label', 'qp-check');
+      const tick = el('input');
+      tick.type = 'checkbox';
+      const checkWords = el('span');
+      check.append(tick, checkWords);
+      const back = btn('qp-btn', 'Back');
+      const keys = el('span', 'qp-keys');
+      keys.innerHTML = '<kbd>\u2190</kbd> <kbd>\u2192</kbd> to choose \u00b7 <kbd>Enter</kbd> to fly \u00b7 <kbd>Esc</kbd> back';
+      caption.append(fly, tuneBtn, check, back, keys);
+      box.append(head, panels, caption);
       this.nameDialog.textContent = '';
       this.nameDialog.append(box);
       this.nameDialog.hidden = false;
+      let chosen = cards.find((c) => c.dataset.craft === start) || cards[0];
+      const choose = (card) => {
+        chosen = card;
+        for (const c of cards) {
+          const on = c === card;
+          c.classList.toggle('is-chosen', on);
+          c.setAttribute('aria-checked', on ? 'true' : 'false');
+          c.tabIndex = on ? 0 : -1;
+        }
+        const q = QUAD_PICK_CRAFT.find((c) => c.id === card.dataset.craft);
+        checkWords.textContent = `Always fly the ${q.word} here`;
+      };
+      choose(chosen);
+      /* Lettered now and again on a resize, a phone turned while it is up,
+       * which repaints only a title whose size or room changed. */
+      const letter = () => {
+        if (!box.isConnected) {
+          window.removeEventListener('resize', letter);
+          return;
+        }
+        for (const h of names) {
+          letterHeading(h);
+        }
+      };
+      letter();
+      window.addEventListener('resize', letter);
       const openedAt = performance.now();
       const finish = (v) => {
         if (performance.now() - openedAt < CONFIRM_DEAF_MS) {
           return;
         }
         this.quadDialog = false;
+        document.removeEventListener('keydown', onKey, true);
+        window.removeEventListener('resize', letter);
         this.closeNameDialog(v);
       };
+      const answer = (tune) => finish({ craft: chosen.dataset.craft, always: tick.checked, tune });
+      /* On the document, not the dialog, so a key still answers when focus
+       * has fallen to the page behind (a click on the dimmed backdrop puts
+       * it on the body, and the menus ignore keys while a dialog is up, so
+       * the page would go deaf). Off again when the page leaves the
+       * document, by any route: a dialog opened over it closes it. */
       const onKey = (e) => {
-        const at = cards.indexOf(document.activeElement);
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (!box.isConnected) {
+          document.removeEventListener('keydown', onKey, true);
+          return;
+        }
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
           e.preventDefault();
           e.stopPropagation();
-          const next = at < 0 ? 0 : (at + (e.key === 'ArrowRight' ? 1 : cards.length - 1)) % cards.length;
-          cards[next].focus();
+          const at = cards.indexOf(chosen);
+          const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : cards.length - 1;
+          choose(cards[(at + step) % cards.length]);
+          chosen.focus();
         } else if (e.key === 'Enter') {
+          /* Enter on a focused button or the box is that control's own
+           * press; everywhere else it is FLY. */
+          if (e.target === tuneBtn || e.target === back || e.target === tick) {
+            return;
+          }
           e.preventDefault();
           e.stopPropagation();
-          finish(at >= 0 ? cards[at].dataset.craft : null);
+          answer(false);
         } else if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
           finish(null);
         }
       };
-      this.nameKeyHandler = onKey;
-      this.nameDialog.addEventListener('keydown', onKey, true);
+      document.addEventListener('keydown', onKey, true);
       for (const card of cards) {
-        card.addEventListener('click', () => finish(card.dataset.craft));
+        card.addEventListener('click', () => choose(card));
+        card.addEventListener('dblclick', () => {
+          choose(card);
+          answer(false);
+        });
       }
+      fly.addEventListener('click', () => answer(false));
+      tuneBtn.addEventListener('click', () => answer(true));
       back.addEventListener('click', () => finish(null));
-      (cards.find((c) => c.dataset.craft === start) || cards[0]).focus();
+      chosen.focus();
     });
   }
 
@@ -7639,6 +7927,9 @@ export class Ui {
     }
     this.nameDialog.hidden = true;
     this.nameDialog.textContent = '';
+    /* And the quad picker's pad routing, which a dialog opened over the
+     * picker would otherwise leave pointed at a page that is gone. */
+    this.quadDialog = false;
     /* Any route out of the dialog retires the unsaved guard with it, or a
      * stale restore would hide the next form behind a panel that is no
      * longer in the document. */
@@ -9855,6 +10146,7 @@ export class Ui {
          */
         { label: 'The machine', section: true },
         this.roomInfo ? roomCraftItem(s, this.roomInfo) : craftItem(s, midRun),
+        ...quadAskRow(s, this.roomInfo),
         tuneItem(s, midRun),
         {
           label: 'Share this tune',
@@ -10780,7 +11072,7 @@ export class Ui {
                */
               disabled: built || nothing || Boolean(run && run.assisted)
                 || (run && run.timed === false) || Boolean(run && run.weightMixed)
-                || Boolean(run && run.tuned),
+                || Boolean(run && run.tuned) || Boolean(run && run.otherQuad),
               note: built ? (this.settings.map === 'house' ? HOUSE_OFF_BOARD
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
                   : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
@@ -10805,6 +11097,7 @@ export class Ui {
                        * another quad and stays off. */
                       : (run.tuned
                         ? 'Tuned flight, not posted to the board. Tricks landed on Air grip or Motor power off 100 are a different quad from the one everybody else flew. Set both back to 100 and fly it again.'
+                        : run.otherQuad ? otherQuadOffBoard(run.flownOn)
                         : `${formatScore(run.total)} from ${run.tricks} trick${run.tricks === 1 ? '' : 's'}${Number.isInteger(run.weight) && run.weight !== WEIGHT_STOCK ? `, marked Weight ${run.weight}%` : ''}. One entry per pilot on the board, and only your best.`))))),
             },
           /*
@@ -14094,7 +14387,17 @@ export class Ui {
       return;
     }
     const action = entry.item.action;
+    /* Tune this quad, on the picker: the map is seated and loading, and
+     * the pilot goes to the Quad screen for the machine they picked rather
+     * than into the air. Back from there is the title. Read once, here,
+     * while the picker's answer is being acted on, so a board map that
+     * fails to load cannot leave it set for the next card. */
+    const tuneAfter = Boolean(this.quadPicking && this.quadTuneNext);
     const fly = () => {
+      if (tuneAfter) {
+        this.act('quad');
+        return;
+      }
       if (this.onFlySeated) {
         this.onFlySeated();
       }
@@ -14112,21 +14415,25 @@ export class Ui {
     if (!this.quadPicking && !this.roomInfo && (action.startsWith('map:') || action.startsWith('boardmap:'))) {
       const world = entry.item.map || null;
       if (!world || world.mode === 'freestyle') {
-        this.askQuad(world, entry.name || entry.label || (world && world.name) || 'This map').then((craft) => {
-          if (!craft) {
+        const key = action.startsWith('boardmap:')
+          ? quadKeyFor('built', action.slice('boardmap:'.length))
+          : (world ? world.id : 'built');
+        const always = quadAlways(this.settings)[key];
+        const asked = always
+          ? Promise.resolve({ craft: always, always: true, tune: false })
+          : this.askQuad(world, entry.name || entry.label || (world && world.name) || 'This map', key);
+        asked.then((got) => {
+          if (!got) {
             return;
           }
-          rememberQuadPick(this.settings, world ? world.id : 'built', craft);
-          if (craft !== this.settings.airframe) {
-            seatAirframe(this.settings, craft);
-            this.settings.airframeAsked = true;
-          }
-          saveSettings(this.settings);
+          this.seatPickedQuad(key, got);
           this.quadPicking = true;
+          this.quadTuneNext = got.tune;
           try {
             this.pickerAction(id, entry, ev);
           } finally {
             this.quadPicking = false;
+            this.quadTuneNext = false;
           }
         });
         return;
@@ -19587,6 +19894,65 @@ export class Ui {
     this.seatMap(world.id);
   }
 
+  /*
+   * THE PICKER'S ANSWER, kept and seated: this map's last pick, the box if
+   * it was ticked, and the aircraft, through seatAirframe as every change
+   * of aircraft is. Saved, not applied: the caller seats the map next, or
+   * hands the settings to the shell itself (askQuadOnFly). The map is
+   * this flight's whatever was picked, so it is asked about once a visit.
+   */
+  seatPickedQuad(key, got) {
+    /* Answered, by whichever door: a link's armed question is settled too,
+     * or a card for the same map would be followed by the picker again at
+     * its Fly. */
+    this.quadAskOnFly = null;
+    rememberQuadPick(this.settings, key, got.craft);
+    if (got.always) {
+      rememberQuadAlways(this.settings, key, got.craft);
+    }
+    if (got.craft !== this.settings.airframe) {
+      seatAirframe(this.settings, got.craft);
+    }
+    this.settings.airframeAsked = true;
+    saveSettings(this.settings);
+  }
+
+  /*
+   * THE PICKER BEFORE A LINKED FLIGHT. A ?fly=1 link to a freestyle map
+   * flies the moment the map is on screen (flyIfLinked in main.js), and
+   * this puts the picker in front of that one Fly, over the map it has
+   * just loaded. Only for the map the link named, still seated, from the
+   * title, out of a room: anything else and the flight goes as it was.
+   * Back leaves the pilot on the title with the question still armed, so
+   * their own Fly asks it. A different quad is handed to the shell before
+   * the flight, the Quad screen's own swap at the title, and Tune this
+   * quad goes to that screen instead of the air.
+   */
+  askQuadOnFly(key) {
+    const here = quadKeyFor(this.settings.map, this.sharedMap && this.sharedMap.id);
+    if (this.screen !== 'title' || this.roomInfo || this.mode !== 'freestyle' || here !== key) {
+      return false;
+    }
+    const world = MAPS.find((x) => x.id === this.settings.map) || null;
+    const name = this.settings.map === 'built' && this.sharedMap
+      ? this.sharedMap.name
+      : (world && world.name) || 'This map';
+    this.askQuad(world, name, key).then((got) => {
+      if (!got) {
+        this.quadAskOnFly = key;
+        return;
+      }
+      const moved = got.craft !== this.settings.airframe;
+      this.seatPickedQuad(key, got);
+      this.renderMenu();
+      if (moved && this.onSettings) {
+        this.onSettings(this.settings);
+      }
+      this.act(got.tune ? 'quad' : 'fly');
+    });
+    return true;
+  }
+
   /* The room's quad, when the host swaps quads (swapQuad in main.js). */
   seatRoomQuad(id) {
     if (this.settings.airframe === id) {
@@ -20498,6 +20864,13 @@ export class Ui {
      * is one click from it, and the card's own note says which machine the
      * run will be filed under.
      */
+    if (action === 'fly' && this.quadAskOnFly) {
+      const key = this.quadAskOnFly;
+      this.quadAskOnFly = null;
+      if (this.askQuadOnFly(key)) {
+        return;
+      }
+    }
     if (action === 'fly') {
       this.seatCraftForCourse();
     }
@@ -20582,6 +20955,13 @@ export class Ui {
     }
     if (action === 'tune-share') {
       tunesDialog().then((m) => m.openTuneShare(this));
+      return;
+    }
+    if (action === 'quad-ask-again') {
+      this.settings.quadAlways = '';
+      saveSettings(this.settings);
+      this.announce('The quad picker asks at every map again.');
+      this.renderMenu();
       return;
     }
     if (action === 'tune-load') {

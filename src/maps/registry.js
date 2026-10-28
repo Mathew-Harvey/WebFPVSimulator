@@ -220,7 +220,7 @@ export const MAPS = [
     id: 'drift',
     name: 'Drift Matsuri',
     mode: 'freestyle',
-    note: 'A drift festival under the cherry blossom. Tandem battles run the course all day: you are the camera. Chase the cars, keep them in the middle of the shot, get both in frame, and land the money shot at the clipping zones.',
+    note: 'A drift festival under the cherry blossom. Tandem battles run the track all day: you are the camera. Chase the cars, keep them in the middle of the shot, get both in frame, and land the money shot at the clipping zones.',
     buildMs: MAP_BUILD_MS.drift,
     load: () => import('./drift/index.js'),
   },

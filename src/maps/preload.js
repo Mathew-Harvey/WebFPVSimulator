@@ -462,6 +462,7 @@ export const MAP_PRELOAD = {
     'maps/sunny/frame.js',
     'maps/sunny/streets.js',
     'maps/sunny/houses.js',
+    'maps/sunny/dress.js',
     'maps/sunny/downtown.js',
     'maps/sunny/landmarks.js',
     'maps/sunny/yard.js',

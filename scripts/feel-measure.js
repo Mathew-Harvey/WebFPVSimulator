@@ -64,6 +64,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { openPage } from '../tests/lib/page.js';
+import { SETTINGS_KEY } from '../src/ui/ui.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -241,10 +242,19 @@ fm.fly = async (T, spot) => {
   const base = Array.from(S.readState().state);
   const t0 = base[0];
   let frames = 0;
+  let still = 0;
+  let seen = 0;
   while ((fm.rec.length === 0 || fm.rec[fm.rec.length - 1][0] - t0 < T.ms / 1000) && frames < 20000) {
     await raf();
     frames += 1;
     if (!fm.rec.length && frames > 400) break;
+    /* A craft that has come to rest on the ground is parked by the shell,
+     * which stops stepping the plant until the throttle lifts it, so the
+     * record ends there. Waiting for the rest of the window used to wait
+     * out all 20000 frames, minutes a ground test. */
+    still = fm.rec.length === seen ? still + 1 : 0;
+    seen = fm.rec.length;
+    if (still > 120 && window.__craftState().landed) break;
   }
   const rec = fm.rec;
   fm.rec = null;
@@ -436,7 +446,17 @@ async function main() {
   const only = arg('only') ? arg('only').split(',') : null;
   const scale = arg('scale');
   const jsonOut = arg('json');
-  const page = await openPage({ root: ROOT, width: 480, height: 270, url: `/index.html?map=${map}&craft=${craft}&fly=1` });
+  /* The quad picker asks at every map a ?fly=1 link names (2026-10-28) and
+   * opens on the pilot's own pick or the map's, never the link's. The rig
+   * measures the craft it was told to, so it ticks Always for this map, as
+   * a pilot would, and the picker stays down with that craft seated. */
+  const quadSeed = `try {
+    const k = ${JSON.stringify(SETTINGS_KEY)};
+    const s = JSON.parse(localStorage.getItem(k) || '{}');
+    s.quadAlways = ${JSON.stringify(`${map}:${craft}`)};
+    localStorage.setItem(k, JSON.stringify(s));
+  } catch (e) { /* Storage refused: the picker comes up and the map never reports ready to fly. */ }`;
+  const page = await openPage({ root: ROOT, width: 480, height: 270, url: `/index.html?map=${map}&craft=${craft}&fly=1`, seed: [quadSeed] });
   const { cdp, sessionId } = page;
   const ev = async (expr) => {
     const r = await cdp.send('Runtime.evaluate', {

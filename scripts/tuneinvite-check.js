@@ -68,7 +68,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openPage } from '../tests/lib/page.js';
+import { answerQuadPicker, openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
 import { hoverStickPercent } from '../configs/rates.js';
 import { INVITE_FREESTYLE_MS, INVITE_KEY, INVITE_TRACK_AIR_MS, courseKeyOf } from '../src/ui/tuneinvite.js';
@@ -529,6 +529,9 @@ await scenario('B freestyle, and a No', {
   keys: WEIGHT_SEEN,
   invite: stateOf({}, INVITE_FREESTYLE_MS - 500),
 }, async (page) => {
+  /* The yard by link asks which quad first (2026-10-28); Enter flies the
+   * five inch it recommends. */
+  await answerQuadPicker(page, 200000);
   await launched(page, 200000);
   const s0 = await look(page);
   check('B: in a world with no gates the invitation is read once and is not up', s0.io && s0.io.reads === 1 && !s0.cardUp,

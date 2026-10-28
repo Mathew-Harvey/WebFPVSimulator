@@ -497,7 +497,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 8, sunny: 11, drift: 3 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 8, sunny: 12, drift: 3 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -2594,8 +2594,28 @@ export async function boot({ loading, bootStart, mapId }) {
   const CAMERA_NEAR_OPEN = 0.2;
   const CAMERA_NEAR_MIN = 0.01;
   const CAMERA_NEAR_FRACTION = 0.45;
+  /*
+   * A SMALLER AIRCRAFT, A NEARER PLANE. The numbers above were set for a
+   * craft drawn at its own size, which every pairing was until the quad
+   * picker (the owner, 2026-10-28). A whoop in the town is drawn 3.43 times
+   * smaller and its lens bumper is 5.5 mm off a wall rather than 19, so a
+   * centimetre's near plane put the glass through the wall at every touch,
+   * and the props in view, forty times out, sat inside the open 0.2 m. So
+   * both come down with the aircraft, through src/render/frame.js's scale.
+   * Never up: a five inch in a house drawn 3.5 times bigger loses nothing
+   * at the boot's numbers, and a plane pushed further out has only depth
+   * precision to gain, which the town already does without at a
+   * centimetre. At 1 this is 1 and the numbers are the same to the bit.
+   */
+  function nearScale() {
+    const k = simLenToWorld(1);
+    return k < 1 ? k : 1;
+  }
   function fpvNear(p) {
-    const reach = CAMERA_NEAR_OPEN / CAMERA_NEAR_FRACTION;
+    const k = nearScale();
+    const open = CAMERA_NEAR_OPEN * k;
+    const least = CAMERA_NEAR_MIN * k;
+    const reach = open / CAMERA_NEAR_FRACTION;
     let gap = view.colliders ? view.colliders.gapAt(p.x, p.y, p.z, reach) : Infinity;
     /* A car is solid too, and not a collider: its drawn box, as last drawn. */
     if (trafficOn) {
@@ -2616,7 +2636,7 @@ export async function boot({ loading, bootStart, mapId }) {
       gap = floor;
     }
     const near = gap * CAMERA_NEAR_FRACTION;
-    return near < CAMERA_NEAR_MIN ? CAMERA_NEAR_MIN : (near > CAMERA_NEAR_OPEN ? CAMERA_NEAR_OPEN : near);
+    return near < least ? least : (near > open ? open : near);
   }
 
   function setCameraNear(near) {
@@ -3586,6 +3606,20 @@ export async function boot({ loading, bootStart, mapId }) {
       applySettings(ui.settings);
       mode = was;
       if (was === 'flight' || was === 'paused') {
+        /*
+         * AT ONCE AS WELL AS WHEN THE TUNE HAS LANDED. The world scale and
+         * the solids moved in applySettings, and the craft is still where
+         * the old aircraft was, in the old aircraft's metres: until the
+         * reset below, every frame drew it at a point the new scale puts
+         * somewhere else and stepped it against solids that had grown or
+         * shrunk round it, which is a jump and can be a crash. When the
+         * aircraft's tune has to be fetched, that is as long as the fetch
+         * takes. So the run starts over here, at the spawn, and again when
+         * the tune is in, which is the reset that counts; swapTune resets
+         * after its own sim.init, so the first one is never flown on.
+         */
+        reset();
+        introMs = -1;
         whenConfigReady(() => {
           reset();
           introMs = -1;
@@ -8204,6 +8238,11 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A trick landed off the stock air or motors keeps the whole run off the
      * public board, and the results row says so. See noteTrickWeight. */
     summary.tuned = trickTuned;
+    /* Flown on the other quad from the one the map was built for (the quad
+     * picker, the owner, 2026-10-28): practice, as it is on a race track,
+     * and kept off the board, which shows no aircraft beside a run. */
+    summary.otherQuad = WORLD_SCALE !== 1;
+    summary.flownOn = runAirframe;
     ui.showFreestyleResults(summary);
   }
 
@@ -8343,6 +8382,20 @@ export async function boot({ loading, bootStart, mapId }) {
     if (summary.tuned || trickTuned) {
       notice = {
         text: 'Tricks landed on Air grip or Motor power off 100 stay off the public board.\nSet both back to 100 and fly it again.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /*
+     * AND A RUN ON THE OTHER QUAD. The board prints no aircraft beside a
+     * run, so a whoop's run in the town would sit among the five inches'
+     * looking like one of them, which is the tuned rule's reason again. The
+     * results row greys itself for it (otherQuad, endFreestyleRun); this is
+     * the backstop.
+     */
+    if (WORLD_SCALE !== 1) {
+      notice = {
+        text: 'This board is for the quad this map was built for.\nA run on the other one stays here.',
         untilMs: performance.now() + 4200,
       };
       return;
@@ -11345,10 +11398,22 @@ export async function boot({ loading, bootStart, mapId }) {
       const approachU = introEase((introMs - INTRO_ORBIT) / INTRO_APPROACH);
       const zoomU = introEase((introMs - INTRO_FLY) / INTRO_ZOOM);
       const theta = INTRO_THETA0 - INTRO_ORBIT_SPAN * orbitU;
-      const radius = INTRO_ORBIT_RADIUS
-        + (INTRO_APPROACH_RADIUS - INTRO_ORBIT_RADIUS) * approachU;
-      const height = INTRO_ORBIT_HEIGHT
-        + (INTRO_APPROACH_HEIGHT - INTRO_ORBIT_HEIGHT) * approachU;
+      /*
+       * THE SHOT IS THE AIRCRAFT'S SIZE. Its metres were set round a craft
+       * drawn at its own size, which every pairing was until the quad
+       * picker (the owner, 2026-10-28): a five inch in a house is drawn
+       * three and a half times bigger, and the approach at 0.40 m came in
+       * through its own props; a whoop in the town is 3.43 times smaller,
+       * and the shot orbited a speck. So every length of it goes through
+       * src/render/frame.js's scale, and its near plane comes down with a
+       * smaller one (nearScale). At 1 it is the shot it was, to the bit.
+       */
+      const shotK = simLenToWorld(1);
+      setCameraNear(CAMERA_NEAR_OPEN * nearScale());
+      const radius = (INTRO_ORBIT_RADIUS
+        + (INTRO_APPROACH_RADIUS - INTRO_ORBIT_RADIUS) * approachU) * shotK;
+      const height = (INTRO_ORBIT_HEIGHT
+        + (INTRO_APPROACH_HEIGHT - INTRO_ORBIT_HEIGHT) * approachU) * shotK;
 
       /*
        * THE ORBIT PLANE HAS TO BE LEVEL, AND IT USED TO INHERIT THE RAMP.
@@ -11393,7 +11458,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * camera and the contact test cannot disagree about where the
        * surface is. */
       const introFloor = view.height(introFrom.x, introFrom.z, introFrom.y)
-        + INTRO_FLOOR_CLEAR;
+        + INTRO_FLOOR_CLEAR * shotK;
       if (introFrom.y < introFloor) {
         introFrom.y = introFloor;
       }
@@ -11402,8 +11467,8 @@ export async function boot({ loading, bootStart, mapId }) {
        * Level forward here too: aimed along the ramp it pointed at the sky
        * instead of at the course. */
       introLook.copy(pCurr)
-        .addScaledVector(introUp, 0.04 + 0.04 * approachU)
-        .addScaledVector(introFwd, 0.08 + 1.4 * approachU);
+        .addScaledVector(introUp, (0.04 + 0.04 * approachU) * shotK)
+        .addScaledVector(introFwd, (0.08 + 1.4 * approachU) * shotK);
       shell.camera.up.set(0, 1, 0);
       shell.camera.position.copy(introFrom);
       shell.camera.lookAt(introLook);
@@ -11853,7 +11918,12 @@ export async function boot({ loading, bootStart, mapId }) {
        */
       if (view.mode === 'freestyle' && view.colliders) {
         const q = shell.quad.position;
-        trickDetector.near(view.colliders.gapAt(q.x, q.y, q.z, WALL_NEAR_M));
+        /* In the aircraft's metres where that is the smaller query (a whoop
+         * in the town), and never wider than it was: two aircraft metres for
+         * the five inch in a house is a query three and a half times as wide,
+         * measured at 2 to 4 us a frame more in Nick's house, and that is
+         * held for the owner's word with the close calls' probes. */
+        trickDetector.near(view.colliders.gapAt(q.x, q.y, q.z, Math.min(WALL_NEAR_M, simLenToWorld(WALL_NEAR_M))));
       }
       /* The STF mark, on a map that carries one, until this run finds it:
        * see findEgg. Not asked at all while finds are off (MARK_FINDS in
@@ -11986,8 +12056,13 @@ export async function boot({ loading, bootStart, mapId }) {
          * under the overbridge. See SURFACE_BIAS. */
         altitude: (p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y)) / life,
         /* Null on an airframe whose OSD has no speed, and the readout goes.
-         * See osdSpeed in configs/airframes.js. */
-        speedKph: life !== 1 || airframeById(runAirframe).osdSpeed ? simLenToWorld(speed) * 3.6 / life : null,
+         * See osdSpeed in configs/airframes.js: it went because the whoop's
+         * plant is the five inch's and the number was the plant's. Flown
+         * away from its own map (WORLD_SCALE not 1, the quad picker) the
+         * number is the world's, through the scale, so it is the real one
+         * and it shows, as it does in the houses. */
+        speedKph: life !== 1 || WORLD_SCALE !== 1 || airframeById(runAirframe).osdSpeed
+          ? simLenToWorld(speed) * 3.6 / life : null,
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
         /* No damage model, so nothing to count down. How much this run has

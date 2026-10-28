@@ -287,6 +287,7 @@
     'src/maps/specials/infinityloops.js',
     'src/maps/stickermesh.js',
     'src/maps/sunny/downtown.js',
+    'src/maps/sunny/dress.js',
     'src/maps/sunny/frame.js',
     'src/maps/sunny/fx.js',
     'src/maps/sunny/houses.js',

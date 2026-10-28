@@ -25,6 +25,14 @@
  * On Low, what the town marks `fine` is not drawn: window frames, sills,
  * sprinkles, rungs. Nothing fine is solid, so the flight is the same.
  *
+ * THE SET DRESSING (./dress.js: the yards' toys and furniture, the shops'
+ * roofs and backs, the street furniture, the clutter of the plant, the
+ * dump and the park) is fine and near: Low draws none of it, and High and
+ * Medium draw it in forty eight cells of their own (./frame.js nearOf), each
+ * switched off past NEAR_R from the camera (nearCull), every frame after
+ * the pipeline's cull. Its draws are paid for by the palette merge
+ * (./palette.js), which folds the leaf batches of a chunk together.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -52,8 +60,22 @@ import { sunnyDocument } from './yard.js';
 import { paintSigns, signMesh } from './signs.js';
 import { makeFx } from './fx.js';
 import { mergePalette } from './palette.js';
+import { nearOf } from './frame.js';
 
-const at = (px, py) => chunkOf(px - W / 2, D / 2 - py);
+/* The chunk a drawn thing is filed under, or its near cell if it is set
+ * dressing (./frame.js dress). */
+const cellOf = (thing, x, z) => (thing && thing.near ? nearOf(x, z) : chunkOf(x, z));
+const at = (px, py, thing) => cellOf(thing, px - W / 2, D / 2 - py);
+
+/*
+ * HOW NEAR THE DRESSING IS DRAWN, by preset; Low draws none of it. The
+ * test is to the nearest edge of a near cell (./frame.js nearOf), so the
+ * nearest dressing that is off is this far away: a garden chair seven
+ * pixels across on High, a roof vent four, where the fog begins. Drawing
+ * them past it would be all cost and no town. Measured at 75 m with cells
+ * twice the size, a yard's view drew its dressing 113k triangles deep.
+ */
+const NEAR_R = { medium: 40, high: 50 };
 
 /* Prisms along x are drawn turned a quarter, so the kit's extrusion along
  * its local z runs east; along y they are drawn unturned and run south. */
@@ -65,10 +87,10 @@ function drawPrisms(kit, prisms, low) {
     const lo = Math.min(...p.profile.map(([a]) => a));
     const hi = Math.max(...p.profile.map(([a]) => a));
     if (p.axis === 'x') {
-      kit.begin(0, 0, 0, Math.PI / 2, at((p.e0 + p.e1) / 2, (lo + hi) / 2));
+      kit.begin(0, 0, 0, Math.PI / 2, at((p.e0 + p.e1) / 2, (lo + hi) / 2, p));
       kit.extrude(p.m, p.profile.map(([a, h]) => [a - D / 2, h]), p.e0 - W / 2, p.e1 - W / 2);
     } else {
-      kit.begin(0, 0, 0, 0, at((lo + hi) / 2, (p.e0 + p.e1) / 2));
+      kit.begin(0, 0, 0, 0, at((lo + hi) / 2, (p.e0 + p.e1) / 2, p));
       kit.extrude(p.m, p.profile.map(([a, h]) => [a - W / 2, h]), D / 2 - p.e1, D / 2 - p.e0);
     }
   }
@@ -130,6 +152,51 @@ function wireLines(T) {
   return lines;
 }
 
+/*
+ * THE NEAR CULL: the near cells' bounds, measured as the pipeline measures
+ * its chunks', and the test to the nearest point of them, so a piece of
+ * dressing inside the radius is never off. Set every frame, after the
+ * pipeline's own cull, which switches these groups on again whenever the
+ * camera comes inside its far wider radius.
+ */
+function nearCull(props, r) {
+  const cells = [];
+  const bb = new THREE.Box3();
+  for (const g of props.children) {
+    if (!g.name.startsWith('props:sn')) {
+      continue;
+    }
+    bb.makeEmpty();
+    for (const m of g.children) {
+      if (!m.geometry) {
+        continue;
+      }
+      if (!m.geometry.boundingBox) {
+        m.geometry.computeBoundingBox();
+      }
+      bb.union(m.geometry.boundingBox);
+    }
+    if (!bb.isEmpty()) {
+      cells.push({ group: g, x0: bb.min.x, x1: bb.max.x, z0: bb.min.z, z1: bb.max.z, on: true });
+    }
+  }
+  const r2 = r * r;
+  return {
+    to(eye) {
+      for (let i = 0; i < cells.length; i += 1) {
+        const c = cells[i];
+        const dx = Math.max(0, c.x0 - eye.x, eye.x - c.x1);
+        const dz = Math.max(0, c.z0 - eye.z, eye.z - c.z1);
+        c.on = dx * dx + dz * dz <= r2;
+        c.group.visible = c.on;
+      }
+    },
+    stats: () => ({ cells: cells.length, on: cells.filter((c) => c.on).length, radius: r }),
+  };
+}
+
+const BEAD_SPIN = [0, 0, 0];
+
 function drawTown(kit, T, low) {
   drawPrisms(kit, T.prisms, low);
   for (const d of T.discs) {
@@ -137,14 +204,14 @@ function drawTown(kit, T, low) {
       continue;
     }
     const [x, , z] = worldAt(d.px, d.py, 0);
-    kit.begin(0, 0, 0, 0, chunkOf(x, z));
+    kit.begin(0, 0, 0, 0, cellOf(d, x, z));
     kit.cyl(d.m, [x, d.h0, z], [x, d.h1, z], d.r, d.seg);
   }
   for (const c of T.cyls) {
     if (low && c.fine) {
       continue;
     }
-    kit.begin(0, 0, 0, 0, chunkOf((c.a[0] + c.b[0]) / 2, (c.a[2] + c.b[2]) / 2));
+    kit.begin(0, 0, 0, 0, cellOf(c, (c.a[0] + c.b[0]) / 2, (c.a[2] + c.b[2]) / 2));
     kit.cyl(c.m, c.a, c.b, c.r, c.seg, c.rTop);
   }
   for (const b of T.balls) {
@@ -152,15 +219,19 @@ function drawTown(kit, T, low) {
       continue;
     }
     const [x, y, z] = worldAt(b.px, b.py, b.h);
-    kit.begin(0, 0, 0, 0, chunkOf(x, z));
-    kit.ball(b.m, [x, y, z], b.r);
+    kit.begin(0, 0, 0, 0, cellOf(b, x, z));
+    if (b.bead) {
+      kit.blob(b.m, [x, y, z], b.r, b.r, BEAD_SPIN);
+    } else {
+      kit.ball(b.m, [x, y, z], b.r);
+    }
   }
   for (const c of T.cones) {
     if (low && c.fine) {
       continue;
     }
     const [x, y, z] = worldAt(c.px, c.py, c.h);
-    kit.begin(0, 0, 0, 0, chunkOf(x, z));
+    kit.begin(0, 0, 0, 0, cellOf(c, x, z));
     kit.cone(c.m, [x, y, z], c.r, c.height, c.seg);
   }
   for (const s of T.shells) {
@@ -175,8 +246,11 @@ function drawTown(kit, T, low) {
   const ay = new THREE.Vector3();
   const az = new THREE.Vector3();
   for (const t of T.tori) {
+    if (low && t.fine) {
+      continue;
+    }
     const [x, y, z] = worldAt(t.px, t.py, t.h);
-    kit.begin(x, y, z, 0, chunkOf(x, z));
+    kit.begin(x, y, z, 0, cellOf(t, x, z));
     if (t.nx === 0 && t.ny === 0) {
       ax.set(1, 0, 0);
       ay.set(0, 0, -1);
@@ -199,7 +273,7 @@ function drawTown(kit, T, low) {
       continue;
     }
     const [x, , z] = worldAt((f.i.x0 + f.i.x1) / 2, (f.i.y0 + f.i.y1) / 2);
-    kit.begin(0, 0, 0, 0, chunkOf(x, z));
+    kit.begin(0, 0, 0, 0, cellOf(f, x, z));
     kit.add(f.m, frustumGeometry(f));
   }
   /* The cables: each a thin tube along its sag, three sided, as the
@@ -330,7 +404,9 @@ export async function buildMap(shell, onProgress, options) {
     parts: low ? parts.filter((p) => !(p.fine && !p.solid)) : parts,
     draw: (kit) => drawTown(kit, T, low),
     floor: sunnyFloor,
-    chunkOf: (x, z) => chunkOf(x, z),
+    /* The pipeline hands each part along with where it stands, so the set
+     * dressing is filed in its near cell. */
+    chunkOf: (x, z, p) => cellOf(p, x, z),
   };
   const doc = sunnyDocument();
   const map = await buildBuilt(shell, onProgress, {
@@ -343,9 +419,38 @@ export async function buildMap(shell, onProgress, options) {
   map.source = 'sunny';
   /* One batch a look in each chunk rather than one a colour: ./palette.js. */
   const props = map.scene.getObjectByName('props');
+  /* The set dressing casts no shadow. Its pieces are a metre high at most
+   * and stand in the shade of the houses and shops beside them, so a
+   * shadow of each is a pass's worth of draws and triangles that nobody
+   * flying past would miss: the pipeline gave each near cell its own
+   * casters (proxyCasters in ../built/index.js), and they go here. */
+  if (props) {
+    for (const g of props.children) {
+      if (!g.name.startsWith('props:sn')) {
+        continue;
+      }
+      for (const m of [...g.children]) {
+        if (m.userData.shadowProxy) {
+          g.remove(m);
+          m.geometry.dispose();
+        }
+      }
+    }
+  }
   const palette = props ? mergePalette(props) : { from: 0, to: 0 };
   const stats = map.stats;
-  map.stats = () => ({ ...(stats ? stats() : {}), palette });
+  /* The set dressing, switched by range from the camera every frame after
+   * the pipeline's own cull has had its say. */
+  const near = props && !low ? nearCull(props, NEAR_R[qualityFor(options && options.quality).id] || NEAR_R.high) : null;
+  if (near) {
+    const focus = map.updateShadowFocus;
+    map.updateShadowFocus = (target) => {
+      focus(target);
+      near.to(shell.camera.position);
+    };
+    near.to(shell.camera.position);
+  }
+  map.stats = () => ({ ...(stats ? stats() : {}), palette, near: near ? near.stats() : null });
   /* The gorge, cut out of the ground. */
   openGround(map.scene, 'plot', GORGE_HOLE);
   openGround(map.scene, 'terrain', GORGE_HOLE);

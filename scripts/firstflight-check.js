@@ -56,7 +56,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openPage } from '../tests/lib/page.js';
+import { answerQuadPicker, openPage } from '../tests/lib/page.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
 import { presetsForClass } from '../src/trackbuilder/presets.js';
 import { TAKEOFF, textOf } from '../src/ui/firstflight.js';
@@ -257,6 +257,9 @@ await scenario('B five inch track by link', { url: FIVE_LINK, settings: NEWCOMER
 /* ---- C: a newcomer, the town, by link ----------------------------------- */
 
 await scenario('C the town by link', { url: '/index.html?map=city&craft=5inch&fly=1', settings: { hasFlown: false, map: 'city' } }, async (page) => {
+  /* A map by link asks which quad first (2026-10-28); Enter flies the five
+   * inch the town recommends, which is what a newcomer gets. */
+  await answerQuadPicker(page, 240000);
   await launched(page, 240000);
   const s0 = await state(page);
   const pre = await banner(page);

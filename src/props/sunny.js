@@ -6,14 +6,15 @@
  * draws has to be in the kit's table, so this is Sunnyfield's share of it
  * and nothing else (./catalog.js, FAMILIES).
  *
- * EVERY COLOUR IS A DRAW CALL IN EVERY CHUNK IT IS USED IN. The map is cut
- * into six chunks (src/maps/sunny/plan.js, CHUNKS), and the kit bakes one
- * batch per material per chunk, so the list is short on purpose: six house
- * sidings, four roofs, three doors, three shutters, and the landmarks'
- * own. A colour that would read the same as another at a glance is that
- * other colour. All of it is our own: bright, warm and a little candy, the
- * way a sunny cartoon town reads, in the town's cel shading and its violet
- * shadow tints, and none of it matched to anybody's show.
+ * The kit bakes one batch per material per chunk, and the map then merges
+ * each chunk's batches into one a look, with the colour on the vertices
+ * (src/maps/sunny/palette.js), so a colour costs no draw of its own. The
+ * list is still short on purpose: six house sidings, four roofs, three
+ * doors, three shutters, and the landmarks' own. A colour that would read
+ * the same as another at a glance is that other colour. All of it is our
+ * own: bright, warm and a little candy, the way a sunny cartoon town
+ * reads, in the town's cel shading and its violet shadow tints, and none
+ * of it matched to anybody's show.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -94,4 +95,9 @@ export const MATERIALS = {
   sfRockDark: { c: 0x8e6244, tint: 0x553f58 },
   sfStone: { c: 0xb4aeb8, tint: 0x66607e },
   sfFire: { f: 0xff8a2a, noCast: true },
+  /* the set dressing's own: the pavement's joints, the road's patches,
+   * cardboard */
+  sfJoint: { c: 0xb9b2a6, tint: 0x847c9c },
+  sfPatch: { c: 0x4f4d5c, tint: 0x3a3654 },
+  sfCardboard: { c: 0xc9a06a, tint: 0x7a6062 },
 };

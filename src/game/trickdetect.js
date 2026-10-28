@@ -87,6 +87,11 @@ import { GRAZE_SPEED_MAX } from './collide.js';
  * describes, this file names a trick and tricks.js prices it, is intact.
  */
 import { trickPoints } from './tricks.js';
+/*
+ * The world's metres per metre of the aircraft, for the path side's lengths
+ * and speeds. See THE PATH SIDE IS IN THE AIRCRAFT'S METRES at pathScale.
+ */
+import { simLenToWorld } from '../render/frame.js';
 
 /* One turn, in radians. Written out rather than 2 * Math.PI so that the
  * constant in the file is the constant in the arithmetic. */
@@ -2086,6 +2091,31 @@ const OBJECT_INSIDE = 0.6;
  * turning about the object's own axis do it.
  */
 const OBJECT_NEAR = 3.0;
+/*
+ * THE PATH SIDE IS IN THE AIRCRAFT'S METRES, and the positions it is fed are
+ * the world's.
+ *
+ * Every length and speed above (PATH_TANGENT_ON, PATH_MIN_RADIUS,
+ * PATH_MIN_SPEED, PATH_MAX_RADIUS, OBJECT_NEAR, and the nearMax of the wall
+ * patterns through near()) was measured on a craft for which a world metre
+ * was its own metre. Since the quad picker (the owner, 2026-10-28) that is
+ * true only of the aircraft a map was built for: a five inch in Nick Burns'
+ * house flies 3.5 world metres to its own one, and a whoop in the town
+ * 1 / 3.43. Read in world metres the whoop's orbit of a lamp post had to be
+ * flown three and a half times faster than the same orbit in the house to
+ * count. So each is multiplied by this at the comparison, which is
+ * src/render/frame.js's own conversion and exactly 1 at a world scale of 1,
+ * where every pairing that flew before the picker still flies: x * 1 is x,
+ * to the bit.
+ *
+ * Not the reach of a distance query. gapAt's cost goes as the square of its
+ * reach, and a five inch in a house would ask 56 m where everything else
+ * asks 16; 16 world metres is four and a half of a five inch's in a house,
+ * wider than any figure a room has space for.
+ */
+function pathScale() {
+  return simLenToWorld(1);
+}
 /* How long an approach's closest pass stays relevant to the figure that
  * follows it. A second is about the time between flying over a rail and
  * having committed to the dive around it. */
@@ -2476,8 +2506,9 @@ export class TrickDetector {
    * answer it saw during a run.
    */
   near(metres) {
-    if (metres < this.nearest) {
-      this.nearest = metres;
+    const own = metres / pathScale();
+    if (own < this.nearest) {
+      this.nearest = own;
     }
   }
 
@@ -2732,7 +2763,8 @@ export class TrickDetector {
     /* Too slow for a direction of travel to mean anything. Hold the turn
      * open but stop counting, the same way a lap holds through the top of a
      * loop where the craft is barely moving. */
-    if (sp < PATH_MIN_SPEED) {
+    const m = pathScale();
+    if (sp < PATH_MIN_SPEED * m) {
       tr.haveT = false;
       if (!tr.open) {
         tr.snapshot(wx, wy, wz, this.nowMs);
@@ -2786,9 +2818,9 @@ export class TrickDetector {
      * gate and the turn came apart. Measured before this, a flown Matty Flip
      * split into a 0.32 and a 0.58 where one half turn had been flown.
      */
-    const opening = tr.rate >= PATH_TURN_ON && radius <= PATH_MAX_RADIUS;
+    const opening = tr.rate >= PATH_TURN_ON && radius <= PATH_MAX_RADIUS * m;
     const circling = tr.open
-      ? tr.rate >= PATH_TURN_OFF && radius <= PATH_MAX_RADIUS
+      ? tr.rate >= PATH_TURN_OFF && radius <= PATH_MAX_RADIUS * m
       : opening;
 
     if (!tr.open) {
@@ -3025,7 +3057,7 @@ export class TrickDetector {
       }
     }
     const enclosed = !nearestUsed && solidGap < meanR * OBJECT_INSIDE;
-    const engaged = enclosed || solidGap <= OBJECT_NEAR;
+    const engaged = enclosed || solidGap <= OBJECT_NEAR * pathScale();
     const solidInside = engaged;
 
     /*
@@ -3247,7 +3279,8 @@ export class TrickDetector {
     const cy = ry - ob.dy * along;
     const cz = rz - ob.dz * along;
     const len2 = cx * cx + cy * cy + cz * cz;
-    if (len2 < PATH_MIN_RADIUS * PATH_MIN_RADIUS) {
+    const m = pathScale();
+    if (len2 < PATH_MIN_RADIUS * PATH_MIN_RADIUS * m * m) {
       /* Too close to the axis for the angle to mean anything. Hold the run
        * open but stop counting, so a loop that clips the rail is still one
        * loop rather than two halves. */
@@ -3288,7 +3321,7 @@ export class TrickDetector {
      * or away from it. See PATH_TANGENT_RATIO. */
     const tangent = mag * TURN * nowLen;
     const radial = (nowLen - prevLen) / dt;
-    const circling = tangent >= PATH_TANGENT_ON
+    const circling = tangent >= PATH_TANGENT_ON * m
       && tangent >= (radial < 0 ? -radial : radial) * PATH_TANGENT_RATIO;
     const side = this.sideOf(ob, cx, cy, cz);
     run.windTotal += dTurns;

@@ -908,6 +908,19 @@ const BUILT_OFF_BOARD = 'A map you built is a different place for every pilot wh
 const BOARD_MAP_OFF_BOARD = 'The board keeps no runs for a published map yet, so a run flown on one'
   + ' stays here. Fly the town for a run that can go up.';
 
+/*
+ * A run flown on the other quad from the one the map was built for, which
+ * the quad picker allows (the owner, 2026-10-28). The board prints no
+ * aircraft beside a run, so it would sit among the others looking like one
+ * of them: the tuned row's reason. main.js refuses the post as well.
+ */
+function otherQuadOffBoard(flownOn) {
+  const flown = flownOn === 'whoop65' ? 'whoop' : 'five inch';
+  const home = flownOn === 'whoop65' ? 'five inch' : 'whoop';
+  return `Flown on the ${flown}, and this board is for the ${home} the map was built for, so the run stays here.`
+    + ` Fly the ${home} for a run that can go up.`;
+}
+
 /* Nick Burns' house is the same place for everybody, like the town, but the
  * board keeps no table for it, and main.js refuses the post the same way. */
 const HOUSE_OFF_BOARD = "The board keeps no runs for Nick Burns' house, so a run flown there stays here."
@@ -10774,7 +10787,7 @@ export class Ui {
                */
               disabled: built || nothing || Boolean(run && run.assisted)
                 || (run && run.timed === false) || Boolean(run && run.weightMixed)
-                || Boolean(run && run.tuned),
+                || Boolean(run && run.tuned) || Boolean(run && run.otherQuad),
               note: built ? (this.settings.map === 'house' ? HOUSE_OFF_BOARD
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
                   : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
@@ -10799,6 +10812,7 @@ export class Ui {
                        * another quad and stays off. */
                       : (run.tuned
                         ? 'Tuned flight, not posted to the board. Tricks landed on Air grip or Motor power off 100 are a different quad from the one everybody else flew. Set both back to 100 and fly it again.'
+                        : run.otherQuad ? otherQuadOffBoard(run.flownOn)
                         : `${formatScore(run.total)} from ${run.tricks} trick${run.tricks === 1 ? '' : 's'}${Number.isInteger(run.weight) && run.weight !== WEIGHT_STOCK ? `, marked Weight ${run.weight}%` : ''}. One entry per pilot on the board, and only your best.`))))),
             },
           /*

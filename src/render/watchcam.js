@@ -115,6 +115,18 @@ const LIFT_BASE = 1;
 const LIFT_PER_M = 0.6;
 const LIFT_MAX = 50;
 
+/*
+ * THE RIG IS THE AIRCRAFT'S SIZE, the flight between is the map's. The rig's
+ * metres above (BACK to JUMP_M, and the speeds) are the drawn quad's: one
+ * size for both rooms was true while a whoop room only flew a map built
+ * MICRO_SCALE times life size. Since the host can swap a room's quad (the
+ * owner, 2026-10-28), a five inch can fly a house and a whoop the town, and
+ * the quad is drawn at src/render/frame.js's scale, three and a half times
+ * bigger or 3.43 times smaller. `scale` is that number, world metres per
+ * metre of the aircraft, set by the shell; at 1 the rig is the one it was.
+ * The hop between pilots crosses the map, so it keeps the map's metres.
+ */
+
 export const PHASE_OFF = '';
 export const PHASE_GOING = 'going';
 export const PHASE_RIDING = 'riding';
@@ -155,6 +167,9 @@ export class WatchCam {
     this.atMs = -1;
     this.heading = 0;
     this.boom = BACK;
+    /* World metres per metre of the aircraft. See THE RIG IS THE
+     * AIRCRAFT'S SIZE. */
+    this.scale = 1;
     this.last = new THREE.Vector3();
     this.vel = new THREE.Vector3();
     this.want = new THREE.Vector3();
@@ -234,10 +249,12 @@ export class WatchCam {
     this.atMs = nowMs;
     const nose = this.nose.set(0, 0, -1).applyQuaternion(this.q);
     const nl = Math.hypot(nose.x, nose.z);
-    if (!this.seeded || T.distanceToSquared(this.last) > JUMP_M * JUMP_M) {
+    const k = this.scale;
+    const jump = JUMP_M * k;
+    if (!this.seeded || T.distanceToSquared(this.last) > jump * jump) {
       this.seeded = true;
       this.vel.set(0, 0, 0);
-      this.boom = BACK;
+      this.boom = BACK * k;
       if (nl > 0.05) {
         this.heading = Math.atan2(nose.x, nose.z);
       }
@@ -253,14 +270,14 @@ export class WatchCam {
      * travel's once moving, and none at all from a nose pointing straight
      * up or down with no travel, which keeps the heading it had. */
     const speed = Math.hypot(this.vel.x, this.vel.z);
-    const w = smooth(SLOW, FAST, speed);
+    const w = smooth(SLOW * k, FAST * k, speed);
     let hx = 0;
     let hz = 0;
     if (nl > 0.2) {
       hx += (nose.x / nl) * (1 - w);
       hz += (nose.z / nl) * (1 - w);
     }
-    if (speed > 0.3) {
+    if (speed > 0.3 * k) {
       hx += (this.vel.x / speed) * w;
       hz += (this.vel.z / speed) * w;
     }
@@ -273,14 +290,17 @@ export class WatchCam {
     const fx = Math.sin(this.heading);
     const fz = Math.cos(this.heading);
     /* The boom, walked out from the quad until it meets a solid. */
-    const dir = this.dir.set(-fx * BACK, UP, -fz * BACK);
+    const dir = this.dir.set(-fx * BACK * k, UP * k, -fz * BACK * k);
     const full = dir.length();
     dir.multiplyScalar(1 / full);
     let reach = full;
     if (world && world.gap) {
-      for (let s = BOOM_MIN; s <= full; s += BOOM_STEP) {
-        if (world.gap(T.x + dir.x * s, T.y + dir.y * s, T.z + dir.z * s) < BOOM_CLEAR) {
-          reach = s - BOOM_STEP > BOOM_MIN ? s - BOOM_STEP : BOOM_MIN;
+      const boomMin = BOOM_MIN * k;
+      const boomStep = BOOM_STEP * k;
+      const boomClear = BOOM_CLEAR * k;
+      for (let s = boomMin; s <= full; s += boomStep) {
+        if (world.gap(T.x + dir.x * s, T.y + dir.y * s, T.z + dir.z * s) < boomClear) {
+          reach = s - boomStep > boomMin ? s - boomStep : boomMin;
           break;
         }
       }
@@ -292,12 +312,12 @@ export class WatchCam {
     }
     this.want.copy(T).addScaledVector(dir, this.boom);
     if (world && world.floor) {
-      const floor = world.floor(this.want.x, this.want.z, this.want.y) + FLOOR_CLEAR;
+      const floor = world.floor(this.want.x, this.want.z, this.want.y) + FLOOR_CLEAR * k;
       if (this.want.y < floor) {
         this.want.y = floor;
       }
     }
-    this.look.set(T.x + fx * AHEAD, T.y + LOOK_UP, T.z + fz * AHEAD);
+    this.look.set(T.x + fx * AHEAD * k, T.y + LOOK_UP * k, T.z + fz * AHEAD * k);
     this.aimAt(this.want, this.look, this.wantQuat);
   }
 

@@ -117,6 +117,7 @@
 
 import { CRAFT_WORLD_R, GRAZE_SPEED_MAX } from './collide.js';
 import { REPORT_LAG_MS } from './chase.js';
+import { simLenToWorld } from '../render/frame.js';
 
 /* The physics runs at 1 kHz: a step is a millisecond. */
 const STEP_MS = 1;
@@ -258,6 +259,24 @@ export const CC_KINDS = ['skim', 'thread', 'under', 'lowpass'];
 /* At most this many close calls wait out their windows at once. */
 const PEND_MAX = 16;
 
+/*
+ * EVERY NUMBER ABOVE IS IN THE AIRCRAFT'S METRES, and a feed is in the
+ * world's. They were one and the same until the quad picker (the owner,
+ * 2026-10-28) put either aircraft on any map: a five inch in Nick Burns'
+ * house, built three and a half times life size, flies 3.5 world metres for
+ * every metre of its own, and a whoop in the town 1 / 3.43. A metre of
+ * clearance and 6 m/s are facts about the machine, so they cross into the
+ * world here, once a feed, by src/render/frame.js's own conversion: the
+ * reaches, the ray's width and the bands are multiplied by it, and the
+ * speeds the floors and the prices read are divided by it. The clearances
+ * the counter is handed stay the world's, which is what the HUD prints them
+ * as. At a world scale of 1 this is a multiply and a divide by exactly 1,
+ * so every pairing that flew before the picker is the same feed to the bit.
+ */
+function craftMetre() {
+  return simLenToWorld(1);
+}
+
 /* A clearance, floored at the hull touching. */
 function clamp0(c) {
   return c > 0 ? c : 0;
@@ -306,6 +325,9 @@ export class CloseCalls {
       near: Infinity, up: Infinity, down: Infinity, left: Infinity, right: Infinity, ground: Infinity, speed: 0,
     };
     this.events = [];
+    /* World metres per metre of the aircraft at the last feed. See
+     * craftMetre. */
+    this.m = 1;
     /* How many distance queries the feeds asked, for the cost measurement. */
     this.queries = 0;
     this.setColliders(colliders ?? null);
@@ -351,6 +373,7 @@ export class CloseCalls {
    */
   ray(px, py, pz, dx, dy, dz, reach, t0) {
     const col = this.col;
+    const rayR = CC_RAY_R * this.m;
     let t = t0;
     for (let k = 0; k < CC_RAY_STEPS; k += 1) {
       if (!(t < reach)) {
@@ -361,7 +384,7 @@ export class CloseCalls {
       if (!(g < Infinity)) {
         return Infinity;
       }
-      if (g <= CC_RAY_R) {
+      if (g <= rayR) {
         return t + g;
       }
       t += g;
@@ -409,6 +432,12 @@ export class CloseCalls {
     const v = Math.sqrt(vx * vx + vy * vy + vz * vz);
     const vh = Math.sqrt(vx * vx + vz * vz);
     const R = CRAFT_WORLD_R;
+    const m = craftMetre();
+    this.m = m;
+    const skimNear = SKIM_NEAR * m;
+    const threadNear = CC_THREAD_NEAR * m;
+    const underNear = UNDER_NEAR * m;
+    const lowNear = LOW_NEAR * m;
     const pr = this.probe;
     pr.speed = v;
     pr.near = Infinity;
@@ -420,22 +449,22 @@ export class CloseCalls {
 
     /* Too slow for anything, or a craft that has gone to NaN: every close
      * call is out at this feed. */
-    const moving = v >= CC_SPEED_MIN;
+    const moving = v >= CC_SPEED_MIN * m;
     let touching = false;
     if (moving && this.col) {
-      const reach = UNDER_NEAR + R;
+      const reach = underNear + R;
       this.queries += 1;
       const g0 = this.col.gapAt(px, py, pz, reach);
       pr.near = g0;
-      if (g0 <= CC_RAY_R) {
+      if (g0 <= CC_RAY_R * m) {
         touching = true;
       } else if (g0 < Infinity) {
-        pr.up = this.ray(px, py, pz, 0, 1, 0, UNDER_NEAR + R, g0);
-        pr.down = this.ray(px, py, pz, 0, -1, 0, SKIM_NEAR + R, g0);
-        if (vh >= LATERAL_MIN) {
+        pr.up = this.ray(px, py, pz, 0, 1, 0, underNear + R, g0);
+        pr.down = this.ray(px, py, pz, 0, -1, 0, skimNear + R, g0);
+        if (vh >= LATERAL_MIN * m) {
           const sx = -vz / vh;
           const sz = vx / vh;
-          const side = (SKIM_NEAR > CC_THREAD_NEAR ? SKIM_NEAR : CC_THREAD_NEAR) + R;
+          const side = (skimNear > threadNear ? skimNear : threadNear) + R;
           pr.left = this.ray(px, py, pz, sx, 0, sz, side, g0);
           pr.right = this.ray(px, py, pz, -sx, 0, -sz, side, g0);
         }
@@ -455,13 +484,13 @@ export class CloseCalls {
     /* SKIM: the nearest of a wall beside and a roof under. */
     const side = cL < cR ? cL : cR;
     const skimC = side < cD ? side : cD;
-    const skimOn = moving && !touching && skimC <= SKIM_NEAR;
+    const skimOn = moving && !touching && skimC <= skimNear;
     /* THREAD: each side close, remembered for THREAD_PAIR_MS. */
-    if (moving && !touching && cL <= CC_THREAD_NEAR) {
+    if (moving && !touching && cL <= threadNear) {
       this.leftAt = step;
       this.leftClear = clamp0(cL);
     }
-    if (moving && !touching && cR <= CC_THREAD_NEAR) {
+    if (moving && !touching && cR <= threadNear) {
       this.rightAt = step;
       this.rightClear = clamp0(cR);
     }
@@ -469,14 +498,14 @@ export class CloseCalls {
       && (this.leftAt === step || this.rightAt === step)
       && step - this.leftAt <= THREAD_PAIR_MS && step - this.rightAt <= THREAD_PAIR_MS;
     /* UNDER: a solid over the craft. */
-    const underOn = moving && !touching && cU <= UNDER_NEAR;
+    const underOn = moving && !touching && cU <= underNear;
     /* LOW PASS: the ground near, and no solid under the craft to be a roof. */
-    const lowOn = moving && !touching && !(pr.down < Infinity) && cG <= LOW_NEAR;
+    const lowOn = moving && !touching && !(pr.down < Infinity) && cG <= lowNear;
 
-    this.update(K_SKIM, skimOn, step, dt, clamp0(skimC), v, SKIM_POINTS_PER_S, SKIM_NEAR, cD < side);
-    this.update(K_THREAD, threadOn, step, dt, 0.5 * (this.leftClear + this.rightClear), v, 0, CC_THREAD_NEAR, false);
-    this.update(K_UNDER, underOn, step, dt, clamp0(cU), v, 0, UNDER_NEAR, false);
-    this.update(K_LOW, lowOn, step, dt, clamp0(cG), v, LOW_POINTS_PER_S, LOW_NEAR, false);
+    this.update(K_SKIM, skimOn, step, dt, clamp0(skimC), v, SKIM_POINTS_PER_S, skimNear, cD < side);
+    this.update(K_THREAD, threadOn, step, dt, 0.5 * (this.leftClear + this.rightClear), v, 0, threadNear, false);
+    this.update(K_UNDER, underOn, step, dt, clamp0(cU), v, 0, underNear, false);
+    this.update(K_LOW, lowOn, step, dt, clamp0(cG), v, LOW_POINTS_PER_S, lowNear, false);
     this.settle(step);
     this.writeLive();
   }
@@ -508,7 +537,7 @@ export class CloseCalls {
           if (rate > 0 && before < CC_HOLD_CAP_MS) {
             const room = CC_HOLD_CAP_MS - before;
             const ms = dt * STEP_MS < room ? dt * STEP_MS : room;
-            this.pts[k] += (ms / 1000) * rate * speedFactor(v) * closeFactor(clear, near);
+            this.pts[k] += (ms / 1000) * rate * speedFactor(v / this.m) * closeFactor(clear, near);
           }
         }
         if (clear < this.minClear[k]) {
@@ -541,9 +570,10 @@ export class CloseCalls {
     }
     const vMean = this.vN[k] > 0 ? this.vSum[k] / this.vN[k] : 0;
     if (k === K_UNDER) {
-      return Math.round(UNDER_POINTS * speedFactor(vMean) * closeFactor(this.minClear[k], UNDER_NEAR));
+      return Math.round(UNDER_POINTS * speedFactor(vMean / this.m) * closeFactor(this.minClear[k], UNDER_NEAR * this.m));
     }
-    return Math.round(CC_THREAD_POINTS * speedFactor(vMean) * closeFactor(this.minClear[k], CC_THREAD_NEAR));
+    return Math.round(CC_THREAD_POINTS * speedFactor(vMean / this.m)
+      * closeFactor(this.minClear[k], CC_THREAD_NEAR * this.m));
   }
 
   nameOf(k) {

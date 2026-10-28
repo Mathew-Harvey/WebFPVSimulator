@@ -15248,7 +15248,8 @@ export async function boot({ loading, bootStart, mapId }) {
     shell.camera.up.set(0, 1, 0);
     /* The pilot's own quad waits where it was left, and is in the picture
      * whenever the camera is not inside it. */
-    shell.quad.visible = shell.camera.position.distanceToSquared(pCurr) > 0.09;
+    const inside = simLenToWorld(0.3);
+    shell.quad.visible = shell.camera.position.distanceToSquared(pCurr) > inside * inside;
     setCameraNear(fpvNear(shell.camera.position));
     if (phase === 'home') {
       document.documentElement.classList.remove('tg-watching');

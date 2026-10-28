@@ -89,7 +89,8 @@ const MODULES = `
     crafts.end();
     body.getMatrixAt(0, m);
     m.decompose(p, q, s);
-    return s.x;
+    const tags = crafts.group.children.find((c) => c.material && c.material.uniforms && c.material.uniforms.uLift);
+    return { scale: s.x, lift: tags.material.uniforms.uLift.value };
   };
   const boomAt = (ws) => {
     frame.setWorldScale(ws);
@@ -171,8 +172,10 @@ async function main() {
 
     console.log('the other pilots and the chase rig');
     const r = await ev(MODULES);
-    check('a room\'s quads are drawn at the world scale: 1 at 1', near(r.roomAt1, 1), f3(r.roomAt1));
-    check('and 3.5 at 1 / 3.5, the size the pilot\'s own five inch is drawn', near(r.roomAtHouse, 3.5), f3(r.roomAtHouse));
+    check('a room\'s quads are drawn at the world scale: 1 at 1', near(r.roomAt1.scale, 1), f3(r.roomAt1.scale));
+    check('and 3.5 at 1 / 3.5, the size the pilot\'s own five inch is drawn', near(r.roomAtHouse.scale, 3.5), f3(r.roomAtHouse.scale));
+    check('and their name tags stand 3.5 times as high over them', near(r.roomAtHouse.lift, r.roomAt1.lift * 3.5),
+      `${f3(r.roomAtHouse.lift)} m, want ${f3(r.roomAt1.lift * 3.5)}`);
     check('the chase rig stands 3.5 times as far back at 1 / 3.5', near(r.boomAtHouse, r.boomAt1 * 3.5),
       `${f3(r.boomAtHouse)} m, want ${f3(r.boomAt1 * 3.5)}`);
   } finally {

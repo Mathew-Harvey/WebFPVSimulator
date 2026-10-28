@@ -298,6 +298,7 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
       /* Tall enough to read at 720 lines, and the same share of the
        * screen at any other. */
       uTagPx: tagPx,
+      /* World metres over the quad's centre, set with its drawn size. */
       uLift: { value: 0.09 },
       uRows: { value: rows },
     },
@@ -450,6 +451,7 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
     p.set(pose.px, pose.py, pose.pz);
     q.set(pose.qx, pose.qy, pose.qz, pose.qw);
     drawn.setScalar(1 / WORLD_SCALE);
+    tagMat.uniforms.uLift.value = 0.09 / WORLD_SCALE;
     m4.compose(p, q, drawn);
     body.setMatrixAt(n, m4);
     body.setColorAt(n, colour.setHex(livery));

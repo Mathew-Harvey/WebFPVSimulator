@@ -5936,8 +5936,17 @@ export async function boot({ loading, bootStart, mapId }) {
    * choosing the map again lets them out, so there is one finish to each.
    */
   let goatsDoneFor = null;
+  /* The pause menu's Let the goats out (src/ui/ui.js): the herd back on the
+   * street, and the finish free to be called again. */
+  ui.onGoatsOut = () => {
+    if (view && view.goatGame) {
+      view.goatGame.restart();
+      goatsDoneFor = null;
+    }
+  };
   function goatFrame() {
     const game = view && view.goatGame;
+    ui.goatsOn = Boolean(game);
     ui.goatHud.setVisible(Boolean(game) && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
       return;
@@ -6559,6 +6568,9 @@ export async function boot({ loading, bootStart, mapId }) {
         quality: qualityOf(ui.settings),
         renderScale: renderScaleOf(ui.settings),
         hideSponsors: replayClean,
+        /* The same map rebuilt (a change of graphics): a map with a game
+         * of its own keeps it (the goat map's herd, src/maps/goats/). */
+        keepGame: keepPlace,
         ...worldDocument(wantId),
       });
       /* Steam edition: career. Which lesson world this is, if one. */
@@ -11975,6 +11987,10 @@ export async function boot({ loading, bootStart, mapId }) {
       if (race.freestyle && view.filmGame) {
         /* Drift Matsuri: the take is the game, and it starts in the air. */
         second = '\nYou are the camera. Film the drift battles for a minute.';
+      } else if (race.freestyle && view.goatGame) {
+        /* The goat map: the herd is the game and it has a clock, so the
+         * freestyle promise of none is not true of it (goathud.js). */
+        second = "\nFly low to herd the goats into Heads' garage. The clock starts at the first goat you move.";
       } else if (race.freestyle) {
         /* The counter counts the lines in every position (decision 2), so
          * even Lines only has something to promise now. With Manga and

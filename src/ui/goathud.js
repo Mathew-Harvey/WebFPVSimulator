@@ -59,7 +59,7 @@ export class GoatHud {
     this.root.append(this.box);
     root.append(this.root);
     this.visible = false;
-    this.last = { home: -1, total: -1, sec: -1, herding: null, started: null };
+    this.last = { home: -1, total: -1, sec: -1, herding: null, started: null, all: null };
   }
 
   setVisible(on) {
@@ -88,11 +88,16 @@ export class GoatHud {
       L.sec = sec;
       this.clock.textContent = s.started ? clockText(s.clockS) : '';
     }
-    const herding = s.started || s.herding ? s.herding : null;
-    if (herding !== L.herding || s.started !== L.started) {
+    const all = s.home >= s.total && s.total > 0;
+    const herding = all ? null : (s.started || s.herding ? s.herding : null);
+    if (herding !== L.herding || s.started !== L.started || all !== L.all) {
       L.herding = herding;
       L.started = s.started;
-      if (herding) {
+      L.all = all;
+      if (all) {
+        /* The finish: how to play it again (goatItems in ./ui.js). */
+        this.run.textContent = 'Pause to let them out again';
+      } else if (herding) {
         this.run.textContent = `On the run: ${herding}`;
       } else {
         this.run.textContent = s.started ? '' : 'Fly low to move a goat';

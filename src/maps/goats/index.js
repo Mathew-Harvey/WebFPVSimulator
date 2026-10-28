@@ -106,6 +106,12 @@ const BIT_BIG = 0.3 * S;
 /* What the callout calls a goat seen. */
 const FOUND_WORD = 'Goat!';
 
+/* The last herd this module built. A rebuild of the same map, which a
+ * change of graphics is (`keepGame` from the shell's syncWorld), takes its
+ * state whole, so a pilot who drops to Low halfway through does not lose
+ * the goats already home. A map chosen afresh starts a new herd. */
+let carried = null;
+
 /* The plan point of a world one. */
 const { OX, OZ } = FRAME;
 const toPlan = (x, z) => [(x - OX) / S, (OZ - z) / S];
@@ -175,6 +181,10 @@ export async function buildMap(shell, onProgress, options) {
       };
       const grid = makeGrid([...layout.parts, ...hood.parts], toPlan, S, BOUNDS, [...hood.blocks, ROOMS]);
       const herd = makeHerd(crops.map((c) => c.name), grid, { parks: [PARK] });
+      if (options && options.keepGame && carried) {
+        herd.adopt(carried.state());
+      }
+      carried = herd;
       const draw = makeGoatDraw(herd, crops, sheets, worldAt, S, !dressed);
       map.scene.add(draw.group);
       /*
@@ -267,6 +277,11 @@ export async function buildMap(shell, onProgress, options) {
             cue('home');
           }
           return out;
+        },
+        /* Let the goats out (the pause menu's row, src/ui/ui.js): every
+         * goat back on the street and the clock not started. */
+        restart() {
+          herd.reset();
         },
         /* For the harness: where every goat is, plan metres. */
         goats: () => Array.from({ length: herd.count }, (_, i) => ({

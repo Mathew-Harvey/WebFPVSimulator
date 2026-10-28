@@ -26,10 +26,11 @@
  * of a car's lamps and mirrors is not something anybody can see; the light
  * under it between the wheels is.
  *
- * THE WHEELS ROLL AND STEER in the vertex shader too, from three numbers a
+ * THE WHEELS ROLL AND STEER in the vertex shader too, from four numbers a
  * car: its kind, how far round its wheels have turned (the distance the
  * module says it has driven, over the wheel's radius, as ../built/cars.js
- * rolls them) and the steer the road's curvature asks of its front pair.
+ * rolls them), the steer the road's curvature asks of its front pair, and
+ * whether it is braking, which lights its brake lamps.
  *
  * RENDER READS THE POSE THE PHYSICS USED. place() is handed the module's
  * poses one step apart and draws each car between them at the craft's
@@ -40,7 +41,7 @@
  *
  * FOR THE LATENCY RULE. One draw call, one in the sun's pass; both kinds'
  * triangles for every car, half of them folded away, and 72 a car in the
- * sun's pass; per frame one matrix and three numbers a car. Nothing
+ * sun's pass; per frame one matrix and four numbers a car. Nothing
  * allocated on a frame.
  *
  * This file is part of WebFPVSimulator.
@@ -60,7 +61,7 @@
  */
 
 import * as THREE from 'three';
-import { buildCar, carWheelGeometry, carWheelBase, CAR } from '../../art/cars.js';
+import { buildCar, carWheelGeometry, carWheelBase, CAR, LAMP_REAR } from '../../art/cars.js';
 import { cel } from '../city/vendored/core/toon.js';
 import { carColourOf, CAR_KINDS } from '../../props/street.js';
 import { shadowOnly } from '../../render/shadowrate.js';
@@ -74,6 +75,18 @@ const DEEP = 0.76;
 
 /* The front wheels never steer past this, rad, as ../built/cars.js. */
 const STEER_MAX = 0.6;
+
+/* THE BRAKE LAMPS, as ../built/cars.js lights them: a tail lamp (buildCar's
+ * LAMP_REAR) goes LAMP_BRAKE while the car slows harder than BRAKE_DECEL,
+ * world metres a second a second, which every car does into every corner.
+ * Its tail lamps carry flag 2 where the rest of what is unlit carries 1,
+ * and the car's fourth drive number says whether it is braking. */
+const LAMP_BRAKE = 0xff3a2e;
+const BRAKE_DECEL = 1.5;
+const BRAKE_GLSL = (() => {
+  const c = new THREE.Color(LAMP_BRAKE);
+  return `vec3(${c.r.toFixed(4)}, ${c.g.toFixed(4)}, ${c.b.toFixed(4)})`;
+})();
 
 /* Each car's numbers in the plan for the goats, ./herd.js CAR_STRIDE:
  * x, y, heading x, heading y, speed, half length, half width, on. */
@@ -134,7 +147,7 @@ function carsGeometry(kinds) {
         return;
       }
       const hex = o.material.color.getHex();
-      const flat = o.material.isMeshBasicMaterial ? 1 : 0;
+      const flat = o.material.isMeshBasicMaterial ? (hex === LAMP_REAR ? 2 : 1) : 0;
       const paint = hex === KEY ? 1 : (hex === deep ? DEEP : 0);
       add(o.geometry, o.matrixWorld, () => {
         if (paint) {
@@ -232,7 +245,7 @@ function carPose(shader) {
       '#include <common>',
       'attribute vec4 aCar;',
       'attribute vec4 aHub;',
-      'attribute vec3 aDrive;',
+      'attribute vec4 aDrive;',
       'vec3 carTurn(vec3 d) {',
       '  float c = cos(aDrive.y);',
       '  float s = sin(aDrive.y);',
@@ -268,7 +281,8 @@ function carToon(shader) {
       '#ifdef USE_INSTANCING_COLOR',
       'if (aCar.y > 0.0) { vColor *= instanceColor.xyz * aCar.y; }',
       '#endif',
-      'vCarFlat = aCar.z;',
+      'vCarFlat = min(aCar.z, 1.0);',
+      `if (aCar.z > 1.5 && aDrive.w > 0.5) { vColor = ${BRAKE_GLSL}; }`,
     ].join('\n'));
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', '#include <common>\nvarying float vCarFlat;')
@@ -287,8 +301,8 @@ export function makeCarDraw(traffic, S, lift, toPlan) {
   const kinds = [...new Set(vehicles.map((v) => v.style))];
   const kindOf = (style) => kinds.indexOf(style);
   const geometry = carsGeometry(kinds);
-  const drive = new Float32Array(Math.max(1, N) * 3);
-  const driveAttr = new THREE.InstancedBufferAttribute(drive, 3);
+  const drive = new Float32Array(Math.max(1, N) * 4);
+  const driveAttr = new THREE.InstancedBufferAttribute(drive, 4);
   driveAttr.setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('aDrive', driveAttr);
   const material = cel({ color: 0xffffff, vertexColors: true, bands: 3, tint: 0x6a6288, cache: false });
@@ -326,7 +340,7 @@ export function makeCarDraw(traffic, S, lift, toPlan) {
     mesh.setColorAt(i, paint.setHex(CAR[carColourOf(v.seed)] ?? CAR.white));
     mesh.setMatrixAt(i, hidden);
     const base = carWheelBase(v.style);
-    drive[i * 3] = kindOf(v.style);
+    drive[i * 4] = kindOf(v.style);
     return {
       slot: v.slot,
       R: base.R,
@@ -404,10 +418,13 @@ export function makeCarDraw(traffic, S, lift, toPlan) {
        * worth taken off first; steered by the bicycle angle. */
       const dist = (p.distance * b + q.distance * a) / S;
       const turn = car.R * TAU;
-      drive[i * 3 + 1] = -((dist - Math.floor(dist / turn) * turn) / car.R);
+      drive[i * 4 + 1] = -((dist - Math.floor(dist / turn) * turn) / car.R);
       let steer = Math.atan(car.wheelbase * (q.curvature || 0) * S);
       steer = steer > STEER_MAX ? STEER_MAX : (steer < -STEER_MAX ? -STEER_MAX : steer);
-      drive[i * 3 + 2] = steer;
+      drive[i * 4 + 2] = steer;
+      /* One step apart, so the change in speed is a deceleration in
+       * thousandths, as ../built/cars.js reads it. */
+      drive[i * 4 + 3] = p !== q && (p.speed - q.speed) * 1000 >= BRAKE_DECEL ? 1 : 0;
       const [px, py] = toPlan(x, z);
       feed[f] = px;
       feed[f + 1] = py;

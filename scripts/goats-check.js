@@ -292,6 +292,36 @@ function herdingBlock(grid, names, world) {
   check('ten minutes on, with a craft flying round the garage, it is still home', out === 0, `${out} steps out`);
   check('and the count is still one', herd.homeCount() === 1, `${herd.homeCount()}`);
 
+  /* The same herd taken whole by another, as a rebuild for a change of
+   * graphics takes it: the same goats home, and stepped side by side the
+   * two stay the same to the bit. */
+  const copy = makeHerd(names, grid, { parks: [PARK] });
+  const took = copy.adopt(herd.state());
+  let apart = 0;
+  for (let k = 0; k < 30 * 60; k += 1) {
+    const c = { x: 15.9 + Math.sin(k / 50) * 20, y: -10, h: 0.7 };
+    herd.step(1 / 30, c);
+    copy.step(1 / 30, c);
+    for (let i = 0; i < herd.count; i += 1) {
+      apart += herd.X[i] === copy.X[i] && herd.Y[i] === copy.Y[i] && herd.MODE[i] === copy.MODE[i] ? 0 : 1;
+    }
+  }
+  check('a rebuild takes the herd whole: the goat home stays home, and a minute on the two herds are the same to the bit',
+    took && copy.homeCount() === 1 && copy.MODE[0] === HOME && apart === 0, `${apart} goat steps apart`);
+  /* Let the goats out: none home, the clock not started, nobody in a
+   * solid or near the garage, and somewhere new. */
+  const before = Array.from(herd.X);
+  herd.reset();
+  let moved = 0;
+  let bad = 0;
+  for (let i = 0; i < herd.count; i += 1) {
+    moved += herd.X[i] !== before[i] ? 1 : 0;
+    bad += grid.blocked(herd.X[i], herd.Y[i]) || Math.hypot(herd.X[i] - 15.9, herd.Y[i] - 4) < 20 || herd.MODE[i] === HOME ? 1 : 0;
+  }
+  check('letting the goats out puts every goat back on the street, somewhere new, none home and the clock not started',
+    herd.homeCount() === 0 && !herd.started() && herd.events.length === 0 && bad === 0 && moved > herd.count / 2,
+    `${moved} moved, ${bad} in a solid, near the garage or home`);
+
   /* The step's cost, the whole herd, a craft in a group of them and the
    * street's cars, as the map steps it. */
   const cost = makeHerd(names, grid, { parks: [PARK] });
@@ -508,6 +538,42 @@ async function carsBlock(world, solids, grid, names) {
   }
   check('twenty minutes of goats put in front of the cars, no car ever has a goat in it', under === 0, underAt || `${put} goats put in a car's way, ${leaps} leaps`);
   check('and no goat is ever in a solid', solid === 0, `${solid} goat seconds`);
+
+  /* A car standing (the cars' clock stopped, the goats' not): a goat beside
+   * it never leaps, and one put inside it walks out. */
+  const still = new Float64Array(feed);
+  for (let c = 0; c < n; c += 1) {
+    still[c * CAR_STRIDE + 4] = 0;
+  }
+  const calmHerd = makeHerd(names, grid, { parks: [PARK] });
+  const f0 = 0;
+  const side = still[f0 + 6] + 0.2;
+  const at = (along, across) => [still[f0] + still[f0 + 2] * along - still[f0 + 3] * across, still[f0 + 1] + still[f0 + 3] * along + still[f0 + 2] * across];
+  const [bx, by] = at(0, side);
+  const [ix, iy] = at(0.5, 0.2);
+  calmHerd.place(0, bx, by);
+  calmHerd.place(1, ix, iy);
+  let hopped = 0;
+  for (let k = 0; k < 30 * 20; k += 1) {
+    calmHerd.step(1 / 30, null, still, n);
+    hopped += calmHerd.HOP[0] > 0.3 || calmHerd.HOP[1] > 0.3 ? 1 : 0;
+  }
+  const outOf = (x, y) => {
+    const dx = x - still[f0];
+    const dy = y - still[f0 + 1];
+    return Math.abs(dx * still[f0 + 2] + dy * still[f0 + 3]) > still[f0 + 5] || Math.abs(dy * still[f0 + 2] - dx * still[f0 + 3]) > still[f0 + 6];
+  };
+  check('a goat beside a car standing still never leaps from it, and one put inside it walks out',
+    hopped === 0 && outOf(calmHerd.X[1], calmHerd.Y[1]), `${hopped} steps in the air`);
+  /* The clock starts at the first goat the craft moves, even one already
+   * stepping out of a car's way. */
+  const clockHerd = makeHerd(names, grid, { parks: [PARK] });
+  const [gx, gy] = at(still[f0 + 5] + 3, 0);
+  clockHerd.place(0, gx, gy);
+  const moving = new Float64Array(feed);
+  clockHerd.step(1 / 30, null, moving, n);
+  clockHerd.step(1 / 30, { x: clockHerd.X[0] + 1.5, y: clockHerd.Y[0], h: 0.6 }, null, 0);
+  check('the clock starts at the first goat the craft moves, one dodging a car included', clockHerd.started());
 }
 
 async function main() {

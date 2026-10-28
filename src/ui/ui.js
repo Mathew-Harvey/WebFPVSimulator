@@ -5204,6 +5204,8 @@ export class Ui {
      * because the shell is the side that knows what can be chased. Null
      * hides the row, which is every freestyle map. */
     this.ghostRow = null;
+    /* The goat map is up: its row on the pause menu (goatItems). */
+    this.goatsOn = false;
     this.boardLoading = false;
     this.openingBoardCourse = false;
     this.onBoardCourse = null; /* (track) => Promise<boolean> */
@@ -6763,6 +6765,25 @@ export class Ui {
     if (this.screen === 'title' || this.screen === 'paused') {
       this.renderMenu();
     }
+  }
+
+  /*
+   * THE GOAT MAP'S ROW on the pause menu, as an array to spread in place,
+   * when the map is the goat map (`goatsOn`, which goatFrame in main.js
+   * keeps). A goat in Heads' garage stays there through every crash and
+   * restart, which is the game, so this is how a pilot plays it again
+   * without leaving the map. Under the rows that keep the pilot flying, so
+   * no muscle memory lands on it.
+   */
+  goatItems() {
+    if (!this.goatsOn) {
+      return [];
+    }
+    return [{
+      label: 'Let the goats out',
+      action: 'goats-out',
+      note: 'Every goat back out on the street and the clock reset, to herd them all again. A goat you have seen stays seen.',
+    }];
   }
 
   /* The Ghost row where the shell has provided one, as an array so the two
@@ -10401,6 +10422,7 @@ export class Ui {
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
+        ...this.goatItems(),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
@@ -10468,6 +10490,7 @@ export class Ui {
         ...(builder ? [builder] : []),
         ...this.ghostItems(),
         ...(trouble ? [trouble] : []),
+        ...this.goatItems(),
         { label: 'Does it feel wrong?', section: true },
         tuneItem(s, true),
         /* Angle or Acro, one press from the pause. See flightModeItem. */
@@ -19715,6 +19738,15 @@ export class Ui {
   }
 
   act(action) {
+    /* The goat map's own row on the pause menu (goatItems): the herd back
+     * out, then straight back to flying. */
+    if (action === 'goats-out') {
+      if (this.onGoatsOut) {
+        this.onGoatsOut();
+      }
+      this.act('resume');
+      return;
+    }
     /* Career. Its card on the gate and its rows in a lesson's
      * pause belong to the career, which main.js routes (onCareer). */
     if (typeof action === 'string' && action.startsWith('career') && this.onCareer) {

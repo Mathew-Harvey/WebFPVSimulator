@@ -1092,7 +1092,7 @@ function hoverAt(table, cells, cap, weight, cellV) {
  * were measured before it existed.
  */
 export function hoverStickPercent(cap, airframe = '5inch', weight = 100, cellV = 4.2, motorKv = 100) {
-  const table = HOVER_STICK_PERCENT[airframe] ?? HOVER_STICK_PERCENT['5inch'];
+  const table = Object.hasOwn(HOVER_STICK_PERCENT, airframe) ? HOVER_STICK_PERCENT[airframe] : HOVER_STICK_PERCENT['5inch'];
   const stock = hoverAt(table, table.cells, cap, weight, cellV);
   const kv = Math.min(120, Math.max(80, Number(motorKv) || 100));
   if (kv === 100) {

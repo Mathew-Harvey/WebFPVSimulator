@@ -5200,7 +5200,7 @@ export class View3D {
     const label = p ? (p.loading ? 'Loading the physics' : 'Stop') : 'Play';
     const secs = p && p.running ? p.clock / 1000 : 0;
     const clock = p && p.running
-      ? `${Math.floor(secs / 60)}:${(secs % 60).toFixed(1).padStart(4, '0')}`
+      ? `${Math.floor(Math.round(secs * 10) / 600)}:${((Math.round(secs * 10) % 600) / 10).toFixed(1).padStart(4, '0')}`
       : `${cars} car${cars === 1 ? '' : 's'}, where they start`;
     const text = `${label}|${clock}`;
     if (text !== ui.text) {

@@ -622,7 +622,10 @@ const BEHAVIOUR = `(() => {
          * actually drawn. A two option row that fits on the row is a
          * segment strip and is the fix; a two option row that does not is
          * still a menu opened to answer yes or no. */
-        if (it && it.options && it.options.length === 2 && !ui.fitsAsSegments(it)) {
+        /* A pickOnly row opens its list on purpose and never steps (the
+         * Tune row, tunePickItem in src/ui/ui.js: a tune swap costs the
+         * lap), so two tunes on it are a choice of machine, not a yes or no. */
+        if (it && it.options && it.options.length === 2 && !it.pickOnly && !ui.fitsAsSegments(it)) {
           offenders.push(name + ':' + it.label);
         }
       }
@@ -1351,6 +1354,10 @@ const BEHAVIOUR = `(() => {
     ui.craftGate = true;
     ui.mode = null;
     ui.show('title');
+    /* The cover has been Fly solo and Multiplayer since the front screen
+     * became a magazine (2026-10-26); the cards below are the Fly solo
+     * page's, so the page is turned first. */
+    ui.turnGate('solo');
     const gateItems = ui.items().filter((it) => ui.isStop(it));
     const gate = gateItems.map((it) => it.label);
     const cards = cardsOf();
@@ -1369,6 +1376,7 @@ const BEHAVIOUR = `(() => {
      */
     ui.mode = 'race';
     ui.show('title');
+    ui.turnGate('solo');
     ui.renderMenu();
     const modeSetGate = {
       isGate: ui.root.querySelector('.screen-title').classList.contains('is-gate'),

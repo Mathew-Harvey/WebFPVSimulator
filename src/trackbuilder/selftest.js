@@ -2312,6 +2312,13 @@ function suiteCrashRule() {
     lapCall(3, 63200, true) === 'Lap 3, 1 minute 3.20. New track record'
     && lapCall(2, 125000) === 'Lap 2, 2 minutes 5.00',
     `${lapCall(3, 63200, true)} | ${lapCall(2, 125000)}`);
+
+  /* A lap a whisker under a minute is called as one minute, never as
+   * 60.00 seconds: the flash and every other lap clock are asked the same
+   * in scripts/lapclock-selftest.js. */
+  check('the lap called out loud carries the minute: 59.996 s is 1 minute 0.00',
+    lapCall(1, 59996) === 'Lap 1, 1 minute 0.00' && lapCall(2, 119996) === 'Lap 2, 2 minutes 0.00',
+    `${lapCall(1, 59996)} | ${lapCall(2, 119996)}`);
   const rec = new Race([{
     position: { x: 0, y: 0, z: 0 },
     heading: 0,
@@ -4932,6 +4939,23 @@ function suiteRoadsAndVehicles() {
     threw = e;
   }
   check('hostile roads and vehicles never throw', threw === null, threw && threw.message);
+
+  /* A piece typed with one of Object's own member names, from a shared link
+   * or a published file: the table lookup read Object.prototype as a piece,
+   * and normalize threw, so the track would not open at all. It is an
+   * unknown type like any other now, dropped with a note. */
+  for (const type of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+    let read = null;
+    let err = null;
+    try {
+      read = normalize({ ...toPlain(createTrack('proto')), elements: [{ id: 'el-1', type, position: { x: 1, y: 1, z: 0 } }] });
+    } catch (e) {
+      err = e;
+    }
+    check(`a piece typed "${type}" is dropped as an unknown type, and the track still opens`,
+      err === null && read.doc.elements.length === 0 && read.repairs.some((r) => r.includes(`unknown type "${type}"`)),
+      err ? err.message : read.repairs.join('; '));
+  }
   if (hostile) {
     const [h1, h2, h3, h4, h5] = hostile.doc.elements;
     check('bad nodes are dropped, with a note', h1.nodes.length === 2 && h1.nodes[1].x === 5

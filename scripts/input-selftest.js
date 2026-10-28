@@ -1114,17 +1114,21 @@ section('the keyboard throttle: hover is the measured one');
 {
   check('the table reads 35.0 at the shipped weight on a fresh pack, as the menu always did',
     hoverStickPercent(100) === 35 && hoverStickPercent(100, '5inch', 100, 4.2) === 35);
+  /* Since 2026-10-23 the whoop flies the five inch's plant at the five
+   * inch's weight (configs/airframes.js), so it reads the five inch's table:
+   * its 65 cap is the five inch's 51.1. */
   check('and it follows the weight, the pack and the cap',
     hoverStickPercent(100, '5inch', 60, 4.2) === 26 && hoverStickPercent(100, '5inch', 140, 4.2) === 42.8
-    && hoverStickPercent(100, '5inch', 100, 3.8) === 38.8 && hoverStickPercent(65, 'whoop65', 100, 4.2) === 58.7,
+    && hoverStickPercent(100, '5inch', 100, 3.8) === 38.8 && hoverStickPercent(65, 'whoop65', 100, 4.2) === hoverStickPercent(65, '5inch', 100, 4.2)
+    && hoverStickPercent(65, 'whoop65', 100, 4.2) === 51.1,
     [hoverStickPercent(100, '5inch', 60, 4.2), hoverStickPercent(100, '5inch', 140, 4.2),
       hoverStickPercent(100, '5inch', 100, 3.8), hoverStickPercent(65, 'whoop65', 100, 4.2)].join(' '));
   const w80 = hoverStickPercent(100, '5inch', 80, 4.2);
   check('between columns it interpolates, inside half a point of the 30.7 measured at weight 80',
     Math.abs(w80 - 30.7) <= 0.5, String(w80));
-  check('the whoop reads its own table at its own base: 39.9 at 100, 44.6 at its top of 120, and 140 is its top',
-    hoverStickPercent(100, 'whoop65', 100, 4.2) === 39.9 && hoverStickPercent(100, 'whoop65', 120, 4.2) === 44.6
-    && hoverStickPercent(100, 'whoop65', 140, 4.2) === 44.6,
+  check('the whoop reads the five inch\'s table, as it flies its plant: 35.0 at 100, and 140 reads the five inch\'s 42.8',
+    hoverStickPercent(100, 'whoop65', 100, 4.2) === 35 && hoverStickPercent(100, 'whoop65', 120, 4.2) === hoverStickPercent(100, '5inch', 120, 4.2)
+    && hoverStickPercent(100, 'whoop65', 140, 4.2) === 42.8,
     [hoverStickPercent(100, 'whoop65', 100, 4.2), hoverStickPercent(100, 'whoop65', 120, 4.2),
       hoverStickPercent(100, 'whoop65', 140, 4.2)].join(' '));
 
@@ -1135,16 +1139,16 @@ section('the keyboard throttle: hover is the measured one');
    * 1.2), 100 must be the table's figure exactly, and the places between are
    * what flightcheck read at 90 and 110.
    */
-  check('Motor power moves hover about 1 / kV: five inch 43.8 at 80 and 29.1 at 120 against 35.0, whoop 50.0 and 33.2 against 39.9',
+  check('Motor power moves hover about 1 / kV: five inch 43.8 at 80 and 29.1 at 120 against 35.0, and the whoop the same',
     hoverStickPercent(100, '5inch', 100, 4.2, 100) === 35 && hoverStickPercent(100, '5inch', 100, 4.2, 80) === 43.8
-    && hoverStickPercent(100, '5inch', 100, 4.2, 120) === 29.1 && hoverStickPercent(100, 'whoop65', 100, 4.2, 100) === 39.9
-    && hoverStickPercent(100, 'whoop65', 100, 4.2, 80) === 50 && hoverStickPercent(100, 'whoop65', 100, 4.2, 120) === 33.2,
+    && hoverStickPercent(100, '5inch', 100, 4.2, 120) === 29.1 && hoverStickPercent(100, 'whoop65', 100, 4.2, 100) === 35
+    && hoverStickPercent(100, 'whoop65', 100, 4.2, 80) === 43.8 && hoverStickPercent(100, 'whoop65', 100, 4.2, 120) === 29.1,
     [hoverStickPercent(100, '5inch', 100, 4.2, 80), hoverStickPercent(100, '5inch', 100, 4.2, 120),
       hoverStickPercent(100, 'whoop65', 100, 4.2, 80), hoverStickPercent(100, 'whoop65', 100, 4.2, 120)].join(' '));
   const kvAgainst = [
     ['5inch', 100, 4.2, 90, 100, 39.0], ['5inch', 100, 4.2, 110, 100, 31.7],
     ['5inch', 100, 4.2, 90, 65, 57.1], ['5inch', 100, 4.2, 110, 65, 46.2], ['5inch', 100, 4.2, 110, 40, 71.8],
-    ['whoop65', 100, 4.2, 90, 100, 44.4], ['whoop65', 100, 4.2, 110, 100, 36.3], ['whoop65', 100, 4.2, 110, 65, 53],
+    ['whoop65', 100, 4.2, 90, 100, 39.0], ['whoop65', 100, 4.2, 110, 100, 31.7], ['whoop65', 100, 4.2, 110, 65, 46.2],
   ].map(([af, w, v, kv, cap, want]) => [af, kv, cap, want, hoverStickPercent(cap, af, w, v, kv)]);
   check('between the stops it follows 1 / kV, inside a quarter of a point of what flightcheck read at 90 and 110',
     kvAgainst.every(([, , , want, got]) => Math.abs(got - want) <= 0.25),
@@ -1154,6 +1158,8 @@ section('the keyboard throttle: hover is the measured one');
     && hoverStickPercent(100, '5inch', 140, 3.5, 80) > 51.6,
     [hoverStickPercent(100, '5inch', 140, 3.5, 80), hoverStickPercent(100, '5inch', 140, 3.5, 100),
       hoverStickPercent(100, '5inch', 140, 3.5, 120)].join(' '));
+  check('an airframe that is not one, Object\'s own member names included, reads the five inch',
+    ['constructor', '__proto__', 'toString', 'nope'].every((af) => hoverStickPercent(100, af) === 35));
   check('outside the slider it reads the stops, and junk or nothing reads the stock figure',
     hoverStickPercent(100, '5inch', 100, 4.2, 50) === 43.8 && hoverStickPercent(100, '5inch', 100, 4.2, 200) === 29.1
     && hoverStickPercent(100, '5inch', 100, 4.2, 'x') === 35 && hoverStickPercent(100, '5inch', 100, 4.2, null) === 35

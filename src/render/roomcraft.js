@@ -416,24 +416,6 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
   }
 
   /*
-   * How big the quads are drawn, world metres per metre of the aircraft,
-   * src/render/frame.js's scale. The airframe here is the room's quad at its
-   * own size, which was the world's while each room's quad flew only the
-   * maps it was built for. Since the host can swap a room's quad (the
-   * owner, 2026-10-28) a five inch flies Nick Burns' house, three and a
-   * half times bigger than the craft, and a whoop the town, 3.43 times
-   * smaller, and the others are drawn as the pilot's own quad is: through
-   * the scale, the name tag's lift with them. At 1 nothing moves.
-   */
-  function setScale(k) {
-    const s = k > 0 ? k : 1;
-    if (one.x !== s) {
-      one.setScalar(s);
-      tagMat.uniforms.uLift.value = 0.09 * s;
-    }
-  }
-
-  /*
    * One pilot this frame. pose: { px, py, pz, qx, qy, qz, qw, cut,
    * spinning }, scene world. pilot: the board's { id, handle, avatar,
    * away }. d2: their distance from this pilot, squared. pin: keep their
@@ -564,7 +546,7 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
   }
 
   return {
-    group, begin, add, end, forget, dispose, setScale,
+    group, begin, add, end, forget, dispose,
     /* How many tags the last frame drew, and the most, for the checks. */
     tagged: () => tagged,
     tagMost: TAG_MOST,

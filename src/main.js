@@ -2953,12 +2953,6 @@ export async function boot({ loading, bootStart, mapId }) {
     o.craft = shell.quad;
     o.discs = shell.discs;
     o.tilt = cameraTiltRad(camTilt);
-    /* Where the glass is, through the world scale the run is flown at:
-     * set once at boot it was the home pairing's, and a five inch in a
-     * house had its glass three and a half times too near the pivot. The
-     * same numbers at 1, so update() bakes nothing new for them. */
-    o.fwd = simLenToWorld(CAMERA_LENS_FORWARD);
-    o.up = simLenToWorld(CAMERA_LENS_UP);
     propView.update(o);
   }
   const ghostSample = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
@@ -3845,9 +3839,6 @@ export async function boot({ loading, bootStart, mapId }) {
         + Math.abs(stateCurr[16]) + Math.abs(stateCurr[17]) > 400;
       session.uplink(p.x, p.y, p.z, q.x, q.y, q.z, q.w, spinning, mpResets);
     }
-    /* The others at the size the pilot's own quad is drawn: see setScale in
-     * src/render/roomcraft.js. */
-    mpCraft.setScale(simLenToWorld(1));
     mpCraft.begin();
     watchSeen = false;
     if (same) {
@@ -15299,9 +15290,6 @@ export async function boot({ loading, bootStart, mapId }) {
     if (ovOn && ovCam) {
       overviewFrame(nowWall);
     }
-    /* The rig at the size the room's quad is drawn. See THE RIG IS THE
-     * AIRCRAFT'S SIZE in src/render/watchcam.js. */
-    watchCam.scale = simLenToWorld(1);
     const phase = watchCam.frame(shell.camera, watchId && watchSeen ? watchPose : null, nowWall, watchWorld, watchHome);
     if (ovOn && ovTrails) {
       overviewTrails(nowWall);
@@ -15309,8 +15297,7 @@ export async function boot({ loading, bootStart, mapId }) {
     shell.camera.up.set(0, 1, 0);
     /* The pilot's own quad waits where it was left, and is in the picture
      * whenever the camera is not inside it. */
-    const k = simLenToWorld(1);
-    shell.quad.visible = shell.camera.position.distanceToSquared(pCurr) > 0.09 * k * k;
+    shell.quad.visible = shell.camera.position.distanceToSquared(pCurr) > 0.09;
     setCameraNear(fpvNear(shell.camera.position));
     if (phase === 'home') {
       document.documentElement.classList.remove('tg-watching');

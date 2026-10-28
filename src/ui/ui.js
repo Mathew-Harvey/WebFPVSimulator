@@ -7464,9 +7464,19 @@ export class Ui {
         checkWords.textContent = `Always fly the ${q.word} here`;
       };
       choose(chosen);
-      for (const h of names) {
-        letterHeading(h);
-      }
+      /* Lettered now and again on a resize, a phone turned while it is up,
+       * which repaints only a title whose size or room changed. */
+      const letter = () => {
+        if (!box.isConnected) {
+          window.removeEventListener('resize', letter);
+          return;
+        }
+        for (const h of names) {
+          letterHeading(h);
+        }
+      };
+      letter();
+      window.addEventListener('resize', letter);
       const openedAt = performance.now();
       const finish = (v) => {
         if (performance.now() - openedAt < CONFIRM_DEAF_MS) {
@@ -7474,6 +7484,7 @@ export class Ui {
         }
         this.quadDialog = false;
         document.removeEventListener('keydown', onKey, true);
+        window.removeEventListener('resize', letter);
         this.closeNameDialog(v);
       };
       const answer = (tune) => finish({ craft: chosen.dataset.craft, always: tick.checked, tune });
@@ -19891,6 +19902,10 @@ export class Ui {
    * this flight's whatever was picked, so it is asked about once a visit.
    */
   seatPickedQuad(key, got) {
+    /* Answered, by whichever door: a link's armed question is settled too,
+     * or a card for the same map would be followed by the picker again at
+     * its Fly. */
+    this.quadAskOnFly = null;
     rememberQuadPick(this.settings, key, got.craft);
     if (got.always) {
       rememberQuadAlways(this.settings, key, got.craft);

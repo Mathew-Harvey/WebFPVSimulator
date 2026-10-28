@@ -11908,7 +11908,12 @@ export async function boot({ loading, bootStart, mapId }) {
        */
       if (view.mode === 'freestyle' && view.colliders) {
         const q = shell.quad.position;
-        trickDetector.near(view.colliders.gapAt(q.x, q.y, q.z, simLenToWorld(WALL_NEAR_M)));
+        /* In the aircraft's metres where that is the smaller query (a whoop
+         * in the town), and never wider than it was: two aircraft metres for
+         * the five inch in a house is a query three and a half times as wide,
+         * measured at 2 to 4 us a frame more in Nick's house, and that is
+         * held for the owner's word with the close calls' probes. */
+        trickDetector.near(view.colliders.gapAt(q.x, q.y, q.z, Math.min(WALL_NEAR_M, simLenToWorld(WALL_NEAR_M))));
       }
       /* The STF mark, on a map that carries one, until this run finds it:
        * see findEgg. Not asked at all while finds are off (MARK_FINDS in

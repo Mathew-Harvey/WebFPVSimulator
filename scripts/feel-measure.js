@@ -242,10 +242,19 @@ fm.fly = async (T, spot) => {
   const base = Array.from(S.readState().state);
   const t0 = base[0];
   let frames = 0;
+  let still = 0;
+  let seen = 0;
   while ((fm.rec.length === 0 || fm.rec[fm.rec.length - 1][0] - t0 < T.ms / 1000) && frames < 20000) {
     await raf();
     frames += 1;
     if (!fm.rec.length && frames > 400) break;
+    /* A craft that has come to rest on the ground is parked by the shell,
+     * which stops stepping the plant until the throttle lifts it, so the
+     * record ends there. Waiting for the rest of the window used to wait
+     * out all 20000 frames, minutes a ground test. */
+    still = fm.rec.length === seen ? still + 1 : 0;
+    seen = fm.rec.length;
+    if (still > 120 && window.__craftState().landed) break;
   }
   const rec = fm.rec;
   fm.rec = null;

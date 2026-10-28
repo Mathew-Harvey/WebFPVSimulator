@@ -28,7 +28,7 @@
  * THE SET DRESSING (./dress.js: the yards' toys and furniture, the shops'
  * roofs and backs, the street furniture, the clutter of the plant, the
  * dump and the park) is fine and near: Low draws none of it, and High and
- * Medium draw it in twelve cells of their own (./frame.js nearOf), each
+ * Medium draw it in forty eight cells of their own (./frame.js nearOf), each
  * switched off past NEAR_R from the camera (nearCull), every frame after
  * the pipeline's cull. Its draws are paid for by the palette merge
  * (./palette.js), which folds the leaf batches of a chunk together.
@@ -70,11 +70,12 @@ const at = (px, py, thing) => cellOf(thing, px - W / 2, D / 2 - py);
 /*
  * HOW NEAR THE DRESSING IS DRAWN, by preset; Low draws none of it. The
  * test is to the nearest edge of a near cell (./frame.js nearOf), so the
- * nearest dressing that is off is this far away: a garden chair five
- * pixels across on High, a roof vent three, in a fog that has begun at
- * fifty metres. Drawing them there would be all cost and no town.
+ * nearest dressing that is off is this far away: a garden chair seven
+ * pixels across on High, a roof vent four, where the fog begins. Drawing
+ * them past it would be all cost and no town. Measured at 75 m with cells
+ * twice the size, a yard's view drew its dressing 113k triangles deep.
  */
-const NEAR_R = { medium: 55, high: 75 };
+const NEAR_R = { medium: 40, high: 50 };
 
 /* Prisms along x are drawn turned a quarter, so the kit's extrusion along
  * its local z runs east; along y they are drawn unturned and run south. */

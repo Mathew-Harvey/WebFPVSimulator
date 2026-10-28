@@ -59,14 +59,16 @@ export function chunkOf(x, z) {
   return `sf${c}${r}`;
 }
 
-/* The near cell a piece of set dressing is filed under, four across and
- * three up: a hundred metres by ninety three, so ./index.js can switch the
- * dressing off by range while the chunk it stands in stays on. Smaller
- * cells would cull closer and cost a draw or two more each; the town's
+/* The near cell a piece of set dressing is filed under, eight across and
+ * six up: fifty metres by forty seven, so ./index.js can switch the
+ * dressing off by range while the chunk it stands in stays on. Each cell
+ * is one draw (./palette.js folds it to one batch), so this is a trade:
+ * at four by three a view of the yards drew about three cells and 113k
+ * triangles of dressing, at eight by six about four and 46k. The town's
  * chunks themselves are too big to cull anything by, since from any one of
  * them the others are all within a long stone's throw. */
-const NEAR_COLS = 4;
-const NEAR_ROWS = 3;
+const NEAR_COLS = 8;
+const NEAR_ROWS = 6;
 export function nearOf(x, z) {
   const px = x + W / 2;
   const py = D / 2 - z;

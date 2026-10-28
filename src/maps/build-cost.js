@@ -76,4 +76,7 @@ export const MAP_BUILD_MS = {
    * Bardwell's figure here, as this container ran slower than the day that
    * was measured. */
   sunny: 2240,
+  /* Drift Matsuri (src/maps/drift/): a plot of trees and a festival round a
+   * drift course. An estimate until it is measured. */
+  drift: 2600,
 };

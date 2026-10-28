@@ -107,6 +107,7 @@ const WORLDS = {
   bardwell: { name: "Joshua Bardwell's house", thumb: 'bardwell' },
   warehouse: { name: "Thomas More's Shop", thumb: 'warehouse' },
   sunny: { name: 'Sunnyfield', thumb: 'sunny' },
+  drift: { name: 'Drift Matsuri', thumb: 'drift' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

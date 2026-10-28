@@ -77,10 +77,15 @@ test('every gap a lesson names is a gap on its map', () => {
   }
 });
 
-test('lesson ids are unique and chapters are in order', () => {
+test('lesson ids are unique and the numbered chapters are in order', () => {
   const ids = allLessons().map((l) => l.id);
   assert.equal(new Set(ids).size, ids.length);
-  CHAPTERS.forEach((c, i) => assert.equal(c.id, `c${i + 1}`));
+  /* The numbered chapters keep their ids and their order, because the
+   * Steam edition's chapter achievements count by them; the Rookie Licence
+   * the skill tree added comes after them (src/career/tree.js). */
+  const numbered = CHAPTERS.filter((c) => c.id !== 'rk');
+  numbered.forEach((c, i) => assert.equal(c.id, `c${i + 1}`));
+  assert.equal(CHAPTERS.at(-1).id, 'rk');
 });
 
 /*

@@ -14474,6 +14474,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * `achievements` is left out on purpose: the hub shows no button for it. */
     presence: () => {},
     onResult: () => {},
+    /* The career is kept in this browser alone (src/career/progress.js);
+     * the Steam edition's is kept with the account, and says so. */
+    cloudSave: false,
     sound: careerSound,
   };
   /*
@@ -14511,6 +14514,10 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__career = {
     hub: () => loadCareer().then((c) => c.openHub()),
     open: (id) => loadCareer().then((c) => c.openLessonById(id)),
+    /* The skill tree (on a part, by id), the fork and Set my level. */
+    tree: (part) => loadCareer().then((c) => c.openTree(part)),
+    fork: () => loadCareer().then((c) => c.openFork()),
+    level: () => loadCareer().then((c) => c.openLevel()),
     fly: () => career.fly(),
     state: () => (career ? career.state() : null),
     status: () => (career ? career.status() : null),

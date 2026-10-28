@@ -121,6 +121,7 @@
     'src/career/sticks.js',
     'src/career/style.js',
     'src/career/tracks.js',
+    'src/career/tree.js',
     'src/career/visuals.js',
     'src/career/words.js',
     'src/fc/catalog-data.js',

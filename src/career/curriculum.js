@@ -1482,6 +1482,60 @@ export const CHAPTERS = [
       },
     ],
   },
+
+  /*
+   * The Rookie Licence: the trunk's last lesson on the skill tree
+   * (./tree.js), and the one that opens both branches. One run of the
+   * beginner chapters' skills in Acro, the ring road, a circle round the
+   * pylon and the pad, with no crashes. Listed last so the numbered
+   * chapters keep their numbers; the tree, not this list, is the order a
+   * pilot meets it in.
+   */
+  {
+    id: 'rk',
+    title: 'Rookie Licence',
+    blurb: 'One checkride of everything Learn to fly taught you, in Acro. Pass it and both ways open: race and freestyle.',
+    mode: 'acro',
+    lessons: [
+      {
+        id: 'rk-1',
+        title: 'Rookie Licence',
+        glyph: 'licence',
+        mode: 'acro',
+        camera: 'fpv',
+        world: built(trainingField('trk-c4a910a1', 'Training Field', pylon)),
+        failOn: { crash: true },
+        briefing: {
+          goal: 'Your first checkride: the ring road in Acro, one circle round the pylon, and a gentle landing on the pad. One crash ends it.',
+          why: 'Everything since your first hover, flown in one go. A licence is not a fast run, it is a clean one: the same smooth inputs from the first ring to the pad.',
+          steps: [
+            'Take off and fly the ring road, in order, at a steady height.',
+            'Then one circle round the pylon, banked and held with a little pull.',
+            'Home to the pad, slow right down, and set it down gently.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'pitch', dir: 'back' }],
+          note: 'No crashes. If you crash, the checkride starts again. Take it slowly: a clean run beats a fast one.',
+        },
+        objectives: [
+          { kind: 'rings', text: 'The ring road', rings: route(ringRoad), hint: 'The lit ring is next. Line up early.' },
+          {
+            kind: 'orbit', text: 'One circle round the pylon', center: [80, 86], rMin: 7, rMax: 18, turns: 1, minHeight: 2,
+            hint: 'Roll and yaw together, and pull a little to hold the turn.',
+          },
+          {
+            kind: 'land', text: 'Land on the pad', maxDescent: 2.2,
+            pad: { at: [FIELD_SPAWN.x, FIELD_SPAWN.y], r: 2.5 },
+            hint: 'Slow down well before the pad, then ease the throttle down.',
+          },
+        ],
+        /* tests/career/rig.test.js flies it in 84 s, carefully; the marks
+         * are set off that the way the Checkride's are (two thirds of it for
+         * gold, a little over it for silver). */
+        medals: { gold: 56000, silver: 88000 },
+        crashTip: 'A licence is flown within yourself. Slower, smoother, and finish it.',
+      },
+    ],
+  },
 ];
 
 /* Every lesson, in career order, with its chapter. */

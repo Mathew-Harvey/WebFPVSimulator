@@ -327,6 +327,26 @@ PLANS['10-1'] = async (L) => {
   return p;
 };
 
+/* The Rookie Licence: the ring road, one circle round the pylon, the pad. */
+PLANS['rk-1'] = async (L) => {
+  const p = await flyLesson(L);
+  p.climb(2);
+  let c = p.craft().p;
+  const rings = p.run.objectives[0].rings;
+  p.acroRoute(splinePath([V(c.x, c.y, c.z), ...ringPoints(rings, 4)], 5));
+  const o = p.run.objectives[1];
+  const r = (o.rMin + o.rMax) / 2;
+  const ctr = V(o.center.x, 4, o.center.z);
+  c = p.craft().p;
+  p.acroRoute(splinePath([V(c.x, c.y, c.z), V(ctr.x + r, 4, ctr.z)], 5));
+  p.acroRoute(circlePath(ctr, V(1, 0, 0), V(0, 0, -1), r, (2 * Math.PI * r) / 8, 0, 1.15));
+  const pad = w(80, 25);
+  c = p.craft().p;
+  p.acroRoute(splinePath([V(c.x, c.y, c.z), V(pad.x, 2, pad.z)], 5));
+  p.landAcro(pad);
+  return p;
+};
+
 PLANS['10-2'] = async (L) => {
   const plan = gapPlan(['WIDE GAP', 'UNDER THE BRIDGE', 'SIX METRE GAP', 'FOUR METRE GAP',
     '@0,3,-56', '@20,3,-48', '@28,3,-20', '@20,2,2', '@22,1.7,10', ['BILLBOARD GAP', 1],

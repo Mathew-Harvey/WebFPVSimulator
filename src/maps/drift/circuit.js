@@ -452,7 +452,11 @@ function furniture(line, P, decor, keep) {
   let k = 0;
   let prev = null;
   for (let s = f0; s <= f1; s += 4, k += 1) {
-    const sign = -(bendAt(line, s) || (prev ? prev.sign : 1));
+    /* The outside of the bend; on a straight bit between bends, the
+     * side the last post stood on (already the outside, so not turned
+     * again: turning it again put every other post across the road). */
+    const bend = bendAt(line, s);
+    const sign = bend ? -bend : (prev ? prev.sign : -1);
     const q = beside(line, s, (ROAD_WIDTH / 2 + 4) * sign);
     ppost(P, 'metal', q.x, q.y, 0, 4.2, 0.06, { kind: 'pole', name: 'catch fence' });
     if (prev) {

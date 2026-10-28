@@ -72516,6 +72516,13 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - What went wrong: the first shot set used plan coordinates as world ones and showed nothing; the screen's first picture was a blank blue panel.
 - The owner, 2026-10-28 08:58:10Z: "push to main", for PR 170 as it stands (the map, the filming game and the furniture pass). Main had not moved since the branch (f358c8c), so main fast-forwarded. The board side (official listing, partner mark word) and a link preview thumbnail are still not done. Not flown.
 
+## 2026-10-28 | fix | Drift Matsuri: the catch fence ran across the road
+
+- Report: the owner, 11:32Z on 2026-10-28, a shot of turn one with wires and cloth across the road: "what is this stuff across the track?"
+- Cause: `furniture()` in src/maps/drift/circuit.js chose each fence post's side as the outside of the bend, and on the short straight bits between bends took the last post's side and negated it again, so posts alternated sides and every wire and panel joined them across the road (27 runs). Drawn only, not solid; the posts were solid but stood off the road either side.
+- Fix: the last post's side is kept as it is. New line in `check:drift`: no fence or panel run has its middle within the road's half width plus a metre. It fails on the old file (27 runs across) and passes on the fixed one.
+- Checks: `check:drift` 27 of 27. Shots `drift-matsuri/furniture/09-turn-one-fixed.jpg` and `10-fence-fixed.jpg`. Latency: fewer triangles (the wires are shorter), same draw calls. Not flown.
+
 ## 2026-10-28: 90%er goat herding, a new whoop map and mini game
 
 - The ask, the owner at 05:46Z: "Make a new 90%er map, use everyones logos / make it heads house and his entire neighbourhood, make it up, / Each persons logo should go on the side of a goat, that is roaming around the neighbourhood. / the map is a mini game - your goal is to herd your goat into heads' garage, which is open, once the goat has run in the garage it stays there until the map is reset / ... go hard with the build out, make sure its as detailed as the town sakura map that we have / ensure heads house is accurate to the heads house map / ensure each goat with their sticker on the side is findable and responds like in the bardwell map to the quad so that its fun to herd them".
@@ -72610,6 +72617,7 @@ The owner, 10:36Z in the goat herding thread, after the bug sweep reply: "push t
 - Latency: no change. One arithmetic expression in a poll that already ran; no allocation, no extra event, sampling untouched. Checked by reading the diff and `input-selftest` (410 passed). Proxy only.
 - Not run: `npm run verify` (not physics, plant, ABI or build), `lint:input` (about 5 minutes, known flakes). Not flown. A held key now keeps climbing, so a long hold reaches full stick sooner than before at 750 ms (0.34 before, about 0.66 now).
 - The owner, 2026-10-28 10:58:31Z: "push to main", for this entry (sim PR 174). Main had not moved since the branch was cut (b0890a8), so it fast-forwarded and the checks above stand for what landed. No board change. Not flown yet.
+- The owner, 2026-10-28 11:43:09Z: "push to main", for PR 176 (the catch fence fix). Main had not moved since the merge into the branch (8384502), so main fast-forwarded.
 
 ## 2026-10-28 | career | A skill tree for the career (draft PR, not on main)
 

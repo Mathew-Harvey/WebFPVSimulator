@@ -935,6 +935,8 @@ async function mousePage(page) {
    *    custom track, because syncMode ran on every settings write and
    *    forces race and custom on an aircraft that is not offered
    *    freestyle. It is gated on the aircraft moving now. Both halves:
+   *    (since the quad picker of 2026-10-28 a whoop keeps the town, so
+   *    the second half seats it off a freestyle world)
    *    the camera leaves the seat alone, and swapping to the whoop still
    *    moves it, which is the case the sync was written for.
    * ------------------------------------------------------------------ */
@@ -958,6 +960,17 @@ async function mousePage(page) {
     ui.settings.airframe = 'whoop65';
     ui.writeSettings();
     out.afterSwap = { mode: ui.mode, map: ui.settings.map };
+    /* Since the quad picker (2026-10-28) a whoop flies the town, so the
+     * swap above keeps it; the sync still moves a whoop whose seat is not
+     * a freestyle world. */
+    ui.settings.airframe = '5inch';
+    ui.modeSyncedFor = '5inch';
+    ui.mode = 'freestyle';
+    ui.settings.map = 'custom';
+    ui.settings.airframe = 'whoop65';
+    ui.writeSettings();
+    out.afterSwapOffWorld = { mode: ui.mode, map: ui.settings.map };
+    ui.settings.map = 'city';
     ui.settings.airframe = '5inch';
     ui.settings.cameraAngle = angle;
     ui.writeSettings();
@@ -966,8 +979,10 @@ async function mousePage(page) {
   `).then(JSON.parse);
   check('camera angle on a seated whoop leaves freestyle and the town alone',
     sync.afterCamera.mode === 'freestyle' && sync.afterCamera.map === 'city', JSON.stringify(sync.afterCamera));
-  check('swapping to the whoop still seats race on the custom track',
-    sync.afterSwap.mode === 'race' && sync.afterSwap.map === 'custom', JSON.stringify(sync.afterSwap));
+  check('swapping to the whoop in the town keeps freestyle and the town (the quad picker)',
+    sync.afterSwap.mode === 'freestyle' && sync.afterSwap.map === 'city', JSON.stringify(sync.afterSwap));
+  check('swapping to the whoop off a freestyle world still seats race on the custom track',
+    sync.afterSwapOffWorld.mode === 'race' && sync.afterSwapOffWorld.map === 'custom', JSON.stringify(sync.afterSwapOffWorld));
 
   /* --------------------------------------------------------------------
    * 6b. The joystick picker's picture. bug-9983ae9a, a Flysky SM001: "On

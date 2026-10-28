@@ -10275,7 +10275,7 @@ export class Ui {
           value: trackName,
           info: true,
           note: seat && seat.gates
-            ? `${seat.gates} gates. This is what your time will be measured on.`
+            ? `${seat.gates} gate${seat.gates === 1 ? '' : 's'}. This is what your time will be measured on.`
             : 'This is what your time will be measured on.',
         },
         /*
@@ -10598,7 +10598,7 @@ export class Ui {
                        * another quad and stays off. */
                       : (run.tuned
                         ? 'Tuned flight, not posted to the board. Tricks landed on Air grip or Motor power off 100 are a different quad from the one everybody else flew. Set both back to 100 and fly it again.'
-                        : `${formatScore(run.total)} from ${run.tricks} tricks${Number.isInteger(run.weight) && run.weight !== WEIGHT_STOCK ? `, marked Weight ${run.weight}%` : ''}. One entry per pilot on the board, and only your best.`))))),
+                        : `${formatScore(run.total)} from ${run.tricks} trick${run.tricks === 1 ? '' : 's'}${Number.isInteger(run.weight) && run.weight !== WEIGHT_STOCK ? `, marked Weight ${run.weight}%` : ''}. One entry per pilot on the board, and only your best.`))))),
             },
           /*
            * THE SHARE CARD, the run's manga page beside its score. A row of
@@ -11030,7 +11030,7 @@ export class Ui {
       const seat = activeCourseSummary();
       const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
       const name = seat && seat.name ? seat.name : m.name;
-      const gates = seat && seat.gates ? `${seat.gates} gates` : '';
+      const gates = seat && seat.gates ? `${seat.gates} gate${seat.gates === 1 ? '' : 's'}` : '';
       const by = byLine(seat);
       this.launchLede.textContent = [name, gates, by].filter(Boolean).join(' \u00b7 ');
     }
@@ -14319,7 +14319,7 @@ export class Ui {
     table.textContent = '';
     if (this.standingsLede) {
       this.standingsLede.textContent = t
-        ? [t.name, t.gates ? `${t.gates} gates` : '', byLine(t)]
+        ? [t.name, t.gates ? `${t.gates} gate${t.gates === 1 ? '' : 's'}` : '', byLine(t)]
           .filter(Boolean).join(' \u00b7 ')
         : '';
     }
@@ -17062,7 +17062,7 @@ export class Ui {
         counted && !summary.counterImproved && localBestOf(summary) > 0
           ? `best ${formatScore(localBestOf(summary))}` : '',
         counted ? `trick score ${formatScore(summary.total || 0)}${this.settings.map === 'built' ? '' : ', the board\'s'}` : '',
-        summary.tricks > 0 ? `${summary.tricks} tricks, ${summary.unique} of them different` : '',
+        summary.tricks > 0 ? (summary.tricks === 1 ? '1 trick' : `${summary.tricks} tricks, ${summary.unique} of them different`) : '',
         summary.gaps > 0 ? `${summary.gaps} gap${summary.gaps === 1 ? '' : 's'}` : '',
         calls > 0 ? `${calls} close call${calls === 1 ? '' : 's'}` : '',
         summary.bestCombo > 0 ? `best chain ${formatScore(summary.bestCombo)}` : '',

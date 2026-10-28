@@ -14718,6 +14718,7 @@ export async function boot({ loading, bootStart, mapId }) {
     tree: (part) => loadCareer().then((c) => c.openTree(part)),
     fork: () => loadCareer().then((c) => c.openFork()),
     level: () => loadCareer().then((c) => c.openLevel()),
+    paint: () => loadCareer().then((c) => c.openPaint()),
     fly: () => career.fly(),
     state: () => (career ? career.state() : null),
     status: () => (career ? career.status() : null),

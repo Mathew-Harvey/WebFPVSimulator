@@ -613,27 +613,29 @@ export class CareerScreens {
     treeCard.append(this.treeBtn);
     side.append(treeCard);
 
+    /* Already fly? and the quad, side by side under the tree. */
+    const pair = el('div', 'cr-cover-pair');
     const levelCard = el('div', 'cr-panel cr-levelcard');
     levelCard.append(el('span', 'cr-kick', 'Already fly?'));
-    levelCard.append(el('p', 'cr-panel-line', 'Fill in the tree up to what you can already do, then pick your own way through it.'));
+    levelCard.append(el('p', 'cr-panel-line', 'Fill in the tree up to what you can do, then pick your own way.'));
     this.levelBtn = button('Set my level', 'L');
     this.levelBtn.addEventListener('click', () => this.h.toLevel());
     levelCard.append(this.levelBtn);
-    side.append(levelCard);
 
     const paintCard = el('div', 'cr-panel cr-paintcard');
     const on = liveryById(livery);
+    paintCard.append(el('span', 'cr-kick', 'Your quad'));
+    const pw = el('div', 'cr-paintcard-row');
     const pic = el('div', 'cr-paintcard-pic');
     pic.innerHTML = quadSvg(on);
-    const pw = el('div', 'cr-paintcard-words');
-    pw.append(el('span', 'cr-kick', 'Your quad'));
     const earned = 1 + liveriesEarned(p).length;
-    pw.append(el('p', 'cr-panel-line', `${on.name} paint. ${earned} of ${LIVERIES.length} liveries earned: finish a part to earn its colours.`));
+    pw.append(pic, el('p', 'cr-panel-line', `${on.name} paint. ${earned} of ${LIVERIES.length} earned.`));
+    paintCard.append(pw);
     this.paintBtn = button('Paint Shop', 'P');
     this.paintBtn.addEventListener('click', () => this.h.toPaint());
-    pw.append(this.paintBtn);
-    paintCard.append(pic, pw);
-    side.append(paintCard);
+    paintCard.append(this.paintBtn);
+    pair.append(levelCard, paintCard);
+    side.append(pair);
     grid.append(side);
     c.append(grid);
 
@@ -766,7 +768,12 @@ export class CareerScreens {
     key.append(el('span', 'cr-kick', 'Career'), lettered('The Skill Tree', 64, INKS.cream, 'cr-title', 0.36));
     key.append(el('p', 'cr-panel-line', 'Learn to fly up the middle. Your Rookie Licence opens both ways at once. In a branch, three lessons of a part open the next, and a licence takes every part of its branch.'));
     const legend = el('div', 'cr-tree-legend');
-    for (const [cls, words] of [['done', 'Flown'], ['current', 'You are here'], ['open', 'Open'], ['known', 'Known'], ['locked', 'Not yet'], ['soon', 'Next issue']]) {
+    /* Next issue only while some part is still to come. */
+    const keyItems = [['done', 'Flown'], ['current', 'You are here'], ['open', 'Open'], ['known', 'Known'], ['locked', 'Not yet']];
+    if (PARTS.some((x) => x.soon)) {
+      keyItems.push(['soon', 'Next issue']);
+    }
+    for (const [cls, words] of keyItems) {
       const item = el('span');
       item.append(el('i', `cr-swatch ${cls}`), document.createTextNode(words));
       legend.append(item);

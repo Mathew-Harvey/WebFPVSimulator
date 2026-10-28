@@ -125,9 +125,9 @@ const GLYPHS = {
     <path d="M32 46 L46 24" stroke="#ffd45c" stroke-width="5" stroke-linecap="round"/>`,
   /* A ghost: the quad, and its last lap a pale step behind it. */
   ghost: `
-    <g opacity="0.38" transform="translate(-2,14) scale(0.62)">${QUAD}</g>
-    <path d="M10 46 C18 40 24 38 32 36" fill="none" stroke="#9db3c8" stroke-width="3" stroke-dasharray="4 4" stroke-linecap="round"/>
-    <g transform="translate(24,6) scale(0.62)">${QUAD}</g>`,
+    <g opacity="0.4" transform="translate(-6,24) scale(0.66)">${QUAD}</g>
+    <path d="M24 34 C30 30 34 28 40 26" fill="none" stroke="#9db3c8" stroke-width="4" stroke-dasharray="3 5" stroke-linecap="round"/>
+    <g transform="translate(22,-4) scale(0.66)">${QUAD}</g>`,
   /* Close: a wall, the quad a hand's width off it, and the rush between. */
   close: `
     <rect x="44" y="6" width="14" height="52" fill="#5a6f7f" stroke="${INK}" stroke-width="3"/>

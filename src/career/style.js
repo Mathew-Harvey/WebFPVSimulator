@@ -441,7 +441,7 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career .cr-paint-main, #career .cr-paint-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 #career .cr-paint-side { padding-top: clamp(30px, 6vh, 90px); position: sticky; top: 0; align-self: start; }
 #career .cr-paint-side > .cr-btn { align-self: flex-start; }
-#career .cr-livery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+#career .cr-livery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 12px; }
 #career .cr-livery {
   font: inherit; color: var(--c-ink); text-align: left; cursor: pointer;
   display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; row-gap: 2px; align-items: center;
@@ -449,13 +449,13 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
   transition: transform 0.08s ease, box-shadow 0.08s ease;
 }
 #career .cr-livery .cr-livery-chips { grid-row: 1 / 3; }
-#career .cr-livery-name { font-size: clamp(14px, 1.05vw, 17px); font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 1.05; }
+#career .cr-livery-name { font-size: clamp(13px, 0.95vw, 16px); font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 1.05; overflow-wrap: anywhere; }
 #career .cr-livery-line { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--c-quiet); }
 #career .cr-livery-line svg { width: 13px; height: 13px; flex: none; }
 #career .cr-livery.is-on { background: var(--c-mint); }
 #career .cr-livery.is-on .cr-livery-line { color: var(--c-ink); }
 #career .cr-livery.is-locked { background: #ece5d2; }
-#career .cr-livery.is-locked .cr-livery-chips { filter: grayscale(1) opacity(0.45); }
+#career .cr-livery.is-locked .cr-livery-chips { opacity: 0.55; }
 #career .cr-livery.is-locked .cr-livery-name { color: var(--c-quiet); }
 #career .cr-livery.is-focus, #career .cr-livery:hover {
   transform: translate(-2px, -2px); box-shadow: 0 0 0 3px var(--c-sakura), 6px 6px 0 3px var(--c-ink); outline: none;
@@ -467,9 +467,11 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career .cr-paint-said { margin: 0; min-height: 1.3em; font-weight: 800; }
 #career .cr-paint-said:empty { display: none; }
 #career .cr-paint-said:not(:empty) { align-self: flex-start; padding: 8px 12px; background: var(--c-mint); border: 3px solid var(--c-ink); }
-#career .cr-paintcard { flex-direction: row; align-items: center; gap: 14px; transform: rotate(0.5deg); }
-#career .cr-paintcard-pic { width: clamp(72px, 7vw, 110px); aspect-ratio: 1; flex: none; }
-#career .cr-paintcard-words { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#career .cr-cover-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(14px, 1.6vw, 24px); align-items: stretch; }
+#career .cr-cover-pair .cr-panel { justify-content: space-between; }
+#career .cr-paintcard { transform: rotate(0.6deg); }
+#career .cr-paintcard-row { display: flex; align-items: center; gap: 10px; }
+#career .cr-paintcard-pic { width: clamp(48px, 4.2vw, 70px); aspect-ratio: 1; flex: none; }
 #career .cr-paintcard .cr-btn { align-self: flex-start; }
 #career .cr-res-livery { flex-direction: row; align-items: center; gap: 14px; background: #fde3ea; transform: rotate(-0.8deg); }
 #career .cr-res-livery-pic { width: clamp(80px, 7vw, 118px); aspect-ratio: 1; flex: none; }
@@ -730,6 +732,7 @@ body.career-score #career .cr-obj { top: 150px; }
   #career .cr-level, #career .cr-res-page, #career .cr-paint { grid-template-columns: minmax(0, 1fr); }
   #career .cr-level-side, #career .cr-res-side, #career .cr-paint-side { padding-top: 0; }
   #career .cr-paint-side { position: static; }
+  #career .cr-cover-pair { grid-template-columns: minmax(0, 1fr); }
   #career .cr-paint-pic { width: min(100%, 180px); }
   #career .cr-fork { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; align-content: start; }
   #career .cr-fork-side { min-height: 0; padding-top: 64px; justify-content: flex-start; }

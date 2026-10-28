@@ -72515,3 +72515,10 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 - Checks: `check:drift` 26 of 26 (new line: no tree in the furniture; the solid clearance line now ignores what is over a car's roof, the gantry beam, which it could not tell from a wall before), `lint:frame` 34. Shots in the project folder `drift-matsuri/furniture/`. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
 - What went wrong: the first shot set used plan coordinates as world ones and showed nothing; the screen's first picture was a blank blue panel.
 - The owner, 2026-10-28 08:58:10Z: "push to main", for PR 170 as it stands (the map, the filming game and the furniture pass). Main had not moved since the branch (f358c8c), so main fast-forwarded. The board side (official listing, partner mark word) and a link preview thumbnail are still not done. Not flown.
+
+## 2026-10-28 | fix | Drift Matsuri: the catch fence ran across the road
+
+- Report: the owner, 11:32Z on 2026-10-28, a shot of turn one with wires and cloth across the road: "what is this stuff across the track?"
+- Cause: `furniture()` in src/maps/drift/circuit.js chose each fence post's side as the outside of the bend, and on the short straight bits between bends took the last post's side and negated it again, so posts alternated sides and every wire and panel joined them across the road (27 runs). Drawn only, not solid; the posts were solid but stood off the road either side.
+- Fix: the last post's side is kept as it is. New line in `check:drift`: no fence or panel run has its middle within the road's half width plus a metre. It fails on the old file (27 runs across) and passes on the fixed one.
+- Checks: `check:drift` 27 of 27. Shots `drift-matsuri/furniture/09-turn-one-fixed.jpg` and `10-fence-fixed.jpg`. Latency: fewer triangles (the wires are shorter), same draw calls. Not flown.

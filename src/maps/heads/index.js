@@ -114,7 +114,7 @@ function drawScaled(kit, scaled) {
   }
 }
 
-function drawHouse(kit, L) {
+export function drawHouse(kit, L) {
   drawPrisms(kit, L.prisms);
   drawFlats(kit, L.flats);
   drawDiscs(kit, L.discs);
@@ -488,19 +488,37 @@ function houseInk(post) {
 }
 
 export async function buildMap(shell, onProgress, options) {
+  return buildHeadsWorld(shell, onProgress, options, null);
+}
+
+/*
+ * The house as a world, and the same house inside another world: the goat
+ * map (../goats/index.js) hands `plus`, { document, id, layout, parts,
+ * draw(kit) }, and gets this house built exactly as it is here, in its own
+ * document's field, without the yard track or the 90% patches, with its
+ * own structure added to the extra and drawn after the house. With no
+ * `plus` this is Heads' house as it always was.
+ */
+export async function buildHeadsWorld(shell, onProgress, options, plus) {
   /* The pictures the logos are cut from, asked for first so they come
    * while the world builds: the two sheets. The roster's signs are hung
    * by the built map (`markSpots`), which draws their own artwork. */
   const sheetsCame = Promise.all(SHEETS.map((s) => loadSheet(s.url)));
-  const floorCame = loadFloorMarks();
-  const L = headsLayout();
+  const floorCame = plus ? Promise.resolve({}) : loadFloorMarks();
+  const L = plus ? headsLayout(plus.layout) : headsLayout();
   const extra = {
     el: { id: 'heads', type: 'heads' },
-    parts: L.parts,
-    draw: (kit) => drawHouse(kit, L),
+    parts: plus ? [...L.parts, ...plus.parts] : L.parts,
+    draw: (kit) => {
+      drawHouse(kit, L);
+      if (plus) {
+        plus.draw(kit);
+      }
+    },
     floor: basementFloorAt,
   };
-  const doc = headsDocument();
+  const doc = plus ? plus.document : headsDocument();
+  const id = plus ? plus.id : 'heads';
   /* Every roster brand's sign hung by hand (./logos.js), the chooser's
    * spots off: it sees the yard and not the house. */
   const markSpots = placeSigns(L.parts, CHUNK).filter(Boolean);
@@ -510,10 +528,12 @@ export async function buildMap(shell, onProgress, options) {
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id (src/main.js, src/ui/ui.js), and `source` is the word
    * the board counts its partner signs under (MARK_MAP_WORDS in src/main.js). */
-  map.id = 'heads';
-  map.source = 'heads';
+  map.id = id;
+  map.source = id;
   /* The yard track (../yardtrack/), which the shell times. */
-  map.yardTrack = headsYardTrack();
+  if (!plus) {
+    map.yardTrack = headsYardTrack();
+  }
   openGround(map.scene, 'plot', BASEMENT_HOLE);
   openGround(map.scene, 'terrain', BASEMENT_HOLE);
   /* The logos all over it and the garage's prints, two meshes on one
@@ -522,13 +542,13 @@ export async function buildMap(shell, onProgress, options) {
   const sheets = await sheetsCame;
   const atlas = paintAtlas(sheets, await floorCame);
   const decals = placeDecals(L.parts).filter(Boolean);
-  const patches = placePatches(L.parts).filter(Boolean).map((s) => ({ ...s, cell: 'patch' }));
+  const patches = plus ? [] : placePatches(L.parts).filter(Boolean).map((s) => ({ ...s, cell: 'patch' }));
   const indoor = new THREE.MeshBasicMaterial({
     map: atlas, alphaTest: 0.5, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   map.scene.add(logoMesh([...printQuads(), ...decals.filter((d) => d.inside), ...patches.filter((s) => s.inside)], indoor, 'heads prints'));
   /* The yard track's floor logos ride the outdoor mesh, for nothing. */
-  const floor = floorQuads(headsYardTrack(), L.parts);
+  const floor = plus ? [] : floorQuads(headsYardTrack(), L.parts);
   const outdoor = logoMesh([...decals.filter((d) => !d.inside), ...patches.filter((s) => !s.inside), ...floor], paintMaterial(THREE, atlas), 'heads logos');
   outdoor.receiveShadow = true;
   map.scene.add(outdoor);
@@ -559,13 +579,19 @@ export async function buildMap(shell, onProgress, options) {
    * linked with the rest. */
   const man = makeMan(shell.camera, () => (shell.quad ? shell.quad.position : null));
   map.scene.add(man.group);
+  /* What the world adds of its own that moves, before the programs are
+   * warmed for the same reason: the goats. */
+  const more = plus && plus.after ? await plus.after(map, { sheets, layout: L }) : null;
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   const anim = map.updateAnim;
   map.updateAnim = (step) => {
     anim(step);
     man.update(step);
+    if (more) {
+      more.update(step);
+    }
   };
   const stats = map.stats;
-  map.stats = () => ({ ...stats(), heads: man.stats() });
+  map.stats = () => ({ ...stats(), heads: man.stats(), ...(more ? more.stats() : {}) });
   return map;
 }

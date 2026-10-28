@@ -48,7 +48,10 @@ function ok(cond, what) {
 let total = 0;
 for (const [set, def] of Object.entries(CLIP_SETS)) {
   const named = new Set([...def.sticker, ...(def.near || []), ...Object.values(def.cues || {})]);
-  const onDisk = new Set(fs.readdirSync(path.join(root, set)).map((f) => f.replace(/\.mp3$/, '')));
+  /* A set whose every clip is another set's (the goat map's) has no
+   * directory of its own. */
+  const dir = path.join(root, set);
+  const onDisk = new Set(fs.existsSync(dir) ? fs.readdirSync(dir).map((f) => f.replace(/\.mp3$/, '')) : []);
   ok([...named].every((n) => (n.includes('/') ? fs.existsSync(path.join(root, `${n}.mp3`)) : onDisk.has(n))), `${set}: every named clip is a file`);
   ok([...onDisk].every((n) => named.has(n)), `${set}: every file is named by a cue or the sticker pool`);
   ok([...named].every((n) => typeof def.says[n] === 'string'), `${set}: every clip has its words written down`);

@@ -634,7 +634,7 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
   return {
     names,
     count: N,
-    X, Y, FX, FY, HOP, SPEED, MODE, FEAR, HOME_AT,
+    X, Y, FX, FY, HOP, PHASE, SPEED, MODE, FEAR, HOME_AT,
     step,
     events,
     /* How many are home, and how long since the first ran, seconds. */

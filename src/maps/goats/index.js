@@ -58,7 +58,9 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import * as THREE from 'three';
 import { buildHeadsWorld, drawHouse } from '../heads/index.js';
+import { qualityFor } from '../../render/quality.js';
 import { worldAt, FRAME, S } from '../heads/heads.js';
 import { WALL_STICKERS } from '../heads/logos.js';
 import { stfKey } from '../built/egg.js';
@@ -66,6 +68,7 @@ import { hoodLayout, BOUNDS, PARK } from './hood.js';
 import { goatsDocument } from './yard.js';
 import { makeGrid, makeHerd, HOME } from './herd.js';
 import { makeGoatDraw, logoPose } from './goatdraw.js';
+import { cellShadows } from './shadows.js';
 
 const CHUNK = 'extra';
 
@@ -78,6 +81,25 @@ const ROOMS = { x0: -0.2, x1: 13.9, y0: -0.1, y1: 8.6 };
 const SUBSTEP = 1 / 30;
 const STALL = 0.1;
 
+/* A paint box whose top is under this, world metres, lies flat on the
+ * ground (a walk, a line, a seam, a bed), and only its top can be seen:
+ * it is drawn as that top alone, two triangles where a box is twelve. */
+const ON_GROUND = 0.35;
+
+/* The dressing's blobs (THE DRESSING in ./hood.js): a sphere with its
+ * normals out from the middle, so it shades round with few faces, twenty
+ * for a flower and eighty for anything as big as a shrub. */
+function roundBall(detail) {
+  const g = new THREE.IcosahedronGeometry(1, detail);
+  const p = g.attributes.position;
+  const n = g.attributes.normal;
+  for (let i = 0; i < p.count; i += 1) {
+    n.setXYZ(i, p.getX(i), p.getY(i), p.getZ(i));
+  }
+  return g;
+}
+const BIT_BIG = 0.3 * S;
+
 /* What the callout calls a goat seen. */
 const FOUND_WORD = 'Goat!';
 
@@ -87,6 +109,9 @@ const toPlan = (x, z) => [(x - OX) / S, (OZ - z) / S];
 
 export async function buildMap(shell, onProgress, options) {
   const hood = hoodLayout();
+  /* Medium and High draw the dressing; Low draws the street without it. */
+  const dressed = qualityFor(options && options.quality).id !== 'low';
+  const keep = (list) => (dressed ? list : list.filter((x) => !x.fine));
   const doc = goatsDocument();
   const crops = WALL_STICKERS;
   const plus = {
@@ -97,13 +122,38 @@ export async function buildMap(shell, onProgress, options) {
     parts: hood.parts.filter((p) => p.solid).map((p) => (p.draw ? { ...p, draw: false } : p)),
     draw: (kit) => {
       kit.begin(0, 0, 0, 0, CHUNK);
-      for (const p of hood.parts) {
-        kit.part(p);
+      for (const p of keep(hood.parts)) {
+        if (p.draw && p.t === 'box' && !p.solid && p.hi[1] < ON_GROUND) {
+          kit.plane(p.m, (p.lo[0] + p.hi[0]) / 2, p.hi[1], (p.lo[2] + p.hi[2]) / 2, p.hi[0] - p.lo[0], p.hi[2] - p.lo[2], '+y');
+        } else {
+          kit.part(p);
+        }
       }
-      drawHouse(kit, hood);
+      drawHouse(kit, {
+        ...hood, cyls: keep(hood.cyls), cones: keep(hood.cones), flats: keep(hood.flats), prisms: keep(hood.prisms),
+      });
+      /* The bits: all of them on Medium and High, on Low only those that
+       * are something solid's shape, a small tree's crown, and those as
+       * the small ball. */
+      kit.begin(0, 0, 0, 0, CHUNK);
+      const small = roundBall(0);
+      const big = roundBall(1);
+      const q = new THREE.Quaternion();
+      const e = new THREE.Euler();
+      const at = new THREE.Vector3();
+      const size = new THREE.Vector3();
+      for (const b of hood.bits) {
+        if (!dressed && !b.keep) {
+          continue;
+        }
+        at.set(b.c[0], b.c[1], b.c[2]);
+        size.set(b.r, b.ry, b.r);
+        q.setFromEuler(e.set(b.spin[0], b.spin[1], b.spin[2]));
+        kit.add(b.m, dressed && Math.max(b.r, b.ry) >= BIT_BIG ? big : small, new THREE.Matrix4().compose(at, q, size));
+      }
       /* The street's own trees (tree in ./hood.js), with Heads' own. */
       kit.begin(0, 0, 0, 0, 'extra:trees');
-      for (const g of hood.grove) {
+      for (const g of keep(hood.grove)) {
         if (g.c) {
           kit.leaf(g.m, g.c, g.r, g.ry, g.spin);
         } else {
@@ -112,9 +162,17 @@ export async function buildMap(shell, onProgress, options) {
       }
     },
     after: async (map, { sheets, layout }) => {
+      /* The street's shadows drawn near the whoop only (./shadows.js): the
+       * squares are aimed each time the map has moved the sun's box. */
+      const shade = cellShadows(map.scene, ['props:extra', 'props:extra:trees', 'props:extra:street']);
+      const focus = map.updateShadowFocus;
+      map.updateShadowFocus = (target) => {
+        focus(target);
+        shade.aim();
+      };
       const grid = makeGrid([...layout.parts, ...hood.parts], toPlan, S, BOUNDS, [...hood.blocks, ROOMS]);
       const herd = makeHerd(crops.map((c) => c.name), grid, { parks: [PARK] });
-      const draw = makeGoatDraw(herd, crops, sheets, worldAt, S);
+      const draw = makeGoatDraw(herd, crops, sheets, worldAt, S, !dressed);
       map.scene.add(draw.group);
       /* Every goat's logo is a sticker to find, moved with its goat. */
       const key = stfKey(doc, 'goats');
@@ -204,6 +262,7 @@ export async function buildMap(shell, onProgress, options) {
           dt = 0;
         }
         dt = Math.min(dt, STALL);
+        const frame = dt;
         const q = shell.quad ? shell.quad.position : null;
         if (q) {
           const [px, py] = toPlan(q.x, q.z);
@@ -216,7 +275,7 @@ export async function buildMap(shell, onProgress, options) {
           herd.step(h, q ? craft : null);
           dt -= h;
         }
-        draw.update();
+        draw.update(frame);
         for (let i = 0; i < goatStickers.length; i += 1) {
           logoPose(herd, i, eye, worldAt, S, goatStickers[i]);
         }
@@ -224,7 +283,7 @@ export async function buildMap(shell, onProgress, options) {
       update(0);
       return {
         update,
-        stats: () => ({ goats: { count: herd.count, home: herd.homeCount(), hood: hood.stats } }),
+        stats: () => ({ goats: { count: herd.count, home: herd.homeCount(), hood: hood.stats, shade: shade.stats } }),
       };
     },
   };

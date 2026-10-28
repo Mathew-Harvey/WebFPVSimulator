@@ -405,5 +405,6 @@ export const MAP_PRELOAD = {
     'maps/goats/yard.js',
     'maps/goats/herd.js',
     'maps/goats/goatdraw.js',
+    'maps/goats/shadows.js',
   ],
 };

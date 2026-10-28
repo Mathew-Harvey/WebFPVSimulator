@@ -257,6 +257,7 @@
     'src/maps/goats/herd.js',
     'src/maps/goats/hood.js',
     'src/maps/goats/index.js',
+    'src/maps/goats/shadows.js',
     'src/maps/goats/yard.js',
     'src/maps/heads/heads.js',
     'src/maps/heads/index.js',

@@ -864,6 +864,8 @@ export const TOGETHER_CSS = `
 #tg .roomsheet .tg-menu { display: grid; gap: 12px; align-content: start; padding: 2px 8px 8px 2px; }
 #tg .roomsheet .tg-menu .btn { justify-content: flex-start; width: 100%; }
 #tg .roomsheet .tg-menu .btn small { margin-left: auto; font-size: 11px; font-style: normal; letter-spacing: 0.06em; opacity: 0.75; }
+#tg .roomsheet .tg-menu.long { gap: 8px; }
+#tg .roomsheet .tg-menu.long .btn { padding-block: 8px; }
 #tg .roomsheet .pane { min-height: 0; max-height: 100%; overflow: auto; border: 3px solid var(--ink); background: var(--white); padding: 8px 12px; align-self: start; }
 #tg .infotags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 #tg .lab-h { font-weight: 900; text-transform: uppercase; font-size: 12px; letter-spacing: 0.1em; color: var(--ink); }

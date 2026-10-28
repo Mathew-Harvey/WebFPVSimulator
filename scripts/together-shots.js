@@ -3679,6 +3679,7 @@ async function sceneSwap() {
     await sheetIs(page, 'room');
     check('the host\'s room page has Swap quads', await page.evaluate(SEES('Swap quads', '#tg .tg-menu')) && await page.evaluate(SEES('Everyone swaps', '#tg .tg-menu')));
     check('beside Watch a pilot, and every button of the page still on screen', await page.evaluate(SEES('Watch a pilot', '#tg .tg-menu')) && (await offSheet(page)) === '', await offSheet(page));
+    await shot('host-room');
     await pressKey(page, 'swap-quad');
     await sheetIs(page, 'swapQuad');
     check('Swap quads asks first, with Cancel under the focus', await page.evaluate("document.activeElement && document.activeElement.dataset.k === 'no'"));

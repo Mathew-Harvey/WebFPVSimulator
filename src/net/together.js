@@ -3149,6 +3149,14 @@ export function createTogether(shell) {
   }
 
   /* The room's page, from the pause menu's Room row. */
+  /* The room page's list of buttons, set closer when it is long: a host
+   * with somebody to watch has eight since Swap quads, and the last of
+   * them, Leave room, has to stay on a 720 pixel screen. */
+  function menuOf(...kids) {
+    const list = kids.flat(3).filter((k) => k != null && k !== false);
+    return h(list.length > 7 ? 'div.tg-menu.long' : 'div.tg-menu', null, list);
+  }
+
   function sheetRoom() {
     if (!roomToOpen()) {
       return;
@@ -3175,7 +3183,7 @@ export function createTogether(shell) {
         btn('Back', 'small ghost', () => back(), { 'data-k': 'back' })),
         h('div.rule'),
         h('div.roomsheet', null,
-          h('div.tg-menu', null,
+          menuOf(
             racing ? h('button.btn.ghost', {
               type: 'button', 'data-k': 'race', 'data-autofocus': true, on: { click: () => sheetRace() },
             }, h('span', { text: 'Race' }), h('small', { text: raceNote })) : null,

@@ -1373,8 +1373,8 @@ function throttleKeys(mode) {
  *
  * analogMag(heldMs) is the stick travel while the key is down:
  *   tap     ~90 ms  -> 0.16  a nudge, then spring back on release
- *   hold    240 ms  -> 0.34  a flyable cruise, and it STAYS there
- *   stretch 750 ms  still cruise, so a gate does not become a punch
+ *   hold    240 ms  -> 0.34  a flyable cruise on the way up
+ *   after   240 ms  keeps rising, no flat part (a plateau felt like a pause)
  *   full   1250 ms  -> 1.00  committed, only a long hold
  *
  * Release springs to rest. Throttle rest is hover once airborne, else 0.
@@ -1387,7 +1387,6 @@ function analogMag(heldMs) {
   const TAP = 0.16;
   const CRUISE_MS = 240;
   const CRUISE = 0.34;
-  const STRETCH_MS = 750;
   const FULL_MS = 1250;
   if (heldMs <= 0) {
     return 0;
@@ -1399,13 +1398,12 @@ function analogMag(heldMs) {
     const u = (heldMs - TAP_MS) / (CRUISE_MS - TAP_MS);
     return TAP + (CRUISE - TAP) * u;
   }
-  if (heldMs <= STRETCH_MS) {
-    return CRUISE;
-  }
   if (heldMs >= FULL_MS) {
     return 1;
   }
-  const u = (heldMs - STRETCH_MS) / (FULL_MS - STRETCH_MS);
+  /* No flat part: a plateau here read as the key sticking, a pause in the
+   * middle of a hold. The stick keeps rising from the cruise value. */
+  const u = (heldMs - CRUISE_MS) / (FULL_MS - CRUISE_MS);
   return CRUISE + (1 - CRUISE) * u;
 }
 

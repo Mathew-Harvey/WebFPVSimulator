@@ -58,7 +58,7 @@ import { AUTO_FLOOR, autoPresetMove, createAutoScale } from './render/autoscale.
 import { createLatencyMeter } from './render/latency.js';
 import { moveRigid, predictDelta, PREDICT_MAX_MS } from './render/predict.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE } from './render/frame.js';
-import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
+import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP, CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { LapVoice, lapCall } from './render/voice.js';
 import { ClipVoice } from './render/clips.js';
@@ -81,6 +81,8 @@ import { CloseCalls, CC_EVERY, CC_HARD_DV } from './game/closecall.js';
 import { readCounterBest, writeCounterBest } from './game/counterbest.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
+import { buildPropView } from './render/propview.js';
+import { warmPrograms } from './render/warm.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
@@ -2694,6 +2696,69 @@ export async function boot({ loading, bootStart, mapId }) {
    * back without having to know it exists.
    */
   shell.keepAcrossMaps(ghostRig.group);
+  /*
+   * The front props at the edge of the FPV picture and the craft's shadow
+   * on the ground, each behind its own row in Settings. Session lived like
+   * the ghost rig, parented into whichever scene holds the craft. Placed
+   * after the predicted view has moved the camera, immediately before the
+   * draw, so the props stay bolted to the picture the pilot is shown.
+   */
+  const propView = buildPropView();
+  shell.keepAcrossMaps(propView.group);
+  const propViewOpts = {
+    camera: shell.camera,
+    craft: null,
+    discs: null,
+    props: false,
+    shadow: false,
+    tilt: 0,
+    /* The glass, not the mount's pivot: the props are centimetres away,
+     * so the 24 mm between the two decides how much of them shows. */
+    fwd: simLenToWorld(CAMERA_LENS_FORWARD),
+    up: simLenToWorld(CAMERA_LENS_UP),
+    height: (x, z, fromY) => view.height(x, z, fromY),
+  };
+  /*
+   * Into the world's scene as soon as the world is built, with its two
+   * programs linked then, under the loading screen, and not on the first
+   * FPV frame. They are the craft's own blur disc program, which a five
+   * inch's world has linked already; a whoop's disc has no vertex alpha,
+   * so on a whoop map nothing else would have. The two meshes are shown
+   * for the synchronous part of the warm only. See src/render/warm.js for
+   * why the target is the pipeline's.
+   */
+  function attachPropView() {
+    if (!view || !view.scene) {
+      return;
+    }
+    view.scene.add(propView.group);
+    const p = view.post;
+    const target = p ? (p.rtScene || (p.composer && p.composer.renderTarget1) || null) : null;
+    propView.props.visible = true;
+    propView.shadow.visible = true;
+    warmPrograms(shell.renderer, view.scene, shell.camera, target);
+    propView.props.visible = false;
+    propView.shadow.visible = false;
+  }
+  attachPropView();
+  function placePropView() {
+    const s = ui.settings;
+    const o = propViewOpts;
+    o.props = fpvLens && (s.inView === 'both' || s.inView === 'props');
+    o.shadow = fpvLens && (s.inView === 'both' || s.inView === 'shadow');
+    if (!o.props && !o.shadow) {
+      propView.props.visible = false;
+      propView.shadow.visible = false;
+      return;
+    }
+    if (shell.quad.parent && propView.group.parent !== shell.quad.parent) {
+      shell.quad.parent.add(propView.group);
+    }
+    o.craft = shell.quad;
+    o.discs = shell.discs;
+    o.tilt = cameraTiltRad(camTilt);
+    propView.update(o);
+  }
   const ghostSample = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
   let ghostLap = null; /* the lap being chased, armed at each lap start */
   let ghostChased = null; /* the lap the last FINISHED lap was chased against */
@@ -3862,6 +3927,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * Allocated once, because the frame loop allocates nothing (P8). */
   let predictCam = false;
   let predictApplied = false;
+  /* Whether this frame's camera is the pilot's own lens, live or held on
+   * the impact frame: the props in view and the craft's shadow are drawn
+   * only then (src/render/propview.js). */
+  let fpvLens = false;
   let predictLastMs = 0;
   const predDp = new THREE.Vector3();
   const predDq = new THREE.Quaternion();
@@ -6208,6 +6277,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* The world just changed, so what is worth flying around changed with
      * it. Once per map, never per run: it scans every collider. */
     rebuildObstacles();
+    attachPropView();
     mapReady = true;
     /* The swap set the canvas ratio before it knew whether the new world's
      * pipeline scales its own targets: settled now. See canvasScaleOf. */
@@ -9516,6 +9586,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * move: set by that branch below, and only by it. And whether it did. */
     predictCam = false;
     predictApplied = false;
+    fpvLens = false;
     /* Once a frame, whatever the window did since the last one. */
     applyResizeIfDirty();
     if (!mapReady) {
@@ -11033,6 +11104,7 @@ export async function boot({ loading, bootStart, mapId }) {
         /* The mount, not the held impact frame, is what the predicted view
          * moves: see predictView before the draw. */
         predictCam = !held;
+        fpvLens = true;
         setCameraNear(fpvNear(held ? manga.holdPos : fpvPos));
         if (shell.camera.fov !== ui.settings.cameraFov) {
           shell.camera.fov = ui.settings.cameraFov;
@@ -11225,6 +11297,7 @@ export async function boot({ loading, bootStart, mapId }) {
       predictApplied = true;
     }
     if (worldLive && drawThis) {
+      placePropView();
       view.post.render();
       gpuGate.submitted(performance.now());
     }
@@ -13225,6 +13298,26 @@ export async function boot({ loading, bootStart, mapId }) {
     groundPrev.copy(racePrev);
     return window.__craftState();
   };
+  /* Harness: __placeCraft, then hold the craft there nose down by
+   * `pitchDeg` with the integrator frozen (poseLock, as __seatCraft's
+   * cameraDown), so a capture of the FPV view at a height and an attitude
+   * is the same picture however slow the rasteriser is. */
+  window.__holdCraft = (x, y, z, pitchDeg = 0) => {
+    if (!window.__placeCraft(x, y, z)) {
+      return null;
+    }
+    const h = (pitchDeg * Math.PI) / 360;
+    worldPosToSim(x, y, z, pSim);
+    const code = sim.e.sim_set_pose(pSim.x, pSim.y, pSim.z, Math.cos(h), 0, Math.sin(h), 0);
+    if (code !== SIM_OK) {
+      return { ok: false, code };
+    }
+    sim.rest();
+    poseLock = true;
+    stateCurr = readState();
+    statePrev = stateCurr;
+    return window.__craftState();
+  };
   window.__releasePose = () => {
     poseLock = false;
     return true;
@@ -13470,6 +13563,29 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The predicted view on the last frame: whether it moved the camera, how
    * far ahead it looked and how far it turned and moved the view. Harness
    * only. */
+  /* The props in view and the craft's shadow, as the last frame left them:
+   * src/render/propview.js. `ndc` is where each prop vertex landed on the
+   * picture, as a box, so a check can say how much of the frame they take. */
+  window.__propView = () => {
+    const st = propView.state();
+    const g = propView.props.geometry.getAttribute('position');
+    let box = null;
+    if (g && propView.props.visible) {
+      const v = new THREE.Vector3();
+      box = { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9 };
+      for (let i = 0; i < g.count; i += 1) {
+        v.fromBufferAttribute(g, i).applyMatrix4(propView.props.matrix).project(shell.camera);
+        if (Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1) {
+          box.x0 = Math.min(box.x0, v.x);
+          box.x1 = Math.max(box.x1, v.x);
+          box.y0 = Math.min(box.y0, v.y);
+          box.y1 = Math.max(box.y1, v.y);
+        }
+      }
+    }
+    return { ...st, fpvLens, ndc: box, shadowAt: propView.shadow.visible
+      ? [propView.shadow.matrix.elements[12], propView.shadow.matrix.elements[13], propView.shadow.matrix.elements[14]] : null };
+  };
   window.__predict = () => ({
     on: ui.settings.predictView !== false,
     applied: predictApplied,

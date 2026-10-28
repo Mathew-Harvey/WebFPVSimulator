@@ -173,6 +173,22 @@ export const MAPS = [
     hudScale: 3.5,
     load: () => import('./warehouse/index.js'),
   },
+  /*
+   * SUNNYFIELD, on the owner's ask of 28 October 2026 ("make a springfield
+   * map", then "build it, it should be of the same detail and polish as
+   * the japanese town"): a sunny cartoon American town of our own, life
+   * size and flown on the five inch, with the gags a town like that has
+   * and nobody's characters, names or pictures (src/maps/sunny/). Built by
+   * the same pipeline and, like the houses, off the board.
+   */
+  {
+    id: 'sunny',
+    name: 'Sunnyfield',
+    mode: 'freestyle',
+    note: 'Sunnyfield, flown on a five inch: Main Street, the giant donut, the clock tower, the gorge, the power plant and its cooling towers, the hill with the big house, the dump and the park.',
+    buildMs: MAP_BUILD_MS.sunny,
+    load: () => import('./sunny/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -187,6 +203,9 @@ export const BARDWELL_DOC_ID = 'trk-ba4dbe11';
 
 /* Thomas More's Shop's (src/maps/warehouse/yard.js), the same way. */
 export const WAREHOUSE_DOC_ID = 'trk-7a3e0f27';
+
+/* Sunnyfield's (src/maps/sunny/yard.js), the same way. */
+export const SUNNY_DOC_ID = 'trk-5a77f1e1';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

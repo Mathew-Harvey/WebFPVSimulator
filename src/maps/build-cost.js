@@ -69,4 +69,8 @@ export const MAP_BUILD_MS = {
    * more parts; measured by node scripts/shots.js when it is next run on a
    * quiet container. */
   warehouse: 1700,
+  /* Sunnyfield (src/maps/sunny/), the same pipeline. A first estimate
+   * from its twelve thousand parts against Bardwell's house; measured by
+   * node scripts/shots.js and set here when it is. */
+  sunny: 3200,
 };

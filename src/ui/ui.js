@@ -838,11 +838,13 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  * under the bar, where it is the longest.
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
-  const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse';
+  const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
+    || mapId === 'sunny';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
-        : mapId === 'warehouse' ? "Thomas's shop" : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+        : mapId === 'warehouse' ? "Thomas's shop"
+          : mapId === 'sunny' ? 'Sunnyfield' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -880,6 +882,10 @@ const BARDWELL_OFF_BOARD = "The board keeps no runs for Joshua Bardwell's house,
 
 /* Thomas More's Shop, the same way. */
 const WAREHOUSE_OFF_BOARD = "The board keeps no runs for Thomas More's Shop, so a run flown there stays here."
+  + ' Fly the town for a run that can go up.';
+
+/* Sunnyfield, the same way. */
+const SUNNY_OFF_BOARD = 'The board keeps no runs for Sunnyfield, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
 /*
@@ -4945,7 +4951,7 @@ const WAYS = [
      * pilot asks for them. See DEFAULTS.freestyleScoring. The maps are
      * named so the card says there is more than the town, and the board's
      * are counted in so a pilot knows the shelf keeps growing. */
-    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's Shop, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
+    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's Shop, Sunnyfield, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
@@ -10552,7 +10558,7 @@ export class Ui {
          * to Scored, would send them to fix something that is not the
          * reason. */
         const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
-          || this.settings.map === 'bardwell' || this.settings.map === 'warehouse';
+          || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'sunny';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -10581,6 +10587,7 @@ export class Ui {
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
                   : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
                     : this.settings.map === 'warehouse' ? WAREHOUSE_OFF_BOARD
+                    : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false

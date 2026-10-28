@@ -481,7 +481,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, sunny: 10 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -499,6 +499,7 @@ const MAP_MODULE_PREFIX = {
   heads: '/src/maps/heads/',
   bardwell: '/src/maps/bardwell/',
   warehouse: '/src/maps/warehouse/',
+  sunny: '/src/maps/sunny/',
 };
 
 /*
@@ -5563,7 +5564,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * Thomas More's Shop has its own since 2026-10-27, and the board's
    * word went out before this one. */
   const MARK_MAP_WORDS = {
-    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse',
+    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', sunny: 'sunny',
   };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
@@ -7816,6 +7817,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'warehouse') {
       notice = {
         text: "The board keeps no runs for Thomas More's Shop, so its runs stay here.",
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Sunnyfield: SUNNY_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'sunny') {
+      notice = {
+        text: 'The board keeps no runs for Sunnyfield, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

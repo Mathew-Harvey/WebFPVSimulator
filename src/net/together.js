@@ -375,6 +375,11 @@ function thumbOf(room) {
     : `${board}/api/tracks/${encodeURIComponent(room.map)}/thumb`;
 }
 
+/* The overview's panels: all of them, the clean feed's strip, nothing. */
+const OV_HUDS = Object.freeze(['full', 'strip', 'none']);
+/* The trail lengths' names, in src/render/trails.js TRAIL_LENGTHS order. */
+const OV_TRAILS = Object.freeze(['Off', 'Short', 'Long', 'Whole lap']);
+
 export function fmtMs(ms) {
   if (!(ms > 0)) {
     return '';
@@ -407,6 +412,9 @@ function loadStore() {
          * watching one: each once, ever. */
         watchTaught: raw.watchTaught === true,
         watchRode: raw.watchRode === true,
+        /* Shown the overview, and told it exists while following: once. */
+        overviewTaught: raw.overviewTaught === true,
+        overviewOffered: raw.overviewOffered === true,
       };
     }
   } catch (e) {
@@ -414,6 +422,7 @@ function loadStore() {
   }
   return {
     avatar: null, met: false, consent: false, taught: false, watchTaught: false, watchRode: false,
+    overviewTaught: false, overviewOffered: false,
   };
 }
 
@@ -535,6 +544,9 @@ export function createTogether(shell) {
    * steers; and since when the flight has been on screen, and when the
    * callout that says watching exists last looked for somebody to name. */
   let watching = 0;
+  /* In the overview: the free camera over the field (src/render/
+   * overviewcam.js), with its race board over it. */
+  let overviewing = false;
   /* Who that is, kept to find them again after a deploy (rewatch), and
    * until when to wait for them while they are not back. */
   let watchWho = null;
@@ -3180,6 +3192,9 @@ export function createTogether(shell) {
             watchList().length && !racingNow() && canPauseToWatch() ? h('button.btn.ghost', {
               type: 'button', 'data-k': 'watch', on: { click: () => startWatch(firstToWatch()) },
             }, h('span', { text: 'Watch a pilot' }), h('small', { text: `${watchList().length} flying` })) : null,
+            canOverview() ? h('button.btn.ghost', {
+              type: 'button', 'data-k': 'overview', on: { click: () => startOverview() },
+            }, h('span', { text: 'Overview' }), h('small', { text: 'Whole field' })) : null,
             btn('Invite pilots', 'ghost', () => sheetShare(), { 'data-k': 'invite' }),
             isHost() ? btn('Room settings', 'ghost', () => sheetSettings(), { 'data-k': 'settings' }) : null,
             voteRows(),
@@ -3759,7 +3774,11 @@ export function createTogether(shell) {
    * screen (the owner's ask of 2026-10-28: a banner was not clear). */
   const voteBox = h('div.tg-vote');
   voteBox.hidden = true;
-  layer.append(chip, pit, standBox, posBox, roster, logBox, talk, helloBox, qbar, bannerBox, countBox, voteBox, watchBox, toastBox);
+  /* The overview's panels: the race board, the moments, the pilot card,
+   * the course strip, the keys. */
+  const ovBox = h('div.ovhud');
+  ovBox.hidden = true;
+  layer.append(chip, pit, standBox, posBox, roster, logBox, ovBox, talk, helloBox, qbar, bannerBox, countBox, voteBox, watchBox, toastBox);
 
   let rosterOn = false;
   let qbarTimer = null;
@@ -3816,7 +3835,7 @@ export function createTogether(shell) {
   let lineBottom = 0;
   function measureLine() {
     /* While watching, the line is the paused flight's, put away with it. */
-    const line = shell.line && !watching ? shell.line() : null;
+    const line = shell.line && !watching && !overviewing ? shell.line() : null;
     const words = line ? line.textContent : '';
     const key = `${words}|${innerWidth}x${innerHeight}`;
     if (key === lineKey) {
@@ -4180,7 +4199,9 @@ export function createTogether(shell) {
       toast('Back in the air first, then you can watch.', 'warn');
       return false;
     }
-    const first = !watching;
+    const first = !watching && !overviewing;
+    const fromOverview = overviewing;
+    endOverview();
     watching = id;
     watchWho = p;
     watchWait = 0;
@@ -4197,6 +4218,8 @@ export function createTogether(shell) {
     paintWatch();
     if (first && !store.watchRode) {
       teachWatch();
+    } else if (!fromOverview && !store.overviewOffered) {
+      offerOverview(p);
     }
     return true;
   }
@@ -4209,7 +4232,7 @@ export function createTogether(shell) {
    * landing behind a sheet would resume a flight nobody can see.
    */
   function stopWatch(now = false) {
-    const away = Boolean(watching) || Boolean(shell.watchBusy && shell.watchBusy());
+    const away = Boolean(watching) || overviewing || Boolean(shell.watchBusy && shell.watchBusy());
     if (!away) {
       return;
     }
@@ -4217,11 +4240,12 @@ export function createTogether(shell) {
       now = true;
       pausedByUs = true;
     }
-    if (!watching && !now) {
+    if (!watching && !overviewing && !now) {
       return;
     }
     watching = 0;
     watchWait = 0;
+    endOverview();
     paintWatch();
     if (!now) {
       sound('back');
@@ -4282,7 +4306,7 @@ export function createTogether(shell) {
   /* The keys for watching, in what this pilot holds. */
   function watchHint() {
     const by = hands();
-    if (by === 'keys') return '← → another pilot · V or Esc: back to your quad';
+    if (by === 'keys') return '← → another pilot · O overview · V or Esc: back to your quad';
     if (by === 'pad') return 'Roll left or right: another pilot · any switch: back to your quad';
     return '';
   }
@@ -4322,6 +4346,7 @@ export function createTogether(shell) {
         btn('▶', 'small ghost', () => switchWatch(1), { 'aria-label': 'Watch the next pilot', 'data-k': 'watch-next', disabled: !more })),
       h('div.wrow', null,
         hint ? h('span.whint', { text: hint }) : null,
+        btn('Overview', 'small amber', () => startOverview(), { 'data-k': 'watch-overview' }),
         btn('Back to my quad', 'small mint', () => stopWatch(), { 'data-k': 'watch-stop' })));
     watchBox.hidden = false;
   }
@@ -4415,6 +4440,523 @@ export function createTogether(shell) {
       watchPaintAt = now;
       paintWatch();
     }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* The overview                                                      */
+  /* ---------------------------------------------------------------- */
+
+  /*
+   * THE OVERVIEW is the whole field from a free camera (the owner's ask of
+   * 28 October 2026): every quad with a long trail in its livery, a name
+   * tag on every pilot, and over it the panels a commentator calls a race
+   * from. As with watching, this pilot's flight pauses where it is and
+   * the others see them as in the menus. The camera, its keys and the
+   * trails are the shell's (src/main.js, src/render/overviewcam.js); the
+   * panels are here, painted four times a second and never in a frame.
+   *
+   * Names are the room's: a listed, school safe or streamer room shows
+   * the handles it shows everywhere else, and the moments are lines this
+   * file writes, never anything a pilot typed.
+   */
+  const OV_PAINT_MS = 250;
+  const OV_MOMENT_MS = 9000;
+  let ovHud = 0;
+  let ovKeysOpen = false;
+  let ovPaintAt = 0;
+  let ovMoments = [];
+  let ovPrev = null;
+
+  function canOverview() {
+    return Boolean(session && session.inRoom && sameWorld(room())) && !racingNow() && canPauseToWatch();
+  }
+
+  function startOverview() {
+    if (!session || !session.inRoom) {
+      return false;
+    }
+    if (racingNow()) {
+      toast('Not while you race. Watch from the pit.', 'warn');
+      return false;
+    }
+    if (!sameWorld(room())) {
+      toast(`Fly ${room().mapName} first, then you can watch it.`, 'warn');
+      return false;
+    }
+    if (overviewing) {
+      return true;
+    }
+    if (!canPauseToWatch() || !shell.overview) {
+      toast('Back in the air first, then you can watch.', 'warn');
+      return false;
+    }
+    pausedByUs = false;
+    if (!modal.hidden) {
+      closeAll();
+    }
+    if (!shell.overview()) {
+      toast('Back in the air first, then you can watch.', 'warn');
+      return false;
+    }
+    const wasWatching = Boolean(watching);
+    overviewing = true;
+    watching = 0;
+    watchWait = 0;
+    paintWatch();
+    talk.hidden = true;
+    qbar.hidden = true;
+    bannerBox.replaceChildren();
+    layer.classList.add('ov');
+    ovKeysOpen = false;
+    ovMoments = [];
+    ovPrev = null;
+    watchPadWait = true;
+    sound(wasWatching ? 'move' : 'select');
+    paintOverview(performance.now());
+    if (!store.overviewTaught) {
+      teachOverview();
+    }
+    return true;
+  }
+
+  /* The panels put away; the shell's camera is the caller's business. */
+  function endOverview() {
+    if (!overviewing) {
+      return;
+    }
+    overviewing = false;
+    ovKeysOpen = false;
+    layer.classList.remove('ov', 'ovclean');
+    document.documentElement.classList.remove('tg-ovclean');
+    ovBox.hidden = true;
+    ovBox.replaceChildren();
+    if (shell.overviewPlaces) {
+      shell.overviewPlaces(null);
+    }
+  }
+
+  function teachOverview() {
+    store.overviewTaught = true;
+    save();
+    const by = hands();
+    const how = by === 'keys'
+      ? 'WASD moves the camera, right drag looks round, the wheel zooms. Click a name to pick a pilot, F rides behind them, and O or Esc brings you home to fly on.'
+      : by === 'pad'
+        ? 'The right stick slides the camera, the left climbs and turns. The select switch rides behind the pilot picked, back brings you home.'
+        : 'Drag to move, pinch to zoom, twist to turn. Tap a name to pick a pilot, tap again to ride behind them, and Home brings you back.';
+    banner(store.avatar, 'hello', 'Overview', `Your quad waits where you left it. ${how}`, 'mint', { ms: 9000 });
+  }
+
+  /* While following somebody, once ever: the overview is one key away. */
+  function offerOverview(p) {
+    store.overviewOffered = true;
+    save();
+    if (hands() !== 'keys') {
+      return;
+    }
+    banner(p.avatar, 'laugh', 'New: overview', 'Press O to lift out of the chase and see the whole field from above. F from there drops you back behind whoever you pick.', 'amber', { ms: 8000 });
+  }
+
+  /* The pilots the overview can pick, in their order on the course. */
+  function ovPilots() {
+    const list = watchList();
+    const field = shell.field ? shell.field() : null;
+    if (!field) {
+      return list;
+    }
+    const rc = race && race.race;
+    const order = field.order(list.map((p) => p.id), rc && rc.rows);
+    return order.map((id) => list.find((p) => p.id === id)).filter(Boolean);
+  }
+
+  function ovPicked() {
+    const st = shell.overviewState ? shell.overviewState() : null;
+    return st ? st.pick : 0;
+  }
+
+  function ovPick(id) {
+    if (shell.overviewDo) {
+      shell.overviewDo('pick', id);
+    }
+    sound('move');
+    paintOverview(performance.now());
+  }
+
+  function ovPickStep(dir) {
+    const list = ovPilots();
+    if (!list.length) {
+      toast('Nobody else is flying right now.', 'warn');
+      return;
+    }
+    const i = list.findIndex((p) => p.id === ovPicked());
+    const next = list[i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length];
+    ovPick(next.id);
+  }
+
+  function ovFollow() {
+    const id = ovPicked() || firstToWatch();
+    if (!id) {
+      toast('Nobody else is flying right now.', 'warn');
+      return;
+    }
+    startWatch(id);
+  }
+
+  function ovKeep() {
+    let id = ovPicked();
+    if (!id) {
+      const list = ovPilots();
+      id = list.length ? list[0].id : 0;
+      if (!id) {
+        toast('Nobody else is flying right now.', 'warn');
+        return;
+      }
+      shell.overviewDo('pick', id);
+    }
+    const st = shell.overviewState();
+    shell.overviewDo('keep', !st.keep);
+    sound('move');
+    paintOverview(performance.now());
+  }
+
+  function ovTrails() {
+    shell.overviewDo('trails');
+    const st = shell.overviewState();
+    toast(`Trails: ${OV_TRAILS[st.trail]}`);
+    paintOverview(performance.now());
+  }
+
+  function ovHudStep() {
+    ovHud = (ovHud + 1) % OV_HUDS.length;
+    ovKeysOpen = false;
+    paintOverview(performance.now());
+  }
+
+  function ovKeysToggle() {
+    ovKeysOpen = !ovKeysOpen;
+    if (ovKeysOpen) {
+      ovHud = 0;
+    }
+    sound(ovKeysOpen ? 'select' : 'back');
+    paintOverview(performance.now());
+  }
+
+  /* A tap on a name: pick them, and on the one picked, ride behind. */
+  function overviewTapped(id) {
+    if (!overviewing || !id) {
+      return;
+    }
+    if (id === ovPicked()) {
+      startWatch(id);
+    } else {
+      ovPick(id);
+    }
+  }
+
+  /* Every key stops here but the function keys, as while watching: the
+   * pause menu is under the camera, hidden. WASD, Space, C and Shift are
+   * read as held by the shell. */
+  function overviewKey(code, repeat) {
+    if (/^F\d+$/.test(code)) {
+      return false;
+    }
+    if (repeat) {
+      return true;
+    }
+    const digit = /^Digit([1-7])$/.exec(code);
+    if (code === 'Escape' || code === 'Backspace') {
+      if (ovKeysOpen) ovKeysToggle();
+      else stopWatch();
+    } else if (code === 'KeyO') {
+      stopWatch();
+    } else if (code === 'KeyF' || code === 'KeyV') {
+      ovFollow();
+    } else if (code === 'KeyK') {
+      ovKeep();
+    } else if (code === 'ArrowLeft' || code === 'ArrowUp') {
+      ovPickStep(-1);
+    } else if (code === 'ArrowRight' || code === 'ArrowDown') {
+      ovPickStep(1);
+    } else if (code === 'KeyT') {
+      ovTrails();
+    } else if (code === 'KeyH') {
+      ovHudStep();
+    } else if (code === 'KeyM') {
+      shell.overviewDo('map');
+    } else if (code === 'KeyR') {
+      shell.overviewDo('whole');
+    } else if (code === 'Slash') {
+      ovKeysToggle();
+    } else if (digit && session && session.inRoom) {
+      sayQuick(Number(digit[1]) - 1);
+    } else if (code === 'Enter' && session && session.inRoom) {
+      sheetScene();
+    } else if (code === 'Tab') {
+      toggleRoster();
+    } else if (code === 'KeyQ') {
+      toggleQbar();
+    }
+    return true;
+  }
+
+  /* The pad's switches: select rides behind the pilot picked, back goes
+   * home. The sticks are the camera's (the shell reads them). */
+  function overviewPad(nav) {
+    if (watchPadWait) {
+      if (!nav.select && !nav.back) {
+        watchPadWait = false;
+      }
+    } else if (nav.select && !padPrev.select) {
+      padHands = true;
+      ovFollow();
+      padHolding = true;
+    } else if (nav.back && !padPrev.back) {
+      padHands = true;
+      stopWatch();
+      padHolding = true;
+    }
+    padPrev = { ...nav };
+  }
+
+  function overviewTick(now) {
+    if (!overviewing) {
+      return;
+    }
+    if (!shell.overviewing || !shell.overviewing()) {
+      endOverview();
+      return;
+    }
+    if (now - ovPaintAt > OV_PAINT_MS) {
+      paintOverview(now);
+    }
+  }
+
+  /* Seconds, for a gap or a lap. */
+  function ovSecs(ms) {
+    return `${(ms / 1000).toFixed(2)}`;
+  }
+
+  /* What changed since the last paint, as the room would say it: a best
+   * lap in the room, a finish, a crash in the race, a place taken. */
+  function ovNoticed(now, rows, order, field) {
+    const prev = ovPrev;
+    const best = new Map();
+    const done = new Set();
+    const cuts = new Map();
+    let roomBest = 0;
+    for (const r of rows) {
+      if (r.best) {
+        best.set(r.id, r.best);
+        if (!roomBest || r.best < roomBest) roomBest = r.best;
+      }
+      if (r.done) done.add(r.id);
+    }
+    for (const id of order) {
+      const pr = field ? field.progress(id) : null;
+      if (pr) cuts.set(id, pr.cuts);
+    }
+    const live = race && race.race && race.race.phase === 'live';
+    if (prev && prev.n === (race && race.race ? race.race.n : 0)) {
+      const say = (id, text, tone = '') => {
+        const p = pilot(id);
+        if (p) ovMoments.unshift({ id, handle: p.handle, avatar: p.avatar, text, tone, at: now });
+      };
+      for (const [id, ms] of best) {
+        if (prev.best.get(id) !== ms && ms === roomBest) say(id, `best lap in the room, ${fmtMs(ms)}`, 'rec');
+      }
+      for (const id of done) {
+        if (!prev.done.has(id)) say(id, `finished, P${order.indexOf(id) + 1}`);
+      }
+      if (live) {
+        for (const [id, n] of cuts) {
+          if (prev.cuts.has(id) && n > prev.cuts.get(id)) {
+            const pr = field.progress(id);
+            say(id, pr && pr.started ? `crashed after gate ${pr.passed}` : 'crashed', 'bad');
+          }
+        }
+        for (let i = 0; i < Math.min(order.length, prev.order.length); i += 1) {
+          const id = order[i];
+          const was = prev.order.indexOf(id);
+          const lost = prev.order[i];
+          if (was > i && lost !== id && pilot(lost)) {
+            say(id, `takes P${i + 1} from ${pilot(lost).handle}`);
+            break;
+          }
+        }
+      }
+    }
+    ovMoments = ovMoments.filter((m) => now - m.at < OV_MOMENT_MS).slice(0, 3);
+    ovPrev = { n: race && race.race ? race.race.n : 0, best, done, cuts, order: order.slice() };
+  }
+
+  function paintOverview(now) {
+    ovPaintAt = now;
+    const r = room();
+    if (!overviewing || !r) {
+      ovBox.hidden = true;
+      return;
+    }
+    const st = shell.overviewState();
+    const field = shell.field ? shell.field() : null;
+    const rc = race && race.race;
+    const inRace = Boolean(rc && rc.rows && rc.rows.length && (rc.phase === 'live' || rc.phase === 'count' || rc.phase === 'results'));
+    const rows = inRace ? rc.rows : [];
+    const flying = watchList();
+    const ids = inRace ? rows.map((x) => x.id).filter((id) => pilot(id)) : flying.map((p) => p.id);
+    const order = field ? field.order(ids, inRace ? rows : null) : ids;
+    ovNoticed(now, rows, order, field);
+    const places = new Map(order.map((id, i) => [id, i + 1]));
+    if (shell.overviewPlaces) {
+      shell.overviewPlaces(inRace ? places : null);
+    }
+    const rowOf = new Map(rows.map((x) => [x.id, x]));
+    const gates = field && field.course ? field.course.length : 0;
+    let roomBest = 0;
+    for (const x of rows) if (x.best && (!roomBest || x.best < roomBest)) roomBest = x.best;
+    const lapsOf = (id) => {
+      const x = rowOf.get(id);
+      return x ? x.laps : 0;
+    };
+    const gapOf = (id, i) => {
+      if (i === 0 || !field) return '';
+      const x = rowOf.get(id);
+      if (x && x.dnf) return 'Out';
+      const lead = rowOf.get(order[0]);
+      if (x && lead && lead.laps > x.laps + (x.done ? 0 : 1)) return `+${lead.laps - x.laps} lap${lead.laps - x.laps > 1 ? 's' : ''}`;
+      const pr = field.progress(id);
+      return pr && pr.gap > 0 ? `+${ovSecs(pr.gap)}` : '';
+    };
+    const hud = OV_HUDS[ovHud];
+    const pick = st.pick;
+    const kids = [];
+    const by = hands();
+    if (hud === 'full' && !ovKeysOpen) {
+      /* The top: what this is, where, and where the race stands. */
+      const chips = [h('span.ovchip', { text: r.mapName })];
+      if (inRace) {
+        const lapNow = Math.min(rc.laps, Math.max(1, ...order.map((id) => lapsOf(id) + 1)));
+        chips.push(h('span.ovchip.amber', { text: rc.phase === 'results' ? 'Race · Results' : rc.phase === 'count' ? 'Race · Starting' : `Race · Lap ${lapNow} of ${rc.laps}` }));
+        const el = race.elapsed();
+        if (el > 0 && rc.phase === 'live') chips.push(h('span.ovchip.dark', { text: fmtMs(el) }));
+      } else {
+        chips.push(h('span.ovchip.amber', { text: `${flying.length} flying` }));
+      }
+      chips.push(h('span.ovchip', { text: `Trails: ${OV_TRAILS[st.trail].toLowerCase()}` }));
+      if (st.keep && pilot(pick)) chips.push(h('span.ovchip.amber', { text: `Keeping ${pilot(pick).handle} in view` }));
+      kids.push(h('div.ovtop', null,
+        h('span.kicker', { text: `Room · ${r.name}` }),
+        lettered('OVERVIEW', [INKS.cream], 40, 360, 'tg-title ovtitle'),
+        h('div.ovchips', null, chips)));
+      /* The board: the race's order, or who is flying. */
+      const head = inRace
+        ? h('tr', null, h('th'), h('th', { text: 'Pilot' }), h('th', { text: 'Lap' }), gates ? h('th', { text: 'Gate' }) : null, h('th.r', { text: 'Gap' }), h('th.r', { text: 'Best' }))
+        : h('tr', null, h('th', { text: 'Pilot' }), h('th.r', { text: 'Speed' }));
+      const body = order.map((id, i) => {
+        const p = pilot(id);
+        if (!p) return null;
+        const pr = field ? field.progress(id) : null;
+        const x = rowOf.get(id);
+        const cls = id === pick ? 'tr.sel' : 'tr';
+        const nameCell = h('td.n', null, h('span.sw', { style: { background: liveryCss(p.avatar, id) } }), h('span', { text: p.handle }));
+        const pickRow = { on: { click: () => (id === pick ? startWatch(id) : ovPick(id)) }, 'data-k': `ov-row-${id}` };
+        if (!inRace) {
+          return h(cls, pickRow, nameCell, h('td.r', { text: pr ? `${Math.round(pr.speed * 3.6)} km/h` : '' }));
+        }
+        const lap = x && x.done ? 'Done' : `L${Math.min(rc.laps, (x ? x.laps : 0) + 1)}`;
+        return h(cls, pickRow,
+          h('td.p', { text: String(i + 1) }), nameCell, h('td', { text: lap }),
+          gates ? h('td', { text: pr && pr.started ? `${pr.passed}/${gates}` : '–' }) : null,
+          h('td.r.gap', { text: gapOf(id, i) }),
+          h(`td.r${x && x.best && x.best === roomBest ? '.best' : ''}`, { text: x && x.best ? fmtMs(x.best) : '–' }));
+      });
+      kids.push(h('div.ovboard.halftone', null,
+        h('div.ovbhead', null, lettered(inRace ? 'RACE' : 'PILOTS', [INKS.cream], 24, 200, 'tg-title ovbtitle'), h('span.kicker', { text: 'Live' })),
+        body.length ? h('table', null, h('thead', null, head), h('tbody', null, body)) : h('p.help', { text: 'Nobody else is flying right now. They show here the moment they take off.' })));
+      /* The moments. */
+      if (ovMoments.length) {
+        kids.push(h('div.ovmoments', null, ovMoments.map((m) => h(`div${m.tone ? `.${m.tone}` : ''}`, null,
+          face(m.avatar, m.tone === 'bad' ? 'oops' : 'laugh', 24), h('span', null, h('b', { text: m.handle }), ` ${m.text}`)))));
+      }
+      /* The pilot picked. */
+      const pp = pilot(pick);
+      if (pp) {
+        const pr = field ? field.progress(pick) : null;
+        const x = rowOf.get(pick);
+        const up = pr && shell.heightAt ? shell.heightAt(pr.x, pr.y, pr.z) : 0;
+        const thisLap = inRace && pr && pr.started && field ? field.clock(now) - pr.lapAt : 0;
+        const stat = (k, v, cls = '') => h(`span${cls}`, null, h('small', { text: k }), v);
+        kids.push(h('div.ovcard.halftone', null,
+          h('div.ovface', null, face(pp.avatar, pp.away ? 'calm' : 'laugh', 64)),
+          h('div.ovcardr', null,
+            h('div.ovcardn', null, plate(pp.handle, pp.avatar, pick), inRace && places.get(pick) ? h('span.ovchip.dark', { text: `P${places.get(pick)}` }) : null),
+            h('div.ovstats', null,
+              stat('Speed', pr ? `${Math.round(pr.speed * 3.6)} km/h` : '–'),
+              stat('Height', pr ? `${Math.max(0, up).toFixed(1)} m` : '–'),
+              inRace ? stat('This lap', thisLap > 0 ? fmtMs(thisLap) : '–') : null,
+              inRace ? stat('Best', x && x.best ? fmtMs(x.best) : '–', x && x.best && x.best === roomBest ? '.best' : '') : null)),
+          by === 'touch' ? null : h('div.ovacts', null,
+            btn('Follow', 'small mint', () => startWatch(pick), { 'data-k': 'ov-follow' }),
+            btn(st.keep ? 'Let go' : 'Keep in view', 'small ghost', () => ovKeep(), { 'data-k': 'ov-keep' }))));
+      }
+      /* Where everyone is on the lap. */
+      if (inRace && gates && order.length) {
+        const ticks = [];
+        for (let g = 0; g <= gates; g += 1) ticks.push(h(`span.tick${g === 0 || g === gates ? '.big' : ''}`, { style: { left: `${(g / gates) * 100}%` } }));
+        const dots = order.slice().reverse().map((id) => {
+          const p = pilot(id);
+          const pr = field.progress(id);
+          if (!p || !pr) return null;
+          const at = pr.started ? Math.min(1, pr.passed / gates) : 0;
+          return h(`span.dot${id === pick ? '.sel' : ''}`, { style: { left: `${at * 100}%`, background: liveryCss(p.avatar, id) }, text: String(places.get(id)) });
+        });
+        kids.push(h('div.ovstrip.halftone', null,
+          h('div.lab', null, h('span', { text: 'On the track' }), h('span', { text: 'Start' })),
+          h('div.line', null, h('span.rail'), ticks, dots)));
+      }
+      const hint = by === 'keys'
+        ? (st.keep ? '← → next pilot · right drag orbit · wheel closer · WASD lets go · F follow · ? keys · O Esc back to my quad'
+          : 'WASD move · Space C up, down · right drag look · wheel zoom · click a name · F follow · T trails · H hide · ? keys · O Esc back to my quad')
+        : by === 'pad' ? 'Right stick slides · left stick climbs and turns · select follows · back goes home' : 'Drag to move · pinch to zoom · twist to turn · tap a name';
+      kids.push(h('div.ovhint', { text: hint }));
+      if (by !== 'keys') {
+        kids.push(h('div.ovtouch', null,
+          btn('Trails', 'small ghost', () => ovTrails(), { 'data-k': 'ov-trails' }),
+          btn('Hide', 'small ghost', () => ovHudStep(), { 'data-k': 'ov-hide' }),
+          pp ? btn('Follow', 'small mint', () => startWatch(pick), { 'data-k': 'ov-follow-t' }) : null,
+          btn('Home', 'small mint', () => stopWatch(), { 'data-k': 'ov-home' })));
+      }
+    } else if (hud === 'strip' && !ovKeysOpen && order.length) {
+      /* The clean feed: one strip along the foot, for a stream. */
+      kids.push(h('div.ovfeed', null,
+        inRace ? h('span.lead', { text: rc.phase === 'live' ? `Lap ${Math.min(rc.laps, Math.max(1, ...order.map((id) => lapsOf(id) + 1)))} / ${rc.laps}` : 'Race' }) : h('span.lead', { text: 'Flying' }),
+        order.slice(0, 8).map((id, i) => {
+          const p = pilot(id);
+          return p ? h('span.cell', null, inRace ? h('b', { text: String(i + 1) }) : null, h('span.sw', { style: { background: liveryCss(p.avatar, id) } }), h('span', { text: p.handle }), inRace ? h('i', { text: gapOf(id, i) }) : null) : null;
+        })));
+    }
+    if (hud !== 'full' && by !== 'keys') {
+      kids.push(h('div.ovtouch', null,
+        btn('Show', 'small ghost', () => ovHudStep(), { 'data-k': 'ov-show' }),
+        btn('Home', 'small mint', () => stopWatch(), { 'data-k': 'ov-home' })));
+    }
+    if (ovKeysOpen) {
+      const col = (t, list) => h('div.ovkcol', null, h('span.kicker', { text: t }), list.map(([k, v]) => h('div.ovk', null, h('b', { text: k }), h('span', { text: v }))));
+      kids.push(h('div.ovkeys.sheet.halftone', null,
+        h('div.ovbhead', null, lettered('CAMERA KEYS', [INKS.cream], 34, 420), btn('Back', 'small ghost', () => ovKeysToggle(), { 'data-k': 'ov-keys-back' })),
+        h('div.ovkgrid', null,
+          col('Keyboard and mouse', [['W A S D', 'Slide over the ground'], ['Space, C', 'Up, down'], ['Shift', 'Faster'], ['Right drag', 'Look round'],
+            ['Wheel', 'Zoom towards the pointer'], ['Left drag', 'Grab and drag the ground'], ['Click a name', 'Pick that pilot, click again to follow'],
+            ['F, K', 'Follow, keep in view'], ['← →', 'Next pilot'], ['R', 'Whole field again'], ['M', 'Map, straight down'],
+            ['T', 'Trails: off, short, long, whole lap'], ['H', 'Hide the boards, for a stream'], ['O, Esc', 'Back to my quad']]),
+          col('Pad and radio', [['Right stick', 'Slide'], ['Left stick', 'Climb and turn, as on a quad'], ['Select', 'Follow the pilot picked'], ['Back', 'Back to my quad']]),
+          col('Touch', [['One finger', 'Drag the ground'], ['Two fingers', 'Pinch to zoom, twist to turn, both up or down to tilt'], ['Tap a name', 'Pick, tap again to follow']])),
+        h('p.help', { text: 'The room\'s own keys still work while you watch: 1 to 7 say a quick line, Q opens the quick strip, Tab the pilots list, Enter the dialogue.' })));
+    }
+    fill(ovBox, kids);
+    ovBox.className = `ovhud ${hud}${by === 'keys' ? '' : ' thumbs'}`;
+    layer.classList.toggle('ovclean', hud !== 'full');
+    document.documentElement.classList.toggle('tg-ovclean', hud !== 'full');
+    ovBox.hidden = false;
   }
 
   /* ---------------------------------------------------------------- */
@@ -4608,6 +5150,7 @@ export function createTogether(shell) {
       payCard();
     }
     watchTick(now);
+    overviewTick(now);
     let screen = 'other';
     if (shell.flying()) screen = 'flight';
     else if (shell.paused()) screen = 'paused';
@@ -4690,6 +5233,9 @@ export function createTogether(shell) {
       }
       return true;
     }
+    if (overviewing) {
+      return overviewKey(code, repeat);
+    }
     if (watching) {
       return watchKey(code, repeat);
     }
@@ -4757,6 +5303,10 @@ export function createTogether(shell) {
       }
       return true;
     }
+    if (code === 'KeyO') {
+      startOverview();
+      return true;
+    }
     return false;
   }
 
@@ -4780,6 +5330,8 @@ export function createTogether(shell) {
       switchWatch(1);
     } else if (code === 'KeyV' || code === 'Escape' || code === 'Backspace') {
       stopWatch();
+    } else if (code === 'KeyO') {
+      startOverview();
     } else if (digit && session && session.inRoom) {
       sayQuick(Number(digit[1]) - 1);
     } else if (code === 'Enter' && session && session.inRoom) {
@@ -4819,7 +5371,7 @@ export function createTogether(shell) {
   let padHolding = false;
 
   function wantsPad() {
-    return !modal.hidden || padHolding || Boolean(watching) || Boolean(shell.watchBusy && shell.watchBusy());
+    return !modal.hidden || padHolding || Boolean(watching) || overviewing || Boolean(shell.watchBusy && shell.watchBusy());
   }
 
   /* The pad while watching: the stick across for another pilot, any
@@ -4850,6 +5402,10 @@ export function createTogether(shell) {
   function pollPad(nav, nowMs) {
     if (!nav) {
       return false;
+    }
+    if (modal.hidden && overviewing) {
+      overviewPad(nav);
+      return true;
     }
     if (modal.hidden && watching) {
       watchPad(nav);
@@ -4984,6 +5540,17 @@ export function createTogether(shell) {
     handleKey,
     wantsPad,
     pollPad,
+    /* The room's race for the overview's count: its number and GO on this
+     * page's clock, or null with none on. */
+    raceNow() {
+      const rc = race && race.race;
+      return rc && (rc.phase === 'count' || rc.phase === 'live' || rc.phase === 'results') ? { n: rc.n, go: race.goAt() } : null;
+    },
+    /* A tap on a name in the overview (src/main.js): pick, and on the
+     * pilot already picked, follow them. */
+    overviewTap(id) {
+      overviewTapped(id);
+    },
     /* Whether a room race has this pilot's run: the sim keeps its own
      * results screen out of the way, as it does for a career lesson. */
     ownsRun() {
@@ -5026,6 +5593,9 @@ export function createTogether(shell) {
         peerPoses: session ? session.peerPoses : 0,
         hands: padHands ? 'pad' : 'keys',
         watching,
+        overviewing,
+        overviewHud: overviewing ? OV_HUDS[ovHud] : '',
+        overviewKeys: overviewing && ovKeysOpen,
         muted: [...muted],
         watchTaught: store.watchTaught,
         watchRode: store.watchRode,

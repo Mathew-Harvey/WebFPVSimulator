@@ -658,12 +658,15 @@ body.career-score #career .cr-obj { top: 150px; }
    the trunk and then each branch, with the chosen part's lessons under it,
    and every page is one column. */
 @media (max-width: 760px), (max-height: 560px) {
+  /* The key row is fixed over the foot of a page that scrolls, so the page
+     ends clear of it and a key's scroll stops above it. */
+  #career .cr-screen.has-paper { padding-bottom: 52px; scroll-padding-bottom: 52px; }
   #career .cr-tree { padding-bottom: 52px; }
   #career .cr-tree-grid { display: flex; flex-direction: column; gap: 12px; height: auto; min-height: 0; }
   #career .cr-tree-key, #career .cr-sheet { max-height: none; overflow: visible; }
   #career .cr-sheet-lessons { grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
   #career .cr-links { display: none; }
-  #career .cr-part { min-height: 64px; }
+  #career .cr-part { min-height: 64px; scroll-margin-top: 16px; }
   #career .cr-tree-key, #career .cr-sheet { align-self: stretch; }
   #career .cr-cover-grid { grid-template-columns: minmax(0, 1fr); min-height: 0; }
   #career .cr-continue { min-height: clamp(240px, 60vh, 420px); }
@@ -678,8 +681,8 @@ body.career-score #career .cr-obj { top: 150px; }
   #career .cr-coach-face { width: 80px; margin: 0; }
   #career .cr-level, #career .cr-res-page { grid-template-columns: minmax(0, 1fr); }
   #career .cr-level-side, #career .cr-res-side { padding-top: 0; }
-  #career .cr-fork { grid-template-columns: minmax(0, 1fr); }
-  #career .cr-fork-side { min-height: 280px; padding-top: 64px; }
+  #career .cr-fork { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; align-content: start; }
+  #career .cr-fork-side { min-height: 0; padding-top: 64px; justify-content: flex-start; }
   #career .cr-fork-mid { width: auto; flex-direction: row; flex-wrap: wrap; }
   #career .cr-cover-balloon { padding: 14px 18px; font-size: 16px; }
   #career .cr-q { grid-template-columns: auto auto; justify-content: start; }
@@ -687,7 +690,7 @@ body.career-score #career .cr-obj { top: 150px; }
 }
 @media (max-width: 600px) {
   #career .cr-legend { display: none; }
-  #career .cr-screen.has-paper { padding-bottom: 24px; }
+  #career .cr-screen.has-paper { padding-bottom: 24px; scroll-padding-bottom: 0; }
   #career .cr-save-note { margin-left: 0; }
 }
 @media (max-height: 820px) {

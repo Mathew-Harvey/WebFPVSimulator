@@ -352,18 +352,24 @@ export class CareerScreens {
       return;
     }
     const paper = face.querySelector(':scope > .cr-paper');
-    const wins = [...face.querySelectorAll('.cr-window')];
     if (!paper) {
       return;
     }
-    if (!wins.length) {
-      paper.style.clipPath = '';
-      return;
-    }
+    /* The paper is as tall as everything on the face, not as the window,
+     * or a page that scrolls runs out of paper and shows the world under
+     * its foot. The last height is let go first, because the paper is part
+     * of what scrolls and would otherwise keep a page that got shorter
+     * as tall as it was. */
+    paper.style.height = '';
     const base = face.getBoundingClientRect();
     const W = Math.max(1, base.width);
     const H = Math.max(1, face.scrollHeight, base.height);
     paper.style.height = `${H}px`;
+    const wins = [...face.querySelectorAll('.cr-window')];
+    if (!wins.length) {
+      paper.style.clipPath = '';
+      return;
+    }
     const pts = ['0px 0px', `${W}px 0px`, `${W}px ${H}px`, `0px ${H}px`, '0px 0px'];
     for (const w of wins) {
       const r = w.getBoundingClientRect();
@@ -399,13 +405,16 @@ export class CareerScreens {
   setFocus(list, at = 0) {
     this.focus = list.filter(Boolean);
     this.focusAt = Math.max(0, Math.min(at, this.focus.length - 1));
-    this.paintFocus();
+    this.paintFocus(false);
   }
 
-  paintFocus() {
+  /* Only a key scrolls the page to the cursor. A page that has just opened
+   * starts at its top, so a short window reads the title before the button,
+   * and a mouse never drags the page under itself. */
+  paintFocus(scroll = true) {
     this.focus.forEach((b, i) => b.classList.toggle('is-focus', i === this.focusAt));
     const on = this.focus[this.focusAt];
-    if (on && on.scrollIntoView) {
+    if (scroll && on && on.scrollIntoView) {
       on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   }
@@ -432,7 +441,7 @@ export class CareerScreens {
       const at = this.focus.indexOf(b);
       if (at >= 0) {
         this.focusAt = at;
-        this.paintFocus();
+        this.paintFocus(false);
       }
     }));
     return list;
@@ -729,10 +738,13 @@ export class CareerScreens {
       this.sheet.style.order = String(Number(chosen.style.order) + 1);
     }
     this.paintSheet();
+    /* In the list a small window gets, the part goes to the top so its
+     * lessons, which follow it, are on the page too. The grid never scrolls. */
     const on = this.partEls.get(this.treeAt);
     if (on && on.scrollIntoView && this.zone === 'parts') {
-      on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      on.scrollIntoView({ block: 'start', inline: 'nearest' });
     }
+    this.cutWindows();
   }
 
   paintSheet() {
@@ -1007,7 +1019,10 @@ export class CareerScreens {
       const a = el('button', `cr-fork-side cr-fork-${b}`);
       a.type = 'button';
       a.append(el('span', 'cr-kick', words));
-      a.append(lettered(BRANCHES[b].title, 120, INKS.cream, 'cr-title cr-fork-title', 0.3));
+      /* A short window stacks the two ways, so the word is lettered to fit
+       * the panel's height rather than half the page's width. */
+      const px = Math.max(56, Math.min(120, Math.round(window.innerHeight * 0.13)));
+      a.append(lettered(BRANCHES[b].title, px, INKS.cream, 'cr-title cr-fork-title', 0.3));
       const list = el('ul', 'cr-fork-list');
       for (const l of lines) {
         list.append(el('li', null, l));
@@ -1065,7 +1080,9 @@ export class CareerScreens {
         b.addEventListener('click', () => {
           this.answers[q.id] = val;
           const at = this.focusAt;
+          const y = this.level.scrollTop;
           this.showLevel(this.progress, { steam });
+          this.level.scrollTop = y;
           this.setFocus(this.focus, at);
         });
         row.append(b);
@@ -1115,8 +1132,9 @@ export class CareerScreens {
       load.hidden = true;
       field.value = this.h.saveCode();
       field.select();
-      const done = () => { said.textContent = 'Copied. Paste it into Load a code on the other computer.'; };
-      const fail = () => { said.textContent = 'Selected: copy it with Ctrl and C.'; };
+      this.cutWindows();
+      const done = () => { said.textContent = 'Copied. Paste it into Load a code on the other computer.'; this.cutWindows(); };
+      const fail = () => { said.textContent = 'Selected: copy it with Ctrl and C.'; this.cutWindows(); };
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(field.value).then(done, fail);
@@ -1133,15 +1151,18 @@ export class CareerScreens {
       field.value = '';
       load.hidden = false;
       said.textContent = 'Paste a code, then Load this code. It adds to your career, and never takes a medal away.';
+      this.cutWindows();
       field.focus();
     });
     load.addEventListener('click', () => {
       said.textContent = this.h.loadCode(field.value);
+      this.cutWindows();
     });
     field.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !field.readOnly) {
         e.preventDefault();
         said.textContent = this.h.loadCode(field.value);
+        this.cutWindows();
       }
     });
     const codeRow = el('div', 'cr-row');

@@ -1120,6 +1120,89 @@
       .goat-of { font-size: 12px; letter-spacing: 0.08em; color: var(--cream); margin-top: 2px; }
       .goat-clock { font-size: clamp(16px, 1.8vw, 22px); font-weight: 800; color: var(--amber); margin-top: 6px; }
       .goat-run { font-size: 12px; letter-spacing: 0.06em; color: var(--cream); margin-top: 6px; }
+      /* DRIFT MATSURI'S CAMERA (src/ui/filmhud.js): a viewfinder over the
+         picture, because the pilot is the camera. Brackets in the corners,
+         a focus box on the car being scored, REC and the timecode top left,
+         the slate down the left under it, the callouts down the right in
+         the chase's place and hand, and the take's card in the middle at
+         the cut. The palette's: cream for type, amber for the clock, mint
+         for points, sakura red for REC. */
+      .film-hud { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      .film-hud.is-off, .film-card.is-off, .film-focus.is-off { display: none; }
+      .film-finder { position: absolute; inset: clamp(10px, 2.2vw, 28px); }
+      .film-corner { position: absolute; width: clamp(22px, 3vw, 40px); height: clamp(22px, 3vw, 40px); border: 0 solid rgba(243, 234, 212, 0.85); filter: drop-shadow(0 0 1px rgba(8, 12, 9, 0.9)); }
+      .film-corner.is-tl { left: 0; top: 0; border-left-width: 3px; border-top-width: 3px; }
+      .film-corner.is-tr { right: 0; top: 0; border-right-width: 3px; border-top-width: 3px; }
+      .film-corner.is-bl { left: 0; bottom: 0; border-left-width: 3px; border-bottom-width: 3px; }
+      .film-corner.is-br { right: 0; bottom: 0; border-right-width: 3px; border-bottom-width: 3px; }
+      .film-focus {
+        position: fixed; left: 50%; top: 50%; width: clamp(54px, 7vw, 96px); height: clamp(40px, 5vw, 68px);
+        margin: calc(clamp(40px, 5vw, 68px) / -2) 0 0 calc(clamp(54px, 7vw, 96px) / -2);
+        border: 2px solid rgba(243, 234, 212, 0.7); border-radius: 3px;
+        box-shadow: 0 0 0 1px rgba(8, 12, 9, 0.6);
+      }
+      .film-focus.is-good { border-color: var(--mint); }
+      .film-rec {
+        position: absolute; left: clamp(26px, 4vw, 54px); top: clamp(22px, 3.4vw, 44px);
+        display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: 0.12em; color: var(--cream);
+        font-size: clamp(13px, 1.5vw, 17px);
+      }
+      .film-rec-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--slate); box-shadow: 0 0 0 2px rgba(8, 12, 9, 0.8); }
+      .film-rec.is-rec .film-rec-dot { background: #ff4a5c; animation: film-blink 1s steps(2, jump-none) infinite; }
+      .film-tc { font-variant-numeric: tabular-nums; color: var(--amber); margin-left: 4px; }
+      .film-tc.is-late { color: #ff7d96; }
+      @keyframes film-blink { from { opacity: 1; } to { opacity: 0.25; } }
+      .film-slate {
+        position: absolute; left: clamp(26px, 4vw, 54px); top: calc(clamp(22px, 3.4vw, 44px) + 34px);
+        display: flex; flex-direction: column; align-items: flex-start; gap: 3px; line-height: 1.05;
+        max-width: 30vw;
+      }
+      .film-take { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--sakura); font-weight: 800; }
+      .film-subject { font-size: clamp(15px, 1.7vw, 20px); font-weight: 800; font-style: italic; color: var(--cream); margin-bottom: 3px; }
+      .film-subject.is-none { color: var(--slate); }
+      .film-bars { display: flex; flex-direction: column; gap: 3px; }
+      .film-bar { display: flex; align-items: center; gap: 8px; }
+      .film-bar-label { width: 48px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cream); font-weight: 700; }
+      .film-bar-track { position: relative; width: clamp(80px, 9vw, 120px); height: 7px; background: rgba(8, 12, 9, 0.55); border: 1px solid rgba(243, 234, 212, 0.55); border-radius: 2px; overflow: hidden; }
+      .film-bar-fill { position: absolute; inset: 0; background: var(--mint); transform-origin: left center; transform: scaleX(0); }
+      .film-bar-fill.is-low { background: var(--amber); }
+      .film-chips { display: flex; gap: 6px; margin-top: 4px; min-height: 18px; }
+      .film-chip { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; color: #0b1116; }
+      .film-chip.is-tandem { background: var(--amber); }
+      .film-chip.is-zone { background: var(--sakura); }
+      .film-points { font-size: clamp(30px, 3.6vw, 44px); font-weight: 800; font-style: italic; color: var(--mint); margin-top: 2px; font-variant-numeric: tabular-nums; }
+      .film-best { font-size: 12px; letter-spacing: 0.08em; color: var(--cream); }
+      .film-card {
+        position: absolute; left: 50%; top: 18%; transform: translateX(-50%) rotate(-1.5deg);
+        min-width: 260px; padding: 14px 22px 16px; display: flex; flex-direction: column; gap: 3px;
+        background: #f6efdc; color: #0b1116; border: 3px solid #0b1116; box-shadow: 7px 8px 0 #0b1116;
+        background-image: repeating-linear-gradient(-45deg, #0b1116 0 14px, #f6efdc 14px 28px);
+        background-size: 100% 16px; background-repeat: no-repeat; padding-top: 26px;
+      }
+      .film-card-head { display: flex; align-items: center; padding-right: 64px; }
+      .film-card-grade {
+        position: absolute; right: -18px; top: 6px;
+        width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        font-size: 40px; font-weight: 900; font-style: italic; color: #f6efdc; background: #d8333d;
+        border: 3px solid #0b1116; transform: rotate(-12deg);
+      }
+      .film-card-grade.is-s { background: #e0a21c; }
+      .film-card-grade.is-a { background: #d8333d; }
+      .film-card-grade.is-b { background: #2e4382; }
+      .film-card-grade.is-c, .film-card-grade.is-d { background: #6b6f7a; }
+      .film-card-points { font-size: 38px; font-weight: 900; font-style: italic; line-height: 1; }
+      .film-card-why { font-size: 12px; color: #4a4560; margin-bottom: 6px; }
+      .film-card-line { display: flex; justify-content: space-between; gap: 24px; font-size: 14px; border-bottom: 1px dashed rgba(11, 17, 22, 0.25); padding: 1px 0; }
+      .film-card-label { letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; font-weight: 700; }
+      .film-card-value { font-weight: 800; font-variant-numeric: tabular-nums; }
+      .film-card-best { margin-top: 6px; font-weight: 800; color: #d8333d; }
+      .film-card-next { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; }
+      @media (max-height: 560px) {
+        .film-slate { top: calc(clamp(22px, 3.4vw, 44px) + 26px); }
+        .film-bars { display: none; }
+        .film-card { top: 8%; transform: translateX(-50%) scale(0.85); }
+      }
+      @media (prefers-reduced-motion: reduce) { .film-rec.is-rec .film-rec-dot { animation: none; } }
       /* THE YARD TRACK (src/ui/yardhud.js): near a house map's track, its
          name, the lap clock in amber, the gate wanted next and the last and
          best laps, top middle under the launch banner's line; nothing away

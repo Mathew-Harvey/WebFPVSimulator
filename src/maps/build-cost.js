@@ -72,4 +72,7 @@ export const MAP_BUILD_MS = {
   /* The 90%er goat herding map (src/maps/goats/): Heads' house and the
    * neighbourhood round it. An estimate until it is measured, below. */
   goats: 3800,
+  /* Drift Matsuri (src/maps/drift/): a plot of trees and a festival round a
+   * drift course. An estimate until it is measured. */
+  drift: 2600,
 };

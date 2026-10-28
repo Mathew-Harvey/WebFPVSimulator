@@ -2889,9 +2889,11 @@ export async function boot({ loading, bootStart, mapId }) {
     shadow: false,
     tilt: 0,
     /* The glass, not the mount's pivot: the props are centimetres away,
-     * so the 24 mm between the two decides how much of them shows. */
-    fwd: simLenToWorld(CAMERA_LENS_FORWARD),
-    up: simLenToWorld(CAMERA_LENS_UP),
+     * so the 24 mm between the two decides how much of them shows. World
+     * metres, so set at each placing (placePropView): a number taken here
+     * at boot kept the boot's world scale after the quad picker moved it. */
+    fwd: 0,
+    up: 0,
     height: (x, z, fromY) => view.height(x, z, fromY),
   };
   /*
@@ -2933,6 +2935,8 @@ export async function boot({ loading, bootStart, mapId }) {
     o.craft = shell.quad;
     o.discs = shell.discs;
     o.tilt = cameraTiltRad(camTilt);
+    o.fwd = simLenToWorld(CAMERA_LENS_FORWARD);
+    o.up = simLenToWorld(CAMERA_LENS_UP);
     propView.update(o);
   }
   const ghostSample = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
@@ -3644,8 +3648,9 @@ export async function boot({ loading, bootStart, mapId }) {
     overviewState: () => ({
       pick: ovPick, keep: ovKeep, trail: ovTrail, flying: Boolean(watchCam && watchCam.on && ovOn),
     }),
-    /* The pilot's height over whatever is under them, for the pilot card. */
-    heightAt: (x, y, z) => (view ? y - view.height(x, z, y, y) : 0),
+    /* The pilot's height over whatever is under them, for the pilot card,
+     * in real metres as the OSD prints its own (hudLifeScale). */
+    heightAt: (x, y, z) => (view ? (y - view.height(x, z, y, y)) / hudLifeScale() : 0),
     /* Places on the course, by id, for the name tags while watching. */
     overviewPlaces: (places) => {
       ovPlaces = places;
@@ -3773,6 +3778,8 @@ export async function boot({ loading, bootStart, mapId }) {
       mpAway = !flying;
     }
     if (ovField) {
+      /* Its speeds in real metres, as the OSD's (FieldWatch.life). */
+      ovField.setLife(hudLifeScale());
       /* The trails are this room's on this world: another of either
        * starts them again. */
       const fieldKey = `${room.code}|${room.map}|${same ? 1 : 0}`;
@@ -7282,6 +7289,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (typeof shell.swapCraft === 'function') {
       shell.swapCraft(runAirframe);
     }
+    /* The ghost is built once, at boot, at the boot's scale (worldScale in
+     * src/render/herocraft.js); the craft swapped above is built again. */
+    ghostRig.group.scale.setScalar(1 / WORLD_SCALE);
     return true;
   }
 
@@ -13366,6 +13376,7 @@ export async function boot({ loading, bootStart, mapId }) {
       previousMs: previous ? previous.durationMs : null,
       visible: ghostRig.group.visible,
       position: ghostRig.group.position.toArray(),
+      scale: ghostRig.group.scale.x,
       gapMs: ghostGap ? ghostGap.deltaMs : null,
       boardTimes: (ghostBoardTimes || []).length,
     };
@@ -15227,6 +15238,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (ovOn && ovCam) {
       overviewFrame(nowWall);
     }
+    /* The chase rig stands as far back as the quad is drawn big: see size
+     * in src/render/watchcam.js. */
+    watchCam.size = simLenToWorld(1);
     const phase = watchCam.frame(shell.camera, watchId && watchSeen ? watchPose : null, nowWall, watchWorld, watchHome);
     if (ovOn && ovTrails) {
       overviewTrails(nowWall);

@@ -35,9 +35,12 @@
  * behind a building is what a name tag is for.
  *
  * Whoop rooms add a duct round each prop, so a whoop room reads as
- * whoops. Both are drawn at the five inch's size, because whoop maps are
+ * whoops. Both are modelled at the five inch's size, because whoop maps are
  * built at MICRO_SCALE and the whoop there is five inch sized
- * (configs/airframes.js).
+ * (configs/airframes.js), and drawn at 1 / WORLD_SCALE of it, as the
+ * pilot's own craft is: since the quad picker (2026-10-28) a room on a
+ * house can fly five inches, drawn 3.5 times larger, and one on the town
+ * whoops, drawn 3.43 times smaller.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -58,6 +61,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LIVERIES, liveryIndex } from '../net/avatar.js';
+import { WORLD_SCALE } from './frame.js';
 
 /* The five inch's own numbers (configs/airframes.js), not the collider's
  * live ones, which follow whatever this pilot is flying. */
@@ -405,7 +409,7 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
   const m4 = new THREE.Matrix4();
   const p = new THREE.Vector3();
   const q = new THREE.Quaternion();
-  const one = new THREE.Vector3(1, 1, 1);
+  const drawn = new THREE.Vector3(1, 1, 1);
   const colour = new THREE.Color();
   let n = 0;
   let nd = 0;
@@ -445,7 +449,8 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
     }
     p.set(pose.px, pose.py, pose.pz);
     q.set(pose.qx, pose.qy, pose.qz, pose.qw);
-    m4.compose(p, q, one);
+    drawn.setScalar(1 / WORLD_SCALE);
+    m4.compose(p, q, drawn);
     body.setMatrixAt(n, m4);
     body.setColorAt(n, colour.setHex(livery));
     if (pose.spinning) {

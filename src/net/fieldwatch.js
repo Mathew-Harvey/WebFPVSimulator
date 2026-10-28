@@ -81,6 +81,17 @@ export class FieldWatch {
     this.raceN = 0;
     this.goAt = 0;
     this.firsts = new Map();
+    /* World metres to a real metre where the room flies: the map's own
+     * multiple of life size (hudLifeScale in src/main.js), 3.5 on a house.
+     * The poses are scene world metres, so a speed read off them is the
+     * world's until it is divided by this, and a whoop in Nick's house
+     * read three and a half times its own speed on the pilot card. */
+    this.life = 1;
+  }
+
+  /* See life above. Once a frame from the shell: a number, nothing more. */
+  setLife(k) {
+    this.life = k > 0 ? k : 1;
   }
 
   /*
@@ -282,7 +293,8 @@ export class FieldWatch {
       started: p.started,
       gap: first == null ? 0 : p.reached - first,
       reached: p.reached,
-      speed: p.speed,
+      /* Real metres a second, as the OSD prints its own. */
+      speed: p.speed / this.life,
       cuts: p.cuts,
       lapAt: p.lapAt,
       x: p.lx,

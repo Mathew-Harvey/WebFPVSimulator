@@ -150,6 +150,15 @@ export class WatchCam {
     /* A free rig to sit on instead of a quad to chase: { pos, quat, fov },
      * or null. */
     this.rig = null;
+    /*
+     * How big the quad is drawn, as a multiple of the size every length of
+     * the rig above was chosen for. 1 in every pairing that flew before the
+     * quad picker (2026-10-28); a five inch in a house built 3.5 times life
+     * size is drawn 3.5 times larger, and a whoop in the town 3.43 times
+     * smaller, so the rig stands that much further back or nearer and the
+     * picture is the same one (src/main.js sets it, simLenToWorld(1)).
+     */
+    this.size = 1;
     /* The chase rig. */
     this.seeded = false;
     this.atMs = -1;
@@ -234,25 +243,26 @@ export class WatchCam {
     this.atMs = nowMs;
     const nose = this.nose.set(0, 0, -1).applyQuaternion(this.q);
     const nl = Math.hypot(nose.x, nose.z);
-    if (!this.seeded || T.distanceToSquared(this.last) > JUMP_M * JUMP_M) {
+    const k = this.size;
+    if (!this.seeded || T.distanceToSquared(this.last) > JUMP_M * JUMP_M * k * k) {
       this.seeded = true;
       this.vel.set(0, 0, 0);
-      this.boom = BACK;
+      this.boom = BACK * k;
       if (nl > 0.05) {
         this.heading = Math.atan2(nose.x, nose.z);
       }
     } else if (dt > 0) {
-      const k = 1 - Math.exp(-dt / SPEED_MS);
+      const e = 1 - Math.exp(-dt / SPEED_MS);
       const inv = 1000 / dt;
-      this.vel.x += ((T.x - this.last.x) * inv - this.vel.x) * k;
-      this.vel.y += ((T.y - this.last.y) * inv - this.vel.y) * k;
-      this.vel.z += ((T.z - this.last.z) * inv - this.vel.z) * k;
+      this.vel.x += ((T.x - this.last.x) * inv - this.vel.x) * e;
+      this.vel.y += ((T.y - this.last.y) * inv - this.vel.y) * e;
+      this.vel.z += ((T.z - this.last.z) * inv - this.vel.z) * e;
     }
     this.last.copy(T);
     /* The heading wanted: the nose's over the ground while hovering, the
      * travel's once moving, and none at all from a nose pointing straight
      * up or down with no travel, which keeps the heading it had. */
-    const speed = Math.hypot(this.vel.x, this.vel.z);
+    const speed = Math.hypot(this.vel.x, this.vel.z) / k;
     const w = smooth(SLOW, FAST, speed);
     let hx = 0;
     let hz = 0;
@@ -261,8 +271,8 @@ export class WatchCam {
       hz += (nose.z / nl) * (1 - w);
     }
     if (speed > 0.3) {
-      hx += (this.vel.x / speed) * w;
-      hz += (this.vel.z / speed) * w;
+      hx += (this.vel.x / (speed * k)) * w;
+      hz += (this.vel.z / (speed * k)) * w;
     }
     if (hx * hx + hz * hz > 0.01 && dt > 0) {
       let d = Math.atan2(hx, hz) - this.heading;
@@ -274,13 +284,15 @@ export class WatchCam {
     const fz = Math.cos(this.heading);
     /* The boom, walked out from the quad until it meets a solid. */
     const dir = this.dir.set(-fx * BACK, UP, -fz * BACK);
-    const full = dir.length();
-    dir.multiplyScalar(1 / full);
+    const full = dir.length() * k;
+    dir.multiplyScalar(k / full);
     let reach = full;
     if (world && world.gap) {
-      for (let s = BOOM_MIN; s <= full; s += BOOM_STEP) {
-        if (world.gap(T.x + dir.x * s, T.y + dir.y * s, T.z + dir.z * s) < BOOM_CLEAR) {
-          reach = s - BOOM_STEP > BOOM_MIN ? s - BOOM_STEP : BOOM_MIN;
+      const min = BOOM_MIN * k;
+      const step = BOOM_STEP * k;
+      for (let s = min; s <= full; s += step) {
+        if (world.gap(T.x + dir.x * s, T.y + dir.y * s, T.z + dir.z * s) < BOOM_CLEAR * k) {
+          reach = s - step > min ? s - step : min;
           break;
         }
       }
@@ -292,12 +304,12 @@ export class WatchCam {
     }
     this.want.copy(T).addScaledVector(dir, this.boom);
     if (world && world.floor) {
-      const floor = world.floor(this.want.x, this.want.z, this.want.y) + FLOOR_CLEAR;
+      const floor = world.floor(this.want.x, this.want.z, this.want.y) + FLOOR_CLEAR * k;
       if (this.want.y < floor) {
         this.want.y = floor;
       }
     }
-    this.look.set(T.x + fx * AHEAD, T.y + LOOK_UP, T.z + fz * AHEAD);
+    this.look.set(T.x + fx * AHEAD * k, T.y + LOOK_UP * k, T.z + fz * AHEAD * k);
     this.aimAt(this.want, this.look, this.wantQuat);
   }
 

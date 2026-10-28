@@ -158,6 +158,22 @@ console.log('the overview\'s field');
   check('another map forgets everyone', f.pilots.size === 0);
 }
 
+console.log('the overview\'s speeds are real metres');
+{
+  /* The sweep of 2026-10-28: the poses are scene world metres, and on a
+   * house built 3.5 times life size a whoop at 10 m/s covers 35 world
+   * metres a second. The pilot card printed that as 126 km/h. */
+  const f = new FieldWatch();
+  f.setLife(3.5);
+  for (let t = 1000; t <= 4000; t += 1000 / 60) {
+    f.note(1, ((t - 1000) / 1000) * 35, 1, 0, false, t);
+  }
+  const pr = f.progress(1);
+  check(`a whoop at 10 m/s in a house reads 10 m/s, not 35 (${pr.speed.toFixed(2)})`, Math.abs(pr.speed - 10) < 0.2);
+  f.setLife(0);
+  check('a life scale that is not one reads as 1', f.life === 1);
+}
+
 console.log('the pose wire');
 {
   const out = new Uint8Array(POSE_UP_BYTES);

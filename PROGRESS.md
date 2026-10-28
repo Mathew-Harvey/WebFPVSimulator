@@ -72748,6 +72748,7 @@ The owner, 10:36Z in the goat herding thread, after the bug sweep reply: "push t
 - What went wrong: `pkill -f` with the pattern in its own command line killed my shell twice. The first feel reruns looked hung for half an hour each (the rig's wait, above). The picker's titles came out small because `.name-dialog-box h2` outranked `.qp-title`, and the quads' names centred under the stamps; both fixed before the pictures. The first link rule seated the link's craft under the picker while it opened on the map's own, so the world loaded on one quad and swapped to the other.
 - To main, the owner's word of 15:11:08Z above, after the sweep. Main had not moved since the branch merged it (feabfad), so main fast-forwards. No board change.
 - After main: `lint:input` run again on 67a1a02 itself, because the review commit touched `src/ui/ui.js` while the first run was in flight: all 247 passed (271 s). Live on webfpv.org at 15:43:30Z (the served `src/ui/ui.js` carries `askQuadOnFly`).
+- The owner, 2026-10-28 23:28:44Z, on the report: "Looks good". The close-call scaling stays held: nothing in that covers the +0.08 ms a frame, so it waits for his own word on it.
 
 ## 2026-10-28 | sweep | Bugs from the day's changes, at the seams between them
 

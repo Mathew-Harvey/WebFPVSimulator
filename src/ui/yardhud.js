@@ -44,10 +44,12 @@ function el(tag, cls, text) {
 /* A lap time as the race's flash writes it: seconds to the hundredth,
  * minutes once there are any. */
 export function lapText(ms) {
-  const total = ms / 1000;
-  const m = Math.floor(total / 60);
-  const s = total - m * 60;
-  return m > 0 ? `${m}:${s < 10 ? '0' : ''}${s.toFixed(2)}` : s.toFixed(2);
+  /* Hundredths first, then the minute carried: 59.996 s is 1:00.00, and
+   * 69.996 s is 1:10.00, where the old sum printed 60.00 and 1:010.00. */
+  const cs = Math.round(ms / 10);
+  const m = Math.floor(cs / 6000);
+  const s = ((cs - m * 6000) / 100).toFixed(2);
+  return m > 0 ? `${m}:${s.padStart(5, '0')}` : s;
 }
 
 export class YardHud {

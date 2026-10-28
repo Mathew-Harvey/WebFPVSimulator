@@ -687,7 +687,9 @@ async function exportFromPage() {
     const W = cc.wall;
     const pts = [[W.face - 1, W.zMid], [W.face - 1, W.z0], [W.face - 1, W.z1], [W.face - 3, W.zMid], [0, 29.3], [-14, 29.3], [9, 20]];
     const samples = await ev(`return ${JSON.stringify(pts)}.map(([x, z]) => [x, z, window.__surface(x, z, 0.5)]);`);
-    return { got, count, samples, cc, errors: page.errors.slice() };
+    /* The lamp pole of bug-32feeb4a, for townCheck: every box near it. */
+    const poleArm = await ev('return window.__colliderBoxes(-2.6, -60.5, 3)');
+    return { got, count, samples, cc, poleArm, errors: page.errors.slice() };
   } finally {
     await page.close();
     await Promise.race([exited, sleep(15000)]);
@@ -895,6 +897,17 @@ async function townCheck() {
     'scripts/crash-check.js flies the paths and the shopfront the fixture carries');
   const ground = page.samples[0][2];
   say(ground === loaded.fx.ground.y, `the ground in front of the shopfront is where the fixture has it: ${ground} m`);
+  /*
+   * THE AIR UNDER A LAMP ARM IS AIR. bug-32feeb4a, "invisible wall next to
+   * the power pole near the gum vending machines": the town's cover pass
+   * stood a block 1.9 by 2.1 m, footway to 9.85 m, under the lamp arm of the
+   * pole at (-2.6, -60.5), beside the pole's own 0.44 m post. Out under the
+   * arm, x -2.3 to -1.0 and within a metre of the pole in z, nothing solid
+   * may reach above 3 m: the vending machines there are under 2.6.
+   */
+  const arm = (page.poleArm || []).filter((b) => b[3] > -2.3 && b[0] < -1.0 && b[5] > -61.5 && b[2] < -59.5 && b[4] > 3);
+  say(page.poleArm && page.poleArm.length > 0 && arm.length === 0,
+    `nothing solid stands under the lamp arm of the pole at (-2.6, -60.5): ${arm.length} boxes there of ${(page.poleArm || []).length} near it`);
   console.log(`\nworld-golden --town: ${bad === 0 ? 'the fixture is the town' : `${bad} FAILED: the town moved; re-export with --export-town and re-record, both reviewed`} (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
   return bad;
 }

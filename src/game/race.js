@@ -236,17 +236,19 @@ export function travelAxis(heading, pitch) {
 
 /* The same shape ui.js formatTime writes: no leading "0:" under a minute.
  * The flash and the results table used to spell one lap two ways. */
-function fmt(ms) {
+export function fmt(ms) {
   if (ms == null || !Number.isFinite(ms)) {
     return '--:--.--';
   }
-  const total = ms / 1000;
-  const m = Math.floor(total / 60);
-  const s = total - m * 60;
+  /* Hundredths first, then the minute carried, as formatTime: 59.996 s is
+   * 1:00.00, never 60.00. */
+  const cs = Math.round(ms / 10);
+  const m = Math.floor(cs / 6000);
+  const s = ((cs - m * 6000) / 100).toFixed(2);
   if (m > 0) {
-    return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+    return `${m}:${s.padStart(5, '0')}`;
   }
-  return s.toFixed(2);
+  return s;
 }
 
 export class Race {

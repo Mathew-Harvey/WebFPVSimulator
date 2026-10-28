@@ -90,6 +90,7 @@
     "net:selftest": "node scripts/net-selftest.js",
     "contact:selftest": "node scripts/contact-selftest.js",
     "score:selftest": "node scripts/score-selftest.js",
+    "lapclock:selftest": "node scripts/lapclock-selftest.js",
     "replay:test": "node tests/replay-test.js",
     "replay:selftest": "node scripts/replay-log.js --selftest",
     "replay": "node scripts/replay-log.js",

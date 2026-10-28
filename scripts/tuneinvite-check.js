@@ -183,7 +183,11 @@ async function look(page) {
     try { invite = JSON.parse(raw(${JSON.stringify(INVITE_KEY)}) || 'null'); } catch (e) { invite = 'unreadable'; }
     let stored = {};
     try { stored = JSON.parse(raw(${JSON.stringify(SETTINGS_KEY)}) || '{}'); } catch (e) { stored = {}; }
-    const items = [...document.querySelectorAll('.osd-tune-item')].filter(vis).map((n) => n.querySelector('.osd-air-cap').textContent);
+    /* The tuning sliders only. Camera angle has sat on the glass beside them
+     * since 2026-10-23, always, because it is a view setting and not Flight
+     * feel tuning, so it is no part of what the invitation turns on. */
+    const items = [...document.querySelectorAll('.osd-tune-item')].filter(vis).map((n) => n.querySelector('.osd-air-cap').textContent)
+      .filter((text) => !/^Camera angle/.test(text));
     const hints = [...document.querySelectorAll('.osd-air-hint')].filter(vis).length;
     return {
       screen: ui.screen,

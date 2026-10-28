@@ -1813,7 +1813,7 @@ async function keyboardPage(page) {
    * says 6S. See 8b below for the OSD. The cards' fact pills went on
    * 2026-10-20 (no pills, the picture takes the room), so it is the blurb
    * that says it now. */
-  const whoopCard = await ev(`ui.firstRun = false; ui.craftGate = true; ui.show('title');
+  const whoopCard = await ev(`ui.firstRun = false; ui.craftGate = true; ui.show('title'); ui.turnGate('solo');
     const it = ui.items().find((x) => x && x.card === 'race-whoop65');
     const five = ui.items().find((x) => x && x.card === 'race-5inch');
     const out = JSON.stringify({ whoop: it && it.blurb, five: five && five.blurb });
@@ -2224,7 +2224,9 @@ async function freestylePage(page) {
   await page.cdp.send('Fetch.enable', {
     patterns: [{ urlPattern: 'https://cdn.jsdelivr.net/*' }, { urlPattern: '*/src/maps/city/index.js*' }],
   }, page.sessionId);
-  const cards = await ev('return JSON.stringify(ui.items().map((it) => it && it.action));').then(JSON.parse);
+  /* The Fly solo page's cards, since the gate's cover became Fly solo and
+   * Multiplayer (2026-10-26). */
+  const cards = await ev("if (ui.onGate()) { ui.turnGate('solo'); } return JSON.stringify(ui.items().map((it) => it && it.action));").then(JSON.parse);
   await ev(`ui.setCursor(${cards.indexOf('way-freestyle-5inch')}); return 1;`);
   await page.tap('Enter');
   /* Settled: the fallback has built the track and adopted it. */
@@ -2442,12 +2444,15 @@ async function builderChooserPages() {
   let page = await openPage({ root, width: 1280, height: 720, seed: [SETTINGS_SEED] });
   try {
     await page.until('window.__shellReady === true && !!window.__ui && window.__ui.onGate()', 120000).catch(() => {});
-    const gate = await page.evaluate(`(() => { const items = window.__ui.items();
+    /* The gate's cover has been Fly solo and Multiplayer since the front
+     * screen became a magazine (2026-10-26), and these cards are the Fly
+     * solo page's, so the page is turned first. */
+    const gate = await page.evaluate(`(() => { window.__ui.turnGate('solo'); const items = window.__ui.items();
       return JSON.stringify({ cards: items.filter((it) => it.card).map((it) => it.label),
         at: items.findIndex((it) => it.action === 'builder') }); })()`).then(JSON.parse);
     /* Builder, its one name since MENUS-PLAN.md 4.1: this card said Map
      * builder and the builder's own bar said Track builder. */
-    check('the gate carries a last card, Builder, after the career and the three ways in',
+    check('the gate\'s Fly solo page carries a last card, Builder, after the career and the three ways in',
       gate.cards.join() === 'Career,Five inch racing,Whoop racing,Freestyle,Builder' && gate.at === 4, JSON.stringify(gate));
     await page.evaluate(`(() => { window.__ui.setCursor(${gate.at}); return 1; })()`);
     await page.tap('Enter');

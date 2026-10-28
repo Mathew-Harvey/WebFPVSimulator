@@ -146,9 +146,11 @@ export const MATERIALS = {
   bardwellPot: { c: 0xb3613f, tint: 0x6a4a5a },
 
   /* Thomas More's Shop (src/maps/warehouse/): eighteen colours, fewer
-   * than any house, read off his stills. Every one but the apron's is two
-   * band and takes no shadow, because inside the hall everything is under
-   * the roof's, and a crate in the roof's shadow reads lavender. */
+   * than any house, read off the frames of his flight through it: the teal
+   * of the racking, the green of the mouldings racks and the stripe, the
+   * maroon girders in whRed with the stripe's red. Every one but the apron's
+   * is two band and takes no shadow, because inside the hall everything is
+   * under the roof's, and a crate in the roof's shadow reads lavender. */
   whConcrete: { c: 0x9d9d9a, tint: 0x6c6a84, noReceive: true },
   whWall: { c: 0xe0d6c1, tint: 0x938aa4, noReceive: true },
   whDeck: { c: 0x50525a, tint: 0x363650, noReceive: true },
@@ -159,10 +161,10 @@ export const MATERIALS = {
   whBoard: { c: 0xd9b27a, tint: 0x806066, noReceive: true },
   whWhite: { c: 0xf0eee8, tint: 0x9a96b2, noReceive: true },
   whBlack: { c: 0x262830, tint: 0x1e2030, noReceive: true },
-  whRackBlue: { c: 0x2f62a2, tint: 0x30406a, noReceive: true },
+  whRackTeal: { c: 0x2a7f8c, tint: 0x2e4f6a, noReceive: true },
   whRackOrange: { c: 0xdc6a2c, tint: 0x7a4260, noReceive: true },
   whOrange: { c: 0xe8801f, tint: 0x80482e, noReceive: true },
-  whBin: { c: 0x2c3a94, tint: 0x262c5e, noReceive: true },
+  whGreen: { c: 0x4c8f58, tint: 0x3a5a5a, noReceive: true },
   whYellow: { c: 0xe6bc2c, tint: 0x8a7050, noReceive: true },
   whRed: { c: 0x9d3d42, tint: 0x5a3050, noReceive: true },
   whLamp: { f: 0xfff6e2, noCast: true },

@@ -11,7 +11,7 @@
  *               with a ball clear over it, and the shape and candidate
  *               counts are under the physics module's caps
  *   3. lines    the lines a pilot flies, swept with a ball twice the craft's
- *               radius: the doors, the aisle, the trailer, the racking
+ *               radius: the doors, the aisle, the barani doorway, the rooms
  *   4. gaps     every named gap's window clear by the craft's radius
  *   5. slots    the gap rule (GAP_MIN in src/props/parts.js) inside the hall
  *   6. module   with a build of dist/sim.wasm, the craft lifted off the
@@ -314,24 +314,22 @@ async function placedBlock(L) {
 /* Each line is plan points [px, py, h], real metres, flown straight from
  * one to the next. */
 const LINES = [
-  ['in the glass door and across the office to its north door', [[5.3, -3.0, 1.6], [5.3, 6.0, 1.6], [8.2, 8.0, 1.6], [8.2, 12.0, 1.6]]],
-  ['in the drive in door and up the front of the hall', [[22.0, -3.0, 1.8], [22.0, 12.0, 1.8]]],
-  ['from the front into the crate aisle and up it to the dock', [[14.4, 4.5, 1.8], [14.4, 40.0, 1.8], [14.4, 52.0, 1.8]]],
-  ['up the aisle low, under the cart', [[13.9, 20.0, 0.5], [13.9, 30.0, 0.5]]],
-  ['through the black wall\'s door from the carpet racks to the aisle', [[9.0, 23.2, 1.6], [15.0, 23.2, 1.6]]],
-  ['out of dock one', [[9.6, 50.0, 1.8], [9.6, 64.0, 1.8]]],
-  ['through the trailer and back', [[15.6, 52.0, 2.4], [15.6, 66.0, 2.4], [15.6, 54.0, 2.4]]],
-  ['over the crates, under the lights', [[19.0, 14.0, 5.0], [19.0, 44.0, 5.0]]],
-  ['down the red corridor', [[2.0, 11.0, 1.4], [2.0, 43.0, 1.4]]],
-  ['out of the corridor into the carpet racks', [[2.0, 23.2, 1.5], [8.0, 23.2, 1.5]]],
-  ['out the corridor\'s last door into the dock end', [[1.7, 40.0, 1.5], [1.7, 48.0, 1.5]]],
-  ['between the plywood stacks', [[30.0, 26.8, 1.6], [38.0, 26.8, 1.6]]],
-  ['across the woodshop between the benches and the saws', [[24.0, 26.0, 2.0], [34.0, 26.0, 2.0]]],
-  ['under a bench', [[27.0, 14.0, 0.5], [27.0, 20.0, 0.5]]],
-  ['down the racking aisle', [[23.0, 5.5, 1.8], [39.0, 5.5, 1.8]]],
-  ['through a rack bay at the second shelf', [[28.0, 1.0, 2.4], [28.0, 12.0, 2.4]]],
-  ['into the spray booth and to its hood', [[26.0, 49.4, 1.6], [34.0, 49.4, 1.6], [34.0, 53.0, 1.6]]],
-  ['out of the booth by its south door', [[35.3, 48.0, 1.6], [35.3, 40.0, 1.6]]],
+  ['up the crate aisle and in at the office\'s French door', [[8.2, 6.5, 1.6], [8.2, 46.0, 1.6], [6.4, 48.5, 1.6], [6.4, 53.5, 1.6]]],
+  ['out through the office window over the tool chest', [[8.3, 53.0, 1.55], [8.3, 47.5, 1.55]]],
+  ['out the wood door in the north wall', [[2.8, 48.0, 1.2], [2.8, 60.0, 1.2]]],
+  ['down the dock lane past the shut doors', [[2.6, 47.0, 2.0], [2.6, 9.0, 2.0]]],
+  ['from the dock lane through the racks and crates to the workshop', [[2.6, 21.3, 1.6], [24.0, 21.3, 1.6]]],
+  ['over the crates, under the lights', [[14.5, 7.0, 4.9], [14.5, 48.0, 4.9]]],
+  ['through the barani doorway into the machine room', [[26.0, 53.4, 1.8], [40.0, 53.4, 1.8]]],
+  ['back out by the barani doorway and down the workshop', [[40.0, 53.4, 2.4], [28.0, 53.4, 2.4], [28.0, 30.0, 2.4]]],
+  ['in the sliding door and across the spray room to the booth', [[26.0, 23.8, 1.5], [41.0, 23.8, 1.5], [43.0, 23.8, 1.5]]],
+  ['under the booth\'s hood between the sawhorses', [[38.0, 22.5, 1.3], [43.0, 22.5, 1.3]]],
+  ['out of the spray room by the paint shop door', [[38.0, 3.3, 1.4], [26.0, 3.3, 1.4]]],
+  ['across the workshop between the columns', [[19.0, 34.2, 1.6], [30.0, 34.2, 1.6]]],
+  ['under the big table', [[22.2, 10.5, 0.45], [22.2, 14.5, 0.45]]],
+  ['out the back door', [[23.4, 48.0, 1.2], [23.4, 60.0, 1.2]]],
+  ['into the front office', [[21.0, 1.8, 1.4], [14.0, 1.8, 1.4]]],
+  ['down the workshop low', [[24.3, 52.0, 0.8], [24.3, 4.0, 0.8]]],
 ];
 
 function linesBlock(near) {

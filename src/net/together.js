@@ -69,6 +69,7 @@ import {
   avatarCanvas, beardOf, cleanAvatar, eyeStyleOf, eyesOf, faceOf, headOf, inkOf, liveryCss, liveryInk, markOf, paintAvatar, rollAvatar, skinOf, toneOf,
 } from './avatar.js';
 import { paintTitle } from '../ui/lettering.js';
+import { savedTitleNumber, titleWords } from '../career/titles.js';
 import { quadMark } from '../ui/gatepages.js';
 import { nameRules, normaliseName, readPilotName, writePilotName } from '../share/pilot.js';
 import { boardOrigin, fetchMapList, fetchTrackList } from '../share/board.js';
@@ -389,6 +390,13 @@ export function fmtMs(ms) {
   const m = Math.floor(cs / 6000);
   const rest = ((cs - m * 6000) / 100).toFixed(2);
   return m ? `${m}:${rest.padStart(5, '0')}` : rest;
+}
+
+/* The look a room is sent: the pilot's own parts and the career's title,
+ * read from the key the career keeps for it, so a room never loads the
+ * career to say how far the pilot has flown. */
+function withTitle(avatar) {
+  return { ...cleanAvatar(avatar), title: savedTitleNumber() };
 }
 
 function loadStore() {
@@ -961,7 +969,7 @@ export function createTogether(shell) {
       url: roomsUrl(boardOrigin(), override),
       key: raterKey(),
       handle: readPilotName() || '',
-      avatar: cleanAvatar(store.avatar),
+      avatar: withTitle(store.avatar),
       onEvent: (name, data) => heard(name, data),
     });
     race = new RoomRace({
@@ -2372,7 +2380,7 @@ export function createTogether(shell) {
         if (session && session.inRoom && (JSON.stringify(now) !== JSON.stringify(was) || name !== wasName)) {
           /* A new name goes with the look: the board shows it where the
            * room shows pilots' own names (the owner's report of 2026-10-28). */
-          session.look(now, name !== wasName ? name : undefined);
+          session.look(withTitle(now), name !== wasName ? name : undefined);
           oweCard();
         }
         if (after) after();
@@ -3106,6 +3114,9 @@ export function createTogether(shell) {
     if (mine) status.push('You');
     else if (p.away) status.push('In the menus');
     else status.push('Flying');
+    /* The career's title, one of its six words (src/career/titles.js). */
+    const title = titleWords(p.avatar ? p.avatar.title : 0);
+    if (title) status.push(title);
     if (p.via && VIA_NAMES[p.via]) status.push(`${VIA_NAMES[p.via]} name`);
     if (muted.has(p.id)) status.push('muted');
     if (reported.has(p.id)) status.push('reported');

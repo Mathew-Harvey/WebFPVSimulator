@@ -46,6 +46,7 @@
  */
 
 import { lotFrame, rng, FACE_YAW } from './frame.js';
+import { dressHouse } from './dress.js';
 import { HALF, WALK, MAPLE_Y, BIRCH_Y, MAIN_Y, OAK_X, PINE_X, BULB, BIRCH_END } from './streets.js';
 
 const SIDINGS = ['sfPeach', 'sfMint', 'sfButter', 'sfSky', 'sfLilac', 'sfSalmon'];
@@ -221,7 +222,9 @@ function picket(L, u0, u1, v) {
 
 function backyardThings(L, r, x0, x1, v0, v1, extras) {
   /* What fits: a strip of yard [x0, x1] by [v0, v1]. Up to two things,
-   * each in its own half. */
+   * each in its own half. Returns where each stands and how far it
+   * reaches, for the set dressing to keep clear of. */
+  const placed = [];
   const things = ['pool', 'swing', 'tramp', 'shed', 'dog', 'bbq', 'table'];
   const halves = [[x0, (x0 + x1) / 2], [(x0 + x1) / 2, x1]];
   const deep = v1 - v0;
@@ -239,6 +242,7 @@ function backyardThings(L, r, x0, x1, v0, v1, extras) {
       L.hidden(cu - 1.5, cv - 1.5, 0, cu + 1.5, cv + 1.5, 1.15, 'wall', 'pool');
       L.cyl('sfTrim', [cu, cv, 1.15], [cu, cv, 1.22], R + 0.05, 24, null, true);
       L.box('sfTrim', cu + R, cv - 0.3, 0, cu + R + 0.6, cv + 0.3, 1.2, { kind: 'wall', name: 'pool ladder' });
+      placed.push({ kind, u: cu + 0.3, v: cv, r: R + 0.9 });
     } else if (kind === 'swing' && b - a >= 4.6) {
       const h = 2.3;
       for (const s of [-1, 1]) {
@@ -252,6 +256,7 @@ function backyardThings(L, r, x0, x1, v0, v1, extras) {
         L.cyl('sfIron', [cu + s + 0.2, cv, h], [cu + s + 0.2, cv, 0.5], 0.012, 4, null, true);
         L.deco('sfYellow', cu + s - 0.25, cv - 0.12, 0.46, cu + s + 0.25, cv + 0.12, 0.52, true);
       }
+      placed.push({ kind, u: cu, v: cv, r: 2.3 });
     } else if (kind === 'tramp') {
       L.disc('sfDoorNavy', cu, cv, 1.8, 0.75, 0.82, 24);
       L.disc('sfIron', cu, cv, 1.55, 0.76, 0.84, 24);
@@ -259,6 +264,7 @@ function backyardThings(L, r, x0, x1, v0, v1, extras) {
       for (const [du, dv] of [[1.4, 0], [-1.4, 0], [0, 1.4], [0, -1.4]]) {
         L.cyl('sfSteel', [cu + du, cv + dv, 0], [cu + du, cv + dv, 0.78], 0.04, 5, null, true);
       }
+      placed.push({ kind, u: cu, v: cv, r: 2.1 });
     } else if (kind === 'shed' && b - a >= 4.4) {
       const w = 2.6;
       const d = 2.2;
@@ -266,15 +272,18 @@ function backyardThings(L, r, x0, x1, v0, v1, extras) {
       L.box(wall, cu - w / 2, cv - d / 2, 0, cu + w / 2, cv + d / 2, 2.1, { kind: 'wall', name: 'shed' });
       gableRoof(L, wall, 'sfRoofSlate', cu - w / 2, cu + w / 2, cv - d / 2, cv + d / 2, 2.1, true, true);
       L.paint('sfWood', cu - 0.45, cv - d / 2 - 0.04, 0, cu + 0.45, cv - d / 2, 1.8);
+      placed.push({ kind, u: cu, v: cv, r: 2.0 });
     } else if (kind === 'dog') {
       L.box('sfRed', cu - 0.6, cv - 0.5, 0, cu + 0.6, cv + 0.5, 0.8, { kind: 'wall', name: 'doghouse' });
       gableRoof(L, 'sfRed', 'sfRoofSlate', cu - 0.6, cu + 0.6, cv - 0.5, cv + 0.5, 0.8, false, true);
       L.paint('sfIron', cu - 0.22, cv - 0.54, 0, cu + 0.22, cv - 0.5, 0.55);
+      placed.push({ kind, u: cu, v: cv, r: 1.0 });
     } else if (kind === 'bbq') {
       L.box('sfIron', cu - 0.45, cv - 0.3, 0.6, cu + 0.45, cv + 0.3, 1.0, { kind: 'wall', name: 'barbecue' });
       L.hidden(cu - 0.45, cv - 0.3, 0, cu + 0.45, cv + 0.3, 0.6, 'wall', 'barbecue');
       L.cyl('sfIron', [cu - 0.45, cv, 1.0], [cu + 0.45, cv, 1.0], 0.3, 10, null, true);
       L.deco('sfConcrete', cu - 1.4, cv - 1.4, 0, cu + 1.4, cv + 1.4, 0.04);
+      placed.push({ kind, u: cu, v: cv, r: 2.0 });
     } else if (kind === 'table') {
       L.disc('sfTrim', cu, cv, 0.65, 0.72, 0.76, 16);
       L.hidden(cu - 0.45, cv - 0.45, 0, cu + 0.45, cv + 0.45, 0.76, 'wall', 'table');
@@ -283,6 +292,7 @@ function backyardThings(L, r, x0, x1, v0, v1, extras) {
       for (const [du, dv] of [[0.9, 0], [-0.9, 0], [0, 0.9]]) {
         L.deco('sfTrim', cu + du - 0.22, cv + dv - 0.22, 0.42, cu + du + 0.22, cv + dv + 0.22, 0.46, true);
       }
+      placed.push({ kind, u: cu, v: cv, r: 1.5 });
     }
   }
   if (extras && r.chance(0.5) && deep >= 6) {
@@ -290,7 +300,9 @@ function backyardThings(L, r, x0, x1, v0, v1, extras) {
     const u = r.chance(0.5) ? x0 + 2.2 : x1 - 2.2;
     const style = r.pick(['street', 'street', 'pine']);
     L.asset({ type: 'tree', style, dims: { size: style === 'pine' ? 0.75 : 0.7, variant: r.int(1, 99) } }, 1, u, v1 - 2.2, 0, 0);
+    placed.push({ kind: 'tree', u, v: v1 - 2.2, r: 2.4 });
   }
+  return placed;
 }
 
 export function house(T, lot, seed, clear = false) {
@@ -318,6 +330,7 @@ export function house(T, lot, seed, clear = false) {
   const gu1 = gu0 + garageW;
   const v0 = sb;
   const v1 = sb + hd;
+  let parked = false;
 
   /* The plinth, a shade darker, and the body. */
   L.box(wall, hu0, v0, 0, hu1, v1, eave, { kind: 'wall', name: 'house' });
@@ -335,15 +348,18 @@ export function house(T, lot, seed, clear = false) {
   const ridge = gableRoof(L, wall, roof, hu0, hu1, v0, v1, eave, along);
 
   /* A brick chimney up one end. */
+  let chimney = null;
   if (r.chance(0.5)) {
     if (along) {
       const cu = r.chance(0.5) ? hu0 - 0.75 : hu1 + 0.05;
       const cv = (v0 + v1) / 2 - 0.6;
+      chimney = { side: cu < hu0 ? 'left' : 'right', u0: cu, u1: cu + 0.7, v0: cv, v1: cv + 1.2 };
       L.box('sfBrick', cu, cv, 0, cu + 0.7, cv + 1.2, ridge + 0.9, { kind: 'wall', name: 'chimney' });
       L.deco('sfIron', cu + 0.1, cv + 0.15, ridge + 0.9, cu + 0.6, cv + 1.05, ridge + 1.05, true);
     } else {
       const cv = v1 + 0.05;
       const cu = (hu0 + hu1) / 2 + r.range(-2, 2);
+      chimney = { side: 'back', u0: cu - 0.6, u1: cu + 0.6, v0: cv, v1: cv + 0.7 };
       L.box('sfBrick', cu - 0.6, cv, 0, cu + 0.6, cv + 0.7, ridge + 0.9, { kind: 'wall', name: 'chimney' });
       L.deco('sfIron', cu - 0.45, cv + 0.1, ridge + 0.9, cu + 0.45, cv + 0.6, ridge + 1.05, true);
     }
@@ -375,6 +391,7 @@ export function house(T, lot, seed, clear = false) {
     }
     /* A car in the driveway. */
     if (r.chance(0.45) && sb >= 4.6 && !clear) {
+      parked = true;
       const style = r.pick(CARS);
       L.asset({ type: 'car', style, dims: { variant: r.int(1, 12) } }, 1, (gu0 + gu1) / 2 - (n === 2 ? dw / 2 + 0.3 : 0), gv0 - 2.6, 0, FACE_YAW[lot.face] + Math.PI);
     }
@@ -387,6 +404,7 @@ export function house(T, lot, seed, clear = false) {
   /* The front: a door in the middle third, a porch or a stoop. */
   const du = hu0 + hw * r.range(0.32, 0.68);
   const porch = r.chance(0.55) && sb >= 4.2;
+  let porchSwing = false;
   if (porch) {
     const pd = 2.1;
     const pu0 = hu0 + 0.4;
@@ -404,7 +422,8 @@ export function house(T, lot, seed, clear = false) {
     L.deco('sfTrim', du + 0.8, v0 - pd + 0.08, PLINTH + 0.85, pu1, v0 - pd + 0.16, PLINTH + 0.92, true);
     L.box('sfConcrete', du - 0.7, v0 - pd - 0.9, 0, du + 0.7, v0 - pd, 0.25, { kind: 'wall', name: 'step' });
     /* A porch swing or two chairs. */
-    if (r.chance(0.5)) {
+    porchSwing = r.chance(0.5);
+    if (porchSwing) {
       L.deco('sfWood', pu0 + 0.4, v0 - 0.9, PLINTH + 0.45, pu0 + 1.6, v0 - 0.4, PLINTH + 0.52, true);
       L.deco('sfWood', pu0 + 0.4, v0 - 0.45, PLINTH + 0.52, pu0 + 1.6, v0 - 0.4, PLINTH + 1.0, true);
     }
@@ -468,7 +487,8 @@ export function house(T, lot, seed, clear = false) {
     L.cyl('sfTrim', [u, v, 0.1], [u, v, eave], 0.045, 5, null, true);
   }
   /* A dish on the roof. */
-  if (r.chance(0.3)) {
+  const dish = r.chance(0.3);
+  if (dish) {
     const u = along ? hu0 + 1.4 : (hu0 + hu1) / 2 + 1.6;
     const v = along ? v0 + 1.4 : v1 - 1.6;
     L.cyl('sfSteel', [u, v, ridge - 1.4], [u, v, ridge - 0.7], 0.03, 4, null, true);
@@ -517,21 +537,33 @@ export function house(T, lot, seed, clear = false) {
     }
   }
   /* A street tree out front, on the side away from the drive. */
+  let treeU = null;
   if (r.chance(0.7) && sb >= 4.2 && !clear) {
     const u = garageW > 0 ? (left ? Wl - 2.6 : 2.6) : (du < Wl / 2 ? Wl - 2.6 : 2.6);
+    treeU = u;
     const style = r.chance(0.8) ? 'street' : 'pine';
     L.asset({ type: 'tree', style, dims: { size: style === 'pine' ? 0.7 : 0.75, variant: r.int(1, 99) } }, 1, u, 2.0, 0, 0);
   }
 
   /* The back yard: the fence, then what is in it. */
   const backStart = v1 - 1.0;
-  if (Dl - backStart > 2.5) {
+  let things = [];
+  const fenced = Dl - backStart > 2.5;
+  if (fenced) {
     fence(L, 0.1, Dl - 0.16, Wl - 0.1, Dl - 0.16, true);
     /* Both sides: a neighbour's fence stands 0.3 m off, which is closed. */
     fence(L, 0.15, backStart, 0.15, Dl - 0.16, true);
     fence(L, Wl - 0.15, backStart, Wl - 0.15, Dl - 0.16, true);
-    backyardThings(L, r, 0.8, Wl - 0.8, v1 + 1.2, Dl - 0.8, true);
+    things = backyardThings(L, r, 0.8, Wl - 0.8, v1 + 1.2, Dl - 0.8, true);
   }
+
+  /* The set dressing, rolled from a seed of its own so that nothing above
+   * rolls differently for it: ./dress.js. */
+  T.dress(() => dressHouse(L, rng(seed ^ 0x5bd1e995), {
+    Wl, Dl, hu0, hu1, v0, v1, eave, ridge, along, storeys, garageW, gu0, gu1, left, du, porch, porchSwing,
+    frontWins, mu, frontKind: clear ? 1 : frontKind, treeU, parked, dish, fenced, things, wall, roof, door, chimney,
+    wsill, wh, gv0: v0 + 0.6, gh: PLINTH + 2.7, plinth: PLINTH, storey: STOREY, pitch: PITCH,
+  }));
 }
 
 /* Every house, and the hedge. */

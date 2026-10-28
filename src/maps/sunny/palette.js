@@ -20,8 +20,12 @@
  * does on every toon material.
  *
  * Only plain batches are merged: no picture, no transparency, no vertex
- * colours of their own, no leaf codes, and none the comic layer marks as
- * ground or foliage. Everything else stays as the kit made it. Nothing
+ * colours of their own, and none the comic layer marks as ground. The
+ * trees' canopies merge too, but only with each other, by kind: their leaf
+ * clumps are a mark the merged look keeps, and a blob batch's codes ride
+ * on its vertices as they did. Everything else stays as the kit made it.
+ * That was four batches a chunk more before the set dressing (./frame.js
+ * dress), and is what pays for its near cells' draws. Nothing
  * here is solid or reaches the physics: the colliders were placed from the
  * plan's parts before any of this, and the shadow proxies were cut from
  * the batches before they were merged, so the shadows are unchanged too.
@@ -67,14 +71,26 @@ function lookOf(mesh) {
   if (m.map || m.alphaMap || m.vertexColors || m.transparent || m.alphaTest > 0 || !m.color) {
     return null;
   }
-  if (m.userData.comicGround || m.userData.comicFoliage || m.userData.comicBlobBaked) {
+  if (m.userData.comicGround) {
+    return null;
+  }
+  /* A canopy's tones merge with the other canopies' and with nothing else:
+   * the comic layer reads the mark from the material (comic.js, FOLIAGE),
+   * which the merged look copies. A canopy's blob batch carries its blob
+   * codes on its vertices (comicBlobBaked), which ride along, so it merges
+   * only with other blob batches. */
+  const leaf = m.userData.comicFoliage ? (m.userData.comicBlobBaked ? 'blob' : 'leaf') : (m.userData.comicBlobBaked ? null : '-');
+  if (!leaf) {
     return null;
   }
   const g = mesh.geometry;
   if (!g || !g.attributes.position || !g.attributes.normal || Object.keys(g.morphAttributes).length) {
     return null;
   }
-  if (Object.keys(g.attributes).some((n) => !KEEP.has(n))) {
+  if (Object.keys(g.attributes).some((n) => !KEEP.has(n) && !(n === 'comicBlob' && leaf === 'blob'))) {
+    return null;
+  }
+  if (leaf === 'blob' && !g.attributes.comicBlob) {
     return null;
   }
   if (!(g.attributes.position.array instanceof Float32Array) || !(g.attributes.normal.array instanceof Float32Array)) {
@@ -85,7 +101,7 @@ function lookOf(mesh) {
     if (!m.userData.shadowTint) {
       return null;
     }
-    return ['toon', m.gradientMap ? m.gradientMap.uuid : '-', m.emissive.getHex(), m.emissiveIntensity, ...flags].join('|');
+    return ['toon', leaf, m.gradientMap ? m.gradientMap.uuid : '-', m.emissive.getHex(), m.emissiveIntensity, ...flags].join('|');
   }
   if (m.isMeshBasicMaterial) {
     return ['flat', ...flags].join('|');
@@ -106,6 +122,9 @@ function painted(mesh) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', src.attributes.position.clone());
   g.setAttribute('normal', src.attributes.normal.clone());
+  if (src.attributes.comicBlob) {
+    g.setAttribute('comicBlob', src.attributes.comicBlob.clone());
+  }
   if (src.index) {
     g.setIndex(src.index.clone());
   } else {

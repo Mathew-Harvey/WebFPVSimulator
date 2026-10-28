@@ -1444,10 +1444,12 @@ export async function buildMap(shell, onProgress, options) {
      * them (../../props/coplanar.js). The solids were placed from the plan's
      * own parts in addExtra, and this moves only what is drawn. */
     for (const p of separateCoplanar(extra.parts).parts) {
+      /* The part rides along, so a map may file some of its parts by more
+       * than where they stand (Sunnyfield's set dressing, ../sunny/index.js). */
       if (cut) {
         kit.chunk = p.t === 'box'
-          ? cut((p.lo[0] + p.hi[0]) / 2, (p.lo[2] + p.hi[2]) / 2)
-          : cut((p.a[0] + p.b[0]) / 2, (p.a[2] + p.b[2]) / 2);
+          ? cut((p.lo[0] + p.hi[0]) / 2, (p.lo[2] + p.hi[2]) / 2, p)
+          : cut((p.a[0] + p.b[0]) / 2, (p.a[2] + p.b[2]) / 2, p);
       }
       kit.part(p);
     }

@@ -87,6 +87,13 @@ function shop(T, lot, o) {
     /* Solid: the awning's slab, inside its slope. */
     L.hidden(g0, v0 - reach + 0.3, ah - 0.1, g1, v0, ah + 0.25, 'wall', 'awning');
   }
+  /* The roof's membrane inside the coping, so the coping reads as a
+   * parapet from above; tar on some roofs, gravel on the rest, by the
+   * seed's second bit so nothing the shop rolls moves. */
+  const tar = o.roof !== false && (((o.seed ?? 7) >> 1) & 1) === 1;
+  if (o.roof !== false) {
+    L.paint(tar ? 'sfAsphalt' : 'sfConcrete', u0 + 0.35, v0 + 0.35, h + 0.05, u1 - 0.35, v1 - 0.35, h + 0.07, true);
+  }
   /* On the roof: an air handler and a vent or two. */
   const ru = u0 + (u1 - u0) * r.range(0.25, 0.7);
   const rv = v0 + (v1 - v0) * r.range(0.45, 0.75);
@@ -96,6 +103,12 @@ function shop(T, lot, o) {
   /* The back: a door and the bins. */
   L.paint('sfSteel', (u0 + u1) / 2 - 0.5, v1, 0, (u0 + u1) / 2 + 0.5, v1 + 0.05, 2.1, true);
   L.box('sfDoorGreen', u1 - 2.6, v1 + 0.4, 0, u1 - 0.8, v1 + 1.5, 1.3, { kind: 'wall', name: 'dumpster' });
+  /* What the set dressing needs to know (./dress.js dressShop). */
+  T.shops.push({
+    L, u0, u1, v0, v1, h, g0, g1, du, ru, rv, awning: Boolean(o.awning), seed: o.seed ?? 7, tar,
+    food: Boolean(o.food), posters: o.posters !== false, name: o.name, roof: o.roof !== false,
+    roofKeep: o.roofKeep ?? [], frontKeep: o.frontKeep ?? [], wall: o.wall,
+  });
   return L;
 }
 
@@ -110,7 +123,7 @@ function southSide(T) {
    * forecourt on the corner, the drinks machine and the ice chest out
    * front. */
   const store = shop(T, { x0: OAK_X + HALF + WALK, x1: 82, y0, y1, face: 'n' }, {
-    name: 'corner store', wall: 'sfButter', fascia: 'sfOrange', sign: 'tuckShop', h: 5.2, d: 18,
+    name: 'corner store', posters: false, frontKeep: [[2.4, 5.5]], wall: 'sfButter', fascia: 'sfOrange', sign: 'tuckShop', h: 5.2, d: 18,
     awning: ['sfTeal', 'sfTrim'], seed: 3, riser: 'sfTeal',
   });
   store.box('sfTrim', 2.7, -0.1 + 0.3 - 1.25, 0, 4.0, 0.3 - 0.4, 0.95, { kind: 'wall', name: 'ice chest' });
@@ -122,7 +135,7 @@ function southSide(T) {
   store.sign('lotto', 11.5, 0.24, 1.6, 1.0, 0.7, 'front', 0.01);
   /* A tavern in brick, a neon sign, dark windows. */
   const tav = shop(T, { x0: 82.5, x1: 98.5, y0, y1, face: 'n' }, {
-    name: 'tavern', wall: 'sfBrick', fascia: 'sfIron', sign: 'tavern', h: 6.4, d: 17, seed: 5,
+    name: 'tavern', posters: false, frontKeep: [[11.4, 12.7]], wall: 'sfBrick', fascia: 'sfIron', sign: 'tavern', h: 6.4, d: 17, seed: 5,
     doorColour: 'sfWood', riser: 'sfIron',
   });
   tav.sign('neonPool', 3.2, 0.24, 2.0, 1.5, 0.75, 'front', 0.02);
@@ -136,7 +149,7 @@ function southSide(T) {
   });
   /* The barber, and his pole. */
   const barber = shop(T, { x0: 117, x1: 130, y0, y1, face: 'n' }, {
-    name: 'barber', wall: 'sfTrim', fascia: 'sfRed', sign: 'barber', h: 5.0, d: 14, seed: 11,
+    name: 'barber', frontKeep: [[1.4, 2.6]], wall: 'sfTrim', fascia: 'sfRed', sign: 'barber', h: 5.0, d: 14, seed: 11,
     awning: ['sfRed', 'sfTrim'],
   });
   barber.cyl('sfTrim', [2.0, 0.0, 1.6], [2.0, 0.0, 2.9], 0.14, 10);
@@ -146,7 +159,7 @@ function southSide(T) {
   barber.ball('sfTrim', 2.0, 0.0, 3.0, 0.16);
   /* The hardware store, to the bus stop. */
   const hw = shop(T, { x0: 130.5, x1: 150, y0, y1, face: 'n' }, {
-    name: 'hardware', wall: 'sfMint', fascia: 'sfDoorGreen', sign: 'hardware', h: 5.6, d: 20,
+    name: 'hardware', frontKeep: [[1.5, 4.0], [15.5, 17.4]], wall: 'sfMint', fascia: 'sfDoorGreen', sign: 'hardware', h: 5.6, d: 20,
     awning: ['sfDoorGreen', 'sfTrim'], seed: 13,
   });
   /* Wheelbarrows and a ladder out front. */
@@ -232,7 +245,7 @@ DONUT.h = DONUT.roof + 1.4 + DONUT.R + DONUT.t;
 function donutShop(T) {
   const D = DONUT;
   const L = shop(T, { x0: D.x0, x1: D.x1, y0: D.y0, y1: D.y1 + 20, face: 's' }, {
-    name: 'donut shop', wall: 'sfPink', fascia: 'sfTrim', sign: 'donuts', h: D.roof, d: D.y1 - D.y0,
+    name: 'donut shop', posters: false, food: true, roofKeep: [[D.px - D.x0 - 3.8, D.px - D.x0 + 3.8, D.py - D.y0 - 1.4, D.py - D.y0 + 1.4]], frontKeep: [[3, 25]], wall: 'sfPink', fascia: 'sfTrim', sign: 'donuts', h: D.roof, d: D.y1 - D.y0,
     awning: ['sfPink', 'sfTrim'], seed: 17, riser: 'sfDoorRed',
   });
   L.sign('coffee', 4.0, 0.25, 1.75, 1.2, 0.8, 'front', 0.01);
@@ -302,7 +315,7 @@ export const BURGER = { x0: 90, x1: 116, y0: MN + 0.3, y1: 160, pole: [122.7, 13
 function burgerBarn(T) {
   const B = BURGER;
   const L = shop(T, { x0: B.x0, x1: B.x1, y0: B.y0, y1: B.y1 + 20, face: 's' }, {
-    name: 'burger barn', wall: 'sfRed', fascia: 'sfYellow', sign: 'burger', h: 4.6, d: B.y1 - B.y0 - 6,
+    name: 'burger barn', food: true, roof: false, wall: 'sfRed', fascia: 'sfYellow', sign: 'burger', h: 4.6, d: B.y1 - B.y0 - 6,
     awning: ['sfYellow', 'sfRed'], seed: 19, trim: 'sfTrim',
   });
   /* A barn's gambrel over the box. */
@@ -334,7 +347,7 @@ function burgerBarn(T) {
 
 function pizza(T) {
   const L = shop(T, { x0: 124, x1: 148, y0: MN + 0.3, y1: 176, face: 's' }, {
-    name: 'pizza', wall: 'sfTrim', fascia: 'sfDoorGreen', sign: 'pizza', h: 5.0, d: 15,
+    name: 'pizza', food: true, roofKeep: [[9, 15, 0, 3]], wall: 'sfTrim', fascia: 'sfDoorGreen', sign: 'pizza', h: 5.0, d: 15,
     awning: ['sfRed', 'sfDoorGreen'], seed: 23, riser: 'sfRed',
   });
   /* A slice on the roof edge, its tip toward the street. */
@@ -398,7 +411,7 @@ export const BOWL = { x0: 188, x1: 228, y0: MN + 4, y1: 172, h: 7.5 };
 function bowling(T) {
   const B = BOWL;
   const L = shop(T, { x0: B.x0, x1: B.x1, y0: B.y0, y1: B.y1 + 10, face: 's' }, {
-    name: 'bowling alley', wall: 'sfLilac', fascia: 'sfPurple', sign: 'bowling', h: B.h, d: B.y1 - B.y0,
+    name: 'bowling alley', posters: false, roofKeep: [[18.2, 24.6, 4.2, 7.8]], frontKeep: [[11, 29]], wall: 'sfLilac', fascia: 'sfPurple', sign: 'bowling', h: B.h, d: B.y1 - B.y0,
     seed: 29, riser: 'sfPurple', signAspect: 7,
   });
   /* A swooping roof wing over the door, on two raked columns. */
@@ -501,7 +514,7 @@ function townHall(T) {
 
 function fireStation(T) {
   const L = shop(T, { x0: 304, x1: 342, y0: MN + 0.3, y1: 180, face: 's' }, {
-    name: 'fire station', wall: 'sfBrick', fascia: 'sfTrim', sign: 'fireStation', h: 8.0, d: 18,
+    name: 'fire station', posters: false, roofKeep: [[30.4, 36.6, 11.4, 17.6]], frontKeep: [[3, 24]], wall: 'sfBrick', fascia: 'sfTrim', sign: 'fireStation', h: 8.0, d: 18,
     seed: 31, riser: 'sfBrick', door: 33,
   });
   /* Two bay doors in red, glass in their tops. */

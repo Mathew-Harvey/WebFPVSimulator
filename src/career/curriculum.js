@@ -1,7 +1,9 @@
 /*
  * curriculum.js: the career, as data.
  *
- * Ten chapters, from a first hover to a pro licence. Each lesson is one
+ * Ten chapters, from a first hover to a pro licence, a Rookie Licence, and
+ * the tree's five newer parts after them (Race Craft, Whoop League, Real
+ * Tracks, Proximity and Lines). Each lesson is one
  * skill: a world, a flight mode the lesson holds for you, objectives in
  * order (judged by ./objectives.js), medal times, a briefing written to be
  * read in fifteen seconds, the sticks the lesson is about, and the tip the
@@ -39,8 +41,9 @@
 import {
   EAST, NORTH, WEST, FIELD_SPAWN, GAP_SPAWN, WEBFPV_CREDIT, gapSchool, trainingField,
 } from './maps.js';
-import { OFFICIAL_TRACKS, careerTrack } from './tracks.js';
+import { OFFICIAL_COURSES, OFFICIAL_UTT, careerTrack, officialDoc } from './tracks.js';
 import { starterMap } from '../maps/built/starter.js';
+import { STEAM_EDITION } from '../steam/edition.js';
 
 const deg = (d) => d;
 
@@ -75,7 +78,7 @@ const hibariYard = () => ({ ...starterMap(), credit: { ...WEBFPV_CREDIT } });
  * silver lap (./tracks.js OFFICIAL_TRACKS), rounded up to the half second.
  */
 function raceMedals(trackId, laps, runUpS = 2) {
-  const t = OFFICIAL_TRACKS.find((x) => x.id === trackId);
+  const t = OFFICIAL_COURSES.find((x) => x.id === trackId);
   const half = (ms) => Math.ceil(ms / 500) * 500;
   return {
     gold: half(runUpS * 1000 + laps * t.gold),
@@ -87,6 +90,54 @@ function raceMedals(trackId, laps, runUpS = 2) {
 const built = (doc) => ({ map: 'built', doc });
 /* A world that is a race track document, built by src/maps/custom. */
 const race = (doc) => ({ map: 'custom', doc });
+/*
+ * A world that is one of the game's own maps, which brings its own
+ * document: the houses, the shop, the town. Its lessons ask only for its
+ * named gaps and the counter, so nothing in them needs the document's
+ * frame.
+ */
+const place = (map) => ({ map });
+/*
+ * A world from the board, by its id: a published map (the built world) or
+ * track (the track world), fetched when the lesson opens. `steam: false` is
+ * one the Steam edition does not carry (its content profile, steam/
+ * content.json), and there the lesson is its `fallback` from the start; on
+ * the web the fallback is flown only when the board does not answer.
+ */
+const boardMap = (id, opts = {}) => ({ map: 'built', board: { kind: 'map', id }, ...opts });
+const boardTrack = (id, opts = {}) => ({ map: 'custom', board: { kind: 'track', id }, ...opts });
+/* A UTT track, the builder's preset under this edition's name. */
+const utt = (n) => officialDoc(OFFICIAL_UTT.find((t) => t.id === `utt-${n}`));
+
+/*
+ * Medals off the board's own times for a race night room, three laps: gold
+ * a little behind the fifth fastest three laps anybody has flown there, and
+ * silver about the middle of everybody's, each with a run up from the pads,
+ * rounded up to the half second. The numbers are the board's on 2026-10-28.
+ */
+function boardMedals(fifthMs, medianMs) {
+  const half = (ms) => Math.ceil(ms / 500) * 500;
+  const gold = half(2000 + fifthMs * 1.15);
+  return { gold, silver: Math.max(half(2500 + medianMs * 1.1), half(gold * 1.3)) };
+}
+
+/*
+ * Rings that line a pilot up for each gate of a track: one a few metres
+ * short of every gate, square to it and at its height, so the run is the
+ * line itself. Read off the track's own document, so the rings and the
+ * gates can never disagree.
+ */
+function approachRings(doc, lead = 4, r = 1) {
+  const byId = new Map(doc.elements.map((e) => [e.id, e]));
+  return doc.sequence.map((q) => {
+    const e = byId.get(q.elementId);
+    const yaw = e.yaw + (q.entry === -1 ? Math.PI : 0);
+    const d = e.dims || {};
+    /* The opening's middle, and never so low the ring is in the grass. */
+    const h = Math.max(r, (d.sillH || 0) + (q.apertureIndex || 0) * (d.levelPitch || 0) + (d.clearH || 1.5) / 2);
+    return { at: [e.position.x - lead * Math.cos(yaw), e.position.y - lead * Math.sin(yaw), h], yaw, r };
+  });
+}
 
 /* ---------------------------------------------------------------- *
  * Shared pieces of the field lessons.
@@ -141,6 +192,27 @@ const slalomRings = [0, 1, 2, 3, 4, 5].map((k) => ({
 }));
 
 const pylon = [['pylon', 80, 86, EAST, { height: 28 }]];
+
+/*
+ * Brake Points (rc-2): a stadium, two straights and two hairpins round a
+ * flag each. A fast ring halfway down each straight wants 13 m/s or more
+ * (47 km/h), and a brake ring at its end 9 m/s or less (32 km/h), which a
+ * five inch sheds in the 24 m between them with a firm pull back.
+ */
+const BRAKE_FAST = 13;
+const BRAKE_SLOW = 9;
+const brakeFlags = [
+  ['flag', 94, 106, EAST, { height: 2.5, poleRadius: 0.025, clearance: 1.5 }],
+  ['flag', 94, 48, EAST, { height: 2.5, poleRadius: 0.025, clearance: 1.5 }],
+];
+const brakeRings = route([
+  [80, 52, 3], [80, 76, 3], [80, 100, 3], [86, 114, 3], [102, 114, 3], [108, 100, 3],
+  [108, 76, 3], [108, 54, 3], [102, 40, 3], [86, 40, 3], [80, 56, 3],
+]).map((r, i) => ({
+  ...r,
+  ...(i === 1 || i === 6 ? { minSpeed: BRAKE_FAST } : {}),
+  ...(i === 2 || i === 7 ? { maxSpeed: BRAKE_SLOW } : {}),
+}));
 
 /* ---------------------------------------------------------------- *
  * The chapters.
@@ -1482,14 +1554,800 @@ export const CHAPTERS = [
       },
     ],
   },
+
+  /*
+   * The Rookie Licence: the trunk's last lesson on the skill tree
+   * (./tree.js), and the one that opens both branches. One run of the
+   * beginner chapters' skills in Acro, the ring road, a circle round the
+   * pylon and the pad, with no crashes. Listed last so the numbered
+   * chapters keep their numbers; the tree, not this list, is the order a
+   * pilot meets it in.
+   */
+  {
+    id: 'rk',
+    title: 'Rookie Licence',
+    blurb: 'One checkride of everything Learn to fly taught you, in Acro. Pass it and both ways open: race and freestyle.',
+    mode: 'acro',
+    lessons: [
+      {
+        id: 'rk-1',
+        title: 'Rookie Licence',
+        glyph: 'licence',
+        mode: 'acro',
+        camera: 'fpv',
+        world: built(trainingField('trk-c4a910a1', 'Training Field', pylon)),
+        failOn: { crash: true },
+        briefing: {
+          goal: 'Your first checkride: the ring road in Acro, one circle round the pylon, and a gentle landing on the pad. One crash ends it.',
+          why: 'Everything since your first hover, flown in one go. A licence is not a fast run, it is a clean one: the same smooth inputs from the first ring to the pad.',
+          steps: [
+            'Take off and fly the ring road, in order, at a steady height.',
+            'Then one circle round the pylon, banked and held with a little pull.',
+            'Home to the pad, slow right down, and set it down gently.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'pitch', dir: 'back' }],
+          note: 'No crashes. If you crash, the checkride starts again. Take it slowly: a clean run beats a fast one.',
+        },
+        objectives: [
+          { kind: 'rings', text: 'The ring road', rings: route(ringRoad), hint: 'The lit ring is next. Line up early.' },
+          {
+            kind: 'orbit', text: 'One circle round the pylon', center: [80, 86], rMin: 7, rMax: 18, turns: 1, minHeight: 2,
+            hint: 'Roll and yaw together, and pull a little to hold the turn.',
+          },
+          {
+            kind: 'land', text: 'Land on the pad', maxDescent: 2.2,
+            pad: { at: [FIELD_SPAWN.x, FIELD_SPAWN.y], r: 2.5 },
+            hint: 'Slow down well before the pad, then ease the throttle down.',
+          },
+        ],
+        /* tests/career/rig.test.js flies it in 84 s, carefully; the marks
+         * are set off that the way the Checkride's are (two thirds of it for
+         * gold, a little over it for silver). */
+        medals: { gold: 56000, silver: 88000 },
+        crashTip: 'A licence is flown within yourself. Slower, smoother, and finish it.',
+      },
+    ],
+  },
+
+  /*
+   * THE NEW PARTS, phase three of the tree (the owner's go of 2026-10-28,
+   * "completed do all phases"): five parts of four or five lessons, each
+   * flown somewhere real. Race Craft on the official tracks and the field,
+   * Whoop League in the rooms and Thomas More's Shop, Real Tracks on race
+   * night rooms and a state final from the board, Proximity in the houses,
+   * the woods and the town, and Lines in the freestyle maps from the board.
+   *
+   * MEDALS. A race lesson's are off the track's own lap medals or the
+   * board's times (boardMedals) and pinned as a speed by
+   * tests/career/career-laps.test.js; the field's are off the flight rig
+   * (tests/career/rig.test.js). The fixed maps' gap and close call lessons
+   * are PROVISIONAL: the rig has no solids to fly them among, so they are
+   * set from the distance between the gaps at a speed a good pilot holds
+   * indoors or round a yard, and want flying before they are trusted.
+   */
+  {
+    id: 'rc',
+    title: 'Race Craft',
+    blurb: 'What wins races between the gates: the start, braking, the line, beating your own lap and the same lap five times.',
+    mode: 'acro',
+    lessons: [
+      {
+        id: 'rc-1',
+        title: 'The Start',
+        mode: 'acro',
+        camera: 'fpv',
+        world: race(careerTrack('meadow-sprint')),
+        /* The clock runs from the moment the run is live, not from takeoff:
+         * a start is won on the pads. */
+        clock: 'start',
+        briefing: {
+          goal: 'From the pads to the third gate of Meadow Sprint as fast as you can. The clock starts the moment you can fly.',
+          why: 'Races are won and lost in the first three gates, before anybody can pass. Full throttle off the pads, nose already pointing at the first gate.',
+          steps: [
+            'Punch {throttle} the instant the run starts, with a little {pitch} forward.',
+            'Level out at gate height before the first gate, not after it.',
+            'Carry the speed round to the third gate. No crash, no second chance.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'up' }, { stick: 'pitch', dir: 'forward' }],
+          note: 'The clock is already running on the pads. Fifteen seconds to reach the third gate.',
+        },
+        objectives: [
+          { kind: 'gates', text: 'Pads to the third gate', count: 3, withinMs: 15000, hint: 'Throttle up and go.' },
+        ],
+        /* Forty nine metres from the pads to the third gate: gold is a
+         * launch and nine metres a second on average, silver a careful
+         * five. */
+        medals: { gold: 6500, silver: 10500 },
+        crashTip: 'A start that crashes is the slowest start there is. Punch out, but level off before the gate.',
+        slowTip: 'Fifteen seconds is plenty: go straight for the first gate and keep the throttle in.',
+      },
+      {
+        id: 'rc-2',
+        title: 'Brake Points',
+        mode: 'acro',
+        camera: 'fpv',
+        world: built(trainingField('trk-c4a910c2', 'Training Field', brakeFlags)),
+        briefing: {
+          goal: 'Two straights and two hairpins. Fly the fast rings fast, and brake before the turn rings.',
+          why: 'Speed on a straight is wasted if you overshoot the turn. Brake late and hard, turn, then throttle out: the fastest pilots are the best at slowing down.',
+          steps: [
+            'Down the straight with the throttle in: the fast rings want at least 47 km/h.',
+            'At the brake ring, tilt back with {pitch} to slow under 32 km/h.',
+            'Round the flag, then throttle out down the next straight.',
+          ],
+          sticks: [{ stick: 'pitch', dir: 'back' }, { stick: 'throttle', dir: 'up' }, { stick: 'roll', dir: 'both' }],
+          note: 'A ring flown too fast or too slow does not count, and stays lit until you fly it right.',
+        },
+        objectives: [
+          { kind: 'rings', text: 'Fast, brake, turn, twice', rings: brakeRings, hint: 'Fast down the straight, slow into the turn.' },
+        ],
+        medals: { gold: 26000, silver: 42000 },
+        crashTip: 'Brake earlier. A turn taken slow is faster than a turn taken in the grass.',
+      },
+      {
+        id: 'rc-3',
+        title: 'The Line',
+        mode: 'acro',
+        camera: 'fpv',
+        world: race(careerTrack('river-bend')),
+        briefing: {
+          goal: 'One lap of River Bend through the rings that line you up for every gate.',
+          why: 'The racing line is decided before the gate, not in it. Each ring sits a few metres short of its gate, square to it: be through the ring and the gate is easy.',
+          steps: [
+            'Look at the ring, not the gate behind it.',
+            'Turn early so you come out of the turn already square.',
+            'Through the ring, through the gate, and look for the next ring.',
+          ],
+          sticks: [{ stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }, { stick: 'throttle', dir: 'hold' }],
+        },
+        objectives: [
+          { kind: 'rings', text: 'Every ring before its gate', rings: approachRings(careerTrack('river-bend')), hint: 'The ring first, then the gate.' },
+        ],
+        medals: { gold: 15000, silver: 24000 },
+        crashTip: 'Coming at a gate on the angle is how gates get hit. Turn earlier and arrive square.',
+      },
+      {
+        id: 'rc-4',
+        title: 'Beat Your Ghost',
+        glyph: 'ghost',
+        mode: 'acro',
+        camera: 'fpv',
+        world: race(careerTrack('switchback')),
+        briefing: {
+          goal: 'Fly a lap of Switchback. Then fly one a quarter of a second faster than your best, with your ghost beside you.',
+          why: 'Your best lap flies with you as a ghost. Racing it shows you exactly where you lose time: the corner where it pulls away is the corner to fix.',
+          steps: [
+            'Lap one: clean and smooth. That lap is your ghost.',
+            'Next lap: race the ghost. Where it pulls away, try a tighter line.',
+            'Beat your best lap by a quarter of a second. Six laps to do it.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }],
+          note: 'The ghost is your best lap of this session. The Ghost row on the pause menu turns it off, and then you race the clock alone.',
+        },
+        objectives: [
+          { kind: 'gates', text: 'Beat your best lap', beat: 250, maxLaps: 6, hint: 'Race the ghost.' },
+        ],
+        /* Two laps at the track's lap gold, or three at its silver. */
+        medals: raceMedals('switchback', 2),
+        crashTip: 'A crash costs the lap. Beat the ghost with a cleaner line, not a riskier one.',
+        lapsTip: 'Six laps and no lap a quarter second faster. Fly one lap slower and cleaner, then push the next.',
+      },
+      {
+        id: 'rc-5',
+        title: 'Steady Laps',
+        mode: 'acro',
+        camera: 'fpv',
+        world: race(careerTrack('meadow-sprint')),
+        laps: 5,
+        briefing: {
+          goal: 'Five laps of Meadow Sprint in a row, every one within eight tenths of a second of the others.',
+          why: 'Races are won by the pilot who flies the same fast lap again and again. One heroic lap and two crashes loses to five steady ones.',
+          steps: [
+            'Pick a speed you can hold without mistakes.',
+            'Same line, same throttle, every lap.',
+            'Five laps inside eight tenths of each other. Ten laps to find them.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }],
+        },
+        objectives: [
+          { kind: 'gates', text: 'Five laps inside 0.8 s', laps: 5, steady: 800, maxLaps: 10, hint: 'The same lap, again.' },
+        ],
+        medals: raceMedals('meadow-sprint', 5),
+        crashTip: 'A crash breaks the run of laps. Back off until you can fly five without one.',
+        lapsTip: 'Ten laps and never five alike. Slow down a little: steady first, then faster.',
+      },
+    ],
+  },
+
+  {
+    id: 'wl',
+    title: 'Whoop League',
+    blurb: 'A 65 mm whoop indoors: the official rooms in 28 inch gates, then the doors and doorways of Thomas More\'s Shop.',
+    mode: 'acro',
+    lessons: [
+      {
+        id: 'wl-1',
+        title: 'Front Room',
+        airframe: 'whoop65',
+        mode: 'acro',
+        camera: 'fpv',
+        world: race(careerTrack('front-room')),
+        laps: 3,
+        briefing: {
+          goal: 'Three laps of the Front Room on a whoop: six gates on the floor, once round the room.',
+          why: 'A whoop is a race quad for a living room. It is light, it bounces off walls, and its gates are tiny, so it is all throttle control and small stick moves.',
+          steps: [
+            'Small moves: a whoop turns fast, so ease into every turn.',
+            'Keep low. The gates are at your knees, not your head.',
+            'Three laps. Touch a gate and keep going: a whoop forgives.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'yaw', dir: 'both' }, { stick: 'roll', dir: 'both' }],
+          note: 'This lesson seats the 65 mm whoop for you. Your own quad comes back when you leave the career.',
+        },
+        objectives: [
+          { kind: 'gates', text: 'Three laps', laps: 3, hint: 'Small moves, low and smooth.' },
+        ],
+        medals: raceMedals('front-room', 3, 1),
+        crashTip: 'Too much stick. A whoop needs a fraction of what a five inch needs.',
+      },
+      {
+        id: 'wl-2',
+        title: 'Bunk Room',
+        airframe: 'whoop65',
+        mode: 'acro',
+        camera: 'fpv',
+        world: race(careerTrack('bunk-room')),
+        laps: 3,
+        briefing: {
+          goal: 'Three laps of the Bunk Room: over the top of a stack, down to the floor, a raised gate on the far wall and the top of the second stack home.',
+          why: 'Indoor tracks go up and down as much as round. Height changes are throttle, and a whoop climbs fast, so they are gentle throttle.',
+          steps: [
+            'Climb before the stack, not in it.',
+            'Dive to the floor gate with the throttle low, and catch it early.',
+            'Raised gate, then the top of the last stack.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'up' }, { stick: 'throttle', dir: 'down' }, { stick: 'pitch', dir: 'forward' }],
+        },
+        objectives: [
+          { kind: 'gates', text: 'Three laps', laps: 3, hint: 'Climb early for the stacks.' },
+        ],
+        medals: raceMedals('bunk-room', 3, 1),
+        crashTip: 'Catch the dive sooner: a whoop falls fast and the floor comes quickly.',
+      },
+      {
+        id: 'wl-3',
+        title: 'Shop Doors',
+        airframe: 'whoop65',
+        mode: 'acro',
+        camera: 'fpv',
+        world: place('warehouse'),
+        briefing: {
+          goal: 'Down the crate aisle of Thomas More\'s Shop, in through the white office\'s French door and out through its window.',
+          why: 'A real building is a track nobody drew. The doors are where they are, and the line is the one you find between the crates.',
+          steps: [
+            'North up the crate aisle from the slab, low and steady.',
+            'Into the white office through the French door.',
+            'Turn round inside and out through the window beside it.',
+          ],
+          sticks: [{ stick: 'yaw', dir: 'both' }, { stick: 'throttle', dir: 'hold' }, { stick: 'pitch', dir: 'tap' }],
+          note: 'Thomas More\'s Shop, flown on a whoop. The marker points at the next door.',
+        },
+        objectives: [
+          { kind: 'gap', text: 'The French door', names: ['FRENCH DOOR'], hint: 'Follow the marker up the aisle.' },
+          { kind: 'gap', text: 'Out through the office window', names: ['OFFICE WINDOW'], hint: 'Turn round inside, climb a little.' },
+        ],
+        /* PROVISIONAL, see above: about 200 m of the shop at seven metres a
+         * second for gold. */
+        medals: { gold: 36000, silver: 60000 },
+        crashTip: 'Slow down for the doors. A whoop through a door at half speed is still quick.',
+      },
+      {
+        id: 'wl-4',
+        title: 'Barani Doorway',
+        airframe: 'whoop65',
+        mode: 'acro',
+        camera: 'fpv',
+        world: place('warehouse'),
+        briefing: {
+          goal: 'The shop\'s loop: through the paint shop door, up the machine room, back through the Barani Doorway and in again through the sliding door.',
+          why: 'Thomas More flies this loop, and the Barani Doorway is his favourite: wide and tall, the place to carry speed. A loop through a building is a lap of a race track with walls.',
+          steps: [
+            'East through the paint shop door at the south end.',
+            'North up the machine room, then west through the Barani Doorway.',
+            'South down the workshop and east through the sliding door to finish.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }],
+        },
+        objectives: [
+          {
+            kind: 'gap', text: 'Paint shop, Barani Doorway, sliding door', names: ['PAINT SHOP', 'BARANI DOORWAY', 'SLIDING DOOR'], ordered: true,
+            hint: 'In that order. The marker points at the next one.',
+          },
+        ],
+        /* PROVISIONAL: about 340 m round the shop. */
+        medals: { gold: 55000, silver: 95000 },
+        crashTip: 'Carry speed through the wide doorway, not the narrow ones.',
+      },
+    ],
+  },
+
+  {
+    id: 'rt',
+    title: 'Real Tracks',
+    blurb: 'Race night rooms the pilots on the board fly, against medal times set from their laps, and a state championship to finish.',
+    mode: 'acro',
+    lessons: [
+      {
+        id: 'rt-1',
+        title: 'Skittles\' Track',
+        airframe: 'whoop65',
+        mode: 'acro',
+        camera: 'fpv',
+        world: race(utt(1)),
+        laps: 3,
+        briefing: {
+          goal: 'Three laps of Skittles\' first race night room on a whoop, against times set from the board.',
+          why: 'Race nights are flown in rooms like this one, three laps against the clock. The medal times here come from the laps real pilots post on the board.',
+          steps: [
+            'Fly the first lap slowly to learn it.',
+            'Laps two and three: the same line, faster.',
+            'Three laps is the race: the total is what counts.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'yaw', dir: 'both' }, { stick: 'roll', dir: 'both' }],
+          note: 'Designed by Skittles. This lesson seats the 65 mm whoop for you.',
+        },
+        objectives: [
+          { kind: 'gates', text: 'Three laps', laps: 3, hint: 'Learn it, then fly it.' },
+        ],
+        /* The board's on 2026-10-28: fifth best three laps 17.0 s, the
+         * middle of 117 pilots' 32.1 s. */
+        medals: boardMedals(16970, 32118),
+        crashTip: 'A tight room punishes a fast first lap. Learn the line before you push.',
+      },
+      {
+        id: 'rt-2',
+        title: 'Sabj\'s Track',
+        airframe: 'whoop65',
+        mode: 'acro',
+        camera: 'fpv',
+        world: boardTrack('trk-69109146', { name: 'Sabj\'s Track' }),
+        laps: 3,
+        briefing: {
+          goal: 'Three laps of Sabj\'s race night room, fifteen gates, against the board\'s times.',
+          why: 'A room from a real race night, from the board. Fifteen gates in a ten by twelve metre room is turn after turn: the line through them is the race.',
+          steps: [
+            'Lap one to learn the order of the gates.',
+            'Then look one gate ahead all the way round.',
+            'Three clean laps beat two fast ones and a crash.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'yaw', dir: 'both' }, { stick: 'roll', dir: 'both' }],
+          note: 'Designed by Sabj, from the board. This lesson seats the 65 mm whoop for you.',
+        },
+        objectives: [
+          { kind: 'gates', text: 'Three laps', laps: 3, hint: 'Look one gate ahead.' },
+        ],
+        /* The board's: fifth best 18.9 s, the middle of 77 pilots' 36.3 s. */
+        medals: boardMedals(18894, 36300),
+        crashTip: 'Fifteen gates is a lot to remember. Fly it slower until you know where the next one is.',
+        fallback: {
+          title: 'Skittles\' Second',
+          world: race(utt(2)),
+          briefing: {
+            goal: 'Three laps of Skittles\' second race night room on a whoop.',
+            why: 'The board could not be reached, so this lesson flies one of the race night rooms the game carries instead. Three laps against the clock.',
+            steps: [
+              'Lap one to learn it.',
+              'Then the same line, faster.',
+              'Three clean laps.',
+            ],
+            sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'yaw', dir: 'both' }, { stick: 'roll', dir: 'both' }],
+            note: 'Designed by Skittles. This lesson seats the 65 mm whoop for you.',
+          },
+          /* The board's for its copy there: fifth best 28.9 s, the middle 33.8 s. */
+          medals: boardMedals(28916, 33774),
+        },
+      },
+      {
+        id: 'rt-3',
+        title: 'The Lego Dans',
+        airframe: 'whoop65',
+        mode: 'acro',
+        camera: 'fpv',
+        world: boardTrack('trk-85c74ecc', { name: 'The Lego Dans' }),
+        laps: 3,
+        briefing: {
+          goal: 'Three laps of the Lego Dans\' race night room, fifteen gates, against the board\'s times.',
+          why: 'The Lego Dans build rooms that flow, if you find the line. Every gate leads into the next one.',
+          steps: [
+            'Lap one to learn it.',
+            'Find where one turn rolls straight into the next.',
+            'Three laps, smooth all the way.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }],
+          note: 'Designed by the Lego Dans, from the board. This lesson seats the 65 mm whoop for you.',
+        },
+        objectives: [
+          { kind: 'gates', text: 'Three laps', laps: 3, hint: 'Roll from one gate into the next.' },
+        ],
+        /* The board's: fifth best 20.3 s, the middle of 46 pilots' 38.5 s. */
+        medals: boardMedals(20252, 38488),
+        crashTip: 'Smooth is fast in a room. Fly the line, not the clock.',
+        fallback: {
+          world: race(utt(3)),
+          briefing: {
+            goal: 'Three laps of the Lego Dans\' first race night room on a whoop.',
+            why: 'The board could not be reached, so this lesson flies the Lego Dans\' room the game carries instead. Every gate leads into the next.',
+            steps: [
+              'Lap one to learn it.',
+              'Find where one turn rolls into the next.',
+              'Three laps, smooth all the way.',
+            ],
+            sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }],
+            note: 'Designed by the Lego Dans. This lesson seats the 65 mm whoop for you.',
+          },
+          /* PROVISIONAL: two board times only. Its lap is about 26 m in
+           * the whoop's own metres: gold near 2.8 m/s, silver near 1.7. */
+          medals: { gold: 30000, silver: 48000 },
+        },
+      },
+      {
+        id: 'rt-4',
+        title: 'State Champs',
+        mode: 'acro',
+        camera: 'fpv',
+        world: boardTrack('trk-d16e93ac', { name: 'WA State Champs 2026', steam: false }),
+        laps: 1,
+        briefing: {
+          goal: 'One lap of the WA State Champs 2026 track on a five inch: thirty seven gates, flags and two dive gates.',
+          why: 'A real state final, as it was flown. A long lap of a big field is a test of everything: speed on the straights, braking, the line, and keeping it together to the end.',
+          steps: [
+            'Fly it once to learn it: there is a lot of it.',
+            'Brake for the flags and the dive gates, throttle out of them.',
+            'One clean lap. The medal times are the board\'s.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'pitch', dir: 'back' }],
+        },
+        objectives: [
+          { kind: 'gates', text: 'One lap', laps: 1, hint: 'Look two gates ahead.' },
+        ],
+        /* The board's, one lap: fifth best 37.6 s and the middle of 13 66.2 s. */
+        medals: { gold: 45500, silver: 75500 },
+        crashTip: 'A long lap is lost in one corner. Brake earlier and finish it.',
+        /* The Steam edition carries no event tracks (steam/content.json
+         * eventCourses), and the web flies this when the board is down. */
+        fallback: {
+          title: 'FPVBean\'s Track',
+          airframe: 'whoop65',
+          world: race(utt(7)),
+          laps: 3,
+          briefing: {
+            goal: 'Three laps of FPVBean\'s race night room, sixteen gates, on a whoop.',
+            why: 'The last of the real tracks: a long room with a lot of gates, flown three laps against the clock.',
+            steps: [
+              'Lap one to learn it: there is a lot of it.',
+              'Then look one gate ahead all the way round.',
+              'Three clean laps.',
+            ],
+            sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'yaw', dir: 'both' }, { stick: 'roll', dir: 'both' }],
+            note: 'Designed by FPVBean. This lesson seats the 65 mm whoop for you.',
+          },
+          objectives: [
+            { kind: 'gates', text: 'Three laps', laps: 3, hint: 'Look one gate ahead.' },
+          ],
+          /* PROVISIONAL: three board times only. A lap of about 19 m in the
+           * whoop's own metres: gold near 2.8 m/s, silver near 1.7. */
+          medals: { gold: 22000, silver: 36000 },
+        },
+      },
+    ],
+  },
+
+  {
+    id: 'px',
+    title: 'Proximity',
+    blurb: 'Flying close: along walls, through a garden, between the trees, under everything in the town, and round Heads\' yard.',
+    mode: 'acro',
+    lessons: [
+      {
+        id: 'px-1',
+        /* Steam edition: the freestyle five inch, pack on top, camera at 20. */
+        airframe: '5inchfs',
+        title: 'Wall Skim',
+        mode: 'acro',
+        camera: 'fpv',
+        world: built(hibariYard()),
+        briefing: {
+          goal: 'Skim three walls or roofs in Hibari Yard: fly along them, close, without touching.',
+          why: 'Proximity is flying close to things on purpose. A skim is the first of it: a container side or a roof a hand\'s width under you, held steady.',
+          steps: [
+            'Pick a long flat side: a container stack or the bando wall.',
+            'Fly along it, close, and hold the line. The closer and faster, the more it pays.',
+            'Three skims. A skim that ends in the wall does not count.',
+          ],
+          sticks: [{ stick: 'roll', dir: 'tap' }, { stick: 'throttle', dir: 'hold' }, { stick: 'yaw', dir: 'both' }],
+          note: 'Close calls are counted by the game as it watches you fly: a skim, a thread between two things, or flying under one.',
+        },
+        objectives: [
+          { kind: 'close', text: 'Three skims', kinds: ['skim'], count: 3, hint: 'Along a container side, close and steady.' },
+        ],
+        /* PROVISIONAL. */
+        medals: { gold: 30000, silver: 60000 },
+        crashTip: 'Start a little further out, then edge in. Close comes from steady, not from brave.',
+      },
+      {
+        id: 'px-2',
+        title: 'Garden Gaps',
+        airframe: 'whoop65',
+        mode: 'acro',
+        camera: 'fpv',
+        world: place('house'),
+        briefing: {
+          goal: 'Out of Nick Burns\' house through the slider, through the swing set at the end of the garden, and back in through the kitchen window.',
+          why: 'Out of a house and back in again is the line every whoop pilot flies at home. Doors and windows are small, so line up from far out.',
+          steps: [
+            'West out of the breakfast room and through the slider into the garden.',
+            'Down the garden and through the swing set.',
+            'Back to the house and in through the kitchen window.',
+          ],
+          sticks: [{ stick: 'yaw', dir: 'both' }, { stick: 'pitch', dir: 'tap' }, { stick: 'throttle', dir: 'hold' }],
+          note: 'Nick Burns\' house, flown on a whoop. The marker points at the next gap.',
+        },
+        objectives: [
+          {
+            kind: 'gap', text: 'Slider, swing set, kitchen window', names: ['SLIDER', 'SWING SET', 'KITCHEN WINDOW'], ordered: true,
+            hint: 'In that order. Line up from far out.',
+          },
+        ],
+        /* PROVISIONAL: about 170 m out and back. */
+        medals: { gold: 32000, silver: 55000 },
+        crashTip: 'The kitchen window is smaller than it looks. Slow down and line up square to it.',
+      },
+      {
+        id: 'px-3',
+        title: 'Tree Line',
+        mode: 'acro',
+        camera: 'fpv',
+        world: place('bardwell'),
+        briefing: {
+          goal: 'The race\'s line along Joshua Bardwell\'s woods: the north corner, over the fence, the top of the woods, into the trees and the west gate. Then thread between two trees twice.',
+          why: 'Trees are the hardest proximity there is: thin, everywhere, and they do not move for you. Flying a line through them is what makes a freestyle pilot.',
+          steps: [
+            'East from the lawn to the north corner frame, then over the fence.',
+            'West along the top of the woods and into the trees.',
+            'Out through the west gate, then find two trees close together and fly between them.',
+          ],
+          sticks: [{ stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }, { stick: 'throttle', dir: 'hold' }],
+        },
+        objectives: [
+          {
+            kind: 'gap', text: 'Along the woods',
+            names: ['THE NORTH CORNER', 'OVER THE FENCE', 'THE TOP OF THE WOODS', 'INTO THE TREES', 'THE WEST GATE'], ordered: true,
+            hint: 'Follow the marker, frame to frame.',
+          },
+          { kind: 'close', text: 'Thread two trees, twice', kinds: ['thread'], count: 2, hint: 'Between two trunks, level.' },
+        ],
+        /* PROVISIONAL: about 160 m of frames, then the threads. */
+        medals: { gold: 40000, silver: 75000 },
+        crashTip: 'Look at the gap between the trees, never at a tree.',
+      },
+      {
+        id: 'px-4',
+        /* Steam edition: the freestyle five inch, pack on top, camera at 20. */
+        airframe: '5inchfs',
+        title: 'Under Everything',
+        mode: 'acro',
+        camera: 'fpv',
+        world: place('city'),
+        briefing: {
+          goal: 'Fly under four things in the town: a bridge, a walkway, a balcony, a crane. Anything with air under it.',
+          why: 'Under is the proximity move that looks the best on video: the world drops on top of the camera and is gone. It is a gap with no sides, so it is all height control.',
+          steps: [
+            'Find something with a gap under it: the level crossing, a footbridge, a walkway.',
+            'Drop to its height early, and fly under it level.',
+            'Four of them, anywhere in the town.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'down' }, { stick: 'pitch', dir: 'forward' }, { stick: 'throttle', dir: 'hold' }],
+          note: 'The town is big: the first one is a short flight from the start.',
+        },
+        objectives: [
+          { kind: 'close', text: 'Under four things', kinds: ['under'], count: 4, hint: 'Drop early, fly under level.' },
+        ],
+        /* PROVISIONAL. */
+        medals: { gold: 45000, silver: 90000 },
+        crashTip: 'Get to the height before the thing, not under it.',
+      },
+      {
+        id: 'px-5',
+        title: 'Heads\' Yard',
+        airframe: 'whoop65',
+        mode: 'acro',
+        camera: 'fpv',
+        world: place('heads'),
+        briefing: {
+          goal: 'Round Heads\' house from Infinity Loops: out through the side gate, back through the garage gate, and 600 points of close calls along the way.',
+          why: 'Heads flies this yard close to everything. A proximity run is a line that keeps you near walls, fences and under the eaves the whole way round.',
+          steps: [
+            'Out of the garage, skim along the house to the side gate.',
+            'Round the back, low along the fences.',
+            'In through the garage gate. Skims, threads and unders all count.',
+          ],
+          sticks: [{ stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }, { stick: 'throttle', dir: 'hold' }],
+          note: 'Heads\' house, flown on a whoop.',
+        },
+        objectives: [
+          { kind: 'gap', text: 'Side gate and garage gate', names: ['SIDE GATE', 'THE GARAGE GATE'], hint: 'Follow the marker.' },
+          { kind: 'close', text: '600 points of close calls', kinds: ['skim', 'thread', 'under'], points: 600, hint: 'Along the walls and fences.' },
+        ],
+        /* PROVISIONAL. */
+        medals: { gold: 45000, silver: 80000 },
+        crashTip: 'Close calls only pay when you get away with them. Ease off until they do.',
+      },
+    ],
+  },
+
+  {
+    id: 'ln',
+    title: 'Lines',
+    blurb: 'Freestyle is a line: moves linked with no gap between them. Combos in Hibari Yard, then runs of your own on Infinity Loops and Baka.',
+    mode: 'acro',
+    lessons: [
+      {
+        id: 'ln-1',
+        /* Steam edition: the freestyle five inch, pack on top, camera at 20. */
+        airframe: '5inchfs',
+        title: 'First Combo',
+        mode: 'acro',
+        camera: 'fpv',
+        world: built(hibariYard()),
+        briefing: {
+          goal: 'One combo of three moves: gaps, tricks or close calls, one straight after another, banked clean.',
+          why: 'A combo is moves linked inside a few seconds of each other. Each one keeps it open, and it is banked when you stop. Linked, they pay far more than the same moves apart.',
+          steps: [
+            'Through a gap, then straight into a skim along a container.',
+            'Then a flip or a roll before the combo closes.',
+            'Keep flying clean: a crash loses the whole combo.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'pitch', dir: 'both' }],
+          note: 'The combo bar on the right shows how long you have to link the next move.',
+        },
+        objectives: [
+          { kind: 'combo', text: 'A combo of three', links: 3, hint: 'One move straight into the next.' },
+        ],
+        /* PROVISIONAL. */
+        medals: { gold: 25000, silver: 50000 },
+        crashTip: 'A crash loses the combo. Link easy moves first.',
+      },
+      {
+        id: 'ln-2',
+        /* Steam edition: the freestyle five inch, pack on top, camera at 20. */
+        airframe: '5inchfs',
+        title: 'Gap to Trick',
+        mode: 'acro',
+        camera: 'fpv',
+        world: built(hibariYard()),
+        briefing: {
+          goal: 'One combo with a named gap and a trick in it, linked: through the gap and straight into a flip, a roll or a Powerloop.',
+          why: 'Gap to trick is the freestyle line in one sentence. The trick has to be planned before the gap, because there is no time to think after it.',
+          steps: [
+            'Pick a gap with open air after it: the billboard or the footbridge.',
+            'Through it, then straight into your trick.',
+            'Land it and fly on clean to bank the combo.',
+          ],
+          sticks: [{ stick: 'pitch', dir: 'both' }, { stick: 'throttle', dir: 'up' }, { stick: 'roll', dir: 'both' }],
+        },
+        objectives: [
+          { kind: 'combo', text: 'A gap and a trick, linked', links: 2, need: ['gap', 'trick'], hint: 'Through the gap, then the trick.' },
+        ],
+        /* PROVISIONAL. */
+        medals: { gold: 30000, silver: 60000 },
+        crashTip: 'Climb after the gap before the trick. Height is what lets a trick finish.',
+      },
+      {
+        id: 'ln-3',
+        /* Steam edition: the freestyle five inch, pack on top, camera at 20. */
+        airframe: '5inchfs',
+        title: 'Infinity Loops',
+        mode: 'acro',
+        camera: 'fpv',
+        world: boardMap('trk-e6d139f6', { name: 'InfinityLoops Sticker Hunt', steam: false }),
+        briefing: {
+          goal: 'Ninety seconds on the Infinity Loops map from the board, flown for points. Bank at least 2,000.',
+          why: 'A freestyle run on somebody else\'s map is about finding the lines its builder hid. The 90%er Gap pays the most, if you can find it.',
+          steps: [
+            'Fly round once to see what is there.',
+            'Find two or three things close together and link them.',
+            'Bank the combo before you crash it.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'pitch', dir: 'both' }],
+          note: 'From the board, by Infinity Loops.',
+        },
+        objectives: [
+          { kind: 'score', text: 'Bank 2,000 points in 90 s', points: 2000, seconds: 90, hint: 'Link moves into combos.' },
+        ],
+        /* PROVISIONAL, from Score Run's (9-6) on a map with more in it. */
+        medals: { metric: 'score', gold: 7000, silver: 4000 },
+        scoreTip: 'Find the lines: two gaps and a trick in one combo pay more than all three apart.',
+        crashTip: 'A crash loses the combo you were building. Bank it, then go again.',
+        /* The Steam edition does not carry this map, and the web flies this
+         * when the board is down: Heads' own house, flown for points. */
+        fallback: {
+          airframe: 'whoop65',
+          world: place('heads'),
+          briefing: {
+            goal: 'Ninety seconds round Heads\' house from Infinity Loops, flown for points. Bank at least 2,000.',
+            why: 'Heads\' own house: doors, windows, the basement and the yard. A freestyle run here is a line through all of it.',
+            steps: [
+              'Fly round once to see what is there.',
+              'Link a door, a window and a skim in one combo.',
+              'Bank the combo before you crash it.',
+            ],
+            sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'pitch', dir: 'both' }],
+            note: 'Heads\' house, flown on a whoop.',
+          },
+        },
+      },
+      {
+        id: 'ln-4',
+        /* Steam edition: the freestyle five inch, pack on top, camera at 20. */
+        airframe: '5inchfs',
+        title: 'Baka',
+        mode: 'acro',
+        camera: 'fpv',
+        world: boardMap('trk-9b58230b', { name: 'Baka' }),
+        briefing: {
+          goal: 'Two minutes on Baka, AuraNesian\'s map from the board. Your own line, flown for points. Bank at least 3,000.',
+          why: 'The last lesson before the Freestyle Licence is the one with no instructions: a big map, two minutes, and whatever line you find.',
+          steps: [
+            'Bridges, water towers, bandos and trees: plan a line through them.',
+            'Link gaps, close calls and tricks into long combos.',
+            'Bank often. Two minutes is long enough for a crash.',
+          ],
+          sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'pitch', dir: 'both' }],
+          note: 'From the board, by AuraNesian.',
+        },
+        objectives: [
+          { kind: 'score', text: 'Bank 3,000 points in 2 min', points: 3000, seconds: 120, hint: 'Your own line.' },
+        ],
+        /* PROVISIONAL: the board's three town runs top out at 3,776 in two
+         * minutes. */
+        medals: { metric: 'score', gold: 9000, silver: 5000 },
+        scoreTip: 'Longer combos pay more than more combos: one move straight into the next.',
+        crashTip: 'Bank the combo before the risky move, not after it.',
+        fallback: {
+          world: built(hibariYard()),
+          briefing: {
+            goal: 'Two minutes in Hibari Yard, your own line, flown for points. Bank at least 3,000.',
+            why: 'The board could not be reached, so this run is in Hibari Yard: the last lesson before the Freestyle Licence, with no instructions.',
+            steps: [
+              'Plan a line through the gaps and the containers.',
+              'Link gaps, close calls and tricks into long combos.',
+              'Bank often.',
+            ],
+            sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'pitch', dir: 'both' }],
+          },
+        },
+      },
+    ],
+  },
 ];
+
+/*
+ * A lesson as this edition flies it: one whose world the Steam edition does
+ * not carry (`steam: false`) is its fallback there from the start, so its
+ * tree, its briefing and its medals all name what is flown.
+ */
+export function asFlown(l) {
+  return STEAM_EDITION && l.world && l.world.steam === false && l.fallback
+    ? { ...l, ...l.fallback, fallen: true }
+    : l;
+}
 
 /* Every lesson, in career order, with its chapter. */
 export function allLessons() {
   const out = [];
   for (const c of CHAPTERS) {
     for (const l of c.lessons) {
-      out.push({ ...l, chapter: c.id });
+      out.push({ ...asFlown(l), chapter: c.id });
     }
   }
   return out;
@@ -1499,7 +2357,7 @@ export function lessonById(id) {
   for (const c of CHAPTERS) {
     const l = c.lessons.find((x) => x.id === id);
     if (l) {
-      return { ...l, chapter: c.id };
+      return { ...asFlown(l), chapter: c.id };
     }
   }
   return null;

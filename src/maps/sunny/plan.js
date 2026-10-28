@@ -26,6 +26,7 @@ import { streets, MAIN_Y, OAK_X, PINE_X, MAPLE_Y, HALF, MILL_X, MILL_END } from 
 import { houses, hedgeGap } from './houses.js';
 import { downtown, DONUT, HALL as CIVIC, CHURCH, GAS, PADS } from './downtown.js';
 import { landmarks, GORGE, gorgeFloorAt, GORGE_BRIDGE, HALL as TURBINES, MANSION_GATE, BANDSTAND, PLANT, CONTAINER } from './landmarks.js';
+import { townDressing } from './dress.js';
 import { partsOf } from '../../props/catalog.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../partners/roster.js';
 import { signAspect } from '../../art/partnermark.js';
@@ -83,6 +84,7 @@ export function sunnyLayout() {
   houses(T);
   downtown(T);
   landmarks(T);
+  townDressing(T);
   for (const b of BILLBOARDS) {
     billboard(T, b);
   }

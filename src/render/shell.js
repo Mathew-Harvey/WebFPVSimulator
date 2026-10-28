@@ -39,6 +39,7 @@
 import * as THREE from 'three';
 import { buildCraft } from './craft.js';
 import { CAMERA_FOV_DEFAULT } from './lens.js';
+import { savedLivery } from './livery.js';
 
 /*
  * Free every GPU resource a map's scene graph owns.
@@ -272,6 +273,10 @@ export function buildShell(canvas, opts) {
   camera.layers.enable(2);
 
   let craft = buildCraft(opts.airframe);
+  /* The pilot's livery (src/render/livery.js), painted on every craft this
+   * shell builds, the first and every swap. */
+  let craftLivery = savedLivery();
+  craft.paint(craftLivery);
   /* The airframe the craft flies and, when a map draws another over it,
    * the model it is drawn as (setCraftModel below). */
   let craftAirframe = opts.airframe;
@@ -423,6 +428,11 @@ export function buildShell(canvas, opts) {
     /* Resolves once the aircraft on screen has its model in: the whoop's is
      * a file fetched on demand (src/render/whoopcraft.js). */
     craftReady: () => craft.ready || null,
+    /* Paint the quad in a livery, now and on every craft built after. */
+    setLivery(livery) {
+      craftLivery = livery;
+      craft.paint(livery);
+    },
     keepAcrossMaps,
     evictSessionRoots,
   };
@@ -448,6 +458,7 @@ export function buildShell(canvas, opts) {
     craftAirframe = airframeId;
     craftModel = modelId || null;
     const next = buildCraft(airframeId, craftModel);
+    next.paint(craftLivery);
     next.group.position.copy(old.group.position);
     next.group.quaternion.copy(old.group.quaternion);
     next.group.visible = old.group.visible;

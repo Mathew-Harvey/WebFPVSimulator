@@ -76,7 +76,10 @@ function worldRing(r, W, D) {
   const dir = yawDir(r.yaw || 0);
   const p = (r.pitch || 0) * DEG;
   const n = v3(dir.x * Math.cos(p), -Math.sin(p), dir.z * Math.cos(p));
-  return { c: docToWorld(W, D, x, y, z), n, r: r.r ?? 2.5, yaw: r.yaw || 0, pitch: r.pitch || 0 };
+  return {
+    c: docToWorld(W, D, x, y, z), n, r: r.r ?? 2.5, yaw: r.yaw || 0, pitch: r.pitch || 0,
+    minSpeed: r.minSpeed ?? null, maxSpeed: r.maxSpeed ?? null,
+  };
 }
 
 export function prepareObjective(o, W, D) {
@@ -260,8 +263,13 @@ const JUDGES = {
   },
 
   /*
-   * rings { rings: [{at, yaw, pitch, r}], ordered = true, either = false }:
-   * through each ring, in order, the way it faces (or either way).
+   * rings { rings: [{at, yaw, pitch, r, minSpeed, maxSpeed}], ordered = true,
+   *         either = false }:
+   * through each ring, in order, the way it faces (or either way). A ring
+   * with a speed on it counts only when crossed inside it, m/s: the Race
+   * Craft lessons ask for speed down a straight and a brake before a turn.
+   * One crossed too fast or too slow says so in `detail` and waits to be
+   * flown again.
    */
   rings: {
     start: () => ({ index: 0, passed: [] }),
@@ -269,7 +277,22 @@ const JUDGES = {
       const rings = o.rings;
       const check = (i) => {
         const dir = crossesDisc(f.prev, f.pos, rings[i].c, rings[i].n, rings[i].r);
-        return dir === 1 || (o.either && dir === -1);
+        if (!(dir === 1 || (o.either && dir === -1))) {
+          return false;
+        }
+        const r = rings[i];
+        if (r.maxSpeed != null && f.speed > r.maxSpeed) {
+          s.detail = 'fast';
+          s.missSpeed = f.speed;
+          return false;
+        }
+        if (r.minSpeed != null && f.speed < r.minSpeed) {
+          s.detail = 'slow';
+          s.missSpeed = f.speed;
+          return false;
+        }
+        s.detail = '';
+        return true;
       };
       if (o.ordered === false) {
         for (let i = 0; i < rings.length; i += 1) {
@@ -321,20 +344,58 @@ const JUDGES = {
   },
 
   /*
-   * gates { laps = 1 }: the race's own gates and laps (src/game/race.js),
-   * which the shell reports on the frame. ctx.gatesPerLap sizes the bar.
+   * gates { laps = 1, count, beat, steady, maxLaps }: the race's own gates
+   * and laps (src/game/race.js), which the shell reports on the frame.
+   * ctx.gatesPerLap sizes the bar. The Race Craft lessons ask more of a lap
+   * than finishing it:
+   *   count    done at that many gates, not at a lap: the start
+   *   beat     done on a lap that beats every earlier lap of the run by that
+   *            many ms. The first lap is the ghost the shell flies beside
+   *            the pilot, and the next one has to beat it.
+   *   steady   done when the last `laps` laps sit inside that many ms of
+   *            each other: the same lap, again and again.
+   *   maxLaps  the laps it may take; past them the run fails ('laps').
    */
   gates: {
-    start: () => ({ gates: 0, laps: 0, lapTimes: [] }),
+    start: () => ({ gates: 0, laps: 0, lapTimes: [], spread: null, gain: null }),
     frame(s, o, f, ctx) {
       if (f.gate != null) {
         s.gates += 1;
       }
       if (f.lap) {
         s.laps += 1;
+        const before = s.lapTimes.length ? Math.min(...s.lapTimes) : null;
         s.lapTimes.push(f.lap.ms);
+        if (o.beat != null && before != null) {
+          s.gain = before - f.lap.ms;
+          s.detail = s.gain >= o.beat ? '' : 'ghost';
+          if (s.gain >= o.beat) {
+            s.done = true;
+          }
+        }
+        if (o.steady != null) {
+          const last = s.lapTimes.slice(-(o.laps ?? 1));
+          s.spread = Math.max(...last) - Math.min(...last);
+          s.detail = last.length >= (o.laps ?? 1) && s.spread > o.steady ? 'spread' : '';
+          if (last.length >= (o.laps ?? 1) && s.spread <= o.steady) {
+            s.done = true;
+          }
+        }
       }
       const per = Math.max(1, ctx.gatesPerLap || 1);
+      if (o.count != null) {
+        s.done = s.gates >= o.count;
+        s.progress = Math.min(1, s.gates / o.count);
+        return;
+      }
+      if (o.beat != null || o.steady != null) {
+        if (!s.done && o.maxLaps != null && s.laps >= o.maxLaps) {
+          s.failed = 'laps';
+        }
+        const want = o.beat != null ? 2 : (o.laps ?? 1);
+        s.progress = s.done ? 1 : Math.min(0.99, (Math.min(s.laps, want - 1) + Math.min(0.99, (s.gates % (per + 1)) / per)) / want);
+        return;
+      }
       const laps = o.laps ?? 1;
       s.done = s.laps >= laps;
       s.progress = Math.min(1, s.done ? 1 : (s.laps + Math.min(0.99, (s.gates % (per + 1)) / per)) / laps);
@@ -622,6 +683,59 @@ const JUDGES = {
       s.done = s.best >= o.points;
     },
   },
+
+  /*
+   * close { kinds, count, points }: flying close to things, as the map's own
+   * close call judge pays it (src/game/closecall.js, through the counter's
+   * events): 'skim' along a wall or a roof, 'thread' between two solids,
+   * 'under' a deck or a bridge, 'lowpass' over the ground. `count` of them,
+   * or `points` of them added up. Only a paid one counts, so a skim that
+   * ends in a crash is not one.
+   */
+  close: {
+    start: () => ({ n: 0, points: 0 }),
+    frame(s, o) {
+      s.progress = o.points != null ? Math.min(1, s.points / o.points) : Math.min(1, s.n / (o.count ?? 1));
+      s.done = s.progress >= 1;
+    },
+    counter(s, o, e) {
+      if (!o.kinds.includes(e.kind) || !(e.points > 0)) {
+        return false;
+      }
+      s.n += 1;
+      s.points += e.points;
+      s.last = e.name || e.kind;
+      return true;
+    },
+  },
+
+  /*
+   * combo { links, need }: one combo, banked clean (src/game/score.js): at
+   * least `links` things in it, and with `need`, every kind named there in
+   * it ('trick', 'gap', 'skim', 'thread', 'under'). A combo lost to a crash
+   * is a bail, not a bank, so it never counts.
+   */
+  combo: {
+    start: () => ({ best: 0 }),
+    frame(s, o) {
+      s.progress = s.done ? 1 : Math.min(0.99, s.best / Math.max(1, o.links ?? 1));
+    },
+    counter(s, o, e) {
+      if (e.kind !== 'bank') {
+        return false;
+      }
+      const names = Array.isArray(e.names) ? e.names : [];
+      const kinds = Array.isArray(e.kinds) ? e.kinds : [];
+      s.best = Math.max(s.best, names.length);
+      const long = names.length >= (o.links ?? 1);
+      const has = !o.need || o.need.every((k) => kinds.includes(k));
+      s.detail = long && !has ? 'need' : (!long ? 'short' : '');
+      if (long && has) {
+        s.done = true;
+      }
+      return true;
+    },
+  },
 };
 
 export const OBJECTIVE_KINDS = Object.freeze(Object.keys(JUDGES));
@@ -695,6 +809,10 @@ export function createRun(lesson, world = {}) {
     dtMs: 0, height: 0, elapsedMs: 0, gatesPerLap: world.gatesPerLap || 0, heightAt,
   };
   let index = 0;
+  /* When the objective under way became the one under way, on the run's
+   * clock, for an objective with `withinMs` (the start: three gates inside
+   * so many seconds), which fails the run as 'slow' past it. */
+  let activeSince = 0;
   let states = objectives.map((o) => JUDGES[o.kind].start(o));
   let phase = 'ready';
   let startMs = null;
@@ -715,6 +833,7 @@ export function createRun(lesson, world = {}) {
     while (index < objectives.length && states[index].done) {
       emit('objective', { index, text: objectives[index].text });
       index += 1;
+      activeSince = elapsedMs;
     }
     if (index >= objectives.length && phase === 'flying') {
       phase = 'complete';
@@ -773,6 +892,11 @@ export function createRun(lesson, world = {}) {
       ctx.elapsedMs = elapsedMs;
       if (index < objectives.length) {
         JUDGES[objectives[index].kind].frame(states[index], objectives[index], f, ctx);
+        const lim = objectives[index].withinMs;
+        if (lim != null && phase === 'flying' && !states[index].done && elapsedMs - activeSince > lim) {
+          fail('slow');
+          return this.status();
+        }
         /* A judge that can fail (a timed score run that fell short) ends
          * the run as a lesson's own limits do. */
         if (states[index].failed && phase === 'flying') {
@@ -807,6 +931,27 @@ export function createRun(lesson, world = {}) {
       const counted = j.gap ? j.gap(states[index], objectives[index], e) : false;
       emit('gap', { name: e.name, counted });
       return counted;
+    },
+
+    /* What the freestyle counter paid, as it drained them (src/game/score.js
+     * events): close calls and banked combos, for the judges that listen
+     * for them. True when one counted. */
+    counter(evs) {
+      if (phase !== 'flying' || index >= objectives.length || !Array.isArray(evs)) {
+        return false;
+      }
+      const j = JUDGES[objectives[index].kind];
+      if (!j.counter) {
+        return false;
+      }
+      let any = false;
+      for (const e of evs) {
+        if (e && j.counter(states[index], objectives[index], e)) {
+          any = true;
+          emit('counter', { kind: e.kind, name: e.name || '' });
+        }
+      }
+      return any;
     },
 
     crash() {

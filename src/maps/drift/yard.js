@@ -44,7 +44,7 @@
 import { DRIFT_DOC_ID } from '../registry.js';
 import { pointAt, nearestOn } from '../built/road.js';
 import {
-  FIELD_W, FIELD_D, courseElement, courseLine, PITS, BANK, TOWER, FAIR, ROAD_WIDTH,
+  FIELD_W, FIELD_D, courseElement, courseLine, circuitLayout, PITS, BANK, TOWER, FAIR, ROAD_WIDTH,
 } from './circuit.js';
 
 export const DRIFT_NAME = 'Drift Matsuri';
@@ -86,7 +86,16 @@ const KEEP_OUT = [
 
 function trees(line) {
   const out = [];
+  /* Round every piece of the furniture, a circle no trunk stands in. */
+  const { keep } = circuitLayout();
   const clear = (x, y, r) => {
+    for (const k of keep) {
+      const dx = k.x - x;
+      const dy = k.y - y;
+      if (dx * dx + dy * dy < (k.r + 2) * (k.r + 2)) {
+        return false;
+      }
+    }
     if (x < 6 || y < 6 || x > FIELD_W - 6 || y > FIELD_D - 6) {
       return false;
     }

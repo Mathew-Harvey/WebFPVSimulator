@@ -4,7 +4,7 @@
  *
  * THE PLACE (src/maps/drift/): the course is a road the built map can
  * drive with no problem raised, every drift car is driven, no solid stands
- * where a car's tail swings, the start pad is on the tower's roof, and the
+ * where a car's tail swings (below a car's roof), the start pad is on the tower's roof, and the
  * same document comes out twice.
  *
  * THE JUDGE (src/game/film.js), against scripted cameras and scripted cars
@@ -67,7 +67,9 @@ const CLEAR = 7.6;
 let nearest = Infinity;
 let nearName = '';
 for (const p of L.parts) {
-  if (!p.solid) {
+  /* What stands clear over a car's roof (the gantry's beam, the torii's)
+   * is not in a tail's way. */
+  if (!p.solid || (p.t === 'box' ? Math.min(p.lo[1], p.hi[1]) : Math.min(p.a[1], p.b[1]) - p.r) > 3) {
     continue;
   }
   const pts = p.t === 'box'
@@ -85,6 +87,8 @@ check(`no solid within ${CLEAR} m of the course's middle`, nearest >= CLEAR, `ne
 const trees = doc.elements.filter((e) => e.type === 'tree');
 const treeNear = Math.min(...trees.map((e) => nearestOn(L.line, e.position.x, e.position.y).d));
 check('no tree within 11 m of the course', treeNear >= 11, `${trees.length} trees, nearest ${treeNear.toFixed(1)} m`);
+const inFurniture = trees.filter((e) => L.keep.some((k) => Math.hypot(k.x - e.position.x, k.y - e.position.y) < k.r + 2)).length;
+check('no tree stands in the furniture', inFurniture === 0, `${L.keep.length} pieces kept clear, ${inFurniture} trees in one`);
 const pad = doc.elements.find((e) => e.type === 'startPads');
 check('the start pad is on the tower roof', pad && pad.position.x === TOWER.x && pad.position.z === TOWER.top);
 check('the document is the same every build', JSON.stringify(driftDocument()) === JSON.stringify(doc));
